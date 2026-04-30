@@ -575,7 +575,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0140</div>
+<div id="ver-badge">zip0141</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0139) Mobile portrait warning. CSS @media query controls visibility. -->
@@ -587,8 +587,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0140"></script>
-<script src="video.js?v=0140"></script>
+<script src="tags.js?v=0141"></script>
+<script src="video.js?v=0141"></script>
 
 
 <script>
@@ -4671,10 +4671,20 @@ function gridShow() {
         if (getRowByCellForGrid(mkGridCell(r, c))) n++;
     return n;
   })();
-  document.getElementById('gridInfo').textContent = '['+srcLabel+'] ' + occupied + '/25 · HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save';
+  // (zip0141) Tailor the help hint string by mode. Dev shows the full
+  // edit/save shortcut list; user (Gu) just sees the viewing actions.
+  const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  const hint = userModeHere
+    ? 'Tap=play · Swipe→=full screen'
+    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save';
+  document.getElementById('gridInfo').textContent = '['+srcLabel+'] ' + occupied + '/25 · ' + hint;
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';
+  // (zip0141) Re-apply user-mode chrome AFTER the overlay flips visible —
+  // gridUpdateSourceBtns may have re-set display/opacity on the dev
+  // buttons. Idempotent and a no-op in dev mode.
+  if (typeof _applyUserModeChromeOnGrid === 'function') _applyUserModeChromeOnGrid();
 }
 
 function gridCut(cellStr) {
@@ -4829,6 +4839,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
   let didHold = false;
   let wasCtrl = false;
   let wasLeftBtn = false;
+  // (zip0141) In user mode (Gu), no cell editing: skip hold-to-cut,
+  // skip context-menu cut/paste, skip double-click into the text editor.
+  // Cached once per call — _isUserMode() reads URL/hostname which don't
+  // change mid-session.
+  const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   
   interactor.addEventListener('pointerdown', e => {
     e.preventDefault();
@@ -4837,7 +4852,8 @@ function gridWireInteractor(interactor, cell, cellStr) {
     wasCtrl = e.ctrlKey;
     wasLeftBtn = (e.button === 0); // 0=left, 2=right
     
-    if (cell._rowData && !_gridCutCell && !e.ctrlKey) {
+    // (zip0141) Hold-to-cut is dev-only — disabled in user mode (Gu).
+    if (!userMode && cell._rowData && !_gridCutCell && !e.ctrlKey) {
       holdTmr = setTimeout(() => {
         didHold = true;
         gridCut(cellStr);
@@ -4928,6 +4944,16 @@ function gridWireInteractor(interactor, cell, cellStr) {
     e.preventDefault();
     e.stopPropagation();
     
+    // (zip0141) In user mode (Gu): no cut/paste menu. Ctrl+right-click
+    // for View mode is still allowed (it's a viewing action, not edit).
+    if (userMode) {
+      if (e.ctrlKey && cell._rowData) {
+        _lastGridRow = cell._rowData;
+        gridOpenFullscreen(cell._rowData);
+      }
+      return;
+    }
+    
     // Ctrl+right-click = View mode (VP fullscreen)
     if (e.ctrlKey && cell._rowData) {
       _lastGridRow = cell._rowData;
@@ -4943,6 +4969,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
   interactor.addEventListener('dblclick', e => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // (zip0141) Dev-only — user mode never opens the text editor from G.
+    if (userMode) return;
     
     const row = cell._rowData;
     if (row) {
@@ -7093,6 +7122,12 @@ window._executeHotkey = function(key) {
   const teOpen = !!document.getElementById('textEditorOverlay');
   const tgOpen = _cMode;
   
+  // (zip0141) In user mode (Gu/Cu only), block hotkeys that lead to
+  // dev-only screens (T, E, A). G stays accessible — that's the user's
+  // home screen.
+  const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  if (userMode && (key === 't' || key === 'e' || key === 'a')) return;
+  
   // T = Save and go to Table
   if (key === 't') {
     if (teOpen) return; // Let text editor handle its own keys
@@ -7880,6 +7915,71 @@ function _isMobileDevice() {
   return uaMobile || (coarse && window.innerWidth < 1100);
 }
 
+// (zip0141) User-mode detection. The user version (Gu/Cu) ships to GitHub
+// Pages and other public hosts; the dev version runs from localhost or the
+// local filesystem. Detection is hostname-based so the same files work in
+// both contexts with no build step:
+//   - localhost / 127.x / 0.0.0.0       → DEV
+//   - file:// (empty hostname)           → DEV   (running off m:\jjj etc.)
+//   - private LAN IPs (192.168.*, 10.*)  → DEV
+//   - everything else (github.io, …)     → USER
+//
+// Two URL overrides exist for testing:
+//   ?mode=user  → force user mode (works on localhost)
+//   ?mode=dev   → force dev   mode (works on github.io)
+//
+// In user mode, a `user-mode` class is added to <html> so CSS can hide
+// dev-only chrome (T/C/Name buttons in G, etc.), and runtime hooks skip
+// dev-only interactions (right-click cut/paste, hold-to-cut, dblclick to
+// open the text editor). See _applyUserModeChromeOnGrid() and the
+// gridWireInteractor() guards.
+function _isUserMode() {
+  if (window._userModeCached !== undefined) return window._userModeCached;
+  const params = new URLSearchParams(window.location.search);
+  const force = params.get('mode');
+  if (force === 'user') { window._userModeCached = true;  return true;  }
+  if (force === 'dev')  { window._userModeCached = false; return false; }
+  const h = (window.location.hostname || '').toLowerCase();
+  // file:// has empty hostname → dev (running locally from disk)
+  if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') {
+    window._userModeCached = false; return false;
+  }
+  // Private LAN ranges → dev
+  if (/^192\.168\./.test(h) || /^10\./.test(h)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) {
+    window._userModeCached = false; return false;
+  }
+  window._userModeCached = true;
+  return true;
+}
+
+// (zip0141) Mark <html> with the mode class as early as possible so any
+// CSS gates (e.g. .user-mode #gridSrcT { display:none }) take effect on
+// first paint. Called immediately on script load below.
+function _markUserModeClass() {
+  document.documentElement.classList.toggle('user-mode', _isUserMode());
+  document.documentElement.classList.toggle('dev-mode', !_isUserMode());
+}
+_markUserModeClass();
+
+// (zip0141) Hide the dev-only floating buttons on G when in user mode,
+// and force the Configs button to be visible whenever G is open (not just
+// on mobile). Idempotent — safe to call multiple times.
+function _applyUserModeChromeOnGrid() {
+  if (!_isUserMode()) return;
+  // Hide dev-only G-screen floating buttons. Per spec, the only floating
+  // buttons on Gu should be the zip badge (bottom-right) and Configs
+  // (bottom-left).
+  ['gridNameBtn', 'gridSrcT', 'gridSrcC', 'gridBackBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  // The whole gridControls cluster is now empty in user mode → hide it
+  // so it doesn't take up layout space / catch stray taps.
+  const ctrls = document.getElementById('gridControls');
+  if (ctrls) ctrls.style.display = 'none';
+}
+
 // (zip0140) Programmatic fullscreen + landscape lock. Both require a user
 // gesture to fire (browser policy), so we wire them to the first tap on
 // the page. iOS Safari doesn't support either reliably — the CSS portrait
@@ -7914,14 +8014,16 @@ function _wireFullscreenOnFirstTap() {
 function _routeInitialScreen() {
   const params = new URLSearchParams(window.location.search);
   let target = params.get('screen');
-  if (!target && _isMobileDevice()) target = 'g';
+  // (zip0141) In user mode, default to G regardless of device — the user
+  // version doesn't have a meaningful T view.
+  if (!target && (_isMobileDevice() || _isUserMode())) target = 'g';
   if (!target) return;
   setTimeout(() => {
     if (target === 'g') {
       if (typeof gridShow === 'function') gridShow();
     } else if (target === 'c') {
-      // On mobile, "C" means the friendly config picker, not the full C table.
-      if (_isMobileDevice()) _showMobileCPicker();
+      // On mobile or in user mode, "C" means the friendly config picker.
+      if (_isMobileDevice() || _isUserMode()) _showMobileCPicker();
       else if (typeof openCScreen === 'function') openCScreen();
     }
   }, 200);
@@ -8069,17 +8171,25 @@ function _wireMobileToCBtn() {
   const grid = document.getElementById('gridOverlay');
   if (!btn || !grid) return;
   function refresh() {
-    btn.style.display = (grid.style.display === 'flex') ? 'block' : 'none';
+    // (zip0141) Show the Configs button whenever G is open AND we're in
+    // user mode OR on a mobile device. Dev users on desktop don't need
+    // the floating shortcut — they have the gridSrcC button.
+    const showWhenOpen = _isUserMode() || _isMobileDevice();
+    btn.style.display = (grid.style.display === 'flex' && showWhenOpen)
+      ? 'block' : 'none';
+    // Whenever G becomes visible, re-apply user-mode chrome (hides
+    // dev-only buttons that gridShow may have re-styled).
+    if (grid.style.display === 'flex') _applyUserModeChromeOnGrid();
   }
   refresh();
   new MutationObserver(refresh).observe(grid, {
     attributes: true, attributeFilter: ['style']
   });
   btn.addEventListener('click', () => {
-    // (zip0140) On mobile, show the friendly picker overlay (G stays
-    // mounted in background so it's still there when picker dismisses).
-    // On desktop, fall back to the full C table.
-    if (_isMobileDevice()) _showMobileCPicker();
+    // (zip0141) On mobile OR in user mode, show the friendly picker
+    // overlay (G stays mounted in background so it's still there when
+    // picker dismisses). On dev/desktop, fall back to the full C table.
+    if (_isMobileDevice() || _isUserMode()) _showMobileCPicker();
     else {
       if (typeof gridClose === 'function') gridClose();
       if (typeof openCScreen === 'function') setTimeout(openCScreen, 80);
