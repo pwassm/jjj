@@ -193,6 +193,37 @@ td.editing input {
 #gridFsContent div[style*="text-align:center"] {
   clear: both;
 }
+/* (zip0139) Mobile / web-deploy support.
+   Portrait warning: when a phone is in portrait orientation, show a
+   full-screen overlay asking the user to rotate. Triggers on viewports
+   under 700px wide AND height-greater-than-width. Does not affect
+   desktop or tablet/landscape phones. */
+#rotateWarn {
+  position: fixed; inset: 0; z-index: 9999999;
+  background: #1a1a2e; color: #8ef; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  font-family: monospace; text-align: center; padding: 20px;
+}
+#rotateWarn .icon { font-size: 84px; margin-bottom: 24px; animation: rotPulse 2s ease-in-out infinite; }
+#rotateWarn .msg  { font-size: 18px; line-height: 1.4; max-width: 320px; }
+@keyframes rotPulse {
+  0%, 100% { transform: rotate(-15deg); }
+  50%      { transform: rotate(15deg); }
+}
+@media (max-width: 700px) and (orientation: portrait) {
+  #rotateWarn { display: flex; }
+}
+
+/* Floating action button on G screen — bottom-left, navigates to C */
+#mobileToCBtn {
+  position: fixed; bottom: 10px; left: 12px; z-index: 999990;
+  background: #0a3052; color: #8ef; border: 1px solid #4af;
+  font-family: monospace; font-size: 11px; font-weight: bold;
+  padding: 6px 12px; border-radius: 4px; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  display: none;  /* shown only when G is open */
+}
+#mobileToCBtn:hover { background: #0e4072; }
 </style>
 </head>
 <body>
@@ -544,11 +575,20 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0138</div>
+<div id="ver-badge">zip0139</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
-<script src="tags.js?v=0138"></script>
-<script src="video.js?v=0138"></script>
+<!-- (zip0139) Mobile portrait warning. CSS @media query controls visibility. -->
+<div id="rotateWarn">
+  <div class="icon">📱</div>
+  <div class="msg">Please rotate your phone<br><br>This app needs landscape orientation.</div>
+</div>
+
+<!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
+<button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
+
+<script src="tags.js?v=0139"></script>
+<script src="video.js?v=0139"></script>
 
 
 <script>
@@ -7552,18 +7592,38 @@ async function cSaveToFile() {
 
 async function openCScreen() {
   if (_cMode) return;
+  // (zip0139) Try the project folder (FSA) first; fall back to HTTP fetch
+  // when no folder is set (deployed web mode, mobile, etc.). This makes the
+  // C screen viewable on github.io without needing to "set project folder".
+  // Read-only on web — without FSA, save back to disk isn't possible, but
+  // viewing and switching grid configs still works.
+  let parsed = null;
   const dir = await _getDir();
-  if (!dir) { toast('Set project folder first (M → F)', 2000); return; }
+  if (dir) {
+    try {
+      const fh = await dir.getFileHandle('c.json');
+      parsed = JSON.parse(await (await fh.getFile()).text());
+    } catch (e) { /* fall through to HTTP */ }
+  }
+  if (!parsed) {
+    try {
+      const r = await fetch('c.json?t=' + Date.now());
+      if (r.ok) parsed = await r.json();
+    } catch (e) { /* fall through to empty */ }
+  }
+  if (!parsed) {
+    toast('No c.json available\n(set project folder, or place c.json next to index.html)', 2500);
+    parsed = [];
+  }
+
   try {
-    const fh = await dir.getFileHandle('c.json');
-    const parsed = JSON.parse(await (await fh.getFile()).text());
     if (Array.isArray(parsed) && parsed[0]?._salMeta) {
       _cMeta = parsed[0]; _cData = parsed.slice(1);
     } else if (Array.isArray(parsed)) {
       _cData = parsed;
     } else { _cData = [parsed]; }
     _gridConfigs = _cData;
-  } catch(e) { _cData = []; _gridConfigs = []; }
+  } catch (e) { _cData = []; _gridConfigs = []; }
 
   _cMode = true;
   _tSave = { data, cols, hidden, colWidths, sortCol, sortDir, sortedIdx,
@@ -7807,7 +7867,69 @@ document.addEventListener('click', e => {
 async function showGridList()   { openCScreen(); }
 function closeGridList()        { closeCScreen(); }
 
-load().then(() => setupBrowseAutocomplete());
+// (zip0139) Mobile / web-deploy entry point.
+//
+// URL params:
+//   ?screen=g  → open directly to G (Grid) on load
+//   ?screen=c  → open directly to C (Configs) on load
+//   ?screen=t  → open to T (Table) — explicit dev mode override
+// Auto-detection: on touch devices with no ?screen= param, default to G.
+// This lets the same deployed site serve dev (no param → T) and end-user
+// (?screen=g or just /jjj on a phone → G) without separate builds.
+function _isMobileDevice() {
+  // Combine user-agent and pointer-coarse — neither is perfect alone.
+  const uaMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
+  const coarse   = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  return uaMobile || (coarse && window.innerWidth < 1100);
+}
+
+function _routeInitialScreen() {
+  const params = new URLSearchParams(window.location.search);
+  let target = params.get('screen');
+  if (!target && _isMobileDevice()) target = 'g';
+  if (!target) return;  // dev / desktop default = T (no action)
+
+  // Defer until DOM is ready and load() has populated data
+  setTimeout(() => {
+    if (target === 'g') {
+      if (typeof gridShow === 'function') gridShow();
+    } else if (target === 'c') {
+      if (typeof openCScreen === 'function') openCScreen();
+    } else if (target === 't') {
+      // Already in T — no action
+    }
+  }, 200);
+}
+
+// Show/hide the floating "→ C" button based on whether G is open.
+// Called from both gridShow and gridClose paths via a MutationObserver
+// on the gridOverlay (simpler than threading the wiring through every
+// open/close call site).
+function _wireMobileToCBtn() {
+  const btn = document.getElementById('mobileToCBtn');
+  const grid = document.getElementById('gridOverlay');
+  if (!btn || !grid) return;
+  function refresh() {
+    btn.style.display = (grid.style.display === 'flex') ? 'block' : 'none';
+  }
+  refresh();
+  new MutationObserver(refresh).observe(grid, {
+    attributes: true, attributeFilter: ['style']
+  });
+  btn.addEventListener('click', () => {
+    // Close G first so C opens cleanly
+    if (typeof gridClose === 'function') gridClose();
+    if (typeof openCScreen === 'function') {
+      setTimeout(openCScreen, 80);
+    }
+  });
+}
+
+load().then(() => {
+  setupBrowseAutocomplete();
+  _wireMobileToCBtn();
+  _routeInitialScreen();
+});
 </script>
 </body>
 </html>
