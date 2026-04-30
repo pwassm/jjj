@@ -575,7 +575,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0141</div>
+<div id="ver-badge">zip0142</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0139) Mobile portrait warning. CSS @media query controls visibility. -->
@@ -587,8 +587,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0141"></script>
-<script src="video.js?v=0141"></script>
+<script src="tags.js?v=0142"></script>
+<script src="video.js?v=0142"></script>
 
 
 <script>
@@ -4839,6 +4839,12 @@ function gridWireInteractor(interactor, cell, cellStr) {
   let didHold = false;
   let wasCtrl = false;
   let wasLeftBtn = false;
+  // (zip0142) Manual double-tap timestamp for this cell. Browsers
+  // suppress dblclick when pointerdown.preventDefault() is called, so we
+  // detect it ourselves from successive pointerups < 400ms apart. See the
+  // matching block at the bottom of pointerup, and _runDoubleTapAction()
+  // for the action body (extracted from the legacy dblclick listener).
+  let _lastShortTapT = 0;
   // (zip0141) In user mode (Gu), no cell editing: skip hold-to-cut,
   // skip context-menu cut/paste, skip double-click into the text editor.
   // Cached once per call — _isUserMode() reads URL/hostname which don't
@@ -4904,8 +4910,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
     
     // Short click
     if (Math.abs(dx) < 15 && Math.abs(dy) < 15 && ms < 500) {
-      // Ctrl+LEFT-click = Edit (Ctrl+right-click goes to contextmenu for View)
-      if (ctrl && leftBtn && cell._rowData) {
+      // (zip0142) Ctrl+left-click is dev-only — user mode (Gu) treats it
+      // as an ordinary tap (sets last row, does not open the editor).
+      if (ctrl && leftBtn && cell._rowData && !userMode) {
         _lastGridRow = cell._rowData;
         _cameFromGrid = true;
         gridCleanupPlayers();
@@ -4929,6 +4936,20 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       
       if (cell._rowData) _lastGridRow = cell._rowData;
+      
+      // (zip0142) Manual double-tap detection. Calling preventDefault on
+      // pointerdown (above) suppresses the browser's synthesized dblclick
+      // in many browsers — that's why the dblclick listener below stopped
+      // firing for HTML cells in dev mode. We rebuild it here from
+      // pointerup timestamps so it works on mouse, touch, and pen alike.
+      // Threshold matches the standard 400ms double-click window.
+      const nowT = Date.now();
+      if (nowT - _lastShortTapT < 400 && !userMode) {
+        _lastShortTapT = 0;
+        _runDoubleTapAction(cell, cellStr);
+        return;
+      }
+      _lastShortTapT = nowT;
     }
   }, true);
   
@@ -4966,29 +4987,37 @@ function gridWireInteractor(interactor, cell, cellStr) {
   }, true);
   
   // Double-click on text slide → open large text editor
-  interactor.addEventListener('dblclick', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // (zip0141) Dev-only — user mode never opens the text editor from G.
-    if (userMode) return;
-    
-    const row = cell._rowData;
+  // (zip0142) Shared body for the dblclick event listener AND the manual
+  // double-tap detector in pointerup. Mirrors the original dblclick
+  // semantics exactly:
+  //   - quiz/JSON ftext rows  → fullscreen view
+  //   - text/HTML ftext rows  → open the text editor
+  //   - empty cell            → open the text editor with a fresh row
+  function _runDoubleTapAction(cellEl, cellS) {
+    if (userMode) return; // dev-only path; user mode never edits from G
+    const row = cellEl._rowData;
     if (row) {
-      // Quiz rows (qfile or JSON ftext) → open fullscreen
       const isQuizRow = !!(row.qfile || (row.ftext && !row.link &&
         (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
       if (isQuizRow) {
         _lastGridRow = row;
         gridOpenFullscreen(row);
       } else if (row.ftext || row.VidRange === 'text') {
-        // Text slide → open editor
-        gridOpenTextEditor(cellStr, row);
+        gridOpenTextEditor(cellS, row);
       }
     } else {
-      // Empty cell - create new text slide
-      gridOpenTextEditor(cellStr, null);
+      gridOpenTextEditor(cellS, null);
     }
+  }
+  
+  // Legacy dblclick listener (kept as fallback for browsers that DO
+  // dispatch dblclick despite pointerdown.preventDefault — desktop
+  // Firefox and a few others). Manual detection in pointerup catches
+  // everything else.
+  interactor.addEventListener('dblclick', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    _runDoubleTapAction(cell, cellStr);
   }, true);
 }
 
@@ -8014,9 +8043,14 @@ function _wireFullscreenOnFirstTap() {
 function _routeInitialScreen() {
   const params = new URLSearchParams(window.location.search);
   let target = params.get('screen');
+  // (zip0142) UID deep-link: `?i=NNN` opens item NNN in fullscreen view
+  // (V screen). Restored from a past github version. Works in both dev
+  // and user mode. We open G first so the V overlay has a sensible
+  // background to fall back to when the user closes it.
+  const deepUid = params.get('i');
   // (zip0141) In user mode, default to G regardless of device — the user
   // version doesn't have a meaningful T view.
-  if (!target && (_isMobileDevice() || _isUserMode())) target = 'g';
+  if (!target && (_isMobileDevice() || _isUserMode() || deepUid)) target = 'g';
   if (!target) return;
   setTimeout(() => {
     if (target === 'g') {
@@ -8026,7 +8060,29 @@ function _routeInitialScreen() {
       if (_isMobileDevice() || _isUserMode()) _showMobileCPicker();
       else if (typeof openCScreen === 'function') openCScreen();
     }
+    // (zip0142) After G is up, resolve the UID and open V on top.
+    if (deepUid) _openItemByUid(deepUid);
   }, 200);
+}
+
+// (zip0142) Resolve a UID (string or number) to a row in `data` and open
+// it in V (fullscreen). Tolerant of leading/trailing whitespace and of
+// either string or numeric storage in ml.json. Toasts on miss so the
+// user knows the link was bad.
+function _openItemByUid(uid) {
+  const want = String(uid).trim();
+  if (!want) return;
+  if (typeof data === 'undefined' || !Array.isArray(data)) return;
+  const row = data.find(r => String(r.UID) === want);
+  if (!row) {
+    if (typeof toast === 'function') toast('No item with UID ' + want, 2000);
+    return;
+  }
+  _lastGridRow = row;
+  // Give the grid a tick to finish painting before stacking V on top.
+  setTimeout(() => {
+    if (typeof gridOpenFullscreen === 'function') gridOpenFullscreen(row);
+  }, 120);
 }
 
 // (zip0140) Mobile-friendly config picker — replaces the full C table view
