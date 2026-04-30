@@ -575,7 +575,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0139</div>
+<div id="ver-badge">zip0140</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0139) Mobile portrait warning. CSS @media query controls visibility. -->
@@ -587,8 +587,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0139"></script>
-<script src="video.js?v=0139"></script>
+<script src="tags.js?v=0140"></script>
+<script src="video.js?v=0140"></script>
 
 
 <script>
@@ -7867,44 +7867,203 @@ document.addEventListener('click', e => {
 async function showGridList()   { openCScreen(); }
 function closeGridList()        { closeCScreen(); }
 
-// (zip0139) Mobile / web-deploy entry point.
+// (zip0140) Mobile / web-deploy entry point.
 //
 // URL params:
 //   ?screen=g  → open directly to G (Grid) on load
-//   ?screen=c  → open directly to C (Configs) on load
+//   ?screen=c  → open directly to C (mobile config picker) on load
 //   ?screen=t  → open to T (Table) — explicit dev mode override
 // Auto-detection: on touch devices with no ?screen= param, default to G.
-// This lets the same deployed site serve dev (no param → T) and end-user
-// (?screen=g or just /jjj on a phone → G) without separate builds.
 function _isMobileDevice() {
-  // Combine user-agent and pointer-coarse — neither is perfect alone.
   const uaMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
   const coarse   = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   return uaMobile || (coarse && window.innerWidth < 1100);
+}
+
+// (zip0140) Programmatic fullscreen + landscape lock. Both require a user
+// gesture to fire (browser policy), so we wire them to the first tap on
+// the page. iOS Safari doesn't support either reliably — the CSS portrait
+// warning is the safety net there.
+async function _enterFullscreenLandscape() {
+  try {
+    if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+    } else if (document.documentElement.webkitRequestFullscreen && !document.webkitFullscreenElement) {
+      // Older Safari / iOS — usually a no-op but try
+      document.documentElement.webkitRequestFullscreen();
+    }
+  } catch (_) { /* user denied or not supported */ }
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      await screen.orientation.lock('landscape');
+    }
+  } catch (_) { /* lock denied or not in fullscreen — CSS fallback handles it */ }
+}
+
+function _wireFullscreenOnFirstTap() {
+  if (!_isMobileDevice()) return;
+  const handler = () => {
+    document.removeEventListener('touchend', handler, true);
+    document.removeEventListener('click', handler, true);
+    _enterFullscreenLandscape();
+  };
+  document.addEventListener('touchend', handler, true);
+  document.addEventListener('click', handler, true);
 }
 
 function _routeInitialScreen() {
   const params = new URLSearchParams(window.location.search);
   let target = params.get('screen');
   if (!target && _isMobileDevice()) target = 'g';
-  if (!target) return;  // dev / desktop default = T (no action)
-
-  // Defer until DOM is ready and load() has populated data
+  if (!target) return;
   setTimeout(() => {
     if (target === 'g') {
       if (typeof gridShow === 'function') gridShow();
     } else if (target === 'c') {
-      if (typeof openCScreen === 'function') openCScreen();
-    } else if (target === 't') {
-      // Already in T — no action
+      // On mobile, "C" means the friendly config picker, not the full C table.
+      if (_isMobileDevice()) _showMobileCPicker();
+      else if (typeof openCScreen === 'function') openCScreen();
     }
   }, 200);
 }
 
-// Show/hide the floating "→ C" button based on whether G is open.
-// Called from both gridShow and gridClose paths via a MutationObserver
-// on the gridOverlay (simpler than threading the wiring through every
-// open/close call site).
+// (zip0140) Mobile-friendly config picker — replaces the full C table view
+// for users on phones. Reads c.json (via FSA folder if set, otherwise
+// HTTP), renders each grid as a tappable row showing its name. Tap = load
+// that grid into G and close the picker. R-to-L swipe closes without
+// changing anything. Esc / X also close.
+async function _showMobileCPicker() {
+  // Make sure c.json data is loaded (openCScreen does this side-effect),
+  // but we don't actually want to show the C table — so we capture the
+  // configs and immediately close C if it opened.
+  const wasGridOpen = document.getElementById('gridOverlay')?.style.display === 'flex';
+
+  // Use the same load logic as openCScreen, but without entering _cMode.
+  let configs = [];
+  let loadOk = false;
+  try {
+    const dir = await _getDir();
+    let parsed = null;
+    if (dir) {
+      try {
+        const fh = await dir.getFileHandle('c.json');
+        parsed = JSON.parse(await (await fh.getFile()).text());
+      } catch (e) {}
+    }
+    if (!parsed) {
+      try {
+        const r = await fetch('c.json?t=' + Date.now());
+        if (r.ok) parsed = await r.json();
+      } catch (e) {}
+    }
+    if (parsed) {
+      let rows = [];
+      if (Array.isArray(parsed) && parsed[0]?._salMeta) rows = parsed.slice(1);
+      else if (Array.isArray(parsed))                   rows = parsed;
+      else                                              rows = [parsed];
+      configs = rows.filter(r => r && !r._salMeta && r.gname);
+      loadOk = true;
+    }
+  } catch (e) {}
+
+  // Build the picker overlay
+  const old = document.getElementById('mobileCPicker');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'mobileCPicker';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:999991;background:#0a0a1a;'
+    + 'display:flex;flex-direction:column;font-family:monospace;color:#eee;';
+
+  let listHtml = '';
+  if (!loadOk) {
+    listHtml = '<div style="padding:24px;color:#f88;">Could not load c.json.<br>'
+      + 'Place c.json next to index.html on the server.</div>';
+  } else if (!configs.length) {
+    listHtml = '<div style="padding:24px;color:#aa8;">No grid configs in c.json.</div>';
+  } else {
+    listHtml = configs.map((cfg, i) =>
+      '<div class="mcp-item" data-i="' + i + '" style="padding:14px 18px;'
+      + 'border-bottom:1px solid #222;cursor:pointer;font-size:15px;'
+      + (cfg === _gridActiveConfig ? 'background:#1a3050;color:#8ef;' : 'color:#ddd;')
+      + '">' + (cfg.gname || '(unnamed)') + '</div>'
+    ).join('');
+  }
+
+  ov.innerHTML = `
+    <div style="display:flex;align-items:center;padding:10px 14px;
+                background:#1a1a2e;border-bottom:2px solid #4af;">
+      <span style="color:#8ef;font-weight:bold;flex:1;">Choose a grid</span>
+      <button id="mcpClose" style="background:#222;border:1px solid #555;color:#aaa;
+              padding:5px 11px;border-radius:5px;cursor:pointer;
+              font-family:monospace;">✕</button>
+    </div>
+    <div id="mcpList" style="flex:1;overflow-y:auto;">${listHtml}</div>
+    <div style="padding:8px 14px;background:#0d0d1e;border-top:1px solid #222;
+                color:#556;font-size:11px;text-align:center;">
+      Tap a grid · or swipe right-to-left to cancel
+    </div>
+  `;
+  document.body.appendChild(ov);
+
+  function close() { ov.remove(); }
+
+  ov.querySelector('#mcpClose').onclick = close;
+
+  // Tap-to-activate
+  ov.querySelectorAll('.mcp-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.i, 10);
+      const cfg = configs[idx];
+      if (!cfg) return;
+      // Activate this grid: set as active config, switch grid source to C, render.
+      _gridActiveConfig = cfg;
+      _gridSource = 'C';
+      _gridName = cfg.gname || '';
+      // Mirror cell mapping into row.cell (matches activateGridConfig logic).
+      if (typeof data !== 'undefined' && Array.isArray(data)) {
+        data.forEach(r => { if (r && r.cell) r.cell = ''; });
+        for (let r = 1; r <= 5; r++) {
+          for (let c = 1; c <= 5; c++) {
+            const cs = r + 'abcde'.charAt(c - 1);
+            if (cfg[cs]) {
+              const row = data.find(d => String(d.UID) === String(cfg[cs]));
+              if (row) row.cell = cs;
+            }
+          }
+        }
+      }
+      close();
+      if (typeof gridShow === 'function') gridShow();
+      if (typeof toast === 'function') toast('✓ ' + (cfg.gname || '(unnamed)'), 1500);
+    });
+  });
+
+  // R-to-L swipe to close
+  let sStart = null;
+  ov.addEventListener('pointerdown', e => {
+    sStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+  });
+  ov.addEventListener('pointerup', e => {
+    if (!sStart) return;
+    const dx = e.clientX - sStart.x;
+    const dy = e.clientY - sStart.y;
+    const ms = Date.now() - sStart.t;
+    sStart = null;
+    if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) close();
+  });
+  ov.addEventListener('pointercancel', () => { sStart = null; });
+
+  // Esc closes
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      document.removeEventListener('keydown', onKey, true);
+      close();
+    }
+  }
+  document.addEventListener('keydown', onKey, true);
+}
+
 function _wireMobileToCBtn() {
   const btn = document.getElementById('mobileToCBtn');
   const grid = document.getElementById('gridOverlay');
@@ -7917,10 +8076,13 @@ function _wireMobileToCBtn() {
     attributes: true, attributeFilter: ['style']
   });
   btn.addEventListener('click', () => {
-    // Close G first so C opens cleanly
-    if (typeof gridClose === 'function') gridClose();
-    if (typeof openCScreen === 'function') {
-      setTimeout(openCScreen, 80);
+    // (zip0140) On mobile, show the friendly picker overlay (G stays
+    // mounted in background so it's still there when picker dismisses).
+    // On desktop, fall back to the full C table.
+    if (_isMobileDevice()) _showMobileCPicker();
+    else {
+      if (typeof gridClose === 'function') gridClose();
+      if (typeof openCScreen === 'function') setTimeout(openCScreen, 80);
     }
   });
 }
@@ -7928,6 +8090,7 @@ function _wireMobileToCBtn() {
 load().then(() => {
   setupBrowseAutocomplete();
   _wireMobileToCBtn();
+  _wireFullscreenOnFirstTap();
   _routeInitialScreen();
 });
 </script>
