@@ -1671,6 +1671,15 @@ window.openVideoEditor = function(it) {
   // always actually change audio (because the new player's onReady handler
   // ran asynchronously and could be racing with browser autoplay policies).
   // Direct calls take effect immediately.
+  // (zip0145) ...EXCEPT for the unmute direction on Brave / Opera Mini /
+  // similar privacy-focused mobile browsers, where calling p.unMute() /
+  // p.setMuted(false) on a live cross-origin iframe doesn't propagate the
+  // user gesture into the iframe — autoplay policy blocks audio (YT pauses
+  // the video and refuses to restart; Vimeo plays silently). The reliable
+  // workaround is to remount the iframe inside the click gesture: a fresh
+  // iframe loaded during a user gesture is allowed to autoplay with sound.
+  // We split the paths: mute uses the fast direct API call (always
+  // permitted by browsers), unmute always remounts via mountLoop().
   var bMute = document.getElementById('v2b-mute');
   function applyMuteToLivePlayer() {
     var p = getEditorPlayer();
@@ -1704,15 +1713,28 @@ window.openVideoEditor = function(it) {
       currentMute = !currentMute;
       iMute.checked = currentMute;
       refreshMuteButtonStyle();
-      // Try direct call first; fall back to remount only if no live player.
-      if (!applyMuteToLivePlayer()) mountLoop();
+      // (zip0145) Mute = fast direct API call. Unmute = remount inside
+      // the click gesture (see comment above for the why). The remount
+      // restarts the active segment from its start; that's acceptable in
+      // the editor since segments are typically short and the user is
+      // editing rather than passively watching.
+      if (currentMute) {
+        if (!applyMuteToLivePlayer()) mountLoop();
+      } else {
+        mountLoop();
+      }
     });
   }
   // Keep bottom mute button in sync when top checkbox changes
   iMute.addEventListener('change', function() {
     currentMute = iMute.checked;
     refreshMuteButtonStyle();
-    if (!applyMuteToLivePlayer()) mountLoop();
+    // (zip0145) Same split as the bMute click handler above.
+    if (currentMute) {
+      if (!applyMuteToLivePlayer()) mountLoop();
+    } else {
+      mountLoop();
+    }
   });
 
   // Speed slider (single binding — top slider was removed in zip0116)

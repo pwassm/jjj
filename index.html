@@ -603,7 +603,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0144</div>
+<div id="ver-badge">zip0145</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -613,8 +613,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0144"></script>
-<script src="video.js?v=0144"></script>
+<script src="tags.js?v=0145"></script>
+<script src="video.js?v=0145"></script>
 
 
 <script>
@@ -7001,17 +7001,109 @@ function vpSeekRelative(delta) {
 
 function vpToggleMute() {
   if (!_vpState || !_vpState.player) return;
-  _vpState.muted = !_vpState.muted;
-  const p = _vpState.player;
-  if (_vpState.isYT) {
-    if (_vpState.muted) p.mute(); else p.unMute();
-  } else {
-    p.setMuted(_vpState.muted);
-  }
+  const newMuted = !_vpState.muted;
+
+  // Update icon immediately for responsive feedback regardless of which
+  // path we take below.
   // (zip0143) Use the SVG icon helper for a high-contrast slash.
   document.getElementById('vp-mute').innerHTML =
-    (window.muteIconHTML ? window.muteIconHTML(_vpState.muted)
-                         : (_vpState.muted ? '🔇' : '🔊'));
+    (window.muteIconHTML ? window.muteIconHTML(newMuted)
+                         : (newMuted ? '🔇' : '🔊'));
+
+  if (newMuted) {
+    // ── MUTE ──
+    // Browsers always permit muting, so the simple API call is fine and
+    // gives instant audio cut-off without a video flash.
+    _vpState.muted = true;
+    const p = _vpState.player;
+    try {
+      if (_vpState.isYT) p.mute();
+      else p.setMuted(true);
+    } catch (_) {}
+  } else {
+    // ── UNMUTE ──
+    // (zip0145) Real fix for Brave / Opera Mini / similar privacy-focused
+    // mobile browsers. Background: 0143 added a high-contrast SVG slash
+    // icon, and 0144 added pointer-events:none on that SVG so taps reliably
+    // hit the parent <button>. Both correct, but the *underlying* failure
+    // was deeper — calling p.unMute() / p.setMuted(false) on an already-
+    // running cross-origin iframe doesn't propagate the user-gesture into
+    // the iframe on these browsers, so the autoplay policy blocks audio:
+    // YouTube pauses the video (and refuses to restart on subsequent
+    // playVideo() calls — same gesture-propagation failure), Vimeo keeps
+    // it silently muted.
+    //
+    // Reliable workaround: REMOUNT the iframe synchronously inside this
+    // click handler. A freshly-created iframe loaded during the user
+    // gesture is allowed by the browser to autoplay with sound, on every
+    // browser including Brave/Opera Mini. Costs a brief video flash, but
+    // audio actually unblocks — which the previous approach didn't.
+    vpRemountAtCurrent(false);
+  }
+}
+
+// (zip0145) Remount the V-screen player at its current playback position
+// with a new mute state. Used by vpToggleMute's unmute path; see the long
+// comment there for why a remount is the only reliable way to unblock
+// audio on Brave / Opera Mini. Safe to call on either YT or Vimeo —
+// detects the current player type and rebuilds with the matching mount
+// helper. Keeps _vpState alive (only swaps .player); the per-100ms
+// timeline updater interval is cleared and recreated by the mount.
+function vpRemountAtCurrent(newMuted) {
+  if (!_vpState || !_vpState.player) return;
+  const oldPlayer = _vpState.player;
+  const isYT = _vpState.isYT;
+
+  // 1. Capture current playback position synchronously. YT's getCurrentTime
+  //    is sync; Vimeo's is a Promise, so we fall back to the last value the
+  //    timeline interval cached on _vpState.currentTime.
+  let curTime = _vpState.currentTime || 0;
+  if (isYT) {
+    try {
+      const t = oldPlayer.getCurrentTime();
+      if (typeof t === 'number' && t >= 0) curTime = t;
+    } catch (_) {}
+  }
+  if (curTime < 0 || !isFinite(curTime)) {
+    curTime = (_vpState.segs[_vpState.segIdx] || { start: 0 }).start;
+  }
+
+  // 2. Stop the timeline updater and tear down the old player. Order
+  //    matters: clear the interval first so it doesn't tick against a
+  //    half-destroyed player.
+  if (_vpState.interval) { clearInterval(_vpState.interval); _vpState.interval = null; }
+  try {
+    if (isYT) {
+      oldPlayer.stopVideo();
+      oldPlayer.destroy();
+    } else if (typeof oldPlayer.destroy === 'function') {
+      oldPlayer.destroy();
+    }
+  } catch (_) {}
+
+  // 3. Update mute state and re-mount. The mount helpers (vpMountYouTube /
+  //    vpMountVimeo) re-set _vpState.player on their onReady/ready
+  //    callbacks and restart the timeline interval. We also need to
+  //    re-draw segment markers on the next mount, so reset the flag.
+  _vpState.muted = !!newMuted;
+  _vpState.markersDrawn = false;
+  _vpState.player = null;
+
+  const host = document.getElementById('grid-fs-video');
+  if (!host) return;
+
+  // Use the captured time as the new "segment start" so the fresh iframe
+  // resumes from the same place. dur=99999 means "play to end" — fine
+  // because the existing AB-loop / segment-end logic still runs against
+  // the real _vpState.segs entries.
+  const fakeSeg = { start: curTime, dur: 99999 };
+  const link = _vpState.row.link;
+
+  if (window.isYouTubeLink && window.isYouTubeLink(link)) {
+    vpMountYouTube(host, link, fakeSeg, _vpState.muted);
+  } else if (window.isVimeoLink && window.isVimeoLink(link)) {
+    vpMountVimeo(host, link, fakeSeg, _vpState.muted);
+  }
 }
 
 function vpUpdatePlayBtn() {
@@ -8253,6 +8345,16 @@ function _applyUserModeChromeOnGrid() {
 // the tap instead (which is why the video appeared to "stop and not
 // restart" on Opera Mini in 0143). With pointer-events:none on the
 // SVG, the entire button surface is clickable as a unit.
+//
+// (zip0145) The pointer-events fix above is correct but only solves
+// half the problem. The button click now reaches us reliably, but on
+// Brave / Opera Mini calling p.unMute() on a live cross-origin iframe
+// doesn't propagate the user gesture into the iframe — autoplay policy
+// blocks audio (YT pauses; Vimeo plays silently). The real unmute fix
+// lives in vpToggleMute / video.js's bMute click handler: we *remount*
+// the iframe inside the click gesture so the fresh iframe is allowed
+// to autoplay with sound. This icon helper itself stays unchanged in
+// 0145.
 window.muteIconHTML = function(isMuted) {
   const speaker = '<path d="M3 7v6h3l5 4V3L6 7H3z" fill="currentColor"/>';
   const svgOpen = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" '
