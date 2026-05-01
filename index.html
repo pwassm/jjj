@@ -603,7 +603,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0145</div>
+<div id="ver-badge">zip0146</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -613,8 +613,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0145"></script>
-<script src="video.js?v=0145"></script>
+<script src="tags.js?v=0146"></script>
+<script src="video.js?v=0146"></script>
 
 
 <script>
@@ -6533,7 +6533,19 @@ function gridOpenFullscreen(row, contained) {
       segIdx: 0,
       isSelected: true, // Start in "Selected" mode (segment only)
       speed: 1.0,
-      muted: row.Mute !== '0',
+      // (zip0146) V always opens UNMUTED. row.Mute is a *grid-cell*
+      // preference (you don't want every cell blasting audio at once);
+      // V is for active viewing of one chosen video, so the sensible
+      // default is sound on. Crucially, this also fixes Opera Mini:
+      // mounting the iframe unmuted *during the user-tap gesture that
+      // opened V* gives the iframe a valid audio activation. Without
+      // it, the iframe is created muted, never gets audio activation,
+      // and subsequent unMute() calls are silently blocked by the
+      // browser's autoplay policy (no postMessage gesture propagation
+      // on Opera Mini / similar privacy-focused mobile browsers).
+      // The user can still hit M to mute mid-playback — that's always
+      // permitted by browsers. See vpToggleMute for the toggle path.
+      muted: false,
       ccOn: false,
       aPoint: null,
       bPoint: null,
@@ -6792,10 +6804,19 @@ function gridOpenFullscreen(row, contained) {
     info.innerHTML = '';
     
     // Mount video
-    setTimeout(() => {
+    // (zip0146) Mount SYNCHRONOUSLY — no setTimeout wrapper.
+    // The previous setTimeout(..., 50) wait broke the user-gesture
+    // chain from the cell-tap that opened V, which is the root cause
+    // of the Opera Mini "no sound on unmute" problem: by the time
+    // the iframe is created 50ms later, gesture activation has
+    // expired, and the autoplay policy refuses audio for the lifetime
+    // of that iframe. Mounting synchronously here keeps the iframe
+    // creation inside the click activation window, so the iframe
+    // loads with valid audio permission and mute toggling works.
+    {
       const seg = segs[0];
       const muted = _vpState.muted;
-      
+
       // For "Selected" mode, we loop the segment
       // For "Full" mode, we play from start to end of video
       if (window.isYouTubeLink && window.isYouTubeLink(row.link)) {
@@ -6803,7 +6824,7 @@ function gridOpenFullscreen(row, contained) {
       } else if (window.isVimeoLink && window.isVimeoLink(row.link)) {
         vpMountVimeo(host, row.link, seg, muted);
       }
-    }, 50);
+    }
     
     // Wire up controls
     vpWireControls();
@@ -7001,109 +7022,27 @@ function vpSeekRelative(delta) {
 
 function vpToggleMute() {
   if (!_vpState || !_vpState.player) return;
-  const newMuted = !_vpState.muted;
-
-  // Update icon immediately for responsive feedback regardless of which
-  // path we take below.
-  // (zip0143) Use the SVG icon helper for a high-contrast slash.
-  document.getElementById('vp-mute').innerHTML =
-    (window.muteIconHTML ? window.muteIconHTML(newMuted)
-                         : (newMuted ? '🔇' : '🔊'));
-
-  if (newMuted) {
-    // ── MUTE ──
-    // Browsers always permit muting, so the simple API call is fine and
-    // gives instant audio cut-off without a video flash.
-    _vpState.muted = true;
-    const p = _vpState.player;
-    try {
-      if (_vpState.isYT) p.mute();
-      else p.setMuted(true);
-    } catch (_) {}
-  } else {
-    // ── UNMUTE ──
-    // (zip0145) Real fix for Brave / Opera Mini / similar privacy-focused
-    // mobile browsers. Background: 0143 added a high-contrast SVG slash
-    // icon, and 0144 added pointer-events:none on that SVG so taps reliably
-    // hit the parent <button>. Both correct, but the *underlying* failure
-    // was deeper — calling p.unMute() / p.setMuted(false) on an already-
-    // running cross-origin iframe doesn't propagate the user-gesture into
-    // the iframe on these browsers, so the autoplay policy blocks audio:
-    // YouTube pauses the video (and refuses to restart on subsequent
-    // playVideo() calls — same gesture-propagation failure), Vimeo keeps
-    // it silently muted.
-    //
-    // Reliable workaround: REMOUNT the iframe synchronously inside this
-    // click handler. A freshly-created iframe loaded during the user
-    // gesture is allowed by the browser to autoplay with sound, on every
-    // browser including Brave/Opera Mini. Costs a brief video flash, but
-    // audio actually unblocks — which the previous approach didn't.
-    vpRemountAtCurrent(false);
-  }
-}
-
-// (zip0145) Remount the V-screen player at its current playback position
-// with a new mute state. Used by vpToggleMute's unmute path; see the long
-// comment there for why a remount is the only reliable way to unblock
-// audio on Brave / Opera Mini. Safe to call on either YT or Vimeo —
-// detects the current player type and rebuilds with the matching mount
-// helper. Keeps _vpState alive (only swaps .player); the per-100ms
-// timeline updater interval is cleared and recreated by the mount.
-function vpRemountAtCurrent(newMuted) {
-  if (!_vpState || !_vpState.player) return;
-  const oldPlayer = _vpState.player;
-  const isYT = _vpState.isYT;
-
-  // 1. Capture current playback position synchronously. YT's getCurrentTime
-  //    is sync; Vimeo's is a Promise, so we fall back to the last value the
-  //    timeline interval cached on _vpState.currentTime.
-  let curTime = _vpState.currentTime || 0;
-  if (isYT) {
-    try {
-      const t = oldPlayer.getCurrentTime();
-      if (typeof t === 'number' && t >= 0) curTime = t;
-    } catch (_) {}
-  }
-  if (curTime < 0 || !isFinite(curTime)) {
-    curTime = (_vpState.segs[_vpState.segIdx] || { start: 0 }).start;
-  }
-
-  // 2. Stop the timeline updater and tear down the old player. Order
-  //    matters: clear the interval first so it doesn't tick against a
-  //    half-destroyed player.
-  if (_vpState.interval) { clearInterval(_vpState.interval); _vpState.interval = null; }
+  _vpState.muted = !_vpState.muted;
+  const p = _vpState.player;
+  // (zip0146) Simple API call. The 0145 remount-on-unmute approach
+  // was wrong: it blanked the screen on Opera Mini AND still failed
+  // to actually unblock audio (the new iframe also lacked gesture
+  // activation by then). The real fix lives upstream — V now mounts
+  // unmuted during the cell-tap gesture (see _vpState init in
+  // gridOpenFullscreen), so the iframe has audio permission from
+  // the start. Subsequent mute()/unMute() calls are toggles within
+  // an already-permitted audio session, which browsers allow.
   try {
-    if (isYT) {
-      oldPlayer.stopVideo();
-      oldPlayer.destroy();
-    } else if (typeof oldPlayer.destroy === 'function') {
-      oldPlayer.destroy();
+    if (_vpState.isYT) {
+      if (_vpState.muted) p.mute(); else p.unMute();
+    } else {
+      p.setMuted(_vpState.muted);
     }
   } catch (_) {}
-
-  // 3. Update mute state and re-mount. The mount helpers (vpMountYouTube /
-  //    vpMountVimeo) re-set _vpState.player on their onReady/ready
-  //    callbacks and restart the timeline interval. We also need to
-  //    re-draw segment markers on the next mount, so reset the flag.
-  _vpState.muted = !!newMuted;
-  _vpState.markersDrawn = false;
-  _vpState.player = null;
-
-  const host = document.getElementById('grid-fs-video');
-  if (!host) return;
-
-  // Use the captured time as the new "segment start" so the fresh iframe
-  // resumes from the same place. dur=99999 means "play to end" — fine
-  // because the existing AB-loop / segment-end logic still runs against
-  // the real _vpState.segs entries.
-  const fakeSeg = { start: curTime, dur: 99999 };
-  const link = _vpState.row.link;
-
-  if (window.isYouTubeLink && window.isYouTubeLink(link)) {
-    vpMountYouTube(host, link, fakeSeg, _vpState.muted);
-  } else if (window.isVimeoLink && window.isVimeoLink(link)) {
-    vpMountVimeo(host, link, fakeSeg, _vpState.muted);
-  }
+  // (zip0143) Use the SVG icon helper for a high-contrast slash.
+  document.getElementById('vp-mute').innerHTML =
+    (window.muteIconHTML ? window.muteIconHTML(_vpState.muted)
+                         : (_vpState.muted ? '🔇' : '🔊'));
 }
 
 function vpUpdatePlayBtn() {
@@ -8346,15 +8285,16 @@ function _applyUserModeChromeOnGrid() {
 // restart" on Opera Mini in 0143). With pointer-events:none on the
 // SVG, the entire button surface is clickable as a unit.
 //
-// (zip0145) The pointer-events fix above is correct but only solves
-// half the problem. The button click now reaches us reliably, but on
-// Brave / Opera Mini calling p.unMute() on a live cross-origin iframe
-// doesn't propagate the user gesture into the iframe — autoplay policy
-// blocks audio (YT pauses; Vimeo plays silently). The real unmute fix
-// lives in vpToggleMute / video.js's bMute click handler: we *remount*
-// the iframe inside the click gesture so the fresh iframe is allowed
-// to autoplay with sound. This icon helper itself stays unchanged in
-// 0145.
+// (zip0146) The Opera Mini "no sound" problem turned out NOT to be
+// about the toggle path — it was about the *initial mount*. V used
+// to mount muted (per row.Mute) inside a setTimeout(50), which broke
+// the user-tap gesture chain. The iframe was then created without
+// audio activation, and Opera Mini permanently blocks subsequent
+// unMute() calls on such iframes (no postMessage gesture propagation).
+// The fix lives in gridOpenFullscreen and vpToggleMute: V now opens
+// unmuted (sound is the point of opening V) and mounts synchronously
+// inside the click. The 0145 destructive remount-on-unmute was reverted
+// — it didn't help on Opera Mini and added a screen-blank flash.
 window.muteIconHTML = function(isMuted) {
   const speaker = '<path d="M3 7v6h3l5 4V3L6 7H3z" fill="currentColor"/>';
   const svgOpen = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" '
