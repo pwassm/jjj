@@ -2,12 +2,46 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>ML Table</title>
+<script>
+// (zip0143) EARLY user-mode classification — must run before <body> parses
+// so the .user-mode CSS rules below hide T's chrome on first paint and
+// prevent the "T flashes before G" effect on github.io. The full
+// definition of _isUserMode() lives further down (it shares the same
+// logic) and reuses the cached result via window._userModeCached.
+(function() {
+  try {
+    var p = new URLSearchParams(window.location.search);
+    var force = p.get('mode');
+    var isUser;
+    if (force === 'user') isUser = true;
+    else if (force === 'dev') isUser = false;
+    else {
+      var h = (window.location.hostname || '').toLowerCase();
+      if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') isUser = false;
+      else if (/^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) isUser = false;
+      else isUser = true;
+    }
+    window._userModeCached = isUser;
+    document.documentElement.classList.add(isUser ? 'user-mode' : 'dev-mode');
+  } catch (_) { /* default to dev on any error */ }
+})();
+</script>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 html { height:100%; }
 body { height:100%; overflow:hidden; background:#0a0a14; color:#ddd; font-family:monospace,sans-serif; display:flex; flex-direction:column; }
+
+/* (zip0143) USER MODE: hide T's chrome (toolbar + main wrap) so the
+   table never flashes on github.io / mobile load. Grid overlay paints
+   on top of <body> directly via gridShow(). */
+html.user-mode #toolbar,
+html.user-mode #ctoolbar,
+html.user-mode #wrap { display: none !important; }
+/* Background fill so the empty body doesn't show a flash of light theme
+   between paints. */
+html.user-mode body { background: #0a0a14; }
 
 /* toolbar */
 #toolbar, #ctoolbar { display:flex; align-items:center; gap:8px; flex-shrink:0; padding:6px 12px; background:#111122; border-bottom:2px solid #333; flex-wrap:wrap; }
@@ -193,26 +227,20 @@ td.editing input {
 #gridFsContent div[style*="text-align:center"] {
   clear: both;
 }
-/* (zip0139) Mobile / web-deploy support.
-   Portrait warning: when a phone is in portrait orientation, show a
-   full-screen overlay asking the user to rotate. Triggers on viewports
-   under 700px wide AND height-greater-than-width. Does not affect
-   desktop or tablet/landscape phones. */
-#rotateWarn {
-  position: fixed; inset: 0; z-index: 9999999;
-  background: #1a1a2e; color: #8ef; display: none;
-  flex-direction: column; align-items: center; justify-content: center;
-  font-family: monospace; text-align: center; padding: 20px;
+/* (zip0143) Belt-and-suspenders: pin touch-action on every grid
+   interactor regardless of how it was constructed. Without this, mobile
+   browsers (notably Brave and Opera) intercept horizontal swipes for
+   their own back/forward gestures and our pointer handlers never see
+   them. Disable browser-managed scrolling/zooming on grid cells too. */
+.grid-interactor {
+  touch-action: none !important;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
-#rotateWarn .icon { font-size: 84px; margin-bottom: 24px; animation: rotPulse 2s ease-in-out infinite; }
-#rotateWarn .msg  { font-size: 18px; line-height: 1.4; max-width: 320px; }
-@keyframes rotPulse {
-  0%, 100% { transform: rotate(-15deg); }
-  50%      { transform: rotate(15deg); }
-}
-@media (max-width: 700px) and (orientation: portrait) {
-  #rotateWarn { display: flex; }
-}
+/* Block pull-to-refresh and overscroll bounces on the grid overlay so
+   a downward swipe at the top of the page doesn't reload the app. */
+#gridOverlay { overscroll-behavior: contain; }
 
 /* Floating action button on G screen — bottom-left, navigates to C */
 #mobileToCBtn {
@@ -575,20 +603,18 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0142</div>
+<div id="ver-badge">zip0143</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
-<!-- (zip0139) Mobile portrait warning. CSS @media query controls visibility. -->
-<div id="rotateWarn">
-  <div class="icon">📱</div>
-  <div class="msg">Please rotate your phone<br><br>This app needs landscape orientation.</div>
-</div>
+<!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
+     on first interaction handles this. Browsers that don't allow the
+     orientation lock just stay in whatever orientation the user has. -->
 
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0142"></script>
-<script src="video.js?v=0142"></script>
+<script src="tags.js?v=0143"></script>
+<script src="video.js?v=0143"></script>
 
 
 <script>
@@ -4640,7 +4666,13 @@ function gridShow() {
       // Transparent interactor overlay
       const interactor = document.createElement('div');
       interactor.className = 'grid-interactor';
-      interactor.style.cssText = 'position:absolute;inset:0;z-index:100;background:rgba(0,0,0,0.01);cursor:pointer;';
+      // (zip0143) `touch-action: none` is critical — without it, mobile
+      // browsers (especially Brave and Opera Mini) intercept horizontal
+      // swipes for their own back/forward navigation BEFORE pointermove
+      // or pointerup fire on the page, so our gesture detection never
+      // sees the gesture. This single property makes left/right swipes
+      // work consistently across Firefox / Brave / Opera / Edge / Safari.
+      interactor.style.cssText = 'position:absolute;inset:0;z-index:100;background:rgba(0,0,0,0.01);cursor:pointer;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;';
       
       // Cell label
       const lbl = document.createElement('div');
@@ -4811,7 +4843,9 @@ function gridUpdateCell(cellStr, row) {
   // Recreate interactor overlay
   const newInteractor = document.createElement('div');
   newInteractor.className = 'grid-interactor';
-  newInteractor.style.cssText = 'position:absolute;inset:0;z-index:100;background:rgba(0,0,0,0.01);cursor:pointer;';
+  // (zip0143) Same touch-action:none as initial creation — see comment
+  // there. Required for Brave/Opera Mini swipe to register.
+  newInteractor.style.cssText = 'position:absolute;inset:0;z-index:100;background:rgba(0,0,0,0.01);cursor:pointer;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;';
   
   // Cell label
   const lbl = document.createElement('div');
@@ -4959,6 +4993,90 @@ function gridWireInteractor(interactor, cell, cellStr) {
     cell.style.transform = '';
     cell.style.opacity = '';
   }, true);
+  
+  // (zip0143) TOUCH FALLBACK for browsers that don't fire pointer events
+  // reliably on touch (Opera Mini's compressed mode, some Brave shields
+  // configs, older Android WebViews). Pointer events are tried first; if
+  // pointerdown actually fires for this gesture, _ptrSawDown becomes
+  // true and the touch handlers below bow out so we never double-handle.
+  // Both code paths share gesture dispatch via _dispatchGesture().
+  let _ptrSawDown = false;
+  let _tStart = null;
+  
+  interactor.addEventListener('pointerdown', () => { _ptrSawDown = true; }, true);
+  
+  interactor.addEventListener('touchstart', e => {
+    if (_ptrSawDown) return;            // pointer events are working — bow out
+    if (!e.touches || !e.touches.length) return;
+    const t = e.touches[0];
+    _tStart = { x: t.clientX, y: t.clientY, t: Date.now() };
+    e.preventDefault();
+  }, { passive: false, capture: true });
+  
+  interactor.addEventListener('touchmove', e => {
+    if (_ptrSawDown || !_tStart) return;
+    // Just preventDefault to keep the browser from claiming the gesture
+    // for a back-swipe. We don't actually track movement here — the
+    // delta is computed at touchend.
+    e.preventDefault();
+  }, { passive: false, capture: true });
+  
+  interactor.addEventListener('touchend', e => {
+    if (_ptrSawDown) { _ptrSawDown = false; return; }
+    if (!_tStart) return;
+    // changedTouches has the lifted finger; touches is empty by now.
+    const t = (e.changedTouches && e.changedTouches[0]) || null;
+    if (!t) { _tStart = null; return; }
+    const dx = t.clientX - _tStart.x;
+    const dy = t.clientY - _tStart.y;
+    const ms = Date.now() - _tStart.t;
+    _tStart = null;
+    e.preventDefault();
+    _dispatchGesture(dx, dy, ms);
+  }, { passive: false, capture: true });
+  
+  interactor.addEventListener('touchcancel', () => {
+    _tStart = null;
+    _ptrSawDown = false;
+  }, true);
+  
+  // (zip0143) Single source of truth for what a touch/pointer gesture
+  // does on a cell. Used by the pointer-event path AND the touch
+  // fallback. Keeps swipe/tap/double-tap semantics consistent. NOTE:
+  // this intentionally does NOT handle hold-to-cut or right-click —
+  // those only apply on devices with proper pointer/contextmenu events.
+  function _dispatchGesture(dx, dy, ms) {
+    // Swipe RIGHT → fullscreen view
+    if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
+      if (cell._rowData) {
+        _lastGridRow = cell._rowData;
+        gridOpenFullscreen(cell._rowData);
+      }
+      return;
+    }
+    // Swipe LEFT → pause video
+    if (dx < -40 && Math.abs(dy) < Math.abs(dx)) {
+      gridTogglePauseCell(cellStr);
+      return;
+    }
+    // Short tap
+    if (Math.abs(dx) < 15 && Math.abs(dy) < 15 && ms < 500) {
+      if (_gridCutCell && !userMode) {
+        if (_gridCutCell === cellStr) { gridClearCut(); toast('Cut cancelled', 800); }
+        else                          { gridPaste(cellStr); }
+        return;
+      }
+      if (cell._rowData) _lastGridRow = cell._rowData;
+      // Manual double-tap detection (same threshold as pointer path)
+      const nowT = Date.now();
+      if (nowT - _lastShortTapT < 400 && !userMode) {
+        _lastShortTapT = 0;
+        _runDoubleTapAction(cell, cellStr);
+        return;
+      }
+      _lastShortTapT = nowT;
+    }
+  }
   
   // Right-click → show context menu OR Ctrl+right-click → View mode
   interactor.addEventListener('contextmenu', e => {
@@ -6491,7 +6609,10 @@ function gridOpenFullscreen(row, contained) {
     const muteBtn = document.createElement('button');
     muteBtn.id = 'vp-mute';
     muteBtn.className = 'vp-btn';
-    muteBtn.innerHTML = '🔊';
+    // (zip0143) SVG icon (helper defined late in the script). Defaults
+    // to unmuted; toggle code below replaces with the muted variant
+    // once the player has been mounted with its initial mute state.
+    muteBtn.innerHTML = (window.muteIconHTML ? window.muteIconHTML(false) : '🔊');
     muteBtn.title = 'Mute (M)';
     
     // A-B buttons with carets
@@ -6788,7 +6909,10 @@ function vpToggleMute() {
   } else {
     p.setMuted(_vpState.muted);
   }
-  document.getElementById('vp-mute').innerHTML = _vpState.muted ? '🔇' : '🔊';
+  // (zip0143) Use the SVG icon helper for a high-contrast slash.
+  document.getElementById('vp-mute').innerHTML =
+    (window.muteIconHTML ? window.muteIconHTML(_vpState.muted)
+                         : (_vpState.muted ? '🔇' : '🔊'));
 }
 
 function vpUpdatePlayBtn() {
@@ -6894,6 +7018,12 @@ function vpWireControls() {
   document.getElementById('vp-toggle').onclick = vpToggleSelectedFull;
   document.getElementById('vp-cc').onclick = vpToggleCC;
   document.getElementById('vp-mute').onclick = vpToggleMute;
+  // (zip0143) Reflect the player's actual starting mute state in the
+  // icon. _vpState.muted is set by setupVP earlier in the open flow,
+  // before the buttons are wired up here.
+  if (window.muteIconHTML && _vpState) {
+    document.getElementById('vp-mute').innerHTML = window.muteIconHTML(!!_vpState.muted);
+  }
   document.getElementById('vp-a').onclick = vpToggleA;
   document.getElementById('vp-b').onclick = vpToggleB;
   document.getElementById('vp-a-minus').onclick = () => vpAdjustAB('a', -0.1);
@@ -8009,35 +8139,84 @@ function _applyUserModeChromeOnGrid() {
   if (ctrls) ctrls.style.display = 'none';
 }
 
+// (zip0143) Inline-SVG mute/unmute icon. Used to replace the 🔊 / 🔇
+// emoji which has a slash too thin to read at small sizes. The muted
+// icon draws a bold red diagonal stroke over the speaker, plus a thin
+// dark outline so it stays visible against any button colour.
+//   muteIconHTML(true)  → speaker with thick red slash
+//   muteIconHTML(false) → speaker only
+// 18px square fits the existing 14px-font-size button slots.
+window.muteIconHTML = function(isMuted) {
+  const speaker = '<path d="M3 7v6h3l5 4V3L6 7H3z" fill="currentColor"/>';
+  if (!isMuted) {
+    // Add a couple of sound-wave arcs to the right
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" '
+      + 'viewBox="0 0 20 20" style="vertical-align:middle;display:inline-block;">'
+      + speaker
+      + '<path d="M14 6.5c1.4 1 1.4 6 0 7" stroke="currentColor" stroke-width="1.5" '
+      + 'fill="none" stroke-linecap="round"/>'
+      + '<path d="M16 4.5c2.6 1.8 2.6 9.2 0 11" stroke="currentColor" stroke-width="1.5" '
+      + 'fill="none" stroke-linecap="round"/>'
+      + '</svg>';
+  }
+  // Muted: speaker with a thick, high-contrast red slash. The dark
+  // backing stroke (#000) sits under the red so the slash is readable
+  // against red/orange/grey button backgrounds alike.
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" '
+    + 'viewBox="0 0 20 20" style="vertical-align:middle;display:inline-block;">'
+    + speaker
+    + '<line x1="2" y1="2" x2="18" y2="18" stroke="#000" stroke-width="5" stroke-linecap="round"/>'
+    + '<line x1="2" y1="2" x2="18" y2="18" stroke="#ff2020" stroke-width="3" stroke-linecap="round"/>'
+    + '</svg>';
+};
+
 // (zip0140) Programmatic fullscreen + landscape lock. Both require a user
 // gesture to fire (browser policy), so we wire them to the first tap on
 // the page. iOS Safari doesn't support either reliably — the CSS portrait
 // warning is the safety net there.
+// (zip0143) Programmatic fullscreen + landscape lock. Both require a
+// user gesture per browser policy, so we wire them to the first tap on
+// the page. iOS Safari supports neither reliably; for browsers that
+// refuse the lock, the page just renders in whatever orientation the
+// user is holding (the old portrait warning was removed in 0143).
 async function _enterFullscreenLandscape() {
+  // Fullscreen first — orientation lock generally requires it. We
+  // intentionally don't await fullscreen; chasing an unsupported promise
+  // shouldn't block the orientation attempt.
   try {
     if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
-      await document.documentElement.requestFullscreen();
+      document.documentElement.requestFullscreen().catch(() => {});
     } else if (document.documentElement.webkitRequestFullscreen && !document.webkitFullscreenElement) {
-      // Older Safari / iOS — usually a no-op but try
       document.documentElement.webkitRequestFullscreen();
     }
-  } catch (_) { /* user denied or not supported */ }
-  try {
-    if (screen.orientation && typeof screen.orientation.lock === 'function') {
-      await screen.orientation.lock('landscape');
-    }
-  } catch (_) { /* lock denied or not in fullscreen — CSS fallback handles it */ }
+  } catch (_) {}
+  // Try the lock immediately AND again after a short delay — some
+  // browsers reject the lock if fullscreen hasn't settled yet.
+  const tryLock = () => {
+    try {
+      if (screen.orientation && typeof screen.orientation.lock === 'function') {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    } catch (_) {}
+  };
+  tryLock();
+  setTimeout(tryLock, 200);
+  setTimeout(tryLock, 700);
 }
 
 function _wireFullscreenOnFirstTap() {
   if (!_isMobileDevice()) return;
+  // Fire on the first user gesture of any kind. `once: true` cleans up
+  // automatically — no need to track removal across both events.
   const handler = () => {
     document.removeEventListener('touchend', handler, true);
     document.removeEventListener('click', handler, true);
+    document.removeEventListener('pointerdown', handler, true);
     _enterFullscreenLandscape();
   };
   document.addEventListener('touchend', handler, true);
   document.addEventListener('click', handler, true);
+  document.addEventListener('pointerdown', handler, true);
 }
 
 function _routeInitialScreen() {

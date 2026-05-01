@@ -405,7 +405,12 @@ window.openVideoEditor = function(it) {
     // Mute (M key)
     + '<button id="v2b-mute" title="Mute/Unmute (M)" '
     + 'style="padding:6px 11px;border-radius:5px;border:1px solid #888;background:rgba(40,40,60,0.6);'
-    + 'color:#ccc;cursor:pointer;font-size:14px;font-family:monospace;">🔊</button>'
+    + 'color:#ccc;cursor:pointer;font-size:14px;font-family:monospace;">'
+    // (zip0143) Initial icon set inline; refreshMuteButtonStyle()
+    // (further down) updates it on every state change with the SVG
+    // helper so the muted state has a thick red slash.
+    + (window.muteIconHTML ? window.muteIconHTML(!!currentMute) : (currentMute ? '🔇' : '🔊'))
+    + '</button>'
     // CC (C key)
     + '<button id="v2b-cc" title="Toggle Closed Captions (C)" '
     + 'style="padding:6px 11px;border-radius:5px;border:1px solid #8a8;background:rgba(0,50,0,0.4);'
@@ -1685,7 +1690,11 @@ window.openVideoEditor = function(it) {
   }
   function refreshMuteButtonStyle() {
     if (!bMute) return;
-    bMute.textContent = currentMute ? '🔇' : '🔊';
+    // (zip0143) SVG icon (helper defined in index.html). Falls back to
+    // emoji on the unlikely chance the helper is missing.
+    bMute.innerHTML = window.muteIconHTML
+      ? window.muteIconHTML(!!currentMute)
+      : (currentMute ? '🔇' : '🔊');
     bMute.style.borderColor = currentMute ? '#f88' : '#888';
     bMute.style.color = currentMute ? '#f88' : '#ccc';
   }
