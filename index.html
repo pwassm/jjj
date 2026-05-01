@@ -603,7 +603,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0143</div>
+<div id="ver-badge">zip0144</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -613,8 +613,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0143"></script>
-<script src="video.js?v=0143"></script>
+<script src="tags.js?v=0144"></script>
+<script src="video.js?v=0144"></script>
 
 
 <script>
@@ -4498,6 +4498,53 @@ function gridCleanupPlayers() {
   _gridPlayers = {};
 }
 
+// (zip0144) Scale an HTML/text cell preview so the entire ftext is
+// visible inside the cell, not just the top-left corner. Renders the
+// inner content at a fixed virtual width (600px) so font sizes /
+// margins / images keep their relative proportions, then JS-scales
+// down to whatever the cell's actual pixel dimensions are after
+// layout. We measure the content's natural height (which depends on
+// the row's HTML — could be one line or many) and pick the smaller of
+// width-fit / height-fit to guarantee everything fits.
+//
+// Re-fit on window resize via ResizeObserver — the grid is fluid
+// (5 cols × 5 rows of viewport) so cell width changes whenever the
+// device rotates or the window is resized.
+function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
+  const VIRT_W = 600;
+  function fit() {
+    if (!cellEl.isConnected) return;
+    const cw = cellEl.clientWidth;
+    const ch = cellEl.clientHeight;
+    if (!cw || !ch) return;
+    // Reset transform so scrollHeight reflects the natural unscaled
+    // height. Without this reset, repeated calls compound their
+    // measurements and the fit ratio gets progressively wrong.
+    innerEl.style.transform = '';
+    innerEl.style.width = VIRT_W + 'px';
+    const naturalH = Math.max(1, innerEl.scrollHeight);
+    const scale = Math.min(cw / VIRT_W, ch / naturalH);
+    innerEl.style.transform = 'scale(' + scale + ')';
+    // Center horizontally and vertically inside the cell when the
+    // scaled content is smaller than the cell on either axis.
+    const offX = Math.max(0, (cw - VIRT_W * scale) / 2);
+    const offY = Math.max(0, (ch - naturalH * scale) / 2);
+    innerEl.style.left = offX + 'px';
+    innerEl.style.top  = offY + 'px';
+  }
+  // First fit happens on the next animation frame (the grid is mid-
+  // build at this point and cells haven't been measured yet). A second
+  // pass at 0ms catches images that load asynchronously and resize
+  // the natural height after the initial measurement.
+  requestAnimationFrame(fit);
+  setTimeout(fit, 50);
+  // Watch the cell — re-fit on window resize / device rotation.
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(fit);
+    ro.observe(cellEl);
+  }
+}
+
 // Update visual state of T / C source buttons
 function gridUpdateSourceBtns() {
   const tBtn = document.getElementById('gridSrcT');
@@ -4625,15 +4672,27 @@ function gridShow() {
             + escH(row.qfile || row.n1 || 'Quiz') + '</div>';
           cell.appendChild(badge);
         } else if (isText && row.ftext) {
-          const textDiv = document.createElement('div');
-          textDiv.style.cssText = `
-            position:absolute; inset:8px; overflow:hidden; pointer-events:none; z-index:1;
-            font-size:11px; line-height:1.3; color:#ddd;
-            display:flex; flex-direction:column; justify-content:center;
-          `;
-          textDiv.innerHTML = `<div style="transform:scale(0.7); transform-origin:top left;">${row.ftext}</div>`;
-          cell.appendChild(textDiv);
-          cell.style.background = '#0a0a1a';
+          // (zip0144) HTML/text preview — render the FULL ftext inside
+          // a fixed virtual canvas (600px wide), then scale to fit the
+          // cell with JS after layout. Previously used a fixed
+          // transform:scale(0.7) that just showed the top-left corner
+          // at 70%, which clipped most rich-text slides. The new
+          // approach shows the entire slide as a true thumbnail.
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#fff;pointer-events:none;z-index:1;';
+          const inner = document.createElement('div');
+          inner.className = 'grid-html-thumb';
+          inner.style.cssText = 'position:absolute;top:0;left:0;width:600px;'
+            + 'transform-origin:top left;font-family:Arial,sans-serif;'
+            + 'color:#222;padding:16px;box-sizing:border-box;';
+          inner.innerHTML = row.ftext;
+          wrap.appendChild(inner);
+          cell.appendChild(wrap);
+          cell.style.background = '#fff';
+          // Scale after the cell has its real dimensions. rAF gives the
+          // grid one paint to compute its 5×5 layout; without it the
+          // cell measures 0×0 and the scale comes out to NaN.
+          fitGridHtmlThumb(cell, wrap, inner);
         } else if (isVid && row.link) {
           const vidHost = document.createElement('div');
           vidHost.id = 'grid-vid-' + cellStr;
@@ -4675,15 +4734,19 @@ function gridShow() {
       interactor.style.cssText = 'position:absolute;inset:0;z-index:100;background:rgba(0,0,0,0.01);cursor:pointer;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;';
       
       // Cell label
+      // (zip0144) Tighter, double-stack text-shadow so the label
+      // remains readable on the new white-background HTML thumbnails.
+      // The previous single 1px/1px/2px shadow vanished against light
+      // page backgrounds.
       const lbl = document.createElement('div');
-      lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(100,150,255,0.7);font-weight:bold;pointer-events:none;text-shadow:1px 1px 2px #000;';
+      lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(120,180,255,0.95);font-weight:bold;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;';
       lbl.textContent = cellStr;
       interactor.appendChild(lbl);
       
       // Info overlay
       if (row && (row.n1 || row.t1)) {
         const info = document.createElement('div');
-        info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:6px;font-size:10px;color:#ccc;pointer-events:none;text-shadow:1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:6px;font-size:10px;color:#fff;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
         info.textContent = [row.t1, row.n1].filter(Boolean).join(' · ');
         interactor.appendChild(info);
       }
@@ -4797,17 +4860,21 @@ function gridUpdateCell(cellStr, row) {
         + escH(row.qfile || row.n1 || 'Quiz') + '</div>';
       cellEl.appendChild(badge);
     } else if (isText && row.ftext) {
-      // Text slide cell - show formatted preview
-      const textDiv = document.createElement('div');
-      textDiv.style.cssText = `
-        position:absolute; inset:8px; overflow:hidden; pointer-events:none; z-index:1;
-        font-size:11px; line-height:1.3; color:#ddd;
-        display:flex; flex-direction:column; justify-content:center;
-      `;
-      // Scale down the HTML content for preview
-      textDiv.innerHTML = `<div style="transform:scale(0.7); transform-origin:top left;">${row.ftext}</div>`;
-      cellEl.appendChild(textDiv);
-      cellEl.style.background = '#0a0a1a';
+      // (zip0144) See gridShow's matching block — same shrink-to-fit
+      // thumbnail rendering for the HTML/text preview, used when an
+      // individual cell is updated (e.g., after a paste or save).
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#fff;pointer-events:none;z-index:1;';
+      const inner = document.createElement('div');
+      inner.className = 'grid-html-thumb';
+      inner.style.cssText = 'position:absolute;top:0;left:0;width:600px;'
+        + 'transform-origin:top left;font-family:Arial,sans-serif;'
+        + 'color:#222;padding:16px;box-sizing:border-box;';
+      inner.innerHTML = row.ftext;
+      wrap.appendChild(inner);
+      cellEl.appendChild(wrap);
+      cellEl.style.background = '#fff';
+      fitGridHtmlThumb(cellEl, wrap, inner);
     } else if (isVid && row.link) {
       // Video cell
       const vidHost = document.createElement('div');
@@ -4848,15 +4915,17 @@ function gridUpdateCell(cellStr, row) {
   newInteractor.style.cssText = 'position:absolute;inset:0;z-index:100;background:rgba(0,0,0,0.01);cursor:pointer;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;';
   
   // Cell label
+  // (zip0144) Match gridShow's label/info shadow strengthening so
+  // re-rendered cells stay readable on white HTML thumbnails.
   const lbl = document.createElement('div');
-  lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(100,150,255,0.7);font-weight:bold;pointer-events:none;text-shadow:1px 1px 2px #000;';
+  lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(120,180,255,0.95);font-weight:bold;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;';
   lbl.textContent = cellStr;
   newInteractor.appendChild(lbl);
   
   // Info overlay
   if (row && (row.n1 || row.t1)) {
     const info = document.createElement('div');
-    info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:6px;font-size:10px;color:#ccc;pointer-events:none;text-shadow:1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:6px;font-size:10px;color:#fff;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     info.textContent = [row.t1, row.n1].filter(Boolean).join(' · ');
     newInteractor.appendChild(info);
   }
@@ -6438,7 +6507,15 @@ function gridOpenFullscreen(row, contained) {
   const info = document.getElementById('gridFsInfo');
   
   content.innerHTML = '';
+  // (zip0144) Reset content's inline style. The image-fullscreen branch
+  // (below) mutates content.style with display:flex centering; without
+  // this reset, that style would leak into the next call (e.g. opening
+  // a video right after closing an image). Restore the original
+  // absolute-positioning that <div id="gridFsContent"> ships with in
+  // the HTML.
+  content.style.cssText = 'position:absolute;inset:0;';
   info.innerHTML = '';
+  info.style.cssText = '';
   _vpState = null;
   
   const isVid = isVideoRow(row);
@@ -6465,19 +6542,22 @@ function gridOpenFullscreen(row, contained) {
     };
     
     // Video host
+    // (zip0144) Extends to the top edge — the old 50px info bar
+    // ("cell · title") was removed in 0144 to recover screen height on
+    // phones. Bottom 80px is the controls toolbar.
     const host = document.createElement('div');
     host.id = 'grid-fs-video';
-    host.style.cssText = 'position:absolute;inset:60px 0 80px 0;background:#000;';
+    host.style.cssText = 'position:absolute;inset:0 0 80px 0;background:#000;';
     content.appendChild(host);
     _gridPlayers[host.id] = true;
     
     // Transparent swipe-catcher: sits above the video iframe, below any overlay
     // UI elements we add later. Blocks native YT hover/click UI and captures
     // right-to-left swipe to close V. Matches host geometry exactly so the
-    // bottom toolbar and top info bar still receive their own clicks.
+    // bottom toolbar still receives its own clicks.
     const swipeCatcher = document.createElement('div');
     swipeCatcher.id = 'vp-swipe-catcher';
-    swipeCatcher.style.cssText = 'position:absolute;inset:60px 0 80px 0;z-index:50;background:transparent;cursor:pointer;touch-action:pan-y;';
+    swipeCatcher.style.cssText = 'position:absolute;inset:0 0 80px 0;z-index:50;background:transparent;cursor:pointer;touch-action:pan-y;';
     content.appendChild(swipeCatcher);
     
     (function wireSwipeClose() {
@@ -6703,9 +6783,13 @@ function gridOpenFullscreen(row, contained) {
     toolbar.appendChild(ctrlRow);
     content.appendChild(toolbar);
     
-    // Info bar at top
-    info.style.cssText = 'position:absolute;top:0;left:0;right:0;height:50px;background:#000;border-bottom:1px solid #333;display:flex;align-items:center;padding:0 16px;';
-    info.innerHTML = `<span style="color:#8cf;font-size:13px;">${[row.cell, row.t1, row.n1, row.n2].filter(Boolean).join(' · ')}</span>`;
+    // (zip0144) No info bar for video — video extends to the top edge.
+    // The cell label / title was removed because it took meaningful
+    // screen height on phones and added little value (the user knows
+    // what they tapped). Image and quiz cases below still set their
+    // info bars since they're useful there.
+    info.style.cssText = 'display:none;';
+    info.innerHTML = '';
     
     // Mount video
     setTimeout(() => {
@@ -6781,12 +6865,26 @@ function gridOpenFullscreen(row, contained) {
 
   } else if (row.link) {
     // IMAGE FULLSCREEN
+    // (zip0144) Two fixes here:
+    //  1. Center the image. The previous `content.style.cssText = ...`
+    //     clobbered the inline `position:absolute; inset:0;` set on
+    //     #gridFsContent in the HTML, so flex centering operated on a
+    //     collapsed box and the image fell back to top-left. Use
+    //     Object.assign so the existing absolute positioning is kept.
+    //  2. Remove the info bar ("cell · title — click or Esc to close")
+    //     for parity with V's video case, since the user found it took
+    //     too much vertical space. Click-anywhere-to-close still works
+    //     and the bottom-right ✕ button is the explicit affordance.
+    Object.assign(content.style, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    });
     const img = document.createElement('img');
     img.src = row.link;
     img.style.cssText = contained
       ? 'max-width:90%;max-height:90%;object-fit:contain;'
       : 'max-width:100%;max-height:100%;object-fit:contain;';
-    content.style.cssText = 'display:flex;align-items:center;justify-content:center;';
     content.appendChild(img);
     
     // Close button for image
@@ -6797,7 +6895,8 @@ function gridOpenFullscreen(row, contained) {
     closeBtn.onclick = vpClose;
     content.appendChild(closeBtn);
     
-    info.textContent = [row.cell, row.t1, row.n1, row.n2].filter(Boolean).join(' · ') + ' — click or Esc to close';
+    info.style.cssText = 'display:none;';
+    info.innerHTML = '';
     
     // Simple close handler for images
     fs.onclick = vpClose;
@@ -8146,12 +8245,21 @@ function _applyUserModeChromeOnGrid() {
 //   muteIconHTML(true)  → speaker with thick red slash
 //   muteIconHTML(false) → speaker only
 // 18px square fits the existing 14px-font-size button slots.
+//
+// (zip0144) `pointer-events:none` on the <svg> is required for Opera
+// Mini and a few older mobile browsers — without it, taps on the SVG
+// child paths/lines don't bubble to the parent <button>, so the mute
+// click silently fails AND the underlying video iframe sometimes gets
+// the tap instead (which is why the video appeared to "stop and not
+// restart" on Opera Mini in 0143). With pointer-events:none on the
+// SVG, the entire button surface is clickable as a unit.
 window.muteIconHTML = function(isMuted) {
   const speaker = '<path d="M3 7v6h3l5 4V3L6 7H3z" fill="currentColor"/>';
+  const svgOpen = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" '
+    + 'viewBox="0 0 20 20" style="vertical-align:middle;display:inline-block;'
+    + 'pointer-events:none;">';
   if (!isMuted) {
-    // Add a couple of sound-wave arcs to the right
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" '
-      + 'viewBox="0 0 20 20" style="vertical-align:middle;display:inline-block;">'
+    return svgOpen
       + speaker
       + '<path d="M14 6.5c1.4 1 1.4 6 0 7" stroke="currentColor" stroke-width="1.5" '
       + 'fill="none" stroke-linecap="round"/>'
@@ -8162,8 +8270,7 @@ window.muteIconHTML = function(isMuted) {
   // Muted: speaker with a thick, high-contrast red slash. The dark
   // backing stroke (#000) sits under the red so the slash is readable
   // against red/orange/grey button backgrounds alike.
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" '
-    + 'viewBox="0 0 20 20" style="vertical-align:middle;display:inline-block;">'
+  return svgOpen
     + speaker
     + '<line x1="2" y1="2" x2="18" y2="18" stroke="#000" stroke-width="5" stroke-linecap="round"/>'
     + '<line x1="2" y1="2" x2="18" y2="18" stroke="#ff2020" stroke-width="3" stroke-linecap="round"/>'
@@ -8404,20 +8511,30 @@ async function _showMobileCPicker() {
 function _wireMobileToCBtn() {
   const btn = document.getElementById('mobileToCBtn');
   const grid = document.getElementById('gridOverlay');
+  const fs   = document.getElementById('gridFullscreen');
   if (!btn || !grid) return;
   function refresh() {
     // (zip0141) Show the Configs button whenever G is open AND we're in
     // user mode OR on a mobile device. Dev users on desktop don't need
     // the floating shortcut — they have the gridSrcC button.
+    // (zip0144) Also hide whenever V/P (gridFullscreen) is showing on
+    // top of G — the button visually overlapped the V controls and was
+    // a distraction on the picture/video view. The user only needs
+    // Configs from G itself.
     const showWhenOpen = _isUserMode() || _isMobileDevice();
-    btn.style.display = (grid.style.display === 'flex' && showWhenOpen)
-      ? 'block' : 'none';
+    const gridUp = grid.style.display === 'flex';
+    const fsUp   = fs && fs.style.display === 'flex';
+    btn.style.display = (gridUp && showWhenOpen && !fsUp) ? 'block' : 'none';
     // Whenever G becomes visible, re-apply user-mode chrome (hides
     // dev-only buttons that gridShow may have re-styled).
-    if (grid.style.display === 'flex') _applyUserModeChromeOnGrid();
+    if (gridUp) _applyUserModeChromeOnGrid();
   }
   refresh();
   new MutationObserver(refresh).observe(grid, {
+    attributes: true, attributeFilter: ['style']
+  });
+  // (zip0144) Re-evaluate visibility when V/P opens or closes too.
+  if (fs) new MutationObserver(refresh).observe(fs, {
     attributes: true, attributeFilter: ['style']
   });
   btn.addEventListener('click', () => {
