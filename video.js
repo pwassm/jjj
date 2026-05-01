@@ -1693,6 +1693,15 @@ window.openVideoEditor = function(it) {
         else if (typeof p.setMuted === 'function') p.setMuted(false);
         else if (typeof p.setVolume === 'function') p.setVolume(1);
       }
+      // (zip0147) Defensive: kick playback after any mute change. On Opera
+      // Mini Android the mute postMessage occasionally pauses the iframe
+      // as a side effect; calling play right after — still inside the
+      // click's user-activation window — keeps it running. No-op when
+      // already playing.
+      try {
+        if (typeof p.playVideo === 'function') p.playVideo();
+        else if (typeof p.play === 'function') { var pp = p.play(); if (pp && pp.catch) pp.catch(function(){}); }
+      } catch (_) {}
       return true;
     } catch (_) { return false; }
   }

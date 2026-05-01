@@ -603,7 +603,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0146</div>
+<div id="ver-badge">zip0147</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -613,8 +613,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0146"></script>
-<script src="video.js?v=0146"></script>
+<script src="tags.js?v=0147"></script>
+<script src="video.js?v=0147"></script>
 
 
 <script>
@@ -6588,18 +6588,28 @@ function gridOpenFullscreen(row, contained) {
           vpClose();
           return;
         }
-        // Short tap passes through to play/pause toggle for convenience
-        if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && ms < 300) {
-          if (typeof vpTogglePlay === 'function') vpTogglePlay();
-        }
+        // (zip0147) Short-tap-to-toggle-play removed. Reason: the swipe-
+        // catcher sits at z-index:50 directly above the toolbar (which had
+        // no explicit z-index). On browsers with imprecise touch coords
+        // (Opera Mini Android in particular), a tap on the small mute
+        // button at the top edge of the toolbar would dispatch with
+        // coordinates a few pixels into the catcher's bounds and fire
+        // this handler, calling vpTogglePlay() — which is exactly the
+        // "mute button stops the video" symptom. The dedicated play/pause
+        // button in the toolbar is right there, so the convenience tap
+        // wasn't worth the collateral damage.
       }, true);
       swipeCatcher.addEventListener('pointercancel', () => { sStart = null; }, true);
     })();
     
     // Build controls toolbar
+    // (zip0147) Explicit z-index:60 — one above the swipeCatcher's
+    // z-index:50 — to remove any stacking ambiguity. Without this,
+    // Opera Mini and similar mobile browsers occasionally route taps
+    // intended for the toolbar to the catcher above it.
     const toolbar = document.createElement('div');
     toolbar.id = 'vp-toolbar';
-    toolbar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:70px;background:#000;border-top:2px solid #06f;display:flex;flex-direction:column;padding:4px 12px;box-sizing:border-box;';
+    toolbar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:70px;background:#000;border-top:2px solid #06f;display:flex;flex-direction:column;padding:4px 12px;box-sizing:border-box;z-index:60;';
     
     // Timeline row
     const timelineRow = document.createElement('div');
@@ -7032,11 +7042,19 @@ function vpToggleMute() {
   // gridOpenFullscreen), so the iframe has audio permission from
   // the start. Subsequent mute()/unMute() calls are toggles within
   // an already-permitted audio session, which browsers allow.
+  // (zip0147) Belt-and-braces: after toggling mute, immediately call
+  // playVideo()/play(). Some mobile browsers (Opera Mini Android in
+  // particular) appear to pause the iframe as a side effect of the
+  // mute postMessage. Calling play() right after — within the same
+  // user-click activation — restarts it. On well-behaved browsers
+  // this is a no-op (the player was already playing).
   try {
     if (_vpState.isYT) {
       if (_vpState.muted) p.mute(); else p.unMute();
+      try { p.playVideo(); } catch (_) {}
     } else {
       p.setMuted(_vpState.muted);
+      try { p.play().catch(() => {}); } catch (_) {}
     }
   } catch (_) {}
   // (zip0143) Use the SVG icon helper for a high-contrast slash.
