@@ -265,8 +265,17 @@ td.editing input {
   <button class="tbtn" id="viewsBtn" title="Saved table layouts — save, switch, delete column views" style="border-color:#fc8;color:#fc8;background:rgba(80,50,0,0.35);">⊞ Views</button>
   <button class="tbtn" id="filterBtn" style="display:none;border-color:#f8a;color:#f8a;background:rgba(120,40,80,0.35);">🔍 Filter</button>
   <button class="tbtn" id="clearFilterBtn" style="display:none;border-color:#f44;color:#f88;background:rgba(100,0,0,0.35);">✕ Filter</button>
+  <!-- (zip0151) The 4 individual housekeeping buttons (Fill P/S, Fill
+       Mpix, Fix vRange, Calc Lengths) used to live directly in the
+       toolbar. They're now hidden — kept in DOM so their existing
+       click handlers still bind — and surfaced via the Housekeeping
+       dropdown below. -->
+  <div id="oldHousekeepingHidden" style="display:none;">
   <button class="tbtn" id="fillPSBtn" title="Detect portrait/landscape for all rows: YT Shorts→1, images→measured, other YT→oEmbed thumbnail dims">⬍⬌ Fill P/S</button>
   <button class="tbtn" id="fillMpixBtn" title="Fill Mpix: megapixels for images, V for videos, X if unavailable">📐 Fill Mpix</button>
+  <button class="tbtn" id="fixVRangeBtn" title="Sort VidRange segments earliest→latest, keep VidComment mapped">Fix vRange</button>
+  <button class="tbtn" id="calcLengthsBtn" title="Calculate vidLength and segLength for all rows">Calc Lengths</button>
+  </div>
   <button class="tbtn" id="dictModeBtn" title="Toggle dictionary match mode: anywhere in word vs start only (Alt+L)">Lookup: anywhere</button>
   <button class="tbtn" id="wantLinkBtn" title="Smart clipboard import (W). Detects: (1) bare media URLs → add as rows; (2) @channel + CSV → batch-add with metadata (BA=1). Duplicates are written to DuplicateLinks-<timestamp>.txt." style="border-color:#8f8;color:#8f8;background:rgba(0,60,0,0.35);">+ <u>W</u>antLinks</button>
   <!-- Mark for Grid button + dropdown -->
@@ -279,8 +288,21 @@ td.editing input {
       <div class="mgitem" id="mgOpt2" data-mode="random">🎲 Random assign (visible rows)</div>
     </div>
   </div>
-  <button class="tbtn" id="fixVRangeBtn" title="Sort VidRange segments earliest→latest, keep VidComment mapped">Fix vRange</button>
-  <button class="tbtn" id="calcLengthsBtn" title="Calculate vidLength and segLength for all rows">Calc Lengths</button>
+  <!-- (zip0151) Housekeeping dropdown — surfaces Fill P/S, Fill Mpix,
+       Fix vRange, Calc Lengths, and Clean Mute Column behind a single
+       button. The 4 legacy handlers still bind to the hidden buttons
+       higher up in this toolbar; the dropdown items just trigger their
+       .click(). -->
+  <div id="housekeepingWrap" style="position:relative;display:inline-flex;flex-shrink:0;">
+    <button class="tbtn" id="housekeepingBtn" style="border-color:#bcf;color:#bcf;background:rgba(40,40,90,0.4);" title="Housekeeping: bulk-fix utilities for the table">🧹 Housekeeping ▾</button>
+    <div id="housekeepingMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #bcf;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:260px;font-family:monospace;overflow:hidden;margin-top:3px;">
+      <div class="hkitem" data-act="fillps" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">⬍⬌ Fill P/S — orientation</div>
+      <div class="hkitem" data-act="fillmpix" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">📐 Fill Mpix — image megapixels</div>
+      <div class="hkitem" data-act="fixvrange" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">Fix vRange — sort segments</div>
+      <div class="hkitem" data-act="calclengths" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">Calc Lengths — vidLength + segLength</div>
+      <div class="hkitem" data-act="cleanmute" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔇 Clean Mute Column — blank for non-video</div>
+    </div>
+  </div>
   <button class="tbtn" id="reassignUIDBtn" title="Replace all UIDs with sequential numbers (1, 2, 3, …) in current row order. Updates c.json grid configs to match." style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);">↻ Reassign UIDs</button>
   <button class="tbtn" id="delUIDRangeBtn" title="Delete all rows whose UID falls in a numeric range (inclusive). Useful for purging batch imports." style="border-color:#f66;color:#f88;background:rgba(100,0,0,0.3);">✕ Del UID Range</button>
   <button class="tbtn" id="helpBtn" title="Help / HALO taxonomy" style="border-color:#aaf;color:#aaf;background:rgba(40,40,120,0.4);">? Help</button>
@@ -603,7 +625,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0150</div>
+<div id="ver-badge">zip0151</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -613,8 +635,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0150"></script>
-<script src="video.js?v=0150"></script>
+<script src="tags.js?v=0151"></script>
+<script src="video.js?v=0151"></script>
 
 
 <script>
@@ -2292,6 +2314,93 @@ document.addEventListener('pointerdown', e => {
   if (wrap && !wrap.contains(e.target)) markGridMenuClose();
 }, true);
 
+// ── (zip0151) Housekeeping dropdown wiring ─────────────────────────────────
+// The 4 legacy buttons (Fill P/S, Fill Mpix, Fix vRange, Calc Lengths) are
+// hidden in the toolbar but still present in the DOM. Their .click() handlers
+// are bound elsewhere in this file (search for fillPSBtn/fillMpixBtn/etc.
+// addEventListener). Each menu item just dispatches that click — keeps the
+// handler logic in one place.
+function housekeepingMenuOpen() {
+  const menu = document.getElementById('housekeepingMenu');
+  menu.style.display = (menu.style.display === 'none' ? 'block' : 'none');
+}
+function housekeepingMenuClose() {
+  const menu = document.getElementById('housekeepingMenu');
+  if (menu) menu.style.display = 'none';
+}
+document.getElementById('housekeepingBtn').addEventListener('click', e => {
+  e.stopPropagation(); housekeepingMenuOpen();
+});
+document.addEventListener('pointerdown', e => {
+  const wrap = document.getElementById('housekeepingWrap');
+  if (wrap && !wrap.contains(e.target)) housekeepingMenuClose();
+}, true);
+document.querySelectorAll('.hkitem').forEach(el => {
+  // Hover highlight (since these aren't <button>s)
+  el.addEventListener('mouseenter', () => { el.style.background = 'rgba(80,80,180,0.4)'; });
+  el.addEventListener('mouseleave', () => { el.style.background = ''; });
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    const act = el.dataset.act;
+    housekeepingMenuClose();
+    // (zip0151) toast() shows balloon — most legacy handlers already toast
+    // their own results. We add a "starting" balloon here for the heavier
+    // operations so the user knows the click registered.
+    if (act === 'fillps') {
+      toast('🧹 Fill P/S — scanning rows for orientation…', 1800);
+      document.getElementById('fillPSBtn').click();
+    } else if (act === 'fillmpix') {
+      toast('🧹 Fill Mpix — measuring images…', 1800);
+      document.getElementById('fillMpixBtn').click();
+    } else if (act === 'fixvrange') {
+      toast('🧹 Fix vRange — sorting segments…', 1500);
+      document.getElementById('fixVRangeBtn').click();
+    } else if (act === 'calclengths') {
+      toast('🧹 Calc Lengths — computing durations…', 1500);
+      document.getElementById('calcLengthsBtn').click();
+    } else if (act === 'cleanmute') {
+      housekeepingCleanMute();
+    }
+  });
+});
+
+// (zip0151) Clean Mute Column: for each row, if it's NOT a video link,
+// blank the Mute field; if it IS a video, leave Mute unchanged. This
+// keeps the column as a video-only attribute and removes spurious
+// values that may have been set by past auto-fills or imports.
+function housekeepingCleanMute() {
+  let blanked = 0, videos = 0, alreadyBlank = 0;
+  data.forEach(r => {
+    if (!r) return;
+    const link = r.link || '';
+    const isVid =
+      (window.isYouTubeLink && window.isYouTubeLink(link)) ||
+      (window.isVimeoLink   && window.isVimeoLink(link));
+    if (isVid) {
+      videos++;
+    } else {
+      if (r.Mute === undefined || r.Mute === null || r.Mute === '') {
+        alreadyBlank++;
+      } else {
+        r.Mute = '';
+        blanked++;
+      }
+    }
+  });
+  if (blanked) save();
+  // Refresh the table so users see the column update
+  if (window._salTab) {
+    try { window._salTab.replaceData(data); } catch (_) {}
+  }
+  toast(
+    '✓ Clean Mute Column complete\n'
+    + '   ' + blanked + ' non-video row(s) blanked\n'
+    + '   ' + videos + ' video row(s) preserved\n'
+    + '   ' + alreadyBlank + ' already blank',
+    4500
+  );
+}
+
 function runMarkGrid() {
   const ALL = []; for(let r=1;r<=5;r++) for(const c of 'abcde') ALL.push(r+c);
 
@@ -3298,6 +3407,16 @@ function _importBareLinks(lines) {
       DateModified: now,
       tags: []
     };
+    // (zip0151) Default Mute='0' for video links added via W clipboard
+    // import. Rationale: most YouTube/Vimeo videos have useful audio
+    // (the user's main reason for collecting them); the user is opt-in
+    // to Mute='1' for obnoxious or low-value soundtracks via the new
+    // E-screen mute-toggle button. Non-video rows leave Mute unset so
+    // the field stays empty for them (Clean Mute Column maintains this).
+    const isVid =
+      (window.isYouTubeLink && window.isYouTubeLink(link)) ||
+      (window.isVimeoLink   && window.isVimeoLink(link));
+    if (isVid) row.Mute = '0';
     data.push(row);
     linkToDi.set(link, data.length - 1);
     added++;
@@ -7011,111 +7130,28 @@ function vpSeekRelative(delta) {
 
 function vpToggleMute() {
   if (!_vpState || !_vpState.player) return;
-  const newMuted = !_vpState.muted;
-  
-  // (zip0143) Update icon immediately for responsive feedback on either path.
-  document.getElementById('vp-mute').innerHTML =
-    (window.muteIconHTML ? window.muteIconHTML(newMuted)
-                         : (newMuted ? '🔇' : '🔊'));
-  
-  if (newMuted) {
-    // ── MUTE: simple API call, always works ─────────────────────────
-    // Browsers always permit muting. Direct API call is instant and
-    // doesn't disturb playback position or state.
-    _vpState.muted = true;
-    const p = _vpState.player;
-    try {
-      if (_vpState.isYT) p.mute();
-      else p.setMuted(true);
-    } catch (_) {}
-    return;
-  }
-  
-  // ── UNMUTE: in-gesture URL-swap remount ─────────────────────────────
-  // (zip0150) The Opera Mini Android (and similar privacy-focused
-  // mobile browsers) autoplay policy is unambiguous and well-
-  // documented: an iframe that started life muted cannot be unmuted
-  // via cross-origin postMessage. The IFrame Player API uses
-  // postMessage under the hood, so calling p.unMute() / p.setMuted(false)
-  // on a live player just hits that wall. The video stops and audio
-  // never starts.
-  //
-  // The only known workaround is to *change the iframe's URL*, baking
-  // mute=0 into the new URL, which means destroying the current player
-  // and creating a fresh one. The browser's autoplay policy will permit
-  // the new iframe to autoplay-with-sound IF the URL change happens
-  // inside the user-gesture activation window of a click. So this code
-  // runs synchronously inside the click handler — no setTimeout, no
-  // awaits, no Promises — to stay within that activation window.
-  //
-  // Costs: a brief (~1s on slow connections) video flash during reload
-  // and a position drift up to ±1s for some embeds (notably WordPress).
-  // For YT and direct Vimeo embeds the seek is precise.
-  //
-  // This is the same shape as zip0145's approach, but 0145 was grafted
-  // onto a V whose initial mount was itself broken (missing playsinline,
-  // origin, allow attribute) — those got fixed in 0149, so the remount
-  // now has a properly-configured iframe to swap to.
-  vpRemountUnmuted();
-}
-
-// (zip0150) Capture current playback position synchronously (within the
-// caller's user-gesture window), tear down the muted player, and mount
-// a fresh unmuted player at the captured time. See vpToggleMute's
-// unmute branch for the full rationale.
-function vpRemountUnmuted() {
-  if (!_vpState || !_vpState.player) return;
+  _vpState.muted = !_vpState.muted;
   const p = _vpState.player;
-  const isYT = _vpState.isYT;
-  
-  // 1. Capture current time. YT.getCurrentTime is sync; Vimeo's is a
-  //    Promise so we use the value that vpUpdateTimeline cached on
-  //    _vpState.currentTime (refreshed every 100ms — good enough).
-  let curTime = _vpState.currentTime || 0;
-  if (isYT) {
-    try {
-      const t = p.getCurrentTime();
-      if (typeof t === 'number' && t >= 0) curTime = t;
-    } catch (_) {}
-  }
-  if (!isFinite(curTime) || curTime < 0) {
-    curTime = (_vpState.segs[_vpState.segIdx] || { start: 0 }).start;
-  }
-  
-  // 2. Stop the timeline updater and destroy the old player. Order
-  //    matters: clear the interval first so it doesn't tick against a
-  //    half-destroyed player.
-  if (_vpState.interval) { clearInterval(_vpState.interval); _vpState.interval = null; }
+  // (zip0151) Simple API call. The 0150 in-gesture remount-on-unmute
+  // approach was an attempt to make Opera Mini Android play sound on
+  // unmute, since its autoplay policy refuses to permit unmute via
+  // postMessage on a player that started muted. The remount worked on
+  // some Opera Mini configurations but caused a screen flash on every
+  // unmute everywhere. User abandoned Opera Mini after finding Firefox
+  // Android's fullscreen extension working, so we no longer need the
+  // remount workaround. Back to clean API toggle — no flash, no
+  // playback position drift, instant response.
   try {
-    if (isYT) {
-      p.stopVideo();
-      p.destroy();
-    } else if (typeof p.destroy === 'function') {
-      p.destroy();
+    if (_vpState.isYT) {
+      if (_vpState.muted) p.mute(); else p.unMute();
+    } else {
+      p.setMuted(_vpState.muted);
     }
   } catch (_) {}
-  
-  // 3. Reset state for the fresh mount.
-  _vpState.muted = false;
-  _vpState.markersDrawn = false;
-  _vpState.player = null;
-  
-  const host = document.getElementById('grid-fs-video');
-  if (!host) return;
-  
-  // 4. Synchronous remount. fakeSeg.dur=99999 lets the existing AB-loop
-  //    and segment-loop logic (in vpUpdateTimeline) handle boundaries
-  //    against the real _vpState.segs entries. The mount helpers run
-  //    inside the user-gesture activation that started this click, so
-  //    Opera Mini's autoplay policy permits sound.
-  const fakeSeg = { start: curTime, dur: 99999 };
-  const link = _vpState.row.link;
-  
-  if (window.isYouTubeLink && window.isYouTubeLink(link)) {
-    vpMountYouTube(host, link, fakeSeg, false);
-  } else if (window.isVimeoLink && window.isVimeoLink(link)) {
-    vpMountVimeo(host, link, fakeSeg, false);
-  }
+  // (zip0143) Use the SVG icon helper for a high-contrast slash.
+  document.getElementById('vp-mute').innerHTML =
+    (window.muteIconHTML ? window.muteIconHTML(_vpState.muted)
+                         : (_vpState.muted ? '🔇' : '🔊'));
 }
 
 function vpUpdatePlayBtn() {

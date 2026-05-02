@@ -411,6 +411,16 @@ window.openVideoEditor = function(it) {
     // helper so the muted state has a thick red slash.
     + (window.muteIconHTML ? window.muteIconHTML(!!currentMute) : (currentMute ? '🔇' : '🔊'))
     + '</button>'
+    // (zip0151) Row Mute preference toggle. This is DIFFERENT from the
+    // M button to its left: M toggles current playback audio (a session
+    // thing); this button toggles the row's permanent Mute field, which
+    // controls whether the cell auto-mutes when shown in the grid. The
+    // label always reflects the row's current persisted state.
+    + '<button id="v2b-rowmute" title="Toggle this row\'s saved Mute preference (column value 0 ↔ 1). 1 = always-mute on grid display." '
+    + 'style="padding:6px 11px;border-radius:5px;border:1px solid #fa8;background:rgba(80,40,0,0.35);'
+    + 'color:#fa8;cursor:pointer;font-size:11px;font-family:monospace;white-space:nowrap;">'
+    + (currentMute ? 'Currently Muted' : 'Currently Unmuted')
+    + '</button>'
     // CC (C key)
     + '<button id="v2b-cc" title="Toggle Closed Captions (C)" '
     + 'style="padding:6px 11px;border-radius:5px;border:1px solid #8a8;background:rgba(0,50,0,0.4);'
@@ -1672,6 +1682,7 @@ window.openVideoEditor = function(it) {
   // ran asynchronously and could be racing with browser autoplay policies).
   // Direct calls take effect immediately.
   var bMute = document.getElementById('v2b-mute');
+  var bRowMute = document.getElementById('v2b-rowmute');  // (zip0151)
   function applyMuteToLivePlayer() {
     var p = getEditorPlayer();
     if (!p) return false;
@@ -1698,20 +1709,56 @@ window.openVideoEditor = function(it) {
     bMute.style.borderColor = currentMute ? '#f88' : '#888';
     bMute.style.color = currentMute ? '#f88' : '#ccc';
   }
+  // (zip0151) Refresh the row-mute preference button's text + styling
+  // from iMute.checked (the source of truth for the saved Mute field).
+  function refreshRowMuteButton() {
+    if (!bRowMute) return;
+    var muted = iMute.checked;
+    bRowMute.textContent = muted ? 'Currently Muted' : 'Currently Unmuted';
+    bRowMute.style.borderColor = muted ? '#f88' : '#fa8';
+    bRowMute.style.color       = muted ? '#f88' : '#fa8';
+    bRowMute.style.background  = muted ? 'rgba(80,0,0,0.3)' : 'rgba(80,40,0,0.35)';
+  }
   if (bMute) {
     refreshMuteButtonStyle();
     bMute.addEventListener('click', function() {
+      // (zip0151) M button is now PLAYBACK-only. It used to also write
+      // to iMute.checked which got saved as row.Mute — that conflated
+      // two distinct concepts (current playback audio vs the row's
+      // saved auto-mute preference). The new "Currently Unmuted/Muted"
+      // button (bRowMute) is the row-preference toggle. M only flips
+      // the live audio for this editing session.
       currentMute = !currentMute;
-      iMute.checked = currentMute;
       refreshMuteButtonStyle();
       // Try direct call first; fall back to remount only if no live player.
       if (!applyMuteToLivePlayer()) mountLoop();
     });
   }
-  // Keep bottom mute button in sync when top checkbox changes
+  // (zip0151) Currently Unmuted/Muted button — toggles the row's
+  // permanent Mute preference. iMute is the hidden checkbox that
+  // saveEditor() reads, so we flip it and dispatch 'change' so the
+  // existing change listener handles persistence + auto-save.
+  if (bRowMute) {
+    refreshRowMuteButton();
+    bRowMute.addEventListener('click', function() {
+      iMute.checked = !iMute.checked;
+      refreshRowMuteButton();
+      // Fire iMute's change handler so the editor's save pipeline runs.
+      try {
+        var ev = new Event('change', { bubbles: true });
+        iMute.dispatchEvent(ev);
+      } catch (_) {}
+    });
+  }
+  // (zip0151) iMute change still drives playback (legacy callers may
+  // still toggle the hidden checkbox). It also refreshes both buttons
+  // to stay in sync. NOTE: change to iMute now ONLY affects current
+  // playback if the user wants — to update saved row.Mute they go
+  // through saveEditor as before.
   iMute.addEventListener('change', function() {
     currentMute = iMute.checked;
     refreshMuteButtonStyle();
+    refreshRowMuteButton();
     if (!applyMuteToLivePlayer()) mountLoop();
   });
 
