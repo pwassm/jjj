@@ -430,6 +430,7 @@ td.editing input {
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Swipe →</td><td style="padding:2px 0;color:#ccc;">View fullscreen (VP/VI)</td></tr>
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Swipe ←</td><td style="padding:2px 0;color:#ccc;">Toggle pause/play video</td></tr>
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Esc</td><td style="padding:2px 0;color:#ccc;">Cancel cut or close grid</td></tr>
+            <tr><td colspan="2" style="padding:4px 0 2px;color:#888;font-size:10px;font-style:italic;">Video on G/Gu always muted; row Mute applies in V only.</td></tr>
             <tr><td colspan="2" style="padding:8px 0 3px;color:#556;font-size:10px;letter-spacing:0.05em;">VP (FULLSCREEN PLAYER)</td></tr>
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Space</td><td style="padding:2px 0;color:#ccc;">Play/Pause</td></tr>
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">← →</td><td style="padding:2px 0;color:#ccc;">Frame step ±0.1s</td></tr>
@@ -625,7 +626,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0151</div>
+<div id="ver-badge">zip0152</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -635,8 +636,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0151"></script>
-<script src="video.js?v=0151"></script>
+<script src="tags.js?v=0152"></script>
+<script src="video.js?v=0152"></script>
 
 
 <script>
@@ -4822,7 +4823,13 @@ function gridShow() {
             // Default to playing from start if no VidRange defined
             // (YT mount caps 99999 to real duration on ready; Vimeo 'ended' loops back)
             const segs = window.parseVideoAsset(row.VidRange) || [{ start: 0, dur: 99999 }];
-            const muted = row.Mute !== '0';
+            // (zip0152) G/Gu policy: video is ALWAYS muted on the grid,
+            // regardless of the row's Mute column value. The Mute column
+            // still controls V-screen behavior (0 = audio plays, 1 = silent),
+            // and is preserved here untouched. Future audio-only cells
+            // (mp3/wav rows) should NOT be routed through this branch and
+            // will play normally — this mute applies to video only.
+            const muted = true;
             if (window.isYouTubeLink && window.isYouTubeLink(row.link) && window.mountYouTubeClip) {
               window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
             } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
@@ -5005,7 +5012,10 @@ function gridUpdateCell(cellStr, row) {
       setTimeout(() => {
         // Default to playing from start if no VidRange defined
         const segs = window.parseVideoAsset(row.VidRange) || [{ start: 0, dur: 99999 }];
-        const muted = row.Mute !== '0';
+        // (zip0152) G/Gu policy: video is ALWAYS muted on the grid. See
+        // gridShow() for the full rationale. Single-cell update path
+        // (e.g., after a paste or swap) must enforce the same rule.
+        const muted = true;
         if (window.isYouTubeLink && window.isYouTubeLink(row.link) && window.mountYouTubeClip) {
           window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
         } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
