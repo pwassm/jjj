@@ -603,7 +603,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0148</div>
+<div id="ver-badge">zip0149</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -613,8 +613,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0148"></script>
-<script src="video.js?v=0148"></script>
+<script src="tags.js?v=0149"></script>
+<script src="video.js?v=0149"></script>
 
 
 <script>
@@ -7297,6 +7297,53 @@ function vpUpdateTimeline() {
 }
 
 // YouTube mount for VP
+// (zip0149) Helper: as soon as YT or Vimeo SDK injects an <iframe> into
+// our host div, stamp it with an `allow` attribute that grants autoplay,
+// encrypted-media, and fullscreen permissions. This is the documented
+// fix (per caniuse / MDN Permissions Policy) for Opera Mini Android,
+// which otherwise blocks media — including muted autoplay — inside
+// cross-origin iframes that lack an explicit allow grant.
+//
+// We also set `playsinline` as a property (boolean) since some Webkit
+// derivatives still consult it to decide whether to escape to a native
+// fullscreen player on tap.
+//
+// MutationObserver fires synchronously-ish (microtask) after the iframe
+// is appended but before its document load completes, so the permission
+// policy is applied in time. Falls back to setting the attribute on any
+// pre-existing iframe (defensive — should be a no-op).
+function vpAllowAutoplayOnIframe(host) {
+  if (!host) return;
+  const stamp = (ifr) => {
+    try {
+      ifr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+      ifr.setAttribute('allowfullscreen', 'true');
+      ifr.setAttribute('playsinline', '');
+      ifr.setAttribute('webkit-playsinline', '');
+    } catch (_) {}
+  };
+  // Existing iframe (defensive)
+  const existing = host.querySelector('iframe');
+  if (existing) stamp(existing);
+  // Future iframe
+  try {
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of m.addedNodes) {
+          if (node && node.tagName === 'IFRAME') stamp(node);
+          else if (node && node.querySelector) {
+            const nested = node.querySelector('iframe');
+            if (nested) stamp(nested);
+          }
+        }
+      }
+    });
+    obs.observe(host, { childList: true, subtree: true });
+    // Auto-disconnect after 5s — by then the iframe is mounted and stamped.
+    setTimeout(() => { try { obs.disconnect(); } catch (_) {} }, 5000);
+  } catch (_) {}
+}
+
 function vpMountYouTube(host, link, seg, muted) {
   const vidId = window.getYouTubeId ? window.getYouTubeId(link) : link.match(/(?:v=|\/embed\/|\/shorts\/|\/live\/|youtu\.be\/)([A-Za-z0-9_-]{11})/)?.[1];
   if (!vidId) return;
@@ -7306,18 +7353,42 @@ function vpMountYouTube(host, link, seg, muted) {
   iframe.id = 'vp-yt-player';
   host.appendChild(iframe);
   
+  // (zip0149) Arm the iframe-allow stamper BEFORE YT.Player creates the
+  // iframe. The observer is now watching `host` and will fire the
+  // moment the YT SDK appends its iframe child.
+  vpAllowAutoplayOnIframe(host);
+  
   const onReady = () => {
     const player = new YT.Player('vp-yt-player', {
       videoId: vidId,
       width: '100%',
       height: '100%',
+      // (zip0149) Match the playerVars that the grid-cell mount uses
+      // (see video.js mountYouTubeClip). The critical additions for
+      // Opera Mini Android are:
+      //   playsinline: 1   — forbids native fullscreen escape on tap;
+      //                      without it, mobile browsers can refuse to
+      //                      autoplay inline at all
+      //   origin:          — YouTube increasingly requires this for
+      //                      cross-origin embeds and silently fails
+      //                      certain operations (notably autoplay)
+      //                      when absent
+      //   disablekb: 1     — keeps native YT keyboard hooks out of our
+      //                      way (matches grid)
+      //   iv_load_policy:3 — hides annotations
       playerVars: {
         autoplay: 1,
         start: Math.floor(seg.start),
         controls: 0,
         modestbranding: 1,
         rel: 0,
-        fs: 0
+        fs: 0,
+        playsinline: 1,
+        disablekb: 1,
+        iv_load_policy: 3,
+        cc_load_policy: 0,
+        endscreen: 0,
+        origin: window.location.origin || window.location.hostname || 'localhost'
       },
       events: {
         onReady: e => {
@@ -7326,6 +7397,18 @@ function vpMountYouTube(host, link, seg, muted) {
           if (muted) e.target.mute();
           e.target.seekTo(seg.start, true);
           e.target.playVideo();
+          // (zip0149) Belt-and-braces: re-stamp `allow` on the live iframe
+          // once we have a guaranteed reference to it, in case the
+          // observer missed it (some browsers fire mutations late).
+          try {
+            const ifr = e.target.getIframe && e.target.getIframe();
+            if (ifr) {
+              ifr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+              ifr.setAttribute('allowfullscreen', 'true');
+              ifr.setAttribute('playsinline', '');
+              ifr.setAttribute('webkit-playsinline', '');
+            }
+          } catch (_) {}
           // Start timeline updater
           _vpState.interval = setInterval(vpUpdateTimeline, 100);
         }
@@ -7351,12 +7434,20 @@ function vpMountVimeo(host, link, seg, muted) {
   
   host.innerHTML = '';
   
+  // (zip0149) Same iframe-allow treatment as the YT mount above.
+  // Vimeo's SDK creates its iframe inside `host` so the observer
+  // will catch it.
+  vpAllowAutoplayOnIframe(host);
+  
   const loadPlayer = () => {
     const player = new Vimeo.Player(host, {
       id: vidId,
       autoplay: true,
       muted: muted,
       controls: false,
+      // (zip0149) playsinline tells Vimeo to render inside the iframe
+      // rather than launching a native fullscreen player on mobile.
+      playsinline: true,
       width: host.clientWidth,
       height: host.clientHeight
     });
@@ -7366,6 +7457,16 @@ function vpMountVimeo(host, link, seg, muted) {
       _vpState.isYT = false;
       player.setCurrentTime(seg.start);
       player.play();
+      // (zip0149) Re-stamp allow attribute on the now-mounted iframe.
+      try {
+        const ifr = host.querySelector('iframe');
+        if (ifr) {
+          ifr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+          ifr.setAttribute('allowfullscreen', 'true');
+          ifr.setAttribute('playsinline', '');
+          ifr.setAttribute('webkit-playsinline', '');
+        }
+      } catch (_) {}
       _vpState.interval = setInterval(vpUpdateTimeline, 100);
     });
   };
