@@ -603,7 +603,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0149</div>
+<div id="ver-badge">zip0150</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -613,8 +613,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0149"></script>
-<script src="video.js?v=0149"></script>
+<script src="tags.js?v=0150"></script>
+<script src="video.js?v=0150"></script>
 
 
 <script>
@@ -7011,17 +7011,111 @@ function vpSeekRelative(delta) {
 
 function vpToggleMute() {
   if (!_vpState || !_vpState.player) return;
-  _vpState.muted = !_vpState.muted;
-  const p = _vpState.player;
-  if (_vpState.isYT) {
-    if (_vpState.muted) p.mute(); else p.unMute();
-  } else {
-    p.setMuted(_vpState.muted);
-  }
-  // (zip0143) Use the SVG icon helper for a high-contrast slash.
+  const newMuted = !_vpState.muted;
+  
+  // (zip0143) Update icon immediately for responsive feedback on either path.
   document.getElementById('vp-mute').innerHTML =
-    (window.muteIconHTML ? window.muteIconHTML(_vpState.muted)
-                         : (_vpState.muted ? '🔇' : '🔊'));
+    (window.muteIconHTML ? window.muteIconHTML(newMuted)
+                         : (newMuted ? '🔇' : '🔊'));
+  
+  if (newMuted) {
+    // ── MUTE: simple API call, always works ─────────────────────────
+    // Browsers always permit muting. Direct API call is instant and
+    // doesn't disturb playback position or state.
+    _vpState.muted = true;
+    const p = _vpState.player;
+    try {
+      if (_vpState.isYT) p.mute();
+      else p.setMuted(true);
+    } catch (_) {}
+    return;
+  }
+  
+  // ── UNMUTE: in-gesture URL-swap remount ─────────────────────────────
+  // (zip0150) The Opera Mini Android (and similar privacy-focused
+  // mobile browsers) autoplay policy is unambiguous and well-
+  // documented: an iframe that started life muted cannot be unmuted
+  // via cross-origin postMessage. The IFrame Player API uses
+  // postMessage under the hood, so calling p.unMute() / p.setMuted(false)
+  // on a live player just hits that wall. The video stops and audio
+  // never starts.
+  //
+  // The only known workaround is to *change the iframe's URL*, baking
+  // mute=0 into the new URL, which means destroying the current player
+  // and creating a fresh one. The browser's autoplay policy will permit
+  // the new iframe to autoplay-with-sound IF the URL change happens
+  // inside the user-gesture activation window of a click. So this code
+  // runs synchronously inside the click handler — no setTimeout, no
+  // awaits, no Promises — to stay within that activation window.
+  //
+  // Costs: a brief (~1s on slow connections) video flash during reload
+  // and a position drift up to ±1s for some embeds (notably WordPress).
+  // For YT and direct Vimeo embeds the seek is precise.
+  //
+  // This is the same shape as zip0145's approach, but 0145 was grafted
+  // onto a V whose initial mount was itself broken (missing playsinline,
+  // origin, allow attribute) — those got fixed in 0149, so the remount
+  // now has a properly-configured iframe to swap to.
+  vpRemountUnmuted();
+}
+
+// (zip0150) Capture current playback position synchronously (within the
+// caller's user-gesture window), tear down the muted player, and mount
+// a fresh unmuted player at the captured time. See vpToggleMute's
+// unmute branch for the full rationale.
+function vpRemountUnmuted() {
+  if (!_vpState || !_vpState.player) return;
+  const p = _vpState.player;
+  const isYT = _vpState.isYT;
+  
+  // 1. Capture current time. YT.getCurrentTime is sync; Vimeo's is a
+  //    Promise so we use the value that vpUpdateTimeline cached on
+  //    _vpState.currentTime (refreshed every 100ms — good enough).
+  let curTime = _vpState.currentTime || 0;
+  if (isYT) {
+    try {
+      const t = p.getCurrentTime();
+      if (typeof t === 'number' && t >= 0) curTime = t;
+    } catch (_) {}
+  }
+  if (!isFinite(curTime) || curTime < 0) {
+    curTime = (_vpState.segs[_vpState.segIdx] || { start: 0 }).start;
+  }
+  
+  // 2. Stop the timeline updater and destroy the old player. Order
+  //    matters: clear the interval first so it doesn't tick against a
+  //    half-destroyed player.
+  if (_vpState.interval) { clearInterval(_vpState.interval); _vpState.interval = null; }
+  try {
+    if (isYT) {
+      p.stopVideo();
+      p.destroy();
+    } else if (typeof p.destroy === 'function') {
+      p.destroy();
+    }
+  } catch (_) {}
+  
+  // 3. Reset state for the fresh mount.
+  _vpState.muted = false;
+  _vpState.markersDrawn = false;
+  _vpState.player = null;
+  
+  const host = document.getElementById('grid-fs-video');
+  if (!host) return;
+  
+  // 4. Synchronous remount. fakeSeg.dur=99999 lets the existing AB-loop
+  //    and segment-loop logic (in vpUpdateTimeline) handle boundaries
+  //    against the real _vpState.segs entries. The mount helpers run
+  //    inside the user-gesture activation that started this click, so
+  //    Opera Mini's autoplay policy permits sound.
+  const fakeSeg = { start: curTime, dur: 99999 };
+  const link = _vpState.row.link;
+  
+  if (window.isYouTubeLink && window.isYouTubeLink(link)) {
+    vpMountYouTube(host, link, fakeSeg, false);
+  } else if (window.isVimeoLink && window.isVimeoLink(link)) {
+    vpMountVimeo(host, link, fakeSeg, false);
+  }
 }
 
 function vpUpdatePlayBtn() {
