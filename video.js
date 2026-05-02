@@ -1671,14 +1671,6 @@ window.openVideoEditor = function(it) {
   // always actually change audio (because the new player's onReady handler
   // ran asynchronously and could be racing with browser autoplay policies).
   // Direct calls take effect immediately.
-  // (zip0146) Reverted from 0145's "always remount on unmute" approach.
-  // The 0145 logic was an attempt to fix Opera Mini, but it actually
-  // made things worse (screen blank from remount, audio still blocked).
-  // The real Opera Mini fix is in V (gridOpenFullscreen): mount unmuted
-  // during the user-tap gesture so the iframe has audio activation from
-  // the start. The editor is rarely used on Opera Mini (it's a content-
-  // dev tool), so the simple direct API call here is fine — and it
-  // avoids the segment-restart jank that the remount caused.
   var bMute = document.getElementById('v2b-mute');
   function applyMuteToLivePlayer() {
     var p = getEditorPlayer();
@@ -1693,15 +1685,6 @@ window.openVideoEditor = function(it) {
         else if (typeof p.setMuted === 'function') p.setMuted(false);
         else if (typeof p.setVolume === 'function') p.setVolume(1);
       }
-      // (zip0147) Defensive: kick playback after any mute change. On Opera
-      // Mini Android the mute postMessage occasionally pauses the iframe
-      // as a side effect; calling play right after — still inside the
-      // click's user-activation window — keeps it running. No-op when
-      // already playing.
-      try {
-        if (typeof p.playVideo === 'function') p.playVideo();
-        else if (typeof p.play === 'function') { var pp = p.play(); if (pp && pp.catch) pp.catch(function(){}); }
-      } catch (_) {}
       return true;
     } catch (_) { return false; }
   }
