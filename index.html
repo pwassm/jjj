@@ -430,6 +430,7 @@ td.editing input {
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Swipe →</td><td style="padding:2px 0;color:#ccc;">View fullscreen (VP/VI)</td></tr>
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Swipe ←</td><td style="padding:2px 0;color:#ccc;">Toggle pause/play video</td></tr>
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Esc</td><td style="padding:2px 0;color:#ccc;">Cancel cut or close grid</td></tr>
+            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">2 / 3 / 4 / 5</td><td style="padding:2px 0;color:#ccc;">Grid size 2×2 / 3×3 / 4×4 / 5×5</td></tr>
             <tr><td colspan="2" style="padding:4px 0 2px;color:#888;font-size:10px;font-style:italic;">Video on G/Gu always muted; row Mute applies in V only.</td></tr>
             <tr><td colspan="2" style="padding:8px 0 3px;color:#556;font-size:10px;letter-spacing:0.05em;">VP (FULLSCREEN PLAYER)</td></tr>
             <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Space</td><td style="padding:2px 0;color:#ccc;">Play/Pause</td></tr>
@@ -493,7 +494,7 @@ td.editing input {
           </div>
           <p style="margin-top:10px;font-size:10px;color:#445;line-height:1.5;">
             DateModified stamps only on single-cell edits to content fields.<br>
-            Col widths / order / hidden travel in <code style="color:#667">_salMeta</code> at top of ml.json.
+            Col widths / order / hidden / grid size travel in <code style="color:#667">_salMeta</code> at top of ml.json.
           </p>
         </div>
       </div>
@@ -626,7 +627,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0152</div>
+<div id="ver-badge">zip0153</div>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -636,8 +637,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0152"></script>
-<script src="video.js?v=0152"></script>
+<script src="tags.js?v=0153"></script>
+<script src="video.js?v=0153"></script>
 
 
 <script>
@@ -778,6 +779,21 @@ window.addEventListener('keydown', function(e) {
   if (document.getElementById('video-editor-overlay')) return;
 
   const k = e.key.toLowerCase();
+  // (zip0153) Number keys 2/3/4/5 resize the grid when G overlay is open.
+  // Bare key only — modifiers fall through to other handlers. Suppressed
+  // when other overlays own the keys (already filtered above).
+  if (k === '2' || k === '3' || k === '4' || k === '5') {
+    const gOpen = document.getElementById('gridOverlay')?.style.display === 'flex';
+    // Don't fire if a fullscreen view (V) is on top of the grid — V owns
+    // its own keys (Space, A/B, M, ←/→).
+    const vpOpen = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpen && !vpOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10));
+      return false;
+    }
+  }
   if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w') {
     e.preventDefault();
     e.stopPropagation();
@@ -919,6 +935,11 @@ function buildMeta() {
   // Persist current sort so reload preserves the order user was working in
   if (sortCol) {
     m._salSort = { col: sortCol, dir: sortDir };
+  }
+  // (zip0153) Persist live grid size (2-5) so the next load opens at the
+  // size the user was last working in.
+  if (typeof _gridGsize === 'number' && _gridGsize >= 2 && _gridGsize <= 5) {
+    m._salGsize = _gridGsize;
   }
   // Preserve Views data if it exists
   if (metaRow && metaRow._salViews) m._salViews = metaRow._salViews;
@@ -1148,6 +1169,12 @@ async function load() {
     if (metaRow._salColWidths && typeof metaRow._salColWidths === 'object') colWidths = Object.assign({}, metaRow._salColWidths);
     if (Array.isArray(metaRow._salColOrder) && metaRow._salColOrder.length)  cols    = metaRow._salColOrder.slice();
     if (Array.isArray(metaRow._salHidden))                                    hidden  = new Set(metaRow._salHidden);
+    // (zip0153) Restore last-used grid size (2-5). Defaults to 5 on
+    // missing/invalid value.
+    if (typeof metaRow._salGsize === 'number'
+        && metaRow._salGsize >= 2 && metaRow._salGsize <= 5) {
+      _gridGsize = metaRow._salGsize;
+    }
     // _salViews and _salActiveView are preserved in metaRow as-is; buildMeta() re-emits them
   } else if (Array.isArray(raw)) {
     data = raw;
@@ -2403,7 +2430,13 @@ function housekeepingCleanMute() {
 }
 
 function runMarkGrid() {
-  const ALL = []; for(let r=1;r<=5;r++) for(const c of 'abcde') ALL.push(r+c);
+  // (zip0153) Fill the live grid size (2-5). Was hardcoded 5×5 / 25 cells.
+  // Cell labels still use the 1a/1b/2a... scheme, just constrained to the
+  // top-left _gridGsize × _gridGsize square (so a 2×2 fills 1a/1b/2a/2b).
+  const gsize = _gridGsize;
+  const cap = gsize * gsize;
+  const ALL = [];
+  for (let r=1; r<=gsize; r++) for (let ci=0; ci<gsize; ci++) ALL.push(r+'abcde'.charAt(ci));
 
   // Collect visible rows (respecting sort + filter)
   const visibleDI = [];
@@ -2419,29 +2452,29 @@ function runMarkGrid() {
 
   let toAssign = [];
   if (_markGridMode === 'top') {
-    toAssign = visibleDI.slice(0, 25);
+    toAssign = visibleDI.slice(0, cap);
   } else if (_markGridMode === 'focused') {
     if (focus === null) { toast('No row focused — click a row first', 1800); data.forEach(r=>{r.cell='';}); save(); render(); return; }
     const focusDI = vr(focus.r);
     const startIdx = visibleDI.indexOf(focusDI);
     if (startIdx < 0) { toast('Focused row not in visible set', 1500); save(); render(); return; }
-    toAssign = visibleDI.slice(startIdx, startIdx + 25);
+    toAssign = visibleDI.slice(startIdx, startIdx + cap);
   } else if (_markGridMode === 'random') {
-    // Fisher-Yates shuffle, take up to 25
+    // Fisher-Yates shuffle, take up to `cap`
     const pool = visibleDI.slice();
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    toAssign = pool.slice(0, 25);
+    toAssign = pool.slice(0, cap);
     // Sort assigned by original visible order for grid display
     toAssign.sort((a, b) => visibleDI.indexOf(a) - visibleDI.indexOf(b));
   }
 
   toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
   save(); render();
-  toast('✓ Assigned ' + toAssign.length + ' rows to grid cells'
-    + (visibleDI.length > 25 ? '\n(' + (visibleDI.length - 25) + ' rows beyond 25-cell grid)' : ''),
+  toast('✓ Assigned ' + toAssign.length + ' rows to '+gsize+'×'+gsize+' grid cells'
+    + (visibleDI.length > cap ? '\n(' + (visibleDI.length - cap) + ' rows beyond ' + cap + '-cell grid)' : ''),
     2000);
 }
 
@@ -4571,6 +4604,47 @@ document.addEventListener('keydown', e => {
 const GRID_ROWS = 5, GRID_COLS = 5;
 const GRID_LETTERS = 'abcde';
 
+// ── (zip0153) Variable grid size ─────────────────────────────────────────────
+// _gridGsize is the live edge length (2-5). The grid still uses the same cell
+// labelling — 1a, 1b, 2a, 2b for a 2x2; 1a..5e for a 5x5 — just constrained to
+// the top-left _gridGsize × _gridGsize square. Cells outside that square are
+// not iterated/rendered, but their data in ml.json (row.cell='4d' etc.) stays
+// intact and reappears when the user grows the grid back. Persisted in
+// ml.json's _salMeta._salGsize so reload restores the last-used size.
+let _gridGsize = 5;
+
+function _gridApplyContainerCSS() {
+  const c = document.getElementById('gridContainer');
+  if (!c) return;
+  c.style.gridTemplateRows    = 'repeat(' + _gridGsize + ',1fr)';
+  c.style.gridTemplateColumns = 'repeat(' + _gridGsize + ',1fr)';
+}
+
+// Set the active grid size (clamped 2-5), persist to ml.json meta, redraw.
+// Called from the number-key handler (2/3/4/5) and during C-config activation.
+function _setGridGsize(n, opts) {
+  n = parseInt(n, 10);
+  if (!(n >= 2 && n <= 5)) return;
+  if (n === _gridGsize && !(opts && opts.force)) {
+    _gridApplyContainerCSS();
+    return;
+  }
+  _gridGsize = n;
+  _gridApplyContainerCSS();
+  // Persist to meta + save (skip when caller will save shortly anyway)
+  if (!opts || !opts.skipSave) {
+    if (!metaRow) metaRow = { _salMeta: true };
+    metaRow._salGsize = n;
+    if (typeof save === 'function') save();
+  }
+  // Re-render the grid contents at the new size
+  if (document.getElementById('gridOverlay')?.style.display === 'flex'
+      && typeof gridShow === 'function') {
+    gridShow();
+  }
+  if (typeof toast === 'function') toast('Grid: ' + n + '×' + n + ' (' + (n*n) + ' cells)', 1200);
+}
+
 function parseGridCell(s) {
   if (!s || s.length < 2) return null;
   const r = parseInt(s[0]), c = GRID_LETTERS.indexOf(s[1].toLowerCase()) + 1;
@@ -4765,10 +4839,14 @@ function gridShow() {
   const overlay = document.getElementById('gridOverlay');
   const container = document.getElementById('gridContainer');
   container.innerHTML = '';
+  // (zip0153) Apply current grid template before laying out cells.
+  // _gridGsize is set on load (from _salMeta._salGsize), on number-key
+  // press in G, or by C-config activation (size derived from cfg.cells).
+  _gridApplyContainerCSS();
   
-  // Build 5x5 grid
-  for (let r = 1; r <= GRID_ROWS; r++) {
-    for (let c = 1; c <= GRID_COLS; c++) {
+  // Build N×N grid (N = _gridGsize, range 2-5)
+  for (let r = 1; r <= _gridGsize; r++) {
+    for (let c = 1; c <= _gridGsize; c++) {
       const cellStr = mkGridCell(r, c);
       const row = getRowByCellForGrid(cellStr);
       
@@ -4887,8 +4965,8 @@ function gridShow() {
   const srcLabel = _gridSource === 'C' ? 'C:'+(_gridActiveConfig?.gname||'?') : 'T';
   const occupied = (() => {
     let n = 0;
-    for (let r = 1; r <= GRID_ROWS; r++)
-      for (let c = 1; c <= GRID_COLS; c++)
+    for (let r = 1; r <= _gridGsize; r++)
+      for (let c = 1; c <= _gridGsize; c++)
         if (getRowByCellForGrid(mkGridCell(r, c))) n++;
     return n;
   })();
@@ -4896,9 +4974,12 @@ function gridShow() {
   // edit/save shortcut list; user (Gu) just sees the viewing actions.
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   const hint = userModeHere
-    ? 'Tap=play · Swipe→=full screen'
-    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save';
-  document.getElementById('gridInfo').textContent = '['+srcLabel+'] ' + occupied + '/25 · ' + hint;
+    ? 'Tap=play · Swipe→=full screen · 2-5=size'
+    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save · 2-5=size';
+  // (zip0153) Total cells = _gridGsize²; was hardcoded /25.
+  document.getElementById('gridInfo').textContent =
+    '['+srcLabel+'] ' + _gridGsize + '×' + _gridGsize + ' · '
+    + occupied + '/' + (_gridGsize * _gridGsize) + ' · ' + hint;
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';
@@ -7927,8 +8008,14 @@ function gridSavePrompt() {
     _gridName = name; // Store globally
     gridSaveToFile(name);
     // Update grid info display
+    // (zip0153) Show total = _gridGsize²
+    const gsize = _gridGsize;
+    const total = gsize * gsize;
     const occupied = data.filter(r => r.cell && parseGridCell(r.cell) && (r.show === undefined || r.show === '1')).length;
-    document.getElementById('gridInfo').textContent = 'gname: ' + name + ' · ' + occupied + '/25 cells · HOLD=cut · Click=swap · Rclick=menu · Ctrl-click=Edit · ^!G=name';
+    document.getElementById('gridInfo').textContent =
+      'gname: ' + name + ' · ' + gsize + '×' + gsize
+      + ' · ' + occupied + '/' + total
+      + ' cells · HOLD=cut · Click=swap · Rclick=menu · Ctrl-click=Edit · ^!G=name';
     close();
   };
   
@@ -7948,15 +8035,19 @@ function gridSavePrompt() {
 async function gridSaveToFile(gname) {
   // Build grid configuration object
   const now = isoNow();
+  // (zip0153) cells now reflects the live grid size: 25/16/9/4 for
+  // 5×5/4×4/3×3/2×2. C reload reads this back to restore Gsize.
+  const gsize = _gridGsize;
   const gridData = {
     gname: gname,
-    cells: 25,
+    cells: gsize * gsize,
     DateModified: now
   };
   
-  // Add each cell (1a through 5e)
-  for (let r = 1; r <= GRID_ROWS; r++) {
-    for (let c = 1; c <= GRID_COLS; c++) {
+  // Add each cell — only the current Gsize subset (1a..NN). Cells outside
+  // this square are NOT written, so a 3×3 save produces a 9-key entry.
+  for (let r = 1; r <= gsize; r++) {
+    for (let c = 1; c <= gsize; c++) {
       const cellStr = mkGridCell(r, c);
       const row = getRowByCell(cellStr);
       gridData[cellStr] = row ? (row.UID || '') : '';
@@ -8299,14 +8390,26 @@ function cMakeActive() {
   if (idx===null) { toast('Select a row first (click or check)',1500); return; }
   const cfg = _cData[idx]; if (!cfg) return;
   _gridActiveConfig = cfg; _gridSource = 'C'; _gridName = cfg.gname||'';
+  // (zip0153) Derive grid size from cfg.cells (25/16/9/4 → 5/4/3/2). Older
+  // entries without cells default to 5. Persist via _setGridGsize so the
+  // size sticks on reload.
+  const cellsN = parseInt(cfg.cells, 10);
+  let gsize = 5;
+  if (cellsN === 4) gsize = 2;
+  else if (cellsN === 9) gsize = 3;
+  else if (cellsN === 16) gsize = 4;
+  else if (cellsN === 25) gsize = 5;
+  _setGridGsize(gsize, { skipSave: true }); // skipSave: about to save() below
+  metaRow = metaRow || { _salMeta: true };
+  metaRow._salGsize = gsize;
   const tdata = _tSave ? _tSave.data : data;
   tdata.forEach(r=>{if(r.cell)r.cell='';});
-  for (let r=1;r<=5;r++) for (let c=1;c<=5;c++) {
+  for (let r=1; r<=gsize; r++) for (let c=1; c<=gsize; c++) {
     const cs=mkGridCell(r,c);
     if (cfg[cs]) { const row=tdata.find(d=>d.UID===cfg[cs]); if(row) row.cell=cs; }
   }
   closeCScreen(); save();
-  toast('✓ Active: '+(cfg.gname||'(unnamed)'),1500);
+  toast('✓ Active: '+(cfg.gname||'(unnamed)')+' ('+gsize+'×'+gsize+')',1500);
   gridShow();
 }
 
@@ -8716,11 +8819,21 @@ async function _showMobileCPicker() {
       _gridActiveConfig = cfg;
       _gridSource = 'C';
       _gridName = cfg.gname || '';
+      // (zip0153) Derive grid size from cfg.cells (25/16/9/4 → 5/4/3/2).
+      const cellsN = parseInt(cfg.cells, 10);
+      let gsize = 5;
+      if (cellsN === 4) gsize = 2;
+      else if (cellsN === 9) gsize = 3;
+      else if (cellsN === 16) gsize = 4;
+      else if (cellsN === 25) gsize = 5;
+      _setGridGsize(gsize, { skipSave: true });
+      metaRow = metaRow || { _salMeta: true };
+      metaRow._salGsize = gsize;
       // Mirror cell mapping into row.cell (matches activateGridConfig logic).
       if (typeof data !== 'undefined' && Array.isArray(data)) {
         data.forEach(r => { if (r && r.cell) r.cell = ''; });
-        for (let r = 1; r <= 5; r++) {
-          for (let c = 1; c <= 5; c++) {
+        for (let r = 1; r <= gsize; r++) {
+          for (let c = 1; c <= gsize; c++) {
             const cs = r + 'abcde'.charAt(c - 1);
             if (cfg[cs]) {
               const row = data.find(d => String(d.UID) === String(cfg[cs]));
@@ -8729,9 +8842,10 @@ async function _showMobileCPicker() {
           }
         }
       }
+      if (typeof save === 'function') save();
       close();
       if (typeof gridShow === 'function') gridShow();
-      if (typeof toast === 'function') toast('✓ ' + (cfg.gname || '(unnamed)'), 1500);
+      if (typeof toast === 'function') toast('✓ ' + (cfg.gname || '(unnamed)') + ' (' + gsize + '×' + gsize + ')', 1500);
     });
   });
 
