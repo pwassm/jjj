@@ -834,24 +834,26 @@
       if (typeof toast === 'function') toast('Tag not found in dictionary', 1500);
       return;
     }
-    // If Dictionary is already open, just select the tag inside it
+    // (zip0158) Force tree view when opening for a specific tag — the
+    // tree puts the tag in its hierarchical context (parent → grandparent
+    // up to a root) which is what users want when navigating from a chip
+    // or from a focused T row. List view loses that context.
+    _dictState.viewMode = 'tree';
+    // Expand all ancestors so the tag is visible without manual clicks.
+    const expanded = new Set(_dictState.expandedNodes || []);
+    tagAncestors(tagId).forEach(a => expanded.add(a));
+    _dictState.expandedNodes = [...expanded];
+
+    // If Dictionary is already open, just select the tag inside it.
     if (dictOverlay && dictOverlay._selectTag) {
       dictOverlay._selectTag(tagId);
-      // Also expand its ancestors if in tree view
-      const expanded = new Set(_dictState.expandedNodes || []);
-      tagAncestors(tagId).forEach(a => expanded.add(a));
-      _dictState.expandedNodes = [...expanded];
+      // _selectTag handles scrolling-into-view; nothing else to do.
       return;
     }
     // Otherwise: pre-seed state and open. Persisted state from prior sessions
-    // (view mode, search) is kept; only selection/focus changes.
+    // (search) is kept; selection/focus/viewMode/expansion just got refreshed.
     _dictState.selectedId = tagId;
     _dictState.keyboardFocusedId = tagId;
-    if (_dictState.viewMode === 'tree') {
-      const expanded = new Set(_dictState.expandedNodes || []);
-      tagAncestors(tagId).forEach(a => expanded.add(a));
-      _dictState.expandedNodes = [...expanded];
-    }
     if (typeof window.openDictionary === 'function') {
       window.openDictionary();
     }
@@ -864,6 +866,19 @@
   // "remove from this row" because we'd need to mutate the data record
   // and re-save; instead the table provides Annotate / Filter / Dictionary / GBIF.
   window.openTableChipMenu = function (x, y, tagId, row) {
+    // (zip0158) Toggle: if a menu was just open for this tag, close it
+    // without action. The doc-level mousedown handler will have already
+    // nulled _chipMenu by the time contextmenu fires, so we instead
+    // consult a side-channel timestamp/tagId stash that survives the
+    // close. Within 300ms of the previous menu closing for the same tag,
+    // a second R-click is interpreted as "dismiss".
+    const now = Date.now();
+    if (_lastChipMenuClose
+        && _lastChipMenuClose.tagId === tagId
+        && (now - _lastChipMenuClose.t) < 300) {
+      _lastChipMenuClose = null;
+      return;
+    }
     closeChipContextMenu();  // reuse the same DOM slot for any chip menu
     const t = byId.get(tagId);
     if (!t) return;
@@ -917,6 +932,9 @@
     closeChipContextMenu();
     _chipMenu = document.createElement('div');
     _chipMenu.id = 'chipCtxMenu';
+    // (zip0158) Tag this menu with the tag id so a second R-click on the
+    // same chip can detect the open menu and close it without action.
+    _chipMenu.dataset.forTag = t.id;
     _chipMenu.style.cssText = 'position:fixed;z-index:30000;background:#0d0d1e;'
       + 'border:1px solid #4af;border-radius:5px;box-shadow:0 6px 20px rgba(0,0,0,0.85);'
       + 'font-family:monospace;font-size:12px;color:#ddd;min-width:200px;'
@@ -981,8 +999,16 @@
   // Right-click context menu shown on a tag chip in Annotate / Video Editor.
   // Items: Open in Dictionary, Check GBIF (taxa only), Remove.
   let _chipMenu = null;
+  // (zip0158) Side-channel stash for detecting "second R-click on the same
+  // chip dismisses". The doc-level mousedown handler closes the menu before
+  // contextmenu fires on the chip, so we record what was just closed and
+  // for which tag, then check that on the next opener call.
+  let _lastChipMenuClose = null;
   function closeChipContextMenu() {
     if (_chipMenu) {
+      // Stash before tearing down
+      const tagId = _chipMenu.dataset && _chipMenu.dataset.forTag;
+      if (tagId) _lastChipMenuClose = { tagId: tagId, t: Date.now() };
       if (_chipMenu._docHandler) document.removeEventListener('mousedown', _chipMenu._docHandler, true);
       if (_chipMenu._keyHandler) document.removeEventListener('keydown', _chipMenu._keyHandler, true);
       _chipMenu.remove();
@@ -991,6 +1017,14 @@
   }
 
   function openChipContextMenu(x, y, tagId, removeFn) {
+    // (zip0158) Toggle behavior — see openTableChipMenu for full detail.
+    const now = Date.now();
+    if (_lastChipMenuClose
+        && _lastChipMenuClose.tagId === tagId
+        && (now - _lastChipMenuClose.t) < 300) {
+      _lastChipMenuClose = null;
+      return;
+    }
     closeChipContextMenu();
     const t = byId.get(tagId);
     if (!t) return;
@@ -1068,10 +1102,13 @@
         <input id="dictSearch" type="text" placeholder="Search tags, aliases, definitions…" autocomplete="off"
           style="flex:1;max-width:360px;padding:5px 10px;background:#0a0a1a;border:1px solid #4af;color:#fff;border-radius:5px;font-family:monospace;font-size:12px;outline:none;">
         <span id="dictCount" style="color:#666;font-size:11px;"></span>
-        <div style="display:inline-flex;border:1px solid #666;border-radius:5px;overflow:hidden;">
-          <button id="view-list" class="dict-view-btn active" data-view="list" style="padding:5px 10px;background:rgba(100,170,255,0.25);color:#8ef;border:none;cursor:pointer;font-family:monospace;font-size:11px;border-right:1px solid #666;">☰ List</button>
-          <button id="view-tree" class="dict-view-btn" data-view="tree" style="padding:5px 10px;background:transparent;color:#888;border:none;cursor:pointer;font-family:monospace;font-size:11px;">🌳 Tree</button>
-        </div>
+        <!-- (zip0158) Single toggle button replaces the two-button List/Tree
+             segment. Default view is tree; clicking the button flips to the
+             other view and updates the label. data-view stores the CURRENT
+             mode so the click handler can flip it. -->
+        <button id="view-toggle" class="dict-view-btn" data-view="tree"
+                style="padding:5px 12px;background:rgba(100,170,255,0.25);color:#8ef;border:1px solid #666;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;"
+                title="Click to toggle between Tree and List views">🌳 Tree</button>
         <button id="dictAdd" style="padding:5px 12px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">+ New</button>
         <button id="dictClose" style="padding:5px 12px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">✕ Close (Esc)</button>
       </div>
@@ -1090,19 +1127,19 @@
     // Keyboard-navigation focus — the row currently highlighted by arrow keys.
     // Distinct from selectedId (which is what's loaded in the edit panel).
     let keyboardFocusedId = _dictState.keyboardFocusedId;
-    let viewMode = _dictState.viewMode || 'list';
+    let viewMode = _dictState.viewMode || 'tree';
     // Expanded tree nodes (ids) — default-expand the top roots
     const expandedNodes = new Set(_dictState.expandedNodes || ['life','health','activity','other']);
     // Restore prior search text; renderView() picks it up
     if (_dictState.searchText) search.value = _dictState.searchText;
-    // Restore view-mode button styling
-    if (viewMode === 'tree') {
-      const lb = dictOverlay.querySelector('#view-list');
-      const tb = dictOverlay.querySelector('#view-tree');
-      if (lb && tb) {
-        lb.classList.remove('active'); lb.style.background = 'transparent'; lb.style.color = '#888';
-        tb.classList.add('active');    tb.style.background = 'rgba(100,170,255,0.25)'; tb.style.color = '#8ef';
-      }
+    // (zip0158) Sync the single view-toggle button label/state to the
+    // current viewMode. data-view stores what mode is ACTIVE; the label
+    // shows that mode (so clicking gives you the other one).
+    const vbtn = dictOverlay.querySelector('#view-toggle');
+    if (vbtn) {
+      vbtn.dataset.view = viewMode;
+      vbtn.textContent = (viewMode === 'tree') ? '🌳 Tree' : '☰ List';
+      vbtn.title = (viewMode === 'tree') ? 'Tree view — click for List' : 'List view — click for Tree';
     }
     // Snapshot fn — called by closeDictionary to persist state across reopen
     dictOverlay._snapshot = () => {
@@ -2193,26 +2230,19 @@
     };
     document.addEventListener('keydown', dictOverlay._navHandler, true);
 
-    // List / Tree view toggle
-    [...dictOverlay.querySelectorAll('.dict-view-btn')].forEach(btn => {
-      btn.addEventListener('click', () => {
-        const newMode = btn.dataset.view;
-        if (newMode === viewMode) return;
-        viewMode = newMode;
-        [...dictOverlay.querySelectorAll('.dict-view-btn')].forEach(b => {
-          if (b.dataset.view === viewMode) {
-            b.classList.add('active');
-            b.style.background = 'rgba(100,170,255,0.25)';
-            b.style.color = '#8ef';
-          } else {
-            b.classList.remove('active');
-            b.style.background = 'transparent';
-            b.style.color = '#888';
-          }
-        });
+    // (zip0158) Single-button toggle. Flips between tree and list, updates
+    // label, then re-renders. Was a two-button selector that needed to
+    // diff against the previously-active button.
+    const _vbtn = dictOverlay.querySelector('#view-toggle');
+    if (_vbtn) {
+      _vbtn.addEventListener('click', () => {
+        viewMode = (viewMode === 'tree') ? 'list' : 'tree';
+        _vbtn.dataset.view = viewMode;
+        _vbtn.textContent = (viewMode === 'tree') ? '🌳 Tree' : '☰ List';
+        _vbtn.title = (viewMode === 'tree') ? 'Tree view — click for List' : 'List view — click for Tree';
         renderView();
       });
-    });
+    }
     dictOverlay.querySelector('#dictAdd').addEventListener('click', () => {
       const label = prompt('New tag — label:');
       if (!label) return;

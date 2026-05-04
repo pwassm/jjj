@@ -18,10 +18,17 @@
     if (force === 'user') isUser = true;
     else if (force === 'dev') isUser = false;
     else {
-      var h = (window.location.hostname || '').toLowerCase();
-      if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') isUser = false;
-      else if (/^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) isUser = false;
-      else isUser = true;
+      // (zip0154) localStorage override (set by dev/user toggle badge)
+      var ls = null;
+      try { ls = localStorage.getItem('sal-mode-override'); } catch(_) {}
+      if (ls === 'user') isUser = true;
+      else if (ls === 'dev') isUser = false;
+      else {
+        var h = (window.location.hostname || '').toLowerCase();
+        if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') isUser = false;
+        else if (/^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) isUser = false;
+        else isUser = true;
+      }
     }
     window._userModeCached = isUser;
     document.documentElement.classList.add(isUser ? 'user-mode' : 'dev-mode');
@@ -163,8 +170,14 @@ td.editing input {
 }
 #toast { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:999999; background:rgba(5,10,30,0.97); color:#fff; padding:16px 28px; border-radius:10px; border:1px solid rgba(100,180,255,0.4); font-family:monospace; font-size:14px; text-align:center; box-shadow:0 6px 28px rgba(0,0,0,0.85); pointer-events:none; white-space:pre-wrap; max-width:80vw; }
 
-/* version */
-#ver-badge { position:fixed; bottom:10px; right:12px; z-index:999990; background:#fff; color:#000; font-family:monospace; font-size:10px; padding:3px 7px; border-radius:4px; font-weight:bold; box-shadow:0 2px 8px rgba(0,0,0,0.5); user-select:none; pointer-events:none; }
+/* version / mode toggle (zip0154 — was static div, now a clickable button.
+   Label shows current mode + version: "dev0154" or "user0154". Click
+   stores override in localStorage and reloads. Visual is unchanged from
+   the old badge — same place, same colors. */
+#ver-badge { position:fixed; bottom:10px; right:12px; z-index:999990; background:#fff; color:#000; font-family:monospace; font-size:10px; padding:3px 7px; border-radius:4px; font-weight:bold; box-shadow:0 2px 8px rgba(0,0,0,0.5); user-select:none; cursor:pointer; border:none; outline:none; }
+#ver-badge:hover { background:#ffe; }
+#ver-badge.user { background:#fc8; }    /* tinted in user mode for at-a-glance identification */
+#ver-badge.user:hover { background:#fd9; }
 #uid-badge { position:fixed; bottom:10px; right:75px; z-index:999990; background:#1a1a2e; color:#8ef; font-family:monospace; font-size:10px; padding:3px 7px; border-radius:4px; font-weight:bold; box-shadow:0 2px 8px rgba(0,0,0,0.5); border:1px solid #4af; user-select:none; pointer-events:none; display:none; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* ── Views panel ── */
@@ -252,6 +265,51 @@ td.editing input {
   display: none;  /* shown only when G is open */
 }
 #mobileToCBtn:hover { background: #0e4072; }
+
+/* ── (zip0157) Small-text contrast: go all the way to white ────────────────
+   The earlier mid-gray remap (#445→#88a etc.) wasn't enough to be
+   comfortably readable. Small font size is already enough of a "this is
+   secondary" cue — color doesn't need to do that work too. So every
+   low-contrast inline gray (and the matching class rules below) is
+   pushed to white / near-white.
+
+   Things that stay gray on purpose: the disabled "[coming soon]"
+   hamburger items (.hm-item.dim) and the row-number gutter (td.rn).
+   Active accent colors (#6af cyan, #afa green, #ff8 yellow, …) aren't
+   matched by these selectors — they're left alone. */
+[style*="color:#445"]      { color: #fff !important; }
+[style*="color: #445"]     { color: #fff !important; }
+[style*="color:#454565"]   { color: #fff !important; }
+[style*="color:#556"]      { color: #fff !important; }
+[style*="color: #556"]     { color: #fff !important; }
+[style*="color:#566"]      { color: #fff !important; }
+[style*="color:#667"]      { color: #fff !important; }
+[style*="color: #667"]     { color: #fff !important; }
+[style*="color:#666"]      { color: #fff !important; }
+[style*="color:#778"]      { color: #fff !important; }
+[style*="color: #778"]     { color: #fff !important; }
+[style*="color:#888"]      { color: #fff !important; }
+[style*="color: #888"]     { color: #fff !important; }
+[style*="color:#777"]      { color: #fff !important; }
+[style*="color: #777"]     { color: #fff !important; }
+[style*="color:#678"]      { color: #fff !important; }
+[style*="color: #678"]     { color: #fff !important; }
+[style*="color:#555"]      { color: #fff !important; }
+[style*="color: #555"]     { color: #fff !important; }
+/* Don't touch deliberate-disabled hamburger items — those use a class. */
+.hm-item.dim, .hm-item.dim:hover { color: #66688a !important; }
+
+/* (zip0156/0157) Class-based grays that attribute selectors can't reach.
+   Pushed to white to match the inline overrides above. The only
+   intentional-disabled exception is .hm-item.dim handled separately. */
+#status                  { color: #fff !important; }
+#box .sub                { color: #fff !important; }
+#note                    { color: #fff !important; }
+#viewsPanel .vp-lbl      { color: #fff !important; }
+#viewsPanel .vp-empty    { color: #fff !important; }
+thead th.rn              { color: #fff !important; }
+/* td.rn (row-number gutter) stays subtle on purpose — those are the
+   1-2-3 column on the far left and lifting them clutters the table. */
 </style>
 </head>
 <body>
@@ -387,122 +445,50 @@ td.editing input {
     <div style="display:flex;align-items:center;margin-bottom:14px;gap:10px;">
       <button id="helpPrev" style="background:none;border:1px solid #555;color:#666;border-radius:4px;cursor:pointer;font-size:13px;padding:2px 10px;">◀</button>
       <h2 id="helpTitle" style="color:#8ef;font-size:15px;flex:1;text-align:center;margin:0;letter-spacing:0.04em;"></h2>
+      <!-- (zip0154) Download button — visible on Hd page only (page 0 in dev). -->
+      <button id="helpDownload" style="display:none;background:none;border:1px solid #5fa;color:#5fa;border-radius:4px;cursor:pointer;font-size:11px;padding:3px 9px;" title="Download merged Hd+Hu help as an HTML file. Dev-only commands shown bold.">⬇ Download</button>
       <button id="helpNext" style="background:none;border:1px solid #555;color:#666;border-radius:4px;cursor:pointer;font-size:13px;padding:2px 10px;">▶</button>
       <button id="helpClose" style="background:none;border:1px solid #f66;color:#f66;border-radius:4px;cursor:pointer;font-size:13px;padding:2px 10px;">✕ Esc</button>
     </div>
     <div id="helpPageIndicator" style="text-align:center;font-size:10px;color:#445;margin-bottom:12px;"></div>
 
-    <!-- PAGE 0: Main help -->
-    <div id="helpPage0">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
-        <div>
-          <h3 style="color:#fa8;font-size:12px;margin:0 0 8px;letter-spacing:0.05em;">⌨ KEYBOARD SHORTCUTS</h3>
-          <table style="border-collapse:collapse;width:100%;font-size:11px;">
-            <tr><td colspan="2" style="padding:3px 0;color:#556;font-size:10px;letter-spacing:0.05em;">TABLE</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">A</td><td style="padding:2px 0;color:#ccc;">Open Annotate panel (AN) — images &amp; videos</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">E</td><td style="padding:2px 0;color:#ccc;">Open VideoEditor (videos only)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">G</td><td style="padding:2px 0;color:#ccc;">Open Grid view (5×5)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">h</td><td style="padding:2px 0;color:#ccc;">Toggle this Help screen</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Click cell</td><td style="padding:2px 0;color:#ccc;">Focus cell</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Double-click</td><td style="padding:2px 0;color:#ccc;">Edit focused cell (only way to edit)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Enter</td><td style="padding:2px 0;color:#ccc;">Commit, move down</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Tab / Shift+Tab</td><td style="padding:2px 0;color:#ccc;">Commit, move right / left</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Del / Backspace</td><td style="padding:2px 0;color:#ccc;">Clear focused cell</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Shift+click (same col)</td><td style="padding:2px 0;color:#ccc;">Range → bulk set</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Ctrl+I</td><td style="padding:2px 0;color:#ccc;">Toggle thumbnail mode (Thumb col or inline in link col)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Ctrl+H</td><td style="padding:2px 0;color:#ccc;">Hamburger menu</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Esc</td><td style="padding:2px 0;color:#ccc;">Close any open window</td></tr>
-            <tr><td colspan="2" style="padding:8px 0 3px;color:#556;font-size:10px;letter-spacing:0.05em;">GLOBAL HOTKEYS (work from anywhere)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">T</td><td style="padding:2px 0;color:#ccc;">Save + return to Table</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">G</td><td style="padding:2px 0;color:#ccc;">Open Grid view (5×5)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">E</td><td style="padding:2px 0;color:#ccc;">Edit last selected (VE/IE)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">M</td><td style="padding:2px 0;color:#ccc;">Main menu (hamburger)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">C</td><td style="padding:2px 0;color:#ccc;">Collection screen (c.json)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Ctrl+Alt+G</td><td style="padding:2px 0;color:#ccc;">Save grid config to c.json (Collection)</td></tr>
-            <tr><td colspan="2" style="padding:8px 0 3px;color:#556;font-size:10px;letter-spacing:0.05em;">GRID VIEW</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">HOLD cell</td><td style="padding:2px 0;color:#ccc;">Cut (select for swap)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Click another</td><td style="padding:2px 0;color:#ccc;">Swap cells</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Click same</td><td style="padding:2px 0;color:#ccc;">Cancel cut</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Double-click text</td><td style="padding:2px 0;color:#ccc;">Edit text slide</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Ctrl+L-click</td><td style="padding:2px 0;color:#ccc;">Edit (VE for video, IE for image)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Ctrl+R-click</td><td style="padding:2px 0;color:#ccc;">View fullscreen (VP/VI)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">R-click</td><td style="padding:2px 0;color:#ccc;">Context menu (T/V/D)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Swipe →</td><td style="padding:2px 0;color:#ccc;">View fullscreen (VP/VI)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Swipe ←</td><td style="padding:2px 0;color:#ccc;">Toggle pause/play video</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Esc</td><td style="padding:2px 0;color:#ccc;">Cancel cut or close grid</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">2 / 3 / 4 / 5</td><td style="padding:2px 0;color:#ccc;">Grid size 2×2 / 3×3 / 4×4 / 5×5</td></tr>
-            <tr><td colspan="2" style="padding:4px 0 2px;color:#888;font-size:10px;font-style:italic;">Video on G/Gu always muted; row Mute applies in V only.</td></tr>
-            <tr><td colspan="2" style="padding:8px 0 3px;color:#556;font-size:10px;letter-spacing:0.05em;">VP (FULLSCREEN PLAYER)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Space</td><td style="padding:2px 0;color:#ccc;">Play/Pause</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">← →</td><td style="padding:2px 0;color:#ccc;">Frame step ±0.1s</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">M</td><td style="padding:2px 0;color:#ccc;">Mute toggle</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">A / B</td><td style="padding:2px 0;color:#ccc;">Set loop points</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Esc / ✕</td><td style="padding:2px 0;color:#ccc;">Close → back to grid</td></tr>
-            <tr><td colspan="2" style="padding:8px 0 3px;color:#556;font-size:10px;letter-spacing:0.05em;">EDIT-BROWSE (EB)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Alt+N</td><td style="padding:2px 0;color:#ccc;">Next row</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Alt+J</td><td style="padding:2px 0;color:#ccc;">Previous row</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">← → or ↑ ↓</td><td style="padding:2px 0;color:#ccc;">Prev / Next (when not in field)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Space / Enter</td><td style="padding:2px 0;color:#ccc;">Save + advance</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">H A L O</td><td style="padding:2px 0;color:#ccc;">Set t1 instantly</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">T</td><td style="padding:2px 0;color:#ccc;">Focus t1 field</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">C</td><td style="padding:2px 0;color:#ccc;">Focus Comment field</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Tab in field</td><td style="padding:2px 0;color:#ccc;">Cycle to next field</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">↑ ↓ in dropdown</td><td style="padding:2px 0;color:#ccc;">Navigate autocomplete</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Alt+L</td><td style="padding:2px 0;color:#ccc;">Toggle Lookup: anywhere / start</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Ctrl+S</td><td style="padding:2px 0;color:#ccc;">Save current row</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Esc</td><td style="padding:2px 0;color:#ccc;">Save + close (back to grid if from grid)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">T</td><td style="padding:2px 0;color:#ccc;">Save + return to Table</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">G</td><td style="padding:2px 0;color:#ccc;">Open Grid view (5×5)</td></tr>
-            <tr><td colspan="2" style="padding:8px 0 3px;color:#556;font-size:10px;letter-spacing:0.05em;">VIDEO EDITOR (VE)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Space</td><td style="padding:2px 0;color:#ccc;">Play / Pause</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">← →</td><td style="padding:2px 0;color:#ccc;">Trim start ±0.1s</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">↑ ↓</td><td style="padding:2px 0;color:#ccc;">Duration ±0.1s</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Tab</td><td style="padding:2px 0;color:#ccc;">Cycle segments</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">R-click segment / band</td><td style="padding:2px 0;color:#ccc;">Rename segment</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">H A L O</td><td style="padding:2px 0;color:#ccc;">Set t1 (when not in field)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Ctrl+S</td><td style="padding:2px 0;color:#ccc;">Save</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">Esc</td><td style="padding:2px 0;color:#ccc;">Close (back to grid if from grid)</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">T</td><td style="padding:2px 0;color:#ccc;">Save + return to Table</td></tr>
-            <tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;">G</td><td style="padding:2px 0;color:#ccc;">Open Grid view (5×5)</td></tr>
-          </table>
-        </div>
-        <div>
-          <h3 style="color:#fa8;font-size:12px;margin:0 0 8px;letter-spacing:0.05em;">🏷 HALO TOPIC TAXONOMY</h3>
-          <p style="color:#667;font-size:10px;margin-bottom:10px;">t1=category &nbsp;·&nbsp; t2=subcategory/phylum &nbsp;·&nbsp; n1=common name &nbsp;·&nbsp; n2=general species &nbsp;·&nbsp; n3=specific species</p>
-          <div style="display:flex;flex-direction:column;gap:9px;">
-            <div style="background:#0e1a10;border:1px solid #2a4a2a;border-radius:7px;padding:10px;">
-              <span style="font-size:13px;font-weight:bold;color:#5f5;">H</span> <span style="color:#5f5;font-size:12px;">Health</span>
-              <span style="color:#888;font-size:11px;"> — Biology, medicine, wellbeing</span><br>
-              <span style="font-size:11px;color:#aaa;">Diet &amp; Nutrition · Supplements · Disease · Exercise · Mental Health · Sleep · Medicine</span>
-            </div>
-            <div style="background:#0e101a;border:1px solid #2a2a4a;border-radius:7px;padding:10px;">
-              <span style="font-size:13px;font-weight:bold;color:#8ef;">A</span> <span style="color:#8ef;font-size:12px;">Activity</span>
-              <span style="color:#888;font-size:11px;"> — Sports, hobbies, physical pursuits</span><br>
-              <span style="font-size:11px;color:#aaa;">Tennis · Swimming · Cycling · Hiking · Fitness · Games</span>
-            </div>
-            <div style="background:#1a100e;border:1px solid #4a2a2a;border-radius:7px;padding:10px;">
-              <span style="font-size:13px;font-weight:bold;color:#f88;">L</span> <span style="color:#f88;font-size:12px;">Life</span>
-              <span style="color:#888;font-size:11px;"> — t2=phylum · n1=common · n2=species · n3=specific</span><br>
-              <span style="font-size:11px;color:#aaa;">Chordata · Arthropoda · Mollusca · Echinodermata · Cnidaria · Porifera …</span>
-              <span style="font-size:10px;color:#556;"> (→ page 2 for full phyla list)</span>
-            </div>
-            <div style="background:#131318;border:1px solid #3a3a2a;border-radius:7px;padding:10px;">
-              <span style="font-size:13px;font-weight:bold;color:#ff8;">O</span> <span style="color:#ff8;font-size:12px;">Other</span>
-              <span style="color:#888;font-size:11px;"> — Doesn't fit neatly elsewhere</span><br>
-              <span style="font-size:11px;color:#aaa;">Humor · Science · Nature &amp; Animals · Reference · Miscellaneous</span>
-            </div>
+    <!-- (zip0154) Page bodies are now populated by JS from the HELP_DATA
+         array — see _renderHd() / _renderHu() below. The phyla taxonomy
+         page is still rendered inline by the existing phyla code. -->
+
+    <!-- PAGE 0: Hd — Developer reference (screen-by-screen) -->
+    <div id="helpPage0"></div>
+
+    <!-- PAGE 1: Taxonomy (HALO + Phyla reference) -->
+    <div id="helpPage1" style="display:none;">
+      <div style="margin-bottom:18px;">
+        <h3 style="color:#fa8;font-size:12px;margin:0 0 8px;letter-spacing:0.05em;">🏷 HALO TOPIC TAXONOMY</h3>
+        <p style="color:#667;font-size:10px;margin-bottom:10px;">t1=category &nbsp;·&nbsp; t2=subcategory/phylum &nbsp;·&nbsp; n1=common name &nbsp;·&nbsp; n2=general species &nbsp;·&nbsp; n3=specific species</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:9px;">
+          <div style="background:#0e1a10;border:1px solid #2a4a2a;border-radius:7px;padding:10px;">
+            <span style="font-size:13px;font-weight:bold;color:#5f5;">H</span> <span style="color:#5f5;font-size:12px;">Health</span>
+            <span style="color:#888;font-size:11px;"> — Biology, medicine, wellbeing</span><br>
+            <span style="font-size:11px;color:#aaa;">Diet &amp; Nutrition · Supplements · Disease · Exercise · Mental Health · Sleep · Medicine</span>
           </div>
-          <p style="margin-top:10px;font-size:10px;color:#445;line-height:1.5;">
-            DateModified stamps only on single-cell edits to content fields.<br>
-            Col widths / order / hidden / grid size travel in <code style="color:#667">_salMeta</code> at top of ml.json.
-          </p>
+          <div style="background:#0e101a;border:1px solid #2a2a4a;border-radius:7px;padding:10px;">
+            <span style="font-size:13px;font-weight:bold;color:#8ef;">A</span> <span style="color:#8ef;font-size:12px;">Activity</span>
+            <span style="color:#888;font-size:11px;"> — Sports, hobbies, physical pursuits</span><br>
+            <span style="font-size:11px;color:#aaa;">Tennis · Swimming · Cycling · Hiking · Fitness · Games</span>
+          </div>
+          <div style="background:#1a100e;border:1px solid #4a2a2a;border-radius:7px;padding:10px;">
+            <span style="font-size:13px;font-weight:bold;color:#f88;">L</span> <span style="color:#f88;font-size:12px;">Life</span>
+            <span style="color:#888;font-size:11px;"> — t2=phylum · n1=common · n2=species · n3=specific</span><br>
+            <span style="font-size:11px;color:#aaa;">Chordata · Arthropoda · Mollusca · Echinodermata · Cnidaria · Porifera …</span>
+          </div>
+          <div style="background:#131318;border:1px solid #3a3a2a;border-radius:7px;padding:10px;">
+            <span style="font-size:13px;font-weight:bold;color:#ff8;">O</span> <span style="color:#ff8;font-size:12px;">Other</span>
+            <span style="color:#888;font-size:11px;"> — Doesn't fit neatly elsewhere</span><br>
+            <span style="font-size:11px;color:#aaa;">Humor · Science · Nature &amp; Animals · Reference · Miscellaneous</span>
+          </div>
         </div>
       </div>
-    </div>
-
-    <!-- PAGE 1: Phyla reference -->
-    <div id="helpPage1" style="display:none;">
       <div style="overflow-x:auto;">
+        <h3 style="color:#fa8;font-size:12px;margin:0 0 8px;letter-spacing:0.05em;">🐚 ANIMAL PHYLA (Life category)</h3>
         <table style="border-collapse:collapse;width:100%;font-size:11px;">
           <thead>
             <tr style="background:#0d1a2e;border-bottom:2px solid #4af;">
@@ -520,6 +506,9 @@ td.editing input {
         Source: Wikipedia — <em>Animal</em> article, List of Animal Phyla. Extinct phyla shown in italic.
       </p>
     </div>
+
+    <!-- PAGE 2: Hu — User reference (limited; grid + viewers only) -->
+    <div id="helpPage2" style="display:none;"></div>
   </div>
 </div>
 <!-- Annotate panel — floating over table, right side -->
@@ -627,7 +616,7 @@ td.editing input {
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<div id="ver-badge">zip0153</div>
+<button id="ver-badge" type="button" title="Click to toggle dev/user mode (reloads page)">dev0161</button>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -637,8 +626,8 @@ td.editing input {
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
 <button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
 
-<script src="tags.js?v=0153"></script>
-<script src="video.js?v=0153"></script>
+<script src="tags.js?v=0161"></script>
+<script src="video.js?v=0161"></script>
 
 
 <script>
@@ -670,6 +659,10 @@ td.editing input {
     if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
     const ae = document.activeElement;
     if (!isInput(ae)) return;  // Not in a field — let other Esc handlers fire normally
+
+    // (zip0161) When the text editor (Xe) is open, let the editor's own Esc
+    // handler close it directly (no save). Do NOT blur here.
+    if (document.getElementById('textEditorOverlay')) return;
 
     // In a field: blur it. Block other capture-phase handlers (overlay
     // close-on-Esc) so the screen doesn't close.
@@ -748,7 +741,7 @@ window._restoreFocusToLastUID = function() {
 // SINGLE-LETTER HOTKEY CAPTURE (G/T/E)
 // ══════════════════════════════════════════════════════════════════════════════
 // Since table cells are NOT editable by typing, single letters work as hotkeys
-// G = Grid, T = Table, E = VideoEditor, A = Annotate, M = Menu, C = Collection screen
+// G = Grid, T = Table, E = VideoEditor, A = Annotate, M = Menu, C = Collection, V = View fullscreen
 window._pendingHotkey = null;
 
 window.addEventListener('keydown', function(e) {
@@ -758,6 +751,14 @@ window.addEventListener('keydown', function(e) {
   // — do not block hotkeys in that case (iframe has its own key handling)
   const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
                      document.activeElement?.contentEditable === 'true';
+  // (zip0160) Esc in a text field = blur (defocus). This lets the user
+  // press Esc once to leave the field, then bare-letter hotkeys work
+  // immediately. Without this, the user had to click outside the field.
+  if (isEditable && e.key === 'Escape') {
+    e.preventDefault();
+    document.activeElement.blur();
+    return;
+  }
   if (isEditable) return;
   
   // Skip if modifiers (let Alt+N, Ctrl+Alt+G etc through)
@@ -794,7 +795,7 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
-  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w') {
+  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v') {
     e.preventDefault();
     e.stopPropagation();
     window._pendingHotkey = k;
@@ -1993,9 +1994,17 @@ document.getElementById('overlay').addEventListener('click', e => { if(e.target=
 // Hamburger menu
 const hmBtn=document.getElementById('hmBtn'), hmPanel=document.getElementById('hmPanel');
 function openHM()  { 
-  const r=hmBtn.getBoundingClientRect(); 
-  hmPanel.style.top=(r.bottom+6)+'px'; 
-  hmPanel.style.left=Math.min(r.left,window.innerWidth-250)+'px'; 
+  const r = hmBtn.getBoundingClientRect();
+  // (zip0155) In user mode, the toolbar is display:none so hmBtn has zero
+  // dimensions. Position the panel near the top-left of the viewport
+  // instead of (0,0+6). Detect "hidden hmBtn" by checking for zero size.
+  if (r.width === 0 && r.height === 0) {
+    hmPanel.style.top  = '12px';
+    hmPanel.style.left = '12px';
+  } else {
+    hmPanel.style.top  = (r.bottom + 6) + 'px';
+    hmPanel.style.left = Math.min(r.left, window.innerWidth - 250) + 'px';
+  }
   hmPanel.classList.add('open');
   // Add keyboard handler when menu opens
   document.addEventListener('keydown', hmKeyHandler, true);
@@ -4490,7 +4499,7 @@ const PHYLA_DATA = [
 ];
 
 let _helpPage = 0;
-const HELP_PAGES = ['Help & Keyboard Reference', 'Animal Phyla Reference (Life category)'];
+// HELP_PAGES is declared further down (zip0154 rewrite) along with HELP_DATA.
 
 function buildPhylaTable() {
   const tbody = document.getElementById('phylaTableBody');
@@ -4510,25 +4519,398 @@ function buildPhylaTable() {
   });
 }
 
+// ── (zip0154) Help system rewrite ────────────────────────────────────────────
+// Two help screens — Hd (developer, page 0 + taxonomy on page 1) and Hu
+// (user, page 2). Both render from the same HELP_DATA structure, which is
+// also the source for the "⬇ Download" button (rich-text export with
+// dev-only commands bolded). User mode opens directly to Hu and hides the
+// other pages from navigation.
+const HELP_VERSION_STR = 'dev0161'; // Updated on each version bump (used in download filename + heading).
+
+const HELP_DATA = [
+  // ─── GLOBAL HOTKEYS ─────────────────────────────────────────────────
+  { id: 'GLOBAL', title: 'Global Hotkeys', devOnly: false,
+    desc: 'Single letters work from any screen when no input field has focus. Modifier combos (Ctrl/Alt) are listed where they apply.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'H', desc: 'Toggle this Help screen (works from anywhere)', dev: false },
+        { key: 'G', desc: 'Open Grid view',                    dev: false },
+        { key: 'C', desc: 'Open Collection (c.json picker)',    dev: false },
+        { key: 'M', desc: 'Open hamburger menu (then S = Settings, D = Dictionary, F = Folder…)', dev: true  },
+        { key: 'T', desc: 'Save + return to Table',             dev: true  },
+        { key: 'E', desc: 'Edit last selected (VE/IE)',         dev: true  },
+        { key: 'A', desc: 'Open Annotate panel',                dev: true  },
+        { key: 'D', desc: 'Open Dictionary (focused row\'s first tag if any, else last state)', dev: true  },
+        { key: 'V', desc: 'View focused row fullscreen (video/image/quiz/text slide). Toggle.', dev: false },
+        { key: 'F', desc: 'Toggle filter (T view)',             dev: true  },
+        { key: 'W or L', desc: 'Smart clipboard import (T view)', dev: true },
+        { key: 'Esc', desc: 'Close overlay / defocus from text field (then hotkeys work)', dev: false },
+      ]}
+    ]
+  },
+
+  // ─── T — TABLE ──────────────────────────────────────────────────────
+  { id: 'T', title: 'T — Table (Master Links Editor)', devOnly: true,
+    desc: 'The heart of the system: every row is one cell candidate (video, image, html-text, or quiz). Tags here drive Lookup in A. Dev-only screen — no access in user mode.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'A',                desc: 'Open Annotate panel — images & videos', dev: true },
+        { key: 'E',                desc: 'Open VideoEditor (videos only)',         dev: true },
+        { key: 'G',                desc: 'Open Grid view',                          dev: true },
+        { key: 'Enter',            desc: 'Commit edit, move down',                  dev: true },
+        { key: 'Tab / Shift+Tab',  desc: 'Commit, move right / left',               dev: true },
+        { key: 'Del / Backspace',  desc: 'Clear focused cell',                      dev: true },
+        { key: 'Ctrl+I',           desc: 'Toggle thumbnail mode',                   dev: true },
+        { key: 'Ctrl+H',           desc: 'Hamburger menu',                          dev: true },
+        { key: 'Esc',              desc: 'Close any open window',                   dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'L-click cell',         desc: 'Focus cell',                          dev: true },
+        { key: 'Double-click',         desc: 'Edit focused cell (only way to edit)', dev: true },
+        { key: 'Shift+L-click (col)',  desc: 'Range → bulk set',                    dev: true },
+        { key: 'R-click',              desc: 'Context menu',                        dev: true },
+      ]}
+    ]
+  },
+
+  // ─── G / Gu — GRID ──────────────────────────────────────────────────
+  { id: 'G', title: 'G / Gu — Grid View', devOnly: false,
+    desc: 'N×N grid of cells (N = 2..5). Cell positions come from row.cell (T mode) or active C config (C mode). Video on the grid is always muted; row Mute applies in V only.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: '2 / 3 / 4 / 5', desc: 'Grid size 2×2 / 3×3 / 4×4 / 5×5',  dev: false },
+        { key: 'C',             desc: 'Open Collection picker',            dev: false },
+        { key: 'Esc',           desc: 'Cancel cut or close grid',          dev: false },
+        { key: 'T',             desc: 'Return to Table',                   dev: true  },
+        { key: 'Ctrl+Alt+G',    desc: 'Save current grid config to c.json', dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Tap cell (short)',    desc: 'Toggle pause/play (G); dev-only in Gu', dev: false },
+        { key: 'Swipe →',             desc: 'Open fullscreen viewer (V/I/Q/X)',     dev: false },
+        { key: 'Swipe ←',             desc: 'Toggle pause/play video',              dev: false },
+        { key: 'HOLD cell',           desc: 'Cut (select for swap)',                dev: true  },
+        { key: 'Click another cell',  desc: 'Swap with cut cell',                   dev: true  },
+        { key: 'Click same cell',     desc: 'Cancel cut',                           dev: true  },
+        { key: 'Double-click text',   desc: 'Edit text slide',                      dev: true  },
+        { key: 'Ctrl+L-click',        desc: 'Edit (VE for video, IE for image)',   dev: true  },
+        { key: 'Ctrl+R-click',        desc: 'Open fullscreen viewer',               dev: false },
+        { key: 'R-click cell',        desc: 'Context menu (T / V / D)',             dev: true  },
+      ]}
+    ]
+  },
+
+  // ─── C / Cu — COLLECTION ────────────────────────────────────────────
+  { id: 'C', title: 'C / Cu — Collection (c.json)', devOnly: false,
+    desc: 'Saved grid configurations. Each entry stores the cells field (4/9/16/25 = 2×2/3×3/4×4/5×5) and a cell→UID mapping. In Cu, tap an entry to load it into the grid at its saved size.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'G',   desc: 'Return to Grid',                  dev: false },
+        { key: 'Esc', desc: 'Close Collection',                dev: false },
+        { key: 'T',   desc: 'Return to Table',                 dev: true  },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Tap row',    desc: 'Make active (loads into G at saved size)', dev: false },
+        { key: 'Swipe ←',    desc: 'Cancel / close',                            dev: false },
+      ]}
+    ]
+  },
+
+  // ─── E — VIDEO EDITOR ───────────────────────────────────────────────
+  { id: 'E', title: 'E — Video Editor (VE)', devOnly: true,
+    desc: 'Trim videos into segments. Each segment has start, duration, and an optional comment. Saves to row.VidRange + VidComment. Dev-only screen.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Space',    desc: 'Play / Pause',                          dev: true },
+        { key: '← →',      desc: 'Trim start ±0.1s',                      dev: true },
+        { key: '↑ ↓',      desc: 'Duration ±0.1s',                        dev: true },
+        { key: 'Tab',      desc: 'Cycle segments',                        dev: true },
+        { key: 'H A L O',  desc: 'Set t1 instantly (when not in field)',  dev: true },
+        { key: 'M',        desc: 'Toggle mute (live)',                    dev: true },
+        { key: 'Ctrl+S',   desc: 'Save current row',                      dev: true },
+        { key: 'Esc',      desc: 'Close (back to grid if from grid)',     dev: true },
+        { key: 'T',        desc: 'Save + return to Table',                dev: true },
+        { key: 'G',        desc: 'Open Grid view',                        dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'R-click segment / band', desc: 'Rename segment',           dev: true },
+        { key: 'Swipe ←',                desc: 'Close (back to grid)',     dev: true },
+      ]}
+    ]
+  },
+
+  // ─── V — VIDEO PLAYER (FULLSCREEN) ──────────────────────────────────
+  { id: 'V', title: 'V — Video Player (Fullscreen)', devOnly: false,
+    desc: 'Full-screen video playback. Plays the row.VidRange segments in sequence. Mute determined by row Mute (0 = audio, 1 = silent); the M key toggles mute live for this session.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Space',  desc: 'Play / Pause',                  dev: false },
+        { key: '← →',    desc: 'Frame step ±0.1s',              dev: false },
+        { key: 'M',      desc: 'Mute toggle (live)',            dev: false },
+        { key: 'A / B',  desc: 'Set loop points',               dev: false },
+        { key: 'V',      desc: 'Close (toggle — same key that opened it)', dev: false },
+        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Swipe ←',     desc: 'Close → back to grid',     dev: false },
+        { key: 'Tap controls', desc: 'Buttons on bottom bar',    dev: false },
+      ]}
+    ]
+  },
+
+  // ─── I — IMAGE (FULLSCREEN) ─────────────────────────────────────────
+  { id: 'I', title: 'I — Image (Fullscreen)', devOnly: false,
+    desc: 'Full-screen view of an image-link cell. Reached by swipe-right (or Ctrl+R-click) on an image cell in G/Gu.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Swipe ←', desc: 'Close → back to grid',         dev: false },
+      ]}
+    ]
+  },
+
+  // ─── Q — QUIZ (FULLSCREEN) ──────────────────────────────────────────
+  { id: 'Q', title: 'Q — Quiz (Fullscreen)', devOnly: false,
+    desc: 'Full-screen view of a quiz cell (row.qfile or JSON ftext). Reached by swipe-right or tap on a quiz cell in G/Gu.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Tap answer',  desc: 'Submit quiz answer',        dev: false },
+        { key: 'Swipe ←',     desc: 'Close → back to grid',     dev: false },
+      ]}
+    ]
+  },
+
+  // ─── Xs — HTML TEXT SLIDE (FULLSCREEN VIEW) ─────────────────────────
+  { id: 'Xs', title: 'Xs — HTML Text Slide (Fullscreen View)', devOnly: false,
+    desc: 'Read-only fullscreen view of an HTML/text slide. Reached by swipe-right on a text cell in G/Gu, or by Slide button/swipe in Xe.',
+    sections: [
+      { name: 'Navigation', items: [
+        { key: 'Esc',               desc: 'Close Xs → back to Xe (if opened from editor)', dev: false },
+        { key: 'Swipe ← (top bar)', desc: 'Close Xs → back to Xe',                         dev: false },
+        { key: '✕ Close button',    desc: 'Close Xs',                                        dev: false },
+      ]}
+    ]
+  },
+
+  // ─── Xe — HTML TEXT EDITOR ──────────────────────────────────────────
+  { id: 'Xe', title: 'Xe — HTML Text Editor', devOnly: true,
+    desc: 'Rich-text editor for row.ftext. Reached by double-click on a text cell in G (dev mode). Esc closes without saving. Title-bar swipe → shows slide; swipe ← saves and closes.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Esc',             desc: 'Close Xe without saving (back to T)',                dev: true },
+        { key: 'S',               desc: 'Slide preview — auto-saves first (when not typing)', dev: true },
+        { key: 'Ctrl+B / I / U', desc: 'Bold / Italic / Underline',                          dev: true },
+        { key: 'Ctrl+S',         desc: 'Save + close',                                        dev: true },
+        { key: 'Shift+Enter',    desc: 'Insert collapsible block (▶ toggle). In summary: inserts line-break for multi-line header. Enter alone in summary: jump to body.', dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Swipe → (title bar)', desc: 'Auto-save + show slide (Xs)',         dev: true },
+        { key: 'Swipe ← (title bar)', desc: 'Auto-save + close Xe (back to T)',    dev: true },
+        { key: '▶ Slide button',      desc: 'Auto-save + preview as Xs',           dev: true },
+        { key: '✓ Save button',       desc: 'Save + close editor',                 dev: true },
+        { key: '✕ Close button',      desc: 'Close editor (unsaved changes lost)',  dev: true },
+        { key: 'Toolbar ▶… button',   desc: 'Insert empty collapsible block',      dev: true },
+        { key: 'Toolbar 🖼 button',    desc: 'Insert image — UID or URL, size, left/center/right align', dev: true },
+        { key: 'Dbl-click image',     desc: 'Edit image: size, alignment, source', dev: true },
+      ]}
+    ]
+  },
+];
+
+// HELP_PAGES order: 0=Hd, 1=Taxonomy, 2=Hu. _isUserMode() decides which the
+// help system makes navigable.
+const HELP_PAGES = [
+  'Hd — Developer Reference',
+  'Taxonomy (HALO + Phyla)',
+  'Hu — User Reference'
+];
+
+// Render Hd page 0 from HELP_DATA. Two-column responsive layout; each
+// section gets a panel with its hotkeys and mouse rows.
+function _renderHd() {
+  const root = document.getElementById('helpPage0');
+  if (!root) return;
+  const escH = (s) => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const panel = (s) => {
+    let html = '<div style="background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;padding:11px 13px;margin-bottom:10px;">';
+    html += '<h3 style="color:#fa8;font-size:12px;margin:0 0 4px;letter-spacing:0.05em;">' + escH(s.title) + '</h3>';
+    if (s.desc) html += '<p style="color:#778;font-size:10px;margin:0 0 8px;line-height:1.45;">' + escH(s.desc) + '</p>';
+    s.sections.forEach(sec => {
+      html += '<div style="margin-top:6px;color:#556;font-size:10px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
+      html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
+      sec.items.forEach(it => {
+        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+              + '<td style="padding:2px 0;color:#ccc;">' + escH(it.desc) + '</td></tr>';
+      });
+      html += '</table>';
+    });
+    html += '</div>';
+    return html;
+  };
+  let html = '<p style="color:#667;font-size:11px;margin-bottom:14px;line-height:1.55;">'
+           + '<strong style="color:#8ef;">' + escH(HELP_VERSION_STR) + '</strong> · '
+           + 'Developer reference: every screen, every shortcut. '
+           + 'Use ◀ ▶ to switch to taxonomy or to preview the user help (Hu). '
+           + 'Click <strong style="color:#5fa;">⬇ Download</strong> above to save a merged Hd+Hu reference as an HTML file (dev-only commands shown <strong>bold</strong>).</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
+  HELP_DATA.forEach(s => { html += panel(s); });
+  html += '</div>';
+  root.innerHTML = html;
+}
+
+// Render Hu page 2: user-relevant items only (skip devOnly screens entirely;
+// inside the rest, drop items where dev:true).
+function _renderHu() {
+  const root = document.getElementById('helpPage2');
+  if (!root) return;
+  const escH = (s) => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const panel = (s) => {
+    // Filter sections to user-only items
+    const filteredSections = s.sections.map(sec => ({
+      name: sec.name,
+      items: sec.items.filter(it => it.dev === false)
+    })).filter(sec => sec.items.length > 0);
+    if (filteredSections.length === 0) return ''; // nothing left for the user
+    let html = '<div style="background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;padding:11px 13px;margin-bottom:10px;">';
+    html += '<h3 style="color:#fa8;font-size:12px;margin:0 0 4px;letter-spacing:0.05em;">' + escH(s.title) + '</h3>';
+    if (s.desc) html += '<p style="color:#778;font-size:10px;margin:0 0 8px;line-height:1.45;">' + escH(s.desc) + '</p>';
+    filteredSections.forEach(sec => {
+      html += '<div style="margin-top:6px;color:#556;font-size:10px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
+      html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
+      sec.items.forEach(it => {
+        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+              + '<td style="padding:2px 0;color:#ccc;">' + escH(it.desc) + '</td></tr>';
+      });
+      html += '</table>';
+    });
+    html += '</div>';
+    return html;
+  };
+  let html = '<p style="color:#667;font-size:11px;margin-bottom:14px;line-height:1.55;">'
+           + '<strong style="color:#8ef;">' + escH(HELP_VERSION_STR.replace('dev','user')) + '</strong> · '
+           + 'Quick reference for using SeeAndLearn. '
+           + 'Tap a cell to play/pause, swipe right to view full-screen, swipe left to return.</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
+  HELP_DATA.forEach(s => {
+    if (s.devOnly) return; // skip dev-only screens entirely in user help
+    const block = panel(s);
+    if (block) html += block;
+  });
+  html += '</div>';
+  root.innerHTML = html;
+}
+
+// Build a standalone HTML file (Hd + Hu merged, dev rows bolded) and trigger
+// a browser download. No external CSS — everything inline so it prints
+// cleanly anywhere. Filename embeds the version (HELP_VERSION_STR).
+function _downloadHelp() {
+  const escH = (s) => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let body = '';
+  body += '<h1 style="color:#234;border-bottom:2px solid #69c;padding-bottom:6px;">SeeAndLearn — Help Reference</h1>';
+  body += '<p style="color:#666;font-style:italic;">Version ' + escH(HELP_VERSION_STR)
+        + ' · merged developer + user reference.<br>'
+        + '<strong>Developer-only commands shown in bold</strong>; commands available to everyone are in normal type.</p>';
+  HELP_DATA.forEach(s => {
+    body += '<h2 style="color:#345;margin-top:22px;border-bottom:1px solid #ccd;padding-bottom:3px;">'
+          + escH(s.title)
+          + (s.devOnly ? ' <span style="font-size:11px;color:#a44;font-weight:normal;">[developer-only screen]</span>' : '')
+          + '</h2>';
+    if (s.desc) body += '<p style="color:#555;">' + escH(s.desc) + '</p>';
+    s.sections.forEach(sec => {
+      body += '<h3 style="color:#456;margin-top:10px;">' + escH(sec.name) + '</h3>';
+      body += '<table style="border-collapse:collapse;width:100%;margin-bottom:6px;">';
+      sec.items.forEach(it => {
+        const style = it.dev
+          ? 'font-weight:bold;color:#234;'
+          : 'color:#345;';
+        body += '<tr>'
+              + '<td style="padding:3px 12px 3px 0;white-space:nowrap;vertical-align:top;width:170px;border-bottom:1px solid #eef;' + style + '">'
+              + escH(it.key) + (s.devOnly || it.dev ? '' : '') + '</td>'
+              + '<td style="padding:3px 0;border-bottom:1px solid #eef;' + style + '">'
+              + escH(it.desc) + '</td>'
+              + '</tr>';
+      });
+      body += '</table>';
+    });
+  });
+  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+             + '<title>SeeAndLearn Help — ' + escH(HELP_VERSION_STR) + '</title>'
+             + '</head><body style="font-family:Georgia,serif;max-width:900px;margin:24px auto;padding:0 20px;color:#222;background:#fff;">'
+             + body
+             + '<hr style="margin-top:32px;border:none;border-top:1px solid #ccd;">'
+             + '<p style="color:#888;font-size:11px;text-align:center;">Generated from in-app help · ' + new Date().toLocaleString() + '</p>'
+             + '</body></html>';
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'SeeAndLearn_Help_' + HELP_VERSION_STR + '.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  if (typeof toast === 'function') toast('⬇ Help downloaded as HTML', 1500);
+}
+
 function showHelpPage(p) {
-  _helpPage = Math.max(0, Math.min(HELP_PAGES.length - 1, p));
+  // (zip0154) User mode → only Hu (page 2) is reachable. Clamp navigation.
+  const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  if (userMode) {
+    p = 2;
+  } else {
+    p = Math.max(0, Math.min(HELP_PAGES.length - 1, p));
+  }
+  _helpPage = p;
   document.getElementById('helpTitle').textContent = HELP_PAGES[_helpPage];
-  document.getElementById('helpPageIndicator').textContent = 'Page '+(_helpPage+1)+' of '+HELP_PAGES.length+' — use ◀ ▶ or ← → to navigate';
+  document.getElementById('helpPageIndicator').textContent =
+    userMode
+      ? 'User reference'
+      : 'Page '+(_helpPage+1)+' of '+HELP_PAGES.length+' — use ◀ ▶ or ← → to navigate';
   document.getElementById('helpPage0').style.display = _helpPage === 0 ? 'block' : 'none';
   document.getElementById('helpPage1').style.display = _helpPage === 1 ? 'block' : 'none';
-  document.getElementById('helpPrev').style.opacity  = _helpPage === 0 ? '0.3' : '1';
-  document.getElementById('helpNext').style.opacity  = _helpPage === HELP_PAGES.length-1 ? '0.3' : '1';
+  document.getElementById('helpPage2').style.display = _helpPage === 2 ? 'block' : 'none';
+  // Nav arrows: hide entirely in user mode (no navigation), dim at edges in dev.
+  const prev = document.getElementById('helpPrev');
+  const next = document.getElementById('helpNext');
+  if (userMode) {
+    prev.style.display = 'none'; next.style.display = 'none';
+  } else {
+    prev.style.display = ''; next.style.display = '';
+    prev.style.opacity = _helpPage === 0 ? '0.3' : '1';
+    next.style.opacity = _helpPage === HELP_PAGES.length - 1 ? '0.3' : '1';
+  }
+  // Download button: visible only on Hd (page 0). Hidden on taxonomy + Hu.
+  document.getElementById('helpDownload').style.display = (!userMode && _helpPage === 0) ? '' : 'none';
+  // Lazy-render panels on first show (and on every show — cheap).
+  if (_helpPage === 0) _renderHd();
   if (_helpPage === 1) buildPhylaTable();
+  if (_helpPage === 2) _renderHu();
 }
 
 function closeHelp() { document.getElementById('helpModal').style.display = 'none'; }
-function openHelp()  { document.getElementById('helpModal').style.display = 'flex'; showHelpPage(_helpPage); }
+function openHelp()  {
+  // (zip0154) User mode opens directly to Hu (page 2). Dev mode opens to
+  // whatever page was last viewed (defaults to 0 = Hd).
+  const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  if (userMode) _helpPage = 2;
+  document.getElementById('helpModal').style.display = 'flex';
+  showHelpPage(_helpPage);
+}
 function isHelpOpen(){ return document.getElementById('helpModal').style.display === 'flex'; }
 
 document.getElementById('helpBtn').addEventListener('click', () => { isHelpOpen() ? closeHelp() : openHelp(); });
 document.getElementById('helpClose').addEventListener('click', closeHelp);
 document.getElementById('helpPrev').addEventListener('click', () => showHelpPage(_helpPage - 1));
 document.getElementById('helpNext').addEventListener('click', () => showHelpPage(_helpPage + 1));
+// (zip0154) Download button — exports merged Hd+Hu reference as HTML
+document.getElementById('helpDownload').addEventListener('click', _downloadHelp);
 document.getElementById('helpModal').addEventListener('click', e => {
   if (e.target === document.getElementById('helpModal')) closeHelp();
 });
@@ -5570,6 +5952,18 @@ let _textEditorCell = null;
 let _textEditorRow = null;
 
 function gridOpenTextEditor(cellStr, row) {
+  // (zip0155) Defensive: if a previous text-editor overlay was left in the
+  // DOM (e.g. early-failed call, double-open from rapid double-click),
+  // remove it first. Otherwise document.getElementById('teSave') below
+  // would resolve to the STALE overlay's button — clicking the new
+  // visible Save button would dispatch onto an orphan node and silently
+  // do nothing. Also clean any lingering helper elements.
+  const stale = document.getElementById('textEditorOverlay');
+  if (stale) stale.remove();
+  const staleStyle = document.getElementById('teStyles');
+  if (staleStyle) staleStyle.remove();
+  _textEditorOverlay = null;
+
   _textEditorCell = cellStr;
   
   // If no row exists for this cell, create one
@@ -5608,7 +6002,7 @@ function gridOpenTextEditor(cellStr, row) {
                   padding:12px 16px; border-bottom:1px solid #333;">
         <span style="color:#ff8; font-weight:bold;">Text Slide · ${cellStr}${mediaNote}</span>
         <div style="display:flex; gap:8px;">
-          <button id="teSlide" class="tbtn" style="padding:6px 12px; border-color:#8ef; color:#8ef;" title="Preview as slide (same view as clicking from Grid). Right-to-left swipe closes preview.">▶ Slide</button>
+          <button id="teSlide" class="tbtn" style="padding:6px 12px; border-color:#8ef; color:#8ef;" title="Preview as slide — auto-saves first. Key: S (when not typing). Esc closes preview.">▶ <u>S</u>lide</button>
           <button id="teClose" class="tbtn" style="padding:6px 12px;">✕ Close</button>
           <button id="teSave" class="tbtn" style="padding:6px 12px; border-color:#0f0; color:#0f0;">✓ Save</button>
         </div>
@@ -5638,13 +6032,13 @@ function gridOpenTextEditor(cellStr, row) {
       <!-- Editor area - FULLSCREEN -->
       <div id="teEditor" style="
         flex:1; overflow-y:auto;
-        padding:24px 32px; color:#fff; font-size:18px; line-height:1.7;
+        padding:24px 32px; color:#fff; font-family:sans-serif; font-size:18px; line-height:1.7;
         background:#0a0a1a; outline:none; cursor:text;
         -webkit-user-modify:read-write; -moz-user-modify:read-write;
       ">${existingText || '<h2>Title</h2><p>Your content here...</p>'}</div>
       
       <div style="padding:8px 16px; color:#556; font-size:11px; border-top:1px solid #333;">
-        Click in editor to type · Ctrl+B/I/U for formatting · Ctrl+S to save · Esc to cancel · Right-to-left swipe in title bar closes
+        Ctrl+B/I/U · Ctrl+S to save+close · Esc to close (no save) · S = slide (when defocused) · Swipe → title bar = slide · Swipe ← title bar = save+close · Shift+Enter = new collapsible
       </div>
     </div>
   `;
@@ -5767,15 +6161,45 @@ function gridOpenTextEditor(cellStr, row) {
   };
   
   // Wire save/close buttons
-  document.getElementById('teSave').onclick = () => textEditorSave();
-  document.getElementById('teClose').onclick = () => textEditorClose();
-  // (zip0134) Slide-preview button: render the current ftext as it would
-  // appear when clicked from the Grid. Closes with R-to-L swipe or Esc.
-  document.getElementById('teSlide').onclick = () => textEditorPreviewSlide();
+  // (zip0155) Scope the queries to the freshly-created _textEditorOverlay
+  // rather than document. If any stale teSave/teClose nodes remained in
+  // the DOM (from a botched previous open), getElementById would return
+  // the OLD one and the buttons the user clicks wouldn't fire. The
+  // gridOpenTextEditor cleanup at the top of the function should make
+  // this redundant in normal flow, but the scoped query is cheap insurance.
+  const _ov = _textEditorOverlay;
+  _ov.querySelector('#teSave').onclick  = () => textEditorSave();
+  _ov.querySelector('#teClose').onclick = () => textEditorClose();
+  // (zip0160) Slide button auto-saves before previewing. The S key (when
+  // the editor's contenteditable is not focused) also triggers slide.
+  _ov.querySelector('#teSlide').onclick = () => {
+    _textEditorDoSave(); // save silently (no close, no grid refresh toast)
+    textEditorPreviewSlide();
+  };
 
-  // (zip0134) R-to-L swipe on the title bar closes the editor (mirrors V/E).
-  // Attached only to the title bar so swipes inside the editor body don't
-  // accidentally trigger close (selection drags etc.).
+  // (zip0160) S key = Slide when the contenteditable editor is NOT focused.
+  // When the user clicks outside the editor area (on the toolbar, or on
+  // empty space inside the Xe overlay), activeElement reverts to <body> or
+  // the overlay — the editor loses focus. At that point, pressing S should
+  // trigger the slide preview rather than inserting a letter.
+  _ov.addEventListener('keydown', function(e) {
+    if (e.key === 's' || e.key === 'S') {
+      // Only fire if the contenteditable editor itself is NOT focused.
+      const ae = document.activeElement;
+      const editorFocused = ae && (ae.id === 'teEditor' || ae.closest('#teEditor'));
+      if (!editorFocused && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        _textEditorDoSave();
+        textEditorPreviewSlide();
+      }
+    }
+  }, true);
+
+  // (zip0161) Swipes on the title bar:
+  //   L→R  = auto-save + show slide (Xs preview)
+  //   R→L  = auto-save + close Xe (back to T)
+  // Attached to title bar only so drags inside the editor don't trigger.
   const titleBar = _textEditorOverlay.querySelector('#teBox > div');
   if (titleBar) {
     let sStart = null;
@@ -5788,7 +6212,14 @@ function gridOpenTextEditor(cellStr, row) {
       const dy = e.clientY - sStart.y;
       const ms = Date.now() - sStart.t;
       sStart = null;
-      if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) {
+      if (Math.abs(dx) < 40 || Math.abs(dy) >= Math.abs(dx) || ms > 800) return;
+      if (dx > 0) {
+        // L→R: save + preview slide
+        _textEditorDoSave();
+        textEditorPreviewSlide();
+      } else {
+        // R→L: save + close Xe
+        _textEditorDoSave();
         textEditorClose();
       }
     });
@@ -5802,64 +6233,88 @@ function gridOpenTextEditor(cellStr, row) {
       textEditorSave();
     }
     if (e.key === 'Escape') {
+      // (zip0161) Esc from Xe = close without saving. stopImmediatePropagation
+      // prevents any other capture-phase handler from also reacting.
       e.preventDefault();
+      e.stopImmediatePropagation();
       textEditorClose();
     }
-    // (zip0137) Enter inside a <summary> normally just toggles the dropdown.
-    // Provide escape hatches:
-    //   - Cursor at the very START of <summary> + Enter → insert a blank
-    //     paragraph BEFORE the parent <details> and move cursor there.
-    //   - Cursor at the very END of <summary> + Enter → insert a blank
-    //     paragraph AFTER the parent <details> and move cursor there.
-    //   - Cursor anywhere in the middle + Enter → default browser behavior
-    //     (which will be a line break inside the summary).
-    if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+    // (zip0161) Enter/Shift+Enter collapsible section handling:
+    //
+    //  Inside <summary>:
+    //    Enter alone    → move cursor into the body <div> (natural navigation)
+    //    Shift+Enter    → insert <br> for a multi-line summary header
+    //
+    //  Outside any <details>:
+    //    Shift+Enter    → insert a new empty collapsible block
+    //                     (same as clicking the ▶… toolbar button)
+    //
+    //  Inside <details> body (not <summary>):
+    //    Shift+Enter    → normal line break (browser default)
+    if (e.key === 'Enter' && !e.ctrlKey && !e.altKey && !e.metaKey) {
       const sel = window.getSelection();
       if (!sel.rangeCount) return;
       const range = sel.getRangeAt(0);
-      if (!range.collapsed) return;  // selection spans something — let default run
-      // Find the <summary> the cursor is inside, if any
-      let summary = null;
+      // Walk up to find enclosing <summary> or <details>
+      let summary = null, details = null;
       let n = range.startContainer;
       while (n && n !== editor) {
-        if (n.nodeType === 1 && n.tagName === 'SUMMARY') { summary = n; break; }
+        if (n.nodeType === 1) {
+          if (n.tagName === 'SUMMARY' && !summary) summary = n;
+          if (n.tagName === 'DETAILS' && !details) details = n;
+        }
         n = n.parentNode;
       }
-      if (!summary) return;
-      const details = summary.parentNode;
-      if (!details || details.tagName !== 'DETAILS') return;
 
-      // Compute whether the caret is at the very start or end of the summary.
-      // Use a helper range that selects all of the summary's contents.
-      const fullRange = document.createRange();
-      fullRange.selectNodeContents(summary);
-      // Position relative to summary start
-      const beforeRange = fullRange.cloneRange();
-      beforeRange.setEnd(range.startContainer, range.startOffset);
-      const startOffsetIntoSummary = beforeRange.toString().length;
-      const totalLen = fullRange.toString().length;
-
-      let insertWhere = null;
-      if (startOffsetIntoSummary === 0) insertWhere = 'before';
-      else if (startOffsetIntoSummary === totalLen) insertWhere = 'after';
-      else return;  // middle of summary — let browser handle
-
-      e.preventDefault();
-      // Build a blank paragraph; <p><br></p> renders as a blank line and
-      // accepts cursor placement.
-      const p = document.createElement('p');
-      p.appendChild(document.createElement('br'));
-      if (insertWhere === 'before') {
-        details.parentNode.insertBefore(p, details);
-      } else {
-        details.parentNode.insertBefore(p, details.nextSibling);
+      if (summary) {
+        // Cursor is inside <summary>
+        e.preventDefault();
+        if (e.shiftKey) {
+          // Shift+Enter → multi-line summary (insert BR)
+          document.execCommand('insertLineBreak', false, null);
+        } else {
+          // Enter → move into the body div (first child of details that isn't summary)
+          const bodyEl = details && Array.from(details.children).find(c => c.tagName !== 'SUMMARY');
+          if (bodyEl) {
+            const r = document.createRange();
+            r.setStart(bodyEl, 0);
+            r.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(r);
+            // Ensure body div is not empty so caret is visible
+            if (!bodyEl.firstChild) {
+              bodyEl.appendChild(document.createElement('br'));
+              r.setStart(bodyEl, 0);
+              r.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(r);
+            }
+          }
+        }
+        return;
       }
-      // Move caret into the new <p>
-      const newRange = document.createRange();
-      newRange.setStart(p, 0);
-      newRange.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(newRange);
+
+      if (!details && e.shiftKey) {
+        // Shift+Enter outside any details → insert new collapsible block
+        e.preventDefault();
+        const colHtml = '<details><summary></summary><div><br></div></details><p></p>';
+        document.execCommand('insertHTML', false, colHtml);
+        // Move cursor into the newly inserted <summary>
+        setTimeout(() => {
+          const summaries = editor.querySelectorAll('details > summary');
+          const last = summaries[summaries.length - 1];
+          if (last) {
+            const r = document.createRange();
+            r.setStart(last, 0);
+            r.collapse(true);
+            const s = window.getSelection();
+            s.removeAllRanges();
+            s.addRange(r);
+          }
+        }, 0);
+        return;
+      }
+      // All other cases: let browser handle normally
     }
     // Allow Ctrl+B, Ctrl+I, Ctrl+U to work naturally
   });
@@ -5893,6 +6348,22 @@ function gridOpenTextEditor(cellStr, row) {
     // paint the editor surface so the user sees the slide colors while editing.
     teSyncEditorBgFromWrapper();
   }, 100);
+}
+
+// (zip0160) Save-without-close helper. Writes the current editor HTML back
+// to the row and calls save(), but does NOT close the overlay or update the
+// grid cell. Used by the Slide button (auto-save before preview) and could
+// be called from Ctrl+S if we want a non-destructive save in the future.
+function _textEditorDoSave() {
+  const editor = document.getElementById('teEditor');
+  if (!editor || !_textEditorRow) return false;
+  _sanitizeTextEditorHtml(editor);
+  const html = editor.innerHTML.trim();
+  _textEditorRow.ftext = html;
+  _textEditorRow.DateModified = isoNow();
+  if (!_textEditorRow.link) _textEditorRow.VidRange = 'text';
+  save();
+  return true;
 }
 
 function textEditorSave() {
@@ -6114,8 +6585,9 @@ function teShowImageModal(onInsert, defaults) {
       <fieldset style="border:1px solid #333;border-radius:6px;padding:8px 12px;
                        margin-bottom:14px;">
         <legend style="color:#8ef;font-size:11px;padding:0 6px;">Alignment</legend>
+        <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgAlign" value="left"${dAlign==='left'?' checked':''}>  Left (text wraps right)</label>
         <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgAlign" value="center"${dAlign==='center'?' checked':''}>  Centered</label>
-        <label style="cursor:pointer;"><input type="radio" name="teImgAlign" value="left"${dAlign==='left'?' checked':''}>  Left-justified (text wraps right)</label>
+        <label style="cursor:pointer;"><input type="radio" name="teImgAlign" value="right"${dAlign==='right'?' checked':''}>  Right (text wraps left)</label>
       </fieldset>
 
       <div style="text-align:right;">
@@ -6155,8 +6627,11 @@ function teShowImageModal(onInsert, defaults) {
     const widthMap  = { small: '200px', medium: '400px', large: '700px', full: '100%' };
     const w = widthMap[size] || '400px';
     if (align === 'left') {
-      // Left-floated image; text wraps to the right.
       return '<img src="' + url + '" style="float:left;width:' + w + ';margin:6px 14px 6px 0;'
+        + 'border-radius:4px;" alt="">';
+    }
+    if (align === 'right') {
+      return '<img src="' + url + '" style="float:right;width:' + w + ';margin:6px 0 6px 14px;'
         + 'border-radius:4px;" alt="">';
     }
     // Centered: wrap in figure/div with margin auto for predictable centering.
@@ -6227,14 +6702,15 @@ function teEditImage(img) {
   else if (w === '700px') size = 'large';
   else if (w === '100%')  size = 'full';
 
-  // Alignment: left-floated images have float:left; centered ones live
-  // inside a wrapping <div style="text-align:center">.
+  // Alignment: left-floated images have float:left; right-floated have
+  // float:right; centered ones live inside a wrapping <div style="text-align:center">.
   let align = 'center';
   const float = (img.style.float || '').trim();
-  if (float === 'left') align = 'left';
+  if (float === 'left')  align = 'left';
+  if (float === 'right') align = 'right';
 
   // Identify the node we'll replace. For centered images that's the
-  // wrapping div; for left-floated it's the img itself.
+  // wrapping div; for floated images it's the img itself.
   const wrapper = img.parentElement;
   const isCenteredWrap = wrapper && wrapper.tagName === 'DIV'
     && /text-align\s*:\s*center/i.test(wrapper.getAttribute('style') || '');
@@ -6288,19 +6764,21 @@ function textEditorPreviewSlide() {
   ov.style.cssText = 'position:fixed;inset:0;z-index:36000;background:#0a0a1a;'
     + 'display:flex;align-items:center;justify-content:center;padding:40px;';
   ov.innerHTML = `
-    <div style="position:absolute;top:12px;right:16px;font-family:monospace;
-                font-size:11px;color:#666;pointer-events:none;">
-      Esc or right-to-left swipe closes
+    <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:38px;
+         display:flex;align-items:center;justify-content:space-between;
+         padding:0 16px;background:rgba(10,10,30,0.85);border-bottom:1px solid #333;">
+      <span style="font-family:monospace;font-size:11px;color:#556;">
+        ← Swipe on this bar to go back · Esc to go back
+      </span>
+      <button id="teSlideClose" style="background:#1a1a2e;border:1px solid #555;color:#aaa;
+              padding:4px 10px;border-radius:4px;cursor:pointer;font-family:monospace;">
+        ✕ Close
+      </button>
     </div>
-    <button id="teSlideClose" style="position:absolute;top:12px;right:120px;
-            background:#1a1a2e;border:1px solid #555;color:#aaa;
-            padding:4px 10px;border-radius:4px;cursor:pointer;font-family:monospace;">
-      ✕ Close
-    </button>
     <div id="teSlideContent" style="max-width:1200px;width:100%;color:#fff;
                 font-family:sans-serif;font-size:24px;line-height:1.6;
                 background:#0a0a1a;padding:40px 60px;border-radius:8px;
-                max-height:90vh;overflow-y:auto;">${html}</div>
+                max-height:90vh;overflow-y:auto;margin-top:38px;">${html}</div>
   `;
   document.body.appendChild(ov);
 
@@ -6319,12 +6797,15 @@ function textEditorPreviewSlide() {
   // Click outside content closes
   ov.addEventListener('click', e => { if (e.target === ov) close(); });
 
-  // R-to-L swipe anywhere on the overlay closes
+  // (zip0161) R→L swipe on the top bar (only) closes Xs, returning to Xe.
+  // Using the top bar instead of the whole overlay avoids accidental dismissal
+  // while scrolling the slide content.
+  const topBar = ov.querySelector('#teSlideTopBar');
   let sStart = null;
-  ov.addEventListener('pointerdown', e => {
+  topBar.addEventListener('pointerdown', e => {
     sStart = { x: e.clientX, y: e.clientY, t: Date.now() };
   });
-  ov.addEventListener('pointerup', e => {
+  topBar.addEventListener('pointerup', e => {
     if (!sStart) return;
     const dx = e.clientX - sStart.x;
     const dy = e.clientY - sStart.y;
@@ -6332,7 +6813,7 @@ function textEditorPreviewSlide() {
     sStart = null;
     if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) close();
   });
-  ov.addEventListener('pointercancel', () => { sStart = null; });
+  topBar.addEventListener('pointercancel', () => { sStart = null; });
 }
 
 function textEditorClose() {
@@ -7867,7 +8348,52 @@ window._executeHotkey = function(key) {
     toggleHM();
     return;
   }
+
+  // (zip0155) H = Toggle Help. Works from any screen and in any mode.
+  // Was previously only wired through the table-only handler at line ~4886
+  // (gated on `tableVisible`), which made it unreachable from G/Gu/Cu and
+  // any user-mode screen. _executeHotkey is the right place for it — it
+  // runs ahead of the table handler and isn't gated on overlay state.
+  if (key === 'h') {
+    if (teOpen || veOpen) return; // text editor and video editor own their own keys
+    if (typeof isHelpOpen === 'function' && typeof openHelp === 'function') {
+      isHelpOpen() ? closeHelp() : openHelp();
+    }
+    return;
+  }
   
+  // (zip0159) V = Open fullscreen viewer (V / I / Q / X) for the focused
+  // T row or the last grid row. Works from T and from G (mirrors swipe-
+  // right behaviour). If a V/I/Q/X screen is already showing, close it.
+  if (key === 'v') {
+    if (teOpen) return;
+    if (veOpen) return;
+    // Toggle: if fullscreen viewer is already open, close it.
+    if (vpOpen) { vpClose(); return; }
+
+    let row = null;
+    // From T: use focused row
+    if (!gridOpen && focus !== null) {
+      const di = vr(focus.r);
+      if (di >= 0 && di < data.length) row = data[di];
+    }
+    // From G: use last interacted grid row
+    if (!row && typeof _lastGridRow !== 'undefined' && _lastGridRow) row = _lastGridRow;
+    // Fallback: last UID
+    if (!row && window._lastUID) {
+      row = data.find(r => String(r.UID) === String(window._lastUID));
+    }
+    if (!row) { toast('Select a row first', 1500); return; }
+    // Ensure grid overlay is visible if it isn't (V sits on top of it
+    // visually but needs its DOM siblings to be present).
+    const gOvl = document.getElementById('gridOverlay');
+    if (gOvl && gOvl.style.display !== 'flex') {
+      gOvl.style.display = 'flex';
+    }
+    gridOpenFullscreen(row);
+    return;
+  }
+
   // C = Collection screen (c.json)
   if (key === 'c') {
     if (teOpen) return;
@@ -7895,9 +8421,26 @@ window._executeHotkey = function(key) {
   }
 
   // D = Dictionary overlay (tag dictionary)
+  // (zip0158) If T is the active screen and the focused row has any tag,
+  // open the dictionary FOR that tag (tree view, ancestors expanded,
+  // tag selected). With no focused row or no tags on it, open the
+  // dictionary normally to its last state.
   if (key === 'd') {
     if (teOpen || veOpen) return;
-    if (window.openDictionary) window.openDictionary();
+    let opened = false;
+    if (!gridOpen && !vpOpen && !ebOpen && !tgOpen
+        && typeof focus !== 'undefined' && focus !== null
+        && typeof vr === 'function'
+        && Array.isArray(data)) {
+      const di = vr(focus.r);
+      const row = data[di];
+      const ids = row && Array.isArray(row.tags) ? row.tags : [];
+      if (ids.length > 0 && typeof window.openDictForTag === 'function') {
+        window.openDictForTag(ids[0]);
+        opened = true;
+      }
+    }
+    if (!opened && window.openDictionary) window.openDictionary();
     return;
   }
 
@@ -8553,6 +9096,15 @@ function _isUserMode() {
   const force = params.get('mode');
   if (force === 'user') { window._userModeCached = true;  return true;  }
   if (force === 'dev')  { window._userModeCached = false; return false; }
+  // (zip0154) localStorage override from the dev/user toggle badge.
+  // Persists across reloads until the user clicks the badge again. URL
+  // ?mode= still wins (so query-string testing isn't affected by stale
+  // localStorage).
+  try {
+    const ls = localStorage.getItem('sal-mode-override');
+    if (ls === 'user') { window._userModeCached = true;  return true;  }
+    if (ls === 'dev')  { window._userModeCached = false; return false; }
+  } catch (e) { /* localStorage unavailable */ }
   const h = (window.location.hostname || '').toLowerCase();
   // file:// has empty hostname → dev (running locally from disk)
   if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') {
@@ -8575,6 +9127,36 @@ function _markUserModeClass() {
   document.documentElement.classList.toggle('dev-mode', !_isUserMode());
 }
 _markUserModeClass();
+
+// ── (zip0154) Dev/User mode toggle badge ─────────────────────────────────────
+// The bottom-right badge used to be a non-interactive version label. It's
+// now a button that:
+//   • shows the current mode + version  ("dev0154" or "user0154")
+//   • on click, writes the OPPOSITE mode to localStorage and reloads
+//     the page so all init paths (CSS gates, function caches, chrome
+//     hide/show) re-run cleanly. Reload is the simplest way to ensure
+//     every "is this user mode?" check sees the new value.
+(function _wireModeBadge() {
+  const badge = document.getElementById('ver-badge');
+  if (!badge) return;
+  const isUser = _isUserMode();
+  // Label = current mode + version. HELP_VERSION_STR is the canonical version
+  // string (e.g. "dev0154"); swap the prefix when in user mode.
+  const ver = (typeof HELP_VERSION_STR === 'string')
+    ? HELP_VERSION_STR.replace(/^(dev|user)/, '')
+    : '0154';
+  badge.textContent = (isUser ? 'user' : 'dev') + ver;
+  badge.classList.toggle('user', isUser);
+  badge.title = isUser
+    ? 'User mode (' + badge.textContent + ') — click to switch to dev mode (reloads)'
+    : 'Dev mode (' + badge.textContent + ') — click to switch to user mode (reloads)';
+  badge.addEventListener('click', function() {
+    const target = isUser ? 'dev' : 'user';
+    try { localStorage.setItem('sal-mode-override', target); } catch(e) {}
+    if (typeof toast === 'function') toast('Switching to ' + target + ' mode…', 600);
+    setTimeout(() => window.location.reload(), 250);
+  });
+})();
 
 // (zip0141) Hide the dev-only floating buttons on G when in user mode,
 // and force the Configs button to be visible whenever G is open (not just
