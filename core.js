@@ -1,0 +1,5286 @@
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ESCAPE = always leave text field  (zip0130)
+// ══════════════════════════════════════════════════════════════════════════════
+// Press Esc when an input/textarea/contenteditable has focus: blur it.
+// That's it. Single-letter hotkeys then work because no input has focus.
+//
+// (Older zip0121 behavior toggled focus back on a second Esc — removed by
+// user request: "Escape always leaves text field." Simpler model, no state
+// machine, fewer surprises.)
+//
+// Capture-phase + stopImmediatePropagation when blurring, so existing
+// close-on-Esc handlers (which would otherwise close the current screen)
+// don't conflict.
+
+(function() {
+  function isInput(el) {
+    if (!el) return false;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const ae = document.activeElement;
+    if (!isInput(ae)) return;  // Not in a field — let other Esc handlers fire normally
+
+    // (zip0161) When the text editor (Xe) is open, let the editor's own Esc
+    // handler close it directly (no save). Do NOT blur here.
+    if (document.getElementById('textEditorOverlay')) return;
+
+    // In a field: blur it. Block other capture-phase handlers (overlay
+    // close-on-Esc) so the screen doesn't close.
+    ae.blur();
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }, true);
+})();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LAST-RECORD MEMORY (zip0122)
+// ══════════════════════════════════════════════════════════════════════════════
+// Tracks the UID of the most recently viewed/edited/annotated row across all
+// screens. Displayed in the badge next to the version. Used to restore focus
+// when returning from D (Dictionary) to T or G.
+//
+// Hooks (each calls setLastUID with the row's UID):
+//   - render() in T view (focus changes via arrow keys)
+//   - brShow() in Annotate
+//   - openVideoEditor wrapper for E
+//   - gridOpenFullscreen for V
+//   - All _lastGridRow assignments (cell click, grid double-click, etc.)
+//
+// Restore-from-D: closeDictionary is wrapped to call _restoreFocusToLastUID
+// after the dict overlay is gone.
+
+window._lastUID = null;
+
+window.setLastUID = function(uid) {
+  if (uid === undefined || uid === null || uid === '') return;
+  const s = String(uid);
+  if (window._lastUID === s) return;          // no change, skip render
+  window._lastUID = s;
+  const el = document.getElementById('uid-badge');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = 'UID:' + s;
+  el.title = 'Last record: ' + s + ' (focus is restored to this row when leaving D)';
+};
+
+// Restore focus in T (or G) to the row with _lastUID, after returning from D.
+window._restoreFocusToLastUID = function() {
+  if (!window._lastUID) return;
+  if (typeof data === 'undefined' || !Array.isArray(data)) return;
+  const di = data.findIndex(r => String(r.UID) === window._lastUID);
+  if (di < 0) return;
+
+  // If grid is showing, scroll its cell into view (no focus mechanism in G;
+  // cell highlight is enough). Otherwise restore T focus.
+  const gridOpen = document.getElementById('gridOverlay') &&
+                   document.getElementById('gridOverlay').style.display === 'flex';
+  if (gridOpen) {
+    // Grid doesn't track focus per-cell, but we can scroll the matching cell
+    // into view if the row has a `cell` mapping.
+    const row = data[di];
+    if (row && row.cell) {
+      const cellEl = document.querySelector('#gridOverlay [data-cell="' + row.cell + '"]');
+      if (cellEl) cellEl.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+    return;
+  }
+
+  // T view: set focus, render, scroll into view
+  const vi = (typeof sortedIdx !== 'undefined' && sortedIdx)
+    ? sortedIdx.indexOf(di) : di;
+  if (vi < 0) return;
+  focus = { r: vi, c: 0 };
+  if (typeof render === 'function') render();
+  requestAnimationFrame(() => {
+    const fc = document.querySelector('td.focus');
+    if (fc) fc.scrollIntoView({ block: 'center', behavior: 'auto' });
+  });
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SINGLE-LETTER HOTKEY CAPTURE (G/T/E)
+// ══════════════════════════════════════════════════════════════════════════════
+// Since table cells are NOT editable by typing, single letters work as hotkeys
+// G = Grid, T = Table, E = VideoEditor, A = Annotate, M = Menu, C = Collection, V = View fullscreen
+window._pendingHotkey = null;
+
+window.addEventListener('keydown', function(e) {
+  // Skip if in an input field or contenteditable
+  const tag = document.activeElement?.tagName;
+  // If focus is inside an iframe, activeElement is the iframe itself (tag=IFRAME)
+  // — do not block hotkeys in that case (iframe has its own key handling)
+  const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+                     document.activeElement?.contentEditable === 'true';
+  // (zip0160) Esc in a text field = blur (defocus). This lets the user
+  // press Esc once to leave the field, then bare-letter hotkeys work
+  // immediately. Without this, the user had to click outside the field.
+  if (isEditable && e.key === 'Escape') {
+    e.preventDefault();
+    document.activeElement.blur();
+    return;
+  }
+  if (isEditable) return;
+  
+  // Skip if modifiers (let Alt+N, Ctrl+Alt+G etc through)
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // Skip when overlays that own their own letter shortcuts are open. Each
+  // overlay's internal handler decides what to do with letter keys (e.g.
+  // Dictionary uses C/A/S/D for cut/paste/delete on the focused tree row;
+  // T/G are handled internally to "close + go there"). If we forward keys
+  // to the global dispatcher here too, they fire twice — once correctly
+  // (in-overlay) and once destructively (opening the wrong screen).
+  if (document.getElementById('dictOverlay'))   return;
+  if (document.getElementById('mergeModal'))    return;
+  if (document.getElementById('treeCtxMenu'))   return;
+  if (document.getElementById('chipCtxMenu'))   return;
+  // E (Video Editor) handles its own letter keys (T/G/A/N/J/S/M/C/Esc).
+  // If we forward keys to the global dispatcher here, they fire on top of
+  // E's handler and the wrong screen opens.
+  if (document.getElementById('video-editor-overlay')) return;
+
+  const k = e.key.toLowerCase();
+  // (zip0153) Number keys 2/3/4/5 resize the grid when G overlay is open.
+  // Bare key only — modifiers fall through to other handlers. Suppressed
+  // when other overlays own the keys (already filtered above).
+  if (k === '2' || k === '3' || k === '4' || k === '5') {
+    const gOpen = document.getElementById('gridOverlay')?.style.display === 'flex';
+    // Don't fire if a fullscreen view (V) is on top of the grid — V owns
+    // its own keys (Space, A/B, M, ←/→).
+    const vpOpen = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpen && !vpOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10));
+      return false;
+    }
+  }
+  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v') {
+    e.preventDefault();
+    e.stopPropagation();
+    window._pendingHotkey = k;
+    setTimeout(function() {
+      if (window._executeHotkey) window._executeHotkey(k);
+    }, 0);
+    return false;
+  }
+}, true);
+
+// Canvas for text measurement
+const _mc = document.createElement('canvas').getContext('2d');
+_mc.font  = '12px monospace';
+const CHAR_W   = _mc.measureText('M').width;   // widest monospace char
+const PAD_PX   = 16;
+const MIN_W    = 20;
+const MAX_AUTO = Math.ceil(CHAR_W * 25 + PAD_PX); // 25-char cap for auto-size
+
+function autoColW(col) {
+  let max = _mc.measureText(col).width;
+  data.forEach(r => { const w = _mc.measureText(String(r[col] || '')).width; if (w > max) max = w; });
+  return Math.min(MAX_AUTO, Math.max(MIN_W, Math.ceil(max) + PAD_PX));
+}
+
+// State
+var data        = [];
+var cols        = [];   // ordered column list (all, including hidden)
+var hidden      = new Set();
+var metaRow     = null;
+var colWidths   = {};   // col → px (saved widths only; absent means use autoColW)
+var focus       = null;
+var pending     = null;
+var checkedRows = new Set();
+var sortCol = null, sortDir = 'asc', sortedIdx = null;
+var rowFilter = null;  // null = off | {col, val} = show only rows where data[di][col]===val
+var _lastRowFilter = null;  // remembered filter for F-toggle restore
+
+// (zip0162) Moved from grid.js so it's available across all modules.
+// Check if row is a video.
+function isVideoRow(row) {
+  if (!row) return false;
+  const vrn  = String(row.VidRange || '').trim();
+  const link = String(row.link || '').trim();
+  const isYT = link && (window.isYouTubeLink ? window.isYouTubeLink(link) : /youtu\.be|youtube\.com/i.test(link));
+  const isVimeo = link && (window.isVimeoLink ? window.isVimeoLink(link) : /vimeo\.com/i.test(link));
+  if (isYT || isVimeo) return true;
+  if (vrn && vrn !== 'i' && window.parseVideoAsset && window.parseVideoAsset(vrn) !== null) {
+    if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(link)) return false;
+    return true;
+  }
+  return false;
+}
+
+// Mojibake fix
+function fixMojibake(s) {
+  if (typeof s !== 'string') return s;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const b = new Uint8Array(s.length); let ok = true;
+      for (let j = 0; j < s.length; j++) { const c = s.charCodeAt(j); if (c > 255) { ok = false; break; } b[j] = c; }
+      if (!ok) break;
+      const d = new TextDecoder('utf-8', { fatal: true }).decode(b);
+      if (d === s) break; s = d;
+    } catch(e) { break; }
+  }
+  return s;
+}
+function fixAll(o) {
+  if (Array.isArray(o))       return o.map(fixAll);
+  if (o && typeof o === 'object') { const r = {}; for (const k in o) r[k] = fixAll(o[k]); return r; }
+  if (typeof o === 'string')  return fixMojibake(o);
+  return o;
+}
+
+// Date helpers
+function isoNow() { return new Date().toISOString().slice(0,19).replace('T',' '); }
+
+// (zip0125) Sequential UID minting.
+// Returns the smallest positive integer (as a string) not already used as a
+// UID in `data`. UIDs may be numeric strings ("1", "2", "27") or legacy
+// alphanumerics ("T1775622304605"); only numeric UIDs participate in the
+// "max + 1" computation. Legacy UIDs are preserved but ignored when picking
+// the next number.
+//
+// Single source of truth for new-row UIDs. Reassign UIDs (button in T) is
+// what brings everything to a clean 1..N sequence; this function just makes
+// sure new rows added between reassignments don't introduce gaps or collisions.
+function nextUID() {
+  let max = 0;
+  if (typeof data !== 'undefined' && Array.isArray(data)) {
+    for (const r of data) {
+      const v = r && r.UID;
+      if (v === undefined || v === null) continue;
+      const n = parseInt(String(v), 10);
+      // Reject NaN and reject "L1234..." (parseInt on "L1" gives NaN, good;
+      // on "1L" it would give 1, which we accept — that's fine, no collision)
+      if (!isNaN(n) && n > max) max = n;
+    }
+  }
+  return String(max + 1);
+}
+// Convert old yy.mm.dd.hh.mm.ss → YYYY-MM-DD HH:MM:SS
+function toISO(v) {
+  if (!v || typeof v !== 'string') return v;
+  const m = v.match(/^(\d{2})\.(\d{2})\.(\d{2})\.(\d{2})\.(\d{2})\.(\d{2})$/);
+  if (m) return '20'+m[1]+'-'+m[2]+'-'+m[3]+' '+m[4]+':'+m[5]+':'+m[6];
+  return v;
+}
+function migrateDates(rows) {
+  rows.forEach(r => {
+    if (r.DateAdded)    r.DateAdded    = toISO(r.DateAdded);
+    if (r.DateModified) r.DateModified = toISO(r.DateModified);
+  });
+}
+var _fsaDir = null;
+function _fsaDB() { return new Promise((res,rej)=>{ const q=indexedDB.open('sal-fsa',1); q.onupgradeneeded=e=>e.target.result.createObjectStore('handles'); q.onsuccess=e=>res(e.target.result); q.onerror=e=>rej(e.target.error); }); }
+async function _fsaSave(h) { try { const db=await _fsaDB(); db.transaction('handles','readwrite').objectStore('handles').put(h,'dir'); } catch(e) {} }
+async function _fsaLoad() { try { const db=await _fsaDB(); return await new Promise(res=>{ const q=db.transaction('handles','readonly').objectStore('handles').get('dir'); q.onsuccess=e=>res(e.target.result||null); q.onerror=()=>res(null); }); } catch(e) { return null; } }
+async function _getDir() {
+  if (_fsaDir) { try { if ((await _fsaDir.queryPermission({mode:'readwrite'})) === 'granted') return _fsaDir; } catch(e) {} _fsaDir = null; }
+  const s = await _fsaLoad();
+  if (s) { try { if ((await s.queryPermission({mode:'readwrite'})) === 'granted') { _fsaDir = s; return _fsaDir; } } catch(e) {} }
+  return null;
+}
+async function pickFolder() {
+  if (!window.showDirectoryPicker) { toast('File System Access API not available.\nUse Edge or Chrome 86+.'); return; }
+  try { const h = await window.showDirectoryPicker({mode:'readwrite',id:'jj-project'}); _fsaDir = h; await _fsaSave(h); setFsaStatus('📂 '+h.name); toast('✓ Folder set: '+h.name); }
+  catch(e) { if (e.name !== 'AbortError') toast('Folder pick failed:\n'+e.message); }
+}
+async function writeFileToDisk(name, jsonData) {
+  const dir = await _getDir();
+  if (!dir) {
+    // (zip0165) Was silently returning false. That's how text-slide edits
+    // got lost: localStorage saved them, but ml.json on disk stayed stale,
+    // and on Ctrl+R load() preferred the fetched stale ml.json over the
+    // fresh localStorage. Now we warn loudly so the user knows their save
+    // didn't reach disk and can re-grant FSA permission.
+    if (!writeFileToDisk._warnedNoDir) {
+      writeFileToDisk._warnedNoDir = true;
+      try { toast('⚠ ' + name + ' NOT saved to disk — re-pick project folder (📂 button)', 4500); } catch(e) {}
+      console.warn('writeFileToDisk: no FSA dir / permission lost. ' + name + ' saved to localStorage only.');
+      // Re-arm the warning after 30s so the user gets reminded if they keep editing
+      setTimeout(() => { writeFileToDisk._warnedNoDir = false; }, 30000);
+    }
+    return false;
+  }
+  try {
+    const fh = await dir.getFileHandle(name, {create:true});
+    const w  = await fh.createWritable();
+    await w.write(JSON.stringify(jsonData, null, 2));
+    await w.close();
+    writeFileToDisk._warnedNoDir = false; // reset on success
+    return true;
+  } catch(e) { toast('Write failed:\n'+e.message); _fsaDir = null; return false; }
+}
+function setFsaStatus(m) { document.getElementById('fsa-status').textContent = m || 'No project folder set'; }
+// Auto-restore FSA on page load
+(async()=>{ try { const s=await _fsaLoad(); if(s){ const p=await s.queryPermission({mode:'readwrite'}); if(p==='granted'){_fsaDir=s;setFsaStatus('📂 '+s.name+' (ready)');} else setFsaStatus('📂 '+s.name+' — re-grant needed'); } }catch(e){} })();
+
+// Build the _salMeta object (always complete)
+function buildMeta() {
+  const m = {
+    _salMeta:     true,
+    _salPushTime: Date.now(),
+    _salColWidths: Object.assign({}, colWidths),
+    _salColOrder:  cols.slice(),
+    _salHidden:    [...hidden]
+  };
+  // Persist current sort so reload preserves the order user was working in
+  if (sortCol) {
+    m._salSort = { col: sortCol, dir: sortDir };
+  }
+  // (zip0153) Persist live grid size (2-5) so the next load opens at the
+  // size the user was last working in.
+  if (typeof _gridGsize === 'number' && _gridGsize >= 2 && _gridGsize <= 5) {
+    m._salGsize = _gridGsize;
+  }
+  // Preserve Views data if it exists
+  if (metaRow && metaRow._salViews) m._salViews = metaRow._salViews;
+  if (metaRow && metaRow._salActiveView) m._salActiveView = metaRow._salActiveView;
+  return m;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VIEWS SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+// Views are stored inside _salMeta in ml.json:
+//   _salViews: { "key": { name, label, colOrder, hidden, colWidths } }
+//   _salActiveView: "key"   ← last applied view name
+
+function _getViews() {
+  // Returns the _salViews object from current metaRow, or empty object
+  if (metaRow && metaRow._salViews && typeof metaRow._salViews === 'object') {
+    return metaRow._salViews;
+  }
+  return {};
+}
+
+function _setViews(v) {
+  if (!metaRow) metaRow = {};
+  metaRow._salViews = v;
+}
+
+function viewsSave(name) {
+  name = (name || '').trim();
+  if (!name) { toast('Enter a view name first', 1500); return; }
+  const views = _getViews();
+  // Use name as key (slugified for safety, original stored as label)
+  const key = name.toLowerCase().replace(/[^a-z0-9_\-]/g, '_');
+  views[key] = {
+    name: key,
+    label: name,
+    colOrder: cols.slice(),
+    hidden: [...hidden],
+    colWidths: Object.assign({}, colWidths)
+  };
+  _setViews(views);
+  if (metaRow) metaRow._salActiveView = key;
+  save();
+  toast('✓ View "' + name + '" saved', 1500);
+  renderViewsPanel();
+}
+
+function viewsLoad(key) {
+  const views = _getViews();
+  const v = views[key];
+  if (!v) return;
+  cols       = (v.colOrder || []).slice();
+  hidden     = new Set(v.hidden || []);
+  colWidths  = Object.assign({}, v.colWidths || {});
+  if (metaRow) metaRow._salActiveView = key;
+  // Rebuild cols to ensure any new data columns are appended
+  buildCols();
+  buildSort();
+  render();
+  save();
+  toast('✓ View "' + (v.label || key) + '" applied', 1500);
+  renderViewsPanel();
+}
+
+function viewsDelete(key) {
+  const views = _getViews();
+  const lbl = views[key] ? (views[key].label || key) : key;
+  if (!confirm('Delete view "' + lbl + '"?')) return;
+  delete views[key];
+  _setViews(views);
+  if (metaRow && metaRow._salActiveView === key) metaRow._salActiveView = null;
+  save();
+  toast('✓ View "' + lbl + '" deleted', 1500);
+  renderViewsPanel();
+}
+
+function viewsRename(key) {
+  const views = _getViews();
+  const v = views[key];
+  if (!v) return;
+  const newLabel = prompt('Rename view "' + (v.label || key) + '" to:', v.label || key);
+  if (!newLabel || !newLabel.trim() || newLabel.trim() === v.label) return;
+  v.label = newLabel.trim();
+  // Re-key if name changed
+  const newKey = v.label.toLowerCase().replace(/[^a-z0-9_\-]/g, '_');
+  if (newKey !== key) {
+    views[newKey] = Object.assign({}, v, { name: newKey });
+    delete views[key];
+    if (metaRow && metaRow._salActiveView === key) metaRow._salActiveView = newKey;
+  }
+  _setViews(views);
+  save();
+  toast('✓ Renamed to "' + v.label + '"', 1500);
+  renderViewsPanel();
+}
+
+function renderViewsPanel() {
+  const list = document.getElementById('viewsList');
+  if (!list) return;
+  const views = _getViews();
+  const active = metaRow ? metaRow._salActiveView : null;
+  const keys = Object.keys(views);
+  if (keys.length === 0) {
+    list.innerHTML = '<div class="vp-empty">No saved views yet.<br>Arrange columns, then save a view below.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  keys.forEach(key => {
+    const v = views[key];
+    const isActive = key === active;
+    const row = document.createElement('div');
+    row.className = 'vp-row' + (isActive ? ' active-view' : '');
+    // Name / label
+    const nm = document.createElement('div');
+    nm.className = 'vp-name';
+    nm.title = 'Click to apply this view';
+    nm.textContent = (isActive ? '▶ ' : '') + (v.label || key);
+    nm.addEventListener('click', () => viewsLoad(key));
+    row.appendChild(nm);
+    // Col count hint
+    const lbl = document.createElement('div');
+    lbl.className = 'vp-lbl';
+    const visCount = (v.colOrder || []).filter(c => !(v.hidden || []).includes(c)).length;
+    lbl.textContent = visCount + ' cols';
+    lbl.title = (v.colOrder || []).filter(c => !(v.hidden || []).includes(c)).join(', ');
+    row.appendChild(lbl);
+    // Load btn
+    const loadBtn = document.createElement('button');
+    loadBtn.className = 'vp-act load';
+    loadBtn.textContent = 'Apply';
+    loadBtn.addEventListener('click', () => viewsLoad(key));
+    row.appendChild(loadBtn);
+    // Rename btn
+    const renBtn = document.createElement('button');
+    renBtn.className = 'vp-act ren';
+    renBtn.textContent = 'Rename';
+    renBtn.addEventListener('click', () => viewsRename(key));
+    row.appendChild(renBtn);
+    // Delete btn
+    const delBtn = document.createElement('button');
+    delBtn.className = 'vp-act del';
+    delBtn.textContent = 'Del';
+    delBtn.addEventListener('click', () => viewsDelete(key));
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  });
+}
+
+function openViewsPanel() {
+  const btn  = document.getElementById('viewsBtn');
+  const panel = document.getElementById('viewsPanel');
+  if (!panel) return;
+  if (panel.classList.contains('open')) { panel.classList.remove('open'); return; }
+  renderViewsPanel();
+  // Position below the button
+  const br = btn.getBoundingClientRect();
+  panel.style.top  = (br.bottom + 6) + 'px';
+  panel.style.left = Math.max(4, Math.min(br.left, window.innerWidth - 430)) + 'px';
+  panel.classList.add('open');
+  setTimeout(() => { document.getElementById('viewsNameInp').focus(); }, 60);
+}
+
+// Wire up Views panel
+document.addEventListener('DOMContentLoaded', () => {}, false);
+(function wireViews() {
+  document.getElementById('viewsBtn').addEventListener('click', openViewsPanel);
+  document.getElementById('viewsCloseBtn').addEventListener('click', () => {
+    document.getElementById('viewsPanel').classList.remove('open');
+  });
+  document.getElementById('viewsSaveBtn').addEventListener('click', () => {
+    const inp = document.getElementById('viewsNameInp');
+    viewsSave(inp.value);
+    inp.value = '';
+  });
+  document.getElementById('viewsNameInp').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const inp = document.getElementById('viewsNameInp');
+      viewsSave(inp.value);
+      inp.value = '';
+    }
+    if (e.key === 'Escape') {
+      document.getElementById('viewsPanel').classList.remove('open');
+    }
+  });
+  // Close panel on outside click
+  document.addEventListener('pointerdown', e => {
+    const panel = document.getElementById('viewsPanel');
+    const btn   = document.getElementById('viewsBtn');
+    if (panel && panel.classList.contains('open') && !panel.contains(e.target) && e.target !== btn) {
+      panel.classList.remove('open');
+    }
+  }, true);
+})();
+
+// Master save: localStorage + disk (non-blocking)
+function save() {
+  // 1. localStorage (instant)
+  try {
+    localStorage.setItem('seeandlearn-links', JSON.stringify(data));
+    localStorage.setItem('sal-edited',        Date.now().toString());
+    localStorage.setItem('ml-col-widths',     JSON.stringify(colWidths));
+    localStorage.setItem('ml-col-order',      JSON.stringify(cols));
+    localStorage.setItem('ml-col-hidden',     JSON.stringify([...hidden]));
+  } catch(e) {}
+  // 2. Disk (async, fire-and-forget — updates m:\jj\ml.json on every change)
+  writeFileToDisk('ml.json', [buildMeta()].concat(data)).then(ok => {
+    if (ok) setFsaStatus('📂 ' + (_fsaDir ? _fsaDir.name : '') + ' — saved ' + new Date().toTimeString().slice(0,8));
+  });
+}
+
+// Load
+async function load() {
+  let raw = null;
+  let rawSource = null; // 'fetch' or 'localStorage' — for diagnostic toast
+  // Try ml.json from server first
+  try { const r = await fetch('ml.json?t='+Date.now()); if (r.ok) { raw = await r.json(); rawSource = 'fetch'; } } catch(e) {}
+
+  // (zip0165) Prefer localStorage if it's NEWER than the fetched ml.json.
+  // This rescues edits when the disk write silently failed (FSA permission
+  // dropped, etc.). We compare localStorage's `sal-edited` timestamp
+  // (Date.now() millis at last save) against the max DateModified across
+  // the fetched data rows. If localStorage is newer by > 2 seconds, use it.
+  // The 2s slop avoids ping-ponging when the two are nominally equal.
+  try {
+    const lsRaw = localStorage.getItem('seeandlearn-links');
+    const lsEdited = parseInt(localStorage.getItem('sal-edited') || '0', 10);
+    if (lsRaw && lsEdited) {
+      // Find max DateModified in fetched data (skip the meta row)
+      let diskMax = 0;
+      if (Array.isArray(raw)) {
+        for (let i = 0; i < raw.length; i++) {
+          const r = raw[i];
+          if (!r || r._salMeta) continue;
+          const dm = r.DateModified;
+          if (typeof dm === 'string' && dm) {
+            // ISO format "YYYY-MM-DD HH:MM:SS" or full ISO — Date.parse handles both
+            const t = Date.parse(dm.replace(' ', 'T'));
+            if (!isNaN(t) && t > diskMax) diskMax = t;
+          }
+        }
+      }
+      if (lsEdited > diskMax + 2000) {
+        try {
+          const lsParsed = JSON.parse(lsRaw);
+          if (Array.isArray(lsParsed) && lsParsed.length) {
+            // localStorage stores plain `data` array (no meta row). Fetch raw might
+            // have meta — preserve it from fetched, replace data rows with localStorage.
+            if (Array.isArray(raw) && raw.length && raw[0]._salMeta) {
+              raw = [raw[0]].concat(lsParsed.filter(r => !r._salMeta));
+            } else {
+              raw = lsParsed;
+            }
+            rawSource = 'localStorage';
+            console.warn('load(): localStorage is newer than ml.json — using localStorage. '
+              + 'Disk write probably failed; check FSA folder permission.');
+            try { toast('⚠ Loaded from localStorage (disk was stale) — re-pick project folder', 4000); } catch(e) {}
+          }
+        } catch(e) { console.warn('localStorage parse failed:', e); }
+      }
+    }
+  } catch(e) {}
+
+  // Fallback to localStorage if fetch failed entirely
+  if (!raw) { try { const ls = localStorage.getItem('seeandlearn-links'); if (ls) { raw = JSON.parse(ls); rawSource = 'localStorage'; } } catch(e) {} }
+
+  raw = fixAll(raw);
+
+  // Extract meta and data
+  if (Array.isArray(raw) && raw.length && raw[0]._salMeta) {
+    metaRow = raw[0];
+    data    = raw.slice(1);
+    // Restore layout from _salMeta
+    if (metaRow._salColWidths && typeof metaRow._salColWidths === 'object') colWidths = Object.assign({}, metaRow._salColWidths);
+    if (Array.isArray(metaRow._salColOrder) && metaRow._salColOrder.length)  cols    = metaRow._salColOrder.slice();
+    if (Array.isArray(metaRow._salHidden))                                    hidden  = new Set(metaRow._salHidden);
+    // (zip0153) Restore last-used grid size (2-5). Defaults to 5 on
+    // missing/invalid value.
+    if (typeof metaRow._salGsize === 'number'
+        && metaRow._salGsize >= 2 && metaRow._salGsize <= 5) {
+      _gridGsize = metaRow._salGsize;
+    }
+    // _salViews and _salActiveView are preserved in metaRow as-is; buildMeta() re-emits them
+  } else if (Array.isArray(raw)) {
+    data = raw;
+  }
+
+  // localStorage overrides meta (local edits win over what was on disk)
+  try { const cw=localStorage.getItem('ml-col-widths'); if(cw) Object.assign(colWidths, JSON.parse(cw)); } catch(e) {}
+  try { const co=localStorage.getItem('ml-col-order');  if(co) { const a=JSON.parse(co); if(Array.isArray(a)&&a.length) cols=a; } } catch(e) {}
+  try { const ch=localStorage.getItem('ml-col-hidden'); if(ch) { const a=JSON.parse(ch); if(Array.isArray(a)) hidden=new Set(a); } } catch(e) {}
+
+  buildCols();
+  migrateDates(data);   // convert old yy.mm.dd format to ISO on every load
+  // Restore last-saved sort state so the table opens in the order the user
+  // left it. Falls through to "DateAdded desc" if metadata has no sort but
+  // any record has a DateAdded value (sensible default for an editing log).
+  if (metaRow && metaRow._salSort && metaRow._salSort.col) {
+    sortCol = metaRow._salSort.col;
+    sortDir = metaRow._salSort.dir === 'desc' ? 'desc' : 'asc';
+  } else if (data.some(r => r.DateAdded)) {
+    sortCol = 'DateAdded';
+    sortDir = 'desc';
+  }
+  // Load the tag dictionary (tags.json). Safe even if file doesn't exist —
+  // tagsLib seeds a starter dictionary in that case.
+  if (window.tagsLib) {
+    try { await window.tagsLib.load(); } catch(e) { console.warn('tags load failed:', e); }
+  }
+  buildSort();
+  render();
+}
+
+function buildCols() {
+  // Collect all keys that exist in the data
+  const seen = new Set();
+  data.forEach(r => Object.keys(r).forEach(k => seen.add(k)));
+  // Keep existing order for known cols; append any new ones
+  const kept  = cols.filter(c => seen.has(c));
+  const fresh = [...seen].filter(c => !kept.includes(c));
+  cols = kept.length ? [...kept, ...fresh] : [...seen];
+}
+
+// Sort
+function buildSort() {
+  const idxs = data.map((_,i) => i);
+  // Apply gname substring filter when in C-mode
+  const filtered = (_cMode && _cGnameFilter)
+    ? idxs.filter(i => String(data[i].gname||'').toLowerCase().includes(_cGnameFilter))
+    : idxs;
+  if (!sortCol) { sortedIdx = filtered.length < data.length ? filtered : null; return; }
+  const dir  = sortDir === 'desc' ? -1 : 1;
+  const isDate = sortCol === 'DateAdded' || sortCol === 'DateModified';
+  filtered.sort((a,b) => {
+    const va = String(data[a][sortCol]||''), vb = String(data[b][sortCol]||'');
+    if (!isDate) {
+      const na = parseFloat(va), nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb)) return (na-nb)*dir;
+    }
+    return va < vb ? -dir : va > vb ? dir : 0;
+  });
+  sortedIdx = filtered;
+}
+function vr(vi) { return sortedIdx ? sortedIdx[vi] : vi; }
+function visCols() { return cols.filter(c => !hidden.has(c)); }
+
+// colW returns the width for a column — saved width OR auto-measured
+function colW(col) {
+  const saved = colWidths[col];
+  return (saved !== undefined && saved !== null) ? saved : autoColW(col);
+}
+
+// Apply width to a single th+all its tds (without full render)
+function applyColW(col, w) {
+  colWidths[col] = w;
+  const th = document.querySelector('#thead th[data-col="'+CSS.escape(col)+'"]');
+  if (th) setThW(th, w);
+  const ci = visCols().indexOf(col) + 2; // 0=rn,1=cb,2+=data
+  document.querySelectorAll('#tbody tr').forEach(tr => {
+    const td = tr.children[ci]; if (td) setTdW(td, w);
+  });
+}
+
+function setThW(th, w) {
+  th.style.width    = w + 'px';
+  th.style.minWidth = w + 'px';
+  th.style.maxWidth = w + 'px';
+}
+function setTdW(td, w) {
+  td.style.width    = w + 'px';
+  td.style.minWidth = w + 'px';
+  td.style.maxWidth = w + 'px';
+}
+
+// Render
+function render() {
+  renderHead(); renderBody(); renderStatus(); updateShowAllBtn();
+  // (zip0122) Update last-record memory from current T-view focus, so simply
+  // navigating with arrows updates the UID badge and gives D something to
+  // restore focus to on return.
+  if (focus !== null && typeof vr === 'function') {
+    try {
+      const di = vr(focus.r);
+      if (di >= 0 && di < data.length && data[di] && data[di].UID) {
+        if (typeof window.setLastUID === 'function') window.setLastUID(data[di].UID);
+      }
+    } catch (_) {}
+  }
+}
+
+function buildTable() { render(); }
+
+function renderHead() {
+  const thead = document.getElementById('thead');
+  thead.innerHTML = '';
+  const vc = visCols();
+  const tr = document.createElement('tr');
+
+  // Row-number th
+  const th0 = document.createElement('th'); th0.className = 'rn'; th0.textContent = '#';
+  setThW(th0, 34); addCtxT(th0, {type:'rownum'}); tr.appendChild(th0);
+
+  // Checkbox th
+  const thcb = document.createElement('th'); thcb.className = 'cbh';
+  setThW(thcb, 26);
+  const allCb = document.createElement('input'); allCb.type = 'checkbox';
+  allCb.checked       = data.length > 0 && checkedRows.size === data.length;
+  allCb.indeterminate = checkedRows.size > 0 && checkedRows.size < data.length;
+  allCb.addEventListener('change', () => {
+    if (allCb.checked) data.forEach((_,i) => checkedRows.add(i)); else checkedRows.clear();
+    renderBody(); renderStatus();
+  });
+  thcb.appendChild(allCb); tr.appendChild(thcb);
+
+  vc.forEach(col => {
+    const w  = colW(col);
+    const th = document.createElement('th');
+    th.className = 'sortable';
+    th.style.position = 'relative';   // needed for absolute .rh child
+    setThW(th, w);
+    th.setAttribute('data-col', col);
+    const arrow = sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    th.textContent = col + arrow;
+    th.title = col + ' — click:sort · drag:reorder · right-click:options';
+
+    // Resize handle
+    const rh = document.createElement('div'); rh.className = 'rh';
+    rh.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); startResize(col, th, e.clientX); });
+    th.appendChild(rh);
+
+    // Drag-to-reorder (hold and move)
+    th.addEventListener('mousedown', e => { if (e.button !== 0 || e.target === rh) return; startColDrag(e, col, th); });
+    // Sort on click (only if no drag or resize happened)
+    th.addEventListener('click', e => {
+      if (e.target === rh || _colDragHappened || _resizeHappened) return;
+      if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc'; else { sortCol = col; sortDir = 'asc'; }
+      focus = null; pending = null; buildSort(); render();
+    });
+
+    addCtxT(th, {type:'col', col});
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+}
+
+// Thumbnail mode (Ctrl+I)
+let _thumbMode = false;
+const THUMB_H = 72; // px height of thumbnail rows
+
+// Thumbnail helpers
+const _vimeoThumbCache = {}; // url → {state:'pending'|'ok'|'fail', src?}
+
+function thumbUrl(row) {
+  if (!row) return null;
+  const link = row.link || row.url || '';
+  // Use video.js getYouTubeId which handles Shorts, Watch, youtu.be, Live, Embed
+  const ytId = window.getYouTubeId ? window.getYouTubeId(link)
+    : (link.match(/(?:youtu\.be\/|shorts\/|[?&]v=)([A-Za-z0-9_-]{11})/)?.[1] || '');
+  if (ytId) return 'https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg';
+  // Image links
+  if (link.match(/\.(jpe?g|png|gif|webp|avif|bmp|svg)(\?|$)/i)) return link;
+  if (row.Thumb) return row.Thumb;
+  return null; // Vimeo handled separately via fetchVimeoThumb
+}
+
+// Async: fetch Vimeo thumbnail via oEmbed, cache result, call onReady(src) when done
+function fetchVimeoThumb(url, onReady) {
+  if (!url || !/vimeo\.com/i.test(url)) return;
+  if (_vimeoThumbCache[url]) {
+    if (_vimeoThumbCache[url].state === 'ok') onReady(_vimeoThumbCache[url].src);
+    return; // pending or failed — caller will retry on next render
+  }
+  _vimeoThumbCache[url] = { state: 'pending' };
+  fetch('https://vimeo.com/api/oembed.json?url=' + encodeURIComponent(url) + '&width=320')
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(j => {
+      const src = j.thumbnail_url || '';
+      _vimeoThumbCache[url] = { state: src ? 'ok' : 'fail', src };
+      if (src) onReady(src);
+    })
+    .catch(() => { _vimeoThumbCache[url] = { state: 'fail' }; });
+}
+
+function toggleThumbMode() {
+  _thumbMode = !_thumbMode;
+  render();
+  toast(_thumbMode ? '🖼 Thumbnails ON (Ctrl+I to hide)' : 'Thumbnails OFF', 1200);
+}
+
+// Ctrl+I global handler
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'i') {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return; // allow Ctrl+I italic in text editors
+    e.preventDefault();
+    toggleThumbMode();
+  }
+}, true);
+
+function renderBody() {
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  const vc = visCols();
+  // Determine if Thumb column is visible
+  const thumbColIdx = vc.indexOf('Thumb');
+  const showThumbs = _thumbMode && thumbColIdx >= 0;
+  // Also show inline thumbs in 'link' column when _thumbMode on and no Thumb col
+  const linkColIdx = vc.indexOf('link');
+  const inlineThumb = _thumbMode && thumbColIdx < 0;
+
+  for (let vi = 0; vi < data.length; vi++) {
+    const di = vr(vi), row = data[di];
+    if (!rowMatchesFilter(row)) continue;
+
+    const tr = document.createElement('tr');
+    if (checkedRows.has(di)) tr.classList.add('row-sel');
+    // Expand row height when thumbs visible
+    if (_thumbMode) tr.style.height = THUMB_H + 'px';
+
+    const td0 = document.createElement('td'); td0.className = 'rn'; td0.textContent = di+1; setTdW(td0,34); addCtxT(td0,{type:'row',di}); tr.appendChild(td0);
+
+    const tdcb = document.createElement('td'); tdcb.className = 'cbc'; setTdW(tdcb,26);
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checkedRows.has(di);
+    cb.addEventListener('change', e => { e.stopPropagation(); if (cb.checked) checkedRows.add(di); else checkedRows.delete(di); renderBody(); renderStatus(); });
+    cb.addEventListener('click', e => e.stopPropagation());
+    tdcb.appendChild(cb); tr.appendChild(tdcb);
+
+    vc.forEach((col, ci) => {
+      const td = document.createElement('td'); setTdW(td, colW(col));
+      td.setAttribute('data-vi', vi);
+      td.setAttribute('data-ci', ci);
+      const val = row[col] !== undefined ? String(row[col]) : '';
+
+      // tags column — render chips (or raw comma list if lib not loaded yet)
+      if (col === 'tags') {
+        td.style.cssText += 'padding:2px 4px;vertical-align:middle;line-height:1.6;';
+        const ids = Array.isArray(row.tags) ? row.tags : [];
+        if (!window.tagsLib) {
+          td.textContent = ids.join(', ');
+        } else if (ids.length) {
+          td.innerHTML = window.tagsLib.renderChipsForRecord(row);
+          // Click a chip → filter the table to that tag (hierarchical).
+          // Right-click → context menu with Open in Dictionary / GBIF / Filter.
+          [...td.querySelectorAll('.tag-chip')].forEach(chip => {
+            chip.addEventListener('click', e => {
+              e.stopPropagation();
+              const tid = chip.getAttribute('data-tag-id');
+              if (!tid) return;
+              window.setRowFilter({ col: 'tags', val: tid, hierarchical: true });
+            });
+            chip.addEventListener('contextmenu', e => {
+              e.preventDefault();
+              e.stopPropagation();
+              const tid = chip.getAttribute('data-tag-id');
+              if (!tid) return;
+              // We can't easily wire "remove from this row" generically here
+              // (no removeFn), so the chip menu in the table is a subset:
+              // Open in Dictionary + Check GBIF only. The Annotate panel
+              // chip-menu retains the Remove option.
+              if (typeof window.openTableChipMenu === 'function') {
+                window.openTableChipMenu(e.clientX, e.clientY, tid, row);
+              }
+            });
+            chip.style.cursor = 'pointer';
+          });
+        } else {
+          td.textContent = '';
+        }
+        td.title = window.tagsLib ? ids.map(id => window.tagsLib.labelFor(id)).join(', ') : ids.join(', ');
+        // Don't attach the standard dblclick→inline-edit for this column
+        // (it's a structured field — edit via Annotate A hotkey)
+        td.addEventListener('click',   e => onCell(e, vi, ci));
+        td.addEventListener('dblclick', e => {
+          e.stopPropagation();
+          if (window.openBrowseForRow) window.openBrowseForRow(row);
+        });
+        if (focus && focus.r === vi && focus.c === ci) td.className = 'focus';
+        else if (pending && pending.c === ci && vi >= pending.r1 && vi <= pending.r2) td.className = 'sel';
+        tr.appendChild(td);
+        return; // skip default rendering below
+      }
+
+      // Thumb column — render image
+      if (_thumbMode && col === 'Thumb') {
+        td.style.cssText += 'padding:2px;overflow:hidden;vertical-align:middle;';
+        const url = thumbUrl(row);
+        const link = row.link || row.url || '';
+        const isVimeo = /vimeo\.com/i.test(link);
+        if (url) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (colW(col) - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
+          img.onerror = () => { img.style.display='none'; td.textContent='✗'; };
+          td.appendChild(img);
+        } else if (isVimeo) {
+          // Check cache first
+          const cached = _vimeoThumbCache[link];
+          if (cached && cached.state === 'ok') {
+            const img = document.createElement('img');
+            img.src = cached.src;
+            img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (colW(col) - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
+            td.appendChild(img);
+          } else if (!cached) {
+            td.textContent = '⏳'; td.style.color = '#666';
+            fetchVimeoThumb(link, () => renderBody()); // re-render when ready
+          } else {
+            td.textContent = '—'; td.style.color = '#444';
+          }
+        } else {
+          td.textContent = '—'; td.style.color = '#444';
+        }
+      } else if (_thumbMode && (col === 'link' || col === 'url') && !showThumbs) {
+        // Inline thumb in link column when no dedicated Thumb col
+        const url = thumbUrl(row);
+        const link2 = row.link || row.url || '';
+        const isVimeo2 = /vimeo\.com/i.test(link2);
+        if (url) {
+          td.style.cssText += 'padding:2px;overflow:hidden;vertical-align:middle;';
+          const img = document.createElement('img');
+          img.src = url;
+          img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:120px;object-fit:contain;display:block;border-radius:2px;';
+          img.onerror = () => { img.remove(); td.textContent = val; td.title = val; };
+          td.appendChild(img);
+        } else if (isVimeo2) {
+          const cached2 = _vimeoThumbCache[link2];
+          if (cached2 && cached2.state === 'ok') {
+            td.style.cssText += 'padding:2px;overflow:hidden;vertical-align:middle;';
+            const img = document.createElement('img');
+            img.src = cached2.src;
+            img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:120px;object-fit:contain;display:block;border-radius:2px;';
+            td.appendChild(img);
+          } else if (!cached2) {
+            td.textContent = '⏳ ' + val; td.title = val;
+            fetchVimeoThumb(link2, () => renderBody());
+          } else {
+            td.textContent = val; td.title = val;
+          }
+        } else {
+          td.textContent = val; td.title = val;
+        }
+      } else {
+        td.textContent = val; td.title = val;
+      }
+
+      if (focus   && focus.r   === vi && focus.c   === ci) td.className = 'focus';
+      else if (pending && pending.c === ci && vi >= pending.r1 && vi <= pending.r2) td.className = 'sel';
+      td.addEventListener('click',   e => onCell(e, vi, ci));
+      td.addEventListener('dblclick', e => { e.stopPropagation(); startEdit(vi, ci); });
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+function renderStatus() {
+  const el = document.getElementById('status'), ck = checkedRows.size, vc = visCols();
+  const visCount = rowFilter === null ? data.length
+    : data.filter(r => rowMatchesFilter(r)).length;
+  const filterNote = rowFilter
+    ? (rowFilter.col === 'tags' && rowFilter.hierarchical
+        ? ' 🔍 '+visCount+'/'+data.length+' rows (tag ↧ '+(window.tagsLib?window.tagsLib.labelFor(rowFilter.val):rowFilter.val)+')'
+        : ' 🔍 '+visCount+'/'+data.length+' rows ('+rowFilter.col+'="'+rowFilter.val+'" )')
+    : '';
+  if (pending) {
+    const n = pending.r2-pending.r1+1;
+    el.textContent = n+' selected in "'+vc[pending.c]+'"'+(ck?' · '+ck+' ✓':'')+filterNote;
+  } else if (focus) {
+    el.textContent = 'Focus row '+(focus.r+1)+', col "'+vc[focus.c]+'" — shift-click same col to bulk set'+(ck?' · '+ck+' ✓':'')+filterNote;
+  } else {
+    el.textContent = data.length+' rows · '+vc.length+' cols'+(hidden.size?' ('+hidden.size+' hidden)':'')+(ck?' · '+ck+' ✓':'')+filterNote+(_thumbMode?' · 🖼 thumbs':'');
+  }
+}
+
+function updateShowAllBtn() {
+  const n = hidden.size, btn = document.getElementById('showAllBtn');
+  btn.textContent       = n > 0 ? 'Show All Cols ('+n+')' : 'Show All Cols';
+  btn.style.borderColor = n > 0 ? '#ff8' : '';
+  btn.style.color       = n > 0 ? '#ff8' : '';
+  // Filter button state
+  const fb = document.getElementById('filterBtn'), cb2 = document.getElementById('clearFilterBtn');
+  if (!fb || !cb2) return;
+  if (focus !== null) {
+    const vc = visCols(), col = vc[focus.c];
+    const val = col !== undefined ? String(data[vr(focus.r)]?.[col] ?? '') : '';
+    fb.style.display  = 'inline-block';
+    fb.title = 'Show only rows where "'+col+'" = "'+val+'"';
+    fb.textContent = '🔍 Filter';
+  } else {
+    fb.style.display = 'none';
+  }
+  cb2.style.display = rowFilter ? 'inline-block' : 'none';
+}
+
+// Cell click
+function onCell(e, vi, ci) {
+  if (_editing) { commitEdit(); return; }
+  if (e.shiftKey && focus !== null && focus.c === ci && focus.r !== vi) {
+    pending = {c:ci, r1:Math.min(focus.r,vi), r2:Math.max(focus.r,vi)};
+    render(); openPopup();
+  } else {
+    focus = {r:vi, c:ci}; pending = null; render();
+  }
+}
+
+// Inline cell editing
+let _editing = null; // { vi, ci, di, col, td, inp, oldVal }
+
+function startEdit(vi, ci, replaceWith) {
+  if (_editing) commitEdit();
+  const vc  = visCols();
+  const col = vc[ci];
+  if (!col) return;
+  const di  = vr(vi);
+  const td  = document.querySelector('#tbody td[data-vi="'+vi+'"][data-ci="'+ci+'"]');
+  if (!td) return;
+  const oldVal = String(data[di][col] ?? '');
+
+  focus = {r:vi, c:ci};
+
+  const inp = document.createElement('input');
+  inp.type  = 'text';
+  inp.value = replaceWith !== undefined ? replaceWith : oldVal;
+  inp.style.cssText = 'width:100%;height:22px;padding:2px 4px;border:none;'+
+    'outline:2px solid #4df;background:#051830;color:#fff;font:12px monospace;box-sizing:border-box;';
+
+  td.textContent = '';
+  td.classList.add('editing');
+  td.appendChild(inp);
+  inp.focus();
+  if (replaceWith !== undefined) inp.setSelectionRange(inp.value.length, inp.value.length);
+  else inp.select();
+
+  _editing = { vi, ci, di, col, td, inp, oldVal };
+
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      const moveCI = e.key === 'Tab' ? (e.shiftKey ? ci - 1 : ci + 1) : null;
+      const moveVI = e.key === 'Enter' ? vi + 1 : null;
+      commitEdit();
+      // Move focus to next cell
+      const nvc = visCols();
+      if (moveCI !== null && moveCI >= 0 && moveCI < nvc.length) {
+        focus = {r:vi, c:moveCI}; render();
+        setTimeout(() => startEdit(vi, moveCI), 10);
+      } else if (moveVI !== null && moveVI < data.length) {
+        focus = {r:moveVI, c:ci}; render();
+        setTimeout(() => startEdit(moveVI, ci), 10);
+      }
+    } else if (e.key === 'Escape') {
+      cancelEdit();
+    }
+  });
+  inp.addEventListener('blur', () => {
+    // Small delay: if user clicked another cell, onCell fires first
+    setTimeout(() => { if (_editing && _editing.inp === inp) commitEdit(); }, 80);
+  });
+}
+
+// t2 choices by t1 — phyla for L
+const PHYLA_EXTANT = [
+  'Annelida','Arthropoda','Brachiopoda','Bryozoa','Chaetognatha','Chordata',
+  'Cnidaria','Ctenophora','Cycliophora','Dicyemida','Echinodermata','Entoprocta',
+  'Gastrotricha','Gnathostomulida','Hemichordata','Kinorhyncha','Loricifera',
+  'Micrognathozoa','Mollusca','Monoblastozoa','Nematoda','Nematomorpha','Nemertea',
+  'Onychophora','Orthonectida','Phoronida','Placozoa','Platyhelminthes','Porifera',
+  'Priapulida','Rotifera','Tardigrada','Xenacoelomorpha'
+];
+const PHYLA_EXTINCT = [
+  'Agmata','Petalonamae','Proarticulata','Saccorhytida','Trilobozoa','Vetulicolia'
+];
+const T2_BY_T1 = {
+  H: ['Diet & Nutrition','Supplements','Disease & Conditions','Exercise & Body','Mental Health','Sleep','Medicine & Treatment'],
+  A: ['Tennis','Swimming','Cycling','Hiking & Outdoors','Fitness & Training','Games & Competition'],
+  L: [...PHYLA_EXTANT, ...PHYLA_EXTINCT],
+  O: ['Humor','Science','Nature & Animals','Reference','Miscellaneous']
+};
+
+// Columns that represent meaningful content — editing these stamps DateModified
+const CONTENT_COLS = new Set(['t1','t2','n1','n2','n3','cname','sname','comment','Val',
+  'VidRange','VidTitle','VidComment','VidAuthor','attribution','Topic','tags']);
+
+// Test whether a data row passes the current rowFilter.
+// Supports:
+//   rowFilter = null                            → everything passes
+//   rowFilter = {col, val}                      → classic exact-match
+//   rowFilter = {col:'tags', val:<tagId>, hierarchical:true} → tag + descendants
+function rowMatchesFilter(row) {
+  if (!rowFilter) return true;
+  if (rowFilter.col === 'tags' && rowFilter.hierarchical && window.tagsLib) {
+    return window.tagsLib.matchesQuery(row.tags || [], rowFilter.val);
+  }
+  return String(row[rowFilter.col] || '') === rowFilter.val;
+}
+window.rowMatchesFilter = rowMatchesFilter;
+
+// Set or clear the row filter from outside scripts (e.g. tags.js Dictionary).
+// Pass null to clear. Also calls render() and (when a filter is applied)
+// places focus on the first row that survives the filter, so the user can
+// immediately press E or A on the result without seeing a "No video" prompt.
+window.setRowFilter = function(filter) {
+  // Remember any non-null filter so the F hotkey can restore it after a clear.
+  // Clearing (filter=null) doesn't overwrite the remembered value — that's
+  // the whole point of "toggle".
+  if (filter) _lastRowFilter = filter;
+  rowFilter = filter;
+  pending = null;
+  if (filter) {
+    let firstVi = -1;
+    for (let vi = 0; vi < data.length; vi++) {
+      const di = vr(vi);
+      if (rowMatchesFilter(data[di])) { firstVi = vi; break; }
+    }
+    focus = firstVi >= 0 ? { r: firstVi, c: 0 } : null;
+  } else {
+    focus = null;
+  }
+  if (typeof render === 'function') render();
+};
+window.getRowFilter = function() { return rowFilter; };
+
+function commitEdit() {
+  if (!_editing) return;
+  const { vi, ci, di, col, td, inp, oldVal } = _editing;
+  _editing = null;
+  const newVal = inp.value;
+  td.classList.remove('editing');
+  td.textContent = newVal; td.title = newVal;
+  if (newVal !== oldVal) {
+    data[di][col] = newVal;
+    if (_cMode && col !== 'DateModified') {
+      // In C-screen: stamp DateModified on any field change
+      data[di].DateModified = isoNow();
+    } else if (CONTENT_COLS.has(col) && col !== 'DateModified' && data[di].DateModified !== undefined) {
+      data[di].DateModified = isoNow();
+    }
+    save();
+    // Refresh DateModified cell in same row if visible
+    const dmCI = visCols().indexOf('DateModified');
+    if (dmCI >= 0 && CONTENT_COLS.has(col) && col !== 'DateModified') {
+      const dmTd = document.querySelector('#tbody td[data-vi="'+vi+'"][data-ci="'+dmCI+'"]');
+      if (dmTd && !dmTd.classList.contains('editing')) {
+        dmTd.textContent = data[di].DateModified; dmTd.title = data[di].DateModified;
+      }
+    }
+  }
+}
+
+function cancelEdit() {
+  if (!_editing) return;
+  const { td, oldVal } = _editing;
+  _editing = null;
+  td.classList.remove('editing');
+  td.textContent = oldVal; td.title = oldVal;
+}
+
+// Global keydown: ONLY Escape to deselect (editing requires double-click)
+// Single letters G/T/E are handled by the hotkey capture above
+document.addEventListener('keydown', e => {
+  // Don't intercept if typing in an input/textarea
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (document.getElementById('overlay').classList.contains('open')) return;
+  // Don't capture arrows if grid or VE is open
+  if (document.getElementById('gridOverlay')?.style.display === 'flex') return;
+  if (document.getElementById('video-editor-overlay')) return;
+
+  // Up/Down arrow keys — navigate rows in table (works even when annotate panel open)
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    const anOpen = document.getElementById('browseOverlay')?.style.display === 'flex';
+    // If annotate is open and a select is focused, let it handle natively
+    if (anOpen && tag === 'SELECT') return;
+    
+    e.preventDefault();
+    // Count visible rows (respecting filter and sort)
+    const visIdxs = []; // list of vi values that pass filter
+    for (let vi = 0; vi < data.length; vi++) {
+      const di = vr(vi);
+      if (rowMatchesFilter(data[di]))
+        visIdxs.push(vi);
+    }
+    if (!visIdxs.length) return;
+
+    const curVi = focus !== null ? focus.r : -1;
+    // Find position in visIdxs
+    let pos = visIdxs.indexOf(curVi);
+    if (pos < 0) pos = e.key === 'ArrowUp' ? visIdxs.length : -1;
+    const newPos = e.key === 'ArrowUp' ? Math.max(0, pos - 1) : Math.min(visIdxs.length - 1, pos + 1);
+    const newVi = visIdxs[newPos];
+    if (newVi === undefined) return;
+
+    focus = { r: newVi, c: focus !== null ? focus.c : 0 };
+    render();
+    // Scroll focused row into view
+    const trs = document.querySelectorAll('#tbody tr');
+    // Find tr with data-vi matching newVi
+    let targetTr = null;
+    trs.forEach(tr => {
+      const td = tr.querySelector('td[data-vi]');
+      if (td && parseInt(td.getAttribute('data-vi')) === newVi) targetTr = tr;
+    });
+    if (targetTr) targetTr.scrollIntoView({ block: 'nearest' });
+
+    // If annotate panel is open, navigate it to the new row too
+    if (anOpen) {
+      const di = vr(newVi);
+      brSave();
+      const fi = _brRows.indexOf(di);
+      if (fi >= 0) {
+        brShow(fi);
+      } else {
+        // Row not in current set — refresh
+        _brRows = brGetVisibleRows();
+        const fi2 = _brRows.indexOf(di);
+        if (fi2 >= 0) brShow(fi2);
+      }
+    }
+    return;
+  }
+
+  if (focus !== null) {
+    if (e.key === 'Escape') {
+      focus = null; pending = null; render();
+    }
+  }
+});
+
+// Column resize
+let _resizeHappened = false;
+function startResize(col, th, startX) {
+  _resizeHappened = false;
+  const startW = th.offsetWidth;
+  document.body.style.cursor = 'col-resize';
+  const rh = th.querySelector('.rh'); if (rh) rh.classList.add('dragging');
+  function onMove(e) {
+    _resizeHappened = true;
+    const nw = Math.max(MIN_W, startW + e.clientX - startX);
+    colWidths[col] = nw;
+    applyColW(col, nw);
+  }
+  function onUp() {
+    document.body.style.cursor = '';
+    if (rh) rh.classList.remove('dragging');
+    if (_resizeHappened) save();
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    // Suppress the click event that fires immediately after mouseup
+    setTimeout(() => { _resizeHappened = false; }, 50);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onUp);
+}
+
+// Column drag-to-reorder
+let _colDrag = null, _colDragHappened = false;
+const _ghost    = document.getElementById('col-drag-ghost');
+const _dropLine = document.getElementById('col-drop-line');
+
+function startColDrag(e, col, th) {
+  _colDragHappened = false;
+  _colDrag = {col, th, startX:e.clientX, startY:e.clientY, active:false, dropBefore:null};
+  document.addEventListener('mousemove', onColDragMove);
+  document.addEventListener('mouseup',   onColDragUp);
+}
+function onColDragMove(e) {
+  if (!_colDrag) return;
+  if (!_colDrag.active && (Math.abs(e.clientX-_colDrag.startX)>6 || Math.abs(e.clientY-_colDrag.startY)>4)) {
+    _colDrag.active = true;
+    _ghost.textContent = '⠿ '+_colDrag.col; _ghost.style.display = 'block';
+    _colDrag.th.classList.add('dragging-src');
+    const wr = document.getElementById('wrap').getBoundingClientRect();
+    _dropLine.style.height = wr.height+'px'; _dropLine.style.top = wr.top+'px'; _dropLine.style.display = 'block';
+  }
+  if (!_colDrag.active) return;
+  _ghost.style.left = e.clientX+'px'; _ghost.style.top = (e.clientY-28)+'px';
+  const headers = [...document.querySelectorAll('#thead th[data-col]')];
+  headers.forEach(h => h.classList.remove('drag-over'));
+  let dropBefore = null, dropX = null;
+  for (const hdr of headers) {
+    const r = hdr.getBoundingClientRect();
+    if (e.clientX < r.left + r.width/2) { dropBefore = hdr.getAttribute('data-col'); dropX = r.left; hdr.classList.add('drag-over'); break; }
+  }
+  if (dropBefore === null && headers.length) { const r=headers[headers.length-1].getBoundingClientRect(); dropX=r.right; }
+  _colDrag.dropBefore = dropBefore;
+  if (dropX !== null) _dropLine.style.left = (dropX-2)+'px';
+}
+function onColDragUp() {
+  document.removeEventListener('mousemove', onColDragMove);
+  document.removeEventListener('mouseup',   onColDragUp);
+  if (!_colDrag) return;
+  document.querySelectorAll('#thead th[data-col]').forEach(h => h.classList.remove('drag-over'));
+  _ghost.style.display = 'none'; _dropLine.style.display = 'none';
+  _colDrag.th.classList.remove('dragging-src');
+  if (_colDrag.active) {
+    _colDragHappened = true;
+    const fromCol = _colDrag.col, toCol = _colDrag.dropBefore;
+    if (toCol !== fromCol) {
+      const fi = cols.indexOf(fromCol);
+      if (fi !== -1) {
+        cols.splice(fi, 1);
+        if (toCol === null) cols.push(fromCol);
+        else { const ti = cols.indexOf(toCol); cols.splice(ti !== -1 ? ti : cols.length, 0, fromCol); }
+      }
+    }
+    save(); render();
+  }
+  _colDrag = null;
+  setTimeout(() => { _colDragHappened = false; }, 50);
+}
+
+// Context menu
+function addCtxT(el, t) { el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtx(e.clientX, e.clientY, t); }); }
+document.getElementById('wrap').addEventListener('contextmenu', e => e.preventDefault());
+
+function showCtx(x, y, target) {
+  const menu = document.getElementById('ctxmenu'); menu.innerHTML = '';
+  if (target.type === 'col') {
+    const col = target.col;
+    menu.innerHTML = '<div class="ctx-hdr">COLUMN: '+escH(col)+'</div>';
+    addCI(menu, 'Sort A→Z',       () => { sortCol=col; sortDir='asc';  buildSort(); render(); });
+    addCI(menu, 'Sort Z→A',       () => { sortCol=col; sortDir='desc'; buildSort(); render(); });
+    addCI(menu, 'Clear sort',     () => { sortCol=null; sortedIdx=null; render(); });
+    addCS(menu);
+    addCI(menu, 'Rename…',        () => renameCol(col));
+    addCI(menu, 'Insert before…', () => insertCol(col, 'before'));
+    addCI(menu, 'Insert after…',  () => insertCol(col, 'after'));
+    addCS(menu);
+    addCI(menu, 'Move left',      () => moveCol(col, -1));
+    addCI(menu, 'Move right',     () => moveCol(col,  1));
+    addCS(menu);
+    addCI(menu, 'Reset width (auto)', () => { delete colWidths[col]; save(); render(); });
+    addCI(menu, 'Hide',               () => { hidden.add(col); focus=null; pending=null; save(); render(); });
+    addCS(menu);
+    addCI(menu, 'Delete column…', () => deleteCol(col), true);
+  } else if (target.type === 'row' || target.type === 'rownum') {
+    const di = target.di;
+    menu.innerHTML = '<div class="ctx-hdr">'+(di !== undefined ? 'ROW '+(di+1) : 'ROWS')+'</div>';
+    if (di !== undefined) {
+      addCI(menu, 'Insert row above', () => insertRow(di));
+      addCI(menu, 'Insert row below', () => insertRow(di+1));
+      addCS(menu);
+      addCI(menu, checkedRows.has(di) ? 'Uncheck' : 'Check', () => { if(checkedRows.has(di))checkedRows.delete(di);else checkedRows.add(di); render(); });
+      addCS(menu);
+      addCI(menu, 'Delete this row…', () => deleteRow(di), true);
+    }
+    if (checkedRows.size > 0) { addCS(menu); addCI(menu, 'Delete '+checkedRows.size+' checked…', () => deleteChecked(), true); }
+  }
+  menu.classList.add('open');
+  const mh = menu.children.length * 32;
+  menu.style.left = Math.min(x, window.innerWidth-200-8)+'px';
+  menu.style.top  = Math.min(y, window.innerHeight-mh-8)+'px';
+}
+function addCI(menu, label, fn, danger) { const d=document.createElement('div'); d.className='ctx-item'+(danger?' red':''); d.textContent=label; d.addEventListener('click',()=>{closeCtx();fn();}); menu.appendChild(d); }
+function addCS(m) { const s=document.createElement('div'); s.className='ctx-sep'; m.appendChild(s); }
+function closeCtx() { document.getElementById('ctxmenu').classList.remove('open'); }
+document.addEventListener('pointerdown', e => { const m=document.getElementById('ctxmenu'); if(m.classList.contains('open')&&!m.contains(e.target)) closeCtx(); }, true);
+
+// Column / Row operations
+function renameCol(col) { const nk=prompt('Rename "'+col+'" to:',col); if(!nk||nk===col)return; if(cols.includes(nk)){alert('"'+nk+'" exists.');return;} cols[cols.indexOf(col)]=nk; data.forEach(r=>{r[nk]=r[col]!==undefined?String(r[col]):'';delete r[col];}); if(hidden.has(col)){hidden.delete(col);hidden.add(nk);} if(colWidths[col]!==undefined){colWidths[nk]=colWidths[col];delete colWidths[col];} save();render(); }
+function insertCol(col, where) { const nk=prompt('New column name:'); if(!nk||!nk.trim())return; if(cols.includes(nk)){alert('"'+nk+'" exists.');return;} const i=cols.indexOf(col); cols.splice(where==='after'?i+1:i,0,nk); data.forEach(r=>{if(r[nk]===undefined)r[nk]='';}); save();render(); }
+function moveCol(col, dir) { const vc=visCols(),vi=vc.indexOf(col),ni=vi+dir; if(ni<0||ni>=vc.length)return; const ci=cols.indexOf(col),ci2=cols.indexOf(vc[ni]); [cols[ci],cols[ci2]]=[cols[ci2],cols[ci]]; save();render(); }
+function deleteCol(col) { if(!confirm('Delete "'+col+'" from ALL rows?'))return; cols=cols.filter(c=>c!==col); hidden.delete(col); data.forEach(r=>delete r[col]); save();render(); }
+function insertRow(at) { const r={}; cols.forEach(k=>r[k]=''); let mx=0; data.forEach(rr=>{const n=parseInt(rr.UID||'0',10);if(n>mx)mx=n;}); r.UID=String(mx+1); const now=isoNow(); r.DateAdded=now; r.DateModified=now; data.splice(at,0,r); save();buildSort();render(); }
+function deleteRow(di) { if(!confirm('Delete row '+(di+1)+'?'))return; data.splice(di,1); checkedRows.delete(di); const nc=new Set(); checkedRows.forEach(i=>{if(i<di)nc.add(i);else if(i>di)nc.add(i-1);}); checkedRows=nc; save();buildSort();render(); }
+function deleteChecked() { if(!confirm('Delete '+checkedRows.size+' row(s)?'))return; [...checkedRows].sort((a,b)=>b-a).forEach(di=>data.splice(di,1)); checkedRows.clear(); save();buildSort();render(); }
+
+// Bulk popup
+function openPopup() {
+  const vc=visCols(),col=vc[pending.c],count=pending.r2-pending.r1+1;
+  document.getElementById('ptitle').textContent = 'Bulk set "'+col+'"';
+  document.getElementById('psub').textContent   = count+' row'+(count>1?'s':'')+' selected'+(sortCol?' · sorted by "'+sortCol+'"':'');
+  document.getElementById('val').value = '';
+  document.getElementById('overlay').classList.add('open');
+  setTimeout(() => document.getElementById('val').focus(), 60);
+}
+function closePopup(clearSel) { document.getElementById('overlay').classList.remove('open'); if(clearSel)pending=null; render(); }
+function doApply(r1, r2) {
+  const vc  = visCols();
+  const col = vc[pending.c];
+  const val = document.getElementById('val').value;
+  for (let vi = r1; vi <= r2; vi++) {
+    const di = vr(vi);
+    if (di < 0 || di >= data.length) continue;
+    data[di][col] = val;
+  }
+  save();
+}
+function applyPopup()    { if(!pending){closePopup(true);return;} doApply(pending.r1,pending.r2); focus={r:pending.r2,c:pending.c}; pending=null; closePopup(false); }
+function applyAllPopup() { if(!pending){closePopup(true);return;} doApply(0,data.length-1); focus={r:0,c:pending.c}; pending=null; closePopup(false); }
+document.getElementById('applyBtn').addEventListener('click',    applyPopup);
+document.getElementById('applyAllBtn').addEventListener('click', applyAllPopup);
+document.getElementById('cancelBtn').addEventListener('click',   () => closePopup(true));
+document.getElementById('val').addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();applyPopup();} if(e.key==='Escape')closePopup(true); });
+document.getElementById('overlay').addEventListener('click', e => { if(e.target===document.getElementById('overlay'))closePopup(true); });
+
+// Hamburger menu
+const hmBtn=document.getElementById('hmBtn'), hmPanel=document.getElementById('hmPanel');
+function openHM()  { 
+  const r = hmBtn.getBoundingClientRect();
+  // (zip0155) In user mode, the toolbar is display:none so hmBtn has zero
+  // dimensions. Position the panel near the top-left of the viewport
+  // instead of (0,0+6). Detect "hidden hmBtn" by checking for zero size.
+  if (r.width === 0 && r.height === 0) {
+    hmPanel.style.top  = '12px';
+    hmPanel.style.left = '12px';
+  } else {
+    hmPanel.style.top  = (r.bottom + 6) + 'px';
+    hmPanel.style.left = Math.min(r.left, window.innerWidth - 250) + 'px';
+  }
+  hmPanel.classList.add('open');
+  // Add keyboard handler when menu opens
+  document.addEventListener('keydown', hmKeyHandler, true);
+}
+function closeHM() { 
+  hmPanel.classList.remove('open'); 
+  document.removeEventListener('keydown', hmKeyHandler, true);
+}
+function toggleHM(){ hmPanel.classList.contains('open') ? closeHM() : openHM(); }
+
+// Keyboard handler for menu items
+function hmKeyHandler(e) {
+  if (!hmPanel.classList.contains('open')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'escape') { e.preventDefault(); closeHM(); return; }
+  if (k === 'f') { e.preventDefault(); closeHM(); pickFolder(); return; }
+  if (k === 'd') { e.preventDefault(); closeHM(); if (window.openDictionary) window.openDictionary(); return; }
+  if (k === 'p') { e.preventDefault(); closeHM(); toast('☁ Push to GitHub\n[coming soon]'); return; }
+  if (k === 'l') { e.preventDefault(); closeHM(); toast('⬇ Load from GitHub\n[coming soon]'); return; }
+  if (k === 's') { e.preventDefault(); closeHM(); openSettings(); return; }
+  if (k === 'h') { e.preventDefault(); closeHM(); openHelp(); return; }
+}
+
+hmBtn.addEventListener('click', e => { e.stopPropagation(); toggleHM(); });
+document.addEventListener('pointerdown', e => { if(hmPanel.classList.contains('open')&&!hmPanel.contains(e.target)&&e.target!==hmBtn) closeHM(); }, true);
+
+document.getElementById('hm-setfolder').addEventListener('click', async () => { closeHM(); await pickFolder(); });
+document.getElementById('hm-dict').addEventListener('click', () => { closeHM(); if (window.openDictionary) window.openDictionary(); });
+document.getElementById('hm-push').addEventListener('click',   () => { closeHM(); toast('☁ Push to GitHub\n[coming soon]'); });
+document.getElementById('hm-loadgh').addEventListener('click', () => { closeHM(); toast('⬇ Load from GitHub\n[coming soon]'); });
+document.getElementById('hm-settings').addEventListener('click', () => { closeHM(); openSettings(); });
+document.getElementById('hm-help').addEventListener('click', () => { closeHM(); openHelp(); });
+
+// ── Settings modal (zip0124) ───────────────────────────────────────────────
+// Persistent prefs stored in localStorage under 'ml-settings'. Currently:
+//   ytPrivacy: 'normal' (default, signed-in session works) | 'nocookie'
+//              (privacy-enhanced; for production deploys to GitHub Pages etc.)
+// New settings can be added here; each one is read by the consuming module
+// via window.getSetting(key).
+window.getSetting = function(key) {
+  try {
+    const s = JSON.parse(localStorage.getItem('ml-settings') || '{}');
+    return s[key];
+  } catch(_) { return undefined; }
+};
+window.setSetting = function(key, val) {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem('ml-settings') || '{}'); } catch(_) {}
+  s[key] = val;
+  try { localStorage.setItem('ml-settings', JSON.stringify(s)); } catch(_) {}
+};
+
+function openSettings() {
+  // Remove any existing
+  const old = document.getElementById('settingsModal');
+  if (old) old.remove();
+
+  const ytPrivacy = window.getSetting('ytPrivacy') || 'normal';
+
+  const modal = document.createElement('div');
+  modal.id = 'settingsModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999997;background:rgba(0,0,0,0.7);'
+    + 'display:flex;align-items:center;justify-content:center;font-family:monospace;';
+  modal.innerHTML = `
+    <div style="background:#0d0d1e;border:2px solid #4af;border-radius:10px;padding:20px 24px;
+                min-width:420px;max-width:560px;color:#eee;box-shadow:0 12px 40px rgba(0,0,0,0.9);">
+      <div style="display:flex;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;font-size:16px;color:#8ef;flex:1;">⚙ Settings</h2>
+        <button id="settingsClose" style="background:none;border:1px solid #555;color:#aaa;
+                padding:3px 9px;border-radius:5px;cursor:pointer;font-family:monospace;">✕</button>
+      </div>
+
+      <fieldset style="border:1px solid #333;border-radius:6px;padding:12px 14px;margin-bottom:14px;">
+        <legend style="color:#8ef;font-size:12px;padding:0 6px;">YouTube embed mode</legend>
+        <label style="display:block;cursor:pointer;margin-bottom:8px;">
+          <input type="radio" name="ytPrivacy" value="normal"${ytPrivacy==='normal'?' checked':''} style="margin-right:8px;">
+          <span style="color:#cfc;font-weight:bold;">Normal (youtube.com)</span> — recommended for development.
+          <div style="color:#888;font-size:11px;margin:2px 0 0 22px;line-height:1.4;">
+            Embeds use youtube.com so your signed-in browser session is visible to the iframe.
+            Bot-detection rarely fires. Use this when working locally.
+          </div>
+        </label>
+        <label style="display:block;cursor:pointer;">
+          <input type="radio" name="ytPrivacy" value="nocookie"${ytPrivacy==='nocookie'?' checked':''} style="margin-right:8px;">
+          <span style="color:#fca;font-weight:bold;">Privacy-enhanced (youtube-nocookie.com)</span> — for production.
+          <div style="color:#888;font-size:11px;margin:2px 0 0 22px;line-height:1.4;">
+            No cookies set, no session shared. Use when deploying to GitHub Pages or
+            a public host where users won't have your YouTube login. May trigger
+            bot-detection more often during heavy use.
+          </div>
+        </label>
+        <div style="color:#777;font-size:10px;margin-top:10px;font-style:italic;">
+          Change takes effect the next time a video player is created (close & reopen E or V).
+        </div>
+      </fieldset>
+
+      <div style="text-align:right;">
+        <button id="settingsSave" style="background:#0a3052;border:1px solid #4af;color:#8ef;
+                padding:6px 18px;border-radius:5px;cursor:pointer;font-family:monospace;font-size:13px;">
+          Save & Close
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  function close() { modal.remove(); }
+  modal.querySelector('#settingsClose').addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#settingsSave').addEventListener('click', () => {
+    const choice = modal.querySelector('input[name="ytPrivacy"]:checked');
+    if (choice) window.setSetting('ytPrivacy', choice.value);
+    toast('⚙ Settings saved', 1200);
+    close();
+  });
+
+  // Esc to close (use direct keydown, since the global Esc-toggle won't help
+  // here — modal has no input focus to blur).
+  function escClose(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      document.removeEventListener('keydown', escClose, true);
+      close();
+    }
+  }
+  document.addEventListener('keydown', escClose, true);
+}
+
+// Toolbar download button — tries FSA, then browser download
+document.getElementById('dlBtn').addEventListener('click', async () => {
+  const payload = [buildMeta()].concat(data);
+  const ok = await writeFileToDisk('ml.json', payload);
+  if (!ok) { const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ml.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href); }
+});
+document.getElementById('showAllBtn').addEventListener('click', () => { hidden.clear(); save(); render(); });
+
+// Populate Cells: assign 1a-5e to visible rows only; clear cell on invisible rows
+// Fill P/S — detect portrait/landscape orientation
+function getPSCol() {
+  if (cols.includes('P/S'))      return 'P/S';
+  if (cols.includes('Portrait')) return 'Portrait';
+  cols.push('P/S'); data.forEach(r => { if(r['P/S']===undefined) r['P/S']=''; });
+  return 'P/S';
+}
+async function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), ms);
+  try { const r = await fetch(url, {signal: ctrl.signal}); clearTimeout(tid); return r; }
+  catch(e) { clearTimeout(tid); return null; }
+}
+async function getImageDims(url) {
+  return new Promise(res => {
+    const img = new Image(); // no crossOrigin — we only need naturalWidth/Height, not pixel data
+    const t = setTimeout(() => res(null), 8000);
+    img.onload  = () => { clearTimeout(t); res({w:img.naturalWidth, h:img.naturalHeight}); };
+    img.onerror = () => { clearTimeout(t); res(null); };
+    img.src = url;
+  });
+}
+async function getOEmbedDims(url) {
+  try {
+    let ep;
+    if (/vimeo\.com/i.test(url))               ep = 'https://vimeo.com/api/oembed.json?url=';
+    else if (/youtu\.be|youtube\.com/i.test(url)) ep = 'https://www.youtube.com/oembed?format=json&url=';
+    else return null;
+    const r = await fetchWithTimeout(ep + encodeURIComponent(url), 7000);
+    if (!r || !r.ok) return null;
+    const j = await r.json();
+    if (j.thumbnail_width && j.thumbnail_height) return {w:j.thumbnail_width, h:j.thumbnail_height};
+    if (j.width && j.height) return {w:j.width, h:j.height};
+  } catch(e) {}
+  return null;
+}
+document.getElementById('fillPSBtn').addEventListener('click', async () => {
+  const PS_COL = getPSCol();
+  const rows = data.filter(r => r.link);
+  if (!rows.length) { toast('No rows with links.'); return; }
+  toast('\u{21ec}\u{21CC} Filling P/S\u2026 0/' + rows.length, 10000);
+  let done = 0, changed = 0;
+  for (const row of rows) {
+    const link = row.link || '';
+    const isVid = isVideoRow(row);
+    let ps = '';
+    if (/youtube\.com\/shorts\//i.test(link)) {
+      ps = '1';
+    } else if (/youtu\.be|youtube\.com/i.test(link)) {
+      const dims = await getOEmbedDims(link);
+      if (dims) ps = dims.h > dims.w ? '1' : '0';
+    } else if (/vimeo\.com/i.test(link)) {
+      const dims = await getOEmbedDims(link);
+      if (dims) ps = dims.h > dims.w ? '1' : '0';
+    } else if (!isVid) {
+      const dims = await getImageDims(link);
+      if (dims) ps = dims.h > dims.w ? '1' : '0';
+    }
+    if (ps === '') ps = 'X'; // couldn't determine — mark as unknown
+    if (String(row[PS_COL]||'') !== ps) { row[PS_COL] = ps; changed++; }
+    done++;
+    if (done % 3 === 0 || done === rows.length)
+      toast('Filling P/S\u2026 '+done+'/'+rows.length+' ('+changed+' changed)', 10000);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  save(); render();
+  toast('\u2713 Fill P/S done: '+changed+' updated of '+done+'\n(col: '+PS_COL+')', 5000);
+});
+
+// Fill Mpix — megapixels for images, V for videos
+document.getElementById('fillMpixBtn').addEventListener('click', async () => {
+  const rows = data.filter(r => r.link);
+  if (!rows.length) { toast('No rows with links.'); return; }
+  toast('📐 Filling Mpix… 0/' + rows.length, 10000);
+  let done = 0, changed = 0;
+  for (const row of rows) {
+    const link = row.link || '';
+    const isVid = isVideoRow(row);
+    let mpix = '';
+    if (isVid) {
+      mpix = 'V';
+    } else {
+      const dims = await getImageDims(link);
+      if (dims && dims.w > 0 && dims.h > 0) {
+        const mp = (dims.w * dims.h) / 1_000_000;
+        mpix = mp >= 0.1 ? mp.toFixed(1) : mp.toFixed(2);
+      } else {
+        mpix = 'X';
+      }
+    }
+    if (String(row.MPix||'') !== mpix) { row.MPix = mpix; changed++; }
+    done++;
+    if (done % 3 === 0 || done === rows.length)
+      toast('📐 Filling Mpix… '+done+'/'+rows.length+' ('+changed+' changed)', 10000);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  save(); render();
+  toast('✓ Fill Mpix done: '+changed+' updated of '+done+' checked', 4000);
+});
+
+// Delete Checked Rows button
+document.getElementById('deleteCheckedBtn').addEventListener('click', () => {
+  if (checkedRows.size === 0) { toast('No rows checked — use checkboxes to select rows', 1800); return; }
+  deleteChecked();
+});
+
+// (zip0128) Delete UID range — bulk-delete rows whose UID falls in a
+// numeric range, inclusive. Designed for purging batch-imported rows
+// (BA=1) where you've decided you don't want any of them.
+//
+// Only numeric UIDs participate. Legacy alphanumeric UIDs ("T123...") are
+// ignored regardless of the range — to delete those, use Reassign UIDs
+// first to renumber everything to plain integers.
+document.getElementById('delUIDRangeBtn').addEventListener('click', () => {
+  const inp = prompt(
+    'Delete UID range (inclusive). Enter two numbers separated by - or :\n' +
+    'Examples: "528-332"  or  "100:200"  or  just "456" for one row.\n\n' +
+    'Order does not matter; smaller is treated as the lower bound.\n' +
+    'Only numeric UIDs are eligible — alphanumeric UIDs are ignored.',
+    ''
+  );
+  if (!inp) return;
+  const m = inp.match(/^\s*(\d+)\s*(?:[-:,\s]+\s*(\d+))?\s*$/);
+  if (!m) {
+    toast('Could not parse "' + inp + '"\nUse e.g. 528-332 or 100:200', 3000);
+    return;
+  }
+  const a = parseInt(m[1], 10);
+  const b = m[2] ? parseInt(m[2], 10) : a;
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+
+  // Find matching data indices
+  const matches = [];
+  data.forEach((r, di) => {
+    if (!r) return;
+    const uid = r.UID;
+    if (uid === undefined || uid === null) return;
+    const n = parseInt(String(uid), 10);
+    // Only numeric UIDs that round-trip (reject "1L" etc.)
+    if (isNaN(n) || String(n) !== String(uid)) return;
+    if (n >= lo && n <= hi) matches.push(di);
+  });
+
+  if (!matches.length) {
+    toast('No rows have a numeric UID in [' + lo + '..' + hi + '].', 2500);
+    return;
+  }
+
+  // Show preview of first/last few so user can confirm
+  const sample = matches.slice(0, 5).map(di => {
+    const r = data[di];
+    const t = r.VidTitle || r.link || '(no title)';
+    return '   UID ' + r.UID + ': ' + (t.length > 50 ? t.slice(0, 47) + '...' : t);
+  }).join('\n');
+  const more = matches.length > 5 ? '\n   …and ' + (matches.length - 5) + ' more' : '';
+
+  if (!confirm(
+    'Delete ' + matches.length + ' row(s) with UID in [' + lo + '..' + hi + ']?\n\n'
+    + sample + more + '\n\n'
+    + 'This cannot be undone.'
+  )) return;
+
+  // Delete in reverse data-order so splice indices stay valid
+  matches.sort((x, y) => y - x).forEach(di => {
+    data.splice(di, 1);
+    // Adjust checkedRows indices
+    const nc = new Set();
+    checkedRows.forEach(i => {
+      if (i < di) nc.add(i);
+      else if (i > di) nc.add(i - 1);
+    });
+    checkedRows = nc;
+  });
+
+  save();
+  buildSort();
+  render();
+  toast('✓ Deleted ' + matches.length + ' row(s) [' + lo + '..' + hi + ']', 2500);
+});
+
+// Mark for Grid
+let _markGridMode = 'top'; // 'top' | 'focused' | 'random'
+
+function markGridMenuOpen() {
+  const menu = document.getElementById('markGridMenu');
+  const isOpen = menu.style.display !== 'none';
+  menu.style.display = isOpen ? 'none' : 'block';
+}
+function markGridMenuClose() {
+  document.getElementById('markGridMenu').style.display = 'none';
+}
+function markGridSetMode(mode) {
+  _markGridMode = mode;
+  document.querySelectorAll('.mgitem').forEach(el => {
+    el.classList.toggle('active', el.dataset.mode === mode);
+  });
+  markGridMenuClose();
+}
+
+document.getElementById('markGridArrow').addEventListener('click', e => { e.stopPropagation(); markGridMenuOpen(); });
+document.getElementById('markGridBtn').addEventListener('click', e => { e.stopPropagation(); runMarkGrid(); });
+document.querySelectorAll('.mgitem').forEach(el => {
+  el.addEventListener('click', e => { e.stopPropagation(); markGridSetMode(el.dataset.mode); runMarkGrid(); });
+});
+document.addEventListener('pointerdown', e => {
+  const wrap = document.getElementById('markGridWrap');
+  if (wrap && !wrap.contains(e.target)) markGridMenuClose();
+}, true);
+
+// ── (zip0151) Housekeeping dropdown wiring ─────────────────────────────────
+// The 4 legacy buttons (Fill P/S, Fill Mpix, Fix vRange, Calc Lengths) are
+// hidden in the toolbar but still present in the DOM. Their .click() handlers
+// are bound elsewhere in this file (search for fillPSBtn/fillMpixBtn/etc.
+// addEventListener). Each menu item just dispatches that click — keeps the
+// handler logic in one place.
+function housekeepingMenuOpen() {
+  const menu = document.getElementById('housekeepingMenu');
+  menu.style.display = (menu.style.display === 'none' ? 'block' : 'none');
+}
+function housekeepingMenuClose() {
+  const menu = document.getElementById('housekeepingMenu');
+  if (menu) menu.style.display = 'none';
+}
+document.getElementById('housekeepingBtn').addEventListener('click', e => {
+  e.stopPropagation(); housekeepingMenuOpen();
+});
+document.addEventListener('pointerdown', e => {
+  const wrap = document.getElementById('housekeepingWrap');
+  if (wrap && !wrap.contains(e.target)) housekeepingMenuClose();
+}, true);
+document.querySelectorAll('.hkitem').forEach(el => {
+  // Hover highlight (since these aren't <button>s)
+  el.addEventListener('mouseenter', () => { el.style.background = 'rgba(80,80,180,0.4)'; });
+  el.addEventListener('mouseleave', () => { el.style.background = ''; });
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    const act = el.dataset.act;
+    housekeepingMenuClose();
+    // (zip0151) toast() shows balloon — most legacy handlers already toast
+    // their own results. We add a "starting" balloon here for the heavier
+    // operations so the user knows the click registered.
+    if (act === 'fillps') {
+      toast('🧹 Fill P/S — scanning rows for orientation…', 1800);
+      document.getElementById('fillPSBtn').click();
+    } else if (act === 'fillmpix') {
+      toast('🧹 Fill Mpix — measuring images…', 1800);
+      document.getElementById('fillMpixBtn').click();
+    } else if (act === 'fixvrange') {
+      toast('🧹 Fix vRange — sorting segments…', 1500);
+      document.getElementById('fixVRangeBtn').click();
+    } else if (act === 'calclengths') {
+      toast('🧹 Calc Lengths — computing durations…', 1500);
+      document.getElementById('calcLengthsBtn').click();
+    } else if (act === 'cleanmute') {
+      housekeepingCleanMute();
+    }
+  });
+});
+
+// (zip0151) Clean Mute Column: for each row, if it's NOT a video link,
+// blank the Mute field; if it IS a video, leave Mute unchanged. This
+// keeps the column as a video-only attribute and removes spurious
+// values that may have been set by past auto-fills or imports.
+function housekeepingCleanMute() {
+  let blanked = 0, videos = 0, alreadyBlank = 0;
+  data.forEach(r => {
+    if (!r) return;
+    const link = r.link || '';
+    const isVid =
+      (window.isYouTubeLink && window.isYouTubeLink(link)) ||
+      (window.isVimeoLink   && window.isVimeoLink(link));
+    if (isVid) {
+      videos++;
+    } else {
+      if (r.Mute === undefined || r.Mute === null || r.Mute === '') {
+        alreadyBlank++;
+      } else {
+        r.Mute = '';
+        blanked++;
+      }
+    }
+  });
+  if (blanked) save();
+  // Refresh the table so users see the column update
+  if (window._salTab) {
+    try { window._salTab.replaceData(data); } catch (_) {}
+  }
+  toast(
+    '✓ Clean Mute Column complete\n'
+    + '   ' + blanked + ' non-video row(s) blanked\n'
+    + '   ' + videos + ' video row(s) preserved\n'
+    + '   ' + alreadyBlank + ' already blank',
+    4500
+  );
+}
+
+function runMarkGrid() {
+  // (zip0153) Fill the live grid size (2-5). Was hardcoded 5×5 / 25 cells.
+  // Cell labels still use the 1a/1b/2a... scheme, just constrained to the
+  // top-left _gridGsize × _gridGsize square (so a 2×2 fills 1a/1b/2a/2b).
+  const gsize = _gridGsize;
+  const cap = gsize * gsize;
+  const ALL = [];
+  for (let r=1; r<=gsize; r++) for (let ci=0; ci<gsize; ci++) ALL.push(r+'abcde'.charAt(ci));
+
+  // Collect visible rows (respecting sort + filter)
+  const visibleDI = [];
+  for (let vi = 0; vi < data.length; vi++) {
+    const di = vr(vi);
+    if (rowMatchesFilter(data[di]))
+      visibleDI.push(di);
+  }
+  if (!visibleDI.length) { toast('No visible rows to assign.', 1500); return; }
+
+  // Clear ALL cell assignments first
+  data.forEach(r => { r.cell = ''; });
+
+  let toAssign = [];
+  if (_markGridMode === 'top') {
+    toAssign = visibleDI.slice(0, cap);
+  } else if (_markGridMode === 'focused') {
+    if (focus === null) { toast('No row focused — click a row first', 1800); data.forEach(r=>{r.cell='';}); save(); render(); return; }
+    const focusDI = vr(focus.r);
+    const startIdx = visibleDI.indexOf(focusDI);
+    if (startIdx < 0) { toast('Focused row not in visible set', 1500); save(); render(); return; }
+    toAssign = visibleDI.slice(startIdx, startIdx + cap);
+  } else if (_markGridMode === 'random') {
+    // Fisher-Yates shuffle, take up to `cap`
+    const pool = visibleDI.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    toAssign = pool.slice(0, cap);
+    // Sort assigned by original visible order for grid display
+    toAssign.sort((a, b) => visibleDI.indexOf(a) - visibleDI.indexOf(b));
+  }
+
+  toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
+  save(); render();
+  toast('✓ Assigned ' + toAssign.length + ' rows to '+gsize+'×'+gsize+' grid cells'
+    + (visibleDI.length > cap ? '\n(' + (visibleDI.length - cap) + ' rows beyond ' + cap + '-cell grid)' : ''),
+    2000);
+}
+
+// Fix vRange/vComment — sort segments earliest to latest, keep VidComment mapped
+document.getElementById('fixVRangeBtn').addEventListener('click', () => {
+  let fixedCount = 0;
+  const now = isoNow();
+  
+  data.forEach(row => {
+    if (!row.VidRange || row.VidRange === 'i') return;
+    
+    // Parse segments from VidRange
+    const segs = window.parseVideoAsset ? window.parseVideoAsset(row.VidRange) : null;
+    if (!segs || segs.length < 2) return; // Nothing to sort if < 2 segments
+    
+    // Parse VidComment (pipe-separated, same count as segments)
+    const comments = (row.VidComment || '').split('|').map(s => s.trim());
+    
+    // Create paired array for sorting
+    const paired = segs.map((seg, i) => ({
+      start: seg.start,
+      dur: seg.dur,
+      comment: comments[i] || ''
+    }));
+    
+    // Check if already sorted
+    let needsSort = false;
+    for (let i = 1; i < paired.length; i++) {
+      if (paired[i].start < paired[i-1].start) { needsSort = true; break; }
+    }
+    if (!needsSort) return;
+    
+    // Sort by start time
+    paired.sort((a, b) => a.start - b.start);
+    
+    // Reconstruct VidRange and VidComment
+    row.VidRange = window.serializeSegments
+      ? window.serializeSegments(paired)
+      : paired.map(p => p.start + ' ' + p.dur).join(', ');
+    row.VidComment = paired.map(p => p.comment).join('|');
+    row.DateModified = now;
+    fixedCount++;
+  });
+  
+  if (fixedCount > 0) {
+    save(); render();
+    toast('✓ Fixed ' + fixedCount + ' rows (sorted segments)');
+  } else {
+    toast('All VidRange values already sorted');
+  }
+});
+
+// Calc Lengths — calculate segLength (selected clips) for video rows with segments.
+// vidLength (total video duration) cannot be computed from segments alone —
+// it is auto-saved by the Video Editor when the player reports getDuration().
+document.getElementById('calcLengthsBtn').addEventListener('click', () => {
+  let updatedCount = 0;
+  const now = isoNow();
+
+  // mm:ss formatter
+  const fmtTime = (secs) => {
+    if (!secs || isNaN(secs) || secs <= 0) return '';
+    const m = Math.floor(secs / 60);
+    const s = Math.round(secs % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  };
+
+  data.forEach(row => {
+    const link = row.link || '';
+    const isVid = isVideoRow(row);
+    if (!isVid) return;
+
+    const segs = window.parseVideoAsset ? window.parseVideoAsset(row.VidRange) : null;
+
+    // segLength = total selected clip duration (sum of segment durs)
+    // Only meaningful when segments are defined
+    const segTotal = segs ? segs.reduce((sum, seg) => sum + (seg.dur || 0), 0) : 0;
+    const segLengthStr = segs && segTotal > 0 ? fmtTime(segTotal) : (row.segLength || '');
+
+    // vidLength: total video duration — only the player knows this.
+    // Do NOT overwrite an existing value; leave blank if unknown.
+    // (VE auto-saves vidLength when it loads the video.)
+    const vidLengthStr = row.vidLength || '';
+
+    if (row.segLength !== segLengthStr) {
+      row.segLength = segLengthStr;
+      row.DateModified = now;
+      updatedCount++;
+    }
+  });
+
+  if (updatedCount > 0) {
+    save(); render();
+    toast('✓ Updated segLength for ' + updatedCount + ' rows\n(vidLength auto-fills when you open a video in E)', 3000);
+  } else {
+    toast('segLength already up to date\n(Open videos in E to fill vidLength)', 2500);
+  }
+});
+
+// (zip0124) Reassign UIDs — replaces all UIDs with sequential 1..N
+// Builds an old→new UID map, updates each row's UID, then walks every
+// grid config in c.json and rewrites cell values that match an old UID.
+//
+// IMPORTANT: c.json is loaded fresh from disk inside this handler. The
+// in-memory _cData is only populated after the user has visited the C
+// screen, and previously this handler used that empty _cData and ended
+// up overwriting c.json with nothing. Now we always read disk first.
+//
+// Safety: confirms with the user first (this is destructive — UID-keyed
+// references in any external tool will go stale). Only intended for
+// pre-production cleanup.
+document.getElementById('reassignUIDBtn').addEventListener('click', async () => {
+  if (!data || !data.length) {
+    toast('No rows to reassign.', 1500);
+    return;
+  }
+
+  // Load c.json fresh from disk so we don't trash it with stale in-memory state.
+  let diskMeta = null, diskRows = [], cjsonReadOK = false;
+  const dir = await _getDir();
+  if (dir) {
+    try {
+      const fh = await dir.getFileHandle('c.json');
+      const parsed = JSON.parse(await (await fh.getFile()).text());
+      if (Array.isArray(parsed) && parsed[0]?._salMeta) {
+        diskMeta = parsed[0]; diskRows = parsed.slice(1);
+      } else if (Array.isArray(parsed)) {
+        diskRows = parsed;
+      } else if (parsed) {
+        diskRows = [parsed];
+      }
+      cjsonReadOK = true;
+    } catch(e) {
+      // c.json may not exist yet — that's fine, we just won't touch it
+    }
+  }
+
+  const cfgCount = diskRows.filter(c => c && !c._salMeta).length;
+  const ok = confirm(
+    'Reassign UIDs?\n\n' +
+    '• ' + data.length + ' rows will be renumbered to 1, 2, 3, …\n' +
+    '• ' + cfgCount + ' grid config(s) in c.json will be updated to match.\n\n' +
+    'This is destructive. Old UIDs are gone after this action.\n' +
+    'Best done before production. Continue?'
+  );
+  if (!ok) return;
+
+  // Build old→new UID map (current row order in `data`)
+  const map = new Map();
+  data.forEach((row, i) => {
+    const oldUID = row.UID !== undefined && row.UID !== null && row.UID !== ''
+      ? String(row.UID) : null;
+    const newUID = String(i + 1);
+    if (oldUID !== null) map.set(oldUID, newUID);
+  });
+
+  // Update each row's UID
+  data.forEach((row, i) => { row.UID = String(i + 1); });
+
+  // Walk grid configs from disk and rewrite cell values
+  let cfgUpdated = 0, cellUpdated = 0;
+  diskRows.forEach(cfg => {
+    if (!cfg || cfg._salMeta) return;
+    let touched = false;
+    Object.keys(cfg).forEach(k => {
+      // Cell keys are like "1a", "2b", … (one digit + one letter)
+      if (!/^[1-5][a-e]$/.test(k)) return;
+      const v = cfg[k];
+      if (v === undefined || v === null || v === '') return;
+      const sv = String(v);
+      if (map.has(sv)) {
+        cfg[k] = map.get(sv);
+        touched = true;
+        cellUpdated++;
+      }
+    });
+    if (touched) {
+      cfgUpdated++;
+      cfg.DateModified = isoNow();
+    }
+  });
+
+  // Update last-record memory if the previous UID was tracked
+  if (window._lastUID && map.has(String(window._lastUID))) {
+    window.setLastUID(map.get(String(window._lastUID)));
+  }
+
+  // Save ml.json
+  if (typeof save === 'function') save();
+  if (typeof render === 'function') render();
+
+  // Save c.json back to disk if we read it successfully and there's a folder
+  let cjsonSaved = false;
+  if (cjsonReadOK && dir && diskRows.length) {
+    try {
+      const out = diskMeta ? [diskMeta].concat(diskRows) : diskRows;
+      cjsonSaved = await writeFileToDisk('c.json', out);
+      // Sync in-memory _cData if user has C open
+      if (cjsonSaved && typeof _cData !== 'undefined') {
+        _cData = diskRows;
+        if (diskMeta && typeof _cMeta !== 'undefined') _cMeta = diskMeta;
+      }
+    } catch(e) { console.warn('c.json save failed:', e); }
+  }
+
+  toast(
+    '✓ Reassigned UIDs: ' + data.length + ' rows\n'
+    + '  ' + cellUpdated + ' cell value(s) updated across ' + cfgUpdated + ' grid config(s)\n'
+    + (cjsonSaved
+        ? '  c.json saved'
+        : (cfgCount > 0
+            ? '  c.json NOT auto-saved (no project folder set)'
+            : (cjsonReadOK
+                ? '  c.json had no grid configs to update'
+                : '  c.json not found on disk (skipped)'))),
+    5000
+  );
+});
+
+document.getElementById('filterBtn').addEventListener('click', () => {
+  if (focus === null) return;
+  const vc = visCols(), col = vc[focus.c];
+  if (!col) return;
+  const val = String(data[vr(focus.r)]?.[col] ?? '');
+  rowFilter = {col, val};
+  focus = null; pending = null;
+  render();
+});
+document.getElementById('clearFilterBtn').addEventListener('click', () => {
+  rowFilter = null; render();
+});
+
+// Reusable autocomplete
+// getChoices(): returns array of strings
+// container: the element to append the dropdown to (defaults to document.body)
+function addAutocomplete(inp, getChoices, container) {
+  if (!inp) return;
+  let dd = null;
+  let ddIdx = -1;
+
+  function removeDd() {
+    if (dd) { dd.remove(); dd = null; ddIdx = -1; }
+  }
+
+  function showDd() {
+    removeDd();
+    const q = inp.value.trim().toLowerCase();
+    const choices = getChoices();
+    const matches = q
+      ? choices.filter(c => { const lc=c.toLowerCase(); return (_dictMatchMode==='start'?lc.startsWith(q):lc.includes(q)) && lc!==q; })
+      : choices.filter(c => c);
+    if (!matches.length) return;
+
+    dd = document.createElement('div');
+    dd.style.cssText = 'position:fixed;z-index:999999;background:#14142a;border:1px solid #4af;'
+      + 'border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;'
+      + 'font-family:monospace;font-size:12px;box-shadow:0 4px 18px rgba(0,0,0,0.9);min-width:180px;';
+
+    matches.slice(0, 30).forEach((val, i) => {
+      const item = document.createElement('div');
+      item.textContent = val;
+      item.style.cssText = 'padding:6px 10px;cursor:pointer;color:#ccc;border-bottom:1px solid #1a1a2e;white-space:nowrap;';
+      item.addEventListener('mouseenter', () => setDdIdx(i));
+      item.addEventListener('mouseleave', () => { item.style.background=''; item.style.color='#ccc'; });
+      item.addEventListener('mousedown', e => { e.preventDefault(); selectDd(val); });
+      dd.appendChild(item);
+    });
+
+    // Position below the input
+    const r = inp.getBoundingClientRect();
+    dd.style.left  = r.left + 'px';
+    dd.style.top   = r.bottom + 'px';
+    dd.style.width = Math.max(r.width, 180) + 'px';
+    document.body.appendChild(dd);
+    ddIdx = -1;
+  }
+
+  function setDdIdx(i) {
+    ddIdx = i;
+    if (!dd) return;
+    [...dd.children].forEach((item, j) => {
+      item.style.background = j === i ? '#1a3a6a' : '';
+      item.style.color      = j === i ? '#fff'    : '#ccc';
+    });
+  }
+
+  function selectDd(val) {
+    inp.value = val;
+    inp.dispatchEvent(new Event('input'));
+    removeDd();
+    inp.focus();
+  }
+
+  inp.addEventListener('input',   showDd);
+  inp.addEventListener('focus',   showDd);
+  inp.addEventListener('blur',    () => setTimeout(removeDd, 150));
+  inp.addEventListener('keydown', e => {
+    if (!dd) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault(); setDdIdx(Math.min(ddIdx+1, dd.children.length-1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); setDdIdx(Math.max(ddIdx-1, 0));
+    } else if (e.key === 'Enter' && ddIdx >= 0) {
+      e.preventDefault(); e.stopPropagation();
+      selectDd(dd.children[ddIdx].textContent);
+    } else if (e.key === 'Escape') {
+      removeDd();
+    }
+  });
+}
+
+// Wire autocomplete to Browse fields (after DOM ready)
+function updateDictBtn() {
+  const btn = document.getElementById('dictModeBtn');
+  if (!btn) return;
+  btn.textContent = 'Lookup: ' + _dictMatchMode;
+  btn.style.borderColor = _dictMatchMode === 'start' ? '#fa8' : '#4af';
+  btn.style.color       = _dictMatchMode === 'start' ? '#fa8' : '#8ef';
+}
+
+function setupBrowseAutocomplete() {
+  const getCol = col => [...new Set(data.map(r => String(r[col]||'').trim()).filter(Boolean))].sort();
+  const getT2  = () => {
+    const t1 = (document.getElementById('brt1') || {}).value || '';
+    const seed = T2_BY_T1[t1] || [];
+    const fromData = getCol('t2');
+    return [...new Set([...seed, ...fromData.filter(v => !seed.includes(v))])];
+  };
+  // Direct key handler on t1 select: H/A/L/O sets value immediately + advances to t2
+  const _brt1 = document.getElementById('brt1');
+  if (_brt1) {
+    _brt1.addEventListener('keydown', e => {
+      const k = e.key.toUpperCase();
+      if (k==='H'||k==='A'||k==='L'||k==='O') {
+        e.preventDefault();
+        _brt1.value = k;
+        _brt1.dispatchEvent(new Event('change'));
+        document.getElementById('brt2').dispatchEvent(new Event('input'));
+        setTimeout(() => brFocusField('brt2'), 20);
+      }
+    });
+  }
+
+  addAutocomplete(document.getElementById('brn1'),     () => getCol('n1'));
+  addAutocomplete(document.getElementById('brn2'),     () => getCol('n2'));
+  addAutocomplete(document.getElementById('brn3'),     () => getCol('n3'));
+  addAutocomplete(document.getElementById('brt2'),     getT2);
+  addAutocomplete(document.getElementById('brComment'),() => getCol('comment'));
+}
+// video.js references global `linksData` and `window.saveData`
+Object.defineProperty(window, 'linksData', {
+  get: () => data, set: v => { data = v; }, configurable: true
+});
+window.saveData = () => save();
+
+// Navigation helpers needed by video.js for E up/down arrows (visible-row nav)
+// (zip0162) sortedIdx is now declared with var at top of file, so window.sortedIdx
+// is automatically live. The previous Object.defineProperty getter is no longer
+// needed (and would throw on a var-created non-configurable window property).
+window.vr = vr;
+window.isVideoRow = isVideoRow;
+window.toast = toast;
+
+// Browse Filtered (Annotate panel)
+let _brRows   = [];
+let _brIdx    = 0;
+let _dictMatchMode = 'anywhere'; // 'anywhere' | 'start'
+
+function brGetVisibleRows() {
+  const result = [];
+  for (let vi = 0; vi < data.length; vi++) {
+    const di = vr(vi);
+    if (rowMatchesFilter(data[di]))
+      result.push(di);
+  }
+  return result;
+}
+
+function brOpen(startDi) {
+  _brRows = brGetVisibleRows();
+  if (!_brRows.length) { toast('No visible rows to annotate.\nApply a filter or ensure data is loaded.'); return; }
+  _brIdx = 0;
+  // Start from focused row or passed di
+  if (startDi !== undefined) {
+    const fi = _brRows.indexOf(startDi);
+    if (fi >= 0) _brIdx = fi;
+  } else if (focus !== null) {
+    const di = vr(focus.r);
+    const fi = _brRows.indexOf(di);
+    if (fi >= 0) _brIdx = fi;
+  }
+  document.getElementById('browseOverlay').style.display = 'flex';
+  document.getElementById('wrap').style.marginRight = '340px'; // shrink table area
+  brShow(_brIdx);
+  requestAnimationFrame(() => {
+    const chipInput = document.querySelector('#brTagChips input');
+    if (chipInput) chipInput.focus();
+    else {
+      const el = document.getElementById('brt1');
+      if (el) el.focus();
+    }
+  });
+}
+
+// Open Annotate for a specific row (used from Grid and tag-cell dblclick)
+function openBrowseForRow(row) {
+  const di = data.indexOf(row);
+  if (di < 0) { toast('Row not found'); return; }
+  _brRows = [di];
+  _brIdx = 0;
+  document.getElementById('browseOverlay').style.display = 'flex';
+  brShow(0);
+  requestAnimationFrame(() => {
+    // Focus the tag chip input's inner <input>, falling back to legacy brt1
+    const chipInput = document.querySelector('#brTagChips input');
+    if (chipInput) chipInput.focus();
+    else {
+      const el = document.getElementById('brt1');
+      if (el) el.focus();
+    }
+  });
+}
+window.openBrowseForRow = openBrowseForRow;
+
+function brClose() {
+  document.getElementById('browseOverlay').style.display = 'none';
+  document.getElementById('wrap').style.marginRight = ''; // restore full width
+  brClearThumb();
+  render(); // ensure table reflects saves
+  if (_cameFromGrid) {
+    _cameFromGrid = false;
+    gridShow();
+  }
+}
+
+function brClearThumb() {
+  const inner = document.getElementById('brThumbInner');
+  if (inner) inner.innerHTML = '';
+  const area = document.getElementById('brThumbArea');
+  if (area) area.style.display = 'none';
+}
+
+// Legacy alias used by video editor close path
+function brClearMedia() { brClearThumb(); }
+
+function brBuildThumb(row) {
+  const area  = document.getElementById('brThumbArea');
+  const inner = document.getElementById('brThumbInner');
+  if (!area || !inner) return;
+  inner.innerHTML = '';
+  const isVid = isVideoRow(row);
+  const link = row.link || '';
+
+  if (isVid && link) {
+    area.style.display = 'block';
+    const ytId = window.getYouTubeId ? window.getYouTubeId(link)
+      : (link.match(/(?:youtu\.be\/|shorts\/|[?&]v=)([A-Za-z0-9_-]{11})/)?.[1] || '');
+    if (ytId) {
+      // YouTube / Shorts — instant thumbnail
+      const img = document.createElement('img');
+      img.src = 'https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg';
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+      const badge = document.createElement('div');
+      badge.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;';
+      badge.innerHTML = '<div style="background:rgba(0,0,0,0.55);border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;">▶</div>';
+      inner.style.position = 'relative';
+      inner.appendChild(img);
+      inner.appendChild(badge);
+    } else if (/vimeo\.com/i.test(link)) {
+      // Vimeo — check cache, fetch if needed
+      const cached = _vimeoThumbCache[link];
+      if (cached && cached.state === 'ok') {
+        const img = document.createElement('img');
+        img.src = cached.src;
+        img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+        const badge = document.createElement('div');
+        badge.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;';
+        badge.innerHTML = '<div style="background:rgba(0,0,0,0.55);border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;">▶</div>';
+        inner.style.position = 'relative';
+        inner.appendChild(img); inner.appendChild(badge);
+      } else {
+        inner.innerHTML = '<div style="color:#6af;font-size:11px;padding:10px;text-align:center;">⏳ Loading Vimeo thumb…<br><span style="color:#445;font-size:10px;">' + escH(link.slice(0,50)) + '</span></div>';
+        fetchVimeoThumb(link, src => {
+          // Re-run when ready
+          brBuildThumb(row);
+        });
+      }
+    } else {
+      // Other video
+      inner.innerHTML = '<div style="color:#8ef;font-size:11px;padding:10px;text-align:center;">▶ Video<br><span style="color:#556;font-size:10px;word-break:break-all;">'+escH(link.slice(0,60))+'</span></div>';
+    }
+  } else if (!isVid && link) {
+    area.style.display = 'block';
+    const img = document.createElement('img');
+    img.src = link;
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;';
+    img.onerror = () => { inner.innerHTML = '<div style="color:#f88;font-size:10px;padding:8px;word-break:break-all;">Image failed:<br>'+escH(link)+'</div>'; };
+    inner.appendChild(img);
+  } else {
+    area.style.display = 'none';
+  }
+}
+
+function brShow(idx) {
+  if (idx < 0 || idx >= _brRows.length) return;
+  _brIdx = idx;
+  const di  = _brRows[idx];
+  const row = data[di];
+
+  // (zip0122) Update last-record memory
+  if (row && row.UID && typeof window.setLastUID === 'function') {
+    window.setLastUID(row.UID);
+  }
+
+  // Highlight this row in the table
+  focus = { r: sortedIdx ? sortedIdx.indexOf(di) : di, c: 0 };
+  // Scroll table row into view
+  const tableRow = document.querySelector('#tbody tr:nth-child(' + (sortedIdx ? sortedIdx.indexOf(di)+1 : di+1) + ')');
+  if (tableRow) tableRow.scrollIntoView({ block: 'nearest' });
+  render();
+
+  // Counter
+  document.getElementById('brCounter').textContent = (idx+1) + ' / ' + _brRows.length;
+
+  // Row info
+  const cell  = row.cell || '—';
+  const isVid = isVideoRow(row);
+  document.getElementById('brRowInfo').textContent =
+    'Row '+(di+1)+'  ·  cell: '+cell+'  ·  '+(isVid ? '▶ vid' : '🖼 img');
+
+  // VidRange info (hidden if not video)
+  const vri = document.getElementById('brVidRangeInfo');
+  if (isVid && row.VidRange) {
+    vri.textContent = 'VidRange: ' + row.VidRange;
+    vri.style.display = 'block';
+  } else {
+    vri.style.display = 'none';
+  }
+
+  // Load field values
+  document.getElementById('brt1').value      = row.t1      || '';
+  document.getElementById('brt2').value      = row.t2      || '';
+  document.getElementById('brn1').value      = row.n1      || row.cname || '';
+  document.getElementById('brn2').value      = row.n2      || row.sname || '';
+  document.getElementById('brn3').value      = row.n3      || '';
+  document.getElementById('brComment').value = row.comment || '';
+  document.getElementById('brVal').value     = row.Val     || '';
+
+  // Mount / remount the tag chip input for this row
+  if (window.mountTagChipInput && window.tagsLib) {
+    const chipHost = document.getElementById('brTagChips');
+    if (chipHost) {
+      if (!Array.isArray(row.tags)) row.tags = [];
+      window.mountTagChipInput({
+        container: chipHost,
+        getIds: () => row.tags,
+        setIds: (next) => {
+          row.tags = next;
+          row.DateModified = isoNow();
+          save();
+          if (typeof render === 'function') render();
+          brUpdateAncestors(di);
+        },
+        placeholder: 'add tag… (type species, common name, topic, technique)'
+      });
+      brUpdateAncestors(di);
+    }
+  }
+
+  // Thumbnail
+  brBuildThumb(row);
+
+  // Wire up LIVE update on every field change for this row
+  brWireLiveUpdate(di);
+}
+
+// Show derived ancestor chain below the tag input as a hint of what's implied
+function brUpdateAncestors(di) {
+  const el = document.getElementById('brTagAncestors');
+  if (!el || !window.tagsLib) return;
+  const row = data[di];
+  const ids = Array.isArray(row && row.tags) ? row.tags : [];
+  if (!ids.length) { el.innerHTML = ''; return; }
+
+  // 1) Ancestor chain from explicit tags
+  const eff = window.tagsLib.expand(ids);
+  ids.forEach(id => eff.delete(id));
+  const ancestorLabels = [...eff].map(id => window.tagsLib.labelFor(id));
+
+  // 2) Orphan tags on this record (no parent → no ancestor chain)
+  // Show inline "set parent" affordance so hierarchy can be created at
+  // annotation time, when the concept is fresh in the user's mind.
+  const orphans = ids.filter(id => {
+    const t = window.tagsLib.get(id);
+    if (!t) return false;
+    if (t.kind === 'root') return false;            // roots are intentionally rootless
+    return !t.parents || !t.parents.length;
+  });
+
+  let html = '';
+  if (ancestorLabels.length) {
+    html += '↑ implies: <span style="color:#7a8;">' + ancestorLabels.join(' · ') + '</span>';
+  }
+  if (orphans.length) {
+    if (html) html += '<br>';
+    const tagsLib = window.tagsLib;
+    const labels = orphans.map(id => '<a href="#" data-orphan-id="' + id + '" class="br-set-parent" style="color:#fc8;text-decoration:none;border-bottom:1px dotted #fc8;">' + tagsLib.labelFor(id) + '</a>').join(', ');
+    html += '<span style="color:#996;">⚠ no parent yet:</span> ' + labels
+      + ' <span style="color:#666;font-size:9px;">(click to set — gives this tag an ancestor so search/filter implies it)</span>';
+  }
+  el.innerHTML = html;
+
+  // Wire orphan click → tiny inline parent-picker
+  [...el.querySelectorAll('.br-set-parent')].forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      brOpenParentPicker(a.dataset.orphanId, di);
+    });
+  });
+}
+
+// Inline parent picker: floats below the orphan-link line and lets you pick
+// (or create) a single parent without leaving the Annotate panel.
+function brOpenParentPicker(tagId, di) {
+  // Close any existing picker
+  const existing = document.getElementById('brParentPicker');
+  if (existing) existing.remove();
+
+  const anchor = document.querySelector('.br-set-parent[data-orphan-id="' + tagId + '"]');
+  if (!anchor) return;
+
+  const t = window.tagsLib.get(tagId);
+  if (!t) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'brParentPicker';
+  wrap.style.cssText = 'margin:6px 0;padding:8px 10px;background:rgba(255,200,100,0.06);'
+    + 'border:1px solid #764;border-radius:5px;font-size:11px;';
+  wrap.innerHTML = '<div style="color:#fc8;margin-bottom:4px;">Set parent for <b>' + window.tagsLib.labelFor(tagId) + '</b>:</div>'
+    + '<div id="brpp-input"></div>'
+    + '<div style="color:#666;font-size:10px;margin-top:5px;">Type to search; Enter accepts. Pick a parent that makes sense — taxa and topic hierarchies both work. Esc cancels.</div>';
+
+  anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+
+  // Mount a single-select chip input
+  let pickedParent = null;
+  window.mountTagChipInput({
+    container: wrap.querySelector('#brpp-input'),
+    getIds: () => pickedParent ? [pickedParent] : [],
+    setIds: (next) => {
+      pickedParent = next.length ? next[next.length - 1] : null;
+      if (pickedParent) commitParent();
+    },
+    placeholder: 'parent tag…',
+    // Filter out the tag itself and its descendants (no cycles)
+    filter: (id) => {
+      if (id === tagId) return false;
+      const desc = window.tagsLib.descendants(tagId);
+      return !desc.has(id);
+    }
+  });
+
+  function commitParent() {
+    if (!pickedParent) return;
+    const r = window.tagsLib.updateTag(tagId, { parents: [pickedParent] });
+    if (r.ok) {
+      if (typeof toast === 'function') {
+        toast('✓ ' + window.tagsLib.labelFor(tagId) + ' → child of ' + window.tagsLib.labelFor(pickedParent), 1400);
+      }
+      wrap.remove();
+      brUpdateAncestors(di);
+      if (typeof render === 'function') render();
+    }
+  }
+
+  // Focus the input
+  setTimeout(() => {
+    const inp = wrap.querySelector('input');
+    if (inp) inp.focus();
+    const escHandler = (e) => {
+      if (e.key === 'Escape' && !document.querySelector('.tag-dd')) {
+        e.stopPropagation();
+        document.removeEventListener('keydown', escHandler, true);
+        wrap.remove();
+      }
+    };
+    document.addEventListener('keydown', escHandler, true);
+  }, 30);
+}
+
+// Wire live field updates → data[] → render() on every keystroke
+let _brLiveHandlers = []; // cleanup previous row's handlers
+function brWireLiveUpdate(di) {
+  // Remove previous handlers
+  _brLiveHandlers.forEach(({el, fn, evt}) => el.removeEventListener(evt, fn));
+  _brLiveHandlers = [];
+  const row = data[di];
+  if (!row) return;
+
+  function wire(id, col, trim) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const fn = () => {
+      const v = trim ? el.value.trim() : el.value;
+      if (String(row[col]||'') !== v) {
+        row[col] = v;
+        row.DateModified = isoNow();
+        // Live render: update just the affected cells without losing focus
+        brLiveRenderRow(di);
+      }
+    };
+    el.addEventListener('input', fn);
+    el.addEventListener('change', fn);
+    _brLiveHandlers.push({el, fn, evt:'input'});
+    _brLiveHandlers.push({el, fn, evt:'change'});
+  }
+
+  wire('brt1', 't1', true);
+  wire('brt2', 't2', true);
+  wire('brn1', 'n1', true);
+  wire('brn2', 'n2', true);
+  wire('brn3', 'n3', true);
+  wire('brComment', 'comment', false);
+  wire('brVal', 'Val', true);
+}
+
+// Re-render only the cells for a specific data row without destroying focus
+function brLiveRenderRow(di) {
+  const vc = visCols();
+  const vi = sortedIdx ? sortedIdx.indexOf(di) : di;
+  const trs = document.querySelectorAll('#tbody tr');
+  // Find the tr that corresponds to this vi
+  let tr = null;
+  trs.forEach(r => {
+    const firstTd = r.querySelector('td[data-vi]');
+    if (firstTd && parseInt(firstTd.getAttribute('data-vi')) === vi) tr = r;
+  });
+  if (!tr) return;
+  const row = data[di];
+  // Update each data td
+  tr.querySelectorAll('td[data-ci]').forEach(td => {
+    const ci = parseInt(td.getAttribute('data-ci'));
+    const col = vc[ci];
+    if (col === undefined) return;
+    if (td.classList.contains('editing')) return; // don't clobber inline edit
+    const val = row[col] !== undefined ? String(row[col]) : '';
+    td.textContent = val;
+    td.title = val;
+  });
+}
+
+function brSave() {
+  if (_brRows.length === 0) return;
+  const di  = _brRows[_brIdx];
+  const row = data[di];
+  const now = isoNow();
+  const t1  = document.getElementById('brt1').value.trim();
+  const t2  = document.getElementById('brt2').value.trim();
+  const n1  = document.getElementById('brn1').value.trim();
+  const n2  = document.getElementById('brn2').value.trim();
+  const n3  = document.getElementById('brn3').value.trim();
+  const com = document.getElementById('brComment').value;
+  const val = document.getElementById('brVal').value.trim();
+  let changed = false;
+  function setf(col, v) { if (String(row[col]||'') !== String(v)) { row[col] = v; changed = true; } }
+  setf('t1', t1); setf('t2', t2);
+  setf('n1', n1); setf('n2', n2); setf('n3', n3); setf('comment', com); setf('Val', val);
+  if (changed) {
+    row.DateModified = now;
+    save();
+    render();
+    toast('✓ Saved row '+(di+1), 1200);
+  }
+}
+
+// Wire Annotate buttons
+document.getElementById('browseBtn')?.addEventListener('click', brOpen);
+
+// ── LinkAdd: paste clipboard → one new row per non-empty line (zip0101) ──────
+// ── LinkAdd dropdown menu (zip0106) ──────────────────────────────────────────
+//
+// Pressing L (or clicking the toolbar button) opens a dropdown anchored to
+// the LinkAdd button. Two items:
+//   1. LinksBare in clipboard      — each line → one row, link only
+//   2. LinksSpecial (stub)         — placeholder for clipboard with
+//                                    additional info (titles etc.) to be
+//                                    parsed before adding to ml.json
+// First-letter shortcuts (B, S) work while the menu is open.
+// On successful add: first new row is selected, table re-sorted by DateAdded
+// desc so it's at top, then Annotate (A) is auto-triggered on it.
+
+// (zip0128) Smart clipboard import for W (and L, which is now an alias).
+// Detects the clipboard format and dispatches:
+//   Rule 1 (BARE LINKS): every non-empty line is a video or image URL,
+//                        no other text → add each as a new row.
+//   Rule 2 (CHANNEL CSV): first line starts with @ → treat as channel
+//                         export from a YouTube downloader. CSV lines that
+//                         follow get parsed; rows are added or updated.
+//   Otherwise: toast "Need rule or new clipboard".
+//
+// W is the canonical entry point; the L button calls the same function.
+
+// Read clipboard text once (shared by all paths). Falls back to prompt() if
+// the browser denies clipboard access.
+async function readClipboardOrPrompt(promptMsg) {
+  let txt = '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      txt = await navigator.clipboard.readText();
+    }
+  } catch (e) { /* fall through */ }
+  if (!txt) txt = prompt(promptMsg || 'Paste content:') || '';
+  return txt;
+}
+
+// Detect whether a single line looks like a media URL (video or image).
+// Used by Rule 1 to decide if the clipboard is "all-links, no text".
+function _looksLikeMediaUrl(s) {
+  if (!s) return false;
+  const t = s.trim();
+  if (!/^https?:\/\//i.test(t)) return false;
+  // Video platforms
+  if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return true;
+  // Image extensions
+  if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(t)) return true;
+  return false;
+}
+
+// (zip0166) Bare URL test — any http(s) URL, including non-media (article pages).
+function _looksLikeAnyUrl(s) {
+  if (!s) return false;
+  return /^https?:\/\/\S+$/i.test(s.trim());
+}
+
+// (zip0166) Classify a URL → 'video' | 'image' | 'web' | null
+// Used by W to route each line to the right importer.
+function _classifyUrl(s) {
+  if (!s) return null;
+  const t = s.trim();
+  if (!/^https?:\/\/\S+$/i.test(t)) return null;
+  if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return 'video';
+  if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(t)) return 'image';
+  return 'web';
+}
+
+// Single CSV row parser used by the channel-import path. Handles
+// "double-quoted" fields containing commas. No escaped quotes (YouTube
+// channel exports don't use them).
+function _parseCsvRow(line) {
+  const fields = [];
+  let i = 0, n = line.length;
+  while (i < n) {
+    while (i < n && (line[i] === ' ' || line[i] === ',')) i++;
+    if (i >= n) break;
+    if (line[i] === '"') {
+      i++;
+      let val = '';
+      while (i < n && line[i] !== '"') { val += line[i]; i++; }
+      if (i < n) i++; // skip closing quote
+      fields.push(val);
+    } else {
+      let val = '';
+      while (i < n && line[i] !== ',') { val += line[i]; i++; }
+      fields.push(val.trim());
+    }
+  }
+  return fields;
+}
+
+// Smart import: looks at clipboard, picks rule, runs it. This is what W and
+// L are wired to.
+async function wantLinks() {
+  const txt = await readClipboardOrPrompt(
+    'Paste either:\n' +
+    '  • One or more URLs (newline-separated) — videos, images, or web articles, OR\n' +
+    '  • A channel export with @channelname on line 1 and CSV rows below.'
+  );
+  if (!txt.trim()) { toast('Clipboard empty.', 1400); return; }
+
+  const lines = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if (!lines.length) { toast('No content found.', 1400); return; }
+
+  // Rule 2: first line is @channelname → channel CSV import
+  if (lines[0].startsWith('@')) {
+    return _importChannelCSV(lines);
+  }
+
+  // Rule 1: every line is a URL (any kind) → bare-links import.
+  // The bare-links importer now classifies each line as video/image/web
+  // and writes ltype + ftext for web URLs (zip0166).
+  if (lines.every(_looksLikeAnyUrl)) {
+    return _importBareLinks(lines);
+  }
+
+  // (zip0167) Rule 3: first line is NOT a URL → treat as pasted article
+  // text. Show a 3-option picker (w/s/a) for level of cleanup, then create
+  // a new row with ltype='w' and ftext=<cleaned HTML>.
+  if (!_looksLikeAnyUrl(lines[0])) {
+    return _showStripPicker(txt);
+  }
+
+  // Neither rule matches
+  const preview = lines.slice(0, 3).map(s => s.length > 60 ? s.slice(0, 57) + '...' : s).join('\n  ');
+  toast(
+    'Need rule or new clipboard.\n\n'
+    + 'Expected either @channel + CSV, or just URLs.\n'
+    + 'Got:\n  ' + preview,
+    5000
+  );
+}
+
+// (zip0129) Write a duplicate-links report to the user's download folder.
+// Triggered whenever an import sees pre-existing links. Filename includes
+// timestamp so multiple imports in one session don't overwrite each other.
+//
+// Format: one line per duplicate, with UID and where applicable the title
+// from the existing row, so the user can decide whether to keep or replace.
+function _writeDuplicateLinksReport(dupRecords, source) {
+  if (!dupRecords || !dupRecords.length) return;
+  const ts = new Date().toISOString()
+    .replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+  const fname = 'DuplicateLinks-' + ts + '.txt';
+
+  const header = [
+    '# Duplicate links found during import',
+    '# Source: ' + (source || '(unknown)'),
+    '# Timestamp: ' + new Date().toISOString(),
+    '# Total: ' + dupRecords.length,
+    '#',
+    '# Format: <UID>\t<link>\t<existing VidTitle if any>',
+    ''
+  ].join('\n');
+
+  const body = dupRecords.map(d => {
+    const uid = d.UID === undefined ? '' : String(d.UID);
+    const title = d.title || '';
+    return uid + '\t' + d.link + '\t' + title;
+  }).join('\n');
+
+  const blob = new Blob([header + body + '\n'], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fname;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return fname;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PASTE-AS-ARTICLE PICKER (zip0167)
+// ══════════════════════════════════════════════════════════════════════════════
+// When W is pressed and the clipboard's first line is not a URL, the user is
+// pasting article text directly (e.g. they copy-selected the body of a
+// paywalled NYT article, since jina/r.jina.ai can't bypass paywalls). Show
+// a 3-option picker:
+//   [W] No stripping       — paste verbatim, just wrap in <p> tags
+//   [S] Some stripping     — remove obvious chrome (ads, nav, share buttons,
+//                            inline link annotations, footer)
+//   [A] Aggressive strip   — newspaper-tuned: also remove captions, byline,
+//                            date stamps, "Editors' Picks" mid-block, and
+//                            related-article tails
+// The user picks by pressing w/s/a (or clicking) — Esc cancels.
+
+function _showStripPicker(rawText) {
+  // (zip0169) Pre-process: unwrap soft-wrapped URLs so detection finds the
+  // article URL whole, not truncated at a line-break hyphen. Also prefer
+  // a standalone-line URL (the article URL is typically on its own line)
+  // over the first URL anywhere (which is usually a nav/section link).
+  const prepped = _unwrapWrappedUrls(rawText);
+  const detectedUrl = _detectArticleUrl(prepped);
+  const lineCount = rawText.split(/\r?\n/).filter(s => s.trim()).length;
+
+  // Remove any existing picker (defensive)
+  const existing = document.getElementById('stripPickerOverlay');
+  if (existing) existing.remove();
+
+  const ov = document.createElement('div');
+  ov.id = 'stripPickerOverlay';
+  ov.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+    + 'background:rgba(0,0,0,0.85);z-index:10000;display:flex;'
+    + 'align-items:center;justify-content:center;font-family:sans-serif;';
+
+  const safeUrl = detectedUrl ? escH(detectedUrl) : '';
+  const urlLine = detectedUrl
+    ? '<span style="color:#8ef;">URL detected:</span> <span style="color:#ddd;font-size:12px;word-break:break-all;">' + safeUrl + '</span>'
+    : '<span style="color:#fa6;">No URL detected — you\'ll be prompted</span>';
+
+  ov.innerHTML =
+    '<div style="background:#1a1a2e;border:2px solid #6af;border-radius:10px;'
+    + 'padding:24px 28px;max-width:640px;width:92%;color:#ddd;'
+    + 'box-shadow:0 8px 32px rgba(0,0,0,0.6);">'
+    + '<h2 style="margin:0 0 6px;color:#8ef;font-weight:600;">Paste as Article</h2>'
+    + '<div style="font-size:13px;color:#aaa;margin-bottom:6px;">'
+    + rawText.length.toLocaleString() + ' chars · ' + lineCount + ' non-blank lines'
+    + '</div>'
+    + '<div style="font-size:13px;margin-bottom:18px;">' + urlLine + '</div>'
+    + '<div style="display:flex;flex-direction:column;gap:10px;">'
+    +   '<button data-mode="w" style="text-align:left;padding:14px 16px;'
+    +     'background:#27293d;color:#ddd;border:1px solid #444;border-radius:6px;'
+    +     'cursor:pointer;font-size:14px;">'
+    +     '<span style="display:inline-block;min-width:36px;color:#8ef;font-weight:bold;">[W]</span>'
+    +     '<span style="font-weight:600;">Strip + photos</span>'
+    +     '<span style="color:#888;"> — strip chrome but keep image URLs as inline centered images</span>'
+    +   '</button>'
+    +   '<button data-mode="s" style="text-align:left;padding:14px 16px;'
+    +     'background:#27293d;color:#ddd;border:1px solid #444;border-radius:6px;'
+    +     'cursor:pointer;font-size:14px;">'
+    +     '<span style="display:inline-block;min-width:36px;color:#8ef;font-weight:bold;">[S]</span>'
+    +     '<span style="font-weight:600;">Strip, no photos</span>'
+    +     '<span style="color:#888;"> — text only: ads, nav, captions, byline, related, photos</span>'
+    +   '</button>'
+    +   '<button data-mode="esc" style="text-align:left;padding:10px 16px;'
+    +     'background:transparent;color:#888;border:1px solid #333;border-radius:6px;'
+    +     'cursor:pointer;font-size:13px;margin-top:6px;">'
+    +     '<span style="display:inline-block;min-width:36px;">[Esc]</span>'
+    +     'Cancel'
+    +   '</button>'
+    + '</div>'
+    + '</div>';
+
+  document.body.appendChild(ov);
+
+  // Hover effect via JS (avoid injecting <style>)
+  ov.querySelectorAll('button[data-mode]').forEach(b => {
+    if (b.dataset.mode === 'esc') return;
+    b.addEventListener('mouseenter', () => { b.style.background = '#34374f'; b.style.borderColor = '#6af'; });
+    b.addEventListener('mouseleave', () => { b.style.background = '#27293d'; b.style.borderColor = '#444'; });
+  });
+
+  function close(mode) {
+    document.removeEventListener('keydown', keyHandler, true);
+    ov.remove();
+    if (mode === 'esc' || !mode) { toast('Paste cancelled', 1200); return; }
+    _doPasteArticle(rawText, mode, detectedUrl);
+  }
+
+  function keyHandler(e) {
+    const k = (e.key || '').toLowerCase();
+    if (k === 'w' || k === 's') {
+      e.preventDefault(); e.stopPropagation();
+      close(k);
+    } else if (k === 'escape') {
+      e.preventDefault(); e.stopPropagation();
+      close('esc');
+    }
+    // Note: 'a' is intentionally NOT handled here — it would conflict
+    // with the Annotate-screen hotkey. To pick aggressive strip, use S.
+  }
+  document.addEventListener('keydown', keyHandler, true);
+
+  ov.querySelectorAll('button[data-mode]').forEach(b => {
+    b.addEventListener('click', () => close(b.dataset.mode));
+  });
+
+  // Click outside box to cancel
+  ov.addEventListener('click', e => { if (e.target === ov) close('esc'); });
+}
+
+function _doPasteArticle(rawText, mode, detectedUrl) {
+  let url = detectedUrl;
+  if (!url) {
+    url = (prompt('Enter the article URL (or leave blank):') || '').trim();
+  }
+
+  // (zip0171) Picker now offers W (strip + keep photos) or S (strip
+  // without photos). Both apply the same aggressive newspaper-tuned
+  // cleanup; W additionally preserves standalone image-URL lines and
+  // renders them as inline centered <img> tags.
+  let cleaned;
+  if (mode === 'w')      cleaned = _articleAggressiveStrip(rawText, { keepImages: true });
+  else if (mode === 's') cleaned = _articleAggressiveStrip(rawText, { keepImages: false });
+  else if (mode === 'a') cleaned = _articleAggressiveStrip(rawText, { keepImages: false }); // legacy
+  else                   cleaned = _articleAggressiveStrip(rawText, { keepImages: true });
+
+  // (zip0168) Prepend the article URL as a clickable link at top of ftext.
+  // The URL is stored in row.link too; having it visible as a link in the
+  // slide gives the reader a way to click through to the original article.
+  if (url) {
+    const linkAttrs = ' target="_blank" rel="noopener" style="color:#6af;word-break:break-all;"';
+    cleaned = '<p><a href="' + url + '"' + linkAttrs + '>' + url + '</a></p>\n' + cleaned;
+  }
+
+  const now = isoNow();
+  const row = {
+    UID: nextUID(),
+    link: url || '',
+    show: '1',
+    DateAdded: now,
+    DateModified: now,
+    ltype: 'w',
+    ftext: cleaned,
+    tags: []
+  };
+  data.push(row);
+  save();
+  if (typeof buildSort === 'function') { sortCol = 'DateAdded'; sortDir = 'desc'; buildSort(); }
+  if (typeof render === 'function') render();
+  const modeName = mode === 'w' ? 'with photos' : 'no photos';
+  toast('✓ Added pasted article (' + modeName + ') · ' + cleaned.length.toLocaleString() + ' chars', 2400);
+}
+
+// ── Stripping processors ─────────────────────────────────────────────────────
+
+// (zip0169) Pre-processor: fix soft-wrapped URLs in pasted text. Two
+// patterns are common from email/text exports:
+//   1. Bare URL wraps mid-path at a hyphen:
+//        https://example.com/foo-bar-
+//        baz.html
+//      → https://example.com/foo-bar-baz.html
+//   2. Angle-bracketed URL gains an internal space at the wrap point:
+//        <https://example.com/foo- bar.html>
+//      → <https://example.com/foo-bar.html>
+// Both forms break URL detection and linkification. Apply this universally
+// before any other processing or detection.
+function _unwrapWrappedUrls(text) {
+  if (!text) return text;
+  // Pattern 2 first: collapse all whitespace inside <URL> annotations
+  text = text.replace(/<(https?:\/\/[^>]+)>/g, (m, url) => {
+    return '<' + url.replace(/\s+/g, '') + '>';
+  });
+  // Pattern 1: rejoin bare URLs split at a trailing hyphen
+  // Allow optional trailing whitespace before the newline
+  text = text.replace(/(https?:\/\/[^\s<>"]+-)\s*\n([^\s<>"]+)/g, '$1$2');
+  return text;
+}
+
+// (zip0170) Find the article's own URL. Multi-strategy approach:
+//
+//   Strategy 1 (most reliable): if "Share full article" or "reporter
+//   headshot" appears in the text, take the LAST URL before that marker.
+//   These chrome lines bracket the article header in NYT-style pastes,
+//   and the article URL is reliably the last URL above them.
+//
+//   Strategy 2 (newspaper-generic): prefer URLs with a date path like
+//   /YYYY/MM/DD/ or /YYYY-MM-DD/. Article URLs at almost every newspaper
+//   include a publication date in the path (NYT, WaPo, Guardian, BBC
+//   feature, Bloomberg, Atlantic, etc.). Take the longest such URL.
+//
+//   Strategy 3 (fallback): skip obvious nav URLs (/section/, /by/,
+//   homepage, /subscription/, etc.), take the longest remaining URL.
+//
+//   Strategy 4 (last resort): first URL anywhere.
+//
+// Each strategy is per-newspaper-pattern conservative — works for sites
+// where the chrome marker is absent (BBC News, evergreen articles, etc.)
+// without false-positive on nav URLs.
+function _detectArticleUrl(text) {
+  // Collect all URLs with positions, in document order
+  const allUrls = [];
+  const urlRe = /https?:\/\/[^\s<>"]+/g;
+  let mm;
+  while ((mm = urlRe.exec(text)) !== null) {
+    // Trim trailing punctuation that's likely sentence/paragraph end
+    let url = mm[0].replace(/[.,;:!?)]+$/, '');
+    allUrls.push({ url: url, pos: mm.index });
+  }
+  if (!allUrls.length) return '';
+
+  // Strategy 1: chrome-marker bracketing. "Share full article" is a NYT
+  // share-button label, "reporter headshot" is the alt-text of the
+  // author photo block. Either appears RIGHT AFTER the article URL line
+  // in NYT-style pastes.
+  const markers = [
+    /Share full article/i,
+    /reporter headshot/i
+  ];
+  let cutAt = Infinity;
+  for (const re of markers) {
+    const m = text.match(re);
+    if (m && m.index !== undefined && m.index < cutAt) cutAt = m.index;
+  }
+  if (cutAt !== Infinity) {
+    const before = allUrls.filter(u => u.pos < cutAt);
+    if (before.length) return before[before.length - 1].url;
+  }
+
+  // Strategy 2: URLs with date in path. /2025/10/29/ (NYT/WaPo/etc) or
+  // /2025-10-29/ (Bloomberg) or /2025/oct/29/ (Guardian — text month).
+  const dateRe = /\/(19|20)\d{2}[\/\-]/;
+  const dated = allUrls.filter(u => dateRe.test(u.url));
+  if (dated.length) {
+    return dated.sort((a, b) => b.url.length - a.url.length)[0].url;
+  }
+
+  // Strategy 3: skip obvious nav URLs, take longest non-nav URL with
+  // meaningful path content.
+  const navRe = /\/(section|topic|spotlight|category|categories|by|author|authors|people|profile|contributors?|subscription|subscribe|account|gift|todayspaper|todays?-paper|search|login|signin|signup|register|home|tag|tags|tagged|crosswords|games|jobs|wirecutter|store|help|sitemap|trending|video|audio|podcasts|newsletters|cooking|athletic|wirecutter)\b/i;
+  const nonNav = allUrls.filter(u => !navRe.test(u.url));
+  const longNonNav = nonNav.filter(u =>
+    u.url.replace(/^https?:\/\/[^\/]+/, '').length > 5
+  );
+  if (longNonNav.length) {
+    return longNonNav.sort((a, b) => b.url.length - a.url.length)[0].url;
+  }
+  if (nonNav.length) {
+    return nonNav.sort((a, b) => b.url.length - a.url.length)[0].url;
+  }
+
+  // Strategy 4: anything
+  return allUrls[0].url;
+}
+
+// (zip0168) Render-time linkifier. Converts plain-text URL patterns inside
+// ftext to clickable <a> tags. Used in both:
+//   • Storage time — _textToParagraphs runs this on freshly-pasted articles
+//     so the saved ftext has anchors baked in.
+//   • Render time — Xs slide views (grid.js, vp.js, xe.js) call renderFtext()
+//     before injecting ftext into the DOM, so existing ftext content also
+//     gets URLs linkified at display.
+//
+// Patterns handled:
+//   • <https://...>  (markdown angle-bracket form, common from email/text exports)
+//   • &lt;https://...&gt;  (the same after HTML escaping)
+//   • Bare URLs in text (with whitespace/punctuation boundaries)
+//
+// Skips:
+//   • URLs already inside <a>...</a>
+//   • URLs inside other tags' attributes (e.g. <img src="...">)
+//
+// Implementation: tokenize the HTML into anchors / tags / text, only
+// touch text segments. This avoids the classic "linkifier ate my image
+// src" bug.
+function renderFtext(ftext) {
+  if (!ftext) return '';
+  return _linkifyHtml(ftext);
+}
+
+function _linkifyHtml(html) {
+  if (!html) return '';
+  return html.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)|(<[^>]+>)|([^<]+)/gi,
+    (match, anchor, tag, text) => {
+      if (anchor !== undefined) return anchor;
+      if (tag !== undefined) return tag;
+      if (text !== undefined) return _linkifyTextSegment(text);
+      return match;
+    });
+}
+
+function _linkifyTextSegment(text) {
+  if (!text || !/https?:\/\//.test(text)) return text;
+  const linkAttrs = ' target="_blank" rel="noopener" style="color:#6af;word-break:break-all;"';
+  // 1. Already-escaped <URL> (from HTML-escaped paste content)
+  let s = text.replace(/&lt;(https?:\/\/[^&\s<>]+?)&gt;/g, (m, url) => {
+    return '<a href="' + url + '"' + linkAttrs + '>' + url + '</a>';
+  });
+  // 2. Raw <URL> in text (defensive — shouldn't normally hit a text segment)
+  s = s.replace(/<(https?:\/\/[^\s<>]+?)>/g, (m, url) => {
+    return '<a href="' + url + '"' + linkAttrs + '>' + url + '</a>';
+  });
+  // 3. Bare URLs — boundary at start-of-string or after whitespace/punctuation
+  s = s.replace(/(^|[\s(\[{])(https?:\/\/[^\s<>"()\[\]{}]+[^\s<>"()\[\]{}.,;!?])/g,
+    (m, pre, url) => {
+      return pre + '<a href="' + url + '"' + linkAttrs + '>' + url + '</a>';
+    });
+  return s;
+}
+
+// Common: convert paragraph-broken plain text to HTML <p> blocks.
+// (zip0168) Also linkifies URL patterns after HTML-escaping so anchors
+// are baked into the saved ftext.
+// (zip0171) Paragraphs containing only an image URL are rendered as a
+// centered medium-size <img> instead of a <p>. The strip pipeline must
+// be run with keepImages=true for image URLs to survive to this point.
+function _textToParagraphs(text) {
+  const paras = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  return paras.map(p => {
+    // Collapse single newlines within a paragraph to spaces
+    const flat = p.replace(/\s*\n\s*/g, ' ').trim();
+    // Image-URL-only paragraph → centered inline img
+    if (_isStandaloneImageUrl(flat)) {
+      const url = _extractImageUrl(flat);
+      return '<p style="text-align:center;margin:14px 0;">'
+        + '<img src="' + url + '" alt="" '
+        + 'style="max-width:60%;max-height:70vh;height:auto;border-radius:4px;'
+        + 'box-shadow:0 2px 8px rgba(0,0,0,0.3);">'
+        + '</p>';
+    }
+    return '<p>' + _linkifyTextSegment(escH(flat)) + '</p>';
+  }).join('\n');
+}
+
+// (W) No stripping — wrap verbatim in <p> tags. Preserves all junk.
+// (zip0169) But still unwraps soft-wrapped URLs so they become clickable.
+// "No stripping" means no content removal, not "leave URLs broken."
+function _articleNoStrip(text) {
+  return _textToParagraphs(_unwrapWrappedUrls(text));
+}
+
+// (S) Some stripping — remove obvious chrome that almost nobody wants:
+//   • Browser/site nav: "Skip to ...", "Section Navigation", "Search", "Account"
+//   • Ad markers: "Advertisement", "SKIP ADVERTISEMENT", "Supported by"
+//   • Share UI: "Share full article", "reporter headshot"
+//   • Standalone digit lines (comment counts)
+//   • Standalone "Image" markers
+//   • Inline <https://...> markdown link annotations within paragraphs
+//   • Standalone <https://...> URL lines (except the article URL on its own line)
+//   • Horizontal-rule lines (----)
+//   • "GIVE THE TIMES" lines
+//   • Date-only header lines (e.g. "Tuesday, May 5, 2026")
+//   • Cut from end markers: "A version of this article appears in print",
+//     "Site Index", "Site Information"
+function _articleSomeStrip(text, opts) {
+  opts = opts || {};
+  let s = _unwrapWrappedUrls(text);
+  // (zip0168) Don't strip inline <URL> annotations anymore — they're
+  // converted to clickable <a> tags during _textToParagraphs / render.
+
+  // Cut at end markers (first match wins)
+  s = _cutAtEndMarkers(s, [
+    /^A version of this article appears in print/im,
+    /^Site Index\s*$/im,
+    /^Site Information Navigation\s*$/im,
+    /^©\s*\d{4}\s+The New York Times Company/im
+  ]);
+
+  // Per-line filtering. Strip leading markdown bullet markers first so
+  // chrome lines like "* reporter headshot" can match the junk patterns.
+  const lines = s.split(/\r?\n/);
+  const out = [];
+  for (let raw of lines) {
+    let ln = raw.trim();
+    if (!ln) { out.push(''); continue; } // preserve paragraph breaks
+    // Strip leading "* " / "- " / "• " bullet markers (one or more)
+    ln = ln.replace(/^([\*\-\u2022]+\s*)+/, '');
+    if (!ln) continue; // line was JUST bullets
+    if (_isJunkLineSome(ln, opts)) continue;
+    out.push(ln);
+  }
+  // Collapse 3+ blank lines to 2
+  let cleaned = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return _textToParagraphs(cleaned);
+}
+
+function _isJunkLineSome(ln, opts) {
+  opts = opts || {};
+  // (zip0171) When keepImages is set, standalone image-URL lines pass
+  // through unfiltered so _textToParagraphs can render them as <img>.
+  if (opts.keepImages && _isStandaloneImageUrl(ln)) return false;
+  // Markdown bullet residue (lines that are just *, **, * *, etc.)
+  if (/^[\*\-\u2022]+\s*$/.test(ln)) return true;
+  // After leading-bullet strip below, common chrome lines
+  // Site chrome / nav
+  if (/^Skip to\b/i.test(ln)) return true;
+  if (/^Section Navigation\s*$/i.test(ln)) return true;
+  if (/^Search\s*$/i.test(ln)) return true;
+  if (/^Search\s*&\s*Section Navigation\s*$/i.test(ln)) return true;
+  if (/^Account\s*$/i.test(ln)) return true;
+  // (zip0171) Both apostrophe variants: ASCII ' (U+0027) and curly ' (U+2019)
+  if (/^Today['\u2019\u2018]s Paper\b/i.test(ln)) return true;
+  if (/^GIVE THE TIMES\b/i.test(ln)) return true;
+  // Ads — broaden to allow trailing anchor refs like "<#after-top>"
+  if (/^Advertisement\b/i.test(ln)) return true;
+  if (/^SKIP ADVERTISEMENT\b/i.test(ln)) return true;
+  if (/^Supported by\s*$/i.test(ln)) return true;
+  // Share UI
+  if (/^Share full article\s*$/i.test(ln)) return true;
+  if (/^reporter headshot\s*$/i.test(ln)) return true;
+  // Image markers
+  if (/^Image\s*$/i.test(ln)) return true;
+  // Standalone digit lines (comment counts)
+  if (/^\d{1,5}\s*$/.test(ln)) return true;
+  // Horizontal rules
+  if (/^[-*_]{3,}\s*$/.test(ln)) return true;
+  // Standalone URL line (residual after annotation strip)
+  if (/^<?https?:\/\/\S+>?\s*$/i.test(ln)) return true;
+  // Bare day-date headers like "Tuesday, May 5, 2026"
+  if (/^(Sun|Mon|Tues|Wednes|Thurs|Fri|Satur)day,\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},\s*\d{4}\s*$/i.test(ln)) return true;
+  return false;
+}
+
+// (zip0171) Recognize a line that's nothing but an image URL (with optional
+// surrounding angle brackets). Used by W mode to preserve image URLs as
+// inline <img> tags rather than filtering them out as junk.
+function _isStandaloneImageUrl(ln) {
+  if (!ln) return false;
+  const t = ln.trim().replace(/^<+|>+$/g, '');
+  if (!/^https?:\/\/\S+$/.test(t)) return false;
+  return /\.(jpg|jpeg|png|gif|webp|svg|avif|bmp)(\?|#|$)/i.test(t);
+}
+
+// (zip0171) Extract the URL from a standalone image-URL line.
+function _extractImageUrl(ln) {
+  return ln.trim().replace(/^<+|>+$/g, '');
+}
+
+// (A) Aggressive — Some + newspaper-tuned removals:
+//   • Photo captions (lines/paragraphs containing "Credit..." or "Credit:")
+//   • Author byline ("By Name")
+//   • Publication date stamps ("Published ...Updated ...")
+//   • Bilingual coverage notices
+//   • Mid-article "Editors' Picks" promo block (cut from heading to next ad)
+//   • Author bio paragraph (typically near end: "Author covers... for The Times")
+//   • Read-more / related-content footers: cut from FIRST occurrence of
+//     "Discover More in", "Related Content", "More in [Section]",
+//     "Trending in", "Read NN comments"
+function _articleAggressiveStrip(text, opts) {
+  opts = opts || {};
+  let s = _unwrapWrappedUrls(text);
+
+  // (zip0168) Don't strip inline <URL> annotations anymore — they're
+  // converted to clickable <a> tags during _textToParagraphs / render.
+
+  // Cut at end markers (try each, take earliest hit)
+  s = _cutAtEndMarkers(s, [
+    /^A version of this article appears in print/im,
+    /^Discover More in\b/im,
+    /^Related Content\s*$/im,
+    /^More in\s+\S/im,
+    /^Trending in\b/im,
+    /^Editors[''\u2018\u2019]?\s*Picks\s*$/im, // footer one — but mid-article one removed below first
+    /^Read\s+\d[\d,]*\s+comments?\s*$/im,
+    /^Site Index\s*$/im,
+    /^Site Information/im,
+    /^©\s*\d{4}\s+The New York Times/im
+  ]);
+
+  // Remove mid-article "Editors' Picks" block: from heading to next
+  // "Advertisement" or "SKIP ADVERTISEMENT" within ~30 lines.
+  s = _cutMidArticleEditorsPicks(s);
+
+  // Per-line and per-paragraph filtering. Strip leading markdown bullet
+  // markers first so chrome lines like "* reporter headshot" can match.
+  // (zip0171) When keepImages is set, standalone image-URL lines pass
+  // through to _textToParagraphs for rendering as inline <img> tags.
+  const lines = s.split(/\r?\n/);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    let ln = lines[i].trim();
+    if (!ln) { out.push(''); continue; }
+    ln = ln.replace(/^([\*\-\u2022]+\s*)+/, '');
+    if (!ln) continue;
+    if (_isJunkLineSome(ln, opts)) continue;
+    if (_isJunkLineAggressive(ln)) continue;
+    out.push(ln);
+  }
+
+  // Strip caption paragraphs (any paragraph containing "Credit..."/"Credit:")
+  // and author-bio paragraphs (zip0172): the paragraph that says
+  // "Author covers X for The Times and writes the Y column." It typically:
+  //   • contains "for The (New York) Times"
+  //   • contains "covers" or "writes" in a biographical context
+  //   • links to a /column/ or /by/ URL
+  // We catch either of two conditions independently (OR logic) to be robust
+  // even if the paragraph is soft-wrapped and the URL lands on a different line.
+  let body = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  body = body.split(/\n{2,}/)
+    .filter(p => {
+      if (/Credit\s*[.:]{1,3}\s*\S/i.test(p)) return false;
+      // Author bio: "covers ... for The Times"
+      if (/covers\b[^.]{0,120}for The (New York )?Times\b/i.test(p)) return false;
+      // Author bio: paragraph mentioning "for The Times" AND a /column/ or /by/ URL
+      if (/for The (New York )?Times\b/i.test(p) && /\/(column|by|author)\//i.test(p)) return false;
+      return true;
+    })
+    .join('\n\n');
+
+  return _textToParagraphs(body);
+}
+
+function _isJunkLineAggressive(ln) {
+  // Byline "By <Author>" — match even if a trailing URL annotation or
+  // date follows on the same line (e.g. "By Carl Zimmer <https://...>")
+  if (/^By\s+[A-Z][\w'-]+(\s+[A-Z][\w'-]+){1,3}\b/.test(ln)) return true;
+  // Author-headshot pattern: "<Name> <URL containing /by/ or /author/>"
+  // The URL path differs per site but these are common conventions.
+  if (/^[A-Z][\w'-]+(\s+[A-Z][\w'-]+){1,3}\s+<https?:\/\/[^>]*\/(by|author|authors|people|profile|contributors?)\b/i.test(ln)) return true;
+  // Section/topic header: "<Section> <URL containing /section/ or /topic/>"
+  if (/^[A-Z][\w'-]+(\s+[A-Z][\w'-]+){0,2}\s+<https?:\/\/[^>]*\/(section|topic|spotlight|category|categories)\b/i.test(ln)) return true;
+  // Date stamps: "Published Oct. 29, 2025Updated Nov. 17, 2025"
+  if (/^Published\s+\w+\.?\s+\d{1,2},?\s*\d{4}/i.test(ln)) return true;
+  if (/^Updated\s+\w+\.?\s+\d{1,2},?\s*\d{4}/i.test(ln)) return true;
+  // NYT bilingual coverage notice — match anywhere in line (not anchored).
+  // The notice is one long run-on line that soft-wraps at ~80 chars, so
+  // we need patterns for EACH fragment that could land on its own line:
+  //   Frag 1: "See more of our coverage in your search results.Encuentra..."
+  //   Frag 2: "cobertura en los resultados de búsqueda. Add The New York Times on"
+  //   Frag 3: "GoogleAgrega The New York Times en Google<URL>"
+  if (/See more of our coverage in your search results/i.test(ln)) return true;
+  if (/Encuentra m[aá]s de nuestra cobertura/i.test(ln)) return true;   // frag 1 w/ Spanish
+  if (/cobertura en los resultados/i.test(ln)) return true;              // frag 2 start
+  if (/Add The New York Times on Google/i.test(ln)) return true;         // frag 2 end / frag 3
+  if (/GoogleAgrega\b/.test(ln)) return true;                            // frag 3 (smushed)
+  if (/Agrega\s+The\s+New\s+York\s+Times/i.test(ln)) return true;       // frag 3 variant
+  // Section name pipe-prefix (e.g. "Science|Life Lessons From...")
+  if (/^[A-Z][a-z]+\|/.test(ln)) return true;
+  return false;
+}
+
+function _cutAtEndMarkers(text, regexList) {
+  let earliest = -1;
+  for (const re of regexList) {
+    const m = text.match(re);
+    if (m && m.index !== undefined) {
+      if (earliest === -1 || m.index < earliest) earliest = m.index;
+    }
+  }
+  if (earliest >= 0) return text.slice(0, earliest).trim();
+  return text;
+}
+
+function _cutMidArticleEditorsPicks(text) {
+  const lines = text.split(/\r?\n/);
+  // Find FIRST "Editors' Picks" line. Then look ahead up to 40 lines for
+  // "Advertisement" / "SKIP ADVERTISEMENT". If found, splice out.
+  const epRe = /^Editors[''’]?\s*Picks\s*$/i;
+  const adRe = /^(Advertisement|SKIP ADVERTISEMENT)\s*$/i;
+  for (let i = 0; i < lines.length; i++) {
+    if (epRe.test(lines[i].trim())) {
+      // Look forward
+      for (let j = i + 1; j < Math.min(i + 40, lines.length); j++) {
+        if (adRe.test(lines[j].trim())) {
+          // Splice out [i..j], keep i (before) and j+1+ (after). But also drop
+          // the SKIP ADVERTISEMENT/Advertisement run that follows.
+          let endCut = j + 1;
+          while (endCut < lines.length && /^(Advertisement|SKIP ADVERTISEMENT|Supported by|\s*)$/i.test(lines[endCut].trim())) {
+            endCut++;
+          }
+          lines.splice(i, endCut - i);
+          break;
+        }
+      }
+      break;
+    }
+  }
+  return lines.join('\n');
+}
+
+// Rule 1 implementation. `lines` is the already-split, trimmed, non-empty
+// array — every entry must be a media URL.
+function _importBareLinks(lines) {
+  // De-dup within this paste
+  const seen = new Set();
+  const links = [];
+  for (const line of lines) {
+    if (!seen.has(line)) { seen.add(line); links.push(line); }
+  }
+
+  const now = isoNow();
+  let added = 0;
+  const dupRecords = [];
+
+  // (zip0129) Build O(1) lookup of existing rows by link. With Set this is
+  // ~constant per check; the build itself is O(N) where N = data.length.
+  // For 100K rows × 100 import lines: build ~5–15ms, total check ~5–15ms.
+  // See chat: scaling discussion.
+  const linkToDi = new Map();
+  data.forEach((r, di) => {
+    if (r && r.link) linkToDi.set(String(r.link).trim(), di);
+  });
+
+  for (const link of links) {
+    if (linkToDi.has(link)) {
+      const di = linkToDi.get(link);
+      const r = data[di];
+      dupRecords.push({
+        UID: r ? r.UID : '',
+        link: link,
+        title: r ? (r.VidTitle || '') : ''
+      });
+      continue;
+    }
+    const row = {
+      UID: nextUID(),
+      link: link,
+      show: '1',
+      DateAdded: now,
+      DateModified: now,
+      tags: []
+    };
+    // (zip0151) Default Mute='0' for video links added via W clipboard
+    // import. Rationale: most YouTube/Vimeo videos have useful audio
+    // (the user's main reason for collecting them); the user is opt-in
+    // to Mute='1' for obnoxious or low-value soundtracks via the new
+    // E-screen mute-toggle button. Non-video rows leave Mute unset so
+    // the field stays empty for them (Clean Mute Column maintains this).
+    const cls = _classifyUrl(link);
+    if (cls === 'video') {
+      row.Mute = '0';
+    } else if (cls === 'image') {
+      row.VidRange = 'i';
+    } else if (cls === 'web') {
+      // (zip0166) Web (article) URL — mark with ltype='w' so the row is
+      // recognizable as a web-text row. ftext is fetched asynchronously
+      // below (after the row is added) so the import doesn't block.
+      row.ltype = 'w';
+    }
+    data.push(row);
+    linkToDi.set(link, data.length - 1);
+    added++;
+  }
+
+  // Write the duplicates report (if any) before the toast so the user sees
+  // both the toast and the download in the same beat.
+  let dupFile = null;
+  if (dupRecords.length) {
+    dupFile = _writeDuplicateLinksReport(dupRecords, 'bare-links paste');
+  }
+
+  if (!added) {
+    toast(
+      'All ' + links.length + ' link(s) already in data.\n'
+      + (dupFile ? '   wrote ' + dupFile : ''),
+      2500
+    );
+    return;
+  }
+
+  save();
+  sortCol = 'DateAdded';
+  sortDir = 'desc';
+  buildSort();
+  render();
+
+  // (zip0166) Kick off async fetch for any rows that were marked ltype='w'
+  // (web/article URLs). Each fetch runs independently; the row updates and
+  // saves as soon as its text arrives. Failures don't block other fetches.
+  const webRows = data.filter(r => r && r.ltype === 'w' && !r.ftext && r.DateAdded === now);
+  if (webRows.length) {
+    _fetchWebTextForRows(webRows);
+  }
+
+  const dupNote   = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicates skipped' : '';
+  const fileNote  = dupFile ? '\n   wrote ' + dupFile : '';
+  const dupInPaste = lines.length - links.length;
+  const pasteDupNote = dupInPaste ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
+  const webNote = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
+  toast(
+    '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
+    + dupNote + pasteDupNote + webNote + fileNote,
+    3500
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WEB-ARTICLE FETCH + EXTRACT (zip0166)
+// ══════════════════════════════════════════════════════════════════════════════
+// For ltype='w' rows, fetch the page and extract the main article text into
+// ftext. Strategy:
+//   1. Try r.jina.ai (free reader service): server-side fetch, returns clean
+//      markdown of main content with sidebars/nav/captions/related-links
+//      stripped. Avoids browser CORS issues. No API key needed for moderate
+//      use. Output is markdown — we convert to simple HTML for the editor.
+//   2. If that fails (offline, blocked, rate-limited), try direct fetch with
+//      a basic article-extraction heuristic (longest concentration of <p>
+//      tags). This will fail on most sites due to CORS — that's expected,
+//      jina is the primary path.
+// Each row is processed independently so one failure doesn't block others.
+// Save is called once per successful fetch (so the user sees progress).
+
+async function _fetchWebTextForRows(rows) {
+  for (const row of rows) {
+    if (!row || row.ftext || !row.link) continue;
+    try {
+      const html = await _fetchAndExtractArticle(row.link);
+      if (html) {
+        row.ftext = html;
+        row.DateModified = isoNow();
+        save();
+        // If T table is the active screen, refresh so the cell appears
+        if (typeof render === 'function') render();
+        // (zip0166) Brief per-fetch toast so the user sees progress.
+        // Avoid spamming when many fetches complete in quick succession by
+        // only toasting every 2nd one if 3+ pending. Simpler: just toast.
+        toast('✓ Fetched: ' + (row.link.length > 50 ? row.link.slice(0, 47) + '…' : row.link), 1200);
+      } else {
+        // Fetch returned nothing — leave ftext empty, mark with a hint
+        row.ftext = '<p style="color:#a66;font-style:italic;">[Fetch failed — paste text manually]</p>';
+        row.DateModified = isoNow();
+        save();
+        if (typeof render === 'function') render();
+        toast('⚠ Could not fetch: ' + (row.link.length > 50 ? row.link.slice(0, 47) + '…' : row.link), 2200);
+      }
+    } catch (e) {
+      console.warn('Fetch error for', row.link, e);
+      row.ftext = '<p style="color:#a66;font-style:italic;">[Fetch error: '
+        + (e && e.message ? e.message.replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c])) : 'unknown')
+        + ']</p>';
+      row.DateModified = isoNow();
+      save();
+      if (typeof render === 'function') render();
+    }
+  }
+}
+
+// Fetch one article. Returns HTML string or null.
+async function _fetchAndExtractArticle(url) {
+  // Strategy 1: r.jina.ai reader (server-side fetch + extraction).
+  // Pre-pend the URL to the reader's base. Returns markdown.
+  try {
+    const readerUrl = 'https://r.jina.ai/' + url;
+    const r = await fetch(readerUrl, {
+      headers: { 'Accept': 'text/plain' }
+    });
+    if (r.ok) {
+      const md = await r.text();
+      if (md && md.length > 100) {
+        return _markdownToHtml(_trimReaderArticle(md));
+      }
+    }
+  } catch (e) { /* fall through to strategy 2 */ }
+
+  // Strategy 2: direct fetch + heuristic extraction. Will fail on most
+  // sites due to CORS, but works on CORS-friendly ones (e.g. some blogs,
+  // Wikipedia via API, etc.).
+  try {
+    const r = await fetch(url);
+    if (r.ok) {
+      const html = await r.text();
+      const extracted = _extractArticleFromHtml(html);
+      if (extracted && extracted.length > 100) return extracted;
+    }
+  } catch (e) { /* CORS or network */ }
+
+  return null;
+}
+
+// Trim reader output. r.jina.ai prepends a header block (Title: ..., URL: ...,
+// Markdown:) and may include a "Related" / "More from" trailing block of
+// links. We keep the Title as <h2>, drop the URL/header lines, and cut
+// trailing link-dense sections.
+function _trimReaderArticle(md) {
+  if (!md) return '';
+  const lines = md.split('\n');
+  let title = '';
+  let bodyStart = 0;
+
+  // Detect and consume the header block (case-insensitive)
+  for (let i = 0; i < Math.min(10, lines.length); i++) {
+    const ln = lines[i].trim();
+    if (/^title:/i.test(ln))      title = ln.replace(/^title:\s*/i, '').trim();
+    else if (/^url source:/i.test(ln) || /^url:/i.test(ln) || /^published time:/i.test(ln)) { /* skip */ }
+    else if (/^markdown content:?$/i.test(ln) || /^content:?$/i.test(ln)) { bodyStart = i + 1; break; }
+    else if (ln === '' && title) { bodyStart = i + 1; /* keep going to find Markdown: marker */ }
+    else if (ln && !title) break; // first non-header line
+  }
+
+  let body = lines.slice(bodyStart).join('\n').trim();
+
+  // Cut at a "Related articles" / "More from" / "Read more" / "Sponsored" etc.
+  // section if present. These are the trailing link-list patterns the user
+  // mentioned. Match common headings (markdown ##, ###) and stop there.
+  const cutPatterns = [
+    /\n#{1,4}\s*(related|more from|read more|read next|recommended|sponsored|advertisement|ads by|you might( also)? like|popular|trending|sign up|subscribe|comments?|share this|follow us|newsletter|in this article)\b/i,
+    /\n\*{3,}\s*\n/, // markdown horizontal rule (often separates article from footer)
+    /\n_{3,}\s*\n/,
+  ];
+  for (const pat of cutPatterns) {
+    const m = body.match(pat);
+    if (m && m.index > 200) { body = body.slice(0, m.index).trim(); break; }
+  }
+
+  // Also: if the last 30% of lines are predominantly bare links, cut them.
+  // Heuristic: scan from end backward; if 5+ consecutive lines are
+  // markdown links with little surrounding prose, cut from there.
+  const bodyLines = body.split('\n');
+  let linkRunStart = -1;
+  let linkRunCount = 0;
+  for (let i = bodyLines.length - 1; i >= Math.floor(bodyLines.length * 0.5); i--) {
+    const ln = bodyLines[i].trim();
+    if (!ln) continue;
+    // Bare markdown link or list item with link
+    if (/^[-*]?\s*\[[^\]]+\]\(https?:\/\/[^)]+\)\s*$/i.test(ln)) {
+      linkRunCount++;
+      linkRunStart = i;
+    } else if (linkRunCount >= 5) {
+      break;
+    } else {
+      linkRunCount = 0;
+      linkRunStart = -1;
+    }
+  }
+  if (linkRunCount >= 5 && linkRunStart > 0) {
+    body = bodyLines.slice(0, linkRunStart).join('\n').trim();
+  }
+
+  // Prepend title as h2 if we found one
+  return (title ? '## ' + title + '\n\n' : '') + body;
+}
+
+// Minimal markdown → HTML. Handles headings, paragraphs, bold, italic,
+// links, lists, blockquotes. Not a full markdown engine — just enough for
+// what r.jina.ai produces. The rich-text editor (Xe) can edit the result.
+function _markdownToHtml(md) {
+  if (!md) return '';
+  // Escape HTML
+  let s = md.replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c]));
+  // Headings (## , ### , etc.) — process longest first
+  s = s.replace(/^#{6}\s+(.+)$/gm, '<h6>$1</h6>');
+  s = s.replace(/^#{5}\s+(.+)$/gm, '<h5>$1</h5>');
+  s = s.replace(/^#{4}\s+(.+)$/gm, '<h4>$1</h4>');
+  s = s.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>');
+  s = s.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>');
+  s = s.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>');
+  // Images ![alt](url) — convert to <img> (do this BEFORE links since the
+  // syntax overlaps)
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;height:auto;">');
+  // Links [text](url)
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Bold **x** and __x__
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+  // Italic *x* and _x_
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>');
+  // Blockquotes (single-line; multi-line gets concatenated)
+  s = s.replace(/^>\s?(.+)$/gm, '<blockquote>$1</blockquote>');
+  // Unordered list items
+  s = s.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
+  // Wrap consecutive <li> in <ul>
+  s = s.replace(/(<li>.*?<\/li>(\s*<li>.*?<\/li>)*)/gs, '<ul>$1</ul>');
+  // Paragraphs: split on blank lines, wrap non-block lines in <p>
+  const blocks = s.split(/\n{2,}/);
+  const wrapped = blocks.map(b => {
+    const t = b.trim();
+    if (!t) return '';
+    // Already a block element? leave alone
+    if (/^<(h[1-6]|ul|ol|li|blockquote|img|p|div|pre|table)/i.test(t)) return t;
+    // Otherwise wrap as paragraph (collapse single newlines to spaces)
+    return '<p>' + t.replace(/\n/g, ' ') + '</p>';
+  });
+  return wrapped.filter(Boolean).join('\n');
+}
+
+// Fallback: extract article from raw HTML using a simple "longest <p>
+// concentration" heuristic. This is a poor man's Readability — only used
+// when r.jina.ai is unreachable. Strips <script>/<style>/<nav>/<header>/
+// <footer>/<aside>/<form> first.
+function _extractArticleFromHtml(html) {
+  if (!html) return '';
+  // Quick strip of obvious non-article elements
+  let s = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '')
+    .replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '')
+    .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '')
+    .replace(/<form\b[^>]*>[\s\S]*?<\/form>/gi, '')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+
+  // Try <article> first — it's semantic and usually right
+  const artMatch = s.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i);
+  if (artMatch) return _sanitizeExtractedHtml(artMatch[1]);
+
+  // Try <main>
+  const mainMatch = s.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+  if (mainMatch) return _sanitizeExtractedHtml(mainMatch[1]);
+
+  // Last resort: collect all <p> tags. If there are 3+, return them.
+  const ps = s.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi);
+  if (ps && ps.length >= 3) return _sanitizeExtractedHtml(ps.join('\n'));
+
+  return '';
+}
+
+// Strip <img>/<figure> captions, classes, and inline styles from extracted
+// HTML so it lands in ftext as clean editable content. Not a full sanitizer
+// (the source is web HTML — could contain anything) but the rich-text
+// editor uses contenteditable, which itself filters most dangerous markup.
+function _sanitizeExtractedHtml(html) {
+  if (!html) return '';
+  let s = html;
+  // Drop figure captions (the user wanted captions omitted)
+  s = s.replace(/<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi, '');
+  // Drop class= and id= attributes (they reference styles we don't have)
+  s = s.replace(/\s(class|id|onclick|onload|onerror|style)\s*=\s*("[^"]*"|'[^']*')/gi, '');
+  // Convert <h1> to <h2> (the editor puts the page title at h2 and we
+  // don't want competing top-level headings)
+  s = s.replace(/<h1\b([^>]*)>/gi, '<h2$1>').replace(/<\/h1>/gi, '</h2>');
+  // Trim leading/trailing whitespace
+  return s.trim();
+}
+
+// Rule 2 implementation. `lines` is the split, trimmed, non-empty array.
+// Line 0 is `@channelname`, lines 1+ are CSV rows.
+//
+// New rows get BA = '1' (BatchAdd marker — distinguishes channel-imported
+// rows from manually-curated ones). Existing rows with matching links are
+// updated in place (VidTitle, VidAuthor, vidLength); BA on existing rows is
+// not changed since the row was already curated by hand.
+//
+// (zip0129) Existing-link matches are also written to a duplicate-links
+// report so the user has a record of what was overwritten.
+function _importChannelCSV(lines) {
+  const author = lines[0]; // keep the @ — that's the identifier
+
+  // (zip0129) O(1) lookup of existing rows by link.
+  const linkIndex = new Map();
+  data.forEach((r, di) => {
+    if (r && r.link) linkIndex.set(String(r.link).trim(), di);
+  });
+
+  const now = isoNow();
+  let added = 0, updated = 0, skipped = 0;
+  const dupRecords = [];
+
+  for (let li = 1; li < lines.length; li++) {
+    const fields = _parseCsvRow(lines[li]);
+    if (fields.length < 2) { skipped++; continue; }
+    const link     = (fields[0] || '').trim();
+    const title    = (fields[1] || '').trim();
+    const duration = (fields[2] || '').trim();
+    if (!link) { skipped++; continue; }
+
+    if (linkIndex.has(link)) {
+      // Update existing row
+      const di = linkIndex.get(link);
+      const r = data[di];
+      // Capture existing title BEFORE update, for the dup report
+      dupRecords.push({
+        UID: r ? r.UID : '',
+        link: link,
+        title: r ? (r.VidTitle || '') : ''
+      });
+      let touched = false;
+      if (title    && r.VidTitle  !== title)    { r.VidTitle  = title;    touched = true; }
+      if (author   && r.VidAuthor !== author)   { r.VidAuthor = author;   touched = true; }
+      if (duration && r.vidLength !== duration) { r.vidLength = duration; touched = true; }
+      if (touched) { r.DateModified = now; updated++; }
+    } else {
+      // Add new row — mark as batch-added (BA = '1')
+      const row = {
+        UID: nextUID(),
+        link: link,
+        VidTitle: title,
+        VidAuthor: author,
+        vidLength: duration,  // may be '' for Shorts
+        BA: '1',
+        show: '1',
+        DateAdded: now,
+        DateModified: now,
+        tags: []
+      };
+      data.push(row);
+      linkIndex.set(link, data.length - 1);
+      added++;
+    }
+  }
+
+  if (!added && !updated) {
+    toast('No valid CSV rows found.\n(' + skipped + ' lines could not be parsed.)', 3000);
+    return;
+  }
+
+  // Write the duplicates report (if any) before the toast
+  let dupFile = null;
+  if (dupRecords.length) {
+    dupFile = _writeDuplicateLinksReport(dupRecords, 'channel CSV: ' + author);
+  }
+
+  save();
+  if (added) {
+    sortCol = 'DateAdded';
+    sortDir = 'desc';
+    buildSort();
+  }
+  render();
+
+  toast(
+    '✓ Channel: ' + author + '\n'
+    + '   added ' + added + ' new (BA=1), updated ' + updated + ' existing'
+    + (skipped ? ', skipped ' + skipped : '')
+    + (dupFile ? '\n   wrote ' + dupFile : ''),
+    3500
+  );
+}
+
+
+// (zip0129) Both buttons used to call wantLinks. The redundant L button was
+// removed; W is the sole entry point. The L hotkey still works as an alias.
+
+document.getElementById('wantLinkBtn')?.addEventListener('click', wantLinks);
+document.getElementById('brClose').addEventListener('click', brClose);
+document.getElementById('dictModeBtn').addEventListener('click', () => { _dictMatchMode=_dictMatchMode==='anywhere'?'start':'anywhere'; updateDictBtn(); });
+document.getElementById('brPrev').addEventListener('click', () => { brSave(); if (_brIdx > 0) brShow(_brIdx - 1); });
+document.getElementById('brNext').addEventListener('click', () => { brSave(); if (_brIdx < _brRows.length-1) brShow(_brIdx + 1); });
+
+document.getElementById('brSave').addEventListener('click', () => {
+  brSave();
+  if (_brIdx < _brRows.length - 1) brShow(_brIdx + 1); // auto-advance
+});
+
+// ── Open VideoEditor with Browse fields injected into its right panel ────
+function brOpenVideoEditorWithFields(di) {
+  if (!window.openVideoEditor) {
+    toast('video.js not loaded — place video.js in the same folder.'); return;
+  }
+  const row = data[di];
+
+  // Hide Browse overlay while VideoEditor is open (VideoEditor is on top)
+  document.getElementById('browseOverlay').style.display = 'none';
+  document.getElementById('wrap').style.marginRight = '';
+
+  // Open VideoEditor — the wrapper installed at the bottom of this file
+  // routes through runVEPostOpenSetup automatically.
+  window.openVideoEditor(row);
+}
+
+// Runs after E is mounted regardless of entry path (E hotkey from T, grid
+// double-click, Annotate→E, etc.). Registers the keyboard handler that owns
+// E's own letter shortcuts (T, G, A, N, J, S, M, C, ←, →, Esc).
+//
+// IMPORTANT: this function is called from the openVideoEditor wrapper AFTER
+// origOpen(). The keydown registration inside happens inside a setTimeout(80)
+// because the post-open setup also injects fields into the right panel and
+// needs the DOM settled. To make sure my handler sees keys BEFORE video.js's
+// handleKey (which registers synchronously inside origOpen and would otherwise
+// win the capture phase race), the wrapper itself pre-installs a "claim"
+// handler that runs first; that claim simply forwards to veKeyHandler once
+// it's ready.
+function runVEPostOpenSetup(di) {
+  setTimeout(() => {
+    try {
+    const overlay = document.getElementById('video-editor-overlay');
+    if (!overlay) return;
+
+    // (zip0119 fix) `row` was referenced throughout this function but never
+    // defined here — it was only defined in the old brOpenVideoEditorWithFields
+    // wrapper. When the body was lifted into runVEPostOpenSetup, the binding
+    // got lost. Result: ReferenceError on line 2930 / 2959, which silently
+    // aborted the function BEFORE the keydown handler at the end was
+    // registered. That's why T worked (video.js handles it independently)
+    // but A/N/J/S/M/C/← /→ didn't (their handler never installed).
+    const row = data[di];
+    if (!row) return;
+
+    // Full screen
+    overlay.style.left         = '0';
+    overlay.style.top          = '0';
+    overlay.style.width        = '100%';
+    overlay.style.height       = '100%';
+    overlay.style.borderRadius = '0';
+    overlay.style.border       = 'none';
+
+    // (zip0118: removed obsolete title-bar manipulation — there's no title
+    // bar in E since zip0116. The first child of the overlay is now <style>,
+    // followed by the hidden mute <input>, then the main flex container.
+    // Trying to manipulate `overlay.children[1]` as a title bar was a bug
+    // that broke the post-open code path silently — including the keydown
+    // handler registration, which is why A/N/J/S/M/C didn't work.)
+
+    // Compact right panel — reduce padding/gaps
+    const rightPanel = overlay.querySelector('div[style*="width:270px"]');
+    if (rightPanel) {
+      rightPanel.style.padding    = '7px 10px';
+      rightPanel.style.gap        = '5px';
+      rightPanel.style.overflowY  = 'auto';
+      // Shrink all v2btn buttons
+      overlay.querySelectorAll('.v2btn').forEach(b => {
+        b.style.minWidth = '30px'; b.style.height = '27px'; b.style.fontSize = '11px';
+      });
+      // Shrink number inputs
+      overlay.querySelectorAll('.v2num').forEach(inp => {
+        inp.style.fontSize = '13px'; inp.style.padding = '3px';
+      });
+      // Shrink segment op buttons
+      ['v2-ls','v2addseg','v2delseg'].forEach(id => {
+        const b = overlay.querySelector('#'+id); if (b) b.style.padding = '5px';
+      });
+    }
+
+    // (zip0126) The CLASSIFICATION block (Tags chip input, legacy
+    // t1/t2/n1/n2/n3, Comment, Val) was removed from E. E is now strictly
+    // a video-editing screen — segment selection and labeling only. Tag
+    // and metadata work happens in A (Annotate); pressing A from E
+    // navigates there with the current row preserved.
+    //
+    // Note: row.tags, row.comment, row.Val etc. are NOT cleared by this
+    // change — they remain on the row and continue to be edited via A.
+    // The timeline-area Seg N: <label> buttons in the bottom toolbar
+    // (defined in video.js) are the only text entry remaining in E.
+    //
+    // The right panel (defined in video.js) still hosts Segment tabs and
+    // Fine Adjustments controls — those are the actual video-editing UI
+    // and remain in place.
+
+    // saveVEFields is a no-op now (kept so video.js's Ctrl+S handler still
+    // finds it). All metadata edits happen in A and save themselves there.
+    function saveVEFields() { /* no-op */ }
+
+    // (zip0126) E hotkey handler. Owns: T/G/A (navigation), N/J (row step),
+    // S/M/C (Sel/Mute/CC toggles), arrows (speed), Space (play/pause), Esc.
+    let _veCloseToTable    = false; // Escape → return to table
+    let _veTargetAfterClose = null; // Alt+N/J override target row
+    // (zip0127) When true, after E closes the next-row handling reopens E
+    // (not Annotate) on the row at _veTargetAfterClose. Used by N/J so the
+    // user can step through video rows while staying in the editor.
+    let _veGoToNextE       = false;
+    // (zip0130) When true, the close-handler reopens Annotate on _brIdx.
+    // Set ONLY by the A hotkey — every other close path (T, G, Esc, swipe,
+    // N/J that hops to next E, video.js's ArrowUp/Down internal hop, swipe
+    // gesture) leaves this false and routes to the no-op "stay where the
+    // close took us" branch. This replaces the old default-to-Annotate
+    // behavior that made unrelated close paths surprise the user with an
+    // Annotate panel popping up.
+    let _veOpenAnnotateAfterClose = false;
+    function veKeyHandler(e) {
+      const tag = document.activeElement && document.activeElement.tagName;
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (e.ctrlKey && e.key.toLowerCase() === 's') { saveVEFields(); }
+
+      // Escape → save and return to whichever screen we came from (T or G).
+      // saveVEFields runs in onVEClose; closeEditor handles the actual unmount.
+      if (e.key === 'Escape' && !e.ctrlKey) {
+        const commentPop = document.getElementById('v2comment-popup');
+        if (!commentPop) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          _veCloseToTable = true;
+          _veTargetAfterClose = _brIdx;
+          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          return;
+        }
+      }
+
+      // Alt+N/J = legacy bindings, equivalent to plain N/J — stay in E.
+      if (e.altKey && !e.ctrlKey) {
+        if (e.key==='n'||e.key==='N') {
+          e.preventDefault();
+          let t = _brIdx + 1;
+          while (t < _brRows.length) { const r = data[_brRows[t]]; if (r && isVideoRow(r)) break; t++; }
+          if (t >= _brRows.length) { toast('No more video rows below.', 1500); return; }
+          _veGoToNextE = true; _veTargetAfterClose = t;
+          const cb=overlay.querySelector('#v2close'); if(cb) cb.click();
+          return;
+        }
+        if (e.key==='j'||e.key==='J') {
+          e.preventDefault();
+          let t = _brIdx - 1;
+          while (t >= 0) { const r = data[_brRows[t]]; if (r && isVideoRow(r)) break; t--; }
+          if (t < 0) { toast('No more video rows above.', 1500); return; }
+          _veGoToNextE = true; _veTargetAfterClose = t;
+          const cb=overlay.querySelector('#v2close'); if(cb) cb.click();
+          return;
+        }
+      }
+
+      // (zip0132) Space = play/pause toggle.
+      // Sets BOTH _salPaused (the runtime pause flag video.js loops check)
+      // AND _salUserPaused (a sticky flag that video.js's timeline-scrub
+      // code respects so a click-to-scrub doesn't override the user's
+      // explicit pause). See video.js timeline pointerup logic.
+      if ((e.key === ' ' || e.key === 'Spacebar') && !inInput
+          && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        const p = window.seeLearnVideoPlayers && window.seeLearnVideoPlayers['v2host'];
+        if (p) {
+          if (p._salPaused) {
+            p._salPaused = false;
+            p._salUserPaused = false;
+            if (typeof p.playVideo === 'function') { try { p.playVideo(); } catch(_) {} }
+            else if (p.play) p.play().catch(()=>{});
+          } else {
+            p._salPaused = true;
+            p._salUserPaused = true;
+            if (typeof p.pauseVideo === 'function') { try { p.pauseVideo(); } catch(_) {} }
+            else if (p.pause) p.pause().catch(()=>{});
+          }
+        }
+        return;
+      }
+
+      if (inInput) return;
+
+      // Plain letter shortcuts (no modifiers, not in a text field)
+      if (!e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        // T = close E, return to Table
+        if (e.key === 't' || e.key === 'T') {
+          e.preventDefault(); e.stopPropagation();
+          _veCloseToTable = true;
+          _veTargetAfterClose = _brIdx;
+          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          return;
+        }
+        // G = close E, return to Grid (handled by post-close logic via _cameFromGrid)
+        if (e.key === 'g' || e.key === 'G') {
+          e.preventDefault(); e.stopPropagation();
+          // After E closes, we want Grid. Mark intent and close.
+          _veCloseToTable = true;     // tell onVEClose to close Browse too
+          _veTargetAfterClose = _brIdx;
+          window._veGoToGridAfterClose = true;
+          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          return;
+        }
+        // N or ArrowDown = advance to next visible row, stay in E.
+        // (zip0131) ArrowDown is now an alias for N here, so it shares the
+        // same filter-aware _brRows walking logic. Video.js's own ArrowDown
+        // handler bows out when veKeyHandler is active.
+        if (e.key === 'n' || e.key === 'N' || e.key === 'ArrowDown') {
+          e.preventDefault(); e.stopPropagation();
+          // Walk forward in _brRows looking for the next video row. Skip
+          // image-only rows since E is the video editor.
+          let target = _brIdx + 1;
+          while (target < _brRows.length) {
+            const r = data[_brRows[target]];
+            if (r && isVideoRow(r)) break;
+            target++;
+          }
+          if (target >= _brRows.length) { toast('No more video rows below.', 1500); return; }
+          _veGoToNextE = true;
+          _veTargetAfterClose = target;
+          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          return;
+        }
+        // J or ArrowUp = previous row, stay in E
+        if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowUp') {
+          e.preventDefault(); e.stopPropagation();
+          let target = _brIdx - 1;
+          while (target >= 0) {
+            const r = data[_brRows[target]];
+            if (r && isVideoRow(r)) break;
+            target--;
+          }
+          if (target < 0) { toast('No more video rows above.', 1500); return; }
+          _veGoToNextE = true;
+          _veTargetAfterClose = target;
+          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          return;
+        }
+        // A = close E, open Annotate on same row.
+        if (e.key === 'a' || e.key === 'A') {
+          e.preventDefault(); e.stopPropagation();
+          _veCloseToTable = false;
+          _veOpenAnnotateAfterClose = true;  // (zip0130) explicit opt-in
+          _veTargetAfterClose = _brIdx;
+          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          return;
+        }
+        // (zip0130) Delete = remove current row, advance to next video row in E.
+        // Confirmation dialog so an accidental Delete keystroke can be aborted.
+        // After delete: the row at the same _brIdx is now the next row (since
+        // the deleted entry was removed from _brRows). If no next row exists,
+        // step back; if nothing remains, return to T.
+        if (e.key === 'Delete' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          e.preventDefault(); e.stopPropagation();
+          const di = _brRows[_brIdx];
+          const r  = data[di];
+          if (!r) return;
+          const label = (r.VidTitle || r.link || '(no title)').slice(0, 80);
+          if (!confirm('Delete this row?\n\n' + label + '\n\nThis cannot be undone.')) return;
+
+          // Remove from data
+          data.splice(di, 1);
+          // Adjust checkedRows
+          const nc = new Set();
+          checkedRows.forEach(i => { if (i < di) nc.add(i); else if (i > di) nc.add(i - 1); });
+          checkedRows = nc;
+          if (typeof save === 'function') save();
+          if (typeof buildSort === 'function') buildSort();
+
+          // Rebuild _brRows so it reflects current visible rows minus the deleted one
+          _brRows = brGetVisibleRows();
+
+          // Find next video row at-or-after current _brIdx (which now points
+          // at what was the row AFTER the deleted one, if any).
+          let target = Math.min(_brIdx, _brRows.length - 1);
+          // Walk forward to find a video row
+          while (target < _brRows.length) {
+            const rr = data[_brRows[target]];
+            if (rr && isVideoRow(rr)) break;
+            target++;
+          }
+          // If nothing forward, walk backward
+          if (target >= _brRows.length) {
+            target = _brRows.length - 1;
+            while (target >= 0) {
+              const rr = data[_brRows[target]];
+              if (rr && isVideoRow(rr)) break;
+              target--;
+            }
+          }
+
+          if (target < 0 || target >= _brRows.length) {
+            // Nothing left to edit — return to T.
+            _veCloseToTable = true;
+            const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+            toast('Row deleted. No more video rows.', 2000);
+            return;
+          }
+          // Otherwise: hop to target via the same goToNextE path used by N/J.
+          _veGoToNextE = true;
+          _veTargetAfterClose = target;
+          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          toast('✓ Deleted row\n   ' + label, 2000);
+          return;
+        }
+        // S = toggle Selected/Full playback
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault(); e.stopPropagation();
+          const tog = document.getElementById('v2toggle');
+          if (tog) tog.click();
+          return;
+        }
+        // M = toggle Mute
+        if (e.key === 'm' || e.key === 'M') {
+          e.preventDefault(); e.stopPropagation();
+          const mb = document.getElementById('v2b-mute');
+          if (mb) mb.click();
+          return;
+        }
+        // C = toggle Closed Captions
+        if (e.key === 'c' || e.key === 'C') {
+          e.preventDefault(); e.stopPropagation();
+          const cc = document.getElementById('v2b-cc');
+          if (cc) cc.click();
+          return;
+        }
+        // ← / → = step one frame back/forward and pause.
+        // (zip0132) Was speed adjust; user wanted these freed up for the more
+        // valuable frame-step action. Speed is now slider-only.
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault(); e.stopPropagation();
+          const dir = e.key === 'ArrowRight' ? 1 : -1;
+          const FRAME_SEC = 0.1; // matches video.js convention
+          const p = window.seeLearnVideoPlayers && window.seeLearnVideoPlayers['v2host'];
+          if (!p) return;
+          // Read current time (YT is sync, Vimeo returns a Promise)
+          const handleT = (t) => {
+            const newT = Math.max(0, t + dir * FRAME_SEC);
+            // Pause + seek (one-frame step semantics)
+            try {
+              p._salPaused = true;
+              p._salUserPaused = true;  // sticky so timeline scrub doesn't unpause
+              if (typeof p.pauseVideo === 'function') p.pauseVideo();
+              else if (p.pause) p.pause().catch(()=>{});
+              if (typeof p.seekTo === 'function') p.seekTo(newT, true);
+              else if (typeof p.setCurrentTime === 'function') p.setCurrentTime(newT);
+            } catch(_) {}
+          };
+          try {
+            const t = (typeof p.getCurrentTime === 'function') ? p.getCurrentTime() : 0;
+            if (t && typeof t.then === 'function') t.then(handleT);
+            else handleT(typeof t === 'number' ? t : 0);
+          } catch(_) { handleT(0); }
+          return;
+        }
+      }
+
+      // (zip0126) Legacy H/L/O → t1 setter removed. The ve-t1 element was
+      // deleted along with the rest of the CLASSIFICATION block, so this
+      // handler became dead. Tag-related work now happens via A → Annotate.
+    }
+    document.addEventListener('keydown', veKeyHandler, true);
+    _veActiveKeyHandler = veKeyHandler;
+
+    // (zip0133) Hide the brief T-flash during N/J row-hop.
+    // Between closeEditor() removing the current overlay and the new
+    // openVideoEditor() building the next one, T peeks through for ~100ms.
+    // Drop a solid cover at the same z-index as the editor overlay just
+    // before the close, remove it after the new overlay is mounted (or
+    // after a safety timeout in case mount fails).
+    if (!document.getElementById('ve-hop-cover-style')) {
+      const st = document.createElement('style');
+      st.id = 've-hop-cover-style';
+      st.textContent = '#ve-hop-cover{position:fixed;inset:0;z-index:99998;'
+        + 'background:#1a1a1a;pointer-events:none;}';
+      document.head.appendChild(st);
+    }
+    window._veShowHopCover = function() {
+      let c = document.getElementById('ve-hop-cover');
+      if (!c) {
+        c = document.createElement('div');
+        c.id = 've-hop-cover';
+        document.body.appendChild(c);
+      }
+      // Safety: auto-remove after 600ms even if next E never mounts.
+      clearTimeout(window._veHopCoverTimer);
+      window._veHopCoverTimer = setTimeout(() => {
+        const el = document.getElementById('ve-hop-cover');
+        if (el) el.remove();
+      }, 600);
+    };
+    // Remove the cover once *this* E overlay is in place. We're already
+    // inside runVEPostOpenSetup, so the new E exists.
+    const existingCover = document.getElementById('ve-hop-cover');
+    if (existingCover) {
+      // Give the iframe a tick to start painting before lifting the cover
+      setTimeout(() => existingCover.remove(), 60);
+      clearTimeout(window._veHopCoverTimer);
+    }
+
+    // (zip0123) Right-to-left swipe gesture to close E (mirrors V).
+    //
+    // PREVIOUS BUG (zip0122): catcher was a child of v2host, but video.js
+    // calls `host.innerHTML = ''` every time the player re-mounts (segment
+    // switch, start/dur change, etc.). That wiped the catcher.
+    //
+    // FIX: catcher is a child of the overlay, position:absolute, with
+    // geometry tracked from v2host via ResizeObserver. This way it survives
+    // any v2host content rebuild.
+    const v2host = overlay.querySelector('#v2host');
+    if (v2host && !overlay.querySelector('#ve-swipe-catcher')) {
+      const catcher = document.createElement('div');
+      catcher.id = 've-swipe-catcher';
+      catcher.style.cssText =
+        'position:absolute;z-index:50;background:transparent;'
+        + 'pointer-events:auto;touch-action:pan-y;';
+      overlay.appendChild(catcher);
+
+      function syncCatcherGeometry() {
+        if (!document.body.contains(v2host)) return;
+        const r = v2host.getBoundingClientRect();
+        // overlay is position:fixed inset:0, so position:absolute inside it
+        // uses overlay top-left (= viewport 0,0) as origin.
+        catcher.style.left   = r.left + 'px';
+        catcher.style.top    = r.top + 'px';
+        catcher.style.width  = r.width + 'px';
+        catcher.style.height = r.height + 'px';
+      }
+      syncCatcherGeometry();
+      const ro = new ResizeObserver(syncCatcherGeometry);
+      ro.observe(v2host);
+      window.addEventListener('resize', syncCatcherGeometry);
+      overlay._veSwipeCleanup = () => {
+        try { ro.disconnect(); } catch(_) {}
+        window.removeEventListener('resize', syncCatcherGeometry);
+      };
+
+      let sStart = null;
+      catcher.addEventListener('pointerdown', e => {
+        sStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+      }, true);
+      catcher.addEventListener('pointerup', e => {
+        if (!sStart) return;
+        const dx = e.clientX - sStart.x;
+        const dy = e.clientY - sStart.y;
+        const ms = Date.now() - sStart.t;
+        sStart = null;
+        // Right→left swipe: close E and return to G or T (existing close
+        // path via v2close → onVEClose handles destination via _cameFromGrid).
+        if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) {
+          _veCloseToTable = !_cameFromGrid;
+          window._veGoToGridAfterClose = _cameFromGrid;
+          _veTargetAfterClose = _brIdx;
+          const cb = overlay.querySelector('#v2close');
+          if (cb) cb.click();
+          return;
+        }
+        // Plain tap / non-swipe: re-issue click on v2host so existing
+        // Ctrl+click-to-add-segment still works (the catcher is a sibling
+        // of v2host now, not a child, so events don't bubble through).
+        if (e.ctrlKey && Math.abs(dx) < 10 && Math.abs(dy) < 10 && ms < 400) {
+          // Compute click coords inside v2host
+          const r = v2host.getBoundingClientRect();
+          const inX = e.clientX - r.left;
+          const inY = e.clientY - r.top;
+          // Find element at that point inside v2host (the iframe usually)
+          // and dispatch a synthetic Ctrl+click on v2host so video.js's
+          // host.click handler fires.
+          const evt = new MouseEvent('click', {
+            bubbles: true, cancelable: true, view: window,
+            clientX: e.clientX, clientY: e.clientY,
+            ctrlKey: true, button: 0
+          });
+          v2host.dispatchEvent(evt);
+        }
+      }, true);
+      catcher.addEventListener('pointercancel', () => { sStart = null; }, true);
+
+      // (zip0131) Forward dblclick from catcher to v2host so the new
+      // double-click-to-mark-segment workflow works. Without this, the
+      // catcher swallows dblclick events because it sits on top of v2host.
+      catcher.addEventListener('dblclick', e => {
+        e.preventDefault(); e.stopPropagation();
+        const evt = new MouseEvent('dblclick', {
+          bubbles: true, cancelable: true, view: window,
+          clientX: e.clientX, clientY: e.clientY,
+          ctrlKey: e.ctrlKey, button: 0
+        });
+        v2host.dispatchEvent(evt);
+      }, true);
+    }
+
+    // Get VideoEditor's own save/close buttons
+    const v2save  = overlay.querySelector('#v2save');
+    const v2close = overlay.querySelector('#v2close');
+
+    // When VideoEditor closes (save or close), save VE fields then reopen Browse
+    function onVEClose() {
+      saveVEFields();
+      save();
+      document.removeEventListener('keydown', veKeyHandler, true);
+      document.removeEventListener('keydown', _veEarlyClaimKeyHandler, true);
+      _veActiveKeyHandler = null;
+      // (zip0123) Clean up swipe-catcher's resize observer + window listener
+      if (overlay && typeof overlay._veSwipeCleanup === 'function') {
+        try { overlay._veSwipeCleanup(); } catch(_) {}
+        overlay._veSwipeCleanup = null;
+      }
+      const closeToTable = _veCloseToTable;
+      const goToGrid = window._veGoToGridAfterClose;
+      const goToNextE = _veGoToNextE;
+      const openAnnotate = _veOpenAnnotateAfterClose;
+      window._veGoToGridAfterClose = false;
+      _veCloseToTable = false;
+      _veGoToNextE = false;
+      _veOpenAnnotateAfterClose = false;
+      setTimeout(() => {
+        // (zip0127) N/J in E: stay in E, hop to the next/prev video row.
+        // _veTargetAfterClose was set by the N/J handler to the target _brIdx.
+        if (goToNextE && _veTargetAfterClose !== null) {
+          const target = _veTargetAfterClose;
+          _veTargetAfterClose = null;
+          if (target >= 0 && target < _brRows.length) {
+            _brIdx = target;
+            const di = _brRows[target];
+            const row = data[di];
+            if (row && window.openVideoEditor) {
+              // (zip0133) Cover the screen so T doesn't flash through.
+              if (typeof window._veShowHopCover === 'function') window._veShowHopCover();
+              window.openVideoEditor(row);
+              return;
+            }
+          }
+          // Fallthrough: row missing/invalid, return to T as a safe default.
+        }
+        if (goToGrid) {
+          // G pressed in E — return to Grid (same as how G hotkey works at top level)
+          document.getElementById('browseOverlay').style.display = 'none';
+          document.getElementById('wrap').style.marginRight = '';
+          brClearMedia();
+          if (typeof gridShow === 'function') gridShow();
+          return;
+        }
+        if (closeToTable) {
+          // Esc or T pressed — close E and Annotate, return to T view with row focused.
+          document.getElementById('browseOverlay').style.display = 'none';
+          document.getElementById('wrap').style.marginRight = '';
+          brClearMedia();
+          // Restore table focus at the same row.
+          if (_brRows.length > 0) {
+            const di = _brRows[_brIdx];
+            const vi = sortedIdx ? sortedIdx.indexOf(di) : di;
+            if (vi >= 0) {
+              focus = { r: vi, c: 0 };
+              pending = null;
+            }
+          }
+          render();
+          // Scroll the focused row into view (otherwise focus is set in DOM
+          // but invisible if the row was previously off-screen).
+          if (focus !== null) {
+            requestAnimationFrame(() => {
+              const fc = document.querySelector('td.focus');
+              if (fc) fc.scrollIntoView({ block: 'center', behavior: 'auto' });
+            });
+          }
+        } else if (openAnnotate) {
+          // A was pressed in E — explicit request to open Annotate on _brIdx.
+          // (zip0130) This branch now requires the explicit flag. Other close
+          // paths (video.js's ArrowUp/Down hop, swipe, X button click without
+          // intent, save button) fall to the safe-default T-return below.
+          const target = _veTargetAfterClose !== null ? _veTargetAfterClose : _brIdx;
+          _veTargetAfterClose = null;
+          _brIdx = target;
+          document.getElementById('browseOverlay').style.display = 'flex';
+          brShow(_brIdx);
+          setTimeout(() => {
+            const chipInput = document.querySelector('#brTagChips input');
+            if (chipInput) chipInput.focus();
+            else { const el = document.getElementById('brt1'); if (el) el.focus(); }
+          }, 60);
+        } else {
+          // (zip0130) Default: close Annotate (if open) and return to T.
+          // Reached when video.js internally closes E via ArrowUp/ArrowDown,
+          // when E's own X button is clicked, or any other close that didn't
+          // explicitly opt in to Annotate or Grid. Treats this as a clean
+          // "return to source" — no surprise overlays.
+          document.getElementById('browseOverlay').style.display = 'none';
+          document.getElementById('wrap').style.marginRight = '';
+          brClearMedia();
+          if (_brRows.length > 0) {
+            const idx = _veTargetAfterClose !== null && _veTargetAfterClose >= 0
+              ? Math.min(_veTargetAfterClose, _brRows.length - 1) : _brIdx;
+            const di = _brRows[idx];
+            const vi = sortedIdx ? sortedIdx.indexOf(di) : di;
+            if (vi >= 0) { focus = { r: vi, c: 0 }; pending = null; }
+          }
+          _veTargetAfterClose = null;
+          render();
+          if (focus !== null) {
+            requestAnimationFrame(() => {
+              const fc = document.querySelector('td.focus');
+              if (fc) fc.scrollIntoView({ block: 'center', behavior: 'auto' });
+            });
+          }
+        }
+      }, 80);
+    }
+
+    // Watch for VideoEditor overlay being removed (handles Escape key path)
+    let _veCloseFired = false;
+    function fireOnVEClose() {
+      if (_veCloseFired) return; _veCloseFired = true;
+      onVEClose();
+    }
+    if (v2save)  v2save.addEventListener('click',  () => setTimeout(fireOnVEClose, 120));
+    if (v2close) v2close.addEventListener('click', () => setTimeout(fireOnVEClose, 120));
+
+    const observer = new MutationObserver(() => {
+      if (!document.getElementById('video-editor-overlay')) {
+        observer.disconnect();
+        setTimeout(fireOnVEClose, 30);
+      }
+    });
+    observer.observe(document.body, { childList: true });
+    } catch (err) {
+      // (zip0119) Surface failures instead of silently aborting. If the post-
+      // open setup throws, the keydown handler never installs and hotkeys
+      // appear broken. Show the error so it's noticed and fixed.
+      console.error('[runVEPostOpenSetup] failed:', err);
+      if (typeof toast === 'function') toast('E setup error: ' + err.message, 3000);
+    }
+  }, 80);
+}
+
+// ── Ensure brOpenVideoEditorWithFields runs whenever E is opened, regardless
+//    of entry path (E hotkey from T, double-click in grid, dblclick in T tags
+//    cell, etc.). Without this, my veKeyHandler isn't registered and ANJSMC
+//    don't work. T worked previously only because video.js has its own T
+//    handler in handleKey().
+//
+//    We monkey-patch window.openVideoEditor: the original is called as before,
+//    then we run the post-open setup that brOpenVideoEditorWithFields used to
+//    duplicate. Cleanest centralization without changing every call site.
+//
+//    KEY ORDERING: video.js's handleKey is registered synchronously inside
+//    origOpen(), so it would naturally win the capture-phase race. To make
+//    OUR handler win for the keys we care about (Esc, A, N, J, S, M, C, ←/→
+//    arrows for speed), we install an "early claim" handler BEFORE calling
+//    origOpen(). The claim handler runs first; for keys we own, it
+//    stopImmediatePropagation()s so video.js's handler never sees them.
+//    For keys we don't own (Tab/Ctrl+S), it returns without interfering,
+//    and video.js's handler continues working.
+
+// Module-level "active veKeyHandler" pointer — the early claim handler
+// forwards to whatever the latest veKeyHandler is (assigned after the
+// post-open setup runs).
+// (zip0131) Exposed on window so video.js can detect that index.html will
+// handle ArrowUp/ArrowDown and bow out of its own legacy handler.
+let _veActiveKeyHandler = null;
+Object.defineProperty(window, '_veActiveKeyHandler', { get: () => _veActiveKeyHandler });
+
+function _veEarlyClaimKeyHandler(e) {
+  if (!_veActiveKeyHandler) return;
+  // Only intercept keys that veKeyHandler genuinely owns. video.js's
+  // handleKey owns Tab/Ctrl+S — leave those alone.
+  // (zip0123: added Space; zip0130: added Delete; zip0131: added ArrowUp/Down
+  //  for filter-aware row navigation as N/J aliases.)
+  const k = e.key;
+  const isOurEsc   = k === 'Escape' && !e.ctrlKey;
+  const isOurArrow = (k === 'ArrowLeft' || k === 'ArrowRight'
+                   || k === 'ArrowUp'   || k === 'ArrowDown');
+  const isOurSpace = (k === ' ' || k === 'Spacebar') && !e.ctrlKey && !e.altKey && !e.metaKey;
+  const isOurDel   = (k === 'Delete') && !e.ctrlKey && !e.altKey && !e.metaKey;
+  const isOurLetter = !e.ctrlKey && !e.metaKey && !e.altKey
+    && (k === 't' || k === 'T' || k === 'g' || k === 'G' ||
+        k === 'a' || k === 'A' || k === 'n' || k === 'N' ||
+        k === 'j' || k === 'J' || k === 's' || k === 'S' ||
+        k === 'm' || k === 'M' || k === 'c' || k === 'C');
+  if (!isOurEsc && !isOurArrow && !isOurSpace && !isOurDel && !isOurLetter) return;
+
+  // Don't claim when focus is in an input — let normal text-edit keys work,
+  // including Esc inside a comment popup (which video.js handles separately).
+  const ae = document.activeElement;
+  const inInput = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT');
+  // Esc still goes through veKeyHandler regardless — it explicitly checks for
+  // the comment popup itself.
+  if (inInput && !isOurEsc) return;
+
+  // Hand off to veKeyHandler and block other capture-phase listeners.
+  e.stopImmediatePropagation();
+  _veActiveKeyHandler(e);
+}
+
+(function wrapOpenVideoEditor() {
+  function tryWrap() {
+    if (typeof window.openVideoEditor !== 'function') {
+      setTimeout(tryWrap, 50);
+      return;
+    }
+    if (window._openVEWrapped) return;
+    window._openVEWrapped = true;
+    const origOpen = window.openVideoEditor;
+    window.openVideoEditor = function (row) {
+      // (zip0122) Update last-record memory
+      if (row && row.UID && typeof window.setLastUID === 'function') {
+        window.setLastUID(row.UID);
+      }
+      // Install the early claim BEFORE origOpen so it captures keys ahead
+      // of video.js's handleKey registration.
+      document.addEventListener('keydown', _veEarlyClaimKeyHandler, true);
+      origOpen(row);
+      // Find the row's data-index so the post-open setup can populate _brIdx etc.
+      const di = data.indexOf(row);
+      if (di < 0) return;
+      // If _brRows is empty (entered E directly from T without going through
+      // Annotate first), seed it with the visible-rows window so N/J navigation
+      // works against the current sort/filter.
+      if (!_brRows.length || _brRows.indexOf(di) < 0) {
+        _brRows = brGetVisibleRows();
+        const fi = _brRows.indexOf(di);
+        _brIdx = fi >= 0 ? fi : 0;
+      } else {
+        _brIdx = _brRows.indexOf(di);
+      }
+      // Now run the standard E post-open setup (registers veKeyHandler,
+      // injects classification fields, attaches close handlers, etc.).
+      runVEPostOpenSetup(di);
+    };
+  }
+  tryWrap();
+})();
+
+// (zip0122) Wrap closeDictionary so returning from D restores focus to the
+// row whose UID is in _lastUID. The wrapping is deferred until tags.js has
+// installed window.closeDictionary.
+(function wrapCloseDictionary() {
+  function tryWrap() {
+    if (typeof window.closeDictionary !== 'function') {
+      setTimeout(tryWrap, 80);
+      return;
+    }
+    if (window._closeDictWrapped) return;
+    window._closeDictWrapped = true;
+    const origClose = window.closeDictionary;
+    window.closeDictionary = function () {
+      origClose.apply(this, arguments);
+      // After dict is gone, restore focus to last UID
+      setTimeout(() => {
+        if (typeof window._restoreFocusToLastUID === 'function') {
+          window._restoreFocusToLastUID();
+        }
+      }, 30);
+    };
+  }
+  tryWrap();
+})();
+
+// Browse field order for Tab cycling
+const BR_FIELDS = ['brt1','brt2','brn1','brn2','brn3','brComment','brVal','brSave','brPrev','brNext','brClose'];
+
+function brFocusField(id) {
+  const el = document.getElementById(id);
+  if (el && !el.disabled && el.style.display !== 'none') { el.focus(); return true; }
+  return false;
+}
+
+// Keyboard in Annotate mode
+document.addEventListener('keydown', e => {
+  if (document.getElementById('browseOverlay').style.display !== 'flex') return;
+
+  const tag = document.activeElement && document.activeElement.tagName;
+  const inField = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
+
+  // Alt+L = toggle dict match mode
+  if (e.altKey && !e.ctrlKey && (e.key==='l'||e.key==='L')) {
+    e.preventDefault();
+    _dictMatchMode = _dictMatchMode==='anywhere' ? 'start' : 'anywhere';
+    updateDictBtn();
+    toast('Lookup: '+_dictMatchMode, 1000);
+    return;
+  }
+  
+  // Alt+N = next row, Alt+J = previous row
+  if (e.altKey && !e.ctrlKey) {
+    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); brSave(); if (_brIdx < _brRows.length-1) brShow(_brIdx+1); return; }
+    if (e.key === 'j' || e.key === 'J') { e.preventDefault(); brSave(); if (_brIdx > 0) brShow(_brIdx-1); return; }
+  }
+
+  // Ctrl+S always saves
+  if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); brSave(); return; }
+
+  // Escape — save and close
+  if (e.key === 'Escape') {
+    brSave(); brClose(); return;
+  }
+
+  if (inField) {
+    // Tab / Shift+Tab cycles through fields
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const ids = BR_FIELDS.filter(id => {
+        const el = document.getElementById(id);
+        return el && el.offsetParent !== null;
+      });
+      const cur = document.activeElement && document.activeElement.id;
+      const ci = ids.indexOf(cur);
+      const next = e.shiftKey
+        ? ids[(ci - 1 + ids.length) % ids.length]
+        : ids[(ci + 1) % ids.length];
+      brFocusField(next);
+    }
+    return;
+  }
+
+  // When NOT in a field:
+  if (!e.ctrlKey && !e.altKey) {
+    const k = e.key.toUpperCase();
+    // H A L O → set t1 quickly (A won't conflict — inField=false means no input focused)
+    if (k === 'H' || k === 'L' || k === 'O') {
+      e.preventDefault();
+      document.getElementById('brt1').value = k;
+      document.getElementById('brt1').dispatchEvent(new Event('change'));
+      document.getElementById('brt2').dispatchEvent(new Event('input'));
+      toast('t1 = '+k, 700);
+      setTimeout(() => brFocusField('brt2'), 30);
+      return;
+    }
+    // T → focus t1
+    if (k === 'T') { e.preventDefault(); brFocusField('brt1'); return; }
+    // C → focus comment
+    if (k === 'C') { e.preventDefault(); brFocusField('brComment'); return; }
+    // Space or Enter → save + advance
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault(); brSave();
+      if (_brIdx < _brRows.length - 1) brShow(_brIdx + 1);
+      return;
+    }
+    // Arrow keys ← → also navigate (Up/Down handled by table-level handler which syncs annotate)
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); brSave(); if (_brIdx > 0) brShow(_brIdx-1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); brSave(); if (_brIdx < _brRows.length-1) brShow(_brIdx+1); return; }
+    // Tab when no field focused → jump to t1
+    if (e.key === 'Tab') { e.preventDefault(); brFocusField('brt1'); return; }
+  }
+});
+function toast(msg, ms) { const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._tid); t._tid=setTimeout(()=>{t.style.display='none';},ms||3000); }
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Help modal — two-page system
+const PHYLA_DATA = [
+  // [phylum, meaning, common, features, count, extinct?]
+  ['Agmata','Fragmented','—','Calcareous conical shells','5 species',true],
+  ['Annelida','Little ring','Segmented worms','Multiple circular segments','22,000+',false],
+  ['Arthropoda','Jointed foot','Arthropods','Segmented bodies, jointed limbs, chitin exoskeleton','1,250,000+',false],
+  ['Brachiopoda','Arm foot','Lampshells','Lophophore and pedicle','300–500 extant; 12,000+ extinct',false],
+  ['Bryozoa','Moss animals','Moss animals, sea mats','Lophophore, no pedicle, ciliated tentacles','6,000',false],
+  ['Chaetognatha','Longhair jaw','Arrow worms','Chitinous spines either side of head, fins','~100',false],
+  ['Chordata','With a cord','Chordates','Hollow dorsal nerve cord, notochord, pharyngeal slits','~55,000+',false],
+  ['Cnidaria','Stinging nettle','Cnidarians','Nematocysts (stinging cells)','~16,000',false],
+  ['Ctenophora','Comb bearer','Comb jellies','Eight comb rows of fused cilia','~100–150',false],
+  ['Cycliophora','Wheel carrying','—','Circular mouth surrounded by small cilia, sac-like bodies','3+',false],
+  ['Dicyemida','Lozenge animal','—','Single axial celled endoparasites, surrounded by ciliated cells','100+',false],
+  ['Echinodermata','Spiny skin','Echinoderms','Fivefold radial symmetry, mesodermal calcified spines','~7,500',false],
+  ['Entoprocta','Inside anus','Goblet worms','Anus inside ring of cilia','~150',false],
+  ['Gastrotricha','Hairy stomach','Hairybellies','Two terminal adhesive tubes','~690',false],
+  ['Gnathostomulida','Jaw orifice','Jaw worms','Tiny worms related to rotifers, no body cavity','~100',false],
+  ['Hemichordata','Half cord','Acorn worms','Stomochord in collar, pharyngeal slits','~130',false],
+  ['Kinorhyncha','Motion snout','Mud dragons','Eleven segments, each with a dorsal plate','~150',false],
+  ['Loricifera','Armour bearer','Brush heads','Umbrella-like scales at each end','~122',false],
+  ['Micrognathozoa','Tiny jaw animals','—','Accordion-like extensible thorax','2',false],
+  ['Mollusca','Soft','Mollusks','Muscular foot and mantle round shell','85,000+',false],
+  ['Monoblastozoa','One sprout animals','—','Dense ciliated, distinct anterior/posterior','1',false],
+  ['Nematoda','Thread like','Roundworms','Round cross section, keratin cuticle','25,000',false],
+  ['Nematomorpha','Thread form','Horsehair worms','Long, thin parasitic worms related to nematodes','~320',false],
+  ['Nemertea','A sea nymph','Ribbon worms','Unsegmented worms with proboscis in rhynchocoel','~1,200',false],
+  ['Onychophora','Claw bearer','Velvet worms','Worm-like with legs tipped by chitinous claws','~200',false],
+  ['Orthonectida','Straight swimmer','—','Parasitic, microscopic, simple, wormlike','20',false],
+  ['Petalonamae','Shaped like leaves','—','Extinct Ediacaran frondomorphs','3 classes',true],
+  ['Phoronida','Zeus\'s mistress','Horseshoe worms','U-shaped gut','11',false],
+  ['Placozoa','Plate animals','Trichoplaxes','Two ciliated cell layers, amoeboid fiber cells between','4+',false],
+  ['Platyhelminthes','Flat worm','Flatworms','Flattened worms, no body cavity, many parasitic','~29,500',false],
+  ['Porifera','Pore bearer','Sponges','Perforated interior wall, simplest known animals','10,800',false],
+  ['Priapulida','Little Priapus','Penis worms','Penis-shaped worms','~20',false],
+  ['Proarticulata','Before articulates','—','Extinct Ediacaran, display glide symmetry','3 classes',true],
+  ['Rotifera','Wheel bearer','Rotifers','Anterior crown of cilia','~3,500',false],
+  ['Saccorhytida','Pocket + wrinkle','—','Spherical body, prominent mouth, 8 openings around body','2 species',true],
+  ['Tardigrada','Slow step','Water bears, moss piglets','Microscopic arthropod relatives, four segmented body','1,000',false],
+  ['Trilobozoa','Three-lobed animal','Trilobozoans','Tricentric symmetry, all Ediacaran','18 genera',true],
+  ['Vetulicolia','Ancient dweller','Vetulicolians','Two-part body, possible chordate subphylum','15 species',true],
+  ['Xenacoelomorpha','Strange hollow form','Xenacoelomorphs','Small simple bilateral animals, lacking gut cavity or anus','400+',false],
+];
+
+let _helpPage = 0;
+// HELP_PAGES is declared further down (zip0154 rewrite) along with HELP_DATA.
+
+function buildPhylaTable() {
+  const tbody = document.getElementById('phylaTableBody');
+  if (!tbody || tbody.children.length > 0) return; // already built
+  PHYLA_DATA.forEach((row, i) => {
+    const [phylum, meaning, common, features, count, extinct] = row;
+    const tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid #1a1a2e;'+(extinct?'font-style:italic;opacity:0.75;':'');
+    tr.innerHTML =
+      '<td style="padding:4px 10px;color:'+(extinct?'#888':'#8ef')+';white-space:nowrap;font-weight:bold;">'+escH(phylum)+(extinct?' †':'')+'</td>'
+      +'<td style="padding:4px 10px;color:#aaa;">'+escH(meaning)+'</td>'
+      +'<td style="padding:4px 10px;color:#ccc;white-space:nowrap;">'+escH(common)+'</td>'
+      +'<td style="padding:4px 10px;color:#999;max-width:300px;">'+escH(features)+'</td>'
+      +'<td style="padding:4px 10px;color:#8a8;text-align:right;white-space:nowrap;">'+escH(count)+'</td>';
+    tbody.appendChild(tr);
+    tr.style.background = i % 2 === 0 ? '#0a0a1a' : '#0d0d1e';
+  });
+}
+
+// ── (zip0154) Help system rewrite ────────────────────────────────────────────
+// Two help screens — Hd (developer, page 0 + taxonomy on page 1) and Hu
+// (user, page 2). Both render from the same HELP_DATA structure, which is
+// also the source for the "⬇ Download" button (rich-text export with
+// dev-only commands bolded). User mode opens directly to Hu and hides the
+// other pages from navigation.
+var HELP_VERSION_STR = (typeof window !== 'undefined' && window.HELP_VERSION_STR) ? window.HELP_VERSION_STR : 'dev0163'; // Override via window.HELP_VERSION_STR in index.html for version bumps. Used in download filename + heading.
+
+const HELP_DATA = [
+  // ─── GLOBAL HOTKEYS ─────────────────────────────────────────────────
+  { id: 'GLOBAL', title: 'Global Hotkeys', devOnly: false,
+    desc: 'Single letters work from any screen when no input field has focus. Modifier combos (Ctrl/Alt) are listed where they apply.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'H', desc: 'Toggle this Help screen (works from anywhere)', dev: false },
+        { key: 'G', desc: 'Open Grid view',                    dev: false },
+        { key: 'C', desc: 'Open Collection (c.json picker)',    dev: false },
+        { key: 'M', desc: 'Open hamburger menu (then S = Settings, D = Dictionary, F = Folder…)', dev: true  },
+        { key: 'T', desc: 'Save + return to Table',             dev: true  },
+        { key: 'E', desc: 'Edit last selected (VE/IE)',         dev: true  },
+        { key: 'A', desc: 'Open Annotate panel',                dev: true  },
+        { key: 'D', desc: 'Open Dictionary (focused row\'s first tag if any, else last state)', dev: true  },
+        { key: 'V', desc: 'View focused row fullscreen (video/image/quiz/text slide). Toggle.', dev: false },
+        { key: 'F', desc: 'Toggle filter (T view)',             dev: true  },
+        { key: 'W or L', desc: 'Smart clipboard import (T view)', dev: true },
+        { key: 'Esc', desc: 'Close overlay / defocus from text field (then hotkeys work)', dev: false },
+      ]}
+    ]
+  },
+
+  // ─── T — TABLE ──────────────────────────────────────────────────────
+  { id: 'T', title: 'T — Table (Master Links Editor)', devOnly: true,
+    desc: 'The heart of the system: every row is one cell candidate (video, image, html-text, or quiz). Tags here drive Lookup in A. Dev-only screen — no access in user mode.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'A',                desc: 'Open Annotate panel — images & videos', dev: true },
+        { key: 'E',                desc: 'Open VideoEditor (videos only)',         dev: true },
+        { key: 'G',                desc: 'Open Grid view',                          dev: true },
+        { key: 'Enter',            desc: 'Commit edit, move down',                  dev: true },
+        { key: 'Tab / Shift+Tab',  desc: 'Commit, move right / left',               dev: true },
+        { key: 'Del / Backspace',  desc: 'Clear focused cell',                      dev: true },
+        { key: 'Ctrl+I',           desc: 'Toggle thumbnail mode',                   dev: true },
+        { key: 'Ctrl+H',           desc: 'Hamburger menu',                          dev: true },
+        { key: 'Esc',              desc: 'Close any open window',                   dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'L-click cell',         desc: 'Focus cell',                          dev: true },
+        { key: 'Double-click',         desc: 'Edit focused cell (only way to edit)', dev: true },
+        { key: 'Shift+L-click (col)',  desc: 'Range → bulk set',                    dev: true },
+        { key: 'R-click',              desc: 'Context menu',                        dev: true },
+      ]}
+    ]
+  },
+
+  // ─── G / Gu — GRID ──────────────────────────────────────────────────
+  { id: 'G', title: 'G / Gu — Grid View', devOnly: false,
+    desc: 'N×N grid of cells (N = 2..5). Cell positions come from row.cell (T mode) or active C config (C mode). Video on the grid is always muted; row Mute applies in V only.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: '2 / 3 / 4 / 5', desc: 'Grid size 2×2 / 3×3 / 4×4 / 5×5',  dev: false },
+        { key: 'C',             desc: 'Open Collection picker',            dev: false },
+        { key: 'Esc',           desc: 'Cancel cut or close grid',          dev: false },
+        { key: 'T',             desc: 'Return to Table',                   dev: true  },
+        { key: 'Ctrl+Alt+G',    desc: 'Save current grid config to c.json', dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Tap cell (short)',    desc: 'Toggle pause/play (G); dev-only in Gu', dev: false },
+        { key: 'Swipe →',             desc: 'Open fullscreen viewer (V/I/Q/X)',     dev: false },
+        { key: 'Swipe ←',             desc: 'Toggle pause/play video',              dev: false },
+        { key: 'HOLD cell',           desc: 'Cut (select for swap)',                dev: true  },
+        { key: 'Click another cell',  desc: 'Swap with cut cell',                   dev: true  },
+        { key: 'Click same cell',     desc: 'Cancel cut',                           dev: true  },
+        { key: 'Double-click text',   desc: 'Edit text slide',                      dev: true  },
+        { key: 'Ctrl+L-click',        desc: 'Edit (VE for video, IE for image)',   dev: true  },
+        { key: 'Ctrl+R-click',        desc: 'Open fullscreen viewer',               dev: false },
+        { key: 'R-click cell',        desc: 'Context menu (T / V / D)',             dev: true  },
+      ]}
+    ]
+  },
+
+  // ─── C / Cu — COLLECTION ────────────────────────────────────────────
+  { id: 'C', title: 'C / Cu — Collection (c.json)', devOnly: false,
+    desc: 'Saved grid configurations. Each entry stores the cells field (4/9/16/25 = 2×2/3×3/4×4/5×5) and a cell→UID mapping. In Cu, tap an entry to load it into the grid at its saved size.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'G',   desc: 'Return to Grid',                  dev: false },
+        { key: 'Esc', desc: 'Close Collection',                dev: false },
+        { key: 'T',   desc: 'Return to Table',                 dev: true  },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Tap row',    desc: 'Make active (loads into G at saved size)', dev: false },
+        { key: 'Swipe ←',    desc: 'Cancel / close',                            dev: false },
+      ]}
+    ]
+  },
+
+  // ─── E — VIDEO EDITOR ───────────────────────────────────────────────
+  { id: 'E', title: 'E — Video Editor (VE)', devOnly: true,
+    desc: 'Trim videos into segments. Each segment has start, duration, and an optional comment. Saves to row.VidRange + VidComment. Dev-only screen.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Space',    desc: 'Play / Pause',                          dev: true },
+        { key: '← →',      desc: 'Trim start ±0.1s',                      dev: true },
+        { key: '↑ ↓',      desc: 'Duration ±0.1s',                        dev: true },
+        { key: 'Tab',      desc: 'Cycle segments',                        dev: true },
+        { key: 'H A L O',  desc: 'Set t1 instantly (when not in field)',  dev: true },
+        { key: 'M',        desc: 'Toggle mute (live)',                    dev: true },
+        { key: 'Ctrl+S',   desc: 'Save current row',                      dev: true },
+        { key: 'Esc',      desc: 'Close (back to grid if from grid)',     dev: true },
+        { key: 'T',        desc: 'Save + return to Table',                dev: true },
+        { key: 'G',        desc: 'Open Grid view',                        dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'R-click segment / band', desc: 'Rename segment',           dev: true },
+        { key: 'Swipe ←',                desc: 'Close (back to grid)',     dev: true },
+      ]}
+    ]
+  },
+
+  // ─── V — VIDEO PLAYER (FULLSCREEN) ──────────────────────────────────
+  { id: 'V', title: 'V — Video Player (Fullscreen)', devOnly: false,
+    desc: 'Full-screen video playback. Plays the row.VidRange segments in sequence. Mute determined by row Mute (0 = audio, 1 = silent); the M key toggles mute live for this session.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Space',  desc: 'Play / Pause',                  dev: false },
+        { key: '← →',    desc: 'Frame step ±0.1s',              dev: false },
+        { key: 'M',      desc: 'Mute toggle (live)',            dev: false },
+        { key: 'A / B',  desc: 'Set loop points',               dev: false },
+        { key: 'V',      desc: 'Close (toggle — same key that opened it)', dev: false },
+        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Swipe ←',     desc: 'Close → back to grid',     dev: false },
+        { key: 'Tap controls', desc: 'Buttons on bottom bar',    dev: false },
+      ]}
+    ]
+  },
+
+  // ─── I — IMAGE (FULLSCREEN) ─────────────────────────────────────────
+  { id: 'I', title: 'I — Image (Fullscreen)', devOnly: false,
+    desc: 'Full-screen view of an image-link cell. Reached by swipe-right (or Ctrl+R-click) on an image cell in G/Gu.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Swipe ←', desc: 'Close → back to grid',         dev: false },
+      ]}
+    ]
+  },
+
+  // ─── Q — QUIZ (FULLSCREEN) ──────────────────────────────────────────
+  { id: 'Q', title: 'Q — Quiz (Fullscreen)', devOnly: false,
+    desc: 'Full-screen view of a quiz cell (row.qfile or JSON ftext). Reached by swipe-right or tap on a quiz cell in G/Gu.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Tap answer',  desc: 'Submit quiz answer',        dev: false },
+        { key: 'Swipe ←',     desc: 'Close → back to grid',     dev: false },
+      ]}
+    ]
+  },
+
+  // ─── Xs — HTML TEXT SLIDE (FULLSCREEN VIEW) ─────────────────────────
+  { id: 'Xs', title: 'Xs — HTML Text Slide (Fullscreen View)', devOnly: false,
+    desc: 'Read-only fullscreen view of an HTML/text slide. Reached by swipe-right on a text cell in G/Gu, or by Slide button/swipe in Xe.',
+    sections: [
+      { name: 'Navigation', items: [
+        { key: 'Esc',               desc: 'Close Xs → back to Xe (if opened from editor)', dev: false },
+        { key: 'Swipe ← (top bar)', desc: 'Close Xs → back to Xe',                         dev: false },
+        { key: '✕ Close button',    desc: 'Close Xs',                                        dev: false },
+      ]}
+    ]
+  },
+
+  // ─── Xe — HTML TEXT EDITOR ──────────────────────────────────────────
+  { id: 'Xe', title: 'Xe — HTML Text Editor', devOnly: true,
+    desc: 'Rich-text editor for row.ftext. Reached by double-click on a text cell in G (dev mode). Esc closes without saving. Title-bar swipe → shows slide; swipe ← saves and closes.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Esc',             desc: 'Close Xe without saving (back to T)',                dev: true },
+        { key: 'S',               desc: 'Slide preview — auto-saves first (when not typing)', dev: true },
+        { key: 'Ctrl+B / I / U', desc: 'Bold / Italic / Underline',                          dev: true },
+        { key: 'Ctrl+S',         desc: 'Save + close',                                        dev: true },
+        { key: 'Shift+Enter',    desc: 'Insert collapsible block (▶ toggle). In summary: inserts line-break for multi-line header. Enter alone in summary: jump to body.', dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Swipe → (title bar)', desc: 'Auto-save + show slide (Xs)',         dev: true },
+        { key: 'Swipe ← (title bar)', desc: 'Auto-save + close Xe (back to T)',    dev: true },
+        { key: '▶ Slide button',      desc: 'Auto-save + preview as Xs',           dev: true },
+        { key: '✓ Save button',       desc: 'Save + close editor',                 dev: true },
+        { key: '✕ Close button',      desc: 'Close editor (unsaved changes lost)',  dev: true },
+        { key: 'Toolbar ▶… button',   desc: 'Insert empty collapsible block',      dev: true },
+        { key: 'Toolbar 🖼 button',    desc: 'Insert image — UID or URL, size, left/center/right align', dev: true },
+        { key: 'Dbl-click image',     desc: 'Edit image: size, alignment, source', dev: true },
+      ]}
+    ]
+  },
+];
+
+// HELP_PAGES order: 0=Hd, 1=Taxonomy, 2=Hu. _isUserMode() decides which the
+// help system makes navigable.
+const HELP_PAGES = [
+  'Hd — Developer Reference',
+  'Taxonomy (HALO + Phyla)',
+  'Hu — User Reference'
+];
+
+// Render Hd page 0 from HELP_DATA. Two-column responsive layout; each
+// section gets a panel with its hotkeys and mouse rows.
+function _renderHd() {
+  const root = document.getElementById('helpPage0');
+  if (!root) return;
+  const escH = (s) => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const panel = (s) => {
+    let html = '<div style="background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;padding:11px 13px;margin-bottom:10px;">';
+    html += '<h3 style="color:#fa8;font-size:12px;margin:0 0 4px;letter-spacing:0.05em;">' + escH(s.title) + '</h3>';
+    if (s.desc) html += '<p style="color:#778;font-size:10px;margin:0 0 8px;line-height:1.45;">' + escH(s.desc) + '</p>';
+    s.sections.forEach(sec => {
+      html += '<div style="margin-top:6px;color:#556;font-size:10px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
+      html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
+      sec.items.forEach(it => {
+        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+              + '<td style="padding:2px 0;color:#ccc;">' + escH(it.desc) + '</td></tr>';
+      });
+      html += '</table>';
+    });
+    html += '</div>';
+    return html;
+  };
+  let html = '<p style="color:#667;font-size:11px;margin-bottom:14px;line-height:1.55;">'
+           + '<strong style="color:#8ef;">' + escH(HELP_VERSION_STR) + '</strong> · '
+           + 'Developer reference: every screen, every shortcut. '
+           + 'Use ◀ ▶ to switch to taxonomy or to preview the user help (Hu). '
+           + 'Click <strong style="color:#5fa;">⬇ Download</strong> above to save a merged Hd+Hu reference as an HTML file (dev-only commands shown <strong>bold</strong>).</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
+  HELP_DATA.forEach(s => { html += panel(s); });
+  html += '</div>';
+  root.innerHTML = html;
+}
+
+// Render Hu page 2: user-relevant items only (skip devOnly screens entirely;
+// inside the rest, drop items where dev:true).
+function _renderHu() {
+  const root = document.getElementById('helpPage2');
+  if (!root) return;
+  const escH = (s) => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const panel = (s) => {
+    // Filter sections to user-only items
+    const filteredSections = s.sections.map(sec => ({
+      name: sec.name,
+      items: sec.items.filter(it => it.dev === false)
+    })).filter(sec => sec.items.length > 0);
+    if (filteredSections.length === 0) return ''; // nothing left for the user
+    let html = '<div style="background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;padding:11px 13px;margin-bottom:10px;">';
+    html += '<h3 style="color:#fa8;font-size:12px;margin:0 0 4px;letter-spacing:0.05em;">' + escH(s.title) + '</h3>';
+    if (s.desc) html += '<p style="color:#778;font-size:10px;margin:0 0 8px;line-height:1.45;">' + escH(s.desc) + '</p>';
+    filteredSections.forEach(sec => {
+      html += '<div style="margin-top:6px;color:#556;font-size:10px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
+      html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
+      sec.items.forEach(it => {
+        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+              + '<td style="padding:2px 0;color:#ccc;">' + escH(it.desc) + '</td></tr>';
+      });
+      html += '</table>';
+    });
+    html += '</div>';
+    return html;
+  };
+  let html = '<p style="color:#667;font-size:11px;margin-bottom:14px;line-height:1.55;">'
+           + '<strong style="color:#8ef;">' + escH(HELP_VERSION_STR.replace('dev','user')) + '</strong> · '
+           + 'Quick reference for using SeeAndLearn. '
+           + 'Tap a cell to play/pause, swipe right to view full-screen, swipe left to return.</p>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
+  HELP_DATA.forEach(s => {
+    if (s.devOnly) return; // skip dev-only screens entirely in user help
+    const block = panel(s);
+    if (block) html += block;
+  });
+  html += '</div>';
+  root.innerHTML = html;
+}
+
+// Build a standalone HTML file (Hd + Hu merged, dev rows bolded) and trigger
+// a browser download. No external CSS — everything inline so it prints
+// cleanly anywhere. Filename embeds the version (HELP_VERSION_STR).
+function _downloadHelp() {
+  const escH = (s) => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let body = '';
+  body += '<h1 style="color:#234;border-bottom:2px solid #69c;padding-bottom:6px;">SeeAndLearn — Help Reference</h1>';
+  body += '<p style="color:#666;font-style:italic;">Version ' + escH(HELP_VERSION_STR)
+        + ' · merged developer + user reference.<br>'
+        + '<strong>Developer-only commands shown in bold</strong>; commands available to everyone are in normal type.</p>';
+  HELP_DATA.forEach(s => {
+    body += '<h2 style="color:#345;margin-top:22px;border-bottom:1px solid #ccd;padding-bottom:3px;">'
+          + escH(s.title)
+          + (s.devOnly ? ' <span style="font-size:11px;color:#a44;font-weight:normal;">[developer-only screen]</span>' : '')
+          + '</h2>';
+    if (s.desc) body += '<p style="color:#555;">' + escH(s.desc) + '</p>';
+    s.sections.forEach(sec => {
+      body += '<h3 style="color:#456;margin-top:10px;">' + escH(sec.name) + '</h3>';
+      body += '<table style="border-collapse:collapse;width:100%;margin-bottom:6px;">';
+      sec.items.forEach(it => {
+        const style = it.dev
+          ? 'font-weight:bold;color:#234;'
+          : 'color:#345;';
+        body += '<tr>'
+              + '<td style="padding:3px 12px 3px 0;white-space:nowrap;vertical-align:top;width:170px;border-bottom:1px solid #eef;' + style + '">'
+              + escH(it.key) + (s.devOnly || it.dev ? '' : '') + '</td>'
+              + '<td style="padding:3px 0;border-bottom:1px solid #eef;' + style + '">'
+              + escH(it.desc) + '</td>'
+              + '</tr>';
+      });
+      body += '</table>';
+    });
+  });
+  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+             + '<title>SeeAndLearn Help — ' + escH(HELP_VERSION_STR) + '</title>'
+             + '</head><body style="font-family:Georgia,serif;max-width:900px;margin:24px auto;padding:0 20px;color:#222;background:#fff;">'
+             + body
+             + '<hr style="margin-top:32px;border:none;border-top:1px solid #ccd;">'
+             + '<p style="color:#888;font-size:11px;text-align:center;">Generated from in-app help · ' + new Date().toLocaleString() + '</p>'
+             + '</body></html>';
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'SeeAndLearn_Help_' + HELP_VERSION_STR + '.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  if (typeof toast === 'function') toast('⬇ Help downloaded as HTML', 1500);
+}
+
+function showHelpPage(p) {
+  // (zip0154) User mode → only Hu (page 2) is reachable. Clamp navigation.
+  const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  if (userMode) {
+    p = 2;
+  } else {
+    p = Math.max(0, Math.min(HELP_PAGES.length - 1, p));
+  }
+  _helpPage = p;
+  document.getElementById('helpTitle').textContent = HELP_PAGES[_helpPage];
+  document.getElementById('helpPageIndicator').textContent =
+    userMode
+      ? 'User reference'
+      : 'Page '+(_helpPage+1)+' of '+HELP_PAGES.length+' — use ◀ ▶ or ← → to navigate';
+  document.getElementById('helpPage0').style.display = _helpPage === 0 ? 'block' : 'none';
+  document.getElementById('helpPage1').style.display = _helpPage === 1 ? 'block' : 'none';
+  document.getElementById('helpPage2').style.display = _helpPage === 2 ? 'block' : 'none';
+  // Nav arrows: hide entirely in user mode (no navigation), dim at edges in dev.
+  const prev = document.getElementById('helpPrev');
+  const next = document.getElementById('helpNext');
+  if (userMode) {
+    prev.style.display = 'none'; next.style.display = 'none';
+  } else {
+    prev.style.display = ''; next.style.display = '';
+    prev.style.opacity = _helpPage === 0 ? '0.3' : '1';
+    next.style.opacity = _helpPage === HELP_PAGES.length - 1 ? '0.3' : '1';
+  }
+  // Download button: visible only on Hd (page 0). Hidden on taxonomy + Hu.
+  document.getElementById('helpDownload').style.display = (!userMode && _helpPage === 0) ? '' : 'none';
+  // Lazy-render panels on first show (and on every show — cheap).
+  if (_helpPage === 0) _renderHd();
+  if (_helpPage === 1) buildPhylaTable();
+  if (_helpPage === 2) _renderHu();
+}
+
+function closeHelp() { document.getElementById('helpModal').style.display = 'none'; }
+function openHelp()  {
+  // (zip0154) User mode opens directly to Hu (page 2). Dev mode opens to
+  // whatever page was last viewed (defaults to 0 = Hd).
+  const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  if (userMode) _helpPage = 2;
+  document.getElementById('helpModal').style.display = 'flex';
+  showHelpPage(_helpPage);
+}
+function isHelpOpen(){ return document.getElementById('helpModal').style.display === 'flex'; }
+
+document.getElementById('helpBtn').addEventListener('click', () => { isHelpOpen() ? closeHelp() : openHelp(); });
+document.getElementById('helpClose').addEventListener('click', closeHelp);
+document.getElementById('helpPrev').addEventListener('click', () => showHelpPage(_helpPage - 1));
+document.getElementById('helpNext').addEventListener('click', () => showHelpPage(_helpPage + 1));
+// (zip0154) Download button — exports merged Hd+Hu reference as HTML
+document.getElementById('helpDownload').addEventListener('click', _downloadHelp);
+document.getElementById('helpModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('helpModal')) closeHelp();
+});
+document.getElementById('helpModal').addEventListener('dblclick', e => {
+  if (!e.target.closest('#helpBox')) closeHelp();
+});
+document.getElementById('helpModal').addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft')  { e.stopPropagation(); showHelpPage(_helpPage - 1); }
+  if (e.key === 'ArrowRight') { e.stopPropagation(); showHelpPage(_helpPage + 1); }
+  if (e.key === 'Escape')     { e.stopPropagation(); closeHelp(); }
+});
+// tabindex so helpModal can receive key events
+document.getElementById('helpModal').setAttribute('tabindex', '-1');
+// Focus helpModal on open so arrow keys work
+const _origOpenHelp = openHelp;
+// already defined above, patch to focus after open
+document.getElementById('helpBtn').addEventListener('click', () => {
+  setTimeout(() => { if (isHelpOpen()) document.getElementById('helpModal').focus(); }, 30);
+}, true);
+
+// Double-click on VE overlay closes it (video.js adds it dynamically so use delegation)
+// (zip0131) Removed: double-click anywhere in E used to close it. That was
+// surprising and conflicted with the new dblclick-to-mark-segment workflow.
+// E now closes only via T/G/A/Esc hotkeys, the X button, or right-to-left
+// swipe (added in zip0123).
+document.body.addEventListener('dblclick', e => {
+  // Double-click on Browse overlay background closes it
+  const br = document.getElementById('browseOverlay');
+  if (br && e.target === br) { brSave(); brClose(); }
+});
+
+// Table-level shortcut keys: b=browse, h=help
+// (fires only when table is visible and no modal is open)
+document.addEventListener('keydown', e => {
+  const tableVisible = !isHelpOpen()
+    && !document.getElementById('video-editor-overlay')
+    && !document.getElementById('textEditorOverlay')   // (zip0134) gate H when text editor open
+    && !document.getElementById('teSlideOverlay')      // (zip0134) gate when slide preview open
+    && document.getElementById('gridOverlay')?.style.display !== 'flex';
+  const tag = document.activeElement && document.activeElement.tagName;
+  const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    || (document.activeElement && document.activeElement.isContentEditable);  // (zip0134)
+
+  // Global Escape: close whatever is topmost
+  if (e.key === 'Escape' && !e.ctrlKey) {
+    if (document.getElementById('video-editor-overlay')) {
+      const cb = document.getElementById('v2close'); if (cb) cb.click(); return;
+    }
+    if (document.getElementById('browseOverlay').style.display === 'flex') {
+      brSave(); brClose(); return;
+    }
+    if (_cMode) { closeCScreen(); return; }
+    if (isHelpOpen()) { closeHelp(); return; }
+    // Grid overlay - Esc handled by grid's own handler
+    if (document.getElementById('gridOverlay').style.display === 'flex') {
+      return; // Let grid handler deal with it
+    }
+  }
+
+  if (!tableVisible || inField || e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // h → toggle Help
+  if (e.key === 'h' || e.key === 'H') {
+    e.preventDefault(); isHelpOpen() ? closeHelp() : openHelp();
+    return;
+  }
+}, true); // capture phase so it runs before other handlers

@@ -2035,5 +2035,127 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "bamfordvirae",
+    "label": "Bamfordvirae",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "kingdom"
+  },
+  {
+    "id": "preplasmiviricota",
+    "label": "Preplasmiviricota",
+    "kind": "taxon",
+    "parents": [
+      "bamfordvirae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "phylum"
+  },
+  {
+    "id": "tectiliviricetes",
+    "label": "Tectiliviricetes",
+    "kind": "taxon",
+    "parents": [
+      "preplasmiviricota"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "rowavirales",
+    "label": "Rowavirales",
+    "kind": "taxon",
+    "parents": [
+      "tectiliviricetes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "adenoviridae",
+    "label": "Adenoviridae",
+    "kind": "taxon",
+    "parents": [
+      "rowavirales"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "mammalia",
+    "label": "Mammalia",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "cetacea",
+    "label": "Cetacea",
+    "kind": "taxon",
+    "parents": [
+      "mammalia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "balaenidae",
+    "label": "Balaenidae",
+    "kind": "taxon",
+    "parents": [
+      "cetacea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "balaena",
+    "label": "Balaena",
+    "kind": "taxon",
+    "parents": [
+      "balaenidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "balaena-mysticetus",
+    "label": "Balaena mysticetus",
+    "kind": "taxon",
+    "parents": [
+      "balaena"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Bowhead Whale",
+    "extinct": false
+  },
+  {
+    "id": "elephant",
+    "label": "",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "common": "Elephant",
+    "extinct": false
   }
 ]
