@@ -416,12 +416,15 @@ function gridOpenFullscreen(row, contained) {
     (function wireSwipeClose() {
       let sStart = null;
       swipeCatcher.addEventListener('pointerdown', e => {
-        sStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+        // (zip0174) rotateXY for portrait support
+        const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+        sStart = { x: _p.x, y: _p.y, t: Date.now() };
       }, true);
       swipeCatcher.addEventListener('pointerup', e => {
         if (!sStart) return;
-        const dx = e.clientX - sStart.x;
-        const dy = e.clientY - sStart.y;
+        const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+        const dx = _p.x - sStart.x;
+        const dy = _p.y - sStart.y;
         const ms = Date.now() - sStart.t;
         sStart = null;
         // Swipe RIGHT→LEFT to close (mirrors G's L→R to open)
@@ -673,10 +676,56 @@ function gridOpenFullscreen(row, contained) {
     
   } else if (row.ftext || row.qfile) {
     // QUIZ / HTML FULLSCREEN via srcdoc iframe
+    //
+    // (zip0174) Iframes capture keyboard focus, so once the user
+    // interacts with the HTML content, Esc and hotkeys no longer reach
+    // the document — vpKeyHandler stops responding. Swipe-to-close
+    // wasn't wired here either (only on the video branch), so on
+    // mobile there was no escape route at all. Fix: add a fixed top
+    // bar over the iframe with (1) visible "swipe to return" hint,
+    // (2) explicit ✕ close button, (3) R→L swipe handler that uses
+    // the rotated-coord helper so it works in CSS-rotated portrait.
+    const topBar = document.createElement('div');
+    topBar.id = 'vp-html-topbar';
+    topBar.style.cssText = 'position:absolute;top:0;left:0;right:0;height:48px;'
+      + 'display:flex;align-items:center;justify-content:space-between;'
+      + 'padding:0 14px;background:#3a4d75;border-bottom:2px solid #6af;z-index:60;'
+      + 'touch-action:none;user-select:none;';
+    topBar.innerHTML = '<span style="font-family:monospace;font-size:13px;color:#cde;'
+      + 'pointer-events:none;">← Swipe right-to-left on this bar to return · Esc</span>'
+      + '<button id="vp-html-close" style="background:#1a1a2e;border:1px solid #888;'
+      + 'color:#ccc;padding:4px 12px;border-radius:4px;cursor:pointer;'
+      + 'font-family:monospace;font-size:13px;">✕ Close</button>';
+    content.appendChild(topBar);
+
     const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;background:#fff;';
+    iframe.style.cssText = 'position:absolute;top:48px;left:0;right:0;bottom:0;'
+      + 'width:100%;height:calc(100% - 48px);border:none;background:#fff;';
     iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-modals allow-downloads');
     content.appendChild(iframe);
+
+    // Wire close button
+    topBar.querySelector('#vp-html-close').addEventListener('click', vpClose);
+
+    // R→L swipe on top bar closes (mirrors the video branch's
+    // swipeCatcher behavior). Uses rotateXY for portrait rotation.
+    (function wireHtmlSwipeClose() {
+      let sStart = null;
+      topBar.addEventListener('pointerdown', e => {
+        const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+        sStart = { x: _p.x, y: _p.y, t: Date.now() };
+      });
+      topBar.addEventListener('pointerup', e => {
+        if (!sStart) return;
+        const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+        const dx = _p.x - sStart.x;
+        const dy = _p.y - sStart.y;
+        const ms = Date.now() - sStart.t;
+        sStart = null;
+        if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) vpClose();
+      });
+      topBar.addEventListener('pointercancel', () => { sStart = null; });
+    })();
 
     // Listen for exitQuiz postMessage from inside the iframe
     const quizMsgHandler = (e) => {
@@ -727,7 +776,9 @@ function gridOpenFullscreen(row, contained) {
       }
     }
 
-    info.textContent = [row.cell, row.n1, row.qfile].filter(Boolean).join(' · ') + ' — Esc to close';
+    // (zip0174) info bar hidden — top bar provides the close affordance
+    info.textContent = '';
+    info.style.cssText = 'display:none;';
     fs.onclick = null;
 
   } else if (row.link) {

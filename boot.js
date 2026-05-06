@@ -446,12 +446,15 @@ async function _showMobileCPicker() {
   // R-to-L swipe to close
   let sStart = null;
   ov.addEventListener('pointerdown', e => {
-    sStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+    // (zip0174) Use wrap-local coords for rotated portrait support.
+    const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    sStart = { x: _p.x, y: _p.y, t: Date.now() };
   });
   ov.addEventListener('pointerup', e => {
     if (!sStart) return;
-    const dx = e.clientX - sStart.x;
-    const dy = e.clientY - sStart.y;
+    const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    const dx = _p.x - sStart.x;
+    const dy = _p.y - sStart.y;
     const ms = Date.now() - sStart.t;
     sStart = null;
     if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) close();

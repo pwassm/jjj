@@ -865,15 +865,19 @@ function textEditorPreviewSlide() {
   // (zip0161) R→L swipe on the top bar (only) closes Xs, returning to Xe.
   // Using the top bar instead of the whole overlay avoids accidental dismissal
   // while scrolling the slide content.
+  // (zip0174) Updated to use rotateXY so swipe direction is correct in
+  // CSS-rotated portrait mode on phones.
   const topBar = ov.querySelector('#teSlideTopBar');
   let sStart = null;
   topBar.addEventListener('pointerdown', e => {
-    sStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+    const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    sStart = { x: _p.x, y: _p.y, t: Date.now() };
   });
   topBar.addEventListener('pointerup', e => {
     if (!sStart) return;
-    const dx = e.clientX - sStart.x;
-    const dy = e.clientY - sStart.y;
+    const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    const dx = _p.x - sStart.x;
+    const dy = _p.y - sStart.y;
     const ms = Date.now() - sStart.t;
     sStart = null;
     if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) close();

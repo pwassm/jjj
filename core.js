@@ -300,7 +300,14 @@ async function writeFileToDisk(name, jsonData) {
     // and on Ctrl+R load() preferred the fetched stale ml.json over the
     // fresh localStorage. Now we warn loudly so the user knows their save
     // didn't reach disk and can re-grant FSA permission.
-    if (!writeFileToDisk._warnedNoDir) {
+    //
+    // (zip0174) But ONLY in dev mode. Users (Gu/Cu) never pick a folder
+    // — they're viewing pre-built grids on github.io / phone. The toast
+    // was firing when they picked a config from Cu (which mutates
+    // data[] cell assignments and calls save()). In user mode the
+    // localStorage write is the intended behavior; no toast needed.
+    const inUserMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+    if (!inUserMode && !writeFileToDisk._warnedNoDir) {
       writeFileToDisk._warnedNoDir = true;
       try { toast('⚠ ' + name + ' NOT saved to disk — re-pick project folder (📂 button)', 4500); } catch(e) {}
       console.warn('writeFileToDisk: no FSA dir / permission lost. ' + name + ' saved to localStorage only.');
@@ -595,7 +602,11 @@ async function load() {
             rawSource = 'localStorage';
             console.warn('load(): localStorage is newer than ml.json — using localStorage. '
               + 'Disk write probably failed; check FSA folder permission.');
-            try { toast('⚠ Loaded from localStorage (disk was stale) — re-pick project folder', 4000); } catch(e) {}
+            // (zip0174) Toast only shown to devs; users have no folder to re-pick.
+            const _inUser = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+            if (!_inUser) {
+              try { toast('⚠ Loaded from localStorage (disk was stale) — re-pick project folder', 4000); } catch(e) {}
+            }
           }
         } catch(e) { console.warn('localStorage parse failed:', e); }
       }

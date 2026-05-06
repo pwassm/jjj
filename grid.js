@@ -552,7 +552,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
   
   interactor.addEventListener('pointerdown', e => {
     e.preventDefault();
-    pStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+    // (zip0174) Translate physical screen coords to wrap-local coords so
+    // swipe direction matches user perception in CSS-rotated portrait.
+    // No-op when not rotated.
+    const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    pStart = { x: _p.x, y: _p.y, t: Date.now() };
     didHold = false;
     wasCtrl = e.ctrlKey;
     wasLeftBtn = (e.button === 0); // 0=left, 2=right
@@ -570,8 +574,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
   
   interactor.addEventListener('pointermove', e => {
     if (!pStart) return;
-    const dx = Math.abs(e.clientX - pStart.x);
-    const dy = Math.abs(e.clientY - pStart.y);
+    const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    const dx = Math.abs(_p.x - pStart.x);
+    const dy = Math.abs(_p.y - pStart.y);
     if (dx > 10 || dy > 10) clearTimeout(holdTmr);
   }, true);
   
@@ -581,8 +586,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
     cell.style.opacity = '';
     if (!pStart) return;
     
-    const dx = e.clientX - pStart.x;
-    const dy = e.clientY - pStart.y;
+    const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    const dx = _p.x - pStart.x;
+    const dy = _p.y - pStart.y;
     const ms = Date.now() - pStart.t;
     const ctrl = wasCtrl;
     const leftBtn = wasLeftBtn;
@@ -674,7 +680,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
     if (_ptrSawDown) return;            // pointer events are working — bow out
     if (!e.touches || !e.touches.length) return;
     const t = e.touches[0];
-    _tStart = { x: t.clientX, y: t.clientY, t: Date.now() };
+    // (zip0174) Translate physical screen coords to wrap-local coords.
+    const _p = window.rotateXY ? window.rotateXY(t) : { x: t.clientX, y: t.clientY };
+    _tStart = { x: _p.x, y: _p.y, t: Date.now() };
     e.preventDefault();
   }, { passive: false, capture: true });
   
@@ -692,8 +700,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
     // changedTouches has the lifted finger; touches is empty by now.
     const t = (e.changedTouches && e.changedTouches[0]) || null;
     if (!t) { _tStart = null; return; }
-    const dx = t.clientX - _tStart.x;
-    const dy = t.clientY - _tStart.y;
+    const _p = window.rotateXY ? window.rotateXY(t) : { x: t.clientX, y: t.clientY };
+    const dx = _p.x - _tStart.x;
+    const dy = _p.y - _tStart.y;
     const ms = Date.now() - _tStart.t;
     _tStart = null;
     e.preventDefault();
