@@ -34,11 +34,82 @@
     document.documentElement.classList.add(isUser ? 'user-mode' : 'dev-mode');
   } catch (_) { /* default to dev on any error */ }
 })();
+
+// (zip0173) EARLY orientation detection — runs before <body> parses so
+// the rotateWrap CSS rules below take effect on first paint without a
+// flash of unrotated layout. Replaces the old fullscreen + orientation-
+// lock approach (which hid the URL bar and Android nav buttons). The
+// page now stays in the browser's normal chrome and CSS-rotates the UI
+// 90° clockwise when the device is in portrait, so the URL bar appears
+// down the left edge and Android nav buttons down the right.
+//
+// Threshold: only auto-rotate phone-sized portraits (<900px short side).
+// Tablets and laptops in vertical orientation are left alone.
+//
+// applyRotation() is also bound to resize / orientationchange below, in
+// case the device rotates after load.
+(function() {
+  function applyRotation() {
+    var pw = window.innerWidth, ph = window.innerHeight;
+    var isPortrait = ph > pw && pw < 900;
+    var html = document.documentElement;
+    if (isPortrait) {
+      html.style.setProperty('--rot-w', ph + 'px');
+      html.style.setProperty('--rot-h', pw + 'px');
+      html.style.setProperty('--rot-trans-y', '-' + pw + 'px');
+      html.classList.add('rot-portrait');
+      window._salRotated = true;
+    } else {
+      html.classList.remove('rot-portrait');
+      window._salRotated = false;
+    }
+  }
+  applyRotation();  // initial — runs in <head>, before body
+  window.addEventListener('resize', applyRotation);
+  window.addEventListener('orientationchange', function() {
+    // iOS reports old dimensions if you read too soon after the rotate.
+    setTimeout(applyRotation, 50);
+    setTimeout(applyRotation, 300);
+  });
+  // Helper for code that does math with pointer coords. Pass an event
+  // (or {clientX,clientY}); returns {x,y} in wrap-local (visually-
+  // upright) space. Use this for swipe-direction checks and drag math
+  // inside the rotated wrap. When not rotated, returns coords unchanged.
+  window.rotateXY = function(e) {
+    var cx = (e && e.clientX !== undefined) ? e.clientX : (e && e.x) || 0;
+    var cy = (e && e.clientY !== undefined) ? e.clientY : (e && e.y) || 0;
+    if (!window._salRotated) return { x: cx, y: cy };
+    // 90° CW visual rotation: physical (cx,cy) → wrap-local (cy, vw-cx)
+    return { x: cy, y: window.innerWidth - cx };
+  };
+})();
 </script>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
-html { height:100%; }
-body { height:100%; overflow:hidden; background:#0a0a14; color:#ddd; font-family:monospace,sans-serif; display:flex; flex-direction:column; }
+html, body { height:100%; overflow:hidden; touch-action:manipulation; }
+body { background:#0a0a14; color:#ddd; font-family:monospace,sans-serif; }
+
+/* (zip0173) The rotation wrapper — all body content lives inside this.
+   In landscape: behaves as a normal full-screen flex column (no
+   transform). In portrait (phone-sized only): the inline style
+   variables set by the early-detect script swap width/height and apply
+   rotate(90deg) so the whole UI renders sideways while the browser
+   chrome (URL bar / nav buttons) stays in its physical position.
+   Because the wrap has a transform in portrait mode, it becomes the
+   containing block for all `position:fixed` descendants — overlays
+   like #gridOverlay (inset:0) auto-fill the rotated wrap correctly. */
+#rotateWrap {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #0a0a14;
+  display: flex; flex-direction: column;
+  transform-origin: 0 0;
+}
+html.rot-portrait #rotateWrap {
+  width: var(--rot-w);
+  height: var(--rot-h);
+  transform: rotate(90deg) translateY(var(--rot-trans-y));
+}
 
 /* (zip0143) USER MODE: hide T's chrome (toolbar + main wrap) so the
    table never flashes on github.io / mobile load. Grid overlay paints
@@ -313,6 +384,7 @@ thead th.rn              { color: #fff !important; }
 </style>
 </head>
 <body>
+<div id="rotateWrap">
 
 <div id="toolbar">
   <button id="hmBtn" title="Menu (Ctrl+H)"><span></span><span></span><span></span></button>
@@ -616,7 +688,7 @@ thead th.rn              { color: #fff !important; }
   <div id="gridFsInfo" style="position:absolute;top:0;left:0;right:0;color:#888;font-size:12px;font-family:monospace;"></div>
 </div>
 
-<button id="ver-badge" type="button" title="Click to toggle dev/user mode (reloads page)">dev0163</button>
+<button id="ver-badge" type="button" title="Click to toggle dev/user mode (reloads page)">dev0173</button>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -628,17 +700,19 @@ thead th.rn              { color: #fff !important; }
 
 
 
+</div><!-- /#rotateWrap (zip0173) -->
+
 <!-- (zip0164) Single source of truth for version. Bump this one line per release.
      core.js reads window.HELP_VERSION_STR if set, otherwise falls back to its baked-in default. -->
-<script>window.HELP_VERSION_STR = 'dev0172';</script>
+<script>window.HELP_VERSION_STR = 'dev0173';</script>
 
-<script src="tags.js?v=0172"></script>
-<script src="video.js?v=0172"></script>
-<script src="core.js?v=0172"></script>
-<script src="grid.js?v=0172"></script>
-<script src="xe.js?v=0172"></script>
-<script src="vp.js?v=0172"></script>
-<script src="collection.js?v=0172"></script>
-<script src="boot.js?v=0172"></script>
+<script src="tags.js?v=0173"></script>
+<script src="video.js?v=0173"></script>
+<script src="core.js?v=0173"></script>
+<script src="grid.js?v=0173"></script>
+<script src="xe.js?v=0173"></script>
+<script src="vp.js?v=0173"></script>
+<script src="collection.js?v=0173"></script>
+<script src="boot.js?v=0173"></script>
 </body>
 </html>

@@ -253,44 +253,27 @@ window.muteIconHTML = function(isMuted) {
 // the page. iOS Safari supports neither reliably; for browsers that
 // refuse the lock, the page just renders in whatever orientation the
 // user is holding (the old portrait warning was removed in 0143).
+//
+// (zip0173) DISABLED — replaced by the CSS rotate-wrap approach
+// implemented in index.html. The new approach keeps the URL bar and
+// Android navigation buttons visible (in their physical screen
+// position) while CSS-rotating the app UI 90° to show in landscape on
+// portrait-held phones. Avoids the fullscreen-API quirks (taps on
+// chrome dismissing fullscreen, iOS refusing the lock, requiring a
+// user gesture every page load).
+//
+// Function kept as a no-op so any existing call sites still resolve
+// without error.
 async function _enterFullscreenLandscape() {
-  // Fullscreen first — orientation lock generally requires it. We
-  // intentionally don't await fullscreen; chasing an unsupported promise
-  // shouldn't block the orientation attempt.
-  try {
-    if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else if (document.documentElement.webkitRequestFullscreen && !document.webkitFullscreenElement) {
-      document.documentElement.webkitRequestFullscreen();
-    }
-  } catch (_) {}
-  // Try the lock immediately AND again after a short delay — some
-  // browsers reject the lock if fullscreen hasn't settled yet.
-  const tryLock = () => {
-    try {
-      if (screen.orientation && typeof screen.orientation.lock === 'function') {
-        screen.orientation.lock('landscape').catch(() => {});
-      }
-    } catch (_) {}
-  };
-  tryLock();
-  setTimeout(tryLock, 200);
-  setTimeout(tryLock, 700);
+  return;
 }
 
 function _wireFullscreenOnFirstTap() {
-  if (!_isMobileDevice()) return;
-  // Fire on the first user gesture of any kind. `once: true` cleans up
-  // automatically — no need to track removal across both events.
-  const handler = () => {
-    document.removeEventListener('touchend', handler, true);
-    document.removeEventListener('click', handler, true);
-    document.removeEventListener('pointerdown', handler, true);
-    _enterFullscreenLandscape();
-  };
-  document.addEventListener('touchend', handler, true);
-  document.addEventListener('click', handler, true);
-  document.addEventListener('pointerdown', handler, true);
+  // (zip0173) DISABLED — see _enterFullscreenLandscape comment above.
+  // The CSS rotate-wrap in index.html handles portrait-on-phone display
+  // without needing fullscreen or an orientation lock. Function kept
+  // for backward compatibility with the call site in load().then().
+  return;
 }
 
 function _routeInitialScreen() {
