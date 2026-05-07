@@ -256,6 +256,50 @@ function gridOpenTextEditor(cellStr, row) {
         textEditorPreviewSlide();
       }
     }
+
+    // (zip0178) ArrowUp / ArrowDown — navigate filtered rows while Xe is open,
+    // mirroring what Ev already does.  Only fires when the contenteditable
+    // editor is NOT the active element (natural cursor movement inside the
+    // text is unaffected).  The navigator auto-seeds _brRows from the current
+    // filter if it is empty.  The row that replaces the current one may be any
+    // type: openEditorForRow routes to Xe (text), Ie (image), or Ev (video).
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const ae = document.activeElement;
+      const editorFocused = ae && (ae.id === 'teEditor' || ae.closest('#teEditor'));
+      if (editorFocused) return; // let cursor move inside editor normally
+
+      e.preventDefault(); e.stopPropagation();
+
+      // Ensure row list is populated
+      if (!window._brRows || !window._brRows.length) {
+        window._brRows = (typeof brGetVisibleRows === 'function')
+          ? brGetVisibleRows() : [];
+      }
+      const rows = window._brRows;
+      if (!rows.length) { if (typeof toast === 'function') toast('No visible rows.', 1400); return; }
+
+      // Find current row position
+      const di = (typeof data !== 'undefined' && _textEditorRow)
+        ? data.indexOf(_textEditorRow) : -1;
+      const curFi = di >= 0 ? rows.indexOf(di) : (window._brIdx || 0);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const target = curFi + step;
+      if (target < 0 || target >= rows.length) {
+        if (typeof toast === 'function')
+          toast('No more rows ' + (step > 0 ? 'below' : 'above') + '.', 1400);
+        return;
+      }
+      window._brIdx = target;
+      const nextRow = (typeof data !== 'undefined') ? data[rows[target]] : null;
+      if (!nextRow) return;
+
+      // Save current, close Xe, open appropriate editor for next row
+      _textEditorDoSave();
+      textEditorClose();
+      if (typeof window.openEditorForRow === 'function') {
+        window.openEditorForRow(nextRow);
+      }
+    }
   }, true);
 
   // (zip0161) Swipes on the title bar:

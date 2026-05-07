@@ -371,6 +371,9 @@ function gridOpenFullscreen(row, contained) {
   info.style.cssText = '';
   _vpState = null;
   
+  // (zip0178) Track current row so vpKeyHandler can navigate from Iu/Ie.
+  window._vpCurrentRow = row;
+  
   const isVid = isVideoRow(row);
   
   if (isVid && row.link) {
@@ -398,9 +401,13 @@ function gridOpenFullscreen(row, contained) {
     // (zip0144) Extends to the top edge — the old 50px info bar
     // ("cell · title") was removed in 0144 to recover screen height on
     // phones. Bottom 80px is the controls toolbar.
+    // (zip0177) overflow:hidden clips the scaled iframe to the video area
+    // when the user hold-zooms on desktop. transform-origin:center locks
+    // scale to the visual center of the video frame.
     const host = document.createElement('div');
     host.id = 'grid-fs-video';
-    host.style.cssText = 'position:absolute;inset:0 0 80px 0;background:#000;';
+    host.style.cssText = 'position:absolute;inset:0 0 80px 0;background:#000;'
+      + 'overflow:hidden;transform-origin:center center;';
     content.appendChild(host);
     _gridPlayers[host.id] = true;
     
@@ -419,32 +426,137 @@ function gridOpenFullscreen(row, contained) {
     swipeCatcher.style.cssText = 'position:absolute;inset:0 0 80px 0;z-index:50;background:transparent;cursor:pointer;touch-action:none;';
     content.appendChild(swipeCatcher);
     
-    (function wireSwipeClose() {
+    // ── V interaction: touch + mouse ──────────────────────────────────────────
+    // Touch path (zip0174–0175): R→L swipe to close; tap = play/pause toggle.
+    // Mouse path (zip0177 — Vud/Vdd desktop):
+    //   • Hold LMB → zoom in (slow→fast, up to 8×). Same acceleration curve as
+    //     Iu. 180 ms settle so quick clicks don't trigger zoom.
+    //   • Drag while holding → cancels zoom and enters pan (at >1×) or swipe
+    //     tracking (at 1×).
+    //   • R→L drag release at 1× → close.
+    //   • Double-click → reset zoom to 1×.
+    //   • Click-to-play-pause removed on mouse; Space bar handles it.
+    // The swipeCatcher sits above the host (iframe) and receives all events.
+    // Zoom is applied as transform on host so the iframe is visually magnified
+    // and clipped by host's overflow:hidden. No coordinate translation of
+    // iframe content needed — CSS transform handles everything.
+
+    // Shared zoom / pan state for host transform
+    let _vScale = 1, _vTx = 0, _vTy = 0;
+    function _vApply() {
+      host.style.transform = `translate(${_vTx}px,${_vTy}px) scale(${_vScale})`;
+      swipeCatcher.style.cursor = _vScale > 1.05 ? 'grab' : 'zoom-in';
+    }
+    function _vpxy(e) {
+      return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    }
+
+    // ── TOUCH: R→L swipe to close + tap to play/pause ─────────────────────
+    (function wireTouchV() {
       let sStart = null;
       swipeCatcher.addEventListener('pointerdown', e => {
-        // (zip0174) rotateXY for portrait support
-        const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
-        sStart = { x: _p.x, y: _p.y, t: Date.now() };
+        if (e.pointerType === 'mouse') return;
+        const p = _vpxy(e);
+        sStart = { x: p.x, y: p.y, t: Date.now() };
       }, true);
       swipeCatcher.addEventListener('pointerup', e => {
-        if (!sStart) return;
-        const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
-        const dx = _p.x - sStart.x;
-        const dy = _p.y - sStart.y;
+        if (e.pointerType === 'mouse' || !sStart) return;
+        const p = _vpxy(e);
+        const dx = p.x - sStart.x, dy = p.y - sStart.y;
         const ms = Date.now() - sStart.t;
         sStart = null;
-        // Swipe RIGHT→LEFT to close (mirrors G's L→R to open)
         if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) {
-          vpClose();
-          return;
+          vpClose(); return;
         }
-        // Short tap passes through to play/pause toggle for convenience
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && ms < 300) {
           if (typeof vpTogglePlay === 'function') vpTogglePlay();
         }
       }, true);
-      swipeCatcher.addEventListener('pointercancel', () => { sStart = null; }, true);
+      swipeCatcher.addEventListener('pointercancel', e => {
+        if (e.pointerType !== 'mouse') sStart = null;
+      }, true);
     })();
+
+    // ── MOUSE: hold-LMB zoom + drag-pan + R→L swipe close + dblclick reset ─
+    (function wireMouseV() {
+      let mDown = false, mDragging = false;
+      let mStart = null, mPanBase = null;
+      let vzDelay = null, vzTimer = null, vzStep = 0;
+
+      function vzStop() {
+        if (vzDelay) { clearTimeout(vzDelay);  vzDelay = null; }
+        if (vzTimer) { clearInterval(vzTimer); vzTimer = null; }
+      }
+
+      swipeCatcher.addEventListener('pointerdown', e => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        e.preventDefault();
+        swipeCatcher.setPointerCapture(e.pointerId);
+        const p = _vpxy(e);
+        mDown = true; mDragging = false;
+        mStart = { x: p.x, y: p.y, t: Date.now() };
+        mPanBase = null;
+        // 180 ms settle — quick clicks don't zoom
+        vzStep = 0.015;
+        vzDelay = setTimeout(() => {
+          vzDelay = null;
+          vzTimer = setInterval(() => {
+            if (_vScale >= 8) { vzStop(); return; }
+            _vScale   = Math.min(8, _vScale + vzStep);
+            vzStep    = Math.min(0.12, vzStep + 0.003);
+            _vApply();
+          }, 50);
+        }, 180);
+      }, true);
+
+      swipeCatcher.addEventListener('pointermove', e => {
+        if (e.pointerType !== 'mouse' || !mDown) return;
+        const p = _vpxy(e);
+        if (!mDragging && Math.hypot(p.x - mStart.x, p.y - mStart.y) > 8) {
+          mDragging = true;
+          vzStop();
+          mPanBase = { tx: _vTx, ty: _vTy, px: p.x, py: p.y };
+        }
+        if (mDragging && _vScale > 1.05) {
+          _vTx = mPanBase.tx + (p.x - mPanBase.px);
+          _vTy = mPanBase.ty + (p.y - mPanBase.py);
+          _vApply();
+          swipeCatcher.style.cursor = 'grabbing';
+        }
+      }, true);
+
+      swipeCatcher.addEventListener('pointerup', e => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        vzStop();
+        const p = _vpxy(e);
+        const wasDragging = mDragging;
+        mDown = false; mDragging = false;
+        if (wasDragging && _vScale < 1.1 && mStart) {
+          const dx = p.x - mStart.x, dy = p.y - mStart.y;
+          if (dx < -60 && Math.abs(dy) < Math.abs(dx) &&
+              Date.now() - mStart.t < 1500) { vpClose(); return; }
+        }
+        mStart = null; mPanBase = null;
+        _vApply(); // restore cursor
+      }, true);
+
+      swipeCatcher.addEventListener('pointercancel', e => {
+        if (e.pointerType !== 'mouse') return;
+        vzStop(); mDown = false; mDragging = false;
+        mStart = null; mPanBase = null;
+      }, true);
+
+      swipeCatcher.addEventListener('dblclick', () => {
+        vzStop();
+        _vScale = 1; _vTx = 0; _vTy = 0; _vApply();
+      });
+    })();
+
+    // Reset zoom state when V closes (vpClose calls this implicitly via
+    // content.innerHTML = '' on next open, but reset here too for safety).
+    const _vResetZoom = () => { _vScale = 1; _vTx = 0; _vTy = 0; };
+    // Expose on host so vpClose can call it if needed
+    host._resetZoom = _vResetZoom;
     
     // Build controls toolbar
     const toolbar = document.createElement('div');
@@ -788,24 +900,16 @@ function gridOpenFullscreen(row, contained) {
     fs.onclick = null;
 
   } else if (row.link) {
-    // ── Iu — IMAGE FULLSCREEN (zip0175) ─────────────────────────────────────
-    // Replaces the old tap-to-close single-image view. New capabilities:
-    //   • Pinch two fingers to zoom in (up to 8×); pinch together to zoom out.
-    //   • Drag with one finger to pan when zoomed in.
-    //   • R→L swipe (when at 1× scale) closes back to grid — same gesture as V.
-    //   • ✕ button top-right is always reachable regardless of zoom level.
-    //   • Tap-to-close removed — accidental taps while panning was disorienting.
-    // touch-action:none is required so the browser doesn't claim vertical swipes
-    // as panning (same root-cause fix as V screen swipe in zip0175).
-    //
-    // Coordinate note: rotateXY is applied to all pointer coords so that swipe
-    // direction and pan direction match visual perception in CSS-rotated portrait.
-    // Pinch DISTANCE is rotation-invariant (isometry), so raw or rotated are
-    // equivalent for scale — we use rotated throughout for consistency.
+    // ── Iu — IMAGE FULLSCREEN ────────────────────────────────────────────────
+    // zip0175: touch pinch-zoom, drag-pan, R→L swipe close, double-tap reset.
+    // zip0176: desktop mouse (Iud/Idd) — hold-LMB zooms in (slow→fast, up to
+    //   8×); drag pans when zoomed; R→L drag at 1× closes; double-click resets.
+    //   Click-to-close removed on desktop too. Both paths share one transform
+    //   state and one _iApply(). Pointer events are branched by e.pointerType
+    //   so touch and mouse never interfere.
 
     content.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;';
 
-    // Pan + zoom wrapper — fills fullscreen, touch-action:none for full control.
     const ivWrap = document.createElement('div');
     ivWrap.style.cssText = 'position:absolute;inset:0;touch-action:none;overflow:hidden;'
       + 'display:flex;align-items:center;justify-content:center;';
@@ -819,7 +923,7 @@ function gridOpenFullscreen(row, contained) {
       + 'user-select:none;-webkit-user-drag:none;pointer-events:none;';
     ivWrap.appendChild(img);
 
-    // ✕ Close button — always on top, top-right
+    // ✕ always accessible at top-right regardless of zoom
     const closeBtn = document.createElement('button');
     closeBtn.className = 'vp-btn';
     closeBtn.innerHTML = '✕';
@@ -829,133 +933,207 @@ function gridOpenFullscreen(row, contained) {
     closeBtn.addEventListener('click', vpClose);
     content.appendChild(closeBtn);
 
-    info.style.cssText = 'display:none;';
-    info.innerHTML = '';
-    fs.onclick = null; // no tap-to-close — interferes with pan
+    info.style.cssText = 'display:none;'; info.innerHTML = '';
+    fs.onclick = null; // no tap/click-to-close — interferes with pan
 
-    // ── Transform state ──────────────────────────────────────────────────────
+    // ── Shared transform state ───────────────────────────────────────────────
     let _iScale = 1, _iTx = 0, _iTy = 0;
-    const MIN_SCALE = 0.9, MAX_SCALE = 8;
+    const MAX_SCALE = 8, MIN_SCALE = 0.9;
 
     function _iApply() {
       img.style.transform = `translate(${_iTx}px,${_iTy}px) scale(${_iScale})`;
-      ivWrap.style.cursor = _iScale > 1.05 ? 'grab' : 'default';
+      // Cursor hints: zoom-in at 1×, grab when zoomed (no button held)
+      ivWrap.style.cursor = _iScale > 1.05 ? 'grab' : 'zoom-in';
     }
-
-    // Helper: get pointer position in wrap-local (visually upright) space.
     function _pxy(e) {
-      return window.rotateXY ? window.rotateXY(e)
-                              : { x: e.clientX, y: e.clientY };
+      return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
     }
 
-    // Active pointers: pointerId → {x,y} in wrap-local coords
-    const _ptrs = new Map();
-    let _dragBase  = null;  // { tx,ty,px,py } at start of single-finger drag
-    let _pinchBase = null;  // { scale,tx,ty,dist,mx,my } at start of pinch
-    let _swipeStart = null; // { x,y,t } for R→L close detection
+    // ════════════════════════════════════════════════════════════════════════
+    // TOUCH PATH — pinch-zoom + one-finger pan + R→L swipe + double-tap reset
+    // ════════════════════════════════════════════════════════════════════════
+    const _ptrs = new Map(); // active touch pointers (pointerId → {x,y})
+    let _tDrag = null, _tPinch = null, _tSwipe = null;
 
     ivWrap.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse') return;
       e.preventDefault();
       ivWrap.setPointerCapture(e.pointerId);
       _ptrs.set(e.pointerId, _pxy(e));
 
       if (_ptrs.size >= 2) {
-        // ── Start pinch ────────────────────────────────────────────────────
-        _swipeStart = null;
-        _dragBase   = null;
-        const pts   = [..._ptrs.values()];
-        const a = pts[0], b = pts[1];
-        const dist  = Math.hypot(b.x - a.x, b.y - a.y);
-        const mx    = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-        _pinchBase  = { scale: _iScale, tx: _iTx, ty: _iTy, dist, mx, my };
+        _tSwipe = null; _tDrag = null;
+        const [a, b] = [..._ptrs.values()];
+        _tPinch = {
+          scale: _iScale, tx: _iTx, ty: _iTy,
+          dist: Math.hypot(b.x - a.x, b.y - a.y),
+          mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2
+        };
       } else {
-        // ── Start single-finger drag / swipe ───────────────────────────────
-        _pinchBase  = null;
-        const p     = _pxy(e);
-        _dragBase   = { tx: _iTx, ty: _iTy, px: p.x, py: p.y };
-        _swipeStart = { x: p.x, y: p.y, t: Date.now() };
+        _tPinch = null;
+        const p = _pxy(e);
+        _tDrag  = { tx: _iTx, ty: _iTy, px: p.x, py: p.y };
+        _tSwipe = { x: p.x, y: p.y, t: Date.now() };
       }
     }, true);
 
     ivWrap.addEventListener('pointermove', e => {
-      if (!_ptrs.has(e.pointerId)) return;
+      if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
       e.preventDefault();
       _ptrs.set(e.pointerId, _pxy(e));
       const p = _pxy(e);
 
-      if (_ptrs.size >= 2 && _pinchBase) {
-        // ── Pinch: update scale + translate ────────────────────────────────
-        const pts  = [..._ptrs.values()];
-        const a = pts[0], b = pts[1];
+      if (_ptrs.size >= 2 && _tPinch) {
+        const [a, b] = [..._ptrs.values()];
         const dist = Math.hypot(b.x - a.x, b.y - a.y);
-        const mx   = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-        _iScale    = Math.min(MAX_SCALE, Math.max(MIN_SCALE,
-                        _pinchBase.scale * (dist / _pinchBase.dist)));
-        _iTx       = _pinchBase.tx + (mx - _pinchBase.mx);
-        _iTy       = _pinchBase.ty + (my - _pinchBase.my);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        _iScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE,
+                    _tPinch.scale * dist / _tPinch.dist));
+        _iTx = _tPinch.tx + (mx - _tPinch.mx);
+        _iTy = _tPinch.ty + (my - _tPinch.my);
         _iApply();
-      } else if (_ptrs.size === 1 && _dragBase) {
-        if (_iScale > 1.05) {
-          // ── Pan when zoomed ───────────────────────────────────────────────
-          _iTx = _dragBase.tx + (p.x - _dragBase.px);
-          _iTy = _dragBase.ty + (p.y - _dragBase.py);
-          _iApply();
-          _swipeStart = null; // moved too far to be a swipe-close
-        }
+      } else if (_ptrs.size === 1 && _tDrag && _iScale > 1.05) {
+        _iTx = _tDrag.tx + (p.x - _tDrag.px);
+        _iTy = _tDrag.ty + (p.y - _tDrag.py);
+        _iApply();
+        _tSwipe = null; // moved: no longer a swipe candidate
       }
     }, true);
 
     ivWrap.addEventListener('pointerup', e => {
-      if (!_ptrs.has(e.pointerId)) return;
+      if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
       e.preventDefault();
       const p = _pxy(e);
       _ptrs.delete(e.pointerId);
 
       if (_ptrs.size === 0) {
-        // ── Check for R→L swipe-to-close (only at 1× scale) ────────────────
-        if (_swipeStart && _iScale < 1.1) {
-          const dx = p.x - _swipeStart.x;
-          const dy = p.y - _swipeStart.y;
-          const ms = Date.now() - _swipeStart.t;
-          if (dx < -50 && Math.abs(dy) < Math.abs(dx) && ms < 800) {
-            vpClose(); return;
-          }
+        if (_tSwipe && _iScale < 1.1) {
+          const dx = p.x - _tSwipe.x, dy = p.y - _tSwipe.y;
+          if (dx < -50 && Math.abs(dy) < Math.abs(dx) &&
+              Date.now() - _tSwipe.t < 800) { vpClose(); return; }
         }
-        _swipeStart = null;
-        _dragBase   = null;
-        _pinchBase  = null;
-      } else if (_ptrs.size === 1 && _pinchBase) {
-        // ── Went from two fingers to one — reset drag base ──────────────────
-        _pinchBase  = null;
-        _swipeStart = null; // don't trigger close after a pinch release
-        const remaining = [..._ptrs.values()][0];
-        _dragBase   = { tx: _iTx, ty: _iTy, px: remaining.x, py: remaining.y };
+        _tSwipe = null; _tDrag = null; _tPinch = null;
+      } else if (_ptrs.size === 1 && _tPinch) {
+        _tPinch = null; _tSwipe = null;
+        const rem = [..._ptrs.values()][0];
+        _tDrag = { tx: _iTx, ty: _iTy, px: rem.x, py: rem.y };
       }
     }, true);
 
     ivWrap.addEventListener('pointercancel', e => {
+      if (e.pointerType === 'mouse') return;
       _ptrs.delete(e.pointerId);
-      if (_ptrs.size === 0) {
-        _dragBase = null; _pinchBase = null; _swipeStart = null;
+      if (_ptrs.size === 0) { _tDrag = null; _tPinch = null; _tSwipe = null; }
+    }, true);
+
+    // Touch double-tap → reset zoom
+    let _tLastTap = 0, _tLastTapP = null;
+    ivWrap.addEventListener('pointerup', e => {
+      if (e.pointerType === 'mouse' || _ptrs.size > 0) return;
+      const now = Date.now(), p = _pxy(e);
+      if (now - _tLastTap < 350 && _tLastTapP &&
+          Math.abs(p.x - _tLastTapP.x) < 24 && Math.abs(p.y - _tLastTapP.y) < 24) {
+        _iScale = 1; _iTx = 0; _iTy = 0; _iApply();
+        _tLastTap = 0; _tLastTapP = null; return;
+      }
+      _tLastTap = now; _tLastTapP = p;
+    }, true);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // MOUSE PATH (Iud / Idd) — hold LMB zooms in, drag pans/swipes
+    //
+    // Zoom behaviour: press-and-hold LMB. After a 180ms settle delay (to
+    // avoid accidental zooms on quick clicks), scale ramps up from slow
+    // (~0.3×/s) to fast (~2.4×/s) over ~2 seconds of holding, stopping
+    // at 8×. Moving the mouse > 8 px cancels the zoom and enters drag
+    // mode: pan at >1× scale, or track for R→L swipe-to-close at 1×.
+    // Double-click resets to 1×.  No click-to-close.
+    // ════════════════════════════════════════════════════════════════════════
+    let _mDown = false, _mDragging = false;
+    let _mStart = null;    // { x,y,t } at pointerdown
+    let _mPanBase = null;  // { tx,ty,px,py } when drag starts
+    let _zoomDelay = null, _zoomTimer = null, _zoomStep = 0;
+
+    function _mStopZoom() {
+      if (_zoomDelay) { clearTimeout(_zoomDelay);  _zoomDelay = null; }
+      if (_zoomTimer) { clearInterval(_zoomTimer); _zoomTimer = null; }
+    }
+    function _mStartZoom() {
+      _zoomStep = 0.015;  // initial: 0.015 × 20 Hz ≈ 0.3 scale/sec (slow)
+      _zoomTimer = setInterval(() => {
+        if (_iScale >= MAX_SCALE) { _mStopZoom(); return; }
+        _iScale    = Math.min(MAX_SCALE, _iScale + _zoomStep);
+        _zoomStep  = Math.min(0.12, _zoomStep + 0.003); // accelerates → 2.4/sec
+        _iApply();
+        ivWrap.style.cursor = 'zoom-in'; // keep cursor during zoom
+      }, 50);
+    }
+
+    ivWrap.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      e.preventDefault();
+      ivWrap.setPointerCapture(e.pointerId);
+      const p = _pxy(e);
+      _mDown = true; _mDragging = false;
+      _mStart   = { x: p.x, y: p.y, t: Date.now() };
+      _mPanBase = null;
+      // 180 ms settle delay — quick clicks don't trigger zoom
+      _zoomDelay = setTimeout(_mStartZoom, 180);
+    }, true);
+
+    ivWrap.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse' || !_mDown) return;
+      const p = _pxy(e);
+      if (!_mDragging && Math.hypot(p.x - _mStart.x, p.y - _mStart.y) > 8) {
+        // User started dragging — cancel zoom, enter drag mode
+        _mDragging = true;
+        _mStopZoom();
+        _mPanBase = { tx: _iTx, ty: _iTy, px: p.x, py: p.y };
+      }
+      if (_mDragging) {
+        if (_iScale > 1.05) {
+          // Pan
+          _iTx = _mPanBase.tx + (p.x - _mPanBase.px);
+          _iTy = _mPanBase.ty + (p.y - _mPanBase.py);
+          _iApply();
+          ivWrap.style.cursor = 'grabbing';
+        }
+        // At 1× scale we just track movement for swipe detection at release
       }
     }, true);
 
-    // Double-tap to reset zoom
-    let _lastTap = 0, _lastTapP = null;
     ivWrap.addEventListener('pointerup', e => {
-      if (_ptrs.size > 0) return; // only when all fingers lifted
-      const now = Date.now();
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      e.preventDefault();
+      _mStopZoom();
       const p   = _pxy(e);
-      if (now - _lastTap < 350 && _lastTapP &&
-          Math.abs(p.x - _lastTapP.x) < 24 && Math.abs(p.y - _lastTapP.y) < 24) {
-        // Double-tap: reset zoom + pan to 1×
-        _iScale = 1; _iTx = 0; _iTy = 0; _iApply();
-        _lastTap = 0; _lastTapP = null;
-        return;
+      const wasDragging = _mDragging;
+      _mDown = false; _mDragging = false;
+
+      if (wasDragging && _iScale < 1.1 && _mStart) {
+        // R→L swipe-to-close (at 1× scale)
+        const dx = p.x - _mStart.x, dy = p.y - _mStart.y;
+        const ms = Date.now() - _mStart.t;
+        if (dx < -60 && Math.abs(dy) < Math.abs(dx) && ms < 1500) {
+          vpClose(); return;
+        }
       }
-      _lastTap  = now;
-      _lastTapP = p;
+      _mStart = null; _mPanBase = null;
+      _iApply(); // restore correct grab/zoom-in cursor
     }, true);
+
+    ivWrap.addEventListener('pointercancel', e => {
+      if (e.pointerType !== 'mouse') return;
+      _mStopZoom(); _mDown = false; _mDragging = false;
+      _mStart = null; _mPanBase = null;
+    }, true);
+
+    // Double-click → reset zoom (works for both LMB dblclick and fast taps)
+    ivWrap.addEventListener('dblclick', e => {
+      if (e.pointerType === 'touch') return; // touch uses double-tap handler above
+      _mStopZoom();
+      _iScale = 1; _iTx = 0; _iTy = 0; _iApply();
+    });
   }
   
   fs.style.display = 'flex';
@@ -967,6 +1145,8 @@ function gridOpenFullscreen(row, contained) {
 function vpClose() {
   // Stop interval
   if (_vpState && _vpState.interval) clearInterval(_vpState.interval);
+  
+  window._vpCurrentRow = null; // (zip0178) clear tracked row
   
   // Stop/destroy YouTube or Vimeo player
   if (_vpState && _vpState.player) {
@@ -1000,6 +1180,33 @@ function vpKeyHandler(e) {
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopPropagation();
     vpClose();
+    return;
+  }
+
+  // (zip0178) ArrowUp / ArrowDown — navigate filtered rows while in image
+  // fullscreen (Iu / Ie).  Skipped when a video player is active (video
+  // Left/Right frame-step is the relevant key there, and the video editor
+  // handles its own ArrowUp/Down navigation separately).
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    if (_vpState && _vpState.player) return; // video — not our job here
+    e.preventDefault(); e.stopPropagation();
+    _ensureBrRows();
+    const rows = window._brRows;
+    const curRow = window._vpCurrentRow;
+    const di = (curRow && typeof data !== 'undefined') ? data.indexOf(curRow) : -1;
+    const curFi = di >= 0 ? rows.indexOf(di) : -1;
+    const step = e.key === 'ArrowDown' ? 1 : -1;
+    const target = curFi + step;
+    if (target < 0 || target >= rows.length) {
+      if (typeof toast === 'function')
+        toast('No more rows ' + (step > 0 ? 'below' : 'above') + '.', 1400);
+      return;
+    }
+    window._brIdx = target;
+    const nextRow = (typeof data !== 'undefined') ? data[rows[target]] : null;
+    if (!nextRow) return;
+    vpClose();
+    openEditorForRow(nextRow);
     return;
   }
   
@@ -1639,6 +1846,17 @@ window._executeHotkey = function(key) {
 
     if (!rowToEdit) { toast('Select a row first', 1500); return; }
 
+    // (zip0178) Seed _brRows / _brIdx so arrow-key navigation in Xe / Ie
+    // knows where to start without reinitialising the filter context.
+    _ensureBrRows();
+    {
+      const _di = (typeof data !== 'undefined') ? data.indexOf(rowToEdit) : -1;
+      if (_di >= 0) {
+        const _fi = window._brRows.indexOf(_di);
+        if (_fi >= 0) window._brIdx = _fi;
+      }
+    }
+
     const isText = rowToEdit.VidRange === 'text'
       || rowToEdit.ltype === 'w'
       || (typeof rowToEdit.ftext === 'string' && rowToEdit.ftext.length > 0);
@@ -1654,8 +1872,21 @@ window._executeHotkey = function(key) {
       return;
     }
 
+    // (zip0178) Image rows → Ie: image fullscreen + Annotate panel side by side.
+    // Previously showed a "use A" toast; now opens a proper editor-like view.
+    if (rowToEdit.link && !isVideoRow(rowToEdit)) {
+      _cameFromGrid = gridOpen;
+      if (gridOpen) {
+        gridCleanupPlayers();
+        gridHideContextMenu();
+        document.getElementById('gridOverlay').style.display = 'none';
+      }
+      openIe(rowToEdit);
+      return;
+    }
+
     if (!isVideoRow(rowToEdit)) {
-      toast('E = Editor (videos or ftext rows)\nUse A to annotate images', 1800);
+      toast('E = Editor (videos, ftext, or image rows)\nUse A to annotate', 1800);
       return;
     }
 
@@ -1847,3 +2078,78 @@ window._executeHotkey = function(key) {
     return;
   }
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Ie — IMAGE EDITOR: fullscreen image + Annotate panel side by side (zip0178)
+//
+// openIe(row)           Show the image in V-style fullscreen (Iu) while
+//                       keeping / opening the Annotate panel on the right.
+//                       browseOverlay (z-index 30000) sits above gridFullscreen
+//                       (z-index 28500), so the annotate panel is always
+//                       accessible. The image fills the ~2/3 of the screen not
+//                       covered by the 340px panel.
+//
+// openEditorForRow(row) Route-and-open the right E screen for any row type.
+//                       Used by Xe ↑/↓ and Ie ↑/↓ so navigating between row
+//                       types opens the correct editor (Xe→text, Ie→image,
+//                       Ev→video) without special-casing in each E screen.
+//                       Exposed as window.openEditorForRow for xe.js to call.
+// ══════════════════════════════════════════════════════════════════════════════
+
+function _ensureBrRows() {
+  if (!window._brRows || !window._brRows.length) {
+    window._brRows = (typeof brGetVisibleRows === 'function')
+      ? brGetVisibleRows() : [];
+  }
+}
+
+function openIe(row) {
+  if (!row) return;
+  _ensureBrRows();
+  const di = (typeof data !== 'undefined') ? data.indexOf(row) : -1;
+  if (di >= 0) {
+    const fi = window._brRows.indexOf(di);
+    if (fi >= 0) window._brIdx = fi;
+  }
+
+  // Show image fullscreen (Iu view)
+  gridOpenFullscreen(row);
+
+  // Annotate panel: if already open just navigate it; if closed, open it.
+  const annotateEl = document.getElementById('browseOverlay');
+  const annotateOpen = annotateEl && annotateEl.style.display !== 'none';
+  if (annotateOpen) {
+    // Stay open, navigate to this row
+    if (di >= 0 && typeof brShow === 'function') {
+      const fi = window._brRows.indexOf(di);
+      if (fi >= 0) { window._brIdx = fi; brShow(fi); }
+    }
+  } else {
+    // Open annotate fresh (sets up _brRows internally too)
+    if (typeof brOpen === 'function') brOpen(di >= 0 ? di : undefined);
+  }
+}
+
+function openEditorForRow(row) {
+  // (zip0178) Shared E-screen router used by Xe/Ie arrow navigation.
+  if (!row) return;
+  const isText = row.VidRange === 'text' || row.ltype === 'w'
+              || (typeof row.ftext === 'string' && row.ftext.length > 0);
+
+  if (isText) {
+    if (typeof gridOpenTextEditor === 'function')
+      gridOpenTextEditor(row.cell || '', row);
+    return;
+  }
+  if (typeof isVideoRow === 'function' && isVideoRow(row)) {
+    _cameFromGrid = false;
+    if (window.openVideoEditor) window.openVideoEditor(row);
+    return;
+  }
+  if (row.link) {
+    openIe(row);
+    return;
+  }
+  if (typeof toast === 'function') toast('No editor available for this row type', 1500);
+}
+window.openEditorForRow = openEditorForRow;

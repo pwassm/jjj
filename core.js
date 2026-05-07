@@ -2308,6 +2308,16 @@ let _brRows   = [];
 let _brIdx    = 0;
 let _dictMatchMode = 'anywhere'; // 'anywhere' | 'start'
 
+// (zip0178) _brRows / _brIdx are `let` so NOT auto-promoted to window.
+// Expose them as live window properties so xe.js and vp.js can participate
+// in cross-editor row navigation (Xe ↑/↓ and Ie ↑/↓, like Ev already has).
+Object.defineProperty(window, '_brRows', {
+  get() { return _brRows; }, set(v) { _brRows = v; }, configurable: true
+});
+Object.defineProperty(window, '_brIdx', {
+  get() { return _brIdx; }, set(v) { _brIdx = v; }, configurable: true
+});
+
 function brGetVisibleRows() {
   const result = [];
   for (let vi = 0; vi < data.length; vi++) {
