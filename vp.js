@@ -408,9 +408,15 @@ function gridOpenFullscreen(row, contained) {
     // UI elements we add later. Blocks native YT hover/click UI and captures
     // right-to-left swipe to close V. Matches host geometry exactly so the
     // bottom toolbar still receives its own clicks.
+    // (zip0175) touch-action:none (was pan-y). In CSS-rotated portrait mode a
+    // visual R→L swipe is a PHYSICAL upward swipe — a vertical gesture. With
+    // pan-y the browser claims vertical gestures and fires pointercancel
+    // instead of pointerup, silently dropping the swipe. touch-action:none
+    // prevents browser gesture-claim entirely; our pointer handlers get
+    // everything. Video fullscreen has no scrollable content, so this is safe.
     const swipeCatcher = document.createElement('div');
     swipeCatcher.id = 'vp-swipe-catcher';
-    swipeCatcher.style.cssText = 'position:absolute;inset:0 0 80px 0;z-index:50;background:transparent;cursor:pointer;touch-action:pan-y;';
+    swipeCatcher.style.cssText = 'position:absolute;inset:0 0 80px 0;z-index:50;background:transparent;cursor:pointer;touch-action:none;';
     content.appendChild(swipeCatcher);
     
     (function wireSwipeClose() {
@@ -782,42 +788,174 @@ function gridOpenFullscreen(row, contained) {
     fs.onclick = null;
 
   } else if (row.link) {
-    // IMAGE FULLSCREEN
-    // (zip0144) Two fixes here:
-    //  1. Center the image. The previous `content.style.cssText = ...`
-    //     clobbered the inline `position:absolute; inset:0;` set on
-    //     #gridFsContent in the HTML, so flex centering operated on a
-    //     collapsed box and the image fell back to top-left. Use
-    //     Object.assign so the existing absolute positioning is kept.
-    //  2. Remove the info bar ("cell · title — click or Esc to close")
-    //     for parity with V's video case, since the user found it took
-    //     too much vertical space. Click-anywhere-to-close still works
-    //     and the bottom-right ✕ button is the explicit affordance.
-    Object.assign(content.style, {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    });
+    // ── Iu — IMAGE FULLSCREEN (zip0175) ─────────────────────────────────────
+    // Replaces the old tap-to-close single-image view. New capabilities:
+    //   • Pinch two fingers to zoom in (up to 8×); pinch together to zoom out.
+    //   • Drag with one finger to pan when zoomed in.
+    //   • R→L swipe (when at 1× scale) closes back to grid — same gesture as V.
+    //   • ✕ button top-right is always reachable regardless of zoom level.
+    //   • Tap-to-close removed — accidental taps while panning was disorienting.
+    // touch-action:none is required so the browser doesn't claim vertical swipes
+    // as panning (same root-cause fix as V screen swipe in zip0175).
+    //
+    // Coordinate note: rotateXY is applied to all pointer coords so that swipe
+    // direction and pan direction match visual perception in CSS-rotated portrait.
+    // Pinch DISTANCE is rotation-invariant (isometry), so raw or rotated are
+    // equivalent for scale — we use rotated throughout for consistency.
+
+    content.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;';
+
+    // Pan + zoom wrapper — fills fullscreen, touch-action:none for full control.
+    const ivWrap = document.createElement('div');
+    ivWrap.style.cssText = 'position:absolute;inset:0;touch-action:none;overflow:hidden;'
+      + 'display:flex;align-items:center;justify-content:center;';
+    content.appendChild(ivWrap);
+
     const img = document.createElement('img');
     img.src = row.link;
-    img.style.cssText = contained
-      ? 'max-width:90%;max-height:90%;object-fit:contain;'
-      : 'max-width:100%;max-height:100%;object-fit:contain;';
-    content.appendChild(img);
-    
-    // Close button for image
+    img.setAttribute('draggable', 'false');
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;'
+      + 'transform-origin:center center;will-change:transform;'
+      + 'user-select:none;-webkit-user-drag:none;pointer-events:none;';
+    ivWrap.appendChild(img);
+
+    // ✕ Close button — always on top, top-right
     const closeBtn = document.createElement('button');
     closeBtn.className = 'vp-btn';
     closeBtn.innerHTML = '✕';
-    closeBtn.style.cssText = 'position:absolute;bottom:20px;right:20px;background:#500;border-color:#f00;color:#f44;padding:8px 16px;font-size:16px;';
-    closeBtn.onclick = vpClose;
+    closeBtn.style.cssText = 'position:absolute;top:12px;right:14px;z-index:60;'
+      + 'background:rgba(60,0,0,0.75);border-color:#f44;color:#f88;'
+      + 'padding:6px 14px;font-size:16px;touch-action:manipulation;';
+    closeBtn.addEventListener('click', vpClose);
     content.appendChild(closeBtn);
-    
+
     info.style.cssText = 'display:none;';
     info.innerHTML = '';
-    
-    // Simple close handler for images
-    fs.onclick = vpClose;
+    fs.onclick = null; // no tap-to-close — interferes with pan
+
+    // ── Transform state ──────────────────────────────────────────────────────
+    let _iScale = 1, _iTx = 0, _iTy = 0;
+    const MIN_SCALE = 0.9, MAX_SCALE = 8;
+
+    function _iApply() {
+      img.style.transform = `translate(${_iTx}px,${_iTy}px) scale(${_iScale})`;
+      ivWrap.style.cursor = _iScale > 1.05 ? 'grab' : 'default';
+    }
+
+    // Helper: get pointer position in wrap-local (visually upright) space.
+    function _pxy(e) {
+      return window.rotateXY ? window.rotateXY(e)
+                              : { x: e.clientX, y: e.clientY };
+    }
+
+    // Active pointers: pointerId → {x,y} in wrap-local coords
+    const _ptrs = new Map();
+    let _dragBase  = null;  // { tx,ty,px,py } at start of single-finger drag
+    let _pinchBase = null;  // { scale,tx,ty,dist,mx,my } at start of pinch
+    let _swipeStart = null; // { x,y,t } for R→L close detection
+
+    ivWrap.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      ivWrap.setPointerCapture(e.pointerId);
+      _ptrs.set(e.pointerId, _pxy(e));
+
+      if (_ptrs.size >= 2) {
+        // ── Start pinch ────────────────────────────────────────────────────
+        _swipeStart = null;
+        _dragBase   = null;
+        const pts   = [..._ptrs.values()];
+        const a = pts[0], b = pts[1];
+        const dist  = Math.hypot(b.x - a.x, b.y - a.y);
+        const mx    = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        _pinchBase  = { scale: _iScale, tx: _iTx, ty: _iTy, dist, mx, my };
+      } else {
+        // ── Start single-finger drag / swipe ───────────────────────────────
+        _pinchBase  = null;
+        const p     = _pxy(e);
+        _dragBase   = { tx: _iTx, ty: _iTy, px: p.x, py: p.y };
+        _swipeStart = { x: p.x, y: p.y, t: Date.now() };
+      }
+    }, true);
+
+    ivWrap.addEventListener('pointermove', e => {
+      if (!_ptrs.has(e.pointerId)) return;
+      e.preventDefault();
+      _ptrs.set(e.pointerId, _pxy(e));
+      const p = _pxy(e);
+
+      if (_ptrs.size >= 2 && _pinchBase) {
+        // ── Pinch: update scale + translate ────────────────────────────────
+        const pts  = [..._ptrs.values()];
+        const a = pts[0], b = pts[1];
+        const dist = Math.hypot(b.x - a.x, b.y - a.y);
+        const mx   = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        _iScale    = Math.min(MAX_SCALE, Math.max(MIN_SCALE,
+                        _pinchBase.scale * (dist / _pinchBase.dist)));
+        _iTx       = _pinchBase.tx + (mx - _pinchBase.mx);
+        _iTy       = _pinchBase.ty + (my - _pinchBase.my);
+        _iApply();
+      } else if (_ptrs.size === 1 && _dragBase) {
+        if (_iScale > 1.05) {
+          // ── Pan when zoomed ───────────────────────────────────────────────
+          _iTx = _dragBase.tx + (p.x - _dragBase.px);
+          _iTy = _dragBase.ty + (p.y - _dragBase.py);
+          _iApply();
+          _swipeStart = null; // moved too far to be a swipe-close
+        }
+      }
+    }, true);
+
+    ivWrap.addEventListener('pointerup', e => {
+      if (!_ptrs.has(e.pointerId)) return;
+      e.preventDefault();
+      const p = _pxy(e);
+      _ptrs.delete(e.pointerId);
+
+      if (_ptrs.size === 0) {
+        // ── Check for R→L swipe-to-close (only at 1× scale) ────────────────
+        if (_swipeStart && _iScale < 1.1) {
+          const dx = p.x - _swipeStart.x;
+          const dy = p.y - _swipeStart.y;
+          const ms = Date.now() - _swipeStart.t;
+          if (dx < -50 && Math.abs(dy) < Math.abs(dx) && ms < 800) {
+            vpClose(); return;
+          }
+        }
+        _swipeStart = null;
+        _dragBase   = null;
+        _pinchBase  = null;
+      } else if (_ptrs.size === 1 && _pinchBase) {
+        // ── Went from two fingers to one — reset drag base ──────────────────
+        _pinchBase  = null;
+        _swipeStart = null; // don't trigger close after a pinch release
+        const remaining = [..._ptrs.values()][0];
+        _dragBase   = { tx: _iTx, ty: _iTy, px: remaining.x, py: remaining.y };
+      }
+    }, true);
+
+    ivWrap.addEventListener('pointercancel', e => {
+      _ptrs.delete(e.pointerId);
+      if (_ptrs.size === 0) {
+        _dragBase = null; _pinchBase = null; _swipeStart = null;
+      }
+    }, true);
+
+    // Double-tap to reset zoom
+    let _lastTap = 0, _lastTapP = null;
+    ivWrap.addEventListener('pointerup', e => {
+      if (_ptrs.size > 0) return; // only when all fingers lifted
+      const now = Date.now();
+      const p   = _pxy(e);
+      if (now - _lastTap < 350 && _lastTapP &&
+          Math.abs(p.x - _lastTapP.x) < 24 && Math.abs(p.y - _lastTapP.y) < 24) {
+        // Double-tap: reset zoom + pan to 1×
+        _iScale = 1; _iTx = 0; _iTy = 0; _iApply();
+        _lastTap = 0; _lastTapP = null;
+        return;
+      }
+      _lastTap  = now;
+      _lastTapP = p;
+    }, true);
   }
   
   fs.style.display = 'flex';
