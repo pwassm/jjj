@@ -344,10 +344,11 @@ window.openVideoEditor = function(it) {
   overlay.id  = 'video-editor-overlay';
   if (window.menuWrap) window.menuWrap.style.display = 'none';  // hide HM in editor
   overlay.setAttribute('tabindex', '-1');
-  overlay.style.cssText = 'position:fixed;z-index:99999;left:5%;top:5%;width:90%;height:90%;'
-    + 'background:#1a1a1a;border:2px solid #8ef;display:flex;flex-direction:column;'
+  // (zip0184) Ev fills the viewport left of the A panel (right:340px).
+  overlay.style.cssText = 'position:fixed;z-index:99999;left:0;top:0;right:340px;bottom:0;'
+    + 'background:#1a1a1a;border-right:2px solid #8ef;display:flex;flex-direction:column;'
     + 'box-shadow:0 10px 40px rgba(0,0,0,0.9);font-family:sans-serif;color:#fff;'
-    + 'border-radius:10px;overflow:hidden;outline:none;';
+    + 'overflow:hidden;outline:none;';
 
   overlay.innerHTML = '<style>'
     + '.v2btn{min-width:38px;height:34px;font-size:12px;font-weight:bold;'
@@ -438,7 +439,7 @@ window.openVideoEditor = function(it) {
     + '<div style="width:270px;flex-shrink:0;padding:14px;background:#1e1e1e;'
     + 'border-left:1px solid #333;display:flex;flex-direction:column;gap:12px;overflow-y:auto;">'
     // Segment tabs
-    + '<div><div style="font-size:11px;color:#888;margin-bottom:5px;">Segment (Tab key to cycle)</div>'
+    + '<div><div style="font-size:16px;font-weight:bold;color:#ccc;margin-bottom:8px;">Segment Selection</div>'
     + '<div id="v2segtabs" style="display:flex;gap:5px;flex-wrap:wrap;"></div></div>'
     // Fine Adjustments title
     + '<div style="font-size:13px;font-weight:bold;color:#ccc;border-bottom:1px solid #444;'
@@ -512,6 +513,23 @@ window.openVideoEditor = function(it) {
     + '</div></div>';
 
   document.body.appendChild(overlay);
+
+  // (zip0184) Auto-open Annotate panel to the right of Ev. Ev occupies
+  // left:0–(100%–340px); browseOverlay fills the right 340px.
+  {
+    var _evDi = (typeof data !== 'undefined') ? data.indexOf(it) : -1;
+    var _evAnEl = document.getElementById('browseOverlay');
+    var _evAnOpen = _evAnEl && _evAnEl.style.display === 'flex';
+    if (_evAnOpen) {
+      if (_evDi >= 0 && typeof brShow === 'function') {
+        var _evFi = (window._brRows || []).indexOf(_evDi);
+        if (_evFi >= 0) { window._brIdx = _evFi; brShow(_evFi); }
+      }
+    } else if (typeof brOpen === 'function') {
+      brOpen(_evDi >= 0 ? _evDi : undefined);
+    }
+  }
+
   // Focus overlay immediately; refocus when right panel clicked (YouTube steals focus)
   setTimeout(function() { overlay.focus(); }, 100);
   overlay.addEventListener('pointerup', function(e) {
@@ -1895,19 +1913,8 @@ window.openVideoEditor = function(it) {
       return;
     }
     
-    if (e.key === 'Escape') {
-      // If mini comment editor is open, close just that
-      var commentPop = document.getElementById('v2comment-popup');
-      if (commentPop) { commentPop.remove(); return; }
-      closeEditor();
-      // Return to grid if came from grid
-      if (window._cameFromGrid) {
-        window._cameFromGrid = false;
-        if (window.buildTable) window.buildTable();
-        if (window.gridShow) window.gridShow();
-      }
-      return;
-    }
+    // (zip0186) Esc no longer closes Ev. The veKeyHandler in core.js handles
+    // the comment-popup case; video.js just ensures no double-handling here.
     if ((e.key === ' ' || e.key === 'Spacebar') && !isInp) {
       e.preventDefault(); e.stopPropagation();
       var p = getEditorPlayer();
@@ -1931,9 +1938,20 @@ window.openVideoEditor = function(it) {
       }
       return;
     }
-    if (e.key === 'Tab' && !isInp) {
+    // (zip0185) Tab in Ev: if focus is already inside the A panel, let the
+    // browser cycle natively through A's fields. Otherwise jump focus into
+    // A's first field. Replaces the old "cycle segments" behavior.
+    if (e.key === 'Tab') {
+      var _ae  = document.activeElement;
+      var _anEl = document.getElementById('browseOverlay');
+      var _inA = _ae && _anEl && _anEl.contains(_ae);
+      if (_inA) return; // browser default Tab cycles within A
       e.preventDefault(); e.stopPropagation();
-      setActiveSeg((activeSegIdx + 1) % segs.length); return;
+      var _firstA = (_anEl && _anEl.querySelector('#brTagChips input'))
+                 || (_anEl && _anEl.querySelector('#brt1'))
+                 || (_anEl && _anEl.querySelector('input,textarea,select,button'));
+      if (_firstA) _firstA.focus();
+      return;
     }
 
     // ── ArrowUp / ArrowDown: navigate visible T-table rows ─────────────────

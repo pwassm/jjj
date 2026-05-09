@@ -1143,9 +1143,21 @@ function gridOpenFullscreen(row, contained) {
 }
 
 function vpClose() {
+  // (zip0186) Close Annotate panel alongside Ie/V — it auto-opened with them,
+  // so it should close too when returning to T. Arrow-hop navigation will
+  // reopen A immediately in the next editor, so no visible gap.
+  const _vpAnEl = document.getElementById('browseOverlay');
+  if (_vpAnEl && _vpAnEl.style.display === 'flex') {
+    if (typeof brSave === 'function') brSave();
+    _vpAnEl.style.display = 'none';
+    const _wrapEl = document.getElementById('wrap');
+    if (_wrapEl) _wrapEl.style.marginRight = '';
+    if (typeof brClearThumb === 'function') brClearThumb();
+  }
+
   // Stop interval
   if (_vpState && _vpState.interval) clearInterval(_vpState.interval);
-  
+
   window._vpCurrentRow = null; // (zip0178) clear tracked row
   
   // Stop/destroy YouTube or Vimeo player
@@ -1177,11 +1189,8 @@ function vpClose() {
 function vpKeyHandler(e) {
   if (document.getElementById('gridFullscreen').style.display !== 'flex') return;
   
-  if (e.key === 'Escape') {
-    e.preventDefault(); e.stopPropagation();
-    vpClose();
-    return;
-  }
+  // (zip0186) Esc no longer closes Ie/V — use swipe-left, the ✕ button, or T.
+  // The global handler blurs any focused input; nothing else to do here.
 
   // (zip0178) ArrowUp / ArrowDown — navigate filtered rows while in image
   // fullscreen (Iu / Ie).  Skipped when a video player is active (video
@@ -1190,7 +1199,10 @@ function vpKeyHandler(e) {
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     if (_vpState && _vpState.player) return; // video — not our job here
     e.preventDefault(); e.stopPropagation();
-    _ensureBrRows();
+    // (zip0185) Always reseed _brRows from the current filter so navigation
+    // walks the live filtered T (not a stale snapshot).
+    window._brRows = (typeof brGetVisibleRows === 'function')
+      ? brGetVisibleRows() : (window._brRows || []);
     const rows = window._brRows;
     const curRow = window._vpCurrentRow;
     const di = (curRow && typeof data !== 'undefined') ? data.indexOf(curRow) : -1;
@@ -1205,6 +1217,8 @@ function vpKeyHandler(e) {
     window._brIdx = target;
     const nextRow = (typeof data !== 'undefined') ? data[rows[target]] : null;
     if (!nextRow) return;
+    // (zip0185) Cover so T doesn't flash through during the close→open swap.
+    if (typeof window._veShowHopCover === 'function') window._veShowHopCover();
     vpClose();
     openEditorForRow(nextRow);
     return;
@@ -1754,9 +1768,20 @@ window._executeHotkey = function(key) {
   const ebOpen = document.getElementById('browseOverlay')?.style.display === 'flex';
   const gridOpen = document.getElementById('gridOverlay')?.style.display === 'flex';
   const vpOpen = document.getElementById('gridFullscreen')?.style.display === 'flex';
-  const teOpen = !!document.getElementById('textEditorOverlay');
+  let teOpen = !!document.getElementById('textEditorOverlay');
   const tgOpen = _cMode;
-  
+
+  // (zip0183) TGAD hotkeys work from Xe (text editor) even when the overlay
+  // is focused (editor blurred). Auto-save and close Xe first, then let the
+  // normal hotkey path run. Keys that Xe owns exclusively (S, ArrowUp/Down,
+  // Esc) never reach _executeHotkey because xe.js's capture-phase listener
+  // intercepts them first.
+  if (teOpen && (key === 't' || key === 'g' || key === 'a' || key === 'd' || key === 'm')) {
+    if (typeof _textEditorDoSave === 'function') _textEditorDoSave();
+    if (typeof textEditorClose === 'function') textEditorClose();
+    teOpen = false; // fall through to the hotkey handler below
+  }
+
   // (zip0141) In user mode (Gu/Cu only), block hotkeys that lead to
   // dev-only screens (T, E, A). G stays accessible — that's the user's
   // home screen.
@@ -1765,7 +1790,6 @@ window._executeHotkey = function(key) {
   
   // T = Save and go to Table
   if (key === 't') {
-    if (teOpen) return; // Let text editor handle its own keys
     if (tgOpen) { closeGridList(); return; }
     if (vpOpen) vpClose();
     if (veOpen) {
@@ -1794,7 +1818,6 @@ window._executeHotkey = function(key) {
   
   // G = Save and go to Grid
   if (key === 'g') {
-    if (teOpen) return; // Let text editor handle its own keys
     if (tgOpen) { closeGridList(); gridShow(); return; }
     
     // If in VP (Video/Image View), close it and stay in grid
@@ -1844,7 +1867,19 @@ window._executeHotkey = function(key) {
     }
     if (!rowToEdit && _lastGridRow) rowToEdit = _lastGridRow;
 
-    if (!rowToEdit) { toast('Select a row first', 1500); return; }
+    if (!rowToEdit) {
+      // (zip0184) No focused row — select the first visible filtered row
+      // (same set that arrow-key navigation uses) and open its editor.
+      const _visList = (typeof brGetVisibleRows === 'function')
+        ? brGetVisibleRows()
+        : (typeof data !== 'undefined' ? data.map((_, i) => i) : []);
+      if (!_visList.length) { toast('No rows available', 1500); return; }
+      const _firstDi = _visList[0];
+      rowToEdit = (typeof data !== 'undefined') ? data[_firstDi] : null;
+      if (!rowToEdit) { toast('No rows available', 1500); return; }
+      // Also update T's focused row so it's highlighted when returning to T
+      if (typeof window._setFocusToRow === 'function') window._setFocusToRow(rowToEdit);
+    }
 
     // (zip0178) Seed _brRows / _brIdx so arrow-key navigation in Xe / Ie
     // knows where to start without reinitialising the filter context.
@@ -1908,22 +1943,24 @@ window._executeHotkey = function(key) {
   }
 
   // A = Annotate panel (images and videos)
+  // Only accessible from G or V — never opens directly from T table view.
   if (key === 'a') {
-    if (teOpen) return;
     if (veOpen) return; // VE takes priority
+    // Block A from pure table view (no grid, no fullscreen viewer open)
+    if (!gridOpen && !vpOpen) return;
     if (tgOpen) closeCScreen(); // close C-screen before opening annotate
     if (vpOpen) vpClose();
-    
+
     // Toggle: if already open, close it
     if (ebOpen) { brSave(); brClose(); return; }
-    
+
     let startDi = undefined;
     if (!gridOpen && focus !== null) {
       startDi = vr(focus.r);
     } else if (_lastGridRow) {
       startDi = data.indexOf(_lastGridRow);
     }
-    
+
     _cameFromGrid = gridOpen;
     brOpen(startDi);
     return;
@@ -1931,7 +1968,6 @@ window._executeHotkey = function(key) {
   
   // M = Open Main Menu (hamburger)
   if (key === 'm') {
-    if (teOpen) return;
     toggleHM();
     return;
   }
@@ -2013,7 +2049,7 @@ window._executeHotkey = function(key) {
   // tag selected). With no focused row or no tags on it, open the
   // dictionary normally to its last state.
   if (key === 'd') {
-    if (teOpen || veOpen) return;
+    if (veOpen) return;
     let opened = false;
     if (!gridOpen && !vpOpen && !ebOpen && !tgOpen
         && typeof focus !== 'undefined' && focus !== null
@@ -2049,32 +2085,17 @@ window._executeHotkey = function(key) {
     return;
   }
 
-  // F = toggle filter (T-view only). Remembers the last filter so a press
-  // toggles between "everything" and "the last filter you had on".
+  // F = open filter modal (T-view only). Modal is composite: tags ∧ text-field
+  // substring matches across VidAuthor / VidTitle / link / ftext. Pressing F
+  // again toggles it closed. Modal updates the table live as you type. Inside
+  // the modal's inputs F is a literal letter — use Esc to close from there.
   if (key === 'f') {
     if (teOpen || veOpen || ebOpen || gridOpen || vpOpen || tgOpen) return;
-    if (rowFilter) {
-      // Filter is active → remember it, then clear
-      _lastRowFilter = rowFilter;
-      window.setRowFilter(null);
-      if (typeof toast === 'function') {
-        const lbl = (_lastRowFilter.col === 'tags' && window.tagsLib)
-          ? window.tagsLib.labelFor(_lastRowFilter.val)
-          : (_lastRowFilter.col + '=' + _lastRowFilter.val);
-        toast('🔍 Filter cleared (was: ' + lbl + ')\nPress F again to restore', 1800);
-      }
-    } else if (_lastRowFilter) {
-      // No filter → restore the last one
-      window.setRowFilter(_lastRowFilter);
-      if (typeof toast === 'function') {
-        const lbl = (_lastRowFilter.col === 'tags' && window.tagsLib)
-          ? window.tagsLib.labelFor(_lastRowFilter.val)
-          : (_lastRowFilter.col + '=' + _lastRowFilter.val);
-        toast('🔍 Filter restored: ' + lbl, 1500);
-      }
-    } else {
-      if (typeof toast === 'function') toast('No previous filter to restore.\nLeft-click any tag chip to set one, or use Show N videos in Dictionary.', 2200);
-    }
+    if (document.getElementById('dictOverlay'))    return;
+    if (document.getElementById('mergeModal'))     return;
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+    if (typeof window.openFilterModal === 'function') window.openFilterModal();
     return;
   }
 };
@@ -2110,6 +2131,15 @@ function openIe(row) {
   if (di >= 0) {
     const fi = window._brRows.indexOf(di);
     if (fi >= 0) window._brIdx = fi;
+  }
+
+  // (zip0185) Lift hop cover (if present) once Ie is starting to paint.
+  {
+    const _hopCover = document.getElementById('ve-hop-cover');
+    if (_hopCover) {
+      setTimeout(() => { const c = document.getElementById('ve-hop-cover'); if (c) c.remove(); }, 60);
+      clearTimeout(window._veHopCoverTimer);
+    }
   }
 
   // Show image fullscreen (Iu view)

@@ -262,7 +262,7 @@
     "label": "Mollusca",
     "kind": "taxon",
     "parents": [
-      "life"
+      "metazoa"
     ],
     "rank": "phylum",
     "aliases": [],
@@ -2270,5 +2270,286 @@
     "rank": "species",
     "common": "African elephant",
     "extinct": false
+  },
+  {
+    "id": "arothron-hispidus",
+    "label": "Arothron hispidus",
+    "kind": "taxon",
+    "parents": [
+      "arothron"
+    ],
+    "aliases": [
+      "Arothron hispidus (Linnaeus",
+      "1758)",
+      "Arothron hispidus (Linnaeus",
+      "1758)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "White spotted pufferfish",
+    "extinct": false
+  },
+  {
+    "id": "arothron",
+    "label": "Arothron",
+    "kind": "taxon",
+    "parents": [
+      "tetraodontidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "spy-in-the-ocean",
+    "label": "SpyInTheOcean",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "bradypodion-thamnobates",
+    "label": "Bradypodion thamnobates",
+    "kind": "taxon",
+    "parents": [
+      "bradypodion"
+    ],
+    "aliases": [
+      "Bradypodion thamnobates Raw, 1976"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Natal Midlands Dwarf Chameleon"
+  },
+  {
+    "id": "squamata",
+    "label": "Squamata",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "chamaeleonidae",
+    "label": "Chamaeleonidae",
+    "kind": "taxon",
+    "parents": [
+      "squamata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "bradypodion",
+    "label": "Bradypodion",
+    "kind": "taxon",
+    "parents": [
+      "chamaeleonidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "strigiformes",
+    "label": "Strigiformes",
+    "kind": "taxon",
+    "parents": [
+      "aves"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order",
+    "common": "Owls",
+    "extinct": false
+  },
+  {
+    "id": "metazoa",
+    "label": "Metazoa",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "kingdom"
+  },
+  {
+    "id": "gastropoda",
+    "label": "Gastropoda",
+    "kind": "taxon",
+    "parents": [
+      "mollusca"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "costasiellidae",
+    "label": "Costasiellidae",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "costasiella",
+    "label": "Costasiella",
+    "kind": "taxon",
+    "parents": [
+      "costasiellidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "costasiella-kuroshimae-species",
+    "label": "Costasiella kuroshimae species",
+    "kind": "taxon",
+    "parents": [
+      "costasiella"
+    ],
+    "aliases": [
+      "Costasiella cf. kuroshimae species 6 JEV-2018",
+      "Costasiella kuroshimae"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "eunice-aphroditois",
+    "label": "Eunice aphroditois",
+    "kind": "taxon",
+    "parents": [
+      "eunice"
+    ],
+    "aliases": [
+      "Eunice aphroditois (Pallas",
+      "1788)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Bobbit-worm",
+    "extinct": false
+  },
+  {
+    "id": "eunicida",
+    "label": "Eunicida",
+    "kind": "taxon",
+    "parents": [
+      "polychaeta"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "eunicidae",
+    "label": "Eunicidae",
+    "kind": "taxon",
+    "parents": [
+      "eunicida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "eunice",
+    "label": "Eunice",
+    "kind": "taxon",
+    "parents": [
+      "eunicidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "fish",
+    "label": "Fish",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "bird",
+    "label": "Bird",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "mammal",
+    "label": "Mammal",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "amphibian",
+    "label": "Amphibian",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "reptile",
+    "label": "Reptile",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "insect",
+    "label": "Insect",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "arachnid",
+    "label": "Arachnid",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "crustacean",
+    "label": "Crustacean",
+    "kind": "group",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "bobtail-squid",
+    "label": "Bobtail squid",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
   }
 ]

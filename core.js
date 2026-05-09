@@ -147,6 +147,16 @@ window.addEventListener('keydown', function(e) {
   if (document.getElementById('video-editor-overlay')) return;
 
   const k = e.key.toLowerCase();
+
+  // Shift-F = clear all filters instantly (T-view only, not inside text input)
+  if (k === 'f' && e.shiftKey) {
+    e.preventDefault(); e.stopPropagation();
+    rowFilter = null;
+    if (typeof window.closeFilterBar === 'function') window.closeFilterBar();
+    if (typeof render === 'function') render();
+    return false;
+  }
+
   // (zip0153) Number keys 2/3/4/5 resize the grid when G overlay is open.
   // Bare key only — modifiers fall through to other handlers. Suppressed
   // when other overlays own the keys (already filtered above).
@@ -325,6 +335,37 @@ async function writeFileToDisk(name, jsonData) {
     return true;
   } catch(e) { toast('Write failed:\n'+e.message); _fsaDir = null; return false; }
 }
+// Append plain text to a file in the project folder (reads existing, appends, writes back).
+async function _appendTextFileToDisk(name, text) {
+  const dir = await _getDir();
+  if (!dir) return false;
+  try {
+    let existing = '';
+    try { const fh = await dir.getFileHandle(name); existing = await (await fh.getFile()).text(); } catch(_) {}
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w  = await fh.createWritable();
+    await w.write(existing + text);
+    await w.close();
+    return true;
+  } catch(e) { return false; }
+}
+
+// Append a deleted row to deleted.json in the project folder.
+async function _saveToDeletedJson(row) {
+  const dir = await _getDir();
+  if (!dir) return false;
+  try {
+    let arr = [];
+    try { const fh = await dir.getFileHandle('deleted.json'); arr = JSON.parse(await (await fh.getFile()).text()); if (!Array.isArray(arr)) arr = []; } catch(_) {}
+    arr.push(Object.assign({}, row, { _deletedAt: new Date().toISOString() }));
+    const fh = await dir.getFileHandle('deleted.json', { create: true });
+    const w  = await fh.createWritable();
+    await w.write(JSON.stringify(arr, null, 2));
+    await w.close();
+    return true;
+  } catch(e) { return false; }
+}
+
 function setFsaStatus(m) { document.getElementById('fsa-status').textContent = m || 'No project folder set'; }
 // Auto-restore FSA on page load
 (async()=>{ try { const s=await _fsaLoad(); if(s){ const p=await s.queryPermission({mode:'readwrite'}); if(p==='granted'){_fsaDir=s;setFsaStatus('📂 '+s.name+' (ready)');} else setFsaStatus('📂 '+s.name+' — re-grant needed'); } }catch(e){} })();
@@ -740,7 +781,17 @@ function render() {
   }
 }
 
-function buildTable() { render(); }
+function buildTable() {
+  // Close annotate panel if it somehow persists when not in E mode
+  if (!document.getElementById('video-editor-overlay')) {
+    const br = document.getElementById('browseOverlay');
+    if (br && br.style.display === 'flex') {
+      br.style.display = 'none';
+      const w = document.getElementById('wrap'); if (w) w.style.marginRight = '';
+    }
+  }
+  render();
+}
 
 function renderHead() {
   const thead = document.getElementById('thead');
@@ -921,6 +972,24 @@ function renderBody() {
         td.title = window.tagsLib ? ids.map(id => window.tagsLib.labelFor(id)).join(', ') : ids.join(', ');
         // Don't attach the standard dblclick→inline-edit for this column
         // (it's a structured field — edit via Annotate A hotkey)
+        // (zip0186) R-click on the td (not a chip) pastes clipboard tag if one
+        // is copied; otherwise shows no menu (chips handle their own menus).
+        td.addEventListener('contextmenu', e => {
+          if (!e.target.classList.contains('tag-chip') && window._copiedTagId) {
+            e.preventDefault(); e.stopPropagation();
+            const cid = window._copiedTagId;
+            if (!Array.isArray(row.tags)) row.tags = [];
+            if (!row.tags.includes(cid)) {
+              row.tags = [...row.tags, cid];
+              row.DateModified = isoNow();
+              save(); render();
+              const cLabel = window.tagsLib ? window.tagsLib.labelFor(cid) : cid;
+              toast('✓ Added "' + cLabel + '" to row', 1400);
+            } else {
+              toast('Tag already on this row', 1200);
+            }
+          }
+        });
         td.addEventListener('click',   e => onCell(e, vi, ci));
         td.addEventListener('dblclick', e => {
           e.stopPropagation();
@@ -1008,11 +1077,26 @@ function renderStatus() {
   const el = document.getElementById('status'), ck = checkedRows.size, vc = visCols();
   const visCount = rowFilter === null ? data.length
     : data.filter(r => rowMatchesFilter(r)).length;
-  const filterNote = rowFilter
-    ? (rowFilter.col === 'tags' && rowFilter.hierarchical
-        ? ' 🔍 '+visCount+'/'+data.length+' rows (tag ↧ '+(window.tagsLib?window.tagsLib.labelFor(rowFilter.val):rowFilter.val)+')'
-        : ' 🔍 '+visCount+'/'+data.length+' rows ('+rowFilter.col+'="'+rowFilter.val+'" )')
-    : '';
+  let filterNote = '';
+  if (rowFilter) {
+    if (rowFilter.composite) {
+      const parts = [];
+      const tags = rowFilter.tags || [];
+      if (tags.length && window.tagsLib) {
+        parts.push('tags: ' + tags.map(id => window.tagsLib.labelFor(id) || id).join(' ∧ '));
+      }
+      const text = rowFilter.text || {};
+      for (const k in text) {
+        const q = (text[k] || '').trim();
+        if (q) parts.push(k + '~"' + q + '"');
+      }
+      filterNote = ' 🔍 '+visCount+'/'+data.length+' rows ('+(parts.join(' · ') || 'empty')+')';
+    } else if (rowFilter.col === 'tags' && rowFilter.hierarchical) {
+      filterNote = ' 🔍 '+visCount+'/'+data.length+' rows (tag ↧ '+(window.tagsLib?window.tagsLib.labelFor(rowFilter.val):rowFilter.val)+')';
+    } else {
+      filterNote = ' 🔍 '+visCount+'/'+data.length+' rows ('+rowFilter.col+'="'+rowFilter.val+'" )';
+    }
+  }
   if (pending) {
     const n = pending.r2-pending.r1+1;
     el.textContent = n+' selected in "'+vc[pending.c]+'"'+(ck?' · '+ck+' ✓':'')+filterNote;
@@ -1028,18 +1112,9 @@ function updateShowAllBtn() {
   btn.textContent       = n > 0 ? 'Show All Cols ('+n+')' : 'Show All Cols';
   btn.style.borderColor = n > 0 ? '#ff8' : '';
   btn.style.color       = n > 0 ? '#ff8' : '';
-  // Filter button state
-  const fb = document.getElementById('filterBtn'), cb2 = document.getElementById('clearFilterBtn');
-  if (!fb || !cb2) return;
-  if (focus !== null) {
-    const vc = visCols(), col = vc[focus.c];
-    const val = col !== undefined ? String(data[vr(focus.r)]?.[col] ?? '') : '';
-    fb.style.display  = 'inline-block';
-    fb.title = 'Show only rows where "'+col+'" = "'+val+'"';
-    fb.textContent = '🔍 Filter';
-  } else {
-    fb.style.display = 'none';
-  }
+  // Clear-filter button visibility (filterBtn was removed; F hotkey opens modal)
+  const cb2 = document.getElementById('clearFilterBtn');
+  if (!cb2) return;
   cb2.style.display = rowFilter ? 'inline-block' : 'none';
 }
 
@@ -1140,6 +1215,41 @@ const CONTENT_COLS = new Set(['t1','t2','n1','n2','n3','cname','sname','comment'
 //   rowFilter = {col:'tags', val:<tagId>, hierarchical:true} → tag + descendants
 function rowMatchesFilter(row) {
   if (!rowFilter) return true;
+  // Composite: tags AND'd with each other AND'd with text-field substring matches.
+  // Built by the F-hotkey filter modal.
+  if (rowFilter.composite) {
+    const tags = rowFilter.tags || [];
+    if (tags.length && window.tagsLib) {
+      for (const tid of tags) {
+        if (!window.tagsLib.matchesQuery(row.tags || [], tid)) return false;
+      }
+    }
+    const text = rowFilter.text || {};
+    for (const k in text) {
+      const q = (text[k] || '').toLowerCase().trim();
+      if (!q) continue;
+      if (k === 'anywhere') {
+        // OR across all text fields + tag labels
+        const textFields = ['VidAuthor', 'VidTitle', 'link'];
+        let found = textFields.some(f => String(row[f] || '').toLowerCase().includes(q));
+        if (!found) found = String(row.ftext || '').replace(/<[^>]*>/g, ' ').toLowerCase().includes(q);
+        if (!found && window.tagsLib && row.tags) {
+          for (const tid of row.tags) {
+            const t = window.tagsLib.get(tid);
+            if (t && ((t.label||'').toLowerCase().includes(q) || (t.common||'').toLowerCase().includes(q))) {
+              found = true; break;
+            }
+          }
+        }
+        if (!found) return false;
+        continue;
+      }
+      let val = String(row[k] || '');
+      if (k === 'ftext') val = val.replace(/<[^>]*>/g, ' ');
+      if (!val.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }
   if (rowFilter.col === 'tags' && rowFilter.hierarchical && window.tagsLib) {
     return window.tagsLib.matchesQuery(row.tags || [], rowFilter.val);
   }
@@ -1268,6 +1378,24 @@ document.addEventListener('keydown', e => {
         const fi2 = _brRows.indexOf(di);
         if (fi2 >= 0) brShow(fi2);
       }
+    }
+    return;
+  }
+
+  // Delete key — remove focused row, save to deleted.json, no confirmation
+  if (e.key === 'Delete' && focus !== null) {
+    const di = vr(focus.r);
+    if (di >= 0 && di < data.length) {
+      e.preventDefault();
+      const row = data[di];
+      _saveToDeletedJson(row); // async, fire-and-forget
+      data.splice(di, 1);
+      // Fix up checkedRows indices
+      const nc = new Set();
+      checkedRows.forEach(i => { if (i < di) nc.add(i); else if (i > di) nc.add(i - 1); });
+      checkedRows = nc;
+      save(); buildSort(); render();
+      toast('Row deleted → deleted.json', 1500);
     }
     return;
   }
@@ -1853,6 +1981,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       document.getElementById('calcLengthsBtn').click();
     } else if (act === 'cleanmute') {
       housekeepingCleanMute();
+    } else if (act === 'fillytmeta') {
+      housekeepingFillYTMeta();
     }
   });
 });
@@ -1892,6 +2022,68 @@ function housekeepingCleanMute() {
     + '   ' + alreadyBlank + ' already blank',
     4500
   );
+}
+
+function _extractYTVideoId(url) {
+  // Matches ?v= or &v= — handles any parameter order (fixes watch?v= as first param)
+  let m = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (m) return m[1];
+  m = url.match(/(?:shorts|embed)\/([a-zA-Z0-9_-]{11})/);
+  if (m) return m[1];
+  m = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+  if (m) return m[1];
+  return null;
+}
+
+async function housekeepingFillYTMeta() {
+  // Only rows that are YouTube links AND have at least one of title/author missing
+  const rows = data.filter(r => {
+    if (!r || !r.link) return false;
+    if (!_extractYTVideoId(r.link)) return false;
+    return !r.VidTitle || !r.VidAuthor;
+  });
+  if (!rows.length) { toast('No YouTube rows with missing title/author', 2500); return; }
+  toast('📺 Fetching YouTube metadata for ' + rows.length + ' row(s)…', 3000);
+  let done = 0, skipped = 0;
+  const failed = [];
+  for (const row of rows) {
+    try {
+      const vid = _extractYTVideoId(row.link);
+      // Always use canonical watch URL for oEmbed — avoids Shorts/embed quirks
+      const canonUrl = 'https://www.youtube.com/watch?v=' + vid;
+      const res = await fetch('https://www.youtube.com/oembed?url=' + encodeURIComponent(canonUrl) + '&format=json');
+      if (!res.ok) {
+        // 401 = age-restricted/private, 404 = deleted/unavailable
+        failed.push(vid + ' (HTTP ' + res.status + ')');
+        continue;
+      }
+      const meta = await res.json();
+      let changed = false;
+      if (meta.title && !row.VidTitle) { row.VidTitle = meta.title; changed = true; }
+      if (meta.author_name && !row.VidAuthor) {
+        // Prefer @handle from author_url if YouTube exposes /@handle path
+        let author = '@' + meta.author_name;
+        if (meta.author_url) {
+          const m = meta.author_url.match(/\/@([^/?#]+)/);
+          if (m) author = '@' + m[1];
+        }
+        row.VidAuthor = author; changed = true;
+      }
+      if (changed) {
+        row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+        done++;
+      } else { skipped++; }
+    } catch(e) { failed.push(row.link.slice(0, 60) + ' (network err)'); }
+  }
+  if (done) { save(); render(); }
+  let msg = '📺 YT Meta: ' + done + ' updated';
+  if (skipped) msg += ', ' + skipped + ' already complete';
+  if (failed.length) {
+    msg += '\n⚠ ' + failed.length + ' unavailable (age-restricted / private / deleted):\n';
+    msg += failed.slice(0, 5).join('\n');
+    if (failed.length > 5) msg += '\n…and ' + (failed.length - 5) + ' more';
+  }
+  toast(msg, failed.length ? 7000 : 4000);
 }
 
 function runMarkGrid() {
@@ -2159,18 +2351,255 @@ document.getElementById('reassignUIDBtn').addEventListener('click', async () => 
   );
 });
 
-document.getElementById('filterBtn').addEventListener('click', () => {
-  if (focus === null) return;
-  const vc = visCols(), col = vc[focus.c];
-  if (!col) return;
-  const val = String(data[vr(focus.r)]?.[col] ?? '');
-  rowFilter = {col, val};
-  focus = null; pending = null;
+document.getElementById('clearFilterBtn').addEventListener('click', () => {
+  rowFilter = null;
   render();
 });
-document.getElementById('clearFilterBtn').addEventListener('click', () => {
-  rowFilter = null; render();
-});
+
+// ── Filter bar (F hotkey in T) ────────────────────────────────────────────
+// Thin horizontal strip in DOM flow (no overlay). Composite filter: tags
+// AND'd + text-field substring matches (VidAuthor, VidTitle, link, ftext).
+// Updates live as you type. Initialized once on load; F shows/hides it.
+(function () {
+  const bar      = document.getElementById('filterBar');
+  const tagInp   = document.getElementById('fbTagInput');
+  const chipsEl  = document.getElementById('fbChips');
+  const countEl  = document.getElementById('fbCount');
+  const clearBtn = document.getElementById('fbClear');
+  const closeBtn = document.getElementById('fbClose');
+  if (!bar || !tagInp) return;
+
+  let chips = [];   // tag IDs currently selected (AND'd)
+  const text = { VidAuthor:'', VidTitle:'', link:'', ftext:'', anywhere:'' };
+  let dd = null, ddIdx = -1, ddMatches = [];
+
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function applyLive() {
+    const hasAny = chips.length || Object.values(text).some(v => v && v.trim());
+    rowFilter = hasAny ? { composite: true, tags: chips.slice(), text: Object.assign({}, text) } : null;
+
+    if (rowFilter) _lastRowFilter = rowFilter;
+    render();
+    const cnt = rowFilter ? data.filter(r => rowMatchesFilter(r)).length : data.length;
+    countEl.textContent = cnt + '/' + data.length;
+  }
+
+  function renderChips() {
+    if (!chips.length) { chipsEl.innerHTML = ''; return; }
+    chipsEl.innerHTML = chips.map(id => {
+      const t = window.tagsLib && window.tagsLib.get(id);
+      const lbl = t ? t.label + (t.common ? ' ('+t.common+')' : '') : id;
+      return '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;'
+        + 'background:rgba(200,100,140,0.2);border:1px solid #c78;border-radius:10px;'
+        + 'color:#fdf;font-size:11px;font-family:monospace;">'
+        + esc(lbl)
+        + ' <span data-chip-x="'+esc(id)+'" style="cursor:pointer;color:#f99;font-weight:bold;line-height:1;">×</span>'
+        + '</span>';
+    }).join('');
+  }
+
+  // Delegated chip removal
+  chipsEl.addEventListener('click', e => {
+    const id = e.target.dataset && e.target.dataset.chipX;
+    if (!id) return;
+    chips = chips.filter(x => x !== id);
+    renderChips();
+    applyLive();
+  });
+
+  // ── Tag dropdown ──
+  function closeDd() { if (dd) { dd.remove(); dd = null; } ddIdx = -1; ddMatches = []; }
+
+  function showDd() {
+    closeDd();
+    const q = tagInp.value.trim();
+    if (!q) return;
+    const lib = window.tagsLib;
+    if (!lib) return;
+    ddMatches = lib.search(q, 25).filter(t => !chips.includes(t.id));
+    if (!ddMatches.length) return;
+    const rect = tagInp.getBoundingClientRect();
+    dd = document.createElement('div');
+    dd.style.cssText = 'position:fixed;z-index:32000;background:#0d0d1e;border:1px solid #c78;'
+      + 'border-top:none;border-radius:0 0 5px 5px;max-height:280px;overflow-y:auto;'
+      + 'font-family:monospace;font-size:12px;min-width:220px;'
+      + 'box-shadow:0 6px 20px rgba(0,0,0,0.9);left:'+rect.left+'px;top:'+rect.bottom+'px;';
+    ddMatches.forEach((t, i) => {
+      const r = document.createElement('div');
+      r.style.cssText = 'padding:5px 10px;cursor:pointer;border-bottom:1px solid #1a1a2e;color:#ddf;';
+      r.innerHTML = '<span style="color:#f8a;">'+esc(t.label)+'</span>'
+        + (t.common ? ' <span style="color:#999;font-size:11px;">'+esc(t.common)+'</span>' : '')
+        + (t.rank  ? ' <span style="color:#556;font-size:10px;">'+esc(t.rank)+'</span>' : '');
+      r.addEventListener('mouseenter', () => { ddIdx = i; hilite(); });
+      r.addEventListener('mousedown',  e => { e.preventDefault(); pick(i); });
+      dd.appendChild(r);
+    });
+    document.body.appendChild(dd);
+    ddIdx = 0; hilite();
+  }
+
+  function hilite() {
+    if (!dd) return;
+    [...dd.children].forEach((c, i) => { c.style.background = i === ddIdx ? 'rgba(200,100,140,0.28)' : ''; });
+    if (dd.children[ddIdx]) dd.children[ddIdx].scrollIntoView({block:'nearest'});
+  }
+
+  function pick(idx) {
+    const t = ddMatches[idx];
+    if (!t) return;
+    if (!chips.includes(t.id)) chips.push(t.id);
+    tagInp.value = ''; closeDd();
+    renderChips(); applyLive();
+    tagInp.focus();
+  }
+
+  tagInp.addEventListener('input', showDd);
+  tagInp.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!dd) { showDd(); return; }
+      ddIdx = Math.min(ddIdx + 1, ddMatches.length - 1); hilite();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!dd) return;
+      ddIdx = Math.max(ddIdx - 1, 0); hilite();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (dd && ddMatches.length) {
+        pick(ddMatches.length === 1 ? 0 : Math.max(0, ddIdx));
+      } else if (tagInp.value.trim() && window.tagsLib) {
+        const id = window.tagsLib.resolve(tagInp.value.trim());
+        if (id && !chips.includes(id)) { chips.push(id); tagInp.value = ''; renderChips(); applyLive(); }
+      }
+    } else if (e.key === 'Escape') {
+      if (dd) { closeDd(); e.stopPropagation(); }
+      else    { window.closeFilterBar(); e.stopPropagation(); }
+    }
+  });
+
+  // ── Text inputs with typeahead (VidAuthor, link) ──
+  function uniqueValuesFor(field) {
+    const seen = new Set(), out = [];
+    for (const r of data) {
+      const v = r[field];
+      if (v && typeof v === 'string' && !seen.has(v)) { seen.add(v); out.push(v); if (out.length > 800) break; }
+    }
+    return out;
+  }
+
+  function attachTypeahead(input, field) {
+    let tdd = null, tIdx = -1, tMatches = [];
+    function tc() { if (tdd) { tdd.remove(); tdd = null; } tIdx = -1; tMatches = []; }
+    function ts() {
+      tc();
+      const q = input.value.trim().toLowerCase();
+      if (!q || q.length < 2) return;
+      tMatches = uniqueValuesFor(field).filter(v => v.toLowerCase().includes(q)).slice(0, 12);
+      if (!tMatches.length) return;
+      const rect = input.getBoundingClientRect();
+      tdd = document.createElement('div');
+      tdd.style.cssText = 'position:fixed;z-index:32000;background:#0d0d1e;border:1px solid #345;'
+        + 'border-top:none;max-height:200px;overflow-y:auto;font-family:monospace;font-size:11px;'
+        + 'min-width:220px;box-shadow:0 6px 20px rgba(0,0,0,0.9);'
+        + 'left:'+rect.left+'px;top:'+rect.bottom+'px;';
+      tMatches.forEach((v, i) => {
+        const r = document.createElement('div');
+        r.style.cssText = 'padding:4px 8px;cursor:pointer;border-bottom:1px solid #1a1a2e;color:#ccf;'
+          + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        r.title = v; r.textContent = v;
+        r.addEventListener('mouseenter', () => { tIdx = i; th(); });
+        r.addEventListener('mousedown', e => { e.preventDefault(); input.value = v; text[field] = v; tc(); applyLive(); });
+        tdd.appendChild(r);
+      });
+      document.body.appendChild(tdd); tIdx = -1;
+    }
+    function th() {
+      if (!tdd) return;
+      [...tdd.children].forEach((c, i) => c.style.background = i === tIdx ? 'rgba(100,140,200,0.28)' : '');
+      if (tdd.children[tIdx]) tdd.children[tIdx].scrollIntoView({block:'nearest'});
+    }
+    input.addEventListener('input', () => { text[field] = input.value; applyLive(); ts(); });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (!tdd) { ts(); return; } tIdx = Math.min(tIdx+1, tMatches.length-1); th(); }
+      else if (e.key === 'ArrowUp')  { e.preventDefault(); if (!tdd) return; tIdx = Math.max(tIdx-1,0); th(); }
+      else if (e.key === 'Enter')    { if (tdd && tIdx >= 0) { e.preventDefault(); input.value = tMatches[tIdx]; text[field] = tMatches[tIdx]; tc(); applyLive(); } }
+      else if (e.key === 'Escape')   { if (tdd) { tc(); e.stopPropagation(); } else { window.closeFilterBar(); e.stopPropagation(); } }
+    });
+    input.addEventListener('blur', () => setTimeout(tc, 150));
+  }
+
+  attachTypeahead(document.getElementById('fbAuthor'), 'VidAuthor');
+  attachTypeahead(document.getElementById('fbLink'),   'link');
+
+  // Plain text fields
+  ['fbTitle','fbFtext'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => { text[el.dataset.field] = el.value; applyLive(); });
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { if (document.getElementById('filterBar').style.display !== 'none') { window.closeFilterBar(); e.stopPropagation(); } }
+    });
+  });
+
+  // Anywhere field (OR search across all text fields + tag labels)
+  const anywhereInp = document.getElementById('fbAnywhere');
+  if (anywhereInp) {
+    anywhereInp.addEventListener('input', () => { text.anywhere = anywhereInp.value; applyLive(); });
+    anywhereInp.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { window.closeFilterBar(); e.stopPropagation(); }
+    });
+  }
+
+  // Buttons
+  clearBtn.addEventListener('click', () => {
+    chips = []; Object.keys(text).forEach(k => text[k] = '');
+    ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbAnywhere'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    closeDd(); renderChips(); applyLive();
+    tagInp.focus();
+  });
+  closeBtn.addEventListener('click', () => window.closeFilterBar());
+
+  // Public API — called by F hotkey (vp.js) and Shift-F
+  window.openFilterBar = function () {
+    if (rowFilter && rowFilter.composite) {
+      // Restore full composite filter state
+      chips = (rowFilter.tags || []).slice();
+      Object.assign(text, rowFilter.text || {});
+      document.getElementById('fbAuthor').value  = text.VidAuthor || '';
+      document.getElementById('fbTitle').value   = text.VidTitle  || '';
+      document.getElementById('fbLink').value    = text.link      || '';
+      document.getElementById('fbFtext').value   = text.ftext     || '';
+      const aw = document.getElementById('fbAnywhere');
+      if (aw) aw.value = text.anywhere || '';
+    } else if (rowFilter && rowFilter.col === 'tags' && rowFilter.hierarchical) {
+      chips = [rowFilter.val];
+    } else {
+      // No active filter (e.g. after Shift-F) — start completely fresh
+      chips = [];
+      Object.keys(text).forEach(k => text[k] = '');
+      ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbAnywhere'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      closeDd();
+    }
+    renderChips();
+    bar.style.display = 'flex';
+    setTimeout(() => tagInp.focus(), 30);
+    applyLive();
+  };
+
+  window.closeFilterBar = function () {
+    closeDd(); bar.style.display = 'none';
+  };
+
+  // Legacy alias kept for vp.js references
+  window.openFilterModal  = window.openFilterBar;
+  window.closeFilterModal = window.closeFilterBar;
+})();
+
+// (old modal fully removed)
 
 // Reusable autocomplete
 // getChoices(): returns array of strings
@@ -2302,6 +2731,22 @@ window.saveData = () => save();
 window.vr = vr;
 window.isVideoRow = isVideoRow;
 window.toast = toast;
+
+// (zip0183) Update T's focused row to match the given data row object.
+// Called by textEditorClose() so that returning to T always highlights the
+// row that was last open in Xe, regardless of how many rows were walked
+// with ArrowUp/Down while Xe was open.
+window._setFocusToRow = function(row) {
+  if (!row || !Array.isArray(data)) return;
+  const di = data.indexOf(row);
+  if (di < 0) return;
+  for (let vi = 0; vi < data.length; vi++) {
+    if (vr(vi) === di) {
+      focus = { r: vi, c: focus !== null ? focus.c : 0 };
+      return;
+    }
+  }
+};
 
 // Browse Filtered (Annotate panel)
 let _brRows   = [];
@@ -2841,7 +3286,7 @@ async function wantLinks() {
   // The bare-links importer now classifies each line as video/image/web
   // and writes ltype + ftext for web URLs (zip0166).
   if (lines.every(_looksLikeAnyUrl)) {
-    return _importBareLinks(lines);
+    return await _importBareLinks(lines);
   }
 
   // (zip0167) Rule 3: first line is NOT a URL → treat as pasted article
@@ -2861,43 +3306,44 @@ async function wantLinks() {
   );
 }
 
-// (zip0129) Write a duplicate-links report to the user's download folder.
-// Triggered whenever an import sees pre-existing links. Filename includes
-// timestamp so multiple imports in one session don't overwrite each other.
-//
-// Format: one line per duplicate, with UID and where applicable the title
-// from the existing row, so the user can decide whether to keep or replace.
-function _writeDuplicateLinksReport(dupRecords, source) {
-  if (!dupRecords || !dupRecords.length) return;
-  const ts = new Date().toISOString()
-    .replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
-  const fname = 'DuplicateLinks-' + ts + '.txt';
-
-  const header = [
-    '# Duplicate links found during import',
-    '# Source: ' + (source || '(unknown)'),
-    '# Timestamp: ' + new Date().toISOString(),
-    '# Total: ' + dupRecords.length,
-    '#',
-    '# Format: <UID>\t<link>\t<existing VidTitle if any>',
-    ''
-  ].join('\n');
-
-  const body = dupRecords.map(d => {
-    const uid = d.UID === undefined ? '' : String(d.UID);
-    const title = d.title || '';
-    return uid + '\t' + d.link + '\t' + title;
-  }).join('\n');
-
-  const blob = new Blob([header + body + '\n'], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = fname;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  return fname;
+// Append duplicate-link records to duplicateTries.txt in the project folder,
+// then focus T on the first duplicate's existing row (scrolled to top).
+// Returns the first duplicate's link string (used in toast messages).
+async function _writeDuplicateLinksReport(dupRecords, source) {
+  if (!dupRecords || !dupRecords.length) return null;
+  const ts = new Date().toISOString();
+  const lines = dupRecords.map(d =>
+    ts + '\t' + (source || '') + '\t' + (d.UID === undefined ? '' : d.UID) + '\t' + d.link + '\t' + (d.title || '')
+  ).join('\n') + '\n';
+  _appendTextFileToDisk('duplicateTries.txt', lines); // async, fire-and-forget
+  // Focus T on the first duplicate and scroll it to top
+  const firstLink = dupRecords[0] && dupRecords[0].link;
+  if (firstLink) {
+    const existingRow = data.find(r => r && r.link === firstLink);
+    if (existingRow) {
+      const di = data.indexOf(existingRow);
+      let targetVi = -1;
+      for (let vi = 0; vi < data.length; vi++) { if (vr(vi) === di) { targetVi = vi; break; } }
+      if (targetVi >= 0) {
+        focus = { r: targetVi, c: focus !== null ? focus.c : 0 };
+        render();
+        requestAnimationFrame(() => {
+          const trs = document.querySelectorAll('#tbody tr');
+          let targetTr = null;
+          trs.forEach(tr => { const td = tr.querySelector('td[data-vi="'+targetVi+'"]'); if (td) targetTr = tr; });
+          if (targetTr) {
+            const wrap = document.getElementById('wrap');
+            if (wrap) {
+              const wRect = wrap.getBoundingClientRect();
+              const tRect = targetTr.getBoundingClientRect();
+              wrap.scrollTop += tRect.top - wRect.top;
+            }
+          }
+        });
+      }
+    }
+  }
+  return firstLink;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3481,7 +3927,7 @@ function _cutMidArticleEditorsPicks(text) {
 
 // Rule 1 implementation. `lines` is the already-split, trimmed, non-empty
 // array — every entry must be a media URL.
-function _importBareLinks(lines) {
+async function _importBareLinks(lines) {
   // De-dup within this paste
   const seen = new Set();
   const links = [];
@@ -3543,19 +3989,12 @@ function _importBareLinks(lines) {
     added++;
   }
 
-  // Write the duplicates report (if any) before the toast so the user sees
-  // both the toast and the download in the same beat.
-  let dupFile = null;
   if (dupRecords.length) {
-    dupFile = _writeDuplicateLinksReport(dupRecords, 'bare-links paste');
+    await _writeDuplicateLinksReport(dupRecords, 'bare-links paste');
   }
 
   if (!added) {
-    toast(
-      'All ' + links.length + ' link(s) already in data.\n'
-      + (dupFile ? '   wrote ' + dupFile : ''),
-      2500
-    );
+    toast('All ' + links.length + ' link(s) already in data — see duplicateTries.txt', 2500);
     return;
   }
 
@@ -3573,14 +4012,13 @@ function _importBareLinks(lines) {
     _fetchWebTextForRows(webRows);
   }
 
-  const dupNote   = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicates skipped' : '';
-  const fileNote  = dupFile ? '\n   wrote ' + dupFile : '';
+  const dupNote   = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : '';
   const dupInPaste = lines.length - links.length;
   const pasteDupNote = dupInPaste ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
   const webNote = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + pasteDupNote + webNote + fileNote,
+    + dupNote + pasteDupNote + webNote,
     3500
   );
 }
@@ -3896,10 +4334,8 @@ function _importChannelCSV(lines) {
     return;
   }
 
-  // Write the duplicates report (if any) before the toast
-  let dupFile = null;
   if (dupRecords.length) {
-    dupFile = _writeDuplicateLinksReport(dupRecords, 'channel CSV: ' + author);
+    _writeDuplicateLinksReport(dupRecords, 'channel CSV: ' + author); // async, fire-and-forget
   }
 
   save();
@@ -3914,7 +4350,7 @@ function _importChannelCSV(lines) {
     '✓ Channel: ' + author + '\n'
     + '   added ' + added + ' new (BA=1), updated ' + updated + ' existing'
     + (skipped ? ', skipped ' + skipped : '')
-    + (dupFile ? '\n   wrote ' + dupFile : ''),
+    + (dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : ''),
     3500
   );
 }
@@ -3978,11 +4414,14 @@ function runVEPostOpenSetup(di) {
     const row = data[di];
     if (!row) return;
 
-    // Full screen
+    // (zip0185) Layout = video+segments on the left, A panel on the right 340px.
+    // Don't blow this away with width:100%; leave room for browseOverlay.
     overlay.style.left         = '0';
     overlay.style.top          = '0';
-    overlay.style.width        = '100%';
-    overlay.style.height       = '100%';
+    overlay.style.right        = '340px';
+    overlay.style.bottom       = '0';
+    overlay.style.width        = 'auto';
+    overlay.style.height       = 'auto';
     overlay.style.borderRadius = '0';
     overlay.style.border       = 'none';
 
@@ -4053,18 +4492,14 @@ function runVEPostOpenSetup(di) {
       const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       if (e.ctrlKey && e.key.toLowerCase() === 's') { saveVEFields(); }
 
-      // Escape → save and return to whichever screen we came from (T or G).
-      // saveVEFields runs in onVEClose; closeEditor handles the actual unmount.
+      // (zip0186) Esc no longer closes Ev — use T (return to table), G (go to
+      // grid), the swipe gesture, or navigate with ArrowUp/Down.
+      // Small modal popups (v2comment-popup) still close on Esc since they're
+      // transient and have no other dismiss mechanism.
       if (e.key === 'Escape' && !e.ctrlKey) {
         const commentPop = document.getElementById('v2comment-popup');
-        if (!commentPop) {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-          _veCloseToTable = true;
-          _veTargetAfterClose = _brIdx;
-          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
-          return;
-        }
+        if (commentPop) { e.preventDefault(); e.stopImmediatePropagation(); commentPop.remove(); return; }
+        // Otherwise: let global handler blur focused input. No window close.
       }
 
       // Alt+N/J = legacy bindings, equivalent to plain N/J — stay in E.
@@ -4137,20 +4572,21 @@ function runVEPostOpenSetup(di) {
           return;
         }
         // N or ArrowDown = advance to next visible row, stay in E.
-        // (zip0131) ArrowDown is now an alias for N here, so it shares the
-        // same filter-aware _brRows walking logic. Video.js's own ArrowDown
-        // handler bows out when veKeyHandler is active.
+        // (zip0185) Walk ALL filtered rows, not just video. The close handler
+        // uses openEditorForRow to open the right E for whatever row type is
+        // landed on (video → Ev, text → Xe, image → Ie). Always reseed _brRows
+        // from current filter so a freshly-applied filter doesn't get walked
+        // against a stale snapshot.
         if (e.key === 'n' || e.key === 'N' || e.key === 'ArrowDown') {
           e.preventDefault(); e.stopPropagation();
-          // Walk forward in _brRows looking for the next video row. Skip
-          // image-only rows since E is the video editor.
-          let target = _brIdx + 1;
-          while (target < _brRows.length) {
-            const r = data[_brRows[target]];
-            if (r && isVideoRow(r)) break;
-            target++;
-          }
-          if (target >= _brRows.length) { toast('No more video rows below.', 1500); return; }
+          // Identify current row by data-index, then reseed _brRows from
+          // current filter and re-find the row's position before stepping.
+          const _curDi = (_brRows && _brIdx >= 0 && _brIdx < _brRows.length) ? _brRows[_brIdx] : -1;
+          _brRows = brGetVisibleRows();
+          let _curFi = _curDi >= 0 ? _brRows.indexOf(_curDi) : -1;
+          if (_curFi < 0) _curFi = _brIdx;
+          let target = _curFi + 1;
+          if (target >= _brRows.length) { toast('No more rows below.', 1500); return; }
           _veGoToNextE = true;
           _veTargetAfterClose = target;
           const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
@@ -4159,13 +4595,12 @@ function runVEPostOpenSetup(di) {
         // J or ArrowUp = previous row, stay in E
         if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowUp') {
           e.preventDefault(); e.stopPropagation();
-          let target = _brIdx - 1;
-          while (target >= 0) {
-            const r = data[_brRows[target]];
-            if (r && isVideoRow(r)) break;
-            target--;
-          }
-          if (target < 0) { toast('No more video rows above.', 1500); return; }
+          const _curDi = (_brRows && _brIdx >= 0 && _brIdx < _brRows.length) ? _brRows[_brIdx] : -1;
+          _brRows = brGetVisibleRows();
+          let _curFi = _curDi >= 0 ? _brRows.indexOf(_curDi) : -1;
+          if (_curFi < 0) _curFi = _brIdx;
+          let target = _curFi - 1;
+          if (target < 0) { toast('No more rows above.', 1500); return; }
           _veGoToNextE = true;
           _veTargetAfterClose = target;
           const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
@@ -4450,8 +4885,9 @@ function runVEPostOpenSetup(di) {
       _veGoToNextE = false;
       _veOpenAnnotateAfterClose = false;
       setTimeout(() => {
-        // (zip0127) N/J in E: stay in E, hop to the next/prev video row.
-        // _veTargetAfterClose was set by the N/J handler to the target _brIdx.
+        // (zip0127) N/J in E: stay in E, hop to the next/prev row.
+        // (zip0185) Now routes via openEditorForRow so non-video rows land
+        // in Xe (text) or Ie (image) instead of being skipped.
         if (goToNextE && _veTargetAfterClose !== null) {
           const target = _veTargetAfterClose;
           _veTargetAfterClose = null;
@@ -4459,11 +4895,17 @@ function runVEPostOpenSetup(di) {
             _brIdx = target;
             const di = _brRows[target];
             const row = data[di];
-            if (row && window.openVideoEditor) {
+            if (row) {
               // (zip0133) Cover the screen so T doesn't flash through.
               if (typeof window._veShowHopCover === 'function') window._veShowHopCover();
-              window.openVideoEditor(row);
-              return;
+              if (typeof window.openEditorForRow === 'function') {
+                window.openEditorForRow(row);
+                return;
+              }
+              if (window.openVideoEditor && isVideoRow(row)) {
+                window.openVideoEditor(row);
+                return;
+              }
             }
           }
           // Fallthrough: row missing/invalid, return to T as a safe default.
@@ -4855,194 +5297,242 @@ function buildPhylaTable() {
 var HELP_VERSION_STR = (typeof window !== 'undefined' && window.HELP_VERSION_STR) ? window.HELP_VERSION_STR : 'dev0163'; // Override via window.HELP_VERSION_STR in index.html for version bumps. Used in download filename + heading.
 
 const HELP_DATA = [
-  // ─── GLOBAL HOTKEYS ─────────────────────────────────────────────────
-  { id: 'GLOBAL', title: 'Global Hotkeys', devOnly: false,
-    desc: 'Single letters work from any screen when no input field has focus. Modifier combos (Ctrl/Alt) are listed where they apply.',
+  // ─── GLOBAL ─────────────────────────────────────────────────────────
+  { id: 'GLOBAL', title: 'Global — works from any screen', devOnly: false,
+    desc: 'Single-letter hotkeys fire when no input/editable has focus. Esc universally defocuses (blurs text fields; deselects focused row in T) — it no longer closes any screen.',
     sections: [
       { name: 'Hotkeys', items: [
-        { key: 'H', desc: 'Toggle this Help screen (works from anywhere)', dev: false },
-        { key: 'G', desc: 'Open Grid view',                    dev: false },
-        { key: 'C', desc: 'Open Collection (c.json picker)',    dev: false },
-        { key: 'M', desc: 'Open hamburger menu (then S = Settings, D = Dictionary, F = Folder…)', dev: true  },
-        { key: 'T', desc: 'Save + return to Table',             dev: true  },
-        { key: 'E', desc: 'Edit last selected (VE/IE)',         dev: true  },
-        { key: 'A', desc: 'Open Annotate panel',                dev: true  },
-        { key: 'D', desc: 'Open Dictionary (focused row\'s first tag if any, else last state)', dev: true  },
-        { key: 'V', desc: 'View focused row fullscreen (video/image/quiz/text slide). Toggle.', dev: false },
-        { key: 'F', desc: 'Toggle filter (T view)',             dev: true  },
-        { key: 'W or L', desc: 'Smart clipboard import (T view)', dev: true },
-        { key: 'Esc', desc: 'Close overlay / defocus from text field (then hotkeys work)', dev: false },
+        { key: 'H',       desc: 'Toggle Help (works everywhere)',               dev: false },
+        { key: 'G',       desc: 'Open Grid (G)',                                dev: false },
+        { key: 'C',       desc: 'Open Collection picker (C)',                   dev: false },
+        { key: 'V',       desc: 'View focused row fullscreen — video/image/quiz/text', dev: false },
+        { key: 'T',       desc: 'Return to Table (saves open E screen first)', dev: true  },
+        { key: 'E',       desc: 'Open Editor (Ev/Xe/Ie) for focused T row; selects row 1 if none focused', dev: true },
+        { key: 'A',       desc: 'Open Annotate panel (A)',                     dev: true  },
+        { key: 'D',       desc: 'Open Dictionary on focused row\'s first tag', dev: true  },
+        { key: 'M',       desc: 'Hamburger menu (→ Settings, Dictionary, Folder…)', dev: true },
+        { key: 'F',       desc: 'Toggle row filter (T view)',                  dev: true  },
+        { key: 'W / L',   desc: 'Smart clipboard import — add rows from pasted URLs', dev: true },
+        { key: 'Esc',     desc: 'Defocus text / deselect row. Does NOT close any screen.', dev: false },
       ]}
     ]
   },
 
   // ─── T — TABLE ──────────────────────────────────────────────────────
-  { id: 'T', title: 'T — Table (Master Links Editor)', devOnly: true,
-    desc: 'The heart of the system: every row is one cell candidate (video, image, html-text, or quiz). Tags here drive Lookup in A. Dev-only screen — no access in user mode.',
+  { id: 'T', title: 'T — Table (Master Data Editor)', devOnly: true,
+    desc: 'Every row = one content item (video, image, text slide, or quiz). Tags drive the Annotate (A) lookup. Open Ev, Xe, or Ie from here with the E key.',
     sections: [
       { name: 'Hotkeys', items: [
-        { key: 'A',                desc: 'Open Annotate panel — images & videos', dev: true },
-        { key: 'E',                desc: 'Open VideoEditor (videos only)',         dev: true },
-        { key: 'G',                desc: 'Open Grid view',                          dev: true },
-        { key: 'Enter',            desc: 'Commit edit, move down',                  dev: true },
-        { key: 'Tab / Shift+Tab',  desc: 'Commit, move right / left',               dev: true },
-        { key: 'Del / Backspace',  desc: 'Clear focused cell',                      dev: true },
-        { key: 'Ctrl+I',           desc: 'Toggle thumbnail mode',                   dev: true },
-        { key: 'Ctrl+H',           desc: 'Hamburger menu',                          dev: true },
-        { key: 'Esc',              desc: 'Close any open window',                   dev: true },
+        { key: 'E',                desc: 'Open Editor for focused row (Ev/Xe/Ie by type); row 1 if none focused', dev: true },
+        { key: 'A',                desc: 'Open Annotate panel',              dev: true },
+        { key: 'G',                desc: 'Open Grid',                        dev: true },
+        { key: 'V',                desc: 'View focused row fullscreen',       dev: true },
+        { key: 'F',                desc: 'Toggle filter',                    dev: true },
+        { key: '↑ ↓',              desc: 'Move focus between rows',          dev: true },
+        { key: 'Enter',            desc: 'Commit cell edit, move down',       dev: true },
+        { key: 'Tab / Shift+Tab',  desc: 'Commit and move right / left',      dev: true },
+        { key: 'Del / Backspace',  desc: 'Clear focused cell',               dev: true },
+        { key: 'Ctrl+I',           desc: 'Toggle thumbnail mode',            dev: true },
+        { key: 'Esc',              desc: 'Deselect focused row',             dev: true },
       ]},
-      { name: 'Mouse / Touch', items: [
-        { key: 'L-click cell',         desc: 'Focus cell',                          dev: true },
-        { key: 'Double-click',         desc: 'Edit focused cell (only way to edit)', dev: true },
-        { key: 'Shift+L-click (col)',  desc: 'Range → bulk set',                    dev: true },
-        { key: 'R-click',              desc: 'Context menu',                        dev: true },
+      { name: 'Mouse', items: [
+        { key: 'Click cell',            desc: 'Focus cell',                             dev: true },
+        { key: 'Double-click cell',     desc: 'Edit cell (text, link, etc.)',           dev: true },
+        { key: 'Shift+click (col)',     desc: 'Range select → bulk-set value',          dev: true },
+        { key: 'R-click tag chip',      desc: 'Menu: Copy tag / Dictionary / Filter',  dev: true },
+        { key: 'R-click tag cell',      desc: 'Paste clipboard tag to this row (if one copied)', dev: true },
+        { key: 'Double-click tag cell', desc: 'Open Annotate panel on this row',       dev: true },
       ]}
     ]
   },
 
   // ─── G / Gu — GRID ──────────────────────────────────────────────────
-  { id: 'G', title: 'G / Gu — Grid View', devOnly: false,
-    desc: 'N×N grid of cells (N = 2..5). Cell positions come from row.cell (T mode) or active C config (C mode). Video on the grid is always muted; row Mute applies in V only.',
+  { id: 'G', title: 'G / Gu — Grid', devOnly: false,
+    desc: 'N×N grid (N = 2–5). Cell slots come from row.cell (dev) or the active Collection config (user). Videos play muted in G; row Mute flag applies in fullscreen V.',
     sections: [
       { name: 'Hotkeys', items: [
-        { key: '2 / 3 / 4 / 5', desc: 'Grid size 2×2 / 3×3 / 4×4 / 5×5',  dev: false },
-        { key: 'C',             desc: 'Open Collection picker',            dev: false },
-        { key: 'Esc',           desc: 'Cancel cut or close grid',          dev: false },
-        { key: 'T',             desc: 'Return to Table',                   dev: true  },
-        { key: 'Ctrl+Alt+G',    desc: 'Save current grid config to c.json', dev: true },
+        { key: '2 / 3 / 4 / 5', desc: 'Resize grid to 2×2 / 3×3 / 4×4 / 5×5', dev: false },
+        { key: 'C',             desc: 'Open Collection picker',                  dev: false },
+        { key: 'V',             desc: 'View cell fullscreen',                    dev: false },
+        { key: 'E',             desc: 'Open Editor for current cell (dev)',       dev: true  },
+        { key: 'T',             desc: 'Return to Table',                         dev: true  },
+        { key: 'Ctrl+Alt+G',    desc: 'Save current layout to c.json',           dev: true  },
       ]},
       { name: 'Mouse / Touch', items: [
-        { key: 'Tap cell (short)',    desc: 'Toggle pause/play (G); dev-only in Gu', dev: false },
-        { key: 'Swipe →',             desc: 'Open fullscreen viewer (V/I/Q/X)',     dev: false },
-        { key: 'Swipe ←',             desc: 'Toggle pause/play video',              dev: false },
-        { key: 'HOLD cell',           desc: 'Cut (select for swap)',                dev: true  },
-        { key: 'Click another cell',  desc: 'Swap with cut cell',                   dev: true  },
-        { key: 'Click same cell',     desc: 'Cancel cut',                           dev: true  },
-        { key: 'Double-click text',   desc: 'Edit text slide',                      dev: true  },
-        { key: 'Ctrl+L-click',        desc: 'Edit (VE for video, IE for image)',   dev: true  },
-        { key: 'Ctrl+R-click',        desc: 'Open fullscreen viewer',               dev: false },
-        { key: 'R-click cell',        desc: 'Context menu (T / V / D)',             dev: true  },
+        { key: 'Click cell',          desc: 'Play / pause video',                       dev: false },
+        { key: 'Swipe → on cell',     desc: 'Open fullscreen viewer (V / Ie / Xs / Q)', dev: false },
+        { key: 'Swipe ← on cell',     desc: 'Toggle play/pause video',                  dev: false },
+        { key: 'Hold cell',           desc: 'Cut cell for swap (dev)',                   dev: true  },
+        { key: 'Click another cell',  desc: 'Swap with cut cell (dev)',                  dev: true  },
+        { key: 'Ctrl+click cell',     desc: 'Open Editor (Ev / Ie) (dev)',               dev: true  },
+        { key: 'R-click cell',        desc: 'Context menu: T / V / E / D (dev)',         dev: true  },
+        { key: 'Double-click text',   desc: 'Edit text slide (Xe) (dev)',                dev: true  },
       ]}
     ]
   },
 
   // ─── C / Cu — COLLECTION ────────────────────────────────────────────
   { id: 'C', title: 'C / Cu — Collection (c.json)', devOnly: false,
-    desc: 'Saved grid configurations. Each entry stores the cells field (4/9/16/25 = 2×2/3×3/4×4/5×5) and a cell→UID mapping. In Cu, tap an entry to load it into the grid at its saved size.',
+    desc: 'Saved grid layouts. Each entry maps cell positions to UIDs. Loading one sets which content appears in each grid slot.',
     sections: [
       { name: 'Hotkeys', items: [
-        { key: 'G',   desc: 'Return to Grid',                  dev: false },
-        { key: 'Esc', desc: 'Close Collection',                dev: false },
-        { key: 'T',   desc: 'Return to Table',                 dev: true  },
+        { key: 'G',      desc: 'Return to Grid',    dev: false },
+        { key: 'T',      desc: 'Return to Table',   dev: true  },
+        { key: 'Enter',  desc: 'Load selected config and go to Grid', dev: false },
+        { key: 'Delete', desc: 'Delete selected config (dev)', dev: true },
       ]},
       { name: 'Mouse / Touch', items: [
-        { key: 'Tap row',    desc: 'Make active (loads into G at saved size)', dev: false },
-        { key: 'Swipe ←',    desc: 'Cancel / close',                            dev: false },
+        { key: 'Click row',   desc: 'Select config',                      dev: false },
+        { key: 'Double-click', desc: 'Load config and go to Grid',         dev: false },
+        { key: 'Swipe ← on row', desc: 'Delete config (dev)',             dev: true  },
       ]}
     ]
   },
 
-  // ─── E — VIDEO EDITOR ───────────────────────────────────────────────
-  { id: 'E', title: 'E — Video Editor (VE)', devOnly: true,
-    desc: 'Trim videos into segments. Each segment has start, duration, and an optional comment. Saves to row.VidRange + VidComment. Dev-only screen.',
+  // ─── A — ANNOTATE ───────────────────────────────────────────────────
+  { id: 'A', title: 'A — Annotate Panel', devOnly: true,
+    desc: 'Right-side panel (340px) that shows and edits the metadata of the current T row. Auto-opens alongside Xe, Ev, and Ie. Navigation follows E screen arrow keys.',
     sections: [
       { name: 'Hotkeys', items: [
-        { key: 'Space',    desc: 'Play / Pause',                          dev: true },
-        { key: '← →',      desc: 'Trim start ±0.1s',                      dev: true },
-        { key: '↑ ↓',      desc: 'Duration ±0.1s',                        dev: true },
-        { key: 'Tab',      desc: 'Cycle segments',                        dev: true },
-        { key: 'H A L O',  desc: 'Set t1 instantly (when not in field)',  dev: true },
-        { key: 'M',        desc: 'Toggle mute (live)',                    dev: true },
-        { key: 'Ctrl+S',   desc: 'Save current row',                      dev: true },
-        { key: 'Esc',      desc: 'Close (back to grid if from grid)',     dev: true },
-        { key: 'T',        desc: 'Save + return to Table',                dev: true },
-        { key: 'G',        desc: 'Open Grid view',                        dev: true },
+        { key: '↑ ↓ (in E screen)', desc: 'Navigate rows — A follows automatically', dev: true },
+        { key: 'Tab (in Ev)',        desc: 'Jump focus to A\'s first field; Tab again cycles A fields', dev: true },
+        { key: 'Ctrl+S (in A field)', desc: 'Save Annotate row',                     dev: true },
+      ]},
+      { name: 'Mouse', items: [
+        { key: 'Type in tag field',       desc: 'Add tags by name or species',      dev: true },
+        { key: 'R-click tag chip (in A)', desc: 'Menu: Copy tag / Dictionary / Filter / Remove from row', dev: true },
+        { key: '✕ close button',          desc: 'Close A panel',                    dev: true },
+        { key: '← / → buttons',           desc: 'Previous / Next row in A',         dev: true },
+      ]}
+    ]
+  },
+
+  // ─── Ev — VIDEO EDITOR ──────────────────────────────────────────────
+  { id: 'Ev', title: 'Ev — Video Editor', devOnly: true,
+    desc: 'Trim videos into start+duration segments with optional labels. Layout: video + timeline on left, Segment Selection panel in middle, Annotate (A) on the right. Saves to row.VidRange + VidComment.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: 'Space',    desc: 'Play / Pause video',                      dev: true },
+        { key: '← →',      desc: 'Step start time ±0.1s',                   dev: true },
+        { key: '↑ ↓',      desc: 'Navigate to previous / next T row',       dev: true },
+        { key: 'Tab',      desc: 'Focus first A field (or cycle in A)',      dev: true },
+        { key: 'N / J',    desc: 'Next / Previous row (alias for ↑ ↓)',     dev: true },
+        { key: 'M',        desc: 'Toggle mute (live session)',               dev: true },
+        { key: 'S',        desc: 'Toggle Selected / Full playback',         dev: true },
+        { key: 'C',        desc: 'Toggle closed captions',                  dev: true },
+        { key: 'T',        desc: 'Save + return to Table',                  dev: true },
+        { key: 'G',        desc: 'Save + go to Grid',                       dev: true },
+        { key: 'Ctrl+S',   desc: 'Save current row',                        dev: true },
+      ]},
+      { name: 'Mouse', items: [
+        { key: 'Click timeline',          desc: 'Scrub to position',                       dev: true },
+        { key: 'Ctrl+click video',        desc: 'Add segment at current time',             dev: true },
+        { key: 'Ctrl+click timeline band', desc: 'Delete segment',                         dev: true },
+        { key: 'R-click segment tab',     desc: 'Rename / label segment',                 dev: true },
+        { key: 'Swipe ← (Ev area)',       desc: 'Save + return to Table',                 dev: true },
+      ]}
+    ]
+  },
+
+  // ─── Xe — TEXT EDITOR ───────────────────────────────────────────────
+  { id: 'Xe', title: 'Xe — HTML Text Editor', devOnly: true,
+    desc: 'Rich-text editor for row.ftext. Auto-opens Annotate (A) on the right (340px). Arrows navigate rows. Close: X button or swipe-left on title bar.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: '↑ ↓',           desc: 'Navigate to previous / next T row (saves current first)', dev: true },
+        { key: 'S',              desc: 'Slide preview (auto-saves first) — only when text not focused', dev: true },
+        { key: 'Ctrl+B / I / U', desc: 'Bold / Italic / Underline',              dev: true },
+        { key: 'Ctrl+S',         desc: 'Save + close',                           dev: true },
+        { key: 'Shift+Enter',    desc: 'Insert collapsible section (▶…). Inside summary: line-break. Enter alone in summary: jump to body.', dev: true },
+        { key: 'Esc',            desc: 'Defocus text editor (arrows then navigate rows)', dev: true },
       ]},
       { name: 'Mouse / Touch', items: [
-        { key: 'R-click segment / band', desc: 'Rename segment',           dev: true },
-        { key: 'Swipe ←',                desc: 'Close (back to grid)',     dev: true },
+        { key: 'Swipe → title bar',  desc: 'Auto-save + preview slide (Xs)',     dev: true },
+        { key: 'Swipe ← title bar',  desc: 'Auto-save + close Xe (back to T)',   dev: true },
+        { key: '▶ Slide button',     desc: 'Auto-save + preview as Xs',          dev: true },
+        { key: '✓ Save button',      desc: 'Save + close editor',                dev: true },
+        { key: '✕ Close button',     desc: 'Close editor (unsaved changes lost)', dev: true },
+        { key: 'Toolbar ▶… button',  desc: 'Insert empty collapsible section',   dev: true },
+        { key: 'Toolbar 🖼 button',   desc: 'Insert image (UID or URL, size, alignment)', dev: true },
+        { key: 'Dbl-click image',    desc: 'Edit image: size, alignment, source', dev: true },
+      ]}
+    ]
+  },
+
+  // ─── Ie — IMAGE EDITOR ──────────────────────────────────────────────
+  { id: 'Ie', title: 'Ie — Image Editor (Ie)', devOnly: true,
+    desc: 'Full-screen image view + Annotate panel. Reached via E key on an image row, or via arrow navigation in another E screen. Swipe-left to return to T.',
+    sections: [
+      { name: 'Hotkeys', items: [
+        { key: '↑ ↓',  desc: 'Navigate to previous / next T row',        dev: true },
+        { key: 'T',    desc: 'Return to Table (closes image + A)',        dev: true },
+      ]},
+      { name: 'Mouse / Touch', items: [
+        { key: 'Swipe ← on image', desc: 'Return to T (closes A too)',   dev: true },
+        { key: 'Pinch / pan',      desc: 'Zoom and pan image',           dev: false },
+        { key: '✕ Close button',   desc: 'Return to T',                  dev: true },
       ]}
     ]
   },
 
   // ─── V — VIDEO PLAYER (FULLSCREEN) ──────────────────────────────────
   { id: 'V', title: 'V — Video Player (Fullscreen)', devOnly: false,
-    desc: 'Full-screen video playback. Plays the row.VidRange segments in sequence. Mute determined by row Mute (0 = audio, 1 = silent); the M key toggles mute live for this session.',
+    desc: 'Full-screen playback of row.VidRange segments in sequence. Mute controlled by row Mute flag; M toggles live for this session.',
     sections: [
       { name: 'Hotkeys', items: [
-        { key: 'Space',  desc: 'Play / Pause',                  dev: false },
-        { key: '← →',    desc: 'Frame step ±0.1s',              dev: false },
-        { key: 'M',      desc: 'Mute toggle (live)',            dev: false },
-        { key: 'A / B',  desc: 'Set loop points',               dev: false },
-        { key: 'V',      desc: 'Close (toggle — same key that opened it)', dev: false },
-        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
+        { key: 'Space', desc: 'Play / Pause',                  dev: false },
+        { key: '← →',   desc: 'Frame-step ±0.1s',              dev: false },
+        { key: 'M',     desc: 'Mute toggle (live)',            dev: false },
+        { key: 'A / B', desc: 'Set loop points',               dev: false },
+        { key: 'V',     desc: 'Close (toggle with same key that opened)', dev: false },
+        { key: 'T',     desc: 'Return to Table (dev)',         dev: true  },
       ]},
       { name: 'Mouse / Touch', items: [
-        { key: 'Swipe ←',     desc: 'Close → back to grid',     dev: false },
-        { key: 'Tap controls', desc: 'Buttons on bottom bar',    dev: false },
+        { key: 'Swipe ← on image', desc: 'Close → back to grid', dev: false },
+        { key: 'Bottom bar buttons', desc: 'Play / Pause / loop controls', dev: false },
       ]}
     ]
   },
 
-  // ─── I — IMAGE (FULLSCREEN) ─────────────────────────────────────────
-  { id: 'I', title: 'I — Image (Fullscreen)', devOnly: false,
-    desc: 'Full-screen view of an image-link cell. Reached by swipe-right (or Ctrl+R-click) on an image cell in G/Gu.',
+  // ─── Xs — TEXT SLIDE VIEWER ─────────────────────────────────────────
+  { id: 'Xs', title: 'Xs — Text Slide (Fullscreen View)', devOnly: false,
+    desc: 'Read-only fullscreen view of an HTML/text slide. Reached by swipe-right on a text cell in G/Gu, or by the Slide button / swipe in Xe.',
     sections: [
-      { name: 'Hotkeys', items: [
-        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
-      ]},
-      { name: 'Mouse / Touch', items: [
-        { key: 'Swipe ←', desc: 'Close → back to grid',         dev: false },
+      { name: 'Navigation', items: [
+        { key: 'Swipe ← (top bar)', desc: 'Close Xs → back to Xe (if from editor)', dev: false },
+        { key: '✕ Close button',    desc: 'Close Xs',                                dev: false },
       ]}
     ]
   },
 
   // ─── Q — QUIZ (FULLSCREEN) ──────────────────────────────────────────
   { id: 'Q', title: 'Q — Quiz (Fullscreen)', devOnly: false,
-    desc: 'Full-screen view of a quiz cell (row.qfile or JSON ftext). Reached by swipe-right or tap on a quiz cell in G/Gu.',
+    desc: 'Interactive quiz cell. Reached by swipe-right or tap on a quiz cell in G/Gu.',
     sections: [
-      { name: 'Hotkeys', items: [
-        { key: 'Esc / ✕', desc: 'Close → back to grid',         dev: false },
-      ]},
       { name: 'Mouse / Touch', items: [
-        { key: 'Tap answer',  desc: 'Submit quiz answer',        dev: false },
-        { key: 'Swipe ←',     desc: 'Close → back to grid',     dev: false },
+        { key: 'Tap answer',  desc: 'Submit answer',         dev: false },
+        { key: 'Swipe ←',     desc: 'Close → back to grid',  dev: false },
+        { key: '✕ button',    desc: 'Close → back to grid',  dev: false },
       ]}
     ]
   },
 
-  // ─── Xs — HTML TEXT SLIDE (FULLSCREEN VIEW) ─────────────────────────
-  { id: 'Xs', title: 'Xs — HTML Text Slide (Fullscreen View)', devOnly: false,
-    desc: 'Read-only fullscreen view of an HTML/text slide. Reached by swipe-right on a text cell in G/Gu, or by Slide button/swipe in Xe.',
+  // ─── D — DICTIONARY ─────────────────────────────────────────────────
+  { id: 'D', title: 'D — Dictionary', devOnly: true,
+    desc: 'Tag hierarchy editor. Reach by pressing D (opens on focused row\'s first tag), or from a chip right-click menu.',
     sections: [
-      { name: 'Navigation', items: [
-        { key: 'Esc',               desc: 'Close Xs → back to Xe (if opened from editor)', dev: false },
-        { key: 'Swipe ← (top bar)', desc: 'Close Xs → back to Xe',                         dev: false },
-        { key: '✕ Close button',    desc: 'Close Xs',                                        dev: false },
-      ]}
-    ]
-  },
-
-  // ─── Xe — HTML TEXT EDITOR ──────────────────────────────────────────
-  { id: 'Xe', title: 'Xe — HTML Text Editor', devOnly: true,
-    desc: 'Rich-text editor for row.ftext. Reached by double-click on a text cell in G (dev mode). Esc closes without saving. Title-bar swipe → shows slide; swipe ← saves and closes.',
-    sections: [
-      { name: 'Hotkeys', items: [
-        { key: 'Esc',             desc: 'Close Xe without saving (back to T)',                dev: true },
-        { key: 'S',               desc: 'Slide preview — auto-saves first (when not typing)', dev: true },
-        { key: 'Ctrl+B / I / U', desc: 'Bold / Italic / Underline',                          dev: true },
-        { key: 'Ctrl+S',         desc: 'Save + close',                                        dev: true },
-        { key: 'Shift+Enter',    desc: 'Insert collapsible block (▶ toggle). In summary: inserts line-break for multi-line header. Enter alone in summary: jump to body.', dev: true },
+      { name: 'Hotkeys (in Dictionary)', items: [
+        { key: 'T / G',    desc: 'Return to Table / Grid (closes Dictionary)', dev: true },
+        { key: '↑ ↓',      desc: 'Move selection in tree',                     dev: true },
+        { key: 'Enter',    desc: 'Expand / collapse selected node',             dev: true },
+        { key: 'C / A',    desc: 'Cut / Paste node (C=cut, A=paste-as-child)', dev: true },
+        { key: 'S',        desc: 'Paste as sibling',                           dev: true },
+        { key: 'Delete',   desc: 'Delete selected node (with confirmation)',    dev: true },
       ]},
-      { name: 'Mouse / Touch', items: [
-        { key: 'Swipe → (title bar)', desc: 'Auto-save + show slide (Xs)',         dev: true },
-        { key: 'Swipe ← (title bar)', desc: 'Auto-save + close Xe (back to T)',    dev: true },
-        { key: '▶ Slide button',      desc: 'Auto-save + preview as Xs',           dev: true },
-        { key: '✓ Save button',       desc: 'Save + close editor',                 dev: true },
-        { key: '✕ Close button',      desc: 'Close editor (unsaved changes lost)',  dev: true },
-        { key: 'Toolbar ▶… button',   desc: 'Insert empty collapsible block',      dev: true },
-        { key: 'Toolbar 🖼 button',    desc: 'Insert image — UID or URL, size, left/center/right align', dev: true },
-        { key: 'Dbl-click image',     desc: 'Edit image: size, alignment, source', dev: true },
+      { name: 'Mouse', items: [
+        { key: 'Click node',    desc: 'Select',             dev: true },
+        { key: 'Dbl-click',     desc: 'Rename node',        dev: true },
+        { key: 'R-click node',  desc: 'Context menu (Cut / Paste / Delete / GBIF)', dev: true },
       ]}
     ]
   },
@@ -5281,21 +5771,8 @@ document.addEventListener('keydown', e => {
   const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
     || (document.activeElement && document.activeElement.isContentEditable);  // (zip0134)
 
-  // Global Escape: close whatever is topmost
-  if (e.key === 'Escape' && !e.ctrlKey) {
-    if (document.getElementById('video-editor-overlay')) {
-      const cb = document.getElementById('v2close'); if (cb) cb.click(); return;
-    }
-    if (document.getElementById('browseOverlay').style.display === 'flex') {
-      brSave(); brClose(); return;
-    }
-    if (_cMode) { closeCScreen(); return; }
-    if (isHelpOpen()) { closeHelp(); return; }
-    // Grid overlay - Esc handled by grid's own handler
-    if (document.getElementById('gridOverlay').style.display === 'flex') {
-      return; // Let grid handler deal with it
-    }
-  }
+  // (zip0186) Global Escape: defocus only — no window close from Esc anywhere.
+  // The per-editable blur is handled earlier (line ~124). Nothing extra needed.
 
   if (!tableVisible || inField || e.ctrlKey || e.metaKey || e.altKey) return;
 

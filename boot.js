@@ -58,7 +58,8 @@ document.addEventListener('keydown', e => {
   if (!_cMode) return;
   const tag=document.activeElement?.tagName;
   if (tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
-  if (e.key==='Escape'||(!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase()==='t')) { e.preventDefault(); closeCScreen(); return; }
+  // (zip0186) Esc no longer closes C — use T or G hotkeys.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase()==='t') { e.preventDefault(); closeCScreen(); return; }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase()==='g') { e.preventDefault(); closeCScreen(); gridShow(); return; }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase()==='m') { e.preventDefault(); cMakeActive(); return; }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key==='Enter') { e.preventDefault(); cMakeActive(); return; }

@@ -59,8 +59,35 @@
     labelFor,
     chipHtml,
     renderChipsForRecord,
-    recordTagIds
+    recordTagIds,
+    search: searchTags,
   };
+
+  // Substring search across label, common name, and aliases.
+  // Returns array of tag objects sorted: start-of-label matches first,
+  // then by label length ascending (shorter = tighter match).
+  function searchTags(q, limit) {
+    if (!q) return [];
+    limit = limit || 20;
+    const lq = q.toLowerCase();
+    const scored = [];
+    tagsArr.forEach(t => {
+      const lbl = (t.label || '').toLowerCase();
+      const com = (t.common || '').toLowerCase();
+      const ali = (t.aliases || []).map(a => String(a).toLowerCase());
+      const inLabel   = lbl.includes(lq);
+      const inCommon  = com.includes(lq);
+      const inAlias   = ali.some(a => a.includes(lq));
+      if (!inLabel && !inCommon && !inAlias) return;
+      const starts = lbl.startsWith(lq) || com.startsWith(lq) || ali.some(a => a.startsWith(lq));
+      scored.push({ t, starts, len: t.label.length });
+    });
+    scored.sort((a, b) => {
+      if (a.starts !== b.starts) return a.starts ? -1 : 1;
+      return a.len - b.len;
+    });
+    return scored.slice(0, limit).map(x => x.t);
+  }
   window.tagsLib = api;
 
   // ── load / save ──────────────────────────────────────────────────────────
@@ -867,11 +894,7 @@
   // and re-save; instead the table provides Annotate / Filter / Dictionary / GBIF.
   window.openTableChipMenu = function (x, y, tagId, row) {
     // (zip0158) Toggle: if a menu was just open for this tag, close it
-    // without action. The doc-level mousedown handler will have already
-    // nulled _chipMenu by the time contextmenu fires, so we instead
-    // consult a side-channel timestamp/tagId stash that survives the
-    // close. Within 300ms of the previous menu closing for the same tag,
-    // a second R-click is interpreted as "dismiss".
+    // without action.
     const now = Date.now();
     if (_lastChipMenuClose
         && _lastChipMenuClose.tagId === tagId
@@ -879,48 +902,75 @@
       _lastChipMenuClose = null;
       return;
     }
+
+    // (zip0186) If a tag is already in the copy clipboard, right-clicking
+    // any tag chip or tag-column cell PASTES it to that row without a menu.
+    if (window._copiedTagId && row) {
+      const cid = window._copiedTagId;
+      if (!Array.isArray(row.tags)) row.tags = [];
+      if (!row.tags.includes(cid)) {
+        row.tags = [...row.tags, cid];
+        if (row.DateModified !== undefined || row.DateAdded !== undefined) {
+          row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0,19).replace('T',' ');
+        }
+        if (typeof save === 'function') save();
+        if (typeof render === 'function') render();
+        const cLabel = byId.get(cid)?.label || cid;
+        if (typeof toast === 'function') toast('✓ Added "' + cLabel + '" to row', 1400);
+      } else {
+        if (typeof toast === 'function') toast('Tag already on this row', 1200);
+      }
+      return; // no menu shown during paste mode
+    }
+
     closeChipContextMenu();  // reuse the same DOM slot for any chip menu
     const t = byId.get(tagId);
     if (!t) return;
-    const isTaxon = t.kind === 'taxon';
 
+    // (zip0186) Simplified 3-item menu: Copy · Dictionary · Filter
     const items = [
+      {
+        key: 'c',
+        labelHtml: '<u>C</u>opy this tag',
+        action: () => {
+          window._copiedTagId = tagId;
+          const label = t.label + (t.common ? ' (' + t.common + ')' : '');
+          if (typeof toast === 'function') toast('📋 "' + label + '" ready to paste — R-click any tag column to paste', 2200);
+        }
+      },
       {
         key: 'd',
         labelHtml: 'Open in <u>D</u>ictionary',
         action: () => openDictForTag(tagId)
+      },
+      { sep: true },
+      {
+        key: 'f',
+        labelHtml: '<u>F</u>ilter table to this tag',
+        action: () => {
+          if (typeof window.setRowFilter === 'function') {
+            window.setRowFilter({ col: 'tags', val: tagId, hierarchical: true });
+          }
+        }
+      },
+      { sep: true },
+      {
+        key: 'x',
+        labelHtml: 'Delete tag from this row',
+        warn: true,
+        action: () => {
+          if (!row) return;
+          if (!Array.isArray(row.tags)) return;
+          row.tags = row.tags.filter(x => x !== tagId);
+          if (row.DateModified !== undefined || row.DateAdded !== undefined) {
+            row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0,19).replace('T',' ');
+          }
+          if (typeof save === 'function') save();
+          if (typeof render === 'function') render();
+          if (typeof toast === 'function') toast('Removed "' + t.label + '" from row', 1400);
+        }
       }
     ];
-    if (isTaxon) {
-      items.push({
-        key: 'g',
-        labelHtml: 'Check <u>G</u>BIF',
-        action: () => {
-          openDictForTag(tagId);
-          requestAnimationFrame(() => requestAnimationFrame(() => {
-            const btn = document.getElementById('de-gbif');
-            if (btn) btn.click();
-          }));
-        }
-      });
-    }
-    items.push({ sep: true });
-    items.push({
-      key: 'a',
-      labelHtml: '<u>A</u>nnotate this row',
-      action: () => {
-        if (typeof window.openBrowseForRow === 'function' && row) window.openBrowseForRow(row);
-      }
-    });
-    items.push({
-      key: 'f',
-      labelHtml: '<u>F</u>ilter table to this tag',
-      action: () => {
-        if (typeof window.setRowFilter === 'function') {
-          window.setRowFilter({ col: 'tags', val: tagId, hierarchical: true });
-        }
-      }
-    });
 
     _buildChipMenu(x, y, t, items);
   };
@@ -1088,6 +1138,18 @@
           outline: 2px solid #8ef !important;
           outline-offset: 1px;
         }
+        /* (zip0188) Bump D-screen font sizes by 1px across the board.
+           Preserves the size hierarchy by mapping each level up by one. */
+        #dictOverlay [style*="font-size:10px"] { font-size: 11px !important; }
+        #dictOverlay [style*="font-size: 10px"] { font-size: 11px !important; }
+        #dictOverlay [style*="font-size:11px"] { font-size: 12px !important; }
+        #dictOverlay [style*="font-size: 11px"] { font-size: 12px !important; }
+        #dictOverlay [style*="font-size:12px"] { font-size: 13px !important; }
+        #dictOverlay [style*="font-size: 12px"] { font-size: 13px !important; }
+        #dictOverlay [style*="font-size:13px"] { font-size: 14px !important; }
+        #dictOverlay [style*="font-size: 13px"] { font-size: 14px !important; }
+        #dictOverlay [style*="font-size:14px"] { font-size: 15px !important; }
+        #dictOverlay [style*="font-size: 14px"] { font-size: 15px !important; }
       `;
       document.head.appendChild(css);
     }
@@ -1110,6 +1172,8 @@
                 style="padding:5px 12px;background:rgba(100,170,255,0.25);color:#8ef;border:1px solid #666;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;"
                 title="Click to toggle between Tree and List views">🌳 Tree</button>
         <button id="dictAdd" style="padding:5px 12px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">+ New</button>
+        <button id="dictEcology" title="Ecology groups — fish, bird, mammal, etc. — review which class taxa are wired under group tags so hierarchical filtering works"
+          style="padding:5px 12px;border:1px solid #fc8;background:rgba(80,50,0,0.4);color:#fc8;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🐟 Ecology Groups</button>
         <button id="dictClose" style="padding:5px 12px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">✕ Close (Esc)</button>
       </div>
       <div style="flex:1;overflow:hidden;display:flex;min-height:0;">
@@ -1887,6 +1951,7 @@
       renderView();
     });
     dictOverlay.querySelector('#dictClose').addEventListener('click', () => window.closeDictionary());
+    dictOverlay.querySelector('#dictEcology').addEventListener('click', () => openEcologyPanel());
 
     // ── Keyboard navigation: ↓/↑ move focus, Enter selects, Tab → edit panel ───
     //
@@ -2441,6 +2506,236 @@
     }, 30);
   }
 
+  // ── Ecology Groups panel ─────────────────────────────────────────────────
+  // Lists each ecology group (fish, bird, mammal …), shows which class taxa
+  // exist in the dictionary, whether they're wired as children of the group
+  // tag, and offers Create / Wire actions. Solves the "I created 'bird' but
+  // filtering by it shows nothing" problem by giving visibility + one-click
+  // wiring of all classes that match CLASS_TO_GROUP.
+  function openEcologyPanel() {
+    let modal = document.getElementById('ecologyPanel');
+    if (modal) { modal.remove(); return; }  // toggle
+    modal = document.createElement('div');
+    modal.id = 'ecologyPanel';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:31500;background:rgba(5,5,14,0.78);'
+      + 'display:flex;align-items:flex-start;justify-content:center;padding-top:50px;';
+
+    // Build group→classes index from CLASS_TO_GROUP
+    const groupToClasses = {};
+    Object.entries(CLASS_TO_GROUP).forEach(([cls, grp]) => {
+      if (!groupToClasses[grp]) groupToClasses[grp] = [];
+      groupToClasses[grp].push(cls);
+    });
+
+    // ── Auto-create-and-wire ALL standard groups in one shot ──────────────
+    function autoWireAll() {
+      let created = 0, wired = 0;
+      Object.keys(groupToClasses).forEach(grp => {
+        let gid = resolveInput(grp);
+        if (!gid) {
+          const r = createTag({ label: grp, kind: 'group' });
+          if (r.ok) { gid = r.id; created++; }
+        }
+        if (!gid) return;
+        groupToClasses[grp].forEach(cls => {
+          const cid = resolveInput(cls);
+          if (!cid) return;
+          const tag = byId.get(cid);
+          if (tag && !(tag.parents || []).includes(gid)) {
+            updateTag(cid, { parents: [...(tag.parents || []), gid] });
+            wired++;
+          }
+        });
+      });
+      toast('✓ Standard groups: ' + created + ' created, ' + wired + ' classes wired', 2200);
+      build();
+    }
+
+    function build() {
+      // ── Standard-group sections ──────────────────────────────────────────
+      const stdHtml = Object.keys(groupToClasses).sort().map(grp => {
+        const classes = groupToClasses[grp];
+        const groupId  = resolveInput(grp);
+        const groupTag = groupId ? byId.get(groupId) : null;
+        const rows = classes.map(cls => {
+          const cid  = resolveInput(cls);
+          const tag  = cid ? byId.get(cid) : null;
+          const wired = tag && groupId && (tag.parents || []).includes(groupId);
+          const useCount = (cid && typeof data !== 'undefined')
+            ? data.reduce((n, r) => n + (recordMatchesTagQuery(r.tags, cid) ? 1 : 0), 0)
+            : 0;
+          return { cls, cid, tag, wired, useCount };
+        });
+        const presentClasses = rows.filter(r => r.tag);
+        const unwiredPresent = rows.filter(r => r.tag && !r.wired);
+        const groupUse = groupId
+          ? data.reduce((n, r) => n + (recordMatchesTagQuery(r.tags, groupId) ? 1 : 0), 0)
+          : 0;
+
+        const badge = !groupTag
+          ? '<span style="color:#f88;font-size:11px;">✗ no tag yet</span>'
+          : '<span style="color:#afa;font-size:11px;">✓</span> <span style="color:#888;font-size:11px;">' + groupUse + ' rows</span>';
+
+        const classRows = rows.map(r => {
+          if (!r.tag) return '<span style="color:#555;font-size:10px;">' + escapeHtml(r.cls) + '(—)</span>';
+          const dot = r.wired ? '<span style="color:#5f5;">✓</span>' : '<span style="color:#fc6;">○</span>';
+          const wire = (!r.wired && groupTag)
+            ? ' <button data-act="wire-one" data-cls-id="'+escapeAttr(r.cid)+'" data-grp-id="'+escapeAttr(groupId)+'"'
+              + ' style="padding:0 5px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:3px;cursor:pointer;font-size:10px;">wire</button>'
+            : '';
+          return dot + ' <span style="color:#ccd;font-size:11px;">'+escapeHtml(r.cls)+'</span>'
+            + ' <span style="color:#666;font-size:10px;">('+r.useCount+')</span>' + wire;
+        }).join(' &nbsp;│&nbsp; ');
+
+        const actBtns = [];
+        if (!groupTag && presentClasses.length)
+          actBtns.push('<button data-act="create-and-wire" data-grp="'+escapeAttr(grp)+'" data-cls-ids="'+escapeAttr(presentClasses.map(r=>r.cid).join(','))+'"'
+            + ' style="padding:3px 9px;border:1px solid #8cf;background:rgba(0,40,80,0.45);color:#8cf;border-radius:4px;cursor:pointer;font-size:11px;">Create + wire all</button>');
+        else if (!groupTag)
+          actBtns.push('<button data-act="create-group" data-grp="'+escapeAttr(grp)+'"'
+            + ' style="padding:3px 9px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:4px;cursor:pointer;font-size:11px;">+ Create group tag</button>');
+        if (groupTag && unwiredPresent.length)
+          actBtns.push('<button data-act="wire-all" data-grp-id="'+escapeAttr(groupId)+'" data-cls-ids="'+escapeAttr(unwiredPresent.map(r=>r.cid).join(','))+'"'
+            + ' style="padding:3px 9px;border:1px solid #fc8;background:rgba(80,50,0,0.4);color:#fc8;border-radius:4px;cursor:pointer;font-size:11px;">Wire '+unwiredPresent.length+' unwired</button>');
+
+        return '<div style="padding:8px 12px;margin-bottom:8px;background:rgba(255,255,255,0.02);border:1px solid #2a2a3a;border-radius:5px;">'
+          + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+          +   '<span style="color:#fc8;font-weight:bold;min-width:90px;">'+escapeHtml(grp)+'</span>'
+          +   badge
+          +   (actBtns.length ? '<span style="flex:1;"></span>' + actBtns.join(' ') : '')
+          + '</div>'
+          + '<div style="margin-top:5px;line-height:1.8;">' + classRows + '</div>'
+          + '</div>';
+      }).join('');
+
+      // ── All existing kind:'group' tags (including custom ones) ───────────
+      const allGroups = tagsArr.filter(t => t.kind === 'group');
+      const stdGroupLabels = new Set(Object.keys(groupToClasses));
+      const customGroups = allGroups.filter(t => !stdGroupLabels.has(t.label));
+      const customHtml = customGroups.length
+        ? customGroups.map(t => {
+            const childCount = tagsArr.filter(c => (c.parents||[]).includes(t.id)).length;
+            const useCount = (typeof data !== 'undefined')
+              ? data.reduce((n, r) => n + (recordMatchesTagQuery(r.tags, t.id) ? 1 : 0), 0)
+              : 0;
+            return '<div style="padding:4px 8px;margin-bottom:4px;background:rgba(255,255,255,0.02);border:1px solid #2a2a3a;border-radius:4px;font-size:11px;color:#ccd;">'
+              + '<span style="color:#fc8;">' + escapeHtml(t.label) + '</span>'
+              + (t.common ? ' <span style="color:#888;">('+escapeHtml(t.common)+')</span>' : '')
+              + ' <span style="color:#666;">· ' + childCount + ' children · ' + useCount + ' rows match</span>'
+              + '</div>';
+          }).join('')
+        : '<div style="color:#555;font-size:11px;padding:4px 0;">(none yet)</div>';
+
+      modal.innerHTML = '<div style="background:#0d0d1e;border:2px solid #fc8;border-radius:8px;'
+        + 'box-shadow:0 8px 32px rgba(0,0,0,0.85);width:780px;max-width:96vw;max-height:85vh;overflow-y:auto;'
+        + 'font-family:monospace;color:#ddd;padding:16px 20px;">'
+        // Header
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'
+        +   '<span style="color:#fc8;font-size:14px;font-weight:bold;">🐟 Ecology Groups</span>'
+        +   '<span style="color:#777;font-size:11px;flex:1;">Group tags sit above GBIF class taxa so filtering "fish" finds all ray-finned species.</span>'
+        +   '<button id="ecoClose" style="padding:3px 10px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:4px;cursor:pointer;font-size:11px;">✕ Close</button>'
+        + '</div>'
+        // One-click wire-all
+        + '<div style="margin-bottom:14px;padding:10px 14px;background:rgba(80,120,200,0.1);border:1px solid #446;border-radius:6px;">'
+        +   '<button id="ecoWireAll" style="padding:6px 16px;border:1px solid #8cf;background:rgba(0,40,100,0.55);color:#8cf;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;font-weight:bold;">⚡ Create &amp; wire ALL standard groups now</button>'
+        +   ' <span style="color:#888;font-size:11px;">Creates any missing group tags + wires all known class taxa in one click. Safe to re-run.</span>'
+        + '</div>'
+        // Standard groups
+        + '<div style="font-size:12px;color:#aaf;font-weight:bold;margin-bottom:6px;">Standard groups (from GBIF class map):</div>'
+        + stdHtml
+        // Custom groups
+        + '<div style="font-size:12px;color:#aaf;font-weight:bold;margin:12px 0 6px;">Custom groups:</div>'
+        + customHtml
+        // New custom group
+        + '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;">'
+        +   '<input id="ecoNewName" type="text" placeholder="new group name (e.g. marine mammals)…" autocomplete="off"'
+        +     ' style="flex:1;padding:5px 10px;background:#0a0a1a;border:1px solid #fc8;color:#fff;border-radius:5px;font-family:monospace;font-size:12px;outline:none;">'
+        +   '<button id="ecoNewCreate" style="padding:5px 12px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">+ Create group</button>'
+        + '</div>'
+        + '</div>';
+
+      // Bind one-time events on rebuilt DOM
+      modal.querySelector('#ecoClose').onclick  = () => { modal.remove(); };
+      modal.querySelector('#ecoWireAll').onclick = autoWireAll;
+      modal.querySelector('#ecoNewCreate').onclick = () => {
+        const inp = modal.querySelector('#ecoNewName');
+        const name = inp ? inp.value.trim() : '';
+        if (!name) return;
+        const r = createTag({ label: name, kind: 'group' });
+        if (r.ok) toast('✓ Created group "' + name + '"', 1400);
+        else      toast('Failed: ' + (r.err || 'unknown'), 1600);
+        if (inp) inp.value = '';
+        build();
+      };
+      modal.querySelector('#ecoNewName').addEventListener('keydown', e => {
+        if (e.key === 'Enter') modal.querySelector('#ecoNewCreate').click();
+        if (e.key === 'Escape') { modal.remove(); }
+      });
+    }
+
+    build();
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', e => {
+      if (e.target === modal) { modal.remove(); return; }
+      const act = e.target.dataset && e.target.dataset.act;
+      if (!act) return;
+      if (act === 'create-group') {
+        const r = createTag({ label: e.target.dataset.grp, kind: 'group' });
+        toast(r.ok ? '✓ Created "' + e.target.dataset.grp + '"' : 'Failed: ' + r.err, 1400);
+        build();
+      } else if (act === 'wire-one') {
+        const tag = byId.get(e.target.dataset.clsId);
+        const gid = e.target.dataset.grpId;
+        if (tag && !((tag.parents||[]).includes(gid))) updateTag(tag.id, { parents: [...(tag.parents||[]), gid] });
+        toast('✓ Wired ' + (tag?.label||'?') + ' → ' + (byId.get(gid)?.label||gid), 1400);
+        build();
+      } else if (act === 'wire-all') {
+        const gid  = e.target.dataset.grpId;
+        const cids = (e.target.dataset.clsIds||'').split(',').filter(Boolean);
+        let n = 0;
+        cids.forEach(cid => {
+          const tag = byId.get(cid);
+          if (tag && !((tag.parents||[]).includes(gid))) { updateTag(cid, { parents: [...(tag.parents||[]), gid] }); n++; }
+        });
+        toast('✓ Wired ' + n + ' → ' + (byId.get(gid)?.label||gid), 1500);
+        build();
+      } else if (act === 'create-and-wire') {
+        const r = createTag({ label: e.target.dataset.grp, kind: 'group' });
+        if (!r.ok) { toast('Failed: ' + r.err, 1600); return; }
+        const gid  = r.id;
+        const cids = (e.target.dataset.clsIds||'').split(',').filter(Boolean);
+        let n = 0;
+        cids.forEach(cid => {
+          const tag = byId.get(cid);
+          if (tag && !((tag.parents||[]).includes(gid))) { updateTag(cid, { parents: [...(tag.parents||[]), gid] }); n++; }
+        });
+        toast('✓ Created "' + e.target.dataset.grp + '" + wired ' + n, 1800);
+        build();
+      }
+    });
+  }
+
+  // Maps GBIF class names → ecology group tag labels. Used by applyChainImport
+  // to auto-wire e.g. Actinopterygii → "fish" if that tag exists in the dict.
+  const CLASS_TO_GROUP = {
+    'Actinopterygii':      'fish',
+    'Chondrichthyes':      'fish',
+    'Sarcopterygii':       'fish',
+    'Myxini':              'fish',
+    'Cephalaspidomorphi':  'fish',
+    'Petromyzontida':      'fish',
+    'Aves':                'bird',
+    'Mammalia':            'mammal',
+    'Amphibia':            'amphibian',
+    'Reptilia':            'reptile',
+    'Insecta':             'insect',
+    'Arachnida':           'arachnid',
+    'Malacostraca':        'crustacean',
+    'Maxillopoda':         'crustacean',
+    'Merostomata':         'crustacean',
+  };
+
   // ── GBIF lookup ─────────────────────────────────────────────────────────
   // Calls GBIF's species/match endpoint. Free, no auth, CORS-enabled.
   // Docs: https://www.gbif.org/developer/species
@@ -2792,8 +3087,11 @@
       }
     }
 
-    // Wire parent chain: each rank's parent is the next-higher rank present
+    // Wire parent chain: each rank's parent is the next-higher rank present.
+    // Preserve any non-chain parents (e.g. ecology group tags like "fish")
+    // so GBIF re-import doesn't wipe manually placed group memberships.
     let parentChainEdits = 0;
+    const chainIdSet = new Set(Object.values(idsByRank));
     for (let i = 1; i < chain.length; i++) {
       const childId  = idsByRank[chain[i].rank];
       const parentId = idsByRank[chain[i - 1].rank];
@@ -2802,8 +3100,8 @@
       if (!child) continue;
       const currentParents = child.parents || [];
       if (!currentParents.includes(parentId)) {
-        // For taxa, single-parent rule: replace
-        updateTag(childId, { parents: [parentId] });
+        const nonChainParents = currentParents.filter(p => !chainIdSet.has(p));
+        updateTag(childId, { parents: [...nonChainParents, parentId] });
         parentChainEdits++;
       }
     }
@@ -2814,6 +3112,26 @@
       const top = byId.get(topRankId);
       if (top && (!top.parents || !top.parents.length)) {
         updateTag(topRankId, { parents: ['life'] });
+      }
+    }
+
+    // Auto-wire class → ecology group tag (e.g. Actinopterygii → "fish").
+    // If a group tag with the mapped label exists, add it as an extra parent of
+    // the class-rank tag so hierarchical filtering through "fish" etc. works.
+    const classId = idsByRank['class'];
+    if (classId) {
+      const classTag = byId.get(classId);
+      if (classTag) {
+        const groupLabel = CLASS_TO_GROUP[classTag.label];
+        if (groupLabel) {
+          const groupId = resolveInput(groupLabel);
+          if (groupId) {
+            const cp = classTag.parents || [];
+            if (!cp.includes(groupId)) {
+              updateTag(classId, { parents: [...cp, groupId] });
+            }
+          }
+        }
       }
     }
 

@@ -6,7 +6,8 @@ let _textEditorOverlay = null;
 let _textEditorCell = null;
 let _textEditorRow = null;
 
-function gridOpenTextEditor(cellStr, row) {
+function gridOpenTextEditor(cellStr, row, opts) {
+  opts = opts || {};
   // (zip0155) Defensive: if a previous text-editor overlay was left in the
   // DOM (e.g. early-failed call, double-open from rapid double-click),
   // remove it first. Otherwise document.getElementById('teSave') below
@@ -51,8 +52,14 @@ function gridOpenTextEditor(cellStr, row) {
     position:fixed; inset:0; z-index:35000;
     background:rgba(0,0,0,0.95); display:flex;
     align-items:stretch; justify-content:stretch;
-    padding:20px;
+    padding:20px; outline:none;
+    right:340px;
   `;
+  // (zip0179) Make overlay focusable so ArrowUp/Down navigation works
+  // even when the editor itself is NOT focused (e.g. when arriving here
+  // via openEditorForRow row-to-row navigation). Without this, focus
+  // falls back to <body> and the overlay's keydown listener never fires.
+  _textEditorOverlay.tabIndex = -1;
   
   const mediaNote = hasMedia ? `<span style="color:#8f8; font-size:11px; margin-left:12px;">(has ${isVideoRow(row)?'video':'image'})</span>` : '';
   
@@ -106,7 +113,34 @@ function gridOpenTextEditor(cellStr, row) {
   `;
   
   document.body.appendChild(_textEditorOverlay);
-  
+
+  // (zip0185) Lift the hop cover (if any) once the new Xe overlay is in DOM.
+  // Tiny delay so the browser paints Xe before the cover comes off.
+  {
+    const _hopCover = document.getElementById('ve-hop-cover');
+    if (_hopCover) {
+      setTimeout(() => { const c = document.getElementById('ve-hop-cover'); if (c) c.remove(); }, 60);
+      clearTimeout(window._veHopCoverTimer);
+    }
+  }
+
+  // (zip0184) Auto-open Annotate panel alongside Xe. Xe leaves the right
+  // 340px clear (right:340px on the overlay); browseOverlay fills that slot.
+  // If A is already open just navigate it to the current row.
+  {
+    const _xeDi = (typeof data !== 'undefined') ? data.indexOf(row) : -1;
+    const _anEl = document.getElementById('browseOverlay');
+    const _anOpen = _anEl && _anEl.style.display === 'flex';
+    if (_anOpen) {
+      if (_xeDi >= 0 && typeof brShow === 'function') {
+        const _fi = (window._brRows || []).indexOf(_xeDi);
+        if (_fi >= 0) { window._brIdx = _fi; brShow(_fi); }
+      }
+    } else if (typeof brOpen === 'function') {
+      brOpen(_xeDi >= 0 ? _xeDi : undefined);
+    }
+  }
+
   // CRITICAL: Set contenteditable AFTER adding to DOM
   const editor = document.getElementById('teEditor');
   editor.setAttribute('contenteditable', 'true');
@@ -245,6 +279,20 @@ function gridOpenTextEditor(cellStr, row) {
   // the overlay — the editor loses focus. At that point, pressing S should
   // trigger the slide preview rather than inserting a letter.
   _ov.addEventListener('keydown', function(e) {
+    // (zip0182) Esc on Xe = blur whatever is focused (editor or overlay).
+    // Does NOT close Xe — Xe is closed by the X button, the slide-preview
+    // L→R swipe, or by navigating to another row via ArrowUp/Down.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const ae = document.activeElement;
+      if (ae && typeof ae.blur === 'function') ae.blur();
+      // Move focus to the overlay so subsequent ArrowUp/Down still hit this
+      // listener (otherwise focus falls back to <body> outside the overlay
+      // tree and our keydown bindings stop firing).
+      _textEditorOverlay.focus();
+      return;
+    }
     if (e.key === 's' || e.key === 'S') {
       // Only fire if the contenteditable editor itself is NOT focused.
       const ae = document.activeElement;
@@ -257,24 +305,17 @@ function gridOpenTextEditor(cellStr, row) {
       }
     }
 
-    // (zip0178) ArrowUp / ArrowDown — navigate filtered rows while Xe is open,
-    // mirroring what Ev already does.  Only fires when the contenteditable
-    // editor is NOT the active element (natural cursor movement inside the
-    // text is unaffected).  The navigator auto-seeds _brRows from the current
-    // filter if it is empty.  The row that replaces the current one may be any
-    // type: openEditorForRow routes to Xe (text), Ie (image), or Ev (video).
+    // (zip0184) ArrowUp / ArrowDown — navigate filtered rows while Xe is open.
+    // Always navigates, even when the contenteditable editor is focused (matches
+    // the Ie + Annotate-panel combo). _brRows is always refreshed from the live
+    // filter so navigating a filtered T doesn't walk invisible rows.
+    // openEditorForRow routes to Xe (text), Ie (image), or Ev (video).
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      const ae = document.activeElement;
-      const editorFocused = ae && (ae.id === 'teEditor' || ae.closest('#teEditor'));
-      if (editorFocused) return; // let cursor move inside editor normally
-
       e.preventDefault(); e.stopPropagation();
 
-      // Ensure row list is populated
-      if (!window._brRows || !window._brRows.length) {
-        window._brRows = (typeof brGetVisibleRows === 'function')
-          ? brGetVisibleRows() : [];
-      }
+      // Always rebuild from current filter so filtered T navigation stays correct
+      window._brRows = (typeof brGetVisibleRows === 'function')
+        ? brGetVisibleRows() : (window._brRows || []);
       const rows = window._brRows;
       if (!rows.length) { if (typeof toast === 'function') toast('No visible rows.', 1400); return; }
 
@@ -292,6 +333,10 @@ function gridOpenTextEditor(cellStr, row) {
       window._brIdx = target;
       const nextRow = (typeof data !== 'undefined') ? data[rows[target]] : null;
       if (!nextRow) return;
+
+      // (zip0185) Cover the screen so T doesn't flash through the brief
+      // window between closing Xe and the next E mounting.
+      if (typeof window._veShowHopCover === 'function') window._veShowHopCover();
 
       // Save current, close Xe, open appropriate editor for next row
       _textEditorDoSave();
@@ -338,13 +383,9 @@ function gridOpenTextEditor(cellStr, row) {
       e.preventDefault();
       textEditorSave();
     }
-    if (e.key === 'Escape') {
-      // (zip0161) Esc from Xe = close without saving. stopImmediatePropagation
-      // prevents any other capture-phase handler from also reacting.
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      textEditorClose();
-    }
+    // (zip0182) Esc no longer closes Xe — the global handler in core.js blurs
+    // the contenteditable instead. Xe edits are auto-saved on row change /
+    // explicit close, so there's no "cancel" path; Esc is now purely a defocus.
     // (zip0161) Enter/Shift+Enter collapsible section handling:
     //
     //  Inside <summary>:
@@ -442,10 +483,17 @@ function gridOpenTextEditor(cellStr, row) {
   
   // Focus editor after a short delay
   setTimeout(() => {
-    editor.focus();
-    // If default text, select it
-    if (editor.innerHTML.includes('Your content here')) {
-      document.execCommand('selectAll', false, null);
+    if (opts.skipEditorFocus) {
+      // (zip0179) Arrived here via row-to-row arrow navigation — keep focus
+      // on the overlay so ArrowUp/Down keep walking rows instead of moving
+      // the caret inside the text. User can click into the editor to type.
+      _textEditorOverlay.focus();
+    } else {
+      editor.focus();
+      // If default text, select it
+      if (editor.innerHTML.includes('Your content here')) {
+        document.execCommand('selectAll', false, null);
+      }
     }
     // (zip0134) Clean stray empty <details> on open so the user doesn't see
     // the residual caret/dropdown UI from previously saved malformed content.
@@ -930,6 +978,11 @@ function textEditorPreviewSlide() {
 }
 
 function textEditorClose() {
+  // (zip0183) Sync T's focus to the last Xe row before clearing state, so
+  // pressing T/G/A from Xe leaves the selection on the row that was open.
+  if (_textEditorRow && typeof window._setFocusToRow === 'function') {
+    window._setFocusToRow(_textEditorRow);
+  }
   if (_textEditorOverlay) {
     _textEditorOverlay.remove();
     _textEditorOverlay = null;
