@@ -903,26 +903,6 @@
       return;
     }
 
-    // (zip0186) If a tag is already in the copy clipboard, right-clicking
-    // any tag chip or tag-column cell PASTES it to that row without a menu.
-    if (window._copiedTagId && row) {
-      const cid = window._copiedTagId;
-      if (!Array.isArray(row.tags)) row.tags = [];
-      if (!row.tags.includes(cid)) {
-        row.tags = [...row.tags, cid];
-        if (row.DateModified !== undefined || row.DateAdded !== undefined) {
-          row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0,19).replace('T',' ');
-        }
-        if (typeof save === 'function') save();
-        if (typeof render === 'function') render();
-        const cLabel = byId.get(cid)?.label || cid;
-        if (typeof toast === 'function') toast('✓ Added "' + cLabel + '" to row', 1400);
-      } else {
-        if (typeof toast === 'function') toast('Tag already on this row', 1200);
-      }
-      return; // no menu shown during paste mode
-    }
-
     closeChipContextMenu();  // reuse the same DOM slot for any chip menu
     const t = byId.get(tagId);
     if (!t) return;

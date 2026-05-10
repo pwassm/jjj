@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1778362776205,
+    "_salPushTime": 1778428133954,
     "_salColWidths": {
       "VidRange": 166,
       "linkpage": 90,
@@ -46,6 +46,7 @@
       "ltype",
       "ftext",
       "tags",
+      "comment",
       "link",
       "linkpage",
       "DateModified",
@@ -61,7 +62,6 @@
       "VidComment",
       "Topic",
       "attribution",
-      "comment",
       "t1"
     ],
     "_salHidden": [],
@@ -1864,7 +1864,7 @@
     "Val": "",
     "P/S": "1",
     "n2": "",
-    "vidLength": "1:00",
+    "vidLength": "0:14",
     "segLength": "",
     "ftext": "",
     "tags": [],
@@ -1916,8 +1916,8 @@
     "comment": "",
     "VidComment": "",
     "DateAdded": "2026-04-03 21:56:22",
-    "DateModified": "2026-05-09 19:41:46",
-    "Mute": "0",
+    "DateModified": "2026-05-10 04:00:09",
+    "Mute": "1",
     "MPix": "V",
     "Thumb": "",
     "n1": "",
@@ -1927,7 +1927,10 @@
     "vidLength": "1:06",
     "segLength": "",
     "ftext": "",
-    "tags": [],
+    "tags": [
+      "humor",
+      "dog"
+    ],
     "BA": "",
     "ltype": ""
   },
@@ -7118,7 +7121,7 @@
     "link": "https://photocontest.smithsonianmag.com/photocontest/detail/shaun-the-sheep-sea-slug-laying-the-next-generation/",
     "show": "1",
     "DateAdded": "2026-05-09 05:13:26",
-    "DateModified": "2026-05-09 20:42:35",
+    "DateModified": "2026-05-10 15:48:53",
     "tags": [
       "costasiella-kuroshimae-species"
     ],
@@ -7213,8 +7216,10 @@
     "link": "https://cdn.oceanographicmagazine.com/wp-content/uploads/2025/07/30180231/YUKTAK1-1920x1280.jpg",
     "show": "1",
     "DateAdded": "2026-05-09 21:00:51",
-    "DateModified": "2026-05-09 21:00:51",
-    "tags": [],
+    "DateModified": "2026-05-10 15:45:55",
+    "tags": [
+      "megaptera-novaeangliae"
+    ],
     "VidRange": "i"
   },
   {
@@ -7222,9 +7227,68 @@
     "link": "https://oceanographicmagazine.com/opa-winner/ocean-photographer-of-the-year-2025-yuktak1/",
     "show": "1",
     "DateAdded": "2026-05-09 21:17:41",
-    "DateModified": "2026-05-09 21:18:26",
-    "tags": [],
+    "DateModified": "2026-05-10 15:44:46",
+    "tags": [
+      "megaptera-novaeangliae"
+    ],
     "ltype": "w",
-    "ftext": "<h2>Ocean Photographer of the Year 2025, YUKTAK1 - Oceanographic</h2>\n<img src=\"https://cdn.oceanographicmagazine.com/wp-content/uploads/2025/07/30180231/YUKTAK1-1920x1280.jpg\" alt=\"Image 1\" style=\"max-width:100%;height:auto;\">\n<ul><li><br></li></ul><h2>3rd place  Young Photographer of the Year</h2>\n<p>Yuka Takahashi French Polynesia</p>\n<p>17°27'17.4\"S 149°53'00.7\"W</p>\n<p>A pair of synchronised humpback whales. \"Putting myself out in the field has taught me lessons no textbook ever could,\" says Takahashi. \"It has also deepened my understanding of the profound biophilia held by the Tahitian people on the island of Mo’orea. These two humpback whales are always seen together, and I was fortunate to capture this rare moment of synchronicity. To me, this photo reflects the strong bond between them while also revealing their playful and curious personalities.\"</p>\n<h2>BEHIND THE LENS</h2>\n<img src=\"https://cdn.oceanographicmagazine.com/wp-content/uploads/2025/07/30181643/BWheadshot-Yuka-Takahashi-300x300.jpg\" alt=\"Image 3: Ocean Photographer of the Year 2025, YUKTAK1\" style=\"max-width:100%;height:auto;\">\n<h3>Yuka Takahashi Japan</h3>\n<ul><li><a href=\"https://www.instagram.com/yuka.orca/?hl=en\" target=\"_blank\" rel=\"noopener\">Follow Yuka On Instagram</a></li></ul>\n<p>ABOUT THE IMAGE</p>\n<ul><li>Morning shoot</li>\n<li>Taken while snorkelling </li>\n<li>Site accessed by boat</li>\n<li>f/4.5, 1/500s, ISO 320</li></ul>\n<p>Yuka Takahashi is a Japanese-born veterinary student in the United States, with a passion for wildlife conservation medicine and underwater photography. Her connection to the ocean began during a childhood trip to Okinawa, sparking a lifelong appreciation for marine life. Through her photography, Yuka aims to foster deeper connections between people and the underwater world, believing that awareness is the first step toward conservation. She hopes her images inspire even small shifts toward eco-conscious living. Yuka’s ultimate goal is to merge her medical training with visual storytelling to help protect the natural world she cherishes.</p>\n<h2>Reconnect. Immerse yourself. Be inspired.</h2>\n<p>Enjoy the vibrancy, beauty and impact of each year's finalist photography, celebrated in our Ocean Photographer of the Year coffee table book collection.</p>\n<img src=\"https://cdn.oceanographicmagazine.com/wp-content/uploads/2025/12/16094055/Shop&lt;em&gt;otherproductsHEADER&lt;/em&gt;OPYbooK2025&lt;em&gt;PINK-SLEEVE-574x800.png\" alt=\"Image 4: Shop&lt;/em&gt;otherproductsHEADER&lt;em&gt;OPYbooK2025&lt;/em&gt;PINK SLEEVE\" style=\"max-width:100%;height:auto;\">"
+    "ftext": "<h2>Ocean Photographer of the Year 2025, YUKTAK1 - Oceanographic</h2>\n<img src=\"https://cdn.oceanographicmagazine.com/wp-content/uploads/2025/07/30180231/YUKTAK1-1920x1280.jpg\" alt=\"Image 1\" style=\"max-width:100%;height:auto;\">\n<ul><li><br></li></ul><h2>3rd place  Young Photographer of the Year</h2>\n<p>Yuka Takahashi French Polynesia</p>\n<p>17°27'17.4\"S 149°53'00.7\"W</p>\n<p>A pair of synchronised humpback whales. \"Putting myself out in the field has taught me lessons no textbook ever could,\" says Takahashi. \"It has also deepened my understanding of the profound biophilia held by the Tahitian people on the island of Mo’orea. These two humpback whales are always seen together, and I was fortunate to capture this rare moment of synchronicity. To me, this photo reflects the strong bond between them while also revealing their playful and curious personalities.\"</p>\n<h2>BEHIND THE LENS</h2>\n<img src=\"https://cdn.oceanographicmagazine.com/wp-content/uploads/2025/07/30181643/BWheadshot-Yuka-Takahashi-300x300.jpg\" alt=\"Image 3: Ocean Photographer of the Year 2025, YUKTAK1\" style=\"max-width:100%;height:auto;\">\n<h3>Yuka Takahashi Japan</h3>\n<ul><li><a href=\"https://www.instagram.com/yuka.orca/?hl=en\" target=\"_blank\" rel=\"noopener\">Follow Yuka On Instagram</a></li></ul>\n<p>ABOUT THE IMAGE</p>\n<ul><li>Morning shoot</li>\n<li>Taken while snorkelling </li>\n<li>Site accessed by boat</li>\n<li>f/4.5, 1/500s, ISO 320</li></ul>\n<p>Yuka Takahashi is a Japanese-born veterinary student in the United States, with a passion for wildlife conservation medicine and underwater photography. Her connection to the ocean began during a childhood trip to Okinawa, sparking a lifelong appreciation for marine life. Through her photography, Yuka aims to foster deeper connections between people and the underwater world, believing that awareness is the first step toward conservation. She hopes her images inspire even small shifts toward eco-conscious living. Yuka’s ultimate goal is to merge her medical training with visual storytelling to help protect the natural world she cherishes.</p>\n<h2>Reconnect. Immerse yourself. Be inspired.</h2>\n<p>Enjoy the vibrancy, beauty and impact of each year's finalist photography, celebrated in our Ocean Photographer of the Year coffee table book collection.</p>\n<img src=\"https://cdn.oceanographicmagazine.com/wp-content/uploads/2025/12/16094055/Shop&lt;em&gt;otherproductsHEADER&lt;/em&gt;OPYbooK2025&lt;em&gt;PINK-SLEEVE-574x800.png\" alt=\"Image 4: Shop&lt;/em&gt;otherproductsHEADER&lt;em&gt;OPYbooK2025&lt;/em&gt;PINK SLEEVE\" style=\"max-width:100%;height:auto;\">",
+    "comment": "Humpback whale pair"
+  },
+  {
+    "UID": "381",
+    "link": "https://youtu.be/WnXmn7c1lkk?si=abYbE3g7A2PQId0w",
+    "show": "1",
+    "DateAdded": "2026-05-10 03:41:07",
+    "DateModified": "2026-05-10 04:22:27",
+    "tags": [
+      "enhydra-lutris",
+      "mbaq"
+    ],
+    "Mute": "0",
+    "vidLength": "1:47",
+    "VidTitle": "Meet Opal the sea otter! | Monterey Bay Aquarium",
+    "VidAuthor": "@MontereyBayAquarium"
+  },
+  {
+    "UID": "382",
+    "link": "https://youtu.be/025Y3Zip0Qs?si=E0Mth_7PZYyg6tlH",
+    "show": "1",
+    "DateAdded": "2026-05-10 03:49:49",
+    "DateModified": "2026-05-10 15:37:19",
+    "tags": [
+      "enhydra-lutris",
+      "mbaq"
+    ],
+    "Mute": "0",
+    "VidTitle": "Meet Ivy The Sea Otter! | Monterey Bay Aquarium's Pawesome Ladies",
+    "VidAuthor": "@MontereyBayAquarium"
+  },
+  {
+    "UID": "383",
+    "link": "https://youtu.be/EFCQoObWtvQ?si=P6n7C9NH9rDyofjh",
+    "show": "1",
+    "DateAdded": "2026-05-10 04:22:03",
+    "DateModified": "2026-05-10 04:29:53",
+    "tags": [
+      "vampyrella-lateritia"
+    ],
+    "Mute": "0",
+    "VidTitle": "Vampire Amoeba, Time-lapse Micrography",
+    "VidAuthor": "@Sciencesourcevideo",
+    "vidLength": "1:14",
+    "VidComment": "Vampyrella feeding on algae. Time-lapse light microscopy footage of a Vampyrella lateritia trophozoite (round) moving along and feeding on cells forming a strand of Spirogyra algae (tubular). Vampyrella is a unicellular micro-organism sometimes described as a 'vampire amoeba'. It attacks other microscopic organisms, such as algae, and penetrates their cell walls and extracts the contents (green). This clip shows the process of cell wall penetration, suction and extraction for two algal cells. Vampyrella are found in aquatic freshwater environments, with other vampyrellid species found in soil and in the sea.⁠ ⁠ © Dr Oliver Skibbe/Science Source⁠ ⁠ ScienceSource.com ID#'s: SS271949 and SS271952"
+  },
+  {
+    "UID": "384",
+    "link": "https://www.youtube.com/watch?v=ZvPrR0lMMb4",
+    "show": "1",
+    "DateAdded": "2026-05-10 04:34:39",
+    "DateModified": "2026-05-10 15:37:57",
+    "tags": [
+      "colony-animals"
+    ],
+    "Mute": "0",
+    "vidLength": "7:08"
   }
 ]

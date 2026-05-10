@@ -2551,5 +2551,187 @@
     "aliases": [],
     "def": "",
     "rank": "species"
+  },
+  {
+    "id": "carnivora",
+    "label": "Carnivora",
+    "kind": "taxon",
+    "parents": [
+      "mammalia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "mustelidae",
+    "label": "Mustelidae",
+    "kind": "taxon",
+    "parents": [
+      "carnivora"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "enhydra",
+    "label": "Enhydra",
+    "kind": "taxon",
+    "parents": [
+      "mustelidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "enhydra-lutris",
+    "label": "Enhydra lutris",
+    "kind": "taxon",
+    "parents": [
+      "enhydra"
+    ],
+    "aliases": [
+      "Enhydra lutris nereis (Merriam",
+      "1904)",
+      "Enhydra lutis"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "southern sea otter",
+    "extinct": false
+  },
+  {
+    "id": "mbaq",
+    "label": "Mbaq",
+    "kind": "place",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "dog",
+    "label": "Dog",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "protozoa",
+    "label": "Protozoa",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "kingdom"
+  },
+  {
+    "id": "filosia",
+    "label": "Filosia",
+    "kind": "taxon",
+    "parents": [
+      "protozoa"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "aconchulinida",
+    "label": "Aconchulinida",
+    "kind": "taxon",
+    "parents": [
+      "filosia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "vampyrellidae",
+    "label": "Vampyrellidae",
+    "kind": "taxon",
+    "parents": [
+      "aconchulinida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "vampyrella",
+    "label": "Vampyrella",
+    "kind": "taxon",
+    "parents": [
+      "vampyrellidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "vampyrella-lateritia",
+    "label": "Vampyrella lateritia",
+    "kind": "taxon",
+    "parents": [
+      "vampyrella"
+    ],
+    "aliases": [
+      "Vampyrella lateritia (Fres.)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Vampire amoeba",
+    "extinct": false
+  },
+  {
+    "id": "colony-animals",
+    "label": "Colony animals",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "megaptera-novaeangliae",
+    "label": "Megaptera novaeangliae",
+    "kind": "taxon",
+    "parents": [
+      "megaptera"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Humpback whale",
+    "extinct": false
+  },
+  {
+    "id": "balaenopteridae",
+    "label": "Balaenopteridae",
+    "kind": "taxon",
+    "parents": [
+      "cetacea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "megaptera",
+    "label": "Megaptera",
+    "kind": "taxon",
+    "parents": [
+      "balaenopteridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]
