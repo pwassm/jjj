@@ -27,11 +27,13 @@
   },
   {
     "id": "life",
-    "label": "Life",
-    "kind": "root",
+    "label": "",
+    "kind": "taxon",
     "parents": [],
     "aliases": [],
-    "def": ""
+    "def": "",
+    "common": "Shark",
+    "extinct": false
   },
   {
     "id": "health",
@@ -1603,9 +1605,14 @@
     "parents": [
       "cirolanidae"
     ],
-    "aliases": [],
+    "aliases": [
+      "Bathynomus A.Milne-Edwards",
+      "1879"
+    ],
     "def": "",
-    "rank": "genus"
+    "rank": "genus",
+    "common": "Giant Isopods",
+    "extinct": false
   },
   {
     "id": "bathynomus-giganteus",
@@ -2673,7 +2680,9 @@
     ],
     "aliases": [],
     "def": "",
-    "rank": "genus"
+    "rank": "genus",
+    "common": "",
+    "extinct": false
   },
   {
     "id": "vampyrella-lateritia",
@@ -2706,7 +2715,10 @@
     "parents": [
       "megaptera"
     ],
-    "aliases": [],
+    "aliases": [
+      "Megaptera novaeangliae (Borowski",
+      "1781)"
+    ],
     "def": "",
     "rank": "species",
     "common": "Humpback whale",
@@ -2733,5 +2745,643 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "pair",
+    "label": "Pair",
+    "kind": "other",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "orcinus-orca",
+    "label": "Orcinus orca",
+    "kind": "taxon",
+    "parents": [
+      "orcinus"
+    ],
+    "aliases": [
+      "Orcinus orca (Linnaeus, 1758)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Killer Whale"
+  },
+  {
+    "id": "delphinidae",
+    "label": "Delphinidae",
+    "kind": "taxon",
+    "parents": [
+      "cetacea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "orcinus",
+    "label": "Orcinus",
+    "kind": "taxon",
+    "parents": [
+      "delphinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "phyllaplysia-taylori",
+    "label": "Phyllaplysia taylori",
+    "kind": "taxon",
+    "parents": [
+      "phyllaplysia"
+    ],
+    "aliases": [
+      "Phyllaplysia taylori Dall",
+      "1900"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Taylor's sea hare, Eelgrass sea hare, zebra leafslug",
+    "extinct": false
+  },
+  {
+    "id": "aplysiida",
+    "label": "Aplysiida",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "aplysiidae",
+    "label": "Aplysiidae",
+    "kind": "taxon",
+    "parents": [
+      "aplysiida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "phyllaplysia",
+    "label": "Phyllaplysia",
+    "kind": "taxon",
+    "parents": [
+      "aplysiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "human-anatomy",
+    "label": "Human anatomy",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "acupuncture",
+    "label": "Acupuncture",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "solitary-hydroid",
+    "label": "Solitary hydroid",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "endomyxa",
+    "label": "Endomyxa",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "phylum"
+  },
+  {
+    "id": "vampyrellida",
+    "label": "Vampyrellida",
+    "kind": "taxon",
+    "parents": [
+      "endomyxa"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "vampyrella-spec",
+    "label": "Vampyrella spec.",
+    "kind": "taxon",
+    "parents": [
+      "vampyrella"
+    ],
+    "aliases": [
+      "Vampyrella sp."
+    ],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "copepod",
+    "label": "Copepod",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "hydrozoa",
+    "label": "Hydrozoa",
+    "kind": "taxon",
+    "parents": [
+      "cnidaria"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "anthoathecata",
+    "label": "Anthoathecata",
+    "kind": "taxon",
+    "parents": [
+      "hydrozoa"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "porpitidae",
+    "label": "Porpitidae",
+    "kind": "taxon",
+    "parents": [
+      "anthoathecata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "velella",
+    "label": "Velella",
+    "kind": "taxon",
+    "parents": [
+      "porpitidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "velella-velella",
+    "label": "Velella velella",
+    "kind": "taxon",
+    "parents": [
+      "velella"
+    ],
+    "aliases": [
+      "Velella velella (Linnaeus, 1758)",
+      "Velella vellela"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "By-the-wind-Sailor"
+  },
+  {
+    "id": "clione-limacina",
+    "label": "Clione limacina",
+    "kind": "taxon",
+    "parents": [
+      "clione"
+    ],
+    "aliases": [
+      "Clione limacina (Phipps",
+      "1774)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Sea angel",
+    "extinct": false
+  },
+  {
+    "id": "synapsids",
+    "label": "Synapsids",
+    "kind": "taxon",
+    "parents": [
+      "animalia"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": true
+  },
+  {
+    "id": "pteropoda",
+    "label": "Pteropoda",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "clionidae",
+    "label": "Clionidae",
+    "kind": "taxon",
+    "parents": [
+      "pteropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "clione",
+    "label": "Clione",
+    "kind": "taxon",
+    "parents": [
+      "clionidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "ptilosarcus-gurneyi",
+    "label": "Ptilosarcus gurneyi",
+    "kind": "taxon",
+    "parents": [
+      "ptilosarcus"
+    ],
+    "aliases": [
+      "Ptilosarcus gurneyi (Gray",
+      "1860)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Gurney's sea pen, Orange sea pen, Fleshy sea pen",
+    "extinct": false
+  },
+  {
+    "id": "scleralcyonacea",
+    "label": "Scleralcyonacea",
+    "kind": "taxon",
+    "parents": [
+      "anthozoa"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "pennatulidae",
+    "label": "Pennatulidae",
+    "kind": "taxon",
+    "parents": [
+      "scleralcyonacea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "ptilosarcus",
+    "label": "Ptilosarcus",
+    "kind": "taxon",
+    "parents": [
+      "pennatulidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "antennariidae",
+    "label": "Antennariidae",
+    "kind": "taxon",
+    "parents": [
+      "lophiiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "Anglerfishes",
+    "extinct": false
+  },
+  {
+    "id": "lophiiformes",
+    "label": "Lophiiformes",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "ambush-predator",
+    "label": "Ambush predator",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "physeter-macrocephalus",
+    "label": "Physeter macrocephalus",
+    "kind": "taxon",
+    "parents": [
+      "physeter"
+    ],
+    "aliases": [
+      "Physeter macrocephalus Linnaeus, 1758"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Sperm Whale"
+  },
+  {
+    "id": "physeteridae",
+    "label": "Physeteridae",
+    "kind": "taxon",
+    "parents": [
+      "cetacea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "physeter",
+    "label": "Physeter",
+    "kind": "taxon",
+    "parents": [
+      "physeteridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "gigantism",
+    "label": "Gigantism",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "aikido",
+    "label": "Aikido",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "jan-ove-waldner",
+    "label": "Jan ove waldner",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "globicephala",
+    "label": "Globicephala",
+    "kind": "taxon",
+    "parents": [
+      "delphinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "Globicephalus",
+    "extinct": false
+  },
+  {
+    "id": "shark-metagenome",
+    "label": "Shark metagenome",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [
+      "shark metagenome"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Shark"
+  },
+  {
+    "id": "good-story",
+    "label": "Good story",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "livyatan",
+    "label": "Livyatan",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "extinct",
+    "label": "Extinct",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "intelligence",
+    "label": "Intelligence",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "balaenoptera-musculus",
+    "label": "Balaenoptera musculus",
+    "kind": "taxon",
+    "parents": [
+      "balaenoptera"
+    ],
+    "aliases": [
+      "Balaenoptera musculus (Linnaeus, 1758)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Blue whale"
+  },
+  {
+    "id": "balaenoptera",
+    "label": "Balaenoptera",
+    "kind": "taxon",
+    "parents": [
+      "balaenopteridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "vocalization",
+    "label": "Vocalization",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "diaatom",
+    "label": "Diatom",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "common": "Diatom",
+    "extinct": false
+  },
+  {
+    "id": "paracentrotus-lividus",
+    "label": "Paracentrotus lividus",
+    "kind": "taxon",
+    "parents": [
+      "paracentrotus"
+    ],
+    "aliases": [
+      "Paracentrotus lividus (Lamarck",
+      "1816)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Rock Urchin",
+    "extinct": false
+  },
+  {
+    "id": "camarodonta",
+    "label": "Camarodonta",
+    "kind": "taxon",
+    "parents": [
+      "echinoidea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "parechinidae",
+    "label": "Parechinidae",
+    "kind": "taxon",
+    "parents": [
+      "camarodonta"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "paracentrotus",
+    "label": "Paracentrotus",
+    "kind": "taxon",
+    "parents": [
+      "parechinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "radula",
+    "label": "Radula",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "trochida",
+    "label": "Trochida",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "turbinidae",
+    "label": "Turbinidae",
+    "kind": "taxon",
+    "parents": [
+      "trochida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "lithopoma",
+    "label": "Lithopoma",
+    "kind": "taxon",
+    "parents": [
+      "turbinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "lithopoma-tectum",
+    "label": "Lithopoma tectum",
+    "kind": "taxon",
+    "parents": [
+      "lithopoma"
+    ],
+    "aliases": [
+      "Astraea tecta (Lightfoot",
+      "1786)",
+      "Astraea tecta"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Astraea conehead snail",
+    "extinct": false
   }
 ]

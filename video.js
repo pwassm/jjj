@@ -514,19 +514,15 @@ window.openVideoEditor = function(it) {
 
   document.body.appendChild(overlay);
 
-  // (zip0184) Auto-open Annotate panel to the right of Ev. Ev occupies
-  // left:0–(100%–340px); browseOverlay fills the right 340px.
+  // If A is already open, navigate it to this row. Do NOT auto-open A —
+  // user must press A hotkey inside E to open the Annotate panel.
   {
     var _evDi = (typeof data !== 'undefined') ? data.indexOf(it) : -1;
     var _evAnEl = document.getElementById('browseOverlay');
     var _evAnOpen = _evAnEl && _evAnEl.style.display === 'flex';
-    if (_evAnOpen) {
-      if (_evDi >= 0 && typeof brShow === 'function') {
-        var _evFi = (window._brRows || []).indexOf(_evDi);
-        if (_evFi >= 0) { window._brIdx = _evFi; brShow(_evFi); }
-      }
-    } else if (typeof brOpen === 'function') {
-      brOpen(_evDi >= 0 ? _evDi : undefined);
+    if (_evAnOpen && _evDi >= 0 && typeof brShow === 'function') {
+      var _evFi = (window._brRows || []).indexOf(_evDi);
+      if (_evFi >= 0) { window._brIdx = _evFi; brShow(_evFi); }
     }
   }
 

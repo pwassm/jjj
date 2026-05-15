@@ -61,6 +61,7 @@
     renderChipsForRecord,
     recordTagIds,
     search: searchTags,
+    closeMenu: closeChipContextMenu,
   };
 
   // Substring search across label, common name, and aliases.

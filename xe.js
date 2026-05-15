@@ -124,20 +124,15 @@ function gridOpenTextEditor(cellStr, row, opts) {
     }
   }
 
-  // (zip0184) Auto-open Annotate panel alongside Xe. Xe leaves the right
-  // 340px clear (right:340px on the overlay); browseOverlay fills that slot.
-  // If A is already open just navigate it to the current row.
+  // If A is already open, navigate it to this row. Do NOT auto-open A.
+  // User presses A hotkey inside E to open Annotate panel.
   {
     const _xeDi = (typeof data !== 'undefined') ? data.indexOf(row) : -1;
     const _anEl = document.getElementById('browseOverlay');
     const _anOpen = _anEl && _anEl.style.display === 'flex';
-    if (_anOpen) {
-      if (_xeDi >= 0 && typeof brShow === 'function') {
-        const _fi = (window._brRows || []).indexOf(_xeDi);
-        if (_fi >= 0) { window._brIdx = _fi; brShow(_fi); }
-      }
-    } else if (typeof brOpen === 'function') {
-      brOpen(_xeDi >= 0 ? _xeDi : undefined);
+    if (_anOpen && _xeDi >= 0 && typeof brShow === 'function') {
+      const _fi = (window._brRows || []).indexOf(_xeDi);
+      if (_fi >= 0) { window._brIdx = _fi; brShow(_fi); }
     }
   }
 
@@ -163,6 +158,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
     .te-btn:active { background:#3a3a5e; }
     #teEditor { user-select:text !important; -webkit-user-select:text !important; }
     #teEditor * { user-select:text !important; -webkit-user-select:text !important; }
+    #teEditor a, #teSlideContent a { color:#5bf !important; }
     #teEditor h1 { font-size:28px; color:#ff8; margin:0 0 12px; }
     #teEditor h2 { font-size:22px; color:#8ef; margin:0 0 10px; }
     #teEditor p { margin:0 0 8px; }
@@ -921,6 +917,7 @@ function textEditorPreviewSlide() {
   ov.style.cssText = 'position:fixed;inset:0;z-index:36000;background:#0a0a1a;'
     + 'display:flex;align-items:center;justify-content:center;padding:40px;';
   ov.innerHTML = `
+    <style>#teSlideContent a { color: #5bf; }</style>
     <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:64px;
          display:flex;align-items:center;justify-content:space-between;
          padding:0 16px;background:#3a4d75;border-bottom:2px solid #6af;">

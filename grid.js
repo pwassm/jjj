@@ -219,6 +219,104 @@ function gridClearCut() {
   if (cutInfo) cutInfo.style.display = 'none';
 }
 
+// ── ftext-image cell helpers (non-image link rows) ───────────────────────────
+
+function _ftextImgSrcs(ftext) {
+  const d = document.createElement('div');
+  d.innerHTML = ftext || '';
+  return Array.from(d.querySelectorAll('img[src]'))
+    .map(img => img.getAttribute('src'))
+    .filter(s => s && /^https?:\/\//i.test(s));
+}
+
+function _ftextFirstLine(ftext) {
+  const d = document.createElement('div');
+  d.innerHTML = ftext || '';
+  const walker = document.createTreeWalker(d, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const t = walker.currentNode.textContent.trim();
+    if (t.length > 3) return t;
+  }
+  return '';
+}
+
+// Fills `cell` for a row whose link is a non-image URL.
+// 4+ ftext images → 2×2 grid of first 4
+// 1–3 ftext images → loads all, picks largest by mpix
+// 0 ftext images   → empty backdrop (still gets the text overlay)
+// Overlays the first ftext text line (or row title / link host) centred near
+// the top. Text uses `mix-blend-mode: difference` for auto-contrast on any
+// background, plus alpha 0.30 so it's genuinely 70 % transparent.
+function _buildFtextImgCell(cell, row) {
+  const srcs = _ftextImgSrcs(row.ftext);
+
+  const hue = Math.random() * 360 | 0;
+  const overlayColor = 'hsl(' + hue + ',100%,70%)';
+
+  let firstLine = _ftextFirstLine(row.ftext) || row.t1 || row.n1 || '';
+  if (!firstLine && row.link) {
+    try { firstLine = new URL(row.link).hostname.replace(/^www\./, ''); } catch (e) {}
+  }
+
+  // Chunky 8-direction black outline + soft glow so bright text stays readable
+  // on any image or video frame. -webkit-text-stroke gives the hard edge,
+  // text-shadow adds depth + halo.
+  const TEXT_SHADOW =
+    '-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000,'
+    + '0 -2px 0 #000,0 2px 0 #000,-2px 0 0 #000,2px 0 0 #000,'
+    + '0 0 6px #000,0 0 10px #000';
+
+  const buildWith = (displaySrcs) => {
+    const wrapper = document.createElement('div');
+    if (displaySrcs.length >= 2) {
+      wrapper.style.cssText = 'position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;pointer-events:none;z-index:1;background:#000;gap:1px;';
+    } else {
+      wrapper.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1;background:#000;';
+    }
+    displaySrcs.slice(0, 4).forEach(src => {
+      const img = document.createElement('img');
+      img.src = src;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      img.onerror = () => { img.style.display = 'none'; };
+      wrapper.appendChild(img);
+    });
+    cell.appendChild(wrapper);
+    if (firstLine) {
+      const lbl = document.createElement('div');
+      lbl.style.cssText = 'position:absolute;top:10%;left:5%;right:5%;'
+        + 'color:' + overlayColor + ';font-size:15px;font-weight:900;'
+        + 'text-align:center;pointer-events:none;z-index:2;'
+        + 'text-shadow:' + TEXT_SHADOW + ';'
+        + '-webkit-text-stroke:0.5px #000;'
+        + 'overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;'
+        + '-webkit-box-orient:vertical;line-height:1.15;'
+        + 'letter-spacing:0.2px;';
+      lbl.textContent = firstLine;
+      cell.appendChild(lbl);
+    }
+  };
+
+  if (srcs.length === 0) {
+    buildWith([]);
+  } else if (srcs.length >= 4) {
+    buildWith(srcs);
+  } else {
+    let best = { src: srcs[0], mpix: 0 };
+    let pending = srcs.length;
+    srcs.forEach(src => {
+      const tmp = new Image();
+      tmp.onload = () => {
+        const mp = tmp.naturalWidth * tmp.naturalHeight;
+        if (mp > best.mpix) { best.src = src; best.mpix = mp; }
+        if (--pending === 0) buildWith([best.src]);
+      };
+      tmp.onerror = () => { if (--pending === 0) buildWith([best.src]); };
+      tmp.src = src;
+    });
+  }
+  return true;
+}
+
 function gridShow() {
   gridCleanupPlayers();
   gridClearCut();
@@ -245,7 +343,9 @@ function gridShow() {
         const isVid = isVideoRow(row);
         const isText = row.VidRange === 'text' || (row.ftext && !row.link);
         const isQuiz = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
-        
+        const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
+        const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
+
         if (isQuiz) {
           // Quiz/HTML cell — show a styled badge
           cell.style.background = '#0a1a0a';
@@ -300,6 +400,8 @@ function gridShow() {
               window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
             }
           }, 100);
+        } else if (row.link && !isImgLink) {
+          _buildFtextImgCell(cell, row);
         } else if (row.link) {
           const img = document.createElement('img');
           img.src = row.link;
@@ -443,7 +545,9 @@ function gridUpdateCell(cellStr, row) {
     const isVid = isVideoRow(row);
     const isText = row.VidRange === 'text' || (row.ftext && !row.link);
     const isQuiz = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
-    
+    const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
+    const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
+
     if (isQuiz) {
       cellEl.style.background = '#0a1a0a';
       const badge = document.createElement('div');
@@ -489,6 +593,8 @@ function gridUpdateCell(cellStr, row) {
           window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
         }
       }, 50);
+    } else if (row.link && !isImgLink) {
+      _buildFtextImgCell(cellEl, row);
     } else if (row.link) {
       // Image cell
       const img = document.createElement('img');

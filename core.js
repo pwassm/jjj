@@ -219,6 +219,7 @@ function isVideoRow(row) {
   const isYT = link && (window.isYouTubeLink ? window.isYouTubeLink(link) : /youtu\.be|youtube\.com/i.test(link));
   const isVimeo = link && (window.isVimeoLink ? window.isVimeoLink(link) : /vimeo\.com/i.test(link));
   if (isYT || isVimeo) return true;
+  if (link && /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(link)) return true;
   if (vrn && vrn !== 'i' && window.parseVideoAsset && window.parseVideoAsset(vrn) !== null) {
     if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(link)) return false;
     return true;
@@ -887,7 +888,7 @@ function fetchVimeoThumb(url, onReady) {
 function toggleThumbMode() {
   _thumbMode = !_thumbMode;
   render();
-  toast(_thumbMode ? '🖼 Thumbnails ON (Ctrl+I to hide)' : 'Thumbnails OFF', 1200);
+  toast(_thumbMode ? '🖼 Thumbnails + expanded tags ON (Ctrl+I to hide)' : 'Thumbnails + expanded tags OFF', 1200);
 }
 
 // Ctrl+I global handler
@@ -937,6 +938,7 @@ function renderBody() {
       // tags column — render chips (or raw comma list if lib not loaded yet)
       if (col === 'tags') {
         td.style.cssText += 'padding:2px 4px;vertical-align:middle;line-height:1.6;';
+        if (_thumbMode) td.classList.add('tags-expanded');
         const ids = Array.isArray(row.tags) ? row.tags : [];
         if (!window.tagsLib) {
           td.textContent = ids.join(', ');
@@ -977,12 +979,20 @@ function renderBody() {
         td.addEventListener('contextmenu', e => {
           if (!e.target.classList.contains('tag-chip') && window._copiedTagId) {
             e.preventDefault(); e.stopPropagation();
+            // Close any chip context menu before pasting
+            if (window.tagsLib && window.tagsLib.closeMenu) window.tagsLib.closeMenu();
+            const m0 = document.getElementById('chipCtxMenu'); if (m0) m0.remove();
             const cid = window._copiedTagId;
             if (!Array.isArray(row.tags)) row.tags = [];
             if (!row.tags.includes(cid)) {
               row.tags = [...row.tags, cid];
               row.DateModified = isoNow();
               save(); render();
+              // Defensive: ensure no menu remains after re-render
+              setTimeout(() => {
+                if (window.tagsLib && window.tagsLib.closeMenu) window.tagsLib.closeMenu();
+                const m1 = document.getElementById('chipCtxMenu'); if (m1) m1.remove();
+              }, 0);
               const cLabel = window.tagsLib ? window.tagsLib.labelFor(cid) : cid;
               toast('✓ Added "' + cLabel + '" to row', 1400);
             } else {
@@ -1732,10 +1742,10 @@ function getPSCol() {
   cols.push('P/S'); data.forEach(r => { if(r['P/S']===undefined) r['P/S']=''; });
   return 'P/S';
 }
-async function fetchWithTimeout(url, ms) {
+async function fetchWithTimeout(url, ms, opts) {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), ms);
-  try { const r = await fetch(url, {signal: ctrl.signal}); clearTimeout(tid); return r; }
+  try { const r = await fetch(url, Object.assign({}, opts, {signal: ctrl.signal})); clearTimeout(tid); return r; }
   catch(e) { clearTimeout(tid); return null; }
 }
 async function getImageDims(url) {
@@ -1824,6 +1834,407 @@ document.getElementById('fillMpixBtn').addEventListener('click', async () => {
   save(); render();
   toast('✓ Fill Mpix done: '+changed+' updated of '+done+' checked', 4000);
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SAVE FTEXT IMAGES TO DISK
+// ══════════════════════════════════════════════════════════════════════════════
+// For each visible (filtered) row with ftext and FTLsaved !== '1':
+//   1. Parse ftext for <img> tags
+//   2. Derive folder name from the URL slug (last path segment of row.link)
+//   3. Derive filename from the preceding <h4> caption (sanitized) — or img-N
+//   4. fetch() each image; save bytes under jpgs/<slug>/<filename>.<ext>
+//   5. Rewrite saved <img> tags to add onerror fallback to local path
+//   6. Set FTLsaved: '1' if every image saved, '0' partial, '-1' none.
+//
+// CORS: many image hosts don't allow cross-origin fetch. Those will be
+// reported as failures (not naming errors). Naming errors (illegal chars
+// after sanitisation, empty captions, etc.) are collected separately and
+// shown in a popup at the end.
+
+// Replace illegal Windows filename chars. ':' → '-', " and curly quotes → '
+// strip < > / \ | ? *, collapse whitespace, trim, limit to 200 chars.
+function _sanitiseFsName(s) {
+  if (!s) return '';
+  let out = String(s)
+    .replace(/:/g, '-')
+    .replace(/["“”„‟]/g, "'")   // straight+curly double quotes → '
+    .replace(/[<>\/\\|?*]/g, '')
+    .replace(/[\x00-\x1f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\.+$/, '')
+    .trim();
+  if (out.length > 200) out = out.slice(0, 200).trim();
+  return out;
+}
+
+// Derive folder path parts from a row link: [domain, seg1, seg2, ...]
+// e.g. https://121clicks.com/inspirations/fenqiang-liu-great-egret-bird-photography/
+//   → ['121clicks.com', 'inspirations', 'fenqiang-liu-great-egret-bird-photography']
+function _pathPartsFromLink(link) {
+  if (!link) return [];
+  try {
+    const u = new URL(link);
+    const parts = [u.hostname, ...u.pathname.split('/').filter(Boolean)];
+    return parts.map(p => _sanitiseFsName(decodeURIComponent(p))).filter(Boolean);
+  } catch(_) {
+    const s = _sanitiseFsName(link.replace(/^https?:\/\//, '').replace(/\/+$/, ''));
+    return s ? [s] : [];
+  }
+}
+
+// Extract extension from image URL, defaulting to .jpg.
+// Normalises .jpeg → .jpg.
+function _imgExtFromUrl(url) {
+  const path = String(url).split(/[?#]/)[0];
+  const m = path.match(/\.([a-z0-9]{2,5})$/i);
+  if (!m) return 'jpg';
+  const ext = m[1].toLowerCase();
+  return ext === 'jpeg' ? 'jpg' : ext;
+}
+
+// Walk an ftext HTML string and return an ordered list of { imgEl, caption, src, index }
+// Caption priority:
+//   1. <figcaption> in parent <figure> or next sibling
+//   2. alt attribute (if non-trivial — not just "image" / digits / empty)
+//   3. Nearest preceding <h2-h5> heading
+//   4. '' (falls back to img-N filename in caller)
+// Uses a detached document so we can mutate the tree, then serialize back.
+// Captions we never want as a JPG filename — they're section/UI labels, not
+// descriptions of the image. Caller treats a matching candidate as "not found"
+// and falls through to the next strategy (and ultimately to a URL-basename
+// derivation).
+const _BAD_CAPTION_RE = /^(image\s+\d+|highly\s+commended|view\s+fullsize|view\s+fullscreen|documentary\s+series|video\s+award|category\s+winner|runner[\s-]?up|advertisement|share|tags?:|related|©|order\s+now|collection\s+\d+)\s*$/i;
+
+// Last-resort caption: derive from the image URL's basename.
+// Decodes %xx, swaps + and _ for spaces, drops trailing hex hashes, and
+// strips a few site-specific prefixes (e.g. "LowRes-WINNER-BWPA-2026-").
+function _captionFromUrl(src) {
+  try {
+    const u = new URL(src);
+    let base = decodeURIComponent(u.pathname.split('/').pop() || '');
+    base = base.replace(/\.[^.]+$/, '');                              // drop extension
+    base = base.replace(/<[^>]+>/g, '-');                             // <em> etc used as word separators → hyphen
+    base = base.replace(/[_-][a-f0-9]{32}(?=[_\-.]|$)/ig, '');       // strip 32-char wp-uploads hash
+    base = base.replace(/-\d+x\d+$/i, '');                            // strip trailing -WxH dimensions
+    base = base.replace(/^LowRes[\s-]+(WINNER|RU)[\s-]+BWPA[\s-]+\d{4}[\s-]+/i, '');
+    base = base.replace(/[+_-]+/g, ' ');                              // + _ - → space
+    base = base.replace(/\s+/g, ' ').trim();
+    if (base.length >= 3 && !/^\d+$/.test(base)) return base;
+  } catch (_) {}
+  return '';
+}
+
+function _ftextExtractImages(ftext) {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.body.innerHTML = ftext || '';
+  const imgs = Array.from(doc.body.querySelectorAll('img'));
+  const items = [];
+  imgs.forEach((img, i) => {
+    const src = img.getAttribute('src') || '';
+    if (!src || !/^https?:\/\//i.test(src)) return; // skip data: / relative / empty
+
+    // Helper: only accept a candidate caption if it isn't a generic label
+    // or a URL fragment. Empty / bad → return '' so the caller falls through.
+    const cleanCap = (c) => {
+      if (!c) return '';
+      c = c.trim();
+      if (!c) return '';
+      if (_BAD_CAPTION_RE.test(c)) return '';
+      if (/^https?[:\-_]/i.test(c)) return '';        // "https-anything"
+      if (/^\[\]\(/.test(c)) return '';                // markdown link artifact
+      return c;
+    };
+
+    let caption = '';
+
+    // 1. <figcaption> — check parent <figure> or next sibling
+    const fig = img.closest('figure');
+    if (fig) {
+      const fc = fig.querySelector('figcaption');
+      if (fc) caption = cleanCap(fc.textContent);
+    }
+    if (!caption) {
+      const ns = img.nextElementSibling;
+      if (ns && ns.tagName === 'FIGCAPTION') caption = cleanCap(ns.textContent);
+    }
+
+    // 2. Decide BELOW vs ABOVE for the caption.
+    //    Rule (zip0219): if the image is followed by 2+ consecutive <p>s,
+    //    that's a description block, not a caption — the caption lives ABOVE
+    //    instead (e.g., naturettl: <p>title</p><img><p>desc</p><p>desc</p>…).
+    //    Otherwise (0 or 1 <p> after), use the next-sibling <p> as before.
+    if (!caption) {
+      let pAfterCount = 0;
+      {
+        let cur = img.nextElementSibling;
+        while (cur && cur.tagName === 'P') { pAfterCount++; cur = cur.nextElementSibling; }
+      }
+      const lookAbove = pAfterCount >= 2;
+
+      const tryP = (p) => {
+        if (!p || p.tagName !== 'P') return '';
+        const txt = p.textContent.trim();
+        if (!txt || txt.length < 4 || txt.length >= 250) return '';
+        if (/^(become|subscribe|sign up)/i.test(txt)) return '';
+        const candidate = txt.length > 120 ? txt.slice(0, 120).trim() : txt;
+        return cleanCap(candidate);
+      };
+
+      if (lookAbove) {
+        const c = tryP(img.previousElementSibling);
+        if (c) caption = c;
+      } else {
+        // Original BELOW walk: img or its block container's next <p>
+        let container = img;
+        for (let depth = 0; depth < 5 && container && container !== doc.body; depth++) {
+          const c = tryP(container.nextElementSibling);
+          if (c) { caption = c; break; }
+          const par = container.parentElement;
+          if (!par || par === doc.body) break;
+          if (/^(ARTICLE|SECTION|MAIN|DIV)$/.test(par.tagName)) break;
+          container = par;
+        }
+      }
+    }
+
+    // 3. alt attribute (skip generic/trivial values and auto-generated patterns)
+    if (!caption) {
+      const alt = (img.getAttribute('alt') || '').trim();
+      if (alt && !/^(image|photo|picture|img|\d+|\.{1,3})$/i.test(alt)
+              && !/^image\s+\d+[:\-]/i.test(alt)) caption = cleanCap(alt);
+    }
+
+    // 4. URL-derived slug — often more specific than a shared group heading
+    //    (e.g., naturettl 2024/2025 embed the photo title in the filename).
+    if (!caption) caption = _captionFromUrl(src);
+
+    // 5. Nearest preceding <h2-h5>. Fallback when URL gives nothing useful.
+    if (!caption) {
+      let cur = img;
+      while (cur && !caption) {
+        let sib = cur.previousElementSibling;
+        while (sib) {
+          if (/^H[2-5]$/.test(sib.tagName)) {
+            const c = cleanCap(sib.textContent);
+            if (c) { caption = c; break; }
+          } else {
+            const h = sib.querySelector && sib.querySelector('h2,h3,h4,h5');
+            if (h) {
+              const c = cleanCap(h.textContent);
+              if (c) { caption = c; break; }
+            }
+          }
+          sib = sib.previousElementSibling;
+        }
+        if (caption) break;
+        cur = cur.parentElement;
+        if (!cur || cur === doc.body) break;
+      }
+    }
+
+    items.push({ imgEl: img, src, caption, index: i + 1 });
+  });
+  return { doc, items };
+}
+
+// Try to fetch one image as a Blob. Returns Blob on success, or { error: msg }.
+// Falls back to local cors-anywhere proxy (http://localhost:8080/) if direct fetch
+// is blocked by CORS. Start proxy with: npx cors-anywhere
+async function _fetchImageBlob(url) {
+  async function _tryFetch(fetchUrl, opts) {
+    const r = await fetch(fetchUrl, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const b = await r.blob();
+    if (!b || b.size === 0) throw new Error('empty body');
+    return b;
+  }
+  // 1. Direct fetch
+  try {
+    return await _tryFetch(url, { mode: 'cors', credentials: 'omit' });
+  } catch(e) {
+    // 2. Local cors-anywhere proxy fallback
+    try {
+      return await _tryFetch('http://localhost:8081/' + url, { credentials: 'omit' });
+    } catch(e2) {
+      const direct = (e && e.message) ? e.message : 'CORS blocked';
+      const proxy  = (e2 && e2.message) ? e2.message : 'proxy failed';
+      return { error: direct + ' | proxy: ' + proxy };
+    }
+  }
+}
+
+// Get or create jpgs/<domain>/<path...>/ directory handle under the project folder.
+async function _getJpgSubdir(pathParts) {
+  const dir = await _getDir();
+  if (!dir) throw new Error('No project folder set — click 📂 and pick M:\\jjj first');
+  let cur = await dir.getDirectoryHandle('jpgs', { create: true });
+  for (const part of pathParts) cur = await cur.getDirectoryHandle(part, { create: true });
+  return cur;
+}
+
+// Return { w, h } from a Blob, or null on failure.
+async function _blobDimensions(blob) {
+  return new Promise(res => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    const t = setTimeout(() => { URL.revokeObjectURL(url); res(null); }, 5000);
+    img.onload  = () => { clearTimeout(t); URL.revokeObjectURL(url); res({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onerror = () => { clearTimeout(t); URL.revokeObjectURL(url); res(null); };
+    img.src = url;
+  });
+}
+
+// Write a Blob to <subDir>/<filename>. Overwrites if exists.
+async function _writeBlobToDir(subDir, filename, blob) {
+  const fh = await subDir.getFileHandle(filename, { create: true });
+  const w = await fh.createWritable();
+  await w.write(blob);
+  await w.close();
+}
+
+// Main entry point — bound to the Save Imgs button.
+async function saveFtextImages() {
+  if (!window.showDirectoryPicker) {
+    alert('Save Imgs: File System Access API not available in this browser.\nUse Chrome or Edge.');
+    return;
+  }
+  const dir = await _getDir();
+  if (!dir) {
+    alert('Save Imgs: project folder not set.\nClick the 📂 button and pick M:\\jjj first.');
+    return;
+  }
+
+  // Collect filtered/visible rows with ftext and FTLsaved !== '1'
+  const targets = [];
+  const total = data.length;
+  for (let vi = 0; vi < total; vi++) {
+    const di = vr(vi);
+    const row = data[di];
+    if (!row || !row.ftext) continue;
+    if (sortedIdx && sortedIdx.indexOf(di) === -1) continue;
+    if (!rowMatchesFilter(row)) continue;
+    if (String(row.FTLsaved || '') === '1') continue;
+    targets.push({ di, row });
+  }
+  if (!targets.length) { alert('Save Imgs: no eligible rows.\n(Need visible rows with ftext and FTLsaved ≠ 1.)'); return; }
+
+  if (!confirm('Save Imgs: process ' + targets.length + ' row(s)?\n\nFor each row:\n• Parse <img> tags in ftext\n• fetch() and save under jpgs/<domain>/<path>/\n• Fill MPix (d-prefix) and P/S from first saved image\n• Rewrite img tags with disk-fallback onerror\n• Set FTLsaved (1=all, 0=partial, -1=none)\n\nCross-origin images without CORS will fail — start proxy.js on 8081 first.')) return;
+
+  // Ensure required columns exist
+  for (const c of ['FTLsaved', 'MPix']) {
+    if (!cols.includes(c)) { cols.push(c); data.forEach(r => { if (r[c] === undefined) r[c] = ''; }); }
+  }
+  const PS_COL = getPSCol();
+
+  const nameErrors = [];  // { rowUID, src, why }
+  const fetchErrors = []; // { rowUID, src, why }
+  let rowsAllOk = 0, rowsPartial = 0, rowsNone = 0;
+  let imgsSaved = 0, imgsFailed = 0, imgsSkippedName = 0;
+
+  toast('📥 Save Imgs: 0/' + targets.length + ' rows…', 60000);
+
+  for (let ti = 0; ti < targets.length; ti++) {
+    const { row } = targets[ti];
+    try {
+      const pathParts = _pathPartsFromLink(row.link);
+      if (!pathParts.length) {
+        nameErrors.push({ rowUID: row.UID, src: row.link, why: 'cannot derive folder path from link' });
+        row.FTLsaved = '-1'; rowsNone++;
+      } else {
+        const { doc, items } = _ftextExtractImages(row.ftext);
+        if (!items.length) {
+          row.FTLsaved = '1'; rowsAllOk++;
+        } else {
+          let subDir;
+          try { subDir = await _getJpgSubdir(pathParts); }
+          catch(e) {
+            nameErrors.push({ rowUID: row.UID, src: pathParts.join('/'), why: 'create folder failed: ' + e.message });
+            row.FTLsaved = '-1'; rowsNone++;
+            subDir = null;
+          }
+
+          if (subDir) {
+            let okThisRow = 0, failThisRow = 0;
+            let rowDims = null;
+            const usedNames = new Set();
+            for (const it of items) {
+              let base = _sanitiseFsName(it.caption);
+              if (!base) base = 'img-' + it.index;
+              const ext = _imgExtFromUrl(it.src);
+              let filename = base + '.' + ext;
+              let n = 2;
+              while (usedNames.has(filename.toLowerCase())) { filename = base + ' (' + n + ').' + ext; n++; }
+              if (!base || /^[\s.]*$/.test(base)) {
+                nameErrors.push({ rowUID: row.UID, src: it.src, why: 'caption sanitised to empty' });
+                imgsSkippedName++; failThisRow++;
+                continue;
+              }
+              usedNames.add(filename.toLowerCase());
+
+              const blob = await _fetchImageBlob(it.src);
+              if (blob && !blob.error) {
+                try {
+                  await _writeBlobToDir(subDir, filename, blob);
+                  const localPath = 'jpgs/' + pathParts.join('/') + '/' + filename;
+                  it.imgEl.setAttribute('data-localsrc', localPath);
+                  if (!(it.imgEl.getAttribute('onerror') || '').includes('data-localsrc'))
+                    it.imgEl.setAttribute('onerror', "this.onerror=null;this.src=this.getAttribute('data-localsrc');");
+                  try {
+                    const d = await _blobDimensions(blob);
+                    if (d && d.w > 0) {
+                      // Keep the largest image (by MPix) for the row's MPix/P/S values
+                      if (!rowDims || (d.w * d.h) > (rowDims.w * rowDims.h)) rowDims = d;
+                    }
+                  } catch(_) {}
+                  imgsSaved++; okThisRow++;
+                } catch(e) {
+                  nameErrors.push({ rowUID: row.UID, src: it.src, why: 'write failed: ' + e.message });
+                  imgsFailed++; failThisRow++;
+                }
+              } else {
+                fetchErrors.push({ rowUID: row.UID, src: it.src, why: (blob && blob.error) || 'fetch failed' });
+                imgsFailed++; failThisRow++;
+              }
+            }
+
+            if (okThisRow > 0) row.ftext = doc.body.innerHTML;
+            if (rowDims && rowDims.w > 0) {
+              const mp = (rowDims.w * rowDims.h) / 1_000_000;
+              row.MPix = 'd' + (mp >= 0.1 ? mp.toFixed(1) : mp.toFixed(2));
+              row[PS_COL] = rowDims.h > rowDims.w ? '1' : '0';
+            }
+            if (okThisRow > 0 && failThisRow === 0) { row.FTLsaved = '1'; rowsAllOk++; }
+            else if (okThisRow > 0) { row.FTLsaved = '0'; rowsPartial++; }
+            else { row.FTLsaved = '-1'; rowsNone++; }
+          }
+        }
+        row.DateModified = isoNow();
+      }
+    } catch(e) {
+      // Catch-all: log and continue so one bad row never stops the loop
+      const why = 'unexpected error: ' + (e && e.message ? e.message : String(e));
+      fetchErrors.push({ rowUID: row.UID, src: row.link || '', why });
+      row.FTLsaved = '-1'; rowsNone++;
+      console.error('Save Imgs row UID', row.UID, e);
+    }
+
+    toast('📥 Save Imgs: ' + (ti + 1) + '/' + targets.length + ' rows, ' + imgsSaved + ' saved, ' + imgsFailed + ' failed', 60000);
+    render();
+  }
+  // Single save at the end — avoids concurrent FSA writes inside the loop
+  // (which can fail and fire an error toast that clobbers the done toast).
+  // localStorage is updated synchronously by save() so no data is at risk.
+  save(); render();
+
+  const _errLines = (arr, label) => arr.length
+    ? label + ' (' + arr.length + '):\n' + arr.slice(0, 20).map(e => '  UID ' + e.rowUID + ': ' + e.why + (e.src ? '\n    ' + e.src.slice(0, 80) : '')).join('\n') + (arr.length > 20 ? '\n  …and ' + (arr.length - 20) + ' more' : '')
+    : '';
+  const fullLog = '📥 Save Imgs done.\nRows: ' + rowsAllOk + ' ok, ' + rowsPartial + ' partial, ' + rowsNone + ' none\nImgs: ' + imgsSaved + ' saved, ' + imgsFailed + ' failed, ' + imgsSkippedName + ' name-skipped\n' + (_errLines(fetchErrors, 'Fetch failures') || 'No fetch failures.') + (nameErrors.length ? '\n' + _errLines(nameErrors, 'Naming issues') : '');
+  console.log(fullLog);
+  toast('📥 Save Imgs done — ' + rowsAllOk + ' rows ok, ' + rowsNone + ' failed | ' + imgsSaved + ' imgs saved, ' + imgsFailed + ' failed' + (fetchErrors.length + nameErrors.length ? ' | see console for errors' : ''), 2000);
+}
+
+document.getElementById('saveFtextImgsBtn')?.addEventListener('click', saveFtextImages);
 
 // Delete Checked Rows button
 document.getElementById('deleteCheckedBtn').addEventListener('click', () => {
@@ -1983,6 +2394,12 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingCleanMute();
     } else if (act === 'fillytmeta') {
       housekeepingFillYTMeta();
+    } else if (act === 'resetftlsaved') {
+      const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
+      if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
+      data.forEach(r => { if (r.FTLsaved !== undefined) r.FTLsaved = ''; });
+      save(); render();
+      toast('✓ FTLsaved cleared on ' + n + ' rows', 3000);
     }
   });
 });
@@ -3216,10 +3633,10 @@ function _looksLikeMediaUrl(s) {
   if (!s) return false;
   const t = s.trim();
   if (!/^https?:\/\//i.test(t)) return false;
-  // Video platforms
   if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return true;
-  // Image extensions
-  if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(t)) return true;
+  const path = t.split(/[?#]/)[0];
+  if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return true;
+  if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return true;
   return false;
 }
 
@@ -3236,8 +3653,85 @@ function _classifyUrl(s) {
   const t = s.trim();
   if (!/^https?:\/\/\S+$/i.test(t)) return null;
   if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return 'video';
-  if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(t)) return 'image';
+  const path = t.split(/[?#]/)[0];
+  if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return 'video';
+  if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return 'image';
   return 'web';
+}
+
+// Normalize a pasted link before storing. YouTube URLs → canonical youtu.be/<id>
+// (strips playlist params, timestamps, embed variants, Shorts paths, etc.)
+function _normalizeLink(link) {
+  if (/youtu\.be|youtube\.com/i.test(link)) {
+    const ytId = _extractYTVideoId(link)
+      || (window.getYouTubeId && window.getYouTubeId(link));
+    if (ytId) return 'https://youtu.be/' + ytId;
+  }
+  return link;
+}
+
+// Fetch metadata (title, author, P/S, Mpix) for rows just added via W.
+// Runs async after save/render so the import isn't blocked.
+async function _fetchMetaForNewRows(rows) {
+  const PS_COL = getPSCol();
+  const now = (typeof isoNow === 'function') ? isoNow : () => new Date().toISOString();
+  for (const row of rows) {
+    const link = row.link || '';
+    const path = link.split(/[?#]/)[0];
+    const isYT    = /youtu\.be|youtube\.com/i.test(link);
+    const isVimeo = /vimeo\.com/i.test(link);
+    const isImg   = row.VidRange === 'i';
+    const isDirVid = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path);
+    try {
+      if (isYT) {
+        const ytId = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
+        if (!ytId) continue;
+        const res = await fetchWithTimeout(
+          'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + ytId), 8000);
+        if (!res || !res.ok) continue;
+        const meta = await res.json();
+        let changed = false;
+        if (meta.title      && !row.VidTitle)  { row.VidTitle  = meta.title; changed = true; }
+        if (meta.author_name && !row.VidAuthor) {
+          let author = '@' + meta.author_name;
+          if (meta.author_url) { const m = meta.author_url.match(/\/@([^/?#]+)/); if (m) author = '@' + m[1]; }
+          row.VidAuthor = author; changed = true;
+        }
+        if (!row[PS_COL]) {
+          const ps = /youtube\.com\/shorts\//i.test(link) ? '1'
+            : (meta.thumbnail_height > meta.thumbnail_width ? '1' : '0');
+          row[PS_COL] = ps; changed = true;
+        }
+        if (changed) { row.DateModified = now(); save(); render(); }
+      } else if (isVimeo) {
+        const res = await fetchWithTimeout(
+          'https://vimeo.com/api/oembed.json?url=' + encodeURIComponent(link), 8000);
+        if (!res || !res.ok) continue;
+        const meta = await res.json();
+        let changed = false;
+        if (meta.title       && !row.VidTitle)  { row.VidTitle  = meta.title; changed = true; }
+        if (meta.author_name && !row.VidAuthor)  { row.VidAuthor = meta.author_name; changed = true; }
+        if (!row[PS_COL] && meta.thumbnail_width && meta.thumbnail_height) {
+          row[PS_COL] = meta.thumbnail_height > meta.thumbnail_width ? '1' : '0'; changed = true;
+        }
+        if (changed) { row.DateModified = now(); save(); render(); }
+      } else if (isImg) {
+        const dims = await getImageDims(link);
+        if (dims && dims.w > 0 && dims.h > 0) {
+          let changed = false;
+          if (!row.MPix) {
+            const mp = (dims.w * dims.h) / 1_000_000;
+            row.MPix = mp >= 0.1 ? mp.toFixed(1) : mp.toFixed(2);
+            changed = true;
+          }
+          if (!row[PS_COL]) { row[PS_COL] = dims.h > dims.w ? '1' : '0'; changed = true; }
+          if (changed) { row.DateModified = now(); save(); render(); }
+        }
+      } else if (isDirVid) {
+        if (!row.MPix) { row.MPix = 'V'; row.DateModified = now(); save(); render(); }
+      }
+    } catch(_) {}
+  }
 }
 
 // Single CSV row parser used by the channel-import path. Handles
@@ -3267,6 +3761,14 @@ function _parseCsvRow(line) {
 // Smart import: looks at clipboard, picks rule, runs it. This is what W and
 // L are wired to.
 async function wantLinks() {
+  try {
+  return await _wantLinksInner();
+  } catch(e) {
+    console.error('wantLinks error:', e);
+    alert('W — unexpected error:\n' + (e && e.message ? e.message : String(e)));
+  }
+}
+async function _wantLinksInner() {
   const txt = await readClipboardOrPrompt(
     'Paste either:\n' +
     '  • One or more URLs (newline-separated) — videos, images, or web articles, OR\n' +
@@ -3296,13 +3798,15 @@ async function wantLinks() {
     return _showStripPicker(txt);
   }
 
-  // Neither rule matches
-  const preview = lines.slice(0, 3).map(s => s.length > 60 ? s.slice(0, 57) + '...' : s).join('\n  ');
-  toast(
-    'Need rule or new clipboard.\n\n'
-    + 'Expected either @channel + CSV, or just URLs.\n'
-    + 'Got:\n  ' + preview,
-    5000
+  // Neither rule matches — show a blocking popup so it isn't missed
+  const preview = lines.slice(0, 3).map(s => s.length > 70 ? s.slice(0, 67) + '…' : s).join('\n  ');
+  alert(
+    'W — clipboard format not recognised.\n\n'
+    + 'Expected:\n'
+    + '  • One or more URLs (videos, images, articles)\n'
+    + '  • @channel on line 1 then CSV rows\n'
+    + '  • Plain article text (no URL on line 1)\n\n'
+    + 'Got:\n  ' + preview
   );
 }
 
@@ -3476,7 +3980,7 @@ function _doPasteArticle(rawText, mode, detectedUrl) {
   // The URL is stored in row.link too; having it visible as a link in the
   // slide gives the reader a way to click through to the original article.
   if (url) {
-    const linkAttrs = ' target="_blank" rel="noopener" style="color:#6af;word-break:break-all;"';
+    const linkAttrs = ' target="_blank" rel="noopener" style="color:#5bf;word-break:break-all;"';
     cleaned = '<p><a href="' + url + '"' + linkAttrs + '>' + url + '</a></p>\n' + cleaned;
   }
 
@@ -3638,7 +4142,7 @@ function _linkifyHtml(html) {
 
 function _linkifyTextSegment(text) {
   if (!text || !/https?:\/\//.test(text)) return text;
-  const linkAttrs = ' target="_blank" rel="noopener" style="color:#6af;word-break:break-all;"';
+  const linkAttrs = ' target="_blank" rel="noopener" style="color:#5bf;word-break:break-all;"';
   // 1. Already-escaped <URL> (from HTML-escaped paste content)
   let s = text.replace(/&lt;(https?:\/\/[^&\s<>]+?)&gt;/g, (m, url) => {
     return '<a href="' + url + '"' + linkAttrs + '>' + url + '</a>';
@@ -3928,16 +4432,18 @@ function _cutMidArticleEditorsPicks(text) {
 // Rule 1 implementation. `lines` is the already-split, trimmed, non-empty
 // array — every entry must be a media URL.
 async function _importBareLinks(lines) {
-  // De-dup within this paste
+  // Normalize (YouTube → youtu.be/<id>) then de-dup within paste
   const seen = new Set();
   const links = [];
   for (const line of lines) {
-    if (!seen.has(line)) { seen.add(line); links.push(line); }
+    const norm = _normalizeLink(line);
+    if (!seen.has(norm)) { seen.add(norm); links.push(norm); }
   }
 
   const now = isoNow();
   let added = 0;
   const dupRecords = [];
+  const newRows = [];
 
   // (zip0129) Build O(1) lookup of existing rows by link. With Set this is
   // ~constant per check; the build itself is O(N) where N = data.length.
@@ -3985,6 +4491,7 @@ async function _importBareLinks(lines) {
       row.ltype = 'w';
     }
     data.push(row);
+    newRows.push(row);
     linkToDi.set(link, data.length - 1);
     added++;
   }
@@ -4004,21 +4511,20 @@ async function _importBareLinks(lines) {
   buildSort();
   render();
 
-  // (zip0166) Kick off async fetch for any rows that were marked ltype='w'
-  // (web/article URLs). Each fetch runs independently; the row updates and
-  // saves as soon as its text arrives. Failures don't block other fetches.
+  // Kick off async metadata fetch for new rows (title/author/Mpix/P/S).
+  // Also kick off web-text fetch for article rows.
+  _fetchMetaForNewRows(newRows);
   const webRows = data.filter(r => r && r.ltype === 'w' && !r.ftext && r.DateAdded === now);
-  if (webRows.length) {
-    _fetchWebTextForRows(webRows);
-  }
+  if (webRows.length) _fetchWebTextForRows(webRows);
 
-  const dupNote   = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : '';
-  const dupInPaste = lines.length - links.length;
-  const pasteDupNote = dupInPaste ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
-  const webNote = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
+  const dupNote    = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : '';
+  const dupInPaste = links.length - added - dupRecords.length;
+  const pasteDupNote = dupInPaste > 0 ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
+  const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
+  const metaNote = newRows.some(r => !r.ltype) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + pasteDupNote + webNote,
+    + dupNote + pasteDupNote + webNote + metaNote,
     3500
   );
 }
@@ -4045,7 +4551,7 @@ async function _fetchWebTextForRows(rows) {
     try {
       const html = await _fetchAndExtractArticle(row.link);
       if (html) {
-        row.ftext = html;
+        row.ftext = (window.DownloadRules ? window.DownloadRules.apply(html, row.link) : html);
         row.DateModified = isoNow();
         save();
         // If T table is the active screen, refresh so the cell appears
@@ -4070,6 +4576,7 @@ async function _fetchWebTextForRows(rows) {
       row.DateModified = isoNow();
       save();
       if (typeof render === 'function') render();
+      toast('⚠ Fetch error: ' + (row.link.length > 50 ? row.link.slice(0, 47) + '…' : row.link), 3000);
     }
   }
 }
@@ -4077,13 +4584,10 @@ async function _fetchWebTextForRows(rows) {
 // Fetch one article. Returns HTML string or null.
 async function _fetchAndExtractArticle(url) {
   // Strategy 1: r.jina.ai reader (server-side fetch + extraction).
-  // Pre-pend the URL to the reader's base. Returns markdown.
   try {
     const readerUrl = 'https://r.jina.ai/' + url;
-    const r = await fetch(readerUrl, {
-      headers: { 'Accept': 'text/plain' }
-    });
-    if (r.ok) {
+    const r = await fetchWithTimeout(readerUrl, 20000, { headers: { 'Accept': 'text/plain' } });
+    if (r && r.ok) {
       const md = await r.text();
       if (md && md.length > 100) {
         return _markdownToHtml(_trimReaderArticle(md));
@@ -4095,8 +4599,8 @@ async function _fetchAndExtractArticle(url) {
   // sites due to CORS, but works on CORS-friendly ones (e.g. some blogs,
   // Wikipedia via API, etc.).
   try {
-    const r = await fetch(url);
-    if (r.ok) {
+    const r = await fetchWithTimeout(url, 10000);
+    if (r && r.ok) {
       const html = await r.text();
       const extracted = _extractArticleFromHtml(html);
       if (extracted && extracted.length > 100) return extracted;
@@ -5294,7 +5798,10 @@ function buildPhylaTable() {
 // also the source for the "⬇ Download" button (rich-text export with
 // dev-only commands bolded). User mode opens directly to Hu and hides the
 // other pages from navigation.
-var HELP_VERSION_STR = (typeof window !== 'undefined' && window.HELP_VERSION_STR) ? window.HELP_VERSION_STR : 'dev0163'; // Override via window.HELP_VERSION_STR in index.html for version bumps. Used in download filename + heading.
+// Version string is set in index.html (single source of truth — see zip0217).
+// Fallback 'dev0000' only fires if index.html's version script failed to run,
+// which would itself be a bug worth surfacing in the badge/filename.
+var HELP_VERSION_STR = (typeof window !== 'undefined' && window.HELP_VERSION_STR) ? window.HELP_VERSION_STR : 'dev0000';
 
 const HELP_DATA = [
   // ─── GLOBAL ─────────────────────────────────────────────────────────

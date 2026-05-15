@@ -786,6 +786,8 @@ function gridOpenFullscreen(row, contained) {
         vpMountYouTube(host, row.link, seg, muted);
       } else if (window.isVimeoLink && window.isVimeoLink(row.link)) {
         vpMountVimeo(host, row.link, seg, muted);
+      } else if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(row.link)) {
+        vpMountDirectVideo(host, row.link, seg, muted);
       }
     }, 50);
     
@@ -885,10 +887,12 @@ function gridOpenFullscreen(row, contained) {
         // (zip0168) Linkify URL patterns at render time so old ftext also
         // gets clickable links, not just freshly-pasted articles.
         const ftLink = (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
-        const html = ftLink.includes('<html') ? ftLink
+        const _aStyle = '<style>a{color:#5bf!important;}</style>';
+        const html = ftLink.includes('<html')
+          ? ftLink.replace(/<\/head>/i, _aStyle + '</head>')
           : '<!DOCTYPE html><html><head><meta charset="UTF-8">'
             + '<style>body{font-family:Arial,sans-serif;padding:20px;line-height:1.5;}'
-            + 'a{color:#06c;}</style></head>'
+            + 'a{color:#5bf;}</style></head>'
             + '<body>' + ftLink + '</body></html>';
         loadIframe(html);
       }
@@ -1622,6 +1626,37 @@ function vpAllowAutoplayOnIframe(host) {
   } catch (_) {}
 }
 
+function vpMountDirectVideo(host, link, seg, muted) {
+  host.innerHTML = '';
+  const vid = document.createElement('video');
+  vid.src = link;
+  vid.controls = true;
+  vid.autoplay = true;
+  vid.playsInline = true;
+  vid.muted = !!muted;
+  vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+  if (seg && seg.start) vid.currentTime = seg.start;
+  host.appendChild(vid);
+  // Wrap in a minimal player-like object so vpClose/stop can call destroy()
+  _vpState.player = {
+    isDirectVideo: true,
+    el: vid,
+    destroy: () => { vid.pause(); vid.src = ''; },
+    getCurrentTime: () => Promise.resolve(vid.currentTime),
+    getPlayerState: () => (vid.paused ? 2 : 1),
+    getPaused: () => Promise.resolve(vid.paused),
+    seekTo: (t) => { vid.currentTime = t; },
+    playVideo: () => vid.play(),
+    stopVideo: () => { vid.pause(); vid.currentTime = 0; },
+    setPlaybackRate: (r) => { vid.playbackRate = r; },
+    mute: () => { vid.muted = true; },
+    unMute: () => { vid.muted = false; },
+    isMuted: () => Promise.resolve(vid.muted)
+  };
+  _vpState.isYT = false;
+  _vpState.interval = setInterval(vpUpdateTimeline, 250);
+}
+
 function vpMountYouTube(host, link, seg, muted) {
   const vidId = window.getYouTubeId ? window.getYouTubeId(link) : link.match(/(?:v=|\/embed\/|\/shorts\/|\/live\/|youtu\.be\/)([A-Za-z0-9_-]{11})/)?.[1];
   if (!vidId) return;
@@ -1943,11 +1978,9 @@ window._executeHotkey = function(key) {
   }
 
   // A = Annotate panel (images and videos)
-  // Only accessible from G or V — never opens directly from T table view.
+  // Accessible from T (table), G (grid), or V (fullscreen viewer).
   if (key === 'a') {
     if (veOpen) return; // VE takes priority
-    // Block A from pure table view (no grid, no fullscreen viewer open)
-    if (!gridOpen && !vpOpen) return;
     if (tgOpen) closeCScreen(); // close C-screen before opening annotate
     if (vpOpen) vpClose();
 
@@ -2145,18 +2178,12 @@ function openIe(row) {
   // Show image fullscreen (Iu view)
   gridOpenFullscreen(row);
 
-  // Annotate panel: if already open just navigate it; if closed, open it.
+  // If A is already open, navigate it to this row. Do NOT auto-open A.
   const annotateEl = document.getElementById('browseOverlay');
   const annotateOpen = annotateEl && annotateEl.style.display !== 'none';
-  if (annotateOpen) {
-    // Stay open, navigate to this row
-    if (di >= 0 && typeof brShow === 'function') {
-      const fi = window._brRows.indexOf(di);
-      if (fi >= 0) { window._brIdx = fi; brShow(fi); }
-    }
-  } else {
-    // Open annotate fresh (sets up _brRows internally too)
-    if (typeof brOpen === 'function') brOpen(di >= 0 ? di : undefined);
+  if (annotateOpen && di >= 0 && typeof brShow === 'function') {
+    const fi = window._brRows.indexOf(di);
+    if (fi >= 0) { window._brIdx = fi; brShow(fi); }
   }
 }
 
