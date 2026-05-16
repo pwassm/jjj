@@ -1894,10 +1894,17 @@ function _imgExtFromUrl(url) {
 
 // Walk an ftext HTML string and return an ordered list of { imgEl, caption, src, index }
 // Caption priority:
-//   1. <figcaption> in parent <figure> or next sibling
-//   2. alt attribute (if non-trivial — not just "image" / digits / empty)
-//   3. Nearest preceding <h2-h5> heading
-//   4. '' (falls back to img-N filename in caller)
+//   1.  <figcaption> in parent <figure> or next sibling
+//   1b. Per-image preceding heading: <h2-h5> as the STRICT immediate previous
+//       sibling of <img>, gated by row-level uniqueness check so we don't tag
+//       many images with the same article-level heading. See _perImgPrecedingHeadings.
+//   2.  Nearest <p> above OR below (heuristic: 2+ <p>s after img → caption is above)
+//   3.  alt attribute, after row-level cleaning — auto-generated "Image N:" prefix
+//       stripped and the common trailing suffix shared across every alt in the row
+//       (article-name boilerplate) stripped. See _cleanRowAlts.
+//   4.  URL basename (filename slug, with hashes/dims stripped)
+//   5.  Nearest preceding <h2-h5> heading (loose walk — fallback only)
+//   6.  '' (falls back to img-N filename in caller)
 // Uses a detached document so we can mutate the tree, then serialize back.
 // Captions we never want as a JPG filename — they're section/UI labels, not
 // descriptions of the image. Caller treats a matching candidate as "not found"
@@ -1924,10 +1931,73 @@ function _captionFromUrl(src) {
   return '';
 }
 
+// Pre-pass over a row's <img> alts:
+//   1) strip auto-generated "Image N:" / "Photo 3 -" / "Fig. 12." prefixes
+//   2) detect a common trailing suffix shared by every alt in the row
+//      (e.g. " - 35 Photography Awards Macro Winners" appended by the CMS to
+//      every image alt) and strip that too — it's article-level boilerplate,
+//      not per-image content.
+// Returns an array of cleaned alt strings, one per imgs[i] (may be '').
+function _cleanRowAlts(imgs) {
+  const ALT_PREFIX_RE = /^(image|photo|picture|img|fig(?:ure)?)\s*#?\s*\d+\s*[:\-.–—]\s*/i;
+  const raw = imgs.map(img => (img.getAttribute('alt') || '').trim());
+  const stripped = raw.map(a => a.replace(ALT_PREFIX_RE, '').trim());
+  const nonEmpty = stripped.filter(Boolean);
+  let commonSuffix = '';
+  if (nonEmpty.length >= 2) {
+    let s = nonEmpty[0];
+    for (let i = 1; i < nonEmpty.length && s; i++) {
+      const t = nonEmpty[i];
+      const max = Math.min(s.length, t.length);
+      let k = 0;
+      while (k < max && s.charAt(s.length - 1 - k) === t.charAt(t.length - 1 - k)) k++;
+      s = s.slice(s.length - k);
+    }
+    // Snap to a separator boundary so we don't chop mid-word.
+    const m = s.match(/(\s+[\-–—|·:]\s+.+)$/);
+    if (m && m[0].length >= 5) commonSuffix = m[0];
+  }
+  return stripped.map(a => {
+    if (commonSuffix && a.endsWith(commonSuffix)) {
+      a = a.slice(0, a.length - commonSuffix.length).trim();
+    }
+    return a.replace(/[\s\-–—|:·]+$/, '').trim();
+  });
+}
+
+// Pre-pass: for each <img>, find the heading (h2-h5) that is STRICTLY its
+// immediately-preceding DOM sibling (no <p>, <br>, or other non-heading
+// element between). Return the array of heading-text-per-img, plus a flag
+// that's true only when the row has many unique such headings — the
+// "one heading per image" pattern (e.g. <h4>#1. ...</h4><img>...<h4>#2. ...</h4><img>).
+// The flag prevents the "one article <h2> above many anonymous imgs" trap,
+// which would otherwise tag every image with the same heading and collide.
+function _perImgPrecedingHeadings(imgs) {
+  const headings = imgs.map(img => {
+    let sib = img.previousElementSibling;
+    while (sib) {
+      if (/^H[2-5]$/.test(sib.tagName)) {
+        const t = sib.textContent.trim();
+        if (t) return t;
+        sib = sib.previousElementSibling;
+        continue;
+      }
+      return '';
+    }
+    return '';
+  });
+  const nonEmpty = headings.filter(Boolean);
+  const unique = new Set(nonEmpty);
+  const useAsPrimary = unique.size >= 2 && nonEmpty.length >= imgs.length * 0.5;
+  return { headings, useAsPrimary };
+}
+
 function _ftextExtractImages(ftext) {
   const doc = document.implementation.createHTMLDocument('');
   doc.body.innerHTML = ftext || '';
   const imgs = Array.from(doc.body.querySelectorAll('img'));
+  const cleanedAlts = _cleanRowAlts(imgs);
+  const { headings: precedingHeadings, useAsPrimary: useHeadingsFirst } = _perImgPrecedingHeadings(imgs);
   const items = [];
   imgs.forEach((img, i) => {
     const src = img.getAttribute('src') || '';
@@ -1956,6 +2026,14 @@ function _ftextExtractImages(ftext) {
     if (!caption) {
       const ns = img.nextElementSibling;
       if (ns && ns.tagName === 'FIGCAPTION') caption = cleanCap(ns.textContent);
+    }
+
+    // 1b. Per-image preceding heading (only when the whole row exhibits the
+    //     "one heading per image" pattern — see _perImgPrecedingHeadings).
+    //     This is the strongest signal when present: an <h4> sitting as the
+    //     immediate sibling above an <img> is the per-image label.
+    if (!caption && useHeadingsFirst && precedingHeadings[i]) {
+      caption = cleanCap(precedingHeadings[i]);
     }
 
     // 2. Decide BELOW vs ABOVE for the caption.
@@ -1997,11 +2075,14 @@ function _ftextExtractImages(ftext) {
       }
     }
 
-    // 3. alt attribute (skip generic/trivial values and auto-generated patterns)
+    // 3. alt attribute. Use the row-cleaned alt (prefix like "Image 1:" stripped,
+    //    common per-row trailing suffix like " - Site Title" stripped). The alt
+    //    is usually the most per-image-specific label authors/CMSes write.
     if (!caption) {
-      const alt = (img.getAttribute('alt') || '').trim();
-      if (alt && !/^(image|photo|picture|img|\d+|\.{1,3})$/i.test(alt)
-              && !/^image\s+\d+[:\-]/i.test(alt)) caption = cleanCap(alt);
+      const alt = cleanedAlts[i] || '';
+      if (alt && !/^(image|photo|picture|img|\d+|\.{1,3})$/i.test(alt) && alt.length >= 4) {
+        caption = cleanCap(alt);
+      }
     }
 
     // 4. URL-derived slug — often more specific than a shared group heading
@@ -4678,7 +4759,58 @@ function _trimReaderArticle(md) {
 // what r.jina.ai produces. The rich-text editor (Xe) can edit the result.
 function _markdownToHtml(md) {
   if (!md) return '';
-  // Escape HTML
+
+  // ───────── Pre-extract image and link markdown into placeholders ─────────
+  // Why: later regex passes (bold __x__, italic _x_) will otherwise scan
+  // inside generated <img src="..."> / <a href="..."> tags and mangle URLs
+  // that contain underscore-bounded segments — e.g.
+  //   58425_Joanna_Steidle_The-Gateway-copy.jpg → 58425<em>Joanna</em>Steidle_...
+  // (discoverwildlife.com / purpledshub CDN hit this).
+  // The placeholder uses   sentinels which can never appear in real
+  // text and which no other regex pass touches.
+  const _attrEsc = s => String(s).replace(/[<>&"]/g, c =>
+    ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+  // Inline-only markdown for link text: link <a>...</a> tags live inside
+  // placeholders, so the document-level bold/italic passes never see their
+  // contents. Apply bold/italic here on the visible text only, so labels
+  // like **Breathtaking footage…** still render as <strong>.
+  const _inlineMd = txt => {
+    let t = String(txt).replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c]));
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+    t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    t = t.replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>');
+    return t;
+  };
+  // <img> only renders raster/vector — a video URL in src produces a broken
+  // icon. Convert those markdown "images" to active <a> links instead.
+  const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|ogv|avi|mkv)(\?|#|$)/i;
+  const placeholders = [];
+  const stash = html => {
+    placeholders.push(html);
+    return ' PLACE' + (placeholders.length - 1) + ' ';
+  };
+  // Images ![alt](url) — must run before links since !\[ shares [.
+  // Video URLs become active <a> links (rather than broken <img>s);
+  // real image URLs become <img>.
+  md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+    if (VIDEO_EXT_RE.test(url)) {
+      const linkText = (alt && alt.trim()) ? alt : url;
+      return stash('<a href="' + _attrEsc(url) + '" target="_blank" rel="noopener">' +
+            _inlineMd(linkText) + '</a>');
+    }
+    return stash('<img src="' + _attrEsc(url) + '" alt="' + _attrEsc(alt) +
+          '" style="max-width:100%;height:auto;">');
+  });
+  // Links [text](url) — run inline markdown on the visible text so that
+  // **bold** / _italic_ inside the label still convert (the placeholder
+  // would otherwise shield them from the document-level passes).
+  md = md.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, txt, url) =>
+    stash('<a href="' + _attrEsc(url) + '" target="_blank" rel="noopener">' +
+          _inlineMd(txt) + '</a>'));
+
+  // Escape HTML in remaining text. Placeholders only contain  PLACE\d+ 
+  // and are not touched by this step.
   let s = md.replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c]));
   // Headings (## , ### , etc.) — process longest first
   s = s.replace(/^#{6}\s+(.+)$/gm, '<h6>$1</h6>');
@@ -4687,15 +4819,10 @@ function _markdownToHtml(md) {
   s = s.replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>');
   s = s.replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>');
   s = s.replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>');
-  // Images ![alt](url) — convert to <img> (do this BEFORE links since the
-  // syntax overlaps)
-  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;height:auto;">');
-  // Links [text](url)
-  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   // Bold **x** and __x__
   s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
-  // Italic *x* and _x_
+  // Italic *x* and _x_  (URLs are safe inside placeholders — see top of fn)
   s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
   s = s.replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>');
   // Blockquotes (single-line; multi-line gets concatenated)
@@ -4704,6 +4831,10 @@ function _markdownToHtml(md) {
   s = s.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
   // Wrap consecutive <li> in <ul>
   s = s.replace(/(<li>.*?<\/li>(\s*<li>.*?<\/li>)*)/gs, '<ul>$1</ul>');
+  // Restore image / link placeholders. Doing this BEFORE paragraph wrapping
+  // means the block-element check below correctly sees <img> and leaves it
+  // unwrapped (a bare image on its own line stays bare, not wrapped in <p>).
+  s = s.replace(/ PLACE(\d+) /g, (_, n) => placeholders[+n]);
   // Paragraphs: split on blank lines, wrap non-block lines in <p>
   const blocks = s.split(/\n{2,}/);
   const wrapped = blocks.map(b => {

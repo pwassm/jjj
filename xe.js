@@ -72,6 +72,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <span style="color:#ff8; font-weight:bold;">Text Slide · ${cellStr}${mediaNote}</span>
         <div style="display:flex; gap:8px;">
           <button id="teSlide" class="tbtn" style="padding:6px 12px; border-color:#8ef; color:#8ef;" title="Preview as slide — auto-saves first. Key: S (when not typing). Esc closes preview.">▶ <u>S</u>lide</button>
+          <button id="teSlideshow" class="tbtn" style="padding:6px 12px; border-color:#fc8; color:#fc8;" title="Play embedded images as a full-window slideshow (5s/slide, click or Esc to exit).">▶▶ Slideshow</button>
           <button id="teClose" class="tbtn" style="padding:6px 12px;">✕ Close</button>
           <button id="teSave" class="tbtn" style="padding:6px 12px; border-color:#0f0; color:#0f0;">✓ Save</button>
         </div>
@@ -267,6 +268,15 @@ function gridOpenTextEditor(cellStr, row, opts) {
   _ov.querySelector('#teSlide').onclick = () => {
     _textEditorDoSave(); // save silently (no close, no grid refresh toast)
     textEditorPreviewSlide();
+  };
+  // (zip0228) Slideshow button — play embedded images as a full-window
+  // slideshow. Save first so we play the saved state, not in-progress edits.
+  _ov.querySelector('#teSlideshow').onclick = () => {
+    _textEditorDoSave();
+    if (typeof slideshowOpen === 'function') {
+      const editor = document.getElementById('teEditor');
+      slideshowOpen(editor ? editor.innerHTML : (_textEditorRow && _textEditorRow.ftext) || '');
+    }
   };
 
   // (zip0160) S key = Slide when the contenteditable editor is NOT focused.
@@ -924,10 +934,17 @@ function textEditorPreviewSlide() {
       <span style="font-family:monospace;font-size:13px;color:#cde;">
         ← Swipe on this bar to go back · Esc to go back
       </span>
-      <button id="teSlideClose" style="background:#1a1a2e;border:1px solid #555;color:#aaa;
-              padding:4px 10px;border-radius:4px;cursor:pointer;font-family:monospace;">
-        ✕ Close
-      </button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="teSlideshowFromSlide" style="background:rgba(80,40,0,0.45);border:1px solid #fc8;color:#fc8;
+                padding:4px 12px;border-radius:4px;cursor:pointer;font-family:monospace;font-size:12px;"
+                title="Play embedded images as a full-window slideshow (5s/slide, click or Esc to exit).">
+          ▶▶ Slideshow
+        </button>
+        <button id="teSlideClose" style="background:#1a1a2e;border:1px solid #555;color:#aaa;
+                padding:4px 10px;border-radius:4px;cursor:pointer;font-family:monospace;">
+          ✕ Close
+        </button>
+      </div>
     </div>
     <div id="teSlideContent" style="max-width:1200px;width:100%;color:#fff;
                 font-family:sans-serif;font-size:24px;line-height:1.6;
@@ -948,6 +965,16 @@ function textEditorPreviewSlide() {
   }
   document.addEventListener('keydown', onKey, true);
   ov.querySelector('#teSlideClose').onclick = close;
+  // (zip0228) Slideshow button on the Xs top bar — plays images from the
+  // ftext currently being previewed. stopPropagation so the overlay's
+  // outside-click handler doesn't fire and close Xs underneath.
+  const ssBtn = ov.querySelector('#teSlideshowFromSlide');
+  if (ssBtn) {
+    ssBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof slideshowOpen === 'function') slideshowOpen(rawHtml);
+    };
+  }
   // Click outside content closes
   ov.addEventListener('click', e => { if (e.target === ov) close(); });
 

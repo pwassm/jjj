@@ -1755,11 +1755,13 @@
   },
   {
     "id": "cornucopia-of-underwater-life",
-    "label": "Cornucopia of underwater life",
+    "label": "Cornucopia of marine life",
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": ""
+    "def": "",
+    "common": "",
+    "extinct": false
   },
   {
     "id": "fake-serve",
