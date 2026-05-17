@@ -33,7 +33,7 @@ const SLIDESHOW_DEFAULTS = {
   transitionSec: 1,
   delaySec:      0,       // (zip0239) pause after crossfade before zoom/pan starts
   loop:          true,
-  pan:           false,
+  pan:           'off',    // 'off'|'min'|'med'|'max'
   label:         true,
   comment:       false,
   canvasBlur:    'off'    // 'off'|'min'|'med'|'max' (was boolean `bokeh` pre-zip0236)
@@ -132,6 +132,68 @@ function slideshowOpenGrid() {
   _slideshowStart(slides);
 }
 
+// (dev0241) S from T → play all images under the project folder's jpgs/
+// subdirectory, recursively, in random order. Uses the project FSA handle
+// (_fsaDir) from core.js. Each image is wrapped as a blob: URL slide.
+async function slideshowOpenJpgsFolder() {
+  if (_slideshowState) return;
+  const root = (typeof _fsaDir !== 'undefined' && _fsaDir) ? _fsaDir : null;
+  if (!root) {
+    if (typeof toast === 'function') toast('No project folder set — use the 📂 button first.', 2500);
+    return;
+  }
+  try {
+    const perm = await root.queryPermission({ mode: 'read' });
+    if (perm !== 'granted') {
+      const req = await root.requestPermission({ mode: 'read' });
+      if (req !== 'granted') {
+        if (typeof toast === 'function') toast('Read permission denied.', 2200);
+        return;
+      }
+    }
+  } catch (_) {}
+  let jpgsDir;
+  try {
+    jpgsDir = await root.getDirectoryHandle('jpgs', { create: false });
+  } catch (e) {
+    if (typeof toast === 'function') toast('No "jpgs" folder in project.', 2200);
+    return;
+  }
+  const files = [];
+  async function walk(dir) {
+    for await (const entry of dir.values()) {
+      if (entry.kind === 'directory') await walk(entry);
+      else if (/\.(jpe?g|png|gif|webp|avif|bmp)$/i.test(entry.name)) files.push(entry);
+    }
+  }
+  try { await walk(jpgsDir); }
+  catch (e) {
+    if (typeof toast === 'function') toast('Folder read failed: ' + e.message, 2500);
+    return;
+  }
+  if (!files.length) {
+    if (typeof toast === 'function') toast('No images found under jpgs/.', 2200);
+    return;
+  }
+  for (let i = files.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [files[i], files[j]] = [files[j], files[i]];
+  }
+  const slides = [];
+  for (const fh of files) {
+    try {
+      const file = await fh.getFile();
+      slides.push({ url: URL.createObjectURL(file), row: null });
+    } catch (_) {}
+  }
+  if (!slides.length) {
+    if (typeof toast === 'function') toast('Could not read any images.', 2200);
+    return;
+  }
+  if (typeof toast === 'function') toast('Playing ' + slides.length + ' image(s) from jpgs/', 1800);
+  _slideshowStart(slides);
+}
+
 // ── Core machinery ──────────────────────────────────────────────────────────
 
 function _slideshowStart(slides) {
@@ -184,11 +246,6 @@ function _slideshowStart(slides) {
     <div id="slideshowCounter" style="position:absolute;bottom:10px;right:14px;
          color:rgba(255,255,255,0.45);font-family:monospace;font-size:11px;
          pointer-events:none;letter-spacing:0.05em;"></div>
-    <button id="slideshowMenuBtn" title="Settings"
-            style="position:absolute;top:10px;right:10px;width:38px;height:38px;
-                   border-radius:6px;border:1px solid rgba(255,255,255,0.35);
-                   background:rgba(0,0,0,0.55);color:#fff;font-size:18px;
-                   cursor:pointer;padding:0;z-index:40005;">⚙</button>
     <button id="slideshowCloseBtn" title="Close (Esc)"
             style="position:absolute;top:10px;left:10px;width:38px;height:38px;
                    border-radius:6px;border:1px solid rgba(255,255,255,0.35);
@@ -222,20 +279,13 @@ function _slideshowStart(slides) {
   overlay.addEventListener('click', e => {
     if (!_slideshowState) return;
     if (e.target.closest('#slideshowMenu')) return;
-    if (e.target.closest('#slideshowMenuBtn')) return;
     if (e.target.closest('#slideshowCloseBtn')) return;
-    if (_slideshowState.settings.pan) {
+    if (_slideshowState.settings.pan !== 'off') {
       _slideshowSetPanTargetFromEvent(e);
       return;
     }
     slideshowClose();
   });
-
-  overlay.querySelector('#slideshowMenuBtn').onclick = e => {
-    e.stopPropagation();
-    if (_slideshowState.menu) _slideshowCloseMenu();
-    else _slideshowOpenMenu();
-  };
 
   overlay.querySelector('#slideshowCloseBtn').onclick = e => {
     e.stopPropagation();
@@ -282,7 +332,32 @@ function _slideshowZoomScale(level) {
   if (level === 'min') return 1.20;
   if (level === 'med') return 1.50;
   if (level === 'max') return 2.50;
+  if (level === 'supermax') return 0;  // sentinel: computed from naturalWidth in onload
   return 1.0;
+}
+
+// Compute the scale needed to reach 1 device-pixel per image pixel.
+// fitScale = how the `object-fit:contain` shrinks the image to fill the
+// container. Inverting that (divided by dpr) brings it back to 1:1.
+// Capped 1–10 so tiny thumbnails don't go insane and no negative zoom.
+function _slideshowSuperMaxScale(img) {
+  const nW = img.naturalWidth;
+  const nH = img.naturalHeight;
+  const cW = img.clientWidth  || window.innerWidth;
+  const cH = img.clientHeight || window.innerHeight;
+  if (!nW || !nH) return 2.5;
+  const fitScale = Math.min(cW / nW, cH / nH);
+  const dpr = window.devicePixelRatio || 1;
+  return Math.min(10.0, Math.max(1.0, 1.0 / (fitScale * dpr)));
+}
+
+// Pan level → fractional translation multiplier.
+// 'off'=0 (no pan), 'min'=gentle, 'med'=moderate, 'max'=full (legacy behavior).
+function _slideshowPanFactor(level) {
+  if (level === 'min') return 0.30;
+  if (level === 'med') return 0.60;
+  if (level === 'max') return 1.00;
+  return 0.0;
 }
 
 // (zip0237) Blur level → CSS blur radius in px.
@@ -338,9 +413,9 @@ function _slideshowComputePanTransform(targetScale) {
   const st = _slideshowState;
   if (!(targetScale > 1.0)) return 'translate(0,0) scale(1)';
 
-  // Default: zoom around center (pan off, or no target set).
+  const panFactor = _slideshowPanFactor(st.settings.pan);
   let fx = 0.5, fy = 0.5;
-  if (st.settings.pan && st.idx >= 0) {
+  if (panFactor > 0 && st.idx >= 0) {
     const slide = st.slides[st.idx];
     if (slide && slide.panTarget) {
       fx = slide.panTarget.x;
@@ -349,8 +424,8 @@ function _slideshowComputePanTransform(targetScale) {
   }
   const w = st.overlay.clientWidth  || window.innerWidth;
   const h = st.overlay.clientHeight || window.innerHeight;
-  const dx = -targetScale * w * (fx - 0.5);
-  const dy = -targetScale * h * (fy - 0.5);
+  const dx = -targetScale * w * (fx - 0.5) * panFactor;
+  const dy = -targetScale * h * (fy - 0.5) * panFactor;
   return 'translate(' + dx + 'px, ' + dy + 'px) scale(' + targetScale + ')';
 }
 
@@ -387,7 +462,8 @@ function _slideshowApplyZoom() {
   const st = _slideshowState;
   const front = st.overlay.querySelector('#slideshowImg' + st.front);
   if (!front) return;
-  const scale = _slideshowZoomScale(st.settings.zoom);
+  let scale = _slideshowZoomScale(st.settings.zoom);
+  if (scale === 0) scale = _slideshowSuperMaxScale(front);
   front.style.transform = _slideshowComputePanTransform(scale);
 }
 
@@ -395,7 +471,6 @@ function _slideshowKey(e) {
   if (!_slideshowState) return;
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopImmediatePropagation();
-    if (_slideshowState.menu) { _slideshowCloseMenu(); return; }
     slideshowClose();
   } else if (e.key === 'ArrowRight' || e.key === ' ') {
     e.preventDefault();
@@ -477,10 +552,11 @@ function _slideshowShow(i, opts) {
     // (zip0238) If pan is on, ensure this slide has a target — random if the
     // user hasn't tapped to aim. Then animate to the combined zoom+pan
     // transform (computePanTransform handles the math).
-    if (st.settings.pan && !slide.panTarget) {
+    if (st.settings.pan !== 'off' && !slide.panTarget) {
       slide.panTarget = _slideshowPickRandomPanTarget();
     }
-    const targetScale = _slideshowZoomScale(st.settings.zoom);
+    let targetScale = _slideshowZoomScale(st.settings.zoom);
+    if (targetScale === 0) targetScale = _slideshowSuperMaxScale(targetEl);
     const triggerZoom = () => {
       if (!_slideshowState || _slideshowState.idx !== myIdx) return;
       requestAnimationFrame(() => {
@@ -598,8 +674,8 @@ function _slideshowOpenMenu() {
   // (zip0239) On cellphone/mobile, reduce font sizes by 1 px so the menu
   // takes less vertical room and feels less heavy on small screens.
   const mobile = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
-  const baseFs = mobile ? 12 : 13;
-  const bigFs  = mobile ? 13 : 14;
+  const baseFs = mobile ? 11 : 13;
+  const bigFs  = mobile ? 12 : 14;
   const pad    = mobile ? '10px 12px' : '12px 14px';
 
   const menu = document.createElement('div');
@@ -631,10 +707,50 @@ function _slideshowCloseMenu() {
   _slideshowState.menu = null;
 }
 
+// Collapse the menu in place: hide every row except the collapse button itself
+// (which lives in the first-row Start+collapse flex). Tapping the button again
+// (now showing "+") restores. Original sizing is stashed in dataset and put
+// back on expand.
+function _slideshowToggleCollapse() {
+  if (!_slideshowState || !_slideshowState.menu) return;
+  const menu = _slideshowState.menu;
+  const collapseBtn = menu.querySelector('#ssMenuCollapse');
+  if (!collapseBtn) return;
+  const startBtn = menu.querySelector('#ssStart');
+  const collapsing = !menu.dataset.collapsed;
+  if (collapsing) {
+    menu.dataset.collapsed   = '1';
+    menu.dataset.origPadding  = menu.style.padding;
+    menu.dataset.origMinWidth = menu.style.minWidth;
+    menu.dataset.origMaxWidth = menu.style.maxWidth;
+    Array.from(menu.children).forEach((el, i) => {
+      if (i === 0) return;
+      el.style.display = 'none';
+    });
+    if (startBtn) startBtn.style.display = 'none';
+    menu.style.padding  = '3px 5px';
+    menu.style.minWidth = 'auto';
+    menu.style.maxWidth = 'none';
+    collapseBtn.textContent = '+';
+    collapseBtn.title = 'Expand';
+  } else {
+    delete menu.dataset.collapsed;
+    Array.from(menu.children).forEach((el, i) => {
+      if (i === 0) return;
+      el.style.display = '';
+    });
+    if (startBtn) startBtn.style.display = '';
+    menu.style.padding  = menu.dataset.origPadding  || '';
+    menu.style.minWidth = menu.dataset.origMinWidth || '';
+    menu.style.maxWidth = menu.dataset.origMaxWidth || '';
+    collapseBtn.textContent = '−';
+    collapseBtn.title = 'Collapse';
+  }
+}
+
 function _slideshowMenuHtml(s, baseFs, bigFs) {
   baseFs = baseFs || 13;
   bigFs  = bigFs  || 14;
-  const hintFs = Math.max(9, baseFs - 3);
 
   const rowCSS  = 'display:flex;align-items:center;justify-content:space-between;'
                 + 'padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);'
@@ -649,6 +765,7 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
                 + 'font-family:monospace;font-size:' + baseFs + 'px;font-weight:bold;border:1px solid;'
                 + (on ? 'border-color:#5f5;color:#afa;background:rgba(0,80,0,0.4);'
                       : 'border-color:#666;color:#888;background:rgba(40,40,50,0.4);');
+  // 4-state level select (off/min/med/max) — used for Pan and CanvasBlur.
   const lvl = (cur) => `
         <select id="$ID" style="${selCSS}">
           <option value="off"${cur==='off'?' selected':''}>off</option>
@@ -656,29 +773,35 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
           <option value="med"${cur==='med'?' selected':''}>med</option>
           <option value="max"${cur==='max'?' selected':''}>max</option>
         </select>`;
+  // 5-state zoom select — adds supermax for adaptive 1:1 pixel zoom.
+  const lvlZoom = (cur) => `
+        <select id="$ID" style="${selCSS}">
+          <option value="off"${cur==='off'?' selected':''}>off</option>
+          <option value="min"${cur==='min'?' selected':''}>min</option>
+          <option value="med"${cur==='med'?' selected':''}>med</option>
+          <option value="max"${cur==='max'?' selected':''}>max</option>
+          <option value="supermax"${cur==='supermax'?' selected':''}>supermax</option>
+        </select>`;
 
-  // Paused → "Resume", running → "Pause". State is read from current _slideshowState.
   const paused = !!(_slideshowState && _slideshowState.paused);
   const pauseCSS = paused
     ? 'border-color:#fc8;color:#fc8;background:rgba(80,40,0,0.45);'
     : 'border-color:#8ef;color:#8ef;background:rgba(0,40,80,0.45);';
 
   return `
-    <!-- (zip0239) Minimize button — collapses the menu back to the ⚙ icon. -->
-    <button id="ssMenuCollapse" title="Collapse to button"
-            style="position:absolute;top:5px;right:6px;width:22px;height:22px;
-                   padding:0;border-radius:4px;
-                   border:1px solid rgba(255,255,255,0.2);
-                   background:rgba(0,0,0,0.35);color:#aaa;cursor:pointer;
-                   font-size:14px;line-height:1;">−</button>
-
-    <button id="ssStart" style="display:block;width:100%;padding:6px 10px;
-            margin-top:2px;margin-bottom:5px;border-radius:6px;
-            border:1px solid #5f5;background:rgba(0,100,0,0.45);color:#afa;
-            cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
-      Start ▶▶
-    </button>
-    <button id="ssPause" style="display:block;width:100%;padding:6px 10px;
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+      <button id="ssStart" style="flex:1;padding:4px 8px;border-radius:6px;
+              border:1px solid #5f5;background:rgba(0,100,0,0.45);color:#afa;
+              cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
+        Start ▶▶
+      </button>
+      <button id="ssMenuCollapse" title="Collapse"
+              style="padding:4px 7px;border-radius:5px;
+                     border:1px solid rgba(255,255,255,0.25);
+                     background:rgba(0,0,0,0.35);color:#aaa;cursor:pointer;
+                     font-family:monospace;font-size:${bigFs}px;line-height:1;">−</button>
+    </div>
+    <button id="ssPause" style="display:block;width:100%;padding:4px 8px;
             margin-bottom:8px;border-radius:6px;
             border:1px solid;${pauseCSS}
             cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
@@ -701,7 +824,7 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
 
     <div style="${rowCSS}">
       <span>Zoom</span>
-      ${lvl(s.zoom).replace('$ID', 'ssZoomLevel')}
+      ${lvlZoom(s.zoom).replace('$ID', 'ssZoomLevel')}
     </div>
 
     <div style="${rowCSS}">
@@ -725,7 +848,7 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
 
     <div style="${rowCSS}">
       <span>Pan</span>
-      <button class="ss-tog" data-key="pan"     style="${togCSS(s.pan)}">${s.pan?'ON':'OFF'}</button>
+      ${lvl(s.pan).replace('$ID', 'ssPan')}
     </div>
 
     <div style="${rowCSS}">
@@ -742,10 +865,6 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
       <span>CanvasBlur</span>
       ${lvl(s.canvasBlur).replace('$ID', 'ssCanvasBlur')}
     </div>
-
-    <div style="margin-top:6px;font-size:${hintFs}px;color:#556;text-align:center;">
-      Tap outside or − to dismiss · ⚙ re-opens · Esc closes
-    </div>
   `;
 }
 
@@ -753,45 +872,48 @@ function _slideshowWireMenu(menu) {
   const st = _slideshowState;
   if (!st) return;
 
-  // Start button — just dismiss the menu (slideshow already running).
+  // Start and collapse buttons both collapse the menu in place; tapping
+  // the (now-"+") collapse button expands it again. With the top-right ⚙
+  // gear removed, this is the only way to manage menu visibility.
   menu.querySelector('#ssStart').onclick = e => {
     e.stopPropagation();
-    _slideshowCloseMenu();
+    _slideshowToggleCollapse();
   };
-
-  // (zip0239) Minimize button — collapses the menu back to the ⚙ icon.
-  // Same effect as the gear button when the menu is open.
   const collapseBtn = menu.querySelector('#ssMenuCollapse');
   if (collapseBtn) {
     collapseBtn.onclick = e => {
       e.stopPropagation();
-      _slideshowCloseMenu();
+      _slideshowToggleCollapse();
     };
   }
 
-  // (zip0236) Pause/Resume. While paused, the auto-advance timer is cleared
-  // and not rescheduled in _slideshowShow. Resume re-arms it with a full
-  // slideSec dwell from the moment of resume — simpler than tracking
-  // elapsed time, and feels natural for the user.
-  menu.querySelector('#ssPause').onclick = e => {
-    e.stopPropagation();
-    if (!st.paused) {
-      st.paused = true;
-      clearTimeout(st.timer);
-      e.currentTarget.textContent = '▶ Resume';
-      e.currentTarget.style.borderColor = '#fc8';
-      e.currentTarget.style.color = '#fc8';
-      e.currentTarget.style.background = 'rgba(80,40,0,0.45)';
-    } else {
-      st.paused = false;
-      e.currentTarget.textContent = '⏸ Pause';
-      e.currentTarget.style.borderColor = '#8ef';
-      e.currentTarget.style.color = '#8ef';
-      e.currentTarget.style.background = 'rgba(0,40,80,0.45)';
-      const dwellMs = st.settings.slideSec * 1000;
-      st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
-    }
-  };
+  // Pause/Resume. Capture the button in a const so the handler doesn't
+  // depend on e.currentTarget (which has been observed to flake when the
+  // click handler is re-entered through bubbling). Also drop any pending
+  // delay-timer so a queued zoom doesn't fire after pause.
+  const pauseBtn = menu.querySelector('#ssPause');
+  if (pauseBtn) {
+    pauseBtn.onclick = e => {
+      e.stopPropagation();
+      if (!st.paused) {
+        st.paused = true;
+        clearTimeout(st.timer);
+        clearTimeout(st.delayTimer);
+        pauseBtn.textContent = '▶ Resume';
+        pauseBtn.style.borderColor = '#fc8';
+        pauseBtn.style.color = '#fc8';
+        pauseBtn.style.background = 'rgba(80,40,0,0.45)';
+      } else {
+        st.paused = false;
+        pauseBtn.textContent = '⏸ Pause';
+        pauseBtn.style.borderColor = '#8ef';
+        pauseBtn.style.color = '#8ef';
+        pauseBtn.style.background = 'rgba(0,40,80,0.45)';
+        const dwellMs = st.settings.slideSec * 1000;
+        st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
+      }
+    };
+  }
 
   // Numeric inputs — commit on input event (live) and persist.
   function wireNum(id, key, min, max) {
@@ -835,19 +957,24 @@ function _slideshowWireMenu(menu) {
       if (key === 'label' || key === 'comment') {
         _slideshowUpdateLabel(st.slides[st.idx]);
       }
-      // (zip0238) Pan toggle: assign a random target if turning on (so the
-      // user sees the effect right away), then re-apply the transform so the
-      // current slide animates to the new state. Off → centers via the
-      // default in computePanTransform.
-      if (key === 'pan') {
-        if (on && st.idx >= 0) {
-          const slide = st.slides[st.idx];
-          if (slide && !slide.panTarget) slide.panTarget = _slideshowPickRandomPanTarget();
-        }
-        _slideshowApplyZoom();
-      }
     };
   });
+
+  // Pan select — 4-state (off/min/med/max). Assign a random target when
+  // turning on from off so the effect is immediately visible.
+  const ssPanSel = menu.querySelector('#ssPan');
+  if (ssPanSel) {
+    ssPanSel.addEventListener('change', () => {
+      st.settings.pan = ssPanSel.value;
+      _slideshowSaveSettings(st.settings);
+      if (st.settings.pan !== 'off' && st.idx >= 0) {
+        const slide = st.slides[st.idx];
+        if (slide && !slide.panTarget) slide.panTarget = _slideshowPickRandomPanTarget();
+      }
+      _slideshowApplyZoom();
+    });
+    ssPanSel.addEventListener('click', e => e.stopPropagation());
+  }
 
   // (zip0236) Zoom and CanvasBlur dropdowns. (zip0237) Both apply live to
   // the current slide via dedicated apply* helpers — zoom re-targets the
@@ -892,11 +1019,17 @@ document.addEventListener('keydown', e => {
     if (!_slideshowHotkeyShouldFire()) return;
     e.preventDefault();
     e.stopPropagation();
-    slideshowOpenGrid();
+    // From G (grid overlay visible) → play grid images. From T (no overlay)
+    // → play random images under projectfolder/jpgs/.
+    const g = document.getElementById('gridOverlay');
+    const gridVisible = g && getComputedStyle(g).display !== 'none';
+    if (gridVisible) slideshowOpenGrid();
+    else             slideshowOpenJpgsFolder();
   }
 }, true);
 
 // Window exposure
-window.slideshowOpen      = slideshowOpen;
-window.slideshowOpenGrid  = slideshowOpenGrid;
-window.slideshowClose     = slideshowClose;
+window.slideshowOpen           = slideshowOpen;
+window.slideshowOpenGrid       = slideshowOpenGrid;
+window.slideshowOpenJpgsFolder = slideshowOpenJpgsFolder;
+window.slideshowClose          = slideshowClose;

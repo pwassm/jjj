@@ -275,7 +275,11 @@ function gridOpenTextEditor(cellStr, row, opts) {
     _textEditorDoSave();
     if (typeof slideshowOpen === 'function') {
       const editor = document.getElementById('teEditor');
-      slideshowOpen(editor ? editor.innerHTML : (_textEditorRow && _textEditorRow.ftext) || '');
+      const html = editor ? editor.innerHTML : (_textEditorRow && _textEditorRow.ftext) || '';
+      // (dev0241) Close Xe before opening the slideshow so it doesn't sit
+      // behind the slideshow overlay.
+      textEditorClose();
+      slideshowOpen(html);
     }
   };
 
@@ -972,6 +976,9 @@ function textEditorPreviewSlide() {
   if (ssBtn) {
     ssBtn.onclick = (e) => {
       e.stopPropagation();
+      // (dev0241) Close Xs before opening the slideshow so it doesn't sit
+      // behind the slideshow overlay.
+      if (typeof close === 'function') close();
       if (typeof slideshowOpen === 'function') slideshowOpen(rawHtml);
     };
   }
