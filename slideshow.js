@@ -31,6 +31,7 @@ const SLIDESHOW_DEFAULTS = {
   zoomSec:       3,
   zoom:          'off',   // 'off'|'min'|'med'|'max'
   transitionSec: 1,
+  delaySec:      0,       // (zip0239) pause after crossfade before zoom/pan starts
   loop:          true,
   pan:           false,
   label:         true,
@@ -214,11 +215,19 @@ function _slideshowStart(slides) {
   // Apply transition duration to image layers (live, in case settings change)
   _slideshowApplyTransitionTiming();
 
-  // Click on overlay background (not menu, not buttons) closes slideshow.
+  // Click on overlay background (not menu, not buttons): (zip0238) when Pan
+  // is on, the click sets the pan target for the current slide and re-aims
+  // the Ken Burns animation toward it. When Pan is off, the click closes
+  // the slideshow (legacy behavior). The ✕ button and Esc always close.
   overlay.addEventListener('click', e => {
+    if (!_slideshowState) return;
     if (e.target.closest('#slideshowMenu')) return;
     if (e.target.closest('#slideshowMenuBtn')) return;
     if (e.target.closest('#slideshowCloseBtn')) return;
+    if (_slideshowState.settings.pan) {
+      _slideshowSetPanTargetFromEvent(e);
+      return;
+    }
     slideshowClose();
   });
 
@@ -267,10 +276,12 @@ function _slideshowApplyTransitionTiming() {
 }
 
 // (zip0237) Zoom level → end-state scale. "off" stays at 1.0 so no animation.
+// (zip0239) max bumped 1.50 → 2.50 so high-resolution images zoom hard
+// enough to reveal detail. min/med pushed slightly to keep the gaps even.
 function _slideshowZoomScale(level) {
-  if (level === 'min') return 1.10;
-  if (level === 'med') return 1.25;
-  if (level === 'max') return 1.50;
+  if (level === 'min') return 1.20;
+  if (level === 'med') return 1.50;
+  if (level === 'max') return 2.50;
   return 1.0;
 }
 
@@ -300,16 +311,84 @@ function _slideshowApplyCanvasBlur() {
   });
 }
 
-// Apply the current zoom level live to the front fg layer. Used when the
-// user changes the dropdown mid-slide; lets them see the effect immediately
-// rather than waiting for the next advance.
+// (zip0238) Pan / Ken Burns helpers.
+//
+// Pan target is stored on each slide as fractional container coords
+// {x: 0..1, y: 0..1} (0,0 = top-left, 0.5,0.5 = center). When pan is on,
+// _slideshowShow pre-assigns a random target if the slide doesn't have one;
+// a click/tap on the overlay overwrites it with the touched point.
+//
+// The end-of-zoom transform brings the target to screen center: with
+// transform-origin at center, applying scale(N) leaves a target pixel
+// (fx*W, fy*H) at (W/2 + N*(fx*W - W/2), H/2 + N*(fy*H - H/2)). A subsequent
+// translate by (-N*W*(fx-0.5), -N*H*(fy-0.5)) brings it back to (W/2, H/2).
+// Order: `translate(...) scale(N)` — scale first, then translate in screen
+// pixels (CSS applies right-to-left in effect).
+function _slideshowPickRandomPanTarget() {
+  const angle = Math.random() * 2 * Math.PI;
+  const dist  = 0.15 + Math.random() * 0.15; // 15-30% from center
+  return {
+    x: 0.5 + Math.cos(angle) * dist,
+    y: 0.5 + Math.sin(angle) * dist
+  };
+}
+
+function _slideshowComputePanTransform(targetScale) {
+  if (!_slideshowState) return 'translate(0,0) scale(1)';
+  const st = _slideshowState;
+  if (!(targetScale > 1.0)) return 'translate(0,0) scale(1)';
+
+  // Default: zoom around center (pan off, or no target set).
+  let fx = 0.5, fy = 0.5;
+  if (st.settings.pan && st.idx >= 0) {
+    const slide = st.slides[st.idx];
+    if (slide && slide.panTarget) {
+      fx = slide.panTarget.x;
+      fy = slide.panTarget.y;
+    }
+  }
+  const w = st.overlay.clientWidth  || window.innerWidth;
+  const h = st.overlay.clientHeight || window.innerHeight;
+  const dx = -targetScale * w * (fx - 0.5);
+  const dy = -targetScale * h * (fy - 0.5);
+  return 'translate(' + dx + 'px, ' + dy + 'px) scale(' + targetScale + ')';
+}
+
+// (zip0238) Convert a click/touch on the overlay into a pan target for the
+// current slide, then re-apply the transform so the image smoothly re-aims
+// at the tapped point.
+//
+// Uses window.rotateXY to handle portrait-phone rotation correctly — the
+// overlay is mounted inside #rotateWrap so its local coords match wrap-local,
+// which is what rotateXY returns.
+function _slideshowSetPanTargetFromEvent(e) {
+  if (!_slideshowState) return;
+  const st = _slideshowState;
+  if (st.idx < 0) return;
+  const slide = st.slides[st.idx];
+  if (!slide) return;
+  const p = (typeof window.rotateXY === 'function')
+    ? window.rotateXY(e)
+    : { x: e.clientX, y: e.clientY };
+  const w = st.overlay.clientWidth  || window.innerWidth;
+  const h = st.overlay.clientHeight || window.innerHeight;
+  if (!w || !h) return;
+  const fx = Math.max(0, Math.min(1, p.x / w));
+  const fy = Math.max(0, Math.min(1, p.y / h));
+  slide.panTarget = { x: fx, y: fy };
+  _slideshowApplyZoom();
+}
+
+// Apply the current zoom (and pan target) live to the front fg layer. Used
+// when the user changes the Zoom dropdown, toggles Pan, or taps to aim — the
+// CSS transition smoothly animates from the current state to the new target.
 function _slideshowApplyZoom() {
   if (!_slideshowState) return;
   const st = _slideshowState;
   const front = st.overlay.querySelector('#slideshowImg' + st.front);
   if (!front) return;
   const scale = _slideshowZoomScale(st.settings.zoom);
-  front.style.transform = 'scale(' + scale + ')';
+  front.style.transform = _slideshowComputePanTransform(scale);
 }
 
 function _slideshowKey(e) {
@@ -343,6 +422,7 @@ function _slideshowShow(i, opts) {
   counterEl.textContent = (i + 1) + ' / ' + st.slides.length;
 
   clearTimeout(st.timer);
+  clearTimeout(st.delayTimer); // (zip0239) drop any pending pre-zoom delay
 
   // Decide which layer to load into. Initial paint → front layer; otherwise
   // back layer (so old image stays visible until the new one is ready).
@@ -353,11 +433,12 @@ function _slideshowShow(i, opts) {
   const targetEl = opts.initial ? frontEl : backEl;
   const targetBg = st.overlay.querySelector('#slideshowBg' + targetLetter);
 
-  // (zip0237) Reset the target fg layer's zoom to 1 with transitions OFF, so
-  // we don't see it shrink back from its previous zoomed state. Force reflow
-  // then restore transitions so the upcoming opacity + zoom animations run.
+  // (zip0237/0238) Reset the target fg layer to scale(1) at the centered
+  // position with transitions OFF, so we don't see it shrink/slide back from
+  // its previous zoomed-and-panned state. Force reflow, then restore
+  // transitions so the upcoming opacity + zoom-pan animations run.
   targetEl.style.transition = 'none';
-  targetEl.style.transform  = 'scale(1)';
+  targetEl.style.transform  = 'translate(0,0) scale(1)';
   void targetEl.offsetHeight; // flush reflow
   _slideshowApplyTransitionTiming();
 
@@ -393,12 +474,31 @@ function _slideshowShow(i, opts) {
     // (zip0237) Kick off the zoom animation. Setting the new transform value
     // in a rAF (so the browser commits the scale(1) start state first) makes
     // the transition fire reliably.
+    // (zip0238) If pan is on, ensure this slide has a target — random if the
+    // user hasn't tapped to aim. Then animate to the combined zoom+pan
+    // transform (computePanTransform handles the math).
+    if (st.settings.pan && !slide.panTarget) {
+      slide.panTarget = _slideshowPickRandomPanTarget();
+    }
     const targetScale = _slideshowZoomScale(st.settings.zoom);
-    if (targetScale > 1.0) {
+    const triggerZoom = () => {
+      if (!_slideshowState || _slideshowState.idx !== myIdx) return;
       requestAnimationFrame(() => {
         if (!_slideshowState || _slideshowState.idx !== myIdx) return;
-        targetEl.style.transform = 'scale(' + targetScale + ')';
+        targetEl.style.transform = _slideshowComputePanTransform(targetScale);
       });
+    };
+    if (targetScale > 1.0) {
+      // (zip0239) `delaySec` pauses the zoom/pan animation start so the
+      // slide sits motionless for a moment before the Ken Burns kicks in.
+      // Cleared by clearTimeout(st.delayTimer) on advance/close.
+      clearTimeout(st.delayTimer);
+      const delayMs = Math.max(0, (st.settings.delaySec || 0) * 1000);
+      if (delayMs > 0) {
+        st.delayTimer = setTimeout(triggerZoom, delayMs);
+      } else {
+        triggerZoom();
+      }
     }
 
     _slideshowUpdateLabel(slide);
@@ -481,6 +581,7 @@ function _slideshowAdvance(step) {
 function slideshowClose() {
   if (!_slideshowState) return;
   clearTimeout(_slideshowState.timer);
+  clearTimeout(_slideshowState.delayTimer); // (zip0239) cancel any queued zoom
   document.removeEventListener('keydown', _slideshowKey, true);
   if (_slideshowState.overlay && _slideshowState.overlay.parentNode) {
     _slideshowState.overlay.remove();
@@ -494,6 +595,13 @@ function _slideshowOpenMenu() {
   if (!_slideshowState || _slideshowState.menu) return;
   const settings = _slideshowState.settings;
 
+  // (zip0239) On cellphone/mobile, reduce font sizes by 1 px so the menu
+  // takes less vertical room and feels less heavy on small screens.
+  const mobile = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
+  const baseFs = mobile ? 12 : 13;
+  const bigFs  = mobile ? 13 : 14;
+  const pad    = mobile ? '10px 12px' : '12px 14px';
+
   const menu = document.createElement('div');
   menu.id = 'slideshowMenu';
   // (zip0236) Positioned on the right side, vertically centered. Narrower
@@ -504,13 +612,13 @@ function _slideshowOpenMenu() {
     'transform:translateY(-50%)',
     'background:rgba(14,14,28,0.94)',
     'border:1px solid #4af', 'border-radius:10px',
-    'padding:12px 14px', 'min-width:200px', 'max-width:240px',
-    'color:#eee', 'font-family:monospace', 'font-size:13px',
+    'padding:' + pad, 'min-width:200px', 'max-width:240px',
+    'color:#eee', 'font-family:monospace', 'font-size:' + baseFs + 'px',
     'box-shadow:0 8px 32px rgba(0,0,0,0.9)',
     'z-index:40010'
   ].join(';') + ';';
 
-  menu.innerHTML = _slideshowMenuHtml(settings);
+  menu.innerHTML = _slideshowMenuHtml(settings, baseFs, bigFs);
   _slideshowState.overlay.appendChild(menu);
   _slideshowState.menu = menu;
 
@@ -523,18 +631,22 @@ function _slideshowCloseMenu() {
   _slideshowState.menu = null;
 }
 
-function _slideshowMenuHtml(s) {
+function _slideshowMenuHtml(s, baseFs, bigFs) {
+  baseFs = baseFs || 13;
+  bigFs  = bigFs  || 14;
+  const hintFs = Math.max(9, baseFs - 3);
+
   const rowCSS  = 'display:flex;align-items:center;justify-content:space-between;'
-                + 'padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);'
+                + 'padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);'
                 + 'gap:8px;';
-  const numCSS  = 'width:48px;padding:4px 5px;font-family:monospace;font-size:13px;'
+  const numCSS  = 'width:48px;padding:3px 5px;font-family:monospace;font-size:' + baseFs + 'px;'
                 + 'background:#0a0a1a;border:1px solid #4af;color:#fff;border-radius:4px;'
                 + 'text-align:center;outline:none;';
-  const selCSS  = 'padding:4px 6px;font-family:monospace;font-size:13px;'
+  const selCSS  = 'padding:3px 6px;font-family:monospace;font-size:' + baseFs + 'px;'
                 + 'background:#0a0a1a;border:1px solid #4af;color:#fff;border-radius:4px;'
                 + 'outline:none;cursor:pointer;';
-  const togCSS  = (on) => 'padding:4px 12px;border-radius:5px;cursor:pointer;'
-                + 'font-family:monospace;font-size:13px;font-weight:bold;border:1px solid;'
+  const togCSS  = (on) => 'padding:3px 12px;border-radius:5px;cursor:pointer;'
+                + 'font-family:monospace;font-size:' + baseFs + 'px;font-weight:bold;border:1px solid;'
                 + (on ? 'border-color:#5f5;color:#afa;background:rgba(0,80,0,0.4);'
                       : 'border-color:#666;color:#888;background:rgba(40,40,50,0.4);');
   const lvl = (cur) => `
@@ -552,16 +664,24 @@ function _slideshowMenuHtml(s) {
     : 'border-color:#8ef;color:#8ef;background:rgba(0,40,80,0.45);';
 
   return `
-    <button id="ssStart" style="display:block;width:100%;padding:7px 10px;
-            margin-bottom:6px;border-radius:6px;
+    <!-- (zip0239) Minimize button — collapses the menu back to the ⚙ icon. -->
+    <button id="ssMenuCollapse" title="Collapse to button"
+            style="position:absolute;top:5px;right:6px;width:22px;height:22px;
+                   padding:0;border-radius:4px;
+                   border:1px solid rgba(255,255,255,0.2);
+                   background:rgba(0,0,0,0.35);color:#aaa;cursor:pointer;
+                   font-size:14px;line-height:1;">−</button>
+
+    <button id="ssStart" style="display:block;width:100%;padding:6px 10px;
+            margin-top:2px;margin-bottom:5px;border-radius:6px;
             border:1px solid #5f5;background:rgba(0,100,0,0.45);color:#afa;
-            cursor:pointer;font-family:monospace;font-size:14px;font-weight:bold;">
+            cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
       Start ▶▶
     </button>
-    <button id="ssPause" style="display:block;width:100%;padding:7px 10px;
-            margin-bottom:10px;border-radius:6px;
+    <button id="ssPause" style="display:block;width:100%;padding:6px 10px;
+            margin-bottom:8px;border-radius:6px;
             border:1px solid;${pauseCSS}
-            cursor:pointer;font-family:monospace;font-size:14px;font-weight:bold;">
+            cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
       ${paused ? '▶ Resume' : '⏸ Pause'}
     </button>
 
@@ -592,6 +712,13 @@ function _slideshowMenuHtml(s) {
     </div>
 
     <div style="${rowCSS}">
+      <span>Delay</span>
+      <span><input id="ssDelaySec"  type="number" min="0" max="30" step="0.1"
+                   inputmode="decimal" value="${s.delaySec}"
+                   style="${numCSS}"> sec</span>
+    </div>
+
+    <div style="${rowCSS}">
       <span>Loop</span>
       <button class="ss-tog" data-key="loop"    style="${togCSS(s.loop)}">${s.loop?'ON':'OFF'}</button>
     </div>
@@ -616,8 +743,8 @@ function _slideshowMenuHtml(s) {
       ${lvl(s.canvasBlur).replace('$ID', 'ssCanvasBlur')}
     </div>
 
-    <div style="margin-top:8px;font-size:10px;color:#556;text-align:center;">
-      Tap outside to dismiss · ⚙ re-opens · Esc closes
+    <div style="margin-top:6px;font-size:${hintFs}px;color:#556;text-align:center;">
+      Tap outside or − to dismiss · ⚙ re-opens · Esc closes
     </div>
   `;
 }
@@ -631,6 +758,16 @@ function _slideshowWireMenu(menu) {
     e.stopPropagation();
     _slideshowCloseMenu();
   };
+
+  // (zip0239) Minimize button — collapses the menu back to the ⚙ icon.
+  // Same effect as the gear button when the menu is open.
+  const collapseBtn = menu.querySelector('#ssMenuCollapse');
+  if (collapseBtn) {
+    collapseBtn.onclick = e => {
+      e.stopPropagation();
+      _slideshowCloseMenu();
+    };
+  }
 
   // (zip0236) Pause/Resume. While paused, the auto-advance timer is cleared
   // and not rescheduled in _slideshowShow. Resume re-arms it with a full
@@ -681,6 +818,7 @@ function _slideshowWireMenu(menu) {
   wireNum('ssSlideSec', 'slideSec',     0.5, 60);
   wireNum('ssZoomSec',  'zoomSec',      0.5, 60);
   wireNum('ssTransSec', 'transitionSec', 0,  10);
+  wireNum('ssDelaySec', 'delaySec',      0,  30); // (zip0239) pre-animation pause
 
   // Toggles — flip the boolean, restyle in place, persist, re-apply label.
   menu.querySelectorAll('.ss-tog').forEach(btn => {
@@ -696,6 +834,17 @@ function _slideshowWireMenu(menu) {
               : 'border-color:#666;color:#888;background:rgba(40,40,50,0.4);');
       if (key === 'label' || key === 'comment') {
         _slideshowUpdateLabel(st.slides[st.idx]);
+      }
+      // (zip0238) Pan toggle: assign a random target if turning on (so the
+      // user sees the effect right away), then re-apply the transform so the
+      // current slide animates to the new state. Off → centers via the
+      // default in computePanTransform.
+      if (key === 'pan') {
+        if (on && st.idx >= 0) {
+          const slide = st.slides[st.idx];
+          if (slide && !slide.panTarget) slide.panTarget = _slideshowPickRandomPanTarget();
+        }
+        _slideshowApplyZoom();
       }
     };
   });
