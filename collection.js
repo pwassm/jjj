@@ -213,19 +213,28 @@ document.getElementById('gridSrcT').addEventListener('click', () => {
   gridShow();
 });
 
-// C source button — switch to Collection mode; open collection picker if no config loaded
+// C source button — open the Collection picker. The button's title is
+// "Show grid from Collection (C — choose from c.json)", so a click should
+// always take the user to C regardless of whether a config is already
+// active.
+//
+// (zip0232) Previously: if _gridActiveConfig was set, the click just stayed
+// in G; if it was null, openCScreen() ran but the grid overlay stayed on
+// top of the C screen (the hotkey path in vp.js _executeHotkey('c') closes
+// the grid overlay first — the button skipped that step). Both branches
+// felt broken. Now we always close the grid overlay, switch source, and
+// open the picker. Mirrors the C hotkey path.
 document.getElementById('gridSrcC').addEventListener('click', () => {
-  if (_gridActiveConfig) {
-    // Already have a config — just switch source and redraw
-    _gridSource = 'C';
-    gridShow();
-  } else {
-    // No collection chosen yet — open the collection picker
-    _gridSource = 'C';
-    gridUpdateSourceBtns();
-    showGridList();
-    toast('Choose a collection to display in Grid', 2000);
+  _gridSource = 'C';
+  gridUpdateSourceBtns();
+  if (document.getElementById('gridOverlay')?.style.display === 'flex') {
+    if (typeof gridCleanupPlayers === 'function')  gridCleanupPlayers();
+    if (typeof gridClearCut === 'function')        gridClearCut();
+    if (typeof gridHideContextMenu === 'function') gridHideContextMenu();
+    document.getElementById('gridOverlay').style.display = 'none';
   }
+  showGridList();
+  if (!_gridActiveConfig) toast('Choose a collection to display in Grid', 2000);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -239,6 +248,7 @@ var _cData      = [];
 var _cCols      = [];
 var _cHidden    = new Set();
 var _cColWidths = {};
+var _cLoaded    = false; // true after first successful disk read
 var _cSortCol   = null;
 var _cSortDir   = 'asc';
 var _cSortedIdx = null;
@@ -279,38 +289,44 @@ async function cSaveToFile() {
 
 async function openCScreen() {
   if (_cMode) return;
-  // (zip0139) Try the project folder (FSA) first; fall back to HTTP fetch
-  // when no folder is set (deployed web mode, mobile, etc.). This makes the
-  // C screen viewable on github.io without needing to "set project folder".
-  // Read-only on web — without FSA, save back to disk isn't possible, but
-  // viewing and switching grid configs still works.
-  let parsed = null;
-  const dir = await _getDir();
-  if (dir) {
-    try {
-      const fh = await dir.getFileHandle('c.json');
-      parsed = JSON.parse(await (await fh.getFile()).text());
-    } catch (e) { /* fall through to HTTP */ }
-  }
-  if (!parsed) {
-    try {
-      const r = await fetch('c.json?t=' + Date.now());
-      if (r.ok) parsed = await r.json();
-    } catch (e) { /* fall through to empty */ }
-  }
-  if (!parsed) {
-    toast('No c.json available\n(set project folder, or place c.json next to index.html)', 2500);
-    parsed = [];
-  }
 
-  try {
-    if (Array.isArray(parsed) && parsed[0]?._salMeta) {
-      _cMeta = parsed[0]; _cData = parsed.slice(1);
-    } else if (Array.isArray(parsed)) {
-      _cData = parsed;
-    } else { _cData = [parsed]; }
-    _gridConfigs = _cData;
-  } catch (e) { _cData = []; _gridConfigs = []; }
+  // (zip0233) Only read from disk on the very first open. Subsequent opens
+  // reuse the in-memory _cData so that in-session edits (deletes, saves)
+  // are never clobbered by a fresh disk read that races with the async
+  // cSaveToFile() or that reflects a stale file when FSA isn't available.
+  // cSaveToFile() remains the authoritative write path — if it fails the
+  // existing toast warns the user.
+  if (!_cLoaded) {
+    // (zip0139) Try the project folder (FSA) first; fall back to HTTP fetch
+    // when no folder is set (deployed web mode, mobile, etc.).
+    let parsed = null;
+    const dir = await _getDir();
+    if (dir) {
+      try {
+        const fh = await dir.getFileHandle('c.json');
+        parsed = JSON.parse(await (await fh.getFile()).text());
+      } catch (e) { /* fall through to HTTP */ }
+    }
+    if (!parsed) {
+      try {
+        const r = await fetch('c.json?t=' + Date.now());
+        if (r.ok) parsed = await r.json();
+      } catch (e) { /* fall through to empty */ }
+    }
+    if (!parsed) {
+      toast('No c.json available\n(set project folder, or place c.json next to index.html)', 2500);
+      parsed = [];
+    }
+    try {
+      if (Array.isArray(parsed) && parsed[0]?._salMeta) {
+        _cMeta = parsed[0]; _cData = parsed.slice(1);
+      } else if (Array.isArray(parsed)) {
+        _cData = parsed;
+      } else { _cData = [parsed]; }
+      _gridConfigs = _cData;
+    } catch (e) { _cData = []; _gridConfigs = []; }
+    _cLoaded = true;
+  }
 
   _cMode = true;
   _tSave = { data, cols, hidden, colWidths, sortCol, sortDir, sortedIdx,

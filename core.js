@@ -1623,12 +1623,27 @@ function hmKeyHandler(e) {
 }
 
 hmBtn.addEventListener('click', e => { e.stopPropagation(); toggleHM(); });
-document.addEventListener('pointerdown', e => { if(hmPanel.classList.contains('open')&&!hmPanel.contains(e.target)&&e.target!==hmBtn) closeHM(); }, true);
+// (zip0234) In-grid hamburger button — same panel, for user/mobile where
+// #toolbar (and thus #hmBtn) is hidden. openHM() positions the panel at
+// top:12px/left:12px when #hmBtn has zero size, which matches this button.
+const _gridHmBtn = document.getElementById('gridHmBtn');
+if (_gridHmBtn) _gridHmBtn.addEventListener('click', e => { e.stopPropagation(); toggleHM(); });
+document.addEventListener('pointerdown', e => {
+  if (!hmPanel.classList.contains('open')) return;
+  if (hmPanel.contains(e.target)) return;
+  if (e.target === hmBtn || e.target === _gridHmBtn) return;
+  closeHM();
+}, true);
 
 document.getElementById('hm-setfolder').addEventListener('click', async () => { closeHM(); await pickFolder(); });
 document.getElementById('hm-dict').addEventListener('click', () => { closeHM(); if (window.openDictionary) window.openDictionary(); });
 document.getElementById('hm-push').addEventListener('click',   () => { closeHM(); toast('☁ Push to GitHub\n[coming soon]'); });
 document.getElementById('hm-loadgh').addEventListener('click', () => { closeHM(); toast('⬇ Load from GitHub\n[coming soon]'); });
+document.getElementById('hm-slideshow').addEventListener('click', () => {
+  closeHM();
+  if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid();
+  else if (typeof toast === 'function') toast('Slideshow not loaded yet', 1500);
+});
 document.getElementById('hm-settings').addEventListener('click', () => { closeHM(); openSettings(); });
 document.getElementById('hm-help').addEventListener('click', () => { closeHM(); openHelp(); });
 
