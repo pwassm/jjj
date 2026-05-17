@@ -3,10 +3,12 @@
 //
 //   1. slideshowOpen(row|ftext)     — images embedded in a row's ftext.
 //                                     Mounted by Xe (edit) and Xs (preview).
-//   2. slideshowOpenGrid()          — image links from the cells of the
-//                                     active grid (skips cells without an
-//                                     image link). Hotkeys: S (bare) or
-//                                     Ctrl+Alt+S.
+//   2. slideshowOpenGrid()          — images from the cells of the active
+//                                     grid, in cell order. Per cell, the
+//                                     row's image link (if any) plays first,
+//                                     then every <img> embedded in row.ftext.
+//                                     Cells with nothing playable are
+//                                     skipped. Hotkey: S (bare).
 //
 // Both paths share the same overlay + state machine. Each slide has a status
 // (pending/loading/ready/filtered/error); _advance() walks past `filtered`
@@ -44,9 +46,27 @@ function _slideshowIsImageLink(link) {
   return /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path);
 }
 
-// Collect image URLs from the active grid in cell order (1a, 1b, …, sized by
-// _gridGsize). Skips cells without a row, cells whose row has no link, and
-// cells whose link isn't an image. Returns [] if nothing usable.
+// Per-cell image gathering. Returns the ordered URLs the slideshow will
+// play for one cell: the row's link (only if it's an image URL, never a
+// video or web article) followed by every <img src> embedded in row.ftext.
+// Returns [] for rows with nothing playable. Video cells with no ftext
+// images naturally collapse to [] because _slideshowIsImageLink excludes
+// YouTube/Vimeo/video file extensions.
+function _slideshowCellImgs(row) {
+  if (!row) return [];
+  const urls = [];
+  if (_slideshowIsImageLink(row.link)) urls.push(row.link);
+  if (row.ftext) {
+    _slideshowExtractImgs(row.ftext).forEach(u => urls.push(u));
+  }
+  return urls;
+}
+
+// Collect image URLs from the active grid in cell order (1a, 1b, …, sized
+// by _gridGsize). For each cell, plays the cell's image (if any) followed
+// by every image embedded in its ftext, so a "card" cell shows all its
+// inner images before the slideshow moves on. Returns [] if no cell has
+// any playable image.
 function _slideshowGridImgs() {
   const gsize = (typeof _gridGsize === 'number' && _gridGsize >= 2 && _gridGsize <= 5)
     ? _gridGsize : 5;
@@ -59,9 +79,7 @@ function _slideshowGridImgs() {
       const row = (typeof getRowByCell === 'function')
         ? getRowByCell(cs)
         : (typeof data !== 'undefined' ? data.find(d => d.cell === cs) : null);
-      if (!row) continue;
-      if (typeof isVideoRow === 'function' && isVideoRow(row)) continue;
-      if (_slideshowIsImageLink(row.link)) urls.push(row.link);
+      _slideshowCellImgs(row).forEach(u => urls.push(u));
     }
   }
   return urls;
@@ -223,20 +241,17 @@ window.slideshowOpen = slideshowOpen;
 window.slideshowOpenGrid = slideshowOpenGrid;
 window.slideshowClose = slideshowClose;
 
-// ── (zip0230) Slideshow hotkeys ──────────────────────────────────────────────
+// ── (zip0231) Slideshow hotkey ───────────────────────────────────────────────
 //
-//   • Bare  S       → play active grid as a slideshow  (primary)
-//   • Ctrl+Alt+S    → same  (alternate; harder for the OS / extensions to grab)
+//   Bare S → play active grid as a slideshow.
 //
 // `s` is not in core.js's global-letter list, so this is the only consumer.
 // Skipped when the user is typing in an input/textarea/contenteditable, when
 // Xe is open (Xe owns S = slide preview), and when overlays that consume
 // letter keys are up (dictionary, merge modal, video editor).
 //
-// For Ctrl+Alt+S we match on `e.code === 'KeyS'` rather than `e.key`, because
-// on Windows AltGr (= right-Alt) sets ctrlKey+altKey but rewrites e.key on
-// some keyboard layouts (German, etc.). The physical-key check is layout-
-// independent and still gives US-keyboard users the literal Ctrl+Alt+S.
+// (Ctrl+Alt+S was tried as a backup in zip0229/0230 but didn't fire reliably
+// on the user's setup — likely OS/extension interception. Removed.)
 function _slideshowHotkeyShouldFire() {
   if (_slideshowState) return false;                     // already playing
   const ae = document.activeElement;
@@ -253,21 +268,11 @@ function _slideshowHotkeyShouldFire() {
 }
 
 document.addEventListener('keydown', e => {
-  // Ctrl+Alt+S (layout-independent via e.code)
-  if (e.ctrlKey && e.altKey && !e.metaKey && e.code === 'KeyS') {
-    if (!_slideshowHotkeyShouldFire()) return;
-    e.preventDefault();
-    e.stopPropagation();
-    slideshowOpenGrid();
-    return;
-  }
-  // Bare S (no modifiers at all)
   if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey &&
       (e.key === 's' || e.key === 'S')) {
     if (!_slideshowHotkeyShouldFire()) return;
     e.preventDefault();
     e.stopPropagation();
     slideshowOpenGrid();
-    return;
   }
 }, true);
