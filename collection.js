@@ -278,12 +278,21 @@ function cBuildCols() {
   }
 }
 
+// (zip0236) localStorage backup key for c.json. Written on every save so
+// changes (especially deletions) survive a page reload even when the user
+// has no project folder set (writeFileToDisk silently fails in that case).
+// openCScreen reads this first; disk is a fallback for first-ever load.
+const _C_LS_KEY = 'sal-c-json';
+
 async function cSaveToFile() {
   _cMeta._salColOrder  = _cCols.slice();
   _cMeta._salHidden    = [..._cHidden];
   _cMeta._salColWidths = Object.assign({}, _cColWidths);
   _gridConfigs = _cData;
-  const ok = await writeFileToDisk('c.json', [_cMeta].concat(_cData));
+  const payload = [_cMeta].concat(_cData);
+  // Always mirror to localStorage so an FSA failure doesn't lose the edit.
+  try { localStorage.setItem(_C_LS_KEY, JSON.stringify(payload)); } catch(_) {}
+  const ok = await writeFileToDisk('c.json', payload);
   if (ok) setFsaStatus('📂 ' + (_fsaDir?_fsaDir.name:'') + ' — c.json saved ' + new Date().toTimeString().slice(0,8));
 }
 
@@ -297,15 +306,25 @@ async function openCScreen() {
   // cSaveToFile() remains the authoritative write path — if it fails the
   // existing toast warns the user.
   if (!_cLoaded) {
-    // (zip0139) Try the project folder (FSA) first; fall back to HTTP fetch
-    // when no folder is set (deployed web mode, mobile, etc.).
+    // (zip0236) Read order: localStorage backup first, then FSA folder, then
+    // HTTP fetch. The localStorage backup is written on every cSaveToFile so
+    // it holds the most recent in-app state — including deletions that
+    // didn't make it to disk because no project folder was set. If LS is
+    // absent (first-ever load on this device), fall back to disk.
     let parsed = null;
-    const dir = await _getDir();
-    if (dir) {
-      try {
-        const fh = await dir.getFileHandle('c.json');
-        parsed = JSON.parse(await (await fh.getFile()).text());
-      } catch (e) { /* fall through to HTTP */ }
+    try {
+      const raw = localStorage.getItem(_C_LS_KEY);
+      if (raw) parsed = JSON.parse(raw);
+    } catch (e) { /* corrupt LS — fall through */ }
+    if (!parsed) {
+      // (zip0139) Try the project folder (FSA) first; fall back to HTTP fetch.
+      const dir = await _getDir();
+      if (dir) {
+        try {
+          const fh = await dir.getFileHandle('c.json');
+          parsed = JSON.parse(await (await fh.getFile()).text());
+        } catch (e) { /* fall through to HTTP */ }
+      }
     }
     if (!parsed) {
       try {

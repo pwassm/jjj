@@ -135,6 +135,12 @@ function _isUserMode() {
     if (ls === 'user') { window._userModeCached = true;  return true;  }
     if (ls === 'dev')  { window._userModeCached = false; return false; }
   } catch (e) { /* localStorage unavailable */ }
+  // (zip0235) Mobile UA defaults to USER mode even on LAN IPs — phones
+  // attached to the dev's router should still see the user experience.
+  // Dev override available via ?mode=dev or the dev/user toggle badge.
+  if (_isMobileDevice()) {
+    window._userModeCached = true; return true;
+  }
   const h = (window.location.hostname || '').toLowerCase();
   // file:// has empty hostname → dev (running locally from disk)
   if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') {

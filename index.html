@@ -24,10 +24,17 @@
       if (ls === 'user') isUser = true;
       else if (ls === 'dev') isUser = false;
       else {
-        var h = (window.location.hostname || '').toLowerCase();
-        if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') isUser = false;
-        else if (/^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) isUser = false;
-        else isUser = true;
+        // (zip0235) Mobile UA defaults to USER mode, even when reached
+        // via a LAN IP — phones connected to the dev's hotspot/router
+        // should still see the user experience. Override with ?mode=dev.
+        var uaMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent || '');
+        if (uaMobile) isUser = true;
+        else {
+          var h = (window.location.hostname || '').toLowerCase();
+          if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') isUser = false;
+          else if (/^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) isUser = false;
+          else isUser = true;
+        }
       }
     }
     window._userModeCached = isUser;
@@ -773,7 +780,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0234';
+  window.HELP_VERSION_STR = 'dev0237';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];
