@@ -3385,5 +3385,45 @@
     "rank": "species",
     "common": "Astraea conehead snail",
     "extinct": false
+  },
+  {
+    "id": "chiroptera",
+    "label": "Chiroptera",
+    "kind": "taxon",
+    "parents": [
+      "mammalia"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "Bats",
+    "extinct": false
+  },
+  {
+    "id": "notworking",
+    "label": "Notworking",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "incomplete",
+    "label": "Incomplete",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "nudibranchs",
+    "label": "Nudibranchia",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "sea slug",
+    "extinct": false
   }
 ]

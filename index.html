@@ -407,6 +407,7 @@ thead th.rn              { color: #fff !important; }
   <h1>ML Table</h1>
   <span id="status">Loading…</span>
   <button class="tbtn" id="deleteCheckedBtn" title="Delete all checked rows" style="border-color:#f66;color:#f88;background:rgba(100,0,0,0.3);">✕ Delete</button>
+  <button class="tbtn" id="dupRowBtn" title="Duplicate the active (focused) row — copy with new UID, inserted just below" style="border-color:#8f8;color:#afa;background:rgba(0,80,0,0.35);">⎘ Dup</button>
   <button class="tbtn green" id="showAllBtn">Show All Cols</button>
   <button class="tbtn" id="viewsBtn" title="Saved table layouts — save, switch, delete column views" style="border-color:#fc8;color:#fc8;background:rgba(80,50,0,0.35);">⊞ Views</button>
   <button class="tbtn" id="clearFilterBtn" style="display:none;border-color:#f44;color:#f88;background:rgba(100,0,0,0.35);" title="Clear filter (also: F to open filter modal)">✕ Filter</button>
@@ -780,7 +781,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0241';
+  window.HELP_VERSION_STR = 'dev0245';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];

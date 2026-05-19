@@ -2338,6 +2338,32 @@ document.getElementById('deleteCheckedBtn').addEventListener('click', () => {
   deleteChecked();
 });
 
+// (dev0242) Duplicate the focused row. Deep-copies all fields, assigns a fresh
+// UID (max+1), refreshes DateAdded/DateModified, inserts directly below source,
+// and moves T's focus to the new row.
+document.getElementById('dupRowBtn')?.addEventListener('click', () => {
+  if (!focus || focus.r == null) { toast('No active row — click a row first', 1600); return; }
+  const di = vr(focus.r);
+  const src = data[di];
+  if (!src) { toast('Active row not found', 1600); return; }
+  const copy = JSON.parse(JSON.stringify(src));
+  let mx = 0;
+  data.forEach(rr => { const n = parseInt(rr.UID || '0', 10); if (n > mx) mx = n; });
+  copy.UID = String(mx + 1);
+  const now = isoNow();
+  copy.DateAdded = now;
+  copy.DateModified = now;
+  data.splice(di + 1, 0, copy);
+  save(); buildSort(); render();
+  const newDi = data.indexOf(copy);
+  if (newDi >= 0) {
+    const newVi = sortedIdx ? sortedIdx.indexOf(newDi) : newDi;
+    focus = { r: newVi, c: focus.c || 0 };
+    render();
+  }
+  toast('✓ Duplicated row — UID ' + copy.UID, 1400);
+});
+
 // (zip0128) Delete UID range — bulk-delete rows whose UID falls in a
 // numeric range, inclusive. Designed for purging batch-imported rows
 // (BA=1) where you've decided you don't want any of them.

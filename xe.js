@@ -92,7 +92,8 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" data-cmd="justifyCenter" title="Center">◆</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" data-cmd="insertUnorderedList" title="Bullet list">•</button>
-        <button class="te-btn" id="teCollapse" title="Insert collapsible section (▶ click to expand)">▶…</button>
+        <button class="te-btn" id="teCollapse" title="Insert empty collapsible section (opens; type a summary, then add anything inside — including images/tables)">▶…</button>
+        <button class="te-btn" id="teWrap" title="Wrap current selection in a collapsible section — turns multi-line content, pictures, or tables into a hideable block">[▶…]</button>
         <button class="te-btn" id="teImage" title="Insert image — accepts UID number or https:// URL, with size and alignment">🖼</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" id="teTextColor"  title="Slide-wide text color — choose one for the whole slide">A▾</button>
@@ -108,7 +109,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
       ">${existingText || '<h2>Title</h2><p>Your content here...</p>'}</div>
       
       <div style="padding:8px 16px; color:#556; font-size:11px; border-top:1px solid #333;">
-        Ctrl+B/I/U · Ctrl+S to save+close · Esc to close (no save) · S = slide (when defocused) · Swipe → title bar = slide · Swipe ← title bar = save+close · Shift+Enter = new collapsible
+        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · Swipe ← title bar = save+close · Shift+Enter new collapsible · Ctrl+Enter exit current collapsible (blank line after) · ⋮⋮ handle = select block for cut
       </div>
     </div>
   `;
@@ -164,11 +165,25 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor h2 { font-size:22px; color:#8ef; margin:0 0 10px; }
     #teEditor p { margin:0 0 8px; }
     #teEditor ul { margin:8px 0; padding-left:24px; }
-    #teEditor details { margin:8px 0; padding:8px; background:#111; border-left:3px solid #06f;
-      clear:both; overflow:hidden; }
-    #teEditor summary { cursor:pointer; color:#8ef; font-weight:bold; padding:4px 0; }
+    #teEditor details { margin:8px 0; padding:8px 8px 8px 28px; background:#111; border-left:3px solid #06f;
+      clear:both; overflow:hidden; position:relative; }
+    /* (dev0243) Drag/select handle on the left edge of every details. Click
+       it to select the whole <details> block — then Ctrl+X to cut, Ctrl+V
+       to paste anywhere (the paste handler preserves <details> markup).
+       contenteditable=false so the caret can never land inside the handle. */
+    .te-dh { position:absolute; left:4px; top:6px; width:18px; height:22px;
+      display:flex; align-items:center; justify-content:center;
+      cursor:grab; color:#6af; font-size:14px; user-select:none;
+      background:rgba(0,0,0,0.0); border-radius:3px; line-height:1; }
+    .te-dh:hover { background:rgba(0,80,160,0.4); color:#cdf; }
+    .te-dh:active { cursor:grabbing; }
+    #teEditor details.te-selected { outline:2px solid #4af; outline-offset:2px; }
+    #teEditor summary { cursor:pointer; color:#8ef; font-weight:bold; padding:4px 0;
+      min-height:1.2em; white-space:pre-wrap; }
+    #teEditor summary:empty::before { content:'Click to expand — type summary here'; color:#558; font-weight:normal; font-style:italic; }
     #teEditor summary::-webkit-details-marker { color:#06f; }
     #teEditor details[open] summary { margin-bottom:8px; }
+    #teEditor details > div { min-height:1.4em; padding:4px 0; }
     #teSlideContent details { clear:both; overflow:hidden; margin:8px 0; padding:8px; }
   `;
   
@@ -187,8 +202,59 @@ function gridOpenTextEditor(cellStr, row, opts) {
   // caret. Sample text was paternalistic — user knows what to type.
   document.getElementById('teCollapse').onmousedown = (e) => {
     e.preventDefault();
-    const html = '<details><summary></summary><div></div></details>';
+    // (dev0242) Insert OPEN so the body div is visible — user can drop images,
+    // tables, or paragraphs inside immediately. A trailing <p> sibling gives
+    // them somewhere to click out to. Summary stays empty; CSS placeholder
+    // ("Click to expand — type summary here") shows until user types.
+    const html = '<details open><summary></summary><div><br></div></details><p><br></p>';
     document.execCommand('insertHTML', false, html);
+    // Move caret into the new summary so user starts typing the title
+    setTimeout(() => {
+      const ed = document.getElementById('teEditor');
+      if (!ed) return;
+      const summaries = ed.querySelectorAll('details > summary');
+      const last = summaries[summaries.length - 1];
+      if (last) {
+        const r = document.createRange();
+        r.setStart(last, 0); r.collapse(true);
+        const s = window.getSelection();
+        s.removeAllRanges(); s.addRange(r);
+      }
+    }, 0);
+  };
+
+  // (dev0242) Wrap current selection in a collapsible. Lets the user take
+  // any existing content (multi-line top section, an image, a table) and
+  // turn it into a hideable block. If the selection is empty, falls back to
+  // inserting an empty collapsible (same as the ▶… button).
+  document.getElementById('teWrap').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) {
+      document.getElementById('teCollapse').onmousedown(e);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    // Guard: selection must be inside the editor
+    let container = range.commonAncestorContainer;
+    if (container.nodeType === 3) container = container.parentNode;
+    if (!ed.contains(container)) return;
+    const frag = range.extractContents();
+    const details = document.createElement('details');
+    details.setAttribute('open', '');
+    const summary = document.createElement('summary');
+    const body = document.createElement('div');
+    body.appendChild(frag);
+    details.appendChild(summary);
+    details.appendChild(body);
+    range.insertNode(details);
+    // Place caret in the summary so user types the title
+    const r = document.createRange();
+    r.setStart(summary, 0); r.collapse(true);
+    sel.removeAllRanges(); sel.addRange(r);
+    ed.focus();
   };
 
   // (zip0135) Image insertion. Opens a small modal asking for source
@@ -288,6 +354,129 @@ function gridOpenTextEditor(cellStr, row, opts) {
   // empty space inside the Xe overlay), activeElement reverts to <body> or
   // the overlay — the editor loses focus. At that point, pressing S should
   // trigger the slide preview rather than inserting a letter.
+  // (dev0245) Guard typing/Backspace/Delete/Cut against accidentally erasing
+  // a <details> block that's currently selected via its ⋮⋮ handle.
+  // Cut is allowed (the cut handler runs separately and is intentional).
+  // For other destructive keys, drop the selection and continue with a
+  // collapsed caret, so the next character lands at the end of the block
+  // instead of replacing it.
+  _ov.addEventListener('keydown', function(e) {
+    // Allow navigation, selection, copy/cut/paste, formatting, save, undo/redo
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key.length !== 1 && e.key !== 'Backspace' && e.key !== 'Delete') return;
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const frag = range.cloneContents();
+    if (!(frag.querySelector && frag.querySelector('details'))) return;
+    // Selection includes a <details>. Confirm before replacing.
+    const ok = window.confirm(
+      'Your selection includes a collapsible block. Replace it with the typed key?\n\n' +
+      'OK = replace (you can Ctrl+Z to undo)\n' +
+      'Cancel = keep the block; caret will move to after it.'
+    );
+    if (!ok) {
+      e.preventDefault(); e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      sel.collapseToEnd();
+      ed.querySelectorAll('details.te-selected').forEach(d => d.classList.remove('te-selected'));
+    }
+    // If user confirmed, let the browser proceed with default behavior.
+  }, true);
+
+  // (dev0244/0245) Capture-phase Enter handler — runs BEFORE the browser's
+  // native behavior so we can:
+  //   (a) Stop a SELECTION-REPLACE delete when the selection includes a
+  //       <details> block (e.g. user clicked the ⋮⋮ handle to select it
+  //       and then hit Enter — without this guard, contenteditable would
+  //       delete the whole block).
+  //   (b) Move the caret out of <summary> on Enter (Chrome's native handler
+  //       otherwise toggles parent details and discards our caret-move).
+  //   (c) Ctrl+Enter / Alt+Enter: exit the current <details> by inserting
+  //       a fresh empty <p> AFTER the enclosing details and placing the
+  //       caret there. This is the supported way to put a blank row
+  //       between detail blocks.
+  _ov.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' || e.metaKey) return;
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+
+    // (a) Selection contains a <details>? Don't let Enter replace-delete it.
+    if (!sel.isCollapsed) {
+      // Build a list of <details> elements inside the range
+      const frag = range.cloneContents();
+      if (frag.querySelector && frag.querySelector('details')) {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        // Collapse to AFTER the end of the selection and insert a paragraph
+        // so the user gets the new line they intended, without losing data.
+        const endContainer = range.endContainer;
+        // Find the nearest top-level <details> ancestor of the end of the
+        // selection, then place the caret just after it.
+        let anchor = endContainer;
+        while (anchor && anchor !== ed) {
+          if (anchor.nodeType === 1 && anchor.tagName === 'DETAILS' && anchor.parentNode === ed) break;
+          anchor = anchor.parentNode;
+        }
+        if (anchor && anchor.parentNode === ed) {
+          const p = document.createElement('p');
+          p.appendChild(document.createElement('br'));
+          ed.insertBefore(p, anchor.nextSibling);
+          const r = document.createRange();
+          r.setStart(p, 0); r.collapse(true);
+          sel.removeAllRanges(); sel.addRange(r);
+          ed.querySelectorAll('details.te-selected').forEach(d => d.classList.remove('te-selected'));
+        } else {
+          // Fallback: just collapse the selection without deleting
+          sel.collapseToEnd();
+        }
+        return;
+      }
+    }
+
+    // (c) Ctrl+Enter / Alt+Enter — exit the enclosing <details>
+    if ((e.ctrlKey || e.altKey) && !e.shiftKey) {
+      let n = range.startContainer;
+      let details = null;
+      while (n && n !== ed) {
+        if (n.nodeType === 1 && n.tagName === 'DETAILS') { details = n; break; }
+        n = n.parentNode;
+      }
+      if (details && details.parentNode === ed) {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        const p = document.createElement('p');
+        p.appendChild(document.createElement('br'));
+        ed.insertBefore(p, details.nextSibling);
+        const r = document.createRange();
+        r.setStart(p, 0); r.collapse(true);
+        sel.removeAllRanges(); sel.addRange(r);
+        return;
+      }
+    }
+
+    // (b) Enter inside <summary> → into body
+    if (!e.ctrlKey && !e.altKey) {
+      let n = range.startContainer;
+      let summary = null, details = null;
+      while (n && n !== ed && n !== document.body) {
+        if (n.nodeType === 1) {
+          if (n.tagName === 'SUMMARY' && !summary) summary = n;
+          if (n.tagName === 'DETAILS' && !details) details = n;
+        }
+        n = n.parentNode;
+      }
+      if (summary && details && ed.contains(summary)) {
+        _teHandleEnterInSummary(e, summary, details, ed);
+      }
+    }
+  }, true);
+
   _ov.addEventListener('keydown', function(e) {
     // (zip0182) Esc on Xe = blur whatever is focused (editor or overlay).
     // Does NOT close Xe — Xe is closed by the X button, the slide-preview
@@ -365,7 +554,18 @@ function gridOpenTextEditor(cellStr, row, opts) {
   if (titleBar) {
     let sStart = null;
     titleBar.addEventListener('pointerdown', e => {
-      sStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+      // (dev0243) Strict scope: only treat as a swipe start if the pointerdown
+      // landed on the title bar itself or a non-interactive span inside it.
+      // Buttons (Save/Close/Slide/etc.) handle their own clicks and must not
+      // double-fire as a swipe. The editor/toolbar/footer never get here
+      // because the listener is attached to the title bar only — but this
+      // check defends against rare bubbling-from-popup edge cases too.
+      const t = e.target;
+      if (!t || (t.tagName === 'BUTTON' || (t.closest && t.closest('button')))) {
+        sStart = null;
+        return;
+      }
+      sStart = { x: e.clientX, y: e.clientY, t: Date.now(), tgt: t };
     });
     titleBar.addEventListener('pointerup', e => {
       if (!sStart) return;
@@ -424,31 +624,10 @@ function gridOpenTextEditor(cellStr, row, opts) {
       }
 
       if (summary) {
-        // Cursor is inside <summary>
-        e.preventDefault();
-        if (e.shiftKey) {
-          // Shift+Enter → multi-line summary (insert BR)
-          document.execCommand('insertLineBreak', false, null);
-        } else {
-          // Enter → move into the body div (first child of details that isn't summary)
-          const bodyEl = details && Array.from(details.children).find(c => c.tagName !== 'SUMMARY');
-          if (bodyEl) {
-            const r = document.createRange();
-            r.setStart(bodyEl, 0);
-            r.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(r);
-            // Ensure body div is not empty so caret is visible
-            if (!bodyEl.firstChild) {
-              bodyEl.appendChild(document.createElement('br'));
-              r.setStart(bodyEl, 0);
-              r.collapse(true);
-              sel.removeAllRanges();
-              sel.addRange(r);
-            }
-          }
-        }
-        return;
+        // (dev0244) Delegate to the shared handler; the early capture-phase
+        // listener on the overlay also calls into this path. Kept here as
+        // a defense for browsers where the capture listener might be bypassed.
+        if (_teHandleEnterInSummary(e, summary, details, editor)) return;
       }
 
       if (!details && e.shiftKey) {
@@ -476,6 +655,46 @@ function gridOpenTextEditor(cellStr, row, opts) {
     // Allow Ctrl+B, Ctrl+I, Ctrl+U to work naturally
   });
 
+  // (dev0242) Paste handler that preserves <details> / hidden content.
+  // When the user cuts content containing collapsed <details> from inside
+  // the editor, the clipboard's text/html holds the full markup — but
+  // contenteditable's default paste sometimes drops uncommon tags. Bypass
+  // the default by inserting clipboard HTML verbatim. Also: when cutting,
+  // make sure the selection's serialized HTML includes the inner DOM of
+  // any closed <details> in range (browsers already do this for the
+  // Selection API, but we force a clean serialization on cut to be safe).
+  editor.addEventListener('paste', e => {
+    const cd = e.clipboardData || window.clipboardData;
+    if (!cd) return;
+    const html = cd.getData('text/html');
+    if (html && /<details[\s>]/i.test(html)) {
+      e.preventDefault();
+      // Strip <html>/<body>/<meta> wrappers some browsers add
+      let frag = html.replace(/^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/gi, '');
+      // Strip Office/Google clipboard junk classes but keep the structure
+      frag = frag.replace(/<!--[\s\S]*?-->/g, '');
+      document.execCommand('insertHTML', false, frag);
+    }
+    // Otherwise: let the browser handle normally (plain text or simple html)
+  });
+  // On cut, force-serialize the full selection (including closed <details>
+  // contents) into text/html. The Selection API includes hidden DOM in the
+  // range so this is generally already correct, but we set it explicitly so
+  // a later paste anywhere gets the full structure.
+  editor.addEventListener('cut', e => {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const container = document.createElement('div');
+    container.appendChild(range.cloneContents());
+    if (!/<details[\s>]/i.test(container.innerHTML)) return; // no hidden content involved
+    e.preventDefault();
+    const cd = e.clipboardData || window.clipboardData;
+    cd.setData('text/html', container.innerHTML);
+    cd.setData('text/plain', container.textContent);
+    range.deleteContents();
+  });
+
   // (zip0136) Double-click on an inserted image opens the image modal
   // pre-filled with the image's current src and size, so the user can
   // resize, re-align, or replace it. The original <img> is removed and
@@ -486,9 +705,18 @@ function gridOpenTextEditor(cellStr, row, opts) {
     teEditImage(e.target);
   });
   
-  // Click outside box to close
+  // (dev0243) Click outside box to close — but only on a clean click,
+  // not a drag-release that started inside the editor. Without this guard,
+  // a R→L mouse drag inside the text area that releases on the overlay
+  // strip beyond the box (right:340px gap) used to fire as an outside
+  // click and close Xe.
+  let _ovDownTarget = null;
+  _textEditorOverlay.addEventListener('pointerdown', e => { _ovDownTarget = e.target; });
   _textEditorOverlay.addEventListener('click', e => {
-    if (e.target === _textEditorOverlay) textEditorClose();
+    if (e.target === _textEditorOverlay && _ovDownTarget === _textEditorOverlay) {
+      textEditorClose();
+    }
+    _ovDownTarget = null;
   });
   
   // Focus editor after a short delay
@@ -508,6 +736,22 @@ function gridOpenTextEditor(cellStr, row, opts) {
     // (zip0134) Clean stray empty <details> on open so the user doesn't see
     // the residual caret/dropdown UI from previously saved malformed content.
     _sanitizeTextEditorHtml(editor);
+    // (dev0243) Add a left-edge selection handle to every <details> so
+    // users can click ⋮⋮ to select the entire block, then Ctrl+X / Ctrl+V.
+    _teEnsureDetailsHandles(editor);
+    // Click on a handle selects its <details> for cut/paste.
+    editor.addEventListener('click', e => {
+      const h = e.target && e.target.closest && e.target.closest('.te-dh');
+      if (!h) return;
+      e.preventDefault(); e.stopPropagation();
+      const d = h.closest('details');
+      if (d) _teSelectDetails(d);
+    });
+    // Re-run handle injection after any DOM change (typing creates new
+    // <details> via the toolbar, paste injects more, etc.).
+    const mo = new MutationObserver(() => _teEnsureDetailsHandles(editor));
+    mo.observe(editor, { childList: true, subtree: true });
+    editor._teHandleObserver = mo;
     // (zip0137) If saved content has a .te-slide wrapper with a background,
     // paint the editor surface so the user sees the slide colors while editing.
     teSyncEditorBgFromWrapper();
@@ -580,6 +824,101 @@ function _sanitizeTextEditorHtml(rootEl) {
     const summaries = d.querySelectorAll(':scope > summary');
     if (summaries.length === 0) d.remove();
   });
+  // (dev0243) Strip transient drag-handles before content is read for save —
+  // handles are UI chrome, not part of the saved ftext.
+  rootEl.querySelectorAll('.te-dh').forEach(h => h.remove());
+  rootEl.querySelectorAll('details.te-selected').forEach(d => d.classList.remove('te-selected'));
+}
+
+// (dev0243) Ensure every <details> in the editor has a small left-edge
+// handle the user can click to select the whole block (for cut/paste).
+// Idempotent — safe to call after insertions, pastes, or sanitize calls.
+function _teEnsureDetailsHandles(rootEl) {
+  if (!rootEl) return;
+  rootEl.querySelectorAll('details').forEach(d => {
+    if (d.querySelector(':scope > .te-dh')) return;
+    const h = document.createElement('span');
+    h.className = 'te-dh';
+    h.setAttribute('contenteditable', 'false');
+    h.setAttribute('title', 'Click to select this block — then Ctrl+X to cut, Ctrl+V to paste');
+    h.textContent = '⋮⋮';
+    d.insertBefore(h, d.firstChild);
+  });
+}
+
+// (dev0244) Move the caret out of a <summary> and into its parent <details>
+// body on Enter. Returns true if handled. Uses requestAnimationFrame so the
+// selection survives the browser's native summary/Enter handling (which on
+// Chrome can otherwise toggle the details open/closed and discard our move).
+function _teHandleEnterInSummary(e, summary, details, editor) {
+  if (!summary || !details) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+  if (e.shiftKey) {
+    document.execCommand('insertLineBreak', false, null);
+    return true;
+  }
+
+  // Force the details open so the body is layout-visible and can receive caret
+  if (!details.hasAttribute('open')) details.setAttribute('open', '');
+
+  // Ensure a body <div> exists with at least a <br> so the caret has a target
+  let bodyEl = Array.from(details.children).find(c => c.tagName !== 'SUMMARY'
+    && !(c.classList && c.classList.contains('te-dh')));
+  if (!bodyEl) {
+    bodyEl = document.createElement('div');
+    bodyEl.appendChild(document.createElement('br'));
+    details.appendChild(bodyEl);
+  }
+  if (!bodyEl.firstChild) bodyEl.appendChild(document.createElement('br'));
+
+  // Defer the caret move to the next frame so any native Enter-in-summary
+  // behavior (toggle, focus shuffle) completes first, then we win.
+  const place = () => {
+    try {
+      // Make body explicitly editable (defense — should already inherit)
+      if (editor && editor.isContentEditable) {
+        const sel = window.getSelection();
+        const r = document.createRange();
+        // Prefer placing inside the first text node if present, else before <br>
+        const first = bodyEl.firstChild;
+        if (first && first.nodeType === 3) {
+          r.setStart(first, 0);
+        } else {
+          r.setStart(bodyEl, 0);
+        }
+        r.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(r);
+        // Belt and braces: also use Selection.collapse
+        if (typeof sel.collapse === 'function') sel.collapse(bodyEl, 0);
+        editor.focus();
+      }
+    } catch (_) {}
+  };
+  requestAnimationFrame(place);
+  // Also try immediately in case rAF is starved
+  place();
+  return true;
+}
+
+// Select the entire <details> element so Ctrl+X / Ctrl+C captures it
+// (including all hidden inner content).
+function _teSelectDetails(detailsEl) {
+  if (!detailsEl) return;
+  const editor = document.getElementById('teEditor');
+  if (editor) {
+    editor.querySelectorAll('details.te-selected').forEach(d => d.classList.remove('te-selected'));
+  }
+  detailsEl.classList.add('te-selected');
+  const range = document.createRange();
+  range.selectNode(detailsEl);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  if (editor) editor.focus();
 }
 
 // (zip0137) Slide-wide color picker. Two modes: 'text' sets the slide's
@@ -1015,6 +1354,8 @@ function textEditorClose() {
     window._setFocusToRow(_textEditorRow);
   }
   if (_textEditorOverlay) {
+    const ed = _textEditorOverlay.querySelector('#teEditor');
+    if (ed && ed._teHandleObserver) { ed._teHandleObserver.disconnect(); ed._teHandleObserver = null; }
     _textEditorOverlay.remove();
     _textEditorOverlay = null;
   }
