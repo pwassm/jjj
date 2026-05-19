@@ -887,12 +887,27 @@ function gridOpenFullscreen(row, contained) {
         // (zip0168) Linkify URL patterns at render time so old ftext also
         // gets clickable links, not just freshly-pasted articles.
         const ftLink = (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
-        const _aStyle = '<style>a{color:#5bf!important;}</style>';
+        const ftLink = (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
+        // (dev0248) Iframe gets its own document — global CSS from index.html
+        // does NOT reach it. Inject the cross-context rules explicitly:
+        //   • .te-cut → hidden (matches the AHK-style "/*" cut behavior)
+        //   • <summary> text + anchor children → inherit surrounding text
+        //     color so a summary whose only child is an <a> doesn't render
+        //     in the browser-default link color (which can be dark/invisible
+        //     against dark slide backgrounds or visited-link purple/black).
+        //     `inherit` adapts to both light (default) and dark slide bgs.
+        const _ftStyles =
+            'a{color:#5bf!important;}'
+          + '.te-cut{display:none!important;}'
+          + 'summary{color:inherit!important;background:transparent!important;font-weight:bold;}'
+          + 'summary a,summary a:visited{color:inherit!important;text-decoration:underline;}';
+        const _aStyle = '<style>' + _ftStyles + '</style>';
         const html = ftLink.includes('<html')
           ? ftLink.replace(/<\/head>/i, _aStyle + '</head>')
           : '<!DOCTYPE html><html><head><meta charset="UTF-8">'
             + '<style>body{font-family:Arial,sans-serif;padding:20px;line-height:1.5;}'
-            + 'a{color:#5bf;}</style></head>'
+            + _ftStyles
+            + '</style></head>'
             + '<body>' + ftLink + '</body></html>';
         loadIframe(html);
       }
