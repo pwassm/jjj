@@ -164,6 +164,30 @@ function _markUserModeClass() {
 }
 _markUserModeClass();
 
+// (dev0249) Deep-link mode classes — set BEFORE first paint so the
+// table/toolbar chrome never flashes into view while we wait for data.
+// CSS rules tied to these classes hide the relevant surfaces:
+//   html.deep-uid   — any ?i=NNN link (hides T chrome during routing)
+//   html.locked-mode — ?i=NNN without /unlock (hides nav permanently;
+//                      viewer can only see the one item)
+(function _markDeepLinkClass() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const raw = (p.get('i') || '').trim();
+    if (!raw) return;
+    const hasUnlock = raw.toLowerCase().endsWith('/unlock');
+    const uid = hasUnlock ? raw.slice(0, raw.lastIndexOf('/')).trim() : raw;
+    if (!uid) return;
+    document.documentElement.classList.add('deep-uid');
+    if (!hasUnlock) {
+      document.documentElement.classList.add('locked-mode');
+      window._lockedUid = uid;
+    }
+    window._deepUid = uid;
+    window._deepUnlocked = hasUnlock;
+  } catch (e) { /* URL parse error — fall through to normal boot */ }
+})();
+
 // ── (zip0154) Dev/User mode toggle badge ─────────────────────────────────────
 // The bottom-right badge used to be a non-interactive version label. It's
 // now a button that:
@@ -290,20 +314,31 @@ function _routeInitialScreen() {
   // (V screen). Restored from a past github version. Works in both dev
   // and user mode. We open G first so the V overlay has a sensible
   // background to fall back to when the user closes it.
-  const deepUid = params.get('i');
+  // (dev0249) Deep-link state — captured earlier in _markDeepLinkClass.
+  // `_deepUid` is the bare UID (slash-suffix stripped); `_lockedUid` is
+  // set iff the link did NOT end in /unlock.
+  const deepUid = window._deepUid || params.get('i') || null;
+  const isLocked = !!window._lockedUid;
   // (zip0141) In user mode, default to G regardless of device — the user
   // version doesn't have a meaningful T view.
   if (!target && (_isMobileDevice() || _isUserMode() || deepUid)) target = 'g';
   if (!target) return;
   setTimeout(() => {
-    if (target === 'g') {
+    // (dev0249) In LOCKED deep-link mode, skip opening G — V will render
+    // over a plain black backdrop and the viewer can't navigate away.
+    // In UNLOCKED deep-link mode, still skip G initially — V opens
+    // directly, eliminating the brief "flash of G" before V mounts.
+    // The user can still get to G by closing V (vpClose's no-op return-
+    // to-grid behavior).
+    if (deepUid) {
+      // skip gridShow / openCScreen — go straight to V
+    } else if (target === 'g') {
       if (typeof gridShow === 'function') gridShow();
     } else if (target === 'c') {
       // On mobile or in user mode, "C" means the friendly config picker.
       if (_isMobileDevice() || _isUserMode()) _showMobileCPicker();
       else if (typeof openCScreen === 'function') openCScreen();
     }
-    // (zip0142) After G is up, resolve the UID and open V on top.
     if (deepUid) _openItemByUid(deepUid);
   }, 200);
 }
@@ -315,17 +350,32 @@ function _routeInitialScreen() {
 function _openItemByUid(uid) {
   const want = String(uid).trim();
   if (!want) return;
-  if (typeof data === 'undefined' || !Array.isArray(data)) return;
-  const row = data.find(r => String(r.UID) === want);
-  if (!row) {
-    if (typeof toast === 'function') toast('No item with UID ' + want, 2000);
-    return;
+  // (dev0249) Poll for data: on fresh page loads, `data` may still be
+  // loading when this runs. Retry every 100ms up to 5 seconds before
+  // giving up. Without this, the first call sees no data and silently
+  // returns — leaving a blank screen on slow connections.
+  const startedAt = Date.now();
+  function tryOpen() {
+    if (typeof data === 'undefined' || !Array.isArray(data) || data.length === 0) {
+      if (Date.now() - startedAt > 5000) {
+        if (typeof toast === 'function') toast('Could not load data — check your connection', 3000);
+        return;
+      }
+      setTimeout(tryOpen, 100);
+      return;
+    }
+    const row = data.find(r => String(r.UID) === want);
+    if (!row) {
+      if (typeof toast === 'function') toast('No item with UID ' + want, 2000);
+      return;
+    }
+    _lastGridRow = row;
+    // Tick for any in-flight paint before stacking V on top.
+    setTimeout(() => {
+      if (typeof gridOpenFullscreen === 'function') gridOpenFullscreen(row);
+    }, 60);
   }
-  _lastGridRow = row;
-  // Give the grid a tick to finish painting before stacking V on top.
-  setTimeout(() => {
-    if (typeof gridOpenFullscreen === 'function') gridOpenFullscreen(row);
-  }, 120);
+  tryOpen();
 }
 
 // (zip0140) Mobile-friendly config picker — replaces the full C table view

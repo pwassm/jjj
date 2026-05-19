@@ -887,26 +887,31 @@ function gridOpenFullscreen(row, contained) {
         // (zip0168) Linkify URL patterns at render time so old ftext also
         // gets clickable links, not just freshly-pasted articles.
         const ftLink = (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
-        // (dev0248) Iframe gets its own document — global CSS from index.html
+        // (dev0249) Iframe gets its own document — global CSS from index.html
         // does NOT reach it. Inject the cross-context rules explicitly:
         //   • .te-cut → hidden (matches the AHK-style "/*" cut behavior)
-        //   • <summary> text + anchor children → inherit surrounding text
-        //     color so a summary whose only child is an <a> doesn't render
-        //     in the browser-default link color (which can be dark/invisible
-        //     against dark slide backgrounds or visited-link purple/black).
-        //     `inherit` adapts to both light (default) and dark slide bgs.
+        //   • <summary> + anchor children → a STRONG explicit color (not
+        //     inherit) so a summary whose only child is an <a> stays
+        //     readable even when the slide's .te-slide wrapper paints a
+        //     dark background (inherit would pick up the body's default
+        //     black, which is invisible on dark slides). Royal blue
+        //     contrasts well on both light and dark backgrounds.
         const _ftStyles =
             'a{color:#5bf!important;}'
           + '.te-cut{display:none!important;}'
-          + 'summary{color:inherit!important;background:transparent!important;font-weight:bold;}'
-          + 'summary a,summary a:visited{color:inherit!important;text-decoration:underline;}';
+          + 'summary{color:#2563eb!important;background:transparent!important;font-weight:bold;}'
+          + 'summary a,summary a:visited{color:#2563eb!important;text-decoration:underline;}';
         const _aStyle = '<style>' + _ftStyles + '</style>';
+        // (dev0249) Body scaffold for fragment-style ftext: cap content at
+        // ~880px and auto-center so desktop has reasonable side margins
+        // (~25% of a 1920px screen) without forcing tight margins on mobile.
+        const _bodyCss = 'body{font-family:Arial,sans-serif;line-height:1.5;'
+          + 'max-width:880px;margin:0 auto;padding:24px;'
+          + 'box-sizing:border-box;}';
         const html = ftLink.includes('<html')
           ? ftLink.replace(/<\/head>/i, _aStyle + '</head>')
           : '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-            + '<style>body{font-family:Arial,sans-serif;padding:20px;line-height:1.5;}'
-            + _ftStyles
-            + '</style></head>'
+            + '<style>' + _bodyCss + _ftStyles + '</style></head>'
             + '<body>' + ftLink + '</body></html>';
         loadIframe(html);
       }
@@ -1161,6 +1166,14 @@ function gridOpenFullscreen(row, contained) {
 }
 
 function vpClose() {
+  // (dev0249) Locked-link mode: V was opened via ?i=NNN without /unlock.
+  // Refuse to close — toast a hint about the unlock URL instead. Viewer
+  // can only see the one item; no path to T/G/C.
+  if (window._lockedUid) {
+    if (typeof toast === 'function')
+      toast('Shared link — add /unlock to the URL for full access', 2200);
+    return;
+  }
   // (zip0186) Close Annotate panel alongside Ie/V — it auto-opened with them,
   // so it should close too when returning to T. Arrow-hop navigation will
   // reopen A immediately in the next editor, so no visible gap.

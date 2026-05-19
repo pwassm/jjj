@@ -319,6 +319,24 @@ td.editing input {
    editor stylesheet re-shows it (faded with a banner) for editing. */
 .te-cut { display: none !important; }
 #teEditor .te-cut { display: block !important; }
+
+/* (dev0249) Deep-link routing classes. Set by boot.js BEFORE first paint
+   based on ?i=NNN, so the table view never flashes while we wait for
+   data load + V mount. .deep-uid hides T chrome; .locked-mode adds
+   permanent hiding of nav surfaces (?i=NNN without /unlock). */
+html.deep-uid #toolbar,
+html.deep-uid #ctoolbar,
+html.deep-uid #wrap,
+html.deep-uid #browseOverlay { display: none !important; }
+html.deep-uid { background: #000 !important; }
+
+html.locked-mode #gridOverlay,
+html.locked-mode #ver-badge,
+html.locked-mode #uid-badge,
+html.locked-mode #mobileToCBtn,
+html.locked-mode #gridControls,
+html.locked-mode #gridHmBtn,
+html.locked-mode #vp-close { display: none !important; }
 /* (dev0246) Make <summary> readable in every render context. Without
    explicit color, a summary whose only child is an <a> can render as
    black-on-dark (browser default link color). */
@@ -794,7 +812,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0248';
+  window.HELP_VERSION_STR = 'dev0249';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];
