@@ -94,6 +94,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" data-cmd="insertUnorderedList" title="Bullet list">•</button>
         <button class="te-btn" id="teCollapse" title="Insert empty collapsible section (opens; type a summary, then add anything inside — including images/tables)">▶…</button>
         <button class="te-btn" id="teWrap" title="Wrap current selection in a collapsible section — turns multi-line content, pictures, or tables into a hideable block">[▶…]</button>
+        <button class="te-btn" id="teCut" title="Park everything from the cursor down — wrapped in a hidden div that's invisible when rendered (slide, grid, exports) but still editable here in Xe. Click on the red banner above the parked block to unpark it.">✂ Cut</button>
         <button class="te-btn" id="teImage" title="Insert image — accepts UID number or https:// URL, with size and alignment">🖼</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" id="teTextColor"  title="Slide-wide text color — choose one for the whole slide">A▾</button>
@@ -161,6 +162,10 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor { user-select:text !important; -webkit-user-select:text !important; }
     #teEditor * { user-select:text !important; -webkit-user-select:text !important; }
     #teEditor a, #teSlideContent a { color:#5bf !important; }
+    /* (dev0246) Summary text/links — explicit color so anchors-only summaries
+       don't render as black-on-dark in any preview context. */
+    #teEditor summary, #teEditor summary a,
+    #teSlideContent summary, #teSlideContent summary a { color:#8ef !important; }
     #teEditor h1 { font-size:28px; color:#ff8; margin:0 0 12px; }
     #teEditor h2 { font-size:22px; color:#8ef; margin:0 0 10px; }
     #teEditor p { margin:0 0 8px; }
@@ -178,6 +183,21 @@ function gridOpenTextEditor(cellStr, row, opts) {
     .te-dh:hover { background:rgba(0,80,160,0.4); color:#cdf; }
     .te-dh:active { cursor:grabbing; }
     #teEditor details.te-selected { outline:2px solid #4af; outline-offset:2px; }
+    /* (dev0247) Parked / hidden-from-render content. Default rule below
+       hides it everywhere; the Xe-editor override re-shows it (faded with
+       a banner) so the user can still see and edit it. */
+    #teEditor .te-cut {
+      display:block; opacity:0.55;
+      border-top:2px dashed #f88; margin-top:14px; padding:22px 0 0;
+      position:relative;
+    }
+    #teEditor .te-cut::before {
+      content:'✂ Parked — hidden from render. Click here to unpark.';
+      position:absolute; top:-12px; left:8px;
+      background:#3a0a0a; color:#fcc; border:1px solid #f88;
+      padding:2px 8px; border-radius:4px; font-size:10px;
+      font-family:monospace; cursor:pointer; user-select:none;
+    }
     #teEditor summary { cursor:pointer; color:#8ef; font-weight:bold; padding:4px 0;
       min-height:1.2em; white-space:pre-wrap; }
     #teEditor summary:empty::before { content:'Click to expand — type summary here'; color:#558; font-weight:normal; font-style:italic; }
@@ -222,6 +242,73 @@ function gridOpenTextEditor(cellStr, row, opts) {
       }
     }, 0);
   };
+
+  // (dev0247) ✂ Cut — park everything from the caret to the end of the
+  // editor in a <div class="te-cut">. Hidden in every render context
+  // (CSS sets display:none for .te-cut globally); shown faded with a
+  // banner inside #teEditor so the user can still see/edit/recover it.
+  document.getElementById('teCut').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) { ed.focus(); return; }
+    const range = sel.getRangeAt(0);
+    // If already inside a .te-cut, no-op
+    let n = range.startContainer;
+    while (n && n !== ed) {
+      if (n.nodeType === 1 && n.classList && n.classList.contains('te-cut')) {
+        if (typeof toast === 'function') toast('Already inside a parked block', 1200);
+        return;
+      }
+      n = n.parentNode;
+    }
+    // Build a range from the caret to the end of the editor
+    const cut = document.createRange();
+    cut.setStart(range.startContainer, range.startOffset);
+    cut.setEnd(ed, ed.childNodes.length);
+    const frag = cut.extractContents();
+    const wrap = document.createElement('div');
+    wrap.className = 'te-cut';
+    wrap.appendChild(frag);
+    // If wrap is effectively empty, drop in a placeholder so the user
+    // sees the parked-area banner.
+    if (!wrap.textContent.trim() && !wrap.querySelector('img,video,details,table')) {
+      const p = document.createElement('p');
+      p.appendChild(document.createElement('br'));
+      wrap.appendChild(p);
+    }
+    cut.insertNode(wrap);
+    // Place caret just BEFORE the parked block so the user can keep writing
+    // above it. Create a fresh <p> if there's nothing above.
+    if (!wrap.previousSibling) {
+      const p = document.createElement('p');
+      p.appendChild(document.createElement('br'));
+      ed.insertBefore(p, wrap);
+    }
+    const before = wrap.previousSibling;
+    const r = document.createRange();
+    r.selectNodeContents(before);
+    r.collapse(false);
+    sel.removeAllRanges(); sel.addRange(r);
+    ed.focus();
+  };
+
+  // Click the red "Parked" banner to unpark — unwrap the .te-cut div in
+  // place, restoring its children as direct children of the editor.
+  document.getElementById('teEditor').addEventListener('click', e => {
+    const cut = e.target && e.target.classList && e.target.classList.contains('te-cut')
+      ? e.target : null;
+    if (!cut) return;
+    // Only the banner area (the ::before pseudo) is clickable for unpark —
+    // detect by checking the click Y is within the banner band (top 24px).
+    const rect = cut.getBoundingClientRect();
+    if (e.clientY - rect.top > 24) return;
+    e.preventDefault(); e.stopPropagation();
+    while (cut.firstChild) cut.parentNode.insertBefore(cut.firstChild, cut);
+    cut.remove();
+    if (typeof toast === 'function') toast('Unparked', 900);
+  });
 
   // (dev0242) Wrap current selection in a collapsible. Lets the user take
   // any existing content (multi-line top section, an image, a table) and
@@ -354,6 +441,95 @@ function gridOpenTextEditor(cellStr, row, opts) {
   // empty space inside the Xe overlay), activeElement reverts to <body> or
   // the overlay — the editor loses focus. At that point, pressing S should
   // trigger the slide preview rather than inserting a letter.
+  // (dev0246) Guard Backspace/Delete against merging across a <details>
+  // boundary. Without this, hitting Backspace on the empty <p>/<li> below
+  // a closed (visually collapsed) <details> silently destroys the details
+  // and all its hidden inner content — the worst kind of data loss because
+  // the details was invisible at the moment of deletion.
+  //
+  // New behavior: if you Backspace at the start of an empty block whose
+  // previous sibling is a <details>, the empty block is removed (your
+  // intent) and the caret is placed at the END of the details body. If
+  // the block is NOT empty, we block the merge entirely — the caret moves
+  // into the details body so you can continue editing there.
+  // Symmetric handling for Delete at end of a block whose next sibling
+  // is a <details>.
+  _ov.addEventListener('keydown', function(e) {
+    if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+
+    // Find the immediate-child-of-editor block containing the caret
+    let block = range.startContainer;
+    if (block.nodeType === 3) block = block.parentNode;
+    while (block && block.parentNode !== ed && block !== ed) block = block.parentNode;
+    if (!block || block === ed) return;
+
+    // Caret at start of block?
+    const atStart = (() => {
+      if (range.startOffset !== 0) return false;
+      let n = range.startContainer;
+      while (n && n !== block) {
+        if (n.previousSibling) return false;
+        n = n.parentNode;
+      }
+      return true;
+    })();
+    // Caret at end of block?
+    const atEnd = (() => {
+      let n = range.startContainer;
+      if (n.nodeType === 3 && range.startOffset !== n.length) return false;
+      if (n.nodeType === 1 && range.startOffset !== n.childNodes.length) return false;
+      while (n && n !== block) {
+        if (n.nextSibling) return false;
+        n = n.parentNode;
+      }
+      return true;
+    })();
+
+    function placeInDetails(d, end) {
+      if (!d.hasAttribute('open')) d.setAttribute('open', '');
+      const body = Array.from(d.children).find(c =>
+        c.tagName !== 'SUMMARY' && !(c.classList && c.classList.contains('te-dh')));
+      if (!body) return;
+      const r = document.createRange();
+      if (end) { r.selectNodeContents(body); r.collapse(false); }
+      else { r.setStart(body, 0); r.collapse(true); }
+      sel.removeAllRanges(); sel.addRange(r);
+    }
+    function blockIsEmpty(b) {
+      const txt = (b.textContent || '').replace(/​/g, '').trim();
+      if (txt) return false;
+      // No images / other media either
+      if (b.querySelector && b.querySelector('img,video,table,details')) return false;
+      return true;
+    }
+
+    if (e.key === 'Backspace' && atStart) {
+      const prev = block.previousElementSibling;
+      if (prev && prev.tagName === 'DETAILS') {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        const wasEmpty = blockIsEmpty(block);
+        if (wasEmpty) block.remove();
+        placeInDetails(prev, true /* end */);
+      }
+    } else if (e.key === 'Delete' && atEnd) {
+      const next = block.nextElementSibling;
+      if (next && next.tagName === 'DETAILS') {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        const wasEmpty = blockIsEmpty(block);
+        if (wasEmpty) block.remove();
+        placeInDetails(next, false /* start */);
+      }
+    }
+  }, true);
+
   // (dev0245) Guard typing/Backspace/Delete/Cut against accidentally erasing
   // a <details> block that's currently selected via its ⋮⋮ handle.
   // Cut is allowed (the cut handler runs separately and is intentional).

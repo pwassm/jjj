@@ -315,6 +315,19 @@ td.editing input {
   clear: both;
   overflow: hidden;
 }
+/* (dev0247) Parked content — hidden in every render context. The Xe
+   editor stylesheet re-shows it (faded with a banner) for editing. */
+.te-cut { display: none !important; }
+#teEditor .te-cut { display: block !important; }
+/* (dev0246) Make <summary> readable in every render context. Without
+   explicit color, a summary whose only child is an <a> can render as
+   black-on-dark (browser default link color). */
+#teEditor summary, #teEditor summary a,
+#teSlideContent summary, #teSlideContent summary a,
+.grid-cell summary, .grid-cell summary a,
+#gridFsContent summary, #gridFsContent summary a {
+  color: #8ef !important;
+}
 /* Same for centered-image wrapper divs we generate */
 #teEditor div[style*="text-align:center"],
 #teSlideContent div[style*="text-align:center"],
@@ -781,7 +794,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0245';
+  window.HELP_VERSION_STR = 'dev0247';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];
