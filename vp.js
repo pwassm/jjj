@@ -887,7 +887,6 @@ function gridOpenFullscreen(row, contained) {
         // (zip0168) Linkify URL patterns at render time so old ftext also
         // gets clickable links, not just freshly-pasted articles.
         const ftLink = (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
-        const ftLink = (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
         // (dev0248) Iframe gets its own document — global CSS from index.html
         // does NOT reach it. Inject the cross-context rules explicitly:
         //   • .te-cut → hidden (matches the AHK-style "/*" cut behavior)
