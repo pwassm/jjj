@@ -398,6 +398,8 @@ function gridShow() {
               window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
             } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
               window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+            } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
+              window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
             }
           }, 100);
         } else if (row.link && !isImgLink) {
@@ -591,6 +593,8 @@ function gridUpdateCell(cellStr, row) {
           window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
         } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
           window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+        } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
+          window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
         }
       }, 50);
     } else if (row.link && !isImgLink) {

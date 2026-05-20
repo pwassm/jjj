@@ -367,9 +367,34 @@ async function _saveToDeletedJson(row) {
   } catch(e) { return false; }
 }
 
-function setFsaStatus(m) { document.getElementById('fsa-status').textContent = m || 'No project folder set'; }
+// (zip0251) `warn` flag adds the red-pulse class — used when FSA permission
+// has silently lapsed so the user can't miss it. Without this signal,
+// writes were silently going to localStorage only and edits looked saved.
+function setFsaStatus(m, warn) {
+  const el = document.getElementById('fsa-status');
+  if (!el) return;
+  el.textContent = m || 'No project folder set';
+  if (warn) el.classList.add('warn'); else el.classList.remove('warn');
+}
 // Auto-restore FSA on page load
-(async()=>{ try { const s=await _fsaLoad(); if(s){ const p=await s.queryPermission({mode:'readwrite'}); if(p==='granted'){_fsaDir=s;setFsaStatus('📂 '+s.name+' (ready)');} else setFsaStatus('📂 '+s.name+' — re-grant needed'); } }catch(e){} })();
+(async()=>{
+  try {
+    const s = await _fsaLoad();
+    if (!s) return;
+    const p = await s.queryPermission({mode:'readwrite'});
+    if (p === 'granted') {
+      _fsaDir = s;
+      setFsaStatus('📂 ' + s.name + ' (ready)');
+    } else {
+      // (zip0251) Loud warning — red status bar + toast. Silent fallback
+      // to localStorage was the silent-fail mode that masked the c.json
+      // delete-resurrects bug. Toast fires even when the status bar is
+      // hidden (e.g. user lands on G/Xs/C overlays after reload).
+      setFsaStatus('📂 ' + s.name + ' — RE-GRANT NEEDED (click 📂 / hamburger)', true);
+      try { toast('⚠ Project folder permission lapsed\nClick the 📂 / hamburger to re-grant — edits will only reach localStorage until then', 4000); } catch(e) {}
+    }
+  } catch(e) {}
+})();
 
 // Build the _salMeta object (always complete)
 function buildMeta() {
@@ -2536,8 +2561,9 @@ function housekeepingCleanMute() {
     if (!r) return;
     const link = r.link || '';
     const isVid =
-      (window.isYouTubeLink && window.isYouTubeLink(link)) ||
-      (window.isVimeoLink   && window.isVimeoLink(link));
+      (window.isYouTubeLink    && window.isYouTubeLink(link)) ||
+      (window.isVimeoLink      && window.isVimeoLink(link)) ||
+      (window.isDirectVideoLink && window.isDirectVideoLink(link));
     if (isVid) {
       videos++;
     } else {
@@ -2788,27 +2814,12 @@ document.getElementById('reassignUIDBtn').addEventListener('click', async () => 
     return;
   }
 
-  // Load c.json fresh from disk so we don't trash it with stale in-memory state.
-  let diskMeta = null, diskRows = [], cjsonReadOK = false;
-  const dir = await _getDir();
-  if (dir) {
-    try {
-      const fh = await dir.getFileHandle('c.json');
-      const parsed = JSON.parse(await (await fh.getFile()).text());
-      if (Array.isArray(parsed) && parsed[0]?._salMeta) {
-        diskMeta = parsed[0]; diskRows = parsed.slice(1);
-      } else if (Array.isArray(parsed)) {
-        diskRows = parsed;
-      } else if (parsed) {
-        diskRows = [parsed];
-      }
-      cjsonReadOK = true;
-    } catch(e) {
-      // c.json may not exist yet — that's fine, we just won't touch it
-    }
-  }
-
-  const cfgCount = diskRows.filter(c => c && !c._salMeta).length;
+  // (zip0251) Operate on in-memory _cData rather than a fresh disk read. The
+  // old fresh-disk path could resurrect rows that had been deleted from C
+  // in-session (the delete's LS write succeeded but writeFileToDisk silently
+  // failed). _cEnsureLoaded uses the same LS → FSA → HTTP order as openCScreen.
+  await _cEnsureLoaded();
+  const cfgCount = _cData.length;
   const ok = confirm(
     'Reassign UIDs?\n\n' +
     '• ' + data.length + ' rows will be renumbered to 1, 2, 3, …\n' +
@@ -2830,9 +2841,9 @@ document.getElementById('reassignUIDBtn').addEventListener('click', async () => 
   // Update each row's UID
   data.forEach((row, i) => { row.UID = String(i + 1); });
 
-  // Walk grid configs from disk and rewrite cell values
+  // Walk grid configs in _cData and rewrite cell values
   let cfgUpdated = 0, cellUpdated = 0;
-  diskRows.forEach(cfg => {
+  _cData.forEach(cfg => {
     if (!cfg || cfg._salMeta) return;
     let touched = false;
     Object.keys(cfg).forEach(k => {
@@ -2862,30 +2873,22 @@ document.getElementById('reassignUIDBtn').addEventListener('click', async () => 
   if (typeof save === 'function') save();
   if (typeof render === 'function') render();
 
-  // Save c.json back to disk if we read it successfully and there's a folder
+  // Save c.json (LS always; disk if FSA dir is granted) via the shared
+  // C-screen save path. cSaveToFile returns true iff the disk write
+  // succeeded.
   let cjsonSaved = false;
-  if (cjsonReadOK && dir && diskRows.length) {
-    try {
-      const out = diskMeta ? [diskMeta].concat(diskRows) : diskRows;
-      cjsonSaved = await writeFileToDisk('c.json', out);
-      // Sync in-memory _cData if user has C open
-      if (cjsonSaved && typeof _cData !== 'undefined') {
-        _cData = diskRows;
-        if (diskMeta && typeof _cMeta !== 'undefined') _cMeta = diskMeta;
-      }
-    } catch(e) { console.warn('c.json save failed:', e); }
+  if (cfgCount > 0) {
+    cjsonSaved = await cSaveToFile();
   }
 
   toast(
     '✓ Reassigned UIDs: ' + data.length + ' rows\n'
     + '  ' + cellUpdated + ' cell value(s) updated across ' + cfgUpdated + ' grid config(s)\n'
-    + (cjsonSaved
-        ? '  c.json saved'
-        : (cfgCount > 0
-            ? '  c.json NOT auto-saved (no project folder set)'
-            : (cjsonReadOK
-                ? '  c.json had no grid configs to update'
-                : '  c.json not found on disk (skipped)'))),
+    + (cfgCount === 0
+        ? '  c.json had no grid configs to update'
+        : (cjsonSaved
+            ? '  c.json saved'
+            : '  c.json NOT auto-saved to disk (LS only — re-grant project folder)')),
     5000
   );
 });

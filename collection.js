@@ -104,69 +104,41 @@ async function gridSaveToFile(gname) {
     }
   }
   
-  // Get fresh directory handle (fixes FSA stale state error)
   const dir = await _getDir();
-  
+
   if (dir) {
-    // Load existing c.json with fresh handle
-    let allConfigs = [];
-    let tgMeta = { _salMeta: true, _salColWidths: {}, _salColOrder: ['gname', 'cells', 'DateModified'], _salHidden: [] };
-    
-    try {
-      const readHandle = await dir.getFileHandle('c.json');
-      const file = await readHandle.getFile();
-      const txt = await file.text();
-      const parsed = JSON.parse(txt);
-      if (Array.isArray(parsed)) {
-        // First element might be _salMeta
-        if (parsed[0] && parsed[0]._salMeta) {
-          tgMeta = parsed[0];
-          allConfigs = parsed.slice(1);
-        } else {
-          allConfigs = parsed;
-        }
-      } else {
-        allConfigs = [parsed];
-      }
-    } catch(e) {
-      // No existing file or parse error - start fresh
-      allConfigs = [];
-    }
-    
-    // Find existing config with same gname and update, or add new
-    const existingIdx = allConfigs.findIndex(c => c.gname === gname);
+    // (zip0251) Operate on the in-memory _cData rather than re-reading c.json
+    // from disk. The old fresh-disk-read path resurrected rows that had been
+    // deleted from the C-screen in-session — those deletes only made it to
+    // localStorage when writeFileToDisk silently failed (no FSA grant). Now
+    // we route through _cData + cSaveToFile so C-screen and grid-save share
+    // a single source of truth.
+    await _cEnsureLoaded();
+    const existingIdx = _cData.findIndex(c => c.gname === gname);
     if (existingIdx >= 0) {
-      // Preserve DateAdded from existing record
-      gridData.DateAdded = allConfigs[existingIdx].DateAdded || now;
-      allConfigs[existingIdx] = gridData;
+      gridData.DateAdded = _cData[existingIdx].DateAdded || now;
+      _cData[existingIdx] = gridData;
     } else {
-      gridData.DateAdded = now;  // set on creation only
-      allConfigs.push(gridData);
+      gridData.DateAdded = now;
+      _cData.push(gridData);
     }
-    
-    // Build final array with _salMeta first
-    const finalData = [tgMeta].concat(allConfigs);
-    
-    // Save back to c.json with FRESH write handle
-    try {
-      const writeHandle = await dir.getFileHandle('c.json', { create: true });
-      const w = await writeHandle.createWritable();
-      await w.write(JSON.stringify(finalData, null, 2));
-      await w.close();
-      toast('✓ Saved "' + gname + '" to c.json (' + allConfigs.length + ' grids)', 2000);
-      
-      // Update grid name display
-      _gridName = gname;
-      const label = document.getElementById('gridNameLabel');
-      if (label) {
-        label.textContent = gname;
-        label.style.color = '#ff8';
-      }
-    } catch(e) {
-      toast('✗ Error saving c.json: ' + e.message, 3000);
+    _gridConfigs = _cData;
+
+    const ok = await cSaveToFile();
+    if (ok) {
+      toast('✓ Saved "' + gname + '" to c.json (' + _cData.length + ' grids)', 2000);
+    } else {
+      // Disk write failed but LS was updated by cSaveToFile.
+      toast('⚠ "' + gname + '" saved to localStorage only — re-grant project folder', 3000);
+    }
+
+    _gridName = gname;
+    const label = document.getElementById('gridNameLabel');
+    if (label) {
+      label.textContent = gname;
+      label.style.color = '#ff8';
     }
   } else {
-    // No FSA directory set - download
     const finalData = [
       { _salMeta: true, _salColWidths: {}, _salColOrder: ['gname', 'cells', 'DateAdded', 'DateModified'], _salHidden: [] },
       Object.assign({DateAdded: now}, gridData)
@@ -285,7 +257,11 @@ function cBuildCols() {
 const _C_LS_KEY = 'sal-c-json';
 
 async function cSaveToFile() {
-  _cMeta._salColOrder  = _cCols.slice();
+  // (zip0251) Only update _salColOrder if _cCols actually has columns. When
+  // cSaveToFile is called from outside C-mode (gridSaveToFile / reassign
+  // UIDs), _cCols may be empty; we don't want to wipe the column order in
+  // _salMeta in that case.
+  if (_cCols && _cCols.length) _cMeta._salColOrder = _cCols.slice();
   _cMeta._salHidden    = [..._cHidden];
   _cMeta._salColWidths = Object.assign({}, _cColWidths);
   _gridConfigs = _cData;
@@ -294,6 +270,50 @@ async function cSaveToFile() {
   try { localStorage.setItem(_C_LS_KEY, JSON.stringify(payload)); } catch(_) {}
   const ok = await writeFileToDisk('c.json', payload);
   if (ok) setFsaStatus('📂 ' + (_fsaDir?_fsaDir.name:'') + ' — c.json saved ' + new Date().toTimeString().slice(0,8));
+  return ok;
+}
+
+// (zip0251) Load c.json into _cData/_cMeta from the same source openCScreen
+// uses. Idempotent — subsequent calls are no-ops once _cLoaded is true.
+// Extracted so gridSaveToFile and reassign-UIDs can operate on the same
+// in-memory state as the C-screen, instead of doing their own fresh disk
+// read (which resurrected rows that had been deleted in-session but whose
+// disk write silently failed).
+async function _cEnsureLoaded() {
+  if (_cLoaded) return;
+  let parsed = null;
+  try {
+    const raw = localStorage.getItem(_C_LS_KEY);
+    if (raw) parsed = JSON.parse(raw);
+  } catch (e) {}
+  if (!parsed) {
+    const dir = await _getDir();
+    if (dir) {
+      try {
+        const fh = await dir.getFileHandle('c.json');
+        parsed = JSON.parse(await (await fh.getFile()).text());
+      } catch (e) {}
+    }
+  }
+  if (!parsed) {
+    try {
+      const r = await fetch('c.json?t=' + Date.now());
+      if (r.ok) parsed = await r.json();
+    } catch (e) {}
+  }
+  if (!parsed) parsed = [];
+  try {
+    if (Array.isArray(parsed) && parsed[0]?._salMeta) {
+      _cMeta = parsed[0]; _cData = parsed.slice(1);
+    } else if (Array.isArray(parsed)) {
+      _cData = parsed;
+    } else { _cData = [parsed]; }
+    _gridConfigs = _cData;
+  } catch (e) { _cData = []; _gridConfigs = []; }
+  cBuildCols();
+  if (_cMeta._salHidden) _cHidden = new Set(_cMeta._salHidden);
+  if (_cMeta._salColWidths) _cColWidths = Object.assign({}, _cMeta._salColWidths);
+  _cLoaded = true;
 }
 
 async function openCScreen() {

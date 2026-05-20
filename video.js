@@ -54,6 +54,11 @@ window.serializeSegments = function(segs) {
 window.isNumericAsset = function(v) { return window.parseVideoAsset(v) !== null; };
 window.isYouTubeLink  = function(url) { return /youtu\.be|youtube\.com/i.test(url || ''); };
 window.isVimeoLink    = function(url) { return /vimeo\.com/i.test(url || ''); };
+// Direct video file URL (self-hosted mp4/webm/etc on R2, GitHub Pages, etc).
+// Match by extension before any ?query or #fragment.
+window.isDirectVideoLink = function(url) {
+  return /\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(url || '');
+};
 
 // ─── API loaders ──────────────────────────────────────────────────────────────
 window.loadYouTubeApiOnce = function() {
@@ -301,6 +306,76 @@ window.mountVimeoClip = async function(hostEl, url, startSec, dur, isMuted, cust
   });
 
   window.seeLearnVideoPlayers[cellId] = player;
+};
+
+// Grid-cell mount for direct video files (self-hosted .mp4/.webm/etc).
+// Mirrors mountYouTubeClip/mountVimeoClip semantics: muted segment loop,
+// autoPauseGrid respect, persists player+timer for stop/cleanup.
+//
+// CORS: if served from a different origin than the page, the bucket must
+// send Access-Control-Allow-Origin (R2: configure CORS Policy on the
+// bucket — e.g. AllowedOrigins ["https://sealifeandmore.com"]).
+// Accept-Ranges:bytes is also required for scrubbing/seeking.
+window.mountDirectVideoClip = function(hostEl, url, startSec, dur, isMuted, customSeekTo, segsArg) {
+  if (!hostEl) return;
+  var cellId = hostEl.id;
+  stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+
+  var segs = Array.isArray(segsArg) ? segsArg
+    : [{ start: Number(startSec), dur: Number(dur) }];
+  var segIdx = 0;
+
+  var vid = document.createElement('video');
+  vid.src = url;
+  vid.muted = !!isMuted;
+  vid.playsInline = true;
+  vid.setAttribute('playsinline', '');
+  vid.setAttribute('webkit-playsinline', '');
+  vid.autoplay = true;
+  vid.preload = 'auto';
+  vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none;';
+  hostEl.appendChild(vid);
+
+  var initSeek = customSeekTo !== undefined ? Number(customSeekTo) : segs[0].start;
+
+  vid.addEventListener('loadedmetadata', function() {
+    // Cap 99999 segs to real duration so "0 99999" loops at real end
+    if (vid.duration > 0 && vid.duration < 99990) {
+      segs.forEach(function(s) {
+        if (s.dur > vid.duration) s.dur = Math.max(1, vid.duration - s.start);
+      });
+    }
+    try { vid.currentTime = initSeek; } catch(e) {}
+    var playPromise = vid.play();
+    if (playPromise && playPromise.catch) playPromise.catch(function(){});
+
+    if (window.autoPauseGrid) {
+      setTimeout(function() { try { vid.pause(); } catch(e) {} }, 300);
+    }
+  });
+
+  window.seeLearnVideoTimers[cellId] = setInterval(function() {
+    try {
+      if (vid.paused && !window.autoPauseGrid) return;
+      var t = vid.currentTime;
+      var seg = segs[segIdx];
+      if (t >= seg.start + seg.dur - 0.2) {
+        segIdx = (segIdx + 1) % segs.length;
+        vid.currentTime = segs[segIdx].start;
+        if (!window.autoPauseGrid) vid.play().catch(function(){});
+      }
+    } catch(e) {}
+  }, 100);
+
+  // Wrap element as a player-like object so stopCellVideoLoop/destroy works
+  window.seeLearnVideoPlayers[cellId] = {
+    isDirectVideo: true,
+    el: vid,
+    destroy: function() { try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch(e) {} },
+    pauseVideo: function() { try { vid.pause(); } catch(e) {} },
+    playVideo:  function() { try { vid.play().catch(function(){}); } catch(e) {} }
+  };
 };
 
 window.cleanupAllVideos = function() {
@@ -1320,7 +1395,65 @@ window.openVideoEditor = function(it) {
       _mountYTEditor(segStart, segDur, seekSec, loopSeg, onDurationReady);
     } else if (window.isVimeoLink(it.link)) {
       _mountVimeoEditor(segStart, segDur, seekSec, loopSeg, onDurationReady);
+    } else if (window.isDirectVideoLink(it.link)) {
+      _mountDirectVideoEditor(segStart, segDur, seekSec, loopSeg, onDurationReady);
     }
+  }
+
+  function _mountDirectVideoEditor(segStart, segDur, seekSec, loopSeg, onDurationReady) {
+    host.innerHTML = '';
+    var vid = document.createElement('video');
+    vid.src = it.link;
+    vid.muted = currentMute;
+    vid.playsInline = true;
+    vid.setAttribute('playsinline', '');
+    vid.setAttribute('webkit-playsinline', '');
+    vid.preload = 'auto';
+    vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+    host.appendChild(vid);
+
+    var paused = false;
+
+    vid.addEventListener('loadedmetadata', function() {
+      if (onDurationReady && vid.duration > 0) onDurationReady(vid.duration);
+      try { vid.currentTime = seekSec; } catch(e) {}
+      vid.play().catch(function(){});
+      if (!loopSeg) {
+        setTimeout(function() { try { vid.pause(); vid._salPaused = true; paused = true; } catch(e) {} }, 1500);
+      }
+    });
+
+    if (loopSeg) {
+      window.seeLearnVideoTimers['v2host'] = setInterval(function() {
+        try {
+          if (paused || vid._salPaused) return;
+          var t = vid.currentTime;
+          var seg = segs[activeSegIdx];
+          var endT = seg.start + seg.dur;
+          if (t >= endT - 0.2) {
+            vid.currentTime = seg.start;
+            vid.play().catch(function(){});
+          }
+        } catch(e) {}
+      }, 100);
+    }
+
+    // Player-like wrapper so the rest of the editor (mute, pause, seek,
+    // playback rate) drives the <video> element through the same API
+    // surface YT/Vimeo expose.
+    window.seeLearnVideoPlayers['v2host'] = {
+      isDirectVideo: true,
+      el: vid,
+      destroy: function() { try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch(e) {} },
+      pauseVideo: function() { try { vid.pause(); vid._salPaused = true; } catch(e) {} },
+      playVideo:  function() { try { vid._salPaused = false; vid.play().catch(function(){}); } catch(e) {} },
+      seekTo:     function(t) { try { vid.currentTime = t; } catch(e) {} },
+      getCurrentTime: function() { return vid.currentTime; },
+      getDuration:    function() { return vid.duration || 0; },
+      mute:   function() { vid.muted = true; },
+      unMute: function() { vid.muted = false; },
+      setPlaybackRate: function(r) { vid.playbackRate = r; }
+    };
   }
 
   async function _mountYTEditor(segStart, segDur, seekSec, loopSeg, onDurationReady) {

@@ -3425,5 +3425,17 @@
     "def": "",
     "common": "sea slug",
     "extinct": false
+  },
+  {
+    "id": "odontomachus",
+    "label": "Odontomachus chelifer",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "trap jaw ant",
+    "extinct": false
   }
 ]
