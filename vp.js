@@ -1664,6 +1664,15 @@ function vpMountDirectVideo(host, link, seg, muted) {
   vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
   if (seg && seg.start) vid.currentTime = seg.start;
   host.appendChild(vid);
+  // (dev0253) Native <video controls> need pointer events. The transparent
+  // swipeCatcher above the host (z-index:50) was eating all clicks, so the
+  // timeline, play/pause, and seek buttons never received them. YT/Vimeo
+  // don't need this since their controls are off and the app toolbar
+  // drives them. Trade-off: hold-to-zoom and R→L swipe-close are disabled
+  // for direct MP4 — the ✕ button in the toolbar still closes, and the
+  // native fullscreen button covers the enlarge use case.
+  const catcher = document.getElementById('vp-swipe-catcher');
+  if (catcher) catcher.style.pointerEvents = 'none';
   // Wrap in a minimal player-like object so vpClose/stop can call destroy()
   _vpState.player = {
     isDirectVideo: true,

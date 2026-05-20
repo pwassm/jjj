@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Loading…</title>
+<style>
+  body{background:#111;color:#ccc;font-family:monospace;margin:0;padding:30px;}
+  a{color:#6af;}
+</style>
+</head>
+<body>
+<div id="msg">Loading…</div>
+<script>
+// (dev0253) Direct-slug router. GitHub Pages serves this file for any
+// unknown path. We parse the path, look up the slug in ml.json (Direct →
+// UID) and c.json (Direct → gname), then redirect to ?i=UID or ?c=GNAME.
+// A trailing /unlock segment is preserved through the redirect so the
+// existing locked-mode logic in boot.js applies.
+(function() {
+  var raw = location.pathname.replace(/^\/+|\/+$/g, '');
+  // Project-page URL: pwassm.github.io/jjj/<slug>. Custom domain
+  // (sealifeandmore.com): no /jjj prefix. Detect either.
+  var base = '/';
+  if (raw.indexOf('jjj/') === 0) { raw = raw.slice(4); base = '/jjj/'; }
+  else if (raw === 'jjj') { raw = ''; base = '/jjj/'; }
+
+  function go(qs) { location.replace(base + qs); }
+  function show(html) { document.getElementById('msg').innerHTML = html; }
+
+  if (!raw) { go(''); return; }
+
+  var parts = raw.split('/');
+  var unlock = false;
+  if (parts[parts.length - 1].toLowerCase() === 'unlock') {
+    unlock = true;
+    parts.pop();
+  }
+  var slug = parts.join('/').toLowerCase();
+  if (!slug) { go(''); return; }
+
+  function matches(v) {
+    return v != null && String(v).trim().toLowerCase() === slug;
+  }
+
+  Promise.all([
+    fetch(base + 'ml.json').then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}),
+    fetch(base + 'c.json').then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+  ]).then(function(rs) {
+    var ml = rs[0], cj = rs[1];
+    var suffix = unlock ? '/unlock' : '';
+
+    if (Array.isArray(ml)) {
+      for (var i = 0; i < ml.length; i++) {
+        var r = ml[i];
+        if (r && !r._salMeta && matches(r.Direct) && r.UID != null) {
+          go('?i=' + encodeURIComponent(r.UID) + suffix);
+          return;
+        }
+      }
+    }
+    if (Array.isArray(cj)) {
+      for (var j = 0; j < cj.length; j++) {
+        var g = cj[j];
+        if (g && !g._salMeta && matches(g.Direct) && g.gname) {
+          go('?c=' + encodeURIComponent(g.gname) + suffix);
+          return;
+        }
+      }
+    }
+
+    var safe = slug.replace(/[<>&]/g, '');
+    show('<p>No shortcut named "<b>' + safe + '</b>".</p>'
+      + '<p><a href="' + base + '">Go to home</a></p>');
+  }).catch(function(e) {
+    show('<p>Could not load lookup data: ' + String(e).replace(/[<>&]/g,'') + '</p>'
+      + '<p><a href="' + base + '">Go to home</a></p>');
+  });
+})();
+</script>
+</body>
+</html>
