@@ -636,9 +636,22 @@ window.openVideoEditor = function(it) {
   }
 
   // Visible timeline window
+  // (dev0257) Stable scale. Was: Math.max(maxEnd + 5, totalVideoDur) — which
+  // grew with maxEnd every time dur+ was pressed, shrinking sc = W/end and
+  // walking the band's left edge leftward. The data start never moved, but
+  // it visually looked like start was getting earlier. Now: anchor to
+  // totalVideoDur once known; before it's known, cache the first computed
+  // fallback so subsequent renders use a constant scale.
+  var _calcEndAnchor = null;
   function calcEnd() {
-    var maxEnd = Math.max.apply(null, segs.map(function(s) { return s.start + s.dur; }));
-    return totalVideoDur ? Math.max(maxEnd + 5, totalVideoDur) : maxEnd + 30;
+    if (totalVideoDur) return totalVideoDur;
+    if (_calcEndAnchor == null) {
+      var maxEnd = segs.length
+        ? Math.max.apply(null, segs.map(function(s) { return s.start + s.dur; }))
+        : 60;
+      _calcEndAnchor = Math.max(maxEnd + 30, 60);
+    }
+    return _calcEndAnchor;
   }
 
   // Update header stats
@@ -669,8 +682,16 @@ window.openVideoEditor = function(it) {
         + 'opacity:' + (isAct ? 0.9 : 0.4) + ';border-radius:3px;'
         + 'border:' + (isAct ? '2px solid #fff' : '1px solid rgba(255,255,255,0.25)') + ';'
         + 'display:flex;align-items:center;justify-content:center;'
-        + 'font-size:10px;color:#fff;font-weight:bold;cursor:pointer;overflow:hidden;';
-      band.textContent = (segs[i].comment ? segs[i].comment.slice(0, 8) : (i + 1));
+        + 'font-size:10px;color:#fff;font-weight:bold;cursor:pointer;overflow:hidden;'
+        // (dev0258) Show the full label, not a hard 8-char truncation.
+        // white-space:nowrap + text-overflow:ellipsis lets CSS clip to the
+        // band's actual width — narrow bands ellipsis, wide bands show
+        // the whole comment.
+        + 'white-space:nowrap;text-overflow:ellipsis;padding:0 4px;'
+        + 'text-shadow:0 1px 1px rgba(0,0,0,0.6);';
+      band.textContent = segs[i].comment || ('Seg ' + (i + 1));
+      band.title = (segs[i].comment ? segs[i].comment + ' — ' : '')
+        + 'Seg ' + (i+1) + ': ' + seg.start.toFixed(1) + 's + ' + seg.dur.toFixed(1) + 's';
       // Use pointerdown so it fires before the timeline's own pointerdown handler
       band.addEventListener('pointerdown', function(ev) {
         ev.stopPropagation();
@@ -1087,11 +1108,33 @@ window.openVideoEditor = function(it) {
   });
 
   // -5 -1 0 +1 +5: adjust duration, play from 3s before new end, loop
+  // (dev0255) Refuse to extend dur past the end of the video. Previously
+  // the timeline rescaled to fit the over-long segment, which visually
+  // walked the start marker leftward — looked like start was moving
+  // earlier. Now: dur+ that would exceed totalVideoDur is rejected.
+  // First rejection is silent; a second consecutive rejection toasts.
   var durDeltas = { 'vd---': -5, 'vd--': -1, 'vd-0': 0, 'vd++': 1, 'vd+++': 5 };
+  var _durCapBlockedOnce = false;
   Object.keys(durDeltas).forEach(function(id) {
     document.getElementById(id).addEventListener('pointerdown', function(e) {
       e.preventDefault();
       var delta = durDeltas[id];
+      if (delta > 0 && totalVideoDur) {
+        var seg = segs[activeSegIdx];
+        var maxDur = fmt(Math.max(0.1, totalVideoDur - seg.start));
+        if (fmt(seg.dur + delta) > maxDur + 0.05) {
+          if (_durCapBlockedOnce) {
+            if (typeof toast === 'function')
+              toast('Cannot extend past end of video', 1600);
+            _durCapBlockedOnce = false;
+          } else {
+            _durCapBlockedOnce = true;
+          }
+          playEndLoop();
+          return;
+        }
+      }
+      _durCapBlockedOnce = false;
       if (delta !== 0) {
         segs[activeSegIdx].dur = fmt(Math.max(0.1, segs[activeSegIdx].dur + delta));
         iDur.value = segs[activeSegIdx].dur;

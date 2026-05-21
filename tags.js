@@ -924,6 +924,17 @@
         labelHtml: 'Open in <u>D</u>ictionary',
         action: () => openDictForTag(tagId)
       },
+      {
+        key: 'g',
+        labelHtml: t.kind === 'taxon' ? 'Check <u>G</u>BIF' : 'Check <u>G</u>BIF (verify as taxon)',
+        action: () => {
+          openDictForTag(tagId);
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const btn = document.getElementById('de-gbif');
+            if (btn) btn.click();
+          }));
+        }
+      },
       { sep: true },
       {
         key: 'f',
@@ -1069,19 +1080,21 @@
         action: () => openDictForTag(tagId)
       }
     ];
-    if (isTaxon) {
-      items.push({
-        key: 'g',
-        labelHtml: 'Check <u>G</u>BIF',
-        action: () => {
-          openDictForTag(tagId);
-          requestAnimationFrame(() => requestAnimationFrame(() => {
-            const btn = document.getElementById('de-gbif');
-            if (btn) btn.click();
-          }));
-        }
-      });
-    }
+    // (mim0254) Offer Check GBIF for any kind. If the user runs GBIF on a
+    // non-taxon tag and accepts a chain, applyChainImport promotes the tag to
+    // kind=taxon — so this is the one-click "verify this is a taxon" path the
+    // user asked for. The Dictionary edit panel will render the same button.
+    items.push({
+      key: 'g',
+      labelHtml: isTaxon ? 'Check <u>G</u>BIF' : 'Check <u>G</u>BIF (verify as taxon)',
+      action: () => {
+        openDictForTag(tagId);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const btn = document.getElementById('de-gbif');
+          if (btn) btn.click();
+        }));
+      }
+    });
     items.push({ sep: true });
     items.push({
       key: 'r',
@@ -1834,7 +1847,7 @@
           <button id="de-save" style="padding:6px 18px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;font-weight:bold;">✓ Save</button>
           <button id="de-merge" style="padding:6px 14px;border:1px solid #fc8;background:rgba(80,50,0,0.35);color:#fc8;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;" title="Merge this tag into another — moves records, adds aliases, deletes this tag">↗ Merge into…</button>
           <button id="de-del" style="padding:6px 14px;border:1px solid #f66;background:rgba(80,0,0,0.3);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🗑 Delete</button>
-          ${t.kind === 'taxon' ? '<button id="de-gbif" style="padding:6px 12px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;" title="Verify this name against GBIF (Global Biodiversity Information Facility)">🔎 Check GBIF</button>' : ''}
+          <button id="de-gbif" style="padding:6px 12px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;" title="${t.kind === 'taxon' ? 'Verify this name against GBIF (Global Biodiversity Information Facility)' : 'Look up this name on GBIF — applying a chain will mark this tag as a taxon'}">🔎 Check GBIF${t.kind === 'taxon' ? '' : ' (verify as taxon)'}</button>
           <span style="flex:1;"></span>
           <button id="de-viewrecs" style="padding:6px 12px;border:1px solid #4af;background:rgba(0,60,140,0.4);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;">Show ${effUse} videos</button>
         </div>
@@ -2843,13 +2856,13 @@
       borderColor = '#764';
     } else if (matchType === 'HIGHERRANK') {
       headerHtml = '<span style="color:#88f;font-weight:bold;">↑ Matched at higher rank</span>'
-        + '<div style="color:#aaf;margin-top:4px;font-size:11px;">GBIF matched <b>' + escapeHtml(canonical) + '</b> (' + escapeHtml(rank) + ') but not your exact name. Could be a common name — try the candidate list below.</div>';
+        + '<div style="color:#aaf;margin-top:4px;font-size:11px;">GBIF matched <b>' + escapeHtml(canonical) + '</b> (' + escapeHtml(rank) + ') but not your exact name. If you typed a common name like "mimic octopus", pick the right species from the candidate list ↓</div>';
       bgColor = 'rgba(100,100,255,0.08)';
       borderColor = '#446';
     } else {
       // NONE — likely a common name or misspelling
       headerHtml = '<span style="color:#f88;font-weight:bold;">✗ No exact scientific match</span>'
-        + '<div style="color:#f99;margin-top:4px;font-size:11px;">"<b>' + escapeHtml(query) + '</b>" did not match any canonical scientific name. If this is a common name, see candidates below.</div>';
+        + '<div style="color:#f99;margin-top:4px;font-size:11px;">"<b>' + escapeHtml(query) + '</b>" did not match any canonical scientific name. Common names work too — see the candidate list below, GBIF searches vernacular names alongside scientific names.</div>';
       bgColor = 'rgba(255,100,100,0.08)';
       borderColor = '#633';
     }
@@ -2963,7 +2976,7 @@
         container.innerHTML = '<div style="padding:6px;color:#777;font-size:10px;">No additional candidates from GBIF common-name search.</div>';
         return;
       }
-      let html = '<div style="font-size:10px;color:#888;margin-bottom:5px;">CANDIDATE MATCHES <span style="color:#666;">(scientific + common name search, deduped)</span>:</div>';
+      let html = '<div style="font-size:10px;color:#888;margin-bottom:5px;">CANDIDATES — scientific AND common-name search <span style="color:#666;">(deduped; click to preview, double-click to Apply All)</span>:</div>';
       html += usable.map((c, i) => {
         const v = pickVernacular(c);
         const vennHtml = v
@@ -2987,29 +3000,44 @@
       container.innerHTML = html;
       // Wire candidate clicks: re-run the GBIF detail view against the chosen species
       [...container.querySelectorAll('[data-cand-idx]')].forEach(el => {
-        const handlePick = (alsoApplyAll) => {
+        const handlePick = async (alsoApplyAll) => {
           const idx = parseInt(el.dataset.candIdx, 10);
           const c = usable[idx];
           if (!c) return;
           el.style.background = 'rgba(100,170,255,0.15)';
           el.style.borderColor = '#6cf';
+          // /species/search rows are unreliable — many checklist sources leave
+          // kingdom/phylum/.../order/family blank or include only a fragment of
+          // the hierarchy. We fetch /species/{key} so the chain in applyChainImport
+          // always reaches the species rank instead of bottoming out at order.
+          let detail = null;
+          if (c.key) {
+            try { detail = await getGbifSpecies(c.key); } catch (e) { /* fall back to row */ }
+          }
+          const merged = detail || {};
+          const pick = (field) => merged[field] || c[field] || '';
           const synth = {
             matchType: 'EXACT',
-            canonicalName: c.canonicalName || c.scientificName,
-            scientificName: c.scientificName,
-            rank: c.rank,
+            canonicalName: c.canonicalName || merged.canonicalName || c.scientificName,
+            scientificName: merged.scientificName || c.scientificName,
+            rank: c.rank || merged.rank,
             confidence: 100,
             usageKey: c.key,
-            authorship: c.authorship || '',
-            kingdom: c.kingdom, phylum: c.phylum, class: c.class,
-            order: c.order, family: c.family, genus: c.genus, species: c.species,
-            vernacularNames: c.vernacularNames || []
+            authorship: merged.authorship || c.authorship || '',
+            kingdom: pick('kingdom'), phylum: pick('phylum'), class: pick('class'),
+            order: pick('order'),     family: pick('family'),
+            genus: pick('genus'),     species: pick('species'),
+            vernacularNames: merged.vernacularNames || c.vernacularNames || []
           };
+          // If this is a species-rank entry but GBIF didn't fill in `species`,
+          // use the canonical name as the species link so the chain reaches it.
+          if (!synth.species && (synth.rank || '').toUpperCase() === 'SPECIES' && synth.canonicalName) {
+            synth.species = synth.canonicalName;
+          }
           const editElScope = el.closest('#dictEdit') || document.getElementById('dictEdit');
           const resultEl = editElScope ? editElScope.querySelector('#de-gbif-result') : null;
           if (resultEl) renderGbifResult(resultEl, tagId, c.scientificName, synth);
           if (alsoApplyAll) {
-            // Defer one frame so the rendered result includes the Apply-All button
             requestAnimationFrame(() => {
               applyChainImport(tagId, synth, { withAliasAndCommon: true });
             });
@@ -3151,11 +3179,27 @@
     // already linked things correctly. Detect overlap by checking whether
     // tagId equals any value in idsByRank.
     let originalRehomed = false;
+    let demoteBlocked = false;
     const overlap = Object.values(idsByRank).includes(tagId);
     if (!overlap) {
       // Most-specific rank present
-      const mostSpecific = idsByRank[chain[chain.length - 1].rank];
-      if (mostSpecific) {
+      const mostSpecificRank = chain[chain.length - 1].rank;
+      const mostSpecific = idsByRank[mostSpecificRank];
+
+      // (mim0254) Refuse to silently demote a binomial-labeled tag down into
+      // a coarser rank like order. If user typed "Thaumoctopus mimicus" and
+      // GBIF only returned the chain up to family/order (sparse-data candidate,
+      // synonym entry, etc.) we'd otherwise re-tag their records to point at
+      // the order — which is how a Thaumoctopus mimicus tag once became
+      // Octopoda. Keep the original tag intact; the user can re-run GBIF on a
+      // better candidate or fix the dictionary manually.
+      const labelIsBinomial = /^[A-Z][a-z]+\s+[a-z]+$/.test(t.label || '');
+      const coarseRanks = new Set(['kingdom','phylum','class','order','family']);
+      if (mostSpecific && labelIsBinomial && coarseRanks.has(mostSpecificRank)) {
+        demoteBlocked = true;
+      }
+
+      if (mostSpecific && !demoteBlocked) {
         // Add the original's label as alias of the species (so common-name
         // searches still work) and delete the now-redundant original.
         const target = byId.get(mostSpecific);
@@ -3165,8 +3209,13 @@
           if (!existingAliases.some(a => String(a).toLowerCase() === lc)
               && lc !== target.label.toLowerCase()
               && lc !== (target.common || '').toLowerCase()) {
-            // Set as common name if target lacks one and original doesn't look scientific
-            if (!target.common && !/^[A-Z][a-z]+ [a-z]+$/.test(t.label)) {
+            // Decide common vs alias by comparing the label to the canonical
+            // scientific name from GBIF, not by regex. The old regex falsely
+            // classified common names like "Mimic octopus" as binomials, so
+            // they ended up in aliases instead of as the common name.
+            const canonicalLc = String(res.canonicalName || '').toLowerCase();
+            const looksLikeScientificName = canonicalLc && lc === canonicalLc;
+            if (!target.common && !looksLikeScientificName) {
               updateTag(mostSpecific, { common: t.label });
             } else {
               updateTag(mostSpecific, { aliases: [...existingAliases, t.label] });
@@ -3191,6 +3240,20 @@
       }
     }
 
+    // (mim0254) When the original tag is kept (either because it overlaps with
+    // one of the imported ranks, or because we refused to demote it) and it
+    // wasn't already marked as a taxon, promote it now — the user just told us
+    // it's a taxon by running GBIF on it and accepting the chain.
+    const survivingId = originalRehomed ? null : tagId;
+    if (survivingId) {
+      const surv = byId.get(survivingId);
+      if (surv && surv.kind !== 'taxon') {
+        const patch = { kind: 'taxon' };
+        if (!surv.rank && res.rank) patch.rank = String(res.rank).toLowerCase();
+        updateTag(survivingId, patch);
+      }
+    }
+
     if (typeof toast === 'function') {
       const lines = [options.withAliasAndCommon ? '✓ Applied All from GBIF' : '✓ Imported GBIF chain'];
       lines.push(createdCount + ' new taxa created · ' + reusedCount + ' reused');
@@ -3198,7 +3261,12 @@
       if (aliasAdded) lines.push('scientific name + author added as alias');
       if (commonSet) lines.push('English common name set');
       if (originalRehomed) lines.push('Original tag merged into species (records re-tagged)');
-      toast(lines.join('\n'), 3800);
+      if (demoteBlocked) {
+        lines.push('⚠ Original tag "' + (t.label || '') + '" kept — GBIF chain stopped at '
+          + chain[chain.length - 1].rank + ', would have demoted a binomial label.');
+        lines.push('Try a different candidate, or fix the dictionary by hand.');
+      }
+      toast(lines.join('\n'), demoteBlocked ? 6000 : 3800);
     }
     if (typeof render === 'function') render();
 

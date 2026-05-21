@@ -381,6 +381,10 @@ function gridOpenFullscreen(row, contained) {
     // Default to playing from start if no VidRange defined
     const segs = window.parseVideoAsset(row.VidRange) || [{ start: 0, dur: 99999 }];
     if (!segs || segs.length === 0) return;
+    // (dev0258) Pull VidComment labels (comma-separated, one per seg —
+    // matches video.js writer) so timeline bands can render their labels.
+    const _vpComments = (row.VidComment || '').split(',').map(s => s.trim());
+    segs.forEach((s, i) => { s.comment = _vpComments[i] || ''; });
     
     _vpState = {
       row: row,
@@ -1210,6 +1214,13 @@ function vpClose() {
   const fs = document.getElementById('gridFullscreen');
   fs.style.display = 'none';
   fs.onclick = null;
+  // If V forced gridOverlay open from T (no real grid underneath), hide it
+  // again so we land back on T instead of a blank dark overlay.
+  if (window._vpForcedGridFromT) {
+    const _gOvl = document.getElementById('gridOverlay');
+    if (_gOvl) _gOvl.style.display = 'none';
+    window._vpForcedGridFromT = false;
+  }
   document.removeEventListener('keydown', vpKeyHandler, true);
   // Restore focus to main document so hotkeys work immediately
   document.body.setAttribute('tabindex', '-1');
@@ -1359,28 +1370,31 @@ function vpSetSpeed(spd) {
 function vpToggleSelectedFull() {
   if (!_vpState) return;
   _vpState.isSelected = !_vpState.isSelected;
+  _vpState.markersToken = null;            // force marker redraw for new layout
   const btn = document.getElementById('vp-toggle');
   if (_vpState.isSelected) {
     btn.innerHTML = '● Selected<br><span style="font-size:9px;color:#666;">Full</span>';
   } else {
     btn.innerHTML = '<span style="font-size:9px;color:#666;">Selected</span><br>● Full';
   }
-  // Restart in new mode
   vpRestartInMode();
 }
 
 function vpRestartInMode() {
-  // For now, just seek to start of segment or start of video
   if (!_vpState || !_vpState.player) return;
   const p = _vpState.player;
-  if (_vpState.isSelected) {
-    const seg = _vpState.segs[_vpState.segIdx];
+  if (_vpState.isSelected && _vpState.segs && _vpState.segs.length) {
+    // (dev0258) Selected mode now walks ALL segments from beginning to end
+    // (vpUpdateTimeline advances segIdx on each seg's end and loops back to
+    // 0 after the last). Restart at seg 0 so a fresh toggle replays the
+    // full selection sequence rather than restarting whichever seg was last.
+    _vpState.segIdx = 0;
+    const seg = _vpState.segs[0];
     if (_vpState.isYT) p.seekTo(seg.start, true);
     else p.setCurrentTime(seg.start);
-  } else {
-    if (_vpState.isYT) p.seekTo(0, true);
-    else p.setCurrentTime(0);
   }
+  // Full mode: no snap — keep playing wherever the user is; they can click
+  // anywhere on the timeline to seek.
 }
 
 function vpSetAPoint() {
@@ -1451,16 +1465,52 @@ function vpWireControls() {
   document.getElementById('vp-ab-save').onclick = vpSaveAB;
   document.getElementById('vp-close').onclick = vpClose;
   
-  // Timeline scrubbing
+  // Timeline scrubbing — click + drag in both modes.
+  // (dev0258) Selected mode: pct → position in concatenated selections →
+  //   seek into the corresponding segment. segIdx updates so seg-walk
+  //   resumes from the new spot.
+  // Full mode: pct → position in full video time. segIdx is irrelevant.
   const timeline = document.getElementById('vp-timeline');
-  timeline.onclick = e => {
+  let _vpScrubActive = false;
+  const _vpScrubTo = (clientX) => {
     if (!_vpState || !_vpState.duration) return;
     const rect = timeline.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    const t = pct * _vpState.duration;
-    if (_vpState.isYT) _vpState.player.seekTo(t, true);
-    else _vpState.player.setCurrentTime(t);
+    const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    if (_vpState.isSelected && _vpState.segs && _vpState.segs.length) {
+      const total = _vpSelectedTotal();
+      const pos   = pct * total;
+      const segs  = _vpState.segs;
+      let cumul = 0;
+      for (let i = 0; i < segs.length; i++) {
+        if (pos < cumul + segs[i].dur || i === segs.length - 1) {
+          _vpState.segIdx = i;
+          const t = segs[i].start + Math.max(0, Math.min(segs[i].dur - 0.05, pos - cumul));
+          if (_vpState.isYT) _vpState.player.seekTo(t, true);
+          else _vpState.player.setCurrentTime(t);
+          return;
+        }
+        cumul += segs[i].dur;
+      }
+    } else {
+      const t = pct * _vpState.duration;
+      if (_vpState.isYT) _vpState.player.seekTo(t, true);
+      else _vpState.player.setCurrentTime(t);
+    }
   };
+  timeline.addEventListener('pointerdown', e => {
+    _vpScrubActive = true;
+    try { timeline.setPointerCapture(e.pointerId); } catch (_) {}
+    _vpScrubTo(e.clientX);
+  });
+  timeline.addEventListener('pointermove', e => {
+    if (_vpScrubActive) _vpScrubTo(e.clientX);
+  });
+  const _endScrub = e => {
+    _vpScrubActive = false;
+    try { timeline.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  timeline.addEventListener('pointerup', _endScrub);
+  timeline.addEventListener('pointercancel', _endScrub);
 }
 
 // Toggle A point - set or clear
@@ -1539,57 +1589,139 @@ function vpToggleCC() {
   btn.style.borderColor = _vpState.ccOn ? '#0f0' : '';
 }
 
+// (dev0258) Selected-mode helpers — the timeline in Selected mode represents
+// the concatenated selected dur, not the full video. Position within that
+// virtual timeline = (cumulative dur of finished segs) + (ct - currentSeg.start).
+function _vpSelectedTotal() {
+  return (_vpState && _vpState.segs)
+    ? _vpState.segs.reduce((a, s) => a + s.dur, 0) : 0;
+}
+function _vpSelectedPos(ct) {
+  const segs = _vpState.segs;
+  let cumul = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (ct >= s.start - 0.05 && ct <= s.start + s.dur + 0.05) {
+      return cumul + Math.max(0, ct - s.start);
+    }
+    cumul += s.dur;
+  }
+  return null; // ct lies in unselected territory
+}
+
 function vpUpdateTimeline() {
   if (!_vpState || !_vpState.player) return;
-  
+
   const updateUI = (ct, dur) => {
     _vpState.currentTime = ct;
     _vpState.duration = dur;
-    
+    if (!(dur > 0)) { vpUpdatePlayBtn(); return; }
+
     const progress = document.getElementById('vp-progress');
     const playhead = document.getElementById('vp-playhead');
-    // (zip0148) vp-time element removed from the toolbar; no longer
-    // queried or updated here. Position info is still conveyed visually
-    // by the progress bar and segment markers.
-    const markers = document.getElementById('vp-markers');
-    
-    if (dur > 0) {
-      const pct = (ct / dur) * 100;
-      progress.style.width = pct + '%';
-      playhead.style.left = 'calc(' + pct + '% - 1px)';
-      
-      // Draw segment markers once when duration is known
-      if (!_vpState.markersDrawn) {
-        _vpState.markersDrawn = true;
-        markers.innerHTML = '';
+    const markers  = document.getElementById('vp-markers');
+
+    const isSel   = _vpState.isSelected;
+    const hasSegs = _vpState.segs && _vpState.segs.length > 0;
+
+    // ── Progress %: Selected = position within concatenated selections;
+    //               Full     = position within full video.
+    let pct;
+    if (isSel && hasSegs) {
+      const total = _vpSelectedTotal();
+      const pos   = _vpSelectedPos(ct);
+      pct = (pos !== null && total > 0) ? (pos / total) * 100 : 0;
+    } else {
+      pct = (ct / dur) * 100;
+    }
+    pct = Math.max(0, Math.min(100, pct));
+    progress.style.width = pct + '%';
+    playhead.style.left  = 'calc(' + pct + '% - 1px)';
+
+    // ── Markers: redraw whenever mode/seg-count/duration changes ──
+    const renderToken = (isSel ? 'sel:' : 'full:') + dur.toFixed(1)
+      + ':' + (hasSegs ? _vpState.segs.length : 0);
+    if (_vpState.markersToken !== renderToken) {
+      _vpState.markersToken = renderToken;
+      markers.innerHTML = '';
+      // (dev0258) Per-segment color palette — matches video.js (E timeline)
+      // so a given segment looks the same in V and E.
+      const VP_COLOURS = ['#2a6ef5','#e5732a','#2aa87a','#c03ec0','#c0c03e','#e53a3a'];
+      const _labelFor = (seg, i) => seg.comment || ('Seg ' + (i + 1));
+      const _bandTextCss = 'display:flex;align-items:center;justify-content:center;'
+        + 'font-size:10px;color:#fff;font-weight:bold;line-height:1;'
+        + 'white-space:nowrap;text-overflow:ellipsis;padding:0 3px;'
+        + 'text-shadow:0 1px 1px rgba(0,0,0,0.6);';
+      if (hasSegs && isSel) {
+        // Concatenated layout — segments laid out contiguously, each in
+        // its own color so the divisions are obvious. Label shown on each.
+        const total = _vpSelectedTotal();
+        let cumul = 0;
+        _vpState.segs.forEach((seg, i) => {
+          const startPct = (cumul / total) * 100;
+          const widthPct = (seg.dur / total) * 100;
+          const colour   = VP_COLOURS[i % VP_COLOURS.length];
+          const m = document.createElement('div');
+          m.style.cssText = 'position:absolute;top:2px;bottom:2px;'
+            + 'left:' + startPct + '%;width:' + widthPct + '%;'
+            + 'background:' + colour + ';opacity:0.85;overflow:hidden;'
+            + (i < _vpState.segs.length - 1 ? 'border-right:2px solid #fff;' : '')
+            + _bandTextCss;
+          m.textContent = _labelFor(seg, i);
+          m.title = 'Seg ' + (i+1) + (seg.comment ? ' — ' + seg.comment : '')
+            + ': ' + seg.start.toFixed(1) + 's - '
+            + (seg.start + seg.dur).toFixed(1) + 's';
+          markers.appendChild(m);
+          cumul += seg.dur;
+        });
+      } else if (hasSegs) {
+        // Full layout — segments at their actual video-time positions,
+        // overlaid on the full-video timeline. Same color scheme + labels.
         _vpState.segs.forEach((seg, i) => {
           const startPct = (seg.start / dur) * 100;
           const widthPct = (seg.dur / dur) * 100;
-          const marker = document.createElement('div');
-          marker.style.cssText = `position:absolute;top:2px;bottom:2px;left:${startPct}%;width:${widthPct}%;background:rgba(0,255,128,0.6);border-radius:2px;border:1px solid #0f8;`;
-          marker.title = 'Seg ' + (i+1) + ': ' + seg.start.toFixed(1) + 's - ' + (seg.start + seg.dur).toFixed(1) + 's';
-          markers.appendChild(marker);
+          const colour   = VP_COLOURS[i % VP_COLOURS.length];
+          const m = document.createElement('div');
+          m.style.cssText = 'position:absolute;top:2px;bottom:2px;'
+            + 'left:' + startPct + '%;width:' + widthPct + '%;'
+            + 'background:' + colour + ';opacity:0.55;'
+            + 'border-radius:2px;border:1px solid ' + colour + ';overflow:hidden;'
+            + _bandTextCss;
+          m.textContent = _labelFor(seg, i);
+          m.title = 'Seg ' + (i+1) + (seg.comment ? ' — ' + seg.comment : '')
+            + ': ' + seg.start.toFixed(1) + 's - '
+            + (seg.start + seg.dur).toFixed(1) + 's';
+          markers.appendChild(m);
         });
       }
     }
-    // (zip0148) timeDisp.textContent assignment removed (element gone).
-    
-    // A-B looping
-    if (_vpState.aPoint !== null && _vpState.bPoint !== null && _vpState.bPoint > _vpState.aPoint) {
+
+    // ── A-B looping overrides segment walk ──
+    if (_vpState.aPoint !== null && _vpState.bPoint !== null
+        && _vpState.bPoint > _vpState.aPoint) {
       if (ct >= _vpState.bPoint) {
         if (_vpState.isYT) _vpState.player.seekTo(_vpState.aPoint, true);
         else _vpState.player.setCurrentTime(_vpState.aPoint);
       }
     }
-    // Segment looping in Selected mode
-    else if (_vpState.isSelected) {
+    // ── Selected mode: walk through all segments, loop to first after last ──
+    else if (isSel && hasSegs) {
       const seg = _vpState.segs[_vpState.segIdx];
-      if (ct >= seg.start + seg.dur) {
+      if (ct >= seg.start + seg.dur - 0.05) {
+        const nextIdx = (_vpState.segIdx + 1) % _vpState.segs.length;
+        _vpState.segIdx = nextIdx;
+        const next = _vpState.segs[nextIdx];
+        if (_vpState.isYT) _vpState.player.seekTo(next.start, true);
+        else _vpState.player.setCurrentTime(next.start);
+      } else if (ct < seg.start - 0.5) {
+        // ct landed before this seg's window (e.g. after a Full-mode seek
+        // followed by toggle back to Selected) — snap forward into seg.
         if (_vpState.isYT) _vpState.player.seekTo(seg.start, true);
         else _vpState.player.setCurrentTime(seg.start);
       }
     }
-    
+    // ── Full mode: no auto-seek; user drives playback freely ──
+
     vpUpdatePlayBtn();
   };
   
@@ -1664,28 +1796,41 @@ function vpMountDirectVideo(host, link, seg, muted) {
   vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
   if (seg && seg.start) vid.currentTime = seg.start;
   host.appendChild(vid);
-  // (dev0253) Native <video controls> need pointer events. The transparent
-  // swipeCatcher above the host (z-index:50) was eating all clicks, so the
-  // timeline, play/pause, and seek buttons never received them. YT/Vimeo
-  // don't need this since their controls are off and the app toolbar
-  // drives them. Trade-off: hold-to-zoom and R→L swipe-close are disabled
-  // for direct MP4 — the ✕ button in the toolbar still closes, and the
-  // native fullscreen button covers the enlarge use case.
+  // (dev0253 / fix) Native <video controls> need pointer events on the
+  // bottom strip of the video. Instead of disabling the swipeCatcher
+  // entirely (which killed R→L swipe-close AND hold-zoom), shrink it so
+  // it leaves the bottom ~56px clear for native controls while still
+  // covering the rest of the video for gestures. The toolbar already
+  // occupies the bottom 80px of #gridFullscreen; catcher was inset
+  // 0 0 80px 0 — bump that to 0 0 136px 0 so native controls (which
+  // float at host's bottom edge, i.e. just above the toolbar) get clicks.
   const catcher = document.getElementById('vp-swipe-catcher');
-  if (catcher) catcher.style.pointerEvents = 'none';
-  // Wrap in a minimal player-like object so vpClose/stop can call destroy()
+  if (catcher) catcher.style.inset = '0 0 136px 0';
+  // (dev0253) Wrapper exposes BOTH Vimeo-shape (play/pause/setCurrentTime,
+  // promise-returning) AND YT-shape (playVideo/seekTo, sync) methods. The
+  // VP toolbar branches on `_vpState.isYT` — when false it calls the
+  // Vimeo-style API, so direct video must answer those calls too.
+  // Caption module hooks are no-ops; native <track> handles captions.
   _vpState.player = {
     isDirectVideo: true,
     el: vid,
     destroy: () => { vid.pause(); vid.src = ''; },
+    // Vimeo-shape
+    play:    () => vid.play().catch(() => {}),
+    pause:   () => { vid.pause(); return Promise.resolve(); },
+    getPaused:      () => Promise.resolve(vid.paused),
     getCurrentTime: () => Promise.resolve(vid.currentTime),
+    getDuration:    () => Promise.resolve(vid.duration || 0),
+    setCurrentTime: (t) => { vid.currentTime = t; return Promise.resolve(t); },
+    setVolume: (v) => { vid.volume = v; if (v === 0) vid.muted = true; },
+    loadModule: () => {}, unloadModule: () => {}, setOption: () => {},
+    // YT-shape (kept for any code paths that branch on isYT)
+    seekTo:         (t) => { vid.currentTime = t; },
+    playVideo:      () => vid.play().catch(() => {}),
+    stopVideo:      () => { vid.pause(); vid.currentTime = 0; },
     getPlayerState: () => (vid.paused ? 2 : 1),
-    getPaused: () => Promise.resolve(vid.paused),
-    seekTo: (t) => { vid.currentTime = t; },
-    playVideo: () => vid.play(),
-    stopVideo: () => { vid.pause(); vid.currentTime = 0; },
     setPlaybackRate: (r) => { vid.playbackRate = r; },
-    mute: () => { vid.muted = true; },
+    mute:   () => { vid.muted = true; },
     unMute: () => { vid.muted = false; },
     isMuted: () => Promise.resolve(vid.muted)
   };
@@ -2078,9 +2223,13 @@ window._executeHotkey = function(key) {
     if (!row) { toast('Select a row first', 1500); return; }
     // Ensure grid overlay is visible if it isn't (V sits on top of it
     // visually but needs its DOM siblings to be present).
+    // Track when V forced it open from T (no actual grid was built) so
+    // vpClose can hide it again — otherwise R→L close lands on an empty
+    // dark gridOverlay instead of returning to T.
     const gOvl = document.getElementById('gridOverlay');
     if (gOvl && gOvl.style.display !== 'flex') {
       gOvl.style.display = 'flex';
+      window._vpForcedGridFromT = true;
     }
     gridOpenFullscreen(row);
     return;

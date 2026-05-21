@@ -3437,5 +3437,85 @@
     "def": "",
     "common": "trap jaw ant",
     "extinct": false
+  },
+  {
+    "id": "nerve-glide",
+    "label": "Nerve glide",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "octopodidae",
+    "label": "Octopodidae",
+    "kind": "taxon",
+    "parents": [
+      "octopoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "thaumoctopus",
+    "label": "Thaumoctopus",
+    "kind": "taxon",
+    "parents": [
+      "octopodidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "thaumoctopus-mimicus",
+    "label": "Thaumoctopus mimicus",
+    "kind": "taxon",
+    "parents": [
+      "thaumoctopus"
+    ],
+    "aliases": [
+      "Thaumoctopus mimicus Norman & Hochberg, 2005"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Mimic octopus"
+  },
+  {
+    "id": "macrotritopus-defilippi",
+    "label": "Macrotritopus defilippi",
+    "kind": "taxon",
+    "parents": [
+      "macrotritopus"
+    ],
+    "aliases": [
+      "Macrotritopus defilippi (Vérany",
+      "1851)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Longarm Octopus",
+    "extinct": false
+  },
+  {
+    "id": "macrotritopus",
+    "label": "Macrotritopus",
+    "kind": "taxon",
+    "parents": [
+      "octopodidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "mimicry",
+    "label": "Mimicry",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

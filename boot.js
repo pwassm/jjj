@@ -173,18 +173,39 @@ _markUserModeClass();
 (function _markDeepLinkClass() {
   try {
     const p = new URLSearchParams(window.location.search);
-    const raw = (p.get('i') || '').trim();
-    if (!raw) return;
-    const hasUnlock = raw.toLowerCase().endsWith('/unlock');
-    const uid = hasUnlock ? raw.slice(0, raw.lastIndexOf('/')).trim() : raw;
-    if (!uid) return;
-    document.documentElement.classList.add('deep-uid');
-    if (!hasUnlock) {
-      document.documentElement.classList.add('locked-mode');
-      window._lockedUid = uid;
+    function strip(raw) {
+      const hasUnlock = raw.toLowerCase().endsWith('/unlock');
+      const val = hasUnlock ? raw.slice(0, raw.lastIndexOf('/')).trim() : raw;
+      return { val, hasUnlock };
     }
-    window._deepUid = uid;
-    window._deepUnlocked = hasUnlock;
+    const iRaw = (p.get('i') || '').trim();
+    if (iRaw) {
+      const { val: uid, hasUnlock } = strip(iRaw);
+      if (uid) {
+        document.documentElement.classList.add('deep-uid');
+        if (!hasUnlock) {
+          document.documentElement.classList.add('locked-mode');
+          window._lockedUid = uid;
+        }
+        window._deepUid = uid;
+        window._deepUnlocked = hasUnlock;
+      }
+    }
+    // (dev0253) Config deep-link: `?c=NAME` opens G with that c.json
+    // config activated. `?c=NAME/unlock` leaves the Configs picker
+    // visible; bare form hides nav (same locked-mode CSS as ?i=).
+    const cRaw = (p.get('c') || '').trim();
+    if (cRaw) {
+      const { val: name, hasUnlock } = strip(cRaw);
+      if (name) {
+        if (!hasUnlock) {
+          document.documentElement.classList.add('locked-mode');
+          window._lockedConfig = name;
+        }
+        window._deepConfig = name;
+        window._deepConfigUnlocked = hasUnlock;
+      }
+    }
   } catch (e) { /* URL parse error — fall through to normal boot */ }
 })();
 
@@ -318,10 +339,11 @@ function _routeInitialScreen() {
   // `_deepUid` is the bare UID (slash-suffix stripped); `_lockedUid` is
   // set iff the link did NOT end in /unlock.
   const deepUid = window._deepUid || params.get('i') || null;
+  const deepConfig = window._deepConfig || null;
   const isLocked = !!window._lockedUid;
   // (zip0141) In user mode, default to G regardless of device — the user
   // version doesn't have a meaningful T view.
-  if (!target && (_isMobileDevice() || _isUserMode() || deepUid)) target = 'g';
+  if (!target && (_isMobileDevice() || _isUserMode() || deepUid || deepConfig)) target = 'g';
   if (!target) return;
   setTimeout(() => {
     // (dev0249) In LOCKED deep-link mode, skip opening G — V will render
@@ -332,6 +354,10 @@ function _routeInitialScreen() {
     // to-grid behavior).
     if (deepUid) {
       // skip gridShow / openCScreen — go straight to V
+    } else if (deepConfig) {
+      // (dev0253) ?c=NAME — activate config then open G. _openConfigByName
+      // calls gridShow() once the config is loaded.
+      _openConfigByName(deepConfig);
     } else if (target === 'g') {
       if (typeof gridShow === 'function') gridShow();
     } else if (target === 'c') {
@@ -341,6 +367,84 @@ function _routeInitialScreen() {
     }
     if (deepUid) _openItemByUid(deepUid);
   }, 200);
+}
+
+// (dev0253) Resolve a c.json grid name and activate it, then open G.
+// Mirrors the activation block in _showMobileCPicker (tap-handler) but
+// without any UI. Polls until `data` is ready (ml.json fetch can outlive
+// boot.js evaluation on slow links).
+async function _openConfigByName(name) {
+  const want = String(name || '').trim();
+  if (!want) return;
+  const startedAt = Date.now();
+  function ready() {
+    return typeof data !== 'undefined' && Array.isArray(data) && data.length > 0;
+  }
+  while (!ready()) {
+    if (Date.now() - startedAt > 5000) {
+      if (typeof toast === 'function') toast('Could not load data — check your connection', 3000);
+      return;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+  // Load c.json the same way _showMobileCPicker does.
+  let parsed = null;
+  try {
+    const dir = await _getDir();
+    if (dir) {
+      try {
+        const fh = await dir.getFileHandle('c.json');
+        parsed = JSON.parse(await (await fh.getFile()).text());
+      } catch (e) {}
+    }
+    if (!parsed) {
+      try {
+        const r = await fetch('c.json?t=' + Date.now());
+        if (r.ok) parsed = await r.json();
+      } catch (e) {}
+    }
+  } catch (e) {}
+  if (!parsed) {
+    if (typeof toast === 'function') toast('Could not load c.json', 2500);
+    return;
+  }
+  let rows = Array.isArray(parsed)
+    ? (parsed[0] && parsed[0]._salMeta ? parsed.slice(1) : parsed)
+    : [parsed];
+  const cfg = rows.find(r => r && !r._salMeta && String(r.gname || '').trim() === want);
+  if (!cfg) {
+    if (typeof toast === 'function') toast('No grid named "' + want + '"', 2500);
+    return;
+  }
+  // Activation — identical to _showMobileCPicker's tap handler.
+  window._gridActiveConfig = cfg;
+  window._gridSource = 'C';
+  window._gridName = cfg.gname || '';
+  const cellsN = parseInt(cfg.cells, 10);
+  let gsize = 5;
+  if (cellsN === 4) gsize = 2;
+  else if (cellsN === 9) gsize = 3;
+  else if (cellsN === 16) gsize = 4;
+  else if (cellsN === 25) gsize = 5;
+  if (typeof _setGridGsize === 'function') _setGridGsize(gsize, { skipSave: true });
+  if (typeof metaRow !== 'undefined') {
+    if (!metaRow) metaRow = { _salMeta: true };
+    metaRow._salGsize = gsize;
+  }
+  if (Array.isArray(data)) {
+    data.forEach(r => { if (r && r.cell) r.cell = ''; });
+    for (let r = 1; r <= gsize; r++) {
+      for (let c = 1; c <= gsize; c++) {
+        const cs = r + 'abcde'.charAt(c - 1);
+        if (cfg[cs]) {
+          const row = data.find(d => String(d.UID) === String(cfg[cs]));
+          if (row) row.cell = cs;
+        }
+      }
+    }
+  }
+  if (typeof save === 'function') save();
+  if (typeof gridShow === 'function') gridShow();
 }
 
 // (zip0142) Resolve a UID (string or number) to a row in `data` and open
