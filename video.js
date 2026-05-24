@@ -54,6 +54,16 @@ window.serializeSegments = function(segs) {
 window.isNumericAsset = function(v) { return window.parseVideoAsset(v) !== null; };
 window.isYouTubeLink  = function(url) { return /youtu\.be|youtube\.com/i.test(url || ''); };
 window.isVimeoLink    = function(url) { return /vimeo\.com/i.test(url || ''); };
+// Normalize unlisted-video URL form `vimeo.com/ID/HASH` → `vimeo.com/ID?h=HASH`
+// player.js requires the privacy hash as a `?h=` query param for unlisted videos.
+window.normalizeVimeoUrl = function(url) {
+  if (!url) return url;
+  var m = String(url).match(/^(https?:\/\/(?:www\.)?vimeo\.com\/)(\d+)\/([A-Za-z0-9]+)(\/?.*)$/i);
+  if (!m) return url;
+  var rest = m[4] || '';
+  var sep = rest.indexOf('?') === 0 ? '&' : '?';
+  return m[1] + m[2] + (rest && rest[0] === '?' ? rest + '&h=' + m[3] : sep + 'h=' + m[3] + rest.replace(/^\//,''));
+};
 // Direct video file URL (self-hosted mp4/webm/etc on R2, GitHub Pages, etc).
 // Match by extension before any ?query or #fragment.
 window.isDirectVideoLink = function(url) {
@@ -271,7 +281,7 @@ window.mountVimeoClip = async function(hostEl, url, startSec, dur, isMuted, cust
   hostEl.appendChild(div);
 
   var player = new Vimeo.Player(div, {
-    url: url, autoplay: true, muted: isMuted, controls: false,
+    url: window.normalizeVimeoUrl(url), autoplay: true, muted: isMuted, controls: false,
     loop: false, autopause: false, transparent: false, background: false
   });
 
@@ -636,23 +646,13 @@ window.openVideoEditor = function(it) {
   }
 
   // Visible timeline window
-  // (dev0257) Stable scale. Was: Math.max(maxEnd + 5, totalVideoDur) — which
+  // (dev0259) Stable scale. Was: Math.max(maxEnd + 5, totalVideoDur) — which
   // grew with maxEnd every time dur+ was pressed, shrinking sc = W/end and
   // walking the band's left edge leftward. The data start never moved, but
   // it visually looked like start was getting earlier. Now: anchor to
   // totalVideoDur once known; before it's known, cache the first computed
   // fallback so subsequent renders use a constant scale.
-  var _calcEndAnchor = null;
-  function calcEnd() {
-    if (totalVideoDur) return totalVideoDur;
-    if (_calcEndAnchor == null) {
-      var maxEnd = segs.length
-        ? Math.max.apply(null, segs.map(function(s) { return s.start + s.dur; }))
-        : 60;
-      _calcEndAnchor = Math.max(maxEnd + 30, 60);
-    }
-    return _calcEndAnchor;
-  }
+  function calcEnd() { return totalVideoDur || 60; }
 
   // Update header stats
   function updateStats() {
@@ -666,6 +666,21 @@ window.openVideoEditor = function(it) {
 
   function renderTimeline(curT) {
     timeline.innerHTML = '';
+    // (dev0259) Defer rendering until the player has reported its
+    // duration. Without this gate the timeline rendered against a
+    // synthetic fallback scale, then rescaled the moment totalVideoDur
+    // arrived — visually walking band positions leftward. Show a
+    // placeholder so the user sees the editor is waiting on metadata.
+    if (!totalVideoDur) {
+      var ph = document.createElement('div');
+      ph.style.cssText = 'position:absolute;inset:0;display:flex;'
+        + 'align-items:center;justify-content:center;color:#777;'
+        + 'font-size:11px;font-family:monospace;';
+      ph.textContent = 'loading video metadata…';
+      timeline.appendChild(ph);
+      tEnd.textContent = '';
+      return;
+    }
     var W   = timeline.offsetWidth || 600;
     var end = calcEnd();
     var sc  = W / end;
@@ -679,8 +694,8 @@ window.openVideoEditor = function(it) {
       band.style.cssText = 'position:absolute;top:3px;height:30px;'
         + 'left:' + x + 'px;width:' + w + 'px;'
         + 'background:' + COLOURS[i % COLOURS.length] + ';'
-        + 'opacity:' + (isAct ? 0.9 : 0.4) + ';border-radius:3px;'
-        + 'border:' + (isAct ? '2px solid #fff' : '1px solid rgba(255,255,255,0.25)') + ';'
+        + 'opacity:0.9;border-radius:3px;'
+        + 'border:' + (isAct ? '2px solid #fff' : '1px solid rgba(255,255,255,0.5)') + ';'
         + 'display:flex;align-items:center;justify-content:center;'
         + 'font-size:10px;color:#fff;font-weight:bold;cursor:pointer;overflow:hidden;'
         // (dev0258) Show the full label, not a hard 8-char truncation.
@@ -1054,22 +1069,25 @@ window.openVideoEditor = function(it) {
     mountLoop();  // loops entire active segment
   });
 
-  // ── Start carets: pause, seek ±0.1s, update number ──────────────────────
+  // ── Start carets: adjust ±0.1s and loop the short start preview ─────────
+  // (dev0260) Was: suspend + freeze on the new start frame. That left the
+  // player paused (_salPaused=true), which made subsequent ±1 / ±5 clicks
+  // silently no-op their play resume. Now matches ±1/±5: short loop from
+  // new start, keeps playing. Don't reach inside the seg's start (i.e.
+  // start can't go negative).
   document.getElementById('vs-frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    suspendLoop();
     segs[activeSegIdx].start = fmt2(Math.max(0, segs[activeSegIdx].start - FRAME_SEC));
     iStart.value = segs[activeSegIdx].start;
     updateSegData();
-    editorSeekFreeze(segs[activeSegIdx].start);
+    playStartLoop();
   });
   document.getElementById('vs+frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    suspendLoop();
     segs[activeSegIdx].start = fmt2(segs[activeSegIdx].start + FRAME_SEC);
     iStart.value = segs[activeSegIdx].start;
     updateSegData();
-    editorSeekFreeze(segs[activeSegIdx].start);
+    playStartLoop();
   });
 
   // -5 -1 0 +1 +5: adjust start, play from new start for min(3, dur) then loop
@@ -1087,24 +1105,48 @@ window.openVideoEditor = function(it) {
     });
   });
 
-  // ── Duration carets: pause, adjust ±0.1s, seek near new end ─────────────
+  // ── Duration carets: adjust ±0.1s and loop the short end preview ────────
+  // (dev0260) Was: suspend + freeze on the new end frame, which left the
+  // player paused. Now matches ±1/±5: short loop from ~3s before new end,
+  // keeps playing. dur+ caret still honors the totalVideoDur cap (silent
+  // first time, toast second consecutive time), matching the ±1/±5 cap.
   document.getElementById('vd-frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    suspendLoop();
     segs[activeSegIdx].dur = fmt2(Math.max(0.1, segs[activeSegIdx].dur - FRAME_SEC));
     iDur.value = segs[activeSegIdx].dur;
     updateSegData();
-    editorSeekFreeze(Math.max(segs[activeSegIdx].start,
-      segs[activeSegIdx].start + segs[activeSegIdx].dur - 0.1));
+    playEndLoop();
   });
   document.getElementById('vd+frame').addEventListener('pointerdown', function(e) {
     e.preventDefault();
-    suspendLoop();
-    segs[activeSegIdx].dur = fmt2(segs[activeSegIdx].dur + FRAME_SEC);
-    iDur.value = segs[activeSegIdx].dur;
+    if (!totalVideoDur) {
+      if (_durCapBlockedOnce) {
+        if (typeof toast === 'function')
+          toast('Waiting on video metadata — try again in a moment', 1600);
+        _durCapBlockedOnce = false;
+      } else {
+        _durCapBlockedOnce = true;
+      }
+      return;
+    }
+    var seg = segs[activeSegIdx];
+    var maxDur = fmt2(Math.max(0.1, totalVideoDur - seg.start));
+    if (fmt2(seg.dur + FRAME_SEC) > maxDur + 0.005) {
+      if (_durCapBlockedOnce) {
+        if (typeof toast === 'function')
+          toast('Cannot extend past end of video', 1600);
+        _durCapBlockedOnce = false;
+      } else {
+        _durCapBlockedOnce = true;
+      }
+      playEndLoop();
+      return;
+    }
+    _durCapBlockedOnce = false;
+    seg.dur = fmt2(seg.dur + FRAME_SEC);
+    iDur.value = seg.dur;
     updateSegData();
-    editorSeekFreeze(Math.max(segs[activeSegIdx].start,
-      segs[activeSegIdx].start + segs[activeSegIdx].dur - 0.1));
+    playEndLoop();
   });
 
   // -5 -1 0 +1 +5: adjust duration, play from 3s before new end, loop
@@ -1119,6 +1161,19 @@ window.openVideoEditor = function(it) {
     document.getElementById(id).addEventListener('pointerdown', function(e) {
       e.preventDefault();
       var delta = durDeltas[id];
+      // (dev0259) Refuse dur+ until totalVideoDur is known. Otherwise the
+      // band scale isn't pinned to the real video length yet, and even a
+      // valid increase can visually shift the bar when metadata arrives.
+      if (delta > 0 && !totalVideoDur) {
+        if (_durCapBlockedOnce) {
+          if (typeof toast === 'function')
+            toast('Waiting on video metadata — try again in a moment', 1600);
+          _durCapBlockedOnce = false;
+        } else {
+          _durCapBlockedOnce = true;
+        }
+        return;
+      }
       if (delta > 0 && totalVideoDur) {
         var seg = segs[activeSegIdx];
         var maxDur = fmt(Math.max(0.1, totalVideoDur - seg.start));
@@ -1584,7 +1639,7 @@ window.openVideoEditor = function(it) {
     var paused = false;
 
     var player = new Vimeo.Player(div, {
-      url: it.link, autoplay: true, muted: currentMute,
+      url: window.normalizeVimeoUrl(it.link), autoplay: true, muted: currentMute,
       controls: false, loop: false, autopause: false, transparent: false, background: false
     });
 

@@ -1684,8 +1684,8 @@ function vpUpdateTimeline() {
           const m = document.createElement('div');
           m.style.cssText = 'position:absolute;top:2px;bottom:2px;'
             + 'left:' + startPct + '%;width:' + widthPct + '%;'
-            + 'background:' + colour + ';opacity:0.55;'
-            + 'border-radius:2px;border:1px solid ' + colour + ';overflow:hidden;'
+            + 'background:' + colour + ';opacity:0.85;'
+            + 'border-radius:2px;border:1px solid #fff;overflow:hidden;'
             + _bandTextCss;
           m.textContent = _labelFor(seg, i);
           m.title = 'Seg ' + (i+1) + (seg.comment ? ' — ' + seg.comment : '')
@@ -1925,6 +1925,11 @@ function vpMountYouTube(host, link, seg, muted) {
 function vpMountVimeo(host, link, seg, muted) {
   const vidId = link.match(/vimeo\.com\/(\d+)/)?.[1];
   if (!vidId) return;
+  // Unlisted-video hash (form `vimeo.com/ID/HASH`) — required for player API
+  const vidHash = link.match(/vimeo\.com\/\d+\/([A-Za-z0-9]+)/)?.[1];
+  const playerUrl = vidHash
+    ? `https://vimeo.com/${vidId}?h=${vidHash}`
+    : `https://vimeo.com/${vidId}`;
   
   host.innerHTML = '';
   
@@ -1935,7 +1940,7 @@ function vpMountVimeo(host, link, seg, muted) {
   
   const loadPlayer = () => {
     const player = new Vimeo.Player(host, {
-      id: vidId,
+      url: playerUrl,
       autoplay: true,
       muted: muted,
       controls: false,

@@ -1160,7 +1160,27 @@ function onCell(e, vi, ci) {
     pending = {c:ci, r1:Math.min(focus.r,vi), r2:Math.max(focus.r,vi)};
     render(); openPopup();
   } else {
-    focus = {r:vi, c:ci}; pending = null; render();
+    // Fast path: focus change only — just retag classes instead of rebuilding tbody.
+    const prev = focus;
+    focus = {r:vi, c:ci};
+    const hadPending = pending !== null;
+    pending = null;
+    document.querySelectorAll('#tbody td.focus, #tbody td.sel').forEach(td => {
+      td.classList.remove('focus', 'sel');
+    });
+    const td = document.querySelector('#tbody td[data-vi="'+vi+'"][data-ci="'+ci+'"]');
+    if (td) td.classList.add('focus');
+    // Mirror render()'s last-UID update so D-screen restore still works.
+    try {
+      const di = vr(vi);
+      if (di >= 0 && di < data.length && data[di] && data[di].UID && typeof window.setLastUID === 'function') {
+        window.setLastUID(data[di].UID);
+      }
+    } catch (_) {}
+    // Status bar shows checked count etc.; nothing changes on focus-only click,
+    // so we skip renderStatus too. (If you add focus-dependent status later,
+    // call renderStatus() here.)
+    void prev; void hadPending;
   }
 }
 
