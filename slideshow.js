@@ -34,8 +34,11 @@ const SLIDESHOW_DEFAULTS = {
   delaySec:      0,       // (zip0239) pause after crossfade before zoom/pan starts
   loop:          true,
   pan:           'off',    // 'off'|'min'|'med'|'max'
-  label:         true,
-  comment:       false,
+  // (dev0265) label/comment are now size-valued, not boolean:
+  //   'off' | 'small' | 'med' | 'large' | 'largest'
+  // 'small' matches the pre-dev0265 ON font size.
+  labelSize:     'small',
+  commentSize:   'off',
   order:         'order', // (dev0265) 'order'|'random' — show in cell/file order or shuffled
   canvasBlur:    'off'    // 'off'|'min'|'med'|'max' (was boolean `bokeh` pre-zip0236)
 };
@@ -55,6 +58,14 @@ let _slideshowState = null;
 function _slideshowLoadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SLIDESHOW_LS_KEY) || '{}');
+    // (dev0265) Migrate legacy boolean `label`/`comment` → sized variants.
+    if (typeof s.labelSize   === 'undefined' && typeof s.label   === 'boolean') {
+      s.labelSize   = s.label   ? 'small' : 'off';
+    }
+    if (typeof s.commentSize === 'undefined' && typeof s.comment === 'boolean') {
+      s.commentSize = s.comment ? 'small' : 'off';
+    }
+    delete s.label; delete s.comment;
     return Object.assign({}, SLIDESHOW_DEFAULTS, s);
   } catch (_) {
     return Object.assign({}, SLIDESHOW_DEFAULTS);
@@ -284,59 +295,57 @@ function _slideshowStart(slides) {
   // Apply transition duration to image layers (live, in case settings change)
   _slideshowApplyTransitionTiming();
 
-  // (dev0265) Desktop mouse model:
-  //   • Quick mouseup (< HOLD_MS) with horizontal motion > 50px → navigate.
-  //       L→R (dx>0) = previous; R→L (dx<0) = next.
-  //   • Press-and-hold (mousedown still down past HOLD_MS) → enter "magnifier"
-  //       zoom at press point. Subsequent mousemove pans. mouseup exits zoom.
-  //   • While magnified, any drag pans, never navigates.
-  //   • Esc and ✕ close. Click is no longer a close — too risky.
+  // (dev0265) Desktop mouse — modeled on V/vp.js:
+  //   • Hold LMB: after 180ms settle, scale ramps up (slow→fast) capped at MAX,
+  //     persists across mouseups (does NOT revert on release).
+  //   • Drag > 8px during press: cancel zoom, enter drag mode. If currently
+  //     zoomed (>1.05), drag pans; otherwise drag tracks for a horizontal
+  //     swipe (release → navigate). L→R = previous; R→L = next.
+  //   • Double-click: reset zoom to 1× / pan to 0,0.
+  //   • Hold again at any time to zoom further.
   (function wireMouseSlideshow() {
-    const HOLD_MS    = 250;   // press time before zoom kicks in
-    const SWIPE_DX   = 50;    // px horizontal to count as a swipe
-    const SWIPE_MS   = 800;   // max ms for a swipe
-    const HOLD_ZOOM  = 2.0;   // magnifier zoom factor
-    let down = null;          // { x0, y0, t0, holdTimer, zooming }
+    const HOLD_MS    = 180;
+    const MAX_SCALE  = 8;
+    const SWIPE_DX   = 50;
+    const SWIPE_MS   = 800;
 
     function _frontImg() {
       const st = _slideshowState; if (!st) return null;
       return st.overlay.querySelector('#slideshowImg' + st.front);
     }
-    // Set manualZoom centered so the press-point pixel stays at the press
-    // point — gives the user a magnifier rooted under the cursor. Then
-    // mousemove updates manualZoom.tx/ty so the image pans with the mouse.
-    function _enterHoldZoom(p) {
-      const st = _slideshowState; if (!st) return;
-      const w = st.overlay.clientWidth  || window.innerWidth;
-      const h = st.overlay.clientHeight || window.innerHeight;
-      // With transform-origin:center, scale(N) maps a container pixel (px,py)
-      // to (w/2 + N*(px - w/2), h/2 + N*(py - h/2)). To pin it back to (px,py)
-      // we translate by ((1-N)*(px - w/2), (1-N)*(py - h/2)).
-      const tx = (1 - HOLD_ZOOM) * (p.x - w / 2);
-      const ty = (1 - HOLD_ZOOM) * (p.y - h / 2);
-      st._manualZoom = { scale: HOLD_ZOOM, tx, ty };
-      const f = _frontImg(); if (f) {
-        f.style.transition = 'transform 0.15s ease-out';
-        f.style.transform  = 'translate(' + tx + 'px,' + ty + 'px) scale(' + HOLD_ZOOM + ')';
-      }
+    function _ensureMZ() {
+      const st = _slideshowState;
+      if (!st._mouseZoom) st._mouseZoom = { scale: 1, tx: 0, ty: 0 };
+      return st._mouseZoom;
     }
-    function _panHoldZoom(p, p0) {
-      const st = _slideshowState; if (!st || !st._manualZoom) return;
-      const dx = p.x - p0.x, dy = p.y - p0.y;
-      // Pan by the drag delta — natural "grab the magnified image and slide" feel.
-      const base = st._manualZoom;
+    // Stamp the mouseZoom transform onto the front layer; also mirror into
+    // _manualZoom so _slideshowIsZoomed() reports correctly (gesture meaning
+    // switches to pan when zoomed).
+    function _applyMZ() {
+      const st = _slideshowState; if (!st) return;
+      const mz = _ensureMZ();
+      st._manualZoom = (mz.scale > 1.02) ? { scale: mz.scale, tx: mz.tx, ty: mz.ty } : null;
       const f = _frontImg(); if (!f) return;
       f.style.transition = 'none';
-      f.style.transform  =
-        'translate(' + (base.tx + dx) + 'px,' + (base.ty + dy) + 'px) scale(' + base.scale + ')';
+      f.style.transform  = 'translate(' + mz.tx + 'px,' + mz.ty + 'px) scale(' + mz.scale + ')';
     }
-    function _exitHoldZoom() {
-      const st = _slideshowState; if (!st) return;
-      st._manualZoom = null;
-      const f = _frontImg(); if (!f) return;
-      f.style.transition = 'transform 0.25s ease-out';
-      // Restore whatever the running auto-zoom/pan transform should be.
-      _slideshowApplyZoom();
+
+    let down = null;       // { x0, y0, t0, dragging, panBase }
+    let zoomDelay = null, zoomTimer = null, zoomStep = 0;
+    function _stopZoom() {
+      if (zoomDelay) { clearTimeout(zoomDelay);   zoomDelay = null; }
+      if (zoomTimer) { clearInterval(zoomTimer);  zoomTimer = null; }
+    }
+    function _startZoom() {
+      const mz = _ensureMZ();
+      zoomStep = 0.015; // 0.015 × 20Hz ≈ 0.3 scale/sec (slow start)
+      zoomTimer = setInterval(() => {
+        if (!_slideshowState) { _stopZoom(); return; }
+        if (mz.scale >= MAX_SCALE) { _stopZoom(); return; }
+        mz.scale = Math.min(MAX_SCALE, mz.scale + zoomStep);
+        zoomStep = Math.min(0.12, zoomStep + 0.003); // → ~2.4 scale/sec
+        _applyMZ();
+      }, 50);
     }
 
     overlay.addEventListener('mousedown', e => {
@@ -346,45 +355,61 @@ function _slideshowStart(slides) {
       if (e.target.closest('#slideshowCloseBtn')) return;
       if (_slideshowState._touchActive) return;
       e.preventDefault();
-      down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), zooming: false };
-      down.holdTimer = setTimeout(() => {
-        if (!down) return;
-        down.zooming = true;
-        _enterHoldZoom({ x: down.x0, y: down.y0 });
-      }, HOLD_MS);
+      down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null };
+      zoomDelay = setTimeout(_startZoom, HOLD_MS);
     });
     overlay.addEventListener('mousemove', e => {
       if (!down) return;
-      if (down.zooming) {
-        _panHoldZoom({ x: e.clientX, y: e.clientY }, { x: down.x0, y: down.y0 });
-        return;
-      }
-      // If the user moves far before HOLD_MS expires, cancel the hold-timer
-      // so a swipe isn't mistaken for a zoom.
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
-      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-        clearTimeout(down.holdTimer); down.holdTimer = null;
+      if (!down.dragging && Math.hypot(dx, dy) > 8) {
+        // Movement → cancel any pending/running zoom, enter drag mode
+        down.dragging = true;
+        _stopZoom();
+        const mz = _ensureMZ();
+        down.panBase = { tx: mz.tx, ty: mz.ty };
+      }
+      if (down.dragging) {
+        const mz = _ensureMZ();
+        if (mz.scale > 1.05) {
+          mz.tx = down.panBase.tx + dx;
+          mz.ty = down.panBase.ty + dy;
+          _applyMZ();
+        }
+        // At ~1× we just track for swipe-on-release; no transform changes.
       }
     });
     overlay.addEventListener('mouseup', e => {
       if (!down) return;
-      clearTimeout(down.holdTimer);
-      const wasZooming = down.zooming;
+      _stopZoom();
+      const wasDragging = down.dragging;
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
       const ms = Date.now() - down.t0;
+      const mz = _ensureMZ();
       down = null;
-      if (wasZooming) { _exitHoldZoom(); return; }
-      // Quick horizontal swipe → navigate. L→R = previous; R→L = next.
-      if (Math.abs(dx) > SWIPE_DX && Math.abs(dx) > Math.abs(dy) && ms < SWIPE_MS) {
-        _slideshowAdvance(dx > 0 ? -1 : +1);
+      if (wasDragging && mz.scale < 1.1) {
+        // Horizontal swipe at ~1× → navigate
+        if (Math.abs(dx) > SWIPE_DX && Math.abs(dx) > Math.abs(dy) && ms < SWIPE_MS) {
+          _slideshowAdvance(dx > 0 ? -1 : +1);
+        }
       }
+      // Zoom persists across releases (V-style). No reset here.
     });
     overlay.addEventListener('mouseleave', () => {
       if (!down) return;
-      clearTimeout(down.holdTimer);
-      const wasZooming = down.zooming;
+      _stopZoom();
       down = null;
-      if (wasZooming) _exitHoldZoom();
+    });
+    // Double-click → reset zoom & pan to 1× / center, restore auto Ken Burns.
+    overlay.addEventListener('dblclick', e => {
+      if (!_slideshowState) return;
+      if (e.target.closest('#slideshowMenu')) return;
+      if (e.target.closest('#slideshowCloseBtn')) return;
+      _stopZoom();
+      _slideshowState._mouseZoom = { scale: 1, tx: 0, ty: 0 };
+      _slideshowState._manualZoom = null;
+      const f = _frontImg();
+      if (f) f.style.transition = 'transform 0.25s ease-out';
+      _slideshowApplyZoom();
     });
   })();
 
@@ -736,6 +761,7 @@ function _slideshowShow(i, opts) {
   // slide. The next slide should start at its normal scale, not inherit the
   // previous slide's pinched scale/pan.
   st._manualZoom = null;
+  st._mouseZoom  = null; // (dev0265) desktop hold-LMB zoom — fresh per slide
 
   clearTimeout(st.timer);
   clearTimeout(st.delayTimer); // (zip0239) drop any pending pre-zoom delay
@@ -851,18 +877,70 @@ function _slideshowShow(i, opts) {
   }
 }
 
+// (dev0265) Size buckets for label/comment overlays. 'largest' = giant text
+// that spans the full screen — pinned to viewport center, wraps if needed.
+function _slideshowSizePx(size, kind) {
+  // kind: 'label' or 'comment'. label has a slightly larger base.
+  const base = kind === 'label' ? 20 : 15;
+  if (size === 'small')   return base;
+  if (size === 'med')     return base + 4;
+  if (size === 'large')   return base + 10;
+  if (size === 'largest') return 0; // sentinel: handled separately
+  return 0;
+}
+
 function _slideshowUpdateLabel(slide) {
   if (!_slideshowState) return;
   const st = _slideshowState;
   const labelEl   = st.overlay.querySelector('#slideshowLabel');
   const commentEl = st.overlay.querySelector('#slideshowComment');
   const row = slide && slide.row;
-  const labelText   = (st.settings.label   && row && row.VidTitle) ? String(row.VidTitle) : '';
-  const commentText = (st.settings.comment && row && row.comment)  ? String(row.comment)  : '';
-  labelEl.textContent   = labelText;
-  commentEl.textContent = commentText;
-  labelEl.style.opacity   = labelText   ? '1' : '0';
-  commentEl.style.opacity = commentText ? '1' : '0';
+  const ls = st.settings.labelSize   || 'off';
+  const cs = st.settings.commentSize || 'off';
+  const labelText   = (ls !== 'off' && row && row.VidTitle) ? String(row.VidTitle) : '';
+  const commentText = (cs !== 'off' && row && row.comment)  ? String(row.comment)  : '';
+
+  _slideshowStyleOverlayText(labelEl,   ls, 'label',   labelText);
+  _slideshowStyleOverlayText(commentEl, cs, 'comment', commentText);
+}
+
+function _slideshowStyleOverlayText(el, size, kind, text) {
+  if (!el) return;
+  el.textContent = text;
+  el.style.opacity = text ? '1' : '0';
+  if (!text || size === 'off') return;
+  if (size === 'largest') {
+    // Full-screen overlay: centered, line-height 1.1, ~10vw font (caps at
+    // ~12vh so very tall windows don't go absurd). Word-wraps inside viewport.
+    Object.assign(el.style, {
+      top: '0', bottom: '0', left: '0', right: '0',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      textAlign: 'center', padding: '4vw',
+      fontSize: 'min(12vh, 10vw)', lineHeight: '1.1',
+      fontWeight: 'bold',
+      color: kind === 'label' ? '#fff' : '#ddd'
+    });
+  } else {
+    const px = _slideshowSizePx(size, kind);
+    // Restore positional defaults that 'largest' may have overridden.
+    if (kind === 'label') {
+      Object.assign(el.style, {
+        top: '14px', bottom: '', left: '0', right: '0',
+        display: '', alignItems: '', justifyContent: '',
+        textAlign: 'center', padding: '0 60px',
+        fontSize: px + 'px', lineHeight: '',
+        fontWeight: 'bold', color: '#fff'
+      });
+    } else {
+      Object.assign(el.style, {
+        top: '', bottom: '36px', left: '0', right: '0',
+        display: '', alignItems: '', justifyContent: '',
+        textAlign: 'center', padding: '0 60px',
+        fontSize: px + 'px', lineHeight: '',
+        fontWeight: '', color: '#ddd'
+      });
+    }
+  }
 }
 
 // Step idx by `step` (+1 or -1), skipping `filtered`/`error` slides. Respects
@@ -952,41 +1030,47 @@ function _slideshowCloseMenu() {
 // (which lives in the first-row Start+collapse flex). Tapping the button again
 // (now showing "+") restores. Original sizing is stashed in dataset and put
 // back on expand.
+// (dev0265) Collapse to a "+" stub; expand by tearing down and rebuilding the
+// menu from the current settings. The rebuild guarantees that any new rows
+// (Close, Order, page-2 controls, pager) appear on re-expand — the previous
+// just-hide-children approach was prone to stale state on mobile pagination.
 function _slideshowToggleCollapse() {
-  if (!_slideshowState || !_slideshowState.menu) return;
-  const menu = _slideshowState.menu;
-  const collapseBtn = menu.querySelector('#ssMenuCollapse');
-  if (!collapseBtn) return;
-  const startBtn = menu.querySelector('#ssStart');
-  const collapsing = !menu.dataset.collapsed;
-  if (collapsing) {
-    menu.dataset.collapsed   = '1';
-    menu.dataset.origPadding  = menu.style.padding;
-    menu.dataset.origMinWidth = menu.style.minWidth;
-    menu.dataset.origMaxWidth = menu.style.maxWidth;
-    Array.from(menu.children).forEach((el, i) => {
-      if (i === 0) return;
-      el.style.display = 'none';
-    });
-    if (startBtn) startBtn.style.display = 'none';
-    menu.style.padding  = '3px 5px';
-    menu.style.minWidth = 'auto';
-    menu.style.maxWidth = 'none';
-    collapseBtn.textContent = '+';
-    collapseBtn.title = 'Expand';
-  } else {
-    delete menu.dataset.collapsed;
-    Array.from(menu.children).forEach((el, i) => {
-      if (i === 0) return;
-      el.style.display = '';
-    });
-    if (startBtn) startBtn.style.display = '';
-    menu.style.padding  = menu.dataset.origPadding  || '';
-    menu.style.minWidth = menu.dataset.origMinWidth || '';
-    menu.style.maxWidth = menu.dataset.origMaxWidth || '';
-    collapseBtn.textContent = '−';
-    collapseBtn.title = 'Collapse';
+  if (!_slideshowState) return;
+  const st = _slideshowState;
+  if (st.menuCollapsed) {
+    st.menuCollapsed = false;
+    if (st.collapsedStub && st.collapsedStub.parentNode) st.collapsedStub.remove();
+    st.collapsedStub = null;
+    _slideshowOpenMenu();
+    return;
   }
+  // Collapse: drop the menu entirely, leave a small "+" button in its place.
+  st.menuCollapsed = true;
+  if (st.menu && st.menu.parentNode) st.menu.remove();
+  st.menu = null;
+  const stub = document.createElement('button');
+  stub.id = 'slideshowMenuStub';
+  stub.title = 'Expand settings';
+  stub.textContent = '+';
+  stub.style.cssText = [
+    'position:absolute', 'right:16px', 'top:50%',
+    'transform:translateY(-50%)',
+    'background:rgba(0,0,0,0.55)', 'color:#aaa',
+    'border:1px solid rgba(255,255,255,0.35)', 'border-radius:6px',
+    'padding:4px 9px', 'font-family:monospace', 'font-size:16px',
+    'cursor:pointer', 'z-index:40010', 'line-height:1'
+  ].join(';') + ';';
+  stub.onclick = e => { e.stopPropagation(); _slideshowToggleCollapse(); };
+  st.overlay.appendChild(stub);
+  st.collapsedStub = stub;
+}
+
+// (dev0265) Reusable size dropdown for Title/Comment overlays.
+function _slideshowSizeSelect(id, cur, selCSS) {
+  const opts = ['off','small','med','large','largest'];
+  return '<select id="' + id + '" style="' + selCSS + '">' +
+    opts.map(o => '<option value="' + o + '"' + (cur === o ? ' selected' : '') + '>' + o + '</option>').join('') +
+    '</select>';
 }
 
 function _slideshowMenuHtml(s, baseFs, bigFs) {
@@ -1100,17 +1184,17 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
 
     <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Title</span>
-      <button class="ss-tog" data-key="label"   style="${togCSS(s.label)}">${s.label?'ON':'OFF'}</button>
+      ${_slideshowSizeSelect('ssLabelSize', s.labelSize, selCSS)}
     </div>
 
     <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Comment</span>
-      <button class="ss-tog" data-key="comment" style="${togCSS(s.comment)}">${s.comment?'ON':'OFF'}</button>
+      ${_slideshowSizeSelect('ssCommentSize', s.commentSize, selCSS)}
     </div>
 
     <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Order</span>
-      <button id="ssOrder" style="${togCSS(s.order === 'order')}">
+      <button id="ssOrder" style="${togCSS(true)}">
         ${s.order === 'order' ? 'IN ORDER' : 'RANDOM'}
       </button>
     </div>
@@ -1170,11 +1254,9 @@ function _slideshowWireMenu(menu) {
       e.stopPropagation();
       st.settings.order = (st.settings.order === 'order') ? 'random' : 'order';
       _slideshowSaveSettings(st.settings);
-      const on = st.settings.order === 'order';
-      orderBtn.textContent = on ? 'IN ORDER' : 'RANDOM';
-      orderBtn.style.cssText = orderBtn.style.cssText.replace(/border-color:[^;]+;color:[^;]+;background:[^;]+;?/, '')
-        + (on ? 'border-color:#5f5;color:#afa;background:rgba(0,80,0,0.4);'
-              : 'border-color:#666;color:#888;background:rgba(40,40,50,0.4);');
+      // (dev0265) Both states are "activated" — just flip the label and
+      // leave the green color in place. RANDOM should not look disabled.
+      orderBtn.textContent = (st.settings.order === 'order') ? 'IN ORDER' : 'RANDOM';
     };
   }
 
@@ -1310,6 +1392,10 @@ function _slideshowWireMenu(menu) {
   }
   wireSelect('ssZoomLevel',  'zoom',       _slideshowApplyZoom);
   wireSelect('ssCanvasBlur', 'canvasBlur', _slideshowApplyCanvasBlur);
+  // (dev0265) Title/Comment size dropdowns — re-render overlay text on change.
+  const reLabel = () => _slideshowUpdateLabel(st.slides[st.idx]);
+  wireSelect('ssLabelSize',   'labelSize',   reLabel);
+  wireSelect('ssCommentSize', 'commentSize', reLabel);
 
   // Clicking on the menu background shouldn't dismiss either.
   menu.addEventListener('click', e => e.stopPropagation());
