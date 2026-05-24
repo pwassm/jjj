@@ -455,29 +455,97 @@ function gridOpenFullscreen(row, contained) {
       return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
     }
 
-    // ── TOUCH: R→L swipe to close + tap to play/pause ─────────────────────
+    // ── TOUCH (dev0262): two-finger spread/pinch = zoom, two-finger pan,
+    //     double-tap = return to G. Single tap = play/pause toggle.
+    //     R→L one-finger swipe still closes (legacy escape hatch).
     (function wireTouchV() {
-      let sStart = null;
+      const _ptrs = new Map();
+      let _pinch = null, _drag = null, _swipe = null;
+      let _lastTap = 0, _lastTapP = null;
+
       swipeCatcher.addEventListener('pointerdown', e => {
         if (e.pointerType === 'mouse') return;
+        try { swipeCatcher.setPointerCapture(e.pointerId); } catch(_) {}
         const p = _vpxy(e);
-        sStart = { x: p.x, y: p.y, t: Date.now() };
+        _ptrs.set(e.pointerId, p);
+
+        if (_ptrs.size >= 2) {
+          // Begin pinch / two-finger pan
+          _swipe = null;
+          const [a, b] = [..._ptrs.values()];
+          _pinch = {
+            scale: _vScale, tx: _vTx, ty: _vTy,
+            dist: Math.hypot(b.x - a.x, b.y - a.y),
+            mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2
+          };
+          _drag = null;
+        } else {
+          _pinch = null;
+          _drag  = null;
+          _swipe = { x: p.x, y: p.y, t: Date.now() };
+        }
       }, true);
+
+      swipeCatcher.addEventListener('pointermove', e => {
+        if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
+        const p = _vpxy(e);
+        _ptrs.set(e.pointerId, p);
+
+        if (_ptrs.size >= 2 && _pinch) {
+          const [a, b] = [..._ptrs.values()];
+          const dist = Math.hypot(b.x - a.x, b.y - a.y);
+          const mx   = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          // Spread → scale up; pinch → scale down. Clamp [0.9, 8].
+          _vScale = Math.min(8, Math.max(0.9, _pinch.scale * dist / _pinch.dist));
+          // Two-finger pan: track centroid movement.
+          _vTx    = _pinch.tx + (mx - _pinch.mx);
+          _vTy    = _pinch.ty + (my - _pinch.my);
+          _vApply();
+          _swipe = null;
+        }
+      }, true);
+
       swipeCatcher.addEventListener('pointerup', e => {
-        if (e.pointerType === 'mouse' || !sStart) return;
+        if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
         const p = _vpxy(e);
-        const dx = p.x - sStart.x, dy = p.y - sStart.y;
-        const ms = Date.now() - sStart.t;
-        sStart = null;
-        if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800) {
-          vpClose(); return;
-        }
-        if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && ms < 300) {
-          if (typeof vpTogglePlay === 'function') vpTogglePlay();
+        _ptrs.delete(e.pointerId);
+
+        if (_ptrs.size === 0) {
+          // All fingers lifted
+          if (_swipe) {
+            const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
+            const ms = Date.now() - _swipe.t;
+            // R→L swipe (legacy close)
+            if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800 && _vScale < 1.1) {
+              _swipe = null; vpClose(); return;
+            }
+            // Quick stationary tap
+            if (Math.abs(dx) < 14 && Math.abs(dy) < 14 && ms < 300) {
+              const now = Date.now();
+              if (now - _lastTap < 350 && _lastTapP &&
+                  Math.abs(p.x - _lastTapP.x) < 30 &&
+                  Math.abs(p.y - _lastTapP.y) < 30) {
+                // Double-tap → return to G
+                _lastTap = 0; _lastTapP = null;
+                _swipe = null; vpClose(); return;
+              }
+              _lastTap = now; _lastTapP = p;
+              _swipe = null;
+              if (typeof vpTogglePlay === 'function') vpTogglePlay();
+              return;
+            }
+          }
+          _swipe = null; _pinch = null; _drag = null;
+        } else if (_ptrs.size === 1 && _pinch) {
+          // One finger left after pinch — drop pinch state
+          _pinch = null;
         }
       }, true);
+
       swipeCatcher.addEventListener('pointercancel', e => {
-        if (e.pointerType !== 'mouse') sStart = null;
+        if (e.pointerType === 'mouse') return;
+        _ptrs.delete(e.pointerId);
+        if (_ptrs.size === 0) { _swipe = null; _pinch = null; _drag = null; }
       }, true);
     })();
 
@@ -574,7 +642,10 @@ function gridOpenFullscreen(row, contained) {
     // Timeline bar
     const timeline = document.createElement('div');
     timeline.id = 'vp-timeline';
-    timeline.style.cssText = 'flex:1;height:16px;background:#113;border:1px solid #06f;border-radius:3px;position:relative;cursor:pointer;';
+    // (dev0262) touch-action:none — without this the rotated portrait page
+    // treats a visual horizontal drag as a physical vertical gesture and the
+    // browser fires pointercancel before our scrub handler can run.
+    timeline.style.cssText = 'flex:1;height:16px;background:#113;border:1px solid #06f;border-radius:3px;position:relative;cursor:pointer;touch-action:none;';
     
     // Segment markers on timeline (drawn first, under progress)
     const markers = document.createElement('div');
@@ -1472,10 +1543,29 @@ function vpWireControls() {
   // Full mode: pct → position in full video time. segIdx is irrelevant.
   const timeline = document.getElementById('vp-timeline');
   let _vpScrubActive = false;
-  const _vpScrubTo = (clientX) => {
+  // (dev0262) Wrap-local rect: in portrait phone mode the page is CSS-rotated
+  // 90° CW inside #rotateWrap. getBoundingClientRect() returns physical screen
+  // coords (timeline appears vertical), but pointer math wants wrap-local space
+  // (timeline appears horizontal). Transform the rect's corners through the
+  // same rotateXY mapping used for the event.
+  const _vpWrapLocalRect = (el) => {
+    const r = el.getBoundingClientRect();
+    if (!window._salRotated) return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    const vw = window.innerWidth;
+    // 90°CW: physical (cx,cy) → wrap-local (cy, vw-cx)
+    const p1x = r.top,    p1y = vw - r.left;
+    const p2x = r.bottom, p2y = vw - r.right;
+    const left = Math.min(p1x, p2x), right  = Math.max(p1x, p2x);
+    const top  = Math.min(p1y, p2y), bottom = Math.max(p1y, p2y);
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
+  };
+  const _vpScrubTo = (e) => {
     if (!_vpState || !_vpState.duration) return;
-    const rect = timeline.getBoundingClientRect();
-    const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const p = (typeof window.rotateXY === 'function')
+      ? window.rotateXY(e)
+      : { x: e.clientX, y: e.clientY };
+    const rect = _vpWrapLocalRect(timeline);
+    const pct  = Math.max(0, Math.min(1, (p.x - rect.left) / rect.width));
     if (_vpState.isSelected && _vpState.segs && _vpState.segs.length) {
       const total = _vpSelectedTotal();
       const pos   = pct * total;
@@ -1500,10 +1590,10 @@ function vpWireControls() {
   timeline.addEventListener('pointerdown', e => {
     _vpScrubActive = true;
     try { timeline.setPointerCapture(e.pointerId); } catch (_) {}
-    _vpScrubTo(e.clientX);
+    _vpScrubTo(e);
   });
   timeline.addEventListener('pointermove', e => {
-    if (_vpScrubActive) _vpScrubTo(e.clientX);
+    if (_vpScrubActive) _vpScrubTo(e);
   });
   const _endScrub = e => {
     _vpScrubActive = false;

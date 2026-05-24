@@ -155,6 +155,14 @@ html.user-mode body { background: #0a0a14; }
 .hm-item.dim:hover { background:transparent; }
 .hm-divider { height:1px; background:rgba(255,255,255,0.14); }
 #fsa-status { font-size:11px; color:#5a8; padding:7px 18px; border-bottom:1px solid rgba(255,255,255,0.08); background:rgba(0,40,20,0.3); min-height:26px; }
+/* (dev0262) On phones (user-mode) the hamburger should not show project-folder
+   or Dictionary — these are dev-only concepts. Hide them and the dividers
+   that immediately follow them so the menu collapses cleanly. */
+html.user-mode #fsa-status,
+html.user-mode #hm-setfolder,
+html.user-mode #hm-setfolder + .hm-divider,
+html.user-mode #hm-dict,
+html.user-mode #hm-dict + .hm-divider { display: none !important; }
 /* (zip0251) Loud "re-grant needed" state — silent FSA failures previously
    let edits go to localStorage only without the user noticing. */
 #fsa-status.warn { color:#fff; font-weight:bold; background:rgba(180,0,0,0.55); border-bottom-color:#f88; animation:fsaPulse 1.4s ease-out 1; }
@@ -819,7 +827,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0262';
+  window.HELP_VERSION_STR = 'dev0263';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];

@@ -204,7 +204,11 @@ function _slideshowStart(slides) {
   overlay.style.cssText = [
     'position:fixed', 'inset:0', 'z-index:40000',
     'background:#000', 'overflow:hidden',
-    'user-select:none', '-webkit-user-select:none'
+    'user-select:none', '-webkit-user-select:none',
+    // (dev0262) touch-action:none so the browser doesn't claim two-finger
+    // gestures for page-pinch or pointercancel the swipe — our pointer
+    // handlers do all gesture work.
+    'touch-action:none'
   ].join(';') + ';';
 
   // Two stacked <img> layers for crossfade. Both fixed-position absolute,
@@ -272,20 +276,150 @@ function _slideshowStart(slides) {
   // Apply transition duration to image layers (live, in case settings change)
   _slideshowApplyTransitionTiming();
 
-  // Click on overlay background (not menu, not buttons): (zip0238) when Pan
-  // is on, the click sets the pan target for the current slide and re-aims
-  // the Ken Burns animation toward it. When Pan is off, the click closes
-  // the slideshow (legacy behavior). The ✕ button and Esc always close.
+  // (dev0262) Phone/touch interaction model:
+  //   • Single tap: nothing (used to close — too easy to trigger accidentally).
+  //     If Pan is on, single tap still sets a pan aim point.
+  //   • Double tap: close.
+  //   • One-finger swipe L→R (dx > 0): next image. R→L (dx < 0): previous.
+  //   • Two-finger spread/pinch (paused only): scale current image in frame.
+  //   • Two-finger pan (paused only): pan current image.
+  //   • ✕ button and Esc always close.
+  // Desktop (mouse) keeps the legacy click-to-close behavior since accidental
+  // mouse clicks are rare and there's no scroll/zoom intent to confuse it with.
   overlay.addEventListener('click', e => {
     if (!_slideshowState) return;
     if (e.target.closest('#slideshowMenu')) return;
     if (e.target.closest('#slideshowCloseBtn')) return;
+    // Mouse-only click path (touch is handled by pointer handlers below).
+    // PointerEvent.pointerType isn't on every click event, so fall back to
+    // detecting touch via the last touch flag.
+    if (_slideshowState._touchActive) return;
     if (_slideshowState.settings.pan !== 'off') {
       _slideshowSetPanTargetFromEvent(e);
       return;
     }
     slideshowClose();
   });
+
+  // (dev0262) Touch gestures. We use pointer events with pointerType filter so
+  // mouse keeps its existing click-to-close (handled above).
+  (function wireTouchSlideshow() {
+    const _ptrs = new Map(); // id → {x,y}
+    let _pinch = null;       // { scale, tx, ty, dist, mx, my }
+    let _swipe = null;       // { x, y, t }
+    let _lastTap = 0, _lastTapP = null;
+    // Per-slide manual zoom override (paused pinch). Reset when slide changes.
+    function _front() {
+      const st = _slideshowState;
+      if (!st) return null;
+      return st.overlay.querySelector('#slideshowImg' + st.front);
+    }
+    function _applyManual() {
+      const st = _slideshowState; if (!st) return;
+      const f = _front(); if (!f) return;
+      const m = st._manualZoom || { scale: 1, tx: 0, ty: 0 };
+      // Kill the running transition so pinch tracks the fingers in real time.
+      f.style.transition = 'none';
+      f.style.transform  = 'translate(' + m.tx + 'px,' + m.ty + 'px) scale(' + m.scale + ')';
+    }
+    function _xy(e) {
+      return (typeof window.rotateXY === 'function')
+        ? window.rotateXY(e)
+        : { x: e.clientX, y: e.clientY };
+    }
+
+    overlay.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse') return;
+      if (e.target.closest('#slideshowMenu')) return;
+      if (e.target.closest('#slideshowCloseBtn')) return;
+      const st = _slideshowState; if (!st) return;
+      st._touchActive = true;
+      try { overlay.setPointerCapture(e.pointerId); } catch(_) {}
+      const p = _xy(e);
+      _ptrs.set(e.pointerId, p);
+
+      if (_ptrs.size >= 2) {
+        _swipe = null;
+        const [a, b] = [..._ptrs.values()];
+        const m = st._manualZoom || { scale: 1, tx: 0, ty: 0 };
+        _pinch = {
+          scale: m.scale, tx: m.tx, ty: m.ty,
+          dist: Math.hypot(b.x - a.x, b.y - a.y),
+          mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2
+        };
+      } else {
+        _pinch = null;
+        _swipe = { x: p.x, y: p.y, t: Date.now() };
+      }
+    }, true);
+
+    overlay.addEventListener('pointermove', e => {
+      if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
+      const st = _slideshowState; if (!st) return;
+      _ptrs.set(e.pointerId, _xy(e));
+      if (_ptrs.size >= 2 && _pinch && st.paused) {
+        const [a, b] = [..._ptrs.values()];
+        const dist = Math.hypot(b.x - a.x, b.y - a.y);
+        const mx   = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const ns   = Math.min(8, Math.max(0.5, _pinch.scale * dist / _pinch.dist));
+        const ntx  = _pinch.tx + (mx - _pinch.mx);
+        const nty  = _pinch.ty + (my - _pinch.my);
+        st._manualZoom = { scale: ns, tx: ntx, ty: nty };
+        _applyManual();
+      }
+    }, true);
+
+    overlay.addEventListener('pointerup', e => {
+      if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
+      const st = _slideshowState; if (!st) return;
+      const p = _xy(e);
+      _ptrs.delete(e.pointerId);
+
+      if (_ptrs.size === 0) {
+        // Clear the touch-active flag on a short delay so the synthesized
+        // mouse `click` that may follow the touch sequence is suppressed.
+        setTimeout(() => { if (_slideshowState) _slideshowState._touchActive = false; }, 350);
+        if (_swipe) {
+          const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
+          const ms = Date.now() - _swipe.t;
+          // Horizontal swipe → navigate.
+          // User spec: R→L = previous, L→R = next.
+          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && ms < 800) {
+            _swipe = null;
+            _slideshowAdvance(dx > 0 ? +1 : -1);
+            return;
+          }
+          // Quick stationary tap → check for double-tap
+          if (Math.abs(dx) < 14 && Math.abs(dy) < 14 && ms < 300) {
+            const now = Date.now();
+            if (now - _lastTap < 350 && _lastTapP &&
+                Math.abs(p.x - _lastTapP.x) < 30 &&
+                Math.abs(p.y - _lastTapP.y) < 30) {
+              _lastTap = 0; _lastTapP = null;
+              _swipe = null; slideshowClose(); return;
+            }
+            _lastTap = now; _lastTapP = p;
+            _swipe = null;
+            // Pan-mode single-tap aims the Ken Burns target (unchanged).
+            if (st.settings.pan !== 'off') _slideshowSetPanTargetFromEvent(e);
+            return;
+          }
+        }
+        _swipe = null; _pinch = null;
+      } else if (_ptrs.size === 1 && _pinch) {
+        _pinch = null;
+      }
+    }, true);
+
+    overlay.addEventListener('pointercancel', e => {
+      if (e.pointerType === 'mouse') return;
+      _ptrs.delete(e.pointerId);
+      if (_ptrs.size === 0) {
+        _swipe = null; _pinch = null;
+        if (_slideshowState) _slideshowState._touchActive = false;
+      }
+    }, true);
+  })();
 
   overlay.querySelector('#slideshowCloseBtn').onclick = e => {
     e.stopPropagation();
@@ -495,6 +629,11 @@ function _slideshowShow(i, opts) {
   const counterEl = st.overlay.querySelector('#slideshowCounter');
 
   counterEl.textContent = (i + 1) + ' / ' + st.slides.length;
+
+  // (dev0262) Reset any manual pinch-zoom override when navigating to a new
+  // slide. The next slide should start at its normal scale, not inherit the
+  // previous slide's pinched scale/pan.
+  st._manualZoom = null;
 
   clearTimeout(st.timer);
   clearTimeout(st.delayTimer); // (zip0239) drop any pending pre-zoom delay
