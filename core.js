@@ -5999,6 +5999,33 @@ function buildPhylaTable() {
 var HELP_VERSION_STR = (typeof window !== 'undefined' && window.HELP_VERSION_STR) ? window.HELP_VERSION_STR : 'dev0000';
 
 const HELP_DATA = [
+  // ─── MOBILE BASICS (Hum only) ───────────────────────────────────────
+  // (dev0264) Mobile-only orientation. Hidden from Hd and Hu via
+  // mobileOnly:true. Shown at the top of Hum so a phone user can find
+  // their way around without ever needing a keyboard.
+  { id: 'MOBILE', title: 'Getting started on your phone', devOnly: false, mobileOnly: true,
+    desc: 'SeeAndLearn on a phone is touch-first. You will mostly use the Grid (G) plus the fullscreen viewers (V / Xs / Q). Everything below is reachable without a keyboard.',
+    sections: [
+      { name: 'Top-of-screen controls', items: [
+        { key: 'Tap ☰ (top-left)',     desc: 'Opens the menu — Help, Settings, Slideshow.',          dev: false },
+        { key: 'Tap C button',         desc: 'Switch to a different saved grid layout (Collection).', dev: false },
+        { key: 'Tap ? Help button',    desc: 'Reopen this help at any time.',                        dev: false },
+      ]},
+      { name: 'Inside the Grid', items: [
+        { key: 'Tap a cell',           desc: 'Play / pause the video in that cell.',                 dev: false },
+        { key: 'Swipe → on a cell',    desc: 'Open that cell fullscreen (video, image, text, quiz).', dev: false },
+        { key: 'Swipe ← on a cell',    desc: 'Toggle the video in that cell play/pause.',            dev: false },
+      ]},
+      { name: 'Inside fullscreen view', items: [
+        { key: 'Swipe ← (from edge)',  desc: 'Close the viewer and return to the Grid.',             dev: false },
+        { key: 'Tap ✕ button',         desc: 'Close the viewer and return to the Grid.',             dev: false },
+        { key: 'Pinch / pan (images)', desc: 'Zoom and pan around an image.',                        dev: false },
+        { key: 'Tap bottom-bar icons', desc: 'Play, pause, set loop points in the video player (V).', dev: false },
+        { key: 'Tap an answer (quiz)', desc: 'Submit your answer in a quiz cell (Q).',               dev: false },
+      ]}
+    ]
+  },
+
   // ─── GLOBAL ─────────────────────────────────────────────────────────
   { id: 'GLOBAL', title: 'Global — works from any screen', devOnly: false,
     desc: 'Single-letter hotkeys fire when no input/editable has focus. Esc universally defocuses (blurs text fields; deselects focused row in T) — it no longer closes any screen.',
@@ -6240,13 +6267,40 @@ const HELP_DATA = [
   },
 ];
 
-// HELP_PAGES order: 0=Hd, 1=Taxonomy, 2=Hu. _isUserMode() decides which the
-// help system makes navigable.
+// HELP_PAGES order: 0=Hd, 1=Taxonomy, 2=Hu (desktop user), 3=Hum (mobile
+// user). _isUserMode() + _isMobileDevice() pick which one opens by default.
+// In dev mode all four pages are reachable via ◀ ▶ so the developer can
+// audit what each audience actually sees.
 const HELP_PAGES = [
   'Hd — Developer Reference',
   'Taxonomy (HALO + Phyla)',
-  'Hu — User Reference'
+  'Hu — Desktop User Reference',
+  'Hum — Mobile User Reference'
 ];
+
+// (dev0264) Heuristic: does this hotkey/gesture row apply on a phone?
+// Hum drops keyboard-only items so the phone reader is not confused by
+// shortcuts they have no way to trigger. The classification is structural,
+// not per-item, so new HELP_DATA rows inherit the right behavior for free.
+function _itemMobileOk(it, sectionName) {
+  // Every item in a "Hotkeys" section is keyboard-only by definition.
+  if (/hotkey/i.test(sectionName || '')) return false;
+  const k = String(it.key || '').toLowerCase();
+  // Touch idioms — always keep.
+  if (/swipe|pinch|pan|tap|hold/.test(k)) return true;
+  // Button presses translate one-to-one to taps on touch.
+  if (/button/.test(k)) return true;
+  // Right-click has no touch equivalent.
+  if (/r-click|right.click/.test(k)) return false;
+  // Modifier+click is a desktop pattern (no Ctrl/Shift on a phone).
+  if (/ctrl|shift|alt|meta/.test(k)) return false;
+  // Plain click / double-click → tap / double-tap.
+  if (/click/.test(k)) return true;
+  // Typing into a field works (mobile keyboard pops up).
+  if (/^type /.test(k)) return true;
+  // Anything else (Space, Tab, ↑↓, letter keys) — keyboard, skip.
+  return false;
+}
 
 // Render Hd page 0 from HELP_DATA. Two-column responsive layout; each
 // section gets a panel with its hotkeys and mouse rows.
@@ -6277,7 +6331,8 @@ function _renderHd() {
            + 'Use ◀ ▶ to switch to taxonomy or to preview the user help (Hu). '
            + 'Click <strong style="color:#5fa;">⬇ Download</strong> above to save a merged Hd+Hu reference as an HTML file (dev-only commands shown <strong>bold</strong>).</p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
-  HELP_DATA.forEach(s => { html += panel(s); });
+  // (dev0264) Hd skips mobileOnly intro screens — devs work from desktop.
+  HELP_DATA.forEach(s => { if (!s.mobileOnly) html += panel(s); });
   html += '</div>';
   root.innerHTML = html;
 }
@@ -6317,7 +6372,52 @@ function _renderHu() {
            + 'Tap a cell to play/pause, swipe right to view full-screen, swipe left to return.</p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
   HELP_DATA.forEach(s => {
-    if (s.devOnly) return; // skip dev-only screens entirely in user help
+    if (s.devOnly) return;     // skip dev-only screens entirely in user help
+    if (s.mobileOnly) return;  // (dev0264) skip phone-only intro on desktop
+    const block = panel(s);
+    if (block) html += block;
+  });
+  html += '</div>';
+  root.innerHTML = html;
+}
+
+// (dev0264) Render Hum page 3: phone-user view. Same shape as Hu but also
+// strips items where _itemMobileOk() says it doesn't apply on touch — so
+// keyboard hotkeys and right-click rows disappear, leaving only taps,
+// swipes, pinches, and buttons.
+function _renderHum() {
+  const root = document.getElementById('helpPage3');
+  if (!root) return;
+  const escH = (s) => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const panel = (s) => {
+    const filteredSections = s.sections.map(sec => ({
+      name: sec.name,
+      items: sec.items.filter(it => it.dev === false && _itemMobileOk(it, sec.name))
+    })).filter(sec => sec.items.length > 0);
+    if (filteredSections.length === 0) return '';
+    let html = '<div style="background:#0d0d1e;border:1px solid #2a2a4a;border-radius:8px;padding:11px 13px;margin-bottom:10px;">';
+    html += '<h3 style="color:#fa8;font-size:13px;margin:0 0 4px;letter-spacing:0.05em;">' + escH(s.title) + '</h3>';
+    if (s.desc) html += '<p style="color:#778;font-size:11px;margin:0 0 8px;line-height:1.5;">' + escH(s.desc) + '</p>';
+    filteredSections.forEach(sec => {
+      html += '<div style="margin-top:6px;color:#556;font-size:11px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
+      html += '<table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:4px;">';
+      sec.items.forEach(it => {
+        html += '<tr><td style="padding:4px 8px 4px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+              + '<td style="padding:4px 0;color:#ddd;line-height:1.4;">' + escH(it.desc) + '</td></tr>';
+      });
+      html += '</table>';
+    });
+    html += '</div>';
+    return html;
+  };
+  let html = '<p style="color:#667;font-size:12px;margin-bottom:14px;line-height:1.55;">'
+           + '<strong style="color:#8ef;">' + escH(HELP_VERSION_STR.replace('dev','user')) + '</strong> · '
+           + 'Phone quick reference. Everything here works with taps and swipes — no keyboard required.</p>';
+  // Single column on phones; auto-fit will widen on tablets.
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;">';
+  HELP_DATA.forEach(s => {
+    if (s.devOnly) return;
     const block = panel(s);
     if (block) html += block;
   });
@@ -6379,10 +6479,12 @@ function _downloadHelp() {
 }
 
 function showHelpPage(p) {
-  // (zip0154) User mode → only Hu (page 2) is reachable. Clamp navigation.
+  // (zip0154/dev0264) User mode → pin to Hu (page 2) on desktop or Hum
+  // (page 3) on phones. Dev mode walks all four pages freely.
   const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  const onPhone  = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
   if (userMode) {
-    p = 2;
+    p = onPhone ? 3 : 2;
   } else {
     p = Math.max(0, Math.min(HELP_PAGES.length - 1, p));
   }
@@ -6390,11 +6492,13 @@ function showHelpPage(p) {
   document.getElementById('helpTitle').textContent = HELP_PAGES[_helpPage];
   document.getElementById('helpPageIndicator').textContent =
     userMode
-      ? 'User reference'
+      ? (onPhone ? 'Mobile user reference' : 'Desktop user reference')
       : 'Page '+(_helpPage+1)+' of '+HELP_PAGES.length+' — use ◀ ▶ or ← → to navigate';
   document.getElementById('helpPage0').style.display = _helpPage === 0 ? 'block' : 'none';
   document.getElementById('helpPage1').style.display = _helpPage === 1 ? 'block' : 'none';
   document.getElementById('helpPage2').style.display = _helpPage === 2 ? 'block' : 'none';
+  const p3 = document.getElementById('helpPage3');
+  if (p3) p3.style.display = _helpPage === 3 ? 'block' : 'none';
   // Nav arrows: hide entirely in user mode (no navigation), dim at edges in dev.
   const prev = document.getElementById('helpPrev');
   const next = document.getElementById('helpNext');
@@ -6405,20 +6509,22 @@ function showHelpPage(p) {
     prev.style.opacity = _helpPage === 0 ? '0.3' : '1';
     next.style.opacity = _helpPage === HELP_PAGES.length - 1 ? '0.3' : '1';
   }
-  // Download button: visible only on Hd (page 0). Hidden on taxonomy + Hu.
+  // Download button: visible only on Hd (page 0). Hidden on taxonomy + Hu + Hum.
   document.getElementById('helpDownload').style.display = (!userMode && _helpPage === 0) ? '' : 'none';
   // Lazy-render panels on first show (and on every show — cheap).
   if (_helpPage === 0) _renderHd();
   if (_helpPage === 1) buildPhylaTable();
   if (_helpPage === 2) _renderHu();
+  if (_helpPage === 3) _renderHum();
 }
 
 function closeHelp() { document.getElementById('helpModal').style.display = 'none'; }
 function openHelp()  {
-  // (zip0154) User mode opens directly to Hu (page 2). Dev mode opens to
-  // whatever page was last viewed (defaults to 0 = Hd).
+  // (zip0154/dev0264) User mode opens directly to Hu on desktop or Hum
+  // on a phone. Dev mode opens to whatever page was last viewed (default 0 = Hd).
   const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
-  if (userMode) _helpPage = 2;
+  const onPhone  = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
+  if (userMode) _helpPage = onPhone ? 3 : 2;
   document.getElementById('helpModal').style.display = 'flex';
   showHelpPage(_helpPage);
 }

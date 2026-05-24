@@ -36,8 +36,18 @@ const SLIDESHOW_DEFAULTS = {
   pan:           'off',    // 'off'|'min'|'med'|'max'
   label:         true,
   comment:       false,
+  order:         'order', // (dev0265) 'order'|'random' — show in cell/file order or shuffled
   canvasBlur:    'off'    // 'off'|'min'|'med'|'max' (was boolean `bokeh` pre-zip0236)
 };
+
+// Fisher-Yates shuffle (in place) — used when settings.order === 'random'.
+function _slideshowShuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 const SLIDESHOW_LS_KEY = 'sal-slideshow-settings';
 
 let _slideshowState = null;
@@ -129,6 +139,7 @@ function slideshowOpenGrid() {
     if (typeof toast === 'function') toast('No image cells in the active grid.', 2000);
     return;
   }
+  if (_slideshowLoadSettings().order === 'random') _slideshowShuffle(slides);
   _slideshowStart(slides);
 }
 
@@ -175,10 +186,7 @@ async function slideshowOpenJpgsFolder() {
     if (typeof toast === 'function') toast('No images found under jpgs/.', 2200);
     return;
   }
-  for (let i = files.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [files[i], files[j]] = [files[j], files[i]];
-  }
+  if (_slideshowLoadSettings().order === 'random') _slideshowShuffle(files);
   const slides = [];
   for (const fh of files) {
     try {
@@ -276,30 +284,109 @@ function _slideshowStart(slides) {
   // Apply transition duration to image layers (live, in case settings change)
   _slideshowApplyTransitionTiming();
 
-  // (dev0262) Phone/touch interaction model:
-  //   • Single tap: nothing (used to close — too easy to trigger accidentally).
-  //     If Pan is on, single tap still sets a pan aim point.
-  //   • Double tap: close.
-  //   • One-finger swipe L→R (dx > 0): next image. R→L (dx < 0): previous.
-  //   • Two-finger spread/pinch (paused only): scale current image in frame.
-  //   • Two-finger pan (paused only): pan current image.
-  //   • ✕ button and Esc always close.
-  // Desktop (mouse) keeps the legacy click-to-close behavior since accidental
-  // mouse clicks are rare and there's no scroll/zoom intent to confuse it with.
-  overlay.addEventListener('click', e => {
-    if (!_slideshowState) return;
-    if (e.target.closest('#slideshowMenu')) return;
-    if (e.target.closest('#slideshowCloseBtn')) return;
-    // Mouse-only click path (touch is handled by pointer handlers below).
-    // PointerEvent.pointerType isn't on every click event, so fall back to
-    // detecting touch via the last touch flag.
-    if (_slideshowState._touchActive) return;
-    if (_slideshowState.settings.pan !== 'off') {
-      _slideshowSetPanTargetFromEvent(e);
-      return;
+  // (dev0265) Desktop mouse model:
+  //   • Quick mouseup (< HOLD_MS) with horizontal motion > 50px → navigate.
+  //       L→R (dx>0) = previous; R→L (dx<0) = next.
+  //   • Press-and-hold (mousedown still down past HOLD_MS) → enter "magnifier"
+  //       zoom at press point. Subsequent mousemove pans. mouseup exits zoom.
+  //   • While magnified, any drag pans, never navigates.
+  //   • Esc and ✕ close. Click is no longer a close — too risky.
+  (function wireMouseSlideshow() {
+    const HOLD_MS    = 250;   // press time before zoom kicks in
+    const SWIPE_DX   = 50;    // px horizontal to count as a swipe
+    const SWIPE_MS   = 800;   // max ms for a swipe
+    const HOLD_ZOOM  = 2.0;   // magnifier zoom factor
+    let down = null;          // { x0, y0, t0, holdTimer, zooming }
+
+    function _frontImg() {
+      const st = _slideshowState; if (!st) return null;
+      return st.overlay.querySelector('#slideshowImg' + st.front);
     }
-    slideshowClose();
-  });
+    // Set manualZoom centered so the press-point pixel stays at the press
+    // point — gives the user a magnifier rooted under the cursor. Then
+    // mousemove updates manualZoom.tx/ty so the image pans with the mouse.
+    function _enterHoldZoom(p) {
+      const st = _slideshowState; if (!st) return;
+      const w = st.overlay.clientWidth  || window.innerWidth;
+      const h = st.overlay.clientHeight || window.innerHeight;
+      // With transform-origin:center, scale(N) maps a container pixel (px,py)
+      // to (w/2 + N*(px - w/2), h/2 + N*(py - h/2)). To pin it back to (px,py)
+      // we translate by ((1-N)*(px - w/2), (1-N)*(py - h/2)).
+      const tx = (1 - HOLD_ZOOM) * (p.x - w / 2);
+      const ty = (1 - HOLD_ZOOM) * (p.y - h / 2);
+      st._manualZoom = { scale: HOLD_ZOOM, tx, ty };
+      const f = _frontImg(); if (f) {
+        f.style.transition = 'transform 0.15s ease-out';
+        f.style.transform  = 'translate(' + tx + 'px,' + ty + 'px) scale(' + HOLD_ZOOM + ')';
+      }
+    }
+    function _panHoldZoom(p, p0) {
+      const st = _slideshowState; if (!st || !st._manualZoom) return;
+      const dx = p.x - p0.x, dy = p.y - p0.y;
+      // Pan by the drag delta — natural "grab the magnified image and slide" feel.
+      const base = st._manualZoom;
+      const f = _frontImg(); if (!f) return;
+      f.style.transition = 'none';
+      f.style.transform  =
+        'translate(' + (base.tx + dx) + 'px,' + (base.ty + dy) + 'px) scale(' + base.scale + ')';
+    }
+    function _exitHoldZoom() {
+      const st = _slideshowState; if (!st) return;
+      st._manualZoom = null;
+      const f = _frontImg(); if (!f) return;
+      f.style.transition = 'transform 0.25s ease-out';
+      // Restore whatever the running auto-zoom/pan transform should be.
+      _slideshowApplyZoom();
+    }
+
+    overlay.addEventListener('mousedown', e => {
+      if (!_slideshowState) return;
+      if (e.button !== 0) return;
+      if (e.target.closest('#slideshowMenu')) return;
+      if (e.target.closest('#slideshowCloseBtn')) return;
+      if (_slideshowState._touchActive) return;
+      e.preventDefault();
+      down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), zooming: false };
+      down.holdTimer = setTimeout(() => {
+        if (!down) return;
+        down.zooming = true;
+        _enterHoldZoom({ x: down.x0, y: down.y0 });
+      }, HOLD_MS);
+    });
+    overlay.addEventListener('mousemove', e => {
+      if (!down) return;
+      if (down.zooming) {
+        _panHoldZoom({ x: e.clientX, y: e.clientY }, { x: down.x0, y: down.y0 });
+        return;
+      }
+      // If the user moves far before HOLD_MS expires, cancel the hold-timer
+      // so a swipe isn't mistaken for a zoom.
+      const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        clearTimeout(down.holdTimer); down.holdTimer = null;
+      }
+    });
+    overlay.addEventListener('mouseup', e => {
+      if (!down) return;
+      clearTimeout(down.holdTimer);
+      const wasZooming = down.zooming;
+      const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
+      const ms = Date.now() - down.t0;
+      down = null;
+      if (wasZooming) { _exitHoldZoom(); return; }
+      // Quick horizontal swipe → navigate. L→R = previous; R→L = next.
+      if (Math.abs(dx) > SWIPE_DX && Math.abs(dx) > Math.abs(dy) && ms < SWIPE_MS) {
+        _slideshowAdvance(dx > 0 ? -1 : +1);
+      }
+    });
+    overlay.addEventListener('mouseleave', () => {
+      if (!down) return;
+      clearTimeout(down.holdTimer);
+      const wasZooming = down.zooming;
+      down = null;
+      if (wasZooming) _exitHoldZoom();
+    });
+  })();
 
   // (dev0262) Touch gestures. We use pointer events with pointerType filter so
   // mouse keeps its existing click-to-close (handled above).
@@ -382,11 +469,15 @@ function _slideshowStart(slides) {
         if (_swipe) {
           const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
           const ms = Date.now() - _swipe.t;
-          // Horizontal swipe → navigate.
-          // User spec: R→L = previous, L→R = next.
-          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && ms < 800) {
+          // Horizontal swipe → navigate (dev0265: standardized to desktop conv).
+          // L→R (dx > 0) = previous; R→L (dx < 0) = next.
+          // When the current image is zoomed (manual pinch or auto-zoom > 1),
+          // a single-finger drag is a pan, not a navigation — skip and let the
+          // dedicated pan path handle it via _slideshowSetPanTargetFromEvent.
+          const zoomedNow = _slideshowIsZoomed();
+          if (!zoomedNow && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && ms < 800) {
             _swipe = null;
-            _slideshowAdvance(dx > 0 ? +1 : -1);
+            _slideshowAdvance(dx > 0 ? -1 : +1);
             return;
           }
           // Quick stationary tap → check for double-tap
@@ -599,6 +690,17 @@ function _slideshowApplyZoom() {
   let scale = _slideshowZoomScale(st.settings.zoom);
   if (scale === 0) scale = _slideshowSuperMaxScale(front);
   front.style.transform = _slideshowComputePanTransform(scale);
+}
+
+// (dev0265) "Is the current slide currently zoomed in?" — true if the user has
+// pinched/held to zoom (manualZoom.scale > 1) OR the auto-zoom Ken Burns has
+// pushed the front layer past 1.0. Used to switch gesture meaning from
+// navigate → pan when zoomed.
+function _slideshowIsZoomed() {
+  const st = _slideshowState;
+  if (!st) return false;
+  const m = st._manualZoom;
+  return !!(m && m.scale > 1.02);
 }
 
 function _slideshowKey(e) {
@@ -941,68 +1043,94 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
                      font-family:monospace;font-size:${bigFs}px;line-height:1;">−</button>
     </div>
     <button id="ssPause" style="display:block;width:100%;padding:4px 8px;
-            margin-bottom:8px;border-radius:6px;
+            margin-bottom:6px;border-radius:6px;
             border:1px solid;${pauseCSS}
             cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
       ${paused ? '▶ Resume' : '⏸ Pause'}
     </button>
+    <button id="ssClose" style="display:block;width:100%;padding:4px 8px;
+            margin-bottom:8px;border-radius:6px;
+            border:1px solid #f88;color:#fbb;background:rgba(80,0,0,0.45);
+            cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
+      ✕ Close
+    </button>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Each slide</span>
       <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
                    inputmode="decimal" value="${s.slideSec}"
                    style="${numCSS}"> sec</span>
     </div>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Zoom</span>
       <span><input id="ssZoomSec"   type="number" min="0.5" max="60" step="0.5"
                    inputmode="decimal" value="${s.zoomSec}"
                    style="${numCSS}"> sec</span>
     </div>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Zoom</span>
       ${lvlZoom(s.zoom).replace('$ID', 'ssZoomLevel')}
     </div>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Transition</span>
       <span><input id="ssTransSec"  type="number" min="0" max="10" step="0.1"
                    inputmode="decimal" value="${s.transitionSec}"
                    style="${numCSS}"> sec</span>
     </div>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Delay</span>
       <span><input id="ssDelaySec"  type="number" min="0" max="30" step="0.1"
                    inputmode="decimal" value="${s.delaySec}"
                    style="${numCSS}"> sec</span>
     </div>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Loop</span>
       <button class="ss-tog" data-key="loop"    style="${togCSS(s.loop)}">${s.loop?'ON':'OFF'}</button>
     </div>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Pan</span>
       ${lvl(s.pan).replace('$ID', 'ssPan')}
     </div>
 
-    <div style="${rowCSS}">
-      <span>Label</span>
+    <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Title</span>
       <button class="ss-tog" data-key="label"   style="${togCSS(s.label)}">${s.label?'ON':'OFF'}</button>
     </div>
 
-    <div style="${rowCSS}">
+    <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Comment</span>
       <button class="ss-tog" data-key="comment" style="${togCSS(s.comment)}">${s.comment?'ON':'OFF'}</button>
     </div>
 
-    <div style="${rowCSS};border-bottom:none;">
+    <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Order</span>
+      <button id="ssOrder" style="${togCSS(s.order === 'order')}">
+        ${s.order === 'order' ? 'IN ORDER' : 'RANDOM'}
+      </button>
+    </div>
+
+    <div class="ss-row ss-page-2" style="${rowCSS};border-bottom:none;">
       <span>CanvasBlur</span>
       ${lvl(s.canvasBlur).replace('$ID', 'ssCanvasBlur')}
+    </div>
+
+    <div id="ssPager" style="display:none;align-items:center;justify-content:space-between;
+         margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.18);">
+      <button id="ssPagePrev" style="padding:3px 10px;border-radius:5px;
+              border:1px solid #4af;background:rgba(0,40,80,0.45);color:#8ef;
+              cursor:pointer;font-family:monospace;font-size:${bigFs}px;
+              font-weight:bold;">◀</button>
+      <span id="ssPageLabel" style="font-size:${baseFs}px;color:#aaa;">1 / 2</span>
+      <button id="ssPageNext" style="padding:3px 10px;border-radius:5px;
+              border:1px solid #4af;background:rgba(0,40,80,0.45);color:#8ef;
+              cursor:pointer;font-family:monospace;font-size:${bigFs}px;
+              font-weight:bold;">▶</button>
     </div>
   `;
 }
@@ -1023,6 +1151,58 @@ function _slideshowWireMenu(menu) {
     collapseBtn.onclick = e => {
       e.stopPropagation();
       _slideshowToggleCollapse();
+    };
+  }
+
+  // (dev0265) Close button — exits the slideshow from inside the menu.
+  const closeBtn = menu.querySelector('#ssClose');
+  if (closeBtn) {
+    closeBtn.onclick = e => { e.stopPropagation(); slideshowClose(); };
+  }
+
+  // (dev0265) Order toggle — flips between in-order and random. Note: this
+  // does NOT reshuffle the currently-playing slides (advancing through a
+  // visibly reordered list mid-show is jarring); the new value applies the
+  // next time slideshowOpenGrid / slideshowOpenJpgsFolder runs.
+  const orderBtn = menu.querySelector('#ssOrder');
+  if (orderBtn) {
+    orderBtn.onclick = e => {
+      e.stopPropagation();
+      st.settings.order = (st.settings.order === 'order') ? 'random' : 'order';
+      _slideshowSaveSettings(st.settings);
+      const on = st.settings.order === 'order';
+      orderBtn.textContent = on ? 'IN ORDER' : 'RANDOM';
+      orderBtn.style.cssText = orderBtn.style.cssText.replace(/border-color:[^;]+;color:[^;]+;background:[^;]+;?/, '')
+        + (on ? 'border-color:#5f5;color:#afa;background:rgba(0,80,0,0.4);'
+              : 'border-color:#666;color:#888;background:rgba(40,40,50,0.4);');
+    };
+  }
+
+  // (dev0265) Mobile pagination — split rows across two pages; ◀ ▶ flip them.
+  // Desktop ignores it (all rows visible, pager hidden) so nothing is hidden
+  // when the menu fits comfortably.
+  const mobile = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
+  const pager  = menu.querySelector('#ssPager');
+  const pageLabel = menu.querySelector('#ssPageLabel');
+  if (mobile && pager) {
+    pager.style.display = 'flex';
+    let page = 1;
+    function applyPage() {
+      menu.querySelectorAll('.ss-row').forEach(row => {
+        const onPage1 = row.classList.contains('ss-page-1');
+        const visible = (page === 1) ? onPage1 : !onPage1;
+        row.style.display = visible ? '' : 'none';
+      });
+      if (pageLabel) pageLabel.textContent = page + ' / 2';
+    }
+    applyPage();
+    menu.querySelector('#ssPagePrev').onclick = e => {
+      e.stopPropagation();
+      page = page === 1 ? 2 : 1; applyPage();
+    };
+    menu.querySelector('#ssPageNext').onclick = e => {
+      e.stopPropagation();
+      page = page === 2 ? 1 : 2; applyPage();
     };
   }
 
