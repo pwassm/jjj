@@ -206,6 +206,21 @@ _markUserModeClass();
         window._deepConfigUnlocked = hasUnlock;
       }
     }
+    // (dev0267) Slideshow deep-link: `?ss=ID` finds the c.json row whose
+    // `ss` field equals ID, activates that grid, then auto-launches the
+    // slideshow over it. /unlock suffix leaves G visible after the user
+    // closes the slideshow; bare form keeps locked-mode.
+    const ssRaw = (p.get('ss') || '').trim();
+    if (ssRaw) {
+      const { val: ssId, hasUnlock } = strip(ssRaw);
+      if (ssId) {
+        if (!hasUnlock) {
+          document.documentElement.classList.add('locked-mode');
+        }
+        window._deepSs = ssId;
+        window._deepSsUnlocked = hasUnlock;
+      }
+    }
   } catch (e) { /* URL parse error — fall through to normal boot */ }
 })();
 
@@ -340,10 +355,11 @@ function _routeInitialScreen() {
   // set iff the link did NOT end in /unlock.
   const deepUid = window._deepUid || params.get('i') || null;
   const deepConfig = window._deepConfig || null;
+  const deepSs = window._deepSs || null;
   const isLocked = !!window._lockedUid;
   // (zip0141) In user mode, default to G regardless of device — the user
   // version doesn't have a meaningful T view.
-  if (!target && (_isMobileDevice() || _isUserMode() || deepUid || deepConfig)) target = 'g';
+  if (!target && (_isMobileDevice() || _isUserMode() || deepUid || deepConfig || deepSs)) target = 'g';
   if (!target) return;
   setTimeout(() => {
     // (dev0249) In LOCKED deep-link mode, skip opening G — V will render
@@ -354,6 +370,10 @@ function _routeInitialScreen() {
     // to-grid behavior).
     if (deepUid) {
       // skip gridShow / openCScreen — go straight to V
+    } else if (deepSs) {
+      // (dev0267) ?ss=ID — find c.json row with matching ss field, activate
+      // its grid, then auto-launch the slideshow.
+      _openSlideshowBySsId(deepSs);
     } else if (deepConfig) {
       // (dev0253) ?c=NAME — activate config then open G. _openConfigByName
       // calls gridShow() once the config is loaded.
@@ -445,6 +465,60 @@ async function _openConfigByName(name) {
   }
   if (typeof save === 'function') save();
   if (typeof gridShow === 'function') gridShow();
+}
+
+// (dev0267) Resolve a slideshow shortcut id (matched against c.json `ss`
+// field) to a grid config, activate it, then auto-launch slideshowOpenGrid
+// once the grid is up. Mirrors _openConfigByName's c.json loading & data
+// polling so it works on first paint even when ml.json is still loading.
+async function _openSlideshowBySsId(ssVal) {
+  const want = String(ssVal || '').trim().toLowerCase();
+  if (!want) return;
+  const startedAt = Date.now();
+  function ready() {
+    return typeof data !== 'undefined' && Array.isArray(data) && data.length > 0;
+  }
+  while (!ready()) {
+    if (Date.now() - startedAt > 5000) {
+      if (typeof toast === 'function') toast('Could not load data — check your connection', 3000);
+      return;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+  let parsed = null;
+  try {
+    const dir = await _getDir();
+    if (dir) {
+      try {
+        const fh = await dir.getFileHandle('c.json');
+        parsed = JSON.parse(await (await fh.getFile()).text());
+      } catch (e) {}
+    }
+    if (!parsed) {
+      try {
+        const r = await fetch('c.json?t=' + Date.now());
+        if (r.ok) parsed = await r.json();
+      } catch (e) {}
+    }
+  } catch (e) {}
+  if (!parsed) {
+    if (typeof toast === 'function') toast('Could not load c.json', 2500);
+    return;
+  }
+  const rows = Array.isArray(parsed)
+    ? (parsed[0] && parsed[0]._salMeta ? parsed.slice(1) : parsed)
+    : [parsed];
+  const cfg = rows.find(r => r && !r._salMeta && r.ss != null
+    && String(r.ss).trim().toLowerCase() === want);
+  if (!cfg || !cfg.gname) {
+    if (typeof toast === 'function') toast('No grid with ss="' + ssVal + '"', 2500);
+    return;
+  }
+  await _openConfigByName(cfg.gname);
+  // Wait a beat for gridShow() to paint, then launch the slideshow over it.
+  setTimeout(() => {
+    if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid();
+  }, 350);
 }
 
 // (zip0142) Resolve a UID (string or number) to a row in `data` and open

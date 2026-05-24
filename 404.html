@@ -59,6 +59,20 @@
       }
     }
     if (Array.isArray(cj)) {
+      // (dev0267) Slideshow shortcut: /ss<id> matches the `ss` field on a
+      // c.json grid row. Redirects to ?ss=<id> so boot.js can activate the
+      // grid and auto-launch the slideshow.
+      if (slug.length > 2 && slug.slice(0, 2) === 'ss') {
+        var ssId = slug.slice(2);
+        for (var k = 0; k < cj.length; k++) {
+          var gs = cj[k];
+          if (gs && !gs._salMeta && gs.ss != null
+              && String(gs.ss).trim().toLowerCase() === ssId) {
+            go('?ss=' + encodeURIComponent(ssId) + suffix);
+            return;
+          }
+        }
+      }
       for (var j = 0; j < cj.length; j++) {
         var g = cj[j];
         if (g && !g._salMeta && matches(g.Direct) && g.gname) {
