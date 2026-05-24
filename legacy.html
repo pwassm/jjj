@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Legacy / KitKat diagnostic</title>
+<style>
+  body { font-family: monospace, sans-serif; background:#0a0a14; color:#ddd; margin:0; padding:10px; font-size:13px; }
+  h1 { color:#8ef; font-size:15px; margin:0 0 10px; }
+  h2 { color:#fc8; font-size:13px; margin:14px 0 6px; border-bottom:1px solid #333; padding-bottom:3px; }
+  .row { padding:3px 0; border-bottom:1px solid #1a1a28; }
+  .lbl { display:inline-block; min-width:170px; color:#888; }
+  .ok  { color:#5f5; }
+  .no  { color:#f66; }
+  .warn{ color:#fc8; }
+  pre { background:#000; padding:6px; overflow:auto; font-size:11px; color:#8ef; white-space:pre-wrap; word-wrap:break-word; }
+  button { background:#113; color:#8ef; border:1px solid #4af; padding:8px 14px; font-family:monospace; font-size:13px; border-radius:4px; margin:4px 0; cursor:pointer; }
+  input { background:#0a0a1a; color:#fff; border:1px solid #4af; padding:6px 8px; font-family:monospace; font-size:13px; border-radius:4px; width:90px; }
+  .vbox { background:#000; border:1px solid #333; margin:8px 0; min-height:60px; }
+  iframe { display:block; border:0; width:100%; height:200px; background:#111; }
+  img.test { display:block; max-width:100%; max-height:200px; background:#111; }
+  video { display:block; width:100%; max-height:240px; background:#111; }
+</style>
+</head>
+<body>
+
+<h1>SeeAndLearn legacy diagnostic <span style="color:#fc8;font-size:10px;">(KitKat probe)</span></h1>
+<div style="color:#888;font-size:11px;margin-bottom:10px;">
+  This page does NOT load any of the main app's JS. It runs ES5-only feature checks and tries
+  to render one image, one YouTube iframe, and one HTML5 video so you can see what survives.
+</div>
+
+<h2>1. Environment</h2>
+<div id="env"></div>
+
+<h2>2. JavaScript features</h2>
+<div id="js"></div>
+
+<h2>3. CSS features</h2>
+<div id="css"></div>
+
+<h2>4. Network: can we fetch ml.json?</h2>
+<div id="net">testing...</div>
+
+<h2>5. Find row by UID</h2>
+<div>
+  UID: <input id="uid" type="text" value="709">
+  <button id="findBtn">Look up</button>
+</div>
+<pre id="rowOut" style="display:none;"></pre>
+
+<h2>6. Media playback tests</h2>
+
+<div>
+  <div style="color:#888;font-size:11px;">Image (direct https jpg):</div>
+  <div class="vbox">
+    <img class="test" id="testImg" alt="image test"
+      src="https://i.natgeofe.com/n/523d689d-7f47-4229-81e0-fd482ff5b6d5/00000165-67e1-df80-affd-f7e5b67f0000_3x2.jpg">
+  </div>
+  <div id="imgResult" style="font-size:11px;">loading...</div>
+</div>
+
+<div>
+  <div style="color:#888;font-size:11px;margin-top:10px;">YouTube iframe embed (no API, just iframe):</div>
+  <div class="vbox">
+    <iframe id="testYt" src="https://www.youtube.com/embed/k1EM36XtgEs"
+      allowfullscreen></iframe>
+  </div>
+  <div id="ytResult" style="font-size:11px;">try pressing play above. Does the video appear and play?</div>
+</div>
+
+<div>
+  <div style="color:#888;font-size:11px;margin-top:10px;">HTML5 &lt;video&gt; with a known-public mp4:</div>
+  <div class="vbox">
+    <video id="testVid" controls preload="metadata">
+      <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div id="vidResult" style="font-size:11px;">loading metadata...</div>
+</div>
+
+<h2>7. Verdict</h2>
+<div id="verdict" style="font-size:13px;">Run all tests, then this will summarize.</div>
+
+<div style="margin-top:30px;padding-top:10px;border-top:1px solid #333;color:#555;font-size:10px;">
+  Built as a pure-ES5 standalone. Delete legacy.html to revert with zero impact.
+</div>
+
+<script>
+/* ============================================================
+   PURE ES5 ONLY — no let, const, arrow funcs, template literals,
+   default params, Promise, fetch, URLSearchParams, etc.
+   This file must parse on KitKat WebView (Chrome ~30).
+   ============================================================ */
+
+function $(id) { return document.getElementById(id); }
+function row(parent, label, value, cls) {
+  var d = document.createElement('div');
+  d.className = 'row';
+  d.innerHTML = '<span class="lbl">' + label + '</span><span class="' + (cls||'') + '">' + value + '</span>';
+  parent.appendChild(d);
+}
+function has(obj, key) {
+  try { return typeof obj[key] !== 'undefined'; } catch (e) { return false; }
+}
+
+/* ---- 1. Environment ---- */
+var env = $('env');
+row(env, 'User Agent:', navigator.userAgent, 'warn');
+row(env, 'Screen:', screen.width + ' x ' + screen.height);
+row(env, 'Window:', window.innerWidth + ' x ' + window.innerHeight);
+row(env, 'Device pixel ratio:', window.devicePixelRatio || 1);
+row(env, 'Online:', navigator.onLine ? 'yes' : 'no', navigator.onLine ? 'ok' : 'no');
+
+/* ---- 2. JS feature checks ---- */
+var js = $('js');
+var jsTests = [
+  ['JSON.parse', typeof JSON !== 'undefined' && typeof JSON.parse === 'function'],
+  ['XMLHttpRequest', typeof XMLHttpRequest === 'function' || typeof XMLHttpRequest === 'object'],
+  ['Promise', typeof Promise === 'function'],
+  ['fetch', typeof fetch === 'function'],
+  ['URLSearchParams', typeof URLSearchParams === 'function'],
+  ['localStorage', (function() { try { return typeof localStorage !== 'undefined' && localStorage !== null; } catch(e) { return false; } })()],
+  ['Array.forEach', typeof Array.prototype.forEach === 'function'],
+  ['Array.map', typeof Array.prototype.map === 'function'],
+  ['Array.filter', typeof Array.prototype.filter === 'function'],
+  ['Object.keys', typeof Object.keys === 'function'],
+  ['addEventListener', typeof window.addEventListener === 'function'],
+  ['classList', typeof document.body.classList !== 'undefined']
+];
+var jsScore = 0;
+for (var i = 0; i < jsTests.length; i++) {
+  var ok = !!jsTests[i][1];
+  row(js, jsTests[i][0] + ':', ok ? 'yes' : 'NO', ok ? 'ok' : 'no');
+  if (ok) jsScore++;
+}
+
+/* ---- 3. CSS feature checks ---- */
+function cssSupports(prop, val) {
+  if (window.CSS && CSS.supports) { return CSS.supports(prop, val); }
+  // Fallback: try setting on a throwaway element
+  var el = document.createElement('div');
+  try { el.style[prop] = val; return el.style[prop] !== ''; } catch(e) { return false; }
+}
+var css = $('css');
+var cssTests = [
+  ['display: flex', cssSupports('display', 'flex')],
+  ['display: grid', cssSupports('display', 'grid')],
+  ['aspect-ratio', cssSupports('aspect-ratio', '16/9')],
+  ['object-fit', cssSupports('object-fit', 'cover')],
+  ['gap', cssSupports('gap', '4px')],
+  ['CSS variables', cssSupports('--x', '0')],
+  ['inset', cssSupports('inset', '0')]
+];
+var cssScore = 0;
+for (var i = 0; i < cssTests.length; i++) {
+  var ok = !!cssTests[i][1];
+  row(css, cssTests[i][0] + ':', ok ? 'yes' : 'NO', ok ? 'ok' : 'no');
+  if (ok) cssScore++;
+}
+
+/* ---- 4. Fetch ml.json via XHR ---- */
+var mlData = null;
+var net = $('net');
+function fetchMl() {
+  var t0 = (new Date()).getTime();
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', 'ml.json?v=' + t0, true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    var dt = (new Date()).getTime() - t0;
+    if (xhr.status === 200) {
+      try {
+        var raw = xhr.responseText;
+        var sizeMB = (raw.length / 1048576).toFixed(2);
+        var parsed = JSON.parse(raw);
+        var rowCount = 0;
+        for (var i = 0; i < parsed.length; i++) {
+          if (!parsed[i]._salMeta) rowCount++;
+        }
+        mlData = parsed;
+        net.innerHTML = '<span class="ok">OK</span> &mdash; ' + sizeMB + ' MB downloaded in ' + dt + 'ms, ' + rowCount + ' rows parsed.';
+      } catch (e) {
+        net.innerHTML = '<span class="no">PARSE FAILED:</span> ' + e.message;
+      }
+    } else {
+      net.innerHTML = '<span class="no">HTTP ' + xhr.status + '</span> after ' + dt + 'ms';
+    }
+    updateVerdict();
+  };
+  xhr.onerror = function() { net.innerHTML = '<span class="no">network error</span>'; };
+  xhr.send();
+}
+fetchMl();
+
+/* ---- 5. UID lookup ---- */
+$('findBtn').onclick = function() {
+  var out = $('rowOut');
+  out.style.display = 'block';
+  if (!mlData) { out.textContent = '(ml.json not yet loaded)'; return; }
+  var uidStr = $('uid').value;
+  var uid = parseInt(uidStr, 10);
+  if (isNaN(uid)) { out.textContent = 'invalid UID'; return; }
+  var found = null;
+  for (var i = 0; i < mlData.length; i++) {
+    var r = mlData[i];
+    if (r._salMeta) continue;
+    if (parseInt(r.UID, 10) === uid) { found = r; break; }
+  }
+  if (!found) { out.textContent = 'UID ' + uid + ' not found'; return; }
+  var keep = ['UID','link','VidTitle','VidAuthor','VidRange','vidLength','ltype','P/S'];
+  var summary = {};
+  for (var j = 0; j < keep.length; j++) {
+    if (typeof found[keep[j]] !== 'undefined') summary[keep[j]] = found[keep[j]];
+  }
+  out.textContent = JSON.stringify(summary, null, 2);
+};
+
+/* ---- 6. Media test result hooks ---- */
+$('testImg').onload  = function() { $('imgResult').innerHTML = '<span class="ok">image loaded.</span>'; };
+$('testImg').onerror = function() { $('imgResult').innerHTML = '<span class="no">image failed to load.</span>'; };
+
+$('testVid').addEventListener('loadedmetadata', function() {
+  var v = $('testVid');
+  $('vidResult').innerHTML = '<span class="ok">video metadata loaded</span> &mdash; duration ' + Math.round(v.duration) + 's. Press play to confirm playback.';
+});
+$('testVid').addEventListener('error', function() {
+  $('vidResult').innerHTML = '<span class="no">HTML5 video failed to load.</span>';
+});
+
+/* iframe load fires even on YouTube error pages, so we can only report */
+$('testYt').onload = function() {
+  $('ytResult').innerHTML = 'iframe loaded. <span class="warn">Visually confirm:</span> does the YouTube player appear and can you press play?';
+};
+
+/* ---- 7. Verdict ---- */
+function updateVerdict() {
+  var v = $('verdict');
+  var lines = [];
+  if (jsScore >= 10) lines.push('<span class="ok">&#10003;</span> JS features sufficient.');
+  else lines.push('<span class="no">&#10007;</span> JS features insufficient (' + jsScore + '/' + jsTests.length + ').');
+
+  if (mlData) lines.push('<span class="ok">&#10003;</span> ml.json fetch + parse works.');
+  else lines.push('<span class="warn">...</span> ml.json fetch in progress or failed.');
+
+  if (cssScore >= 5) lines.push('<span class="ok">&#10003;</span> CSS sufficient for a flat layout.');
+  else lines.push('<span class="warn">!</span> CSS is limited; layout will need to be very simple.');
+
+  lines.push('<br><b>Now visually check the three media tests above.</b> If image + YouTube + HTML5 video all work, MVP is viable. If only image works, video-segment playback may not be feasible.');
+  v.innerHTML = lines.join('<br>');
+}
+updateVerdict();
+
+</script>
+</body>
+</html>
