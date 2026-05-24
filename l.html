@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SeeAndLearn (l)</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: monospace, sans-serif; background:#0a0a14; color:#ddd; margin:0; padding:0; font-size:14px; }
+  #top { background:#111122; border-bottom:2px solid #4af; padding:8px 10px; display:flex; align-items:center; gap:8px; }
+  #top h1 { color:#8ef; font-size:14px; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #counter { color:#fc8; font-size:12px; white-space:nowrap; }
+  button, .btn {
+    background:#113; color:#8ef; border:1px solid #4af;
+    padding:8px 12px; font-family:monospace; font-size:14px; border-radius:5px;
+    cursor:pointer; text-decoration:none; display:inline-block;
+  }
+  .btn.big { padding:12px 18px; font-size:15px; }
+  .btn.go  { background:#0a4020; border-color:#5f5; color:#afa; margin:4px 4px 4px 0; }
+  .btn.dim { color:#888; border-color:#444; background:#1a1a28; }
+  .btn.play { background:#3a1a4a; border-color:#f8f; color:#fcf; }
+  #nav { display:flex; align-items:center; gap:6px; padding:8px 10px; background:#0d0d1e; border-bottom:1px solid #1a1a2e; flex-wrap:wrap; }
+  #nav button { padding:8px 14px; font-size:14px; }
+  #uidInp, #delayInp { background:#0a0a1a; color:#fff; border:1px solid #4af; padding:6px 8px; font-family:monospace; font-size:14px; border-radius:4px; }
+  #uidInp { width:80px; }
+  #delayInp { width:50px; }
+  #ssBar { display:none; background:#1a0d28; border-bottom:1px solid #f8f; padding:8px 10px; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:#fcf; }
+  #ssBar.on { display:flex; }
+  #ssBar .name { font-weight:bold; color:#fff; }
+  #main { padding:10px; }
+  #title { color:#fff; font-size:15px; margin:0 0 4px; }
+  #author { color:#8ef; font-size:12px; margin-bottom:8px; }
+  #comment { color:#fc8; font-size:12px; margin:6px 0; font-style:italic; }
+  #tags { color:#8af; font-size:11px; margin:6px 0; }
+  #tags span { background:#1a2a44; padding:2px 6px; border-radius:3px; margin-right:4px; display:inline-block; }
+  video, img.media { display:block; width:100%; max-height:60vh; background:#000; border:1px solid #333; margin:6px 0; }
+  iframe.media { display:block; width:100%; height:240px; background:#000; border:1px solid #333; margin:6px 0; }
+  #segs { margin:8px 0; }
+  #segs .lbl { color:#888; font-size:11px; margin-bottom:4px; }
+  #state { color:#5f5; font-size:11px; padding:4px 0; }
+  #err   { color:#f66; font-size:13px; padding:10px; background:#1a0808; border:1px solid #f66; border-radius:5px; margin:10px 0; }
+  .lbl { color:#888; font-size:11px; }
+  #meta { background:#0d0d1e; border:1px solid #222; border-radius:5px; padding:8px; margin-top:10px; font-size:12px; }
+  #meta .k { color:#888; min-width:80px; display:inline-block; }
+  #meta .v { color:#ccc; }
+  #loading { color:#fc8; padding:10px; text-align:center; }
+  a { color:#8ef; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1 id="ptitle">SeeAndLearn <span style="color:#888;font-size:11px;">(l)</span></h1>
+  <span id="counter"></span>
+</div>
+
+<div id="ssBar">
+  <span>▶▶ Slideshow:</span>
+  <span class="name" id="ssName"></span>
+  <span id="ssPos"></span>
+  <button id="ssPlayBtn" class="btn play">⏸ Pause</button>
+  <span class="lbl">delay (s):</span>
+  <input id="delayInp" type="text" inputmode="numeric" value="5">
+  <button id="ssExitBtn" class="btn dim">✕ Exit slideshow</button>
+</div>
+
+<div id="nav">
+  <button id="prevBtn">◀ Prev</button>
+  <button id="nextBtn">Next ▶</button>
+  <span class="lbl" style="margin-left:6px;">UID:</span>
+  <input id="uidInp" type="text" inputmode="numeric" pattern="[0-9]*">
+  <button id="goBtn">Go</button>
+</div>
+
+<div id="main">
+  <div id="loading">Loading data…</div>
+</div>
+
+<script>
+/* ES5 only. KitKat WebView compatible. */
+function $(id) { return document.getElementById(id); }
+function el(tag, attrs, text) {
+  var e = document.createElement(tag);
+  if (attrs) { for (var k in attrs) if (attrs.hasOwnProperty(k)) e.setAttribute(k, attrs[k]); }
+  if (text != null) e.appendChild(document.createTextNode(text));
+  return e;
+}
+
+/* ---- VidRange parsing ---- */
+function parseVidRange(v) {
+  var s = String(v || '').replace(/^\s+|\s+$/g, '');
+  if (!s || s === 'i') return null;
+  var segs = s.split(',');
+  var out = [];
+  for (var i = 0; i < segs.length; i++) {
+    var seg = segs[i].replace(/^\s+|\s+$/g, '');
+    if (!seg) continue;
+    var p = seg.split(/\s+/);
+    if (!p.length || isNaN(Number(p[0]))) return null;
+    out.push({ start: Number(p[0]), dur: (p.length > 1 && !isNaN(Number(p[1]))) ? Number(p[1]) : 1 });
+  }
+  return out.length ? out : null;
+}
+function fmtTime(s) {
+  var m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return m + ':' + (r < 10 ? '0' + r : r);
+}
+
+/* ---- Link type ---- */
+function isYouTube(url) { return /youtu\.be|youtube\.com/i.test(url || ''); }
+function youTubeId(url) {
+  if (!url) return '';
+  var m = url.match(/[?&]v=([A-Za-z0-9_-]+)/); if (m) return m[1];
+  m = url.match(/youtu\.be\/([A-Za-z0-9_-]+)/); if (m) return m[1];
+  m = url.match(/youtube\.com\/embed\/([A-Za-z0-9_-]+)/); if (m) return m[1];
+  return '';
+}
+function isDirectVideo(url) { return /\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(url || ''); }
+function isImage(url)       { return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|#|$)/i.test(url || ''); }
+
+/* ---- Query parse ---- */
+function getQuery(name) {
+  var q = window.location.search || '';
+  if (q.charAt(0) === '?') q = q.substring(1);
+  var parts = q.split('&');
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i].split('=');
+    if (decodeURIComponent(p[0]) === name) return decodeURIComponent(p[1] || '');
+  }
+  return '';
+}
+
+/* ---- Cell order (5x5 grid, row-major) ---- */
+var CELL_ORDER = ['1a','1b','1c','1d','1e','2a','2b','2c','2d','2e','3a','3b','3c','3d','3e','4a','4b','4c','4d','4e','5a','5b','5c','5d','5e'];
+
+/* ---- Global state ---- */
+var ML = null;     // ml.json array
+var C = null;      // c.json array
+var SHOWN = [];    // [{uid, row}] for show=1
+var IDX = 0;       // current index into SHOWN  (when not in slideshow)
+var SLIDESHOW = null;  // { name, ssVal, uids:[...], idx, playing, delaySec }
+var SS_ADV_TIMER = null;  // active setTimeout id for auto-advance
+var SS_VIDEO = null;      // current video element (so we can detach listeners on next render)
+
+/* ---- Loaders ---- */
+function loadJSON(url, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', url + '?t=' + (new Date()).getTime(), true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status !== 200) { cb(null, 'HTTP ' + xhr.status); return; }
+    try { cb(JSON.parse(xhr.responseText), null); }
+    catch (e) { cb(null, 'parse: ' + e.message); }
+  };
+  xhr.onerror = function() { cb(null, 'network error'); };
+  xhr.send();
+}
+
+function buildShown() {
+  SHOWN = [];
+  for (var i = 0; i < ML.length; i++) {
+    var r = ML[i];
+    if (r._salMeta) continue;
+    if (String(r.show) !== '1') continue;
+    var u = parseInt(r.UID, 10);
+    if (isNaN(u)) continue;
+    SHOWN.push({ uid: u, row: r });
+  }
+  SHOWN.sort(function(a, b) { return a.uid - b.uid; });
+}
+
+function findRowByUid(uid) {
+  for (var i = 0; i < SHOWN.length; i++) if (SHOWN[i].uid === uid) return SHOWN[i].row;
+  /* fall back to full ML in case show=0 */
+  for (var j = 0; j < ML.length; j++) {
+    if (ML[j]._salMeta) continue;
+    if (parseInt(ML[j].UID, 10) === uid) return ML[j];
+  }
+  return null;
+}
+function indexOfUid(uid) {
+  for (var i = 0; i < SHOWN.length; i++) if (SHOWN[i].uid === uid) return i;
+  return -1;
+}
+
+/* ---- Slideshow setup ---- */
+function setupSlideshow(ssVal) {
+  var found = null;
+  for (var i = 0; i < C.length; i++) {
+    var r = C[i];
+    if (r._salMeta) continue;
+    if (String(r.ss || '') === String(ssVal)) { found = r; break; }
+  }
+  if (!found) return false;
+  var uids = [];
+  for (var k = 0; k < CELL_ORDER.length; k++) {
+    var v = found[CELL_ORDER[k]];
+    if (v == null || v === '') continue;
+    var u = parseInt(v, 10);
+    if (isNaN(u)) continue;
+    uids.push(u);
+  }
+  if (!uids.length) return false;
+  SLIDESHOW = {
+    name: found.gname || '(unnamed)',
+    ssVal: String(ssVal),
+    uids: uids,
+    idx: 0,
+    playing: true,
+    delaySec: 5
+  };
+  return true;
+}
+
+function updateSsBar() {
+  if (!SLIDESHOW) { $('ssBar').className = ''; return; }
+  $('ssBar').className = 'on';
+  $('ssName').textContent = SLIDESHOW.name + ' (ss=' + SLIDESHOW.ssVal + ')';
+  $('ssPos').textContent = '— ' + (SLIDESHOW.idx + 1) + '/' + SLIDESHOW.uids.length;
+  $('ssPlayBtn').textContent = SLIDESHOW.playing ? '⏸ Pause' : '▶ Play';
+  $('delayInp').value = SLIDESHOW.delaySec;
+}
+
+function clearAdvanceTimer() {
+  if (SS_ADV_TIMER) { clearTimeout(SS_ADV_TIMER); SS_ADV_TIMER = null; }
+}
+
+function scheduleAdvance(sec) {
+  clearAdvanceTimer();
+  if (!SLIDESHOW || !SLIDESHOW.playing) return;
+  SS_ADV_TIMER = setTimeout(function() {
+    SS_ADV_TIMER = null;
+    advanceSlide();
+  }, sec * 1000);
+}
+
+function advanceSlide() {
+  if (!SLIDESHOW) return;
+  if (SLIDESHOW.idx + 1 < SLIDESHOW.uids.length) {
+    SLIDESHOW.idx++;
+    render();
+  } else {
+    /* End of slideshow */
+    SLIDESHOW.playing = false;
+    updateSsBar();
+    /* Show a small banner — just update state line if visible */
+    var s = $('state'); if (s) { s.textContent = 'Slideshow complete (' + SLIDESHOW.uids.length + ' items)'; s.style.color = '#fc8'; }
+  }
+}
+
+/* ---- Render ---- */
+function currentUid() {
+  if (SLIDESHOW) return SLIDESHOW.uids[SLIDESHOW.idx];
+  if (!SHOWN.length) return null;
+  return SHOWN[IDX].uid;
+}
+
+function render() {
+  clearAdvanceTimer();
+  SS_VIDEO = null;
+  updateSsBar();
+
+  var uid = currentUid();
+  if (uid == null) { showErr('Nothing to show'); return; }
+  var row = findRowByUid(uid);
+  if (!row) {
+    /* In slideshow, skip missing UIDs */
+    if (SLIDESHOW) {
+      var s = $('main'); s.innerHTML = '';
+      s.appendChild(el('div', { id: 'err' }, 'UID ' + uid + ' not in ml.json — skipping in 1s'));
+      scheduleAdvance(1);
+      return;
+    }
+    showErr('UID ' + uid + ' not found');
+    return;
+  }
+
+  $('uidInp').value = uid;
+  if (SLIDESHOW) {
+    $('counter').textContent = 'slideshow · UID ' + uid;
+  } else {
+    var i = indexOfUid(uid);
+    $('counter').textContent = (i + 1) + ' / ' + SHOWN.length + '  ·  UID ' + uid;
+  }
+
+  /* URL update */
+  try {
+    var newUrl = window.location.pathname;
+    if (SLIDESHOW) newUrl += '?ss=' + SLIDESHOW.ssVal;
+    else newUrl += '?uid=' + uid;
+    if (window.history && window.history.replaceState) window.history.replaceState(null, '', newUrl);
+  } catch (e) {}
+
+  var m = $('main');
+  m.innerHTML = '';
+
+  var title = row.VidTitle || row.title || '';
+  var author = row.VidAuthor || row.author || '';
+  if (title)  m.appendChild(el('div', { id: 'title' }, title));
+  if (author) m.appendChild(el('div', { id: 'author' }, '— ' + author));
+
+  var link = row.link || '';
+  var segs = parseVidRange(row.VidRange);
+  var autoplay = !!(SLIDESHOW && SLIDESHOW.playing);
+
+  if (!link) {
+    m.appendChild(el('div', { id: 'err' }, 'No link in this row'));
+    if (autoplay) scheduleAdvance(SLIDESHOW.delaySec);
+  } else if (isDirectVideo(link)) {
+    renderDirectVideo(m, link, segs, autoplay);
+  } else if (isYouTube(link)) {
+    renderYouTube(m, link, segs);
+    if (autoplay) scheduleAdvance(SLIDESHOW.delaySec);
+  } else if (isImage(link)) {
+    var img = el('img', { src: link, alt: title || ('UID ' + uid), 'class': 'media' });
+    m.appendChild(img);
+    if (autoplay) scheduleAdvance(SLIDESHOW.delaySec);
+  } else {
+    var a = el('a', { href: link, target: '_blank', rel: 'noopener', 'class': 'btn go big' }, '↗ Open link');
+    m.appendChild(a);
+    if (autoplay) scheduleAdvance(SLIDESHOW.delaySec);
+  }
+
+  /* Comment / tags / meta */
+  var cmt = row.VidComment || row.comment || '';
+  if (cmt) m.appendChild(el('div', { id: 'comment' }, '“' + cmt + '”'));
+
+  if (row.tags && row.tags.length) {
+    var td = el('div', { id: 'tags' });
+    for (var t = 0; t < row.tags.length; t++) td.appendChild(el('span', null, row.tags[t]));
+    m.appendChild(td);
+  }
+
+  var meta = el('div', { id: 'meta' });
+  function addMeta(k, v) {
+    if (v == null || v === '') return;
+    var r = document.createElement('div');
+    r.innerHTML = '<span class="k">' + k + '</span><span class="v"></span>';
+    r.lastChild.appendChild(document.createTextNode(String(v)));
+    meta.appendChild(r);
+  }
+  addMeta('UID:', uid);
+  addMeta('VidRange:', row.VidRange);
+  addMeta('Length:', row.vidLength);
+  addMeta('Link:', link);
+  m.appendChild(meta);
+}
+
+/* ---- Direct video ---- */
+function renderDirectVideo(parent, src, segs, autoplay) {
+  var v = el('video', { controls: 'controls', preload: 'metadata', playsinline: 'playsinline', 'class': 'media' });
+  var s = el('source', { src: src });
+  var ext = (src.match(/\.([a-z0-9]+)(?:\?|#|$)/i) || [])[1] || 'mp4';
+  s.setAttribute('type', 'video/' + (ext.toLowerCase() === 'mov' ? 'quicktime' : ext.toLowerCase()));
+  v.appendChild(s);
+  parent.appendChild(v);
+  SS_VIDEO = v;
+
+  var state = el('div', { id: 'state' });
+  parent.appendChild(state);
+
+  v.addEventListener('error', function() {
+    state.textContent = 'Video failed to load. (Host cert may not be trusted.)';
+    state.style.color = '#f66';
+    if (autoplay) scheduleAdvance(2);
+  });
+  v.addEventListener('loadedmetadata', function() {
+    state.textContent = 'Loaded · duration ' + Math.round(v.duration) + 's';
+  });
+
+  var currentSeg = -1;
+  function playSeg(i) {
+    currentSeg = i;
+    try { v.currentTime = segs[i].start; v.play(); } catch (e) {}
+    state.textContent = 'Segment ' + (i + 1) + '/' + segs.length + ' (' + segs[i].start + 's, ' + segs[i].dur + 's)';
+  }
+
+  if (segs && segs.length) {
+    var segDiv = el('div', { id: 'segs' });
+    var lbl = el('div', { 'class': 'lbl' }, segs.length + ' segment' + (segs.length === 1 ? '' : 's') + ':');
+    segDiv.appendChild(lbl);
+    for (var i = 0; i < segs.length; i++) {
+      (function(idx) {
+        var btn = el('button', { 'class': 'btn go' },
+          '▶ ' + fmtTime(segs[idx].start) + ' (' + segs[idx].dur + 's)');
+        btn.onclick = function() { playSeg(idx); };
+        segDiv.appendChild(btn);
+      })(i);
+    }
+    var allBtn = el('button', { 'class': 'btn' }, '▶▶ Whole video');
+    allBtn.onclick = function() { currentSeg = -1; try { v.currentTime = 0; v.play(); } catch(e){} state.textContent = 'Playing whole video'; };
+    segDiv.appendChild(allBtn);
+    parent.appendChild(segDiv);
+
+    v.addEventListener('timeupdate', function() {
+      if (currentSeg < 0) return;
+      var seg = segs[currentSeg];
+      if (v.currentTime >= seg.start + seg.dur) {
+        if (currentSeg + 1 < segs.length) {
+          playSeg(currentSeg + 1);
+        } else {
+          v.pause();
+          state.textContent = 'Finished all ' + segs.length + ' segments';
+          currentSeg = -1;
+          if (autoplay) scheduleAdvance(1);  /* brief beat before next slide */
+        }
+      }
+    });
+
+    if (autoplay) {
+      /* wait for metadata before starting playback */
+      var started = false;
+      v.addEventListener('loadedmetadata', function() {
+        if (started) return; started = true;
+        playSeg(0);
+      });
+    }
+  } else {
+    /* No segments — autoplay = play through, advance on ended */
+    if (autoplay) {
+      v.addEventListener('loadedmetadata', function() { try { v.play(); } catch (e) {} });
+      v.addEventListener('ended', function() { scheduleAdvance(1); });
+    }
+  }
+}
+
+/* ---- YouTube (tap-out only) ---- */
+function renderYouTube(parent, link, segs) {
+  var id = youTubeId(link);
+  if (!id) {
+    parent.appendChild(el('div', { id: 'err' }, 'Could not parse YouTube ID from: ' + link));
+    return;
+  }
+  var thumb = el('img', { src: 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg', 'class': 'media', alt: 'YouTube thumbnail' });
+  parent.appendChild(thumb);
+  parent.appendChild(el('div', { 'class': 'lbl' }, 'YouTube embed cannot run on this phone — tap to open on YouTube:'));
+
+  if (segs && segs.length) {
+    var segDiv = el('div', { id: 'segs' });
+    for (var i = 0; i < segs.length; i++) {
+      (function(idx) {
+        var st = Math.floor(segs[idx].start);
+        var a = el('a', {
+          href: 'https://www.youtube.com/watch?v=' + id + '&t=' + st + 's',
+          target: '_blank', rel: 'noopener', 'class': 'btn go'
+        }, '▶ ' + fmtTime(segs[idx].start) + ' (' + segs[idx].dur + 's)');
+        segDiv.appendChild(a);
+      })(i);
+    }
+    parent.appendChild(segDiv);
+    parent.appendChild(el('a', {
+      href: 'https://www.youtube.com/watch?v=' + id,
+      target: '_blank', rel: 'noopener', 'class': 'btn'
+    }, '▶▶ Open from start'));
+  } else {
+    parent.appendChild(el('a', {
+      href: 'https://www.youtube.com/watch?v=' + id,
+      target: '_blank', rel: 'noopener', 'class': 'btn go big'
+    }, '▶ Open on YouTube'));
+  }
+}
+
+/* ---- Error display ---- */
+function showErr(msg) {
+  $('main').innerHTML = '';
+  var d = el('div', { id: 'err' });
+  d.innerHTML = msg;
+  $('main').appendChild(d);
+}
+
+/* ---- Nav handlers ---- */
+$('prevBtn').onclick = function() {
+  clearAdvanceTimer();
+  if (SLIDESHOW) {
+    if (SLIDESHOW.idx > 0) { SLIDESHOW.idx--; render(); }
+  } else {
+    if (IDX > 0) { IDX--; render(); }
+  }
+};
+$('nextBtn').onclick = function() {
+  clearAdvanceTimer();
+  if (SLIDESHOW) {
+    if (SLIDESHOW.idx + 1 < SLIDESHOW.uids.length) { SLIDESHOW.idx++; render(); }
+  } else {
+    if (IDX < SHOWN.length - 1) { IDX++; render(); }
+  }
+};
+$('goBtn').onclick = function() { goUid(parseInt($('uidInp').value, 10)); };
+$('uidInp').addEventListener('keydown', function(e) { if (e.keyCode === 13) goUid(parseInt($('uidInp').value, 10)); });
+
+function goUid(u) {
+  if (isNaN(u)) return;
+  /* Going by UID exits slideshow mode */
+  if (SLIDESHOW) { SLIDESHOW = null; updateSsBar(); }
+  var i = indexOfUid(u);
+  if (i < 0) { alert('UID ' + u + ' not found (or show=0)'); return; }
+  IDX = i;
+  render();
+}
+
+/* Slideshow controls */
+$('ssPlayBtn').onclick = function() {
+  if (!SLIDESHOW) return;
+  SLIDESHOW.playing = !SLIDESHOW.playing;
+  updateSsBar();
+  if (SLIDESHOW.playing) {
+    /* Resume: re-render so autoplay logic kicks in */
+    render();
+  } else {
+    clearAdvanceTimer();
+    /* Pause any video too */
+    if (SS_VIDEO) try { SS_VIDEO.pause(); } catch (e) {}
+  }
+};
+$('ssExitBtn').onclick = function() {
+  if (!SLIDESHOW) return;
+  var uid = SLIDESHOW.uids[SLIDESHOW.idx];
+  SLIDESHOW = null;
+  clearAdvanceTimer();
+  updateSsBar();
+  var i = indexOfUid(uid);
+  IDX = (i >= 0) ? i : 0;
+  render();
+};
+$('delayInp').addEventListener('change', function() {
+  if (!SLIDESHOW) return;
+  var v = parseInt($('delayInp').value, 10);
+  if (!isNaN(v) && v >= 1 && v <= 600) SLIDESHOW.delaySec = v;
+  else $('delayInp').value = SLIDESHOW.delaySec;
+});
+
+/* ---- Boot ---- */
+var pending = 2;
+var loadErr = null;
+function bothLoaded() {
+  if (loadErr) { showErr('Load error: ' + loadErr); return; }
+  buildShown();
+  if (!SHOWN.length) { showErr('No rows with show=1 in ml.json'); return; }
+
+  var ssVal = getQuery('ss');
+  if (ssVal !== '') {
+    if (setupSlideshow(ssVal)) {
+      render();
+      return;
+    } else {
+      /* fall through to UID mode with a banner */
+      var m = $('main'); m.innerHTML = '';
+      m.appendChild(el('div', { id: 'err' }, 'No c.json row found with ss="' + ssVal + '"'));
+      return;
+    }
+  }
+
+  var uid = parseInt(getQuery('uid'), 10);
+  var i = isNaN(uid) ? 0 : indexOfUid(uid);
+  IDX = (i >= 0) ? i : 0;
+  render();
+}
+
+loadJSON('ml.json', function(data, err) {
+  if (err) loadErr = 'ml.json ' + err;
+  else ML = data;
+  if (--pending === 0) bothLoaded();
+});
+loadJSON('c.json', function(data, err) {
+  if (err) loadErr = 'c.json ' + err;
+  else C = data;
+  if (--pending === 0) bothLoaded();
+});
+</script>
+</body>
+</html>
