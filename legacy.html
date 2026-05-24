@@ -3,254 +3,198 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Legacy / KitKat diagnostic</title>
+<title>Legacy diagnostic v2</title>
 <style>
   body { font-family: monospace, sans-serif; background:#0a0a14; color:#ddd; margin:0; padding:10px; font-size:13px; }
-  h1 { color:#8ef; font-size:15px; margin:0 0 10px; }
+  h1 { color:#8ef; font-size:15px; margin:0 0 6px; }
   h2 { color:#fc8; font-size:13px; margin:14px 0 6px; border-bottom:1px solid #333; padding-bottom:3px; }
-  .row { padding:3px 0; border-bottom:1px solid #1a1a28; }
-  .lbl { display:inline-block; min-width:170px; color:#888; }
-  .ok  { color:#5f5; }
-  .no  { color:#f66; }
-  .warn{ color:#fc8; }
+  .lbl { color:#888; font-size:11px; }
+  .ok  { color:#5f5; font-weight:bold; }
+  .no  { color:#f66; font-weight:bold; }
+  .warn{ color:#fc8; font-weight:bold; }
   pre { background:#000; padding:6px; overflow:auto; font-size:11px; color:#8ef; white-space:pre-wrap; word-wrap:break-word; }
-  button { background:#113; color:#8ef; border:1px solid #4af; padding:8px 14px; font-family:monospace; font-size:13px; border-radius:4px; margin:4px 0; cursor:pointer; }
-  input { background:#0a0a1a; color:#fff; border:1px solid #4af; padding:6px 8px; font-family:monospace; font-size:13px; border-radius:4px; width:90px; }
-  .vbox { background:#000; border:1px solid #333; margin:8px 0; min-height:60px; }
-  iframe { display:block; border:0; width:100%; height:200px; background:#111; }
-  img.test { display:block; max-width:100%; max-height:200px; background:#111; }
-  video { display:block; width:100%; max-height:240px; background:#111; }
+  a.btn, button {
+    display:inline-block; background:#113; color:#8ef; border:1px solid #4af;
+    padding:10px 16px; font-family:monospace; font-size:14px; border-radius:5px;
+    margin:4px 4px 4px 0; cursor:pointer; text-decoration:none;
+  }
+  a.btn.go { background:#0a4020; border-color:#5f5; color:#afa; }
+  .imgrow { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #1a1a28; }
+  .imgrow img { width:60px; height:45px; object-fit:cover; background:#222; border:1px solid #333; flex-shrink:0; }
+  .imgrow .meta { flex:1; font-size:11px; min-width:0; }
+  .imgrow .meta .host { color:#8ef; }
+  .imgrow .meta .status { font-weight:bold; }
+  video, iframe { display:block; width:100%; max-height:240px; background:#111; border:0; }
 </style>
 </head>
 <body>
 
-<h1>SeeAndLearn legacy diagnostic <span style="color:#fc8;font-size:10px;">(KitKat probe)</span></h1>
-<div style="color:#888;font-size:11px;margin-bottom:10px;">
-  This page does NOT load any of the main app's JS. It runs ES5-only feature checks and tries
-  to render one image, one YouTube iframe, and one HTML5 video so you can see what survives.
+<h1>Legacy diagnostic v2</h1>
+<div class="lbl">Re-test only the things that failed or matter. Tap the green buttons to test tap-out flows.</div>
+
+<h2>1. Image hosts — which CAs your phone trusts</h2>
+<div class="lbl">Each loads one tiny image from a different host. Pass = image visible. Fail = broken icon or empty.</div>
+<div id="imgTests"></div>
+
+<h2>2. UID 709 — your real direct-mp4 video</h2>
+<div class="lbl">Self-hosted mp4 from video.sealifeandmore.com. If this plays, MVP for direct videos is done.</div>
+<video id="testVid709" controls preload="metadata">
+  <source src="https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4" type="video/mp4">
+</video>
+<div id="vid709Result" class="lbl">loading metadata...</div>
+
+<h2>3. Big Buck Bunny (HTML5 video from Google CDN)</h2>
+<div class="lbl">Different host than #2 — tells us if HTML5 video itself works or only sealifeandmore.</div>
+<video id="testBBB" controls preload="metadata">
+  <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+</video>
+<div id="bbbResult" class="lbl">loading metadata...</div>
+
+<h2>4. YouTube thumbnail (i.ytimg.com)</h2>
+<div class="lbl">If this loads, we can show YouTube preview images. If not, we can't.</div>
+<img id="ytThumb" src="https://i.ytimg.com/vi/nJMZ6reOB0E/hqdefault.jpg"
+     style="width:160px;height:90px;background:#222;border:1px solid #333;display:block;">
+<div id="ytThumbResult" class="lbl">loading...</div>
+
+<h2>5. Tap-out to YouTube (the MVP video strategy)</h2>
+<div class="lbl">
+  Instead of embedding, tap a button to open YouTube directly. The buttons below use the same
+  trick the MVP would use: <code>youtube.com/watch?v=ID&amp;t=START</code> jumps to a timestamp.
 </div>
 
-<h2>1. Environment</h2>
-<div id="env"></div>
-
-<h2>2. JavaScript features</h2>
-<div id="js"></div>
-
-<h2>3. CSS features</h2>
-<div id="css"></div>
-
-<h2>4. Network: can we fetch ml.json?</h2>
-<div id="net">testing...</div>
-
-<h2>5. Find row by UID</h2>
-<div>
-  UID: <input id="uid" type="text" value="709">
-  <button id="findBtn">Look up</button>
-</div>
-<pre id="rowOut" style="display:none;"></pre>
-
-<h2>6. Media playback tests</h2>
-
-<div>
-  <div style="color:#888;font-size:11px;">Image (direct https jpg):</div>
-  <div class="vbox">
-    <img class="test" id="testImg" alt="image test"
-      src="https://i.natgeofe.com/n/523d689d-7f47-4229-81e0-fd482ff5b6d5/00000165-67e1-df80-affd-f7e5b67f0000_3x2.jpg">
-  </div>
-  <div id="imgResult" style="font-size:11px;">loading...</div>
+<div style="margin:8px 0;">
+  <div class="lbl">Plain YouTube video (no segment):</div>
+  <a class="btn go" href="https://www.youtube.com/watch?v=nJMZ6reOB0E" target="_blank" rel="noopener">
+    ▶ Open YouTube video
+  </a>
 </div>
 
-<div>
-  <div style="color:#888;font-size:11px;margin-top:10px;">YouTube iframe embed (no API, just iframe):</div>
-  <div class="vbox">
-    <iframe id="testYt" src="https://www.youtube.com/embed/k1EM36XtgEs"
-      allowfullscreen></iframe>
-  </div>
-  <div id="ytResult" style="font-size:11px;">try pressing play above. Does the video appear and play?</div>
+<div style="margin:8px 0;">
+  <div class="lbl">YouTube with start time (jump to second 113):</div>
+  <a class="btn go" href="https://www.youtube.com/watch?v=xJwrmM3TgxQ&t=113s" target="_blank" rel="noopener">
+    ▶ Open at 1:53
+  </a>
 </div>
 
-<div>
-  <div style="color:#888;font-size:11px;margin-top:10px;">HTML5 &lt;video&gt; with a known-public mp4:</div>
-  <div class="vbox">
-    <video id="testVid" controls preload="metadata">
-      <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
-    </video>
-  </div>
-  <div id="vidResult" style="font-size:11px;">loading metadata...</div>
+<div style="margin:8px 0;">
+  <div class="lbl">Multi-segment video — would become a list of buttons:</div>
+  <div id="multiSegDemo"></div>
 </div>
 
-<h2>7. Verdict</h2>
-<div id="verdict" style="font-size:13px;">Run all tests, then this will summarize.</div>
+<h2>6. ml.json sanity check</h2>
+<div id="mlResult" class="lbl">loading ml.json...</div>
 
 <div style="margin-top:30px;padding-top:10px;border-top:1px solid #333;color:#555;font-size:10px;">
-  Built as a pure-ES5 standalone. Delete legacy.html to revert with zero impact.
+  Diagnostic v2 — delete legacy.html to revert.
 </div>
 
 <script>
-/* ============================================================
-   PURE ES5 ONLY — no let, const, arrow funcs, template literals,
-   default params, Promise, fetch, URLSearchParams, etc.
-   This file must parse on KitKat WebView (Chrome ~30).
-   ============================================================ */
-
+/* ES5 only. Runs on KitKat WebView. */
 function $(id) { return document.getElementById(id); }
-function row(parent, label, value, cls) {
-  var d = document.createElement('div');
-  d.className = 'row';
-  d.innerHTML = '<span class="lbl">' + label + '</span><span class="' + (cls||'') + '">' + value + '</span>';
-  parent.appendChild(d);
-}
-function has(obj, key) {
-  try { return typeof obj[key] !== 'undefined'; } catch (e) { return false; }
-}
 
-/* ---- 1. Environment ---- */
-var env = $('env');
-row(env, 'User Agent:', navigator.userAgent, 'warn');
-row(env, 'Screen:', screen.width + ' x ' + screen.height);
-row(env, 'Window:', window.innerWidth + ' x ' + window.innerHeight);
-row(env, 'Device pixel ratio:', window.devicePixelRatio || 1);
-row(env, 'Online:', navigator.onLine ? 'yes' : 'no', navigator.onLine ? 'ok' : 'no');
-
-/* ---- 2. JS feature checks ---- */
-var js = $('js');
-var jsTests = [
-  ['JSON.parse', typeof JSON !== 'undefined' && typeof JSON.parse === 'function'],
-  ['XMLHttpRequest', typeof XMLHttpRequest === 'function' || typeof XMLHttpRequest === 'object'],
-  ['Promise', typeof Promise === 'function'],
-  ['fetch', typeof fetch === 'function'],
-  ['URLSearchParams', typeof URLSearchParams === 'function'],
-  ['localStorage', (function() { try { return typeof localStorage !== 'undefined' && localStorage !== null; } catch(e) { return false; } })()],
-  ['Array.forEach', typeof Array.prototype.forEach === 'function'],
-  ['Array.map', typeof Array.prototype.map === 'function'],
-  ['Array.filter', typeof Array.prototype.filter === 'function'],
-  ['Object.keys', typeof Object.keys === 'function'],
-  ['addEventListener', typeof window.addEventListener === 'function'],
-  ['classList', typeof document.body.classList !== 'undefined']
+/* ---- 1. Image hosts ---- */
+var imageHosts = [
+  { host: 'i.ytimg.com',          url: 'https://i.ytimg.com/vi/nJMZ6reOB0E/default.jpg', label: 'YouTube thumbnail CDN' },
+  { host: 'sealifeandmore.com',   url: 'https://sealifeandmore.com/favicon.ico',          label: 'Your own site' },
+  { host: 'raw.githubusercontent.com', url: 'https://raw.githubusercontent.com/github/explore/main/topics/git/git.png', label: 'GitHub raw' },
+  { host: 'upload.wikimedia.org', url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/120px-PNG_transparency_demonstration_1.png', label: 'Wikimedia' },
+  { host: 'i.imgur.com',          url: 'https://i.imgur.com/dWk6Lh4.png', label: 'Imgur' },
+  { host: 'i.natgeofe.com',       url: 'https://i.natgeofe.com/n/523d689d-7f47-4229-81e0-fd482ff5b6d5/00000165-67e1-df80-affd-f7e5b67f0000_3x2.jpg', label: 'NatGeo' }
 ];
-var jsScore = 0;
-for (var i = 0; i < jsTests.length; i++) {
-  var ok = !!jsTests[i][1];
-  row(js, jsTests[i][0] + ':', ok ? 'yes' : 'NO', ok ? 'ok' : 'no');
-  if (ok) jsScore++;
+var imgTestsDiv = $('imgTests');
+for (var i = 0; i < imageHosts.length; i++) {
+  (function(spec) {
+    var row = document.createElement('div');
+    row.className = 'imgrow';
+    var img = document.createElement('img');
+    img.alt = spec.host;
+    var meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = '<span class="host">' + spec.host + '</span> &mdash; ' + spec.label
+                   + '<br><span class="status lbl">loading...</span>';
+    row.appendChild(img); row.appendChild(meta);
+    imgTestsDiv.appendChild(row);
+    var status = meta.querySelector('.status');
+    img.onload  = function() { status.textContent = 'OK'; status.className = 'status ok'; };
+    img.onerror = function() { status.textContent = 'FAIL'; status.className = 'status no'; };
+    img.src = spec.url;
+  })(imageHosts[i]);
 }
 
-/* ---- 3. CSS feature checks ---- */
-function cssSupports(prop, val) {
-  if (window.CSS && CSS.supports) { return CSS.supports(prop, val); }
-  // Fallback: try setting on a throwaway element
-  var el = document.createElement('div');
-  try { el.style[prop] = val; return el.style[prop] !== ''; } catch(e) { return false; }
-}
-var css = $('css');
-var cssTests = [
-  ['display: flex', cssSupports('display', 'flex')],
-  ['display: grid', cssSupports('display', 'grid')],
-  ['aspect-ratio', cssSupports('aspect-ratio', '16/9')],
-  ['object-fit', cssSupports('object-fit', 'cover')],
-  ['gap', cssSupports('gap', '4px')],
-  ['CSS variables', cssSupports('--x', '0')],
-  ['inset', cssSupports('inset', '0')]
+/* ---- 2. UID 709 ---- */
+$('testVid709').addEventListener('loadedmetadata', function() {
+  var v = $('testVid709');
+  $('vid709Result').innerHTML = '<span class="ok">metadata loaded</span> &mdash; duration ' + Math.round(v.duration) + 's. Press play to confirm.';
+});
+$('testVid709').addEventListener('error', function() {
+  $('vid709Result').innerHTML = '<span class="no">UID 709 video failed to load.</span>';
+});
+
+/* ---- 3. Big Buck Bunny ---- */
+$('testBBB').addEventListener('loadedmetadata', function() {
+  var v = $('testBBB');
+  $('bbbResult').innerHTML = '<span class="ok">metadata loaded</span> &mdash; duration ' + Math.round(v.duration) + 's. Press play to confirm.';
+});
+$('testBBB').addEventListener('error', function() {
+  $('bbbResult').innerHTML = '<span class="no">Big Buck Bunny failed to load.</span>';
+});
+
+/* ---- 4. YouTube thumb ---- */
+$('ytThumb').onload  = function() { $('ytThumbResult').innerHTML = '<span class="ok">thumbnail OK</span>'; };
+$('ytThumb').onerror = function() { $('ytThumbResult').innerHTML = '<span class="no">thumbnail FAILED</span>'; };
+
+/* ---- 5. Multi-segment demo ---- */
+var demoSegs = [
+  { start: 75,    dur: 8 },
+  { start: 113,   dur: 7 },
+  { start: 130.8, dur: 6 },
+  { start: 172.2, dur: 6 },
+  { start: 185.6, dur: 10.2 },
+  { start: 246,   dur: 20 }
 ];
-var cssScore = 0;
-for (var i = 0; i < cssTests.length; i++) {
-  var ok = !!cssTests[i][1];
-  row(css, cssTests[i][0] + ':', ok ? 'yes' : 'NO', ok ? 'ok' : 'no');
-  if (ok) cssScore++;
+var demoVid = 'xJwrmM3TgxQ';
+var msDiv = $('multiSegDemo');
+function fmt(s) {
+  var m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return m + ':' + (r < 10 ? '0' + r : r);
+}
+for (var k = 0; k < demoSegs.length; k++) {
+  var seg = demoSegs[k];
+  var startInt = Math.floor(seg.start);
+  var a = document.createElement('a');
+  a.className = 'btn go';
+  a.href = 'https://www.youtube.com/watch?v=' + demoVid + '&t=' + startInt + 's';
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.textContent = '▶ ' + fmt(seg.start) + ' (' + seg.dur + 's)';
+  msDiv.appendChild(a);
 }
 
-/* ---- 4. Fetch ml.json via XHR ---- */
-var mlData = null;
-var net = $('net');
-function fetchMl() {
-  var t0 = (new Date()).getTime();
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', 'ml.json?v=' + t0, true);
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState !== 4) return;
-    var dt = (new Date()).getTime() - t0;
-    if (xhr.status === 200) {
-      try {
-        var raw = xhr.responseText;
-        var sizeMB = (raw.length / 1048576).toFixed(2);
-        var parsed = JSON.parse(raw);
-        var rowCount = 0;
-        for (var i = 0; i < parsed.length; i++) {
-          if (!parsed[i]._salMeta) rowCount++;
-        }
-        mlData = parsed;
-        net.innerHTML = '<span class="ok">OK</span> &mdash; ' + sizeMB + ' MB downloaded in ' + dt + 'ms, ' + rowCount + ' rows parsed.';
-      } catch (e) {
-        net.innerHTML = '<span class="no">PARSE FAILED:</span> ' + e.message;
-      }
-    } else {
-      net.innerHTML = '<span class="no">HTTP ' + xhr.status + '</span> after ' + dt + 'ms';
+/* ---- 6. ml.json sanity ---- */
+var xhr = new XMLHttpRequest();
+xhr.open('GET', 'ml.json?t=' + (new Date()).getTime(), true);
+xhr.onreadystatechange = function() {
+  if (xhr.readyState !== 4) return;
+  if (xhr.status !== 200) { $('mlResult').innerHTML = '<span class="no">ml.json HTTP ' + xhr.status + '</span>'; return; }
+  try {
+    var data = JSON.parse(xhr.responseText);
+    var rowCount = 0, ytCount = 0, mp4Count = 0, withRange = 0;
+    for (var i = 0; i < data.length; i++) {
+      var r = data[i];
+      if (r._salMeta) continue;
+      rowCount++;
+      var link = r.link || '';
+      if (/youtu\.be|youtube\.com/i.test(link)) ytCount++;
+      else if (/\.mp4(\?|$)/i.test(link)) mp4Count++;
+      if (r.VidRange && r.VidRange !== 'i' && /\d/.test(r.VidRange)) withRange++;
     }
-    updateVerdict();
-  };
-  xhr.onerror = function() { net.innerHTML = '<span class="no">network error</span>'; };
-  xhr.send();
-}
-fetchMl();
-
-/* ---- 5. UID lookup ---- */
-$('findBtn').onclick = function() {
-  var out = $('rowOut');
-  out.style.display = 'block';
-  if (!mlData) { out.textContent = '(ml.json not yet loaded)'; return; }
-  var uidStr = $('uid').value;
-  var uid = parseInt(uidStr, 10);
-  if (isNaN(uid)) { out.textContent = 'invalid UID'; return; }
-  var found = null;
-  for (var i = 0; i < mlData.length; i++) {
-    var r = mlData[i];
-    if (r._salMeta) continue;
-    if (parseInt(r.UID, 10) === uid) { found = r; break; }
+    $('mlResult').innerHTML = '<span class="ok">OK.</span> ' + rowCount + ' rows, '
+      + ytCount + ' YouTube, ' + mp4Count + ' direct mp4, ' + withRange + ' with VidRange.';
+  } catch (e) {
+    $('mlResult').innerHTML = '<span class="no">parse failed:</span> ' + e.message;
   }
-  if (!found) { out.textContent = 'UID ' + uid + ' not found'; return; }
-  var keep = ['UID','link','VidTitle','VidAuthor','VidRange','vidLength','ltype','P/S'];
-  var summary = {};
-  for (var j = 0; j < keep.length; j++) {
-    if (typeof found[keep[j]] !== 'undefined') summary[keep[j]] = found[keep[j]];
-  }
-  out.textContent = JSON.stringify(summary, null, 2);
 };
-
-/* ---- 6. Media test result hooks ---- */
-$('testImg').onload  = function() { $('imgResult').innerHTML = '<span class="ok">image loaded.</span>'; };
-$('testImg').onerror = function() { $('imgResult').innerHTML = '<span class="no">image failed to load.</span>'; };
-
-$('testVid').addEventListener('loadedmetadata', function() {
-  var v = $('testVid');
-  $('vidResult').innerHTML = '<span class="ok">video metadata loaded</span> &mdash; duration ' + Math.round(v.duration) + 's. Press play to confirm playback.';
-});
-$('testVid').addEventListener('error', function() {
-  $('vidResult').innerHTML = '<span class="no">HTML5 video failed to load.</span>';
-});
-
-/* iframe load fires even on YouTube error pages, so we can only report */
-$('testYt').onload = function() {
-  $('ytResult').innerHTML = 'iframe loaded. <span class="warn">Visually confirm:</span> does the YouTube player appear and can you press play?';
-};
-
-/* ---- 7. Verdict ---- */
-function updateVerdict() {
-  var v = $('verdict');
-  var lines = [];
-  if (jsScore >= 10) lines.push('<span class="ok">&#10003;</span> JS features sufficient.');
-  else lines.push('<span class="no">&#10007;</span> JS features insufficient (' + jsScore + '/' + jsTests.length + ').');
-
-  if (mlData) lines.push('<span class="ok">&#10003;</span> ml.json fetch + parse works.');
-  else lines.push('<span class="warn">...</span> ml.json fetch in progress or failed.');
-
-  if (cssScore >= 5) lines.push('<span class="ok">&#10003;</span> CSS sufficient for a flat layout.');
-  else lines.push('<span class="warn">!</span> CSS is limited; layout will need to be very simple.');
-
-  lines.push('<br><b>Now visually check the three media tests above.</b> If image + YouTube + HTML5 video all work, MVP is viable. If only image works, video-segment playback may not be feasible.');
-  v.innerHTML = lines.join('<br>');
-}
-updateVerdict();
-
+xhr.send();
 </script>
 </body>
 </html>
