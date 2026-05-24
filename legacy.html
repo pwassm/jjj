@@ -3,198 +3,370 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Legacy diagnostic v2</title>
+<title>SeeAndLearn (legacy)</title>
 <style>
-  body { font-family: monospace, sans-serif; background:#0a0a14; color:#ddd; margin:0; padding:10px; font-size:13px; }
-  h1 { color:#8ef; font-size:15px; margin:0 0 6px; }
-  h2 { color:#fc8; font-size:13px; margin:14px 0 6px; border-bottom:1px solid #333; padding-bottom:3px; }
-  .lbl { color:#888; font-size:11px; }
-  .ok  { color:#5f5; font-weight:bold; }
-  .no  { color:#f66; font-weight:bold; }
-  .warn{ color:#fc8; font-weight:bold; }
-  pre { background:#000; padding:6px; overflow:auto; font-size:11px; color:#8ef; white-space:pre-wrap; word-wrap:break-word; }
-  a.btn, button {
-    display:inline-block; background:#113; color:#8ef; border:1px solid #4af;
-    padding:10px 16px; font-family:monospace; font-size:14px; border-radius:5px;
-    margin:4px 4px 4px 0; cursor:pointer; text-decoration:none;
+  * { box-sizing: border-box; }
+  body { font-family: monospace, sans-serif; background:#0a0a14; color:#ddd; margin:0; padding:0; font-size:14px; }
+  #top { background:#111122; border-bottom:2px solid #4af; padding:8px 10px; display:flex; align-items:center; gap:8px; }
+  #top h1 { color:#8ef; font-size:14px; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #counter { color:#fc8; font-size:12px; white-space:nowrap; }
+  button, .btn {
+    background:#113; color:#8ef; border:1px solid #4af;
+    padding:8px 12px; font-family:monospace; font-size:14px; border-radius:5px;
+    cursor:pointer; text-decoration:none; display:inline-block;
   }
-  a.btn.go { background:#0a4020; border-color:#5f5; color:#afa; }
-  .imgrow { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #1a1a28; }
-  .imgrow img { width:60px; height:45px; object-fit:cover; background:#222; border:1px solid #333; flex-shrink:0; }
-  .imgrow .meta { flex:1; font-size:11px; min-width:0; }
-  .imgrow .meta .host { color:#8ef; }
-  .imgrow .meta .status { font-weight:bold; }
-  video, iframe { display:block; width:100%; max-height:240px; background:#111; border:0; }
+  .btn.big { padding:12px 18px; font-size:15px; }
+  .btn.go  { background:#0a4020; border-color:#5f5; color:#afa; margin:4px 4px 4px 0; }
+  .btn.dim { color:#888; border-color:#444; background:#1a1a28; }
+  #nav { display:flex; align-items:center; gap:6px; padding:8px 10px; background:#0d0d1e; border-bottom:1px solid #1a1a2e; }
+  #nav button { padding:8px 14px; font-size:14px; }
+  #uidInp { background:#0a0a1a; color:#fff; border:1px solid #4af; padding:6px 8px; font-family:monospace; font-size:14px; border-radius:4px; width:80px; }
+  #main { padding:10px; }
+  #title { color:#fff; font-size:15px; margin:0 0 4px; }
+  #author { color:#8ef; font-size:12px; margin-bottom:8px; }
+  #comment { color:#fc8; font-size:12px; margin:6px 0; font-style:italic; }
+  #tags { color:#8af; font-size:11px; margin:6px 0; }
+  #tags span { background:#1a2a44; padding:2px 6px; border-radius:3px; margin-right:4px; display:inline-block; }
+  video, img.media { display:block; width:100%; max-height:60vh; background:#000; border:1px solid #333; margin:6px 0; }
+  iframe.media { display:block; width:100%; height:240px; background:#000; border:1px solid #333; margin:6px 0; }
+  #segs { margin:8px 0; }
+  #segs .lbl { color:#888; font-size:11px; margin-bottom:4px; }
+  #state { color:#5f5; font-size:11px; padding:4px 0; }
+  #err   { color:#f66; font-size:13px; padding:10px; background:#1a0808; border:1px solid #f66; border-radius:5px; margin:10px 0; }
+  .lbl { color:#888; font-size:11px; }
+  #meta { background:#0d0d1e; border:1px solid #222; border-radius:5px; padding:8px; margin-top:10px; font-size:12px; }
+  #meta .k { color:#888; min-width:80px; display:inline-block; }
+  #meta .v { color:#ccc; }
+  #loading { color:#fc8; padding:10px; text-align:center; }
+  a { color:#8ef; }
 </style>
 </head>
 <body>
 
-<h1>Legacy diagnostic v2</h1>
-<div class="lbl">Re-test only the things that failed or matter. Tap the green buttons to test tap-out flows.</div>
-
-<h2>1. Image hosts — which CAs your phone trusts</h2>
-<div class="lbl">Each loads one tiny image from a different host. Pass = image visible. Fail = broken icon or empty.</div>
-<div id="imgTests"></div>
-
-<h2>2. UID 709 — your real direct-mp4 video</h2>
-<div class="lbl">Self-hosted mp4 from video.sealifeandmore.com. If this plays, MVP for direct videos is done.</div>
-<video id="testVid709" controls preload="metadata">
-  <source src="https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4" type="video/mp4">
-</video>
-<div id="vid709Result" class="lbl">loading metadata...</div>
-
-<h2>3. Big Buck Bunny (HTML5 video from Google CDN)</h2>
-<div class="lbl">Different host than #2 — tells us if HTML5 video itself works or only sealifeandmore.</div>
-<video id="testBBB" controls preload="metadata">
-  <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
-</video>
-<div id="bbbResult" class="lbl">loading metadata...</div>
-
-<h2>4. YouTube thumbnail (i.ytimg.com)</h2>
-<div class="lbl">If this loads, we can show YouTube preview images. If not, we can't.</div>
-<img id="ytThumb" src="https://i.ytimg.com/vi/nJMZ6reOB0E/hqdefault.jpg"
-     style="width:160px;height:90px;background:#222;border:1px solid #333;display:block;">
-<div id="ytThumbResult" class="lbl">loading...</div>
-
-<h2>5. Tap-out to YouTube (the MVP video strategy)</h2>
-<div class="lbl">
-  Instead of embedding, tap a button to open YouTube directly. The buttons below use the same
-  trick the MVP would use: <code>youtube.com/watch?v=ID&amp;t=START</code> jumps to a timestamp.
+<div id="top">
+  <h1 id="ptitle">SeeAndLearn <span style="color:#888;font-size:11px;">(legacy)</span></h1>
+  <span id="counter"></span>
 </div>
 
-<div style="margin:8px 0;">
-  <div class="lbl">Plain YouTube video (no segment):</div>
-  <a class="btn go" href="https://www.youtube.com/watch?v=nJMZ6reOB0E" target="_blank" rel="noopener">
-    ▶ Open YouTube video
-  </a>
+<div id="nav">
+  <button id="prevBtn">◀ Prev</button>
+  <button id="nextBtn">Next ▶</button>
+  <span class="lbl" style="margin-left:6px;">UID:</span>
+  <input id="uidInp" type="text" inputmode="numeric" pattern="[0-9]*">
+  <button id="goBtn">Go</button>
 </div>
 
-<div style="margin:8px 0;">
-  <div class="lbl">YouTube with start time (jump to second 113):</div>
-  <a class="btn go" href="https://www.youtube.com/watch?v=xJwrmM3TgxQ&t=113s" target="_blank" rel="noopener">
-    ▶ Open at 1:53
-  </a>
-</div>
-
-<div style="margin:8px 0;">
-  <div class="lbl">Multi-segment video — would become a list of buttons:</div>
-  <div id="multiSegDemo"></div>
-</div>
-
-<h2>6. ml.json sanity check</h2>
-<div id="mlResult" class="lbl">loading ml.json...</div>
-
-<div style="margin-top:30px;padding-top:10px;border-top:1px solid #333;color:#555;font-size:10px;">
-  Diagnostic v2 — delete legacy.html to revert.
+<div id="main">
+  <div id="loading">Loading ml.json…</div>
 </div>
 
 <script>
-/* ES5 only. Runs on KitKat WebView. */
+/* ES5 only. KitKat WebView compatible. */
 function $(id) { return document.getElementById(id); }
-
-/* ---- 1. Image hosts ---- */
-var imageHosts = [
-  { host: 'i.ytimg.com',          url: 'https://i.ytimg.com/vi/nJMZ6reOB0E/default.jpg', label: 'YouTube thumbnail CDN' },
-  { host: 'sealifeandmore.com',   url: 'https://sealifeandmore.com/favicon.ico',          label: 'Your own site' },
-  { host: 'raw.githubusercontent.com', url: 'https://raw.githubusercontent.com/github/explore/main/topics/git/git.png', label: 'GitHub raw' },
-  { host: 'upload.wikimedia.org', url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/120px-PNG_transparency_demonstration_1.png', label: 'Wikimedia' },
-  { host: 'i.imgur.com',          url: 'https://i.imgur.com/dWk6Lh4.png', label: 'Imgur' },
-  { host: 'i.natgeofe.com',       url: 'https://i.natgeofe.com/n/523d689d-7f47-4229-81e0-fd482ff5b6d5/00000165-67e1-df80-affd-f7e5b67f0000_3x2.jpg', label: 'NatGeo' }
-];
-var imgTestsDiv = $('imgTests');
-for (var i = 0; i < imageHosts.length; i++) {
-  (function(spec) {
-    var row = document.createElement('div');
-    row.className = 'imgrow';
-    var img = document.createElement('img');
-    img.alt = spec.host;
-    var meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.innerHTML = '<span class="host">' + spec.host + '</span> &mdash; ' + spec.label
-                   + '<br><span class="status lbl">loading...</span>';
-    row.appendChild(img); row.appendChild(meta);
-    imgTestsDiv.appendChild(row);
-    var status = meta.querySelector('.status');
-    img.onload  = function() { status.textContent = 'OK'; status.className = 'status ok'; };
-    img.onerror = function() { status.textContent = 'FAIL'; status.className = 'status no'; };
-    img.src = spec.url;
-  })(imageHosts[i]);
+function el(tag, attrs, text) {
+  var e = document.createElement(tag);
+  if (attrs) { for (var k in attrs) if (attrs.hasOwnProperty(k)) e.setAttribute(k, attrs[k]); }
+  if (text != null) e.appendChild(document.createTextNode(text));
+  return e;
 }
 
-/* ---- 2. UID 709 ---- */
-$('testVid709').addEventListener('loadedmetadata', function() {
-  var v = $('testVid709');
-  $('vid709Result').innerHTML = '<span class="ok">metadata loaded</span> &mdash; duration ' + Math.round(v.duration) + 's. Press play to confirm.';
-});
-$('testVid709').addEventListener('error', function() {
-  $('vid709Result').innerHTML = '<span class="no">UID 709 video failed to load.</span>';
-});
-
-/* ---- 3. Big Buck Bunny ---- */
-$('testBBB').addEventListener('loadedmetadata', function() {
-  var v = $('testBBB');
-  $('bbbResult').innerHTML = '<span class="ok">metadata loaded</span> &mdash; duration ' + Math.round(v.duration) + 's. Press play to confirm.';
-});
-$('testBBB').addEventListener('error', function() {
-  $('bbbResult').innerHTML = '<span class="no">Big Buck Bunny failed to load.</span>';
-});
-
-/* ---- 4. YouTube thumb ---- */
-$('ytThumb').onload  = function() { $('ytThumbResult').innerHTML = '<span class="ok">thumbnail OK</span>'; };
-$('ytThumb').onerror = function() { $('ytThumbResult').innerHTML = '<span class="no">thumbnail FAILED</span>'; };
-
-/* ---- 5. Multi-segment demo ---- */
-var demoSegs = [
-  { start: 75,    dur: 8 },
-  { start: 113,   dur: 7 },
-  { start: 130.8, dur: 6 },
-  { start: 172.2, dur: 6 },
-  { start: 185.6, dur: 10.2 },
-  { start: 246,   dur: 20 }
-];
-var demoVid = 'xJwrmM3TgxQ';
-var msDiv = $('multiSegDemo');
-function fmt(s) {
+/* ---- VidRange parsing (mirrors video.js) ----
+   "986 20"          → [{start:986,dur:20}]
+   "986 20, 1200 15" → [{start:986,dur:20},{start:1200,dur:15}]
+   "i" / non-numeric → null (image, not video) */
+function parseVidRange(v) {
+  var s = String(v || '').replace(/^\s+|\s+$/g, '');
+  if (!s || s === 'i') return null;
+  var segs = s.split(',');
+  var out = [];
+  for (var i = 0; i < segs.length; i++) {
+    var seg = segs[i].replace(/^\s+|\s+$/g, '');
+    if (!seg) continue;
+    var p = seg.split(/\s+/);
+    if (!p.length || isNaN(Number(p[0]))) return null;
+    out.push({ start: Number(p[0]), dur: (p.length > 1 && !isNaN(Number(p[1]))) ? Number(p[1]) : 1 });
+  }
+  return out.length ? out : null;
+}
+function fmtTime(s) {
   var m = Math.floor(s / 60), r = Math.floor(s % 60);
   return m + ':' + (r < 10 ? '0' + r : r);
 }
-for (var k = 0; k < demoSegs.length; k++) {
-  var seg = demoSegs[k];
-  var startInt = Math.floor(seg.start);
-  var a = document.createElement('a');
-  a.className = 'btn go';
-  a.href = 'https://www.youtube.com/watch?v=' + demoVid + '&t=' + startInt + 's';
-  a.target = '_blank';
-  a.rel = 'noopener';
-  a.textContent = '▶ ' + fmt(seg.start) + ' (' + seg.dur + 's)';
-  msDiv.appendChild(a);
+
+/* ---- Link type detection ---- */
+function isYouTube(url) { return /youtu\.be|youtube\.com/i.test(url || ''); }
+function youTubeId(url) {
+  if (!url) return '';
+  var m = url.match(/[?&]v=([A-Za-z0-9_-]+)/);
+  if (m) return m[1];
+  m = url.match(/youtu\.be\/([A-Za-z0-9_-]+)/);
+  if (m) return m[1];
+  m = url.match(/youtube\.com\/embed\/([A-Za-z0-9_-]+)/);
+  if (m) return m[1];
+  return '';
+}
+function isDirectVideo(url) { return /\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(url || ''); }
+function isImage(url)       { return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|#|$)/i.test(url || ''); }
+
+/* ---- Read ?uid= ---- */
+function getQuery(name) {
+  var q = window.location.search || '';
+  if (q.charAt(0) === '?') q = q.substring(1);
+  var parts = q.split('&');
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i].split('=');
+    if (decodeURIComponent(p[0]) === name) return decodeURIComponent(p[1] || '');
+  }
+  return '';
 }
 
-/* ---- 6. ml.json sanity ---- */
-var xhr = new XMLHttpRequest();
-xhr.open('GET', 'ml.json?t=' + (new Date()).getTime(), true);
-xhr.onreadystatechange = function() {
-  if (xhr.readyState !== 4) return;
-  if (xhr.status !== 200) { $('mlResult').innerHTML = '<span class="no">ml.json HTTP ' + xhr.status + '</span>'; return; }
-  try {
-    var data = JSON.parse(xhr.responseText);
-    var rowCount = 0, ytCount = 0, mp4Count = 0, withRange = 0;
-    for (var i = 0; i < data.length; i++) {
-      var r = data[i];
-      if (r._salMeta) continue;
-      rowCount++;
-      var link = r.link || '';
-      if (/youtu\.be|youtube\.com/i.test(link)) ytCount++;
-      else if (/\.mp4(\?|$)/i.test(link)) mp4Count++;
-      if (r.VidRange && r.VidRange !== 'i' && /\d/.test(r.VidRange)) withRange++;
+/* ---- Global state ---- */
+var ML = null;        // full ml.json array
+var SHOWN = [];       // [{uid: int, row: obj}] for show=1, sorted by uid ascending
+var IDX = 0;          // current index into SHOWN
+var SEG_TIMER = null; // for direct-mp4 segment auto-advance
+
+/* ---- Load ml.json ---- */
+function loadML(cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', 'ml.json?t=' + (new Date()).getTime(), true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status !== 200) { showErr('ml.json HTTP ' + xhr.status); return; }
+    try {
+      ML = JSON.parse(xhr.responseText);
+      for (var i = 0; i < ML.length; i++) {
+        var r = ML[i];
+        if (r._salMeta) continue;
+        if (String(r.show) !== '1') continue;
+        var u = parseInt(r.UID, 10);
+        if (isNaN(u)) continue;
+        SHOWN.push({ uid: u, row: r });
+      }
+      SHOWN.sort(function(a, b) { return a.uid - b.uid; });
+      cb();
+    } catch (e) {
+      showErr('parse error: ' + e.message);
     }
-    $('mlResult').innerHTML = '<span class="ok">OK.</span> ' + rowCount + ' rows, '
-      + ytCount + ' YouTube, ' + mp4Count + ' direct mp4, ' + withRange + ' with VidRange.';
-  } catch (e) {
-    $('mlResult').innerHTML = '<span class="no">parse failed:</span> ' + e.message;
+  };
+  xhr.onerror = function() { showErr('network error loading ml.json'); };
+  xhr.send();
+}
+
+function showErr(msg) {
+  $('main').innerHTML = '';
+  var d = el('div', { id: 'err' });
+  d.innerHTML = msg;
+  $('main').appendChild(d);
+}
+
+/* ---- Find UID → SHOWN index ---- */
+function indexOfUid(uid) {
+  for (var i = 0; i < SHOWN.length; i++) if (SHOWN[i].uid === uid) return i;
+  return -1;
+}
+
+/* ---- Render current ---- */
+function render() {
+  if (SEG_TIMER) { clearInterval(SEG_TIMER); SEG_TIMER = null; }
+  var entry = SHOWN[IDX];
+  if (!entry) { showErr('No row at index ' + IDX); return; }
+  var row = entry.row;
+  $('uidInp').value = entry.uid;
+  $('counter').textContent = (IDX + 1) + ' / ' + SHOWN.length + '  ·  UID ' + entry.uid;
+  /* update URL without reload */
+  try {
+    var newUrl = window.location.pathname + '?uid=' + entry.uid;
+    if (window.history && window.history.replaceState) window.history.replaceState(null, '', newUrl);
+  } catch (e) {}
+
+  var m = $('main');
+  m.innerHTML = '';
+
+  /* Title / author */
+  var title = row.VidTitle || row.title || '';
+  var author = row.VidAuthor || row.author || '';
+  if (title)  m.appendChild(el('div', { id: 'title' }, title));
+  if (author) m.appendChild(el('div', { id: 'author' }, '— ' + author));
+
+  /* Media */
+  var link = row.link || '';
+  var segs = parseVidRange(row.VidRange);
+
+  if (!link) {
+    var n = el('div', { id: 'err' }, 'No link in this row');
+    m.appendChild(n);
+  } else if (isDirectVideo(link)) {
+    renderDirectVideo(m, link, segs);
+  } else if (isYouTube(link)) {
+    renderYouTube(m, link, segs);
+  } else if (isImage(link)) {
+    var img = el('img', { src: link, alt: title || ('UID ' + entry.uid), 'class': 'media' });
+    m.appendChild(img);
+  } else {
+    /* generic — offer tap-out */
+    var a = el('a', { href: link, target: '_blank', rel: 'noopener', 'class': 'btn go big' }, '↗ Open link');
+    m.appendChild(a);
   }
-};
-xhr.send();
+
+  /* Comment */
+  var cmt = row.VidComment || row.comment || '';
+  if (cmt) m.appendChild(el('div', { id: 'comment' }, '“' + cmt + '”'));
+
+  /* Tags */
+  if (row.tags && row.tags.length) {
+    var td = el('div', { id: 'tags' });
+    for (var i = 0; i < row.tags.length; i++) td.appendChild(el('span', null, row.tags[i]));
+    m.appendChild(td);
+  }
+
+  /* Meta block */
+  var meta = el('div', { id: 'meta' });
+  function addMeta(k, v) {
+    if (v == null || v === '') return;
+    var row = document.createElement('div');
+    row.innerHTML = '<span class="k">' + k + '</span><span class="v"></span>';
+    row.lastChild.appendChild(document.createTextNode(String(v)));
+    meta.appendChild(row);
+  }
+  addMeta('UID:',      entry.uid);
+  addMeta('VidRange:', row.VidRange);
+  addMeta('Length:',   row.vidLength);
+  addMeta('Link:',     link);
+  m.appendChild(meta);
+}
+
+/* ---- Direct video with optional segment looping ---- */
+function renderDirectVideo(parent, src, segs) {
+  var v = el('video', { controls: 'controls', preload: 'metadata', playsinline: 'playsinline', 'class': 'media' });
+  var s = el('source', { src: src });
+  /* try to set type by extension */
+  var ext = (src.match(/\.([a-z0-9]+)(?:\?|#|$)/i) || [])[1] || 'mp4';
+  s.setAttribute('type', 'video/' + (ext.toLowerCase() === 'mov' ? 'quicktime' : ext.toLowerCase()));
+  v.appendChild(s);
+  parent.appendChild(v);
+
+  var state = el('div', { id: 'state' });
+  parent.appendChild(state);
+
+  v.addEventListener('error', function() {
+    state.textContent = 'Video failed to load. The host\'s cert may not be trusted by this phone.';
+    state.style.color = '#f66';
+  });
+  v.addEventListener('loadedmetadata', function() {
+    state.textContent = 'Loaded · duration ' + Math.round(v.duration) + 's';
+  });
+
+  if (segs && segs.length) {
+    /* Render segment buttons + auto-play segments in order */
+    var segDiv = el('div', { id: 'segs' });
+    var lbl = el('div', { 'class': 'lbl' }, segs.length + ' segment' + (segs.length === 1 ? '' : 's') + ' — tap to play just that part:');
+    segDiv.appendChild(lbl);
+
+    var currentSeg = -1;
+    function playSeg(i) {
+      currentSeg = i;
+      try {
+        v.currentTime = segs[i].start;
+        v.play();
+      } catch (e) {}
+      state.textContent = 'Playing segment ' + (i + 1) + ' / ' + segs.length + ' (start ' + segs[i].start + 's, ' + segs[i].dur + 's)';
+    }
+
+    for (var i = 0; i < segs.length; i++) {
+      (function(idx) {
+        var btn = el('button', { 'class': 'btn go' },
+          '▶ ' + fmtTime(segs[idx].start) + ' (' + segs[idx].dur + 's)');
+        btn.onclick = function() { playSeg(idx); };
+        segDiv.appendChild(btn);
+      })(i);
+    }
+    /* "Play all from start" */
+    var allBtn = el('button', { 'class': 'btn' }, '▶▶ Play whole video');
+    allBtn.onclick = function() { currentSeg = -1; try { v.currentTime = 0; v.play(); } catch(e){} state.textContent = 'Playing whole video'; };
+    segDiv.appendChild(allBtn);
+
+    parent.appendChild(segDiv);
+
+    /* If a segment is active, stop at start+dur */
+    v.addEventListener('timeupdate', function() {
+      if (currentSeg < 0) return;
+      var seg = segs[currentSeg];
+      if (v.currentTime >= seg.start + seg.dur) {
+        if (currentSeg + 1 < segs.length) {
+          playSeg(currentSeg + 1);
+        } else {
+          v.pause();
+          state.textContent = 'Finished all ' + segs.length + ' segments';
+          currentSeg = -1;
+        }
+      }
+    });
+  }
+}
+
+/* ---- YouTube: thumbnail + tap-out buttons (no embed) ---- */
+function renderYouTube(parent, link, segs) {
+  var id = youTubeId(link);
+  if (!id) {
+    parent.appendChild(el('div', { id: 'err' }, 'Could not parse YouTube ID from: ' + link));
+    return;
+  }
+
+  var thumb = el('img', { src: 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg', 'class': 'media', alt: 'YouTube thumbnail' });
+  parent.appendChild(thumb);
+
+  parent.appendChild(el('div', { 'class': 'lbl' }, 'YouTube embed cannot run on this phone — tap to open on YouTube:'));
+
+  if (segs && segs.length) {
+    var segDiv = el('div', { id: 'segs' });
+    for (var i = 0; i < segs.length; i++) {
+      (function(idx) {
+        var st = Math.floor(segs[idx].start);
+        var a = el('a', {
+          href: 'https://www.youtube.com/watch?v=' + id + '&t=' + st + 's',
+          target: '_blank', rel: 'noopener', 'class': 'btn go'
+        }, '▶ ' + fmtTime(segs[idx].start) + ' (' + segs[idx].dur + 's)');
+        segDiv.appendChild(a);
+      })(i);
+    }
+    parent.appendChild(segDiv);
+    /* Plus "open from start" */
+    parent.appendChild(el('a', {
+      href: 'https://www.youtube.com/watch?v=' + id,
+      target: '_blank', rel: 'noopener', 'class': 'btn'
+    }, '▶▶ Open from start'));
+  } else {
+    parent.appendChild(el('a', {
+      href: 'https://www.youtube.com/watch?v=' + id,
+      target: '_blank', rel: 'noopener', 'class': 'btn go big'
+    }, '▶ Open on YouTube'));
+  }
+}
+
+/* ---- Nav ---- */
+$('prevBtn').onclick = function() { if (IDX > 0) { IDX--; render(); } };
+$('nextBtn').onclick = function() { if (IDX < SHOWN.length - 1) { IDX++; render(); } };
+$('goBtn').onclick   = function() { goUid(parseInt($('uidInp').value, 10)); };
+$('uidInp').addEventListener('keydown', function(e) {
+  if (e.keyCode === 13) goUid(parseInt($('uidInp').value, 10));
+});
+function goUid(u) {
+  if (isNaN(u)) return;
+  var i = indexOfUid(u);
+  if (i < 0) { alert('UID ' + u + ' not found (or show=0)'); return; }
+  IDX = i;
+  render();
+}
+
+/* ---- Boot ---- */
+loadML(function() {
+  if (!SHOWN.length) { showErr('No rows with show=1 in ml.json'); return; }
+  var uid = parseInt(getQuery('uid'), 10);
+  var i = isNaN(uid) ? 0 : indexOfUid(uid);
+  IDX = (i >= 0) ? i : 0;
+  render();
+});
 </script>
 </body>
 </html>
