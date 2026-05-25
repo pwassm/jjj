@@ -140,18 +140,24 @@ function slideshowOpen(source) {
     if (typeof toast === 'function') toast('No images found in this slide.', 2000);
     return;
   }
-  _slideshowStart(urls.map(u => ({ url: u, row })));
+  const slides = urls.map(u => ({ url: u, row }));
+  // (dev0268) ftext images are inherently in-order; pass a copy so the
+  // live Order toggle can restore them after a random shuffle.
+  _slideshowStart(slides, slides.slice());
 }
 
 function slideshowOpenGrid() {
   if (_slideshowState) return;
-  const slides = _slideshowGridSlides();
-  if (!slides.length) {
+  // (dev0268) Capture canonical cell-order BEFORE any random shuffle so
+  // the Order toggle can restore it live mid-show.
+  const ordered = _slideshowGridSlides();
+  if (!ordered.length) {
     if (typeof toast === 'function') toast('No image cells in the active grid.', 2000);
     return;
   }
+  const slides = ordered.slice();
   if (_slideshowLoadSettings().order === 'random') _slideshowShuffle(slides);
-  _slideshowStart(slides);
+  _slideshowStart(slides, ordered);
 }
 
 // (dev0241) S from T → play all images under the project folder's jpgs/
@@ -197,25 +203,29 @@ async function slideshowOpenJpgsFolder() {
     if (typeof toast === 'function') toast('No images found under jpgs/.', 2200);
     return;
   }
-  if (_slideshowLoadSettings().order === 'random') _slideshowShuffle(files);
-  const slides = [];
+  // (dev0268) Build slides in walk order first so we have an in-order
+  // snapshot the live Order toggle can restore; then shuffle a copy for
+  // playback if the saved setting is random.
+  const orderedSlides = [];
   for (const fh of files) {
     try {
       const file = await fh.getFile();
-      slides.push({ url: URL.createObjectURL(file), row: null });
+      orderedSlides.push({ url: URL.createObjectURL(file), row: null });
     } catch (_) {}
   }
-  if (!slides.length) {
+  if (!orderedSlides.length) {
     if (typeof toast === 'function') toast('Could not read any images.', 2200);
     return;
   }
-  if (typeof toast === 'function') toast('Playing ' + slides.length + ' image(s) from jpgs/', 1800);
-  _slideshowStart(slides);
+  if (typeof toast === 'function') toast('Playing ' + orderedSlides.length + ' image(s) from jpgs/', 1800);
+  const slides = orderedSlides.slice();
+  if (_slideshowLoadSettings().order === 'random') _slideshowShuffle(slides);
+  _slideshowStart(slides, orderedSlides);
 }
 
 // ── Core machinery ──────────────────────────────────────────────────────────
 
-function _slideshowStart(slides) {
+function _slideshowStart(slides, orderedSlides) {
   const settings = _slideshowLoadSettings();
 
   const overlay = document.createElement('div');
@@ -284,12 +294,23 @@ function _slideshowStart(slides) {
   _slideshowState = {
     overlay,
     slides: slides.map(s => Object.assign({}, s, { status: 'pending' })),
+    // (dev0268) In-order snapshot captured at start. Used by the Order
+    // toggle to restore canonical order when switching random → in-order
+    // mid-show, and re-saved when the ftext slideset toggle is used.
+    _inOrderSnapshot: (orderedSlides || slides).map(s => Object.assign({}, s, { status: 'pending' })),
     idx: -1,
     timer: null,
     settings,
     front: 'A',     // which <img> is currently visible
     menu: null,
-    paused: false   // (zip0236) pause/resume from settings menu
+    paused: false,  // (zip0236) pause/resume from settings menu
+    // (dev0268) ftext-toggle bookkeeping. When the user gestures up on a
+    // paused slide whose URL appears in row.ftext, we save the current
+    // slides/snapshot here and replace them with the ftext-derived set.
+    _ftextMode: false,
+    _beforeFtextSlides: null,
+    _beforeFtextSnapshot: null,
+    _beforeFtextIdx: -1
   };
 
   // Apply transition duration to image layers (live, in case settings change)
@@ -325,6 +346,11 @@ function _slideshowStart(slides) {
       const st = _slideshowState; if (!st) return;
       const mz = _ensureMZ();
       st._manualZoom = (mz.scale > 1.02) ? { scale: mz.scale, tx: mz.tx, ty: mz.ty } : null;
+      // (dev0268) Hold-to-zoom past the manual-zoom threshold also pauses
+      // the show. Pause persists across L↔R navigation (zoom resets per
+      // slide, paused does not) — only a single tap (or the menu's
+      // Resume button) re-arms the dwell timer.
+      if (mz.scale > 1.02 && !st.paused) _slideshowPause();
       const f = _frontImg(); if (!f) return;
       f.style.transition = 'none';
       f.style.transform  = 'translate(' + mz.tx + 'px,' + mz.ty + 'px) scale(' + mz.scale + ')';
@@ -332,11 +358,13 @@ function _slideshowStart(slides) {
 
     let down = null;       // { x0, y0, t0, dragging, panBase }
     let zoomDelay = null, zoomTimer = null, zoomStep = 0;
+    let zoomStarted = false; // (dev0268) hold-zoom actually ran during this press
     function _stopZoom() {
       if (zoomDelay) { clearTimeout(zoomDelay);   zoomDelay = null; }
       if (zoomTimer) { clearInterval(zoomTimer);  zoomTimer = null; }
     }
     function _startZoom() {
+      zoomStarted = true; // (dev0268) so mouseup can suppress click-resume
       const mz = _ensureMZ();
       zoomStep = 0.015; // 0.015 × 20Hz ≈ 0.3 scale/sec (slow start)
       zoomTimer = setInterval(() => {
@@ -356,6 +384,7 @@ function _slideshowStart(slides) {
       if (_slideshowState._touchActive) return;
       e.preventDefault();
       down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null };
+      zoomStarted = false; // (dev0268) reset per press
       zoomDelay = setTimeout(_startZoom, HOLD_MS);
     });
     overlay.addEventListener('mousemove', e => {
@@ -385,12 +414,27 @@ function _slideshowStart(slides) {
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
       const ms = Date.now() - down.t0;
       const mz = _ensureMZ();
+      const heldZoom = zoomStarted; // (dev0268) snapshot before reset
       down = null;
+      const st = _slideshowState;
       if (wasDragging && mz.scale < 1.1) {
-        // Horizontal swipe at ~1× → navigate
-        if (Math.abs(dx) > SWIPE_DX && Math.abs(dx) > Math.abs(dy) && ms < SWIPE_MS) {
+        const horiz = Math.abs(dx) > SWIPE_DX && Math.abs(dx) > Math.abs(dy) && ms < SWIPE_MS;
+        const vert  = Math.abs(dy) > SWIPE_DX && Math.abs(dy) > Math.abs(dx) && ms < SWIPE_MS;
+        if (horiz) {
+          // Horizontal swipe at ~1× → navigate. Pause (if any) persists.
           _slideshowAdvance(dx > 0 ? -1 : +1);
+        } else if (vert && st && st.paused) {
+          // (dev0268) Vertical drag on a paused, unzoomed slide toggles
+          // the slideset between original and the current row's ftext
+          // images. Both helpers are silent when not applicable.
+          if (dy < 0) _slideshowMaybeSwitchToFtextSet();
+          else        _slideshowMaybeRestoreOriginalSet();
         }
+      } else if (!wasDragging && !heldZoom && st && st.paused) {
+        // (dev0268) Single click on a paused slide resumes playback.
+        // `heldZoom` guard: a press that triggered hold-zoom is not a
+        // "click" — release just ends the zoom; pause stays.
+        _slideshowResume();
       }
       // Zoom persists across releases (V-style). No reset here.
     });
@@ -420,6 +464,30 @@ function _slideshowStart(slides) {
     let _pinch = null;       // { scale, tx, ty, dist, mx, my }
     let _swipe = null;       // { x, y, t }
     let _lastTap = 0, _lastTapP = null;
+    // (dev0268) Single-finger long-press hold-zoom — mirrors the desktop
+    // mouse-hold gesture so phone users get the same model. Pinch zoom
+    // continues to work; the two coexist (pinch supersedes long-press).
+    let _longPressDelay = null, _longPressTimer = null;
+    let _longPressZoomStarted = false;
+    let _longPressStep = 0;
+    function _stopLongPressZoom() {
+      if (_longPressDelay) { clearTimeout(_longPressDelay); _longPressDelay = null; }
+      if (_longPressTimer) { clearInterval(_longPressTimer); _longPressTimer = null; }
+    }
+    function _startLongPressZoom() {
+      const st = _slideshowState; if (!st) return;
+      _longPressZoomStarted = true;
+      st._manualZoom = st._manualZoom || { scale: 1, tx: 0, ty: 0 };
+      _longPressStep = 0.015;
+      _longPressTimer = setInterval(() => {
+        const ss = _slideshowState; if (!ss) { _stopLongPressZoom(); return; }
+        const m = ss._manualZoom || (ss._manualZoom = { scale: 1, tx: 0, ty: 0 });
+        if (m.scale >= 8) { _stopLongPressZoom(); return; }
+        m.scale = Math.min(8, m.scale + _longPressStep);
+        _longPressStep = Math.min(0.12, _longPressStep + 0.003);
+        _applyManual(); // also triggers _slideshowPause via the scale check
+      }, 50);
+    }
     // Per-slide manual zoom override (paused pinch). Reset when slide changes.
     function _front() {
       const st = _slideshowState;
@@ -430,6 +498,9 @@ function _slideshowStart(slides) {
       const st = _slideshowState; if (!st) return;
       const f = _front(); if (!f) return;
       const m = st._manualZoom || { scale: 1, tx: 0, ty: 0 };
+      // (dev0268) Pinch or single-finger long-press zoom past the manual
+      // threshold also pauses the show. Single tap resumes.
+      if (m.scale > 1.02 && !st.paused) _slideshowPause();
       // Kill the running transition so pinch tracks the fingers in real time.
       f.style.transition = 'none';
       f.style.transform  = 'translate(' + m.tx + 'px,' + m.ty + 'px) scale(' + m.scale + ')';
@@ -452,6 +523,10 @@ function _slideshowStart(slides) {
 
       if (_ptrs.size >= 2) {
         _swipe = null;
+        // (dev0268) Pinch supersedes long-press hold — cancel any pending
+        // hold-zoom now that a second finger has joined.
+        _stopLongPressZoom();
+        _longPressZoomStarted = false;
         const [a, b] = [..._ptrs.values()];
         const m = st._manualZoom || { scale: 1, tx: 0, ty: 0 };
         _pinch = {
@@ -462,6 +537,12 @@ function _slideshowStart(slides) {
       } else {
         _pinch = null;
         _swipe = { x: p.x, y: p.y, t: Date.now() };
+        // (dev0268) Schedule a single-finger long-press hold-zoom. Cancelled
+        // on movement > 8px (it's a swipe), on pointerup (release), on a
+        // second finger (it becomes pinch), or on pointercancel.
+        _longPressZoomStarted = false;
+        _stopLongPressZoom();
+        _longPressDelay = setTimeout(_startLongPressZoom, 180);
       }
     }, true);
 
@@ -469,7 +550,18 @@ function _slideshowStart(slides) {
       if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
       const st = _slideshowState; if (!st) return;
       _ptrs.set(e.pointerId, _xy(e));
-      if (_ptrs.size >= 2 && _pinch && st.paused) {
+      // (dev0268) Single-finger motion beyond ~8px cancels the pending
+      // long-press hold-zoom — the user is swiping, not holding.
+      if (_ptrs.size === 1 && _swipe && !_longPressZoomStarted) {
+        const cp = _xy(e);
+        if (Math.hypot(cp.x - _swipe.x, cp.y - _swipe.y) > 8) {
+          _stopLongPressZoom();
+        }
+      }
+      // (dev0268) Pinch was previously gated on `st.paused` (user had to
+      // pause first). Now pinch zoom triggers _slideshowPause itself via
+      // _applyManual's scale check, so we can let it run any time.
+      if (_ptrs.size >= 2 && _pinch) {
         const [a, b] = [..._ptrs.values()];
         const dist = Math.hypot(b.x - a.x, b.y - a.y);
         const mx   = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -491,6 +583,13 @@ function _slideshowStart(slides) {
         // Clear the touch-active flag on a short delay so the synthesized
         // mouse `click` that may follow the touch sequence is suppressed.
         setTimeout(() => { if (_slideshowState) _slideshowState._touchActive = false; }, 350);
+        // (dev0268) If long-press hold-zoom actually ran during this
+        // press, skip both swipe and tap detection — release just ends
+        // the zoom; pause stays. Always cancel any pending hold timer.
+        const heldLPZ = _longPressZoomStarted;
+        _longPressZoomStarted = false;
+        _stopLongPressZoom();
+        if (heldLPZ) { _swipe = null; _pinch = null; return; }
         if (_swipe) {
           const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
           const ms = Date.now() - _swipe.t;
@@ -505,7 +604,17 @@ function _slideshowStart(slides) {
             _slideshowAdvance(dx > 0 ? -1 : +1);
             return;
           }
-          // Quick stationary tap → check for double-tap
+          // (dev0268) Vertical swipe on a paused, unzoomed slide toggles
+          // the slideset between original and the current row's ftext
+          // images. Both helpers are silent when not applicable.
+          if (!zoomedNow && st.paused && Math.abs(dy) > 50
+              && Math.abs(dy) > Math.abs(dx) && ms < 800) {
+            _swipe = null;
+            if (dy < 0) _slideshowMaybeSwitchToFtextSet();
+            else        _slideshowMaybeRestoreOriginalSet();
+            return;
+          }
+          // Quick stationary tap → check for double-tap, then resume, then pan-aim.
           if (Math.abs(dx) < 14 && Math.abs(dy) < 14 && ms < 300) {
             const now = Date.now();
             if (now - _lastTap < 350 && _lastTapP &&
@@ -516,8 +625,14 @@ function _slideshowStart(slides) {
             }
             _lastTap = now; _lastTapP = p;
             _swipe = null;
-            // Pan-mode single-tap aims the Ken Burns target (unchanged).
-            if (st.settings.pan !== 'off') _slideshowSetPanTargetFromEvent(e);
+            // (dev0268) Tap on a paused slide resumes playback (covers
+            // zoom-induced and menu-triggered pause). Otherwise falls back
+            // to pan-aim when Ken Burns pan is on.
+            if (st.paused) {
+              _slideshowResume();
+            } else if (st.settings.pan !== 'off') {
+              _slideshowSetPanTargetFromEvent(e);
+            }
             return;
           }
         }
@@ -532,6 +647,9 @@ function _slideshowStart(slides) {
       _ptrs.delete(e.pointerId);
       if (_ptrs.size === 0) {
         _swipe = null; _pinch = null;
+        // (dev0268) Also tear down any long-press hold-zoom state.
+        _stopLongPressZoom();
+        _longPressZoomStarted = false;
         if (_slideshowState) _slideshowState._touchActive = false;
       }
     }, true);
@@ -973,6 +1091,141 @@ function _slideshowAdvance(step) {
   slideshowClose();
 }
 
+// (dev0268) ── Pause / resume helpers ─────────────────────────────────────
+// Three entry points now want to flip the paused state: the menu Pause
+// button, zoom-induced auto-pause (mouse hold or pinch), and the single-
+// tap-resume gesture. Centralizing keeps the button visual in sync no
+// matter who triggered it.
+function _slideshowPause() {
+  const st = _slideshowState;
+  if (!st || st.paused) return;
+  st.paused = true;
+  clearTimeout(st.timer);
+  clearTimeout(st.delayTimer);
+  _slideshowSyncPauseBtn();
+}
+
+function _slideshowResume() {
+  const st = _slideshowState;
+  if (!st || !st.paused) return;
+  st.paused = false;
+  _slideshowSyncPauseBtn();
+  const dwellMs = st.settings.slideSec * 1000;
+  st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
+}
+
+function _slideshowSyncPauseBtn() {
+  const st = _slideshowState;
+  if (!st || !st.menu) return;
+  const btn = st.menu.querySelector('#ssPause');
+  if (!btn) return;
+  if (st.paused) {
+    btn.textContent = '▶ Resume';
+    btn.style.borderColor = '#fc8';
+    btn.style.color = '#fc8';
+    btn.style.background = 'rgba(80,40,0,0.45)';
+  } else {
+    btn.textContent = '⏸ Pause';
+    btn.style.borderColor = '#8ef';
+    btn.style.color = '#8ef';
+    btn.style.background = 'rgba(0,40,80,0.45)';
+  }
+}
+
+function _slideshowUpdateCounter() {
+  const st = _slideshowState;
+  if (!st) return;
+  const el = st.overlay.querySelector('#slideshowCounter');
+  if (el) el.textContent = (st.idx + 1) + ' / ' + st.slides.length;
+}
+
+// (dev0268) Apply a live Order setting change to the running slideshow
+// (was: deferred to next slideshowOpen* call). Keeps the visible slide on
+// screen — only the surrounding sequence rearranges. Random uses an
+// in-place shuffle; In-order restores from the snapshot captured at start.
+function _slideshowApplyOrderChange() {
+  const st = _slideshowState;
+  if (!st || !st.slides.length) return;
+  const curUrl = (st.idx >= 0 && st.slides[st.idx]) ? st.slides[st.idx].url : null;
+  if (st.settings.order === 'random') {
+    _slideshowShuffle(st.slides);
+  } else if (st._inOrderSnapshot) {
+    st.slides = st._inOrderSnapshot.map(s => Object.assign({}, s, { status: 'pending' }));
+  }
+  // Re-locate the visible slide in the new array so the next advance
+  // picks up from the right place, and mark it ready (its image is
+  // already loaded into the front layer).
+  if (curUrl) {
+    for (let i = 0; i < st.slides.length; i++) {
+      if (st.slides[i].url === curUrl) {
+        st.slides[i].status = 'ready';
+        st.idx = i;
+        break;
+      }
+    }
+  }
+  _slideshowUpdateCounter();
+}
+
+// (dev0268) Swap the active slideset to the images embedded in the current
+// slide's row.ftext — but ONLY if the visible slide's URL is itself one of
+// those ftext images. Link images aren't in ftext, so they can't trigger.
+// Stays paused; user resumes with a tap. Silent (returns false) when not
+// applicable so callers can suppress the message.
+function _slideshowMaybeSwitchToFtextSet() {
+  const st = _slideshowState;
+  if (!st || st.idx < 0) return false;
+  const slide = st.slides[st.idx];
+  if (!slide || !slide.row || !slide.row.ftext) return false;
+  if (st._ftextMode) return false;                  // already switched
+  const urls = _slideshowExtractImgs(slide.row.ftext);
+  if (!urls.length) return false;
+  const inFtext = urls.indexOf(slide.url);
+  if (inFtext < 0) return false;                    // current slide not part of ftext
+  st._beforeFtextSlides   = st.slides;
+  st._beforeFtextSnapshot = st._inOrderSnapshot;
+  st._beforeFtextIdx      = st.idx;
+  st._ftextMode = true;
+  const newSlides = urls.map(u => ({
+    url: u, row: slide.row,
+    status: u === slide.url ? 'ready' : 'pending'
+  }));
+  st.slides = newSlides;
+  st._inOrderSnapshot = newSlides.map(s => Object.assign({}, s, { status: 'pending' }));
+  st.idx = inFtext;
+  _slideshowUpdateCounter();
+  if (typeof toast === 'function') {
+    toast('Slideset → ' + urls.length + ' image' + (urls.length === 1 ? '' : 's')
+          + ' from this slide. Tap to play.', 2400);
+  }
+  return true;
+}
+
+// (dev0268) Counterpart to the switch above — gesture down restores the
+// slideset that was active before the ftext switch.
+function _slideshowMaybeRestoreOriginalSet() {
+  const st = _slideshowState;
+  if (!st || !st._ftextMode || !st._beforeFtextSlides) return false;
+  const curUrl = (st.idx >= 0 && st.slides[st.idx]) ? st.slides[st.idx].url : null;
+  st.slides = st._beforeFtextSlides;
+  st._inOrderSnapshot = st._beforeFtextSnapshot;
+  st._beforeFtextSlides = null;
+  st._beforeFtextSnapshot = null;
+  st._ftextMode = false;
+  let newIdx = -1;
+  if (curUrl) {
+    for (let i = 0; i < st.slides.length; i++) {
+      if (st.slides[i].url === curUrl) { newIdx = i; break; }
+    }
+  }
+  st.idx = newIdx >= 0 ? newIdx : Math.max(0, st._beforeFtextIdx || 0);
+  st._beforeFtextIdx = -1;
+  if (newIdx >= 0) st.slides[newIdx].status = 'ready';
+  _slideshowUpdateCounter();
+  if (typeof toast === 'function') toast('Returned to original slideset. Tap to play.', 2000);
+  return true;
+}
+
 function slideshowClose() {
   if (!_slideshowState) return;
   clearTimeout(_slideshowState.timer);
@@ -1257,6 +1510,10 @@ function _slideshowWireMenu(menu) {
       // (dev0265) Both states are "activated" — just flip the label and
       // leave the green color in place. RANDOM should not look disabled.
       orderBtn.textContent = (st.settings.order === 'order') ? 'IN ORDER' : 'RANDOM';
+      // (dev0268) Apply live — was previously deferred to the next
+      // slideshow open. The visible slide stays on screen; only the
+      // surrounding sequence is shuffled (or restored to in-order).
+      _slideshowApplyOrderChange();
     };
   }
 
@@ -1292,27 +1549,15 @@ function _slideshowWireMenu(menu) {
   // depend on e.currentTarget (which has been observed to flake when the
   // click handler is re-entered through bubbling). Also drop any pending
   // delay-timer so a queued zoom doesn't fire after pause.
+  // (dev0268) Delegate to the central pause/resume helpers so that the
+  // menu Pause button, zoom-induced auto-pause, and single-tap resume
+  // all share one source of truth (and keep the button visual in sync).
   const pauseBtn = menu.querySelector('#ssPause');
   if (pauseBtn) {
     pauseBtn.onclick = e => {
       e.stopPropagation();
-      if (!st.paused) {
-        st.paused = true;
-        clearTimeout(st.timer);
-        clearTimeout(st.delayTimer);
-        pauseBtn.textContent = '▶ Resume';
-        pauseBtn.style.borderColor = '#fc8';
-        pauseBtn.style.color = '#fc8';
-        pauseBtn.style.background = 'rgba(80,40,0,0.45)';
-      } else {
-        st.paused = false;
-        pauseBtn.textContent = '⏸ Pause';
-        pauseBtn.style.borderColor = '#8ef';
-        pauseBtn.style.color = '#8ef';
-        pauseBtn.style.background = 'rgba(0,40,80,0.45)';
-        const dwellMs = st.settings.slideSec * 1000;
-        st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
-      }
+      if (st.paused) _slideshowResume();
+      else           _slideshowPause();
     };
   }
 

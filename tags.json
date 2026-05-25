@@ -3623,5 +3623,71 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "laminatubus-alvini",
+    "label": "Laminatubus alvini",
+    "kind": "taxon",
+    "parents": [
+      "laminatubus"
+    ],
+    "aliases": [
+      "Laminatubus alvini Hove & Zibrowius",
+      "1986"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "serpulidae",
+    "label": "Serpulidae",
+    "kind": "taxon",
+    "parents": [
+      "sabellida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "laminatubus",
+    "label": "Laminatubus",
+    "kind": "taxon",
+    "parents": [
+      "serpulidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "paraescarpia",
+    "label": "Paraescarpia",
+    "kind": "taxon",
+    "parents": [
+      "siboglinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "paraescarpia-echinospica",
+    "label": "Paraescarpia echinospica",
+    "kind": "taxon",
+    "parents": [
+      "paraescarpia"
+    ],
+    "aliases": [
+      "Paraescarpia echinospica Southward",
+      "Schulze & Tunnicliffe",
+      "2002"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "P. echinospica",
+    "extinct": false
   }
 ]
