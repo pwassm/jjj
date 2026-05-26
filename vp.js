@@ -1707,6 +1707,25 @@ function vpUpdateTimeline() {
     _vpState.duration = dur;
     if (!(dur > 0)) { vpUpdatePlayBtn(); return; }
 
+    // (dev0263) Cap open-ended segments — when a row has no VidRange,
+    // segs default to [{start:0, dur:99999}] (see line ~382). Without
+    // capping:
+    //   • Selected-mode loop never fires (ct never reaches 99998.95),
+    //     so single-segment videos play once and stop;
+    //   • Timeline scrub computes pct * sum(seg.dur) ≈ pct * 99999,
+    //     so a click halfway through tries to seek to 50000 s — the
+    //     player clamps to end and looks frozen.
+    // Cap once dur is known. seg.dur is mutable so we just lower it
+    // in place; the markers redraw via _vpState.markersToken when the
+    // (dur.toFixed(1) + segs.length) key changes on first knowledge.
+    if (_vpState.segs && _vpState.segs.length) {
+      _vpState.segs.forEach(s => {
+        if (s.start + s.dur > dur + 0.5) {
+          s.dur = Math.max(1, dur - s.start);
+        }
+      });
+    }
+
     const progress = document.getElementById('vp-progress');
     const playhead = document.getElementById('vp-playhead');
     const markers  = document.getElementById('vp-markers');
@@ -1787,11 +1806,19 @@ function vpUpdateTimeline() {
     }
 
     // ── A-B looping overrides segment walk ──
+    // (dev0263) Follow seek with play(): if ct reached bPoint right at
+    // real-video end, YT/direct may already be in ENDED state and a
+    // bare seek alone won't resume.
     if (_vpState.aPoint !== null && _vpState.bPoint !== null
         && _vpState.bPoint > _vpState.aPoint) {
       if (ct >= _vpState.bPoint) {
-        if (_vpState.isYT) _vpState.player.seekTo(_vpState.aPoint, true);
-        else _vpState.player.setCurrentTime(_vpState.aPoint);
+        if (_vpState.isYT) {
+          _vpState.player.seekTo(_vpState.aPoint, true);
+          if (_vpState.player.playVideo) _vpState.player.playVideo();
+        } else {
+          _vpState.player.setCurrentTime(_vpState.aPoint);
+          if (_vpState.player.play) _vpState.player.play();
+        }
       }
     }
     // ── Selected mode: walk through all segments, loop to first after last ──
@@ -1801,8 +1828,16 @@ function vpUpdateTimeline() {
         const nextIdx = (_vpState.segIdx + 1) % _vpState.segs.length;
         _vpState.segIdx = nextIdx;
         const next = _vpState.segs[nextIdx];
-        if (_vpState.isYT) _vpState.player.seekTo(next.start, true);
-        else _vpState.player.setCurrentTime(next.start);
+        // (dev0263) See A-B note — play() after seek so the loop
+        // restarts even when the segment ran to the very end of the
+        // underlying video and the player has parked in ENDED.
+        if (_vpState.isYT) {
+          _vpState.player.seekTo(next.start, true);
+          if (_vpState.player.playVideo) _vpState.player.playVideo();
+        } else {
+          _vpState.player.setCurrentTime(next.start);
+          if (_vpState.player.play) _vpState.player.play();
+        }
       } else if (ct < seg.start - 0.5) {
         // ct landed before this seg's window (e.g. after a Full-mode seek
         // followed by toggle back to Selected) — snap forward into seg.

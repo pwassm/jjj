@@ -26,3 +26,5 @@
 2026-05-21T03:30:14.481Z	bare-links paste	714	https://api.gbif.org/v1/image/cache/fit-in/500x/occurrence/5177105455/media/3636282b21130b62b642dc1e8f4d396d	
 2026-05-21T03:30:22.838Z	bare-links paste	714	https://api.gbif.org/v1/image/cache/fit-in/500x/occurrence/5177105455/media/3636282b21130b62b642dc1e8f4d396d	
 2026-05-21T17:59:57.552Z	bare-links paste	723	https://youtu.be/Hm9ADZ28Wgo	The Discovery of the Sperm Whale Phonetic Alphabet
+2026-05-26T02:37:09.284Z	bare-links paste	755	https://video.sealifeandmore.com/RedCtenophore2.mp4	
+2026-05-26T15:17:59.016Z	bare-links paste	756	https://video.sealifeandmore.com/SkeletonShrimpCleanEat.mp4	
