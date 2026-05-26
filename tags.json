@@ -3689,5 +3689,16 @@
     "rank": "species",
     "common": "P. echinospica",
     "extinct": false
+  },
+  {
+    "id": "microeledone-galapagensis",
+    "label": "Microeledone galapagensis",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
   }
 ]
