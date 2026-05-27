@@ -117,6 +117,13 @@ function youTubeId(url) {
 }
 function isDirectVideo(url) { return /\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(url || ''); }
 function isImage(url)       { return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|#|$)/i.test(url || ''); }
+function isInstagram(url)   { return /instagram\.com\/(reels?|p)\//i.test(url || ''); }
+function instagramEmbed(url) {
+  var m = String(url || '').match(/instagram\.com\/(reels?|p)\/([A-Za-z0-9_-]+)/i);
+  if (!m) return '';
+  var kind = m[1].toLowerCase() === 'p' ? 'p' : 'reel';
+  return 'https://www.instagram.com/' + kind + '/' + m[2] + '/embed/';
+}
 
 /* ---- Query parse ---- */
 function getQuery(name) {
@@ -311,6 +318,9 @@ function render() {
   } else if (isYouTube(link)) {
     renderYouTube(m, link, segs);
     if (autoplay) scheduleAdvance(SLIDESHOW.delaySec);
+  } else if (isInstagram(link)) {
+    renderInstagram(m, link);
+    if (autoplay) scheduleAdvance(SLIDESHOW.delaySec);
   } else if (isImage(link)) {
     renderImage(m, link, title || ('UID ' + uid), autoplay);
   } else {
@@ -467,6 +477,38 @@ function renderImage(parent, src, altText, autoplay) {
   }
 }
 
+/* ---- Instagram (iframe embed — sandbox, no JS API) ---- */
+function renderInstagram(parent, link) {
+  var src = instagramEmbed(link);
+  if (!src) {
+    parent.appendChild(el('div', { id: 'err' }, 'Could not parse Instagram ID from: ' + link));
+    return;
+  }
+  // Wrap the iframe in a centered, portrait-aspect container. The default
+  // iframe.media style (width:100%; height:240px) would stretch the embed
+  // into a wide landscape box and clip the reel; here we cap width on
+  // desktop and let the iframe set its own height so the player's natural
+  // portrait dimensions show through.
+  var wrap = el('div', {
+    style: 'display:block;margin:6px auto;width:100%;max-width:440px;background:#000;border:1px solid #333;'
+  });
+  var iframe = el('iframe', {
+    src: src,
+    frameborder: '0',
+    scrolling: 'no',
+    allowtransparency: 'true',
+    allow: 'autoplay; encrypted-media; picture-in-picture; web-share',
+    allowfullscreen: 'allowfullscreen',
+    style: 'display:block;width:100%;height:780px;border:0;background:#000;'
+  });
+  wrap.appendChild(iframe);
+  parent.appendChild(wrap);
+  parent.appendChild(el('div', { 'class': 'lbl' }, 'Instagram — tap play; opens on Instagram if inline playback is blocked.'));
+  parent.appendChild(el('a', {
+    href: link, target: '_blank', rel: 'noopener', 'class': 'btn'
+  }, '↗ Open on Instagram'));
+}
+
 /* ---- YouTube (tap-out only) ---- */
 function renderYouTube(parent, link, segs) {
   var id = youTubeId(link);
@@ -573,10 +615,19 @@ $('delayInp').addEventListener('change', function() {
 });
 
 /* ---- Boot ---- */
-var pending = 2;
+var pending = 3;
 var loadErr = null;
+var IG = null;
 function bothLoaded() {
   if (loadErr) { showErr('Load error: ' + loadErr); return; }
+  /* Instagram sandbox merge — see instagram.json. IG fetch may resolve
+     before ml.json, so we stash rows in IG and append once ML exists. */
+  if (Array.isArray(IG) && Array.isArray(ML)) {
+    for (var ii = 0; ii < IG.length; ii++) {
+      var ir = IG[ii];
+      if (ir && !ir._salMeta) ML.push(ir);
+    }
+  }
   buildShown();
   if (!SHOWN.length) { showErr('No rows with show=1 in ml.json'); return; }
 
@@ -607,6 +658,13 @@ loadJSON('ml.json', function(data, err) {
 loadJSON('c.json', function(data, err) {
   if (err) loadErr = 'c.json ' + err;
   else C = data;
+  if (--pending === 0) bothLoaded();
+});
+/* Instagram sandbox — optional file; missing is non-fatal so the experiment
+   can be excised by deleting it. Rows are stashed here and appended to ML
+   inside bothLoaded() (which sees both arrays regardless of fetch order). */
+loadJSON('instagram.json', function(igData, err) {
+  if (!err && Array.isArray(igData)) IG = igData;
   if (--pending === 0) bothLoaded();
 });
 </script>

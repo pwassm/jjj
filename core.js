@@ -218,7 +218,8 @@ function isVideoRow(row) {
   const link = String(row.link || '').trim();
   const isYT = link && (window.isYouTubeLink ? window.isYouTubeLink(link) : /youtu\.be|youtube\.com/i.test(link));
   const isVimeo = link && (window.isVimeoLink ? window.isVimeoLink(link) : /vimeo\.com/i.test(link));
-  if (isYT || isVimeo) return true;
+  const isIG = link && window.isInstagramLink && window.isInstagramLink(link);
+  if (isYT || isVimeo || isIG) return true;
   if (link && /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(link)) return true;
   if (vrn && vrn !== 'i' && window.parseVideoAsset && window.parseVideoAsset(vrn) !== null) {
     if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(link)) return false;
@@ -265,6 +266,7 @@ function nextUID() {
   let max = 0;
   if (typeof data !== 'undefined' && Array.isArray(data)) {
     for (const r of data) {
+      if (r && r._salIg) continue;
       const v = r && r.UID;
       if (v === undefined || v === null) continue;
       const n = parseInt(String(v), 10);
@@ -610,16 +612,19 @@ document.addEventListener('DOMContentLoaded', () => {}, false);
 
 // Master save: localStorage + disk (non-blocking)
 function save() {
+  // _salIg rows live in instagram.json and are merged in at load(); strip
+  // them out of every ml.json write path so the sandbox stays excisable.
+  const mlRows = data.filter(r => !(r && r._salIg));
   // 1. localStorage (instant)
   try {
-    localStorage.setItem('seeandlearn-links', JSON.stringify(data));
+    localStorage.setItem('seeandlearn-links', JSON.stringify(mlRows));
     localStorage.setItem('sal-edited',        Date.now().toString());
     localStorage.setItem('ml-col-widths',     JSON.stringify(colWidths));
     localStorage.setItem('ml-col-order',      JSON.stringify(cols));
     localStorage.setItem('ml-col-hidden',     JSON.stringify([...hidden]));
   } catch(e) {}
   // 2. Disk (async, fire-and-forget — updates m:\jj\ml.json on every change)
-  writeFileToDisk('ml.json', [buildMeta()].concat(data)).then(ok => {
+  writeFileToDisk('ml.json', [buildMeta()].concat(mlRows)).then(ok => {
     if (ok) setFsaStatus('📂 ' + (_fsaDir ? _fsaDir.name : '') + ' — saved ' + new Date().toTimeString().slice(0,8));
   });
 }
@@ -703,6 +708,24 @@ async function load() {
   } else if (Array.isArray(raw)) {
     data = raw;
   }
+
+  // Instagram sandbox merge. instagram.json holds experimental rows (reels,
+  // posts) that play via iframe embeds — see video.js mountInstagramEmbed.
+  // Merged in with _salIg=true so save() filters them out of ml.json writes.
+  // Missing file is fine; the experiment can be excised by deleting it.
+  try {
+    const igR = await fetch('instagram.json?t=' + Date.now());
+    if (igR.ok) {
+      const igRaw = await igR.json();
+      if (Array.isArray(igRaw)) {
+        const igFixed = fixAll(igRaw);
+        for (let i = 0; i < igFixed.length; i++) {
+          const r = igFixed[i];
+          if (r && !r._salMeta) { r._salIg = true; data.push(r); }
+        }
+      }
+    }
+  } catch (e) { /* file optional */ }
 
   // localStorage overrides meta (local edits win over what was on disk)
   try { const cw=localStorage.getItem('ml-col-widths'); if(cw) Object.assign(colWidths, JSON.parse(cw)); } catch(e) {}

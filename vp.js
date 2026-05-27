@@ -863,6 +863,8 @@ function gridOpenFullscreen(row, contained) {
         vpMountVimeo(host, row.link, seg, muted);
       } else if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(row.link)) {
         vpMountDirectVideo(host, row.link, seg, muted);
+      } else if (window.isInstagramLink && window.isInstagramLink(row.link)) {
+        vpMountInstagram(host, row.link);
       }
     }, 50);
     
@@ -2101,6 +2103,81 @@ function vpMountVimeo(host, link, seg, muted) {
     tag.src = 'https://player.vimeo.com/api/player.js';
     tag.onload = loadPlayer;
     document.head.appendChild(tag);
+  }
+}
+
+// Instagram mount — sandboxed IG embed in a portrait clipping box centered in
+// the host. The clip wrapper hides IG's header (handle/avatar strip) and
+// footer (caption + "View on Instagram" link) by sizing the iframe taller
+// than the visible box and offsetting it upward; only the central poster /
+// video region remains visible. The center play caret IG paints on reel
+// posters cannot be removed (it's inside the cross-origin iframe).
+//
+// Replaces the toolbar's inert seek-bar row with an "Open on Instagram"
+// gradient button — none of the playback controls work for IG (no JS API),
+// but Prev/Next/Close in the bottom row remain functional.
+function vpMountInstagram(host, link) {
+  host.innerHTML = '';
+  var m = String(link || '').match(/instagram\.com\/(reels?|p)\/([A-Za-z0-9_-]+)/i);
+  if (!m) return;
+  var kind = m[1].toLowerCase() === 'p' ? 'p' : 'reel';
+  var src = 'https://www.instagram.com/' + kind + '/' + m[2] + '/embed/';
+
+  // Clip chrome via an overflow:hidden box that's shorter than the iframe.
+  // Iframe is sized W×(W*2.5) and offset top:-(W*0.16) so the header sits
+  // above the visible region and the footer sits below it. Numbers tuned
+  // for IG's reel embed layout at common widths (~400-440 wide).
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
+    + 'justify-content:center;background:#000;';
+  var clipBox = document.createElement('div');
+  // Sized for desktop viewing of vertical reels (≈3:5 portrait). The caps
+  // collapse to 95vw / 95% on phones so the embed still fits.
+  clipBox.style.cssText = 'position:relative;width:min(634px,95vw);'
+    + 'height:min(893px,95%);overflow:hidden;background:#000;';
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allowtransparency', 'true');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; web-share');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;left:0;right:0;width:100%;'
+    + 'height:calc(100% + 200px);top:-60px;border:0;background:#000;';
+  clipBox.appendChild(iframe);
+  wrap.appendChild(clipBox);
+  host.appendChild(wrap);
+
+  // Replace the seek-bar (timelineRow — first child of #vp-toolbar) with an
+  // "Open on Instagram" gradient button. The bar's playback markers / scrub
+  // are useless without a JS API; reusing that real estate keeps the visible
+  // chrome consistent. Prev/Play/Next/Close stay in the row below.
+  var toolbar = document.getElementById('vp-toolbar');
+  if (toolbar && toolbar.firstElementChild) {
+    var tlRow = toolbar.firstElementChild;
+    tlRow.style.display = 'none';
+    var openBtn = document.createElement('button');
+    openBtn.id = 'vp-ig-open';
+    openBtn.textContent = '↗ Open on Instagram';
+    openBtn.style.cssText = 'display:block;width:100%;height:24px;margin:0 0 4px 0;'
+      + 'background:linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%);'
+      + 'color:#fff;border:0;border-radius:4px;font-family:monospace;font-weight:bold;'
+      + 'font-size:12px;letter-spacing:0.04em;cursor:pointer;'
+      + 'text-shadow:0 1px 2px rgba(0,0,0,0.4);';
+    openBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      window.open(link, '_blank', 'noopener');
+    });
+    toolbar.insertBefore(openBtn, tlRow);
+  }
+
+  // Stub player so generic toolbar code that pokes _vpState.player doesn't
+  // throw. No interval — the timeline stays at zero.
+  if (typeof _vpState === 'object' && _vpState) {
+    _vpState.player = { isInstagram: true,
+      pauseVideo: function(){}, playVideo: function(){},
+      destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
+    _vpState.isYT = false;
   }
 }
 

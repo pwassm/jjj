@@ -90,6 +90,28 @@ function gridCleanupPlayers() {
 // Re-fit on window resize via ResizeObserver — the grid is fluid
 // (5 cols × 5 rows of viewport) so cell width changes whenever the
 // device rotates or the window is resized.
+// Fit a scaled, chrome-clipped IG iframe into a grid cell. IG's embed layout
+// at 326-wide has a ~54px header strip and ~80px footer strip; we render the
+// iframe at a fixed natural size (326×620), scale it so its width matches
+// the cell, and offset top so the header is clipped above the visible area.
+function fitGridIgFrame(cellEl, iframe) {
+  const NAT_W = 326, HEADER = 54;
+  function fit() {
+    if (!cellEl.isConnected) return;
+    const cw = cellEl.clientWidth;
+    if (!cw) return;
+    const scale = cw / NAT_W;
+    iframe.style.transform = 'scale(' + scale + ')';
+    iframe.style.left = '0px';
+    iframe.style.top = (-HEADER * scale) + 'px';
+  }
+  requestAnimationFrame(fit);
+  setTimeout(fit, 50);
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(fit).observe(cellEl);
+  }
+}
+
 function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
   const VIRT_W = 600;
   function fit() {
@@ -345,8 +367,29 @@ function gridShow() {
         const isQuiz = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
         const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
         const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
+        const isIG = !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
 
-        if (isQuiz) {
+        if (isIG) {
+          // Live IG embed clipped to fit. Iframe is rendered at its natural
+          // 326×620 size, scaled to cell width, and offset upward by the
+          // header height — overflow:hidden on the wrap drops the footer.
+          // The center play caret IG paints on reel posters can't be hidden
+          // (cross-origin). Click is routed through the cell interactor as
+          // usual, so tapping opens V (vpMountInstagram handles full view).
+          const igWrap = document.createElement('div');
+          igWrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;pointer-events:none;z-index:1;';
+          const igFrame = document.createElement('iframe');
+          igFrame.src = window.instagramEmbedUrl(row.link);
+          igFrame.setAttribute('frameborder', '0');
+          igFrame.setAttribute('scrolling', 'no');
+          igFrame.setAttribute('allowtransparency', 'true');
+          igFrame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; web-share');
+          igFrame.style.cssText = 'position:absolute;left:0;top:0;width:326px;height:620px;'
+            + 'border:0;background:#000;pointer-events:none;transform-origin:top left;';
+          igWrap.appendChild(igFrame);
+          cell.appendChild(igWrap);
+          fitGridIgFrame(cell, igFrame);
+        } else if (isQuiz) {
           // Quiz/HTML cell — show a styled badge
           cell.style.background = '#0a1a0a';
           const badge = document.createElement('div');
@@ -400,6 +443,8 @@ function gridShow() {
               window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
             } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
               window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+            } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
+              window.mountInstagramEmbed(vidHost, row.link);
             }
           }, 100);
         } else if (row.link && !isImgLink) {
@@ -549,8 +594,25 @@ function gridUpdateCell(cellStr, row) {
     const isQuiz = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
     const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
     const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));
+    const isIG = !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
 
-    if (isQuiz) {
+    if (isIG) {
+      // Live IG embed clipped to fit — see gridShow's matching block for the
+      // rationale on scaling + header clip.
+      const igWrap = document.createElement('div');
+      igWrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;pointer-events:none;z-index:1;';
+      const igFrame = document.createElement('iframe');
+      igFrame.src = window.instagramEmbedUrl(row.link);
+      igFrame.setAttribute('frameborder', '0');
+      igFrame.setAttribute('scrolling', 'no');
+      igFrame.setAttribute('allowtransparency', 'true');
+      igFrame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; web-share');
+      igFrame.style.cssText = 'position:absolute;left:0;top:0;width:326px;height:620px;'
+        + 'border:0;background:#000;pointer-events:none;transform-origin:top left;';
+      igWrap.appendChild(igFrame);
+      cellEl.appendChild(igWrap);
+      fitGridIgFrame(cellEl, igFrame);
+    } else if (isQuiz) {
       cellEl.style.background = '#0a1a0a';
       const badge = document.createElement('div');
       badge.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:1;';
@@ -595,6 +657,8 @@ function gridUpdateCell(cellStr, row) {
           window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
         } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
           window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+        } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
+          window.mountInstagramEmbed(vidHost, row.link);
         }
       }, 50);
     } else if (row.link && !isImgLink) {

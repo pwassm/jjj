@@ -18,6 +18,9 @@ window.DownloadRules = {
     if (host.includes('naturettl.com')) {
       return this._naturettl(html);
     }
+    if (host.includes('instagram.com')) {
+      return this._instagram(html, sourceUrl);
+    }
     // Generic fallback: only triggers when the structural hint fires
     // ("no caption below last picture; earlier images have one"). Safe for
     // unknown sites because it returns the HTML unchanged when uncertain.
@@ -383,6 +386,164 @@ window.DownloadRules = {
       }
       toRemove.forEach(n => n.remove());
     });
+
+    return d.innerHTML;
+  },
+
+  // ── Instagram (instagram.com) ─────────────────────────────────────────────
+  // jina.ai returns Instagram pages in three common shapes:
+  //   (A) Useful: caption in <h2> ("X on Instagram: \"…\""), then a
+  //       transcription/body, then garbage tail (like counts, audio link).
+  //   (B) Mixed: caption + profile-pic CDN <img> + body + comment blocks
+  //       (repeating PLACE-anchor / short text / "N like(s)" / "Reply").
+  //   (C) Login wall: <h1>Instagram</h1> + login form + nothing else.
+  //
+  // We keep the caption (when there is one), strip profile-pic/blob images,
+  // cut comment blocks and login-wall text, drop trailing like counts and
+  // audio attribution. If nothing meaningful survives, return a stub link
+  // so the row still has *something* in ftext (the live IG embed in V
+  // remains the primary content for these rows).
+  _instagram(html, sourceUrl) {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+
+    // 1. Strip profile-pic / blob images. IG embeds the post author's
+    //    avatar from *.cdninstagram.com — never useful as article content.
+    d.querySelectorAll('img').forEach(img => {
+      const src = img.getAttribute('src') || '';
+      if (src.startsWith('blob:')
+          || /cdninstagram\.com/i.test(src)
+          || /static\.cdninstagram\.com/i.test(src)) {
+        (img.closest('figure, p') || img).remove();
+      }
+    });
+
+    // 2. Pull the caption from the first informative heading. The "real"
+    //    caption looks like "{handle} on Instagram: \"…\""; bare "Instagram"
+    //    is the login-wall title and gets discarded.
+    let caption = '';
+    Array.from(d.querySelectorAll('h1, h2, h3')).some(h => {
+      const t = (h.textContent || '').trim();
+      if (t && t.toLowerCase() !== 'instagram' && /Instagram/i.test(t)) {
+        caption = t; return true;
+      }
+      return false;
+    });
+    // Remove all headings — we'll re-insert the caption at top once.
+    d.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => h.remove());
+
+    // 3. Strip standalone PLACE-only anchors. These are leftover markdown
+    //    placeholders that didn't get re-substituted (nested images inside
+    //    links — IG profile pics inside profile links). Either way: noise.
+    d.querySelectorAll('a').forEach(a => {
+      const t = (a.textContent || '').trim();
+      if (/^PLACE\d+$/.test(t)) {
+        const par = a.parentNode;
+        if (par && par.tagName === 'P'
+            && par.children.length === 1 && (par.textContent || '').trim() === t) {
+          par.remove();
+        } else {
+          a.remove();
+        }
+      }
+    });
+
+    // 4. Strip login-wall paragraphs. Each line in the IG login wall is its
+    //    own <p>; matching exact strings (case-insensitive) avoids gobbling
+    //    legitimate body text that mentions one of these words.
+    const LOGIN_LINES = new Set([
+      'log in', 'log into instagram', 'sign up', 'forgot password',
+      'forgot password?', 'log in with facebook', 'create new account',
+      'mobile number, username or email', 'mobile number, username, or email',
+      'mobile number or email', 'username or email', 'password',
+      'see everyday moments from your close friends.',
+      'meta', 'about', 'blog', 'jobs', 'help', 'api', 'privacy', 'terms',
+      'locations', 'instagram lite', 'threads', 'contact uploading & non-users',
+      'meta verified', 'english'
+    ]);
+    d.querySelectorAll('p').forEach(p => {
+      const t = (p.textContent || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (LOGIN_LINES.has(t)) p.remove();
+    });
+
+    // 5. Cut at "See more posts" — everything after is related-reel anchors.
+    {
+      const seeMoreRe = /see\s*more\s*posts/i;
+      let cutting = false;
+      Array.from(d.childNodes).forEach(n => {
+        if (cutting) { n.remove(); return; }
+        if (n.nodeType === 1 && seeMoreRe.test(n.textContent || '')) {
+          cutting = true; n.remove();
+        }
+      });
+    }
+
+    // 6. Cut the comment block. IG embeds repeat a 4-line pattern:
+    //      handle-anchor (often PLACE\d+ — already stripped above)
+    //      short comment text
+    //      "N like(s)"
+    //      "Reply"
+    //    Find the first standalone "Reply" or "N like(s)" — whichever comes
+    //    earlier — and cut everything from there to end. Then walk back a
+    //    few siblings to also drop the orphan comment-text paragraph that
+    //    preceded it.
+    {
+      const childEls = Array.from(d.childNodes).filter(n => n.nodeType === 1);
+      let cutFrom = -1;
+      for (let i = 0; i < childEls.length; i++) {
+        const n = childEls[i];
+        if (n.tagName !== 'P') continue;
+        const t = (n.textContent || '').trim();
+        if (/^reply$/i.test(t) || /^\d+\s+likes?$/i.test(t)) {
+          cutFrom = i; break;
+        }
+      }
+      if (cutFrom > 0) {
+        // Walk back over short paragraphs (likely orphan comment text) —
+        // stop at the first paragraph with substantial body content (>200
+        // chars) or any non-<p> block.
+        for (let j = cutFrom - 1; j >= 0; j--) {
+          const m = childEls[j];
+          if (m.tagName !== 'P') break;
+          const mt = (m.textContent || '').trim();
+          if (mt.length > 200) break;
+          cutFrom = j;
+        }
+        for (let i = cutFrom; i < childEls.length; i++) childEls[i].remove();
+      }
+    }
+
+    // 7. Trim trailing noise: bare numeric paragraphs ("2,871", "152" — view
+    //    or like counts) and audio attribution anchors.
+    while (d.lastElementChild) {
+      const last = d.lastElementChild;
+      const t = (last.textContent || '').trim();
+      if (last.tagName === 'P' && /^[\d,]+$/.test(t)) { last.remove(); continue; }
+      if (last.tagName === 'P' && last.querySelector('a[href*="instagram.com/reels/audio"]')) {
+        last.remove(); continue;
+      }
+      // Trailing <p>* </p> (asterisk leftover from markdown emphasis)
+      if (last.tagName === 'P' && /^\*?\s*\*?$/.test(t)) { last.remove(); continue; }
+      break;
+    }
+
+    // 8. Re-insert the caption at the top (if we found one).
+    if (caption) {
+      const h = document.createElement('h2');
+      h.textContent = caption;
+      d.insertBefore(h, d.firstChild);
+    }
+
+    // 9. Bail-out: if cleanup produced almost nothing (login-wall case), drop
+    //    in a single URL link so V/T still show *something*. The live IG
+    //    embed in V remains the primary content for these rows.
+    const remaining = (d.textContent || '').replace(/\s+/g, ' ').trim();
+    if (remaining.length < 80) {
+      const esc = s => String(s).replace(/[<>&"]/g, c =>
+        ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+      return '<p><a href="' + esc(sourceUrl) + '" target="_blank" rel="noopener">'
+        + esc(sourceUrl) + '</a></p>';
+    }
 
     return d.innerHTML;
   }

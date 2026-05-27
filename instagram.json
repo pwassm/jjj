@@ -1,0 +1,19 @@
+[
+  {
+    "_salMeta": true,
+    "_salNote": "Instagram embed sandbox. Rows here are merged into the in-memory data array at load time with a _salIg flag; save() filters them back out so ml.json never receives them. To excise the experiment, delete this file (load failure is silent)."
+  },
+  {
+    "UID": "900001",
+    "show": "1",
+    "cell": "1a",
+    "link": "https://www.instagram.com/reels/DYy3hZ6tkPw/",
+    "VidRange": "",
+    "ltype": "ig",
+    "VidTitle": "Instagram reel — sandbox row",
+    "VidAuthor": "",
+    "DateAdded": "2026-05-26 00:00:00",
+    "DateModified": "2026-05-26 00:00:00",
+    "tags": []
+  }
+]

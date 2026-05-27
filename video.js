@@ -70,6 +70,51 @@ window.isDirectVideoLink = function(url) {
   return /\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(url || '');
 };
 
+// ── Instagram (sandbox experiment) ────────────────────────────────────────
+// Reels and posts can be embedded via /reel/{id}/embed/ or /p/{id}/embed/.
+// The iframe is fully sandboxed: no postMessage API, no seek, no currentTime.
+// V and G show the player; E (segment selection) is not possible because
+// there's no way to drive the player back. parseVideoAsset returns null for
+// the empty VidRange these rows carry, which keeps E out of the picture.
+window.isInstagramLink = function(url) {
+  return /instagram\.com\/(reels?|p)\//i.test(url || '');
+};
+window.getInstagramKind = function(url) {
+  var m = String(url || '').match(/instagram\.com\/(reels?|p)\/([A-Za-z0-9_-]+)/i);
+  if (!m) return null;
+  // /reel/ and /reels/ are equivalent on the public site; the embed URL uses /reel/.
+  var kind = m[1].toLowerCase() === 'p' ? 'p' : 'reel';
+  return { kind: kind, id: m[2] };
+};
+window.instagramEmbedUrl = function(url) {
+  var k = window.getInstagramKind(url);
+  return k ? 'https://www.instagram.com/' + k.kind + '/' + k.id + '/embed/' : '';
+};
+window.mountInstagramEmbed = function(hostEl, url) {
+  if (!hostEl) return;
+  var cellId = hostEl.id;
+  if (window.stopCellVideoLoop) window.stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  var src = window.instagramEmbedUrl(url);
+  if (!src) return;
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allowtransparency', 'true');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; web-share');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;';
+  hostEl.appendChild(iframe);
+  // Stub player so generic stop/pause paths don't choke.
+  window.seeLearnVideoPlayers[cellId] = {
+    isInstagram: true,
+    destroy:    function() { try { iframe.src = 'about:blank'; iframe.remove(); } catch(e) {} },
+    pauseVideo: function() {},
+    playVideo:  function() {}
+  };
+};
+
 // ─── API loaders ──────────────────────────────────────────────────────────────
 window.loadYouTubeApiOnce = function() {
   if (window.YT && window.YT.Player) { window.seeLearnYTReady = true; return Promise.resolve(); }
