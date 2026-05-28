@@ -60,6 +60,18 @@ function _slideshowShuffle(arr) {
 }
 const SLIDESHOW_LS_KEY = 'sal-slideshow-settings';
 
+// (dev0281) Stacking layers (all children of #rotateWrap, which is a single
+// stacking context):
+//   overlay 40000 (image layers + gesture catcher)
+//   video   41000 (the V player #gridFullscreen, lifted above the overlay)
+//   menu    42000 (settings menu + collapsed "+" stub — ALWAYS on top, even
+//                  over a playing video, so it stays reachable)
+// The menu must be a sibling of the overlay (mounted in the overlay's parent),
+// not a child: a child of the 40000 overlay can never paint above the 41000
+// video, since stacking contexts confine descendants.
+const SLIDESHOW_VIDEO_Z = 41000;
+const SLIDESHOW_MENU_Z  = 42000;
+
 let _slideshowState = null;
 
 function _slideshowLoadSettings() {
@@ -357,7 +369,15 @@ function _slideshowStart(allOrdered) {
     // the slideshow; these track that hand-off so we can resume on close.
     _videoActive: false,
     _vpObserver: null,
-    _prevFsZ: ''
+    _prevFsZ: '',
+    // (dev0281) Direction the show advances when the current video closes:
+    // +1 (R→L flick = next) or -1 (L→R flick = previous). Reset after each use.
+    _closeDir: 1,
+    // (dev0281) Per-session video playback prefs, captured when a video closes
+    // and re-applied to subsequent videos. `muted` starts null = use the row's
+    // T "Mute" field; once the user toggles it, the session choice wins.
+    // `speed` likewise. `ab` holds A-B loop points keyed by video URL.
+    _vpSession: { muted: null, speed: null, ab: {} }
   };
 
   // Apply transition duration to image layers (live, in case settings change)
@@ -911,14 +931,15 @@ function _slideshowPlayVideo(slide) {
     return;
   }
   st._videoActive = true;
+  st._closeDir = 1; // default: closing/finishing advances to the NEXT slide
   clearTimeout(st.timer);
   clearTimeout(st.delayTimer);
 
   const fs = document.getElementById('gridFullscreen');
   if (fs) {
     st._prevFsZ = fs.style.zIndex || '';
-    // Above the slideshow overlay (40000) and its menu (40010).
-    fs.style.zIndex = '41000';
+    // Above the slideshow overlay (image), but below the menu (which stays on top).
+    fs.style.zIndex = '' + SLIDESHOW_VIDEO_Z;
   }
   _slideshowWatchVpClose();
   gridOpenFullscreen(slide.row);
@@ -927,7 +948,17 @@ function _slideshowPlayVideo(slide) {
   // _vpState synchronously (the player mounts a tick later), so the flag is in
   // place before playback starts. vp.js honours it in the segment walk and on
   // the native 'ended' event.
-  if (typeof _vpState !== 'undefined' && _vpState) _vpState.slideshowNoLoop = true;
+  if (typeof _vpState !== 'undefined' && _vpState) {
+    _vpState.slideshowNoLoop = true;
+    // (dev0281) Apply this session's playback prefs over the row defaults.
+    // Mute + speed are read at mount (50 ms later); A-B is honoured by the
+    // timeline loop. Setting them now (before mount) is enough.
+    const sess = st._vpSession || (st._vpSession = { muted: null, speed: null, ab: {} });
+    if (sess.muted !== null) _vpState.muted = sess.muted;
+    if (sess.speed !== null) _vpState.speed = sess.speed;
+    const ab = (sess.ab && slide.url) ? sess.ab[slide.url] : null;
+    if (ab) { _vpState.aPoint = ab.a; _vpState.bPoint = ab.b; }
+  }
 }
 
 // Watch #gridFullscreen for its display flipping back to 'none' (which vpClose
@@ -961,11 +992,41 @@ function _slideshowAfterVideoClose() {
   st._videoActive = false;
   const fs = document.getElementById('gridFullscreen');
   if (fs) fs.style.zIndex = st._prevFsZ || '';
+  // (dev0281) Advance in the direction the close gesture asked for: R→L flick
+  // → next (+1), L→R flick → previous (-1). Natural end / ✕ default to +1.
+  const dir = st._closeDir || 1;
+  st._closeDir = 1;
   // A single-slide show with one video would just relaunch V forever on close;
-  // treat closing as exit instead. Otherwise advance to the next slide.
+  // treat closing as exit instead. Otherwise advance.
   if (st.slides.length <= 1) { slideshowClose(); return; }
-  _slideshowAdvance(+1);
+  _slideshowAdvance(dir);
 }
+
+// (dev0281) Called by the V player (vp.js) when a horizontal flick on a
+// slideshow video should navigate: dir = +1 (R→L = next) or -1 (L→R = prev).
+// V follows this with vpClose(); the observer then advances in this direction.
+// No-op outside an active slideshow video so standalone V is unaffected.
+window._slideshowVideoSwipe = function (dir) {
+  if (_slideshowState && _slideshowState._videoActive) {
+    _slideshowState._closeDir = (dir < 0) ? -1 : 1;
+  }
+};
+
+// (dev0281) Called by vpClose (vp.js) just before it tears down _vpState, so
+// the user's mute / speed / A-B choices survive into the next video this
+// session. Keyed per-URL for A-B; mute + speed are session-global.
+window._slideshowCaptureVp = function (vp) {
+  const st = _slideshowState;
+  if (!st || !vp) return;
+  const sess = st._vpSession || (st._vpSession = { muted: null, speed: null, ab: {} });
+  sess.muted = !!vp.muted;
+  if (typeof vp.speed === 'number') sess.speed = vp.speed;
+  const url = (vp.row && vp.row.link) ? vp.row.link : null;
+  if (url) {
+    if (vp.aPoint != null && vp.bPoint != null) sess.ab[url] = { a: vp.aPoint, b: vp.bPoint };
+    else delete sess.ab[url]; // A-B cleared → forget it
+  }
+};
 
 function _slideshowKey(e) {
   if (!_slideshowState) return;
@@ -1409,9 +1470,18 @@ function slideshowClose() {
     try { _slideshowState._vpObserver.disconnect(); } catch (_) {}
     _slideshowState._vpObserver = null;
   }
+  // (dev0281) If a video was playing, the observer is now disconnected, so
+  // close the V player ourselves and undo the z-index lift. (Closing from the
+  // always-on-top menu's ✕ must tear down both layers.)
   const _fs = document.getElementById('gridFullscreen');
-  if (_fs && _slideshowState._videoActive) _fs.style.zIndex = _slideshowState._prevFsZ || '';
+  if (_fs && _slideshowState._videoActive) {
+    _fs.style.zIndex = _slideshowState._prevFsZ || '';
+    if (typeof vpClose === 'function') vpClose();
+  }
   document.removeEventListener('keydown', _slideshowKey, true);
+  // (dev0281) Menu + stub are siblings of the overlay now — remove explicitly.
+  if (_slideshowState.menu && _slideshowState.menu.parentNode) _slideshowState.menu.remove();
+  if (_slideshowState.collapsedStub && _slideshowState.collapsedStub.parentNode) _slideshowState.collapsedStub.remove();
   if (_slideshowState.overlay && _slideshowState.overlay.parentNode) {
     _slideshowState.overlay.remove();
   }
@@ -1444,11 +1514,13 @@ function _slideshowOpenMenu() {
     'padding:' + pad, 'min-width:200px', 'max-width:240px',
     'color:#eee', 'font-family:monospace', 'font-size:' + baseFs + 'px',
     'box-shadow:0 8px 32px rgba(0,0,0,0.9)',
-    'z-index:40010'
+    'z-index:' + SLIDESHOW_MENU_Z
   ].join(';') + ';';
 
   menu.innerHTML = _slideshowMenuHtml(settings, baseFs, bigFs);
-  _slideshowState.overlay.appendChild(menu);
+  // (dev0281) Mount as a SIBLING of the overlay (in its parent) so it can paint
+  // above the video layer, which lives outside the overlay's stacking context.
+  (_slideshowState.overlay.parentNode || document.body).appendChild(menu);
   _slideshowState.menu = menu;
 
   _slideshowWireMenu(menu);
@@ -1492,10 +1564,12 @@ function _slideshowToggleCollapse() {
     'background:rgba(0,0,0,0.55)', 'color:#aaa',
     'border:1px solid rgba(255,255,255,0.35)', 'border-radius:6px',
     'padding:4px 9px', 'font-family:monospace', 'font-size:16px',
-    'cursor:pointer', 'z-index:40010', 'line-height:1'
+    'cursor:pointer', 'z-index:' + SLIDESHOW_MENU_Z, 'line-height:1'
   ].join(';') + ';';
   stub.onclick = e => { e.stopPropagation(); _slideshowToggleCollapse(); };
-  st.overlay.appendChild(stub);
+  // (dev0281) Sibling of the overlay (see _slideshowOpenMenu) so the collapsed
+  // "+" stays tappable over a playing video too.
+  (st.overlay.parentNode || document.body).appendChild(stub);
   st.collapsedStub = stub;
 }
 

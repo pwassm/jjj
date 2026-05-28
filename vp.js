@@ -515,8 +515,17 @@ function gridOpenFullscreen(row, contained) {
           if (_swipe) {
             const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
             const ms = Date.now() - _swipe.t;
-            // R→L swipe (legacy close)
-            if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 800 && _vScale < 1.1) {
+            const horiz = Math.abs(dx) > 40 && Math.abs(dy) < Math.abs(dx) && ms < 800 && _vScale < 1.1;
+            // R→L swipe (legacy close). In a slideshow this advances to the
+            // NEXT slide (the signal is a no-op outside a slideshow video).
+            if (horiz && dx < 0) {
+              if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(1);
+              _swipe = null; vpClose(); return;
+            }
+            // (dev0281) L→R swipe — only meaningful in a slideshow: close and
+            // go to the PREVIOUS slide. Standalone V keeps its old behavior.
+            if (horiz && dx > 0 && _vpState && _vpState.slideshowNoLoop) {
+              if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(-1);
               _swipe = null; vpClose(); return;
             }
             // Quick stationary tap
@@ -605,8 +614,18 @@ function gridOpenFullscreen(row, contained) {
         mDown = false; mDragging = false;
         if (wasDragging && _vScale < 1.1 && mStart) {
           const dx = p.x - mStart.x, dy = p.y - mStart.y;
-          if (dx < -60 && Math.abs(dy) < Math.abs(dx) &&
-              Date.now() - mStart.t < 1500) { vpClose(); return; }
+          const horiz = Math.abs(dx) > 60 && Math.abs(dy) < Math.abs(dx) &&
+                        Date.now() - mStart.t < 1500;
+          // R→L drag → close (slideshow: next slide).
+          if (horiz && dx < 0) {
+            if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(1);
+            vpClose(); return;
+          }
+          // (dev0281) L→R drag in a slideshow → previous slide.
+          if (horiz && dx > 0 && _vpState && _vpState.slideshowNoLoop) {
+            if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(-1);
+            vpClose(); return;
+          }
         }
         mStart = null; mPanBase = null;
         _vApply(); // restore cursor
@@ -1285,7 +1304,13 @@ function vpClose() {
   
   // Also use stopCellVideoLoop as backup
   if (window.stopCellVideoLoop) window.stopCellVideoLoop('grid-fs-video');
-  
+
+  // (dev0281) If this V was driven by the slideshow, hand its final mute/speed/
+  // A-B state back so the choices persist to the next video this session.
+  if (_vpState && _vpState.slideshowNoLoop && typeof window._slideshowCaptureVp === 'function') {
+    try { window._slideshowCaptureVp(_vpState); } catch (_) {}
+  }
+
   _vpState = null;
   const fs = document.getElementById('gridFullscreen');
   fs.style.display = 'none';
@@ -1982,6 +2007,19 @@ function vpMountDirectVideo(host, link, seg, muted) {
   vid.addEventListener('ended', () => {
     if (_vpState && _vpState.slideshowNoLoop && typeof vpClose === 'function') vpClose();
   });
+  // (dev0281) Apply a carried-over playback speed (e.g. a slideshow session
+  // pref set on a previous video) and reflect it in the speed control.
+  if (_vpState.speed && _vpState.speed !== 1) {
+    vid.playbackRate = _vpState.speed;
+    const _sv  = document.getElementById('vp-speed');
+    const _svv = document.getElementById('vp-speed-val');
+    if (_sv)  _sv.value = _vpState.speed;
+    if (_svv) _svv.textContent = _vpState.speed + 'x';
+  }
+  // (dev0281) Reflect carried-over A-B points in the toolbar styling.
+  if ((_vpState.aPoint != null || _vpState.bPoint != null) && typeof vpUpdateABStyle === 'function') {
+    try { vpUpdateABStyle(); } catch (_) {}
+  }
   _vpState.interval = setInterval(vpUpdateTimeline, 250);
 }
 

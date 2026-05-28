@@ -141,6 +141,11 @@ window.addEventListener('keydown', function(e) {
   if (document.getElementById('mergeModal'))    return;
   if (document.getElementById('treeCtxMenu'))   return;
   if (document.getElementById('chipCtxMenu'))   return;
+  // (dev0281) The slideshow is a full-window overlay that owns the keyboard
+  // (it has its own Esc/arrows handler and the bare-S guard). Forwarding global
+  // letter hotkeys here would open T/G/E/D/etc behind or over the slideshow —
+  // e.g. D popping the Dictionary mid-show. Bail entirely while it's open.
+  if (document.getElementById('slideshowOverlay')) return;
   // E (Video Editor) handles its own letter keys (T/G/A/N/J/S/M/C/Esc).
   // If we forward keys to the global dispatcher here, they fire on top of
   // E's handler and the wrong screen opens.
