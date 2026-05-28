@@ -256,6 +256,24 @@ function cBuildCols() {
 // openCScreen reads this first; disk is a fallback for first-ever load.
 const _C_LS_KEY = 'sal-c-json';
 
+// A config is "empty" when it has no populated grid cell (1a..5e). A name and a
+// cells-count alone don't make a displayable grid — a cell-less config (e.g. a
+// leftover "...Dup") is junk. These linger in the localStorage backup and
+// reappear in C after every delete because the LS copy outlives the disk write.
+// Prune on every read and before every write so they can't survive a reload no
+// matter which store they came from. A nameless config with real cells is kept
+// (it's a usable, just-unnamed grid).
+function _cIsEmptyConfig(r) {
+  if (!r || r._salMeta) return false;
+  for (const k in r) {
+    if (/^[1-9][a-e]$/.test(k) && r[k] && String(r[k]).trim()) return false;
+  }
+  return true;
+}
+function _cPruneEmpty(arr) {
+  return Array.isArray(arr) ? arr.filter(r => !_cIsEmptyConfig(r)) : arr;
+}
+
 async function cSaveToFile() {
   // (zip0251) Only update _salColOrder if _cCols actually has columns. When
   // cSaveToFile is called from outside C-mode (gridSaveToFile / reassign
@@ -264,6 +282,7 @@ async function cSaveToFile() {
   if (_cCols && _cCols.length) _cMeta._salColOrder = _cCols.slice();
   _cMeta._salHidden    = [..._cHidden];
   _cMeta._salColWidths = Object.assign({}, _cColWidths);
+  _cData = _cPruneEmpty(_cData);
   _gridConfigs = _cData;
   const payload = [_cMeta].concat(_cData);
   // Always mirror to localStorage so an FSA failure doesn't lose the edit.
@@ -308,6 +327,7 @@ async function _cEnsureLoaded() {
     } else if (Array.isArray(parsed)) {
       _cData = parsed;
     } else { _cData = [parsed]; }
+    _cData = _cPruneEmpty(_cData);
     _gridConfigs = _cData;
   } catch (e) { _cData = []; _gridConfigs = []; }
   cBuildCols();
@@ -362,6 +382,7 @@ async function openCScreen() {
       } else if (Array.isArray(parsed)) {
         _cData = parsed;
       } else { _cData = [parsed]; }
+      _cData = _cPruneEmpty(_cData);
       _gridConfigs = _cData;
     } catch (e) { _cData = []; _gridConfigs = []; }
     _cLoaded = true;

@@ -70,6 +70,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
                   padding:22px 16px; min-height:64px;
                   border-bottom:2px solid #6af; background:#3a4d75;">
         <span style="color:#ff8; font-weight:bold;">Text Slide · ${cellStr}${mediaNote}</span>
+        <span id="teStats" style="color:#9ab; font-weight:normal; font-size:11px; font-family:monospace;" title="ftext size · % real text · % strippable junk (inline styles/classes/empty wrappers; image & link URLs are NOT junk)"></span>
         <div style="display:flex; gap:8px;">
           <button id="teSlide" class="tbtn" style="padding:6px 12px; border-color:#8ef; color:#8ef;" title="Preview as slide — auto-saves first. Key: S (when not typing). Esc closes preview.">▶ <u>S</u>lide</button>
           <button id="teSlideshow" class="tbtn" style="padding:6px 12px; border-color:#fc8; color:#fc8;" title="Play embedded images as a full-window slideshow (5s/slide, click or Esc to exit).">▶▶ Slideshow</button>
@@ -931,7 +932,25 @@ function gridOpenTextEditor(cellStr, row, opts) {
     // (zip0137) If saved content has a .te-slide wrapper with a background,
     // paint the editor surface so the user sees the slide colors while editing.
     teSyncEditorBgFromWrapper();
+    // (dev0278) Live size/junk readout, refreshed as the user edits.
+    editor.addEventListener('input', teUpdateStats);
+    teUpdateStats();
   }, 100);
+}
+
+// (dev0278) Live size/junk readout in the Xe header. Junk = strippable
+// markup (inline styles/classes, framework attrs, empty wrappers); image/link
+// URLs are treated as content, not junk. Turns red at ≥15% junk to flag a
+// bloated paste that's worth re-cleaning.
+function teUpdateStats() {
+  const ed = document.getElementById('teEditor');
+  const out = document.getElementById('teStats');
+  if (!ed || !out || typeof ftextStats !== 'function') return;
+  const s = ftextStats(ed.innerHTML);
+  const kb = s.bytes >= 1024 ? (s.bytes / 1024).toFixed(1) + ' KB' : s.bytes + ' B';
+  out.textContent = '· ' + kb + ' · ' + s.textPct + '% text'
+    + (s.junkPct > 0 ? ' · ⚠ ' + s.junkPct + '% junk' : '');
+  out.style.color = s.junkPct >= 15 ? '#f88' : '#9ab';
 }
 
 // (zip0160) Save-without-close helper. Writes the current editor HTML back
@@ -1446,7 +1465,10 @@ function textEditorPreviewSlide() {
   ov.style.cssText = 'position:fixed;inset:0;z-index:36000;background:#0a0a1a;'
     + 'display:flex;align-items:center;justify-content:center;padding:40px;';
   ov.innerHTML = `
-    <style>#teSlideContent a { color: #5bf; }</style>
+    <style>#teSlideContent a { color: #5bf; }
+      #teSlideContent table{border-collapse:collapse;margin:12px 0;max-width:100%;}
+      #teSlideContent th,#teSlideContent td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}
+      #teSlideContent th{font-weight:bold;}</style>
     <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:64px;
          display:flex;align-items:center;justify-content:space-between;
          padding:0 16px;background:#3a4d75;border-bottom:2px solid #6af;">

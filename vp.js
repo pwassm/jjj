@@ -976,6 +976,9 @@ function gridOpenFullscreen(row, contained) {
         const _ftStyles =
             'a{color:#5bf!important;}'
           + '.te-cut{display:none!important;}'
+          + 'table{border-collapse:collapse;margin:12px 0;max-width:100%;}'
+          + 'th,td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}'
+          + 'th{font-weight:bold;}'
           + 'summary{color:#2563eb!important;background:transparent!important;font-weight:bold;}'
           + 'summary a,summary a:visited{color:#2563eb!important;text-decoration:underline;}';
         const _aStyle = '<style>' + _ftStyles + '</style>';
@@ -1827,6 +1830,12 @@ function vpUpdateTimeline() {
     else if (isSel && hasSegs) {
       const seg = _vpState.segs[_vpState.segIdx];
       if (ct >= seg.start + seg.dur - 0.05) {
+        // (dev0280) Slideshow: when the LAST segment finishes, don't loop —
+        // close V so the slideshow advances to the next slide.
+        if (_vpState.slideshowNoLoop && _vpState.segIdx >= _vpState.segs.length - 1) {
+          if (typeof vpClose === 'function') vpClose();
+          return;
+        }
         const nextIdx = (_vpState.segIdx + 1) % _vpState.segs.length;
         _vpState.segIdx = nextIdx;
         const next = _vpState.segs[nextIdx];
@@ -1950,6 +1959,10 @@ function vpMountDirectVideo(host, link, seg, muted) {
     getDuration:    () => Promise.resolve(vid.duration || 0),
     setCurrentTime: (t) => { vid.currentTime = t; return Promise.resolve(t); },
     setVolume: (v) => { vid.volume = v; if (v === 0) vid.muted = true; },
+    // (dev0280) vpToggleMute() calls setMuted() on the non-YouTube path. The
+    // direct-video wrapper was missing it, so the call threw (swallowed by the
+    // caller's try/catch) and the Mute button silently did nothing.
+    setMuted: (m) => { vid.muted = !!m; },
     loadModule: () => {}, unloadModule: () => {}, setOption: () => {},
     // YT-shape (kept for any code paths that branch on isYT)
     seekTo:         (t) => { vid.currentTime = t; },
@@ -1962,6 +1975,13 @@ function vpMountDirectVideo(host, link, seg, muted) {
     isMuted: () => Promise.resolve(vid.muted)
   };
   _vpState.isYT = false;
+  // (dev0280) Slideshow plays each video once then advances. Native 'ended'
+  // fires only when nothing is looping the clip (e.g. Full mode) — the
+  // Selected-mode end is handled in vpUpdateTimeline. Gated on the slideshow
+  // flag so standalone V playback is unaffected.
+  vid.addEventListener('ended', () => {
+    if (_vpState && _vpState.slideshowNoLoop && typeof vpClose === 'function') vpClose();
+  });
   _vpState.interval = setInterval(vpUpdateTimeline, 250);
 }
 

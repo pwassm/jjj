@@ -610,14 +610,60 @@ document.addEventListener('DOMContentLoaded', () => {}, false);
   }, true);
 })();
 
+// (FtextSize) Maintain a numeric per-row character count of ftext so the T
+// column is sortable (largest/garbage ftext surfaces with a descending sort).
+// Stored as a number → buildSort()'s numeric branch orders it correctly.
+// Refreshed on every load and before every save so it never drifts.
+function updateFtextSizes() {
+  if (!Array.isArray(data)) return;
+  // Find (or default) the sortable column key for a metric. Prefers the column
+  // the user already created (case-insensitive); else any case-variant on a
+  // row; else the given default. Returns the resolved key.
+  const resolveKey = (rx, dflt) => {
+    let key = (Array.isArray(cols) ? cols.find(c => rx.test(c)) : null) || null;
+    if (!key) {
+      for (const r of data) {
+        if (r && !r._salMeta) { const k = Object.keys(r).find(k => rx.test(k)); if (k) { key = k; break; } }
+      }
+    }
+    return key || dflt;
+  };
+  const sizeRx = /^ftextsize$/i;
+  const junkRx = /^ftextjunk$/i;
+  const sizeKey = resolveKey(sizeRx, 'FtextSize');
+  // (dev0278) Junk % per row — surfaces markup-heavy entries (bad pastes) so
+  // they can be re-cleaned. See ftextStats(): image/link URLs aren't junk.
+  const junkKey = resolveKey(junkRx, 'FtextJunk');
+  for (const r of data) {
+    if (!r || r._salMeta) continue;
+    // Drop any other-cased variants so we don't leave empty duplicate columns.
+    for (const k of Object.keys(r)) {
+      if (k !== sizeKey && sizeRx.test(k)) delete r[k];
+      if (k !== junkKey && junkRx.test(k)) delete r[k];
+    }
+    // String values (like other ml.json fields); buildSort parseFloat-sorts numerically.
+    const s = ftextStats(typeof r.ftext === 'string' ? r.ftext : '');
+    r[sizeKey] = String(s.bytes);
+    r[junkKey] = String(s.junkPct);
+  }
+}
+
 // Master save: localStorage + disk (non-blocking)
 function save() {
+  updateFtextSizes();
   // _salIg rows live in instagram.json and are merged in at load(); strip
   // them out of every ml.json write path so the sandbox stays excisable.
   const mlRows = data.filter(r => !(r && r._salIg));
-  // 1. localStorage (instant)
+  // 1. localStorage (instant) — LIGHT mirror only. ftext (HTML, ~90% of the
+  // file) is dropped from the LS copy so this synchronous setItem stays small
+  // and never trips the browser's ~5 MB quota (which was silently failing and
+  // blocking the UI on every edit). ftext lives only on disk (ml.json);
+  // load() rehydrates it by UID when it falls back to this LS copy. An empty
+  // string is KEPT (distinguishes a user-cleared ftext from a stripped one).
+  const ftextStripper = (k, v) =>
+    (k === 'ftext' && typeof v === 'string' && v.length > 0) ? undefined : v;
   try {
-    localStorage.setItem('seeandlearn-links', JSON.stringify(mlRows));
+    localStorage.setItem('seeandlearn-links', JSON.stringify(mlRows, ftextStripper));
     localStorage.setItem('sal-edited',        Date.now().toString());
     localStorage.setItem('ml-col-widths',     JSON.stringify(colWidths));
     localStorage.setItem('ml-col-order',      JSON.stringify(cols));
@@ -664,12 +710,30 @@ async function load() {
         try {
           const lsParsed = JSON.parse(lsRaw);
           if (Array.isArray(lsParsed) && lsParsed.length) {
+            // The LS mirror is ftext-stripped (see save()). Rehydrate ftext
+            // from the disk-fetched rows by UID so the recovery copy keeps its
+            // HTML content. Only fill rows whose ftext is absent — a row with
+            // ftext === '' was deliberately cleared and must stay cleared.
+            const diskFtext = new Map();
+            if (Array.isArray(raw)) {
+              for (const r of raw) {
+                if (r && !r._salMeta && r.UID != null && typeof r.ftext === 'string') {
+                  diskFtext.set(String(r.UID), r.ftext);
+                }
+              }
+            }
+            const lsData = lsParsed.filter(r => !r._salMeta);
+            for (const r of lsData) {
+              if (r && r.ftext === undefined && r.UID != null && diskFtext.has(String(r.UID))) {
+                r.ftext = diskFtext.get(String(r.UID));
+              }
+            }
             // localStorage stores plain `data` array (no meta row). Fetch raw might
             // have meta — preserve it from fetched, replace data rows with localStorage.
             if (Array.isArray(raw) && raw.length && raw[0]._salMeta) {
-              raw = [raw[0]].concat(lsParsed.filter(r => !r._salMeta));
+              raw = [raw[0]].concat(lsData);
             } else {
-              raw = lsParsed;
+              raw = lsData;
             }
             rawSource = 'localStorage';
             console.warn('load(): localStorage is newer than ml.json — using localStorage. '
@@ -713,7 +777,12 @@ async function load() {
   // posts) that play via iframe embeds — see video.js mountInstagramEmbed.
   // Merged in with _salIg=true so save() filters them out of ml.json writes.
   // Missing file is fine; the experiment can be excised by deleting it.
-  try {
+  //
+  // PAUSED: the IG experiment is on hold, and its sandbox UID (900001) sorts to
+  // the top under UID-desc, cluttering the working table. Flip IG_SANDBOX back
+  // to true to resume merging instagram.json. The file is left untouched.
+  const IG_SANDBOX = false;
+  if (IG_SANDBOX) try {
     const igR = await fetch('instagram.json?t=' + Date.now());
     if (igR.ok) {
       const igRaw = await igR.json();
@@ -732,16 +801,17 @@ async function load() {
   try { const co=localStorage.getItem('ml-col-order');  if(co) { const a=JSON.parse(co); if(Array.isArray(a)&&a.length) cols=a; } } catch(e) {}
   try { const ch=localStorage.getItem('ml-col-hidden'); if(ch) { const a=JSON.parse(ch); if(Array.isArray(a)) hidden=new Set(a); } } catch(e) {}
 
+  updateFtextSizes();   // populate FtextSize before buildCols so the col shows
   buildCols();
   migrateDates(data);   // convert old yy.mm.dd format to ISO on every load
   // Restore last-saved sort state so the table opens in the order the user
-  // left it. Falls through to "DateAdded desc" if metadata has no sort but
-  // any record has a DateAdded value (sensible default for an editing log).
+  // left it. Falls through to "UID desc" (highest first) — the routine working
+  // order for editing — when metadata carries no saved sort.
   if (metaRow && metaRow._salSort && metaRow._salSort.col) {
     sortCol = metaRow._salSort.col;
     sortDir = metaRow._salSort.dir === 'desc' ? 'desc' : 'asc';
-  } else if (data.some(r => r.DateAdded)) {
-    sortCol = 'DateAdded';
+  } else {
+    sortCol = 'UID';
     sortDir = 'desc';
   }
   // Load the tag dictionary (tags.json). Safe even if file doesn't exist —
@@ -4297,6 +4367,40 @@ function renderFtext(ftext) {
   return _linkifyHtml(ftext);
 }
 
+// (dev0278) ftext size / junk readout. "Junk" = bytes a cleanup would strip
+// (inline style/class, data-*/js*/aria-* attrs, framework custom elements,
+// empty div/span wrappers). Image src/href URLs are NOT counted as junk —
+// they're real content/data — so galleries and link lists aren't false-flagged.
+// Pure regex (no DOM) so it's cheap enough to run over every row on save.
+function ftextStats(html) {
+  html = html || '';
+  const bytes = html.length;
+  const text = html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/\s+/g, ' ').trim().length;
+  // Exclude <img …> so image sizing-styles + src URLs don't count as junk.
+  const scan = html.replace(/<img\b[^>]*>/gi, '');
+  let junk = 0;
+  for (const m of scan.matchAll(/\sstyle="[^"]*"/gi)) junk += m[0].length;
+  for (const m of scan.matchAll(/\sclass="([^"]*)"/gi)) {
+    const c = (m[1] || '').trim();
+    if (c !== 'te-cut' && c !== 'te-slide') junk += m[0].length;
+  }
+  for (const m of scan.matchAll(/\s(?:data-[\w-]+|js[a-z]+|aria-[\w-]+)="[^"]*"/gi)) junk += m[0].length;
+  for (const m of scan.matchAll(/<(div|span)>\s*<\/\1>/gi)) junk += m[0].length;
+  for (const m of scan.matchAll(/<\/?[a-z][a-z0-9]*-[a-z0-9-]+[^>]*>/gi)) junk += m[0].length;
+  if (junk > bytes) junk = bytes;
+  return {
+    bytes,
+    text,
+    textPct: bytes ? Math.round(100 * text / bytes) : 0,
+    junkBytes: junk,
+    junkPct: bytes ? Math.round(100 * junk / bytes) : 0
+  };
+}
+window.ftextStats = ftextStats;
+
 function _linkifyHtml(html) {
   if (!html) return '';
   return html.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)|(<[^>]+>)|([^<]+)/gi,
@@ -4622,17 +4726,16 @@ async function _importBareLinks(lines) {
     if (r && r.link) linkToDi.set(String(r.link).trim(), di);
   });
 
-  for (const link of links) {
-    if (linkToDi.has(link)) {
-      const di = linkToDi.get(link);
-      const r = data[di];
-      dupRecords.push({
-        UID: r ? r.UID : '',
-        link: link,
-        title: r ? (r.VidTitle || '') : ''
-      });
-      continue;
-    }
+  // Build a fresh row from a media link. Used for genuinely new links and,
+  // when the user opts to "add anyway", for links that duplicate an existing
+  // row.
+  // (zip0151) Default Mute='0' for video links added via W clipboard import.
+  // Rationale: most YouTube/Vimeo videos have useful audio (the user's main
+  // reason for collecting them); the user is opt-in to Mute='1' for obnoxious
+  // or low-value soundtracks via the E-screen mute-toggle button. Non-video
+  // rows leave Mute unset so the field stays empty (Clean Mute Column
+  // maintains this).
+  const makeRow = (link) => {
     const row = {
       UID: nextUID(),
       link: link,
@@ -4641,12 +4744,6 @@ async function _importBareLinks(lines) {
       DateModified: now,
       tags: []
     };
-    // (zip0151) Default Mute='0' for video links added via W clipboard
-    // import. Rationale: most YouTube/Vimeo videos have useful audio
-    // (the user's main reason for collecting them); the user is opt-in
-    // to Mute='1' for obnoxious or low-value soundtracks via the new
-    // E-screen mute-toggle button. Non-video rows leave Mute unset so
-    // the field stays empty for them (Clean Mute Column maintains this).
     const cls = _classifyUrl(link);
     if (cls === 'video') {
       row.Mute = '0';
@@ -4658,18 +4755,64 @@ async function _importBareLinks(lines) {
       // below (after the row is added) so the import doesn't block.
       row.ltype = 'w';
     }
+    return row;
+  };
+
+  const dupLinks = []; // links already present in data (pending user choice)
+
+  for (const link of links) {
+    if (linkToDi.has(link)) {
+      const di = linkToDi.get(link);
+      const r = data[di];
+      dupRecords.push({
+        UID: r ? r.UID : '',
+        link: link,
+        title: r ? (r.VidTitle || '') : ''
+      });
+      dupLinks.push(link);
+      continue;
+    }
+    const row = makeRow(link);
     data.push(row);
     newRows.push(row);
     linkToDi.set(link, data.length - 1);
     added++;
   }
 
+  // Duplicate handling: rather than silently rejecting links that already
+  // exist, warn the user and let them choose. OK = add them as new rows
+  // anyway; Cancel = send them to the duplicates pile (duplicateTries.txt)
+  // and focus the first existing match — the previous always-reject behavior.
+  let dupsAdded = 0;
   if (dupRecords.length) {
-    await _writeDuplicateLinksReport(dupRecords, 'bare-links paste');
+    const preview = dupRecords.slice(0, 12).map(dRec =>
+      '• ' + dRec.link + (dRec.title ? '  (' + dRec.title + ')' : '')
+    ).join('\n');
+    const more = dupRecords.length > 12
+      ? '\n…and ' + (dupRecords.length - 12) + ' more' : '';
+    const addAnyway = confirm(
+      dupRecords.length + ' link(s) already exist in your data:\n\n'
+      + preview + more
+      + '\n\nOK = add them as new rows anyway'
+      + '\nCancel = send to duplicates pile (duplicateTries.txt)'
+    );
+    if (addAnyway) {
+      for (const link of dupLinks) {
+        const row = makeRow(link);
+        data.push(row);
+        newRows.push(row);
+        linkToDi.set(link, data.length - 1);
+        added++;
+        dupsAdded++;
+      }
+      dupRecords.length = 0; // resolved — these became real rows
+    } else {
+      await _writeDuplicateLinksReport(dupRecords, 'bare-links paste');
+    }
   }
 
   if (!added) {
-    toast('All ' + links.length + ' link(s) already in data — see duplicateTries.txt', 2500);
+    toast('All ' + links.length + ' link(s) already in data — sent to duplicates pile (duplicateTries.txt)', 2500);
     return;
   }
 
@@ -4686,13 +4829,14 @@ async function _importBareLinks(lines) {
   if (webRows.length) _fetchWebTextForRows(webRows);
 
   const dupNote    = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : '';
+  const dupAddedNote = dupsAdded ? '\n   ' + dupsAdded + ' duplicate(s) added anyway' : '';
   const dupInPaste = links.length - added - dupRecords.length;
   const pasteDupNote = dupInPaste > 0 ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
   const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
   const metaNote = newRows.some(r => !r.ltype) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + pasteDupNote + webNote + metaNote,
+    + dupNote + dupAddedNote + pasteDupNote + webNote + metaNote,
     3500
   );
 }

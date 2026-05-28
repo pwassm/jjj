@@ -40,7 +40,14 @@ const SLIDESHOW_DEFAULTS = {
   labelSize:     'small',
   commentSize:   'off',
   order:         'order', // (dev0265) 'order'|'random' — show in cell/file order or shuffled
-  canvasBlur:    'off'    // 'off'|'min'|'med'|'max' (was boolean `bokeh` pre-zip0236)
+  canvasBlur:    'off',   // 'off'|'min'|'med'|'max' (was boolean `bokeh` pre-zip0236)
+  // (dev0279) Which media types participate in the show:
+  //   'image' — image slides only (legacy behavior)
+  //   'video' — direct-video slides only (played via the full V player)
+  //   'both'  — images and videos interleaved in cell order
+  // Only direct video files (.mp4/.webm/…) are eligible — YouTube/Vimeo links
+  // are never collected as video slides.
+  showMode:      'image'
 };
 
 // Fisher-Yates shuffle (in place) — used when settings.order === 'random'.
@@ -100,13 +107,35 @@ function _slideshowIsImageLink(link) {
   return /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path);
 }
 
-// Per-cell slides: link image (if image URL) then every embedded ftext image.
+// (dev0279) Direct-video link test — a downloadable video file we can play in
+// a native <video> element via the V player's vpMountDirectVideo path. By
+// design this EXCLUDES YouTube/Vimeo (and anything non-file): the slideshow
+// video feature is scoped to linked video files only.
+function _slideshowIsDirectVideoLink(link) {
+  if (!link || typeof link !== 'string') return false;
+  const t = link.trim();
+  if (!/^https?:\/\//i.test(t)) return false;
+  if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return false;
+  return /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(t);
+}
+
+// (dev0279) Filter a canonical slide list by the Show setting. Slides carry a
+// `kind` of 'image' or 'video'; anything untagged is treated as an image.
+function _slideshowFilterByShow(list, mode) {
+  if (mode === 'video') return list.filter(s => s.kind === 'video');
+  if (mode === 'image') return list.filter(s => s.kind !== 'video');
+  return list.slice(); // 'both'
+}
+
+// Per-cell slides: link image (if image URL) OR a direct-video slide (if the
+// link is a playable video file), then every embedded ftext image.
 function _slideshowCellSlides(row) {
   if (!row) return [];
   const out = [];
-  if (_slideshowIsImageLink(row.link)) out.push({ url: row.link, row });
+  if (_slideshowIsImageLink(row.link)) out.push({ url: row.link, row, kind: 'image' });
+  else if (_slideshowIsDirectVideoLink(row.link)) out.push({ url: row.link, row, kind: 'video' });
   if (row.ftext) {
-    _slideshowExtractImgs(row.ftext).forEach(u => out.push({ url: u, row }));
+    _slideshowExtractImgs(row.ftext).forEach(u => out.push({ url: u, row, kind: 'image' }));
   }
   return out;
 }
@@ -140,24 +169,22 @@ function slideshowOpen(source) {
     if (typeof toast === 'function') toast('No images found in this slide.', 2000);
     return;
   }
-  const slides = urls.map(u => ({ url: u, row }));
-  // (dev0268) ftext images are inherently in-order; pass a copy so the
-  // live Order toggle can restore them after a random shuffle.
-  _slideshowStart(slides, slides.slice());
+  const slides = urls.map(u => ({ url: u, row, kind: 'image' }));
+  // (dev0279) _slideshowStart now takes a single canonical (in-order) list and
+  // derives the working set from the Show + Order settings internally.
+  _slideshowStart(slides);
 }
 
 function slideshowOpenGrid() {
   if (_slideshowState) return;
-  // (dev0268) Capture canonical cell-order BEFORE any random shuffle so
-  // the Order toggle can restore it live mid-show.
+  // (dev0279) Canonical cell-order, all media kinds. The Show filter and the
+  // random shuffle are applied inside _slideshowStart.
   const ordered = _slideshowGridSlides();
   if (!ordered.length) {
-    if (typeof toast === 'function') toast('No image cells in the active grid.', 2000);
+    if (typeof toast === 'function') toast('No image or video cells in the active grid.', 2000);
     return;
   }
-  const slides = ordered.slice();
-  if (_slideshowLoadSettings().order === 'random') _slideshowShuffle(slides);
-  _slideshowStart(slides, ordered);
+  _slideshowStart(ordered);
 }
 
 // (dev0241) S from T → play all images under the project folder's jpgs/
@@ -210,7 +237,7 @@ async function slideshowOpenJpgsFolder() {
   for (const fh of files) {
     try {
       const file = await fh.getFile();
-      orderedSlides.push({ url: URL.createObjectURL(file), row: null });
+      orderedSlides.push({ url: URL.createObjectURL(file), row: null, kind: 'image' });
     } catch (_) {}
   }
   if (!orderedSlides.length) {
@@ -218,15 +245,26 @@ async function slideshowOpenJpgsFolder() {
     return;
   }
   if (typeof toast === 'function') toast('Playing ' + orderedSlides.length + ' image(s) from jpgs/', 1800);
-  const slides = orderedSlides.slice();
-  if (_slideshowLoadSettings().order === 'random') _slideshowShuffle(slides);
-  _slideshowStart(slides, orderedSlides);
+  // (dev0279) Single canonical list; Show + Order applied inside _slideshowStart.
+  _slideshowStart(orderedSlides);
 }
 
 // ── Core machinery ──────────────────────────────────────────────────────────
 
-function _slideshowStart(slides, orderedSlides) {
+function _slideshowStart(allOrdered) {
   const settings = _slideshowLoadSettings();
+  // (dev0279) `allOrdered` is the full canonical (in-order) slide list across
+  // every media kind. The working set shown is derived from it via the Show
+  // filter, then shuffled if Order is random. The full list is retained so the
+  // Show dropdown can re-filter live without re-walking the source.
+  const allCanonical = (allOrdered || []).map(s => Object.assign({}, s, { status: 'pending' }));
+  let filtered = _slideshowFilterByShow(allCanonical, settings.showMode);
+  // Don't open an empty show: if the chosen mode has nothing, fall back to all.
+  if (!filtered.length && allCanonical.length) filtered = allCanonical.slice();
+  const inOrder = filtered.map(s => Object.assign({}, s, { status: 'pending' }));
+  const working = (settings.order === 'random')
+    ? _slideshowShuffle(filtered.map(s => Object.assign({}, s, { status: 'pending' })))
+    : filtered.map(s => Object.assign({}, s, { status: 'pending' }));
 
   const overlay = document.createElement('div');
   overlay.id = 'slideshowOverlay';
@@ -293,11 +331,14 @@ function _slideshowStart(slides, orderedSlides) {
 
   _slideshowState = {
     overlay,
-    slides: slides.map(s => Object.assign({}, s, { status: 'pending' })),
+    slides: working,
+    // (dev0279) Full canonical slide list (every media kind, in-order). Used
+    // by the Show dropdown to re-filter the working set live mid-show.
+    _allSlides: allCanonical,
     // (dev0268) In-order snapshot captured at start. Used by the Order
     // toggle to restore canonical order when switching random → in-order
     // mid-show, and re-saved when the ftext slideset toggle is used.
-    _inOrderSnapshot: (orderedSlides || slides).map(s => Object.assign({}, s, { status: 'pending' })),
+    _inOrderSnapshot: inOrder,
     idx: -1,
     timer: null,
     settings,
@@ -310,7 +351,13 @@ function _slideshowStart(slides, orderedSlides) {
     _ftextMode: false,
     _beforeFtextSlides: null,
     _beforeFtextSnapshot: null,
-    _beforeFtextIdx: -1
+    _beforeFtextIdx: -1,
+    // (dev0279) Video-slide bookkeeping. While a direct-video slide is playing
+    // we hand control to the full V player (gridOpenFullscreen) mounted over
+    // the slideshow; these track that hand-off so we can resume on close.
+    _videoActive: false,
+    _vpObserver: null,
+    _prevFsZ: ''
   };
 
   // Apply transition duration to image layers (live, in case settings change)
@@ -846,8 +893,85 @@ function _slideshowIsZoomed() {
   return !!(m && m.scale > 1.02);
 }
 
+// (dev0279) ── Direct-video slides ───────────────────────────────────────────
+// A video slide is played by the project's normal full-window V player
+// (gridOpenFullscreen → vpMountDirectVideo), which carries its own toolbar
+// (play/scrub/speed/CC/mute/A-B/Selected-Full) and the same mouse + touch
+// gestures (hold-to-zoom, drag-pan, R→L swipe-to-close, double-click reset).
+//
+// V mounts into #gridFullscreen (z-index 28500 by default), which sits BELOW
+// the slideshow overlay (z 40000). We temporarily lift it above the slideshow
+// for the duration of playback, watch for it closing, then advance the show.
+function _slideshowPlayVideo(slide) {
+  const st = _slideshowState;
+  if (!st) return;
+  if (typeof gridOpenFullscreen !== 'function' || !slide || !slide.row) {
+    // Can't play — skip to the next slide so the show doesn't stall.
+    _slideshowAdvance(+1);
+    return;
+  }
+  st._videoActive = true;
+  clearTimeout(st.timer);
+  clearTimeout(st.delayTimer);
+
+  const fs = document.getElementById('gridFullscreen');
+  if (fs) {
+    st._prevFsZ = fs.style.zIndex || '';
+    // Above the slideshow overlay (40000) and its menu (40010).
+    fs.style.zIndex = '41000';
+  }
+  _slideshowWatchVpClose();
+  gridOpenFullscreen(slide.row);
+  // (dev0280) In a slideshow a video plays its selection ONCE and then the show
+  // advances — it must not loop like a standalone V. gridOpenFullscreen creates
+  // _vpState synchronously (the player mounts a tick later), so the flag is in
+  // place before playback starts. vp.js honours it in the segment walk and on
+  // the native 'ended' event.
+  if (typeof _vpState !== 'undefined' && _vpState) _vpState.slideshowNoLoop = true;
+}
+
+// Watch #gridFullscreen for its display flipping back to 'none' (which vpClose
+// does), then resume the slideshow. Using a MutationObserver keeps us decoupled
+// from V's internals — any close path (✕ button, swipe, navigation) triggers it.
+function _slideshowWatchVpClose() {
+  const st = _slideshowState;
+  if (!st) return;
+  const fs = document.getElementById('gridFullscreen');
+  if (!fs) return;
+  if (st._vpObserver) { try { st._vpObserver.disconnect(); } catch (_) {} }
+  const obs = new MutationObserver(() => {
+    if (!_slideshowState) { obs.disconnect(); return; }
+    if (fs.style.display === 'none') {
+      obs.disconnect();
+      if (_slideshowState) _slideshowState._vpObserver = null;
+      _slideshowAfterVideoClose();
+    }
+  });
+  obs.observe(fs, { attributes: true, attributeFilter: ['style'] });
+  st._vpObserver = obs;
+}
+
+function _slideshowAfterVideoClose() {
+  const st = _slideshowState;
+  if (!st) return;
+  // Re-entrancy guard: only the first close-notification for a given video
+  // does the resume. Protects against a style mutation arriving twice (or a
+  // stale observer) re-triggering the advance.
+  if (!st._videoActive) return;
+  st._videoActive = false;
+  const fs = document.getElementById('gridFullscreen');
+  if (fs) fs.style.zIndex = st._prevFsZ || '';
+  // A single-slide show with one video would just relaunch V forever on close;
+  // treat closing as exit instead. Otherwise advance to the next slide.
+  if (st.slides.length <= 1) { slideshowClose(); return; }
+  _slideshowAdvance(+1);
+}
+
 function _slideshowKey(e) {
   if (!_slideshowState) return;
+  // (dev0279) While a video plays, the V player owns the keyboard (Space,
+  // arrows for frame-step, M). Stand down so we don't double-handle.
+  if (_slideshowState._videoActive) return;
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopImmediatePropagation();
     slideshowClose();
@@ -883,6 +1007,14 @@ function _slideshowShow(i, opts) {
 
   clearTimeout(st.timer);
   clearTimeout(st.delayTimer); // (zip0239) drop any pending pre-zoom delay
+
+  // (dev0279) Video slide → hand off to the full V player rather than the
+  // image crossfade path. Auto-advance is suspended while V is up; the show
+  // resumes when V closes (see _slideshowAfterVideoClose).
+  if (slide && slide.kind === 'video') {
+    _slideshowPlayVideo(slide);
+    return;
+  }
 
   // Decide which layer to load into. Initial paint → front layer; otherwise
   // back layer (so old image stays visible until the new one is ready).
@@ -1167,6 +1299,47 @@ function _slideshowApplyOrderChange() {
   _slideshowUpdateCounter();
 }
 
+// (dev0279) Apply a live Show ('image'|'video'|'both') change. Re-derives the
+// working set from the full canonical list (_allSlides), preserving Order. If
+// the currently-visible slide survives the filter it stays on screen; otherwise
+// we jump to the first slide of the new set (which may launch the V player).
+function _slideshowApplyShowChange() {
+  const st = _slideshowState;
+  if (!st) return;
+  const all = st._allSlides || [];
+  const filtered = _slideshowFilterByShow(all, st.settings.showMode);
+  if (!filtered.length) {
+    if (typeof toast === 'function') {
+      toast('No ' + (st.settings.showMode === 'video' ? 'videos' : 'images')
+            + ' in this slideshow.', 2000);
+    }
+    return; // leave the current set untouched
+  }
+  const curUrl = (st.idx >= 0 && st.slides[st.idx]) ? st.slides[st.idx].url : null;
+  st._inOrderSnapshot = filtered.map(s => Object.assign({}, s, { status: 'pending' }));
+  st.slides = (st.settings.order === 'random')
+    ? _slideshowShuffle(filtered.map(s => Object.assign({}, s, { status: 'pending' })))
+    : filtered.map(s => Object.assign({}, s, { status: 'pending' }));
+
+  let newIdx = -1;
+  if (curUrl) {
+    for (let i = 0; i < st.slides.length; i++) {
+      if (st.slides[i].url === curUrl) { newIdx = i; break; }
+    }
+  }
+  if (newIdx >= 0) {
+    // Current slide survives — keep it on screen, just re-anchor the index.
+    st.slides[newIdx].status = 'ready';
+    st.idx = newIdx;
+    _slideshowUpdateCounter();
+  } else {
+    // Current slide filtered out — show the first slide of the new set.
+    st.idx = -1;
+    _slideshowUpdateCounter();
+    _slideshowShow(0);
+  }
+}
+
 // (dev0268) Swap the active slideset to the images embedded in the current
 // slide's row.ftext — but ONLY if the visible slide's URL is itself one of
 // those ftext images. Link images aren't in ftext, so they can't trigger.
@@ -1187,7 +1360,7 @@ function _slideshowMaybeSwitchToFtextSet() {
   st._beforeFtextIdx      = st.idx;
   st._ftextMode = true;
   const newSlides = urls.map(u => ({
-    url: u, row: slide.row,
+    url: u, row: slide.row, kind: 'image',
     status: u === slide.url ? 'ready' : 'pending'
   }));
   st.slides = newSlides;
@@ -1230,6 +1403,14 @@ function slideshowClose() {
   if (!_slideshowState) return;
   clearTimeout(_slideshowState.timer);
   clearTimeout(_slideshowState.delayTimer); // (zip0239) cancel any queued zoom
+  // (dev0279) Stop watching the V player and undo our z-index lift if a video
+  // hand-off was in flight when the show was closed.
+  if (_slideshowState._vpObserver) {
+    try { _slideshowState._vpObserver.disconnect(); } catch (_) {}
+    _slideshowState._vpObserver = null;
+  }
+  const _fs = document.getElementById('gridFullscreen');
+  if (_fs && _slideshowState._videoActive) _fs.style.zIndex = _slideshowState._prevFsZ || '';
   document.removeEventListener('keydown', _slideshowKey, true);
   if (_slideshowState.overlay && _slideshowState.overlay.parentNode) {
     _slideshowState.overlay.remove();
@@ -1326,6 +1507,14 @@ function _slideshowSizeSelect(id, cur, selCSS) {
     '</select>';
 }
 
+// (dev0279) Show dropdown — which media kinds appear in the slideshow.
+function _slideshowShowSelect(id, cur, selCSS) {
+  const opts = [['image','Image only'],['video','Video only'],['both','Both']];
+  return '<select id="' + id + '" style="' + selCSS + '">' +
+    opts.map(o => '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
+    '</select>';
+}
+
 function _slideshowMenuHtml(s, baseFs, bigFs) {
   baseFs = baseFs || 13;
   bigFs  = bigFs  || 14;
@@ -1391,6 +1580,11 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
             cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
       ✕ Close
     </button>
+
+    <div class="ss-row ss-page-1" style="${rowCSS}">
+      <span>Show</span>
+      ${_slideshowShowSelect('ssShowMode', s.showMode, selCSS)}
+    </div>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Each slide</span>
@@ -1637,6 +1831,8 @@ function _slideshowWireMenu(menu) {
   }
   wireSelect('ssZoomLevel',  'zoom',       _slideshowApplyZoom);
   wireSelect('ssCanvasBlur', 'canvasBlur', _slideshowApplyCanvasBlur);
+  // (dev0279) Show dropdown — re-filter the working set live (image/video/both).
+  wireSelect('ssShowMode',   'showMode',   _slideshowApplyShowChange);
   // (dev0265) Title/Comment size dropdowns — re-render overlay text on change.
   const reLabel = () => _slideshowUpdateLabel(st.slides[st.idx]);
   wireSelect('ssLabelSize',   'labelSize',   reLabel);

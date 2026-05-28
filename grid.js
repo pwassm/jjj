@@ -262,6 +262,43 @@ function _ftextFirstLine(ftext) {
   return '';
 }
 
+// (dev0277) Grid HTML thumbnails default to dark text on white (a "paper"
+// look). But a slide whose .te-slide wrapper paints a DARK background then
+// renders dark-on-dark = garbled (Xe/Xs avoid this by defaulting to white
+// text). Detect a dark .te-slide background and flip the thumb to that bg
+// with light text, matching the slide views. Light backgrounds keep the
+// default dark text.
+function _gridThumbApplySlideColors(wrap, inner) {
+  if (!wrap || !inner) return;
+  const slide = inner.querySelector('.te-slide');
+  if (!slide) return;
+  const bg = slide.style.backgroundColor || slide.style.background || '';
+  const m = bg.match(/rgba?\(([^)]+)\)/i);
+  if (!m) return;
+  const [r, g, b] = m[1].split(',').map(s => parseFloat(s));
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  if (lum < 0.5) {
+    wrap.style.background = bg;
+    inner.style.color = '#fff';
+  }
+}
+
+// (dev0277) One-time injection of table styling for grid HTML thumbnails.
+// Pasted tables otherwise render borderless (just runs of text). Scoped to
+// .grid-html-thumb so it can't affect any other UI. Border color works on
+// both light and dark thumbnail backgrounds.
+function _ensureGridThumbTableCss() {
+  if (document.getElementById('salGridThumbCss')) return;
+  const st = document.createElement('style');
+  st.id = 'salGridThumbCss';
+  st.textContent =
+      '.grid-html-thumb table{border-collapse:collapse;margin:12px 0;max-width:100%;}'
+    + '.grid-html-thumb th,.grid-html-thumb td{border:1px solid #999;padding:6px 10px;'
+    + 'text-align:left;vertical-align:top;}'
+    + '.grid-html-thumb th{font-weight:bold;}';
+  document.head.appendChild(st);
+}
+
 // Fills `cell` for a row whose link is a non-image URL.
 // 4+ ftext images → 2×2 grid of first 4
 // 1–3 ftext images → loads all, picks largest by mpix
@@ -413,6 +450,8 @@ function gridShow() {
             + 'transform-origin:top left;font-family:Arial,sans-serif;'
             + 'color:#222;padding:16px;box-sizing:border-box;';
           inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
+          _ensureGridThumbTableCss();
+          _gridThumbApplySlideColors(wrap, inner);
           wrap.appendChild(inner);
           cell.appendChild(wrap);
           cell.style.background = '#fff';
@@ -632,6 +671,8 @@ function gridUpdateCell(cellStr, row) {
         + 'transform-origin:top left;font-family:Arial,sans-serif;'
         + 'color:#222;padding:16px;box-sizing:border-box;';
       inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
+      _ensureGridThumbTableCss();
+      _gridThumbApplySlideColors(wrap, inner);
       wrap.appendChild(inner);
       cellEl.appendChild(wrap);
       cellEl.style.background = '#fff';
