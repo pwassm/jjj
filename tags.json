@@ -3754,5 +3754,28 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "chiton",
+    "label": "Chiton",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [
+      "Chiton (genus)"
+    ],
+    "def": "",
+    "rank": "genus",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "santabarbarite",
+    "label": "Santabarbarite",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
