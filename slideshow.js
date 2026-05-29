@@ -185,6 +185,7 @@ function slideshowOpen(source) {
   // (dev0279) _slideshowStart now takes a single canonical (in-order) list and
   // derives the working set from the Show + Order settings internally.
   _slideshowStart(slides);
+  if (_slideshowState) _slideshowState.sourceKind = 'ftext';
 }
 
 function slideshowOpenGrid() {
@@ -197,35 +198,57 @@ function slideshowOpenGrid() {
     return;
   }
   _slideshowStart(ordered);
+  if (_slideshowState) _slideshowState.sourceKind = 'grid';
 }
 
-// (dev0241) S from T → play all images under the project folder's jpgs/
-// subdirectory, recursively, in random order. Uses the project FSA handle
-// (_fsaDir) from core.js. Each image is wrapped as a blob: URL slide.
-async function slideshowOpenJpgsFolder() {
-  if (_slideshowState) return;
-  const root = (typeof _fsaDir !== 'undefined' && _fsaDir) ? _fsaDir : null;
-  if (!root) {
-    if (typeof toast === 'function') toast('No project folder set — use the 📂 button first.', 2500);
-    return;
-  }
+// ── External / folder sources (File System Access API) ──────────────────────
+// (dev0282) Persist a designated source-folder handle separately from the
+// project folder (_fsaDir). It lives in the same IndexedDB db (`sal-fsa`) under
+// a distinct key so picking a slideshow source never touches the project
+// folder, and the folder may live anywhere on disk (not a project subdir).
+function _ssSrcDB() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open('sal-fsa', 1);
+    q.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+    };
+    q.onsuccess = e => res(e.target.result);
+    q.onerror   = e => rej(e.target.error);
+  });
+}
+async function _ssSrcSave(h) {
+  try { const db = await _ssSrcDB(); db.transaction('handles', 'readwrite').objectStore('handles').put(h, 'ssSource'); }
+  catch (_) {}
+}
+async function _ssSrcLoad() {
   try {
-    const perm = await root.queryPermission({ mode: 'read' });
-    if (perm !== 'granted') {
-      const req = await root.requestPermission({ mode: 'read' });
-      if (req !== 'granted') {
+    const db = await _ssSrcDB();
+    return await new Promise(res => {
+      const q = db.transaction('handles', 'readonly').objectStore('handles').get('ssSource');
+      q.onsuccess = e => res(e.target.result || null);
+      q.onerror   = () => res(null);
+    });
+  } catch (_) { return null; }
+}
+// Cached display name of the saved source folder so the menu (built
+// synchronously) can label the dropdown without an async IDB read.
+let _ssSourceName = '';
+(async () => { try { const h = await _ssSrcLoad(); if (h) _ssSourceName = h.name; } catch (_) {} })();
+
+// (dev0282) Walk a directory handle recursively, collect image files in walk
+// order, and build blob: URL slides. Requests read permission if needed.
+// Returns [] (after toasting) on denial/failure. Shared by jpgs/ and the
+// external folder source.
+async function _slideshowFolderSlides(dirHandle) {
+  try {
+    if ((await dirHandle.queryPermission({ mode: 'read' })) !== 'granted') {
+      if ((await dirHandle.requestPermission({ mode: 'read' })) !== 'granted') {
         if (typeof toast === 'function') toast('Read permission denied.', 2200);
-        return;
+        return [];
       }
     }
   } catch (_) {}
-  let jpgsDir;
-  try {
-    jpgsDir = await root.getDirectoryHandle('jpgs', { create: false });
-  } catch (e) {
-    if (typeof toast === 'function') toast('No "jpgs" folder in project.', 2200);
-    return;
-  }
   const files = [];
   async function walk(dir) {
     for await (const entry of dir.values()) {
@@ -233,32 +256,101 @@ async function slideshowOpenJpgsFolder() {
       else if (/\.(jpe?g|png|gif|webp|avif|bmp)$/i.test(entry.name)) files.push(entry);
     }
   }
-  try { await walk(jpgsDir); }
+  try { await walk(dirHandle); }
   catch (e) {
     if (typeof toast === 'function') toast('Folder read failed: ' + e.message, 2500);
-    return;
+    return [];
   }
-  if (!files.length) {
-    if (typeof toast === 'function') toast('No images found under jpgs/.', 2200);
-    return;
-  }
-  // (dev0268) Build slides in walk order first so we have an in-order
-  // snapshot the live Order toggle can restore; then shuffle a copy for
-  // playback if the saved setting is random.
-  const orderedSlides = [];
+  // (dev0268) Build slides in walk order so the in-order snapshot is correct;
+  // Show + Order (incl. shuffle) are applied inside _slideshowStart.
+  const slides = [];
   for (const fh of files) {
     try {
       const file = await fh.getFile();
-      orderedSlides.push({ url: URL.createObjectURL(file), row: null, kind: 'image' });
+      slides.push({ url: URL.createObjectURL(file), row: null, kind: 'image' });
     } catch (_) {}
   }
-  if (!orderedSlides.length) {
-    if (typeof toast === 'function') toast('Could not read any images.', 2200);
+  return slides;
+}
+
+// (dev0241) S from T → play all images under the project folder's jpgs/
+// subdirectory, recursively. Uses the project FSA handle (_fsaDir) from core.js.
+async function slideshowOpenJpgsFolder() {
+  if (_slideshowState) return;
+  const root = (typeof _fsaDir !== 'undefined' && _fsaDir) ? _fsaDir : null;
+  if (!root) {
+    if (typeof toast === 'function') toast('No project folder set — use the 📂 button first.', 2500);
     return;
   }
-  if (typeof toast === 'function') toast('Playing ' + orderedSlides.length + ' image(s) from jpgs/', 1800);
-  // (dev0279) Single canonical list; Show + Order applied inside _slideshowStart.
-  _slideshowStart(orderedSlides);
+  let jpgsDir;
+  try {
+    jpgsDir = await root.getDirectoryHandle('jpgs', { create: false });
+  } catch (e) {
+    if (typeof toast === 'function') toast('No "jpgs" folder in project.', 2200);
+    return;
+  }
+  const slides = await _slideshowFolderSlides(jpgsDir);
+  if (!slides.length) {
+    if (typeof toast === 'function') toast('No images found under jpgs/.', 2200);
+    return;
+  }
+  if (typeof toast === 'function') toast('Playing ' + slides.length + ' image(s) from jpgs/', 1800);
+  _slideshowStart(slides);
+  if (_slideshowState) _slideshowState.sourceKind = 'jpgs';
+}
+
+// (dev0282) Play images from a designated folder ANYWHERE on disk, chosen via
+// showDirectoryPicker (read-only). The handle is persisted (key 'ssSource') so
+// it survives reloads. It is independent of the project folder and never
+// mutates it.
+//   reuseSaved=true  → try the saved handle (re-granting read if needed); only
+//                      falls back to the picker if there is no saved handle.
+//   reuseSaved=false → always show the picker (the menu's 📁 button). Must be
+//                      called directly from a click handler — do NOT await any
+//                      IDB read before the picker or the user gesture is lost.
+async function slideshowOpenSourceFolder(reuseSaved) {
+  if (_slideshowState) return;
+  if (!window.showDirectoryPicker) {
+    if (typeof toast === 'function') toast('File System Access API not available.\nUse Edge or Chrome 86+.', 2800);
+    return;
+  }
+  let dir = null;
+  if (reuseSaved) {
+    dir = await _ssSrcLoad();
+    if (dir) {
+      try {
+        if ((await dir.queryPermission({ mode: 'read' })) !== 'granted') {
+          if ((await dir.requestPermission({ mode: 'read' })) !== 'granted') dir = null;
+        }
+      } catch (_) { dir = null; }
+    }
+  }
+  if (!dir) {
+    try { dir = await window.showDirectoryPicker({ mode: 'read', id: 'sal-ss-source' }); }
+    catch (e) {
+      if (e.name !== 'AbortError' && typeof toast === 'function') toast('Folder pick failed:\n' + e.message, 2800);
+      return;
+    }
+    await _ssSrcSave(dir);
+    _ssSourceName = dir.name;
+  }
+  const slides = await _slideshowFolderSlides(dir);
+  if (!slides.length) {
+    if (typeof toast === 'function') toast('No images found in "' + dir.name + '".', 2200);
+    return;
+  }
+  if (typeof toast === 'function') toast('Playing ' + slides.length + ' image(s) from "' + dir.name + '"', 1800);
+  _slideshowStart(slides);
+  if (_slideshowState) _slideshowState.sourceKind = 'folder';
+}
+
+// (dev0282) Switch the live show's source: tear down the current show and start
+// the chosen opener within the SAME user gesture. No setTimeout — deferring
+// would drop the transient user activation that showDirectoryPicker /
+// requestPermission require.
+function _slideshowReloadFrom(opener) {
+  slideshowClose();
+  opener();
 }
 
 // ── Core machinery ──────────────────────────────────────────────────────────
@@ -1629,6 +1721,23 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
     ? 'border-color:#fc8;color:#fc8;background:rgba(80,40,0,0.45);'
     : 'border-color:#8ef;color:#8ef;background:rgba(0,40,80,0.45);';
 
+  // (dev0282) Source dropdown. "Grid" is offered only when a grid is open
+  // (otherwise switching to it would just fail and leave nothing playing).
+  // "Folder…" picks/uses an external read-only folder anywhere on disk.
+  const srcKind = (_slideshowState && _slideshowState.sourceKind) || '';
+  const _g = document.getElementById('gridOverlay');
+  const gridAvail = (_g && getComputedStyle(_g).display !== 'none') || srcKind === 'grid';
+  const folderLabel = _ssSourceName
+    ? ('📁 ' + (_ssSourceName.length > 12 ? _ssSourceName.slice(0, 11) + '…' : _ssSourceName))
+    : 'Folder…';
+  const srcOpts = [];
+  if (gridAvail) srcOpts.push(['grid', 'Grid']);
+  srcOpts.push(['jpgs', 'Project jpgs']);
+  srcOpts.push(['folder', folderLabel]);
+  const sourceSelect = '<select id="ssSource" style="' + selCSS + '">' +
+    srcOpts.map(o => '<option value="' + o[0] + '"' + (srcKind === o[0] ? ' selected' : '') +
+      '>' + o[1] + '</option>').join('') + '</select>';
+
   return `
     <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
       <button id="ssStart" style="flex:1;padding:4px 8px;border-radius:6px;
@@ -1654,6 +1763,17 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
             cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
       ✕ Close
     </button>
+
+    <div class="ss-row ss-page-1" style="${rowCSS}">
+      <span>Source</span>
+      <span style="display:flex;align-items:center;gap:5px;">
+        ${sourceSelect}
+        <button id="ssSourcePick" title="Choose a folder on your computer (read-only)"
+                style="padding:3px 8px;border-radius:4px;border:1px solid #4af;
+                       background:rgba(0,40,80,0.45);color:#8ef;cursor:pointer;
+                       font-family:monospace;font-size:${baseFs}px;line-height:1;">📁</button>
+      </span>
+    </div>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Show</span>
@@ -1912,6 +2032,29 @@ function _slideshowWireMenu(menu) {
   wireSelect('ssLabelSize',   'labelSize',   reLabel);
   wireSelect('ssCommentSize', 'commentSize', reLabel);
 
+  // (dev0282) Source dropdown — switching reloads the show from the chosen
+  // source within the same gesture (see _slideshowReloadFrom). For "folder"
+  // we reuse the saved handle; the 📁 button always opens the picker.
+  const srcSel = menu.querySelector('#ssSource');
+  if (srcSel) {
+    srcSel.addEventListener('change', () => {
+      const v = srcSel.value;
+      if (v === 'grid')        _slideshowReloadFrom(slideshowOpenGrid);
+      else if (v === 'jpgs')   _slideshowReloadFrom(slideshowOpenJpgsFolder);
+      // Reuse the saved handle only if one exists; otherwise go straight to
+      // the picker (no IDB await before it, so the user gesture survives).
+      else if (v === 'folder') _slideshowReloadFrom(() => slideshowOpenSourceFolder(!!_ssSourceName));
+    });
+    srcSel.addEventListener('click', e => e.stopPropagation());
+  }
+  const srcPick = menu.querySelector('#ssSourcePick');
+  if (srcPick) {
+    srcPick.onclick = e => {
+      e.stopPropagation();
+      _slideshowReloadFrom(() => slideshowOpenSourceFolder(false));
+    };
+  }
+
   // Clicking on the menu background shouldn't dismiss either.
   menu.addEventListener('click', e => e.stopPropagation());
 }
@@ -1949,7 +2092,8 @@ document.addEventListener('keydown', e => {
 }, true);
 
 // Window exposure
-window.slideshowOpen           = slideshowOpen;
-window.slideshowOpenGrid       = slideshowOpenGrid;
-window.slideshowOpenJpgsFolder = slideshowOpenJpgsFolder;
-window.slideshowClose          = slideshowClose;
+window.slideshowOpen             = slideshowOpen;
+window.slideshowOpenGrid         = slideshowOpenGrid;
+window.slideshowOpenJpgsFolder   = slideshowOpenJpgsFolder;
+window.slideshowOpenSourceFolder = slideshowOpenSourceFolder;
+window.slideshowClose            = slideshowClose;
