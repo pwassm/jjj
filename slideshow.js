@@ -184,12 +184,10 @@ function slideshowOpen(source) {
   const slides = urls.map(u => ({ url: u, row, kind: 'image' }));
   // (dev0279) _slideshowStart now takes a single canonical (in-order) list and
   // derives the working set from the Show + Order settings internally.
-  _slideshowStart(slides);
-  if (_slideshowState) _slideshowState.sourceKind = 'ftext';
+  _slideshowStart(slides, { sourceKind: 'ftext' });
 }
 
 function slideshowOpenGrid() {
-  if (_slideshowState) return;
   // (dev0279) Canonical cell-order, all media kinds. The Show filter and the
   // random shuffle are applied inside _slideshowStart.
   const ordered = _slideshowGridSlides();
@@ -197,8 +195,10 @@ function slideshowOpenGrid() {
     if (typeof toast === 'function') toast('No image or video cells in the active grid.', 2000);
     return;
   }
-  _slideshowStart(ordered);
-  if (_slideshowState) _slideshowState.sourceKind = 'grid';
+  // (dev0283) Close any current show only now that we have slides, so a live
+  // source-switch from the menu never leaves a gap on the screen behind.
+  slideshowClose();
+  _slideshowStart(ordered, { sourceKind: 'grid' });
 }
 
 // ── External / folder sources (File System Access API) ──────────────────────
@@ -276,7 +276,6 @@ async function _slideshowFolderSlides(dirHandle) {
 // (dev0241) S from T → play all images under the project folder's jpgs/
 // subdirectory, recursively. Uses the project FSA handle (_fsaDir) from core.js.
 async function slideshowOpenJpgsFolder() {
-  if (_slideshowState) return;
   const root = (typeof _fsaDir !== 'undefined' && _fsaDir) ? _fsaDir : null;
   if (!root) {
     if (typeof toast === 'function') toast('No project folder set — use the 📂 button first.', 2500);
@@ -295,8 +294,10 @@ async function slideshowOpenJpgsFolder() {
     return;
   }
   if (typeof toast === 'function') toast('Playing ' + slides.length + ' image(s) from jpgs/', 1800);
-  _slideshowStart(slides);
-  if (_slideshowState) _slideshowState.sourceKind = 'jpgs';
+  // (dev0283) Swap in only after the walk succeeds — keeps the current show
+  // (if any) on screen during the read instead of dropping to the view behind.
+  slideshowClose();
+  _slideshowStart(slides, { sourceKind: 'jpgs' });
 }
 
 // (dev0282) Play images from a designated folder ANYWHERE on disk, chosen via
@@ -309,13 +310,15 @@ async function slideshowOpenJpgsFolder() {
 //                      called directly from a click handler — do NOT await any
 //                      IDB read before the picker or the user gesture is lost.
 async function slideshowOpenSourceFolder(reuseSaved) {
-  if (_slideshowState) return;
   if (!window.showDirectoryPicker) {
     if (typeof toast === 'function') toast('File System Access API not available.\nUse Edge or Chrome 86+.', 2800);
     return;
   }
   let dir = null;
-  if (reuseSaved) {
+  // Only attempt the reuse path when we actually have a saved folder — that way
+  // the picker (reuseSaved=false / nothing saved) is reached with NO await
+  // before it, preserving the click's user activation.
+  if (reuseSaved && _ssSourceName) {
     dir = await _ssSrcLoad();
     if (dir) {
       try {
@@ -329,33 +332,27 @@ async function slideshowOpenSourceFolder(reuseSaved) {
     try { dir = await window.showDirectoryPicker({ mode: 'read', id: 'sal-ss-source' }); }
     catch (e) {
       if (e.name !== 'AbortError' && typeof toast === 'function') toast('Folder pick failed:\n' + e.message, 2800);
-      return;
+      return;   // keep the current show (if any) running
     }
     await _ssSrcSave(dir);
     _ssSourceName = dir.name;
   }
+  if (typeof toast === 'function') toast('Reading "' + dir.name + '"…', 1500);
   const slides = await _slideshowFolderSlides(dir);
   if (!slides.length) {
     if (typeof toast === 'function') toast('No images found in "' + dir.name + '".', 2200);
-    return;
+    return;   // keep the current show (if any) running — don't drop to the view behind
   }
   if (typeof toast === 'function') toast('Playing ' + slides.length + ' image(s) from "' + dir.name + '"', 1800);
-  _slideshowStart(slides);
-  if (_slideshowState) _slideshowState.sourceKind = 'folder';
-}
-
-// (dev0282) Switch the live show's source: tear down the current show and start
-// the chosen opener within the SAME user gesture. No setTimeout — deferring
-// would drop the transient user activation that showDirectoryPicker /
-// requestPermission require.
-function _slideshowReloadFrom(opener) {
+  // (dev0283) Swap in only after the walk succeeds, so switching source from
+  // a live show never flashes the grid/table sitting behind the slideshow.
   slideshowClose();
-  opener();
+  _slideshowStart(slides, { sourceKind: 'folder' });
 }
 
 // ── Core machinery ──────────────────────────────────────────────────────────
 
-function _slideshowStart(allOrdered) {
+function _slideshowStart(allOrdered, opts) {
   const settings = _slideshowLoadSettings();
   // (dev0279) `allOrdered` is the full canonical (in-order) slide list across
   // every media kind. The working set shown is derived from it via the Show
@@ -448,6 +445,12 @@ function _slideshowStart(allOrdered) {
     settings,
     front: 'A',     // which <img> is currently visible
     menu: null,
+    // (dev0283) Which source produced these slides ('grid'|'jpgs'|'folder'|
+    // 'ftext'). Set HERE, before _slideshowOpenMenu runs at the end of start,
+    // so the menu's Source dropdown shows the right value on first paint.
+    // (Previously set by the opener AFTER start returned — the menu had
+    // already been built with it undefined, so it defaulted to "Grid".)
+    sourceKind: (opts && opts.sourceKind) || null,
     paused: false,  // (zip0236) pause/resume from settings menu
     // (dev0268) ftext-toggle bookkeeping. When the user gestures up on a
     // paused slide whose URL appears in row.ftext, we save the current
@@ -2032,27 +2035,26 @@ function _slideshowWireMenu(menu) {
   wireSelect('ssLabelSize',   'labelSize',   reLabel);
   wireSelect('ssCommentSize', 'commentSize', reLabel);
 
-  // (dev0282) Source dropdown — switching reloads the show from the chosen
-  // source within the same gesture (see _slideshowReloadFrom). For "folder"
-  // we reuse the saved handle; the 📁 button always opens the picker.
+  // (dev0283) Source dropdown — switching reloads the show from the chosen
+  // source. The openers are now non-destructive: each acquires its slides
+  // first and only swaps the show in once they're ready, so the current show
+  // keeps playing during the switch (no flash of the grid/table behind).
+  // For "folder" we reuse the saved handle; the 📁 button always opens the picker.
   const srcSel = menu.querySelector('#ssSource');
   if (srcSel) {
     srcSel.addEventListener('change', () => {
       const v = srcSel.value;
-      if (v === 'grid')        _slideshowReloadFrom(slideshowOpenGrid);
-      else if (v === 'jpgs')   _slideshowReloadFrom(slideshowOpenJpgsFolder);
-      // Reuse the saved handle only if one exists; otherwise go straight to
-      // the picker (no IDB await before it, so the user gesture survives).
-      else if (v === 'folder') _slideshowReloadFrom(() => slideshowOpenSourceFolder(!!_ssSourceName));
+      if (v === 'grid')        slideshowOpenGrid();
+      else if (v === 'jpgs')   slideshowOpenJpgsFolder();
+      // Reuse the saved folder if there is one; otherwise the picker opens.
+      else if (v === 'folder') slideshowOpenSourceFolder(!!_ssSourceName);
     });
     srcSel.addEventListener('click', e => e.stopPropagation());
   }
   const srcPick = menu.querySelector('#ssSourcePick');
   if (srcPick) {
-    srcPick.onclick = e => {
-      e.stopPropagation();
-      _slideshowReloadFrom(() => slideshowOpenSourceFolder(false));
-    };
+    // 📁 always opens the picker so the user can choose a different folder.
+    srcPick.onclick = e => { e.stopPropagation(); slideshowOpenSourceFolder(false); };
   }
 
   // Clicking on the menu background shouldn't dismiss either.
