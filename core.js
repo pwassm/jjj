@@ -219,6 +219,9 @@ var _lastRowFilter = null;  // remembered filter for F-toggle restore
 // Check if row is a video.
 function isVideoRow(row) {
   if (!row) return false;
+  // (dev0285) Slideshow disk-video rows carry a blob: link (no extension) and
+  // flag themselves so they're recognised as direct videos.
+  if (row._directVideoFile) return true;
   const vrn  = String(row.VidRange || '').trim();
   const link = String(row.link || '').trim();
   const isYT = link && (window.isYouTubeLink ? window.isYouTubeLink(link) : /youtu\.be|youtube\.com/i.test(link));

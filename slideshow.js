@@ -47,7 +47,13 @@ const SLIDESHOW_DEFAULTS = {
   //   'both'  — images and videos interleaved in cell order
   // Only direct video files (.mp4/.webm/…) are eligible — YouTube/Vimeo links
   // are never collected as video slides.
-  showMode:      'image'
+  showMode:      'image',
+  // (dev0284) Megapixel filter — only show images whose size falls in the band.
+  //   'none'  show all
+  //   'ge4'|'ge3'|'ge2'|'ge1'  ≥ N megapixels
+  //   'b0106' 0.1–0.6 MP   'b0306' 0.3–0.6 MP   'b0103' 0.1–0.3 MP
+  // ml.json slides use row.MPix; disk/web images are measured on load.
+  imgSizeFilter: 'none'
 };
 
 // Fisher-Yates shuffle (in place) — used when settings.order === 'random'.
@@ -234,7 +240,17 @@ async function _ssSrcLoad() {
 // Cached display name of the saved source folder so the menu (built
 // synchronously) can label the dropdown without an async IDB read.
 let _ssSourceName = '';
-(async () => { try { const h = await _ssSrcLoad(); if (h) _ssSourceName = h.name; } catch (_) {} })();
+// (dev0294) Cache the handle itself too, so we can pass it as
+// showDirectoryPicker({startIn: <handle>}) without an await inside the
+// click handler (which would consume the user gesture). Pre-loaded on
+// module init; refreshed on every successful pick.
+let _ssCachedHandle = null;
+(async () => {
+  try {
+    const h = await _ssSrcLoad();
+    if (h) { _ssSourceName = h.name; _ssCachedHandle = h; }
+  } catch (_) {}
+})();
 
 // (dev0282) Walk a directory handle recursively, collect image files in walk
 // order, and build blob: URL slides. Requests read permission if needed.
@@ -249,14 +265,22 @@ async function _slideshowFolderSlides(dirHandle) {
       }
     }
   } catch (_) {}
+  // (dev0284) Track each file's parent directory handle + relative path so the
+  // slideshow can show name/path as label/comment and delete via removeEntry.
+  // (dev0285) Collect video files too, tagged kind:'video'.
   const files = [];
-  async function walk(dir) {
+  const rootName = dirHandle.name || '';
+  const IMG_RE = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;
+  const VID_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i;
+  async function walk(dir, prefix) {
     for await (const entry of dir.values()) {
-      if (entry.kind === 'directory') await walk(entry);
-      else if (/\.(jpe?g|png|gif|webp|avif|bmp)$/i.test(entry.name)) files.push(entry);
+      if (entry.kind === 'directory') { await walk(entry, prefix + entry.name + '/'); continue; }
+      const kind = IMG_RE.test(entry.name) ? 'image'
+                 : VID_RE.test(entry.name) ? 'video' : null;
+      if (kind) files.push({ fh: entry, parentDir: dir, name: entry.name, relPath: prefix + entry.name, kind });
     }
   }
-  try { await walk(dirHandle); }
+  try { await walk(dirHandle, ''); }
   catch (e) {
     if (typeof toast === 'function') toast('Folder read failed: ' + e.message, 2500);
     return [];
@@ -264,10 +288,27 @@ async function _slideshowFolderSlides(dirHandle) {
   // (dev0268) Build slides in walk order so the in-order snapshot is correct;
   // Show + Order (incl. shuffle) are applied inside _slideshowStart.
   const slides = [];
-  for (const fh of files) {
+  for (const f of files) {
     try {
-      const file = await fh.getFile();
-      slides.push({ url: URL.createObjectURL(file), row: null, kind: 'image' });
+      const file = await f.fh.getFile();
+      const url  = URL.createObjectURL(file);
+      const path = (rootName ? rootName + '/' : '') + f.relPath;
+      if (f.kind === 'video') {
+        // (dev0285) Disk videos play through the full V player (like web direct
+        // videos). gridOpenFullscreen needs a row with a `.link`; a blob: URL
+        // has no file extension, so we flag the synthesized row with
+        // `_directVideoFile` — isVideoRow() and vp.js's mount routing honour it.
+        slides.push({
+          url, kind: 'video',
+          row: { link: url, _directVideoFile: true, VidTitle: f.name, comment: path, Mute: '' },
+          name: f.name, path, parentDir: f.parentDir
+        });
+      } else {
+        slides.push({
+          url, row: null, kind: 'image',
+          name: f.name, path, parentDir: f.parentDir
+        });
+      }
     } catch (_) {}
   }
   return slides;
@@ -297,7 +338,7 @@ async function slideshowOpenJpgsFolder() {
   // (dev0283) Swap in only after the walk succeeds — keeps the current show
   // (if any) on screen during the read instead of dropping to the view behind.
   slideshowClose();
-  _slideshowStart(slides, { sourceKind: 'jpgs' });
+  _slideshowStart(slides, { sourceKind: 'jpgs', dirHandle: jpgsDir });
 }
 
 // (dev0282) Play images from a designated folder ANYWHERE on disk, chosen via
@@ -329,13 +370,21 @@ async function slideshowOpenSourceFolder(reuseSaved) {
     }
   }
   if (!dir) {
-    try { dir = await window.showDirectoryPicker({ mode: 'read', id: 'sal-ss-source' }); }
+    // (dev0294) Pass the last-picked handle as `startIn` so the picker opens
+    // at that folder rather than the page-origin default (project root).
+    // The `id:` already nudges Chrome to remember the last pick per-origin,
+    // but `startIn` is deterministic — survives cache clears, profile resets,
+    // etc. Falls back silently if no handle is cached yet.
+    const opts = { mode: 'read', id: 'sal-ss-source' };
+    if (_ssCachedHandle) opts.startIn = _ssCachedHandle;
+    try { dir = await window.showDirectoryPicker(opts); }
     catch (e) {
       if (e.name !== 'AbortError' && typeof toast === 'function') toast('Folder pick failed:\n' + e.message, 2800);
       return;   // keep the current show (if any) running
     }
     await _ssSrcSave(dir);
     _ssSourceName = dir.name;
+    _ssCachedHandle = dir;
   }
   if (typeof toast === 'function') toast('Reading "' + dir.name + '"…', 1500);
   const slides = await _slideshowFolderSlides(dir);
@@ -347,7 +396,7 @@ async function slideshowOpenSourceFolder(reuseSaved) {
   // (dev0283) Swap in only after the walk succeeds, so switching source from
   // a live show never flashes the grid/table sitting behind the slideshow.
   slideshowClose();
-  _slideshowStart(slides, { sourceKind: 'folder' });
+  _slideshowStart(slides, { sourceKind: 'folder', dirHandle: dir });
 }
 
 // ── Core machinery ──────────────────────────────────────────────────────────
@@ -418,6 +467,11 @@ function _slideshowStart(allOrdered, opts) {
     <div id="slideshowCounter" style="position:absolute;bottom:10px;right:14px;
          color:rgba(255,255,255,0.45);font-family:monospace;font-size:11px;
          pointer-events:none;letter-spacing:0.05em;"></div>
+    <div id="slideshowDeleteBadge" style="position:absolute;top:54px;left:50%;
+         transform:translateX(-50%);background:rgba(150,0,0,0.85);color:#fff;
+         font-family:sans-serif;font-size:14px;font-weight:bold;padding:5px 14px;
+         border-radius:14px;pointer-events:none;opacity:0;transition:opacity 0.25s;
+         box-shadow:0 2px 10px rgba(0,0,0,0.6);z-index:40006;">🗑 Marked for deletion (↑ mark / ↓ unmark)</div>
     <button id="slideshowCloseBtn" title="Close (Esc)"
             style="position:absolute;top:10px;left:10px;width:38px;height:38px;
                    border-radius:6px;border:1px solid rgba(255,255,255,0.35);
@@ -451,6 +505,13 @@ function _slideshowStart(allOrdered, opts) {
     // (Previously set by the opener AFTER start returned — the menu had
     // already been built with it undefined, so it defaulted to "Grid".)
     sourceKind: (opts && opts.sourceKind) || null,
+    // (dev0284) Root directory handle for disk sources ('folder'|'jpgs') — used
+    // to upgrade to readwrite permission before deleting marked files. null for
+    // grid/ftext (web) sources, which can't be deleted.
+    _sourceDirHandle: (opts && opts.dirHandle) || null,
+    // (dev0284) Files marked for deletion, keyed by slide.path →
+    // {name, parentDir}. Survives re-filtering/shuffle (keyed by path, not idx).
+    marks: new Map(),
     paused: false,  // (zip0236) pause/resume from settings menu
     // (dev0268) ftext-toggle bookkeeping. When the user gestures up on a
     // paused slide whose URL appears in row.ftext, we save the current
@@ -1128,15 +1189,34 @@ function _slideshowKey(e) {
   // (dev0279) While a video plays, the V player owns the keyboard (Space,
   // arrows for frame-step, M). Stand down so we don't double-handle.
   if (_slideshowState._videoActive) return;
+  // (dev0285) ← / → always navigate the show (prev / next) — even when a menu
+  // dropdown has focus, since a <select> doesn't use horizontal arrows. Text /
+  // number inputs keep ALL arrows (cursor move / value spin); a focused <select>
+  // keeps ↑ / ↓ for its own option nav (so it isn't hijacked for mark/unmark).
+  const ae = document.activeElement;
+  const tag = ae && ae.tagName;
+  const inTextField = !!(ae && (tag === 'INPUT' || tag === 'TEXTAREA' || ae.isContentEditable));
+  const inSelect    = (tag === 'SELECT');
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopImmediatePropagation();
     slideshowClose();
-  } else if (e.key === 'ArrowRight' || e.key === ' ') {
+    return;
+  }
+  if (inTextField) return;
+  if (e.key === 'ArrowRight' || e.key === ' ') {
     e.preventDefault();
-    _slideshowAdvance(+1);
+    _slideshowAdvance(+1);              // next
   } else if (e.key === 'ArrowLeft') {
     e.preventDefault();
-    _slideshowAdvance(-1);
+    _slideshowAdvance(-1);             // previous
+  } else if (e.key === 'ArrowUp') {
+    if (inSelect) return;               // let the dropdown change its option
+    e.preventDefault();
+    _slideshowToggleMark(true);         // mark current image for deletion
+  } else if (e.key === 'ArrowDown') {
+    if (inSelect) return;
+    e.preventDefault();
+    _slideshowToggleMark(false);        // un-mark
   }
 }
 
@@ -1196,6 +1276,16 @@ function _slideshowShow(i, opts) {
   const myIdx = i;
   targetEl.onload = () => {
     if (!_slideshowState || _slideshowState.idx !== myIdx) return;
+    // (dev0284) Megapixel filter — measure once from the loaded image (more
+    // accurate than row.MPix and works for disk images too). If the slide is
+    // outside the active band, mark it filtered and skip WITHOUT revealing it,
+    // so culling small/large images never flashes them on screen.
+    slide.mp = (targetEl.naturalWidth * targetEl.naturalHeight) / 1e6;
+    if (!_slideshowSizeOk(slide.mp, st.settings.imgSizeFilter)) {
+      slide.status = 'filtered';
+      _slideshowAdvance(+1);
+      return;
+    }
     slide.status = 'ready';
     statusEl.style.display = 'none';
 
@@ -1251,10 +1341,7 @@ function _slideshowShow(i, opts) {
     }
 
     _slideshowUpdateLabel(slide);
-
-    // Hook for future MPix filter:
-    //   const mpix = (targetEl.naturalWidth * targetEl.naturalHeight) / 1e6;
-    //   if (mpix < threshold) { slide.status = 'filtered'; _slideshowAdvance(+1); return; }
+    _slideshowUpdateDeleteBadge(); // (dev0284) reflect this slide's mark state
 
     // (zip0236) Skip scheduling the auto-advance while paused. Resume button
     // re-arms the timer with a fresh slideSec dwell.
@@ -1295,6 +1382,15 @@ function _slideshowSizePx(size, kind) {
   return 0;
 }
 
+// (dev0284) Join a row's tags into a display string. Tags are stored as an
+// array (e.g. ["activity"]); tolerate a bare string too.
+function _slideshowRowTag(row) {
+  if (!row) return '';
+  const t = row.tags;
+  if (Array.isArray(t)) return t.filter(Boolean).join(', ');
+  return t ? String(t) : '';
+}
+
 function _slideshowUpdateLabel(slide) {
   if (!_slideshowState) return;
   const st = _slideshowState;
@@ -1303,8 +1399,21 @@ function _slideshowUpdateLabel(slide) {
   const row = slide && slide.row;
   const ls = st.settings.labelSize   || 'off';
   const cs = st.settings.commentSize || 'off';
-  const labelText   = (ls !== 'off' && row && row.VidTitle) ? String(row.VidTitle) : '';
-  const commentText = (cs !== 'off' && row && row.comment)  ? String(row.comment)  : '';
+
+  // (dev0284) Title/comment sources:
+  //   ml.json rows → title = VidTitle, else the row's tag(s) (many rows have
+  //                  no title); comment = the row's comment.
+  //   disk files   → title = file name; comment = file path.
+  let labelText = '', commentText = '';
+  if (row) {
+    labelText   = row.VidTitle ? String(row.VidTitle) : _slideshowRowTag(row);
+    commentText = row.comment  ? String(row.comment)  : '';
+  } else if (slide) {
+    labelText   = slide.name ? String(slide.name) : '';
+    commentText = slide.path ? String(slide.path) : '';
+  }
+  if (ls === 'off') labelText = '';
+  if (cs === 'off') commentText = '';
 
   _slideshowStyleOverlayText(labelEl,   ls, 'label',   labelText);
   _slideshowStyleOverlayText(commentEl, cs, 'comment', commentText);
@@ -1346,6 +1455,237 @@ function _slideshowStyleOverlayText(el, size, kind, text) {
         fontWeight: '', color: '#ddd'
       });
     }
+  }
+}
+
+// (dev0284) ── Megapixel size filter ──────────────────────────────────────
+// Map a filter key → [minMP, maxMP]. null = no filter ('none').
+function _slideshowSizeBand(filter) {
+  switch (filter) {
+    case 'ge4':   return [4, Infinity];
+    case 'ge3':   return [3, Infinity];
+    case 'ge2':   return [2, Infinity];
+    case 'ge1':   return [1, Infinity];
+    case 'b0610': return [0.6, 1.0];
+    case 'b0306': return [0.3, 0.6];
+    case 'b0103': return [0.1, 0.3];
+    default:      return null;
+  }
+}
+// True if the slide should be shown under `filter`. Unknown/zero mp → shown
+// (we never hide an image we couldn't measure).
+function _slideshowSizeOk(mp, filter) {
+  const band = _slideshowSizeBand(filter);
+  if (!band) return true;
+  if (typeof mp !== 'number' || !isFinite(mp) || mp <= 0) return true;
+  return mp >= band[0] && mp <= band[1];
+}
+
+// Live re-filter when the dropdown changes. Slides already measured (mp known)
+// are re-classified immediately; unmeasured ones are reset to 'pending' so the
+// new band is applied lazily on their next display. The visible slide stays up
+// if it still passes; otherwise we advance off it.
+function _slideshowApplySizeFilterChange() {
+  const st = _slideshowState;
+  if (!st || !st.slides.length) return;
+  const f = st.settings.imgSizeFilter;
+  const cur = st.idx;
+  st.slides.forEach((s, i) => {
+    if (i === cur || s.status === 'error') return;
+    if (typeof s.mp === 'number') {
+      s.status = _slideshowSizeOk(s.mp, f) ? 'pending' : 'filtered';
+    } else if (s.status === 'filtered') {
+      s.status = 'pending'; // give unmeasured-but-previously-filtered another look
+    }
+  });
+  const curSlide = (cur >= 0) ? st.slides[cur] : null;
+  if (curSlide && typeof curSlide.mp === 'number' && !_slideshowSizeOk(curSlide.mp, f)) {
+    curSlide.status = 'filtered';
+    _slideshowAdvance(+1);
+  } else if (!st.paused) {
+    // Keep the current slide on screen; refresh its dwell so the show flows.
+    clearTimeout(st.timer);
+    st.timer = setTimeout(() => _slideshowAdvance(+1), st.settings.slideSec * 1000);
+  }
+}
+
+// (dev0284) ── Mark-for-delete + delete (disk sources only) ────────────────
+function _slideshowIsDiskSource() {
+  const st = _slideshowState;
+  return !!st && (st.sourceKind === 'folder' || st.sourceKind === 'jpgs');
+}
+
+// Toggle (or force) the current slide's delete mark. forceState: true=mark,
+// false=unmark, undefined=toggle. Marks are keyed by file path.
+function _slideshowToggleMark(forceState) {
+  const st = _slideshowState;
+  if (!st || st.idx < 0) return;
+  const slide = st.slides[st.idx];
+  if (!slide) return;
+  if (!_slideshowIsDiskSource()) {
+    if (typeof toast === 'function') toast('Delete only works on Folder / Project-jpgs images.', 2400);
+    return;
+  }
+  if (!slide.path || !slide.parentDir) {
+    if (typeof toast === 'function') toast('This image has no file on disk — can’t delete.', 2400);
+    return;
+  }
+  if (!st.marks) st.marks = new Map();
+  const want = (typeof forceState === 'boolean') ? forceState : !st.marks.has(slide.path);
+  if (want) st.marks.set(slide.path, { name: slide.name, parentDir: slide.parentDir });
+  else      st.marks.delete(slide.path);
+  _slideshowUpdateDeleteBadge();
+  _slideshowSyncDeleteBtn();
+}
+
+// Show/hide the red "Marked for deletion" badge for the current slide.
+function _slideshowUpdateDeleteBadge() {
+  const st = _slideshowState;
+  if (!st || !st.overlay) return;
+  const el = st.overlay.querySelector('#slideshowDeleteBadge');
+  if (!el) return;
+  const slide = (st.idx >= 0) ? st.slides[st.idx] : null;
+  const marked = !!(slide && slide.path && st.marks && st.marks.has(slide.path));
+  el.style.opacity = marked ? '1' : '0';
+}
+
+// Update the menu's "Delete marked (N)" button (shown only on disk sources
+// with ≥1 mark).
+function _slideshowSyncDeleteBtn() {
+  const st = _slideshowState;
+  if (!st || !st.menu) return;
+  const btn = st.menu.querySelector('#ssDeleteMarked');
+  if (!btn) return;
+  const n = st.marks ? st.marks.size : 0;
+  if (_slideshowIsDiskSource() && n > 0) {
+    btn.style.display = 'block';
+    btn.textContent = '🗑 Delete marked (' + n + ')';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+// Confirmation modal listing the marked filenames before any disk write.
+function _slideshowConfirmDelete() {
+  const st = _slideshowState;
+  if (!st || !st.marks || !st.marks.size) {
+    if (typeof toast === 'function') toast('Nothing marked for deletion.', 1600);
+    return;
+  }
+  if (!_slideshowIsDiskSource()) {
+    if (typeof toast === 'function') toast('Delete only works on Folder / Project-jpgs images.', 2400);
+    return;
+  }
+  const entries = [...st.marks.entries()]; // [path, {name, parentDir}]
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const list = entries.map(([p, m]) => '• ' + esc(m.name || p)).join('<br>');
+  const wrap = document.createElement('div');
+  wrap.id = 'ssDeleteModal';
+  wrap.style.cssText = 'position:absolute;inset:0;z-index:' + (SLIDESHOW_MENU_Z + 10) + ';'
+    + 'background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;'
+    + 'font-family:sans-serif;';
+  wrap.innerHTML = `
+    <div style="max-width:90%;max-height:80%;overflow:auto;background:#16161f;
+                border:1px solid #f88;border-radius:10px;padding:18px 20px;color:#eee;
+                box-shadow:0 6px 30px rgba(0,0,0,0.7);">
+      <div style="font-size:17px;font-weight:bold;color:#fbb;margin-bottom:8px;">
+        Delete ${entries.length} file${entries.length === 1 ? '' : 's'} permanently?</div>
+      <div style="font-size:13px;color:#caa;margin-bottom:10px;">
+        These are removed from disk and cannot be undone.</div>
+      <div style="font-family:monospace;font-size:12px;line-height:1.55;color:#9cf;
+                  margin-bottom:16px;max-height:40vh;overflow:auto;">${list}</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button id="ssDelCancel" style="padding:6px 16px;border-radius:6px;
+                border:1px solid #888;background:rgba(40,40,50,0.6);color:#ccc;
+                cursor:pointer;font-family:monospace;font-size:14px;">Cancel</button>
+        <button id="ssDelConfirm" style="padding:6px 16px;border-radius:6px;
+                border:1px solid #f55;background:rgba(110,0,0,0.6);color:#fbb;
+                cursor:pointer;font-family:monospace;font-size:14px;font-weight:bold;">
+          🗑 Delete</button>
+      </div>
+    </div>`;
+  (st.overlay.parentNode || document.body).appendChild(wrap);
+  wrap.addEventListener('click', e => e.stopPropagation());
+  const close = () => { if (wrap.parentNode) wrap.remove(); };
+  wrap.querySelector('#ssDelCancel').onclick  = e => { e.stopPropagation(); close(); };
+  wrap.querySelector('#ssDelConfirm').onclick = e => { e.stopPropagation(); close(); _slideshowPerformDelete(entries); };
+}
+
+// Actually delete the marked files. Upgrades the source folder to readwrite
+// (folder source is opened read-only), removeEntry()s each file, then purges
+// the deleted slides from every slide array and revokes their blob URLs.
+async function _slideshowPerformDelete(entries) {
+  const st = _slideshowState;
+  if (!st) return;
+  // Ensure write permission on the source root (covers nested files derived
+  // from it). The folder source is picked read-only; jpgs inherits the
+  // project folder's existing readwrite grant.
+  const root = st._sourceDirHandle;
+  if (root) {
+    try {
+      if ((await root.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+        if ((await root.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+          if (typeof toast === 'function') toast('Write permission denied — nothing deleted.', 2800);
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+  let ok = 0, fail = 0;
+  const deleted = new Set();
+  for (const [path, m] of entries) {
+    try {
+      await m.parentDir.removeEntry(m.name);
+      deleted.add(path); ok++;
+    } catch (e) {
+      // Retry once after requesting rw on the specific parent directory.
+      try {
+        if ((await m.parentDir.requestPermission({ mode: 'readwrite' })) === 'granted') {
+          await m.parentDir.removeEntry(m.name);
+          deleted.add(path); ok++;
+        } else { fail++; }
+      } catch (_) { fail++; }
+    }
+  }
+  if (!deleted.size) {
+    if (typeof toast === 'function') toast('Delete failed (' + fail + ').', 2600);
+    return;
+  }
+  // Remember the visible slide so we can keep showing it (if it survived).
+  const curSlide = (st.idx >= 0) ? st.slides[st.idx] : null;
+  const curUrl   = curSlide ? curSlide.url : null;
+  const curGone  = !!(curSlide && deleted.has(curSlide.path));
+  // Purge deleted files from every array and revoke their blob URLs once.
+  const revoked = new Set();
+  const purge = arr => (arr || []).filter(s => {
+    if (s.path && deleted.has(s.path)) {
+      if (s.url && /^blob:/.test(s.url) && !revoked.has(s.url)) {
+        try { URL.revokeObjectURL(s.url); } catch (_) {}
+        revoked.add(s.url);
+      }
+      return false;
+    }
+    return true;
+  });
+  st.slides          = purge(st.slides);
+  st._allSlides      = purge(st._allSlides);
+  st._inOrderSnapshot = purge(st._inOrderSnapshot);
+  deleted.forEach(p => st.marks.delete(p));
+  if (typeof toast === 'function') {
+    toast('Deleted ' + ok + ' file' + (ok === 1 ? '' : 's')
+          + (fail ? (' — ' + fail + ' failed') : '') + '.', 2400);
+  }
+  _slideshowSyncDeleteBtn();
+  if (!st.slides.length) { slideshowClose(); return; }
+  if (curGone) {
+    if (st.idx >= st.slides.length) st.idx = 0;
+    if (st.idx < 0) st.idx = 0;
+    _slideshowShow(st.idx);
+  } else if (curUrl) {
+    const ni = st.slides.findIndex(s => s.url === curUrl);
+    if (ni >= 0) st.idx = ni;
+    _slideshowUpdateCounter();
+    _slideshowUpdateDeleteBadge();
   }
 }
 
@@ -1577,6 +1917,9 @@ function slideshowClose() {
   // (dev0281) Menu + stub are siblings of the overlay now — remove explicitly.
   if (_slideshowState.menu && _slideshowState.menu.parentNode) _slideshowState.menu.remove();
   if (_slideshowState.collapsedStub && _slideshowState.collapsedStub.parentNode) _slideshowState.collapsedStub.remove();
+  // (dev0284) Drop any open delete-confirmation modal (also a sibling).
+  const _delModal = document.getElementById('ssDeleteModal');
+  if (_delModal && _delModal.parentNode) _delModal.remove();
   if (_slideshowState.overlay && _slideshowState.overlay.parentNode) {
     _slideshowState.overlay.remove();
   }
@@ -1684,6 +2027,23 @@ function _slideshowShowSelect(id, cur, selCSS) {
     '</select>';
 }
 
+// (dev0284) ImageSizeFilter dropdown — restrict the show to a megapixel band.
+function _slideshowSizeFilterSelect(id, cur, selCSS) {
+  const opts = [
+    ['none',  'None'],
+    ['ge4',   '≥ 4 MP'],
+    ['ge3',   '≥ 3 MP'],
+    ['ge2',   '≥ 2 MP'],
+    ['ge1',   '≥ 1 MP'],
+    ['b0610', '.6–1.0 MP'],
+    ['b0306', '.3–.6 MP'],
+    ['b0103', '.1–.3 MP']
+  ];
+  return '<select id="' + id + '" style="' + selCSS + '">' +
+    opts.map(o => '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
+    '</select>';
+}
+
 function _slideshowMenuHtml(s, baseFs, bigFs) {
   baseFs = baseFs || 13;
   bigFs  = bigFs  || 14;
@@ -1766,6 +2126,12 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
             cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
       ✕ Close
     </button>
+    <button id="ssDeleteMarked" style="display:none;width:100%;padding:4px 8px;
+            margin-bottom:8px;border-radius:6px;
+            border:1px solid #f55;color:#fbb;background:rgba(110,0,0,0.55);
+            cursor:pointer;font-family:monospace;font-size:${bigFs}px;font-weight:bold;">
+      🗑 Delete marked
+    </button>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Source</span>
@@ -1781,6 +2147,11 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
     <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Show</span>
       ${_slideshowShowSelect('ssShowMode', s.showMode, selCSS)}
+    </div>
+
+    <div class="ss-row ss-page-1" style="${rowCSS}">
+      <span>ImageSizeFilter</span>
+      ${_slideshowSizeFilterSelect('ssImgSizeFilter', s.imgSizeFilter, selCSS)}
     </div>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
@@ -1887,6 +2258,14 @@ function _slideshowWireMenu(menu) {
   if (closeBtn) {
     closeBtn.onclick = e => { e.stopPropagation(); slideshowClose(); };
   }
+
+  // (dev0284) Delete-marked button — confirm then remove marked files from
+  // disk. Hidden unless the source is disk-backed and ≥1 file is marked.
+  const delBtn = menu.querySelector('#ssDeleteMarked');
+  if (delBtn) {
+    delBtn.onclick = e => { e.stopPropagation(); _slideshowConfirmDelete(); };
+  }
+  _slideshowSyncDeleteBtn();
 
   // (dev0265) Order toggle — flips between in-order and random. Note: this
   // does NOT reshuffle the currently-playing slides (advancing through a
@@ -2034,6 +2413,8 @@ function _slideshowWireMenu(menu) {
   const reLabel = () => _slideshowUpdateLabel(st.slides[st.idx]);
   wireSelect('ssLabelSize',   'labelSize',   reLabel);
   wireSelect('ssCommentSize', 'commentSize', reLabel);
+  // (dev0284) ImageSizeFilter — re-filter the working set live by megapixels.
+  wireSelect('ssImgSizeFilter', 'imgSizeFilter', _slideshowApplySizeFilterChange);
 
   // (dev0283) Source dropdown — switching reloads the show from the chosen
   // source. The openers are now non-destructive: each acquires its slides
@@ -2084,12 +2465,21 @@ document.addEventListener('keydown', e => {
     if (!_slideshowHotkeyShouldFire()) return;
     e.preventDefault();
     e.stopPropagation();
-    // From G (grid overlay visible) → play grid images. From T (no overlay)
-    // → play random images under projectfolder/jpgs/.
+    // From G (grid overlay visible) → play grid images. From T (no overlay):
+    //   • (dev0295) Prefer the saved disk folder if the user has picked one,
+    //     so S from T plays the last-used external folder rather than the
+    //     project's jpgs/. Falls back to jpgs/ when no disk folder is saved.
+    //     To switch back to jpgs/ explicitly, use the SS menu's Source
+    //     dropdown.
     const g = document.getElementById('gridOverlay');
     const gridVisible = g && getComputedStyle(g).display !== 'none';
-    if (gridVisible) slideshowOpenGrid();
-    else             slideshowOpenJpgsFolder();
+    if (gridVisible) {
+      slideshowOpenGrid();
+    } else if (_ssCachedHandle || _ssSourceName) {
+      slideshowOpenSourceFolder(true);
+    } else {
+      slideshowOpenJpgsFolder();
+    }
   }
 }, true);
 
@@ -2099,3 +2489,9 @@ window.slideshowOpenGrid         = slideshowOpenGrid;
 window.slideshowOpenJpgsFolder   = slideshowOpenJpgsFolder;
 window.slideshowOpenSourceFolder = slideshowOpenSourceFolder;
 window.slideshowClose            = slideshowClose;
+// (dev0286) Lets the V player route ↑ / ↓ to mark / un-mark the current slide
+// while a slideshow video is playing (the slideshow key handler is dormant
+// during video). want=true → mark for deletion, false → un-mark.
+window._slideshowMarkCurrent = function (want) {
+  if (_slideshowState) _slideshowToggleMark(!!want);
+};

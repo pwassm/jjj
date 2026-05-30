@@ -3777,5 +3777,107 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "elysia-marginata",
+    "label": "Elysia marginata",
+    "kind": "taxon",
+    "parents": [
+      "elysia"
+    ],
+    "aliases": [
+      "Elysia marginata (Pease",
+      "1871)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Tri-banded Taco Slug",
+    "extinct": false
+  },
+  {
+    "id": "plakobranchidae",
+    "label": "Plakobranchidae",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "elysia",
+    "label": "Elysia",
+    "kind": "taxon",
+    "parents": [
+      "plakobranchidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "cholorplasts",
+    "label": "Cholorplasts",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "nerve-flossing",
+    "label": "Nerve flossing",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "sciatic-nerve",
+    "label": "Sciatic nerve",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "graneledone-boropacifica",
+    "label": "Graneledone boreopacifica",
+    "kind": "taxon",
+    "parents": [
+      "graneledone"
+    ],
+    "aliases": [
+      "Graneledone boreopacifica Nesis",
+      "1982"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Deep-sea Octopus",
+    "extinct": false
+  },
+  {
+    "id": "megaleledonidae",
+    "label": "Megaleledonidae",
+    "kind": "taxon",
+    "parents": [
+      "octopoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "graneledone",
+    "label": "Graneledone",
+    "kind": "taxon",
+    "parents": [
+      "megaleledonidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

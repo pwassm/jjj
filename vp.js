@@ -880,7 +880,8 @@ function gridOpenFullscreen(row, contained) {
         vpMountYouTube(host, row.link, seg, muted);
       } else if (window.isVimeoLink && window.isVimeoLink(row.link)) {
         vpMountVimeo(host, row.link, seg, muted);
-      } else if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(row.link)) {
+      } else if (row._directVideoFile || /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(row.link)) {
+        // (dev0285) `_directVideoFile` = slideshow disk video (blob: URL, no ext).
         vpMountDirectVideo(host, row.link, seg, muted);
       } else if (window.isInstagramLink && window.isInstagramLink(row.link)) {
         vpMountInstagram(host, row.link);
@@ -1311,6 +1312,12 @@ function vpClose() {
     try { window._slideshowCaptureVp(_vpState); } catch (_) {}
   }
 
+  // (dev0288) Tear down crop overlay listeners (ResizeObserver + document
+  // pointermove/up) before dropping _vpState — otherwise they leak per V open.
+  if (_vpState && _vpState.crop && typeof _vpState.crop.dispose === 'function') {
+    try { _vpState.crop.dispose(); } catch (_) {}
+  }
+
   _vpState = null;
   const fs = document.getElementById('gridFullscreen');
   fs.style.display = 'none';
@@ -1340,7 +1347,17 @@ function vpKeyHandler(e) {
   // Left/Right frame-step is the relevant key there, and the video editor
   // handles its own ArrowUp/Down navigation separately).
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    if (_vpState && _vpState.player) return; // video — not our job here
+    if (_vpState && _vpState.player) {
+      // (dev0286) During a slideshow video, ↑ / ↓ mark / un-mark the current
+      // slide for deletion — same as image slides. The slideshow's own key
+      // handler stands down while a video plays, so route it here. Standalone
+      // V (no slideshowNoLoop) keeps ignoring vertical arrows.
+      if (_vpState.slideshowNoLoop && typeof window._slideshowMarkCurrent === 'function') {
+        e.preventDefault(); e.stopPropagation();
+        window._slideshowMarkCurrent(e.key === 'ArrowUp');
+      }
+      return; // video — image-row nav doesn't apply
+    }
     e.preventDefault(); e.stopPropagation();
     // (zip0185) Always reseed _brRows from the current filter so navigation
     // walks the live filtered T (not a stale snapshot).
@@ -1376,15 +1393,21 @@ function vpKeyHandler(e) {
     return;
   }
   
-  // Left/Right = frame step
-  if (e.key === 'ArrowLeft') {
+  // (dev0286) Left / Right:
+  //   • Playing slideshow video → close and move to prev / next slide
+  //     (mirrors the L↔R swipe gesture).
+  //   • Otherwise → step one frame (~1/30 s). If the video is playing, pause
+  //     it first so the single-frame step is actually visible.
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
-    vpSeekRelative(-0.1);
-    return;
-  }
-  if (e.key === 'ArrowRight') {
-    e.preventDefault();
-    vpSeekRelative(0.1);
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    if (_vpState.slideshowNoLoop && _vpIsPlaying()) {
+      if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(dir);
+      if (typeof vpClose === 'function') vpClose();
+      return;
+    }
+    if (_vpIsPlaying()) _vpPauseNow();   // pause so the frame-step shows
+    vpSeekRelative(dir / 30);
     return;
   }
   
@@ -1394,6 +1417,86 @@ function vpKeyHandler(e) {
     vpToggleMute();
     return;
   }
+
+  // (dev0287) R = toggle disk-video info overlay (resolution+duration+filename).
+  // No-op when no overlay exists (web videos, YouTube, Vimeo, images, quiz).
+  if (e.key === 'r' || e.key === 'R') {
+    const ov = _vpState && _vpState.diskInfoOverlay;
+    if (!ov) return;
+    e.preventDefault();
+    ov.style.display = (ov.style.display === 'none') ? '' : 'none';
+    return;
+  }
+
+  // (dev0288) C = toggle crop overlay. T = swap landscape↔portrait aspect
+  // (only while overlay is visible). Both no-op when no crop state exists.
+  if (e.key === 'c' || e.key === 'C') {
+    if (!_vpState || !_vpState.crop) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpCropToggle();
+    return;
+  }
+  if (e.key === 't' || e.key === 'T') {
+    if (!_vpState || !_vpState.crop) return;
+    if (_vpState.crop.el.container.style.display === 'none') return;
+    e.preventDefault(); e.stopPropagation();
+    _vpCropSwapAspect();
+    return;
+  }
+
+  // (dev0293 / dev0296) ASDF — symmetric 1-frame nudges. ONLY active when
+  // BOTH A and B are set; otherwise these keys pass through untouched so
+  // they stay free for other features outside the crop/trim context.
+  //   a → A -1/30s (≈ 1 frame earlier)
+  //   s → A +1/30s (≈ 1 frame later)
+  //   d → B -1/30s (≈ 1 frame earlier)
+  //   f → B +1/30s (≈ 1 frame later)
+  // Clamped to [0, duration]. For 1-second jumps, use the existing per-0.1s
+  // toolbar buttons or Ctrl+click on the timeline.
+  if (e.key === 'a' || e.key === 's' || e.key === 'd' || e.key === 'f' ||
+      e.key === 'A' || e.key === 'S' || e.key === 'D' || e.key === 'F') {
+    if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) return;
+    const dur = _vpState.duration || 0;
+    const FRAME = 1 / 30;
+    const k = e.key.toLowerCase();
+    if      (k === 'a') _vpState.aPoint = Math.max(0,   _vpState.aPoint - FRAME);
+    else if (k === 's') _vpState.aPoint = Math.min(dur, _vpState.aPoint + FRAME);
+    else if (k === 'd') _vpState.bPoint = Math.max(0,   _vpState.bPoint - FRAME);
+    else                _vpState.bPoint = Math.min(dur, _vpState.bPoint + FRAME);
+    e.preventDefault(); e.stopPropagation();
+    vpUpdateABStyle();
+    return;
+  }
+
+  // (dev0293) G — Go: save the A→B segment of the current disk video.
+  // No crop overlay visible → lossless stream copy. Crop overlay visible →
+  // crop+scale re-encode (current crop path). Prompts for an ID; filename
+  // template `Base~id~YYYYMMDD-HHMMSS~{full | size~aspect~crop}~.mp4`.
+  // No-op (passes through) when AB not set OR not a disk video.
+  if (e.key === 'g' || e.key === 'G') {
+    if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) return;
+    const row = window._vpCurrentRow;
+    if (!row || !row._directVideoFile) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpGoSave();
+    return;
+  }
+}
+
+// (dev0286) Synchronous play-state probe. Both player shapes expose a sync
+// getPlayerState() (YT native; the direct-video wrapper at vpMountDirectVideo).
+// State 1 = playing for both. Used by the keyboard handler to decide between
+// frame-step (paused) and slide-navigate (playing slideshow video).
+function _vpIsPlaying() {
+  if (!_vpState || !_vpState.player) return false;
+  try { return _vpState.player.getPlayerState() === 1; } catch (_) { return false; }
+}
+
+function _vpPauseNow() {
+  if (!_vpState || !_vpState.player) return;
+  const p = _vpState.player;
+  try { if (_vpState.isYT) p.pauseVideo(); else p.pause(); } catch (_) {}
+  vpUpdatePlayBtn();
 }
 
 function vpTogglePlay() {
@@ -1541,6 +1644,41 @@ function vpUpdateABStyle() {
     bBtn.style.borderColor = '#f80';
     bBtn.textContent = 'B';
   }
+  // (dev0292) Vertical line markers on the timeline at A and B positions.
+  // Lazily created — added inside #vp-timeline above the playhead (z:4) so
+  // they stay visible no matter what's painted underneath. Sync duration
+  // is available for direct/disk videos via player.el; for YT/Vimeo, fall
+  // back to hiding the markers (AB still works, just no line).
+  _vpUpdateABLines();
+}
+
+function _vpUpdateABLines() {
+  const tl = document.getElementById('vp-timeline');
+  if (!tl) return;
+  let dur = 0;
+  const p = _vpState && _vpState.player;
+  if (p && p.el && Number.isFinite(p.el.duration)) dur = p.el.duration;
+  function ensureLine(id, color) {
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.style.cssText = 'position:absolute;top:-3px;bottom:-3px;width:2px;background:' +
+        color + ';pointer-events:none;z-index:4;box-shadow:0 0 3px ' + color + ';';
+      tl.appendChild(el);
+    }
+    return el;
+  }
+  const aEl = ensureLine('vp-ab-line-a', '#0f0');
+  const bEl = ensureLine('vp-ab-line-b', '#f44');
+  function place(el, point) {
+    if (point == null || dur <= 0) { el.style.display = 'none'; return; }
+    const pct = Math.max(0, Math.min(100, (point / dur) * 100));
+    el.style.left = 'calc(' + pct + '% - 1px)';
+    el.style.display = '';
+  }
+  place(aEl, _vpState.aPoint);
+  place(bEl, _vpState.bPoint);
 }
 
 function vpWireControls() {
@@ -1618,6 +1756,28 @@ function vpWireControls() {
     }
   };
   timeline.addEventListener('pointerdown', e => {
+    // (dev0293) Ctrl+click on timeline sets A/B alternating: first Ctrl-click
+    // sets A, second sets B, third resets both and starts a new pair. Plain
+    // click still scrubs. Computes time from click position (not playhead).
+    if (e.ctrlKey && _vpState && _vpState.duration) {
+      e.preventDefault(); e.stopPropagation();
+      const p = (typeof window.rotateXY === 'function')
+        ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+      const r = _vpWrapLocalRect(timeline);
+      const pct = Math.max(0, Math.min(1, (p.x - r.left) / r.width));
+      const t = pct * _vpState.duration;
+      if (_vpState.aPoint == null) {
+        _vpState.aPoint = t;
+      } else if (_vpState.bPoint == null) {
+        _vpState.bPoint = t;
+      } else {
+        // Both set — start a new pair.
+        _vpState.aPoint = t;
+        _vpState.bPoint = null;
+      }
+      vpUpdateABStyle();
+      return;
+    }
     _vpScrubActive = true;
     try { timeline.setPointerCapture(e.pointerId); } catch (_) {}
     _vpScrubTo(e);
@@ -1946,6 +2106,660 @@ function vpAllowAutoplayOnIframe(host) {
   } catch (_) {}
 }
 
+// (dev0287) Format a duration in seconds as H:MM:SS or M:SS.
+function _vpFmtDur(s) {
+  if (!isFinite(s) || s < 0) return '–:––';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  if (h > 0) return h + ':' + m.toString().padStart(2, '0') + ':' + sec;
+  return m + ':' + sec;
+}
+
+// (dev0287) Disk-video info overlay — resolution + duration + filename.
+// Mounted only when the current row was synthesized from a disk file
+// (row._directVideoFile === true, set by slideshow.js). Hotkey R toggles.
+// Default ON: this V doubles as a management view for local files, so the
+// metadata is the point. Hidden cleanly on next vpClose (host is wiped).
+function _vpMountDiskInfoOverlay(host, vid, row) {
+  if (!row || !row._directVideoFile) return;
+  const ov = document.createElement('div');
+  ov.id = 'vp-disk-info';
+  ov.style.cssText =
+    'position:absolute;top:8px;left:8px;z-index:50;pointer-events:none;' +
+    'background:rgba(0,0,0,0.55);color:#dfe6f0;padding:6px 9px;border-radius:4px;' +
+    'font:12px/1.35 ui-monospace,Consolas,monospace;white-space:pre;' +
+    'max-width:60%;overflow:hidden;text-overflow:ellipsis;';
+  host.appendChild(ov);
+  const fname = row.VidTitle || (row.comment || '').split(/[\\/]/).pop() || '(unnamed)';
+  const render = () => {
+    const w = vid.videoWidth, h = vid.videoHeight;
+    const res = (w && h) ? (w + '×' + h) : '…';
+    const dur = _vpFmtDur(vid.duration);
+    ov.textContent = fname + '\n' + res + '   ' + dur;
+  };
+  render();
+  vid.addEventListener('loadedmetadata', render);
+  vid.addEventListener('durationchange', render);
+  if (_vpState) _vpState.diskInfoOverlay = ov;
+}
+
+// (dev0288) ── CROP OVERLAY (disk videos only) ─────────────────────────────
+// Lets the user draw an aspect-locked rectangle over a playing disk video
+// and click "Crop" to slice that region with ffmpeg → <name>_crop.<ext>
+// in the original file's directory. Aspect: 16:9 (L) or 9:16 (P), swapped
+// with T while overlay is up. C toggles the overlay. Default: centered,
+// 30% of frame, landscape.
+//
+// Coord systems:
+//   screen  — pointerevent client coords inside the host
+//   render  — the visible video rect inside host (after object-fit:contain
+//             letterboxing). screen→render = subtract letterbox offset
+//   frac    — render coords divided by render size; range [0,1]. The rect's
+//             persisted form — survives host resize and orientation flips
+//   source  — frac × videoWidth/videoHeight, snapped to even pixels because
+//             libx264 requires even dimensions. This is what ffmpeg eats.
+
+function _vpCropRenderRect(host, vid) {
+  const HW = host.clientWidth, HH = host.clientHeight;
+  const VW = vid.videoWidth || 16, VH = vid.videoHeight || 9;
+  const scale = Math.min(HW / VW, HH / VH);
+  const rw = VW * scale, rh = VH * scale;
+  const rx = (HW - rw) / 2, ry = (HH - rh) / 2;
+  return { rx, ry, rw, rh, VW, VH };
+}
+
+// Default-size rect (30% of frame) at given aspect, centered. fracRatio is
+// frac_w / frac_h — depends on the video's aspect, since the locked ratio
+// is 16:9 (or 9:16) in SOURCE pixels, not screen pixels.
+function _vpCropFracForAspect(aspect, vid) {
+  const VW = vid.videoWidth || 16, VH = vid.videoHeight || 9;
+  const srcAR = aspect === 'L' ? 16 / 9 : 9 / 16;
+  const fracRatio = srcAR * (VH / VW);
+  let fw, fh;
+  if (fracRatio >= 1) { fw = 0.3; fh = fw / fracRatio; }
+  else                { fh = 0.3; fw = fh * fracRatio; }
+  if (fw > 1) { fh /= fw; fw = 1; }
+  if (fh > 1) { fw /= fh; fh = 1; }
+  return { x: (1 - fw) / 2, y: (1 - fh) / 2, w: fw, h: fh, ratio: fracRatio };
+}
+
+function _vpMountCropOverlay(host, vid, row) {
+  if (!row || !row._directVideoFile) return;
+
+  // Container — pointer-events:none so the native <video controls> at the
+  // bottom stay clickable in any area NOT covered by the rect or its bar.
+  const c = document.createElement('div');
+  c.id = 'vp-crop-overlay';
+  c.style.cssText = 'position:absolute;inset:0;z-index:55;pointer-events:none;display:none;';
+  host.appendChild(c);
+
+  const rect = document.createElement('div');
+  rect.style.cssText =
+    'position:absolute;box-sizing:border-box;border:2px solid #6af;' +
+    'box-shadow:0 0 0 9999px rgba(0,0,0,0.35);pointer-events:auto;cursor:move;';
+  c.appendChild(rect);
+
+  // (dev0293) Source-pixel W×H label inside the rect. Always visible so
+  // user can see exact crop dims at rest as well as during drag/resize.
+  const dimLbl = document.createElement('div');
+  dimLbl.style.cssText =
+    'position:absolute;top:4px;left:50%;transform:translateX(-50%);' +
+    'background:rgba(0,0,0,0.6);color:#dfe6f0;padding:1px 6px;border-radius:3px;' +
+    'font:11px ui-monospace,Consolas,monospace;pointer-events:none;white-space:nowrap;';
+  rect.appendChild(dimLbl);
+
+  // Header bar above the rect: aspect toggle + CRF slider + Crop + close.
+  const bar = document.createElement('div');
+  bar.style.cssText =
+    'position:absolute;left:0;right:0;top:-34px;height:30px;' +
+    'display:flex;align-items:center;gap:8px;padding:0 8px;' +
+    'background:rgba(0,0,0,0.7);color:#dfe6f0;font:12px ui-monospace,Consolas,monospace;' +
+    'border-radius:4px;pointer-events:auto;';
+  bar.innerHTML =
+    '<span id="vp-crop-aspect" style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
+    '<span style="opacity:0.7;">CRF</span>' +
+    '<input id="vp-crop-crf" type="range" min="0" max="28" value="18" style="width:90px;vertical-align:middle;">' +
+    '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">18</span>' +
+    '<select id="vp-crop-res" style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
+      '<option value="1080">1080p</option>' +
+      '<option value="720">720p</option>' +
+      '<option value="source">Same</option>' +
+    '</select>' +
+    '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
+      '<input id="vp-crop-slow" type="checkbox" style="margin:0;vertical-align:middle;">Slow</label>' +
+    '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
+      'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
+    '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
+      'padding:3px 8px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;">✕</button>';
+  rect.appendChild(bar);
+
+  const handles = {};
+  const HSZ = 14;
+  ['nw','ne','sw','se'].forEach(pos => {
+    const h = document.createElement('div');
+    h.style.cssText =
+      'position:absolute;width:' + HSZ + 'px;height:' + HSZ + 'px;' +
+      'background:#6af;border:1px solid #fff;pointer-events:auto;' +
+      'cursor:' + pos + '-resize;';
+    if (pos.includes('n')) h.style.top    = (-HSZ/2) + 'px';
+    if (pos.includes('s')) h.style.bottom = (-HSZ/2) + 'px';
+    if (pos.includes('w')) h.style.left   = (-HSZ/2) + 'px';
+    if (pos.includes('e')) h.style.right  = (-HSZ/2) + 'px';
+    rect.appendChild(h);
+    handles[pos] = h;
+  });
+
+  const state = {
+    aspect: 'L', crf: 18, slow: false, resHeight: 1080,
+    frac: _vpCropFracForAspect('L', vid),
+    el: { container: c, rect, bar, handles }
+  };
+
+  function paint() {
+    const r = _vpCropRenderRect(host, vid);
+    const screenTop = r.ry + state.frac.y * r.rh;
+    rect.style.left   = (r.rx + state.frac.x * r.rw) + 'px';
+    rect.style.top    = screenTop + 'px';
+    rect.style.width  = (state.frac.w * r.rw) + 'px';
+    rect.style.height = (state.frac.h * r.rh) + 'px';
+    // (dev0293) Update the W×H label — source pixels after even-snap, since
+    // that's what ffmpeg will actually crop.
+    if (r.VW > 0 && r.VH > 0) {
+      const even = n => Math.max(2, Math.floor(n / 2) * 2);
+      const sw = even(state.frac.w * r.VW);
+      const sh = even(state.frac.h * r.VH);
+      dimLbl.textContent = sw + ' × ' + sh;
+    }
+    // (dev0294) If the rect is near the top of the host (bar would clip off-
+    // screen), flip the bar to INSIDE the rect (just below its top border).
+    // Restored to above (-34px) once the rect moves down. Threshold = bar's
+    // own height + a tiny safety margin.
+    bar.style.top = (screenTop < 40) ? '4px' : '-34px';
+  }
+  const ensureMeta = () => { state.frac = _vpCropFracForAspect(state.aspect, vid); paint(); };
+  if (vid.videoWidth) ensureMeta();
+  else vid.addEventListener('loadedmetadata', ensureMeta, { once: true });
+
+  const ro = new ResizeObserver(paint);
+  ro.observe(host);
+
+  // ── Drag-to-move (rect body) and corner resize (handles) ────────────────
+  let drag = null;
+  rect.addEventListener('pointerdown', e => {
+    if (e.target !== rect) return;
+    e.preventDefault(); e.stopPropagation();
+    drag = { kind: 'move', sx: e.clientX, sy: e.clientY,
+             ox: state.frac.x, oy: state.frac.y, r: _vpCropRenderRect(host, vid) };
+    rect.setPointerCapture(e.pointerId);
+  });
+  Object.entries(handles).forEach(([pos, h]) => {
+    h.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      drag = { kind: 'resize', pos, sx: e.clientX, sy: e.clientY,
+               of: { ...state.frac }, r: _vpCropRenderRect(host, vid) };
+      h.setPointerCapture(e.pointerId);
+    });
+  });
+  function onMove(e) {
+    if (!drag) return;
+    const dxF = (e.clientX - drag.sx) / drag.r.rw;
+    const dyF = (e.clientY - drag.sy) / drag.r.rh;
+    if (drag.kind === 'move') {
+      let nx = drag.ox + dxF, ny = drag.oy + dyF;
+      nx = Math.max(0, Math.min(1 - state.frac.w, nx));
+      ny = Math.max(0, Math.min(1 - state.frac.h, ny));
+      state.frac.x = nx; state.frac.y = ny;
+      paint();
+    } else if (drag.kind === 'resize') {
+      const of = drag.of, ratio = state.frac.ratio;
+      let ax, ay, px, py;
+      if (drag.pos === 'se') { ax = of.x;      ay = of.y;      px = of.x+of.w+dxF; py = of.y+of.h+dyF; }
+      if (drag.pos === 'sw') { ax = of.x+of.w; ay = of.y;      px = of.x       +dxF; py = of.y+of.h+dyF; }
+      if (drag.pos === 'ne') { ax = of.x;      ay = of.y+of.h; px = of.x+of.w+dxF; py = of.y       +dyF; }
+      if (drag.pos === 'nw') { ax = of.x+of.w; ay = of.y+of.h; px = of.x       +dxF; py = of.y       +dyF; }
+      const adx = Math.abs(px - ax), ady = Math.abs(py - ay);
+      // Aspect lock: pick whichever axis wants the rect larger, derive the other.
+      let nw, nh;
+      if (adx >= ady * ratio) { nw = adx; nh = nw / ratio; }
+      else                    { nh = ady; nw = nh * ratio; }
+      nw = Math.max(0.05, nw); nh = Math.max(0.05, nh);
+      let nx = (px >= ax) ? ax : ax - nw;
+      let ny = (py >= ay) ? ay : ay - nh;
+      if (nx < 0)        { nw += nx; nh = nw / ratio; nx = 0; }
+      if (ny < 0)        { nh += ny; nw = nh * ratio; ny = 0; }
+      if (nx + nw > 1)   { nw = 1 - nx; nh = nw / ratio; }
+      if (ny + nh > 1)   { nh = 1 - ny; nw = nh * ratio; }
+      state.frac.x = nx; state.frac.y = ny; state.frac.w = nw; state.frac.h = nh;
+      paint();
+    }
+  }
+  function onUp(e) {
+    if (drag) {
+      try { (drag.kind === 'move' ? rect : handles[drag.pos]).releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    drag = null;
+  }
+  document.addEventListener('pointermove', onMove, true);
+  document.addEventListener('pointerup',   onUp,   true);
+
+  // ── Bar controls ────────────────────────────────────────────────────────
+  bar.querySelector('#vp-crop-aspect').addEventListener('click', _vpCropSwapAspect);
+  const crfSlider = bar.querySelector('#vp-crop-crf');
+  const crfVal    = bar.querySelector('#vp-crop-crf-val');
+  crfSlider.addEventListener('input', () => {
+    state.crf = +crfSlider.value;
+    crfVal.textContent = state.crf;
+  });
+  const slowBox = bar.querySelector('#vp-crop-slow');
+  slowBox.addEventListener('change', () => { state.slow = !!slowBox.checked; });
+  const resSel = bar.querySelector('#vp-crop-res');
+  resSel.value = String(state.resHeight); // default 1080p
+  resSel.addEventListener('change', () => {
+    const v = resSel.value;
+    state.resHeight = (v === 'source') ? 'source' : (+v || 1080);
+  });
+  // (dev0296) Crop button now mirrors the G hotkey — prompts for an ID and
+  // uses the unified filename template. fromButton=true so missing AB shows
+  // a toast instead of the silent no-op G uses (which would be mysterious
+  // from a button click).
+  bar.querySelector('#vp-crop-do').addEventListener('click',
+    () => _vpGoSave({ fromButton: true }));
+  bar.querySelector('#vp-crop-close').addEventListener('click', _vpCropToggle);
+
+  // Disposal — called from vpClose to drop document listeners + ResizeObserver.
+  state.dispose = () => {
+    try { ro.disconnect(); } catch (_) {}
+    document.removeEventListener('pointermove', onMove, true);
+    document.removeEventListener('pointerup',   onUp,   true);
+  };
+  if (_vpState) _vpState.crop = state;
+}
+
+// (dev0288) Toggle crop overlay visibility (C hotkey + ✕ button).
+//
+// (dev0292) While the overlay is open, neutralize the video's swipe/zoom/pan
+// layer (#vp-swipe-catcher) and clear any host transform. Both are needed:
+//
+//   • swipeCatcher (z:50, sibling of host) would otherwise compete for clicks
+//     with the crop rect/handles (z:55, children of host). For most cases the
+//     rect wins on stacking order — but the moment host.style.transform is
+//     non-empty (even an identity transform left over from a zoom reset),
+//     host becomes its own stacking context and z:55 inside it is sandwiched
+//     UNDER swipeCatcher z:50. Clicks then hit swipeCatcher; the cursor stays
+//     "zoom-in" and the crop UI appears dead. Suppressing swipeCatcher while
+//     crop is open removes the ambiguity entirely.
+//
+//   • Clearing host.style.transform unwinds any lingering stacking context
+//     so things look normal again on close, and so multiple open/close
+//     cycles don't accumulate state.
+function _vpCropToggle() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  const isOpening = (s.el.container.style.display === 'none');
+  s.el.container.style.display = isOpening ? '' : 'none';
+  const sc = document.getElementById('vp-swipe-catcher');
+  const host = s.el.container.parentElement;
+  if (isOpening) {
+    if (sc) {
+      s._savedSCPE = sc.style.pointerEvents;
+      s._savedSCCursor = sc.style.cursor;
+      sc.style.pointerEvents = 'none';
+      sc.style.cursor = 'default';
+    }
+    if (host) host.style.transform = '';
+  } else {
+    if (sc) {
+      sc.style.pointerEvents = s._savedSCPE || '';
+      sc.style.cursor = s._savedSCCursor || '';
+    }
+  }
+}
+
+// (dev0288) Swap L↔P aspect, re-center on previous center, redraw.
+function _vpCropSwapAspect() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  const vid = _vpState.player && _vpState.player.el;
+  if (!vid) return;
+  s.aspect = (s.aspect === 'L') ? 'P' : 'L';
+  const prevCx = s.frac.x + s.frac.w / 2;
+  const prevCy = s.frac.y + s.frac.h / 2;
+  s.frac = _vpCropFracForAspect(s.aspect, vid);
+  let nx = prevCx - s.frac.w / 2, ny = prevCy - s.frac.h / 2;
+  nx = Math.max(0, Math.min(1 - s.frac.w, nx));
+  ny = Math.max(0, Math.min(1 - s.frac.h, ny));
+  s.frac.x = nx; s.frac.y = ny;
+  const label = s.el.bar.querySelector('#vp-crop-aspect');
+  if (label) label.textContent = s.aspect === 'L' ? '16:9' : '9:16';
+  const host = s.el.container.parentElement;
+  if (host) {
+    const r = _vpCropRenderRect(host, vid);
+    s.el.rect.style.left   = (r.rx + s.frac.x * r.rw) + 'px';
+    s.el.rect.style.top    = (r.ry + s.frac.y * r.rh) + 'px';
+    s.el.rect.style.width  = (s.frac.w * r.rw) + 'px';
+    s.el.rect.style.height = (s.frac.h * r.rh) + 'px';
+  }
+}
+
+// (dev0289) Crop button — wired to proxy.js /exec/ffmpeg. Computes the
+// source-pixel rect + output path, POSTs it, and streams NDJSON progress
+// back into the Crop button label ("45% · 1.2×"). Double-crop stacks the
+// suffix (foo_crop_crop.mp4) per user preference — no strip.
+//
+// Overwrite policy: send overwrite:false; if ffmpeg refuses because the
+// output exists (-n + "already exists" stderr), confirm() with the user
+// and retry with overwrite:true. No file-exists pre-probe — one request
+// path covers both new-file and re-crop.
+const PROXY_BASE = 'http://127.0.0.1:8081';
+
+// (dev0291) Resolve a slideshow-style folder-relative path
+// (e.g. "MyVideos/sub/clip.mp4") to an absolute disk path.
+//
+// The File System Access API never hands web JS the absolute path of a
+// picked folder (security feature). Slideshow stores `rootName + '/' +
+// relPath` in row.comment, where rootName is the picker's display name —
+// useful as a label, useless to ffmpeg. To bridge that gap we prompt the
+// user once per root folder for its real disk location and cache it in
+// localStorage. Subsequent crops from the same folder are silent.
+//
+// Returns null if the user cancels the prompt — caller aborts the crop.
+function _vpCropResolveAbsPath(relPath) {
+  if (!relPath) return null;
+  // Already absolute (Windows drive letter or POSIX root) → pass through.
+  if (/^[A-Za-z]:[\\/]/.test(relPath) || /^\//.test(relPath)) return relPath;
+  const slashIdx = relPath.indexOf('/');
+  const rootName = (slashIdx >= 0) ? relPath.slice(0, slashIdx) : relPath;
+  const rest     = (slashIdx >= 0) ? relPath.slice(slashIdx + 1) : '';
+  const key = 'vpDiskRoot:' + rootName;
+  let absRoot = localStorage.getItem(key) || '';
+  if (!absRoot) {
+    absRoot = prompt(
+      'Crop needs the absolute disk path of the folder "' + rootName + '"\n' +
+      'you picked in the slideshow.\n\nExample: M:\\videos\\' + rootName,
+      ''
+    );
+    if (!absRoot) return null;
+    localStorage.setItem(key, absRoot);
+  }
+  const sep = absRoot.includes('\\') ? '\\' : '/';
+  const restSep = rest.replace(/[\\/]/g, sep);
+  const joiner  = /[\\/]$/.test(absRoot) ? '' : sep;
+  return rest ? (absRoot + joiner + restSep) : absRoot;
+}
+
+// (dev0291) Match ffmpeg's "no such file" / ENOENT family on stderr. Used
+// to detect the case where the user cached a wrong absRoot for a folder —
+// we offer to clear the cache and re-prompt.
+function _vpCropStderrSaysNotFound(lines) {
+  return lines.some(l => /no such file|cannot find|enoent|failed to open/i.test(l));
+}
+
+// (dev0293) Local-time YYYYMMDD-HHMMSS for filename timestamps.
+function _vpTimestamp(d) {
+  d = d || new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
+         '-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+}
+
+// (dev0295) Duration in seconds → "NNminNNsec" (e.g. 225 → "03min45sec").
+// Minutes can exceed 99 for long clips (no hour rollover, by spec).
+function _vpDurStr(sec) {
+  const total = Math.max(0, Math.round(sec));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return String(m).padStart(2, '0') + 'min' + String(s).padStart(2, '0') + 'sec';
+}
+
+// (dev0293) Split an absolute path into {dir, base, ext}. Handles both
+// Windows and POSIX separators. Returns null if it doesn't look like a
+// path with an extension.
+function _vpSplitPath(p) {
+  const m = p.match(/^(.*)([\\/])([^\\/]+)\.([^.\\/]+)$/);
+  if (!m) return null;
+  return { dir: m[1], sep: m[2], base: m[3], ext: m[4] };
+}
+
+// (dev0293) A floating progress pill at the top of the V fullscreen.
+// Used by G save (no crop) where there's no Crop button to label with %.
+function _vpMakeProgressPill(prefix) {
+  const fs = document.getElementById('gridFullscreen');
+  if (!fs) return null;
+  const pill = document.createElement('div');
+  pill.id = 'vp-progress-pill';
+  pill.style.cssText =
+    'position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:60;' +
+    'background:#2a5d9a;color:#fff;border:1px solid #6af;padding:4px 12px;border-radius:4px;' +
+    'font:13px ui-monospace,Consolas,monospace;box-shadow:0 2px 8px rgba(0,0,0,0.6);';
+  pill.textContent = (prefix || '') + '...';
+  fs.appendChild(pill);
+  // Setter writes to textContent prefixed with the action label.
+  return {
+    get textContent() { return pill.textContent; },
+    set textContent(v) { pill.textContent = (prefix || '') + v; },
+    dispose() { try { pill.remove(); } catch (_) {} }
+  };
+}
+
+// (dev0293) G hotkey handler — save the A→B segment of the current disk
+// video. Crop overlay visible → crop+scale re-encode. Hidden/absent →
+// lossless stream copy (-c copy).
+//
+// (dev0296) Also wired to the Crop button (was _vpCropDoCrop). Both paths
+// now prompt for an ID and use the same filename template. _vpCropDoCrop
+// retired — its features (overwrite-confirm, not-found→clear-cache→retry,
+// progress UI) all live here now.
+//
+// Filename template (no timestamp — order: base, id, size, aspect, kind, dur):
+//   Base~id~SHORTp~L|P~full~NNminNNsec~.mp4    (lossless;    SHORTp from source)
+//   Base~id~SIZE~L|P~crop~NNminNNsec~.mp4      (crop+scale;  SIZE from dropdown)
+//
+// opts.fromButton — when true (Crop-button click), missing AB shows a toast
+// rather than silent return. Keeps the G hotkey's passthrough behavior so
+// asdf/etc. stay free outside the AB context.
+async function _vpGoSave(opts) {
+  opts = opts || {};
+  if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) {
+    if (opts.fromButton && typeof toast === 'function') toast('Set A and B first', 1800);
+    return;
+  }
+  const row = window._vpCurrentRow;
+  if (!row || !row._directVideoFile) {
+    if (opts.fromButton && typeof toast === 'function') toast('Save only works for disk videos', 2200);
+    return;
+  }
+  const relPath = row.comment || row.VidTitle || '';
+  if (!relPath) {
+    if (typeof toast === 'function') toast('save: no source file path on row', 2400);
+    return;
+  }
+  const absInput = _vpCropResolveAbsPath(relPath);
+  if (!absInput) {
+    if (typeof toast === 'function') toast('save cancelled (need folder path)', 2200);
+    return;
+  }
+  const parts = _vpSplitPath(absInput);
+  if (!parts) {
+    if (typeof toast === 'function') toast('save: cannot parse path', 2400);
+    return;
+  }
+  const id = prompt('Save name/ID for this clip:', '');
+  if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
+  const safeId = id.replace(/[<>:"/\\|?*~]/g, '_').trim() || 'unnamed';
+  // Crop overlay visible → crop+scale. Else → lossless trim.
+  const cropOn = !!(_vpState.crop && _vpState.crop.el.container.style.display !== 'none');
+  const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
+  const endSec   = Math.max(_vpState.aPoint, _vpState.bPoint);
+  const durStr = _vpDurStr(endSec - startSec);
+  const vid = _vpState.player && _vpState.player.el;
+  let outName, payload;
+  if (cropOn) {
+    const s = _vpState.crop;
+    const VW = vid.videoWidth, VH = vid.videoHeight;
+    const even = n => Math.max(2, Math.floor(n / 2) * 2);
+    const sx = even(s.frac.x * VW), sy = even(s.frac.y * VH);
+    const sw = even(s.frac.w * VW), sh = even(s.frac.h * VH);
+    // (dev0297) When the resolution dropdown is "Same" (no scale), the actual
+    // output dims are the crop dims, so report THAT in the filename rather
+    // than the literal word 'source' (which was uninformative).
+    const sizeStr = (s.resHeight === 'source')
+      ? (Math.min(sw, sh) + 'p')
+      : (s.resHeight + 'p');
+    outName = [parts.base, safeId, sizeStr, s.aspect, 'crop', durStr].join('~') + '~.mp4';
+    payload = {
+      input: absInput,
+      output: parts.dir + parts.sep + outName,
+      crop: { w: sw, h: sh, x: sx, y: sy },
+      crf: s.crf,
+      preset: s.slow ? 'slow' : 'medium',
+      aspect: s.aspect, resHeight: s.resHeight,
+      trim: { startSec, endSec },
+      overwrite: false
+    };
+  } else {
+    // (dev0296) Source dims drive size+aspect for lossless filenames so the
+    // resulting name still tells you the resolution at a glance.
+    const VW = (vid && vid.videoWidth)  || 0;
+    const VH = (vid && vid.videoHeight) || 0;
+    const sourceShort = (VW && VH) ? Math.min(VW, VH) : 0;
+    const sourceSizeStr = sourceShort ? (sourceShort + 'p') : 'source';
+    const sourceAspect  = (VW && VH) ? ((VW >= VH) ? 'L' : 'P') : 'L';
+    outName = [parts.base, safeId, sourceSizeStr, sourceAspect, 'full', durStr].join('~') + '~.mp4';
+    payload = {
+      input: absInput,
+      output: parts.dir + parts.sep + outName,
+      trim: { startSec, endSec },
+      overwrite: false
+      // No `crop` → builder takes the lossless -c copy path.
+    };
+  }
+  const totalMs = Math.max(0, (endSec - startSec) * 1000);
+  const useBtn = cropOn ? _vpState.crop.el.bar.querySelector('#vp-crop-do') : null;
+  const origLabel = useBtn ? useBtn.textContent : null;
+  const pill = useBtn ? null : _vpMakeProgressPill(cropOn ? '' : 'Saving ');
+  const target = useBtn || pill;
+  function restoreUI() {
+    if (useBtn) { useBtn.disabled = false; useBtn.textContent = origLabel; }
+    if (pill) pill.dispose();
+  }
+  try {
+    let result = await _vpCropRun(payload, target, totalMs);
+    if (result.exitCode !== 0 && _vpCropStderrSaysExists(result.stderr)) {
+      restoreUI();
+      if (confirm('"' + outName + '" already exists. Overwrite?')) {
+        // Re-mount pill if we tore it down above (overwrite path re-runs).
+        const pill2 = useBtn ? null : _vpMakeProgressPill('Saving ');
+        const target2 = useBtn || pill2;
+        payload.overwrite = true;
+        result = await _vpCropRun(payload, target2, totalMs);
+        if (pill2) pill2.dispose();
+        if (useBtn) { useBtn.disabled = false; useBtn.textContent = origLabel; }
+      } else {
+        if (typeof toast === 'function') toast('save cancelled', 1600);
+        return;
+      }
+    }
+    // (dev0291 / dev0296) "no such file" usually means cached absRoot is wrong.
+    // Offer to clear it so the next attempt re-prompts the user.
+    if (result.exitCode !== 0 && _vpCropStderrSaysNotFound(result.stderr)) {
+      restoreUI();
+      const slashIdx = relPath.indexOf('/');
+      const rootName = (slashIdx >= 0) ? relPath.slice(0, slashIdx) : relPath;
+      if (confirm('ffmpeg could not find:\n  ' + absInput +
+                  '\n\nClear cached disk path for folder "' + rootName + '" and retry?')) {
+        localStorage.removeItem('vpDiskRoot:' + rootName);
+        return _vpGoSave(opts);
+      }
+      if (typeof toast === 'function') toast('save failed: file not found', 2600);
+      console.error('[save not found]', { exitCode: result.exitCode, payload,
+        stderr: result.stderr, lastProgress: result.lastProgress });
+      return;
+    }
+    restoreUI();
+    if (result.exitCode === 0) {
+      if (typeof toast === 'function') toast('saved → ' + outName, 3200);
+    } else {
+      const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
+      if (typeof toast === 'function') toast('save failed: ' + tail, 4200);
+      console.error('[save failed]', { exitCode: result.exitCode, payload,
+        stderr: result.stderr, lastProgress: result.lastProgress });
+    }
+  } catch (err) {
+    restoreUI();
+    const msg = (err && err.message) || String(err);
+    if (typeof toast === 'function') toast('save error: ' + msg, 3600);
+    console.error('[save error]', err);
+  }
+}
+
+// (dev0289) Match the ffmpeg "-n refused to overwrite" stderr line. ffmpeg's
+// wording varies slightly across versions ("File '...' already exists. Exiting."
+// or "Not overwriting - exiting"), so case-insensitive substring is robust.
+function _vpCropStderrSaysExists(lines) {
+  return lines.some(l => /already exists/i.test(l) || /not overwriting/i.test(l));
+}
+
+// (dev0289) One request/response cycle to /exec/ffmpeg. Resolves with
+// {exitCode, stderr[], lastProgress}. Throws only on network/fetch error.
+//
+// (dev0293) `btn` is now duck-typed: may be a real <button>, a plain <div>,
+// or any object with a writable `textContent`. The `disabled` property is
+// set only if present — divs don't have it, so they're spared the noise.
+async function _vpCropRun(payload, btn, totalMs) {
+  const setLabel = s => { if (btn) btn.textContent = s; };
+  const setDisabled = b => { if (btn && 'disabled' in btn) btn.disabled = b; };
+  setDisabled(true);
+  setLabel('0%');
+  const res = await fetch(PROXY_BASE + '/exec/ffmpeg', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error('HTTP ' + res.status + (txt ? ': ' + txt.slice(0, 200) : ''));
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  const stderr = [];
+  let exitCode = -1;
+  let lastProgress = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch (_) { continue; }
+      if (ev.type === 'progress') {
+        lastProgress = ev;
+        const pct = (totalMs > 0 && ev.timeMs != null)
+          ? Math.min(100, Math.max(0, Math.round(ev.timeMs / totalMs * 100)))
+          : null;
+        const spd = ev.speed ? (' · ' + ev.speed) : '';
+        // (dev0294) Once we hit 100% but `done` hasn't arrived yet, ffmpeg
+        // is doing its tail work (finalizing the container, writing moov
+        // atom for mp4, flushing buffers). Label it so 100% + still-moving
+        // speed doesn't look stuck.
+        const label = (pct === 100) ? ('finalizing' + spd)
+                                    : ((pct != null ? pct + '%' : '...') + spd);
+        setLabel(label);
+      } else if (ev.type === 'stderr') {
+        stderr.push(ev.line);
+      } else if (ev.type === 'done') {
+        exitCode = (typeof ev.exitCode === 'number') ? ev.exitCode : -1;
+        if (ev.error) stderr.push(ev.error);
+      }
+    }
+  }
+  return { exitCode, stderr, lastProgress };
+}
+
 function vpMountDirectVideo(host, link, seg, muted) {
   host.innerHTML = '';
   const vid = document.createElement('video');
@@ -1957,6 +2771,8 @@ function vpMountDirectVideo(host, link, seg, muted) {
   vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
   if (seg && seg.start) vid.currentTime = seg.start;
   host.appendChild(vid);
+  _vpMountDiskInfoOverlay(host, vid, window._vpCurrentRow);
+  _vpMountCropOverlay(host, vid, window._vpCurrentRow);
   // (dev0253 / fix) Native <video controls> need pointer events on the
   // bottom strip of the video. Instead of disabling the swipeCatcher
   // entirely (which killed R→L swipe-close AND hold-zoom), shrink it so
