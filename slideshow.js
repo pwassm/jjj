@@ -2935,6 +2935,10 @@ function _slideshowHotkeyShouldFire() {
   if (document.getElementById('mergeModal'))           return false;
   if (document.getElementById('treeCtxMenu'))          return false;
   if (document.getElementById('chipCtxMenu'))          return false;
+  // (dev0317) On the user-mode shareable menu ("I") there's no grid mounted,
+  // so bare S would launch slideshow over nothing. Suppress until the user
+  // has picked an ss item and is on G.
+  if (document.getElementById('shareableMenu'))        return false;
   return true;
 }
 

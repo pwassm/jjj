@@ -453,14 +453,13 @@ async function _showShareableMenu() {
       const idx = parseInt(el.dataset.i, 10);
       const it = items[idx];
       if (!it) return;
-      // Mark "came from menu" so V close / slideshow close can route back
-      // here instead of the (empty) G that would otherwise be exposed.
-      window._fromShareableMenu = true;
       ov.remove();
       if (it.kind === 'v') {
-        // Force gridOverlay visible (V mounts on top of it). vpClose
-        // hides it again via the same _vpForcedGridFromT path the table-
-        // launched V uses, then re-shows the menu.
+        // V from menu: route vpClose back to the menu via the
+        // _fromShareableMenu hook, since there's no real G underneath
+        // (we only forced gridOverlay open as a V backdrop). Direct
+        // /tshare links never set this flag — they run locked.
+        window._fromShareableMenu = true;
         const gOvl = document.getElementById('gridOverlay');
         if (gOvl) {
           gOvl.style.display = 'flex';
@@ -468,6 +467,13 @@ async function _showShareableMenu() {
         }
         _openItemByUid(it.uid);
       } else if (it.kind === 'ss') {
+        // ss from menu: G is the genuine destination — slideshow plays
+        // over it, and when the slideshow stops the user stays on G
+        // (per dev0317 explicit ask). Do NOT set _fromShareableMenu:
+        // slideshow.js calls vpClose() during navigation, and we don't
+        // want every slide transition to pop the menu back. Configs
+        // button is still the explicit "back to menu" gesture.
+        window._fromShareableMenu = false;
         _openSlideshowBySsId(it.ss);
       }
     });
