@@ -1267,11 +1267,12 @@ function gridOpenFullscreen(row, contained) {
 
 function vpClose() {
   // (dev0249) Locked-link mode: V was opened via ?i=NNN without /unlock.
-  // Refuse to close — toast a hint about the unlock URL instead. Viewer
-  // can only see the one item; no path to T/G/C.
+  // Refuse to close — viewer can only see the one shared item; no path to
+  // T/G/C.
+  // (dev0315) Silently refuse. The old toast hinted "add /unlock to the
+  // URL" — that's private dev info that gives away the unlock mechanism,
+  // so it must not be shown to the public.
   if (window._lockedUid) {
-    if (typeof toast === 'function')
-      toast('Shared link — add /unlock to the URL for full access', 2200);
     return;
   }
   // (zip0186) Close Annotate panel alongside Ie/V — it auto-opened with them,
@@ -3084,10 +3085,14 @@ window._executeHotkey = function(key) {
   }
 
   // (zip0141) In user mode (Gu/Cu only), block hotkeys that lead to
-  // dev-only screens (T, E, A). G stays accessible — that's the user's
-  // home screen.
+  // dev-only screens. G/V/C/H stay accessible — those are the user's
+  // home/view/config/help surfaces. Everything else (T table, E editor,
+  // A annotate, D dictionary, M hamburger menu, L/W clipboard import,
+  // F filter) is dev-only and must never appear on the public site.
+  // (dev0315) Extended from {t,e,a} to also bar {d,m,l,w,f}.
   const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
-  if (userMode && (key === 't' || key === 'e' || key === 'a')) return;
+  if (userMode && (key === 't' || key === 'e' || key === 'a'
+      || key === 'd' || key === 'm' || key === 'l' || key === 'w' || key === 'f')) return;
   
   // T = Save and go to Table
   if (key === 't') {

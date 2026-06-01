@@ -94,12 +94,33 @@ ssmenu in `review` mode. Slideshow-specific behaviors (transitions, auto-advance
 - Auto-import of camera dumps into `Assets\` (manual organize)
 - Migration tooling to move existing DCIMs into `Assets\` (one-time user task)
 
-## Build sequence (next thread — Sonnet)
+## Build sequence
 
-1. IDB schema + handle persistence + permission re-grant flow.
-2. Refactor ssmenu to be mode-aware: gate auto-advance / transitions behind `mode === 'slideshow'`; add `?mode=review` parsing and in-page `Tab` toggle.
-3. ssmenu Source dropdown migration: seed `roots` from existing `vpDiskRoot:*` localStorage keys, read from IDB going forward.
-4. Review-mode UI shell: path breadcrumb, folder tree with rating tallies, queue depth indicator, mode toggle button.
-5. Rating keys + `pendingMoves` queue + auto-flush + multi-level undo stack.
-6. Indexing button + diff walk + metadata extraction.
-7. T screen `R` hotkey: route to ssmenu with `?mode=review`. Add `R` to the screens table in CLAUDE.md.
+**Shipped (dev0298–dev0300):**
+
+1. ssmenu is mode-aware (`slideshow` default; `review` triage mode).
+2. T-screen `R` hotkey opens ssmenu in review mode (left-hand pick — see [[left-hand-hotkeys]]).
+3. Walk skips `a_/s_/d_/f_` subdirs in review so already-rated files don't re-queue.
+4. `a/s/d/f` rating: walks/creates `<root>/<rating>_/<srcRelDir>/` and calls FSA `fh.move()`. No queue yet — direct move on keypress (simpler than the hybrid queue from the design).
+5. Vprime — inline `<video controls muted>` for video slides in review mode. NOT the full V player; V would block a/s/d/f via `_videoActive` and bind them to AB-marker movement. Frame visible via auto-seek to 0.1s after metadata loads.
+6. Bottom-left tally card showing `a-#  s-#  d-#  f-#` updated per move.
+
+**Still to build:**
+
+- `Q` screen — local-media table view (left-hand mirror of T). Separate IDB store; ml.json untouched. Reuse T's table widget eventually by factoring out a shared renderer.
+- Multi-root `roots` IDB store (currently still uses ssmenu's single `ssSource` handle in `sal-fsa` DB).
+- Path breadcrumb in review-mode preview pane.
+- Per-folder rating tallies in a folder-tree pane.
+- Mode toggle key (`Tab`) so user can flip slideshow ↔ review without closing.
+- Pending-moves queue + hybrid auto-flush (per design — currently direct-move only).
+- Multi-level undo (`z`) and skip-to-next-unrated (`n`).
+- Indexing (cached metadata: dims, duration, takenAt).
+- Tag editing (`tags.json` integration).
+- Cloudflare upload state.
+
+## Constraints learned during build
+
+- **Manifest is expected to be ephemeral early on.** User's media is scattered across removable drives; q.json (or whatever backs the Q-screen table) will be wiped and rebuilt repeatedly as schema evolves. Implication: keep schema lean. Store only data that **can't** be re-derived from a disk scan — Cloudflare upload state, manual tags, indexing-cache freshness. Ratings live in disk paths (`a_/` etc.), so they survive wipe + rescan.
+- **Rating subdirs lazy-create only.** `s_/` never exists on disk unless you've pressed `s` at least once.
+- **Hotkey preference: left-hand.** New global hotkeys default to the left side of the keyboard (Q/W/E/A/S/D/F/Z/X/C/V/B) so the right hand stays on the mouse. T (Table) predates this convention.
+- **Don't toast on every successful move.** The bottom-right counter (X / N) already shows progress; per-move toast is noise during rapid triage. Reserve toasts for errors.

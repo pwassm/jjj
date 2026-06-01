@@ -1753,7 +1753,13 @@ function closeHM() {
   hmPanel.classList.remove('open'); 
   document.removeEventListener('keydown', hmKeyHandler, true);
 }
-function toggleHM(){ hmPanel.classList.contains('open') ? closeHM() : openHM(); }
+function toggleHM(){
+  // (dev0315) The hamburger menu is dev-only tooling (folder picker,
+  // dictionary, settings, GitHub push). Never open it on the public site,
+  // even if a stray button gets tapped — Help has its own H hotkey.
+  if (typeof _isUserMode === 'function' && _isUserMode()) return;
+  hmPanel.classList.contains('open') ? closeHM() : openHM();
+}
 
 // Keyboard handler for menu items
 function hmKeyHandler(e) {
@@ -6779,6 +6785,9 @@ document.addEventListener('keydown', e => {
   // Left-hand mnemonic mirror of T (far-right).
   if (e.key === 'q' || e.key === 'Q') {
     e.preventDefault();
+    // (dev0315) q.html is the dev local-media table — never expose it on
+    // the public site.
+    if (typeof _isUserMode === 'function' && _isUserMode()) return;
     window.open('q.html', '_blank', 'noopener');
     return;
   }

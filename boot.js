@@ -224,6 +224,29 @@ _markUserModeClass();
   } catch (e) { /* URL parse error — fall through to normal boot */ }
 })();
 
+// (dev0315) Hide the routing query from the address bar on the public site.
+// After _markDeepLinkClass has captured the deep-link target into
+// window._deepUid / _deepConfig / _deepSs, rewrite the URL back to the
+// pretty slug (e.g. /share) that 404.html stashed — or, for a bare typed
+// ?i= link, just drop the query. This keeps ?i=NNN / ?ss= / ?c= out of the
+// bar so visitors can't see (and guess at) how to reach other items.
+// User mode only — dev keeps the query for debugging. Runs before
+// _routeInitialScreen, which reads the window._deep* vars (not the query),
+// so routing is unaffected.
+(function _restorePrettyUrl() {
+  try {
+    if (typeof _isUserMode === 'function' && !_isUserMode()) return;
+    if (!(window._deepUid || window._deepConfig || window._deepSs)) return;
+    if (!(window.history && history.replaceState)) return;
+    var pretty = null;
+    try {
+      pretty = sessionStorage.getItem('sal-pretty');
+      sessionStorage.removeItem('sal-pretty');
+    } catch (e) {}
+    history.replaceState(null, '', pretty || window.location.pathname);
+  } catch (e) { /* replaceState unavailable — leave URL as-is */ }
+})();
+
 // ── (zip0154) Dev/User mode toggle badge ─────────────────────────────────────
 // The bottom-right badge used to be a non-interactive version label. It's
 // now a button that:
@@ -545,6 +568,17 @@ function _openItemByUid(uid) {
     const row = data.find(r => String(r.UID) === want);
     if (!row) {
       if (typeof toast === 'function') toast('No item with UID ' + want, 2000);
+      return;
+    }
+    // (dev0315) Anti-enumeration on the public site: a LOCKED link (?i=NNN
+    // with no /unlock) may only open items that were explicitly shared —
+    // i.e. rows carrying a non-empty `Direct` slug. This stops a curious
+    // visitor from guessing ?i=6, ?i=7, … to browse the whole library.
+    // Dev /unlock links (window._lockedUid unset) bypass the check, and
+    // dev mode (localhost) is unaffected.
+    const _um = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+    if (_um && window._lockedUid && !String(row.Direct || '').trim()) {
+      if (typeof toast === 'function') toast('Not found', 1500);
       return;
     }
     _lastGridRow = row;

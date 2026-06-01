@@ -1108,6 +1108,9 @@
 
   window.openDictionary = function () {
     if (dictOverlay) return;
+    // (dev0315) D (Dictionary) is dev-only — never render it on the public
+    // site, regardless of how the call was reached.
+    if (typeof _isUserMode === 'function' && _isUserMode()) return;
 
     // Inject one-time CSS for keyboard-focus highlight in the right edit panel.
     // Browser default :focus is often invisible on dark UIs; this makes the

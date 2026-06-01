@@ -38,6 +38,14 @@
   var slug = parts.join('/').toLowerCase();
   if (!slug) { go(''); return; }
 
+  // (dev0315) Stash the original pretty path (e.g. /share, /ss4) WITHOUT
+  // any /unlock suffix. boot.js restores it via history.replaceState after
+  // routing so the address bar shows the friendly slug instead of the
+  // ?i=NNN / ?ss= / ?c= query — which would otherwise reveal how to
+  // enumerate other items. sessionStorage survives the location.replace
+  // below (same tab) and is cleared by boot.js once consumed.
+  try { sessionStorage.setItem('sal-pretty', base + slug); } catch (e) {}
+
   function matches(v) {
     return v != null && String(v).trim().toLowerCase() === slug;
   }
