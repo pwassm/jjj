@@ -1754,10 +1754,12 @@ function closeHM() {
   document.removeEventListener('keydown', hmKeyHandler, true);
 }
 function toggleHM(){
-  // (dev0315) The hamburger menu is dev-only tooling (folder picker,
-  // dictionary, settings, GitHub push). Never open it on the public site,
-  // even if a stray button gets tapped — Help has its own H hotkey.
-  if (typeof _isUserMode === 'function' && _isUserMode()) return;
+  // (dev0316) In user mode the menu opens via the top-left #userHmBtn and
+  // is CSS-filtered to Slideshow + Help only (push/load/settings/folder/
+  // dictionary all hidden). The dev0315 unconditional no-op was too
+  // aggressive — it broke the slideshow launcher the user wanted in user
+  // mode. The bare M-key hotkey is still blocked in vp.js _executeHotkey,
+  // so this only opens via an explicit button tap.
   hmPanel.classList.contains('open') ? closeHM() : openHM();
 }
 
@@ -1780,10 +1782,18 @@ hmBtn.addEventListener('click', e => { e.stopPropagation(); toggleHM(); });
 // top:12px/left:12px when #hmBtn has zero size, which matches this button.
 const _gridHmBtn = document.getElementById('gridHmBtn');
 if (_gridHmBtn) _gridHmBtn.addEventListener('click', e => { e.stopPropagation(); toggleHM(); });
+// (dev0316) User-mode top-left hamburger. Same panel, CSS hides every dev
+// item in user mode so what remains is essentially the Slideshow launcher
+// (plus Help). Position-wise this is what #hmBtn used to give devs — the
+// toolbar is hidden in user mode so we need a dedicated button.
+const _userHmBtn = document.getElementById('userHmBtn');
+if (_userHmBtn) _userHmBtn.addEventListener('click', e => { e.stopPropagation(); toggleHM(); });
 document.addEventListener('pointerdown', e => {
   if (!hmPanel.classList.contains('open')) return;
   if (hmPanel.contains(e.target)) return;
-  if (e.target === hmBtn || e.target === _gridHmBtn) return;
+  if (e.target === hmBtn || e.target === _gridHmBtn || e.target === _userHmBtn) return;
+  // Span children of the user-mode hamburger button also count as the button.
+  if (_userHmBtn && _userHmBtn.contains(e.target)) return;
   closeHM();
 }, true);
 

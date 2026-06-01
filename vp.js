@@ -1334,6 +1334,18 @@ function vpClose() {
   // Restore focus to main document so hotkeys work immediately
   document.body.setAttribute('tabindex', '-1');
   document.body.focus();
+  // (dev0316) Return-to-menu hook. When V was launched from the user-
+  // mode shareable menu ("I"), there's no real G underneath — vpClose's
+  // _vpForcedGridFromT branch already hid the empty gridOverlay above.
+  // Re-mount the menu so the viewer lands back on home instead of a
+  // black screen. Direct /tshare links never set this flag (they run
+  // in locked-mode and refuse to close).
+  if (window._fromShareableMenu) {
+    window._fromShareableMenu = false;
+    if (typeof window._showShareableMenu === 'function') {
+      setTimeout(() => window._showShareableMenu(), 50);
+    }
+  }
   // Note: we stay on grid (don't close it)
 }
 

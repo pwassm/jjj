@@ -126,33 +126,37 @@ function _isUserMode() {
   const force = params.get('mode');
   if (force === 'user') { window._userModeCached = true;  return true;  }
   if (force === 'dev')  { window._userModeCached = false; return false; }
-  // (zip0154) localStorage override from the dev/user toggle badge.
-  // Persists across reloads until the user clicks the badge again. URL
-  // ?mode= still wins (so query-string testing isn't affected by stale
-  // localStorage).
+
+  // (dev0316) Hostname-first: production hosts (sealifeandmore.com,
+  // github.io, etc.) ALWAYS force user mode and IGNORE any stale
+  // 'sal-mode-override' in localStorage. Without this, a developer who
+  // previously hit the dev/user toggle badge on the public site would
+  // be stuck in dev mode there forever — which is exactly the symptom
+  // observed on slam.com booting "dev0315". The override is also
+  // purged so it can't follow back into a future dev test.
+  const h = (window.location.hostname || '').toLowerCase();
+  const isLocalHost = (
+    h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0'
+    || /^192\.168\./.test(h) || /^10\./.test(h)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+  );
+  if (!isLocalHost) {
+    try { localStorage.removeItem('sal-mode-override'); } catch (e) {}
+    window._userModeCached = true;
+    return true;
+  }
+
+  // Local host: honour the localStorage toggle, then fall back to
+  // mobile-UA heuristic (phones on the dev LAN default to user mode),
+  // then default to dev.
   try {
     const ls = localStorage.getItem('sal-mode-override');
     if (ls === 'user') { window._userModeCached = true;  return true;  }
     if (ls === 'dev')  { window._userModeCached = false; return false; }
   } catch (e) { /* localStorage unavailable */ }
-  // (zip0235) Mobile UA defaults to USER mode even on LAN IPs — phones
-  // attached to the dev's router should still see the user experience.
-  // Dev override available via ?mode=dev or the dev/user toggle badge.
-  if (_isMobileDevice()) {
-    window._userModeCached = true; return true;
-  }
-  const h = (window.location.hostname || '').toLowerCase();
-  // file:// has empty hostname → dev (running locally from disk)
-  if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') {
-    window._userModeCached = false; return false;
-  }
-  // Private LAN ranges → dev
-  if (/^192\.168\./.test(h) || /^10\./.test(h)
-      || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) {
-    window._userModeCached = false; return false;
-  }
-  window._userModeCached = true;
-  return true;
+  if (_isMobileDevice()) { window._userModeCached = true; return true; }
+  window._userModeCached = false;
+  return false;
 }
 
 // (zip0141) Mark <html> with the mode class as early as possible so any
@@ -259,20 +263,22 @@ _markUserModeClass();
   const badge = document.getElementById('ver-badge');
   if (!badge) return;
   const isUser = _isUserMode();
-  // Label = current mode + version. HELP_VERSION_STR is the canonical version
-  // string (e.g. "dev0154"); swap the prefix when in user mode.
+  // (dev0316) Hide the badge entirely in user mode — it leaked the dev
+  // mechanism (a single click reloaded into dev0XXX with all dev tooling
+  // exposed). Users have no need for a version chip; devs still see and
+  // can click it on localhost.
+  if (isUser) {
+    badge.style.display = 'none';
+    return;
+  }
   const ver = (typeof HELP_VERSION_STR === 'string')
     ? HELP_VERSION_STR.replace(/^(dev|user)/, '')
     : '0154';
-  badge.textContent = (isUser ? 'user' : 'dev') + ver;
-  badge.classList.toggle('user', isUser);
-  badge.title = isUser
-    ? 'User mode (' + badge.textContent + ') — click to switch to dev mode (reloads)'
-    : 'Dev mode (' + badge.textContent + ') — click to switch to user mode (reloads)';
+  badge.textContent = 'dev' + ver;
+  badge.title = 'Dev mode (' + badge.textContent + ') — click to switch to user mode (reloads)';
   badge.addEventListener('click', function() {
-    const target = isUser ? 'dev' : 'user';
-    try { localStorage.setItem('sal-mode-override', target); } catch(e) {}
-    if (typeof toast === 'function') toast('Switching to ' + target + ' mode…', 600);
+    try { localStorage.setItem('sal-mode-override', 'user'); } catch(e) {}
+    if (typeof toast === 'function') toast('Switching to user mode…', 600);
     setTimeout(() => window.location.reload(), 250);
   });
 })();
@@ -366,6 +372,109 @@ function _wireFullscreenOnFirstTap() {
   return;
 }
 
+// (dev0316) Shareable-menu (the "I" / Initial screen). On the public site
+// (slam.com, github.io), bare-URL boot lands here instead of on G. The menu
+// lists every shareable item:
+//   - ml.json rows with non-empty `Direct`      → opens V on that UID
+//   - c.json rows with non-empty `ss` field      → opens slideshow over that grid
+// Labels are the Direct value (V items) and the gname (G items). Tapping
+// an item opens it WITHOUT triggering locked-mode, so V close / Configs
+// returns to this menu (see vpClose return-to-menu hook). Direct URLs
+// (/tshare, /ss4) still bypass the menu and run locked, one-shot.
+async function _showShareableMenu() {
+  // Clear any prior locked-mode state — re-entering the menu means the
+  // viewer is back at "home" and free to pick another item.
+  window._lockedUid = undefined;
+  window._lockedConfig = undefined;
+  document.documentElement.classList.remove('locked-mode');
+  document.documentElement.classList.remove('deep-uid');
+
+  // Tear down any open V / G / picker overlays so the menu paints clean.
+  ['gridFullscreen', 'gridOverlay', 'mobileCPicker'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const prev = document.getElementById('shareableMenu');
+  if (prev) prev.remove();
+
+  // Load ml.json and c.json — FSA folder first, HTTP fallback.
+  let ml = null, cj = null;
+  try {
+    const dir = (typeof _getDir === 'function') ? await _getDir() : null;
+    if (dir) {
+      try { const fh = await dir.getFileHandle('ml.json'); ml = JSON.parse(await (await fh.getFile()).text()); } catch (e) {}
+      try { const fh = await dir.getFileHandle('c.json');  cj = JSON.parse(await (await fh.getFile()).text()); } catch (e) {}
+    }
+    if (!ml) { try { const r = await fetch('ml.json?t=' + Date.now()); if (r.ok) ml = await r.json(); } catch (e) {} }
+    if (!cj) { try { const r = await fetch('c.json?t='  + Date.now()); if (r.ok) cj = await r.json(); } catch (e) {} }
+  } catch (e) {}
+
+  const mlRows = Array.isArray(ml) ? ml : [];
+  const cRows = Array.isArray(cj)
+    ? (cj[0] && cj[0]._salMeta ? cj.slice(1) : cj)
+    : [];
+
+  const vItems = mlRows
+    .filter(r => r && !r._salMeta && String(r.Direct || '').trim() && r.UID != null)
+    .map(r => ({ kind: 'v', label: String(r.Direct).trim(), uid: String(r.UID) }));
+  const gItems = cRows
+    .filter(g => g && !g._salMeta && String(g.ss || '').trim() && g.gname)
+    .map(g => ({ kind: 'ss', label: String(g.gname).trim(), ss: String(g.ss).trim() }));
+  const items = vItems.concat(gItems);
+
+  const ov = document.createElement('div');
+  ov.id = 'shareableMenu';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:999990;background:#0a0a1a;'
+    + 'display:flex;flex-direction:column;font-family:monospace;color:#eee;';
+
+  let listHtml;
+  if (!items.length) {
+    listHtml = '<div style="padding:24px;color:#aa8;">No shareable items yet.</div>';
+  } else {
+    listHtml = items.map((it, i) =>
+      '<div class="sm-item" data-i="' + i + '" style="padding:18px 22px;'
+      + 'border-bottom:1px solid #222;cursor:pointer;font-size:18px;color:#ddd;">'
+      + (it.label.replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c])))
+      + '</div>'
+    ).join('');
+  }
+
+  ov.innerHTML =
+    '<div style="display:flex;align-items:center;padding:14px 16px;'
+      + 'background:#1a1a2e;border-bottom:2px solid #4af;">'
+      + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeeAndLearn</span>'
+    + '</div>'
+    + '<div id="smList" style="flex:1;overflow-y:auto;">' + listHtml + '</div>';
+
+  document.body.appendChild(ov);
+
+  ov.querySelectorAll('.sm-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.i, 10);
+      const it = items[idx];
+      if (!it) return;
+      // Mark "came from menu" so V close / slideshow close can route back
+      // here instead of the (empty) G that would otherwise be exposed.
+      window._fromShareableMenu = true;
+      ov.remove();
+      if (it.kind === 'v') {
+        // Force gridOverlay visible (V mounts on top of it). vpClose
+        // hides it again via the same _vpForcedGridFromT path the table-
+        // launched V uses, then re-shows the menu.
+        const gOvl = document.getElementById('gridOverlay');
+        if (gOvl) {
+          gOvl.style.display = 'flex';
+          window._vpForcedGridFromT = true;
+        }
+        _openItemByUid(it.uid);
+      } else if (it.kind === 'ss') {
+        _openSlideshowBySsId(it.ss);
+      }
+    });
+  });
+}
+window._showShareableMenu = _showShareableMenu;
+
 function _routeInitialScreen() {
   const params = new URLSearchParams(window.location.search);
   let target = params.get('screen');
@@ -402,7 +511,14 @@ function _routeInitialScreen() {
       // calls gridShow() once the config is loaded.
       _openConfigByName(deepConfig);
     } else if (target === 'g') {
-      if (typeof gridShow === 'function') gridShow();
+      // (dev0316) User-mode bare boot lands on the shareable menu ("I"),
+      // not on G. Dev mode and any explicit deep-link path keep the old
+      // G behaviour (deep-link cases are handled in the branches above).
+      if (_isUserMode() && typeof _showShareableMenu === 'function') {
+        _showShareableMenu();
+      } else if (typeof gridShow === 'function') {
+        gridShow();
+      }
     } else if (target === 'c') {
       // On mobile or in user mode, "C" means the friendly config picker.
       if (_isMobileDevice() || _isUserMode()) _showMobileCPicker();
@@ -758,6 +874,13 @@ function _wireMobileToCBtn() {
     const gridUp = grid.style.display === 'flex';
     const fsUp   = fs && fs.style.display === 'flex';
     btn.style.display = (gridUp && showWhenOpen && !fsUp) ? 'block' : 'none';
+    // (dev0316) The user-mode top-left hamburger follows the same gate so
+    // the slideshow launcher is only available while a grid is mounted.
+    // On the shareable menu / V / locked-mode it stays hidden.
+    const userBtn = document.getElementById('userHmBtn');
+    if (userBtn) {
+      userBtn.style.display = (gridUp && _isUserMode() && !fsUp) ? 'flex' : 'none';
+    }
     // Whenever G becomes visible, re-apply user-mode chrome (hides
     // dev-only buttons that gridShow may have re-styled).
     if (gridUp) _applyUserModeChromeOnGrid();
@@ -771,11 +894,16 @@ function _wireMobileToCBtn() {
     attributes: true, attributeFilter: ['style']
   });
   btn.addEventListener('click', () => {
-    // (zip0141) On mobile OR in user mode, show the friendly picker
-    // overlay (G stays mounted in background so it's still there when
-    // picker dismisses). On dev/desktop, fall back to the full C table.
-    if (_isMobileDevice() || _isUserMode()) _showMobileCPicker();
-    else {
+    // (dev0316) In user mode the Configs button is the explicit "back to
+    // the shareable menu (I)" gesture — it does NOT show the full c.json
+    // picker any more (that listed dev-only grids without `ss` values).
+    // Mobile devs (LAN, dev mode) keep the friendly picker; desktop
+    // devs fall through to the full C table.
+    if (_isUserMode() && typeof _showShareableMenu === 'function') {
+      _showShareableMenu();
+    } else if (_isMobileDevice()) {
+      _showMobileCPicker();
+    } else {
       if (typeof gridClose === 'function') gridClose();
       if (typeof openCScreen === 'function') setTimeout(openCScreen, 80);
     }

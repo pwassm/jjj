@@ -18,22 +18,26 @@
     if (force === 'user') isUser = true;
     else if (force === 'dev') isUser = false;
     else {
-      // (zip0154) localStorage override (set by dev/user toggle badge)
-      var ls = null;
-      try { ls = localStorage.getItem('sal-mode-override'); } catch(_) {}
-      if (ls === 'user') isUser = true;
-      else if (ls === 'dev') isUser = false;
-      else {
-        // (zip0235) Mobile UA defaults to USER mode, even when reached
-        // via a LAN IP — phones connected to the dev's hotspot/router
-        // should still see the user experience. Override with ?mode=dev.
-        var uaMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent || '');
-        if (uaMobile) isUser = true;
+      // (dev0316) Hostname-first — keeps in sync with _isUserMode() in
+      // boot.js. Production hosts (sealifeandmore.com, github.io, …)
+      // force user mode and purge any stale 'sal-mode-override'.
+      var h = (window.location.hostname || '').toLowerCase();
+      var isLocal = (
+        h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0'
+        || /^192\.168\./.test(h) || /^10\./.test(h)
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+      );
+      if (!isLocal) {
+        try { localStorage.removeItem('sal-mode-override'); } catch(_) {}
+        isUser = true;
+      } else {
+        var ls = null;
+        try { ls = localStorage.getItem('sal-mode-override'); } catch(_) {}
+        if (ls === 'user') isUser = true;
+        else if (ls === 'dev') isUser = false;
         else {
-          var h = (window.location.hostname || '').toLowerCase();
-          if (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0') isUser = false;
-          else if (/^192\.168\./.test(h) || /^10\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) isUser = false;
-          else isUser = true;
+          var uaMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent || '');
+          isUser = !!uaMobile;
         }
       }
     }
@@ -157,12 +161,41 @@ html.user-mode body { background: #0a0a14; }
 #fsa-status { font-size:11px; color:#5a8; padding:7px 18px; border-bottom:1px solid rgba(255,255,255,0.08); background:rgba(0,40,20,0.3); min-height:26px; }
 /* (dev0262) On phones (user-mode) the hamburger should not show project-folder
    or Dictionary — these are dev-only concepts. Hide them and the dividers
-   that immediately follow them so the menu collapses cleanly. */
+   that immediately follow them so the menu collapses cleanly.
+   (dev0316) Also hide push/load/settings + their dividers and the trailing
+   footer in user mode — the user-mode hamburger only exists to launch the
+   slideshow (and Help). */
 html.user-mode #fsa-status,
 html.user-mode #hm-setfolder,
 html.user-mode #hm-setfolder + .hm-divider,
 html.user-mode #hm-dict,
-html.user-mode #hm-dict + .hm-divider { display: none !important; }
+html.user-mode #hm-dict + .hm-divider,
+html.user-mode #hm-push,
+html.user-mode #hm-loadgh,
+html.user-mode #hm-push + .hm-loadgh,
+html.user-mode #hm-loadgh + .hm-divider,
+html.user-mode #hm-settings,
+html.user-mode #hmPanel > div:last-child { display: none !important; }
+
+/* (dev0316) Top-left hamburger button — user-mode only, dev/locked hidden.
+   Same z-index ladder as #mobileToCBtn (the bottom-left Configs button)
+   so they sit at the corners on the same plane. Hidden during V/locked
+   so a shared one-shot link can't open the slideshow menu. */
+#userHmBtn {
+  position: fixed; top: 10px; left: 12px; z-index: 999990;
+  width: 40px; height: 34px; border-radius: 6px;
+  border: 2px solid #8ef; background: rgba(0,40,100,0.7);
+  cursor: pointer; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; padding: 5px;
+}
+#userHmBtn:hover { background: rgba(0,70,160,0.9); }
+#userHmBtn span { display: block; width: 20px; height: 2px; background: #8ef; border-radius: 1px; }
+/* Visibility is driven by boot.js _wireMobileToCBtn (which already
+   observes #gridOverlay + #gridFullscreen): when G is up and we're in
+   user mode, the button shows; on the shareable menu, on V, or in
+   locked-mode, it stays hidden. */
+html.locked-mode #userHmBtn { display: none !important; }
 /* (zip0251) Loud "re-grant needed" state — silent FSA failures previously
    let edits go to localStorage only without the user noticing. */
 #fsa-status.warn { color:#fff; font-weight:bold; background:rgba(180,0,0,0.55); border-bottom-color:#f88; animation:fsaPulse 1.4s ease-out 1; }
@@ -811,6 +844,10 @@ thead th.rn              { color: #fff !important; }
 </div>
 
 <button id="ver-badge" type="button" title="Click to toggle dev/user mode (reloads page)"></button>
+<!-- (dev0316) Top-left hamburger, user-mode only. Opens the same hmPanel
+     as #hmBtn, but CSS hides everything except Slideshow + Help in user
+     mode so it acts as a slideshow launcher. -->
+<button id="userHmBtn" type="button" title="Menu"><span></span><span></span><span></span></button>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -830,7 +867,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0315';
+  window.HELP_VERSION_STR = 'dev0316';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];
