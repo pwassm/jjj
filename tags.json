@@ -3879,5 +3879,148 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "aulacoctena-acuminata",
+    "label": "Aulacoctena acuminata",
+    "kind": "taxon",
+    "parents": [
+      "aulacoctena"
+    ],
+    "aliases": [
+      "Aulacoctena acuminata Mortensen",
+      "1932"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "tentaculata",
+    "label": "Tentaculata",
+    "kind": "taxon",
+    "parents": [
+      "ctenophora"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "cydippida",
+    "label": "Cydippida",
+    "kind": "taxon",
+    "parents": [
+      "tentaculata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "aulacoctenidae",
+    "label": "Aulacoctenidae",
+    "kind": "taxon",
+    "parents": [
+      "cydippida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "aulacoctena",
+    "label": "Aulacoctena",
+    "kind": "taxon",
+    "parents": [
+      "aulacoctenidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "mertensia-ovum",
+    "label": "Mertensia ovum",
+    "kind": "taxon",
+    "parents": [
+      "mertensia"
+    ],
+    "aliases": [
+      "Mertensia ovum (Fabricius, 1780)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "sea nut"
+  },
+  {
+    "id": "mertensiidae",
+    "label": "Mertensiidae",
+    "kind": "taxon",
+    "parents": [
+      "cydippida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "mertensia",
+    "label": "Mertensia",
+    "kind": "taxon",
+    "parents": [
+      "mertensiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "lampocteis-cruentiventer",
+    "label": "Lampocteis cruentiventer",
+    "kind": "taxon",
+    "parents": [
+      "lampocteis"
+    ],
+    "aliases": [
+      "Lampocteis cruentiventer Harbison, Matsumoto & Robison, 2001"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Bloodbelly Comb Jelly"
+  },
+  {
+    "id": "lobata",
+    "label": "Lobata",
+    "kind": "taxon",
+    "parents": [
+      "tentaculata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "lampoctenidae",
+    "label": "Lampoctenidae",
+    "kind": "taxon",
+    "parents": [
+      "lobata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "lampocteis",
+    "label": "Lampocteis",
+    "kind": "taxon",
+    "parents": [
+      "lampoctenidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

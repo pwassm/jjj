@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Q — Local Media (mockup)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #0a0a14; color: #ddd;
+    font-family: monospace, sans-serif; font-size: 12px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Toolbar ── */
+  #qtoolbar {
+    background: #111122; border-bottom: 2px solid #4af;
+    padding: 6px 12px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h1 { font-size: 14px; color: #8ef; white-space: nowrap; }
+  .meta { font-size: 11px; color: #889; }
+  .btn {
+    padding: 4px 12px; border-radius: 5px; cursor: pointer;
+    font: 12px monospace; white-space: nowrap;
+    border: 1px solid #4af; background: rgba(0,60,140,0.4); color: #8ef;
+  }
+  .btn:hover { background: rgba(0,60,140,0.7); }
+  .btn.green { border-color: #5f5; color: #afa; background: rgba(0,80,0,0.35); }
+  .btn.warn  { border-color: #fa6; color: #fc8; background: rgba(80,40,0,0.35); }
+  .btn.red   { border-color: #f66; color: #f88; background: rgba(100,0,0,0.3); }
+  .chip {
+    padding: 3px 10px; border-radius: 14px; cursor: pointer;
+    font: 11px monospace; white-space: nowrap;
+    border: 1px solid #335; background: rgba(20,20,40,0.5); color: #aab;
+  }
+  .chip:hover { border-color: #4af; color: #8ef; }
+  .chip.active {
+    background: rgba(0,80,180,0.5); border-color: #8ef; color: #fff; font-weight: bold;
+  }
+  .chip .ct { opacity: 0.7; margin-left: 5px; }
+  .chip.a-bin { border-color: #5f5; color: #afa; }  /* best */
+  .chip.s-bin { border-color: #4af; color: #8ef; }  /* good */
+  .chip.d-bin { border-color: #fa6; color: #fc8; }  /* fair */
+  .chip.f-bin { border-color: #f66; color: #f88; }  /* poor */
+  input[type=text] {
+    background: #0a0a1a; border: 1px solid #4af; color: #fff;
+    border-radius: 4px; padding: 3px 8px; font: 12px monospace;
+    outline: none; min-width: 200px;
+  }
+  select {
+    background: #0a0a1a; border: 1px solid #4af; color: #fff;
+    border-radius: 4px; padding: 3px 6px; font: 12px monospace;
+  }
+  .vbar { width: 1px; height: 20px; background: #334; }
+
+  /* ── Table ── */
+  #qwrap { flex: 1; overflow: auto; min-height: 0; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; }
+  thead { position: sticky; top: 0; z-index: 10; }
+  thead th {
+    background: #1a1a2e; color: #8ef; font-size: 11px; font-weight: bold;
+    padding: 6px 8px;
+    border-right: 1px solid #4af;
+    border-bottom: 2px solid #5af;
+    text-align: left; white-space: nowrap;
+  }
+  thead th.sortable { cursor: pointer; }
+  thead th.sortable:hover { background: #22224a; }
+  thead th.sorted::after { content: ' ▾'; color: #fc8; }
+  tbody td {
+    padding: 4px 8px; border-right: 1px solid #252535; border-bottom: 1px solid #1a1a28;
+    font-size: 12px; color: #ccc;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    height: 24px; line-height: 18px;
+  }
+  tbody tr:nth-child(odd)  td { background: #0a0a1a; }
+  tbody tr:nth-child(even) td { background: #101020; }
+  tbody tr:hover td { background: rgba(60,120,200,0.12) !important; }
+
+  /* Rating-tinted rows */
+  tbody tr.r-a td { background: rgba(0, 100, 0, 0.18) !important; }
+  tbody tr.r-s td { background: rgba(0, 60, 160, 0.18) !important; }
+  tbody tr.r-d td { background: rgba(120, 80, 0, 0.18) !important; }
+  tbody tr.r-f td { background: rgba(120, 0, 0, 0.18) !important; }
+  tbody tr.r-a:hover td { background: rgba(0, 140, 0, 0.30) !important; }
+  tbody tr.r-s:hover td { background: rgba(0, 80, 200, 0.30) !important; }
+  tbody tr.r-d:hover td { background: rgba(160, 100, 0, 0.30) !important; }
+  tbody tr.r-f:hover td { background: rgba(160, 0, 0, 0.30) !important; }
+
+  /* Rating badge */
+  .rate {
+    display: inline-block; width: 18px; text-align: center;
+    border-radius: 3px; font-weight: bold; font-size: 11px;
+  }
+  .rate.a { background: #0a4a0a; color: #afa; }
+  .rate.s { background: #0a2a5a; color: #8ef; }
+  .rate.d { background: #4a3a0a; color: #fc8; }
+  .rate.f { background: #5a0a0a; color: #f88; }
+  .rate.none { background: #1a1a2e; color: #555; }
+
+  .kind {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; font-weight: bold; letter-spacing: 0.05em;
+  }
+  .kind.img { background: #0a2a3a; color: #8cf; }
+  .kind.vid { background: #2a0a3a; color: #c8f; }
+
+  .upload {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px;
+  }
+  .upload.none { color: #556; }
+  .upload.pending { background: #4a3a0a; color: #fc8; }
+  .upload.done { background: #0a4a3a; color: #5fc; }
+
+  .path { color: #889; font-size: 11px; }
+  .dim { color: #adf; font-family: monospace; }
+  .size { color: #ccc; text-align: right; font-family: monospace; }
+  /* (dev0306) IAR / VAR / IMB / VMB are derived columns. Encoding:
+     IAR = image  L/P + megapixel int  (L12 = landscape 12 MP)
+     VAR = video  L/P + tier            (P4k, L1080p, L8k …)
+     IMB = image  size in MB (number only, header says MB)
+     VMB = video  size in MB
+     Computed from width/height/sizeBytes — IDB doesn't need new fields. */
+  .dim:empty::before, .size:empty::before { content: '·'; color: #334; }
+  .date { color: #999; font-family: monospace; }
+  .tags { color: #fc8; font-size: 11px; }
+
+  /* checkbox col */
+  td.cbc, th.cbh { text-align: center; padding: 2px 4px; }
+  input[type=checkbox] { cursor: pointer; accent-color: #4af; width: 13px; height: 13px; }
+
+  /* ── Footer ── */
+  #qfooter {
+    background: #0d1422; border-top: 1px solid #335;
+    padding: 5px 12px; flex-shrink: 0;
+    font-size: 11px; color: #889;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .sel-count { color: #8ef; font-weight: bold; }
+
+  /* note banner */
+  .note {
+    background: rgba(80,50,0,0.4); border-left: 3px solid #fc8;
+    color: #fc8; font-size: 11px; padding: 6px 12px;
+    margin: 4px 12px 0;
+  }
+</style>
+</head>
+<body>
+
+<div id="qtoolbar">
+  <div class="row">
+    <h1>Q — Local Media</h1>
+    <span class="meta">M:\Assets &nbsp;(1247 files indexed, last scan 2m ago)</span>
+    <button class="btn">↻ Rescan</button>
+    <button class="btn">+ Add drive</button>
+    <span class="vbar"></span>
+    <button class="btn green">▶ Slideshow selected</button>
+    <button class="btn green">R Review selected</button>
+    <span class="vbar"></span>
+    <button class="btn warn">↑ Upload to Cloudflare</button>
+    <button class="btn red">✕ Delete (move to f_)</button>
+    <span style="flex:1"></span>
+    <button class="btn">⚙ Columns</button>
+  </div>
+
+  <div class="row">
+    <span style="color:#8ef;font-size:11px;">Filter:</span>
+    <span class="chip active">All <span class="ct">1247</span></span>
+    <span class="chip">Unsorted <span class="ct">234</span></span>
+    <span class="chip a-bin">a_ <span class="ct">88</span></span>
+    <span class="chip s-bin">s_ <span class="ct">142</span></span>
+    <span class="chip d-bin">d_ <span class="ct">67</span></span>
+    <span class="chip f-bin">f_ <span class="ct">312</span></span>
+    <span class="vbar"></span>
+    <span class="chip">Images <span class="ct">1102</span></span>
+    <span class="chip">Videos <span class="ct">145</span></span>
+    <span class="vbar"></span>
+    <span class="chip">Pending upload <span class="ct">19</span></span>
+    <span class="chip">Uploaded <span class="ct">73</span></span>
+    <span class="vbar"></span>
+    <input type="text" placeholder="filename / path contains…">
+    <span style="color:#8ef;font-size:11px;">Sort:</span>
+    <select>
+      <option>Modified desc</option>
+      <option>Modified asc</option>
+      <option>Name asc</option>
+      <option>Size desc</option>
+      <option>Rating</option>
+      <option>Path</option>
+    </select>
+  </div>
+</div>
+
+<div id="qwrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="cbh"><input type="checkbox"></th>
+        <th class="sortable">★</th>
+        <th class="sortable">Kind</th>
+        <th class="sortable" style="min-width:200px;">Filename</th>
+        <th class="sortable" style="min-width:280px;">Path (under root)</th>
+        <th class="sortable" title="Image aspect+megapixels — L=landscape P=portrait, number = MP">IAR</th>
+        <th class="sortable" title="Video aspect+resolution — L=landscape P=portrait, tier = 8k/4k/1440p/1080p/720p/480p">VAR</th>
+        <th class="sortable" title="Image size in MB">IMB</th>
+        <th class="sortable" title="Video size in MB">VMB</th>
+        <th class="sortable">Duration</th>
+        <th class="sortable sorted">Modified</th>
+        <th class="sortable">Upload</th>
+        <th>Tags</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Sample rows reflecting M:\Assets actual layout -->
+
+      <!-- Unsorted (fresh dump from camera) -->
+      <tr>
+        <td class="cbc"><input type="checkbox" checked></td>
+        <td><span class="rate none">—</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>IMG_5234.JPG</td>
+        <td class="path">Unsorted/</td>
+        <td class="dim">L12</td>
+        <td class="dim"></td>
+        <td class="size">3.2</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-30 14:22</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+      <tr>
+        <td class="cbc"><input type="checkbox" checked></td>
+        <td><span class="rate none">—</span></td>
+        <td><span class="kind vid">VID</span></td>
+        <td>VID_5235.MP4</td>
+        <td class="path">Unsorted/</td>
+        <td class="dim"></td>
+        <td class="dim">L1080p</td>
+        <td class="size"></td>
+        <td class="size">18.4</td>
+        <td class="date">0:42</td>
+        <td class="date">2026-05-30 14:23</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+      <tr>
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate none">—</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>20260530_142401.jpg</td>
+        <td class="path">Unsorted/</td>
+        <td class="dim">P8</td>
+        <td class="dim"></td>
+        <td class="size">2.9</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-30 14:24</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+
+      <!-- Sorted, untriaged date folders -->
+      <tr>
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate none">—</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>IMG_001.JPG</td>
+        <td class="path">Sorted/DCIM ultra 2026 05 25/</td>
+        <td class="dim">L12</td>
+        <td class="dim"></td>
+        <td class="size">3.1</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-25 09:14</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+      <tr>
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate none">—</span></td>
+        <td><span class="kind vid">VID</span></td>
+        <td>20260525_101233.mp4</td>
+        <td class="path">Sorted/DCIM ultra 2026 05 25/</td>
+        <td class="dim"></td>
+        <td class="dim">P4k</td>
+        <td class="size"></td>
+        <td class="size">12.6</td>
+        <td class="date">0:02</td>
+        <td class="date">2026-05-25 10:12</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+
+      <!-- Rated 'a' — moved into Sorted/a_/ (path preserves source subdir) -->
+      <tr class="r-a">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate a">a</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>IMG_042.JPG</td>
+        <td class="path">Sorted/a_/DCIM ultra 2026 05 11/</td>
+        <td class="dim">L12</td>
+        <td class="dim"></td>
+        <td class="size">3.4</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-11 10:34</td>
+        <td><span class="upload pending">pending</span></td>
+        <td class="tags">activity, hiking</td>
+      </tr>
+      <tr class="r-a">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate a">a</span></td>
+        <td><span class="kind vid">VID</span></td>
+        <td>20260511_141022.mp4</td>
+        <td class="path">Sorted/a_/DCIM ultra 2026 05 11/</td>
+        <td class="dim"></td>
+        <td class="dim">L4k</td>
+        <td class="size"></td>
+        <td class="size">62.1</td>
+        <td class="date">0:18</td>
+        <td class="date">2026-05-11 14:10</td>
+        <td><span class="upload done">uploaded</span></td>
+        <td class="tags">activity, swimming</td>
+      </tr>
+
+      <!-- Rated 's' -->
+      <tr class="r-s">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate s">s</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>IMG_055.JPG</td>
+        <td class="path">Sorted/s_/DCIM ultra 2026 05 25/</td>
+        <td class="dim">L12</td>
+        <td class="dim"></td>
+        <td class="size">3.0</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-25 11:08</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags">life, chordata</td>
+      </tr>
+
+      <!-- Rated 'd' -->
+      <tr class="r-d">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate d">d</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>IMG_077.JPG</td>
+        <td class="path">Sorted/d_/DCIM ultra 2026 05 11/</td>
+        <td class="dim">L12</td>
+        <td class="dim"></td>
+        <td class="size">2.7</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-11 09:44</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+
+      <!-- Rated 'f' (kept on disk for dedup) -->
+      <tr class="r-f">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate f">f</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>IMG_999.JPG</td>
+        <td class="path">Sorted/f_/DCIM ultra 2026 05 11/</td>
+        <td class="dim">L12</td>
+        <td class="dim"></td>
+        <td class="size">4.1</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-11 11:02</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+      <tr class="r-f">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate f">f</span></td>
+        <td><span class="kind vid">VID</span></td>
+        <td>IMG_5008.MP4</td>
+        <td class="path">Sorted/f_/DCIM ultra 2026 05 25/</td>
+        <td class="dim"></td>
+        <td class="dim">P1080p</td>
+        <td class="size"></td>
+        <td class="size">8.2</td>
+        <td class="date">0:09</td>
+        <td class="date">2026-05-25 13:22</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags"></td>
+      </tr>
+
+      <!-- More rated rows showing variety -->
+      <tr class="r-a">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate a">a</span></td>
+        <td><span class="kind img">IMG</span></td>
+        <td>IMG_120.JPG</td>
+        <td class="path">Sorted/a_/DCIM ultra 2026 05 25/</td>
+        <td class="dim">L12</td>
+        <td class="dim"></td>
+        <td class="size">3.6</td>
+        <td class="size"></td>
+        <td></td>
+        <td class="date">2026-05-25 15:48</td>
+        <td><span class="upload done">uploaded</span></td>
+        <td class="tags">activity, hiking</td>
+      </tr>
+      <tr class="r-s">
+        <td class="cbc"><input type="checkbox"></td>
+        <td><span class="rate s">s</span></td>
+        <td><span class="kind vid">VID</span></td>
+        <td>20260525_154835.mp4</td>
+        <td class="path">Sorted/s_/DCIM ultra 2026 05 25/</td>
+        <td class="dim"></td>
+        <td class="dim">L4k</td>
+        <td class="size"></td>
+        <td class="size">88.4</td>
+        <td class="date">0:34</td>
+        <td class="date">2026-05-25 15:48</td>
+        <td><span class="upload none">—</span></td>
+        <td class="tags">life</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <strong>Mockup notes</strong> — not wired to real data. Real Q would read from the
+    <code>localmedia</code> IDB store, populated by scanning every drive's <code>Assets/</code>
+    root. Schema fields (per <code>localmedia-design.md</code>): rootId, relPath, kind,
+    size, mtime, width, height, durationMs, takenAt, rating (a/s/d/f or null), uploadState
+    (none/pending/uploaded), cloudflareId, tags. <br>
+    <strong>Derived columns:</strong>
+    IAR = image landscape/portrait + megapixels (L12 = landscape 12 MP);
+    VAR = video landscape/portrait + resolution tier
+    (8k ≥ 7680, 4k ≥ 3840, 1440p ≥ 2560, 1080p ≥ 1920, 720p ≥ 1280, 480p ≥ 640);
+    IMB / VMB = file size in MB, split per kind so you can sort+filter without mixing apples
+    and bandwidth.<br>
+    Filter chips compose: clicking "a_" + "Videos" + "Pending upload" shows only
+    a-rated videos awaiting Cloudflare. Click a chip again to deselect.<br>
+    Row buttons (per-row right-click or hover): re-rate (a/s/d/f), reveal in
+    Explorer, copy path, open in V, force re-index.<br>
+    Could "replace ssmenu" as you mentioned: Source dropdown disappears,
+    slideshow becomes "▶ Slideshow selected" from a filtered Q view.
+    Review (R) becomes "R Review selected".
+  </div>
+</div>
+
+<div id="qfooter">
+  <span>
+    <span class="sel-count">2 selected</span> &nbsp;·&nbsp;
+    13 rows shown of 1247 total &nbsp;·&nbsp;
+    47.3 MB combined size of visible rows
+  </span>
+  <span>
+    Q v0 mockup — not wired to real data
+  </span>
+</div>
+
+</body>
+</html>

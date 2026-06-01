@@ -6764,4 +6764,22 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); isHelpOpen() ? closeHelp() : openHelp();
     return;
   }
+  // r → open ssmenu in Review mode (local-media triage; see localmedia-design.md)
+  if (e.key === 'r' || e.key === 'R') {
+    e.preventDefault();
+    if (typeof slideshowOpenSourceFolder === 'function') {
+      slideshowOpenSourceFolder(true, 'review');
+    } else if (typeof toast === 'function') {
+      toast('Slideshow not loaded yet', 1500);
+    }
+    return;
+  }
+  // (dev0305/0306) q → open Q-screen (local-media table; see
+  // localmedia-design.md). Opens in a new tab so T state isn't lost.
+  // Left-hand mnemonic mirror of T (far-right).
+  if (e.key === 'q' || e.key === 'Q') {
+    e.preventDefault();
+    window.open('q.html', '_blank', 'noopener');
+    return;
+  }
 }, true); // capture phase so it runs before other handlers

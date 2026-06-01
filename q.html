@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Q — Local Media</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #0a0a14; color: #ddd;
+    font-family: monospace, sans-serif; font-size: 12px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Toolbar ── */
+  #qtoolbar {
+    background: #111122; border-bottom: 2px solid #4af;
+    padding: 6px 12px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h1 { font-size: 14px; color: #8ef; white-space: nowrap; }
+  .meta { font-size: 11px; color: #8aa; }
+  .btn {
+    padding: 4px 12px; border-radius: 5px; cursor: pointer;
+    font: 12px monospace; white-space: nowrap;
+    border: 1px solid #4af; background: rgba(0,60,140,0.4); color: #8ef;
+  }
+  .btn:hover { background: rgba(0,60,140,0.7); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn.green { border-color: #5f5; color: #afa; background: rgba(0,80,0,0.35); }
+  .btn.warn  { border-color: #fa6; color: #fc8; background: rgba(80,40,0,0.35); }
+  .btn.red   { border-color: #f66; color: #f88; background: rgba(100,0,0,0.3); }
+  .chip {
+    padding: 3px 10px; border-radius: 14px; cursor: pointer;
+    font: 11px monospace; white-space: nowrap;
+    border: 1px solid #335; background: rgba(20,20,40,0.5); color: #aab;
+    user-select: none;
+  }
+  .chip:hover { border-color: #4af; color: #8ef; }
+  .chip.active {
+    background: rgba(0,80,180,0.5); border-color: #8ef; color: #fff; font-weight: bold;
+  }
+  .chip .ct { opacity: 0.7; margin-left: 5px; }
+  .chip.a-bin { border-color: #5f5; color: #afa; }
+  .chip.s-bin { border-color: #4af; color: #8ef; }
+  .chip.d-bin { border-color: #fa6; color: #fc8; }
+  .chip.f-bin { border-color: #f66; color: #f88; }
+  input[type=text] {
+    background: #0a0a1a; border: 1px solid #4af; color: #fff;
+    border-radius: 4px; padding: 3px 8px; font: 12px monospace;
+    outline: none; min-width: 180px;
+  }
+  select {
+    background: #0a0a1a; border: 1px solid #4af; color: #fff;
+    border-radius: 4px; padding: 3px 6px; font: 12px monospace;
+  }
+  .vbar { width: 1px; height: 20px; background: #334; }
+
+  /* ── Table ── */
+  #qwrap { flex: 1; overflow: auto; min-height: 0; }
+  /* (dev0307/0309) table-layout:fixed lets <colgroup> widths actually apply.
+     dev0309: dropped `width:max-content; min-width:100%` — those forced the
+     table to grow with content / fill the viewport, which overrode col
+     widths and prevented shrinking a column below its longest filename.
+     Width is now set explicitly from JS as the sum of col widths. */
+  table { border-collapse: separate; border-spacing: 0;
+          table-layout: fixed; }
+  thead { position: sticky; top: 0; z-index: 10; }
+  thead th {
+    background: #1a1a2e; color: #8ef; font-size: 11px; font-weight: bold;
+    padding: 6px 8px;
+    border-right: 1px solid #4af;
+    border-bottom: 2px solid #5af;
+    text-align: left; white-space: nowrap;
+    user-select: none;
+    position: relative;            /* container for the resize handle */
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  thead th.sortable { cursor: pointer; }
+  thead th.sortable:hover { background: #22224a; }
+  thead th.sorted::after { content: ' ▾'; color: #fc8; }
+  thead th.sorted.asc::after { content: ' ▴'; color: #fc8; }
+  /* Column resize handle on the right edge of each th. */
+  .col-resize {
+    position: absolute; right: 0; top: 0;
+    width: 6px; height: 100%;
+    cursor: col-resize; user-select: none;
+    background: transparent;
+    z-index: 2;
+  }
+  .col-resize:hover { background: rgba(100,200,255,0.6); }
+  .col-resize.dragging { background: rgba(120,220,255,0.85) !important; }
+  tbody td {
+    padding: 4px 8px; border-right: 1px solid #252535; border-bottom: 1px solid #1a1a28;
+    font-size: 12px; color: #ccc;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    height: 24px; line-height: 18px;
+  }
+  tbody tr:nth-child(odd)  td { background: #0a0a1a; }
+  tbody tr:nth-child(even) td { background: #101020; }
+  tbody tr:hover td { background: rgba(60,120,200,0.12) !important; }
+
+  tbody tr.r-a td { background: rgba(0, 100, 0, 0.18) !important; }
+  tbody tr.r-s td { background: rgba(0, 60, 160, 0.18) !important; }
+  tbody tr.r-d td { background: rgba(120, 80, 0, 0.18) !important; }
+  tbody tr.r-f td { background: rgba(120, 0, 0, 0.18) !important; }
+  tbody tr.r-a:hover td { background: rgba(0, 140, 0, 0.30) !important; }
+  tbody tr.r-s:hover td { background: rgba(0, 80, 200, 0.30) !important; }
+  tbody tr.r-d:hover td { background: rgba(160, 100, 0, 0.30) !important; }
+  tbody tr.r-f:hover td { background: rgba(160, 0, 0, 0.30) !important; }
+
+  .rate {
+    display: inline-block; width: 18px; text-align: center;
+    border-radius: 3px; font-weight: bold; font-size: 11px;
+  }
+  .rate.a { background: #0a4a0a; color: #afa; }
+  .rate.s { background: #0a2a5a; color: #8ef; }
+  .rate.d { background: #4a3a0a; color: #fc8; }
+  .rate.f { background: #5a0a0a; color: #f88; }
+  .rate.none { background: #1a1a2e; color: #555; }
+
+  /* (dev0307) 1-5 stars column. Filled stars colored, empty greyed. */
+  .stars { letter-spacing: 1px; font-size: 13px; line-height: 1; }
+  .stars .on  { color: #fc6; }
+  .stars .off { color: #334; }
+
+  .kind {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; font-weight: bold; letter-spacing: 0.05em;
+  }
+  .kind.img { background: #0a2a3a; color: #8cf; }
+  .kind.vid { background: #2a0a3a; color: #c8f; }
+
+  .upload {
+    display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px;
+  }
+  .upload.none { color: #556; }
+  .upload.pending { background: #4a3a0a; color: #fc8; }
+  .upload.done { background: #0a4a3a; color: #5fc; }
+
+  .path { color: #889; font-size: 11px; }
+  .dim { color: #adf; font-family: monospace; }
+  .size { color: #ccc; text-align: right; font-family: monospace; }
+  .date { color: #999; font-family: monospace; }
+  .tags { color: #fc8; font-size: 11px; }
+  .dim:empty::before, .size:empty::before { content: '·'; color: #334; }
+
+  td.cbc, th.cbh { text-align: center; padding: 2px 4px; }
+  input[type=checkbox] { cursor: pointer; accent-color: #4af; width: 13px; height: 13px; }
+
+  /* ── Footer ── */
+  #qfooter {
+    background: #0d1422; border-top: 1px solid #335;
+    padding: 5px 12px; flex-shrink: 0;
+    font-size: 11px; color: #889;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .sel-count { color: #8ef; font-weight: bold; }
+
+  .banner {
+    padding: 10px 14px; margin: 6px 12px; border-radius: 6px; font-size: 12px;
+  }
+  .banner.info { background: rgba(0,40,80,0.4); border-left: 3px solid #4af; color: #8ef; }
+  .banner.warn { background: rgba(80,50,0,0.4); border-left: 3px solid #fc8; color: #fc8; }
+  .banner.error { background: rgba(80,0,0,0.4); border-left: 3px solid #f66; color: #f88; }
+  .banner.hidden { display: none; }
+
+  #qstatus { color: #5fc; font-weight: bold; }
+  #scanProgress { color: #fc8; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div id="qtoolbar">
+  <div class="row">
+    <h1>Q — Local Media</h1>
+    <span class="meta" id="qroot">No root granted</span>
+    <button class="btn" id="grantBtn">📂 Grant / Pick folder</button>
+    <button class="btn" id="rescanBtn" disabled>↻ Rescan</button>
+    <button class="btn" id="extractBtn" disabled title="Extract dimensions, duration, and EXIF camera Make/Model. Runs after Rescan automatically; click to re-run or fill gaps.">📏 Extract meta</button>
+    <button class="btn" id="stopExtractBtn" style="display:none;border-color:#f66;color:#f88;">⏸ Stop</button>
+    <span class="vbar"></span>
+    <button class="btn green" id="ssBtn" disabled>▶ Slideshow selected</button>
+    <button class="btn green" id="reviewBtn" disabled>R Review selected</button>
+    <span class="vbar"></span>
+    <button class="btn warn" disabled>↑ Upload to Cloudflare</button>
+    <button class="btn red"  id="deleteBtn" disabled>✕ Delete (move to deleted_)</button>
+    <span style="flex:1"></span>
+    <button class="btn" id="resetColsBtn" title="Reset column widths to defaults">↺ Cols</button>
+    <span id="qstatus"></span>
+    <span id="scanProgress"></span>
+  </div>
+
+  <div class="row">
+    <span style="color:#8ef;font-size:11px;">Filter:</span>
+    <span class="chip active" data-fchip="rating" data-fval="all">All <span class="ct" id="ct-all">0</span></span>
+    <span class="chip" data-fchip="rating" data-fval="unsorted">Unsorted <span class="ct" id="ct-unsorted">0</span></span>
+    <span class="chip a-bin" data-fchip="rating" data-fval="a">a_ <span class="ct" id="ct-a">0</span></span>
+    <span class="chip s-bin" data-fchip="rating" data-fval="s">s_ <span class="ct" id="ct-s">0</span></span>
+    <span class="chip d-bin" data-fchip="rating" data-fval="d">d_ <span class="ct" id="ct-d">0</span></span>
+    <span class="chip f-bin" data-fchip="rating" data-fval="f">f_ <span class="ct" id="ct-f">0</span></span>
+    <span class="vbar"></span>
+    <span class="chip" data-fchip="kind" data-fval="image">Images <span class="ct" id="ct-img">0</span></span>
+    <span class="chip" data-fchip="kind" data-fval="video">Videos <span class="ct" id="ct-vid">0</span></span>
+    <span class="vbar"></span>
+    <span class="chip" data-fchip="dupes" data-fval="on" title="Files whose name appears more than once across the index">Dupes only <span class="ct" id="ct-dupes">0</span></span>
+    <span class="vbar"></span>
+    <span class="chip" data-fchip="myown" data-fval="true" title="Your own files (auto-set when EXIF Camera detected; click cell to override)">MyOwn <span class="ct" id="ct-myown">0</span></span>
+    <span class="chip" data-fchip="myown" data-fval="false" title="Not your own (downloaded or external)">NotMyOwn <span class="ct" id="ct-notmyown">0</span></span>
+    <span class="vbar"></span>
+    <input type="text" id="qfilter" placeholder="filename / path contains…">
+    <span style="color:#8ef;font-size:11px;">Sort:</span>
+    <select id="qsort">
+      <option value="mtime-desc">Modified desc</option>
+      <option value="mtime-asc">Modified asc</option>
+      <option value="name-asc">Name asc</option>
+      <option value="size-desc">Size desc</option>
+      <option value="rating">Rating (asdf)</option>
+      <option value="stars-desc">Stars desc</option>
+      <option value="path">Path</option>
+    </select>
+  </div>
+</div>
+
+<div id="emptyBanner" class="banner info">
+  <strong>Welcome to Q.</strong> Click <strong>📂 Grant / Pick folder</strong> to point
+  at your Assets folder — the picker opens immediately (browsers require this from a
+  direct click). If you've previously granted via ssmenu on this same origin, the
+  picker pre-selects that folder. Then <strong>↻ Rescan</strong> walks the tree and
+  indexes every image and video. Index persists in IndexedDB (<code>localmedia</code>)
+  across reloads.
+</div>
+
+<div id="qwrap">
+  <table id="qtable">
+    <colgroup>
+      <col style="width:30px">    <!-- 0: checkbox -->
+      <col style="width:50px">    <!-- 1: Rate (asdf) -->
+      <col style="width:90px">    <!-- 2: Stars (1-5) -->
+      <col style="width:54px">    <!-- 3: Kind -->
+      <col style="width:220px">   <!-- 4: Filename -->
+      <col style="width:280px">   <!-- 5: Path -->
+      <col style="width:64px">    <!-- 6: IAR -->
+      <col style="width:78px">    <!-- 7: VAR -->
+      <col style="width:60px">    <!-- 8: IMB -->
+      <col style="width:60px">    <!-- 9: VMB -->
+      <col style="width:72px">    <!-- 10: Duration -->
+      <col style="width:130px">   <!-- 11: Modified -->
+      <col style="width:130px">   <!-- 12: Camera -->
+      <col style="width:170px">   <!-- 13: Title -->
+      <col style="width:84px">    <!-- 14: Upload -->
+      <col style="width:140px">   <!-- 15: Tags -->
+      <col style="width:55px">    <!-- 16: Dups -->
+      <col style="width:70px">    <!-- 17: MyOwn -->
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="cbh"><input type="checkbox" id="selAll"></th>
+        <th class="sortable" data-sort="rating" title="a/s/d/f bin from the file's path">Rate</th>
+        <th class="sortable" data-sort="stars" title="1-5 star rating (derived from Rate for now; XMP-sourced once exiftool wires in)">★ 1-5</th>
+        <th class="sortable" data-sort="kind">Kind</th>
+        <th class="sortable" data-sort="name">Filename</th>
+        <th class="sortable" data-sort="path">Path</th>
+        <th class="sortable" data-sort="iar" title="Image landscape/portrait + megapixels">IAR</th>
+        <th class="sortable" data-sort="var" title="Video landscape/portrait + tier">VAR</th>
+        <th class="sortable" data-sort="imb" title="Image size in MB">IMB</th>
+        <th class="sortable" data-sort="vmb" title="Video size in MB">VMB</th>
+        <th class="sortable" data-sort="dur">Duration</th>
+        <th class="sortable sorted" data-sort="mtime">Modified</th>
+        <th class="sortable" data-sort="camera" title="EXIF Make + Model (Phase 2)">Camera</th>
+        <th class="sortable" data-sort="title" title="Original title (yt-dlp metadata for downloads)">Title</th>
+        <th class="sortable" data-sort="upload">Upload</th>
+        <th>Tags</th>
+        <th class="sortable" data-sort="dups" title="Number of files sharing this filename across the entire index (1 = unique)">Dups</th>
+        <th class="sortable" data-sort="myown" title="Mark whether this file is your own (camera/phone) vs downloaded/external. Click cell to cycle ✓ → ✗ → ·. Auto-set to ✓ when EXIF Camera is detected.">MyOwn</th>
+      </tr>
+    </thead>
+    <tbody id="qrows"></tbody>
+  </table>
+</div>
+
+<div id="qfooter">
+  <span>
+    <span class="sel-count" id="selCount">0 selected</span> &nbsp;·&nbsp;
+    <span id="rowCount">0</span> rows shown of <span id="totalCount">0</span> total
+    &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
+  </span>
+  <span>
+    Q v0.1 — wired to IndexedDB <code>localmedia</code>. Column widths saved per-origin.
+  </span>
+</div>
+
+<script>
+//──────────────────────────────────────────────────────────────────────────────
+// (dev0306/0307) Q — local-media table.
+// dev0307 changes:
+//   • Grant click bug fix — earlier impl had `await loadSavedHandle()` before
+//     showDirectoryPicker, which consumed transient user activation and made
+//     the click silently no-op. Grant click now goes STRAIGHT to picker (no
+//     awaits before), with the saved handle passed as `startIn` so the
+//     picker pre-selects the previously-granted folder.
+//   • Resizable columns via per-th drag handles; widths persisted to
+//     localStorage under 'qColumnWidths' (per-origin, so :8080 and :8082
+//     each remember their own — they're different origins to the browser).
+//   • Sticky thead (vertical) — already had this.
+//   • New "★ 1-5" column. Derived from Rate (a=5 s=4 d=3 f=2, unrated=0)
+//     until exiftool/XMP wiring populates a real `stars` field.
+//──────────────────────────────────────────────────────────────────────────────
+
+const LOCAL_DB_NAME = 'localmedia';
+const LOCAL_DB_VER = 1;
+const FSA_DB_NAME = 'sal-fsa';
+const COL_WIDTHS_LS = 'qColumnWidths';
+
+const IMG_RE = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;
+const VID_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i;
+// (dev0313) Auto-MyOwn scoring inputs.
+//  - DCIM_RE: any path segment whose name starts with "DCIM" (case-insensitive)
+//    contributes +1. Covers user conventions like "DCIM ultra 2026 05 11",
+//    "DCIM galaxys7 2019 08 09", plus the literal "DCIM".
+//  - RECOGNIZED_CAM_RE: known-mine camera signatures contribute +1. Currently
+//    scoped to Samsung Galaxy S7-S29 (matches MP4 ©aut "Galaxy S23 Ultra" and
+//    JPEG EXIF make+model "Samsung SM-G990U"). Unrecognized cameras are logged
+//    at end of Extract Meta so the user can extend this regex.
+const DCIM_RE = /^DCIM/i;
+const RECOGNIZED_CAM_RE = /Galaxy\s*S(?:[7-9]|[12]\d)|^Samsung\b/i;
+
+let _root = null;
+let _rootName = '';
+let _files = [];
+let _filters = { rating: 'all', kind: null, text: '', dupes: false, myown: null };
+let _sortKey = 'mtime';
+let _sortDir = 'desc';
+let _selected = new Set();             // (dev0310) selected relPaths
+let _dupMap = new Map();               // (dev0310) name → count
+
+// ── IDB ────────────────────────────────────────────────────────────────────
+function openLocalDB() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open(LOCAL_DB_NAME, LOCAL_DB_VER);
+    q.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('files')) {
+        const store = db.createObjectStore('files', { keyPath: 'relPath' });
+        store.createIndex('mtime', 'mtime');
+        store.createIndex('kind', 'kind');
+        store.createIndex('rating', 'rating');
+      }
+    };
+    q.onsuccess = e => res(e.target.result);
+    q.onerror   = e => rej(e.target.error);
+  });
+}
+function openFsaDB() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open(FSA_DB_NAME, 1);
+    q.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+    };
+    q.onsuccess = e => res(e.target.result);
+    q.onerror   = e => rej(e.target.error);
+  });
+}
+async function loadSavedHandle() {
+  try {
+    const db = await openFsaDB();
+    return await new Promise(res => {
+      const q = db.transaction('handles', 'readonly').objectStore('handles').get('ssSource');
+      q.onsuccess = e => res(e.target.result || null);
+      q.onerror   = () => res(null);
+    });
+  } catch (_) { return null; }
+}
+async function saveHandle(h) {
+  try {
+    const db = await openFsaDB();
+    db.transaction('handles', 'readwrite').objectStore('handles').put(h, 'ssSource');
+  } catch (_) {}
+}
+async function loadAllFromIDB() {
+  const db = await openLocalDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files', 'readonly').objectStore('files').getAll();
+    tx.onsuccess = e => res(e.target.result || []);
+    tx.onerror   = e => rej(e.target.error);
+  });
+}
+async function clearAndPutAll(rows) {
+  const db = await openLocalDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files', 'readwrite');
+    const store = tx.objectStore('files');
+    store.clear().onsuccess = () => { for (const r of rows) store.put(r); };
+    tx.oncomplete = () => res();
+    tx.onerror    = e => rej(e.target.error);
+  });
+}
+async function idbPutFile(f) {
+  const db = await openLocalDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('files', 'readwrite');
+    tx.objectStore('files').put(f);
+    tx.oncomplete = () => res();
+    tx.onerror = e => rej(e.target.error);
+  });
+}
+
+// ── (dev0308) Metadata extraction ──────────────────────────────────────────
+// Browser-native: createImageBitmap for image dims, <video> for video
+// dims+duration. JPEG EXIF Make/Model parsed inline from the first 64KB —
+// no exiftool dependency for these basics. Once the /exec/ bridge wires
+// exiftool we'll layer it on for non-JPEG EXIF, XMP Rating, GPS, etc.
+
+let _extractAbort = false;
+
+async function getFileFromRoot(rootHandle, relPath) {
+  const parts = relPath.split('/').filter(Boolean);
+  let cur = rootHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur = await cur.getDirectoryHandle(parts[i]);
+  }
+  const fh = await cur.getFileHandle(parts[parts.length - 1]);
+  return await fh.getFile();
+}
+
+async function extractImageMeta(fileObj) {
+  const meta = {};
+  try {
+    const bm = await createImageBitmap(fileObj);
+    meta.width = bm.width;
+    meta.height = bm.height;
+    if (bm.close) bm.close();
+  } catch (_) {
+    // Fallback for browsers/formats that fail createImageBitmap.
+    const url = URL.createObjectURL(fileObj);
+    try {
+      const dims = await new Promise((res, rej) => {
+        const img = new Image();
+        img.onload  = () => res({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = rej;
+        img.src = url;
+      });
+      meta.width = dims.w; meta.height = dims.h;
+    } catch (_) {}
+    URL.revokeObjectURL(url);
+  }
+  if (/\.jpe?g$/i.test(fileObj.name)) {
+    try {
+      const exif = await parseJpegMakeModel(fileObj);
+      const cam = [exif.make, exif.model].filter(Boolean).join(' ').trim();
+      if (cam) {
+        meta.camera = cam;
+        // (dev0313) The caller (extractMetadataAll) computes the auto-MyOwn
+        // score from path + this camera string. Don't set anything here; the
+        // score-based rule replaces the dev0312 single-signal flag.
+      }
+    } catch (_) {}
+  }
+  return meta;
+}
+
+async function extractVideoMeta(fileObj) {
+  const meta = {};
+  const url = URL.createObjectURL(fileObj);
+  try {
+    const dims = await new Promise((res, rej) => {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      let done = false;
+      v.onloadedmetadata = () => {
+        if (done) return; done = true;
+        res({
+          width: v.videoWidth, height: v.videoHeight,
+          durationMs: Math.round((v.duration || 0) * 1000)
+        });
+        try { v.removeAttribute('src'); v.load(); } catch(_) {}
+      };
+      v.onerror = () => { if (!done) { done = true; rej(new Error('video load failed')); } };
+      // Hard timeout — some formats won't fire loadedmetadata at all
+      setTimeout(() => { if (!done) { done = true; rej(new Error('timeout')); } }, 8000);
+      v.src = url;
+    });
+    meta.width = dims.width; meta.height = dims.height;
+    meta.durationMs = dims.durationMs;
+  } catch (_) {}
+  URL.revokeObjectURL(url);
+  // (dev0313) Best-effort MP4/MOV author extraction — Galaxy S23 stamps
+  // friendly camera name in moov/udta/©aut. Failure is silent (camera stays
+  // empty); the auto-MyOwn scorer still gets the path-based point.
+  if (/\.(mp4|mov|m4v)$/i.test(fileObj.name)) {
+    try {
+      const author = await parseMp4Author(fileObj);
+      if (author) meta.camera = author;
+    } catch (_) {}
+  }
+  return meta;
+}
+
+// Minimal JPEG EXIF reader: pulls Make (0x010F) and Model (0x0110) from the
+// first APP1/Exif segment. Reads only the first 64 KB of the file — APP1 is
+// near the start in standard JPEGs.
+async function parseJpegMakeModel(file) {
+  const buf = await file.slice(0, 65536).arrayBuffer();
+  const dv = new DataView(buf);
+  if (dv.getUint8(0) !== 0xFF || dv.getUint8(1) !== 0xD8) return {};
+  let p = 2;
+  while (p + 4 < dv.byteLength) {
+    if (dv.getUint8(p) !== 0xFF) break;
+    const marker = dv.getUint8(p + 1);
+    const segLen = dv.getUint16(p + 2);
+    if (marker === 0xE1) {
+      // "Exif\0\0"
+      if (dv.getUint32(p + 4) === 0x45786966 && dv.getUint16(p + 8) === 0) {
+        return parseTiffMakeModel(dv, p + 10);
+      }
+    }
+    p += 2 + segLen;
+  }
+  return {};
+}
+function parseTiffMakeModel(dv, base) {
+  if (base + 8 >= dv.byteLength) return {};
+  const bo = dv.getUint16(base);
+  const little = (bo === 0x4949);  // 'II' little, 'MM' big
+  if (!little && bo !== 0x4D4D) return {};
+  const u16 = off => dv.getUint16(off, little);
+  const u32 = off => dv.getUint32(off, little);
+  if (u16(base + 2) !== 0x002A) return {};
+  const ifd0 = base + u32(base + 4);
+  if (ifd0 + 2 >= dv.byteLength) return {};
+  const entries = u16(ifd0);
+  const result = {};
+  for (let i = 0; i < entries; i++) {
+    const off = ifd0 + 2 + i * 12;
+    if (off + 12 > dv.byteLength) break;
+    const tag = u16(off);
+    if (tag !== 0x010F && tag !== 0x0110) continue;
+    const count = u32(off + 4);
+    if (count < 1 || count > 200) continue;
+    let valOff = (count <= 4) ? off + 8 : base + u32(off + 8);
+    if (valOff < 0 || valOff + count > dv.byteLength) continue;
+    let str = '';
+    for (let j = 0; j < count - 1; j++) {
+      const c = dv.getUint8(valOff + j);
+      if (c === 0) break;
+      str += String.fromCharCode(c);
+    }
+    str = str.trim();
+    if (tag === 0x010F) result.make = str;
+    else                result.model = str;
+  }
+  return result;
+}
+
+// (dev0313) Extract the author string from a Samsung/Android-style MP4.
+// Galaxy S23 stamps the friendly camera name ("Galaxy S23 Ultra") into a
+// Samsung-proprietary `auth` atom inside moov/udta — NOT the standard
+// QuickTime ©aut. Verified empirically on Galaxy S23 Ultra clips. The atom
+// layout (size 31 bytes for "Galaxy S23 Ultra"):
+//   [4-byte size BE][4-byte type "auth"][4-byte version+flags = 0][
+//    2-byte sub-type 0x15C7][UTF-8 text][1-byte NUL]
+//
+// Layout gotcha: Samsung writes `mdat` BEFORE `moov` and uses the 64-bit
+// extended size for mdat (size==1, real size in next 8 bytes), so a naive
+// head walker hits mdat-with-size=1 and bails before reaching moov.
+// Workaround: byte-scan the tail of the file (where moov lives on Samsung),
+// then fall back to head (covers streaming-optimized files with moov up
+// front). False positives from compressed H.265 in mdat are improbable
+// because (a) moov is plain metadata, not entropy-coded video, and (b) the
+// size sanity bounds + null-terminator UTF-8 decode filter junk matches.
+async function parseMp4Author(file) {
+  const SLICE = Math.min(file.size, 1024 * 1024);  // 1 MB covers moov easily
+  // Tail first — covers Samsung's mdat-then-moov layout.
+  if (file.size > SLICE) {
+    try {
+      const tail = await file.slice(file.size - SLICE, file.size).arrayBuffer();
+      const a = scanBufferForAuthor(tail);
+      if (a) return a;
+    } catch (_) {}
+  }
+  // Head fallback — covers streaming-friendly recorders with moov up front,
+  // and tiny files where tail == whole file (skipped above).
+  try {
+    const head = await file.slice(0, SLICE).arrayBuffer();
+    return scanBufferForAuthor(head);
+  } catch (_) { return ''; }
+}
+
+// (dev0313) Scan a raw MP4 buffer for the Samsung `auth` atom.
+// Atom: [size BE u32][type "auth"][6-byte header][UTF-8 NUL-terminated text].
+// We accept sizes in [14, 1024] — the camera-name string is always small —
+// which suppresses random matches from any non-metadata regions we happen to
+// scan (the tail-1 MB normally only contains moov, but we belt-and-suspender).
+function scanBufferForAuthor(buf) {
+  const dv = new DataView(buf);
+  const td = new TextDecoder('utf-8');
+  const max = buf.byteLength - 8;
+  for (let p = 4; p < max; p++) {
+    // Inlined "auth" signature check: 0x61 'a', 0x75 'u', 0x74 't', 0x68 'h'.
+    if (dv.getUint8(p)     !== 0x61) continue;
+    if (dv.getUint8(p + 1) !== 0x75) continue;
+    if (dv.getUint8(p + 2) !== 0x74) continue;
+    if (dv.getUint8(p + 3) !== 0x68) continue;
+    const size = dv.getUint32(p - 4);
+    if (size < 14 || size > 1024) continue;             // sanity bounds
+    const bodyStart = p + 4 + 6;                        // skip type + 6-byte hdr
+    const bodyEnd   = (p - 4) + size;
+    if (bodyEnd > buf.byteLength) continue;             // truncated atom
+    if (bodyEnd - bodyStart < 1) continue;              // no text bytes
+    try {
+      const bytes = new Uint8Array(buf, bodyStart, bodyEnd - bodyStart);
+      const nul = bytes.indexOf(0);
+      const len = (nul >= 0) ? nul : bytes.length;
+      const s = td.decode(bytes.subarray(0, len)).trim();
+      if (s) return s;
+    } catch (_) {}
+  }
+  return '';
+}
+
+async function extractMetadataAll() {
+  if (!_root) { setStatus('No root.', 'error'); return; }
+  // Need permission to read each file — request synchronously below.
+  const perm = await _root.requestPermission({ mode: 'read' });
+  if (perm !== 'granted') { setStatus('Read permission denied.', 'error'); return; }
+  const todo = _files.filter(f => f.width == null);
+  if (!todo.length) { setStatus('All metadata already extracted.', 'info'); return; }
+  _extractAbort = false;
+  document.getElementById('stopExtractBtn').style.display = '';
+  setStatus('Extracting metadata…', 'progress');
+  const sp = document.getElementById('scanProgress');
+  let done = 0, fails = 0;
+  // (dev0313) Track cameras seen during this extract that don't match the
+  // allowlist regex. Reported at the end so the user can decide whether to
+  // extend RECOGNIZED_CAM_RE. Keyed by camera string → count.
+  const unrecognized = new Map();
+  for (const f of todo) {
+    if (_extractAbort) break;
+    try {
+      const fileObj = await getFileFromRoot(_root, f.relPath);
+      const meta = (f.kind === 'image')
+        ? await extractImageMeta(fileObj)
+        : await extractVideoMeta(fileObj);
+      Object.assign(f, meta);
+      // (dev0313) Compute auto-MyOwn score from path + camera. Don't clobber
+      // user-set MyOwn (true OR false); apply only when myOwn is null.
+      f._ownScore = computeOwnScore(f.relPath, f.camera);
+      if (f._ownScore >= 1 && (f.myOwn === null || f.myOwn === undefined)) {
+        f.myOwn = true;
+      }
+      if (f.camera && !RECOGNIZED_CAM_RE.test(f.camera)) {
+        unrecognized.set(f.camera, (unrecognized.get(f.camera) || 0) + 1);
+      }
+      await idbPutFile(f);
+    } catch (_) { fails++; }
+    done++;
+    if (done % 8 === 0 || done === todo.length) {
+      sp.textContent = '(' + done + ' / ' + todo.length + (fails ? ', ' + fails + ' failed' : '') + ')';
+      render();
+      await new Promise(r => setTimeout(r, 0));  // yield to UI
+    }
+  }
+  sp.textContent = '';
+  document.getElementById('stopExtractBtn').style.display = 'none';
+  // (dev0313) Compose status: base extract count, then any unrecognized-camera
+  // summary so user can extend RECOGNIZED_CAM_RE if they want auto-MyOwn=✓
+  // (instead of ✓?) for those.
+  let msg;
+  if (_extractAbort) msg = 'Extraction stopped at ' + done + ' / ' + todo.length + '.';
+  else               msg = 'Extracted ' + done + ' file(s)' + (fails ? ' (' + fails + ' failed)' : '') + '.';
+  if (unrecognized.size) {
+    const top = [...unrecognized.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    msg += ' Unrecognized cameras: ' + top.map(([cam, n]) => cam + ' (' + n + ')').join(', ')
+        + (unrecognized.size > top.length ? ', …' : '') + '.';
+  }
+  setStatus(msg, 'info');
+  render();
+}
+
+// ── Walk + rating-from-path ────────────────────────────────────────────────
+function detectRating(prefix) {
+  const parts = prefix.split('/');
+  for (const p of parts) {
+    if (p === 'a_' || p === 's_' || p === 'd_' || p === 'f_') return p[0];
+  }
+  return null;
+}
+// (dev0313) Two-signal MyOwn confidence score:
+//   +1 if any path segment starts with "DCIM" (user's phone-dump convention)
+//   +1 if camera matches RECOGNIZED_CAM_RE
+// Score >= 1 → auto-set myOwn=true (unless user already overrode).
+// Score == 1 → render shows "✓?" so user knows it's a soft match worth review.
+// Score == 2 → render shows plain "✓".
+// User click cycle clears _ownScore so confirmed rows lose the "?".
+function computeOwnScore(relPath, camera) {
+  let score = 0;
+  if (relPath) {
+    const parts = relPath.split('/');
+    for (const p of parts) {
+      if (DCIM_RE.test(p)) { score++; break; }
+    }
+  }
+  if (camera && RECOGNIZED_CAM_RE.test(camera)) score++;
+  return score;
+}
+async function walk(rootHandle, onProgress) {
+  const out = [];
+  let scanned = 0;
+  // (dev0314) Track silent getFile() failures so rescan can report them
+  // instead of pretending the file doesn't exist. A handful is normal (locked
+  // files, transient FSA glitches); hundreds means a real problem.
+  const failed = [];
+  async function rec(dir, prefix) {
+    for await (const entry of dir.values()) {
+      if (entry.kind === 'directory') { await rec(entry, prefix + entry.name + '/'); continue; }
+      const isImg = IMG_RE.test(entry.name);
+      const isVid = VID_RE.test(entry.name);
+      if (!isImg && !isVid) continue;
+      try {
+        const f = await entry.getFile();
+        out.push({
+          relPath: prefix + entry.name,
+          name: entry.name,
+          kind: isImg ? 'image' : 'video',
+          size: f.size, mtime: f.lastModified,
+          rating: detectRating(prefix),
+          stars: 0,                       // (dev0307) reserved for XMP Rating
+          width: null, height: null, durationMs: null,
+          camera: '', title: '',
+          myOwn: null,                    // (dev0313) auto-set true when ownScore >= 1
+          _ownScore: null,                // (dev0313) 0/1/2 derived from path + camera
+          uploadState: 'none', cloudflareId: '',
+          tags: []
+        });
+        scanned++;
+        if (onProgress && scanned % 50 === 0) onProgress(scanned);
+      } catch (e) { failed.push(prefix + entry.name); }
+    }
+  }
+  await rec(rootHandle, '');
+  if (onProgress) onProgress(scanned);
+  out._failed = failed;  // (dev0314) attached out-of-band; rescan reads + logs
+  return out;
+}
+
+// ── Derivations ────────────────────────────────────────────────────────────
+function deriveIAR(w, h) {
+  if (!w || !h) return '';
+  return (w >= h ? 'L' : 'P') + Math.round(w * h / 1e6);
+}
+function deriveVAR(w, h) {
+  if (!w || !h) return '';
+  const isL = w >= h, maxDim = Math.max(w, h);
+  let tier;
+  if      (maxDim >= 7680) tier = '8k';
+  else if (maxDim >= 3840) tier = '4k';
+  else if (maxDim >= 2560) tier = '1440p';
+  else if (maxDim >= 1920) tier = '1080p';
+  else if (maxDim >= 1280) tier = '720p';
+  else if (maxDim >= 640)  tier = '480p';
+  else                     tier = 'sm';
+  return (isL ? 'L' : 'P') + tier;
+}
+// (dev0307) Map Rate (a/s/d/f) → 1-5 stars. f=2 (not 1) leaves room for a
+// "really terrible" category below f. Override when XMP Rating is populated.
+function ratingToStars(r, explicit) {
+  if (typeof explicit === 'number' && explicit > 0) return Math.min(5, Math.max(0, explicit));
+  if (r === 'a') return 5;
+  if (r === 's') return 4;
+  if (r === 'd') return 3;
+  if (r === 'f') return 2;
+  return 0;
+}
+function renderStars(n) {
+  if (!n) return '<span class="stars"><span class="off">☆☆☆☆☆</span></span>';
+  return '<span class="stars">'
+       + '<span class="on">'  + '★'.repeat(n)     + '</span>'
+       + '<span class="off">' + '☆'.repeat(5 - n) + '</span>'
+       + '</span>';
+}
+function fmtMB(b) { if (!b && b !== 0) return ''; return (b / 1e6).toFixed(1); }
+function fmtDate(ms) {
+  if (!ms) return '';
+  const d = new Date(ms), pad = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+       + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+function fmtDur(ms) {
+  if (!ms) return '';
+  const s = Math.round(ms / 1000), m = Math.floor(s / 60), r = s % 60;
+  return m + ':' + String(r).padStart(2, '0');
+}
+function pathDir(rel) { const i = rel.lastIndexOf('/'); return i >= 0 ? rel.substring(0, i + 1) : ''; }
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function applyFilters(rows) {
+  return rows.filter(r => {
+    if (_filters.rating === 'unsorted' && r.rating != null) return false;
+    if (_filters.rating !== 'all' && _filters.rating !== 'unsorted'
+        && r.rating !== _filters.rating) return false;
+    if (_filters.kind && r.kind !== _filters.kind) return false;
+    if (_filters.text) {
+      const t = _filters.text.toLowerCase();
+      if (!r.name.toLowerCase().includes(t) && !r.relPath.toLowerCase().includes(t)) return false;
+    }
+    if (_filters.dupes && (_dupMap.get(r.name) || 1) < 2) return false;
+    // (dev0312) MyOwn=true → only confirmed-mine. NotMyOwn=false → anything
+    // not explicitly mine (false OR null/unknown). Most useful default for
+    // "hide my downloaded junk" — files with no EXIF camera default to null
+    // and stay visible as "not mine".
+    if (_filters.myown === true  && r.myOwn !== true) return false;
+    if (_filters.myown === false && r.myOwn === true) return false;
+    return true;
+  });
+}
+// (dev0310) Rebuild the name → count map. Cheap (single pass), called after
+// _files changes. Powers the Dups column and the "Dupes only" filter chip.
+function computeDups() {
+  _dupMap = new Map();
+  for (const f of _files) {
+    _dupMap.set(f.name, (_dupMap.get(f.name) || 0) + 1);
+  }
+}
+function sortRows(rows) {
+  const k = _sortKey, dir = _sortDir === 'asc' ? 1 : -1;
+  return rows.slice().sort((a, b) => {
+    let va, vb;
+    switch (k) {
+      case 'name':   va = a.name.toLowerCase();    vb = b.name.toLowerCase(); break;
+      case 'path':   va = a.relPath.toLowerCase(); vb = b.relPath.toLowerCase(); break;
+      case 'kind':   va = a.kind;                  vb = b.kind; break;
+      case 'rating': va = a.rating || 'z';         vb = b.rating || 'z'; break;
+      case 'stars':  va = ratingToStars(a.rating, a.stars); vb = ratingToStars(b.rating, b.stars); break;
+      case 'imb':
+      case 'vmb':
+      case 'size':   va = a.size || 0;             vb = b.size || 0; break;
+      case 'iar':
+      case 'var':    va = (a.width||0) * (a.height||0); vb = (b.width||0) * (b.height||0); break;
+      case 'dur':    va = a.durationMs || 0;       vb = b.durationMs || 0; break;
+      case 'mtime':  va = a.mtime || 0;            vb = b.mtime || 0; break;
+      case 'upload': va = a.uploadState;           vb = b.uploadState; break;
+      case 'camera': va = a.camera;                vb = b.camera; break;
+      case 'title':  va = a.title;                 vb = b.title; break;
+      default:       va = 0; vb = 0;
+    }
+    return va < vb ? -dir : va > vb ? dir : 0;
+  });
+}
+function rateBadge(r) {
+  if (!r) return '<span class="rate none">—</span>';
+  return '<span class="rate ' + r + '">' + r + '</span>';
+}
+function kindBadge(k) {
+  return '<span class="kind ' + (k === 'video' ? 'vid">VID' : 'img">IMG') + '</span>';
+}
+function uploadBadge(s) {
+  if (s === 'pending')  return '<span class="upload pending">pending</span>';
+  if (s === 'uploaded') return '<span class="upload done">uploaded</span>';
+  return '<span class="upload none">—</span>';
+}
+function render() {
+  const tbody = document.getElementById('qrows');
+
+  // Counts over UNFILTERED set so chips show totals
+  const c = { all: _files.length, unsorted: 0, a: 0, s: 0, d: 0, f: 0, img: 0, vid: 0, dupes: 0, myown: 0, notmyown: 0 };
+  for (const r of _files) {
+    if (r.rating == null) c.unsorted++; else c[r.rating]++;
+    if (r.kind === 'video') c.vid++; else c.img++;
+    if ((_dupMap.get(r.name) || 1) > 1) c.dupes++;
+    if (r.myOwn === true) c.myown++;
+    else                  c.notmyown++;  // false OR null both count as "not mine"
+  }
+  for (const k of Object.keys(c)) {
+    const el = document.getElementById('ct-' + k);
+    if (el) el.textContent = c[k];
+  }
+
+  const filtered = sortRows(applyFilters(_files));
+  let totalSize = 0;
+  const html = filtered.map(f => {
+    totalSize += f.size || 0;
+    const stars = ratingToStars(f.rating, f.stars);
+    const dups = _dupMap.get(f.name) || 1;
+    const selAttr = _selected.has(f.relPath) ? ' checked' : '';
+    return '<tr class="' + (f.rating ? 'r-' + f.rating : '') + '">' +
+      '<td class="cbc"><input type="checkbox" data-rel="' + esc(f.relPath) + '"' + selAttr + '></td>' +
+      '<td>' + rateBadge(f.rating) + '</td>' +
+      '<td>' + renderStars(stars) + '</td>' +
+      '<td>' + kindBadge(f.kind) + '</td>' +
+      '<td>' + esc(f.name) + '</td>' +
+      '<td class="path">' + esc(pathDir(f.relPath)) + '</td>' +
+      '<td class="dim">' + (f.kind === 'image' ? esc(deriveIAR(f.width, f.height)) : '') + '</td>' +
+      '<td class="dim">' + (f.kind === 'video' ? esc(deriveVAR(f.width, f.height)) : '') + '</td>' +
+      '<td class="size">' + (f.kind === 'image' ? fmtMB(f.size) : '') + '</td>' +
+      '<td class="size">' + (f.kind === 'video' ? fmtMB(f.size) : '') + '</td>' +
+      '<td class="date">' + (f.kind === 'video' ? esc(fmtDur(f.durationMs)) : '') + '</td>' +
+      '<td class="date">' + esc(fmtDate(f.mtime)) + '</td>' +
+      '<td>' + esc(f.camera || '') + '</td>' +
+      '<td>' + esc(f.title  || '') + '</td>' +
+      '<td>' + uploadBadge(f.uploadState) + '</td>' +
+      '<td class="tags">' + esc((f.tags || []).join(', ')) + '</td>' +
+      '<td class="size" style="color:' + (dups > 1 ? '#f88;font-weight:bold' : '#445') + '">' + (dups > 1 ? dups : '·') + '</td>' +
+      '<td class="myown-cell" style="text-align:center;cursor:pointer;font-weight:bold;color:' +
+        (f.myOwn === true ? '#5f5' : f.myOwn === false ? '#f88' : '#445') + '" title="Click to cycle ✓ → ✗ → ·' +
+        (f._ownScore != null ? ' (auto-score: ' + f._ownScore + '/2)' : '') + '">' +
+        // (dev0313) ✓? = auto-set from a soft 1-point match (path-only OR
+        // recognized-camera-only). Plain ✓ = either a confirmed 2-point match
+        // or a user click. ✗/· behave the same as before.
+        (f.myOwn === true ? (f._ownScore === 1 ? '✓?' : '✓') : f.myOwn === false ? '✗' : '·') + '</td>' +
+    '</tr>';
+  }).join('');
+  tbody.innerHTML = html;
+
+  document.getElementById('rowCount').textContent  = filtered.length;
+  document.getElementById('totalCount').textContent = _files.length;
+  document.getElementById('sizeSum').textContent   = fmtMB(totalSize) + ' MB';
+
+  document.getElementById('emptyBanner').classList.toggle('hidden', _files.length > 0);
+
+  // (dev0310) Selection-driven button state: Slideshow/Review/Delete require a
+  // selection. Extract just needs a root + any rows.
+  updateSelectionUI();
+  const haveRows = _files.length > 0;
+  document.getElementById('extractBtn').disabled = !(haveRows && _root);
+}
+
+// (dev0310) Per-keystroke selection bookkeeping + button gating.
+function updateSelectionUI() {
+  document.getElementById('selCount').textContent = _selected.size + ' selected';
+  const haveSel = _selected.size > 0;
+  document.getElementById('ssBtn').disabled = !haveSel;
+  document.getElementById('reviewBtn').disabled = !haveSel;
+  document.getElementById('deleteBtn').disabled = !haveSel;
+}
+function setStatus(text, kind) {
+  const el = document.getElementById('qstatus');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = kind === 'error' ? '#f88' : kind === 'progress' ? '#fc8' : '#5fc';
+}
+
+// ── Column resize + width persistence ──────────────────────────────────────
+function setupColResize() {
+  const cols = document.querySelectorAll('#qtable colgroup col');
+  document.querySelectorAll('#qtable thead th').forEach((th, i) => {
+    const handle = document.createElement('div');
+    handle.className = 'col-resize';
+    th.appendChild(handle);
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      handle.classList.add('dragging');
+      const startX = e.clientX;
+      const col = cols[i];
+      const startW = col ? parseInt(col.style.width || col.getBoundingClientRect().width) : 100;
+      function onMove(ev) {
+        const w = Math.max(36, startW + (ev.clientX - startX));
+        if (col) col.style.width = w + 'px';
+        setTableWidth();   // (dev0309) keep table width in sync so cells respect cols
+      }
+      function onUp() {
+        handle.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        saveColWidths();
+        setTableWidth();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+// (dev0309) Sum the colgroup widths and apply as the table's explicit width.
+// table-layout:fixed needs an explicit table width to honor col widths; with
+// the previous `width:max-content` the table grew with the longest filename
+// and ignored the user's resize.
+function setTableWidth() {
+  const cols = document.querySelectorAll('#qtable colgroup col');
+  let sum = 0;
+  cols.forEach(c => { sum += parseInt(c.style.width) || 0; });
+  if (sum > 0) document.getElementById('qtable').style.width = sum + 'px';
+}
+function saveColWidths() {
+  const cols = document.querySelectorAll('#qtable colgroup col');
+  const widths = Array.from(cols).map(c => c.style.width || '');
+  try { localStorage.setItem(COL_WIDTHS_LS, JSON.stringify(widths)); } catch (_) {}
+}
+function loadColWidths() {
+  try {
+    const raw = localStorage.getItem(COL_WIDTHS_LS);
+    if (raw) {
+      const widths = JSON.parse(raw);
+      const cols = document.querySelectorAll('#qtable colgroup col');
+      widths.forEach((w, i) => { if (cols[i] && w) cols[i].style.width = w; });
+    }
+  } catch (_) {}
+  // (dev0309) Always set the table's explicit width, even on first load with
+  // no saved widths — otherwise table-layout:fixed has no width to honor and
+  // columns ignore col widths (long filenames force columns wider).
+  setTableWidth();
+}
+function resetColWidths() {
+  try { localStorage.removeItem(COL_WIDTHS_LS); } catch (_) {}
+  // Need the defaults that were in the source <colgroup>. Hardcode them here
+  // so we can restore even if the user has resized first (and lost the originals).
+  const defaults = [30, 50, 90, 54, 220, 280, 64, 78, 60, 60, 72, 130, 130, 170, 84, 140, 55, 70];
+  document.querySelectorAll('#qtable colgroup col').forEach((c, i) => {
+    c.style.width = (defaults[i] || 100) + 'px';
+  });
+  setTableWidth();
+}
+
+// ── Grant + Rescan wiring (synchronous on click, no awaits before async APIs
+//    that need transient user activation) ─────────────────────────────────
+document.getElementById('grantBtn').addEventListener('click', () => {
+  if (!window.showDirectoryPicker) {
+    setStatus('FSA not available — use Chrome/Edge 86+', 'error');
+    return;
+  }
+  // CALL THE PICKER SYNCHRONOUSLY — no awaits before, so transient user
+  // activation from the click is preserved. Pass saved handle (loaded by
+  // initRoot) as `startIn` so the picker opens at the previously-granted
+  // folder. (dev0307: prior version had `await loadSavedHandle()` here,
+  // which silently swallowed activation and made the click no-op.)
+  const opts = { mode: 'read', id: 'sal-ss-source' };
+  if (_root) opts.startIn = _root;
+  window.showDirectoryPicker(opts).then(async dir => {
+    await saveHandle(dir);
+    _root = dir;
+    _rootName = dir.name;
+    document.getElementById('qroot').textContent = 'Root: ' + dir.name;
+    document.getElementById('rescanBtn').disabled = false;
+    setStatus('Granted. Click Rescan to index.', 'info');
+  }).catch(e => {
+    if (e.name !== 'AbortError') setStatus('Pick failed: ' + e.message, 'error');
+    // AbortError = user closed the picker — no error toast needed
+  });
+});
+
+document.getElementById('rescanBtn').addEventListener('click', () => {
+  if (!_root) { setStatus('No root granted.', 'error'); return; }
+  // Synchronous requestPermission to preserve user activation (queryPermission
+  // first would consume it). If already granted, this resolves with 'granted'
+  // without a prompt.
+  _root.requestPermission({ mode: 'read' }).then(async perm => {
+    if (perm !== 'granted') { setStatus('Read permission denied.', 'error'); return; }
+    setStatus('Scanning…', 'progress');
+    const sp = document.getElementById('scanProgress');
+    sp.textContent = '';
+    try {
+      const rows = await walk(_root, n => { sp.textContent = '(' + n + ' files)'; });
+      // (dev0312) Incremental: merge with existing IDB rows so that files
+      // with unchanged size+mtime keep their extracted metadata (dims,
+      // camera, myOwn, tags, etc.). Only changed/new files get re-extracted
+      // on the next pass.
+      // (dev0314) Rename detection: when a folder is renamed between rescans,
+      // every file inside gets a new relPath, which used to be misclassified
+      // as "brand new" — losing the previously-extracted metadata AND
+      // dropping the old IDB rows via clearAndPutAll. Fix: build a secondary
+      // index keyed by content fingerprint (size + mtime + name) and use it
+      // as a fallback when the relPath lookup misses. Old metadata is carried
+      // forward, the row's relPath is updated to the new location, and the
+      // rating is re-derived from the new path.
+      const existing = await loadAllFromIDB();
+      const existingByPath = new Map(existing.map(r => [r.relPath, r]));
+      const existingByContent = new Map();
+      for (const r of existing) {
+        const key = r.size + '|' + r.mtime + '|' + r.name;
+        // If multiple existing rows share a fingerprint (rare — only happens
+        // when there were already duplicates in the index), last write wins
+        // here. The matchedOldPaths set below keeps rename mapping 1:1 even
+        // when several disk rows share a fingerprint with one old row.
+        existingByContent.set(key, r);
+      }
+      const matchedOldPaths = new Set();
+      let kept = 0, renamed = 0, changed = 0, brandNew = 0;
+      const merged = rows.map(disk => {
+        const ratingPrefix = disk.relPath.substring(0, disk.relPath.lastIndexOf('/') + 1);
+        const oldByPath = existingByPath.get(disk.relPath);
+        if (oldByPath) {
+          matchedOldPaths.add(oldByPath.relPath);
+          // Unchanged on disk? Preserve every metadata field; re-derive rating
+          // from path in case the file was moved between rating bins manually.
+          if (oldByPath.size === disk.size && oldByPath.mtime === disk.mtime) {
+            kept++;
+            return Object.assign({}, oldByPath, { rating: detectRating(ratingPrefix) });
+          }
+          // Changed: keep user-set fields, invalidate auto-extracted ones.
+          changed++;
+          return Object.assign({}, disk, {
+            stars: oldByPath.stars, myOwn: oldByPath.myOwn,
+            tags: oldByPath.tags, uploadState: oldByPath.uploadState,
+            cloudflareId: oldByPath.cloudflareId
+          });
+        }
+        // (dev0314) Path mismatch — try rename detection by fingerprint.
+        const key = disk.size + '|' + disk.mtime + '|' + disk.name;
+        const oldByContent = existingByContent.get(key);
+        if (oldByContent && !matchedOldPaths.has(oldByContent.relPath)) {
+          matchedOldPaths.add(oldByContent.relPath);
+          renamed++;
+          // Carry forward old metadata; update path + rating to the new location.
+          return Object.assign({}, oldByContent, {
+            relPath: disk.relPath,
+            rating: detectRating(ratingPrefix)
+          });
+        }
+        brandNew++;
+        return disk;
+      });
+      await clearAndPutAll(merged);
+      _files = merged;
+      computeDups();
+      render();
+      sp.textContent = '';
+      const newCount  = merged.filter(r => r.width == null).length;
+      const keepCount = merged.length - newCount;
+      // (dev0314) Diagnostics: per-top-level-folder count, dup-name count,
+      // per-row-classification breakdown (kept/renamed/changed/new), and any
+      // walk failures. The breakdown immediately distinguishes "rescan is
+      // doing rename detection" from "rescan is treating renamed folders as
+      // brand-new" — if `renamed > 0`, fingerprint matching kicked in.
+      const topCounts = new Map();
+      for (const r of merged) {
+        const slash = r.relPath.indexOf('/');
+        const top = slash > 0 ? r.relPath.substring(0, slash) : '(root)';
+        topCounts.set(top, (topCounts.get(top) || 0) + 1);
+      }
+      let dupNames = 0;
+      for (const n of _dupMap.values()) if (n > 1) dupNames++;
+      const topPairs = [...topCounts.entries()].sort((a, b) => b[1] - a[1]);
+      const failedFiles = rows._failed || [];
+      console.log(
+        '[rescan dev0314] indexed', merged.length,
+        '— kept:', kept, 'renamed:', renamed, 'changed:', changed, 'new:', brandNew,
+        '| ' + topCounts.size + ' top-level folders, dup-names:', dupNames,
+        '| walk-failures:', failedFiles.length
+      );
+      console.table(topPairs.map(([name, count]) => ({ folder: name, files: count })));
+      if (failedFiles.length) console.warn('[rescan dev0314] walk-failed paths (first 20):', failedFiles.slice(0, 20));
+      setStatus(
+        'Indexed ' + merged.length + ' file(s) across ' + topCounts.size + ' folder(s): '
+        + kept + ' kept, ' + renamed + ' renamed, ' + changed + ' changed, ' + brandNew + ' new — '
+        + newCount + ' to extract, ' + dupNames + ' dup-name(s)'
+        + (failedFiles.length ? ', ' + failedFiles.length + ' walk-fail(s)' : '')
+        + '. (Console: per-folder breakdown.)',
+        'info'
+      );
+      document.getElementById('extractBtn').disabled = false;
+      // (dev0308) Auto-chain extraction. Only un-extracted rows get touched
+      // (extractMetadataAll filters by `width == null`).
+      extractMetadataAll().catch(err => setStatus('Extract failed: ' + err.message, 'error'));
+    } catch (e) {
+      setStatus('Scan failed: ' + e.message, 'error');
+      sp.textContent = '';
+    }
+  }).catch(e => setStatus('Permission check failed: ' + e.message, 'error'));
+});
+
+document.getElementById('extractBtn').addEventListener('click', () => {
+  extractMetadataAll().catch(e => setStatus('Extract failed: ' + e.message, 'error'));
+});
+document.getElementById('stopExtractBtn').addEventListener('click', () => {
+  _extractAbort = true;
+});
+
+document.querySelectorAll('.chip[data-fchip]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const which = chip.dataset.fchip, val = chip.dataset.fval;
+    if (which === 'rating') {
+      _filters.rating = val;
+      document.querySelectorAll('.chip[data-fchip="rating"]').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    } else if (which === 'kind') {
+      if (_filters.kind === val) { _filters.kind = null; chip.classList.remove('active'); }
+      else {
+        _filters.kind = val;
+        document.querySelectorAll('.chip[data-fchip="kind"]').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      }
+    } else if (which === 'dupes') {
+      _filters.dupes = !_filters.dupes;
+      chip.classList.toggle('active', _filters.dupes);
+    } else if (which === 'myown') {
+      const wantVal = (val === 'true');
+      if (_filters.myown === wantVal) { _filters.myown = null; chip.classList.remove('active'); }
+      else {
+        _filters.myown = wantVal;
+        document.querySelectorAll('.chip[data-fchip="myown"]').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      }
+    }
+    render();
+  });
+});
+
+// (dev0310) Selection: delegate checkbox change events to the tbody so the
+// listener survives every re-render. selAll toggles the currently FILTERED
+// rows (not the whole index — easier to reason about).
+document.getElementById('qrows').addEventListener('change', e => {
+  if (!e.target.matches('input[type=checkbox][data-rel]')) return;
+  const rel = e.target.dataset.rel;
+  if (e.target.checked) _selected.add(rel); else _selected.delete(rel);
+  updateSelectionUI();
+});
+// (dev0312) Click a MyOwn cell to cycle ✓ → ✗ → · (true → false → null).
+// Persists to IDB. Survives re-render thanks to delegation.
+document.getElementById('qrows').addEventListener('click', e => {
+  const cell = e.target.closest('.myown-cell');
+  if (!cell) return;
+  const tr = cell.closest('tr');
+  if (!tr) return;
+  const cb = tr.querySelector('input[type=checkbox][data-rel]');
+  if (!cb) return;
+  const rel = cb.dataset.rel;
+  const f = _files.find(x => x.relPath === rel);
+  if (!f) return;
+  if (f.myOwn === true) f.myOwn = false;
+  else if (f.myOwn === false) f.myOwn = null;
+  else f.myOwn = true;
+  // (dev0313) User click is an explicit verdict — the auto-derived "?" no
+  // longer applies, so drop the score. Render then shows plain ✓ (or ✗/·).
+  f._ownScore = null;
+  idbPutFile(f).then(() => render());
+});
+document.getElementById('selAll').addEventListener('change', e => {
+  const filtered = sortRows(applyFilters(_files));
+  if (e.target.checked) for (const f of filtered) _selected.add(f.relPath);
+  else                  for (const f of filtered) _selected.delete(f.relPath);
+  render();
+});
+
+document.getElementById('qfilter').addEventListener('input', e => {
+  _filters.text = e.target.value.trim();
+  render();
+});
+document.getElementById('qsort').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v === 'mtime-desc')      { _sortKey = 'mtime'; _sortDir = 'desc'; }
+  else if (v === 'mtime-asc')  { _sortKey = 'mtime'; _sortDir = 'asc'; }
+  else if (v === 'name-asc')   { _sortKey = 'name';  _sortDir = 'asc'; }
+  else if (v === 'size-desc')  { _sortKey = 'size';  _sortDir = 'desc'; }
+  else if (v === 'rating')     { _sortKey = 'rating'; _sortDir = 'asc'; }
+  else if (v === 'stars-desc') { _sortKey = 'stars'; _sortDir = 'desc'; }
+  else if (v === 'path')       { _sortKey = 'path';  _sortDir = 'asc'; }
+  render();
+});
+document.querySelectorAll('th.sortable[data-sort]').forEach(th => {
+  th.addEventListener('click', e => {
+    if (e.target.classList.contains('col-resize')) return; // not a sort, a resize
+    const k = th.dataset.sort;
+    if (_sortKey === k) _sortDir = (_sortDir === 'desc' ? 'asc' : 'desc');
+    else { _sortKey = k; _sortDir = (k === 'mtime' || k === 'size' || k === 'imb' || k === 'vmb' || k === 'stars') ? 'desc' : 'asc'; }
+    document.querySelectorAll('th.sortable').forEach(t => { t.classList.remove('sorted', 'asc'); });
+    th.classList.add('sorted');
+    if (_sortDir === 'asc') th.classList.add('asc');
+    render();
+  });
+});
+
+document.getElementById('resetColsBtn').addEventListener('click', () => {
+  resetColWidths();
+  setStatus('Column widths reset.', 'info');
+  setTimeout(() => setStatus('', null), 1800);
+});
+
+// (dev0310) ── Wired action buttons ──────────────────────────────────────
+// "Slideshow selected" / "R Review selected" — save selection to
+// sessionStorage and navigate to index.html?qaction=...; index.html's qaction
+// handler reads it, builds slides from FSA, and triggers _slideshowStart.
+function sendToIndex(action) {
+  if (!_selected.size) { setStatus('Nothing selected.', 'error'); return; }
+  const paths = Array.from(_selected);
+  try {
+    sessionStorage.setItem('qPendingAction', JSON.stringify({ action, paths }));
+  } catch (e) {
+    setStatus('Failed to stash selection: ' + e.message, 'error');
+    return;
+  }
+  // Same tab so the click's user activation carries to the page that opens
+  // the slideshow. New tab would lose it.
+  window.location.href = 'index.html?qaction=' + encodeURIComponent(action);
+}
+document.getElementById('ssBtn').addEventListener('click', () => sendToIndex('slideshow'));
+document.getElementById('reviewBtn').addEventListener('click', () => sendToIndex('review'));
+
+// (dev0311) Strip any existing rating dir OR deleted_ dir from a relPath
+// ("Sorted/a_/foo/x.jpg" → "Sorted/foo/x.jpg"). Lets Delete reroute a
+// previously-rated file into deleted_/<srcRelDir>/ without nesting bins.
+function stripBinDirs(relPath) {
+  return relPath.split('/')
+    .filter(p => p && !/^[asdf]_$/.test(p) && p !== 'deleted_')
+    .join('/');
+}
+
+// (dev0311) Move one file to <root>/deleted_/<cleanSrcRel>/<name> via FSA.
+// Delete is intentionally distinct from rating to f_ (f_ = "keep, poor
+// quality, useful for dedup"; deleted_ = "I want this gone, but not erased
+// yet"). Returns new relPath.
+async function moveToDeleted(relPath, rootHandle) {
+  const parts = relPath.split('/').filter(Boolean);
+  let srcDir = rootHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    srcDir = await srcDir.getDirectoryHandle(parts[i]);
+  }
+  const fh = await srcDir.getFileHandle(parts[parts.length - 1]);
+  const cleanRel = stripBinDirs(relPath);
+  const cleanParts = cleanRel.split('/').filter(Boolean);
+  const filename = cleanParts.pop();
+  let targetDir = await rootHandle.getDirectoryHandle('deleted_', { create: true });
+  for (const p of cleanParts) {
+    targetDir = await targetDir.getDirectoryHandle(p, { create: true });
+  }
+  await fh.move(targetDir, filename);
+  return 'deleted_/' + cleanRel;
+}
+
+document.getElementById('deleteBtn').addEventListener('click', () => {
+  if (!_root || !_selected.size) return;
+  const count = _selected.size;
+  if (!confirm('Move ' + count + ' file(s) to deleted_/?\n\n' +
+               '(Not erased — files are moved under deleted_/ where you can ' +
+               'review them before truly removing. Distinct from f_/ which is ' +
+               'a rating bin for poor-quality keepers used in dedup matching.)')) return;
+  // Synchronous requestPermission to preserve user activation from the click.
+  _root.requestPermission({ mode: 'readwrite' }).then(async perm => {
+    if (perm !== 'granted') { setStatus('Write permission denied.', 'error'); return; }
+    setStatus('Moving ' + count + ' file(s)…', 'progress');
+    const sp = document.getElementById('scanProgress');
+    const toProcess = Array.from(_selected);
+    let done = 0, fails = 0;
+    const db = await openLocalDB();
+    for (const rel of toProcess) {
+      try {
+        const f = _files.find(x => x.relPath === rel);
+        if (!f) { fails++; continue; }
+        const newRel = await moveToDeleted(rel, _root);
+        // Re-key in IDB: delete old key, put updated row.
+        // (dev0311) rating becomes null — deleted_ is not a rating bin, so
+        // detectRating on the new prefix returns null naturally.
+        await new Promise((res, rej) => {
+          const tx = db.transaction('files', 'readwrite');
+          const store = tx.objectStore('files');
+          store.delete(rel);
+          f.relPath = newRel;
+          const lastSlash = newRel.lastIndexOf('/');
+          const prefix = lastSlash >= 0 ? newRel.substring(0, lastSlash + 1) : '';
+          f.rating = detectRating(prefix);
+          store.put(f);
+          tx.oncomplete = res;
+          tx.onerror    = e => rej(e.target.error);
+        });
+        // Update selection set to follow the file
+        _selected.delete(rel);
+        _selected.add(newRel);
+        done++;
+      } catch (e) {
+        fails++;
+      }
+      if (done % 4 === 0 || done === count) {
+        sp.textContent = '(' + done + ' / ' + count + ')';
+        computeDups();
+        render();
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+    sp.textContent = '';
+    computeDups();
+    render();
+    setStatus('Moved ' + done + ' to deleted_/' + (fails ? ' (' + fails + ' failed)' : '') + '.', 'info');
+  }).catch(e => setStatus('Permission check failed: ' + e.message, 'error'));
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function initRoot() {
+  loadColWidths();
+  setupColResize();
+  const h = await loadSavedHandle();
+  if (h) {
+    _root = h;
+    _rootName = h.name;
+    // Probe permission state non-interactively. If 'granted', Rescan goes
+    // direct. If 'prompt', show hint that re-grant is needed.
+    let perm = 'prompt';
+    try { perm = await h.queryPermission({ mode: 'read' }); } catch (_) {}
+    const suffix = perm === 'granted'
+      ? ' (granted)'
+      : ' (saved — click Grant to re-authorize)';
+    document.getElementById('qroot').textContent = 'Root: ' + h.name + suffix;
+    if (perm === 'granted') document.getElementById('rescanBtn').disabled = false;
+  }
+  try { _files = await loadAllFromIDB(); }
+  catch (e) { setStatus('IDB load failed: ' + e.message, 'error'); }
+  // (dev0313) Backfill on load:
+  //   1. Any row missing _ownScore → compute it from path + camera. Cheap;
+  //      makes the "?" indicator and unrecognized-camera detection work for
+  //      previously-indexed files without re-extracting.
+  //   2. Any row with myOwn=null AND _ownScore >= 1 → auto-set myOwn=true.
+  //      Generalizes the dev0312 "camera present" rule via the new scorer.
+  //   3. Re-derive both whenever the row used the old dev0312 single-signal
+  //      rule, since "Galaxy S5" or similar should now flip from ✓ to ✓?.
+  let scored = 0, ownSet = 0;
+  for (const f of _files) {
+    if (f._ownScore === undefined || f._ownScore === null) {
+      f._ownScore = computeOwnScore(f.relPath, f.camera);
+      scored++;
+    }
+    if ((f.myOwn === null || f.myOwn === undefined) && f._ownScore >= 1) {
+      f.myOwn = true;
+      ownSet++;
+    }
+  }
+  if (scored || ownSet) {
+    try {
+      const db = await openLocalDB();
+      await new Promise((res, rej) => {
+        const tx = db.transaction('files', 'readwrite');
+        const store = tx.objectStore('files');
+        for (const f of _files) store.put(f);
+        tx.oncomplete = res;
+        tx.onerror = e => rej(e.target.error);
+      });
+    } catch (_) {}
+  }
+  computeDups();   // (dev0310) build name → count map for Dups column + chip
+  render();
+  if (scored || ownSet) {
+    const parts = [];
+    if (scored) parts.push('scored ' + scored + ' row(s)');
+    if (ownSet) parts.push('auto-set MyOwn=✓ on ' + ownSet);
+    setStatus('Backfill: ' + parts.join(', ') + '.', 'info');
+  }
+}
+initRoot();
+</script>
+
+</body>
+</html>

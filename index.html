@@ -830,7 +830,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0297';
+  window.HELP_VERSION_STR = 'dev0314';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];
@@ -840,6 +840,31 @@ thead th.rn              { color: #fff !important; }
     var btn = document.getElementById('ver-badge');
     if (btn) btn.textContent = window.HELP_VERSION_STR;
   })();
+</script>
+<script>
+// (dev0310) Q handoff: when index.html loads with ?qaction=slideshow|review,
+// pull the selection saved by Q to sessionStorage and trigger the slideshow.
+// Runs after all scripts (slideshow.js etc.) have document.write'd into the
+// page — DOMContentLoaded fires after those scripts execute.
+window.addEventListener('DOMContentLoaded', function() {
+  try {
+    var p = new URLSearchParams(window.location.search);
+    var action = p.get('qaction');
+    if (!action) return;
+    var pending = null;
+    try { pending = JSON.parse(sessionStorage.getItem('qPendingAction') || 'null'); } catch (_) {}
+    sessionStorage.removeItem('qPendingAction');
+    if (!pending || !pending.paths || !pending.paths.length) return;
+    // Give other init a tick to settle before mounting the slideshow.
+    setTimeout(function() {
+      if (typeof slideshowOpenFromPaths !== 'function') {
+        if (typeof toast === 'function') toast('Slideshow code not loaded.', 2500);
+        return;
+      }
+      slideshowOpenFromPaths(pending.paths, action === 'review' ? 'review' : 'slideshow');
+    }, 80);
+  } catch (_) {}
+});
 </script>
 </body>
 </html>

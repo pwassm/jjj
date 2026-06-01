@@ -7,6 +7,25 @@ jpgs
 # YTT
 YTT
 
+# AHK
+AHK
+
+# Backup files
+*.bak
+
+# Deleted links archive (kept locally only)
+deleted.json
+
+# (dev0312) Local-media IndexedDB exports — privacy.
+# Q's index (the localmedia IDB) lives in Chrome's profile, not in this repo:
+#   %LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\http_localhost_8080\
+# These ignores are belt-and-suspenders against any future "export IDB to
+# JSON" feature dumping into the project root.
+q-export*.json
+localmedia-export*.json
+*.idb.json
+*.idb.txt
+
 # Logs
 logs
 *.log

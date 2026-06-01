@@ -2123,6 +2123,10 @@ function _vpFmtDur(s) {
 // metadata is the point. Hidden cleanly on next vpClose (host is wiped).
 function _vpMountDiskInfoOverlay(host, vid, row) {
   if (!row || !row._directVideoFile) return;
+  // (dev0303) Slideshow's review mode owns its own bottom filename + resolution
+  // overlay (much bigger fonts) — suppress V's upper-left disk-info overlay
+  // when called from there so the two don't compete.
+  if (_vpState && _vpState.suppressDiskInfoOverlay) return;
   const ov = document.createElement('div');
   ov.id = 'vp-disk-info';
   ov.style.cssText =

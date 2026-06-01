@@ -17,16 +17,16 @@ const { spawn } = require('child_process');
 
 const PORT = 8081;
 
-// (dev0289) Origins allowed to call /exec/*. The user's main dev server runs
-// on :8080; Claude Code's preview server (see .claude/launch.json) is on
-// :8137 — both 127.0.0.1 and localhost spellings allowed since the browser
+// (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
+// runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
+// :8082 — both 127.0.0.1 and localhost spellings allowed since the browser
 // distinguishes them as separate origins. Anything else → 403 (preflight
 // fails, browser surfaces "Failed to fetch").
 const LOCAL_ORIGINS = new Set([
   'http://127.0.0.1:8080',
   'http://localhost:8080',
-  'http://127.0.0.1:8137',
-  'http://localhost:8137'
+  'http://127.0.0.1:8082',
+  'http://localhost:8082'
 ]);
 
 // Extract the apex domain to use as Referer.

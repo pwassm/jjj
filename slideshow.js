@@ -256,7 +256,11 @@ let _ssCachedHandle = null;
 // order, and build blob: URL slides. Requests read permission if needed.
 // Returns [] (after toasting) on denial/failure. Shared by jpgs/ and the
 // external folder source.
-async function _slideshowFolderSlides(dirHandle) {
+async function _slideshowFolderSlides(dirHandle, opts) {
+  // (dev0300) `opts.excludeNames` is a Set of directory names to skip during
+  // the recursive walk. Used in review mode to skip already-rated subdirs
+  // (`a_`, `s_`, `d_`, `f_`) so triaged files don't reappear in the queue.
+  const excludeNames = (opts && opts.excludeNames) || null;
   try {
     if ((await dirHandle.queryPermission({ mode: 'read' })) !== 'granted') {
       if ((await dirHandle.requestPermission({ mode: 'read' })) !== 'granted') {
@@ -274,7 +278,11 @@ async function _slideshowFolderSlides(dirHandle) {
   const VID_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i;
   async function walk(dir, prefix) {
     for await (const entry of dir.values()) {
-      if (entry.kind === 'directory') { await walk(entry, prefix + entry.name + '/'); continue; }
+      if (entry.kind === 'directory') {
+        if (excludeNames && excludeNames.has(entry.name)) continue;
+        await walk(entry, prefix + entry.name + '/');
+        continue;
+      }
       const kind = IMG_RE.test(entry.name) ? 'image'
                  : VID_RE.test(entry.name) ? 'video' : null;
       if (kind) files.push({ fh: entry, parentDir: dir, name: entry.name, relPath: prefix + entry.name, kind });
@@ -298,15 +306,18 @@ async function _slideshowFolderSlides(dirHandle) {
         // videos). gridOpenFullscreen needs a row with a `.link`; a blob: URL
         // has no file extension, so we flag the synthesized row with
         // `_directVideoFile` — isVideoRow() and vp.js's mount routing honour it.
+        // (dev0298) `relPath` is the path under the root dir (no rootName
+        // prefix), used by review-mode rating moves to mirror src subpath
+        // under the `<rating>_/` destination dir.
         slides.push({
           url, kind: 'video',
           row: { link: url, _directVideoFile: true, VidTitle: f.name, comment: path, Mute: '' },
-          name: f.name, path, parentDir: f.parentDir
+          name: f.name, path, relPath: f.relPath, parentDir: f.parentDir
         });
       } else {
         slides.push({
           url, row: null, kind: 'image',
-          name: f.name, path, parentDir: f.parentDir
+          name: f.name, path, relPath: f.relPath, parentDir: f.parentDir
         });
       }
     } catch (_) {}
@@ -350,7 +361,70 @@ async function slideshowOpenJpgsFolder() {
 //   reuseSaved=false → always show the picker (the menu's 📁 button). Must be
 //                      called directly from a click handler — do NOT await any
 //                      IDB read before the picker or the user gesture is lost.
-async function slideshowOpenSourceFolder(reuseSaved) {
+// (dev0310) Open slideshow (or review mode) from an explicit list of relPaths
+// under the ssmenu-saved 'ssSource' handle. Called from the qaction handler in
+// index.html when the user clicks "Slideshow selected" / "R Review selected"
+// in Q. Resolves each relPath via FSA walk, builds slides, calls _slideshowStart.
+async function slideshowOpenFromPaths(paths, mode) {
+  if (!paths || !paths.length) return;
+  mode = mode || 'slideshow';
+  const handle = await _ssSrcLoad();
+  if (!handle) {
+    if (typeof toast === 'function') toast('No source folder set.\nUse the SS menu or Q to grant one.', 2800);
+    return;
+  }
+  const permMode = (mode === 'review') ? 'readwrite' : 'read';
+  try {
+    if ((await handle.queryPermission({ mode: permMode })) !== 'granted') {
+      if ((await handle.requestPermission({ mode: permMode })) !== 'granted') {
+        if (typeof toast === 'function') toast('Permission denied.', 2500);
+        return;
+      }
+    }
+  } catch (_) {}
+  const IMG_RE = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;
+  const VID_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i;
+  const slides = [];
+  const rootName = handle.name || '';
+  for (const relPath of paths) {
+    try {
+      const parts = relPath.split('/').filter(Boolean);
+      let cur = handle;
+      for (let i = 0; i < parts.length - 1; i++) {
+        cur = await cur.getDirectoryHandle(parts[i]);
+      }
+      const name = parts[parts.length - 1];
+      const fh = await cur.getFileHandle(name);
+      const file = await fh.getFile();
+      const url = URL.createObjectURL(file);
+      const path = (rootName ? rootName + '/' : '') + relPath;
+      if (IMG_RE.test(name)) {
+        slides.push({ url, row: null, kind: 'image', name, path, relPath, parentDir: cur });
+      } else if (VID_RE.test(name)) {
+        slides.push({
+          url, kind: 'video',
+          row: { link: url, _directVideoFile: true, VidTitle: name, comment: path, Mute: '' },
+          name, path, relPath, parentDir: cur
+        });
+      }
+    } catch (_) { /* skip files that no longer resolve */ }
+  }
+  if (!slides.length) {
+    if (typeof toast === 'function') toast('No files found from selection.', 2500);
+    return;
+  }
+  const verb = (mode === 'review') ? 'Reviewing ' : 'Playing ';
+  if (typeof toast === 'function') toast(verb + slides.length + ' file(s) from Q selection.', 1800);
+  slideshowClose();
+  _slideshowStart(slides, { sourceKind: 'folder', dirHandle: handle, mode });
+}
+
+async function slideshowOpenSourceFolder(reuseSaved, mode) {
+  // (dev0298) `mode` defaults to 'slideshow' (legacy behavior). When 'review',
+  // request readwrite permission upfront so a/s/d/f rating keys can move files
+  // into <root>/<rating>_/<srcRel>/ subdirs without re-prompting per move.
+  mode = mode || 'slideshow';
+  const permMode = (mode === 'review') ? 'readwrite' : 'read';
   if (!window.showDirectoryPicker) {
     if (typeof toast === 'function') toast('File System Access API not available.\nUse Edge or Chrome 86+.', 2800);
     return;
@@ -363,8 +437,8 @@ async function slideshowOpenSourceFolder(reuseSaved) {
     dir = await _ssSrcLoad();
     if (dir) {
       try {
-        if ((await dir.queryPermission({ mode: 'read' })) !== 'granted') {
-          if ((await dir.requestPermission({ mode: 'read' })) !== 'granted') dir = null;
+        if ((await dir.queryPermission({ mode: permMode })) !== 'granted') {
+          if ((await dir.requestPermission({ mode: permMode })) !== 'granted') dir = null;
         }
       } catch (_) { dir = null; }
     }
@@ -375,7 +449,7 @@ async function slideshowOpenSourceFolder(reuseSaved) {
     // The `id:` already nudges Chrome to remember the last pick per-origin,
     // but `startIn` is deterministic — survives cache clears, profile resets,
     // etc. Falls back silently if no handle is cached yet.
-    const opts = { mode: 'read', id: 'sal-ss-source' };
+    const opts = { mode: permMode, id: 'sal-ss-source' };
     if (_ssCachedHandle) opts.startIn = _ssCachedHandle;
     try { dir = await window.showDirectoryPicker(opts); }
     catch (e) {
@@ -387,16 +461,22 @@ async function slideshowOpenSourceFolder(reuseSaved) {
     _ssCachedHandle = dir;
   }
   if (typeof toast === 'function') toast('Reading "' + dir.name + '"…', 1500);
-  const slides = await _slideshowFolderSlides(dir);
+  // (dev0300) In review mode, skip files already inside rating subdirs so the
+  // triage queue doesn't re-surface what you've already rated.
+  const walkOpts = (mode === 'review')
+    ? { excludeNames: new Set(['a_', 's_', 'd_', 'f_']) }
+    : null;
+  const slides = await _slideshowFolderSlides(dir, walkOpts);
   if (!slides.length) {
     if (typeof toast === 'function') toast('No images found in "' + dir.name + '".', 2200);
     return;   // keep the current show (if any) running — don't drop to the view behind
   }
-  if (typeof toast === 'function') toast('Playing ' + slides.length + ' image(s) from "' + dir.name + '"', 1800);
+  const verb = (mode === 'review') ? 'Reviewing' : 'Playing';
+  if (typeof toast === 'function') toast(verb + ' ' + slides.length + ' file(s) from "' + dir.name + '"', 1800);
   // (dev0283) Swap in only after the walk succeeds, so switching source from
   // a live show never flashes the grid/table sitting behind the slideshow.
   slideshowClose();
-  _slideshowStart(slides, { sourceKind: 'folder', dirHandle: dir });
+  _slideshowStart(slides, { sourceKind: 'folder', dirHandle: dir, mode });
 }
 
 // ── Core machinery ──────────────────────────────────────────────────────────
@@ -533,8 +613,25 @@ function _slideshowStart(allOrdered, opts) {
     // and re-applied to subsequent videos. `muted` starts null = use the row's
     // T "Mute" field; once the user toggles it, the session choice wins.
     // `speed` likewise. `ab` holds A-B loop points keyed by video URL.
-    _vpSession: { muted: null, speed: null, ab: {} }
+    _vpSession: { muted: null, speed: null, ab: {} },
+    // (dev0298) 'slideshow' (default) or 'review' (file-triage mode).
+    // Review mode starts paused (no auto-advance), uses near-instant
+    // transitions, and enables a/s/d/f rating-key handling in _slideshowKey.
+    mode: (opts && opts.mode) || 'slideshow',
+    // (dev0300) Per-rating move counts shown in the bottom-left tally card
+    // in review mode. Bumped by _slideshowRateCurrent on each successful move.
+    _rateTally: { a: 0, s: 0, d: 0, f: 0 }
   };
+
+  // (dev0298) Review-mode overrides: start paused, force near-instant
+  // transition so rapid rating doesn't ghost. Settings copy is local — the
+  // user's persisted slideshow settings are unchanged.
+  if (_slideshowState.mode === 'review') {
+    _slideshowState.paused = true;
+    _slideshowState.settings = Object.assign({}, _slideshowState.settings, { transitionSec: 0.05 });
+    // (dev0300) Paint initial tally card (all zeros).
+    _slideshowUpdateTally();
+  }
 
   // Apply transition duration to image layers (live, in case settings change)
   _slideshowApplyTransitionTiming();
@@ -604,6 +701,9 @@ function _slideshowStart(allOrdered, opts) {
       if (e.button !== 0) return;
       if (e.target.closest('#slideshowMenu')) return;
       if (e.target.closest('#slideshowCloseBtn')) return;
+      // (dev0301) Don't hijack clicks on V2's inline <video controls> in review
+      // mode — otherwise preventDefault below blocks the native play/scrub.
+      if (e.target.closest('#slideshowReviewVid')) return;
       if (_slideshowState._touchActive) return;
       e.preventDefault();
       down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null };
@@ -671,6 +771,8 @@ function _slideshowStart(allOrdered, opts) {
       if (!_slideshowState) return;
       if (e.target.closest('#slideshowMenu')) return;
       if (e.target.closest('#slideshowCloseBtn')) return;
+      // (dev0301) V2 video element handles its own double-click (fullscreen).
+      if (e.target.closest('#slideshowReviewVid')) return;
       _stopZoom();
       _slideshowState._mouseZoom = { scale: 1, tx: 0, ty: 0 };
       _slideshowState._manualZoom = null;
@@ -738,6 +840,8 @@ function _slideshowStart(allOrdered, opts) {
       if (e.pointerType === 'mouse') return;
       if (e.target.closest('#slideshowMenu')) return;
       if (e.target.closest('#slideshowCloseBtn')) return;
+      // (dev0301) Let V2's inline video receive touch on its native controls.
+      if (e.target.closest('#slideshowReviewVid')) return;
       const st = _slideshowState; if (!st) return;
       st._touchActive = true;
       try { overlay.setPointerCapture(e.pointerId); } catch(_) {}
@@ -1099,6 +1203,32 @@ function _slideshowPlayVideo(slide) {
   }
   _slideshowWatchVpClose();
   gridOpenFullscreen(slide.row);
+  // (dev0302/0303) Review mode: paint our bottom filename+resolution+path
+  // overlay over V, paint the corner tally, and tell V to skip its own
+  // upper-left disk-info caption (we own the on-screen file naming now).
+  if (st.mode === 'review') {
+    if (typeof _vpState !== 'undefined' && _vpState) {
+      _vpState.suppressDiskInfoOverlay = true;
+      if (_vpState.diskInfoOverlay) _vpState.diskInfoOverlay.style.display = 'none';
+    }
+    _slideshowUpdateReviewFileInfo(slide);
+    _slideshowUpdateTally();
+    // Resolution comes in after the player mounts + metadata loads. Poll
+    // briefly for the <video> element, then listen for videoWidth and
+    // re-paint the overlay with WxH.
+    setTimeout(() => {
+      const v = document.querySelector('#gridFullscreen video');
+      if (!v) return;
+      const update = () => {
+        if (!_slideshowState || _slideshowState !== st) return;
+        if (v.videoWidth && v.videoHeight) {
+          _slideshowUpdateReviewFileInfo(slide, { width: v.videoWidth, height: v.videoHeight });
+        }
+      };
+      if (v.videoWidth) update();
+      else v.addEventListener('loadedmetadata', update, { once: true });
+    }, 200);
+  }
   // (dev0280) In a slideshow a video plays its selection ONCE and then the show
   // advances — it must not loop like a standalone V. gridOpenFullscreen creates
   // _vpState synchronously (the player mounts a tick later), so the flag is in
@@ -1184,8 +1314,297 @@ window._slideshowCaptureVp = function (vp) {
   }
 };
 
+// (dev0300) Bottom-left running tally of rate-and-move counts per rating
+// letter. Only painted in review mode; updated by _slideshowRateCurrent after
+// each successful move and once at start to draw the initial zeros.
+function _slideshowUpdateTally() {
+  const st = _slideshowState;
+  if (!st || st.mode !== 'review') return;
+  // (dev0302) Mount as a SIBLING of the overlay (in rotateWrap) rather than
+  // a child — the overlay's z=40000 stacking context confines its children
+  // and would let the V player (z=41000) cover the tally.
+  const parent = st.overlay.parentNode || document.body;
+  let card = parent.querySelector('#slideshowTally');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'slideshowTally';
+    // (dev0303) Bigger panel, top-right, left of ssmenu gear.
+    card.style.cssText = [
+      'position:absolute', 'top:14px', 'right:64px',
+      'background:rgba(20,20,40,0.9)',
+      'color:#8ef', 'font-family:monospace',
+      'font-size:17px', 'line-height:1.55',
+      'padding:12px 18px',
+      'border:1px solid #4af', 'border-radius:8px',
+      'pointer-events:none', 'z-index:41500',
+      'white-space:pre', 'letter-spacing:0.04em',
+      'min-width:170px', 'text-align:left',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.6)'
+    ].join(';') + ';';
+    parent.appendChild(card);
+  }
+  // (dev0303) Count remaining unsorted images + videos from the working set.
+  let imgN = 0, vidN = 0;
+  if (Array.isArray(st.slides)) {
+    for (const s of st.slides) {
+      if (s && s.kind === 'video') vidN++;
+      else imgN++;
+    }
+  }
+  const t = st._rateTally || { a: 0, s: 0, d: 0, f: 0 };
+  card.textContent =
+    'Unsorted image: ' + imgN + '\n' +
+    'Unsorted video: ' + vidN + '\n' +
+    '─────────────\n' +
+    'a - ' + t.a + '\n' +
+    's - ' + t.s + '\n' +
+    'd - ' + t.d + '\n' +
+    'f - ' + t.f;
+}
+
+// (dev0301) Review-mode filename + path overlay, always visible at the
+// bottom of the screen so the user knows what they're looking at and where
+// it lives. Filename on top, path below; both larger for video than image
+// (per user request — videos need clearer textual ID since you can't
+// tell content from a poster frame alone).
+function _slideshowUpdateReviewFileInfo(slide, opts) {
+  const st = _slideshowState;
+  if (!st || st.mode !== 'review') return;
+  // (dev0302) Sibling of overlay (must outrank V's z=41000 stacking context).
+  // bottom:80px keeps clear of V's bottom toolbar.
+  const parent = st.overlay.parentNode || document.body;
+  let info = parent.querySelector('#slideshowReviewInfo');
+  if (!info) {
+    info = document.createElement('div');
+    info.id = 'slideshowReviewInfo';
+    info.style.cssText = [
+      'position:absolute', 'left:0', 'right:0', 'bottom:80px',
+      'text-align:center', 'color:#fff',
+      'font-family:monospace', 'pointer-events:none',
+      'padding:0 24px',
+      'text-shadow:0 2px 6px rgba(0,0,0,0.95), 0 0 4px rgba(0,0,0,0.9)',
+      'z-index:41500'
+    ].join(';') + ';';
+    // (dev0303) Three lines now: resolution (largest) / filename / path.
+    const resDiv = document.createElement('div');
+    resDiv.id = 'slideshowReviewInfoRes';
+    resDiv.style.cssText = 'color:#8ef;line-height:1.1;letter-spacing:0.04em;';
+    info.appendChild(resDiv);
+    const nameDiv = document.createElement('div');
+    nameDiv.id = 'slideshowReviewInfoName';
+    nameDiv.style.cssText = 'font-weight:bold;line-height:1.2;word-break:break-all;margin-top:2px;';
+    info.appendChild(nameDiv);
+    const pathDiv = document.createElement('div');
+    pathDiv.id = 'slideshowReviewInfoPath';
+    pathDiv.style.cssText = 'opacity:0.9;line-height:1.3;margin-top:4px;word-break:break-all;';
+    info.appendChild(pathDiv);
+    parent.appendChild(info);
+  }
+  const resEl  = info.querySelector('#slideshowReviewInfoRes');
+  const nameEl = info.querySelector('#slideshowReviewInfoName');
+  const pathEl = info.querySelector('#slideshowReviewInfoPath');
+  const isVid = slide && slide.kind === 'video';
+  // (dev0303) Resolution = largest font. Filename = next. Path = smallest.
+  resEl.style.fontSize  = isVid ? '38px' : '28px';
+  nameEl.style.fontSize = isVid ? '26px' : '20px';
+  pathEl.style.fontSize = isVid ? '16px' : '14px';
+  // Resolution: prefer opts.width/height (caller passes from natural-/video-Width).
+  let resTxt = '';
+  if (opts && opts.width && opts.height) {
+    resTxt = opts.width + ' × ' + opts.height;
+  }
+  resEl.textContent = resTxt;
+  resEl.style.display = resTxt ? 'block' : 'none';
+  // Filename + path
+  nameEl.textContent = slide ? (slide.name || '') : '';
+  const rel = slide && typeof slide.relPath === 'string' ? slide.relPath : '';
+  const lastSlash = rel.lastIndexOf('/');
+  const dir = lastSlash >= 0 ? rel.substring(0, lastSlash) : '';
+  const rootName = (st._sourceDirHandle && st._sourceDirHandle.name) || '';
+  let pathStr = '';
+  if (rootName) pathStr += rootName;
+  if (rootName && dir) pathStr += '/';
+  if (dir) pathStr += dir;
+  pathEl.textContent = pathStr;
+  info.style.display = 'block';
+}
+
+// (dev0298) Review mode: rate-and-move current file to <root>/<rating>_/<srcRelDir>/
+// Called from _slideshowKey when mode === 'review' and user presses a/s/d/f.
+// Physically moves the file via FSA `move()`, removes the slide from the working
+// list, advances to the next slide. Toast on success/failure. Source and
+// destination both live inside the granted root handle, so move() is atomic and
+// fast (no copy+delete fallback needed).
+async function _slideshowRateCurrent(rating) {
+  const st = _slideshowState;
+  if (!st || st.mode !== 'review' || st.idx < 0) return;
+  const slide = st.slides[st.idx];
+  if (!slide || !slide.parentDir || !slide.name || typeof slide.relPath !== 'string') {
+    if (typeof toast === 'function') toast('Can\'t rate this slide (no file handle).', 1600);
+    return;
+  }
+  const root = st._sourceDirHandle;
+  if (!root) {
+    if (typeof toast === 'function') toast('No source root.', 1600);
+    return;
+  }
+  // Ensure readwrite — the review-mode opener requests it, but permission can
+  // lapse between sessions or the user may have downgraded it.
+  try {
+    if ((await root.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+      if ((await root.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+        if (typeof toast === 'function') toast('Write permission denied — can\'t move file.', 2200);
+        return;
+      }
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Permission check failed: ' + e.message, 2200);
+    return;
+  }
+  // Target dir = <root>/<rating>_/<srcRelDir>/ — mirrors source subpath under
+  // the rating dir so date/folder context is preserved.
+  const lastSlash = slide.relPath.lastIndexOf('/');
+  const srcRelDir = lastSlash >= 0 ? slide.relPath.substring(0, lastSlash) : '';
+  let targetDir;
+  try {
+    targetDir = await root.getDirectoryHandle(rating + '_', { create: true });
+    if (srcRelDir) {
+      const parts = srcRelDir.split('/').filter(Boolean);
+      for (const p of parts) {
+        targetDir = await targetDir.getDirectoryHandle(p, { create: true });
+      }
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Couldn\'t create target dir: ' + e.message, 2500);
+    return;
+  }
+  let fh;
+  try {
+    fh = await slide.parentDir.getFileHandle(slide.name);
+  } catch (e) {
+    if (typeof toast === 'function') toast('Source file gone: ' + slide.name, 2200);
+    return;
+  }
+  // (dev0300/0302) If this slide is a video, release the player's <video>
+  // element before move() — Windows can refuse to move a file the browser's
+  // media pipeline is still holding open. Close V first (it owns the
+  // <video> via #gridFullscreen), then belt-and-suspenders nuke the src on
+  // any leftover <video> element we can find.
+  if (slide.kind === 'video') {
+    if (st._videoActive && typeof vpClose === 'function') {
+      try { vpClose(); } catch(_) {}
+      st._videoActive = false;
+    }
+    const _vid = document.querySelector('#gridFullscreen video')
+              || st.overlay.querySelector('#slideshowReviewVid');
+    if (_vid) {
+      try { _vid.pause(); } catch(_) {}
+      try { _vid.removeAttribute('src'); _vid.load(); } catch(_) {}
+    }
+  }
+  try {
+    await fh.move(targetDir, slide.name);
+  } catch (e) {
+    if (typeof toast === 'function') toast('Move failed: ' + e.message, 2500);
+    return;
+  }
+  // Free the blob URL — this slide won't be displayed again.
+  try { URL.revokeObjectURL(slide.url); } catch (_) {}
+  // (dev0300) Bump per-rating tally for the bottom-left card.
+  if (st._rateTally && typeof st._rateTally[rating] === 'number') {
+    st._rateTally[rating] += 1;
+    _slideshowUpdateTally();
+  }
+  // Splice from working list and advance to the next file in place.
+  // (dev0299) No success toast — the bottom-right counter (X / N) already
+  // shows progress; an extra toast per rating is noise during rapid triage.
+  st.slides.splice(st.idx, 1);
+  if (!st.slides.length) {
+    slideshowClose();
+    return;
+  }
+  const newIdx = Math.min(st.idx, st.slides.length - 1);
+  _slideshowShow(newIdx);
+}
+
+// (dev0299–0301) V2: in review mode, video slides mount an inline
+// <video controls muted> rather than handing off to the full V player.
+// Reasons:
+//   - V sets _videoActive=true, which would block our a/s/d/f rating keys.
+//   - V binds a/s/d/f to AB-marker movement; we want them for rate-and-move.
+//   - The inline <video> doesn't intercept a/s/d/f, so the slideshow's
+//     document-level keydown handler still sees them for rating.
+// Filename + path are shown via the shared bottom overlay
+// (_slideshowUpdateReviewFileInfo) — same treatment as images, just larger.
+function _slideshowShowReviewVideoPlaceholder(slide) {
+  const st = _slideshowState;
+  if (!st) return;
+  // Hide both image layers (fg + bg).
+  ['A', 'B'].forEach(letter => {
+    const img = st.overlay.querySelector('#slideshowImg' + letter);
+    if (img) img.style.opacity = '0';
+    const bg  = st.overlay.querySelector('#slideshowBg' + letter);
+    if (bg)  bg.style.opacity  = '0';
+  });
+  // Counter
+  const counterEl = st.overlay.querySelector('#slideshowCounter');
+  if (counterEl) counterEl.textContent = (st.idx + 1) + ' / ' + st.slides.length;
+  // Status spinner off.
+  const statusEl = st.overlay.querySelector('#slideshowStatus');
+  if (statusEl) statusEl.style.display = 'none';
+  // Mount / reuse V2 inline player.
+  let vid = st.overlay.querySelector('#slideshowReviewVid');
+  if (!vid) {
+    vid = document.createElement('video');
+    vid.id = 'slideshowReviewVid';
+    vid.controls = true;
+    vid.muted = true;            // start muted; user can unmute via control
+    vid.preload = 'metadata';    // enough to display a poster frame
+    vid.playsInline = true;      // iOS: don't auto-fullscreen on play
+    vid.style.cssText = [
+      'position:absolute', 'inset:0',
+      'width:100%', 'height:100%',
+      'object-fit:contain', 'background:#000',
+      'z-index:40003'
+    ].join(';') + ';';
+    st.overlay.appendChild(vid);
+    // Seek to ~0.1s once metadata loads so a poster frame is visible without
+    // pressing play.
+    vid.addEventListener('loadedmetadata', () => {
+      try { vid.currentTime = Math.min(0.1, (vid.duration || 1) * 0.01); } catch(_) {}
+    });
+  }
+  try { vid.pause(); } catch(_) {}
+  vid.style.display = 'block';
+  vid.src = slide.url;
+  // Shared filename + path overlay at bottom (bigger font for video).
+  _slideshowUpdateReviewFileInfo(slide);
+  // Hide any legacy top caption / text card from earlier dev revs.
+  const cap = st.overlay.querySelector('#slideshowReviewVidCap');
+  if (cap) cap.style.display = 'none';
+  const card = st.overlay.querySelector('#slideshowReviewVidCard');
+  if (card) card.style.display = 'none';
+}
+
 function _slideshowKey(e) {
   if (!_slideshowState) return;
+  // (dev0302) Review mode: a/s/d/f rate-and-move keys must work even while
+  // V is up, otherwise videos couldn't be rated. We pre-empt V here (capture
+  // phase + registered first) and stopImmediatePropagation so V's handler
+  // never sees the key. V's asdf handler also bails when AB markers aren't
+  // set, but stopping the event entirely is the cleaner contract. Source
+  // and text fields are still respected.
+  if (_slideshowState.mode === 'review' && /^[asdfASDF]$/.test(e.key)) {
+    const _ae = document.activeElement;
+    const _tag = _ae && _ae.tagName;
+    const _inText = !!(_ae && (_tag === 'INPUT' || _tag === 'TEXTAREA' || _ae.isContentEditable));
+    if (!_inText) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      _slideshowRateCurrent(e.key.toLowerCase());
+      return;
+    }
+  }
   // (dev0279) While a video plays, the V player owns the keyboard (Space,
   // arrows for frame-step, M). Stand down so we don't double-handle.
   if (_slideshowState._videoActive) return;
@@ -1217,6 +1636,11 @@ function _slideshowKey(e) {
     if (inSelect) return;
     e.preventDefault();
     _slideshowToggleMark(false);        // un-mark
+  } else if (_slideshowState.mode === 'review' && /^[asdfASDF]$/.test(e.key)) {
+    // (dev0298) Review mode: a=best, s=good, d=fair, f=poor.
+    // Moves current file to <root>/<rating>_/<srcRelDir>/ and advances.
+    e.preventDefault();
+    _slideshowRateCurrent(e.key.toLowerCase());
   }
 }
 
@@ -1247,6 +1671,12 @@ function _slideshowShow(i, opts) {
   // (dev0279) Video slide → hand off to the full V player rather than the
   // image crossfade path. Auto-advance is suspended while V is up; the show
   // resumes when V closes (see _slideshowAfterVideoClose).
+  // (dev0302) Review mode also uses V now (not the native-controls V2 from
+  // dev0299-0301). V's wider scrub + custom controls > the cramped native
+  // ones. Conflict mitigation: V's own a/s/d/f handler returns early when AB
+  // markers aren't set (vp.js:1458), and slideshow's _slideshowKey is
+  // registered first in document capture phase so it pre-empts with
+  // stopImmediatePropagation when in review mode.
   if (slide && slide.kind === 'video') {
     _slideshowPlayVideo(slide);
     return;
@@ -1288,6 +1718,32 @@ function _slideshowShow(i, opts) {
     }
     slide.status = 'ready';
     statusEl.style.display = 'none';
+    // (dev0299–0301) Hide legacy V2 elements if any linger.
+    const _vc = st.overlay.querySelector('#slideshowReviewVidCard');
+    if (_vc) _vc.style.display = 'none';
+    const _vp = st.overlay.querySelector('#slideshowReviewVid');
+    if (_vp) {
+      try { _vp.pause(); } catch(_) {}
+      _vp.style.display = 'none';
+      _vp.removeAttribute('src');
+      try { _vp.load(); } catch(_) {}
+    }
+    const _vcap = st.overlay.querySelector('#slideshowReviewVidCap');
+    if (_vcap) _vcap.style.display = 'none';
+    // (dev0301/0302) In review mode, show our own filename + path overlay
+    // for images and SKIP the legacy label/comment painter (which would
+    // double the path for disk files where row=null).
+    if (st.mode === 'review') {
+      // (dev0303) Pass naturalWidth/Height so resolution shows in the overlay.
+      _slideshowUpdateReviewFileInfo(slide, {
+        width: targetEl.naturalWidth || 0,
+        height: targetEl.naturalHeight || 0
+      });
+      const _lbl = st.overlay.querySelector('#slideshowLabel');
+      if (_lbl) { _lbl.style.opacity = '0'; _lbl.textContent = ''; }
+      const _cmt = st.overlay.querySelector('#slideshowComment');
+      if (_cmt) { _cmt.style.opacity = '0'; _cmt.textContent = ''; }
+    }
 
     const blurOn = st.settings.canvasBlur !== 'off';
 
@@ -1340,7 +1796,10 @@ function _slideshowShow(i, opts) {
       }
     }
 
-    _slideshowUpdateLabel(slide);
+    // (dev0302) Review mode skips the legacy label/comment painter — for
+    // disk files (row=null) it'd render slide.name on top + slide.path on
+    // bottom, which doubles the info shown by our own bottom overlay.
+    if (st.mode !== 'review') _slideshowUpdateLabel(slide);
     _slideshowUpdateDeleteBadge(); // (dev0284) reflect this slide's mark state
 
     // (zip0236) Skip scheduling the auto-advance while paused. Resume button
@@ -1507,6 +1966,9 @@ function _slideshowApplySizeFilterChange() {
     clearTimeout(st.timer);
     st.timer = setTimeout(() => _slideshowAdvance(+1), st.settings.slideSec * 1000);
   }
+  // (dev0304) Live-update review-mode tally so Unsorted image/video counts
+  // reflect the new filter immediately rather than waiting for the next move.
+  if (st.mode === 'review') _slideshowUpdateTally();
 }
 
 // (dev0284) ── Mark-for-delete + delete (disk sources only) ────────────────
@@ -1834,6 +2296,10 @@ function _slideshowApplyShowChange() {
     _slideshowUpdateCounter();
     _slideshowShow(0);
   }
+  // (dev0304) Live-update review-mode tally so Unsorted image/video counts
+  // reflect the new Show filter immediately rather than waiting for the next
+  // move or play/resume.
+  if (st.mode === 'review') _slideshowUpdateTally();
 }
 
 // (dev0268) Swap the active slideset to the images embedded in the current
@@ -1920,6 +2386,12 @@ function slideshowClose() {
   // (dev0284) Drop any open delete-confirmation modal (also a sibling).
   const _delModal = document.getElementById('ssDeleteModal');
   if (_delModal && _delModal.parentNode) _delModal.remove();
+  // (dev0302) Review-mode tally + filename overlay are siblings of the overlay
+  // (so they paint above V's z=41000). Remove explicitly here.
+  ['slideshowTally', 'slideshowReviewInfo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.parentNode) el.remove();
+  });
   if (_slideshowState.overlay && _slideshowState.overlay.parentNode) {
     _slideshowState.overlay.remove();
   }
@@ -1945,7 +2417,10 @@ function _slideshowOpenMenu() {
   // than before so it doesn't block the image. Hugs the right edge with a
   // small gap so the ⚙ gear button (top-right) stays tappable.
   menu.style.cssText = [
-    'position:absolute', 'right:16px', 'top:50%',
+    'position:absolute', 'right:16px',
+    // (dev0304) Shift center 80px below viewport mid so the menu doesn't
+    // crowd the top-right tally card in review mode.
+    'top:calc(50% + 80px)',
     'transform:translateY(-50%)',
     'background:rgba(14,14,28,0.94)',
     'border:1px solid #4af', 'border-radius:10px',
@@ -2425,10 +2900,14 @@ function _slideshowWireMenu(menu) {
   if (srcSel) {
     srcSel.addEventListener('change', () => {
       const v = srcSel.value;
+      // (dev0304) Preserve current mode (slideshow vs review) when switching
+      // source from the dropdown — previously this always reverted to
+      // slideshow mode, so picking a new folder during R lost review state.
+      const curMode = (_slideshowState && _slideshowState.mode) || 'slideshow';
       if (v === 'grid')        slideshowOpenGrid();
       else if (v === 'jpgs')   slideshowOpenJpgsFolder();
       // Reuse the saved folder if there is one; otherwise the picker opens.
-      else if (v === 'folder') slideshowOpenSourceFolder(!!_ssSourceName);
+      else if (v === 'folder') slideshowOpenSourceFolder(!!_ssSourceName, curMode);
     });
     srcSel.addEventListener('click', e => e.stopPropagation());
   }
