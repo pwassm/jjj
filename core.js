@@ -1126,9 +1126,98 @@ document.addEventListener('keydown', e => {
   }
 }, true);
 
-function renderBody() {
+// ── T-table virtualization / windowing (dev0327) ─────────────────────────
+// renderBody renders ONLY the rows visible in #wrap (+ overscan), with top and
+// bottom spacer <tr>s holding the scrollbar at full height. Row height is
+// uniform per mode (CSS td height:24px; thumb mode tr.height=THUMB_H) and column
+// widths come from the <colgroup> under table-layout:fixed, so a windowed subset
+// never shifts layout and no per-row measuring is needed. The expensive
+// colW()/measureText work runs ONCE per full render (renderBody) and is cached in
+// _tCtx; the scroll path (_tRenderWindow) reuses it so scrolling never re-measures
+// (that would resurrect the old O(rows²) lag).
+let _tVisList = [];                   // [{vi,di}] rows passing the filter, in display order
+let _tCtx = null;                     // cached cols/widths/thumb flags for the current full render
+let _tRowH = 25;                      // measured normal-mode row height (px); thumb mode uses THUMB_H
+let _tWinFirst = -1, _tWinLast = -1;  // last-rendered window range (skip rebuild if unchanged)
+let _tScrollWired = false;
+const T_OVERSCAN = 8;                 // extra rows rendered above/below the viewport
+
+function _tRowHeight() {
+  return _thumbMode ? (typeof THUMB_H !== 'undefined' ? THUMB_H : 90) : _tRowH;
+}
+
+function _tWireScroll() {
+  if (_tScrollWired) return;
+  const wrap = document.getElementById('wrap');
+  if (!wrap) return;
+  let raf = 0;
+  const schedule = (force) => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; _tRenderWindow(force === true); });
+  };
+  wrap.addEventListener('scroll', () => schedule(false), { passive: true });
+  window.addEventListener('resize', () => schedule(true));
+  _tScrollWired = true;
+}
+
+function _tSpacerRow(h) {
+  const tr = document.createElement('tr');
+  tr.className = 'vspacer';
+  const td = document.createElement('td');
+  td.setAttribute('colspan', '999');
+  td.style.cssText = 'padding:0;border:0;height:' + h + 'px;';
+  tr.appendChild(td);
+  return tr;
+}
+
+// Render the slice of _tVisList in (or near) the #wrap viewport. force=true
+// rebuilds even when the range is unchanged (after renderBody/filter/sort/mode);
+// on plain scroll force=false skips the rebuild when the same rows are mounted.
+function _tRenderWindow(force) {
   const tbody = document.getElementById('tbody');
+  if (!tbody || !_tCtx) return;
+  const wrap = document.getElementById('wrap');
+  const total = _tVisList.length;
+  const rowH = _tRowHeight();
+  const clientH = (wrap && wrap.clientHeight) ? wrap.clientHeight : (window.innerHeight || 800);
+  let scrollTop = wrap ? wrap.scrollTop : 0;
+  // Clamp if the list shrank (filter/sort) below the current scroll offset.
+  const maxScroll = Math.max(0, total * rowH - clientH);
+  if (wrap && scrollTop > maxScroll) { scrollTop = maxScroll; wrap.scrollTop = scrollTop; }
+
+  let first = Math.max(0, Math.floor(scrollTop / rowH) - T_OVERSCAN);
+  let last  = Math.min(total, Math.ceil((scrollTop + clientH) / rowH) + T_OVERSCAN);
+  if (!force && first === _tWinFirst && last === _tWinLast) return;
+  _tWinFirst = first; _tWinLast = last;
+
   tbody.innerHTML = '';
+  if (first > 0) tbody.appendChild(_tSpacerRow(first * rowH));
+  for (let i = first; i < last; i++) {
+    const ent = _tVisList[i];
+    tbody.appendChild(_tBuildRow(ent.vi, ent.di));
+  }
+  if (last < total) tbody.appendChild(_tSpacerRow((total - last) * rowH));
+}
+
+// Scroll #wrap so display row vi sits in the viewport (below the sticky thead),
+// re-render the window to include it, and return its <tr>.
+function _tScrollRowIntoView(vi) {
+  const idx = _tVisList.findIndex(o => o.vi === vi);
+  const wrap = document.getElementById('wrap');
+  if (idx < 0 || !wrap) { _tRenderWindow(true); return document.querySelector('#tbody tr[data-vrow="'+vi+'"]'); }
+  const rowH = _tRowHeight();
+  const clientH = wrap.clientHeight || (window.innerHeight || 800);
+  const headH = (document.getElementById('thead') || {}).offsetHeight || 0;
+  const rowTop = idx * rowH, rowBot = rowTop + rowH;
+  let st = wrap.scrollTop;
+  if (rowTop < st + headH)        st = rowTop - headH;      // above the fold → bring down
+  else if (rowBot > st + clientH) st = rowBot - clientH;    // below the fold → bring up
+  wrap.scrollTop = Math.max(0, st);
+  _tRenderWindow(true);
+  return document.querySelector('#tbody tr[data-vrow="'+vi+'"]');
+}
+
+function renderBody() {
   const vc = visCols();
   // (dev0324) Per-column widths computed ONCE (not per cell): colW() runs
   // autoColW(), which measureText()s every row, so per-cell calls were O(rows²)
@@ -1148,13 +1237,52 @@ function renderBody() {
   // Also show inline thumbs in 'link' column when _thumbMode on and no Thumb col
   const linkColIdx = vc.indexOf('link');
   const inlineThumb = _thumbMode && thumbColIdx < 0;
+  _tCtx = { vc, cw, needCellW, showThumbs, thumbColIdx, linkColIdx, inlineThumb };
 
+  // Build the filtered, ordered row list (no DOM — cheap O(rows)).
+  _tVisList = [];
   for (let vi = 0; vi < data.length; vi++) {
-    const di = vr(vi), row = data[di];
-    if (!rowMatchesFilter(row)) continue;
+    const di = vr(vi);
+    if (!rowMatchesFilter(data[di])) continue;
+    _tVisList.push({ vi, di });
+  }
+  _tWireScroll();
+  _tRenderWindow(true);
+  _tMeasureRowH();   // (dev0328) lock an accurate avg row height; corrects once if off
+}
 
-    const tr = document.createElement('tr');
-    if (checkedRows.has(di)) tr.classList.add('row-sel');
+// Average the mounted rows' real heights and, if it differs from the current
+// estimate, lock it and re-render once so spacer totals match. Runs ONLY on full
+// renders (renderBody) — never on scroll — so _tRowH can't oscillate mid-scroll.
+// Row heights vary a little (tag-chip rows ~29px vs plain ~25px); the average
+// keeps the scrollbar total accurate, and since the scroll offset and the window
+// math share _tRowH, the target row is always mounted regardless of px drift.
+function _tMeasureRowH() {
+  if (_thumbMode) return;   // thumb mode uses the uniform THUMB_H
+  const tbody = document.getElementById('tbody');
+  if (!tbody) return;
+  const rows = tbody.querySelectorAll('tr[data-vrow]');
+  if (!rows.length) return;
+  let sum = 0, n = 0;
+  rows.forEach(tr => { const h = tr.offsetHeight; if (h > 0) { sum += h; n++; } });
+  if (!n) return;
+  const avg = sum / n;
+  if (Math.abs(avg - _tRowH) >= 0.5) {
+    _tRowH = avg;
+    _tWinFirst = _tWinLast = -1;   // invalidate so the corrective render rebuilds
+    _tRenderWindow(true);
+  }
+}
+
+// (dev0327) Build one <tr> for display row vi / data row di. Reads the cached
+// _tCtx so the scroll path never recomputes colW. Returns the tr (caller appends).
+function _tBuildRow(vi, di) {
+  const row = data[di];
+  const { vc, cw, needCellW, showThumbs, thumbColIdx, linkColIdx, inlineThumb } = _tCtx;
+
+  const tr = document.createElement('tr');
+  tr.setAttribute('data-vrow', vi);
+  if (checkedRows.has(di)) tr.classList.add('row-sel');
     // Expand row height when thumbs visible
     if (_thumbMode) tr.style.height = THUMB_H + 'px';
 
@@ -1322,8 +1450,7 @@ function renderBody() {
       td.addEventListener('dblclick', e => { e.stopPropagation(); startEdit(vi, ci); });
       tr.appendChild(td);
     });
-    tbody.appendChild(tr);
-  }
+  return tr;
 }
 
 function renderStatus() {
@@ -1443,10 +1570,10 @@ function startEdit(vi, ci, replaceWith) {
       const nvc = visCols();
       if (moveCI !== null && moveCI >= 0 && moveCI < nvc.length) {
         focus = {r:vi, c:moveCI}; render();
-        setTimeout(() => startEdit(vi, moveCI), 10);
+        setTimeout(() => { _tScrollRowIntoView(vi); startEdit(vi, moveCI); }, 10);
       } else if (moveVI !== null && moveVI < data.length) {
         focus = {r:moveVI, c:ci}; render();
-        setTimeout(() => startEdit(moveVI, ci), 10);
+        setTimeout(() => { _tScrollRowIntoView(moveVI); startEdit(moveVI, ci); }, 10);
       }
     } else if (e.key === 'Escape') {
       cancelEdit();
@@ -1627,16 +1754,8 @@ document.addEventListener('keydown', e => {
     if (newVi === undefined) return;
 
     focus = { r: newVi, c: focus !== null ? focus.c : 0 };
-    render();
-    // Scroll focused row into view
-    const trs = document.querySelectorAll('#tbody tr');
-    // Find tr with data-vi matching newVi
-    let targetTr = null;
-    trs.forEach(tr => {
-      const td = tr.querySelector('td[data-vi]');
-      if (td && parseInt(td.getAttribute('data-vi')) === newVi) targetTr = tr;
-    });
-    if (targetTr) targetTr.scrollIntoView({ block: 'nearest' });
+    render();                    // rebuilds _tVisList + window at current scroll
+    _tScrollRowIntoView(newVi);  // (dev0327) bring the new focus row into the window
 
     // If annotate panel is open, navigate it to the new row too
     if (anOpen) {
@@ -3171,14 +3290,22 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  let _flTimer = null;
   function applyLive() {
     const hasAny = chips.length || Object.values(text).some(v => v && v.trim());
     rowFilter = hasAny ? { composite: true, tags: chips.slice(), text: Object.assign({}, text) } : null;
-
     if (rowFilter) _lastRowFilter = rowFilter;
-    render();
-    const cnt = rowFilter ? data.filter(r => rowMatchesFilter(r)).length : data.length;
-    countEl.textContent = cnt + '/' + data.length;
+    // (dev0326) Debounce the expensive render + count scan: typing in the filter
+    // otherwise rebuilds the whole tbody (O(rows)) on EVERY keystroke. rowFilter
+    // state is set synchronously above; only the paint waits 120ms. This survives
+    // virtualization — render() gets cheap then, but this still throttles the
+    // O(rows) rowMatchesFilter count scan that runs regardless of windowing.
+    clearTimeout(_flTimer);
+    _flTimer = setTimeout(() => {
+      render();
+      const cnt = rowFilter ? data.filter(r => rowMatchesFilter(r)).length : data.length;
+      countEl.textContent = cnt + '/' + data.length;
+    }, 120);
   }
 
   function renderChips() {

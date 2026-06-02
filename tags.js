@@ -914,9 +914,9 @@
         key: 'c',
         labelHtml: '<u>C</u>opy this tag',
         action: () => {
+          // (dev0326) Copy tag for R-click paste. Toast removed per user — the
+          // "ready to paste" balloon was a timewaster; R-click paste still works.
           window._copiedTagId = tagId;
-          const label = t.label + (t.common ? ' (' + t.common + ')' : '');
-          if (typeof toast === 'function') toast('📋 "' + label + '" ready to paste — R-click any tag column to paste', 2200);
         }
       },
       {
