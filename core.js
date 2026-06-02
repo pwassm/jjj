@@ -196,10 +196,15 @@ const PAD_PX   = 16;
 const MIN_W    = 20;
 const MAX_AUTO = Math.ceil(CHAR_W * 25 + PAD_PX); // 25-char cap for auto-size
 
-function autoColW(col) {
+function autoColW(col, capChars) {
   let max = _mc.measureText(col).width;
   data.forEach(r => { const w = _mc.measureText(String(r[col] || '')).width; if (w > max) max = w; });
-  return Math.min(MAX_AUTO, Math.max(MIN_W, Math.ceil(max) + PAD_PX));
+  // capChars overrides the default 25-char cap (MAX_AUTO) — used by the
+  // size30max / size60max Views presets. Result is the lesser of the cap and the
+  // longest content (never below MIN_W), so short columns stay tight.
+  const capPx = (typeof capChars === 'number' && capChars > 0)
+    ? Math.ceil(CHAR_W * capChars + PAD_PX) : MAX_AUTO;
+  return Math.min(capPx, Math.max(MIN_W, Math.ceil(max) + PAD_PX));
 }
 
 // State
@@ -487,6 +492,19 @@ function viewsLoad(key) {
   renderViewsPanel();
 }
 
+// (dev0324) Built-in size presets used by the Views panel ("size30max",
+// "size60max"). Sets EVERY column's width to the lesser of N chars and its
+// longest content. Computed live (not a stored view), so it works regardless of
+// whether _salViews ever persisted to disk — this is also a quick rescue when a
+// long ftext column has blown the table out.
+function applySizePreset(capChars) {
+  cols.forEach(col => { colWidths[col] = autoColW(col, capChars); });
+  if (metaRow) metaRow._salActiveView = null;
+  save();
+  render();
+  toast('✓ Columns sized to ≤ ' + capChars + ' chars (or content)', 1700);
+}
+
 function viewsDelete(key) {
   const views = _getViews();
   const lbl = views[key] ? (views[key].label || key) : key;
@@ -522,14 +540,37 @@ function viewsRename(key) {
 function renderViewsPanel() {
   const list = document.getElementById('viewsList');
   if (!list) return;
+  list.innerHTML = '';
+
+  // (dev0324) Built-in size presets — always shown, independent of saved views
+  // (so they work even when _salViews failed to persist to disk). Each sets all
+  // column widths to ≤ N chars (or content width if shorter) via applySizePreset.
+  const presets = document.createElement('div');
+  presets.className = 'vp-presets';
+  const plbl = document.createElement('span');
+  plbl.className = 'vp-presets-lbl';
+  plbl.textContent = 'Quick column size:';
+  presets.appendChild(plbl);
+  [['size30max', 30], ['size60max', 60]].forEach(arr => {
+    const b = document.createElement('button');
+    b.className = 'vp-act load';
+    b.textContent = arr[0];
+    b.title = 'Set every column to ≤ ' + arr[1] + ' chars wide (or its content width, if shorter)';
+    b.addEventListener('click', () => applySizePreset(arr[1]));
+    presets.appendChild(b);
+  });
+  list.appendChild(presets);
+
   const views = _getViews();
   const active = metaRow ? metaRow._salActiveView : null;
   const keys = Object.keys(views);
   if (keys.length === 0) {
-    list.innerHTML = '<div class="vp-empty">No saved views yet.<br>Arrange columns, then save a view below.</div>';
+    const empty = document.createElement('div');
+    empty.className = 'vp-empty';
+    empty.innerHTML = 'No saved views yet.<br>Arrange columns, then save a view below.';
+    list.appendChild(empty);
     return;
   }
-  list.innerHTML = '';
   keys.forEach(key => {
     const v = views[key];
     const isActive = key === active;
@@ -662,23 +703,31 @@ function save() {
   // _salIg rows live in instagram.json and are merged in at load(); strip
   // them out of every ml.json write path so the sandbox stays excisable.
   const mlRows = data.filter(r => !(r && r._salIg));
-  // 1. localStorage (instant) — LIGHT mirror only. ftext (HTML, ~90% of the
-  // file) is dropped from the LS copy so this synchronous setItem stays small
+  // (dev0325) Build the meta row ONCE and write it to BOTH targets. The meta row
+  // carries named Views (_salViews), the active view, sort, grid size and column
+  // layout. Previously it went to disk ONLY, so any View created after the
+  // File-System-Access permission lapsed lived solely in a failing disk write
+  // and was lost on reload. Mirroring it into localStorage = "ml.json saved
+  // everywhere": load() restores Views/layout from whichever copy is newer.
+  const meta = buildMeta();
+  // 1. localStorage (instant) — LIGHT mirror: meta row + data rows, but ftext
+  // (HTML, ~90% of the file) is dropped so this synchronous setItem stays small
   // and never trips the browser's ~5 MB quota (which was silently failing and
   // blocking the UI on every edit). ftext lives only on disk (ml.json);
   // load() rehydrates it by UID when it falls back to this LS copy. An empty
   // string is KEPT (distinguishes a user-cleared ftext from a stripped one).
+  // The meta row has no ftext, so the stripper leaves it fully intact.
   const ftextStripper = (k, v) =>
     (k === 'ftext' && typeof v === 'string' && v.length > 0) ? undefined : v;
   try {
-    localStorage.setItem('seeandlearn-links', JSON.stringify(mlRows, ftextStripper));
+    localStorage.setItem('seeandlearn-links', JSON.stringify([meta].concat(mlRows), ftextStripper));
     localStorage.setItem('sal-edited',        Date.now().toString());
     localStorage.setItem('ml-col-widths',     JSON.stringify(colWidths));
     localStorage.setItem('ml-col-order',      JSON.stringify(cols));
     localStorage.setItem('ml-col-hidden',     JSON.stringify([...hidden]));
   } catch(e) {}
   // 2. Disk (async, fire-and-forget — updates m:\jj\ml.json on every change)
-  writeFileToDisk('ml.json', [buildMeta()].concat(mlRows)).then(ok => {
+  writeFileToDisk('ml.json', [meta].concat(mlRows)).then(ok => {
     if (ok) setFsaStatus('📂 ' + (_fsaDir ? _fsaDir.name : '') + ' — saved ' + new Date().toTimeString().slice(0,8));
   });
 }
@@ -736,9 +785,14 @@ async function load() {
                 r.ftext = diskFtext.get(String(r.UID));
               }
             }
-            // localStorage stores plain `data` array (no meta row). Fetch raw might
-            // have meta — preserve it from fetched, replace data rows with localStorage.
-            if (Array.isArray(raw) && raw.length && raw[0]._salMeta) {
+            // (dev0325) The LS mirror now carries its OWN meta row (Views, layout,
+            // sort, grid size). Since LS is the newer copy here, prefer ITS meta
+            // so Views created after a lapsed disk permission survive. Fall back
+            // to the disk meta (pre-dev0325 LS copies had none), then to no meta.
+            const lsMeta = lsParsed.find(r => r && r._salMeta);
+            if (lsMeta) {
+              raw = [lsMeta].concat(lsData);
+            } else if (Array.isArray(raw) && raw.length && raw[0]._salMeta) {
               raw = [raw[0]].concat(lsData);
             } else {
               raw = lsData;
@@ -875,10 +929,15 @@ function applyColW(col, w) {
   colWidths[col] = w;
   const th = document.querySelector('#thead th[data-col="'+CSS.escape(col)+'"]');
   if (th) setThW(th, w);
-  const ci = visCols().indexOf(col) + 2; // 0=rn,1=cb,2+=data
-  document.querySelectorAll('#tbody tr').forEach(tr => {
-    const td = tr.children[ci]; if (td) setTdW(td, w);
-  });
+  // (dev0322) Under table-layout:fixed the <colgroup> is authoritative — moving
+  // the matching <col> resizes the entire column in O(1), with no per-row work
+  // (the old per-<td> loop made every resize-drag frame O(rows)).
+  const colEl = document.querySelector('#colgroup col[data-col="'+CSS.escape(col)+'"]');
+  if (colEl) colEl.style.width = w + 'px';
+  // (dev0325) Keep the explicit table width in sync — under fixed layout the
+  // table width is authoritative, so without this a wider column would steal
+  // space from the others instead of widening the table (and scrolling).
+  setTableWidth();
 }
 
 function setThW(th, w) {
@@ -890,6 +949,24 @@ function setTdW(td, w) {
   td.style.width    = w + 'px';
   td.style.minWidth = w + 'px';
   td.style.maxWidth = w + 'px';
+}
+
+// (dev0325) table-layout:fixed only honours the per-column <colgroup> widths
+// when the table itself has a DEFINITE width. With width:max-content (or auto)
+// Chromium sizes the table to its unwrapped white-space:nowrap content, so a
+// long ftext cell blows the column out to ~700k px and the colgroup cap is
+// silently ignored — this was the "size30max / size60max not working" bug.
+// Setting an explicit px width = sum of every <col> makes fixed layout clamp
+// each column to its <col> width (content clipped by overflow:hidden/ellipsis).
+// min-width:100% (CSS) still lets the table fill the viewport when columns are
+// narrow. O(cols), never O(rows) — safe to call on every resize-drag frame.
+function setTableWidth() {
+  const cg  = document.getElementById('colgroup');
+  const tbl = document.getElementById('tbl');
+  if (!cg || !tbl) return;   // stale-HTML fallback path has no colgroup
+  let sum = 0;
+  for (const c of cg.children) sum += parseFloat(c.style.width) || 0;
+  if (sum > 0) tbl.style.width = sum + 'px';
 }
 
 // Render
@@ -924,6 +1001,27 @@ function renderHead() {
   const thead = document.getElementById('thead');
   thead.innerHTML = '';
   const vc = visCols();
+
+  // (dev0322) Rebuild the <colgroup> so table-layout:fixed has authoritative
+  // per-column widths. Order mirrors the cells below: 0=row-num, 1=checkbox,
+  // then one <col> per visible column. data-col lets live resize (applyColW)
+  // update the matching <col> without a full render. Because of the global
+  // box-sizing:border-box, a <col width:N> equals the cell border-box width,
+  // so columns render at the same size they did under auto layout.
+  const cg = document.getElementById('colgroup');
+  if (cg) {
+    cg.innerHTML = '';
+    const addCol = (w, col) => {
+      const c = document.createElement('col');
+      c.style.width = w + 'px';
+      if (col) c.setAttribute('data-col', col);
+      cg.appendChild(c);
+    };
+    addCol(34);   // row-number column (matches th0/td0)
+    addCol(26);   // checkbox column   (matches thcb/tdcb)
+    vc.forEach(col => addCol(colW(col), col));
+  }
+
   const tr = document.createElement('tr');
 
   // Row-number th
@@ -971,6 +1069,7 @@ function renderHead() {
     tr.appendChild(th);
   });
   thead.appendChild(tr);
+  setTableWidth();   // (dev0325) clamp table to sum of <col> widths — see helper
 }
 
 // Thumbnail mode (Ctrl+I)
@@ -1031,6 +1130,18 @@ function renderBody() {
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
   const vc = visCols();
+  // (dev0324) Per-column widths computed ONCE (not per cell): colW() runs
+  // autoColW(), which measureText()s every row, so per-cell calls were O(rows²)
+  // — the real cause of the old multi-hundred-ms render() lag.
+  const cw = {}; vc.forEach(c => { cw[c] = colW(c); });
+  // Widths normally come from the <colgroup> under table-layout:fixed (built in
+  // renderHead). If a stale/cached index.html lacks the colgroup or fixed-layout
+  // CSS, auto layout would size columns to content and a long ftext cell would
+  // blow the table out — so detect that and fall back to per-cell widths (using
+  // the hoisted map, so still O(cells), never O(rows²)).
+  const _tbl = document.getElementById('tbl');
+  const needCellW = !document.getElementById('colgroup')
+    || !(_tbl && getComputedStyle(_tbl).tableLayout === 'fixed');
   // Determine if Thumb column is visible
   const thumbColIdx = vc.indexOf('Thumb');
   const showThumbs = _thumbMode && thumbColIdx >= 0;
@@ -1056,7 +1167,13 @@ function renderBody() {
     tdcb.appendChild(cb); tr.appendChild(tdcb);
 
     vc.forEach((col, ci) => {
-      const td = document.createElement('td'); setTdW(td, colW(col));
+      // (dev0323/0324) Width normally comes from the <colgroup> under
+      // table-layout:fixed, so we don't touch width per cell — colW() runs
+      // autoColW() (measureText over every row) and calling it per cell was
+      // O(rows²) (the old ~1.6s render() lag: slow Escape-from-A, tag-paste,
+      // sort, filter…). needCellW is the stale-HTML fallback; cw is precomputed.
+      const td = document.createElement('td');
+      if (needCellW) setTdW(td, cw[col]);
       td.setAttribute('data-vi', vi);
       td.setAttribute('data-ci', ci);
       const val = row[col] !== undefined ? String(row[col]) : '';
@@ -1146,7 +1263,7 @@ function renderBody() {
         if (url) {
           const img = document.createElement('img');
           img.src = url;
-          img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (colW(col) - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
+          img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (cw[col] - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
           img.onerror = () => { img.style.display='none'; td.textContent='✗'; };
           td.appendChild(img);
         } else if (isVimeo) {
@@ -1155,7 +1272,7 @@ function renderBody() {
           if (cached && cached.state === 'ok') {
             const img = document.createElement('img');
             img.src = cached.src;
-            img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (colW(col) - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
+            img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (cw[col] - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
             td.appendChild(img);
           } else if (!cached) {
             td.textContent = '⏳'; td.style.color = '#666';
@@ -1386,7 +1503,7 @@ function rowMatchesFilter(row) {
       if (!q) continue;
       if (k === 'anywhere') {
         // OR across all text fields + tag labels
-        const textFields = ['VidAuthor', 'VidTitle', 'link'];
+        const textFields = ['VidAuthor', 'VidTitle', 'link', 'VidComment'];
         let found = textFields.some(f => String(row[f] || '').toLowerCase().includes(q));
         if (!found) found = String(row.ftext || '').replace(/<[^>]*>/g, ' ').toLowerCase().includes(q);
         if (!found && window.tagsLib && row.tags) {
@@ -3265,7 +3382,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
     }
     renderChips();
     bar.style.display = 'flex';
-    setTimeout(() => tagInp.focus(), 30);
+    setTimeout(() => anywhereInp.focus(), 30);
     applyLive();
   };
 

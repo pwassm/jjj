@@ -207,10 +207,21 @@ html.locked-mode #userHmBtn { display: none !important; }
 /* wrap */
 #wrap { flex:1; overflow:auto; min-height:0; position:relative; }
 
-/* ── Table — no table-layout:fixed so column widths are driven purely by
-   min-width + max-width on each cell.  Both th and td get matching
-   min/max/width so the column is locked to exactly that size. ── */
-table { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; }
+/* ── Table — table-layout:fixed + a JS-built <colgroup> (see renderHead) lock
+   column widths so they stay stable regardless of which rows are present. NOTE:
+   this does NOT by itself fix double-click latency — that cost is laying out the
+   ~30k-cell table grid, and it scales with row count (measured: 50 rows ≈ 2ms,
+   842 rows ≈ 53ms). The real fix is virtualizing rows (render only the visible
+   window). Fixed layout is the prerequisite so columns don't jump as rows
+   recycle. Thanks to the global box-sizing:border-box, each <col width:N> equals
+   the border-box width cells already had, so columns don't shift. Per-cell
+   min/max/width stay as a backstop. WIDTH must be an explicit px value, set by
+   renderHead→setTableWidth() = sum of the <col> widths. width:max-content/auto
+   does NOT work: Chromium sizes a fixed table to its unwrapped nowrap content,
+   so a long ftext cell blows the column out to ~700k px and the colgroup cap
+   (size30max/size60max) silently does nothing. min-width:100% still fills the
+   viewport when columns are narrow; the explicit px preserves horizontal scroll. ── */
+table { border-collapse:separate; border-spacing:0; table-layout:fixed; width:auto; min-width:100%; }
 
 thead { position:sticky; top:0; z-index:100; }
 thead th {
@@ -336,6 +347,8 @@ td.editing input {
 #viewsPanel .vp-save-btn { padding:5px 12px; border-radius:5px; border:1px solid #fc8; color:#fc8; background:rgba(80,50,0,0.5); font-size:12px; font-family:monospace; cursor:pointer; white-space:nowrap; }
 #viewsPanel .vp-save-btn:hover { background:rgba(120,80,0,0.7); }
 #viewsPanel .vp-empty { padding:14px; color:#555; font-size:11px; text-align:center; }
+#viewsPanel .vp-presets { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; border-bottom:1px solid #432; background:rgba(255,200,100,0.05); }
+#viewsPanel .vp-presets-lbl { font-size:11px; color:#fc8; flex-shrink:0; margin-right:2px; }
 /* Mark-for-Grid dropdown */
 .mgitem { padding:8px 14px; color:#fa8; font-size:12px; cursor:pointer; white-space:nowrap; border-bottom:1px solid rgba(255,180,80,0.12); }
 .mgitem:last-child { border-bottom:none; }
@@ -580,15 +593,15 @@ thead th.rn              { color: #fff !important; }
 <div id="filterBar" style="display:none;align-items:center;justify-content:flex-end;gap:5px;flex-shrink:0;
      padding:4px 10px;background:#0d0d1e;border-bottom:2px solid #c78;flex-wrap:wrap;">
   <span style="color:#f8a;font-size:13px;font-weight:bold;white-space:nowrap;">🔍 Filter:</span>
-  <div id="fbChips" style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;min-width:40px;"></div>
-  <input id="fbTagInput" type="text" placeholder="add tag…" autocomplete="off"
-    style="padding:2px 7px;font-size:12px;font-family:monospace;background:#0a0a1a;
-           border:1px solid #c78;border-radius:4px;color:#fff;outline:none;width:120px;">
-  <span style="color:#333;margin:0 2px;">│</span>
   <label style="color:#888;font-size:11px;white-space:nowrap;">Anywhere:</label>
   <input id="fbAnywhere" type="text" autocomplete="off" placeholder="search all…"
     style="padding:2px 7px;font-size:12px;font-family:monospace;background:#0a0a1a;
            border:1px solid #678;border-radius:4px;color:#fff;outline:none;width:120px;">
+  <span style="color:#333;margin:0 2px;">│</span>
+  <div id="fbChips" style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;min-width:40px;"></div>
+  <input id="fbTagInput" type="text" placeholder="add tag…" autocomplete="off"
+    style="padding:2px 7px;font-size:12px;font-family:monospace;background:#0a0a1a;
+           border:1px solid #c78;border-radius:4px;color:#fff;outline:none;width:120px;">
   <span style="color:#333;margin:0 2px;">│</span>
   <label style="color:#888;font-size:11px;white-space:nowrap;">Author:</label>
   <input id="fbAuthor" data-field="VidAuthor" type="text" autocomplete="off" placeholder="contains…"
@@ -617,6 +630,7 @@ thead th.rn              { color: #fff !important; }
 
 <div id="wrap">
   <table id="tbl">
+    <colgroup id="colgroup"></colgroup>
     <thead id="thead"></thead>
     <tbody id="tbody"></tbody>
   </table>
@@ -867,7 +881,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0317';
+  window.HELP_VERSION_STR = 'dev0325';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];

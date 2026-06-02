@@ -1457,6 +1457,17 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0318) Z / X = rotate the crop frame −/+ 0.5° (straighten). Gated to a
+  // visible crop overlay like T, so they pass through in any other context.
+  if (e.key === 'z' || e.key === 'Z' || e.key === 'x' || e.key === 'X') {
+    if (!_vpState || !_vpState.crop) return;
+    if (_vpState.crop.el.container.style.display === 'none') return;
+    e.preventDefault(); e.stopPropagation();
+    const s = _vpState.crop;
+    if (s.setAngle) s.setAngle(s.angle + ((e.key === 'z' || e.key === 'Z') ? -0.5 : 0.5));
+    return;
+  }
+
   // (dev0293 / dev0296) ASDF — symmetric 1-frame nudges. ONLY active when
   // BOTH A and B are set; otherwise these keys pass through untouched so
   // they stay free for other features outside the crop/trim context.
@@ -2201,6 +2212,24 @@ function _vpCropFracForAspect(aspect, vid) {
   return { x: (1 - fw) / 2, y: (1 - fh) / 2, w: fw, h: fh, ratio: fracRatio };
 }
 
+// (dev0318) True when the tilted crop rect has any corner outside the source
+// frame → ffmpeg black-fills that wedge on save. Drives the amber dim-label.
+// Corners = center ± half-extents rotated by the screen tilt (CW for +angle).
+function _vpCropTiltOOB(state, VW, VH) {
+  if (!state.angle) return false;
+  const cx = (state.frac.x + state.frac.w / 2) * VW;
+  const cy = (state.frac.y + state.frac.h / 2) * VH;
+  const hw = state.frac.w * VW / 2, hh = state.frac.h * VH / 2;
+  const t = state.angle * Math.PI / 180, ct = Math.cos(t), st = Math.sin(t);
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const dx = sx * hw, dy = sy * hh;
+    const x = cx + dx * ct - dy * st;
+    const y = cy + dx * st + dy * ct;
+    if (x < 0 || x > VW || y < 0 || y > VH) return true;
+  }
+  return false;
+}
+
 function _vpMountCropOverlay(host, vid, row) {
   if (!row || !row._directVideoFile) return;
 
@@ -2228,11 +2257,14 @@ function _vpMountCropOverlay(host, vid, row) {
 
   // Header bar above the rect: aspect toggle + CRF slider + Crop + close.
   const bar = document.createElement('div');
+  // (dev0320) Hugs the top of the crop window (left/top set in paint), flipping
+  // to just inside the top edge when the window nears the host top. Kept a
+  // container child (not the rect) so it stays LEVEL while the rect tilts.
   bar.style.cssText =
-    'position:absolute;left:0;right:0;top:-34px;height:30px;' +
-    'display:flex;align-items:center;gap:8px;padding:0 8px;' +
+    'position:absolute;transform:translateX(-50%);height:30px;' +
+    'display:flex;align-items:center;gap:8px;padding:0 8px;max-width:96%;white-space:nowrap;' +
     'background:rgba(0,0,0,0.7);color:#dfe6f0;font:12px ui-monospace,Consolas,monospace;' +
-    'border-radius:4px;pointer-events:auto;';
+    'border-radius:4px;pointer-events:auto;z-index:2;';
   bar.innerHTML =
     '<span id="vp-crop-aspect" style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
     '<span style="opacity:0.7;">CRF</span>' +
@@ -2243,13 +2275,15 @@ function _vpMountCropOverlay(host, vid, row) {
       '<option value="720">720p</option>' +
       '<option value="source">Same</option>' +
     '</select>' +
+    '<span id="vp-crop-rot" title="Drag ↕ to straighten · wheel ±0.1° · double-click reset" ' +
+      'style="cursor:ns-resize;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">⟲ 0.0°</span>' +
     '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
       '<input id="vp-crop-slow" type="checkbox" style="margin:0;vertical-align:middle;">Slow</label>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
     '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
       'padding:3px 8px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;">✕</button>';
-  rect.appendChild(bar);
+  c.appendChild(bar);   // (dev0318) bar lives on the container, not the (tiltable) rect
 
   const handles = {};
   const HSZ = 14;
@@ -2267,32 +2301,85 @@ function _vpMountCropOverlay(host, vid, row) {
     handles[pos] = h;
   });
 
+  // (dev0318) Rule-of-thirds grid (child of rect → rotates with it). Hidden at
+  // rest; faded in during any drag/rotate to help eyeball a level horizon.
+  const grid = document.createElement('div');
+  grid.style.cssText = 'position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .2s;';
+  grid.innerHTML =
+    '<div style="position:absolute;top:0;bottom:0;left:33.33%;width:1px;background:rgba(255,255,255,0.5);"></div>' +
+    '<div style="position:absolute;top:0;bottom:0;left:66.66%;width:1px;background:rgba(255,255,255,0.5);"></div>' +
+    '<div style="position:absolute;left:0;right:0;top:33.33%;height:1px;background:rgba(255,255,255,0.5);"></div>' +
+    '<div style="position:absolute;left:0;right:0;top:66.66%;height:1px;background:rgba(255,255,255,0.5);"></div>';
+  rect.appendChild(grid);
+
+  // (dev0320) Rotate knob on a stem off the RIGHT edge, vertically centered.
+  // Child of rect so it tracks the tilt; drag it up/down (an arc about the rect
+  // center) to tilt that side, double-click resets. Right-side placement leaves
+  // the top edge free for the control bar.
+  const stem = document.createElement('div');
+  stem.style.cssText = 'position:absolute;right:-20px;top:50%;width:20px;height:2px;margin-top:-1px;background:#6af;pointer-events:none;';
+  rect.appendChild(stem);
+  const knob = document.createElement('div');
+  knob.title = 'Drag up/down to straighten · double-click to reset';
+  knob.style.cssText =
+    'position:absolute;right:-32px;top:50%;width:16px;height:16px;margin-top:-8px;' +
+    'background:#6af;border:2px solid #fff;border-radius:50%;cursor:grab;' +
+    'pointer-events:auto;box-shadow:0 1px 3px rgba(0,0,0,0.6);';
+  rect.appendChild(knob);
+
   const state = {
-    aspect: 'L', crf: 18, slow: false, resHeight: 1080,
+    aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
     frac: _vpCropFracForAspect('L', vid),
-    el: { container: c, rect, bar, handles }
+    el: { container: c, rect, bar, handles, knob, grid }
   };
+
+  // (dev0318) Rotation helpers. Declared before paint() (which calls
+  // updateAngleUI) and before the drag handlers below. setAngle is the single
+  // entry point (knob, toolbar grip, wheel, Z/X) — clamps, snaps a 0° detent,
+  // quantizes to 0.1°, repaints.
+  const rotGrip = bar.querySelector('#vp-crop-rot');
+  let _gridTimer = null;
+  function showGrid() { if (_gridTimer) { clearTimeout(_gridTimer); _gridTimer = null; } grid.style.opacity = '0.55'; }
+  function hideGridSoon() { if (_gridTimer) clearTimeout(_gridTimer); _gridTimer = setTimeout(function () { grid.style.opacity = '0'; _gridTimer = null; }, 600); }
+  function updateAngleUI() { if (rotGrip) rotGrip.textContent = '⟲ ' + state.angle.toFixed(1) + '°'; }
+  function setAngle(deg) {
+    let a = Math.max(-15, Math.min(15, deg));
+    if (Math.abs(a) < 0.25) a = 0;          // detent at level
+    state.angle = Math.round(a * 10) / 10;  // 0.1° resolution
+    paint();
+  }
 
   function paint() {
     const r = _vpCropRenderRect(host, vid);
-    const screenTop = r.ry + state.frac.y * r.rh;
-    rect.style.left   = (r.rx + state.frac.x * r.rw) + 'px';
-    rect.style.top    = screenTop + 'px';
-    rect.style.width  = (state.frac.w * r.rw) + 'px';
+    const rl = r.rx + state.frac.x * r.rw;
+    const rt = r.ry + state.frac.y * r.rh;
+    const rw = state.frac.w * r.rw;
+    rect.style.left   = rl + 'px';
+    rect.style.top    = rt + 'px';
+    rect.style.width  = rw + 'px';
     rect.style.height = (state.frac.h * r.rh) + 'px';
-    // (dev0293) Update the W×H label — source pixels after even-snap, since
-    // that's what ffmpeg will actually crop.
+    // (dev0318) Tilt the rect; its mask, handles, knob and grid rotate with it.
+    rect.style.transform = state.angle ? ('rotate(' + state.angle + 'deg)') : '';
+    // (dev0320) Control bar hugs the top of the crop window, centered on it, and
+    // flips to just inside the top edge when the window nears the host top. It's
+    // a container child so it stays LEVEL under tilt; clamp horizontally so the
+    // Crop button can't run off-screen.
+    const bwHalf = (bar.offsetWidth || 0) / 2;
+    const bx = Math.max(bwHalf + 4, Math.min(host.clientWidth - bwHalf - 4, rl + rw / 2));
+    bar.style.left = bx + 'px';
+    bar.style.top  = (rt < 40 ? (rt + 4) : (rt - 34)) + 'px';
+    // (dev0293/dev0318) W×H label in source px (what ffmpeg crops) plus the tilt
+    // angle. Counter-rotate so the text stays upright; turn amber when a tilted
+    // corner leaves the source frame (ffmpeg will black-fill that wedge on save).
     if (r.VW > 0 && r.VH > 0) {
       const even = n => Math.max(2, Math.floor(n / 2) * 2);
       const sw = even(state.frac.w * r.VW);
       const sh = even(state.frac.h * r.VH);
-      dimLbl.textContent = sw + ' × ' + sh;
+      dimLbl.textContent = sw + ' × ' + sh + (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '');
+      dimLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
+      dimLbl.style.color = (state.angle && _vpCropTiltOOB(state, r.VW, r.VH)) ? '#fb3' : '#dfe6f0';
     }
-    // (dev0294) If the rect is near the top of the host (bar would clip off-
-    // screen), flip the bar to INSIDE the rect (just below its top border).
-    // Restored to above (-34px) once the rect moves down. Threshold = bar's
-    // own height + a tiny safety margin.
-    bar.style.top = (screenTop < 40) ? '4px' : '-34px';
+    updateAngleUI();
   }
   const ensureMeta = () => { state.frac = _vpCropFracForAspect(state.aspect, vid); paint(); };
   if (vid.videoWidth) ensureMeta();
@@ -2320,6 +2407,7 @@ function _vpMountCropOverlay(host, vid, row) {
   });
   function onMove(e) {
     if (!drag) return;
+    showGrid();   // (dev0318) thirds grid visible while moving/resizing
     const dxF = (e.clientX - drag.sx) / drag.r.rw;
     const dyF = (e.clientY - drag.sy) / drag.r.rh;
     if (drag.kind === 'move') {
@@ -2354,6 +2442,7 @@ function _vpMountCropOverlay(host, vid, row) {
   function onUp(e) {
     if (drag) {
       try { (drag.kind === 'move' ? rect : handles[drag.pos]).releasePointerCapture(e.pointerId); } catch (_) {}
+      hideGridSoon();
     }
     drag = null;
   }
@@ -2376,6 +2465,63 @@ function _vpMountCropOverlay(host, vid, row) {
     const v = resSel.value;
     state.resHeight = (v === 'source') ? 'source' : (+v || 1080);
   });
+
+  // (dev0318) ── Rotation controls ───────────────────────────────────────────
+  // Knob: arc-drag about the rect center (getBoundingClientRect's box center
+  // equals the true center even when rotated, since we rotate about center).
+  let rotDrag = null;
+  knob.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const b = rect.getBoundingClientRect();
+    const ctr = { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    const startPtr = Math.atan2(e.clientY - ctr.y, e.clientX - ctr.x) * 180 / Math.PI;
+    rotDrag = { ctr, startPtr, startAngle: state.angle };
+    try { knob.setPointerCapture(e.pointerId); } catch (_) {}
+    knob.style.cursor = 'grabbing';
+    showGrid();
+  });
+  knob.addEventListener('pointermove', e => {
+    if (!rotDrag) return;
+    const cur = Math.atan2(e.clientY - rotDrag.ctr.y, e.clientX - rotDrag.ctr.x) * 180 / Math.PI;
+    let d = cur - rotDrag.startPtr;
+    while (d > 180) d -= 360; while (d < -180) d += 360;
+    setAngle(rotDrag.startAngle + d);
+    showGrid();
+  });
+  knob.addEventListener('pointerup', e => {
+    if (!rotDrag) return;
+    try { knob.releasePointerCapture(e.pointerId); } catch (_) {}
+    rotDrag = null; knob.style.cursor = 'grab'; hideGridSoon();
+  });
+  knob.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); setAngle(0); });
+
+  // Toolbar grip: vertical drag (up = +), wheel ±0.1°, double-click reset.
+  let gripDrag = null;
+  if (rotGrip) {
+    rotGrip.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      gripDrag = { startY: e.clientY, startAngle: state.angle };
+      try { rotGrip.setPointerCapture(e.pointerId); } catch (_) {}
+      showGrid();
+    });
+    rotGrip.addEventListener('pointermove', e => {
+      if (!gripDrag) return;
+      setAngle(gripDrag.startAngle + (gripDrag.startY - e.clientY) * 0.1);
+      showGrid();
+    });
+    rotGrip.addEventListener('pointerup', e => {
+      if (!gripDrag) return;
+      try { rotGrip.releasePointerCapture(e.pointerId); } catch (_) {}
+      gripDrag = null; hideGridSoon();
+    });
+    rotGrip.addEventListener('wheel', e => {
+      e.preventDefault();
+      setAngle(state.angle + (e.deltaY < 0 ? 0.1 : -0.1));
+      showGrid(); hideGridSoon();
+    }, { passive: false });
+    rotGrip.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); setAngle(0); });
+  }
+
   // (dev0296) Crop button now mirrors the G hotkey — prompts for an ID and
   // uses the unified filename template. fromButton=true so missing AB shows
   // a toast instead of the silent no-op G uses (which would be mysterious
@@ -2387,9 +2533,13 @@ function _vpMountCropOverlay(host, vid, row) {
   // Disposal — called from vpClose to drop document listeners + ResizeObserver.
   state.dispose = () => {
     try { ro.disconnect(); } catch (_) {}
+    if (_gridTimer) clearTimeout(_gridTimer);
     document.removeEventListener('pointermove', onMove, true);
     document.removeEventListener('pointerup',   onUp,   true);
   };
+  // (dev0318) Exposed for the Z/X keyboard nudges and aspect-swap repaint.
+  state.paint = paint;
+  state.setAngle = setAngle;
   if (_vpState) _vpState.crop = state;
 }
 
@@ -2425,6 +2575,7 @@ function _vpCropToggle() {
       sc.style.cursor = 'default';
     }
     if (host) host.style.transform = '';
+    if (s.paint) s.paint();   // (dev0320) reposition bar now it's visible (offsetWidth valid)
   } else {
     if (sc) {
       sc.style.pointerEvents = s._savedSCPE || '';
@@ -2449,14 +2600,8 @@ function _vpCropSwapAspect() {
   s.frac.x = nx; s.frac.y = ny;
   const label = s.el.bar.querySelector('#vp-crop-aspect');
   if (label) label.textContent = s.aspect === 'L' ? '16:9' : '9:16';
-  const host = s.el.container.parentElement;
-  if (host) {
-    const r = _vpCropRenderRect(host, vid);
-    s.el.rect.style.left   = (r.rx + s.frac.x * r.rw) + 'px';
-    s.el.rect.style.top    = (r.ry + s.frac.y * r.rh) + 'px';
-    s.el.rect.style.width  = (s.frac.w * r.rw) + 'px';
-    s.el.rect.style.height = (s.frac.h * r.rh) + 'px';
-  }
+  // (dev0318) Angle is preserved across L↔P; repaint re-applies position + tilt.
+  if (s.paint) s.paint();
 }
 
 // (dev0289) Crop button — wired to proxy.js /exec/ffmpeg. Computes the
@@ -2615,7 +2760,6 @@ async function _vpGoSave(opts) {
     const s = _vpState.crop;
     const VW = vid.videoWidth, VH = vid.videoHeight;
     const even = n => Math.max(2, Math.floor(n / 2) * 2);
-    const sx = even(s.frac.x * VW), sy = even(s.frac.y * VH);
     const sw = even(s.frac.w * VW), sh = even(s.frac.h * VH);
     // (dev0297) When the resolution dropdown is "Same" (no scale), the actual
     // output dims are the crop dims, so report THAT in the filename rather
@@ -2623,17 +2767,45 @@ async function _vpGoSave(opts) {
     const sizeStr = (s.resHeight === 'source')
       ? (Math.min(sw, sh) + 'p')
       : (s.resHeight + 'p');
-    outName = [parts.base, safeId, sizeStr, s.aspect, 'crop', durStr].join('~') + '~.mp4';
+    // (dev0318) Crop position. No tilt → axis-aligned crop (unchanged path).
+    // Tilt → rotate the whole frame by -angle onto an expanded D×D canvas so the
+    // tilted rect becomes axis-aligned, then crop there. Geometry verified:
+    // ffmpeg +rad = clockwise (matches CSS), so a = -angle; the crop center is
+    // the source-px center remapped by R(a) about the frame center.
+    const angle = s.angle || 0;
+    let cropBox, rotate = null, angTok = '';
+    if (!angle) {
+      cropBox = { w: sw, h: sh, x: even(s.frac.x * VW), y: even(s.frac.y * VH) };
+    } else {
+      const a = -angle * Math.PI / 180;
+      const D = even(Math.ceil(Math.hypot(VW, VH)));
+      const cx = (s.frac.x + s.frac.w / 2) * VW, cy = (s.frac.y + s.frac.h / 2) * VH;
+      const u = cx - VW / 2, v = cy - VH / 2;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const ccx = D / 2 + (ca * u - sa * v), ccy = D / 2 + (sa * u + ca * v);
+      // Clamp into the canvas so a heavily off-frame tilt black-fills instead of
+      // failing the proxy's bounds check (the amber label already warned).
+      const cx0 = Math.max(0, Math.min(D - sw, even(Math.round(ccx - sw / 2))));
+      const cy0 = Math.max(0, Math.min(D - sh, even(Math.round(ccy - sh / 2))));
+      cropBox = { w: sw, h: sh, x: cx0, y: cy0 };
+      rotate = { rad: a, ow: D, oh: D };
+      angTok = 'r' + angle.toFixed(1).replace('.', '_') + 'deg';
+    }
+    const nameParts = [parts.base, safeId, sizeStr, s.aspect, 'crop'];
+    if (angTok) nameParts.push(angTok);
+    nameParts.push(durStr);
+    outName = nameParts.join('~') + '~.mp4';
     payload = {
       input: absInput,
       output: parts.dir + parts.sep + outName,
-      crop: { w: sw, h: sh, x: sx, y: sy },
+      crop: cropBox,
       crf: s.crf,
       preset: s.slow ? 'slow' : 'medium',
       aspect: s.aspect, resHeight: s.resHeight,
       trim: { startSec, endSec },
       overwrite: false
     };
+    if (rotate) payload.rotate = rotate;
   } else {
     // (dev0296) Source dims drive size+aspect for lossless filenames so the
     // resulting name still tells you the resolution at a glance.
@@ -2650,6 +2822,13 @@ async function _vpGoSave(opts) {
       overwrite: false
       // No `crop` → builder takes the lossless -c copy path.
     };
+  }
+  // (dev0319) Deskew preflight — a stale proxy silently ignores payload.rotate
+  // and applies the rotated-canvas crop coords to the raw frame (grabs the wrong
+  // region, no deskew). Refuse loudly instead of writing a mis-cropped file.
+  if (payload.rotate && !(await _vpProxySupportsRotate())) {
+    if (typeof toast === 'function') toast('Deskew needs an updated proxy — restart "node proxy.js" and retry', 4000);
+    return;
   }
   const totalMs = Math.max(0, (endSec - startSec) * 1000);
   const useBtn = cropOn ? _vpState.crop.el.bar.querySelector('#vp-crop-do') : null;
@@ -2715,6 +2894,18 @@ async function _vpGoSave(opts) {
 // or "Not overwriting - exiting"), so case-insensitive substring is robust.
 function _vpCropStderrSaysExists(lines) {
   return lines.some(l => /already exists/i.test(l) || /not overwriting/i.test(l));
+}
+
+// (dev0319) Capability check — true only if the proxy advertises rotate support
+// at GET /version. A stale proxy (pre-dev0318, or any without /version) returns
+// false, letting the caller refuse a deskew job instead of mis-cropping silently.
+async function _vpProxySupportsRotate() {
+  try {
+    const r = await fetch(PROXY_BASE + '/version', { method: 'GET' });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return !!(j && Array.isArray(j.features) && j.features.includes('rotate'));
+  } catch (_) { return false; }
 }
 
 // (dev0289) One request/response cycle to /exec/ffmpeg. Resolves with

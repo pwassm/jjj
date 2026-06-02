@@ -16,6 +16,10 @@ const https = require('https');
 const { spawn } = require('child_process');
 
 const PORT = 8081;
+// (dev0319) Build/capability tag — surfaced at GET /version so the client can
+// detect a stale proxy before sending a deskew (rotate) job that an old build
+// would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
+const PROXY_BUILD = 'dev0319';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -88,6 +92,11 @@ function must(cond, msg) { if (!cond) throw new Error(msg); }
 //   resHeight 1080|720|'source' — when numeric, append ',scale=-2:H' (L) or
 //                                 ',scale=H:-2' (P) to the filter chain.
 //                                 'source' or undefined → no scale.
+//   rotate    {rad,ow,oh}      — OPTIONAL (dev0318); horizon-straighten. Prepends
+//                                 'rotate=rad:ow:oh:c=black,' before crop. rad is
+//                                 radians (ffmpeg +=clockwise); the caller has
+//                                 already expressed crop.x/y in this rotated
+//                                 ow×oh canvas. Absent → chain unchanged.
 //
 // (dev0293) Two code paths now:
 //   CROP path (re-encode):  crop present → libx264 + filter chain
@@ -122,7 +131,25 @@ function buildFfmpegArgs(p) {
     }
     const crf = (Number.isFinite(p.crf) && p.crf >= 0 && p.crf <= 51) ? p.crf : 18;
     const preset = (p.preset === 'slow' || p.preset === 'fast') ? p.preset : 'medium';
-    let vf = `crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`;
+    // (dev0318) Optional horizon-straighten: rotate the whole frame onto an
+    // expanded ow×oh square (black fill) so the user's tilted rect becomes
+    // axis-aligned, then crop it. crop.x/y already live in the rotated canvas.
+    // All values validated as numbers here → argv stays literal/non-injectable.
+    let prefix = '';
+    if (p.rotate) {
+      must(typeof p.rotate === 'object', 'rotate must be an object');
+      const rad = +p.rotate.rad;
+      must(Number.isFinite(rad) && Math.abs(rad) <= 0.35,
+           'rotate.rad must be a finite number with |rad| ≤ 0.35');
+      for (const k of ['ow','oh']) {
+        must(Number.isInteger(p.rotate[k]) && p.rotate[k] > 0,
+             `rotate.${k} must be a positive integer`);
+      }
+      must(p.crop.x + p.crop.w <= p.rotate.ow && p.crop.y + p.crop.h <= p.rotate.oh,
+           'crop exceeds rotated canvas');
+      prefix = `rotate=${rad}:ow=${p.rotate.ow}:oh=${p.rotate.oh}:c=black,`;
+    }
+    let vf = prefix + `crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`;
     const resH = p.resHeight;
     if (Number.isFinite(resH) && resH > 0) {
       const aspect = (p.aspect === 'P') ? 'P' : 'L';
@@ -309,6 +336,14 @@ http.createServer((req, res) => {
     return;
   }
 
+  // (dev0319) Version/capability handshake — lets the client detect a stale
+  // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
+  if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
+    res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate'] }));
+    return;
+  }
+
   // (dev0289) ── Local exec bridge ─────────────────────────────────────
   if (req.url.startsWith('/exec/')) {
     const origin = req.headers.origin || '';
@@ -384,4 +419,5 @@ http.createServer((req, res) => {
   console.log('Spoofs Referer (target apex domain) + Chrome User-Agent');
   console.log(`Local exec bridge: POST /exec/{${Object.keys(EXEC_ALLOW).join(',')}}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
+  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate`);
 });

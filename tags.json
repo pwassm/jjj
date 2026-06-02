@@ -4022,5 +4022,81 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "polyplacophora",
+    "label": "Polyplacophora",
+    "kind": "taxon",
+    "parents": [
+      "mollusca"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "chitonida",
+    "label": "Chitonida",
+    "kind": "taxon",
+    "parents": [
+      "polyplacophora"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "acanthochitonidae",
+    "label": "Acanthochitonidae",
+    "kind": "taxon",
+    "parents": [
+      "chitonida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "cryptochiton",
+    "label": "Cryptochiton",
+    "kind": "taxon",
+    "parents": [
+      "acanthochitonidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "cryptochiton-stelleri",
+    "label": "Cryptochiton stelleri",
+    "kind": "taxon",
+    "parents": [
+      "cryptochiton"
+    ],
+    "aliases": [
+      "Cryptochiton stelleri (Middendorff",
+      "1847)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "gumboot chiton",
+    "extinct": false
+  },
+  {
+    "id": "spawning",
+    "label": "Spawning",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "microcosmos",
+    "label": "Microcosmos",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
