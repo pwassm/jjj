@@ -982,6 +982,10 @@ function render() {
       }
     } catch (_) {}
   }
+  // (dev0332) If the focused-row preview is open, follow the new focus row;
+  // if it's remembered-but-hidden and T is the visible screen again, re-show it.
+  if (typeof rowPreviewSyncToFocus === 'function') rowPreviewSyncToFocus();
+  if (typeof _rpvMaybeReshow === 'function') _rpvMaybeReshow();
 }
 
 function buildTable() {
@@ -1103,6 +1107,7 @@ function fetchVimeoThumb(url, onReady) {
 const RPV_HOST_ID = 'rpv-host';   // video mounts register under this id in seeLearnVideoPlayers
 let _rpvOpen = false;
 let _rpvDi   = -1;                // data-row index currently previewed (drives the toggle)
+let _rpvWantOpen = false;         // (dev0332) sticky intent: re-show on return to T until an explicit Ctrl+I/Esc close
 
 // Segment palette — MUST match video.js COLOURS / vp.js VP_COLOURS so a row's
 // segment colors are consistent across the V timeline bands, this caption, and
@@ -1183,14 +1188,26 @@ function buildRowPreviewCaption(row) {
   return wrap;
 }
 
-// Tear down the preview (idempotent). Destroys any mounted video first.
-function rowPreviewClose() {
+// Internal teardown (idempotent): destroy the mounted video + remove the
+// overlay. Leaves the sticky _rpvWantOpen intent untouched — callers decide.
+function _rpvTeardown() {
   if (window.stopCellVideoLoop) { try { window.stopCellVideoLoop(RPV_HOST_ID); } catch (_) {} }
   const ov = document.getElementById('rowPreview');
   if (ov) ov.remove();
   _rpvOpen = false;
   _rpvDi = -1;
 }
+
+// (dev0332) Hide the pane but REMEMBER it was open, so returning to T re-shows
+// it (video restarts from the beginning). Used when leaving T for another
+// screen — tears down the video so a backgrounded pane never burns
+// YouTube/Vimeo bandwidth.
+function rowPreviewHide() { _rpvTeardown(); }
+window.rowPreviewHide = rowPreviewHide;
+
+// Explicit close (Ctrl+I toggle / Esc): tear down AND forget the intent, so the
+// pane does NOT auto-reappear when you next land on T.
+function rowPreviewClose() { _rpvTeardown(); _rpvWantOpen = false; }
 window.rowPreviewClose = rowPreviewClose;
 
 // Open (or refresh) the preview for the currently focused row.
@@ -1199,7 +1216,7 @@ function rowPreviewOpen() {
   const di = vr(focus.r);
   const row = (di >= 0 && di < data.length) ? data[di] : null;
   if (!row) { toast('👁 No row to preview', 1400); return; }
-  rowPreviewClose();   // start clean (tears down any prior video)
+  _rpvTeardown();   // start clean (tears down any prior video)
 
   const ov = document.createElement('div');
   ov.id = 'rowPreview';
@@ -1223,8 +1240,42 @@ function rowPreviewOpen() {
 
   document.body.appendChild(ov);
   _rpvOpen = true;
+  _rpvWantOpen = true;   // (dev0332) remember it across screen switches until an explicit close
   _rpvDi = di;
   _rpvFillHost(host, row);
+}
+
+// (dev0332) Keep an OPEN preview pinned to the currently focused row. Any focus
+// change (arrow nav, click, edit-move, dev scrolling, sort) calls this; it
+// rebuilds the pane for the new row only when focus actually moved to a
+// DIFFERENT data row, so it's a cheap no-op otherwise. Closed pane → no-op.
+function rowPreviewSyncToFocus() {
+  if (!_rpvOpen || focus === null) return;
+  const di = vr(focus.r);
+  if (di < 0 || di >= data.length || di === _rpvDi) return;
+  rowPreviewOpen();   // tears down the old row's video + rebuilds for the new one
+}
+window.rowPreviewSyncToFocus = rowPreviewSyncToFocus;
+
+// (dev0332) Re-show a remembered-but-hidden pane once its home screen (T) is
+// visible again — the video restarts from the beginning (a fresh mount). Called
+// from render(), which is the common landing point for every return-to-T path
+// (buildTable, closeCScreen). Deferred to a macrotask so a path that renders the
+// table then covers it (Grid does buildTable() then gridShow()) settles first;
+// if anything is covering T by then, we stay hidden. No-op unless we're in the
+// want-but-hidden state, so the normal render path costs nothing.
+function _rpvMaybeReshow() {
+  if (!_rpvWantOpen || _rpvOpen) return;
+  setTimeout(() => {
+    if (!_rpvWantOpen || _rpvOpen || focus === null) return;
+    const covered = document.getElementById('gridOverlay')?.style.display === 'flex'
+      || document.getElementById('gridFullscreen')?.style.display === 'flex'
+      || !!document.getElementById('video-editor-overlay')
+      || !!document.getElementById('textEditorOverlay')
+      || document.getElementById('browseOverlay')?.style.display === 'flex';
+    if (covered) return;   // T isn't the visible (uncovered) screen — stay hidden
+    rowPreviewOpen();
+  }, 0);
 }
 
 // Fill the media host from a row — branch order mirrors grid.js (IG / quiz /
@@ -1364,7 +1415,8 @@ document.addEventListener('keydown', e => {
 // (that would resurrect the old O(rows²) lag).
 let _tVisList = [];                   // [{vi,di}] rows passing the filter, in display order
 let _tCtx = null;                     // cached cols/widths/thumb flags for the current full render
-let _tRowH = 25;                      // measured AVG row height (px), locked per full render
+let _tRowH = 25;                      // measured AVG row height (px), LOCKED once (see _tMeasureRowH)
+let _tRowHLocked = false;             // (dev0332) once true, _tRowH never changes — kills per-keystroke remap jump
 let _tWinFirst = -1, _tWinLast = -1;  // last-rendered window range (skip rebuild if unchanged)
 let _tScrollWired = false;
 const T_OVERSCAN = 8;                 // extra rows rendered above/below the viewport
@@ -1429,24 +1481,47 @@ function _tRenderWindow(force) {
 // Scroll #wrap so display row vi sits in the viewport (below the sticky thead),
 // re-render the window to include it, and return its <tr>.
 function _tScrollRowIntoView(vi) {
-  const idx = _tVisList.findIndex(o => o.vi === vi);
   const wrap = document.getElementById('wrap');
-  if (idx < 0 || !wrap) { _tRenderWindow(true); return document.querySelector('#tbody tr[data-vrow="'+vi+'"]'); }
+  if (!wrap) return null;
   const rowH = _tRowHeight();
   const clientH = wrap.clientHeight || (window.innerHeight || 800);
   const headH = (document.getElementById('thead') || {}).offsetHeight || 0;
-  const rowTop = idx * rowH, rowBot = rowTop + rowH;
-  // (dev0331) Keep ~2 rows of context above/below the focused row, so the window
-  // FOLLOWS focus as it changes and never pins the row flush at the top edge —
-  // when the focused row reaches the top it relocates so rows above stay visible.
+  // ~2 rows of context above/below before we scroll, so the window FOLLOWS focus
+  // toward the edges without pinning the row flush against the header/footer.
   const margin = rowH * 2;
+
+  // (dev0332) FAST/COMMON path — the row is already mounted (true for one-step
+  // arrow nav and most clicks). Decide purely from REAL DOM geometry, immune to
+  // the avg-row-height drift that previously made every keystroke scroll. Scroll
+  // only the minimal delta needed to pull it back inside the comfortable band;
+  // if it's already comfortably visible, do nothing (no scroll, no rebuild).
+  const tr = document.querySelector('#tbody tr[data-vrow="'+vi+'"]');
+  if (tr) {
+    const wrapRect = wrap.getBoundingClientRect();
+    const top = tr.getBoundingClientRect().top - wrapRect.top;   // px below wrap's top edge
+    const bot = top + tr.offsetHeight;
+    let delta = 0;
+    if (top < headH + margin)          delta = top - (headH + margin);     // too high → scroll up
+    else if (bot > clientH - margin)   delta = bot - (clientH - margin);   // too low → scroll down
+    if (delta !== 0) {
+      wrap.scrollTop = Math.max(0, wrap.scrollTop + delta);
+      _tRenderWindow(false);   // pull in any rows the scroll newly exposed
+    }
+    return tr;
+  }
+
+  // FALLBACK — row not mounted (a far jump: programmatic focus, click far away).
+  // Estimate its position from the virtual list and land it with the same margin.
+  const idx = _tVisList.findIndex(o => o.vi === vi);
+  if (idx < 0) { _tRenderWindow(true); return document.querySelector('#tbody tr[data-vrow="'+vi+'"]'); }
+  const rowTop = idx * rowH, rowBot = rowTop + rowH;
   const before = wrap.scrollTop;
   let st = before;
-  if (rowTop - margin < st + headH)        st = rowTop - margin - headH;   // near/at top → show context above
-  else if (rowBot + margin > st + clientH) st = rowBot + margin - clientH; // near/at bottom → show context below
+  if (rowTop - margin < st + headH)        st = rowTop - margin - headH;
+  else if (rowBot + margin > st + clientH) st = rowBot + margin - clientH;
   st = Math.max(0, st);
-  wrap.scrollTop = st;
-  _tRenderWindow(st !== before);   // rebuild only when the scroll moved (keeps click-focus fast)
+  if (st !== before) wrap.scrollTop = st;
+  _tRenderWindow(st !== before);
   return document.querySelector('#tbody tr[data-vrow="'+vi+'"]');
 }
 
@@ -1478,21 +1553,26 @@ function renderBody() {
   _tMeasureRowH();   // (dev0328) lock an accurate avg row height; corrects once if off
 }
 
-// Average the mounted rows' real heights and, if it differs from the current
-// estimate, lock it and re-render once so spacer totals match. Runs ONLY on full
-// renders (renderBody) — never on scroll — so _tRowH can't oscillate mid-scroll.
-// Row heights vary a little (tag-chip rows ~29px vs plain ~25px); the average
-// keeps the scrollbar total accurate, and since the scroll offset and the window
-// math share _tRowH, the target row is always mounted regardless of px drift.
+// Measure the mounted rows' avg real height ONCE, then LOCK it for the session.
+// (dev0332) Row heights vary (tag-chip rows ~29px vs plain ~25px), so averaging
+// only the *currently mounted* subset gave a DIFFERENT _tRowH at different scroll
+// positions. Because the spacer heights and the window math both derive from
+// _tRowH, re-measuring on every full render (and every arrow key does a full
+// render) remapped the whole window and made the focused row jump on each
+// keystroke. Locking after the first representative sample keeps the
+// scrollTop↔row mapping stable; _tScrollRowIntoView then uses REAL DOM geometry
+// (not idx*_tRowH) to decide scrolling, so a slightly-approximate avg is fine.
 function _tMeasureRowH() {
+  if (_tRowHLocked) return;
   const tbody = document.getElementById('tbody');
   if (!tbody) return;
   const rows = tbody.querySelectorAll('tr[data-vrow]');
-  if (!rows.length) return;
+  if (rows.length < 4) return;   // wait for a representative sample before locking
   let sum = 0, n = 0;
   rows.forEach(tr => { const h = tr.offsetHeight; if (h > 0) { sum += h; n++; } });
   if (!n) return;
   const avg = sum / n;
+  _tRowHLocked = true;
   if (Math.abs(avg - _tRowH) >= 0.5) {
     _tRowH = avg;
     _tWinFirst = _tWinLast = -1;   // invalidate so the corrective render rebuilds
@@ -1690,6 +1770,8 @@ function onCell(e, vi, ci) {
     // Status bar shows checked count etc.; nothing changes on focus-only click,
     // so we skip renderStatus too. (If you add focus-dependent status later,
     // call renderStatus() here.)
+    // (dev0332) The fast path skips render(), so sync the preview pane here too.
+    if (typeof rowPreviewSyncToFocus === 'function') rowPreviewSyncToFocus();
     void prev; void hadPending;
   }
 }
@@ -2909,22 +2991,57 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
   const di = vr(focus.r);
   const src = data[di];
   if (!src) { toast('Active row not found', 1600); return; }
-  const copy = JSON.parse(JSON.stringify(src));
-  let mx = 0;
-  data.forEach(rr => { const n = parseInt(rr.UID || '0', 10); if (n > mx) mx = n; });
-  copy.UID = String(mx + 1);
   const now = isoNow();
-  copy.DateAdded = now;
-  copy.DateModified = now;
-  data.splice(di + 1, 0, copy);
+  const base = String(src.UID || '');
+  // Track existing UIDs so generated suffixes never collide.
+  const used = new Set(data.map(rr => String(rr.UID)));
+  const uniqueUID = want => {
+    let u = want, k = 2;
+    while (used.has(u)) { u = want + '_' + (k++); }
+    used.add(u);
+    return u;
+  };
+  const mkCopy = uid => {
+    const c = JSON.parse(JSON.stringify(src));
+    c.UID = uid;
+    c.cell = '';            // duplicates start unassigned — never fight the
+                            // original (or each other) for a grid slot
+    c.DateAdded = now;
+    c.DateModified = now;
+    return c;
+  };
+
+  // (dev0334) Segmented-video split: a video row with N>1 VidRange segments
+  // duplicates into N single-segment rows UID_1..UID_N, so each segment can be
+  // assigned to its own grid cell straight from T (no per-cell segment syntax
+  // needed). Every other row duplicates once as UID_d.
+  const segs = (window.parseVideoAsset && isVideoRow(src))
+    ? window.parseVideoAsset(src.VidRange) : null;
+  let newRows;
+  if (segs && segs.length >= 2) {
+    newRows = segs.map((seg, i) => {
+      const c = mkCopy(uniqueUID(base + '_' + (i + 1)));
+      c.VidRange = window.serializeSegments([seg]);
+      return c;
+    });
+  } else {
+    newRows = [mkCopy(uniqueUID(base + '_d'))];
+  }
+
+  data.splice(di + 1, 0, ...newRows);
   save(); buildSort(); render();
-  const newDi = data.indexOf(copy);
+  const newDi = data.indexOf(newRows[0]);
   if (newDi >= 0) {
     const newVi = sortedIdx ? sortedIdx.indexOf(newDi) : newDi;
     focus = { r: newVi, c: focus.c || 0 };
     render();
   }
-  toast('✓ Duplicated row — UID ' + copy.UID, 1400);
+  if (newRows.length > 1) {
+    toast('✓ Split ' + base + ' into ' + newRows.length + ' segment rows: '
+      + newRows[0].UID + ' … ' + newRows[newRows.length - 1].UID, 2400);
+  } else {
+    toast('✓ Duplicated row — UID ' + newRows[0].UID, 1400);
+  }
 });
 
 // (zip0128) Delete UID range — bulk-delete rows whose UID falls in a

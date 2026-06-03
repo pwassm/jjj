@@ -3948,11 +3948,13 @@
       "mertensia"
     ],
     "aliases": [
-      "Mertensia ovum (Fabricius, 1780)"
+      "Mertensia ovum (Fabricius",
+      "1780)"
     ],
     "def": "",
     "rank": "species",
-    "common": "sea nut"
+    "common": "Arctic comb jelly",
+    "extinct": false
   },
   {
     "id": "mertensiidae",

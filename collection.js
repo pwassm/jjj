@@ -159,7 +159,17 @@ async function gridSaveToFile(gname) {
 document.addEventListener('keydown', e => {
   if (document.getElementById('gridOverlay').style.display !== 'flex') return;
   if (document.getElementById('gridFullscreen').style.display === 'flex') return;
-  
+
+  // (dev0335) Space → pause/unpause ALL grid videos. No in-frame interaction is
+  // needed in G, so Space is free as a global play/pause toggle.
+  if (e.key === ' ' || e.code === 'Space') {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridToggleAllPause === 'function') gridToggleAllPause();
+    return;
+  }
+
   // Escape → clear cut or close grid → go to table
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopPropagation();

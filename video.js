@@ -217,8 +217,12 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
   var innerId = 'yt_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_');
   var div = document.createElement('div');
   div.id = innerId;
-  // pointer-events:auto allows clicking the YouTube "More videos" X button if it appears
-  div.style.cssText = 'width:100%;height:100%;pointer-events:auto;';
+  // (dev0335) pointer-events:none shields YouTube's hover/title overlay and lets
+  // taps fall through to the cell interactor (matching IG/Vimeo/direct cells).
+  // No in-frame interaction is needed in G or the row-preview pane (both use this
+  // mount); the segment loop reseeks before the end so YT's "More videos" end
+  // screen never appears, making the old click-the-X concern moot.
+  div.style.cssText = 'width:100%;height:100%;pointer-events:none;';
   hostEl.appendChild(div);
 
   var initSeek = customSeekTo !== undefined ? Number(customSeekTo) : segs[0].start;
@@ -342,6 +346,7 @@ window.mountVimeoClip = async function(hostEl, url, startSec, dur, isMuted, cust
       setTimeout(function() { player.pause().catch(function(){}); }, 100);
     }
     window.seeLearnVideoTimers[cellId] = setInterval(function() {
+      if (player._salPaused) return;   // (dev0335) Space pause-all holds Vimeo cells
       player.getCurrentTime().then(function(t) {
         var seg = segs[segIdx];
         // UPPER-BOUND ONLY — no lower-bound snap (prevents "goes to beginning" on scrub)
@@ -1606,8 +1611,10 @@ window.openVideoEditor = function(it) {
     host.innerHTML = '';
     var div = document.createElement('div');
     div.id = 'v2host_yt';
-    // Allow pointer-events so YouTube overlay X button is clickable
-    div.style.cssText = 'width:100%;height:100%;pointer-events:auto;';
+    // (dev0335) pointer-events:none shields YouTube's hover/title overlay. Every E
+    // control is app-level DOM (segment buttons, timeline scrub, A/B markers);
+    // nothing here depends on clicking the iframe itself.
+    div.style.cssText = 'width:100%;height:100%;pointer-events:none;';
     host.appendChild(div);
     var endT  = segStart + segDur;
     var paused = false;

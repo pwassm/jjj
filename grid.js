@@ -234,6 +234,31 @@ function gridTogglePauseCell(cellStr) {
   }
 }
 
+// (dev0335) Space in G pauses/unpauses ALL grid videos at once. The action is
+// derived from live state (if any cell is playing → pause all; else play all) so
+// it stays correct across re-renders without a tracking flag. Uses the same
+// _salPaused / _gridPaused flags the per-cell toggle and the loop intervals
+// already honor, so segment looping resumes cleanly on unpause (no timers torn
+// down). Note: YouTube paints a center play arrow on each paused cell — that's
+// YT's own paused-state chrome and can't be removed cross-origin.
+function gridToggleAllPause() {
+  const players = window.seeLearnVideoPlayers || {};
+  const ids = Object.keys(players).filter(k => k.indexOf('grid-vid-') === 0);
+  if (!ids.length) { if (typeof toast === 'function') toast('No videos in grid', 800); return; }
+  const pauseAll = ids.some(id => players[id] && players[id]._gridPaused !== true);
+  ids.forEach(id => {
+    const p = players[id];
+    if (!p) return;
+    p._gridPaused = pauseAll;
+    p._salPaused  = pauseAll;
+    try {
+      if (pauseAll) { if (typeof p.pauseVideo === 'function') p.pauseVideo(); else if (typeof p.pause === 'function') p.pause(); }
+      else          { if (typeof p.playVideo  === 'function') p.playVideo();  else if (typeof p.play  === 'function') p.play();  }
+    } catch (e) {}
+  });
+  if (typeof toast === 'function') toast(pauseAll ? '⏸ Paused all' : '▶ Playing all', 900);
+}
+
 function gridClearCut() {
   _gridCutCell = null;
   document.querySelectorAll('.grid-cell.cut').forEach(el => el.classList.remove('cut'));

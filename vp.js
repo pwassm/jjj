@@ -3054,6 +3054,9 @@ function vpMountYouTube(host, link, seg, muted) {
   host.innerHTML = '';
   const iframe = document.createElement('div');
   iframe.id = 'vp-yt-player';
+  // (dev0335) Shield YT's hover/title overlay — V drives playback through its own
+  // toolbar (vp-play, scrub timeline, A/B), never through the iframe itself.
+  iframe.style.pointerEvents = 'none';
   host.appendChild(iframe);
   
   // (zip0149) Arm the iframe-allow stamper BEFORE YT.Player creates the
@@ -3110,6 +3113,7 @@ function vpMountYouTube(host, link, seg, muted) {
               ifr.setAttribute('allowfullscreen', 'true');
               ifr.setAttribute('playsinline', '');
               ifr.setAttribute('webkit-playsinline', '');
+              ifr.style.pointerEvents = 'none';   // (dev0335) re-stamp on the live iframe
             }
           } catch (_) {}
           // Start timeline updater
@@ -3268,9 +3272,12 @@ function vpMountInstagram(host, link) {
 // T = Table, E = Edit, G = Grid (single letters, no Alt needed)
 // ══════════════════════════════════════════════════════════════════════════════
 window._executeHotkey = function(key) {
-  // (dev0330) Leaving T for any screen → dismiss the focused-row preview pane
-  // (tears down its video). Idempotent no-op when the preview isn't open.
-  if (window.rowPreviewClose) window.rowPreviewClose();
+  // (dev0330) Leaving T for any screen → hide the focused-row preview pane and
+  // tear down its video (so a backgrounded pane never burns YouTube/Vimeo
+  // bandwidth). (dev0332) rowPreviewHide REMEMBERS the pane, so returning to T
+  // re-shows it (video restarts from the beginning); only an explicit Ctrl+I/Esc
+  // forgets it. Idempotent no-op when the preview isn't open.
+  if (window.rowPreviewHide) window.rowPreviewHide();
   // Check what's currently open
   const veOpen = !!document.getElementById('video-editor-overlay');
   const ebOpen = document.getElementById('browseOverlay')?.style.display === 'flex';
