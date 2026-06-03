@@ -314,6 +314,266 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
   window.seeLearnVideoPlayers[cellId] = player;
 };
 
+// ── Double-buffered YouTube clip (dev0336) ──────────────────────────────────
+// "Clean playback" for G. Two stacked YT players share one cell. The whole point
+// is to hide YouTube's startup/title/spinner chrome that paints over roughly the
+// first ~2s of any fresh play or post-seek buffer.
+//
+// The trick (per the spec): the hidden BACK layer must START PLAYING ~PREROLL
+// seconds BEFORE the swap — i.e. when the visible FRONT segment has ~PREROLL
+// left — so its startup chrome burns off entirely OFF-SCREEN. By the time we
+// reveal it, it has reached the segment start and is already past the overlay.
+// We seek BACK to (nextStart − PREROLL) so it arrives exactly at nextStart after
+// PREROLL of hidden warm-up; when the segment starts inside the pre-roll window
+// (e.g. a "0 99999" full-video loop) we warm from 0 and reveal a hair later.
+//
+//   transition='cut'  → instant opacity flip at reveal
+//   transition='fade' → opacity crossfade (back is already playing clean)
+//
+// The very first FRONT gets the same hidden warm-up; a YT thumbnail POSTER masks
+// the cell during that initial ~PREROLL (instead of black) and dissolves out as
+// the clean video arrives.
+//
+// Heavy: 2 iframes per cell. Callers gate this to desktop + small grids
+// (see _gridMountVideo / _gridBufferEligible in grid.js). Registers a single
+// composite controller under seeLearnVideoPlayers[cellId] so the existing
+// pause/play/stop/cleanup paths (gridToggleAllPause, gridTogglePauseCell,
+// stopCellVideoLoop) keep working unchanged — they never see the two players.
+window._ensureBufLayerCss = function() {
+  if (document.getElementById('salBufLayerCss')) return;
+  var st = document.createElement('style');
+  st.id = 'salBufLayerCss';
+  // YT replaces the inner div with an iframe; force it to fill the layer so a
+  // stray default 640×360 can't letterbox the cell.
+  st.textContent = '.sal-buf-layer iframe{position:absolute;inset:0;width:100%!important;height:100%!important;border:0;}';
+  document.head.appendChild(st);
+};
+
+// Seconds of HIDDEN warm-up before any layer is revealed — long enough to fully
+// cover YouTube's startup/seek chrome (~2s) with margin. Tunable.
+window.SAL_BUF_PREROLL = 2.5;
+
+window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, transition) {
+  var vid = getYouTubeId(url);
+  if (!vid || !hostEl) return;
+
+  // file:// can't embed YT — fall back to the single-iframe card path.
+  if (location.protocol === 'file:') {
+    var s0 = (segsArg && segsArg[0]) || { start: 0, dur: 99999 };
+    return window.mountYouTubeClip(hostEl, url, s0.start, s0.dur, isMuted, undefined, segsArg);
+  }
+
+  await loadYouTubeApiOnce();
+  var cellId = hostEl.id;
+  stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  window._ensureBufLayerCss();
+
+  var segs = (Array.isArray(segsArg) && segsArg.length) ? segsArg.slice() : [{ start: 0, dur: 99999 }];
+  var PREROLL = Number(window.SAL_BUF_PREROLL) || 2.5;
+  var FADE_MS = transition === 'fade' ? 420 : 0;
+
+  var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
+  var _ytHost = _ytPrivacy === 'nocookie' ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
+
+  function makeLayer(z) {
+    var wrap = document.createElement('div');
+    wrap.className = 'sal-buf-layer';
+    wrap.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:#000;'
+      + 'opacity:0;z-index:' + z + ';transition:opacity ' + FADE_MS + 'ms linear;';
+    var inner = document.createElement('div');
+    inner.id = 'ytbuf_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' + z;
+    inner.style.cssText = 'width:100%;height:100%;pointer-events:none;';
+    wrap.appendChild(inner);
+    hostEl.appendChild(wrap);
+    return { wrap: wrap, innerId: inner.id, player: null, ready: false };
+  }
+
+  var A = makeLayer(1);
+  var B = makeLayer(2);
+
+  // Initial poster mask (z above both video layers) so the cell shows the video
+  // thumbnail — not black — while the first layer warms up hidden. mqdefault is
+  // always available and 16:9 (no baked-in letterbox bars).
+  var poster = document.createElement('img');
+  poster.src = 'https://i.ytimg.com/vi/' + vid + '/mqdefault.jpg';
+  poster.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;'
+    + 'z-index:5;pointer-events:none;opacity:1;transition:opacity ' + FADE_MS + 'ms linear;background:#000;';
+  poster.onerror = function() { try { poster.style.display = 'none'; } catch (_) {} };
+  hostEl.appendChild(poster);
+
+  // Live role pointers. front = visible/playing, back = warming/idle, hidden.
+  var frontLayer = A, backLayer = B;
+  var frontSeg = 0;
+  var swapping = false, killed = false, loopTimer = null;
+  // Back-layer warm-up bookkeeping.
+  var warming = false, warmRevealAt = 0, warmIssuedAt = 0;
+  // Initial-front warm-up bookkeeping.
+  var initRevealAt = 0, initWarmAt = 0, initRevealed = false;
+
+  function newPlayer(layer, startSec) {
+    return new Promise(function(resolve) {
+      layer.player = new YT.Player(layer.innerId, {
+        videoId: vid,
+        host: _ytHost,
+        playerVars: {
+          autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0,
+          modestbranding: 1, playsinline: 1, start: Math.floor(startSec),
+          iv_load_policy: 3, endscreen: 0, cc_load_policy: 0,
+          origin: window.location.origin || window.location.hostname || 'localhost'
+        },
+        events: {
+          onReady: function(e) {
+            if (isMuted) e.target.mute(); else e.target.unMute();
+            layer.ready = true;
+            resolve(e.target);
+          }
+        }
+      });
+    });
+  }
+
+  // Plan a hidden warm-up for `seg`: begin at (start − PREROLL) so the layer
+  // reaches `start` exactly PREROLL later; when the segment starts inside the
+  // pre-roll window, warm from 0 and reveal PREROLL in (a few seconds are
+  // skipped, but the overlay is still hidden). Clamp the reveal point so it
+  // never lands past a short segment's end.
+  function warmPlan(seg) {
+    var from = Math.max(0, seg.start - PREROLL);
+    var reveal = from + PREROLL;                       // = max(seg.start, PREROLL)
+    var segEnd = seg.start + seg.dur;
+    if (reveal > segEnd - 0.2) reveal = Math.max(seg.start, segEnd - 0.2);
+    return { from: from, reveal: reveal };
+  }
+
+  // Has a warmed layer played long enough that its chrome is gone AND reached
+  // its reveal point? The 600ms floor lets the seek settle so a stale
+  // currentTime (still reading the layer's old position) can't reveal early.
+  function layerWarmReady(layer, revealAt, issuedAt) {
+    if (Date.now() - issuedAt < 600) return false;
+    var st, ct;
+    try { st = layer.player.getPlayerState(); ct = layer.player.getCurrentTime(); }
+    catch (_) { return false; }
+    return st === 1 /* PLAYING */ && ct >= revealAt;
+  }
+
+  function startWarm(layer, seg) {
+    var plan = warmPlan(seg);
+    warmRevealAt = plan.reveal;
+    warmIssuedAt = Date.now();
+    try { layer.player.seekTo(plan.from, true); layer.player.playVideo(); } catch (_) {}
+    warming = true;
+  }
+
+  function doSwap() {
+    if (swapping || killed) return;
+    swapping = true;
+    var newFront = backLayer, oldFront = frontLayer;
+    // BACK is already playing clean (past its chrome) at the segment start —
+    // just cross/cut it in.
+    requestAnimationFrame(function() {
+      if (killed) return;
+      newFront.wrap.style.opacity = '1';
+      oldFront.wrap.style.opacity = '0';
+    });
+    // Commit roles synchronously so the loop watches the new front immediately.
+    frontLayer = newFront; backLayer = oldFront;
+    frontSeg = (frontSeg + 1) % segs.length;
+    warming = false;
+    // After the dissolve, idle the old front (now the back) until its next
+    // warm-up reseeks + replays it.
+    setTimeout(function() {
+      if (killed) { swapping = false; return; }
+      try { backLayer.player.pauseVideo(); } catch (_) {}
+      swapping = false;
+    }, FADE_MS + 120);
+  }
+
+  var controller = {
+    isBuffered: true,
+    _gridPaused: false,
+    _salPaused: false,
+    getPlayerState: function() {
+      try { return frontLayer.player.getPlayerState(); } catch (_) { return -1; }
+    },
+    pauseVideo: function() {
+      this._gridPaused = true;
+      try { if (A.player) A.player.pauseVideo(); } catch (_) {}
+      try { if (B.player) B.player.pauseVideo(); } catch (_) {}
+    },
+    playVideo: function() {
+      this._gridPaused = false; this._salPaused = false;
+      try { if (frontLayer.player) frontLayer.player.playVideo(); } catch (_) {}
+    },
+    pause: function() { this.pauseVideo(); },
+    play:  function() { this.playVideo(); },
+    destroy: function() {
+      killed = true;
+      if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+      try { if (A.player && A.player.destroy) A.player.destroy(); } catch (_) {}
+      try { if (B.player && B.player.destroy) B.player.destroy(); } catch (_) {}
+      try { hostEl.innerHTML = ''; } catch (_) {}
+    }
+  };
+  window.seeLearnVideoPlayers[cellId] = controller;
+
+  // FRONT: warm up hidden from its pre-roll point; the loop reveals it (and
+  // dissolves the poster) once it's playing clean.
+  newPlayer(A, Math.max(0, segs[0].start - PREROLL)).then(function(p) {
+    if (killed) return;
+    try {
+      var realDur = p.getDuration();
+      if (realDur > 0 && realDur < 99990) {
+        segs.forEach(function(s) { if (s.dur > realDur) s.dur = Math.max(1, realDur - s.start); });
+      }
+    } catch (_) {}
+    var plan = warmPlan(segs[0]);
+    initRevealAt = plan.reveal; initWarmAt = Date.now();
+    try { p.seekTo(plan.from, true); p.playVideo(); } catch (_) {}
+  });
+
+  // BACK: created then idled; the first swap's warm-up reseeks + replays it.
+  var bWarm = segs.length > 1 ? Math.max(0, segs[1].start - PREROLL) : Math.max(0, segs[0].start - PREROLL);
+  newPlayer(B, bWarm).then(function(p) {
+    if (!killed) { try { p.pauseVideo(); } catch (_) {} }
+  });
+
+  loopTimer = setInterval(function() {
+    if (killed || swapping) return;
+    if (controller._gridPaused || controller._salPaused) return;
+    if (!frontLayer.ready || !initWarmAt) return;
+
+    // Phase 1 — reveal the very first front once its startup chrome has burned
+    // off hidden, dissolving the poster out.
+    if (!initRevealed) {
+      if (layerWarmReady(frontLayer, initRevealAt, initWarmAt)) {
+        requestAnimationFrame(function() {
+          if (killed) return;
+          frontLayer.wrap.style.opacity = '1';
+          poster.style.opacity = '0';
+        });
+        setTimeout(function() { try { if (poster.parentNode) poster.remove(); } catch (_) {} }, FADE_MS + 250);
+        initRevealed = true;
+      }
+      return;   // hold the swap logic until the first front is showing
+    }
+
+    // Phase 2 — loop the front segment via the hidden, pre-warmed back.
+    if (!backLayer.ready) return;
+    var t;
+    try { t = frontLayer.player.getCurrentTime(); } catch (_) { return; }
+    var seg = segs[frontSeg];
+    var segEnd = seg.start + seg.dur;
+    var nextSeg = segs[(frontSeg + 1) % segs.length];
+
+    // Kick off the hidden warm-up ~PREROLL before the front segment ends.
+    if (!warming && t >= segEnd - PREROLL) startWarm(backLayer, nextSeg);
+    // Reveal once the back is past its chrome and has reached the segment start.
+    if (warming && layerWarmReady(backLayer, warmRevealAt, warmIssuedAt)) doSwap();
+  }, 150);
+  window.seeLearnVideoTimers[cellId] = loopTimer;
+};
+
 window.mountVimeoClip = async function(hostEl, url, startSec, dur, isMuted, customSeekTo, segsArg) {
   if (!hostEl) return;
   await loadVimeoApiOnce();

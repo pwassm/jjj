@@ -266,6 +266,69 @@ function gridClearCut() {
   if (cutInfo) cutInfo.style.display = 'none';
 }
 
+// ── Clean-playback buffering (dev0336) ───────────────────────────────────────
+// G can play YouTube cells through a desktop-only A/B double-buffer that hides
+// YT's seek/re-buffer flash at the segment loop point (see
+// mountYouTubeClipBuffered in video.js). Mode is persisted in ml-settings and
+// cycled with Ctrl+B: 'off' → 'cut' (instant swap) → 'fade' (crossfade).
+function _gridBufferMode() {
+  const m = (typeof window.getSetting === 'function') ? window.getSetting('gridBuffer') : null;
+  return (m === 'cut' || m === 'fade') ? m : 'off';
+}
+
+// Buffering is heavy (2 iframes/cell) — only engage on desktop and small grids.
+// Larger/mobile grids transparently fall back to the single-iframe mount.
+function _gridBufferEligible() {
+  const desktop = (typeof _isMobileDevice === 'function') ? !_isMobileDevice() : true;
+  return desktop && _gridGsize <= 4;
+}
+
+// Single entry point for mounting a video cell — picks the buffered YT path
+// when enabled+eligible, else the normal per-platform mounts. Shared by the
+// full-grid build (gridShow) and the single-cell update (gridUpdateCell).
+function _gridMountVideo(vidHost, row, segs, muted) {
+  const useBuffer = _gridBufferMode() !== 'off'
+    && _gridBufferEligible()
+    && window.mountYouTubeClipBuffered
+    && window.isYouTubeLink && window.isYouTubeLink(row.link);
+  if (useBuffer) {
+    window.mountYouTubeClipBuffered(vidHost, row.link, segs, muted, _gridBufferMode() === 'fade' ? 'fade' : 'cut');
+    return;
+  }
+  if (window.isYouTubeLink && window.isYouTubeLink(row.link) && window.mountYouTubeClip) {
+    window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+  } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
+    window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+  } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
+    window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+  } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
+    window.mountInstagramEmbed(vidHost, row.link);
+  }
+}
+
+// Ctrl+B in G cycles off → cut → fade. Desktop-only; mobile gets a hint and no
+// change. Re-renders the grid so live video cells remount with the new strategy.
+function gridCycleBufferMode() {
+  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) {
+    if (typeof toast === 'function') toast('Buffered playback is desktop-only', 1600);
+    return;
+  }
+  const order = ['off', 'cut', 'fade'];
+  const next = order[(order.indexOf(_gridBufferMode()) + 1) % order.length];
+  if (typeof window.setSetting === 'function') window.setSetting('gridBuffer', next);
+  const labels = {
+    off:  '○ Buffer OFF — single iframe',
+    cut:  '◐ Buffer CUT — instant double-buffer swap',
+    fade: '◑ Buffer CROSSFADE — dissolve end→start'
+  };
+  const note = (next !== 'off' && _gridGsize > 4) ? '  ·  ≤4×4 only (falls back at 5×5)' : '';
+  if (typeof toast === 'function') toast(labels[next] + note, 2200);
+  if (typeof gridShow === 'function'
+      && document.getElementById('gridOverlay')?.style.display === 'flex') {
+    gridShow();
+  }
+}
+
 // ── ftext-image cell helpers (non-image link rows) ───────────────────────────
 
 function _ftextImgSrcs(ftext) {
@@ -501,15 +564,7 @@ function gridShow() {
             // (mp3/wav rows) should NOT be routed through this branch and
             // will play normally — this mute applies to video only.
             const muted = true;
-            if (window.isYouTubeLink && window.isYouTubeLink(row.link) && window.mountYouTubeClip) {
-              window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
-            } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
-              window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
-            } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
-              window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
-            } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
-              window.mountInstagramEmbed(vidHost, row.link);
-            }
+            _gridMountVideo(vidHost, row, segs, muted);
           }, 100);
         } else if (row.link && !isImgLink) {
           _buildFtextImgCell(cell, row);
@@ -574,11 +629,16 @@ function gridShow() {
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   const hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save · 2-5=size';
+    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save · 2-5=size · ^B=clean';
+  // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
+  // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
+  const _bufMode = _gridBufferMode();
+  const _bufTag = _bufMode === 'off' ? ''
+    : ' · ⟳' + _bufMode + (_gridBufferEligible() ? '' : '(≤4×4)');
   // (zip0153) Total cells = _gridGsize²; was hardcoded /25.
   document.getElementById('gridInfo').textContent =
     '['+srcLabel+'] ' + _gridGsize + '×' + _gridGsize + ' · '
-    + occupied + '/' + (_gridGsize * _gridGsize) + ' · ' + hint;
+    + occupied + '/' + (_gridGsize * _gridGsize) + ' · ' + hint + _bufTag;
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';
@@ -717,15 +777,7 @@ function gridUpdateCell(cellStr, row) {
         // gridShow() for the full rationale. Single-cell update path
         // (e.g., after a paste or swap) must enforce the same rule.
         const muted = true;
-        if (window.isYouTubeLink && window.isYouTubeLink(row.link) && window.mountYouTubeClip) {
-          window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
-        } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
-          window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
-        } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
-          window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
-        } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
-          window.mountInstagramEmbed(vidHost, row.link);
-        }
+        _gridMountVideo(vidHost, row, segs, muted);
       }, 50);
     } else if (row.link && !isImgLink) {
       _buildFtextImgCell(cellEl, row);

@@ -160,6 +160,16 @@ document.addEventListener('keydown', e => {
   if (document.getElementById('gridOverlay').style.display !== 'flex') return;
   if (document.getElementById('gridFullscreen').style.display === 'flex') return;
 
+  // (dev0336) Ctrl+B → cycle clean-playback buffering for YouTube cells:
+  // off → cut (instant double-buffer) → fade (crossfade). Left-hand chord so it
+  // doesn't collide with the bare-letter grid navigation; Ctrl+I is left alone
+  // as the T-screen row preview.
+  if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'b' || e.key === 'B')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridCycleBufferMode === 'function') gridCycleBufferMode();
+    return;
+  }
+
   // (dev0335) Space → pause/unpause ALL grid videos. No in-frame interaction is
   // needed in G, so Space is free as a global play/pause toggle.
   if (e.key === ' ' || e.code === 'Space') {
