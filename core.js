@@ -98,10 +98,9 @@ window._restoreFocusToLastUID = function() {
   if (vi < 0) return;
   focus = { r: vi, c: 0 };
   if (typeof render === 'function') render();
-  requestAnimationFrame(() => {
-    const fc = document.querySelector('td.focus');
-    if (fc) fc.scrollIntoView({ block: 'center', behavior: 'auto' });
-  });
+  // (dev0329) Windowed table: the row may not be mounted after render — scroll it
+  // into the window (which mounts + focuses it) instead of querying td.focus.
+  if (typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(vi);
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1072,25 +1071,8 @@ function renderHead() {
   setTableWidth();   // (dev0325) clamp table to sum of <col> widths — see helper
 }
 
-// Thumbnail mode (Ctrl+I)
-let _thumbMode = false;
-const THUMB_H = 72; // px height of thumbnail rows
-
-// Thumbnail helpers
+// Vimeo thumbnail cache — shared by the Annotate-panel preview (brBuildThumb).
 const _vimeoThumbCache = {}; // url → {state:'pending'|'ok'|'fail', src?}
-
-function thumbUrl(row) {
-  if (!row) return null;
-  const link = row.link || row.url || '';
-  // Use video.js getYouTubeId which handles Shorts, Watch, youtu.be, Live, Embed
-  const ytId = window.getYouTubeId ? window.getYouTubeId(link)
-    : (link.match(/(?:youtu\.be\/|shorts\/|[?&]v=)([A-Za-z0-9_-]{11})/)?.[1] || '');
-  if (ytId) return 'https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg';
-  // Image links
-  if (link.match(/\.(jpe?g|png|gif|webp|avif|bmp|svg)(\?|$)/i)) return link;
-  if (row.Thumb) return row.Thumb;
-  return null; // Vimeo handled separately via fetchVimeoThumb
-}
 
 // Async: fetch Vimeo thumbnail via oEmbed, cache result, call onReady(src) when done
 function fetchVimeoThumb(url, onReady) {
@@ -1110,26 +1092,271 @@ function fetchVimeoThumb(url, onReady) {
     .catch(() => { _vimeoThumbCache[url] = { state: 'fail' }; });
 }
 
-function toggleThumbMode() {
-  _thumbMode = !_thumbMode;
-  render();
-  toast(_thumbMode ? '🖼 Thumbnails + expanded tags ON (Ctrl+I to hide)' : 'Thumbnails + expanded tags OFF', 1200);
+// (dev0330) Focused-row preview pane — Ctrl+I. A small floating ~450×300 (3:2)
+// render of the focused T row's media (video / image / html-slide / quiz),
+// reusing the SAME branch order + mount helpers as the grid cell renderer
+// (grid.js): isVideoRow, renderFtext, _buildFtextImgCell, fitGridHtmlThumb,
+// fitGridIgFrame, and window.mount{YouTube,Vimeo,DirectVideo,Instagram}…. It is a
+// transient fixed overlay OUTSIDE the virtualized <tbody> so it never interferes
+// with row recycling. Controls are deliberately minimal: Space = play/pause the
+// video (the only control), Esc / Ctrl+I = close.
+const RPV_HOST_ID = 'rpv-host';   // video mounts register under this id in seeLearnVideoPlayers
+let _rpvOpen = false;
+let _rpvDi   = -1;                // data-row index currently previewed (drives the toggle)
+
+// Segment palette — MUST match video.js COLOURS / vp.js VP_COLOURS so a row's
+// segment colors are consistent across the V timeline bands, this caption, and
+// (planned) the G bottom bar.
+const SEG_CAPTION_COLOURS = ['#2a6ef5','#e5732a','#2aa87a','#c03ec0','#c0c03e','#e53a3a'];
+
+// (dev0331) Reusable multicolored segment caption line for a row that has
+// VidRange segments + VidComment labels. Returns a single-line <div> with one
+// colored span per segment (comment text, or "Seg N" when blank), or null when
+// the row has no segments. Pass onSegClick(i, seg) to make each span clickable —
+// reserved for the planned G single-segment play actions (see memory). KEEP this
+// generic: it is the shared "segments line" the T preview and G both render.
+function buildSegmentCaptionLine(row, onSegClick) {
+  const segs = (window.parseVideoAsset ? window.parseVideoAsset(row.VidRange) : null) || [];
+  if (!segs.length) return null;
+  const comments = (row.VidComment || '').split(',').map(s => s.trim());
+  const line = document.createElement('div');
+  line.className = 'segcap-line';
+  line.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  segs.forEach((s, i) => {
+    const sp = document.createElement('span');
+    sp.style.cssText = 'color:' + SEG_CAPTION_COLOURS[i % SEG_CAPTION_COLOURS.length] + ';'
+      + 'font-weight:bold;margin-right:8px;' + (onSegClick ? 'cursor:pointer;' : '');
+    sp.textContent = comments[i] || ('Seg ' + (i + 1));
+    if (onSegClick) sp.addEventListener('click', e => { e.stopPropagation(); onSegClick(i, s); });
+    line.appendChild(sp);
+  });
+  return line;
+}
+window.buildSegmentCaptionLine = buildSegmentCaptionLine;
+
+// (dev0331) Full preview-pane caption: up to 4 stacked lines, highest precedence
+// first so CSS overflow trims the LOWEST-priority line (title) when space runs
+// out. Precedence: 1) segments/VidComment (multicolored, only if vidcomments
+// exist) · 2) tags (may wrap to a 2nd line) · 3) VidAuthor + count of rows by
+// that author · 4) UID + title.
+function buildRowPreviewCaption(row) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;font:11px/1.35 monospace;overflow:hidden;';
+
+  // 1. Segments — only when the row actually has VidComment text.
+  if ((row.VidComment || '').trim()) {
+    const seg = buildSegmentCaptionLine(row);
+    if (seg) wrap.appendChild(seg);
+  }
+  // 2. Tags (allowed to wrap to a row below).
+  const tagIds = Array.isArray(row.tags) ? row.tags : [];
+  if (tagIds.length) {
+    const t = document.createElement('div');
+    t.style.cssText = 'color:#8fe0c0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;';
+    t.textContent = '🏷 ' + tagIds.map(id => (window.tagsLib ? (window.tagsLib.labelFor(id) || id) : id)).join(' · ');
+    wrap.appendChild(t);
+  }
+  // 3. VidAuthor + how many rows share that author.
+  const author = (row.VidAuthor || '').trim();
+  if (author) {
+    let n = 0; for (let i = 0; i < data.length; i++) if ((data[i].VidAuthor || '').trim() === author) n++;
+    const a = document.createElement('div');
+    a.style.cssText = 'color:#d8c69a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    a.textContent = '👤 ' + author + '  (' + n + ')';
+    wrap.appendChild(a);
+  }
+  // 4. UID + title (lowest precedence — trimmed first if the caption overflows).
+  const title = (row.VidTitle || row.t1 || row.n1 || '').trim();
+  const idLine = document.createElement('div');
+  idLine.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  const uidSpan = document.createElement('span');
+  uidSpan.style.cssText = 'color:#6aa6e0;font-weight:bold;';
+  uidSpan.textContent = '#' + (row.UID != null && row.UID !== '' ? row.UID : '?');
+  idLine.appendChild(uidSpan);
+  if (title) {
+    const ts = document.createElement('span');
+    ts.style.cssText = 'color:#bcd;margin-left:6px;';
+    ts.textContent = title;
+    idLine.appendChild(ts);
+  }
+  wrap.appendChild(idLine);
+  return wrap;
 }
 
-// Ctrl+I global handler
+// Tear down the preview (idempotent). Destroys any mounted video first.
+function rowPreviewClose() {
+  if (window.stopCellVideoLoop) { try { window.stopCellVideoLoop(RPV_HOST_ID); } catch (_) {} }
+  const ov = document.getElementById('rowPreview');
+  if (ov) ov.remove();
+  _rpvOpen = false;
+  _rpvDi = -1;
+}
+window.rowPreviewClose = rowPreviewClose;
+
+// Open (or refresh) the preview for the currently focused row.
+function rowPreviewOpen() {
+  if (focus === null) { toast('👁 Click a row to focus it, then Ctrl+I', 1600); return; }
+  const di = vr(focus.r);
+  const row = (di >= 0 && di < data.length) ? data[di] : null;
+  if (!row) { toast('👁 No row to preview', 1400); return; }
+  rowPreviewClose();   // start clean (tears down any prior video)
+
+  const ov = document.createElement('div');
+  ov.id = 'rowPreview';
+  ov.style.cssText = 'position:fixed;left:14px;bottom:46px;width:450px;height:300px;'
+    + 'z-index:4000;background:#000;border:1px solid #4df;border-radius:6px;'
+    + 'box-shadow:0 8px 30px rgba(0,0,0,0.75);overflow:hidden;display:flex;flex-direction:column;';
+
+  // Media host: a fixed-size, position:relative box the grid helpers fill via inset:0.
+  // Its id === RPV_HOST_ID so a mounted video registers under that key.
+  const host = document.createElement('div');
+  host.id = RPV_HOST_ID;
+  host.style.cssText = 'position:relative;flex:1 1 auto;background:#000;overflow:hidden;';
+  ov.appendChild(host);
+
+  // Caption: up to 4 multicolored precedence lines (segments · tags · author+count · UID/title).
+  const cap = document.createElement('div');
+  cap.style.cssText = 'flex:0 0 auto;max-height:68px;overflow:hidden;padding:4px 8px;'
+    + 'background:#0a1426;border-top:1px solid #1a2a4a;';
+  cap.appendChild(buildRowPreviewCaption(row));
+  ov.appendChild(cap);
+
+  document.body.appendChild(ov);
+  _rpvOpen = true;
+  _rpvDi = di;
+  _rpvFillHost(host, row);
+}
+
+// Fill the media host from a row — branch order mirrors grid.js (IG / quiz /
+// html-slide / video / ftext-image / plain image / empty).
+function _rpvFillHost(host, row) {
+  const isVid     = window.isVideoRow ? window.isVideoRow(row) : false;
+  const isText    = row.VidRange === 'text' || (row.ftext && !row.link);
+  const isQuiz    = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
+  const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
+  const isIG      = !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
+
+  if (isIG) {
+    const igWrap = document.createElement('div');
+    igWrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;z-index:1;';
+    const igFrame = document.createElement('iframe');
+    igFrame.src = window.instagramEmbedUrl(row.link);
+    igFrame.setAttribute('frameborder', '0');
+    igFrame.setAttribute('scrolling', 'no');
+    igFrame.setAttribute('allowtransparency', 'true');
+    igFrame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; web-share');
+    igFrame.style.cssText = 'position:absolute;left:0;top:0;width:326px;height:620px;border:0;background:#000;transform-origin:top left;';
+    igWrap.appendChild(igFrame);
+    host.appendChild(igWrap);
+    if (typeof fitGridIgFrame === 'function') fitGridIgFrame(host, igFrame);
+  } else if (isQuiz) {
+    host.style.background = '#0a1a0a';
+    const badge = document.createElement('div');
+    badge.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1;';
+    const ic = document.createElement('div'); ic.style.cssText = 'font-size:40px;margin-bottom:6px;'; ic.textContent = '📋';
+    const lb = document.createElement('div');
+    lb.style.cssText = 'font-size:12px;color:#8f8;font-family:monospace;text-align:center;padding:0 10px;';
+    lb.textContent = row.qfile || row.n1 || 'Quiz';
+    badge.appendChild(ic); badge.appendChild(lb); host.appendChild(badge);
+  } else if (isText && row.ftext) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#fff;z-index:1;';
+    const inner = document.createElement('div');
+    inner.className = 'grid-html-thumb';
+    inner.style.cssText = 'position:absolute;top:0;left:0;width:600px;transform-origin:top left;'
+      + 'font-family:Arial,sans-serif;color:#222;padding:16px;box-sizing:border-box;';
+    inner.innerHTML = (typeof renderFtext === 'function' ? renderFtext(row.ftext) : row.ftext);
+    if (typeof _ensureGridThumbTableCss === 'function') _ensureGridThumbTableCss();
+    if (typeof _gridThumbApplySlideColors === 'function') _gridThumbApplySlideColors(wrap, inner);
+    wrap.appendChild(inner); host.appendChild(wrap);
+    host.style.background = '#fff';
+    if (typeof fitGridHtmlThumb === 'function') fitGridHtmlThumb(host, wrap, inner);
+  } else if (isVid && row.link) {
+    const segs  = (window.parseVideoAsset ? window.parseVideoAsset(row.VidRange) : null) || [{ start: 0, dur: 99999 }];
+    const muted = String(row.Mute).trim() === '1';   // honor the Mute column (like V); default audio-on
+    // Mount after a paint so the host has real dimensions (matches grid timing).
+    setTimeout(() => {
+      if (!_rpvOpen || !document.getElementById('rowPreview')) return;  // closed before mount
+      if (window.isYouTubeLink && window.isYouTubeLink(row.link) && window.mountYouTubeClip) {
+        window.mountYouTubeClip(host, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+      } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
+        window.mountVimeoClip(host, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+      } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
+        window.mountDirectVideoClip(host, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+      } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
+        window.mountInstagramEmbed(host, row.link);
+      }
+    }, 60);
+  } else if (row.link && !isImgLink) {
+    if (typeof _buildFtextImgCell === 'function') _buildFtextImgCell(host, row);
+  } else if (row.link) {
+    const img = document.createElement('img');
+    img.src = row.link;
+    img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:1;';
+    img.onerror = () => { img.style.display = 'none'; };
+    host.appendChild(img);
+  } else {
+    const e0 = document.createElement('div');
+    e0.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#456;font:12px monospace;';
+    e0.textContent = '(no media)';
+    host.appendChild(e0);
+  }
+}
+
+// Space toggles play/pause of the preview's video (no-op for image/html/quiz).
+// Mirrors gridTogglePauseCell, keyed on RPV_HOST_ID.
+function _rpvTogglePlay() {
+  const player = window.seeLearnVideoPlayers && window.seeLearnVideoPlayers[RPV_HOST_ID];
+  if (!player) return;
+  let isPaused = false;
+  if (player._gridPaused !== undefined)                 isPaused = player._gridPaused;
+  else if (typeof player.getPlayerState === 'function') { try { isPaused = player.getPlayerState() !== 1; } catch (_) {} }
+  else if (player._salPaused !== undefined)             isPaused = player._salPaused;
+  if (isPaused) {
+    player._gridPaused = false;
+    try { if (typeof player.playVideo === 'function') player.playVideo(); else if (typeof player.play === 'function') player.play(); } catch (_) {}
+  } else {
+    player._gridPaused = true;
+    if (window.seeLearnVideoTimers && window.seeLearnVideoTimers[RPV_HOST_ID]) {
+      clearInterval(window.seeLearnVideoTimers[RPV_HOST_ID]);
+      delete window.seeLearnVideoTimers[RPV_HOST_ID];
+    }
+    try { if (typeof player.pauseVideo === 'function') player.pauseVideo(); else if (typeof player.pause === 'function') player.pause(); } catch (_) {}
+  }
+}
+
+// Ctrl+I toggles the preview for the focused row (re-pressing on the SAME row
+// closes it; on a newly-focused row it refreshes to that row). While open:
+// Space = play/pause, Esc = close — both handled here (capture phase +
+// stopImmediatePropagation) so Esc doesn't also deselect the row and Space
+// doesn't scroll the page.
 document.addEventListener('keydown', e => {
+  const ae = document.activeElement;
+  const inEditable = !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+
   if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'i') {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return; // allow Ctrl+I italic in text editors
+    if (inEditable) return;   // allow Ctrl+I (italic) inside text editors
     e.preventDefault();
-    toggleThumbMode();
+    const di = focus !== null ? vr(focus.r) : -1;
+    if (_rpvOpen && di === _rpvDi) rowPreviewClose();
+    else rowPreviewOpen();
+    return;
+  }
+
+  if (!_rpvOpen || inEditable) return;
+  if (e.key === ' ' || e.code === 'Space') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    _rpvTogglePlay();
+  } else if (e.key === 'Escape') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    rowPreviewClose();
   }
 }, true);
 
 // ── T-table virtualization / windowing (dev0327) ─────────────────────────
 // renderBody renders ONLY the rows visible in #wrap (+ overscan), with top and
 // bottom spacer <tr>s holding the scrollbar at full height. Row height is
-// uniform per mode (CSS td height:24px; thumb mode tr.height=THUMB_H) and column
+// roughly uniform (CSS td height:24px; tag-chip rows a few px taller) and column
 // widths come from the <colgroup> under table-layout:fixed, so a windowed subset
 // never shifts layout and no per-row measuring is needed. The expensive
 // colW()/measureText work runs ONCE per full render (renderBody) and is cached in
@@ -1137,13 +1364,13 @@ document.addEventListener('keydown', e => {
 // (that would resurrect the old O(rows²) lag).
 let _tVisList = [];                   // [{vi,di}] rows passing the filter, in display order
 let _tCtx = null;                     // cached cols/widths/thumb flags for the current full render
-let _tRowH = 25;                      // measured normal-mode row height (px); thumb mode uses THUMB_H
+let _tRowH = 25;                      // measured AVG row height (px), locked per full render
 let _tWinFirst = -1, _tWinLast = -1;  // last-rendered window range (skip rebuild if unchanged)
 let _tScrollWired = false;
 const T_OVERSCAN = 8;                 // extra rows rendered above/below the viewport
 
 function _tRowHeight() {
-  return _thumbMode ? (typeof THUMB_H !== 'undefined' ? THUMB_H : 90) : _tRowH;
+  return _tRowH;
 }
 
 function _tWireScroll() {
@@ -1209,11 +1436,17 @@ function _tScrollRowIntoView(vi) {
   const clientH = wrap.clientHeight || (window.innerHeight || 800);
   const headH = (document.getElementById('thead') || {}).offsetHeight || 0;
   const rowTop = idx * rowH, rowBot = rowTop + rowH;
-  let st = wrap.scrollTop;
-  if (rowTop < st + headH)        st = rowTop - headH;      // above the fold → bring down
-  else if (rowBot > st + clientH) st = rowBot - clientH;    // below the fold → bring up
-  wrap.scrollTop = Math.max(0, st);
-  _tRenderWindow(true);
+  // (dev0331) Keep ~2 rows of context above/below the focused row, so the window
+  // FOLLOWS focus as it changes and never pins the row flush at the top edge —
+  // when the focused row reaches the top it relocates so rows above stay visible.
+  const margin = rowH * 2;
+  const before = wrap.scrollTop;
+  let st = before;
+  if (rowTop - margin < st + headH)        st = rowTop - margin - headH;   // near/at top → show context above
+  else if (rowBot + margin > st + clientH) st = rowBot + margin - clientH; // near/at bottom → show context below
+  st = Math.max(0, st);
+  wrap.scrollTop = st;
+  _tRenderWindow(st !== before);   // rebuild only when the scroll moved (keeps click-focus fast)
   return document.querySelector('#tbody tr[data-vrow="'+vi+'"]');
 }
 
@@ -1231,13 +1464,7 @@ function renderBody() {
   const _tbl = document.getElementById('tbl');
   const needCellW = !document.getElementById('colgroup')
     || !(_tbl && getComputedStyle(_tbl).tableLayout === 'fixed');
-  // Determine if Thumb column is visible
-  const thumbColIdx = vc.indexOf('Thumb');
-  const showThumbs = _thumbMode && thumbColIdx >= 0;
-  // Also show inline thumbs in 'link' column when _thumbMode on and no Thumb col
-  const linkColIdx = vc.indexOf('link');
-  const inlineThumb = _thumbMode && thumbColIdx < 0;
-  _tCtx = { vc, cw, needCellW, showThumbs, thumbColIdx, linkColIdx, inlineThumb };
+  _tCtx = { vc, cw, needCellW };
 
   // Build the filtered, ordered row list (no DOM — cheap O(rows)).
   _tVisList = [];
@@ -1258,7 +1485,6 @@ function renderBody() {
 // keeps the scrollbar total accurate, and since the scroll offset and the window
 // math share _tRowH, the target row is always mounted regardless of px drift.
 function _tMeasureRowH() {
-  if (_thumbMode) return;   // thumb mode uses the uniform THUMB_H
   const tbody = document.getElementById('tbody');
   if (!tbody) return;
   const rows = tbody.querySelectorAll('tr[data-vrow]');
@@ -1278,13 +1504,12 @@ function _tMeasureRowH() {
 // _tCtx so the scroll path never recomputes colW. Returns the tr (caller appends).
 function _tBuildRow(vi, di) {
   const row = data[di];
-  const { vc, cw, needCellW, showThumbs, thumbColIdx, linkColIdx, inlineThumb } = _tCtx;
+  const { vc, cw, needCellW } = _tCtx;
 
   const tr = document.createElement('tr');
   tr.setAttribute('data-vrow', vi);
   if (checkedRows.has(di)) tr.classList.add('row-sel');
-    // Expand row height when thumbs visible
-    if (_thumbMode) tr.style.height = THUMB_H + 'px';
+  if (focus && focus.r === vi) tr.classList.add('row-focus');   // (dev0330) slight focused-row wash
 
     const td0 = document.createElement('td'); td0.className = 'rn'; td0.textContent = di+1; setTdW(td0,34); addCtxT(td0,{type:'row',di}); tr.appendChild(td0);
 
@@ -1309,7 +1534,6 @@ function _tBuildRow(vi, di) {
       // tags column — render chips (or raw comma list if lib not loaded yet)
       if (col === 'tags') {
         td.style.cssText += 'padding:2px 4px;vertical-align:middle;line-height:1.6;';
-        if (_thumbMode) td.classList.add('tags-expanded');
         const ids = Array.isArray(row.tags) ? row.tags : [];
         if (!window.tagsLib) {
           td.textContent = ids.join(', ');
@@ -1364,8 +1588,7 @@ function _tBuildRow(vi, di) {
                 if (window.tagsLib && window.tagsLib.closeMenu) window.tagsLib.closeMenu();
                 const m1 = document.getElementById('chipCtxMenu'); if (m1) m1.remove();
               }, 0);
-              const cLabel = window.tagsLib ? window.tagsLib.labelFor(cid) : cid;
-              toast('✓ Added "' + cLabel + '" to row', 1400);
+              // (dev0330) Success toast removed per user — pasting a tag is silent now.
             } else {
               toast('Tag already on this row', 1200);
             }
@@ -1382,67 +1605,7 @@ function _tBuildRow(vi, di) {
         return; // skip default rendering below
       }
 
-      // Thumb column — render image
-      if (_thumbMode && col === 'Thumb') {
-        td.style.cssText += 'padding:2px;overflow:hidden;vertical-align:middle;';
-        const url = thumbUrl(row);
-        const link = row.link || row.url || '';
-        const isVimeo = /vimeo\.com/i.test(link);
-        if (url) {
-          const img = document.createElement('img');
-          img.src = url;
-          img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (cw[col] - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
-          img.onerror = () => { img.style.display='none'; td.textContent='✗'; };
-          td.appendChild(img);
-        } else if (isVimeo) {
-          // Check cache first
-          const cached = _vimeoThumbCache[link];
-          if (cached && cached.state === 'ok') {
-            const img = document.createElement('img');
-            img.src = cached.src;
-            img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:' + (cw[col] - 4) + 'px;object-fit:contain;display:block;border-radius:2px;';
-            td.appendChild(img);
-          } else if (!cached) {
-            td.textContent = '⏳'; td.style.color = '#666';
-            fetchVimeoThumb(link, () => renderBody()); // re-render when ready
-          } else {
-            td.textContent = '—'; td.style.color = '#444';
-          }
-        } else {
-          td.textContent = '—'; td.style.color = '#444';
-        }
-      } else if (_thumbMode && (col === 'link' || col === 'url') && !showThumbs) {
-        // Inline thumb in link column when no dedicated Thumb col
-        const url = thumbUrl(row);
-        const link2 = row.link || row.url || '';
-        const isVimeo2 = /vimeo\.com/i.test(link2);
-        if (url) {
-          td.style.cssText += 'padding:2px;overflow:hidden;vertical-align:middle;';
-          const img = document.createElement('img');
-          img.src = url;
-          img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:120px;object-fit:contain;display:block;border-radius:2px;';
-          img.onerror = () => { img.remove(); td.textContent = val; td.title = val; };
-          td.appendChild(img);
-        } else if (isVimeo2) {
-          const cached2 = _vimeoThumbCache[link2];
-          if (cached2 && cached2.state === 'ok') {
-            td.style.cssText += 'padding:2px;overflow:hidden;vertical-align:middle;';
-            const img = document.createElement('img');
-            img.src = cached2.src;
-            img.style.cssText = 'height:' + (THUMB_H - 6) + 'px;max-width:120px;object-fit:contain;display:block;border-radius:2px;';
-            td.appendChild(img);
-          } else if (!cached2) {
-            td.textContent = '⏳ ' + val; td.title = val;
-            fetchVimeoThumb(link2, () => renderBody());
-          } else {
-            td.textContent = val; td.title = val;
-          }
-        } else {
-          td.textContent = val; td.title = val;
-        }
-      } else {
-        td.textContent = val; td.title = val;
-      }
+      td.textContent = val; td.title = val;
 
       if (focus   && focus.r   === vi && focus.c   === ci) td.className = 'focus';
       else if (pending && pending.c === ci && vi >= pending.r1 && vi <= pending.r2) td.className = 'sel';
@@ -1483,7 +1646,7 @@ function renderStatus() {
   } else if (focus) {
     el.textContent = 'Focus row '+(focus.r+1)+', col "'+vc[focus.c]+'" — shift-click same col to bulk set'+(ck?' · '+ck+' ✓':'')+filterNote;
   } else {
-    el.textContent = data.length+' rows · '+vc.length+' cols'+(hidden.size?' ('+hidden.size+' hidden)':'')+(ck?' · '+ck+' ✓':'')+filterNote+(_thumbMode?' · 🖼 thumbs':'');
+    el.textContent = data.length+' rows · '+vc.length+' cols'+(hidden.size?' ('+hidden.size+' hidden)':'')+(ck?' · '+ck+' ✓':'')+filterNote;
   }
 }
 
@@ -1513,8 +1676,10 @@ function onCell(e, vi, ci) {
     document.querySelectorAll('#tbody td.focus, #tbody td.sel').forEach(td => {
       td.classList.remove('focus', 'sel');
     });
+    document.querySelectorAll('#tbody tr.row-focus').forEach(tr => tr.classList.remove('row-focus'));
     const td = document.querySelector('#tbody td[data-vi="'+vi+'"][data-ci="'+ci+'"]');
-    if (td) td.classList.add('focus');
+    if (td) { td.classList.add('focus'); const ptr = td.closest('tr'); if (ptr) ptr.classList.add('row-focus'); }
+    _tScrollRowIntoView(vi);   // (dev0331) shift the window to follow the newly-focused row (no-op if comfortably in view)
     // Mirror render()'s last-UID update so D-screen restore still works.
     try {
       const di = vr(vi);
@@ -2839,6 +3004,7 @@ document.getElementById('delUIDRangeBtn').addEventListener('click', () => {
 
 // Mark for Grid
 let _markGridMode = 'top'; // 'top' | 'focused' | 'random'
+let _markGridSize = 25;    // (dev0331) 25 | 16 | 9 | 4 — chosen in the dropdown; default 25 (5×5)
 
 function markGridMenuOpen() {
   const menu = document.getElementById('markGridMenu');
@@ -2855,9 +3021,23 @@ function markGridSetMode(mode) {
   });
   markGridMenuClose();
 }
+// (dev0331) Pick the grid size in the dropdown (does NOT close it — you pick a
+// size, then a mode). Selecting a mode is what runs the assignment.
+function markGridSetSize(size) {
+  _markGridSize = size;
+  document.querySelectorAll('.mgsize').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.size, 10) === size);
+  });
+}
 
+// (dev0331) The whole button now opens the dropdown (was: instant-run with the
+// last mode). Pick a SIZE (25/16/9/4) then a MODE (top/focused/random) — the
+// mode click runs the assignment.
 document.getElementById('markGridArrow').addEventListener('click', e => { e.stopPropagation(); markGridMenuOpen(); });
-document.getElementById('markGridBtn').addEventListener('click', e => { e.stopPropagation(); runMarkGrid(); });
+document.getElementById('markGridBtn').addEventListener('click', e => { e.stopPropagation(); markGridMenuOpen(); });
+document.querySelectorAll('.mgsize').forEach(el => {
+  el.addEventListener('click', e => { e.stopPropagation(); markGridSetSize(parseInt(el.dataset.size, 10)); });
+});
 document.querySelectorAll('.mgitem').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetMode(el.dataset.mode); runMarkGrid(); });
 });
@@ -3025,10 +3205,19 @@ async function housekeepingFillYTMeta() {
 }
 
 function runMarkGrid() {
-  // (zip0153) Fill the live grid size (2-5). Was hardcoded 5×5 / 25 cells.
-  // Cell labels still use the 1a/1b/2a... scheme, just constrained to the
-  // top-left _gridGsize × _gridGsize square (so a 2×2 fills 1a/1b/2a/2b).
-  const gsize = _gridGsize;
+  // (dev0331) Size comes from the mark-grid dropdown (_markGridSize: 25/16/9/4),
+  // NOT the ambient _gridGsize (which mirrored G's last-used size — the old
+  // "label reads 25 but it filled 9" bug). Apply the chosen size to the grid too
+  // so G opens at the matching dimension; runMarkGrid's own save() persists it.
+  // Cell labels still use the 1a/1b/2a... scheme, constrained to the top-left
+  // gsize × gsize square (so a 2×2 fills 1a/1b/2a/2b).
+  const gsize = Math.max(2, Math.min(5, Math.round(Math.sqrt(_markGridSize))));  // 25→5, 16→4, 9→3, 4→2
+  if (gsize !== _gridGsize) {
+    _gridGsize = gsize;
+    if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
+  }
+  if (!metaRow) metaRow = { _salMeta: true };
+  metaRow._salGsize = gsize;
   const cap = gsize * gsize;
   const ALL = [];
   for (let r=1; r<=gsize; r++) for (let ci=0; ci<gsize; ci++) ALL.push(r+'abcde'.charAt(ci));
@@ -3834,10 +4023,10 @@ function brShow(idx) {
 
   // Highlight this row in the table
   focus = { r: sortedIdx ? sortedIdx.indexOf(di) : di, c: 0 };
-  // Scroll table row into view
-  const tableRow = document.querySelector('#tbody tr:nth-child(' + (sortedIdx ? sortedIdx.indexOf(di)+1 : di+1) + ')');
-  if (tableRow) tableRow.scrollIntoView({ block: 'nearest' });
   render();
+  // (dev0329) Windowed table: scroll the focus row into the window (mounts it)
+  // rather than an nth-child lookup, which the spacer rows would throw off.
+  if (typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(focus.r);
 
   // Counter
   document.getElementById('brCounter').textContent = (idx+1) + ' / ' + _brRows.length;
@@ -4337,19 +4526,8 @@ async function _writeDuplicateLinksReport(dupRecords, source) {
       if (targetVi >= 0) {
         focus = { r: targetVi, c: focus !== null ? focus.c : 0 };
         render();
-        requestAnimationFrame(() => {
-          const trs = document.querySelectorAll('#tbody tr');
-          let targetTr = null;
-          trs.forEach(tr => { const td = tr.querySelector('td[data-vi="'+targetVi+'"]'); if (td) targetTr = tr; });
-          if (targetTr) {
-            const wrap = document.getElementById('wrap');
-            if (wrap) {
-              const wRect = wrap.getBoundingClientRect();
-              const tRect = targetTr.getBoundingClientRect();
-              wrap.scrollTop += tRect.top - wRect.top;
-            }
-          }
-        });
+        // (dev0329) Windowed table: scroll the row into the window (mounts it).
+        if (typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(targetVi);
       }
     }
   }
@@ -6069,11 +6247,9 @@ function runVEPostOpenSetup(di) {
           render();
           // Scroll the focused row into view (otherwise focus is set in DOM
           // but invisible if the row was previously off-screen).
-          if (focus !== null) {
-            requestAnimationFrame(() => {
-              const fc = document.querySelector('td.focus');
-              if (fc) fc.scrollIntoView({ block: 'center', behavior: 'auto' });
-            });
+          // (dev0329) Windowed table: scroll the focus row into the window.
+          if (focus !== null && typeof _tScrollRowIntoView === 'function') {
+            _tScrollRowIntoView(focus.r);
           }
         } else if (openAnnotate) {
           // A was pressed in E — explicit request to open Annotate on _brIdx.
@@ -6108,11 +6284,9 @@ function runVEPostOpenSetup(di) {
           }
           _veTargetAfterClose = null;
           render();
-          if (focus !== null) {
-            requestAnimationFrame(() => {
-              const fc = document.querySelector('td.focus');
-              if (fc) fc.scrollIntoView({ block: 'center', behavior: 'auto' });
-            });
+          // (dev0329) Windowed table: scroll the focus row into the window.
+          if (focus !== null && typeof _tScrollRowIntoView === 'function') {
+            _tScrollRowIntoView(focus.r);
           }
         }
       }, 80);
@@ -6496,7 +6670,7 @@ const HELP_DATA = [
         { key: 'Enter',            desc: 'Commit cell edit, move down',       dev: true },
         { key: 'Tab / Shift+Tab',  desc: 'Commit and move right / left',      dev: true },
         { key: 'Del / Backspace',  desc: 'Clear focused cell',               dev: true },
-        { key: 'Ctrl+I',           desc: 'Toggle thumbnail mode',            dev: true },
+        { key: 'Ctrl+I',           desc: 'Preview focused row (video/image/slide) — Space=play/pause, Esc=close', dev: true },
         { key: 'Esc',              desc: 'Deselect focused row',             dev: true },
       ]},
       { name: 'Mouse', items: [

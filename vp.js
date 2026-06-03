@@ -3268,6 +3268,9 @@ function vpMountInstagram(host, link) {
 // T = Table, E = Edit, G = Grid (single letters, no Alt needed)
 // ══════════════════════════════════════════════════════════════════════════════
 window._executeHotkey = function(key) {
+  // (dev0330) Leaving T for any screen → dismiss the focused-row preview pane
+  // (tears down its video). Idempotent no-op when the preview isn't open.
+  if (window.rowPreviewClose) window.rowPreviewClose();
   // Check what's currently open
   const veOpen = !!document.getElementById('video-editor-overlay');
   const ebOpen = document.getElementById('browseOverlay')?.style.display === 'flex';

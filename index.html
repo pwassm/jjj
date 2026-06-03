@@ -258,6 +258,9 @@ td.rn  { color:#444; font-size:10px; text-align:center; cursor:default; border-r
 td.cbc { text-align:center; padding:2px 3px; cursor:pointer; border-right-color:#333; }
 td.focus { background:#0a3060 !important; color:#fff !important; outline:2px solid #4df; outline-offset:-2px; font-weight:bold; }
 td.sel   { background:#1a3a70 !important; color:#cef !important; outline:1px solid #4af; outline-offset:-1px; }
+/* (dev0330) Slight wash across the entire focused row. The focused CELL keeps
+   its brighter td.focus look; the :not()s keep this rule off that cell + range-sel cells. */
+tbody tr.row-focus td:not(.focus):not(.sel) { background:rgba(80,160,255,0.14) !important; }
 input[type=checkbox] { cursor:pointer; accent-color:#4af; width:13px; height:13px; }
 
 /* drag ghost / drop line */
@@ -354,6 +357,9 @@ td.editing input {
 .mgitem:last-child { border-bottom:none; }
 .mgitem:hover { background:rgba(255,160,0,0.15); color:#ffc; }
 .mgitem.active { color:#ffd; background:rgba(255,160,0,0.1); }
+.mgsize { flex:1; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:13px; cursor:pointer; user-select:none; }
+.mgsize:hover { background:rgba(255,160,0,0.18); }
+.mgsize.active { background:rgba(255,160,0,0.3); color:#ffe; border-color:#fc9; font-weight:bold; }
 
 /* Browse / VideoEditor injected fields — focus highlighting */
 #browseOverlay input:focus, #browseOverlay select:focus, #browseOverlay textarea:focus,
@@ -519,12 +525,20 @@ thead th.rn              { color: #fff !important; }
   <button class="tbtn" id="saveFtextImgsBtn" title="Download all web-referenced images in ftext for visible rows, save under jpgs/<slug>/ and rewrite img tags with onerror fallback. Skips rows where FTLsaved=1. Sets FTLsaved: 1=all saved, 0=partial, -1=none saved." style="border-color:#8cf;color:#8cf;background:rgba(0,40,80,0.35);">📥 Save Imgs</button>
   <!-- Mark for Grid button + dropdown -->
   <div id="markGridWrap" style="position:relative;display:inline-flex;flex-shrink:0;">
-    <button class="tbtn" id="markGridBtn" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:5px 0 0 5px;border-right:none;padding:4px 10px;" title="Assign cell grid positions — clears all existing assignments first">⊞ Mark Grid</button>
-    <button class="tbtn" id="markGridArrow" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:0 5px 5px 0;padding:4px 7px;font-size:10px;" title="Choose Mark Grid mode">▾</button>
-    <div id="markGridMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #fa8;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:210px;font-family:monospace;overflow:hidden;margin-top:3px;">
-      <div class="mgitem active" id="mgOpt0" data-mode="top">▤ From top (up to 25, in order)</div>
-      <div class="mgitem" id="mgOpt1" data-mode="focused">⊙ From focused row (up to 25)</div>
-      <div class="mgitem" id="mgOpt2" data-mode="random">🎲 Random assign (visible rows)</div>
+    <button class="tbtn" id="markGridBtn" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:5px 0 0 5px;border-right:none;padding:4px 10px;" title="Open chooser: pick grid size + fill mode, then assign cells (clears existing first)">⊞ Mark Grid</button>
+    <button class="tbtn" id="markGridArrow" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:0 5px 5px 0;padding:4px 7px;font-size:10px;" title="Choose grid size + Mark Grid mode">▾</button>
+    <div id="markGridMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #fa8;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:240px;font-family:monospace;overflow:hidden;margin-top:3px;">
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE</div>
+      <div style="display:flex;gap:6px;padding:0 12px 8px;">
+        <span class="mgsize active" data-size="25">25</span>
+        <span class="mgsize" data-size="16">16</span>
+        <span class="mgsize" data-size="9">9</span>
+        <span class="mgsize" data-size="4">4</span>
+      </div>
+      <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
+      <div class="mgitem active" id="mgOpt0" data-mode="top">▤ From top (in order)</div>
+      <div class="mgitem" id="mgOpt1" data-mode="focused">⊙ From focused row</div>
+      <div class="mgitem" id="mgOpt2" data-mode="random">🎲 Random (visible rows)</div>
     </div>
   </div>
   <!-- (zip0151) Housekeeping dropdown — surfaces Fill P/S, Fill Mpix,
@@ -881,7 +895,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0328';
+  window.HELP_VERSION_STR = 'dev0331';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];
