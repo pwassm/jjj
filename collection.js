@@ -170,6 +170,32 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // (dev0336) −/+ tune the buffer pre-roll (hidden warm-up seconds). Bare keys —
+  // easy to tap while dialling in how much of YT's startup chrome to hide.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '-' || e.key === '_')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustPreroll === 'function') gridAdjustPreroll(-0.5);
+    return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '=' || e.key === '+')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustPreroll === 'function') gridAdjustPreroll(0.5);
+    return;
+  }
+
+  // (dev0338) [ / ] tune the cell fill-zoom (cover crop). Bare keys — watch bars
+  // crop live. Applies whether or not buffering is on.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(-0.05);
+    return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === ']') {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(0.05);
+    return;
+  }
+
   // (dev0335) Space → pause/unpause ALL grid videos. No in-frame interaction is
   // needed in G, so Space is free as a global play/pause toggle.
   if (e.key === ' ' || e.code === 'Space') {

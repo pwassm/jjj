@@ -276,11 +276,87 @@ function _gridBufferMode() {
   return (m === 'cut' || m === 'fade') ? m : 'off';
 }
 
+// Seconds of hidden warm-up before a buffered layer is revealed — long enough to
+// outlast YouTube's startup/title/spinner chrome. User-tunable with −/+ in G
+// (persisted), since the right value depends on connection speed and how far the
+// segment seeks jump. Default 3.5; clamped 1–8.
+const _GRID_PREROLL_DEFAULT = 3.5;
+function _gridBufferPreroll() {
+  let v = (typeof window.getSetting === 'function') ? Number(window.getSetting('gridBufferPreroll')) : NaN;
+  if (!isFinite(v) || v <= 0) v = _GRID_PREROLL_DEFAULT;
+  return Math.max(1, Math.min(8, v));
+}
+
 // Buffering is heavy (2 iframes/cell) — only engage on desktop and small grids.
 // Larger/mobile grids transparently fall back to the single-iframe mount.
 function _gridBufferEligible() {
   const desktop = (typeof _isMobileDevice === 'function') ? !_isMobileDevice() : true;
   return desktop && _gridGsize <= 4;
+}
+
+// ── Cover-fit (dev0338) ──────────────────────────────────────────────────────
+// A YouTube/Vimeo iframe shows the video letterboxed to the clip's native aspect;
+// when that differs from the cell, the cell gets black bars (and fill looks
+// inconsistent across a grid of mixed-aspect clips). We instead make the player
+// COVER the cell like an image (object-fit:cover): oversize the iframe assuming
+// the standard 16:9 so the video edges reach the cell, then let the cell's
+// overflow:hidden clip the excess. A user-tunable extra zoom (`[`/`]`) crops a
+// little more for clips that carry letterbox baked into the footage itself
+// (e.g. archival segments) or to hide the corner YT logo. <video> elements just
+// take object-fit:cover. Players mount async, so we watch for them + re-fit.
+const _GRID_FILLZOOM_DEFAULT = 1.0;   // 1.0 = plain 16:9 cover (no caption-clipping crop)
+function _gridFillZoom() {
+  let v = (typeof window.getSetting === 'function') ? Number(window.getSetting('gridFillZoom')) : NaN;
+  if (!isFinite(v) || v <= 0) v = _GRID_FILLZOOM_DEFAULT;
+  return Math.max(1.0, Math.min(1.8, v));
+}
+
+function _gridApplyCoverFit(host) {
+  if (!host) return;
+  const w = host.clientWidth, h = host.clientHeight;
+  if (!w || !h) return;
+  host.style.overflow = 'hidden';
+  const VID = 16 / 9, Z = _gridFillZoom();
+  host.querySelectorAll('iframe, video').forEach(el => {
+    if (el.tagName === 'VIDEO') {
+      // <video> can cover natively — fill the cell box and crop.
+      el.style.position = 'absolute'; el.style.inset = '0';
+      el.style.left = ''; el.style.top = '';
+      el.style.width = '100%'; el.style.height = '100%';
+      el.style.objectFit = 'cover';
+      return;
+    }
+    // iframe: oversize to cover the cell (16:9 assumption) × zoom, then center.
+    let iw, ih;
+    if (w / h > VID) { iw = w; ih = w / VID; } else { ih = h; iw = h * VID; }
+    iw = Math.ceil(iw * Z); ih = Math.ceil(ih * Z);
+    el.style.position = 'absolute';
+    el.style.maxWidth = 'none'; el.style.maxHeight = 'none';
+    el.style.width = iw + 'px'; el.style.height = ih + 'px';
+    el.style.left = Math.round((w - iw) / 2) + 'px';
+    el.style.top  = Math.round((h - ih) / 2) + 'px';
+  });
+}
+
+// Wire a video host for cover-fit: the player iframe/video is inserted async
+// (YT/Vimeo replace a placeholder), so watch the subtree, and re-fit on resize.
+function _gridCoverFitHost(host) {
+  if (!host || host._coverWired) return;
+  host._coverWired = true;
+  const refit = () => _gridApplyCoverFit(host);
+  if (typeof MutationObserver !== 'undefined') {
+    const mo = new MutationObserver(refit);
+    mo.observe(host, { childList: true, subtree: true });
+    setTimeout(() => { try { mo.disconnect(); } catch (_) {} }, 9000); // iframes settle by then
+  }
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(refit).observe(host);
+  requestAnimationFrame(refit);
+  setTimeout(refit, 400);
+}
+
+// Re-apply cover-fit to every live video cell (after a zoom change — no remount).
+function _gridRefitAll() {
+  document.querySelectorAll('[id^="grid-vid-"]').forEach(_gridApplyCoverFit);
 }
 
 // Single entry point for mounting a video cell — picks the buffered YT path
@@ -292,15 +368,20 @@ function _gridMountVideo(vidHost, row, segs, muted) {
     && window.mountYouTubeClipBuffered
     && window.isYouTubeLink && window.isYouTubeLink(row.link);
   if (useBuffer) {
-    window.mountYouTubeClipBuffered(vidHost, row.link, segs, muted, _gridBufferMode() === 'fade' ? 'fade' : 'cut');
+    window.mountYouTubeClipBuffered(vidHost, row.link, segs, muted,
+      _gridBufferMode() === 'fade' ? 'fade' : 'cut', _gridBufferPreroll());
+    _gridCoverFitHost(vidHost);
     return;
   }
   if (window.isYouTubeLink && window.isYouTubeLink(row.link) && window.mountYouTubeClip) {
     window.mountYouTubeClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+    _gridCoverFitHost(vidHost);
   } else if (window.isVimeoLink && window.isVimeoLink(row.link) && window.mountVimeoClip) {
     window.mountVimeoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+    _gridCoverFitHost(vidHost);
   } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
     window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
+    _gridCoverFitHost(vidHost);
   } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
     window.mountInstagramEmbed(vidHost, row.link);
   }
@@ -322,11 +403,44 @@ function gridCycleBufferMode() {
     fade: '◑ Buffer CROSSFADE — dissolve end→start'
   };
   const note = (next !== 'off' && _gridGsize > 4) ? '  ·  ≤4×4 only (falls back at 5×5)' : '';
-  if (typeof toast === 'function') toast(labels[next] + note, 2200);
+  const roll = next === 'off' ? '' : ('  ·  pre-roll ' + _gridBufferPreroll().toFixed(1) + 's (−/+ to tune)');
+  if (typeof toast === 'function') toast(labels[next] + note + roll, 2400);
   if (typeof gridShow === 'function'
       && document.getElementById('gridOverlay')?.style.display === 'flex') {
     gridShow();
   }
+}
+
+// −/+ in G nudges the buffer pre-roll by 0.5s (clamped 1–8) and persists it.
+// Re-renders so live buffered cells remount with the new warm-up. A longer
+// pre-roll more fully hides YT's startup chrome (esp. across multi-segment seeks)
+// at the cost of a longer initial poster + more skipped lead on start<pre-roll
+// segments.
+function gridAdjustPreroll(delta) {
+  const next = Math.max(1, Math.min(8, Math.round((_gridBufferPreroll() + delta) * 2) / 2));
+  if (typeof window.setSetting === 'function') window.setSetting('gridBufferPreroll', next);
+  const on = _gridBufferMode() !== 'off';
+  if (typeof toast === 'function') {
+    toast('Buffer pre-roll: ' + next.toFixed(1) + 's' + (on ? '' : '  (turn buffer on with ^B)'), 1500);
+  }
+  if (on && typeof gridShow === 'function'
+      && document.getElementById('gridOverlay')?.style.display === 'flex') {
+    gridShow();
+  }
+}
+
+// [ / ] nudge the cell fill-zoom by 0.05 (clamped 1.0–1.8) and persist it. Live
+// re-fit (no remount) so the user can watch bars crop in real time. 1.0 = plain
+// 16:9 cover; higher crops more (hides baked-in letterbox / the corner YT logo,
+// at the cost of clipping the video's edges + any near-edge captions).
+function gridAdjustFillZoom(delta) {
+  const next = Math.max(1.0, Math.min(1.8, Math.round((_gridFillZoom() + delta) * 20) / 20));
+  if (typeof window.setSetting === 'function') window.setSetting('gridFillZoom', next);
+  if (typeof toast === 'function') {
+    const pct = Math.round((next - 1) * 100);
+    toast('Cell fill-zoom: ' + next.toFixed(2) + '×' + (pct ? '  (+' + pct + '% crop)' : '  (16:9 cover)'), 1500);
+  }
+  _gridRefitAll();
 }
 
 // ── ftext-image cell helpers (non-image link rows) ───────────────────────────
@@ -629,16 +743,19 @@ function gridShow() {
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   const hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save · 2-5=size · ^B=clean';
+    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save · 2-5=size · ^B=clean · []=fill';
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
   const _bufTag = _bufMode === 'off' ? ''
-    : ' · ⟳' + _bufMode + (_gridBufferEligible() ? '' : '(≤4×4)');
+    : ' · ⟳' + _bufMode + ' ' + _gridBufferPreroll().toFixed(1) + 's' + (_gridBufferEligible() ? '' : '(≤4×4)');
+  // (dev0338) Show the fill-zoom only when cropping (>1.0), to keep the bar tidy.
+  const _zoom = _gridFillZoom();
+  const _zoomTag = _zoom > 1.0 ? ' · ⤢' + _zoom.toFixed(2) + '×' : '';
   // (zip0153) Total cells = _gridGsize²; was hardcoded /25.
   document.getElementById('gridInfo').textContent =
     '['+srcLabel+'] ' + _gridGsize + '×' + _gridGsize + ' · '
-    + occupied + '/' + (_gridGsize * _gridGsize) + ' · ' + hint + _bufTag;
+    + occupied + '/' + (_gridGsize * _gridGsize) + ' · ' + hint + _bufTag + _zoomTag;
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';

@@ -343,17 +343,21 @@ window._ensureBufLayerCss = function() {
   if (document.getElementById('salBufLayerCss')) return;
   var st = document.createElement('style');
   st.id = 'salBufLayerCss';
-  // YT replaces the inner div with an iframe; force it to fill the layer so a
-  // stray default 640×360 can't letterbox the cell.
-  st.textContent = '.sal-buf-layer iframe{position:absolute;inset:0;width:100%!important;height:100%!important;border:0;}';
+  // The grid's cover-fit (grid.js _gridApplyCoverFit) sets the iframe's explicit
+  // px size/position to fill+crop the cell, so we must NOT pin width/height here
+  // (an !important would beat its inline sizing). Just neutralize the border and
+  // keep it absolutely positioned within the layer.
+  st.textContent = '.sal-buf-layer iframe{position:absolute;border:0;}';
   document.head.appendChild(st);
 };
 
-// Seconds of HIDDEN warm-up before any layer is revealed — long enough to fully
-// cover YouTube's startup/seek chrome (~2s) with margin. Tunable.
-window.SAL_BUF_PREROLL = 2.5;
+// Optional console override for the warm-up length (s). Normally the caller
+// passes the value (grid → user's persisted choice); this global is only a
+// fallback when no value is passed. Left unset by default so the caller / the
+// built-in default win.
+// e.g. in devtools:  window.SAL_BUF_PREROLL = 5;
 
-window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, transition) {
+window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, transition, preroll) {
   var vid = getYouTubeId(url);
   if (!vid || !hostEl) return;
 
@@ -370,7 +374,11 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   window._ensureBufLayerCss();
 
   var segs = (Array.isArray(segsArg) && segsArg.length) ? segsArg.slice() : [{ start: 0, dur: 99999 }];
-  var PREROLL = Number(window.SAL_BUF_PREROLL) || 2.5;
+  // Hidden warm-up length (s). Caller-tunable (grid passes the user's choice);
+  // falls back to a console override, then a default chosen long enough to
+  // outlast YouTube's startup/title/spinner chrome with margin.
+  var PREROLL = Number(preroll) || Number(window.SAL_BUF_PREROLL) || 3.5;
+  PREROLL = Math.max(0.5, Math.min(10, PREROLL));
   var FADE_MS = transition === 'fade' ? 420 : 0;
 
   var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
@@ -406,10 +414,9 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   var frontLayer = A, backLayer = B;
   var frontSeg = 0;
   var swapping = false, killed = false, loopTimer = null;
-  // Back-layer warm-up bookkeeping.
-  var warming = false, warmRevealAt = 0, warmIssuedAt = 0;
-  // Initial-front warm-up bookkeeping.
-  var initRevealAt = 0, initWarmAt = 0, initRevealed = false;
+  // In-flight warm-ups (null when none). backWarm drives segment swaps; initWarm
+  // is the very first front's warm-up.
+  var backWarm = null, initWarm = null, initRevealed = false;
 
   function newPlayer(layer, startSec) {
     return new Promise(function(resolve) {
@@ -433,36 +440,40 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     });
   }
 
-  // Plan a hidden warm-up for `seg`: begin at (start − PREROLL) so the layer
-  // reaches `start` exactly PREROLL later; when the segment starts inside the
-  // pre-roll window, warm from 0 and reveal PREROLL in (a few seconds are
-  // skipped, but the overlay is still hidden). Clamp the reveal point so it
-  // never lands past a short segment's end.
-  function warmPlan(seg) {
+  // Begin a hidden warm-up on `layer` for `seg`: seek to (start − PREROLL) and
+  // play, so it runs through YouTube's startup/title/spinner chrome OFF-SCREEN.
+  // Returns a warm record; `warmReady()` decides when it's safe to reveal.
+  function beginWarm(layer, seg) {
     var from = Math.max(0, seg.start - PREROLL);
-    var reveal = from + PREROLL;                       // = max(seg.start, PREROLL)
-    var segEnd = seg.start + seg.dur;
-    if (reveal > segEnd - 0.2) reveal = Math.max(seg.start, segEnd - 0.2);
-    return { from: from, reveal: reveal };
+    var w = { layer: layer, seg: seg, from: from, issuedAt: Date.now(), landPos: null };
+    try { layer.player.seekTo(from, true); layer.player.playVideo(); } catch (_) {}
+    return w;
   }
 
-  // Has a warmed layer played long enough that its chrome is gone AND reached
-  // its reveal point? The 600ms floor lets the seek settle so a stale
-  // currentTime (still reading the layer's old position) can't reveal early.
-  function layerWarmReady(layer, revealAt, issuedAt) {
-    if (Date.now() - issuedAt < 600) return false;
+  // A warm-up is ready to reveal once the layer has played a FULL PREROLL of
+  // real, forward content from where playback actually landed — guaranteeing the
+  // chrome is gone. YouTube snaps seekTo() to a keyframe, so the landing can sit
+  // after `from`; we measure that landing (first stable PLAYING sample) and
+  // count PREROLL from there rather than trusting a fixed timestamp. The reveal
+  // is also held to ≥ seg.start so we never show pre-segment footage, and capped
+  // just shy of a short segment's end.
+  function warmReady(w) {
+    if (!w) return false;
+    if (Date.now() - w.issuedAt < 500) return false;     // let the seek register
     var st, ct;
-    try { st = layer.player.getPlayerState(); ct = layer.player.getCurrentTime(); }
+    try { st = w.layer.player.getPlayerState(); ct = w.layer.player.getCurrentTime(); }
     catch (_) { return false; }
-    return st === 1 /* PLAYING */ && ct >= revealAt;
-  }
-
-  function startWarm(layer, seg) {
-    var plan = warmPlan(seg);
-    warmRevealAt = plan.reveal;
-    warmIssuedAt = Date.now();
-    try { layer.player.seekTo(plan.from, true); layer.player.playVideo(); } catch (_) {}
-    warming = true;
+    if (st !== 1 /* PLAYING */) return false;
+    if (w.landPos === null) {
+      // First stable playing sample near the seek target = the real landing.
+      // Reject a transient stale (pre-seek) currentTime far outside the window.
+      if (ct >= w.from - 1 && ct <= w.from + 8) w.landPos = ct;
+      return false;
+    }
+    var revealAt = Math.max(w.seg.start, w.landPos + PREROLL);
+    var segEnd = w.seg.start + w.seg.dur;
+    if (revealAt > segEnd - 0.2) revealAt = Math.max(w.seg.start, segEnd - 0.2);
+    return ct >= revealAt;
   }
 
   function doSwap() {
@@ -479,7 +490,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     // Commit roles synchronously so the loop watches the new front immediately.
     frontLayer = newFront; backLayer = oldFront;
     frontSeg = (frontSeg + 1) % segs.length;
-    warming = false;
+    backWarm = null;
     // After the dissolve, idle the old front (now the back) until its next
     // warm-up reseeks + replays it.
     setTimeout(function() {
@@ -495,6 +506,9 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     _salPaused: false,
     getPlayerState: function() {
       try { return frontLayer.player.getPlayerState(); } catch (_) { return -1; }
+    },
+    getCurrentTime: function() {
+      try { return frontLayer.player.getCurrentTime(); } catch (_) { return 0; }
     },
     pauseVideo: function() {
       this._gridPaused = true;
@@ -527,9 +541,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
         segs.forEach(function(s) { if (s.dur > realDur) s.dur = Math.max(1, realDur - s.start); });
       }
     } catch (_) {}
-    var plan = warmPlan(segs[0]);
-    initRevealAt = plan.reveal; initWarmAt = Date.now();
-    try { p.seekTo(plan.from, true); p.playVideo(); } catch (_) {}
+    initWarm = beginWarm(A, segs[0]);
   });
 
   // BACK: created then idled; the first swap's warm-up reseeks + replays it.
@@ -541,12 +553,12 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   loopTimer = setInterval(function() {
     if (killed || swapping) return;
     if (controller._gridPaused || controller._salPaused) return;
-    if (!frontLayer.ready || !initWarmAt) return;
+    if (!frontLayer.ready || !initWarm) return;
 
     // Phase 1 — reveal the very first front once its startup chrome has burned
     // off hidden, dissolving the poster out.
     if (!initRevealed) {
-      if (layerWarmReady(frontLayer, initRevealAt, initWarmAt)) {
+      if (warmReady(initWarm)) {
         requestAnimationFrame(function() {
           if (killed) return;
           frontLayer.wrap.style.opacity = '1';
@@ -558,7 +570,9 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
       return;   // hold the swap logic until the first front is showing
     }
 
-    // Phase 2 — loop the front segment via the hidden, pre-warmed back.
+    // Phase 2 — every segment boundary (loop-around AND multi-segment hops) is a
+    // swap: pre-warm the hidden back ~PREROLL before the front segment ends, then
+    // reveal it once it's clean and has reached its segment start.
     if (!backLayer.ready) return;
     var t;
     try { t = frontLayer.player.getCurrentTime(); } catch (_) { return; }
@@ -566,10 +580,8 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     var segEnd = seg.start + seg.dur;
     var nextSeg = segs[(frontSeg + 1) % segs.length];
 
-    // Kick off the hidden warm-up ~PREROLL before the front segment ends.
-    if (!warming && t >= segEnd - PREROLL) startWarm(backLayer, nextSeg);
-    // Reveal once the back is past its chrome and has reached the segment start.
-    if (warming && layerWarmReady(backLayer, warmRevealAt, warmIssuedAt)) doSwap();
+    if (!backWarm && t >= segEnd - PREROLL) backWarm = beginWarm(backLayer, nextSeg);
+    if (backWarm && warmReady(backWarm)) doSwap();
   }, 150);
   window.seeLearnVideoTimers[cellId] = loopTimer;
 };
