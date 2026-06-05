@@ -341,6 +341,56 @@ function _gridZoomForCell(cellEl) {
   return g * indiv;
 }
 
+// ── Center-of-interest (COI) anchoring (dev0348) ─────────────────────────────
+// A row may carry a COI — the point the user alt-clicked on the unzoomed cell,
+// stored on the ml.json row as "fx,fy" (fractions 0..1 of the cell). Zoom then
+// scales toward that point instead of the cell center, so an off-center subject
+// stays in view as the cell enlarges. The pan needed to center the COI is
+// CLAMPED so the scaled content never exposes a gap — which is exactly why a
+// near-edge COI only drifts toward center as zoom grows (at 1× there's no room
+// to pan; at high zoom there's enough overflow to fully center it).
+function _gridParseCOI(s) {
+  if (!s) return null;
+  const p = String(s).split(',');
+  if (p.length < 2) return null;
+  const fx = parseFloat(p[0]), fy = parseFloat(p[1]);
+  if (!isFinite(fx) || !isFinite(fy)) return null;
+  return { fx: Math.max(0, Math.min(1, fx)), fy: Math.max(0, Math.min(1, fy)) };
+}
+function _gridCOIForCell(cellEl) {
+  const row = cellEl && cellEl._rowData;
+  return row ? _gridParseCOI(row.COI) : null;
+}
+
+// Translate FRACTION (of the element's own box) along one axis so the COI point
+// `f` ends up centered, clamped to keep the scaled box covering the cell. Used
+// for cell-sized elements (img / montage box / <video>) where translate-% is
+// relative to the box = the cell, so no pixel measurement is needed.
+function _gridAnchorFrac(f, Z) {
+  const desired = 0.5 - Z * f;   // shift that puts f at cell center
+  const lo = 1 - Z;              // Z>=1 → lo<=0: clamp range [lo, 0]
+  if (lo <= 0) return Math.max(lo, Math.min(0, desired));
+  return lo / 2;                 // Z<1 (content smaller than cell): just center
+}
+
+// Pixel translate for an element whose base box (baseLen at basePos, in cell
+// coords) may differ from the cell (the oversized cover iframe). Same clamp.
+function _gridAnchorPx(cellLen, basePos, baseLen, f, Z) {
+  const desired = cellLen / 2 - basePos - Z * (f * cellLen - basePos);
+  const tMin = cellLen - basePos - Z * baseLen;   // far edge reaches cellLen
+  const tMax = -basePos;                            // near edge reaches 0
+  if (tMin <= tMax) return Math.max(tMin, Math.min(tMax, desired));
+  return (cellLen - Z * baseLen) / 2 - basePos;    // can't cover → center
+}
+
+// Build the `transform` string for a cell-sized element (img / box / video):
+// translate the COI to center (clamped) then scale. transform-origin must be 0 0.
+function _gridAnchoredTransform(coi, Z) {
+  const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
+  const tx = _gridAnchorFrac(fx, Z) * 100, ty = _gridAnchorFrac(fy, Z) * 100;
+  return 'translate(' + tx + '%,' + ty + '%) scale(' + Z + ')';
+}
+
 // Locate the zoomable element inside a cell, if any. A video host (YT/Vimeo/mp4),
 // a direct <img>, or an ftext-image montage box is zoomable; IG / quiz / text
 // cells return null, so they're skipped by both global and per-cell zoom.
@@ -356,13 +406,16 @@ function _gridCellZoomTarget(cellEl) {
 }
 
 // Apply the current effective zoom to a single cell's content (no remount).
+// img / montage box are cell-sized, so a translate-% + scale (origin 0 0)
+// anchors them to the COI without needing the cell's pixel size — works even
+// before layout settles. The video host defers to _gridApplyCoverFit.
 function _gridApplyZoomToCell(cellEl) {
   const t = _gridCellZoomTarget(cellEl);
   if (!t) return;
   const z = _gridZoomForCell(cellEl);
   if (t.kind === 'vid') { _gridApplyCoverFit(t.el, z); return; }
-  t.el.style.transformOrigin = 'center center';
-  t.el.style.transform = 'scale(' + z + ')';
+  t.el.style.transformOrigin = '0 0';
+  t.el.style.transform = _gridAnchoredTransform(_gridCOIForCell(cellEl), z);
 }
 
 function _gridApplyCoverFit(host, zOverride) {
@@ -374,33 +427,38 @@ function _gridApplyCoverFit(host, zOverride) {
   // zOverride lets a caller pass a precomputed factor; otherwise derive it from
   // the host's cell (global × per-cell). The async MutationObserver re-fit calls
   // with no override, so live zoom changes are picked up on the next mutation.
-  const Z = (typeof zOverride === 'number')
-    ? zOverride
-    : _gridZoomForCell(host.closest('.grid-cell'));
+  const cellEl = host.closest('.grid-cell');
+  const Z = (typeof zOverride === 'number') ? zOverride : _gridZoomForCell(cellEl);
+  const coi = _gridCOIForCell(cellEl);
   host.querySelectorAll('iframe, video').forEach(el => {
     if (el.tagName === 'VIDEO') {
-      // <video> covers the cell natively; the zoom rides on a transform.
+      // <video> covers the cell natively (box = cell); zoom + COI ride on a
+      // transform, same translate-% math as the image path.
       el.style.position = 'absolute'; el.style.inset = '0';
       el.style.left = ''; el.style.top = '';
       el.style.width = '100%'; el.style.height = '100%';
       el.style.objectFit = 'cover';
-      el.style.transformOrigin = 'center center';
-      el.style.transform = 'scale(' + Z + ')';
+      el.style.transformOrigin = '0 0';
+      el.style.transform = _gridAnchoredTransform(coi, Z);
       return;
     }
     // iframe: size to cover the cell (16:9 assumption) and center, then zoom via
     // transform:scale. Sizing stays at the plain cover so scale=1 fills the cell
-    // and scale<1 reveals letterbox (a true zoom-out).
+    // and scale<1 reveals letterbox (a true zoom-out). The cover box is larger
+    // than the cell, so COI pan uses the pixel clamp (origin 0 0).
     let iw, ih;
     if (w / h > VID) { iw = w; ih = w / VID; } else { ih = h; iw = h * VID; }
     iw = Math.ceil(iw); ih = Math.ceil(ih);
+    const ox = Math.round((w - iw) / 2), oy = Math.round((h - ih) / 2);
     el.style.position = 'absolute';
     el.style.maxWidth = 'none'; el.style.maxHeight = 'none';
     el.style.width = iw + 'px'; el.style.height = ih + 'px';
-    el.style.left = Math.round((w - iw) / 2) + 'px';
-    el.style.top  = Math.round((h - ih) / 2) + 'px';
-    el.style.transformOrigin = 'center center';
-    el.style.transform = 'scale(' + Z + ')';
+    el.style.left = ox + 'px';
+    el.style.top  = oy + 'px';
+    const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
+    const tx = _gridAnchorPx(w, ox, iw, fx, Z), ty = _gridAnchorPx(h, oy, ih, fy, Z);
+    el.style.transformOrigin = '0 0';
+    el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + Z + ')';
   });
 }
 
@@ -557,6 +615,27 @@ function gridAdjustCellZoom(cellEl, delta) {
 // (dev0346's mouse-wheel zoom was removed: plain/Ctrl wheel fight the browser's
 // own scroll/page-zoom, so zoom is keyboard-driven — [ ] global, Ctrl+[ ] cell.)
 var _gridHoverCell = null;
+
+// (dev0348) Alt-click handler: store the clicked point as this row's COI
+// ("fx,fy" cell fractions) on the ml.json row, persist, and re-anchor the live
+// cell. The COI becomes the point both global and per-cell zoom scale toward.
+function gridSetCOI(cellEl, cellStr, e) {
+  const row = cellEl && cellEl._rowData;
+  if (!row || !row.UID) { if (typeof toast === 'function') toast('Alt-click: no row here to store COI', 1400); return; }
+  if (!_gridCellZoomTarget(cellEl)) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
+  const rect = cellEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const fy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+  row.COI = fx.toFixed(3) + ',' + fy.toFixed(3);
+  if (typeof isoNow === 'function') row.DateModified = isoNow();
+  if (typeof save === 'function') save();
+  _gridApplyZoomToCell(cellEl);   // re-anchor immediately (visible only when zoomed >1)
+  if (typeof toast === 'function') {
+    toast('COI ' + cellStr + ': ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%'
+      + (_gridFillZoom() <= 1 ? '  (zoom in to see it)' : ''), 1600);
+  }
+}
 
 // ── ftext-image cell helpers (non-image link rows) ───────────────────────────
 
@@ -864,7 +943,7 @@ function gridShow() {
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   const hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell';
+    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell · Alt-clk=COI';
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
@@ -1094,6 +1173,16 @@ function gridWireInteractor(interactor, cell, cellStr) {
   
   interactor.addEventListener('pointerdown', e => {
     e.preventDefault();
+    // (dev0348) Alt+left-click sets this row's center-of-interest (COI) — the
+    // anchor point zoom scales toward. Dev-only; intercepts before any
+    // gesture/hold so it doesn't double as a tap. Uses raw client coords vs the
+    // cell rect (rotation not handled — this is a desktop dev action).
+    if (e.altKey && e.button === 0 && !userMode) {
+      e.preventDefault(); e.stopPropagation();
+      gridSetCOI(cell, cellStr, e);
+      pStart = null;
+      return;
+    }
     // (zip0174) Translate physical screen coords to wrap-local coords so
     // swipe direction matches user perception in CSS-rotated portrait.
     // No-op when not rotated.
