@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1780682355829,
+    "_salPushTime": 1780689347332,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 36,
@@ -2409,7 +2409,7 @@
     "show": "1",
     "VidRange": "text",
     "DateAdded": "2026-04-08 04:25:04",
-    "DateModified": "2026-05-03 23:07:00",
+    "DateModified": "2026-06-05 19:42:45",
     "MPix": "",
     "VidComment": "",
     "tags": [
@@ -2420,13 +2420,14 @@
     "ltype": "m",
     "FTLsaved": "-1",
     "Direct": "",
-    "ftextSize": "809",
+    "ftextSize": "793",
     "FtextJunk": "0",
     "ZA": "",
     "VQ": "",
     "BQ": "",
     "P/S": "X",
-    "ftext": "<h1><p>Skeleton Shrimp Yuks</p><details open=\"\"><summary><img src=\"https://ecology.wa.gov/Ecology/media/BlogMedia/EAP/20181029-swaying-shrimp.gif?ext=.gif\" style=\"float:left;width:200px;margin:6px 14px 6px 0;border-radius:4px;\" alt=\"\">Who&nbsp;does the skeleton shrimp go to when his feet hurt?&nbsp;</summary><summary>&nbsp; &nbsp; &nbsp;The amphipodiatrist!<br><br><br></summary></details></h1><h1><details open=\"\"><summary>If she wins the triathlon, where does the skeleton shrimp stand?<img src=\"https://inaturalist-open-data.s3.amazonaws.com/photos/417416847/original.jpg\" style=\"float:left;width:400px;margin:6px 14px 6px 0;border-radius:4px;\" alt=\"\">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</summary><summary>&nbsp; &nbsp; &nbsp;On the amphipodium!</summary></details></h1>"
+    "ftext": "<h1><p>Skeleton Shrimp Yuks</p><details><summary><img src=\"https://ecology.wa.gov/Ecology/media/BlogMedia/EAP/20181029-swaying-shrimp.gif?ext=.gif\" style=\"float:left;width:200px;margin:6px 14px 6px 0;border-radius:4px;\" alt=\"\">Who&nbsp;does the skeleton shrimp go to when his feet hurt?&nbsp;</summary><summary>&nbsp; &nbsp; &nbsp;The amphipodiatrist!<br><br><br></summary></details></h1><h1><details><summary>If she wins the triathlon, where does the skeleton shrimp stand?<img src=\"https://inaturalist-open-data.s3.amazonaws.com/photos/417416847/original.jpg\" style=\"float:left;width:400px;margin:6px 14px 6px 0;border-radius:4px;\" alt=\"\">&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</summary><summary>&nbsp; &nbsp; &nbsp;On the amphipodium!</summary></details></h1>",
+    "link": ""
   },
   {
     "UID": "61",
@@ -21005,5 +21006,20 @@
     "P/S": "0",
     "BQ": "8",
     "comment": " 2,063 views  Oct 24, 2024 The National Gallery of Australia unveils Lindy Lee’s Ouroboros. Now open to the public, the immersive sculpture based on the ancient image of the snake eating its own tail is set to welcome visitors to the National Gallery for generations to come.  Ouroboros was commissioned for the National Gallery’s 40th anniversary in 2022 and took three years to manufacture, with over 200 public art specialists working over 60,000 hours to bring Lee’s vision to life. Fabricated at the Urban Art Projects (UAP) Meanjin/Brisbane foundry from recycled world-class materials sourced entirely from within Australia, Ouroboros is one of Australia's first sustainable works of public art."
+  },
+  {
+    "UID": "936",
+    "link": "https://youtu.be/4gyC_mfgrbc",
+    "show": "1",
+    "DateAdded": "2026-06-05 18:35:17",
+    "DateModified": "2026-06-05 18:35:18",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "I Caught a Waterbear Hatching on Camera",
+    "VidAuthor": "@Oneminmicro",
+    "P/S": "0",
+    "vidLength": "3:16"
   }
 ]

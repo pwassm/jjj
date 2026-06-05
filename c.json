@@ -38,7 +38,7 @@
       "5e"
     ],
     "_salHidden": [],
-    "_salGsize": 2
+    "_salGsize": 5
   },
   {
     "gname": "FirstTry25 4b blank",
@@ -373,7 +373,7 @@
   {
     "gname": "SkelShrimp",
     "cells": 25,
-    "DateModified": "2026-05-28 04:21:43",
+    "DateModified": "2026-06-05 19:40:32",
     "1a": "",
     "1b": "16",
     "1c": "17",
@@ -401,7 +401,7 @@
     "5e": "",
     "DateAdded": "2026-05-24 16:07:21",
     "ss": "",
-    "Zoom": ""
+    "Zoom": "1.5"
   },
   {
     "gname": "InstaTryMyvideo",
@@ -518,5 +518,22 @@
     "5e": "559",
     "DateAdded": "2026-06-05 14:40:33",
     "Zoom": ""
+  },
+  {
+    "gname": "gchiton1zoomed",
+    "cells": 9,
+    "Zoom": 2.6,
+    "DateModified": "2026-06-05 19:55:27",
+    "1a": "863/1.8",
+    "1b": "862",
+    "1c": "861",
+    "2a": "859",
+    "2b": "858",
+    "2c": "857/2.6",
+    "3a": "855",
+    "3b": "854",
+    "3c": "",
+    "DateAdded": "2026-06-05 19:39:57",
+    "ss": "Zoomed"
   }
 ]
