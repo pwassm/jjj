@@ -341,15 +341,17 @@ function _gridZoomForCell(cellEl) {
   return g * indiv;
 }
 
-// Locate the zoomable element inside a cell, if any. A video host (YT/Vimeo/mp4)
-// or a direct <img> is zoomable; IG / quiz / text / montage cells return null,
-// so they're skipped by both the global and the per-cell zoom paths.
+// Locate the zoomable element inside a cell, if any. A video host (YT/Vimeo/mp4),
+// a direct <img>, or an ftext-image montage box is zoomable; IG / quiz / text
+// cells return null, so they're skipped by both global and per-cell zoom.
 function _gridCellZoomTarget(cellEl) {
   if (!cellEl) return null;
   const host = cellEl.querySelector('[id^="grid-vid-"]');
   if (host) return { kind: 'vid', el: host };
   const img = cellEl.querySelector('img.grid-zoom-img');
   if (img) return { kind: 'img', el: img };
+  const box = cellEl.querySelector('.grid-zoom-box');   // montage of ftext images
+  if (box) return { kind: 'box', el: box };
   return null;
 }
 
@@ -532,12 +534,12 @@ function gridAdjustFillZoom(delta) {
   _gridRefitAll();
 }
 
-// (dev0346) Ctrl+wheel over a cell nudges just THAT cell's zoom — a multiplier
-// on top of the global zoom. Only video/image cells are zoomable; stored per row
-// UID so it can persist to c.json ("UID/zoom") and restore. Snapped to 0.2; a
-// result of exactly 1.0 clears the per-cell entry (back to global only).
+// (dev0347) Ctrl+[ / Ctrl+] over a cell (the one under the mouse) nudges just
+// THAT cell's zoom — a multiplier on top of the global zoom. Only video/image/
+// montage cells are zoomable; stored per row UID so it can persist to c.json
+// ("UID/zoom") and restore. Snapped to 0.2; exactly 1.0 clears the per-cell entry.
 function gridAdjustCellZoom(cellEl, delta) {
-  if (!cellEl) return;
+  if (!cellEl) { if (typeof toast === 'function') toast('Hover a cell, then Ctrl+[ or Ctrl+]', 1200); return; }
   const t = _gridCellZoomTarget(cellEl);
   if (!t) { if (typeof toast === 'function') toast('No per-cell zoom for this cell', 1000); return; }
   const row = cellEl._rowData;
@@ -550,25 +552,11 @@ function gridAdjustCellZoom(cellEl, delta) {
   if (typeof toast === 'function') toast((cellEl.dataset.cell || 'cell') + ' zoom: ' + next.toFixed(1) + '×', 1000);
 }
 
-// (dev0346) Mouse-wheel zoom in G: plain wheel = whole-grid zoom, Ctrl+wheel =
-// the single cell under the cursor. Wheel up zooms in, down zooms out.
-// preventDefault stops the browser's own Ctrl+wheel page zoom. Bound once on the
-// overlay element (which persists across re-renders) — see gridShow.
-function _gridWheelHandler(e) {
-  const overlay = document.getElementById('gridOverlay');
-  if (!overlay || overlay.style.display !== 'flex') return;
-  const fs = document.getElementById('gridFullscreen');
-  if (fs && fs.style.display === 'flex') return;   // let fullscreen handle its own
-  e.preventDefault();
-  e.stopPropagation();
-  const step = e.deltaY < 0 ? _GRID_ZOOM_STEP : -_GRID_ZOOM_STEP;
-  if (e.ctrlKey) {
-    const cellEl = (e.target && e.target.closest) ? e.target.closest('.grid-cell') : null;
-    gridAdjustCellZoom(cellEl, step);
-  } else {
-    gridAdjustFillZoom(step);
-  }
-}
+// (dev0347) Last grid cell the mouse moved over — the target for Ctrl+[ / Ctrl+]
+// per-cell zoom. Tracked by a mousemove listener wired once in gridShow.
+// (dev0346's mouse-wheel zoom was removed: plain/Ctrl wheel fight the browser's
+// own scroll/page-zoom, so zoom is keyboard-driven — [ ] global, Ctrl+[ ] cell.)
+var _gridHoverCell = null;
 
 // ── ftext-image cell helpers (non-image link rows) ───────────────────────────
 
@@ -656,10 +644,13 @@ function _buildFtextImgCell(cell, row) {
 
   const buildWith = (displaySrcs) => {
     const wrapper = document.createElement('div');
+    // (dev0347) `grid-zoom-box` tags this montage as a zoom target so [ ] and
+    // Ctrl+[ ] scale it like a direct image (transform-origin centers the crop).
+    wrapper.className = 'grid-zoom-box';
     if (displaySrcs.length >= 2) {
-      wrapper.style.cssText = 'position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;pointer-events:none;z-index:1;background:#000;gap:1px;';
+      wrapper.style.cssText = 'position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;pointer-events:none;z-index:1;background:#000;gap:1px;transform-origin:center center;';
     } else {
-      wrapper.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1;background:#000;';
+      wrapper.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:1;background:#000;transform-origin:center center;';
     }
     displaySrcs.slice(0, 4).forEach(src => {
       const img = document.createElement('img');
@@ -669,6 +660,7 @@ function _buildFtextImgCell(cell, row) {
       wrapper.appendChild(img);
     });
     cell.appendChild(wrapper);
+    _gridApplyZoomToCell(cell);   // (dev0347) apply saved zoom (montage builds async)
     if (firstLine) {
       const lbl = document.createElement('div');
       lbl.style.cssText = 'position:absolute;top:10%;left:5%;right:5%;'
@@ -871,8 +863,8 @@ function gridShow() {
   // edit/save shortcut list; user (Gu) just sees the viewing actions.
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   const hint = userModeHere
-    ? 'Tap=play · Swipe→=full screen · 2-5=size · wheel=zoom'
-    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · wheel=zoom · ^wheel=cell';
+    ? 'Tap=play · Swipe→=full screen · 2-5=size'
+    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell';
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
@@ -888,12 +880,15 @@ function gridShow() {
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';
-  // (dev0346) Bind the wheel-zoom handler once. The overlay element persists
-  // across re-renders (gridShow only rebuilds the container's children), so a
-  // guard flag keeps us from stacking duplicate listeners.
-  if (!overlay._wheelWired) {
-    overlay._wheelWired = true;
-    overlay.addEventListener('wheel', _gridWheelHandler, { capture: true, passive: false });
+  // (dev0347) Track the cell under the mouse so Ctrl+[ / Ctrl+] can zoom it.
+  // Bound once — the overlay element persists across re-renders (gridShow only
+  // rebuilds the container's children), so a guard flag avoids duplicate binds.
+  if (!overlay._hoverWired) {
+    overlay._hoverWired = true;
+    overlay.addEventListener('mousemove', e => {
+      _gridHoverCell = (e.target && e.target.closest) ? e.target.closest('.grid-cell') : null;
+    }, true);
+    overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; }, true);
   }
   // (zip0141) Re-apply user-mode chrome AFTER the overlay flips visible —
   // gridUpdateSourceBtns may have re-set display/opacity on the dev

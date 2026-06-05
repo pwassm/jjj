@@ -191,9 +191,22 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0346) [ / ] tune the whole-grid zoom by ±0.2 (keyboard twin of the mouse
-  // wheel). Bare keys; floor 0.2, no upper limit. Applies whether or not
-  // buffering is on. 1× = plain cover/contain; <1 shrinks, >1 crops in.
+  // (dev0347) Ctrl+[ / Ctrl+] zoom just the cell under the mouse pointer (the
+  // last one hovered — see _gridHoverCell). Checked before the bare [ ] below.
+  if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '[' || e.code === 'BracketLeft')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustCellZoom === 'function') gridAdjustCellZoom(_gridHoverCell, -0.2);
+    return;
+  }
+  if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === ']' || e.code === 'BracketRight')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustCellZoom === 'function') gridAdjustCellZoom(_gridHoverCell, 0.2);
+    return;
+  }
+
+  // (dev0346) [ / ] tune the whole-grid zoom by ±0.2 (keyboard). Bare keys;
+  // floor 0.2, no upper limit. Applies whether or not buffering is on.
+  // 1× = plain cover/contain; <1 shrinks, >1 crops in.
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') {
     e.preventDefault(); e.stopPropagation();
     if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(-0.2);
