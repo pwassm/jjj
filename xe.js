@@ -87,7 +87,12 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" data-cmd="formatBlock" data-val="h1" title="Heading 1">H1</button>
         <button class="te-btn" data-cmd="formatBlock" data-val="h2" title="Heading 2">H2</button>
+        <button class="te-btn" data-cmd="formatBlock" data-val="h3" title="Heading 3">H3</button>
+        <button class="te-btn" data-cmd="formatBlock" data-val="h4" title="Heading 4">H4</button>
+        <button class="te-btn" data-cmd="formatBlock" data-val="h5" title="Heading 5">H5</button>
+        <button class="te-btn" data-cmd="formatBlock" data-val="h6" title="Heading 6">H6</button>
         <button class="te-btn" data-cmd="formatBlock" data-val="p" title="Paragraph">P</button>
+        <button class="te-btn" id="teSmall" title="Small text — wrap selection in <small> (toggle off if already small)"><small>sm</small></button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" data-cmd="justifyLeft" title="Left align">◀</button>
         <button class="te-btn" data-cmd="justifyCenter" title="Center">◆</button>
@@ -95,6 +100,9 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" data-cmd="insertUnorderedList" title="Bullet list">•</button>
         <button class="te-btn" id="teCollapse" title="Insert empty collapsible section (opens; type a summary, then add anything inside — including images/tables)">▶…</button>
         <button class="te-btn" id="teWrap" title="Wrap current selection in a collapsible section — turns multi-line content, pictures, or tables into a hideable block">[▶…]</button>
+        <button class="te-btn" id="teUndetail" title="Undetail — turn the collapsible block at the cursor back into a heading (H3) with a bullet list of its lines underneath (inverse of [▶…])">Un[▶]</button>
+        <button class="te-btn" id="teExpandAll" title="Expand all collapsible blocks in this slide">▼ All</button>
+        <button class="te-btn" id="teCollapseAll" title="Collapse all collapsible blocks in this slide">▶ All</button>
         <button class="te-btn" id="teCut" title="Park everything from the cursor down — wrapped in a hidden div that's invisible when rendered (slide, grid, exports) but still editable here in Xe. Click on the red banner above the parked block to unpark it.">✂ Cut</button>
         <button class="te-btn" id="teImage" title="Insert image — accepts UID number or https:// URL, with size and alignment">🖼</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
@@ -109,7 +117,18 @@ function gridOpenTextEditor(cellStr, row, opts) {
         background:#0a0a1a; outline:none; cursor:text;
         -webkit-user-modify:read-write; -moz-user-modify:read-write;
       ">${existingText || '<h2>Title</h2><p>Your content here...</p>'}</div>
-      
+
+      <div id="teLinkBar" style="display:flex;align-items:center;gap:8px;padding:5px 16px;
+           background:#0d0d1e;border-top:1px solid #333;">
+        <span style="color:#67a;font-size:11px;white-space:nowrap;">Video URL:</span>
+        <input id="teLinkInput" type="text" placeholder="paste video or image URL (sets row.link)"
+          style="flex:1;padding:3px 8px;background:#0a0a1a;border:1px solid #444;color:#ccc;
+                 border-radius:4px;font-family:monospace;font-size:11px;outline:none;">
+        <button id="teLinkPaste" title="Paste from clipboard"
+          style="background:#222;border:1px solid #555;color:#aaa;padding:3px 8px;
+                 border-radius:4px;cursor:pointer;">📋</button>
+      </div>
+
       <div style="padding:8px 16px; color:#556; font-size:11px; border-top:1px solid #333;">
         Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · Swipe ← title bar = save+close · Shift+Enter new collapsible · Ctrl+Enter exit current collapsible (blank line after) · ⋮⋮ handle = select block for cut
       </div>
@@ -169,6 +188,12 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teSlideContent summary, #teSlideContent summary a { color:#8ef !important; }
     #teEditor h1 { font-size:28px; color:#ff8; margin:0 0 12px; }
     #teEditor h2 { font-size:22px; color:#8ef; margin:0 0 10px; }
+    /* (dev0341) Smaller heading levels + <small> for fine size control. */
+    #teEditor h3 { font-size:19px; color:#9ef; margin:0 0 8px; }
+    #teEditor h4 { font-size:17px; color:#adf; margin:0 0 6px; }
+    #teEditor h5 { font-size:15px; color:#bdf; margin:0 0 6px; }
+    #teEditor h6 { font-size:13px; color:#cdf; margin:0 0 6px; }
+    #teEditor small, #teSlideContent small { font-size:0.8em; opacity:0.85; }
     #teEditor p { margin:0 0 8px; }
     #teEditor ul { margin:8px 0; padding-left:24px; }
     #teEditor details { margin:8px 0; padding:8px 8px 8px 28px; background:#111; border-left:3px solid #06f;
@@ -341,6 +366,118 @@ function gridOpenTextEditor(cellStr, row, opts) {
     // Place caret in the summary so user types the title
     const r = document.createRange();
     r.setStart(summary, 0); r.collapse(true);
+    sel.removeAllRanges(); sel.addRange(r);
+    ed.focus();
+  };
+
+  // (dev0341) Small text — wrap the selection in <small> (execCommand has no
+  // 'small'). Toggles off if the selection already sits inside a <small>.
+  document.getElementById('teSmall').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) {
+      if (typeof toast === 'function') toast('Select some text first', 1000);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    let anc = range.commonAncestorContainer;
+    if (anc.nodeType === 3) anc = anc.parentNode;
+    if (!ed.contains(anc)) return;
+    const enclosing = anc.closest && anc.closest('small');
+    if (enclosing && ed.contains(enclosing)) {
+      // Unwrap: move children up, drop the <small>.
+      const parent = enclosing.parentNode;
+      while (enclosing.firstChild) parent.insertBefore(enclosing.firstChild, enclosing);
+      parent.removeChild(enclosing);
+      ed.focus();
+      return;
+    }
+    const frag = range.extractContents();
+    const small = document.createElement('small');
+    small.appendChild(frag);
+    range.insertNode(small);
+    const r = document.createRange();
+    r.selectNodeContents(small);
+    sel.removeAllRanges(); sel.addRange(r);
+    ed.focus();
+  };
+
+  // (dev0341) Expand-all / Collapse-all every <details> block in the slide.
+  document.getElementById('teExpandAll').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (ed) ed.querySelectorAll('details').forEach(d => d.setAttribute('open', ''));
+  };
+  document.getElementById('teCollapseAll').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (ed) ed.querySelectorAll('details').forEach(d => d.removeAttribute('open'));
+  };
+
+  // (dev0341) Undetail — inverse of [▶…] Wrap. Turn the <details> block at the
+  // caret into an <h3> (from its summary) followed by a <ul> whose <li>s are the
+  // block's lines. Handles the contenteditable nesting (905_d_d-style
+  // <div><div>line</div>…</div>) by descending one wrapper level when present.
+  document.getElementById('teUndetail').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) { ed.focus(); return; }
+    let n = sel.getRangeAt(0).startContainer;
+    if (n.nodeType === 3) n = n.parentNode;
+    const details = n.closest ? n.closest('details') : null;
+    if (!details || !ed.contains(details)) {
+      if (typeof toast === 'function') toast('Put the cursor inside a collapsible block first', 1800);
+      return;
+    }
+    // Summary → heading (keep inner HTML so anchors survive).
+    // Strip inline-style/class junk while keeping anchors, so undetailing a
+    // legacy block (e.g. a summary with leftover <span style> wrappers) emits
+    // clean markup rather than carrying the bloat into the heading/bullets.
+    const clean = (frag) => (typeof _sanitizePastedHtml === 'function')
+      ? _sanitizePastedHtml(frag || '') : (frag || '');
+    const summary = details.querySelector(':scope > summary');
+    const h = document.createElement('h3');
+    h.innerHTML = clean(summary && summary.innerHTML.trim());
+    // Body = first non-summary, non-handle child.
+    const body = Array.from(details.children).find(c =>
+      c.tagName !== 'SUMMARY' && !(c.classList && c.classList.contains('te-dh')));
+    const ul = document.createElement('ul');
+    if (body) {
+      // Descend one level if the body is a single wrapper holding the real lines.
+      let container = body;
+      const elKids = Array.from(body.children);
+      if (elKids.length === 1 && /^(DIV|P)$/.test(elKids[0].tagName) &&
+          Array.from(elKids[0].children).some(c => /^(DIV|P|LI)$/.test(c.tagName))) {
+        container = elKids[0];
+      }
+      const lineEls = Array.from(container.children).filter(c => /^(DIV|P|LI)$/.test(c.tagName));
+      if (lineEls.length) {
+        lineEls.forEach(le => {
+          const txt = (le.textContent || '').replace(/​/g, '').trim();
+          if (!txt && !le.querySelector('img,a')) return; // skip blank lines
+          const li = document.createElement('li');
+          li.innerHTML = clean(le.innerHTML);
+          ul.appendChild(li);
+        });
+      } else {
+        // No line children — whole body becomes one bullet.
+        const li = document.createElement('li');
+        li.innerHTML = clean(container.innerHTML);
+        if (li.textContent.trim() || li.querySelector('img,a')) ul.appendChild(li);
+      }
+    }
+    const parent = details.parentNode;
+    const frag = document.createDocumentFragment();
+    frag.appendChild(h);
+    if (ul.children.length) frag.appendChild(ul);
+    parent.replaceChild(frag, details);
+    // Caret into the new heading.
+    const r = document.createRange();
+    r.selectNodeContents(h); r.collapse(false);
     sel.removeAllRanges(); sel.addRange(r);
     ed.focus();
   };
@@ -655,18 +792,16 @@ function gridOpenTextEditor(cellStr, row, opts) {
   }, true);
 
   _ov.addEventListener('keydown', function(e) {
-    // (zip0182) Esc on Xe = blur whatever is focused (editor or overlay).
-    // Does NOT close Xe — Xe is closed by the X button, the slide-preview
-    // L→R swipe, or by navigating to another row via ArrowUp/Down.
+    // (dev0344) Esc closes Xe back to T (was a defocus-only no-op since
+    // zip0182). Auto-save first so edits aren't lost — mirrors the R→L title-bar
+    // swipe and the ✕ button. Xs (slide preview) sits on top with its own Esc
+    // handler that only removes the Xs overlay, so from Xs the first Esc returns
+    // here to Xe and a second Esc returns to T.
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();
-      const ae = document.activeElement;
-      if (ae && typeof ae.blur === 'function') ae.blur();
-      // Move focus to the overlay so subsequent ArrowUp/Down still hit this
-      // listener (otherwise focus falls back to <body> outside the overlay
-      // tree and our keydown bindings stop firing).
-      _textEditorOverlay.focus();
+      if (typeof _textEditorDoSave === 'function') _textEditorDoSave();
+      textEditorClose();
       return;
     }
     if (e.key === 's' || e.key === 'S') {
@@ -845,12 +980,27 @@ function gridOpenTextEditor(cellStr, row, opts) {
     if (!cd) return;
     const html = cd.getData('text/html');
     if (html && /<details[\s>]/i.test(html)) {
+      // Deliberate <details> paste (e.g. an internal block copy via the cut
+      // handler) — preserve the exact structure, don't sanitize it away.
       e.preventDefault();
       // Strip <html>/<body>/<meta> wrappers some browsers add
       let frag = html.replace(/^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/gi, '');
       // Strip Office/Google clipboard junk classes but keep the structure
       frag = frag.replace(/<!--[\s\S]*?-->/g, '');
       document.execCommand('insertHTML', false, frag);
+      return;
+    }
+    // (dev0341) Rich web paste — run it through the shared sanitizer so editor
+    // pastes don't bloat ftext with <style> blocks, inline styles, class= and
+    // framework junk (the 904_d_d <style>-tail problem). Plain-text pastes have
+    // no text/html and fall through to the browser default.
+    if (html && html.trim() && typeof _sanitizePastedHtml === 'function') {
+      const clean = _sanitizePastedHtml(html);
+      if (clean) {
+        e.preventDefault();
+        document.execCommand('insertHTML', false, clean);
+        return;
+      }
     }
     // Otherwise: let the browser handle normally (plain text or simple html)
   });
@@ -935,6 +1085,15 @@ function gridOpenTextEditor(cellStr, row, opts) {
     // (dev0278) Live size/junk readout, refreshed as the user edits.
     editor.addEventListener('input', teUpdateStats);
     teUpdateStats();
+    // Pre-fill and wire the video URL bar
+    const _li = document.getElementById('teLinkInput');
+    if (_li) {
+      _li.value = _textEditorRow.link || '';
+      const _lpBtn = document.getElementById('teLinkPaste');
+      if (_lpBtn) _lpBtn.onclick = async () => {
+        try { const t = (await navigator.clipboard.readText()).trim(); if (t) _li.value = t; } catch (_e) {}
+      };
+    }
   }, 100);
 }
 
@@ -964,6 +1123,8 @@ function _textEditorDoSave() {
   const html = editor.innerHTML.trim();
   _textEditorRow.ftext = html;
   _textEditorRow.DateModified = isoNow();
+  const _liD = document.getElementById('teLinkInput');
+  if (_liD !== null) _textEditorRow.link = _liD.value.trim();
   if (!_textEditorRow.link) _textEditorRow.VidRange = 'text';
   save();
   return true;
@@ -993,6 +1154,8 @@ function textEditorSave() {
   // Save ftext to the row (keeps existing video/image data)
   _textEditorRow.ftext = editor.innerHTML.trim();
   _textEditorRow.DateModified = isoNow();
+  const _liS = document.getElementById('teLinkInput');
+  if (_liS !== null) _textEditorRow.link = _liS.value.trim();
 
   // Only set VidRange to 'text' if there's no media link
   if (!_textEditorRow.link) {
@@ -1288,6 +1451,16 @@ function teShowImageModal(onInsert, defaults) {
         <label style="cursor:pointer;"><input type="radio" name="teImgAlign" value="right"${dAlign==='right'?' checked':''}>  Right (text wraps left)</label>
       </fieldset>
 
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+        <label style="color:#8ef;font-size:11px;white-space:nowrap;flex-shrink:0;">Caption</label>
+        <input id="teImgCaption" type="text" placeholder="optional — shows below image in small font"
+          style="flex:1;padding:5px 8px;background:#0a0a1a;border:1px solid #555;color:#fff;
+                 border-radius:4px;font-family:monospace;font-size:12px;outline:none;">
+        <button id="teImgCaptionPaste" title="Paste from clipboard"
+          style="background:#222;border:1px solid #555;color:#aaa;padding:5px 8px;
+                 border-radius:4px;cursor:pointer;flex-shrink:0;">📋</button>
+      </div>
+
       <div style="text-align:right;">
         <button id="teImgCancel" style="background:#222;border:1px solid #555;color:#aaa;
                 padding:6px 14px;border-radius:5px;cursor:pointer;font-family:monospace;
@@ -1320,15 +1493,23 @@ function teShowImageModal(onInsert, defaults) {
     return { url: row.link };
   }
 
-  // Build the HTML for a given URL + size + alignment.
-  function buildHtml(url, size, align) {
+  // Build the HTML for a given URL + size + alignment + optional caption.
+  function buildHtml(url, size, align, caption) {
     const widthMap  = { small: '200px', medium: '400px', large: '700px', full: '100%' };
     const w = widthMap[size] || '400px';
+    const cap = caption ? caption.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+    const capHtml = cap
+      ? '<div style="font-size:0.78em;color:#aaa;text-align:center;margin-top:3px;">' + cap + '</div>'
+      : '';
     if (align === 'left') {
+      if (cap) return '<div style="float:left;margin:6px 14px 6px 0;width:' + w + ';">'
+        + '<img src="' + url + '" style="width:100%;border-radius:4px;" alt="">' + capHtml + '</div>';
       return '<img src="' + url + '" style="float:left;width:' + w + ';margin:6px 14px 6px 0;'
         + 'border-radius:4px;" alt="">';
     }
     if (align === 'right') {
+      if (cap) return '<div style="float:right;margin:6px 0 6px 14px;width:' + w + ';">'
+        + '<img src="' + url + '" style="width:100%;border-radius:4px;" alt="">' + capHtml + '</div>';
       return '<img src="' + url + '" style="float:right;width:' + w + ';margin:6px 0 6px 14px;'
         + 'border-radius:4px;" alt="">';
     }
@@ -1336,7 +1517,7 @@ function teShowImageModal(onInsert, defaults) {
     return '<div style="text-align:center;margin:12px 0;">'
       + '<img src="' + url + '" style="max-width:100%;width:' + w + ';display:inline-block;'
       + 'border-radius:4px;" alt="">'
-      + '</div>';
+      + capHtml + '</div>';
   }
 
   function close() { modal.remove(); }
@@ -1348,12 +1529,13 @@ function teShowImageModal(onInsert, defaults) {
     const srcRaw = modal.querySelector('#teImgSrc').value;
     const size  = (modal.querySelector('input[name="teImgSize"]:checked')  || {}).value || 'medium';
     const align = (modal.querySelector('input[name="teImgAlign"]:checked') || {}).value || 'center';
+    const caption = (modal.querySelector('#teImgCaption').value || '').trim();
     const r = resolveSrc(srcRaw);
     if (r.error) {
       modal.querySelector('#teImgErr').textContent = r.error;
       return;
     }
-    const html = buildHtml(r.url, size, align);
+    const html = buildHtml(r.url, size, align, caption);
     close();
     if (typeof onInsert === 'function') onInsert(html);
   }
@@ -1373,8 +1555,25 @@ function teShowImageModal(onInsert, defaults) {
   }
   document.addEventListener('keydown', onKey, true);
 
-  // Auto-focus the source input
-  setTimeout(() => modal.querySelector('#teImgSrc').focus(), 30);
+  // Wire caption paste button
+  modal.querySelector('#teImgCaptionPaste').onclick = async () => {
+    try {
+      const t = (await navigator.clipboard.readText()).trim();
+      if (t) modal.querySelector('#teImgCaption').value = t;
+    } catch (_e) {}
+  };
+
+  // Auto-focus source; if empty and clipboard holds a URL, pre-fill it
+  setTimeout(async () => {
+    const srcInput = modal.querySelector('#teImgSrc');
+    if (!srcInput.value) {
+      try {
+        const t = (await navigator.clipboard.readText()).trim();
+        if (/^https?:\/\//i.test(t)) srcInput.value = t;
+      } catch (_e) {}
+    }
+    srcInput.focus();
+  }, 30);
 }
 
 // (zip0136) Inspect an existing <img> in the editor and open the image
@@ -1468,7 +1667,12 @@ function textEditorPreviewSlide() {
     <style>#teSlideContent a { color: #5bf; }
       #teSlideContent table{border-collapse:collapse;margin:12px 0;max-width:100%;}
       #teSlideContent th,#teSlideContent td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}
-      #teSlideContent th{font-weight:bold;}</style>
+      #teSlideContent th{font-weight:bold;}
+      #teSlideContent h3{font-size:1.25em;color:#9ef;}
+      #teSlideContent h4{font-size:1.1em;color:#adf;}
+      #teSlideContent h5{font-size:1em;color:#bdf;}
+      #teSlideContent h6{font-size:0.9em;color:#cdf;}
+      #teSlideContent small{font-size:0.8em;opacity:0.85;}</style>
     <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:64px;
          display:flex;align-items:center;justify-content:space-between;
          padding:0 16px;background:#3a4d75;border-bottom:2px solid #6af;">

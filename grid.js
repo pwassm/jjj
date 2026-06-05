@@ -70,6 +70,12 @@ var _lastGridRow = null; // Last selected/edited row (for E key)
 var _gridName = ''; // Current grid name (for c.json export)
 var _gridSource = 'T'; // 'T' = from Table cell assignments | 'C' = from active c.json config
 var _gridActiveConfig = null; // The currently active c.json config object (when _gridSource='C')
+// (dev0346) Per-cell individual zoom factors, keyed by row UID (1 = none, so
+// only stored when ≠1). Multiplies the global grid zoom for that one cell.
+// Adjusted live with Ctrl+wheel; persisted to c.json as the cell value
+// "UID/zoom" (a bare "UID" = full size). Session-lived; cleared + repopulated
+// from the active config on C-activation (see _gridApplyConfigZoom).
+var _gridCellZoom = {};
 
 function gridCleanupPlayers() {
   Object.keys(_gridPlayers).forEach(id => {
@@ -180,11 +186,12 @@ function getRowByCellForGrid(cellStr) {
   if (_gridSource === 'T') {
     return data.find(r => r.cell === cellStr && (r.show === undefined || r.show === '1'));
   } else {
-    // C mode: look up UID from active config, then find row
+    // C mode: look up UID from active config, then find row. (dev0346) The cell
+    // value may carry a per-cell zoom suffix ("UID/zoom") — parse out the UID.
     if (!_gridActiveConfig) return null;
-    const uid = _gridActiveConfig[cellStr];
-    if (!uid) return null;
-    return data.find(r => r.UID === uid) || null;
+    const pv = _gridParseCellVal(_gridActiveConfig[cellStr]);
+    if (!pv.uid) return null;
+    return data.find(r => String(r.UID) === pv.uid) || null;
   }
 }
 
@@ -294,47 +301,104 @@ function _gridBufferEligible() {
   return desktop && _gridGsize <= 4;
 }
 
-// ── Cover-fit (dev0338) ──────────────────────────────────────────────────────
+// ── Cover-fit + zoom (dev0338 / dev0346) ─────────────────────────────────────
 // A YouTube/Vimeo iframe shows the video letterboxed to the clip's native aspect;
 // when that differs from the cell, the cell gets black bars (and fill looks
-// inconsistent across a grid of mixed-aspect clips). We instead make the player
-// COVER the cell like an image (object-fit:cover): oversize the iframe assuming
-// the standard 16:9 so the video edges reach the cell, then let the cell's
-// overflow:hidden clip the excess. A user-tunable extra zoom (`[`/`]`) crops a
-// little more for clips that carry letterbox baked into the footage itself
-// (e.g. archival segments) or to hide the corner YT logo. <video> elements just
-// take object-fit:cover. Players mount async, so we watch for them + re-fit.
-const _GRID_FILLZOOM_DEFAULT = 1.0;   // 1.0 = plain 16:9 cover (no caption-clipping crop)
+// inconsistent across a grid of mixed-aspect clips). We make the player COVER
+// the cell like an image (object-fit:cover): size the iframe assuming the
+// standard 16:9 so the video edges reach the cell, then let the cell's
+// overflow:hidden clip the excess. <video> elements cover natively.
+//
+// (dev0346) Zoom. On top of that 16:9-cover baseline we ride a CSS
+// transform:scale — the same factor scales <img> and <video> too — so the whole
+// grid (or a single cell) zooms with the mouse wheel. transform is cheap (no
+// giant iframes) and uniform across content types. The effective factor is
+// global × per-cell: _gridFillZoom() is the whole-grid zoom (wheel / `[` `]`),
+// _gridCellZoom[UID] the optional per-cell multiplier (Ctrl+wheel). 1.0 = plain
+// cover (video) / contain (image); floor 0.2; no upper limit. IG / quiz / text
+// cells have no zoom target and are never scaled. Players mount async, so we
+// watch for them + re-fit.
+const _GRID_FILLZOOM_DEFAULT = 1.0;   // 1.0 = plain 16:9 cover / image-contain
+const _GRID_ZOOM_MIN  = 0.2;          // bottom level (user spec)
+const _GRID_ZOOM_STEP = 0.2;          // per wheel turn / [ ] press
 function _gridFillZoom() {
   let v = (typeof window.getSetting === 'function') ? Number(window.getSetting('gridFillZoom')) : NaN;
   if (!isFinite(v) || v <= 0) v = _GRID_FILLZOOM_DEFAULT;
-  return Math.max(1.0, Math.min(1.8, v));
+  return Math.max(_GRID_ZOOM_MIN, v);   // floor only — no upper limit
 }
 
-function _gridApplyCoverFit(host) {
+// Snap a zoom value to the 0.2 grid (and the floor). 0.2 multiples land on
+// clean one-decimal numbers so they JSON-stringify tidily into c.json.
+function _gridSnapZoom(v) {
+  return Math.max(_GRID_ZOOM_MIN, Math.round(Number(v) * 5) / 5);
+}
+
+// Effective zoom for one cell = global × that cell's stored per-cell factor.
+function _gridZoomForCell(cellEl) {
+  const g = _gridFillZoom();
+  const row = cellEl && cellEl._rowData;
+  const indiv = (row && row.UID && _gridCellZoom[row.UID] > 0) ? _gridCellZoom[row.UID] : 1;
+  return g * indiv;
+}
+
+// Locate the zoomable element inside a cell, if any. A video host (YT/Vimeo/mp4)
+// or a direct <img> is zoomable; IG / quiz / text / montage cells return null,
+// so they're skipped by both the global and the per-cell zoom paths.
+function _gridCellZoomTarget(cellEl) {
+  if (!cellEl) return null;
+  const host = cellEl.querySelector('[id^="grid-vid-"]');
+  if (host) return { kind: 'vid', el: host };
+  const img = cellEl.querySelector('img.grid-zoom-img');
+  if (img) return { kind: 'img', el: img };
+  return null;
+}
+
+// Apply the current effective zoom to a single cell's content (no remount).
+function _gridApplyZoomToCell(cellEl) {
+  const t = _gridCellZoomTarget(cellEl);
+  if (!t) return;
+  const z = _gridZoomForCell(cellEl);
+  if (t.kind === 'vid') { _gridApplyCoverFit(t.el, z); return; }
+  t.el.style.transformOrigin = 'center center';
+  t.el.style.transform = 'scale(' + z + ')';
+}
+
+function _gridApplyCoverFit(host, zOverride) {
   if (!host) return;
   const w = host.clientWidth, h = host.clientHeight;
   if (!w || !h) return;
   host.style.overflow = 'hidden';
-  const VID = 16 / 9, Z = _gridFillZoom();
+  const VID = 16 / 9;
+  // zOverride lets a caller pass a precomputed factor; otherwise derive it from
+  // the host's cell (global × per-cell). The async MutationObserver re-fit calls
+  // with no override, so live zoom changes are picked up on the next mutation.
+  const Z = (typeof zOverride === 'number')
+    ? zOverride
+    : _gridZoomForCell(host.closest('.grid-cell'));
   host.querySelectorAll('iframe, video').forEach(el => {
     if (el.tagName === 'VIDEO') {
-      // <video> can cover natively — fill the cell box and crop.
+      // <video> covers the cell natively; the zoom rides on a transform.
       el.style.position = 'absolute'; el.style.inset = '0';
       el.style.left = ''; el.style.top = '';
       el.style.width = '100%'; el.style.height = '100%';
       el.style.objectFit = 'cover';
+      el.style.transformOrigin = 'center center';
+      el.style.transform = 'scale(' + Z + ')';
       return;
     }
-    // iframe: oversize to cover the cell (16:9 assumption) × zoom, then center.
+    // iframe: size to cover the cell (16:9 assumption) and center, then zoom via
+    // transform:scale. Sizing stays at the plain cover so scale=1 fills the cell
+    // and scale<1 reveals letterbox (a true zoom-out).
     let iw, ih;
     if (w / h > VID) { iw = w; ih = w / VID; } else { ih = h; iw = h * VID; }
-    iw = Math.ceil(iw * Z); ih = Math.ceil(ih * Z);
+    iw = Math.ceil(iw); ih = Math.ceil(ih);
     el.style.position = 'absolute';
     el.style.maxWidth = 'none'; el.style.maxHeight = 'none';
     el.style.width = iw + 'px'; el.style.height = ih + 'px';
     el.style.left = Math.round((w - iw) / 2) + 'px';
     el.style.top  = Math.round((h - ih) / 2) + 'px';
+    el.style.transformOrigin = 'center center';
+    el.style.transform = 'scale(' + Z + ')';
   });
 }
 
@@ -354,9 +418,37 @@ function _gridCoverFitHost(host) {
   setTimeout(refit, 400);
 }
 
-// Re-apply cover-fit to every live video cell (after a zoom change — no remount).
+// Re-apply zoom to every live cell (after a global-zoom change — no remount).
 function _gridRefitAll() {
-  document.querySelectorAll('[id^="grid-vid-"]').forEach(_gridApplyCoverFit);
+  document.querySelectorAll('#gridContainer .grid-cell').forEach(_gridApplyZoomToCell);
+}
+
+// Parse a c.json cell value into { uid, zoom }. Stored as "UID/zoom" (e.g.
+// "204/1.8"); a bare "UID" means full size (zoom 1). Tolerates blanks/null.
+function _gridParseCellVal(v) {
+  const s = (v === undefined || v === null) ? '' : String(v).trim();
+  if (!s) return { uid: '', zoom: 1 };
+  const i = s.indexOf('/');
+  if (i < 0) return { uid: s, zoom: 1 };
+  const z = parseFloat(s.slice(i + 1));
+  return { uid: s.slice(0, i).trim(), zoom: (isFinite(z) && z > 0) ? z : 1 };
+}
+
+// (dev0346) Restore zoom state when a c.json config is activated: the global
+// whole-grid zoom from its "Zoom" column, and each cell's per-cell zoom from the
+// "UID/zoom" cell values. Clears any stale per-cell zooms first.
+function _gridApplyConfigZoom(cfg) {
+  _gridCellZoom = {};
+  if (!cfg) return;
+  const gz = parseFloat(cfg.Zoom);
+  if (isFinite(gz) && gz > 0 && typeof window.setSetting === 'function') {
+    window.setSetting('gridFillZoom', _gridSnapZoom(gz));
+  }
+  Object.keys(cfg).forEach(k => {
+    if (!/^[1-9][a-e]$/.test(k)) return;
+    const pv = _gridParseCellVal(cfg[k]);
+    if (pv.uid && pv.zoom !== 1) _gridCellZoom[pv.uid] = pv.zoom;
+  });
 }
 
 // Single entry point for mounting a video cell — picks the buffered YT path
@@ -429,18 +521,53 @@ function gridAdjustPreroll(delta) {
   }
 }
 
-// [ / ] nudge the cell fill-zoom by 0.05 (clamped 1.0–1.8) and persist it. Live
-// re-fit (no remount) so the user can watch bars crop in real time. 1.0 = plain
-// 16:9 cover; higher crops more (hides baked-in letterbox / the corner YT logo,
-// at the cost of clipping the video's edges + any near-edge captions).
+// (dev0346) Nudge the WHOLE-GRID zoom (mouse wheel up/down, or `[` / `]`) by
+// ±0.2, floor 0.2, no upper limit; persisted in the gridFillZoom setting. Live
+// re-fit (no remount) so it tracks the wheel smoothly. 1.0 = plain cover/contain;
+// >1 zooms in (crops), <1 zooms out (shrinks with margin).
 function gridAdjustFillZoom(delta) {
-  const next = Math.max(1.0, Math.min(1.8, Math.round((_gridFillZoom() + delta) * 20) / 20));
+  const next = _gridSnapZoom(_gridFillZoom() + delta);
   if (typeof window.setSetting === 'function') window.setSetting('gridFillZoom', next);
-  if (typeof toast === 'function') {
-    const pct = Math.round((next - 1) * 100);
-    toast('Cell fill-zoom: ' + next.toFixed(2) + '×' + (pct ? '  (+' + pct + '% crop)' : '  (16:9 cover)'), 1500);
-  }
+  if (typeof toast === 'function') toast('Zoom: ' + next.toFixed(1) + '×', 1000);
   _gridRefitAll();
+}
+
+// (dev0346) Ctrl+wheel over a cell nudges just THAT cell's zoom — a multiplier
+// on top of the global zoom. Only video/image cells are zoomable; stored per row
+// UID so it can persist to c.json ("UID/zoom") and restore. Snapped to 0.2; a
+// result of exactly 1.0 clears the per-cell entry (back to global only).
+function gridAdjustCellZoom(cellEl, delta) {
+  if (!cellEl) return;
+  const t = _gridCellZoomTarget(cellEl);
+  if (!t) { if (typeof toast === 'function') toast('No per-cell zoom for this cell', 1000); return; }
+  const row = cellEl._rowData;
+  if (!row || !row.UID) { if (typeof toast === 'function') toast('Cell needs a UID to store its zoom', 1200); return; }
+  const cur = _gridCellZoom[row.UID] > 0 ? _gridCellZoom[row.UID] : 1;
+  const next = _gridSnapZoom(cur + delta);
+  if (Math.abs(next - 1) < 1e-9) delete _gridCellZoom[row.UID];
+  else _gridCellZoom[row.UID] = next;
+  _gridApplyZoomToCell(cellEl);
+  if (typeof toast === 'function') toast((cellEl.dataset.cell || 'cell') + ' zoom: ' + next.toFixed(1) + '×', 1000);
+}
+
+// (dev0346) Mouse-wheel zoom in G: plain wheel = whole-grid zoom, Ctrl+wheel =
+// the single cell under the cursor. Wheel up zooms in, down zooms out.
+// preventDefault stops the browser's own Ctrl+wheel page zoom. Bound once on the
+// overlay element (which persists across re-renders) — see gridShow.
+function _gridWheelHandler(e) {
+  const overlay = document.getElementById('gridOverlay');
+  if (!overlay || overlay.style.display !== 'flex') return;
+  const fs = document.getElementById('gridFullscreen');
+  if (fs && fs.style.display === 'flex') return;   // let fullscreen handle its own
+  e.preventDefault();
+  e.stopPropagation();
+  const step = e.deltaY < 0 ? _GRID_ZOOM_STEP : -_GRID_ZOOM_STEP;
+  if (e.ctrlKey) {
+    const cellEl = (e.target && e.target.closest) ? e.target.closest('.grid-cell') : null;
+    gridAdjustCellZoom(cellEl, step);
+  } else {
+    gridAdjustFillZoom(step);
+  }
 }
 
 // ── ftext-image cell helpers (non-image link rows) ───────────────────────────
@@ -684,12 +811,14 @@ function gridShow() {
           _buildFtextImgCell(cell, row);
         } else if (row.link) {
           const img = document.createElement('img');
+          img.className = 'grid-zoom-img';   // (dev0346) wheel-zoom target
           img.src = row.link;
-          img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;';
+          img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;transform-origin:center center;';
           img.onerror = () => { img.style.display = 'none'; };
           cell.appendChild(img);
         }
         cell._rowData = row;
+        _gridApplyZoomToCell(cell);   // (dev0346) apply any saved global/per-cell zoom
       } else {
         cell.style.background = '#0a0a1a';
       }
@@ -742,16 +871,16 @@ function gridShow() {
   // edit/save shortcut list; user (Gu) just sees the viewing actions.
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   const hint = userModeHere
-    ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · Ctrl+L=edit · ^!G=save · 2-5=size · ^B=clean · []=fill';
+    ? 'Tap=play · Swipe→=full screen · 2-5=size · wheel=zoom'
+    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · wheel=zoom · ^wheel=cell';
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
   const _bufTag = _bufMode === 'off' ? ''
     : ' · ⟳' + _bufMode + ' ' + _gridBufferPreroll().toFixed(1) + 's' + (_gridBufferEligible() ? '' : '(≤4×4)');
-  // (dev0338) Show the fill-zoom only when cropping (>1.0), to keep the bar tidy.
+  // (dev0346) Show the whole-grid zoom whenever it's not 1× (zoomed in OR out).
   const _zoom = _gridFillZoom();
-  const _zoomTag = _zoom > 1.0 ? ' · ⤢' + _zoom.toFixed(2) + '×' : '';
+  const _zoomTag = Math.abs(_zoom - 1) > 1e-9 ? ' · ⤢' + _zoom.toFixed(1) + '×' : '';
   // (zip0153) Total cells = _gridGsize²; was hardcoded /25.
   document.getElementById('gridInfo').textContent =
     '['+srcLabel+'] ' + _gridGsize + '×' + _gridGsize + ' · '
@@ -759,6 +888,13 @@ function gridShow() {
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';
+  // (dev0346) Bind the wheel-zoom handler once. The overlay element persists
+  // across re-renders (gridShow only rebuilds the container's children), so a
+  // guard flag keeps us from stacking duplicate listeners.
+  if (!overlay._wheelWired) {
+    overlay._wheelWired = true;
+    overlay.addEventListener('wheel', _gridWheelHandler, { capture: true, passive: false });
+  }
   // (zip0141) Re-apply user-mode chrome AFTER the overlay flips visible —
   // gridUpdateSourceBtns may have re-set display/opacity on the dev
   // buttons. Idempotent and a no-op in dev mode.
@@ -901,8 +1037,9 @@ function gridUpdateCell(cellStr, row) {
     } else if (row.link) {
       // Image cell
       const img = document.createElement('img');
+      img.className = 'grid-zoom-img';   // (dev0346) wheel-zoom target
       img.src = row.link;
-      img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;';
+      img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;transform-origin:center center;';
       img.onerror = () => { img.style.display = 'none'; };
       cellEl.appendChild(img);
     }
@@ -911,6 +1048,7 @@ function gridUpdateCell(cellStr, row) {
     cellEl._rowData = null;
     cellEl.style.background = '#0a0a1a';
   }
+  _gridApplyZoomToCell(cellEl);   // (dev0346) apply saved global/per-cell zoom
   
   // Recreate interactor overlay
   const newInteractor = document.createElement('div');

@@ -142,6 +142,10 @@ html.user-mode body { background: #0a0a14; }
 .tbtn:hover { background:rgba(0,60,140,0.7); }
 .tbtn.green { border-color:#5f5; color:#afa; background:rgba(0,80,0,0.35); }
 .tbtn.green:hover { background:rgba(0,110,0,0.55); }
+/* (dev0343) Filter-bar media/orientation toggle pills — multi-select. */
+.fb-toggle { padding:2px 9px; border-radius:11px; cursor:pointer; font-size:11px; font-family:monospace; white-space:nowrap; border:1px solid #456; background:#0a0a1a; color:#9ab; outline:none; }
+.fb-toggle:hover { border-color:#8ad; color:#cde; }
+.fb-toggle.on { background:rgba(120,200,140,0.22); border-color:#6c8; color:#cfd; font-weight:bold; }
 .vp-btn { border:1px solid #06f; background:#113; color:#8cf; padding:6px 10px; font-size:14px; cursor:pointer; border-radius:4px; font-family:monospace; min-width:32px; text-align:center; }
 .vp-btn:hover { background:#224; }
 
@@ -606,12 +610,31 @@ thead th.rn              { color: #fff !important; }
      in DOM flow so table adjusts automatically. No overlay / no dimming. -->
 <div id="filterBar" style="display:none;align-items:center;justify-content:flex-end;gap:5px;flex-shrink:0;
      padding:4px 10px;background:#0d0d1e;border-bottom:2px solid #c78;flex-wrap:wrap;">
+  <!-- (dev0344) Media-type + orientation "Only" toggles — one compact line
+       pinned far-left (margin-right:auto) so they don't eat vertical space.
+       Multi-select pills: click toggles; several may be active (OR within each
+       group). Media is link-derived; orientation reads P/S. Keeps the
+       #fbMediaBar / #fbOrientBar ids so the JS wiring is unchanged. -->
+  <div id="fbOnlyGroup" style="display:flex;align-items:center;gap:4px;margin-right:auto;flex-wrap:wrap;">
+    <span style="color:#777;font-size:10px;font-weight:bold;white-space:nowrap;letter-spacing:0.5px;">ONLY</span>
+    <span id="fbMediaBar" style="display:inline-flex;gap:4px;align-items:center;">
+      <button type="button" class="fb-toggle" data-media="image">🖼 image</button>
+      <button type="button" class="fb-toggle" data-media="video">🎬 video</button>
+      <button type="button" class="fb-toggle" data-media="other">📄 other</button>
+    </span>
+    <span style="color:#456;">│</span>
+    <span id="fbOrientBar" style="display:inline-flex;gap:4px;align-items:center;">
+      <button type="button" class="fb-toggle" data-orient="landscape">⬌ landscape</button>
+      <button type="button" class="fb-toggle" data-orient="portrait">⬍ portrait</button>
+    </span>
+  </div>
   <span style="color:#f8a;font-size:13px;font-weight:bold;white-space:nowrap;">🔍 Filter:</span>
   <label style="color:#888;font-size:11px;white-space:nowrap;">Anywhere:</label>
   <input id="fbAnywhere" type="text" autocomplete="off" placeholder="search all…"
     style="padding:2px 7px;font-size:12px;font-family:monospace;background:#0a0a1a;
            border:1px solid #678;border-radius:4px;color:#fff;outline:none;width:120px;">
   <span style="color:#333;margin:0 2px;">│</span>
+  <label style="color:#888;font-size:11px;white-space:nowrap;">Tags:</label>
   <div id="fbChips" style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;min-width:40px;"></div>
   <input id="fbTagInput" type="text" placeholder="add tag…" autocomplete="off"
     style="padding:2px 7px;font-size:12px;font-family:monospace;background:#0a0a1a;
@@ -895,7 +918,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0338';
+  window.HELP_VERSION_STR = 'dev0346';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];

@@ -91,6 +91,8 @@ async function gridSaveToFile(gname) {
   const gridData = {
     gname: gname,
     cells: gsize * gsize,
+    // (dev0346) Persist the whole-grid zoom so reload restores it.
+    Zoom: (typeof _gridFillZoom === 'function') ? _gridFillZoom() : 1,
     DateModified: now
   };
   
@@ -100,7 +102,13 @@ async function gridSaveToFile(gname) {
     for (let c = 1; c <= gsize; c++) {
       const cellStr = mkGridCell(r, c);
       const row = getRowByCell(cellStr);
-      gridData[cellStr] = row ? (row.UID || '') : '';
+      if (row && row.UID) {
+        // (dev0346) Encode any per-cell zoom as "UID/zoom"; a bare UID = full size.
+        const z = (typeof _gridCellZoom !== 'undefined') ? _gridCellZoom[row.UID] : 0;
+        gridData[cellStr] = (z && Math.abs(z - 1) > 1e-9) ? (row.UID + '/' + z) : row.UID;
+      } else {
+        gridData[cellStr] = '';
+      }
     }
   }
   
@@ -140,7 +148,7 @@ async function gridSaveToFile(gname) {
     }
   } else {
     const finalData = [
-      { _salMeta: true, _salColWidths: {}, _salColOrder: ['gname', 'cells', 'DateAdded', 'DateModified'], _salHidden: [] },
+      { _salMeta: true, _salColWidths: {}, _salColOrder: ['gname', 'cells', 'Zoom', 'DateAdded', 'DateModified'], _salHidden: [] },
       Object.assign({DateAdded: now}, gridData)
     ];
     const jsonStr = JSON.stringify(finalData, null, 2);
@@ -183,16 +191,17 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0338) [ / ] tune the cell fill-zoom (cover crop). Bare keys — watch bars
-  // crop live. Applies whether or not buffering is on.
+  // (dev0346) [ / ] tune the whole-grid zoom by ±0.2 (keyboard twin of the mouse
+  // wheel). Bare keys; floor 0.2, no upper limit. Applies whether or not
+  // buffering is on. 1× = plain cover/contain; <1 shrinks, >1 crops in.
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') {
     e.preventDefault(); e.stopPropagation();
-    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(-0.05);
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(-0.2);
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === ']') {
     e.preventDefault(); e.stopPropagation();
-    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(0.05);
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(0.2);
     return;
   }
 
@@ -279,7 +288,7 @@ var _cMeta      = { _salMeta:true, _salColWidths:{}, _salColOrder:null, _salHidd
                     _salViews:{}, _salActiveView:null };
 
 function getTgAllCols() {
-  const base = ['gname','cells','DateAdded','DateModified'];
+  const base = ['gname','cells','Zoom','DateAdded','DateModified'];
   for (let r=1;r<=5;r++) for (let ci=0;ci<5;ci++) base.push(r+String.fromCharCode(97+ci));
   return base;
 }
@@ -562,6 +571,7 @@ function cMakeActive() {
   if (idx===null) { toast('Select a row first (click or check)',1500); return; }
   const cfg = _cData[idx]; if (!cfg) return;
   _gridActiveConfig = cfg; _gridSource = 'C'; _gridName = cfg.gname||'';
+  if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg); // (dev0346) global + per-cell zoom
   // (zip0153) Derive grid size from cfg.cells (25/16/9/4 → 5/4/3/2). Older
   // entries without cells default to 5. Persist via _setGridGsize so the
   // size sticks on reload.
@@ -578,7 +588,8 @@ function cMakeActive() {
   tdata.forEach(r=>{if(r.cell)r.cell='';});
   for (let r=1; r<=gsize; r++) for (let c=1; c<=gsize; c++) {
     const cs=mkGridCell(r,c);
-    if (cfg[cs]) { const row=tdata.find(d=>d.UID===cfg[cs]); if(row) row.cell=cs; }
+    const uid = _gridParseCellVal(cfg[cs]).uid; // (dev0346) strip any /zoom suffix
+    if (uid) { const row=tdata.find(d=>String(d.UID)===uid); if(row) row.cell=cs; }
   }
   closeCScreen(); save();
   toast('✓ Active: '+(cfg.gname||'(unnamed)')+' ('+gsize+'×'+gsize+')',1500);

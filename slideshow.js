@@ -1588,6 +1588,16 @@ function _slideshowShowReviewVideoPlaceholder(slide) {
 
 function _slideshowKey(e) {
   if (!_slideshowState) return;
+  // (dev0344) Esc closes the slideshow from ANY source, including while a video
+  // is playing. Must run before the `_videoActive` early-return below (which
+  // otherwise hands the keyboard to the V player, whose Esc was disabled) so a
+  // show launched from T onto a video row still closes on Esc. slideshowClose()
+  // tears the V player down too (see its _videoActive branch).
+  if (e.key === 'Escape') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    slideshowClose();
+    return;
+  }
   // (dev0302) Review mode: a/s/d/f rate-and-move keys must work even while
   // V is up, otherwise videos couldn't be rated. We pre-empt V here (capture
   // phase + registered first) and stopImmediatePropagation so V's handler
@@ -1616,11 +1626,7 @@ function _slideshowKey(e) {
   const tag = ae && ae.tagName;
   const inTextField = !!(ae && (tag === 'INPUT' || tag === 'TEXTAREA' || ae.isContentEditable));
   const inSelect    = (tag === 'SELECT');
-  if (e.key === 'Escape') {
-    e.preventDefault(); e.stopImmediatePropagation();
-    slideshowClose();
-    return;
-  }
+  // (dev0344) Esc is handled at the top of this function (works during video too).
   if (inTextField) return;
   if (e.key === 'ArrowRight' || e.key === ' ') {
     e.preventDefault();

@@ -240,6 +240,34 @@ function isVideoRow(row) {
   return false;
 }
 
+// (dev0343) Coarse media classification used by the filter bar's "Only" media
+// toggles. Computed live from the link/row — no stored column needed (cheap,
+// never goes stale). Three buckets:
+//   'video' — isVideoRow (YT/Vimeo/IG/direct-file/numeric asset)
+//   'image' — an image-extension link (not a video)
+//   'other' — text/html slides, quizzes, empty rows, non-media links
+function isImageLink(url) {
+  return /\.(jpe?g|png|gif|webp|svg|bmp|tiff?|avif)(\?|#|$)/i.test(String(url || ''));
+}
+function rowMediaKind(row) {
+  if (!row) return 'other';
+  if (isVideoRow(row)) return 'video';
+  if (isImageLink(row.link)) return 'image';
+  return 'other';
+}
+window.isImageLink  = isImageLink;
+window.rowMediaKind = rowMediaKind;
+
+// (dev0343) Read a row's stored orientation, tolerating either column name
+// ('P/S' or legacy 'Portrait'). Returns '1' (portrait), '0' (landscape), or
+// '' / 'X' (n/a / unknown). Read-only — does not create the column.
+function rowPSValue(row) {
+  if (!row) return '';
+  const v = (row['P/S'] != null && row['P/S'] !== '') ? row['P/S'] : row['Portrait'];
+  return String(v == null ? '' : v);
+}
+window.rowPSValue = rowPSValue;
+
 // Mojibake fix
 function fixMojibake(s) {
   if (typeof s !== 'string') return s;
@@ -317,6 +345,34 @@ async function pickFolder() {
   try { const h = await window.showDirectoryPicker({mode:'readwrite',id:'jj-project'}); _fsaDir = h; await _fsaSave(h); setFsaStatus('📂 '+h.name); toast('✓ Folder set: '+h.name); }
   catch(e) { if (e.name !== 'AbortError') toast('Folder pick failed:\n'+e.message); }
 }
+// (dev0345) ftext-loss guard — pure + testable. Backfills ftext into `rows`
+// from `prevRows` (the existing on-disk ml.json) for any row whose ftext key is
+// ABSENT (undefined). A row with ftext === '' is a deliberate user-clear and is
+// left untouched. Returns the number of rows refilled. See writeFileToDisk for
+// the why: the localStorage mirror is ftext-stripped, and if `data` was ever
+// loaded from it without per-UID rehydration (load()'s fetch-failed fallback),
+// in-memory rows carry no ftext — a plain write would blank them on disk. This
+// wiped ~198 w-rows on 2026-05-30 (commit "sss").
+function _rehydrateFtextFromPrev(rows, prevRows) {
+  if (!Array.isArray(rows) || !Array.isArray(prevRows)) return 0;
+  const disk = new Map();
+  for (const r of prevRows) {
+    if (r && !r._salMeta && r.UID != null && typeof r.ftext === 'string' && r.ftext.length > 0) {
+      disk.set(String(r.UID), r.ftext);
+    }
+  }
+  if (!disk.size) return 0;
+  let n = 0;
+  for (const r of rows) {
+    if (r && !r._salMeta && r.UID != null && r.ftext === undefined && disk.has(String(r.UID))) {
+      r.ftext = disk.get(String(r.UID));
+      n++;
+    }
+  }
+  return n;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports._rehydrateFtextFromPrev = _rehydrateFtextFromPrev;
+
 async function writeFileToDisk(name, jsonData) {
   const dir = await _getDir();
   if (!dir) {
@@ -340,6 +396,20 @@ async function writeFileToDisk(name, jsonData) {
       setTimeout(() => { writeFileToDisk._warnedNoDir = false; }, 30000);
     }
     return false;
+  }
+  // (dev0345) ftext-loss guard: before overwriting ml.json, read the existing
+  // on-disk copy and backfill any row whose ftext key is absent (in-memory copy
+  // was loaded from the ftext-stripped localStorage mirror). Self-heals the
+  // in-memory rows too (same object refs as data[]), so the UI recovers and
+  // subsequent saves are clean. Only runs for ml.json; '' (cleared) is kept.
+  if (name === 'ml.json' && Array.isArray(jsonData)) {
+    try {
+      const cur = await dir.getFileHandle(name, {create:false});
+      const prev = JSON.parse(await (await cur.getFile()).text());
+      const refilled = _rehydrateFtextFromPrev(jsonData, prev);
+      if (refilled) console.warn('writeFileToDisk: ftext-loss guard refilled '
+        + refilled + ' row(s) from disk before save (in-memory copy was ftext-stripped).');
+    } catch(e) { /* no existing file / parse fail — nothing to protect this write */ }
   }
   try {
     const fh = await dir.getFileHandle(name, {create:true});
@@ -1895,6 +1965,21 @@ function rowMatchesFilter(row) {
       if (k === 'ftext') val = val.replace(/<[^>]*>/g, ' ');
       if (!val.toLowerCase().includes(q)) return false;
     }
+    // (dev0343) Media-type toggles — OR within the chosen set (live-computed).
+    const media = rowFilter.media || [];
+    if (media.length) {
+      const kind = window.rowMediaKind ? window.rowMediaKind(row) : 'other';
+      if (!media.includes(kind)) return false;
+    }
+    // (dev0343) Orientation toggles — OR within the chosen set. Reads the P/S
+    // column: '1'=portrait, '0'=landscape, 'X'/blank=n/a (never matches).
+    const orient = rowFilter.orient || [];
+    if (orient.length) {
+      const ps = rowPSValue(row);
+      const ok = (orient.includes('portrait')  && ps === '1')
+              || (orient.includes('landscape') && ps === '0');
+      if (!ok) return false;
+    }
     return true;
   }
   if (rowFilter.col === 'tags' && rowFilter.hierarchical && window.tagsLib) {
@@ -2417,6 +2502,26 @@ async function getImageDims(url) {
     img.src = url;
   });
 }
+// (dev0343) Probe a direct video file (mp4/webm/mov/…) for its pixel dimensions
+// by loading only metadata. No CORS needed — videoWidth/Height are exposed even
+// cross-origin. Works for http(s) and blob: (disk) URLs.
+async function getVideoDims(url) {
+  return new Promise(res => {
+    const v = document.createElement('video');
+    v.preload = 'metadata'; v.muted = true;
+    let done = false;
+    const finish = (val) => {
+      if (done) return; done = true;
+      clearTimeout(t);
+      try { v.removeAttribute('src'); v.load(); } catch(e) {}
+      res(val);
+    };
+    const t = setTimeout(() => finish(null), 9000);
+    v.onloadedmetadata = () => finish(v.videoWidth && v.videoHeight ? {w:v.videoWidth, h:v.videoHeight} : null);
+    v.onerror = () => finish(null);
+    v.src = url;
+  });
+}
 async function getOEmbedDims(url) {
   try {
     let ep;
@@ -2433,28 +2538,39 @@ async function getOEmbedDims(url) {
 }
 document.getElementById('fillPSBtn').addEventListener('click', async () => {
   const PS_COL = getPSCol();
-  const rows = data.filter(r => r.link);
-  if (!rows.length) { toast('No rows with links.'); return; }
+  // (dev0343) Process EVERY row, not just rows with a link — text/html/quiz rows
+  // (no media link) must be stamped 'X' (n/a) rather than left blank/stale.
+  const rows = data;
+  if (!rows.length) { toast('No rows.'); return; }
   toast('\u{21ec}\u{21CC} Filling P/S\u2026 0/' + rows.length, 10000);
   let done = 0, changed = 0;
   for (const row of rows) {
-    const link = row.link || '';
-    const isVid = isVideoRow(row);
-    let ps = '';
-    if (/youtube\.com\/shorts\//i.test(link)) {
-      ps = '1';
-    } else if (/youtu\.be|youtube\.com/i.test(link)) {
+    const link = String(row.link || '');
+    const kind = rowMediaKind(row);   // 'video' | 'image' | 'other'
+    const prev = String(row[PS_COL] || '');
+    let ps;
+    if (kind === 'other') {
+      ps = 'X';                       // teXt / html / quiz / non-media -> n/a
+    } else if (/youtube\.com\/shorts\//i.test(link)
+            || (window.isInstagramLink && window.isInstagramLink(link) && /\/reel\//i.test(link))) {
+      ps = '1';                       // YT Shorts / IG Reels are portrait by definition
+    } else if (/youtu\.be|youtube\.com/i.test(link) || /vimeo\.com/i.test(link)) {
       const dims = await getOEmbedDims(link);
-      if (dims) ps = dims.h > dims.w ? '1' : '0';
-    } else if (/vimeo\.com/i.test(link)) {
-      const dims = await getOEmbedDims(link);
-      if (dims) ps = dims.h > dims.w ? '1' : '0';
-    } else if (!isVid) {
+      ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
+    } else if (window.isDirectVideoLink && window.isDirectVideoLink(link)) {
+      const dims = await getVideoDims(link);
+      ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
+    } else if (kind === 'image') {
       const dims = await getImageDims(link);
-      if (dims) ps = dims.h > dims.w ? '1' : '0';
+      ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
+    } else {
+      ps = '';                        // media we can't measure (e.g. IG post) -> leave for retry
     }
-    if (ps === '') ps = 'X'; // couldn't determine — mark as unknown
-    if (String(row[PS_COL]||'') !== ps) { row[PS_COL] = ps; changed++; }
+    // Don't clobber a previously-good orientation with a transient measurement
+    // failure: keep '0'/'1' if this pass came up blank. Blank is distinct from
+    // 'X' (which means definitively n/a — text/html/quiz).
+    if (ps === '' && (prev === '0' || prev === '1')) ps = prev;
+    if (prev !== ps) { row[PS_COL] = ps; changed++; }
     done++;
     if (done % 3 === 0 || done === rows.length)
       toast('Filling P/S\u2026 '+done+'/'+rows.length+' ('+changed+' changed)', 10000);
@@ -3530,9 +3646,14 @@ document.getElementById('reassignUIDBtn').addEventListener('click', async () => 
       if (!/^[1-5][a-e]$/.test(k)) return;
       const v = cfg[k];
       if (v === undefined || v === null || v === '') return;
+      // (dev0346) Cell values may carry a per-cell zoom suffix ("UID/zoom").
+      // Remap only the UID part and keep the suffix intact.
       const sv = String(v);
-      if (map.has(sv)) {
-        cfg[k] = map.get(sv);
+      const slash = sv.indexOf('/');
+      const uidPart = slash < 0 ? sv : sv.slice(0, slash);
+      const suffix  = slash < 0 ? '' : sv.slice(slash);
+      if (map.has(uidPart)) {
+        cfg[k] = map.get(uidPart) + suffix;
         touched = true;
         cellUpdated++;
       }
@@ -3592,14 +3713,18 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
 
   let chips = [];   // tag IDs currently selected (AND'd)
   const text = { VidAuthor:'', VidTitle:'', link:'', ftext:'', anywhere:'' };
+  let media  = [];  // (dev0343) media-type toggles: 'image'|'video'|'other' (OR)
+  let orient = [];  // (dev0343) orientation toggles: 'landscape'|'portrait' (OR)
   let dd = null, ddIdx = -1, ddMatches = [];
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   let _flTimer = null;
   function applyLive() {
-    const hasAny = chips.length || Object.values(text).some(v => v && v.trim());
-    rowFilter = hasAny ? { composite: true, tags: chips.slice(), text: Object.assign({}, text) } : null;
+    const hasAny = chips.length || media.length || orient.length
+                || Object.values(text).some(v => v && v.trim());
+    rowFilter = hasAny ? { composite: true, tags: chips.slice(), text: Object.assign({}, text),
+                           media: media.slice(), orient: orient.slice() } : null;
     if (rowFilter) _lastRowFilter = rowFilter;
     // (dev0326) Debounce the expensive render + count scan: typing in the filter
     // otherwise rebuilds the whole tbody (O(rows)) on EVERY keystroke. rowFilter
@@ -3636,6 +3761,25 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
     renderChips();
     applyLive();
   });
+
+  // ── (dev0343) Media-type + orientation toggle pills ──
+  // Multi-select: clicking toggles membership; several may be active (OR within
+  // each bar). Media is live-computed from the link; orientation reads P/S.
+  const mediaBtns  = Array.from(document.querySelectorAll('#fbMediaBar  [data-media]'));
+  const orientBtns = Array.from(document.querySelectorAll('#fbOrientBar [data-orient]'));
+  function paintToggles() {
+    mediaBtns.forEach(b  => b.classList.toggle('on', media.includes(b.dataset.media)));
+    orientBtns.forEach(b => b.classList.toggle('on', orient.includes(b.dataset.orient)));
+  }
+  function wireToggle(btn, arr, key) {
+    btn.addEventListener('click', () => {
+      const i = arr.indexOf(key);
+      if (i >= 0) arr.splice(i, 1); else arr.push(key);
+      paintToggles(); applyLive();
+    });
+  }
+  mediaBtns.forEach(b  => wireToggle(b, media,  b.dataset.media));
+  orientBtns.forEach(b => wireToggle(b, orient, b.dataset.orient));
 
   // ── Tag dropdown ──
   function closeDd() { if (dd) { dd.remove(); dd = null; } ddIdx = -1; ddMatches = []; }
@@ -3782,20 +3926,35 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   // Buttons
   clearBtn.addEventListener('click', () => {
     chips = []; Object.keys(text).forEach(k => text[k] = '');
+    media.length = 0; orient.length = 0;   // mutate in place — toggle handlers hold these refs
     ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbAnywhere'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
-    closeDd(); renderChips(); applyLive();
+    closeDd(); renderChips(); paintToggles(); applyLive();
     tagInp.focus();
   });
   closeBtn.addEventListener('click', () => window.closeFilterBar());
 
+  // (dev0344) Esc closes the filter bar from anywhere — the per-input handlers
+  // only fire when a text field is focused, so clicking a toggle pill (or the
+  // table) used to leave Esc dead. Bubble phase + a visibility guard so an open
+  // typeahead/tag dropdown (which stops propagation on its own Esc) still gets
+  // first crack, and so this never interferes when the bar is hidden.
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (bar.style.display === 'none') return;
+    window.closeFilterBar();
+  });
+
   // Public API — called by F hotkey (vp.js) and Shift-F
   window.openFilterBar = function () {
+    media.length = 0; orient.length = 0;   // reset toggles (refilled below if composite)
     if (rowFilter && rowFilter.composite) {
       // Restore full composite filter state
       chips = (rowFilter.tags || []).slice();
       Object.assign(text, rowFilter.text || {});
+      (rowFilter.media  || []).forEach(v => media.push(v));
+      (rowFilter.orient || []).forEach(v => orient.push(v));
       document.getElementById('fbAuthor').value  = text.VidAuthor || '';
       document.getElementById('fbTitle').value   = text.VidTitle  || '';
       document.getElementById('fbLink').value    = text.link      || '';
@@ -3813,7 +3972,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
       });
       closeDd();
     }
-    renderChips();
+    renderChips(); paintToggles();
     bar.style.display = 'flex';
     setTimeout(() => anywhereInp.focus(), 30);
     applyLive();
@@ -4603,11 +4762,33 @@ async function _wantLinksInner() {
     return await _importBareLinks(lines);
   }
 
-  // (zip0167) Rule 3: first line is NOT a URL → treat as pasted article
-  // text. Show a 3-option picker (w/s/a) for level of cleanup, then create
-  // a new row with ltype='w' and ftext=<cleaned HTML>.
+  // (dev0341) Rule 3: no URL on line 1 -> new row, ltype=0, clean formatted ftext.
+  // Prefer text/html (sanitized to a small semantic subset: headings, bullets,
+  // links, bold — no inline-style/class/framework junk). Fall back to plain
+  // text with every line break preserved.
   if (!_looksLikeAnyUrl(lines[0])) {
-    return _showStripPicker(txt);
+    let ftext = '';
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          if (item.types.includes('text/html')) {
+            const blob = await item.getType('text/html');
+            ftext = _sanitizePastedHtml(await blob.text());
+            break;
+          }
+        }
+      }
+    } catch (e) { /* fall through to plain text */ }
+    if (!ftext) ftext = _textToLineHtml(txt);
+    const now = isoNow();
+    const row = { UID: nextUID(), link: '', show: '1', DateAdded: now, DateModified: now, ltype: 0, ftext, tags: [] };
+    data.push(row);
+    save();
+    if (typeof buildSort === 'function') { sortCol = 'DateAdded'; sortDir = 'desc'; buildSort(); }
+    if (typeof render === 'function') render();
+    toast('✓ New ftext row (ltype=0) · ' + ftext.length.toLocaleString() + ' chars', 2000);
+    return;
   }
 
   // Neither rule matches — show a blocking popup so it isn't missed
@@ -4963,6 +5144,83 @@ function ftextStats(html) {
   };
 }
 window.ftextStats = ftextStats;
+
+// (dev0341) Clean rich clipboard HTML down to the small semantic subset used by
+// ftext slides. Mirrors the junk model in ftextStats(): drops <style>/<script>,
+// inline style=/class=/data-*/aria-* attrs, span/div soup, and custom
+// (hyphenated framework) tags — keeping only headings, paragraphs, lists, links,
+// emphasis, images, and <details>. DOM-based (DOMParser) so nested-quote tricks
+// can't fool it the way a regex would. Used by W-paste and the Xe paste handler.
+function _sanitizePastedHtml(html) {
+  if (!html) return '';
+  let doc;
+  try { doc = new DOMParser().parseFromString(html, 'text/html'); }
+  catch (e) { return ''; }
+  const body = doc && doc.body;
+  if (!body) return '';
+
+  // Remove whole-subtree noise and comment nodes.
+  body.querySelectorAll('style,script,meta,link,title,noscript').forEach(n => n.remove());
+  const tw = doc.createTreeWalker(body, NodeFilter.SHOW_COMMENT, null);
+  const comments = [];
+  while (tw.nextNode()) comments.push(tw.currentNode);
+  comments.forEach(c => c.remove());
+
+  const KEEP = new Set(['H1','H2','H3','H4','H5','H6','P','UL','OL','LI','A',
+    'STRONG','B','EM','I','U','BR','IMG','BLOCKQUOTE','DIV','SMALL',
+    'DETAILS','SUMMARY']);
+
+  // Depth-first: unwrap disallowed tags (keep their children); strip attrs on
+  // kept tags. Static list because we mutate the tree as we go.
+  const all = Array.from(body.querySelectorAll('*'));
+  for (const el of all) {
+    const tag = el.tagName;
+    if (!KEEP.has(tag)) {
+      const parent = el.parentNode;
+      if (!parent) continue;
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
+      continue;
+    }
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const keep = (tag === 'A' && name === 'href') ||
+                   (tag === 'IMG' && (name === 'src' || name === 'alt'));
+      if (!keep) el.removeAttribute(attr.name);
+    }
+    if (tag === 'A' && el.getAttribute('href')) {
+      el.setAttribute('target', '_blank');
+      el.setAttribute('rel', 'noopener');
+    }
+  }
+
+  // Drop now-empty wrappers (no text, no media). Repeat until stable so
+  // <div><div></div></div> fully collapses.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    body.querySelectorAll('div,span,p').forEach(el => {
+      if (el.querySelector('img,br,details,a,ul,ol')) return;
+      if (el.textContent.trim()) return;
+      el.remove(); changed = true;
+    });
+  }
+
+  const out = body.innerHTML.trim();
+  return typeof _linkifyHtml === 'function' ? _linkifyHtml(out) : out;
+}
+
+// (dev0341) Plain-text -> minimal HTML preserving every line break as its own
+// line (one <div> per line, <div><br></div> for blanks — the contenteditable
+// line model). W-paste fallback when the clipboard carries no text/html.
+function _textToLineHtml(txt) {
+  if (!txt) return '';
+  return txt.split(/\r?\n/).map(line => {
+    const t = line.trim();
+    return t ? '<div>' + escH(t) + '</div>' : '<div><br></div>';
+  }).join('');
+}
+
 
 function _linkifyHtml(html) {
   if (!html) return '';
@@ -5928,7 +6186,14 @@ function runVEPostOpenSetup(di) {
       if (e.key === 'Escape' && !e.ctrlKey) {
         const commentPop = document.getElementById('v2comment-popup');
         if (commentPop) { e.preventDefault(); e.stopImmediatePropagation(); commentPop.remove(); return; }
-        // Otherwise: let global handler blur focused input. No window close.
+        // (dev0344) Esc closes Ev → Table (re-enabled; was a no-op since zip0186).
+        // Mirrors the T key's path exactly (set close-to-table intent, click the
+        // ✕ so all the existing teardown/save-on-close logic runs).
+        e.preventDefault(); e.stopImmediatePropagation();
+        _veCloseToTable = true;
+        _veTargetAfterClose = _brIdx;
+        const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+        return;
       }
 
       // Alt+N/J = legacy bindings, equivalent to plain N/J — stay in E.

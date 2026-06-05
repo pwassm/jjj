@@ -4140,6 +4140,196 @@
     "kind": "topic",
     "parents": [],
     "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "vivo-x300-ultra",
+    "label": "Vivo x300 ultra",
+    "kind": "topic",
+    "parents": [
+      "shopping"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "short-returns",
+    "label": "Short returns",
+    "kind": "technique",
+    "parents": [
+      "ttennis"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "samsung-s25-ultra",
+    "label": "Samsung s25 ultra",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
     "def": ""
+  },
+  {
+    "id": "hermit-crab",
+    "label": "Hermit crab",
+    "kind": "taxon",
+    "parents": [
+      "paguroidea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "paguroidea",
+    "label": "Paguroidea",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "superfamily"
+  },
+  {
+    "id": "longevity",
+    "label": "Longevity",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "brooding",
+    "label": "Brooding",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "mobula",
+    "label": "Mobula",
+    "kind": "taxon",
+    "parents": [
+      "myliobatidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "Manta ray",
+    "extinct": false
+  },
+  {
+    "id": "elasmobranchii",
+    "label": "Elasmobranchii",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "myliobatiformes",
+    "label": "Myliobatiformes",
+    "kind": "taxon",
+    "parents": [
+      "elasmobranchii"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "myliobatidae",
+    "label": "Myliobatidae",
+    "kind": "taxon",
+    "parents": [
+      "myliobatiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "remora",
+    "label": "Remora",
+    "kind": "taxon",
+    "parents": [
+      "echeneidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "echeneidae",
+    "label": "Echeneidae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "remora-remora",
+    "label": "Remora remora",
+    "kind": "taxon",
+    "parents": [
+      "remora"
+    ],
+    "aliases": [
+      "Remora remora (Linnaeus",
+      "1758)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Common remora",
+    "extinct": false
+  },
+  {
+    "id": "snipe-eel",
+    "label": "Snipe eel",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "anguilliformes",
+    "label": "Anguilliformes",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "nemichthyidae",
+    "label": "Nemichthyidae",
+    "kind": "taxon",
+    "parents": [
+      "anguilliformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "Snipe-eels"
   }
 ]

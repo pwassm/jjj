@@ -585,6 +585,7 @@ async function _openConfigByName(name) {
   window._gridActiveConfig = cfg;
   window._gridSource = 'C';
   window._gridName = cfg.gname || '';
+  if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg); // (dev0346) global + per-cell zoom
   const cellsN = parseInt(cfg.cells, 10);
   let gsize = 5;
   if (cellsN === 4) gsize = 2;
@@ -601,8 +602,9 @@ async function _openConfigByName(name) {
     for (let r = 1; r <= gsize; r++) {
       for (let c = 1; c <= gsize; c++) {
         const cs = r + 'abcde'.charAt(c - 1);
-        if (cfg[cs]) {
-          const row = data.find(d => String(d.UID) === String(cfg[cs]));
+        const uid = (typeof _gridParseCellVal === 'function') ? _gridParseCellVal(cfg[cs]).uid : (cfg[cs] ? String(cfg[cs]) : '');
+        if (uid) {
+          const row = data.find(d => String(d.UID) === uid);
           if (row) row.cell = cs;
         }
       }
@@ -804,6 +806,7 @@ async function _showMobileCPicker() {
       _gridActiveConfig = cfg;
       _gridSource = 'C';
       _gridName = cfg.gname || '';
+      if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg); // (dev0346) global + per-cell zoom
       // (zip0153) Derive grid size from cfg.cells (25/16/9/4 → 5/4/3/2).
       const cellsN = parseInt(cfg.cells, 10);
       let gsize = 5;
@@ -820,8 +823,9 @@ async function _showMobileCPicker() {
         for (let r = 1; r <= gsize; r++) {
           for (let c = 1; c <= gsize; c++) {
             const cs = r + 'abcde'.charAt(c - 1);
-            if (cfg[cs]) {
-              const row = data.find(d => String(d.UID) === String(cfg[cs]));
+            const uid = (typeof _gridParseCellVal === 'function') ? _gridParseCellVal(cfg[cs]).uid : (cfg[cs] ? String(cfg[cs]) : '');
+            if (uid) {
+              const row = data.find(d => String(d.UID) === uid);
               if (row) row.cell = cs;
             }
           }

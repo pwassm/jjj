@@ -2464,8 +2464,18 @@ window.openVideoEditor = function(it) {
       return;
     }
     
-    // (zip0186) Esc no longer closes Ev. The veKeyHandler in core.js handles
-    // the comment-popup case; video.js just ensures no double-handling here.
+    // (dev0344) Esc = save and return to Table (mirrors the T key). Re-enabled
+    // per user request (was a no-op since zip0186). If the segment-comment popup
+    // is open, leave it for the popup's own Esc handler and don't close Ev.
+    if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey) {
+      if (document.getElementById('v2comment-popup')) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      saveEditor();
+      closeEditor();
+      window._cameFromGrid = false;
+      if (window.buildTable) window.buildTable();
+      return;
+    }
     if ((e.key === ' ' || e.key === 'Spacebar') && !isInp) {
       e.preventDefault(); e.stopPropagation();
       var p = getEditorPlayer();

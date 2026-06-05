@@ -1351,9 +1351,15 @@ function vpClose() {
 
 function vpKeyHandler(e) {
   if (document.getElementById('gridFullscreen').style.display !== 'flex') return;
-  
-  // (zip0186) Esc no longer closes Ie/V — use swipe-left, the ✕ button, or T.
-  // The global handler blurs any focused input; nothing else to do here.
+
+  // (dev0344) Esc closes V / Ie back to T (re-enabled — was removed in zip0186).
+  // vpClose() handles teardown and silently refuses in locked-share mode, so no
+  // separate guard is needed here.
+  if (e.key === 'Escape') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    vpClose();
+    return;
+  }
 
   // (zip0178) ArrowUp / ArrowDown — navigate filtered rows while in image
   // fullscreen (Iu / Ie).  Skipped when a video player is active (video
