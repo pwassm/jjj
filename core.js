@@ -450,7 +450,10 @@ async function _saveToDeletedJson(row) {
   try {
     let arr = [];
     try { const fh = await dir.getFileHandle('deleted.json'); arr = JSON.parse(await (await fh.getFile()).text()); if (!Array.isArray(arr)) arr = []; } catch(_) {}
-    arr.push(Object.assign({}, row, { _deletedAt: new Date().toISOString() }));
+    // (dev0351) Accept a single row OR an array (batch delete) so one read/write
+    // covers a multi-row delete — concurrent per-row appends would race the file.
+    const _delNow = new Date().toISOString();
+    (Array.isArray(row) ? row : [row]).forEach(r => arr.push(Object.assign({}, r, { _deletedAt: _delNow })));
     const fh = await dir.getFileHandle('deleted.json', { create: true });
     const w  = await fh.createWritable();
     await w.write(JSON.stringify(arr, null, 2));
@@ -2275,8 +2278,8 @@ function insertCol(col, where) { const nk=prompt('New column name:'); if(!nk||!n
 function moveCol(col, dir) { const vc=visCols(),vi=vc.indexOf(col),ni=vi+dir; if(ni<0||ni>=vc.length)return; const ci=cols.indexOf(col),ci2=cols.indexOf(vc[ni]); [cols[ci],cols[ci2]]=[cols[ci2],cols[ci]]; save();render(); }
 function deleteCol(col) { if(!confirm('Delete "'+col+'" from ALL rows?'))return; cols=cols.filter(c=>c!==col); hidden.delete(col); data.forEach(r=>delete r[col]); save();render(); }
 function insertRow(at) { const r={}; cols.forEach(k=>r[k]=''); let mx=0; data.forEach(rr=>{const n=parseInt(rr.UID||'0',10);if(n>mx)mx=n;}); r.UID=String(mx+1); const now=isoNow(); r.DateAdded=now; r.DateModified=now; data.splice(at,0,r); save();buildSort();render(); }
-function deleteRow(di) { if(!confirm('Delete row '+(di+1)+'?'))return; data.splice(di,1); checkedRows.delete(di); const nc=new Set(); checkedRows.forEach(i=>{if(i<di)nc.add(i);else if(i>di)nc.add(i-1);}); checkedRows=nc; save();buildSort();render(); }
-function deleteChecked() { if(!confirm('Delete '+checkedRows.size+' row(s)?'))return; [...checkedRows].sort((a,b)=>b-a).forEach(di=>data.splice(di,1)); checkedRows.clear(); save();buildSort();render(); }
+function deleteRow(di) { if(!confirm('Delete row '+(di+1)+'?'))return; if(data[di])_saveToDeletedJson(data[di]); data.splice(di,1); checkedRows.delete(di); const nc=new Set(); checkedRows.forEach(i=>{if(i<di)nc.add(i);else if(i>di)nc.add(i-1);}); checkedRows=nc; save();buildSort();render(); }
+function deleteChecked() { if(!confirm('Delete '+checkedRows.size+' row(s)?'))return; const idxs=[...checkedRows].sort((a,b)=>b-a); const dead=idxs.map(di=>data[di]).filter(Boolean); if(dead.length)_saveToDeletedJson(dead); idxs.forEach(di=>data.splice(di,1)); checkedRows.clear(); save();buildSort();render(); }
 
 // Bulk popup
 function openPopup() {
@@ -6918,7 +6921,23 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Tab') { e.preventDefault(); brFocusField('brt1'); return; }
   }
 });
-function toast(msg, ms) { const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._tid); t._tid=setTimeout(()=>{t.style.display='none';},ms||3000); }
+function toast(msg, ms, opts) {
+  const t=document.getElementById('toast'); if(!t) return;
+  t.textContent=msg;
+  // (dev0351) Optional positioning. Default = the screen-centered CSS. With
+  // opts.aboveEl, sit ~30px above that element's TOP edge, horizontally centered
+  // on it (the G size/zoom toasts use this so they don't cover the grid middle).
+  if (opts && opts.aboveEl) {
+    const r = opts.aboveEl.getBoundingClientRect();
+    t.style.left = (r.left + r.width/2) + 'px';
+    t.style.top  = Math.max(8, r.top - 30) + 'px';
+    t.style.bottom = 'auto';
+    t.style.transform = 'translate(-50%,0)';
+  } else {
+    t.style.left=''; t.style.top=''; t.style.bottom=''; t.style.transform='';
+  }
+  t.style.display='block'; clearTimeout(t._tid); t._tid=setTimeout(()=>{t.style.display='none';},ms||3000);
+}
 function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // Help modal — two-page system

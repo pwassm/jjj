@@ -44,7 +44,7 @@ function _setGridGsize(n, opts) {
       && typeof gridShow === 'function') {
     gridShow();
   }
-  if (typeof toast === 'function') toast('Grid: ' + n + '×' + n + ' (' + (n*n) + ' cells)', 1200);
+  _gridToast('Grid: ' + n + '×' + n + ' (' + (n*n) + ' cells)', 1200);
 }
 
 function parseGridCell(s) {
@@ -604,15 +604,23 @@ function gridAdjustPreroll(delta) {
   }
 }
 
+// (dev0351) Grid size/zoom toasts sit just above the grid (not dead-center,
+// where they'd cover the cells being resized/zoomed). Falls back to a normal
+// centered toast if the container or toast() isn't available.
+function _gridToast(msg, ms) {
+  const gc = document.getElementById('gridContainer');
+  if (typeof toast === 'function') toast(msg, ms, gc ? { aboveEl: gc } : undefined);
+}
+
 // (dev0346) Nudge the WHOLE-GRID zoom (mouse wheel up/down, or `[` / `]`) by
-// ±0.2, floor 0.2, no upper limit; persisted in the gridFillZoom setting. Live
+// ±0.1, floor 0.2, no upper limit; persisted in the gridFillZoom setting. Live
 // re-fit (no remount) so it tracks the wheel smoothly. 1.0 = plain cover/contain;
 // >1 zooms in (crops), <1 zooms out (shrinks with margin).
 function gridAdjustFillZoom(delta) {
   _gridZResetArmed = false;   // (dev0350) a zoom nudge breaks the Z double-reset chain
   const next = _gridSnapZoom(_gridFillZoom() + delta);
   if (typeof window.setSetting === 'function') window.setSetting('gridFillZoom', next);
-  if (typeof toast === 'function') toast('Zoom: ' + next.toFixed(1) + '×', 1000);
+  _gridToast('Zoom: ' + next.toFixed(1) + '×', 1000);
   _gridRefitAll();
 }
 
@@ -627,10 +635,10 @@ function gridResetZoom() {
   if (_gridZResetArmed) {
     _gridCellZoom = {};               // second Z → also flatten per-cell zooms
     _gridZResetArmed = false;
-    if (typeof toast === 'function') toast('Zoom reset: whole grid + all cells → 1.0×', 1400);
+    _gridToast('Zoom reset: whole grid + all cells → 1.0×', 1400);
   } else {
     _gridZResetArmed = true;          // first Z → window zoom only; cells keep relative
-    if (typeof toast === 'function') toast('Window zoom → 1.0× (cells keep relative · Z again resets all)', 1800);
+    _gridToast('Window zoom → 1.0× (cells keep relative · Z again resets all)', 1800);
   }
   _gridRefitAll();
 }
@@ -651,7 +659,7 @@ function gridAdjustCellZoom(cellEl, delta) {
   if (Math.abs(next - 1) < 1e-9) delete _gridCellZoom[row.UID];
   else _gridCellZoom[row.UID] = next;
   _gridApplyZoomToCell(cellEl);
-  if (typeof toast === 'function') toast((cellEl.dataset.cell || 'cell') + ' zoom: ' + next.toFixed(1) + '×', 1000);
+  _gridToast((cellEl.dataset.cell || 'cell') + ' zoom: ' + next.toFixed(1) + '×', 1000);
 }
 
 // (dev0347) Last grid cell the mouse moved over — the target for Ctrl+[ / Ctrl+]
