@@ -342,13 +342,16 @@ function _gridZoomForCell(cellEl) {
 }
 
 // ── Center-of-interest (COI) anchoring (dev0348) ─────────────────────────────
-// A row may carry a COI — the point the user alt-clicked on the unzoomed cell,
-// stored on the ml.json row as "fx,fy" (fractions 0..1 of the cell). Zoom then
-// scales toward that point instead of the cell center, so an off-center subject
-// stays in view as the cell enlarges. The pan needed to center the COI is
-// CLAMPED so the scaled content never exposes a gap — which is exactly why a
+// A COI is the point the user alt-clicked on an unzoomed cell. As of dev0349 it
+// is NOT stored on the row's COI column; instead alt-click clones the row under
+// a UID of the form "parentUID@fx,fy" (the point is the UID suffix — see
+// gridSetCOI), so one image/video can carry several COIs as sibling rows. Zoom
+// then scales a COI row toward its point instead of the cell center, so an
+// off-center subject stays in view as the cell enlarges. The pan that centers
+// the COI is CLAMPED so the scaled content never exposes a gap — which is why a
 // near-edge COI only drifts toward center as zoom grows (at 1× there's no room
-// to pan; at high zoom there's enough overflow to fully center it).
+// to pan; at high zoom there's enough overflow to fully center it). The COI
+// *column* is reserved for the upcoming time-based autozoom.
 function _gridParseCOI(s) {
   if (!s) return null;
   const p = String(s).split(',');
@@ -357,9 +360,14 @@ function _gridParseCOI(s) {
   if (!isFinite(fx) || !isFinite(fy)) return null;
   return { fx: Math.max(0, Math.min(1, fx)), fy: Math.max(0, Math.min(1, fy)) };
 }
+// Pull a COI off a row's UID suffix ("parentUID@fx,fy"); plain UIDs have none.
+function _gridRowCOI(row) {
+  if (!row || row.UID == null) return null;
+  const s = String(row.UID), at = s.indexOf('@');
+  return at < 0 ? null : _gridParseCOI(s.slice(at + 1));
+}
 function _gridCOIForCell(cellEl) {
-  const row = cellEl && cellEl._rowData;
-  return row ? _gridParseCOI(row.COI) : null;
+  return cellEl ? _gridRowCOI(cellEl._rowData) : null;
 }
 
 // Translate FRACTION (of the element's own box) along one axis so the COI point
@@ -414,8 +422,13 @@ function _gridApplyZoomToCell(cellEl) {
   if (!t) return;
   const z = _gridZoomForCell(cellEl);
   if (t.kind === 'vid') { _gridApplyCoverFit(t.el, z); return; }
+  const coi = _gridCOIForCell(cellEl);
+  // (dev0349) A COI'd image must COVER the cell (like <video>) so its anchored
+  // crop fills the cell with no letterbox — the shared anchor math assumes the
+  // visible content fills the box. Plain images stay 'contain' (whole image).
+  if (t.kind === 'img') t.el.style.objectFit = coi ? 'cover' : 'contain';
   t.el.style.transformOrigin = '0 0';
-  t.el.style.transform = _gridAnchoredTransform(_gridCOIForCell(cellEl), z);
+  t.el.style.transform = _gridAnchoredTransform(coi, z);
 }
 
 function _gridApplyCoverFit(host, zOverride) {
@@ -616,24 +629,38 @@ function gridAdjustCellZoom(cellEl, delta) {
 // own scroll/page-zoom, so zoom is keyboard-driven — [ ] global, Ctrl+[ ] cell.)
 var _gridHoverCell = null;
 
-// (dev0348) Alt-click handler: store the clicked point as this row's COI
-// ("fx,fy" cell fractions) on the ml.json row, persist, and re-anchor the live
-// cell. The COI becomes the point both global and per-cell zoom scale toward.
+// (dev0349) Alt-click handler: author a center-of-interest VARIANT. Rather than
+// writing the point onto this row, we deep-clone the row under a new UID of the
+// form "parentUID@fx,fy" (the point IS the UID suffix) and append it to data, so
+// one image/video can carry several COIs as sibling rows that sort next to the
+// parent. The parent's COI column is left free for the coming time-based
+// autozoom; we only bump the parent's DateModified as a change marker. Alt-
+// clicking an existing "@" variant re-picks the point for the SAME parent (no
+// nested clones). The clone's grid 'cell' is blanked so it doesn't fight the
+// parent for a slot — it shows in T and can be placed/viewed to see the crop.
 function gridSetCOI(cellEl, cellStr, e) {
   const row = cellEl && cellEl._rowData;
-  if (!row || !row.UID) { if (typeof toast === 'function') toast('Alt-click: no row here to store COI', 1400); return; }
+  if (!row || row.UID == null) { if (typeof toast === 'function') toast('Alt-click: no row here for a COI', 1400); return; }
   if (!_gridCellZoomTarget(cellEl)) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
+  if (!Array.isArray(data)) { if (typeof toast === 'function') toast('No data array to add a COI variant', 1500); return; }
   const rect = cellEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   const fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   const fy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-  row.COI = fx.toFixed(3) + ',' + fy.toFixed(3);
-  if (typeof isoNow === 'function') row.DateModified = isoNow();
+  const parentUID = String(row.UID).split('@')[0];
+  const newUID = parentUID + '@' + fx.toFixed(3) + ',' + fy.toFixed(3);
+  const now = (typeof isoNow === 'function') ? isoNow() : '';
+  const clone = JSON.parse(JSON.stringify(row));   // rows are plain JSON
+  clone.UID = newUID;
+  clone.cell = '';                                  // don't claim the parent's grid slot
+  if (now) { clone.DateAdded = now; clone.DateModified = now; }
+  const at = data.findIndex(r => r && String(r.UID) === newUID);
+  if (at >= 0) data[at] = clone; else data.push(clone);   // same point → replace in place
+  const parent = data.find(r => r && String(r.UID) === parentUID);
+  if (parent && now) parent.DateModified = now;
   if (typeof save === 'function') save();
-  _gridApplyZoomToCell(cellEl);   // re-anchor immediately (visible only when zoomed >1)
   if (typeof toast === 'function') {
-    toast('COI ' + cellStr + ': ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%'
-      + (_gridFillZoom() <= 1 ? '  (zoom in to see it)' : ''), 1600);
+    toast('COI variant ' + newUID + '  (' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%)', 2000);
   }
 }
 
