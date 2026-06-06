@@ -1277,16 +1277,23 @@ window.openVideoEditor = function(it) {
   function persistEditorState() {
     var newVidRange   = window.serializeSegments(segs);
     var newVidComment = segs.map(function(s) { return s.comment || ''; }).join(', ');
-    it.VidRange   = newVidRange;
-    it.VidComment = newVidComment;
+    // (dev0352) Any segment edit is a row change — stamp DateModified so T's
+    // sort/refresh by DateModified (Alt+R) and the column reflect it. Match
+    // isoNow()'s "YYYY-MM-DD HH:MM:SS" format so it sorts with existing values.
+    var _nowISO = (typeof isoNow === 'function') ? isoNow()
+      : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    it.VidRange      = newVidRange;
+    it.VidComment    = newVidComment;
+    it.DateModified  = _nowISO;
     // Update linksData by index
     var idx = linksData.indexOf(it);
     if (idx === -1) idx = linksData.findIndex(function(r) {
       return r.link === it.link && r.cell === it.cell;
     });
     if (idx !== -1) {
-      linksData[idx].VidRange   = newVidRange;
-      linksData[idx].VidComment = newVidComment;
+      linksData[idx].VidRange      = newVidRange;
+      linksData[idx].VidComment    = newVidComment;
+      linksData[idx].DateModified  = _nowISO;
     }
     // Update Tabulator row
     if (window._salTab) {
@@ -1295,7 +1302,7 @@ window.openVideoEditor = function(it) {
         for (var ri = 0; ri < rows.length; ri++) {
           var rd = rows[ri].getData();
           if (rd.link === it.link && rd.cell === it.cell) {
-            rows[ri].update({ VidRange: newVidRange, VidComment: newVidComment });
+            rows[ri].update({ VidRange: newVidRange, VidComment: newVidComment, DateModified: _nowISO });
             break;
           }
         }
@@ -2041,11 +2048,16 @@ window.openVideoEditor = function(it) {
     var newVidRange   = window.serializeSegments(segs);
     var newVidComment = segs.map(function(s) { return s.comment || ''; }).join(', ');
     var newMute       = iMute.checked ? '1' : '0';
+    // (dev0352) Stamp DateModified on save — a saved segment/mute edit is a row
+    // change. Match isoNow()'s "YYYY-MM-DD HH:MM:SS" format so it sorts cleanly.
+    var _nowISO = (typeof isoNow === 'function') ? isoNow()
+      : new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     // Update it (the linksData object reference) directly
-    it.VidRange   = newVidRange;
-    it.VidComment = newVidComment;
-    it.Mute       = newMute;
+    it.VidRange      = newVidRange;
+    it.VidComment    = newVidComment;
+    it.Mute          = newMute;
+    it.DateModified  = _nowISO;
 
     // CRITICAL: scrubUnderscores() in saveData() reassigns linksData to a NEW array,
     // orphaning the 'it' reference. So we must find the entry by index in linksData
@@ -2058,9 +2070,10 @@ window.openVideoEditor = function(it) {
       });
     }
     if (idx !== -1 && linksData) {
-      linksData[idx].VidRange   = newVidRange;
-      linksData[idx].VidComment = newVidComment;
-      linksData[idx].Mute       = newMute;
+      linksData[idx].VidRange      = newVidRange;
+      linksData[idx].VidComment    = newVidComment;
+      linksData[idx].Mute          = newMute;
+      linksData[idx].DateModified  = _nowISO;
     }
 
     // Also update Tabulator row so syncTab() doesn't overwrite
@@ -2070,7 +2083,7 @@ window.openVideoEditor = function(it) {
         for (var ri = 0; ri < rows.length; ri++) {
           var rd = rows[ri].getData();
           if (rd.link === it.link && rd.cell === it.cell) {
-            rows[ri].update({ VidRange: newVidRange, VidComment: newVidComment, Mute: newMute });
+            rows[ri].update({ VidRange: newVidRange, VidComment: newVidComment, Mute: newMute, DateModified: _nowISO });
             break;
           }
         }

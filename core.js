@@ -110,6 +110,60 @@ window._restoreFocusToLastUID = function() {
 // G = Grid, T = Table, E = VideoEditor, A = Annotate, M = Menu, C = Collection, V = View fullscreen
 window._pendingHotkey = null;
 
+// (dev0352) True only when the bare Table screen owns the keyboard — no overlay
+// (G/V/E/Xe/Dictionary/slideshow/collection) is on top and we're in dev mode.
+// Gates the Ctrl+D / Alt+R Table actions so they never fire over another screen.
+function _tScreenActive() {
+  if (typeof _isUserMode === 'function' && _isUserMode()) return false;
+  if (typeof _cMode !== 'undefined' && _cMode) return false;
+  if (document.getElementById('video-editor-overlay')) return false;
+  if (document.getElementById('textEditorOverlay'))    return false;
+  if (document.getElementById('dictOverlay'))          return false;
+  if (document.getElementById('slideshowOverlay'))     return false;
+  if (document.getElementById('mergeModal'))           return false;
+  const flexOpen = id => { const el = document.getElementById(id); return !!el && el.style.display === 'flex'; };
+  if (flexOpen('gridOverlay'))    return false;
+  if (flexOpen('gridFullscreen')) return false;
+  return true;
+}
+
+// (dev0352) Alt+R — re-sort T so the most-recently-modified rows come first,
+// pull the list to the top, and focus the new top row. If the row that was
+// focused before the re-sort is still visible in the viewport afterwards, keep
+// focus on it instead of yanking focus to the top.
+function _resortByModified() {
+  // Remember the DATA row that was focused (survives the re-sort) + its column.
+  const prevDi = (focus && focus.r != null) ? vr(focus.r) : -1;
+  const prevC  = (focus && focus.c != null) ? focus.c : 0;
+
+  sortCol = 'DateModified';
+  sortDir = 'desc';
+  buildSort();
+
+  // Pull to the top first so the window/visibility math reflects the final scroll.
+  const wrap = document.getElementById('wrap');
+  if (wrap) wrap.scrollTop = 0;
+  render();                         // rebuilds _tVisList in the new order, at top
+
+  // Default: focus the new top row.
+  let targetVi = _tVisList.length ? _tVisList[0].vi : 0;
+
+  // Exception: previously-focused row still on screen after scroll-to-top → keep it.
+  if (prevDi >= 0) {
+    const prevPos = _tVisList.findIndex(o => o.di === prevDi);
+    if (prevPos >= 0) {
+      const rowH = (typeof _tRowHeight === 'function') ? _tRowHeight() : 25;
+      const clientH = wrap ? (wrap.clientHeight || 0) : 0;
+      const visibleRows = rowH > 0 ? Math.floor(clientH / rowH) : 0;
+      if (prevPos < visibleRows) targetVi = _tVisList[prevPos].vi;
+    }
+  }
+
+  focus = { r: targetVi, c: prevC };
+  render();                         // repaint with the focus highlight (still at top)
+  toast('↻ Re-sorted by DateModified — newest at top', 1500);
+}
+
 window.addEventListener('keydown', function(e) {
   // Skip if in an input field or contenteditable
   const tag = document.activeElement?.tagName;
@@ -129,7 +183,27 @@ window.addEventListener('keydown', function(e) {
     return;
   }
   if (isEditable) return;
-  
+
+  // (dev0352) Modified-key Table actions that must beat the browser defaults,
+  // checked BEFORE the bare-modifier bail-out below. Only when the Table screen
+  // owns the keyboard — elsewhere the browser default is left intact.
+  //   Ctrl/⌘+D = duplicate the focused row (overrides Chrome "bookmark page")
+  //   Alt+R    = re-sort T by DateModified (newest first) + refresh focus/scroll
+  if (_tScreenActive()) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey
+        && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
+      e.preventDefault(); e.stopPropagation();
+      document.getElementById('dupRowBtn')?.click();
+      return false;
+    }
+    if (e.altKey && !e.ctrlKey && !e.metaKey
+        && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR')) {
+      e.preventDefault(); e.stopPropagation();
+      _resortByModified();
+      return false;
+    }
+  }
+
   // Skip if modifiers (let Alt+N, Ctrl+Alt+G etc through)
   if (e.ctrlKey || e.metaKey || e.altKey) return;
 
