@@ -121,6 +121,9 @@ window.addEventListener('keydown', function(e) {
   // press Esc once to leave the field, then bare-letter hotkeys work
   // immediately. Without this, the user had to click outside the field.
   if (isEditable && e.key === 'Escape') {
+    // (dev0350) Xe (text editor) owns a two-stage Esc (first unfocus, then leave)
+    // in its own capture listener — don't pre-blur here or stage one is lost.
+    if (document.getElementById('textEditorOverlay')) return;
     e.preventDefault();
     document.activeElement.blur();
     return;
@@ -177,6 +180,11 @@ window.addEventListener('keydown', function(e) {
     }
   }
   if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v') {
+    // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
+    // owned by the C-screen handler (boot.js). Don't also fire the global
+    // hamburger-menu dispatcher here, or it pops HM right after. Let the event
+    // fall through to that capture-phase handler instead.
+    if (k === 'm' && window._cMode) return;
     e.preventDefault();
     e.stopPropagation();
     window._pendingHotkey = k;

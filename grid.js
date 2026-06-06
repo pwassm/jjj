@@ -320,17 +320,17 @@ function _gridBufferEligible() {
 // watch for them + re-fit.
 const _GRID_FILLZOOM_DEFAULT = 1.0;   // 1.0 = plain 16:9 cover / image-contain
 const _GRID_ZOOM_MIN  = 0.2;          // bottom level (user spec)
-const _GRID_ZOOM_STEP = 0.2;          // per wheel turn / [ ] press
+const _GRID_ZOOM_STEP = 0.1;          // (dev0350) per [ ] press — was 0.2
 function _gridFillZoom() {
   let v = (typeof window.getSetting === 'function') ? Number(window.getSetting('gridFillZoom')) : NaN;
   if (!isFinite(v) || v <= 0) v = _GRID_FILLZOOM_DEFAULT;
   return Math.max(_GRID_ZOOM_MIN, v);   // floor only — no upper limit
 }
 
-// Snap a zoom value to the 0.2 grid (and the floor). 0.2 multiples land on
+// Snap a zoom value to the 0.1 grid (and the floor). 0.1 multiples land on
 // clean one-decimal numbers so they JSON-stringify tidily into c.json.
 function _gridSnapZoom(v) {
-  return Math.max(_GRID_ZOOM_MIN, Math.round(Number(v) * 5) / 5);
+  return Math.max(_GRID_ZOOM_MIN, Math.round(Number(v) * 10) / 10);
 }
 
 // Effective zoom for one cell = global × that cell's stored per-cell factor.
@@ -411,6 +411,16 @@ function _gridCellZoomTarget(cellEl) {
   const box = cellEl.querySelector('.grid-zoom-box');   // montage of ftext images
   if (box) return { kind: 'box', el: box };
   return null;
+}
+
+// (dev0350) Is this row an "X" (html-teXt) row — ftext present, no picture/video
+// link? Mirrors the grid's text-cell test. Used by the G ctrl-click router to
+// open Xe (the text editor) for X cells, the way video cells open E.
+function _gridIsTextRow(row) {
+  if (!row) return false;
+  if (typeof isVideoRow === 'function' && isVideoRow(row)) return false;
+  if (/\.(jpe?g|png|gif|webp|svg|bmp|tiff?|avif)(\?|#|$)/i.test(row.link || '')) return false;
+  return row.VidRange === 'text' || !!(row.ftext && String(row.ftext).trim());
 }
 
 // Apply the current effective zoom to a single cell's content (no remount).
@@ -599,9 +609,29 @@ function gridAdjustPreroll(delta) {
 // re-fit (no remount) so it tracks the wheel smoothly. 1.0 = plain cover/contain;
 // >1 zooms in (crops), <1 zooms out (shrinks with margin).
 function gridAdjustFillZoom(delta) {
+  _gridZResetArmed = false;   // (dev0350) a zoom nudge breaks the Z double-reset chain
   const next = _gridSnapZoom(_gridFillZoom() + delta);
   if (typeof window.setSetting === 'function') window.setSetting('gridFillZoom', next);
   if (typeof toast === 'function') toast('Zoom: ' + next.toFixed(1) + '×', 1000);
+  _gridRefitAll();
+}
+
+// (dev0350) Z in G resets zoom in two stages. FIRST press: whole-grid (window)
+// zoom → 1.0, but each cell KEEPS its relative per-cell zoom. SECOND consecutive
+// Z (no [ ] / Ctrl+[ ] nudge in between) also clears every per-cell zoom,
+// flattening the grid to a uniform 1.0. _gridZResetArmed tracks stage one; any
+// zoom nudge disarms it.
+var _gridZResetArmed = false;
+function gridResetZoom() {
+  if (typeof window.setSetting === 'function') window.setSetting('gridFillZoom', _GRID_FILLZOOM_DEFAULT);
+  if (_gridZResetArmed) {
+    _gridCellZoom = {};               // second Z → also flatten per-cell zooms
+    _gridZResetArmed = false;
+    if (typeof toast === 'function') toast('Zoom reset: whole grid + all cells → 1.0×', 1400);
+  } else {
+    _gridZResetArmed = true;          // first Z → window zoom only; cells keep relative
+    if (typeof toast === 'function') toast('Window zoom → 1.0× (cells keep relative · Z again resets all)', 1800);
+  }
   _gridRefitAll();
 }
 
@@ -610,6 +640,7 @@ function gridAdjustFillZoom(delta) {
 // montage cells are zoomable; stored per row UID so it can persist to c.json
 // ("UID/zoom") and restore. Snapped to 0.2; exactly 1.0 clears the per-cell entry.
 function gridAdjustCellZoom(cellEl, delta) {
+  _gridZResetArmed = false;   // (dev0350) a per-cell zoom nudge breaks the Z double-reset chain
   if (!cellEl) { if (typeof toast === 'function') toast('Hover a cell, then Ctrl+[ or Ctrl+]', 1200); return; }
   const t = _gridCellZoomTarget(cellEl);
   if (!t) { if (typeof toast === 'function') toast('No per-cell zoom for this cell', 1000); return; }
@@ -1282,6 +1313,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
         document.getElementById('gridOverlay').style.display = 'none';
         if (isVideoRow(cell._rowData)) {
           if (window.openVideoEditor) window.openVideoEditor(cell._rowData);
+        } else if (_gridIsTextRow(cell._rowData) && typeof gridOpenTextEditor === 'function') {
+          // (dev0350) X (html-teXt) cell → Xe editor, mirroring video → E.
+          // _cameFromGrid (set above) makes Xe's Esc return here to G.
+          gridOpenTextEditor(cell._rowData.cell || '', cell._rowData);
         } else {
           openBrowseForRow(cell._rowData);
         }

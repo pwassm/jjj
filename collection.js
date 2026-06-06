@@ -195,12 +195,12 @@ document.addEventListener('keydown', e => {
   // last one hovered — see _gridHoverCell). Checked before the bare [ ] below.
   if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '[' || e.code === 'BracketLeft')) {
     e.preventDefault(); e.stopPropagation();
-    if (typeof gridAdjustCellZoom === 'function') gridAdjustCellZoom(_gridHoverCell, -0.2);
+    if (typeof gridAdjustCellZoom === 'function') gridAdjustCellZoom(_gridHoverCell, -0.1);
     return;
   }
   if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === ']' || e.code === 'BracketRight')) {
     e.preventDefault(); e.stopPropagation();
-    if (typeof gridAdjustCellZoom === 'function') gridAdjustCellZoom(_gridHoverCell, 0.2);
+    if (typeof gridAdjustCellZoom === 'function') gridAdjustCellZoom(_gridHoverCell, 0.1);
     return;
   }
 
@@ -209,12 +209,21 @@ document.addEventListener('keydown', e => {
   // 1× = plain cover/contain; <1 shrinks, >1 crops in.
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') {
     e.preventDefault(); e.stopPropagation();
-    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(-0.2);
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(-0.1);
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === ']') {
     e.preventDefault(); e.stopPropagation();
-    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(0.2);
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(0.1);
+    return;
+  }
+
+  // (dev0350) Z resets zoom. First press: whole-grid (window) zoom → 1.0 while
+  // each cell keeps its relative per-cell zoom. A SECOND consecutive Z (no [ ] /
+  // Ctrl+[ ] nudge between) also clears every per-cell zoom. See gridResetZoom.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'z' || e.key === 'Z')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridResetZoom === 'function') gridResetZoom();
     return;
   }
 

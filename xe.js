@@ -792,16 +792,26 @@ function gridOpenTextEditor(cellStr, row, opts) {
   }, true);
 
   _ov.addEventListener('keydown', function(e) {
-    // (dev0344) Esc closes Xe back to T (was a defocus-only no-op since
-    // zip0182). Auto-save first so edits aren't lost — mirrors the R→L title-bar
-    // swipe and the ✕ button. Xs (slide preview) sits on top with its own Esc
-    // handler that only removes the Xs overlay, so from Xs the first Esc returns
-    // here to Xe and a second Esc returns to T.
+    // (dev0350) Two-stage Esc. If the contenteditable editor is FOCUSED (user is
+    // typing), the first Esc just blurs it (focus → the overlay) and stays in Xe;
+    // a SECOND Esc (editor no longer focused) leaves Xe. When NOT focused, Esc
+    // auto-saves and returns to the previous screen — G if we arrived via a grid
+    // ctrl-click (_cameFromGrid), else the revealed screen beneath (T). Xs (slide
+    // preview) sits on top with its own Esc, so from Xs the first Esc returns here.
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();
+      const ae = document.activeElement;
+      const editorFocused = !!ae && (ae.id === 'teEditor' || (ae.closest && ae.closest('#teEditor')));
+      if (editorFocused) {
+        ae.blur();
+        if (_textEditorOverlay) { try { _textEditorOverlay.focus(); } catch (_) {} }
+        return;   // first Esc only unfocuses; stay in Xe
+      }
       if (typeof _textEditorDoSave === 'function') _textEditorDoSave();
+      const backToGrid = !!window._cameFromGrid;
       textEditorClose();
+      if (backToGrid) { window._cameFromGrid = false; if (typeof gridShow === 'function') gridShow(); }
       return;
     }
     if (e.key === 's' || e.key === 'S') {

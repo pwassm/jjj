@@ -920,6 +920,18 @@ function gridOpenFullscreen(row, contained) {
       + 'width:100%;height:calc(100% - 48px);border:none;background:#fff;';
     iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-modals allow-downloads');
     content.appendChild(iframe);
+    // (dev0350) The srcdoc HTML grabs keyboard focus, so a top-level Esc never
+    // reaches vpKeyHandler and Xs (the slide an X-cell swipe opens from G) felt
+    // stuck. Forward Esc from inside the same-origin iframe to vpClose so Escape
+    // returns to G (or wherever V opened from), matching video/image fullscreen.
+    iframe.addEventListener('load', function () {
+      try {
+        var idoc = iframe.contentDocument;
+        if (idoc) idoc.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape') { ev.preventDefault(); vpClose(); }
+        }, true);
+      } catch (_) {}
+    });
 
     // Wire close button
     topBar.querySelector('#vp-html-close').addEventListener('click', vpClose);

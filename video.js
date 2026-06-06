@@ -613,8 +613,10 @@ window.mountVimeoClip = async function(hostEl, url, startSec, dur, isMuted, cust
     var seekTo = customSeekTo !== undefined ? Number(customSeekTo) : segs[0].start;
     player.setCurrentTime(seekTo);
     player.play();
-    // Autopause: pause after 100ms so a frame is visible
-    if (window.autoPauseGrid !== false) {
+    // (dev0350) Autopause only when explicitly requested — match the YouTube and
+    // direct-video mounts (which gate on a TRUTHY autoPauseGrid). This used
+    // `!== false`, so Vimeo cells PAUSED by default in G while YT/mp4 played.
+    if (window.autoPauseGrid) {
       setTimeout(function() { player.pause().catch(function(){}); }, 100);
     }
     window.seeLearnVideoTimers[cellId] = setInterval(function() {
