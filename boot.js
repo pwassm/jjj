@@ -94,6 +94,11 @@ document.addEventListener('contextmenu', e => {
   focus = { r: vi, c: 0 };
   checkedRows.clear();
   checkedRows.add(vr(vi));
+  // (dev0355) cMakeActive() builds & shows G synchronously inside this same
+  // right-click. The grid's own contextmenu listener (grid.js) would otherwise
+  // fire for the very next right-click landing on the freshly-mounted cell —
+  // mark a short-lived guard the grid handler honors so the menu never pops.
+  window._cRclickNavGuard = Date.now();
   cMakeActive();
 }, true);
 

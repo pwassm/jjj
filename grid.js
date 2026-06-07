@@ -1457,7 +1457,15 @@ function gridWireInteractor(interactor, cell, cellStr) {
   interactor.addEventListener('contextmenu', e => {
     e.preventDefault();
     e.stopPropagation();
-    
+
+    // (dev0355) Swallow the right-click that just navigated C→G (cMakeActive
+    // mounts the grid synchronously inside that same contextmenu); without this
+    // the menu would pop on the cell the cursor landed on. Guard is short-lived.
+    if (window._cRclickNavGuard && (Date.now() - window._cRclickNavGuard) < 700) {
+      window._cRclickNavGuard = 0;
+      return;
+    }
+
     // (zip0141) In user mode (Gu): no cut/paste menu. Ctrl+right-click
     // for View mode is still allowed (it's a viewing action, not edit).
     if (userMode) {

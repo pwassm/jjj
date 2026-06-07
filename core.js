@@ -648,6 +648,9 @@ function viewsLoad(key) {
   save();
   toast('✓ View "' + (v.label || key) + '" applied', 1500);
   renderViewsPanel();
+  // (dev0355) Close the Views picker once a view is chosen.
+  const _vp = document.getElementById('viewsPanel');
+  if (_vp) _vp.classList.remove('open');
 }
 
 // (dev0324) Built-in size presets used by the Views panel ("size30max",
@@ -661,6 +664,9 @@ function applySizePreset(capChars) {
   save();
   render();
   toast('✓ Columns sized to ≤ ' + capChars + ' chars (or content)', 1700);
+  // (dev0355) Close the Views picker once a preset is chosen.
+  const _vp = document.getElementById('viewsPanel');
+  if (_vp) _vp.classList.remove('open');
 }
 
 function viewsDelete(key) {
@@ -1269,6 +1275,7 @@ const RPV_HOST_ID = 'rpv-host';   // video mounts register under this id in seeL
 let _rpvOpen = false;
 let _rpvDi   = -1;                // data-row index currently previewed (drives the toggle)
 let _rpvWantOpen = false;         // (dev0332) sticky intent: re-show on return to T until an explicit Ctrl+I/Esc close
+let _rpvMuted = null;             // (dev0355) null = follow row.Mute; true/false = explicit override set by clicking the pane. Persists across row changes until the pane is dismissed.
 
 // Segment palette — MUST match video.js COLOURS / vp.js VP_COLOURS so a row's
 // segment colors are consistent across the V timeline bands, this caption, and
@@ -1368,7 +1375,7 @@ window.rowPreviewHide = rowPreviewHide;
 
 // Explicit close (Ctrl+I toggle / Esc): tear down AND forget the intent, so the
 // pane does NOT auto-reappear when you next land on T.
-function rowPreviewClose() { _rpvTeardown(); _rpvWantOpen = false; }
+function rowPreviewClose() { _rpvTeardown(); _rpvWantOpen = false; _rpvMuted = null; /* (dev0355) forget mute override on dismiss */ }
 window.rowPreviewClose = rowPreviewClose;
 
 // Open (or refresh) the preview for the currently focused row.
@@ -1391,6 +1398,24 @@ function rowPreviewOpen() {
   host.id = RPV_HOST_ID;
   host.style.cssText = 'position:relative;flex:1 1 auto;background:#000;overflow:hidden;';
   ov.appendChild(host);
+
+  // (dev0355) Video rows get a click-to-mute shield + state badge over the media.
+  // The transparent shield sits above the (cross-origin) iframe/video so the
+  // click always lands. State lives in _rpvMuted, persisting until dismissed.
+  if (window.isVideoRow && window.isVideoRow(row)) {
+    const muteShield = document.createElement('div');
+    muteShield.id = 'rpvMuteShield';
+    muteShield.title = 'Click: toggle audio mute';
+    muteShield.style.cssText = 'position:absolute;inset:0;z-index:6;cursor:pointer;background:transparent;';
+    muteShield.addEventListener('click', e => { e.stopPropagation(); _rpvToggleMute(); });
+    host.appendChild(muteShield);
+    const muteBadge = document.createElement('div');
+    muteBadge.id = 'rpvMuteBadge';
+    muteBadge.style.cssText = 'position:absolute;top:4px;right:6px;z-index:7;font-size:15px;'
+      + 'background:rgba(0,0,0,0.55);border-radius:4px;padding:1px 5px;pointer-events:none;user-select:none;';
+    muteBadge.textContent = _rpvCurrentMuted() ? '🔇' : '🔊';
+    host.appendChild(muteBadge);
+  }
 
   // Caption: up to 4 multicolored precedence lines (segments · tags · author+count · UID/title).
   const cap = document.createElement('div');
@@ -1485,7 +1510,9 @@ function _rpvFillHost(host, row) {
     if (typeof fitGridHtmlThumb === 'function') fitGridHtmlThumb(host, wrap, inner);
   } else if (isVid && row.link) {
     const segs  = (window.parseVideoAsset ? window.parseVideoAsset(row.VidRange) : null) || [{ start: 0, dur: 99999 }];
-    const muted = String(row.Mute).trim() === '1';   // honor the Mute column (like V); default audio-on
+    // (dev0355) Honor a click-set mute override (_rpvMuted) for the life of the
+    // pane; otherwise fall back to the row's Mute column (like V). Default audio-on.
+    const muted = _rpvMuted !== null ? _rpvMuted : (String(row.Mute).trim() === '1');
     // Mount after a paint so the host has real dimensions (matches grid timing).
     setTimeout(() => {
       if (!_rpvOpen || !document.getElementById('rowPreview')) return;  // closed before mount
@@ -1535,6 +1562,40 @@ function _rpvTogglePlay() {
     }
     try { if (typeof player.pauseVideo === 'function') player.pauseVideo(); else if (typeof player.pause === 'function') player.pause(); } catch (_) {}
   }
+}
+
+// (dev0355) Mute control for the preview pane. Clicking the media toggles audio;
+// the choice lives in _rpvMuted and persists across row changes (rowPreviewOpen
+// reads it on every mount) until the pane is dismissed (rowPreviewClose clears
+// it). Player API mirrors video.js applyMuteToLivePlayer.
+function _rpvApplyMuteToPlayer(muted) {
+  const p = window.seeLearnVideoPlayers && window.seeLearnVideoPlayers[RPV_HOST_ID];
+  if (!p) return;
+  try {
+    if (muted) {
+      if (typeof p.mute === 'function') p.mute();
+      else if (typeof p.setMuted === 'function') p.setMuted(true);
+      else if (typeof p.setVolume === 'function') p.setVolume(0);
+    } else {
+      if (typeof p.unMute === 'function') p.unMute();
+      else if (typeof p.setMuted === 'function') p.setMuted(false);
+      else if (typeof p.setVolume === 'function') p.setVolume(1);
+    }
+  } catch (_) {}
+}
+function _rpvCurrentMuted() {
+  if (_rpvMuted !== null) return _rpvMuted;
+  const row = (_rpvDi >= 0 && _rpvDi < data.length) ? data[_rpvDi] : null;
+  return row ? String(row.Mute).trim() === '1' : false;
+}
+function _rpvUpdateMuteBadge() {
+  const b = document.getElementById('rpvMuteBadge');
+  if (b) b.textContent = _rpvCurrentMuted() ? '🔇' : '🔊';
+}
+function _rpvToggleMute() {
+  _rpvMuted = !_rpvCurrentMuted();
+  _rpvApplyMuteToPlayer(_rpvMuted);
+  _rpvUpdateMuteBadge();
 }
 
 // Ctrl+I toggles the preview for the focused row (re-pressing on the SAME row
@@ -2197,6 +2258,28 @@ document.addEventListener('keydown', e => {
         if (fi2 >= 0) brShow(fi2);
       }
     }
+    return;
+  }
+
+  // (dev0355) Home / PageUp → move focus to the FIRST column (scroll left);
+  // End / PageDown → move focus to the LAST column (scroll right). The
+  // ArrowUp/Down keys above walk rows; these walk columns.
+  if (e.key === 'Home' || e.key === 'PageUp' || e.key === 'End' || e.key === 'PageDown') {
+    const vc = visCols();
+    if (!vc.length) return;
+    e.preventDefault();
+    const toLast = (e.key === 'End' || e.key === 'PageDown');
+    let r = focus !== null ? focus.r : -1;
+    if (r < 0) {
+      for (let vi = 0; vi < data.length; vi++) { if (rowMatchesFilter(data[vr(vi)])) { r = vi; break; } }
+      if (r < 0) r = 0;
+    }
+    focus = { r, c: toLast ? vc.length - 1 : 0 };
+    pending = null;
+    render();
+    const wrap = document.getElementById('wrap');
+    if (wrap) wrap.scrollLeft = toLast ? wrap.scrollWidth : 0;
+    _tScrollRowIntoView(r);
     return;
   }
 
@@ -6223,13 +6306,25 @@ function runVEPostOpenSetup(di) {
           const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
           return;
         }
-        // A = close E, open Annotate on same row.
+        // (dev0355) A = toggle the Annotate dock BESIDE E — it no longer closes
+        // E. The E overlay already reserves right:340px for exactly this panel
+        // (video.js: video-editor-overlay has right:340px), so the dock slides
+        // in alongside the editor. Press A again to save + hide the dock.
         if (e.key === 'a' || e.key === 'A') {
           e.preventDefault(); e.stopPropagation();
-          _veCloseToTable = false;
-          _veOpenAnnotateAfterClose = true;  // (zip0130) explicit opt-in
-          _veTargetAfterClose = _brIdx;
-          const cb = overlay.querySelector('#v2close'); if (cb) cb.click();
+          const ov = document.getElementById('browseOverlay');
+          if (ov && ov.style.display === 'flex') {
+            if (typeof brSave === 'function') brSave();
+            ov.style.display = 'none';
+          } else if (ov) {
+            ov.style.display = 'flex';
+            brShow(_brIdx);
+            requestAnimationFrame(() => {
+              const chipInput = document.querySelector('#brTagChips input');
+              if (chipInput) chipInput.focus();
+              else { const el = document.getElementById('brt1'); if (el) el.focus(); }
+            });
+          }
           return;
         }
         // (zip0130) Delete = remove current row, advance to next video row in E.
@@ -6501,6 +6596,11 @@ function runVEPostOpenSetup(di) {
       _veCloseToTable = false;
       _veGoToNextE = false;
       _veOpenAnnotateAfterClose = false;
+      // (dev0355) If the Annotate dock is open beside E (opened via A), persist
+      // its edits before E tears down or hops — Esc/T/G claim the key before the
+      // Annotate handler can save, so do it here for every close path.
+      const _dockOpen = document.getElementById('browseOverlay').style.display === 'flex';
+      if (_dockOpen && typeof brSave === 'function') brSave();
       setTimeout(() => {
         // (zip0127) N/J in E: stay in E, hop to the next/prev row.
         // (zip0185) Now routes via openEditorForRow so non-video rows land
@@ -6510,6 +6610,8 @@ function runVEPostOpenSetup(di) {
           _veTargetAfterClose = null;
           if (target >= 0 && target < _brRows.length) {
             _brIdx = target;
+            // (dev0355) Keep the Annotate dock pinned to the hopped-to row.
+            if (_dockOpen) brShow(target);
             const di = _brRows[target];
             const row = data[di];
             if (row) {
@@ -7501,10 +7603,13 @@ function closeTHelp() {
   document.removeEventListener('keydown', _tHelpKey, true);
 }
 function _tHelpKey(e) {
-  if (e.key === 'Escape' || e.key === 'h' || e.key === 'H') {
-    e.preventDefault(); e.stopPropagation();
-    closeTHelp();
-  }
+  // (dev0355) Any keystroke dismisses the T-hotkey help. Ignore bare modifier
+  // taps (Shift/Ctrl/Alt/Meta) so holding a modifier to read doesn't close it;
+  // the actual key that follows will. Swallow the dismissing key so it doesn't
+  // also trigger its T-screen action.
+  if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+  e.preventDefault(); e.stopPropagation();
+  closeTHelp();
 }
 function openTHelp() {
   closeTHelp(); // never stack two
