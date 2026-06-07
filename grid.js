@@ -1676,16 +1676,22 @@ function gridDeleteCell(cellStr) {
 }
 
 function gridWriteToT() {
-  // Clear all existing T cell assignments
-  data.forEach(r => { r.cell = ''; });
-  // Write current G grid cells into T (row.cell)
+  // Snapshot which row currently occupies each grid slot BEFORE clearing —
+  // in T-source mode getRowByCellForGrid() resolves rows BY r.cell, so we must
+  // resolve every slot first or clearing erases the lookup (dev0353 bug:
+  // cleared first → loop found nothing → all cells wiped).
+  const assignments = []; // { row, cellStr }
   for (let r = 1; r <= _gridGsize; r++) {
     for (let c = 1; c <= _gridGsize; c++) {
       const cellStr = mkGridCell(r, c);
       const row = getRowByCellForGrid(cellStr);
-      if (row) row.cell = cellStr;
+      if (row) assignments.push({ row, cellStr });
     }
   }
+  // Clear all existing T cell assignments, then stamp the snapshot back in.
+  const now = isoNow();
+  data.forEach(r => { r.cell = ''; });
+  assignments.forEach(({ row, cellStr }) => { row.cell = cellStr; row.DateModified = now; });
   save();
   // Navigate to T
   gridCleanupPlayers();

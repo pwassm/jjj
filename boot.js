@@ -82,6 +82,21 @@ document.addEventListener('click', e => {
   cMakeActive();
 }, true);
 
+// (dev0353) C-screen plain right-click on a row → immediately MakeActive→G for
+// the row under the cursor, whether or not it was focused/checked first.
+document.addEventListener('contextmenu', e => {
+  if (!_cMode) return;
+  const td = e.target.closest('td[data-vi]');
+  if (!td) return;
+  const vi = parseInt(td.getAttribute('data-vi'), 10);
+  if (isNaN(vi)) return;
+  e.preventDefault(); e.stopPropagation();
+  focus = { r: vi, c: 0 };
+  checkedRows.clear();
+  checkedRows.add(vr(vi));
+  cMakeActive();
+}, true);
+
 // Compatibility shims for grid code that still calls old TG names.
 // (Kept: showGridList & closeGridList — referenced by C-screen open paths.
 // Removed in zip0124: renderGridList, saveTgMeta, saveTgToFile,

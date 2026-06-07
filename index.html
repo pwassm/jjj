@@ -525,7 +525,6 @@ thead th.rn              { color: #fff !important; }
   <button class="tbtn" id="calcLengthsBtn" title="Calculate vidLength and segLength for all rows">Calc Lengths</button>
   </div>
   <button class="tbtn" id="dictModeBtn" title="Toggle dictionary match mode: anywhere in word vs start only (Alt+L)">Lookup: anywhere</button>
-  <button class="tbtn" id="wantLinkBtn" title="Smart clipboard import (W). Detects: (1) bare media URLs → add as rows; (2) @channel + CSV → batch-add with metadata (BA=1). Duplicates are written to DuplicateLinks-<timestamp>.txt." style="border-color:#8f8;color:#8f8;background:rgba(0,60,0,0.35);">+ <u>W</u>antLinks</button>
   <button class="tbtn" id="saveFtextImgsBtn" title="Download all web-referenced images in ftext for visible rows, save under jpgs/<slug>/ and rewrite img tags with onerror fallback. Skips rows where FTLsaved=1. Sets FTLsaved: 1=all saved, 0=partial, -1=none saved." style="border-color:#8cf;color:#8cf;background:rgba(0,40,80,0.35);">📥 Save Imgs</button>
   <!-- Mark for Grid button + dropdown -->
   <div id="markGridWrap" style="position:relative;display:inline-flex;flex-shrink:0;">
@@ -562,10 +561,7 @@ thead th.rn              { color: #fff !important; }
       <div class="hkitem" data-act="resetftlsaved" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔄 Reset FTLsaved — re-download all images</div>
     </div>
   </div>
-  <button class="tbtn" id="reassignUIDBtn" title="Replace all UIDs with sequential numbers (1, 2, 3, …) in current row order. Updates c.json grid configs to match." style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);">↻ Reassign UIDs</button>
-  <button class="tbtn" id="delUIDRangeBtn" title="Delete all rows whose UID falls in a numeric range (inclusive). Useful for purging batch imports." style="border-color:#f66;color:#f88;background:rgba(100,0,0,0.3);">✕ Del UID Range</button>
-  <button class="tbtn" id="helpBtn" title="Help / HALO taxonomy" style="border-color:#aaf;color:#aaf;background:rgba(40,40,120,0.4);">? Help</button>
-  <button class="tbtn" id="dlBtn" title="Manual save — data auto-saves on every change when project folder is set">⬇ Save ml.json</button>
+  <button class="tbtn" id="helpBtn" title="T hotkeys & actions" style="border-color:#aaf;color:#aaf;background:rgba(40,40,120,0.4);">? Help</button>
 </div>
 
 <!-- C-mode toolbar — shown when Collection (c.json) screen is active -->
@@ -918,7 +914,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0353';
+  window.HELP_VERSION_STR = 'dev0354';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','slideshow.js','boot.js'];

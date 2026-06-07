@@ -253,6 +253,10 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
+  // (dev0353) When the grid right-click context menu is open it owns its own
+  // letter shortcuts (T/Q/D/V/W). Don't let the global dispatcher swallow them
+  // (e.g. 'w' = clipboard import) — bail so the menu's capture handler runs.
+  if (document.getElementById('gridContextMenu')) return;
   if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v') {
     // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
     // owned by the C-screen handler (boot.js). Don't also fire the global
@@ -1208,6 +1212,8 @@ function renderHead() {
     const arrow = sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
     th.textContent = col + arrow;
     th.title = col + ' — click:sort · drag:reorder · right-click:options';
+    // (dev0353) Match the 'cell' column tint applied to body cells.
+    if (col === 'cell') { th.style.background = 'rgba(95,250,170,0.16)'; th.style.color = '#8fe'; }
 
     // Resize handle
     const rh = document.createElement('div'); rh.className = 'rh';
@@ -1844,6 +1850,9 @@ function _tBuildRow(vi, di) {
 
       if (focus   && focus.r   === vi && focus.c   === ci) td.className = 'focus';
       else if (pending && pending.c === ci && vi >= pending.r1 && vi <= pending.r2) td.className = 'sel';
+      // (dev0353) Tint the 'cell' column so its grid-slot values stand out.
+      // Only when not focused/selected so those highlights stay visible.
+      else if (col === 'cell') td.style.background = 'rgba(95,250,170,0.10)';
       td.addEventListener('click',   e => onCell(e, vi, ci));
       td.addEventListener('dblclick', e => { e.stopPropagation(); startEdit(vi, ci); });
       tr.appendChild(td);
@@ -2557,7 +2566,9 @@ function openSettings() {
 }
 
 // Toolbar download button — tries FSA, then browser download
-document.getElementById('dlBtn').addEventListener('click', async () => {
+// (dev0353) Save ml.json button removed (data auto-saves on every change).
+// Guarded so the now-absent #dlBtn doesn't throw.
+document.getElementById('dlBtn')?.addEventListener('click', async () => {
   const payload = [buildMeta()].concat(data);
   const ok = await writeFileToDisk('ml.json', payload);
   if (!ok) { const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}); const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ml.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href); }
@@ -3245,80 +3256,7 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
   }
 });
 
-// (zip0128) Delete UID range — bulk-delete rows whose UID falls in a
-// numeric range, inclusive. Designed for purging batch-imported rows
-// (BA=1) where you've decided you don't want any of them.
-//
-// Only numeric UIDs participate. Legacy alphanumeric UIDs ("T123...") are
-// ignored regardless of the range — to delete those, use Reassign UIDs
-// first to renumber everything to plain integers.
-document.getElementById('delUIDRangeBtn').addEventListener('click', () => {
-  const inp = prompt(
-    'Delete UID range (inclusive). Enter two numbers separated by - or :\n' +
-    'Examples: "528-332"  or  "100:200"  or  just "456" for one row.\n\n' +
-    'Order does not matter; smaller is treated as the lower bound.\n' +
-    'Only numeric UIDs are eligible — alphanumeric UIDs are ignored.',
-    ''
-  );
-  if (!inp) return;
-  const m = inp.match(/^\s*(\d+)\s*(?:[-:,\s]+\s*(\d+))?\s*$/);
-  if (!m) {
-    toast('Could not parse "' + inp + '"\nUse e.g. 528-332 or 100:200', 3000);
-    return;
-  }
-  const a = parseInt(m[1], 10);
-  const b = m[2] ? parseInt(m[2], 10) : a;
-  const lo = Math.min(a, b);
-  const hi = Math.max(a, b);
-
-  // Find matching data indices
-  const matches = [];
-  data.forEach((r, di) => {
-    if (!r) return;
-    const uid = r.UID;
-    if (uid === undefined || uid === null) return;
-    const n = parseInt(String(uid), 10);
-    // Only numeric UIDs that round-trip (reject "1L" etc.)
-    if (isNaN(n) || String(n) !== String(uid)) return;
-    if (n >= lo && n <= hi) matches.push(di);
-  });
-
-  if (!matches.length) {
-    toast('No rows have a numeric UID in [' + lo + '..' + hi + '].', 2500);
-    return;
-  }
-
-  // Show preview of first/last few so user can confirm
-  const sample = matches.slice(0, 5).map(di => {
-    const r = data[di];
-    const t = r.VidTitle || r.link || '(no title)';
-    return '   UID ' + r.UID + ': ' + (t.length > 50 ? t.slice(0, 47) + '...' : t);
-  }).join('\n');
-  const more = matches.length > 5 ? '\n   …and ' + (matches.length - 5) + ' more' : '';
-
-  if (!confirm(
-    'Delete ' + matches.length + ' row(s) with UID in [' + lo + '..' + hi + ']?\n\n'
-    + sample + more + '\n\n'
-    + 'This cannot be undone.'
-  )) return;
-
-  // Delete in reverse data-order so splice indices stay valid
-  matches.sort((x, y) => y - x).forEach(di => {
-    data.splice(di, 1);
-    // Adjust checkedRows indices
-    const nc = new Set();
-    checkedRows.forEach(i => {
-      if (i < di) nc.add(i);
-      else if (i > di) nc.add(i - 1);
-    });
-    checkedRows = nc;
-  });
-
-  save();
-  buildSort();
-  render();
-  toast('✓ Deleted ' + matches.length + ' row(s) [' + lo + '..' + hi + ']', 2500);
-});
+// (dev0353) Delete UID range action removed — button gone, action retired.
 
 // Mark for Grid
 let _markGridMode = 'top'; // 'top' | 'focused' | 'random'
@@ -3676,107 +3614,7 @@ document.getElementById('calcLengthsBtn').addEventListener('click', () => {
   }
 });
 
-// (zip0124) Reassign UIDs — replaces all UIDs with sequential 1..N
-// Builds an old→new UID map, updates each row's UID, then walks every
-// grid config in c.json and rewrites cell values that match an old UID.
-//
-// IMPORTANT: c.json is loaded fresh from disk inside this handler. The
-// in-memory _cData is only populated after the user has visited the C
-// screen, and previously this handler used that empty _cData and ended
-// up overwriting c.json with nothing. Now we always read disk first.
-//
-// Safety: confirms with the user first (this is destructive — UID-keyed
-// references in any external tool will go stale). Only intended for
-// pre-production cleanup.
-document.getElementById('reassignUIDBtn').addEventListener('click', async () => {
-  if (!data || !data.length) {
-    toast('No rows to reassign.', 1500);
-    return;
-  }
-
-  // (zip0251) Operate on in-memory _cData rather than a fresh disk read. The
-  // old fresh-disk path could resurrect rows that had been deleted from C
-  // in-session (the delete's LS write succeeded but writeFileToDisk silently
-  // failed). _cEnsureLoaded uses the same LS → FSA → HTTP order as openCScreen.
-  await _cEnsureLoaded();
-  const cfgCount = _cData.length;
-  const ok = confirm(
-    'Reassign UIDs?\n\n' +
-    '• ' + data.length + ' rows will be renumbered to 1, 2, 3, …\n' +
-    '• ' + cfgCount + ' grid config(s) in c.json will be updated to match.\n\n' +
-    'This is destructive. Old UIDs are gone after this action.\n' +
-    'Best done before production. Continue?'
-  );
-  if (!ok) return;
-
-  // Build old→new UID map (current row order in `data`)
-  const map = new Map();
-  data.forEach((row, i) => {
-    const oldUID = row.UID !== undefined && row.UID !== null && row.UID !== ''
-      ? String(row.UID) : null;
-    const newUID = String(i + 1);
-    if (oldUID !== null) map.set(oldUID, newUID);
-  });
-
-  // Update each row's UID
-  data.forEach((row, i) => { row.UID = String(i + 1); });
-
-  // Walk grid configs in _cData and rewrite cell values
-  let cfgUpdated = 0, cellUpdated = 0;
-  _cData.forEach(cfg => {
-    if (!cfg || cfg._salMeta) return;
-    let touched = false;
-    Object.keys(cfg).forEach(k => {
-      // Cell keys are like "1a", "2b", … (one digit + one letter)
-      if (!/^[1-5][a-e]$/.test(k)) return;
-      const v = cfg[k];
-      if (v === undefined || v === null || v === '') return;
-      // (dev0346) Cell values may carry a per-cell zoom suffix ("UID/zoom").
-      // Remap only the UID part and keep the suffix intact.
-      const sv = String(v);
-      const slash = sv.indexOf('/');
-      const uidPart = slash < 0 ? sv : sv.slice(0, slash);
-      const suffix  = slash < 0 ? '' : sv.slice(slash);
-      if (map.has(uidPart)) {
-        cfg[k] = map.get(uidPart) + suffix;
-        touched = true;
-        cellUpdated++;
-      }
-    });
-    if (touched) {
-      cfgUpdated++;
-      cfg.DateModified = isoNow();
-    }
-  });
-
-  // Update last-record memory if the previous UID was tracked
-  if (window._lastUID && map.has(String(window._lastUID))) {
-    window.setLastUID(map.get(String(window._lastUID)));
-  }
-
-  // Save ml.json
-  if (typeof save === 'function') save();
-  if (typeof render === 'function') render();
-
-  // Save c.json (LS always; disk if FSA dir is granted) via the shared
-  // C-screen save path. cSaveToFile returns true iff the disk write
-  // succeeded.
-  let cjsonSaved = false;
-  if (cfgCount > 0) {
-    cjsonSaved = await cSaveToFile();
-  }
-
-  toast(
-    '✓ Reassigned UIDs: ' + data.length + ' rows\n'
-    + '  ' + cellUpdated + ' cell value(s) updated across ' + cfgUpdated + ' grid config(s)\n'
-    + (cfgCount === 0
-        ? '  c.json had no grid configs to update'
-        : (cjsonSaved
-            ? '  c.json saved'
-            : '  c.json NOT auto-saved to disk (LS only — re-grant project folder)')),
-    5000
-  );
-});
+// (dev0353) Reassign UIDs action removed — button gone, action retired.
 
 document.getElementById('clearFilterBtn').addEventListener('click', () => {
   rowFilter = null;
@@ -7622,7 +7460,87 @@ function openHelp()  {
 }
 function isHelpOpen(){ return document.getElementById('helpModal').style.display === 'flex'; }
 
-document.getElementById('helpBtn').addEventListener('click', () => { isHelpOpen() ? closeHelp() : openHelp(); });
+// ══════════════════════════════════════════════════════════════════════════════
+// (dev0353) T HOTKEY HELP — the Table toolbar's ? Help button now opens a
+// dedicated reference of every hotkey active while the Table screen is up,
+// instead of the species/HALO taxonomy pages (still reachable via the H key).
+// ══════════════════════════════════════════════════════════════════════════════
+const T_HOTKEY_HELP = [
+  { group: 'Switch screen', keys: [
+    ['G', 'Grid'],
+    ['E', 'Edit the focused row (video / text / image editor)'],
+    ['A', 'Annotate — tag panel for the focused row'],
+    ['V', 'View the focused row fullscreen'],
+    ['C', 'Collections — c.json grid configs'],
+    ['D', 'Dictionary — tag tree (jumps to the focused row’s first tag)'],
+    ['M', 'Main menu (hamburger)'],
+    ['H', 'Help — species / HALO taxonomy pages'],
+    ['Q', 'Local-media table (q.html, opens in a new tab)'],
+    ['R', 'Slideshow — Review mode'],
+  ]},
+  { group: 'Rows & cells', keys: [
+    ['↑ / ↓', 'Move the row focus (respects the active filter + sort)'],
+    ['Double-click', 'Edit a cell inline (the tags column opens Annotate instead)'],
+    ['Shift+click', 'Select a range down one column, then type to bulk-set'],
+    ['Delete', 'Delete the focused row → archived to deleted.json'],
+    ['Ctrl+D', 'Duplicate the focused row'],
+    ['Alt+R', 'Re-sort by DateModified — newest rows to the top'],
+    ['Ctrl+I', 'Toggle a floating preview of the focused row (Space = play/pause)'],
+    ['Esc', 'Clear focus / selection (inside a field: just unfocus it)'],
+  ]},
+  { group: 'Filter & import', keys: [
+    ['F', 'Filter modal — tags ∧ text search (VidAuthor / VidTitle / link / ftext)'],
+    ['Shift+F', 'Clear all filters instantly'],
+    ['W  or  L', 'Smart clipboard import — bare media links, or @channel + CSV'],
+  ]},
+];
+
+function closeTHelp() {
+  const el = document.getElementById('tHelpOverlay');
+  if (el) el.remove();
+  document.removeEventListener('keydown', _tHelpKey, true);
+}
+function _tHelpKey(e) {
+  if (e.key === 'Escape' || e.key === 'h' || e.key === 'H') {
+    e.preventDefault(); e.stopPropagation();
+    closeTHelp();
+  }
+}
+function openTHelp() {
+  closeTHelp(); // never stack two
+  const ov = document.createElement('div');
+  ov.id = 'tHelpOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:19999;background:rgba(0,0,0,0.82);'
+    + 'display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:16px;';
+  let inner = '<div style="background:#12121e;border:2px solid #4af;border-radius:10px;'
+    + 'width:min(98vw,760px);padding:20px 24px;font-family:monospace;position:relative;">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">'
+    + '<h2 style="color:#8ef;font-size:15px;flex:1;margin:0;letter-spacing:0.04em;">Table (T) — Hotkeys</h2>'
+    + '<button id="tHelpClose" style="background:none;border:1px solid #f66;color:#f66;'
+    + 'border-radius:4px;cursor:pointer;font-size:13px;padding:2px 10px;">✕ Esc</button></div>';
+  T_HOTKEY_HELP.forEach(sec => {
+    inner += '<div style="color:#fc9;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;'
+      + 'margin:14px 0 6px;opacity:0.85;">' + escH(sec.group) + '</div>'
+      + '<table style="border-collapse:collapse;width:100%;">';
+    sec.keys.forEach(([k, d]) => {
+      inner += '<tr>'
+        + '<td style="padding:3px 14px 3px 0;white-space:nowrap;vertical-align:top;width:140px;">'
+        + '<span style="display:inline-block;background:#1d2740;border:1px solid #3a4a6a;'
+        + 'border-radius:4px;color:#8ef;padding:1px 8px;font-weight:bold;">' + escH(k) + '</span></td>'
+        + '<td style="padding:3px 0;color:#cdd;line-height:1.4;">' + escH(d) + '</td></tr>';
+    });
+    inner += '</table>';
+  });
+  inner += '</div>';
+  ov.innerHTML = inner;
+  ov.addEventListener('click', e => { if (e.target === ov) closeTHelp(); });
+  document.body.appendChild(ov);
+  document.getElementById('tHelpClose').addEventListener('click', closeTHelp);
+  document.addEventListener('keydown', _tHelpKey, true);
+}
+function isTHelpOpen() { return !!document.getElementById('tHelpOverlay'); }
+
+document.getElementById('helpBtn').addEventListener('click', () => { isTHelpOpen() ? closeTHelp() : openTHelp(); });
 document.getElementById('helpClose').addEventListener('click', closeHelp);
 document.getElementById('helpPrev').addEventListener('click', () => showHelpPage(_helpPage - 1));
 document.getElementById('helpNext').addEventListener('click', () => showHelpPage(_helpPage + 1));
