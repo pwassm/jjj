@@ -4314,7 +4314,7 @@
     "label": "Anguilliformes",
     "kind": "taxon",
     "parents": [
-      "chordata"
+      "teleostei"
     ],
     "aliases": [],
     "def": "",
@@ -4331,5 +4331,529 @@
     "def": "",
     "rank": "family",
     "common": "Snipe-eels"
+  },
+  {
+    "id": "sepiida",
+    "label": "Sepiida",
+    "kind": "taxon",
+    "parents": [
+      "cephalopoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "sepiidae",
+    "label": "Sepiidae",
+    "kind": "taxon",
+    "parents": [
+      "sepiida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "ascarosepion",
+    "label": "Ascarosepion",
+    "kind": "taxon",
+    "parents": [
+      "sepiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "ascarosepion-pfefferi",
+    "label": "Ascarosepion pfefferi",
+    "kind": "taxon",
+    "parents": [
+      "ascarosepion"
+    ],
+    "aliases": [
+      "Ascarosepion pfefferi (Hoyle",
+      "1885)",
+      "Flamboyant cuttlefish"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Flamboyant Cuttlefish",
+    "extinct": false
+  },
+  {
+    "id": "acanthosepion",
+    "label": "Acanthosepion",
+    "kind": "taxon",
+    "parents": [
+      "sepiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "acanthosepion-pharaonis",
+    "label": "Acanthosepion pharaonis",
+    "kind": "taxon",
+    "parents": [
+      "acanthosepion"
+    ],
+    "aliases": [
+      "Sepia pharaonis Ehrenberg, 1831"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Pharoh cuttlefish"
+  },
+  {
+    "id": "hypsibius-exemplaris",
+    "label": "Hypsibius exemplaris",
+    "kind": "taxon",
+    "parents": [
+      "hypsibius"
+    ],
+    "aliases": [
+      "Hypsibius exemplaris Gasiorek",
+      "Stec",
+      "Morek & Michalczyk",
+      "2018"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Water bear",
+    "extinct": false
+  },
+  {
+    "id": "eutardigrada",
+    "label": "Eutardigrada",
+    "kind": "taxon",
+    "parents": [
+      "tardigrada"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "parachela",
+    "label": "Parachela",
+    "kind": "taxon",
+    "parents": [
+      "eutardigrada"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "hypsibiidae",
+    "label": "Hypsibiidae",
+    "kind": "taxon",
+    "parents": [
+      "parachela"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "hypsibius",
+    "label": "Hypsibius",
+    "kind": "taxon",
+    "parents": [
+      "hypsibiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "richtersius-coronifer",
+    "label": "Richtersius coronifer",
+    "kind": "taxon",
+    "parents": [
+      "richtersius"
+    ],
+    "aliases": [
+      "Richtersius coronifer (Richters",
+      "1903)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Water bear",
+    "extinct": false
+  },
+  {
+    "id": "richtersiusidae",
+    "label": "Richtersiusidae",
+    "kind": "taxon",
+    "parents": [
+      "parachela"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "richtersius",
+    "label": "Richtersius",
+    "kind": "taxon",
+    "parents": [
+      "richtersiusidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "echiniscus-testudo",
+    "label": "Echiniscus testudo",
+    "kind": "taxon",
+    "parents": [
+      "echiniscus"
+    ],
+    "aliases": [
+      "Echiniscus testudo (Doyère",
+      "1840)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Water bear",
+    "extinct": false
+  },
+  {
+    "id": "heterotardigrada",
+    "label": "Heterotardigrada",
+    "kind": "taxon",
+    "parents": [
+      "tardigrada"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "echiniscoidea",
+    "label": "Echiniscoidea",
+    "kind": "taxon",
+    "parents": [
+      "heterotardigrada"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "echiniscidae",
+    "label": "Echiniscidae",
+    "kind": "taxon",
+    "parents": [
+      "echiniscoidea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "echiniscus",
+    "label": "Echiniscus",
+    "kind": "taxon",
+    "parents": [
+      "echiniscidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "entothryeos",
+    "label": "Entothryeos",
+    "kind": "topic",
+    "parents": [
+      "tardigrada"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "moray-eel",
+    "label": "Moray eel",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "teleostei",
+    "label": "Teleostei",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "muraenidae",
+    "label": "Muraenidae",
+    "kind": "taxon",
+    "parents": [
+      "anguilliformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "Moray eels",
+    "extinct": false
+  },
+  {
+    "id": "calcinus-elegans",
+    "label": "Calcinus elegans",
+    "kind": "taxon",
+    "parents": [
+      "calcinus"
+    ],
+    "aliases": [
+      "Calcinus elegans (H.Milne-Edwards",
+      "1836)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "electric blue hermit crab",
+    "extinct": false
+  },
+  {
+    "id": "decapoda",
+    "label": "Decapoda",
+    "kind": "taxon",
+    "parents": [
+      "malacostraca"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "diogenidae",
+    "label": "Diogenidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "calcinus",
+    "label": "Calcinus",
+    "kind": "taxon",
+    "parents": [
+      "diogenidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "ctenoides-mitis",
+    "label": "Ctenoides mitis",
+    "kind": "taxon",
+    "parents": [
+      "ctenoides"
+    ],
+    "aliases": [
+      "Ctenoides mitis (Lamarck",
+      "1807)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Smooth Flame Scallop",
+    "extinct": false
+  },
+  {
+    "id": "bivalvia",
+    "label": "Bivalvia",
+    "kind": "taxon",
+    "parents": [
+      "mollusca"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "limida",
+    "label": "Limida",
+    "kind": "taxon",
+    "parents": [
+      "bivalvia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "limidae",
+    "label": "Limidae",
+    "kind": "taxon",
+    "parents": [
+      "limida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "ctenoides",
+    "label": "Ctenoides",
+    "kind": "taxon",
+    "parents": [
+      "limidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "cassis-tuberosa",
+    "label": "Cassis tuberosa",
+    "kind": "taxon",
+    "parents": [
+      "cassis"
+    ],
+    "aliases": [
+      "Cassis tuberosa (Linnaeus, 1758)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Caribbean Helmet"
+  },
+  {
+    "id": "littorinimorpha",
+    "label": "Littorinimorpha",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "cassidae",
+    "label": "Cassidae",
+    "kind": "taxon",
+    "parents": [
+      "littorinimorpha"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "cassis",
+    "label": "Cassis",
+    "kind": "taxon",
+    "parents": [
+      "cassidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "antennarius-striatus",
+    "label": "Antennarius striatus",
+    "kind": "taxon",
+    "parents": [
+      "antennarius"
+    ],
+    "aliases": [
+      "Antennarius striatus (Shaw, 1794)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Striated frogfish"
+  },
+  {
+    "id": "antennarius",
+    "label": "Antennarius",
+    "kind": "taxon",
+    "parents": [
+      "antennariidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "glossidoris",
+    "label": "Glossidoris",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "pseudobiceros-bedfordi",
+    "label": "Pseudobiceros bedfordi",
+    "kind": "taxon",
+    "parents": [
+      "pseudobiceros"
+    ],
+    "aliases": [
+      "Pseudobiceros bedfordi (Laidlaw, 1903)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Persian Carpet Flatworm"
+  },
+  {
+    "id": "turbellaria",
+    "label": "Turbellaria",
+    "kind": "taxon",
+    "parents": [
+      "platyhelminthes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "pseudocerotidae",
+    "label": "Pseudocerotidae",
+    "kind": "taxon",
+    "parents": [
+      "turbellaria"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "pseudobiceros",
+    "label": "Pseudobiceros",
+    "kind": "taxon",
+    "parents": [
+      "pseudocerotidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "music",
+    "label": "Music",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
