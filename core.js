@@ -202,6 +202,17 @@ window.addEventListener('keydown', function(e) {
       _resortByModified();
       return false;
     }
+    // (dev0357) Alt+F = clear all filters (unfilter). preventDefault beats the
+    // browser's native Alt+F menu. Mirrors Shift+F but on a left-hand chord.
+    if (e.altKey && !e.ctrlKey && !e.metaKey
+        && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF')) {
+      e.preventDefault(); e.stopPropagation();
+      rowFilter = null;
+      if (typeof window.closeFilterBar === 'function') window.closeFilterBar();
+      if (typeof render === 'function') render();
+      toast('Filter cleared', 1000);
+      return false;
+    }
   }
 
   // Skip if modifiers (let Alt+N, Ctrl+Alt+G etc through)
@@ -2261,25 +2272,43 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0355) Home / PageUp → move focus to the FIRST column (scroll left);
-  // End / PageDown → move focus to the LAST column (scroll right). The
-  // ArrowUp/Down keys above walk rows; these walk columns.
-  if (e.key === 'Home' || e.key === 'PageUp' || e.key === 'End' || e.key === 'PageDown') {
-    const vc = visCols();
-    if (!vc.length) return;
+  // (dev0357) PageUp / PageDown → move the focus row up / down by one page of
+  // rows; Home / End → jump to the FIRST / LAST row of the filtered view. (Row
+  // navigation — ArrowUp/Down above step one row; these step a page or to the
+  // ends. Replaces the dev0355 column-jump.)
+  if (e.key === 'Home' || e.key === 'End' || e.key === 'PageUp' || e.key === 'PageDown') {
+    const anOpen = document.getElementById('browseOverlay')?.style.display === 'flex';
+    if (anOpen && tag === 'SELECT') return;
     e.preventDefault();
-    const toLast = (e.key === 'End' || e.key === 'PageDown');
-    let r = focus !== null ? focus.r : -1;
-    if (r < 0) {
-      for (let vi = 0; vi < data.length; vi++) { if (rowMatchesFilter(data[vr(vi)])) { r = vi; break; } }
-      if (r < 0) r = 0;
-    }
-    focus = { r, c: toLast ? vc.length - 1 : 0 };
+    const visIdxs = [];
+    for (let vi = 0; vi < data.length; vi++) { if (rowMatchesFilter(data[vr(vi)])) visIdxs.push(vi); }
+    if (!visIdxs.length) return;
+    // Page size = whole rows that fit in the table viewport, minus one for overlap.
+    const wrap = document.getElementById('wrap');
+    const rowH = (typeof _tRowHeight === 'function') ? _tRowHeight() : 25;
+    const pageRows = Math.max(1, Math.floor(((wrap && wrap.clientHeight) || 600) / rowH) - 1);
+    const curVi = focus !== null ? focus.r : visIdxs[0];
+    let pos = visIdxs.indexOf(curVi);
+    if (pos < 0) pos = 0;
+    let newPos;
+    if      (e.key === 'Home')     newPos = 0;
+    else if (e.key === 'End')      newPos = visIdxs.length - 1;
+    else if (e.key === 'PageUp')   newPos = Math.max(0, pos - pageRows);
+    else                           newPos = Math.min(visIdxs.length - 1, pos + pageRows);
+    const newVi = visIdxs[newPos];
+    if (newVi === undefined) return;
+    focus = { r: newVi, c: focus !== null ? focus.c : 0 };
     pending = null;
     render();
-    const wrap = document.getElementById('wrap');
-    if (wrap) wrap.scrollLeft = toLast ? wrap.scrollWidth : 0;
-    _tScrollRowIntoView(r);
+    _tScrollRowIntoView(newVi);
+    // Keep the Annotate panel in sync when it's open (mirrors ArrowUp/Down).
+    if (anOpen) {
+      const di = vr(newVi);
+      brSave();
+      const fi = _brRows.indexOf(di);
+      if (fi >= 0) brShow(fi);
+      else { _brRows = brGetVisibleRows(); const fi2 = _brRows.indexOf(di); if (fi2 >= 0) brShow(fi2); }
+    }
     return;
   }
 
@@ -6192,15 +6221,10 @@ function runVEPostOpenSetup(di) {
       if (e.key === 'Escape' && !e.ctrlKey) {
         const commentPop = document.getElementById('v2comment-popup');
         if (commentPop) { e.preventDefault(); e.stopImmediatePropagation(); commentPop.remove(); return; }
-        // (dev0356) If the Annotate dock is open beside E, Esc closes JUST the
-        // dock (saving first) and leaves E open. A second Esc then closes E.
-        const _dock = document.getElementById('browseOverlay');
-        if (_dock && _dock.style.display === 'flex') {
-          e.preventDefault(); e.stopImmediatePropagation();
-          if (typeof brSave === 'function') brSave();
-          _dock.style.display = 'none';
-          return;
-        }
+        // (dev0356→0357) The "Esc closes just the Annotate dock" case is now
+        // handled universally for every editor by the load-time capture handler
+        // (_dockEscDismiss, search "dev0357") — it fires before this one. So by
+        // the time we get here the dock is already gone and Esc closes Ev → Table.
         // (dev0344) Esc closes Ev → Table (re-enabled; was a no-op since zip0186).
         // Mirrors the T key's path exactly (set close-to-table intent, click the
         // ✕ so all the existing teardown/save-on-close logic runs).
@@ -6865,6 +6889,29 @@ function brFocusField(id) {
   if (el && !el.disabled && el.style.display !== 'none') { el.focus(); return true; }
   return false;
 }
+
+// (dev0357) Universal "Esc dismisses just the Annotate dock" — for EVERY editor
+// (Ev video, Xe text/weblink, Ie image). When the Annotate dock is open beside
+// an editor, the first Esc saves + hides ONLY the dock and leaves the editor
+// open (a second Esc then closes the editor). Registered at load (capture) so it
+// runs before the editors' own open-time Esc handlers and before the Annotate-
+// mode handler below. When NO editor is open (plain Annotate panel reached from
+// T), it bails so that screen keeps its own Esc=close behavior.
+function _dockEscDismiss(e) {
+  if (e.key !== 'Escape' || e.ctrlKey || e.altKey || e.metaKey) return;
+  const dock = document.getElementById('browseOverlay');
+  if (!dock || dock.style.display !== 'flex') return;
+  const editorOpen = !!document.getElementById('video-editor-overlay')
+    || !!document.getElementById('textEditorOverlay')
+    || document.getElementById('gridFullscreen')?.style.display === 'flex';
+  if (!editorOpen) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (typeof brSave === 'function') brSave();
+  dock.style.display = 'none';
+  const wrap = document.getElementById('wrap');
+  if (wrap) wrap.style.marginRight = '';   // dock gone → table can use full width on return
+}
+document.addEventListener('keydown', _dockEscDismiss, true);
 
 // Keyboard in Annotate mode
 document.addEventListener('keydown', e => {
