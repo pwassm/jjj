@@ -1597,7 +1597,21 @@ function gridShowContextMenu(x, y, cellStr, row) {
     gridHideContextMenu();
   };
   _gridContextMenu.appendChild(deleteBtn);
-  
+
+  // Separator
+  const sep = document.createElement('div');
+  sep.style.cssText = 'height:1px; background:#333; margin:4px 0;';
+  _gridContextMenu.appendChild(sep);
+
+  // Write to T option
+  const writeBtn = document.createElement('div');
+  writeBtn.innerHTML = '<u>W</u>rite to T';
+  writeBtn.style.cssText = 'padding:8px 16px; color:#fc8; cursor:pointer; font-size:13px;';
+  writeBtn.onmouseenter = () => writeBtn.style.background = '#2e2a1a';
+  writeBtn.onmouseleave = () => writeBtn.style.background = '';
+  writeBtn.onclick = () => { gridWriteToT(); };
+  _gridContextMenu.appendChild(writeBtn);
+
   document.body.appendChild(_gridContextMenu);
   
   // Handle keyboard shortcuts
@@ -1618,6 +1632,9 @@ function gridShowContextMenu(x, y, cellStr, row) {
       _lastGridRow = row;
       gridOpenFullscreen(row);
       gridHideContextMenu();
+    } else if (e.key === 'w' || e.key === 'W') {
+      e.preventDefault();
+      gridWriteToT();
     } else if (e.key === 'Escape') {
       gridHideContextMenu();
     }
@@ -1647,13 +1664,35 @@ function gridDeleteCell(cellStr) {
     toast('Cell ' + cellStr + ' is empty', 800);
     return;
   }
-  
+
   // Clear the cell value
   row.cell = '';
   row.DateModified = isoNow();
   save();
-  
+
   // Update visual immediately
   gridUpdateCell(cellStr, null);
   toast('🗑 Deleted ' + cellStr, 1000);
+}
+
+function gridWriteToT() {
+  // Clear all existing T cell assignments
+  data.forEach(r => { r.cell = ''; });
+  // Write current G grid cells into T (row.cell)
+  for (let r = 1; r <= _gridGsize; r++) {
+    for (let c = 1; c <= _gridGsize; c++) {
+      const cellStr = mkGridCell(r, c);
+      const row = getRowByCellForGrid(cellStr);
+      if (row) row.cell = cellStr;
+    }
+  }
+  save();
+  // Navigate to T
+  gridCleanupPlayers();
+  gridClearCut();
+  gridHideContextMenu();
+  document.getElementById('gridOverlay').style.display = 'none';
+  window._cameFromGrid = false;
+  buildTable();
+  toast('✓ Written to T', 1400);
 }
