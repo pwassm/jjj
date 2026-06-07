@@ -335,6 +335,11 @@ function _gridSnapZoom(v) {
 
 // Effective zoom for one cell = global × that cell's stored per-cell factor.
 function _gridZoomForCell(cellEl) {
+  // (dev0359) No zoom on phones/tablets — zoomed cells look bad on small
+  // screens, so the grid always renders at plain cover/contain there. The
+  // stored global "Zoom" + per-cell "UID/zoom" values are kept in c.json
+  // (and still apply on desktop); they're just ignored for mobile rendering.
+  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return 1;
   const g = _gridFillZoom();
   const row = cellEl && cellEl._rowData;
   const indiv = (row && row.UID && _gridCellZoom[row.UID] > 0) ? _gridCellZoom[row.UID] : 1;

@@ -434,8 +434,22 @@ async function _showShareableMenu() {
     ? (cj[0] && cj[0]._salMeta ? cj.slice(1) : cj)
     : [];
 
+  // (dev0359) Greeting block. One ml.json row carries Direct === "Greeting";
+  // its `ftext` (rich HTML, editable right here in Xe) is rendered at the top
+  // of the menu and is NOT itself a clickable choice. If no such row exists,
+  // fall back to an optional greeting.html file so the text can also live on
+  // disk. Re-read every time the menu opens (the whole function re-fetches),
+  // so editing the Greeting row updates the menu on the next visit.
+  const _isGreeting = v => String(v || '').trim().toLowerCase() === 'greeting';
+  const greetRow = mlRows.find(r => r && !r._salMeta && _isGreeting(r.Direct));
+  let greetingHtml = greetRow ? String(greetRow.ftext || '') : '';
+  if (!greetingHtml) {
+    try { const r = await fetch('greeting.html?t=' + Date.now()); if (r.ok) greetingHtml = await r.text(); } catch (e) {}
+  }
+
+  // Choices, re-read fresh from c.json `ss` + ml.json `Direct` on every open.
   const vItems = mlRows
-    .filter(r => r && !r._salMeta && String(r.Direct || '').trim() && r.UID != null)
+    .filter(r => r && !r._salMeta && String(r.Direct || '').trim() && !_isGreeting(r.Direct) && r.UID != null)
     .map(r => ({ kind: 'v', label: String(r.Direct).trim(), uid: String(r.UID) }));
   const gItems = cRows
     .filter(g => g && !g._salMeta && String(g.ss || '').trim() && g.gname)
@@ -459,12 +473,39 @@ async function _showShareableMenu() {
     ).join('');
   }
 
-  ov.innerHTML =
-    '<div style="display:flex;align-items:center;padding:14px 16px;'
+  // (dev0359) Readable sans-serif styling for the greeting prose; the choices
+  // list below keeps the menu's monospace look. `summary` headings render
+  // inline so an Xe-resized collapsible title sits on the marker line.
+  const greetStyle =
+    '<style>'
+    + '#smGreeting{font-family:sans-serif;color:#dfe3ea;line-height:1.6;padding:22px 24px 10px;max-width:760px;margin:0 auto;}'
+    + '#smGreeting h1,#smGreeting h2{color:#8ef;margin:0 0 10px;}'
+    + '#smGreeting h2{font-size:22px;}#smGreeting h1{font-size:26px;}'
+    + '#smGreeting h3{color:#9ef;font-size:18px;margin:6px 0;}'
+    + '#smGreeting p{margin:6px 0;}#smGreeting a{color:#5bf;}'
+    + '#smGreeting details{margin:8px 0;padding:8px 12px;background:#11131f;border-left:3px solid #06f;border-radius:4px;}'
+    + '#smGreeting summary{cursor:pointer;color:#8ef;}'
+    + '#smGreeting summary h1,#smGreeting summary h2,#smGreeting summary h3,#smGreeting summary h4,#smGreeting summary h5,#smGreeting summary h6{display:inline;color:#8ef;margin:0;}'
+    + '.te-cut{display:none;}'
+    + '</style>';
+  const greetingBlock = greetingHtml
+    ? '<div id="smGreeting">' + greetingHtml + '</div>'
+      + (items.length
+          ? '<div style="padding:7px 24px;color:#7a8aa0;font-size:11px;letter-spacing:.12em;'
+            + 'text-transform:uppercase;border-top:1px solid #223;border-bottom:1px solid #223;'
+            + 'background:#0d0d1e;">Choose a view</div>'
+          : '')
+    : '';
+
+  ov.innerHTML = greetStyle
+    + '<div style="display:flex;align-items:center;padding:14px 16px;flex:none;'
       + 'background:#1a1a2e;border-bottom:2px solid #4af;">'
       + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeeAndLearn</span>'
     + '</div>'
-    + '<div id="smList" style="flex:1;overflow-y:auto;">' + listHtml + '</div>';
+    + '<div style="flex:1;overflow-y:auto;">'
+      + greetingBlock
+      + '<div id="smList">' + listHtml + '</div>'
+    + '</div>';
 
   document.body.appendChild(ov);
 

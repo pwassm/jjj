@@ -239,6 +239,14 @@ function gridOpenTextEditor(cellStr, row, opts) {
       e.preventDefault(); // Prevent focus loss from editor
       const cmd = btn.dataset.cmd;
       const val = btn.dataset.val || null;
+      // (dev0359) Route heading/paragraph (formatBlock) through a guarded
+      // helper. The native execCommand('formatBlock') DESTROYS a <details>
+      // block when the caret sits in its <summary> (or the block is selected
+      // via its ⋮⋮ handle) — it wraps the <details> in the heading and rips
+      // the body out into a second, summary-less <details>. It also lossily
+      // merges a multi-paragraph selection into one block of <br>s.
+      // _teFormatBlock keeps the <details> intact in every case.
+      if (cmd === 'formatBlock') { _teFormatBlock(val); return; }
       document.execCommand(cmd, false, val);
     };
   });
@@ -1292,6 +1300,115 @@ function _teSelectDetails(detailsEl) {
   sel.removeAllRanges();
   sel.addRange(range);
   if (editor) editor.focus();
+}
+
+// (dev0359) ── Safe formatBlock for the H1–H6 / P toolbar buttons ───────────
+// Background: document.execCommand('formatBlock') is destructive inside a
+// <details>. With the caret in a <summary> it wraps the whole <details> in the
+// heading and orphans the body into a second, summary-less <details>; with a
+// multi-paragraph selection it merges the paragraphs into one block of <br>s.
+// This helper keeps the native command (and its undo history) for the common
+// safe case — a single block that is NOT a summary and NOT inside a <details>
+// — and falls back to a manual, structure-preserving re-tag otherwise.
+const _TE_BLOCK_RE = /^(P|H[1-6]|DIV|SUMMARY|LI|BLOCKQUOTE)$/;
+
+// Innermost block-level ancestor of `node` within the editor (or null).
+function _teNearestBlock(ed, node) {
+  let n = (node && node.nodeType === 3) ? node.parentNode : node;
+  while (n && n !== ed) {
+    if (n.tagName && _TE_BLOCK_RE.test(n.tagName)) return n;
+    n = n.parentNode;
+  }
+  return null;
+}
+
+// A heading inside a <summary> still belongs to the summary — never re-tag it
+// directly (that yields invalid <summary><p>…). Snap such a block up to its
+// enclosing <summary> so the summary path handles it.
+function _teSnapToSummary(ed, b) {
+  if (b && b.closest) {
+    const sm = b.closest('summary');
+    if (sm && ed.contains(sm)) return sm;
+  }
+  return b;
+}
+
+// Resize a <summary> WITHOUT breaking the <details>: a summary legally holds a
+// single heading element, so H1–H6 wrap its content in that heading (margin:0
+// keeps it on the marker line); P/DIV unwrap any existing heading back to a
+// plain summary.
+function _teSetSummaryHeading(summary, tag) {
+  if (!summary) return;
+  const inner = summary.querySelector(
+    ':scope > h1,:scope > h2,:scope > h3,:scope > h4,:scope > h5,:scope > h6');
+  if (/^H[1-6]$/i.test(tag)) {
+    const h = document.createElement(tag);
+    h.setAttribute('style', 'margin:0');
+    if (inner) { while (inner.firstChild) h.appendChild(inner.firstChild); summary.replaceChild(h, inner); }
+    else { while (summary.firstChild) h.appendChild(summary.firstChild); summary.appendChild(h); }
+  } else if (inner) {
+    while (inner.firstChild) summary.insertBefore(inner.firstChild, inner);
+    summary.removeChild(inner);
+  }
+}
+
+// Re-tag one block in place, preserving its children. Summaries and list items
+// get special handling so the surrounding structure survives.
+function _teRetagBlock(b, tag) {
+  if (!b) return;
+  if (b.tagName === 'SUMMARY') { _teSetSummaryHeading(b, tag); return; }
+  if (b.tagName === 'LI') return; // don't turn list items into headings
+  if (b.tagName.toLowerCase() === String(tag).toLowerCase()) return;
+  const el = document.createElement(tag);
+  while (b.firstChild) el.appendChild(b.firstChild);
+  b.parentNode.replaceChild(el, b);
+}
+
+function _teFormatBlock(tag) {
+  const ed = document.getElementById('teEditor');
+  if (!ed) return;
+  const sel = window.getSelection();
+  if (!sel.rangeCount) { ed.focus(); return; }
+
+  // Block selected via its ⋮⋮ handle → resize its summary (the title).
+  const selDetails = ed.querySelector('details.te-selected');
+  if (selDetails) {
+    _teRetagBlock(selDetails.querySelector(':scope > summary'), tag);
+    ed.focus();
+    return;
+  }
+
+  const range = sel.getRangeAt(0);
+  const startEl = range.startContainer.nodeType === 3 ? range.startContainer.parentNode : range.startContainer;
+  const endEl   = range.endContainer.nodeType === 3   ? range.endContainer.parentNode   : range.endContainer;
+  const b1 = _teSnapToSummary(ed, _teNearestBlock(ed, startEl));
+  const b2 = _teSnapToSummary(ed, _teNearestBlock(ed, endEl));
+  const inDetails = !!((startEl.closest && startEl.closest('details')) ||
+                       (endEl.closest && endEl.closest('details')));
+  const summaryTouched = (b1 && b1.tagName === 'SUMMARY') || (b2 && b2.tagName === 'SUMMARY');
+
+  // Safe case: leave it to the native command (keeps undo history + list logic).
+  if (!inDetails && !summaryTouched) { document.execCommand('formatBlock', false, tag); return; }
+  if (!b1 || !b2) { document.execCommand('formatBlock', false, tag); return; }
+
+  // Manual path — collect the block siblings spanned and re-tag each in place.
+  let blocks;
+  if (b1 === b2) {
+    blocks = [b1];
+  } else if (b1.parentNode === b2.parentNode) {
+    blocks = [];
+    let n = b1;
+    while (n) {
+      if (n.tagName && _TE_BLOCK_RE.test(n.tagName)) blocks.push(n);
+      if (n === b2) break;
+      n = n.nextElementSibling;
+    }
+    if (!blocks.length || blocks[blocks.length - 1] !== b2) blocks = [b1, b2];
+  } else {
+    blocks = [b1, b2];
+  }
+  blocks.forEach(b => _teRetagBlock(b, tag));
+  ed.focus();
 }
 
 // (zip0137) Slide-wide color picker. Two modes: 'text' sets the slide's
