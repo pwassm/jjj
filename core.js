@@ -6192,6 +6192,15 @@ function runVEPostOpenSetup(di) {
       if (e.key === 'Escape' && !e.ctrlKey) {
         const commentPop = document.getElementById('v2comment-popup');
         if (commentPop) { e.preventDefault(); e.stopImmediatePropagation(); commentPop.remove(); return; }
+        // (dev0356) If the Annotate dock is open beside E, Esc closes JUST the
+        // dock (saving first) and leaves E open. A second Esc then closes E.
+        const _dock = document.getElementById('browseOverlay');
+        if (_dock && _dock.style.display === 'flex') {
+          e.preventDefault(); e.stopImmediatePropagation();
+          if (typeof brSave === 'function') brSave();
+          _dock.style.display = 'none';
+          return;
+        }
         // (dev0344) Esc closes Ev → Table (re-enabled; was a no-op since zip0186).
         // Mirrors the T key's path exactly (set close-to-table intent, click the
         // ✕ so all the existing teardown/save-on-close logic runs).
