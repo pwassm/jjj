@@ -202,17 +202,9 @@ window.addEventListener('keydown', function(e) {
       _resortByModified();
       return false;
     }
-    // (dev0357) Alt+F = clear all filters (unfilter). preventDefault beats the
-    // browser's native Alt+F menu. Mirrors Shift+F but on a left-hand chord.
-    if (e.altKey && !e.ctrlKey && !e.metaKey
-        && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF')) {
-      e.preventDefault(); e.stopPropagation();
-      rowFilter = null;
-      if (typeof window.closeFilterBar === 'function') window.closeFilterBar();
-      if (typeof render === 'function') render();
-      toast('Filter cleared', 1000);
-      return false;
-    }
+    // (dev0357→0358) Alt+F was tried as "unfilter" but the browser still opened
+    // its native Alt+F menu on some setups — removed per user. Shift+F (handled
+    // below in the bare-key dispatcher) remains the clear-all-filters hotkey.
   }
 
   // Skip if modifiers (let Alt+N, Ctrl+Alt+G etc through)
@@ -2226,6 +2218,9 @@ document.addEventListener('keydown', e => {
   // Don't capture arrows if grid or VE is open
   if (document.getElementById('gridOverlay')?.style.display === 'flex') return;
   if (document.getElementById('video-editor-overlay')) return;
+  // (dev0358) Xe (text editor) owns its own arrow handling (caret when focused,
+  // row-hop when not) — never let the table handler also navigate while it's open.
+  if (document.getElementById('textEditorOverlay')) return;
 
   // Up/Down arrow keys — navigate rows in table (works even when annotate panel open)
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -6343,6 +6338,9 @@ function runVEPostOpenSetup(di) {
         // E. The E overlay already reserves right:340px for exactly this panel
         // (video.js: video-editor-overlay has right:340px), so the dock slides
         // in alongside the editor. Press A again to save + hide the dock.
+        // (dev0358) Do NOT focus the dock on open — focus stays on E so the video
+        // keeps responding to Space/arrows; press Tab (video.js handleKey) to move
+        // into the A fields, matching the row-hop behavior the user expects.
         if (e.key === 'a' || e.key === 'A') {
           e.preventDefault(); e.stopPropagation();
           const ov = document.getElementById('browseOverlay');
@@ -6352,11 +6350,6 @@ function runVEPostOpenSetup(di) {
           } else if (ov) {
             ov.style.display = 'flex';
             brShow(_brIdx);
-            requestAnimationFrame(() => {
-              const chipInput = document.querySelector('#brTagChips input');
-              if (chipInput) chipInput.focus();
-              else { const el = document.getElementById('brt1'); if (el) el.focus(); }
-            });
           }
           return;
         }

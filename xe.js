@@ -827,11 +827,16 @@ function gridOpenTextEditor(cellStr, row, opts) {
     }
 
     // (zip0184) ArrowUp / ArrowDown — navigate filtered rows while Xe is open.
-    // Always navigates, even when the contenteditable editor is focused (matches
-    // the Ie + Annotate-panel combo). _brRows is always refreshed from the live
-    // filter so navigating a filtered T doesn't walk invisible rows.
-    // openEditorForRow routes to Xe (text), Ie (image), or Ev (video).
+    // (dev0358) BUT only when the contenteditable editor is NOT focused. When the
+    // user is typing in #teEditor, arrows must move the TEXT CURSOR (browser
+    // default) — not hop to another row. Row navigation happens when focus is
+    // outside the editor (after the first Esc blur, or focus on overlay chrome).
+    // _brRows is refreshed from the live filter so a filtered T isn't walked into
+    // invisible rows. openEditorForRow routes to Xe (text), Ie (image), or Ev.
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const _ae = document.activeElement;
+      const _edFocused = !!_ae && (_ae.id === 'teEditor' || (_ae.closest && _ae.closest('#teEditor')));
+      if (_edFocused) return;   // typing in the editor → let the arrow move the caret
       e.preventDefault(); e.stopPropagation();
 
       // Always rebuild from current filter so filtered T navigation stays correct
