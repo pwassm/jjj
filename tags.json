@@ -3893,7 +3893,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "",
+    "common": "Red mid-water comb jelly",
     "extinct": false
   },
   {
@@ -4871,5 +4871,62 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "mantis-shrimp",
+    "label": "Mantis shrimp",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "stomatopoda",
+    "label": "Stomatopoda",
+    "kind": "taxon",
+    "parents": [
+      "malacostraca"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "odontodactylidae",
+    "label": "Odontodactylidae",
+    "kind": "taxon",
+    "parents": [
+      "stomatopoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "odontodactylus",
+    "label": "Odontodactylus",
+    "kind": "taxon",
+    "parents": [
+      "odontodactylidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "odontodactylus-scyllarus",
+    "label": "Odontodactylus scyllarus",
+    "kind": "taxon",
+    "parents": [
+      "odontodactylus"
+    ],
+    "aliases": [
+      "Odontodactylus scyllarus (Linnaeus, 1758)",
+      "Mantis shrimp"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "peacock mantis shrimp"
   }
 ]

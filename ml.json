@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1780903503728,
+    "_salPushTime": 1780952569826,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 36,
@@ -27,7 +27,7 @@
       "vidLength": 60,
       "VidComment": 203,
       "ftext": 179,
-      "tags": 311,
+      "tags": 376,
       "BA": 30,
       "ltype": 64,
       "show": 43,
@@ -38,7 +38,7 @@
       "FtextJunk": 76,
       "VQ": 46,
       "BQ": 45,
-      "COI": 76
+      "COI": 136
     },
     "_salColOrder": [
       "show",
@@ -78,7 +78,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "cell",
+      "col": "DateAdded",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -1118,7 +1118,7 @@
     "comment": "Japanese skeleton shrimp with breeding pouch: the protrusion with the red dots. Back at home selecting and editing photo's is a time consuming job. But a rewarding one! It is a kind of arm chair marine biology. Magnifying photo's to 100% reveals a lot of creatures I hadn't recorded at the time. ",
     "VidComment": "",
     "DateAdded": "2026-03-30 08:55:15",
-    "DateModified": "2026-06-08 07:23:54",
+    "DateModified": "2026-06-08 12:41:19",
     "Mute": "",
     "MPix": "0.6",
     "n1": "Skeleton shrimp",
@@ -1138,7 +1138,7 @@
     "FtextJunk": "0",
     "VQ": "",
     "BQ": "",
-    "COI": "0.685,0.335@@1.0@@image",
+    "COI": "0.539,0.374@@4.6@@image",
     "X": "",
     "face": ""
   },
@@ -19219,10 +19219,10 @@
     "link": "https://video.sealifeandmore.com/RedCtenophore2.mp4",
     "show": "1",
     "DateAdded": "2026-05-26 02:19:33",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-08 15:03:06",
     "tags": [
-      "myvideo",
-      "aulacoctena-acuminata"
+      "aulacoctena-acuminata",
+      "myvideo"
     ],
     "Mute": "0",
     "MPix": "V",
@@ -24804,14 +24804,15 @@
     "cell": "",
     "show": "1",
     "VidRange": "text",
-    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help button available upper left hand corner.<br></div></details><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p></div></details><p></p><p><br></p><hr class=\"te-hr\"><p><br></p></div><div><h6></h6></div>",
+    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p></p><details open=\"\"><summary>Hi Margy and Leslie!</summary><div><p>Hope you got a chance to visit the site, and thanks for your interest.</p><p>This site is easily customized, probably won't have this message tomorrow</p></div></details><p></p><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help button available upper left hand corner.<br></div></details><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details open=\"\"><summary>Slideshows!\n(and more)</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p></div></details><p></p><p></p><details><summary><br></summary><div><br></div></details><p></p><hr class=\"te-hr\"><p><br></p></div><div><h6></h6></div>",
     "DateAdded": "2026-06-08 00:31:27",
-    "DateModified": "2026-06-08 03:50:45",
+    "DateModified": "2026-06-08 21:02:49",
     "link": "",
-    "ftextSize": "1481",
+    "ftextSize": "1819",
     "FtextJunk": "1",
     "Direct": "greet",
-    "MPix": "20"
+    "MPix": "20",
+    "COI": "Search filter: limit to rows having taxon tags.  Search filter: limited to video and image links, no ftext sites"
   },
   {
     "UID": "1020",
@@ -25022,5 +25023,92 @@
     "FtextJunk": "0",
     "MPix": "V",
     "cell": "3b"
+  },
+  {
+    "UID": "1035",
+    "link": "https://ocean.si.edu/ocean-life/invertebrates/red-mid-water-comb-jelly",
+    "show": "1",
+    "DateAdded": "2026-06-08 15:03:31",
+    "DateModified": "2026-06-08 15:18:01",
+    "tags": [
+      "aulacoctena-acuminata"
+    ],
+    "ltype": "w",
+    "ftextSize": "1296",
+    "FtextJunk": "10",
+    "ftext": "<h1><img src=\"https://ocean.si.edu/sites/default/files/styles/full_width_large/public/2023-11/8-Aulacoctena-full_1.jpg\" alt=\"\" style=\"text-align: center; color: rgb(255, 255, 255); font-size: 18px; max-width: 100%; width: 400px; display: inline-block; border-radius: 4px;\">&nbsp; Red Mid-Water Comb Jelly \n</h1><h2>\n\n\n\n  \n\n\n  <div>\n                      \n                  \n              \n              \n              \n                  <img src=\"https://ocean.si.edu/sites/default/files/styles/full_width_large/public/2023-11/8-Aulacoctena-full_1.jpg.webp?itok=I7C0SIZp\" alt=\"Photograph of a translucent red-orange comb jelly against a black sea.\">\n\n  \n\n\n            </div>\n\n      \n                    \n            (Marsh Youngbluth/MAR-ECO, Census of Marine Life)\n        \n          \n  \n\n\n  <p>Like this ctenophore (<em>Aulococtena acuminata</em>), many animals\n that live in the midwater zone are red—making them almost invisible in \nthe dim blue light that filters down from the sea surface. This small \ncomb jelly snares prey with its two short tentacles. Read more about the\n <a href=\"https://ocean.si.edu/deep-sea\" target=\"_blank\" rel=\"noopener\">deep sea</a> and <a href=\"https://ocean.si.edu/jellyfish-and-comb-jellies\" target=\"_blank\" rel=\"noopener\">comb jellies</a>.</p><p><br></p></h2>"
+  },
+  {
+    "UID": "1036",
+    "link": "https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1803-seacuke/",
+    "show": "1",
+    "DateAdded": "2026-06-08 15:18:04",
+    "DateModified": "2026-06-08 15:19:33",
+    "tags": [
+      "holothuroidea"
+    ],
+    "ltype": "w",
+    "ftextSize": "6127",
+    "FtextJunk": "0",
+    "ftext": "<h2>Sea Cucumber - NOAA Ocean Exploration</h2>\n<h1>Sea Cucumber - NOAA Ocean Exploration</h1>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/us_flag_small.png\" alt=\"Image 1\" style=\"max-width:100%;height:auto;\">\n<p>An official website of the United States government</p>\n<p>Here’s how you know</p>\n<p>Here’s how you know</p>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/icon-dot-gov.svg\" alt=\"Image 2\" style=\"max-width:100%;height:auto;\">\n<p><strong>Official websites use .gov</strong></p>\n<p>A <strong>.gov</strong> website belongs to an official government organization in the United States.</p>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/icon-https.svg\" alt=\"Image 3\" style=\"max-width:100%;height:auto;\">\n<p><strong>Secure .gov websites use HTTPS</strong></p>\n<p>A <strong>lock</strong> ( ) or <strong>https://</strong> means you’ve safely connected to the .gov website. Share sensitive information only on official, secure websites.</p>\n<p><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">\u0000PLACE3\u0000</a></p>\n<p><a href=\"https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1803-seacuke/\" target=\"_blank\" rel=\"noopener\">Menu</a></p>\n<p>[](https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1803-seacuke/)</p>\n<p><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">\u0000PLACE4\u0000</a></p>\n<ul><li>About</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/about/\" target=\"_blank\" rel=\"noopener\">About</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/what-we-do/\" target=\"_blank\" rel=\"noopener\">Our Mission</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/who-we-are/\" target=\"_blank\" rel=\"noopener\">Who We Are</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/annual-reports/\" target=\"_blank\" rel=\"noopener\">Annual Reports</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/what-we-do-program-review/\" target=\"_blank\" rel=\"noopener\">Program Reviews</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/media-kit/\" target=\"_blank\" rel=\"noopener\">Media Kit</a>     *   <a href=\"https://oeab.noaa.gov/\" target=\"_blank\" rel=\"noopener\">Ocean Exploration Advisory Board</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/national-forums/\" target=\"_blank\" rel=\"noopener\">National Forums on Ocean Exploration</a></p>\n<p>Search for: Search</p>\n<ul><li><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">Home</a></li>\n<li>Science &amp; Exploration</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/science-exploration/\" target=\"_blank\" rel=\"noopener\">Science &amp; Exploration</a>     *   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/\" target=\"_blank\" rel=\"noopener\">Science &amp; Exploration</a>     *   <a href=\"https://oceanexplorer.noaa.gov/expeditions/\" target=\"_blank\" rel=\"noopener\">Expeditions &amp; Projects</a>     *   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a6807b8f86a524\" target=\"_blank\" rel=\"noopener\">Why We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/why-exploration-matters/\" target=\"_blank\" rel=\"noopener\">Why Ocean Exploration Matters</a>         *   <a href=\"https://oceanexplorer.noaa.gov/history/\" target=\"_blank\" rel=\"noopener\">NOAA History</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a6807b8f86a526\" target=\"_blank\" rel=\"noopener\">How We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/okeanos/\" target=\"_blank\" rel=\"noopener\">NOAA Ship <em>Okeanos Explorer</em></a>         *   <a href=\"https://oceanexplorer.noaa.gov/technology/\" target=\"_blank\" rel=\"noopener\">Science &amp; Technology for Exploration</a>         *   <a href=\"https://oceanexplorer.noaa.gov/about/partnerships/\" target=\"_blank\" rel=\"noopener\">Partnerships</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a69bd9e3b61512\" target=\"_blank\" rel=\"noopener\">What We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/noaa-ocean-exploration-minerals/\" target=\"_blank\" rel=\"noopener\">Marine Critical Minerals</a>         *   <a href=\"https://oceanexplorer.noaa.gov/noaa-omics/\" target=\"_blank\" rel=\"noopener\">NOAA Omics</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/data/\" target=\"_blank\" rel=\"noopener\">Data &amp; Products</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/access/\" target=\"_blank\" rel=\"noopener\">Data Access Tools</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/animal-guide/\" target=\"_blank\" rel=\"noopener\">Benthic Animal Guide</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/publications/\" target=\"_blank\" rel=\"noopener\">Publications &amp; Reports</a></p>\n<ul><li>Learn &amp; Discover</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/discover/\" target=\"_blank\" rel=\"noopener\">Learn &amp; Discover</a>     *   <a href=\"https://oceanexplorer.noaa.gov/discover/educators/\" target=\"_blank\" rel=\"noopener\">For Educators</a>         *   <a href=\"https://oceanexplorer.noaa.gov/classroom-materials/\" target=\"_blank\" rel=\"noopener\">All Classroom Materials</a>         *   <a href=\"https://oceanexplorer.noaa.gov/discover/professional-development/\" target=\"_blank\" rel=\"noopener\">Professional Development Opportunities</a>         *   <a href=\"https://oceanexplorer.noaa.gov/discover/deep-ocean-education-projects/\" target=\"_blank\" rel=\"noopener\">Deep Ocean Education Project</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/discover/\" target=\"_blank\" rel=\"noopener\">Ocean Science For Everyone</a>         *   <a href=\"https://oceanexplorer.noaa.gov/ocean-facts/\" target=\"_blank\" rel=\"noopener\">Ocean Exploration Facts</a>         *   <a href=\"https://oceanexplorer.noaa.gov/dive-deeper/\" target=\"_blank\" rel=\"noopener\">Dive Deeper</a></p>\n<ul><li><a href=\"https://oceanexplorer.noaa.gov/multimedia/\" target=\"_blank\" rel=\"noopener\">Multimedia</a></li>\n<li><a href=\"https://oceanexplorer.noaa.gov/news/\" target=\"_blank\" rel=\"noopener\">News</a></li>\n<li>Get Involved</li></ul>"
+  },
+  {
+    "UID": "1037",
+    "link": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/03/ex1803-seacuke.mp4",
+    "show": "1",
+    "DateAdded": "2026-06-08 15:18:48",
+    "DateModified": "2026-06-08 15:19:40",
+    "tags": [
+      "holothuroidea"
+    ],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "V",
+    "vidLength": "0:32"
+  },
+  {
+    "UID": "1038",
+    "link": "https://youtu.be/PNluwmvr3ik",
+    "show": "1",
+    "DateAdded": "2026-06-08 15:20:50",
+    "DateModified": "2026-06-08 15:21:05",
+    "tags": [
+      "odontodactylus-scyllarus"
+    ],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "Evolution's Biggest Mistake? Why The Mantis Shrimp Sees Less",
+    "VidAuthor": "@MindBlinkFacts",
+    "P/S": "0"
+  },
+  {
+    "UID": "1039",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-06-08 19:58:10",
+    "DateModified": "2026-06-08 20:50:59",
+    "ltype": 0,
+    "ftext": "Odontodactylus scyllarus",
+    "tags": [
+      "odontodactylus-scyllarus"
+    ],
+    "ftextSize": "24",
+    "FtextJunk": "0"
+  },
+  {
+    "UID": "1040",
+    "link": "https://www.nationalgeographic.com/animals/invertebrates/facts/mantis-shrimp",
+    "show": "1",
+    "DateAdded": "2026-06-08 20:47:52",
+    "DateModified": "2026-06-08 20:51:17",
+    "tags": [
+      "odontodactylus-scyllarus"
+    ],
+    "ltype": "w",
+    "ftextSize": "16692",
+    "FtextJunk": "1",
+    "ftext": "<h2><span style=\"color: rgb(255, 255, 136); font-size: 28px;\">Mantis shrimp, facts and information | National Geographic</span></h2>\n<p><a href=\"https://www.nationalgeographic.com/animals/invertebrates/facts/mantis-shrimp\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.nationalgeographic.com/animals/invertebrates/facts/mantis-shrimp</a></p>\n<img src=\"https://i.natgeofe.com/n/cf878a5c-e78d-4890-8629-798e0405d763/NationalGeographic_2747980.jpg?w=374&amp;h=249\" alt=\"Image 15: Soft green hues are outlined by bright orange lines on the shell of the Mantis Shrimp.\" style=\"max-width:100%;height:auto;\">\n\n\n\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li>\n<li><a href=\"https://www.nationalgeographic.com/animals/topic/photo-ark\" target=\"_blank\" rel=\"noopener\">Photo Ark</a></li></ul>\n<h1>Mantis shrimp</h1>\n<p>Link Share Tweet Email</p>\n<p>Common Name: Mantis shrimp</p>\n<p>Scientific Name: Stomatopoda</p>\n<p>Type: Invertebrates</p>\n<p>Diet: Carnivore</p>\n<p>Size: Up to 16 inches long</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/cf878a5c-e78d-4890-8629-798e0405d763/NationalGeographic_2747980_square.jpg?wp=1&amp;w=136&amp;h=136\" alt=\"Image 16\" style=\"max-width:100%;height:auto;\"><figcaption>Weight: Around 1.5 pounds</figcaption></figure>\n<h2>What are mantis shrimp?</h2>\n<p>Despite their name, mantis shrimp are <a href=\"https://www.youtube.com/watch?v=E0Li1k5hGBE\" target=\"_blank\" rel=\"noopener\">not true shrimp</a> but a type of stomatopod: a relative of crabs and lobsters that has been on Earth for over <a href=\"https://ucmp.berkeley.edu/arthropoda/crustacea/malacostraca/eumalacostraca/stomatopoda.html\" target=\"_blank\" rel=\"noopener\">400 million</a> years. There are more than 400 different species of mantis shrimp.</p>\n<p>Peacock mantis shrimp—also called harlequin or painted mantis shrimp—are arguably the best-known of the family. These critters get their name from their kaleidoscope shell—like a peacock’s tail—and their hinged forearms which resemble that of a <a href=\"https://www.nationalgeographic.com/animals/invertebrates/facts/praying-mantis\" target=\"_blank\" rel=\"noopener\">praying mantis</a> and are kept tucked away until the moment of attack. These solitary, aggressive animals are famous for their ferocious punch—as fast as a bullet and strong enough to snap a crab’s claw.</p>\n<h2>Habitat and appearance</h2>\n<p>Mantis shrimp live in warm, shallow waters in the Indian and Pacific oceans. To build a home, they use their raptor-like front arm to dig burrows on the seabed surrounding a coral reef. When they move on, other marine animals may take up residence in the abandoned burrow.</p>\n<p>Growing to around the length of a butter knife, peacock mantis shrimp have rainbow shells—usually blue, green, and yellow—and red legs. Their purple eyes sit on top of stalks above their head and can move independently of one other for a better view.</p>\n<p>(<a href=\"https://kids.nationalgeographic.com/animals/invertebrates/facts/peacockmantisshrimp\" target=\"_blank\" rel=\"noopener\"><em>Learn about the peacock mantis shrimp with your kids</em></a>.)</p>\n<p>Not all mantis shrimp boast these spectacular colors. Zebra mantis shrimp—the largest of all the species—are named for their cream and brown stripes, while <a href=\"https://www.researchgate.net/publication/337890234_First_record_of_the_Red_Sea_Mantis_shrimp_Erugosquilla_massavensis_Kossmann_1880_in_the_Greek_Ionian_Sea\" target=\"_blank\" rel=\"noopener\">Red Sea mantis shrimp</a> are beige with thin red stripes and a dark rear end.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/3ba3c835-23e2-4ffb-9dcd-fde9d2cf0890/NationalGeographic_2728070.jpg?wp=1&amp;w=718&amp;h=479\" alt=\"Image 17: A Mantish shrimp extends colorful arms of teal orange red green and illuminating its frame.\" style=\"max-width:100%;height:auto;\"><figcaption>But all these animals are best known for their mighty front <a href=\"https://www.youtube.com/watch?v=CW8NUCPLE1c\" target=\"_blank\" rel=\"noopener\">claws</a>—responsible for their impressive hunting skills.</figcaption></figure>\n\n\n\n<h2>Hunting and punching</h2>\n<p>Mantis shrimp are small but impressive predators that can kill prey bigger than themselves. Depending on the species, mantis shrimp use one of two hunting strategies: “Spearer” species lay in wait then skewer unsuspecting fish by using a large spike at the end of their arms. Meanwhile “smashers” like the peacock mantis shrimp use their hammer-like claws to attack their hard-shelled prey—such as crabs and clams—with a <a href=\"https://www.nature.com/articles/428819a\" target=\"_blank\" rel=\"noopener\">powerful punch</a>.</p>\n<p>So how does that punch work? When not in use, the shrimp’s clubbed arm is fastened securely in place by a latch, allowing energy to build up. A saddle-shaped spring within the arm helps store even more energy. When the latch is released, the spring propels the animal’s claw forward in the fraction of a second—<a href=\"https://aqua.org/explore/animals/peacock-mantis-shrimp\" target=\"_blank\" rel=\"noopener\">50 times faster</a> than we can blink—to hit their prey. At 75 feet per second, it is one of the <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\">fastest limb movements</a> of any animal.</p>\n<p>The strike is so fast—the speed of a <a href=\"https://www.amnh.org/explore/news-blogs/on-exhibit-posts/fast-facts-peacock-mantis-shrimp\" target=\"_blank\" rel=\"noopener\">.22 caliber bullet</a>—that it causes <a href=\"https://journals.biologists.com/jeb/article/208/19/3655/15838/Extreme-impact-and-cavitation-forces-of-a\" target=\"_blank\" rel=\"noopener\">bubbles</a> to form and collapse in the water. This energy release creates an impressive force thousands of times the shrimp’s bodyweight that combines with the initial strike to smash open the shell of a mantis shrimp’s prey, killing the animal inside.</p>\n<p>Remarkably, mantis shrimp are unharmed by the blow thanks to complex layers within the club which absorb the impact and prevent the claw from cracking. This innovative design has inspired the development of materials for <a href=\"https://www.science.org/content/article/mantis-shrimp-smash\" target=\"_blank\" rel=\"noopener\">armor</a>, sports helmets, and vehicles.</p>\n<p>Mantis shrimp use the same technique to defend themselves from predators. However, they only use this energy-intensive method of self-defense if they must. When under threat, they perform a behavioral display known as a <a href=\"https://www.youtube.com/watch?v=Hwji93BVjnI\" target=\"_blank\" rel=\"noopener\">meral spread</a> before resorting to violence: standing on their hind legs, puffing up their chest, and spreading their arms to look as large and intimidating as possible. If the predator isn’t put off by this display, the shrimp will attack.</p>\n<p><a href=\"https://www.youtube.com/watch?v=E0Li1k5hGBE\" target=\"_blank\" rel=\"noopener\">Video 2</a></p>\n<p>Mantis Shrimp Packs a Punch | Predator in Paradise</p>\n<h2>Superior vision</h2>\n<p>These crustaceans have among the most <a href=\"https://www.science.org/doi/abs/10.1126/science.1245824\" target=\"_blank\" rel=\"noopener\">complex eyes</a> in the animal kingdom. Their eyes work both independently and together so they can scan the horizon as well as focus in on prey. Each eye has three focal points, allowing the animal to <a href=\"https://www.nationalgeographic.com/science/article/mantis-shrimps-have-a-unique-way-of-seeing\" target=\"_blank\" rel=\"noopener\">perceive depth</a> with either eye.</p>\n<p>Human eyes have three photoreceptors—cells that detect color—to distinguish between blue, green, and red light. With a staggering 12 photoreceptors, mantis shrimp can see 12 different wavelengths of light. Strangely, however, they are <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-sees-like-a-satellite\" target=\"_blank\" rel=\"noopener\">worse</a> at detecting subtle color differences than humans so it’s not clear what purpose these photoreceptors serve.</p>\n<p>(<a href=\"https://www.nationalgeographic.com/science/article/at-last-a-use-for-the-oceans-most-secretive-signals\" target=\"_blank\" rel=\"noopener\"><em>How mantis shrimp send secret messages using twisted light</em></a>.)</p>\n<p>Unlike humans, mantis shrimp can <a href=\"https://www.nature.com/articles/44751\" target=\"_blank\" rel=\"noopener\">see UV light</a> and polarized light, which is made up of waves, and are the only animal known to detect <a href=\"https://www.nationalgeographic.com/science/article/mantis-shrimp-eyes-outclass-dvd-players-inspire-new-technology\" target=\"_blank\" rel=\"noopener\">circularly polarized light</a>, which travels in a spiral. Researchers suspect this ability could allow them to communicate by displaying patterns on their shells that are visible to other mantis shrimp but not other ocean creatures. This might help them attract a mate or indicate <a href=\"https://www.nationalgeographic.com/science/article/at-last-a-use-for-the-oceans-most-secretive-signals\" target=\"_blank\" rel=\"noopener\">that their burrow</a> is already occupied.</p>\n<h2>Reproduction</h2>\n<p>When they’re ready to mate, mantis shrimp leave the safety of their burrow and zigzag across the sand until they find a partner. The female will store the male’s sperm until she is ready to spawn.</p>\n<p>After laying her eggs, the female glues them together with a sticky substance secreted from a <a href=\"https://academic.oup.com/jcb/article/22/4/728/2679717?login=false\" target=\"_blank\" rel=\"noopener\">cement gland</a> on her abdomen, gathers them up, and carries them into her burrow to look after them until they hatch. The young larvae can deliver the species’ famed punch after around <a href=\"https://journals.biologists.com/jeb/article/224/8/jeb235465/258491/Scaling-and-development-of-elastic-mechanisms-the\" target=\"_blank\" rel=\"noopener\">nine days</a>.</p>\n<p>While not all species are monogamous, zebra mantis shrimp can <a href=\"https://www.bbc.co.uk/programmes/articles/2lHYr3xZSLyPQ5zNFdsFjNp/filming-mantis-shrimp-infidelity\" target=\"_blank\" rel=\"noopener\">live together</a> in their burrow for life. But, with the male responsible for all the hunting, the female could starve to death if he is killed while out looking for food, or if he abandons her for a larger female who can produce more eggs.</p>\n<h2>Threats to survival</h2>\n<p>Like other reef species, mantis shrimp are likely affected by warming sea temperatures, ocean acidification, habitat destruction, and pollution. They are preyed on by large fish, cuttlefish, squid, and octopus.</p>\n<p>Peacock mantis shrimp are popular among aquarium enthusiasts but can be difficult to keep in captivity because they often eat other species and <a href=\"https://www.guinnessworldrecords.com/news/2019/4/the-mantis-shrimp-packs-the-most-powerful-punch-in-the-animal-kingdom-567501\" target=\"_blank\" rel=\"noopener\">can break glass tanks</a> with their claws.</p>\n<p>Although it is possible for humans to eat mantis shrimp—they are considered a delicacy in Asian countries—it’s not common because they put up such a fight.</p>\n<h3>Did you know?</h3>\n<p>If a mantis shrimp loses one of its signature claws, it simply grows another.</p>\n<p>— <a href=\"https://www.science.org/content/article/mantis-shrimp-smash\" target=\"_blank\" rel=\"noopener\"><em>Science</em></a></p>\n<p>Inspired by mantis shrimps’ eyes, scientists have created digital cameras that use fluorescent imaging to distinguish between cancerous and healthy tissue.</p>\n<p>— <a href=\"https://www.science.org/doi/10.1126/scitranslmed.aaw7067\" target=\"_blank\" rel=\"noopener\"><em>Science Translational Medicine</em></a></p>\n<p>After molting their shell, mantis shrimp are unable to punch anything for several days.</p>\n<p>—<a href=\"https://journals.biologists.com/jeb/article/208/19/3655/15838/Extreme-impact-and-cavitation-forces-of-a\" target=\"_blank\" rel=\"noopener\"><em>Journal of Experimental Biology</em></a></p>\n<p>In 1998, a four-inch mantis shrimp named Tyson smashed through his aquarium tank’s quarter-inch-thick glass.</p>\n<p>—<a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\"><em>National Geographic</em></a></p>\n<p>Up to a month after fighting a rival, a mantis shrimp can still remember who won.</p>\n<p>— <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\"><em>National Geographi</em></a></p><p><br></p>\n<h2>Read This Next</h2>\n\n<figure><img src=\"https://i.natgeofe.com/n/47610b47-2394-40bf-a208-8e42dcc50cd7/IMG_2658_24_3x2.jpg?wp=1&amp;w=730&amp;h=487\" alt=\"Image 18\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/new-mantis-discovered-dancing-like-a-snake\" target=\"_blank\" rel=\"noopener\">New mantis species dances like a snake</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>New mantis species dances like a snake</h2>\n<p>The snake-tail mantis shows there’s more to these insects than just cannibalism.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/d69f8e44-5726-4534-be34-3b0793242d5b/SecretsOfTheBees_43_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 19\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/sammy-ramsey-reader-bug-questions\" target=\"_blank\" rel=\"noopener\">Can the bees be saved? A bug expert answers all your insect questions</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li>\n<li><a href=\"https://www.nationalgeographic.com/science/topic/ask-an-expert-anything\" target=\"_blank\" rel=\"noopener\">Ask an Expert Anything</a></li></ul>\n<h2>Can the bees be saved? A bug expert answers all your insect questions</h2>\n<p>In our latest Ask an Expert Anything, entomologist and National Geographic Explorer Sammy Ramsey dishes on whether insect protein could one day replace meat, the bug he would be for a day, and why some people are mosquito magnets.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/2a4ea524-9fa4-408d-b949-295e0e4300de/SPI-2474106_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 20\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/octopus-sex-arm-sensory-behavior\" target=\"_blank\" rel=\"noopener\">Male octopus has ‘sex arm’ that can mate in the dark</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>Male octopus has ‘sex arm’ that can mate in the dark</h2>\n<p>Scientists found that the male’s hectocotylus, the specialized arm for mating, is lined with receptors that can sense hormones from the female.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/075478a5-9664-402f-8e83-884f9c438d7f/MM10353_251023_18464_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 21\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/secrets-of-bees-adaptation-pollinators\" target=\"_blank\" rel=\"noopener\">Secrets of the bees: How science is revealing their sneaky genius</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>Secrets of the bees: How science is revealing their sneaky genius</h2>\n<p>New science is showing that nature’s vital pollinators are smarter than we ever imagined. Here’s why that discovery should change what we think about one of the world’s most important animals.</p>\n<h2>The best of National Geographic delivered to your inbox</h2>\n<p>Sign up for more inspiring photos, stories, and special offers from National Geographic.</p>\n<p>Email Address</p>\n<ul><li>Yes! I would like to receive top content, special offers, and other updates from National Geographic and The Walt Disney Family of Companies. By creating an account, you agree to our <a href=\"https://disneytermsofuse.com/english/\" target=\"_blank\" rel=\"noopener\">Terms of Use</a> and acknowledge that you have read our <a href=\"https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/\" target=\"_blank\" rel=\"noopener\">Privacy Policy</a> and <a href=\"https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/your-us-state-privacy-rights/\" target=\"_blank\" rel=\"noopener\">US State Privacy Rights Notice</a>.</li></ul>\n<p>Sign Up</p><p><br></p>"
   }
 ]
