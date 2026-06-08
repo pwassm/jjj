@@ -4855,5 +4855,21 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "panspermia",
+    "label": "Panspermia",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "omega3",
+    "label": "Omega3",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

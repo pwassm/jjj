@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1780870846736,
+    "_salPushTime": 1780877489941,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 36,
@@ -78,7 +78,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "cell",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -423,7 +423,7 @@
     "UID": "1",
     "show": "1",
     "VidRange": "",
-    "cell": "",
+    "cell": "1b",
     "fit": "ei",
     "link": "",
     "linkpage": "",
@@ -16556,10 +16556,10 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "segLength": "",
-    "cell": "4c",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -16579,10 +16579,10 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "segLength": "",
-    "cell": "4d",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -16602,10 +16602,10 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "segLength": "",
-    "cell": "4e",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -16625,10 +16625,10 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "segLength": "",
-    "cell": "5a",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -16648,10 +16648,10 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "segLength": "",
-    "cell": "5b",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -16671,10 +16671,10 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "segLength": "",
-    "cell": "5c",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -16694,12 +16694,12 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "physeter-macrocephalus"
     ],
     "segLength": "",
-    "cell": "5d",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -16719,10 +16719,10 @@
     "BA": "1",
     "show": "1",
     "DateAdded": "2026-05-17 18:12:49",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "segLength": "",
-    "cell": "5e",
+    "cell": "",
     "Direct": "",
     "P/S": "0",
     "ftextSize": "0",
@@ -18078,10 +18078,10 @@
     "link": "https://www.nhm.ac.uk/discover/barn-owl-tyto-alba.html",
     "show": "1",
     "DateAdded": "2026-05-17 18:58:28",
-    "DateModified": "2026-06-07 15:32:21",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "ltype": "w",
-    "cell": "4b",
+    "cell": "",
     "Direct": "",
     "MPix": "d0.4",
     "P/S": "0",
@@ -18100,10 +18100,10 @@
     "link": "https://www.nhm.ac.uk/wpy/gallery/2025-like-an-eel-out-of-water?tags=ed.current",
     "show": "1",
     "DateAdded": "2026-05-17 19:01:24",
-    "DateModified": "2026-05-22 00:10:18",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "ltype": "w",
-    "cell": "4a",
+    "cell": "",
     "Direct": "",
     "MPix": "d1.1",
     "P/S": "X",
@@ -18118,36 +18118,14 @@
     "face": ""
   },
   {
-    "UID": "689",
-    "link": "https://youtu.be/QeAGJO65goE",
-    "show": "1",
-    "DateAdded": "2026-05-17 19:11:09",
-    "DateModified": "2026-06-07 14:00:04",
-    "tags": [],
-    "Mute": "0",
-    "VidTitle": "Giant Isopod: The Creature That Breaks Every Survival Rule",
-    "VidAuthor": "@AbyssExplainedTV",
-    "P/S": "",
-    "cell": "3e",
-    "Direct": "",
-    "ftextSize": "0",
-    "FtextJunk": "0",
-    "VQ": "",
-    "BQ": "",
-    "COI": "",
-    "X": "",
-    "segLength": "",
-    "face": ""
-  },
-  {
     "UID": "690",
     "link": "https://github.com/worldbrain/Memex",
     "show": "1",
     "DateAdded": "2026-05-17 19:13:08",
-    "DateModified": "2026-05-28 15:10:56",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "ltype": "w",
-    "cell": "3d",
+    "cell": "",
     "Direct": "",
     "FTLsaved": "1",
     "P/S": "X",
@@ -18165,13 +18143,13 @@
     "link": "https://www.thisiscolossal.com/2026/02/world-nature-photography-awards-2026-winners/",
     "show": "1",
     "DateAdded": "2026-05-17 19:18:00",
-    "DateModified": "2026-06-07 17:19:44",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "notworking",
       "todo"
     ],
     "ltype": "w",
-    "cell": "3c",
+    "cell": "",
     "Direct": "",
     "FTLsaved": "1",
     "P/S": "X",
@@ -18189,13 +18167,13 @@
     "link": "https://youtu.be/XD7p_mPwVr0",
     "show": "1",
     "DateAdded": "2026-05-17 23:38:48",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "Mute": "0",
     "VidTitle": "3 метровый морской червяк, проглатывает рыб, осьминогов и кальмаров!",
     "VidAuthor": "@zootopp",
     "P/S": "0",
-    "cell": "3b",
+    "cell": "",
     "Direct": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -18211,10 +18189,10 @@
     "link": "https://www.discoverwildlife.com/animal-facts/marine-animals/delle-dolphin-baltic-sea",
     "show": "1",
     "DateAdded": "2026-05-17 23:47:16",
-    "DateModified": "2026-05-22 00:10:15",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "ltype": "w",
-    "cell": "3a",
+    "cell": "",
     "Direct": "",
     "MPix": "d1.0",
     "P/S": "X",
@@ -18233,14 +18211,14 @@
     "link": "https://youtu.be/PDcelCk9Zjg",
     "show": "1",
     "DateAdded": "2026-05-17 23:49:05",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [],
     "Mute": "0",
     "VidTitle": "Piranhas Strip a Fish to the Bone | 20 Years of Planet Earth | BBC Earth",
     "VidAuthor": "@bbcearth",
     "P/S": "0",
     "vidLength": "2:24",
-    "cell": "2e",
+    "cell": "",
     "Direct": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -18256,7 +18234,7 @@
     "link": "https://youtu.be/TPz9S2iTbBQ",
     "show": "1",
     "DateAdded": "2026-05-18 02:18:47",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "pp"
     ],
@@ -18264,7 +18242,7 @@
     "VidTitle": "How to move to the ball instead of reaching",
     "VidAuthor": "@kakaluser",
     "P/S": "0",
-    "cell": "2d",
+    "cell": "",
     "Direct": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -18280,7 +18258,7 @@
     "link": "https://youtu.be/RBfJUF_mFAY",
     "show": "1",
     "DateAdded": "2026-05-18 04:37:49",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "nudibranchs"
     ],
@@ -18288,7 +18266,7 @@
     "VidTitle": "66 Sea Slugs and nudibranchs of the Lembeh Strait, North Sulawesi, Indonesia",
     "VidAuthor": "@AkulaDiAquanero",
     "P/S": "0",
-    "cell": "2c",
+    "cell": "",
     "Direct": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -18304,7 +18282,7 @@
     "link": "https://youtu.be/Ce2TDzVhvVE",
     "show": "1",
     "DateAdded": "2026-05-18 04:49:54",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "balaenoptera-musculus"
     ],
@@ -18312,7 +18290,7 @@
     "VidTitle": "The Blue Whale: What The Biggest Whale Is Capable Of",
     "VidAuthor": "@TheDeepCurrentOfficial",
     "P/S": "0",
-    "cell": "2b",
+    "cell": "",
     "Direct": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -18329,7 +18307,7 @@
     "link": "https://youtu.be/Unoxr39NJlA",
     "show": "1",
     "DateAdded": "2026-05-18 04:52:10",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "physeter-macrocephalus",
       "attenborough"
@@ -18338,7 +18316,7 @@
     "VidTitle": "Nothing About Sperm Whales Click is Normal...Here's Why",
     "VidAuthor": "@BeyondBlackwater",
     "P/S": "0",
-    "cell": "2a",
+    "cell": "",
     "Direct": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -18355,7 +18333,7 @@
     "link": "https://youtu.be/W3znyBo8df4",
     "show": "1",
     "DateAdded": "2026-05-18 05:04:39",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "physeter-macrocephalus"
     ],
@@ -18363,7 +18341,7 @@
     "VidTitle": "Nothing About the Sperm Whale's 230dB Click is Survivable for Giant Squids",
     "VidAuthor": "@ScienceRevealed-d8x",
     "P/S": "0",
-    "cell": "1e",
+    "cell": "",
     "vidLength": "21:26",
     "VidRange": "804.4 31",
     "VidComment": "",
@@ -18478,7 +18456,7 @@
     "link": "https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
     "show": "1",
     "DateAdded": "2026-05-20 14:30:12",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "phyllaplysia-taylori",
       "myvideo"
@@ -18486,7 +18464,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:42",
-    "cell": "1a",
+    "cell": "",
     "VidRange": "0 4.1, 26.7 10.1",
     "VidComment": "Starting Quest, ",
     "Direct": "tshare",
@@ -18532,7 +18510,7 @@
     "link": "https://youtu.be/i6lGSUgvrHs",
     "show": "1",
     "DateAdded": "2026-05-20 15:37:09",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "odontomachus"
     ],
@@ -18541,7 +18519,7 @@
     "VidAuthor": "@boco_eyo",
     "P/S": "0",
     "vidLength": "0:31",
-    "cell": "1c",
+    "cell": "",
     "Direct": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -18557,7 +18535,7 @@
     "link": "https://youtu.be/Q6B9Drsscpo",
     "show": "1",
     "DateAdded": "2026-05-20 15:43:52",
-    "DateModified": "2026-06-07 14:00:04",
+    "DateModified": "2026-06-07 23:03:00",
     "tags": [
       "odontomachus"
     ],
@@ -18565,7 +18543,7 @@
     "VidTitle": "Everything you should know about Trap-Jaw ants, a.k.a Odontomachus chelifer",
     "VidAuthor": "@AntsDocumentary",
     "P/S": "0",
-    "cell": "1b",
+    "cell": "",
     "Direct": "",
     "vidLength": "6:04",
     "ftextSize": "0",
@@ -19118,7 +19096,7 @@
     "MPix": "0.2",
     "P/S": "0",
     "comment": "The life cycle of Riftia pachyptila illustrates the complexity of factors—involving biology, chemistry, geology, and physical oceanography—that all play roles in the migration, resettlement, and speciation of vent species.",
-    "cell": "",
+    "cell": "5e",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19141,7 +19119,7 @@
     "MPix": "0.1",
     "P/S": "0",
     "comment": "A vent colony of the serpulid polychaete Laminatubus alvini thrives near a hydrothermal vent. ",
-    "cell": "",
+    "cell": "5d",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19183,7 +19161,7 @@
     "MPix": "2.1",
     "P/S": "0",
     "comment": " Photo Date: 2011 July 22  Credit: NOAA Okeanos Explorer Program, Galapagos Rift Expedition 2011 ",
-    "cell": "",
+    "cell": "5c",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19205,7 +19183,7 @@
     "MPix": "9.8",
     "P/S": "",
     "comment": "Fig. 1. Natural habitat, gas exchange system, trophosome, and endosymbionts of the deep-sea siboglinid tubeworm P. echinospica. (A) Photograph of a colony of P. echinospica individuals in the field. Each tube is roughly 30 cm in length. The photo was taken at the Haima cold seep field by the Haima ROV crew. The inserted map shows the regional location map of the two research sites. (B) Diagram of the gas exchange system of P. echinospica. The tubeworm absorbs oxygen and carbon dioxide from the ambient seawater through its plume. It also sucks in sulfide through its posterior region from the sediment. (C) Diagram showing the cross section of each trophosome lobule, with large symbionts located at the lobule periphery and small symbionts at the lobule center. (D) H&E staining of a cross-section of the trophosome of an adult P. echinospia tubeworm. (E) FISH analysis of the symbionts. (F and G) Amplified regions of the periphery and center of a trophosome lobule, demonstrating the morphological variation of the symbionts. The semitransparent dashed lines in (F) outline three typical periphery large symbionts. (H) Statistical analysis of the size variation of bacteriocytes located in the periphery bacteriocytes and center of a lobule (P < 0.001, t test, n-periphery = 449, n-center = 1304).",
-    "cell": "",
+    "cell": "5b",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19886,7 +19864,7 @@
     "VidRange": "i",
     "MPix": "0.3",
     "P/S": "0",
-    "cell": "",
+    "cell": "5a",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -22386,7 +22364,8 @@
     "VidRange": "150.2 120",
     "VidComment": "Feeding, With little one, Scouting for food?, Eggs and tiny cuttlefish",
     "segLength": "2:00",
-    "face": ""
+    "face": "",
+    "Direct": "fcuttle"
   },
   {
     "UID": "890_3",
@@ -23273,7 +23252,7 @@
     "P/S": "0",
     "comment": "‘The Ouroboros will become a beacon. Daytime or nighttime, it's going to pulse with light and energy.’  Lindy Lee  Ouroboros is an immersive public sculpture by Australian artist Lindy Lee located in the National Sculpture Garden.  With a practice spanning more than four decades, Meanjin/Brisbane-born Lee uses her work to explore her Chinese ancestry through Taoism and Ch’an (Zen) Buddhism — philosophies that see humanity and nature as inextricably linked.  Ouroboros is based on the ancient image of a snake eating its own tail; an image seen across cultures and millennia, the symbol of eternal return, of cycles of birth, death and renewal.  Show Less Through its location at the entrance of the National Gallery, visitors are able enter the ‘mouth’ of the sculpture and walk into the curved space to experience darkness that is illuminated by light beams emanating from the thousands of perforations on its surface.  During the day its highly polished mirrored surface reflects the imagery of the floating world, the transience of passers-by, cars, birds in flight and passing clouds. At night the Ouroboros is lit internally, returning its light to the world.  Ouroboros measures around four metres high and weighs approximately 13 tonnes. The sculpture also incorporates recycled materials, maximising renewable energy and measures to minimise its carbon impact, making it one of Australia's first sustainable works of public art.  Lindy Lee’s Ouroboros was commissioned to celebrate the National Gallery’s 40th anniversary in 2022 and was completed in October 2024.",
     "COI": "",
-    "cell": "",
+    "cell": "4e",
     "X": "",
     "face": ""
   },
@@ -23290,7 +23269,7 @@
     "MPix": "1.7",
     "P/S": "0",
     "COI": "",
-    "cell": "",
+    "cell": "4d",
     "X": "",
     "face": ""
   },
@@ -23307,7 +23286,7 @@
     "MPix": "0.7",
     "P/S": "1",
     "COI": "",
-    "cell": "",
+    "cell": "4c",
     "X": "",
     "face": ""
   },
@@ -23324,7 +23303,7 @@
     "MPix": "0.3",
     "P/S": "1",
     "COI": "",
-    "cell": "",
+    "cell": "4b",
     "X": "",
     "face": ""
   },
@@ -23341,7 +23320,7 @@
     "MPix": "2.4",
     "P/S": "0",
     "COI": "",
-    "cell": "",
+    "cell": "4a",
     "X": "",
     "face": ""
   },
@@ -23359,7 +23338,7 @@
     "P/S": "0",
     "comment": "Modern Eden Gallery proudly presents Evermore a series of new painted ceramic reliefs by Louisiana artist Megan Buccere. The ouroboros is an ancient symbol depicting a serpent or dragon eating its own tail. The ouroboros is often interpreted as a symbol for eternal cyclic renewal or a cycle of life, death, and rebirth. The paintings in this small solo exhibition visit these themes as the artist explores perpetual renewal and intimate rebirth.   Megan Buccere (pronounced bus era) is a narrative painter who works primarily in soft pastels and oils. She attended Louisiana State University, holds a BS in Art Education, and has taught advanced and talented high school art for the past 15 years. Buccere's painting style features soft surreal works that blur the line between beauty and fear, creating stunning pieces with an edge. Her use of coincidental, accidental, and unexpected connections, such as her use of strings, multiple hands, and all knowing eyes, often leaves viewers orphaned with a mix of conflicting feelings and thoughts.   To receive the collectors preview, please email Modern Eden Gallery Director, Kim Larson at kim@moderneden.com",
     "COI": "",
-    "cell": "",
+    "cell": "3e",
     "X": "",
     "face": ""
   },
@@ -23440,7 +23419,7 @@
     "FtextJunk": "0",
     "MPix": "4.2",
     "P/S": "0",
-    "cell": "",
+    "cell": "3d",
     "face": ""
   },
   {
@@ -23465,7 +23444,7 @@
     "UID": "19@0.685,0.335",
     "show": "1",
     "VidRange": "",
-    "cell": "",
+    "cell": "3c",
     "fit": "ei",
     "link": "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhGSku75xTCOUphDIeKW5FCto6fTo5VnXH1fI-kNtkdX27Z7BvVnLc-jrmxbVL7wwr4-GNH1jOHEacoO1ArLwQy_lThESPkipVeAt0514k-BtlAZ9plpLJ6QW8m4hELBhJxmIthWIe7rsk/s1600/125.jpg",
     "linkpage": "https://micksmarinebiology.blogspot.com/2010/07/temperate-water-reef-at-wemeldinge-part.html",
@@ -23551,7 +23530,7 @@
     "MPix": "3.4",
     "P/S": "0",
     "face": "",
-    "cell": ""
+    "cell": "3b"
   },
   {
     "UID": "944",
@@ -23568,7 +23547,7 @@
     "MPix": "0.8",
     "P/S": "0",
     "face": "",
-    "cell": ""
+    "cell": "3a"
   },
   {
     "UID": "945",
@@ -23654,7 +23633,7 @@
     "MPix": "0.2",
     "P/S": "1",
     "face": "",
-    "cell": ""
+    "cell": "2e"
   },
   {
     "UID": "950",
@@ -23671,7 +23650,7 @@
     "MPix": "2.0",
     "P/S": "0",
     "face": "",
-    "cell": ""
+    "cell": "2d"
   },
   {
     "UID": "951",
@@ -23689,7 +23668,7 @@
     "P/S": "0",
     "comment": "Shed cuticle of female tardigrade, containing eggs, each 50μm across",
     "face": "",
-    "cell": ""
+    "cell": "2c"
   },
   {
     "UID": "952",
@@ -23707,7 +23686,7 @@
     "P/S": "0",
     "comment": "Richtersius coronifer in active and 'tun' states. A↔P = anterior-posterior; mg = midgut; go = gonad; pb = pharyngeal bulb; mo = mouth; st = stylet Scale bars = 100 μm",
     "face": "",
-    "cell": ""
+    "cell": "2b"
   },
   {
     "UID": "953",
@@ -23725,7 +23704,7 @@
     "P/S": "0",
     "comment": "The first drawing of a tardigrade, by Johann August Ephraim Goeze, 1773",
     "face": "",
-    "cell": ""
+    "cell": "2a"
   },
   {
     "UID": "954",
@@ -23743,7 +23722,7 @@
     "P/S": "1",
     "comment": "Drawing of Echiniscus testudo on a grain of sand by L.M.F. Doyère, 1840",
     "face": "",
-    "cell": ""
+    "cell": "1e"
   },
   {
     "UID": "955",
@@ -23761,7 +23740,7 @@
     "P/S": "0",
     "comment": "More details  The lobopod-like luolishaniids from the Cambrian and Ordovician are possibly the closest fossil relatives of tardigrades. Entothryeos reconstruction shown.",
     "face": "",
-    "cell": ""
+    "cell": "1d"
   },
   {
     "UID": "956",
@@ -23779,7 +23758,7 @@
     "P/S": "0",
     "comment": "Tardigrade body plan compared to arthropods, onychophora, and annelids. Tardigrades have lost the whole middle section of the ecdysozoan body plan, and its Hox genes.",
     "face": "",
-    "cell": ""
+    "cell": "1c"
   },
   {
     "UID": "957_d",
@@ -24852,7 +24831,7 @@
     "link": "https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi",
     "show": "1",
     "DateAdded": "2026-06-07 14:33:43",
-    "DateModified": "2026-06-07 21:01:26",
+    "DateModified": "2026-06-07 22:55:52",
     "ltype": 0,
     "ftext": "<h1><i>Pseudobiceros bedfordi&nbsp;</i></h1><div><div><div><div><div>\n\t\n\t\n</div>\n\n\n<div><br></div></div>\n\n\t\t\t\t\t\t\t</div>\n\t\t\n\t\t\t\t\t</div>\n\t\t\t\t</div>\n\t\t\t\t<div>\n\t\t\t\t\t<div>\n\t\t\t\t\t\t\t\n\n\t\t\t\t\t\t<div>From Wikipedia, the free encyclopedia</div>\n\t\t\t\t\t</div>\n\t\t\t\t\t\n\t\t\t\t\t\n\t\t\t\t\t\n\t\t\t\t\t<div><div>\n\n\n\n\n<i>Pseudobiceros bedfordi</i></div><div>\n\n\n<a href=\"https://en.wikipedia.org/wiki/File:Pseudobiceros_bedfordi.jpg\" target=\"_blank\" rel=\"noopener\"><img src=\"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Pseudobiceros_bedfordi.jpg/250px-Pseudobiceros_bedfordi.jpg\" data-localsrc=\"jpgs/en.wikipedia.org/wiki/Pseudobiceros_bedfordi/250px Pseudobiceros bedfordi.jpg\" onerror=\"this.onerror=null;this.src=this.getAttribute('data-localsrc');\"></a>&nbsp;</div><div>&nbsp;\n\n\n\n\n\n\n\n<a href=\"https://en.wikipedia.org/wiki/Taxonomy_(biology)\" target=\"_blank\" rel=\"noopener\">Scientific classification</a> <a href=\"https://en.wikipedia.org/wiki/Template:Taxonomy/Pseudobiceros\" target=\"_blank\" rel=\"noopener\"><img alt=\"Edit this classification\" src=\"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/OOjs_UI_icon_edit-ltr.svg/20px-OOjs_UI_icon_edit-ltr.svg.png\" data-localsrc=\"jpgs/en.wikipedia.org/wiki/Pseudobiceros_bedfordi/Edit this classification.png\" onerror=\"this.onerror=null;this.src=this.getAttribute('data-localsrc');\"></a>\n\n\nKingdom:\n\n<a href=\"https://en.wikipedia.org/wiki/Animal\" target=\"_blank\" rel=\"noopener\">Animalia</a>\n\n\nPhylum:\n\n<a href=\"https://en.wikipedia.org/wiki/Flatworm\" target=\"_blank\" rel=\"noopener\">Platyhelminthes</a>\n\n\nOrder:\n\n<a href=\"https://en.wikipedia.org/wiki/Polycladida\" target=\"_blank\" rel=\"noopener\">Polycladida</a>\n\n\nSuborder:\n\n<a href=\"https://en.wikipedia.org/wiki/Cotylea_(worm)\" target=\"_blank\" rel=\"noopener\">Cotylea</a>\n\n\nFamily:\n\n<a href=\"https://en.wikipedia.org/wiki/Pseudocerotidae\" target=\"_blank\" rel=\"noopener\">Pseudocerotidae</a>\n\n\nGenus:\n\n<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros\" target=\"_blank\" rel=\"noopener\"><i>Pseudobiceros</i></a>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nSpecies:\n\n<div><i><b>P.&nbsp;bedfordi</b></i></div>\n\n\n\n\n\n\n\n\n\n\n<a href=\"https://en.wikipedia.org/wiki/Binomial_nomenclature\" target=\"_blank\" rel=\"noopener\">Binomial name</a>\n\n\n<b><i>Pseudobiceros bedfordi</i></b><br><div>(<a href=\"https://en.wikipedia.org/wiki/Frank_Fortescue_Laidlaw\" target=\"_blank\" rel=\"noopener\">Laidlaw</a>, 1903)</div>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<a href=\"https://en.wikipedia.org/wiki/Synonym_(taxonomy)\" target=\"_blank\" rel=\"noopener\">Synonyms</a>\n\n\n\n<ul><li><i>Pseudoceros bedfordi</i> <small><a href=\"https://en.wikipedia.org/wiki/Frank_Fortescue_Laidlaw\" target=\"_blank\" rel=\"noopener\">Laidlaw</a>, 1903</small></li></ul>\n\n\n\n\n\n<p><i><b>Pseudobiceros bedfordi</b></i> (common names <b>Persian carpet flatworm</b><a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-autogenerated2-1\" target=\"_blank\" rel=\"noopener\">[1]</a> and <b>Bedford's flatworm</b>) is a <a href=\"https://en.wikipedia.org/wiki/Species\" target=\"_blank\" rel=\"noopener\">species</a> of <a href=\"https://en.wikipedia.org/wiki/Flatworm\" target=\"_blank\" rel=\"noopener\">flatworm</a> in the family <a href=\"https://en.wikipedia.org/wiki/Pseudocerotidae\" target=\"_blank\" rel=\"noopener\">Pseudocerotidae</a>.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-2\" target=\"_blank\" rel=\"noopener\">[2]</a>\n</p><p>This species has two penises, which it uses to engage in <a href=\"https://en.wikipedia.org/wiki/Penis_fencing\" target=\"_blank\" rel=\"noopener\">penis fencing</a>,\n attempting to inject sperm into its opponent in order to fertilize it, \nwhile simultaneously avoiding being fertilized by their opponent.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-3\" target=\"_blank\" rel=\"noopener\">[3]</a>\n</p>\n\n<div><h2>Description</h2></div>\n<p><i>Pseudobiceros bedfordi</i> is a large polyclad flatworm \napproximately 8–10&nbsp;cm in length. It has a distinctive pattern consisting\n of a brown to black background, with multiple transverse, bilateral \npink lines around thousands of tightly spaced, bright yellow spots,<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-Richmond-4\" target=\"_blank\" rel=\"noopener\">[4]</a> pink undulating spots with stripes on the sides of the body.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-autogenerated1-5\" target=\"_blank\" rel=\"noopener\">[5]</a>\n</p><p>The edges of the body are usually ruffled. The underside of <i>Pseudobiceros bedfordi</i> is pale pink. The front of the body has a pair of erect pseudotentacles.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-autogenerated2-1\" target=\"_blank\" rel=\"noopener\">[1]</a>\n</p>\n<div><h2>Distribution</h2></div>\n<p>This species is found in <a href=\"https://en.wikipedia.org/wiki/Indonesia\" target=\"_blank\" rel=\"noopener\">Indonesia</a>, <a href=\"https://en.wikipedia.org/wiki/Malaysia\" target=\"_blank\" rel=\"noopener\">Malaysia</a>, <a href=\"https://en.wikipedia.org/wiki/Kenya\" target=\"_blank\" rel=\"noopener\">Kenya</a>, <a href=\"https://en.wikipedia.org/wiki/Micronesia\" target=\"_blank\" rel=\"noopener\">Micronesia</a>, <a href=\"https://en.wikipedia.org/wiki/Northern_Mariana_Islands\" target=\"_blank\" rel=\"noopener\">Northern Mariana Islands</a>, <a href=\"https://en.wikipedia.org/wiki/Thailand\" target=\"_blank\" rel=\"noopener\">Thailand</a>, <a href=\"https://en.wikipedia.org/wiki/Australia\" target=\"_blank\" rel=\"noopener\">Australia</a>, <a href=\"https://en.wikipedia.org/wiki/Philippines\" target=\"_blank\" rel=\"noopener\">Philippines</a>, <a href=\"https://en.wikipedia.org/wiki/Solomon_Islands\" target=\"_blank\" rel=\"noopener\">Solomon Islands</a>, <a href=\"https://en.wikipedia.org/wiki/Myanmar\" target=\"_blank\" rel=\"noopener\">Myanmar</a>, and <a href=\"https://en.wikipedia.org/wiki/Palau\" target=\"_blank\" rel=\"noopener\">Palau</a>.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-6\" target=\"_blank\" rel=\"noopener\">[6]</a>\n</p>\n<div><h2>Habitat</h2></div>\n<p><i>Pseudobiceros bedfordi</i> is found on coral rubble<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-Richmond-4\" target=\"_blank\" rel=\"noopener\">[4]</a> and ledges in back reefs, coastal bays, and in lagoons.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-autogenerated1-5\" target=\"_blank\" rel=\"noopener\">[5]</a>\n</p>\n<div><h2>Behaviour</h2></div>\n<p>This worm is fast-moving, and is able to swim by undulating its body.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-Richmond-4\" target=\"_blank\" rel=\"noopener\">[4]</a>\nIndividuals of Pseudobiceros bedfordi are also able to recognize members\n of their own species through their distinctive coloration patterns, \nwhich helps prevent cross-species mating with similar flatworms that \nshare the same coral reef habitats.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-7\" target=\"_blank\" rel=\"noopener\">[7]</a>\n</p>\n<div><h2>Diet</h2></div>\n<p><i>Pseudobiceros bedfordi</i> feeds on <a href=\"https://en.wikipedia.org/wiki/Ascidiacea\" target=\"_blank\" rel=\"noopener\">ascidians</a> and on crustaceans that are small enough to swallow.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-autogenerated1-5\" target=\"_blank\" rel=\"noopener\">[5]</a>\n</p>\n<div><h2>Reproduction</h2></div>\n<a href=\"https://en.wikipedia.org/wiki/File:Mating_Pseudobiceros_bedfordi.png\" target=\"_blank\" rel=\"noopener\"><img src=\"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Mating_Pseudobiceros_bedfordi.png/250px-Mating_Pseudobiceros_bedfordi.png\" data-localsrc=\"jpgs/en.wikipedia.org/wiki/Pseudobiceros_bedfordi/250px Mating Pseudobiceros bedfordi.png\" onerror=\"this.onerror=null;this.src=this.getAttribute('data-localsrc');\"></a></div><div>Two specimens of <i>Pseudobiceros bedfordi</i> about to engage in <a href=\"https://en.wikipedia.org/wiki/Penis_fencing\" target=\"_blank\" rel=\"noopener\">penis fencing</a>\n<p>Like all flatworms in the genus <i>Pseudobiceros</i>, they are <a href=\"https://en.wikipedia.org/wiki/Hermaphrodite\" target=\"_blank\" rel=\"noopener\">hermaphroditic</a>\n and have two penises. During mating, they fence with one another, using\n their penises, attempting to stab and inject sperm in their opponent, \nwhile avoiding being fertilized by their opponent. They are able to \ninseminate their opponent by injecting their sperm into any region of \nthe other's body they are able to penetrate. After successfully \ninjecting the other, the spermatozoa stream through their partner's body\n on their way to ovaries, where they will fertilize the eggs. The stream\n is visible through the body tissue of the worm, appearing as pale \nstreaks, like lightning jags.<a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-8\" target=\"_blank\" rel=\"noopener\">[8]</a><a href=\"https://en.wikipedia.org/wiki/Pseudobiceros_bedfordi#cite_note-9\" target=\"_blank\" rel=\"noopener\">[9]</a>\n</p></div></div></div>",
     "tags": [
@@ -24883,41 +24862,56 @@
     "cell": ""
   },
   {
-    "UID": "1019_d_d",
+    "UID": "1019_d_d_d_d_d",
     "cell": "",
     "show": "1",
     "VidRange": "text",
-    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links&nbsp;</div><div>(and a few of my own images and videos mostly from the&nbsp;</div><div>fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p>Currently available:</p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>On computer mouse hold zoomsand held mouse pans.</p><p>On phone/tablet pinch and separate to expand, two fingers pan.</p><p>Once zoomed, to get back to 1:1:</p><p>Desktop: doubleclick, phone: tap.</p><p>To get back to gridview:</p><p>Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left.</p><p></p></div></details><p><br></p><p>Coming:</p><p></p><details><summary>Slideshows!</summary><div><p>Use menu.</p><p>Shows from sealifeandmore as noted.</p><p>Local disk shows your option.</p></div></details><p></p><p>==========================</p><p><br></p><p><br></p><p><br></p><p><br></p></div><div><h6></h6></div>",
-    "DateAdded": "2026-06-07 18:12:52",
-    "DateModified": "2026-06-07 21:10:13",
+    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p><br></p><p>Currently available:</p><p><br></p><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p>Coming:</p><p></p><details><summary>Slideshows!</summary><div><p>Use menu.</p><p>Shows from sealifeandmore as noted.</p><p>Local disk shows your option.</p></div></details><p></p><p>==========================</p><details open=\"\"><summary></summary><div><br></div></details><p><br></p><p><br></p><details><summary>deta</summary><div>ads</div></details><p><br></p><p><br></p></div><div><h6></h6></div>",
+    "DateAdded": "2026-06-07 22:34:35",
+    "DateModified": "2026-06-07 22:42:11",
     "link": "",
-    "ftextSize": "1154",
-    "FtextJunk": "0"
-  },
-  {
-    "UID": "1019_d_d_d",
-    "cell": "",
-    "show": "1",
-    "VidRange": "text",
-    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links&nbsp;</div><div>(and a few of my own images and videos mostly from the&nbsp;</div><div>fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p>Currently available:</p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>On computer mouse hold zoomsand held mouse pans.</p><p>On phone/tablet pinch and separate to expand, two fingers pan.</p><p>Once zoomed, to get back to 1:1:</p><p>Desktop: doubleclick, phone: tap.</p><p>To get back to gridview:</p><p>Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left.</p><p></p></div></details><p><br></p><p>Coming:</p><p></p><details><summary>Slideshows!</summary><div><p>Use menu.</p><p>Shows from sealifeandmore as noted.</p><p>Local disk shows your option.</p></div></details><p></p><p>==========================</p><p><br></p><p><br></p><p><br></p><p><br></p></div><div><h6></h6></div>",
-    "DateAdded": "2026-06-07 21:10:14",
-    "DateModified": "2026-06-07 21:12:50",
-    "link": "",
-    "ftextSize": "1154",
-    "FtextJunk": "0"
-  },
-  {
-    "UID": "1019_d_d_d_d",
-    "cell": "",
-    "show": "1",
-    "VidRange": "text",
-    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links&nbsp;</div><div>(and a few of my own images and videos mostly from the&nbsp;</div><div>fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p>Currently available:</p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>On computer mouse hold zoomsand held mouse pans.</p><p>On phone/tablet pinch and separate to expand, two fingers pan.</p><p>Once zoomed, to get back to 1:1:</p><p>Desktop: doubleclick, phone: tap.</p><p>To get back to gridview:</p><p>Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left.</p><p></p></div></details><p><br></p><p>Coming:</p><p></p><details><summary>Slideshows!</summary><div><p>Use menu.</p><p>Shows from sealifeandmore as noted.</p><p>Local disk shows your option.</p></div></details><p></p><p>==========================</p><details open=\"\"><summary></summary><div><br></div></details><p><br></p><p><br></p><details><summary>deta</summary><div>ads</div></details><p><br></p><p><br></p></div><div><h6></h6></div>",
-    "DateAdded": "2026-06-07 21:12:52",
-    "DateModified": "2026-06-07 22:20:46",
-    "link": "",
-    "ftextSize": "1271",
+    "ftextSize": "1359",
     "FtextJunk": "0",
-    "Direct": "Greeting"
+    "Direct": ""
+  },
+  {
+    "UID": "1019_d_d_d_d_d_d",
+    "cell": "",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p>Currently available:</p><details open=\"\"><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help button available upper left hand corner.</div></details><details><summary>Singles</summary><div>[list of single videos, images, or slides from T here, whatever has text&nbsp; in \"Direct\" uses that title]</div></details><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p></div></details><p></p><p>==========================</p><details open=\"\"><summary></summary><div><br></div></details><p><br></p><p><br></p><details><summary>deta</summary><div>ads</div></details><p><br></p><p><br></p></div><div><h6></h6></div>",
+    "DateAdded": "2026-06-07 22:42:21",
+    "DateModified": "2026-06-07 22:49:06",
+    "link": "",
+    "ftextSize": "1802",
+    "FtextJunk": "0",
+    "Direct": ""
+  },
+  {
+    "UID": "1019_d_d_d_d_d_d_d",
+    "cell": "",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p>Currently available:</p><details open=\"\"><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help button available upper left hand corner.</div></details><details><summary>Singles</summary><div>[list of single videos, images, or slides from T here, whatever has text&nbsp; in \"Direct\" uses that title]</div></details><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p></div></details><p></p><p>==========================</p><p><br></p></div><div><h6></h6></div>",
+    "DateAdded": "2026-06-07 22:49:33",
+    "DateModified": "2026-06-07 22:50:06",
+    "link": "",
+    "ftextSize": "1652",
+    "FtextJunk": "0",
+    "Direct": ""
+  },
+  {
+    "UID": "1019_d_d_d_d_d_d_d_d",
+    "cell": "",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help button available upper left hand corner.<br></div></details><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p></div></details><p></p><p>====================================</p><details class=\"\"><summary>Singles</summary><div>[list of single videos, images, or slides from T here, whatever has text&nbsp; in \"Direct\" uses that title]</div></details><p><br></p><details class=\"\"><summary>Grids</summary><slot id=\"details-content\" pseudo=\"details-content\" style=\"display: block;\"><div style=\"padding: 4px 0px; min-height: 1.4em;\">[list of ss - marked available from C]</div></slot></details><p><br></p><p><br></p><p>==========================</p><p><br></p></div><div><h6></h6></div>",
+    "DateAdded": "2026-06-07 22:52:10",
+    "DateModified": "2026-06-07 23:58:05",
+    "link": "",
+    "ftextSize": "1962",
+    "FtextJunk": "4",
+    "Direct": "greet"
   },
   {
     "UID": "1020",
@@ -24945,5 +24939,132 @@
     "FtextJunk": "0",
     "ftext": "<h2>New leader takes the helm at the Monterey Bay Aquarium</h2>\n<p>For the past 41 years, the Monterey Bay Aquarium has only had one CEO: Julie Packard. The daughter of Silicon Valley pioneer David Packard and a marine biologist, Packard converted a former World War I-era sardine factory on Cannery Row into one of the most successful and respected aquariums anywhere in the United States, if not the world.</p>\n<p>The sleek facility, famous for its sea otters, jellyfish and “Seafood Watch” program used by millions to make informed choices at the grocery store, draws 2 million visitors every year — more than the annual home attendance of the San Francisco 49ers, Golden State Warriors and San Jose Sharks combined.</p>\n<p>Last month, Packard retired, while remaining on the aquarium’s board. She is succeeded by Jenny Gray, who worked for 17 years as CEO of Zoos Victoria, a nonprofit organization that operates the Melbourne Zoo and other wildlife centers in Australia. Gray has master’s degrees in business and engineering, and a doctorate in ethics from the University of Melbourne.</p>\n<p>This conversation has been condensed and edited for clarity and length.</p>\n<p><strong>Q</strong>: When was the first time that you visited the aquarium, and what do you remember?</p>\n<p><strong>A:</strong> I was studying at the University of California, Berkeley campus, doing my master’s in transportation engineering. Over spring break, about eight of us jumped into two cars and drove down the coastline. When we got to Monterey, we visited the aquarium. It was 1989. I was absolutely mesmerized at the sardine tank — that column of water with fish swimming around in it. I remember just being really engaged with the whole experience.</p>\n<p>I hadn’t seen anything like the kelp forest either. And then, years later, of course, we saw it being copied all over the world. It was a phenomenal exhibit.</p>\n<p>Also, the storytelling struck me: This idea of a place that was part of the fishing industry that now talks about conserving the ocean. It was clever. I was already a scuba diver. I loved it. As a diver, I had spent a lot of time learning the names of fish and learning how they behave. To do that while you’re warm and dry is quite different from doing it while they’re all trying to get away from you.</p>\n<img src=\"https://www.montereyherald.com/wp-content/uploads/2024/05/MAG-L-AQUARIUM-06XX-16.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 1: The Monterey Bay Aquarium's Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\">\n<p>The Monterey Bay Aquarium’s Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p>\n<p><strong>Q:</strong> Why do you think the Monterey Bay Aquarium has become so popular?</p>\n<p><strong>A:</strong> I used to say that Zoos Victoria had more members than the four biggest football teams in the area combined. Places like aquariums show us something different about nature. It’s always live. It’s always changing. It’s not static.</p>\n<p>Every single experience you have will be different on the day you visit. The kelp tank will be different if the sun’s shining or not. The different time of day will give you a different experience. And you’re looking at something real, not a screen.</p>\n<p>For parents, taking their children out of the house and having them run around looking at real things, that sparks curiosity. Particularly in difficult times, people return to places that they love. They return to places that inspire and give hope, because we’re looking for that in our daily lives.</p>\n<p><strong>A:</strong> In terms of exhibits, do you have any thoughts of things that you’d like to add?</p>\n<p><strong>A:</strong> Absolutely! A whole lot. But I am on day eight today. So I would be remiss to rush in and say all my crazy ideas. But I think we’re going to have a lot of fun. Ocean conservation has never been more important.</p>\n<img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MAG-L-AQUARIUM-06XX-1.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 2: A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\">\n<p>A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p>\n<p><strong>Q:</strong> Given your long history with zoos and aquariums, what can be improved upon at the Monterey Bay Aquarium?</p>\n<p><strong>A:</strong> At the moment, I’m doing walking and listening tours, going out with different teams. Yesterday, they had me deep in the basement.</p>\n<p>The engineering kid in me just loved it. This aquarium is a remarkable piece of work. The way it was conceived 40 years ago, the way the water moves, the way we pull really nutrient-rich water out of the bay to feed life forms inside is incredible, and it allows us to look after a very wide range of different creatures. So before I would even think about offering solutions for change, I want to understand it. They are world leaders here for a good reason. They’re incredible. There won’t be Earth-shattering changes. Nothing’s broken here. In fact, the exact opposite.</p>\n<p><strong>Q:</strong> What do you think is the major challenge facing the world’s oceans right now? And what do you think is an area where trends are improving?</p>\n<p><strong>A:</strong> The major challenges are around overuse. And so Seafood Watch is an incredible resource to help people understand that there’s not a limitless supply of food out of the ocean, that we need to be careful about what we use and when we use it.</p>\n<p>As a positive, the team here has worked on bluefin tuna, and we have been able to help turn around the population. What’s great about fish is they actually recover quite quickly if you protect the right places, if you protect the breeding grounds, if you protect mature adults.</p>\n<p>But the big threats are pollution — whether that’s plastic or other pollution — and climate change, and over-exploitation of the ocean itself.</p>\n<img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/Monterey-Bay-Aquarium-sea-otters.jpeg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 3: Sea otters frolic at the Monterey Bay Aquarium, which will reopen to the general public May 15, 2021 after being closed for 14 months due to the COVID pandemic. (Photo: Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\">\n<p>Sea otters frolic at the Monterey Bay Aquarium. (Photo: Monterey Bay Aquarium)</p>\n<p><strong>Q:</strong> You have a doctorate in ethics, focused on issues involving wildlife. Is there a conflict between the quality of life for individual animals in captivity at zoos and aquariums and the goals those institutions have to inform and inspire the public toward conservation?</p>\n<p><strong>A:</strong> We have to be good at both. I don’t think we can do one at the expense of the other. At Zoos Victoria, we often worked with critically endangered species where there are very few left. When there are very few left, if you do things that are bad for an individual, you actually can crash the whole population.</p>\n<p>I think we stop too soon when we say it’s OK to penalize some individuals to save other individuals. Why penalize any? It is not a given that a life in captivity has to be a bad life. We should ask ourselves every single day how do we make the lives better for those animals who live in our care?</p>\n<p>How do we make sure that the life they have with us is as good as it possibly can be? And the more we do that, the more they’re going to breed, the longer they’re going to live. What’s good for the individual is also good for the species and conservation.</p>\n<p><strong>Q:</strong> Do you have a favorite animal at the aquarium?</p>\n<p><strong>A:</strong> Right now, it’s the Giant Pacific Octopus. She’s absolutely a heart-winner. And incredibly charismatic and tactile. She will come over and try to touch you and work out if she likes you or not. She is huge and really amazing.</p>\n<p><strong>Q:</strong> Polls are showing that one of the main concerns that Americans have right now is affordability. A ticket to the Monterey Bay Aquarium now costs $65 for adults and $50 for children. That’s higher than most U.S. aquariums. Do you have any thoughts about that when people are concerned these days with economic anxiety?</p>\n<p><strong>A:</strong> You know, we certainly offer opportunities for those who are not able to afford the price, particularly through the <a href=\"https://www.montereybayaquarium.org/visit/other-ways-to-visit/museums-for-all-at-the-aquarium\" target=\"_blank\" rel=\"noopener\">“Museums for All”</a> program (which provides free admission to people who receive Supplemental Nutrition Assistance Program (SNAP) benefits — known as CalFresh in California). For people who are really struggling, there’s a way that you can still come out and enjoy the aquarium.</p>\n<p>Distance is another barrier. It may be that in good times, you would have gone to Florida on your holiday, but you’re not going to go away every holiday this year. So we would encourage that you make a day trip. Summer’s here. You’re going to need to do something with your kids. Bring them down to the aquarium and have an incredible day. Enjoy Cannery Row. Enjoy Fisherman’s Wharf. It’s not just an aquarium. It’s a whole outing that you’re going to be doing, and it’s beautiful to stand on the back deck and watch the otters playing in the ocean that we’ve protected for so long.</p>\n<p>We think the aquarium is a value for the money and for the experience. And while it’s expensive compared to other aquariums, it is significantly better.</p>\n<img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MCH-L-PACKARD-0901-03.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 4: Julie Packard. (Photo courtesy of Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\">\n<p>Julie Packard. (Photo courtesy of Monterey Bay Aquarium)</p>\n<p><strong>Q:</strong> I suppose it’s also less expensive than amusement parks like Disneyland and most sports tickets.</p>\n<p><strong>A:</strong> If dad is going to the World Cup, it’s only fair that everyone else comes to the aquarium, right?</p>\n<p><strong>Q</strong>: Is there anything else you would like the public to know?</p>\n<p><strong>A:</strong> The aquarium is not world-leading by mistake. It is beautiful. Californians should be rightly proud of this institution and of the work it’s been doing. Just to spend a day immersing yourself in the beauty of our oceans, it’s a day well spent.</p>\n<img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/SJM-L-MONTAQUARIUM-2.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 5: Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\">\n<p>Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)</p>",
     "cell": ""
+  },
+  {
+    "UID": "1022",
+    "link": "https://youtu.be/6JiDED6fQE4",
+    "show": "1",
+    "DateAdded": "2026-06-07 23:07:48",
+    "DateModified": "2026-06-07 23:09:27",
+    "tags": [
+      "tardigrada",
+      "panspermia"
+    ],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "TMB Deep Dive #2.  Tardigrades and the origin of life. Emily Hardisty.",
+    "VidAuthor": "@TheMarineBiologicalAssociation",
+    "P/S": "0",
+    "vidLength": "45:23",
+    "cell": ""
+  },
+  {
+    "UID": "1023",
+    "link": "https://youtu.be/Faj_FBccGLE",
+    "show": "1",
+    "DateAdded": "2026-06-07 23:13:04",
+    "DateModified": "2026-06-07 23:13:20",
+    "tags": [
+      "omega3"
+    ],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "6 Fish Oil Brands That FAILED Lab Tests (And 3 Doctors Actually Trust)",
+    "VidAuthor": "@BasicHealthMeter",
+    "P/S": "0",
+    "cell": ""
+  },
+  {
+    "UID": "1024",
+    "link": "https://youtu.be/8WBV2_ZFZGg",
+    "show": "1",
+    "DateAdded": "2026-06-07 23:26:06",
+    "DateModified": "2026-06-07 23:26:06",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "Our Sims Group researchers just headed to La Paz, Baja California Sur, Mexico to tag adult female wh",
+    "VidAuthor": "@TheMarineBiologicalAssociation",
+    "P/S": "0",
+    "cell": ""
+  },
+  {
+    "UID": "1025",
+    "link": "https://youtu.be/1ZtqUFUDTfo",
+    "show": "1",
+    "DateAdded": "2026-06-07 23:27:49",
+    "DateModified": "2026-06-07 23:27:49",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "What people who NEVER get dementia do EVERY morning",
+    "VidAuthor": "@nealkshah",
+    "P/S": "0",
+    "cell": ""
+  },
+  {
+    "UID": "1026",
+    "link": "https://youtu.be/lGeh5mZ5z60",
+    "show": "1",
+    "DateAdded": "2026-06-07 23:30:54",
+    "DateModified": "2026-06-07 23:30:54",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "Alzheimer's and diet: what you eat is WRITING your brain's future",
+    "VidAuthor": "@nealkshah",
+    "P/S": "0",
+    "cell": ""
+  },
+  {
+    "UID": "1027",
+    "link": "https://youtu.be/gtWjtydnhwQ",
+    "show": "1",
+    "DateAdded": "2026-06-07 23:32:56",
+    "DateModified": "2026-06-07 23:32:56",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "Improve gut health through MOZART? New research SHOCKED scientists",
+    "VidAuthor": "@nealkshah",
+    "P/S": "0",
+    "cell": ""
+  },
+  {
+    "UID": "1028",
+    "link": "https://youtu.be/WMM9ot64fUY",
+    "show": "1",
+    "DateAdded": "2026-06-07 23:37:55",
+    "DateModified": "2026-06-07 23:37:55",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "Caregiver exercise: 4 minutes is ALL you need to SLASH cancer risk",
+    "VidAuthor": "@nealkshah",
+    "P/S": "0",
+    "cell": ""
+  },
+  {
+    "UID": "1029",
+    "link": "https://video.sealifeandmore.com/bb%20main.mp4",
+    "show": "1",
+    "DateAdded": "2026-06-08 00:08:40",
+    "DateModified": "2026-06-08 00:09:08",
+    "tags": [
+      "hermit-crab",
+      "bryozoa"
+    ],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "V",
+    "cell": "1a"
   }
 ]
