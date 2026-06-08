@@ -2546,6 +2546,10 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
                 + 'font-family:monospace;font-size:' + baseFs + 'px;font-weight:bold;border:1px solid;'
                 + (on ? 'border-color:#5f5;color:#afa;background:rgba(0,80,0,0.4);'
                       : 'border-color:#666;color:#888;background:rgba(40,40,50,0.4);');
+  // (dev0361) Bottom page tabs (mobile). Active state is applied in the wiring.
+  const tabCSS  = 'flex:1;padding:5px 0;border-radius:5px;cursor:pointer;'
+                + 'font-family:monospace;font-size:' + bigFs + 'px;font-weight:bold;'
+                + 'border:1px solid #4af;background:rgba(0,40,80,0.45);color:#8ef;';
   // 4-state level select (off/min/med/max) — used for Pan and CanvasBlur.
   const lvl = (cur) => `
         <select id="$ID" style="${selCSS}">
@@ -2618,6 +2622,7 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
       🗑 Delete marked
     </button>
 
+    <!-- (dev0361) Mobile pages: 1 = selection · 2 = timing · 3 = effects -->
     <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Source</span>
       <span style="display:flex;align-items:center;gap:5px;">
@@ -2640,36 +2645,10 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
     </div>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
-      <span>Each slide</span>
-      <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
-                   inputmode="decimal" value="${s.slideSec}"
-                   style="${numCSS}"> sec</span>
-    </div>
-
-    <div class="ss-row ss-page-1" style="${rowCSS}">
-      <span>Zoom</span>
-      <span><input id="ssZoomSec"   type="number" min="0.5" max="60" step="0.5"
-                   inputmode="decimal" value="${s.zoomSec}"
-                   style="${numCSS}"> sec</span>
-    </div>
-
-    <div class="ss-row ss-page-1" style="${rowCSS}">
-      <span>Zoom</span>
-      ${lvlZoom(s.zoom).replace('$ID', 'ssZoomLevel')}
-    </div>
-
-    <div class="ss-row ss-page-1" style="${rowCSS}">
-      <span>Transition</span>
-      <span><input id="ssTransSec"  type="number" min="0" max="10" step="0.1"
-                   inputmode="decimal" value="${s.transitionSec}"
-                   style="${numCSS}"> sec</span>
-    </div>
-
-    <div class="ss-row ss-page-1" style="${rowCSS}">
-      <span>Delay</span>
-      <span><input id="ssDelaySec"  type="number" min="0" max="30" step="0.1"
-                   inputmode="decimal" value="${s.delaySec}"
-                   style="${numCSS}"> sec</span>
+      <span>Order</span>
+      <button id="ssOrder" style="${togCSS(true)}">
+        ${s.order === 'order' ? 'IN ORDER' : 'RANDOM'}
+      </button>
     </div>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
@@ -2678,43 +2657,63 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
     </div>
 
     <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Each slide</span>
+      <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
+                   inputmode="decimal" value="${s.slideSec}"
+                   style="${numCSS}"> sec</span>
+    </div>
+
+    <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Zoom</span>
+      <span><input id="ssZoomSec"   type="number" min="0.5" max="60" step="0.5"
+                   inputmode="decimal" value="${s.zoomSec}"
+                   style="${numCSS}"> sec</span>
+    </div>
+
+    <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Zoom</span>
+      ${lvlZoom(s.zoom).replace('$ID', 'ssZoomLevel')}
+    </div>
+
+    <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Transition</span>
+      <span><input id="ssTransSec"  type="number" min="0" max="10" step="0.1"
+                   inputmode="decimal" value="${s.transitionSec}"
+                   style="${numCSS}"> sec</span>
+    </div>
+
+    <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Delay</span>
+      <span><input id="ssDelaySec"  type="number" min="0" max="30" step="0.1"
+                   inputmode="decimal" value="${s.delaySec}"
+                   style="${numCSS}"> sec</span>
+    </div>
+
+    <div class="ss-row ss-page-3" style="${rowCSS}">
       <span>Pan</span>
       ${lvl(s.pan).replace('$ID', 'ssPan')}
     </div>
 
-    <div class="ss-row ss-page-2" style="${rowCSS}">
+    <div class="ss-row ss-page-3" style="${rowCSS}">
       <span>Title</span>
       ${_slideshowSizeSelect('ssLabelSize', s.labelSize, selCSS)}
     </div>
 
-    <div class="ss-row ss-page-2" style="${rowCSS}">
+    <div class="ss-row ss-page-3" style="${rowCSS}">
       <span>Comment</span>
       ${_slideshowSizeSelect('ssCommentSize', s.commentSize, selCSS)}
     </div>
 
-    <div class="ss-row ss-page-2" style="${rowCSS}">
-      <span>Order</span>
-      <button id="ssOrder" style="${togCSS(true)}">
-        ${s.order === 'order' ? 'IN ORDER' : 'RANDOM'}
-      </button>
-    </div>
-
-    <div class="ss-row ss-page-2" style="${rowCSS};border-bottom:none;">
+    <div class="ss-row ss-page-3" style="${rowCSS};border-bottom:none;">
       <span>CanvasBlur</span>
       ${lvl(s.canvasBlur).replace('$ID', 'ssCanvasBlur')}
     </div>
 
-    <div id="ssPager" style="display:none;align-items:center;justify-content:space-between;
-         margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.18);">
-      <button id="ssPagePrev" style="padding:3px 10px;border-radius:5px;
-              border:1px solid #4af;background:rgba(0,40,80,0.45);color:#8ef;
-              cursor:pointer;font-family:monospace;font-size:${bigFs}px;
-              font-weight:bold;">◀</button>
-      <span id="ssPageLabel" style="font-size:${baseFs}px;color:#aaa;">1 / 2</span>
-      <button id="ssPageNext" style="padding:3px 10px;border-radius:5px;
-              border:1px solid #4af;background:rgba(0,40,80,0.45);color:#8ef;
-              cursor:pointer;font-family:monospace;font-size:${bigFs}px;
-              font-weight:bold;">▶</button>
+    <div id="ssPager" style="display:none;align-items:center;gap:6px;
+         margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.18);">
+      <button class="ss-tab" data-page="1" style="${tabCSS}">1</button>
+      <button class="ss-tab" data-page="2" style="${tabCSS}">2</button>
+      <button class="ss-tab" data-page="3" style="${tabCSS}">3</button>
     </div>
   `;
 }
@@ -2772,32 +2771,33 @@ function _slideshowWireMenu(menu) {
     };
   }
 
-  // (dev0265) Mobile pagination — split rows across two pages; ◀ ▶ flip them.
-  // Desktop ignores it (all rows visible, pager hidden) so nothing is hidden
-  // when the menu fits comfortably.
+  // (dev0265/0361) Mobile pagination — split rows across THREE pages; the
+  // bottom tabs (1 · 2 · 3) flip between them. Desktop ignores it (all rows
+  // visible, tabs hidden) so nothing is hidden when the menu fits comfortably.
   const mobile = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
   const pager  = menu.querySelector('#ssPager');
-  const pageLabel = menu.querySelector('#ssPageLabel');
   if (mobile && pager) {
     pager.style.display = 'flex';
+    const tabs = Array.from(menu.querySelectorAll('.ss-tab'));
     let page = 1;
     function applyPage() {
       menu.querySelectorAll('.ss-row').forEach(row => {
-        const onPage1 = row.classList.contains('ss-page-1');
-        const visible = (page === 1) ? onPage1 : !onPage1;
-        row.style.display = visible ? '' : 'none';
+        row.style.display = row.classList.contains('ss-page-' + page) ? '' : 'none';
       });
-      if (pageLabel) pageLabel.textContent = page + ' / 2';
+      tabs.forEach(t => {
+        const on = parseInt(t.dataset.page, 10) === page;
+        t.style.background = on ? 'rgba(0,90,170,0.95)' : 'rgba(0,40,80,0.45)';
+        t.style.color = on ? '#fff' : '#8ef';
+      });
     }
+    tabs.forEach(t => {
+      t.onclick = e => {
+        e.stopPropagation();
+        page = parseInt(t.dataset.page, 10) || 1;
+        applyPage();
+      };
+    });
     applyPage();
-    menu.querySelector('#ssPagePrev').onclick = e => {
-      e.stopPropagation();
-      page = page === 1 ? 2 : 1; applyPage();
-    };
-    menu.querySelector('#ssPageNext').onclick = e => {
-      e.stopPropagation();
-      page = page === 2 ? 1 : 2; applyPage();
-    };
   }
 
   // Pause/Resume. Capture the button in a const so the handler doesn't

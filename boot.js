@@ -446,14 +446,46 @@ async function _showShareableMenu() {
   if (!greetingHtml) {
     try { const r = await fetch('greeting.html?t=' + Date.now()); if (r.ok) greetingHtml = await r.text(); } catch (e) {}
   }
+  // (dev0361) Split the greeting at its FIRST <hr> (the Xe ══ divider): prose
+  // BEFORE the rule is page 1 (welcome / landing), prose AFTER is the lead text
+  // shown atop page 2 ("Choose a view"). No <hr> → it all stays on page 1.
+  let greetTop = greetingHtml, greetIntro = '';
+  {
+    const _hr = greetingHtml.match(/<hr\b[^>]*>/i);
+    if (_hr) { greetTop = greetingHtml.slice(0, _hr.index); greetIntro = greetingHtml.slice(_hr.index + _hr[0].length); }
+  }
+  // The <hr> usually sits INSIDE a <div>, so a raw string split orphans tags:
+  // greetTop loses a closing </div>, greetIntro gains a stray one. Left as-is,
+  // that stray </div> closes the page container early and leaks the list out.
+  // Round-trip each half through a temp element so the browser re-balances it.
+  const _balanceHtml = h => { const d = document.createElement('div'); d.innerHTML = h; return d.innerHTML; };
+  greetTop = _balanceHtml(greetTop);
+  greetIntro = _balanceHtml(greetIntro);
 
-  // Choices, re-read fresh from c.json `ss` + ml.json `Direct` on every open.
+  // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
+  // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
+  // video → image). `slide` = HTML ftext with no link; `quiz` = JSON-ish
+  // ftext or a qfile.
+  const _smType = r => {
+    const ft = String(r.ftext || '').trim();
+    if (r.qfile || (ft && !r.link && /^[\[{]/.test(ft))) return 'quiz';
+    if (ft && !r.link) return 'slide';
+    if (window.isVideoRow && window.isVideoRow(r)) return 'video';
+    if (window.isImageLink && window.isImageLink(r.link)) return 'image';
+    return 'other';
+  };
+  const _smBadge = { image: '🖼', video: '🎬', slide: '📄', quiz: '📋', other: '🔗' };
+  const _smEsc = s => String(s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+
+  // Choices, re-read fresh on every open. V items (from T / ml.json `Direct`)
+  // first, then SS grids (from C / c.json), so the combined `items` index used
+  // by the tap handler stays stable.
   const vItems = mlRows
     .filter(r => r && !r._salMeta && String(r.Direct || '').trim() && !_isGreeting(r.Direct) && r.UID != null)
-    .map(r => ({ kind: 'v', label: String(r.Direct).trim(), uid: String(r.UID) }));
+    .map(r => ({ kind: 'v', label: String(r.Direct).trim(), uid: String(r.UID), type: _smType(r) }));
   const gItems = cRows
     .filter(g => g && !g._salMeta && String(g.ss || '').trim() && g.gname)
-    .map(g => ({ kind: 'ss', label: String(g.gname).trim(), ss: String(g.ss).trim() }));
+    .map(g => ({ kind: 'ss', label: String(g.gname).trim(), ss: String(g.ss).trim(), cells: Number(g.cells) || 0 }));
   const items = vItems.concat(gItems);
 
   const ov = document.createElement('div');
@@ -461,53 +493,99 @@ async function _showShareableMenu() {
   ov.style.cssText = 'position:fixed;inset:0;z-index:999990;background:#0a0a1a;'
     + 'display:flex;flex-direction:column;font-family:monospace;color:#eee;';
 
+  // (dev0361) Page-2 list — V items (singles) badged by type, a divider, then
+  // SS grids labelled "N cells". `.sm-item` + `data-i` are unchanged so the
+  // existing tap handler still maps each card back to `items[i]`.
+  const _smCard = (it, i) => it.kind === 'v'
+    ? '<div class="sm-item sm-card" data-i="' + i + '">'
+        + '<span class="sm-ico">' + (_smBadge[it.type] || '🔗') + '</span>'
+        + '<span class="sm-name">' + _smEsc(it.label) + '</span>'
+        + '<span class="sm-tag">' + it.type + '</span>'
+      + '</div>'
+    : '<div class="sm-item sm-card" data-i="' + i + '">'
+        + '<span class="sm-ico">▦</span>'
+        + '<span class="sm-name">' + _smEsc(it.label) + '</span>'
+        + '<span class="sm-tag">' + (it.cells ? it.cells + ' cells' : 'grid') + '</span>'
+      + '</div>';
   let listHtml;
   if (!items.length) {
     listHtml = '<div style="padding:24px;color:#aa8;">No shareable items yet.</div>';
   } else {
-    listHtml = items.map((it, i) =>
-      '<div class="sm-item" data-i="' + i + '" style="padding:18px 22px;'
-      + 'border-bottom:1px solid #222;cursor:pointer;font-size:18px;color:#ddd;">'
-      + (it.label.replace(/[<>&]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;' }[c])))
-      + '</div>'
-    ).join('');
+    listHtml = vItems.map((it, i) => _smCard(it, i)).join('')
+      + ((vItems.length && gItems.length) ? '<div class="sm-grpdiv"></div>' : '')
+      + gItems.map((it, i) => _smCard(it, vItems.length + i)).join('');
   }
 
-  // (dev0359) Readable sans-serif styling for the greeting prose; the choices
-  // list below keeps the menu's monospace look. `summary` headings render
-  // inline so an Xe-resized collapsible title sits on the marker line.
-  const greetStyle =
+  // (dev0359/0361) Readable sans-serif greeting prose (now a CLASS so both
+  // pages can use it), page-2 cards, and the bottom tab bar. `summary` headings
+  // render inline so an Xe-resized collapsible title sits on the marker line.
+  const menuStyle =
     '<style>'
-    + '#smGreeting{font-family:sans-serif;color:#dfe3ea;line-height:1.6;padding:22px 24px 10px;max-width:760px;margin:0 auto;}'
-    + '#smGreeting h1,#smGreeting h2{color:#8ef;margin:0 0 10px;}'
-    + '#smGreeting h2{font-size:22px;}#smGreeting h1{font-size:26px;}'
-    + '#smGreeting h3{color:#9ef;font-size:18px;margin:6px 0;}'
-    + '#smGreeting p{margin:6px 0;}#smGreeting a{color:#5bf;}'
-    + '#smGreeting details{margin:8px 0;padding:8px 12px;background:#11131f;border-left:3px solid #06f;border-radius:4px;}'
-    + '#smGreeting summary{cursor:pointer;color:#8ef;}'
-    + '#smGreeting summary h1,#smGreeting summary h2,#smGreeting summary h3,#smGreeting summary h4,#smGreeting summary h5,#smGreeting summary h6{display:inline;color:#8ef;margin:0;}'
+    + '.smGreeting{font-family:sans-serif;color:#dfe3ea;line-height:1.6;padding:22px 24px 12px;max-width:760px;margin:0 auto;}'
+    + '.smGreeting h1,.smGreeting h2{color:#8ef;margin:0 0 10px;}'
+    + '.smGreeting h2{font-size:22px;}.smGreeting h1{font-size:26px;}'
+    + '.smGreeting h3{color:#9ef;font-size:18px;margin:6px 0;}'
+    + '.smGreeting p{margin:6px 0;}.smGreeting a{color:#5bf;}'
+    + '.smGreeting details{margin:8px 0;padding:8px 12px;background:#11131f;border-left:3px solid #06f;border-radius:4px;}'
+    + '.smGreeting summary{cursor:pointer;color:#8ef;}'
+    + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#8ef;margin:0;}'
+    + '.smGreeting hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;}'
     + '.te-cut{display:none;}'
+    + '.sm-card{display:flex;align-items:center;gap:12px;padding:15px 22px;border-bottom:1px solid #1c1c30;cursor:pointer;color:#ddd;}'
+    + '.sm-card:hover{background:#15152a;}'
+    + '.sm-ico{font-size:24px;line-height:1;flex:none;width:30px;text-align:center;}'
+    + '.sm-name{flex:1;font-size:18px;}'
+    + '.sm-tag{flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7a8aa0;border:1px solid #2a3550;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
+    + '.sm-sub{padding:9px 24px 5px;color:#7a8aa0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:#0d0d1e;}'
+    + '.sm-grpdiv{height:1px;background:#223;margin:6px 0;}'
+    + '.sm-cta{display:block;margin:18px auto 26px;padding:13px 26px;border-radius:9px;border:1px solid #4af;background:rgba(0,60,120,0.5);color:#cfe8ff;font-family:sans-serif;font-size:17px;font-weight:bold;cursor:pointer;max-width:320px;width:calc(100% - 48px);}'
+    + '.sm-cta:hover{background:rgba(0,80,150,0.65);}'
+    + '.sm-tabs{display:flex;flex:none;border-top:2px solid #223;background:#0d0d1e;}'
+    + '.sm-tab{flex:1;padding:13px 4px;text-align:center;cursor:pointer;font-family:sans-serif;font-size:14px;color:#8a93a8;background:transparent;border:none;border-top:3px solid transparent;}'
+    + '.sm-tab.on{color:#cfe8ff;border-top-color:#4af;background:#11132a;}'
     + '</style>';
-  const greetingBlock = greetingHtml
-    ? '<div id="smGreeting">' + greetingHtml + '</div>'
-      + (items.length
-          ? '<div style="padding:7px 24px;color:#7a8aa0;font-size:11px;letter-spacing:.12em;'
-            + 'text-transform:uppercase;border-top:1px solid #223;border-bottom:1px solid #223;'
-            + 'background:#0d0d1e;">Choose a view</div>'
-          : '')
-    : '';
 
-  ov.innerHTML = greetStyle
+  ov.innerHTML = menuStyle
     + '<div style="display:flex;align-items:center;padding:14px 16px;flex:none;'
       + 'background:#1a1a2e;border-bottom:2px solid #4af;">'
       + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeeAndLearn</span>'
     + '</div>'
-    + '<div style="flex:1;overflow-y:auto;">'
-      + greetingBlock
-      + '<div id="smList">' + listHtml + '</div>'
+    + '<div style="flex:1;position:relative;overflow:hidden;">'
+      // PAGE 1 — welcome / landing (greeting prose before the first <hr>)
+      + '<div id="smPage1" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;">'
+        + (greetTop.trim() ? '<div class="smGreeting">' + greetTop + '</div>'
+                           : '<div class="smGreeting"><p>Welcome.</p></div>')
+        + '<button id="smGoView" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
+        // (dev0361) FUTURE sign-in field mounts here — let signed-in viewers
+        // submit prospective links. Deliberately absent for now (needs a
+        // backend: auth + a stored submission/moderation queue).
+      + '</div>'
+      // PAGE 2 — choose a view (greeting prose after the <hr>, then the list)
+      + '<div id="smPage2" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + (greetIntro.trim() ? '<div class="smGreeting">' + greetIntro + '</div>'
+                             : '<div class="sm-sub">Choose a view</div>')
+        + '<div id="smList">' + listHtml + '</div>'
+      + '</div>'
+    + '</div>'
+    + '<div class="sm-tabs">'
+      + '<button class="sm-tab on" data-pg="1">Welcome</button>'
+      + '<button class="sm-tab" data-pg="2">Choose a view</button>'
     + '</div>';
 
   document.body.appendChild(ov);
+
+  // (dev0361) Two-page nav — bottom tabs + the page-1 "Choose a view" button.
+  const _smShow = n => {
+    const p1 = ov.querySelector('#smPage1'), p2 = ov.querySelector('#smPage2');
+    if (p1) p1.style.display = (n === 2) ? 'none' : '';
+    if (p2) p2.style.display = (n === 2) ? '' : 'none';
+    ov.querySelectorAll('.sm-tab').forEach(t =>
+      t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
+  };
+  ov.querySelectorAll('.sm-tab').forEach(t =>
+    t.addEventListener('click', () => _smShow(parseInt(t.dataset.pg, 10) || 1)));
+  const _smGo = ov.querySelector('#smGoView');
+  if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
 
   ov.querySelectorAll('.sm-item').forEach(el => {
     el.addEventListener('click', () => {
