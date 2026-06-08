@@ -77,6 +77,12 @@ var _gridActiveConfig = null; // The currently active c.json config object (when
 // from the active config on C-activation (see _gridApplyConfigZoom).
 var _gridCellZoom = {};
 
+// (dev0364) Transient per-cell PAN offset (UID → {x,y} px), applied on top of the
+// zoom/COI transform. Set by the Shift+drag gesture; session-only (NOT persisted —
+// reload loses it). To keep a framing, Alt-click it as a COI. Cleared on the
+// second-Z full zoom reset alongside _gridCellZoom.
+var _gridCellPan = {};
+
 function gridCleanupPlayers() {
   Object.keys(_gridPlayers).forEach(id => {
     if (window.stopCellVideoLoop) window.stopCellVideoLoop(id);
@@ -377,6 +383,13 @@ function _gridRowCOI(row) {
 function _gridCOIForCell(cellEl) {
   return cellEl ? _gridRowCOI(cellEl._rowData) : null;
 }
+// (dev0364) Transient drag-pan offset for a cell, or null when none/zero.
+function _gridCellPanForCell(cellEl) {
+  const row = cellEl && cellEl._rowData;
+  if (!row || row.UID == null) return null;
+  const p = _gridCellPan[row.UID];
+  return (p && (p.x || p.y)) ? p : null;
+}
 
 // Translate FRACTION (of the element's own box) along one axis so the COI point
 // `f` ends up centered, clamped to keep the scaled box covering the cell. Used
@@ -401,10 +414,14 @@ function _gridAnchorPx(cellLen, basePos, baseLen, f, Z) {
 
 // Build the `transform` string for a cell-sized element (img / box / video):
 // translate the COI to center (clamped) then scale. transform-origin must be 0 0.
-function _gridAnchoredTransform(coi, Z) {
+function _gridAnchoredTransform(coi, Z, pan) {
   const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
   const tx = _gridAnchorFrac(fx, Z) * 100, ty = _gridAnchorFrac(fy, Z) * 100;
-  return 'translate(' + tx + '%,' + ty + '%) scale(' + Z + ')';
+  // (dev0364) Optional transient pan in px, combined with the %-anchor via calc().
+  const px = (pan && pan.x) ? pan.x : 0, py = (pan && pan.y) ? pan.y : 0;
+  const xv = px ? 'calc(' + tx + '% + ' + px + 'px)' : tx + '%';
+  const yv = py ? 'calc(' + ty + '% + ' + py + 'px)' : ty + '%';
+  return 'translate(' + xv + ',' + yv + ') scale(' + Z + ')';
 }
 
 // Locate the zoomable element inside a cell, if any. A video host (YT/Vimeo/mp4),
@@ -446,7 +463,7 @@ function _gridApplyZoomToCell(cellEl) {
   // visible content fills the box. Plain images stay 'contain' (whole image).
   if (t.kind === 'img') t.el.style.objectFit = coi ? 'cover' : 'contain';
   t.el.style.transformOrigin = '0 0';
-  t.el.style.transform = _gridAnchoredTransform(coi, z);
+  t.el.style.transform = _gridAnchoredTransform(coi, z, _gridCellPanForCell(cellEl));
 }
 
 function _gridApplyCoverFit(host, zOverride) {
@@ -461,6 +478,7 @@ function _gridApplyCoverFit(host, zOverride) {
   const cellEl = host.closest('.grid-cell');
   const Z = (typeof zOverride === 'number') ? zOverride : _gridZoomForCell(cellEl);
   const coi = _gridCOIForCell(cellEl);
+  const pan = _gridCellPanForCell(cellEl);   // (dev0364) transient drag-pan, may be null
   host.querySelectorAll('iframe, video').forEach(el => {
     if (el.tagName === 'VIDEO') {
       // <video> covers the cell natively (box = cell); zoom + COI ride on a
@@ -470,7 +488,7 @@ function _gridApplyCoverFit(host, zOverride) {
       el.style.width = '100%'; el.style.height = '100%';
       el.style.objectFit = 'cover';
       el.style.transformOrigin = '0 0';
-      el.style.transform = _gridAnchoredTransform(coi, Z);
+      el.style.transform = _gridAnchoredTransform(coi, Z, pan);
       return;
     }
     // iframe: size to cover the cell (16:9 assumption) and center, then zoom via
@@ -487,7 +505,8 @@ function _gridApplyCoverFit(host, zOverride) {
     el.style.left = ox + 'px';
     el.style.top  = oy + 'px';
     const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
-    const tx = _gridAnchorPx(w, ox, iw, fx, Z), ty = _gridAnchorPx(h, oy, ih, fy, Z);
+    let tx = _gridAnchorPx(w, ox, iw, fx, Z), ty = _gridAnchorPx(h, oy, ih, fy, Z);
+    if (pan) { tx += pan.x; ty += pan.y; }   // (dev0364) add transient drag-pan
     el.style.transformOrigin = '0 0';
     el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + Z + ')';
   });
@@ -642,6 +661,7 @@ function gridResetZoom() {
   if (typeof window.setSetting === 'function') window.setSetting('gridFillZoom', _GRID_FILLZOOM_DEFAULT);
   if (_gridZResetArmed) {
     _gridCellZoom = {};               // second Z → also flatten per-cell zooms
+    _gridCellPan = {};                // (dev0364) and drop transient drag-pans
     _gridZResetArmed = false;
     _gridToast('Zoom reset: whole grid + all cells → 1.0×', 1400);
   } else {
@@ -1020,7 +1040,7 @@ function gridShow() {
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   const hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell · Alt-clk=COI';
+    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
@@ -1247,9 +1267,104 @@ function gridWireInteractor(interactor, cell, cellStr) {
   // Cached once per call — _isUserMode() reads URL/hostname which don't
   // change mid-session.
   const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
-  
+
+  // ── (dev0364) Shift mouse-hold ZOOM + drag-PAN (desktop only) ──────────────
+  // Mirrors the V-player's hold-zoom/drag-pan (vp.js wireMouseV), but Shift-gated:
+  // plain-hold (=cut) and plain-drag (=swipe) are already taken on a grid cell, as
+  // are Ctrl (Ctrl+click→Xe/E) and Alt (Alt-click→COI). Shift+hold-LMB ramps this
+  // cell's per-cell zoom IN (accelerating), Shift+hold-RMB ramps OUT, and a
+  // Shift+drag pans the zoomed content (transient _gridCellPan, >1.05× only).
+  // Phones keep pinch; this never arms there. When active it short-circuits the
+  // normal gesture path (pStart left null) in pointermove/up/cancel.
+  let _szActive = false, _szDown = false, _szDragging = false;
+  let _szStart = null, _szPanBase = null, _szBtn = 0;
+  let _szDelay = null, _szTimer = null, _szStep = 0;
+  const _szUID = () => (cell._rowData ? cell._rowData.UID : null);
+  function _szStop() {
+    if (_szDelay) { clearTimeout(_szDelay);  _szDelay = null; }
+    if (_szTimer) { clearInterval(_szTimer); _szTimer = null; }
+  }
+  function _szCancel() {
+    _szStop();
+    _szActive = _szDown = _szDragging = false;
+    _szStart = _szPanBase = null;
+    interactor.style.cursor = '';
+  }
+  function _szBegin(e) {
+    const uid = _szUID();
+    if (uid == null) return;
+    _szActive = true; _szDown = true; _szDragging = false;
+    _szBtn = e.button;                       // 0=left → zoom in, 2=right → zoom out
+    _szStart = { x: e.clientX, y: e.clientY };
+    _szPanBase = null;
+    try { interactor.setPointerCapture(e.pointerId); } catch (_) {}
+    _gridZResetArmed = false;                // a zoom gesture breaks the Z double-reset chain
+    const dir = (_szBtn === 2) ? -1 : 1;
+    _szStep = 0.01;
+    // 180ms settle so a quick Shift+click doesn't zoom.
+    _szDelay = setTimeout(() => {
+      _szDelay = null;
+      _szTimer = setInterval(() => {
+        const cur = _gridCellZoom[uid] > 0 ? _gridCellZoom[uid] : 1;
+        let next = cur + dir * _szStep;
+        // Floor the EFFECTIVE zoom (global × per-cell) at the grid minimum.
+        const g = _gridFillZoom();
+        if (g * next < _GRID_ZOOM_MIN) next = _GRID_ZOOM_MIN / g;
+        _gridCellZoom[uid] = next;
+        _szStep = Math.min(0.08, _szStep + 0.004);
+        _gridApplyZoomToCell(cell);
+      }, 50);
+    }, 180);
+  }
+  function _szMove(e) {
+    if (!_szDown) return;
+    if (!_szDragging && Math.hypot(e.clientX - _szStart.x, e.clientY - _szStart.y) > 8) {
+      _szDragging = true;
+      _szStop();                             // a drag cancels the zoom ramp
+      const uid = _szUID();
+      const b = (_gridCellPan[uid] && typeof _gridCellPan[uid].x === 'number')
+        ? _gridCellPan[uid] : { x: 0, y: 0 };
+      _szPanBase = { x: b.x, y: b.y, px: e.clientX, py: e.clientY };
+      interactor.style.cursor = 'grabbing';
+    }
+    if (_szDragging && _gridZoomForCell(cell) > 1.05) {
+      const uid = _szUID();
+      _gridCellPan[uid] = {
+        x: _szPanBase.x + (e.clientX - _szPanBase.px),
+        y: _szPanBase.y + (e.clientY - _szPanBase.py)
+      };
+      _gridApplyZoomToCell(cell);
+    }
+  }
+  function _szEnd(e) {
+    _szStop();
+    const uid = _szUID();
+    if (uid != null && _gridCellZoom[uid] > 0) {
+      const snapped = _gridSnapZoom(_gridCellZoom[uid]);
+      if (Math.abs(snapped - 1) < 1e-9) delete _gridCellZoom[uid];
+      else _gridCellZoom[uid] = snapped;
+    }
+    _gridApplyZoomToCell(cell);
+    _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
+    try { interactor.releasePointerCapture(e.pointerId); } catch (_) {}
+    _szActive = _szDown = _szDragging = false;
+    _szStart = _szPanBase = null;
+    interactor.style.cursor = '';
+  }
+
   interactor.addEventListener('pointerdown', e => {
     e.preventDefault();
+    // (dev0364) Shift + mouse → zoom (LMB in / RMB out) + drag-pan the zoomed cell.
+    // Desktop only; only on a zoomable (image/video/montage) cell. Leaves pStart
+    // null so the normal tap/hold/swipe path bails for the rest of this gesture.
+    if (e.shiftKey && e.pointerType === 'mouse' &&
+        !(typeof _isMobileDevice === 'function' && _isMobileDevice()) &&
+        _gridCellZoomTarget(cell) && (e.button === 0 || e.button === 2)) {
+      e.preventDefault(); e.stopPropagation();
+      _szBegin(e);
+      pStart = null;
+      return;
+    }
     // (dev0348) Alt+left-click sets this row's center-of-interest (COI) — the
     // anchor point zoom scales toward. Dev-only; intercepts before any
     // gesture/hold so it doesn't double as a tap. Uses raw client coords vs the
@@ -1281,6 +1396,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
   }, true);
   
   interactor.addEventListener('pointermove', e => {
+    if (_szActive) { _szMove(e); return; }   // (dev0364) Shift zoom/pan gesture owns it
     if (!pStart) return;
     const _p = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
     const dx = Math.abs(_p.x - pStart.x);
@@ -1289,6 +1405,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
   }, true);
   
   interactor.addEventListener('pointerup', e => {
+    if (_szActive) { _szEnd(e); return; }    // (dev0364) finish Shift zoom/pan gesture
     clearTimeout(holdTmr);
     cell.style.transform = '';
     cell.style.opacity = '';
@@ -1371,10 +1488,17 @@ function gridWireInteractor(interactor, cell, cellStr) {
   }, true);
   
   interactor.addEventListener('pointercancel', () => {
+    if (_szActive) { _szCancel(); return; }  // (dev0364) abort Shift zoom/pan gesture
     clearTimeout(holdTmr);
     pStart = null; didHold = false; wasCtrl = false; wasLeftBtn = false;
     cell.style.transform = '';
     cell.style.opacity = '';
+  }, true);
+
+  // (dev0364) Suppress the right-click menu during a Shift+RMB zoom-out (and any
+  // time the gesture is mid-flight) so the ramp isn't interrupted by a context menu.
+  interactor.addEventListener('contextmenu', ev => {
+    if (ev.shiftKey || _szActive) ev.preventDefault();
   }, true);
   
   // (zip0143) TOUCH FALLBACK for browsers that don't fire pointer events

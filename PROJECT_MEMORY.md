@@ -56,8 +56,13 @@ is stored.
 ### Version — `index.html` (COMMIT THIS)
 - `HELP_VERSION_STR` bumped `dev0362` → `dev0363`.
 
-## NOT YET BUILT — the Shift mouse zoom/pan gesture (this will be dev0364)
-Design is finalized; nothing written to disk yet. All changes are in **grid.js**:
+## BUILT & VERIFIED — the Shift mouse zoom/pan gesture (dev0364)
+Done and on disk in **grid.js** + version bump in **index.html**. Verified live in the
+preview on the real 5×5 grid (geometry via `getBoundingClientRect` / `el.style.transform`,
+not screenshots): Shift+hold-LMB ramps zoom in (snaps 0.1 on release, rect grows 474→531px),
+Shift+hold-RMB ramps out (deletes the per-cell entry at 1.0×), effective-zoom floor holds at
+0.2×, Shift+drag pans (img/video via `calc(% + px)`, iframe via px; delta exact), 2nd-Z reset
+clears `_gridCellPan`, Shift+contextmenu suppressed, no console errors. Implementation notes:
 
 1. **Transient pan state + render integration**
    - Add `var _gridCellPan = {};` (UID → `{x,y}` px offset, session-only) near `_gridCellZoom` (line ~78).
@@ -117,7 +122,7 @@ Design is finalized; nothing written to disk yet. All changes are in **grid.js**
 - Model: **Opus** throughout (user preference; this is hot-path/stateful work — Opus is right).
 
 ## Task list state
-1. ✅ Migrate 3 COI rows in ml.json → COI column
-2. ✅ Refactor grid.js COI read/write to COI column
-3. ⏳ Add Shift-gated desktop mouse zoom/pan (designed, not built — see section above)
-4. ⏳ Bump HELP_VERSION_STR, verify, commit + push (dev0363 bump done; dev0364 pending the gesture)
+1. ✅ Migrate 3 COI rows in ml.json → COI column (dev0363)
+2. ✅ Refactor grid.js COI read/write to COI column (dev0363)
+3. ✅ Add Shift-gated desktop mouse zoom/pan (dev0364 — built + verified in preview)
+4. ✅ Bump HELP_VERSION_STR → dev0364, verify, commit code (grid.js + index.html + this summary)
