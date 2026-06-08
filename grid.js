@@ -346,30 +346,33 @@ function _gridZoomForCell(cellEl) {
   return g * indiv;
 }
 
-// ── Center-of-interest (COI) anchoring (dev0348) ─────────────────────────────
-// A COI is the point the user alt-clicked on an unzoomed cell. As of dev0349 it
-// is NOT stored on the row's COI column; instead alt-click clones the row under
-// a UID of the form "parentUID@fx,fy" (the point is the UID suffix — see
-// gridSetCOI), so one image/video can carry several COIs as sibling rows. Zoom
-// then scales a COI row toward its point instead of the cell center, so an
-// off-center subject stays in view as the cell enlarges. The pan that centers
-// the COI is CLAMPED so the scaled content never exposes a gap — which is why a
-// near-edge COI only drifts toward center as zoom grows (at 1× there's no room
-// to pan; at high zoom there's enough overflow to fully center it). The COI
-// *column* is reserved for the upcoming time-based autozoom.
+// ── Center-of-interest (COI) anchoring (dev0348 → dev0363) ───────────────────
+// A COI is the point the user Alt-clicked on a cell. As of dev0363 it lives in
+// the row's "COI" *column* (the dev0349 "parentUID@fx,fy" clone-row scheme was
+// dropped — one COI per row now). The column holds three @@-separated fields:
+//     "fx,fy@@zoom@@frameRef"
+//   e.g. "0.425,0.146@@1.8@@frame120"  or  "0.685,0.335@@1.0@@image"
+// where fx,fy are cell fractions 0..1, zoom is the effective cell zoom captured
+// when the COI was set, and frameRef is "frame<N>" (video, N≈currentTime×30 fps)
+// or the literal "image". Only fx,fy drives rendering today; zoom + frameRef are
+// recorded for the coming time-based autozoom. Zoom scales the cell toward the
+// point instead of its center, so an off-center subject stays in view as the
+// cell enlarges. The centering pan is CLAMPED so the scaled content never
+// exposes a gap — which is why a near-edge COI only drifts toward center as zoom
+// grows (at 1× there's no room to pan; at high zoom there's enough overflow).
 function _gridParseCOI(s) {
   if (!s) return null;
-  const p = String(s).split(',');
+  // Accept the full COI column string (use its first @@-field) or a bare "fx,fy".
+  const p = String(s).split('@@')[0].split(',');
   if (p.length < 2) return null;
   const fx = parseFloat(p[0]), fy = parseFloat(p[1]);
   if (!isFinite(fx) || !isFinite(fy)) return null;
   return { fx: Math.max(0, Math.min(1, fx)), fy: Math.max(0, Math.min(1, fy)) };
 }
-// Pull a COI off a row's UID suffix ("parentUID@fx,fy"); plain UIDs have none.
+// Pull a COI off a row's COI column; rows with an empty/absent COI have none.
 function _gridRowCOI(row) {
-  if (!row || row.UID == null) return null;
-  const s = String(row.UID), at = s.indexOf('@');
-  return at < 0 ? null : _gridParseCOI(s.slice(at + 1));
+  if (!row || !row.COI) return null;
+  return _gridParseCOI(row.COI);
 }
 function _gridCOIForCell(cellEl) {
   return cellEl ? _gridRowCOI(cellEl._rowData) : null;
@@ -673,38 +676,41 @@ function gridAdjustCellZoom(cellEl, delta) {
 // own scroll/page-zoom, so zoom is keyboard-driven — [ ] global, Ctrl+[ ] cell.)
 var _gridHoverCell = null;
 
-// (dev0349) Alt-click handler: author a center-of-interest VARIANT. Rather than
-// writing the point onto this row, we deep-clone the row under a new UID of the
-// form "parentUID@fx,fy" (the point IS the UID suffix) and append it to data, so
-// one image/video can carry several COIs as sibling rows that sort next to the
-// parent. The parent's COI column is left free for the coming time-based
-// autozoom; we only bump the parent's DateModified as a change marker. Alt-
-// clicking an existing "@" variant re-picks the point for the SAME parent (no
-// nested clones). The clone's grid 'cell' is blanked so it doesn't fight the
-// parent for a slot — it shows in T and can be placed/viewed to see the crop.
+// (dev0363) Alt-click handler: set this row's center-of-interest (COI) — the
+// point zoom anchors toward. Writes straight onto the row's "COI" column as
+// "fx,fy@@zoom@@frameRef" (see _gridParseCOI's header); the dev0349 clone-row
+// scheme is gone, so one COI per row. zoom = the cell's current effective zoom;
+// frameRef = "frame<N>" (N≈video currentTime×30 fps) for a video cell, else
+// "image". Re-applies the crop live so the cell reframes immediately.
 function gridSetCOI(cellEl, cellStr, e) {
   const row = cellEl && cellEl._rowData;
   if (!row || row.UID == null) { if (typeof toast === 'function') toast('Alt-click: no row here for a COI', 1400); return; }
-  if (!_gridCellZoomTarget(cellEl)) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
-  if (!Array.isArray(data)) { if (typeof toast === 'function') toast('No data array to add a COI variant', 1500); return; }
+  const tgt = _gridCellZoomTarget(cellEl);
+  if (!tgt) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
   const rect = cellEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   const fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   const fy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-  const parentUID = String(row.UID).split('@')[0];
-  const newUID = parentUID + '@' + fx.toFixed(3) + ',' + fy.toFixed(3);
-  const now = (typeof isoNow === 'function') ? isoNow() : '';
-  const clone = JSON.parse(JSON.stringify(row));   // rows are plain JSON
-  clone.UID = newUID;
-  clone.cell = '';                                  // don't claim the parent's grid slot
-  if (now) { clone.DateAdded = now; clone.DateModified = now; }
-  const at = data.findIndex(r => r && String(r.UID) === newUID);
-  if (at >= 0) data[at] = clone; else data.push(clone);   // same point → replace in place
-  const parent = data.find(r => r && String(r.UID) === parentUID);
-  if (parent && now) parent.DateModified = now;
+  // zoom: current effective cell zoom (global × per-cell), 1 decimal place.
+  const zoom = _gridZoomForCell(cellEl).toFixed(1);
+  // frameRef: a video records the current frame (≈ currentTime × 30 fps) so a
+  // future autozoom can return to it; non-video cells record "image".
+  let frameRef = 'image';
+  if (tgt.kind === 'vid') {
+    frameRef = 'frame0';
+    try {
+      const p = (window.seeLearnVideoPlayers || {})['grid-vid-' + cellStr];
+      const t = (p && typeof p.getCurrentTime === 'function') ? p.getCurrentTime() : null;
+      if (typeof t === 'number' && isFinite(t) && t >= 0) frameRef = 'frame' + Math.round(t * 30);
+    } catch (_) {}
+  }
+  row.COI = fx.toFixed(3) + ',' + fy.toFixed(3) + '@@' + zoom + '@@' + frameRef;
+  if (typeof isoNow === 'function') row.DateModified = isoNow();
   if (typeof save === 'function') save();
+  // Reframe the clicked cell at once — it now anchors toward the new COI.
+  try { _gridApplyZoomToCell(cellEl); } catch (_) {}
   if (typeof toast === 'function') {
-    toast('COI variant ' + newUID + '  (' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%)', 2000);
+    toast('COI ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%  ·  ' + frameRef, 1800);
   }
 }
 
