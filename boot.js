@@ -482,19 +482,38 @@ async function _showShareableMenu() {
   // Below n matches, result cards appear; default 12 if unset/invalid.
   let _smN = parseInt(greetRow && greetRow.MPix, 10);
   if (!_smN || _smN < 1) _smN = 12;
+  // (dev0366) Search filters are declared in the Greeting row's COI cell and
+  // stay operative as long as that text is present (no in-UI toggle):
+  //   • "taxon" → limit results to rows carrying at least one taxon-kind tag.
+  //   • "media" → limit results to rows whose link is an image or video
+  //               (omits ftext-only slides/quizzes).
+  // Editing the COI cell in Xe turns each filter on/off on the next visit.
+  const _smCoi = String((greetRow && greetRow.COI) || '').toLowerCase();
+  const _filtTaxon = /\btaxon\b/.test(_smCoi);
+  // "media" is the canonical keyword; also accept the natural phrasing
+  // "image … video" (in either order) so a hand-edited COI still works.
+  const _filtMedia = /\bmedia\b/.test(_smCoi)
+    || (/\bimage\b/.test(_smCoi) && /\bvideo\b/.test(_smCoi));
   // All searchable T rows (content rows with a UID, minus the greeting). For
   // each, precompute one lowercased "blob" of every searchable field so each
   // keystroke is just a substring scan (mirrors core.js 'anywhere' fields:
   // VidAuthor/VidTitle/link/VidComment + de-tagged ftext + tag label/common).
+  // Also precompute `hasTaxon` and the link-derived media `kind` so the COI
+  // filters above are a cheap boolean check per row.
   const _tBlobs = mlRows
     .filter(r => r && !r._salMeta && r.UID != null && !_isGreeting(r.Direct))
     .map(r => {
       let blob = ['VidAuthor', 'VidTitle', 'link', 'VidComment'].map(f => String(r[f] || '')).join(' ')
         + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' ');
+      let hasTaxon = false;
       if (window.tagsLib && Array.isArray(r.tags)) {
-        blob += ' ' + r.tags.map(tid => { const t = window.tagsLib.get(tid); return t ? ((t.label || '') + ' ' + (t.common || '')) : ''; }).join(' ');
+        r.tags.forEach(tid => {
+          const t = window.tagsLib.get(tid);
+          if (t) { blob += ' ' + (t.label || '') + ' ' + (t.common || ''); if (t.kind === 'taxon') hasTaxon = true; }
+        });
       }
-      return { r, blob: blob.toLowerCase() };
+      const kind = window.rowMediaKind ? window.rowMediaKind(r) : 'other';
+      return { r, blob: blob.toLowerCase(), hasTaxon, kind };
     });
   // Result label per the user's rule: ftext-bearing rows (Xe — incl. quiz, and
   // with OR without a link) → first non-formatting HTML line; else video →
@@ -591,11 +610,20 @@ async function _showShareableMenu() {
   ov.innerHTML = menuStyle
     + '<div style="display:flex;align-items:center;padding:14px 16px;flex:none;'
       + 'background:#1a1a2e;border-bottom:2px solid #4af;">'
+      // (dev0366) Back-to-Welcome button — hidden on the standalone Welcome
+      // page, shown in the 2-tab view (Choose a view / Search).
+      + '<button id="smBack" style="display:none;background:#11132a;border:1px solid #4af;'
+        + 'color:#cfe8ff;padding:5px 12px;border-radius:6px;cursor:pointer;'
+        + 'font-family:sans-serif;font-size:13px;margin-right:12px;">&lsaquo;&nbsp;Welcome</button>'
       + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeaLifeAndMore</span>'
     + '</div>'
     + '<div style="flex:1;position:relative;overflow:hidden;">'
-      // PAGE 1 — welcome / landing (greeting prose before the first <hr>)
+      // PAGE 1 — welcome / landing (greeting prose before the first <hr>).
+      // (dev0366) Standalone page with a "Choose a view" button at BOTH the
+      // top and the bottom so the viewer never has to scroll past the greeting
+      // to advance into the tabbed view.
       + '<div id="smPage1" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;">'
+        + '<button id="smGoViewTop" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
         + (greetTop.trim() ? '<div class="smGreeting">' + greetTop + '</div>'
                            : '<div class="smGreeting"><p>Welcome.</p></div>')
         + '<button id="smGoView" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
@@ -619,31 +647,55 @@ async function _showShareableMenu() {
       // match count drops below n (the Greeting row's MPix).
       + '<div id="smPage3" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + '<input id="smSearchBox" class="sm-search" type="text" placeholder="Search everything…" autocomplete="off">'
+        // (dev0366) Active COI filters, shown so a narrowed result set doesn't
+        // look broken. Populated from _filtTaxon / _filtMedia after mount.
+        + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
         + '<div id="smSugg" class="sm-sugg"></div>'
         + '<div id="smCount" class="sm-count"></div>'
         + '<div id="smResults" class="sm-results"></div>'
       + '</div>'
     + '</div>'
+    // (dev0366) Two-tab bar — Welcome is now a standalone page reached via the
+    // header "‹ Welcome" button, so it's no longer a tab.
     + '<div class="sm-tabs">'
-      + '<button class="sm-tab on" data-pg="1">Welcome</button>'
-      + '<button class="sm-tab" data-pg="2">Choose a view</button>'
+      + '<button class="sm-tab on" data-pg="2">Choose a view</button>'
       + '<button class="sm-tab" data-pg="3">Search</button>'
     + '</div>';
 
   document.body.appendChild(ov);
 
-  // (dev0361/0362) Tabbed nav — bottom tabs + the page-1 "Choose a view"
-  // button. Three pages: Welcome / Choose a view / Search.
+  // (dev0361/0362/0366) Nav. Welcome (page 1) is a STANDALONE landing — its tab
+  // bar is hidden and a header "‹ Welcome" button returns to it. The 2-tab bar
+  // (Choose a view / Search) is shown only on pages 2–3.
+  const _smTabBar = ov.querySelector('.sm-tabs');
+  const _smBackBtn = ov.querySelector('#smBack');
   const _smShow = n => {
     [1, 2, 3].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
+    if (_smTabBar) _smTabBar.style.display = (n === 1) ? 'none' : 'flex';
+    if (_smBackBtn) _smBackBtn.style.display = (n === 1) ? 'none' : 'inline-block';
     if (n === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
   };
   ov.querySelectorAll('.sm-tab').forEach(t =>
-    t.addEventListener('click', () => _smShow(parseInt(t.dataset.pg, 10) || 1)));
+    t.addEventListener('click', () => _smShow(parseInt(t.dataset.pg, 10) || 2)));
+  // Welcome → tab view (both top and bottom buttons), and the header back arrow.
   const _smGo = ov.querySelector('#smGoView');
   if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
+  const _smGoTop = ov.querySelector('#smGoViewTop');
+  if (_smGoTop) _smGoTop.addEventListener('click', () => _smShow(2));
+  if (_smBackBtn) _smBackBtn.addEventListener('click', () => _smShow(1));
+  // Populate the search-filter note from the COI-declared filters.
+  const _smFiltNote = ov.querySelector('#smFilterNote');
+  if (_smFiltNote) {
+    const _lbls = [];
+    if (_filtTaxon) _lbls.push('species / taxon only');
+    if (_filtMedia) _lbls.push('image & video only');
+    _smFiltNote.textContent = _lbls.length ? 'Filtered: ' + _lbls.join(' · ') : '';
+  }
+  // Start on the standalone Welcome page (also fixes the tab bar's initial
+  // visibility, since the markup ships it visible).
+  _smShow(1);
 
   // Open a single T item as V over a forced G backdrop, routing vpClose back to
   // this menu via _fromShareableMenu. Shared by the choice cards AND search
@@ -689,7 +741,11 @@ async function _showShareableMenu() {
         c.addEventListener('click', () => { _smBox.value = c.dataset.q; _smRunSearch(); }));
     }
     if (!q) { _smCountEl.textContent = ''; _smResEl.innerHTML = ''; return; }
-    const matches = _tBlobs.filter(x => x.blob.includes(lq)).map(x => x.r);
+    // (dev0366) Apply the COI-declared filters before the threshold/render.
+    let _hits = _tBlobs.filter(x => x.blob.includes(lq));
+    if (_filtTaxon) _hits = _hits.filter(x => x.hasTaxon);
+    if (_filtMedia) _hits = _hits.filter(x => x.kind === 'video' || x.kind === 'image');
+    const matches = _hits.map(x => x.r);
     _smCountEl.textContent = matches.length + ' match' + (matches.length === 1 ? '' : 'es')
       + (matches.length >= _smN ? ' — keep typing to narrow below ' + _smN : '');
     if (matches.length && matches.length < _smN) {
@@ -906,6 +962,22 @@ async function _openSlideshowBySsId(ssVal, launch) {
 function _openItemByUid(uid) {
   const want = String(uid).trim();
   if (!want) return;
+  // (dev0366) When V was launched from the shareable menu, `_smOpenV` forces a
+  // grid backdrop open and sets `_fromShareableMenu`. If V then fails to mount
+  // (no data, bad UID, locked, or gridOpenFullscreen early-returns on an empty
+  // row), the viewer is left staring at a blank dark grid with no escape. This
+  // tears down that forced backdrop and re-mounts the Welcome menu so every V
+  // type fails back to home instead of getting stuck.
+  function _recoverMenu() {
+    if (!window._fromShareableMenu) return;
+    window._fromShareableMenu = false;
+    if (window._vpForcedGridFromT) {
+      const g = document.getElementById('gridOverlay');
+      if (g) g.style.display = 'none';
+      window._vpForcedGridFromT = false;
+    }
+    if (typeof window._showShareableMenu === 'function') setTimeout(() => window._showShareableMenu(), 50);
+  }
   // (dev0249) Poll for data: on fresh page loads, `data` may still be
   // loading when this runs. Retry every 100ms up to 5 seconds before
   // giving up. Without this, the first call sees no data and silently
@@ -915,6 +987,7 @@ function _openItemByUid(uid) {
     if (typeof data === 'undefined' || !Array.isArray(data) || data.length === 0) {
       if (Date.now() - startedAt > 5000) {
         if (typeof toast === 'function') toast('Could not load data — check your connection', 3000);
+        _recoverMenu();
         return;
       }
       setTimeout(tryOpen, 100);
@@ -923,6 +996,7 @@ function _openItemByUid(uid) {
     const row = data.find(r => String(r.UID) === want);
     if (!row) {
       if (typeof toast === 'function') toast('No item with UID ' + want, 2000);
+      _recoverMenu();
       return;
     }
     // (dev0315) Anti-enumeration on the public site: a LOCKED link (?i=NNN
@@ -934,12 +1008,21 @@ function _openItemByUid(uid) {
     const _um = (typeof _isUserMode === 'function') ? _isUserMode() : false;
     if (_um && window._lockedUid && !String(row.Direct || '').trim()) {
       if (typeof toast === 'function') toast('Not found', 1500);
+      _recoverMenu();
       return;
     }
     _lastGridRow = row;
     // Tick for any in-flight paint before stacking V on top.
     setTimeout(() => {
       if (typeof gridOpenFullscreen === 'function') gridOpenFullscreen(row);
+      // (dev0366) Safety net: if V didn't actually mount (gridOpenFullscreen
+      // early-returns on a row with no playable segment / no link / no ftext),
+      // recover to the menu rather than leaving a blank forced grid backdrop.
+      setTimeout(() => {
+        const fsUp = document.getElementById('gridFullscreen') &&
+                     document.getElementById('gridFullscreen').style.display === 'flex';
+        if (!fsUp) _recoverMenu();
+      }, 150);
     }, 60);
   }
   tryOpen();
