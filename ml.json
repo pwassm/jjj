@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1780895663146,
+    "_salPushTime": 1780903503728,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 36,
@@ -78,8 +78,8 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
-      "dir": "asc"
+      "col": "cell",
+      "dir": "desc"
     },
     "_salGsize": 5,
     "_salViews": {
@@ -433,7 +433,7 @@
     "comment": "",
     "VidComment": "",
     "DateAdded": "2026-03-15 21:29:02",
-    "DateModified": "2026-05-24 16:06:56",
+    "DateModified": "2026-06-08 07:23:54",
     "Mute": "",
     "MPix": "2.8",
     "n1": "",
@@ -1118,7 +1118,7 @@
     "comment": "Japanese skeleton shrimp with breeding pouch: the protrusion with the red dots. Back at home selecting and editing photo's is a time consuming job. But a rewarding one! It is a kind of arm chair marine biology. Magnifying photo's to 100% reveals a lot of creatures I hadn't recorded at the time. ",
     "VidComment": "",
     "DateAdded": "2026-03-30 08:55:15",
-    "DateModified": "2026-06-06 01:01:37",
+    "DateModified": "2026-06-08 07:23:54",
     "Mute": "",
     "MPix": "0.6",
     "n1": "Skeleton shrimp",
@@ -19088,7 +19088,7 @@
     "link": "https://www.whoi.edu/wp-content/uploads/1998/12/v41n2-mullineaux3en_5133.gif",
     "show": "1",
     "DateAdded": "2026-05-25 13:56:31",
-    "DateModified": "2026-05-25 13:58:07",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "riftia-pachyptila"
     ],
@@ -19110,7 +19110,7 @@
     "link": "https://www.whoi.edu/wp-content/uploads/1998/12/v41n2-mullineaux5en_5137.jpg",
     "show": "1",
     "DateAdded": "2026-05-25 13:56:55",
-    "DateModified": "2026-05-25 13:59:52",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "riftia-pachyptila",
       "laminatubus-alvini"
@@ -19161,7 +19161,7 @@
     "MPix": "2.1",
     "P/S": "0",
     "comment": " Photo Date: 2011 July 22  Credit: NOAA Okeanos Explorer Program, Galapagos Rift Expedition 2011 ",
-    "cell": "5c",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19183,7 +19183,7 @@
     "MPix": "9.8",
     "P/S": "",
     "comment": "Fig. 1. Natural habitat, gas exchange system, trophosome, and endosymbionts of the deep-sea siboglinid tubeworm P. echinospica. (A) Photograph of a colony of P. echinospica individuals in the field. Each tube is roughly 30 cm in length. The photo was taken at the Haima cold seep field by the Haima ROV crew. The inserted map shows the regional location map of the two research sites. (B) Diagram of the gas exchange system of P. echinospica. The tubeworm absorbs oxygen and carbon dioxide from the ambient seawater through its plume. It also sucks in sulfide through its posterior region from the sediment. (C) Diagram showing the cross section of each trophosome lobule, with large symbionts located at the lobule periphery and small symbionts at the lobule center. (D) H&E staining of a cross-section of the trophosome of an adult P. echinospia tubeworm. (E) FISH analysis of the symbionts. (F and G) Amplified regions of the periphery and center of a trophosome lobule, demonstrating the morphological variation of the symbionts. The semitransparent dashed lines in (F) outline three typical periphery large symbionts. (H) Statistical analysis of the size variation of bacteriocytes located in the periphery bacteriocytes and center of a lobule (P < 0.001, t test, n-periphery = 449, n-center = 1304).",
-    "cell": "5b",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19835,7 +19835,7 @@
     "link": "https://news.uci.edu/files/2025/08/chitonteeth-1024x312.jpg",
     "show": "1",
     "DateAdded": "2026-05-28 03:29:23",
-    "DateModified": "2026-05-28 03:29:24",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [],
     "VidRange": "i",
     "MPix": "0.3",
@@ -23219,7 +23219,7 @@
     "link": "https://media.nga.gov.au/YSLUXfmHwStClSsvn4eLoYzJLqc=/2000x0/filters:format(webp):quality(60)///national-gallery-of-australia/media/dd/images/Lindy_Lee_Ouroboros_at_Night_-_print_version.jpeg",
     "show": "1",
     "DateAdded": "2026-06-05 17:47:16",
-    "DateModified": "2026-06-05 17:48:40",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [],
     "VidRange": "i",
     "ftextSize": "0",
@@ -23237,7 +23237,7 @@
     "link": "https://media.nga.gov.au/lmAopuA89ilNlP5fX_WRSOWS470=/1600x0///national-gallery-of-australia/media/dd/images/DSC_5189.JPG?_gl=1*16asyic*_gcl_au*MTY5MDg0MDE2OC4xNzgwNjgxNjAw*_ga*MTkyOTk3NjQwMy4xNzgwNjgxNjAw*_ga_GYGHQ97328*czE3ODA2ODE1OTkkbzEkZzEkdDE3ODA2ODE3NjgkajQ5JGwwJGgw",
     "show": "1",
     "DateAdded": "2026-06-05 17:50:07",
-    "DateModified": "2026-06-05 17:50:09",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [],
     "VidRange": "i",
     "ftextSize": "0",
@@ -23254,7 +23254,7 @@
     "link": "https://everson.org/wp-content/uploads/2025/09/recovery.gif",
     "show": "1",
     "DateAdded": "2026-06-05 17:53:40",
-    "DateModified": "2026-06-05 17:53:41",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [],
     "VidRange": "i",
     "ftextSize": "0",
@@ -23271,7 +23271,7 @@
     "link": "https://everson.org/wp-content/uploads/2025/09/treatment_3.gif",
     "show": "1",
     "DateAdded": "2026-06-05 17:54:06",
-    "DateModified": "2026-06-05 17:54:08",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [],
     "VidRange": "i",
     "ftextSize": "0",
@@ -23288,7 +23288,7 @@
     "link": "https://everson.org/wp-content/uploads/2025/09/DSC09079-2048x1152.jpg.webp",
     "show": "1",
     "DateAdded": "2026-06-05 17:54:22",
-    "DateModified": "2026-06-05 17:54:22",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [],
     "VidRange": "i",
     "ftextSize": "0",
@@ -23305,7 +23305,7 @@
     "link": "https://cdn.shopify.com/s/files/1/0058/3532/files/4C685D1B-FB70-42B9-961D-8251D0432E56-5498-0000019B6FAB6B9E.jpg?v=1595699750",
     "show": "1",
     "DateAdded": "2026-06-05 17:55:56",
-    "DateModified": "2026-06-05 17:56:30",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [],
     "VidRange": "i",
     "ftextSize": "0",
@@ -23386,7 +23386,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Ascarosepion_pfefferi_%2827610091791%29.jpg",
     "show": "1",
     "DateAdded": "2026-06-05 22:39:44",
-    "DateModified": "2026-06-05 22:40:05",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "ascarosepion-pfefferi"
     ],
@@ -23458,7 +23458,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/5/56/Acanthosepion_pharaonis.jpg",
     "show": "1",
     "DateAdded": "2026-06-06 02:35:50",
-    "DateModified": "2026-06-06 02:37:37",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "acanthosepion-pharaonis"
     ],
@@ -23468,14 +23468,14 @@
     "MPix": "3.4",
     "P/S": "0",
     "face": "",
-    "cell": "3b"
+    "cell": "5c"
   },
   {
     "UID": "944",
     "link": "https://upload.wikimedia.org/wikipedia/commons/4/4e/Sepia_pharaonis.jpg",
     "show": "1",
     "DateAdded": "2026-06-06 02:36:44",
-    "DateModified": "2026-06-06 02:37:40",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "acanthosepion-pharaonis"
     ],
@@ -23561,7 +23561,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/8/86/Tardigrade_%28water_bear%29_walking_%28video_by_Bob_Goldstein%29.gif",
     "show": "1",
     "DateAdded": "2026-06-06 17:24:35",
-    "DateModified": "2026-06-06 17:25:48",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "hypsibius-exemplaris"
     ],
@@ -23578,7 +23578,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Tardigrade_anatomy.svg/1920px-Tardigrade_anatomy.svg.png",
     "show": "1",
     "DateAdded": "2026-06-06 17:28:11",
-    "DateModified": "2026-06-06 17:29:41",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "tardigrada"
     ],
@@ -23595,7 +23595,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/TardigradeEggsInShedCuticle.jpg/960px-TardigradeEggsInShedCuticle.jpg",
     "show": "1",
     "DateAdded": "2026-06-06 17:29:29",
-    "DateModified": "2026-06-06 17:30:02",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "tardigrada"
     ],
@@ -23613,7 +23613,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Richtersius_coronifer_in_active_and_tun_states.png/1920px-Richtersius_coronifer_in_active_and_tun_states.png",
     "show": "1",
     "DateAdded": "2026-06-06 17:30:38",
-    "DateModified": "2026-06-06 17:31:52",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "richtersius-coronifer"
     ],
@@ -23631,7 +23631,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/8/83/First_Recorded_Image_of_Tardigrade.jpg",
     "show": "1",
     "DateAdded": "2026-06-06 17:36:33",
-    "DateModified": "2026-06-06 17:37:04",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "tardigrada"
     ],
@@ -23649,7 +23649,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Echiniscus_testudo_Doyere_1840_Pl_12_Fig_1.png/960px-Echiniscus_testudo_Doyere_1840_Pl_12_Fig_1.png",
     "show": "1",
     "DateAdded": "2026-06-06 17:38:17",
-    "DateModified": "2026-06-06 17:38:55",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "echiniscus-testudo"
     ],
@@ -23667,7 +23667,7 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Entothryeos.png/1280px-Entothryeos.png",
     "show": "1",
     "DateAdded": "2026-06-06 17:41:07",
-    "DateModified": "2026-06-06 17:41:48",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "entothryeos"
     ],
@@ -23696,7 +23696,7 @@
     "P/S": "0",
     "comment": "Tardigrade body plan compared to arthropods, onychophora, and annelids. Tardigrades have lost the whole middle section of the ecdysozoan body plan, and its Hox genes.",
     "face": "",
-    "cell": "1c"
+    "cell": ""
   },
   {
     "UID": "957_d",
@@ -24800,7 +24800,7 @@
     "cell": ""
   },
   {
-    "UID": "10000",
+    "UID": "1031",
     "cell": "",
     "show": "1",
     "VidRange": "text",
@@ -24943,7 +24943,7 @@
     "link": "https://video.sealifeandmore.com/bb%20main.mp4",
     "show": "1",
     "DateAdded": "2026-06-08 00:08:40",
-    "DateModified": "2026-06-08 00:09:08",
+    "DateModified": "2026-06-08 07:23:54",
     "tags": [
       "hermit-crab",
       "bryozoa"
@@ -24964,7 +24964,8 @@
     "ltype": "w",
     "ftextSize": "11175",
     "FtextJunk": "0",
-    "ftext": "<h2>New leader takes the helm at the Monterey Bay Aquarium</h2><p>For the past 41 years, the Monterey Bay Aquarium has only had one CEO: Julie Packard. The daughter of Silicon Valley pioneer David Packard and a marine biologist, Packard converted a former World War I-era sardine factory on Cannery Row into one of the most successful and respected aquariums anywhere in the United States, if not the world.</p><p>The sleek facility, famous for its sea otters, jellyfish and “Seafood Watch” program used by millions to make informed choices at the grocery store, draws 2 million visitors every year — more than the annual home attendance of the San Francisco 49ers, Golden State Warriors and San Jose Sharks combined.</p><p>Last month, Packard retired, while remaining on the aquarium’s board. She is succeeded by Jenny Gray, who worked for 17 years as CEO of Zoos Victoria, a nonprofit organization that operates the Melbourne Zoo and other wildlife centers in Australia. Gray has master’s degrees in business and engineering, and a doctorate in ethics from the University of Melbourne.</p><p>This conversation has been condensed and edited for clarity and length.</p><p><strong>Q</strong>: When was the first time that you visited the aquarium, and what do you remember?</p><p><strong>A:</strong> I was studying at the University of California, Berkeley campus, doing my master’s in transportation engineering. Over spring break, about eight of us jumped into two cars and drove down the coastline. When we got to Monterey, we visited the aquarium. It was 1989. I was absolutely mesmerized at the sardine tank — that column of water with fish swimming around in it. I remember just being really engaged with the whole experience.</p><p>I hadn’t seen anything like the kelp forest either. And then, years later, of course, we saw it being copied all over the world. It was a phenomenal exhibit.</p><p>Also, the storytelling struck me: This idea of a place that was part of the fishing industry that now talks about conserving the ocean. It was clever. I was already a scuba diver. I loved it. As a diver, I had spent a lot of time learning the names of fish and learning how they behave. To do that while you’re warm and dry is quite different from doing it while they’re all trying to get away from you.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2024/05/MAG-L-AQUARIUM-06XX-16.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 1: The Monterey Bay Aquarium's Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\"><p>The Monterey Bay Aquarium’s Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p><p><strong>Q:</strong> Why do you think the Monterey Bay Aquarium has become so popular?</p><p><strong>A:</strong> I used to say that Zoos Victoria had more members than the four biggest football teams in the area combined. Places like aquariums show us something different about nature. It’s always live. It’s always changing. It’s not static.</p><p>Every single experience you have will be different on the day you visit. The kelp tank will be different if the sun’s shining or not. The different time of day will give you a different experience. And you’re looking at something real, not a screen.</p><p>For parents, taking their children out of the house and having them run around looking at real things, that sparks curiosity. Particularly in difficult times, people return to places that they love. They return to places that inspire and give hope, because we’re looking for that in our daily lives.</p><p><strong>A:</strong> In terms of exhibits, do you have any thoughts of things that you’d like to add?</p><p><strong>A:</strong> Absolutely! A whole lot. But I am on day eight today. So I would be remiss to rush in and say all my crazy ideas. But I think we’re going to have a lot of fun. Ocean conservation has never been more important.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MAG-L-AQUARIUM-06XX-1.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 2: A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\"><p>A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p><p><strong>Q:</strong> Given your long history with zoos and aquariums, what can be improved upon at the Monterey Bay Aquarium?</p><p><strong>A:</strong> At the moment, I’m doing walking and listening tours, going out with different teams. Yesterday, they had me deep in the basement.</p><p>The engineering kid in me just loved it. This aquarium is a remarkable piece of work. The way it was conceived 40 years ago, the way the water moves, the way we pull really nutrient-rich water out of the bay to feed life forms inside is incredible, and it allows us to look after a very wide range of different creatures. So before I would even think about offering solutions for change, I want to understand it. They are world leaders here for a good reason. They’re incredible. There won’t be Earth-shattering changes. Nothing’s broken here. In fact, the exact opposite.</p><p><strong>Q:</strong> What do you think is the major challenge facing the world’s oceans right now? And what do you think is an area where trends are improving?</p><p><strong>A:</strong> The major challenges are around overuse. And so Seafood Watch is an incredible resource to help people understand that there’s not a limitless supply of food out of the ocean, that we need to be careful about what we use and when we use it.</p><p>As a positive, the team here has worked on bluefin tuna, and we have been able to help turn around the population. What’s great about fish is they actually recover quite quickly if you protect the right places, if you protect the breeding grounds, if you protect mature adults.</p><p>But the big threats are pollution — whether that’s plastic or other pollution — and climate change, and over-exploitation of the ocean itself.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/Monterey-Bay-Aquarium-sea-otters.jpeg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 3: Sea otters frolic at the Monterey Bay Aquarium, which will reopen to the general public May 15, 2021 after being closed for 14 months due to the COVID pandemic. (Photo: Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Sea otters frolic at the Monterey Bay Aquarium. (Photo: Monterey Bay Aquarium)</p><p><strong>Q:</strong> You have a doctorate in ethics, focused on issues involving wildlife. Is there a conflict between the quality of life for individual animals in captivity at zoos and aquariums and the goals those institutions have to inform and inspire the public toward conservation?</p><p><strong>A:</strong> We have to be good at both. I don’t think we can do one at the expense of the other. At Zoos Victoria, we often worked with critically endangered species where there are very few left. When there are very few left, if you do things that are bad for an individual, you actually can crash the whole population.</p><p>I think we stop too soon when we say it’s OK to penalize some individuals to save other individuals. Why penalize any? It is not a given that a life in captivity has to be a bad life. We should ask ourselves every single day how do we make the lives better for those animals who live in our care?</p><p>How do we make sure that the life they have with us is as good as it possibly can be? And the more we do that, the more they’re going to breed, the longer they’re going to live. What’s good for the individual is also good for the species and conservation.</p><p><strong>Q:</strong> Do you have a favorite animal at the aquarium?</p><p><strong>A:</strong> Right now, it’s the Giant Pacific Octopus. She’s absolutely a heart-winner. And incredibly charismatic and tactile. She will come over and try to touch you and work out if she likes you or not. She is huge and really amazing.</p><p><strong>Q:</strong> Polls are showing that one of the main concerns that Americans have right now is affordability. A ticket to the Monterey Bay Aquarium now costs $65 for adults and $50 for children. That’s higher than most U.S. aquariums. Do you have any thoughts about that when people are concerned these days with economic anxiety?</p><p><strong>A:</strong> You know, we certainly offer opportunities for those who are not able to afford the price, particularly through the <a href=\"https://www.montereybayaquarium.org/visit/other-ways-to-visit/museums-for-all-at-the-aquarium\" target=\"_blank\" rel=\"noopener\">“Museums for All”</a> program (which provides free admission to people who receive Supplemental Nutrition Assistance Program (SNAP) benefits — known as CalFresh in California). For people who are really struggling, there’s a way that you can still come out and enjoy the aquarium.</p><p>Distance is another barrier. It may be that in good times, you would have gone to Florida on your holiday, but you’re not going to go away every holiday this year. So we would encourage that you make a day trip. Summer’s here. You’re going to need to do something with your kids. Bring them down to the aquarium and have an incredible day. Enjoy Cannery Row. Enjoy Fisherman’s Wharf. It’s not just an aquarium. It’s a whole outing that you’re going to be doing, and it’s beautiful to stand on the back deck and watch the otters playing in the ocean that we’ve protected for so long.</p><p>We think the aquarium is a value for the money and for the experience. And while it’s expensive compared to other aquariums, it is significantly better.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MCH-L-PACKARD-0901-03.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 4: Julie Packard. (Photo courtesy of Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Julie Packard. (Photo courtesy of Monterey Bay Aquarium)</p><p><strong>Q:</strong> I suppose it’s also less expensive than amusement parks like Disneyland and most sports tickets.</p><p><strong>A:</strong> If dad is going to the World Cup, it’s only fair that everyone else comes to the aquarium, right?</p><p><strong>Q</strong>: Is there anything else you would like the public to know?</p><p><strong>A:</strong> The aquarium is not world-leading by mistake. It is beautiful. Californians should be rightly proud of this institution and of the work it’s been doing. Just to spend a day immersing yourself in the beauty of our oceans, it’s a day well spent.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/SJM-L-MONTAQUARIUM-2.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 5: Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)</p>"
+    "ftext": "<h2>New leader takes the helm at the Monterey Bay Aquarium</h2><p>For the past 41 years, the Monterey Bay Aquarium has only had one CEO: Julie Packard. The daughter of Silicon Valley pioneer David Packard and a marine biologist, Packard converted a former World War I-era sardine factory on Cannery Row into one of the most successful and respected aquariums anywhere in the United States, if not the world.</p><p>The sleek facility, famous for its sea otters, jellyfish and “Seafood Watch” program used by millions to make informed choices at the grocery store, draws 2 million visitors every year — more than the annual home attendance of the San Francisco 49ers, Golden State Warriors and San Jose Sharks combined.</p><p>Last month, Packard retired, while remaining on the aquarium’s board. She is succeeded by Jenny Gray, who worked for 17 years as CEO of Zoos Victoria, a nonprofit organization that operates the Melbourne Zoo and other wildlife centers in Australia. Gray has master’s degrees in business and engineering, and a doctorate in ethics from the University of Melbourne.</p><p>This conversation has been condensed and edited for clarity and length.</p><p><strong>Q</strong>: When was the first time that you visited the aquarium, and what do you remember?</p><p><strong>A:</strong> I was studying at the University of California, Berkeley campus, doing my master’s in transportation engineering. Over spring break, about eight of us jumped into two cars and drove down the coastline. When we got to Monterey, we visited the aquarium. It was 1989. I was absolutely mesmerized at the sardine tank — that column of water with fish swimming around in it. I remember just being really engaged with the whole experience.</p><p>I hadn’t seen anything like the kelp forest either. And then, years later, of course, we saw it being copied all over the world. It was a phenomenal exhibit.</p><p>Also, the storytelling struck me: This idea of a place that was part of the fishing industry that now talks about conserving the ocean. It was clever. I was already a scuba diver. I loved it. As a diver, I had spent a lot of time learning the names of fish and learning how they behave. To do that while you’re warm and dry is quite different from doing it while they’re all trying to get away from you.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2024/05/MAG-L-AQUARIUM-06XX-16.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 1: The Monterey Bay Aquarium's Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\"><p>The Monterey Bay Aquarium’s Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p><p><strong>Q:</strong> Why do you think the Monterey Bay Aquarium has become so popular?</p><p><strong>A:</strong> I used to say that Zoos Victoria had more members than the four biggest football teams in the area combined. Places like aquariums show us something different about nature. It’s always live. It’s always changing. It’s not static.</p><p>Every single experience you have will be different on the day you visit. The kelp tank will be different if the sun’s shining or not. The different time of day will give you a different experience. And you’re looking at something real, not a screen.</p><p>For parents, taking their children out of the house and having them run around looking at real things, that sparks curiosity. Particularly in difficult times, people return to places that they love. They return to places that inspire and give hope, because we’re looking for that in our daily lives.</p><p><strong>A:</strong> In terms of exhibits, do you have any thoughts of things that you’d like to add?</p><p><strong>A:</strong> Absolutely! A whole lot. But I am on day eight today. So I would be remiss to rush in and say all my crazy ideas. But I think we’re going to have a lot of fun. Ocean conservation has never been more important.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MAG-L-AQUARIUM-06XX-1.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 2: A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\"><p>A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p><p><strong>Q:</strong> Given your long history with zoos and aquariums, what can be improved upon at the Monterey Bay Aquarium?</p><p><strong>A:</strong> At the moment, I’m doing walking and listening tours, going out with different teams. Yesterday, they had me deep in the basement.</p><p>The engineering kid in me just loved it. This aquarium is a remarkable piece of work. The way it was conceived 40 years ago, the way the water moves, the way we pull really nutrient-rich water out of the bay to feed life forms inside is incredible, and it allows us to look after a very wide range of different creatures. So before I would even think about offering solutions for change, I want to understand it. They are world leaders here for a good reason. They’re incredible. There won’t be Earth-shattering changes. Nothing’s broken here. In fact, the exact opposite.</p><p><strong>Q:</strong> What do you think is the major challenge facing the world’s oceans right now? And what do you think is an area where trends are improving?</p><p><strong>A:</strong> The major challenges are around overuse. And so Seafood Watch is an incredible resource to help people understand that there’s not a limitless supply of food out of the ocean, that we need to be careful about what we use and when we use it.</p><p>As a positive, the team here has worked on bluefin tuna, and we have been able to help turn around the population. What’s great about fish is they actually recover quite quickly if you protect the right places, if you protect the breeding grounds, if you protect mature adults.</p><p>But the big threats are pollution — whether that’s plastic or other pollution — and climate change, and over-exploitation of the ocean itself.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/Monterey-Bay-Aquarium-sea-otters.jpeg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 3: Sea otters frolic at the Monterey Bay Aquarium, which will reopen to the general public May 15, 2021 after being closed for 14 months due to the COVID pandemic. (Photo: Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Sea otters frolic at the Monterey Bay Aquarium. (Photo: Monterey Bay Aquarium)</p><p><strong>Q:</strong> You have a doctorate in ethics, focused on issues involving wildlife. Is there a conflict between the quality of life for individual animals in captivity at zoos and aquariums and the goals those institutions have to inform and inspire the public toward conservation?</p><p><strong>A:</strong> We have to be good at both. I don’t think we can do one at the expense of the other. At Zoos Victoria, we often worked with critically endangered species where there are very few left. When there are very few left, if you do things that are bad for an individual, you actually can crash the whole population.</p><p>I think we stop too soon when we say it’s OK to penalize some individuals to save other individuals. Why penalize any? It is not a given that a life in captivity has to be a bad life. We should ask ourselves every single day how do we make the lives better for those animals who live in our care?</p><p>How do we make sure that the life they have with us is as good as it possibly can be? And the more we do that, the more they’re going to breed, the longer they’re going to live. What’s good for the individual is also good for the species and conservation.</p><p><strong>Q:</strong> Do you have a favorite animal at the aquarium?</p><p><strong>A:</strong> Right now, it’s the Giant Pacific Octopus. She’s absolutely a heart-winner. And incredibly charismatic and tactile. She will come over and try to touch you and work out if she likes you or not. She is huge and really amazing.</p><p><strong>Q:</strong> Polls are showing that one of the main concerns that Americans have right now is affordability. A ticket to the Monterey Bay Aquarium now costs $65 for adults and $50 for children. That’s higher than most U.S. aquariums. Do you have any thoughts about that when people are concerned these days with economic anxiety?</p><p><strong>A:</strong> You know, we certainly offer opportunities for those who are not able to afford the price, particularly through the <a href=\"https://www.montereybayaquarium.org/visit/other-ways-to-visit/museums-for-all-at-the-aquarium\" target=\"_blank\" rel=\"noopener\">“Museums for All”</a> program (which provides free admission to people who receive Supplemental Nutrition Assistance Program (SNAP) benefits — known as CalFresh in California). For people who are really struggling, there’s a way that you can still come out and enjoy the aquarium.</p><p>Distance is another barrier. It may be that in good times, you would have gone to Florida on your holiday, but you’re not going to go away every holiday this year. So we would encourage that you make a day trip. Summer’s here. You’re going to need to do something with your kids. Bring them down to the aquarium and have an incredible day. Enjoy Cannery Row. Enjoy Fisherman’s Wharf. It’s not just an aquarium. It’s a whole outing that you’re going to be doing, and it’s beautiful to stand on the back deck and watch the otters playing in the ocean that we’ve protected for so long.</p><p>We think the aquarium is a value for the money and for the experience. And while it’s expensive compared to other aquariums, it is significantly better.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MCH-L-PACKARD-0901-03.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 4: Julie Packard. (Photo courtesy of Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Julie Packard. (Photo courtesy of Monterey Bay Aquarium)</p><p><strong>Q:</strong> I suppose it’s also less expensive than amusement parks like Disneyland and most sports tickets.</p><p><strong>A:</strong> If dad is going to the World Cup, it’s only fair that everyone else comes to the aquarium, right?</p><p><strong>Q</strong>: Is there anything else you would like the public to know?</p><p><strong>A:</strong> The aquarium is not world-leading by mistake. It is beautiful. Californians should be rightly proud of this institution and of the work it’s been doing. Just to spend a day immersing yourself in the beauty of our oceans, it’s a day well spent.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/SJM-L-MONTAQUARIUM-2.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 5: Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)</p>",
+    "cell": ""
   },
   {
     "UID": "1030_d",
@@ -24978,5 +24979,48 @@
     "FtextJunk": "0",
     "ftext": "<h2>New leader takes the helm at the Monterey Bay Aquarium</h2><p>For the past 41 years, the Monterey Bay Aquarium has only had one CEO: Julie Packard. The daughter of Silicon Valley pioneer David Packard and a marine biologist, Packard converted a former World War I-era sardine factory on Cannery Row into one of the most successful and respected aquariums anywhere in the United States, if not the world.</p><p>The sleek facility, famous for its sea otters, jellyfish and “Seafood Watch” program used by millions to make informed choices at the grocery store, draws 2 million visitors every year — more than the annual home attendance of the San Francisco 49ers, Golden State Warriors and San Jose Sharks combined.</p><p>Last month, Packard retired, while remaining on the aquarium’s board. She is succeeded by Jenny Gray, who worked for 17 years as CEO of Zoos Victoria, a nonprofit organization that operates the Melbourne Zoo and other wildlife centers in Australia. Gray has master’s degrees in business and engineering, and a doctorate in ethics from the University of Melbourne.</p><p>This conversation has been condensed and edited for clarity and length.</p><p><strong>Q</strong>: When was the first time that you visited the aquarium, and what do you remember?</p><p><strong>A:</strong> I was studying at the University of California, Berkeley campus, doing my master’s in transportation engineering. Over spring break, about eight of us jumped into two cars and drove down the coastline. When we got to Monterey, we visited the aquarium. It was 1989. I was absolutely mesmerized at the sardine tank — that column of water with fish swimming around in it. I remember just being really engaged with the whole experience.</p><p>I hadn’t seen anything like the kelp forest either. And then, years later, of course, we saw it being copied all over the world. It was a phenomenal exhibit.</p><p>Also, the storytelling struck me: This idea of a place that was part of the fishing industry that now talks about conserving the ocean. It was clever. I was already a scuba diver. I loved it. As a diver, I had spent a lot of time learning the names of fish and learning how they behave. To do that while you’re warm and dry is quite different from doing it while they’re all trying to get away from you.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2024/05/MAG-L-AQUARIUM-06XX-16.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 1: The Monterey Bay Aquarium's Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\"><p>The Monterey Bay Aquarium’s Kelp Forest exhibit in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p><p><strong>Q:</strong> Why do you think the Monterey Bay Aquarium has become so popular?</p><p><strong>A:</strong> I used to say that Zoos Victoria had more members than the four biggest football teams in the area combined. Places like aquariums show us something different about nature. It’s always live. It’s always changing. It’s not static.</p><p>Every single experience you have will be different on the day you visit. The kelp tank will be different if the sun’s shining or not. The different time of day will give you a different experience. And you’re looking at something real, not a screen.</p><p>For parents, taking their children out of the house and having them run around looking at real things, that sparks curiosity. Particularly in difficult times, people return to places that they love. They return to places that inspire and give hope, because we’re looking for that in our daily lives.</p><p><strong>A:</strong> In terms of exhibits, do you have any thoughts of things that you’d like to add?</p><p><strong>A:</strong> Absolutely! A whole lot. But I am on day eight today. So I would be remiss to rush in and say all my crazy ideas. But I think we’re going to have a lot of fun. Ocean conservation has never been more important.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MAG-L-AQUARIUM-06XX-1.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 2: A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)\" style=\"max-width:100%;height:auto;\"><p>A visitor watches the sea nettle jellyfish at the Monterey Bay Aquarium in Monterey, Calif., on Tuesday, May 30, 2023. (Doug Duran/Bay Area News Group)</p><p><strong>Q:</strong> Given your long history with zoos and aquariums, what can be improved upon at the Monterey Bay Aquarium?</p><p><strong>A:</strong> At the moment, I’m doing walking and listening tours, going out with different teams. Yesterday, they had me deep in the basement.</p><p>The engineering kid in me just loved it. This aquarium is a remarkable piece of work. The way it was conceived 40 years ago, the way the water moves, the way we pull really nutrient-rich water out of the bay to feed life forms inside is incredible, and it allows us to look after a very wide range of different creatures. So before I would even think about offering solutions for change, I want to understand it. They are world leaders here for a good reason. They’re incredible. There won’t be Earth-shattering changes. Nothing’s broken here. In fact, the exact opposite.</p><p><strong>Q:</strong> What do you think is the major challenge facing the world’s oceans right now? And what do you think is an area where trends are improving?</p><p><strong>A:</strong> The major challenges are around overuse. And so Seafood Watch is an incredible resource to help people understand that there’s not a limitless supply of food out of the ocean, that we need to be careful about what we use and when we use it.</p><p>As a positive, the team here has worked on bluefin tuna, and we have been able to help turn around the population. What’s great about fish is they actually recover quite quickly if you protect the right places, if you protect the breeding grounds, if you protect mature adults.</p><p>But the big threats are pollution — whether that’s plastic or other pollution — and climate change, and over-exploitation of the ocean itself.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/Monterey-Bay-Aquarium-sea-otters.jpeg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 3: Sea otters frolic at the Monterey Bay Aquarium, which will reopen to the general public May 15, 2021 after being closed for 14 months due to the COVID pandemic. (Photo: Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Sea otters frolic at the Monterey Bay Aquarium. (Photo: Monterey Bay Aquarium)</p><p><strong>Q:</strong> You have a doctorate in ethics, focused on issues involving wildlife. Is there a conflict between the quality of life for individual animals in captivity at zoos and aquariums and the goals those institutions have to inform and inspire the public toward conservation?</p><p><strong>A:</strong> We have to be good at both. I don’t think we can do one at the expense of the other. At Zoos Victoria, we often worked with critically endangered species where there are very few left. When there are very few left, if you do things that are bad for an individual, you actually can crash the whole population.</p><p>I think we stop too soon when we say it’s OK to penalize some individuals to save other individuals. Why penalize any? It is not a given that a life in captivity has to be a bad life. We should ask ourselves every single day how do we make the lives better for those animals who live in our care?</p><p>How do we make sure that the life they have with us is as good as it possibly can be? And the more we do that, the more they’re going to breed, the longer they’re going to live. What’s good for the individual is also good for the species and conservation.</p><p><strong>Q:</strong> Do you have a favorite animal at the aquarium?</p><p><strong>A:</strong> Right now, it’s the Giant Pacific Octopus. She’s absolutely a heart-winner. And incredibly charismatic and tactile. She will come over and try to touch you and work out if she likes you or not. She is huge and really amazing.</p><p><strong>Q:</strong> Polls are showing that one of the main concerns that Americans have right now is affordability. A ticket to the Monterey Bay Aquarium now costs $65 for adults and $50 for children. That’s higher than most U.S. aquariums. Do you have any thoughts about that when people are concerned these days with economic anxiety?</p><p><strong>A:</strong> You know, we certainly offer opportunities for those who are not able to afford the price, particularly through the <a href=\"https://www.montereybayaquarium.org/visit/other-ways-to-visit/museums-for-all-at-the-aquarium\" target=\"_blank\" rel=\"noopener\">“Museums for All”</a> program (which provides free admission to people who receive Supplemental Nutrition Assistance Program (SNAP) benefits — known as CalFresh in California). For people who are really struggling, there’s a way that you can still come out and enjoy the aquarium.</p><p>Distance is another barrier. It may be that in good times, you would have gone to Florida on your holiday, but you’re not going to go away every holiday this year. So we would encourage that you make a day trip. Summer’s here. You’re going to need to do something with your kids. Bring them down to the aquarium and have an incredible day. Enjoy Cannery Row. Enjoy Fisherman’s Wharf. It’s not just an aquarium. It’s a whole outing that you’re going to be doing, and it’s beautiful to stand on the back deck and watch the otters playing in the ocean that we’ve protected for so long.</p><p>We think the aquarium is a value for the money and for the experience. And while it’s expensive compared to other aquariums, it is significantly better.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/MCH-L-PACKARD-0901-03.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 4: Julie Packard. (Photo courtesy of Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Julie Packard. (Photo courtesy of Monterey Bay Aquarium)</p><p><strong>Q:</strong> I suppose it’s also less expensive than amusement parks like Disneyland and most sports tickets.</p><p><strong>A:</strong> If dad is going to the World Cup, it’s only fair that everyone else comes to the aquarium, right?</p><p><strong>Q</strong>: Is there anything else you would like the public to know?</p><p><strong>A:</strong> The aquarium is not world-leading by mistake. It is beautiful. Californians should be rightly proud of this institution and of the work it’s been doing. Just to spend a day immersing yourself in the beauty of our oceans, it’s a day well spent.</p><img src=\"https://www.montereyherald.com/wp-content/uploads/2026/06/SJM-L-MONTAQUARIUM-2.jpg?fit=620%2C9999px&amp;ssl=1\" alt=\"Image 5: Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)\" style=\"max-width:100%;height:auto;\"><p>Scenic shot of the Great Tide Pool and exterior back deck of the Monterey Bay Aquarium. (Tyson V. Rininger/Monterey Bay Aquarium)</p>",
     "cell": ""
+  },
+  {
+    "UID": "1032",
+    "link": "https://youtu.be/Rc98bvuABKw",
+    "show": "1",
+    "DateAdded": "2026-06-08 07:13:43",
+    "DateModified": "2026-06-08 07:23:54",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "California purple sea urchins eating kelp in time lapse and extreme close ups",
+    "VidAuthor": "@2pkdk2",
+    "P/S": "0",
+    "VQ": "9",
+    "cell": "1c",
+    "comment": "Urchin eating kelp"
+  },
+  {
+    "UID": "1033",
+    "link": "https://video.sealifeandmore.com/BryobrunchPortrait.mp4",
+    "show": "1",
+    "DateAdded": "2026-06-08 07:20:10",
+    "DateModified": "2026-06-08 07:23:54",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "V",
+    "cell": "5b"
+  },
+  {
+    "UID": "1034",
+    "link": "https://video.sealifeandmore.com/BryobrunchLandscape.mp4",
+    "show": "1",
+    "DateAdded": "2026-06-08 07:20:26",
+    "DateModified": "2026-06-08 07:23:54",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "V",
+    "cell": "3b"
   }
 ]
