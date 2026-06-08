@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1780878858555,
+    "_salPushTime": 1780890645054,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 36,
@@ -24866,12 +24866,12 @@
     "cell": "",
     "show": "1",
     "VidRange": "text",
-    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help button available upper left hand corner.<br></div></details><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p></div></details><p></p><p>====================================</p><hr class=\"te-hr\"><p><br></p><details class=\"\" open=\"\"><summary>Single images, videos, slides; Grids</summary><div>[Insert from T, label as image, video, slide, or quiz, then separator, Insert from C, label number of cells and cname]&nbsp;</div></details><p></p></div><div><details class=\"\" open=\"\"><summary><br></summary></details><p><br></p></div><div><h6></h6></div>",
+    "ftext": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium).</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div></details><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help button available upper left hand corner.<br></div></details><p><br></p><p></p><details><summary>Gridviews!</summary><div><p>Swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p>To get back to gridview:</p><p>- Swipe left on desktop or phone.</p><p>To turn grid into slideshow:</p><p>Desktop, type S.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p></div></details><p></p><p><br></p><hr class=\"te-hr\"><p><br></p></div><div><h6></h6></div>",
     "DateAdded": "2026-06-08 00:31:27",
-    "DateModified": "2026-06-08 00:32:32",
+    "DateModified": "2026-06-08 03:50:45",
     "link": "",
-    "ftextSize": "1827",
-    "FtextJunk": "2",
+    "ftextSize": "1481",
+    "FtextJunk": "1",
     "Direct": "greet"
   },
   {
