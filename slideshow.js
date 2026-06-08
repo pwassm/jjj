@@ -2424,17 +2424,21 @@ function _slideshowOpenMenu() {
   // small gap so the ⚙ gear button (top-right) stays tappable.
   menu.style.cssText = [
     'position:absolute', 'right:16px',
-    // (dev0304) Shift center 80px below viewport mid so the menu doesn't
-    // crowd the top-right tally card in review mode.
-    'top:calc(50% + 80px)',
-    'transform:translateY(-50%)',
+    // (dev0360) On phones the vertically-centered menu overflowed the bottom of
+    // the screen (its lower rows were unreachable). Anchor it to the TOP and let
+    // it scroll. Desktop keeps the centered placement (shifted 80px below mid so
+    // it doesn't crowd the top-right tally card in review mode).
+    mobile ? 'top:8px'        : 'top:calc(50% + 80px)',
+    mobile ? 'transform:none' : 'transform:translateY(-50%)',
+    mobile ? 'max-height:calc(100vh - 16px)' : '',
+    mobile ? 'overflow-y:auto' : '',
     'background:rgba(14,14,28,0.94)',
     'border:1px solid #4af', 'border-radius:10px',
     'padding:' + pad, 'min-width:200px', 'max-width:240px',
     'color:#eee', 'font-family:monospace', 'font-size:' + baseFs + 'px',
     'box-shadow:0 8px 32px rgba(0,0,0,0.9)',
     'z-index:' + SLIDESHOW_MENU_Z
-  ].join(';') + ';';
+  ].filter(Boolean).join(';') + ';';
 
   menu.innerHTML = _slideshowMenuHtml(settings, baseFs, bigFs);
   // (dev0281) Mount as a SIBLING of the overlay (in its parent) so it can paint

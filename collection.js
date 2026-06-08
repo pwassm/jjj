@@ -167,6 +167,12 @@ async function gridSaveToFile(gname) {
 document.addEventListener('keydown', e => {
   if (document.getElementById('gridOverlay').style.display !== 'flex') return;
   if (document.getElementById('gridFullscreen').style.display === 'flex') return;
+  // (dev0360) While the slideshow is up it owns the keyboard — don't let grid
+  // keys fire underneath it. Critically, Esc must NOT close the grid here: the
+  // slideshow's own handler closes the show, which reveals G again (so Esc now
+  // matches the Close button, which returned to G). Also stops Space / [ ] from
+  // leaking to the grid behind the show.
+  if (document.getElementById('slideshowOverlay')) return;
 
   // (dev0336) Ctrl+B → cycle clean-playback buffering for YouTube cells:
   // off → cut (instant double-buffer) → fade (crossfade). Left-hand chord so it

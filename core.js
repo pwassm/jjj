@@ -2575,6 +2575,13 @@ document.getElementById('hm-slideshow').addEventListener('click', () => {
   if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid();
   else if (typeof toast === 'function') toast('Slideshow not loaded yet', 1500);
 });
+// (dev0360) Change Selection — back to the welcome / shareable menu to pick a
+// different grid or item. Shown in user mode (id not in the user-mode hide list).
+document.getElementById('hm-changesel')?.addEventListener('click', () => {
+  closeHM();
+  if (typeof window._showShareableMenu === 'function') window._showShareableMenu();
+  else if (typeof toast === 'function') toast('Menu not available', 1500);
+});
 document.getElementById('hm-settings').addEventListener('click', () => { closeHM(); openSettings(); });
 document.getElementById('hm-help').addEventListener('click', () => { closeHM(); openHelp(); });
 

@@ -100,10 +100,12 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" data-cmd="insertUnorderedList" title="Bullet list">•</button>
         <button class="te-btn" id="teCollapse" title="Insert empty collapsible section (opens; type a summary, then add anything inside — including images/tables)">▶…</button>
         <button class="te-btn" id="teWrap" title="Wrap current selection in a collapsible section — turns multi-line content, pictures, or tables into a hideable block">[▶…]</button>
+        <button class="te-btn" id="teWrap2" title="Wrap selection as a collapsible, split into title + detail — the FIRST line becomes the click-to-expand summary, the remaining lines become the hidden body">[[2]]</button>
         <button class="te-btn" id="teUndetail" title="Undetail — turn the collapsible block at the cursor back into a heading (H3) with a bullet list of its lines underneath (inverse of [▶…])">Un[▶]</button>
         <button class="te-btn" id="teExpandAll" title="Expand all collapsible blocks in this slide">▼ All</button>
         <button class="te-btn" id="teCollapseAll" title="Collapse all collapsible blocks in this slide">▶ All</button>
         <button class="te-btn" id="teCut" title="Park everything from the cursor down — wrapped in a hidden div that's invisible when rendered (slide, grid, exports) but still editable here in Xe. Click on the red banner above the parked block to unpark it.">✂ Cut</button>
+        <button class="te-btn" id="teHr" title="Insert a divider line across the page — separates sections (renders as a horizontal rule in the slide)">══</button>
         <button class="te-btn" id="teImage" title="Insert image — accepts UID number or https:// URL, with size and alignment">🖼</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" id="teTextColor"  title="Slide-wide text color — choose one for the whole slide">A▾</button>
@@ -196,6 +198,8 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor small, #teSlideContent small { font-size:0.8em; opacity:0.85; }
     #teEditor p { margin:0 0 8px; }
     #teEditor ul { margin:8px 0; padding-left:24px; }
+    /* (dev0360) ══ divider line */
+    #teEditor hr, #teSlideContent hr { border:none; border-top:2px solid #4a5a7a; margin:16px 0; height:0; }
     #teEditor details { margin:8px 0; padding:8px 8px 8px 28px; background:#111; border-left:3px solid #06f;
       clear:both; overflow:hidden; position:relative; }
     /* (dev0243) Drag/select handle on the left edge of every details. Click
@@ -376,6 +380,52 @@ function gridOpenTextEditor(cellStr, row, opts) {
     r.setStart(summary, 0); r.collapse(true);
     sel.removeAllRanges(); sel.addRange(r);
     ed.focus();
+  };
+
+  // (dev0360) [[2]] — wrap selection as a collapsible, SPLIT: the first line
+  // becomes the summary (click-to-expand title), the rest becomes the hidden
+  // body. Empty selection → empty collapsible (same fallback as [▶…]).
+  document.getElementById('teWrap2').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) {
+      document.getElementById('teCollapse').onmousedown(e);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    let container = range.commonAncestorContainer;
+    if (container.nodeType === 3) container = container.parentNode;
+    if (!ed.contains(container)) return;
+    const frag = range.extractContents();
+    const parts = _teSplitFirstLine(frag);
+    const details = document.createElement('details');
+    details.setAttribute('open', '');
+    const summary = document.createElement('summary');
+    summary.appendChild(parts.first);
+    const body = document.createElement('div');
+    body.appendChild(parts.rest);
+    if (!body.childNodes.length) {
+      const p = document.createElement('p'); p.appendChild(document.createElement('br')); body.appendChild(p);
+    }
+    details.appendChild(summary);
+    details.appendChild(body);
+    range.insertNode(details);
+    const r = document.createRange();
+    r.selectNodeContents(summary); r.collapse(false);
+    sel.removeAllRanges(); sel.addRange(r);
+    ed.focus();
+  };
+
+  // (dev0360) ══ Draw line — insert a full-width divider (horizontal rule) at
+  // the caret to separate sections. Trailing <p> gives a spot to keep typing.
+  document.getElementById('teHr').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    ed.focus();
+    document.execCommand('insertHTML', false, '<hr class="te-hr"><p><br></p>');
   };
 
   // (dev0341) Small text — wrap the selection in <small> (execCommand has no
@@ -1411,6 +1461,40 @@ function _teFormatBlock(tag) {
   ed.focus();
 }
 
+// (dev0360) Split an extracted fragment into its first "line" and the rest, for
+// the [[2]] split-wrap. If the fragment leads with a block (p/div/h*/li), that
+// block's contents are the line and the remaining siblings are the rest.
+// Otherwise the content is inline — split at the first <br>. With neither, the
+// whole fragment is the line (empty rest). Returns { first, rest } fragments.
+function _teSplitFirstLine(frag) {
+  const BLOCK = /^(P|DIV|H[1-6]|LI|BLOCKQUOTE)$/;
+  const first = document.createDocumentFragment();
+  // Skip leading whitespace-only text nodes when sniffing the lead element.
+  let lead = frag.firstChild;
+  while (lead && lead.nodeType === 3 && !lead.textContent.trim()) lead = lead.nextSibling;
+  if (lead && lead.nodeType === 1 && BLOCK.test(lead.tagName)) {
+    while (lead.firstChild) first.appendChild(lead.firstChild);
+    // Drop everything up to and including the (now-empty) lead block.
+    let n = frag.firstChild;
+    while (n && n !== lead) { const nx = n.nextSibling; frag.removeChild(n); n = nx; }
+    frag.removeChild(lead);
+    return { first, rest: frag };
+  }
+  // Inline content: split at the first <br>.
+  let br = null;
+  for (let n = frag.firstChild; n; n = n.nextSibling) {
+    if (n.nodeType === 1 && n.tagName === 'BR') { br = n; break; }
+    if (n.nodeType === 1 && BLOCK.test(n.tagName)) break; // a later block ends the first line
+  }
+  if (br) {
+    while (frag.firstChild && frag.firstChild !== br) first.appendChild(frag.firstChild);
+    frag.removeChild(br);
+    return { first, rest: frag };
+  }
+  while (frag.firstChild) first.appendChild(frag.firstChild);
+  return { first, rest: document.createDocumentFragment() };
+}
+
 // (zip0137) Slide-wide color picker. Two modes: 'text' sets the slide's
 // text color, 'bg' sets the background color. Applied to a wrapping
 // <div class="te-slide" style="..."> around the editor content so the
@@ -1804,6 +1888,7 @@ function textEditorPreviewSlide() {
       #teSlideContent h4{font-size:1.1em;color:#adf;}
       #teSlideContent h5{font-size:1em;color:#bdf;}
       #teSlideContent h6{font-size:0.9em;color:#cdf;}
+      #teSlideContent hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;}
       #teSlideContent small{font-size:0.8em;opacity:0.85;}</style>
     <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:64px;
          display:flex;align-items:center;justify-content:space-between;

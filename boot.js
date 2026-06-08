@@ -440,7 +440,7 @@ async function _showShareableMenu() {
   // fall back to an optional greeting.html file so the text can also live on
   // disk. Re-read every time the menu opens (the whole function re-fetches),
   // so editing the Greeting row updates the menu on the next visit.
-  const _isGreeting = v => String(v || '').trim().toLowerCase() === 'greeting';
+  const _isGreeting = v => /^greet/.test(String(v || '').trim().toLowerCase()); // "greet" or "greeting"
   const greetRow = mlRows.find(r => r && !r._salMeta && _isGreeting(r.Direct));
   let greetingHtml = greetRow ? String(greetRow.ftext || '') : '';
   if (!greetingHtml) {
@@ -528,14 +528,12 @@ async function _showShareableMenu() {
         }
         _openItemByUid(it.uid);
       } else if (it.kind === 'ss') {
-        // ss from menu: G is the genuine destination — slideshow plays
-        // over it, and when the slideshow stops the user stays on G
-        // (per dev0317 explicit ask). Do NOT set _fromShareableMenu:
-        // slideshow.js calls vpClose() during navigation, and we don't
-        // want every slide transition to pop the menu back. Configs
-        // button is still the explicit "back to menu" gesture.
+        // (dev0360) A grid choice from W opens G ONLY — it no longer
+        // auto-launches the slideshow (the user starts that from the
+        // hamburger ▶▶ Slideshow when they want it). `?ss=ID` deep-links
+        // still go straight to the slideshow (launch defaults true).
         window._fromShareableMenu = false;
-        _openSlideshowBySsId(it.ss);
+        _openSlideshowBySsId(it.ss, false /* show G, don't auto-play */);
       }
     });
   });
@@ -679,7 +677,10 @@ async function _openConfigByName(name) {
 // field) to a grid config, activate it, then auto-launch slideshowOpenGrid
 // once the grid is up. Mirrors _openConfigByName's c.json loading & data
 // polling so it works on first paint even when ml.json is still loading.
-async function _openSlideshowBySsId(ssVal) {
+async function _openSlideshowBySsId(ssVal, launch) {
+  // (dev0360) launch defaults true (?ss= deep-links auto-play). Pass false to
+  // just activate the grid + show G (the W menu's grid choices do this).
+  if (launch === undefined) launch = true;
   const want = String(ssVal || '').trim().toLowerCase();
   if (!want) return;
   const startedAt = Date.now();
@@ -723,6 +724,7 @@ async function _openSlideshowBySsId(ssVal) {
     return;
   }
   await _openConfigByName(cfg.gname);
+  if (!launch) return;            // (dev0360) grid-only: G is now showing, stop here
   // Wait a beat for gridShow() to paint, then launch the slideshow over it.
   setTimeout(() => {
     if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid();
