@@ -591,7 +591,7 @@ async function _showShareableMenu() {
   ov.innerHTML = menuStyle
     + '<div style="display:flex;align-items:center;padding:14px 16px;flex:none;'
       + 'background:#1a1a2e;border-bottom:2px solid #4af;">'
-      + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeeAndLearn</span>'
+      + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeaLifeAndMore</span>'
     + '</div>'
     + '<div style="flex:1;position:relative;overflow:hidden;">'
       // PAGE 1 — welcome / landing (greeting prose before the first <hr>)

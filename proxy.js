@@ -3,7 +3,7 @@
 //
 // (dev0289) Also hosts /exec/* — a tightly-scoped local bridge that runs
 // allowlisted binaries (ffmpeg today, ffprobe + exiftool scaffolded) on
-// behalf of the SeeAndLearn page. NDJSON streaming response so the UI
+// behalf of the SeaLifeAndMore page. NDJSON streaming response so the UI
 // can show live progress. Bound to 127.0.0.1 only; origin-locked to the
 // static dev server. No npm install required — Node built-ins only.
 //
