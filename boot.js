@@ -477,6 +477,42 @@ async function _showShareableMenu() {
   const _smBadge = { image: '🖼', video: '🎬', slide: '📄', quiz: '📋', other: '🔗' };
   const _smEsc = s => String(s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 
+  // (dev0362) Search page. `n` = the Greeting row's MPix, repurposed as the
+  // "show results" threshold (it isn't a real megapixel value on that row).
+  // Below n matches, result cards appear; default 12 if unset/invalid.
+  let _smN = parseInt(greetRow && greetRow.MPix, 10);
+  if (!_smN || _smN < 1) _smN = 12;
+  // All searchable T rows (content rows with a UID, minus the greeting). For
+  // each, precompute one lowercased "blob" of every searchable field so each
+  // keystroke is just a substring scan (mirrors core.js 'anywhere' fields:
+  // VidAuthor/VidTitle/link/VidComment + de-tagged ftext + tag label/common).
+  const _tBlobs = mlRows
+    .filter(r => r && !r._salMeta && r.UID != null && !_isGreeting(r.Direct))
+    .map(r => {
+      let blob = ['VidAuthor', 'VidTitle', 'link', 'VidComment'].map(f => String(r[f] || '')).join(' ')
+        + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' ');
+      if (window.tagsLib && Array.isArray(r.tags)) {
+        blob += ' ' + r.tags.map(tid => { const t = window.tagsLib.get(tid); return t ? ((t.label || '') + ' ' + (t.common || '')) : ''; }).join(' ');
+      }
+      return { r, blob: blob.toLowerCase() };
+    });
+  // Result label per the user's rule: ftext-bearing rows (Xe — incl. quiz, and
+  // with OR without a link) → first non-formatting HTML line; else video →
+  // VidTitle, image → first of VidComment.
+  const _smResultLabel = r => {
+    if (r.ftext && String(r.ftext).trim() && typeof _ftextFirstLine === 'function') {
+      const fl = _ftextFirstLine(r.ftext);
+      if (fl) return fl;
+    }
+    const kind = window.rowMediaKind ? window.rowMediaKind(r) : 'other';
+    if (kind === 'video') return r.VidTitle || r.VidComment || '(video)';
+    if (kind === 'image') return r.VidComment || r.VidTitle || '(image)';
+    return r.VidTitle || r.VidComment || ('UID ' + r.UID);
+  };
+  const _smResultBadge = r => (r.ftext && String(r.ftext).trim())
+    ? (_smType(r) === 'quiz' ? 'quiz' : 'slide')
+    : (window.rowMediaKind ? window.rowMediaKind(r) : 'other');
+
   // Choices, re-read fresh on every open. V items (from T / ml.json `Direct`)
   // first, then SS grids (from C / c.json), so the combined `items` index used
   // by the tap handler stays stable.
@@ -507,14 +543,10 @@ async function _showShareableMenu() {
         + '<span class="sm-name">' + _smEsc(it.label) + '</span>'
         + '<span class="sm-tag">' + (it.cells ? it.cells + ' cells' : 'grid') + '</span>'
       + '</div>';
-  let listHtml;
-  if (!items.length) {
-    listHtml = '<div style="padding:24px;color:#aa8;">No shareable items yet.</div>';
-  } else {
-    listHtml = vItems.map((it, i) => _smCard(it, i)).join('')
-      + ((vItems.length && gItems.length) ? '<div class="sm-grpdiv"></div>' : '')
-      + gItems.map((it, i) => _smCard(it, vItems.length + i)).join('');
-  }
+  // (dev0362) Two columns on desktop (Singles | Grids), stacked on phone.
+  const _smNoItems = '<div style="padding:24px;color:#aa8;">No shareable items yet.</div>';
+  const vCardsHtml = vItems.map((it, i) => _smCard(it, i)).join('');
+  const gCardsHtml = gItems.map((it, i) => _smCard(it, vItems.length + i)).join('');
 
   // (dev0359/0361) Readable sans-serif greeting prose (now a CLASS so both
   // pages can use it), page-2 cards, and the bottom tab bar. `summary` headings
@@ -535,9 +567,20 @@ async function _showShareableMenu() {
     + '.sm-card:hover{background:#15152a;}'
     + '.sm-ico{font-size:24px;line-height:1;flex:none;width:30px;text-align:center;}'
     + '.sm-name{flex:1;font-size:18px;}'
-    + '.sm-tag{flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7a8aa0;border:1px solid #2a3550;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
-    + '.sm-sub{padding:9px 24px 5px;color:#7a8aa0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:#0d0d1e;}'
+    + '.sm-tag{flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#fff;border:1px solid #3a4a6a;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
+    + '.sm-sub{padding:9px 24px 5px;color:#cfe8ff;font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:#0d0d1e;}'
     + '.sm-grpdiv{height:1px;background:#223;margin:6px 0;}'
+    + '.sm-colhdr{padding:12px 22px 4px;color:#9fb0c8;font-size:12px;letter-spacing:.14em;text-transform:uppercase;}'
+    + '.sm-cols{display:flex;gap:28px;align-items:flex-start;justify-content:center;padding:8px 0 30px;}'
+    + '.sm-col{flex:1 1 0;min-width:0;max-width:520px;}'
+    + '@media(min-width:760px){.sm-cols{padding:8px 120px 30px;}}'
+    + '@media(max-width:759px){.sm-cols{flex-direction:column;gap:4px;padding:0 0 24px;}.sm-col{max-width:none;}}'
+    + '.sm-search{display:block;width:calc(100% - 48px);max-width:620px;margin:20px auto 10px;padding:13px 16px;border-radius:9px;border:1px solid #4af;background:#11132a;color:#fff;font-family:sans-serif;font-size:17px;outline:none;}'
+    + '.sm-sugg{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:620px;margin:0 auto 6px;padding:0 24px;}'
+    + '.sm-chip{padding:5px 12px;border-radius:14px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:13px;cursor:pointer;}'
+    + '.sm-chip:hover{background:#1d2440;}'
+    + '.sm-count{text-align:center;color:#9fb0c8;font-family:sans-serif;font-size:13px;margin:8px 0 4px;}'
+    + '.sm-results{max-width:620px;margin:0 auto;}'
     + '.sm-cta{display:block;margin:18px auto 26px;padding:13px 26px;border-radius:9px;border:1px solid #4af;background:rgba(0,60,120,0.5);color:#cfe8ff;font-family:sans-serif;font-size:17px;font-weight:bold;cursor:pointer;max-width:320px;width:calc(100% - 48px);}'
     + '.sm-cta:hover{background:rgba(0,80,150,0.65);}'
     + '.sm-tabs{display:flex;flex:none;border-top:2px solid #223;background:#0d0d1e;}'
@@ -560,61 +603,108 @@ async function _showShareableMenu() {
         // submit prospective links. Deliberately absent for now (needs a
         // backend: auth + a stored submission/moderation queue).
       + '</div>'
-      // PAGE 2 — choose a view (greeting prose after the <hr>, then the list)
+      // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
+      // Singles | Grids on desktop, stacked on phone)
       + '<div id="smPage2" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + (greetIntro.trim() ? '<div class="smGreeting">' + greetIntro + '</div>'
                              : '<div class="sm-sub">Choose a view</div>')
-        + '<div id="smList">' + listHtml + '</div>'
+        + (items.length
+            ? '<div class="sm-cols">'
+                + '<div class="sm-col">' + (vItems.length ? '<div class="sm-colhdr">Singles</div>' : '') + vCardsHtml + '</div>'
+                + '<div class="sm-col">' + (gItems.length ? '<div class="sm-colhdr">Grids</div>' : '') + gCardsHtml + '</div>'
+              + '</div>'
+            : _smNoItems)
+      + '</div>'
+      // PAGE 3 — search anywhere across all of T; result cards appear once the
+      // match count drops below n (the Greeting row's MPix).
+      + '<div id="smPage3" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + '<input id="smSearchBox" class="sm-search" type="text" placeholder="Search everything…" autocomplete="off">'
+        + '<div id="smSugg" class="sm-sugg"></div>'
+        + '<div id="smCount" class="sm-count"></div>'
+        + '<div id="smResults" class="sm-results"></div>'
       + '</div>'
     + '</div>'
     + '<div class="sm-tabs">'
       + '<button class="sm-tab on" data-pg="1">Welcome</button>'
       + '<button class="sm-tab" data-pg="2">Choose a view</button>'
+      + '<button class="sm-tab" data-pg="3">Search</button>'
     + '</div>';
 
   document.body.appendChild(ov);
 
-  // (dev0361) Two-page nav — bottom tabs + the page-1 "Choose a view" button.
+  // (dev0361/0362) Tabbed nav — bottom tabs + the page-1 "Choose a view"
+  // button. Three pages: Welcome / Choose a view / Search.
   const _smShow = n => {
-    const p1 = ov.querySelector('#smPage1'), p2 = ov.querySelector('#smPage2');
-    if (p1) p1.style.display = (n === 2) ? 'none' : '';
-    if (p2) p2.style.display = (n === 2) ? '' : 'none';
+    [1, 2, 3].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
+    if (n === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
   };
   ov.querySelectorAll('.sm-tab').forEach(t =>
     t.addEventListener('click', () => _smShow(parseInt(t.dataset.pg, 10) || 1)));
   const _smGo = ov.querySelector('#smGoView');
   if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
 
-  ov.querySelectorAll('.sm-item').forEach(el => {
+  // Open a single T item as V over a forced G backdrop, routing vpClose back to
+  // this menu via _fromShareableMenu. Shared by the choice cards AND search
+  // results. (Direct /tshare links never set this flag — they run locked.)
+  const _smOpenV = uid => {
+    ov.remove();
+    window._fromShareableMenu = true;
+    const gOvl = document.getElementById('gridOverlay');
+    if (gOvl) { gOvl.style.display = 'flex'; window._vpForcedGridFromT = true; }
+    _openItemByUid(uid);
+  };
+
+  ov.querySelectorAll('#smPage2 .sm-item').forEach(el => {
     el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.i, 10);
-      const it = items[idx];
+      const it = items[parseInt(el.dataset.i, 10)];
       if (!it) return;
-      ov.remove();
       if (it.kind === 'v') {
-        // V from menu: route vpClose back to the menu via the
-        // _fromShareableMenu hook, since there's no real G underneath
-        // (we only forced gridOverlay open as a V backdrop). Direct
-        // /tshare links never set this flag — they run locked.
-        window._fromShareableMenu = true;
-        const gOvl = document.getElementById('gridOverlay');
-        if (gOvl) {
-          gOvl.style.display = 'flex';
-          window._vpForcedGridFromT = true;
-        }
-        _openItemByUid(it.uid);
+        _smOpenV(it.uid);
       } else if (it.kind === 'ss') {
-        // (dev0360) A grid choice from W opens G ONLY — it no longer
-        // auto-launches the slideshow (the user starts that from the
-        // hamburger ▶▶ Slideshow when they want it). `?ss=ID` deep-links
-        // still go straight to the slideshow (launch defaults true).
+        // (dev0360) A grid choice from W opens G ONLY — the user starts the
+        // slideshow from the hamburger when they want it.
+        ov.remove();
         window._fromShareableMenu = false;
         _openSlideshowBySsId(it.ss, false /* show G, don't auto-play */);
       }
     });
   });
+
+  // (dev0362) Search page — live anywhere-filter over all of T (precomputed
+  // blobs), dictionary suggestions from tagsLib, a match count, and result
+  // cards once matches < n.
+  const _smBox = ov.querySelector('#smSearchBox');
+  const _smSuggEl = ov.querySelector('#smSugg');
+  const _smCountEl = ov.querySelector('#smCount');
+  const _smResEl = ov.querySelector('#smResults');
+  const _smRunSearch = () => {
+    const q = (_smBox.value || '').trim();
+    const lq = q.toLowerCase();
+    if (_smSuggEl) {
+      const sug = (q && window.tagsLib && window.tagsLib.search) ? window.tagsLib.search(q, 8) : [];
+      _smSuggEl.innerHTML = sug.map(t => '<span class="sm-chip" data-q="' + _smEsc(t.common || t.label) + '">' + _smEsc(t.label) + '</span>').join('');
+      _smSuggEl.querySelectorAll('.sm-chip').forEach(c =>
+        c.addEventListener('click', () => { _smBox.value = c.dataset.q; _smRunSearch(); }));
+    }
+    if (!q) { _smCountEl.textContent = ''; _smResEl.innerHTML = ''; return; }
+    const matches = _tBlobs.filter(x => x.blob.includes(lq)).map(x => x.r);
+    _smCountEl.textContent = matches.length + ' match' + (matches.length === 1 ? '' : 'es')
+      + (matches.length >= _smN ? ' — keep typing to narrow below ' + _smN : '');
+    if (matches.length && matches.length < _smN) {
+      _smResEl.innerHTML = matches.map(r =>
+        '<div class="sm-item sm-card" data-uid="' + _smEsc(String(r.UID)) + '">'
+          + '<span class="sm-ico">' + (_smBadge[_smResultBadge(r)] || '🔗') + '</span>'
+          + '<span class="sm-name">' + _smEsc(_smResultLabel(r)) + '</span>'
+        + '</div>').join('');
+      _smResEl.querySelectorAll('.sm-item').forEach(el =>
+        el.addEventListener('click', () => _smOpenV(el.dataset.uid)));
+    } else {
+      _smResEl.innerHTML = '';
+    }
+  };
+  if (_smBox) _smBox.addEventListener('input', _smRunSearch);
 }
 window._showShareableMenu = _showShareableMenu;
 

@@ -2635,6 +2635,13 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
     </div>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
+      <span>Each slide</span>
+      <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
+                   inputmode="decimal" value="${s.slideSec}"
+                   style="${numCSS}"> sec</span>
+    </div>
+
+    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Show</span>
       ${_slideshowShowSelect('ssShowMode', s.showMode, selCSS)}
     </div>
@@ -2654,13 +2661,6 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
     <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Loop</span>
       <button class="ss-tog" data-key="loop"    style="${togCSS(s.loop)}">${s.loop?'ON':'OFF'}</button>
-    </div>
-
-    <div class="ss-row ss-page-2" style="${rowCSS}">
-      <span>Each slide</span>
-      <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
-                   inputmode="decimal" value="${s.slideSec}"
-                   style="${numCSS}"> sec</span>
     </div>
 
     <div class="ss-row ss-page-2" style="${rowCSS}">
@@ -2837,6 +2837,13 @@ function _slideshowWireMenu(menu) {
     });
     // Stop bubble so clicks on the spinner don't dismiss the slideshow.
     el.addEventListener('click', e => e.stopPropagation());
+    // (dev0362) Tapping the box (which pops the numpad on phones) clears it so
+    // the next entry is a fresh number, not appended. If the user enters
+    // nothing, restore the value that was erased on blur.
+    el.addEventListener('focus', () => { el.dataset.prev = el.value; el.value = ''; });
+    el.addEventListener('blur', () => {
+      if (el.value.trim() === '' || isNaN(parseFloat(el.value))) el.value = el.dataset.prev || '';
+    });
   }
   wireNum('ssSlideSec', 'slideSec',     0.5, 60);
   wireNum('ssZoomSec',  'zoomSec',      0.5, 60);
