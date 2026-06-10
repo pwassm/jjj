@@ -5042,5 +5042,54 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "chondrocladia",
+    "label": "Chondrocladia",
+    "kind": "taxon",
+    "parents": [
+      "cladorhizidae"
+    ],
+    "aliases": [
+      "Chondrocladia Thomson",
+      "1873"
+    ],
+    "def": "",
+    "rank": "genus",
+    "common": "sponge",
+    "extinct": false
+  },
+  {
+    "id": "demospongiae",
+    "label": "Demospongiae",
+    "kind": "taxon",
+    "parents": [
+      "porifera"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "poecilosclerida",
+    "label": "Poecilosclerida",
+    "kind": "taxon",
+    "parents": [
+      "demospongiae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "cladorhizidae",
+    "label": "Cladorhizidae",
+    "kind": "taxon",
+    "parents": [
+      "poecilosclerida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
   }
 ]
