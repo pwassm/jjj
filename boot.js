@@ -610,11 +610,9 @@ async function _showShareableMenu() {
   ov.innerHTML = menuStyle
     + '<div style="display:flex;align-items:center;padding:14px 16px;flex:none;'
       + 'background:#1a1a2e;border-bottom:2px solid #4af;">'
-      // (dev0366) Back-to-Welcome button — hidden on the standalone Welcome
-      // page, shown in the 2-tab view (Choose a view / Search).
-      + '<button id="smBack" style="display:none;background:#11132a;border:1px solid #4af;'
-        + 'color:#cfe8ff;padding:5px 12px;border-radius:6px;cursor:pointer;'
-        + 'font-family:sans-serif;font-size:13px;margin-right:12px;">&lsaquo;&nbsp;Welcome</button>'
+      // (dev0368) The Welcome page is now a one-time splash shown only on first
+      // entry — nothing navigates back to it — so the old "‹ Welcome" back
+      // button was removed. All returns land on the Main Page (Choose a view).
       + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeaLifeAndMore</span>'
     + '</div>'
     + '<div style="flex:1;position:relative;overflow:hidden;">'
@@ -664,28 +662,40 @@ async function _showShareableMenu() {
 
   document.body.appendChild(ov);
 
-  // (dev0361/0362/0366) Nav. Welcome (page 1) is a STANDALONE landing — its tab
-  // bar is hidden and a header "‹ Welcome" button returns to it. The 2-tab bar
-  // (Choose a view / Search) is shown only on pages 2–3.
+  // (dev0361/0362/0366/0368) Nav. Welcome (page 1) is a one-time splash shown
+  // only on first entry; its tab bar is hidden. The 2-tab bar (Choose a view /
+  // Search) — the "Main Page" — is shown on pages 2–3 and is where all returns land.
   const _smTabBar = ov.querySelector('.sm-tabs');
-  const _smBackBtn = ov.querySelector('#smBack');
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
     [1, 2, 3].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     if (_smTabBar) _smTabBar.style.display = (n === 1) ? 'none' : 'flex';
-    if (_smBackBtn) _smBackBtn.style.display = (n === 1) ? 'none' : 'inline-block';
     if (n === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
   };
   ov.querySelectorAll('.sm-tab').forEach(t =>
     t.addEventListener('click', () => _smShow(parseInt(t.dataset.pg, 10) || 2)));
-  // Welcome → tab view (both top and bottom buttons), and the header back arrow.
+  // Welcome → Main Page (both the top and bottom "Choose a view" buttons).
   const _smGo = ov.querySelector('#smGoView');
   if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
   const _smGoTop = ov.querySelector('#smGoViewTop');
   if (_smGoTop) _smGoTop.addEventListener('click', () => _smShow(2));
-  if (_smBackBtn) _smBackBtn.addEventListener('click', () => _smShow(1));
+  // (dev0368) On the Search page, a right-to-left swipe returns to the Main
+  // "Choose a view" page — the same swipe-back feel used elsewhere. Touch only.
+  let _smSwX = null, _smSwY = null;
+  ov.addEventListener('touchstart', e => {
+    if (!e.touches || !e.touches.length) return;
+    _smSwX = e.touches[0].clientX; _smSwY = e.touches[0].clientY;
+  }, { passive: true });
+  ov.addEventListener('touchend', e => {
+    const x0 = _smSwX, y0 = _smSwY; _smSwX = _smSwY = null;
+    if (x0 == null) return;
+    const t = (e.changedTouches && e.changedTouches[0]) || null;
+    if (!t) return;
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (dx < -60 && Math.abs(dy) < Math.abs(dx) && window._smCurPage === 3) _smShow(2);
+  }, { passive: true });
   // Populate the search-filter note from the COI-declared filters.
   const _smFiltNote = ov.querySelector('#smFilterNote');
   if (_smFiltNote) {
@@ -694,13 +704,22 @@ async function _showShareableMenu() {
     if (_filtMedia) _lbls.push('image & video only');
     _smFiltNote.textContent = _lbls.length ? 'Filtered: ' + _lbls.join(' · ') : '';
   }
-  // Start on the standalone Welcome page (also fixes the tab bar's initial
-  // visibility, since the markup ships it visible). (dev0367) But when the
-  // viewer is RETURNING from a selection (closed V), re-open the page they
-  // were on — the "Choose a view"/Search tab — not Welcome. _smReturnPage is
-  // set by the selection handlers; it's a one-shot, cleared after use.
-  const _smStartPg = (window._smReturnPage === 2 || window._smReturnPage === 3) ? window._smReturnPage : 1;
+  // (dev0368) Pick the landing page:
+  //  • _smReturnPage (2|3) — a one-shot set when returning from a V selection;
+  //    reopens the exact tab the viewer left (Choose a view / Search).
+  //  • else if Welcome was already shown once this session — go straight to the
+  //    Main Page (2). Welcome is a splash; HMenu-from-G / returns never re-show it.
+  //  • else (very first entry) — show the Welcome splash and mark it seen.
+  let _smStartPg;
+  if (window._smReturnPage === 2 || window._smReturnPage === 3) {
+    _smStartPg = window._smReturnPage;
+  } else if (window._smWelcomeSeen) {
+    _smStartPg = 2;
+  } else {
+    _smStartPg = 1;
+  }
   window._smReturnPage = undefined;
+  if (_smStartPg === 1) window._smWelcomeSeen = true;
   _smShow(_smStartPg);
 
   // Open a single T item as V over a forced G backdrop, routing vpClose back to

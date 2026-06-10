@@ -224,10 +224,17 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0350) Z resets zoom. First press: whole-grid (window) zoom → 1.0 while
-  // each cell keeps its relative per-cell zoom. A SECOND consecutive Z (no [ ] /
-  // Ctrl+[ ] nudge between) also clears every per-cell zoom. See gridResetZoom.
-  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'z' || e.key === 'Z')) {
+  // (dev0368) Shift+Z restores every cell's relative zoom to the values saved in
+  // the active c.json config — reverting unsaved per-cell tweaks, window zoom kept.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === 'Z') {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridRestoreCellZoomFromConfig === 'function') gridRestoreCellZoomFromConfig();
+    return;
+  }
+  // (dev0350) Bare z resets zoom. First press: whole-grid (window) zoom → 1.0
+  // while each cell keeps its relative per-cell zoom. A SECOND consecutive z
+  // (no [ ] / Ctrl+[ ] nudge between) also clears every per-cell zoom. See gridResetZoom.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === 'z') {
     e.preventDefault(); e.stopPropagation();
     if (typeof gridResetZoom === 'function') gridResetZoom();
     return;

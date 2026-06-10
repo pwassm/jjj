@@ -2424,6 +2424,18 @@ function onColDragUp() {
 // Context menu
 function addCtxT(el, t) { el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtx(e.clientX, e.clientY, t); }); }
 document.getElementById('wrap').addEventListener('contextmenu', e => e.preventDefault());
+// (dev0368) Fallback: a right-click landing OUTSIDE #wrap (the empty strip to the
+// right of a narrow table / past the last column header — roughly the right 1/8th
+// on a wide screen) still raised the browser's native menu, since the guard above
+// only covers the table itself. While the T screen is active, swallow those stray
+// right-clicks too. Real form fields are spared so paste/spell menus still work.
+// Header/cell right-clicks never reach here — addCtxT stops their propagation.
+document.addEventListener('contextmenu', e => {
+  if (!_tScreenActive()) return;
+  const t = e.target;
+  if (t && t.closest && t.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
+  e.preventDefault();
+});
 
 function showCtx(x, y, target) {
   const menu = document.getElementById('ctxmenu'); menu.innerHTML = '';

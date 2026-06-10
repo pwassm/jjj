@@ -671,6 +671,25 @@ function gridResetZoom() {
   _gridRefitAll();
 }
 
+// (dev0368) Shift+Z restores every cell's relative (per-cell) zoom to the value
+// saved in the active c.json config — reverting any unsaved Ctrl+[ ] / Shift-drag
+// tweaks WITHOUT touching the whole-grid (window) zoom. Mirrors the per-cell half
+// of _gridApplyConfigZoom. No active config → no-op toast.
+function gridRestoreCellZoomFromConfig() {
+  const cfg = window._gridActiveConfig;
+  if (!cfg) { if (typeof toast === 'function') toast('No active config to restore cell zooms from', 1600); return; }
+  _gridCellZoom = {};
+  _gridCellPan = {};                  // drop any transient drag-pans too
+  Object.keys(cfg).forEach(k => {
+    if (!/^[1-9][a-e]$/.test(k)) return;
+    const pv = _gridParseCellVal(cfg[k]);
+    if (pv.uid && pv.zoom !== 1) _gridCellZoom[pv.uid] = pv.zoom;
+  });
+  _gridZResetArmed = false;
+  _gridToast('Per-cell zooms restored from config', 1500);
+  _gridRefitAll();
+}
+
 // (dev0347) Ctrl+[ / Ctrl+] over a cell (the one under the mouse) nudges just
 // THAT cell's zoom — a multiplier on top of the global zoom. Only video/image/
 // montage cells are zoomable; stored per row UID so it can persist to c.json
@@ -1066,6 +1085,34 @@ function gridShow() {
     }, true);
     overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; }, true);
   }
+  // (dev0368) Grid-level "swipe back to the Main Page" gesture (user mode only).
+  // A LONG left-swipe — one that travels more than a full cell width, crossing the
+  // vertical border between two cells — returns to the shareable menu's Main Page.
+  // Short single-cell left-swipes still pause that cell (handled per-cell). Wired
+  // in CAPTURE so a recognised long-swipe can stopPropagation the per-cell pause.
+  // Modifier-held gestures (Shift/Ctrl zoom + pan, Alt COI) are excluded.
+  if (!overlay._swipeWired) {
+    overlay._swipeWired = true;
+    let _swX = null, _swY = null, _swMod = false;
+    overlay.addEventListener('pointerdown', e => {
+      _swX = e.clientX; _swY = e.clientY;
+      _swMod = e.shiftKey || e.ctrlKey || e.altKey || e.metaKey;
+    }, true);
+    overlay.addEventListener('pointerup', e => {
+      const x0 = _swX, mod = _swMod; const y0 = _swY;
+      _swX = _swY = null; _swMod = false;
+      if (x0 == null || mod) return;
+      if (typeof _isUserMode === 'function' && !_isUserMode()) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      const cw = container.getBoundingClientRect().width / Math.max(1, _gridGsize);
+      if (dx < -Math.max(cw, 100) && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
+        overlay.style.display = 'none';
+        if (typeof _showShareableMenu === 'function') _showShareableMenu();
+      }
+    }, true);
+  }
   // (zip0141) Re-apply user-mode chrome AFTER the overlay flips visible —
   // gridUpdateSourceBtns may have re-set display/opacity on the dev
   // buttons. Idempotent and a no-op in dev mode.
@@ -1299,7 +1346,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
     _szPanBase = null;
     try { interactor.setPointerCapture(e.pointerId); } catch (_) {}
     _gridZResetArmed = false;                // a zoom gesture breaks the Z double-reset chain
-    const dir = (_szBtn === 2) ? -1 : 1;
+    // (dev0368) Direction: right button OR Ctrl+left → OUT, plain left → IN.
+    // The Ctrl+Shift+left-hold alias is the Firefox-safe way to zoom out, since
+    // Firefox force-shows its native menu on Shift+right-click (no page can block it).
+    const dir = (_szBtn === 2 || e.ctrlKey) ? -1 : 1;
     _szStep = 0.01;
     // 180ms settle so a quick Shift+click doesn't zoom.
     _szDelay = setTimeout(() => {
