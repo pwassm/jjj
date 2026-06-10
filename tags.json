@@ -799,7 +799,9 @@
       "sea urchin",
       "sea urchins"
     ],
-    "def": ""
+    "def": "",
+    "common": "sea urchin",
+    "extinct": false
   },
   {
     "id": "astropyga",
@@ -1692,7 +1694,7 @@
     "label": "Perciformes",
     "kind": "taxon",
     "parents": [
-      "chordata"
+      "teleostei"
     ],
     "aliases": [],
     "def": "",
@@ -4928,5 +4930,117 @@
     "def": "",
     "rank": "species",
     "common": "peacock mantis shrimp"
+  },
+  {
+    "id": "strongylocentrotus-purpuratus",
+    "label": "Strongylocentrotus purpuratus",
+    "kind": "taxon",
+    "parents": [
+      "strongylocentrotus"
+    ],
+    "aliases": [
+      "Strongylocentrotus purpuratus (Stimpson, 1857)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "purple sea urchin"
+  },
+  {
+    "id": "strongylocentrotidae",
+    "label": "Strongylocentrotidae",
+    "kind": "taxon",
+    "parents": [
+      "camarodonta"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "strongylocentrotus",
+    "label": "Strongylocentrotus",
+    "kind": "taxon",
+    "parents": [
+      "strongylocentrotidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "mouth",
+    "label": "Mouth",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "eating",
+    "label": "Eating",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "shapeoflife",
+    "label": "Shapeoflife",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "mesocentrotus-franciscanus",
+    "label": "Mesocentrotus franciscanus",
+    "kind": "taxon",
+    "parents": [
+      "mesocentrotus"
+    ],
+    "aliases": [
+      "Mesocentrotus franciscanus (A.Agassiz",
+      "1863)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "red sea urchin",
+    "extinct": false
+  },
+  {
+    "id": "mesocentrotus",
+    "label": "Mesocentrotus",
+    "kind": "taxon",
+    "parents": [
+      "strongylocentrotidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "bodianus-pulcher",
+    "label": "Bodianus pulcher",
+    "kind": "taxon",
+    "parents": [
+      "bodianus"
+    ],
+    "aliases": [
+      "Bodianus pulcher (Ayres, 1854)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "California sheephead"
+  },
+  {
+    "id": "bodianus",
+    "label": "Bodianus",
+    "kind": "taxon",
+    "parents": [
+      "labridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

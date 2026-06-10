@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1780982025601,
+    "_salPushTime": 1781104349612,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 36,
@@ -74,14 +74,15 @@
       "segLength",
       "attribution",
       "FtextJunk",
-      "face"
+      "face",
+      "4c"
     ],
     "_salHidden": [],
     "_salSort": {
       "col": "DateAdded",
       "dir": "desc"
     },
-    "_salGsize": 5,
+    "_salGsize": 3,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -423,7 +424,7 @@
     "UID": "1",
     "show": "1",
     "VidRange": "",
-    "cell": "1b",
+    "cell": "",
     "fit": "ei",
     "link": "",
     "linkpage": "",
@@ -688,7 +689,7 @@
   {
     "UID": "8",
     "show": "1",
-    "VidRange": "75 8, 113 7, 130.8 6, 172.2 6, 185.6 10.2, 246 20",
+    "VidRange": "75 8, 113 7, 130.8 6, 172.2 7, 185.6 11.2, 246 20",
     "cell": "",
     "fit": "ei",
     "link": "https://vimeo.com/33358953",
@@ -697,9 +698,9 @@
     "VidAuthor": "Pacific Freediver",
     "attribution": "",
     "comment": "",
-    "VidComment": "Sheephead vs Sea Urchin 1, , , , , ",
+    "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
     "DateAdded": "2026-03-19 07:04:34",
-    "DateModified": "2026-05-17 18:28:55",
+    "DateModified": "2026-06-10 14:09:10",
     "Mute": "0",
     "MPix": "V",
     "n1": "",
@@ -709,8 +710,9 @@
     "segLength": "0:57",
     "ftext": "",
     "tags": [
-      "predation",
-      "stereolepis-gigas"
+      "strongylocentrotus-purpuratus",
+      "bodianus-pulcher",
+      "predation"
     ],
     "BA": "",
     "ltype": "",
@@ -721,6 +723,246 @@
     "VQ": "",
     "BQ": "",
     "COI": "",
+    "X": "",
+    "face": ""
+  },
+  {
+    "UID": "8_1",
+    "show": "1",
+    "VidRange": "75 8",
+    "cell": "1a",
+    "fit": "ei",
+    "link": "https://vimeo.com/33358953",
+    "linkpage": "",
+    "VidTitle": "California Sheephead Eats Sea Urchin",
+    "VidAuthor": "Pacific Freediver",
+    "attribution": "",
+    "comment": "",
+    "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
+    "DateAdded": "2026-06-10 14:09:27",
+    "DateModified": "2026-06-10 14:35:04",
+    "Mute": "0",
+    "MPix": "V",
+    "n1": "",
+    "P/S": "0",
+    "n2": "",
+    "vidLength": "7:13",
+    "segLength": "0:57",
+    "ftext": "",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "bodianus-pulcher",
+      "predation"
+    ],
+    "BA": "",
+    "ltype": "",
+    "FTLsaved": "",
+    "Direct": "",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VQ": "",
+    "BQ": "",
+    "COI": "0.457,0.451@@0.8@@frame0",
+    "X": "",
+    "face": ""
+  },
+  {
+    "UID": "8_2",
+    "show": "1",
+    "VidRange": "113 7",
+    "cell": "1b",
+    "fit": "ei",
+    "link": "https://vimeo.com/33358953",
+    "linkpage": "",
+    "VidTitle": "California Sheephead Eats Sea Urchin",
+    "VidAuthor": "Pacific Freediver",
+    "attribution": "",
+    "comment": "",
+    "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
+    "DateAdded": "2026-06-10 14:09:27",
+    "DateModified": "2026-06-10 14:36:02",
+    "Mute": "0",
+    "MPix": "V",
+    "n1": "",
+    "P/S": "0",
+    "n2": "",
+    "vidLength": "7:13",
+    "segLength": "0:57",
+    "ftext": "",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "bodianus-pulcher",
+      "predation"
+    ],
+    "BA": "",
+    "ltype": "",
+    "FTLsaved": "",
+    "Direct": "",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VQ": "",
+    "BQ": "",
+    "COI": "0.385,0.291@@1.2@@frame0",
+    "X": "",
+    "face": ""
+  },
+  {
+    "UID": "8_3",
+    "show": "1",
+    "VidRange": "130.8 6",
+    "cell": "1c",
+    "fit": "ei",
+    "link": "https://vimeo.com/33358953",
+    "linkpage": "",
+    "VidTitle": "California Sheephead Eats Sea Urchin",
+    "VidAuthor": "Pacific Freediver",
+    "attribution": "",
+    "comment": "",
+    "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
+    "DateAdded": "2026-06-10 14:09:27",
+    "DateModified": "2026-06-10 14:37:02",
+    "Mute": "0",
+    "MPix": "V",
+    "n1": "",
+    "P/S": "0",
+    "n2": "",
+    "vidLength": "7:13",
+    "segLength": "0:57",
+    "ftext": "",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "bodianus-pulcher",
+      "predation"
+    ],
+    "BA": "",
+    "ltype": "",
+    "FTLsaved": "",
+    "Direct": "",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VQ": "",
+    "BQ": "",
+    "COI": "0.325,0.266@@1.2@@frame0",
+    "X": "",
+    "face": ""
+  },
+  {
+    "UID": "8_4",
+    "show": "1",
+    "VidRange": "172.2 7",
+    "cell": "2a",
+    "fit": "ei",
+    "link": "https://vimeo.com/33358953",
+    "linkpage": "",
+    "VidTitle": "California Sheephead Eats Sea Urchin",
+    "VidAuthor": "Pacific Freediver",
+    "attribution": "",
+    "comment": "",
+    "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
+    "DateAdded": "2026-06-10 14:09:27",
+    "DateModified": "2026-06-10 14:37:57",
+    "Mute": "0",
+    "MPix": "V",
+    "n1": "",
+    "P/S": "0",
+    "n2": "",
+    "vidLength": "7:13",
+    "segLength": "0:57",
+    "ftext": "",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "bodianus-pulcher",
+      "predation"
+    ],
+    "BA": "",
+    "ltype": "",
+    "FTLsaved": "",
+    "Direct": "",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VQ": "",
+    "BQ": "",
+    "COI": "0.303,0.306@@1.2@@frame0",
+    "X": "",
+    "face": ""
+  },
+  {
+    "UID": "8_5",
+    "show": "1",
+    "VidRange": "185.6 11.2",
+    "cell": "2b",
+    "fit": "ei",
+    "link": "https://vimeo.com/33358953",
+    "linkpage": "",
+    "VidTitle": "California Sheephead Eats Sea Urchin",
+    "VidAuthor": "Pacific Freediver",
+    "attribution": "",
+    "comment": "",
+    "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
+    "DateAdded": "2026-06-10 14:09:27",
+    "DateModified": "2026-06-10 14:39:23",
+    "Mute": "0",
+    "MPix": "V",
+    "n1": "",
+    "P/S": "0",
+    "n2": "",
+    "vidLength": "7:13",
+    "segLength": "0:57",
+    "ftext": "",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "bodianus-pulcher",
+      "predation"
+    ],
+    "BA": "",
+    "ltype": "",
+    "FTLsaved": "",
+    "Direct": "",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VQ": "",
+    "BQ": "",
+    "COI": "0.307,0.342@@1.2@@frame0",
+    "X": "",
+    "face": ""
+  },
+  {
+    "UID": "8_6",
+    "show": "1",
+    "VidRange": "246 20",
+    "cell": "2c",
+    "fit": "ei",
+    "link": "https://vimeo.com/33358953",
+    "linkpage": "",
+    "VidTitle": "California Sheephead Eats Sea Urchin",
+    "VidAuthor": "Pacific Freediver",
+    "attribution": "",
+    "comment": "",
+    "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
+    "DateAdded": "2026-06-10 14:09:27",
+    "DateModified": "2026-06-10 14:42:13",
+    "Mute": "0",
+    "MPix": "V",
+    "n1": "",
+    "P/S": "0",
+    "n2": "",
+    "vidLength": "7:13",
+    "segLength": "0:57",
+    "ftext": "",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "bodianus-pulcher",
+      "predation"
+    ],
+    "BA": "",
+    "ltype": "",
+    "FTLsaved": "",
+    "Direct": "",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VQ": "",
+    "BQ": "",
+    "COI": "0.288,0.194@@1.0@@frame0",
     "X": "",
     "face": ""
   },
@@ -1108,7 +1350,7 @@
     "UID": "19",
     "show": "1",
     "VidRange": "",
-    "cell": "3c",
+    "cell": "",
     "fit": "ei",
     "link": "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhGSku75xTCOUphDIeKW5FCto6fTo5VnXH1fI-kNtkdX27Z7BvVnLc-jrmxbVL7wwr4-GNH1jOHEacoO1ArLwQy_lThESPkipVeAt0514k-BtlAZ9plpLJ6QW8m4hELBhJxmIthWIe7rsk/s1600/125.jpg",
     "linkpage": "https://micksmarinebiology.blogspot.com/2010/07/temperate-water-reef-at-wemeldinge-part.html",
@@ -1178,7 +1420,8 @@
     "BQ": "",
     "COI": "",
     "X": "",
-    "face": ""
+    "face": "",
+    "4c": ""
   },
   {
     "UID": "21",
@@ -19096,7 +19339,7 @@
     "MPix": "0.2",
     "P/S": "0",
     "comment": "The life cycle of Riftia pachyptila illustrates the complexity of factors—involving biology, chemistry, geology, and physical oceanography—that all play roles in the migration, resettlement, and speciation of vent species.",
-    "cell": "5e",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19119,7 +19362,7 @@
     "MPix": "0.1",
     "P/S": "0",
     "comment": "A vent colony of the serpulid polychaete Laminatubus alvini thrives near a hydrothermal vent. ",
-    "cell": "5d",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19840,7 +20083,7 @@
     "VidRange": "i",
     "MPix": "0.3",
     "P/S": "0",
-    "cell": "5a",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -23228,7 +23471,7 @@
     "P/S": "0",
     "comment": "‘The Ouroboros will become a beacon. Daytime or nighttime, it's going to pulse with light and energy.’  Lindy Lee  Ouroboros is an immersive public sculpture by Australian artist Lindy Lee located in the National Sculpture Garden.  With a practice spanning more than four decades, Meanjin/Brisbane-born Lee uses her work to explore her Chinese ancestry through Taoism and Ch’an (Zen) Buddhism — philosophies that see humanity and nature as inextricably linked.  Ouroboros is based on the ancient image of a snake eating its own tail; an image seen across cultures and millennia, the symbol of eternal return, of cycles of birth, death and renewal.  Show Less Through its location at the entrance of the National Gallery, visitors are able enter the ‘mouth’ of the sculpture and walk into the curved space to experience darkness that is illuminated by light beams emanating from the thousands of perforations on its surface.  During the day its highly polished mirrored surface reflects the imagery of the floating world, the transience of passers-by, cars, birds in flight and passing clouds. At night the Ouroboros is lit internally, returning its light to the world.  Ouroboros measures around four metres high and weighs approximately 13 tonnes. The sculpture also incorporates recycled materials, maximising renewable energy and measures to minimise its carbon impact, making it one of Australia's first sustainable works of public art.  Lindy Lee’s Ouroboros was commissioned to celebrate the National Gallery’s 40th anniversary in 2022 and was completed in October 2024.",
     "COI": "",
-    "cell": "4e",
+    "cell": "",
     "X": "",
     "face": ""
   },
@@ -23245,7 +23488,7 @@
     "MPix": "1.7",
     "P/S": "0",
     "COI": "",
-    "cell": "4d",
+    "cell": "",
     "X": "",
     "face": ""
   },
@@ -23262,7 +23505,7 @@
     "MPix": "0.7",
     "P/S": "1",
     "COI": "",
-    "cell": "4c",
+    "cell": "",
     "X": "",
     "face": ""
   },
@@ -23279,7 +23522,7 @@
     "MPix": "0.3",
     "P/S": "1",
     "COI": "",
-    "cell": "4b",
+    "cell": "",
     "X": "",
     "face": ""
   },
@@ -23296,7 +23539,7 @@
     "MPix": "2.4",
     "P/S": "0",
     "COI": "",
-    "cell": "4a",
+    "cell": "",
     "X": "",
     "face": ""
   },
@@ -23314,7 +23557,7 @@
     "P/S": "0",
     "comment": "Modern Eden Gallery proudly presents Evermore a series of new painted ceramic reliefs by Louisiana artist Megan Buccere. The ouroboros is an ancient symbol depicting a serpent or dragon eating its own tail. The ouroboros is often interpreted as a symbol for eternal cyclic renewal or a cycle of life, death, and rebirth. The paintings in this small solo exhibition visit these themes as the artist explores perpetual renewal and intimate rebirth.   Megan Buccere (pronounced bus era) is a narrative painter who works primarily in soft pastels and oils. She attended Louisiana State University, holds a BS in Art Education, and has taught advanced and talented high school art for the past 15 years. Buccere's painting style features soft surreal works that blur the line between beauty and fear, creating stunning pieces with an edge. Her use of coincidental, accidental, and unexpected connections, such as her use of strings, multiple hands, and all knowing eyes, often leaves viewers orphaned with a mix of conflicting feelings and thoughts.   To receive the collectors preview, please email Modern Eden Gallery Director, Kim Larson at kim@moderneden.com",
     "COI": "",
-    "cell": "3e",
+    "cell": "",
     "X": "",
     "face": ""
   },
@@ -23395,7 +23638,7 @@
     "FtextJunk": "0",
     "MPix": "4.2",
     "P/S": "0",
-    "cell": "3d",
+    "cell": "",
     "face": ""
   },
   {
@@ -23468,7 +23711,7 @@
     "MPix": "3.4",
     "P/S": "0",
     "face": "",
-    "cell": "5c"
+    "cell": ""
   },
   {
     "UID": "944",
@@ -23485,7 +23728,7 @@
     "MPix": "0.8",
     "P/S": "0",
     "face": "",
-    "cell": "3a"
+    "cell": ""
   },
   {
     "UID": "945",
@@ -23571,7 +23814,7 @@
     "MPix": "0.2",
     "P/S": "1",
     "face": "",
-    "cell": "2e"
+    "cell": ""
   },
   {
     "UID": "950",
@@ -23588,7 +23831,7 @@
     "MPix": "2.0",
     "P/S": "0",
     "face": "",
-    "cell": "2d"
+    "cell": ""
   },
   {
     "UID": "951",
@@ -23606,7 +23849,7 @@
     "P/S": "0",
     "comment": "Shed cuticle of female tardigrade, containing eggs, each 50μm across",
     "face": "",
-    "cell": "2c"
+    "cell": ""
   },
   {
     "UID": "952",
@@ -23624,7 +23867,7 @@
     "P/S": "0",
     "comment": "Richtersius coronifer in active and 'tun' states. A↔P = anterior-posterior; mg = midgut; go = gonad; pb = pharyngeal bulb; mo = mouth; st = stylet Scale bars = 100 μm",
     "face": "",
-    "cell": "2b"
+    "cell": ""
   },
   {
     "UID": "953",
@@ -23642,7 +23885,7 @@
     "P/S": "0",
     "comment": "The first drawing of a tardigrade, by Johann August Ephraim Goeze, 1773",
     "face": "",
-    "cell": "2a"
+    "cell": ""
   },
   {
     "UID": "954",
@@ -23660,7 +23903,7 @@
     "P/S": "1",
     "comment": "Drawing of Echiniscus testudo on a grain of sand by L.M.F. Doyère, 1840",
     "face": "",
-    "cell": "1e"
+    "cell": ""
   },
   {
     "UID": "955",
@@ -23678,7 +23921,7 @@
     "P/S": "0",
     "comment": "More details  The lobopod-like luolishaniids from the Cambrian and Ordovician are possibly the closest fossil relatives of tardigrades. Entothryeos reconstruction shown.",
     "face": "",
-    "cell": "1d"
+    "cell": ""
   },
   {
     "UID": "956",
@@ -24953,7 +25196,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "V",
-    "cell": "1a"
+    "cell": ""
   },
   {
     "UID": "1030",
@@ -24995,7 +25238,7 @@
     "VidAuthor": "@2pkdk2",
     "P/S": "0",
     "VQ": "9",
-    "cell": "1c",
+    "cell": "",
     "comment": "Urchin eating kelp"
   },
   {
@@ -25009,7 +25252,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "V",
-    "cell": "5b"
+    "cell": ""
   },
   {
     "UID": "1034",
@@ -25022,7 +25265,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "V",
-    "cell": "3b"
+    "cell": ""
   },
   {
     "UID": "1035",
@@ -25036,7 +25279,8 @@
     "ltype": "w",
     "ftextSize": "1296",
     "FtextJunk": "10",
-    "ftext": "<h1><img src=\"https://ocean.si.edu/sites/default/files/styles/full_width_large/public/2023-11/8-Aulacoctena-full_1.jpg\" alt=\"\" style=\"text-align: center; color: rgb(255, 255, 255); font-size: 18px; max-width: 100%; width: 400px; display: inline-block; border-radius: 4px;\">&nbsp; Red Mid-Water Comb Jelly \n</h1><h2>\n\n\n\n  \n\n\n  <div>\n                      \n                  \n              \n              \n              \n                  <img src=\"https://ocean.si.edu/sites/default/files/styles/full_width_large/public/2023-11/8-Aulacoctena-full_1.jpg.webp?itok=I7C0SIZp\" alt=\"Photograph of a translucent red-orange comb jelly against a black sea.\">\n\n  \n\n\n            </div>\n\n      \n                    \n            (Marsh Youngbluth/MAR-ECO, Census of Marine Life)\n        \n          \n  \n\n\n  <p>Like this ctenophore (<em>Aulococtena acuminata</em>), many animals\n that live in the midwater zone are red—making them almost invisible in \nthe dim blue light that filters down from the sea surface. This small \ncomb jelly snares prey with its two short tentacles. Read more about the\n <a href=\"https://ocean.si.edu/deep-sea\" target=\"_blank\" rel=\"noopener\">deep sea</a> and <a href=\"https://ocean.si.edu/jellyfish-and-comb-jellies\" target=\"_blank\" rel=\"noopener\">comb jellies</a>.</p><p><br></p></h2>"
+    "ftext": "<h1><img src=\"https://ocean.si.edu/sites/default/files/styles/full_width_large/public/2023-11/8-Aulacoctena-full_1.jpg\" alt=\"\" style=\"text-align: center; color: rgb(255, 255, 255); font-size: 18px; max-width: 100%; width: 400px; display: inline-block; border-radius: 4px;\">&nbsp; Red Mid-Water Comb Jelly \n</h1><h2>\n\n\n\n  \n\n\n  <div>\n                      \n                  \n              \n              \n              \n                  <img src=\"https://ocean.si.edu/sites/default/files/styles/full_width_large/public/2023-11/8-Aulacoctena-full_1.jpg.webp?itok=I7C0SIZp\" alt=\"Photograph of a translucent red-orange comb jelly against a black sea.\">\n\n  \n\n\n            </div>\n\n      \n                    \n            (Marsh Youngbluth/MAR-ECO, Census of Marine Life)\n        \n          \n  \n\n\n  <p>Like this ctenophore (<em>Aulococtena acuminata</em>), many animals\n that live in the midwater zone are red—making them almost invisible in \nthe dim blue light that filters down from the sea surface. This small \ncomb jelly snares prey with its two short tentacles. Read more about the\n <a href=\"https://ocean.si.edu/deep-sea\" target=\"_blank\" rel=\"noopener\">deep sea</a> and <a href=\"https://ocean.si.edu/jellyfish-and-comb-jellies\" target=\"_blank\" rel=\"noopener\">comb jellies</a>.</p><p><br></p></h2>",
+    "cell": ""
   },
   {
     "UID": "1036",
@@ -25050,7 +25294,8 @@
     "ltype": "w",
     "ftextSize": "6127",
     "FtextJunk": "0",
-    "ftext": "<h2>Sea Cucumber - NOAA Ocean Exploration</h2>\n<h1>Sea Cucumber - NOAA Ocean Exploration</h1>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/us_flag_small.png\" alt=\"Image 1\" style=\"max-width:100%;height:auto;\">\n<p>An official website of the United States government</p>\n<p>Here’s how you know</p>\n<p>Here’s how you know</p>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/icon-dot-gov.svg\" alt=\"Image 2\" style=\"max-width:100%;height:auto;\">\n<p><strong>Official websites use .gov</strong></p>\n<p>A <strong>.gov</strong> website belongs to an official government organization in the United States.</p>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/icon-https.svg\" alt=\"Image 3\" style=\"max-width:100%;height:auto;\">\n<p><strong>Secure .gov websites use HTTPS</strong></p>\n<p>A <strong>lock</strong> ( ) or <strong>https://</strong> means you’ve safely connected to the .gov website. Share sensitive information only on official, secure websites.</p>\n<p><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">\u0000PLACE3\u0000</a></p>\n<p><a href=\"https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1803-seacuke/\" target=\"_blank\" rel=\"noopener\">Menu</a></p>\n<p>[](https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1803-seacuke/)</p>\n<p><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">\u0000PLACE4\u0000</a></p>\n<ul><li>About</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/about/\" target=\"_blank\" rel=\"noopener\">About</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/what-we-do/\" target=\"_blank\" rel=\"noopener\">Our Mission</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/who-we-are/\" target=\"_blank\" rel=\"noopener\">Who We Are</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/annual-reports/\" target=\"_blank\" rel=\"noopener\">Annual Reports</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/what-we-do-program-review/\" target=\"_blank\" rel=\"noopener\">Program Reviews</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/media-kit/\" target=\"_blank\" rel=\"noopener\">Media Kit</a>     *   <a href=\"https://oeab.noaa.gov/\" target=\"_blank\" rel=\"noopener\">Ocean Exploration Advisory Board</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/national-forums/\" target=\"_blank\" rel=\"noopener\">National Forums on Ocean Exploration</a></p>\n<p>Search for: Search</p>\n<ul><li><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">Home</a></li>\n<li>Science &amp; Exploration</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/science-exploration/\" target=\"_blank\" rel=\"noopener\">Science &amp; Exploration</a>     *   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/\" target=\"_blank\" rel=\"noopener\">Science &amp; Exploration</a>     *   <a href=\"https://oceanexplorer.noaa.gov/expeditions/\" target=\"_blank\" rel=\"noopener\">Expeditions &amp; Projects</a>     *   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a6807b8f86a524\" target=\"_blank\" rel=\"noopener\">Why We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/why-exploration-matters/\" target=\"_blank\" rel=\"noopener\">Why Ocean Exploration Matters</a>         *   <a href=\"https://oceanexplorer.noaa.gov/history/\" target=\"_blank\" rel=\"noopener\">NOAA History</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a6807b8f86a526\" target=\"_blank\" rel=\"noopener\">How We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/okeanos/\" target=\"_blank\" rel=\"noopener\">NOAA Ship <em>Okeanos Explorer</em></a>         *   <a href=\"https://oceanexplorer.noaa.gov/technology/\" target=\"_blank\" rel=\"noopener\">Science &amp; Technology for Exploration</a>         *   <a href=\"https://oceanexplorer.noaa.gov/about/partnerships/\" target=\"_blank\" rel=\"noopener\">Partnerships</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a69bd9e3b61512\" target=\"_blank\" rel=\"noopener\">What We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/noaa-ocean-exploration-minerals/\" target=\"_blank\" rel=\"noopener\">Marine Critical Minerals</a>         *   <a href=\"https://oceanexplorer.noaa.gov/noaa-omics/\" target=\"_blank\" rel=\"noopener\">NOAA Omics</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/data/\" target=\"_blank\" rel=\"noopener\">Data &amp; Products</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/access/\" target=\"_blank\" rel=\"noopener\">Data Access Tools</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/animal-guide/\" target=\"_blank\" rel=\"noopener\">Benthic Animal Guide</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/publications/\" target=\"_blank\" rel=\"noopener\">Publications &amp; Reports</a></p>\n<ul><li>Learn &amp; Discover</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/discover/\" target=\"_blank\" rel=\"noopener\">Learn &amp; Discover</a>     *   <a href=\"https://oceanexplorer.noaa.gov/discover/educators/\" target=\"_blank\" rel=\"noopener\">For Educators</a>         *   <a href=\"https://oceanexplorer.noaa.gov/classroom-materials/\" target=\"_blank\" rel=\"noopener\">All Classroom Materials</a>         *   <a href=\"https://oceanexplorer.noaa.gov/discover/professional-development/\" target=\"_blank\" rel=\"noopener\">Professional Development Opportunities</a>         *   <a href=\"https://oceanexplorer.noaa.gov/discover/deep-ocean-education-projects/\" target=\"_blank\" rel=\"noopener\">Deep Ocean Education Project</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/discover/\" target=\"_blank\" rel=\"noopener\">Ocean Science For Everyone</a>         *   <a href=\"https://oceanexplorer.noaa.gov/ocean-facts/\" target=\"_blank\" rel=\"noopener\">Ocean Exploration Facts</a>         *   <a href=\"https://oceanexplorer.noaa.gov/dive-deeper/\" target=\"_blank\" rel=\"noopener\">Dive Deeper</a></p>\n<ul><li><a href=\"https://oceanexplorer.noaa.gov/multimedia/\" target=\"_blank\" rel=\"noopener\">Multimedia</a></li>\n<li><a href=\"https://oceanexplorer.noaa.gov/news/\" target=\"_blank\" rel=\"noopener\">News</a></li>\n<li>Get Involved</li></ul>"
+    "ftext": "<h2>Sea Cucumber - NOAA Ocean Exploration</h2>\n<h1>Sea Cucumber - NOAA Ocean Exploration</h1>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/us_flag_small.png\" alt=\"Image 1\" style=\"max-width:100%;height:auto;\">\n<p>An official website of the United States government</p>\n<p>Here’s how you know</p>\n<p>Here’s how you know</p>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/icon-dot-gov.svg\" alt=\"Image 2\" style=\"max-width:100%;height:auto;\">\n<p><strong>Official websites use .gov</strong></p>\n<p>A <strong>.gov</strong> website belongs to an official government organization in the United States.</p>\n<img src=\"https://oceanexplorer.noaa.gov/wp-content/themes/noaa/assets/images/uswds/usa-banner/icon-https.svg\" alt=\"Image 3\" style=\"max-width:100%;height:auto;\">\n<p><strong>Secure .gov websites use HTTPS</strong></p>\n<p>A <strong>lock</strong> ( ) or <strong>https://</strong> means you’ve safely connected to the .gov website. Share sensitive information only on official, secure websites.</p>\n<p><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">\u0000PLACE3\u0000</a></p>\n<p><a href=\"https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1803-seacuke/\" target=\"_blank\" rel=\"noopener\">Menu</a></p>\n<p>[](https://oceanexplorer.noaa.gov/multimedia/video-shorts-ex1803-seacuke/)</p>\n<p><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">\u0000PLACE4\u0000</a></p>\n<ul><li>About</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/about/\" target=\"_blank\" rel=\"noopener\">About</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/what-we-do/\" target=\"_blank\" rel=\"noopener\">Our Mission</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/who-we-are/\" target=\"_blank\" rel=\"noopener\">Who We Are</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/annual-reports/\" target=\"_blank\" rel=\"noopener\">Annual Reports</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/what-we-do-program-review/\" target=\"_blank\" rel=\"noopener\">Program Reviews</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/media-kit/\" target=\"_blank\" rel=\"noopener\">Media Kit</a>     *   <a href=\"https://oeab.noaa.gov/\" target=\"_blank\" rel=\"noopener\">Ocean Exploration Advisory Board</a>     *   <a href=\"https://oceanexplorer.noaa.gov/about/national-forums/\" target=\"_blank\" rel=\"noopener\">National Forums on Ocean Exploration</a></p>\n<p>Search for: Search</p>\n<ul><li><a href=\"https://oceanexplorer.noaa.gov/\" target=\"_blank\" rel=\"noopener\">Home</a></li>\n<li>Science &amp; Exploration</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/science-exploration/\" target=\"_blank\" rel=\"noopener\">Science &amp; Exploration</a>     *   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/\" target=\"_blank\" rel=\"noopener\">Science &amp; Exploration</a>     *   <a href=\"https://oceanexplorer.noaa.gov/expeditions/\" target=\"_blank\" rel=\"noopener\">Expeditions &amp; Projects</a>     *   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a6807b8f86a524\" target=\"_blank\" rel=\"noopener\">Why We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/why-exploration-matters/\" target=\"_blank\" rel=\"noopener\">Why Ocean Exploration Matters</a>         *   <a href=\"https://oceanexplorer.noaa.gov/history/\" target=\"_blank\" rel=\"noopener\">NOAA History</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a6807b8f86a526\" target=\"_blank\" rel=\"noopener\">How We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/okeanos/\" target=\"_blank\" rel=\"noopener\">NOAA Ship <em>Okeanos Explorer</em></a>         *   <a href=\"https://oceanexplorer.noaa.gov/technology/\" target=\"_blank\" rel=\"noopener\">Science &amp; Technology for Exploration</a>         *   <a href=\"https://oceanexplorer.noaa.gov/about/partnerships/\" target=\"_blank\" rel=\"noopener\">Partnerships</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/science-exploration/#a69bd9e3b61512\" target=\"_blank\" rel=\"noopener\">What We Explore</a>         *   <a href=\"https://oceanexplorer.noaa.gov/noaa-ocean-exploration-minerals/\" target=\"_blank\" rel=\"noopener\">Marine Critical Minerals</a>         *   <a href=\"https://oceanexplorer.noaa.gov/noaa-omics/\" target=\"_blank\" rel=\"noopener\">NOAA Omics</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/data/\" target=\"_blank\" rel=\"noopener\">Data &amp; Products</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/access/\" target=\"_blank\" rel=\"noopener\">Data Access Tools</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/animal-guide/\" target=\"_blank\" rel=\"noopener\">Benthic Animal Guide</a>         *   <a href=\"https://oceanexplorer.noaa.gov/data/publications/\" target=\"_blank\" rel=\"noopener\">Publications &amp; Reports</a></p>\n<ul><li>Learn &amp; Discover</li></ul>\n<p><a href=\"https://oceanexplorer.noaa.gov/discover/\" target=\"_blank\" rel=\"noopener\">Learn &amp; Discover</a>     *   <a href=\"https://oceanexplorer.noaa.gov/discover/educators/\" target=\"_blank\" rel=\"noopener\">For Educators</a>         *   <a href=\"https://oceanexplorer.noaa.gov/classroom-materials/\" target=\"_blank\" rel=\"noopener\">All Classroom Materials</a>         *   <a href=\"https://oceanexplorer.noaa.gov/discover/professional-development/\" target=\"_blank\" rel=\"noopener\">Professional Development Opportunities</a>         *   <a href=\"https://oceanexplorer.noaa.gov/discover/deep-ocean-education-projects/\" target=\"_blank\" rel=\"noopener\">Deep Ocean Education Project</a></p>\n<p>*   <a href=\"https://oceanexplorer.noaa.gov/discover/\" target=\"_blank\" rel=\"noopener\">Ocean Science For Everyone</a>         *   <a href=\"https://oceanexplorer.noaa.gov/ocean-facts/\" target=\"_blank\" rel=\"noopener\">Ocean Exploration Facts</a>         *   <a href=\"https://oceanexplorer.noaa.gov/dive-deeper/\" target=\"_blank\" rel=\"noopener\">Dive Deeper</a></p>\n<ul><li><a href=\"https://oceanexplorer.noaa.gov/multimedia/\" target=\"_blank\" rel=\"noopener\">Multimedia</a></li>\n<li><a href=\"https://oceanexplorer.noaa.gov/news/\" target=\"_blank\" rel=\"noopener\">News</a></li>\n<li>Get Involved</li></ul>",
+    "cell": ""
   },
   {
     "UID": "1037",
@@ -25065,7 +25310,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "V",
-    "vidLength": "0:32"
+    "vidLength": "0:32",
+    "cell": ""
   },
   {
     "UID": "1038",
@@ -25081,7 +25327,8 @@
     "FtextJunk": "0",
     "VidTitle": "Evolution's Biggest Mistake? Why The Mantis Shrimp Sees Less",
     "VidAuthor": "@MindBlinkFacts",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1039",
@@ -25095,7 +25342,8 @@
       "odontodactylus-scyllarus"
     ],
     "ftextSize": "24",
-    "FtextJunk": "0"
+    "FtextJunk": "0",
+    "cell": ""
   },
   {
     "UID": "1040",
@@ -25109,7 +25357,8 @@
     "ltype": "w",
     "ftextSize": "16692",
     "FtextJunk": "1",
-    "ftext": "<h2><span style=\"color: rgb(255, 255, 136); font-size: 28px;\">Mantis shrimp, facts and information | National Geographic</span></h2>\n<p><a href=\"https://www.nationalgeographic.com/animals/invertebrates/facts/mantis-shrimp\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.nationalgeographic.com/animals/invertebrates/facts/mantis-shrimp</a></p>\n<img src=\"https://i.natgeofe.com/n/cf878a5c-e78d-4890-8629-798e0405d763/NationalGeographic_2747980.jpg?w=374&amp;h=249\" alt=\"Image 15: Soft green hues are outlined by bright orange lines on the shell of the Mantis Shrimp.\" style=\"max-width:100%;height:auto;\">\n\n\n\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li>\n<li><a href=\"https://www.nationalgeographic.com/animals/topic/photo-ark\" target=\"_blank\" rel=\"noopener\">Photo Ark</a></li></ul>\n<h1>Mantis shrimp</h1>\n<p>Link Share Tweet Email</p>\n<p>Common Name: Mantis shrimp</p>\n<p>Scientific Name: Stomatopoda</p>\n<p>Type: Invertebrates</p>\n<p>Diet: Carnivore</p>\n<p>Size: Up to 16 inches long</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/cf878a5c-e78d-4890-8629-798e0405d763/NationalGeographic_2747980_square.jpg?wp=1&amp;w=136&amp;h=136\" alt=\"Image 16\" style=\"max-width:100%;height:auto;\"><figcaption>Weight: Around 1.5 pounds</figcaption></figure>\n<h2>What are mantis shrimp?</h2>\n<p>Despite their name, mantis shrimp are <a href=\"https://www.youtube.com/watch?v=E0Li1k5hGBE\" target=\"_blank\" rel=\"noopener\">not true shrimp</a> but a type of stomatopod: a relative of crabs and lobsters that has been on Earth for over <a href=\"https://ucmp.berkeley.edu/arthropoda/crustacea/malacostraca/eumalacostraca/stomatopoda.html\" target=\"_blank\" rel=\"noopener\">400 million</a> years. There are more than 400 different species of mantis shrimp.</p>\n<p>Peacock mantis shrimp—also called harlequin or painted mantis shrimp—are arguably the best-known of the family. These critters get their name from their kaleidoscope shell—like a peacock’s tail—and their hinged forearms which resemble that of a <a href=\"https://www.nationalgeographic.com/animals/invertebrates/facts/praying-mantis\" target=\"_blank\" rel=\"noopener\">praying mantis</a> and are kept tucked away until the moment of attack. These solitary, aggressive animals are famous for their ferocious punch—as fast as a bullet and strong enough to snap a crab’s claw.</p>\n<h2>Habitat and appearance</h2>\n<p>Mantis shrimp live in warm, shallow waters in the Indian and Pacific oceans. To build a home, they use their raptor-like front arm to dig burrows on the seabed surrounding a coral reef. When they move on, other marine animals may take up residence in the abandoned burrow.</p>\n<p>Growing to around the length of a butter knife, peacock mantis shrimp have rainbow shells—usually blue, green, and yellow—and red legs. Their purple eyes sit on top of stalks above their head and can move independently of one other for a better view.</p>\n<p>(<a href=\"https://kids.nationalgeographic.com/animals/invertebrates/facts/peacockmantisshrimp\" target=\"_blank\" rel=\"noopener\"><em>Learn about the peacock mantis shrimp with your kids</em></a>.)</p>\n<p>Not all mantis shrimp boast these spectacular colors. Zebra mantis shrimp—the largest of all the species—are named for their cream and brown stripes, while <a href=\"https://www.researchgate.net/publication/337890234_First_record_of_the_Red_Sea_Mantis_shrimp_Erugosquilla_massavensis_Kossmann_1880_in_the_Greek_Ionian_Sea\" target=\"_blank\" rel=\"noopener\">Red Sea mantis shrimp</a> are beige with thin red stripes and a dark rear end.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/3ba3c835-23e2-4ffb-9dcd-fde9d2cf0890/NationalGeographic_2728070.jpg?wp=1&amp;w=718&amp;h=479\" alt=\"Image 17: A Mantish shrimp extends colorful arms of teal orange red green and illuminating its frame.\" style=\"max-width:100%;height:auto;\"><figcaption>But all these animals are best known for their mighty front <a href=\"https://www.youtube.com/watch?v=CW8NUCPLE1c\" target=\"_blank\" rel=\"noopener\">claws</a>—responsible for their impressive hunting skills.</figcaption></figure>\n\n\n\n<h2>Hunting and punching</h2>\n<p>Mantis shrimp are small but impressive predators that can kill prey bigger than themselves. Depending on the species, mantis shrimp use one of two hunting strategies: “Spearer” species lay in wait then skewer unsuspecting fish by using a large spike at the end of their arms. Meanwhile “smashers” like the peacock mantis shrimp use their hammer-like claws to attack their hard-shelled prey—such as crabs and clams—with a <a href=\"https://www.nature.com/articles/428819a\" target=\"_blank\" rel=\"noopener\">powerful punch</a>.</p>\n<p>So how does that punch work? When not in use, the shrimp’s clubbed arm is fastened securely in place by a latch, allowing energy to build up. A saddle-shaped spring within the arm helps store even more energy. When the latch is released, the spring propels the animal’s claw forward in the fraction of a second—<a href=\"https://aqua.org/explore/animals/peacock-mantis-shrimp\" target=\"_blank\" rel=\"noopener\">50 times faster</a> than we can blink—to hit their prey. At 75 feet per second, it is one of the <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\">fastest limb movements</a> of any animal.</p>\n<p>The strike is so fast—the speed of a <a href=\"https://www.amnh.org/explore/news-blogs/on-exhibit-posts/fast-facts-peacock-mantis-shrimp\" target=\"_blank\" rel=\"noopener\">.22 caliber bullet</a>—that it causes <a href=\"https://journals.biologists.com/jeb/article/208/19/3655/15838/Extreme-impact-and-cavitation-forces-of-a\" target=\"_blank\" rel=\"noopener\">bubbles</a> to form and collapse in the water. This energy release creates an impressive force thousands of times the shrimp’s bodyweight that combines with the initial strike to smash open the shell of a mantis shrimp’s prey, killing the animal inside.</p>\n<p>Remarkably, mantis shrimp are unharmed by the blow thanks to complex layers within the club which absorb the impact and prevent the claw from cracking. This innovative design has inspired the development of materials for <a href=\"https://www.science.org/content/article/mantis-shrimp-smash\" target=\"_blank\" rel=\"noopener\">armor</a>, sports helmets, and vehicles.</p>\n<p>Mantis shrimp use the same technique to defend themselves from predators. However, they only use this energy-intensive method of self-defense if they must. When under threat, they perform a behavioral display known as a <a href=\"https://www.youtube.com/watch?v=Hwji93BVjnI\" target=\"_blank\" rel=\"noopener\">meral spread</a> before resorting to violence: standing on their hind legs, puffing up their chest, and spreading their arms to look as large and intimidating as possible. If the predator isn’t put off by this display, the shrimp will attack.</p>\n<p><a href=\"https://www.youtube.com/watch?v=E0Li1k5hGBE\" target=\"_blank\" rel=\"noopener\">Video 2</a></p>\n<p>Mantis Shrimp Packs a Punch | Predator in Paradise</p>\n<h2>Superior vision</h2>\n<p>These crustaceans have among the most <a href=\"https://www.science.org/doi/abs/10.1126/science.1245824\" target=\"_blank\" rel=\"noopener\">complex eyes</a> in the animal kingdom. Their eyes work both independently and together so they can scan the horizon as well as focus in on prey. Each eye has three focal points, allowing the animal to <a href=\"https://www.nationalgeographic.com/science/article/mantis-shrimps-have-a-unique-way-of-seeing\" target=\"_blank\" rel=\"noopener\">perceive depth</a> with either eye.</p>\n<p>Human eyes have three photoreceptors—cells that detect color—to distinguish between blue, green, and red light. With a staggering 12 photoreceptors, mantis shrimp can see 12 different wavelengths of light. Strangely, however, they are <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-sees-like-a-satellite\" target=\"_blank\" rel=\"noopener\">worse</a> at detecting subtle color differences than humans so it’s not clear what purpose these photoreceptors serve.</p>\n<p>(<a href=\"https://www.nationalgeographic.com/science/article/at-last-a-use-for-the-oceans-most-secretive-signals\" target=\"_blank\" rel=\"noopener\"><em>How mantis shrimp send secret messages using twisted light</em></a>.)</p>\n<p>Unlike humans, mantis shrimp can <a href=\"https://www.nature.com/articles/44751\" target=\"_blank\" rel=\"noopener\">see UV light</a> and polarized light, which is made up of waves, and are the only animal known to detect <a href=\"https://www.nationalgeographic.com/science/article/mantis-shrimp-eyes-outclass-dvd-players-inspire-new-technology\" target=\"_blank\" rel=\"noopener\">circularly polarized light</a>, which travels in a spiral. Researchers suspect this ability could allow them to communicate by displaying patterns on their shells that are visible to other mantis shrimp but not other ocean creatures. This might help them attract a mate or indicate <a href=\"https://www.nationalgeographic.com/science/article/at-last-a-use-for-the-oceans-most-secretive-signals\" target=\"_blank\" rel=\"noopener\">that their burrow</a> is already occupied.</p>\n<h2>Reproduction</h2>\n<p>When they’re ready to mate, mantis shrimp leave the safety of their burrow and zigzag across the sand until they find a partner. The female will store the male’s sperm until she is ready to spawn.</p>\n<p>After laying her eggs, the female glues them together with a sticky substance secreted from a <a href=\"https://academic.oup.com/jcb/article/22/4/728/2679717?login=false\" target=\"_blank\" rel=\"noopener\">cement gland</a> on her abdomen, gathers them up, and carries them into her burrow to look after them until they hatch. The young larvae can deliver the species’ famed punch after around <a href=\"https://journals.biologists.com/jeb/article/224/8/jeb235465/258491/Scaling-and-development-of-elastic-mechanisms-the\" target=\"_blank\" rel=\"noopener\">nine days</a>.</p>\n<p>While not all species are monogamous, zebra mantis shrimp can <a href=\"https://www.bbc.co.uk/programmes/articles/2lHYr3xZSLyPQ5zNFdsFjNp/filming-mantis-shrimp-infidelity\" target=\"_blank\" rel=\"noopener\">live together</a> in their burrow for life. But, with the male responsible for all the hunting, the female could starve to death if he is killed while out looking for food, or if he abandons her for a larger female who can produce more eggs.</p>\n<h2>Threats to survival</h2>\n<p>Like other reef species, mantis shrimp are likely affected by warming sea temperatures, ocean acidification, habitat destruction, and pollution. They are preyed on by large fish, cuttlefish, squid, and octopus.</p>\n<p>Peacock mantis shrimp are popular among aquarium enthusiasts but can be difficult to keep in captivity because they often eat other species and <a href=\"https://www.guinnessworldrecords.com/news/2019/4/the-mantis-shrimp-packs-the-most-powerful-punch-in-the-animal-kingdom-567501\" target=\"_blank\" rel=\"noopener\">can break glass tanks</a> with their claws.</p>\n<p>Although it is possible for humans to eat mantis shrimp—they are considered a delicacy in Asian countries—it’s not common because they put up such a fight.</p>\n<h3>Did you know?</h3>\n<p>If a mantis shrimp loses one of its signature claws, it simply grows another.</p>\n<p>— <a href=\"https://www.science.org/content/article/mantis-shrimp-smash\" target=\"_blank\" rel=\"noopener\"><em>Science</em></a></p>\n<p>Inspired by mantis shrimps’ eyes, scientists have created digital cameras that use fluorescent imaging to distinguish between cancerous and healthy tissue.</p>\n<p>— <a href=\"https://www.science.org/doi/10.1126/scitranslmed.aaw7067\" target=\"_blank\" rel=\"noopener\"><em>Science Translational Medicine</em></a></p>\n<p>After molting their shell, mantis shrimp are unable to punch anything for several days.</p>\n<p>—<a href=\"https://journals.biologists.com/jeb/article/208/19/3655/15838/Extreme-impact-and-cavitation-forces-of-a\" target=\"_blank\" rel=\"noopener\"><em>Journal of Experimental Biology</em></a></p>\n<p>In 1998, a four-inch mantis shrimp named Tyson smashed through his aquarium tank’s quarter-inch-thick glass.</p>\n<p>—<a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\"><em>National Geographic</em></a></p>\n<p>Up to a month after fighting a rival, a mantis shrimp can still remember who won.</p>\n<p>— <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\"><em>National Geographi</em></a></p><p><br></p>\n<h2>Read This Next</h2>\n\n<figure><img src=\"https://i.natgeofe.com/n/47610b47-2394-40bf-a208-8e42dcc50cd7/IMG_2658_24_3x2.jpg?wp=1&amp;w=730&amp;h=487\" alt=\"Image 18\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/new-mantis-discovered-dancing-like-a-snake\" target=\"_blank\" rel=\"noopener\">New mantis species dances like a snake</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>New mantis species dances like a snake</h2>\n<p>The snake-tail mantis shows there’s more to these insects than just cannibalism.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/d69f8e44-5726-4534-be34-3b0793242d5b/SecretsOfTheBees_43_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 19\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/sammy-ramsey-reader-bug-questions\" target=\"_blank\" rel=\"noopener\">Can the bees be saved? A bug expert answers all your insect questions</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li>\n<li><a href=\"https://www.nationalgeographic.com/science/topic/ask-an-expert-anything\" target=\"_blank\" rel=\"noopener\">Ask an Expert Anything</a></li></ul>\n<h2>Can the bees be saved? A bug expert answers all your insect questions</h2>\n<p>In our latest Ask an Expert Anything, entomologist and National Geographic Explorer Sammy Ramsey dishes on whether insect protein could one day replace meat, the bug he would be for a day, and why some people are mosquito magnets.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/2a4ea524-9fa4-408d-b949-295e0e4300de/SPI-2474106_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 20\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/octopus-sex-arm-sensory-behavior\" target=\"_blank\" rel=\"noopener\">Male octopus has ‘sex arm’ that can mate in the dark</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>Male octopus has ‘sex arm’ that can mate in the dark</h2>\n<p>Scientists found that the male’s hectocotylus, the specialized arm for mating, is lined with receptors that can sense hormones from the female.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/075478a5-9664-402f-8e83-884f9c438d7f/MM10353_251023_18464_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 21\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/secrets-of-bees-adaptation-pollinators\" target=\"_blank\" rel=\"noopener\">Secrets of the bees: How science is revealing their sneaky genius</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>Secrets of the bees: How science is revealing their sneaky genius</h2>\n<p>New science is showing that nature’s vital pollinators are smarter than we ever imagined. Here’s why that discovery should change what we think about one of the world’s most important animals.</p>\n<h2>The best of National Geographic delivered to your inbox</h2>\n<p>Sign up for more inspiring photos, stories, and special offers from National Geographic.</p>\n<p>Email Address</p>\n<ul><li>Yes! I would like to receive top content, special offers, and other updates from National Geographic and The Walt Disney Family of Companies. By creating an account, you agree to our <a href=\"https://disneytermsofuse.com/english/\" target=\"_blank\" rel=\"noopener\">Terms of Use</a> and acknowledge that you have read our <a href=\"https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/\" target=\"_blank\" rel=\"noopener\">Privacy Policy</a> and <a href=\"https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/your-us-state-privacy-rights/\" target=\"_blank\" rel=\"noopener\">US State Privacy Rights Notice</a>.</li></ul>\n<p>Sign Up</p><p><br></p>"
+    "ftext": "<h2><span style=\"color: rgb(255, 255, 136); font-size: 28px;\">Mantis shrimp, facts and information | National Geographic</span></h2>\n<p><a href=\"https://www.nationalgeographic.com/animals/invertebrates/facts/mantis-shrimp\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.nationalgeographic.com/animals/invertebrates/facts/mantis-shrimp</a></p>\n<img src=\"https://i.natgeofe.com/n/cf878a5c-e78d-4890-8629-798e0405d763/NationalGeographic_2747980.jpg?w=374&amp;h=249\" alt=\"Image 15: Soft green hues are outlined by bright orange lines on the shell of the Mantis Shrimp.\" style=\"max-width:100%;height:auto;\">\n\n\n\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li>\n<li><a href=\"https://www.nationalgeographic.com/animals/topic/photo-ark\" target=\"_blank\" rel=\"noopener\">Photo Ark</a></li></ul>\n<h1>Mantis shrimp</h1>\n<p>Link Share Tweet Email</p>\n<p>Common Name: Mantis shrimp</p>\n<p>Scientific Name: Stomatopoda</p>\n<p>Type: Invertebrates</p>\n<p>Diet: Carnivore</p>\n<p>Size: Up to 16 inches long</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/cf878a5c-e78d-4890-8629-798e0405d763/NationalGeographic_2747980_square.jpg?wp=1&amp;w=136&amp;h=136\" alt=\"Image 16\" style=\"max-width:100%;height:auto;\"><figcaption>Weight: Around 1.5 pounds</figcaption></figure>\n<h2>What are mantis shrimp?</h2>\n<p>Despite their name, mantis shrimp are <a href=\"https://www.youtube.com/watch?v=E0Li1k5hGBE\" target=\"_blank\" rel=\"noopener\">not true shrimp</a> but a type of stomatopod: a relative of crabs and lobsters that has been on Earth for over <a href=\"https://ucmp.berkeley.edu/arthropoda/crustacea/malacostraca/eumalacostraca/stomatopoda.html\" target=\"_blank\" rel=\"noopener\">400 million</a> years. There are more than 400 different species of mantis shrimp.</p>\n<p>Peacock mantis shrimp—also called harlequin or painted mantis shrimp—are arguably the best-known of the family. These critters get their name from their kaleidoscope shell—like a peacock’s tail—and their hinged forearms which resemble that of a <a href=\"https://www.nationalgeographic.com/animals/invertebrates/facts/praying-mantis\" target=\"_blank\" rel=\"noopener\">praying mantis</a> and are kept tucked away until the moment of attack. These solitary, aggressive animals are famous for their ferocious punch—as fast as a bullet and strong enough to snap a crab’s claw.</p>\n<h2>Habitat and appearance</h2>\n<p>Mantis shrimp live in warm, shallow waters in the Indian and Pacific oceans. To build a home, they use their raptor-like front arm to dig burrows on the seabed surrounding a coral reef. When they move on, other marine animals may take up residence in the abandoned burrow.</p>\n<p>Growing to around the length of a butter knife, peacock mantis shrimp have rainbow shells—usually blue, green, and yellow—and red legs. Their purple eyes sit on top of stalks above their head and can move independently of one other for a better view.</p>\n<p>(<a href=\"https://kids.nationalgeographic.com/animals/invertebrates/facts/peacockmantisshrimp\" target=\"_blank\" rel=\"noopener\"><em>Learn about the peacock mantis shrimp with your kids</em></a>.)</p>\n<p>Not all mantis shrimp boast these spectacular colors. Zebra mantis shrimp—the largest of all the species—are named for their cream and brown stripes, while <a href=\"https://www.researchgate.net/publication/337890234_First_record_of_the_Red_Sea_Mantis_shrimp_Erugosquilla_massavensis_Kossmann_1880_in_the_Greek_Ionian_Sea\" target=\"_blank\" rel=\"noopener\">Red Sea mantis shrimp</a> are beige with thin red stripes and a dark rear end.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/3ba3c835-23e2-4ffb-9dcd-fde9d2cf0890/NationalGeographic_2728070.jpg?wp=1&amp;w=718&amp;h=479\" alt=\"Image 17: A Mantish shrimp extends colorful arms of teal orange red green and illuminating its frame.\" style=\"max-width:100%;height:auto;\"><figcaption>But all these animals are best known for their mighty front <a href=\"https://www.youtube.com/watch?v=CW8NUCPLE1c\" target=\"_blank\" rel=\"noopener\">claws</a>—responsible for their impressive hunting skills.</figcaption></figure>\n\n\n\n<h2>Hunting and punching</h2>\n<p>Mantis shrimp are small but impressive predators that can kill prey bigger than themselves. Depending on the species, mantis shrimp use one of two hunting strategies: “Spearer” species lay in wait then skewer unsuspecting fish by using a large spike at the end of their arms. Meanwhile “smashers” like the peacock mantis shrimp use their hammer-like claws to attack their hard-shelled prey—such as crabs and clams—with a <a href=\"https://www.nature.com/articles/428819a\" target=\"_blank\" rel=\"noopener\">powerful punch</a>.</p>\n<p>So how does that punch work? When not in use, the shrimp’s clubbed arm is fastened securely in place by a latch, allowing energy to build up. A saddle-shaped spring within the arm helps store even more energy. When the latch is released, the spring propels the animal’s claw forward in the fraction of a second—<a href=\"https://aqua.org/explore/animals/peacock-mantis-shrimp\" target=\"_blank\" rel=\"noopener\">50 times faster</a> than we can blink—to hit their prey. At 75 feet per second, it is one of the <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\">fastest limb movements</a> of any animal.</p>\n<p>The strike is so fast—the speed of a <a href=\"https://www.amnh.org/explore/news-blogs/on-exhibit-posts/fast-facts-peacock-mantis-shrimp\" target=\"_blank\" rel=\"noopener\">.22 caliber bullet</a>—that it causes <a href=\"https://journals.biologists.com/jeb/article/208/19/3655/15838/Extreme-impact-and-cavitation-forces-of-a\" target=\"_blank\" rel=\"noopener\">bubbles</a> to form and collapse in the water. This energy release creates an impressive force thousands of times the shrimp’s bodyweight that combines with the initial strike to smash open the shell of a mantis shrimp’s prey, killing the animal inside.</p>\n<p>Remarkably, mantis shrimp are unharmed by the blow thanks to complex layers within the club which absorb the impact and prevent the claw from cracking. This innovative design has inspired the development of materials for <a href=\"https://www.science.org/content/article/mantis-shrimp-smash\" target=\"_blank\" rel=\"noopener\">armor</a>, sports helmets, and vehicles.</p>\n<p>Mantis shrimp use the same technique to defend themselves from predators. However, they only use this energy-intensive method of self-defense if they must. When under threat, they perform a behavioral display known as a <a href=\"https://www.youtube.com/watch?v=Hwji93BVjnI\" target=\"_blank\" rel=\"noopener\">meral spread</a> before resorting to violence: standing on their hind legs, puffing up their chest, and spreading their arms to look as large and intimidating as possible. If the predator isn’t put off by this display, the shrimp will attack.</p>\n<p><a href=\"https://www.youtube.com/watch?v=E0Li1k5hGBE\" target=\"_blank\" rel=\"noopener\">Video 2</a></p>\n<p>Mantis Shrimp Packs a Punch | Predator in Paradise</p>\n<h2>Superior vision</h2>\n<p>These crustaceans have among the most <a href=\"https://www.science.org/doi/abs/10.1126/science.1245824\" target=\"_blank\" rel=\"noopener\">complex eyes</a> in the animal kingdom. Their eyes work both independently and together so they can scan the horizon as well as focus in on prey. Each eye has three focal points, allowing the animal to <a href=\"https://www.nationalgeographic.com/science/article/mantis-shrimps-have-a-unique-way-of-seeing\" target=\"_blank\" rel=\"noopener\">perceive depth</a> with either eye.</p>\n<p>Human eyes have three photoreceptors—cells that detect color—to distinguish between blue, green, and red light. With a staggering 12 photoreceptors, mantis shrimp can see 12 different wavelengths of light. Strangely, however, they are <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-sees-like-a-satellite\" target=\"_blank\" rel=\"noopener\">worse</a> at detecting subtle color differences than humans so it’s not clear what purpose these photoreceptors serve.</p>\n<p>(<a href=\"https://www.nationalgeographic.com/science/article/at-last-a-use-for-the-oceans-most-secretive-signals\" target=\"_blank\" rel=\"noopener\"><em>How mantis shrimp send secret messages using twisted light</em></a>.)</p>\n<p>Unlike humans, mantis shrimp can <a href=\"https://www.nature.com/articles/44751\" target=\"_blank\" rel=\"noopener\">see UV light</a> and polarized light, which is made up of waves, and are the only animal known to detect <a href=\"https://www.nationalgeographic.com/science/article/mantis-shrimp-eyes-outclass-dvd-players-inspire-new-technology\" target=\"_blank\" rel=\"noopener\">circularly polarized light</a>, which travels in a spiral. Researchers suspect this ability could allow them to communicate by displaying patterns on their shells that are visible to other mantis shrimp but not other ocean creatures. This might help them attract a mate or indicate <a href=\"https://www.nationalgeographic.com/science/article/at-last-a-use-for-the-oceans-most-secretive-signals\" target=\"_blank\" rel=\"noopener\">that their burrow</a> is already occupied.</p>\n<h2>Reproduction</h2>\n<p>When they’re ready to mate, mantis shrimp leave the safety of their burrow and zigzag across the sand until they find a partner. The female will store the male’s sperm until she is ready to spawn.</p>\n<p>After laying her eggs, the female glues them together with a sticky substance secreted from a <a href=\"https://academic.oup.com/jcb/article/22/4/728/2679717?login=false\" target=\"_blank\" rel=\"noopener\">cement gland</a> on her abdomen, gathers them up, and carries them into her burrow to look after them until they hatch. The young larvae can deliver the species’ famed punch after around <a href=\"https://journals.biologists.com/jeb/article/224/8/jeb235465/258491/Scaling-and-development-of-elastic-mechanisms-the\" target=\"_blank\" rel=\"noopener\">nine days</a>.</p>\n<p>While not all species are monogamous, zebra mantis shrimp can <a href=\"https://www.bbc.co.uk/programmes/articles/2lHYr3xZSLyPQ5zNFdsFjNp/filming-mantis-shrimp-infidelity\" target=\"_blank\" rel=\"noopener\">live together</a> in their burrow for life. But, with the male responsible for all the hunting, the female could starve to death if he is killed while out looking for food, or if he abandons her for a larger female who can produce more eggs.</p>\n<h2>Threats to survival</h2>\n<p>Like other reef species, mantis shrimp are likely affected by warming sea temperatures, ocean acidification, habitat destruction, and pollution. They are preyed on by large fish, cuttlefish, squid, and octopus.</p>\n<p>Peacock mantis shrimp are popular among aquarium enthusiasts but can be difficult to keep in captivity because they often eat other species and <a href=\"https://www.guinnessworldrecords.com/news/2019/4/the-mantis-shrimp-packs-the-most-powerful-punch-in-the-animal-kingdom-567501\" target=\"_blank\" rel=\"noopener\">can break glass tanks</a> with their claws.</p>\n<p>Although it is possible for humans to eat mantis shrimp—they are considered a delicacy in Asian countries—it’s not common because they put up such a fight.</p>\n<h3>Did you know?</h3>\n<p>If a mantis shrimp loses one of its signature claws, it simply grows another.</p>\n<p>— <a href=\"https://www.science.org/content/article/mantis-shrimp-smash\" target=\"_blank\" rel=\"noopener\"><em>Science</em></a></p>\n<p>Inspired by mantis shrimps’ eyes, scientists have created digital cameras that use fluorescent imaging to distinguish between cancerous and healthy tissue.</p>\n<p>— <a href=\"https://www.science.org/doi/10.1126/scitranslmed.aaw7067\" target=\"_blank\" rel=\"noopener\"><em>Science Translational Medicine</em></a></p>\n<p>After molting their shell, mantis shrimp are unable to punch anything for several days.</p>\n<p>—<a href=\"https://journals.biologists.com/jeb/article/208/19/3655/15838/Extreme-impact-and-cavitation-forces-of-a\" target=\"_blank\" rel=\"noopener\"><em>Journal of Experimental Biology</em></a></p>\n<p>In 1998, a four-inch mantis shrimp named Tyson smashed through his aquarium tank’s quarter-inch-thick glass.</p>\n<p>—<a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\"><em>National Geographic</em></a></p>\n<p>Up to a month after fighting a rival, a mantis shrimp can still remember who won.</p>\n<p>— <a href=\"https://www.nationalgeographic.com/science/article/the-mantis-shrimp-has-the-worlds-fastest-punch\" target=\"_blank\" rel=\"noopener\"><em>National Geographi</em></a></p><p><br></p>\n<h2>Read This Next</h2>\n\n<figure><img src=\"https://i.natgeofe.com/n/47610b47-2394-40bf-a208-8e42dcc50cd7/IMG_2658_24_3x2.jpg?wp=1&amp;w=730&amp;h=487\" alt=\"Image 18\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/new-mantis-discovered-dancing-like-a-snake\" target=\"_blank\" rel=\"noopener\">New mantis species dances like a snake</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>New mantis species dances like a snake</h2>\n<p>The snake-tail mantis shows there’s more to these insects than just cannibalism.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/d69f8e44-5726-4534-be34-3b0793242d5b/SecretsOfTheBees_43_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 19\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/sammy-ramsey-reader-bug-questions\" target=\"_blank\" rel=\"noopener\">Can the bees be saved? A bug expert answers all your insect questions</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li>\n<li><a href=\"https://www.nationalgeographic.com/science/topic/ask-an-expert-anything\" target=\"_blank\" rel=\"noopener\">Ask an Expert Anything</a></li></ul>\n<h2>Can the bees be saved? A bug expert answers all your insect questions</h2>\n<p>In our latest Ask an Expert Anything, entomologist and National Geographic Explorer Sammy Ramsey dishes on whether insect protein could one day replace meat, the bug he would be for a day, and why some people are mosquito magnets.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/2a4ea524-9fa4-408d-b949-295e0e4300de/SPI-2474106_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 20\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/octopus-sex-arm-sensory-behavior\" target=\"_blank\" rel=\"noopener\">Male octopus has ‘sex arm’ that can mate in the dark</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>Male octopus has ‘sex arm’ that can mate in the dark</h2>\n<p>Scientists found that the male’s hectocotylus, the specialized arm for mating, is lined with receptors that can sense hormones from the female.</p>\n\n<figure><img src=\"https://i.natgeofe.com/n/075478a5-9664-402f-8e83-884f9c438d7f/MM10353_251023_18464_square.jpg?wp=1&amp;w=110&amp;h=110\" alt=\"Image 21\" style=\"max-width:100%;height:auto;\"><figcaption><a href=\"https://www.nationalgeographic.com/animals/article/secrets-of-bees-adaptation-pollinators\" target=\"_blank\" rel=\"noopener\">Secrets of the bees: How science is revealing their sneaky genius</a></figcaption></figure>\n<ul><li><a href=\"https://www.nationalgeographic.com/animals\" target=\"_blank\" rel=\"noopener\">Animals</a></li></ul>\n<h2>Secrets of the bees: How science is revealing their sneaky genius</h2>\n<p>New science is showing that nature’s vital pollinators are smarter than we ever imagined. Here’s why that discovery should change what we think about one of the world’s most important animals.</p>\n<h2>The best of National Geographic delivered to your inbox</h2>\n<p>Sign up for more inspiring photos, stories, and special offers from National Geographic.</p>\n<p>Email Address</p>\n<ul><li>Yes! I would like to receive top content, special offers, and other updates from National Geographic and The Walt Disney Family of Companies. By creating an account, you agree to our <a href=\"https://disneytermsofuse.com/english/\" target=\"_blank\" rel=\"noopener\">Terms of Use</a> and acknowledge that you have read our <a href=\"https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/\" target=\"_blank\" rel=\"noopener\">Privacy Policy</a> and <a href=\"https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/your-us-state-privacy-rights/\" target=\"_blank\" rel=\"noopener\">US State Privacy Rights Notice</a>.</li></ul>\n<p>Sign Up</p><p><br></p>",
+    "cell": ""
   },
   {
     "UID": "1041",
@@ -25123,7 +25372,8 @@
     "FtextJunk": "0",
     "VidTitle": "The Man Clearing 9,000 Tons of Trash From Mumbai’s Beaches",
     "VidAuthor": "@GreatBigStory",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1042",
@@ -25137,7 +25387,8 @@
     "FtextJunk": "0",
     "VidTitle": "1/2 Cup of This Specific White Rice Drops Insulin (use it instead)",
     "VidAuthor": "@ThomasDeLauerOfficial",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1043",
@@ -25151,7 +25402,8 @@
     "FtextJunk": "0",
     "VidTitle": "5 Best Exercises for Shoulder Impingement",
     "VidAuthor": "@MoveU",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1044",
@@ -25165,7 +25417,8 @@
     "FtextJunk": "0",
     "VidTitle": "Never Exercise Your SUPRASPINATUS (or Rotator Cuff) Without These 2 Keys",
     "VidAuthor": "@PrecisionMovementCoach",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1045",
@@ -25179,7 +25432,8 @@
     "FtextJunk": "0",
     "VidTitle": "The 3 Neglected Muscles to Fix Posture & Rounded Shoulders FOR GOOD",
     "VidAuthor": "@PrecisionMovementCoach",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1046",
@@ -25193,7 +25447,8 @@
     "FtextJunk": "0",
     "VidTitle": "The Incredible Transformation Of World's Most Polluted Beach",
     "VidAuthor": "@boredpanda",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1047",
@@ -25207,7 +25462,8 @@
     "FtextJunk": "0",
     "VidTitle": "Ultra Short Push Receive🏓 #tabletennis #pingpong #もあちゃんズ",
     "VidAuthor": "@moachan0801",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1048",
@@ -25221,7 +25477,8 @@
     "FtextJunk": "0",
     "VidTitle": "Forehand Topspin Against Backspin Is Easier Than You Think!",
     "VidAuthor": "@tilongclub",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1049",
@@ -25235,7 +25492,8 @@
     "FtextJunk": "0",
     "VidTitle": "Ping Pong How To Do Snake Shot 🐍 🏓",
     "VidAuthor": "@PingBrothersTR",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1050",
@@ -25249,105 +25507,145 @@
     "FtextJunk": "0",
     "VidTitle": "GlyNAC | New 2026 Data Confirms Incredible Benefits",
     "VidAuthor": "@theantiagingchannel",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1051",
     "link": "https://youtu.be/ihvKwVDw8Pc",
     "show": "1",
     "DateAdded": "2026-06-08 23:55:00",
-    "DateModified": "2026-06-08 23:55:01",
-    "tags": [],
+    "DateModified": "2026-06-10 13:57:06",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "attenborough"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VidTitle": "Army of Sea Urchins? | Planet Earth | BBC Earth",
     "VidAuthor": "@bbcearth",
-    "P/S": "0"
+    "P/S": "0",
+    "vidLength": "3:50",
+    "VidRange": "56.7 44",
+    "VidComment": "Eating kelp holdfasts",
+    "cell": "3a"
   },
   {
     "UID": "1052",
     "link": "https://youtu.be/Qsj5qATqlhE",
     "show": "1",
     "DateAdded": "2026-06-08 23:57:07",
-    "DateModified": "2026-06-08 23:57:08",
-    "tags": [],
+    "DateModified": "2026-06-10 13:21:23",
+    "tags": [
+      "strongylocentrotus-purpuratus"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VidTitle": "Facts: The Purple Sea Urchin",
     "VidAuthor": "@DeepMarineScenes",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": "",
+    "vidLength": "2:30"
   },
   {
     "UID": "1053",
     "link": "https://youtu.be/Fp0ThW2dsUI",
     "show": "1",
     "DateAdded": "2026-06-08 23:58:49",
-    "DateModified": "2026-06-08 23:58:49",
-    "tags": [],
+    "DateModified": "2026-06-10 13:52:31",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "shapeoflife"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VidTitle": "Echinoderms - Urchin Time-lapse, Eating Kelp",
     "VidAuthor": "@shapeoflife637",
-    "P/S": "0"
+    "P/S": "0",
+    "vidLength": "3:24",
+    "VidRange": "113.9 10, 127.9 12",
+    "VidComment": "Mouth, Eating kelp",
+    "cell": "3b"
   },
   {
     "UID": "1054",
     "link": "https://youtu.be/u0bXPq2n4WY",
     "show": "1",
     "DateAdded": "2026-06-08 23:59:23",
-    "DateModified": "2026-06-08 23:59:23",
-    "tags": [],
+    "DateModified": "2026-06-10 13:48:25",
+    "tags": [
+      "echinoidea",
+      "larval-stage"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VidTitle": "Echinopluteus larvae. Pluteus larvae occur in the life cycles of sea urchins and brittle stars",
     "VidAuthor": "@NaturePictureLibrary",
-    "P/S": "0"
+    "P/S": "0",
+    "vidLength": "0:16",
+    "cell": ""
   },
   {
     "UID": "1055",
     "link": "https://youtu.be/ak2xqH5h0YY",
     "show": "1",
     "DateAdded": "2026-06-09 00:00:00",
-    "DateModified": "2026-06-09 00:00:00",
-    "tags": [],
+    "DateModified": "2026-06-10 13:37:22",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "spawning"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VidTitle": "Sea Urchins Pull Themselves Inside Out to be Reborn | Deep Look",
     "VidAuthor": "@KQEDDeepLook",
-    "P/S": "0"
+    "P/S": "0",
+    "vidLength": "3:23",
+    "VidRange": "67.2 13",
+    "VidComment": "Spawning",
+    "cell": ""
   },
   {
     "UID": "1056",
     "link": "https://youtu.be/nI02svzU0Bw",
     "show": "1",
     "DateAdded": "2026-06-09 00:01:52",
-    "DateModified": "2026-06-09 00:01:53",
-    "tags": [],
+    "DateModified": "2026-06-10 13:47:50",
+    "tags": [
+      "strongylocentrotus-purpuratus",
+      "eating"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VidTitle": "Watch a sea urchin devour a seaweed snack!",
     "VidAuthor": "@MontereyBayAquarium",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": "",
+    "vidLength": "0:26"
   },
   {
     "UID": "1057",
     "link": "https://youtu.be/cdc0e7MezZU",
     "show": "1",
     "DateAdded": "2026-06-09 00:03:41",
-    "DateModified": "2026-06-09 00:03:41",
-    "tags": [],
+    "DateModified": "2026-06-10 13:59:42",
+    "tags": [
+      "mesocentrotus-franciscanus"
+    ],
     "Mute": "0",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VidTitle": "Facts: The Red Sea Urchin",
     "VidAuthor": "@DeepMarineScenes",
-    "P/S": "0"
+    "P/S": "0",
+    "vidLength": "2:55",
+    "cell": ""
   },
   {
     "UID": "1058",
@@ -25360,20 +25658,24 @@
     "tags": [],
     "ftextSize": "21035",
     "FtextJunk": "0",
-    "VidRange": "text"
+    "VidRange": "text",
+    "cell": ""
   },
   {
     "UID": "1059",
     "link": "https://www.nationalgeographic.com/environment/article/sunflower-sea-stars-colony-discovered-california-kelp-forests",
     "show": "1",
     "DateAdded": "2026-06-09 02:29:39",
-    "DateModified": "2026-06-09 02:49:27",
-    "tags": [],
+    "DateModified": "2026-06-10 14:29:04",
+    "tags": [
+      "strongylocentrotus-purpuratus"
+    ],
     "ltype": "w",
     "ftextSize": "12114",
     "FtextJunk": "0",
     "ftext": "<h2>This creature was dubbed the Sasquatch of the sea. Scientists just found it.</h2><p>Story and photographs by Patrick Webster</p><p>Published June 8, 2026</p><p>When over 99 percent of California’s sunflower sea stars mysteriously wasted away 10 years ago, an already stressed ecosystem unraveled.</p><p>Sunflower sea stars—<em>Pycnopodia helianthoides</em>—may look like a purely decorative feature of the ocean floor, but they’re voracious predators. As adults, they can grow up to 24 arms, span three feet wide, and move three feet per minute. They are superlative, and alien—<a href=\"https://www.nps.gov/chis/learn/nature/sunflower-star.htm\" target=\"_blank\" rel=\"noopener\">one of the largest</a>and arguably most ravenous sea stars in the world.</p><p>But at the end of 2013, <a href=\"https://www.nationalgeographic.com/culture/article/space-map-pacific-blob\" target=\"_blank\" rel=\"noopener\">a colossal marine heatwave</a> swept over the north east Pacific just as a mysterious underwater epidemic began causing sea stars to die off en masse.</p><p>Without a primary predator, an excess of purple sea urchins insatiably consumed their surrounding kelp forests. Over the past 100 years, these large ribbons of golden-brown seaweed had already dwindled in some stretches of the coast, due in large part to warming ocean conditions. By 2017, this sudden explosion of hungry sea urchins and an ongoing marine heat wave, strengthened by an El Niño weather pattern, wiped out more than <a href=\"https://www.ucdavis.edu/climate/news/californias-crashing-kelp-forest\" target=\"_blank\" rel=\"noopener\">90 percent</a> of kelp forests in some West Coast regions.</p><p>Kelp forests on the West Coast are critical habitats that support dozens of species, from drifting plankton to migrating gray whales. They’re also a vital habitat to <a href=\"https://www.fisheries.noaa.gov/feature-story/pioneering-project-restore-bull-kelp-forests-greater-farallones-national-marine\" target=\"_blank\" rel=\"noopener\">lucrative fish species like rockfish, abalone, and crabs</a>. Kelp itself is a sustainable food and helps sequester atmospheric carbon. But without sunflower sea stars, kelp forests have been unable to grow back without being devoured by hungry purple sea urchins.</p><p>A decade into the devastation, weary coastal communities impacted by the loss of these ecosystems throughout the state and the scientists studying this environment wondered whether a population of urchin-devouring sunflower sea stars might have survived, tucked into a protected coastal inlet or nestled into a forgotten reef.</p><p>Sunflower sea stars, these crucial members of the ecosystem, became almost mythological, earning them the affectionate term “seasquatch” among many professional and amateur scientific sleuths. Finally, after years of faithful searching, a hidden “seasquatch” lair was discovered last June.</p><p>“The moment I saw my first sunflower star underwater, I was so excited that I literally screamed through my regulator,” Rachael Karm, a research technician at Sonoma State University’s Dr. Brent Hughes ecology and conservation lab, noted in an email. “I came up to the surface before remembering to even take a photo.”</p><img src=\"https://i.natgeofe.com/n/eb21f1f3-cff3-497d-b5ca-be186ac9a3ea/2PycnoPitch_PatWebster_Tight-1.jpg\" alt=\"Image 1: ndrew Kim collecting one of the first ever sunflower sea star eDNA samples underwater\" style=\"max-width:100%;height:auto;\"><p>Sunflower Star Laboratory manager Andrew Kim collecting one of the first ever sunflower sea star eDNA samples. This new technology allows scientists to sample the environment for bits of sea star DNA. Pycnopalooza was the first deployment of this brand new tech for sunflower stars in California.</p><p>A subsequent diving blitz revealed 18 total sunflower sea stars—the largest and southernmost population of sunflower sea stars documented since sea star wasting disease spread across the coast. Karm and her peers say this discovery offers a major sign of hope for restoring lost sunflower sea stars and potentially even reviving the coast’s lost kelp forests.</p><h2>The world’s first <em>Pycnopalooza</em></h2><p>Karm began studying kelp forests in northern California in 2020, after most of the sunflower sea stars had already disappeared. She had never seen a sunflower sea star in the wild and said her search for these giant sea stars felt at times like a cryptozoological hobby reminiscent of Big Foot chasers. For nearly a decade, she noted, these sea stars had been “virtually absent” from the coastline.</p><p>“For most of my career, seeing a sunflower star felt almost out of reach, something you hear about but don't get to see yourself because the chances are so slim,” she said.</p><p>But in June 2025, Karm’s colleagues found a single adult sunflower sea star at an underwater site they regularly monitored for kelp research projects. When Karm returned about a week later to relocate the star and collect genetic samples she was stunned to stumble across four more sunflower sea stars—juveniles this time, including two silver-dollar-sized individuals on the same rock.</p><p>“When we found those babies, I was filled with a profound sense of hope: Clearly there were adults that had successful reproduction, with huge implications for recolonization.”</p><p>Karm suspected there could be many more stars hiding out in this cove. Finding as many as possible and collecting genetic samples from them would help researchers determine whether this small, healthy population may have some resilience to the wasting disease. Such a trait could have major, positive benefits for the state’s kelp recovery efforts.</p><img src=\"https://i.natgeofe.com/n/7664f756-5cb2-4fc9-b709-09f6dc8fec5a/3PycnoPitch_PatWebster_Tight-6.jpg\" alt=\"Image 2: An adult sunflower sea star (Pycnopodia helianthoides) chasing down a purple sea urchin (Strongylocentrotus purpuratus) to devour.\" style=\"max-width:100%;height:auto;\"><p>An adult sunflower sea star hunts down a purple sea urchin. Using an overwhelming arsenal of tube feet, the star reels in the urchin and will eventually consume it whole, leaving behind spines and and an empty skeleton.</p><img src=\"https://i.natgeofe.com/n/20d17898-b276-4e60-a1ca-b100b8612eb4/4PycnoPitch_PatWebster_Tight-8.jpg\" alt=\"Image 3: One in a small grove of mature bull kelps (Nereocystis luetkeana) found at the site\" style=\"max-width:100%;height:auto;\"><p>One in a small grove of mature bull kelps. Bull kelp forests in northern California used to sustain an extraordinary abundance of wildlife. Since the heat wave and the disappearance of sunflower sea stars, the ecosystem has collap...</p><p>Just two months later, Karm convened an event dubbed <em>Pycnopalooza</em>. Once <em>Pycnopalooza</em> was announced, it drew a dream team of 25 scientific divers from eight different institutions: The Nature Conservancy; Greater Farallones National Marine Sanctuary; Moss Landing Marine Labs; University of California, Berkeley; Reef Check California; Sonoma State University; Sunflower Star Laboratory; and the Kashia Band of Pomo Indians, whose scientific dive team oversees kelp restoration on their ancestral lands.</p><p>Over two days, divers systematically surveyed the humble cove off the coast of Sea Ranch, California using an underwater grid system. Teams entered the frigid water with flashlights, measuring reels, and little red floats to be deployed should a wild “Pycno” be found. They also had access to a new technology that allowed them to find bits of sunflower sea star DNA in environmental samples, also known as eDNA.</p><p>By the end of the two-day effort, 18 adult sunflower sea stars had been found—each individual marked by its own exuberantly bobbing red buoy.</p><h2>How the sea star colony could help fight disease</h2><p>The discovery’s timing was fortuitous.</p><p>Just weeks before the August dive took place in California, scientists at the Hakai Institute in British Columbia published a <a href=\"https://www.nature.com/articles/s41559-025-02797-2\" target=\"_blank\" rel=\"noopener\">paper</a> that finally identified the culprit behind the sea star mass mortality—the bacterium <em>Vibrio pectenicida</em>.</p><p>With the ability to track the disease agent and its victim from a distance, scientists could now investigate how outbreaks of sea star wasting occur—and breed potentially genetically-resilient varieties of lab-grown sunflower sea stars.</p><p>All 18 of the <em>Pycnopalooza</em> stars’ genetic samples are being analyzed in a lab at the University of California, Merced where scientists are trying to learn what genetic traits might have helped the stars to survive the wasting disease.</p><img src=\"https://i.natgeofe.com/n/991871ca-664c-4020-8c45-4f770abd9d35/1PycnoPitch_PatWebster_Tight-7.jpg\" alt=\"Image 4: A large red abalone (Haliotis rufescens) next to an adult sunflower sea star (Pycnopodia helianthoides) under a thicket of understory palm kelps.\" style=\"max-width:100%;height:auto;\"><p>A horde of hungry purple sea urchins consuming palm kelps. Without their sea star predators, these sea urchins have devastated West Coast kelp forests.</p><p>“I was thrilled to be told that 18 sunflower sea stars had been found and sampled—this is the largest and southernmost population we have seen in California post-wasting, and the first with enough large individuals to have meaningful reproductive potential,” said Lauren Schiebelhut, an evolutionary ecologist at the University of California, Merced, in an email.</p><p>Schiebelhut will be researching the genetic samples collected by pycnopalooza divers to look for clues that might bring them back.</p><p>“It's special to know these stars exist, and maybe they're special in a few more ways that can help us understand their hopeful return,” she said.</p><p>Scientists and tribal leaders are hopeful that this sea star population can recover, but they still face hurdles. At the same time scientists were finding healthy sunflower sea stars last August, one was also found wasting away, right next to its seemingly healthy neighbors.</p><h2>A hopeful future for sea stars and kelp forests</h2><p>In the months since the 18 stars were discovered, researchers have continued studying their DNA and methods for breeding disease resistance.</p><p>“Discovering a wild population of recovering Pycnos is an amazing opportunity to try and answer questions from the past we missed out on, and to map the next steps of sunflower star recovery,” said Andrew Kim, the lab manager at <a href=\"https://www.sunflowerstarlab.org/\" target=\"_blank\" rel=\"noopener\">Sunflower Star Laboratory</a> in Moss Landing, California.</p><p><a href=\"https://www.nationalgeographic.com/animals/article/mystery-sea-star-die-off-inspires-new-efforts-to-save-kelp\" target=\"_blank\" rel=\"noopener\">Kim’s lab is one of several efforts, from Alaska to California</a> working to release disease-resistant sunflower sea stars bred in a lab back into the wild.</p><p>“Understanding what—if anything—is special about the palooza ‘Pycno’s is crucial data for reintroduction programs like ours and the greater kelp community,” said Kim.</p><p>The observation of this Pycno population was also a source of hope for Kashia and other local Tribes. This stretch of northern California coastline—“Tule q h a le yo” in the Kashia language (“many hummingbird plants”)—has long been a source of now-scarce foods like kelp and abalone.</p><p>“The discovery of sunflower sea stars in this sacred place is part of a healing process” said Dan Swezey, an ecologist and director for oceans and aquaculture with the Kashia Band of Pomo Indians.</p><p>Knowing now that these Pycnos are afoot, Karm and her colleagues will be monitoring the health and movements of these individuals, while searching for more populations along the coast.</p><p>“The first Pycnopalooza showed us how much we can accomplish when we all come together,” said Karm, “I’m looking forward to more paloozas up and down the coast of California to see where else sunflower stars may still be hiding.”</p>",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": ""
   },
   {
     "UID": "1060",
@@ -25387,7 +25689,8 @@
     "FtextJunk": "0",
     "MPix": "1.1",
     "P/S": "0",
-    "comment": "A large red abalone next to an adult sunflower sea star under a thicket of understory palm kelps"
+    "comment": "A large red abalone next to an adult sunflower sea star under a thicket of understory palm kelps",
+    "cell": ""
   },
   {
     "UID": "1061",
@@ -25399,7 +25702,8 @@
     "ltype": "w",
     "ftextSize": "10337",
     "FtextJunk": "0",
-    "ftext": "<h2>Scientists peeked underneath an iceberg and found a startling kaleidoscope of marine life</h2>\n<p>On January 13, when an iceberg the size of Chicago broke away from Antarctica’s immense George VI Ice Shelf, scientists in a nearby research vessel did something nobody had ever done. They sailed to look at the seafloor that had suddenly been exposed, like lifting the world’s biggest rock to see what critters lay underneath.</p>\n<p>Life is almost everywhere in the oceans, from the sunlit-bathed shallows to the pitch-black, sometimes <a href=\"https://www.atlasobscura.com/articles/new-discoveries-underwater-volcanoes\" target=\"_blank\" rel=\"noopener\">volcanic depths</a>. The research team aboard the Schmidt Ocean Institute’s R/V <em>Falkor (too)</em> ship were confident they’d find animals at their destination. But they were shocked at the <a href=\"https://schmidtocean.org/thriving-antarctic-ecosystems-found-in-wake-of-recently-detached-iceberg/\" target=\"_blank\" rel=\"noopener\">explosion of life</a> they discovered—a forest of sponges, giant sea spiders, icefish, octopuses, huge corals, anemones, and ethereal deep-sea jellyfish.</p>\n<p><a href=\"https://www.nationalgeographic.com/environment/article/this-iceberg-is-perfectly-rectangular-explained\" target=\"_blank\" rel=\"noopener\"><em>(</em> <em>This iceberg is perfectly rectangular—here’s why)</em></a></p>\n<p>Marine biology is known to be highly adaptive and extremely resilient. “It’s not an absolute surprise that we have life,” says <a href=\"https://profiles.ucl.ac.uk/96683-aleksandr-montelli\" target=\"_blank\" rel=\"noopener\">Sasha Montelli</a>, a geophysicist and glaciologist at University College London and expedition team member. But “biologists were really surprised by the richness of it—how colorful, how spectacular it was.”</p>\n<p>“That tells us that what we have are thriving, diverse, and well-established ecosystems under the ice shelf,” says <a href=\"https://schmidtocean.org/person/patricia-esquete/\" target=\"_blank\" rel=\"noopener\">Patricia Esquete</a>, a marine ecologist at the University of Aveiro, Portugal and member of the expedition. And that diversity offers scientists a puzzle.</p>\n<img src=\"https://i.natgeofe.com/n/70837825-c926-48db-89f7-86d2c37515aa/FKt250110-S0794-20250205T182751Z-0-scicam-Beautiful_Octopus_Shot-scaled.jpg\" alt=\"Image 1: An octopus, dark plum in color, rests on the seafloor\" style=\"max-width:100%;height:auto;\">\n<p>An octopus rests on the seafloor 3,700 feet deep in the Bellingshausen Sea off Antarctica. The ecosystem is the site of several underwater gullies.</p>\n<p>Photograph by ROV SuBastian, Schmidt Ocean Institute</p>\n<p>Normally, deep-sea ecosystems get their nutrients from the sea surface, which sprinkle down toward the seafloor. But this area was covered by a 500-foot-thick icy roof for an interminable amount of time, meaning that these critters must be getting their nutrients another way.</p>\n<p>“What mechanisms allow these ecosystems to occur and thrive?” says Esquete. The expedition team hopes that the huge volume of oceanic and environmental data taken during from the site will provide some concrete answers—as well as revealing if any of these animals they’ve found are previously unknown to science.</p>\n<p>“It’s going to be really exciting to see what they find,” says <a href=\"https://www.southampton.ac.uk/people/5wzgpj/professor-jon-copley\" target=\"_blank\" rel=\"noopener\">Jon Copley</a>, a deep-sea ecologist at the University of Southampton who was not involved with the expedition.</p>\n<h2>A Chicago-sized surprise</h2>\n<p>R/V <em>Falkor (too)</em> has travelled across the world in the hope of solving all kinds of marine mysteries. And in January, it just so happened to be exploring the frigid waters around Antarctica. Ecologists were seeking out curious forms of life, while physical oceanographers and geoscientists were studying the Southern Ocean, a <a href=\"https://schmidtocean.org/schmidt-ocean-institute-first-expedition-to-antarctica/\" target=\"_blank\" rel=\"noopener\">major sink</a> for carbon dioxide emissions.</p>\n<p>While sailing in the Bellingshausen Sea they looked at their satellite imagery of the area, which is updated on a near-daily basis. “We saw that right next door, there was this huge iceberg calving,” says Montelli. A-84, as the iceberg was later dubbed, broke away from the Antarctic Peninsula, before quickly drifting away.</p>\n<img src=\"https://i.natgeofe.com/n/0cb653d9-a9a4-48e8-8478-1aa578c366f5/FKt250110-S0793-20250204T143349Z-0-scitoo-Phantom_Jelly_1-scaled.jpg\" alt=\"Image 2: A giant, purple phantom jellyfish swims through the dark, deep Bellingshausen Sea off Antarctica. The bell, or body, of the jellyfish is over three feet long, and it's arms grow over 33 feet long.\" style=\"max-width:100%;height:auto;\">\n<p>This giant phantom jellyfish jellyfish can grow to a massive size: the bell (the umbrella-like body) can grow more than 3.3 feet across. Its four ribbony arms can stretch more than 33 feet in length.</p>\n<p>Photograph by ROV SuBastian, Schmidt Ocean Institute</p>\n<p>Ice shelves, and their underbellies, are notoriously difficult to study. Conveniently, A-84 unveiled a 209-square-mile patch of seafloor for all to see.</p>\n<p>“We decided right away to change the sampling plan and head to the area that was recently covered by ice,” says <a href=\"https://www.lauracimoli.com/\" target=\"_blank\" rel=\"noopener\">Laura Cimoli</a>, a physical oceanographer at the University of Cambridge who led the oceanographic effort on the expedition.</p>\n<p>When the ship arrived, they wasted no time in deploying their surveillance tech, from their remotely operated submersible, <em>SuBastian</em>, to autonomous robots that gathered information about the properties of the water column.</p>\n<p>Immediately, it was clear that there was considerably more life there than anyone anticipated. “There were many species, occupying a variety of ecological niches and with a variety of functional traits,” says Esquete.</p>\n<p>To determine how long the ecosystem had existed, they turned to sea sponges. These animals often grow very slowly, around just an inch or so per year. But the sponges in this abyss were so large that they must have been growing there for many decades or even centuries.</p>\n<p><a href=\"https://www.nationalgeographic.com/environment/article/scuttle-ship-sink-artificial-reef\" target=\"_blank\" rel=\"noopener\"><em>(Meet the man who sinks the world’s biggest ships for a living)</em></a></p>\n<h2>Fed by underwater rivers</h2>\n<p>The discovery of this life isn’t surprising in isolation.</p>\n<p>“Many animals thrive in dark, cold-water habitats, so it makes sense that this community was established under the shelf, which not only concealed the community, but also provided it with protection from surface activities and exploitation,” says <a href=\"https://case.fiu.edu/about/directory/profiles/deleo-danielle.html\" target=\"_blank\" rel=\"noopener\">Danielle DeLeo</a>, a deep-sea biologist at Florida International University who was not involved with the expedition.</p>\n<p>But it’s odd to see such a plurality of different lifeforms in what was, until very recently, a confined environment. In fact, “it looks similar to the seabed life that we get in Antarctica that aren’t covered by ice,” says Copley—but how is this possible?</p>\n<p>In shallow waters bathed in sunlight, <a href=\"https://oceanservice.noaa.gov/facts/phyto.html\" target=\"_blank\" rel=\"noopener\">phytoplankton algae</a> thrive. At night, they are feasted on by small crustaceans named <a href=\"https://www.antarctica.gov.au/about-antarctica/animals/krill/#:~:text=Diet%20and%20feeding,sufficient%20to%20allow%20for%20growth.\" target=\"_blank\" rel=\"noopener\">krill</a>. When they’re satiated, the krill sink far below the waves and bring nutrients to the seafloor with them—including <a href=\"https://news.liverpool.ac.uk/2019/10/18/how-antarctic-krill-fertilise-the-oceans-and-even-store-carbon-all-with-their-poo/#:~:text=Krill%20are%20able%20to%20fertilise,or%20in%20solid%20faecal%20pellets.\" target=\"_blank\" rel=\"noopener\">via their poop</a>, which fertilizes and feeds the denizens of the depths.</p>\n<img src=\"https://i.natgeofe.com/n/7c30c184-1670-47d6-905a-1e4d421e3e55/FKt250110-20250202-MicroscopeWetLab-Ingle-4942-scaled.jpg\" alt=\"Image 3: A scientist with a microscope looks at images of wispy red and white shapes on a large screen.\" style=\"max-width:100%;height:auto;\">\n<p>Aboard the research Vessel <em>Falkor (too)</em>, marine ecologist Christian Aldea examines a sea star under the microscope in the ship’s Wet Lab.</p>\n<p>Photograph by Alex Ingle, Schmidt Ocean Institute</p>\n<p>That doesn’t really happen when you have a ginormous ice cap suspended above the seafloor. This would prevent phytoplankton blooms, which would in turn stop the downward precipitation of nutrients.</p>\n<p>“We expected that,given these ecosystems could not be fed by photosynthesis happening on the surface, the ecosystem would be more impoverished and less established,” says Esquete.</p>\n<p>The rich ecosystem they found suggests that “any food that came in would have been carried on currents, slipping in underneath the ice shelf,” says Copley. That tracks, as oceanographers have mapped out submarine rivers flowing both to and from this part of Antarctica.</p>\n<p>“The fact that we found long-living species suggests that indeed the lateral transport, which mostly consists of glacial meltwater from George VI ice shelf, could be the source of the nutrients sustaining the thriving life found under the newly exposed ice shelf,” says Cimoli.</p>\n<p>With so many biological, geological and chemical samples yet to be processed, many questions remain. Esquete wonders how the ecosystem will develop now that their icy roof has vanished.</p>\n<p>Cimoli is curious about how the iceberg’s formation has churned up the upper ocean and introduced turbulence to its distinct layers. She also wonders how this iceberg’s liberation has affected the region’s oceanic circulation.</p>\n<p>Ecologists, meanwhile, are grappling with just how quickly their knowledge of the Antarctic depths has evolved.</p>\n<p>Thanks to A-84, they now have “a glimpse as to how far the very rich seabed life we have around Antarctica extends beneath the floating ice shelf,” says Copley.</p>"
+    "ftext": "<h2>Scientists peeked underneath an iceberg and found a startling kaleidoscope of marine life</h2>\n<p>On January 13, when an iceberg the size of Chicago broke away from Antarctica’s immense George VI Ice Shelf, scientists in a nearby research vessel did something nobody had ever done. They sailed to look at the seafloor that had suddenly been exposed, like lifting the world’s biggest rock to see what critters lay underneath.</p>\n<p>Life is almost everywhere in the oceans, from the sunlit-bathed shallows to the pitch-black, sometimes <a href=\"https://www.atlasobscura.com/articles/new-discoveries-underwater-volcanoes\" target=\"_blank\" rel=\"noopener\">volcanic depths</a>. The research team aboard the Schmidt Ocean Institute’s R/V <em>Falkor (too)</em> ship were confident they’d find animals at their destination. But they were shocked at the <a href=\"https://schmidtocean.org/thriving-antarctic-ecosystems-found-in-wake-of-recently-detached-iceberg/\" target=\"_blank\" rel=\"noopener\">explosion of life</a> they discovered—a forest of sponges, giant sea spiders, icefish, octopuses, huge corals, anemones, and ethereal deep-sea jellyfish.</p>\n<p><a href=\"https://www.nationalgeographic.com/environment/article/this-iceberg-is-perfectly-rectangular-explained\" target=\"_blank\" rel=\"noopener\"><em>(</em> <em>This iceberg is perfectly rectangular—here’s why)</em></a></p>\n<p>Marine biology is known to be highly adaptive and extremely resilient. “It’s not an absolute surprise that we have life,” says <a href=\"https://profiles.ucl.ac.uk/96683-aleksandr-montelli\" target=\"_blank\" rel=\"noopener\">Sasha Montelli</a>, a geophysicist and glaciologist at University College London and expedition team member. But “biologists were really surprised by the richness of it—how colorful, how spectacular it was.”</p>\n<p>“That tells us that what we have are thriving, diverse, and well-established ecosystems under the ice shelf,” says <a href=\"https://schmidtocean.org/person/patricia-esquete/\" target=\"_blank\" rel=\"noopener\">Patricia Esquete</a>, a marine ecologist at the University of Aveiro, Portugal and member of the expedition. And that diversity offers scientists a puzzle.</p>\n<img src=\"https://i.natgeofe.com/n/70837825-c926-48db-89f7-86d2c37515aa/FKt250110-S0794-20250205T182751Z-0-scicam-Beautiful_Octopus_Shot-scaled.jpg\" alt=\"Image 1: An octopus, dark plum in color, rests on the seafloor\" style=\"max-width:100%;height:auto;\">\n<p>An octopus rests on the seafloor 3,700 feet deep in the Bellingshausen Sea off Antarctica. The ecosystem is the site of several underwater gullies.</p>\n<p>Photograph by ROV SuBastian, Schmidt Ocean Institute</p>\n<p>Normally, deep-sea ecosystems get their nutrients from the sea surface, which sprinkle down toward the seafloor. But this area was covered by a 500-foot-thick icy roof for an interminable amount of time, meaning that these critters must be getting their nutrients another way.</p>\n<p>“What mechanisms allow these ecosystems to occur and thrive?” says Esquete. The expedition team hopes that the huge volume of oceanic and environmental data taken during from the site will provide some concrete answers—as well as revealing if any of these animals they’ve found are previously unknown to science.</p>\n<p>“It’s going to be really exciting to see what they find,” says <a href=\"https://www.southampton.ac.uk/people/5wzgpj/professor-jon-copley\" target=\"_blank\" rel=\"noopener\">Jon Copley</a>, a deep-sea ecologist at the University of Southampton who was not involved with the expedition.</p>\n<h2>A Chicago-sized surprise</h2>\n<p>R/V <em>Falkor (too)</em> has travelled across the world in the hope of solving all kinds of marine mysteries. And in January, it just so happened to be exploring the frigid waters around Antarctica. Ecologists were seeking out curious forms of life, while physical oceanographers and geoscientists were studying the Southern Ocean, a <a href=\"https://schmidtocean.org/schmidt-ocean-institute-first-expedition-to-antarctica/\" target=\"_blank\" rel=\"noopener\">major sink</a> for carbon dioxide emissions.</p>\n<p>While sailing in the Bellingshausen Sea they looked at their satellite imagery of the area, which is updated on a near-daily basis. “We saw that right next door, there was this huge iceberg calving,” says Montelli. A-84, as the iceberg was later dubbed, broke away from the Antarctic Peninsula, before quickly drifting away.</p>\n<img src=\"https://i.natgeofe.com/n/0cb653d9-a9a4-48e8-8478-1aa578c366f5/FKt250110-S0793-20250204T143349Z-0-scitoo-Phantom_Jelly_1-scaled.jpg\" alt=\"Image 2: A giant, purple phantom jellyfish swims through the dark, deep Bellingshausen Sea off Antarctica. The bell, or body, of the jellyfish is over three feet long, and it's arms grow over 33 feet long.\" style=\"max-width:100%;height:auto;\">\n<p>This giant phantom jellyfish jellyfish can grow to a massive size: the bell (the umbrella-like body) can grow more than 3.3 feet across. Its four ribbony arms can stretch more than 33 feet in length.</p>\n<p>Photograph by ROV SuBastian, Schmidt Ocean Institute</p>\n<p>Ice shelves, and their underbellies, are notoriously difficult to study. Conveniently, A-84 unveiled a 209-square-mile patch of seafloor for all to see.</p>\n<p>“We decided right away to change the sampling plan and head to the area that was recently covered by ice,” says <a href=\"https://www.lauracimoli.com/\" target=\"_blank\" rel=\"noopener\">Laura Cimoli</a>, a physical oceanographer at the University of Cambridge who led the oceanographic effort on the expedition.</p>\n<p>When the ship arrived, they wasted no time in deploying their surveillance tech, from their remotely operated submersible, <em>SuBastian</em>, to autonomous robots that gathered information about the properties of the water column.</p>\n<p>Immediately, it was clear that there was considerably more life there than anyone anticipated. “There were many species, occupying a variety of ecological niches and with a variety of functional traits,” says Esquete.</p>\n<p>To determine how long the ecosystem had existed, they turned to sea sponges. These animals often grow very slowly, around just an inch or so per year. But the sponges in this abyss were so large that they must have been growing there for many decades or even centuries.</p>\n<p><a href=\"https://www.nationalgeographic.com/environment/article/scuttle-ship-sink-artificial-reef\" target=\"_blank\" rel=\"noopener\"><em>(Meet the man who sinks the world’s biggest ships for a living)</em></a></p>\n<h2>Fed by underwater rivers</h2>\n<p>The discovery of this life isn’t surprising in isolation.</p>\n<p>“Many animals thrive in dark, cold-water habitats, so it makes sense that this community was established under the shelf, which not only concealed the community, but also provided it with protection from surface activities and exploitation,” says <a href=\"https://case.fiu.edu/about/directory/profiles/deleo-danielle.html\" target=\"_blank\" rel=\"noopener\">Danielle DeLeo</a>, a deep-sea biologist at Florida International University who was not involved with the expedition.</p>\n<p>But it’s odd to see such a plurality of different lifeforms in what was, until very recently, a confined environment. In fact, “it looks similar to the seabed life that we get in Antarctica that aren’t covered by ice,” says Copley—but how is this possible?</p>\n<p>In shallow waters bathed in sunlight, <a href=\"https://oceanservice.noaa.gov/facts/phyto.html\" target=\"_blank\" rel=\"noopener\">phytoplankton algae</a> thrive. At night, they are feasted on by small crustaceans named <a href=\"https://www.antarctica.gov.au/about-antarctica/animals/krill/#:~:text=Diet%20and%20feeding,sufficient%20to%20allow%20for%20growth.\" target=\"_blank\" rel=\"noopener\">krill</a>. When they’re satiated, the krill sink far below the waves and bring nutrients to the seafloor with them—including <a href=\"https://news.liverpool.ac.uk/2019/10/18/how-antarctic-krill-fertilise-the-oceans-and-even-store-carbon-all-with-their-poo/#:~:text=Krill%20are%20able%20to%20fertilise,or%20in%20solid%20faecal%20pellets.\" target=\"_blank\" rel=\"noopener\">via their poop</a>, which fertilizes and feeds the denizens of the depths.</p>\n<img src=\"https://i.natgeofe.com/n/7c30c184-1670-47d6-905a-1e4d421e3e55/FKt250110-20250202-MicroscopeWetLab-Ingle-4942-scaled.jpg\" alt=\"Image 3: A scientist with a microscope looks at images of wispy red and white shapes on a large screen.\" style=\"max-width:100%;height:auto;\">\n<p>Aboard the research Vessel <em>Falkor (too)</em>, marine ecologist Christian Aldea examines a sea star under the microscope in the ship’s Wet Lab.</p>\n<p>Photograph by Alex Ingle, Schmidt Ocean Institute</p>\n<p>That doesn’t really happen when you have a ginormous ice cap suspended above the seafloor. This would prevent phytoplankton blooms, which would in turn stop the downward precipitation of nutrients.</p>\n<p>“We expected that,given these ecosystems could not be fed by photosynthesis happening on the surface, the ecosystem would be more impoverished and less established,” says Esquete.</p>\n<p>The rich ecosystem they found suggests that “any food that came in would have been carried on currents, slipping in underneath the ice shelf,” says Copley. That tracks, as oceanographers have mapped out submarine rivers flowing both to and from this part of Antarctica.</p>\n<p>“The fact that we found long-living species suggests that indeed the lateral transport, which mostly consists of glacial meltwater from George VI ice shelf, could be the source of the nutrients sustaining the thriving life found under the newly exposed ice shelf,” says Cimoli.</p>\n<p>With so many biological, geological and chemical samples yet to be processed, many questions remain. Esquete wonders how the ecosystem will develop now that their icy roof has vanished.</p>\n<p>Cimoli is curious about how the iceberg’s formation has churned up the upper ocean and introduced turbulence to its distinct layers. She also wonders how this iceberg’s liberation has affected the region’s oceanic circulation.</p>\n<p>Ecologists, meanwhile, are grappling with just how quickly their knowledge of the Antarctic depths has evolved.</p>\n<p>Thanks to A-84, they now have “a glimpse as to how far the very rich seabed life we have around Antarctica extends beneath the floating ice shelf,” says Copley.</p>",
+    "cell": ""
   },
   {
     "UID": "1062",
@@ -25412,7 +25716,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "7.1",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1063",
@@ -25425,7 +25730,8 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "7.1",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
   },
   {
     "UID": "1064",
@@ -25437,7 +25743,8 @@
     "ltype": "w",
     "ftextSize": "1030",
     "FtextJunk": "0",
-    "ftext": "<h1>Encounters with Bioluminescent Creatures</h1><h1>Media player</h1><h2><div><div><div><div><div><div><div><div>2 minutes, 9 seconds2:09&nbsp;/ 2:09</div><div><div>Play</div><div>Rewind</div><div>Forward</div><div>Volume</div></div><div><div>Preferences</div><div>Enter full screen</div></div></div></div></div></div></div></div></div>(History Channel &amp; Smithsonian History)<p>Scientists describe the amazing bioluminescent creatures they encounter as they descend into the deep--siphonophores, ctenophores, and viperfish--in this Smithsonian/History Channel \"Deep Ocean Explorers\" video excerpt.</p><p>If you like this video, watch the full 14-minute version of the&nbsp;<a href=\"http://ocean.si.edu/ocean-videos/deep-ocean-explorers\" target=\"_blank\" rel=\"noopener\"><strong>Deep Ocean Explorers video</strong></a>, and you can explore more in the&nbsp;<a href=\"http://ocean.si.edu/ocean-science/deep-ocean-exploration/\" target=\"_blank\" rel=\"noopener\"><strong>Deep Ocean Exploration section</strong></a>.</p><p><br></p></h2>"
+    "ftext": "<h1>Encounters with Bioluminescent Creatures</h1><h1>Media player</h1><h2><div><div><div><div><div><div><div><div>2 minutes, 9 seconds2:09&nbsp;/ 2:09</div><div><div>Play</div><div>Rewind</div><div>Forward</div><div>Volume</div></div><div><div>Preferences</div><div>Enter full screen</div></div></div></div></div></div></div></div></div>(History Channel &amp; Smithsonian History)<p>Scientists describe the amazing bioluminescent creatures they encounter as they descend into the deep--siphonophores, ctenophores, and viperfish--in this Smithsonian/History Channel \"Deep Ocean Explorers\" video excerpt.</p><p>If you like this video, watch the full 14-minute version of the&nbsp;<a href=\"http://ocean.si.edu/ocean-videos/deep-ocean-explorers\" target=\"_blank\" rel=\"noopener\"><strong>Deep Ocean Explorers video</strong></a>, and you can explore more in the&nbsp;<a href=\"http://ocean.si.edu/ocean-science/deep-ocean-exploration/\" target=\"_blank\" rel=\"noopener\"><strong>Deep Ocean Exploration section</strong></a>.</p><p><br></p></h2>",
+    "cell": ""
   },
   {
     "UID": "1065",
@@ -25452,7 +25759,8 @@
     "VidTitle": "PEAK MIND: Find Your FOCUS and Change Your LIFE | Dr. Amishi Jha Interview",
     "VidAuthor": "@EdMylettShow",
     "P/S": "0",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": ""
   },
   {
     "UID": "1066",
@@ -25467,7 +25775,8 @@
     "VidTitle": "12 Minutes to a Better Brain: Neuroscientist Reveals the #1 Habit for Clarity & Focus",
     "VidAuthor": "@melrobbins",
     "P/S": "0",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": ""
   },
   {
     "UID": "1067",
@@ -25482,7 +25791,8 @@
     "VidTitle": "Stanford Nutrition Researcher: Eat THIS to Transform Your Health, Stay Young, and Live Longer",
     "VidAuthor": "@melrobbins",
     "P/S": "0",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": ""
   },
   {
     "UID": "1068",
@@ -25496,6 +25806,71 @@
     "FtextJunk": "0",
     "VidTitle": "Your Brain is Making Reality Up | NOVA | PBS",
     "VidAuthor": "@novapbs",
-    "P/S": "0"
+    "P/S": "0",
+    "cell": ""
+  },
+  {
+    "UID": "1069",
+    "link": "https://youtu.be/MadvPgqTeHQ",
+    "show": "1",
+    "DateAdded": "2026-06-10 13:12:59",
+    "DateModified": "2026-06-10 13:31:16",
+    "tags": [
+      "echinoidea",
+      "mouth"
+    ],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "ウニの口（アリストテレスの提灯）　Sea urchin mouth,  Aristotle's lantern",
+    "VidAuthor": "@sawagani550",
+    "P/S": "0",
+    "vidLength": "0:40",
+    "cell": "3c"
+  },
+  {
+    "UID": "1070",
+    "link": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/",
+    "show": "1",
+    "DateAdded": "2026-06-10 13:23:44",
+    "DateModified": "2026-06-10 13:29:21",
+    "tags": [
+      "echinoidea"
+    ],
+    "ltype": "w",
+    "ftextSize": "61392",
+    "FtextJunk": "0",
+    "ftext": "<h2>Maintenance of somatic tissue regeneration with age in short‐ and long‐lived species of sea urchins</h2>\n<h2>[](<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/</a>)Abstract</h2>\n<p>Aging in many animals is characterized by a failure to maintain tissue homeostasis and the loss of regenerative capacity. In this study, the ability to maintain tissue homeostasis and regenerative potential was investigated in sea urchins, a novel model to study longevity and negligible senescence. Sea urchins grow indeterminately, regenerate damaged appendages and reproduce throughout their lifespan and yet different species are reported to have very different life expectancies (ranging from 4 to more than 100 years). Quantitative analyses of cell proliferation and apoptosis indicated a low level of cell turnover in tissues of young and old sea urchins of species with different lifespans (<em>Lytechinus variegatus</em>,<em>Strongylocentrotus purpuratus</em> and <em>Mesocentrotus franciscanus</em>). The ability to regenerate damaged tissue was maintained with age as assessed by the regrowth of amputated spines and tube feet (motor and sensory appendages). Expression of genes involved in cell proliferation (<em>pcna</em>), telomere maintenance (<em>tert</em>) and multipotency (<em>seawi</em> and <em>vasa</em>) was maintained with age in somatic tissues. Immunolocalization of the Vasa protein to areas of the tube feet, spines, radial nerve, esophagus and a sub‐population of circulating coelomocytes suggests the presence of multipotent cells that may play a role in normal tissue homeostasis and the regenerative potential of external appendages. The results indicate that regenerative potential was maintained with age regardless of lifespan, contrary to the expectation that shorter lived species would invest less in maintenance and repair.</p>\n<p><strong>Keywords:</strong>negligible senescence, regeneration, sea urchin, Seawi, tissue homeostasis, Vasa</p>\n<h2>[](<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/</a>)Introduction</h2>\n<p>Aging is characterized by a failure to maintain tissue homeostasis, resulting in a decline in tissue function and a diminished response to damage (Rando, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0034\" target=\"_blank\" rel=\"noopener\">2006</a>). Age‐related tissue decline is not limited to mammals but is also experienced by some highly regenerative vertebrates (Tsai <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0041\" target=\"_blank\" rel=\"noopener\">2007</a>; Anchelin <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0001\" target=\"_blank\" rel=\"noopener\">2011</a>; McCusker &amp; Gardiner, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0029\" target=\"_blank\" rel=\"noopener\">2011</a>; Kaslin <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0024\" target=\"_blank\" rel=\"noopener\">2013</a>; Seifert &amp; Voss, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0039\" target=\"_blank\" rel=\"noopener\">2013</a>). Somatic or tissue‐specific stem cells maintain tissues in adult organisms of many species and can replace cells during normal homeostasis or in response to injury or disease. Intrinsic changes within stem cells, alterations within the local stem cell niche, and/or changes in the surrounding tissues or systemic factors that affect stem cell function are thought to underlie the age‐related decreased capacity for repair and regeneration (Rando, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0034\" target=\"_blank\" rel=\"noopener\">2006</a>).</p>\n<p>Sea urchins are highly regenerative animals with indeterminate growth and life‐long reproduction, and thus offer the opportunity to investigate mechanisms for long‐term maintenance of tissue homeostasis and regenerative capacity. In addition, different species of sea urchins have very different reported life expectancies, offering an opportunity to investigate the role of regenerative processes in lifespan determination. The red sea urchin <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0027\" target=\"_blank\" rel=\"noopener\"><em>Mesocentrotus franciscanus</em>; formerly known as <em>Strongylocentrotus franciscanus</em> (Kober &amp; Bernardi, [2013</a>)] is one of the earth's longest living animals, living well in excess of 100 years with no age‐related increase in mortality rate or decline in reproductive capacity (Ebert &amp; Southon, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0014\" target=\"_blank\" rel=\"noopener\">2003</a>; Ebert, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0012\" target=\"_blank\" rel=\"noopener\">2008</a>). In contrast, the maximum life expectancy of <em>Lytechinus variegatus</em> in the wild is estimated to be only 4 years (Moore <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0031\" target=\"_blank\" rel=\"noopener\">1963</a>; Beddingfield &amp; McClintock, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0002\" target=\"_blank\" rel=\"noopener\">2000</a>) while that of <em>Strongylocentrotus purpuratus</em> is estimated to be more than 50 years (Ebert, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0011\" target=\"_blank\" rel=\"noopener\">2007</a>, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0013\" target=\"_blank\" rel=\"noopener\">2010</a>). Although <em>S.purpuratus</em> and <em>M.franciscanus</em> are native to the Pacific Ocean and <em>L.variegatus</em> is found in the Atlantic, they have similar lifestyles as herbivorous grazers in near‐shore environments. Key differences that may have a role lifespan determination relate to their different reproductive strategies, with the longer lived species having a later onset of sexual maturation and a longer planktonic larvae phase with low and variable recruitment into adults (Ebert <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0015\" target=\"_blank\" rel=\"noopener\">1994</a>). In addition, the longer lived species have thicker tests (shells) and spines and an expansion of genes associated with innate immunity (Buckley &amp; Rast, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0003\" target=\"_blank\" rel=\"noopener\">2012</a>) indicating a greater investment in these key defense mechanisms.</p>\n<p>Sea urchins are known to regenerate external appendages such as spines and tube feet (Candia Carnevali, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0005\" target=\"_blank\" rel=\"noopener\">2006</a>). Spines are tapered skeletal elements made of magnesium‐containing calcite embedded in the dermis and covered by an epidermis (Dubois &amp; Ameye, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0009\" target=\"_blank\" rel=\"noopener\">2001</a>; Politi <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0033\" target=\"_blank\" rel=\"noopener\">2004</a>). Spine regeneration involves a wound‐healing process where the epidermis is reconstituted around the broken spine and biomineralization is directed by the skeletogenic cells (sclerocytes) located in the dermis (Dubois &amp; Ameye, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0009\" target=\"_blank\" rel=\"noopener\">2001</a>; Politi <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0033\" target=\"_blank\" rel=\"noopener\">2004</a>). Tube feet are fleshy external appendages that protrude through the sea urchin shell and play a role in locomotion, respiration, and sensory perception (Lesser <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0028\" target=\"_blank\" rel=\"noopener\">2011</a>). There are about 1500 tube feet per sea urchin and each is a cylindrical structure composed of multiple tissue layers: an outer epidermis, a basiepidermal nerve plexus, a connective tissue layer, and a longitudinal muscle layer lined with ciliated epithelium facing the inner water vascular lumen (Lesser <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0028\" target=\"_blank\" rel=\"noopener\">2011</a>; Santos <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0037\" target=\"_blank\" rel=\"noopener\">2013</a>). A disc at the distal end of each tube foot is used for adhesion and also receives sensory input which is transduced to the radial nerve that lies just inside the shell (Lesser <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0028\" target=\"_blank\" rel=\"noopener\">2011</a>). Tube feet regeneration has not been investigated in detail, but has recently been shown to require Notch signaling (Reinardy <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0035\" target=\"_blank\" rel=\"noopener\">2015</a>). In other echinoderms, tissue regeneration appears to employ both epimorphic and morphallatic processes (Candia Carnevali, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0005\" target=\"_blank\" rel=\"noopener\">2006</a>). Studies of arm regeneration in the sea star <em>Asterias rubens</em> suggest that the proliferating cells originate from undifferentiated progenitor cells (Hernroth <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0022\" target=\"_blank\" rel=\"noopener\">2010</a>); however it is not known whether true adult stem cells and distinct stem cell niches exist in somatic tissues of echinoderms.</p>\n<p>The objectives of this study were to measure tissue homeostasis and regenerative potential in sea urchin tissues, to determine if these processes are different in species with different lifespans, and if they are affected by age. This was achieved by characterizing cell turnover and tissue regeneration in sea urchins with respect to age and measuring markers of cell proliferation and stem cell function. For this, the expression of <em>pcna</em>,<em>tert</em>,<em>vasa</em>, and <em>seawi</em> was investigated at the mRNA level, and Vasa protein was investigated by immunofluorescence. PCNA (Proliferating Cell Nuclear Antigen) is an essential component of the DNA replication machinery and serves as a marker for cell proliferation (Moldovan <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0030\" target=\"_blank\" rel=\"noopener\">2007</a>). TERT (Telomerase Reverse Transcriptase) is the catalytic component of telomerase, an enzyme that maintains telomeres and genomic integrity and thus plays an important role in cell proliferation and tissue homeostasis (Daniel <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0007\" target=\"_blank\" rel=\"noopener\">2012</a>). Vasa is a DEAD‐box RNA helicase that acts as a translation regulator, but it has also been shown to play a role in pre‐mRNA splicing, ribosome biogenesis and nuclear export (Gustafson &amp; Wessel, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0019\" target=\"_blank\" rel=\"noopener\">2010</a>). Seawi is the sea urchin Piwi homolog, belonging to the highly conserved Piwi/Argonaute family that binds to specific micro‐RNAs called piRNAs which act in transposon silencing and regulation of transcriptional activity (Palakodeti <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0032\" target=\"_blank\" rel=\"noopener\">2008</a>). Vasa and Piwi play a role in germline development and maintenance in <em>Drosophila melanogaster</em>,<em>Caenorhabditis elegans</em>, and mammals (mice and humans). However, in other animals (e.g., cnidarians, planarians, tunicates), their expression is not restricted to the germline but is also found in multipotent stem cells that are capable of producing both somatic and germline derivatives (Gustafson &amp; Wessel, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0019\" target=\"_blank\" rel=\"noopener\">2010</a>; Juliano <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0023\" target=\"_blank\" rel=\"noopener\">2010</a>). As many of the animals that express Piwi and/or Vasa in their multipotent cells possess a high regenerative capacity in their tissues, the presence of these proteins in the tissues of adult sea urchins would support the existence of multipotent cells that provide somatic regenerative capacity.</p>\n<h2>[](<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/</a>)Results</h2>\n<h3>Age estimates for sea urchins</h3>\n<p>Sea urchins of each species were divided into two age groups; young and old. The average test (shell) diameter, the number of animals in each group and estimated ages are shown in Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>. Ages of individual sea urchins were estimated from test diameter using previously established growth curves (see <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-sec-0009\" target=\"_blank\" rel=\"noopener\">Experimental procedures</a>). As growth rate can be affected by environmental factors (e.g., food availability), the ages are only estimates. However, animals at the upper and lower size range of their respective populations were selected for this study, and the relative size of animals collected at the same time and place is reasonably indicative of relative age within the population.</p>\n<p>Table 1</p>\n<p>| Sample | Test diameter (mm) | Est. age (years) | Reference | | --- | --- | --- | --- | | Cell proliferation (BrdU incorporation) and apoptosis (Apo ssDNA) | | Lv – Young Lv – Old | 33.8±1.0 (6) 70.2±2.1 (6) | 1.1±0.1 (6) 3.8±0.2 (6) | Beddingfield &amp; McClintock (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0002\" target=\"_blank\" rel=\"noopener\">2000</a>) | | Sp – Young Sp – Old | 33.5±0.6 (6) 76.6±1.1 (6) | 2.0±0.1 (6) 53.3±6.9 (6) | Coleman (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0006\" target=\"_blank\" rel=\"noopener\">1993</a>) | | Mf<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-note-0002\" target=\"_blank\" rel=\"noopener\">a</a> – Young Mf<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-note-0002\" target=\"_blank\" rel=\"noopener\">a</a> – Old | 36.2±0.7 (6) 115.8±4.3 (6) | 3.2±0.1 (6) 20.1±3.8 (6) | Ebert (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0010\" target=\"_blank\" rel=\"noopener\">1998</a>) Ebert <em>et al</em>. (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0016\" target=\"_blank\" rel=\"noopener\">1999</a>) | | Gene expression, immunohistochemistry and immunocytochemistry and TUNEL | | Lv –Young Lv – Old | 31.8±2.5 (6) 62.8±0.8 (6) | 1.1±0.1 (6) 3.2±0.1 (6) | Beddingfield &amp; McClintock (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0002\" target=\"_blank\" rel=\"noopener\">2000</a>) | | Sp – Young Sp – Old | 36.9±1.0 (6) 75.9±1.0 (6) | 2.2±0.1 (6) 49.3±6.0 (6) | Coleman (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0006\" target=\"_blank\" rel=\"noopener\">1993</a>) | | Mf<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-note-0003\" target=\"_blank\" rel=\"noopener\">b</a> – Young Mf<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-note-0003\" target=\"_blank\" rel=\"noopener\">b</a> – Old | 37.9±2.9 (6) 99.3±0.8 (6) | 3.3±0.1 (6) 10.6±0.2 (6) | Ebert (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0010\" target=\"_blank\" rel=\"noopener\">1998</a>) Ebert <em>et al</em>. (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0016\" target=\"_blank\" rel=\"noopener\">1999</a>) | | Mf<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-note-0004\" target=\"_blank\" rel=\"noopener\">c</a> – Young Mf<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-note-0004\" target=\"_blank\" rel=\"noopener\">c</a> – Old | 42.2±1.7 (6) 157.0±1.5 (4) | 3.5±0.1 (6) 113.8±7.8 (4) | Ebert (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0010\" target=\"_blank\" rel=\"noopener\">1998</a>) Ebert <em>et al</em>. (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0016\" target=\"_blank\" rel=\"noopener\">1999</a>) | | Tube feet and spine regeneration | | Lv –Young Lv – Old | 32.7±1.0 (6) 68.8±1.5 (6) | 1.1±0.1 (6) 3.7±0.1 (6) | Beddingfield &amp; McClintock (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0002\" target=\"_blank\" rel=\"noopener\">2000</a>) | | Sp – Young Sp – Old | 37.6±2.0 (4) 68.1±2.1 (4) | 2.2±0.2 (4) 22.2±5.4 (4) | Coleman (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0006\" target=\"_blank\" rel=\"noopener\">1993</a>) |</p>\n<p>The values are expressed as mean ± standard error and the numbers in brackets represent the number of samples (<em>n</em>) in each group.</p>\n<p>a <em>Mesocentrotus franciscanus</em> collected in April 2013 from California used for BrdU and Apo ssDNA.</p>\n<p>b <em>Mesocentrotus franciscanus</em> collected in April 2013 from California, used for TUNEL and immunohistochemistry.</p>\n<p>c <em>Mesocentrotus franciscanus</em> collected in August 2013 from British Columbia, used for gene expression and coelomocyte immunocytochemistry.</p>\n<h3>Cell proliferation and apoptosis in sea urchin tissues</h3>\n<p>Cell proliferation was quantified by BrdU incorporation in tissues of three species of sea urchin with different lifespans. The tissues used for this analysis were Aristotle's lantern muscle, radial nerve, esophagus, and coelomocytes (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0001\" target=\"_blank\" rel=\"noopener\">1</a>A). The sizes and estimated ages of the sea urchins used for these experiments are shown in Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>. In these collections, <em>L.variegatus</em> and <em>S.purpuratus</em> had a good size separation range between the different age groups, while the largest <em>M.franciscanus</em> were not particularly old due to difficulties finding large animals at the site of collection. Overall levels of BrdU incorporation during a 24‐h treatment period were low ranging from 0.14% to 2.65%, with the highest levels of cell proliferation in the coelomocytes and radial nerve (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0002\" target=\"_blank\" rel=\"noopener\">2</a>). One‐way ANOVA or Kruskal−Wallis tests and <em>post hoc</em> analyses revealed few interspecies differences in cell proliferation when compared within age categories. There was a trend for decreasing BrdU incorporation with age/size with results reaching statistical significance in muscle, nerve, and coelomocytes for <em>L.variegatus</em>, esophagus and nerve of <em>S.purpuratus</em>, and nerve of <em>M.franciscanus</em> (<em>P</em>&lt;0.05 for all) (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0002\" target=\"_blank\" rel=\"noopener\">2</a>). The total number of cells analyzed, as well as representative images are shown in Fig.S1 (Supporting information).</p>\n<p>Figure 1 <a href=\"https://www.ncbi.nlm.nih.gov/core/lw/2.0/html/tileshop_pmc/tileshop_pmc_inline.html?title=Click%20on%20image%20to%20zoom&amp;p=PMC3&amp;id=4933669_ACEL-15-778-g001.jpg\" target=\"_blank\" rel=\"noopener\">PLACE0</a></p>\n<p>Sea urchin anatomy and tissue regeneration. (A) Cross sectional view of <em>Lytechinus variegatus</em> showing tissues used in this study: spine, gonad, muscle from Aristotle's lantern jaw structure, esophagus, radial nerve along the inside wall of the test (shell) surrounded by the ampulla, part of the water vascular system which is continuous with the tube feet that protrude through the test. Coelomocytes freely circulate in the coelomic fluid that fills the body cavity. B through D show the spine and tube feet regeneration assay using <em>Strongylocentrotus purpuratus</em>. (B) Aboral view 1 day postamputation showing tube feet and spines removed from along one of the ambulacral segments of the test from the oral to aboral surface. (C) Lateral view of the amputated region, 8 days postamputation. (D) Lateral view of the amputated region from the same animal, 36 days postamputation.</p>\n<p>Figure 2 <a href=\"https://www.ncbi.nlm.nih.gov/core/lw/2.0/html/tileshop_pmc/tileshop_pmc_inline.html?title=Click%20on%20image%20to%20zoom&amp;p=PMC3&amp;id=4933669_ACEL-15-778-g002.jpg\" target=\"_blank\" rel=\"noopener\">PLACE1</a></p>\n<p>Cell proliferation and apoptosis in sea urchin tissues. Percent of cells undergoing cell proliferation (BrdU incorporation) and apoptosis (Apo ss DNA and TUNEL) in tissues of <em>Lytechinus variegatus</em> (A–C), <em>Strongylocentrotus purpuratus</em> (D–F), and <em>Mesocentrotus franciscanus</em> (G–I). The white bars represent small/young animals and the black bars represent large/old animals and the tissues investigated are: Aristotle's lantern muscle (ALM), esophagus (ES), radial nerve (RN), and coelomocytes (Coel). Age estimates and number of animals in each group are shown in Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>. The data are presented as means and standard errors, and stars (*) indicate a significant difference between age groups (<em>P</em>&lt;0.05).</p>\n<p>Apoptosis was measured using the Apo ssDNA assay, which allowed detection of apoptotic cells in the same tissue samples from BrdU‐treated animals that were used for the cell proliferation assay. Levels of apoptosis were low, with no significant differences observed between tissues from young and old animals. In <em>M.franciscanus</em> coelomocytes, the level of apoptosis ranged from 0.57% to 1.16% while in the other tissues from all species it ranged from 0.02% to 0.19% (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0001\" target=\"_blank\" rel=\"noopener\">1</a>). As expected for animals with indeterminate growth, the amount of cell proliferation indicated by BrdU incorporation was significantly higher than the level of apoptosis in the corresponding tissue and age group for each species in most cases (<em>P</em>&lt;0.05). One‐way ANOVA or Kruskal−Wallis tests and <em>post hoc</em> analyses revealed only a few interspecific differences for apoptosis when compared within tissues type and age group.</p>\n<p>To confirm the low overall levels of apoptosis in sea urchin tissues, TUNEL was performed on tissue sections from sea urchins collected at the same time and place, but not BrdU‐labeled (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0002\" target=\"_blank\" rel=\"noopener\">2</a>). There were insufficient amounts of coelomocytes collected from these animals to conduct the TUNEL analysis on these cells. One‐way ANOVA or Kruskal−Wallis tests revealed no species‐specific differences in TUNEL when tissues were compared within age categories. In most cases, the level of apoptosis did not change with age. The overall levels of apoptosis measured by TUNEL ranged from 0.10% to 0.51% and, in some cases, when compared within tissue type and age category, were significantly higher than those estimated by Apo ssDNA. This is consistent with reports that the Apo ssDNA technique is more specific, with fewer false positives than TUNEL (Frankfurt &amp; Krishan, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0017\" target=\"_blank\" rel=\"noopener\">2001</a>). The total number of cells analyzed, as well as representative images are shown in Figs.S2 and S3.</p>\n<p>Expression of genes involved in cell proliferation (<em>pcna</em>) and telomere maintenance (<em>tert</em>) was investigated in tissues (muscle, esophagus, radial nerve and coelomocytes) of young and old animals of each species. For these assays, <em>L.variegatus</em> and <em>S.purpuratus</em> were collected at the same time and place as the animals used for BrdU incorporation, whereas for <em>M.franciscanus</em> the collection was conducted at a different location that had a better size range of animals including much larger/older animals (Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>). Coelomocytes from <em>M.franciscanus</em> were collected, but thawed during transport and the RNA from these tissues was of too poor quality to conduct qRT‐PCR. Overall, the expression of these genes was maintained with age with few exceptions (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0003\" target=\"_blank\" rel=\"noopener\">3</a>). Gene expression levels are reported as qRT‐PCR threshold cycle (Ct) values in Table S1 (Supporting information).</p>\n<p>Figure 3 <a href=\"https://www.ncbi.nlm.nih.gov/core/lw/2.0/html/tileshop_pmc/tileshop_pmc_inline.html?title=Click%20on%20image%20to%20zoom&amp;p=PMC3&amp;id=4933669_ACEL-15-778-g003.jpg\" target=\"_blank\" rel=\"noopener\">PLACE2</a></p>\n<p>Relative gene expression for <em>pcna</em>,<em>tert</em>,<em>seawi</em>, and <em>vasa</em> in tissues of <em>Lytechinus variegatus</em> (Lv), <em>Strongylocentrotus purpuratus</em> (Sp), and <em>Mesocentrotus franciscanus</em> (Mf). The white bars represent small/young animals and the black bars represent large/old animals and the tissues investigated are: Aristotle's lantern muscle (Muscle), Esophagus, Radial Nerve, and Coelomocytes. Age estimates and number of animals in each group are shown in Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>. Data are presented as means and standard errors, and stars (*) indicate a significant difference between age groups (<em>P</em>&lt;0.05).</p>\n<h3>Tube feet and spine regeneration in <em>L.variegatus</em> and <em>S.purpuratus</em></h3>\n<p>To determine whether regenerative potential was maintained with age, the regrowth of amputated spines and tube feet was measured in <em>L.variegatus</em> and <em>S.purpuratus</em> (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0001\" target=\"_blank\" rel=\"noopener\">1</a>B–D). The average test diameters and the estimated ages of the sea urchins used for the regeneration experiments are shown in Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>. Regrowth of spines and tube feet was expressed as a percentage of full‐length unamputated spines and tube feet for each animal and was measured every 7 days postamputation for a 5 week period. There was a significant difference in regrowth between each time point for tube feet and spines of both species (GLM, <em>P</em>=0), and the results demonstrated that the rate of regrowth of both spines and tube feet was maintained with age in <em>L.variegatus</em> and <em>S.purpuratus</em> (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0004\" target=\"_blank\" rel=\"noopener\">4</a>). A few time points for <em>L.variegatus</em> demonstrated statistically significant age effects, however the differences were small. When the experiment was repeated with an additional group of <em>L.variegatus</em>, only the slight decrease in spine regrowth with age at Day 8 postamputation was observed (data not shown).</p>\n<p>Figure 4 <a href=\"https://www.ncbi.nlm.nih.gov/core/lw/2.0/html/tileshop_pmc/tileshop_pmc_inline.html?title=Click%20on%20image%20to%20zoom&amp;p=PMC3&amp;id=4933669_ACEL-15-778-g004.jpg\" target=\"_blank\" rel=\"noopener\">PLACE3</a></p>\n<p>Regeneration of tube feet and spines with respect to age in <em>Lytechinus variegatus</em> (A and B) and <em>Strongylocentrotus purpuratus</em> (C and D). Regrowth of tube feet and spines was measured at 8, 15, 22, 29, and 36 days postamputation and expressed as a percentage of full‐length, nonamputated appendages. The white bars represent small/young animals and the black bars represent large/old animals. Age estimates and number of animals in each group are shown in Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>. The data are presented as means and standard errors, and stars (*) indicate a significant difference between age groups (<em>P</em>&lt;0.05).</p>\n<p>Quantitative RT‐PCR analysis indicated no age‐related changes in expression of genes involved in cell proliferation (<em>pcna</em>) and telomere maintenance (<em>tert</em>) in the tube feet amputated from these animals at the beginning of the experiment (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0005\" target=\"_blank\" rel=\"noopener\">5</a>, Table S1).</p>\n<p>Figure 5 <a href=\"https://www.ncbi.nlm.nih.gov/core/lw/2.0/html/tileshop_pmc/tileshop_pmc_inline.html?title=Click%20on%20image%20to%20zoom&amp;p=PMC3&amp;id=4933669_ACEL-15-778-g005.jpg\" target=\"_blank\" rel=\"noopener\">PLACE4</a></p>\n<p>Relative gene expression for <em>pcna</em>,<em>tert</em>,<em>seawi,</em> and <em>vasa</em> in tube feet from <em>Lytechinus variegatus</em> (Lv) and <em>Strongylocentrotus purpuratus</em> (Sp). The white bars represent small/young animals and the black bars represent large/old animals. Age estimates and number of animals in each group are shown in Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>. Data are presented as means and standard errors.</p>\n<h3>Expression of multipotency genes in sea urchin tissues</h3>\n<p>The expression of three genes that are associated with germline determination and multipotency (<em>seawi</em>,<em>vasa,</em> and <em>nanos2</em>) was investigated with respect to age in sea urchin tissues. <em>nanos2</em> was highly expressed in adult gonad tissue but expressed at low levels in somatic tissues and was therefore not pursued further (qRT‐PCR Ct values &gt;30, Table S2). In contrast, the expression of <em>seawi</em> and <em>vasa</em> was easily measured in all somatic tissues tested, with qRT‐PCR Ct values &lt;30 (Table S1). Expression of these genes was maintained with age in most tissues (Fig. <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0003\" target=\"_blank\" rel=\"noopener\">3</a> and Fig. <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0005\" target=\"_blank\" rel=\"noopener\">5</a>), except <em>vasa</em> expression showed a significant increase with age in radial nerve and coelomocytes of <em>L.variegatus</em> (<em>P</em>=0.03 and <em>P</em>=0.05, respectively) and coelomocytes of <em>S.purpuratus</em> (<em>P</em>=0.04) (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0003\" target=\"_blank\" rel=\"noopener\">3</a>). The expression of <em>seawi</em> significantly increased with age in esophagus and radial nerve of <em>M.franciscanus</em> (<em>P</em>=0.002 and <em>P</em>=0.04, respectively) (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0003\" target=\"_blank\" rel=\"noopener\">3</a>). Spines and tube feet from young and old <em>M.franciscanus</em> and spines from young and old <em>L.variegatus</em> were not collected and therefore age comparisons were not possible for these tissues. However, expression of <em>vasa</em> and <em>seawi</em> was detected in RNA from spines at comparable levels to other somatic tissues for both <em>L.variegatus</em> and <em>S.purpuratus</em> (Table S1).</p>\n<h3>Localization of Vasa in sea urchin cells and tissues</h3>\n<p>Immunohistochemistry was used to localize the Vasa protein in different tissues. For these experiments, four samples of each tissue (muscle, esophagus, and radial nerve) for each species were analyzed (Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>). Representative data for <em>L.variegatus</em> are shown in Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0006\" target=\"_blank\" rel=\"noopener\">6</a> and those for <em>S.purpuratus</em> and <em>M.franciscanus</em> are shown in Fig.S4. Esophagus tissue from all three species consistently showed areas of Vasa staining at the base or within the villi (Figs.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0006\" target=\"_blank\" rel=\"noopener\">6</a> and S4). Radial nerve also showed areas of Vasa staining; however the specific vasa‐positive cell types could not be identified (Figs.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0006\" target=\"_blank\" rel=\"noopener\">6</a> and S4). Muscle had only a low level of diffuse staining without localized areas of high signal (data shown only for <em>M.franciscanus</em>, Fig.S4). To quantify the level of Vasa staining in esophagus and radial nerve, the percent of Vasa‐positive cells was estimated from the number of nuclei surrounded by Vasa staining when images from both fluorescent channels were overlaid. This ranged from 0.9% to 4.3% for radial nerve, with lower levels of immunoreactivity in <em>M.franciscanus</em> tissue compared to the other two species. Vasa‐positive cells ranged from 2.5% to 5.1% for esophagus with no significant difference between species.</p>\n<p>Figure 6 <a href=\"https://www.ncbi.nlm.nih.gov/core/lw/2.0/html/tileshop_pmc/tileshop_pmc_inline.html?title=Click%20on%20image%20to%20zoom&amp;p=PMC3&amp;id=4933669_ACEL-15-778-g006.jpg\" target=\"_blank\" rel=\"noopener\">PLACE5</a></p>\n<p>Immunohistochemistry and immunocytochemistry of sea urchin tissues and cells using an antibody to Vasa. Esophagus, radial nerve, coelomocytes, tube foot, and spine from <em>Lytechinus variegatus</em> stained with DAPI or reacted with anti‐Vasa antibody visualized with DyLight™ 488 secondary antibody. Negative control panels are tissue sections treated with only the secondary antibody. Scale bar is 100 μm.</p>\n<p>Immunocytochemistry was used to localize Vasa in the coelomocytes from all three sea urchin species. The coelomocytes used for each species were from the same young and old animals that were used for gene expression studies (Table<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-tbl-0001\" target=\"_blank\" rel=\"noopener\">1</a>). Coelomocytes from all three species showed a distinct subpopulation of Vasa‐positive cells (Figs.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0006\" target=\"_blank\" rel=\"noopener\">6</a> and S4). The percent of Vasa‐positive coelomocytes ranged from 0.9% to 2.8% and did not change with age for <em>S.purpuratus</em> or <em>M.franciscanus</em>, but significantly increased with age in <em>L.variegatus</em> (1.9‐fold, <em>P</em>=0.03, Fig.S5). Vasa immunostaining performed on coelomocytes from BrdU‐labeled animals indicated that Vasa and BrdU did not colocalize to the same cells (Fig.S6).</p>\n<p>Immunohistochemistry was conducted on tube feet and spines from <em>L.variegatus</em> and <em>S.purpuratus</em> (<em>n</em>=3 for each). In <em>L.variegatus</em>, Vasa was detected in cells of the epidermis along the stalk and disc of tube feet with little staining in the myoepithelium tissue that lines the lumen (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0006\" target=\"_blank\" rel=\"noopener\">6</a>). The amount of Vasa‐positive cells was estimated to be 4.42±0.34%. The amount of Vasa staining in tube feet from <em>S.purpuratus</em> was difficult to quantitate due to background fluorescence of the connective tissue layer in this species (Fig.S4). Spines of <em>L.variegatus</em> and <em>S.purpuratus</em> show Vasa in cells throughout the dermis (Figs.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0006\" target=\"_blank\" rel=\"noopener\">6</a> and S4). The Vasa‐positive cells were distributed along the length of the spines with 4.91±0.49% in <em>L.variegatus</em> and 1.31±0.16% in <em>S.purpuratus</em>. Immunohistochemistry on tube feet and spines from BrdU‐labeled <em>S.purpuratus</em> (<em>n</em>=3) indicated that the Vasa‐positive cells were distinct from the cells that had actively incorporated BrdU in the 24 h labeling period (Fig.S7). The amount of BrdU incorporation for <em>S.purpuratus</em> spines was 2.37±0.86% and tube feet 1.14±0.43%. The dividing cells were distributed along the length of the tube feet, but for the spines there was more BrdU incorporation in cells near the base with less toward the tip.</p>\n<h2>[](<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/</a>)Discussion</h2>\n<p>Sea urchins exhibit continued growth and reproduction throughout their lives and yet different species are reported to have vastly different life expectancies in the wild. The proper balance of cell division and cell death is important for life‐long growth and homeostasis and maintaining this balance with age would be essential to achieve negligible senescence, whereas failure to maintain this balance would promote aging and shortened lifespan. In this study, it was determined that there was a low level of BrdU incorporation and apoptosis in the internal tissues (muscle, nerve, esophagus and coelomocytes) of three species of sea urchins with different lifespans, regardless of age. The low levels of cell proliferation are consistent with the low metabolic rates that have been reported for sea urchins (Ulbricht &amp; Pritchard, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0042\" target=\"_blank\" rel=\"noopener\">1972</a>), and suggest that unlike <em>Hydra</em> (Schaible <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0038\" target=\"_blank\" rel=\"noopener\">2014</a>), sea urchins do not avoid senescence by continually replenishing tissues at a high rate. As expected for animals that grow indeterminately, there were higher levels of cell proliferation compared to apoptosis in the tissues. The low levels of apoptosis in the tissues of young and old animals are consistent with low levels of cellular damage that does not increase with age (Du <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0008\" target=\"_blank\" rel=\"noopener\">2013</a>). Interestingly, in <em>L.variegatus</em> and <em>S.purpuratus</em>, which have a ~10‐fold difference in lifespan, there were few differences in the amount of cell proliferation and apoptosis in tissues compared within age categories. The age range of <em>M.franciscanus</em> collected for this experiment was limited, so further investigation is required before a conclusion can be made for this species regarding changes with advanced age.</p>\n<p>A decrease in the amount of BrdU incorporation was observed with increasing size/age, consistent with the slower growth of older animals (Ebert, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0011\" target=\"_blank\" rel=\"noopener\">2007</a>). However, this decrease may also be due to limited diffusion/distribution of BrdU into the tissues of larger animals during the 24 h labeling period. In support of this, a decrease in BrdU‐positive cells was observed in tissues of large <em>M.franciscanus</em> that are not that old with respect to their maximum lifespan potential. In addition, the expression of mRNA for genes associated with cell proliferation (<em>pcna</em>) and telomere maintenance (<em>tert</em>) was maintained with age in most tissues examined. The levels of BrdU incorporation in normal tissue homeostasis were similar to those observed in other marine animals such as the intestine of the sea cucumber, <em>Holothuria glabberrima</em> and tissues of the long‐lived clam <em>Arctica islandica</em> (&lt;1% BrdU‐positive nuclei in 24 h) (García‐Arrarás <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0018\" target=\"_blank\" rel=\"noopener\">1998</a>; Strahl &amp; Abele, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0040\" target=\"_blank\" rel=\"noopener\">2010</a>). The level of BrdU incorporation in <em>A.islandica</em> was maintained with age in gill, mantle and adductor muscle, and only decreased significantly with age in heart tissue (Strahl &amp; Abele, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0040\" target=\"_blank\" rel=\"noopener\">2010</a>). Contrary to the observation that tissues of sea urchin species with different lifespans show similar levels of BrdU incorporation, Strahl &amp; Abele (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0040\" target=\"_blank\" rel=\"noopener\">2010</a>) found a difference in bivalves with different lifespans, with high proliferation rates (&gt;10% BrdU‐positive nuclei) in tissues of a short‐lived scallop <em>Aequipecten opercularis</em>. However, these bivalves differ not only in their lifespans but also their life styles, with sedentary <em>A.islandica</em> burrowing beneath the sediment and extending a siphon into the water above for oxygen uptake and feeding, while <em>A.opercularis</em> is an actively swimming epibenthic scallop. Although the sea urchins used in this study come from different geographic locations, they are all herbivorous grazers collected in near‐shore waters (2–18 m depth).</p>\n<p>To determine whether regenerative potential was maintained with age in sea urchins, the regrowth of amputated spines and tube feet was measured in <em>L.variegatus</em> and <em>S.purpuratus</em>. The data demonstrate that the regenerative potential of both types of appendages was maintained with age in these sea urchin species. A prediction from the evolutionary theories of aging is that level of extrinsic mortality influences the rate of aging, such that high levels of extrinsic mortality would be associated with tissue decline once an organism reaches reproductive maturity and survivorship in the wild becomes increasingly unlikely (Kirkwood, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0025\" target=\"_blank\" rel=\"noopener\">2005</a>; Kirkwood &amp; Melov, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0026\" target=\"_blank\" rel=\"noopener\">2011</a>). <em>L.variegatus</em> is predicted to have a much lower annual survival rate than <em>S.purpuratus</em> and <em>M.franciscanus</em> (Ebert, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0011\" target=\"_blank\" rel=\"noopener\">2007</a>) and an estimated lifespan in the wild of about 4 years, and yet the results did not show evidence of decline in regenerative capacity in larger/older animals. It is possible that <em>L.variegatus</em> have the potential to live much longer than has been reported in the wild (and hence that the animals used in this study were not approaching their maximum lifespan potential), or that longevity in these animals is not limited by investment in (or capacity for) maintenance and repair of damaged tissues.</p>\n<p>The widespread expression of <em>seawi</em> and <em>vasa</em> mRNA and presence of cells containing the Vasa protein in spines and tube feet as well as other somatic tissues (nerve, esophagus and a subpopulation of coelomocytes) suggest that multipotent cells may be important for normal tissue homeostasis in addition to regeneration of external appendages. The Vasa protein is posttranslationally regulated by targeted degradation in sea urchin embryos (Gustafson <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0020\" target=\"_blank\" rel=\"noopener\">2011</a>) which may explain why <em>vasa</em> mRNA is found in adult muscle tissue, yet no immunostaining of Vasa protein was observed in this tissue. This could mean that muscle does not have resident Vasa‐positive cells, or simply that they are located in regions that were not sampled. Aristotle's lantern musculature is composed of ten different smooth muscle groups (Ziegler <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0045\" target=\"_blank\" rel=\"noopener\">2012</a>) and only the interpyramidal muscles were sampled in this study.</p>\n<p>A recent study reveals Vasa protein to be present in tissues of the sea urchin larvae and the adult rudiment, and its expression increases in response to tissue damage (Yajima &amp; Wessel, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0044\" target=\"_blank\" rel=\"noopener\">2015</a>). The Vasa‐positive cells in the adult rudiment and larvae have higher BrdU incorporation than Vasa‐null cells, and embryos that lack Vasa were much less capable of repair of damage and eventually ceased development (Yajima &amp; Wessel, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0044\" target=\"_blank\" rel=\"noopener\">2015</a>). Yajima &amp; Wessel (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0044\" target=\"_blank\" rel=\"noopener\">2015</a>) speculate that the widespread presence of Vasa in sea urchins may reflect the vast regulative and regenerative capabilities of embryos, larvae and adults. In support of this, the current study finds widespread presence of Vasa protein in somatic tissues of adult sea urchins. One notable difference is that Vasa‐positive cells in the larvae are highly proliferative (Yajima &amp; Wessel, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0044\" target=\"_blank\" rel=\"noopener\">2015</a>), whereas in adult tissues in the current study BrdU‐labeled cells appear distinct from Vasa‐positive cells. The Vasa‐positive cells of adult sea urchin tissues may be cycling slowly or quiescent like the small micromeres of embryos, the Vasa‐expressing progenitors of adult tissues (Yajima &amp; Wessel, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0044\" target=\"_blank\" rel=\"noopener\">2015</a>). Although the presence of Vasa protein and <em>seawi</em> mRNA is suggestive of stem cells, definitive proof requires demonstration that these cells have self‐renewal capacity and the capability to differentiate into different cell types.</p>\n<p>The lack of age‐related differences in the maintenance of tissue homeostasis and regenerative potential in sea urchin species with different lifespans were unexpected in light of current evolutionary theories of aging, and further study is required to understand the factors underlying the short lifespan of <em>L.variegatus</em> in particular. Studies of the relationship between external mortality and senescence in guppies found that not all characteristics behaved as predicted by current theories for the evolution of senescence, indicating that the relationship is more complex than is currently understood (Reznick <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0036\" target=\"_blank\" rel=\"noopener\">2004</a>). Further studies of the intrinsic determinants of longevity in sea urchins will inform evolutionary theory as well as strategies for maintaining health with advancing age.</p>\n<h2>[](<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/</a>)Experimental procedures</h2>\n<h3>Collection of sea urchins and age determination</h3>\n<p>For cell turnover, gene expression, immunohistochemistry, and immunocytochemistry, <em>L.variegatus</em> were collected from Flatt's Inlet, Bermuda (32°19.4′N, 64°44.55′W) in January, 2013 under a special permit (SP130101) from the Bermuda Government Department of Environmental Protection, and <em>S.purpuratus</em> were collected in Mission Bay, San Diego, California (32°46.833′N, 117°14.557′W) in April, 2013. For cell turnover and immunohistochemistry, <em>M.franciscanus</em> were collected off San Diego (32°51.26′N 117°16.89′W) in April, 2013. <em>M.franciscanus</em> used for gene expression and coelomocyte immunocytochemistry were collected near Kendrick Island in Gabriola Pass, British Columbia (49°07.554′N, 123°41.461′W) in August 2013. For tissue regeneration experiments, <em>L.variegatus</em> were collected in Mangrove Bay Bermuda (32°22.272′N, 64°41.650′W) in April 2014 and <em>S.purpuratus</em> were collected off San Diego California (32°39.954′N, 117°15.759′W) in June 2015. Following collection, <em>S.purpuratus</em> used for the tissue regeneration experiment were kept in recirculating sea water, and all other sea urchins were kept in flow‐through aquaria. Animals were fed <em>ad libitum</em>:<em>L.variegatus</em> were given a mixture of sea grass (<em>Thalassia testudinum</em>), collected under a Protected Species License granted by the Government of Bermuda Department of Conservation Services, and algae from their natural environment. <em>S.purpuratus</em> and <em>M.franciscanus</em> were fed giant kelp (macrocystis) collected from their natural environment. BrdU incubations and tissue dissections were conducted within 1 week of collections.</p>\n<p><em>Lytechinus variegatus</em> ages were estimated using test (shell) diameter and comparisons with previously established growth curves generated from size frequency and growth band counting data collected in Florida and Bermuda (Moore <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0031\" target=\"_blank\" rel=\"noopener\">1963</a>; Beddingfield &amp; McClintock, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0002\" target=\"_blank\" rel=\"noopener\">2000</a>). <em>S.purpuratus</em> ages were estimated from test diameter using growth curves previously generated from the Tanaka parameters from tetracycline tagging experiments conducted at Mission Bay, San Diego (<em>f</em>=1.30757, <em>d</em>=2.80184, <em>a</em>=0.16314) (Coleman, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0006\" target=\"_blank\" rel=\"noopener\">1993</a>). <em>M.franciscanus</em> age estimates were based on growth curves generated from tetracycline tagged sea urchins in Oregon and Washington using the Tanaka function (<em>f</em>=0.22929, <em>d</em>=6.07531, <em>a</em>=0.19906) (Ebert, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0010\" target=\"_blank\" rel=\"noopener\">1998</a>, <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0012\" target=\"_blank\" rel=\"noopener\">2008</a>; Ebert <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0016\" target=\"_blank\" rel=\"noopener\">1999</a>).</p>\n<h3>Analysis of cell proliferation</h3>\n<p>Cell proliferation was measured using <em>in vivo</em> incorporation of 5‐bromo‐2′‐deoxyuridine (BrdU). Twenty‐four hours following injection of BrdU into the coelomic cavity (5 mg BrdU per 100 g body weight), tissues and cells were preserved in 4% paraformaldehyde and tissues were embedded in paraffin, sectioned (5 μm). Tissues were deparaffinized with toluene, rehydrated, unmasked with 10 m m sodium citrate solution (pH 6.0) and cells and tissues were permeablized in methanol. DNA was denatured and neutralized prior to blocking for 1 h in 4% BSA in PBST (PBS with 0.1% Tween 20), followed by an overnight incubation at 4°C with anti‐BrdU conjugated to Alexa Fluor® 488 (1:100 dilution in 2% BSA in PBST) (Life Technologies, Carlsbad, CA, USA). After washing with PBST, cells and tissues were mounted with Citifluor™ containing DAPI (1.67 μg mL−1). Negative controls were cells and tissue sections from sea urchins that were not BrdU‐labeled that were developed simultaneously with the BrdU‐labeled samples.</p>\n<p>For analysis, 12 nonoverlapping fields for each tissue were randomly selected using an Olympus AX70 epifluorescence microscope (Olympus, Tokyo, Japan) and images captured in each fluorescent channel with a Retiga EXi Digital camera (Qimaging, Surrey, BC, Canada). The BrdU‐positive nuclei were quantified as a percentage of total number of nuclei using Image Pro Plus version 7.0 software (Media Cybernetics, Bethesda, MD, USA) and values for all 12 fields were averaged for each tissue section. BrdU incorporation (%) data were arcsine transformed and species‐ and age‐specific differences were analyzed using the general linear model for comparison within each tissue type (Statgraphics Centurion; Statpoint Technologies, Inc., Warrenton, VA, USA). Comparisons between the young and old groups within a tissue were conducted using <em>t</em>‐tests for equal or unequal variances if normally distributed, or using the Mann−Whitney test if the data were not normally distributed. Species‐specific differences were evaluated using one‐way ANOVA for normally distributed data and the Kruskal−Wallis test if the data were not normally distributed, followed by multiple range <em>post hoc</em> tests (Statgraphics Centurion).</p>\n<h3>Analysis of apoptosis</h3>\n<p>Apoptosis was assessed using Apo ssDNA, an antibody based assay to detect single‐stranded DNA in apoptotic cells (Cell Technology, Fremont, CA, USA). The protocol provided with the Apo ssDNA kit was followed to develop the slides containing paraformaldehyde‐fixed, paraffin embedded sea urchin tissue sections or the protocol for cell suspension for coelomocytes. Following partial denaturation in 50% formamide and washing, a 1:10 dilution of ssDNA monoclonal antibody (F7‐26) was used with a 1:100 dilution of the FITC‐conjugated anti‐mouse IgM secondary antibody. For the negative control samples, the Apo ssDNA primary antibody was omitted from the procedure.</p>\n<p>Apoptosis was also evaluated on tissue sections using the APO‐BrdU™ TUNEL assay kit (Life Technologies). Slides containing paraformaldehyde‐fixed, paraffin embedded tissue sections were deparaffinized with toluene, rehydrated, unmasked with 10 m m sodium citrate (pH 6.0) and permeablized in methanol. The DNA‐labeling reaction was conducted at 37°C for 4 h followed by 12 h at room temperature. The Alexa Fluor® 488 conjugated anti‐BrdU antibody was used at a 1:50 dilution. For the negative controls, terminal deoxynucleotide transferase was omitted from the labeling reaction.</p>\n<p>For both apoptosis assays, the tissues were mounted with Citifluor™ containing DAPI (1.67 μg mL−1) and image collection and analysis were conducted as described above for cell proliferation (BrdU incorporation).</p>\n<h3>Preparation of RNA and qRT‐PCR</h3>\n<p>Dissected sea urchin tissues were preserved in RNA later solution (Qiagen, Valencia, CA, USA), coelomocytes were pelleted by centrifugation at 6000 <em>g</em> for 5 min and all samples were stored at −80°C. RNA was extracted using the Trizol reagent (Invitrogen/Life Technologies, Carlsbad, CA, USA) followed by the RNA clean‐up protocol of the RNeasy mini Kit (Qiagen). Differential expression of selected genes was examined using qRT‐PCR on the ABI 7300 Real Time‐PCR machine using the SYBR Green detection system (Applied Biosystems, Foster City, CA, USA). RNA was reverse‐transcribed using the High Capacity cDNA Reverse Transcription Kit (Applied Biosystems) and primers for qRT‐PCR were designed using Primer Express software (version 3.0) (Applied Biosystems) based on sequences of target genes identified using the echinoderm genome database (<a href=\"http://www.echinobase.org/\" target=\"_blank\" rel=\"noopener\">http://www.echinobase.org</a>). Primer sequences are listed in Table S3. The expression level of genes was determined using the relative quantification method described by Hellemans <em>et al</em>. (<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0021\" target=\"_blank\" rel=\"noopener\">2007</a>) corrected for gene‐specific amplification efficiencies and normalized to a factor derived from the geometric mean of three stably expressed control genes determined by qbase+ software (Biogazelle, Zwijnaarde, Belgium). For each gene within each tissue type, the sample with the highest expression was used as the calibrator or reference sample, and the values for the different groups (young vs. old) were averaged.</p>\n<h3>Immunohistochemistry/immunocytochemistry</h3>\n<p>Tissues and cells were fixed in 4% paraformaldehyde in PBS. Spines were decalcified by overnight incubation in Immunocal™ and all tissues were embedded in paraffin and sectioned (5 μm). Tissues and cells were treated with the anti‐Vasa antibody [1 μg mL−1 anti‐Vasa, Developmental Studies Hybridoma Bank (DSHB)] and imaged as previously described (Reinardy <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0035\" target=\"_blank\" rel=\"noopener\">2015</a>).</p>\n<p>The DSHB anti‐Vasa antibody used in this study was produced to <em>D.melanogaster</em> Vasa, but has been previously shown to detect sea urchin Vasa in the small micromeres of <em>S.purpuratus</em> embryos (Campanale <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0004\" target=\"_blank\" rel=\"noopener\">2014</a>). The antibody was raised to amino acids 16–433 of <em>D.melanogaster</em> Vasa and an alignment of this region with <em>L.variegatus</em> and <em>S.purpuratus</em> Vasa shows good sequence conservation across the entire region with stronger conservation for amino acids 202–433 (46.6% identity and 66.8% similarity for <em>L.variegatus</em>, and 51.0% identity and 71.1% similarity for <em>S.purpuratus</em>) (Fig.S8). The specificity of this antibody was confirmed using an affinity‐purified antibody produced to the DEAD‐box region of <em>S.purpuratus</em> Vasa (Voronina <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0043\" target=\"_blank\" rel=\"noopener\">2008</a>). A double‐labeling experiment using this antibody together with the <em>D.melanogaster</em> Vasa antibody gave overlapping immunostaining patterns (Fig.S9).</p>\n<h3>Tube feet and spine regeneration assay</h3>\n<p>Tissue regeneration was measured using an assay that evaluates the regrowth of amputated tube feet and spines every 7 days over a 5‐week period as previously described (Reinardy <em>et al</em>., <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-bib-0035\" target=\"_blank\" rel=\"noopener\">2015</a>). Tube feet and spines (10% of total) were removed from one of the ambulacral segments of the test from the oral to aboral surface (Fig.<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/#acel12487-fig-0001\" target=\"_blank\" rel=\"noopener\">1</a>B–D). At each time point, ten regenerating spines and tube feet were measured along the cut area and ten full‐length spines and tube feet were measured in the adjacent area. The regrowth data, expressed as percentages of full‐length spines and tube feet, were arcsine transformed and used to determine time‐ and age‐specific differences using the general linear model and <em>post hoc</em> tests (Statgraphics Centurion, Statpoint Technologies, Inc., Warrenton, VA, USA). Comparisons between the young and old groups were conducted using t‐tests for equal or unequal variances for normally distributed data or using the Mann−Whitney test if the data were not normally distributed.</p>\n<h2>[](<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/</a>)Author contributions</h2>\n<p>AGB conceived and designed the experiments, participated in the acquisition and analysis of data and wrote the manuscript. JAC participated in the design and/or acquisition of data for cell proliferation, apoptosis, immunohistochemistry of tube feet and spines, and edited the manuscript.</p>\n<h2>[](<a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pmc.ncbi.nlm.nih.gov/articles/PMC4933669/</a>)Funding</h2>\n<p>This work was supported by Grant R21AG039761 from the National Institute on Aging. Additional financial support was provided by a Bermuda Charitable Trust and the Christian Humann Foundation, the Salisbury Cove Research Fund at MDI Biological Laboratory, and Institutional Development Awards (IDeA) to the MDI Biological Laboratory from the NIGMS of the NIH, under grant numbers P20‐GM104318 and P20‐GM103423.</p>",
+    "cell": ""
+  },
+  {
+    "UID": "1071",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-06-10 13:42:10",
+    "DateModified": "2026-06-10 14:44:36",
+    "ltype": 0,
+    "ftext": "<div>\n        \n          <div>\n            \n\n            \n  \n    <div>\n      \n<div><span style=\"color: rgb(255, 255, 136); font-size: 28px;\">The larval stages of the sea urchin, Strongylocentrotus purpuratus</span></div></div></div><div><font color=\"#ffff88\"><span style=\"font-size: 28px;\"><a href=\"https://pubmed.ncbi.nlm.nih.gov/18438782/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pubmed.ncbi.nlm.nih.gov/18438782/</a></span></font></div>\n\n          \n\n          <div>\n  \n\n  \n\n    \n      <div>\n        \n\n\n  <div>\n    <a href=\"https://pubmed.ncbi.nlm.nih.gov/?term=Smith+MM&amp;cauthor_id=18438782\" target=\"_blank\" rel=\"noopener\">M Meighan Smith</a>&nbsp;<a href=\"https://pubmed.ncbi.nlm.nih.gov/18438782/#full-view-affiliation-1\" target=\"_blank\" rel=\"noopener\">\n                1\n              </a>,&nbsp;<a href=\"https://pubmed.ncbi.nlm.nih.gov/?term=Cruz+Smith+L&amp;cauthor_id=18438782\" target=\"_blank\" rel=\"noopener\">Luisa Cruz Smith</a>,&nbsp;<a href=\"https://pubmed.ncbi.nlm.nih.gov/?term=Cameron+RA&amp;cauthor_id=18438782\" target=\"_blank\" rel=\"noopener\">R Andrew Cameron</a>,&nbsp;<a href=\"https://pubmed.ncbi.nlm.nih.gov/?term=Urry+LA&amp;cauthor_id=18438782\" target=\"_blank\" rel=\"noopener\">Lisa A Urry</a>\n  </div>\n\n\n      </div>\n    \n\n    \n\n    \n\n    \n  \n</div>\n\n        \n        \n          <div>\n  \n\n  \n    Affiliations\n  \n\n  \n    \n  \n</div>\n        \n        \n          <div>\n            \n\n\n  \n    <div>\n      \n\n      \n\n      \n\n      \n\n      \n\n      \n        <div>\n          <h3>\n            Affiliation\n          </h3>\n          <ul>\n            \n              <li>1 Biology Department, Mills College, Oakland, California 94613, USA.</li>\n            \n          </ul>\n        </div>\n      \n\n      \n\n      \n    </div>\n  \n\n\n          </div>\n        \n        \n  \n    <ul>\n      \n        <li>\n          \n  \n    \n      PMID:\n    \n  \n\n  \n    <strong>18438782</strong>\n  \n\n  \n\n\n        </li>\n      \n        <li>\n          \n  \n    \n      DOI:\n    \n  \n\n  \n    <a href=\"https://doi.org/10.1002/jmor.10618\" target=\"_blank\" rel=\"noopener\">\n      10.1002/jmor.10618\n    </a>\n  \n\n  \n\n\n        </li>\n      \n    </ul>\n  \n\n\n        \n        \n      </div>\n      \n    \n  \n\n\n  \n\n\n\n  \n\n  \n\n\n\n  <div>\n    \n      <h2>\n        Abstract\n        \n      </h2>\n      \n        \n          \n            <div>\n              \n                \n\n\n  \n    <p>\n      \n      The adult body plan of Strongylocentrotus purpuratus is \nestablished within the imaginal rudiment during the larval stages. To \nfacilitate the study of these stages, we have defined a larval staging \nscheme, which consists of seven stages: Stage I, four-arm stage; Stage \nII, eight-arm stage; Stage III, vestibular invagination stage; Stage IV,\n rudiment initiation stage; Stage V, pentagonal disc stage; Stage VI, \nadvanced rudiment stage; and Stage VI, tube-foot protrusion stage. Each \nstage is characterized by significant morphological features observed \nfor the first time at that stage. This scheme is intended as a guide for\n determining the degree of larval development, and for identifying \nlarval and adult structures. Larval anatomy was visualized using light \nand confocal microscopy as required on living material, whole mount \nfixed specimens, and serial sections. Antibody staining to localize \nspecific gene products was also used. Detailed analysis of these data \nhas furthered our understanding of the morphogenesis of the rudiment, \nand has suggested provocative questions regarding the molecular basis \nfor these events. We intend this work to be of use to investigators \nstudying gene expression and morphogenesis in postembryonic larvae.\n    </p>\n  \n\n  \n\n\n              \n            </div>\n          \n        \n      \n\n      \n    \n\n    \n\n    \n\n  </div>",
+    "tags": [
+      "echinoidea",
+      "larval-stage"
+    ],
+    "ftextSize": "3763",
+    "FtextJunk": "3",
+    "VidRange": "text",
+    "cell": ""
+  },
+  {
+    "UID": "1072",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-06-10 14:29:05",
+    "DateModified": "2026-06-10 14:33:47",
+    "ltype": 0,
+    "ftext": "<h2>Hotkeys for SLAMo</h2><div>Here's the full reference, reorganized into your five groups:</div><div><br></div><div>---</div><div><br></div><div>## SLAM Hotkeys &amp; Gestures — Full Reference</div><div><br></div><div>---</div><div><br></div><div>## 👨‍💻 DEVELOPER-ONLY</div><div><br></div><div>*(Blocked in user mode — T, E, A, D, W, L, F, M)*</div><div><br></div><div>| Key / Gesture | Action | Screen |</div><div>|---|---|---|</div><div>| **T** | Return to Table (saves first if in editor) | Global |</div><div>| **E** | Open editor (Ev for video, Xe for text, Ie for image) | Global |</div><div>| **A** | Open/toggle Annotate panel | Global |</div><div>| **D** | Open Dictionary (auto-focuses row's tag if T-focused) | Global |</div><div>| **M** | Toggle hamburger menu | Global |</div><div>| **W / L** | Smart clipboard paste (bare links or @channel+CSV) | T |</div><div>| **F** | Open filter modal | T |</div><div>| **Shift+F** | Clear all filters instantly | T |</div><div>| **Ctrl+D** | Duplicate focused row | T |</div><div>| **Alt+R** | Re-sort rows by DateModified (newest first) | T |</div><div>| **Delete** | Archive focused row to deleted.json | T |</div><div>| **↑ / ↓** | Navigate rows | T |</div><div>| **→ / ←** | Navigate columns | T |</div><div>| **PgUp / PgDn** | Jump rows up/down | T |</div><div>| **Home / End** | First / last visible row | T |</div><div>| **Enter** | Commit edit, move down | T |</div><div>| **Tab / Shift+Tab** | Commit and move right / left | T |</div><div>| **Ctrl+I** | Toggle floating preview pane (video/image/slide); Space=play, Esc=close | T |</div><div>| **Ctrl+[Alt+]G** | Save layout to c.json | G |</div><div>| **Ctrl+click cell** | Open editor (Ev/Ie) for that cell | G |</div><div>| **E** key in G | Open editor for current cell | G |</div><div>| **Shift+LMB hold** (180ms) | Zoom IN on grid cell (accelerating) | G desktop |</div><div>| **Shift+RMB hold** (180ms) | Zoom OUT on grid cell | G desktop |</div><div>| **Shift+drag** | Pan zoomed grid cell (when scale &gt; 1.05×) | G desktop |</div><div>| **Alt+click** | Set COI (center-of-interest) anchor on cell — deep-clones row as `@fx,fy` | G desktop |</div><div>| **Hold cell → click another** | Cut/swap cells | G |</div><div>| **Right-click cell** | Context menu: T/V/E/D/W/Q/Delete | G |</div><div>| **Double-click text cell** | Open Xe (text editor) directly | G |</div><div>| **Right-click tag chip** | Menu: Copy / Dictionary / Filter / Remove | T, A |</div><div>| **Right-click tag cell** | Paste a previously copied tag | T |</div><div>| **C** (cut) in Dictionary | Cut selected node | D |</div><div>| **A** (paste child) in Dictionary | Paste as child of selected | D |</div><div>| **S** (paste sibling) in Dict. | Paste as sibling of selected | D |</div><div>| **Delete** in Dictionary | Delete selected node | D |</div><div>| **Esc** in Dictionary | Cancel cut mode | D |</div><div>| **Double-click node** in Dict. | Rename node | D |</div><div>| **Right-click node** in Dict. | Context menu: Cut / Paste / Delete / GBIF | D |</div><div>| **Ctrl+click** or **Right-click** C-table row | MakeActive → go to Grid | C |</div><div>| **Delete** in C | Delete selected config | C |</div><div>| **Swipe ← on C row** | Delete config | C mobile |</div><div>| **↑ ↓** in Ev | Navigate to prev/next filtered row | Ev |</div><div>| **T** in Ev | Save + return to Table | Ev |</div><div>| **G** in Ev | Save + go to Grid | Ev |</div><div>| **Ctrl+S** in Ev | Save current row | Ev |</div><div>| **Ctrl+click video** | Add segment at current time | Ev |</div><div>| **Ctrl+click timeline band** | Delete segment | Ev |</div><div>| **Right-click segment tab** | Rename / label segment | Ev |</div><div>| **↑ ↓** in Xe | Navigate to prev/next row (auto-saves) | Xe |</div><div>| **Esc** in Xe | Two-stage: blur editor → close Xe | Xe |</div><div>| **Ctrl+S** in Xe | Save + close | Xe |</div><div>| **Swipe → title bar** | Save + preview slide (Xs) | Xe mobile |</div><div>| **Swipe ← title bar** | Save + close Xe | Xe mobile |</div><div>| **Shift+Enter** in Xe | Insert collapsible `&lt;details&gt;` block | Xe |</div><div>| **Ctrl+Enter / Alt+Enter** in Xe | Exit enclosing collapsible block | Xe |</div><div>| **Click ▶… button** | Insert empty collapsible section | Xe |</div><div>| **Click 🖼 button** | Insert image (UID or URL) | Xe |</div><div>| **Double-click image** | Edit image properties | Xe |</div><div>| **↑ ↓** in Ie | Navigate rows | Ie |</div><div>| **T** in Ie | Return to Table | Ie |</div><div>| **Swipe ←** on Ie | Return to Table | Ie mobile |</div><div>| **Alt+N / Alt+J** in A | Next / Previous row | A |</div><div>| **Ctrl+S** in A | Save row | A |</div><div>| **Esc** in A | Save + close Annotate | A |</div><div>| **Space / Enter** in A (unfocused) | Save + advance to next row | A |</div><div>| **← / →** in A (unfocused) | Previous / Next row | A |</div><div>| **Tab / Shift+Tab** in A | Cycle through fields | A |</div><div>| **↓ ↑** in tag field | Navigate autocomplete suggestions | A, T |</div><div>| **Enter** in tag field | Select suggestion | A, T |</div><div>| **, (comma)** in tag field | Commit tag | A, T |</div><div><br></div><div>---</div><div><br></div><div>## 👤 USER-ACCESSIBLE</div><div><br></div><div>*(Available in user mode — Gu, Cu, V, S, H, Q)*</div><div><br></div><div>| Key / Gesture | Action | Screen |</div><div>|---|---|---|</div><div>| **G** | Open Grid view | Global |</div><div>| **V** | Open fullscreen viewer for focused/last row | Global |</div><div>| **C** | Open Collection picker | Global |</div><div>| **H** | Toggle Help overlay | Global |</div><div>| **S** | Play slideshow | G, T |</div><div>| **R** | Open slideshow in Review mode | T |</div><div>| **Q** | Open q.html local-media table (new tab) | Global |</div><div>| **Esc** | Defocus field / close overlays | Global |</div><div>| **2 / 3 / 4 / 5** | Resize grid to N×N | G |</div><div>| **Click cell** | Play/pause video | G |</div><div>| **T** (return) | Return to table (only if user reached T via allowed path) | G |</div><div>| **Enter** on C row | Load config + go to Grid | C |</div><div>| **← →** in Help | Prev / Next help page | H |</div><div>| **Esc** in Help | Close Help | H |</div><div>| **Space** in V | Play / Pause | V |</div><div>| **← →** in V | Frame-step ±0.1s | V |</div><div>| **↑ ↓** in V (Review) | Mark / un-mark for deletion | V |</div><div>| **M** in V | Mute toggle | V |</div><div>| **S** in V | Toggle Selected / Full playback | V |</div><div>| **C** in V | Toggle closed captions | V |</div><div>| **N / J** in V | Next / Previous row | V |</div><div>| **Delete** in V | Delete current row (archives) | V |</div><div>| **T** in V | Return to Table | V |</div><div>| **G** in V | Go to Grid | V |</div><div>| **Ctrl+S** in V | Save row | V |</div><div>| **a/s/d/f** in V/Slideshow | Rate current slide (Review mode) | V, S |</div><div>| **Esc / →(swipe) / Space** in Slideshow | Close / Next / Pause | S |</div><div>| **←** in Slideshow | Previous slide | S |</div><div>| **↑ ↓** in Slideshow | Mark / un-mark | S |</div><div>| **Tap answer** | Submit quiz answer | Q |</div><div>| **Swipe ←** | Close Quiz → back to grid | Q |</div><div>| **V** in G | View current cell fullscreen | G |</div><div>| **Swipe →** on G cell | Open fullscreen viewer | G mobile |</div><div>| **Swipe ←** on G cell | Toggle play/pause | G mobile |</div><div><br></div><div>---</div><div><br></div><div>## 🖥️ SCREEN-BY-SCREEN</div><div><br></div><div>#### T — Table</div><div>`↑↓←→` navigate · `Enter` commit · `Tab/Shift+Tab` commit+move · `PgUp/Dn` page · `Home/End` first/last · `Delete` archive row · `Backspace` clear cell · `F` filter · `Shift+F` clear filter · `Ctrl+D` duplicate · `Alt+R` re-sort · `Ctrl+I` preview pane · `W/L` clipboard import · `E/A/G/D/M/H` switch screen</div><div><br></div><div>#### G — Grid</div><div>`2/3/4/5` resize · `C` collection · `V` fullscreen viewer · `E` editor · `T` table · `[/]` whole-grid zoom · `Ctrl+[/]` cell zoom · `Z` two-stage zoom reset (1st→1.0, 2nd→clear per-cell) · `Ctrl+Alt+G` save layout</div><div>Mouse: click=play, right-click=menu, Ctrl+click=editor, hold+swap=cut/paste cells, Alt+click=COI</div><div>Desktop shift gestures: Shift+LMB hold=zoom in, Shift+RMB=zoom out, Shift+drag=pan</div><div><br></div><div>#### Ev — Video Editor</div><div>`Space` play/pause · `←→` frame-step ±0.1s · `↑↓` prev/next row · `N/J` prev/next row · `M` mute · `S` selected/full · `C` captions · `T` save+table · `G` save+grid · `Esc` save+table · `Ctrl+S` save</div><div>Mouse: click timeline=scrub · Ctrl+click video=add segment · Ctrl+click band=delete segment · right-click segment=rename</div><div><br></div><div>#### Xe — Text Editor</div><div>`↑↓` navigate rows · `Esc` two-stage (blur→close) · `Ctrl+S` save+close · `Ctrl+B/I/U` bold/italic/underline · `Shift+Enter` insert `&lt;details&gt;` block · `Enter` in summary→move to body · `Ctrl+Enter` exit block</div><div>Touch: swipe→=preview slide, swipe←=close</div><div><br></div><div>#### V — Video Viewer</div><div>`Space` play/pause · `←→` frame ±0.1s · `M` mute · `S` selected/full · `C` captions · `N/J` next/prev · `Delete` archive · `T/G` navigate · `Ctrl+S` save · `↑↓` mark (review) · `a/s/d/f` rate (review) · `Esc` close popup</div><div><br></div><div>#### S — Slideshow</div><div>`Esc` close · `→/Space` next · `←` prev · `↑` mark · `↓` un-mark · `a/s/d/f` rate</div><div><br></div><div>#### A — Annotate</div><div>`Alt+N/J` next/prev · `Ctrl+S` save · `Esc` save+close · `Space/Enter` save+advance · `←→` prev/next · `Tab/Shift+Tab` cycle fields · tag field: `↓↑` suggestions, `Enter` select, `,` commit</div><div><br></div><div>#### D — Dictionary</div><div>`↑↓` tree nav · `→` expand · `←` collapse · `Enter` toggle · `C` cut · `A` paste child · `S` paste sibling · `Delete` delete node · `Esc` cancel cut · `Tab/Shift+Tab` cycle right-panel tabs · `T/G` leave</div><div><br></div><div>#### C — Collection</div><div>`Enter` load+go to grid · `T` table · `G` grid · `M` make active · `Delete` delete config (dev) · double-click row=load+grid · Ctrl/right-click=make active (dev)</div><div><br></div><div>#### H — Help</div><div>`←→` prev/next page · `Esc` or any key = close</div><div><br></div><div>#### Filter Modal</div><div>`↓↑` suggestions · `Enter` apply · `Esc` close dropdown / close modal · `Tab` between fields</div><div><br></div><div>---</div><div><br></div><div>## 🖱️ DESKTOP-SPECIFIC</div><div><br></div><div>*(Mouse-dependent; keyboard shortcuts that rely on modifier+mouse)*</div><div><br></div><div>| Gesture | Context | Action |</div><div>|---|---|---|</div><div>| **LMB hold 180ms** | V player, Slideshow | Auto-zoom IN (accelerating) |</div><div>| **LMB drag &gt;8px** | V player, Slideshow | Pan zoomed content |</div><div>| **Swipe R→L** (&gt;60px, &lt;1.5s) | V player | Close V |</div><div>| **Swipe L→R** (slideshow) | Slideshow | Previous slide |</div><div>| **Double-click** | V player | Reset zoom (1×, no pan) |</div><div>| **Shift+LMB hold 180ms** | Grid cell | Zoom IN on cell |</div><div>| **Shift+RMB hold 180ms** | Grid cell | Zoom OUT on cell |</div><div>| **Shift+drag** | Grid cell (scale&gt;1.05×) | Pan cell content |</div><div>| **Alt+click** | Grid cell | Set COI anchor (deep-clones row) |</div><div>| **Ctrl+click cell** | Grid | Open editor |</div><div>| **Right-click cell** | Grid | Context menu |</div><div>| **Right-click tag chip** | T, A | Copy/Dict/Filter/Remove menu |</div><div>| **Right-click tag cell** | T | Paste copied tag |</div><div>| **Shift+click column** | T | Bulk-select range → type to set all |</div><div>| **Click timeline** | Ev | Scrub video position |</div><div>| **Ctrl+click video** | Ev | Add segment at current time |</div><div>| **Ctrl+click timeline band** | Ev | Delete segment |</div><div>| **Double-click cell** | T | Inline edit |</div><div>| **Double-click text cell** | G | Open Xe |</div><div>| **Double-click tag cell** | T | Open Annotate for row |</div><div>| **Hold cell → click another** | G | Cut/swap cells |</div><div>| **`[`/`]`** keys | G | Whole-grid zoom step ±0.1 |</div><div>| **Ctrl+`[`/`]`** keys | G | Zoom cell under mouse ±0.1 |</div><div>| **`Z`** key | G | Two-stage zoom reset |</div><div><br></div><div>---</div><div><br></div><div>## 📱 PHONE / TOUCH-SPECIFIC</div><div><br></div><div>| Gesture | Context | Action |</div><div>|---|---|---|</div><div>| **Swipe →** on G cell | Grid | Open fullscreen viewer |</div><div>| **Swipe ←** on G cell | Grid | Toggle play/pause |</div><div>| **Tap cell** | Grid | Play/pause video |</div><div>| **Pinch / pan** | Ie (image editor) | Zoom and pan image |</div><div>| **Swipe ←** | Ie | Return to Table |</div><div>| **Swipe → on title bar** | Xe | Save + preview slide (Xs) |</div><div>| **Swipe ← on title bar** | Xe | Save + close Xe |</div><div>| **Swipe ←** | Ev | Save + return to Table |</div><div>| **Swipe L→R / R→L** | Slideshow | Prev / next slide (velocity-based) |</div><div>| **Vertical pinch** | Slideshow | Zoom |</div><div>| **Hold LMB/tap hold** | V player | Auto-zoom IN |</div><div>| **Drag** | V player | Pan when zoomed |</div><div>| **Tap** | V player | Play/pause (tap vs hold) |</div><div>| **Swipe ←** on C row | Collection | Delete config (dev) |</div><div>| **Tap answer** | Quiz | Submit answer |</div><div>| **Swipe ←** | Quiz | Close → back to grid |</div><div>| **Help pages (Hum)** | Help | Mobile-specific help page (keyboard shortcuts omitted) |</div><div><br></div><div>---</div><div><br></div><div>**Notes:**</div><div>- Bare-letter keys are blocked when focus is in `&lt;input&gt;` / `&lt;textarea&gt;` / `contenteditable` (with exceptions: T/G/A/D/M auto-save and close from inside Xe)</div><div>- `[` / `]` zoom keys replaced wheel gesture (removed dev0347 — fought browser scroll)</div><div>- Right-hand keys (N, J, Delete, etc.) still used for legacy reasons; new hotkeys prefer left-hand side</div>",
+    "tags": [],
+    "ftextSize": "13949",
+    "FtextJunk": "0",
+    "VidRange": "text"
   }
 ]
