@@ -930,7 +930,13 @@ async function load() {
           }
         }
       }
-      if (lsEdited > diskMax + 2000) {
+      // (dev0367) The LS-rescue is a DEV-only safety net for failed disk
+      // writes. In user mode there's no FSA folder to rescue from, so a stale
+      // `sal-edited` (left by a past /unlock edit on this domain) must NEVER
+      // be allowed to discard the freshly-fetched ml.json — that's the "site
+      // shows old data after I push" bug. Public viewers always trust the fetch.
+      const _inUserEarly = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+      if (!_inUserEarly && lsEdited > diskMax + 2000) {
         try {
           const lsParsed = JSON.parse(lsRaw);
           if (Array.isArray(lsParsed) && lsParsed.length) {

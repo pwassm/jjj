@@ -670,6 +670,7 @@ async function _showShareableMenu() {
   const _smTabBar = ov.querySelector('.sm-tabs');
   const _smBackBtn = ov.querySelector('#smBack');
   const _smShow = n => {
+    window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
     [1, 2, 3].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
@@ -694,13 +695,19 @@ async function _showShareableMenu() {
     _smFiltNote.textContent = _lbls.length ? 'Filtered: ' + _lbls.join(' · ') : '';
   }
   // Start on the standalone Welcome page (also fixes the tab bar's initial
-  // visibility, since the markup ships it visible).
-  _smShow(1);
+  // visibility, since the markup ships it visible). (dev0367) But when the
+  // viewer is RETURNING from a selection (closed V), re-open the page they
+  // were on — the "Choose a view"/Search tab — not Welcome. _smReturnPage is
+  // set by the selection handlers; it's a one-shot, cleared after use.
+  const _smStartPg = (window._smReturnPage === 2 || window._smReturnPage === 3) ? window._smReturnPage : 1;
+  window._smReturnPage = undefined;
+  _smShow(_smStartPg);
 
   // Open a single T item as V over a forced G backdrop, routing vpClose back to
   // this menu via _fromShareableMenu. Shared by the choice cards AND search
   // results. (Direct /tshare links never set this flag — they run locked.)
   const _smOpenV = uid => {
+    window._smReturnPage = window._smCurPage; // (dev0367) come back to this page, not Welcome
     ov.remove();
     window._fromShareableMenu = true;
     const gOvl = document.getElementById('gridOverlay');
