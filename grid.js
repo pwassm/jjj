@@ -1085,32 +1085,47 @@ function gridShow() {
     }, true);
     overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; }, true);
   }
-  // (dev0368) Grid-level "swipe back to the Main Page" gesture (user mode only).
-  // A LONG left-swipe — one that travels more than a full cell width, crossing the
-  // vertical border between two cells — returns to the shareable menu's Main Page.
-  // Short single-cell left-swipes still pause that cell (handled per-cell). Wired
-  // in CAPTURE so a recognised long-swipe can stopPropagation the per-cell pause.
-  // Modifier-held gestures (Shift/Ctrl zoom + pan, Alt COI) are excluded.
+  // (dev0369) Grid-level "swipe back to the Main Page" gesture (user mode only).
+  // A right-to-left swipe that CROSSES A CELL BOUNDARY — begins in one grid cell
+  // and ends in a different cell (or off the grid) — returns to the shareable
+  // menu's Main Page. A left-swipe that STAYS inside a single cell keeps its
+  // existing per-cell behaviour (pause that cell). Wired in CAPTURE on the overlay
+  // (the common ancestor of every cell) so it sees the whole gesture no matter
+  // which cell the pointer is released over, and can stopPropagation the per-cell
+  // pause when it acts. Pointer-based → fires for mouse AND modern touch; the rare
+  // no-pointer-events touch path is covered by the per-cell fallback in
+  // _dispatchGesture(). Direction uses wrap-local coords (rotateXY) so it matches
+  // the user's view in CSS-rotated portrait; cell hit-testing uses raw viewport
+  // coords (elementFromPoint). Modifier-held gestures (Shift/Ctrl zoom+pan, Alt
+  // COI) are excluded.
   if (!overlay._swipeWired) {
     overlay._swipeWired = true;
-    let _swX = null, _swY = null, _swMod = false;
+    const _cellAt = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      return (el && el.closest) ? el.closest('.grid-cell') : null;
+    };
+    let _swX = null, _swY = null, _swMod = false, _swCell = null;
     overlay.addEventListener('pointerdown', e => {
       _swX = e.clientX; _swY = e.clientY;
       _swMod = e.shiftKey || e.ctrlKey || e.altKey || e.metaKey;
+      _swCell = _cellAt(e.clientX, e.clientY);
     }, true);
     overlay.addEventListener('pointerup', e => {
-      const x0 = _swX, mod = _swMod; const y0 = _swY;
-      _swX = _swY = null; _swMod = false;
-      if (x0 == null || mod) return;
+      const x0 = _swX, y0 = _swY, mod = _swMod, startCell = _swCell;
+      _swX = _swY = null; _swMod = false; _swCell = null;
+      if (x0 == null || mod || !startCell) return;
       if (typeof _isUserMode === 'function' && !_isUserMode()) return;
-      const dx = e.clientX - x0, dy = e.clientY - y0;
-      const cw = container.getBoundingClientRect().width / Math.max(1, _gridGsize);
-      if (dx < -Math.max(cw, 100) && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        e.preventDefault(); e.stopPropagation();
-        if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
-        overlay.style.display = 'none';
-        if (typeof _showShareableMenu === 'function') _showShareableMenu();
-      }
+      // Direction in the user's visual frame (handles rotated portrait).
+      const a = window.rotateXY ? window.rotateXY({ clientX: x0, clientY: y0 }) : { x: x0, y: y0 };
+      const b = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+      const dx = b.x - a.x, dy = b.y - a.y;
+      if (!(dx < -30 && Math.abs(dx) > Math.abs(dy))) return;   // must be a clear R→L swipe
+      // Crossed a cell boundary? End point lands in a different cell (or off-grid).
+      if (_cellAt(e.clientX, e.clientY) === startCell) return;  // stayed inside → let per-cell pause run
+      e.preventDefault(); e.stopPropagation();
+      if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
+      overlay.style.display = 'none';
+      if (typeof _showShareableMenu === 'function') _showShareableMenu();
     }, true);
   }
   // (zip0141) Re-apply user-mode chrome AFTER the overlay flips visible —
@@ -1592,7 +1607,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
     const ms = Date.now() - _tStart.t;
     _tStart = null;
     e.preventDefault();
-    _dispatchGesture(dx, dy, ms);
+    _dispatchGesture(dx, dy, ms, t.clientX, t.clientY);
   }, { passive: false, capture: true });
   
   interactor.addEventListener('touchcancel', () => {
@@ -1605,7 +1620,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
   // fallback. Keeps swipe/tap/double-tap semantics consistent. NOTE:
   // this intentionally does NOT handle hold-to-cut or right-click —
   // those only apply on devices with proper pointer/contextmenu events.
-  function _dispatchGesture(dx, dy, ms) {
+  function _dispatchGesture(dx, dy, ms, endX, endY) {
     // Swipe RIGHT → fullscreen view
     if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
       if (cell._rowData) {
@@ -1614,8 +1629,22 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       return;
     }
-    // Swipe LEFT → pause video
+    // Swipe LEFT → (dev0369, Gu only) a swipe that crosses into another cell
+    // returns to the Main Page; one that stays inside the cell pauses it. This
+    // is the touch-fallback mirror of the overlay-level pointer handler in
+    // gridShow(), for browsers that don't fire pointer events on touch.
     if (dx < -40 && Math.abs(dy) < Math.abs(dx)) {
+      if (userMode && endX != null) {
+        const el = document.elementFromPoint(endX, endY);
+        const endCell = (el && el.closest) ? el.closest('.grid-cell') : null;
+        if (!endCell || (endCell.dataset && endCell.dataset.cell !== cellStr)) {
+          if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
+          const ov = document.getElementById('gridOverlay');
+          if (ov) ov.style.display = 'none';
+          if (typeof _showShareableMenu === 'function') _showShareableMenu();
+          return;
+        }
+      }
       gridTogglePauseCell(cellStr);
       return;
     }

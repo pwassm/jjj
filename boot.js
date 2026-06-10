@@ -681,21 +681,22 @@ async function _showShareableMenu() {
   if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
   const _smGoTop = ov.querySelector('#smGoViewTop');
   if (_smGoTop) _smGoTop.addEventListener('click', () => _smShow(2));
-  // (dev0368) On the Search page, a right-to-left swipe returns to the Main
-  // "Choose a view" page — the same swipe-back feel used elsewhere. Touch only.
+  // (dev0369) On the Search page, a right-to-left swipe returns to the Main
+  // "Choose a view" page (the main menu) — the same swipe-back feel as the grid.
+  // Pointer-based so it works with both touch and a mouse-drag (and is therefore
+  // verifiable on desktop, unlike the old touch-only version). The shareable menu
+  // lives OUTSIDE the rotate-wrap, so its coords are already in the user's visual
+  // frame — no rotateXY needed.
   let _smSwX = null, _smSwY = null;
-  ov.addEventListener('touchstart', e => {
-    if (!e.touches || !e.touches.length) return;
-    _smSwX = e.touches[0].clientX; _smSwY = e.touches[0].clientY;
-  }, { passive: true });
-  ov.addEventListener('touchend', e => {
+  ov.addEventListener('pointerdown', e => {
+    _smSwX = e.clientX; _smSwY = e.clientY;
+  }, true);
+  ov.addEventListener('pointerup', e => {
     const x0 = _smSwX, y0 = _smSwY; _smSwX = _smSwY = null;
-    if (x0 == null) return;
-    const t = (e.changedTouches && e.changedTouches[0]) || null;
-    if (!t) return;
-    const dx = t.clientX - x0, dy = t.clientY - y0;
-    if (dx < -60 && Math.abs(dy) < Math.abs(dx) && window._smCurPage === 3) _smShow(2);
-  }, { passive: true });
+    if (x0 == null || window._smCurPage !== 3) return;
+    const dx = e.clientX - x0, dy = e.clientY - y0;
+    if (dx < -60 && Math.abs(dx) > Math.abs(dy)) _smShow(2);
+  }, true);
   // Populate the search-filter note from the COI-declared filters.
   const _smFiltNote = ov.querySelector('#smFilterNote');
   if (_smFiltNote) {
