@@ -1254,7 +1254,15 @@ function gridPaste(targetCell) {
   gridUpdateCell(srcCell, rowB);     // srcCell now shows rowB's content
   gridUpdateCell(targetCell, rowA);  // targetCell now shows rowA's content
 
-  toast('↔ Swapped ' + srcCell + ' ↔ ' + targetCell, 1500);
+  // (dev0373) Show the confirmation at the destination cell (where the mouse just
+  // clicked) rather than screen-center, so it doesn't cover the grid middle.
+  const _tgtEl = document.querySelector('.grid-cell[data-cell="' + targetCell + '"]');
+  if (_tgtEl) {
+    const r = _tgtEl.getBoundingClientRect();
+    toast('↔ Swapped ' + srcCell + ' ↔ ' + targetCell, 1500, { atXY: { x: r.left + r.width / 2, y: r.top + r.height / 2 } });
+  } else {
+    toast('↔ Swapped ' + srcCell + ' ↔ ' + targetCell, 1500);
+  }
 }
 
 // Update a single grid cell's visual content without rebuilding entire grid

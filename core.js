@@ -7021,7 +7021,14 @@ function toast(msg, ms, opts) {
   // (dev0351) Optional positioning. Default = the screen-centered CSS. With
   // opts.aboveEl, sit ~30px above that element's TOP edge, horizontally centered
   // on it (the G size/zoom toasts use this so they don't cover the grid middle).
-  if (opts && opts.aboveEl) {
+  if (opts && opts.atXY) {
+    // (dev0373) Position the toast at a specific point (e.g. under the mouse / on the
+    // grid cell just clicked), centered just above it and clamped into the viewport.
+    t.style.left = Math.max(70, Math.min(window.innerWidth - 70, opts.atXY.x)) + 'px';
+    t.style.top  = Math.max(8, opts.atXY.y - 38) + 'px';
+    t.style.bottom = 'auto';
+    t.style.transform = 'translate(-50%,0)';
+  } else if (opts && opts.aboveEl) {
     const r = opts.aboveEl.getBoundingClientRect();
     t.style.left = (r.left + r.width/2) + 'px';
     t.style.top  = Math.max(8, r.top - 30) + 'px';

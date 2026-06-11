@@ -190,6 +190,17 @@ document.addEventListener('keydown', e => {
   // leaking to the grid behind the show.
   if (document.getElementById('slideshowOverlay')) return;
 
+  // (dev0373) While the Ctrl+Alt+G "Save Grid Configuration" name dialog is open it
+  // owns the keyboard: Enter → Save, Escape → Cancel (dismiss). This handler fires in
+  // capture before the dialog's own input listener, and previously its Escape branch
+  // (below) closed the GRID instead of the dialog. Route to the dialog buttons and
+  // swallow every other grid key so nothing leaks to the grid underneath.
+  if (document.getElementById('gridSaveModal')) {
+    if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); document.getElementById('gridSaveConfirm')?.click(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); document.getElementById('gridSaveCancel')?.click(); }
+    return;
+  }
+
   // (dev0336) Ctrl+B → cycle clean-playback buffering for YouTube cells:
   // off → cut (instant double-buffer) → fade (crossfade). Left-hand chord so it
   // doesn't collide with the bare-letter grid navigation; Ctrl+I is left alone
@@ -625,7 +636,15 @@ function cMakeActive() {
   if (sel.length===1) idx=sel[0];
   else if (focus!==null) idx=vr(focus.r);
   if (idx===null) { toast('Select a row first (click or check)',1500); return; }
-  const cfg = _cData[idx]; if (!cfg) return;
+  const stored = _cData[idx]; if (!stored) return;
+  // (dev0373) Activate a CLONE so live cut/swap (and per-cell zoom) edits a working
+  // copy — NOT the stored config. Before this, _gridActiveConfig === _cData[idx], so
+  // rearranging cells mutated the saved config in place; a later "save as <new name>"
+  // (Ctrl+Alt+G) then wrote BOTH the now-corrupted original and the new copy, so the
+  // two rows came out identical (the "19 does it hold → 19 swaps is identical" bug —
+  // the swaps WERE captured, they just also overwrote the source). The stored config
+  // now stays pristine until an explicit SAME-name save overwrites it.
+  const cfg = JSON.parse(JSON.stringify(stored));
   _gridActiveConfig = cfg; _gridSource = 'C'; _gridName = cfg.gname||'';
   if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg); // (dev0346) global + per-cell zoom
   // (zip0153) Derive grid size from cfg.cells (25/16/9/4 → 5/4/3/2). Older
