@@ -716,3 +716,42 @@ function cDeleteSelected() {
   cSaveToFile();
 }
 
+// (dev0375) G in grid: open row.link of the cell under the mouse in a new tab.
+window._gridOpenLink = function() {
+  var cell = (typeof _gridHoverCell !== 'undefined') ? _gridHoverCell : null;
+  var row = cell && cell._rowData;
+  if (!row || !row.link) {
+    if (typeof _gridToast === 'function') _gridToast('Hover over a cell with a link first', 1400);
+    return;
+  }
+  window.open(row.link, '_blank', 'noopener');
+};
+
+// (dev0375) C in grid: toggle closed captions on all YT/Vimeo iframes.
+// postMessage works for both buffered and unbuffered YT players.
+var _gridCaptionsOn = false;
+window._gridToggleCaptions = function() {
+  _gridCaptionsOn = !_gridCaptionsOn;
+  var gridEl = document.getElementById('gridContainer');
+  if (gridEl) {
+    var iframes = gridEl.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
+      var iframe = iframes[i];
+      var src = iframe.src || '';
+      try {
+        if (/youtube/.test(src)) {
+          var msg = _gridCaptionsOn
+            ? JSON.stringify({event:'command', func:'setOption', args:['captions','track',{languageCode:'en'}]})
+            : JSON.stringify({event:'command', func:'unloadModule', args:['captions']});
+          iframe.contentWindow.postMessage(msg, '*');
+        } else if (/vimeo/.test(src)) {
+          var vmsg = _gridCaptionsOn
+            ? JSON.stringify({method:'enableTextTrack', value:{language:'en', kind:'captions'}})
+            : JSON.stringify({method:'disableTextTrack'});
+          iframe.contentWindow.postMessage(vmsg, 'https://player.vimeo.com');
+        }
+      } catch (_) {}
+    }
+  }
+  if (typeof _gridToast === 'function') _gridToast('Captions ' + (_gridCaptionsOn ? 'ON' : 'OFF'), 1200);
+};

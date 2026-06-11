@@ -3363,8 +3363,11 @@ window._executeHotkey = function(key) {
       return; // Grid is already showing behind VP
     }
     
-    // If already in grid (and not in VP), do nothing
-    if (gridOpen) return;
+    // If already in grid (and not in VP), open the hovered cell's link in a new tab
+    if (gridOpen) {
+      if (window._gridOpenLink) window._gridOpenLink();
+      return;
+    }
     
     // Close VE and go to grid
     if (veOpen) {
@@ -3556,10 +3559,16 @@ window._executeHotkey = function(key) {
     return;
   }
 
-  // C = Collection screen (c.json)
+  // C = Collection screen (c.json) — or, when grid is open, toggle captions
   if (key === 'c') {
     if (teOpen) return;
     if (tgOpen) { closeCScreen(); return; } // toggle off
+    // (dev0375) When the grid is open, C toggles captions on all YT/Vimeo cells
+    // instead of navigating to the Collection screen (use T→C to reach it).
+    if (gridOpen) {
+      if (window._gridToggleCaptions) window._gridToggleCaptions();
+      return;
+    }
     // Close any open overlays first
     if (vpOpen) vpClose();
     if (veOpen) {
@@ -3571,12 +3580,6 @@ window._executeHotkey = function(key) {
       document.getElementById('browseOverlay').style.display = 'none';
       document.getElementById('wrap').style.marginRight = '';
       brClearMedia();
-    }
-    if (gridOpen) {
-      gridCleanupPlayers();
-      gridClearCut();
-      gridHideContextMenu();
-      document.getElementById('gridOverlay').style.display = 'none';
     }
     openCScreen();
     return;

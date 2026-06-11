@@ -7200,7 +7200,8 @@ const HELP_DATA = [
     sections: [
       { name: 'Hotkeys', items: [
         { key: '2 / 3 / 4 / 5', desc: 'Resize grid to 2×2 / 3×3 / 4×4 / 5×5', dev: false },
-        { key: 'C',             desc: 'Open Collection picker',                  dev: false },
+        { key: 'G',             desc: 'Open hovered cell\'s video link in a new tab', dev: false },
+        { key: 'C',             desc: 'Toggle closed captions on all video cells', dev: false },
         { key: 'V',             desc: 'View cell fullscreen',                    dev: false },
         { key: 'E',             desc: 'Open Editor for current cell (dev)',       dev: true  },
         { key: 'T',             desc: 'Return to Table',                         dev: true  },
