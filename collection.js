@@ -653,14 +653,25 @@ function cMakeActive() {
 }
 
 function cDeleteSelected() {
-  const sel = [...checkedRows]; let idx = null;
-  if (sel.length===1) idx=sel[0];
-  else if (focus!==null) idx=vr(focus.r);
-  if (idx===null) { toast('Select a row first',1500); return; }
-  const cfg = _cData[idx];
-  if (!confirm('Delete collection "'+(cfg.gname||'unnamed')+'"?')) return;
-  _cData.splice(idx,1); data=_cData;
-  checkedRows.clear(); focus=null;
+  // (dev0372) Delete ALL checked rows, not just one. The old code only handled a
+  // single selection: when 2+ rows were checked, `sel.length===1` was false so it
+  // skipped the checked set entirely and fell back to the focused row (or bailed
+  // with "Select a row first"). Marking several unwanted configs and pressing
+  // Delete therefore appeared to do nothing. checkedRows holds DATA indices into
+  // _cData (see core.js checkbox handler + cMakeActive).
+  let idxs = [...checkedRows];
+  if (!idxs.length && focus !== null) idxs = [vr(focus.r)];     // fall back to focus when nothing checked
+  idxs = idxs.filter(i => i != null && _cData[i]);
+  if (!idxs.length) { toast('Select a row first (check a box or click a row)', 1500); return; }
+  const names = idxs.map(i => _cData[i].gname || 'unnamed');
+  const msg = idxs.length === 1
+    ? 'Delete collection "' + names[0] + '"?'
+    : 'Delete ' + idxs.length + ' collections?\n\n' + names.slice(0, 12).join(', ') + (names.length > 12 ? ', …' : '');
+  if (!confirm(msg)) return;
+  // Splice high→low so each removal doesn't shift the indices still to delete.
+  idxs.sort((a, b) => b - a).forEach(i => _cData.splice(i, 1));
+  data = _cData;
+  checkedRows.clear(); focus = null;
   buildSort(); render(); cUpdateStatus();
   cSaveToFile();
 }
