@@ -60,10 +60,18 @@ function gridSavePrompt() {
     // Update grid info display
     // (zip0153) Show total = _gridGsize²
     const gsize = _gridGsize;
-    const total = gsize * gsize;
-    const occupied = data.filter(r => r.cell && parseGridCell(r.cell) && (r.show === undefined || r.show === '1')).length;
+    // (dev0371) Mirror gridShow's layout-aware label/count for 17/19.
+    const layout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+    const total = layout === '17' ? 17 : layout === '19' ? 19 : gsize * gsize;
+    const sizeLabel = layout === 'square' ? (gsize + '×' + gsize) : ('layout ' + layout);
+    const occupied = (typeof _gridCellList === 'function')
+      ? _gridCellList(gsize, layout).filter(s => {
+          const row = (typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid(s.cs) : getRowByCell(s.cs);
+          return row && (row.show === undefined || row.show === '1');
+        }).length
+      : data.filter(r => r.cell && parseGridCell(r.cell) && (r.show === undefined || r.show === '1')).length;
     document.getElementById('gridInfo').textContent =
-      'gname: ' + name + ' · ' + gsize + '×' + gsize
+      'gname: ' + name + ' · ' + sizeLabel
       + ' · ' + occupied + '/' + total
       + ' cells · HOLD=cut · Click=swap · Rclick=menu · Ctrl-click=Edit · ^!G=name';
     close();
@@ -88,27 +96,35 @@ async function gridSaveToFile(gname) {
   // (zip0153) cells now reflects the live grid size: 25/16/9/4 for
   // 5×5/4×4/3×3/2×2. C reload reads this back to restore Gsize.
   const gsize = _gridGsize;
+  // (dev0371) Honour the active layout: 17/19 save with their real cell count
+  // and their merged 1L / 1P-3P cells, not as a 25-key square. Read each cell via
+  // getRowByCellForGrid so the live (possibly rearranged) arrangement and the
+  // special cells are both captured — getRowByCell only saw row.cell.
+  const layout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  const cellsVal = layout === '17' ? 17 : layout === '19' ? 19 : gsize * gsize;
   const gridData = {
     gname: gname,
-    cells: gsize * gsize,
+    cells: cellsVal,
     // (dev0346) Persist the whole-grid zoom so reload restores it.
     Zoom: (typeof _gridFillZoom === 'function') ? _gridFillZoom() : 1,
     DateModified: now
   };
-  
-  // Add each cell — only the current Gsize subset (1a..NN). Cells outside
-  // this square are NOT written, so a 3×3 save produces a 9-key entry.
-  for (let r = 1; r <= gsize; r++) {
-    for (let c = 1; c <= gsize; c++) {
-      const cellStr = mkGridCell(r, c);
-      const row = getRowByCell(cellStr);
-      if (row && row.UID) {
-        // (dev0346) Encode any per-cell zoom as "UID/zoom"; a bare UID = full size.
-        const z = (typeof _gridCellZoom !== 'undefined') ? _gridCellZoom[row.UID] : 0;
-        gridData[cellStr] = (z && Math.abs(z - 1) > 1e-9) ? (row.UID + '/' + z) : row.UID;
-      } else {
-        gridData[cellStr] = '';
-      }
+
+  // Add each cell from the layout's cell list. Square layouts write the 1a..NN
+  // subset (a 3×3 save → 9 keys); 17/19 write the 16-cell ring + merged center.
+  const resolve = (typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid : getRowByCell;
+  const list = (typeof _gridCellList === 'function')
+    ? _gridCellList(gsize, layout)
+    : (() => { const a = []; for (let r = 1; r <= gsize; r++) for (let c = 1; c <= gsize; c++) a.push({ cs: mkGridCell(r, c) }); return a; })();
+  for (const spec of list) {
+    const cellStr = spec.cs;
+    const row = resolve(cellStr);
+    if (row && row.UID) {
+      // (dev0346) Encode any per-cell zoom as "UID/zoom"; a bare UID = full size.
+      const z = (typeof _gridCellZoom !== 'undefined') ? _gridCellZoom[row.UID] : 0;
+      gridData[cellStr] = (z && Math.abs(z - 1) > 1e-9) ? (row.UID + '/' + z) : row.UID;
+    } else {
+      gridData[cellStr] = '';
     }
   }
   

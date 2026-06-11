@@ -1221,27 +1221,39 @@ function gridPaste(targetCell) {
   if (!_gridCutCell) return;
   const srcCell = _gridCutCell;
   gridClearCut();
-  
+
   if (srcCell === targetCell) return;
-  
-  const rowA = getRowByCell(srcCell);
-  const rowB = getRowByCell(targetCell);
-  
-  // Swap cell values in data
-  if (rowA) rowA.cell = targetCell;
-  if (rowB) rowB.cell = srcCell;
-  
-  // Update timestamps
+
+  // (dev0371) Resolve via getRowByCellForGrid so swaps work in BOTH sources and
+  // for the special 1L/1P-3P cells. getRowByCell only knew row.cell, which the
+  // special cells never carry — that's why their transfers silently failed.
+  const rowA = getRowByCellForGrid(srcCell);
+  const rowB = getRowByCellForGrid(targetCell);
   const now = isoNow();
-  if (rowA) rowA.DateModified = now;
-  if (rowB) rowB.DateModified = now;
-  
+
+  if (_gridSource === 'C' && _gridActiveConfig) {
+    // In C mode the active config is the live store the grid renders from, so
+    // swap the stored cell values (UID or "UID/zoom") there. Re-mirror row.cell
+    // for any standard endpoint and clear it for a special one (no r.cell slot).
+    const a = _gridActiveConfig[srcCell] || '';
+    const b = _gridActiveConfig[targetCell] || '';
+    _gridActiveConfig[srcCell]    = b;
+    _gridActiveConfig[targetCell] = a;
+    if (rowA) { rowA.cell = parseGridCell(targetCell) ? targetCell : ''; rowA.DateModified = now; }
+    if (rowB) { rowB.cell = parseGridCell(srcCell)    ? srcCell    : ''; rowB.DateModified = now; }
+  } else {
+    // T mode: row.cell is the store.
+    if (rowA) { rowA.cell = targetCell; rowA.DateModified = now; }
+    if (rowB) { rowB.cell = srcCell;    rowB.DateModified = now; }
+  }
+
   save();
-  
-  // Immediate visual update - just swap the two cells
-  gridUpdateCell(srcCell, rowB);  // srcCell now shows rowB's content
+
+  // Immediate visual update — swap the two cells in place (each slot keeps its
+  // own size, so the big/portrait cell just shows the newly-assigned content).
+  gridUpdateCell(srcCell, rowB);     // srcCell now shows rowB's content
   gridUpdateCell(targetCell, rowA);  // targetCell now shows rowA's content
-  
+
   toast('↔ Swapped ' + srcCell + ' ↔ ' + targetCell, 1500);
 }
 
@@ -1567,7 +1579,18 @@ function gridWireInteractor(interactor, cell, cellStr) {
       gridTogglePauseCell(cellStr);
       return;
     }
-    
+
+    // (dev0371) A cut is pending → any plain (non-Ctrl) press-release on a cell
+    // completes the swap, even if it ran a little long or drifted slightly. The
+    // old path only pasted inside the <500ms / <15px short-click gate below,
+    // which dropped a chunk of deliberate destination clicks. Swipes are already
+    // handled above; a real drag (>40px) still falls through to nothing.
+    if (_gridCutCell && !ctrl && Math.abs(dx) < 40 && Math.abs(dy) < 40) {
+      if (_gridCutCell === cellStr) { gridClearCut(); toast('Cut cancelled', 800); }
+      else gridPaste(cellStr);
+      return;
+    }
+
     // Short click
     if (Math.abs(dx) < 15 && Math.abs(dy) < 15 && ms < 500) {
       // (zip0142) Ctrl+left-click is dev-only — user mode (Gu) treats it
@@ -1585,16 +1608,6 @@ function gridWireInteractor(interactor, cell, cellStr) {
           gridOpenTextEditor(cell._rowData.cell || '', cell._rowData);
         } else {
           openBrowseForRow(cell._rowData);
-        }
-        return;
-      }
-      
-      if (_gridCutCell) {
-        if (_gridCutCell === cellStr) {
-          gridClearCut();
-          toast('Cut cancelled', 800);
-        } else {
-          gridPaste(cellStr);
         }
         return;
       }
