@@ -356,7 +356,12 @@ const _C_LS_KEY = 'sal-c-json';
 function _cIsEmptyConfig(r) {
   if (!r || r._salMeta) return false;
   for (const k in r) {
-    if (/^[1-9][a-e]$/.test(k) && r[k] && String(r[k]).trim()) return false;
+    // (dev0370) A filled special-layout cell (1L / 1P-3P) counts as real content
+    // too, so a 17/19 grid built only on its big/portrait cells isn't pruned.
+    const isCellKey = (typeof _isGridConfigCellKey === 'function')
+      ? _isGridConfigCellKey(k)
+      : (/^[1-9][a-e]$/.test(k) || k === '1L' || /^[123]P$/.test(k));
+    if (isCellKey && r[k] && String(r[k]).trim()) return false;
   }
   return true;
 }

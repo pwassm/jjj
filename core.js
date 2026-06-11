@@ -252,6 +252,12 @@ window.addEventListener('keydown', function(e) {
     if (gOpen && !vpOpen) {
       e.preventDefault();
       e.stopPropagation();
+      // (dev0370) Layouts 17/19 are config-only — the size keys must not switch
+      // into or out of them. Swallow the key (no resize) while one is active.
+      if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== 'square') {
+        if (typeof _gridToast === 'function') _gridToast('Layout locked — change it from the C screen', 1400);
+        return false;
+      }
       if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10));
       return false;
     }

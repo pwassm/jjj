@@ -162,17 +162,20 @@ function _slideshowCellSlides(row) {
 function _slideshowGridSlides() {
   const gsize = (typeof _gridGsize === 'number' && _gridGsize >= 2 && _gridGsize <= 5)
     ? _gridGsize : 5;
+  // (dev0370) Walk the active layout's cell list (square or 17/19) and resolve
+  // each through getRowByCellForGrid so the merged 1L / 1P-3P cells join the show.
+  const layout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  const list = (typeof _gridCellList === 'function')
+    ? _gridCellList(gsize, layout)
+    : (() => { const a = []; for (let r = 1; r <= gsize; r++) for (let c = 1; c <= gsize; c++) a.push({ cs: r + 'abcde'[c - 1] }); return a; })();
   const out = [];
-  for (let r = 1; r <= gsize; r++) {
-    for (let c = 1; c <= gsize; c++) {
-      const cs = (typeof mkGridCell === 'function')
-        ? mkGridCell(r, c)
-        : (r + 'abcde'[c - 1]);
-      const row = (typeof getRowByCell === 'function')
-        ? getRowByCell(cs)
-        : (typeof data !== 'undefined' ? data.find(d => d.cell === cs) : null);
-      _slideshowCellSlides(row).forEach(s => out.push(s));
-    }
+  for (const spec of list) {
+    const cs = spec.cs;
+    const row = (typeof getRowByCellForGrid === 'function')
+      ? getRowByCellForGrid(cs)
+      : (typeof getRowByCell === 'function' ? getRowByCell(cs)
+        : (typeof data !== 'undefined' ? data.find(d => d.cell === cs) : null));
+    _slideshowCellSlides(row).forEach(s => out.push(s));
   }
   return out;
 }

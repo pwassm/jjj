@@ -55,6 +55,64 @@ function parseGridCell(s) {
 }
 function mkGridCell(r, c) { return r + GRID_LETTERS[c - 1]; }
 
+// ── (dev0370) Special non-square layouts 17 & 19 ────────────────────────────
+// Both sit on a 5×5 footprint (gsize 5) and keep the 16-cell outer ring. They
+// only change the central 3×3 (rows 2-4 × cols b-d): layout 17 merges it into
+// one big landscape cell "1L"; layout 19 splits it into three portrait cells
+// "1P"/"2P"/"3P". The layout is chosen by the active config's `cells` value (17
+// or 19) and is reachable ONLY from C — the 2-5 size keys are inert while one
+// is active (see core.js). Each special cell obeys every normal cell rule
+// (tap-to-play, swipe→view, zoom, COI, cut) because gridShow builds it with the
+// same code path; only its grid-area — and therefore its size — differs.
+function _gridCurrentLayout() {
+  if (_gridSource === 'C' && _gridActiveConfig) {
+    const cn = parseInt(_gridActiveConfig.cells, 10);
+    if (cn === 17) return '17';
+    if (cn === 19) return '19';
+  }
+  return 'square';
+}
+
+// True for any c.json key that addresses a grid cell — the standard 1a..5e plus
+// the special 1L / 1P / 2P / 3P. The per-cell zoom scanners use this so zooms
+// stored on the big/portrait cells ("UID/zoom") restore like every other cell.
+function _isGridConfigCellKey(k) {
+  return /^[1-9][a-e]$/.test(k) || k === '1L' || /^[123]P$/.test(k);
+}
+
+// Ordered list of the cells a layout renders, each with its CSS grid placement
+// ({ cs, r, c, rs:rowSpan, cls:colSpan }). Square layouts enumerate the
+// gsize×gsize block (auto-flowed, no explicit area). The special layouts drop
+// the central nine cells and add the merged center, in a natural reading order
+// (top row, then row 2's edges around the center, then the side cells, then the
+// bottom row). Shared by gridShow, the occupancy count and the slideshow walk
+// so all three agree on which cells exist and in what order.
+function _gridCellList(gsize, layout) {
+  const out = [];
+  if (layout === '17' || layout === '19') {
+    for (let c = 1; c <= 5; c++) out.push({ cs: mkGridCell(1, c), r: 1, c: c, rs: 1, cls: 1 });
+    out.push({ cs: '2a', r: 2, c: 1, rs: 1, cls: 1 });
+    if (layout === '17') {
+      out.push({ cs: '1L', r: 2, c: 2, rs: 3, cls: 3 });
+    } else {
+      out.push({ cs: '1P', r: 2, c: 2, rs: 3, cls: 1 });
+      out.push({ cs: '2P', r: 2, c: 3, rs: 3, cls: 1 });
+      out.push({ cs: '3P', r: 2, c: 4, rs: 3, cls: 1 });
+    }
+    out.push({ cs: '2e', r: 2, c: 5, rs: 1, cls: 1 });
+    out.push({ cs: '3a', r: 3, c: 1, rs: 1, cls: 1 });
+    out.push({ cs: '3e', r: 3, c: 5, rs: 1, cls: 1 });
+    out.push({ cs: '4a', r: 4, c: 1, rs: 1, cls: 1 });
+    out.push({ cs: '4e', r: 4, c: 5, rs: 1, cls: 1 });
+    for (let c = 1; c <= 5; c++) out.push({ cs: mkGridCell(5, c), r: 5, c: c, rs: 1, cls: 1 });
+    return out;
+  }
+  for (let r = 1; r <= gsize; r++)
+    for (let c = 1; c <= gsize; c++)
+      out.push({ cs: mkGridCell(r, c), r: r, c: c, rs: 1, cls: 1 });
+  return out;
+}
+
 // Get data row by cell string
 function getRowByCell(cellStr) {
   return data.find(r => r.cell === cellStr && (r.show === undefined || r.show === '1'));
@@ -555,7 +613,7 @@ function _gridApplyConfigZoom(cfg) {
     window.setSetting('gridFillZoom', _gridSnapZoom(gz));
   }
   Object.keys(cfg).forEach(k => {
-    if (!/^[1-9][a-e]$/.test(k)) return;
+    if (!_isGridConfigCellKey(k)) return;
     const pv = _gridParseCellVal(cfg[k]);
     if (pv.uid && pv.zoom !== 1) _gridCellZoom[pv.uid] = pv.zoom;
   });
@@ -681,7 +739,7 @@ function gridRestoreCellZoomFromConfig() {
   _gridCellZoom = {};
   _gridCellPan = {};                  // drop any transient drag-pans too
   Object.keys(cfg).forEach(k => {
-    if (!/^[1-9][a-e]$/.test(k)) return;
+    if (!_isGridConfigCellKey(k)) return;
     const pv = _gridParseCellVal(cfg[k]);
     if (pv.uid && pv.zoom !== 1) _gridCellZoom[pv.uid] = pv.zoom;
   });
@@ -903,16 +961,23 @@ function gridShow() {
   // press in G, or by C-config activation (size derived from cfg.cells).
   _gridApplyContainerCSS();
   
-  // Build N×N grid (N = _gridGsize, range 2-5)
-  for (let r = 1; r <= _gridGsize; r++) {
-    for (let c = 1; c <= _gridGsize; c++) {
-      const cellStr = mkGridCell(r, c);
+  // (dev0370) Build from the active layout's cell list. Square layouts give the
+  // gsize×gsize block (auto-flowed); 17/19 give the 16-cell ring + merged center.
+  const _layout = _gridCurrentLayout();
+  for (const _spec of _gridCellList(_gridGsize, _layout)) {
+      const cellStr = _spec.cs;
       const row = getRowByCellForGrid(cellStr);
       
       const cell = document.createElement('div');
       cell.className = 'grid-cell';
       cell.dataset.cell = cellStr;
       cell.style.cssText = 'position:relative;background:#000;overflow:hidden;';
+      // (dev0370) Special layouts place every cell explicitly so the spanning
+      // center lines up with the ring; square layouts keep auto-flow (unchanged).
+      if (_layout !== 'square') {
+        cell.style.gridRow    = _spec.r + ' / span ' + _spec.rs;
+        cell.style.gridColumn = _spec.c + ' / span ' + _spec.cls;
+      }
       
       if (row) {
         const isVid = isVideoRow(row);
@@ -1042,16 +1107,14 @@ function gridShow() {
       gridWireInteractor(interactor, cell, cellStr);
       cell.appendChild(interactor);
       container.appendChild(cell);
-    }
   }
   
   // Update info bar
   const srcLabel = _gridSource === 'C' ? 'C:'+(_gridActiveConfig?.gname||'?') : 'T';
   const occupied = (() => {
     let n = 0;
-    for (let r = 1; r <= _gridGsize; r++)
-      for (let c = 1; c <= _gridGsize; c++)
-        if (getRowByCellForGrid(mkGridCell(r, c))) n++;
+    for (const _s of _gridCellList(_gridGsize, _layout))
+      if (getRowByCellForGrid(_s.cs)) n++;
     return n;
   })();
   // (zip0141) Tailor the help hint string by mode. Dev shows the full
@@ -1068,10 +1131,12 @@ function gridShow() {
   // (dev0346) Show the whole-grid zoom whenever it's not 1× (zoomed in OR out).
   const _zoom = _gridFillZoom();
   const _zoomTag = Math.abs(_zoom - 1) > 1e-9 ? ' · ⤢' + _zoom.toFixed(1) + '×' : '';
-  // (zip0153) Total cells = _gridGsize²; was hardcoded /25.
+  // (zip0153) Total cells = _gridGsize²; (dev0370) special layouts show name+count.
+  const _total = _layout === '17' ? 17 : _layout === '19' ? 19 : _gridGsize * _gridGsize;
+  const _sizeLabel = _layout === 'square' ? (_gridGsize + '×' + _gridGsize) : ('layout ' + _layout);
   document.getElementById('gridInfo').textContent =
-    '['+srcLabel+'] ' + _gridGsize + '×' + _gridGsize + ' · '
-    + occupied + '/' + (_gridGsize * _gridGsize) + ' · ' + hint + _bufTag + _zoomTag;
+    '['+srcLabel+'] ' + _sizeLabel + ' · '
+    + occupied + '/' + _total + ' · ' + hint + _bufTag + _zoomTag;
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';
