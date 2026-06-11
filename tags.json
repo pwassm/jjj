@@ -5091,5 +5091,73 @@
     "aliases": [],
     "def": "",
     "rank": "family"
+  },
+  {
+    "id": "slime-mold",
+    "label": "Slime mold",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "chromista",
+    "label": "Chromista",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "kingdom"
+  },
+  {
+    "id": "ochrophyta",
+    "label": "Ochrophyta",
+    "kind": "taxon",
+    "parents": [
+      "chromista"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "phylum"
+  },
+  {
+    "id": "bacillariophyceae",
+    "label": "Bacillariophyceae",
+    "kind": "taxon",
+    "parents": [
+      "ochrophyta"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "vibrio",
+    "label": "Vibrio",
+    "kind": "taxon",
+    "parents": [
+      "bacillariophyceae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "vibrio-paxillifer",
+    "label": "Vibrio paxillifer",
+    "kind": "taxon",
+    "parents": [
+      "vibrio"
+    ],
+    "aliases": [
+      "Bacillaria paxillifer (O.F.Müll.) Hendey"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Bacillaria paxiliver",
+    "extinct": false
   }
 ]
