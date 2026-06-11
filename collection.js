@@ -201,6 +201,27 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // (dev0374) MovingCells "ring conveyor" screensaver — see movingcells.js.
+  //   r        → toggle the rotation on/off
+  //   {  /  }  → slower / faster move (Shift+[ / Shift+]); pause is fixed at 2s
+  // Bare/Shift keys only; checked before the [ ] zoom keys so the Shift variants
+  // don't fall through to them. Whole feature is removable with movingcells.js.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
+    e.preventDefault(); e.stopPropagation();
+    if (window.MovingCells) window.MovingCells.toggle();
+    return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '{' || (e.shiftKey && e.code === 'BracketLeft'))) {
+    e.preventDefault(); e.stopPropagation();
+    if (window.MovingCells) window.MovingCells.slower();
+    return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '}' || (e.shiftKey && e.code === 'BracketRight'))) {
+    e.preventDefault(); e.stopPropagation();
+    if (window.MovingCells) window.MovingCells.faster();
+    return;
+  }
+
   // (dev0336) Ctrl+B → cycle clean-playback buffering for YouTube cells:
   // off → cut (instant double-buffer) → fade (crossfade). Left-hand chord so it
   // doesn't collide with the bare-letter grid navigation; Ctrl+I is left alone

@@ -1985,6 +1985,7 @@ function textEditorClose() {
 }
 
 function gridClose() {
+  window.MovingCells?.stop(true);   // (dev0374) halt the ring conveyor if running
   gridCleanupPlayers();
   gridClearCut();
   gridHideContextMenu();
