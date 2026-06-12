@@ -615,7 +615,9 @@ async function _showShareableMenu() {
     const tag = it.kind === 'v'
       ? '<span class="sm-tag">' + it.type + '</span>'
       : '<span class="sm-tag">' + (it.cells ? it.cells + ' cells' : 'grid') + '</span>';
-    const dateTxt = it.date ? '<span class="sm-date">' + _smEsc(it.date) + '</span>' : '';
+    // (dev0380) Always emit the date cell (even when empty) so the grid column
+    // rules stay aligned between every card and the header.
+    const dateTxt = '<span class="sm-date">' + (it.date ? _smEsc(it.date) : '') + '</span>';
     return '<details class="sm-detcard">'
         + '<summary class="sm-detsum">'
           + '<span class="sm-ico">' + ico + '</span>'
@@ -649,27 +651,31 @@ async function _showShareableMenu() {
     + '.sm-card:hover{background:#15152a;}'
     // (dev0378) <details> choice cards: clickable summary row + Open button.
     + '.sm-detcard{border-bottom:1px solid #1c1c30;}'
-    + '.sm-detsum{display:flex;align-items:center;gap:12px;padding:15px 22px;cursor:pointer;color:#ddd;list-style:none;}'
+    + '.sm-detsum{display:grid;grid-template-columns:30px minmax(0,1fr) 120px 92px 84px;align-items:stretch;gap:12px;padding:15px 22px;cursor:pointer;color:#ddd;list-style:none;}'
     + '.sm-detsum::-webkit-details-marker{display:none;}'
     + '.sm-detsum::marker{content:"";}'
     + '.sm-detsum:hover{background:#15152a;}'
     + '.sm-detcard[open]>.sm-detsum{background:#15152a;}'
-    + '.sm-date{flex:none;width:120px;font-size:12px;color:#9fb0c8;font-family:sans-serif;white-space:nowrap;}'
-    + '.sm-open{flex:none;font-family:sans-serif;font-size:12px;color:#cfe8ff;background:rgba(0,60,120,0.5);border:1px solid #4af;border-radius:6px;padding:5px 11px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-date{display:flex;align-items:center;font-size:12px;color:#9fb0c8;font-family:sans-serif;white-space:nowrap;border-left:1px solid #22304d;padding-left:12px;}'
+    + '.sm-open{align-self:center;justify-self:start;flex:none;font-family:sans-serif;font-size:12px;color:#cfe8ff;background:rgba(0,60,120,0.5);border:1px solid #4af;border-radius:6px;padding:5px 11px;cursor:pointer;white-space:nowrap;}'
     + '.sm-open:hover{background:rgba(0,80,150,0.7);}'
     + '.sm-detbody{padding:2px 22px 16px;}'
     // (dev0379) Sortable, table-like header for the choice list.
-    + '.sm-chhead{display:flex;align-items:center;gap:12px;padding:9px 22px;background:#0d0d1e;border-bottom:2px solid #2a3550;position:sticky;top:0;z-index:2;}'
-    + '.sm-chh-spacer{flex:none;width:30px;}'
-    + '.sm-chh{font-family:sans-serif;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#9fb0c8;background:none;border:none;cursor:pointer;padding:0;}'
+    + '.sm-chhead{display:grid;grid-template-columns:30px minmax(0,1fr) 120px 92px 84px;align-items:stretch;gap:12px;padding:9px 22px;background:#0d0d1e;border-bottom:2px solid #2a3550;position:sticky;top:0;z-index:2;}'
+    + '.sm-chh-spacer{}'
+    + '.sm-chh{display:flex;align-items:center;font-family:sans-serif;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#9fb0c8;background:none;border:none;cursor:pointer;padding:0;}'
     + '.sm-chh:hover{color:#cfe8ff;}'
     + '.sm-chh.on{color:#cfe8ff;}'
-    + '.sm-chh-name{flex:1;text-align:left;}'
-    + '.sm-chh-date{flex:none;width:120px;text-align:left;}'
+    + '.sm-chh-name{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
+    + '.sm-chh-date{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
     + '.sm-chmax{max-width:760px;margin:0 auto;}'
     + '.sm-ico{font-size:13px;line-height:1;flex:none;width:30px;text-align:center;color:#6aa6ff;}'
     + '.sm-name{flex:1;font-size:18px;}'
-    + '.sm-tag{flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#fff;border:1px solid #3a4a6a;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
+    // (dev0380) Choose-list cells: full-height cells with fine vertical column
+    // rules, content vertically centered + left-justified within each column.
+    + '.sm-detsum .sm-ico{display:flex;align-items:center;justify-content:center;width:auto;}'
+    + '.sm-detsum .sm-name{display:flex;align-items:center;min-width:0;border-left:1px solid #22304d;padding-left:12px;}'
+    + '.sm-tag{align-self:center;justify-self:start;flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#fff;border:1px solid #3a4a6a;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
     + '.sm-sub{padding:9px 24px 5px;color:#cfe8ff;font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:#0d0d1e;}'
     + '.sm-grpdiv{height:1px;background:#223;margin:6px 0;}'
     + '.sm-colhdr{padding:12px 22px 4px;color:#9fb0c8;font-size:12px;letter-spacing:.14em;text-transform:uppercase;}'
@@ -752,8 +758,8 @@ async function _showShareableMenu() {
     // header "‹ Welcome" button, so it's no longer a tab.
     + '<div class="sm-tabs">'
       + '<button class="sm-tab on" data-pg="2">Choose a view</button>'
-      + '<button class="sm-tab" data-pg="4">Other</button>'
       + '<button class="sm-tab" data-pg="3">Search</button>'
+      + '<button class="sm-tab" data-pg="4">Other</button>'
     + '</div>';
 
   document.body.appendChild(ov);
