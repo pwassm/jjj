@@ -441,8 +441,16 @@ async function _showShareableMenu() {
   // disk. Re-read every time the menu opens (the whole function re-fetches),
   // so editing the Greeting row updates the menu on the next visit.
   const _isGreeting = v => /^greet/.test(String(v || '').trim().toLowerCase()); // "greet" or "greeting"
-  const greetRow = mlRows.find(r => r && !r._salMeta && _isGreeting(r.Direct));
-  let greetingHtml = greetRow ? String(greetRow.ftext || '') : '';
+  // (dev0378) `Direct` was renamed to `ttxt`. The greeting row is still matched
+  // by its label value (now read from ttxt); its MPix/COI still drive the search
+  // threshold + filters below.
+  const greetRow = mlRows.find(r => r && !r._salMeta && _isGreeting(r.ttxt));
+  // (dev0378) Greeting prose now lives in c.json: the config row whose gname is
+  // "Greeting", in its `ctxt` field. Fall back to the legacy ml.json ttxt-row
+  // ftext, then to a greeting.html file on disk.
+  const greetCfg = cRows.find(r => r && !r._salMeta && _isGreeting(r.gname));
+  let greetingHtml = greetCfg ? String(greetCfg.ctxt || '') : '';
+  if (!greetingHtml && greetRow) greetingHtml = String(greetRow.ftext || '');
   if (!greetingHtml) {
     try { const r = await fetch('greeting.html?t=' + Date.now()); if (r.ok) greetingHtml = await r.text(); } catch (e) {}
   }
@@ -477,6 +485,26 @@ async function _showShareableMenu() {
   const _smBadge = { image: '🖼', video: '🎬', slide: '📄', quiz: '📋', other: '🔗' };
   const _smEsc = s => String(s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 
+  // (dev0378) Singles (ml.json `ttxt`) and Grids (c.json `ctxt`) are now
+  // details-HTML blocks. Pull the visible card label from the block's first
+  // <summary> text (fallback: first non-empty rendered line); the card body is
+  // that <details>' content minus the summary (or the whole block if it isn't
+  // wrapped in <details>). DateModified shows as a short YYYY-MM-DD.
+  const _smSummaryText = html => {
+    const d = document.createElement('div'); d.innerHTML = String(html || '');
+    const s = d.querySelector('summary');
+    let t = s ? s.textContent.trim() : '';
+    if (!t) t = (d.textContent || '').trim().split('\n').map(x => x.trim()).filter(Boolean)[0] || '';
+    return t;
+  };
+  const _smDetailBody = html => {
+    const d = document.createElement('div'); d.innerHTML = String(html || '');
+    const det = d.querySelector('details');
+    if (det) { const s = det.querySelector(':scope > summary'); if (s) s.remove(); return det.innerHTML; }
+    return d.innerHTML;
+  };
+  const _smDateShort = v => String(v || '').trim().slice(0, 10);
+
   // (dev0362) Search page. `n` = the Greeting row's MPix, repurposed as the
   // "show results" threshold (it isn't a real megapixel value on that row).
   // Below n matches, result cards appear; default 12 if unset/invalid.
@@ -501,7 +529,7 @@ async function _showShareableMenu() {
   // Also precompute `hasTaxon` and the link-derived media `kind` so the COI
   // filters above are a cheap boolean check per row.
   const _tBlobs = mlRows
-    .filter(r => r && !r._salMeta && r.UID != null && !_isGreeting(r.Direct))
+    .filter(r => r && !r._salMeta && r.UID != null && !_isGreeting(r.ttxt))
     .map(r => {
       let blob = ['VidAuthor', 'VidTitle', 'link', 'VidComment'].map(f => String(r[f] || '')).join(' ')
         + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' ');
@@ -535,12 +563,21 @@ async function _showShareableMenu() {
   // Choices, re-read fresh on every open. V items (from T / ml.json `Direct`)
   // first, then SS grids (from C / c.json), so the combined `items` index used
   // by the tap handler stays stable.
+  // (dev0378) Singles now come from ml.json `ttxt` (was `Direct`): every content
+  // row whose ttxt details-block is non-empty. Grids now come from c.json `ctxt`
+  // (was the `ss` field / gname label): every config row whose ctxt is occupied
+  // and that has a gname to open by. Both carry the raw HTML + DateModified so
+  // each card can show a summary line, a date, and an expandable details body.
   const vItems = mlRows
-    .filter(r => r && !r._salMeta && String(r.Direct || '').trim() && !_isGreeting(r.Direct) && r.UID != null)
-    .map(r => ({ kind: 'v', label: String(r.Direct).trim(), uid: String(r.UID), type: _smType(r) }));
+    .filter(r => r && !r._salMeta && String(r.ttxt || '').trim() && !_isGreeting(r.ttxt) && r.UID != null)
+    .map(r => ({ kind: 'v', uid: String(r.UID), html: String(r.ttxt),
+                 summary: _smSummaryText(r.ttxt) || ('UID ' + r.UID),
+                 date: _smDateShort(r.DateModified), type: _smType(r) }));
   const gItems = cRows
-    .filter(g => g && !g._salMeta && String(g.ss || '').trim() && g.gname)
-    .map(g => ({ kind: 'ss', label: String(g.gname).trim(), ss: String(g.ss).trim(), cells: Number(g.cells) || 0 }));
+    .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname))
+    .map(g => ({ kind: 'ss', gname: String(g.gname).trim(), html: String(g.ctxt),
+                 summary: _smSummaryText(g.ctxt) || String(g.gname).trim(),
+                 date: _smDateShort(g.DateModified), cells: Number(g.cells) || 0 }));
   const items = vItems.concat(gItems);
 
   const ov = document.createElement('div');
@@ -548,24 +585,32 @@ async function _showShareableMenu() {
   ov.style.cssText = 'position:fixed;inset:0;z-index:999990;background:#0a0a1a;'
     + 'display:flex;flex-direction:column;font-family:monospace;color:#eee;';
 
-  // (dev0361) Page-2 list — V items (singles) badged by type, a divider, then
-  // SS grids labelled "N cells". `.sm-item` + `data-i` are unchanged so the
-  // existing tap handler still maps each card back to `items[i]`.
-  const _smCard = (it, i) => it.kind === 'v'
-    ? '<div class="sm-item sm-card" data-i="' + i + '">'
-        + '<span class="sm-ico">' + (_smBadge[it.type] || '🔗') + '</span>'
-        + '<span class="sm-name">' + _smEsc(it.label) + '</span>'
-        + '<span class="sm-tag">' + it.type + '</span>'
-      + '</div>'
-    : '<div class="sm-item sm-card" data-i="' + i + '">'
-        + '<span class="sm-ico">▦</span>'
-        + '<span class="sm-name">' + _smEsc(it.label) + '</span>'
-        + '<span class="sm-tag">' + (it.cells ? it.cells + ' cells' : 'grid') + '</span>'
-      + '</div>';
+  // (dev0378) Each choice is now a native <details> card: the <summary> row is
+  // the clickable summary line (icon · summary text · date · type/cells tag),
+  // with an "▶ Open" launch button immediately to its right. Expanding the card
+  // reveals the full ttxt/ctxt details body inline. The Open button carries
+  // data-i so the handler maps it back to items[i]; opening it must NOT toggle
+  // the <details> (the handler preventDefaults).
+  const _smDetCard = (it, i) => {
+    const ico = it.kind === 'v' ? (_smBadge[it.type] || '🔗') : '▦';
+    const tag = it.kind === 'v'
+      ? '<span class="sm-tag">' + it.type + '</span>'
+      : '<span class="sm-tag">' + (it.cells ? it.cells + ' cells' : 'grid') + '</span>';
+    const dateTxt = it.date ? '<span class="sm-date">' + _smEsc(it.date) + '</span>' : '';
+    return '<details class="sm-detcard">'
+        + '<summary class="sm-detsum">'
+          + '<span class="sm-ico">' + ico + '</span>'
+          + '<span class="sm-name">' + _smEsc(it.summary) + '</span>'
+          + dateTxt + tag
+          + '<button class="sm-open" data-i="' + i + '" title="Open">&#9658; Open</button>'
+        + '</summary>'
+        + '<div class="sm-detbody smGreeting">' + _smDetailBody(it.html) + '</div>'
+      + '</details>';
+  };
   // (dev0362) Two columns on desktop (Singles | Grids), stacked on phone.
   const _smNoItems = '<div style="padding:24px;color:#aa8;">No shareable items yet.</div>';
-  const vCardsHtml = vItems.map((it, i) => _smCard(it, i)).join('');
-  const gCardsHtml = gItems.map((it, i) => _smCard(it, vItems.length + i)).join('');
+  const vCardsHtml = vItems.map((it, i) => _smDetCard(it, i)).join('');
+  const gCardsHtml = gItems.map((it, i) => _smDetCard(it, vItems.length + i)).join('');
 
   // (dev0359/0361) Readable sans-serif greeting prose (now a CLASS so both
   // pages can use it), page-2 cards, and the bottom tab bar. `summary` headings
@@ -584,6 +629,17 @@ async function _showShareableMenu() {
     + '.te-cut{display:none;}'
     + '.sm-card{display:flex;align-items:center;gap:12px;padding:15px 22px;border-bottom:1px solid #1c1c30;cursor:pointer;color:#ddd;}'
     + '.sm-card:hover{background:#15152a;}'
+    // (dev0378) <details> choice cards: clickable summary row + Open button.
+    + '.sm-detcard{border-bottom:1px solid #1c1c30;}'
+    + '.sm-detsum{display:flex;align-items:center;gap:12px;padding:15px 22px;cursor:pointer;color:#ddd;list-style:none;}'
+    + '.sm-detsum::-webkit-details-marker{display:none;}'
+    + '.sm-detsum::marker{content:"";}'
+    + '.sm-detsum:hover{background:#15152a;}'
+    + '.sm-detcard[open]>.sm-detsum{background:#15152a;}'
+    + '.sm-date{flex:none;font-size:11px;color:#9fb0c8;font-family:sans-serif;white-space:nowrap;}'
+    + '.sm-open{flex:none;font-family:sans-serif;font-size:12px;color:#cfe8ff;background:rgba(0,60,120,0.5);border:1px solid #4af;border-radius:6px;padding:5px 11px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-open:hover{background:rgba(0,80,150,0.7);}'
+    + '.sm-detbody{padding:2px 22px 16px;}'
     + '.sm-ico{font-size:24px;line-height:1;flex:none;width:30px;text-align:center;}'
     + '.sm-name{flex:1;font-size:18px;}'
     + '.sm-tag{flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#fff;border:1px solid #3a4a6a;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
@@ -735,18 +791,23 @@ async function _showShareableMenu() {
     _openItemByUid(uid);
   };
 
-  ov.querySelectorAll('#smPage2 .sm-item').forEach(el => {
-    el.addEventListener('click', () => {
+  // (dev0378) Launch happens via the "▶ Open" button on each <details> card.
+  // preventDefault keeps the click from also toggling the card open/closed.
+  ov.querySelectorAll('#smPage2 .sm-open').forEach(el => {
+    el.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
       const it = items[parseInt(el.dataset.i, 10)];
       if (!it) return;
       if (it.kind === 'v') {
         _smOpenV(it.uid);
       } else if (it.kind === 'ss') {
         // (dev0360) A grid choice from W opens G ONLY — the user starts the
-        // slideshow from the hamburger when they want it.
+        // slideshow from the hamburger when they want it. (dev0378) Now sourced
+        // by ctxt + gname, so open the config directly by name.
         ov.remove();
         window._fromShareableMenu = false;
-        _openSlideshowBySsId(it.ss, false /* show G, don't auto-play */);
+        _openConfigByName(it.gname);
       }
     });
   });
@@ -1028,12 +1089,12 @@ function _openItemByUid(uid) {
     }
     // (dev0315) Anti-enumeration on the public site: a LOCKED link (?i=NNN
     // with no /unlock) may only open items that were explicitly shared —
-    // i.e. rows carrying a non-empty `Direct` slug. This stops a curious
-    // visitor from guessing ?i=6, ?i=7, … to browse the whole library.
-    // Dev /unlock links (window._lockedUid unset) bypass the check, and
-    // dev mode (localhost) is unaffected.
+    // i.e. rows carrying a non-empty `ttxt` block (dev0378: was `Direct`).
+    // This stops a curious visitor from guessing ?i=6, ?i=7, … to browse the
+    // whole library. Dev /unlock links (window._lockedUid unset) bypass the
+    // check, and dev mode (localhost) is unaffected.
     const _um = (typeof _isUserMode === 'function') ? _isUserMode() : false;
-    if (_um && window._lockedUid && !String(row.Direct || '').trim()) {
+    if (_um && window._lockedUid && !String(row.ttxt || '').trim()) {
       if (typeof toast === 'function') toast('Not found', 1500);
       _recoverMenu();
       return;

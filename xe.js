@@ -5,6 +5,11 @@
 let _textEditorOverlay = null;
 let _textEditorCell = null;
 let _textEditorRow = null;
+// (dev0378) Which row field the editor reads/writes. Default 'ftext' (slides /
+// quizzes). T's `ttxt` column and C's `ctxt` column open the SAME editor with
+// opts.field set, so the rich-text/Save plumbing is shared. Non-ftext fields
+// skip the slide-only side effects (title prompt, link binding, VidRange).
+let _textEditorField = 'ftext';
 
 function gridOpenTextEditor(cellStr, row, opts) {
   opts = opts || {};
@@ -21,7 +26,8 @@ function gridOpenTextEditor(cellStr, row, opts) {
   _textEditorOverlay = null;
 
   _textEditorCell = cellStr;
-  
+  _textEditorField = (opts && opts.field) || 'ftext';
+
   // If no row exists for this cell, create one
   if (!row) {
     row = {
@@ -40,7 +46,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
   // (zip0168) Linkify URL patterns in existing ftext so the editor shows
   // clickable links. On save, the linkified HTML persists — old plain-text
   // URLs become anchor tags after the first edit-save cycle.
-  const rawExisting = row.ftext || '';
+  const rawExisting = row[_textEditorField] || '';
   const existingText = (typeof renderFtext === 'function')
     ? renderFtext(rawExisting)
     : rawExisting;
@@ -1194,11 +1200,15 @@ function _textEditorDoSave() {
   if (!editor || !_textEditorRow) return false;
   _sanitizeTextEditorHtml(editor);
   const html = editor.innerHTML.trim();
-  _textEditorRow.ftext = html;
+  _textEditorRow[_textEditorField] = html;
   _textEditorRow.DateModified = isoNow();
-  const _liD = document.getElementById('teLinkInput');
-  if (_liD !== null) _textEditorRow.link = _liD.value.trim();
-  if (!_textEditorRow.link) _textEditorRow.VidRange = 'text';
+  // (dev0378) link binding + VidRange='text' are slide-only (ftext). Editing
+  // ttxt/ctxt must not touch the row's media link or range.
+  if (_textEditorField === 'ftext') {
+    const _liD = document.getElementById('teLinkInput');
+    if (_liD !== null) _textEditorRow.link = _liD.value.trim();
+    if (!_textEditorRow.link) _textEditorRow.VidRange = 'text';
+  }
   save();
   return true;
 }
@@ -1216,31 +1226,36 @@ function textEditorSave() {
 
   const html = editor.innerHTML.trim();
 
+  // (dev0378) Title prompt + link/VidRange are slide-only (ftext). ttxt/ctxt
+  // are free-form details blocks — save them verbatim without those rituals.
+  const _slideField = (_textEditorField === 'ftext');
+
   // Check if we need a title (first h1 or h2)
-  if (!html.match(/<h[12][^>]*>.*?\S.*?<\/h[12]>/i)) {
+  if (_slideField && !html.match(/<h[12][^>]*>.*?\S.*?<\/h[12]>/i)) {
     const title = prompt('Enter a title for this slide:', '');
     if (title) {
       editor.innerHTML = '<h2>' + title + '</h2>' + html;
     }
   }
 
-  // Save ftext to the row (keeps existing video/image data)
-  _textEditorRow.ftext = editor.innerHTML.trim();
+  // Save to the bound field (keeps existing video/image data)
+  _textEditorRow[_textEditorField] = editor.innerHTML.trim();
   _textEditorRow.DateModified = isoNow();
-  const _liS = document.getElementById('teLinkInput');
-  if (_liS !== null) _textEditorRow.link = _liS.value.trim();
-
-  // Only set VidRange to 'text' if there's no media link
-  if (!_textEditorRow.link) {
-    _textEditorRow.VidRange = 'text';
+  if (_slideField) {
+    const _liS = document.getElementById('teLinkInput');
+    if (_liS !== null) _textEditorRow.link = _liS.value.trim();
+    // Only set VidRange to 'text' if there's no media link
+    if (!_textEditorRow.link) {
+      _textEditorRow.VidRange = 'text';
+    }
   }
 
   save();
   textEditorClose();
 
-  // Refresh grid cell
-  gridUpdateCell(_textEditorCell, _textEditorRow);
-  toast('✓ Saved text slide', 1000);
+  // Refresh grid cell (ftext slides only — ttxt/ctxt don't drive a grid cell)
+  if (_slideField) gridUpdateCell(_textEditorCell, _textEditorRow);
+  toast('✓ Saved ' + (_slideField ? 'text slide' : _textEditorField), 1000);
 }
 
 // (zip0134/0135) Walk the editor DOM and remove malformed <details>

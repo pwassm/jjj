@@ -3398,6 +3398,27 @@ window._executeHotkey = function(key) {
   if (key === 'e') {
     if (teOpen) return;
     if (veOpen) return; // already in VE
+
+    // (dev0378) Column-targeted editing. When the focused column is T's `ttxt`
+    // or C's `ctxt`, E opens THAT field in the HTML editor (a details block),
+    // instead of the row's default media/ftext editor. The C-screen reuses the
+    // same table engine, so `focus`/visCols() resolve against _cData in _cMode
+    // and the editor's save() routes to c.json via the boot.js patch.
+    if (!gridOpen && focus !== null && typeof visCols === 'function') {
+      const _fcol = visCols()[focus.c];
+      if (_fcol === 'ttxt' || _fcol === 'ctxt') {
+        if (vpOpen) vpClose();
+        const _tdi = vr(focus.r);
+        const _trow = (_tdi >= 0 && _tdi < data.length) ? data[_tdi] : null;
+        if (!_trow) { toast('No row focused', 1500); return; }
+        if (typeof gridOpenTextEditor === 'function') {
+          gridOpenTextEditor(_trow.cell || '', _trow, { field: _fcol });
+        } else {
+          toast('Text editor not available', 1800);
+        }
+        return;
+      }
+    }
     if (vpOpen) vpClose();
 
     let rowToEdit = null;
