@@ -137,14 +137,14 @@
     "5d": "24",
     "5e": "25",
     "DateAdded": "2026-04-16 04:26:25",
-    "DateModified": "2026-06-12 13:36:35",
+    "DateModified": "2026-06-12 14:41:43",
     "ss": "",
     "Zoom": "",
     "1L": "",
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium),</div><div>as well as my desire to put images in a beautiful (if not useful) form</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div><div>Because I vibe-coded it with Claude code, I don't know if this program has&nbsp;</div><div>&nbsp; &nbsp;negative unforseen capabilities.&nbsp; I think it's unlikely, but wanted to put it&nbsp;</div><div>&nbsp; &nbsp;out there, especially if you use the slideshow option for your local files.</div></details><p><br></p><p></p><details open=\"\"><summary>Latest changes</summary><div><p>Hotkeys on Grid:</p><p>R (rotate), if there's a blank cell at 5e, toggles rotation</p><p>G (go), opens web page of that youtube or vimeo video</p><p>C (captions) toggles captions.</p></div></details><p></p><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help will be in hamburger menu upper left in Gridviiew, but this&nbsp;<br></div><div>is a beta, and probably will aways be a beta!</div></details><p><br></p><p></p><details><summary>Help!</summary><div><p>In gridveiw, swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><b>To get back to gridview:</b></p><p><b>- Swipe left on desktop or phone.</b></p><p>To turn grid into slideshow:</p><p>Desktop, type S, or use hamburger menu.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details open=\"\"><summary>Slideshows!(and more)</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p><p>Available on Chrome and Edge browsers on Windows computers.</p></div></details><p></p><p></p><details><summary><br></summary><div><br></div></details><p></p><hr class=\"te-hr\"><p><br></p></div><div><h6></h6></div>"
+    "ctxt": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium),</div><div>as well as my desire to put images in a beautiful (if not useful) form</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div><div>Because I vibe-coded it with Claude code, I don't know if this program has&nbsp;</div><div>&nbsp; &nbsp;negative unforseen capabilities.&nbsp; I think it's unlikely, but wanted to put it&nbsp;</div><div>&nbsp; &nbsp;out there, especially if you use the slideshow option for your local files.</div></details><p><br></p><p></p><details><summary>Latest changes</summary><div><p>Hotkeys on Grid:</p><p>R (rotate), if there's a blank cell at 5e, toggles rotation</p><p>G (go), opens web page of that youtube or vimeo video</p><p>C (captions) toggles captions.</p></div></details><p></p><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help will be in hamburger menu upper left in Gridviiew, but this&nbsp;<br></div><div>is a beta, and probably will aways be a beta!</div></details><p><br></p><p></p><details><summary>Help!</summary><div><p>In gridveiw, swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><b>To get back to gridview:</b></p><p><b>- Swipe left on desktop or phone.</b></p><p>To turn grid into slideshow:</p><p>Desktop, type S, or use hamburger menu.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details open=\"\"><summary>Slideshows!(and more)</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from local image files.</p><p>Available on Chrome and Edge browsers on Windows computers.</p></div></details><p></p><p></p><details><summary><br></summary><div><br></div></details><p></p><hr class=\"te-hr\"><p><br></p></div><div><h6></h6></div>"
   },
   {
     "gname": "SecondGridToSave",
@@ -827,7 +827,7 @@
     "gname": "Sheephead v Urchin 2",
     "cells": 9,
     "Zoom": 1.2,
-    "DateModified": "2026-06-10 15:17:39",
+    "DateModified": "2026-06-12 14:39:00",
     "1a": "8_1/1.5",
     "1b": "8_2/1.6",
     "1c": "8_3/1.4",
@@ -843,7 +843,7 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "<h2></h2><details open=\"\"><summary>Sheephead eats sea urchin</summary><div><h2>Last frame: Garabaldi takes a bite, too.</h2></div><div>Purple sea urchins can live up to 40 years, this one was pretty big,</div><div>big enough for a California sheephead's lunch!</div></details><p></p>"
   },
   {
     "gname": "1st try 17",
@@ -938,7 +938,7 @@
     "gname": "Ttennis",
     "cells": "19",
     "Zoom": 1.2,
-    "DateModified": "2026-06-12 05:30:53",
+    "DateModified": "2026-06-12 14:36:48",
     "1a": "51_1",
     "1b": "51_2",
     "1c": "51_3",
@@ -968,6 +968,6 @@
     "1P": "87_3",
     "2P": "87_4",
     "3P": "87_5",
-    "ctxt": ""
+    "ctxt": "<h2></h2><details open=\"\"><summary>Table tennis fun</summary><div><h2>Table tennis fun!</h2><div>amazing rallies</div></div></details><div></div>"
   }
 ]
