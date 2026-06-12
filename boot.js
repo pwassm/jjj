@@ -22,8 +22,10 @@ updateShowAllBtn = function() {
       } else { cf.style.display='none'; }
       ccf.style.display=rowFilter?'inline-block':'none';
     }
-    document.getElementById('filterBtn').style.display='none';
-    document.getElementById('clearFilterBtn').style.display='none';
+    // (dev0379) Null-guard: `filterBtn` was removed (F now opens a modal), so
+    // an unconditional deref threw here and crashed the C-screen render.
+    const _fb=document.getElementById('filterBtn'); if(_fb) _fb.style.display='none';
+    const _cfb=document.getElementById('clearFilterBtn'); if(_cfb) _cfb.style.display='none';
   }
 };
 
@@ -56,8 +58,14 @@ document.getElementById('cClearFilterBtn').addEventListener('click', ()=>{
 // C-screen keyboard handler
 document.addEventListener('keydown', e => {
   if (!_cMode) return;
-  const tag=document.activeElement?.tagName;
-  if (tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  const ae=document.activeElement;
+  const tag=ae?.tagName;
+  // (dev0379) Also bail in a contentEditable host (the Xe editor for ctxt is a
+  // contentEditable DIV, not an INPUT) and whenever the Xe overlay owns the
+  // keyboard — otherwise typing 't'/'g'/'m' there leaked through to the
+  // C-screen shortcuts (e.g. 't' closed C and popped the table mid-edit).
+  if (tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||ae?.isContentEditable) return;
+  if (document.getElementById('textEditorOverlay')) return;
   // (zip0186) Esc no longer closes C — use T or G hotkeys.
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase()==='t') { e.preventDefault(); closeCScreen(); return; }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase()==='g') { e.preventDefault(); closeCScreen(); gridShow(); return; }
@@ -470,6 +478,12 @@ async function _showShareableMenu() {
   greetTop = _balanceHtml(greetTop);
   greetIntro = _balanceHtml(greetIntro);
 
+  // (dev0379) "Other" page — free-form HTML from the c.json config row whose
+  // gname is "other", in its `ctxt` field. Re-read every open (whole function
+  // re-fetches c.json), so editing that ctxt in C updates the page next visit.
+  const otherCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'other');
+  const otherHtml = _balanceHtml(otherCfg ? String(otherCfg.ctxt || '') : '');
+
   // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
   // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
   // video → image). `slide` = HTML ftext with no link; `quiz` = JSON-ish
@@ -572,12 +586,15 @@ async function _showShareableMenu() {
     .filter(r => r && !r._salMeta && String(r.ttxt || '').trim() && !_isGreeting(r.ttxt) && r.UID != null)
     .map(r => ({ kind: 'v', uid: String(r.UID), html: String(r.ttxt),
                  summary: _smSummaryText(r.ttxt) || ('UID ' + r.UID),
-                 date: _smDateShort(r.DateModified), type: _smType(r) }));
+                 date: _smDateShort(r.DateModified), dmRaw: String(r.DateModified || ''),
+                 type: _smType(r) }));
   const gItems = cRows
-    .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname))
+    .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname)
+                 && String(g.gname).trim().toLowerCase() !== 'other')
     .map(g => ({ kind: 'ss', gname: String(g.gname).trim(), html: String(g.ctxt),
                  summary: _smSummaryText(g.ctxt) || String(g.gname).trim(),
-                 date: _smDateShort(g.DateModified), cells: Number(g.cells) || 0 }));
+                 date: _smDateShort(g.DateModified), dmRaw: String(g.DateModified || ''),
+                 cells: Number(g.cells) || 0 }));
   const items = vItems.concat(gItems);
 
   const ov = document.createElement('div');
@@ -592,7 +609,9 @@ async function _showShareableMenu() {
   // data-i so the handler maps it back to items[i]; opening it must NOT toggle
   // the <details> (the handler preventDefaults).
   const _smDetCard = (it, i) => {
-    const ico = it.kind === 'v' ? (_smBadge[it.type] || '🔗') : '▦';
+    // (dev0379) Every card now leads with a solid right-pointing triangle to
+    // signal "this is a details block" (replaces the per-type media icons).
+    const ico = '&#9654;';
     const tag = it.kind === 'v'
       ? '<span class="sm-tag">' + it.type + '</span>'
       : '<span class="sm-tag">' + (it.cells ? it.cells + ' cells' : 'grid') + '</span>';
@@ -607,10 +626,9 @@ async function _showShareableMenu() {
         + '<div class="sm-detbody smGreeting">' + _smDetailBody(it.html) + '</div>'
       + '</details>';
   };
-  // (dev0362) Two columns on desktop (Singles | Grids), stacked on phone.
+  // (dev0379) Cards are rendered (and sorted) into #smChooseBody by
+  // _smRenderChoose after mount, so no pre-joined column HTML is needed here.
   const _smNoItems = '<div style="padding:24px;color:#aa8;">No shareable items yet.</div>';
-  const vCardsHtml = vItems.map((it, i) => _smDetCard(it, i)).join('');
-  const gCardsHtml = gItems.map((it, i) => _smDetCard(it, vItems.length + i)).join('');
 
   // (dev0359/0361) Readable sans-serif greeting prose (now a CLASS so both
   // pages can use it), page-2 cards, and the bottom tab bar. `summary` headings
@@ -636,11 +654,20 @@ async function _showShareableMenu() {
     + '.sm-detsum::marker{content:"";}'
     + '.sm-detsum:hover{background:#15152a;}'
     + '.sm-detcard[open]>.sm-detsum{background:#15152a;}'
-    + '.sm-date{flex:none;font-size:11px;color:#9fb0c8;font-family:sans-serif;white-space:nowrap;}'
+    + '.sm-date{flex:none;width:120px;font-size:12px;color:#9fb0c8;font-family:sans-serif;white-space:nowrap;}'
     + '.sm-open{flex:none;font-family:sans-serif;font-size:12px;color:#cfe8ff;background:rgba(0,60,120,0.5);border:1px solid #4af;border-radius:6px;padding:5px 11px;cursor:pointer;white-space:nowrap;}'
     + '.sm-open:hover{background:rgba(0,80,150,0.7);}'
     + '.sm-detbody{padding:2px 22px 16px;}'
-    + '.sm-ico{font-size:24px;line-height:1;flex:none;width:30px;text-align:center;}'
+    // (dev0379) Sortable, table-like header for the choice list.
+    + '.sm-chhead{display:flex;align-items:center;gap:12px;padding:9px 22px;background:#0d0d1e;border-bottom:2px solid #2a3550;position:sticky;top:0;z-index:2;}'
+    + '.sm-chh-spacer{flex:none;width:30px;}'
+    + '.sm-chh{font-family:sans-serif;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#9fb0c8;background:none;border:none;cursor:pointer;padding:0;}'
+    + '.sm-chh:hover{color:#cfe8ff;}'
+    + '.sm-chh.on{color:#cfe8ff;}'
+    + '.sm-chh-name{flex:1;text-align:left;}'
+    + '.sm-chh-date{flex:none;width:120px;text-align:left;}'
+    + '.sm-chmax{max-width:760px;margin:0 auto;}'
+    + '.sm-ico{font-size:13px;line-height:1;flex:none;width:30px;text-align:center;color:#6aa6ff;}'
     + '.sm-name{flex:1;font-size:18px;}'
     + '.sm-tag{flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#fff;border:1px solid #3a4a6a;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
     + '.sm-sub{padding:9px 24px 5px;color:#cfe8ff;font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:#0d0d1e;}'
@@ -690,12 +717,24 @@ async function _showShareableMenu() {
       + '<div id="smPage2" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + (greetIntro.trim() ? '<div class="smGreeting">' + greetIntro + '</div>'
                              : '<div class="sm-sub">Choose a view</div>')
+        // (dev0379) Table-like, sortable list. Header columns Name / Modified
+        // sort on click (arrow shows direction); body re-renders via
+        // _smRenderChoose after mount. Defaults to Modified, newest at top.
         + (items.length
-            ? '<div class="sm-cols">'
-                + '<div class="sm-col">' + (vItems.length ? '<div class="sm-colhdr">Singles</div>' : '') + vCardsHtml + '</div>'
-                + '<div class="sm-col">' + (gItems.length ? '<div class="sm-colhdr">Grids</div>' : '') + gCardsHtml + '</div>'
+            ? '<div class="sm-chmax">'
+                + '<div class="sm-chhead">'
+                  + '<span class="sm-chh-spacer"></span>'
+                  + '<button class="sm-chh sm-chh-name" data-sort="name">Name<span class="sm-arrow"></span></button>'
+                  + '<button class="sm-chh sm-chh-date" data-sort="date">Modified<span class="sm-arrow"></span></button>'
+                + '</div>'
+                + '<div id="smChooseBody"></div>'
               + '</div>'
             : _smNoItems)
+      + '</div>'
+      // PAGE 4 — "Other": free-form HTML from the c.json "other" config's ctxt.
+      + '<div id="smPage4" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + (otherHtml.trim() ? '<div class="smGreeting">' + otherHtml + '</div>'
+                            : '<div class="sm-sub">Nothing here yet</div>')
       + '</div>'
       // PAGE 3 — search anywhere across all of T; result cards appear once the
       // match count drops below n (the Greeting row's MPix).
@@ -713,6 +752,7 @@ async function _showShareableMenu() {
     // header "‹ Welcome" button, so it's no longer a tab.
     + '<div class="sm-tabs">'
       + '<button class="sm-tab on" data-pg="2">Choose a view</button>'
+      + '<button class="sm-tab" data-pg="4">Other</button>'
       + '<button class="sm-tab" data-pg="3">Search</button>'
     + '</div>';
 
@@ -724,7 +764,7 @@ async function _showShareableMenu() {
   const _smTabBar = ov.querySelector('.sm-tabs');
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
-    [1, 2, 3].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
+    [1, 2, 3, 4].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     if (_smTabBar) _smTabBar.style.display = (n === 1) ? 'none' : 'flex';
@@ -768,7 +808,7 @@ async function _showShareableMenu() {
   //    Main Page (2). Welcome is a splash; HMenu-from-G / returns never re-show it.
   //  • else (very first entry) — show the Welcome splash and mark it seen.
   let _smStartPg;
-  if (window._smReturnPage === 2 || window._smReturnPage === 3) {
+  if (window._smReturnPage >= 2 && window._smReturnPage <= 4) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
     _smStartPg = 2;
@@ -793,24 +833,60 @@ async function _showShareableMenu() {
 
   // (dev0378) Launch happens via the "▶ Open" button on each <details> card.
   // preventDefault keeps the click from also toggling the card open/closed.
-  ov.querySelectorAll('#smPage2 .sm-open').forEach(el => {
-    el.addEventListener('click', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      const it = items[parseInt(el.dataset.i, 10)];
-      if (!it) return;
-      if (it.kind === 'v') {
-        _smOpenV(it.uid);
-      } else if (it.kind === 'ss') {
-        // (dev0360) A grid choice from W opens G ONLY — the user starts the
-        // slideshow from the hamburger when they want it. (dev0378) Now sourced
-        // by ctxt + gname, so open the config directly by name.
-        ov.remove();
-        window._fromShareableMenu = false;
-        _openConfigByName(it.gname);
-      }
+  // (dev0379) Single shared launcher; rebound on every sort re-render.
+  const _smLaunch = it => {
+    if (!it) return;
+    if (it.kind === 'v') {
+      _smOpenV(it.uid);
+    } else if (it.kind === 'ss') {
+      // (dev0360) A grid choice from W opens G ONLY — the user starts the
+      // slideshow from the hamburger when they want it. (dev0378) Now sourced
+      // by ctxt + gname, so open the config directly by name.
+      ov.remove();
+      window._fromShareableMenu = false;
+      _openConfigByName(it.gname);
+    }
+  };
+
+  // (dev0379) Sortable, table-like choice list. Header clicks toggle the sort
+  // key/direction; the body is re-rendered (and its Open buttons re-bound) each
+  // time. Default: Modified, newest at top.
+  let _smSortKey = 'date', _smSortDir = -1;
+  const _smRenderChoose = () => {
+    const body = ov.querySelector('#smChooseBody');
+    if (!body) return;
+    const arr = items.slice().sort((a, b) => {
+      let av, bv;
+      if (_smSortKey === 'name') { av = (a.summary || '').toLowerCase(); bv = (b.summary || '').toLowerCase(); }
+      else { av = a.dmRaw || ''; bv = b.dmRaw || ''; }
+      if (av < bv) return -1 * _smSortDir;
+      if (av > bv) return  1 * _smSortDir;
+      return 0;
+    });
+    body.innerHTML = arr.map(it => _smDetCard(it, items.indexOf(it))).join('');
+    ov.querySelectorAll('#smPage2 .sm-chh').forEach(h => {
+      const on = h.dataset.sort === _smSortKey;
+      h.classList.toggle('on', on);
+      const ar = h.querySelector('.sm-arrow');
+      if (ar) ar.textContent = on ? (_smSortDir < 0 ? ' ▾' : ' ▴') : '';
+    });
+    body.querySelectorAll('.sm-open').forEach(el => {
+      el.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        _smLaunch(items[parseInt(el.dataset.i, 10)]);
+      });
+    });
+  };
+  ov.querySelectorAll('#smPage2 .sm-chh').forEach(h => {
+    h.addEventListener('click', () => {
+      const k = h.dataset.sort;
+      if (_smSortKey === k) { _smSortDir *= -1; }
+      else { _smSortKey = k; _smSortDir = (k === 'date') ? -1 : 1; }
+      _smRenderChoose();
     });
   });
+  if (items.length) _smRenderChoose();
 
   // (dev0362) Search page — live anywhere-filter over all of T (precomputed
   // blobs), dictionary suggestions from tagsLib, a match count, and result

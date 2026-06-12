@@ -103,7 +103,6 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" data-cmd="justifyLeft" title="Left align">◀</button>
         <button class="te-btn" data-cmd="justifyCenter" title="Center">◆</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
-        <button class="te-btn" data-cmd="insertUnorderedList" title="Bullet list">•</button>
         <button class="te-btn" id="teCollapse" title="Insert empty collapsible section (opens; type a summary, then add anything inside — including images/tables)">▶…</button>
         <button class="te-btn" id="teWrap" title="Wrap current selection in a collapsible section — turns multi-line content, pictures, or tables into a hideable block">[▶…]</button>
         <button class="te-btn" id="teWrap2" title="Wrap selection as a collapsible, split into title + detail — the FIRST line becomes the click-to-expand summary, the remaining lines become the hidden body">[[2]]</button>
@@ -138,7 +137,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
       </div>
 
       <div style="padding:8px 16px; color:#556; font-size:11px; border-top:1px solid #333;">
-        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · Swipe ← title bar = save+close · Shift+Enter new collapsible · Ctrl+Enter exit current collapsible (blank line after) · ⋮⋮ handle = select block for cut
+        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · Swipe ← title bar = save+close · Shift+Enter new collapsible · Ctrl+Enter blank line AFTER block · Ctrl+Shift+Enter blank line BEFORE block · ⋮⋮ handle = select block for cut
       </div>
     </div>
   `;
@@ -192,18 +191,23 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor a, #teSlideContent a { color:#5bf !important; }
     /* (dev0246) Summary text/links — explicit color so anchors-only summaries
        don't render as black-on-dark in any preview context. */
-    #teEditor summary, #teEditor summary a,
+    /* (dev0379) Editor view: uniform WHITE text at one size for the summary,
+       every detail line, and any text outside a details block. Headings keep
+       their meaning in the saved HTML and in the rendered slide/site — this only
+       flattens how they LOOK while editing ("for now", per the user). Only
+       #teEditor is touched; the #teSlideContent preview keeps its own styling. */
     #teSlideContent summary, #teSlideContent summary a { color:#8ef !important; }
-    #teEditor h1 { font-size:28px; color:#ff8; margin:0 0 12px; }
-    #teEditor h2 { font-size:22px; color:#8ef; margin:0 0 10px; }
-    /* (dev0341) Smaller heading levels + <small> for fine size control. */
-    #teEditor h3 { font-size:19px; color:#9ef; margin:0 0 8px; }
-    #teEditor h4 { font-size:17px; color:#adf; margin:0 0 6px; }
-    #teEditor h5 { font-size:15px; color:#bdf; margin:0 0 6px; }
-    #teEditor h6 { font-size:13px; color:#cdf; margin:0 0 6px; }
-    #teEditor small, #teSlideContent small { font-size:0.8em; opacity:0.85; }
+    #teEditor h1, #teEditor h2, #teEditor h3, #teEditor h4, #teEditor h5, #teEditor h6,
+    #teEditor p, #teEditor div, #teEditor summary, #teEditor li, #teEditor span {
+      font-size:18px !important; font-weight:normal !important; color:#fff !important;
+    }
+    #teEditor h1, #teEditor h2, #teEditor h3, #teEditor h4, #teEditor h5, #teEditor h6 { margin:0 0 8px; }
+    #teEditor a, #teEditor summary a { color:#5bf !important; }
+    #teSlideContent small { font-size:0.8em; opacity:0.85; }
     #teEditor p { margin:0 0 8px; }
-    #teEditor ul { margin:8px 0; padding-left:24px; }
+    /* (dev0379) No bullets — not needed and they disrupt formatting. */
+    #teEditor ul, #teEditor ol { list-style:none !important; margin:8px 0; padding-left:0 !important; }
+    #teEditor li { list-style:none !important; margin:0 0 4px; }
     /* (dev0360) ══ divider line */
     #teEditor hr, #teSlideContent hr { border:none; border-top:2px solid #4a5a7a; margin:16px 0; height:0; }
     #teEditor details { margin:8px 0; padding:8px 8px 8px 28px; background:#111; border-left:3px solid #06f;
@@ -234,7 +238,9 @@ function gridOpenTextEditor(cellStr, row, opts) {
       padding:2px 8px; border-radius:4px; font-size:10px;
       font-family:monospace; cursor:pointer; user-select:none;
     }
-    #teEditor summary { cursor:pointer; color:#8ef; font-weight:bold; padding:4px 0;
+    /* (dev0379) Summary now matches detail lines (white, normal weight, same
+       size — set in the uniform rule above). Keep it clickable + a hit area. */
+    #teEditor summary { cursor:pointer; padding:4px 0;
       min-height:1.2em; white-space:pre-wrap; }
     #teEditor summary:empty::before { content:'Click to expand — type summary here'; color:#558; font-weight:normal; font-style:italic; }
     #teEditor summary::-webkit-details-marker { color:#06f; }
@@ -817,7 +823,33 @@ function gridOpenTextEditor(cellStr, row, opts) {
       }
     }
 
-    // (c) Ctrl+Enter / Alt+Enter — exit the enclosing <details>
+    // (c0) Ctrl/Alt+Shift+Enter — insert an empty line ABOVE the enclosing
+    // <details>. (dev0379) Solves the "can't type above a details block sitting
+    // at the very top of the editor" problem: there's no preceding node to click
+    // into, and Enter is reserved for collapse/navigation. Mirror of (c) below.
+    if ((e.ctrlKey || e.altKey) && e.shiftKey) {
+      let n = range.startContainer, details = null;
+      while (n && n !== ed) {
+        if (n.nodeType === 1 && n.tagName === 'DETAILS') details = n;
+        n = n.parentNode;
+      }
+      // Climb to the top-level <details> (a direct child of the editor).
+      let top = details;
+      while (top && top.parentNode && top.parentNode !== ed) top = top.parentNode;
+      if (top && top.parentNode === ed) {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        const p = document.createElement('p');
+        p.appendChild(document.createElement('br'));
+        ed.insertBefore(p, top);
+        const r = document.createRange();
+        r.setStart(p, 0); r.collapse(true);
+        sel.removeAllRanges(); sel.addRange(r);
+        return;
+      }
+    }
+
+    // (c) Ctrl+Enter / Alt+Enter — exit the enclosing <details> (line BELOW it)
     if ((e.ctrlKey || e.altKey) && !e.shiftKey) {
       let n = range.startContainer;
       let details = null;
