@@ -232,6 +232,20 @@ window.addEventListener('keydown', function(e) {
 
   const k = e.key.toLowerCase();
 
+  // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
+  // Only when the grid overlay is open; otherwise falls through so bare 'c'
+  // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled
+  // here because the dispatcher below lowercases the key, losing the Shift.
+  if (k === 'c' && e.shiftKey) {
+    const gOpen = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const gFs   = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpen && !gFs) {
+      e.preventDefault(); e.stopPropagation();
+      if (window._gridToggleCaptions) window._gridToggleCaptions();
+      return false;
+    }
+  }
+
   // Shift-F = clear all filters instantly (T-view only, not inside text input)
   if (k === 'f' && e.shiftKey) {
     e.preventDefault(); e.stopPropagation();

@@ -3559,18 +3559,20 @@ window._executeHotkey = function(key) {
     return;
   }
 
-  // Shift+C (dev0375) = toggle captions on all YT/Vimeo cells when grid is open
-  if (key === 'C' && gridOpen) {
-    if (window._gridToggleCaptions) window._gridToggleCaptions();
-    return;
-  }
-
-  // c = Collection screen (c.json)
+  // c = Collection screen (c.json). (dev0376) Caption toggle moved to Shift+C,
+  // handled in core.js before the key is lowercased.
   if (key === 'c') {
     if (teOpen) return;
     if (tgOpen) { closeCScreen(); return; } // toggle off
     // Close any open overlays first
     if (vpOpen) vpClose();
+    // (dev0376) Close the grid overlay too — openCScreen() doesn't hide it, so
+    // entering C from the grid would otherwise leave C-mode rendered underneath
+    // the still-visible full-screen grid overlay (looked like 'c' did nothing).
+    if (gridOpen) {
+      const gOvl = document.getElementById('gridOverlay');
+      if (gOvl) gOvl.style.display = 'none';
+    }
     if (veOpen) {
       const cb = document.getElementById('v2close');
       if (cb) cb.click();
