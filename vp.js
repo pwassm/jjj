@@ -3559,16 +3559,16 @@ window._executeHotkey = function(key) {
     return;
   }
 
-  // C = Collection screen (c.json) — or, when grid is open, toggle captions
+  // Shift+C (dev0375) = toggle captions on all YT/Vimeo cells when grid is open
+  if (key === 'C' && gridOpen) {
+    if (window._gridToggleCaptions) window._gridToggleCaptions();
+    return;
+  }
+
+  // c = Collection screen (c.json)
   if (key === 'c') {
     if (teOpen) return;
     if (tgOpen) { closeCScreen(); return; } // toggle off
-    // (dev0375) When the grid is open, C toggles captions on all YT/Vimeo cells
-    // instead of navigating to the Collection screen (use T→C to reach it).
-    if (gridOpen) {
-      if (window._gridToggleCaptions) window._gridToggleCaptions();
-      return;
-    }
     // Close any open overlays first
     if (vpOpen) vpClose();
     if (veOpen) {
