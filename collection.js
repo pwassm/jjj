@@ -201,14 +201,18 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0374) MovingCells "ring conveyor" screensaver — see movingcells.js.
-  //   r        → toggle the rotation on/off
-  //   {  /  }  → slower / faster move (Shift+[ / Shift+]); pause is fixed at 2s
+  // (dev0374) MovingCells "ring conveyor" + (dev0385) FlyCells "click-to-fling".
+  // Two grid "moving cells" toys share the R key:
+  //   r        → FlyCells: enter fling mode (click cells → random spots);
+  //              r again resets flung cells to base, a 3rd r exits. (flycells.js)
+  //   Shift+R  → MovingCells: toggle the ring-conveyor screensaver. (movingcells.js)
+  //   {  /  }  → conveyor slower / faster (Shift+[ / Shift+]); pause fixed at 2s.
   // Bare/Shift keys only; checked before the [ ] zoom keys so the Shift variants
-  // don't fall through to them. Whole feature is removable with movingcells.js.
+  // don't fall through to them. Each toy is independently removable.
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
     e.preventDefault(); e.stopPropagation();
-    if (window.MovingCells) window.MovingCells.toggle();
+    if (e.shiftKey) { if (window.MovingCells) window.MovingCells.toggle(); }
+    else            { if (window.FlyCells)    window.FlyCells.toggle(); }
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '{' || (e.shiftKey && e.code === 'BracketLeft'))) {
