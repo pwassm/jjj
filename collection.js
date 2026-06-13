@@ -201,19 +201,48 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0374) MovingCells "ring conveyor" + (dev0385) FlyCells "click-to-fling".
-  // Two grid "moving cells" toys share the R key:
-  //   r        → FlyCells: enter fling mode (click cells → random spots);
-  //              r again resets flung cells to base, a 3rd r exits. (flycells.js)
-  //   Shift+R  → MovingCells: toggle the ring-conveyor screensaver. (movingcells.js)
+  // (dev0374/0386) Grid "moving cells" toys — a small family sharing one system:
+  //   r        → MASTER toggle. Off → start the ring CONVEYOR (movingcells.js,
+  //              the base mode). On (any mode) → stop everything, back to base.
+  //   1..9     → while a mode is running, the NUMBER keys pick a VARIANT:
+  //                1 = FlyCells click-to-fly (flycells.js); pressing 1 again
+  //                    flips back to the conveyor. 2-9 reserved (toast for now).
+  //              These are SWALLOWED only while moving — otherwise 2-5 fall
+  //              through to core.js as the grid-size keys (1 is unused there).
   //   {  /  }  → conveyor slower / faster (Shift+[ / Shift+]); pause fixed at 2s.
-  // Bare/Shift keys only; checked before the [ ] zoom keys so the Shift variants
-  // don't fall through to them. Each toy is independently removable.
+  // Checked before the [ ] zoom keys so the Shift variants don't fall through.
+  function _gmAnyMoving() {
+    return (window.MovingCells && window.MovingCells.running) ||
+           (window.FlyCells && window.FlyCells.active);
+  }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
     e.preventDefault(); e.stopPropagation();
-    if (e.shiftKey) { if (window.MovingCells) window.MovingCells.toggle(); }
-    else            { if (window.FlyCells)    window.FlyCells.toggle(); }
+    if (_gmAnyMoving()) {
+      window.MovingCells && window.MovingCells.stop && window.MovingCells.stop(true);
+      window.FlyCells    && window.FlyCells.stop    && window.FlyCells.stop();
+      if (typeof toast === 'function') toast('■ Moving cells OFF', 1300);
+    } else if (window.MovingCells) {
+      window.MovingCells.start();
+    }
     return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key >= '1' && e.key <= '9') {
+    if (_gmAnyMoving()) {
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === '1') {
+        if (window.FlyCells && window.FlyCells.active) {
+          window.FlyCells.stop();
+          if (window.MovingCells) window.MovingCells.start();
+        } else {
+          window.MovingCells && window.MovingCells.stop && window.MovingCells.stop(true);
+          if (window.FlyCells) window.FlyCells.start();
+        }
+      } else if (typeof toast === 'function') {
+        toast('Variant ' + e.key + ' not built yet — 1 = click-to-fly · r exits', 2200);
+      }
+      return;
+    }
+    // not in a moving mode → let 2-5 reach core.js's grid-size handler
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '{' || (e.shiftKey && e.code === 'BracketLeft'))) {
     e.preventDefault(); e.stopPropagation();
