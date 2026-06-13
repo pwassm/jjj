@@ -391,6 +391,18 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   PREROLL = Math.max(0.5, Math.min(12, PREROLL));   // (dev0388) ceiling 10→12 for slow/Shorts chrome
   var FADE_MS = transition === 'fade' ? 420 : 0;
 
+  // (dev0390) AUDIBLE warm-up (experimental, default OFF — gridBufferAudible).
+  // Browsers SUSPEND muted media that isn't visible but keep decoding AUDIBLE
+  // media even when hidden/occluded. dev0389 proved that occlusion alone doesn't
+  // keep a MUTED YT iframe decoding in the wild (reload-spinner persisted), so as
+  // a last resort we let the buffered players play UNMUTED — the browser then
+  // genuinely buffers the hidden warm-up. Silence is the USER's job (system/tab
+  // volume to 0); audible cells make this a personal/dev feature, not for the
+  // public site. Toggle: gridToggleBufferAudible (Ctrl+Shift+B in G).
+  var AUDIBLE = (typeof window.getSetting === 'function')
+    && (window.getSetting('gridBufferAudible') === true || window.getSetting('gridBufferAudible') === '1');
+  if (AUDIBLE) isMuted = false;   // override the grid's always-muted policy
+
   var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
   var _ytHost = _ytPrivacy === 'nocookie' ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
 
@@ -449,7 +461,8 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
         },
         events: {
           onReady: function(e) {
-            if (isMuted) e.target.mute(); else e.target.unMute();
+            if (isMuted) { e.target.mute(); }
+            else { e.target.unMute(); try { e.target.setVolume(100); } catch (_) {} }  // (dev0390) audible warm-up
             layer.ready = true;
             resolve(e.target);
           }
