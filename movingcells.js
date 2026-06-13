@@ -5,8 +5,10 @@
 //
 // CONCEPT: the 16-cell outer ring of a 5-footprint grid (square 5×5, or layouts
 // 17 / 19) rotates CLOCKWISE one whole edge (4 tiles) at a time, pausing between
-// edges. One ring cell must start EMPTY — that hole travels counter-clockwise
-// corner-to-corner and is what the rotation slides into. With the empty at 5e the
+// edges. A ring cell may start EMPTY — that hole travels counter-clockwise
+// corner-to-corner and is what the rotation slides into. (dev0383) If no cell is
+// empty the conveyor still runs: 5e becomes the mover, gliding to 1e and around
+// the ring just like a hole would. With the empty (or mover) at 5e the
 // motion is exactly:
 //     move 1  right edge   1e2e3e4e → 2e3e4e5e   (empty lands on 1e)
 //     move 2  top edge     1a1b1c1d → 1b1c1d1e   (empty lands on 1a)
@@ -160,7 +162,10 @@
     if (!DESKTOP) { toast('Moving cells is desktop-only (too heavy for phones)', 2200); return; }
     if (!eligibleLayout()) { toast('Moving cells needs a 5×5, 17 or 19 grid', 2200); return; }
     if (!buildElemAt()) { toast('Grid still drawing — try again in a moment', 1800); return; }
-    if (gapIdx < 0) { toast('Leave one ring cell empty (e.g. 5e) for the conveyor to slide into', 2800); return; }
+    // (dev0383) No empty cell? Run anyway: seed the gap at 5e so that cell itself
+    // becomes the mover — it glides 5e→1e and on counter-clockwise around the ring
+    // exactly as a blank hole would, every ring tile shifting one slot per edge.
+    if (gapIdx < 0) gapIdx = RING.indexOf('5e');
 
     running = true;
     pinAll();

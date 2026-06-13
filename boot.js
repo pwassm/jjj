@@ -602,6 +602,18 @@ async function _showShareableMenu() {
                  cells: Number(g.cells) || 0 }));
   const items = vItems.concat(gItems);
 
+  // (dev0383) Navigation-Training choices — a SECOND choice table, identical in
+  // shape to "Choose a view" but sourced from each config row's `ss` field
+  // (editable in C exactly like ctxt). Each ss block supplies the card label
+  // (its <summary>) and body, and opens its grid by gname — same as a grid item.
+  const navItems = cRows
+    .filter(g => g && !g._salMeta && String(g.ss || '').trim() && g.gname && !_isGreeting(g.gname)
+                 && String(g.gname).trim().toLowerCase() !== 'other')
+    .map(g => ({ kind: 'ss', gname: String(g.gname).trim(), html: String(g.ss),
+                 summary: _smSummaryText(g.ss) || String(g.gname).trim(),
+                 date: _smDateShort(g.DateModified), dmRaw: String(g.DateModified || ''),
+                 cells: Number(g.cells) || 0 }));
+
   const ov = document.createElement('div');
   ov.id = 'shareableMenu';
   ov.style.cssText = 'position:fixed;inset:0;z-index:999990;background:#0a0a1a;'
@@ -782,6 +794,28 @@ async function _showShareableMenu() {
         + '<div id="smCount" class="sm-count"></div>'
         + '<div id="smResults" class="sm-results"></div>'
       + '</div>'
+      // PAGE 5 — "Navigation Training": same sortable choice table as page 2,
+      // but built from the config rows' `ss` field instead of `ctxt`.
+      + '<div id="smPage5" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + (navItems.length
+            ? '<div class="sm-chmax">'
+                + '<div class="sm-chtools">'
+                  + '<div class="sm-chfwrap">'
+                    + '<input id="smNavFilter" class="sm-chfilter" type="text" placeholder="Filter choices…" autocomplete="off">'
+                    + '<button id="smNavClear" class="sm-chclear" type="button">Clear filter</button>'
+                  + '</div>'
+                  + '<button id="smNavExpandAll" class="sm-chbtn">▼ Expand all</button>'
+                  + '<button id="smNavCollapseAll" class="sm-chbtn">▶ Collapse all</button>'
+                + '</div>'
+                + '<div class="sm-chhead">'
+                  + '<span class="sm-chh-spacer"></span>'
+                  + '<button class="sm-chh sm-chh-name" data-sort="name">Name<span class="sm-arrow"></span></button>'
+                  + '<button class="sm-chh sm-chh-date" data-sort="date">Modified<span class="sm-arrow"></span></button>'
+                + '</div>'
+                + '<div id="smNavBody"></div>'
+              + '</div>'
+            : _smNoItems)
+      + '</div>'
     + '</div>'
     // (dev0366) Two-tab bar — Welcome is now a standalone page reached via the
     // header "‹ Welcome" button, so it's no longer a tab.
@@ -789,6 +823,7 @@ async function _showShareableMenu() {
       + '<button class="sm-tab on" data-pg="2">Choose a view</button>'
       + '<button class="sm-tab" data-pg="3">Search</button>'
       + '<button class="sm-tab" data-pg="4">Other</button>'
+      + '<button class="sm-tab" data-pg="5">Navigation Training</button>'
     + '</div>';
 
   document.body.appendChild(ov);
@@ -799,7 +834,7 @@ async function _showShareableMenu() {
   const _smTabBar = ov.querySelector('.sm-tabs');
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
-    [1, 2, 3, 4].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
+    [1, 2, 3, 4, 5].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     if (_smTabBar) _smTabBar.style.display = (n === 1) ? 'none' : 'flex';
@@ -843,7 +878,7 @@ async function _showShareableMenu() {
   //    Main Page (2). Welcome is a splash; HMenu-from-G / returns never re-show it.
   //  • else (very first entry) — show the Welcome splash and mark it seen.
   let _smStartPg;
-  if (window._smReturnPage >= 2 && window._smReturnPage <= 4) {
+  if (window._smReturnPage >= 2 && window._smReturnPage <= 5) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
     _smStartPg = 2;
@@ -956,6 +991,72 @@ async function _showShareableMenu() {
   if (_smExpA) _smExpA.addEventListener('click', () => _smSetAllOpen(true));
   const _smColA = ov.querySelector('#smCollapseAll');
   if (_smColA) _smColA.addEventListener('click', () => _smSetAllOpen(false));
+
+  // (dev0383) Navigation-Training choice table — a self-contained mirror of the
+  // page-2 list, with its own sort/filter state, over `navItems` (the `ss`
+  // source). Reuses _smDetCard / _smLaunch (kind 'ss' opens the grid by gname).
+  let _smNavSortKey = 'date', _smNavSortDir = -1, _smNavFilter = '';
+  const _smRenderNav = () => {
+    const body = ov.querySelector('#smNavBody');
+    if (!body) return;
+    let arr = navItems.slice().sort((a, b) => {
+      let av, bv;
+      if (_smNavSortKey === 'name') { av = (a.summary || '').toLowerCase(); bv = (b.summary || '').toLowerCase(); }
+      else { av = a.dmRaw || ''; bv = b.dmRaw || ''; }
+      if (av < bv) return -1 * _smNavSortDir;
+      if (av > bv) return  1 * _smNavSortDir;
+      return 0;
+    });
+    if (_smNavFilter) arr = arr.filter(it =>
+      ((it.summary || '') + ' ' + (it.html || '')).toLowerCase().includes(_smNavFilter));
+    if (!arr.length) { body.innerHTML = '<div class="sm-chnone">No matches.</div>'; return; }
+    body.innerHTML = arr.map(it => _smDetCard(it, navItems.indexOf(it))).join('');
+    ov.querySelectorAll('#smPage5 .sm-chh').forEach(h => {
+      const on = h.dataset.sort === _smNavSortKey;
+      h.classList.toggle('on', on);
+      const ar = h.querySelector('.sm-arrow');
+      if (ar) ar.textContent = on ? (_smNavSortDir < 0 ? ' ▾' : ' ▴') : '';
+    });
+    body.querySelectorAll('.sm-open').forEach(el => {
+      el.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        _smLaunch(navItems[parseInt(el.dataset.i, 10)]);
+      });
+    });
+  };
+  ov.querySelectorAll('#smPage5 .sm-chh').forEach(h => {
+    h.addEventListener('click', () => {
+      const k = h.dataset.sort;
+      if (_smNavSortKey === k) { _smNavSortDir *= -1; }
+      else { _smNavSortKey = k; _smNavSortDir = (k === 'date') ? -1 : 1; }
+      _smRenderNav();
+    });
+  });
+  if (navItems.length) _smRenderNav();
+  const _smNavFilt = ov.querySelector('#smNavFilter');
+  const _smNavClear = ov.querySelector('#smNavClear');
+  if (_smNavFilt) _smNavFilt.addEventListener('input', () => {
+    _smNavFilter = _smNavFilt.value.trim().toLowerCase();
+    _smRenderNav();
+  });
+  if (_smNavFilt && _smNavClear) {
+    _smNavFilt.addEventListener('keydown', e => {
+      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smNavClear.focus(); }
+    });
+    _smNavClear.addEventListener('keydown', e => {
+      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smNavFilt.focus(); }
+    });
+    _smNavClear.addEventListener('click', () => {
+      _smNavFilt.value = ''; _smNavFilter = ''; _smRenderNav(); _smNavFilt.focus();
+    });
+  }
+  const _smNavSetAllOpen = open => ov.querySelectorAll('#smNavBody details.sm-detcard')
+    .forEach(d => { d.open = open; });
+  const _smNavExpA = ov.querySelector('#smNavExpandAll');
+  if (_smNavExpA) _smNavExpA.addEventListener('click', () => _smNavSetAllOpen(true));
+  const _smNavColA = ov.querySelector('#smNavCollapseAll');
+  if (_smNavColA) _smNavColA.addEventListener('click', () => _smNavSetAllOpen(false));
 
   // (dev0362) Search page — live anywhere-filter over all of T (precomputed
   // blobs), dictionary suggestions from tagsLib, a match count, and result

@@ -3404,9 +3404,11 @@ window._executeHotkey = function(key) {
     // instead of the row's default media/ftext editor. The C-screen reuses the
     // same table engine, so `focus`/visCols() resolve against _cData in _cMode
     // and the editor's save() routes to c.json via the boot.js patch.
+    // (dev0383) C's `ss` field edits in the SAME editor (Navigation-Training
+    // source — parallel to ctxt's "Choose a view" choices).
     if (!gridOpen && focus !== null && typeof visCols === 'function') {
       const _fcol = visCols()[focus.c];
-      if (_fcol === 'ttxt' || _fcol === 'ctxt') {
+      if (_fcol === 'ttxt' || _fcol === 'ctxt' || _fcol === 'ss') {
         if (vpOpen) vpClose();
         const _tdi = vr(focus.r);
         const _trow = (_tdi >= 0 && _tdi < data.length) ? data[_tdi] : null;

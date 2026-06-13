@@ -1836,7 +1836,7 @@ function _tMeasureRowH() {
 // tags (the full markup stays in the tooltip, and inline/Xe editing still reads
 // the raw row value — see startEdit). This is a per-visible-cell string op on a
 // windowed table (~a screenful of rows), so it adds no measurable render cost.
-const _RICH_PREVIEW_COLS = new Set(['ftext', 'ttxt', 'ctxt']);
+const _RICH_PREVIEW_COLS = new Set(['ftext', 'ttxt', 'ctxt', 'ss']);
 function _richCellPreview(html) {
   let s = String(html || '');
   if (!s) return '';
