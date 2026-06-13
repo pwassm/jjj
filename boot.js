@@ -721,16 +721,25 @@ async function _showShareableMenu() {
     + '.sm-tabs{display:flex;flex:none;border-top:2px solid #223;background:#0d0d1e;}'
     + '.sm-tab{flex:1;padding:13px 4px;text-align:center;cursor:pointer;font-family:sans-serif;font-size:14px;color:#8a93a8;background:transparent;border:none;border-top:3px solid transparent;}'
     + '.sm-tab.on{color:#cfe8ff;border-top-color:#4af;background:#11132a;}'
+    + '.sm-tab:focus{outline:none;color:#fff;background:#172142;}'
+    // (dev0384) The tab bar now also rides at the TOP of every menu page (the
+    // old "SeaLifeAndMore" header is gone). Flip the accent rule to the bottom
+    // edge so the active indicator sits against the page on the top bar.
+    + '.sm-tabs-top{border-top:none;border-bottom:2px solid #223;}'
     + '</style>';
 
+  // (dev0384) One set of tab buttons, rendered both above and below the pages.
+  // _smShow syncs the `.on` class across every `.sm-tab`, so the two bars stay
+  // in lockstep automatically.
+  const _tabBtns =
+      '<button class="sm-tab" data-pg="2">Choices</button>'
+    + '<button class="sm-tab" data-pg="3">Search</button>'
+    + '<button class="sm-tab" data-pg="4">Other</button>'
+    + '<button class="sm-tab" data-pg="5">Navigation Training</button>';
+
   ov.innerHTML = menuStyle
-    + '<div style="display:flex;align-items:center;padding:14px 16px;flex:none;'
-      + 'background:#1a1a2e;border-bottom:2px solid #4af;">'
-      // (dev0368) The Welcome page is now a one-time splash shown only on first
-      // entry — nothing navigates back to it — so the old "‹ Welcome" back
-      // button was removed. All returns land on the Main Page (Choose a view).
-      + '<span style="color:#8ef;font-weight:bold;flex:1;font-size:15px;">SeaLifeAndMore</span>'
-    + '</div>'
+    // (dev0384) Top tab bar — replaces the former header (there is no header now).
+    + '<div class="sm-tabs sm-tabs-top">' + _tabBtns + '</div>'
     + '<div style="flex:1;position:relative;overflow:hidden;">'
       // PAGE 1 — welcome / landing (greeting prose before the first <hr>).
       // (dev0366) Standalone page with a "Choose a view" button at BOTH the
@@ -817,31 +826,62 @@ async function _showShareableMenu() {
             : _smNoItems)
       + '</div>'
     + '</div>'
-    // (dev0366) Two-tab bar — Welcome is now a standalone page reached via the
-    // header "‹ Welcome" button, so it's no longer a tab.
-    + '<div class="sm-tabs">'
-      + '<button class="sm-tab on" data-pg="2">Choose a view</button>'
-      + '<button class="sm-tab" data-pg="3">Search</button>'
-      + '<button class="sm-tab" data-pg="4">Other</button>'
-      + '<button class="sm-tab" data-pg="5">Navigation Training</button>'
-    + '</div>';
+    // (dev0384) Bottom tab bar — same buttons as the top one.
+    + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>';
 
   document.body.appendChild(ov);
 
   // (dev0361/0362/0366/0368) Nav. Welcome (page 1) is a one-time splash shown
-  // only on first entry; its tab bar is hidden. The 2-tab bar (Choose a view /
-  // Search) — the "Main Page" — is shown on pages 2–3 and is where all returns land.
-  const _smTabBar = ov.querySelector('.sm-tabs');
+  // only on first entry; both tab bars are hidden there. Pages 2–5 each carry
+  // the tab bar at top AND bottom and are where all returns land.
+  // (dev0384) `.on` is synced across BOTH bars; the last tab the viewer used is
+  // remembered in window._smLastTab so a reopen lands back on it.
+  const _smTabOrder = [2, 3, 4, 5];
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
+    if (n >= 2) window._smLastTab = n; // (dev0384) remember the last tab used
     [1, 2, 3, 4, 5].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
-    if (_smTabBar) _smTabBar.style.display = (n === 1) ? 'none' : 'flex';
-    if (n === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
+    ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = (n === 1) ? 'none' : 'flex');
   };
+  // (dev0384) Focus the active tab button on the TOP bar — used on open and on
+  // every Tab-key hop so keyboard cycling stays anchored to the tab row.
+  const _smFocusTab = n => { const b = ov.querySelector('.sm-tabs-top .sm-tab[data-pg="' + n + '"]'); if (b) b.focus(); };
+  // Tab click → show that page. Search focuses its box (mouse users type
+  // immediately); every other tab keeps focus on the tab for keyboard cycling.
   ov.querySelectorAll('.sm-tab').forEach(t =>
-    t.addEventListener('click', () => _smShow(parseInt(t.dataset.pg, 10) || 2)));
+    t.addEventListener('click', () => {
+      const pg = parseInt(t.dataset.pg, 10) || 2;
+      _smShow(pg);
+      if (pg === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
+      else t.focus();
+    }));
+  // (dev0384) Keyboard: Tab hops to the next tab (Shift+Tab the previous),
+  // wrapping after the last, and opens that page immediately. `f` jumps focus to
+  // the live filter on Choices (and, by the same token, on Navigation Training).
+  // Skipped while focus is inside a field or the filter toolbar, which own Tab
+  // for their own filter↔Clear cycle.
+  ov.addEventListener('keydown', e => {
+    const ae = document.activeElement;
+    const inField = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
+    if (!inField && (e.key === 'f' || e.key === 'F')) {
+      const fid = window._smCurPage === 2 ? '#smChFilter' : (window._smCurPage === 5 ? '#smNavFilter' : null);
+      if (fid) { const fi = ov.querySelector(fid); if (fi) { e.preventDefault(); e.stopPropagation(); fi.focus(); return; } }
+    }
+    if (e.key === 'Tab') {
+      if (inField) return;
+      if (ae && ae.closest && ae.closest('.sm-chtools')) return; // filter/Clear own Tab here
+      const idx = _smTabOrder.indexOf(window._smCurPage);
+      if (idx < 0) return; // Welcome / unknown — leave default tabbing
+      e.preventDefault(); e.stopPropagation();
+      const next = e.shiftKey
+        ? _smTabOrder[(idx - 1 + _smTabOrder.length) % _smTabOrder.length]
+        : _smTabOrder[(idx + 1) % _smTabOrder.length];
+      _smShow(next);
+      _smFocusTab(next);
+    }
+  });
   // Welcome → Main Page (both the top and bottom "Choose a view" buttons).
   const _smGo = ov.querySelector('#smGoView');
   if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
@@ -871,23 +911,27 @@ async function _showShareableMenu() {
     if (_filtMedia) _lbls.push('image & video only');
     _smFiltNote.textContent = _lbls.length ? 'Filtered: ' + _lbls.join(' · ') : '';
   }
-  // (dev0368) Pick the landing page:
-  //  • _smReturnPage (2|3) — a one-shot set when returning from a V selection;
-  //    reopens the exact tab the viewer left (Choose a view / Search).
-  //  • else if Welcome was already shown once this session — go straight to the
-  //    Main Page (2). Welcome is a splash; HMenu-from-G / returns never re-show it.
+  // (dev0368/0384) Pick the landing page:
+  //  • _smReturnPage (2–5) — a one-shot set when returning from a V item or a
+  //    grid (Esc / swipe). Reopens the exact tab the viewer left.
+  //  • else if Welcome was already shown once this session — open on the LAST tab
+  //    the viewer used (window._smLastTab), defaulting to Choices (2). Coming
+  //    straight from Welcome sets _smLastTab=2 via its "Choose a view" button, so
+  //    the first hop after Welcome always lands on Choices.
   //  • else (very first entry) — show the Welcome splash and mark it seen.
   let _smStartPg;
   if (window._smReturnPage >= 2 && window._smReturnPage <= 5) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
-    _smStartPg = 2;
+    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 5) ? window._smLastTab : 2;
   } else {
     _smStartPg = 1;
   }
   window._smReturnPage = undefined;
   if (_smStartPg === 1) window._smWelcomeSeen = true;
   _smShow(_smStartPg);
+  // (dev0384) Open focused on the tab so Tab-cycling works immediately.
+  if (_smStartPg >= 2) setTimeout(() => _smFocusTab(_smStartPg), 40);
 
   // Open a single T item as V over a forced G backdrop, routing vpClose back to
   // this menu via _fromShareableMenu. Shared by the choice cards AND search
@@ -912,6 +956,9 @@ async function _showShareableMenu() {
       // (dev0360) A grid choice from W opens G ONLY — the user starts the
       // slideshow from the hamburger when they want it. (dev0378) Now sourced
       // by ctxt + gname, so open the config directly by name.
+      // (dev0384) Remember the tab we launched from so Esc / swipe on the grid
+      // returns to THIS menu page (see _returnToMenuFromGrid + collection.js Esc).
+      window._smReturnPage = window._smCurPage;
       ov.remove();
       window._fromShareableMenu = false;
       _openConfigByName(it.gname);
@@ -1097,6 +1144,22 @@ async function _showShareableMenu() {
   if (_smBox) _smBox.addEventListener('input', _smRunSearch);
 }
 window._showShareableMenu = _showShareableMenu;
+
+// (dev0384) Leave a grid that was opened from the shareable menu and re-mount
+// the menu on the page it was launched from (window._smReturnPage, set by the
+// ss launcher). Used by both the grid's Esc key (collection.js) and its R→L
+// swipe-back (grid.js). Tears the grid players down first so nothing keeps
+// playing behind the menu.
+window._returnToMenuFromGrid = function () {
+  if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
+  if (typeof gridClearCut === 'function') gridClearCut();
+  if (typeof gridHideContextMenu === 'function') gridHideContextMenu();
+  const g = document.getElementById('gridOverlay');
+  if (g) g.style.display = 'none';
+  const fs = document.getElementById('gridFullscreen');
+  if (fs) fs.style.display = 'none';
+  if (typeof window._showShareableMenu === 'function') window._showShareableMenu();
+};
 
 function _routeInitialScreen() {
   const params = new URLSearchParams(window.location.search);

@@ -298,12 +298,23 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Escape → clear cut or close grid → go to table
+  // Escape → clear cut, else leave the grid.
+  // (dev0384) When the grid was opened from the shareable menu (a valid
+  // _smReturnPage is parked), OR we're in user mode (where the menu is home and
+  // T doesn't exist), Esc returns to the MENU on the page it came from — instead
+  // of gridClose()→buildTable(), which dropped the viewer onto a blank screen.
+  // Dev-mode grids with no menu origin keep the old Esc→Table behaviour.
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopPropagation();
     if (_gridCutCell) {
       gridClearCut();
       toast('Cut cancelled', 800);
+      return;
+    }
+    const fromMenu = (window._smReturnPage >= 2 && window._smReturnPage <= 5);
+    const userMode = (typeof _isUserMode === 'function') && _isUserMode();
+    if ((fromMenu || userMode) && typeof window._returnToMenuFromGrid === 'function') {
+      window._returnToMenuFromGrid();
     } else {
       gridClose();
     }

@@ -1188,9 +1188,14 @@ function gridShow() {
       // Crossed a cell boundary? End point lands in a different cell (or off-grid).
       if (_cellAt(e.clientX, e.clientY) === startCell) return;  // stayed inside → let per-cell pause run
       e.preventDefault(); e.stopPropagation();
-      if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
-      overlay.style.display = 'none';
-      if (typeof _showShareableMenu === 'function') _showShareableMenu();
+      // (dev0384) Route through the shared helper so it lands on the menu page
+      // the grid was launched from (window._smReturnPage), same as Esc.
+      if (typeof window._returnToMenuFromGrid === 'function') window._returnToMenuFromGrid();
+      else {
+        if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
+        overlay.style.display = 'none';
+        if (typeof _showShareableMenu === 'function') _showShareableMenu();
+      }
     }, true);
   }
   // (zip0141) Re-apply user-mode chrome AFTER the overlay flips visible —
@@ -1724,10 +1729,14 @@ function gridWireInteractor(interactor, cell, cellStr) {
         const el = document.elementFromPoint(endX, endY);
         const endCell = (el && el.closest) ? el.closest('.grid-cell') : null;
         if (!endCell || (endCell.dataset && endCell.dataset.cell !== cellStr)) {
-          if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
-          const ov = document.getElementById('gridOverlay');
-          if (ov) ov.style.display = 'none';
-          if (typeof _showShareableMenu === 'function') _showShareableMenu();
+          // (dev0384) Same shared return-to-menu path as Esc / the pointer swipe.
+          if (typeof window._returnToMenuFromGrid === 'function') window._returnToMenuFromGrid();
+          else {
+            if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
+            const ov = document.getElementById('gridOverlay');
+            if (ov) ov.style.display = 'none';
+            if (typeof _showShareableMenu === 'function') _showShareableMenu();
+          }
           return;
         }
       }

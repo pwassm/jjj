@@ -229,6 +229,11 @@ window.addEventListener('keydown', function(e) {
   // If we forward keys to the global dispatcher here, they fire on top of
   // E's handler and the wrong screen opens.
   if (document.getElementById('video-editor-overlay')) return;
+  // (dev0384) The shareable menu is a full-window overlay that owns the keyboard
+  // (its own Tab tab-cycle + `f`→filter handler). Bail so this capture-phase
+  // dispatcher doesn't swallow `f` (and the other letter hotkeys) before the
+  // menu sees them.
+  if (document.getElementById('shareableMenu')) return;
 
   const k = e.key.toLowerCase();
 
