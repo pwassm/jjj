@@ -179,6 +179,48 @@ async function gridSaveToFile(gname) {
   }
 }
 
+// (dev0387) Grid "moving cells" ORCHESTRATOR — shared by this file's grid key
+// handler (the r master toggle) and core.js's digit handler (variant selection).
+// It must live at top level + on window because core.js's keydown listener runs
+// in WINDOW-CAPTURE (before this file's document-capture), so core owns the number
+// keys; it delegates the variant choice back here. The family:
+//   r  = master on/off (on → ring CONVEYOR, the base mode)
+//   1  = FlyCells  cascade-fill   ·   2 = FlyCells2 smooth swap   (3-9 reserved)
+// Pressing the active variant's own number returns to the conveyor.
+function _gmAnyMoving() {
+  return (window.MovingCells && window.MovingCells.running) ||
+         (window.FlyCells  && window.FlyCells.active) ||
+         (window.FlyCells2 && window.FlyCells2.active);
+}
+function _gmStopAll() {
+  window.MovingCells && window.MovingCells.stop && window.MovingCells.stop(true);
+  window.FlyCells    && window.FlyCells.stop    && window.FlyCells.stop();
+  window.FlyCells2   && window.FlyCells2.stop   && window.FlyCells2.stop();
+}
+function _gmMasterToggle() {
+  if (_gmAnyMoving()) {
+    _gmStopAll();
+    if (typeof toast === 'function') toast('■ Moving cells OFF', 1300);
+  } else if (window.MovingCells) {
+    window.MovingCells.start();
+  }
+}
+function _gmSelectDigit(k) {
+  if (k === '1' || k === '2') {
+    var want = (k === '1') ? 'fly1' : 'fly2';
+    var cur  = (window.FlyCells  && window.FlyCells.active)  ? 'fly1'
+             : (window.FlyCells2 && window.FlyCells2.active) ? 'fly2' : 'conveyor';
+    _gmStopAll();
+    if (cur === want)         { if (window.MovingCells) window.MovingCells.start(); }  // toggle → conveyor
+    else if (want === 'fly1') { if (window.FlyCells)    window.FlyCells.start(); }
+    else                      { if (window.FlyCells2)   window.FlyCells2.start(); }
+  } else if (typeof toast === 'function') {
+    toast('Variant ' + k + ' not built yet — 1 = cascade · 2 = swap · r exits', 2200);
+  }
+}
+window._gmAnyMoving = _gmAnyMoving;
+window._gmSelectDigit = _gmSelectDigit;
+
 // Grid keyboard handler - only Escape (Alt keys handled globally)
 document.addEventListener('keydown', e => {
   if (document.getElementById('gridOverlay').style.display !== 'flex') return;
@@ -201,48 +243,17 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0374/0386) Grid "moving cells" toys — a small family sharing one system:
-  //   r        → MASTER toggle. Off → start the ring CONVEYOR (movingcells.js,
-  //              the base mode). On (any mode) → stop everything, back to base.
-  //   1..9     → while a mode is running, the NUMBER keys pick a VARIANT:
-  //                1 = FlyCells click-to-fly (flycells.js); pressing 1 again
-  //                    flips back to the conveyor. 2-9 reserved (toast for now).
-  //              These are SWALLOWED only while moving — otherwise 2-5 fall
-  //              through to core.js as the grid-size keys (1 is unused there).
+  // (dev0374/0386/0387) Grid "moving cells" family — see the _gm* orchestrator
+  // above. r = master toggle (off → ring conveyor). The VARIANT number keys
+  // (1 = cascade, 2 = swap) are owned by core.js's window-capture digit handler
+  // (it runs before this one and owns 2-5 for grid sizing), which delegates to
+  // window._gmSelectDigit when a mode is active — so they're not handled here.
   //   {  /  }  → conveyor slower / faster (Shift+[ / Shift+]); pause fixed at 2s.
   // Checked before the [ ] zoom keys so the Shift variants don't fall through.
-  function _gmAnyMoving() {
-    return (window.MovingCells && window.MovingCells.running) ||
-           (window.FlyCells && window.FlyCells.active);
-  }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
     e.preventDefault(); e.stopPropagation();
-    if (_gmAnyMoving()) {
-      window.MovingCells && window.MovingCells.stop && window.MovingCells.stop(true);
-      window.FlyCells    && window.FlyCells.stop    && window.FlyCells.stop();
-      if (typeof toast === 'function') toast('■ Moving cells OFF', 1300);
-    } else if (window.MovingCells) {
-      window.MovingCells.start();
-    }
+    _gmMasterToggle();
     return;
-  }
-  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key >= '1' && e.key <= '9') {
-    if (_gmAnyMoving()) {
-      e.preventDefault(); e.stopPropagation();
-      if (e.key === '1') {
-        if (window.FlyCells && window.FlyCells.active) {
-          window.FlyCells.stop();
-          if (window.MovingCells) window.MovingCells.start();
-        } else {
-          window.MovingCells && window.MovingCells.stop && window.MovingCells.stop(true);
-          if (window.FlyCells) window.FlyCells.start();
-        }
-      } else if (typeof toast === 'function') {
-        toast('Variant ' + e.key + ' not built yet — 1 = click-to-fly · r exits', 2200);
-      }
-      return;
-    }
-    // not in a moving mode → let 2-5 reach core.js's grid-size handler
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '{' || (e.shiftKey && e.code === 'BracketLeft'))) {
     e.preventDefault(); e.stopPropagation();

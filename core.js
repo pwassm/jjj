@@ -263,22 +263,34 @@ window.addEventListener('keydown', function(e) {
   // (zip0153) Number keys 2/3/4/5 resize the grid when G overlay is open.
   // Bare key only — modifiers fall through to other handlers. Suppressed
   // when other overlays own the keys (already filtered above).
-  if (k === '2' || k === '3' || k === '4' || k === '5') {
+  // (dev0387) This window-capture handler runs BEFORE collection.js's grid
+  // handler, so it also owns the digits for the "moving cells" variants: while
+  // any moving mode is active, 1-9 pick a variant (window._gmSelectDigit) and
+  // never resize. Otherwise 2-5 resize as before (1 is unused for sizing).
+  if (k >= '1' && k <= '9') {
     const gOpen = document.getElementById('gridOverlay')?.style.display === 'flex';
     // Don't fire if a fullscreen view (V) is on top of the grid — V owns
     // its own keys (Space, A/B, M, ←/→).
     const vpOpen = document.getElementById('gridFullscreen')?.style.display === 'flex';
     if (gOpen && !vpOpen) {
-      e.preventDefault();
-      e.stopPropagation();
-      // (dev0370) Layouts 17/19 are config-only — the size keys must not switch
-      // into or out of them. Swallow the key (no resize) while one is active.
-      if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== 'square') {
-        if (typeof _gridToast === 'function') _gridToast('Layout locked — change it from the C screen', 1400);
+      if (typeof window._gmAnyMoving === 'function' && window._gmAnyMoving()) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window._gmSelectDigit === 'function') window._gmSelectDigit(k);
         return false;
       }
-      if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10));
-      return false;
+      if (k >= '2' && k <= '5') {
+        e.preventDefault();
+        e.stopPropagation();
+        // (dev0370) Layouts 17/19 are config-only — the size keys must not switch
+        // into or out of them. Swallow the key (no resize) while one is active.
+        if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== 'square') {
+          if (typeof _gridToast === 'function') _gridToast('Layout locked — change it from the C screen', 1400);
+          return false;
+        }
+        if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10));
+        return false;
+      }
     }
   }
   // (dev0353) When the grid right-click context menu is open it owns its own
