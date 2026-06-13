@@ -491,11 +491,19 @@ function gridOpenTextEditor(cellStr, row, opts) {
     if (!ed.contains(anc)) return;
     const existingA = anc.closest ? anc.closest('a') : null;
     if (sel.isCollapsed && !existingA) { if (typeof toast === 'function') toast('Select the text to link first', 1400); return; }
-    const selText = range.toString();
+    const selText = range.toString().trim();
     const promptLbl = selText ? ('"' + (selText.length > 40 ? selText.slice(0, 40) + '…' : selText) + '"') : 'this link';
+    // (dev0382) Default the prompt to the SELECTED text when it already looks
+    // like a domain/URL, so selecting "pwassm.github.io/braintrain" and clicking
+    // 🔗 yields the right link in one step. Previously the prompt defaulted to a
+    // bare "https://"; accepting that (thinking the selection was the URL) made
+    // href="https://" — a broken link. Else fall back to "https://".
+    const _looksUrl = s => /^(https?:\/\/)?[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(s);
+    const _defUrl = existingA ? (existingA.getAttribute('href') || '')
+      : (_looksUrl(selText) ? selText : 'https://');
     let url = prompt('Link URL for ' + promptLbl
       + '\n\nMy sites:\n  sealifeandmore.org  (WordPress — Instagram videos)\n  pwassm.github.io/braintrain\n\n(leave blank to remove the link)',
-      existingA ? (existingA.getAttribute('href') || '') : 'https://');
+      _defUrl);
     if (url === null) return;            // cancelled
     url = url.trim();
     // Blank URL → unwrap an existing link (no-op otherwise).
@@ -510,6 +518,14 @@ function gridOpenTextEditor(cellStr, row, opts) {
     }
     // Add a scheme for bare domains so the link actually resolves.
     if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+    // Reject a scheme-only / hostless URL (e.g. just "https://") so we never
+    // create a broken link that errors when clicked.
+    const _hostOk = /^https?:\/\/[^\s\/]+\.[^\s\/]+/i.test(url) || /^(mailto:|tel:)/i.test(url);
+    if (!_hostOk) {
+      if (typeof toast === 'function') toast('That isn’t a full web address — no link made', 2000);
+      ed.focus();
+      return;
+    }
     // Editing an existing anchor → just update it.
     if (existingA && ed.contains(existingA)) {
       existingA.setAttribute('href', url);

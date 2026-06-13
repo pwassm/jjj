@@ -475,14 +475,19 @@ async function _showShareableMenu() {
   // that stray </div> closes the page container early and leaks the list out.
   // Round-trip each half through a temp element so the browser re-balances it.
   const _balanceHtml = h => { const d = document.createElement('div'); d.innerHTML = h; return d.innerHTML; };
-  greetTop = _balanceHtml(greetTop);
-  greetIntro = _balanceHtml(greetIntro);
+  // (dev0382) Linkify scheme'd URLs at render time, exactly as the Xe editor and
+  // the V/grid slide views do (renderFtext). Without this, a raw https:// URL in
+  // the greeting/Other ctxt rendered as plain, non-blue, non-clickable text on
+  // the live menu — even though it showed as a link inside Xe.
+  const _linkify = h => (typeof _linkifyHtml === 'function' ? _linkifyHtml(h) : h);
+  greetTop = _linkify(_balanceHtml(greetTop));
+  greetIntro = _linkify(_balanceHtml(greetIntro));
 
   // (dev0379) "Other" page — free-form HTML from the c.json config row whose
   // gname is "other", in its `ctxt` field. Re-read every open (whole function
   // re-fetches c.json), so editing that ctxt in C updates the page next visit.
   const otherCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'other');
-  const otherHtml = _balanceHtml(otherCfg ? String(otherCfg.ctxt || '') : '');
+  const otherHtml = _linkify(_balanceHtml(otherCfg ? String(otherCfg.ctxt || '') : ''));
 
   // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
   // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
@@ -671,8 +676,11 @@ async function _showShareableMenu() {
     + '.sm-chmax{max-width:760px;margin:0 auto;}'
     // (dev0381) Choices toolbar: filter box + expand/collapse-all buttons.
     + '.sm-chtools{display:flex;gap:8px;align-items:center;padding:10px 22px 8px;}'
-    + '.sm-chfilter{flex:1;min-width:0;padding:8px 12px;border-radius:7px;border:1px solid #2a3550;background:#11132a;color:#fff;font-family:sans-serif;font-size:14px;outline:none;}'
+    + '.sm-chfwrap{flex:1;min-width:0;display:flex;gap:6px;}'
+    + '.sm-chfilter{flex:4;min-width:0;padding:8px 12px;border-radius:7px;border:1px solid #2a3550;background:#11132a;color:#fff;font-family:sans-serif;font-size:14px;outline:none;}'
     + '.sm-chfilter:focus{border-color:#4af;}'
+    + '.sm-chclear{flex:1;min-width:0;padding:8px 6px;border-radius:7px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    + '.sm-chclear:hover,.sm-chclear:focus{background:#1d2440;border-color:#4af;outline:none;}'
     + '.sm-chbtn{flex:none;padding:8px 12px;border-radius:7px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:12px;cursor:pointer;white-space:nowrap;}'
     + '.sm-chbtn:hover{background:#1d2440;}'
     + '.sm-chnone{padding:22px;color:#aa8;font-family:sans-serif;}'
@@ -738,7 +746,14 @@ async function _showShareableMenu() {
                 // (dev0381) Expand/Collapse-all + a live text filter (matches
                 // the summary AND the raw ttxt/ctxt body of each choice).
                 + '<div class="sm-chtools">'
-                  + '<input id="smChFilter" class="sm-chfilter" type="text" placeholder="Filter choices…" autocomplete="off">'
+                  // (dev0382) Filter + an inline "Clear filter" button sitting in
+                  // the right ~1/5 of the box. Tab cycles filter ↔ Clear; the
+                  // button clears on click/Enter/Space then refocuses the (now
+                  // blank) filter.
+                  + '<div class="sm-chfwrap">'
+                    + '<input id="smChFilter" class="sm-chfilter" type="text" placeholder="Filter choices…" autocomplete="off">'
+                    + '<button id="smChClear" class="sm-chclear" type="button">Clear filter</button>'
+                  + '</div>'
                   + '<button id="smExpandAll" class="sm-chbtn">▼ Expand all</button>'
                   + '<button id="smCollapseAll" class="sm-chbtn">▶ Collapse all</button>'
                 + '</div>'
@@ -916,10 +931,25 @@ async function _showShareableMenu() {
   // expand/collapse buttons act on whatever cards are currently rendered (i.e.
   // they respect the active filter).
   const _smChFilt = ov.querySelector('#smChFilter');
+  const _smChClear = ov.querySelector('#smChClear');
   if (_smChFilt) _smChFilt.addEventListener('input', () => {
     _smFilter = _smChFilt.value.trim().toLowerCase();
     _smRenderChoose();
   });
+  // (dev0382) Tab cycles filter ↔ Clear so the button is one Tab away and a
+  // second Tab returns to the filter. Clear (click / Enter / Space — native on a
+  // <button>) blanks the filter and refocuses the now-empty box.
+  if (_smChFilt && _smChClear) {
+    _smChFilt.addEventListener('keydown', e => {
+      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smChClear.focus(); }
+    });
+    _smChClear.addEventListener('keydown', e => {
+      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smChFilt.focus(); }
+    });
+    _smChClear.addEventListener('click', () => {
+      _smChFilt.value = ''; _smFilter = ''; _smRenderChoose(); _smChFilt.focus();
+    });
+  }
   const _smSetAllOpen = open => ov.querySelectorAll('#smChooseBody details.sm-detcard')
     .forEach(d => { d.open = open; });
   const _smExpA = ov.querySelector('#smExpandAll');
