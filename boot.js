@@ -669,6 +669,13 @@ async function _showShareableMenu() {
     + '.sm-chh-name{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
     + '.sm-chh-date{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
     + '.sm-chmax{max-width:760px;margin:0 auto;}'
+    // (dev0381) Choices toolbar: filter box + expand/collapse-all buttons.
+    + '.sm-chtools{display:flex;gap:8px;align-items:center;padding:10px 22px 8px;}'
+    + '.sm-chfilter{flex:1;min-width:0;padding:8px 12px;border-radius:7px;border:1px solid #2a3550;background:#11132a;color:#fff;font-family:sans-serif;font-size:14px;outline:none;}'
+    + '.sm-chfilter:focus{border-color:#4af;}'
+    + '.sm-chbtn{flex:none;padding:8px 12px;border-radius:7px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:12px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-chbtn:hover{background:#1d2440;}'
+    + '.sm-chnone{padding:22px;color:#aa8;font-family:sans-serif;}'
     + '.sm-ico{font-size:13px;line-height:1;flex:none;width:30px;text-align:center;color:#6aa6ff;}'
     + '.sm-name{flex:1;font-size:18px;}'
     // (dev0380) Choose-list cells: full-height cells with fine vertical column
@@ -728,6 +735,13 @@ async function _showShareableMenu() {
         // _smRenderChoose after mount. Defaults to Modified, newest at top.
         + (items.length
             ? '<div class="sm-chmax">'
+                // (dev0381) Expand/Collapse-all + a live text filter (matches
+                // the summary AND the raw ttxt/ctxt body of each choice).
+                + '<div class="sm-chtools">'
+                  + '<input id="smChFilter" class="sm-chfilter" type="text" placeholder="Filter choices…" autocomplete="off">'
+                  + '<button id="smExpandAll" class="sm-chbtn">▼ Expand all</button>'
+                  + '<button id="smCollapseAll" class="sm-chbtn">▶ Collapse all</button>'
+                + '</div>'
                 + '<div class="sm-chhead">'
                   + '<span class="sm-chh-spacer"></span>'
                   + '<button class="sm-chh sm-chh-name" data-sort="name">Name<span class="sm-arrow"></span></button>'
@@ -857,11 +871,11 @@ async function _showShareableMenu() {
   // (dev0379) Sortable, table-like choice list. Header clicks toggle the sort
   // key/direction; the body is re-rendered (and its Open buttons re-bound) each
   // time. Default: Modified, newest at top.
-  let _smSortKey = 'date', _smSortDir = -1;
+  let _smSortKey = 'date', _smSortDir = -1, _smFilter = '';
   const _smRenderChoose = () => {
     const body = ov.querySelector('#smChooseBody');
     if (!body) return;
-    const arr = items.slice().sort((a, b) => {
+    let arr = items.slice().sort((a, b) => {
       let av, bv;
       if (_smSortKey === 'name') { av = (a.summary || '').toLowerCase(); bv = (b.summary || '').toLowerCase(); }
       else { av = a.dmRaw || ''; bv = b.dmRaw || ''; }
@@ -869,6 +883,11 @@ async function _showShareableMenu() {
       if (av > bv) return  1 * _smSortDir;
       return 0;
     });
+    // (dev0381) Live filter — matches the visible summary AND the raw ttxt/ctxt
+    // body so a search hits text that's hidden inside a collapsed card.
+    if (_smFilter) arr = arr.filter(it =>
+      ((it.summary || '') + ' ' + (it.html || '')).toLowerCase().includes(_smFilter));
+    if (!arr.length) { body.innerHTML = '<div class="sm-chnone">No matches.</div>'; return; }
     body.innerHTML = arr.map(it => _smDetCard(it, items.indexOf(it))).join('');
     ov.querySelectorAll('#smPage2 .sm-chh').forEach(h => {
       const on = h.dataset.sort === _smSortKey;
@@ -893,6 +912,20 @@ async function _showShareableMenu() {
     });
   });
   if (items.length) _smRenderChoose();
+  // (dev0381) Choices toolbar wiring: live filter + expand/collapse-all. The
+  // expand/collapse buttons act on whatever cards are currently rendered (i.e.
+  // they respect the active filter).
+  const _smChFilt = ov.querySelector('#smChFilter');
+  if (_smChFilt) _smChFilt.addEventListener('input', () => {
+    _smFilter = _smChFilt.value.trim().toLowerCase();
+    _smRenderChoose();
+  });
+  const _smSetAllOpen = open => ov.querySelectorAll('#smChooseBody details.sm-detcard')
+    .forEach(d => { d.open = open; });
+  const _smExpA = ov.querySelector('#smExpandAll');
+  if (_smExpA) _smExpA.addEventListener('click', () => _smSetAllOpen(true));
+  const _smColA = ov.querySelector('#smCollapseAll');
+  if (_smColA) _smColA.addEventListener('click', () => _smSetAllOpen(false));
 
   // (dev0362) Search page — live anywhere-filter over all of T (precomputed
   // blobs), dictionary suggestions from tagsLib, a match count, and result

@@ -1831,6 +1831,25 @@ function _tMeasureRowH() {
   }
 }
 
+// (dev0381) Rich-HTML columns shown in the table. Their stored value is markup;
+// in the cell we render the first meaningful line of text instead of the raw
+// tags (the full markup stays in the tooltip, and inline/Xe editing still reads
+// the raw row value — see startEdit). This is a per-visible-cell string op on a
+// windowed table (~a screenful of rows), so it adds no measurable render cost.
+const _RICH_PREVIEW_COLS = new Set(['ftext', 'ttxt', 'ctxt']);
+function _richCellPreview(html) {
+  let s = String(html || '');
+  if (!s) return '';
+  s = s.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ');
+  // Block boundaries → newlines so "first line" means the first block of text.
+  s = s.replace(/<\s*(?:\/p|\/div|\/h[1-6]|\/li|\/tr|\/summary|br|hr)\b[^>]*>/gi, '\n');
+  s = s.replace(/<[^>]+>/g, ' ');
+  s = s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+       .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const line = s.split('\n').map(x => x.replace(/\s+/g, ' ').trim()).find(Boolean);
+  return line || '';
+}
+
 // (dev0327) Build one <tr> for display row vi / data row di. Reads the cached
 // _tCtx so the scroll path never recomputes colW. Returns the tr (caller appends).
 function _tBuildRow(vi, di) {
@@ -1936,7 +1955,14 @@ function _tBuildRow(vi, di) {
         return; // skip default rendering below
       }
 
-      td.textContent = val; td.title = val;
+      // (dev0381) Rich-HTML columns show a readable first-line preview; the raw
+      // markup stays in the tooltip (and is what editing operates on).
+      if (_RICH_PREVIEW_COLS.has(col) && val) {
+        td.textContent = _richCellPreview(val) || val;
+        td.title = val;
+      } else {
+        td.textContent = val; td.title = val;
+      }
 
       if (focus   && focus.r   === vi && focus.c   === ci) td.className = 'focus';
       else if (pending && pending.c === ci && vi >= pending.r1 && vi <= pending.r2) td.className = 'sel';

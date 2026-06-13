@@ -112,6 +112,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" id="teCut" title="Park everything from the cursor down — wrapped in a hidden div that's invisible when rendered (slide, grid, exports) but still editable here in Xe. Click on the red banner above the parked block to unpark it.">✂ Cut</button>
         <button class="te-btn" id="teHr" title="Insert a divider line across the page — separates sections (renders as a horizontal rule in the slide)">══</button>
         <button class="te-btn" id="teImage" title="Insert image — accepts UID number or https:// URL, with size and alignment">🖼</button>
+        <button class="te-btn" id="teLink" title="Link the selected text — enter any URL (a bare domain like pwassm.github.io/braintrain is auto-prefixed with https://). Select link text first; blank URL removes the link.">🔗</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" id="teTextColor"  title="Slide-wide text color — choose one for the whole slide">A▾</button>
         <button class="te-btn" id="teBgColor"    title="Slide-wide background color">▣▾</button>
@@ -470,6 +471,64 @@ function gridOpenTextEditor(cellStr, row, opts) {
     range.insertNode(small);
     const r = document.createRange();
     r.selectNodeContents(small);
+    sel.removeAllRanges(); sel.addRange(r);
+    ed.focus();
+  };
+
+  // (dev0381) Link — wrap the selected text in an <a> so any text (not just a
+  // bare https:// URL) becomes a clickable link in the Xs slide. A bare domain
+  // (e.g. pwassm.github.io/braintrain) is auto-prefixed with https://. With the
+  // caret inside an existing link, this edits its href; a blank URL removes it.
+  document.getElementById('teLink').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) { if (typeof toast === 'function') toast('Select the text to link first', 1400); return; }
+    const range = sel.getRangeAt(0).cloneRange();
+    let anc = range.commonAncestorContainer;
+    if (anc.nodeType === 3) anc = anc.parentNode;
+    if (!ed.contains(anc)) return;
+    const existingA = anc.closest ? anc.closest('a') : null;
+    if (sel.isCollapsed && !existingA) { if (typeof toast === 'function') toast('Select the text to link first', 1400); return; }
+    const selText = range.toString();
+    const promptLbl = selText ? ('"' + (selText.length > 40 ? selText.slice(0, 40) + '…' : selText) + '"') : 'this link';
+    let url = prompt('Link URL for ' + promptLbl
+      + '\n\nMy sites:\n  sealifeandmore.org  (WordPress — Instagram videos)\n  pwassm.github.io/braintrain\n\n(leave blank to remove the link)',
+      existingA ? (existingA.getAttribute('href') || '') : 'https://');
+    if (url === null) return;            // cancelled
+    url = url.trim();
+    // Blank URL → unwrap an existing link (no-op otherwise).
+    if (!url) {
+      if (existingA && ed.contains(existingA)) {
+        const parent = existingA.parentNode;
+        while (existingA.firstChild) parent.insertBefore(existingA.firstChild, existingA);
+        parent.removeChild(existingA);
+      }
+      ed.focus();
+      return;
+    }
+    // Add a scheme for bare domains so the link actually resolves.
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+    // Editing an existing anchor → just update it.
+    if (existingA && ed.contains(existingA)) {
+      existingA.setAttribute('href', url);
+      existingA.setAttribute('target', '_blank');
+      existingA.setAttribute('rel', 'noopener');
+      ed.focus();
+      return;
+    }
+    // Wrap the selection in a fresh anchor.
+    const frag = range.extractContents();
+    const a = document.createElement('a');
+    a.setAttribute('href', url);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+    a.style.color = '#5bf';
+    a.appendChild(frag);
+    range.insertNode(a);
+    const r = document.createRange();
+    r.selectNodeContents(a);
     sel.removeAllRanges(); sel.addRange(r);
     ed.focus();
   };
