@@ -378,7 +378,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // falls back to a console override, then a default chosen long enough to
   // outlast YouTube's startup/title/spinner chrome with margin.
   var PREROLL = Number(preroll) || Number(window.SAL_BUF_PREROLL) || 3.5;
-  PREROLL = Math.max(0.5, Math.min(10, PREROLL));
+  PREROLL = Math.max(0.5, Math.min(12, PREROLL));   // (dev0388) ceiling 10→12 for slow/Shorts chrome
   var FADE_MS = transition === 'fade' ? 420 : 0;
 
   var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
@@ -445,7 +445,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // Returns a warm record; `warmReady()` decides when it's safe to reveal.
   function beginWarm(layer, seg) {
     var from = Math.max(0, seg.start - PREROLL);
-    var w = { layer: layer, seg: seg, from: from, issuedAt: Date.now(), landPos: null };
+    var w = { layer: layer, seg: seg, from: from, issuedAt: Date.now(), landPos: null, cleanFrom: null };
     try { layer.player.seekTo(from, true); layer.player.playVideo(); } catch (_) {}
     return w;
   }
@@ -463,14 +463,25 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     var st, ct;
     try { st = w.layer.player.getPlayerState(); ct = w.layer.player.getCurrentTime(); }
     catch (_) { return false; }
+    // (dev0388) A re-buffer spinner partway through the warm-up resets the clean
+    // countdown: the chrome (spinner / title / play overlay) needs a fresh,
+    // uninterrupted PREROLL of forward play to dissipate, so we must never reveal
+    // in the middle of a buffering flash. Without this, a mid-warm stall could let
+    // the reveal fire while the spinner was still on screen — the "pause mark".
+    if (st === 3 /* BUFFERING */) { w.cleanFrom = null; return false; }
     if (st !== 1 /* PLAYING */) return false;
     if (w.landPos === null) {
       // First stable playing sample near the seek target = the real landing.
       // Reject a transient stale (pre-seek) currentTime far outside the window.
       if (ct >= w.from - 1 && ct <= w.from + 8) w.landPos = ct;
-      return false;
+      else return false;
     }
-    var revealAt = Math.max(w.seg.start, w.landPos + PREROLL);
+    // (dev0388) Count PREROLL from where clean forward play last (re)started —
+    // not from a one-shot landing — so any spinner partway in earns its own full
+    // warm-up before we reveal. On the happy (no-rebuffer) path cleanFrom === landPos,
+    // so this is identical to the old fixed-landing behavior.
+    if (w.cleanFrom == null) w.cleanFrom = ct;
+    var revealAt = Math.max(w.seg.start, w.cleanFrom + PREROLL);
     var segEnd = w.seg.start + w.seg.dur;
     if (revealAt > segEnd - 0.2) revealAt = Math.max(w.seg.start, segEnd - 0.2);
     return ct >= revealAt;

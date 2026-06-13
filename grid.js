@@ -350,12 +350,14 @@ function _gridBufferMode() {
 // Seconds of hidden warm-up before a buffered layer is revealed — long enough to
 // outlast YouTube's startup/title/spinner chrome. User-tunable with −/+ in G
 // (persisted), since the right value depends on connection speed and how far the
-// segment seeks jump. Default 3.5; clamped 1–8.
+// segment seeks jump. Default 3.5; clamped 1–12 (dev0388 raised the ceiling from
+// 8 so slow/Shorts chrome can be fully outlasted on segments that start ≥ preroll
+// into the video; the reveal is now also buffering-aware — see warmReady in video.js).
 const _GRID_PREROLL_DEFAULT = 3.5;
 function _gridBufferPreroll() {
   let v = (typeof window.getSetting === 'function') ? Number(window.getSetting('gridBufferPreroll')) : NaN;
   if (!isFinite(v) || v <= 0) v = _GRID_PREROLL_DEFAULT;
-  return Math.max(1, Math.min(8, v));
+  return Math.max(1, Math.min(12, v));
 }
 
 // Buffering is heavy (2 iframes/cell) — only engage on desktop and small grids.
@@ -671,13 +673,13 @@ function gridCycleBufferMode() {
   }
 }
 
-// −/+ in G nudges the buffer pre-roll by 0.5s (clamped 1–8) and persists it.
+// −/+ in G nudges the buffer pre-roll by 0.5s (clamped 1–12) and persists it.
 // Re-renders so live buffered cells remount with the new warm-up. A longer
 // pre-roll more fully hides YT's startup chrome (esp. across multi-segment seeks)
 // at the cost of a longer initial poster + more skipped lead on start<pre-roll
 // segments.
 function gridAdjustPreroll(delta) {
-  const next = Math.max(1, Math.min(8, Math.round((_gridBufferPreroll() + delta) * 2) / 2));
+  const next = Math.max(1, Math.min(12, Math.round((_gridBufferPreroll() + delta) * 2) / 2));
   if (typeof window.setSetting === 'function') window.setSetting('gridBufferPreroll', next);
   const on = _gridBufferMode() !== 'off';
   if (typeof toast === 'function') {
