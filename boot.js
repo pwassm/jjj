@@ -1342,6 +1342,7 @@ async function _showShareableMenu() {
         + '</span>'
         + '<span class="sm-svbtns">'
           + '<button class="sm-svbtn" data-act="open" data-q="' + _smEsc(it.q) + '">Open</button>'
+          + '<button class="sm-svbtn" data-act="ren" data-q="' + _smEsc(it.q) + '">Rename</button>'
           + '<button class="sm-svbtn del" data-act="del" data-q="' + _smEsc(it.q) + '">Delete</button>'
         + '</span>'
       + '</div>';
@@ -1363,6 +1364,13 @@ async function _showShareableMenu() {
         e.stopPropagation();
         const q = b.dataset.q;
         if (b.dataset.act === 'del') { _smSavedRemove(q); _smRenderSaved(); _smFocusFirstSaved(); }
+        else if (b.dataset.act === 'ren') {
+          const nq = prompt('Rename saved search:', q);
+          if (nq === null || nq.trim() === '' || nq.trim() === q) return;
+          const result = _smSavedRename(q, nq.trim());
+          if (!result) { if (typeof toast === 'function') toast('A search with that name already exists', 2000); return; }
+          _smRenderSaved(); _smFocusFirstSaved();
+        }
         else _smOpenSaved(q);
       });
     });
@@ -1407,6 +1415,14 @@ function _smSavedAdd(q) {
 function _smSavedRemove(q) {
   const lq = String(q || '').toLowerCase();
   _smSavedSave(_smSavedLoad().filter(it => String(it.q).toLowerCase() !== lq));
+}
+function _smSavedRename(oldQ, newQ) {
+  const lo = String(oldQ || '').toLowerCase(), ln = String(newQ || '').toLowerCase();
+  const list = _smSavedLoad();
+  if (list.some(it => String(it.q).toLowerCase() === ln && String(it.q).toLowerCase() !== lo)) return false;
+  const updated = list.map(it => String(it.q).toLowerCase() === lo ? { ...it, q: newQ } : it);
+  _smSavedSave(updated);
+  return true;
 }
 
 // (dev0400) Build an ad-hoc grid from a set of ml rows (used by the menu's
