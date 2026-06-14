@@ -169,6 +169,24 @@
 
   #qstatus { color: #5fc; font-weight: bold; }
   #scanProgress { color: #fc8; font-weight: bold; }
+
+  /* (v0.2) T-style cell focus + inline metadata editing */
+  tbody td.qfocus { outline: 2px solid #8ef; outline-offset: -2px; }
+  tbody td.meta-cell { cursor: text; }
+  tbody td.meta-cell:empty::before { content: '·'; color: #334; }
+  tbody td.meta-busy { opacity: 0.55; }
+  .cell-edit {
+    width: 100%; box-sizing: border-box;
+    background: #001020; border: 1px solid #8ef; color: #fff;
+    font: 12px monospace; padding: 1px 4px; border-radius: 3px; outline: none;
+  }
+  /* (v0.2) floating version button (per project convention) */
+  #qVerBtn {
+    position: fixed; right: 10px; bottom: 8px; z-index: 50;
+    padding: 2px 8px; border-radius: 5px; font: 11px monospace;
+    background: rgba(0,60,140,0.55); border: 1px solid #4af; color: #8ef;
+    pointer-events: none; user-select: none;
+  }
 </style>
 </head>
 <body>
@@ -250,10 +268,14 @@
       <col style="width:130px">   <!-- 11: Modified -->
       <col style="width:130px">   <!-- 12: Camera -->
       <col style="width:170px">   <!-- 13: Title -->
-      <col style="width:84px">    <!-- 14: Upload -->
-      <col style="width:140px">   <!-- 15: Tags -->
-      <col style="width:55px">    <!-- 16: Dups -->
-      <col style="width:70px">    <!-- 17: MyOwn -->
+      <col style="width:130px">   <!-- 14: Artist -->
+      <col style="width:130px">   <!-- 15: Album -->
+      <col style="width:110px">   <!-- 16: Genre -->
+      <col style="width:160px">   <!-- 17: Comment -->
+      <col style="width:84px">    <!-- 18: Upload -->
+      <col style="width:140px">   <!-- 19: Tags -->
+      <col style="width:55px">    <!-- 20: Dups -->
+      <col style="width:70px">    <!-- 21: MyOwn -->
     </colgroup>
     <thead>
       <tr>
@@ -270,7 +292,11 @@
         <th class="sortable" data-sort="dur">Duration</th>
         <th class="sortable sorted" data-sort="mtime">Modified</th>
         <th class="sortable" data-sort="camera" title="EXIF Make + Model (Phase 2)">Camera</th>
-        <th class="sortable" data-sort="title" title="Original title (yt-dlp metadata for downloads)">Title</th>
+        <th class="sortable" data-sort="title" title="MP4 ©nam — editable (dblclick). yt-dlp also writes this for downloads.">Title</th>
+        <th class="sortable" data-sort="artist" title="MP4 artist tag — editable (dblclick)">Artist</th>
+        <th class="sortable" data-sort="album" title="MP4 album tag — editable (dblclick)">Album</th>
+        <th class="sortable" data-sort="genre" title="MP4 genre tag — editable (dblclick)">Genre</th>
+        <th class="sortable" data-sort="comment" title="MP4 comment tag — editable (dblclick)">Comment</th>
         <th class="sortable" data-sort="upload">Upload</th>
         <th>Tags</th>
         <th class="sortable" data-sort="dups" title="Number of files sharing this filename across the entire index (1 = unique)">Dups</th>
@@ -281,6 +307,8 @@
   </table>
 </div>
 
+<div id="qVerBtn">v0.2</div>
+
 <div id="qfooter">
   <span>
     <span class="sel-count" id="selCount">0 selected</span> &nbsp;·&nbsp;
@@ -288,7 +316,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.1 — wired to IndexedDB <code>localmedia</code>. Column widths saved per-origin.
+    Q v0.2 — IndexedDB <code>localmedia</code>. Click=focus · dblclick=edit MP4 tags (ffmpeg) · right-click Path=filter.
   </span>
 </div>
 
@@ -335,6 +363,24 @@ let _sortKey = 'mtime';
 let _sortDir = 'desc';
 let _selected = new Set();             // (dev0310) selected relPaths
 let _dupMap = new Map();               // (dev0310) name → count
+let _focus = null;                     // (v0.2) {rel, col} focused cell, T-style
+let _editing = null;                   // (v0.2) {rel, col} cell currently in inline-edit
+
+// (v0.2) The five MP4 container tags Q can edit. Map: column id → ffmpeg/ffprobe
+// tag key (here they're 1:1). dblclick a cell in one of these columns to edit;
+// commit writes the tag back to the file via the proxy ffmpeg bridge.
+const EDITABLE_META_COLS = {
+  title:   'title',
+  artist:  'artist',
+  album:   'album',
+  genre:   'genre',
+  comment: 'comment'
+};
+const META_TAG_KEYS = Object.keys(EDITABLE_META_COLS);
+// (v0.2) Only these container formats accept the ffmpeg -metadata + -c copy
+// rewrite cleanly. Images and non-mp4 video are read-only for now.
+const META_EDITABLE_EXT = /\.(mp4|mov|m4v)$/i;
+const PROXY_BASE = 'http://127.0.0.1:8081';
 
 // ── IDB ────────────────────────────────────────────────────────────────────
 function openLocalDB() {
@@ -731,6 +777,9 @@ async function walk(rootHandle, onProgress) {
           stars: 0,                       // (dev0307) reserved for XMP Rating
           width: null, height: null, durationMs: null,
           camera: '', title: '',
+          // (v0.2) editable MP4 container tags; populated lazily via ffprobe on
+          // first edit. _tagsRead guards the one-shot read.
+          artist: '', album: '', genre: '', comment: '', _tagsRead: false,
           myOwn: null,                    // (dev0313) auto-set true when ownScore >= 1
           _ownScore: null,                // (dev0313) 0/1/2 derived from path + camera
           uploadState: 'none', cloudflareId: '',
@@ -849,6 +898,10 @@ function sortRows(rows) {
       case 'upload': va = a.uploadState;           vb = b.uploadState; break;
       case 'camera': va = a.camera;                vb = b.camera; break;
       case 'title':  va = a.title;                 vb = b.title; break;
+      case 'artist': va = a.artist || '';          vb = b.artist || ''; break;
+      case 'album':  va = a.album  || '';          vb = b.album  || ''; break;
+      case 'genre':  va = a.genre  || '';          vb = b.genre  || ''; break;
+      case 'comment':va = a.comment|| '';          vb = b.comment|| ''; break;
       default:       va = 0; vb = 0;
     }
     return va < vb ? -dir : va > vb ? dir : 0;
@@ -890,25 +943,37 @@ function render() {
     const stars = ratingToStars(f.rating, f.stars);
     const dups = _dupMap.get(f.name) || 1;
     const selAttr = _selected.has(f.relPath) ? ' checked' : '';
-    return '<tr class="' + (f.rating ? 'r-' + f.rating : '') + '">' +
-      '<td class="cbc"><input type="checkbox" data-rel="' + esc(f.relPath) + '"' + selAttr + '></td>' +
-      '<td>' + rateBadge(f.rating) + '</td>' +
-      '<td>' + renderStars(stars) + '</td>' +
-      '<td>' + kindBadge(f.kind) + '</td>' +
-      '<td>' + esc(f.name) + '</td>' +
-      '<td class="path">' + esc(pathDir(f.relPath)) + '</td>' +
-      '<td class="dim">' + (f.kind === 'image' ? esc(deriveIAR(f.width, f.height)) : '') + '</td>' +
-      '<td class="dim">' + (f.kind === 'video' ? esc(deriveVAR(f.width, f.height)) : '') + '</td>' +
-      '<td class="size">' + (f.kind === 'image' ? fmtMB(f.size) : '') + '</td>' +
-      '<td class="size">' + (f.kind === 'video' ? fmtMB(f.size) : '') + '</td>' +
-      '<td class="date">' + (f.kind === 'video' ? esc(fmtDur(f.durationMs)) : '') + '</td>' +
-      '<td class="date">' + esc(fmtDate(f.mtime)) + '</td>' +
-      '<td>' + esc(f.camera || '') + '</td>' +
-      '<td>' + esc(f.title  || '') + '</td>' +
-      '<td>' + uploadBadge(f.uploadState) + '</td>' +
-      '<td class="tags">' + esc((f.tags || []).join(', ')) + '</td>' +
-      '<td class="size" style="color:' + (dups > 1 ? '#f88;font-weight:bold' : '#445') + '">' + (dups > 1 ? dups : '·') + '</td>' +
-      '<td class="myown-cell" style="text-align:center;cursor:pointer;font-weight:bold;color:' +
+    // (v0.2) td opener with data-col + focus highlight. `base` = extra classes;
+    // `meta` flags one of the five editable MP4-tag columns.
+    const F = (col, base, meta) => {
+      let cls = base || '';
+      if (meta) cls += (cls ? ' ' : '') + 'meta-cell';
+      if (_focus && _focus.rel === f.relPath && _focus.col === col) cls += (cls ? ' ' : '') + 'qfocus';
+      return '<td data-col="' + col + '"' + (cls ? ' class="' + cls + '"' : '') + '>';
+    };
+    return '<tr data-rel="' + esc(f.relPath) + '" class="' + (f.rating ? 'r-' + f.rating : '') + '">' +
+      '<td class="cbc" data-col="cb"><input type="checkbox" data-rel="' + esc(f.relPath) + '"' + selAttr + '></td>' +
+      F('rate')   + rateBadge(f.rating) + '</td>' +
+      F('stars')  + renderStars(stars) + '</td>' +
+      F('kind')   + kindBadge(f.kind) + '</td>' +
+      F('name')   + esc(f.name) + '</td>' +
+      F('path', 'path') + esc(pathDir(f.relPath)) + '</td>' +
+      F('iar', 'dim') + (f.kind === 'image' ? esc(deriveIAR(f.width, f.height)) : '') + '</td>' +
+      F('var', 'dim') + (f.kind === 'video' ? esc(deriveVAR(f.width, f.height)) : '') + '</td>' +
+      F('imb', 'size') + (f.kind === 'image' ? fmtMB(f.size) : '') + '</td>' +
+      F('vmb', 'size') + (f.kind === 'video' ? fmtMB(f.size) : '') + '</td>' +
+      F('dur', 'date') + (f.kind === 'video' ? esc(fmtDur(f.durationMs)) : '') + '</td>' +
+      F('mtime', 'date') + esc(fmtDate(f.mtime)) + '</td>' +
+      F('camera') + esc(f.camera || '') + '</td>' +
+      F('title',   '', true) + esc(f.title   || '') + '</td>' +
+      F('artist',  '', true) + esc(f.artist  || '') + '</td>' +
+      F('album',   '', true) + esc(f.album   || '') + '</td>' +
+      F('genre',   '', true) + esc(f.genre   || '') + '</td>' +
+      F('comment', '', true) + esc(f.comment || '') + '</td>' +
+      F('upload') + uploadBadge(f.uploadState) + '</td>' +
+      F('tags', 'tags') + esc((f.tags || []).join(', ')) + '</td>' +
+      '<td class="size" data-col="dups" style="color:' + (dups > 1 ? '#f88;font-weight:bold' : '#445') + '">' + (dups > 1 ? dups : '·') + '</td>' +
+      '<td class="myown-cell" data-col="myown" style="text-align:center;cursor:pointer;font-weight:bold;color:' +
         (f.myOwn === true ? '#5f5' : f.myOwn === false ? '#f88' : '#445') + '" title="Click to cycle ✓ → ✗ → ·' +
         (f._ownScore != null ? ' (auto-score: ' + f._ownScore + '/2)' : '') + '">' +
         // (dev0313) ✓? = auto-set from a soft 1-point match (path-only OR
@@ -999,7 +1064,13 @@ function loadColWidths() {
     if (raw) {
       const widths = JSON.parse(raw);
       const cols = document.querySelectorAll('#qtable colgroup col');
-      widths.forEach((w, i) => { if (cols[i] && w) cols[i].style.width = w; });
+      // (v0.2) Ignore a saved array whose length no longer matches the column
+      // set (e.g. saved before the 4 metadata columns were added) — applying it
+      // by index would misalign every column after Title. Falls through to the
+      // source <colgroup> defaults.
+      if (Array.isArray(widths) && widths.length === cols.length) {
+        widths.forEach((w, i) => { if (cols[i] && w) cols[i].style.width = w; });
+      }
     }
   } catch (_) {}
   // (dev0309) Always set the table's explicit width, even on first load with
@@ -1011,7 +1082,7 @@ function resetColWidths() {
   try { localStorage.removeItem(COL_WIDTHS_LS); } catch (_) {}
   // Need the defaults that were in the source <colgroup>. Hardcode them here
   // so we can restore even if the user has resized first (and lost the originals).
-  const defaults = [30, 50, 90, 54, 220, 280, 64, 78, 60, 60, 72, 130, 130, 170, 84, 140, 55, 70];
+  const defaults = [30, 50, 90, 54, 220, 280, 64, 78, 60, 60, 72, 130, 130, 170, 130, 130, 110, 160, 84, 140, 55, 70];
   document.querySelectorAll('#qtable colgroup col').forEach((c, i) => {
     c.style.width = (defaults[i] || 100) + 'px';
   });
@@ -1236,6 +1307,248 @@ document.getElementById('selAll').addEventListener('change', e => {
   if (e.target.checked) for (const f of filtered) _selected.add(f.relPath);
   else                  for (const f of filtered) _selected.delete(f.relPath);
   render();
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// (v0.2) T-style cell focus + inline MP4-metadata editing
+// ─────────────────────────────────────────────────────────────────────────
+
+// Q's relPaths are root-relative; ffmpeg/ffprobe need an ABSOLUTE disk path.
+// The FSA picker never exposes one, so we reuse vp.js's `vpDiskRoot:<rootName>`
+// localStorage convention (prompted once per root for crop/trim) — the path the
+// user already entered there is reused here. Value = absolute path of the
+// granted root folder; abs = that + sep + relPath.
+function _qResolveAbs(relPath) {
+  if (!_rootName) return null;
+  const key = 'vpDiskRoot:' + _rootName;
+  let absRoot = (localStorage.getItem(key) || '').trim();
+  if (!absRoot) {
+    absRoot = (prompt(
+      'ffmpeg needs the absolute disk path of the folder "' + _rootName + '"\n' +
+      'you granted above.\n\nExample: M:\\Assets',
+      '') || '').trim();
+    if (!absRoot) return null;
+    localStorage.setItem(key, absRoot);
+  }
+  const sep = absRoot.includes('\\') ? '\\' : '/';
+  const restSep = relPath.replace(/[\\/]/g, sep);
+  const joiner = /[\\/]$/.test(absRoot) ? '' : sep;
+  return restSep ? (absRoot + joiner + restSep) : absRoot;
+}
+function _qClearAbsRoot() { if (_rootName) localStorage.removeItem('vpDiskRoot:' + _rootName); }
+
+// Split an absolute path into {dir, sep, base, ext}. Null if no extension.
+function _qSplitAbs(p) {
+  const m = p.match(/^(.*)([\\/])([^\\/]+)\.([^.\\/]+)$/);
+  if (!m) return null;
+  return { dir: m[1], sep: m[2], base: m[3], ext: m[4] };
+}
+
+// Detect a stale proxy (the metadata branch + ffprobe builder landed in
+// build dev0391). Mirrors the dev0319 deskew handshake.
+async function _qProxyHasMetadata() {
+  try {
+    const r = await fetch(PROXY_BASE + '/version', { cache: 'no-store' });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return Array.isArray(j.features) && j.features.includes('metadata');
+  } catch (_) { return false; }
+}
+
+// Read the file's current 5 tags via ffprobe, fill the row, persist.
+async function _qReadTags(f) {
+  const abs = _qResolveAbs(f.relPath);
+  if (!abs) throw new Error('no disk path for root');
+  const r = await fetch(PROXY_BASE + '/exec/ffprobe', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: abs })
+  });
+  const j = await r.json();
+  if (!j || !j.ok) throw new Error((j && (j.stderr || j.error)) || 'ffprobe failed');
+  const tags = (j.result && j.result.format && j.result.format.tags) || {};
+  const lower = {};
+  for (const k in tags) lower[k.toLowerCase()] = tags[k];  // TITLE/Title → title
+  for (const key of META_TAG_KEYS) f[key] = lower[key] != null ? String(lower[key]) : '';
+  f._tagsRead = true;
+  await idbPutFile(f);
+  return f;
+}
+
+// Drain the ffmpeg NDJSON stream; return {exitCode, stderr}, forwarding events.
+async function _qReadNdjson(res, onEvent) {
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', exitCode = -1; const stderrLines = [];
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let ev; try { ev = JSON.parse(line); } catch (_) { continue; }
+      if (ev.type === 'stderr' && ev.line) stderrLines.push(ev.line);
+      if (ev.type === 'done') exitCode = ev.exitCode;
+      if (onEvent) onEvent(ev);
+    }
+  }
+  return { exitCode, stderr: stderrLines.join('\n') };
+}
+
+// FSA swap: move the ffmpeg temp output over the original (overwrites in place).
+async function _qSwapTemp(relPath, tmpName) {
+  const perm = await _root.requestPermission({ mode: 'readwrite' });
+  if (perm !== 'granted') throw new Error('write permission denied');
+  const parts = relPath.split('/').filter(Boolean);
+  const origName = parts[parts.length - 1];
+  let dir = _root;
+  for (let i = 0; i < parts.length - 1; i++) dir = await dir.getDirectoryHandle(parts[i]);
+  const tmpFh = await dir.getFileHandle(tmpName);
+  await tmpFh.move(dir, origName);
+}
+
+// Write all 5 tags back to the file: ffmpeg -> sibling temp -> FSA swap -> re-stat.
+async function _qWriteTags(f) {
+  if (!(await _qProxyHasMetadata()))
+    throw new Error('proxy.js is too old — restart it (build ≥ dev0391) to load the metadata feature');
+  const metadata = {};
+  for (const key of META_TAG_KEYS) metadata[key] = f[key] || '';
+  const absIn = _qResolveAbs(f.relPath);
+  if (!absIn) throw new Error('no disk path for root');
+  const split = _qSplitAbs(absIn);
+  if (!split) throw new Error('unparseable path: ' + absIn);
+  const tmpName = split.base + '.__qmeta_tmp.' + split.ext;
+  const absOut = split.dir + split.sep + tmpName;
+  const res = await fetch(PROXY_BASE + '/exec/ffmpeg', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: absIn, output: absOut, overwrite: true, metadata })
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error('ffmpeg HTTP ' + res.status + (t ? ': ' + t : ''));
+  }
+  const { exitCode, stderr } = await _qReadNdjson(res, ev => {
+    if (ev.type === 'progress') setStatus('Writing tags… ' + (ev.speed || ''), 'progress');
+  });
+  if (exitCode !== 0) {
+    const err = new Error(stderr || ('ffmpeg exit ' + exitCode));
+    err._enoent = /no such file|cannot find|enoent|failed to open/i.test(stderr || '');
+    throw err;
+  }
+  await _qSwapTemp(f.relPath, tmpName);
+  try { const fo = await getFileFromRoot(_root, f.relPath); f.size = fo.size; f.mtime = fo.lastModified; } catch (_) {}
+  f._tagsRead = true;
+  await idbPutFile(f);
+}
+
+// Move focus highlight (cheap class toggle, no full re-render).
+function _setFocus(rel, col) {
+  _focus = { rel, col };
+  const tbody = document.getElementById('qrows');
+  tbody.querySelectorAll('td.qfocus').forEach(td => td.classList.remove('qfocus'));
+  for (const tr of tbody.querySelectorAll('tr[data-rel]')) {
+    if (tr.dataset.rel !== rel) continue;
+    for (const td of tr.children) if (td.dataset.col === col) { td.classList.add('qfocus'); return; }
+    return;
+  }
+}
+
+// dblclick a metadata cell → inline editor (ffprobe-prefilled) → ffmpeg write.
+async function _beginEdit(rel, col, td) {
+  if (_editing) return;
+  const f = _files.find(x => x.relPath === rel);
+  if (!f) return;
+  if (f.kind !== 'video' || !META_EDITABLE_EXT.test(f.name)) {
+    setStatus('Tag editing supports .mp4/.mov/.m4v only.', 'error');
+    setTimeout(() => setStatus('', null), 2200);
+    return;
+  }
+  _setFocus(rel, col);
+  if (!(await _qProxyHasMetadata())) {
+    setStatus('proxy.js missing the metadata feature — restart it (build ≥ dev0391), then retry.', 'error');
+    return;
+  }
+  // Prime readwrite permission while the dblclick gesture is still fresh, so the
+  // post-write FSA swap doesn't need its own user activation.
+  try { await _root.requestPermission({ mode: 'readwrite' }); } catch (_) {}
+  if (!f._tagsRead) {
+    td.classList.add('meta-busy');
+    setStatus('Reading tags…', 'progress');
+    try { await _qReadTags(f); setStatus('', null); }
+    catch (err) { setStatus('Read tags failed: ' + err.message, 'error'); td.classList.remove('meta-busy'); return; }
+    td.classList.remove('meta-busy');
+  }
+  _editing = { rel, col };
+  const cur = f[col] || '';
+  td.innerHTML = '';
+  const inp = document.createElement('input');
+  inp.className = 'cell-edit';
+  inp.value = cur;
+  td.appendChild(inp);
+  inp.focus(); inp.select();
+  let committed = false;
+  const finish = async commit => {
+    if (committed) return; committed = true;
+    inp.removeEventListener('blur', onBlur);
+    const newVal = inp.value;
+    _editing = null;
+    if (!commit || newVal === cur) { render(); return; }
+    f[col] = newVal;
+    td.classList.add('meta-busy');
+    setStatus('Writing tag to file…', 'progress');
+    try {
+      await _qWriteTags(f);
+      setStatus('✓ Saved ' + col + '.', 'info');
+      setTimeout(() => setStatus('', null), 1800);
+    } catch (err) {
+      f[col] = cur;  // revert in-memory
+      if (err._enoent && confirm(
+        'ffmpeg could not find the file at the cached disk path for "' + _rootName + '".\n' +
+        'Clear the cached path so you can re-enter it next time?')) _qClearAbsRoot();
+      setStatus('Write failed: ' + err.message, 'error');
+    }
+    render();
+  };
+  const onBlur = () => finish(true);
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  });
+  inp.addEventListener('blur', onBlur);
+}
+
+// Click any cell → focus (skip the myown cell — it has its own cycle handler,
+// and skip clicks on inputs/the active editor).
+document.getElementById('qrows').addEventListener('click', e => {
+  if (e.target.closest('.myown-cell')) return;
+  if (e.target.matches('input, .cell-edit')) return;
+  const td = e.target.closest('td[data-col]');
+  const tr = e.target.closest('tr[data-rel]');
+  if (td && tr) _setFocus(tr.dataset.rel, td.dataset.col);
+});
+// Double-click a metadata cell → edit.
+document.getElementById('qrows').addEventListener('dblclick', e => {
+  const td = e.target.closest('td.meta-cell');
+  const tr = e.target.closest('tr[data-rel]');
+  if (!td || !tr) return;
+  e.preventDefault();
+  _beginEdit(tr.dataset.rel, td.dataset.col, td);
+});
+// Right-click a Path cell → filter the table to that folder (POC path filter).
+document.getElementById('qrows').addEventListener('contextmenu', e => {
+  const td = e.target.closest('td[data-col="path"]');
+  const tr = e.target.closest('tr[data-rel]');
+  if (!td || !tr) return;
+  e.preventDefault();
+  const folder = pathDir(tr.dataset.rel);   // "sub/dir/" (incl. trailing slash) or ""
+  _filters.text = folder;
+  const fi = document.getElementById('qfilter');
+  if (fi) fi.value = folder;
+  render();
+  setStatus(folder ? 'Filtered to path: ' + folder : 'File is at root — filter cleared.', 'info');
+  setTimeout(() => { const s = document.getElementById('qstatus'); if (s && s.textContent.startsWith('Filtered')) setStatus('', null); }, 2200);
 });
 
 document.getElementById('qfilter').addEventListener('input', e => {

@@ -19,7 +19,7 @@ const PORT = 8081;
 // (dev0319) Build/capability tag — surfaced at GET /version so the client can
 // detect a stale proxy before sending a deskew (rotate) job that an old build
 // would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
-const PROXY_BUILD = 'dev0319';
+const PROXY_BUILD = 'dev0392';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -122,6 +122,38 @@ function buildFfmpegArgs(p) {
   const common = ['-hide_banner', '-loglevel', 'warning',
                   '-progress', 'pipe:1', '-stats_period', '0.5'];
 
+  // (dev0391) ── METADATA path (lossless tag rewrite) ─────────────────────
+  // No crop/trim — rewrite container tags only via stream-copy. ffmpeg can't
+  // edit in place, so the caller passes a sibling temp output and swaps it
+  // over the original afterward (FSA move on the client). Keys are allowlisted
+  // to the five MP4 fields the Q screen edits; each value is a single literal
+  // `key=value` argv token under shell:false (non-injectable), and the key
+  // allowlist also blocks passing an option-looking key like "-y".
+  if (p.metadata && !p.crop && !p.trim) {
+    must(typeof p.metadata === 'object', 'metadata must be an object');
+    const ALLOWED = ['title', 'artist', 'album', 'genre', 'comment'];
+    const metaArgs = [];
+    for (const k of Object.keys(p.metadata)) {
+      must(ALLOWED.includes(k), 'metadata key not allowed: ' + k);
+      let v = p.metadata[k];
+      v = (v == null) ? '' : String(v);
+      must(v.length <= 512, 'metadata.' + k + ' too long (max 512 chars)');
+      v = v.replace(/[\x00-\x1f\x7f]/g, ' ');  // strip control chars/newlines
+      metaArgs.push('-metadata', k + '=' + v);
+    }
+    must(metaArgs.length > 0, 'metadata object has no allowed keys');
+    return [
+      ...common,
+      '-i', p.input,
+      '-map_metadata', '0',
+      '-c', 'copy',
+      ...metaArgs,
+      '-movflags', '+faststart',  // keep moov up front after rewrite
+      overwrite ? '-y' : '-n',
+      p.output
+    ];
+  }
+
   if (p.crop) {
     // ── CROP path (re-encode) ────────────────────────────────────────────
     must(typeof p.crop === 'object', 'crop must be an object');
@@ -197,8 +229,17 @@ function buildFfmpegArgs(p) {
 
 // Scaffold — fill in when the feature lands. Throwing here returns a clean
 // 400 to the client with the message below.
-function buildFfprobeArgs(_p) {
-  throw new Error('ffprobe builder not yet implemented (scaffold)');
+// (dev0391) Read the five container tags the Q screen edits. JSON to stdout;
+// routed through streamExecCollect (NOT streamExec) so the progress parser
+// doesn't shred the JSON.
+function buildFfprobeArgs(p) {
+  must(p.input && typeof p.input === 'string', 'input (string) required');
+  return [
+    '-v', 'quiet',
+    '-print_format', 'json',
+    '-show_entries', 'format_tags=title,artist,album,genre,comment',
+    p.input
+  ];
 }
 function buildExiftoolArgs(_p) {
   throw new Error('exiftool builder not yet implemented (scaffold)');
@@ -316,6 +357,48 @@ function streamExec(req, res, bin, args) {
   req.on('close', () => { try { proc.kill(); } catch (_) {} });
 }
 
+// (dev0391) Non-streaming exec for ffprobe: buffer stdout fully and return one
+// JSON response. streamExec pipes stdout through the ffmpeg progress parser,
+// which would mangle ffprobe's JSON — so probe-style binaries use this instead.
+function streamExecCollect(req, res, bin, args) {
+  const origin = req.headers.origin || '';
+  const headers = Object.assign({}, corsForExec(origin), {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store'
+  });
+  let ended = false;
+  const finish = obj => {
+    if (ended) return; ended = true;
+    res.writeHead(200, headers);
+    res.end(JSON.stringify(obj));
+  };
+  let proc;
+  try {
+    proc = spawn(bin, args, { windowsHide: true });
+  } catch (err) {
+    finish({ ok: false, error: err.message, exitCode: -1 });
+    return;
+  }
+  const t0 = Date.now();
+  let out = '', errOut = '';
+  proc.stdout.on('data', c => { out += c.toString('utf8'); });
+  proc.stderr.on('data', c => { errOut += c.toString('utf8'); });
+  proc.on('error', err => finish({ ok: false, error: err.message, exitCode: -1, durationMs: Date.now() - t0 }));
+  proc.on('close', code => {
+    let parsed = null;
+    try { parsed = JSON.parse(out || '{}'); } catch (_) {}
+    finish({
+      ok: code === 0,
+      exitCode: code,
+      durationMs: Date.now() - t0,
+      result: parsed,
+      stdout: parsed == null ? out : undefined,
+      stderr: errOut.trim() || undefined
+    });
+  });
+  req.on('close', () => { try { proc.kill(); } catch (_) {} });
+}
+
 function send(res, code, msg, extraHeaders) {
   const h = Object.assign({ 'Content-Type': 'text/plain' }, extraHeaders || {});
   res.writeHead(code, h);
@@ -340,7 +423,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata'] }));
     return;
   }
 
@@ -368,7 +451,10 @@ http.createServer((req, res) => {
       let args;
       try { args = builder(payload); }
       catch (e) { send(res, 400, 'exec: ' + e.message, corsForExec(origin)); return; }
-      streamExec(req, res, bin, args);
+      // (dev0391) ffprobe returns JSON on stdout — collect it whole rather than
+      // streaming it through the ffmpeg progress parser.
+      if (bin === 'ffprobe') streamExecCollect(req, res, bin, args);
+      else                   streamExec(req, res, bin, args);
     }).catch(err => send(res, 400, 'exec: ' + err.message, corsForExec(origin)));
     return;
   }
