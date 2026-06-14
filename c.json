@@ -188,7 +188,7 @@
   {
     "gname": "Other",
     "cells": 25,
-    "DateModified": "2026-06-13 02:52:40",
+    "DateModified": "2026-06-13 04:09:53",
     "1a": "13",
     "1b": "3",
     "1c": "2",
@@ -221,7 +221,7 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": "<h2>My other websites:&nbsp;</h2><div><a href=\"https://www.sealifeandmore.org\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.sealifeandmore.org</a></div><div>A Wordpress site, still the best place to see Instagram videos</div><div><br></div><div>//github.com/pwassm/braintrain</div><div><br></div><div></div><details><summary>Testing details block</summary><div><div>Will it work the way I want?</div><div>We will see.</div></div></details><div></div><div><br></div><div><br></div><div><br></div>"
+    "ctxt": "<h2>My other websites:&nbsp;</h2><div><a href=\"https://www.sealifeandmore.org\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.sealifeandmore.org</a></div><div>A Wordpress site, still the best place to see Instagram videos</div><div><br></div><div>tgithub.com/pwassm/braintrain</div><div><br></div><div></div><details><summary>Testing details block</summary><div><div>Will it work the way I want?</div><div>We will see.</div></div></details><div></div><div><br></div><div><br></div><div><br></div>"
   },
   {
     "gname": "Quiz2Snowflakes",
@@ -850,10 +850,10 @@
     "gname": "1st try 17",
     "cells": "17",
     "Zoom": 1.2,
-    "DateModified": "2026-06-11 05:05:04",
+    "DateModified": "2026-06-13 14:45:00",
     "1a": "930",
     "1b": "1",
-    "1c": "1032",
+    "1c": "938",
     "1d": "955",
     "1e": "954",
     "2a": "953",
@@ -877,7 +877,7 @@
     "5d": "750",
     "5e": "1033/0.8",
     "DateAdded": "2026-06-11 05:02:40",
-    "1L": "938",
+    "1L": "1032",
     "ctxt": ""
   },
   {
@@ -970,5 +970,29 @@
     "2P": "87_4",
     "3P": "87_5",
     "ctxt": "<h2></h2><details open=\"\"><summary>Table tennis fun</summary><div><h2>Table tennis fun!</h2><div>amazing rallies</div></div></details><div></div>"
+  },
+  {
+    "gname": "2nd try 17",
+    "cells": 17,
+    "Zoom": 1.2,
+    "DateModified": "2026-06-13 05:13:24",
+    "1a": "930",
+    "1b": "1",
+    "1c": "1032",
+    "1d": "955",
+    "1e": "954",
+    "2a": "953",
+    "1L": "1029/0.9",
+    "2e": "949",
+    "3a": "944",
+    "3e": "934",
+    "4a": "938",
+    "4e": "929",
+    "5a": "786",
+    "5b": "749",
+    "5c": "943",
+    "5d": "750",
+    "5e": "1033/0.8",
+    "DateAdded": "2026-06-13 05:13:24"
   }
 ]
