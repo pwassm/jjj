@@ -342,7 +342,7 @@
   </table>
 </div>
 
-<div id="qVerBtn">v0.6</div>
+<div id="qVerBtn">v0.7</div>
 
 <div id="qfooter">
   <span>
@@ -351,7 +351,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.6 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · right-click tag header=bulk set.
+    Q v0.7 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1143,9 +1143,16 @@ document.getElementById('grantBtn').addEventListener('click', () => {
     await saveHandle(dir);
     _root = dir;
     _rootName = dir.name;
+    // (v0.7) Picking a folder is the explicit "this is my source" gesture, but
+    // it only sets the browser HANDLE — the OS path string ffprobe/exiftool need
+    // lives separately (vpDiskRoot:<name>) and would otherwise keep a stale value
+    // from a prior folder. Clear it so the next tag-edit re-prompts and the two
+    // references stay in sync. (This is the divergence that broke tag-editing
+    // while preview kept working.)
+    _qClearAbsRoot();
     document.getElementById('qroot').textContent = 'Root: ' + dir.name;
     document.getElementById('rescanBtn').disabled = false;
-    setStatus('Granted. Click Rescan to index.', 'info');
+    setStatus('Granted. Click Rescan to index. (disk path will be re-confirmed on next tag edit)', 'info');
   }).catch(e => {
     if (e.name !== 'AbortError') setStatus('Pick failed: ' + e.message, 'error');
     // AbortError = user closed the picker — no error toast needed
@@ -1360,8 +1367,11 @@ function _qResolveAbs(relPath) {
   let absRoot = (localStorage.getItem(key) || '').trim();
   if (!absRoot) {
     absRoot = (prompt(
-      'ffmpeg needs the absolute disk path of the folder "' + _rootName + '"\n' +
-      'you granted above.\n\nExample: M:\\Assets',
+      'Enter the FULL disk path of the folder you granted.\n\n' +
+      'It must END with the folder name shown as "Root" above — "' + _rootName + '" —\n' +
+      'and must NOT include any subfolder inside it.\n\n' +
+      'Example:  E:\\Path\\To\\' + _rootName + '\n' +
+      '(files inside it are located automatically.)',
       '') || '').trim();
     if (!absRoot) return null;
     localStorage.setItem(key, absRoot);
