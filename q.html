@@ -342,7 +342,7 @@
   </table>
 </div>
 
-<div id="qVerBtn">v0.5</div>
+<div id="qVerBtn">v0.6</div>
 
 <div id="qfooter">
   <span>
@@ -351,7 +351,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.5 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · right-click tag header=bulk set.
+    Q v0.6 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1405,7 +1405,14 @@ async function _qReadTags(f) {
     body: JSON.stringify({ input: abs })
   });
   const j = await r.json();
-  if (!j || !j.ok) throw new Error((j && (j.stderr || j.error)) || 'ffprobe failed');
+  if (!j || !j.ok) {
+    const detail = (j && (j.stderr || j.error)) || 'ffprobe failed';
+    const err = new Error(detail);
+    // (v0.6) Detect a bad/stale cached disk path (proxy now runs ffprobe with
+    // -v error so this reaches us) → caller offers to re-enter the path.
+    err._enoent = /no such file|cannot find|enoent|file not found|error opening|not exist/i.test(detail);
+    throw err;
+  }
   const tags = (j.result && j.result.format && j.result.format.tags) || {};
   const lower = {};
   for (const k in tags) lower[k.toLowerCase()] = tags[k];  // TITLE/Title → title
@@ -1565,7 +1572,22 @@ async function _beginEdit(rel, col, td, initialChar) {
     td.classList.add('meta-busy');
     setStatus('Reading tags…', 'progress');
     try { await _qReadTags(f); setStatus('', null); }
-    catch (err) { setStatus('Read tags failed: ' + err.message, 'error'); td.classList.remove('meta-busy'); return; }
+    catch (err) {
+      td.classList.remove('meta-busy');
+      // (v0.6) Stale cached disk path → ffprobe can't find the file. Offer to
+      // clear it (same self-heal as the write path) so the next edit re-prompts
+      // for the correct absolute folder path. Common after switching folders.
+      if (err._enoent && confirm(
+        'ffprobe could not find the file at the cached disk path for "' + _rootName + '".\n' +
+        'This usually means the cached path is stale (e.g. after switching folders).\n\n' +
+        'Clear it so you can re-enter the correct path on the next edit?')) {
+        _qClearAbsRoot();
+        setStatus('Cached disk path cleared — double-click the cell again to re-enter it.', 'info');
+      } else {
+        setStatus('Read tags failed: ' + err.message, 'error');
+      }
+      return;
+    }
     td.classList.remove('meta-busy');
   }
   _editing = { rel, col };

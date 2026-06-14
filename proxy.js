@@ -19,7 +19,7 @@ const PORT = 8081;
 // (dev0319) Build/capability tag — surfaced at GET /version so the client can
 // detect a stale proxy before sending a deskew (rotate) job that an old build
 // would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
-const PROXY_BUILD = 'dev0394';
+const PROXY_BUILD = 'dev0396';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -234,8 +234,12 @@ function buildFfmpegArgs(p) {
 // doesn't shred the JSON.
 function buildFfprobeArgs(p) {
   must(p.input && typeof p.input === 'string', 'input (string) required');
+  // (dev0396) -v error (was -v quiet): on a bad/stale path ffprobe must emit
+  // "No such file or directory" to stderr so streamExecCollect can surface it
+  // and the Q client can detect ENOENT and offer to re-enter the disk path.
+  // JSON still goes to stdout (unaffected by stderr verbosity).
   return [
-    '-v', 'quiet',
+    '-v', 'error',
     '-print_format', 'json',
     '-show_entries', 'format_tags=title,artist,album,genre,comment',
     p.input
