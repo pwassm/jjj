@@ -359,7 +359,7 @@ document.addEventListener('keydown', e => {
       toast('Cut cancelled', 800);
       return;
     }
-    const fromMenu = (window._smReturnPage >= 2 && window._smReturnPage <= 5);
+    const fromMenu = (window._smReturnPage >= 2 && window._smReturnPage <= 6);
     const userMode = (typeof _isUserMode === 'function') && _isUserMode();
     if ((fromMenu || userMode) && typeof window._returnToMenuFromGrid === 'function') {
       window._returnToMenuFromGrid();

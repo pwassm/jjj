@@ -738,6 +738,12 @@ async function _showShareableMenu() {
     + '.sm-rcol{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}'
     + '.sm-rname{font-size:18px;color:#ddd;}'
     + '.sm-rmeta{font-size:12px;color:#9fb0c8;line-height:1.35;}'
+    // (dev0401) SavedSearches row buttons (Open / Delete) on the right of a card.
+    + '.sm-svbtns{flex:none;display:flex;gap:8px;align-items:center;}'
+    + '.sm-svbtn{padding:7px 14px;border-radius:7px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:13px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-svbtn:hover{background:#1d2440;}'
+    + '.sm-svbtn.del{color:#ff9a9a;border-color:#5a2a2a;}'
+    + '.sm-svbtn.del:hover{background:#3a1414;}'
     // (dev0380) Choose-list cells: full-height cells with fine vertical column
     // rules, content vertically centered + left-justified within each column.
     + '.sm-detsum .sm-ico{display:flex;align-items:center;justify-content:center;width:auto;}'
@@ -774,6 +780,7 @@ async function _showShareableMenu() {
   const _tabBtns =
       '<button class="sm-tab" data-pg="2">Grids</button>'
     + '<button class="sm-tab" data-pg="3">Search</button>'
+    + '<button class="sm-tab" data-pg="6">SavedSearches</button>'
     + '<button class="sm-tab" data-pg="4">Other</button>'
     + '<button class="sm-tab" data-pg="5">Navigation Training</button>';
 
@@ -846,8 +853,9 @@ async function _showShareableMenu() {
               + '<button id="smSearchClear" class="sm-chclear" type="button">Clear</button>'
             + '</div>'
             + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make grid</button>'
+            + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
           + '</div>'
-          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When 25 or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make grid</b>) to view them all as a grid.</div>'
+          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When 25 or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
           // (dev0366) Active COI filters, shown so a narrowed result set doesn't
           // look broken. Populated from _filtTaxon / _filtMedia after mount.
           + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
@@ -878,6 +886,12 @@ async function _showShareableMenu() {
               + '</div>'
             : _smNoItems)
       + '</div>'
+      // (dev0401) PAGE 6 — "SavedSearches": searches the viewer kept via the
+      // Search tab's ★ Save button, persisted in localStorage. Empty notice
+      // until the first save; otherwise a Grids-style list with Open / Delete.
+      + '<div id="smPage6" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + '<div class="sm-chmax"><div id="smSavedBody"></div></div>'
+      + '</div>'
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.
     + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>';
@@ -889,11 +903,13 @@ async function _showShareableMenu() {
   // the tab bar at top AND bottom and are where all returns land.
   // (dev0384) `.on` is synced across BOTH bars; the last tab the viewer used is
   // remembered in window._smLastTab so a reopen lands back on it.
-  const _smTabOrder = [2, 3, 4, 5];
+  // (dev0401) SavedSearches (6) sits between Search (3) and Other (4) in the
+  // tab bar, so the Tab-key order reflects that left-to-right placement.
+  const _smTabOrder = [2, 3, 6, 4, 5];
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
     if (n >= 2) window._smLastTab = n; // (dev0384) remember the last tab used
-    [1, 2, 3, 4, 5].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
+    [1, 2, 3, 4, 5, 6].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = (n === 1) ? 'none' : 'flex');
@@ -973,10 +989,10 @@ async function _showShareableMenu() {
   //    the first hop after Welcome always lands on Choices.
   //  • else (very first entry) — show the Welcome splash and mark it seen.
   let _smStartPg;
-  if (window._smReturnPage >= 2 && window._smReturnPage <= 5) {
+  if (window._smReturnPage >= 2 && window._smReturnPage <= 6) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
-    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 5) ? window._smLastTab : 2;
+    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 6) ? window._smLastTab : 2;
   } else {
     _smStartPg = 1;
   }
@@ -1224,15 +1240,24 @@ async function _showShareableMenu() {
     window._fromShareableMenu = false;
     _smBuildGridFromRows(rows);
   };
+  const _smSaveBtn = ov.querySelector('#smSaveSearch');
+  // Save the current query to the SavedSearches list, then refresh that tab.
+  const _smSaveCurrent = () => {
+    const q = (_smBox.value || '').trim();
+    if (!q) { if (typeof toast === 'function') toast('Type a search first', 1500); return; }
+    if (_smSavedAdd(q)) { if (typeof toast === 'function') toast('★ Saved "' + q + '"', 1500); }
+    else { if (typeof toast === 'function') toast('Already saved', 1200); }
+    _smRenderSaved();
+  };
   const _smDoClear = () => { _smBox.value = ''; _smRunSearch(); _smBox.focus(); };
-  // (dev0401) Tab cycles a closed loop: text box → Clear → Make grid → text box
-  // (Shift+Tab reverses). Each control handles Tab itself so focus never escapes
-  // the search toolbar (the menu's own Tab handler defers inside .sm-chtools).
+  // (dev0401) Tab cycles a closed loop: text box → Clear → Make grid → Save →
+  // text box (Shift+Tab reverses). Each control handles Tab itself so focus
+  // never escapes the search toolbar (the menu's Tab handler defers in .sm-chtools).
   if (_smBox) {
     _smBox.addEventListener('input', _smRunSearch);
     _smBox.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); _smMakeGridNow(); return; }
-      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smMakeBtn : _smClearBtn).focus(); }
+      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smSaveBtn : _smClearBtn).focus(); }
     });
   }
   if (_smClearBtn) {
@@ -1246,9 +1271,88 @@ async function _showShareableMenu() {
     _smMakeBtn.addEventListener('click', _smMakeGridNow);
     _smMakeBtn.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _smMakeGridNow(); return; }
-      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smClearBtn : _smBox).focus(); }
+      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smClearBtn : _smSaveBtn).focus(); }
     });
   }
+  if (_smSaveBtn) {
+    _smSaveBtn.addEventListener('click', _smSaveCurrent);
+    _smSaveBtn.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _smSaveCurrent(); return; }
+      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smMakeBtn : _smBox).focus(); }
+    });
+  }
+
+  // (dev0401) SavedSearches tab — render from localStorage (persists across
+  // browser restarts / reboots). Each row shows the query + a live "now matches"
+  // count, with Open (jump to Search with the query applied) and Delete buttons.
+  const _smSavedBody = ov.querySelector('#smSavedBody');
+  const _smRenderSaved = () => {
+    if (!_smSavedBody) return;
+    const list = _smSavedLoad();
+    if (!list.length) {
+      _smSavedBody.innerHTML = '<div class="sm-chnone">No saved searches yet. '
+        + 'On the Search tab, run a search and click <b>★ Save</b> to keep it here.</div>';
+      return;
+    }
+    _smSavedBody.innerHTML = list.map(it => {
+      // Live count for this saved query (same filtering the Search tab uses).
+      const lq = String(it.q || '').toLowerCase();
+      let hits = _tBlobs.filter(x => { _smResolveTags(x); return x.staticBlob.includes(lq) || (x.tagBlob && x.tagBlob.includes(lq)); });
+      if (_filtTaxon) hits = hits.filter(x => x.hasTaxon);
+      if (_filtMedia) hits = hits.filter(x => x.kind === 'video' || x.kind === 'image');
+      const n = hits.length;
+      return '<div class="sm-item sm-card">'
+        + '<span class="sm-ico">🔎</span>'
+        + '<span class="sm-rcol">'
+          + '<span class="sm-rname">' + _smEsc(it.q) + '</span>'
+          + '<span class="sm-rmeta">' + n + ' match' + (n === 1 ? '' : 'es') + ' now'
+            + (it.ts ? '  ·  saved ' + _smDateShort(new Date(it.ts).toISOString()) : '') + '</span>'
+        + '</span>'
+        + '<span class="sm-svbtns">'
+          + '<button class="sm-svbtn" data-act="open" data-q="' + _smEsc(it.q) + '">Open</button>'
+          + '<button class="sm-svbtn del" data-act="del" data-q="' + _smEsc(it.q) + '">Delete</button>'
+        + '</span>'
+      + '</div>';
+    }).join('');
+    _smSavedBody.querySelectorAll('.sm-svbtn').forEach(b => {
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        const q = b.dataset.q;
+        if (b.dataset.act === 'del') { _smSavedRemove(q); _smRenderSaved(); }
+        else { // open: go to Search, apply the query, run it
+          _smShow(3);
+          if (_smBox) { _smBox.value = q; _smRunSearch(); setTimeout(() => _smBox.focus(), 30); }
+        }
+      });
+    });
+  };
+  _smRenderSaved();
+}
+
+// (dev0401) Saved-search persistence — a small list in localStorage. It lives
+// in the browser's local storage, so it survives closing the tab, quitting the
+// browser, and rebooting (it is NOT per-session). It is per-browser + per-site:
+// not shared to another browser, another computer, or the server, and it is
+// cleared if the user wipes site data. Each entry: { q, ts }.
+const _SM_SAVED_KEY = 'slam-saved-searches';
+function _smSavedLoad() {
+  try { const v = JSON.parse(localStorage.getItem(_SM_SAVED_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch (e) { return []; }
+}
+function _smSavedSave(list) {
+  try { localStorage.setItem(_SM_SAVED_KEY, JSON.stringify(list)); } catch (e) {}
+}
+function _smSavedAdd(q) {
+  q = String(q || '').trim(); if (!q) return false;
+  const list = _smSavedLoad();
+  if (list.some(it => String(it.q).toLowerCase() === q.toLowerCase())) return false;
+  list.unshift({ q, ts: Date.now() });
+  _smSavedSave(list);
+  return true;
+}
+function _smSavedRemove(q) {
+  const lq = String(q || '').toLowerCase();
+  _smSavedSave(_smSavedLoad().filter(it => String(it.q).toLowerCase() !== lq));
 }
 
 // (dev0400) Build an ad-hoc grid from a set of ml rows (used by the menu's
