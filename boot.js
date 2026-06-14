@@ -524,11 +524,11 @@ async function _showShareableMenu() {
   };
   const _smDateShort = v => String(v || '').trim().slice(0, 10);
 
-  // (dev0362) Search page. `n` = the Greeting row's MPix, repurposed as the
-  // "show results" threshold (it isn't a real megapixel value on that row).
-  // Below n matches, result cards appear; default 12 if unset/invalid.
-  let _smN = parseInt(greetRow && greetRow.MPix, 10);
-  if (!_smN || _smN < 1) _smN = 12;
+  // (dev0400) Search page show-threshold. Result cards appear once the match
+  // count is _smN OR FEWER (was "below n"). Fixed at 25 in code now — the old
+  // Greeting-row MPix knob ("20") confused more than it helped, and 25 is the
+  // largest grid we build from results (see _smBuildGridFromRows).
+  const _smN = 25;
   // (dev0366) Search filters are declared in the Greeting row's COI cell and
   // stay operative as long as that text is present (no in-UI toggle):
   //   • "taxon" → limit results to rows carrying at least one taxon-kind tag.
@@ -550,18 +550,37 @@ async function _showShareableMenu() {
   const _tBlobs = mlRows
     .filter(r => r && !r._salMeta && r.UID != null && !_isGreeting(r.ttxt))
     .map(r => {
-      let blob = ['VidAuthor', 'VidTitle', 'link', 'VidComment'].map(f => String(r[f] || '')).join(' ')
-        + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' ');
-      let hasTaxon = false;
-      if (window.tagsLib && Array.isArray(r.tags)) {
-        r.tags.forEach(tid => {
-          const t = window.tagsLib.get(tid);
-          if (t) { blob += ' ' + (t.label || '') + ' ' + (t.common || ''); if (t.kind === 'taxon') hasTaxon = true; }
-        });
-      }
+      const staticBlob = (['VidAuthor', 'VidTitle', 'link', 'VidComment'].map(f => String(r[f] || '')).join(' ')
+        + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' ')).toLowerCase();
       const kind = window.rowMediaKind ? window.rowMediaKind(r) : 'other';
-      return { r, blob: blob.toLowerCase(), hasTaxon, kind };
+      // (dev0400) Tag text is resolved LAZILY (see _smResolveTags) rather than
+      // here at build time. The menu can open before tags.js finishes loading,
+      // and a build-time miss left dictionary terms (a species' common name,
+      // scientific name, or alias) permanently unsearchable for that menu
+      // instance — the cause of "search 'cocka' misses the Snowball/cockatoo
+      // rows". Resolving at search time means it works as soon as tags load.
+      return { r, staticBlob, kind,
+               tagIds: Array.isArray(r.tags) ? r.tags : [],
+               tagBlob: null, hasTaxon: false };
     });
+  // (dev0400) Resolve a blob entry's dictionary-tag text once tagsLib exists.
+  // Caches on first success; retries (leaves tagBlob null) while tags are still
+  // loading. Includes label + common + aliases + def so every facet of a tag is
+  // searchable (was only label + common).
+  const _smResolveTags = e => {
+    if (e.tagBlob !== null || !window.tagsLib) return;
+    let tb = '', taxon = false;
+    e.tagIds.forEach(tid => {
+      const t = window.tagsLib.get(tid);
+      if (!t) return;
+      tb += ' ' + (t.label || '') + ' ' + (t.common || '')
+          + ' ' + (Array.isArray(t.aliases) ? t.aliases.join(' ') : '')
+          + ' ' + (t.def || '');
+      if (t.kind === 'taxon') taxon = true;
+    });
+    e.tagBlob = tb.toLowerCase();
+    e.hasTaxon = taxon;
+  };
   // Result label per the user's rule: ftext-bearing rows (Xe — incl. quiz, and
   // with OR without a link) → first non-formatting HTML line; else video →
   // VidTitle, image → first of VidComment.
@@ -732,7 +751,7 @@ async function _showShareableMenu() {
   // _smShow syncs the `.on` class across every `.sm-tab`, so the two bars stay
   // in lockstep automatically.
   const _tabBtns =
-      '<button class="sm-tab" data-pg="2">Choices</button>'
+      '<button class="sm-tab" data-pg="2">Grids</button>'
     + '<button class="sm-tab" data-pg="3">Search</button>'
     + '<button class="sm-tab" data-pg="4">Other</button>'
     + '<button class="sm-tab" data-pg="5">Navigation Training</button>';
@@ -795,13 +814,26 @@ async function _showShareableMenu() {
       // PAGE 3 — search anywhere across all of T; result cards appear once the
       // match count drops below n (the Greeting row's MPix).
       + '<div id="smPage3" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + '<input id="smSearchBox" class="sm-search" type="text" placeholder="Search everything…" autocomplete="off">'
-        // (dev0366) Active COI filters, shown so a narrowed result set doesn't
-        // look broken. Populated from _filtTaxon / _filtMedia after mount.
-        + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
-        + '<div id="smSugg" class="sm-sugg"></div>'
-        + '<div id="smCount" class="sm-count"></div>'
-        + '<div id="smResults" class="sm-results"></div>'
+        // (dev0400) Search now uses the same toolbar shape as the Grids filter:
+        // text box + Clear to its right (Tab cycles box ↔ Clear ↔ Make grid),
+        // plus a "Make grid" button. Enter in the box (or Make grid) turns the
+        // current ≤25 results into a grid (size scales with the count).
+        + '<div class="sm-chmax">'
+          + '<div class="sm-chtools">'
+            + '<div class="sm-chfwrap">'
+              + '<input id="smSearchBox" class="sm-chfilter" type="text" placeholder="Search everything…" autocomplete="off">'
+              + '<button id="smSearchClear" class="sm-chclear" type="button">Clear</button>'
+            + '</div>'
+            + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make grid</button>'
+          + '</div>'
+          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">When 25 or fewer match, press <b>Enter</b> (or ▦ Make grid) to view them as a grid.</div>'
+          // (dev0366) Active COI filters, shown so a narrowed result set doesn't
+          // look broken. Populated from _filtTaxon / _filtMedia after mount.
+          + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
+          + '<div id="smSugg" class="sm-sugg"></div>'
+          + '<div id="smCount" class="sm-count"></div>'
+          + '<div id="smResults" class="sm-results"></div>'
+        + '</div>'
       + '</div>'
       // PAGE 5 — "Navigation Training": same sortable choice table as page 2,
       // but built from the config rows' `ss` field instead of `ctxt`.
@@ -1105,13 +1137,19 @@ async function _showShareableMenu() {
   const _smNavColA = ov.querySelector('#smNavCollapseAll');
   if (_smNavColA) _smNavColA.addEventListener('click', () => _smNavSetAllOpen(false));
 
-  // (dev0362) Search page — live anywhere-filter over all of T (precomputed
-  // blobs), dictionary suggestions from tagsLib, a match count, and result
-  // cards once matches < n.
+  // (dev0362/0400) Search page — live anywhere-filter over all of T (static
+  // blobs + lazily-resolved dictionary-tag text), dictionary suggestions from
+  // tagsLib, a match count, and result cards once matches ≤ _smN. Enter in the
+  // box (or the ▦ Make grid button) turns the current results into a grid.
   const _smBox = ov.querySelector('#smSearchBox');
   const _smSuggEl = ov.querySelector('#smSugg');
   const _smCountEl = ov.querySelector('#smCount');
   const _smResEl = ov.querySelector('#smResults');
+  const _smClearBtn = ov.querySelector('#smSearchClear');
+  const _smMakeBtn = ov.querySelector('#smMakeGrid');
+  // Rows currently eligible to become a grid (the ≤_smN result set). Empty when
+  // nothing is typed or the count is still above the threshold.
+  let _smGridable = [];
   const _smRunSearch = () => {
     const q = (_smBox.value || '').trim();
     const lq = q.toLowerCase();
@@ -1121,15 +1159,20 @@ async function _showShareableMenu() {
       _smSuggEl.querySelectorAll('.sm-chip').forEach(c =>
         c.addEventListener('click', () => { _smBox.value = c.dataset.q; _smRunSearch(); }));
     }
-    if (!q) { _smCountEl.textContent = ''; _smResEl.innerHTML = ''; return; }
-    // (dev0366) Apply the COI-declared filters before the threshold/render.
-    let _hits = _tBlobs.filter(x => x.blob.includes(lq));
+    if (!q) { _smCountEl.textContent = ''; _smResEl.innerHTML = ''; _smGridable = []; return; }
+    // (dev0366/0400) Apply the COI-declared filters before the threshold/render.
+    // The tag text is resolved here (lazily) so dictionary terms match.
+    let _hits = _tBlobs.filter(x => {
+      _smResolveTags(x);
+      return x.staticBlob.includes(lq) || (x.tagBlob && x.tagBlob.includes(lq));
+    });
     if (_filtTaxon) _hits = _hits.filter(x => x.hasTaxon);
     if (_filtMedia) _hits = _hits.filter(x => x.kind === 'video' || x.kind === 'image');
     const matches = _hits.map(x => x.r);
     _smCountEl.textContent = matches.length + ' match' + (matches.length === 1 ? '' : 'es')
-      + (matches.length >= _smN ? ' — keep typing to narrow below ' + _smN : '');
-    if (matches.length && matches.length < _smN) {
+      + (matches.length > _smN ? ' — keep typing to narrow to ' + _smN + ' or fewer' : '');
+    if (matches.length && matches.length <= _smN) {
+      _smGridable = matches;
       _smResEl.innerHTML = matches.map(r =>
         '<div class="sm-item sm-card" data-uid="' + _smEsc(String(r.UID)) + '">'
           + '<span class="sm-ico">' + (_smBadge[_smResultBadge(r)] || '🔗') + '</span>'
@@ -1138,10 +1181,68 @@ async function _showShareableMenu() {
       _smResEl.querySelectorAll('.sm-item').forEach(el =>
         el.addEventListener('click', () => _smOpenV(el.dataset.uid)));
     } else {
+      _smGridable = [];
       _smResEl.innerHTML = '';
     }
   };
-  if (_smBox) _smBox.addEventListener('input', _smRunSearch);
+  // Build a grid from the current result set and leave the menu for it.
+  const _smMakeGridNow = () => {
+    if (!_smGridable.length) {
+      if (typeof toast === 'function')
+        toast('Narrow to ' + _smN + ' or fewer results first', 1800);
+      return;
+    }
+    const rows = _smGridable.slice();
+    window._smReturnPage = 3;          // Esc / swipe-back returns here, to Search
+    ov.remove();
+    window._fromShareableMenu = false;
+    _smBuildGridFromRows(rows);
+  };
+  if (_smBox) {
+    _smBox.addEventListener('input', _smRunSearch);
+    _smBox.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); _smMakeGridNow(); }
+    });
+  }
+  if (_smMakeBtn) _smMakeBtn.addEventListener('click', _smMakeGridNow);
+  // Clear button: empties the box, re-runs (clears results), refocuses the box.
+  // Tab cycles box → Clear → Make grid (native order; the menu's Tab handler
+  // defers to .sm-chtools), matching the Grids filter's box ↔ Clear feel.
+  if (_smClearBtn) {
+    _smClearBtn.addEventListener('click', () => { _smBox.value = ''; _smRunSearch(); _smBox.focus(); });
+    _smClearBtn.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _smBox.value = ''; _smRunSearch(); _smBox.focus(); }
+    });
+  }
+}
+
+// (dev0400) Build an ad-hoc grid from a set of ml rows (used by the menu's
+// Search tab). Grid size scales with the count — 1-4→2×2, 5-9→3×3, 10-16→4×4,
+// 17-25→5×5 (never the 17/19 special layouts). Mirrors _openConfigByName's
+// activation but with a synthetic in-memory config instead of a c.json row, and
+// without persisting (no save()) since this arrangement is ephemeral.
+function _smBuildGridFromRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return;
+  let gsize = 2;                  // 1-4 → 4
+  if (rows.length >= 17) gsize = 5;       // 17-25 → 25
+  else if (rows.length >= 10) gsize = 4;  // 10-16 → 16
+  else if (rows.length >= 5) gsize = 3;   // 5-9 → 9
+  const cellsN = gsize * gsize;
+  const cfg = { gname: 'Search results', cells: cellsN };
+  const cellList = (typeof _gridCellList === 'function')
+    ? _gridCellList(gsize, 'square')
+    : (() => { const a = []; for (let r = 1; r <= gsize; r++) for (let c = 1; c <= gsize; c++) a.push({ cs: r + 'abcde'.charAt(c - 1) }); return a; })();
+  rows.slice(0, cellsN).forEach((r, i) => {
+    if (cellList[i] && r && r.UID != null) cfg[cellList[i].cs] = String(r.UID);
+  });
+  window._gridActiveConfig = cfg;
+  window._gridSource = 'C';
+  window._gridName = 'Search results';
+  if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg);
+  if (typeof _setGridGsize === 'function') _setGridGsize(gsize, { skipSave: true });
+  const gOvl = document.getElementById('gridOverlay');
+  if (gOvl) gOvl.style.display = 'flex';
+  if (typeof gridShow === 'function') gridShow();
 }
 window._showShareableMenu = _showShareableMenu;
 
