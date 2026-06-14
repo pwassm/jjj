@@ -264,6 +264,10 @@
     <span class="chip" data-fchip="myown" data-fval="false" title="Not your own (downloaded or external)">NotMyOwn <span class="ct" id="ct-notmyown">0</span></span>
     <span class="vbar"></span>
     <input type="text" id="qfilter" placeholder="filename / path contains…">
+    <button class="btn" id="qclear" title="Clear the filename/path filter">✕</button>
+    <select id="qdir" title="Filter by directory — pick a folder, or the top item to show all">
+      <option value="">📁 All directories</option>
+    </select>
     <span style="color:#8ef;font-size:11px;">Sort:</span>
     <select id="qsort">
       <option value="mtime-desc">Modified desc</option>
@@ -342,7 +346,7 @@
   </table>
 </div>
 
-<div id="qVerBtn">v0.7</div>
+<div id="qVerBtn">v0.8</div>
 
 <div id="qfooter">
   <span>
@@ -351,7 +355,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.7 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · right-click tag header=bulk set.
+    Q v0.8 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · 📁 dir dropdown / ✕=clear filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1029,6 +1033,7 @@ function render() {
   // (dev0310) Selection-driven button state: Slideshow/Review/Delete require a
   // selection. Extract just needs a root + any rows.
   updateSelectionUI();
+  _qRebuildDirList();   // (v0.8) keep the directory dropdown in sync with the index
   const haveRows = _files.length > 0;
   document.getElementById('extractBtn').disabled = !(haveRows && _root);
 }
@@ -1928,6 +1933,66 @@ document.getElementById('qfilter').addEventListener('input', e => {
   _filters.text = e.target.value.trim();
   render();
 });
+// (v0.8) Clear-filter button — empties the text/path filter (the fix for
+// "no way to unfilter" after a right-click-Path filter).
+document.getElementById('qclear').addEventListener('click', () => {
+  _filters.text = '';
+  const fi = document.getElementById('qfilter'); if (fi) fi.value = '';
+  const dd = document.getElementById('qdir');    if (dd) dd.value = '';
+  render();
+  setStatus('Filter cleared.', 'info');
+  setTimeout(() => { const s = document.getElementById('qstatus'); if (s && s.textContent === 'Filter cleared.') setStatus('', null); }, 1400);
+});
+// (v0.8) Directory dropdown — filter by folder. Picking a dir sets the same
+// path filter the right-click-Path gesture uses; the top "All directories"
+// option clears it. Doubles as a navigable folder list (indented by depth).
+document.getElementById('qdir').addEventListener('change', e => {
+  const dir = e.target.value;        // '' = all, else "sub/dir/" with trailing slash
+  _filters.text = dir;
+  const fi = document.getElementById('qfilter'); if (fi) fi.value = dir;
+  render();
+});
+// Rebuild the dir <option> list from the live index, indented by depth so
+// nesting is visible. Cheap (dirs ≪ files); options only rebuilt when the set
+// of directories actually changes, so an open dropdown isn't disrupted mid-pick.
+let _qDirSig = null;
+function _qRebuildDirList() {
+  const dd = document.getElementById('qdir');
+  if (!dd) return;
+  // Count direct files per directory + synthesize ancestor dirs so the tree is
+  // complete even when only a deep leaf holds files.
+  const counts = new Map();
+  for (const f of _files) {
+    const d = pathDir(f.relPath);     // "" for root-level files
+    if (!d) continue;
+    counts.set(d, (counts.get(d) || 0) + 1);
+    const parts = d.split('/').filter(Boolean);
+    for (let i = 1; i < parts.length; i++) {
+      const anc = parts.slice(0, i).join('/') + '/';
+      if (!counts.has(anc)) counts.set(anc, 0);
+    }
+  }
+  const dirs = Array.from(counts.keys()).sort();
+  const sig = dirs.join('|');
+  if (sig !== _qDirSig) {
+    _qDirSig = sig;
+    let html = '<option value="">📁 All directories</option>';
+    for (const d of dirs) {
+      const parts = d.split('/').filter(Boolean);
+      const depth = parts.length - 1;
+      const indent = '   '.repeat(depth);
+      const n = counts.get(d);
+      const lbl = indent + parts[parts.length - 1] + '/' + (n ? '  (' + n + ')' : '');
+      html += '<option value="' + esc(d) + '">' + esc(lbl) + '</option>';
+    }
+    dd.innerHTML = html;
+  }
+  // Keep the dropdown reflecting the active filter (set by text box or
+  // right-click-Path). Free-text that isn't a known dir → show "All".
+  if (document.activeElement !== dd) {
+    dd.value = counts.has(_filters.text) ? _filters.text : '';
+  }
+}
 document.getElementById('qsort').addEventListener('change', e => {
   const v = e.target.value;
   if (v === 'mtime-desc')      { _sortKey = 'mtime'; _sortDir = 'desc'; }
