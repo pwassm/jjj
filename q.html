@@ -316,7 +316,7 @@
   </table>
 </div>
 
-<div id="qVerBtn">v0.3</div>
+<div id="qVerBtn">v0.4</div>
 
 <div id="qfooter">
   <span>
@@ -325,7 +325,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.3 — IndexedDB <code>localmedia</code>. Click=focus · dblclick=edit MP4 tags (ffmpeg) · right-click Path=filter · right-click tag header=bulk set.
+    Q v0.4 — IndexedDB <code>localmedia</code>. Click=focus · dblclick=edit MP4 tags (exiftool, in-place) · right-click Path=filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1353,15 +1353,20 @@ function _qSplitAbs(p) {
   return { dir: m[1], sep: m[2], base: m[3], ext: m[4] };
 }
 
-// Detect a stale proxy (the metadata branch + ffprobe builder landed in
-// build dev0391). Mirrors the dev0319 deskew handshake.
-async function _qProxyHasMetadata() {
+// (v0.4) Probe proxy capabilities once and cache. `metadata` = the dev0391
+// ffmpeg tag-rewrite path; `exiftool` = the dev0394 in-place engine (preferred
+// — KB-sized writes, no temp/swap, no FSA readwrite needed). Mirrors the
+// dev0319 deskew handshake.
+let _qCaps = null;
+async function _qGetCaps(force) {
+  if (_qCaps && !force) return _qCaps;
   try {
     const r = await fetch(PROXY_BASE + '/version', { cache: 'no-store' });
-    if (!r.ok) return false;
+    if (!r.ok) return _qCaps = { metadata: false, exiftool: false };
     const j = await r.json();
-    return Array.isArray(j.features) && j.features.includes('metadata');
-  } catch (_) { return false; }
+    const feats = Array.isArray(j.features) ? j.features : [];
+    return _qCaps = { metadata: feats.includes('metadata'), exiftool: feats.includes('exiftool') };
+  } catch (_) { return _qCaps = { metadata: false, exiftool: false }; }
 }
 
 // Read the file's current 5 tags via ffprobe, fill the row, persist.
@@ -1418,12 +1423,53 @@ async function _qSwapTemp(relPath, tmpName) {
   await tmpFh.move(dir, origName);
 }
 
+// (v0.4) Write tag(s) back to the file. Dispatches to the exiftool in-place
+// engine when the proxy advertises it (fast, no temp/swap), else the legacy
+// ffmpeg rewrite path. `keys` = which tags to (re)write (default all five).
+// Both engines preserve untouched tags, so callers needn't ffprobe-read first.
+async function _qWriteTags(f, keys) {
+  const caps = await _qGetCaps();
+  if (caps.exiftool) return _qWriteTagsExif(f, keys);
+  return _qWriteTagsFfmpeg(f, keys);
+}
+
+// (v0.4) exiftool path — patches the moov atom in place. No sibling temp, no
+// FSA swap, no FSA readwrite permission (exiftool writes to disk directly).
+// An empty value clears the tag (verified dev0394).
+async function _qWriteTagsExif(f, keys) {
+  keys = keys || META_TAG_KEYS;
+  const metadata = {};
+  for (const key of keys) metadata[key] = f[key] || '';
+  const absIn = _qResolveAbs(f.relPath);
+  if (!absIn) throw new Error('no disk path for root');
+  const res = await fetch(PROXY_BASE + '/exec/exiftool', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: absIn, metadata })
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error('exiftool HTTP ' + res.status + (t ? ': ' + t : ''));
+  }
+  const { exitCode, stderr } = await _qReadNdjson(res, ev => {
+    if (ev.type === 'stderr' && ev.line) setStatus('exiftool: ' + ev.line, 'progress');
+  });
+  if (exitCode !== 0) {
+    const err = new Error(stderr || ('exiftool exit ' + exitCode));
+    err._enoent = /no such file|cannot find|enoent|file not found|error opening|not exist/i.test(stderr || '');
+    throw err;
+  }
+  // Wrote in place — just re-stat for size/mtime (FSA getFile reads fresh disk).
+  try { const fo = await getFileFromRoot(_root, f.relPath); f.size = fo.size; f.mtime = fo.lastModified; } catch (_) {}
+  f._tagsRead = true;
+  await idbPutFile(f);
+}
+
 // Write tag(s) back to the file: ffmpeg -> sibling temp -> FSA swap -> re-stat.
 // `keys` = which tags to (re)write (default all five). ffmpeg's -map_metadata 0
 // copies every existing source tag first, so writing ONLY the changed key never
 // clobbers the others — which also means callers don't need a full ffprobe read
 // before a write. Callers are responsible for the stale-proxy check.
-async function _qWriteTags(f, keys) {
+async function _qWriteTagsFfmpeg(f, keys) {
   keys = keys || META_TAG_KEYS;
   const metadata = {};
   for (const key of keys) metadata[key] = f[key] || '';
@@ -1478,13 +1524,14 @@ async function _beginEdit(rel, col, td) {
     return;
   }
   _setFocus(rel, col);
-  if (!(await _qProxyHasMetadata())) {
-    setStatus('proxy.js missing the metadata feature — restart it (build ≥ dev0391), then retry.', 'error');
+  const caps = await _qGetCaps();
+  if (!caps.exiftool && !caps.metadata) {
+    setStatus('proxy.js missing the tag-write feature — restart it (build ≥ dev0391), then retry.', 'error');
     return;
   }
-  // Prime readwrite permission while the dblclick gesture is still fresh, so the
-  // post-write FSA swap doesn't need its own user activation.
-  try { await _root.requestPermission({ mode: 'readwrite' }); } catch (_) {}
+  // ffmpeg engine FSA-swaps a temp over the original → needs readwrite; prime it
+  // while the dblclick gesture is fresh. exiftool writes in place, so skip it.
+  if (!caps.exiftool) { try { await _root.requestPermission({ mode: 'readwrite' }); } catch (_) {} }
   if (!f._tagsRead) {
     td.classList.add('meta-busy');
     setStatus('Reading tags…', 'progress');
@@ -1605,12 +1652,14 @@ function _qOpenColMenu(x, y, col) {
 
 async function _qBulkSet(col, targets) {
   if (!targets.length) { setStatus('No editable .mp4/.mov/.m4v files in scope.', 'error'); return; }
-  // Prime readwrite permission with the gesture still fresh from the menu click.
-  try { await _root.requestPermission({ mode: 'readwrite' }); } catch (_) {}
-  if (!(await _qProxyHasMetadata())) {
-    setStatus('proxy.js missing the metadata feature — restart it (build ≥ dev0391), then retry.', 'error');
+  const caps = await _qGetCaps();
+  if (!caps.exiftool && !caps.metadata) {
+    setStatus('proxy.js missing the tag-write feature — restart it (build ≥ dev0391), then retry.', 'error');
     return;
   }
+  // ffmpeg engine needs FSA readwrite for the temp swap; prime it while the menu
+  // click gesture is fresh. exiftool writes in place → no FSA write needed.
+  if (!caps.exiftool) { try { await _root.requestPermission({ mode: 'readwrite' }); } catch (_) {} }
   const label = col.charAt(0).toUpperCase() + col.slice(1);
   const val = prompt('Set ' + label + ' on ' + targets.length + ' file(s) to:\n(leave blank to clear the tag)', '');
   if (val === null) return;  // cancelled

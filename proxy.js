@@ -19,7 +19,7 @@ const PORT = 8081;
 // (dev0319) Build/capability tag — surfaced at GET /version so the client can
 // detect a stale proxy before sending a deskew (rotate) job that an old build
 // would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
-const PROXY_BUILD = 'dev0392';
+const PROXY_BUILD = 'dev0394';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -241,8 +241,60 @@ function buildFfprobeArgs(p) {
     p.input
   ];
 }
-function buildExiftoolArgs(_p) {
-  throw new Error('exiftool builder not yet implemented (scaffold)');
+// (dev0394) exiftool bridge — the fast, TigoTago-style tag engine.
+//
+// Why exiftool instead of the ffmpeg metadata path: ffmpeg cannot edit in
+// place, so every tag write `-c copy`'s the WHOLE file to a temp and the
+// client FSA-swaps it over the original — O(filesize) per edit (a 2 GB clip
+// copies 2 GB to change one string). exiftool patches the moov atom in place
+// (`-overwrite_original`), so a tag write is KB-sized and the client needs no
+// temp/swap dance and no FSA readwrite permission at all.
+//
+// Round-trip note (verified empirically dev0394): we write the iTunes-style
+// ItemList group (©nam/©ART/©alb/©gen/©cmt) explicitly so the values land in
+// the exact atoms ffprobe's `format_tags=title,artist,…` reads back — keeping
+// exiftool-write / ffprobe-read consistent with the old ffmpeg-write path.
+//
+// Two modes, dispatched on payload shape:
+//   • write: p.metadata present → in-place tag rewrite (empty value clears).
+//   • read : no p.metadata      → `-json` dump of the five tags (routed
+//             through streamExecCollect like ffprobe, since stdout is JSON).
+const EXIF_TAG_MAP = {
+  title:   'ItemList:Title',
+  artist:  'ItemList:Artist',
+  album:   'ItemList:Album',
+  genre:   'ItemList:Genre',
+  comment: 'ItemList:Comment'
+};
+function buildExiftoolArgs(p) {
+  must(p.input && typeof p.input === 'string', 'input (string) required');
+  // ── WRITE mode (in-place) ───────────────────────────────────────────────
+  if (p.metadata && typeof p.metadata === 'object') {
+    // `-charset filename=UTF8` so non-ASCII paths resolve; `-charset UTF8` so
+    // tag values are interpreted as UTF-8. `-overwrite_original` = no _original
+    // backup. `-q` quiets the "1 files updated" chatter; exit code carries the
+    // verdict. shell:false (spawn default) keeps every token literal — and the
+    // key allowlist below blocks an option-looking key (e.g. "-delete_all").
+    const args = ['-charset', 'filename=UTF8', '-charset', 'UTF8',
+                  '-overwrite_original', '-q'];
+    let n = 0;
+    for (const k of Object.keys(p.metadata)) {
+      must(EXIF_TAG_MAP[k], 'metadata key not allowed: ' + k);
+      let v = p.metadata[k];
+      v = (v == null) ? '' : String(v);
+      must(v.length <= 512, 'metadata.' + k + ' too long (max 512 chars)');
+      v = v.replace(/[\x00-\x1f\x7f]/g, ' ');   // strip control chars/newlines
+      args.push('-' + EXIF_TAG_MAP[k] + '=' + v);  // empty value clears the tag
+      n++;
+    }
+    must(n > 0, 'metadata object has no allowed keys');
+    args.push(p.input);
+    return args;
+  }
+  // ── READ mode (JSON to stdout) ──────────────────────────────────────────
+  return ['-json', '-charset', 'UTF8',
+          ...Object.values(EXIF_TAG_MAP).map(t => '-' + t),
+          p.input];
 }
 
 const EXEC_ALLOW = {
@@ -423,7 +475,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool'] }));
     return;
   }
 
@@ -452,9 +504,12 @@ http.createServer((req, res) => {
       try { args = builder(payload); }
       catch (e) { send(res, 400, 'exec: ' + e.message, corsForExec(origin)); return; }
       // (dev0391) ffprobe returns JSON on stdout — collect it whole rather than
-      // streaming it through the ffmpeg progress parser.
-      if (bin === 'ffprobe') streamExecCollect(req, res, bin, args);
-      else                   streamExec(req, res, bin, args);
+      // streaming it through the ffmpeg progress parser. (dev0394) exiftool in
+      // READ mode (no payload.metadata) also emits JSON, so collect it too;
+      // exiftool WRITE mode streams (exit code carries the verdict).
+      const wantsCollect = bin === 'ffprobe' || (bin === 'exiftool' && !payload.metadata);
+      if (wantsCollect) streamExecCollect(req, res, bin, args);
+      else              streamExec(req, res, bin, args);
     }).catch(err => send(res, 400, 'exec: ' + err.message, corsForExec(origin)));
     return;
   }
@@ -505,5 +560,5 @@ http.createServer((req, res) => {
   console.log('Spoofs Referer (target apex domain) + Chrome User-Agent');
   console.log(`Local exec bridge: POST /exec/{${Object.keys(EXEC_ALLOW).join(',')}}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
-  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate`);
+  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool`);
 });
