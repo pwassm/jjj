@@ -187,6 +187,15 @@
     background: rgba(0,60,140,0.55); border: 1px solid #4af; color: #8ef;
     pointer-events: none; user-select: none;
   }
+  /* (v0.3) bulk-set column context menu (right-click a tag header) */
+  #qctx {
+    position: fixed; z-index: 100; min-width: 190px;
+    background: #11142a; border: 1px solid #4af; border-radius: 6px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6); padding: 4px; font: 12px monospace;
+  }
+  #qctx .qctx-hdr { color: #8ef; padding: 4px 8px; border-bottom: 1px solid #335; margin-bottom: 4px; }
+  #qctx .qctx-item { color: #cde; padding: 6px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+  #qctx .qctx-item:hover { background: rgba(0,80,180,0.5); color: #fff; }
 </style>
 </head>
 <body>
@@ -307,7 +316,7 @@
   </table>
 </div>
 
-<div id="qVerBtn">v0.2</div>
+<div id="qVerBtn">v0.3</div>
 
 <div id="qfooter">
   <span>
@@ -316,7 +325,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.2 — IndexedDB <code>localmedia</code>. Click=focus · dblclick=edit MP4 tags (ffmpeg) · right-click Path=filter.
+    Q v0.3 — IndexedDB <code>localmedia</code>. Click=focus · dblclick=edit MP4 tags (ffmpeg) · right-click Path=filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1409,12 +1418,15 @@ async function _qSwapTemp(relPath, tmpName) {
   await tmpFh.move(dir, origName);
 }
 
-// Write all 5 tags back to the file: ffmpeg -> sibling temp -> FSA swap -> re-stat.
-async function _qWriteTags(f) {
-  if (!(await _qProxyHasMetadata()))
-    throw new Error('proxy.js is too old — restart it (build ≥ dev0391) to load the metadata feature');
+// Write tag(s) back to the file: ffmpeg -> sibling temp -> FSA swap -> re-stat.
+// `keys` = which tags to (re)write (default all five). ffmpeg's -map_metadata 0
+// copies every existing source tag first, so writing ONLY the changed key never
+// clobbers the others — which also means callers don't need a full ffprobe read
+// before a write. Callers are responsible for the stale-proxy check.
+async function _qWriteTags(f, keys) {
+  keys = keys || META_TAG_KEYS;
   const metadata = {};
-  for (const key of META_TAG_KEYS) metadata[key] = f[key] || '';
+  for (const key of keys) metadata[key] = f[key] || '';
   const absIn = _qResolveAbs(f.relPath);
   if (!absIn) throw new Error('no disk path for root');
   const split = _qSplitAbs(absIn);
@@ -1499,7 +1511,7 @@ async function _beginEdit(rel, col, td) {
     td.classList.add('meta-busy');
     setStatus('Writing tag to file…', 'progress');
     try {
-      await _qWriteTags(f);
+      await _qWriteTags(f, [col]);
       setStatus('✓ Saved ' + col + '.', 'info');
       setTimeout(() => setStatus('', null), 1800);
     } catch (err) {
@@ -1550,6 +1562,71 @@ document.getElementById('qrows').addEventListener('contextmenu', e => {
   setStatus(folder ? 'Filtered to path: ' + folder : 'File is at root — filter cleared.', 'info');
   setTimeout(() => { const s = document.getElementById('qstatus'); if (s && s.textContent.startsWith('Filtered')) setStatus('', null); }, 2200);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// (v0.3) Bulk-set a metadata tag across many files (the T "Bulk set" analogue).
+// Right-click one of the five tag headers → set it on the checked files, or on
+// all currently-shown files. Each target is written via the same ffmpeg path as
+// single-cell editing, but only the chosen key (others preserved).
+// ─────────────────────────────────────────────────────────────────────────
+function _qCloseMenu() { const m = document.getElementById('qctx'); if (m) m.remove(); }
+document.addEventListener('pointerdown', e => {
+  const m = document.getElementById('qctx');
+  if (m && !m.contains(e.target)) _qCloseMenu();
+}, true);
+
+document.querySelector('#qtable thead tr').addEventListener('contextmenu', e => {
+  const th = e.target.closest('th[data-sort]');
+  if (!th || !EDITABLE_META_COLS[th.dataset.sort]) return;  // only the 5 tag columns
+  e.preventDefault();
+  _qOpenColMenu(e.clientX, e.clientY, th.dataset.sort);
+});
+
+function _qOpenColMenu(x, y, col) {
+  _qCloseMenu();
+  const shown = sortRows(applyFilters(_files)).filter(r => r.kind === 'video' && META_EDITABLE_EXT.test(r.name));
+  const checked = shown.filter(r => _selected.has(r.relPath));
+  const label = col.charAt(0).toUpperCase() + col.slice(1);
+  const items = [];
+  if (checked.length) items.push(['Set on ' + checked.length + ' checked file(s)…', () => _qBulkSet(col, checked)]);
+  items.push(['Set on all ' + shown.length + ' shown file(s)…', () => _qBulkSet(col, shown)]);
+  const menu = document.createElement('div');
+  menu.id = 'qctx';
+  menu.innerHTML = '<div class="qctx-hdr">Bulk set ' + esc(label) + '</div>' +
+    items.map((it, i) => '<div class="qctx-item" data-i="' + i + '">' + esc(it[0]) + '</div>').join('');
+  document.body.appendChild(menu);
+  menu.style.left = Math.min(x, window.innerWidth - 210) + 'px';
+  menu.style.top  = Math.min(y, window.innerHeight - 120) + 'px';
+  menu.querySelectorAll('.qctx-item').forEach(el => {
+    const fn = items[+el.dataset.i][1];
+    el.addEventListener('click', () => { _qCloseMenu(); fn(); });
+  });
+}
+
+async function _qBulkSet(col, targets) {
+  if (!targets.length) { setStatus('No editable .mp4/.mov/.m4v files in scope.', 'error'); return; }
+  // Prime readwrite permission with the gesture still fresh from the menu click.
+  try { await _root.requestPermission({ mode: 'readwrite' }); } catch (_) {}
+  if (!(await _qProxyHasMetadata())) {
+    setStatus('proxy.js missing the metadata feature — restart it (build ≥ dev0391), then retry.', 'error');
+    return;
+  }
+  const label = col.charAt(0).toUpperCase() + col.slice(1);
+  const val = prompt('Set ' + label + ' on ' + targets.length + ' file(s) to:\n(leave blank to clear the tag)', '');
+  if (val === null) return;  // cancelled
+  const sp = document.getElementById('scanProgress');
+  let done = 0, fails = 0;
+  setStatus('Bulk-setting ' + label + '…', 'progress');
+  for (const f of targets) {
+    try { f[col] = val; await _qWriteTags(f, [col]); done++; }
+    catch (_) { fails++; }
+    sp.textContent = '(' + (done + fails) + ' / ' + targets.length + (fails ? ', ' + fails + ' failed' : '') + ')';
+    if ((done + fails) % 4 === 0) render();
+  }
+  sp.textContent = '';
+  render();
+  setStatus('Bulk set ' + label + ': ' + done + ' updated' + (fails ? ', ' + fails + ' failed' : '') + '.', fails ? 'error' : 'info');
+}
 
 document.getElementById('qfilter').addEventListener('input', e => {
   _filters.text = e.target.value.trim();
