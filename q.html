@@ -59,7 +59,32 @@
   .vbar { width: 1px; height: 20px; background: #334; }
 
   /* ── Table ── */
+  /* (v0.9) split: folder-tree sidebar + scrolling table */
+  #qsplit { flex: 1; display: flex; min-height: 0; }
   #qwrap { flex: 1; overflow: auto; min-height: 0; }
+  #qtree {
+    width: 240px; flex-shrink: 0; overflow: auto; min-height: 0;
+    background: #0a0f1c; border-right: 1px solid #1b2740;
+    font: 11px monospace; user-select: none;
+  }
+  #qtree.hidden { display: none; }
+  .qtree-hdr {
+    position: sticky; top: 0; background: #0d1426; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 8px; border-bottom: 1px solid #1b2740; color: #8ef;
+  }
+  .qtree-hide { cursor: pointer; color: #67a; padding: 0 4px; }
+  .qtree-hide:hover { color: #8ef; }
+  .qtree-row {
+    display: flex; align-items: center; gap: 3px; padding: 2px 6px;
+    white-space: nowrap; cursor: pointer; color: #9bd;
+  }
+  .qtree-row:hover { background: #13243f; }
+  .qtree-row.active { background: #1d3a66; color: #fff; }
+  .qtree-caret { width: 12px; flex-shrink: 0; text-align: center; color: #67a; }
+  .qtree-name { overflow: hidden; text-overflow: ellipsis; }
+  .qtree-count { color: #567; margin-left: 4px; }
+  .qtree-row.active .qtree-count { color: #bcd; }
   /* (dev0307/0309) table-layout:fixed lets <colgroup> widths actually apply.
      dev0309: dropped `width:max-content; min-width:100%` — those forced the
      table to grow with content / fill the viewport, which overrode col
@@ -265,9 +290,7 @@
     <span class="vbar"></span>
     <input type="text" id="qfilter" placeholder="filename / path contains…">
     <button class="btn" id="qclear" title="Clear the filename/path filter">✕</button>
-    <select id="qdir" title="Filter by directory — pick a folder, or the top item to show all">
-      <option value="">📁 All directories</option>
-    </select>
+    <button class="btn" id="treeToggle" title="Show/hide the folder tree sidebar">📁 Folders</button>
     <span style="color:#8ef;font-size:11px;">Sort:</span>
     <select id="qsort">
       <option value="mtime-desc">Modified desc</option>
@@ -290,6 +313,8 @@
   across reloads.
 </div>
 
+<div id="qsplit">
+<aside id="qtree"></aside>
 <div id="qwrap">
   <table id="qtable">
     <colgroup>
@@ -345,8 +370,9 @@
     <tbody id="qrows"></tbody>
   </table>
 </div>
+</div>
 
-<div id="qVerBtn">v0.8</div>
+<div id="qVerBtn">v0.9</div>
 
 <div id="qfooter">
   <span>
@@ -355,7 +381,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.8 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · 📁 dir dropdown / ✕=clear filter · right-click tag header=bulk set.
+    Q v0.9 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · 📁 folder tree=filter by folder · ✕=clear filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1033,7 +1059,7 @@ function render() {
   // (dev0310) Selection-driven button state: Slideshow/Review/Delete require a
   // selection. Extract just needs a root + any rows.
   updateSelectionUI();
-  _qRebuildDirList();   // (v0.8) keep the directory dropdown in sync with the index
+  _qRenderTree();   // (v0.9) keep the folder-tree sidebar in sync with the index
   const haveRows = _files.length > 0;
   document.getElementById('extractBtn').disabled = !(haveRows && _root);
 }
@@ -1938,61 +1964,109 @@ document.getElementById('qfilter').addEventListener('input', e => {
 document.getElementById('qclear').addEventListener('click', () => {
   _filters.text = '';
   const fi = document.getElementById('qfilter'); if (fi) fi.value = '';
-  const dd = document.getElementById('qdir');    if (dd) dd.value = '';
   render();
   setStatus('Filter cleared.', 'info');
   setTimeout(() => { const s = document.getElementById('qstatus'); if (s && s.textContent === 'Filter cleared.') setStatus('', null); }, 1400);
 });
-// (v0.8) Directory dropdown — filter by folder. Picking a dir sets the same
-// path filter the right-click-Path gesture uses; the top "All directories"
-// option clears it. Doubles as a navigable folder list (indented by depth).
-document.getElementById('qdir').addEventListener('change', e => {
-  const dir = e.target.value;        // '' = all, else "sub/dir/" with trailing slash
-  _filters.text = dir;
-  const fi = document.getElementById('qfilter'); if (fi) fi.value = dir;
-  render();
-});
-// Rebuild the dir <option> list from the live index, indented by depth so
-// nesting is visible. Cheap (dirs ≪ files); options only rebuilt when the set
-// of directories actually changes, so an open dropdown isn't disrupted mid-pick.
-let _qDirSig = null;
-function _qRebuildDirList() {
-  const dd = document.getElementById('qdir');
-  if (!dd) return;
-  // Count direct files per directory + synthesize ancestor dirs so the tree is
-  // complete even when only a deep leaf holds files.
-  const counts = new Map();
+// ─────────────────────────────────────────────────────────────────────────
+// (v0.9) Collapsible folder-tree sidebar — upgrade of the v0.8 dir dropdown.
+// Clicking a folder applies the same `_filters.text` path filter the
+// right-click-Path gesture uses (substring match → a parent folder shows all
+// descendants, so counts are recursive). Carets expand/collapse; expand state
+// + sidebar visibility persist in localStorage. "All" clears the filter.
+// ─────────────────────────────────────────────────────────────────────────
+let _qTreeExpanded = new Set((() => { try { return JSON.parse(localStorage.getItem('qTreeExpanded') || '[]'); } catch (_) { return []; } })());
+let _qTreeHidden = localStorage.getItem('qTreeHidden') === '1';
+
+// Build dir relationships from the live index: recursive file counts (files
+// at-or-below each dir, matching what the substring filter yields) + a
+// parent->children map ('' is the synthetic root holding top-level dirs).
+function _qComputeDirs() {
+  const recursive = new Map();
+  const allDirs = new Set();
   for (const f of _files) {
     const d = pathDir(f.relPath);     // "" for root-level files
     if (!d) continue;
-    counts.set(d, (counts.get(d) || 0) + 1);
     const parts = d.split('/').filter(Boolean);
-    for (let i = 1; i < parts.length; i++) {
+    for (let i = 1; i <= parts.length; i++) {
       const anc = parts.slice(0, i).join('/') + '/';
-      if (!counts.has(anc)) counts.set(anc, 0);
+      allDirs.add(anc);
+      recursive.set(anc, (recursive.get(anc) || 0) + 1);
     }
   }
-  const dirs = Array.from(counts.keys()).sort();
-  const sig = dirs.join('|');
-  if (sig !== _qDirSig) {
-    _qDirSig = sig;
-    let html = '<option value="">📁 All directories</option>';
-    for (const d of dirs) {
-      const parts = d.split('/').filter(Boolean);
-      const depth = parts.length - 1;
-      const indent = '   '.repeat(depth);
-      const n = counts.get(d);
-      const lbl = indent + parts[parts.length - 1] + '/' + (n ? '  (' + n + ')' : '');
-      html += '<option value="' + esc(d) + '">' + esc(lbl) + '</option>';
-    }
-    dd.innerHTML = html;
+  const childrenOf = new Map();
+  for (const d of allDirs) {
+    const parts = d.split('/').filter(Boolean);
+    const parent = parts.length > 1 ? parts.slice(0, parts.length - 1).join('/') + '/' : '';
+    if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+    childrenOf.get(parent).push(d);
   }
-  // Keep the dropdown reflecting the active filter (set by text box or
-  // right-click-Path). Free-text that isn't a known dir → show "All".
-  if (document.activeElement !== dd) {
-    dd.value = counts.has(_filters.text) ? _filters.text : '';
-  }
+  for (const arr of childrenOf.values()) arr.sort();
+  return { recursive, childrenOf };
 }
+
+function _qRenderTree() {
+  const host = document.getElementById('qtree');
+  if (!host) return;
+  host.classList.toggle('hidden', _qTreeHidden);
+  const tt = document.getElementById('treeToggle');
+  if (tt) tt.classList.toggle('active', !_qTreeHidden);
+  if (_qTreeHidden) return;
+  const info = _qComputeDirs();
+  // Auto-expand the ancestors of the active filter so it stays visible.
+  if (_filters.text) {
+    const parts = _filters.text.split('/').filter(Boolean);
+    for (let i = 1; i < parts.length; i++) _qTreeExpanded.add(parts.slice(0, i).join('/') + '/');
+  }
+  let html = '<div class="qtree-hdr"><span>Folders</span><span class="qtree-hide" title="Hide sidebar">&laquo;</span></div>';
+  html += '<div class="qtree-row' + (_filters.text === '' ? ' active' : '') + '" data-dir="">' +
+          '<span class="qtree-caret"></span><span class="qtree-name">All</span>' +
+          '<span class="qtree-count">' + _files.length + '</span></div>';
+  const walk = (parent, depth) => {
+    for (const d of (info.childrenOf.get(parent) || [])) {
+      const parts = d.split('/').filter(Boolean);
+      const name = parts[parts.length - 1];
+      const hasKids = (info.childrenOf.get(d) || []).length > 0;
+      const expanded = _qTreeExpanded.has(d);
+      const caret = hasKids ? (expanded ? '▾' : '▸') : '';
+      html += '<div class="qtree-row' + (_filters.text === d ? ' active' : '') + '" data-dir="' + esc(d) + '" style="padding-left:' + (6 + depth * 13) + 'px">' +
+              '<span class="qtree-caret"' + (hasKids ? ' data-toggle="' + esc(d) + '"' : '') + '>' + caret + '</span>' +
+              '<span class="qtree-name">' + esc(name) + '/</span>' +
+              '<span class="qtree-count">' + info.recursive.get(d) + '</span></div>';
+      if (hasKids && expanded) walk(d, depth + 1);
+    }
+  };
+  walk('', 0);
+  host.innerHTML = html;
+}
+
+function _qSetTreeHidden(h) {
+  _qTreeHidden = h;
+  localStorage.setItem('qTreeHidden', h ? '1' : '0');
+  _qRenderTree();
+}
+
+document.getElementById('treeToggle').addEventListener('click', () => _qSetTreeHidden(!_qTreeHidden));
+
+document.getElementById('qtree').addEventListener('click', e => {
+  if (e.target.closest('.qtree-hide')) { _qSetTreeHidden(true); return; }
+  // Caret toggle: expand/collapse without changing the filter.
+  const tgl = e.target.closest('.qtree-caret[data-toggle]');
+  if (tgl) {
+    const d = tgl.getAttribute('data-toggle');
+    if (_qTreeExpanded.has(d)) _qTreeExpanded.delete(d); else _qTreeExpanded.add(d);
+    localStorage.setItem('qTreeExpanded', JSON.stringify([..._qTreeExpanded]));
+    _qRenderTree();
+    return;
+  }
+  // Row click: filter to that folder ('' = All -> clear).
+  const row = e.target.closest('.qtree-row[data-dir]');
+  if (!row) return;
+  const d = row.getAttribute('data-dir');
+  _filters.text = d;
+  const fi = document.getElementById('qfilter'); if (fi) fi.value = d;
+  render();   // render() calls _qRenderTree() to refresh the active highlight
+});
 document.getElementById('qsort').addEventListener('change', e => {
   const v = e.target.value;
   if (v === 'mtime-desc')      { _sortKey = 'mtime'; _sortDir = 'desc'; }
