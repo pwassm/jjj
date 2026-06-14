@@ -5376,5 +5376,22 @@
     "def": "",
     "common": "",
     "extinct": false
+  },
+  {
+    "id": "nymphicus",
+    "label": "Nymphicus",
+    "kind": "taxon",
+    "parents": [
+      "psittacidae"
+    ],
+    "aliases": [
+      "Nymphicus Wagler",
+      "1832",
+      "Cockatiel"
+    ],
+    "def": "",
+    "rank": "genus",
+    "common": "Cockatiels",
+    "extinct": false
   }
 ]
