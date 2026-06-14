@@ -852,10 +852,10 @@ async function _showShareableMenu() {
               + '<input id="smSearchBox" class="sm-chfilter" type="text" placeholder="Search everything…" autocomplete="off">'
               + '<button id="smSearchClear" class="sm-chclear" type="button">Clear</button>'
             + '</div>'
-            + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make grid</button>'
+            + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make + Show grid</button>'
             + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
           + '</div>'
-          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When 25 or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
+          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When 25 or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
           // (dev0366) Active COI filters, shown so a narrowed result set doesn't
           // look broken. Populated from _filtTaxon / _filtMedia after mount.
           + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
@@ -917,13 +917,22 @@ async function _showShareableMenu() {
   // (dev0384) Focus the active tab button on the TOP bar — used on open and on
   // every Tab-key hop so keyboard cycling stays anchored to the tab row.
   const _smFocusTab = n => { const b = ov.querySelector('.sm-tabs-top .sm-tab[data-pg="' + n + '"]'); if (b) b.focus(); };
+  // (dev0403) Focus the first SavedSearches "Open" button — Tab then cycles the
+  // Open buttons (see _smRenderSaved). Returns false when there are none yet.
+  const _smFocusFirstSaved = () => {
+    const b = ov.querySelector('#smSavedBody .sm-svbtn[data-act="open"]');
+    if (b) { b.focus(); return true; }
+    return false;
+  };
   // Tab click → show that page. Search focuses its box (mouse users type
-  // immediately); every other tab keeps focus on the tab for keyboard cycling.
+  // immediately); SavedSearches focuses its first Open button; every other tab
+  // keeps focus on the tab for keyboard cycling.
   ov.querySelectorAll('.sm-tab').forEach(t =>
     t.addEventListener('click', () => {
       const pg = parseInt(t.dataset.pg, 10) || 2;
       _smShow(pg);
       if (pg === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
+      else if (pg === 6) { setTimeout(() => { if (!_smFocusFirstSaved()) t.focus(); }, 30); }
       else t.focus();
     }));
   // (dev0384) Keyboard: Tab hops to the next tab (Shift+Tab the previous),
@@ -948,6 +957,7 @@ async function _showShareableMenu() {
         ? _smTabOrder[(idx - 1 + _smTabOrder.length) % _smTabOrder.length]
         : _smTabOrder[(idx + 1) % _smTabOrder.length];
       _smShow(next);
+      if (next === 6 && _smFocusFirstSaved()) return; // (dev0403) land on first Open
       _smFocusTab(next);
     }
   });
@@ -998,9 +1008,23 @@ async function _showShareableMenu() {
   }
   window._smReturnPage = undefined;
   if (_smStartPg === 1) window._smWelcomeSeen = true;
+  // (dev0403) Capture-then-clear the "returned from a Search-tab grid" flag so
+  // the focus callback (which fires after the whole body runs) can still see it.
+  const _smRestore = window._smRestoreSearchOnReturn;
+  window._smRestoreSearchOnReturn = false;
   _smShow(_smStartPg);
   // (dev0384) Open focused on the tab so Tab-cycling works immediately.
-  if (_smStartPg >= 2) setTimeout(() => _smFocusTab(_smStartPg), 40);
+  // (dev0403) Special cases: returning to Search from a grid re-fills the box,
+  // re-runs the search, and focuses ★ Save; SavedSearches focuses its first Open.
+  if (_smStartPg >= 2) setTimeout(() => {
+    if (_smStartPg === 3 && _smRestore && _smBox && window._smLastQuery) {
+      _smBox.value = window._smLastQuery;
+      _smRunSearch();
+      if (_smSaveBtn) { _smSaveBtn.focus(); return; }
+    }
+    if (_smStartPg === 6 && _smFocusFirstSaved()) return;
+    _smFocusTab(_smStartPg);
+  }, 40);
 
   // Open a single T item as V over a forced G backdrop, routing vpClose back to
   // this menu via _fromShareableMenu. Shared by the choice cards AND search
@@ -1236,6 +1260,10 @@ async function _showShareableMenu() {
     }
     const rows = _smGridable.slice();
     window._smReturnPage = 3;          // Esc / swipe-back returns here, to Search
+    // (dev0403) Remember the query so the return-to-Search restores the box and
+    // focuses ★ Save (see the landing focus block).
+    window._smLastQuery = (_smBox.value || '').trim();
+    window._smRestoreSearchOnReturn = true;
     ov.remove();
     window._fromShareableMenu = false;
     _smBuildGridFromRows(rows);
@@ -1282,9 +1310,18 @@ async function _showShareableMenu() {
     });
   }
 
+  // Rows a query resolves to right now (same blob + COI filtering the Search tab
+  // uses). Shared by the SavedSearches live count and its Open-the-grid action.
+  const _smRowsForQuery = q => {
+    const lq = String(q || '').toLowerCase();
+    let hits = _tBlobs.filter(x => { _smResolveTags(x); return x.staticBlob.includes(lq) || (x.tagBlob && x.tagBlob.includes(lq)); });
+    if (_filtTaxon) hits = hits.filter(x => x.hasTaxon);
+    if (_filtMedia) hits = hits.filter(x => x.kind === 'video' || x.kind === 'image');
+    return hits.map(x => x.r);
+  };
   // (dev0401) SavedSearches tab — render from localStorage (persists across
   // browser restarts / reboots). Each row shows the query + a live "now matches"
-  // count, with Open (jump to Search with the query applied) and Delete buttons.
+  // count, with Open (opens the grid for that search) and Delete buttons.
   const _smSavedBody = ov.querySelector('#smSavedBody');
   const _smRenderSaved = () => {
     if (!_smSavedBody) return;
@@ -1295,12 +1332,7 @@ async function _showShareableMenu() {
       return;
     }
     _smSavedBody.innerHTML = list.map(it => {
-      // Live count for this saved query (same filtering the Search tab uses).
-      const lq = String(it.q || '').toLowerCase();
-      let hits = _tBlobs.filter(x => { _smResolveTags(x); return x.staticBlob.includes(lq) || (x.tagBlob && x.tagBlob.includes(lq)); });
-      if (_filtTaxon) hits = hits.filter(x => x.hasTaxon);
-      if (_filtMedia) hits = hits.filter(x => x.kind === 'video' || x.kind === 'image');
-      const n = hits.length;
+      const n = _smRowsForQuery(it.q).length;
       return '<div class="sm-item sm-card">'
         + '<span class="sm-ico">🔎</span>'
         + '<span class="sm-rcol">'
@@ -1314,15 +1346,37 @@ async function _showShareableMenu() {
         + '</span>'
       + '</div>';
     }).join('');
+    // (dev0403) Open builds + shows the grid for that saved search directly
+    // (rather than hopping to the Search tab). Delete removes it and re-renders.
+    const _smOpenSaved = q => {
+      const rows = _smRowsForQuery(q);
+      if (!rows.length) { if (typeof toast === 'function') toast('No matches for "' + q + '" now', 1800); return; }
+      if (rows.length > _smN && typeof toast === 'function') toast(rows.length + ' matches — showing first 25', 1600);
+      window._smReturnPage = 6;        // Esc / swipe-back returns to SavedSearches
+      window._smLastQuery = q;
+      ov.remove();
+      window._fromShareableMenu = false;
+      _smBuildGridFromRows(rows);
+    };
     _smSavedBody.querySelectorAll('.sm-svbtn').forEach(b => {
       b.addEventListener('click', e => {
         e.stopPropagation();
         const q = b.dataset.q;
-        if (b.dataset.act === 'del') { _smSavedRemove(q); _smRenderSaved(); }
-        else { // open: go to Search, apply the query, run it
-          _smShow(3);
-          if (_smBox) { _smBox.value = q; _smRunSearch(); setTimeout(() => _smBox.focus(), 30); }
-        }
+        if (b.dataset.act === 'del') { _smSavedRemove(q); _smRenderSaved(); _smFocusFirstSaved(); }
+        else _smOpenSaved(q);
+      });
+    });
+    // (dev0403) Tab (and Shift+Tab) cycles focus down the Open buttons and wraps
+    // back to the top — staying within the saved list instead of switching tabs.
+    // stopPropagation keeps the menu's tab-cycling Tab handler from firing.
+    const _openBtns = [..._smSavedBody.querySelectorAll('.sm-svbtn[data-act="open"]')];
+    _openBtns.forEach((btn, i) => {
+      btn.addEventListener('keydown', e => {
+        if (e.key !== 'Tab') return;
+        e.preventDefault(); e.stopPropagation();
+        const dir = e.shiftKey ? -1 : 1;
+        const nxt = _openBtns[(i + dir + _openBtns.length) % _openBtns.length];
+        if (nxt) nxt.focus();
       });
     });
   };
