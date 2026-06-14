@@ -327,22 +327,12 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
 // PREROLL of hidden warm-up; when the segment starts inside the pre-roll window
 // (e.g. a "0 99999" full-video loop) we warm from 0 and reveal a hair later.
 //
-//   transition='cut'  → instant flip at reveal (z-index swap)
-//   transition='fade' → crossfade: fade the outgoing front out over the back
+//   transition='cut'  → instant opacity flip at reveal
+//   transition='fade' → opacity crossfade (back is already playing clean)
 //
 // The very first FRONT gets the same hidden warm-up; a YT thumbnail POSTER masks
 // the cell during that initial ~PREROLL (instead of black) and dissolves out as
 // the clean video arrives.
-//
-// (dev0389) CRITICAL — warm UNDER an opaque layer, never with opacity:0. The
-// browser treats a transparent (opacity:0) cross-origin iframe as "not visible"
-// and STOPS DECODING its video to save power — it keeps only the player's clock
-// running. So the old opacity:0 warm-up advanced getCurrentTime()/reported
-// PLAYING but buffered no frames; revealing it (opacity→1) forced a fresh decode
-// = the "reload spinner" the user saw, and a longer PREROLL couldn't help (more
-// ticking, still no decode). Fix: layers stay OPAQUE and are stacked by z-index;
-// the warming layer sits BENEATH an opaque cover (the poster, or the current
-// front), which is occluded-but-painted → keeps decoding ahead.
 //
 // Heavy: 2 iframes per cell. Callers gate this to desktop + small grids
 // (see _gridMountVideo / _gridBufferEligible in grid.js). Registers a single
@@ -388,59 +378,39 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // falls back to a console override, then a default chosen long enough to
   // outlast YouTube's startup/title/spinner chrome with margin.
   var PREROLL = Number(preroll) || Number(window.SAL_BUF_PREROLL) || 3.5;
-  PREROLL = Math.max(0.5, Math.min(12, PREROLL));   // (dev0388) ceiling 10→12 for slow/Shorts chrome
+  PREROLL = Math.max(0.5, Math.min(10, PREROLL));
   var FADE_MS = transition === 'fade' ? 420 : 0;
-
-  // (dev0390) AUDIBLE warm-up (experimental, default OFF — gridBufferAudible).
-  // Browsers SUSPEND muted media that isn't visible but keep decoding AUDIBLE
-  // media even when hidden/occluded. dev0389 proved that occlusion alone doesn't
-  // keep a MUTED YT iframe decoding in the wild (reload-spinner persisted), so as
-  // a last resort we let the buffered players play UNMUTED — the browser then
-  // genuinely buffers the hidden warm-up. Silence is the USER's job (system/tab
-  // volume to 0); audible cells make this a personal/dev feature, not for the
-  // public site. Toggle: gridToggleBufferAudible (Ctrl+Shift+B in G).
-  var AUDIBLE = (typeof window.getSetting === 'function')
-    && (window.getSetting('gridBufferAudible') === true || window.getSetting('gridBufferAudible') === '1');
-  if (AUDIBLE) isMuted = false;   // override the grid's always-muted policy
 
   var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
   var _ytHost = _ytPrivacy === 'nocookie' ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
 
-  // (dev0389) z-index bands. Layers stay opaque; whoever is "front" sits at
-  // Z_FRONT, the warming "back" at Z_BACK (occluded → still decoding). During a
-  // crossfade the OUTGOING front lifts to Z_FADE and fades out over the back.
-  // The poster sits at Z_POSTER above everything during the first warm-up.
-  var Z_BACK = 1, Z_FRONT = 4, Z_FADE = 5, Z_POSTER = 6;
-  function makeLayer(tag) {
+  function makeLayer(z) {
     var wrap = document.createElement('div');
     wrap.className = 'sal-buf-layer';
     wrap.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:#000;'
-      + 'opacity:1;z-index:' + Z_BACK + ';transition:opacity ' + FADE_MS + 'ms linear;';
+      + 'opacity:0;z-index:' + z + ';transition:opacity ' + FADE_MS + 'ms linear;';
     var inner = document.createElement('div');
-    inner.id = 'ytbuf_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' + tag;
+    inner.id = 'ytbuf_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' + z;
     inner.style.cssText = 'width:100%;height:100%;pointer-events:none;';
     wrap.appendChild(inner);
     hostEl.appendChild(wrap);
     return { wrap: wrap, innerId: inner.id, player: null, ready: false };
   }
 
-  var A = makeLayer('a');
-  var B = makeLayer('b');
-  A.wrap.style.zIndex = Z_FRONT;   // A is the first front; it warms UNDER the poster
+  var A = makeLayer(1);
+  var B = makeLayer(2);
 
   // Initial poster mask (z above both video layers) so the cell shows the video
-  // thumbnail — not black — while the first layer warms up beneath it. mqdefault
-  // is always available and 16:9 (no baked-in letterbox bars). It's opaque, so
-  // layer A decodes occluded behind it (NOT transparent → keeps decoding).
+  // thumbnail — not black — while the first layer warms up hidden. mqdefault is
+  // always available and 16:9 (no baked-in letterbox bars).
   var poster = document.createElement('img');
   poster.src = 'https://i.ytimg.com/vi/' + vid + '/mqdefault.jpg';
   poster.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;'
-    + 'z-index:' + Z_POSTER + ';pointer-events:none;opacity:1;transition:opacity ' + FADE_MS + 'ms linear;background:#000;';
+    + 'z-index:5;pointer-events:none;opacity:1;transition:opacity ' + FADE_MS + 'ms linear;background:#000;';
   poster.onerror = function() { try { poster.style.display = 'none'; } catch (_) {} };
   hostEl.appendChild(poster);
 
-  // Live role pointers. front = visible/playing (Z_FRONT), back = warming/idle,
-  // opaque-occluded beneath the front (Z_BACK) — never opacity:0, so it decodes.
+  // Live role pointers. front = visible/playing, back = warming/idle, hidden.
   var frontLayer = A, backLayer = B;
   var frontSeg = 0;
   var swapping = false, killed = false, loopTimer = null;
@@ -461,8 +431,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
         },
         events: {
           onReady: function(e) {
-            if (isMuted) { e.target.mute(); }
-            else { e.target.unMute(); try { e.target.setVolume(100); } catch (_) {} }  // (dev0390) audible warm-up
+            if (isMuted) e.target.mute(); else e.target.unMute();
             layer.ready = true;
             resolve(e.target);
           }
@@ -476,7 +445,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // Returns a warm record; `warmReady()` decides when it's safe to reveal.
   function beginWarm(layer, seg) {
     var from = Math.max(0, seg.start - PREROLL);
-    var w = { layer: layer, seg: seg, from: from, issuedAt: Date.now(), landPos: null, cleanFrom: null };
+    var w = { layer: layer, seg: seg, from: from, issuedAt: Date.now(), landPos: null };
     try { layer.player.seekTo(from, true); layer.player.playVideo(); } catch (_) {}
     return w;
   }
@@ -494,25 +463,14 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     var st, ct;
     try { st = w.layer.player.getPlayerState(); ct = w.layer.player.getCurrentTime(); }
     catch (_) { return false; }
-    // (dev0388) A re-buffer spinner partway through the warm-up resets the clean
-    // countdown: the chrome (spinner / title / play overlay) needs a fresh,
-    // uninterrupted PREROLL of forward play to dissipate, so we must never reveal
-    // in the middle of a buffering flash. Without this, a mid-warm stall could let
-    // the reveal fire while the spinner was still on screen — the "pause mark".
-    if (st === 3 /* BUFFERING */) { w.cleanFrom = null; return false; }
     if (st !== 1 /* PLAYING */) return false;
     if (w.landPos === null) {
       // First stable playing sample near the seek target = the real landing.
       // Reject a transient stale (pre-seek) currentTime far outside the window.
       if (ct >= w.from - 1 && ct <= w.from + 8) w.landPos = ct;
-      else return false;
+      return false;
     }
-    // (dev0388) Count PREROLL from where clean forward play last (re)started —
-    // not from a one-shot landing — so any spinner partway in earns its own full
-    // warm-up before we reveal. On the happy (no-rebuffer) path cleanFrom === landPos,
-    // so this is identical to the old fixed-landing behavior.
-    if (w.cleanFrom == null) w.cleanFrom = ct;
-    var revealAt = Math.max(w.seg.start, w.cleanFrom + PREROLL);
+    var revealAt = Math.max(w.seg.start, w.landPos + PREROLL);
     var segEnd = w.seg.start + w.seg.dur;
     if (revealAt > segEnd - 0.2) revealAt = Math.max(w.seg.start, segEnd - 0.2);
     return ct >= revealAt;
@@ -522,38 +480,22 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     if (swapping || killed) return;
     swapping = true;
     var newFront = backLayer, oldFront = frontLayer;
-    // newFront has been decoding clean BENEATH oldFront (occluded, opaque) — past
-    // its chrome at the segment start. Bring it forward without ever going opacity:0.
-    if (FADE_MS) {
-      // Crossfade: park newFront at Z_FRONT (opaque, full), lift the OUTGOING
-      // front to Z_FADE and fade IT out — newFront (already playing clean) shows
-      // through as it dissolves.
-      newFront.wrap.style.zIndex = Z_FRONT;
+    // BACK is already playing clean (past its chrome) at the segment start —
+    // just cross/cut it in.
+    requestAnimationFrame(function() {
+      if (killed) return;
       newFront.wrap.style.opacity = '1';
-      oldFront.wrap.style.zIndex = Z_FADE;
-      requestAnimationFrame(function() {
-        if (killed) return;
-        oldFront.wrap.style.opacity = '0';
-      });
-    } else {
-      // Cut: newFront to the top, old front drops beneath (both stay opaque).
-      newFront.wrap.style.zIndex = Z_FRONT;
-      newFront.wrap.style.opacity = '1';
-      oldFront.wrap.style.zIndex = Z_BACK;
-    }
+      oldFront.wrap.style.opacity = '0';
+    });
     // Commit roles synchronously so the loop watches the new front immediately.
     frontLayer = newFront; backLayer = oldFront;
     frontSeg = (frontSeg + 1) % segs.length;
     backWarm = null;
-    // After the dissolve, settle the old front fully BENEATH the new front
-    // (opaque, occluded) and idle it until its next warm-up reseeks + replays it.
+    // After the dissolve, idle the old front (now the back) until its next
+    // warm-up reseeks + replays it.
     setTimeout(function() {
       if (killed) { swapping = false; return; }
-      try {
-        backLayer.wrap.style.opacity = '1';
-        backLayer.wrap.style.zIndex = Z_BACK;
-        backLayer.player.pauseVideo();
-      } catch (_) {}
+      try { backLayer.player.pauseVideo(); } catch (_) {}
       swapping = false;
     }, FADE_MS + 120);
   }
@@ -617,10 +559,9 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     // off hidden, dissolving the poster out.
     if (!initRevealed) {
       if (warmReady(initWarm)) {
-        // frontLayer (A) has been decoding clean beneath the opaque poster — just
-        // drop the poster to reveal it (no opacity:0 layer ever existed).
         requestAnimationFrame(function() {
           if (killed) return;
+          frontLayer.wrap.style.opacity = '1';
           poster.style.opacity = '0';
         });
         setTimeout(function() { try { if (poster.parentNode) poster.remove(); } catch (_) {} }, FADE_MS + 250);

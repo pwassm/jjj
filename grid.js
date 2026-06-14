@@ -350,14 +350,12 @@ function _gridBufferMode() {
 // Seconds of hidden warm-up before a buffered layer is revealed — long enough to
 // outlast YouTube's startup/title/spinner chrome. User-tunable with −/+ in G
 // (persisted), since the right value depends on connection speed and how far the
-// segment seeks jump. Default 3.5; clamped 1–12 (dev0388 raised the ceiling from
-// 8 so slow/Shorts chrome can be fully outlasted on segments that start ≥ preroll
-// into the video; the reveal is now also buffering-aware — see warmReady in video.js).
+// segment seeks jump. Default 3.5; clamped 1–8.
 const _GRID_PREROLL_DEFAULT = 3.5;
 function _gridBufferPreroll() {
   let v = (typeof window.getSetting === 'function') ? Number(window.getSetting('gridBufferPreroll')) : NaN;
   if (!isFinite(v) || v <= 0) v = _GRID_PREROLL_DEFAULT;
-  return Math.max(1, Math.min(12, v));
+  return Math.max(1, Math.min(8, v));
 }
 
 // Buffering is heavy (2 iframes/cell) — only engage on desktop and small grids.
@@ -673,42 +671,13 @@ function gridCycleBufferMode() {
   }
 }
 
-// −/+ in G nudges the buffer pre-roll by 0.5s (clamped 1–12) and persists it.
+// −/+ in G nudges the buffer pre-roll by 0.5s (clamped 1–8) and persists it.
 // Re-renders so live buffered cells remount with the new warm-up. A longer
 // pre-roll more fully hides YT's startup chrome (esp. across multi-segment seeks)
 // at the cost of a longer initial poster + more skipped lead on start<pre-roll
 // segments.
-// (dev0390) Ctrl+Shift+B in G toggles AUDIBLE warm-up. Browsers suspend MUTED
-// hidden media (so the buffered warm-up never decoded → reload spinner) but keep
-// decoding AUDIBLE media even when hidden. Letting the buffered players run
-// unmuted makes the warm-up actually buffer; the user mutes their system/tab so
-// it's silent. Personal/dev feature (audible on the public site is undesirable).
-// Re-renders G so live cells remount unmuted.
-function gridIsBufferAudible() {
-  if (typeof window.getSetting !== 'function') return false;
-  const v = window.getSetting('gridBufferAudible');
-  return v === true || v === '1';
-}
-function gridToggleBufferAudible() {
-  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) {
-    if (typeof toast === 'function') toast('Buffered playback is desktop-only', 1600);
-    return;
-  }
-  const next = !gridIsBufferAudible();
-  if (typeof window.setSetting === 'function') window.setSetting('gridBufferAudible', next ? '1' : '0');
-  if (typeof toast === 'function') {
-    toast(next
-      ? '🔊 Audible warm-up ON — buffered cells play UNMUTED (mute your system); buffer must be ON (^B)'
-      : '🔇 Audible warm-up OFF — buffered cells muted again', 3200);
-  }
-  if (typeof gridShow === 'function'
-      && document.getElementById('gridOverlay')?.style.display === 'flex') {
-    gridShow();
-  }
-}
-
 function gridAdjustPreroll(delta) {
-  const next = Math.max(1, Math.min(12, Math.round((_gridBufferPreroll() + delta) * 2) / 2));
+  const next = Math.max(1, Math.min(8, Math.round((_gridBufferPreroll() + delta) * 2) / 2));
   if (typeof window.setSetting === 'function') window.setSetting('gridBufferPreroll', next);
   const on = _gridBufferMode() !== 'off';
   if (typeof toast === 'function') {
@@ -1158,8 +1127,7 @@ function gridShow() {
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
   const _bufTag = _bufMode === 'off' ? ''
-    : ' · ⟳' + _bufMode + ' ' + _gridBufferPreroll().toFixed(1) + 's' + (_gridBufferEligible() ? '' : '(≤4×4)')
-      + (gridIsBufferAudible() ? ' 🔊' : '');   // (dev0390) audible warm-up on
+    : ' · ⟳' + _bufMode + ' ' + _gridBufferPreroll().toFixed(1) + 's' + (_gridBufferEligible() ? '' : '(≤4×4)');
   // (dev0346) Show the whole-grid zoom whenever it's not 1× (zoomed in OR out).
   const _zoom = _gridFillZoom();
   const _zoomTag = Math.abs(_zoom - 1) > 1e-9 ? ' · ⤢' + _zoom.toFixed(1) + '×' : '';

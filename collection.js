@@ -266,15 +266,6 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0390) Ctrl+Shift+B → toggle AUDIBLE warm-up (buffered cells play unmuted
-  // so the browser actually decodes the hidden warm-up; user mutes their system).
-  // Checked before plain Ctrl+B so the Shift variant wins.
-  if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && (e.key === 'b' || e.key === 'B')) {
-    e.preventDefault(); e.stopPropagation();
-    if (typeof gridToggleBufferAudible === 'function') gridToggleBufferAudible();
-    return;
-  }
-
   // (dev0336) Ctrl+B → cycle clean-playback buffering for YouTube cells:
   // off → cut (instant double-buffer) → fade (crossfade). Left-hand chord so it
   // doesn't collide with the bare-letter grid navigation; Ctrl+I is left alone
