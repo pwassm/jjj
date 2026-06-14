@@ -196,6 +196,32 @@
   #qctx .qctx-hdr { color: #8ef; padding: 4px 8px; border-bottom: 1px solid #335; margin-bottom: 4px; }
   #qctx .qctx-item { color: #cde; padding: 6px 8px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
   #qctx .qctx-item:hover { background: rgba(0,80,180,0.5); color: #fff; }
+  /* (v0.5) Ctrl+I floating preview pane — follows the focused row (video/img) */
+  #qpreview {
+    position: fixed; z-index: 80; width: 460px;
+    background: #0b0b1c; border: 1px solid #4af; border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #qpreview .qpv-hdr {
+    display: flex; align-items: center; gap: 8px; cursor: move;
+    background: #15152e; padding: 5px 8px; border-bottom: 1px solid #335;
+    font-size: 11px; color: #8ef; user-select: none;
+  }
+  #qpreview .qpv-kind { flex-shrink: 0; }
+  #qpreview .qpv-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #qpreview .qpv-x { cursor: pointer; color: #f88; padding: 0 4px; font-weight: bold; }
+  #qpreview .qpv-x:hover { color: #fbb; }
+  #qpreview .qpv-body {
+    background: #000; display: flex; align-items: center; justify-content: center;
+    height: 300px; min-height: 300px;
+  }
+  #qpreview .qpv-body video, #qpreview .qpv-body img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  #qpreview .qpv-meta {
+    font-size: 10px; color: #789; padding: 4px 8px;
+    background: #0d0d20; border-top: 1px solid #223;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
 </style>
 </head>
 <body>
@@ -316,7 +342,7 @@
   </table>
 </div>
 
-<div id="qVerBtn">v0.4</div>
+<div id="qVerBtn">v0.5</div>
 
 <div id="qfooter">
   <span>
@@ -325,7 +351,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.4 — IndexedDB <code>localmedia</code>. Click=focus · dblclick=edit MP4 tags (exiftool, in-place) · right-click Path=filter · right-click tag header=bulk set.
+    Q v0.5 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · right-click Path=filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -374,6 +400,7 @@ let _selected = new Set();             // (dev0310) selected relPaths
 let _dupMap = new Map();               // (dev0310) name → count
 let _focus = null;                     // (v0.2) {rel, col} focused cell, T-style
 let _editing = null;                   // (v0.2) {rel, col} cell currently in inline-edit
+let _qPreview = null;                  // (v0.5) Ctrl+I preview pane {el,url,video,rel}
 
 // (v0.2) The five MP4 container tags Q can edit. Map: column id → ffmpeg/ffprobe
 // tag key (here they're 1:1). dblclick a cell in one of these columns to edit;
@@ -1513,8 +1540,10 @@ function _setFocus(rel, col) {
   }
 }
 
-// dblclick a metadata cell → inline editor (ffprobe-prefilled) → ffmpeg write.
-async function _beginEdit(rel, col, td) {
+// dblclick (or Enter / type) a metadata cell → inline editor (ffprobe-prefilled)
+// → tag write. `initialChar` (v0.5 type-to-edit) replaces the cell content with
+// that keystroke and parks the caret at the end instead of selecting all.
+async function _beginEdit(rel, col, td, initialChar) {
   if (_editing) return;
   const f = _files.find(x => x.relPath === rel);
   if (!f) return;
@@ -1544,9 +1573,11 @@ async function _beginEdit(rel, col, td) {
   td.innerHTML = '';
   const inp = document.createElement('input');
   inp.className = 'cell-edit';
-  inp.value = cur;
+  inp.value = (initialChar != null) ? initialChar : cur;
   td.appendChild(inp);
-  inp.focus(); inp.select();
+  inp.focus();
+  if (initialChar != null) inp.setSelectionRange(inp.value.length, inp.value.length);
+  else inp.select();
   let committed = false;
   const finish = async commit => {
     if (committed) return; committed = true;
@@ -1608,6 +1639,190 @@ document.getElementById('qrows').addEventListener('contextmenu', e => {
   render();
   setStatus(folder ? 'Filtered to path: ' + folder : 'File is at root — filter cleared.', 'info');
   setTimeout(() => { const s = document.getElementById('qstatus'); if (s && s.textContent.startsWith('Filtered')) setStatus('', null); }, 2200);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// (v0.5) T-style keyboard navigation + Ctrl+I preview pane.
+//   Arrows / Tab move the focused cell · Home/End first/last row ·
+//   PgUp/PgDn jump · Enter or any printable key edits a tag cell ·
+//   Space = play/pause when the preview is open, else toggle row selection ·
+//   Ctrl+I toggles a floating preview that FOLLOWS the focused row (mp4 + jpg);
+//   Esc closes it. Columns/rows are read from the live DOM so they stay in
+//   sync with whatever is currently sorted/filtered (no hardcoded col list).
+// ─────────────────────────────────────────────────────────────────────────
+function _qRowEls() { return Array.from(document.querySelectorAll('#qrows tr[data-rel]')); }
+function _qRowTr(rel) {
+  for (const tr of document.querySelectorAll('#qrows tr[data-rel]')) if (tr.dataset.rel === rel) return tr;
+  return null;
+}
+function _qFocusTd() {
+  if (!_focus) return null;
+  const tr = _qRowTr(_focus.rel);
+  if (!tr) return null;
+  for (const td of tr.children) if (td.dataset.col === _focus.col) return td;
+  return null;
+}
+// After any keyboard focus move: scroll the cell into view (within #qwrap) and,
+// if the preview is open, refresh it to the newly focused file.
+function _qAfterFocusMove() {
+  const td = _qFocusTd();
+  if (td) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (_qPreview && _focus) _qOpenPreview(_focus.rel);
+}
+// Move focus by (dCol, dRow) deltas. First arrow with no focus lands on the
+// first row's Title cell (handy — Enter then edits immediately).
+function _qMoveFocus(dCol, dRow) {
+  const rows = _qRowEls();
+  if (!rows.length) return;
+  if (!_focus || !_qRowTr(_focus.rel)) { _setFocus(rows[0].dataset.rel, 'title'); _qAfterFocusMove(); return; }
+  let rowIdx = rows.findIndex(tr => tr.dataset.rel === _focus.rel);
+  if (rowIdx < 0) rowIdx = 0;
+  if (dRow) rowIdx = Math.max(0, Math.min(rows.length - 1, rowIdx + dRow));
+  const tr = rows[rowIdx];
+  const cols = Array.from(tr.children).map(td => td.dataset.col).filter(Boolean);
+  let col = _focus.col;
+  if (dCol) {
+    let ci = cols.indexOf(col); if (ci < 0) ci = 0;
+    ci = Math.max(0, Math.min(cols.length - 1, ci + dCol));
+    col = cols[ci];
+  } else if (!cols.includes(col)) { col = cols[0]; }
+  _setFocus(tr.dataset.rel, col);
+  _qAfterFocusMove();
+}
+function _qMoveFocusToRow(rowIdx) {
+  const rows = _qRowEls();
+  if (!rows.length) return;
+  rowIdx = Math.max(0, Math.min(rows.length - 1, rowIdx));
+  const col = _focus ? _focus.col : 'title';
+  _setFocus(rows[rowIdx].dataset.rel, col);
+  _qAfterFocusMove();
+}
+
+// ── Ctrl+I preview pane (object-URL from the granted FSA folder) ──────────
+function _qTogglePreview() { if (_qPreview) _qClosePreview(); else _qOpenPreview(); }
+function _qClosePreview() {
+  const pv = _qPreview;
+  if (!pv) return;
+  if (pv.video) { try { pv.video.pause(); } catch (_) {} }
+  if (pv.url) { try { URL.revokeObjectURL(pv.url); } catch (_) {} }
+  pv.el.remove();
+  _qPreview = null;
+}
+async function _qOpenPreview(rel) {
+  rel = rel || (_focus && _focus.rel);
+  if (!rel) { setStatus('Focus a row first (click or arrow keys), then Ctrl+I.', 'info'); setTimeout(() => setStatus('', null), 1800); return; }
+  const f = _files.find(x => x.relPath === rel);
+  if (!f || (f.kind !== 'image' && f.kind !== 'video')) return;
+  if (!_root) { setStatus('No folder granted — can\'t load preview.', 'error'); return; }
+  let pv = _qPreview;
+  if (!pv) {
+    const el = document.createElement('div');
+    el.id = 'qpreview';
+    el.innerHTML =
+      '<div class="qpv-hdr"><span class="qpv-kind"></span><span class="qpv-title"></span>' +
+      '<span class="qpv-x" title="Close (Esc / Ctrl+I)">✕</span></div>' +
+      '<div class="qpv-body"></div><div class="qpv-meta"></div>';
+    el.style.right = '14px'; el.style.top = '96px';
+    document.body.appendChild(el);
+    el.querySelector('.qpv-x').addEventListener('click', _qClosePreview);
+    _qWirePreviewDrag(el);
+    pv = _qPreview = { el, url: null, video: null, rel: null };
+  }
+  // Mark the in-flight target so a rapid focus change can abort this stale load.
+  pv.rel = rel;
+  const titleEl = pv.el.querySelector('.qpv-title');
+  const kindEl  = pv.el.querySelector('.qpv-kind');
+  const bodyEl  = pv.el.querySelector('.qpv-body');
+  const metaEl  = pv.el.querySelector('.qpv-meta');
+  titleEl.textContent = f.name;
+  kindEl.innerHTML = kindBadge(f.kind);
+  if (pv.url) { try { URL.revokeObjectURL(pv.url); } catch (_) {} pv.url = null; }
+  pv.video = null;
+  bodyEl.innerHTML = '<span style="color:#567;font-size:11px;">loading…</span>';
+  let fileObj;
+  try { fileObj = await getFileFromRoot(_root, rel); }
+  catch (err) {
+    if (pv.rel === rel) bodyEl.innerHTML = '<span style="color:#f88;font-size:11px;">load failed: ' + esc(err.message) + '</span>';
+    return;
+  }
+  if (pv.rel !== rel) return;   // focus moved on while we awaited — drop this load
+  const url = URL.createObjectURL(fileObj);
+  pv.url = url;
+  if (f.kind === 'video') {
+    const v = document.createElement('video');
+    v.src = url; v.controls = true; v.autoplay = true; v.muted = true; v.loop = true; v.playsInline = true;
+    bodyEl.innerHTML = ''; bodyEl.appendChild(v);
+    pv.video = v;
+  } else {
+    const img = document.createElement('img');
+    img.src = url;
+    bodyEl.innerHTML = ''; bodyEl.appendChild(img);
+  }
+  const dim = (f.width && f.height) ? f.width + '×' + f.height : '';
+  const dur = f.kind === 'video' ? fmtDur(f.durationMs) : '';
+  metaEl.textContent = [pathDir(rel) || '(root)', dim, dur, fmtMB(f.size) + ' MB'].filter(Boolean).join('  ·  ');
+}
+function _qWirePreviewDrag(el) {
+  el.querySelector('.qpv-hdr').addEventListener('mousedown', e => {
+    if (e.target.closest('.qpv-x')) return;
+    e.preventDefault();
+    const r = el.getBoundingClientRect();
+    const offX = e.clientX - r.left, offY = e.clientY - r.top;
+    el.style.right = 'auto';
+    const mv = ev => { el.style.left = Math.max(0, ev.clientX - offX) + 'px'; el.style.top = Math.max(0, ev.clientY - offY) + 'px'; };
+    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+  });
+}
+
+// ── Global key handler (document-level; ignores typing in inputs) ─────────
+document.addEventListener('keydown', e => {
+  // Ctrl/Cmd+I toggles preview from anywhere (even with a textbox focused).
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'i' || e.key === 'I')) {
+    e.preventDefault(); _qTogglePreview(); return;
+  }
+  // Inline cell editor and toolbar inputs handle their own keys.
+  if (e.target && e.target.matches && e.target.matches('input, select, textarea, .cell-edit')) return;
+  if (_editing) return;
+  switch (e.key) {
+    case 'ArrowDown':  e.preventDefault(); _qMoveFocus(0, +1); break;
+    case 'ArrowUp':    e.preventDefault(); _qMoveFocus(0, -1); break;
+    case 'ArrowLeft':  e.preventDefault(); _qMoveFocus(-1, 0); break;
+    case 'ArrowRight': e.preventDefault(); _qMoveFocus(+1, 0); break;
+    case 'Tab':        e.preventDefault(); _qMoveFocus(e.shiftKey ? -1 : +1, 0); break;
+    case 'Home':       e.preventDefault(); _qMoveFocusToRow(0); break;
+    case 'End':        e.preventDefault(); _qMoveFocusToRow(_qRowEls().length - 1); break;
+    case 'PageDown':   e.preventDefault(); { const r = _qRowEls(); const i = _focus ? r.findIndex(t => t.dataset.rel === _focus.rel) : 0; _qMoveFocusToRow((i < 0 ? 0 : i) + 15); } break;
+    case 'PageUp':     e.preventDefault(); { const r = _qRowEls(); const i = _focus ? r.findIndex(t => t.dataset.rel === _focus.rel) : 0; _qMoveFocusToRow((i < 0 ? 0 : i) - 15); } break;
+    case 'Escape':     if (_qPreview) { e.preventDefault(); _qClosePreview(); } break;
+    case 'Enter': {
+      if (_focus && EDITABLE_META_COLS[_focus.col]) {
+        const td = _qFocusTd();
+        if (td) { e.preventDefault(); _beginEdit(_focus.rel, _focus.col, td); }
+      }
+      break;
+    }
+    case ' ': {
+      e.preventDefault();
+      if (_qPreview && _qPreview.video) {
+        if (_qPreview.video.paused) _qPreview.video.play(); else _qPreview.video.pause();
+      } else if (_focus) {
+        const rel = _focus.rel;
+        if (_selected.has(rel)) _selected.delete(rel); else _selected.add(rel);
+        const tr = _qRowTr(rel);
+        const cb = tr && tr.querySelector('input[type=checkbox][data-rel]');
+        if (cb) cb.checked = _selected.has(rel);
+        updateSelectionUI();
+      }
+      break;
+    }
+    default:
+      // Type-to-edit: a printable key on a tag cell opens the editor with it.
+      if (_focus && EDITABLE_META_COLS[_focus.col] && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const td = _qFocusTd();
+        if (td) { e.preventDefault(); _beginEdit(_focus.rel, _focus.col, td, e.key); }
+      }
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
