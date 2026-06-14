@@ -597,6 +597,22 @@ async function _showShareableMenu() {
   const _smResultBadge = r => (r.ftext && String(r.ftext).trim())
     ? (_smType(r) === 'quiz' ? 'quiz' : 'slide')
     : (window.rowMediaKind ? window.rowMediaKind(r) : 'other');
+  // (dev0401) Secondary line for a search result: the row's dictionary tags
+  // (common name preferred) followed by its comment — so a result is identified
+  // by more than just the video title. Skips a comment that just repeats the
+  // name (image rows label by VidComment).
+  const _smResultMeta = r => {
+    const parts = [];
+    if (window.tagsLib && Array.isArray(r.tags)) {
+      const labels = r.tags
+        .map(tid => { const t = window.tagsLib.get(tid); return t ? (t.common || t.label) : null; })
+        .filter(Boolean);
+      if (labels.length) parts.push('🏷 ' + labels.join(', '));
+    }
+    const cmt = String(r.VidComment || '').trim();
+    if (cmt && cmt !== _smResultLabel(r)) parts.push(cmt);
+    return parts.join('  ·  ');
+  };
 
   // Choices, re-read fresh on every open. V items (from T / ml.json `Direct`)
   // first, then SS grids (from C / c.json), so the combined `items` index used
@@ -717,6 +733,11 @@ async function _showShareableMenu() {
     + '.sm-chnone{padding:22px;color:#aa8;font-family:sans-serif;}'
     + '.sm-ico{font-size:13px;line-height:1;flex:none;width:30px;text-align:center;color:#6aa6ff;}'
     + '.sm-name{flex:1;font-size:18px;}'
+    // (dev0401) Search result rows: name on top, a muted meta line beneath it
+    // carrying the dictionary tags + the row's comment.
+    + '.sm-rcol{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}'
+    + '.sm-rname{font-size:18px;color:#ddd;}'
+    + '.sm-rmeta{font-size:12px;color:#9fb0c8;line-height:1.35;}'
     // (dev0380) Choose-list cells: full-height cells with fine vertical column
     // rules, content vertically centered + left-justified within each column.
     + '.sm-detsum .sm-ico{display:flex;align-items:center;justify-content:center;width:auto;}'
@@ -826,7 +847,7 @@ async function _showShareableMenu() {
             + '</div>'
             + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make grid</button>'
           + '</div>'
-          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">When 25 or fewer match, press <b>Enter</b> (or ▦ Make grid) to view them as a grid.</div>'
+          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When 25 or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make grid</b>) to view them all as a grid.</div>'
           // (dev0366) Active COI filters, shown so a narrowed result set doesn't
           // look broken. Populated from _filtTaxon / _filtMedia after mount.
           + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
@@ -1173,11 +1194,16 @@ async function _showShareableMenu() {
       + (matches.length > _smN ? ' — keep typing to narrow to ' + _smN + ' or fewer' : '');
     if (matches.length && matches.length <= _smN) {
       _smGridable = matches;
-      _smResEl.innerHTML = matches.map(r =>
-        '<div class="sm-item sm-card" data-uid="' + _smEsc(String(r.UID)) + '">'
+      _smResEl.innerHTML = matches.map(r => {
+        const meta = _smResultMeta(r);
+        return '<div class="sm-item sm-card" data-uid="' + _smEsc(String(r.UID)) + '">'
           + '<span class="sm-ico">' + (_smBadge[_smResultBadge(r)] || '🔗') + '</span>'
-          + '<span class="sm-name">' + _smEsc(_smResultLabel(r)) + '</span>'
-        + '</div>').join('');
+          + '<span class="sm-rcol">'
+            + '<span class="sm-rname">' + _smEsc(_smResultLabel(r)) + '</span>'
+            + (meta ? '<span class="sm-rmeta">' + _smEsc(meta) + '</span>' : '')
+          + '</span>'
+        + '</div>';
+      }).join('');
       _smResEl.querySelectorAll('.sm-item').forEach(el =>
         el.addEventListener('click', () => _smOpenV(el.dataset.uid)));
     } else {
@@ -1198,20 +1224,29 @@ async function _showShareableMenu() {
     window._fromShareableMenu = false;
     _smBuildGridFromRows(rows);
   };
+  const _smDoClear = () => { _smBox.value = ''; _smRunSearch(); _smBox.focus(); };
+  // (dev0401) Tab cycles a closed loop: text box → Clear → Make grid → text box
+  // (Shift+Tab reverses). Each control handles Tab itself so focus never escapes
+  // the search toolbar (the menu's own Tab handler defers inside .sm-chtools).
   if (_smBox) {
     _smBox.addEventListener('input', _smRunSearch);
     _smBox.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); _smMakeGridNow(); }
+      if (e.key === 'Enter') { e.preventDefault(); _smMakeGridNow(); return; }
+      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smMakeBtn : _smClearBtn).focus(); }
     });
   }
-  if (_smMakeBtn) _smMakeBtn.addEventListener('click', _smMakeGridNow);
-  // Clear button: empties the box, re-runs (clears results), refocuses the box.
-  // Tab cycles box → Clear → Make grid (native order; the menu's Tab handler
-  // defers to .sm-chtools), matching the Grids filter's box ↔ Clear feel.
   if (_smClearBtn) {
-    _smClearBtn.addEventListener('click', () => { _smBox.value = ''; _smRunSearch(); _smBox.focus(); });
+    _smClearBtn.addEventListener('click', _smDoClear);
     _smClearBtn.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _smBox.value = ''; _smRunSearch(); _smBox.focus(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _smDoClear(); return; }
+      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smBox : _smMakeBtn).focus(); }
+    });
+  }
+  if (_smMakeBtn) {
+    _smMakeBtn.addEventListener('click', _smMakeGridNow);
+    _smMakeBtn.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _smMakeGridNow(); return; }
+      if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smClearBtn : _smBox).focus(); }
     });
   }
 }

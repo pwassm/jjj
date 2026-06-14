@@ -6,6 +6,10 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey && e.altKey && (e.key === 'g' || e.key === 'G')) {
     e.preventDefault();
     e.stopPropagation();
+    // (dev0401) Saving a grid config is a dev-only action. In user mode the menu
+    // is "home" and grids are view-only — viewers must not be able to save (e.g.
+    // accidentally persisting a Search-built grid to c.json). Dev mode keeps it.
+    if (typeof _isUserMode === 'function' && _isUserMode()) return;
     gridSavePrompt();
   }
 }, true);
