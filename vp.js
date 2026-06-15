@@ -720,8 +720,11 @@ function gridOpenFullscreen(row, contained) {
         const cr = content.getBoundingClientRect();
         const pw = panel.offsetWidth || 180, ph = panel.offsetHeight || 200;
         let lx, ly;
-        if (clientX == null) { lx = (cr.width - pw) / 2; ly = (cr.height - ph) / 2; }
-        else { lx = clientX - cr.left; ly = clientY - cr.top; }
+        if (clientX == null) {
+          // (dev0408) auto-open (A-B set) → lower-right corner, 100px edge buffer
+          lx = cr.width  - pw - 100;
+          ly = cr.height - ph - 100;
+        } else { lx = clientX - cr.left; ly = clientY - cr.top; }
         lx = clamp(lx, 4, Math.max(4, cr.width  - pw - 4));
         ly = clamp(ly, 4, Math.max(4, cr.height - ph - 4));
         panel.style.left = lx + 'px';
@@ -735,6 +738,13 @@ function gridOpenFullscreen(row, contained) {
       function playNow() {
         const p = _vpState && _vpState.player; if (!p) return;
         try { if (_vpState.isYT) { if (p.playVideo) p.playVideo(); } else { if (p.play) p.play(); } } catch (_) {}
+      }
+      function curT() {
+        // Real current time. Disk/direct videos expose a synchronous <video>
+        // via `.el`; YT/Vimeo fall back to the poller-maintained value.
+        const p = _vpState && _vpState.player;
+        if (p && p.el && Number.isFinite(p.el.currentTime)) return p.el.currentTime;
+        return _vpState ? (_vpState.currentTime || 0) : 0;
       }
       function abRange() {
         if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) return null;
@@ -903,23 +913,51 @@ function gridOpenFullscreen(row, contained) {
           stopAuto(); stopAB(); _vpPauseNow(); refreshCount();
           abMode = 'step'; abPos = r.a; seekAbs(abPos); armStep(); syncBtns();
         }
-        function startBoom() {                        // play A→B, scrub B→A, repeat
+        // Ping-pong: native play A→B, then scrub B→A, repeat. The reverse pass
+        // is paced by the <video>'s own 'seeked' event so we never issue the
+        // next backward seek before the last one finished decoding. (dev0408 —
+        // the old fixed-interval scrub outran the decoder on backward seeks,
+        // which is what made it hang part-way back and then jump to playing.)
+        function boomFwd() {
+          const r = abRange(); if (!r) { stopAB(); syncBtns(); return; }
+          boomPhase = 'fwd';
+          seekAbs(r.a); _vpState.currentTime = r.a; playNow();
+          abTimer = setInterval(() => {
+            const rr = abRange(); if (!rr) { stopAB(); syncBtns(); return; }
+            if (curT() >= rr.b - 0.03) {                          // reached B → reverse
+              if (abTimer) { clearInterval(abTimer); abTimer = null; }
+              boomRev(curT());
+            }
+          }, 50);
+        }
+        function boomRev(fromT) {
+          boomPhase = 'rev';
+          _vpPauseNow();
+          abPos = fromT;
+          const vid = _vpState.player && _vpState.player.el;
+          const stepBack = () => {
+            if (abMode !== 'boom' || boomPhase !== 'rev') return;  // stopped / closed
+            const rr = abRange(); if (!rr) { stopAB(); syncBtns(); return; }
+            abPos -= 0.05;
+            if (abPos <= rr.a) { seekAbs(rr.a); boomFwd(); return; } // back at A → play
+            seekAbs(abPos);
+            if (vid) {
+              const onSeeked = () => { vid.removeEventListener('seeked', onSeeked);
+                                       setTimeout(stepBack, 33); };   // ~1× pacing
+              vid.addEventListener('seeked', onSeeked);
+            } else {
+              setTimeout(stepBack, 50);                            // YT/Vimeo fallback
+            }
+          };
+          stepBack();
+        }
+        function startBoom() {
           const r = abRange();
           if (!r) { if (typeof toast === 'function') toast('Set A and B first.', 1300); return; }
           if (abMode === 'boom') { stopAB(); _vpPauseNow(); syncBtns(); return; }   // toggle off
           stopAuto(); stopAB(); refreshCount();
-          abMode = 'boom'; boomPhase = 'fwd';
-          seekAbs(r.a); _vpState.currentTime = r.a; playNow();   // seed ct so we don't false-trigger 'reached B'
-          abTimer = setInterval(() => {
-            const rr = abRange(); if (!rr) { stopAB(); syncBtns(); return; }
-            if (boomPhase === 'fwd') {
-              if ((_vpState.currentTime || 0) >= rr.b - 0.03) { boomPhase = 'rev'; _vpPauseNow(); abPos = rr.b; }
-            } else {
-              abPos -= 0.06;                           // ~1× reverse via scrubbing
-              if (abPos <= rr.a) { abPos = rr.a; seekAbs(abPos); boomPhase = 'fwd'; playNow(); }
-              else seekAbs(abPos);
-            }
-          }, 60);
+          abMode = 'boom';
+          boomFwd();
           syncBtns();
         }
 
@@ -979,9 +1017,10 @@ function gridOpenFullscreen(row, contained) {
 
         return {
           el: panel, version: 'v2', pos,
-          isLooping() { return !!(autoTimer || abTimer); },
+          isLooping() { return !!(autoTimer || abTimer || abMode); },
           stopLoops() { stopAuto(); stopAB(); if (_vpIsPlaying()) _vpPauseNow(); syncBtns(); },
           cleanup() {
+            autoDir = 0; abMode = null; boomPhase = null;   // make any pending seek-paced reverse bail
             if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
             if (abTimer) { clearInterval(abTimer); abTimer = null; }
             if (panel.parentNode) panel.parentNode.removeChild(panel);
@@ -2115,6 +2154,9 @@ function _vpUpdateABLines() {
   let dur = 0;
   const p = _vpState && _vpState.player;
   if (p && p.el && Number.isFinite(p.el.duration)) dur = p.el.duration;
+  // (dev0408) Fall back to the poller-maintained duration so A/B lines also
+  // work for YT/Vimeo (no .el) and for direct videos before el.duration loads.
+  if (!(dur > 0) && _vpState && Number.isFinite(_vpState.duration)) dur = _vpState.duration;
   function ensureLine(id, color) {
     let el = document.getElementById(id);
     if (!el) {
@@ -2394,6 +2436,11 @@ function vpUpdateTimeline() {
     pct = Math.max(0, Math.min(100, pct));
     progress.style.width = pct + '%';
     playhead.style.left  = 'calc(' + pct + '% - 1px)';
+
+    // (dev0408) Keep the A/B scrub-line markers live — now that duration is
+    // known here for every player type, they show on YT/Vimeo too (not just
+    // disk videos) and follow any A/B nudge.
+    if (_vpState.aPoint != null || _vpState.bPoint != null) _vpUpdateABLines();
 
     // ── Markers: redraw whenever mode/seg-count/duration changes ──
     const renderToken = (isSel ? 'sel:' : 'full:') + dur.toFixed(1)
