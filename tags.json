@@ -5425,5 +5425,13 @@
     "aliases": [],
     "def": "",
     "rank": "order"
+  },
+  {
+    "id": "diabetes",
+    "label": "Diabetes",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
