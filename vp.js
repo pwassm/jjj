@@ -643,20 +643,24 @@ function gridOpenFullscreen(row, contained) {
       });
     })();
 
-    // ── (dev0406/0407) FLOATING STEP BUTTON (fsb) ────────────────────────
-    // Right-click the V video area pops a small floating panel at the cursor.
-    // It re-uses the existing player step helpers — the lower-left toolbar is
-    // untouched. Two versions exist:
-    //   v2 (default, dev0407) — the panel that auto-opens (paused at A) when
-    //     an A-B range is set, and on right-click. Rows:
-    //       Row 1 AUTO-STEP: ◀ [secs] ▶  caret auto-repeats a 0.1 s step every
-    //                        `secs` s (wheel adjusts secs ±0.1).
-    //       Row 2 STEP:      ◀ [▶] ▶  the ±0.1 s buttons + center play/pause.
-    //       Row 3 A-B:       ⇄ [N] ▶  ⇄ ping-pongs A→B→A (plays fwd, scrubs
-    //                        back, repeats); N = A→B length in frames (readout);
-    //                        ▶ step-frames A→B at the Row-1 rate, looping.
-    //   v1 (legacy, dev0406, slated for removal) — the original 3-caret loop
-    //     panel; summon it by pressing "1" while v2 is on screen.
+    // ── (dev0410) FLOATING STEP BUTTON (fsb) ─────────────────────────────
+    // Right-click the V video area pops ONE small floating panel AT THE CURSOR
+    // (it never centers and never moves itself). It has NOTHING to do with the
+    // A-B select feature — Row 3 carries its OWN start/duration. Rows:
+    //   Row 1 PLAY-IN-STEPS:  ◀ [secs] ▶  ◀ free-runs backward / ▶ forward,
+    //         one frame every `secs` s (wheel secs ±0.05, range 0.05–10).
+    //   Row 2 SINGLE STEP:    ◀ [▶/⏸] ▶  ◀/▶ nudge one frame; center = normal
+    //         play / pause toggle.
+    //   Row 3 FRAME WINDOW:   ⇄ [s] [d] ▶  two boxes define the window in
+    //         frames — s (start, seeded to the frame under the playhead at
+    //         right-click, wheel ±1) and d (duration in frames, init 10,
+    //         wheel ±1). ⇄ plays the window then reverses (ping-pong loop);
+    //         ▶ plays the window then restarts from s (forward loop). Both
+    //         step one frame every Row-1 `secs`.
+    //   Row 4: Choose / Save (still stubs).
+    // Changing `secs` re-rates a running loop IMMEDIATELY; changing s or d
+    // takes effect at the END of the current cycle (the box is tinted amber
+    // while a change is pending).
     // Right-click while a loop runs → stop it (panel stays, two-stage); a
     // further right-click closes the panel and resumes play.
     // Wired ONCE on #gridFsContent (it persists across opens); handlers read
@@ -666,7 +670,6 @@ function gridOpenFullscreen(row, contained) {
       content._fsbWired = true;
 
       const FRAME = 1 / 30;     // ~1 video frame (matches the arrow-key step)
-      const SEEK_STEP = 0.1;    // matches the existing toolbar step buttons
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
       // ── shared, stateless UI + player helpers ──────────────────────────
@@ -683,9 +686,10 @@ function gridOpenFullscreen(row, contained) {
         b.addEventListener('pointerdown', e => e.stopPropagation());
         return b;
       }
-      function mkBox(text) {
+      function mkBox(text, title) {
         const d = document.createElement('div');
         d.textContent = text;
+        if (title) d.title = title;
         d.style.cssText = 'min-width:50px;height:30px;display:flex;align-items:center;'
           + 'justify-content:center;background:#001;color:#fd6;border:1px solid #08a;'
           + 'border-radius:4px;font:bold 15px monospace;';
@@ -705,23 +709,14 @@ function gridOpenFullscreen(row, contained) {
         p.addEventListener('pointerdown', e => e.stopPropagation());
         return p;
       }
-      function tag(panel, label, legacy) {
-        const t = document.createElement('div');
-        t.textContent = label;
-        t.style.cssText = 'position:absolute;top:-9px;right:8px;font:bold 9px monospace;'
-          + 'padding:0 5px;border-radius:6px;background:#000;border:1px solid '
-          + (legacy ? '#a40;color:#fa6' : '#06f;color:#8cf') + ';';
-        panel.appendChild(t);
-      }
       function placePanel(panel, clientX, clientY) {
-        // Position at the cursor (or centered when coords are null), clamped
-        // inside the content rect. Desktop/mouse oriented (V isn't CSS-rotated
-        // when a mouse is in play). Returns the client coords actually used.
+        // Pin the panel's top-left to the cursor, clamped inside the content
+        // rect so it stays fully on screen. Never centers; never moves later.
+        // Desktop/mouse oriented (V isn't CSS-rotated when a mouse is in play).
         const cr = content.getBoundingClientRect();
         const pw = panel.offsetWidth || 180, ph = panel.offsetHeight || 200;
-        let lx, ly;
-        if (clientX == null) { lx = (cr.width - pw) / 2; ly = (cr.height - ph) / 2; }
-        else { lx = clientX - cr.left; ly = clientY - cr.top; }
+        let lx = (clientX == null) ? 12 : clientX - cr.left;
+        let ly = (clientY == null) ? 12 : clientY - cr.top;
         lx = clamp(lx, 4, Math.max(4, cr.width  - pw - 4));
         ly = clamp(ly, 4, Math.max(4, cr.height - ph - 4));
         panel.style.left = lx + 'px';
@@ -732,10 +727,6 @@ function gridOpenFullscreen(row, contained) {
         const p = _vpState && _vpState.player; if (!p) return;
         try { if (_vpState.isYT) p.seekTo(t, true); else p.setCurrentTime(t); } catch (_) {}
       }
-      function playNow() {
-        const p = _vpState && _vpState.player; if (!p) return;
-        try { if (_vpState.isYT) { if (p.playVideo) p.playVideo(); } else { if (p.play) p.play(); } } catch (_) {}
-      }
       function curT() {
         // Real current time. Disk/direct videos expose a synchronous <video>
         // via `.el`; YT/Vimeo fall back to the poller-maintained value.
@@ -743,37 +734,35 @@ function gridOpenFullscreen(row, contained) {
         if (p && p.el && Number.isFinite(p.el.currentTime)) return p.el.currentTime;
         return _vpState ? (_vpState.currentTime || 0) : 0;
       }
-      function abRange() {
-        if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) return null;
-        const a = Math.min(_vpState.aPoint, _vpState.bPoint);
-        const b = Math.max(_vpState.aPoint, _vpState.bPoint);
-        return (b > a) ? { a, b } : null;
-      }
 
-      // ── v1 (legacy): frame-window step / ping-pong panel ───────────────
-      // Row 3 plays an explicit frame window [box1 .. box1+box2], paced by the
-      // Row-1 rate:  ⇄  plays it back-and-forth (ping-pong),  ▶  loops it
-      // forward.  box1 = start frame, seeded to the frame under the playhead
-      // when the panel opened (wheel ±1);  box2 = window length in frames
-      // (wheel ±0.1).  A "frame" is FRAME seconds (≈1/30 s).
-      function buildFSBv1(clientX, clientY) {
-        let secs = 1.2;
-        let startFrame = Math.max(0, Math.round(curT() / FRAME));   // box1
-        let numFrames  = 5;                                          // box2
-        let autoTimer = null, autoDir = 0;          // row-1 auto-step
-        let playTimer = null, playMode = null;      // row-3: 'fwd' | 'boom'
-        let playPos = 0, playDir = 1;               // frame offset + direction
+      // ── the floating step button: one A-B-free frame-window panel ──────
+      function buildFSB(clientX, clientY) {
+        let secs = 0.50;                              // Row-1 rate: 1 frame / secs
+        let startFrame = Math.max(0, Math.round(curT() / FRAME));  // box "s"
+        let numFrames  = 10;                          // box "d"
+        let activeStart = startFrame, activeDur = numFrames;       // what a running loop uses
+        let autoTimer = null, autoDir = 0;            // Row-1 free-run step
+        let playTimer = null, playMode = null;        // Row-3: 'fwd' | 'boom'
+        let playPos = 0, playDir = 1;                 // frame offset + direction
+
+        const intervalMs = () => Math.max(16, Math.round(secs * 1000));
 
         function syncBtns() {
           hl(r1back, autoDir === -1); hl(r1fwd, autoDir === 1);
           hl(r3boom, playMode === 'boom'); hl(r3fwd, playMode === 'fwd');
+          r2play.innerHTML = _vpIsPlaying() ? '⏸' : '▶';
         }
-        // row 1: auto-step (unchanged)
+        function refreshPendingMarks() {              // amber box = change waiting for cycle end
+          r3sBox.style.borderColor = (startFrame !== activeStart) ? '#fa0' : '#08a';
+          r3dBox.style.borderColor = (numFrames  !== activeDur)   ? '#fa0' : '#08a';
+        }
+
+        // ── Row 1: free-running frame step (◀ back / ▶ fwd) ──
         function armAuto() {
           if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
           if (!autoDir) return;
-          autoTimer = setInterval(() => { try { vpSeekRelative(autoDir * SEEK_STEP); } catch (_) {} },
-                                  Math.max(50, secs * 1000));
+          autoTimer = setInterval(() => { try { vpSeekRelative(autoDir * FRAME); } catch (_) {} },
+                                  intervalMs());
         }
         function startAuto(dir) {
           if (autoDir === dir) { autoDir = 0; armAuto(); syncBtns(); return; }
@@ -781,81 +770,94 @@ function gridOpenFullscreen(row, contained) {
           if (_vpIsPlaying()) _vpPauseNow();
           autoDir = dir; armAuto(); syncBtns();
         }
-        // row 3: frame-window playback over [startFrame .. startFrame+numFrames]
+
+        // ── Row 3: window loop over [activeStart .. activeStart+activeDur] ──
         function stopPlay() {
           if (playTimer) { clearInterval(playTimer); playTimer = null; }
           playMode = null;
         }
-        function tickPlay() {
-          const span = Math.max(0, numFrames);
-          playPos += playDir;
-          if (playMode === 'boom') {                  // bounce at both ends
-            if (playPos >= span) { playPos = span; playDir = -1; }
-            else if (playPos <= 0) { playPos = 0; playDir = 1; }
-          } else if (playPos > span) {                // forward loop → back to start
-            playPos = 0;
-          }
-          seekAbs((startFrame + playPos) * FRAME);
+        function applyPending() {                     // commit s/d at a cycle boundary
+          activeStart = startFrame; activeDur = numFrames; refreshPendingMarks();
         }
-        function armPlay() {                           // (re)start ticking at current rate
+        function tickPlay() {
+          const span = Math.max(0, activeDur);
+          playPos += playDir;
+          if (playMode === 'boom') {                  // ⇄ play to end, reverse, repeat
+            if (playPos >= span) { playPos = span; playDir = -1; }
+            else if (playPos <= 0) { playPos = 0; playDir = 1; applyPending(); }  // full cycle
+          } else if (playPos > span) {                // ▶ play to end, restart from s
+            playPos = 0; applyPending();
+          }
+          seekAbs((activeStart + playPos) * FRAME);
+        }
+        function armPlay() {                           // (re)start ticking at the current rate
           if (playTimer) { clearInterval(playTimer); playTimer = null; }
           if (!playMode) return;
-          playTimer = setInterval(tickPlay, Math.max(50, secs * 1000));
+          playTimer = setInterval(tickPlay, intervalMs());
         }
         function startPlay(mode) {
-          if (playMode === mode) { stopPlay(); syncBtns(); return; }    // toggle off
+          if (playMode === mode) { stopPlay(); syncBtns(); return; }   // toggle off
           if (autoDir) { autoDir = 0; armAuto(); }
           if (_vpIsPlaying()) _vpPauseNow();
+          applyPending();                              // begin from the shown s/d
           playMode = mode; playDir = 1; playPos = 0;
-          seekAbs(startFrame * FRAME);
+          seekAbs(activeStart * FRAME);
           armPlay(); syncBtns();
         }
 
         const panel = mkPanel();
 
+        // Row 1 — play in steps (free-running)
         const r1 = mkRow();
-        const r1back = mkBtn('◀', 'Auto-step backward');
-        const r1box  = mkBox(secs.toFixed(1));
-        const r1fwd  = mkBtn('▶', 'Auto-step forward');
+        const r1back = mkBtn('◀', 'Play backward in steps');
+        const r1box  = mkBox(secs.toFixed(2), 'Seconds per step (wheel 0.05–10)');
+        const r1fwd  = mkBtn('▶', 'Play forward in steps');
         r1back.onclick = e => { e.stopPropagation(); startAuto(-1); };
         r1fwd.onclick  = e => { e.stopPropagation(); startAuto(1); };
         r1.append(r1back, r1box, r1fwd);
         r1.addEventListener('wheel', e => {
           e.preventDefault(); e.stopPropagation();
-          secs = clamp(+(secs + (e.deltaY < 0 ? 0.1 : -0.1)).toFixed(1), 0.1, 60);
-          r1box.textContent = secs.toFixed(1);
-          if (autoDir) armAuto();
-          if (playMode) armPlay();                    // re-rate a running window play
+          secs = clamp(+(secs + (e.deltaY < 0 ? 0.05 : -0.05)).toFixed(2), 0.05, 10);
+          r1box.textContent = secs.toFixed(2);
+          if (autoDir) armAuto();                      // x value re-rates the loop IMMEDIATELY
+          if (playMode) armPlay();
         }, { passive: false });
 
+        // Row 2 — single frame step + play/pause
         const r2 = mkRow();
-        const r2back = mkBtn('◀', 'Step back 0.1 s');
+        const r2back = mkBtn('◀', 'Step back one frame');
         const r2play = mkBtn('▶', 'Play / pause');
-        const r2fwd  = mkBtn('▶', 'Step forward 0.1 s');
-        r2back.onclick = e => { e.stopPropagation(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(-SEEK_STEP); };
-        r2fwd.onclick  = e => { e.stopPropagation(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(SEEK_STEP); };
-        r2play.onclick = e => { e.stopPropagation(); vpTogglePlay(); };
+        const r2fwd  = mkBtn('▶', 'Step forward one frame');
+        r2back.onclick = e => { e.stopPropagation(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(-FRAME); syncBtns(); };
+        r2fwd.onclick  = e => { e.stopPropagation(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(FRAME); syncBtns(); };
+        r2play.onclick = e => { e.stopPropagation(); vpTogglePlay(); setTimeout(syncBtns, 60); };
         r2.append(r2back, r2play, r2fwd);
 
+        // Row 3 — frame window: ⇄ [s] [d] ▶  (its own self-defined range)
         const r3 = mkRow();
-        const r3boom = mkBtn('⇄', 'Play back & forth: box1 → box1+frames (loop)');
-        const r3box1 = mkBox(String(startFrame));     // start frame (wheel ±1)
-        const r3box2 = mkBox(numFrames.toFixed(1));   // # of frames (wheel ±0.1)
-        const r3fwd  = mkBtn('▶', 'Play forward: box1 → box1+frames at the Row-1 rate (loop)');
+        const r3boom = mkBtn('⇄', 'Loop the window back-and-forth (ping-pong)');
+        const r3sBox = mkBox(String(startFrame), 'Start frame (wheel ±1)');
+        const r3dBox = mkBox(String(numFrames),  'Frames to play (wheel ±1)');
+        const r3fwd  = mkBtn('▶', 'Loop the window forward (restart from start)');
         r3boom.onclick = e => { e.stopPropagation(); startPlay('boom'); };
         r3fwd.onclick  = e => { e.stopPropagation(); startPlay('fwd'); };
-        r3.append(r3boom, r3box1, r3box2, r3fwd);
-        r3box1.addEventListener('wheel', e => {       // box1: start frame ±1
+        r3.append(r3boom, r3sBox, r3dBox, r3fwd);
+        r3sBox.addEventListener('wheel', e => {        // s = start frame, ±1
           e.preventDefault(); e.stopPropagation();
           startFrame = clamp(startFrame + (e.deltaY < 0 ? 1 : -1), 0, 1e9);
-          r3box1.textContent = String(startFrame);
+          r3sBox.textContent = String(startFrame);
+          if (!playMode) activeStart = startFrame;     // idle → now; running → end of cycle
+          refreshPendingMarks();
         }, { passive: false });
-        r3box2.addEventListener('wheel', e => {       // box2: # of frames ±0.1
+        r3dBox.addEventListener('wheel', e => {        // d = # frames, ±1
           e.preventDefault(); e.stopPropagation();
-          numFrames = clamp(+(numFrames + (e.deltaY < 0 ? 0.1 : -0.1)).toFixed(1), 0.1, 300);
-          r3box2.textContent = numFrames.toFixed(1);
+          numFrames = clamp(numFrames + (e.deltaY < 0 ? 1 : -1), 1, 100000);
+          r3dBox.textContent = String(numFrames);
+          if (!playMode) activeDur = numFrames;
+          refreshPendingMarks();
         }, { passive: false });
 
+        // Row 4 — stubs
         const r4 = mkRow();
         const chooseBtn = mkBtn('Choose', 'Choose (stub)', 64);
         const saveBtn   = mkBtn('Save', 'Save to T row (stub)', 64);
@@ -863,18 +865,17 @@ function gridOpenFullscreen(row, contained) {
           if (typeof toast === 'function') toast('Choose — not wired yet.', 1500); };
         saveBtn.onclick = e => { e.stopPropagation();
           if (typeof toast === 'function')
-            toast('Save — not wired yet (would store frame ' + startFrame + ' +' + numFrames.toFixed(1)
-              + 'f @ ' + secs.toFixed(1) + 's to a T row).', 1800); };
+            toast('Save — not wired yet (would store start ' + startFrame + ' · ' + numFrames
+              + 'f @ ' + secs.toFixed(2) + 's/frame to a T row).', 1800); };
         r4.append(chooseBtn, saveBtn);
 
         panel.append(r1, r2, r3, r4);
-        tag(panel, 'v1', true);
         content.appendChild(panel);
         const pos = placePanel(panel, clientX, clientY);
         syncBtns();
 
         return {
-          el: panel, version: 'v1', pos,
+          el: panel, pos,
           isLooping() { return !!(autoTimer || playTimer); },
           stopLoops() { autoDir = 0; armAuto(); stopPlay();
                         if (_vpIsPlaying()) _vpPauseNow(); syncBtns(); },
@@ -886,145 +887,6 @@ function gridOpenFullscreen(row, contained) {
         };
       }
 
-      // ── v2 (default): A-B aware step + ping-pong panel ─────────────────
-      function buildFSBv2(clientX, clientY) {
-        let secs = 1.2;                              // row-1 interval = row-3 step rate
-        let autoTimer = null, autoDir = 0;           // row-1 auto-step
-        let abTimer = null, abMode = null;           // row-3: 'step' | 'boom'
-        let abPos = 0, boomPhase = null;             // row-3 running position
-
-        function syncBtns() {
-          hl(r1back, autoDir === -1); hl(r1fwd, autoDir === 1);
-          hl(r3boom, abMode === 'boom'); hl(r3fwd, abMode === 'step');
-        }
-        function refreshCount() {
-          const r = abRange();
-          r3box.textContent = r ? String(Math.round((r.b - r.a) / FRAME)) : '—';
-        }
-        // row 1 auto-step
-        function armAuto() {
-          if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
-          if (!autoDir) return;
-          autoTimer = setInterval(() => { try { vpSeekRelative(autoDir * SEEK_STEP); } catch (_) {} },
-                                  Math.max(50, secs * 1000));
-        }
-        function stopAuto() { autoDir = 0; armAuto(); }
-        function startAuto(dir) {
-          if (autoDir === dir) { stopAuto(); syncBtns(); return; }
-          stopAB(); if (_vpIsPlaying()) _vpPauseNow();
-          autoDir = dir; armAuto(); syncBtns();
-        }
-        // row 3 A-B engine
-        function stopAB() {
-          if (abTimer) { clearInterval(abTimer); abTimer = null; }
-          abMode = null; boomPhase = null;
-        }
-        function armStep() {                          // step A→B at the row-1 rate, loop
-          if (abTimer) { clearInterval(abTimer); abTimer = null; }
-          if (abMode !== 'step') return;
-          abTimer = setInterval(() => {
-            const r = abRange(); if (!r) { stopAB(); syncBtns(); return; }
-            abPos += FRAME;
-            if (abPos > r.b) abPos = r.a;
-            seekAbs(abPos);
-          }, Math.max(50, secs * 1000));
-        }
-        function startStep() {
-          const r = abRange();
-          if (!r) { if (typeof toast === 'function') toast('Set A and B first.', 1300); return; }
-          if (abMode === 'step') { stopAB(); _vpPauseNow(); syncBtns(); return; }   // toggle off
-          stopAuto(); stopAB(); _vpPauseNow(); refreshCount();
-          abMode = 'step'; abPos = r.a; seekAbs(abPos); armStep(); syncBtns();
-        }
-        function startBoom() {                        // play A→B, scrub B→A, repeat
-          const r = abRange();
-          if (!r) { if (typeof toast === 'function') toast('Set A and B first.', 1300); return; }
-          if (abMode === 'boom') { stopAB(); _vpPauseNow(); syncBtns(); return; }   // toggle off
-          stopAuto(); stopAB(); refreshCount();
-          abMode = 'boom'; boomPhase = 'fwd';
-          seekAbs(r.a); _vpState.currentTime = r.a; playNow();   // seed ct so we don't false-trigger 'reached B'
-          abTimer = setInterval(() => {
-            const rr = abRange(); if (!rr) { stopAB(); syncBtns(); return; }
-            if (boomPhase === 'fwd') {
-              if ((_vpState.currentTime || 0) >= rr.b - 0.03) { boomPhase = 'rev'; _vpPauseNow(); abPos = rr.b; }
-            } else {
-              abPos -= 0.06;                           // ~1× reverse via scrubbing
-              if (abPos <= rr.a) { abPos = rr.a; seekAbs(abPos); boomPhase = 'fwd'; playNow(); }
-              else seekAbs(abPos);
-            }
-          }, 60);
-          syncBtns();
-        }
-
-        const panel = mkPanel();
-
-        const r1 = mkRow();
-        const r1back = mkBtn('◀', 'Auto-step backward');
-        const r1box  = mkBox(secs.toFixed(1));
-        const r1fwd  = mkBtn('▶', 'Auto-step forward');
-        r1back.onclick = e => { e.stopPropagation(); startAuto(-1); };
-        r1fwd.onclick  = e => { e.stopPropagation(); startAuto(1); };
-        r1.append(r1back, r1box, r1fwd);
-        r1.addEventListener('wheel', e => {
-          e.preventDefault(); e.stopPropagation();
-          secs = clamp(+(secs + (e.deltaY < 0 ? 0.1 : -0.1)).toFixed(1), 0.1, 60);
-          r1box.textContent = secs.toFixed(1);
-          if (autoDir) armAuto();
-          if (abMode === 'step') armStep();            // re-rate a running A→B step
-        }, { passive: false });
-
-        const r2 = mkRow();
-        const r2back = mkBtn('◀', 'Step back 0.1 s');
-        const r2play = mkBtn('▶', 'Play / pause');
-        const r2fwd  = mkBtn('▶', 'Step forward 0.1 s');
-        r2back.onclick = e => { e.stopPropagation(); stopAB(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(-SEEK_STEP); syncBtns(); };
-        r2fwd.onclick  = e => { e.stopPropagation(); stopAB(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(SEEK_STEP); syncBtns(); };
-        r2play.onclick = e => { e.stopPropagation(); vpTogglePlay(); };
-        r2.append(r2back, r2play, r2fwd);
-
-        const r3 = mkRow();
-        const r3boom = mkBtn('⇄', 'Ping-pong A→B→A (loop)');
-        const r3box  = mkBox('—');                     // A→B length in frames (readout)
-        const r3fwd  = mkBtn('▶', 'Step-frame A→B at the Row-1 rate (loop)');
-        r3boom.onclick = e => { e.stopPropagation(); startBoom(); };
-        r3fwd.onclick  = e => { e.stopPropagation(); startStep(); };
-        r3.append(r3boom, r3box, r3fwd);
-
-        const r4 = mkRow();
-        const chooseBtn = mkBtn('Choose', 'Choose (stub)', 64);
-        const saveBtn   = mkBtn('Save', 'Save to T row (stub)', 64);
-        chooseBtn.onclick = e => { e.stopPropagation();
-          if (typeof toast === 'function') toast('Choose — not wired yet.', 1500); };
-        saveBtn.onclick = e => { e.stopPropagation();
-          if (typeof toast === 'function') {
-            const r = abRange();
-            toast('Save — not wired yet (would store A→B ' + (r ? Math.round((r.b - r.a) / FRAME) + 'f' : '—')
-              + ' @ ' + secs.toFixed(1) + 's/frame to a T row).', 1900);
-          } };
-        r4.append(chooseBtn, saveBtn);
-
-        panel.append(r1, r2, r3, r4);
-        tag(panel, 'v2', false);
-        content.appendChild(panel);
-        const pos = placePanel(panel, clientX, clientY);
-        refreshCount();
-        syncBtns();
-
-        return {
-          el: panel, version: 'v2', pos,
-          isLooping() { return !!(autoTimer || abTimer); },
-          stopLoops() { stopAuto(); stopAB(); if (_vpIsPlaying()) _vpPauseNow(); syncBtns(); },
-          cleanup() {
-            if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
-            if (abTimer) { clearInterval(abTimer); abTimer = null; }
-            if (panel.parentNode) panel.parentNode.removeChild(panel);
-          }
-        };
-      }
-
-      function showFSB(clientX, clientY, version) {
-        return (version === 'v1') ? buildFSBv1(clientX, clientY) : buildFSBv2(clientX, clientY);
-      }
       function removeFSB(resumePlay) {
         const f = window._vpFSB;
         if (!f) return;
@@ -1034,16 +896,6 @@ function gridOpenFullscreen(row, contained) {
           try { vpTogglePlay(); } catch (_) {}
         }
       }
-
-      // Exposed so the A-B-complete hook (vpSetBPoint / Ctrl+click) can summon
-      // the v2 panel paused at A instead of auto-looping.
-      window._vpShowFSB = function (clientX, clientY, version) {
-        if (!_vpState || !_vpState.player) return;
-        if (window._vpFSB) { try { removeFSB(false); } catch (_) {} }   // refresh
-        window._vpFSB = showFSB(clientX, clientY, version || 'v2');
-        if (_vpIsPlaying()) _vpPauseNow();
-      };
-      window._vpRemoveFSB = removeFSB;
 
       content.addEventListener('contextmenu', e => {
         // Only over an active video player; leave images/quiz/etc. alone.
@@ -1057,19 +909,9 @@ function gridOpenFullscreen(row, contained) {
           removeFSB(true);                                       // stage 2: dismiss + resume
           return;
         }
-        window._vpFSB = showFSB(e.clientX, e.clientY, 'v2');
+        window._vpFSB = buildFSB(e.clientX, e.clientY);          // open AT the cursor
         if (_vpIsPlaying()) _vpPauseNow();                       // pause so stepping shows
       });
-
-      // Press "1" while the v2 panel is up → swap to the legacy v1 panel.
-      document.addEventListener('keydown', e => {
-        if (e.key !== '1' || !window._vpFSB || window._vpFSB.version !== 'v2') return;
-        if (!_vpState || !_vpState.player) return;
-        e.preventDefault(); e.stopImmediatePropagation();
-        const pos = window._vpFSB.pos || { x: null, y: null };
-        removeFSB(false);
-        window._vpFSB = showFSB(pos.x, pos.y, 'v1');
-      }, true);
     })();
 
     // Reset zoom state when V closes (vpClose calls this implicitly via
@@ -2094,23 +1936,10 @@ function vpSetBPoint() {
   if (_vpState.isYT) {
     _vpState.bPoint = _vpState.player.getCurrentTime();
   } else {
-    _vpState.player.getCurrentTime().then(t => { _vpState.bPoint = t; vpUpdateABStyle(); _vpOnABComplete(); });
+    _vpState.player.getCurrentTime().then(t => { _vpState.bPoint = t; vpUpdateABStyle(); });
     return;
   }
   vpUpdateABStyle();
-  _vpOnABComplete();
-}
-
-// (dev0407) When an A-B range becomes complete, don't auto-loop playback —
-// instead seek to A, pause, and bring up the v2 floating step button so the
-// user can step / loop the range deliberately. No-op until BOTH points exist.
-// (The timeline poller's A-B auto-loop also stands down while any fsb is up.)
-function _vpOnABComplete() {
-  if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) return;
-  const a = Math.min(_vpState.aPoint, _vpState.bPoint);
-  try { if (_vpState.isYT) _vpState.player.seekTo(a, true); else _vpState.player.setCurrentTime(a); } catch (_) {}
-  if (_vpIsPlaying()) _vpPauseNow();
-  if (typeof window._vpShowFSB === 'function') window._vpShowFSB(null, null, 'v2');
 }
 
 function vpUpdateABStyle() {
@@ -2266,7 +2095,6 @@ function vpWireControls() {
         _vpState.bPoint = null;
       }
       vpUpdateABStyle();
-      _vpOnABComplete();   // (dev0407) no-op unless this click just completed A-B
       return;
     }
     _vpScrubActive = true;
@@ -2490,8 +2318,9 @@ function vpUpdateTimeline() {
     // (dev0263) Follow seek with play(): if ct reached bPoint right at
     // real-video end, YT/direct may already be in ENDED state and a
     // bare seek alone won't resume.
-    // (dev0407) Stands down while a floating step button is on screen — the
-    // fsb now owns A-B (paused at A, then its own step / ping-pong loops).
+    // (dev0410) Pause this background A-B auto-loop while the manual step panel
+    // is open so the two don't fight over seeks. The fsb itself is independent
+    // of A-B; this is only a "don't fight the open panel" guard.
     if (!window._vpFSB && _vpState.aPoint !== null && _vpState.bPoint !== null
         && _vpState.bPoint > _vpState.aPoint) {
       if (ct >= _vpState.bPoint) {
@@ -2505,8 +2334,8 @@ function vpUpdateTimeline() {
       }
     }
     // ── Selected mode: walk through all segments, loop to first after last ──
-    // (dev0407) Also stands down while a floating step button is up so the fsb
-    // fully owns playback (its step / ping-pong loops aren't fought by the walk).
+    // (dev0410) Likewise paused while the manual step panel is open so the
+    // segment walk doesn't fight its seeks.
     else if (!window._vpFSB && isSel && hasSegs) {
       const seg = _vpState.segs[_vpState.segIdx];
       if (ct >= seg.start + seg.dur - 0.05) {
