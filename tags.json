@@ -5393,5 +5393,37 @@
     "rank": "genus",
     "common": "Cockatiels",
     "extinct": false
+  },
+  {
+    "id": "hummingbird",
+    "label": "Hummingbird",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "trochilidae",
+    "label": "Trochilidae",
+    "kind": "taxon",
+    "parents": [
+      "apodiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "Hummingbirds",
+    "extinct": false
+  },
+  {
+    "id": "apodiformes",
+    "label": "Apodiformes",
+    "kind": "taxon",
+    "parents": [
+      "aves"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
   }
 ]
