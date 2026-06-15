@@ -643,6 +643,206 @@ function gridOpenFullscreen(row, contained) {
       });
     })();
 
+    // ── (dev0406) FLOATING STEP BUTTON (fsb) ─────────────────────────────
+    // Right-click on the V video area pops a small floating panel at the
+    // cursor; right-click again (while it's up) dismisses it and resumes
+    // normal playback. It re-uses the existing player step helpers — the
+    // lower-left toolbar buttons are untouched.
+    //   Row 1 — AUTO-STEP: ◀ [secs] ▶  a caret auto-repeats a 0.1 s step
+    //           every `secs` seconds (wheel over the row adjusts secs ±0.1).
+    //   Row 2 — STEP: ◀ [▶] ▶  the existing ±0.1 s step buttons, with a
+    //           center play/pause toggle.
+    //   Row 3 — LOOP: ◀ [frames] ▶  a caret walks `frames` frames forward
+    //           then snaps back, repeating (wheel adjusts frames ±1).
+    //   Choose / Save — stubs for now (future: persist to a T-row column).
+    // Wired ONCE on #gridFsContent (it persists across opens); the handler
+    // reads live globals so it keeps working for every later V.
+    (function wireFloatingStepButton() {
+      if (content._fsbWired) return;
+      content._fsbWired = true;
+
+      const FRAME = 1 / 30;     // ~1 video frame (matches the arrow-key step)
+      const SEEK_STEP = 0.1;    // matches the existing toolbar step buttons
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+      function buildFSB(clientX, clientY) {
+        let secs = 1.2;                              // row-1 interval (seconds)
+        let frames = 5;                              // row-3 loop length (frames)
+        let autoTimer = null, autoDir = 0;           // row-1 auto-step state
+        let loopTimer = null, loopDir = 0, loopPos = 0; // row-3 loop state
+
+        // ── styling helpers ──────────────────────────────────────────────
+        function hl(btn, on) {
+          btn.style.background  = on ? '#07c' : '#113';
+          btn.style.borderColor = on ? '#0cf' : '#06f';
+        }
+        function mkBtn(html, title, minW) {
+          const b = document.createElement('button');
+          b.className = 'vp-btn';
+          b.innerHTML = html;
+          if (title) b.title = title;
+          b.style.cssText += 'height:30px;font-size:15px;min-width:' + (minW || 34) + 'px;';
+          b.addEventListener('pointerdown', e => e.stopPropagation());
+          return b;
+        }
+        function mkBox(text) {
+          const d = document.createElement('div');
+          d.textContent = text;
+          d.style.cssText = 'min-width:50px;height:30px;display:flex;align-items:center;'
+            + 'justify-content:center;background:#001;color:#fd6;border:1px solid #08a;'
+            + 'border-radius:4px;font:bold 15px monospace;';
+          return d;
+        }
+        function mkRow() {
+          const r = document.createElement('div');
+          r.style.cssText = 'display:flex;align-items:center;gap:6px;justify-content:center;';
+          return r;
+        }
+
+        function syncBtns() {
+          hl(r1back, autoDir === -1); hl(r1fwd, autoDir === 1);
+          hl(r3back, loopDir === -1); hl(r3fwd, loopDir === 1);
+        }
+
+        // ── row 1: auto-step ─────────────────────────────────────────────
+        function armAuto() {
+          if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+          if (!autoDir) return;
+          autoTimer = setInterval(() => {
+            try { vpSeekRelative(autoDir * SEEK_STEP); } catch (_) {}
+          }, Math.max(50, secs * 1000));
+        }
+        function startAuto(dir) {
+          if (autoDir === dir) { autoDir = 0; armAuto(); syncBtns(); return; } // toggle off
+          if (_vpIsPlaying()) _vpPauseNow();
+          autoDir = dir; armAuto(); syncBtns();
+        }
+
+        // ── row 3: loop ──────────────────────────────────────────────────
+        function clearLoopTimer(snapBack) {
+          if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+          if (snapBack && loopDir && loopPos) {
+            try { vpSeekRelative(-loopDir * loopPos * FRAME); } catch (_) {}
+          }
+          loopPos = 0;
+        }
+        function armLoop() {
+          clearLoopTimer(false);
+          if (!loopDir) return;
+          loopTimer = setInterval(() => {
+            try {
+              if (loopPos >= frames) {                       // snap back to anchor
+                vpSeekRelative(-loopDir * loopPos * FRAME);
+                loopPos = 0;
+              } else {
+                vpSeekRelative(loopDir * FRAME);
+                loopPos++;
+              }
+            } catch (_) {}
+          }, 120);
+        }
+        function startLoop(dir) {
+          if (loopDir === dir) { clearLoopTimer(true); loopDir = 0; syncBtns(); return; } // toggle off
+          clearLoopTimer(true);
+          if (_vpIsPlaying()) _vpPauseNow();
+          loopDir = dir; armLoop(); syncBtns();
+        }
+
+        // ── build panel ──────────────────────────────────────────────────
+        const panel = document.createElement('div');
+        panel.id = 'vp-fsb';
+        panel.style.cssText = 'position:absolute;z-index:200;background:#000;border:2px solid #06f;'
+          + 'border-radius:9px;padding:8px;display:flex;flex-direction:column;gap:6px;'
+          + 'box-shadow:0 4px 18px rgba(0,0,0,0.7);user-select:none;touch-action:none;';
+        panel.addEventListener('pointerdown', e => e.stopPropagation());
+
+        const r1 = mkRow();
+        const r1back = mkBtn('◀', 'Auto-step backward');
+        const r1box  = mkBox(secs.toFixed(1));
+        const r1fwd  = mkBtn('▶', 'Auto-step forward');
+        r1back.onclick = e => { e.stopPropagation(); startAuto(-1); };
+        r1fwd.onclick  = e => { e.stopPropagation(); startAuto(1); };
+        r1.append(r1back, r1box, r1fwd);
+        r1.addEventListener('wheel', e => {
+          e.preventDefault(); e.stopPropagation();
+          secs = clamp(+(secs + (e.deltaY < 0 ? 0.1 : -0.1)).toFixed(1), 0.1, 60);
+          r1box.textContent = secs.toFixed(1);
+          if (autoDir) armAuto();                            // re-rate a running auto-step
+        }, { passive: false });
+
+        const r2 = mkRow();
+        const r2back = mkBtn('◀', 'Step back 0.1 s');
+        const r2play = mkBtn('▶', 'Play / pause');
+        const r2fwd  = mkBtn('▶', 'Step forward 0.1 s');
+        r2back.onclick = e => { e.stopPropagation(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(-SEEK_STEP); };
+        r2fwd.onclick  = e => { e.stopPropagation(); if (_vpIsPlaying()) _vpPauseNow(); vpSeekRelative(SEEK_STEP); };
+        r2play.onclick = e => { e.stopPropagation(); vpTogglePlay(); };
+        r2.append(r2back, r2play, r2fwd);
+
+        const r3 = mkRow();
+        const r3back = mkBtn('◀', 'Loop backward');
+        const r3box  = mkBox(String(frames));
+        const r3fwd  = mkBtn('▶', 'Loop forward');
+        r3back.onclick = e => { e.stopPropagation(); startLoop(-1); };
+        r3fwd.onclick  = e => { e.stopPropagation(); startLoop(1); };
+        r3.append(r3back, r3box, r3fwd);
+        r3.addEventListener('wheel', e => {
+          e.preventDefault(); e.stopPropagation();
+          frames = clamp(frames + (e.deltaY < 0 ? 1 : -1), 1, 300);
+          r3box.textContent = String(frames);               // running loop picks up new length next cycle
+        }, { passive: false });
+
+        const r4 = mkRow();
+        const chooseBtn = mkBtn('Choose', 'Choose (stub)', 64);
+        const saveBtn   = mkBtn('Save', 'Save to T row (stub)', 64);
+        chooseBtn.onclick = e => { e.stopPropagation();
+          if (typeof toast === 'function') toast('Choose — not wired yet.', 1500); };
+        saveBtn.onclick = e => { e.stopPropagation();
+          if (typeof toast === 'function')
+            toast('Save — not wired yet (would store ' + secs.toFixed(1) + 's / ' + frames + 'f to a T row).', 1800); };
+        r4.append(chooseBtn, saveBtn);
+
+        panel.append(r1, r2, r3, r4);
+        content.appendChild(panel);
+
+        // Position at the cursor, clamped inside the content rect. (Desktop /
+        // mouse oriented — the V isn't CSS-rotated when a mouse is in play.)
+        const cr = content.getBoundingClientRect();
+        const pw = panel.offsetWidth || 180, ph = panel.offsetHeight || 180;
+        panel.style.left = clamp(clientX - cr.left, 4, Math.max(4, cr.width  - pw - 4)) + 'px';
+        panel.style.top  = clamp(clientY - cr.top,  4, Math.max(4, cr.height - ph - 4)) + 'px';
+        syncBtns();
+
+        return {
+          el: panel,
+          cleanup() {
+            if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+            if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+            if (panel.parentNode) panel.parentNode.removeChild(panel);
+          }
+        };
+      }
+
+      function removeFSB(resumePlay) {
+        const f = window._vpFSB;
+        if (!f) return;
+        try { f.cleanup(); } catch (_) {}
+        window._vpFSB = null;
+        if (resumePlay && _vpState && _vpState.player && !_vpIsPlaying()) {
+          try { vpTogglePlay(); } catch (_) {}
+        }
+      }
+
+      content.addEventListener('contextmenu', e => {
+        // Only over an active video player; leave images/quiz/etc. alone.
+        if (!_vpState || !_vpState.player) return;
+        e.preventDefault(); e.stopPropagation();
+        if (window._vpFSB) { removeFSB(true); return; }      // toggle off + resume
+        window._vpFSB = buildFSB(e.clientX, e.clientY);
+        if (_vpIsPlaying()) _vpPauseNow();                   // pause so stepping shows
+      });
+    })();
+
     // Reset zoom state when V closes (vpClose calls this implicitly via
     // content.innerHTML = '' on next open, but reset here too for safety).
     const _vResetZoom = () => { _vScale = 1; _vTx = 0; _vTy = 0; };
@@ -1301,6 +1501,12 @@ function vpClose() {
 
   // Stop interval
   if (_vpState && _vpState.interval) clearInterval(_vpState.interval);
+
+  // (dev0406) Tear down the floating step button + its live intervals.
+  if (window._vpFSB && typeof window._vpFSB.cleanup === 'function') {
+    try { window._vpFSB.cleanup(); } catch (_) {}
+    window._vpFSB = null;
+  }
 
   window._vpCurrentRow = null; // (zip0178) clear tracked row
   
