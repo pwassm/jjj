@@ -1323,6 +1323,8 @@ async function _showShareableMenu() {
   // browser restarts / reboots). Each row shows the query + a live "now matches"
   // count, with Open (opens the grid for that search) and Delete buttons.
   const _smSavedBody = ov.querySelector('#smSavedBody');
+  // (dev0405) Bounded retry counter for the count re-render below.
+  let _smSavedRetries = 0;
   const _smRenderSaved = () => {
     if (!_smSavedBody) return;
     const list = _smSavedLoad();
@@ -1387,6 +1389,16 @@ async function _showShareableMenu() {
         if (nxt) nxt.focus();
       });
     });
+    // (dev0405) The "N matches now" counts run through _smResolveTags, which can
+    // only resolve dictionary/taxon tags once tags.js has populated window.tagsLib.
+    // On a cold open the viewer can reach SavedSearches before that finishes, so
+    // every tag-based query — and (with the Greeting COI taxon/media filters on)
+    // EVERY query — counts 0 and never updates. Re-render once tags arrive (a
+    // short bounded poll, self-stopping the moment tagsLib exists).
+    if (!window.tagsLib && _smSavedRetries < 40) {
+      _smSavedRetries++;
+      setTimeout(_smRenderSaved, 250);
+    }
   };
   _smRenderSaved();
 }
