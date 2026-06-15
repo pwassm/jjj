@@ -720,11 +720,8 @@ function gridOpenFullscreen(row, contained) {
         const cr = content.getBoundingClientRect();
         const pw = panel.offsetWidth || 180, ph = panel.offsetHeight || 200;
         let lx, ly;
-        if (clientX == null) {
-          // (dev0408) auto-open (A-B set) → lower-right corner, 100px edge buffer
-          lx = cr.width  - pw - 100;
-          ly = cr.height - ph - 100;
-        } else { lx = clientX - cr.left; ly = clientY - cr.top; }
+        if (clientX == null) { lx = (cr.width - pw) / 2; ly = (cr.height - ph) / 2; }
+        else { lx = clientX - cr.left; ly = clientY - cr.top; }
         lx = clamp(lx, 4, Math.max(4, cr.width  - pw - 4));
         ly = clamp(ly, 4, Math.max(4, cr.height - ph - 4));
         panel.style.left = lx + 'px';
@@ -753,16 +750,25 @@ function gridOpenFullscreen(row, contained) {
         return (b > a) ? { a, b } : null;
       }
 
-      // ── v1 (legacy): the original 3-caret loop panel, frozen ───────────
+      // ── v1 (legacy): frame-window step / ping-pong panel ───────────────
+      // Row 3 plays an explicit frame window [box1 .. box1+box2], paced by the
+      // Row-1 rate:  ⇄  plays it back-and-forth (ping-pong),  ▶  loops it
+      // forward.  box1 = start frame, seeded to the frame under the playhead
+      // when the panel opened (wheel ±1);  box2 = window length in frames
+      // (wheel ±0.1).  A "frame" is FRAME seconds (≈1/30 s).
       function buildFSBv1(clientX, clientY) {
-        let secs = 1.2, frames = 5;
-        let autoTimer = null, autoDir = 0;
-        let loopTimer = null, loopDir = 0, loopPos = 0;
+        let secs = 1.2;
+        let startFrame = Math.max(0, Math.round(curT() / FRAME));   // box1
+        let numFrames  = 5;                                          // box2
+        let autoTimer = null, autoDir = 0;          // row-1 auto-step
+        let playTimer = null, playMode = null;      // row-3: 'fwd' | 'boom'
+        let playPos = 0, playDir = 1;               // frame offset + direction
 
         function syncBtns() {
           hl(r1back, autoDir === -1); hl(r1fwd, autoDir === 1);
-          hl(r3back, loopDir === -1); hl(r3fwd, loopDir === 1);
+          hl(r3boom, playMode === 'boom'); hl(r3fwd, playMode === 'fwd');
         }
+        // row 1: auto-step (unchanged)
         function armAuto() {
           if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
           if (!autoDir) return;
@@ -771,29 +777,38 @@ function gridOpenFullscreen(row, contained) {
         }
         function startAuto(dir) {
           if (autoDir === dir) { autoDir = 0; armAuto(); syncBtns(); return; }
+          stopPlay();
           if (_vpIsPlaying()) _vpPauseNow();
           autoDir = dir; armAuto(); syncBtns();
         }
-        function clearLoopTimer(snapBack) {
-          if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
-          if (snapBack && loopDir && loopPos) { try { vpSeekRelative(-loopDir * loopPos * FRAME); } catch (_) {} }
-          loopPos = 0;
+        // row 3: frame-window playback over [startFrame .. startFrame+numFrames]
+        function stopPlay() {
+          if (playTimer) { clearInterval(playTimer); playTimer = null; }
+          playMode = null;
         }
-        function armLoop() {
-          clearLoopTimer(false);
-          if (!loopDir) return;
-          loopTimer = setInterval(() => {
-            try {
-              if (loopPos >= frames) { vpSeekRelative(-loopDir * loopPos * FRAME); loopPos = 0; }
-              else { vpSeekRelative(loopDir * FRAME); loopPos++; }
-            } catch (_) {}
-          }, 120);
+        function tickPlay() {
+          const span = Math.max(0, numFrames);
+          playPos += playDir;
+          if (playMode === 'boom') {                  // bounce at both ends
+            if (playPos >= span) { playPos = span; playDir = -1; }
+            else if (playPos <= 0) { playPos = 0; playDir = 1; }
+          } else if (playPos > span) {                // forward loop → back to start
+            playPos = 0;
+          }
+          seekAbs((startFrame + playPos) * FRAME);
         }
-        function startLoop(dir) {
-          if (loopDir === dir) { clearLoopTimer(true); loopDir = 0; syncBtns(); return; }
-          clearLoopTimer(true);
+        function armPlay() {                           // (re)start ticking at current rate
+          if (playTimer) { clearInterval(playTimer); playTimer = null; }
+          if (!playMode) return;
+          playTimer = setInterval(tickPlay, Math.max(50, secs * 1000));
+        }
+        function startPlay(mode) {
+          if (playMode === mode) { stopPlay(); syncBtns(); return; }    // toggle off
+          if (autoDir) { autoDir = 0; armAuto(); }
           if (_vpIsPlaying()) _vpPauseNow();
-          loopDir = dir; armLoop(); syncBtns();
+          playMode = mode; playDir = 1; playPos = 0;
+          seekAbs(startFrame * FRAME);
+          armPlay(); syncBtns();
         }
 
         const panel = mkPanel();
@@ -810,6 +825,7 @@ function gridOpenFullscreen(row, contained) {
           secs = clamp(+(secs + (e.deltaY < 0 ? 0.1 : -0.1)).toFixed(1), 0.1, 60);
           r1box.textContent = secs.toFixed(1);
           if (autoDir) armAuto();
+          if (playMode) armPlay();                    // re-rate a running window play
         }, { passive: false });
 
         const r2 = mkRow();
@@ -822,16 +838,22 @@ function gridOpenFullscreen(row, contained) {
         r2.append(r2back, r2play, r2fwd);
 
         const r3 = mkRow();
-        const r3back = mkBtn('◀', 'Loop backward');
-        const r3box  = mkBox(String(frames));
-        const r3fwd  = mkBtn('▶', 'Loop forward');
-        r3back.onclick = e => { e.stopPropagation(); startLoop(-1); };
-        r3fwd.onclick  = e => { e.stopPropagation(); startLoop(1); };
-        r3.append(r3back, r3box, r3fwd);
-        r3.addEventListener('wheel', e => {
+        const r3boom = mkBtn('⇄', 'Play back & forth: box1 → box1+frames (loop)');
+        const r3box1 = mkBox(String(startFrame));     // start frame (wheel ±1)
+        const r3box2 = mkBox(numFrames.toFixed(1));   // # of frames (wheel ±0.1)
+        const r3fwd  = mkBtn('▶', 'Play forward: box1 → box1+frames at the Row-1 rate (loop)');
+        r3boom.onclick = e => { e.stopPropagation(); startPlay('boom'); };
+        r3fwd.onclick  = e => { e.stopPropagation(); startPlay('fwd'); };
+        r3.append(r3boom, r3box1, r3box2, r3fwd);
+        r3box1.addEventListener('wheel', e => {       // box1: start frame ±1
           e.preventDefault(); e.stopPropagation();
-          frames = clamp(frames + (e.deltaY < 0 ? 1 : -1), 1, 300);
-          r3box.textContent = String(frames);
+          startFrame = clamp(startFrame + (e.deltaY < 0 ? 1 : -1), 0, 1e9);
+          r3box1.textContent = String(startFrame);
+        }, { passive: false });
+        r3box2.addEventListener('wheel', e => {       // box2: # of frames ±0.1
+          e.preventDefault(); e.stopPropagation();
+          numFrames = clamp(+(numFrames + (e.deltaY < 0 ? 0.1 : -0.1)).toFixed(1), 0.1, 300);
+          r3box2.textContent = numFrames.toFixed(1);
         }, { passive: false });
 
         const r4 = mkRow();
@@ -841,7 +863,8 @@ function gridOpenFullscreen(row, contained) {
           if (typeof toast === 'function') toast('Choose — not wired yet.', 1500); };
         saveBtn.onclick = e => { e.stopPropagation();
           if (typeof toast === 'function')
-            toast('Save — not wired yet (would store ' + secs.toFixed(1) + 's / ' + frames + 'f to a T row).', 1800); };
+            toast('Save — not wired yet (would store frame ' + startFrame + ' +' + numFrames.toFixed(1)
+              + 'f @ ' + secs.toFixed(1) + 's to a T row).', 1800); };
         r4.append(chooseBtn, saveBtn);
 
         panel.append(r1, r2, r3, r4);
@@ -852,12 +875,12 @@ function gridOpenFullscreen(row, contained) {
 
         return {
           el: panel, version: 'v1', pos,
-          isLooping() { return !!(autoTimer || loopTimer); },
-          stopLoops() { autoDir = 0; armAuto(); clearLoopTimer(true); loopDir = 0;
+          isLooping() { return !!(autoTimer || playTimer); },
+          stopLoops() { autoDir = 0; armAuto(); stopPlay();
                         if (_vpIsPlaying()) _vpPauseNow(); syncBtns(); },
           cleanup() {
             if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
-            if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+            if (playTimer) { clearInterval(playTimer); playTimer = null; }
             if (panel.parentNode) panel.parentNode.removeChild(panel);
           }
         };
@@ -913,51 +936,23 @@ function gridOpenFullscreen(row, contained) {
           stopAuto(); stopAB(); _vpPauseNow(); refreshCount();
           abMode = 'step'; abPos = r.a; seekAbs(abPos); armStep(); syncBtns();
         }
-        // Ping-pong: native play A→B, then scrub B→A, repeat. The reverse pass
-        // is paced by the <video>'s own 'seeked' event so we never issue the
-        // next backward seek before the last one finished decoding. (dev0408 —
-        // the old fixed-interval scrub outran the decoder on backward seeks,
-        // which is what made it hang part-way back and then jump to playing.)
-        function boomFwd() {
-          const r = abRange(); if (!r) { stopAB(); syncBtns(); return; }
-          boomPhase = 'fwd';
-          seekAbs(r.a); _vpState.currentTime = r.a; playNow();
-          abTimer = setInterval(() => {
-            const rr = abRange(); if (!rr) { stopAB(); syncBtns(); return; }
-            if (curT() >= rr.b - 0.03) {                          // reached B → reverse
-              if (abTimer) { clearInterval(abTimer); abTimer = null; }
-              boomRev(curT());
-            }
-          }, 50);
-        }
-        function boomRev(fromT) {
-          boomPhase = 'rev';
-          _vpPauseNow();
-          abPos = fromT;
-          const vid = _vpState.player && _vpState.player.el;
-          const stepBack = () => {
-            if (abMode !== 'boom' || boomPhase !== 'rev') return;  // stopped / closed
-            const rr = abRange(); if (!rr) { stopAB(); syncBtns(); return; }
-            abPos -= 0.05;
-            if (abPos <= rr.a) { seekAbs(rr.a); boomFwd(); return; } // back at A → play
-            seekAbs(abPos);
-            if (vid) {
-              const onSeeked = () => { vid.removeEventListener('seeked', onSeeked);
-                                       setTimeout(stepBack, 33); };   // ~1× pacing
-              vid.addEventListener('seeked', onSeeked);
-            } else {
-              setTimeout(stepBack, 50);                            // YT/Vimeo fallback
-            }
-          };
-          stepBack();
-        }
-        function startBoom() {
+        function startBoom() {                        // play A→B, scrub B→A, repeat
           const r = abRange();
           if (!r) { if (typeof toast === 'function') toast('Set A and B first.', 1300); return; }
           if (abMode === 'boom') { stopAB(); _vpPauseNow(); syncBtns(); return; }   // toggle off
           stopAuto(); stopAB(); refreshCount();
-          abMode = 'boom';
-          boomFwd();
+          abMode = 'boom'; boomPhase = 'fwd';
+          seekAbs(r.a); _vpState.currentTime = r.a; playNow();   // seed ct so we don't false-trigger 'reached B'
+          abTimer = setInterval(() => {
+            const rr = abRange(); if (!rr) { stopAB(); syncBtns(); return; }
+            if (boomPhase === 'fwd') {
+              if ((_vpState.currentTime || 0) >= rr.b - 0.03) { boomPhase = 'rev'; _vpPauseNow(); abPos = rr.b; }
+            } else {
+              abPos -= 0.06;                           // ~1× reverse via scrubbing
+              if (abPos <= rr.a) { abPos = rr.a; seekAbs(abPos); boomPhase = 'fwd'; playNow(); }
+              else seekAbs(abPos);
+            }
+          }, 60);
           syncBtns();
         }
 
@@ -1017,10 +1012,9 @@ function gridOpenFullscreen(row, contained) {
 
         return {
           el: panel, version: 'v2', pos,
-          isLooping() { return !!(autoTimer || abTimer || abMode); },
+          isLooping() { return !!(autoTimer || abTimer); },
           stopLoops() { stopAuto(); stopAB(); if (_vpIsPlaying()) _vpPauseNow(); syncBtns(); },
           cleanup() {
-            autoDir = 0; abMode = null; boomPhase = null;   // make any pending seek-paced reverse bail
             if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
             if (abTimer) { clearInterval(abTimer); abTimer = null; }
             if (panel.parentNode) panel.parentNode.removeChild(panel);
@@ -2154,9 +2148,6 @@ function _vpUpdateABLines() {
   let dur = 0;
   const p = _vpState && _vpState.player;
   if (p && p.el && Number.isFinite(p.el.duration)) dur = p.el.duration;
-  // (dev0408) Fall back to the poller-maintained duration so A/B lines also
-  // work for YT/Vimeo (no .el) and for direct videos before el.duration loads.
-  if (!(dur > 0) && _vpState && Number.isFinite(_vpState.duration)) dur = _vpState.duration;
   function ensureLine(id, color) {
     let el = document.getElementById(id);
     if (!el) {
@@ -2436,11 +2427,6 @@ function vpUpdateTimeline() {
     pct = Math.max(0, Math.min(100, pct));
     progress.style.width = pct + '%';
     playhead.style.left  = 'calc(' + pct + '% - 1px)';
-
-    // (dev0408) Keep the A/B scrub-line markers live — now that duration is
-    // known here for every player type, they show on YT/Vimeo too (not just
-    // disk videos) and follow any A/B nudge.
-    if (_vpState.aPoint != null || _vpState.bPoint != null) _vpUpdateABLines();
 
     // ── Markers: redraw whenever mode/seg-count/duration changes ──
     const renderToken = (isSel ? 'sel:' : 'full:') + dur.toFixed(1)
