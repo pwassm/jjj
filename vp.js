@@ -874,16 +874,25 @@ function gridOpenFullscreen(row, contained) {
           refreshPendingMarks();
         }, { passive: false });
 
-        // Row 4 — stubs
+        // Row 4 — Choose (stub) / Save
         const r4 = mkRow();
         const chooseBtn = mkBtn('Choose', 'Choose (stub)', 64);
-        const saveBtn   = mkBtn('Save', 'Save to T row (stub)', 64);
+        const saveBtn   = mkBtn('Save', 'Save these steps to the current row', 64);
         chooseBtn.onclick = e => { e.stopPropagation();
           if (typeof toast === 'function') toast('Choose — not wired yet.', 1500); };
+        // (dev0413) Save x/s/d to the current row's `steps` field in ml.json as a
+        // compact "x,s,d" string (x = secs/frame rate, s = start frame, d = frames).
+        // G's "Play steps" reads it back. String keeps the auto-discovered T column
+        // readable (an object would render as [object Object]).
         saveBtn.onclick = e => { e.stopPropagation();
+          const row = window._vpCurrentRow;
+          if (!row) { if (typeof toast === 'function') toast('Save — no current row.', 1500); return; }
+          row.steps = secs.toFixed(2) + ',' + startFrame + ',' + numFrames;
+          if (typeof isoNow === 'function') row.DateModified = isoNow();
+          if (typeof save === 'function') save();
           if (typeof toast === 'function')
-            toast('Save — not wired yet (would store start ' + startFrame + ' · ' + numFrames
-              + 'f @ ' + secs.toFixed(2) + 's/frame to a T row).', 1800); };
+            toast('✓ Steps saved: start ' + startFrame + ' · ' + numFrames
+              + 'f @ ' + secs.toFixed(2) + 's', 1800); };
         r4.append(chooseBtn, saveBtn);
 
         panel.append(r1, r2, r3, r4);

@@ -718,6 +718,46 @@ window.cleanupAllVideos = function() {
   window.seeLearnVideoPlayers = {};
 };
 
+// (dev0413) Play a saved "steps" window in a grid cell. Replaces the cell's
+// looping native playback with frame-stepped seeking over [s .. s+d] frames at
+// rate x (one frame every x seconds), forward-looping. row.steps is "x,s,d"
+// (x = secs/frame, s = start frame, d = duration in frames; 1 frame = 1/30 s).
+// Silent no-op if steps don't parse or the cell has no direct <video> (YT/Vimeo
+// cells expose no frame-seekable element). The stepping interval reuses the
+// cell's seeLearnVideoTimers slot so the normal re-render / destroy path tears
+// it down. The `vid.seeking` skip keeps the rate honest at fast x (mirrors the
+// V floating step control): assigning currentTime mid-seek aborts the in-flight
+// seek, so the frame would never render and the loop would look frozen.
+window.gridPlaySteps = function(cellStr, row) {
+  if (!row || !row.steps) return;
+  var parts = String(row.steps).split(',');
+  var x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+  if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 1) return;
+
+  var cellId = 'grid-vid-' + cellStr;
+  var player = (window.seeLearnVideoPlayers || {})[cellId];
+  if (!player || !player.el) return;            // only direct/disk <video> cells
+  var vid = player.el;
+  var FRAME = 1 / 30;
+
+  window.seeLearnVideoTimers = window.seeLearnVideoTimers || {};
+  if (window.seeLearnVideoTimers[cellId]) {     // take over the cell's segment loop
+    clearInterval(window.seeLearnVideoTimers[cellId]);
+    delete window.seeLearnVideoTimers[cellId];
+  }
+  player._gridPaused = true;                     // we own the frames now (no native play)
+  try { vid.pause(); } catch (e) {}
+
+  var interval = Math.max(16, Math.round(x * 1000));
+  var pos = 0;
+  try { vid.currentTime = s * FRAME; } catch (e) {}
+  window.seeLearnVideoTimers[cellId] = setInterval(function() {
+    if (vid.seeking) return;                     // let the prior frame land first
+    pos = (pos >= d) ? 0 : pos + 1;              // forward loop: s … s+d … restart at s
+    try { vid.currentTime = (s + pos) * FRAME; } catch (e) {}
+  }, interval);
+};
+
 // ─── VIDEO EDITOR (multi-segment) ────────────────────────────────────────────
 window.openVideoEditor = function(it) {
   window._lastVideoShown = it;  // remember for EE/VV/floating buttons

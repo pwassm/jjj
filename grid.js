@@ -1902,7 +1902,22 @@ function gridShowContextMenu(x, y, cellStr, row) {
     };
     _gridContextMenu.appendChild(viewBtn);
   }
-  
+
+  // (dev0413) Play steps — replace this cell's in-frame video with the saved
+  // frame-step window (rate x, start s, duration d from row.steps). Always
+  // shown; if the row has no steps the click is a silent no-op (no toast).
+  const stepsBtn = document.createElement('div');
+  stepsBtn.innerHTML = '<u>P</u>lay steps';
+  stepsBtn.style.cssText = 'padding:8px 16px; color:#8ef; cursor:pointer; font-size:13px;';
+  stepsBtn.onmouseenter = () => stepsBtn.style.background = '#2a2a4e';
+  stepsBtn.onmouseleave = () => stepsBtn.style.background = '';
+  stepsBtn.onclick = () => {
+    if (row && row.steps && typeof window.gridPlaySteps === 'function')
+      window.gridPlaySteps(cellStr, row);     // no steps → silent no-op
+    gridHideContextMenu();
+  };
+  _gridContextMenu.appendChild(stepsBtn);
+
   // Delete option
   const deleteBtn = document.createElement('div');
   deleteBtn.innerHTML = '<u>D</u>elete cell';
@@ -1948,6 +1963,11 @@ function gridShowContextMenu(x, y, cellStr, row) {
       e.preventDefault();
       _lastGridRow = row;
       gridOpenFullscreen(row);
+      gridHideContextMenu();
+    } else if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      if (row && row.steps && typeof window.gridPlaySteps === 'function')
+        window.gridPlaySteps(cellStr, row);   // no steps → silent no-op
       gridHideContextMenu();
     } else if (e.key === 'w' || e.key === 'W') {
       e.preventDefault();
