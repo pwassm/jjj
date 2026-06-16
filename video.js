@@ -775,6 +775,30 @@ window.gridPlaySteps = function(cellStr, row) {
   }, interval);
 };
 
+// (dev0419) "Play steps All" — convert EVERY mounted grid cell that has saved
+// steps to in-cell frame-step playback at once (gridPlaySteps on each). Used by
+// the Gu (user-mode) right-click menu. In-cell for ALL link types — only one V
+// exists, so YouTube can't route through V here the way single "Play steps"
+// does; it steps in its own cell instead. Cells with no steps or no steppable
+// player are silently skipped. Returns how many cells were converted.
+window.gridPlayStepsAll = function() {
+  var players = window.seeLearnVideoPlayers || {};
+  var n = 0;
+  for (var cellId in players) {
+    if (cellId.indexOf('grid-vid-') !== 0) continue;
+    var cellStr = cellId.slice('grid-vid-'.length);
+    var row = (typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid(cellStr)
+            : (typeof getRowByCell === 'function')        ? getRowByCell(cellStr)
+            : null;
+    if (!row || !row.steps) continue;
+    try { window.gridPlaySteps(cellStr, row); n++; } catch (e) {}
+  }
+  if (typeof toast === 'function')
+    toast(n ? ('▶ Step-playing ' + n + ' cell' + (n === 1 ? '' : 's'))
+            : 'No playing cells have saved steps.', 1800);
+  return n;
+};
+
 // (dev0416) Route G "Play steps" by link type. Vimeo and direct-link cells step
 // in place (gridPlaySteps above). YouTube cells open V instead and play in at
 // normal speed from 4s before `s`, then drop the fsc at `s` (_vpPlayStepsInV) —

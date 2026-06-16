@@ -878,62 +878,119 @@ function gridOpenFullscreen(row, contained) {
           refreshPendingMarks();
         }, { passive: false });
 
-        // ── (dev0418) "Choose" = screen-record toggle ──────────────────────
-        // The browser can't silently grab the screen or write into the project
-        // folder, so the proxy does it: POST /rec/start spawns ffmpeg gdigrab
-        // capturing the desktop → vsteps-<ts>.mp4 in the project folder; POST
-        // /rec/stop sends 'q' to ffmpeg's stdin to finalize the file. First
-        // click starts (button turns red "● Rec"), second click stops & saves.
-        // Captures the REAL V screen playing the steps — run ▶/⇄ while it records.
-        async function toggleRecord(btn) {
-          btn.disabled = true;
+        // ── (dev0419) "Choose" = record JUST the V video region to an .mp4 ──
+        // gdigrab can crop to a screen rect, so instead of the whole desktop we
+        // capture only #grid-fs-video (the video area, above the 80px toolbar).
+        // To keep the capture clean: on record we HIDE this fsc panel and show a
+        // small ⏹ stop button down in the toolbar strip — BELOW the captured
+        // region, so neither the panel nor the button ever lands in the frame.
+        // The step loop is timer-driven, so it keeps playing while the panel is
+        // hidden; if nothing is looping yet we auto-start the forward window loop
+        // so "Choose" always yields a stepped clip. Click ⏹ to stop & save.
+        let recStopBtn = null;
+
+        // Map #grid-fs-video's on-screen rect to desktop DEVICE pixels (what
+        // gdigrab's -offset_x/-video_size want). screenX/Y + getBoundingClientRect
+        // are CSS px, so scale by devicePixelRatio. Assumes a single primary,
+        // unzoomed monitor (true for the step-record workflow); the viewport's
+        // screen-top is approximated as window.screenY + the top chrome height.
+        // Clamped to the viewport + >=0 so the crop stays on the primary desktop.
+        function vRegionDevicePx() {
+          const host = document.getElementById('grid-fs-video');
+          if (!host) return null;
+          const r = host.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          const chromeTop = Math.max(0, (window.outerHeight || 0) - (window.innerHeight || 0));
+          const left   = Math.max(0, r.left);
+          const top    = Math.max(0, r.top);
+          const right  = Math.min(window.innerWidth,  r.right);
+          const bottom = Math.min(window.innerHeight, r.bottom);
+          if (right - left < 2 || bottom - top < 2) return null;
+          return {
+            x: Math.max(0, Math.round((window.screenX + left) * dpr)),
+            y: Math.max(0, Math.round((window.screenY + chromeTop + top) * dpr)),
+            w: Math.max(2, Math.round((right - left) * dpr)),
+            h: Math.max(2, Math.round((bottom - top) * dpr))
+          };
+        }
+
+        function showStopButton() {
+          if (recStopBtn) return;
+          const b = document.createElement('button');
+          b.id = 'vp-rec-stop';
+          // Far bottom-right corner, over the toolbar strip (below the captured
+          // video region) so it never appears in the recording. z-index tops all.
+          b.style.cssText = 'position:absolute;right:12px;bottom:20px;z-index:100000;'
+            + 'height:40px;min-width:104px;padding:0 16px;border-radius:8px;'
+            + 'border:2px solid #f44;background:#a00;color:#fff;font:bold 15px sans-serif;'
+            + 'cursor:pointer;box-shadow:0 3px 14px rgba(0,0,0,0.7);';
+          b.innerHTML = '⏹ Stop';
+          b.title = 'Stop & save the recording';
+          b.addEventListener('pointerdown', e => e.stopPropagation());
+          b.onclick = e => { e.stopPropagation(); stopRecording(); };
+          content.appendChild(b);
+          recStopBtn = b;
+        }
+        function hideStopButton() {
+          if (recStopBtn && recStopBtn.parentNode) recStopBtn.parentNode.removeChild(recStopBtn);
+          recStopBtn = null;
+        }
+
+        async function startRecording() {
+          if (recording) return;
+          const region = vRegionDevicePx();
+          panel.style.display = 'none';                 // out of frame before capture
+          showStopButton();
+          if (!playMode && !autoDir) startPlay('fwd');  // ensure the steps are running
           try {
-            if (!recording) {
-              const r = await fetch(PROXY_BASE + '/rec/start', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fps: 30 })
-              });
-              const j = await r.json().catch(() => ({}));
-              if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
-              recording = true;
-              btn.innerHTML = '● Rec';
-              btn.style.background = '#a00'; btn.style.borderColor = '#f44';
-              btn.title = 'Recording the screen — click to stop & save the .mp4';
-              if (typeof toast === 'function')
-                toast('● Recording — run the steps, then click ● Rec to stop.', 2200);
-            } else {
-              const r = await fetch(PROXY_BASE + '/rec/stop', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
-              });
-              const j = await r.json().catch(() => ({}));
-              recording = false;
-              btn.innerHTML = 'Choose';
-              btn.style.background = '#113'; btn.style.borderColor = '#06f';
-              btn.title = 'Record the V screen to an .mp4 (toggle: start / stop)';
-              if (j && j.output) {
-                const name = String(j.output).split(/[\\/]/).pop();
-                const secs = j.durationMs ? ' · ' + (j.durationMs / 1000).toFixed(1) + 's' : '';
-                if (typeof toast === 'function') toast('✓ Saved ' + name + secs, 3000);
-              } else if (typeof toast === 'function') {
-                toast('Recording stopped' + (j && j.error ? ': ' + j.error : '') + '.', 2400);
-              }
-            }
+            const r = await fetch(PROXY_BASE + '/rec/start', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(region ? { fps: 30, region } : { fps: 30 })
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            recording = true;
+            if (typeof toast === 'function')
+              toast('● Recording the V video — click ⏹ Stop (bottom-right) to save.', 2600);
           } catch (e) {
-            // Most likely the proxy isn't running. Reset to a clean idle state.
+            // Most likely the proxy isn't running — restore the panel + clean up.
             recording = false;
-            btn.innerHTML = 'Choose';
-            btn.style.background = '#113'; btn.style.borderColor = '#06f';
+            hideStopButton();
+            panel.style.display = '';
             if (typeof toast === 'function')
               toast('Record failed: ' + (e && e.message ? e.message : e)
                 + ' — is proxy.js running on 8081?', 3600);
-          } finally { btn.disabled = false; }
+          }
+        }
+
+        async function stopRecording() {
+          hideStopButton();
+          panel.style.display = '';                     // bring the fsc panel back
+          if (!recording) return;
+          recording = false;
+          try {
+            const r = await fetch(PROXY_BASE + '/rec/stop', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            });
+            const j = await r.json().catch(() => ({}));
+            if (j && j.output) {
+              const name = String(j.output).split(/[\\/]/).pop();
+              const dur = j.durationMs ? ' · ' + (j.durationMs / 1000).toFixed(1) + 's' : '';
+              if (typeof toast === 'function') toast('✓ Saved ' + name + dur, 3000);
+            } else if (typeof toast === 'function') {
+              toast('Recording stopped' + (j && j.error ? ': ' + j.error : '') + '.', 2400);
+            }
+          } catch (e) {
+            if (typeof toast === 'function')
+              toast('Stop failed: ' + (e && e.message ? e.message : e), 3000);
+          }
         }
 
         // Row 4 — Choose (screen-record toggle) / Save
         const r4 = mkRow();
-        const chooseBtn = mkBtn('Choose', 'Record the V screen to an .mp4 (toggle: start / stop)', 64);
+        const chooseBtn = mkBtn('Choose', 'Record just the V video region to an .mp4 (panel hides; ⏹ Stop bottom-right)', 64);
         const saveBtn   = mkBtn('Save', 'Save these steps to the current row', 64);
-        chooseBtn.onclick = e => { e.stopPropagation(); toggleRecord(chooseBtn); };
+        chooseBtn.onclick = e => { e.stopPropagation(); if (!recording) startRecording(); else stopRecording(); };
         // (dev0413) Save x/s/d to the current row's `steps` field in ml.json as a
         // compact "x,s,d" string (x = secs/frame rate, s = start frame, d = frames).
         // G's "Play steps" reads it back. String keeps the auto-discovered T column
@@ -966,6 +1023,7 @@ function gridOpenFullscreen(row, contained) {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
               }); } catch (_) {}
             }
+            hideStopButton();
             if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
             if (playTimer) { clearInterval(playTimer); playTimer = null; }
             if (panel.parentNode) panel.parentNode.removeChild(panel);

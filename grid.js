@@ -1775,13 +1775,16 @@ function gridWireInteractor(interactor, cell, cellStr) {
       return;
     }
 
-    // (zip0141) In user mode (Gu): no cut/paste menu. Ctrl+right-click
-    // for View mode is still allowed (it's a viewing action, not edit).
+    // (zip0141) In user mode (Gu): no cut/paste/edit menu. Ctrl+right-click
+    // still opens View directly. (dev0419) Plain right-click now pops a lean
+    // viewer menu — View / Play steps / Play steps All — and nothing else.
     if (userMode) {
       if (e.ctrlKey && cell._rowData) {
         _lastGridRow = cell._rowData;
         gridOpenFullscreen(cell._rowData);
+        return;
       }
+      gridShowUserContextMenu(e.clientX, e.clientY, cellStr, cell._rowData);
       return;
     }
     
@@ -1835,6 +1838,57 @@ function gridWireInteractor(interactor, cell, cellStr) {
 // GRID CONTEXT MENU
 // ══════════════════════════════════════════════════════════════════════════════
 let _gridContextMenu = null;
+
+// (dev0419) Lean user-mode (Gu) right-click menu: View / Play steps / Play
+// steps All — viewing actions only, no edit/cut/delete/write. Shares the dev
+// menu's chrome + close/keyboard plumbing (gridHideContextMenu) but builds its
+// own short item list. "Play steps" routes by link type exactly like Gd (in
+// cell for Vimeo/direct, in V for YouTube); "Play steps All" converts every
+// playing cell with saved steps to in-cell step playback at once.
+function gridShowUserContextMenu(x, y, cellStr, row) {
+  gridHideContextMenu();
+
+  _gridContextMenu = document.createElement('div');
+  _gridContextMenu.id = 'gridContextMenu';
+  _gridContextMenu.style.cssText = `
+    position:fixed; left:${x}px; top:${y}px; z-index:30000;
+    background:#1a1a2e; border:1px solid #444; border-radius:6px;
+    padding:4px 0; min-width:160px; box-shadow:0 4px 12px rgba(0,0,0,0.5);
+  `;
+
+  const mkItem = (html, onclick) => {
+    const b = document.createElement('div');
+    b.innerHTML = html;
+    b.style.cssText = 'padding:8px 16px; color:#8ef; cursor:pointer; font-size:13px;';
+    b.onmouseenter = () => b.style.background = '#2a2a4e';
+    b.onmouseleave = () => b.style.background = '';
+    b.onclick = onclick;
+    return b;
+  };
+
+  const doView = () => { if (row) { _lastGridRow = row; gridOpenFullscreen(row); } gridHideContextMenu(); };
+  const doSteps = () => { if (window._gridPlayStepsRoute) window._gridPlayStepsRoute(cellStr, row); gridHideContextMenu(); };
+  const doStepsAll = () => { if (window.gridPlayStepsAll) window.gridPlayStepsAll(); gridHideContextMenu(); };
+
+  if (row) _gridContextMenu.appendChild(mkItem('<u>V</u>iew', doView));
+  _gridContextMenu.appendChild(mkItem('<u>P</u>lay steps', doSteps));
+  _gridContextMenu.appendChild(mkItem('Play steps <u>A</u>ll', doStepsAll));
+
+  document.body.appendChild(_gridContextMenu);
+
+  const handleKey = e => {
+    if ((e.key === 'v' || e.key === 'V') && row) { e.preventDefault(); doView(); }
+    else if (e.key === 'p' || e.key === 'P')     { e.preventDefault(); doSteps(); }
+    else if (e.key === 'a' || e.key === 'A')     { e.preventDefault(); doStepsAll(); }
+    else if (e.key === 'Escape')                 { gridHideContextMenu(); }
+  };
+  document.addEventListener('keydown', handleKey, true);
+  _gridContextMenu._keyHandler = handleKey;
+
+  setTimeout(() => {
+    document.addEventListener('click', gridHideContextMenu, { once: true });
+  }, 10);
+}
 
 function gridShowContextMenu(x, y, cellStr, row) {
   gridHideContextMenu();
