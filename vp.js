@@ -757,6 +757,7 @@ function gridOpenFullscreen(row, contained) {
         let autoTimer = null, autoDir = 0;            // Row-1 free-run step
         let playTimer = null, playMode = null;        // Row-3: 'fwd' | 'boom'
         let playPos = 0, playDir = 1;                 // frame offset + direction
+        let recording = false;                        // (dev0418) Row-4 "Choose" screen-record toggle
 
         const intervalMs = () => Math.max(16, Math.round(secs * 1000));
 
@@ -877,12 +878,62 @@ function gridOpenFullscreen(row, contained) {
           refreshPendingMarks();
         }, { passive: false });
 
-        // Row 4 — Choose (stub) / Save
+        // ── (dev0418) "Choose" = screen-record toggle ──────────────────────
+        // The browser can't silently grab the screen or write into the project
+        // folder, so the proxy does it: POST /rec/start spawns ffmpeg gdigrab
+        // capturing the desktop → vsteps-<ts>.mp4 in the project folder; POST
+        // /rec/stop sends 'q' to ffmpeg's stdin to finalize the file. First
+        // click starts (button turns red "● Rec"), second click stops & saves.
+        // Captures the REAL V screen playing the steps — run ▶/⇄ while it records.
+        async function toggleRecord(btn) {
+          btn.disabled = true;
+          try {
+            if (!recording) {
+              const r = await fetch(PROXY_BASE + '/rec/start', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fps: 30 })
+              });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+              recording = true;
+              btn.innerHTML = '● Rec';
+              btn.style.background = '#a00'; btn.style.borderColor = '#f44';
+              btn.title = 'Recording the screen — click to stop & save the .mp4';
+              if (typeof toast === 'function')
+                toast('● Recording — run the steps, then click ● Rec to stop.', 2200);
+            } else {
+              const r = await fetch(PROXY_BASE + '/rec/stop', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+              });
+              const j = await r.json().catch(() => ({}));
+              recording = false;
+              btn.innerHTML = 'Choose';
+              btn.style.background = '#113'; btn.style.borderColor = '#06f';
+              btn.title = 'Record the V screen to an .mp4 (toggle: start / stop)';
+              if (j && j.output) {
+                const name = String(j.output).split(/[\\/]/).pop();
+                const secs = j.durationMs ? ' · ' + (j.durationMs / 1000).toFixed(1) + 's' : '';
+                if (typeof toast === 'function') toast('✓ Saved ' + name + secs, 3000);
+              } else if (typeof toast === 'function') {
+                toast('Recording stopped' + (j && j.error ? ': ' + j.error : '') + '.', 2400);
+              }
+            }
+          } catch (e) {
+            // Most likely the proxy isn't running. Reset to a clean idle state.
+            recording = false;
+            btn.innerHTML = 'Choose';
+            btn.style.background = '#113'; btn.style.borderColor = '#06f';
+            if (typeof toast === 'function')
+              toast('Record failed: ' + (e && e.message ? e.message : e)
+                + ' — is proxy.js running on 8081?', 3600);
+          } finally { btn.disabled = false; }
+        }
+
+        // Row 4 — Choose (screen-record toggle) / Save
         const r4 = mkRow();
-        const chooseBtn = mkBtn('Choose', 'Choose (stub)', 64);
+        const chooseBtn = mkBtn('Choose', 'Record the V screen to an .mp4 (toggle: start / stop)', 64);
         const saveBtn   = mkBtn('Save', 'Save these steps to the current row', 64);
-        chooseBtn.onclick = e => { e.stopPropagation();
-          if (typeof toast === 'function') toast('Choose — not wired yet.', 1500); };
+        chooseBtn.onclick = e => { e.stopPropagation(); toggleRecord(chooseBtn); };
         // (dev0413) Save x/s/d to the current row's `steps` field in ml.json as a
         // compact "x,s,d" string (x = secs/frame rate, s = start frame, d = frames).
         // G's "Play steps" reads it back. String keeps the auto-discovered T column
@@ -907,6 +958,14 @@ function gridOpenFullscreen(row, contained) {
         return {
           el: panel, pos,
           cleanup() {
+            // (dev0418) Dismissed mid-record → tell the proxy to finalize the
+            // mp4 (fire-and-forget; the file is still saved even as V closes).
+            if (recording) {
+              recording = false;
+              try { fetch(PROXY_BASE + '/rec/stop', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+              }); } catch (_) {}
+            }
             if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
             if (playTimer) { clearInterval(playTimer); playTimer = null; }
             if (panel.parentNode) panel.parentNode.removeChild(panel);

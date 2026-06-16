@@ -16,6 +16,10 @@ AHK
 # Deleted links archive (kept locally only)
 deleted.json
 
+# (dev0418) V "Choose" screen recordings — written to the project root by
+# proxy.js /rec/*; kept local, never committed.
+vsteps-*.mp4
+
 # (dev0312) Local-media IndexedDB exports — privacy.
 # Q's index (the localmedia IDB) lives in Chrome's profile, not in this repo:
 #   %LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\http_localhost_8080\

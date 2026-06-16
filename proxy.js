@@ -13,13 +13,15 @@
 
 const http  = require('http');
 const https = require('https');
+const path  = require('path');
 const { spawn } = require('child_process');
 
 const PORT = 8081;
 // (dev0319) Build/capability tag — surfaced at GET /version so the client can
 // detect a stale proxy before sending a deskew (rotate) job that an old build
 // would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
-const PROXY_BUILD = 'dev0396';
+// (dev0418) Bumped + added 'screenrec' feature for the /rec/* screen recorder.
+const PROXY_BUILD = 'dev0418';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -461,11 +463,118 @@ function send(res, code, msg, extraHeaders) {
   res.end(msg);
 }
 
+function sendJson(res, code, obj, origin) {
+  const h = Object.assign({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+                          corsForExec(origin || ''));
+  res.writeHead(code, h);
+  res.end(JSON.stringify(obj));
+}
+
+// (dev0418) ── /rec/* screen recorder ─────────────────────────────────────
+// A POC screen-capture bridge for the V "floating step control" (fsc). The
+// browser can neither grab the screen silently nor write to the project
+// folder, but this proxy (running as the user's own desktop process) can —
+// so the fsc "Choose" button just toggles ffmpeg's Windows gdigrab capture:
+//   POST /rec/start  → spawn ffmpeg gdigrab → vsteps-<ts>.mp4 in the project
+//                      folder (this proxy's dir). Optional {fps, region}.
+//   POST /rec/stop   → 'q' on ffmpeg's stdin = graceful finalize (writes the
+//                      moov atom so the mp4 is playable), then return the path.
+// Single-recording model (one user, one screen). Origin-locked like /exec/.
+//
+// Graceful stop matters on Windows: Node's proc.kill() maps to TerminateProcess
+// (hard kill) which would leave the mp4 without its moov atom → unplayable.
+// ffmpeg quits cleanly when it reads 'q' from stdin, so we spawn with a piped
+// stdin and write 'q' to stop; a hard-kill timer is only a last-resort fallback.
+let currentRec = null;   // { proc, output, t0, exited, exitCode, stderrTail() }
+
+function recTimestamp() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+         '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+// Build the gdigrab argv. Full primary desktop by default; an optional
+// {region:{x,y,w,h}} crops to a screen rect (device pixels). Re-encoded
+// ultrafast/yuv420p for real-time capture + broad playability. All numeric
+// fields are validated here, so argv stays literal under spawn(shell:false).
+function buildGdigrabArgs(p, outPath) {
+  const fps = (Number.isFinite(+p.fps) && +p.fps >= 1 && +p.fps <= 60)
+              ? Math.round(+p.fps) : 30;
+  const args = ['-hide_banner', '-loglevel', 'warning',
+                '-f', 'gdigrab', '-framerate', String(fps)];
+  if (p.region) {
+    const r = p.region;
+    for (const k of ['x', 'y', 'w', 'h'])
+      must(Number.isInteger(r[k]) && r[k] >= 0, `region.${k} must be a non-negative integer`);
+    must(r.w > 0 && r.h > 0, 'region.w/h must be > 0');
+    const w = r.w - (r.w % 2), h = r.h - (r.h % 2);   // even dims for yuv420p
+    args.push('-offset_x', String(r.x), '-offset_y', String(r.y),
+              '-video_size', w + 'x' + h);
+  }
+  args.push('-i', 'desktop',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            '-y', outPath);
+  return args;
+}
+
+function recStart(req, res, origin) {
+  if (currentRec) {
+    sendJson(res, 409, { ok: false, error: 'already recording', output: currentRec.output }, origin);
+    return;
+  }
+  readJson(req, 16 * 1024).then(payload => {
+    const output = path.join(__dirname, 'vsteps-' + recTimestamp() + '.mp4');
+    let args;
+    try { args = buildGdigrabArgs(payload, output); }
+    catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
+
+    let proc;
+    try { proc = spawn('ffmpeg', args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
+    catch (e) { sendJson(res, 500, { ok: false, error: e.message }, origin); return; }
+
+    let tail = '';
+    proc.stderr.on('data', c => { tail = (tail + c.toString('utf8')).slice(-2000); });
+    const rec = { proc, output, t0: Date.now(), exited: false, exitCode: null,
+                  stderrTail: () => tail.trim() };
+    proc.on('error', err => { rec.exited = true; rec.spawnError = err.message;
+                              if (currentRec === rec) currentRec = null; });
+    proc.on('close', code => { rec.exited = true; rec.exitCode = code;
+                               if (currentRec === rec) currentRec = null; });
+    currentRec = rec;
+    console.log('[rec start] ffmpeg →', output);
+    sendJson(res, 200, { ok: true, output, pid: proc.pid }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
+function recStop(req, res, origin) {
+  const rec = currentRec;
+  if (!rec) { sendJson(res, 409, { ok: false, error: 'not recording' }, origin); return; }
+  currentRec = null;
+  const finish = () => {
+    const durationMs = Date.now() - rec.t0;
+    const ok = rec.exitCode === 0 || rec.exitCode == null;
+    console.log('[rec stop ]', rec.output, '· exit', rec.exitCode, '·', durationMs + 'ms');
+    sendJson(res, 200, { ok, output: rec.output, durationMs,
+                         exitCode: rec.exitCode, stderr: rec.stderrTail() || undefined }, origin);
+  };
+  if (rec.exited) { finish(); return; }
+  let done = false;
+  const killT = setTimeout(() => {                 // last resort: hard kill
+    if (done) return;
+    console.warn('[rec stop ] graceful quit timed out — killing ffmpeg');
+    try { rec.proc.kill(); } catch (_) {}
+  }, 7000);
+  rec.proc.on('close', () => { if (done) return; done = true; clearTimeout(killT); finish(); });
+  try { rec.proc.stdin.write('q'); } catch (_) {}  // ffmpeg: 'q' = graceful finalize
+  try { rec.proc.stdin.end(); } catch (_) {}
+}
+
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -479,7 +588,23 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec'] }));
+    return;
+  }
+
+  // (dev0418) ── Screen recorder (origin-locked, like /exec/) ──────────────
+  if (req.url.startsWith('/rec/')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      console.warn(`[rec 403] ${req.method} ${req.url} origin="${origin || '(none)'}" not in allowlist`);
+      send(res, 403, 'rec: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    if (req.method !== 'POST') { send(res, 405, 'rec: POST required', corsForExec(origin)); return; }
+    const action = req.url.slice('/rec/'.length).split('?')[0];
+    if (action === 'start') { recStart(req, res, origin); return; }
+    if (action === 'stop')  { recStop(req, res, origin);  return; }
+    sendJson(res, 404, { ok: false, error: 'unknown rec action: ' + action }, origin);
     return;
   }
 
@@ -563,6 +688,7 @@ http.createServer((req, res) => {
   console.log(`Custom proxy on http://127.0.0.1:${PORT} — Ctrl+C to stop`);
   console.log('Spoofs Referer (target apex domain) + Chrome User-Agent');
   console.log(`Local exec bridge: POST /exec/{${Object.keys(EXEC_ALLOW).join(',')}}`);
+  console.log(`Screen recorder:   POST /rec/{start,stop}  → vsteps-<ts>.mp4 in ${__dirname}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
-  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool`);
+  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec`);
 });
