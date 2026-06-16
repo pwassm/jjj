@@ -901,8 +901,14 @@ function gridOpenFullscreen(row, contained) {
         // `inset:0 0 80px 0` — the WHOLE viewport minus the toolbar — so the clip
         // came out ~full-screen. The disk <video> is object-fit:contain, i.e.
         // letterboxed, so the real frame is a centered sub-rect; reuse
-        // _vpCropRenderRect to find it. YT/Vimeo sit in an iframe with no readable
-        // intrinsic size, so those fall back to the host rect (best we can measure).
+        // _vpCropRenderRect to find it.
+        //
+        // (dev0422) YT/Vimeo are cross-origin iframes — can't read the inner
+        // <video>, and oEmbed only reports thumbnail dims (≈4:3/16:9, never the
+        // true aspect). So assume 16:9 (landscape) / 9:16 (portrait — from a
+        // /shorts/ URL or the row's P/S field), which is what virtually all
+        // YT/Vimeo content is, and contain-fit that aspect inside the host.
+        // Anything else (no video, no iframe) → host rect.
         function vRegionDevicePx() {
           const host = document.getElementById('grid-fs-video');
           if (!host) return null;
@@ -910,14 +916,27 @@ function gridOpenFullscreen(row, contained) {
           const dpr = window.devicePixelRatio || 1;
           const chromeTop = Math.max(0, (window.outerHeight || 0) - (window.innerHeight || 0));
 
-          // Default = whole host (iframe / unknown-size media); shrink to the
-          // letterboxed frame when a disk <video> exposes intrinsic dimensions.
+          // Default = whole host; shrink to the real video frame per media type.
           let left = hr.left, top = hr.top, right = hr.right, bottom = hr.bottom;
           const vid = host.querySelector('video');
           if (vid && vid.videoWidth > 0 && vid.videoHeight > 0) {
+            // Disk <video> (object-fit:contain) — exact letterbox from intrinsic dims.
             const rr = _vpCropRenderRect(host, vid);   // host-local contain rect
             left  = hr.left + rr.rx;   top    = hr.top + rr.ry;
             right = left    + rr.rw;   bottom = top    + rr.rh;
+          } else if (host.querySelector('iframe')) {
+            // YT/Vimeo — contain-fit an assumed 16:9 / 9:16 inside the host.
+            const row  = window._vpCurrentRow;
+            const link = String((row && row.link) || '');
+            const portrait =
+                 /youtube\.com\/shorts\//i.test(link)
+              || (window.isInstagramLink && window.isInstagramLink(link) && /\/reel\//i.test(link))
+              || (window.rowPSValue && window.rowPSValue(row) === '1');
+            const ar = portrait ? (9 / 16) : (16 / 9);   // width / height
+            let rw = hr.width, rh = rw / ar;
+            if (rh > hr.height) { rh = hr.height; rw = rh * ar; }
+            left  = hr.left + (hr.width  - rw) / 2;   top    = hr.top + (hr.height - rh) / 2;
+            right = left    + rw;                     bottom = top    + rh;
           }
 
           // Clamp to the on-screen viewport so the crop stays on the desktop.
