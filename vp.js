@@ -734,6 +734,16 @@ function gridOpenFullscreen(row, contained) {
         if (p && p.el && Number.isFinite(p.el.currentTime)) return p.el.currentTime;
         return _vpState ? (_vpState.currentTime || 0) : 0;
       }
+      function seekBusy() {
+        // Disk/direct video exposes a real <video> via `.el`. While it is still
+        // seeking, assigning currentTime again ABORTS the in-flight seek before
+        // it renders — so at fast rates the frame never lands and the window
+        // loop looks frozen. Callers skip a tick when this is true, letting the
+        // prior seek complete first; the effective rate then honestly tracks how
+        // fast the decoder can seek. YT/Vimeo have no `.el` → never busy here.
+        const p = _vpState && _vpState.player;
+        return !!(p && p.el && p.el.seeking);
+      }
 
       // ── the floating step button: one A-B-free frame-window panel ──────
       function buildFSB(clientX, clientY) {
@@ -761,8 +771,10 @@ function gridOpenFullscreen(row, contained) {
         function armAuto() {
           if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
           if (!autoDir) return;
-          autoTimer = setInterval(() => { try { vpSeekRelative(autoDir * FRAME); } catch (_) {} },
-                                  intervalMs());
+          autoTimer = setInterval(() => {
+            if (seekBusy()) return;                    // let the prior seek land first
+            try { vpSeekRelative(autoDir * FRAME); } catch (_) {}
+          }, intervalMs());
         }
         function startAuto(dir) {
           if (autoDir === dir) { autoDir = 0; armAuto(); syncBtns(); return; }
@@ -780,6 +792,7 @@ function gridOpenFullscreen(row, contained) {
           activeStart = startFrame; activeDur = numFrames; refreshPendingMarks();
         }
         function tickPlay() {
+          if (seekBusy()) return;                      // honest rate: wait for the frame to render
           const span = Math.max(0, activeDur);
           playPos += playDir;
           if (playMode === 'boom') {                  // ⇄ play to end, reverse, repeat
@@ -810,14 +823,18 @@ function gridOpenFullscreen(row, contained) {
         // Row 1 — play in steps (free-running)
         const r1 = mkRow();
         const r1back = mkBtn('◀', 'Play backward in steps');
-        const r1box  = mkBox(secs.toFixed(2), 'Seconds per step (wheel 0.05–10)');
+        const r1box  = mkBox(secs.toFixed(2), 'Seconds per step (wheel 0.01–10)');
         const r1fwd  = mkBtn('▶', 'Play forward in steps');
         r1back.onclick = e => { e.stopPropagation(); startAuto(-1); };
         r1fwd.onclick  = e => { e.stopPropagation(); startAuto(1); };
         r1.append(r1back, r1box, r1fwd);
         r1.addEventListener('wheel', e => {
           e.preventDefault(); e.stopPropagation();
-          secs = clamp(+(secs + (e.deltaY < 0 ? 0.05 : -0.05)).toFixed(2), 0.05, 10);
+          // Fine 0.01 steps at/below 0.05, coarse 0.05 steps above; floor 0.01.
+          // (At exactly 0.05: scrolling up coarsens to 0.10, down refines to 0.04.)
+          const up = e.deltaY < 0;
+          const step = (up ? secs < 0.05 : secs <= 0.05) ? 0.01 : 0.05;
+          secs = clamp(+(secs + (up ? step : -step)).toFixed(2), 0.01, 10);
           r1box.textContent = secs.toFixed(2);
           if (autoDir) armAuto();                      // x value re-rates the loop IMMEDIATELY
           if (playMode) armPlay();
