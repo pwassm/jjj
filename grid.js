@@ -1903,17 +1903,17 @@ function gridShowContextMenu(x, y, cellStr, row) {
     _gridContextMenu.appendChild(viewBtn);
   }
 
-  // (dev0413) Play steps — replace this cell's in-frame video with the saved
-  // frame-step window (rate x, start s, duration d from row.steps). Always
-  // shown; if the row has no steps the click is a silent no-op (no toast).
+  // (dev0413 / dev0416) Play steps — replay the saved frame-step window
+  // (rate x, start s, duration d from row.steps). Routed by link type:
+  // Vimeo/direct step in the cell; YouTube opens V, plays in at normal speed
+  // from 4s before s, then drops the fsc at s. Always shown; no steps → no-op.
   const stepsBtn = document.createElement('div');
   stepsBtn.innerHTML = '<u>P</u>lay steps';
   stepsBtn.style.cssText = 'padding:8px 16px; color:#8ef; cursor:pointer; font-size:13px;';
   stepsBtn.onmouseenter = () => stepsBtn.style.background = '#2a2a4e';
   stepsBtn.onmouseleave = () => stepsBtn.style.background = '';
   stepsBtn.onclick = () => {
-    if (row && row.steps && typeof window._vpPlayStepsInV === 'function')
-      window._vpPlayStepsInV(row);            // opens V + fsb (lower-right), auto-runs saved steps
+    if (window._gridPlayStepsRoute) window._gridPlayStepsRoute(cellStr, row);
     gridHideContextMenu();                     // no steps → silent no-op
   };
   _gridContextMenu.appendChild(stepsBtn);
@@ -1966,8 +1966,7 @@ function gridShowContextMenu(x, y, cellStr, row) {
       gridHideContextMenu();
     } else if (e.key === 'p' || e.key === 'P') {
       e.preventDefault();
-      if (row && row.steps && typeof window._vpPlayStepsInV === 'function')
-        window._vpPlayStepsInV(row);          // opens V + fsb, auto-runs saved steps
+      if (window._gridPlayStepsRoute) window._gridPlayStepsRoute(cellStr, row);   // route by link type
       gridHideContextMenu();                   // no steps → silent no-op
     } else if (e.key === 'w' || e.key === 'W') {
       e.preventDefault();

@@ -757,7 +757,6 @@ function gridOpenFullscreen(row, contained) {
         let autoTimer = null, autoDir = 0;            // Row-1 free-run step
         let playTimer = null, playMode = null;        // Row-3: 'fwd' | 'boom'
         let playPos = 0, playDir = 1;                 // frame offset + direction
-        let recording = false, recCancel = false, rec = null;  // (dev0416) Disk Save recorder state
 
         const intervalMs = () => Math.max(16, Math.round(secs * 1000));
 
@@ -820,114 +819,6 @@ function gridOpenFullscreen(row, contained) {
           playMode = mode; playDir = 1; playPos = 0;
           seekAbs(activeStart * FRAME);
           armPlay(); syncBtns();
-        }
-
-        // ── (dev0416) Disk Save: record the window to a video file ──────────
-        // Frame-steps the current window like the Row-3 loops, but instead of
-        // playing it on screen it draws each seeked frame to a canvas and feeds
-        // canvas.captureStream(0)+requestFrame() into a MediaRecorder, paced at
-        // the Row-1 `secs` rate. Forward pass [s..s+d] normally; full ping-pong
-        // [s..s+d..s] when ⇄ is the active loop mode. Disk/direct video only
-        // (player.el is a real <video>); YT/Vimeo have no .el → no-op.
-        // POC: format is whatever the browser supports (mp4 preferred, webm
-        // fallback); resolution = the video's native size; no audio (stepping
-        // is silent). Cross-origin video with no CORS taints the canvas — a
-        // pre-flight getImageData probe catches that and bails with a message.
-        function pickRecMime() {
-          const cands = ['video/mp4;codecs=avc1.42E01E', 'video/mp4',
-                         'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-          for (const c of cands) {
-            try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c; } catch (_) {}
-          }
-          return '';
-        }
-        async function recordSteps() {
-          if (recording) return;
-          const p = _vpState && _vpState.player;
-          const vid = p && p.el;
-          if (!vid) { if (typeof toast === 'function') toast('Disk Save needs a disk/direct video (not YT/Vimeo).', 2200); return; }
-          if (typeof window.MediaRecorder === 'undefined') {
-            if (typeof toast === 'function') toast('Disk Save: this browser has no MediaRecorder.', 2200); return;
-          }
-          // Capture the active mode BEFORE we stop the loop (stopPlay nulls it).
-          const boom = (playMode === 'boom');
-          autoDir = 0; armAuto(); stopPlay();
-          if (_vpIsPlaying()) _vpPauseNow();
-          syncBtns();
-
-          const start = activeStart, dur = Math.max(1, activeDur);
-          const seq = [];
-          for (let i = 0; i <= dur; i++) seq.push(start + i);                 // s … s+d
-          if (boom) for (let i = dur - 1; i >= 0; i--) seq.push(start + i);   // … back to s
-
-          const W = vid.videoWidth || 640, H = vid.videoHeight || 360;
-          const canvas = document.createElement('canvas');
-          canvas.width = W; canvas.height = H;
-          const ctx = canvas.getContext('2d');
-
-          const seekTo = f => new Promise(res => {
-            const done = () => { vid.removeEventListener('seeked', done); res(); };
-            vid.addEventListener('seeked', done);
-            try { vid.currentTime = f * FRAME; } catch (_) { done(); }
-          });
-          const raf   = () => new Promise(r => requestAnimationFrame(() => r()));
-          const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-          recording = true; recCancel = false;
-          const oldLabel = diskBtn.innerHTML;
-          diskBtn.innerHTML = '● Rec…'; diskBtn.disabled = true;
-          try {
-            // Pre-flight: seek to the first frame, draw, probe for canvas taint.
-            await seekTo(seq[0]); await raf();
-            ctx.drawImage(vid, 0, 0, W, H);
-            try { ctx.getImageData(0, 0, 1, 1); }
-            catch (taint) {
-              if (typeof toast === 'function')
-                toast('Disk Save: video is cross-origin (no CORS) — recording only works on same-origin/disk video.', 3400);
-              throw taint;
-            }
-
-            const mime = pickRecMime();
-            const stream = canvas.captureStream(0);
-            const track  = stream.getVideoTracks()[0];
-            rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-            const chunks = [];
-            rec.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
-            const stopped = new Promise(res => { rec.onstop = res; });
-            rec.start();
-
-            track.requestFrame();                      // emit the already-drawn first frame
-            await sleep(intervalMs());
-            for (let i = 1; i < seq.length && !recCancel; i++) {
-              await seekTo(seq[i]); await raf();
-              ctx.drawImage(vid, 0, 0, W, H);
-              track.requestFrame();
-              await sleep(intervalMs());
-            }
-            await sleep(120);                          // let the last frame settle
-            if (rec.state !== 'inactive') rec.stop();
-            await stopped;
-            try { track.stop(); } catch (_) {}
-
-            if (!recCancel && chunks.length) {
-              const isMp4 = !!mime && mime.indexOf('mp4') >= 0;
-              const blob = new Blob(chunks, { type: mime || 'video/webm' });
-              const a = document.createElement('a');
-              a.href = URL.createObjectURL(blob);
-              a.download = 'vsteps-' + Date.now() + '.' + (isMp4 ? 'mp4' : 'webm');
-              document.body.appendChild(a); a.click(); a.remove();
-              setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-              if (typeof toast === 'function')
-                toast('✓ Saved ' + (boom ? 's→end→s' : 's→end') + ' · ' + seq.length
-                      + ' frames · ' + (isMp4 ? 'mp4' : 'webm'), 2600);
-            }
-          } catch (err) {
-            if (typeof toast === 'function' && !/cross-origin|tainted|insecure/i.test(String(err && err.message)))
-              toast('Disk Save failed: ' + (err && err.message ? err.message : err), 3000);
-          } finally {
-            recording = false; rec = null;
-            diskBtn.innerHTML = oldLabel; diskBtn.disabled = false;
-          }
         }
 
         const panel = mkPanel();
@@ -1007,15 +898,7 @@ function gridOpenFullscreen(row, contained) {
               + 'f @ ' + secs.toFixed(2) + 's', 1800); };
         r4.append(chooseBtn, saveBtn);
 
-        // Row 5 — (dev0416) Disk Save: record the window to a video file
-        const r5 = mkRow();
-        const diskBtn = mkBtn('⬇ Disk Save',
-          'Record the window to a video file: s→end normally, or s→end→s when ⇄ is the active loop. Disk/direct video only.',
-          140);
-        diskBtn.onclick = e => { e.stopPropagation(); recordSteps(); };
-        r5.append(diskBtn);
-
-        panel.append(r1, r2, r3, r4, r5);
+        panel.append(r1, r2, r3, r4);
         content.appendChild(panel);
         const pos = placePanel(panel, clientX, clientY);
         syncBtns();
@@ -1024,8 +907,6 @@ function gridOpenFullscreen(row, contained) {
         return {
           el: panel, pos,
           cleanup() {
-            recCancel = true;                                       // (dev0416) abort a running record
-            if (rec) { try { if (rec.state !== 'inactive') rec.stop(); } catch (_) {} }
             if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
             if (playTimer) { clearInterval(playTimer); playTimer = null; }
             if (panel.parentNode) panel.parentNode.removeChild(panel);
@@ -1046,9 +927,9 @@ function gridOpenFullscreen(row, contained) {
       // (dev0415) Open the panel programmatically (not from a right-click),
       // seeded with saved x/s/d and optionally auto-running the forward loop.
       // Pinned to the lower-right corner above the 80px V toolbar. Used by G's
-      // "Play steps" so YT/Vimeo replay in V — the V path seeks them cleanly
-      // (no in-cell paused-frame giant play button). Persists across V opens
-      // (this IIFE wires once; handlers read live globals).
+      // "Play steps" YouTube path so YT replays in V — the V path seeks it
+      // cleanly (no in-cell paused-frame giant play button). Persists across V
+      // opens (this IIFE wires once; handlers read live globals).
       window._vpOpenStepsPanel = function(secs0, startFrame0, numFrames0, autoPlay) {
         if (window._vpFSB) { try { window._vpFSB.cleanup(); } catch (_) {} window._vpFSB = null; }
         const f = buildFSB(null, null, { secs: secs0, startFrame: startFrame0,
@@ -2003,31 +1884,56 @@ function vpSeekRelative(delta) {
   }
 }
 
-// (dev0415) G "Play steps" entry point: open this row in V, then — once the
-// player is actually live — drop the floating step control in the lower-right
-// corner seeded with the row's saved x/s/d and auto-run the forward loop.
-// Brings the proven V stepping path to the grid; replaces stepping a paused
-// in-cell YT/Vimeo iframe (which shows YouTube's big centre play button — its
-// own chrome inside a cross-origin iframe, so not removable). row.steps is
-// "x,s,d". Silent no-op if steps don't parse.
+// (dev0416) G "Play steps" — YouTube path. Opens this row in V and plays at
+// NORMAL speed starting LEAD_IN seconds before the saved start frame `s`, with
+// NO floating step control visible. When playback reaches `s`, it drops the fsc
+// seeded with the saved x/s/d and auto-runs the forward loop — exactly as if the
+// user had right-clicked V to open the fsc, only with the saved values. (Vimeo
+// and direct-link cells step in place via gridPlaySteps; YT can't, because a
+// paused in-cell YT iframe shows YouTube's own centre play button.) row.steps is
+// "x,s,d". Silent no-op if it doesn't parse. Routed here by _gridPlayStepsRoute.
 function _vpPlayStepsInV(row) {
   if (!row || !row.steps) return;
   const parts = String(row.steps).split(',');
   const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
   if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 1) return;
+  const FRAME = 1 / 30;
+  const LEAD_IN = 4;                              // seconds of normal-speed run-up to `s`
+  const sT = s * FRAME, leadInT = Math.max(0, sT - LEAD_IN);
   try { gridOpenFullscreen(row); } catch (_) { return; }
-  // Wait for the player to be seekable: YT/Vimeo set _vpState.player only on
-  // their ready callback; disk sets it synchronously but needs metadata to seek.
+
+  // Wait for the player to be live (YT/Vimeo set _vpState.player on their ready
+  // callback; disk sets it synchronously but needs metadata to seek).
   let tries = 0;
   (function whenReady() {
     const p = _vpState && _vpState.player;
     const ready = p && (!p.el || (p.el.readyState >= 1 && isFinite(p.el.duration)));
-    if (ready || tries++ > 80) {                  // ~8s safety fallback: try anyway
-      if (p && typeof window._vpOpenStepsPanel === 'function')
-        window._vpOpenStepsPanel(x, s, d, true);
+    if (!ready) { if (tries++ > 80) return; setTimeout(whenReady, 100); return; }
+
+    // Non-YT fallback (shouldn't arrive here via the router): open the fsc at once.
+    if (!_vpState.isYT) {
+      if (typeof window._vpOpenStepsPanel === 'function') window._vpOpenStepsPanel(x, s, d, true);
       return;
     }
-    setTimeout(whenReady, 100);
+
+    // YT lead-in: normal-speed playback from LEAD_IN secs before `s`, no fsc yet.
+    try { if (typeof p.setPlaybackRate === 'function') p.setPlaybackRate(1); } catch (_) {}
+    try { p.seekTo(leadInT, true); } catch (_) {}
+    try { p.playVideo(); } catch (_) {}
+
+    // Poll playback; at `s`, hand off to the fsc (auto forward loop from `s`).
+    let handed = false, ticks = 0;
+    const poll = setInterval(function() {
+      if (!_vpState || _vpState.player !== p) { clearInterval(poll); return; }  // V closed / changed
+      let ct = NaN;
+      try { ct = p.getCurrentTime(); } catch (_) {}
+      if (typeof ct !== 'number' || !isFinite(ct)) ct = (_vpState.currentTime || 0);
+      if (!handed && (ct >= sT || ticks++ > 300)) {        // reached s (or ~18s safety)
+        handed = true; clearInterval(poll);
+        if (typeof window._vpOpenStepsPanel === 'function')
+          window._vpOpenStepsPanel(x, s, d, true);
+      }
+    }, 60);
   })();
 }
 window._vpPlayStepsInV = _vpPlayStepsInV;

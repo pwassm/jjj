@@ -775,6 +775,20 @@ window.gridPlaySteps = function(cellStr, row) {
   }, interval);
 };
 
+// (dev0416) Route G "Play steps" by link type. Vimeo and direct-link cells step
+// in place (gridPlaySteps above). YouTube cells open V instead and play in at
+// normal speed from 4s before `s`, then drop the fsc at `s` (_vpPlayStepsInV) —
+// a paused in-cell YT iframe shows YouTube's own centre play button, so YT must
+// step in V. row.steps = "x,s,d"; no/!parse steps → silent no-op.
+window._gridPlayStepsRoute = function(cellStr, row) {
+  if (!row || !row.steps) return;
+  if (window.isYouTubeLink && window.isYouTubeLink(row.link)) {
+    if (typeof window._vpPlayStepsInV === 'function') window._vpPlayStepsInV(row);
+  } else if (typeof window.gridPlaySteps === 'function') {
+    window.gridPlaySteps(cellStr, row);
+  }
+};
+
 // ─── VIDEO EDITOR (multi-segment) ────────────────────────────────────────────
 window.openVideoEditor = function(it) {
   window._lastVideoShown = it;  // remember for EE/VV/floating buttons
