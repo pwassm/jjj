@@ -718,16 +718,20 @@ window.cleanupAllVideos = function() {
   window.seeLearnVideoPlayers = {};
 };
 
-// (dev0413) Play a saved "steps" window in a grid cell. Replaces the cell's
-// looping native playback with frame-stepped seeking over [s .. s+d] frames at
-// rate x (one frame every x seconds), forward-looping. row.steps is "x,s,d"
-// (x = secs/frame, s = start frame, d = duration in frames; 1 frame = 1/30 s).
-// Silent no-op if steps don't parse or the cell has no direct <video> (YT/Vimeo
-// cells expose no frame-seekable element). The stepping interval reuses the
-// cell's seeLearnVideoTimers slot so the normal re-render / destroy path tears
-// it down. The `vid.seeking` skip keeps the rate honest at fast x (mirrors the
-// V floating step control): assigning currentTime mid-seek aborts the in-flight
-// seek, so the frame would never render and the loop would look frozen.
+// (dev0413/dev0414) Play a saved "steps" window in a grid cell. Replaces the
+// cell's looping native playback with frame-stepped seeking over [s .. s+d]
+// frames at rate x (one frame every x seconds), forward-looping. row.steps is
+// "x,s,d" (x = secs/frame, s = start frame, d = duration in frames; 1 frame =
+// 1/30 s). Silent no-op if steps don't parse.
+//
+// (dev0414) Seeks through WHATEVER frame-seek API the cell's player exposes —
+// the same set the V floating step control uses, so YT/Vimeo cells step too
+// (the dev0413 version wrongly required a disk <video>.el and silently bailed
+// on exactly those): disk → el.currentTime, YouTube → seekTo(t,true), Vimeo →
+// setCurrentTime(t). The buffered-YT controller (Ctrl+B) and the Instagram stub
+// expose no seek → silent no-op. The `seeking` skip only applies to disk (only
+// <video> has it) and keeps the rate honest at fast x: assigning currentTime
+// mid-seek aborts the in-flight seek so the frame would never render.
 window.gridPlaySteps = function(cellStr, row) {
   if (!row || !row.steps) return;
   var parts = String(row.steps).split(',');
@@ -736,25 +740,38 @@ window.gridPlaySteps = function(cellStr, row) {
 
   var cellId = 'grid-vid-' + cellStr;
   var player = (window.seeLearnVideoPlayers || {})[cellId];
-  if (!player || !player.el) return;            // only direct/disk <video> cells
-  var vid = player.el;
-  var FRAME = 1 / 30;
+  if (!player) return;
 
+  // Pick the frame-seek path (mirrors V's seekAbs). No path → not steppable.
+  var seek;
+  if (player.el)                                       seek = function(t){ try { player.el.currentTime = t; } catch (e) {} };
+  else if (typeof player.seekTo === 'function')        seek = function(t){ try { player.seekTo(t, true); } catch (e) {} };
+  else if (typeof player.setCurrentTime === 'function') seek = function(t){ try { player.setCurrentTime(t); } catch (e) {} };
+  else return;                                          // buffered controller / IG stub → silent no-op
+  var seeking = function(){ return !!(player.el && player.el.seeking); };
+
+  var FRAME = 1 / 30;
   window.seeLearnVideoTimers = window.seeLearnVideoTimers || {};
   if (window.seeLearnVideoTimers[cellId]) {     // take over the cell's segment loop
     clearInterval(window.seeLearnVideoTimers[cellId]);
     delete window.seeLearnVideoTimers[cellId];
   }
-  player._gridPaused = true;                     // we own the frames now (no native play)
-  try { vid.pause(); } catch (e) {}
+  // Stop native playback so our seeks own the frame (the V fsb pauses before it
+  // steps too). Flag paused so Space/pause-all and any stray loop bail out.
+  player._gridPaused = true; player._salPaused = true;
+  try {
+    if (player.el)                                  player.el.pause();
+    else if (typeof player.pauseVideo === 'function') player.pauseVideo();
+    else if (typeof player.pause === 'function')      player.pause();
+  } catch (e) {}
 
   var interval = Math.max(16, Math.round(x * 1000));
   var pos = 0;
-  try { vid.currentTime = s * FRAME; } catch (e) {}
+  seek(s * FRAME);
   window.seeLearnVideoTimers[cellId] = setInterval(function() {
-    if (vid.seeking) return;                     // let the prior frame land first
+    if (seeking()) return;                       // disk: let the prior frame land first
     pos = (pos >= d) ? 0 : pos + 1;              // forward loop: s … s+d … restart at s
-    try { vid.currentTime = (s + pos) * FRAME; } catch (e) {}
+    seek((s + pos) * FRAME);
   }, interval);
 };
 
