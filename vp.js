@@ -2015,7 +2015,7 @@ function _vpPlayStepsInV(row) {
   const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
   if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 1) return;
   const FRAME = 1 / 30;
-  const LEAD_IN = 4;                              // seconds of normal-speed run-up to `s`
+  const LEAD_IN = 5;                              // seconds of normal-speed run-up to `s` (floored at video start)
   const sT = s * FRAME, leadInT = Math.max(0, sT - LEAD_IN);
   try { gridOpenFullscreen(row); } catch (_) { return; }
 

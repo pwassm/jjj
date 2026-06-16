@@ -742,13 +742,34 @@ window.gridPlaySteps = function(cellStr, row) {
   var player = (window.seeLearnVideoPlayers || {})[cellId];
   if (!player) return;
 
-  // Pick the frame-seek path (mirrors V's seekAbs). No path → not steppable.
-  var seek;
-  if (player.el)                                       seek = function(t){ try { player.el.currentTime = t; } catch (e) {} };
-  else if (typeof player.seekTo === 'function')        seek = function(t){ try { player.seekTo(t, true); } catch (e) {} };
-  else if (typeof player.setCurrentTime === 'function') seek = function(t){ try { player.setCurrentTime(t); } catch (e) {} };
-  else return;                                          // buffered controller / IG stub → silent no-op
-  var seeking = function(){ return !!(player.el && player.el.seeking); };
+  // Pick the frame-seek path (mirrors V's seekAbs) plus a "busy" predicate the
+  // tick checks so it NEVER issues a new seek before the prior one has landed.
+  // Without that throttle the interval floods the player with seeks faster than
+  // it can decode/render:
+  //   • disk → <video>.seeking is the native signal.
+  //   • Vimeo → setCurrentTime returns a Promise; we treat the seek as in-flight
+  //     until it resolves. (dev0420) THIS is the fix for Vimeo in-cell stepping
+  //     pegging the CPU / fan and "hanging" in Gu — queued seeks were aborting
+  //     each other so frames never rendered. 2s watchdog so a dropped Promise
+  //     can't wedge the loop.
+  //   • YouTube → seekTo is fire-and-forget (no readiness signal), unchanged.
+  var seek, busy;
+  if (player.el) {
+    seek = function(t){ try { player.el.currentTime = t; } catch (e) {} };
+    busy = function(){ return !!player.el.seeking; };
+  } else if (typeof player.seekTo === 'function') {              // YouTube
+    seek = function(t){ try { player.seekTo(t, true); } catch (e) {} };
+    busy = function(){ return false; };
+  } else if (typeof player.setCurrentTime === 'function') {      // Vimeo
+    var vimeoPending = 0;                                        // ms timestamp of in-flight seek; 0 = idle
+    seek = function(t){
+      vimeoPending = Date.now();
+      var clr = function(){ vimeoPending = 0; };
+      try { var pr = player.setCurrentTime(t); if (pr && typeof pr.then === 'function') pr.then(clr, clr); else clr(); }
+      catch (e) { clr(); }
+    };
+    busy = function(){ return vimeoPending !== 0 && (Date.now() - vimeoPending) < 2000; };
+  } else return;                                                 // buffered controller / IG stub → silent no-op
 
   var FRAME = 1 / 30;
   window.seeLearnVideoTimers = window.seeLearnVideoTimers || {};
@@ -769,7 +790,7 @@ window.gridPlaySteps = function(cellStr, row) {
   var pos = 0;
   seek(s * FRAME);
   window.seeLearnVideoTimers[cellId] = setInterval(function() {
-    if (seeking()) return;                       // disk: let the prior frame land first
+    if (busy()) return;                          // let the prior seek land first (disk/Vimeo)
     pos = (pos >= d) ? 0 : pos + 1;              // forward loop: s … s+d … restart at s
     seek((s + pos) * FRAME);
   }, interval);

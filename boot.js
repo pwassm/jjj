@@ -567,8 +567,16 @@ async function _showShareableMenu() {
   // Caches on first success; retries (leaves tagBlob null) while tags are still
   // loading. Includes label + common + aliases + def so every facet of a tag is
   // searchable (was only label + common).
+  // (dev0420) tagsLib (the API object) is assigned synchronously at script load,
+  // but its DATA only fills in after the async tags.json fetch resolves. The
+  // public greeting menu opens BEFORE that fetch lands, so "the object exists"
+  // (!window.tagsLib) is the wrong readiness test — it let _smResolveTags cache
+  // empty tag blobs and made the SavedSearches retry below never fire, so every
+  // tag/taxon-gated query showed a permanent "0 matches now" on slam.com.
+  const _tagsReady = () => !!(window.tagsLib && typeof window.tagsLib.all === 'function'
+                              && window.tagsLib.all().length > 0);
   const _smResolveTags = e => {
-    if (e.tagBlob !== null || !window.tagsLib) return;
+    if (e.tagBlob !== null || !_tagsReady()) return;
     let tb = '', taxon = false;
     e.tagIds.forEach(tid => {
       const t = window.tagsLib.get(tid);
@@ -1395,7 +1403,7 @@ async function _showShareableMenu() {
     // every tag-based query — and (with the Greeting COI taxon/media filters on)
     // EVERY query — counts 0 and never updates. Re-render once tags arrive (a
     // short bounded poll, self-stopping the moment tagsLib exists).
-    if (!window.tagsLib && _smSavedRetries < 40) {
+    if (!_tagsReady() && _smSavedRetries < 40) {
       _smSavedRetries++;
       setTimeout(_smRenderSaved, 250);
     }
