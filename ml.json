@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1781579898478,
+    "_salPushTime": 1781581867589,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 36,
@@ -751,7 +751,7 @@
     "comment": "",
     "VidComment": "Dislodging, Second attack, Fragments fly, Chomp chomp, More fragments, Garabaldi looks",
     "DateAdded": "2026-06-10 14:09:27",
-    "DateModified": "2026-06-10 14:35:04",
+    "DateModified": "2026-06-16 03:27:15",
     "Mute": "0",
     "MPix": "V",
     "n1": "",
@@ -776,7 +776,8 @@
     "X": "",
     "face": "",
     "ttxt": "",
-    "Steps": ""
+    "Steps": "",
+    "steps": "0.10,2389,95"
   },
   {
     "UID": "8_2",
@@ -19873,7 +19874,7 @@
     "link": "https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
     "show": "1",
     "DateAdded": "2026-05-20 14:30:12",
-    "DateModified": "2026-06-12 14:45:24",
+    "DateModified": "2026-06-16 03:31:57",
     "tags": [
       "phyllaplysia-taylori",
       "myvideo"
@@ -19894,7 +19895,8 @@
     "segLength": "0:14",
     "face": "",
     "ttxt": "<details><summary>r4  Taylor's Sea Hare</summary><div><div>Cleans algae off of eelgrass</div><div>Nature Center, MBAq, 5/2026</div></div></details><div></div>",
-    "Steps": ""
+    "Steps": "",
+    "steps": "0.06,1007,50"
   },
   {
     "UID": "727",

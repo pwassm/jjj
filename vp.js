@@ -746,10 +746,13 @@ function gridOpenFullscreen(row, contained) {
       }
 
       // ── the floating step button: one A-B-free frame-window panel ──────
-      function buildFSB(clientX, clientY) {
-        let secs = 0.50;                              // Row-1 rate: 1 frame / secs
-        let startFrame = Math.max(0, Math.round(curT() / FRAME));  // box "s"
-        let numFrames  = 10;                          // box "d"
+      function buildFSB(clientX, clientY, init) {
+        init = init || {};
+        // (dev0415) Optional seed: saved x/s/d replayed from G "Play steps".
+        let secs = isFinite(init.secs) ? clamp(+(+init.secs).toFixed(2), 0.01, 10) : 0.50;  // Row-1 rate: 1 frame / secs
+        let startFrame = isFinite(init.startFrame) ? Math.max(0, init.startFrame | 0)
+                                                   : Math.max(0, Math.round(curT() / FRAME));  // box "s"
+        let numFrames  = isFinite(init.numFrames) ? Math.max(1, init.numFrames | 0) : 10;      // box "d"
         let activeStart = startFrame, activeDur = numFrames;       // what a running loop uses
         let autoTimer = null, autoDir = 0;            // Row-1 free-run step
         let playTimer = null, playMode = null;        // Row-3: 'fwd' | 'boom'
@@ -899,6 +902,7 @@ function gridOpenFullscreen(row, contained) {
         content.appendChild(panel);
         const pos = placePanel(panel, clientX, clientY);
         syncBtns();
+        if (init.autoPlay) startPlay('fwd');         // (dev0415) replay saved steps on open
 
         return {
           el: panel, pos,
@@ -919,6 +923,26 @@ function gridOpenFullscreen(row, contained) {
           try { vpTogglePlay(); } catch (_) {}
         }
       }
+
+      // (dev0415) Open the panel programmatically (not from a right-click),
+      // seeded with saved x/s/d and optionally auto-running the forward loop.
+      // Pinned to the lower-right corner above the 80px V toolbar. Used by G's
+      // "Play steps" so YT/Vimeo replay in V — the V path seeks them cleanly
+      // (no in-cell paused-frame giant play button). Persists across V opens
+      // (this IIFE wires once; handlers read live globals).
+      window._vpOpenStepsPanel = function(secs0, startFrame0, numFrames0, autoPlay) {
+        if (window._vpFSB) { try { window._vpFSB.cleanup(); } catch (_) {} window._vpFSB = null; }
+        const f = buildFSB(null, null, { secs: secs0, startFrame: startFrame0,
+                                         numFrames: numFrames0, autoPlay: !!autoPlay });
+        window._vpFSB = f;
+        try {
+          const cr = content.getBoundingClientRect();
+          const pw = f.el.offsetWidth || 180, ph = f.el.offsetHeight || 200;
+          f.el.style.left = Math.max(4, cr.width  - pw - 8) + 'px';
+          f.el.style.top  = Math.max(4, cr.height - 80 - ph - 8) + 'px';
+        } catch (_) {}
+        return f;
+      };
 
       content.addEventListener('contextmenu', e => {
         // Only over an active video player; leave images/quiz/etc. alone.
@@ -1859,6 +1883,35 @@ function vpSeekRelative(delta) {
     p.getCurrentTime().then(ct => p.setCurrentTime(ct + delta));
   }
 }
+
+// (dev0415) G "Play steps" entry point: open this row in V, then — once the
+// player is actually live — drop the floating step control in the lower-right
+// corner seeded with the row's saved x/s/d and auto-run the forward loop.
+// Brings the proven V stepping path to the grid; replaces stepping a paused
+// in-cell YT/Vimeo iframe (which shows YouTube's big centre play button — its
+// own chrome inside a cross-origin iframe, so not removable). row.steps is
+// "x,s,d". Silent no-op if steps don't parse.
+function _vpPlayStepsInV(row) {
+  if (!row || !row.steps) return;
+  const parts = String(row.steps).split(',');
+  const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+  if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 1) return;
+  try { gridOpenFullscreen(row); } catch (_) { return; }
+  // Wait for the player to be seekable: YT/Vimeo set _vpState.player only on
+  // their ready callback; disk sets it synchronously but needs metadata to seek.
+  let tries = 0;
+  (function whenReady() {
+    const p = _vpState && _vpState.player;
+    const ready = p && (!p.el || (p.el.readyState >= 1 && isFinite(p.el.duration)));
+    if (ready || tries++ > 80) {                  // ~8s safety fallback: try anyway
+      if (p && typeof window._vpOpenStepsPanel === 'function')
+        window._vpOpenStepsPanel(x, s, d, true);
+      return;
+    }
+    setTimeout(whenReady, 100);
+  })();
+}
+window._vpPlayStepsInV = _vpPlayStepsInV;
 
 function vpToggleMute() {
   if (!_vpState || !_vpState.player) return;

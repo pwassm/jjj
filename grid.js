@@ -1912,9 +1912,9 @@ function gridShowContextMenu(x, y, cellStr, row) {
   stepsBtn.onmouseenter = () => stepsBtn.style.background = '#2a2a4e';
   stepsBtn.onmouseleave = () => stepsBtn.style.background = '';
   stepsBtn.onclick = () => {
-    if (row && row.steps && typeof window.gridPlaySteps === 'function')
-      window.gridPlaySteps(cellStr, row);     // no steps → silent no-op
-    gridHideContextMenu();
+    if (row && row.steps && typeof window._vpPlayStepsInV === 'function')
+      window._vpPlayStepsInV(row);            // opens V + fsb (lower-right), auto-runs saved steps
+    gridHideContextMenu();                     // no steps → silent no-op
   };
   _gridContextMenu.appendChild(stepsBtn);
 
@@ -1966,9 +1966,9 @@ function gridShowContextMenu(x, y, cellStr, row) {
       gridHideContextMenu();
     } else if (e.key === 'p' || e.key === 'P') {
       e.preventDefault();
-      if (row && row.steps && typeof window.gridPlaySteps === 'function')
-        window.gridPlaySteps(cellStr, row);   // no steps → silent no-op
-      gridHideContextMenu();
+      if (row && row.steps && typeof window._vpPlayStepsInV === 'function')
+        window._vpPlayStepsInV(row);          // opens V + fsb, auto-runs saved steps
+      gridHideContextMenu();                   // no steps → silent no-op
     } else if (e.key === 'w' || e.key === 'W') {
       e.preventDefault();
       gridWriteToT();
