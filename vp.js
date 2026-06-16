@@ -830,10 +830,10 @@ function gridOpenFullscreen(row, contained) {
         r1.append(r1back, r1box, r1fwd);
         r1.addEventListener('wheel', e => {
           e.preventDefault(); e.stopPropagation();
-          // Fine 0.01 steps at/below 0.05, coarse 0.05 steps above; floor 0.01.
-          // (At exactly 0.05: scrolling up coarsens to 0.10, down refines to 0.04.)
+          // Fine 0.01 steps at/below 0.10, coarse 0.05 steps above; floor 0.01.
+          // (At exactly 0.10: scrolling up coarsens to 0.15, down refines to 0.09.)
           const up = e.deltaY < 0;
-          const step = (up ? secs < 0.05 : secs <= 0.05) ? 0.01 : 0.05;
+          const step = (up ? secs < 0.10 : secs <= 0.10) ? 0.01 : 0.05;
           secs = clamp(+(secs + (up ? step : -step)).toFixed(2), 0.01, 10);
           r1box.textContent = secs.toFixed(2);
           if (autoDir) armAuto();                      // x value re-rates the loop IMMEDIATELY
@@ -893,9 +893,6 @@ function gridOpenFullscreen(row, contained) {
 
         return {
           el: panel, pos,
-          isLooping() { return !!(autoTimer || playTimer); },
-          stopLoops() { autoDir = 0; armAuto(); stopPlay();
-                        if (_vpIsPlaying()) _vpPauseNow(); syncBtns(); },
           cleanup() {
             if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
             if (playTimer) { clearInterval(playTimer); playTimer = null; }
@@ -919,11 +916,7 @@ function gridOpenFullscreen(row, contained) {
         if (!_vpState || !_vpState.player) return;
         e.preventDefault(); e.stopPropagation();
         if (window._vpFSB) {
-          if (window._vpFSB.isLooping && window._vpFSB.isLooping()) {
-            try { window._vpFSB.stopLoops(); } catch (_) {}     // stage 1: stop, keep panel
-            return;
-          }
-          removeFSB(true);                                       // stage 2: dismiss + resume
+          removeFSB(true);                                       // right-click anywhere → dismiss + resume
           return;
         }
         window._vpFSB = buildFSB(e.clientX, e.clientY);          // open AT the cursor
