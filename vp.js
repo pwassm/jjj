@@ -889,22 +889,42 @@ function gridOpenFullscreen(row, contained) {
         // so "Choose" always yields a stepped clip. Click ⏹ to stop & save.
         let recStopBtn = null;
 
-        // Map #grid-fs-video's on-screen rect to desktop DEVICE pixels (what
-        // gdigrab's -offset_x/-video_size want). screenX/Y + getBoundingClientRect
-        // are CSS px, so scale by devicePixelRatio. Assumes a single primary,
-        // unzoomed monitor (true for the step-record workflow); the viewport's
-        // screen-top is approximated as window.screenY + the top chrome height.
-        // Clamped to the viewport + >=0 so the crop stays on the primary desktop.
+        // Crop to the ACTUAL video pixels and map them to desktop DEVICE pixels
+        // (what gdigrab's -offset_x/-offset_y/-video_size want). screenX/Y +
+        // getBoundingClientRect are CSS px, so scale by devicePixelRatio. Assumes
+        // a single primary, unzoomed monitor (true for the step-record workflow);
+        // the viewport's screen-top is approximated as window.screenY + the top
+        // chrome height. Clamped to the viewport + >=0 so the crop stays on the
+        // primary desktop.
+        //
+        // (dev0421) dev0419 cropped to #grid-fs-video, but that host is
+        // `inset:0 0 80px 0` — the WHOLE viewport minus the toolbar — so the clip
+        // came out ~full-screen. The disk <video> is object-fit:contain, i.e.
+        // letterboxed, so the real frame is a centered sub-rect; reuse
+        // _vpCropRenderRect to find it. YT/Vimeo sit in an iframe with no readable
+        // intrinsic size, so those fall back to the host rect (best we can measure).
         function vRegionDevicePx() {
           const host = document.getElementById('grid-fs-video');
           if (!host) return null;
-          const r = host.getBoundingClientRect();
+          const hr = host.getBoundingClientRect();
           const dpr = window.devicePixelRatio || 1;
           const chromeTop = Math.max(0, (window.outerHeight || 0) - (window.innerHeight || 0));
-          const left   = Math.max(0, r.left);
-          const top    = Math.max(0, r.top);
-          const right  = Math.min(window.innerWidth,  r.right);
-          const bottom = Math.min(window.innerHeight, r.bottom);
+
+          // Default = whole host (iframe / unknown-size media); shrink to the
+          // letterboxed frame when a disk <video> exposes intrinsic dimensions.
+          let left = hr.left, top = hr.top, right = hr.right, bottom = hr.bottom;
+          const vid = host.querySelector('video');
+          if (vid && vid.videoWidth > 0 && vid.videoHeight > 0) {
+            const rr = _vpCropRenderRect(host, vid);   // host-local contain rect
+            left  = hr.left + rr.rx;   top    = hr.top + rr.ry;
+            right = left    + rr.rw;   bottom = top    + rr.rh;
+          }
+
+          // Clamp to the on-screen viewport so the crop stays on the desktop.
+          left   = Math.max(0, left);
+          top    = Math.max(0, top);
+          right  = Math.min(window.innerWidth,  right);
+          bottom = Math.min(window.innerHeight, bottom);
           if (right - left < 2 || bottom - top < 2) return null;
           return {
             x: Math.max(0, Math.round((window.screenX + left) * dpr)),
