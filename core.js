@@ -297,7 +297,7 @@ window.addEventListener('keydown', function(e) {
   // letter shortcuts (T/Q/D/V/W). Don't let the global dispatcher swallow them
   // (e.g. 'w' = clipboard import) — bail so the menu's capture handler runs.
   if (document.getElementById('gridContextMenu')) return;
-  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v') {
+  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i') {
     // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
     // owned by the C-screen handler (boot.js). Don't also fire the global
     // hamburger-menu dispatcher here, or it pops HM right after. Let the event

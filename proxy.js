@@ -26,7 +26,11 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
-const PROXY_BUILD = 'dev0428';
+// (dev0429) Bumped + added 'igstore' feature for the I/Ig screen (ig.js):
+//   /ig/save     overwrites ig.json with the client's edited array (enrich/promote
+//                state) — keeps a one-deep ig.json.bak first.
+//   /ig/download yt-dlp downloads a reel/post's media into <project>/ig_media/.
+const PROXY_BUILD = 'dev0429';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -658,6 +662,73 @@ function igAdd(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev0429) /ig/save — overwrite ig.json with the I-screen's edited array (enrich/
+// promote/download state). Each row must still carry a shortcode `id`. A one-deep
+// ig.json.bak is written first so a bad client payload can't silently nuke the
+// store. Guard: refuse a write that drops > 50% of rows (likely a client bug) so a
+// mis-send can't wipe a 700-row harvest — the caller gets a clear 409 to surface.
+function igSave(req, res, origin) {
+  readJson(req, 16 * 1024 * 1024).then(payload => {
+    const incoming = Array.isArray(payload.rows) ? payload.rows : null;
+    if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
+    const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
+    let prev = [];
+    try { if (fs.existsSync(IG_STORE)) prev = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) {}
+    if (Array.isArray(prev) && prev.length > 10 && clean.length < prev.length * 0.5) {
+      console.warn('[ig/save] REFUSED — ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)');
+      sendJson(res, 409, { ok: false, error: 'refused: ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)' }, origin);
+      return;
+    }
+    try { if (fs.existsSync(IG_STORE)) fs.copyFileSync(IG_STORE, IG_STORE + '.bak'); } catch (_) {}
+    fs.writeFileSync(IG_STORE, JSON.stringify(clean, null, 2));
+    console.log('[ig/save] wrote ' + clean.length + ' rows (was ' + (Array.isArray(prev) ? prev.length : 0) + ')');
+    sendJson(res, 200, { ok: true, total: clean.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
+// (dev0429) /ig/download — yt-dlp downloads a reel/post's media into <project>/
+// ig_media/<id>.<ext>. Pulls Firefox cookies (the user's logged-in session — the
+// same one the harvester reads) so IG doesn't login-wall the media; falls back to
+// a cookieless attempt if the cookie DB is locked/unavailable. Returns the basenames
+// of every file produced (a carousel /p post yields several). All argv tokens are
+// literal under spawn(shell:false); the only caller value is the validated URL.
+const IG_MEDIA_DIR = path.join(__dirname, 'ig_media');
+function igDownload(req, res, origin) {
+  readJson(req, 64 * 1024).then(payload => {
+    const url = String(payload.url || '');
+    const id = String(payload.id || '').replace(/[^A-Za-z0-9_-]/g, '');
+    if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
+    if (!id) { sendJson(res, 400, { ok: false, error: 'id required' }, origin); return; }
+    try { fs.mkdirSync(IG_MEDIA_DIR, { recursive: true }); } catch (_) {}
+    const outTmpl = path.join(IG_MEDIA_DIR, id + '.%(ext)s');
+    const baseArgs = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '-o', outTmpl];
+
+    function listFiles() {
+      try { return fs.readdirSync(IG_MEDIA_DIR).filter(f => f === id || f.startsWith(id + '.') || f.startsWith(id + '_')); }
+      catch (_) { return []; }
+    }
+    function run(withCookies, onDone) {
+      const args = baseArgs.concat(withCookies ? ['--cookies-from-browser', 'firefox', url] : [url]);
+      let proc, stderr = '';
+      try { proc = spawn('yt-dlp', args, { windowsHide: true }); }
+      catch (e) { onDone(false, 'spawn failed: ' + e.message); return; }
+      proc.stderr.on('data', d => { stderr += d.toString('utf8'); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
+      proc.on('error', e => onDone(false, e.message));
+      proc.on('close', code => onDone(code === 0, stderr.trim()));
+    }
+    // Try with Firefox cookies first; if that fails (locked DB / not logged in),
+    // retry cookieless before giving up.
+    run(true, (ok1, err1) => {
+      if (ok1) { sendJson(res, 200, { ok: true, files: listFiles() }, origin); return; }
+      run(false, (ok2, err2) => {
+        if (ok2) { sendJson(res, 200, { ok: true, files: listFiles(), note: 'downloaded without cookies' }, origin); return; }
+        console.warn('[ig/download] ' + id + ' failed: ' + (err1 || err2));
+        sendJson(res, 502, { ok: false, error: (err2 || err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
+      });
+    });
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
@@ -702,7 +773,9 @@ http.createServer((req, res) => {
     const origin = req.headers.origin || '';
     if (req.method !== 'POST') { send(res, 405, 'ig: POST required', corsForExec(origin)); return; }
     const action = req.url.slice('/ig/'.length).split('?')[0];
-    if (action === 'add') { igAdd(req, res, origin); return; }
+    if (action === 'add')      { igAdd(req, res, origin);      return; }
+    if (action === 'save')     { igSave(req, res, origin);     return; }
+    if (action === 'download') { igDownload(req, res, origin); return; }
     sendJson(res, 404, { ok: false, error: 'unknown ig action: ' + action }, origin);
     return;
   }

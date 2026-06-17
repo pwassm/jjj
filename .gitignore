@@ -20,6 +20,13 @@ deleted.json
 # proxy.js /rec/*; kept local, never committed.
 vsteps-*.mp4
 
+# (dev0428/0429) IG harvest staging store + downloaded media — a LOCAL store
+# parallel to ml.json, deliberately out of the public site. The I/Ig screen
+# (ig.js) reads/writes ig.json locally; proxy.js /ig/download saves media to
+# ig_media/. Kept local, never committed.
+ig.json
+ig_media/
+
 # (dev0312) Local-media IndexedDB exports — privacy.
 # Q's index (the localmedia IDB) lives in Chrome's profile, not in this repo:
 #   %LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\http_localhost_8080\
