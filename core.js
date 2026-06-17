@@ -4877,6 +4877,14 @@ async function _wantLinksInner() {
   const lines = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   if (!lines.length) { toast('No content found.', 1400); return; }
 
+  // Rule 0 (dev0427): Firefox "Save Page As → Text" of an Instagram page →
+  // enrich the matching reel row's VidTitle/ftext/ttxt (caption + others'
+  // comments + the author's other reel URLs). Checked first because a saved
+  // page's line 1 is "Instagram" (neither a URL nor @channel).
+  if (_looksLikeIgSavedText(txt)) {
+    return _importIgSavedText(txt);
+  }
+
   // Rule 2: first line is @channelname → channel CSV import
   if (lines[0].startsWith('@')) {
     return _importChannelCSV(lines);
@@ -6046,6 +6054,171 @@ async function _ytdlpDownloadVideo(row) {
       + 'Planned: save max-res mp4 to <project>/video/.', 3500);
 }
 window._ytdlpDownloadVideo = _ytdlpDownloadVideo;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Firefox "Save Page As → Text" of an Instagram page → ttxt enrichment (dev0427)
+// ══════════════════════════════════════════════════════════════════════════════
+// The user saves an IG reel page from their already-open, logged-in Firefox (just
+// reading the rendered DOM — no API/cookie replay that IG could flag) and pastes
+// the text into W. It carries far more than yt-dlp: the current reel's caption,
+// OTHERS' comments, the author bio, AND a batch of the author's other reel URLs
+// (the profile grid that had loaded). We parse all of it and fill VidTitle (clean
+// caption) + ftext (full caption, if the row has none yet) + ttxt (everything).
+
+function _igPostId(url) {
+  const m = (url || '').match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/i);
+  return m ? m[1] : '';
+}
+
+// True for a saved IG PAGE (vs a bare IG URL paste or a normal article).
+function _looksLikeIgSavedText(txt) {
+  if (!txt || !/instagram\.com/i.test(txt)) return false;
+  const hasPost = /instagram\.com\/[A-Za-z0-9_.]+\/(?:reel|reels|p|tv)\/[A-Za-z0-9_-]+/i.test(txt);
+  const sig = /Instagram from Meta|Liked by|comments? from Facebook/i.test(txt);
+  return hasPost && sig && txt.length > 500;
+}
+
+// Parse the saved text → { handle, name, bio, currentId, caption, reels[], comments[] }.
+function _parseIgSavedText(txt) {
+  const flat = String(txt).replace(/\r/g, '');
+  const stripU = s => s.replace(/<https?:\/\/[^>]*>/g, '').replace(/<#>/g, '');
+  const flatten = s => stripU(s).replace(/\s+/g, ' ').trim();
+  const keepLines = s => stripU(s).split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n');
+
+  // reels (author post/reel URLs) + most-frequent owner = author handle
+  const postRe = /instagram\.com\/([A-Za-z0-9_.]+)\/(reel|reels|p|tv)\/([A-Za-z0-9_-]+)/g;
+  const ownerCount = {}; const reels = []; const seen = new Set(); let m;
+  while ((m = postRe.exec(flat))) {
+    const owner = m[1].toLowerCase();
+    if (/^(explore|reels|stories|direct|accounts|p|tv|reel)$/.test(owner)) continue;
+    ownerCount[owner] = (ownerCount[owner] || 0) + 1;
+    if (!seen.has(m[3])) {
+      seen.add(m[3]);
+      const kind = m[2].toLowerCase().startsWith('reel') ? 'reel' : m[2].toLowerCase();
+      reels.push({ id: m[3], url: 'https://www.instagram.com/' + m[1] + '/' + kind + '/' + m[3] + '/' });
+    }
+  }
+  let handle = '', best = 0;
+  for (const k in ownerCount) if (ownerCount[k] > best) { best = ownerCount[k]; handle = k; }
+
+  // display name + bio (profile block)
+  let name = '', bio = '';
+  const nameM = flat.match(/\n([^\n]{1,60})\n[\d.,]+\s*[KMB]?\s*posts\b/i);
+  if (nameM) name = nameM[1].trim();
+  const bioM = flat.match(/following[^\n]*\n([\s\S]{0,400}?)\n(?:Link icon|\.\.\. more|Followed by)/i);
+  if (bioM) bio = bioM[1].split('\n').map(s => s.trim()).filter(Boolean).join(' / ');
+
+  // current reel id (the modal that was open): liked_by link, else first post id in modal
+  let currentId = '';
+  const lb = flat.match(/instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)\/liked_by/i);
+  if (lb) currentId = lb[1];
+
+  // modal region (like/comment UI to end)
+  let mi = flat.search(/Liked by/i);
+  if (mi < 0) mi = flat.search(/Audio is muted/i);
+  const modal = mi >= 0 ? flat.slice(mi) : '';
+  if (!currentId) currentId = _igPostId(modal);
+
+  // current caption: after the author handle line, up to the first "Nw" timestamp
+  let caption = '';
+  if (handle) {
+    const hRe = new RegExp('\\n\\s*' + handle.replace(/\./g, '\\.') + '\\s*<[^>]*>\\s*\\n([\\s\\S]*?)\\n\\s*\\d+\\s*[wdhmy]\\b', 'i');
+    const cm = modal.match(hRe);
+    if (cm) caption = keepLines(cm[1]);
+  }
+
+  // comments: split modal by comment terminators "<.../c/ID/>"; LAST handle per block
+  const comments = [];
+  const cTermRe = /<https?:\/\/[^>]*\/c\/\d+\/>/g;
+  let prev = 0, ct;
+  while ((ct = cTermRe.exec(modal))) {
+    const block = modal.slice(prev, ct.index);
+    prev = cTermRe.lastIndex;
+    const hms = [...block.matchAll(/\n\s*([A-Za-z0-9_.]+)\s*<https?:\/\/www\.instagram\.com\/\1\/>\s*\n/g)];
+    if (!hms.length) continue;
+    const last = hms[hms.length - 1];
+    const who = last[1];
+    if (who.toLowerCase() === handle.toLowerCase()) continue;        // skip author's own caption
+    const body = flatten(block.slice(last.index + last[0].length))
+      .replace(/\s*\d+\s*[wdhmy]\s*$/i, '').replace(/\bVerified\b/g, '').trim();
+    if (body) comments.push({ who, body });
+  }
+
+  return { handle, name, bio, currentId, caption, reels, comments };
+}
+
+// Build ttxt HTML (rich column, edited in Xe): author + bio + caption + comments
+// + the author's other reel URLs (clickable; the seed for the future URL→rows idea).
+function _igTtxtHtml(p) {
+  const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
+    c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+  const who = p.handle ? '@' + p.handle : '';
+  let h = '';
+  if (p.name || who) h += '<h3>' + esc(p.name || who) + (p.name && who ? ' (' + esc(who) + ')' : '') + '</h3>\n';
+  if (p.bio) h += '<p><em>' + esc(p.bio) + '</em></p>\n';
+  if (p.caption) {
+    h += '<h4>Caption</h4>\n<p>' + esc(p.caption.replace(/\n+/g, ' ')) + '</p>\n';
+  }
+  if (p.comments.length) {
+    h += '<h4>Comments (' + p.comments.length + ')</h4>\n';
+    h += p.comments.map(c => '<p><strong>@' + esc(c.who) + ':</strong> ' + esc(c.body) + '</p>').join('\n') + '\n';
+  }
+  const sib = p.reels.filter(r => r.id !== p.currentId);
+  if (sib.length) {
+    h += '<h4>Other reels by ' + esc(who || p.handle) + ' (' + sib.length + ')</h4>\n';
+    h += sib.map(r => '<p><a href="' + esc(r.url) + '" target="_blank" rel="noopener" '
+      + 'style="color:#5bf;word-break:break-all;">' + esc(r.url) + '</a></p>').join('\n');
+  }
+  return h;
+}
+
+// ftext from the saved-text caption (only used when the row has no real ftext yet).
+function _igCaptionFtext(caption) {
+  const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
+    c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+  const lines = caption.split('\n');
+  const title = _smartIgTitle(caption);
+  const body = (lines.slice(1).join(' ').trim()) || lines.join(' ').trim();
+  let h = '';
+  if (title) h += '<h2>' + esc(title) + '</h2>\n';
+  if (body) h += '<p>' + esc(body) + '</p>';
+  return h;
+}
+
+// W Rule 0 handler: parse pasted IG saved-text, match the row by current reel id,
+// fill VidTitle/ftext/ttxt. Does NOT create rows (per the "decide new entries first"
+// hold) — if no row matches, it reports what it parsed so the user can add it.
+async function _importIgSavedText(txt) {
+  await _ensureCommonWords();
+  const p = _parseIgSavedText(txt);
+  const sib = p.reels.filter(r => r.id !== p.currentId).length;
+  if (!p.currentId) {
+    toast('IG text parsed but no current reel id found.\n@' + (p.handle || '?')
+      + ' · ' + p.comments.length + ' comments · ' + p.reels.length + ' reel URLs.', 5000);
+    return;
+  }
+  const row = data.find(r => r && r.link && _igPostId(r.link) === p.currentId);
+  if (!row) {
+    toast('No row matches reel ' + p.currentId + '.\nParsed @' + (p.handle || '?')
+      + ' · ' + p.comments.length + ' comments · ' + sib + ' other reels.\n'
+      + 'Add the reel as a row, then re-paste.', 6000);
+    return;
+  }
+  const parts = [];
+  if (!row.VidTitle && p.caption) { row.VidTitle = _smartIgTitle(p.caption); parts.push('VidTitle'); }
+  if (!row.VidAuthor && p.handle) { row.VidAuthor = '@' + p.handle; parts.push('VidAuthor'); }
+  // ftext only if empty or the jina bail-out stub — never clobber a real caption
+  // (yt-dlp or manual). The rich ttxt is the real prize of this import.
+  const isStub = /^<p><a [^>]*>https?:\/\/[^<]+<\/a><\/p>$/.test((row.ftext || '').trim());
+  if ((!row.ftext || isStub) && p.caption) { row.ftext = _igCaptionFtext(p.caption); parts.push('ftext'); }
+  row.ttxt = _igTtxtHtml(p); parts.push('ttxt');           // always set the rich dump
+  row.DateModified = isoNow();
+  save();
+  if (typeof render === 'function') render();
+  toast('✓ IG text → UID ' + row.UID + ' [' + parts.join(', ') + ']\n'
+    + '@' + (p.handle || '?') + ' · ' + p.comments.length + ' comments · ' + sib + ' other reels in ttxt', 5000);
+}
+window._parseIgSavedText = _parseIgSavedText;
 
 async function _fetchWebTextForRows(rows) {
   for (const row of rows) {
