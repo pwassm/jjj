@@ -937,6 +937,18 @@ function gridOpenFullscreen(row, contained) {
             if (rh > hr.height) { rh = hr.height; rw = rh * ar; }
             left  = hr.left + (hr.width  - rw) / 2;   top    = hr.top + (hr.height - rh) / 2;
             right = left    + rw;                     bottom = top    + rh;
+            // (dev0423) Landscape YT/Vimeo still paint a bottom control bar (seek
+            // bar + icons + the gradient/spacing above it) while paused/stepped,
+            // even with controls off — it sits at the bottom of the iframe (=host).
+            // When the video fills the host height that bar overlays the video
+            // bottom and lands in the crop, so pull the crop's bottom edge up out
+            // of the chrome zone — but only where it WOULD overlap (a letterboxed
+            // video that already ends above the bar is untouched). Portrait
+            // (Shorts) shows no such bar, so leave it alone.
+            if (!portrait) {
+              const CHROME = 0.12;   // fraction of host height the bottom chrome spans
+              bottom = Math.min(bottom, hr.bottom - hr.height * CHROME);
+            }
           }
 
           // Clamp to the on-screen viewport so the crop stays on the desktop.
