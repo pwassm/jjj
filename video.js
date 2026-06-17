@@ -64,6 +64,24 @@ window.normalizeVimeoUrl = function(url) {
   var sep = rest.indexOf('?') === 0 ? '&' : '?';
   return m[1] + m[2] + (rest && rest[0] === '?' ? rest + '&h=' + m[3] : sep + 'h=' + m[3] + rest.replace(/^\//,''));
 };
+// Strip tracking/verification junk from a pasted Vimeo URL. Cloudflare adds a
+// huge `?turnstile=...` token (and sometimes other params) when you copy a URL
+// after passing its bot check — none of it belongs in a stored link. We keep
+// only the path (`vimeo.com/ID` or unlisted `vimeo.com/ID/HASH`) and, if
+// present, the privacy `h` query param that player.js needs for unlisted clips.
+window.sanitizeVimeoUrl = function(url) {
+  var s = String(url || '');
+  var m = s.match(/^(https?:\/\/(?:www\.)?vimeo\.com\/\d+(?:\/[A-Za-z0-9]+)?)(\?[^#]*)?/i);
+  if (!m) return url;
+  var base = m[1];
+  var hash = '';
+  if (m[2]) {
+    var hm = m[2].match(/[?&]h=([A-Za-z0-9]+)/i);
+    if (hm) hash = '?h=' + hm[1];
+  }
+  return base + hash;
+};
+
 // Direct video file URL (self-hosted mp4/webm/etc on R2, GitHub Pages, etc).
 // Match by extension before any ?query or #fragment.
 window.isDirectVideoLink = function(url) {
@@ -109,6 +127,49 @@ window.mountInstagramEmbed = function(hostEl, url) {
   // Stub player so generic stop/pause paths don't choke.
   window.seeLearnVideoPlayers[cellId] = {
     isInstagram: true,
+    destroy:    function() { try { iframe.src = 'about:blank'; iframe.remove(); } catch(e) {} },
+    pauseVideo: function() {},
+    playVideo:  function() {}
+  };
+};
+
+// ── TikTok (sandbox embed, view-only) ─────────────────────────────────────
+// TikTok offers an official player iframe at /player/v1/{id}. Like Instagram
+// it's fully cross-origin: no postMessage seek API, no currentTime — so V and
+// G can display it but E (segment selection) and step playback are impossible.
+// parseVideoAsset returns null for the empty VidRange these rows carry, which
+// keeps E out of the picture. Clips are 9:16 portrait.
+window.isTikTokLink = function(url) {
+  return /tiktok\.com\/.*\/video\/\d+/i.test(url || '') || /tiktok\.com\/(?:embed|player)\//i.test(url || '');
+};
+window.getTikTokId = function(url) {
+  var m = String(url || '').match(/tiktok\.com\/(?:.*\/video\/|embed\/v2\/|player\/v1\/)(\d+)/i);
+  return m ? m[1] : null;
+};
+window.tiktokEmbedUrl = function(url) {
+  var id = window.getTikTokId(url);
+  // controls=1 keeps native play/scrub; description/music_info hidden for a
+  // cleaner poster frame; rel=0 suppresses the post-play recommendation grid.
+  return id ? 'https://www.tiktok.com/player/v1/' + id + '?controls=1&description=0&music_info=0&rel=0' : '';
+};
+window.mountTikTokEmbed = function(hostEl, url) {
+  if (!hostEl) return;
+  var cellId = hostEl.id;
+  if (window.stopCellVideoLoop) window.stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  var src = window.tiktokEmbedUrl(url);
+  if (!src) return;
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;';
+  hostEl.appendChild(iframe);
+  // Stub player so generic stop/pause paths don't choke.
+  window.seeLearnVideoPlayers[cellId] = {
+    isTikTok:   true,
     destroy:    function() { try { iframe.src = 'about:blank'; iframe.remove(); } catch(e) {} },
     pauseVideo: function() {},
     playVideo:  function() {}

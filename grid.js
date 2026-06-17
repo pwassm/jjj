@@ -644,6 +644,8 @@ function _gridMountVideo(vidHost, row, segs, muted) {
     _gridCoverFitHost(vidHost);
   } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
     window.mountInstagramEmbed(vidHost, row.link);
+  } else if (window.isTikTokLink && window.isTikTokLink(row.link) && window.mountTikTokEmbed) {
+    window.mountTikTokEmbed(vidHost, row.link);
   }
 }
 

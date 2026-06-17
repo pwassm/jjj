@@ -357,7 +357,8 @@ function isVideoRow(row) {
   const isYT = link && (window.isYouTubeLink ? window.isYouTubeLink(link) : /youtu\.be|youtube\.com/i.test(link));
   const isVimeo = link && (window.isVimeoLink ? window.isVimeoLink(link) : /vimeo\.com/i.test(link));
   const isIG = link && window.isInstagramLink && window.isInstagramLink(link);
-  if (isYT || isVimeo || isIG) return true;
+  const isTT = link && window.isTikTokLink && window.isTikTokLink(link);
+  if (isYT || isVimeo || isIG || isTT) return true;
   if (link && /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(link)) return true;
   if (vrn && vrn !== 'i' && window.parseVideoAsset && window.parseVideoAsset(vrn) !== null) {
     if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(link)) return false;
@@ -1570,6 +1571,8 @@ function _rpvFillHost(host, row) {
         window.mountDirectVideoClip(host, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
       } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
         window.mountInstagramEmbed(host, row.link);
+      } else if (window.isTikTokLink && window.isTikTokLink(row.link) && window.mountTikTokEmbed) {
+        window.mountTikTokEmbed(host, row.link);
       }
     }, 60);
   } else if (row.link && !isImgLink) {
@@ -4755,6 +4758,12 @@ function _normalizeLink(link) {
     const ytId = _extractYTVideoId(link)
       || (window.getYouTubeId && window.getYouTubeId(link));
     if (ytId) return 'https://youtu.be/' + ytId;
+  }
+  // (dev0424) Strip Cloudflare `?turnstile=...` (and other tracking junk) that
+  // Vimeo appends when copying a URL after its bot check — keep only the clean
+  // path plus the privacy `h` param for unlisted clips.
+  if (/vimeo\.com\/\d+/i.test(link) && window.sanitizeVimeoUrl) {
+    return window.sanitizeVimeoUrl(link);
   }
   return link;
 }

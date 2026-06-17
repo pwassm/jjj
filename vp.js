@@ -1367,6 +1367,8 @@ function gridOpenFullscreen(row, contained) {
         vpMountDirectVideo(host, row.link, seg, muted);
       } else if (window.isInstagramLink && window.isInstagramLink(row.link)) {
         vpMountInstagram(host, row.link);
+      } else if (window.isTikTokLink && window.isTikTokLink(row.link)) {
+        vpMountTikTok(host, row.link);
       }
     }, 50);
     
@@ -3826,6 +3828,63 @@ function vpMountInstagram(host, link) {
   // throw. No interval — the timeline stays at zero.
   if (typeof _vpState === 'object' && _vpState) {
     _vpState.player = { isInstagram: true,
+      pauseVideo: function(){}, playVideo: function(){},
+      destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
+    _vpState.isYT = false;
+  }
+}
+
+// TikTok mount — official /player/v1/{id} iframe, 9:16 portrait, centered in a
+// black host. Like Instagram it's a sandboxed cross-origin embed: no JS seek
+// API, so the seek-bar row is replaced with an "Open on TikTok" button and the
+// playback controls (Prev/Play/Next/Close in the row below) stay functional
+// while the timeline scrub does not.
+function vpMountTikTok(host, link) {
+  host.innerHTML = '';
+  var src = window.tiktokEmbedUrl ? window.tiktokEmbedUrl(link) : '';
+  if (!src) return;
+
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
+    + 'justify-content:center;background:#000;';
+  var clipBox = document.createElement('div');
+  // 9:16 portrait box, capped to fit desktop and phones alike.
+  clipBox.style.cssText = 'position:relative;width:min(450px,95vw);'
+    + 'height:min(800px,95%);aspect-ratio:9/16;overflow:hidden;background:#000;';
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;';
+  clipBox.appendChild(iframe);
+  wrap.appendChild(clipBox);
+  host.appendChild(wrap);
+
+  // Replace the inert seek-bar with an "Open on TikTok" button (same pattern as
+  // Instagram). Prev/Play/Next/Close in the row below stay functional.
+  var toolbar = document.getElementById('vp-toolbar');
+  if (toolbar && toolbar.firstElementChild) {
+    var tlRow = toolbar.firstElementChild;
+    tlRow.style.display = 'none';
+    var openBtn = document.createElement('button');
+    openBtn.id = 'vp-tt-open';
+    openBtn.textContent = '↗ Open on TikTok';
+    openBtn.style.cssText = 'display:block;width:100%;height:24px;margin:0 0 4px 0;'
+      + 'background:linear-gradient(135deg,#25F4EE 0%,#000 50%,#FE2C55 100%);'
+      + 'color:#fff;border:0;border-radius:4px;font-family:monospace;font-weight:bold;'
+      + 'font-size:12px;letter-spacing:0.04em;cursor:pointer;'
+      + 'text-shadow:0 1px 2px rgba(0,0,0,0.6);';
+    openBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      window.open(link, '_blank', 'noopener');
+    });
+    toolbar.insertBefore(openBtn, tlRow);
+  }
+
+  if (typeof _vpState === 'object' && _vpState) {
+    _vpState.player = { isTikTok: true,
       pauseVideo: function(){}, playVideo: function(){},
       destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
     _vpState.isYT = false;
