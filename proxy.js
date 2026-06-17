@@ -21,7 +21,9 @@ const PORT = 8081;
 // detect a stale proxy before sending a deskew (rotate) job that an old build
 // would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
 // (dev0418) Bumped + added 'screenrec' feature for the /rec/* screen recorder.
-const PROXY_BUILD = 'dev0418';
+// (dev0425) Bumped + added 'ytdlp' feature: /exec/ytdlp pulls caption/author
+// metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
+const PROXY_BUILD = 'dev0425';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -303,11 +305,50 @@ function buildExiftoolArgs(p) {
           p.input];
 }
 
+// (dev0425) yt-dlp bridge — pulls caption/description + author metadata for a
+// video URL (Instagram/YouTube/Vimeo/TikTok/…) so the client can populate
+// ftext + VidAuthor where the r.jina.ai reader now hits provider login walls
+// (Instagram especially). Route is /exec/ytdlp; the spawned binary is 'yt-dlp'
+// (see EXEC_BIN — bare name resolves on PATH like ffmpeg). Output is one JSON
+// line on stdout, so the dispatcher routes it through streamExecCollect.
+//
+//   • META (default): `--print` a compact JSON object of the handful of fields
+//     we use, via yt-dlp's `%(.{…})j` sub-dict selector — NOT the multi-hundred-
+//     KB full --dump-json.
+//   • DOWNLOAD (p.download): SCAFFOLD ONLY — the per-row "save max-res mp4 to
+//     <project>/video/" feature is stubbed on the client, so this throws a clean
+//     400 until that lands. Left here to mark the security boundary.
+//
+// All args are literal under spawn(shell:false); the only caller-supplied token
+// is the validated http(s) URL.
+const YTDLP_META_FIELDS =
+  'id,title,description,uploader,uploader_id,channel,channel_url,uploader_url,' +
+  'webpage_url,timestamp,upload_date,like_count,view_count,duration';
+function buildYtdlpArgs(p) {
+  must(p && typeof p.url === 'string', 'url (string) required');
+  must(/^https?:\/\//i.test(p.url), 'url must be http(s)');
+  must(p.url.length <= 2048, 'url too long (max 2048)');
+  if (p.download) {
+    throw new Error('ytdlp download mode not implemented yet (dev0425 stub)');
+  }
+  return [
+    '--no-warnings', '--no-playlist', '--ignore-config',
+    '--socket-timeout', '20',
+    '--print', '%(.{' + YTDLP_META_FIELDS + '})j',
+    p.url
+  ];
+}
+
 const EXEC_ALLOW = {
   ffmpeg:   buildFfmpegArgs,
   ffprobe:  buildFfprobeArgs,
-  exiftool: buildExiftoolArgs
+  exiftool: buildExiftoolArgs,
+  ytdlp:    buildYtdlpArgs
 };
+// (dev0425) Route name → actual binary, when they differ. /exec/ytdlp spawns
+// 'yt-dlp' (hyphenated binary; JS-friendly route key). Anything not listed here
+// spawns under its own route name (ffmpeg/ffprobe/exiftool).
+const EXEC_BIN = { ytdlp: 'yt-dlp' };
 
 // (dev0289) Read a JSON body with a hard size cap. Refuses bodies > maxBytes
 // (returns reject) so a misbehaving caller can't OOM the proxy.
@@ -588,7 +629,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp'] }));
     return;
   }
 
@@ -635,10 +676,13 @@ http.createServer((req, res) => {
       // (dev0391) ffprobe returns JSON on stdout — collect it whole rather than
       // streaming it through the ffmpeg progress parser. (dev0394) exiftool in
       // READ mode (no payload.metadata) also emits JSON, so collect it too;
-      // exiftool WRITE mode streams (exit code carries the verdict).
-      const wantsCollect = bin === 'ffprobe' || (bin === 'exiftool' && !payload.metadata);
-      if (wantsCollect) streamExecCollect(req, res, bin, args);
-      else              streamExec(req, res, bin, args);
+      // exiftool WRITE mode streams (exit code carries the verdict). (dev0425)
+      // ytdlp --print emits one JSON line → collect.
+      const realBin = EXEC_BIN[bin] || bin;   // (dev0425) ytdlp → yt-dlp
+      const wantsCollect = bin === 'ffprobe' || bin === 'ytdlp'
+                        || (bin === 'exiftool' && !payload.metadata);
+      if (wantsCollect) streamExecCollect(req, res, realBin, args);
+      else              streamExec(req, res, realBin, args);
     }).catch(err => send(res, 400, 'exec: ' + err.message, corsForExec(origin)));
     return;
   }
@@ -690,5 +734,5 @@ http.createServer((req, res) => {
   console.log(`Local exec bridge: POST /exec/{${Object.keys(EXEC_ALLOW).join(',')}}`);
   console.log(`Screen recorder:   POST /rec/{start,stop}  → vsteps-<ts>.mp4 in ${__dirname}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
-  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec`);
+  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp`);
 });

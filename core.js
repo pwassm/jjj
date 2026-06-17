@@ -5773,18 +5773,24 @@ async function _importBareLinks(lines) {
   // Kick off async metadata fetch for new rows (title/author/Mpix/P/S).
   // Also kick off web-text fetch for article rows.
   _fetchMetaForNewRows(newRows);
-  const webRows = data.filter(r => r && r.ltype === 'w' && !r.ftext && r.DateAdded === now);
+  // (dev0425) Route yt-dlp-supported providers (IG/YouTube/Vimeo/TikTok) through
+  // the proxy yt-dlp bridge for caption (ftext) + @author; the rest still use the
+  // r.jina.ai reader path. (Instagram now login-walls jina, so yt-dlp owns it.)
+  const ytRows = newRows.filter(r => r && r.link && _ytdlpSupports(r.link));
+  if (ytRows.length) _fetchYtdlpMetaForNewRows(ytRows);
+  const webRows = data.filter(r => r && r.ltype === 'w' && !r.ftext && r.DateAdded === now && !_ytdlpSupports(r.link));
   if (webRows.length) _fetchWebTextForRows(webRows);
 
   const dupNote    = dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : '';
   const dupAddedNote = dupsAdded ? '\n   ' + dupsAdded + ' duplicate(s) added anyway' : '';
   const dupInPaste = links.length - added - dupRecords.length;
   const pasteDupNote = dupInPaste > 0 ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
+  const ytNote   = ytRows.length ? '\n   ' + ytRows.length + ' video link(s) — yt-dlp caption/author…' : '';
   const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
   const metaNote = newRows.some(r => !r.ltype) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + dupAddedNote + pasteDupNote + webNote + metaNote,
+    + dupNote + dupAddedNote + pasteDupNote + ytNote + webNote + metaNote,
     3500
   );
 }
@@ -5804,6 +5810,149 @@ async function _importBareLinks(lines) {
 //      jina is the primary path.
 // Each row is processed independently so one failure doesn't block others.
 // Save is called once per successful fetch (so the user sees progress).
+
+// ══════════════════════════════════════════════════════════════════════════════
+// yt-dlp METADATA FETCH (dev0425)
+// ══════════════════════════════════════════════════════════════════════════════
+// r.jina.ai now hits Instagram (and other) login walls, so DownloadRules._instagram
+// bails out to a bare-link stub (the "UID 770 has text / 1150 doesn't" report).
+// yt-dlp reads caption + author straight from the provider with no login, so for
+// every provider yt-dlp supports (IG/YouTube/Vimeo/TikTok…) we fetch metadata via
+// the origin-locked proxy bridge (POST /exec/ytdlp) and populate ftext + VidAuthor.
+// Local-dev only: the proxy is 127.0.0.1:8081, unreachable from the live site
+// (fine — imports happen on the dev T screen). Falls back to r.jina.ai per-row.
+
+const _YTDLP_PROXY = 'http://127.0.0.1:8081';
+
+// Which links yt-dlp should own on import. Mirrors the embed-provider helpers in
+// video.js, with a regex fallback in case they haven't loaded yet.
+function _ytdlpSupports(url) {
+  if (!url) return false;
+  if (window.isInstagramLink && window.isInstagramLink(url)) return true;
+  if (window.isYouTubeLink   && window.isYouTubeLink(url))   return true;
+  if (window.isVimeoLink     && window.isVimeoLink(url))     return true;
+  if (window.isTikTokLink    && window.isTikTokLink(url))    return true;
+  return /instagram\.com|youtu\.be|youtube\.com|vimeo\.com|tiktok\.com/i.test(url);
+}
+
+// POST the URL to the proxy's yt-dlp bridge; resolve the parsed metadata object
+// ({id,title,description,uploader,uploader_id,channel,…}) or throw.
+async function _ytdlpFetchMeta(url) {
+  const res = await fetchWithTimeout(_YTDLP_PROXY + '/exec/ytdlp', 45000, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url })
+  });
+  if (!res || !res.ok) throw new Error('proxy HTTP ' + (res && res.status));
+  const j = await res.json();
+  if (!j || !j.ok || !j.result) {
+    throw new Error((j && (j.stderr || j.error)) || ('yt-dlp exit ' + (j && j.exitCode)));
+  }
+  return j.result;
+}
+
+// Derive a "@handle" from yt-dlp metadata. YouTube's uploader_id is already
+// "@handle"; Instagram's channel is the bare handle slug (uploader_id is numeric);
+// fall back to a display name when no slug is available.
+function _ytdlpAuthorHandle(meta) {
+  for (const c of [meta.uploader_id, meta.channel, meta.uploader]) {
+    const s = (c || '').trim();
+    if (/^@[\w.]+$/.test(s)) return s;
+  }
+  for (const c of [meta.channel, meta.uploader_id]) {
+    const s = (c || '').trim();
+    if (s && /^[\w.]+$/.test(s) && !/^\d+$/.test(s)) return '@' + s;
+  }
+  return (meta.uploader || meta.channel || '').trim();
+}
+
+// Build clean ftext HTML from yt-dlp metadata: caption headline as <h2>, caption
+// body as <p>s (IG "." separator lines dropped), a small grey meta line, and the
+// source link. No related-reel tail / counts junk (unlike the manual 770 paste).
+function _ytdlpBuildFtext(meta, url) {
+  const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
+    c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+  const desc = (meta.description || '').trim();
+  let title = '', started = false; const bodyLines = [];
+  for (const ln of desc.split(/\r?\n/)) {
+    const t = ln.trim();
+    if (!started) { if (t) { title = t; started = true; } continue; }
+    bodyLines.push(ln);
+  }
+  let html = '';
+  if (title) html += '<h2>' + esc(title) + '</h2>\n';
+  const body = bodyLines.map(l => l.trim())
+    .filter(l => l && l !== '.')                       // drop IG "." spacer lines
+    .map(l => '<p>' + esc(l) + '</p>').join('\n');
+  if (body) html += body + '\n';
+  const handle = _ytdlpAuthorHandle(meta);
+  const bits = [];
+  if (handle) bits.push('By ' + esc(handle));
+  if (/^\d{8}$/.test(meta.upload_date || '')) {
+    const d = meta.upload_date;
+    bits.push(d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8));
+  }
+  if (Number.isFinite(meta.like_count)) bits.push(Number(meta.like_count).toLocaleString() + ' likes');
+  if (bits.length) html += '<p style="color:#888;font-size:.9em;">' + bits.join(' · ') + '</p>\n';
+  html += '<p>Source: <a href="' + esc(url) + '" target="_blank" rel="noopener" '
+        + 'style="color:#5bf;word-break:break-all;">' + esc(url) + '</a></p>';
+  return html;
+}
+
+// Import pass: for each yt-dlp-supported new row, fetch metadata and fill ftext +
+// VidAuthor (+ VidTitle when oEmbed didn't). Guarded assignments so it complements
+// the oEmbed pass (_fetchMetaForNewRows) instead of clobbering it. Sequential (one
+// yt-dlp process at a time) with a save()+render() per row so progress shows. If
+// yt-dlp is unreachable/fails for an ltype='w' (Instagram) row, fall back to the
+// old r.jina.ai path so the row still gets *something*.
+async function _fetchYtdlpMetaForNewRows(rows) {
+  let done = 0;
+  for (const row of rows) {
+    if (!row || !row.link) continue;
+    if (row.ftext && row.VidAuthor) continue;          // already complete
+    try {
+      const meta = await _ytdlpFetchMeta(row.link);
+      const desc = (meta.description || '').trim();
+      const handle = _ytdlpAuthorHandle(meta);
+      if (!desc && !handle) throw new Error('empty metadata');
+      let changed = false;
+      if (!row.ftext) { row.ftext = _ytdlpBuildFtext(meta, row.link); changed = true; }
+      if (!row.VidAuthor && handle) { row.VidAuthor = handle; changed = true; }
+      if (!row.VidTitle) {
+        const t = (meta.title || '').trim();
+        // IG/TikTok title is a generic "Video by handle" → prefer caption headline.
+        const headline = desc.split(/\r?\n/).map(s => s.trim()).find(Boolean) || '';
+        const vt = (!t || /^video by /i.test(t)) ? headline : t;
+        if (vt) { row.VidTitle = vt; changed = true; }
+      }
+      if (changed) { row.DateModified = isoNow(); done++; save(); if (typeof render === 'function') render(); }
+      toast('✓ yt-dlp: ' + (handle || row.link.slice(0, 40)), 1400);
+    } catch (e) {
+      console.warn('[ytdlp] meta failed for', row.link, e && e.message);
+      // Fallback: Instagram-style web rows can still try the r.jina.ai reader.
+      if (row.ltype === 'w' && !row.ftext) {
+        try {
+          const html = await _fetchAndExtractArticle(row.link);
+          if (html) {
+            row.ftext = (window.DownloadRules ? window.DownloadRules.apply(html, row.link) : html);
+            row.DateModified = isoNow(); save(); if (typeof render === 'function') render();
+          }
+        } catch (_) { /* jina also failed — leave ftext empty */ }
+      }
+    }
+  }
+  if (done) toast('✓ yt-dlp metadata: ' + done + ' row(s) populated', 2500);
+}
+
+// (dev0425) STUB — per-row max-resolution video download to <project>/video/*.mp4
+// via yt-dlp. The proxy builder reserves /exec/ytdlp {download:true}; this client
+// trigger + the proxy download branch are intentionally unbuilt for now (dev0425
+// scope). Wire to a T hotkey / V "goto" bar when the feature lands.
+async function _ytdlpDownloadVideo(row) {
+  toast('yt-dlp video download — not built yet (dev0425 stub).\n'
+      + 'Planned: save max-res mp4 to <project>/video/.', 3500);
+}
+window._ytdlpDownloadVideo = _ytdlpDownloadVideo;
 
 async function _fetchWebTextForRows(rows) {
   for (const row of rows) {
