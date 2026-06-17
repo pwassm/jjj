@@ -5866,6 +5866,98 @@ function _ytdlpAuthorHandle(meta) {
   return (meta.uploader || meta.channel || '').trim();
 }
 
+// ── IG/video title cleaning (dev0426) ──────────────────────────────────────
+// Ports AHK NormalizeText (M:\jjj\AHK\ytdl_v26.ahk:868) to JS, "better": NFKD
+// de-accent (é→e) BEFORE stripping the remaining non-ASCII (emoji/CJK), so Latin
+// names survive. Fixes captions whose first line carries trailing emoji (UID 1148
+// = "Microscopic landscapes vol. 8 🦠🔬🌄"). Keeps newlines (first-line logic needs them).
+function _normalizeText(s) {
+  if (s == null) return '';
+  s = String(s)
+    .replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019\u02BC]/g, "'")
+    .replace(/\u2013/g, '-').replace(/[\u2014\u2015]/g, '--')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u00A0\u202F\u2009]/g, ' ').replace(/\u200B/g, '');
+  s = s.normalize('NFKD').replace(/[\u0300-\u036F]/g, '');     // strip combining accents
+  s = s.replace(/[^\x00-\x7E]/g, '');                          // drop emoji / non-ASCII
+  s = s.replace(/[ \t\f\v]+/g, ' ')
+       .replace(/ +([,.;:!?)])/g, '$1')                        // close gap left by stripped emoji
+       .replace(/ *\n */g, '\n');                              // tidy ws, keep newlines
+  return s.trim();
+}
+
+// Word-frequency list (commonwords.txt, ~10k words ordered by rank) — lazy-loaded
+// ONCE on first title derivation (a dev import action), so normal page loads pay
+// nothing. Map word→rank; absent = rarest. Used to find the low-frequency word
+// (likely an organism / Latin / scientific name) a title should reach.
+let _commonRankMap = null, _commonWordsPromise = null;
+function _ensureCommonWords() {
+  if (_commonRankMap) return Promise.resolve(_commonRankMap);
+  if (_commonWordsPromise) return _commonWordsPromise;
+  const ver = (window.HELP_VERSION_STR || '').replace(/^(dev|user)/, '');
+  _commonWordsPromise = fetch('commonwords.txt?v=' + ver)
+    .then(r => r.ok ? r.text() : '')
+    .then(txt => {
+      const m = new Map();
+      txt.split(/\r?\n/).forEach((w, i) => { w = w.trim(); if (w && !m.has(w)) m.set(w, i); });
+      _commonRankMap = m;
+      return m;
+    })
+    .catch(() => { _commonRankMap = new Map(); return _commonRankMap; });
+  return _commonWordsPromise;
+}
+function _commonRank(word) {
+  if (!_commonRankMap) return -1;
+  const r = _commonRankMap.get(String(word).toLowerCase());
+  return (r == null) ? -1 : r;
+}
+
+// Derive a short clean VidTitle from a caption:
+//   1. normalize (de-accent + strip emoji), take the first non-empty line, drop a
+//      trailing #hashtag run — IG authors usually lead with a title line.
+//   2. if that's already short (≤ SOFT), use it.
+//   3. else scan words within HARD chars for the LAST low-frequency word
+//      (rank ≥ RARE or absent — likely the organism/scientific name) and end the
+//      title a couple words past it; trailing stop-words/punct trimmed.
+//   4. graceful: no rare word → word-boundary cut at SOFT; empty caption → ''
+//      (and a generic caption like "Microscopic landscapes vol. 8" is kept as-is).
+function _smartIgTitle(caption) {
+  const SOFT = 70, HARD = 120, EXTRA = 2, RARE = 2500;
+  const s = _normalizeText(caption);
+  if (!s) return '';
+  let firstLine = '';
+  for (const ln of s.split('\n')) { if (ln.trim()) { firstLine = ln.trim(); break; } }
+  const stripTags = x => x.replace(/(?:\s*#[A-Za-z0-9_]+)+\s*$/, '').trim();
+  const clean = x => x.replace(/[\s\-:;,.]+$/, '').trim();
+  const stripTailStop = x => x.replace(/\s+(the|a|an|of|and|to|in|for|with|its|their|on|by|as|is|are|was|this|that|my|so|but|or|at)$/i, '').trim();
+  let base = stripTags(firstLine);
+  if (!base) base = stripTags(s.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim());
+  if (!base) return '';
+  if (base.length <= SOFT) return clean(base);
+
+  const words = base.split(/\s+/);
+  const ends = []; let cum = 0;
+  for (let i = 0; i < words.length; i++) { cum += (i ? 1 : 0) + words[i].length; ends[i] = cum; }
+  let lastRare = -1;
+  for (let i = 0; i < words.length; i++) {
+    if (ends[i] > HARD) break;
+    const w = words[i].replace(/[^A-Za-z]/g, '');
+    if (w.length < 4) continue;
+    const rank = _commonRank(w);
+    if (_commonRankMap && (rank < 0 || rank >= RARE)) lastRare = i;   // low-frequency word
+  }
+  let cut;
+  if (lastRare >= 0) {
+    cut = lastRare; let extra = 0;
+    while (cut + 1 < words.length && extra < EXTRA && ends[cut + 1] <= HARD) { cut++; extra++; }
+  } else {
+    cut = 0;
+    for (let i = 0; i < words.length; i++) { if (ends[i] <= SOFT) cut = i; else break; }
+  }
+  const title = stripTailStop(clean(words.slice(0, cut + 1).join(' ')));
+  return title || clean(words.slice(0, cut + 1).join(' '));
+}
+
 // Build clean ftext HTML from yt-dlp metadata: caption headline as <h2>, caption
 // body as <p>s (IG "." separator lines dropped), a small grey meta line, and the
 // source link. No related-reel tail / counts junk (unlike the manual 770 paste).
@@ -5873,15 +5965,12 @@ function _ytdlpBuildFtext(meta, url) {
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
     c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
   const desc = (meta.description || '').trim();
-  let title = '', started = false; const bodyLines = [];
-  for (const ln of desc.split(/\r?\n/)) {
-    const t = ln.trim();
-    if (!started) { if (t) { title = t; started = true; } continue; }
-    bodyLines.push(ln);
-  }
+  // <h2> = short CLEANED title (emoji-stripped, organism-aware). Body keeps the
+  // FULL original caption (emoji included) so ftext = the whole author comment.
+  const cleanTitle = _smartIgTitle(desc);
   let html = '';
-  if (title) html += '<h2>' + esc(title) + '</h2>\n';
-  const body = bodyLines.map(l => l.trim())
+  if (cleanTitle) html += '<h2>' + esc(cleanTitle) + '</h2>\n';
+  const body = desc.split(/\r?\n/).map(l => l.trim())
     .filter(l => l && l !== '.')                       // drop IG "." spacer lines
     .map(l => '<p>' + esc(l) + '</p>').join('\n');
   if (body) html += body + '\n';
@@ -5907,6 +5996,7 @@ function _ytdlpBuildFtext(meta, url) {
 // old r.jina.ai path so the row still gets *something*.
 async function _fetchYtdlpMetaForNewRows(rows) {
   let done = 0;
+  await _ensureCommonWords();   // (dev0426) load freq list once for smart titles
   for (const row of rows) {
     if (!row || !row.link) continue;
     if (row.ftext && row.VidAuthor) continue;          // already complete
@@ -5919,10 +6009,13 @@ async function _fetchYtdlpMetaForNewRows(rows) {
       if (!row.ftext) { row.ftext = _ytdlpBuildFtext(meta, row.link); changed = true; }
       if (!row.VidAuthor && handle) { row.VidAuthor = handle; changed = true; }
       if (!row.VidTitle) {
+        // IG/TikTok yt-dlp title is a generic "Video by handle" → derive a clean
+        // organism-aware title from the caption; YT/Vimeo have a real title → just
+        // normalize it (strip emoji/accents, flatten), no caption windowing.
         const t = (meta.title || '').trim();
-        // IG/TikTok title is a generic "Video by handle" → prefer caption headline.
-        const headline = desc.split(/\r?\n/).map(s => s.trim()).find(Boolean) || '';
-        const vt = (!t || /^video by /i.test(t)) ? headline : t;
+        const vt = (!t || /^video by /i.test(t))
+          ? _smartIgTitle(desc)
+          : _normalizeText(t).replace(/\s+/g, ' ').trim();
         if (vt) { row.VidTitle = vt; changed = true; }
       }
       if (changed) { row.DateModified = isoNow(); done++; save(); if (typeof render === 'function') render(); }
