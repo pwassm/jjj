@@ -14,6 +14,7 @@
 const http  = require('http');
 const https = require('https');
 const path  = require('path');
+const fs    = require('fs');
 const { spawn } = require('child_process');
 
 const PORT = 8081;
@@ -23,7 +24,9 @@ const PORT = 8081;
 // (dev0418) Bumped + added 'screenrec' feature for the /rec/* screen recorder.
 // (dev0425) Bumped + added 'ytdlp' feature: /exec/ytdlp pulls caption/author
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
-const PROXY_BUILD = 'dev0425';
+// (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
+// URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+const PROXY_BUILD = 'dev0428';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -611,11 +614,55 @@ function recStop(req, res, origin) {
   try { rec.proc.stdin.end(); } catch (_) {}
 }
 
+// (dev0428) ── /ig/add — IG reel-URL staging store ────────────────────────────
+// The Tampermonkey harvester (ig-harvest.user.js) auto-scrolls an author's profile
+// in the user's own logged-in Firefox (reading rendered DOM only — no API/cookie
+// replay IG could flag) and POSTs the collected URLs here via GM_xmlhttpRequest
+// (privileged → bypasses browser CORS). We append the NEW ones — deduped by
+// shortcode id — to ig.json, a store parallel to ml.json that deliberately stays
+// OUT of the grid/table (IG doesn't fit the G scheme; could grow to 1000s of rows).
+const IG_STORE = path.join(__dirname, 'ig.json');
+function igShortcode(url) {
+  const m = String(url || '').match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/i);
+  return m ? m[1] : '';
+}
+function igIsoNow() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' '
+       + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function igAdd(req, res, origin) {
+  readJson(req, 4 * 1024 * 1024).then(payload => {
+    const urls = Array.isArray(payload.urls) ? payload.urls : [];
+    const author = (payload.author || '').toString().slice(0, 80);
+    const source = (payload.source || '').toString().slice(0, 300);
+    let store = [];
+    try { if (fs.existsSync(IG_STORE)) store = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) {}
+    if (!Array.isArray(store)) store = [];
+    const have = new Set(store.map(r => r && r.id).filter(Boolean));
+    let added = 0, dup = 0, bad = 0;
+    const now = igIsoNow();
+    for (const u of urls) {
+      const id = igShortcode(u);
+      if (!id) { bad++; continue; }
+      if (have.has(id)) { dup++; continue; }
+      have.add(id);
+      // canonical url: keep the form harvested, but normalize /reels/→/reel/
+      const url = String(u).replace(/\/reels\//i, '/reel/').split('?')[0];
+      store.push({ id, url, author, status: 'new', DateAdded: now, source });
+      added++;
+    }
+    if (added) fs.writeFileSync(IG_STORE, JSON.stringify(store, null, 2));
+    console.log('[ig/add] +' + added + ' new, ' + dup + ' dup, ' + bad + ' bad · total ' + store.length + ' · @' + (author || '?'));
+    sendJson(res, 200, { ok: true, added, dup, bad, total: store.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -629,7 +676,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest'] }));
     return;
   }
 
@@ -646,6 +693,17 @@ http.createServer((req, res) => {
     if (action === 'start') { recStart(req, res, origin); return; }
     if (action === 'stop')  { recStop(req, res, origin);  return; }
     sendJson(res, 404, { ok: false, error: 'unknown rec action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0428) ── IG harvest store (origin-locked like /exec; the Tampermonkey
+  // harvester reaches it via GM_xmlhttpRequest, which bypasses browser CORS) ──
+  if (req.url.startsWith('/ig/')) {
+    const origin = req.headers.origin || '';
+    if (req.method !== 'POST') { send(res, 405, 'ig: POST required', corsForExec(origin)); return; }
+    const action = req.url.slice('/ig/'.length).split('?')[0];
+    if (action === 'add') { igAdd(req, res, origin); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown ig action: ' + action }, origin);
     return;
   }
 
@@ -734,5 +792,6 @@ http.createServer((req, res) => {
   console.log(`Local exec bridge: POST /exec/{${Object.keys(EXEC_ALLOW).join(',')}}`);
   console.log(`Screen recorder:   POST /rec/{start,stop}  → vsteps-<ts>.mp4 in ${__dirname}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
-  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp`);
+  console.log(`Harvest store:     POST /ig/add  → ig.json in ${__dirname}`);
+  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest`);
 });

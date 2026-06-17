@@ -5433,5 +5433,56 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "hamstring",
+    "label": "Hamstring",
+    "kind": "place",
+    "parents": [
+      "targeted-exercise"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "monodontidae",
+    "label": "Monodontidae",
+    "kind": "taxon",
+    "parents": [
+      "cetacea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "delphinapterus",
+    "label": "Delphinapterus",
+    "kind": "taxon",
+    "parents": [
+      "monodontidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "delphinapterus-leucas",
+    "label": "Delphinapterus leucas",
+    "kind": "taxon",
+    "parents": [
+      "delphinapterus"
+    ],
+    "aliases": [
+      "Delphinapterus leucas (Pallas",
+      "1776)",
+      "Beluga whale"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Beluga whale",
+    "extinct": false
   }
 ]
