@@ -513,37 +513,52 @@
     }
   }
 
-  // Shared paced batch runner. Sequential (one at a time), randomized gap between
-  // items, Stop button + auto-abort if an item fails with a rate-limit signature.
-  async function runBatch(label, ids, gap, doOne) {
+  // Shared paced batch runner. Sequential (one at a time), randomized gap BETWEEN
+  // processed items (no leading/trailing wait), Stop button + auto-abort on a
+  // rate-limit signature. `skipIf(r)` → already-done rows are skipped instantly
+  // (no network, no delay), so re-running with everything still selected only
+  // touches the rows that still need work.
+  async function runBatch(label, ids, gap, doOne, skipIf) {
     busy = true; batchAbort = false; setBatchUi(true);
-    let ok = 0, n = 0, throttled = false;
+    let ok = 0, done = 0, skipped = 0, throttled = false;
     for (const id of ids) {
       if (batchAbort) break;
       const r = rowById(id); if (!r) continue;
-      n++;
-      document.getElementById('igCount').textContent = `${label} ${n}/${ids.length}… (✓ ${ok})`;
+      if (skipIf && skipIf(r)) { skipped++; continue; }
+      if (done > 0) { await sleep(rnd(gap[0], gap[1])); if (batchAbort) break; }  // gap between items
+      done++;
+      document.getElementById('igCount').textContent =
+        `${label} ${done}… (✓ ${ok}${skipped ? ' · skipped ' + skipped : ''})`;
       lastOpError = '';
       if (await doOne(r)) ok++;
       else if (RATE_LIMIT_RE.test(lastOpError)) { throttled = true; }
       applyAndRender();
       if (throttled) break;
-      if (n < ids.length && !batchAbort) await sleep(rnd(gap[0], gap[1]));
     }
     busy = false; setBatchUi(false);
     if (ok) { dirty = true; await persist(false); }
     applyAndRender();
-    if (throttled) igToast(`⏸ Stopped after ${ok} — IG rate-limit detected. Wait a few minutes, then resume.\n${(lastOpError || '').slice(0, 90)}`, 7000);
-    else if (batchAbort) igToast(`⏹ Stopped at ${ok}/${ids.length}`, 2600);
-    else igToast(`✓ ${label.toLowerCase()} ${ok}/${ids.length}`, 2600);
+    const tail = skipped ? ` · skipped ${skipped} already-done` : '';
+    if (throttled) igToast(`⏸ Stopped after ${ok} — IG rate-limit detected. Wait a few minutes, then resume.${tail}\n${(lastOpError || '').slice(0, 80)}`, 7000);
+    else if (batchAbort) igToast(`⏹ Stopped — ${ok} done${tail}`, 2800);
+    else igToast(`✓ ${label.toLowerCase()} ${ok}${tail}`, 2800);
     return ok;
   }
+
+  // A row counts as already enriched once a successful enrich stamped its status
+  // off 'new' (downloaded/promoted rows were enriched first, so they're covered too).
+  const isEnriched = r => !!r.status && r.status !== 'new';
+  // A row counts as already downloaded once it has media files on disk.
+  const isDownloaded = r => !!(r.localFiles && r.localFiles.length);
 
   async function batchEnrich() {
     const ids = [...sel];
     if (!ids.length) { igToast('Select rows first (checkbox; Shift-click for a range)', 2200); return; }
     if (busy) return;
-    await runBatch('Enriched', ids, ENRICH_GAP, r => enrichRow(r, false));
+    if (ids.every(id => { const r = rowById(id); return r && isEnriched(r); })) {
+      igToast('All selected rows are already enriched — nothing to do', 2600); return;
+    }
+    await runBatch('Enriched', ids, ENRICH_GAP, r => enrichRow(r, false), isEnriched);
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
@@ -578,11 +593,15 @@
     const ids = [...sel];
     if (!ids.length) { igToast('Select rows first (checkbox; Shift-click for a range)', 2200); return; }
     if (busy) return;
-    if (!confirm(`Download ${ids.length} item(s) at max resolution into ig_media/ ?\n\n`
+    const todo = ids.filter(id => { const r = rowById(id); return r && !isDownloaded(r); });
+    if (!todo.length) { igToast('All selected rows are already downloaded — nothing to do', 2600); return; }
+    const already = ids.length - todo.length;
+    if (!confirm(`Download ${todo.length} item(s) at max resolution into ig_media/ ?`
+      + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '') + `\n\n`
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
-      + `• Heavier than Enrich and may use your Firefox session — keep batches modest.\n`
+      + `• Heavier than Enrich; tries cookieless first, your Firefox session only if walled — keep batches modest.\n`
       + `• Press ⏹ Stop any time.`)) return;
-    await runBatch('Downloaded', ids, DOWNLOAD_GAP, r => downloadRow(r, false));
+    await runBatch('Downloaded', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded);
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
