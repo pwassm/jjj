@@ -32,6 +32,7 @@
   let sel = new Set();                 // selected ids (batch ops)
   let lastCheckedId = null;            // anchor for shift-click range selection
   let focusId = null;                  // row open in the detail drawer
+  let hoverTxt = null;                 // {id, field} of the ttxt/ftext cell under the mouse (E → edit)
   let dirty = false;                   // unsaved enrich/promote/status edits
   let busy = false;                    // a batch op is running
   let batchAbort = false;              // user pressed Stop during a batch
@@ -54,6 +55,20 @@
                    : /\/tv\//i.test(r.url || '') ? 'tv' : '?';
   const igLink = r => r.url || ('https://www.instagram.com/p/' + r.id + '/');
   const pad2 = n => String(n).padStart(2, '0');
+
+  // (dev0436) HTML → one-line plain text (for the narrow ttxt/ftext preview cells).
+  function plainText(html) {
+    const d = document.createElement('div');
+    d.innerHTML = html || '';
+    return (d.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+  // A narrow preview <td> for an editable HTML field. `igtxt` + data-field mark
+  // it for the hover-then-E open-editor path; the title shows the full text.
+  function txtCell(r, field) {
+    const txt = plainText(r[field]);
+    const body = txt ? esc(txt) : '<span class="no">—</span>';
+    return `<td class="igtxt" data-field="${field}" title="${txt ? esc(txt) : 'empty — hover & press E to edit'}">${body}</td>`;
+  }
 
   // hh.mm.ss (AHK FormatHMS — used in the download filename).
   function fmtHMS(sec) {
@@ -138,6 +153,8 @@
 #igTable a.idlink:hover{text-decoration:underline}
 #igTable .yes{color:#7fd47f;font-weight:700}.no{color:#4a5563}
 #igTable .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#9fb0c2}
+#igTable td.igtxt{color:#aeb9c6;font-size:12px;cursor:text}
+#igTable td.igtxt:hover{background:#243349;box-shadow:inset 0 0 0 1px #3a5170;color:#dfe6ee}
 #igTable td.c-act{white-space:nowrap}
 #igTable td.c-act button{background:#1f2733;border:1px solid #34404f;color:#cfe;
   border-radius:5px;padding:3px 7px;margin-right:3px;cursor:pointer;font:600 11px system-ui}
@@ -237,7 +254,15 @@
     $('igModalCancel').addEventListener('click', () => closePasteModal());
     $('igModalApply').addEventListener('click', () => applyPaste());
     o.querySelector('#igTable thead').addEventListener('click', onHeadClick);
-    o.querySelector('#igTable tbody').addEventListener('click', onBodyClick);
+    const tbodyEl = o.querySelector('#igTable tbody');
+    tbodyEl.addEventListener('click', onBodyClick);
+    // (dev0436) Track which ttxt/ftext cell the mouse is over so E can open the
+    // T HTML editor on that field. mouseover bubbles → a non-txt cell clears it.
+    tbodyEl.addEventListener('mouseover', e => {
+      const td = e.target.closest('td.igtxt');
+      hoverTxt = td ? { id: td.closest('tr').dataset.id, field: td.dataset.field } : null;
+    });
+    tbodyEl.addEventListener('mouseleave', () => { hoverTxt = null; });
   }
 
   // ── Columns ─────────────────────────────────────────────────────────────────
@@ -246,12 +271,14 @@
     { key: 'kind', label: 'Kind', w: 50, sort: true },
     { key: 'author', label: 'Author', w: 120, sort: true },
     { key: 'id', label: 'ID', w: 110, sort: true },
-    { key: 'VidTitle', label: 'Title', w: 250, sort: true },
+    { key: 'VidTitle', label: 'Title', w: 220, sort: true },
+    // (dev0436) Narrow text-preview columns. Hover one and press E to open the
+    // T HTML editor on that field (ttxt / ftext) of the hovered ig.json row.
+    { key: '_ttxtTxt', label: 'ttxt', w: 110, sort: false },
+    { key: '_ftextTxt', label: 'ftext', w: 110, sort: false },
     { key: 'durSecs', label: 'Dur', w: 60, sort: true },
     { key: '_wxh', label: 'W×H', w: 80, sort: true },
     { key: 'DatePosted', label: 'Posted', w: 96, sort: true },
-    { key: '_cap', label: 'ftext', w: 46, sort: false },
-    { key: '_ttxt', label: 'ttxt', w: 46, sort: false },
     { key: 'status', label: 'Status', w: 86, sort: true },
     { key: 'DateAdded', label: 'Harvested', w: 130, sort: true },
     { key: '_act', label: 'Actions', w: 160, sort: false }
@@ -339,8 +366,8 @@
     tb.innerHTML = view.map(r => {
       const k = kindOf(r);
       const st = r.status || 'new';
-      const cap = r.ftext ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
-      const tt = r.ttxt ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
+      const ttCell = txtCell(r, 'ttxt');
+      const ftCell = txtCell(r, 'ftext');
       const wxh = (r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>';
       const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
       return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''}">
@@ -349,11 +376,11 @@
         <td title="${esc(r.author)}">${esc(r.author)}</td>
         <td><a class="idlink" href="${esc(igLink(r))}" target="_blank" rel="noopener" title="Open on Instagram">${esc(r.id)}</a></td>
         <td title="${esc(r.VidTitle || '')}">${esc(r.VidTitle || '')}</td>
+        ${ttCell}
+        ${ftCell}
         <td class="mono">${dur}</td>
         <td class="mono">${wxh}</td>
         <td class="mono">${esc(r.DatePosted || '') || '<span class="no">—</span>'}</td>
-        <td style="text-align:center">${cap}</td>
-        <td style="text-align:center">${tt}</td>
         <td><span class="s-${st}">${st}</span></td>
         <td class="mono">${esc(r.DateAdded || '')}</td>
         <td class="c-act">
@@ -778,10 +805,39 @@
     return document.getElementById('igOverlay')?.classList.contains('open') || false;
   }
 
+  // (dev0436) Open the shared T HTML editor (xe.js) on a ttxt/ftext field of an
+  // ig.json row. onSave persists to ig.json (NOT ml.json) and refreshes the row.
+  function openTextEditorFor(id, field) {
+    if (typeof gridOpenTextEditor !== 'function') { igToast('Text editor unavailable', 2200); return; }
+    const r = rowById(id);
+    if (!r) return;
+    gridOpenTextEditor('', r, {
+      field,
+      onSave: () => { dirty = true; renderBody(); persist(false); }
+    });
+  }
+
+  // (dev0436) Hover a ttxt/ftext cell + press E → edit it in the T HTML editor.
+  // Capture-phase, but only swallows the key when actually opening so the global
+  // dev-scroll E (and typing E in inputs) is otherwise untouched.
+  window.addEventListener('keydown', e => {
+    if (!isIgScreenOpen()) return;
+    if (e.key !== 'e' && e.key !== 'E') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (modalOpen() || document.getElementById('textEditorOverlay')) return;
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+    if (!hoverTxt) return;
+    e.stopPropagation(); e.preventDefault();
+    openTextEditorFor(hoverTxt.id, hoverTxt.field);
+  }, true);
+
   // Esc: close drawer first, then the screen. Capture-phase so it beats other
   // global Esc handlers while Ig owns the screen.
   window.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || !isIgScreenOpen()) return;
+    // The T HTML editor sits on top with its own Esc handling — let it own Esc.
+    if (document.getElementById('textEditorOverlay')) return;
     if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }

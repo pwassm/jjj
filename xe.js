@@ -10,9 +10,16 @@ let _textEditorRow = null;
 // opts.field set, so the rich-text/Save plumbing is shared. Non-ftext fields
 // skip the slide-only side effects (title prompt, link binding, VidRange).
 let _textEditorField = 'ftext';
+// (dev0436) Optional caller hooks. When opts.onSave is a function the editor is
+// driving a row that does NOT live in ml.json (e.g. the I/Ig screen's ig.json
+// rows): on save we mutate row[field] as usual but call onSave(row) to persist
+// instead of the ml.json save(), and we skip all ftext "slide" rituals (title
+// prompt, link binding, VidRange, grid-cell refresh).
+let _textEditorOpts = {};
 
 function gridOpenTextEditor(cellStr, row, opts) {
   opts = opts || {};
+  _textEditorOpts = opts;
   // (zip0155) Defensive: if a previous text-editor overlay was left in the
   // DOM (e.g. early-failed call, double-open from rapid double-click),
   // remove it first. Otherwise document.getElementById('teSave') below
@@ -1310,13 +1317,15 @@ function _textEditorDoSave() {
   _textEditorRow[_textEditorField] = html;
   _textEditorRow.DateModified = isoNow();
   // (dev0378) link binding + VidRange='text' are slide-only (ftext). Editing
-  // ttxt/ctxt must not touch the row's media link or range.
-  if (_textEditorField === 'ftext') {
+  // ttxt/ctxt must not touch the row's media link or range. (dev0436) Also skip
+  // for external (onSave) rows — those aren't ml.json slides.
+  if (_textEditorField === 'ftext' && !_textEditorOpts.onSave) {
     const _liD = document.getElementById('teLinkInput');
     if (_liD !== null) _textEditorRow.link = _liD.value.trim();
     if (!_textEditorRow.link) _textEditorRow.VidRange = 'text';
   }
-  save();
+  if (_textEditorOpts.onSave) _textEditorOpts.onSave(_textEditorRow);
+  else save();
   return true;
 }
 
@@ -1335,7 +1344,8 @@ function textEditorSave() {
 
   // (dev0378) Title prompt + link/VidRange are slide-only (ftext). ttxt/ctxt
   // are free-form details blocks — save them verbatim without those rituals.
-  const _slideField = (_textEditorField === 'ftext');
+  // (dev0436) External (onSave) rows are never slides either.
+  const _slideField = (_textEditorField === 'ftext') && !_textEditorOpts.onSave;
 
   // Check if we need a title (first h1 or h2)
   if (_slideField && !html.match(/<h[12][^>]*>.*?\S.*?<\/h[12]>/i)) {
@@ -1357,7 +1367,8 @@ function textEditorSave() {
     }
   }
 
-  save();
+  if (_textEditorOpts.onSave) _textEditorOpts.onSave(_textEditorRow);
+  else save();
   textEditorClose();
 
   // Refresh grid cell (ftext slides only — ttxt/ctxt don't drive a grid cell)
@@ -2091,7 +2102,7 @@ function textEditorPreviewSlide() {
 function textEditorClose() {
   // (zip0183) Sync T's focus to the last Xe row before clearing state, so
   // pressing T/G/A from Xe leaves the selection on the row that was open.
-  if (_textEditorRow && typeof window._setFocusToRow === 'function') {
+  if (_textEditorRow && !_textEditorOpts.onSave && typeof window._setFocusToRow === 'function') {
     window._setFocusToRow(_textEditorRow);
   }
   if (_textEditorOverlay) {
@@ -2104,6 +2115,7 @@ function textEditorClose() {
   if (style) style.remove();
   _textEditorCell = null;
   _textEditorRow = null;
+  _textEditorOpts = {};   // (dev0436) clear external-store hook for the next open
 }
 
 function gridClose() {
