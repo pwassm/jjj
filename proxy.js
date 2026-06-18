@@ -30,7 +30,10 @@ const PORT = 8081;
 //   /ig/save     overwrites ig.json with the client's edited array (enrich/promote
 //                state) — keeps a one-deep ig.json.bak first.
 //   /ig/download yt-dlp downloads a reel/post's media into <project>/ig_media/.
-const PROXY_BUILD = 'dev0429';
+// (dev0430) ytdlp meta now also returns width,height (for the I-screen W×H column +
+//   filename); /ig/download accepts a client-built `name` → files land in ig_media/
+//   under the user's AHK naming convention (hh.mm.ss~WxH~title~@author~[[i[id]]]).
+const PROXY_BUILD = 'dev0430';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -330,7 +333,7 @@ function buildExiftoolArgs(p) {
 // is the validated http(s) URL.
 const YTDLP_META_FIELDS =
   'id,title,description,uploader,uploader_id,channel,channel_url,uploader_url,' +
-  'webpage_url,timestamp,upload_date,like_count,view_count,duration';
+  'webpage_url,timestamp,upload_date,like_count,view_count,duration,width,height';
 function buildYtdlpArgs(p) {
   must(p && typeof p.url === 'string', 'url (string) required');
   must(/^https?:\/\//i.test(p.url), 'url must be http(s)');
@@ -693,6 +696,13 @@ function igSave(req, res, origin) {
 // of every file produced (a carousel /p post yields several). All argv tokens are
 // literal under spawn(shell:false); the only caller value is the validated URL.
 const IG_MEDIA_DIR = path.join(__dirname, 'ig_media');
+// Mirror of the AHK SanitizeFilePart (ytdl_v26.ahk:843): strip the chars Windows
+// forbids in a filename, collapse whitespace, trim leading/trailing dots. Keeps
+// the convention's structural chars ~ [ ] @ (all legal on Windows).
+function igSanitizeName(s) {
+  s = String(s || '').replace(/[<>":\/\\|?*\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '');
+  return s || 'unknown';
+}
 function igDownload(req, res, origin) {
   readJson(req, 64 * 1024).then(payload => {
     const url = String(payload.url || '');
@@ -700,11 +710,15 @@ function igDownload(req, res, origin) {
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     if (!id) { sendJson(res, 400, { ok: false, error: 'id required' }, origin); return; }
     try { fs.mkdirSync(IG_MEDIA_DIR, { recursive: true }); } catch (_) {}
-    const outTmpl = path.join(IG_MEDIA_DIR, id + '.%(ext)s');
+    // Filename stem: the client passes the AHK-convention `name` (already built from
+    // the enriched row); fall back to the bare id. Sanitized + length-capped here as
+    // the safety boundary — the client value never reaches the shell (spawn literal).
+    const stem = igSanitizeName(payload.name || id).slice(0, 180);
+    const outTmpl = path.join(IG_MEDIA_DIR, stem + '.%(ext)s');
     const baseArgs = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '-o', outTmpl];
 
     function listFiles() {
-      try { return fs.readdirSync(IG_MEDIA_DIR).filter(f => f === id || f.startsWith(id + '.') || f.startsWith(id + '_')); }
+      try { return fs.readdirSync(IG_MEDIA_DIR).filter(f => f === stem || f.startsWith(stem + '.') || f.startsWith(stem + '_')); }
       catch (_) { return []; }
     }
     function run(withCookies, onDone) {
@@ -747,7 +761,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore'] }));
     return;
   }
 
@@ -865,6 +879,6 @@ http.createServer((req, res) => {
   console.log(`Local exec bridge: POST /exec/{${Object.keys(EXEC_ALLOW).join(',')}}`);
   console.log(`Screen recorder:   POST /rec/{start,stop}  → vsteps-<ts>.mp4 in ${__dirname}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
-  console.log(`Harvest store:     POST /ig/add  → ig.json in ${__dirname}`);
-  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest`);
+  console.log(`Harvest store:     POST /ig/{add,save,download}  → ig.json + ig_media/ in ${__dirname}`);
+  console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
 });
