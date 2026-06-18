@@ -32,11 +32,11 @@
   let sel = new Set();                 // selected ids (batch ops)
   let lastCheckedId = null;            // anchor for shift-click range selection
   let focusId = null;                  // row open in the detail drawer
-  let hoverTxt = null;                 // {id, field} of the ttxt/ftext cell under the mouse (E → edit)
   let dirty = false;                   // unsaved enrich/promote/status edits
   let busy = false;                    // a batch op is running
   let batchAbort = false;              // user pressed Stop during a batch
   let lastOpError = '';                // last enrich/download error (for throttle detection)
+  let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
 
   // yt-dlp / IG rate-limit signatures (NOT plain login walls — those just fall back
   // to cookies on download). If a batch item fails with one of these, we stop the
@@ -55,20 +55,6 @@
                    : /\/tv\//i.test(r.url || '') ? 'tv' : '?';
   const igLink = r => r.url || ('https://www.instagram.com/p/' + r.id + '/');
   const pad2 = n => String(n).padStart(2, '0');
-
-  // (dev0436) HTML → one-line plain text (for the narrow ttxt/ftext preview cells).
-  function plainText(html) {
-    const d = document.createElement('div');
-    d.innerHTML = html || '';
-    return (d.textContent || '').replace(/\s+/g, ' ').trim();
-  }
-  // A narrow preview <td> for an editable HTML field. `igtxt` + data-field mark
-  // it for the hover-then-E open-editor path; the title shows the full text.
-  function txtCell(r, field) {
-    const txt = plainText(r[field]);
-    const body = txt ? esc(txt) : '<span class="no">—</span>';
-    return `<td class="igtxt" data-field="${field}" title="${txt ? esc(txt) : 'empty — hover & press E to edit'}">${body}</td>`;
-  }
 
   // hh.mm.ss (AHK FormatHMS — used in the download filename).
   function fmtHMS(sec) {
@@ -104,9 +90,50 @@
     return dur + '~' + res + '~' + sanitizePart(title) + '~@' + sanitizePart(chan) + '~[[i[' + r.id + ']]]';
   }
 
+  // (dev0437) Centered toast that renders ABOVE the I overlay. The global `toast`
+  // sits at z-index 9999 — BEHIND #igOverlay (29500) — so it was invisible here;
+  // this one lives inside the overlay's stacking context, screen-centered, and
+  // never touches document flow (no header shift). Multi-line via \n.
   function igToast(msg, ms) {
-    if (typeof toast === 'function') toast(msg, ms || 2200);
-    else console.log('[ig]', msg);
+    let t = document.getElementById('igToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'igToast';
+      (document.getElementById('igOverlay') || document.body).appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._tid);
+    t._tid = setTimeout(() => t.classList.remove('show'), ms || 2200);
+    if (typeof console !== 'undefined') console.log('[ig]', msg);
+  }
+
+  // (dev0437) Sticky centered status panel for batch ops — live progress + its
+  // OWN Stop button, so harvesting/downloading no longer writes into the top bar
+  // (which shifted the column headers down). Shown for the duration of a batch.
+  function igBatchShow(msg) {
+    let t = document.getElementById('igBatch');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'igBatch';
+      t.innerHTML = '<div class="msg"></div><button class="stop">⏹ Stop</button>';
+      (document.getElementById('igOverlay') || document.body).appendChild(t);
+      t.querySelector('.stop').addEventListener('click', () => {
+        batchAbort = true;
+        t.querySelector('.stop').textContent = '⏹ Stopping…';
+      });
+    }
+    t.querySelector('.msg').textContent = msg;
+    t.querySelector('.stop').textContent = '⏹ Stop';
+    t.classList.add('show');
+  }
+  function igBatchUpdate(msg) {
+    const t = document.getElementById('igBatch');
+    if (t) t.querySelector('.msg').textContent = msg;
+  }
+  function igBatchHide() {
+    const t = document.getElementById('igBatch');
+    if (t) t.classList.remove('show');
   }
 
   // ── CSS (scoped under #igOverlay, injected once) ────────────────────────────
@@ -152,9 +179,22 @@
 #igTable a.idlink{color:#7fb8ff;text-decoration:none}
 #igTable a.idlink:hover{text-decoration:underline}
 #igTable .yes{color:#7fd47f;font-weight:700}.no{color:#4a5563}
+#igToast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.96);
+  background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:12px;
+  padding:16px 26px;font:14px/1.5 system-ui,Segoe UI,sans-serif;text-align:center;
+  white-space:pre-line;max-width:560px;box-shadow:0 14px 50px rgba(0,0,0,.65);
+  z-index:40000;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+#igToast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#igBatch{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:14px;
+  padding:20px 28px;min-width:320px;max-width:560px;text-align:center;
+  box-shadow:0 16px 56px rgba(0,0,0,.7);z-index:40001;display:none;pointer-events:none}
+#igBatch.show{display:block}
+#igBatch .msg{font:14px/1.55 system-ui,Segoe UI,sans-serif;white-space:pre-line;margin-bottom:14px}
+#igBatch .stop{pointer-events:auto;background:#7a2230;border:1px solid #b3344a;color:#fff;
+  border-radius:8px;padding:8px 20px;cursor:pointer;font:600 13px system-ui}
+#igBatch .stop:hover{background:#933049}
 #igTable .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#9fb0c2}
-#igTable td.igtxt{color:#aeb9c6;font-size:12px;cursor:text}
-#igTable td.igtxt:hover{background:#243349;box-shadow:inset 0 0 0 1px #3a5170;color:#dfe6ee}
 #igTable td.c-act{white-space:nowrap}
 #igTable td.c-act button{background:#1f2733;border:1px solid #34404f;color:#cfe;
   border-radius:5px;padding:3px 7px;margin-right:3px;cursor:pointer;font:600 11px system-ui}
@@ -215,7 +255,6 @@
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status</option><option value="new">new</option><option value="enriched">enriched</option><option value="downloaded">downloaded</option><option value="promoted">promoted</option></select>
         <div class="spacer"></div>
-        <button id="igStop" style="display:none;background:#7a2230;border-color:#b3344a;color:#fff">⏹ Stop</button>
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igEnrichSel">✨ Enrich sel</button>
         <button id="igDownloadSel">⬇ Download sel</button>
@@ -242,7 +281,6 @@
     $('igAuthor').addEventListener('change', e => { authorFilter = e.target.value; applyAndRender(); });
     $('igKind').addEventListener('change', e => { kindFilter = e.target.value; applyAndRender(); });
     $('igStatus').addEventListener('change', e => { statusFilter = e.target.value; applyAndRender(); });
-    $('igStop').addEventListener('click', () => { batchAbort = true; document.getElementById('igStop').textContent = '⏹ Stopping…'; });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
     $('igPromoteSel').addEventListener('click', () => batchPromote());
@@ -254,15 +292,7 @@
     $('igModalCancel').addEventListener('click', () => closePasteModal());
     $('igModalApply').addEventListener('click', () => applyPaste());
     o.querySelector('#igTable thead').addEventListener('click', onHeadClick);
-    const tbodyEl = o.querySelector('#igTable tbody');
-    tbodyEl.addEventListener('click', onBodyClick);
-    // (dev0436) Track which ttxt/ftext cell the mouse is over so E can open the
-    // T HTML editor on that field. mouseover bubbles → a non-txt cell clears it.
-    tbodyEl.addEventListener('mouseover', e => {
-      const td = e.target.closest('td.igtxt');
-      hoverTxt = td ? { id: td.closest('tr').dataset.id, field: td.dataset.field } : null;
-    });
-    tbodyEl.addEventListener('mouseleave', () => { hoverTxt = null; });
+    o.querySelector('#igTable tbody').addEventListener('click', onBodyClick);
   }
 
   // ── Columns ─────────────────────────────────────────────────────────────────
@@ -271,14 +301,12 @@
     { key: 'kind', label: 'Kind', w: 50, sort: true },
     { key: 'author', label: 'Author', w: 120, sort: true },
     { key: 'id', label: 'ID', w: 110, sort: true },
-    { key: 'VidTitle', label: 'Title', w: 220, sort: true },
-    // (dev0436) Narrow text-preview columns. Hover one and press E to open the
-    // T HTML editor on that field (ttxt / ftext) of the hovered ig.json row.
-    { key: '_ttxtTxt', label: 'ttxt', w: 110, sort: false },
-    { key: '_ftextTxt', label: 'ftext', w: 110, sort: false },
+    { key: 'VidTitle', label: 'Title', w: 250, sort: true },
     { key: 'durSecs', label: 'Dur', w: 60, sort: true },
     { key: '_wxh', label: 'W×H', w: 80, sort: true },
     { key: 'DatePosted', label: 'Posted', w: 96, sort: true },
+    { key: '_cap', label: 'ftext', w: 46, sort: false },
+    { key: '_ttxt', label: 'ttxt', w: 46, sort: false },
     { key: 'status', label: 'Status', w: 86, sort: true },
     { key: 'DateAdded', label: 'Harvested', w: 130, sort: true },
     { key: '_act', label: 'Actions', w: 160, sort: false }
@@ -366,8 +394,8 @@
     tb.innerHTML = view.map(r => {
       const k = kindOf(r);
       const st = r.status || 'new';
-      const ttCell = txtCell(r, 'ttxt');
-      const ftCell = txtCell(r, 'ftext');
+      const cap = r.ftext ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
+      const tt = r.ttxt ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
       const wxh = (r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>';
       const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
       return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''}">
@@ -376,11 +404,11 @@
         <td title="${esc(r.author)}">${esc(r.author)}</td>
         <td><a class="idlink" href="${esc(igLink(r))}" target="_blank" rel="noopener" title="Open on Instagram">${esc(r.id)}</a></td>
         <td title="${esc(r.VidTitle || '')}">${esc(r.VidTitle || '')}</td>
-        ${ttCell}
-        ${ftCell}
         <td class="mono">${dur}</td>
         <td class="mono">${wxh}</td>
         <td class="mono">${esc(r.DatePosted || '') || '<span class="no">—</span>'}</td>
+        <td style="text-align:center">${cap}</td>
+        <td style="text-align:center">${tt}</td>
         <td><span class="s-${st}">${st}</span></td>
         <td class="mono">${esc(r.DateAdded || '')}</td>
         <td class="c-act">
@@ -508,7 +536,7 @@
   async function enrichRow(r, single) {
     if (typeof _ytdlpFetchMeta !== 'function') { igToast('yt-dlp pipeline not loaded', 2500); return false; }
     try {
-      if (single) igToast('⏳ Enriching ' + r.id + '…', 6000);
+      if (single) igToast('⏳ Enriching ' + r.id + '…\n🍪 cookieless (account-safe)', 6000);
       if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
       const meta = await _ytdlpFetchMeta(r.url);
       const desc = (meta.description || '').trim();
@@ -530,8 +558,9 @@
       if (meta.width) r.width = +meta.width;
       if (meta.height) r.height = +meta.height;
       if (r.status === 'new' || !r.status) r.status = 'enriched';
+      lastOpInfo = 'cookieless';
       dirty = true;
-      if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id, 1500); }
+      if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id + '  ·  🍪 cookieless', 1800); }
       return true;
     } catch (e) {
       lastOpError = (e && e.message) || '';
@@ -545,30 +574,44 @@
   // rate-limit signature. `skipIf(r)` → already-done rows are skipped instantly
   // (no network, no delay), so re-running with everything still selected only
   // touches the rows that still need work.
-  async function runBatch(label, ids, gap, doOne, skipIf) {
+  async function runBatch(label, ids, gap, doOne, skipIf, posture) {
     busy = true; batchAbort = false; setBatchUi(true);
     let ok = 0, done = 0, skipped = 0, throttled = false;
+    const t0 = Date.now();
+    const total = ids.reduce((n, id) => { const r = rowById(id); return n + (r && !(skipIf && skipIf(r)) ? 1 : 0); }, 0);
+    // (dev0437) Live status in a centered panel (no top-bar shift). Each line:
+    // action + N/total, cookie posture, running speed, and the pacing countdown.
+    const fmtSpeed = () => (done ? `~${((Date.now() - t0) / 1000 / done).toFixed(1)}s/item` : '');
+    igBatchShow(`${label}…\n${posture}\n0/${total}`);
     for (const id of ids) {
       if (batchAbort) break;
       const r = rowById(id); if (!r) continue;
       if (skipIf && skipIf(r)) { skipped++; continue; }
-      if (done > 0) { await sleep(rnd(gap[0], gap[1])); if (batchAbort) break; }  // gap between items
+      if (done > 0) {
+        const g = rnd(gap[0], gap[1]);
+        igBatchUpdate(`${label} ${done}/${total} done · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${posture}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
+        await sleep(g); if (batchAbort) break;
+      }
       done++;
-      document.getElementById('igCount').textContent =
-        `${label} ${done}… (✓ ${ok}${skipped ? ' · skipped ' + skipped : ''})`;
-      lastOpError = '';
-      if (await doOne(r)) ok++;
-      else if (RATE_LIMIT_RE.test(lastOpError)) { throttled = true; }
+      lastOpError = ''; lastOpInfo = '';
+      igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${posture}${done > 1 ? '\n' + fmtSpeed() : ''}`);
+      const good = await doOne(r);
+      if (good) {
+        ok++;
+        igBatchUpdate(`${label} ${r.id}  ·  ${lastOpInfo ? '🍪 ' + lastOpInfo : posture}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${fmtSpeed()}`);
+      } else if (RATE_LIMIT_RE.test(lastOpError)) { throttled = true; }
       applyAndRender();
       if (throttled) break;
     }
-    busy = false; setBatchUi(false);
+    busy = false; setBatchUi(false); igBatchHide();
     if (ok) { dirty = true; await persist(false); }
     applyAndRender();
+    const secs = ((Date.now() - t0) / 1000).toFixed(0);
     const tail = skipped ? ` · skipped ${skipped} already-done` : '';
-    if (throttled) igToast(`⏸ Stopped after ${ok} — IG rate-limit detected. Wait a few minutes, then resume.${tail}\n${(lastOpError || '').slice(0, 80)}`, 7000);
-    else if (batchAbort) igToast(`⏹ Stopped — ${ok} done${tail}`, 2800);
-    else igToast(`✓ ${label.toLowerCase()} ${ok}${tail}`, 2800);
+    const speed = ok ? `  ·  ${fmtSpeed()} over ${secs}s` : '';
+    if (throttled) igToast(`⏸ Stopped after ${ok} — IG rate-limit detected.\nWait a few minutes, then resume.${tail}\n${(lastOpError || '').slice(0, 80)}`, 7000);
+    else if (batchAbort) igToast(`⏹ Stopped — ${ok} done${tail}${speed}`, 3000);
+    else igToast(`✓ ${label} — ${ok} done${tail}${speed}`, 3200);
     return ok;
   }
 
@@ -585,7 +628,8 @@
     if (ids.every(id => { const r = rowById(id); return r && isEnriched(r); })) {
       igToast('All selected rows are already enriched — nothing to do', 2600); return;
     }
-    await runBatch('Enriched', ids, ENRICH_GAP, r => enrichRow(r, false), isEnriched);
+    await runBatch('Enriching', ids, ENRICH_GAP, r => enrichRow(r, false), isEnriched,
+      '🍪 cookieless (account-safe — IP rate-limit is the only risk)');
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
@@ -597,7 +641,7 @@
       applyAndRender();
     }
     try {
-      if (single) igToast('⏳ Downloading ' + r.id + '… (max res — can take a bit)', 12000);
+      if (single) igToast('⏳ Downloading ' + r.id + '…\n🍪 cookieless first (Firefox cookies only if walled)\nmax res — can take a bit', 12000);
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r) })
@@ -606,8 +650,10 @@
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       r.localFiles = j.files || [];
       if (r.status !== 'promoted') r.status = 'downloaded';
+      // The proxy only tags the response when it had to fall back to Firefox cookies.
+      lastOpInfo = j.note ? 'used Firefox cookies' : 'cookieless';
       dirty = true;
-      if (single) { applyAndRender(); persist(false); igToast('✓ downloaded ' + r.id + '\n' + (r.localFiles[0] || ''), 2800); }
+      if (single) { applyAndRender(); persist(false); igToast('✓ downloaded ' + r.id + '  ·  🍪 ' + lastOpInfo + '\n' + (r.localFiles[0] || ''), 3000); }
       return true;
     } catch (e) {
       lastOpError = (e && e.message) || '';
@@ -628,7 +674,8 @@
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
       + `• Heavier than Enrich; tries cookieless first, your Firefox session only if walled — keep batches modest.\n`
       + `• Press ⏹ Stop any time.`)) return;
-    await runBatch('Downloaded', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded);
+    await runBatch('Downloading', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
+      '🍪 cookieless first · Firefox cookies only if walled');
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
@@ -678,8 +725,8 @@
     ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igReload', 'igPaste'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
-    const stop = document.getElementById('igStop');
-    if (stop) { stop.style.display = on ? '' : 'none'; if (on) stop.textContent = '⏹ Stop'; }
+    // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the
+    // top bar no longer toggles a button — that toggle reflowed the header row.
   }
 
   // ── Firefox "Save Page As Text" → ttxt (the manual, unflaggable rich path) ──
@@ -805,39 +852,10 @@
     return document.getElementById('igOverlay')?.classList.contains('open') || false;
   }
 
-  // (dev0436) Open the shared T HTML editor (xe.js) on a ttxt/ftext field of an
-  // ig.json row. onSave persists to ig.json (NOT ml.json) and refreshes the row.
-  function openTextEditorFor(id, field) {
-    if (typeof gridOpenTextEditor !== 'function') { igToast('Text editor unavailable', 2200); return; }
-    const r = rowById(id);
-    if (!r) return;
-    gridOpenTextEditor('', r, {
-      field,
-      onSave: () => { dirty = true; renderBody(); persist(false); }
-    });
-  }
-
-  // (dev0436) Hover a ttxt/ftext cell + press E → edit it in the T HTML editor.
-  // Capture-phase, but only swallows the key when actually opening so the global
-  // dev-scroll E (and typing E in inputs) is otherwise untouched.
-  window.addEventListener('keydown', e => {
-    if (!isIgScreenOpen()) return;
-    if (e.key !== 'e' && e.key !== 'E') return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (modalOpen() || document.getElementById('textEditorOverlay')) return;
-    const ae = document.activeElement;
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-    if (!hoverTxt) return;
-    e.stopPropagation(); e.preventDefault();
-    openTextEditorFor(hoverTxt.id, hoverTxt.field);
-  }, true);
-
   // Esc: close drawer first, then the screen. Capture-phase so it beats other
   // global Esc handlers while Ig owns the screen.
   window.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || !isIgScreenOpen()) return;
-    // The T HTML editor sits on top with its own Esc handling — let it own Esc.
-    if (document.getElementById('textEditorOverlay')) return;
     if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }
