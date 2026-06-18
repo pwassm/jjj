@@ -39,10 +39,16 @@
   let lastOpError = '';                // last enrich/download error (for throttle detection)
   let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
 
-  // yt-dlp / IG rate-limit signatures (NOT plain login walls — those just fall back
-  // to cookies on download). If a batch item fails with one of these, we stop the
-  // whole batch so we don't keep hammering a throttle.
-  const RATE_LIMIT_RE = /\b429\b|rate.?limit|too many requests|please wait a few|temporarily (locked|blocked|unavailable)|checkpoint_required|challenge_required|try again later/i;
+  // STRONG, unambiguous IG throttle signatures. If a batch item fails with one of
+  // these we stop the whole batch so we don't keep hammering a real throttle.
+  // (dev0440) Deliberately NO bare "rate-limit" match: yt-dlp's cookieless wall
+  // error is "…rate-limit reached or login required…" — that's a LOGIN WALL (enrich
+  // is cookieless, so walled posts always fail that way), NOT an IP throttle. The
+  // bare match was firing on every walled post and aborting the whole enrich batch
+  // even though downloads (which fall back to cookies) were fine. isThrottle() also
+  // excludes anything that mentions "login required".
+  const RATE_LIMIT_RE = /\b429\b|too many requests|please wait a few|temporarily (locked|blocked|unavailable)|checkpoint_required|challenge_required|try again later/i;
+  const isThrottle = err => !!err && RATE_LIMIT_RE.test(err) && !/login\s*required/i.test(err);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const rnd = (a, b) => a + Math.random() * (b - a);
   const ENRICH_GAP = [1200, 3000];     // ms between batch enrich items (cookieless)
@@ -538,7 +544,7 @@
   async function enrichRow(r, single) {
     if (typeof _ytdlpFetchMeta !== 'function') { igToast('yt-dlp pipeline not loaded', 2500); return false; }
     try {
-      if (single) igToast('⏳ Enriching ' + r.id + '…\n🍪 cookieless (account-safe)', 6000);
+      if (single) igToast('⏳ Enriching ' + r.id + '…\n🍪 No Firefox cookies used (account-safe)', 6000);
       if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
       const meta = await _ytdlpFetchMeta(r.url);
       const desc = (meta.description || '').trim();
@@ -563,13 +569,21 @@
       if (meta.width) r.width = +meta.width;
       if (meta.height) r.height = +meta.height;
       if (r.status === 'new' || !r.status) r.status = 'enriched';
-      lastOpInfo = 'cookieless';
+      lastOpInfo = 'No firefox cookies used';
       dirty = true;
-      if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id + '  ·  🍪 cookieless', 1800); }
+      if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id + '\n🍪 No Firefox cookies used', 2000); }
       return true;
     } catch (e) {
       lastOpError = (e && e.message) || '';
-      if (single) igToast('✗ enrich ' + r.id + ': ' + lastOpError, 3200);
+      if (single) {
+        // (dev0440) yt-dlp's cookieless wall error mentions "rate-limit reached
+        // or login required" — that's a LOGIN WALL, not a throttle. Say so plainly
+        // so it isn't mistaken for an IP rate-limit (Download still works via cookies).
+        const walled = /login\s*required|content is not available/i.test(lastOpError);
+        igToast(walled
+          ? '✗ enrich ' + r.id + ' — login-walled (not a rate-limit)\nCookieless enrich can\'t read this post. Download still works (Firefox cookies if needed), or use 📋 Paste saved-text.'
+          : '✗ enrich ' + r.id + ': ' + lastOpError, 4000);
+      }
       return false;
     }
   }
@@ -581,7 +595,7 @@
   // touches the rows that still need work.
   async function runBatch(label, ids, gap, doOne, skipIf, posture) {
     busy = true; batchAbort = false; setBatchUi(true);
-    let ok = 0, done = 0, skipped = 0, throttled = false;
+    let ok = 0, done = 0, skipped = 0, throttled = false, cookieUsed = 0;
     const t0 = Date.now();
     const total = ids.reduce((n, id) => { const r = rowById(id); return n + (r && !(skipIf && skipIf(r)) ? 1 : 0); }, 0);
     // (dev0437) Live status in a centered panel (no top-bar shift). Each line:
@@ -603,8 +617,9 @@
       const good = await doOne(r);
       if (good) {
         ok++;
+        if (lastOpInfo === 'Firefox cookies used') cookieUsed++;
         igBatchUpdate(`${label} ${r.id}  ·  ${lastOpInfo ? '🍪 ' + lastOpInfo : posture}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${fmtSpeed()}`);
-      } else if (RATE_LIMIT_RE.test(lastOpError)) { throttled = true; }
+      } else if (isThrottle(lastOpError)) { throttled = true; }
       applyAndRender();
       if (throttled) break;
     }
@@ -614,9 +629,13 @@
     const secs = ((Date.now() - t0) / 1000).toFixed(0);
     const tail = skipped ? ` · skipped ${skipped} already-done` : '';
     const speed = ok ? `  ·  ${fmtSpeed()} over ${secs}s` : '';
+    // (dev0440) Explicit cookie reassurance on the summary, every time.
+    const cookieLine = ok ? '\n' + (cookieUsed
+      ? `🍪 Firefox cookies used for ${cookieUsed} of ${ok}`
+      : '🍪 No Firefox cookies used') : '';
     if (throttled) igToast(`⏸ Stopped after ${ok} — IG rate-limit detected.\nWait a few minutes, then resume.${tail}\n${(lastOpError || '').slice(0, 80)}`, 7000);
-    else if (batchAbort) igToast(`⏹ Stopped — ${ok} done${tail}${speed}`, 3000);
-    else igToast(`✓ ${label} — ${ok} done${tail}${speed}`, 3200);
+    else if (batchAbort) igToast(`⏹ Stopped — ${ok} done${tail}${speed}${cookieLine}`, 3500);
+    else igToast(`✓ ${label} — ${ok} done${tail}${speed}${cookieLine}`, 3600);
     return ok;
   }
 
@@ -634,7 +653,7 @@
       igToast('All selected rows are already enriched — nothing to do', 2600); return;
     }
     await runBatch('Enriching', ids, ENRICH_GAP, r => enrichRow(r, false), isEnriched,
-      '🍪 cookieless (account-safe — IP rate-limit is the only risk)');
+      '🍪 No Firefox cookies used (account-safe — IP rate-limit is the only risk)');
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
