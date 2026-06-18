@@ -38,6 +38,12 @@
   let batchAbort = false;              // user pressed Stop during a batch
   let lastOpError = '';                // last enrich/download error (for throttle detection)
   let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
+  // (dev0441) Posts that FAILED cookieless enrich this session because they're
+  // login-walled (yt-dlp can't read them without cookies). They keep status 'new'
+  // — so without this they'd be re-hit on EVERY bulk Enrich, never succeeding and
+  // showing no change. Bulk Enrich skips them after one attempt; ↻ Reload (or a
+  // single ✨) retries. Session-only (not persisted) so a reload always re-tries.
+  const enrichFailed = new Set();
 
   // STRONG, unambiguous IG throttle signatures. If a batch item fails with one of
   // these we stop the whole batch so we don't keep hammering a real throttle.
@@ -186,6 +192,7 @@
 #igTable a.idlink{color:#7fb8ff;text-decoration:none}
 #igTable a.idlink:hover{text-decoration:underline}
 #igTable .yes{color:#7fd47f;font-weight:700}.no{color:#4a5563}
+#igTable .walled{color:#d59a3a;cursor:help}
 #igToast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.96);
   background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:12px;
   padding:16px 26px;font:14px/1.5 system-ui,Segoe UI,sans-serif;text-align:center;
@@ -417,7 +424,7 @@
         <td class="mono">${esc(r.DatePosted || '') || '<span class="no">—</span>'}</td>
         <td style="text-align:center">${cap}</td>
         <td style="text-align:center">${tt}</td>
-        <td><span class="s-${st}">${st}</span></td>
+        <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Download uses Firefox cookies, or 📋 Saved-text; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}</td>
         <td class="mono">${esc(r.DateAdded || '')}</td>
         <td class="c-act">
           <button data-act="enrich" title="yt-dlp → title/caption/ttxt/author/date/res">✨</button>
@@ -570,11 +577,16 @@
       if (meta.height) r.height = +meta.height;
       if (r.status === 'new' || !r.status) r.status = 'enriched';
       lastOpInfo = 'No firefox cookies used';
+      enrichFailed.delete(r.id);     // succeeded → clear any prior wall mark
       dirty = true;
       if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id + '\n🍪 No Firefox cookies used', 2000); }
       return true;
     } catch (e) {
       lastOpError = (e && e.message) || '';
+      // (dev0441) Mark login-walled posts so bulk Enrich stops re-hitting them this
+      // session (they can't succeed cookielessly). Transient/proxy errors are NOT
+      // marked — those should still retry. Reload clears the whole set.
+      if (/login\s*required|content is not available|empty metadata/i.test(lastOpError)) enrichFailed.add(r.id);
       if (single) {
         // (dev0440) yt-dlp's cookieless wall error mentions "rate-limit reached
         // or login required" — that's a LOGIN WALL, not a throttle. Say so plainly
@@ -642,6 +654,9 @@
   // A row counts as already enriched once a successful enrich stamped its status
   // off 'new' (downloaded/promoted rows were enriched first, so they're covered too).
   const isEnriched = r => !!r.status && r.status !== 'new';
+  // (dev0441) Bulk-enrich "done" = already enriched OR a login-wall this session.
+  // The latter keeps it out of the re-hit loop that produced no visible change.
+  const igEnrichDone = r => isEnriched(r) || enrichFailed.has(r.id);
   // A row counts as already downloaded once it has media files on disk.
   const isDownloaded = r => !!(r.localFiles && r.localFiles.length);
 
@@ -649,10 +664,14 @@
     const ids = [...sel];
     if (!ids.length) { igToast('Select rows first (checkbox; Shift-click for a range)', 2200); return; }
     if (busy) return;
-    if (ids.every(id => { const r = rowById(id); return r && isEnriched(r); })) {
-      igToast('All selected rows are already enriched — nothing to do', 2600); return;
+    if (ids.every(id => { const r = rowById(id); return r && igEnrichDone(r); })) {
+      const walled = ids.filter(id => { const r = rowById(id); return r && !isEnriched(r) && enrichFailed.has(id); }).length;
+      igToast(walled
+        ? `Nothing to do — ${walled} selected are login-walled (tried this session).\n↻ Reload to retry, or use Download / 📋 Saved-text.`
+        : 'All selected rows are already enriched — nothing to do', 3200);
+      return;
     }
-    await runBatch('Enriching', ids, ENRICH_GAP, r => enrichRow(r, false), isEnriched,
+    await runBatch('Enriching', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
       '🍪 No Firefox cookies used (account-safe — IP rate-limit is the only risk)');
   }
 
@@ -863,7 +882,7 @@
       rows = r.ok ? (await r.json()) : [];
       if (!Array.isArray(rows)) rows = [];
     } catch (e) { rows = []; igToast('Could not load ig.json: ' + e.message, 3000); }
-    sel.clear(); dirty = false; lastCheckedId = null;
+    sel.clear(); dirty = false; lastCheckedId = null; enrichFailed.clear();   // (dev0441) fresh retry after reload
     refreshAuthorOptions();
     applyAndRender();
   }
