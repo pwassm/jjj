@@ -37,7 +37,9 @@ const PORT = 8081;
 //   fixes Instagram CAROUSEL posts (caption lives on the playlist top, dims on the
 //   entries) that previously returned result:null → client "yt-dlp exit 0" → Enrich
 //   silently did nothing. Now flattens both levels, taking MAX W×H across entries.
-const PROXY_BUILD = 'dev0433';
+// (dev0434) /ig/download cookie order REVERSED → cookieless first, Firefox cookies
+//   only as fallback (lowers account linkage for bulk downloads — user concern).
+const PROXY_BUILD = 'dev0434';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -754,11 +756,14 @@ function igSave(req, res, origin) {
 }
 
 // (dev0429) /ig/download — yt-dlp downloads a reel/post's media into <project>/
-// ig_media/<id>.<ext>. Pulls Firefox cookies (the user's logged-in session — the
-// same one the harvester reads) so IG doesn't login-wall the media; falls back to
-// a cookieless attempt if the cookie DB is locked/unavailable. Returns the basenames
-// of every file produced (a carousel /p post yields several). All argv tokens are
-// literal under spawn(shell:false); the only caller value is the validated URL.
+// ig_media/<stem>.<ext>. Returns the basenames of every file produced (a carousel
+// /p post yields several). All argv tokens are literal under spawn(shell:false);
+// the only caller value is the validated URL.
+// (dev0434) Cookie order REVERSED → COOKIELESS FIRST, Firefox-cookies only as a
+// fallback. Rationale (user's account-awareness concern for bulk downloads): a
+// cookieless request carries no account session, so IG can't link it to the user;
+// only content that's genuinely login-walled falls through to the cookie attempt.
+// Trade-off: a walled item costs one failed cookieless try first (a few seconds).
 const IG_MEDIA_DIR = path.join(__dirname, 'ig_media');
 // Mirror of the AHK SanitizeFilePart (ytdl_v26.ahk:843): strip the chars Windows
 // forbids in a filename, collapse whitespace, trim leading/trailing dots. Keeps
@@ -794,13 +799,13 @@ function igDownload(req, res, origin) {
       proc.on('error', e => onDone(false, e.message));
       proc.on('close', code => onDone(code === 0, stderr.trim()));
     }
-    // Try with Firefox cookies first; if that fails (locked DB / not logged in),
-    // retry cookieless before giving up.
-    run(true, (ok1, err1) => {
+    // (dev0434) Cookieless FIRST (keeps the account out of it); only fall back to
+    // Firefox cookies if the content is login-walled.
+    run(false, (ok1, err1) => {
       if (ok1) { sendJson(res, 200, { ok: true, files: listFiles() }, origin); return; }
-      run(false, (ok2, err2) => {
-        if (ok2) { sendJson(res, 200, { ok: true, files: listFiles(), note: 'downloaded without cookies' }, origin); return; }
-        console.warn('[ig/download] ' + id + ' failed: ' + (err1 || err2));
+      run(true, (ok2, err2) => {
+        if (ok2) { sendJson(res, 200, { ok: true, files: listFiles(), note: 'needed Firefox cookies' }, origin); return; }
+        console.warn('[ig/download] ' + id + ' failed: ' + (err2 || err1));
         sendJson(res, 502, { ok: false, error: (err2 || err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
       });
     });

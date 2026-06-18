@@ -28,11 +28,23 @@
   let rows = [];                       // the live ig.json array (mutated in place)
   let view = [];                       // filtered + sorted slice of `rows`
   let sortCol = 'DateAdded', sortDir = -1;
-  let query = '', kindFilter = 'all', statusFilter = 'all';
+  let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
   let sel = new Set();                 // selected ids (batch ops)
+  let lastCheckedId = null;            // anchor for shift-click range selection
   let focusId = null;                  // row open in the detail drawer
   let dirty = false;                   // unsaved enrich/promote/status edits
   let busy = false;                    // a batch op is running
+  let batchAbort = false;              // user pressed Stop during a batch
+  let lastOpError = '';                // last enrich/download error (for throttle detection)
+
+  // yt-dlp / IG rate-limit signatures (NOT plain login walls — those just fall back
+  // to cookies on download). If a batch item fails with one of these, we stop the
+  // whole batch so we don't keep hammering a throttle.
+  const RATE_LIMIT_RE = /\b429\b|rate.?limit|too many requests|please wait a few|temporarily (locked|blocked|unavailable)|checkpoint_required|challenge_required|try again later/i;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const ENRICH_GAP = [1200, 3000];     // ms between batch enrich items (cookieless)
+  const DOWNLOAD_GAP = [2500, 6000];   // ms between batch downloads (heavier, may use cookies)
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -182,9 +194,11 @@
         <h2>I · Ig staging</h2>
         <span class="ct" id="igCount"></span>
         <input type="text" id="igSearch" placeholder="search author / id / title / caption…">
+        <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status</option><option value="new">new</option><option value="enriched">enriched</option><option value="downloaded">downloaded</option><option value="promoted">promoted</option></select>
         <div class="spacer"></div>
+        <button id="igStop" style="display:none;background:#7a2230;border-color:#b3344a;color:#fff">⏹ Stop</button>
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igEnrichSel">✨ Enrich sel</button>
         <button id="igDownloadSel">⬇ Download sel</button>
@@ -208,8 +222,10 @@
 
     const $ = id => o.querySelector('#' + id);
     $('igSearch').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); applyAndRender(); });
+    $('igAuthor').addEventListener('change', e => { authorFilter = e.target.value; applyAndRender(); });
     $('igKind').addEventListener('change', e => { kindFilter = e.target.value; applyAndRender(); });
     $('igStatus').addEventListener('change', e => { statusFilter = e.target.value; applyAndRender(); });
+    $('igStop').addEventListener('click', () => { batchAbort = true; document.getElementById('igStop').textContent = '⏹ Stopping…'; });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
     $('igPromoteSel').addEventListener('click', () => batchPromote());
@@ -270,6 +286,7 @@
   // ── Filter + sort ───────────────────────────────────────────────────────────
   function applyAndRender() {
     view = rows.filter(r => {
+      if (authorFilter !== 'all' && r.author !== authorFilter) return false;
       if (kindFilter !== 'all' && kindOf(r) !== kindFilter) return false;
       if (statusFilter !== 'all' && (r.status || 'new') !== statusFilter) return false;
       if (query) {
@@ -360,7 +377,22 @@
     const r = rowById(tr.dataset.id);
     if (!r) return;
     if (e.target.classList.contains('igchk')) {
+      // Shift-click = select the contiguous range (in current view order) from the
+      // last-clicked checkbox to this one — the easy way to grab many rows at once.
+      if (e.shiftKey && lastCheckedId) {
+        const ids = view.map(x => x.id);
+        let i = ids.indexOf(lastCheckedId), j = ids.indexOf(r.id);
+        if (i >= 0 && j >= 0) {
+          if (i > j) { const t = i; i = j; j = t; }
+          const on = e.target.checked;
+          for (let k = i; k <= j; k++) { if (on) sel.add(ids[k]); else sel.delete(ids[k]); }
+          renderBody();
+          lastCheckedId = r.id;
+          return;
+        }
+      }
       if (e.target.checked) sel.add(r.id); else sel.delete(r.id);
+      lastCheckedId = r.id;
       updateCount();
       return;
     }
@@ -475,28 +507,43 @@
       if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id, 1500); }
       return true;
     } catch (e) {
-      if (single) igToast('✗ enrich ' + r.id + ': ' + (e && e.message), 3200);
+      lastOpError = (e && e.message) || '';
+      if (single) igToast('✗ enrich ' + r.id + ': ' + lastOpError, 3200);
       return false;
     }
   }
 
-  async function batchEnrich() {
-    const ids = [...sel];
-    if (!ids.length) { igToast('Select rows first (checkboxes)', 1800); return; }
-    if (busy) return;
-    busy = true; setBatchUi(true);
-    let ok = 0, n = 0;
+  // Shared paced batch runner. Sequential (one at a time), randomized gap between
+  // items, Stop button + auto-abort if an item fails with a rate-limit signature.
+  async function runBatch(label, ids, gap, doOne) {
+    busy = true; batchAbort = false; setBatchUi(true);
+    let ok = 0, n = 0, throttled = false;
     for (const id of ids) {
+      if (batchAbort) break;
       const r = rowById(id); if (!r) continue;
       n++;
-      document.getElementById('igCount').textContent = `Enriching ${n}/${ids.length}…`;
-      if (await enrichRow(r, false)) ok++;
+      document.getElementById('igCount').textContent = `${label} ${n}/${ids.length}… (✓ ${ok})`;
+      lastOpError = '';
+      if (await doOne(r)) ok++;
+      else if (RATE_LIMIT_RE.test(lastOpError)) { throttled = true; }
       applyAndRender();
+      if (throttled) break;
+      if (n < ids.length && !batchAbort) await sleep(rnd(gap[0], gap[1]));
     }
     busy = false; setBatchUi(false);
     if (ok) { dirty = true; await persist(false); }
-    igToast(`✓ enriched ${ok}/${ids.length}`, 2600);
     applyAndRender();
+    if (throttled) igToast(`⏸ Stopped after ${ok} — IG rate-limit detected. Wait a few minutes, then resume.\n${(lastOpError || '').slice(0, 90)}`, 7000);
+    else if (batchAbort) igToast(`⏹ Stopped at ${ok}/${ids.length}`, 2600);
+    else igToast(`✓ ${label.toLowerCase()} ${ok}/${ids.length}`, 2600);
+    return ok;
+  }
+
+  async function batchEnrich() {
+    const ids = [...sel];
+    if (!ids.length) { igToast('Select rows first (checkbox; Shift-click for a range)', 2200); return; }
+    if (busy) return;
+    await runBatch('Enriched', ids, ENRICH_GAP, r => enrichRow(r, false));
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
@@ -521,29 +568,21 @@
       if (single) { applyAndRender(); persist(false); igToast('✓ downloaded ' + r.id + '\n' + (r.localFiles[0] || ''), 2800); }
       return true;
     } catch (e) {
-      if (single) igToast('✗ download ' + r.id + ': ' + (e && e.message), 3500);
+      lastOpError = (e && e.message) || '';
+      if (single) igToast('✗ download ' + r.id + ': ' + lastOpError, 3500);
       return false;
     }
   }
 
   async function batchDownload() {
     const ids = [...sel];
-    if (!ids.length) { igToast('Select rows first (checkboxes)', 1800); return; }
+    if (!ids.length) { igToast('Select rows first (checkbox; Shift-click for a range)', 2200); return; }
     if (busy) return;
-    if (!confirm(`Download ${ids.length} item(s) at max resolution into ig_media/ ?\n(Enriches first for the filename; IG may need Firefox cookies; can be slow.)`)) return;
-    busy = true; setBatchUi(true);
-    let ok = 0, n = 0;
-    for (const id of ids) {
-      const r = rowById(id); if (!r) continue;
-      n++;
-      document.getElementById('igCount').textContent = `Downloading ${n}/${ids.length}…`;
-      if (await downloadRow(r, false)) ok++;
-      applyAndRender();
-    }
-    busy = false; setBatchUi(false);
-    if (ok) { dirty = true; await persist(false); }
-    igToast(`✓ downloaded ${ok}/${ids.length}`, 2600);
-    applyAndRender();
+    if (!confirm(`Download ${ids.length} item(s) at max resolution into ig_media/ ?\n\n`
+      + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
+      + `• Heavier than Enrich and may use your Firefox session — keep batches modest.\n`
+      + `• Press ⏹ Stop any time.`)) return;
+    await runBatch('Downloaded', ids, DOWNLOAD_GAP, r => downloadRow(r, false));
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
@@ -590,9 +629,11 @@
   }
 
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igReload'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igReload', 'igPaste'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
+    const stop = document.getElementById('igStop');
+    if (stop) { stop.style.display = on ? '' : 'none'; if (on) stop.textContent = '⏹ Stop'; }
   }
 
   // ── Firefox "Save Page As Text" → ttxt (the manual, unflaggable rich path) ──
@@ -675,6 +716,20 @@
     }
   }
 
+  // Rebuild the author dropdown from the loaded rows (count per author), preserving
+  // the current selection if it still exists.
+  function refreshAuthorOptions() {
+    const sel2 = document.getElementById('igAuthor');
+    if (!sel2) return;
+    const counts = {};
+    rows.forEach(r => { counts[r.author] = (counts[r.author] || 0) + 1; });
+    const authors = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    if (!counts[authorFilter]) authorFilter = 'all';
+    sel2.innerHTML = '<option value="all">all authors (' + rows.length + ')</option>' +
+      authors.map(a => `<option value="${esc(a)}">${esc(a)} (${counts[a]})</option>`).join('');
+    sel2.value = authorFilter;
+  }
+
   // ── Load ────────────────────────────────────────────────────────────────────
   async function loadData() {
     try {
@@ -682,7 +737,8 @@
       rows = r.ok ? (await r.json()) : [];
       if (!Array.isArray(rows)) rows = [];
     } catch (e) { rows = []; igToast('Could not load ig.json: ' + e.message, 3000); }
-    sel.clear(); dirty = false;
+    sel.clear(); dirty = false; lastCheckedId = null;
+    refreshAuthorOptions();
     applyAndRender();
   }
 
