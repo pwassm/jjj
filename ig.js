@@ -615,24 +615,26 @@
     // (dev0437) Live status in a centered panel (no top-bar shift). Each line:
     // action + N/total, cookie posture, running speed, and the pacing countdown.
     const fmtSpeed = () => (done ? `~${((Date.now() - t0) / 1000 / done).toFixed(1)}s/item` : '');
-    igBatchShow(`${label}…\n${posture}\n0/${total}`);
+    // (dev0443) Running cookie tally shown on EVERY step (was end-only).
+    const cookieSoFar = () => `🍪 ${cookieUsed} Firefox cookies used`;
+    igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
     for (const id of ids) {
       if (batchAbort) break;
       const r = rowById(id); if (!r) continue;
       if (skipIf && skipIf(r)) { skipped++; continue; }
       if (done > 0) {
         const g = rnd(gap[0], gap[1]);
-        igBatchUpdate(`${label} ${done}/${total} done · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${posture}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
+        igBatchUpdate(`${label} ${done}/${total} done · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
         await sleep(g); if (batchAbort) break;
       }
       done++;
       lastOpError = ''; lastOpInfo = '';
-      igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${posture}${done > 1 ? '\n' + fmtSpeed() : ''}`);
+      igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
       const good = await doOne(r);
       if (good) {
         ok++;
         if (lastOpInfo === 'Firefox cookies used') cookieUsed++;
-        igBatchUpdate(`${label} ${r.id}  ·  ${lastOpInfo ? '🍪 ' + lastOpInfo : posture}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${fmtSpeed()}`);
+        igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}`);
       } else if (isThrottle(lastOpError)) { throttled = true; }
       applyAndRender();
       if (throttled) break;
