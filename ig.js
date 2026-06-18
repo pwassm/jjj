@@ -154,6 +154,19 @@
 #igDrawer #igDrawerClose{position:absolute;top:8px;right:10px;background:none;border:0;
   color:#9aa;font-size:20px;cursor:pointer}
 #igEmpty{padding:40px;text-align:center;color:#7d8794}
+#igModalBack{position:absolute;inset:0;background:rgba(0,0,0,.55);display:none;z-index:10;
+  align-items:center;justify-content:center}
+#igModalBack.open{display:flex}
+#igModal{width:min(680px,90%);max-height:80%;display:flex;flex-direction:column;
+  background:#141a22;border:1px solid #2c3645;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.6);padding:14px}
+#igModal h3{margin:0 0 4px;font-size:14px;color:#9ad}
+#igModal .hint{color:#7d8794;font-size:12px;margin-bottom:8px}
+#igModal textarea{flex:1;min-height:220px;background:#0c1016;border:1px solid #2c3645;color:#dfe6ee;
+  border-radius:6px;padding:8px;font:12px ui-monospace,Consolas,monospace;resize:vertical}
+#igModal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+#igModal button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:6px;
+  padding:7px 14px;cursor:pointer;font:600 12px system-ui}
+#igModal button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
 `;
     document.head.appendChild(s);
   }
@@ -172,6 +185,7 @@
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status</option><option value="new">new</option><option value="enriched">enriched</option><option value="downloaded">downloaded</option><option value="promoted">promoted</option></select>
         <div class="spacer"></div>
+        <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igEnrichSel">✨ Enrich sel</button>
         <button id="igDownloadSel">⬇ Download sel</button>
         <button id="igPromoteSel">➕ Promote sel</button>
@@ -183,6 +197,12 @@
         <table id="igTable"><thead></thead><tbody></tbody></table>
         <div id="igEmpty" style="display:none"></div>
         <div id="igDrawer"><button id="igDrawerClose">×</button><div id="igDrawerBody"></div></div>
+        <div id="igModalBack"><div id="igModal">
+          <h3>Paste Instagram saved-text</h3>
+          <div class="hint" id="igModalHint">In Firefox: open the reel → File ▸ Save Page As ▸ Text Files → open that .txt → paste it here. Routes to the row by reel id; comments + sibling URLs land in ttxt.</div>
+          <textarea id="igModalText" placeholder="Paste the saved page text…"></textarea>
+          <div class="row"><button id="igModalCancel">Cancel</button><button id="igModalApply" class="primary">Apply</button></div>
+        </div></div>
       </div>`;
     document.body.appendChild(o);
 
@@ -197,6 +217,9 @@
     $('igSave').addEventListener('click', () => persist(true));
     $('igClose').addEventListener('click', () => closeIgScreen());
     $('igDrawerClose').addEventListener('click', () => closeDrawer());
+    $('igPaste').addEventListener('click', () => openPasteModal(null));
+    $('igModalCancel').addEventListener('click', () => closePasteModal());
+    $('igModalApply').addEventListener('click', () => applyPaste());
     o.querySelector('#igTable thead').addEventListener('click', onHeadClick);
     o.querySelector('#igTable tbody').addEventListener('click', onBodyClick);
   }
@@ -372,6 +395,7 @@
       <div class="acts">
         <button data-d="enrich" class="primary">✨ Enrich</button>
         <button data-d="download">⬇ Download</button>
+        <button data-d="paste">📋 Saved-text</button>
         <button data-d="promote" ${r.status === 'promoted' ? 'disabled' : ''}>➕ Promote</button>
         <button data-d="open">↗ Instagram</button>
       </div>
@@ -383,6 +407,7 @@
       const a = b.dataset.d;
       if (a === 'enrich') enrichRow(r, true).then(() => openDrawer(r));
       else if (a === 'download') downloadRow(r, true).then(() => openDrawer(r));
+      else if (a === 'paste') openPasteModal(r);
       else if (a === 'promote') { promoteRow(r, true); openDrawer(r); }
       else if (a === 'open') window.open(igLink(r), '_blank', 'noopener');
     }));
@@ -566,6 +591,67 @@
     });
   }
 
+  // ── Firefox "Save Page As Text" → ttxt (the manual, unflaggable rich path) ──
+  // The literal save happens in the user's Firefox (the I screen, a localhost page,
+  // can't read instagram.com's logged-in DOM). Here we just take that saved text and
+  // apply it to the matching ig.json row — reusing the SAME core.js parser the W
+  // screen uses (_parseIgSavedText / _igTtxtHtml / _igCaptionFtext), so the ttxt is
+  // identical, just targeted at ig.json instead of ml.json.
+  let _pasteTarget = null;     // row pre-targeted by the drawer button (else route by id)
+  function openPasteModal(targetRow) {
+    _pasteTarget = targetRow || null;
+    const hint = document.getElementById('igModalHint');
+    if (hint) hint.textContent = targetRow
+      ? 'Pasting for row ' + targetRow.id + '. In Firefox: open the reel → Save Page As ▸ Text → paste it here.'
+      : 'In Firefox: open the reel → Save Page As ▸ Text Files → open that .txt → paste it here. Routes to the row by reel id; comments + sibling URLs land in ttxt.';
+    document.getElementById('igModalText').value = '';
+    document.getElementById('igModalBack').classList.add('open');
+    setTimeout(() => document.getElementById('igModalText').focus(), 30);
+  }
+  function closePasteModal() {
+    document.getElementById('igModalBack').classList.remove('open');
+    _pasteTarget = null;
+  }
+  function modalOpen() { return document.getElementById('igModalBack')?.classList.contains('open'); }
+
+  async function applyPaste() {
+    const txt = document.getElementById('igModalText').value || '';
+    if (typeof _parseIgSavedText !== 'function') { igToast('IG parser not loaded', 2500); return; }
+    if (typeof _looksLikeIgSavedText === 'function' && !_looksLikeIgSavedText(txt)) {
+      if (!confirm("That doesn't look like an Instagram saved page. Try parsing it anyway?")) return;
+    }
+    if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
+    let p;
+    try { p = _parseIgSavedText(txt); } catch (e) { igToast('Parse failed: ' + e.message, 3000); return; }
+
+    // Resolve the target row: the drawer pre-target wins; else match by parsed reel id.
+    let row = _pasteTarget || (p.currentId ? rowById(p.currentId) : null);
+    if (row && p.currentId && row.id !== p.currentId) {
+      if (!confirm('Saved text is for reel ' + p.currentId + ', but this row is ' + row.id + '.\nApply to this row anyway?')) return;
+    }
+    if (!row && p.currentId) {
+      igToast('No ig.json row for reel ' + p.currentId + ' (harvest it first).\nParsed @' + (p.handle || '?') + ' · ' + p.comments.length + ' comments.', 5000);
+      return;
+    }
+    if (!row) { igToast('No current reel id found in the text, and no row was pre-selected.', 4000); return; }
+
+    const parts = [];
+    if (!row.VidTitle && p.caption) { row.VidTitle = _smartIgTitle(p.caption); parts.push('VidTitle'); }
+    if (!row.VidAuthor && p.handle) { row.VidAuthor = '@' + p.handle; parts.push('VidAuthor'); }
+    const isStub = /^<p><a [^>]*>https?:\/\/[^<]+<\/a><\/p>$/.test((row.ftext || '').trim());
+    if ((!row.ftext || isStub) && p.caption && typeof _igCaptionFtext === 'function') { row.ftext = _igCaptionFtext(p.caption); parts.push('ftext'); }
+    row.ttxt = _igTtxtHtml(p); parts.push('ttxt');           // rich dump always wins (it's the prize)
+    if (row.status === 'new' || !row.status) row.status = 'enriched';
+    dirty = true;
+    const sib = p.reels.filter(x => x.id !== p.currentId).length;
+    const hadTarget = !!_pasteTarget;
+    closePasteModal();
+    applyAndRender();
+    persist(false);
+    if (focusId === row.id || hadTarget) openDrawer(row);
+    igToast('✓ saved-text → ' + row.id + ' [' + parts.join(', ') + ']\n@' + (p.handle || '?') + ' · ' + p.comments.length + ' comments · ' + sib + ' sibling reels in ttxt', 5000);
+  }
+
   // ── Persist back to ig.json (proxy /ig/save) ────────────────────────────────
   async function persist(announce) {
     try {
@@ -617,6 +703,7 @@
   // global Esc handlers while Ig owns the screen.
   window.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || !isIgScreenOpen()) return;
+    if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }
     e.stopPropagation(); e.preventDefault();
