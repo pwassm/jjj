@@ -37,12 +37,15 @@ const PORT = 8081;
 //   fixes Instagram CAROUSEL posts (caption lives on the playlist top, dims on the
 //   entries) that previously returned result:null → client "yt-dlp exit 0" → Enrich
 //   silently did nothing. Now flattens both levels, taking MAX W×H across entries.
+// (dev0442) yt-dlp META (enrich) now also falls back cookieless→Firefox-cookies,
+// same as /ig/download — IG login-walls most cookieless metadata now, so enrich was
+// failing on nearly every post while downloads worked. Response carries usedCookies.
 // (dev0439) /ig/download now handles MULTI-FILE carousels (incl. image-only /p
 // posts): downloads to a temp dir with autonumbered names, then renames into
 // ig_media/ as "<stem> [i of N].<ext>" (bare stem when a single file).
 // (dev0434) /ig/download cookie order REVERSED → cookieless first, Firefox cookies
 //   only as fallback (lowers account linkage for bulk downloads — user concern).
-const PROXY_BUILD = 'dev0439';
+const PROXY_BUILD = 'dev0442';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -392,30 +395,46 @@ function ytdlpCompact(j) {
 
 // (dev0433) ytdlp -J collector: buffer the (possibly large) JSON document, parse it,
 // and send the COMPACT flattened object to the client (keeps the response small).
+// (dev0442) Cookieless FIRST, then Firefox cookies if that fails/returns nothing —
+// SAME fallback /ig/download already had. Instagram now login-walls most cookieless
+// metadata, so enrich was failing on nearly every post ("login-walled") while
+// downloads (which had the cookie fallback) worked. `usedCookies` tells the client
+// which path won, so it can report cookie usage honestly. The cookie variant is the
+// base args with `--cookies-from-browser firefox` inserted before the URL (last arg).
 function streamYtdlpMeta(req, res, bin, args) {
   const origin = req.headers.origin || '';
   const headers = Object.assign({}, corsForExec(origin), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   let ended = false;
   const finish = obj => { if (ended) return; ended = true; res.writeHead(200, headers); res.end(JSON.stringify(obj)); };
-  let proc;
-  try { proc = spawn(bin, args, { windowsHide: true }); }
-  catch (err) { finish({ ok: false, error: err.message, exitCode: -1 }); return; }
   const t0 = Date.now();
-  let out = '', errOut = '';
-  proc.stdout.on('data', c => { out += c.toString('utf8'); });
-  proc.stderr.on('data', c => { errOut += c.toString('utf8'); });
-  proc.on('error', err => finish({ ok: false, error: err.message, exitCode: -1, durationMs: Date.now() - t0 }));
-  proc.on('close', code => {
-    let raw = null; try { raw = JSON.parse(out || '{}'); } catch (_) {}
-    const result = ytdlpCompact(raw);
-    finish({
-      ok: code === 0 && !!result, exitCode: code, durationMs: Date.now() - t0,
-      result,
-      stdout: result ? undefined : String(out).slice(0, 500),
-      stderr: errOut.trim() || undefined
+
+  function attempt(useCookies, prevErr) {
+    const a = useCookies
+      ? args.slice(0, -1).concat(['--cookies-from-browser', 'firefox', args[args.length - 1]])
+      : args;
+    let proc;
+    try { proc = spawn(bin, a, { windowsHide: true }); }
+    catch (err) { finish({ ok: false, error: err.message, exitCode: -1, durationMs: Date.now() - t0 }); return; }
+    let out = '', errOut = '';
+    proc.stdout.on('data', c => { out += c.toString('utf8'); });
+    proc.stderr.on('data', c => { errOut += c.toString('utf8'); });
+    proc.on('error', err => finish({ ok: false, error: err.message, exitCode: -1, durationMs: Date.now() - t0 }));
+    proc.on('close', code => {
+      let raw = null; try { raw = JSON.parse(out || '{}'); } catch (_) {}
+      const result = ytdlpCompact(raw);
+      const good = code === 0 && !!result;
+      // Cookieless failed/empty → retry once with Firefox cookies (login walls).
+      if (!good && !useCookies) { attempt(true, errOut.trim()); return; }
+      finish({
+        ok: good, exitCode: code, durationMs: Date.now() - t0,
+        result, usedCookies: useCookies || undefined,
+        stdout: result ? undefined : String(out).slice(0, 500),
+        stderr: (errOut.trim() || prevErr) || undefined
+      });
     });
-  });
-  req.on('close', () => { try { proc.kill(); } catch (_) {} });
+    req.on('close', () => { try { proc.kill(); } catch (_) {} });
+  }
+  attempt(false, '');
 }
 
 const EXEC_ALLOW = {

@@ -5865,6 +5865,10 @@ async function _ytdlpFetchMeta(url) {
   if (!j || !j.ok || !j.result) {
     throw new Error((j && (j.stderr || j.error)) || ('yt-dlp exit ' + (j && j.exitCode)));
   }
+  // (dev0442) Surface whether the proxy needed Firefox cookies (login wall) so the
+  // caller can report cookie usage. Non-enumerable → doesn't leak into row fields.
+  try { Object.defineProperty(j.result, '_usedCookies', { value: !!j.usedCookies, enumerable: false }); }
+  catch (_) {}
   return j.result;
 }
 

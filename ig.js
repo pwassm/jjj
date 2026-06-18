@@ -551,7 +551,7 @@
   async function enrichRow(r, single) {
     if (typeof _ytdlpFetchMeta !== 'function') { igToast('yt-dlp pipeline not loaded', 2500); return false; }
     try {
-      if (single) igToast('⏳ Enriching ' + r.id + '…\n🍪 No Firefox cookies used (account-safe)', 6000);
+      if (single) igToast('⏳ Enriching ' + r.id + '…\n🍪 cookieless first (Firefox cookies only if walled)', 6000);
       if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
       const meta = await _ytdlpFetchMeta(r.url);
       const desc = (meta.description || '').trim();
@@ -576,10 +576,12 @@
       if (meta.width) r.width = +meta.width;
       if (meta.height) r.height = +meta.height;
       if (r.status === 'new' || !r.status) r.status = 'enriched';
-      lastOpInfo = 'No firefox cookies used';
+      // (dev0442) honest cookie report — the proxy now falls back to Firefox cookies
+      // when a post is login-walled (same as Download), and tells us which path won.
+      lastOpInfo = meta._usedCookies ? 'Firefox cookies used' : 'No firefox cookies used';
       enrichFailed.delete(r.id);     // succeeded → clear any prior wall mark
       dirty = true;
-      if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id + '\n🍪 No Firefox cookies used', 2000); }
+      if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id + '\n🍪 ' + lastOpInfo, 2000); }
       return true;
     } catch (e) {
       lastOpError = (e && e.message) || '';
@@ -588,12 +590,12 @@
       // marked — those should still retry. Reload clears the whole set.
       if (/login\s*required|content is not available|empty metadata/i.test(lastOpError)) enrichFailed.add(r.id);
       if (single) {
-        // (dev0440) yt-dlp's cookieless wall error mentions "rate-limit reached
-        // or login required" — that's a LOGIN WALL, not a throttle. Say so plainly
-        // so it isn't mistaken for an IP rate-limit (Download still works via cookies).
+        // (dev0442) Enrich now tries cookieless THEN Firefox cookies — reaching here
+        // means BOTH failed. A login-wall message means even cookies didn't read it
+        // (Firefox not logged into Instagram?), not an IP rate-limit.
         const walled = /login\s*required|content is not available/i.test(lastOpError);
         igToast(walled
-          ? '✗ enrich ' + r.id + ' — login-walled (not a rate-limit)\nCookieless enrich can\'t read this post. Download still works (Firefox cookies if needed), or use 📋 Paste saved-text.'
+          ? '✗ enrich ' + r.id + ' — couldn\'t read post (not a rate-limit)\nCookieless + Firefox cookies both failed. Is Firefox logged into Instagram? Or use 📋 Paste saved-text.'
           : '✗ enrich ' + r.id + ': ' + lastOpError, 4000);
       }
       return false;
@@ -672,7 +674,7 @@
       return;
     }
     await runBatch('Enriching', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
-      '🍪 No Firefox cookies used (account-safe — IP rate-limit is the only risk)');
+      '🍪 cookieless first · Firefox cookies only if walled');
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
