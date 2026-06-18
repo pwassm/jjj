@@ -37,9 +37,12 @@ const PORT = 8081;
 //   fixes Instagram CAROUSEL posts (caption lives on the playlist top, dims on the
 //   entries) that previously returned result:null → client "yt-dlp exit 0" → Enrich
 //   silently did nothing. Now flattens both levels, taking MAX W×H across entries.
+// (dev0439) /ig/download now handles MULTI-FILE carousels (incl. image-only /p
+// posts): downloads to a temp dir with autonumbered names, then renames into
+// ig_media/ as "<stem> [i of N].<ext>" (bare stem when a single file).
 // (dev0434) /ig/download cookie order REVERSED → cookieless first, Firefox cookies
 //   only as fallback (lowers account linkage for bulk downloads — user concern).
-const PROXY_BUILD = 'dev0434';
+const PROXY_BUILD = 'dev0439';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -772,6 +775,14 @@ function igSanitizeName(s) {
   s = String(s || '').replace(/[<>":\/\\|?*\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '');
   return s || 'unknown';
 }
+// (dev0439) Multi-file carousels now download. yt-dlp is pointed at a PRIVATE
+// temp dir with autonumbered output; the results are then renamed into ig_media/
+// — a single item keeps the bare AHK-convention stem, a carousel (e.g. a 6-image
+// /p post) becomes "<stem> [1 of 6].jpg" … "<stem> [6 of 6].jpg". This fixes two
+// things at once: (1) the old "<stem>.%(ext)s" template gave every carousel item
+// the SAME name → 5 of 6 collided/were skipped; (2) image-only posts (no video)
+// now come through because we no longer assume one output file. yt-dlp's default
+// "best" format IS the image for an image entry, so they download like any other.
 function igDownload(req, res, origin) {
   readJson(req, 64 * 1024).then(payload => {
     const url = String(payload.url || '');
@@ -783,12 +794,26 @@ function igDownload(req, res, origin) {
     // the enriched row); fall back to the bare id. Sanitized + length-capped here as
     // the safety boundary — the client value never reaches the shell (spawn literal).
     const stem = igSanitizeName(payload.name || id).slice(0, 180);
-    const outTmpl = path.join(IG_MEDIA_DIR, stem + '.%(ext)s');
-    const baseArgs = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '-o', outTmpl];
+    const tmpDir = path.join(IG_MEDIA_DIR, '.tmp_' + id + '_' + Date.now().toString(36));
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+    const outTmpl = path.join(tmpDir, '%(autonumber)03d.%(ext)s');
+    const baseArgs = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '--no-part', '-o', outTmpl];
 
-    function listFiles() {
-      try { return fs.readdirSync(IG_MEDIA_DIR).filter(f => f === stem || f.startsWith(stem + '.') || f.startsWith(stem + '_')); }
-      catch (_) { return []; }
+    const tmpFiles = () => { try { return fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) { return []; } };
+    const wipeTmp  = () => { try { fs.readdirSync(tmpDir).forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) {} }); } catch (_) {} };
+    const rmTmp    = () => { try { (fs.rmSync || fs.rmdirSync)(tmpDir, { recursive: true, force: true }); } catch (_) {} };
+    // Rename tmp files → ig_media/<stem>[ [i of N]].<ext>; return the basenames.
+    function publish() {
+      const files = tmpFiles(), n = files.length, out = [];
+      files.forEach((f, i) => {
+        const ext = path.extname(f);
+        const base = stem + (n > 1 ? ' [' + (i + 1) + ' of ' + n + ']' : '') + ext;
+        const dest = path.join(IG_MEDIA_DIR, base);
+        try { fs.renameSync(path.join(tmpDir, f), dest); out.push(base); }
+        catch (_) { try { fs.copyFileSync(path.join(tmpDir, f), dest); out.push(base); } catch (_) {} }
+      });
+      rmTmp();
+      return out;
     }
     function run(withCookies, onDone) {
       const args = baseArgs.concat(withCookies ? ['--cookies-from-browser', 'firefox', url] : [url]);
@@ -800,11 +825,14 @@ function igDownload(req, res, origin) {
       proc.on('close', code => onDone(code === 0, stderr.trim()));
     }
     // (dev0434) Cookieless FIRST (keeps the account out of it); only fall back to
-    // Firefox cookies if the content is login-walled.
+    // Firefox cookies if the content is login-walled. A nonzero exit that STILL
+    // produced files (a carousel where one entry 404s) counts as success.
     run(false, (ok1, err1) => {
-      if (ok1) { sendJson(res, 200, { ok: true, files: listFiles() }, origin); return; }
+      if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
+      wipeTmp();   // clear any partial cookieless output before the cookie retry
       run(true, (ok2, err2) => {
-        if (ok2) { sendJson(res, 200, { ok: true, files: listFiles(), note: 'needed Firefox cookies' }, origin); return; }
+        if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), note: 'needed Firefox cookies' }, origin); return; }
+        rmTmp();
         console.warn('[ig/download] ' + id + ' failed: ' + (err2 || err1));
         sendJson(res, 502, { ok: false, error: (err2 || err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
       });

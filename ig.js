@@ -557,6 +557,9 @@
       }
       const dp = datePosted(meta); if (dp) r.DatePosted = dp;
       if (Number.isFinite(meta.duration)) r.durSecs = Math.round(meta.duration);
+      // (dev0439) Image posts/carousels have no duration → mark 0 so the download
+      // guard doesn't keep re-enriching them on every attempt.
+      else if (r.durSecs == null) r.durSecs = 0;
       if (meta.width) r.width = +meta.width;
       if (meta.height) r.height = +meta.height;
       if (r.status === 'new' || !r.status) r.status = 'enriched';
@@ -658,9 +661,12 @@
       dirty = true;
       if (single) {
         applyAndRender(); persist(false);
+        const n = r.localFiles.length;
+        const fileLine = n > 1 ? n + ' files (carousel)\n' + (r.localFiles[0] || '') + ' …'
+                               : (r.localFiles[0] || '');
         igToast('✓ downloaded ' + r.id
           + '\n🍪 cookieless first (Firefox cookies only if walled)\n' + lastOpInfo
-          + '\n' + (r.localFiles[0] || ''), 3500);
+          + '\n' + fileLine, 3500);
       }
       return true;
     } catch (e) {
