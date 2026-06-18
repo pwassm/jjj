@@ -141,6 +141,8 @@
 #igDrawer .kv b{color:#7d8794;font-weight:600}
 #igDrawer .sect{margin:10px 0;border-top:1px solid #1d242e;padding-top:8px}
 #igDrawer .sect b{color:#9fb0c2;display:block;margin-bottom:4px;font-size:12px}
+#igDrawer .fname{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#bfe;
+  background:#11161e;border:1px solid #2c3645;border-radius:6px;padding:7px;word-break:break-all;user-select:all}
 #igDrawer .ftext{background:#11161e;border:1px solid #1d242e;border-radius:6px;padding:8px;
   max-height:220px;overflow:auto;font-size:12px;white-space:normal}
 #igDrawer .ttxt{background:#11161e;border:1px solid #1d242e;border-radius:6px;padding:8px;
@@ -365,6 +367,8 @@
         ${r.mlUID ? `<b>ml UID</b><span>${esc(r.mlUID)}</span>` : ''}
         ${r.localFiles && r.localFiles.length ? `<b>File</b><span>📁 ${esc(r.localFiles.join(', '))}</span>` : ''}
       </div>
+      <div class="sect"><b>Download filename ${(r.durSecs == null || r.width == null) ? '<span style="color:#d59a3a;font-weight:400">— finalizes after Enrich</span>' : ''}</b>
+        <div class="fname">${esc(downloadName(r))}.mp4</div></div>
       <div class="acts">
         <button data-d="enrich" class="primary">✨ Enrich</button>
         <button data-d="download">⬇ Download</button>
