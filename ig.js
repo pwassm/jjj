@@ -449,6 +449,7 @@
   async function enrichRow(r, single) {
     if (typeof _ytdlpFetchMeta !== 'function') { igToast('yt-dlp pipeline not loaded', 2500); return false; }
     try {
+      if (single) igToast('⏳ Enriching ' + r.id + '…', 6000);
       if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
       const meta = await _ytdlpFetchMeta(r.url);
       const desc = (meta.description || '').trim();
@@ -459,7 +460,9 @@
       if (!r.VidAuthor && handle) r.VidAuthor = handle;
       if (!r.VidTitle) {
         const t = (meta.title || '').trim();
-        r.VidTitle = (!t || /^video by /i.test(t))
+        // yt-dlp's generic titles: single reel = "Video by <h>", carousel = "Post by
+        // <h>" (and "Reel by"). All three → derive a real title from the caption.
+        r.VidTitle = (!t || /^(video|post|reel) by /i.test(t))
           ? (typeof _smartIgTitle === 'function' ? _smartIgTitle(desc) : desc.slice(0, 70))
           : (typeof _normalizeText === 'function' ? _normalizeText(t).replace(/\s+/g, ' ').trim() : t);
       }
@@ -505,6 +508,7 @@
       applyAndRender();
     }
     try {
+      if (single) igToast('⏳ Downloading ' + r.id + '… (max res — can take a bit)', 12000);
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r) })

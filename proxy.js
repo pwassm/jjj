@@ -33,7 +33,11 @@ const PORT = 8081;
 // (dev0430) ytdlp meta now also returns width,height (for the I-screen W×H column +
 //   filename); /ig/download accepts a client-built `name` → files land in ig_media/
 //   under the user's AHK naming convention (hh.mm.ss~WxH~title~@author~[[i[id]]]).
-const PROXY_BUILD = 'dev0430';
+// (dev0433) ytdlp meta switched from compact `--print` to `-J` + ytdlpCompact():
+//   fixes Instagram CAROUSEL posts (caption lives on the playlist top, dims on the
+//   entries) that previously returned result:null → client "yt-dlp exit 0" → Enrich
+//   silently did nothing. Now flattens both levels, taking MAX W×H across entries.
+const PROXY_BUILD = 'dev0433';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -331,9 +335,13 @@ function buildExiftoolArgs(p) {
 //
 // All args are literal under spawn(shell:false); the only caller-supplied token
 // is the validated http(s) URL.
-const YTDLP_META_FIELDS =
-  'id,title,description,uploader,uploader_id,channel,channel_url,uploader_url,' +
-  'webpage_url,timestamp,upload_date,like_count,view_count,duration,width,height';
+// (dev0433) Metadata now uses `-J` (a single JSON document) instead of the compact
+// `--print %(.{…})j` per-entry selector. Reason: an Instagram CAROUSEL post is a
+// yt-dlp *playlist* — the caption/author/date live on the top-level object while
+// width/height/duration live on the ENTRIES, and `--print` runs per entry so it
+// returned an empty caption + emitted one JSON line per item (which also broke the
+// single-JSON.parse collector → result:null → client "yt-dlp exit 0"). `-J` is one
+// document (parses cleanly) and carries both levels; ytdlpCompact() flattens it.
 function buildYtdlpArgs(p) {
   must(p && typeof p.url === 'string', 'url (string) required');
   must(/^https?:\/\//i.test(p.url), 'url must be http(s)');
@@ -344,9 +352,65 @@ function buildYtdlpArgs(p) {
   return [
     '--no-warnings', '--no-playlist', '--ignore-config',
     '--socket-timeout', '20',
-    '--print', '%(.{' + YTDLP_META_FIELDS + '})j',
-    p.url
+    '-J', p.url
   ];
+}
+
+// (dev0433) Flatten a yt-dlp `-J` dump into the small metadata object the client
+// uses. Single video → fields are on the top object. Carousel → caption/author/date
+// on the playlist top, media dims on entries[]; we take the MAX W×H across entries
+// (the user wants max res) and the longest entry duration.
+function ytdlpCompact(j) {
+  if (!j || typeof j !== 'object') return null;
+  const entries = Array.isArray(j.entries) ? j.entries : [];
+  const e0 = entries[0] || {};
+  // caption/author/date: prefer the post/top level, fall back to the first entry.
+  const top = k => (j[k] != null && j[k] !== '') ? j[k] : (e0[k] != null ? e0[k] : undefined);
+  let mw = 0, mh = 0, dur = 0;
+  const scan = o => {
+    const w = +o.width || 0, h = +o.height || 0;
+    if (h > mh || (h === mh && w > mw)) { mh = h; mw = w; }
+    if ((+o.duration || 0) > dur) dur = +o.duration || 0;
+  };
+  if (entries.length) entries.forEach(scan); else scan(j);
+  return {
+    id: j.id, title: j.title,
+    description: top('description') || '',
+    uploader: top('uploader'), uploader_id: top('uploader_id'),
+    channel: top('channel'), channel_url: top('channel_url'), uploader_url: top('uploader_url'),
+    webpage_url: j.webpage_url || e0.webpage_url,
+    timestamp: top('timestamp'), upload_date: top('upload_date'),
+    like_count: top('like_count'), view_count: top('view_count'),
+    duration: dur || undefined, width: mw || undefined, height: mh || undefined
+  };
+}
+
+// (dev0433) ytdlp -J collector: buffer the (possibly large) JSON document, parse it,
+// and send the COMPACT flattened object to the client (keeps the response small).
+function streamYtdlpMeta(req, res, bin, args) {
+  const origin = req.headers.origin || '';
+  const headers = Object.assign({}, corsForExec(origin), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  let ended = false;
+  const finish = obj => { if (ended) return; ended = true; res.writeHead(200, headers); res.end(JSON.stringify(obj)); };
+  let proc;
+  try { proc = spawn(bin, args, { windowsHide: true }); }
+  catch (err) { finish({ ok: false, error: err.message, exitCode: -1 }); return; }
+  const t0 = Date.now();
+  let out = '', errOut = '';
+  proc.stdout.on('data', c => { out += c.toString('utf8'); });
+  proc.stderr.on('data', c => { errOut += c.toString('utf8'); });
+  proc.on('error', err => finish({ ok: false, error: err.message, exitCode: -1, durationMs: Date.now() - t0 }));
+  proc.on('close', code => {
+    let raw = null; try { raw = JSON.parse(out || '{}'); } catch (_) {}
+    const result = ytdlpCompact(raw);
+    finish({
+      ok: code === 0 && !!result, exitCode: code, durationMs: Date.now() - t0,
+      result,
+      stdout: result ? undefined : String(out).slice(0, 500),
+      stderr: errOut.trim() || undefined
+    });
+  });
+  req.on('close', () => { try { proc.kill(); } catch (_) {} });
 }
 
 const EXEC_ALLOW = {
@@ -824,7 +888,10 @@ http.createServer((req, res) => {
       // exiftool WRITE mode streams (exit code carries the verdict). (dev0425)
       // ytdlp --print emits one JSON line → collect.
       const realBin = EXEC_BIN[bin] || bin;   // (dev0425) ytdlp → yt-dlp
-      const wantsCollect = bin === 'ffprobe' || bin === 'ytdlp'
+      // (dev0433) ytdlp now returns a `-J` document → its own collector flattens
+      // playlist (carousel) + entries into the compact metadata object.
+      if (bin === 'ytdlp') { streamYtdlpMeta(req, res, realBin, args); return; }
+      const wantsCollect = bin === 'ffprobe'
                         || (bin === 'exiftool' && !payload.metadata);
       if (wantsCollect) streamExecCollect(req, res, realBin, args);
       else              streamExec(req, res, realBin, args);
