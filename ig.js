@@ -29,6 +29,7 @@
   let view = [];                       // filtered + sorted slice of `rows`
   let sortCol = 'DateAdded', sortDir = -1;
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
+  let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
   let sel = new Set();                 // selected ids (batch ops)
   let lastCheckedId = null;            // anchor for shift-click range selection
   let focusId = null;                  // row open in the detail drawer
@@ -344,6 +345,7 @@
       if (authorFilter !== 'all' && r.author !== authorFilter) return false;
       if (kindFilter !== 'all' && kindOf(r) !== kindFilter) return false;
       if (statusFilter !== 'all' && (r.status || 'new') !== statusFilter) return false;
+      if (hideCompleted && isDownloaded(r)) return false;   // (dev0438) 'c' = hide completed
       if (query) {
         const hay = (r.author + ' ' + r.id + ' ' + (r.VidTitle || '') + ' ' + (r.ftext || '') + ' ' + (r.status || '')).toLowerCase();
         if (!hay.includes(query)) return false;
@@ -651,9 +653,15 @@
       r.localFiles = j.files || [];
       if (r.status !== 'promoted') r.status = 'downloaded';
       // The proxy only tags the response when it had to fall back to Firefox cookies.
-      lastOpInfo = j.note ? 'used Firefox cookies' : 'cookieless';
+      lastOpInfo = j.note ? 'Firefox cookies used' : 'No firefox cookies used';
+      sel.delete(r.id);            // (dev0438) uncheck on every successful download
       dirty = true;
-      if (single) { applyAndRender(); persist(false); igToast('✓ downloaded ' + r.id + '  ·  🍪 ' + lastOpInfo + '\n' + (r.localFiles[0] || ''), 3000); }
+      if (single) {
+        applyAndRender(); persist(false);
+        igToast('✓ downloaded ' + r.id
+          + '\n🍪 cookieless first (Firefox cookies only if walled)\n' + lastOpInfo
+          + '\n' + (r.localFiles[0] || ''), 3500);
+      }
       return true;
     } catch (e) {
       lastOpError = (e && e.message) || '';
@@ -841,7 +849,8 @@
     build();
     document.getElementById('igOverlay').classList.add('open');
     loadData();
-    setTimeout(() => document.getElementById('igSearch')?.focus(), 30);
+    // (dev0438) Come up UNFOCUSED so bare-letter hotkeys (f/F/c/…) work right
+    // away; press f to jump into the filter box, Shift+F to clear it.
   }
   function closeIgScreen() {
     if (dirty) persist(false);     // best-effort flush on close
@@ -852,15 +861,46 @@
     return document.getElementById('igOverlay')?.classList.contains('open') || false;
   }
 
-  // Esc: close drawer first, then the screen. Capture-phase so it beats other
-  // global Esc handlers while Ig owns the screen.
+  // (dev0438) In-window key handling. Capture-phase; core.js's dispatcher (added
+  // earlier) bails on f/c while Ig is open so they reach us here.
+  //   Esc  → close modal / drawer / blur the filter (filter STAYS in force). Esc
+  //          no longer closes the screen — press T to leave (T owns that).
+  //   f    → focus the filter box.   Shift+F → clear the text filter.
+  //   c    → toggle the "hide completed (downloaded) rows" filter.
   window.addEventListener('keydown', e => {
-    if (e.key !== 'Escape' || !isIgScreenOpen()) return;
-    if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
+    if (!isIgScreenOpen()) return;
     const ae = document.activeElement;
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }
-    e.stopPropagation(); e.preventDefault();
-    if (drawerOpen()) closeDrawer(); else closeIgScreen();
+    const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+
+    if (e.key === 'Escape') {
+      if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
+      if (typing) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }  // blur, filter stays
+      if (drawerOpen()) { e.stopPropagation(); e.preventDefault(); closeDrawer(); return; }
+      e.stopPropagation(); e.preventDefault();   // swallow — do NOT return to T
+      return;
+    }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey || modalOpen()) return;
+
+    if (e.key === 'f') {                          // focus the filter box
+      e.stopPropagation(); e.preventDefault();
+      document.getElementById('igSearch')?.focus();
+      return;
+    }
+    if (e.key === 'F') {                          // Shift+F → clear text filter
+      e.stopPropagation(); e.preventDefault();
+      query = '';
+      const s = document.getElementById('igSearch'); if (s) s.value = '';
+      applyAndRender();
+      igToast('🔎 text filter cleared', 1400);
+      return;
+    }
+    if (e.key === 'c' || e.key === 'C') {         // toggle hide-completed
+      e.stopPropagation(); e.preventDefault();
+      hideCompleted = !hideCompleted;
+      applyAndRender();
+      igToast(hideCompleted ? '✅ hiding completed (downloaded) rows' : '👁 showing all rows', 1600);
+      return;
+    }
   }, true);
 
   window.openIgScreen = openIgScreen;

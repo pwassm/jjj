@@ -237,6 +237,15 @@ window.addEventListener('keydown', function(e) {
 
   const k = e.key.toLowerCase();
 
+  // (dev0438) The Ig staging screen owns f / Shift+F (filter focus / clear) and
+  // c (hide-completed toggle). Bail WITHOUT preventDefault so ig.js's own
+  // capture handler — registered after this one — receives them. Other nav keys
+  // (t/g/i/…) still fall through so they close Ig and switch screens as before.
+  if (typeof window.isIgScreenOpen === 'function' && window.isIgScreenOpen()
+      && (k === 'f' || k === 'c')) {
+    return;
+  }
+
   // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
   // Only when the grid overlay is open; otherwise falls through so bare 'c'
   // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled
