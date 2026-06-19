@@ -59,6 +59,12 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const ENRICH_GAP = [1200, 3000];     // ms between batch enrich items (cookieless)
   const DOWNLOAD_GAP = [2500, 6000];   // ms between batch downloads (heavier, may use cookies)
+  // (dev0444) Account-safety guard: auto-stop a batch once this many items have had
+  // to fall back to Firefox cookies (i.e. login-walled posts fetched AS your logged-in
+  // account). Cookieless work is unlimited and account-safe; only the authenticated
+  // path is capped. Per-batch — a fresh run resets the count, so also keep total
+  // daily cookie use modest. Bump this one number to loosen/tighten the guard.
+  const COOKIE_CAP = 5;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -149,6 +155,29 @@
     if (t) t.classList.remove('show');
   }
 
+  // (dev0444) Persistent end-of-run summary panel. Unlike igToast (auto-dismiss on a
+  // timer) and igBatch (hidden the moment a batch ends), this STAYS until the user
+  // dismisses it via its Close button or Esc — so the final cookie / done counts
+  // don't vanish before they're read.
+  function igStickyShow(msg) {
+    let t = document.getElementById('igSticky');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'igSticky';
+      t.innerHTML = '<div class="msg"></div><button class="ok">Close (Esc)</button>';
+      (document.getElementById('igOverlay') || document.body).appendChild(t);
+      t.querySelector('.ok').addEventListener('click', igStickyHide);
+    }
+    t.querySelector('.msg').textContent = msg;
+    t.classList.add('show');
+  }
+  function igStickyHide() {
+    document.getElementById('igSticky')?.classList.remove('show');
+  }
+  function igStickyOpen() {
+    return document.getElementById('igSticky')?.classList.contains('show') || false;
+  }
+
   // ── CSS (scoped under #igOverlay, injected once) ────────────────────────────
   function injectCss() {
     if (document.getElementById('ig-css')) return;
@@ -208,6 +237,15 @@
 #igBatch .stop{pointer-events:auto;background:#7a2230;border:1px solid #b3344a;color:#fff;
   border-radius:8px;padding:8px 20px;cursor:pointer;font:600 13px system-ui}
 #igBatch .stop:hover{background:#933049}
+#igSticky{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:14px;
+  padding:22px 30px;min-width:340px;max-width:560px;text-align:center;
+  box-shadow:0 16px 56px rgba(0,0,0,.72);z-index:40002;display:none}
+#igSticky.show{display:block}
+#igSticky .msg{font:14px/1.7 system-ui,Segoe UI,sans-serif;white-space:pre-line;margin-bottom:16px}
+#igSticky .ok{background:#1f5130;border:1px solid #2e7d46;color:#eafff0;
+  border-radius:8px;padding:8px 22px;cursor:pointer;font:600 13px system-ui}
+#igSticky .ok:hover{background:#27663c}
 #igTable .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#9fb0c2}
 #igTable td.c-act{white-space:nowrap}
 #igTable td.c-act button{background:#1f2733;border:1px solid #34404f;color:#cfe;
@@ -609,49 +647,66 @@
   // touches the rows that still need work.
   async function runBatch(label, ids, gap, doOne, skipIf, posture) {
     busy = true; batchAbort = false; setBatchUi(true);
-    let ok = 0, done = 0, skipped = 0, throttled = false, cookieUsed = 0;
+    igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
+    let ok = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     const t0 = Date.now();
+    // Rows that still need work. Already-done rows are passed over silently — no
+    // "skipped" line anywhere (per request: that count was ambiguous noise).
     const total = ids.reduce((n, id) => { const r = rowById(id); return n + (r && !(skipIf && skipIf(r)) ? 1 : 0); }, 0);
     // (dev0437) Live status in a centered panel (no top-bar shift). Each line:
-    // action + N/total, cookie posture, running speed, and the pacing countdown.
+    // action + N/total, cookie tally + cap, running speed, and the pacing countdown.
     const fmtSpeed = () => (done ? `~${((Date.now() - t0) / 1000 / done).toFixed(1)}s/item` : '');
-    // (dev0443) Running cookie tally shown on EVERY step (was end-only).
-    const cookieSoFar = () => `🍪 ${cookieUsed} Firefox cookies used`;
+    const fmtClock = ms => { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + pad2(s % 60); };
+    // (dev0444) Running cookie tally now shows the auto-stop cap it counts toward.
+    const cookieSoFar = () => `🍪 ${cookieUsed}/${COOKIE_CAP} Firefox-cookie items (auto-stop at ${COOKIE_CAP})`;
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
     for (const id of ids) {
       if (batchAbort) break;
       const r = rowById(id); if (!r) continue;
-      if (skipIf && skipIf(r)) { skipped++; continue; }
+      if (skipIf && skipIf(r)) continue;             // already done → pass over silently
       if (done > 0) {
         const g = rnd(gap[0], gap[1]);
-        igBatchUpdate(`${label} ${done}/${total} done · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
+        igBatchUpdate(`${label} ${done}/${total} · ✓${ok}\n${cookieSoFar()}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
         await sleep(g); if (batchAbort) break;
       }
       done++;
       lastOpError = ''; lastOpInfo = '';
-      igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
+      igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
       const good = await doOne(r);
       if (good) {
         ok++;
         if (lastOpInfo === 'Firefox cookies used') cookieUsed++;
-        igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}${skipped ? ` · skipped ${skipped}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}`);
+        igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}\n${cookieSoFar()}\n${fmtSpeed()}`);
+        if (cookieUsed >= COOKIE_CAP) cookieStopped = true;   // (dev0444) account-safety cap hit
       } else if (isThrottle(lastOpError)) { throttled = true; }
       applyAndRender();
-      if (throttled) break;
+      if (throttled || cookieStopped) break;
     }
     busy = false; setBatchUi(false); igBatchHide();
     if (ok) { dirty = true; await persist(false); }
     applyAndRender();
-    const secs = ((Date.now() - t0) / 1000).toFixed(0);
-    const tail = skipped ? ` · skipped ${skipped} already-done` : '';
-    const speed = ok ? `  ·  ${fmtSpeed()} over ${secs}s` : '';
-    // (dev0440) Explicit cookie reassurance on the summary, every time.
-    const cookieLine = ok ? '\n' + (cookieUsed
-      ? `🍪 Firefox cookies used for ${cookieUsed} of ${ok}`
-      : '🍪 No Firefox cookies used') : '';
-    if (throttled) igToast(`⏸ Stopped after ${ok} — IG rate-limit detected.\nWait a few minutes, then resume.${tail}\n${(lastOpError || '').slice(0, 80)}`, 7000);
-    else if (batchAbort) igToast(`⏹ Stopped — ${ok} done${tail}${speed}${cookieLine}`, 3500);
-    else igToast(`✓ ${label} — ${ok} done${tail}${speed}${cookieLine}`, 3600);
+
+    // (dev0444) Persistent end-of-run report — exactly the fields requested: how many
+    // were marked to do, the task, how many finished WITHOUT Firefox cookies
+    // (cookieless · account-safe) vs WITH them, and the total elapsed time. No
+    // "skipped" line. Stays on screen until Close button / Esc.
+    const cookieless = ok - cookieUsed;
+    const head = throttled     ? `⏸ ${label} stopped — IG rate-limit detected`
+               : cookieStopped ? `⏹ ${label} auto-stopped — 🍪 cookie cap (${COOKIE_CAP}) reached`
+               : batchAbort    ? `⏹ ${label} stopped by you`
+               :                 `✓ ${label} complete`;
+    const lines = [
+      head,
+      ``,
+      `${total} marked to do`,
+      `${cookieless} done without Firefox cookies  (cookieless · account-safe)`,
+      `${cookieUsed} done with Firefox cookies 🍪`,
+      `⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`,
+    ];
+    if (throttled)          lines.push('', 'Wait a few minutes, then re-run — only un-done rows are retried.');
+    else if (cookieStopped) lines.push('', 'Re-run to continue. The cap resets each run, so keep total cookie use modest.');
+    if (throttled && lastOpError) lines.push((lastOpError || '').slice(0, 80));
+    igStickyShow(lines.join('\n'));
     return ok;
   }
 
@@ -921,6 +976,7 @@
     const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
 
     if (e.key === 'Escape') {
+      if (igStickyOpen()) { e.stopPropagation(); e.preventDefault(); igStickyHide(); return; }  // (dev0444) dismiss summary first
       if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
       if (typing) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }  // blur, filter stays
       if (drawerOpen()) { e.stopPropagation(); e.preventDefault(); closeDrawer(); return; }
