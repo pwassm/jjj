@@ -33,6 +33,7 @@
   let sel = new Set();                 // selected ids (batch ops)
   let lastCheckedId = null;            // anchor for shift-click range selection
   let focusId = null;                  // row open in the detail drawer
+  let processingId = null;             // (dev0445) row currently being enriched/downloaded (live highlight)
   let dirty = false;                   // unsaved enrich/promote/status edits
   let busy = false;                    // a batch op is running
   let batchAbort = false;              // user pressed Stop during a batch
@@ -215,6 +216,7 @@
 #igTable tr.st-enriched td{box-shadow:inset 3px 0 0 #4caf50}
 #igTable tr.st-downloaded td{box-shadow:inset 3px 0 0 #ffb300}
 #igTable tr.st-promoted td{box-shadow:inset 3px 0 0 #0a84ff;opacity:.72}
+#igTable tr.proc td{background:#13314e;box-shadow:inset 3px 0 0 #0a84ff;opacity:1}
 #igTable .badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:700}
 .k-reel{background:#3a2a52;color:#caa6ff}.k-p{background:#1e3a4a;color:#7fd0ee}.k-tv{background:#4a2a2a;color:#eeae7f}.k-q{background:#333;color:#aaa}
 .s-new{color:#7d8794}.s-enriched{color:#7fd47f}.s-downloaded{color:#ffc04d}.s-promoted{color:#6fb6ff}
@@ -311,6 +313,7 @@
         <button id="igEnrichSel">✨ Enrich sel</button>
         <button id="igDownloadSel">⬇ Download sel</button>
         <button id="igPromoteSel">➕ Promote sel</button>
+        <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter">✕ Clear sel</button>
         <button id="igReload" title="Reload ig.json from disk">↻ Reload</button>
         <button id="igSave" class="primary" title="Write edits back to ig.json">💾 Save</button>
         <button id="igClose" title="Close (Esc)">×</button>
@@ -336,6 +339,7 @@
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
     $('igPromoteSel').addEventListener('click', () => batchPromote());
+    $('igClearSel').addEventListener('click', () => { sel.clear(); lastCheckedId = null; applyAndRender(); igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600); });
     $('igReload').addEventListener('click', () => loadData());
     $('igSave').addEventListener('click', () => persist(true));
     $('igClose').addEventListener('click', () => closeIgScreen());
@@ -424,9 +428,15 @@
   function updateCount() {
     const promoted = rows.filter(r => r.status === 'promoted').length;
     const enriched = rows.filter(r => r.status === 'enriched' || r.status === 'downloaded').length;
+    // (dev0445) Distinguish selected-AND-visible from total selected, so a selection
+    // hidden by the filter can't masquerade (it used to silently get batch-processed).
+    const selHere = view.reduce((n, r) => n + (sel.has(r.id) ? 1 : 0), 0);
+    const selTxt = sel.size === selHere
+      ? `${sel.size} selected`
+      : `${selHere} selected here · ${sel.size - selHere} more hidden by filter`;
     const el = document.getElementById('igCount');
     if (el) el.textContent =
-      `${view.length}/${rows.length} shown · ${enriched} enriched · ${promoted} promoted · ${sel.size} selected` +
+      `${view.length}/${rows.length} shown · ${enriched} enriched · ${promoted} promoted · ${selTxt}` +
       (dirty ? ' · ⚠ unsaved' : '');
     const sv = document.getElementById('igSave');
     if (sv) sv.classList.toggle('primary', dirty);
@@ -451,7 +461,7 @@
       const tt = r.ttxt ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
       const wxh = (r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>';
       const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
-      return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''}">
+      return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''} ${r.id === processingId ? 'proc' : ''}">
         <td class="c-sel"><input type="checkbox" class="igchk" ${sel.has(r.id) ? 'checked' : ''}></td>
         <td><span class="badge k-${k}">${k}</span></td>
         <td title="${esc(r.author)}">${esc(r.author)}</td>
@@ -478,6 +488,13 @@
 
   // ── Body interactions ───────────────────────────────────────────────────────
   function rowById(id) { return rows.find(r => r.id === id); }
+
+  // (dev0445) THE scope rule for every batch op: act only on rows that are BOTH
+  // checkbox-selected AND visible in the current filtered view, in view order. A
+  // selection made under one filter (or a "select-all" with no filter) must NOT
+  // act on rows you can't see — that bug downloaded other authors and made the
+  // toast read "3547 marked to do" when only a few were checked on screen.
+  const selectedInView = () => view.filter(r => sel.has(r.id)).map(r => r.id);
 
   function onBodyClick(e) {
     const tr = e.target.closest('tr');
@@ -671,6 +688,7 @@
       }
       done++;
       lastOpError = ''; lastOpInfo = '';
+      processingId = r.id; renderBody();   // (dev0445) highlight the row being worked on
       igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
       const good = await doOne(r);
       if (good) {
@@ -682,7 +700,7 @@
       applyAndRender();
       if (throttled || cookieStopped) break;
     }
-    busy = false; setBatchUi(false); igBatchHide();
+    processingId = null; busy = false; setBatchUi(false); igBatchHide();
     if (ok) { dirty = true; await persist(false); }
     applyAndRender();
 
@@ -720,8 +738,8 @@
   const isDownloaded = r => !!(r.localFiles && r.localFiles.length);
 
   async function batchEnrich() {
-    const ids = [...sel];
-    if (!ids.length) { igToast('Select rows first (checkbox; Shift-click for a range)', 2200); return; }
+    const ids = selectedInView();
+    if (!ids.length) { igToast('Nothing checked in this view.\nBatches act only on filtered rows that are checked (checkbox; Shift-click for a range).', 3400); return; }
     if (busy) return;
     if (ids.every(id => { const r = rowById(id); return r && igEnrichDone(r); })) {
       const walled = ids.filter(id => { const r = rowById(id); return r && !isEnriched(r) && enrichFailed.has(id); }).length;
@@ -774,8 +792,8 @@
   }
 
   async function batchDownload() {
-    const ids = [...sel];
-    if (!ids.length) { igToast('Select rows first (checkbox; Shift-click for a range)', 2200); return; }
+    const ids = selectedInView();
+    if (!ids.length) { igToast('Nothing checked in this view.\nBatches act only on filtered rows that are checked (checkbox; Shift-click for a range).', 3400); return; }
     if (busy) return;
     const todo = ids.filter(id => { const r = rowById(id); return r && !isDownloaded(r); });
     if (!todo.length) { igToast('All selected rows are already downloaded — nothing to do', 2600); return; }
@@ -821,7 +839,7 @@
   }
 
   function batchPromote() {
-    const ids = [...sel].filter(id => { const r = rowById(id); return r && r.status !== 'promoted'; });
+    const ids = selectedInView().filter(id => { const r = rowById(id); return r && r.status !== 'promoted'; });
     if (!ids.length) { igToast('Select un-promoted rows first', 2000); return; }
     if (!confirm(`Promote ${ids.length} row(s) into ml.json?\nThey'll become real rows in T/G.`)) return;
     let ok = 0;
@@ -833,7 +851,7 @@
   }
 
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igReload', 'igPaste'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igClearSel', 'igReload', 'igPaste'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the

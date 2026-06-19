@@ -5507,5 +5507,55 @@
     "rank": "species",
     "common": "",
     "extinct": false
+  },
+  {
+    "id": "caudata",
+    "label": "Caudata",
+    "kind": "taxon",
+    "parents": [
+      "amphibia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "ambystomatidae",
+    "label": "Ambystomatidae",
+    "kind": "taxon",
+    "parents": [
+      "caudata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "ambystoma",
+    "label": "Ambystoma",
+    "kind": "taxon",
+    "parents": [
+      "ambystomatidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "ambystoma-mexicanum",
+    "label": "Ambystoma mexicanum",
+    "kind": "taxon",
+    "parents": [
+      "ambystoma"
+    ],
+    "aliases": [
+      "Ambystoma mexicanum (Shaw & Nodder",
+      "1798)",
+      "Axototl"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Axolotl",
+    "extinct": false
   }
 ]
