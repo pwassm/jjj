@@ -420,6 +420,12 @@
       if (A > B) return sortDir;
       return 0;
     });
+    // (dev0446) Keep the selection equal to what's actually on screen: drop any
+    // checked rows the current filter/search hides. Invisible selections can no
+    // longer pile up and get batch-processed — that was the "3 checked but 3547/48
+    // marked to do" and wrong-author confusion. Skipped mid-batch so an in-flight
+    // run (which already captured its id list) isn't disturbed.
+    if (!busy) { const vis = new Set(view.map(r => r.id)); for (const id of [...sel]) if (!vis.has(id)) sel.delete(id); }
     renderHead();
     renderBody();
     updateCount();
@@ -798,7 +804,11 @@
     const todo = ids.filter(id => { const r = rowById(id); return r && !isDownloaded(r); });
     if (!todo.length) { igToast('All selected rows are already downloaded — nothing to do', 2600); return; }
     const already = ids.length - todo.length;
-    if (!confirm(`Download ${todo.length} item(s) at max resolution into ig_media/ ?`
+    // (dev0446) Name the author(s) in the prompt so a stray selection can't slip
+    // through unnoticed — if it isn't the author you filtered to, you'll see it here.
+    const auths = [...new Set(todo.map(id => rowById(id)?.author).filter(Boolean))];
+    const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
+    if (!confirm(`Download ${todo.length} item(s) from ${authLine}\nat max resolution into ig_media/ ?`
       + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '') + `\n\n`
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
       + `• Heavier than Enrich; tries cookieless first, your Firefox session only if walled — keep batches modest.\n`
