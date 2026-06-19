@@ -247,11 +247,13 @@ window.addEventListener('keydown', function(e) {
   }
 
   // (dev0447) The St bulk-staging screen owns w (import from clipboard) and f
-  // (focus search). Bail WITHOUT preventDefault so s.js's own capture handler —
-  // registered after this one — receives them. Other nav keys (t/g/s/…) still
-  // fall through so they close St / switch screens as before.
+  // (focus search). (dev0448) It also owns a (add focused row → ml.json) and d
+  // (delete focused row) — without this bail those bare keys would open the
+  // Annotate / Dictionary screens instead. Bail WITHOUT preventDefault so s.js's
+  // own capture handler — registered after this one — receives them. Other nav
+  // keys (t/g/s/…) still fall through so they close St / switch screens as before.
   if (typeof window.isStScreenOpen === 'function' && window.isStScreenOpen()
-      && (k === 'w' || k === 'f')) {
+      && (k === 'w' || k === 'f' || k === 'a' || k === 'd')) {
     return;
   }
 
@@ -2316,6 +2318,10 @@ document.addEventListener('keydown', e => {
   // (dev0358) Xe (text editor) owns its own arrow handling (caret when focused,
   // row-hop when not) — never let the table handler also navigate while it's open.
   if (document.getElementById('textEditorOverlay')) return;
+  // (dev0448) The St staging screen owns ↑/↓ (move its focused row) and Delete
+  // (remove its focused row). Bail so this T-table handler doesn't ALSO move/delete
+  // a hidden T row underneath the overlay.
+  if (typeof window.isStScreenOpen === 'function' && window.isStScreenOpen()) return;
 
   // Up/Down arrow keys — navigate rows in table (works even when annotate panel open)
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {

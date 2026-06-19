@@ -38,6 +38,11 @@
   let statusFilter = 'all';      // status dropdown (all/new/promoted)
   let dirty = false;             // unsaved edits (edit/import/promote/delete)
   let saveTimer = null;          // debounce for autosave after inline edits
+  let focusId = null;            // id of the single FOCUSED row (drives the preview + arrow nav)
+  const PV_HOST = 'st-pv-host';  // preview media host id — videos register under this key in seeLearnVideoPlayers
+  // In-memory trash so Delete/d and Add(a) are reversible with Ctrl+Z within the
+  // session. Each entry: {kind:'delete'|'add', row, pos, mlUID?}.
+  const undoStack = [];
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -262,6 +267,17 @@
 .st-stat-new{color:#7d8794}.st-stat-promoted{color:#6fb6ff;font-weight:700}
 #stTable .tabulator-cell a{color:#7fb8ff;text-decoration:none}
 #stTable .tabulator-cell a:hover{text-decoration:underline}
+/* Focused (previewed) row — the one arrows move and Delete/d/a act on. */
+#stTable .tabulator-row.st-focus{background:#16324e !important;box-shadow:inset 4px 0 0 #4df}
+#stTable .tabulator-row.st-focus .tabulator-cell{background:transparent !important}
+/* Lower-left preview window — shows whatever the focused link renders as. */
+#stPreview{position:fixed;left:12px;bottom:12px;width:420px;height:300px;z-index:30200;
+  background:#000;border:1px solid #4df;border-radius:8px;overflow:hidden;display:none;
+  flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.72)}
+#stPreview.show{display:flex}
+#st-pv-host{position:relative;flex:1 1 auto;background:#000;overflow:hidden}
+#stPvCap{flex:0 0 auto;max-height:62px;overflow:hidden;padding:5px 9px;background:#0a1426;
+  border-top:1px solid #1a2a4a;font:11px/1.4 monospace;color:#bcd}
 `;
     document.head.appendChild(s);
   }
@@ -292,8 +308,8 @@
         </select>
         <div class="spacer"></div>
         <button id="stImport" class="primary" title="Import links from the clipboard (hotkey w)">📋 Import clipboard</button>
-        <button id="stPromote" title="Copy selected rows into ml.json (stamped BA=1)">➕ Promote sel</button>
-        <button id="stDelete" class="danger" title="Remove selected rows from the staging store">🗑 Delete sel</button>
+        <button id="stPromote" title="Copy CHECKED rows into ml.json, keep them here as 'promoted' (stamped BA=1).&#10;Hotkey a = add the FOCUSED row to ml.json AND remove it from staging (Ctrl+Z undo).">➕ Promote sel</button>
+        <button id="stDelete" class="danger" title="Remove CHECKED rows from the staging store.&#10;Hotkey Delete or d = remove the FOCUSED row (Ctrl+Z undo).">🗑 Delete sel</button>
         <button id="stReload" title="Reload s.json from disk">↻ Reload</button>
         <button id="stSave" title="Write edits back to s.json">💾 Save</button>
         <button id="stClose" title="Close (Esc / T)">×</button>
@@ -301,6 +317,10 @@
       <div id="stWrap">
         <div id="stTable"></div>
         <div id="stEmpty"></div>
+      </div>
+      <div id="stPreview" title="Preview of the focused row (arrows move focus · Delete/d remove · a add to T)">
+        <div id="${PV_HOST}"></div>
+        <div id="stPvCap"></div>
       </div>`;
     document.body.appendChild(o);
 
@@ -361,11 +381,225 @@
       placeholder: '',
       reactiveData: false,
       movableColumns: true,
-      headerSortClickElement: 'icon'
+      headerSortClickElement: 'icon',
+      // Virtual-DOM safe focus highlight: re-applied every time Tabulator (re)renders
+      // a row, so it survives scroll recycling, sort and filter.
+      rowFormatter: row => {
+        row.getElement().classList.toggle('st-focus', row.getData().id === focusId);
+      }
     });
     table.on('cellEdited', () => { markDirty(); scheduleSave(); });
     table.on('rowSelectionChanged', () => updateCount());
-    table.on('tableBuilt', () => { applyFilters(); updateCount(); });
+    // Clicking anywhere on a row focuses it (drives the preview). The checkbox /
+    // link cells still do their own thing — this only sets which row is previewed.
+    table.on('rowClick', (e, row) => setFocus(row.getData().id, { scroll: false }));
+    table.on('tableBuilt', () => { applyFilters(); updateCount(); reconcileFocus(); });
+  }
+
+  // ── Focus + lower-left preview ───────────────────────────────────────────────
+  // The FOCUSED row is the single row shown in the preview window and acted on by
+  // the arrow keys, Delete/d and a. Distinct from the checkbox selection (which
+  // still drives the bulk "Promote sel" / "Delete sel" buttons).
+  const activeRowComps = () => (table ? table.getRows('active') : []);  // filtered+sorted, display order
+
+  function setFocus(id, opts) {
+    opts = opts || {};
+    const prev = focusId;
+    focusId = id || null;
+    if (table) {
+      [prev, focusId].forEach(fid => {
+        if (!fid) return;
+        const r = table.getRow(fid);
+        if (r) { try { r.reformat(); } catch (_) {} }
+      });
+      if (focusId && opts.scroll !== false) {
+        const r = table.getRow(focusId);
+        // 'nearest' + ifVisible:false → only scrolls when the row is off-screen,
+        // so arrowing through visible rows doesn't yank the viewport around.
+        if (r) { try { const p = r.scrollTo('nearest', false); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+      }
+    }
+    refreshPreview();
+  }
+
+  // After a filter/search change (or a delete), keep focus on a still-visible row:
+  // keep the current one if it survived, else snap to the first visible row.
+  function reconcileFocus() {
+    const act = activeRowComps();
+    if (!act.length) { setFocus(null); return; }
+    // Snap to the first visible row only when the focused row vanished (or none yet).
+    // If the same row is still visible, leave it — the preview already shows it, so
+    // we don't remount its video on every search keystroke.
+    if (!focusId || !act.some(r => r.getData().id === focusId)) setFocus(act[0].getData().id);
+  }
+
+  // Arrow nav: step the focus one row up/down through the visible (filtered+sorted) set.
+  function moveFocus(delta) {
+    const act = activeRowComps();
+    if (!act.length) return;
+    let idx = act.findIndex(r => r.getData().id === focusId);
+    if (idx < 0) idx = delta > 0 ? -1 : act.length;   // first ↓ → top, first ↑ → bottom
+    const ni = Math.max(0, Math.min(act.length - 1, idx + delta));
+    setFocus(act[ni].getData().id);
+  }
+
+  // The neighbour to focus AFTER the current focused row is removed (next, else prev).
+  function focusNeighborId() {
+    const act = activeRowComps();
+    const i = act.findIndex(r => r.getData().id === focusId);
+    if (i < 0) return act.length ? act[0].getData().id : null;
+    const n = act[i + 1] || act[i - 1];
+    return n ? n.getData().id : null;
+  }
+
+  // (Re)build the preview window for the focused row. Tears down any prior video.
+  function refreshPreview() {
+    const pv = document.getElementById('stPreview');
+    const host = document.getElementById(PV_HOST);
+    if (!pv || !host) return;
+    if (window.stopCellVideoLoop) { try { window.stopCellVideoLoop(PV_HOST); } catch (_) {} }
+    host.innerHTML = '';
+    const row = focusId ? rows.find(r => r.id === focusId) : null;
+    if (!row || !row.link) { pv.classList.remove('show'); return; }
+    pv.classList.add('show');
+    fillPreviewHost(host, row);
+    fillPreviewCaption(row);
+  }
+
+  // Render the media for one row — reuses the shared window.mount* / isVideoRow
+  // helpers (same machinery the grid and the T Ctrl+I preview use). Muted autoplay
+  // so the preview reliably plays while bulk-reviewing (click the Link cell for sound).
+  function fillPreviewHost(host, row) {
+    const link = row.link || '';
+    const isVid = window.isVideoRow ? window.isVideoRow(row) : false;
+    const isImg = /\.(jpe?g|png|gif|webp|svg|bmp|avif|tiff?)(\?.*)?$/i.test(link);
+    const id = row.id;   // guard against stale mounts when the user arrows quickly
+    if (isVid) {
+      const segs = [{ start: 0, dur: 99999 }];
+      setTimeout(() => {
+        if (focusId !== id || !document.getElementById('stPreview')) return;
+        if (window.isYouTubeLink && window.isYouTubeLink(link) && window.mountYouTubeClip)
+          window.mountYouTubeClip(host, link, 0, 99999, true, undefined, segs);
+        else if (window.isVimeoLink && window.isVimeoLink(link) && window.mountVimeoClip)
+          window.mountVimeoClip(host, link, 0, 99999, true, undefined, segs);
+        else if (window.isDirectVideoLink && window.isDirectVideoLink(link) && window.mountDirectVideoClip)
+          window.mountDirectVideoClip(host, link, 0, 99999, true, undefined, segs);
+        else if (window.isTikTokLink && window.isTikTokLink(link) && window.mountTikTokEmbed)
+          window.mountTikTokEmbed(host, link);
+        else if (window.isInstagramLink && window.isInstagramLink(link) && window.mountInstagramEmbed)
+          window.mountInstagramEmbed(host, link);
+      }, 60);
+      return;
+    }
+    if (isImg) { _pvImg(host, link); return; }
+    // "other" — try it as an image; if it won't load, show a click-to-open note.
+    _pvImg(host, link, () => {
+      host.innerHTML = '';
+      const d = document.createElement('div');
+      d.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
+        + 'justify-content:center;text-align:center;color:#789;font:12px monospace;padding:14px;';
+      d.textContent = '(no inline preview — click the Link cell to open)';
+      host.appendChild(d);
+    });
+  }
+  function _pvImg(host, src, onFail) {
+    const img = document.createElement('img');
+    img.src = src;
+    img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;';
+    img.onerror = onFail || (() => { img.style.opacity = '.25'; });
+    host.appendChild(img);
+  }
+  function fillPreviewCaption(row) {
+    const cap = document.getElementById('stPvCap');
+    if (!cap) return;
+    const t = row.type || 'other';
+    const title = (row.VidTitle || '').trim();
+    const author = (row.VidAuthor || '').trim();
+    cap.innerHTML = `<span class="st-badge t-${esc(t)}">${esc(t)}</span> `
+      + (title ? `<span style="color:#cfe;">${esc(title)}</span>` : '')
+      + (author ? ` <span style="color:#d8c69a;">· ${esc(author)}</span>` : '')
+      + `<div style="color:#7fb8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(row.link || '')}</div>`;
+  }
+  function previewTeardown() {
+    if (window.stopCellVideoLoop) { try { window.stopCellVideoLoop(PV_HOST); } catch (_) {} }
+    const host = document.getElementById(PV_HOST);
+    if (host) host.innerHTML = '';
+    document.getElementById('stPreview')?.classList.remove('show');
+  }
+
+  // ── Focused-row actions (Delete / Add), reversible via Ctrl+Z ─────────────────
+  // Build the ml.json row a staging row promotes to (shared by `a` and Promote sel).
+  function toMlRow(r, stamp) {
+    return {
+      UID: nextUID(),
+      link: r.link, VidTitle: r.VidTitle || '', VidAuthor: r.VidAuthor || '',
+      attribution: r.attribution || '', vidLength: r.vidLength || '', comment: r.comment || '',
+      tags: Array.isArray(r.tags) ? r.tags : [], ltype: r.type || '',
+      BA: '1', show: '1', DateAdded: stamp, DateModified: stamp, sSource: r.id
+    };
+  }
+
+  // Delete/d — remove the focused row to the in-session trash (Ctrl+Z restores).
+  function deleteFocused() {
+    if (!focusId) { stToast('No focused row — click a row or use ↑/↓ first.', 1800); return; }
+    const id = focusId;
+    const idx = rows.findIndex(r => r.id === id);
+    if (idx < 0) return;
+    const removed = rows[idx];
+    const nextId = focusNeighborId();
+    rows.splice(idx, 1);
+    if (table) { try { table.deleteRow(id); } catch (_) {} }
+    undoStack.push({ kind: 'delete', row: removed, pos: idx });
+    markDirty(); persist(false);
+    setFocus(nextId);
+    updateCount();
+    stToast('🗑 Deleted “' + (removed.VidTitle || removed.link || '').slice(0, 44) + '” — Ctrl+Z to undo', 2600);
+  }
+
+  // a — Add the focused link to ml.json (BA="1") AND remove it from staging.
+  // Both halves are reversible together via Ctrl+Z.
+  function addFocusedToT() {
+    if (!focusId) { stToast('No focused row — click a row or use ↑/↓ first.', 1800); return; }
+    if (typeof data === 'undefined' || typeof nextUID !== 'function' || typeof save !== 'function') {
+      stToast('ml.json not loaded — open the T screen once first, then press a.', 3200); return;
+    }
+    const id = focusId;
+    const idx = rows.findIndex(r => r.id === id);
+    if (idx < 0) return;
+    const r = rows[idx];
+    const mlRow = toMlRow(r, now());
+    data.push(mlRow);
+    save();                                   // write ml.json
+    const nextId = focusNeighborId();
+    rows.splice(idx, 1);
+    if (table) { try { table.deleteRow(id); } catch (_) {} }
+    undoStack.push({ kind: 'add', row: r, pos: idx, mlUID: mlRow.UID });
+    markDirty(); persist(false);              // write s.json (row removed)
+    setFocus(nextId);
+    updateCount();
+    stToast('➕ Added to ml.json (BA="1") + removed from staging — Ctrl+Z to undo', 2800);
+  }
+
+  // Ctrl+Z — reverse the last Delete (re-insert) or Add (pull the ml.json row back
+  // out AND re-insert the staging row).
+  function undo() {
+    const a = undoStack.pop();
+    if (!a) { stToast('Nothing to undo.', 1500); return; }
+    if (a.kind === 'add') {
+      if (typeof data !== 'undefined' && Array.isArray(data) && a.mlUID != null) {
+        const di = data.findIndex(x => x && x.UID === a.mlUID);
+        if (di >= 0) { data.splice(di, 1); if (typeof save === 'function') save(); }
+      }
+    }
+    const pos = Math.min(a.pos, rows.length);
+    rows.splice(pos, 0, a.row);
+    if (table) { try { table.addData([a.row]); } catch (_) {} }
+    markDirty(); persist(false);
+    applyFilters();
+    setFocus(a.row.id);
+    stToast((a.kind === 'add'
+      ? '↩ Undid Add — removed from ml.json, restored to staging'
+      : '↩ Restored “' + (a.row.VidTitle || a.row.link || '').slice(0, 44) + '”'), 2400);
   }
 
   // Combined free-text + type + status filter (Tabulator function filter).
@@ -383,6 +617,7 @@
       return true;
     });
     updateCount();
+    reconcileFocus();   // keep the preview on a still-visible row after a filter change
   }
 
   function updateCount() {
@@ -494,7 +729,11 @@
       if (!r.status) r.status = 'new';
     });
     dirty = false;
-    if (table) { table.setData(rows); applyFilters(); }
+    focusId = null;             // stale ids from the old data set are gone; reconcile re-picks
+    if (table) {
+      try { await table.setData(rows); } catch (_) {}
+      applyFilters();           // applyFilters → reconcileFocus picks the first visible row
+    }
     updateCount();
   }
 
@@ -515,14 +754,20 @@
   }
   function closeStScreen() {
     if (dirty) persist(false);     // best-effort flush on close
+    previewTeardown();             // stop any playing preview video (no bg buffering)
     document.getElementById('stOverlay')?.classList.remove('open');
   }
   function isStScreenOpen() {
     return document.getElementById('stOverlay')?.classList.contains('open') || false;
   }
 
-  // In-window key handling. Capture-phase; core.js's dispatcher bails on w/f while
-  // St is open so they reach us here (mirrors the Ig f/c arrangement).
+  // In-window key handling. Capture-phase; core.js's dispatcher bails on w/f/a/d
+  // while St is open so they reach us here (mirrors the Ig f/c arrangement), and
+  // its T-table arrow/Delete handler bails entirely while St is open.
+  //   ↑/↓ → move the focused (previewed) row.
+  //   Delete / d → delete the focused row (→ in-session trash).
+  //   a   → add the focused link to ml.json (T) + remove it from staging.
+  //   Ctrl+Z → undo the last Delete / Add.
   //   w   → import from clipboard.
   //   f   → focus the search box.   Shift+F → clear the text search.
   //   Esc → leave the search box (filter stays); else leave the screen.
@@ -530,6 +775,15 @@
     if (!isStScreenOpen()) return;
     const ae = document.activeElement;
     const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+
+    // Ctrl/⌘+Z — undo the last Delete/Add (only when not typing, so native
+    // text-undo still works inside the search box / a cell editor).
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey
+        && (e.key === 'z' || e.key === 'Z') && !typing) {
+      e.stopPropagation(); e.preventDefault();
+      undo();
+      return;
+    }
 
     if (e.key === 'Escape') {
       if (typing) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }
@@ -539,6 +793,25 @@
       return;
     }
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // ↑/↓ — move the focused (previewed) row instead of scrolling the page.
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.stopPropagation(); e.preventDefault();
+      moveFocus(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    // Delete or d — remove the focused row (reversible with Ctrl+Z).
+    if (e.key === 'Delete' || e.key === 'd') {
+      e.stopPropagation(); e.preventDefault();
+      deleteFocused();
+      return;
+    }
+    // a — add the focused link to ml.json (T) and remove it from staging.
+    if (e.key === 'a') {
+      e.stopPropagation(); e.preventDefault();
+      addFocusedToT();
+      return;
+    }
 
     if (e.key === 'w') {
       e.stopPropagation(); e.preventDefault();
