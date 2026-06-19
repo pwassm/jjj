@@ -27,6 +27,11 @@ vsteps-*.mp4
 ig.json
 ig_media/
 
+# (dev0447) Bulk staging store — Flickr jpgs / YT / Vimeo / direct video links,
+# parallel to ml.json and kept LOCAL until rows are Promoted into ml.json. Written
+# by the St screen (s.js) via proxy /s/save. (*.bak is already ignored above.)
+s.json
+
 # (dev0312) Local-media IndexedDB exports — privacy.
 # Q's index (the localmedia IDB) lives in Chrome's profile, not in this repo:
 #   %LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\http_localhost_8080\

@@ -246,6 +246,15 @@ window.addEventListener('keydown', function(e) {
     return;
   }
 
+  // (dev0447) The St bulk-staging screen owns w (import from clipboard) and f
+  // (focus search). Bail WITHOUT preventDefault so s.js's own capture handler —
+  // registered after this one — receives them. Other nav keys (t/g/s/…) still
+  // fall through so they close St / switch screens as before.
+  if (typeof window.isStScreenOpen === 'function' && window.isStScreenOpen()
+      && (k === 'w' || k === 'f')) {
+    return;
+  }
+
   // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
   // Only when the grid overlay is open; otherwise falls through so bare 'c'
   // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled
@@ -306,7 +315,12 @@ window.addEventListener('keydown', function(e) {
   // letter shortcuts (T/Q/D/V/W). Don't let the global dispatcher swallow them
   // (e.g. 'w' = clipboard import) — bail so the menu's capture handler runs.
   if (document.getElementById('gridContextMenu')) return;
-  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i') {
+  // (dev0447) S opens the St staging screen — but Xe (text editor) uses bare 's'
+  // for save, so don't forward 's' to the dispatcher while Xe is open; let it
+  // reach xe.js. (Slideshow / Dictionary / Video-editor already bail entirely
+  // above, so they keep their own 's' too.)
+  if (k === 's' && document.getElementById('textEditorOverlay')) return;
+  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's') {
     // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
     // owned by the C-screen handler (boot.js). Don't also fire the global
     // hamburger-menu dispatcher here, or it pops HM right after. Let the event

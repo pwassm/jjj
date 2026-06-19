@@ -45,7 +45,7 @@ const PORT = 8081;
 // ig_media/ as "<stem> [i of N].<ext>" (bare stem when a single file).
 // (dev0434) /ig/download cookie order REVERSED → cookieless first, Firefox cookies
 //   only as fallback (lowers account linkage for bulk downloads — user concern).
-const PROXY_BUILD = 'dev0442';
+const PROXY_BUILD = 'dev0447';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -777,6 +777,32 @@ function igSave(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev0447) /s/save — overwrite s.json with the St-screen's edited array. s.json is
+// the BULK staging store (Flickr jpgs / YT / Vimeo / direct video), parallel to
+// ml.json and deliberately kept out of the curated table until rows are Promoted.
+// Mirrors igSave: each row must carry a string `id`, a one-deep s.json.bak is written
+// first, and a write that drops > 50% of rows is refused (409) so a client bug can't
+// wipe a large staging set.
+const S_STORE = path.join(__dirname, 's.json');
+function sSave(req, res, origin) {
+  readJson(req, 32 * 1024 * 1024).then(payload => {
+    const incoming = Array.isArray(payload.rows) ? payload.rows : null;
+    if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
+    const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
+    let prev = [];
+    try { if (fs.existsSync(S_STORE)) prev = JSON.parse(fs.readFileSync(S_STORE, 'utf8')) || []; } catch (_) {}
+    if (Array.isArray(prev) && prev.length > 10 && clean.length < prev.length * 0.5) {
+      console.warn('[s/save] REFUSED — ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)');
+      sendJson(res, 409, { ok: false, error: 'refused: ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)' }, origin);
+      return;
+    }
+    try { if (fs.existsSync(S_STORE)) fs.copyFileSync(S_STORE, S_STORE + '.bak'); } catch (_) {}
+    fs.writeFileSync(S_STORE, JSON.stringify(clean, null, 2));
+    console.log('[s/save] wrote ' + clean.length + ' rows (was ' + (Array.isArray(prev) ? prev.length : 0) + ')');
+    sendJson(res, 200, { ok: true, total: clean.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 // (dev0429) /ig/download — yt-dlp downloads a reel/post's media into <project>/
 // ig_media/<stem>.<ext>. Returns the basenames of every file produced (a carousel
 // /p post yields several). All argv tokens are literal under spawn(shell:false);
@@ -877,7 +903,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'sstore'] }));
     return;
   }
 
@@ -907,6 +933,18 @@ http.createServer((req, res) => {
     if (action === 'save')     { igSave(req, res, origin);     return; }
     if (action === 'download') { igDownload(req, res, origin); return; }
     sendJson(res, 404, { ok: false, error: 'unknown ig action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0447) ── Bulk staging store (origin-locked like /ig) ──────────────────
+  // The St screen (s.js) reads s.json directly (GET, via the static file server)
+  // and writes it back here.
+  if (req.url.startsWith('/s/')) {
+    const origin = req.headers.origin || '';
+    if (req.method !== 'POST') { send(res, 405, 's: POST required', corsForExec(origin)); return; }
+    const action = req.url.slice('/s/'.length).split('?')[0];
+    if (action === 'save') { sSave(req, res, origin); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown s action: ' + action }, origin);
     return;
   }
 
@@ -999,5 +1037,6 @@ http.createServer((req, res) => {
   console.log(`Screen recorder:   POST /rec/{start,stop}  → vsteps-<ts>.mp4 in ${__dirname}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
   console.log(`Harvest store:     POST /ig/{add,save,download}  → ig.json + ig_media/ in ${__dirname}`);
+  console.log(`Bulk staging:      POST /s/save                 → s.json in ${__dirname}`);
   console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
 });
