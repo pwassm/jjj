@@ -653,22 +653,7 @@
     const stamp = now();
     let ok = 0;
     for (const r of sel) {
-      const mlRow = {
-        UID: nextUID(),
-        link: r.link,
-        VidTitle: r.VidTitle || '',
-        VidAuthor: r.VidAuthor || '',
-        attribution: r.attribution || '',
-        vidLength: r.vidLength || '',
-        comment: r.comment || '',
-        tags: Array.isArray(r.tags) ? r.tags : [],
-        ltype: r.type || '',
-        BA: '1',                 // bulk-added marker (the existing ml.json convention)
-        show: '1',
-        DateAdded: stamp,
-        DateModified: stamp,
-        sSource: r.id            // provenance: which s.json row this came from
-      };
+      const mlRow = toMlRow(r, stamp);   // shared shape (also used by the `a` hotkey)
       data.push(mlRow);
       r.status = 'promoted';
       r.mlUID = mlRow.UID;
