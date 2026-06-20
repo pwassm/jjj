@@ -172,7 +172,7 @@
       haveS.add(key);
       const row = Object.assign({
         id: mkId(), type: 'other', link: '', VidTitle: '', VidAuthor: '',
-        attribution: '', vidLength: '', comment: '', tags: [],
+        attribution: '', vidLength: '', resolution: '', size: '', comment: '', tags: [],
         status: 'new', DateAdded: stamp
       }, p);
       rows.push(row);
@@ -270,11 +270,19 @@
 /* Focused (previewed) row — the one arrows move and Delete/d/a act on. */
 #stTable .tabulator-row.st-focus{background:#16324e !important;box-shadow:inset 4px 0 0 #4df}
 #stTable .tabulator-row.st-focus .tabulator-cell{background:transparent !important}
-/* Lower-left preview window — shows whatever the focused link renders as. */
-#stPreview{position:fixed;left:12px;bottom:12px;width:420px;height:300px;z-index:30200;
+/* Floating preview window — shows whatever the focused link renders as.
+   Draggable by its title bar, resizable (resize:both), position+size remembered
+   in localStorage. Default position is centred (set in JS). */
+#stPreview{position:fixed;width:640px;height:460px;z-index:30200;
   background:#000;border:1px solid #4df;border-radius:8px;overflow:hidden;display:none;
-  flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.72)}
+  flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.72);
+  resize:both;min-width:320px;min-height:230px;max-width:96vw;max-height:92vh}
 #stPreview.show{display:flex}
+#stPvDrag{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  cursor:move;user-select:none;padding:4px 9px;background:#0a1426;border-bottom:1px solid #1a2a4a;
+  font:11px/1.3 system-ui;color:#9ad;touch-action:none}
+#stPvDrag .h{font-weight:700}
+#stPvDrag .hint{color:#5b6b86;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #st-pv-host{position:relative;flex:1 1 auto;background:#000;overflow:hidden}
 #stPvCap{flex:0 0 auto;max-height:62px;overflow:hidden;padding:5px 9px;background:#0a1426;
   border-top:1px solid #1a2a4a;font:11px/1.4 monospace;color:#bcd}
@@ -308,6 +316,7 @@
         </select>
         <div class="spacer"></div>
         <button id="stImport" class="primary" title="Import links from the clipboard (hotkey w)">📋 Import clipboard</button>
+        <button id="stFillMeta" title="Fill Res / Size / Len on the CHECKED rows (or the focused row if none checked).&#10;Images &amp; direct videos are probed in-browser; YouTube/Vimeo use yt-dlp via the proxy.&#10;Hotkey e.">📐 Fill meta</button>
         <button id="stPromote" title="Copy CHECKED rows into ml.json, keep them here as 'promoted' (stamped BA=1).&#10;Hotkey a = add the FOCUSED row to ml.json AND remove it from staging (Ctrl+Z undo).">➕ Promote sel</button>
         <button id="stDelete" class="danger" title="Remove CHECKED rows from the staging store.&#10;Hotkey Delete or d = remove the FOCUSED row (Ctrl+Z undo).">🗑 Delete sel</button>
         <button id="stReload" title="Reload s.json from disk">↻ Reload</button>
@@ -319,6 +328,7 @@
         <div id="stEmpty"></div>
       </div>
       <div id="stPreview" title="Preview of the focused row (arrows move focus · Delete/d remove · a add to T)">
+        <div id="stPvDrag"><span class="h">▣ Preview</span><span class="hint">drag to move · drag corner to resize · double-click = recentre</span></div>
         <div id="${PV_HOST}"></div>
         <div id="stPvCap"></div>
       </div>`;
@@ -329,12 +339,19 @@
     $('stType').addEventListener('change', e => { typeFilter = e.target.value; applyFilters(); });
     $('stStatus').addEventListener('change', e => { statusFilter = e.target.value; applyFilters(); });
     $('stImport').addEventListener('click', () => importFromClipboard());
+    $('stFillMeta').addEventListener('click', () => fillMetaSelected());
     $('stPromote').addEventListener('click', () => promoteSelected());
     $('stDelete').addEventListener('click', () => deleteSelected());
     $('stReload').addEventListener('click', () => loadData());
     $('stSave').addEventListener('click', () => persist(true));
     $('stClose').addEventListener('click', () => closeStScreen());
+
+    applyPvBox();        // position the preview (centred default, or last saved spot)
+    wirePreviewDrag();   // make the title bar draggable + remember resize
   }
+
+  // Keep the preview on-screen when the viewport changes (it's fixed-positioned).
+  window.addEventListener('resize', () => { if (isStScreenOpen()) applyPvBox(); });
 
   // ── Tabulator columns ────────────────────────────────────────────────────────
   function columns() {
@@ -361,7 +378,12 @@
       { title: 'Title', field: 'VidTitle', widthGrow: 2, editor: 'input', headerFilter: 'input' },
       { title: 'Author', field: 'VidAuthor', width: 130, editor: 'input', headerFilter: 'input' },
       { title: 'Attribution', field: 'attribution', width: 150, editor: 'input', headerFilter: 'input' },
-      { title: 'Len', field: 'vidLength', width: 70, editor: 'input', hozAlign: 'right' },
+      { title: 'Len', field: 'vidLength', width: 62, editor: 'input', hozAlign: 'right',
+        headerTooltip: 'Length (m:ss) — auto-filled for video by 📐 Fill meta' },
+      { title: 'Res', field: 'resolution', width: 96, editor: 'input', hozAlign: 'right',
+        headerTooltip: 'Resolution (W×H) — auto-filled for images & video by 📐 Fill meta' },
+      { title: 'Size', field: 'size', width: 78, editor: 'input', hozAlign: 'right',
+        headerTooltip: 'File size — auto-filled for images & direct video by 📐 Fill meta' },
       { title: 'Comment', field: 'comment', width: 130, editor: 'input' },
       { title: 'Tags', field: 'tags', width: 130, formatter: tagsCell, editor: 'input',
         mutatorEdit: v => String(v || '').split(',').map(s => s.trim()).filter(Boolean) },
@@ -378,10 +400,15 @@
       layout: 'fitColumns',
       height: '100%',
       selectableRows: true,
+      // (dev0449) Plain checkbox clicks still toggle independently (accumulate, as
+      // the Promote/Delete-sel buttons expect); Shift-click selects a contiguous
+      // range — wired manually in wireRangeSelect() (Tabulator's built-in 'click'
+      // range mode would hijack plain clicks into single-select). The header
+      // checkbox (titleFormatter:'rowSelection') is the select-all.
       placeholder: '',
       reactiveData: false,
       movableColumns: true,
-      headerSortClickElement: 'icon',
+      // (dev0449) Click anywhere on a column header to sort (was icon-only).
       // Virtual-DOM safe focus highlight: re-applied every time Tabulator (re)renders
       // a row, so it survives scroll recycling, sort and filter.
       rowFormatter: row => {
@@ -393,7 +420,38 @@
     // Clicking anywhere on a row focuses it (drives the preview). The checkbox /
     // link cells still do their own thing — this only sets which row is previewed.
     table.on('rowClick', (e, row) => setFocus(row.getData().id, { scroll: false }));
-    table.on('tableBuilt', () => { applyFilters(); updateCount(); reconcileFocus(); });
+    table.on('tableBuilt', () => { applyFilters(); updateCount(); reconcileFocus(); wireRangeSelect(); });
+  }
+
+  // ── Shift-click range selection over the checkboxes ──────────────────────────
+  // Capture-phase so we run BEFORE the checkbox's own toggle and can suppress it on
+  // a Shift-click. Plain clicks fall through to Tabulator's independent toggle and
+  // just move the range anchor; Shift-click selects every row between the anchor
+  // and the clicked row (in current filtered+sorted display order).
+  let _selAnchorId = null;
+  function wireRangeSelect() {
+    const wrap = document.getElementById('stTable');
+    if (!wrap || wrap._rangeWired) return;
+    wrap._rangeWired = true;
+    wrap.addEventListener('click', e => {
+      const cb = e.target;
+      if (!table || !cb || cb.tagName !== 'INPUT' || cb.type !== 'checkbox') return;
+      const rowEl = cb.closest('.tabulator-row');
+      if (!rowEl) { _selAnchorId = null; return; }   // header select-all → reset anchor
+      const act = table.getRows('active');
+      const comp = act.find(r => r.getElement() === rowEl);
+      if (!comp) return;
+      const id = comp.getData().id;
+      const i1 = e.shiftKey && _selAnchorId ? act.findIndex(r => r.getData().id === _selAnchorId) : -1;
+      const i2 = i1 >= 0 ? act.findIndex(r => r.getData().id === id) : -1;
+      if (i1 >= 0 && i2 >= 0) {
+        e.preventDefault();                           // valid range → suppress the single toggle
+        const lo = Math.min(i1, i2), hi = Math.max(i1, i2);
+        try { table.selectRow(act.slice(lo, hi + 1)); } catch (_) {}
+      } else {
+        _selAnchorId = id;                            // plain click → anchor for the next Shift-click
+      }
+    }, true);
   }
 
   // ── Focus + lower-left preview ───────────────────────────────────────────────
@@ -420,6 +478,7 @@
       }
     }
     refreshPreview();
+    scheduleAutoProbe(focusId);   // auto-fill Res/Size/Len for the focused image/video
   }
 
   // After a filter/search change (or a delete), keep focus on a still-visible row:
@@ -462,6 +521,7 @@
     const row = focusId ? rows.find(r => r.id === focusId) : null;
     if (!row || !row.link) { pv.classList.remove('show'); return; }
     pv.classList.add('show');
+    applyPvBox();   // re-clamp to the current viewport (handles a resize while St was closed)
     fillPreviewHost(host, row);
     fillPreviewCaption(row);
   }
@@ -525,6 +585,220 @@
     const host = document.getElementById(PV_HOST);
     if (host) host.innerHTML = '';
     document.getElementById('stPreview')?.classList.remove('show');
+  }
+
+  // ── Preview window geometry (draggable + remembered) ─────────────────────────
+  // Single source of truth for the preview's box; persisted to localStorage so the
+  // last position/size is restored next session.
+  const PV_BOX_KEY = 'st-preview-box';
+  let pvBox = null, _pvRoT = null;
+
+  function defaultPvBox() {
+    const w = Math.min(640, window.innerWidth - 40);
+    const h = Math.min(460, window.innerHeight - 60);
+    return { left: Math.round((window.innerWidth - w) / 2),
+             top: Math.round((window.innerHeight - h) / 2), width: w, height: h };
+  }
+  function loadPvBox() {
+    try {
+      const j = JSON.parse(localStorage.getItem(PV_BOX_KEY) || 'null');
+      if (j && Number.isFinite(j.left) && Number.isFinite(j.width)) return j;
+    } catch (_) {}
+    return null;
+  }
+  function clampBox(b) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const width = Math.max(320, Math.min(b.width || 640, W - 16));
+    const height = Math.max(230, Math.min(b.height || 460, H - 16));
+    const left = Math.max(6, Math.min(b.left, W - width - 6));
+    const top = Math.max(6, Math.min(b.top, H - height - 6));
+    return { left, top, width, height };
+  }
+  function applyPvBox() {
+    const pv = document.getElementById('stPreview');
+    if (!pv) return;
+    pvBox = clampBox(pvBox || loadPvBox() || defaultPvBox());
+    pv.style.left = pvBox.left + 'px'; pv.style.top = pvBox.top + 'px';
+    pv.style.right = 'auto'; pv.style.bottom = 'auto';
+    pv.style.width = pvBox.width + 'px'; pv.style.height = pvBox.height + 'px';
+  }
+  function savePvBox() { try { localStorage.setItem(PV_BOX_KEY, JSON.stringify(pvBox)); } catch (_) {} }
+
+  function wirePreviewDrag() {
+    const pv = document.getElementById('stPreview');
+    const bar = document.getElementById('stPvDrag');
+    if (!pv || !bar || bar._wired) return;
+    bar._wired = true;
+    let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    bar.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      drag = true; sx = e.clientX; sy = e.clientY; ox = pv.offsetLeft; oy = pv.offsetTop;
+      try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+    bar.addEventListener('pointermove', e => {
+      if (!drag) return;
+      pvBox = { left: ox + (e.clientX - sx), top: oy + (e.clientY - sy),
+                width: pv.offsetWidth, height: pv.offsetHeight };
+      applyPvBox();
+    });
+    const end = e => { if (!drag) return; drag = false;
+      try { bar.releasePointerCapture(e.pointerId); } catch (_) {} savePvBox(); };
+    bar.addEventListener('pointerup', end);
+    bar.addEventListener('pointercancel', end);
+    // Double-click the bar → recentre at the default size.
+    bar.addEventListener('dblclick', () => { pvBox = defaultPvBox(); applyPvBox(); savePvBox(); });
+    // Capture a manual resize (CSS resize:both changes width/height directly).
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => {
+        if (!pv.classList.contains('show')) return;
+        const r = pv.getBoundingClientRect();
+        if (r.width < 80 || r.height < 80) return;
+        pvBox = { left: Math.round(r.left), top: Math.round(r.top),
+                  width: Math.round(r.width), height: Math.round(r.height) };
+        clearTimeout(_pvRoT); _pvRoT = setTimeout(savePvBox, 400);
+      }).observe(pv);
+    }
+  }
+
+  // ── Metadata probing (Res / Size / Len) ──────────────────────────────────────
+  // Fills the new Res (W×H), Size and Len columns. Images & direct videos are
+  // probed in-browser (cheap, no network round-trip beyond the media itself);
+  // YouTube / Vimeo go through the proxy's yt-dlp bridge (slower, opt-in).
+  function fmtBytes(bytes) {
+    bytes = +bytes;
+    if (!Number.isFinite(bytes) || bytes <= 0) return '';
+    const u = ['B', 'KB', 'MB', 'GB']; let i = 0, n = bytes;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (n >= 10 || i === 0 ? Math.round(n) : n.toFixed(1)) + ' ' + u[i];
+  }
+  function fmtSecs(secs) {
+    secs = Math.round(+secs);
+    if (!Number.isFinite(secs) || secs <= 0) return '';
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+  function isImageLink(u) {
+    return /\.(jpe?g|png|gif|webp|svg|bmp|avif|tiff?)(\?|#|$)/i.test(String(u || ''));
+  }
+  // HEAD request for Content-Length — best-effort (CORS often blocks it → '').
+  async function headSize(url) {
+    try {
+      const r = await fetch(url, { method: 'HEAD', mode: 'cors' });
+      if (!r.ok) return '';
+      return fmtBytes(r.headers.get('content-length'));
+    } catch (_) { return ''; }
+  }
+  function probeImage(url) {
+    return new Promise(resolve => {
+      const img = new Image();
+      let done = false;
+      const fin = () => { if (done) return; done = true;
+        resolve(img.naturalWidth && img.naturalHeight ? img.naturalWidth + '×' + img.naturalHeight : ''); };
+      img.onload = fin; img.onerror = () => { done = true; resolve(''); };
+      img.src = url;
+      setTimeout(fin, 12000);
+    });
+  }
+  function probeVideo(url) {
+    return new Promise(resolve => {
+      const v = document.createElement('video');
+      v.preload = 'metadata'; v.muted = true;
+      let done = false;
+      const fin = () => { if (done) return; done = true;
+        const res = (v.videoWidth && v.videoHeight) ? v.videoWidth + '×' + v.videoHeight : '';
+        const len = fmtSecs(v.duration);
+        try { v.removeAttribute('src'); v.load(); } catch (_) {}
+        resolve({ resolution: res, vidLength: len }); };
+      v.onloadedmetadata = fin; v.onerror = () => { done = true; resolve({ resolution: '', vidLength: '' }); };
+      v.src = url;
+      setTimeout(fin, 15000);
+    });
+  }
+  // Write any non-empty, changed fields back to the row + the table cell.
+  function applyMetaPatch(row, patch) {
+    const keys = Object.keys(patch).filter(k => patch[k] && patch[k] !== row[k]);
+    if (!keys.length) return false;
+    keys.forEach(k => { row[k] = patch[k]; });
+    if (table) { try { table.updateData([Object.assign({ id: row.id }, patch)]); } catch (_) {} }
+    markDirty(); scheduleSave();
+    return true;
+  }
+  // Probe ONE row. opts.force re-probes filled fields; opts.useYtdlp allows the
+  // (slower) yt-dlp path for YouTube/Vimeo.
+  async function probeRowMeta(row, opts) {
+    opts = opts || {};
+    const link = row && row.link;
+    if (!link) return false;
+    const isImg = isImageLink(link) || row.type === 'jpg';
+    const isDirect = window.isDirectVideoLink && window.isDirectVideoLink(link);
+    const isYT = window.isYouTubeLink && window.isYouTubeLink(link);
+    const isVim = window.isVimeoLink && window.isVimeoLink(link);
+    const patch = {};
+    try {
+      if (isDirect) {
+        if (opts.force || !row.resolution || !row.vidLength) {
+          const m = await probeVideo(link);
+          if (m.resolution) patch.resolution = m.resolution;
+          if (m.vidLength) patch.vidLength = m.vidLength;
+        }
+        if (opts.force || !row.size) { const s = await headSize(link); if (s) patch.size = s; }
+      } else if (isImg) {
+        if (opts.force || !row.resolution) { const r = await probeImage(link); if (r) patch.resolution = r; }
+        if (opts.force || !row.size) { const s = await headSize(link); if (s) patch.size = s; }
+      } else if ((isYT || isVim) && opts.useYtdlp && typeof _ytdlpFetchMeta === 'function') {
+        const meta = await _ytdlpFetchMeta(link);
+        if (meta) {
+          if ((opts.force || !row.resolution) && meta.width && meta.height)
+            patch.resolution = meta.width + '×' + meta.height;
+          if ((opts.force || !row.vidLength) && Number.isFinite(meta.duration))
+            patch.vidLength = fmtSecs(meta.duration);
+        }
+      } else { return false; }
+    } catch (_) { /* leave the row's existing values untouched */ }
+    return applyMetaPatch(row, patch);
+  }
+
+  // Auto-probe the focused row (images & direct video only — cheap & account-safe;
+  // YT/Vimeo are left for the explicit 📐 Fill meta so we never auto-hit yt-dlp).
+  let _autoProbeTimer = null;
+  function scheduleAutoProbe(id) {
+    clearTimeout(_autoProbeTimer);
+    _autoProbeTimer = setTimeout(() => {
+      if (id !== focusId) return;
+      const row = rows.find(r => r.id === id);
+      if (!row || !row.link) return;
+      const isImg = isImageLink(row.link) || row.type === 'jpg';
+      const isDirect = window.isDirectVideoLink && window.isDirectVideoLink(row.link);
+      if ((isImg && !row.resolution) || (isDirect && (!row.resolution || !row.vidLength)) ||
+          ((isImg || isDirect) && !row.size))
+        probeRowMeta(row, {});
+    }, 320);
+  }
+
+  // 📐 Fill meta (button / hotkey e) — probe the CHECKED rows (or the focused one
+  // if none are checked). Sequential so a long yt-dlp run can't stampede the proxy.
+  let _fillingMeta = false;
+  async function fillMetaSelected() {
+    if (!table || _fillingMeta) return;
+    let targets = table.getSelectedRows().map(r => r.getData());
+    if (!targets.length && focusId) { const r = rows.find(x => x.id === focusId); if (r) targets = [r]; }
+    if (!targets.length) { stToast('Check some rows (or focus one) first — then 📐 Fill meta.', 2600); return; }
+    const ytN = targets.filter(r => {
+      const l = r.link || '';
+      return (window.isYouTubeLink && window.isYouTubeLink(l)) || (window.isVimeoLink && window.isVimeoLink(l));
+    }).length;
+    if (ytN > 6 && !confirm(`Fill meta on ${targets.length} row(s)?\n${ytN} are YouTube/Vimeo and use yt-dlp (one at a time — can be slow).`)) return;
+    _fillingMeta = true;
+    let done = 0, filled = 0;
+    for (const t of targets) {
+      stToast(`📐 Filling meta…  ${++done}/${targets.length}`, 60000);
+      const live = rows.find(x => x.id === t.id) || t;
+      try { if (await probeRowMeta(live, { force: true, useYtdlp: true })) filled++; } catch (_) {}
+    }
+    _fillingMeta = false;
+    persist(false);
+    stToast(`📐 Filled meta on ${filled} of ${targets.length} row(s).`, 3000);
   }
 
   // ── Focused-row actions (Delete / Add), reversible via Ctrl+Z ─────────────────
@@ -752,6 +1026,7 @@
   //   ↑/↓ → move the focused (previewed) row.
   //   Delete / d → delete the focused row (→ in-session trash).
   //   a   → add the focused link to ml.json (T) + remove it from staging.
+  //   e   → fill Res / Size / Len on the checked rows (or the focused row).
   //   Ctrl+Z → undo the last Delete / Add.
   //   w   → import from clipboard.
   //   f   → focus the search box.   Shift+F → clear the text search.
@@ -795,6 +1070,12 @@
     if (e.key === 'a') {
       e.stopPropagation(); e.preventDefault();
       addFocusedToT();
+      return;
+    }
+    // e — fill Res / Size / Len on the checked rows (or the focused row).
+    if (e.key === 'e') {
+      e.stopPropagation(); e.preventDefault();
+      fillMetaSelected();
       return;
     }
 

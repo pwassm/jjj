@@ -248,12 +248,13 @@ window.addEventListener('keydown', function(e) {
 
   // (dev0447) The St bulk-staging screen owns w (import from clipboard) and f
   // (focus search). (dev0448) It also owns a (add focused row → ml.json) and d
-  // (delete focused row) — without this bail those bare keys would open the
-  // Annotate / Dictionary screens instead. Bail WITHOUT preventDefault so s.js's
-  // own capture handler — registered after this one — receives them. Other nav
-  // keys (t/g/s/…) still fall through so they close St / switch screens as before.
+  // (delete focused row). (dev0449) It also owns e (fill Res/Size/Len meta) —
+  // without this bail those bare keys would open the Annotate / Dictionary / Edit
+  // screens instead. Bail WITHOUT preventDefault so s.js's own capture handler —
+  // registered after this one — receives them. Other nav keys (t/g/s/…) still
+  // fall through so they close St / switch screens as before.
   if (typeof window.isStScreenOpen === 'function' && window.isStScreenOpen()
-      && (k === 'w' || k === 'f' || k === 'a' || k === 'd')) {
+      && (k === 'w' || k === 'f' || k === 'a' || k === 'd' || k === 'e')) {
     return;
   }
 
