@@ -157,7 +157,30 @@
   // vidLength,comment} — id/status/dates are stamped by importRows().
   const isUrl = s => /^https?:\/\/\S+$/i.test(String(s || '').trim());
 
+  // imagefinder.py "s.json blocks" export: records of  url / source / title
+  // delimited by a "=====NNN" separator line. The first url -> link, a second
+  // url -> attribution (the source/provenance page), and the first non-url text
+  // line -> VidTitle. Bare "W x H" dimension lines (legacy gdown blocks) are
+  // ignored so they don't land in the title.
+  function parseSeparatedBlocks(text) {
+    const blocks = String(text || '').replace(/\r/g, '').split(/^={3,}.*$/m);
+    const out = [];
+    for (const block of blocks) {
+      const lines = block.split('\n').map(s => s.trim()).filter(Boolean);
+      const urls = lines.filter(isUrl);
+      if (!urls.length) continue;
+      const texts = lines.filter(l => !isUrl(l) && !/^\d+\s*[x×]\s*\d+$/i.test(l));
+      const r = { type: urlType(urls[0]), link: urls[0] };
+      if (urls.length > 1) r.attribution = urls[1];   // source / provenance page
+      if (texts.length) r.VidTitle = texts[0];        // picture title
+      out.push(r);
+    }
+    return out;
+  }
+
   function parseClipboard(text) {
+    // A paste with "=====" separator lines is the imagefinder block export.
+    if (/^={3,}/m.test(String(text || ''))) return parseSeparatedBlocks(text);
     const lines = String(text || '').replace(/\r/g, '').split('\n');
     const out = [];
     for (let i = 0; i < lines.length; i++) {

@@ -46,6 +46,11 @@ s.json
 # imports can avoid re-staging a previously-deleted link. Local only.
 sdeleted.json
 
+# (dev0454) "linkfinders" — standalone Python link-finder tools (imagefinder.py)
+# and their imagelinks/ output + state. A deliberately NON-github local toolset
+# that feeds the St screen via clipboard; never committed.
+linkfinders/
+
 # (dev0312) Local-media IndexedDB exports — privacy.
 # Q's index (the localmedia IDB) lives in Chrome's profile, not in this repo:
 #   %LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\http_localhost_8080\
