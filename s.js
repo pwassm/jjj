@@ -38,6 +38,7 @@
   let statusFilter = 'all';      // status dropdown (all/new/promoted)
   let l1Filter = 'all';          // (dev0451) L1 category facet (all / Flickr / Youtube / … / __blank__)
   let l2Filter = 'all';          // (dev0451) L2 sub-category facet (all / MyPhotos1 / … / __blank__)
+  let previewEnabled = true;     // (dev0452) Ctrl+I toggles the floating preview window on/off
   let dirty = false;             // unsaved edits (edit/import/promote/delete)
   let saveTimer = null;          // debounce for autosave after inline edits
   let focusId = null;            // id of the single FOCUSED row (drives the preview + arrow nav)
@@ -392,7 +393,8 @@
         <button id="stCat" title="Set L1 / L2 on the CHECKED rows in bulk.&#10;L1 = limited category (Flickr / Youtube / Vimeo / FromDown / new) · L2 = album/author (e.g. MyPhotos1).&#10;Hotkey c.">🏷 L1/L2</button>
         <button id="stFillMeta" title="Fill Res / Size / Len on the CHECKED rows (or the focused row if none checked).&#10;Images &amp; direct videos are probed in-browser; YouTube/Vimeo use yt-dlp via the proxy.&#10;Hotkey e.">📐 Fill meta</button>
         <button id="stPromote" title="Copy CHECKED rows into ml.json, keep them here as 'promoted' (stamped BA=1).&#10;Hotkey a = add the FOCUSED row to ml.json AND remove it from staging (Ctrl+Z undo).">➕ Promote sel</button>
-        <button id="stDelete" class="danger" title="Remove CHECKED rows from the staging store.&#10;Hotkey Delete or d = remove the FOCUSED row (Ctrl+Z undo).">🗑 Delete sel</button>
+        <button id="stDelete" class="danger" title="Remove CHECKED rows from the staging store → sdeleted.json (won't re-import).&#10;Hotkey Delete or d = remove the FOCUSED row (Ctrl+Z undo).">🗑 Delete sel</button>
+        <button id="stDeleteNoArc" class="danger" title="Remove CHECKED rows WITHOUT archiving to sdeleted.json — they are NOT remembered, so they CAN be re-imported / re-staged later.&#10;Use for links you might reconsider, or are unlikely to paste again.">🗑 Delete ¬sDel</button>
         <button id="stReload" title="Reload s.json from disk">↻ Reload</button>
         <button id="stSave" title="Write edits back to s.json">💾 Save</button>
         <button id="stClose" title="Close (Esc / T)">×</button>
@@ -418,7 +420,8 @@
     $('stCat').addEventListener('click', () => openCatModal());
     $('stFillMeta').addEventListener('click', () => fillMetaSelected());
     $('stPromote').addEventListener('click', () => promoteSelected());
-    $('stDelete').addEventListener('click', () => deleteSelected());
+    $('stDelete').addEventListener('click', () => deleteSelected(true));
+    $('stDeleteNoArc').addEventListener('click', () => deleteSelected(false));
     $('stReload').addEventListener('click', () => loadData());
     $('stSave').addEventListener('click', () => persist(true));
     $('stClose').addEventListener('click', () => closeStScreen());
@@ -599,11 +602,20 @@
     return n ? n.getData().id : null;
   }
 
+  // (dev0452) Ctrl+I toggles the preview window. When OFF, focus/arrow nav still works
+  // (and meta auto-probe still runs) — we just keep the floating window torn down.
+  function togglePreviewEnabled() {
+    previewEnabled = !previewEnabled;
+    if (previewEnabled) { refreshPreview(); stToast('👁 Preview ON (Ctrl+I)', 1200); }
+    else { previewTeardown(); stToast('🚫 Preview OFF (Ctrl+I)', 1200); }
+  }
+
   // (Re)build the preview window for the focused row. Tears down any prior video.
   function refreshPreview() {
     const pv = document.getElementById('stPreview');
     const host = document.getElementById(PV_HOST);
     if (!pv || !host) return;
+    if (!previewEnabled) { previewTeardown(); return; }   // (dev0452) toggled off via Ctrl+I
     if (window.stopCellVideoLoop) { try { window.stopCellVideoLoop(PV_HOST); } catch (_) {} }
     host.innerHTML = '';
     const row = focusId ? rows.find(r => r.id === focusId) : null;
@@ -869,7 +881,7 @@
   let _fillingMeta = false;
   async function fillMetaSelected() {
     if (!table || _fillingMeta) return;
-    let targets = table.getSelectedRows().map(r => r.getData());
+    let targets = selectedRowData();   // (dev0452) checked∧visible
     if (!targets.length && focusId) { const r = rows.find(x => x.id === focusId); if (r) targets = [r]; }
     if (!targets.length) { stToast('Check some rows (or focus one) first — then 📐 Fill meta.', 2600); return; }
     const ytN = targets.filter(r => {
@@ -1013,6 +1025,12 @@
       }
       return true;
     });
+    // (dev0452) Auto-prune: drop selections that the new filter hid, so select-all +
+    // filter can't leave the bulk ops (Cat / Promote / Delete) acting on the whole store.
+    try {
+      const activeIds = new Set(activeRowComps().map(r => r.getData().id));
+      table.getSelectedRows().forEach(r => { if (!activeIds.has(r.getData().id)) r.deselect(); });
+    } catch (_) {}
     updateCount();
     reconcileFocus();   // keep the preview on a still-visible row after a filter change
   }
@@ -1046,7 +1064,17 @@
   // constrained dropdown (the presets + any custom values already in use + an "other…"
   // sentinel that reveals a free-text box). L2 is free text with a datalist of values
   // already in use. Either field can be left unchanged.
-  const selectedRowData = () => (table ? table.getSelectedRows().map(r => r.getData()) : []);
+  // (dev0452) Rows that are BOTH checked AND currently visible (passing the filter).
+  // Tabulator's select-all can mark filtered-out rows, and a selection persists across
+  // filter changes — so "checked" alone over-reaches (it was applying to the whole store).
+  // Every bulk op scopes to this set (matches Ig's selected∧visible rule); applyFilters()
+  // also auto-prunes out-of-view selections so the "N selected" counter stays honest.
+  function selectedVisible() {
+    if (!table) return [];
+    const activeIds = new Set(activeRowComps().map(r => r.getData().id));
+    return table.getSelectedRows().filter(r => activeIds.has(r.getData().id));
+  }
+  const selectedRowData = () => selectedVisible().map(r => r.getData());
 
   function openCatModal() {
     if (document.getElementById('stCatModal')) return;
@@ -1126,7 +1154,7 @@
     const el = document.getElementById('stCount');
     const empty = document.getElementById('stEmpty');
     const shown = table ? table.getDataCount('active') : rows.length;
-    const selN = table ? table.getSelectedRows().length : 0;
+    const selN = selectedVisible().length;   // (dev0452) checked∧visible — matches what bulk ops act on
     const promoted = rows.filter(r => r.status === 'promoted').length;
     if (el) el.textContent = `${shown}/${rows.length} shown · ${promoted} promoted`
       + (selN ? ` · ${selN} selected` : '')
@@ -1146,7 +1174,7 @@
   // ── Promote → ml.json (BA="1" bulk marker) ───────────────────────────────────
   function promoteSelected() {
     if (!table) return;
-    const sel = table.getSelectedRows().map(r => r.getData()).filter(r => r.status !== 'promoted');
+    const sel = selectedRowData().filter(r => r.status !== 'promoted');   // (dev0452) checked∧visible
     if (!sel.length) { stToast('Select un-promoted rows first (checkbox column).', 2400); return; }
     if (typeof data === 'undefined' || typeof nextUID !== 'function' || typeof save !== 'function') {
       stToast('ml.json not loaded — open the T screen once first, then promote.', 3200); return;
@@ -1170,20 +1198,28 @@
     stToast(`➕ Promoted ${ok} row(s) → ml.json (BA="1")`, 2800);
   }
 
-  function deleteSelected() {
+  // archive=true (Delete sel) → archive to sdeleted.json + remember the links so they
+  // won't re-import. archive=false (Delete ¬sDel) → just drop them: NOT remembered, so
+  // a re-paste re-stages them — for links the user might reconsider or is unlikely to
+  // meet again. Both leave ml.json untouched. (dev0452) Scoped to checked∧visible.
+  function deleteSelected(archive) {
     if (!table) return;
-    const sel = table.getSelectedRows();
+    archive = archive !== false;   // default true
+    const sel = selectedVisible();
     if (!sel.length) { stToast('Select rows to delete first.', 2200); return; }
-    if (!confirm(`Delete ${sel.length} row(s) from the staging store?\n(ml.json is NOT affected — they move to sdeleted.json so they won’t re-import.)`)) return;
+    const msg = archive
+      ? `Delete ${sel.length} row(s) from the staging store?\n(ml.json is NOT affected — they move to sdeleted.json so they won’t re-import.)`
+      : `Delete ${sel.length} row(s) WITHOUT archiving?\n(ml.json is NOT affected — they are NOT remembered, so a re-paste will re-stage them.)`;
+    if (!confirm(msg)) return;
     const removed = sel.map(r => r.getData());
     const ids = new Set(removed.map(r => r.id));
     rows = rows.filter(r => !ids.has(r.id));
     sel.forEach(r => table.deleteRow(r.getData().id));
-    archiveDeleted(removed);          // → sdeleted.json (bulk archive, no per-row undo)
+    if (archive) archiveDeleted(removed);   // → sdeleted.json (bulk archive, no per-row undo)
     markDirty(); persist(false);
     refreshL1L2Options();
     applyFilters();
-    stToast(`🗑 Deleted ${ids.size} row(s) → sdeleted.json`, 2200);
+    stToast(`🗑 Deleted ${ids.size} row(s)` + (archive ? ' → sdeleted.json' : ' (not archived — can re-import)'), 2400);
   }
 
   // ── Persist back to s.json (proxy /s/save) ───────────────────────────────────
@@ -1297,6 +1333,16 @@
         && (e.key === 'z' || e.key === 'Z') && !typing) {
       e.stopPropagation(); e.preventDefault();
       undo();
+      return;
+    }
+
+    // (dev0452) Ctrl/⌘+I — toggle the floating preview window. Handled here with
+    // stopPropagation so core.js's document-level Ctrl+I (the T row-preview, which
+    // runs in a LATER capture phase) never also fires while St is on top.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey
+        && (e.key === 'i' || e.key === 'I') && !typing) {
+      e.stopPropagation(); e.preventDefault();
+      togglePreviewEnabled();
       return;
     }
 
