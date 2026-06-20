@@ -39,6 +39,15 @@
   let l1Filter = 'all';          // (dev0451) L1 category facet (all / Flickr / Youtube / … / __blank__)
   let l2Filter = 'all';          // (dev0451) L2 sub-category facet (all / MyPhotos1 / … / __blank__)
   let previewEnabled = true;     // (dev0452) Ctrl+I toggles the floating preview window on/off
+  // (dev0453) Most-recently-used L2 values (most-recent first), persisted, so the L2
+  // facet + datalist list recently-assigned albums/authors at the top.
+  let l2Mru = (() => { try { const a = JSON.parse(localStorage.getItem('st-l2-mru') || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } })();
+  function pushL2Mru(v) {
+    v = String(v || '').trim();
+    if (!v) return;
+    l2Mru = [v, ...l2Mru.filter(x => x !== v)].slice(0, 60);
+    try { localStorage.setItem('st-l2-mru', JSON.stringify(l2Mru)); } catch (_) {}
+  }
   let dirty = false;             // unsaved edits (edit/import/promote/delete)
   let saveTimer = null;          // debounce for autosave after inline edits
   let focusId = null;            // id of the single FOCUSED row (drives the preview + arrow nav)
@@ -293,10 +302,12 @@
 #stBar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0c0f14;
   border-bottom:1px solid #232b36;flex:0 0 auto;flex-wrap:wrap}
 #stBar h2{margin:0;font-size:15px;font-weight:700;color:#9ad}
-#stBar .ct{color:#7d8794;font-size:12px}
+/* (dev0453) Record count: much larger + white (was small grey + unreadable). */
+#stBar .ct{color:#fff;font-size:16px;font-weight:700}
+/* (dev0453) Filters (search + dropdowns): slightly larger font for readability. */
 #stBar input[type=text]{background:#1a212b;border:1px solid #2c3645;color:#dfe6ee;
-  border-radius:6px;padding:5px 8px;width:220px;font:13px system-ui}
-#stBar select{background:#1a212b;border:1px solid #2c3645;color:#dfe6ee;border-radius:6px;padding:4px 6px}
+  border-radius:6px;padding:5px 8px;width:220px;font:14px system-ui}
+#stBar select{background:#1a212b;border:1px solid #2c3645;color:#dfe6ee;border-radius:6px;padding:5px 7px;font:14px system-ui}
 #stBar button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:6px;
   padding:5px 10px;cursor:pointer;font:600 12px system-ui}
 #stBar button:hover{background:#27313f}
@@ -324,6 +335,11 @@
 /* Focused (previewed) row — the one arrows move and Delete/d/a act on. */
 #stTable .tabulator-row.st-focus{background:#16324e !important;box-shadow:inset 4px 0 0 #4df}
 #stTable .tabulator-row.st-focus .tabulator-cell{background:transparent !important}
+/* (dev0453) Neutralize the midnight theme's bright #999/#888 MOUSE-hover — it dominated
+   the arrow-key .st-focus highlight, so the "highlighted row" looked stuck to the mouse.
+   Now the only row highlight is .st-focus (follows the arrows) + the checkbox selection. */
+#stTable .tabulator-row.tabulator-selectable:hover{background-color:transparent;cursor:pointer}
+#stTable .tabulator-row.tabulator-selected:hover{background-color:#000}
 /* Floating preview window — shows whatever the focused link renders as.
    Draggable by its title bar, resizable (resize:both), position+size remembered
    in localStorage. Default position is centred (set in JS). */
@@ -414,7 +430,12 @@
     $('stSearch').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); applyFilters(); });
     $('stType').addEventListener('change', e => { typeFilter = e.target.value; applyFilters(); });
     $('stStatus').addEventListener('change', e => { statusFilter = e.target.value; applyFilters(); });
-    $('stL1').addEventListener('change', e => { l1Filter = e.target.value; applyFilters(); });
+    $('stL1').addEventListener('change', e => {
+      l1Filter = e.target.value;
+      l2Filter = 'all';            // (dev0453) choosing an L1 resets L2 → All and rescopes the L2 list
+      refreshL1L2Options();        // rebuild L2 to only the values used under this L1 (MRU-first)
+      applyFilters();
+    });
     $('stL2').addEventListener('change', e => { l2Filter = e.target.value; applyFilters(); });
     $('stImport').addEventListener('click', () => importFromClipboard());
     $('stCat').addEventListener('click', () => openCatModal());
@@ -505,6 +526,7 @@
     table.on('cellEdited', cell => {
       markDirty(); scheduleSave();
       const f = cell && cell.getField && cell.getField();
+      if (f === 'L2') pushL2Mru(cell.getValue());           // (dev0453) feed the MRU from inline edits too
       if (f === 'L1' || f === 'L2') refreshL1L2Options();   // keep the facet dropdowns in sync
     });
     table.on('rowSelectionChanged', () => updateCount());
@@ -1036,27 +1058,47 @@
   }
 
   // ── L1 / L2 facet dropdowns (Ig-style: distinct values + counts) ─────────────
-  // Rebuilds one bar <select> from the distinct values of `field` across all rows,
-  // preserving the current selection if it still exists, plus a "(blank)" bucket so
-  // the user can isolate not-yet-categorised rows.
-  function refreshFacet(selId, field, getCur, setCur) {
+  // Rebuilds one bar <select> from the distinct values of `field`, preserving the
+  // current selection if it still exists. Order: "all", then "No label yet" (blanks),
+  // then the values. opts.scope(row) limits the value universe (L2 → only rows under the
+  // current L1 filter); opts.mru orders values most-recently-used first.
+  function refreshFacet(selId, field, getCur, setCur, opts) {
+    opts = opts || {};
     const selEl = document.getElementById(selId);
     if (!selEl) return;
     const counts = {};
-    let blank = 0;
-    rows.forEach(r => { const v = (r[field] || '').trim(); if (v) counts[v] = (counts[v] || 0) + 1; else blank++; });
-    const vals = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    let blank = 0, total = 0;
+    rows.forEach(r => {
+      if (opts.scope && !opts.scope(r)) return;
+      total++;
+      const v = (r[field] || '').trim();
+      if (v) counts[v] = (counts[v] || 0) + 1; else blank++;
+    });
+    let vals = Object.keys(counts);
+    if (opts.mru) {
+      const rank = v => { const i = opts.mru.indexOf(v); return i < 0 ? 1e9 : i; };
+      vals.sort((a, b) => (rank(a) - rank(b)) || (counts[b] - counts[a]) || a.localeCompare(b));
+    } else {
+      vals.sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    }
     let cur = getCur();
     if (cur !== 'all' && cur !== '__blank__' && !counts[cur]) { cur = 'all'; setCur('all'); }
     if (cur === '__blank__' && !blank) { cur = 'all'; setCur('all'); }
-    selEl.innerHTML = `<option value="all">all ${field} (${rows.length})</option>`
-      + vals.map(v => `<option value="${esc(v)}">${esc(v)} (${counts[v]})</option>`).join('')
-      + (blank ? `<option value="__blank__">— (blank) — (${blank})</option>` : '');
+    const blankLabel = opts.blankLabel || '— (blank) —';
+    selEl.innerHTML = `<option value="all">all ${field} (${total})</option>`
+      + (blank ? `<option value="__blank__">${blankLabel} (${blank})</option>` : '')
+      + vals.map(v => `<option value="${esc(v)}">${esc(v)} (${counts[v]})</option>`).join('');
     selEl.value = cur;
   }
+  // (dev0453) L2 is SCOPED to the active L1 filter: pick Flickr in L1 and the L2 dropdown
+  // only offers L2 values actually used on Flickr rows (recently-used first).
   function refreshL1L2Options() {
-    refreshFacet('stL1', 'L1', () => l1Filter, v => l1Filter = v);
-    refreshFacet('stL2', 'L2', () => l2Filter, v => l2Filter = v);
+    refreshFacet('stL1', 'L1', () => l1Filter, v => l1Filter = v, { blankLabel: 'No label yet' });
+    const scope = (l1Filter === 'all') ? null : (r => {
+      const v = (r.L1 || '').trim();
+      return l1Filter === '__blank__' ? v === '' : v === l1Filter;
+    });
+    refreshFacet('stL2', 'L2', () => l2Filter, v => l2Filter = v, { scope, mru: l2Mru, blankLabel: 'No label yet' });
   }
 
   // ── "Enter L1 / L2" bulk dialog (button 🏷 L1/L2 · hotkey c) ───────────────────
@@ -1082,7 +1124,10 @@
     if (!sel.length) { stToast('Check some rows first (checkbox column), then 🏷 L1/L2 / press c.', 2800); return; }
     const used = Array.from(new Set(rows.map(r => (r.L1 || '').trim()).filter(Boolean)));
     const customL1 = used.filter(v => !L1_PRESETS.includes(v)).sort();
-    const l2vals = Array.from(new Set(rows.map(r => (r.L2 || '').trim()).filter(Boolean))).sort();
+    // (dev0453) Datalist suggestions: most-recently-used L2 values first, then the rest A-Z.
+    const l2set = new Set(rows.map(r => (r.L2 || '').trim()).filter(Boolean));
+    const l2vals = [...l2Mru.filter(v => l2set.has(v)),
+                    ...[...l2set].filter(v => !l2Mru.includes(v)).sort()];
     const m = document.createElement('div');
     m.id = 'stCatModal';
     m.innerHTML = `
@@ -1132,22 +1177,28 @@
     q('stCatL1').focus();
   }
 
-  // Write L1 (and/or L2, and/or Author) onto the given rows, then refresh facets + filter.
+  // Write L1 (and/or L2, and/or Author) onto the given rows, then refresh facets.
   function applyCat(ids, l1, l2, alsoAuthor) {
     const idSet = new Set(ids);
-    let n = 0;
+    const patches = [];
     rows.forEach(r => {
       if (!idSet.has(r.id)) return;
       const patch = { id: r.id };
       if (l1 != null) { r.L1 = l1; patch.L1 = l1; }
       if (l2 != null) { r.L2 = l2; patch.L2 = l2; if (alsoAuthor) { r.VidAuthor = l2; patch.VidAuthor = l2; } }
-      if (table) { try { table.updateData([patch]); } catch (_) {} }
-      n++;
+      patches.push(patch);
     });
+    // (dev0453) Patch the changed cells IN PLACE in ONE batched call — was looping
+    // updateData per row + a full applyFilters redraw, which made the whole table flash.
+    if (table && patches.length) { try { table.updateData(patches); } catch (_) {} }
+    if (l2) pushL2Mru(l2);
     markDirty(); persist(false);
     refreshL1L2Options();
-    applyFilters();
-    stToast(`🏷 Set ${l1 != null ? ('L1=“' + l1 + '” ') : ''}${l2 != null ? ('L2=“' + (l2 || '(blank)') + '” ') : ''}on ${n} row(s).`, 2800);
+    // Only re-filter when a facet filter is active (the reassigned rows may now fall
+    // outside it). With no filter the in-place cell patches are enough — re-filtering
+    // would needlessly redraw the table.
+    if (l1Filter !== 'all' || l2Filter !== 'all') applyFilters();
+    stToast(`🏷 Set ${l1 != null ? ('L1=“' + l1 + '” ') : ''}${l2 != null ? ('L2=“' + (l2 || '(blank)') + '” ') : ''}on ${patches.length} row(s).`, 2800);
   }
 
   function updateCount() {
