@@ -31,6 +31,9 @@ ig_media/
 # parallel to ml.json and kept LOCAL until rows are Promoted into ml.json. Written
 # by the St screen (s.js) via proxy /s/save. (*.bak is already ignored above.)
 s.json
+# (dev0450) Archive of rows deleted from s.json — appended by proxy /s/deleted so
+# imports can avoid re-staging a previously-deleted link. Local only.
+sdeleted.json
 
 # (dev0312) Local-media IndexedDB exports — privacy.
 # Q's index (the localmedia IDB) lives in Chrome's profile, not in this repo:

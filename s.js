@@ -43,6 +43,10 @@
   // In-memory trash so Delete/d and Add(a) are reversible with Ctrl+Z within the
   // session. Each entry: {kind:'delete'|'add', row, pos, mlUID?}.
   const undoStack = [];
+  // (dev0450) Normalized links of rows previously deleted from s.json (archived to
+  // sdeleted.json by the proxy). Import dedups against this too, so a link the user
+  // already threw away isn't re-staged from a re-pasted clipboard list.
+  let deletedLinks = new Set();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -77,6 +81,28 @@
   // Normalize a link for dedup (trim, drop trailing slash). Kept conservative so
   // we never merge genuinely different urls.
   const normLink = u => String(u || '').trim().replace(/\/+$/, '');
+
+  // (dev0450) Numeric sort keys for the Res / Size / Len columns — their cell values
+  // are display strings ("1920×1080", "2.4 MB", "1:43"), so the default STRING sort
+  // ordered them wrong ("9 MB" after "10 MB", "640×480" after "1024×768"). Parse to a
+  // comparable number; unparseable / blank → 0 so empties sink to one end.
+  function resPixels(s) {
+    const m = String(s || '').match(/(\d+)\s*[×x*]\s*(\d+)/i);
+    return m ? (+m[1]) * (+m[2]) : 0;
+  }
+  function sizeBytes(s) {
+    const m = String(s || '').match(/([\d.]+)\s*(t|g|m|k)?b?\b/i);
+    if (!m) return 0;
+    const mult = { t: 1099511627776, g: 1073741824, m: 1048576, k: 1024 }[(m[2] || '').toLowerCase()] || 1;
+    return (parseFloat(m[1]) || 0) * mult;
+  }
+  function lenSecs(s) {
+    s = String(s || '').trim();
+    if (!s) return 0;
+    const p = s.split(':').map(n => parseInt(n, 10));
+    if (p.some(n => !Number.isFinite(n))) return 0;
+    return p.reduce((a, n) => a * 60 + n, 0);
+  }
 
   // ── Centered toast ABOVE the overlay (global toast z9999 hides behind us) ────
   function stToast(msg, ms) {
@@ -161,7 +187,7 @@
     const haveS = new Set(rows.map(r => normLink(r.link)));
     const haveMl = new Set((typeof data !== 'undefined' && Array.isArray(data)
       ? data.map(r => normLink(r && r.link)) : []));
-    let added = 0, dupS = 0, dupMl = 0;
+    let added = 0, dupS = 0, dupMl = 0, dupDel = 0;
     const stamp = now();
     const fresh = [];
     for (const p of parsed) {
@@ -169,6 +195,7 @@
       if (!key) continue;
       if (haveS.has(key)) { dupS++; continue; }
       if (haveMl.has(key)) { dupMl++; continue; }
+      if (deletedLinks.has(key)) { dupDel++; continue; }   // (dev0450) previously deleted
       haveS.add(key);
       const row = Object.assign({
         id: mkId(), type: 'other', link: '', VidTitle: '', VidAuthor: '',
@@ -185,7 +212,7 @@
       persist(false);
     }
     updateCount();
-    return { added, dupS, dupMl, total: parsed.length };
+    return { added, dupS, dupMl, dupDel, total: parsed.length };
   }
 
   async function importFromClipboard() {
@@ -205,7 +232,8 @@
     const typeLine = Object.keys(byType).sort().map(k => r.added && byType[k] ? `${byType[k]} ${k}` : '').filter(Boolean).join(' · ');
     stToast(`📋 Imported ${r.added} new link(s)`
       + (r.added ? '\n' + typeLine : '')
-      + ((r.dupS || r.dupMl) ? `\n(skipped ${r.dupS} already-staged · ${r.dupMl} already in ml.json)` : ''), 4200);
+      + ((r.dupS || r.dupMl || r.dupDel)
+        ? `\n(skipped ${r.dupS} already-staged · ${r.dupMl} already in ml.json · ${r.dupDel} previously deleted)` : ''), 4200);
   }
 
   // ── Tabulator lazy loader ────────────────────────────────────────────────────
@@ -379,11 +407,14 @@
       { title: 'Author', field: 'VidAuthor', width: 130, editor: 'input', headerFilter: 'input' },
       { title: 'Attribution', field: 'attribution', width: 150, editor: 'input', headerFilter: 'input' },
       { title: 'Len', field: 'vidLength', width: 62, editor: 'input', hozAlign: 'right',
+        sorter: (a, b) => lenSecs(a) - lenSecs(b),
         headerTooltip: 'Length (m:ss) — auto-filled for video by 📐 Fill meta' },
       { title: 'Res', field: 'resolution', width: 96, editor: 'input', hozAlign: 'right',
-        headerTooltip: 'Resolution (W×H) — auto-filled for images & video by 📐 Fill meta' },
+        sorter: (a, b) => resPixels(a) - resPixels(b),
+        headerTooltip: 'Resolution (W×H) — auto-filled for images & video by 📐 Fill meta · sorts by pixel count' },
       { title: 'Size', field: 'size', width: 78, editor: 'input', hozAlign: 'right',
-        headerTooltip: 'File size — auto-filled for images & direct video by 📐 Fill meta' },
+        sorter: (a, b) => sizeBytes(a) - sizeBytes(b),
+        headerTooltip: 'File size — auto-filled for images & direct video by 📐 Fill meta · sorts by bytes' },
       { title: 'Comment', field: 'comment', width: 130, editor: 'input' },
       { title: 'Tags', field: 'tags', width: 130, formatter: tagsCell, editor: 'input',
         mutatorEdit: v => String(v || '').split(',').map(s => s.trim()).filter(Boolean) },
@@ -813,6 +844,29 @@
     };
   }
 
+  // (dev0450) Archive deleted rows → sdeleted.json (proxy appends, dedups by id) and
+  // add their links to the in-memory dedup set so a re-paste won't re-stage them.
+  // Best-effort: a proxy hiccup must never block the delete the user just did.
+  function archiveDeleted(removed) {
+    const arr = (Array.isArray(removed) ? removed : [removed]).filter(Boolean);
+    if (!arr.length) return;
+    arr.forEach(r => { const k = normLink(r.link); if (k) deletedLinks.add(k); });
+    fetch(PROXY + '/s/deleted', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: arr })
+    }).catch(() => stToast('⚠ couldn’t archive to sdeleted.json (proxy dev0450+?)', 2600));
+  }
+  // Ctrl+Z restore: pull a row back OUT of the archive (it returns to s.json).
+  function unarchiveDeleted(rowsArr) {
+    const arr = (Array.isArray(rowsArr) ? rowsArr : [rowsArr]).filter(Boolean);
+    if (!arr.length) return;
+    arr.forEach(r => { const k = normLink(r.link); if (k) deletedLinks.delete(k); });
+    fetch(PROXY + '/s/undelete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: arr.map(r => r.id) })
+    }).catch(() => {});
+  }
+
   // Delete/d — remove the focused row to the in-session trash (Ctrl+Z restores).
   function deleteFocused() {
     if (!focusId) { stToast('No focused row — click a row or use ↑/↓ first.', 1800); return; }
@@ -824,6 +878,7 @@
     rows.splice(idx, 1);
     if (table) { try { table.deleteRow(id); } catch (_) {} }
     undoStack.push({ kind: 'delete', row: removed, pos: idx });
+    archiveDeleted(removed);                   // → sdeleted.json
     markDirty(); persist(false);
     setFocus(nextId);
     updateCount();
@@ -864,6 +919,8 @@
         const di = data.findIndex(x => x && x.UID === a.mlUID);
         if (di >= 0) { data.splice(di, 1); if (typeof save === 'function') save(); }
       }
+    } else if (a.kind === 'delete') {
+      unarchiveDeleted(a.row);                 // (dev0450) row returns to s.json → leave the archive
     }
     const pos = Math.min(a.pos, rows.length);
     rows.splice(pos, 0, a.row);
@@ -946,13 +1003,15 @@
     if (!table) return;
     const sel = table.getSelectedRows();
     if (!sel.length) { stToast('Select rows to delete first.', 2200); return; }
-    if (!confirm(`Delete ${sel.length} row(s) from the staging store?\n(ml.json is NOT affected — only s.json.)`)) return;
-    const ids = new Set(sel.map(r => r.getData().id));
+    if (!confirm(`Delete ${sel.length} row(s) from the staging store?\n(ml.json is NOT affected — they move to sdeleted.json so they won’t re-import.)`)) return;
+    const removed = sel.map(r => r.getData());
+    const ids = new Set(removed.map(r => r.id));
     rows = rows.filter(r => !ids.has(r.id));
     sel.forEach(r => table.deleteRow(r.getData().id));
+    archiveDeleted(removed);          // → sdeleted.json (bulk archive, no per-row undo)
     markDirty(); persist(false);
     applyFilters();
-    stToast(`🗑 Deleted ${ids.size} row(s) from s.json`, 2200);
+    stToast(`🗑 Deleted ${ids.size} row(s) → sdeleted.json`, 2200);
   }
 
   // ── Persist back to s.json (proxy /s/save) ───────────────────────────────────
@@ -974,6 +1033,17 @@
     }
   }
 
+  // (dev0450) Load the deleted-links archive (sdeleted.json) into the dedup set so
+  // imports skip anything the user already threw away. Best-effort: a missing file
+  // (nothing deleted yet) just means an empty set.
+  async function loadDeletedLinks() {
+    try {
+      const r = await fetch('sdeleted.json?t=' + Date.now());
+      const arc = r.ok ? await r.json() : [];
+      deletedLinks = new Set((Array.isArray(arc) ? arc : []).map(x => normLink(x && x.link)).filter(Boolean));
+    } catch (_) { deletedLinks = new Set(); }
+  }
+
   // ── Load ──────────────────────────────────────────────────────────────────────
   async function loadData() {
     try {
@@ -981,6 +1051,7 @@
       rows = r.ok ? (await r.json()) : [];
       if (!Array.isArray(rows)) rows = [];
     } catch (e) { rows = []; }
+    await loadDeletedLinks();   // refresh the deleted-links dedup set alongside s.json
     // Backfill ids / types for any hand-edited or legacy rows.
     rows.forEach(r => {
       if (!r.id) r.id = mkId();

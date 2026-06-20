@@ -45,7 +45,10 @@ const PORT = 8081;
 // ig_media/ as "<stem> [i of N].<ext>" (bare stem when a single file).
 // (dev0434) /ig/download cookie order REVERSED → cookieless first, Firefox cookies
 //   only as fallback (lowers account linkage for bulk downloads — user concern).
-const PROXY_BUILD = 'dev0447';
+// (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
+//   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
+//   links; undelete pulls them back out (Ctrl+Z undo in St).
+const PROXY_BUILD = 'dev0450';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -803,6 +806,55 @@ function sSave(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev0450) /s/deleted — APPEND rows deleted in St to sdeleted.json (an archive
+// parallel to s.json). Append-only + dedup by `id` so a client never has to send
+// (or risk wiping) the whole archive; St only needs the archived LINKS to keep a
+// re-imported clipboard from re-staging something the user already threw away. Each
+// archived row is stamped DateDeleted. A one-deep .bak guards a bad write.
+const SDEL_STORE = path.join(__dirname, 'sdeleted.json');
+function readSdel() {
+  try { if (fs.existsSync(SDEL_STORE)) { const a = JSON.parse(fs.readFileSync(SDEL_STORE, 'utf8')); return Array.isArray(a) ? a : []; } } catch (_) {}
+  return [];
+}
+function sArchiveDeleted(req, res, origin) {
+  readJson(req, 32 * 1024 * 1024).then(payload => {
+    const incoming = Array.isArray(payload.rows) ? payload.rows : null;
+    if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
+    const arc = readSdel();
+    const haveId = new Set(arc.map(r => r && r.id).filter(Boolean));
+    const stamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    let added = 0;
+    for (const r of incoming) {
+      if (!r || typeof r !== 'object') continue;
+      if (r.id && haveId.has(r.id)) continue;
+      if (r.id) haveId.add(r.id);
+      arc.push(Object.assign({}, r, { DateDeleted: r.DateDeleted || stamp }));
+      added++;
+    }
+    try { if (fs.existsSync(SDEL_STORE)) fs.copyFileSync(SDEL_STORE, SDEL_STORE + '.bak'); } catch (_) {}
+    fs.writeFileSync(SDEL_STORE, JSON.stringify(arc, null, 2));
+    console.log('[s/deleted] archived ' + added + ' row(s); sdeleted.json now ' + arc.length);
+    sendJson(res, 200, { ok: true, added, total: arc.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+// (dev0450) /s/undelete — remove rows (by id) from sdeleted.json, for St's Ctrl+Z
+// "restore a deleted row" (the row goes back into s.json, so it must leave the
+// archive or it'd wrongly block a future re-import).
+function sUnarchive(req, res, origin) {
+  readJson(req, 1 * 1024 * 1024).then(payload => {
+    const ids = Array.isArray(payload.ids) ? payload.ids.filter(x => typeof x === 'string' && x) : null;
+    if (!ids) { sendJson(res, 400, { ok: false, error: 'ids[] required' }, origin); return; }
+    const arc = readSdel();
+    const drop = new Set(ids);
+    const kept = arc.filter(r => !(r && drop.has(r.id)));
+    const removed = arc.length - kept.length;
+    try { if (fs.existsSync(SDEL_STORE)) fs.copyFileSync(SDEL_STORE, SDEL_STORE + '.bak'); } catch (_) {}
+    fs.writeFileSync(SDEL_STORE, JSON.stringify(kept, null, 2));
+    console.log('[s/undelete] removed ' + removed + ' from sdeleted.json; now ' + kept.length);
+    sendJson(res, 200, { ok: true, removed, total: kept.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 // (dev0429) /ig/download — yt-dlp downloads a reel/post's media into <project>/
 // ig_media/<stem>.<ext>. Returns the basenames of every file produced (a carousel
 // /p post yields several). All argv tokens are literal under spawn(shell:false);
@@ -943,7 +995,9 @@ http.createServer((req, res) => {
     const origin = req.headers.origin || '';
     if (req.method !== 'POST') { send(res, 405, 's: POST required', corsForExec(origin)); return; }
     const action = req.url.slice('/s/'.length).split('?')[0];
-    if (action === 'save') { sSave(req, res, origin); return; }
+    if (action === 'save')     { sSave(req, res, origin);           return; }
+    if (action === 'deleted')  { sArchiveDeleted(req, res, origin); return; }
+    if (action === 'undelete') { sUnarchive(req, res, origin);      return; }
     sendJson(res, 404, { ok: false, error: 'unknown s action: ' + action }, origin);
     return;
   }
@@ -1037,6 +1091,6 @@ http.createServer((req, res) => {
   console.log(`Screen recorder:   POST /rec/{start,stop}  → vsteps-<ts>.mp4 in ${__dirname}`);
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
   console.log(`Harvest store:     POST /ig/{add,save,download}  → ig.json + ig_media/ in ${__dirname}`);
-  console.log(`Bulk staging:      POST /s/save                 → s.json in ${__dirname}`);
+  console.log(`Bulk staging:      POST /s/{save,deleted,undelete} → s.json / sdeleted.json in ${__dirname}`);
   console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
 });
