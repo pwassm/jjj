@@ -52,7 +52,11 @@ const fs = require('fs');
 const path = require('path');
 
 // ── args ──────────────────────────────────────────────────────────────────────
-const argv = process.argv.slice(2);
+// Drop anything from a "#" token onward so a pasted "# comment" (cmd.exe doesn't
+// strip these) can't be mistaken for the source folder.
+let argv = process.argv.slice(2);
+const hashAt = argv.findIndex(a => a.startsWith('#'));
+if (hashAt >= 0) argv = argv.slice(0, hashAt);
 const flags = new Set(argv.filter(a => a.startsWith('--')));
 const SRC = (argv.find(a => !a.startsWith('--')) || 'FromCacheOld');
 const OUT = 'FromCacheOut';
