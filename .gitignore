@@ -7,6 +7,17 @@ jpgs
 # YTT
 YTT
 
+# FromCacheOld
+FromCacheOld
+
+# FromCache
+FromCache
+
+# (dev0451) cacheExtract.js output — clean image/video extracted from Firefox
+# cache2 entries + the url→file manifest. Local staging, never committed.
+FromCacheOut
+
+
 # AHK
 AHK
 

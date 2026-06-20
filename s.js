@@ -36,6 +36,8 @@
   let query = '';                // free-text search
   let typeFilter = 'all';        // type dropdown (all/jpg/yt/vimeo/video/other)
   let statusFilter = 'all';      // status dropdown (all/new/promoted)
+  let l1Filter = 'all';          // (dev0451) L1 category facet (all / Flickr / Youtube / … / __blank__)
+  let l2Filter = 'all';          // (dev0451) L2 sub-category facet (all / MyPhotos1 / … / __blank__)
   let dirty = false;             // unsaved edits (edit/import/promote/delete)
   let saveTimer = null;          // debounce for autosave after inline edits
   let focusId = null;            // id of the single FOCUSED row (drives the preview + arrow nav)
@@ -68,6 +70,20 @@
     if (/\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i.test(u)) return 'video';
     return 'other';
   }
+  // (dev0451) L1 "source" category — a higher-level bucket than `type`. Derived from
+  // the URL only where unambiguous (Flickr jpgs are type='jpg' but L1='Flickr', so L1
+  // is independent of type). Everything else is left blank for the user to set via the
+  // "🏷 L1/L2" bulk dialog (Promote/FromDown/MyPhotos… live there, not in the URL).
+  function deriveL1(u) {
+    u = String(u || '');
+    if (/youtube\.com|youtu\.be/i.test(u)) return 'Youtube';
+    if (/vimeo\.com/i.test(u)) return 'Vimeo';
+    if (/flickr\.com|staticflickr\.com/i.test(u)) return 'Flickr';
+    return '';
+  }
+  // The limited L1 set the bulk dialog offers (plus any custom values already in use,
+  // plus an "other…" sentinel that reveals a free-text box for a brand-new category).
+  const L1_PRESETS = ['Flickr', 'Youtube', 'Vimeo', 'FromDown'];
   // Bare seconds ("53") → "0:53"; "1:43" passes through; junk → ''.
   function normDur(d) {
     d = String(d || '').trim();
@@ -198,7 +214,8 @@
       if (deletedLinks.has(key)) { dupDel++; continue; }   // (dev0450) previously deleted
       haveS.add(key);
       const row = Object.assign({
-        id: mkId(), type: 'other', link: '', VidTitle: '', VidAuthor: '',
+        id: mkId(), type: 'other', link: '', L1: deriveL1(p.link), L2: '',
+        VidTitle: '', VidAuthor: '',
         attribution: '', vidLength: '', resolution: '', size: '', comment: '', tags: [],
         status: 'new', DateAdded: stamp
       }, p);
@@ -207,9 +224,16 @@
       added++;
     }
     if (added) {
-      if (table) table.addData(fresh, false);   // append to bottom (virtual-DOM safe)
+      if (table) {
+        table.addData(fresh, false);             // append to bottom (virtual-DOM safe)
+        // (dev0451) Auto-CHECK the freshly imported rows so the very next action —
+        // "🏷 L1/L2" (press c) — categorises exactly what was just pasted, matching the
+        // "after bulk import → Enter L1/L2" workflow.
+        try { table.selectRow(fresh.map(r => r.id)); } catch (_) {}
+      }
       markDirty();
       persist(false);
+      refreshL1L2Options();
     }
     updateCount();
     return { added, dupS, dupMl, dupDel, total: parsed.length };
@@ -232,8 +256,9 @@
     const typeLine = Object.keys(byType).sort().map(k => r.added && byType[k] ? `${byType[k]} ${k}` : '').filter(Boolean).join(' · ');
     stToast(`📋 Imported ${r.added} new link(s)`
       + (r.added ? '\n' + typeLine : '')
+      + (r.added ? '\n✓ checked the new rows — press c to set L1/L2' : '')
       + ((r.dupS || r.dupMl || r.dupDel)
-        ? `\n(skipped ${r.dupS} already-staged · ${r.dupMl} already in ml.json · ${r.dupDel} previously deleted)` : ''), 4200);
+        ? `\n(skipped ${r.dupS} already-staged · ${r.dupMl} already in ml.json · ${r.dupDel} previously deleted)` : ''), 4600);
   }
 
   // ── Tabulator lazy loader ────────────────────────────────────────────────────
@@ -314,6 +339,24 @@
 #st-pv-host{position:relative;flex:1 1 auto;background:#000;overflow:hidden}
 #stPvCap{flex:0 0 auto;max-height:62px;overflow:hidden;padding:5px 9px;background:#0a1426;
   border-top:1px solid #1a2a4a;font:11px/1.4 monospace;color:#bcd}
+/* (dev0451) "Enter L1/L2" bulk dialog */
+#stCatModal{position:fixed;inset:0;z-index:40500;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.55)}
+#stCatModal .stcat-box{background:#141a23;border:1px solid #34404f;border-radius:12px;padding:18px 22px;
+  width:min(440px,92vw);box-shadow:0 20px 70px rgba(0,0,0,.7)}
+#stCatModal h3{margin:0 0 12px;font-size:15px;color:#9ad;font-weight:700}
+#stCatModal h3 .n{color:#fff}
+#stCatModal label{display:block;margin:13px 0 4px;font-size:12px;color:#bcd}
+#stCatModal label.ckrow{display:flex;align-items:center;gap:7px;font-size:12px;color:#9fb0c2;margin:10px 0 0}
+#stCatModal label.ckrow input{width:auto;margin:0}
+#stCatModal .hint{color:#6b7a8d;font-weight:400}
+#stCatModal select,#stCatModal input[type=text]{width:100%;box-sizing:border-box;background:#1a212b;
+  border:1px solid #2c3645;color:#dfe6ee;border-radius:6px;padding:7px 9px;font:13px system-ui;margin-top:2px}
+#stCatModal .stcat-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+#stCatModal button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:6px;
+  padding:7px 14px;cursor:pointer;font:600 12px system-ui}
+#stCatModal button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
+#stCatModal button:hover{filter:brightness(1.15)}
 `;
     document.head.appendChild(s);
   }
@@ -342,8 +385,11 @@
           <option value="new">new</option>
           <option value="promoted">promoted</option>
         </select>
+        <select id="stL1" title="Filter by L1 category"><option value="all">all L1</option></select>
+        <select id="stL2" title="Filter by L2 sub-category"><option value="all">all L2</option></select>
         <div class="spacer"></div>
         <button id="stImport" class="primary" title="Import links from the clipboard (hotkey w)">📋 Import clipboard</button>
+        <button id="stCat" title="Set L1 / L2 on the CHECKED rows in bulk.&#10;L1 = limited category (Flickr / Youtube / Vimeo / FromDown / new) · L2 = album/author (e.g. MyPhotos1).&#10;Hotkey c.">🏷 L1/L2</button>
         <button id="stFillMeta" title="Fill Res / Size / Len on the CHECKED rows (or the focused row if none checked).&#10;Images &amp; direct videos are probed in-browser; YouTube/Vimeo use yt-dlp via the proxy.&#10;Hotkey e.">📐 Fill meta</button>
         <button id="stPromote" title="Copy CHECKED rows into ml.json, keep them here as 'promoted' (stamped BA=1).&#10;Hotkey a = add the FOCUSED row to ml.json AND remove it from staging (Ctrl+Z undo).">➕ Promote sel</button>
         <button id="stDelete" class="danger" title="Remove CHECKED rows from the staging store.&#10;Hotkey Delete or d = remove the FOCUSED row (Ctrl+Z undo).">🗑 Delete sel</button>
@@ -366,7 +412,10 @@
     $('stSearch').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); applyFilters(); });
     $('stType').addEventListener('change', e => { typeFilter = e.target.value; applyFilters(); });
     $('stStatus').addEventListener('change', e => { statusFilter = e.target.value; applyFilters(); });
+    $('stL1').addEventListener('change', e => { l1Filter = e.target.value; applyFilters(); });
+    $('stL2').addEventListener('change', e => { l2Filter = e.target.value; applyFilters(); });
     $('stImport').addEventListener('click', () => importFromClipboard());
+    $('stCat').addEventListener('click', () => openCatModal());
     $('stFillMeta').addEventListener('click', () => fillMetaSelected());
     $('stPromote').addEventListener('click', () => promoteSelected());
     $('stDelete').addEventListener('click', () => deleteSelected());
@@ -402,6 +451,10 @@
     return [
       { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 40, frozen: true },
       { title: 'Type', field: 'type', width: 80, formatter: typeBadge, headerFilter: false },
+      { title: 'L1', field: 'L1', width: 92, editor: 'input',
+        headerTooltip: 'L1 primary category (Flickr / Youtube / Vimeo / FromDown / custom). Set in bulk with the “🏷 L1/L2” button or hotkey c · auto-derived from the URL on import.' },
+      { title: 'L2', field: 'L2', width: 112, editor: 'input',
+        headerTooltip: 'L2 sub-category / album (e.g. MyPhotos1). For YouTube this is usually the channel/author.' },
       { title: 'Link', field: 'link', widthGrow: 3, formatter: linkCell, headerFilter: 'input' },
       { title: 'Title', field: 'VidTitle', widthGrow: 2, editor: 'input', headerFilter: 'input' },
       { title: 'Author', field: 'VidAuthor', width: 130, editor: 'input', headerFilter: 'input' },
@@ -446,7 +499,11 @@
         row.getElement().classList.toggle('st-focus', row.getData().id === focusId);
       }
     });
-    table.on('cellEdited', () => { markDirty(); scheduleSave(); });
+    table.on('cellEdited', cell => {
+      markDirty(); scheduleSave();
+      const f = cell && cell.getField && cell.getField();
+      if (f === 'L1' || f === 'L2') refreshL1L2Options();   // keep the facet dropdowns in sync
+    });
     table.on('rowSelectionChanged', () => updateCount());
     // Clicking anywhere on a row focuses it (drives the preview). The checkbox /
     // link cells still do their own thing — this only sets which row is previewed.
@@ -840,6 +897,7 @@
       link: r.link, VidTitle: r.VidTitle || '', VidAuthor: r.VidAuthor || '',
       attribution: r.attribution || '', vidLength: r.vidLength || '', comment: r.comment || '',
       tags: Array.isArray(r.tags) ? r.tags : [], ltype: r.type || '',
+      L1: r.L1 || '', L2: r.L2 || '',
       BA: '1', show: '1', DateAdded: stamp, DateModified: stamp, sSource: r.id
     };
   }
@@ -939,6 +997,14 @@
     table.setFilter(row => {
       if (typeFilter !== 'all' && (row.type || 'other') !== typeFilter) return false;
       if (statusFilter !== 'all' && (row.status || 'new') !== statusFilter) return false;
+      if (l1Filter !== 'all') {
+        const v = (row.L1 || '').trim();
+        if (l1Filter === '__blank__' ? v !== '' : v !== l1Filter) return false;
+      }
+      if (l2Filter !== 'all') {
+        const v = (row.L2 || '').trim();
+        if (l2Filter === '__blank__' ? v !== '' : v !== l2Filter) return false;
+      }
       if (query) {
         const hay = (row.link + ' ' + (row.VidTitle || '') + ' ' + (row.VidAuthor || '')
           + ' ' + (row.attribution || '') + ' ' + (row.comment || '')
@@ -949,6 +1015,111 @@
     });
     updateCount();
     reconcileFocus();   // keep the preview on a still-visible row after a filter change
+  }
+
+  // ── L1 / L2 facet dropdowns (Ig-style: distinct values + counts) ─────────────
+  // Rebuilds one bar <select> from the distinct values of `field` across all rows,
+  // preserving the current selection if it still exists, plus a "(blank)" bucket so
+  // the user can isolate not-yet-categorised rows.
+  function refreshFacet(selId, field, getCur, setCur) {
+    const selEl = document.getElementById(selId);
+    if (!selEl) return;
+    const counts = {};
+    let blank = 0;
+    rows.forEach(r => { const v = (r[field] || '').trim(); if (v) counts[v] = (counts[v] || 0) + 1; else blank++; });
+    const vals = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+    let cur = getCur();
+    if (cur !== 'all' && cur !== '__blank__' && !counts[cur]) { cur = 'all'; setCur('all'); }
+    if (cur === '__blank__' && !blank) { cur = 'all'; setCur('all'); }
+    selEl.innerHTML = `<option value="all">all ${field} (${rows.length})</option>`
+      + vals.map(v => `<option value="${esc(v)}">${esc(v)} (${counts[v]})</option>`).join('')
+      + (blank ? `<option value="__blank__">— (blank) — (${blank})</option>` : '');
+    selEl.value = cur;
+  }
+  function refreshL1L2Options() {
+    refreshFacet('stL1', 'L1', () => l1Filter, v => l1Filter = v);
+    refreshFacet('stL2', 'L2', () => l2Filter, v => l2Filter = v);
+  }
+
+  // ── "Enter L1 / L2" bulk dialog (button 🏷 L1/L2 · hotkey c) ───────────────────
+  // Operates on the CHECKED rows (after a bulk import those are auto-checked). L1 is a
+  // constrained dropdown (the presets + any custom values already in use + an "other…"
+  // sentinel that reveals a free-text box). L2 is free text with a datalist of values
+  // already in use. Either field can be left unchanged.
+  const selectedRowData = () => (table ? table.getSelectedRows().map(r => r.getData()) : []);
+
+  function openCatModal() {
+    if (document.getElementById('stCatModal')) return;
+    const sel = selectedRowData();
+    if (!sel.length) { stToast('Check some rows first (checkbox column), then 🏷 L1/L2 / press c.', 2800); return; }
+    const used = Array.from(new Set(rows.map(r => (r.L1 || '').trim()).filter(Boolean)));
+    const customL1 = used.filter(v => !L1_PRESETS.includes(v)).sort();
+    const l2vals = Array.from(new Set(rows.map(r => (r.L2 || '').trim()).filter(Boolean))).sort();
+    const m = document.createElement('div');
+    m.id = 'stCatModal';
+    m.innerHTML = `
+      <div class="stcat-box">
+        <h3>Enter L1 / L2 — <span class="n">${sel.length}</span> checked row(s)</h3>
+        <label>L1 category
+          <select id="stCatL1">
+            <option value="__keep__">— leave unchanged —</option>
+            ${L1_PRESETS.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}
+            ${customL1.length ? `<optgroup label="already in use">${customL1.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}</optgroup>` : ''}
+            <option value="__new__">other… (type a new category)</option>
+          </select>
+        </label>
+        <input type="text" id="stCatL1New" placeholder="new L1 category name" style="display:none">
+        <label>L2 sub-category <span class="hint">(blank = leave unchanged · e.g. MyPhotos1 · YouTube → channel/author)</span>
+          <input type="text" id="stCatL2" list="stCatL2List" placeholder="L2 value" autocomplete="off">
+          <datalist id="stCatL2List">${l2vals.map(v => `<option value="${esc(v)}"></option>`).join('')}</datalist>
+        </label>
+        <label class="ckrow"><input type="checkbox" id="stCatClearL2"> clear L2 (set blank) instead of leaving it unchanged</label>
+        <label class="ckrow"><input type="checkbox" id="stCatAuthor"> also set Author = L2 (handy for YouTube channels)</label>
+        <div class="stcat-btns">
+          <button id="stCatCancel">Cancel</button>
+          <button id="stCatApply" class="primary">Apply to ${sel.length} row(s)</button>
+        </div>
+      </div>`;
+    document.getElementById('stOverlay').appendChild(m);
+    const q = id => m.querySelector('#' + id);
+    q('stCatL1').addEventListener('change', e => {
+      const isNew = e.target.value === '__new__';
+      q('stCatL1New').style.display = isNew ? 'block' : 'none';
+      if (isNew) q('stCatL1New').focus();
+    });
+    q('stCatCancel').addEventListener('click', () => m.remove());
+    m.addEventListener('mousedown', e => { if (e.target === m) m.remove(); });   // click backdrop = cancel
+    q('stCatApply').addEventListener('click', () => {
+      let l1 = q('stCatL1').value;
+      if (l1 === '__new__') l1 = q('stCatL1New').value.trim();
+      const l1set = !!l1 && l1 !== '__keep__';
+      const clearL2 = q('stCatClearL2').checked;
+      const l2raw = q('stCatL2').value.trim();
+      const l2set = clearL2 || l2raw !== '';
+      const alsoAuthor = q('stCatAuthor').checked;
+      if (!l1set && !l2set) { stToast('Nothing to set — pick an L1 or type an L2.', 2200); return; }
+      applyCat(sel.map(r => r.id), l1set ? l1 : null, l2set ? (clearL2 ? '' : l2raw) : null, alsoAuthor);
+      m.remove();
+    });
+    q('stCatL1').focus();
+  }
+
+  // Write L1 (and/or L2, and/or Author) onto the given rows, then refresh facets + filter.
+  function applyCat(ids, l1, l2, alsoAuthor) {
+    const idSet = new Set(ids);
+    let n = 0;
+    rows.forEach(r => {
+      if (!idSet.has(r.id)) return;
+      const patch = { id: r.id };
+      if (l1 != null) { r.L1 = l1; patch.L1 = l1; }
+      if (l2 != null) { r.L2 = l2; patch.L2 = l2; if (alsoAuthor) { r.VidAuthor = l2; patch.VidAuthor = l2; } }
+      if (table) { try { table.updateData([patch]); } catch (_) {} }
+      n++;
+    });
+    markDirty(); persist(false);
+    refreshL1L2Options();
+    applyFilters();
+    stToast(`🏷 Set ${l1 != null ? ('L1=“' + l1 + '” ') : ''}${l2 != null ? ('L2=“' + (l2 || '(blank)') + '” ') : ''}on ${n} row(s).`, 2800);
   }
 
   function updateCount() {
@@ -1010,6 +1181,7 @@
     sel.forEach(r => table.deleteRow(r.getData().id));
     archiveDeleted(removed);          // → sdeleted.json (bulk archive, no per-row undo)
     markDirty(); persist(false);
+    refreshL1L2Options();
     applyFilters();
     stToast(`🗑 Deleted ${ids.size} row(s) → sdeleted.json`, 2200);
   }
@@ -1057,6 +1229,8 @@
       if (!r.id) r.id = mkId();
       if (!r.type) r.type = urlType(r.link);
       if (!r.status) r.status = 'new';
+      if (r.L2 == null) r.L2 = '';                                   // (dev0451)
+      if (r.L1 == null || r.L1 === '') r.L1 = deriveL1(r.link);      // (dev0451) backfill obvious sources
     });
     dirty = false;
     focusId = null;             // stale ids from the old data set are gone; reconcile re-picks
@@ -1064,6 +1238,7 @@
       try { await table.setData(rows); } catch (_) {}
       applyFilters();           // applyFilters → reconcileFocus picks the first visible row
     }
+    refreshL1L2Options();       // (dev0451) rebuild the L1/L2 facet dropdowns from the fresh data
     updateCount();
   }
 
@@ -1107,6 +1282,15 @@
     const ae = document.activeElement;
     const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
 
+    // (dev0451) While the L1/L2 bulk dialog is open it OWNS the keyboard (its own
+    // inputs/selects handle typing); Esc closes just the dialog, not the screen.
+    const catModal = document.getElementById('stCatModal');
+    if (catModal) {
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); catModal.remove(); }
+      else if (e.key === 'Enter' && !typing) { e.stopPropagation(); e.preventDefault(); catModal.querySelector('#stCatApply')?.click(); }
+      return;
+    }
+
     // Ctrl/⌘+Z — undo the last Delete/Add (only when not typing, so native
     // text-undo still works inside the search box / a cell editor).
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey
@@ -1147,6 +1331,12 @@
     if (e.key === 'e') {
       e.stopPropagation(); e.preventDefault();
       fillMetaSelected();
+      return;
+    }
+    // c — open the L1/L2 bulk dialog for the checked rows.
+    if (e.key === 'c') {
+      e.stopPropagation(); e.preventDefault();
+      openCatModal();
       return;
     }
 
