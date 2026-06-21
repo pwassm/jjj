@@ -691,7 +691,7 @@
   async function runBatch(label, ids, gap, doOne, skipIf, posture) {
     busy = true; batchAbort = false; setBatchUi(true);
     igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
-    let ok = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
+    let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     const t0 = Date.now();
     // Rows that still need work. Already-done rows are passed over silently — no
     // "skipped" line anywhere (per request: that count was ambiguous noise).
@@ -709,20 +709,27 @@
       if (skipIf && skipIf(r)) continue;             // already done → pass over silently
       if (done > 0) {
         const g = rnd(gap[0], gap[1]);
-        igBatchUpdate(`${label} ${done}/${total} · ✓${ok}\n${cookieSoFar()}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
+        igBatchUpdate(`${label} ${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
         await sleep(g); if (batchAbort) break;
       }
       done++;
       lastOpError = ''; lastOpInfo = '';
       processingId = r.id; renderBody();   // (dev0445) highlight the row being worked on
-      igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
+      igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
       const good = await doOne(r);
       if (good) {
         ok++;
         if (lastOpInfo === 'Firefox cookies used') cookieUsed++;
-        igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}\n${cookieSoFar()}\n${fmtSpeed()}`);
+        igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}`);
         if (cookieUsed >= COOKIE_CAP) cookieStopped = true;   // (dev0444) account-safety cap hit
-      } else if (isThrottle(lastOpError)) { throttled = true; }
+      } else {
+        // (dev0457) Attempted but couldn't be read — count it so the end report's
+        // numbers close (marked = cookieless + cookie + couldn't-read + not-reached).
+        // These are login-walled posts that failed BOTH cookieless and the Firefox-
+        // cookie retry; order/pacing can't change that (see igStickyShow report).
+        fail++;
+        if (isThrottle(lastOpError)) throttled = true;
+      }
       applyAndRender();
       if (throttled || cookieStopped) break;
     }
@@ -734,10 +741,16 @@
     // were marked to do, the task, how many finished WITHOUT Firefox cookies
     // (cookieless · account-safe) vs WITH them, and the total elapsed time. No
     // "skipped" line. Stays on screen until Close button / Esc.
-    const cookieless = ok - cookieUsed;
+    // (dev0457) Every marked row lands in exactly ONE bucket so the report's numbers
+    // add up (this was the "26 marked but only 19 shown" puzzle — the couldn't-read
+    // rows had no line). cookieless + cookie + couldn'tRead + notReached === total.
+    const cookieless  = ok - cookieUsed;       // read with no Firefox cookies
+    const couldntRead = fail;                  // attempted, failed cookieless AND cookie
+    const notReached  = total - done;          // never attempted (stopped early)
     const head = throttled     ? `⏸ ${label} stopped — IG rate-limit detected`
                : cookieStopped ? `⏹ ${label} auto-stopped — 🍪 cookie cap (${COOKIE_CAP}) reached`
                : batchAbort    ? `⏹ ${label} stopped by you`
+               : couldntRead   ? `✓ ${label} done — ${ok}/${total} read`
                :                 `✓ ${label} complete`;
     const lines = [
       head,
@@ -745,10 +758,14 @@
       `${total} marked to do`,
       `${cookieless} done without Firefox cookies  (cookieless · account-safe)`,
       `${cookieUsed} done with Firefox cookies 🍪`,
-      `⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`,
     ];
+    if (couldntRead) lines.push(`${couldntRead} couldn't be read  (login-walled)`);
+    if (notReached)  lines.push(`${notReached} not reached  (run stopped early)`);
+    lines.push(`⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`);
     if (throttled)          lines.push('', 'Wait a few minutes, then re-run — only un-done rows are retried.');
     else if (cookieStopped) lines.push('', 'Re-run to continue. The cap resets each run, so keep total cookie use modest.');
+    else if (couldntRead)   lines.push('', `These ${couldntRead} are login-walled — spacing or order won't read them.`,
+                                           `Use 📋 Saved-text, or check Firefox is logged into Instagram.`);
     if (throttled && lastOpError) lines.push((lastOpError || '').slice(0, 80));
     igStickyShow(lines.join('\n'));
     return ok;

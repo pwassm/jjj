@@ -1793,9 +1793,13 @@
     "id": "2id-skeleton-shrimp",
     "label": "2id skeleton shrimp",
     "kind": "topic",
-    "parents": [],
+    "parents": [
+      "caprella"
+    ],
     "aliases": [],
-    "def": ""
+    "def": "",
+    "common": "",
+    "extinct": false
   },
   {
     "id": "comatulida",
