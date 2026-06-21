@@ -16,11 +16,12 @@
 //      ring slots are now empty (gaps), so the right column reads as a drain.
 //   2. OPENING SLIDE — the top row 1a 1b 1c 1d glides RIGHT one cell (~1s), so a
 //      fresh cell lands on 1e, poised at the top of the empty drain.
-//   3. CONTINUOUS FLOW — the whole ring then rotates CLOCKWISE one slot per beat,
-//      smoothly and without pause: the cell at 1e FALLS down the right column to
-//      5e, while the left column (2a 3a 4a 5a) rises, the bottom row (5b 5c 5d)
-//      slides left, and the top row (1b 1c 1d) feeds right — so another cell is
-//      always at 1e ready to fall as 5e turns the corner to 5d.
+//   3. THE CLIFF (dev0461) — ONE cell at a time falls off the edge: the cell at 1e
+//      drops the whole empty right column to 5e ALONE — nothing else moves during
+//      the drop. Only once it has landed does the rest ADVANCE one notch clockwise:
+//      the left column (2a 3a 4a 5a) rises, the bottom row (5b 5c 5d) slides left,
+//      the landed cell turns the corner 5e→5d, and the top row (1b 1c 1d) feeds
+//      right — delivering the next cell to 1e. Then that one falls. Repeat.
 //   4. RE-ENTRY — every 5–10s one faded reserve cell CROSSFADES back in over a
 //      random target (a belt cell, a static centre cell, or 1L / 1P-3P): the old
 //      occupant fades out (becoming the new reserve) as the reserve fades in. The
@@ -47,13 +48,19 @@
   'use strict';
 
   // ── Tunables ────────────────────────────────────────────────────────────────
-  var FADE_OUT   = 0.5;   // seconds per right-column fade in the intro
-  var TOP_SLIDE  = 1.0;   // seconds for the opening top-row shift-right
-  var BEAT       = 1.0;   // seconds for one one-slot clockwise advance
-  var BEAT_GAP   = 0;     // seconds parked between beats (0 → continuous flow)
-  var CROSSFADE  = 0.8;   // seconds for a reserve-cell re-entry crossfade
-  var INJECT_MIN = 5, INJECT_MAX = 10;   // seconds between random re-entries
-  var EASE = 'cubic-bezier(.4,0,.2,1)';
+  // (dev0461) ~half the speed of dev0460, and the fall is now ISOLATED: a single
+  // cell drops the whole right column ALONE before anything else moves. Every cell
+  // moves at the same ~2s-per-cell rate (FALL_DUR = 4 cells × that rate). FALL_DUR
+  // is the main knob — shrink it if the lone drop feels too slow/still.
+  var FADE_OUT   = 1.0;   // seconds per right-column fade in the intro
+  var TOP_SLIDE  = 2.0;   // seconds for the opening top-row shift-right
+  var FALL_DUR   = 8.0;   // seconds for ONE cell to fall the full column 1e→5e (solo)
+  var ADVANCE    = 2.0;   // seconds for the rest of the ring to shift one notch
+  var PAUSE      = 0.4;   // brief settle between the fall and the advance
+  var CROSSFADE  = 1.6;   // seconds for a reserve-cell re-entry crossfade
+  var INJECT_MIN = 10, INJECT_MAX = 20;   // seconds between random re-entries
+  var EASE      = 'cubic-bezier(.4,0,.2,1)';
+  var FALL_EASE = 'cubic-bezier(.45,0,.9,.4)';   // accelerating — a gravity-like drop
 
   // ── Ring geometry (clockwise from top-left) + 1-based [row,col] placement ────
   var RING = ['1a','1b','1c','1d','1e','2e','3e','4e','5e','5d','5c','5b','5a','4a','3a','2a'];
@@ -70,7 +77,8 @@
   // ── State ─────────────────────────────────────────────────────────────────────
   var active = false;
   var phase  = 'off';        // 'off' | 'intro' | 'slide' | 'run'
-  var beatTimer = null, injectTimer = null;
+  var falling = false;       // true only while a cell is mid-drop (gates re-entries)
+  var cycleTimer = null, injectTimer = null;
   var introTimers = [];
   var ring     = null;       // ring[i] = .grid-cell at RING[i], or null (gap)
   var statics  = null;       // [{ el }] non-ring centre cells (swap targets)
@@ -119,7 +127,7 @@
   // ring index. Old rects are read FIRST (including any in-flight transform) so
   // concurrent fades/glides chain smoothly, then each element is reassigned to its
   // new grid-area, inverted back to the old box, and played forward over `dur`.
-  function flipMove(moves, dur) {
+  function flipMove(moves, dur, ease) {
     var cont = container(); if (!cont) return;
     var olds = moves.map(function (m) { return m.el.getBoundingClientRect(); });
     moves.forEach(function (m) {
@@ -137,7 +145,7 @@
     cont.offsetWidth;                                   // commit inverted transforms
     requestAnimationFrame(function () {
       moves.forEach(function (m) {
-        m.el.style.transition = 'transform ' + dur + 's ' + EASE;
+        m.el.style.transition = 'transform ' + dur + 's ' + (ease || EASE);
         m.el.style.transform  = 'translate(0,0)';
       });
     });
@@ -181,14 +189,51 @@
     setTimeout(function () {
       if (!active) return;
       phase = 'run';
-      beatLoop();
+      cycle();
       scheduleInject();
     }, TOP_SLIDE * 1000);
   }
 
-  // ── Phase 3: continuous clockwise flow — rotate the whole ring one slot ───────
-  function beat() {
+  // ── Phase 3: the cliff — one cell falls 1e→5e ALONE, then the rest advances ──
+  // One full cycle = FALL (solo drop, everything else frozen) → ADVANCE (the rest
+  // of the ring shifts one notch, refilling 1e). cycleTimer chains the two.
+  function cycle() {
     if (!active || phase !== 'run') return;
+    var cont = container();
+    if (!cont || !gridOpen()) { stop(true); return; }
+
+    var faller = ring[4];                               // the cell poised at 1e
+    if (faller && !faller.isConnected) { stop(true); return; }
+
+    if (faller) {
+      // FALL: glide the lone cell straight down the empty column to 5e (slot 8).
+      // Nothing else is touched, so the grid is still but for this one drop.
+      falling = true;
+      flipMove([{ el: faller, to: 8 }], FALL_DUR, FALL_EASE);
+      ring[8] = faller;                                 // landed at 5e
+      ring[4] = null;                                   // 1e now empty (chute clear)
+      cycleTimer = setTimeout(function () {
+        falling = false;
+        advanceThenNext();
+      }, (FALL_DUR + PAUSE) * 1000);
+    } else {
+      // No cell at the edge (the lone circulating gap is passing 1e) — just
+      // advance to feed the next one in.
+      advanceThenNext();
+    }
+  }
+
+  function advanceThenNext() {
+    if (!active || phase !== 'run') return;
+    doAdvance();
+    cycleTimer = setTimeout(cycle, (ADVANCE + PAUSE) * 1000);
+  }
+
+  // Rigid clockwise rotation of the whole ring by one slot: the just-landed cell
+  // at 5e turns the corner to 5d, the bottom row slides left, the left column
+  // rises, and the top row feeds right — delivering a fresh cell to 1e. The empty
+  // column interior (2e-4e) just rotates empties, so the chute stays clear.
+  function doAdvance() {
     var cont = container();
     if (!cont || !gridOpen()) { stop(true); return; }
     var moves = [], next = new Array(16).fill(null);
@@ -200,14 +245,8 @@
       moves.push({ el: el, to: to });
       next[to] = el;
     }
-    flipMove(moves, BEAT);
-    ring = next;                                        // gaps rotate forward too
-  }
-
-  function beatLoop() {
-    if (!active || phase !== 'run') return;
-    beat();
-    beatTimer = setTimeout(beatLoop, (BEAT + BEAT_GAP) * 1000);
+    flipMove(moves, ADVANCE);
+    ring = next;                                        // the lone gap rotates too
   }
 
   // ── Phase 4: random re-entry — a reserve cell crossfades over a live cell ─────
@@ -222,6 +261,7 @@
 
   function injectOnce() {
     if (!container()) return;
+    if (falling) return;               // (dev0461) never disturb the screen mid-drop
     // Reserve cells that actually carry content (an empty cell would fade in to
     // nothing), and live targets (ring occupants + static centre cells) with
     // content. Reserve ghosts are never targets (they're invisible).
@@ -247,7 +287,7 @@
     R.style.pointerEvents = '';
     container().offsetWidth;
 
-    // Hand the role to R immediately so the next beat carries R (not T): T drops
+    // Hand the role to R immediately so the next advance carries R (not T): T drops
     // out of the belt / static set and becomes the new reserve ghost.
     if (T.slot >= 0)      ring[T.slot] = R;
     else if (T.st)        T.st.el = R;
@@ -294,7 +334,7 @@
     if (!pinAndCapture()) { toast('Grid still drawing — try again in a moment', 1800); restoreAll(); ring = statics = reserve = null; return false; }
     active = true;
     zc = 300;
-    toast('▼ Fall cells ON — right column drains, the belt flows clockwise; faded cells re-enter at random.   ( F or r stop )', 4200);
+    toast('▼ Fall cells ON — cells drop off the cliff one at a time; the belt advances between drops; faded cells re-enter at random.   ( F or r stop )', 4200);
     runIntro();
     return true;
   }
@@ -304,10 +344,11 @@
     var was = active;
     active = false;
     phase = 'off';
-    if (beatTimer)   { clearTimeout(beatTimer);   beatTimer = null; }
+    if (cycleTimer)  { clearTimeout(cycleTimer);  cycleTimer = null; }
     if (injectTimer) { clearTimeout(injectTimer); injectTimer = null; }
     introTimers.forEach(function (t) { clearTimeout(t); });
     introTimers = [];
+    falling = false;
     if (ring || statics || reserve) restoreAll();
     ring = statics = reserve = null;
     if (!silent && was && typeof toast === 'function') toast('■ Fall cells OFF', 1400);
