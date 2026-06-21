@@ -65,7 +65,9 @@
   // account). Cookieless work is unlimited and account-safe; only the authenticated
   // path is capped. Per-batch — a fresh run resets the count, so also keep total
   // daily cookie use modest. Bump this one number to loosen/tighten the guard.
-  const COOKIE_CAP = 5;
+  // (dev0455) Tightened 5→1 per request: stop enrich/download the moment a single
+  // Firefox-cookie fallback happens (the one cookie item finishes, then the batch halts).
+  const COOKIE_CAP = 1;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -191,7 +193,10 @@
 #igBar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0c0f14;
   border-bottom:1px solid #232b36;flex:0 0 auto;flex-wrap:wrap}
 #igBar h2{margin:0;font-size:15px;font-weight:700;color:#9ad}
-#igBar .ct{color:#7d8794;font-size:12px}
+/* (dev0455) Record-count readout: as bold/visible as the title. The leading
+   "N shown" is the prominent white number; the breakdown after the · is dimmer. */
+#igBar .ct{color:#fff;font-size:15px;font-weight:700;white-space:nowrap}
+#igBar .ct .sub{color:#9aa7b4;font-size:12px;font-weight:600}
 #igBar input[type=text]{background:#1a212b;border:1px solid #2c3645;color:#dfe6ee;
   border-radius:6px;padding:5px 8px;width:200px;font:13px system-ui}
 #igBar select{background:#1a212b;border:1px solid #2c3645;color:#dfe6ee;border-radius:6px;padding:4px 6px}
@@ -432,18 +437,33 @@
   }
 
   function updateCount() {
-    const promoted = rows.filter(r => r.status === 'promoted').length;
-    const enriched = rows.filter(r => r.status === 'enriched' || r.status === 'downloaded').length;
-    // (dev0445) Distinguish selected-AND-visible from total selected, so a selection
-    // hidden by the filter can't masquerade (it used to silently get batch-processed).
+    // (dev0455) Every number now describes the CURRENT filtered view, so the readout
+    // is always internally consistent with what's on screen — that was the "not always
+    // accurate" complaint (the old breakdown counted across ALL rows while "shown"
+    // counted the filtered view, so they disagreed whenever a filter was active).
+    const st = r => r.status || 'new';
+    const vNew       = view.reduce((n, r) => n + (st(r) === 'new' ? 1 : 0), 0);
+    const vEnriched  = view.reduce((n, r) => n + (st(r) === 'enriched' ? 1 : 0), 0);
+    const vDownload  = view.reduce((n, r) => n + (st(r) === 'downloaded' ? 1 : 0), 0);
+    const vPromoted  = view.reduce((n, r) => n + (st(r) === 'promoted' ? 1 : 0), 0);
+    // (dev0445) Selected-AND-visible vs total selected, so a selection hidden by the
+    // filter can't masquerade (it used to silently get batch-processed).
     const selHere = view.reduce((n, r) => n + (sel.has(r.id) ? 1 : 0), 0);
     const selTxt = sel.size === selHere
       ? `${sel.size} selected`
       : `${selHere} selected here · ${sel.size - selHere} more hidden by filter`;
+    const filtered = view.length !== rows.length;
     const el = document.getElementById('igCount');
-    if (el) el.textContent =
-      `${view.length}/${rows.length} shown · ${enriched} enriched · ${promoted} promoted · ${selTxt}` +
-      (dirty ? ' · ⚠ unsaved' : '');
+    if (el) {
+      // Prominent white "N shown" (the records-in-filter count); dim breakdown after.
+      const sub = [
+        filtered ? `of ${rows.length}` : null,
+        `new ${vNew}`, `enriched ${vEnriched}`, `downloaded ${vDownload}`, `promoted ${vPromoted}`,
+        selTxt,
+        dirty ? '⚠ unsaved' : null,
+      ].filter(Boolean).join(' · ');
+      el.innerHTML = `${view.length} shown <span class="sub">· ${esc(sub)}</span>`;
+    }
     const sv = document.getElementById('igSave');
     if (sv) sv.classList.toggle('primary', dirty);
   }

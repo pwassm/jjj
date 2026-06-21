@@ -5557,5 +5557,41 @@
     "rank": "species",
     "common": "Axolotl",
     "extinct": false
+  },
+  {
+    "id": "caprella-mutica",
+    "label": "Caprella mutica",
+    "kind": "taxon",
+    "parents": [
+      "caprella"
+    ],
+    "aliases": [
+      "Caprella mutica Schurin",
+      "1935"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Japanese skeleton shrimp",
+    "extinct": false
+  },
+  {
+    "id": "caprella",
+    "label": "Caprella",
+    "kind": "taxon",
+    "parents": [
+      "caprellidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "uncertain-species",
+    "label": "Uncertain species",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
   }
 ]
