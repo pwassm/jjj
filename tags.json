@@ -5692,5 +5692,13 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "disabled",
+    "label": "Disabled",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

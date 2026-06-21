@@ -278,12 +278,16 @@ document.addEventListener('keydown', e => {
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '{' || (e.shiftKey && e.code === 'BracketLeft'))) {
     e.preventDefault(); e.stopPropagation();
-    if (window.MovingCells) window.MovingCells.slower();
+    // (dev0463) Route to whichever speed-adjustable mode is active (FallCells has
+    // its own moveDur knob); fall back to the conveyor.
+    if (window.FallCells && window.FallCells.active) window.FallCells.slower();
+    else if (window.MovingCells) window.MovingCells.slower();
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '}' || (e.shiftKey && e.code === 'BracketRight'))) {
     e.preventDefault(); e.stopPropagation();
-    if (window.MovingCells) window.MovingCells.faster();
+    if (window.FallCells && window.FallCells.active) window.FallCells.faster();
+    else if (window.MovingCells) window.MovingCells.faster();
     return;
   }
 
