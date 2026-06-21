@@ -1061,14 +1061,18 @@ function gridShow() {
             const muted = true;
             _gridMountVideo(vidHost, row, segs, muted);
           }, 100);
-        } else if (row.link && !isImgLink) {
+        } else if (row.link && !isImgLink && hasFtextImgs) {
           _buildFtextImgCell(cell, row);
         } else if (row.link) {
+          // (dev0465) Direct image. Extensionless links (e.g. phpBB
+          // download/file.php?id=) have no .jpg/.png suffix but are still
+          // images — try loading as an <img>, and only fall back to the
+          // ftext/label montage cell if it genuinely fails to load.
           const img = document.createElement('img');
           img.className = 'grid-zoom-img';   // (dev0346) wheel-zoom target
           img.src = row.link;
           img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;transform-origin:center center;';
-          img.onerror = () => { img.style.display = 'none'; };
+          img.onerror = () => { img.remove(); if (!isImgLink) _buildFtextImgCell(cell, row); };
           cell.appendChild(img);
         }
         cell._rowData = row;
@@ -1357,15 +1361,17 @@ function gridUpdateCell(cellStr, row) {
         const muted = true;
         _gridMountVideo(vidHost, row, segs, muted);
       }, 50);
-    } else if (row.link && !isImgLink) {
+    } else if (row.link && !isImgLink && hasFtextImgs) {
       _buildFtextImgCell(cellEl, row);
     } else if (row.link) {
-      // Image cell
+      // Image cell — (dev0465) also covers extensionless image links
+      // (e.g. phpBB download/file.php?id=); fall back to the ftext/label
+      // montage cell only if the image genuinely fails to load.
       const img = document.createElement('img');
       img.className = 'grid-zoom-img';   // (dev0346) wheel-zoom target
       img.src = row.link;
       img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;transform-origin:center center;';
-      img.onerror = () => { img.style.display = 'none'; };
+      img.onerror = () => { img.remove(); if (!isImgLink) _buildFtextImgCell(cellEl, row); };
       cellEl.appendChild(img);
     }
   } else {

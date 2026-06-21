@@ -5700,5 +5700,54 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "actinoptychus-splendens",
+    "label": "Actinoptychus splendens",
+    "kind": "taxon",
+    "parents": [
+      "actinoptychus"
+    ],
+    "aliases": [
+      "Actinoptychus splendens (Shadbolt) Ralfs ex Pritchard",
+      "1861"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "coscinodiscales",
+    "label": "Coscinodiscales",
+    "kind": "taxon",
+    "parents": [
+      "bacillariophyceae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "heliopeltaceae",
+    "label": "Heliopeltaceae",
+    "kind": "taxon",
+    "parents": [
+      "coscinodiscales"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "actinoptychus",
+    "label": "Actinoptychus",
+    "kind": "taxon",
+    "parents": [
+      "heliopeltaceae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]
