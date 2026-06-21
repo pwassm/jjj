@@ -3929,7 +3929,7 @@ window._executeHotkey = function(key) {
   // (dev0315) Extended from {t,e,a} to also bar {d,m,l,w,f}.
   const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   if (userMode && (key === 't' || key === 'e' || key === 'a'
-      || key === 'd' || key === 'm' || key === 'l' || key === 'w' || key === 'f' || key === 'i' || key === 's')) return;
+      || key === 'd' || key === 'm' || key === 'l' || key === 'w' || key === 'f' || key === 'i' || key === 's' || key === 'o')) return;
 
   // (dev0429) I = the Ig staging screen (ig.js). Dev-only — blocked above in user
   // mode. Toggles itself; any OTHER nav key closes it first, then falls through to
@@ -3983,6 +3983,33 @@ window._executeHotkey = function(key) {
     return;
   }
   if (stOpen && window.closeStScreen) window.closeStScreen();
+
+  // (dev0466) O = the org-review screen (o.js) over o.json — Orgzly notes parsed by
+  // orgToO.js, parallel to ml.json. Dev-only — blocked above in user mode. Toggles
+  // itself; any OTHER nav key closes it first (same as Ig/St), then falls through to
+  // open the requested screen. Tear down whatever's showing so no grid/V videos keep
+  // playing behind the (covering) O overlay.
+  const oOpen = (typeof window.isOScreenOpen === 'function') && window.isOScreenOpen();
+  if (key === 'o') {
+    if (oOpen) { if (window.closeOScreen) window.closeOScreen(); return; }
+    if (vpOpen) vpClose();
+    if (veOpen) { const cb = document.getElementById('v2close'); if (cb) cb.click(); }
+    if (ebOpen) {
+      brSave();
+      document.getElementById('browseOverlay').style.display = 'none';
+      document.getElementById('wrap').style.marginRight = '';
+      brClearMedia();
+    }
+    if (gridOpen) {
+      gridCleanupPlayers();
+      gridHideContextMenu();
+      document.getElementById('gridOverlay').style.display = 'none';
+    }
+    if (tgOpen) closeCScreen();
+    if (window.openOScreen) window.openOScreen();
+    return;
+  }
+  if (oOpen && window.closeOScreen) window.closeOScreen();
 
   // T = Save and go to Table
   if (key === 't') {

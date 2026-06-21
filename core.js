@@ -259,6 +259,15 @@ window.addEventListener('keydown', function(e) {
     return;
   }
 
+  // (dev0466) The O org-review screen owns f (focus search) and r (toggle reading
+  // pane). Bail WITHOUT preventDefault so o.js's own capture handler — registered
+  // after this one — receives them. Other nav keys (t/g/o/…) still fall through so
+  // they close O / switch screens as before.
+  if (typeof window.isOScreenOpen === 'function' && window.isOScreenOpen()
+      && (k === 'f' || k === 'r')) {
+    return;
+  }
+
   // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
   // Only when the grid overlay is open; otherwise falls through so bare 'c'
   // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled
@@ -2360,6 +2369,9 @@ document.addEventListener('keydown', e => {
   // (remove its focused row). Bail so this T-table handler doesn't ALSO move/delete
   // a hidden T row underneath the overlay.
   if (typeof window.isStScreenOpen === 'function' && window.isStScreenOpen()) return;
+  // (dev0466) The O org-review screen owns ↑/↓ (move its focused/read row). Bail so
+  // this T-table handler doesn't ALSO move a hidden T row underneath the overlay.
+  if (typeof window.isOScreenOpen === 'function' && window.isOScreenOpen()) return;
 
   // Up/Down arrow keys — navigate rows in table (works even when annotate panel open)
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
