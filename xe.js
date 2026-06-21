@@ -2110,6 +2110,7 @@ function gridClose() {
   window.MovingCells?.stop(true);   // (dev0374) halt the ring conveyor if running
   window.FlyCells?.stop();          // (dev0385) clear any flung cells / fly mode
   window.FlyCells2?.stop();         // (dev0387) clear the swap-engine variant
+  window.FallCells?.stop(true);     // (dev0460) halt the perimeter waterfall
   gridCleanupPlayers();
   gridClearCut();
   gridHideContextMenu();

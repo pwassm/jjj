@@ -194,12 +194,14 @@ async function gridSaveToFile(gname) {
 function _gmAnyMoving() {
   return (window.MovingCells && window.MovingCells.running) ||
          (window.FlyCells  && window.FlyCells.active) ||
-         (window.FlyCells2 && window.FlyCells2.active);
+         (window.FlyCells2 && window.FlyCells2.active) ||
+         (window.FallCells && window.FallCells.active);
 }
 function _gmStopAll() {
   window.MovingCells && window.MovingCells.stop && window.MovingCells.stop(true);
   window.FlyCells    && window.FlyCells.stop    && window.FlyCells.stop();
   window.FlyCells2   && window.FlyCells2.stop   && window.FlyCells2.stop();
+  window.FallCells   && window.FallCells.stop   && window.FallCells.stop(true);
 }
 function _gmMasterToggle() {
   if (_gmAnyMoving()) {
@@ -222,8 +224,23 @@ function _gmSelectDigit(k) {
     toast('Variant ' + k + ' not built yet — 1 = cascade · 2 = swap · r exits', 2200);
   }
 }
+// (dev0460) F → the FallCells "perimeter waterfall" variant. Unlike 1 / 2 (which
+// only pick a variant WHILE a mode is already running), F has its own key and can
+// start the family cold: starting it stops any other moving mode first; pressing F
+// again (or r) turns the whole system off. Routed from core.js's window-capture
+// handler (which owns bare 'f' over the grid).
+function _gmToggleFall() {
+  if (window.FallCells && window.FallCells.active) {
+    _gmStopAll();
+    if (typeof toast === 'function') toast('■ Fall cells OFF', 1300);
+  } else {
+    _gmStopAll();                                   // leave any other moving mode
+    if (window.FallCells) window.FallCells.start();
+  }
+}
 window._gmAnyMoving = _gmAnyMoving;
 window._gmSelectDigit = _gmSelectDigit;
+window._gmToggleFall = _gmToggleFall;
 
 // Grid keyboard handler - only Escape (Alt keys handled globally)
 document.addEventListener('keydown', e => {

@@ -319,6 +319,21 @@ window.addEventListener('keydown', function(e) {
   // letter shortcuts (T/Q/D/V/W). Don't let the global dispatcher swallow them
   // (e.g. 'w' = clipboard import) — bail so the menu's capture handler runs.
   if (document.getElementById('gridContextMenu')) return;
+  // (dev0460) F → toggle "fall cells" (the perimeter-drain waterfall conveyor)
+  // while G is open. Bare key only — Shift+F (clear filters) is handled above, and
+  // F is otherwise forwarded to _executeHotkey('f') (the filter modal, a no-op in
+  // G). Own it here in window-capture, alongside the digit variant keys, and route
+  // to the moving-cells family.
+  if (k === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const gOpenF = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenF = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpenF && !vpOpenF) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window._gmToggleFall === 'function') window._gmToggleFall();
+      return false;
+    }
+  }
   // (dev0447) S opens the St staging screen — but Xe (text editor) uses bare 's'
   // for save, so don't forward 's' to the dispatcher while Xe is open; let it
   // reach xe.js. (Slideshow / Dictionary / Video-editor already bail entirely
