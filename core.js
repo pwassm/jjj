@@ -348,7 +348,7 @@ window.addEventListener('keydown', function(e) {
   // reach xe.js. (Slideshow / Dictionary / Video-editor already bail entirely
   // above, so they keep their own 's' too.)
   if (k === 's' && document.getElementById('textEditorOverlay')) return;
-  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's') {
+  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's' || k === 'o') {
     // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
     // owned by the C-screen handler (boot.js). Don't also fire the global
     // hamburger-menu dispatcher here, or it pops HM right after. Let the event
