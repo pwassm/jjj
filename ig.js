@@ -642,7 +642,7 @@
   async function enrichRow(r, single) {
     if (typeof _ytdlpFetchMeta !== 'function') { igToast('yt-dlp pipeline not loaded', 2500); return false; }
     try {
-      if (single) igToast('⏳ Enriching ' + r.id + '…\n🍪 cookieless first (Firefox cookies only if walled)', 6000);
+      if (single) igToast('⏳ Enriching ' + r.id + '…\n🍪 cookieless only — your IG login is never used', 6000);
       if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
       const meta = await _ytdlpFetchMeta(r.url);
       const desc = (meta.description || '').trim();
@@ -711,8 +711,8 @@
     // action + N/total, cookie tally + cap, running speed, and the pacing countdown.
     const fmtSpeed = () => (done ? `~${((Date.now() - t0) / 1000 / done).toFixed(1)}s/item` : '');
     const fmtClock = ms => { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + pad2(s % 60); };
-    // (dev0444) Running cookie tally now shows the auto-stop cap it counts toward.
-    const cookieSoFar = () => `🍪 ${cookieUsed}/${COOKIE_CAP} Firefox-cookie items (auto-stop at ${COOKIE_CAP})`;
+    // (dev0459) Cookies are off — reassurance line confirms the account is untouched.
+    const cookieSoFar = () => `🍪 cookies off — your IG account is never used`;
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
     for (const id of ids) {
       if (batchAbort) break;
@@ -770,8 +770,8 @@
       head,
       ``,
       `${total} marked to do`,
-      `${cookieless} done without Firefox cookies  (cookieless · account-safe)`,
-      `${cookieUsed} done with Firefox cookies 🍪`,
+      `${cookieless} read cookielessly  (account-safe)`,
+      `🍪 cookies off — your IG account was never used`,
     ];
     if (couldntRead) lines.push(`${couldntRead} couldn't be read  (login-walled)`);
     if (notReached)  lines.push(`${notReached} not reached  (run stopped early)`);
@@ -809,7 +809,7 @@
       return;
     }
     await runBatch('Enriching', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
-      '🍪 cookieless first · Firefox cookies only if walled');
+      '🍪 cookieless only — never uses your Firefox/IG login');
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
@@ -821,7 +821,7 @@
       applyAndRender();
     }
     try {
-      if (single) igToast('⏳ Downloading ' + r.id + '…\n🍪 cookieless first (Firefox cookies only if walled)\nmax res — can take a bit', 12000);
+      if (single) igToast('⏳ Downloading ' + r.id + '…\n🍪 cookieless only — your IG login is never used\nmax res — can take a bit', 12000);
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r) })
@@ -840,7 +840,7 @@
         const fileLine = n > 1 ? n + ' files (carousel)\n' + (r.localFiles[0] || '') + ' …'
                                : (r.localFiles[0] || '');
         igToast('✓ downloaded ' + r.id
-          + '\n🍪 cookieless first (Firefox cookies only if walled)\n' + lastOpInfo
+          + '\n🍪 cookieless only — your IG login was not used'
           + '\n' + fileLine, 3500);
       }
       return true;
@@ -865,10 +865,10 @@
     if (!confirm(`Download ${todo.length} item(s) from ${authLine}\nat max resolution into ig_media/ ?`
       + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '') + `\n\n`
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
-      + `• Cookieless first; auto-stops at the first cookie use OR first login-walled post (re-run to continue).\n`
+      + `• Cookieless only (never uses your IG login); auto-stops at the first login-walled post (re-run to continue).\n`
       + `• Press ⏹ Stop any time.`)) return;
     await runBatch('Downloading', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
-      '🍪 cookieless first · Firefox cookies only if walled');
+      '🍪 cookieless only — never uses your Firefox/IG login');
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────

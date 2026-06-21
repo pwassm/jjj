@@ -48,7 +48,13 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0450';
+const PROXY_BUILD = 'dev0459';
+
+// (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
+// firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
+// A login-walled post just fails cookielessly — the I-screen stops the batch at the
+// first wall (WALL_CAP). Flip to true only to re-enable the Firefox-cookie fallback.
+const IG_USE_COOKIES = false;
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -427,7 +433,8 @@ function streamYtdlpMeta(req, res, bin, args) {
       const result = ytdlpCompact(raw);
       const good = code === 0 && !!result;
       // Cookieless failed/empty → retry once with Firefox cookies (login walls).
-      if (!good && !useCookies) { attempt(true, errOut.trim()); return; }
+      // (dev0459) …unless cookies are disabled — then a wall just fails cookielessly.
+      if (!good && !useCookies && IG_USE_COOKIES) { attempt(true, errOut.trim()); return; }
       finish({
         ok: good, exitCode: code, durationMs: Date.now() - t0,
         result, usedCookies: useCookies || undefined,
@@ -926,6 +933,13 @@ function igDownload(req, res, origin) {
     // produced files (a carousel where one entry 404s) counts as success.
     run(false, (ok1, err1) => {
       if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
+      // (dev0459) Cookies disabled → a login-walled post just fails (no cookie retry).
+      if (!IG_USE_COOKIES) {
+        rmTmp();
+        console.warn('[ig/download] ' + id + ' failed (cookieless): ' + (err1 || 'yt-dlp failed'));
+        sendJson(res, 502, { ok: false, error: (err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
+        return;
+      }
       wipeTmp();   // clear any partial cookieless output before the cookie retry
       run(true, (ok2, err2) => {
         if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), note: 'needed Firefox cookies' }, origin); return; }
