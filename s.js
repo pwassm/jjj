@@ -157,11 +157,20 @@
   // vidLength,comment} — id/status/dates are stamped by importRows().
   const isUrl = s => /^https?:\/\/\S+$/i.test(String(s || '').trim());
 
-  // imagefinder.py "s.json blocks" export: records of  url / source / title
-  // delimited by a "=====NNN" separator line. The first url -> link, a second
-  // url -> attribution (the source/provenance page), and the first non-url text
-  // line -> VidTitle. Bare "W x H" dimension lines (legacy gdown blocks) are
-  // ignored so they don't land in the title.
+  // imagefinder.py / videofinder.py "s.json blocks" export: records delimited by a
+  // "=====NNN" separator line. Within a block each non-url line is classified:
+  //   · url                                  → 1st = link, 2nd = attribution (source/channel page)
+  //   · "W x H"  (or "res: W x H")           → resolution           (dev0456)
+  //   · "by:/author:/channel:/creator: …"    → VidAuthor (channel / creator) (dev0456)
+  //   · "len:/dur: …" or a bare "m:ss"       → vidLength
+  //   · anything else, first occurrence      → VidTitle
+  // Before dev0456 the bare "W x H" dimension line was dropped and the exporters
+  // emitted no author line, so channel + resolution never reached the St columns.
+  const RES_RE = /^(?:res(?:olution)?\s*[:=]\s*)?(\d+)\s*[x×*]\s*(\d+)$/i;
+  const AUTH_RE = /^(?:by|author|channel|uploader|creator|credit)\s*[:=]\s*(.+)$/i;
+  const DUR_RE = /^(?:len(?:gth)?|dur(?:ation)?)\s*[:=]\s*(.+)$/i;
+  const BARE_DUR_RE = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+
   function parseSeparatedBlocks(text) {
     const blocks = String(text || '').replace(/\r/g, '').split(/^={3,}.*$/m);
     const out = [];
@@ -169,10 +178,17 @@
       const lines = block.split('\n').map(s => s.trim()).filter(Boolean);
       const urls = lines.filter(isUrl);
       if (!urls.length) continue;
-      const texts = lines.filter(l => !isUrl(l) && !/^\d+\s*[x×]\s*\d+$/i.test(l));
       const r = { type: urlType(urls[0]), link: urls[0] };
-      if (urls.length > 1) r.attribution = urls[1];   // source / provenance page
-      if (texts.length) r.VidTitle = texts[0];        // picture title
+      if (urls.length > 1) r.attribution = urls[1];   // source / provenance / channel page
+      for (const l of lines) {
+        if (isUrl(l)) continue;
+        let m;
+        if ((m = l.match(RES_RE)))  { if (!r.resolution) r.resolution = m[1] + '×' + m[2]; continue; }
+        if ((m = l.match(AUTH_RE))) { if (!r.VidAuthor)  r.VidAuthor  = m[1].trim();       continue; }
+        if ((m = l.match(DUR_RE)))  { if (!r.vidLength)  r.vidLength  = normDur(m[1]);     continue; }
+        if (BARE_DUR_RE.test(l))    { if (!r.vidLength)  r.vidLength  = normDur(l);        continue; }
+        if (!r.VidTitle) r.VidTitle = l;              // first plain text line → title
+      }
       out.push(r);
     }
     return out;
