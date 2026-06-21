@@ -18,7 +18,7 @@
 //      rest of the ring creeps one notch clockwise: the top row feeds right (next
 //      cell toward 1e), the left column rises (5a out of the way), and the bottom
 //      row 5b-5e slides left so 5e clears JUST IN TIME for the lander. On impact
-//      the lander SQUASHES to ½ height, springs to 1½, then settles — and repeat.
+//      the lander SQUASHES to ½ height (slowly), then settles back to full — repeat.
 //   3. RE-ENTRY — every 2-3s, 2-3 reserve cells (the hidden 1e-4e) crossfade back
 //      in over random live cells (belt / static centre / 1L / 1P-3P); each displaced
 //      cell becomes the new reserve. The pool stays at four; the cast keeps churning.
@@ -53,16 +53,19 @@
   // (dev0463) Back to ~dev0460 speed. moveDur is the live speed knob ({ slower /
   // } faster): it's the time for the L to creep one notch AND for the zipper to
   // fall the whole column — so the drop looks ~4× faster than the creep.
-  var moveDur   = 1.2;    // seconds per cycle's motion (live; { / } adjust)
-  var MIN_DUR = 0.4, MAX_DUR = 4.0, DUR_STEP = 0.2;
+  var moveDur   = 0.9;    // seconds per cycle's motion (live; { / } adjust)  (dev0464: ~30% faster)
+  var MIN_DUR = 0.3, MAX_DUR = 4.0, DUR_STEP = 0.15;
   var PAUSE     = 0.2;    // seconds parked after the bounce, before the next cycle
   var FADE_OUT  = 0.5;    // seconds per cell in the intro fade
-  var CROSSFADE = 0.6;    // seconds for a reserve-cell re-entry crossfade
-  var SUB_MIN = 2.0, SUB_MAX = 3.0;       // seconds between re-entry bursts
-  var SUB_CELLS_MIN = 2, SUB_CELLS_MAX = 3;   // cells swapped per burst
-  // Impact bounce (fixed, not scaled by moveDur — a snappy landing):
-  var SQUASH = 0.10, STRETCH = 0.13, SETTLE = 0.16;   // seconds per phase
-  var BOUNCE = SQUASH + STRETCH + SETTLE;
+  var GAP_FADE  = 0.6;    // seconds to fade a spare into an undesired belt gap
+  var SUB_MIN = 2.0, SUB_MAX = 3.0;            // seconds between re-entry bursts
+  var SUB_FADE_MIN = 2.0, SUB_FADE_MAX = 3.0;  // (dev0464) slow, obvious substitution crossfade
+  var SUB_CELLS_MIN = 2, SUB_CELLS_MAX = 3;    // cells swapped per burst
+  // Impact bounce (fixed, not scaled by moveDur). (dev0464) Slower squash, and the
+  // cell never rises above its own height — it compresses to ½ then settles back to
+  // 1 (no overshoot, no stretch phase).
+  var SQUASH = 0.35, SETTLE = 0.30;   // seconds per phase
+  var BOUNCE = SQUASH + SETTLE;
   var EASE      = 'cubic-bezier(.4,0,.2,1)';
   var FALL_EASE = 'cubic-bezier(.45,0,.9,.4)';        // accelerating — gravity drop
 
@@ -76,6 +79,11 @@
   };
   var FADE_CELLS = ['1e','2e','3e','4e'];   // (dev0463) 5e no longer fades
   var SLOT_1E = 4, SLOT_5E = 8;             // ring indices of the chute endpoints
+  // (dev0464) Slots that must NEVER be empty (everything but the right-column chute
+  // 1e-5e = ring indices 4-8). An empty here is undesirable and gets filled from
+  // the reserve; the first such fill promotes a spare into the belt, after which the
+  // flow runs gap-free (13 belt cells = full L + a cell always transiting the chute).
+  var FILL_SLOTS = [0,1,2,3,9,10,11,12,13,14,15];
 
   var DESKTOP = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
 
@@ -229,27 +237,51 @@
       zipperEl = z;
       fxTimers.push(setTimeout(function () { bounce(z); }, moveDur * 1000));
     }
+    fillLGaps();                                        // no empties off the chute
     var total = moveDur + (z ? BOUNCE : 0) + PAUSE;
     cycleTimer = setTimeout(function () { zipperEl = null; cycle(); }, total * 1000);
   }
 
-  // Squash-and-stretch on impact: ½ height → 1½ height → settle. transform-origin
+  // (dev0464) Fill any undesired belt gap (an empty slot outside the right-column
+  // chute) by fading a spare cell in from the reserve. Gaps only arise structurally
+  // when a drop's lander reaches 5e "behind" the bottom-row creep; the first fill
+  // promotes one spare into the belt (12 → 13 cells), after which the flow is
+  // gap-free and this is a no-op. Right-column empties (1e-5e) are left alone.
+  function fillLGaps() {
+    for (var n = 0; n < FILL_SLOTS.length; n++) {
+      var idx = FILL_SLOTS[n];
+      if (ring[idx]) continue;
+      var sp = null, j;
+      for (j = 0; j < reserve.length; j++) {
+        if (reserve[j] && reserve[j].isConnected && reserve[j]._rowData) { sp = reserve[j]; break; }
+      }
+      if (!sp) break;                                   // no spare available — leave it
+      reserve.splice(j, 1);
+      var rc = RC[RING[idx]];
+      sp.style.transition = 'none'; sp.style.transform = '';
+      sp.style.gridRow = rc[0]; sp.style.gridColumn = rc[1];
+      sp.style.opacity = '0'; sp.style.pointerEvents = ''; sp.style.zIndex = ++zc;
+      ring[idx] = sp;
+      container().offsetWidth;                          // commit opacity:0 before fading in
+      sp.style.transition = 'opacity ' + GAP_FADE + 's ease';
+      sp.style.opacity = '1';
+    }
+  }
+
+  // Squash on impact: ½ height → settle back to full (no overshoot). transform-origin
   // is bottom-centre (set at pin time) so it compresses onto the floor. A mild
   // counter-scale on X keeps it feeling springy rather than rubbery.
   function bounce(z) {
     if (!active || !z.isConnected) return;
+    // (dev0464) Slow squash to ½ height, then settle back to full — never taller
+    // than its starting height (no overshoot, no stretch phase).
     z.style.transition = 'transform ' + SQUASH + 's ease-out';
-    z.style.transform  = 'translate(0,0) scaleX(1.12) scaleY(0.5)';     // squash
+    z.style.transform  = 'translate(0,0) scaleX(1.08) scaleY(0.5)';     // squash
     fxTimers.push(setTimeout(function () {
       if (!active || !z.isConnected) return;
-      z.style.transition = 'transform ' + STRETCH + 's ease-out';
-      z.style.transform  = 'translate(0,0) scaleX(0.94) scaleY(1.5)';   // spring up
+      z.style.transition = 'transform ' + SETTLE + 's cubic-bezier(.2,.7,.3,1)';
+      z.style.transform  = 'translate(0,0) scaleX(1) scaleY(1)';        // settle (no overshoot)
     }, SQUASH * 1000));
-    fxTimers.push(setTimeout(function () {
-      if (!active || !z.isConnected) return;
-      z.style.transition = 'transform ' + SETTLE + 's cubic-bezier(.34,1.4,.64,1)';
-      z.style.transform  = 'translate(0,0) scaleX(1) scaleY(1)';        // settle
-    }, (SQUASH + STRETCH) * 1000));
   }
 
   // ── Phase 3: re-entry — bursts of 2-3 reserve cells crossfade over live cells ──
@@ -299,17 +331,18 @@
     else if (T.st)        T.st.el = R;
     var idx = reserve.indexOf(R); if (idx >= 0) reserve.splice(idx, 1);
 
+    var fade = rrange(SUB_FADE_MIN, SUB_FADE_MAX);   // (dev0464) slow & obvious
     requestAnimationFrame(function () {
-      R.style.transition = 'opacity ' + CROSSFADE + 's ease';
+      R.style.transition = 'opacity ' + fade + 's ease';
       R.style.opacity = '1';
-      T.el.style.transition = 'opacity ' + CROSSFADE + 's ease';
+      T.el.style.transition = 'opacity ' + fade + 's ease';
       T.el.style.opacity = '0';
     });
 
     fxTimers.push(setTimeout(function () {
       T.el.style.pointerEvents = 'none';
       if (reserve.indexOf(T.el) < 0) reserve.push(T.el);
-    }, CROSSFADE * 1000));
+    }, fade * 1000));
   }
 
   // Snap every cell home, dropping all inline styling this feature added.
