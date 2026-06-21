@@ -4114,9 +4114,23 @@ window._executeHotkey = function(key) {
       }
     }
 
-    const isText = rowToEdit.VidRange === 'text'
+    // (dev0462) Mouse-column-gated ftext routing. `w` imports now auto-fill
+    // ftext (caption) on yt video rows, which used to force E into the ftext
+    // editor (Xe) for those rows instead of the video editor. Now, for a row
+    // that is ALSO a video, ftext only wins when the mouse is over the `ftext`
+    // column (x-span only — the pointer need not be over the row). Over any
+    // other column a video row opens the video editor (E) as before. Hovering
+    // the ftext column opens Xe for ftext even on a video row (so you can still
+    // edit/add the caption). Pure text rows (slides/quizzes: VidRange==='text'
+    // or ltype==='w') are unaffected and always open Xe. Skip the gate when the
+    // grid overlay is up (its surface covers the table's column x-spans).
+    const _overFtextCol = !gridOpen
+      && (typeof _colUnderMouse === 'function') && _colUnderMouse() === 'ftext';
+    const _isVidRow = isVideoRow(rowToEdit);
+    const isText = _overFtextCol
+      || rowToEdit.VidRange === 'text'
       || rowToEdit.ltype === 'w'
-      || (typeof rowToEdit.ftext === 'string' && rowToEdit.ftext.length > 0);
+      || (typeof rowToEdit.ftext === 'string' && rowToEdit.ftext.length > 0 && !_isVidRow);
 
     if (isText) {
       // Route to the HTML/text editor (handles both rich-text slides and

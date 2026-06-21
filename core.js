@@ -1171,6 +1171,27 @@ function buildSort() {
 function vr(vi) { return sortedIdx ? sortedIdx[vi] : vi; }
 function visCols() { return cols.filter(c => !hidden.has(c)); }
 
+// (dev0462) Last-seen pointer position + "which T column is under the mouse".
+// yt imports (`w`) now auto-fill ftext (caption), which used to force E into the
+// ftext editor (Xe) for video rows. _colUnderMouse lets the E hotkey gate ftext
+// editing on the pointer's COLUMN (x-span only — it need not be over a row, per
+// the spec), so a video row only opens Xe when the mouse sits in the ftext
+// column; anywhere else it opens the video editor. Reads the sticky <thead>
+// header cells' x-spans against the last pointer x. Returns the column name
+// (e.g. 'ftext') or null when the pointer is outside the table's columns.
+let _lastPointerX = -1, _lastPointerY = -1;
+document.addEventListener('mousemove', e => { _lastPointerX = e.clientX; _lastPointerY = e.clientY; }, { passive: true });
+function _colUnderMouse() {
+  if (_lastPointerX < 0) return null;
+  const ths = document.querySelectorAll('#thead th[data-col]');
+  for (const th of ths) {
+    const r = th.getBoundingClientRect();
+    if (r.width > 0 && _lastPointerX >= r.left && _lastPointerX < r.right) return th.getAttribute('data-col');
+  }
+  return null;
+}
+window._colUnderMouse = _colUnderMouse;
+
 // colW returns the width for a column — saved width OR auto-measured
 function colW(col) {
   const saved = colWidths[col];
