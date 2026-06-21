@@ -56,6 +56,11 @@
   // excludes anything that mentions "login required".
   const RATE_LIMIT_RE = /\b429\b|too many requests|please wait a few|temporarily (locked|blocked|unavailable)|checkpoint_required|challenge_required|try again later/i;
   const isThrottle = err => !!err && RATE_LIMIT_RE.test(err) && !/login\s*required/i.test(err);
+  // (dev0458) A LOGIN-WALL signature (post needs auth — both cookieless and the
+  // Firefox-cookie retry came back empty). Distinct from isThrottle (an IP-level
+  // 429). Covers enrich ("login required / content is not available / empty
+  // metadata") and download ("…rate-limit reached or login required…").
+  const isWall = err => /login\s*required|content is not available|empty metadata|rate-limit reached/i.test(err || '');
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const rnd = (a, b) => a + Math.random() * (b - a);
   const ENRICH_GAP = [1200, 3000];     // ms between batch enrich items (cookieless)
@@ -68,6 +73,11 @@
   // (dev0455) Tightened 5→1 per request: stop enrich/download the moment a single
   // Firefox-cookie fallback happens (the one cookie item finishes, then the batch halts).
   const COOKIE_CAP = 1;
+  // (dev0458) Companion guard, per request: also stop the batch at the first
+  // LOGIN-WALLED result (cookieless AND the cookie retry both failed). Combined with
+  // COOKIE_CAP=1 this means the run halts the instant it leaves cookieless territory —
+  // one authenticated request at most per run. Re-run to step past a wall.
+  const WALL_CAP = 1;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -692,6 +702,7 @@
     busy = true; batchAbort = false; setBatchUi(true);
     igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
     let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
+    let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
     const t0 = Date.now();
     // Rows that still need work. Already-done rows are passed over silently — no
     // "skipped" line anywhere (per request: that count was ambiguous noise).
@@ -729,9 +740,11 @@
         // cookie retry; order/pacing can't change that (see igStickyShow report).
         fail++;
         if (isThrottle(lastOpError)) throttled = true;
+        // (dev0458) Stop at the first login-walled result (cookie-conservative).
+        else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
       }
       applyAndRender();
-      if (throttled || cookieStopped) break;
+      if (throttled || cookieStopped || walledStopped) break;
     }
     processingId = null; busy = false; setBatchUi(false); igBatchHide();
     if (ok) { dirty = true; await persist(false); }
@@ -748,7 +761,8 @@
     const couldntRead = fail;                  // attempted, failed cookieless AND cookie
     const notReached  = total - done;          // never attempted (stopped early)
     const head = throttled     ? `⏸ ${label} stopped — IG rate-limit detected`
-               : cookieStopped ? `⏹ ${label} auto-stopped — 🍪 cookie cap (${COOKIE_CAP}) reached`
+               : cookieStopped ? `⏹ ${label} auto-stopped — 🍪 cookie used (cap ${COOKIE_CAP})`
+               : walledStopped ? `⏹ ${label} auto-stopped — first login-walled post`
                : batchAbort    ? `⏹ ${label} stopped by you`
                : couldntRead   ? `✓ ${label} done — ${ok}/${total} read`
                :                 `✓ ${label} complete`;
@@ -763,7 +777,10 @@
     if (notReached)  lines.push(`${notReached} not reached  (run stopped early)`);
     lines.push(`⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`);
     if (throttled)          lines.push('', 'Wait a few minutes, then re-run — only un-done rows are retried.');
-    else if (cookieStopped) lines.push('', 'Re-run to continue. The cap resets each run, so keep total cookie use modest.');
+    else if (cookieStopped) lines.push('', 'Stopped after 1 Firefox-cookie use (your account-safety setting).',
+                                           'Re-run to continue — the cap resets each run.');
+    else if (walledStopped) lines.push('', 'Stopped at the first login-walled post (your account-safety setting).',
+                                           'Re-run to step past it, or use 📋 Saved-text. Cookieless rows before it are done.');
     else if (couldntRead)   lines.push('', `These ${couldntRead} are login-walled — spacing or order won't read them.`,
                                            `Use 📋 Saved-text, or check Firefox is logged into Instagram.`);
     if (throttled && lastOpError) lines.push((lastOpError || '').slice(0, 80));
@@ -848,7 +865,7 @@
     if (!confirm(`Download ${todo.length} item(s) from ${authLine}\nat max resolution into ig_media/ ?`
       + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '') + `\n\n`
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
-      + `• Heavier than Enrich; tries cookieless first, your Firefox session only if walled — keep batches modest.\n`
+      + `• Cookieless first; auto-stops at the first cookie use OR first login-walled post (re-run to continue).\n`
       + `• Press ⏹ Stop any time.`)) return;
     await runBatch('Downloading', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
       '🍪 cookieless first · Firefox cookies only if walled');
