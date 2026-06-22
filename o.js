@@ -102,8 +102,23 @@
 #oBar .spacer{flex:1}
 #oBar #oClose{font-size:18px;padding:2px 10px;line-height:1}
 #oWrap{flex:1;display:flex;overflow:hidden;position:relative}
-#oTable{flex:1 1 auto;height:100%;min-width:0}
+#oTableWrap{flex:1 1 auto;min-width:0;position:relative}
+#oTable{height:100%}
 #oWrap.noread #oRead{display:none}
+/* (dev0468) empty-state: when filters hide every row, name WHAT is filtering + offer a
+   one-click clear. pointer-events:none lets the user still click the header boxes through it. */
+#oEmpty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  text-align:center;color:#9fb0c2;padding:30px;background:rgba(17,21,28,.55);pointer-events:none}
+#oEmpty.show{display:flex}
+#oEmpty .box{pointer-events:auto;background:#141a23;border:1px solid #34404f;border-radius:12px;
+  padding:18px 24px;max-width:560px;font:13.5px/1.6 system-ui}
+#oEmpty .box b{color:#fff;font-size:15px}
+#oEmpty .box .fl{display:inline-block;background:#22303f;color:#cfe;border-radius:4px;padding:1px 8px;margin:4px 4px 0 0;font-size:12px}
+#oEmpty .box button{margin-top:15px;background:#0a84ff;border:1px solid #0a84ff;color:#fff;border-radius:6px;
+  padding:7px 16px;cursor:pointer;font:600 13px system-ui}
+#oEmpty .box button:hover{filter:brightness(1.1)}
+#oBar .ct .hf{color:#ffd479;font-weight:700;font-size:12px;margin-left:6px;cursor:help}
+#oBar button#oClear{background:#3a2230;border-color:#7a3a4a;color:#ffd0d8}
 #oRead{flex:0 0 46%;max-width:760px;display:flex;flex-direction:column;
   background:#0e131a;border-left:1px solid #232b36}
 #oReadHead{flex:0 0 auto;padding:9px 13px;background:#0a1426;border-bottom:1px solid #1a2a4a;
@@ -150,6 +165,7 @@
           <option value="DONE">DONE</option>
           <option value="none">— no keyword —</option>
         </select>
+        <button id="oClear" title="clear ALL filters, including the per-column header boxes (Shift+F)">✕ Clear filters</button>
         <button id="oReadToggle">📖 pane (r)</button>
         <span class="spacer"></span>
         <button id="oReload">↻ Reload</button>
@@ -157,7 +173,7 @@
         <button id="oClose" title="close → T (Esc)">✕</button>
       </div>
       <div id="oWrap">
-        <div id="oTable"></div>
+        <div id="oTableWrap"><div id="oTable"></div><div id="oEmpty"></div></div>
         <div id="oRead">
           <div id="oReadHead"><span id="oReadTitle"></span></div>
           <div id="oReadBody"><div class="o-empty">— select a row —</div></div>
@@ -173,6 +189,7 @@
     $('oSearchText').addEventListener('change', e => { searchText = e.target.checked; applyFilters(); });
     $('oTag').addEventListener('change', e => { tagFilter = e.target.value; applyFilters(); });
     $('oKw').addEventListener('change', e => { kwFilter = e.target.value; applyFilters(); });
+    $('oClear').addEventListener('click', clearAllFilters);
     $('oReadToggle').addEventListener('click', toggleRead);
     $('oReload').addEventListener('click', () => loadData());
     $('oSave').addEventListener('click', () => persist(true));
@@ -234,6 +251,10 @@
     // Clicking a row focuses it (drives the reading pane). Link cells still open.
     table.on('rowClick', (e, row) => setFocus(row.getData().id, { scroll: false }));
     table.on('tableBuilt', () => { applyFilters(); updateCount(); reconcileFocus(); });
+    // (dev0468) Keep the count + empty-state in sync when a per-column HEADER filter
+    // changes too (those bypass applyFilters). This is what surfaces a stale column
+    // filter that was silently ANDing rows away (e.g. Link="nytimes" → 0 NEXT rows).
+    table.on('dataFiltered', () => { updateCount(); reconcileFocus(); });
   }
 
   // ── Org-tag facet (built from the data; independent of tags.json) ────────────
@@ -326,7 +347,44 @@
   function updateCount() {
     const el = $('oCount'); if (!el || !table) return;
     const shown = table.getRows('active').length;
-    el.textContent = shown === rows.length ? rows.length + ' rows' : shown + ' / ' + rows.length;
+    const hf = (table.getHeaderFilters && table.getHeaderFilters()) || [];
+    const txt = shown === rows.length ? rows.length + ' rows' : shown + ' / ' + rows.length;
+    // (dev0468) Flag active per-column header filters right in the count, so a stale
+    // column box can never silently swallow rows again without the user seeing why.
+    el.innerHTML = esc(txt) + (hf.length
+      ? ' <span class="hf" title="' + esc(hf.map(h => h.field + ': &quot;' + h.value + '&quot;').join(', '))
+        + ' — Shift+F or ✕ Clear filters to reset">⚠ ' + hf.length + ' column filter' + (hf.length > 1 ? 's' : '') + '</span>'
+      : '');
+    updateEmpty(hf, shown);
+  }
+
+  // (dev0468) When filters hide EVERY row, spell out exactly what is filtering (incl.
+  // the per-column header boxes) and give a one-click reset — the fix for "I selected
+  // NEXT and saw nothing" being an invisible leftover Link="nytimes" filter.
+  function updateEmpty(hf, shown) {
+    const box = $('oEmpty'); if (!box) return;
+    if (shown > 0 || !rows.length) { box.classList.remove('show'); box.innerHTML = ''; return; }
+    const parts = [];
+    if (kwFilter !== 'all') parts.push('keyword = ' + (kwFilter === 'none' ? '(no keyword)' : kwFilter));
+    if (tagFilter !== 'all') parts.push('tag = ' + (tagFilter === '__none__' ? '(untagged)' : tagFilter));
+    if (query) parts.push('search = "' + query + '"' + (searchText ? ' (incl. text)' : ''));
+    (hf || []).forEach(h => parts.push('column “' + h.field + '” contains "' + h.value + '"'));
+    box.innerHTML = '<div class="box"><b>0 of ' + rows.length + ' rows</b> match the active filters:<br>'
+      + (parts.length ? parts.map(p => '<span class="fl">' + esc(p) + '</span>').join('') : '<i>(no filters — empty data?)</i>')
+      + '<br><button id="oEmptyClear">✕ Clear all filters</button></div>';
+    box.classList.add('show');
+    const b = $('oEmptyClear'); if (b) b.onclick = clearAllFilters;
+  }
+
+  // Reset EVERY filter: search box, both dropdowns, AND the per-column header boxes.
+  function clearAllFilters() {
+    query = ''; const s = $('oSearch'); if (s) s.value = '';
+    searchText = false; const st = $('oSearchText'); if (st) st.checked = false;
+    tagFilter = 'all'; const tg = $('oTag'); if (tg) tg.value = 'all';
+    kwFilter = 'all'; const kw = $('oKw'); if (kw) kw.value = 'all';
+    if (table && table.clearHeaderFilter) table.clearHeaderFilter();   // the column boxes (the silent trap)
+    applyFilters();
+    oToast('🔎 all filters cleared', 1200);
   }
 
   // ── Save (generic FSA writer — no proxy endpoint, no restart) ────────────────
@@ -402,10 +460,9 @@
       return;
     }
     if (e.key === 'f') { e.stopPropagation(); e.preventDefault(); $('oSearch')?.focus(); return; }
-    if (e.key === 'F') {
+    if (e.key === 'F') {                 // Shift+F — clear ALL filters (incl. column boxes)
       e.stopPropagation(); e.preventDefault();
-      query = ''; const s = $('oSearch'); if (s) s.value = '';
-      applyFilters(); oToast('🔎 search cleared', 1200);
+      clearAllFilters();
       return;
     }
     if (e.key === 'r') { e.stopPropagation(); e.preventDefault(); toggleRead(); return; }
