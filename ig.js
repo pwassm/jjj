@@ -60,7 +60,13 @@
   // Firefox-cookie retry came back empty). Distinct from isThrottle (an IP-level
   // 429). Covers enrich ("login required / content is not available / empty
   // metadata") and download ("…rate-limit reached or login required…").
-  const isWall = err => /login\s*required|content is not available|empty metadata|rate-limit reached/i.test(err || '');
+  // (dev0470) Also match yt-dlp's "There is no video in this post" — a /p IMAGE post
+  // whose embed fallback ALSO failed surfaces THAT (now the proxy normalizes it to a
+  // "login required" wall message, but match both in case the proxy isn't restarted).
+  // This string is wall-class ONLY because the proxy always tries the embed page
+  // first, so it never reaches the client on a post we could actually read.
+  const WALL_RE = /login\s*required|login[-\s]?wall|content is not available|empty metadata|rate-limit reached|no video in this post|walled this post/i;
+  const isWall = err => WALL_RE.test(err || '');
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const rnd = (a, b) => a + Math.random() * (b - a);
   const ENRICH_GAP = [1200, 3000];     // ms between batch enrich items (cookieless)
@@ -679,12 +685,15 @@
       // (dev0441) Mark login-walled posts so bulk Enrich stops re-hitting them this
       // session (they can't succeed cookielessly). Transient/proxy errors are NOT
       // marked — those should still retry. Reload clears the whole set.
-      if (/login\s*required|content is not available|empty metadata/i.test(lastOpError)) enrichFailed.add(r.id);
+      // (dev0470) Use the shared WALL_RE so an unreadable /p image post (yt-dlp "no
+      // video" + embed failed) is marked too — otherwise it kept status 'new' and,
+      // with stop-at-first-wall, every re-run halted on the SAME row, never advancing.
+      if (WALL_RE.test(lastOpError)) enrichFailed.add(r.id);
       if (single) {
         // (dev0442) Enrich now tries cookieless THEN Firefox cookies — reaching here
         // means BOTH failed. A login-wall message means even cookies didn't read it
         // (Firefox not logged into Instagram?), not an IP rate-limit.
-        const walled = /login\s*required|content is not available/i.test(lastOpError);
+        const walled = isWall(lastOpError);
         igToast(walled
           ? '✗ enrich ' + r.id + ' — couldn\'t read post (not a rate-limit)\nCookieless + Firefox cookies both failed. Is Firefox logged into Instagram? Or use 📋 Paste saved-text.'
           : '✗ enrich ' + r.id + ': ' + lastOpError, 4000);

@@ -37,6 +37,12 @@ const PORT = 8081;
 //   fixes Instagram CAROUSEL posts (caption lives on the playlist top, dims on the
 //   entries) that previously returned result:null → client "yt-dlp exit 0" → Enrich
 //   silently did nothing. Now flattens both levels, taking MAX W×H across entries.
+// (dev0461) IG embed fallback hardening: (a) embed fetch now uses agent:false (fresh
+//   socket per request) — Node 19+ keepAlive pooled sockets to IG and a soft-block
+//   stuck until node restart ("restarting node sometimes helps"); (b) when the embed
+//   ALSO fails, surface a wall-class error ("login required …") instead of yt-dlp's
+//   raw "no video in this post" so the client's stop-at-first-wall actually fires
+//   (it was missing that string → batches kept hammering /p posts).
 // (dev0460) yt-dlp META: when the Instagram extractor raises "There is no video in
 //   this post" (image-only /p/ posts) it discards the caption it fetched → enrich
 //   failed. streamYtdlpMeta now falls back to the cookieless /p/{id}/embed/captioned/
@@ -53,7 +59,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0460';
+const PROXY_BUILD = 'dev0461';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -464,9 +470,18 @@ function fetchIgEmbedMeta(url) {
     const embedUrl = 'https://www.instagram.com/p/' + id + '/embed/captioned/';
     // NB: a FULL Chrome UA makes IG serve the heavy React app (no .Caption div); the
     // short UA gets the lightweight embed HTML we parse. Do not "modernize" this UA.
-    const opts = { headers: {
+    // (dev0461) `agent: false` → a FRESH socket per request, like yt-dlp's per-spawn
+    // connection. Node 19+ defaults https.globalAgent to keepAlive:true, so the
+    // long-running proxy was reusing pooled sockets to instagram.com; once IG soft-
+    // blocked that connection the embed page kept failing until node was restarted
+    // (the user's "restarting node sometimes helps" — reels never hit this because
+    // each runs in a fresh yt-dlp process). Fresh socket sidesteps the sticky block.
+    const opts = { agent: false, headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      'Accept-Language': 'en-US,en;q=0.9'
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://www.instagram.com/p/' + id + '/',
+      'Connection': 'close'
     } };
     let h = '';
     const req = https.get(embedUrl, opts, r => {
@@ -523,11 +538,22 @@ function streamYtdlpMeta(req, res, bin, args) {
           if (embed) {
             finish({ ok: true, exitCode: 0, durationMs: Date.now() - t0, result: embed, viaEmbed: true });
           } else {
+            // (dev0461) Embed couldn't read it either → unreadable cookielessly (IG is
+            // rate-limiting/walling us right now, or the post is private/deleted).
+            // Surface a WALL-CLASS message (contains "login required") so the client's
+            // stop-at-first-wall fires. Previously the raw yt-dlp "There is no video in
+            // this post" string surfaced here, which isWall() did NOT match → batches
+            // kept hammering /p posts (accelerating the very rate-limit causing this).
+            // _ytdlpFetchMeta throws (stderr || error), so the wall message goes in
+            // stderr; the raw yt-dlp line is appended for debugging.
+            const ytErr = (errOut.trim() || prevErr || '').split('\n').filter(Boolean).slice(-1)[0] || '';
             finish({
-              ok: false, exitCode: code, durationMs: Date.now() - t0,
+              ok: false, wall: true, exitCode: code, durationMs: Date.now() - t0,
               result: null, usedCookies: useCookies || undefined,
               stdout: String(out).slice(0, 500),
-              stderr: (errOut.trim() || prevErr) || undefined
+              stderr: 'login required — IG walled this post (cookieless yt-dlp + embed both failed)'
+                    + (ytErr ? ' · ' + ytErr.slice(0, 120) : ''),
+              error: ytErr || undefined
             });
           }
         });
