@@ -1,107 +1,191 @@
 #!/usr/bin/env node
-// orgToO.js — convert an Orgzly / org-mode file (flat level-1 headlines) into o.json,
+// orgToO.js — convert Orgzly / org-mode files (flat level-1 headlines) into o.json,
 // a LOCAL review store parallel to ml.json / s.json. Each `* ` headline → one row.
 //
-//   node orgToO.js [in.org] [out.json]
-//   defaults:  orgzly/_org2/AqNew.org  ->  o.json     (both relative to cwd)
+//   node orgToO.js                      # single: orgzly/_org2/AqNew.org -> o.json (overwrite)
+//   node orgToO.js in.org [out.json]    # single file, overwrite out (default o.json)
+//   node orgToO.js --all [dir] [out]    # ALL *.org in dir (default orgzly/_org2) -> out
+//   node orgToO.js --all --append       # merge those .org files INTO an existing o.json,
+//                                        #   skipping rows already present (notebook+line) —
+//                                        #   this is how you "import the rest" without
+//                                        #   clobbering the cleaned/edited rows you already have.
 //
-// Row shape:  { id, keyword, title, tags[], link, text, chars, src, line }
-//   - keyword is recognized ONLY from the org TODO set {TODO,DONE,NEXT}; all-caps
-//     title words (AI, US, MIT, NASA…) are preserved as title text.
-//   - tags is the trailing  :a:b:  org tag set, split — kept INDEPENDENT of tags.json
-//     (the T dictionary). These are the file's own primitive tags.
-//   - text is the entry body VERBATIM (the pasted article text the user wants to keep).
-//   - link is the first http(s) URL found in the body (usually the first line).
+// After an --append import of new notebooks, run  node cleanO.js --apply  to strip the
+// pasted-web-app DOM junk from the freshly added bodies (same as the original main import).
 //
-// The store is gitignored (local only), like s.json / ig.json — the raw 66 MB of
-// pasted text never enters the repo. Re-run any time, or point it at another .org.
+// Row shape: { id, notebook, keyword, title, tags[], link, text, chars,
+//              dateAdded, dateModified, src, line }
+//   - notebook   the source .org file (minus extension); AqNew is renamed → "main".
+//   - dateAdded  from the org :CREATED: [YYYY-MM-DD Day HH:mm] property drawer when the
+//                file has one (older/junk/aaa/…). AqNew/main has none → '' (blank).
+//   - dateModified  initialised to dateAdded; the O screen re-stamps it on every edit.
+//   - keyword    recognised ONLY from the org TODO set {TODO,DONE,NEXT}; all-caps title
+//                words (AI, US, MIT…) are preserved as title text.
+//   - tags       the trailing :a:b: org tag set — kept INDEPENDENT of tags.json.
+//   - text       the entry body VERBATIM, with the :PROPERTIES: drawer stripped out.
+//   - link       the first http(s) URL found in the body.
+//
+// The store is gitignored (local only), like s.json / ig.json — the raw pasted text
+// never enters the repo. Re-run any time; --append is idempotent (notebook+line dedupe).
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
+// ── Args ───────────────────────────────────────────────────────────────────────
+const argv = process.argv.slice(2);
+const ALL    = argv.includes('--all');
+const APPEND = argv.includes('--append');
+const pos    = argv.filter(a => !a.startsWith('--'));
+
 const KEYWORDS = new Set(['TODO', 'DONE', 'NEXT']);
-const inPath  = process.argv[2] || path.join('orgzly', '_org2', 'AqNew.org');
-const outPath = process.argv[3] || 'o.json';
-const src = path.basename(inPath);
-
-let raw;
-try { raw = fs.readFileSync(inPath, 'utf8'); }
-catch (e) { console.error('✗ cannot read ' + inPath + ': ' + e.message); process.exit(1); }
-
-// Normalize CRLF/CR → LF (Orgzly writes LF, but be safe), then split.
-const lines = raw.replace(/\r\n?/g, '\n').split('\n');
-
-// A level-1 (or deeper) org headline: one-or-more stars, then a space. This file is
-// entirely flat L1, but matching ^\*+ is the org-correct rule and harmless here.
+// A level-1+ org headline: one-or-more stars then a space.
 const HEAD = /^(\*+)\s+(.*)$/;
 // Trailing org tags ":a:b:" (whitespace-preceded) at end of a headline.
 const TAGS = /\s+(:(?:[A-Za-z0-9_@#%]+:)+)\s*$/;
 // First URL in a body. Excludes common trailing delimiters so ")" / "]" don't stick.
 const URL  = /https?:\/\/[^\s)>\]"'`]+/;
+// :CREATED:  [2021-11-11 Thu 19:39]  → capture date and (optional) HH:mm.
+const CREATED = /^\s*:CREATED:\s*\[(\d{4}-\d{2}-\d{2})(?:[^\]\d]*(\d{2}:\d{2}))?[^\]]*\]/i;
 
-const rows = [];
-let cur = null;       // { line, headline }
-let body = [];
-
-function flush() {
-  if (!cur) return;
-  let head = cur.headline;
-
-  // trailing tags
-  let tags = [];
-  const tm = head.match(TAGS);
-  if (tm) { tags = tm[1].split(':').filter(Boolean); head = head.slice(0, tm.index); }
-  head = head.trim();
-
-  // leading TODO-state keyword (only the known org states — not title words)
-  let keyword = '';
-  const sp = head.indexOf(' ');
-  const first = sp === -1 ? head : head.slice(0, sp);
-  if (KEYWORDS.has(first)) { keyword = first; head = sp === -1 ? '' : head.slice(sp + 1); }
-
-  const title = head.trim();
-  const text  = body.join('\n').replace(/^\n+/, '').replace(/\n+$/, '');  // trim blank ends
-  const lm = text.match(URL);
-
-  rows.push({
-    id: 'o' + (rows.length + 1),
-    keyword,
-    title,
-    tags,
-    link: lm ? lm[0] : '',
-    text,
-    chars: text.length,
-    src,
-    line: cur.line
-  });
+// AqNew is the user's working notebook, displayed as "main".
+function notebookName(file) {
+  const b = path.basename(file).replace(/\.org$/i, '').trim();
+  return /^aqnew$/i.test(b) ? 'main' : (b || 'main');
 }
 
-lines.forEach((ln, i) => {
-  const m = ln.match(HEAD);
-  if (m) { flush(); cur = { line: i + 1, headline: m[2] }; body = []; }
-  else if (cur) { body.push(ln); }
-  // lines before the first headline (file preamble) are ignored
-});
-flush();
+// Pull a leading :PROPERTIES: … :END: drawer off the body lines. Returns the parsed
+// props plus the remaining real-body lines.
+function extractDrawer(bodyLines) {
+  let i = 0;
+  while (i < bodyLines.length && bodyLines[i].trim() === '') i++;   // skip blank lead
+  if (i >= bodyLines.length || !/^\s*:PROPERTIES:\s*$/i.test(bodyLines[i]))
+    return { props: {}, body: bodyLines };
+  const props = {};
+  let j = i + 1;
+  for (; j < bodyLines.length; j++) {
+    if (/^\s*:END:\s*$/i.test(bodyLines[j])) { j++; break; }
+    const cm = bodyLines[j].match(CREATED);
+    if (cm) props.created = cm[1] + (cm[2] ? ' ' + cm[2] : '');
+  }
+  return { props, body: bodyLines.slice(j) };
+}
 
-fs.writeFileSync(outPath, JSON.stringify(rows, null, 2));
+// Parse one .org file → array of rows (ids/dedupe handled by the caller).
+function parseFile(file) {
+  const raw = fs.readFileSync(file, 'utf8');
+  const lines = raw.replace(/\r\n?/g, '\n').split('\n');   // normalise CRLF/CR → LF
+  const nb = notebookName(file);
+  const src = path.basename(file);
+  const out = [];
+  let cur = null, body = [];
+
+  const flush = () => {
+    if (!cur) return;
+    let head = cur.headline;
+
+    let tags = [];
+    const tm = head.match(TAGS);
+    if (tm) { tags = tm[1].split(':').filter(Boolean); head = head.slice(0, tm.index); }
+    head = head.trim();
+
+    let keyword = '';
+    const sp = head.indexOf(' ');
+    const first = sp === -1 ? head : head.slice(0, sp);
+    if (KEYWORDS.has(first)) { keyword = first; head = sp === -1 ? '' : head.slice(sp + 1); }
+
+    const { props, body: realBody } = extractDrawer(body);
+    const title = head.trim();
+    const text  = realBody.join('\n').replace(/^\n+/, '').replace(/\n+$/, '');
+    const lm = text.match(URL);
+    const dateAdded = props.created || '';
+
+    out.push({
+      id: 'o_' + nb + '_' + cur.line,
+      notebook: nb,
+      keyword,
+      title,
+      tags,
+      link: lm ? lm[0] : '',
+      text,
+      chars: text.length,
+      dateAdded,
+      dateModified: dateAdded,
+      src,
+      line: cur.line
+    });
+  };
+
+  lines.forEach((ln, i) => {
+    const m = ln.match(HEAD);
+    if (m) { flush(); cur = { line: i + 1, headline: m[2] }; body = []; }
+    else if (cur) { body.push(ln); }
+    // lines before the first headline (file preamble) are ignored
+  });
+  flush();
+  return out;
+}
+
+// ── Resolve inputs ───────────────────────────────────────────────────────────
+let files, outPath;
+if (ALL) {
+  const dir = pos[0] || path.join('orgzly', '_org2');
+  outPath = pos[1] || 'o.json';
+  files = fs.readdirSync(dir).filter(f => /\.org$/i.test(f)).map(f => path.join(dir, f));
+} else {
+  const inPath = pos[0] || path.join('orgzly', '_org2', 'AqNew.org');
+  outPath = pos[1] || 'o.json';
+  files = [inPath];
+}
+
+// ── Parse ──────────────────────────────────────────────────────────────────────
+let parsed = [];
+const perNb = {};
+for (const f of files) {
+  let rows;
+  try { rows = parseFile(f); }
+  catch (e) { console.error('✗ cannot read ' + f + ': ' + e.message); continue; }
+  parsed = parsed.concat(rows);
+  const nb = notebookName(f);
+  perNb[nb] = (perNb[nb] || 0) + rows.length;
+}
+
+// ── Merge (append) or overwrite ─────────────────────────────────────────────────
+let finalRows, existing = [], added = 0, skipped = 0;
+if (APPEND && fs.existsSync(outPath)) {
+  try { existing = JSON.parse(fs.readFileSync(outPath, 'utf8')); if (!Array.isArray(existing)) existing = []; }
+  catch (e) { console.error('✗ cannot parse existing ' + outPath + ': ' + e.message); process.exit(1); }
+  // Key existing rows by notebook+line (fall back to derived notebook on legacy rows).
+  const key = r => (r.notebook || notebookName(r.src || '')) + '\t' + r.line;
+  const seen = new Set(existing.map(key));
+  finalRows = existing.slice();
+  for (const r of parsed) {
+    if (seen.has(key(r))) { skipped++; continue; }
+    seen.add(key(r)); finalRows.push(r); added++;
+  }
+} else {
+  finalRows = parsed;
+  added = parsed.length;
+}
+
+fs.writeFileSync(outPath, JSON.stringify(finalRows, null, 2));
 
 // ── Summary ──────────────────────────────────────────────────────────────────
-const withLink = rows.filter(r => r.link).length;
-const withTags = rows.filter(r => r.tags.length).length;
-const withKw   = rows.filter(r => r.keyword).length;
-const withText = rows.filter(r => r.chars > 0).length;
-const tagCount = {};
-rows.forEach(r => r.tags.forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }));
-const topTags = Object.keys(tagCount).sort((a, b) => tagCount[b] - tagCount[a]).slice(0, 12)
-  .map(t => t + ':' + tagCount[t]).join('  ');
+const withLink = parsed.filter(r => r.link).length;
+const withTags = parsed.filter(r => r.tags.length).length;
+const withKw   = parsed.filter(r => r.keyword).length;
+const withDate = parsed.filter(r => r.dateAdded).length;
 const sz = fs.statSync(outPath).size;
 
-console.log('✔ ' + inPath + '  ->  ' + outPath);
-console.log('  rows:          ' + rows.length);
+console.log('✔ ' + (ALL ? files.length + ' .org files' : files[0]) + '  ->  ' + outPath
+  + (APPEND ? '  (append/merge)' : '  (overwrite)'));
+console.log('  parsed rows:   ' + parsed.length);
+if (ALL) Object.keys(perNb).sort((a, b) => perNb[b] - perNb[a])
+  .forEach(nb => console.log('     · ' + nb.padEnd(18) + perNb[nb]));
+if (APPEND) console.log('  added: ' + added + '   skipped (already present): ' + skipped
+  + '   total now: ' + finalRows.length);
 console.log('  with link:     ' + withLink);
-console.log('  with tags:     ' + withTags + '  (' + Object.keys(tagCount).length + ' distinct)');
+console.log('  with tags:     ' + withTags);
 console.log('  with keyword:  ' + withKw);
-console.log('  with body text:' + withText);
+console.log('  with :CREATED: ' + withDate + '  (date added)');
 console.log('  o.json size:   ' + (sz / 1048576).toFixed(1) + ' MB');
-console.log('  top tags:      ' + topTags);
+if (APPEND && added) console.log('\n→ next: run  node cleanO.js --apply  to strip DOM junk from the new bodies.');

@@ -50,6 +50,9 @@ sdeleted.json
 # o.json, parallel to ml.json and read by the O screen (o.js). The raw orgzly/ dump
 # (66 MB+ of pasted article text) and the generated o.json stay LOCAL — never the repo.
 o.json
+o.json.bak
+# (dev0469) Archive of records deleted from the O screen (parallel to sdeleted.json).
+odeleted.json
 orgzly/
 
 # (dev0454) "linkfinders" — standalone Python link-finder tools (imagefinder.py)
