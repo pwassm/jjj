@@ -37,6 +37,11 @@ const PORT = 8081;
 //   fixes Instagram CAROUSEL posts (caption lives on the playlist top, dims on the
 //   entries) that previously returned result:null → client "yt-dlp exit 0" → Enrich
 //   silently did nothing. Now flattens both levels, taking MAX W×H across entries.
+// (dev0460) yt-dlp META: when the Instagram extractor raises "There is no video in
+//   this post" (image-only /p/ posts) it discards the caption it fetched → enrich
+//   failed. streamYtdlpMeta now falls back to the cookieless /p/{id}/embed/captioned/
+//   page (parseIgEmbed) for ANY non-good instagram.com URL → recovers caption+author
+//   (no W×H/date for images). Pure-cookieless, no Firefox login used.
 // (dev0442) yt-dlp META (enrich) now also falls back cookieless→Firefox-cookies,
 // same as /ig/download — IG login-walls most cookieless metadata now, so enrich was
 // failing on nearly every post while downloads worked. Response carries usedCookies.
@@ -48,7 +53,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0459';
+const PROXY_BUILD = 'dev0460';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -402,6 +407,79 @@ function ytdlpCompact(j) {
   };
 }
 
+// (dev0460) IG image-post fallback. yt-dlp's Instagram extractor HARD-RAISES
+// "There is no video in this post" on photo-only posts (exit 1) and discards the
+// caption it already fetched — so reels enrich fine but image /p/ posts fail. The
+// lightweight, COOKIELESS embed page (/p/{id}/embed/captioned/) still carries the
+// caption + author; scrape it and return an object shaped like ytdlpCompact() (no
+// W×H/duration/date for images — matches dev0430's image handling). Last resort,
+// only when cookieless yt-dlp returns nothing for an instagram.com URL.
+const IG_SHORTCODE_RE = /instagram\.com\/(?:[^/]+\/)?(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/i;
+
+function decodeEntities(s) {
+  return String(s)
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch (_) { return ''; } })
+    .replace(/&#(\d+);/g, (_, d) => { try { return String.fromCodePoint(parseInt(d, 10)); } catch (_) { return ''; } })
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+// Parse caption + owner from an IG embed/captioned page (plain HTML, no JSON blob).
+function parseIgEmbed(h, id) {
+  if (!h) return null;
+  let caption = '', owner = '';
+  const capM = h.match(/<div class="Caption">([\s\S]*?)<\/div>/);
+  if (capM) {
+    let inner = capM[1];
+    const cu = inner.match(/<a class="CaptionUsername"[^>]*instagram\.com\/([^/?"]+)/i);
+    if (cu) owner = cu[1];
+    inner = inner.replace(/^\s*<a class="CaptionUsername"[\s\S]*?<\/a>/i, '');  // drop leading author link
+    caption = inner
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?[a-z][^>]*>/gi, '')   // strip remaining tags (mention <a> kept its @text)
+      .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+    caption = decodeEntities(caption).trim();
+  }
+  if (!owner) {
+    const ow = h.match(/class="(?:Username|CollabUsername)"[^>]*instagram\.com\/([^/?"]+)/i);
+    if (ow) owner = ow[1];
+  }
+  if (!caption && !owner) return null;
+  return {
+    id, title: owner ? 'Post by ' + owner : 'Instagram post',
+    description: caption || '',
+    uploader: owner || undefined, uploader_id: owner || undefined,
+    uploader_url: owner ? 'https://www.instagram.com/' + owner + '/' : undefined,
+    webpage_url: 'https://www.instagram.com/p/' + id + '/',
+    duration: undefined, width: undefined, height: undefined, _viaEmbed: true
+  };
+}
+
+function fetchIgEmbedMeta(url) {
+  return new Promise(resolve => {
+    const m = IG_SHORTCODE_RE.exec(url || '');
+    if (!m) { resolve(null); return; }
+    const id = m[1];
+    const embedUrl = 'https://www.instagram.com/p/' + id + '/embed/captioned/';
+    // NB: a FULL Chrome UA makes IG serve the heavy React app (no .Caption div); the
+    // short UA gets the lightweight embed HTML we parse. Do not "modernize" this UA.
+    const opts = { headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept-Language': 'en-US,en;q=0.9'
+    } };
+    let h = '';
+    const req = https.get(embedUrl, opts, r => {
+      if (r.statusCode !== 200) { r.resume(); resolve(null); return; }
+      r.setEncoding('utf8');
+      r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
+      r.on('end', () => { try { resolve(parseIgEmbed(h, id)); } catch (_) { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(15000, () => { req.destroy(); resolve(null); });
+  });
+}
+
 // (dev0433) ytdlp -J collector: buffer the (possibly large) JSON document, parse it,
 // and send the COMPACT flattened object to the client (keeps the response small).
 // (dev0442) Cookieless FIRST, then Firefox cookies if that fails/returns nothing —
@@ -416,6 +494,7 @@ function streamYtdlpMeta(req, res, bin, args) {
   let ended = false;
   const finish = obj => { if (ended) return; ended = true; res.writeHead(200, headers); res.end(JSON.stringify(obj)); };
   const t0 = Date.now();
+  const lastUrl = args[args.length - 1];   // (dev0460) the validated http(s) URL
 
   function attempt(useCookies, prevErr) {
     const a = useCookies
@@ -435,6 +514,25 @@ function streamYtdlpMeta(req, res, bin, args) {
       // Cookieless failed/empty → retry once with Firefox cookies (login walls).
       // (dev0459) …unless cookies are disabled — then a wall just fails cookielessly.
       if (!good && !useCookies && IG_USE_COOKIES) { attempt(true, errOut.trim()); return; }
+      // (dev0460) Image-only IG posts: yt-dlp raises "There is no video in this post"
+      // and drops the caption. Recover caption+author from the cookieless embed page.
+      // Tried for ANY non-good instagram.com URL (embed is one cheap, cookieless GET;
+      // also rescues a walled reel's caption). null embed → fall through to the error.
+      if (!good && IG_SHORTCODE_RE.test(lastUrl || '')) {
+        fetchIgEmbedMeta(lastUrl).then(embed => {
+          if (embed) {
+            finish({ ok: true, exitCode: 0, durationMs: Date.now() - t0, result: embed, viaEmbed: true });
+          } else {
+            finish({
+              ok: false, exitCode: code, durationMs: Date.now() - t0,
+              result: null, usedCookies: useCookies || undefined,
+              stdout: String(out).slice(0, 500),
+              stderr: (errOut.trim() || prevErr) || undefined
+            });
+          }
+        });
+        return;
+      }
       finish({
         ok: good, exitCode: code, durationMs: Date.now() - t0,
         result, usedCookies: useCookies || undefined,
