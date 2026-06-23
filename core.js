@@ -2372,6 +2372,9 @@ document.addEventListener('keydown', e => {
   // (dev0466) The O org-review screen owns ↑/↓ (move its focused/read row). Bail so
   // this T-table handler doesn't ALSO move a hidden T row underneath the overlay.
   if (typeof window.isOScreenOpen === 'function' && window.isOScreenOpen()) return;
+  // (dev0474) The Ig staging screen owns ↑/↓ (move its focused row). Bail so this
+  // T-table handler doesn't ALSO move a hidden T row underneath the overlay.
+  if (typeof window.isIgScreenOpen === 'function' && window.isIgScreenOpen()) return;
 
   // Up/Down arrow keys — navigate rows in table (works even when annotate panel open)
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {

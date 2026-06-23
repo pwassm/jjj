@@ -5815,5 +5815,60 @@
     "rank": "species",
     "common": "Lacy Scorpionfish",
     "extinct": false
+  },
+  {
+    "id": "orectolobiformes",
+    "label": "Orectolobiformes",
+    "kind": "taxon",
+    "parents": [
+      "elasmobranchii"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "orectolobidae",
+    "label": "Orectolobidae",
+    "kind": "taxon",
+    "parents": [
+      "orectolobiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "orectolobus",
+    "label": "Orectolobus",
+    "kind": "taxon",
+    "parents": [
+      "orectolobidae"
+    ],
+    "aliases": [
+      "Orectolobus Bonaparte",
+      "1834",
+      "Wobbegong"
+    ],
+    "def": "",
+    "rank": "genus",
+    "common": "Typical Wobbegongs",
+    "extinct": false
+  },
+  {
+    "id": "orectolobus-maculatus",
+    "label": "Orectolobus maculatus",
+    "kind": "taxon",
+    "parents": [
+      "orectolobus"
+    ],
+    "aliases": [
+      "Orectolobus maculatus (Bonnaterre",
+      "1788)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Spotted Wobbegong",
+    "extinct": false
   }
 ]

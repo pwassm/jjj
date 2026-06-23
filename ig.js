@@ -89,6 +89,16 @@
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
     c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  // (dev0474) ftext/ttxt are HTML — flatten to readable plain text for a hover
+  // tooltip (the native title= attribute). Strips tags, decodes entities,
+  // collapses whitespace; capped so the OS tooltip stays usable.
+  function htmlToText(html) {
+    if (!html) return '';
+    const d = document.createElement('div');
+    d.innerHTML = String(html);
+    const t = (d.textContent || '').replace(/\s+/g, ' ').trim();
+    return t.length > 1500 ? t.slice(0, 1500) + '…' : t;
+  }
   const kindOf = r => /\/reel\//i.test(r.url || '') ? 'reel'
                    : /\/p\//i.test(r.url || '') ? 'p'
                    : /\/tv\//i.test(r.url || '') ? 'tv' : '?';
@@ -514,6 +524,9 @@
       const st = r.status || 'new';
       const cap = r.ftext ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
       const tt = r.ttxt ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
+      // (dev0474) hover the cell → see the actual ftext/ttxt content as a tooltip
+      const capTip = r.ftext ? ` title="${esc(htmlToText(r.ftext))}"` : '';
+      const ttTip = r.ttxt ? ` title="${esc(htmlToText(r.ttxt))}"` : '';
       const wxh = (r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>';
       const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
       return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''} ${r.id === processingId ? 'proc' : ''}">
@@ -525,8 +538,8 @@
         <td class="mono">${dur}</td>
         <td class="mono">${wxh}</td>
         <td class="mono">${esc(r.DatePosted || '') || '<span class="no">—</span>'}</td>
-        <td style="text-align:center">${cap}</td>
-        <td style="text-align:center">${tt}</td>
+        <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
+        <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
         <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Download uses Firefox cookies, or 📋 Saved-text; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}</td>
         <td class="mono">${esc(r.DateAdded || '')}</td>
         <td class="c-act">
@@ -630,11 +643,38 @@
     document.querySelector(`#igTable tr[data-id="${CSS.escape(r.id)}"]`)?.classList.add('focus');
   }
   function closeDrawer() {
-    focusId = null;
     document.getElementById('igDrawer').classList.remove('open');
-    document.querySelectorAll('#igTable tr.focus').forEach(t => t.classList.remove('focus'));
+    // (dev0474) Keep the row's .focus highlight after the drawer closes so ↑/↓
+    // keyboard navigation continues from where you were (focusId stays set).
   }
   function drawerOpen() { return document.getElementById('igDrawer')?.classList.contains('open'); }
+
+  // (dev0474) Row focus + keyboard navigation. A focused row carries the .focus
+  // highlight (same one the drawer uses); ↑/↓ step to the prev/next VISIBLE row,
+  // scrolling it into view. focusId persists across re-renders (renderBody re-adds
+  // the class from the template), so the highlight survives filter/sort changes.
+  function applyFocusHighlight(id) {
+    document.querySelectorAll('#igTable tr.focus').forEach(t => t.classList.remove('focus'));
+    if (id == null) return null;
+    const tr = document.querySelector(`#igTable tr[data-id="${CSS.escape(id)}"]`);
+    if (tr) { tr.classList.add('focus'); tr.scrollIntoView({ block: 'nearest' }); }
+    return tr;
+  }
+  function moveFocus(delta) {
+    if (!view.length) return;
+    const i = focusId != null ? view.findIndex(r => r.id === focusId) : -1;
+    const ni = i < 0 ? 0 : Math.max(0, Math.min(view.length - 1, i + delta));
+    const row = view[ni];
+    if (drawerOpen()) openDrawer(row);     // browsing also steps the open drawer
+    else focusId = row.id;
+    applyFocusHighlight(row.id);
+  }
+  function toggleFocusedSel() {
+    if (focusId == null) return;
+    if (sel.has(focusId)) sel.delete(focusId); else sel.add(focusId);
+    lastCheckedId = focusId;
+    renderBody();                          // focusId persists → highlight stays
+  }
 
   // ── ttxt builder (yt-dlp "everything" bucket — only when ttxt is empty so the
   //    richer Firefox-saved-page ttxt, with comments + sibling URLs, never clobbered)
@@ -1034,27 +1074,36 @@
 
     const byId = new Map(rows.map(r => [r.id, r]));
     const now = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0, 19).replace('T', ' ');
-    let created = 0, updated = 0, dup = 0, skipped = 0;
+    let created = 0, updated = 0, dup = 0, skipped = 0, redated = 0;
     for (const f of files) {
       let p;
       try { p = _parseIgSavedText(f.text || ''); } catch (_) { skipped++; continue; }
       if (!p.currentId) { skipped++; continue; }
       const label = ffdownLabel(f.name);
+      // (dev0474) The .txt file's CREATION time becomes the row's Harvested date so a
+      // Harvested sort surfaces the most-recently-saved text. Falls back to now if the
+      // proxy is pre-dev0474 (no ctime field).
+      const fileDate = f.ctime || now;
       // (dev0473) Ignore duplicates: a re-added .txt whose post is ALREADY imported
       // from ffdown with the SAME filename label (and has ttxt) is skipped untouched.
       // A changed label (or a still-bare harvested row) falls through and re-applies.
       const existing = byId.get(p.currentId);
-      if (existing && existing.source === 'ffdown' && (existing.DevComment || '') === label && existing.ttxt) { dup++; continue; }
+      if (existing && existing.source === 'ffdown' && (existing.DevComment || '') === label && existing.ttxt) {
+        // (dev0474) Retrospective: even an unchanged dup gets its Harvested date
+        // re-stamped to the .txt creation time (so old imports sort correctly too).
+        if (fileDate && existing.DateAdded !== fileDate) { existing.DateAdded = fileDate; redated++; }
+        dup++; continue;
+      }
       const noComments = Object.assign({}, p, { comments: [] });   // author only, per request
       const ttxt = (typeof _igTtxtHtml === 'function') ? _igTtxtHtml(noComments) : '';
       let r = existing;
       if (!r) {
         const reel = p.reels.find(x => x.id === p.currentId);
         const url = (reel && reel.url) || ('https://www.instagram.com/' + (p.handle || 'p') + '/p/' + p.currentId + '/');
-        r = { id: p.currentId, url, author: p.handle || '', status: 'enriched', DateAdded: now, source: 'ffdown' };
+        r = { id: p.currentId, url, author: p.handle || '', status: 'enriched', DateAdded: fileDate, source: 'ffdown' };
         rows.push(r); byId.set(r.id, r);
         created++;
-      } else { updated++; }
+      } else { r.DateAdded = fileDate; updated++; }   // (dev0474) re-stamp Harvested from .txt creation time
       if (!r.author && p.handle) r.author = p.handle;
       if (!r.VidTitle && p.caption && typeof _smartIgTitle === 'function') r.VidTitle = _smartIgTitle(p.caption);
       if (!r.VidAuthor && p.handle) r.VidAuthor = '@' + p.handle;
@@ -1072,8 +1121,9 @@
     await persist(false);
     igToast('📁 ffdown → ig.json: ' + created + ' new, ' + updated + ' updated'
       + (dup ? ', ' + dup + ' already-imported (skipped)' : '')
+      + (redated ? ', ' + redated + ' re-dated' : '')
       + (skipped ? ', ' + skipped + ' skipped (no reel id)' : '')
-      + '\nNonStaged · author caption only · DevComment from filename', 6500);
+      + '\nNonStaged · author caption only · DevComment from filename · Harvested = .txt creation time', 6500);
   }
 
   // ── Persist back to ig.json (proxy /ig/save) ────────────────────────────────
@@ -1130,7 +1180,7 @@
       rows = r.ok ? (await r.json()) : [];
       if (!Array.isArray(rows)) rows = [];
     } catch (e) { rows = []; igToast('Could not load ig.json: ' + e.message, 3000); }
-    sel.clear(); dirty = false; lastCheckedId = null; enrichFailed.clear();   // (dev0441) fresh retry after reload
+    sel.clear(); dirty = false; lastCheckedId = null; focusId = null; enrichFailed.clear();   // (dev0441) fresh retry after reload; (dev0474) clear row focus
     refreshAuthorOptions();
     applyAndRender();
   }
@@ -1173,6 +1223,20 @@
       return;
     }
     if (typing || e.ctrlKey || e.metaKey || e.altKey || modalOpen()) return;
+
+    // (dev0474) Row focus navigation. ↑/↓ move the focused (highlighted) row to the
+    // prev/next visible row; Enter opens its detail drawer; Space toggles its
+    // checkbox (handy for building a batch selection from the keyboard).
+    if (e.key === 'ArrowDown') { e.stopPropagation(); e.preventDefault(); moveFocus(1); return; }
+    if (e.key === 'ArrowUp')   { e.stopPropagation(); e.preventDefault(); moveFocus(-1); return; }
+    if (e.key === 'Enter') {
+      if (focusId != null) { e.stopPropagation(); e.preventDefault(); const r = rowById(focusId); if (r) openDrawer(r); }
+      return;
+    }
+    if (e.key === ' ') {
+      if (focusId != null) { e.stopPropagation(); e.preventDefault(); toggleFocusedSel(); }
+      return;
+    }
 
     if (e.key === 'f') {                          // focus the filter box
       e.stopPropagation(); e.preventDefault();

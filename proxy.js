@@ -59,7 +59,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0462';
+const PROXY_BUILD = 'dev0474';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -898,9 +898,18 @@ function igFfdown(req, res, origin) {
     if (!fs.existsSync(FFDOWN_DIR)) { sendJson(res, 200, { ok: true, files: [] }, origin); return; }
     const names = fs.readdirSync(FFDOWN_DIR).filter(n => /\.txt$/i.test(n));
     const files = names.map(name => {
-      let text = '';
-      try { text = fs.readFileSync(path.join(FFDOWN_DIR, name), 'utf8'); } catch (_) {}
-      return { name, text };
+      let text = '', ctime = '';
+      try {
+        const fp = path.join(FFDOWN_DIR, name);
+        text = fs.readFileSync(fp, 'utf8');
+        // (dev0474) Surface the .txt file's CREATION time so the I-screen can stamp
+        // it as the row's Harvested date (sort to the most-recently-saved text).
+        // birthtime = NTFS creation time on Windows; fall back to ctime/mtime.
+        const st = fs.statSync(fp);
+        const ms = st.birthtimeMs || st.ctimeMs || st.mtimeMs || Date.now();
+        ctime = new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+      } catch (_) {}
+      return { name, text, ctime };
     });
     console.log('[ig/ffdown] read ' + files.length + ' .txt file(s) from ffdown/');
     sendJson(res, 200, { ok: true, files }, origin);
