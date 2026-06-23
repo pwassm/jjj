@@ -29,6 +29,7 @@
   let view = [];                       // filtered + sorted slice of `rows`
   let sortCol = 'DateAdded', sortDir = -1;
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
+  let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
   let sel = new Set();                 // selected ids (batch ops)
   let lastCheckedId = null;            // anchor for shift-click range selection
@@ -91,7 +92,12 @@
   const kindOf = r => /\/reel\//i.test(r.url || '') ? 'reel'
                    : /\/p\//i.test(r.url || '') ? 'p'
                    : /\/tv\//i.test(r.url || '') ? 'tv' : '?';
-  const igLink = r => r.url || ('https://www.instagram.com/p/' + r.id + '/');
+  // (dev0472) Always link the BARE /p/<id>/ permalink, NOT r.url (which may be the
+  // username-scoped /author/reel/<id>/ form). The bare /p/ permalink is the one that
+  // opens IG's grid modal WITH the ◀▶ arrows so the user can keep arrowing the feed;
+  // /author/reel/ opens the arrow-less reels player. r.url is still used for
+  // enrich/download. (kindOf still reads r.url, so the kind filter is unaffected.)
+  const igLink = r => 'https://www.instagram.com/p/' + r.id + '/';
   const pad2 = n => String(n).padStart(2, '0');
 
   // hh.mm.ss (AHK FormatHMS — used in the download filename).
@@ -329,6 +335,7 @@
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status</option><option value="new">new</option><option value="enriched">enriched</option><option value="downloaded">downloaded</option><option value="promoted">promoted</option></select>
+        <select id="igStaged" title="Full reels (harvested) vs NonFullReels (ffdown imports)"><option value="all">all sources</option><option value="non">NonFullReels</option><option value="full">Full reels</option></select>
         <div class="spacer"></div>
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked NonStaged, DevComment from the filename)">📁 Import ffdown</button>
@@ -358,6 +365,7 @@
     $('igAuthor').addEventListener('change', e => { authorFilter = e.target.value; applyAndRender(); });
     $('igKind').addEventListener('change', e => { kindFilter = e.target.value; applyAndRender(); });
     $('igStatus').addEventListener('change', e => { statusFilter = e.target.value; applyAndRender(); });
+    $('igStaged').addEventListener('change', e => { stagedFilter = e.target.value; applyAndRender(); });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
     $('igPromoteSel').addEventListener('click', () => batchPromote());
@@ -423,6 +431,9 @@
       if (authorFilter !== 'all' && r.author !== authorFilter) return false;
       if (kindFilter !== 'all' && kindOf(r) !== kindFilter) return false;
       if (statusFilter !== 'all' && (r.status || 'new') !== statusFilter) return false;
+      // (dev0472) NonFullReels = ffdown imports (staged===false); Full reels = harvested (everything else)
+      if (stagedFilter === 'non' && r.staged !== false) return false;
+      if (stagedFilter === 'full' && r.staged === false) return false;
       if (hideCompleted && isDownloaded(r)) return false;   // (dev0438) 'c' = hide completed
       if (query) {
         const hay = (r.author + ' ' + r.id + ' ' + (r.VidTitle || '') + ' ' + (r.ftext || '') + ' ' + (r.status || '')).toLowerCase();
