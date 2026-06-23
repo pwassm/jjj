@@ -59,7 +59,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0461';
+const PROXY_BUILD = 'dev0462';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -887,6 +887,26 @@ function igAdd(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev0462) /ig/ffdown — read the project-local ffdown/*.txt saved IG pages so the
+// I-screen can BULK-import them (parse → ig.json) instead of pasting one by one.
+// Each file is a Firefox "Save Page As ▸ Text" dump named "Instagram <label>.txt",
+// where <label> is the user's curated note (e.g. a scientific name). We only LIST +
+// READ here; the client reuses the same core.js parser as the manual paste path.
+const FFDOWN_DIR = path.join(__dirname, 'ffdown');
+function igFfdown(req, res, origin) {
+  try {
+    if (!fs.existsSync(FFDOWN_DIR)) { sendJson(res, 200, { ok: true, files: [] }, origin); return; }
+    const names = fs.readdirSync(FFDOWN_DIR).filter(n => /\.txt$/i.test(n));
+    const files = names.map(name => {
+      let text = '';
+      try { text = fs.readFileSync(path.join(FFDOWN_DIR, name), 'utf8'); } catch (_) {}
+      return { name, text };
+    });
+    console.log('[ig/ffdown] read ' + files.length + ' .txt file(s) from ffdown/');
+    sendJson(res, 200, { ok: true, files }, origin);
+  } catch (err) { sendJson(res, 500, { ok: false, error: err.message }, origin); }
+}
+
 // (dev0429) /ig/save — overwrite ig.json with the I-screen's edited array (enrich/
 // promote/download state). Each row must still carry a shortcode `id`. A one-deep
 // ig.json.bak is written first so a bad client payload can't silently nuke the
@@ -1093,7 +1113,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'sstore'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore'] }));
     return;
   }
 
@@ -1121,6 +1141,7 @@ http.createServer((req, res) => {
     const action = req.url.slice('/ig/'.length).split('?')[0];
     if (action === 'add')      { igAdd(req, res, origin);      return; }
     if (action === 'save')     { igSave(req, res, origin);     return; }
+    if (action === 'ffdown')   { igFfdown(req, res, origin);   return; }
     if (action === 'download') { igDownload(req, res, origin); return; }
     sendJson(res, 404, { ok: false, error: 'unknown ig action: ' + action }, origin);
     return;

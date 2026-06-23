@@ -331,6 +331,7 @@
         <select id="igStatus"><option value="all">all status</option><option value="new">new</option><option value="enriched">enriched</option><option value="downloaded">downloaded</option><option value="promoted">promoted</option></select>
         <div class="spacer"></div>
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
+        <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked NonStaged, DevComment from the filename)">📁 Import ffdown</button>
         <button id="igEnrichSel">✨ Enrich sel</button>
         <button id="igDownloadSel">⬇ Download sel</button>
         <button id="igPromoteSel">➕ Promote sel</button>
@@ -366,6 +367,7 @@
     $('igClose').addEventListener('click', () => closeIgScreen());
     $('igDrawerClose').addEventListener('click', () => closeDrawer());
     $('igPaste').addEventListener('click', () => openPasteModal(null));
+    $('igFfdown').addEventListener('click', () => importFfdown());
     $('igModalCancel').addEventListener('click', () => closePasteModal());
     $('igModalApply').addEventListener('click', () => applyPaste());
     o.querySelector('#igTable thead').addEventListener('click', onHeadClick);
@@ -586,6 +588,8 @@
         <b>Duration</b><span>${r.durSecs ? esc(fmtDur(r.durSecs)) : '—'}</span>
         <b>W×H (max)</b><span>${(r.width && r.height) ? (r.width + ' × ' + r.height) : '—'}</span>
         <b>Harvested</b><span>${esc(r.DateAdded || '—')}</span>
+        ${r.source ? `<b>Source</b><span>${esc(r.source)}${r.staged === false ? ' · NonStaged' : ''}</span>` : ''}
+        ${r.DevComment ? `<b>DevComment</b><span>${esc(r.DevComment)}</span>` : ''}
         ${r.mlUID ? `<b>ml UID</b><span>${esc(r.mlUID)}</span>` : ''}
         ${r.localFiles && r.localFiles.length ? `<b>File</b><span>📁 ${esc(r.localFiles.join(', '))}</span>` : ''}
       </div>
@@ -899,6 +903,7 @@
       show: '1',
       DateAdded: now,
       DateModified: now,
+      DevComment: r.DevComment || '',   // (dev0471) curated filename note from ffdown import
       tags: [],
       igSource: r.id            // provenance: which ig.json row this came from
     };
@@ -924,7 +929,7 @@
   }
 
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igClearSel', 'igReload', 'igPaste'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igClearSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the
@@ -992,6 +997,68 @@
     igToast('✓ saved-text → ' + row.id + ' [' + parts.join(', ') + ']\n@' + (p.handle || '?') + ' · ' + p.comments.length + ' comments · ' + sib + ' sibling reels in ttxt', 5000);
   }
 
+  // ── Bulk import: ffdown/*.txt → ig.json (dev0471) ───────────────────────────
+  // Reuses the SAME core.js parser as the paste path (so ttxt is identical), but:
+  //   • author CAPTION only — others' comments dropped (user folds useful ones into
+  //     the .txt filename label by hand, e.g. a scientific name);
+  //   • filename "Instagram <label>.txt" → <label> → DevComment;
+  //   • rows marked staged:false / source:'ffdown' → group under "NonStaged" in the
+  //     author facet, kept out of the harvested full-reel authors;
+  //   • status:'enriched' (text already has title/author/caption) so bulk Enrich
+  //     skips them → zero yt-dlp call → zero IG wall/throttle exposure.
+  function ffdownLabel(name) {
+    return String(name || '').replace(/\.txt$/i, '').replace(/^Instagram\d*\s*/i, '').trim();
+  }
+  async function importFfdown() {
+    if (typeof _parseIgSavedText !== 'function') { igToast('IG parser not loaded — open the T screen once first', 3500); return; }
+    let files;
+    try {
+      const res = await fetch(PROXY + '/ig/ffdown', { method: 'POST' });
+      const j = await res.json();
+      if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+      files = j.files || [];
+    } catch (e) { igToast('✗ couldn\'t read ffdown/: ' + (e && e.message) + '\n(Is proxy.js running & dev0462+?)', 4500); return; }
+    if (!files.length) { igToast('No .txt files found in ffdown/', 2800); return; }
+    if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
+
+    const byId = new Map(rows.map(r => [r.id, r]));
+    const now = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    let created = 0, updated = 0, skipped = 0;
+    for (const f of files) {
+      let p;
+      try { p = _parseIgSavedText(f.text || ''); } catch (_) { skipped++; continue; }
+      if (!p.currentId) { skipped++; continue; }
+      const label = ffdownLabel(f.name);
+      const noComments = Object.assign({}, p, { comments: [] });   // author only, per request
+      const ttxt = (typeof _igTtxtHtml === 'function') ? _igTtxtHtml(noComments) : '';
+      let r = byId.get(p.currentId);
+      if (!r) {
+        const reel = p.reels.find(x => x.id === p.currentId);
+        const url = (reel && reel.url) || ('https://www.instagram.com/' + (p.handle || 'p') + '/p/' + p.currentId + '/');
+        r = { id: p.currentId, url, author: p.handle || '', status: 'enriched', DateAdded: now, source: 'ffdown' };
+        rows.push(r); byId.set(r.id, r);
+        created++;
+      } else { updated++; }
+      if (!r.author && p.handle) r.author = p.handle;
+      if (!r.VidTitle && p.caption && typeof _smartIgTitle === 'function') r.VidTitle = _smartIgTitle(p.caption);
+      if (!r.VidAuthor && p.handle) r.VidAuthor = '@' + p.handle;
+      const isStub = /^<p><a [^>]*>https?:\/\/[^<]+<\/a><\/p>$/.test((r.ftext || '').trim());
+      if ((!r.ftext || isStub) && p.caption && typeof _igCaptionFtext === 'function') r.ftext = _igCaptionFtext(p.caption);
+      if (ttxt) r.ttxt = ttxt;                 // author caption + bio + sibling reel URLs (no comments)
+      if (label) r.DevComment = label;         // the curated filename note
+      r.staged = false;                        // → "NonStaged" author group
+      if (!r.source) r.source = 'ffdown';
+      if (r.status === 'new' || !r.status) r.status = 'enriched';
+    }
+    dirty = true;
+    refreshAuthorOptions();
+    applyAndRender();
+    await persist(false);
+    igToast('📁 ffdown → ig.json: ' + created + ' new, ' + updated + ' updated'
+      + (skipped ? ', ' + skipped + ' skipped (no reel id)' : '')
+      + '\nNonStaged · author caption only · DevComment from filename', 6500);
+  }
+
   // ── Persist back to ig.json (proxy /ig/save) ────────────────────────────────
   async function persist(announce) {
     try {
@@ -1016,12 +1083,26 @@
   function refreshAuthorOptions() {
     const sel2 = document.getElementById('igAuthor');
     if (!sel2) return;
-    const counts = {};
-    rows.forEach(r => { counts[r.author] = (counts[r.author] || 0) + 1; });
-    const authors = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    // (dev0471) An author is "NonStaged" only while ALL their rows are ffdown
+    // (staged===false); a single harvested row promotes them back to "Harvested"
+    // (the user's "unless already imported" rule). Pure visual grouping — the
+    // filter value is still just the author string.
+    const counts = {}, nonStagedOnly = {};
+    rows.forEach(r => {
+      const a = r.author || '';
+      counts[a] = (counts[a] || 0) + 1;
+      if (nonStagedOnly[a] === undefined) nonStagedOnly[a] = true;
+      if (r.staged !== false) nonStagedOnly[a] = false;
+    });
     if (!counts[authorFilter]) authorFilter = 'all';
-    sel2.innerHTML = '<option value="all">all authors (' + rows.length + ')</option>' +
-      authors.map(a => `<option value="${esc(a)}">${esc(a)} (${counts[a]})</option>`).join('');
+    const all = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const harvested = all.filter(a => !nonStagedOnly[a]);
+    const nonStaged = all.filter(a => nonStagedOnly[a]);
+    const opt = a => `<option value="${esc(a)}">${esc(a || '(none)')} (${counts[a]})</option>`;
+    let html = '<option value="all">all authors (' + rows.length + ')</option>';
+    if (harvested.length) html += '<optgroup label="Harvested (full reels)">' + harvested.map(opt).join('') + '</optgroup>';
+    if (nonStaged.length) html += '<optgroup label="NonStaged (ffdown)">' + nonStaged.map(opt).join('') + '</optgroup>';
+    sel2.innerHTML = html;
     sel2.value = authorFilter;
   }
 

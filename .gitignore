@@ -37,6 +37,10 @@ vsteps-*.mp4
 # ig_media/. Kept local, never committed.
 ig.json
 ig_media/
+# (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts, bulk-imported into
+# ig.json via the I-screen "📁 Import ffdown" button. Local source data — keep out
+# of the public site (handles/comments + clutter).
+ffdown/
 
 # (dev0447) Bulk staging store — Flickr jpgs / YT / Vimeo / direct video links,
 # parallel to ml.json and kept LOCAL until rows are Promoted into ml.json. Written
