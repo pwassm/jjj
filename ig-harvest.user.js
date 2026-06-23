@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      1.1
+// @version      1.2
 // @description  Auto-scroll an Instagram profile, harvest reel/post URLs (deduped by shortcode), and POST them to the local SLAM proxy → ig.json. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
 // @author       SLAM
 // @match        https://www.instagram.com/*
@@ -104,9 +104,13 @@
   function clickThumb(a) {
     // A real bubbling MouseEvent on the thumbnail drives IG's delegated click
     // handler → SPA modal with arrows (a plain location change would NOT).
+    // NOTE: do NOT pass `view: window` — in the Tampermonkey sandbox `window` is a
+    // wrapped proxy, not a real Window, so the MouseEvent constructor throws
+    // "'view' member of UIEventInit does not implement interface Window". `view`
+    // is optional; omitting it still bubbles into IG's React handler.
     const t = a.querySelector('img') || a;
     ['mousedown', 'mouseup', 'click'].forEach(type =>
-      t.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })));
+      t.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })));
   }
   async function findAndClick(target, btn) {
     const MAX_ITER = 800, STALE_STOP = 8;
