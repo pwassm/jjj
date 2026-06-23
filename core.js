@@ -6152,7 +6152,11 @@ window._ytdlpDownloadVideo = _ytdlpDownloadVideo;
 // caption) + ftext (full caption, if the row has none yet) + ttxt (everything).
 
 function _igPostId(url) {
-  const m = (url || '').match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/i);
+  // (dev0475) Skip IG's music-attribution URL instagram.com/reels/audio/<id>/ — its
+  // "audio" segment was being captured as a bogus post id, so saved pages with no
+  // clear modal id collapsed onto a single junk "audio" row (33 distinct reels in one
+  // ffdown batch). The (?!audio\b) guard makes the scan skip past it to the real post.
+  const m = (url || '').match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(?:reel|reels|p|tv)\/(?!audio\b)([A-Za-z0-9_-]+)/i);
   return m ? m[1] : '';
 }
 
