@@ -907,7 +907,13 @@ function igFfdown(req, res, origin) {
         // birthtime = NTFS creation time on Windows; fall back to ctime/mtime.
         const st = fs.statSync(fp);
         const ms = st.birthtimeMs || st.ctimeMs || st.mtimeMs || Date.now();
-        ctime = new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+        // (dev0476) Emit LOCAL wall-clock time, not UTC. toISOString() returned UTC,
+        // so a .txt saved at 07:23 local surfaced as "13:23" in the Harvested column
+        // (the user's "I don't see where those times come from"). Format the local
+        // YYYY-MM-DD HH:MM:SS by hand so it matches what the file explorer shows.
+        const d = new Date(ms), pad = n => String(n).padStart(2, '0');
+        ctime = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' '
+              + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
       } catch (_) {}
       return { name, text, ctime };
     });

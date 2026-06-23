@@ -1105,7 +1105,12 @@
         created++;
       } else { r.DateAdded = fileDate; updated++; }   // (dev0474) re-stamp Harvested from .txt creation time
       if (!r.author && p.handle) r.author = p.handle;
-      if (!r.VidTitle && p.caption && typeof _smartIgTitle === 'function') r.VidTitle = _smartIgTitle(p.caption);
+      // (dev0476) Title = the curated filename label ("Instagram Sweetlips fish.txt"
+      // → "Sweetlips fish"), NOT _smartIgTitle(caption). The saved-text caption starts
+      // with IG UI chrome ("Verified", "More options"…), so smart-title produced the
+      // bogus "Verified" for almost every ffdown row. Smart-title is the no-label fallback.
+      if (label) r.VidTitle = label;
+      else if (!r.VidTitle && p.caption && typeof _smartIgTitle === 'function') r.VidTitle = _smartIgTitle(p.caption);
       if (!r.VidAuthor && p.handle) r.VidAuthor = '@' + p.handle;
       const isStub = /^<p><a [^>]*>https?:\/\/[^<]+<\/a><\/p>$/.test((r.ftext || '').trim());
       if ((!r.ftext || isStub) && p.caption && typeof _igCaptionFtext === 'function') r.ftext = _igCaptionFtext(p.caption);
