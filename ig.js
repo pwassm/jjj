@@ -1034,15 +1034,20 @@
 
     const byId = new Map(rows.map(r => [r.id, r]));
     const now = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0, 19).replace('T', ' ');
-    let created = 0, updated = 0, skipped = 0;
+    let created = 0, updated = 0, dup = 0, skipped = 0;
     for (const f of files) {
       let p;
       try { p = _parseIgSavedText(f.text || ''); } catch (_) { skipped++; continue; }
       if (!p.currentId) { skipped++; continue; }
       const label = ffdownLabel(f.name);
+      // (dev0473) Ignore duplicates: a re-added .txt whose post is ALREADY imported
+      // from ffdown with the SAME filename label (and has ttxt) is skipped untouched.
+      // A changed label (or a still-bare harvested row) falls through and re-applies.
+      const existing = byId.get(p.currentId);
+      if (existing && existing.source === 'ffdown' && (existing.DevComment || '') === label && existing.ttxt) { dup++; continue; }
       const noComments = Object.assign({}, p, { comments: [] });   // author only, per request
       const ttxt = (typeof _igTtxtHtml === 'function') ? _igTtxtHtml(noComments) : '';
-      let r = byId.get(p.currentId);
+      let r = existing;
       if (!r) {
         const reel = p.reels.find(x => x.id === p.currentId);
         const url = (reel && reel.url) || ('https://www.instagram.com/' + (p.handle || 'p') + '/p/' + p.currentId + '/');
@@ -1066,6 +1071,7 @@
     applyAndRender();
     await persist(false);
     igToast('📁 ffdown → ig.json: ' + created + ' new, ' + updated + ' updated'
+      + (dup ? ', ' + dup + ' already-imported (skipped)' : '')
       + (skipped ? ', ' + skipped + ' skipped (no reel id)' : '')
       + '\nNonStaged · author caption only · DevComment from filename', 6500);
   }

@@ -5749,5 +5749,71 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "rhinopias-frondosa",
+    "label": "Rhinopias frondosa",
+    "kind": "taxon",
+    "parents": [
+      "rhinopias"
+    ],
+    "aliases": [
+      "Rhinopias frondosa (Günther",
+      "1892)"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Weedy Scorpionfish",
+    "extinct": false
+  },
+  {
+    "id": "scorpaeniformes",
+    "label": "Scorpaeniformes",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "scorpaenidae",
+    "label": "Scorpaenidae",
+    "kind": "taxon",
+    "parents": [
+      "scorpaeniformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "rhinopias",
+    "label": "Rhinopias",
+    "kind": "taxon",
+    "parents": [
+      "scorpaenidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "rhinopias-aphanes",
+    "label": "Rhinopias aphanes",
+    "kind": "taxon",
+    "parents": [
+      "rhinopias"
+    ],
+    "aliases": [
+      "Rhinopias aphanes Eschmeyer",
+      "1973",
+      "Rhinopias aphanus"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Lacy Scorpionfish",
+    "extinct": false
   }
 ]

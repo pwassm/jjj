@@ -1,7 +1,9 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      1.2
+// @version      1.3
+// @downloadURL  http://localhost:8080/ig-harvest.user.js
+// @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Auto-scroll an Instagram profile, harvest reel/post URLs (deduped by shortcode), and POST them to the local SLAM proxy → ig.json. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
 // @author       SLAM
 // @match        https://www.instagram.com/*
@@ -101,16 +103,29 @@
     for (const a of as) if (shortcode(a.href) === target) return a;
     return null;
   }
+  // Dispatch one event, NEVER passing `view` — in the Tampermonkey sandbox `window`
+  // is a wrapped proxy, not a real Window, so `view:window` makes the constructor
+  // throw "'view' member of UIEventInit does not implement interface Window".
+  // try/catch falls back to a plain Event if any constructor is unhappy.
+  function fire(el, type, Ctor, extra) {
+    let ev;
+    try { ev = new Ctor(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, extra)); }
+    catch (_) { ev = new Event(type, { bubbles: true, cancelable: true }); }
+    el.dispatchEvent(ev);
+  }
   function clickThumb(a) {
-    // A real bubbling MouseEvent on the thumbnail drives IG's delegated click
-    // handler → SPA modal with arrows (a plain location change would NOT).
-    // NOTE: do NOT pass `view: window` — in the Tampermonkey sandbox `window` is a
-    // wrapped proxy, not a real Window, so the MouseEvent constructor throws
-    // "'view' member of UIEventInit does not implement interface Window". `view`
-    // is optional; omitting it still bubbles into IG's React handler.
+    // Replicate a real click as a full pointer+mouse sequence on the thumbnail so
+    // IG's React handler runs → it preventDefaults the <a> and opens the SPA grid
+    // modal WITH arrows (a bare location change / href-follow would NOT).
     const t = a.querySelector('img') || a;
-    ['mousedown', 'mouseup', 'click'].forEach(type =>
-      t.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })));
+    const PE = window.PointerEvent;
+    fire(t, 'pointerover', PE || MouseEvent);
+    fire(t, 'mouseover', MouseEvent);
+    if (PE) fire(t, 'pointerdown', PE, { button: 0, isPrimary: true });
+    fire(t, 'mousedown', MouseEvent, { button: 0 });
+    if (PE) fire(t, 'pointerup', PE, { button: 0, isPrimary: true });
+    fire(t, 'mouseup', MouseEvent, { button: 0 });
+    fire(t, 'click', MouseEvent, { button: 0 });
   }
   async function findAndClick(target, btn) {
     const MAX_ITER = 800, STALE_STOP = 8;
