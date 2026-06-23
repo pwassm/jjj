@@ -5870,5 +5870,13 @@
     "rank": "species",
     "common": "Spotted Wobbegong",
     "extinct": false
+  },
+  {
+    "id": "pareidolia",
+    "label": "Pareidolia",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
