@@ -344,7 +344,7 @@ function gridClearCut() {
 // cycled with Ctrl+B: 'off' → 'cut' (instant swap) → 'fade' (crossfade).
 function _gridBufferMode() {
   const m = (typeof window.getSetting === 'function') ? window.getSetting('gridBuffer') : null;
-  return (m === 'cut' || m === 'fade') ? m : 'off';
+  return (m === 'cut' || m === 'fade' || m === 'jit') ? m : 'off';
 }
 
 // Seconds of hidden warm-up before a buffered layer is revealed — long enough to
@@ -358,11 +358,16 @@ function _gridBufferPreroll() {
   return Math.max(1, Math.min(8, v));
 }
 
-// Buffering is heavy (2 iframes/cell) — only engage on desktop and small grids.
+// Buffering cost depends on the mode. 'cut'/'fade' keep TWO iframes per cell
+// alive permanently → desktop + small grids only. 'jit' keeps ONE iframe per
+// cell in steady state (a second is spun up only ~5s before each loop, then
+// destroyed) → light enough for big 5×5 / 17 / 19 grids and slower machines.
 // Larger/mobile grids transparently fall back to the single-iframe mount.
-function _gridBufferEligible() {
+function _gridBufferEligible(mode) {
   const desktop = (typeof _isMobileDevice === 'function') ? !_isMobileDevice() : true;
-  return desktop && _gridGsize <= 4;
+  if (!desktop) return false;
+  if (mode === 'jit') return true;
+  return _gridGsize <= 4;
 }
 
 // ── Cover-fit + zoom (dev0338 / dev0346) ─────────────────────────────────────
@@ -586,6 +591,11 @@ function _gridCoverFitHost(host) {
   setTimeout(refit, 400);
 }
 
+// (dev0477) Exposed so the JIT YouTube buffer (video.js) can cover-fit a tile
+// iframe it inserts long after the initial mount — by which time the host's own
+// MutationObserver (above) has already self-disconnected.
+window._gridRefitHost = function(host) { try { _gridApplyCoverFit(host); } catch (_) {} };
+
 // Re-apply zoom to every live cell (after a global-zoom change — no remount).
 function _gridRefitAll() {
   document.querySelectorAll('#gridContainer .grid-cell').forEach(_gridApplyZoomToCell);
@@ -623,13 +633,21 @@ function _gridApplyConfigZoom(cfg) {
 // when enabled+eligible, else the normal per-platform mounts. Shared by the
 // full-grid build (gridShow) and the single-cell update (gridUpdateCell).
 function _gridMountVideo(vidHost, row, segs, muted) {
-  const useBuffer = _gridBufferMode() !== 'off'
-    && _gridBufferEligible()
+  const mode = _gridBufferMode();
+  const isYT = window.isYouTubeLink && window.isYouTubeLink(row.link);
+  // (dev0477) JIT grow-in buffer — light enough for any grid size.
+  if (mode === 'jit' && isYT && window.mountYouTubeClipJit && _gridBufferEligible('jit')) {
+    window.mountYouTubeClipJit(vidHost, row.link, segs, muted, _gridBufferPreroll());
+    _gridCoverFitHost(vidHost);
+    return;
+  }
+  const useBuffer = (mode === 'cut' || mode === 'fade')
+    && _gridBufferEligible(mode)
     && window.mountYouTubeClipBuffered
-    && window.isYouTubeLink && window.isYouTubeLink(row.link);
+    && isYT;
   if (useBuffer) {
     window.mountYouTubeClipBuffered(vidHost, row.link, segs, muted,
-      _gridBufferMode() === 'fade' ? 'fade' : 'cut', _gridBufferPreroll());
+      mode === 'fade' ? 'fade' : 'cut', _gridBufferPreroll());
     _gridCoverFitHost(vidHost);
     return;
   }
@@ -656,15 +674,18 @@ function gridCycleBufferMode() {
     if (typeof toast === 'function') toast('Buffered playback is desktop-only', 1600);
     return;
   }
-  const order = ['off', 'cut', 'fade'];
+  const order = ['off', 'cut', 'fade', 'jit'];
   const next = order[(order.indexOf(_gridBufferMode()) + 1) % order.length];
   if (typeof window.setSetting === 'function') window.setSetting('gridBuffer', next);
   const labels = {
     off:  '○ Buffer OFF — single iframe',
     cut:  '◐ Buffer CUT — instant double-buffer swap',
-    fade: '◑ Buffer CROSSFADE — dissolve end→start'
+    fade: '◑ Buffer CROSSFADE — dissolve end→start',
+    jit:  '◆ Buffer JIT — grow-in tile (1 iframe/cell; works on big grids)'
   };
-  const note = (next !== 'off' && _gridGsize > 4) ? '  ·  ≤4×4 only (falls back at 5×5)' : '';
+  // Only cut/fade are gated to ≤4×4; jit runs on any grid size.
+  const note = ((next === 'cut' || next === 'fade') && _gridGsize > 4)
+    ? '  ·  ≤4×4 only (falls back at 5×5)' : '';
   const roll = next === 'off' ? '' : ('  ·  pre-roll ' + _gridBufferPreroll().toFixed(1) + 's (−/+ to tune)');
   if (typeof toast === 'function') toast(labels[next] + note + roll, 2400);
   if (typeof gridShow === 'function'

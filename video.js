@@ -647,6 +647,259 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   window.seeLearnVideoTimers[cellId] = loopTimer;
 };
 
+// ── Just-in-time grow-in YouTube buffer (dev0477) ───────────────────────────
+// A LIGHTER alternative to the permanent A/B double-buffer above. Steady state
+// is ONE iframe per cell, so it can run on big 5×5 / 17 / 19 grids and on slower
+// machines (where two permanent iframes per cell would choke). The second iframe
+// is created JUST IN TIME — a few seconds before the front segment loops — as a
+// tiny preview TILE in the cell's top-left corner. It warms up there (burning
+// off YouTube's startup/title/spinner chrome while small), then GROWS to fill
+// the cell over ~0.5s right at the loop point, replacing the old iframe (which
+// is destroyed). Net: the ~2s paused-chrome flash at every loop is gone, peak
+// cost is 2 iframes only on a cell that is mid-transition, and the grow-in is a
+// pleasant visual cue. Mode 'jit' in the Ctrl+B cycle. Reuses the warm-up logic
+// of mountYouTubeClipBuffered (chrome only burns off after PREROLL of forward
+// play measured from where seekTo actually landed).
+window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, preroll) {
+  var vid = getYouTubeId(url);
+  if (!vid || !hostEl) return;
+
+  // file:// can't embed YT — fall back to the single-iframe card path.
+  if (location.protocol === 'file:') {
+    var s0 = (segsArg && segsArg[0]) || { start: 0, dur: 99999 };
+    return window.mountYouTubeClip(hostEl, url, s0.start, s0.dur, isMuted, undefined, segsArg);
+  }
+
+  await loadYouTubeApiOnce();
+  var cellId = hostEl.id;
+  stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  window._ensureBufLayerCss();
+
+  var segs = (Array.isArray(segsArg) && segsArg.length) ? segsArg.slice() : [{ start: 0, dur: 99999 }];
+  var PREROLL = Number(preroll) || Number(window.SAL_BUF_PREROLL) || 3.5;
+  PREROLL = Math.max(0.5, Math.min(10, PREROLL));
+  // A JIT player is built from scratch (iframe + player JS) before it can even
+  // begin warming — unlike the permanent buffer, which only reseeks an idle
+  // player. Spawn the tile this much earlier than PREROLL so it's playing clean
+  // by the loop point.
+  var CREATE_BUDGET = Number(window.SAL_JIT_CREATE) || 2.0;
+  var SPAWN_LEAD = PREROLL + CREATE_BUDGET;                // s before segEnd to spawn the tile
+  var GROW_MS    = Number(window.SAL_JIT_GROW_MS) || 500;  // grow-in duration
+  var START_PX   = Number(window.SAL_JIT_START_PX) || 24;  // tile size (px) before it grows
+
+  var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
+  var _ytHost = _ytPrivacy === 'nocookie' ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
+
+  var frontLayer = null, backLayer = null;
+  var frontSeg = 0;
+  var swapping = false, killed = false, loopTimer = null;
+  var initWarm = null, initRevealed = false, backWarm = null;
+  var layerSeq = 0;
+
+  // Scale that renders the (cell-sized, overflow-clipped) layer as a ~START_PX
+  // tile pinned to the top-left corner.
+  function tileScale() {
+    var w = hostEl.clientWidth || 150;
+    return Math.max(0.05, Math.min(0.6, START_PX / w));
+  }
+
+  function makeLayer(z, tiny) {
+    var wrap = document.createElement('div');
+    wrap.className = 'sal-buf-layer';
+    // overflow:hidden clips the cover-fit iframe (bigger than the cell) to the
+    // cell box BEFORE we scale the layer down into the corner tile.
+    wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none;'
+      + 'background:#000;z-index:' + z + ';transform-origin:0 0;'
+      + 'transition:transform ' + GROW_MS + 'ms ease-out;'
+      + (tiny ? ('transform:scale(' + tileScale() + ');') : 'transform:scale(1);');
+    var inner = document.createElement('div');
+    inner.id = 'ytjit_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' + (++layerSeq);
+    inner.style.cssText = 'width:100%;height:100%;pointer-events:none;';
+    wrap.appendChild(inner);
+    hostEl.appendChild(wrap);
+    return { wrap: wrap, innerId: inner.id, player: null, ready: false, _bornAt: Date.now() };
+  }
+
+  function growToFull(layer) {
+    requestAnimationFrame(function() { if (!killed && layer && layer.wrap) layer.wrap.style.transform = 'scale(1)'; });
+  }
+  function refit() { try { if (window._gridRefitHost) window._gridRefitHost(hostEl); } catch (_) {} }
+  // A JIT iframe is created async by YT.Player; the grid's own cover-fit observer
+  // self-disconnects ~9s after the initial mount (long before a tile appears), so
+  // nudge cover-fit ourselves for a few seconds after each new iframe.
+  function refitSoon() {
+    var n = 0, iv = setInterval(function() { refit(); if (++n >= 12 || killed) clearInterval(iv); }, 250);
+  }
+
+  var poster = document.createElement('img');
+  poster.src = 'https://i.ytimg.com/vi/' + vid + '/mqdefault.jpg';
+  poster.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;'
+    + 'z-index:6;pointer-events:none;opacity:1;transition:opacity 300ms linear;background:#000;';
+  poster.onerror = function() { try { poster.style.display = 'none'; } catch (_) {} };
+  hostEl.appendChild(poster);
+
+  function newPlayer(layer, startSec) {
+    return new Promise(function(resolve) {
+      layer.player = new YT.Player(layer.innerId, {
+        videoId: vid, host: _ytHost,
+        playerVars: {
+          autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0,
+          modestbranding: 1, playsinline: 1, start: Math.floor(startSec),
+          iv_load_policy: 3, endscreen: 0, cc_load_policy: 0,
+          origin: window.location.origin || window.location.hostname || 'localhost'
+        },
+        events: {
+          onReady: function(e) {
+            if (isMuted) e.target.mute(); else e.target.unMute();
+            layer.ready = true; resolve(e.target);
+          }
+        }
+      });
+    });
+  }
+
+  // Begin a hidden warm-up on `layer` for `seg`: seek to (start − PREROLL) and
+  // play so it runs through YT's startup chrome while small; warmReady() decides
+  // when it's safe to grow in.
+  function beginWarm(layer, seg) {
+    var from = Math.max(0, seg.start - PREROLL);
+    var w = { layer: layer, seg: seg, from: from, issuedAt: Date.now(), landPos: null };
+    try { layer.player.seekTo(from, true); layer.player.playVideo(); } catch (_) {}
+    return w;
+  }
+  function warmReady(w) {
+    if (!w) return false;
+    if (Date.now() - w.issuedAt < 500) return false;
+    var st, ct;
+    try { st = w.layer.player.getPlayerState(); ct = w.layer.player.getCurrentTime(); }
+    catch (_) { return false; }
+    if (st !== 1 /* PLAYING */) return false;
+    if (w.landPos === null) {
+      if (ct >= w.from - 1 && ct <= w.from + 8) w.landPos = ct;
+      return false;
+    }
+    var revealAt = Math.max(w.seg.start, w.landPos + PREROLL);
+    var segEnd = w.seg.start + w.seg.dur;
+    if (revealAt > segEnd - 0.2) revealAt = Math.max(w.seg.start, segEnd - 0.2);
+    return ct >= revealAt;
+  }
+
+  function killBack() {
+    if (!backLayer) return;
+    try { if (backLayer.player && backLayer.player.destroy) backLayer.player.destroy(); } catch (_) {}
+    try { if (backLayer.wrap && backLayer.wrap.parentNode) backLayer.wrap.remove(); } catch (_) {}
+    backLayer = null; backWarm = null;
+  }
+
+  function spawnBack(nextSeg) {
+    backLayer = makeLayer(2, true);   // tiny top-left tile, VISIBLE while it warms
+    newPlayer(backLayer, Math.max(0, nextSeg.start - PREROLL)).then(function() {
+      if (!killed && backLayer) { backWarm = beginWarm(backLayer, nextSeg); refitSoon(); }
+    });
+  }
+
+  function doSwap() {
+    if (swapping || killed || !backLayer) return;
+    swapping = true;
+    var oldFront = frontLayer;
+    growToFull(backLayer);                 // back is already playing clean at its start
+    frontLayer = backLayer; backLayer = null;
+    frontSeg = (frontSeg + 1) % segs.length;
+    backWarm = null;
+    setTimeout(function() {
+      try { if (oldFront && oldFront.player && oldFront.player.destroy) oldFront.player.destroy(); } catch (_) {}
+      try { if (oldFront && oldFront.wrap && oldFront.wrap.parentNode) oldFront.wrap.remove(); } catch (_) {}
+      swapping = false;
+      refit();
+    }, GROW_MS + 120);
+  }
+
+  var controller = {
+    isBuffered: true, isJit: true, _gridPaused: false, _salPaused: false,
+    getPlayerState: function() { try { return frontLayer.player.getPlayerState(); } catch (_) { return -1; } },
+    getCurrentTime: function() { try { return frontLayer.player.getCurrentTime(); } catch (_) { return 0; } },
+    pauseVideo: function() {
+      this._gridPaused = true;
+      try { if (frontLayer && frontLayer.player) frontLayer.player.pauseVideo(); } catch (_) {}
+      try { if (backLayer && backLayer.player) backLayer.player.pauseVideo(); } catch (_) {}
+    },
+    playVideo: function() {
+      this._gridPaused = false; this._salPaused = false;
+      try { if (frontLayer && frontLayer.player) frontLayer.player.playVideo(); } catch (_) {}
+      try { if (backLayer && backLayer.player) backLayer.player.playVideo(); } catch (_) {}  // resume an in-flight warm
+    },
+    pause: function() { this.pauseVideo(); },
+    play:  function() { this.playVideo(); },
+    destroy: function() {
+      killed = true;
+      if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+      try { if (frontLayer && frontLayer.player && frontLayer.player.destroy) frontLayer.player.destroy(); } catch (_) {}
+      try { if (backLayer && backLayer.player && backLayer.player.destroy) backLayer.player.destroy(); } catch (_) {}
+      try { hostEl.innerHTML = ''; } catch (_) {}
+    }
+  };
+  window.seeLearnVideoPlayers[cellId] = controller;
+
+  // Initial FRONT: warm hidden (tiny, behind the poster), grow-in when clean.
+  frontLayer = makeLayer(1, true);
+  newPlayer(frontLayer, Math.max(0, segs[0].start - PREROLL)).then(function(p) {
+    if (killed) return;
+    try {
+      var realDur = p.getDuration();
+      if (realDur > 0 && realDur < 99990) {
+        segs.forEach(function(s) { if (s.dur > realDur) s.dur = Math.max(1, realDur - s.start); });
+      }
+    } catch (_) {}
+    initWarm = beginWarm(frontLayer, segs[0]);
+    refitSoon();
+  });
+
+  loopTimer = setInterval(function() {
+    if (killed || swapping) return;
+    if (controller._gridPaused || controller._salPaused) return;
+    if (!frontLayer || !frontLayer.ready || !initWarm) return;
+
+    // Phase 1 — reveal the very first front (grow in, dissolve poster).
+    if (!initRevealed) {
+      if (warmReady(initWarm)) {
+        growToFull(frontLayer);
+        requestAnimationFrame(function() { if (!killed) poster.style.opacity = '0'; });
+        setTimeout(function() { try { if (poster.parentNode) poster.remove(); } catch (_) {} }, GROW_MS + 250);
+        initRevealed = true;
+      }
+      return;
+    }
+
+    var t;
+    try { t = frontLayer.player.getCurrentTime(); } catch (_) { return; }
+    var seg = segs[frontSeg];
+    var segEnd = seg.start + seg.dur;
+    var nextSeg = segs[(frontSeg + 1) % segs.length];
+
+    // Self-heal a tile that never came clean (error / very slow link) so it can
+    // re-spawn next cycle instead of wedging the cell.
+    if (backLayer && backLayer._bornAt && Date.now() - backLayer._bornAt > 15000
+        && !(backLayer.ready && warmReady(backWarm))) {
+      killBack();
+    }
+
+    // Spawn the JIT tile a few seconds before the loop point.
+    if (!backLayer && t >= segEnd - SPAWN_LEAD && t < segEnd) spawnBack(nextSeg);
+
+    // Grow + swap once the tile is playing clean at its segment start.
+    if (backLayer && backLayer.ready && warmReady(backWarm)) { doSwap(); return; }
+
+    // Fallback: tile not ready by the loop point (slow link) — loop the front in
+    // place so playback stays continuous; the tile grows in shortly after. Only
+    // this rare case still shows the old paused-chrome flash.
+    if (t >= segEnd - 0.2) {
+      try { frontLayer.player.seekTo(seg.start, true); frontLayer.player.playVideo(); } catch (_) {}
+    }
+  }, 150);
+  window.seeLearnVideoTimers[cellId] = loopTimer;
+};
+
 window.mountVimeoClip = async function(hostEl, url, startSec, dur, isMuted, customSeekTo, segsArg) {
   if (!hostEl) return;
   await loadVimeoApiOnce();
