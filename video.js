@@ -683,15 +683,22 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
   // begin warming — unlike the permanent buffer, which only reseeks an idle
   // player. Spawn the tile this much earlier than PREROLL so it's playing clean
   // by the loop point.
-  var CREATE_BUDGET = Number(window.SAL_JIT_CREATE) || 2.0;
-  var SPAWN_LEAD = PREROLL + CREATE_BUDGET;                // s before segEnd to spawn the tile
+  // Spawn the tile this far ahead of the loop. It has to cover (a) building a
+  // fresh iframe + loading the YT player and (b) PREROLL of clean forward play
+  // before warmReady — only THEN can it grow in ahead of the loop. Too small and
+  // the warm-up isn't done by the loop point, so the cell falls back to reseeking
+  // the old iframe and YouTube's pause chrome flashes through. Generous by
+  // default; override with window.SAL_JIT_LEAD.
+  var CREATE_BUDGET = Number(window.SAL_JIT_CREATE) || 4.5;
+  var SPAWN_LEAD = Number(window.SAL_JIT_LEAD) || (PREROLL + CREATE_BUDGET); // s before segEnd
   var GROW_MS    = Number(window.SAL_JIT_GROW_MS) || 500;  // grow-in duration
   // Visual width (px) of the corner tile before it grows. NB: we keep the iframe
   // at its full intrinsic (cell-cover) size and shrink it with a CSS transform —
-  // a literal ~80px iframe trips YouTube's "player too small" refusal, so the
-  // tile is a scaled-down COVER of the cell (square-ish), not a separate 16:9
-  // box. It still ends as a perfect cover-fit with no jump.
-  var START_PX   = Number(window.SAL_JIT_START_PX) || 90;  // tile width (px) before it grows
+  // a literal small iframe trips YouTube's ~200×200 "player too small" refusal,
+  // so the tile is a scaled-down COVER of the cell, not a separate small iframe.
+  // It still ends as a perfect cover-fit with no jump. Scale is clamped so the
+  // tile stays a modest preview (never dominates a small cell).
+  var START_PX   = Number(window.SAL_JIT_START_PX) || 120; // tile width (px) before it grows
   var DEBUG      = !!window.SAL_JIT_DEBUG;
   function dbg() { if (DEBUG && window.console) try { console.debug.apply(console, ['[jit ' + cellId + ']'].concat([].slice.call(arguments))); } catch (_) {} }
 
@@ -709,20 +716,18 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
   // when the host hasn't been laid out yet (clientWidth 0 at initial mount).
   function tileScale() {
     var w = hostEl.clientWidth || 200;
-    return Math.max(0.08, Math.min(0.85, START_PX / w));
+    return Math.max(0.1, Math.min(0.45, START_PX / w));
   }
 
   function makeLayer(z, tiny) {
     var wrap = document.createElement('div');
     wrap.className = 'sal-buf-layer';
     // overflow:hidden clips the cover-fit iframe (bigger than the cell) to the
-    // cell box BEFORE we scale the layer down into the corner tile. The white
-    // ring makes the small tile read as a picture-in-picture preview (cleared
-    // when it grows to full).
+    // cell box BEFORE we scale the layer down into the corner tile.
     wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none;'
       + 'background:#000;z-index:' + z + ';transform-origin:0 0;'
       + 'transition:transform ' + GROW_MS + 'ms ease-out;'
-      + (tiny ? ('transform:scale(' + tileScale() + ');box-shadow:0 0 0 2px rgba(255,255,255,.85);') : 'transform:scale(1);');
+      + (tiny ? ('transform:scale(' + tileScale() + ');') : 'transform:scale(1);');
     var inner = document.createElement('div');
     inner.id = 'ytjit_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' + (++layerSeq);
     inner.style.cssText = 'width:100%;height:100%;pointer-events:none;';
@@ -735,7 +740,6 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
     requestAnimationFrame(function() {
       if (killed || !layer || !layer.wrap) return;
       layer.wrap.style.transform = 'scale(1)';
-      layer.wrap.style.boxShadow = 'none';
     });
   }
   function refit() { try { if (window._gridRefitHost) window._gridRefitHost(hostEl); } catch (_) {} }
