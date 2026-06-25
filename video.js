@@ -242,19 +242,28 @@ window.pauseCellVideo = function(cellId) {
   }
 };
 
-// ─── Corner-square probe (dev0484) ────────────────────────────────────────────
-// Feasibility step 1 toward a JIT corner preview: pin a 50×50 black square to the
-// upper-left of a YT cell, shown ONLY during the final SAL_CORNER_PREEND seconds
-// before the cell's video LOOPS (i.e. the last segment's end) and hidden the
-// instant it loops back. Gated to the LAST segment so it does NOT light at every
-// intermediate multi-segment boundary. Called from inside each YT loop tick
-// (single + buffered mounts) with the live currentTime, the segs array and the
-// active index. The square is an untransformed sibling of the iframe, so it stays
-// in the true cell corner regardless of cover-fit zoom/pan.
-window.SAL_CORNER_PREEND = 4;   // seconds before the loop point to show the square
-window._salCornerProbe = function(hostEl, player, segs, segIdx) {
+// ─── Corner JIT preview (dev0485) ─────────────────────────────────────────────
+// Feasibility step 2: in the final SAL_CORNER_PREEND seconds before a YT cell
+// LOOPS, pre-roll the *next* loop in the corner. YouTube refuses to START a player
+// rendered smaller than ~200×200, so we WARM the 2nd player VISIBLE at 200×200 in
+// the cell's top-left (user asked to watch it warm) and, the instant it reaches
+// PLAYING, transform:scale it down to ~SAL_CORNER_SHRINK of the cell. No expand yet
+// — at the loop the preview is torn down and re-warmed next cycle.
+//
+// The warm box is position:fixed on <body> at the cell's screen rect so the full
+// 200×200 lives UNCLIPPED in the viewport (cells are overflow:hidden) — that gives
+// YouTube's start-gate the best chance. Desktop-only (mobile can't carry a 2nd
+// iframe/cell). Outline: green while warming → blue once shrunk, so both phases are
+// obvious. _salCornerProbe gates start/stop from each YT loop tick; gated to the
+// LAST segment so it fires only at the real loop-around, not inner seg boundaries.
+window.SAL_CORNER_PREEND = 4;     // s before the loop to begin the corner warm
+window.SAL_CORNER_WARMPX = 200;   // YT start-gate minimum (render ≥200×200)
+window.SAL_CORNER_SHRINK = 0.10;  // shrunk corner size as a fraction of cell width
+window.SAL_CORNER_MINPX  = 30;    // …but never smaller than this
+
+window._salCornerProbe = function(hostEl, player, segs, segIdx, videoId) {
   if (!hostEl) return;
-  var show = false;
+  var inWindow = false;
   try {
     // Only the final segment leads into the loop-around — ignore the others.
     if (player && segs && segs.length && segIdx === segs.length - 1) {
@@ -268,22 +277,84 @@ window._salCornerProbe = function(hostEl, player, segs, segIdx) {
         if (rd > 0 && rd < 99990) segEnd = rd;
       }
       var remain = segEnd - t;
-      show = (t >= 0 && remain > 0 && remain <= (window.SAL_CORNER_PREEND || 4));
+      inWindow = (t >= 0 && remain > 0 && remain <= (window.SAL_CORNER_PREEND || 4));
     }
   } catch (_) {}
-  var sq = hostEl._salCornerSq;
-  if (show) {
-    if (!sq || !sq.isConnected) {
-      sq = document.createElement('div');
-      sq.style.cssText = 'position:absolute;top:0;left:0;width:50px;height:50px;'
-        + 'background:#000;z-index:2147483000;pointer-events:none;';
-      hostEl.appendChild(sq);
-      hostEl._salCornerSq = sq;
-    }
-    sq.style.display = 'block';
-  } else if (sq) {
-    sq.style.display = 'none';
+  if (inWindow && !hostEl._salCorner) {
+    window._salCornerStart(hostEl, videoId, (segs && segs[0] ? segs[0].start : 0));
+  } else if (!inWindow && hostEl._salCorner) {
+    window._salCornerStop(hostEl);
   }
+};
+
+window._salCornerStart = function(hostEl, videoId, startSec) {
+  if (!hostEl || !videoId) return;
+  if (hostEl._salCorner) return;
+  if (typeof YT === 'undefined' || !YT.Player) return;
+  // Desktop only — a 2nd iframe per cell is too heavy for mobile.
+  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return;
+  var rect = hostEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  var st = { player: null, shrunk: false, killed: false, box: null, cellW: rect.width };
+  hostEl._salCorner = st;
+
+  var WP = window.SAL_CORNER_WARMPX || 200;
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed;top:' + rect.top + 'px;left:' + rect.left + 'px;'
+    + 'width:' + WP + 'px;height:' + WP + 'px;z-index:2147483600;pointer-events:none;'
+    + 'background:#000;overflow:hidden;transform-origin:top left;'
+    + 'transition:transform 0.35s ease;outline:2px solid #0f0;';
+  var inner = document.createElement('div');
+  inner.id = 'salcorner_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+  inner.style.cssText = 'width:100%;height:100%;pointer-events:none;';
+  box.appendChild(inner);
+  document.body.appendChild(box);
+  st.box = box;
+
+  var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
+  var _ytHost = _ytPrivacy === 'nocookie' ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
+
+  st.player = new YT.Player(inner.id, {
+    videoId: videoId, host: _ytHost, width: WP, height: WP,
+    playerVars: {
+      autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0,
+      modestbranding: 1, playsinline: 1, start: Math.floor(startSec || 0),
+      iv_load_policy: 3, cc_load_policy: 0,
+      origin: window.location.origin || window.location.hostname || 'localhost'
+    },
+    events: {
+      onReady: function(e) {
+        if (st.killed) { try { e.target.destroy(); } catch (_) {} return; }
+        try { e.target.mute(); } catch (_) {}          // muted = required for autoplay
+        try { e.target.seekTo(startSec || 0, true); } catch (_) {}
+        try { e.target.playVideo(); } catch (_) {}
+      },
+      onStateChange: function(e) {
+        if (!st.killed && e.data === 1 /* PLAYING */) window._salCornerShrink(hostEl);
+      }
+    }
+  });
+};
+
+window._salCornerShrink = function(hostEl) {
+  var st = hostEl && hostEl._salCorner;
+  if (!st || st.shrunk || st.killed || !st.box) return;
+  st.shrunk = true;
+  var target = Math.max(window.SAL_CORNER_MINPX || 30,
+    Math.round((st.cellW || 200) * (window.SAL_CORNER_SHRINK || 0.10)));
+  var scale = target / (window.SAL_CORNER_WARMPX || 200);
+  st.box.style.transform = 'scale(' + scale + ')';
+  st.box.style.outline = '2px solid #08f';   // green→blue = warmed, now shrunk
+};
+
+window._salCornerStop = function(hostEl) {
+  var st = hostEl && hostEl._salCorner;
+  if (!st) return;
+  st.killed = true;
+  try { if (st.player && st.player.destroy) st.player.destroy(); } catch (_) {}
+  try { if (st.box && st.box.parentNode) st.box.remove(); } catch (_) {}
+  hostEl._salCorner = null;
 };
 
 // ─── Multi-segment playback ───────────────────────────────────────────────────
@@ -378,7 +449,7 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
             try {
               var t   = e.target.getCurrentTime();
               var seg = segs[segIdx];
-              window._salCornerProbe(hostEl, e.target, segs, segIdx);
+              window._salCornerProbe(hostEl, e.target, segs, segIdx, vid);
               if (t >= seg.start + seg.dur - 0.2) {
                 segIdx = (segIdx + 1) % segs.length;
                 e.target.seekTo(segs[segIdx].start, allowSeek);
@@ -399,7 +470,7 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
             try {
               var t   = e.target.getCurrentTime();
               var seg = segs[segIdx];
-              window._salCornerProbe(hostEl, e.target, segs, segIdx);
+              window._salCornerProbe(hostEl, e.target, segs, segIdx, vid);
               if (t >= seg.start + seg.dur - 0.2) {
                 segIdx = (segIdx + 1) % segs.length;
                 e.target.seekTo(segs[segIdx].start, allowSeek);
@@ -684,7 +755,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     var t;
     try { t = frontLayer.player.getCurrentTime(); } catch (_) { return; }
     var seg = segs[frontSeg];
-    window._salCornerProbe(hostEl, frontLayer.player, segs, frontSeg);
+    window._salCornerProbe(hostEl, frontLayer.player, segs, frontSeg, vid);
     var segEnd = seg.start + seg.dur;
     var nextSeg = segs[(frontSeg + 1) % segs.length];
 
