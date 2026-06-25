@@ -242,24 +242,40 @@ window.pauseCellVideo = function(cellId) {
   }
 };
 
-// ─── Corner JIT preview (dev0485) ─────────────────────────────────────────────
-// Feasibility step 2: in the final SAL_CORNER_PREEND seconds before a YT cell
-// LOOPS, pre-roll the *next* loop in the corner. YouTube refuses to START a player
-// rendered smaller than ~200×200, so we WARM the 2nd player VISIBLE at 200×200 in
-// the cell's top-left (user asked to watch it warm) and, the instant it reaches
-// PLAYING, transform:scale it down to ~SAL_CORNER_SHRINK of the cell. No expand yet
-// — at the loop the preview is torn down and re-warmed next cycle.
-//
-// The warm box is position:fixed on <body> at the cell's screen rect so the full
-// 200×200 lives UNCLIPPED in the viewport (cells are overflow:hidden) — that gives
-// YouTube's start-gate the best chance. Desktop-only (mobile can't carry a 2nd
-// iframe/cell). Outline: green while warming → blue once shrunk, so both phases are
-// obvious. _salCornerProbe gates start/stop from each YT loop tick; gated to the
-// LAST segment so it fires only at the real loop-around, not inner seg boundaries.
-window.SAL_CORNER_PREEND = 8;     // s before the loop to begin the corner warm (dev0486: 4→8 for a longer sample)
-window.SAL_CORNER_WARMPX = 200;   // YT start-gate minimum (render ≥200×200)
-window.SAL_CORNER_SHRINK = 0.15;  // shrunk corner size as a fraction of cell width (dev0486: 0.10→0.15, ~1.5× bigger)
-window.SAL_CORNER_MINPX  = 45;    // …but never smaller than this (dev0486: 30→45, matches the 1.5×)
+// ─── Corner JIT preview (dev0487) ─────────────────────────────────────────────
+// In the final SAL_CORNER_PREEND seconds before a YT cell LOOPS, pre-roll the next
+// loop in the corner, then EXPAND it to fill the cell at the loop. Phases:
+//   warm   — a 2nd YT player mounted at the YT start-gate minimum (smaller side =
+//            SAL_CORNER_WARMMIN), box shaped to the CELL's aspect, video cover-fit
+//            (no letterbox bars), a thumbnail POSTER masking the black until it
+//            paints. position:fixed on <body> at the cell's screen rect so it's
+//            unclipped (cells are overflow:hidden) — best chance at YT's gate.
+//   corner — the instant it reaches PLAYING, transform:scale down to ~SHRINK of the
+//            cell width (poster fades out). It plays here a while (YT eventually
+//            re-pauses small players — that's fine, the gate is only at START).
+//   expand — at the loop, scale UP to fill the cell, hold SAL_CORNER_EXPANDHOLD ms
+//            (masking the main cell's re-buffer flash), then tear down + re-warm.
+// Desktop-only (2nd iframe/cell is too heavy for mobile). Thin outline marks the
+// phase (green→blue→magenta) — a debug aid, easy to drop. _salCornerProbe gates the
+// lifecycle from each YT loop tick, only on the LAST segment (the real loop-around).
+window.SAL_CORNER_PREEND     = 8;     // s before the loop to begin the corner warm
+window.SAL_CORNER_WARMMIN    = 200;   // warm box SMALLER side (px) — YT start-gate floor; lower to experiment
+window.SAL_CORNER_SHRINK     = 0.15;  // shrunk corner WIDTH as a fraction of cell width
+window.SAL_CORNER_MINPX      = 45;    // …but the shrunk smaller side never below this
+window.SAL_CORNER_EXPANDHOLD = 1800;  // ms to hold the expanded preview before teardown
+
+// Size an iframe to COVER a BW×BH box assuming a 16:9 video (matches the grid's
+// cover-fit), centered; the box's overflow:hidden crops the excess. No black bars.
+window._salCornerCoverFit = function(iframe, BW, BH) {
+  var va = 16 / 9, iw, ih;
+  if (BW / BH >= va) { iw = BW; ih = Math.ceil(BW / va); }
+  else { ih = BH; iw = Math.ceil(BH * va); }
+  var ox = Math.round((BW - iw) / 2), oy = Math.round((BH - ih) / 2);
+  iframe.style.position = 'absolute';
+  iframe.style.left = ox + 'px'; iframe.style.top = oy + 'px';
+  iframe.style.width = iw + 'px'; iframe.style.height = ih + 'px';
+  iframe.style.maxWidth = 'none'; iframe.style.maxHeight = 'none'; iframe.style.border = '0';
+};
 
 window._salCornerProbe = function(hostEl, player, segs, segIdx, videoId) {
   if (!hostEl) return;
@@ -283,7 +299,7 @@ window._salCornerProbe = function(hostEl, player, segs, segIdx, videoId) {
   if (inWindow && !hostEl._salCorner) {
     window._salCornerStart(hostEl, videoId, (segs && segs[0] ? segs[0].start : 0));
   } else if (!inWindow && hostEl._salCorner) {
-    window._salCornerStop(hostEl);
+    window._salCornerExpand(hostEl);   // loop reached — grow the preview to fill, then it self-tears-down
   }
 };
 
@@ -296,19 +312,35 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
   var rect = hostEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
 
-  var st = { player: null, shrunk: false, killed: false, box: null, cellW: rect.width };
+  var cellW = rect.width, cellH = rect.height;
+  var WM = window.SAL_CORNER_WARMMIN || 200;
+  // Warm box shaped to the cell, with its SMALLER side = WM (so both sides ≥ WM,
+  // satisfying YT's start-gate) — landscape cells get a wide box, not a square.
+  var warmW, warmH;
+  if (cellW <= cellH) { warmW = WM; warmH = Math.round(WM * cellH / cellW); }
+  else { warmH = WM; warmW = Math.round(WM * cellW / cellH); }
+
+  var st = { player: null, phase: 'warm', killed: false, box: null, poster: null,
+             cellW: cellW, cellH: cellH, warmW: warmW, warmH: warmH, warmMin: WM, expandTimer: null };
   hostEl._salCorner = st;
 
-  var WP = window.SAL_CORNER_WARMPX || 200;
   var box = document.createElement('div');
   box.style.cssText = 'position:fixed;top:' + rect.top + 'px;left:' + rect.left + 'px;'
-    + 'width:' + WP + 'px;height:' + WP + 'px;z-index:2147483600;pointer-events:none;'
-    + 'background:#000;overflow:hidden;transform-origin:top left;'
-    + 'transition:transform 0.35s ease;outline:2px solid #0f0;';
+    + 'width:' + warmW + 'px;height:' + warmH + 'px;z-index:2147483600;pointer-events:none;'
+    + 'overflow:hidden;transform-origin:0 0;transition:transform 0.35s ease;outline:1.5px solid #0f0;';
   var inner = document.createElement('div');
   inner.id = 'salcorner_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
   inner.style.cssText = 'width:100%;height:100%;pointer-events:none;';
   box.appendChild(inner);
+  // Poster: the video's 16:9 thumbnail, cover-fit, masking the black while the
+  // player warms — then fades out on PLAYING. So the corner shows video, not black.
+  var poster = document.createElement('img');
+  poster.src = 'https://i.ytimg.com/vi/' + videoId + '/mqdefault.jpg';
+  poster.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;'
+    + 'z-index:2;opacity:1;transition:opacity 0.3s linear;pointer-events:none;';
+  poster.onerror = function() { try { poster.style.display = 'none'; } catch (_) {} };
+  box.appendChild(poster);
+  st.poster = poster;
   document.body.appendChild(box);
   st.box = box;
 
@@ -316,7 +348,7 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
   var _ytHost = _ytPrivacy === 'nocookie' ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
 
   st.player = new YT.Player(inner.id, {
-    videoId: videoId, host: _ytHost, width: WP, height: WP,
+    videoId: videoId, host: _ytHost, width: warmW, height: warmH,
     playerVars: {
       autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0,
       modestbranding: 1, playsinline: 1, start: Math.floor(startSec || 0),
@@ -329,6 +361,8 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
         try { e.target.mute(); } catch (_) {}          // muted = required for autoplay
         try { e.target.seekTo(startSec || 0, true); } catch (_) {}
         try { e.target.playVideo(); } catch (_) {}
+        // Cover-fit the freshly-created iframe so the video fills the cell-shaped box.
+        try { var ifr = box.querySelector('iframe'); if (ifr) window._salCornerCoverFit(ifr, warmW, warmH); } catch (_) {}
       },
       onStateChange: function(e) {
         if (!st.killed && e.data === 1 /* PLAYING */) window._salCornerShrink(hostEl);
@@ -339,19 +373,38 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
 
 window._salCornerShrink = function(hostEl) {
   var st = hostEl && hostEl._salCorner;
-  if (!st || st.shrunk || st.killed || !st.box) return;
-  st.shrunk = true;
-  var target = Math.max(window.SAL_CORNER_MINPX || 30,
-    Math.round((st.cellW || 200) * (window.SAL_CORNER_SHRINK || 0.10)));
-  var scale = target / (window.SAL_CORNER_WARMPX || 200);
+  if (!st || st.killed || st.phase !== 'warm' || !st.box) return;
+  st.phase = 'corner';
+  // Shrunk box width ≈ SHRINK × cell width; floor the smaller side at MINPX.
+  var scale = (window.SAL_CORNER_SHRINK || 0.15) * st.cellW / st.warmW;
+  var minScale = (window.SAL_CORNER_MINPX || 45) / st.warmMin;
+  if (scale < minScale) scale = minScale;
   st.box.style.transform = 'scale(' + scale + ')';
-  st.box.style.outline = '2px solid #08f';   // green→blue = warmed, now shrunk
+  st.box.style.outline = '1.5px solid #08f';   // green→blue = warmed, now shrunk
+  if (st.poster) st.poster.style.opacity = '0';
+};
+
+// Loop reached: grow the preview to fill the cell (masking the main cell's re-buffer
+// flash), hold briefly, then tear down so it re-warms next cycle. If it never got to
+// PLAYING (still warming), just tear down — nothing worth expanding.
+window._salCornerExpand = function(hostEl) {
+  var st = hostEl && hostEl._salCorner;
+  if (!st || st.killed || st.phase === 'expand') return;
+  if (st.phase !== 'corner') { window._salCornerStop(hostEl); return; }
+  st.phase = 'expand';
+  var scale = st.cellW / st.warmW;          // warm box → exactly cell size (same aspect)
+  st.box.style.transform = 'scale(' + scale + ')';
+  st.box.style.outline = '1.5px solid #f0f';
+  try { if (st.player && st.player.playVideo) st.player.playVideo(); } catch (_) {}
+  st.expandTimer = setTimeout(function() { window._salCornerStop(hostEl); },
+    window.SAL_CORNER_EXPANDHOLD || 1800);
 };
 
 window._salCornerStop = function(hostEl) {
   var st = hostEl && hostEl._salCorner;
   if (!st) return;
   st.killed = true;
+  if (st.expandTimer) { clearTimeout(st.expandTimer); st.expandTimer = null; }
   try { if (st.player && st.player.destroy) st.player.destroy(); } catch (_) {}
   try { if (st.box && st.box.parentNode) st.box.remove(); } catch (_) {}
   hostEl._salCorner = null;
