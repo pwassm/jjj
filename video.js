@@ -256,10 +256,10 @@ window.pauseCellVideo = function(cellId) {
 // iframe/cell). Outline: green while warming → blue once shrunk, so both phases are
 // obvious. _salCornerProbe gates start/stop from each YT loop tick; gated to the
 // LAST segment so it fires only at the real loop-around, not inner seg boundaries.
-window.SAL_CORNER_PREEND = 4;     // s before the loop to begin the corner warm
+window.SAL_CORNER_PREEND = 8;     // s before the loop to begin the corner warm (dev0486: 4→8 for a longer sample)
 window.SAL_CORNER_WARMPX = 200;   // YT start-gate minimum (render ≥200×200)
-window.SAL_CORNER_SHRINK = 0.10;  // shrunk corner size as a fraction of cell width
-window.SAL_CORNER_MINPX  = 30;    // …but never smaller than this
+window.SAL_CORNER_SHRINK = 0.15;  // shrunk corner size as a fraction of cell width (dev0486: 0.10→0.15, ~1.5× bigger)
+window.SAL_CORNER_MINPX  = 45;    // …but never smaller than this (dev0486: 30→45, matches the 1.5×)
 
 window._salCornerProbe = function(hostEl, player, segs, segIdx, videoId) {
   if (!hostEl) return;
