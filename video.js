@@ -691,7 +691,12 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
   // default; override with window.SAL_JIT_LEAD.
   var CREATE_BUDGET = Number(window.SAL_JIT_CREATE) || 4.5;
   var SPAWN_LEAD = Number(window.SAL_JIT_LEAD) || (PREROLL + CREATE_BUDGET); // s before segEnd
-  var GROW_MS    = Number(window.SAL_JIT_GROW_MS) || 500;  // grow-in duration
+  // Max grow-in duration. The warm-up is HIDDEN (full-size, so YouTube actually
+  // plays it — a small-rendered player just shows a spinner forever), then we
+  // reveal it by growing from a corner tile to full. The grow takes as long as
+  // the time left before the loop allows (up to this cap), so when the warm-up
+  // finishes early you see a slow, obvious expansion.
+  var GROW_MS    = Number(window.SAL_JIT_GROW_MS) || 2500; // max grow-in duration (ms)
   // Visual width (px) of the corner tile before it grows. NB: we keep the iframe
   // at its full intrinsic (cell-cover) size and shrink it with a CSS transform —
   // a literal small iframe trips YouTube's ~200×200 "player too small" refusal,
@@ -736,15 +741,16 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
     return Math.max(0.1, Math.min(0.45, START_PX / w));
   }
 
-  function makeLayer(z, tiny) {
+  // Every layer is built FULL-SIZE (overflow:hidden clips the cover-fit iframe to
+  // the cell). A warming back layer is just hidden with opacity:0 — full-size, so
+  // YouTube actually plays it. The corner-tile look only exists transiently during
+  // the grow-in reveal (growReveal), never as a persistent small player.
+  function makeLayer(z) {
     var wrap = document.createElement('div');
     wrap.className = 'sal-buf-layer';
-    // overflow:hidden clips the cover-fit iframe (bigger than the cell) to the
-    // cell box BEFORE we scale the layer down into the corner tile.
     wrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none;'
-      + 'background:#000;z-index:' + z + ';transform-origin:0 0;'
-      + 'transition:transform ' + GROW_MS + 'ms ease-out;'
-      + (tiny ? ('transform:scale(' + tileScale() + ');') : 'transform:scale(1);');
+      + 'background:#000;z-index:' + z + ';transform-origin:0 0;opacity:1;transform:scale(1);'
+      + 'transition:transform ' + GROW_MS + 'ms ease-out, opacity 200ms linear;';
     var inner = document.createElement('div');
     inner.id = 'ytjit_' + cellId.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' + (++layerSeq);
     inner.style.cssText = 'width:100%;height:100%;pointer-events:none;';
@@ -753,10 +759,20 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
     return { wrap: wrap, innerId: inner.id, player: null, ready: false, _bornAt: Date.now() };
   }
 
-  function growToFull(layer) {
+  // Reveal a (clean, hidden) layer by snapping it to a corner tile then growing
+  // it to full over `dur` ms. The snap commits before the animation so the grow
+  // is visible from the tile size, not from full.
+  function growReveal(layer, dur) {
+    if (killed || !layer || !layer.wrap) return;
+    var w = layer.wrap;
+    w.style.transition = 'none';
+    w.style.opacity = '1';
+    w.style.transform = 'scale(' + tileScale() + ')';
+    void w.offsetWidth;                       // commit the tile state
     requestAnimationFrame(function() {
-      if (killed || !layer || !layer.wrap) return;
-      layer.wrap.style.transform = 'scale(1)';
+      if (killed) return;
+      w.style.transition = 'transform ' + Math.round(dur) + 'ms ease-out';
+      w.style.transform = 'scale(1)';
     });
   }
   function refit() { try { if (window._gridRefitHost) window._gridRefitHost(hostEl); } catch (_) {} }
@@ -828,17 +844,18 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
   }
 
   function spawnBack(nextSeg) {
-    backLayer = makeLayer(2, true);   // tiny top-left tile, VISIBLE while it warms
+    backLayer = makeLayer(2);
+    backLayer.wrap.style.opacity = '0';   // warm HIDDEN, full-size (so YouTube plays it)
     newPlayer(backLayer, Math.max(0, nextSeg.start - PREROLL)).then(function() {
-      if (!killed && backLayer) { backWarm = beginWarm(backLayer, nextSeg); refitSoon(); dbg('tile player ready, warming'); }
+      if (!killed && backLayer) { backWarm = beginWarm(backLayer, nextSeg); refitSoon(); dbg('tile warming (hidden, full-size)'); }
     });
   }
 
-  function doSwap() {
+  function doSwap(dur) {
     if (swapping || killed || !backLayer) return;
     swapping = true;
     var oldFront = frontLayer;
-    growToFull(backLayer);                 // back is already playing clean at its start
+    growReveal(backLayer, dur);            // back is playing clean — grow it in from the corner
     frontLayer = backLayer; backLayer = null;
     frontSeg = (frontSeg + 1) % segs.length;
     backWarm = null;
@@ -847,7 +864,7 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
       try { if (oldFront && oldFront.wrap && oldFront.wrap.parentNode) oldFront.wrap.remove(); } catch (_) {}
       swapping = false;
       refit();
-    }, GROW_MS + 120);
+    }, Math.round(dur) + 150);
   }
 
   var controller = {
@@ -880,7 +897,7 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
   // poster simply dissolves once it's playing clean (no tiny-grow). The grow-in
   // tile is exclusively the just-in-time BACK layer that precedes each loop — so
   // a stuck/blocked cell shows the poster thumbnail, never a frozen mini tile.
-  frontLayer = makeLayer(1, false);
+  frontLayer = makeLayer(1);
   newPlayer(frontLayer, Math.max(0, segs[0].start - PREROLL)).then(function() {
     if (killed) return;
     capDuration();
@@ -927,24 +944,31 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
       killBack();
     }
 
-    // Spawn the JIT tile a few seconds before the loop point — held VISIBLE in
-    // the corner while it warms.
+    // Spawn the hidden, full-size warm-up tile a few seconds before the loop.
     if (!backLayer && t >= segEnd - SPAWN_LEAD && t < segEnd) {
-      dbg('spawn tile @', t.toFixed(1), 'segEnd', segEnd.toFixed(1));
+      dbg('spawn warm tile @', t.toFixed(1), 'segEnd', segEnd.toFixed(1));
       spawnBack(nextSeg);
     }
 
-    var ready  = backLayer && backLayer.ready && warmReady(backWarm);
-    var atLoop = t >= segEnd - 0.35;
+    // Once it's playing clean AND we're within the grow window before the loop,
+    // grow it in over the remaining time (so it finishes full ~0.3s before the
+    // front loops, covering the pause chrome). Gating to the window stops an
+    // early-finished warm-up from restarting the clip seconds too soon; while it
+    // waits it just keeps warming hidden.
+    if (backLayer && backLayer.ready && warmReady(backWarm)) {
+      var remaining = segEnd - t;
+      if (remaining <= GROW_MS / 1000 + 0.5) {
+        var dur = Math.max(400, Math.min(GROW_MS, (remaining - 0.3) * 1000));
+        dbg('grow-in @', t.toFixed(1), 'over', Math.round(dur), 'ms');
+        doSwap(dur);
+        return;
+      }
+    }
 
-    // Grow + swap AT the loop point (so the tile is on screen for the whole warm
-    // window first, then expands), as long as it's playing clean.
-    if (atLoop && ready) { dbg('grow+swap @', t.toFixed(1)); doSwap(); return; }
-
-    // Fallback: loop point reached but the tile isn't clean yet (slow link) —
-    // loop the front in place so playback stays continuous; the tile grows in on
-    // a later pass. Only this rare case still shows the old paused-chrome flash.
-    if (atLoop) {
+    // Fallback: reached the loop with no clean tile (slow link) — loop the front
+    // in place so playback stays continuous. Only this rare case still shows the
+    // old paused-chrome flash.
+    if (t >= segEnd - 0.2) {
       dbg('fallback loop — tile not ready @', t.toFixed(1));
       try { frontLayer.player.seekTo(seg.start, true); frontLayer.player.playVideo(); } catch (_) {}
     }
