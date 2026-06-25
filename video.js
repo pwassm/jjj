@@ -242,19 +242,23 @@ window.pauseCellVideo = function(cellId) {
   }
 };
 
-// ─── Corner-square probe (dev0483) ────────────────────────────────────────────
+// ─── Corner-square probe (dev0484) ────────────────────────────────────────────
 // Feasibility step 1 toward a JIT corner preview: pin a 50×50 black square to the
 // upper-left of a YT cell, shown ONLY during the final SAL_CORNER_PREEND seconds
-// of the current loop and hidden the instant the clip loops back to its start.
-// Called from inside each YT loop tick (single + buffered mounts) where the live
-// currentTime and active segment are already in hand. Untransformed sibling of the
-// iframe, so it stays in the true cell corner regardless of cover-fit zoom/pan.
+// before the cell's video LOOPS (i.e. the last segment's end) and hidden the
+// instant it loops back. Gated to the LAST segment so it does NOT light at every
+// intermediate multi-segment boundary. Called from inside each YT loop tick
+// (single + buffered mounts) with the live currentTime, the segs array and the
+// active index. The square is an untransformed sibling of the iframe, so it stays
+// in the true cell corner regardless of cover-fit zoom/pan.
 window.SAL_CORNER_PREEND = 4;   // seconds before the loop point to show the square
-window._salCornerProbe = function(hostEl, player, seg) {
+window._salCornerProbe = function(hostEl, player, segs, segIdx) {
   if (!hostEl) return;
   var show = false;
-  if (player && seg) {
-    try {
+  try {
+    // Only the final segment leads into the loop-around — ignore the others.
+    if (player && segs && segs.length && segIdx === segs.length - 1) {
+      var seg = segs[segIdx];
       var t = player.getCurrentTime();
       var segEnd = seg.start + seg.dur;
       // A still-uncapped full-video segment reads 99999 — fall back to the real
@@ -265,8 +269,8 @@ window._salCornerProbe = function(hostEl, player, seg) {
       }
       var remain = segEnd - t;
       show = (t >= 0 && remain > 0 && remain <= (window.SAL_CORNER_PREEND || 4));
-    } catch (_) {}
-  }
+    }
+  } catch (_) {}
   var sq = hostEl._salCornerSq;
   if (show) {
     if (!sq || !sq.isConnected) {
@@ -374,7 +378,7 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
             try {
               var t   = e.target.getCurrentTime();
               var seg = segs[segIdx];
-              window._salCornerProbe(hostEl, e.target, seg);
+              window._salCornerProbe(hostEl, e.target, segs, segIdx);
               if (t >= seg.start + seg.dur - 0.2) {
                 segIdx = (segIdx + 1) % segs.length;
                 e.target.seekTo(segs[segIdx].start, allowSeek);
@@ -395,7 +399,7 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
             try {
               var t   = e.target.getCurrentTime();
               var seg = segs[segIdx];
-              window._salCornerProbe(hostEl, e.target, seg);
+              window._salCornerProbe(hostEl, e.target, segs, segIdx);
               if (t >= seg.start + seg.dur - 0.2) {
                 segIdx = (segIdx + 1) % segs.length;
                 e.target.seekTo(segs[segIdx].start, allowSeek);
@@ -680,7 +684,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     var t;
     try { t = frontLayer.player.getCurrentTime(); } catch (_) { return; }
     var seg = segs[frontSeg];
-    window._salCornerProbe(hostEl, frontLayer.player, seg);
+    window._salCornerProbe(hostEl, frontLayer.player, segs, frontSeg);
     var segEnd = seg.start + seg.dur;
     var nextSeg = segs[(frontSeg + 1) % segs.length];
 
