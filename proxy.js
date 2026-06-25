@@ -43,6 +43,17 @@ const PORT = 8081;
 //   ALSO fails, surface a wall-class error ("login required …") instead of yt-dlp's
 //   raw "no video in this post" so the client's stop-at-first-wall actually fires
 //   (it was missing that string → batches kept hammering /p posts).
+// (dev0491) /ig/download IMAGE-POST FIX: yt-dlp extracts reels cookielessly (the
+//   video URL is in the page's ld+json) but falls through to Instagram's login-
+//   walled media API for photo /p/ posts → cookieless download fails on images
+//   while reels succeed ("P posts hit the login wall more than reels"). New
+//   igEmbedImageFallback: when cookieless yt-dlp yields no files for a /p/ (or /tv/)
+//   post, scrape the image URL(s) from the SAME cookieless embed page dev0460 uses
+//   for captions and download them directly — dodging the API wall. Photo posts
+//   only (skips reels/video posts so it never grabs a video's poster frame).
+//   Safe no-op: embed yields nothing → unchanged wall error. Embed serves a
+//   display-size image (often ~640–1080px) so it can be below yt-dlp's max res;
+//   it's a fallback for posts that would otherwise fail entirely.
 // (dev0460) yt-dlp META: when the Instagram extractor raises "There is no video in
 //   this post" (image-only /p/ posts) it discards the caption it fetched → enrich
 //   failed. streamYtdlpMeta now falls back to the cookieless /p/{id}/embed/captioned/
@@ -59,7 +70,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0474';
+const PROXY_BUILD = 'dev0491';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -492,6 +503,121 @@ function fetchIgEmbedMeta(url) {
     });
     req.on('error', () => resolve(null));
     req.setTimeout(15000, () => { req.destroy(); resolve(null); });
+  });
+}
+
+// (dev0491) Pull the post image URL(s) out of an IG embed/captioned page so a photo
+// /p/ post can be downloaded cookielessly when yt-dlp's login-walled image path
+// fails. Picks the highest-resolution candidate IG advertises on that page
+// (display_resources / display_url / the EmbeddedMediaImage srcset/src). Returns []
+// for video posts (so we never substitute a reel's poster frame) and when nothing
+// matches. The embed renders only the first item of a carousel, so this yields a
+// single URL in practice.
+function parseIgEmbedImages(html) {
+  if (!html) return [];
+  if (/"is_video"\s*:\s*true/i.test(html) || /<video[\s>]/i.test(html)) return [];   // video post → skip
+  const cand = [];   // { url, w }
+  const add = (u, w) => { if (u) cand.push({ url: decodeEntities(String(u).replace(/\\\//g, '/')), w: +w || 0 }); };
+  // Highest-res candidates: IG's display_resources [{src,config_width},…] (escaped).
+  const drM = html.match(/"display_resources"\s*:\s*\[([\s\S]*?)\]/);
+  if (drM) {
+    const re = /"src"\s*:\s*"([^"]+)"[^}]*?"config_width"\s*:\s*(\d+)/g;
+    let m; while ((m = re.exec(drM[1]))) add(m[1], m[2]);
+  }
+  const duM = html.match(/"display_url"\s*:\s*"([^"]+)"/);
+  if (duM) add(duM[1], 1080);
+  // The embedded media <img>: a srcset ("url 640w, url 1080w") then a plain src.
+  const ssM = html.match(/class="EmbeddedMediaImage"[^>]*\ssrcset="([^"]*)"/i);
+  if (ssM) ssM[1].split(',').forEach(part => { const mm = part.trim().match(/(\S+)\s+(\d+)w/); if (mm) add(mm[1], mm[2]); });
+  const imgM = html.match(/class="EmbeddedMediaImage"[^>]*\ssrc="([^"]+)"/i);
+  if (imgM) add(imgM[1], 0);
+  if (!cand.length) return [];
+  // Dedup by URL keeping the widest, then take the single widest URL overall.
+  const byUrl = new Map();
+  for (const c of cand) { const p = byUrl.get(c.url); if (!p || c.w > p.w) byUrl.set(c.url, c); }
+  const best = [...byUrl.values()].sort((a, b) => b.w - a.w)[0];
+  return best ? [best.url] : [];
+}
+
+// (dev0491) GET an image URL → write to destPath. Cookieless, fresh socket + short UA
+// + IG Referer (same recipe that beats the wall on the embed page); follows up to a
+// couple of redirect hops. Resolves true only on a 200 with a non-empty body.
+function igDownloadImage(fileUrl, destPath, referer, hops) {
+  return new Promise(resolve => {
+    if (hops == null) hops = 0;
+    let u; try { u = new URL(fileUrl); } catch (_) { resolve(false); return; }
+    if (u.protocol !== 'https:') { resolve(false); return; }
+    const opts = { agent: false, headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': referer || 'https://www.instagram.com/',
+      'Connection': 'close'
+    } };
+    const req = https.get(fileUrl, opts, r => {
+      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 3) {
+        r.resume();
+        igDownloadImage(new URL(r.headers.location, fileUrl).href, destPath, referer, hops + 1).then(resolve);
+        return;
+      }
+      if (r.statusCode !== 200) { r.resume(); resolve(false); return; }
+      let bytes = 0;
+      const ws = fs.createWriteStream(destPath);
+      r.on('data', c => { bytes += c.length; });
+      r.pipe(ws);
+      ws.on('finish', () => ws.close(() => resolve(bytes > 0)));
+      ws.on('error', () => resolve(false));
+      r.on('error', () => { try { ws.destroy(); } catch (_) {} resolve(false); });
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(20000, () => { req.destroy(); resolve(false); });
+  });
+}
+
+// (dev0491) Cookieless image-download fallback for photo /p/ (and /tv/) posts. Fetches
+// the embed page, parses the image URL(s), and writes each into tmpDir with the same
+// NNN.<ext> autonumber scheme igDownload()'s publish() expects. Resolves the list of
+// files written (empty → caller proceeds to its normal wall/cookie handling). Skips
+// reels entirely (no extra IG request) so a walled reel never yields a poster image.
+function igEmbedImageFallback(url, id, tmpDir) {
+  return new Promise(resolve => {
+    const m = IG_SHORTCODE_RE.exec(url || '');
+    if (!m || /\/reels?\//i.test(url)) { resolve([]); return; }   // photo posts only
+    const sc = m[1];
+    const permalink = 'https://www.instagram.com/p/' + sc + '/';
+    const opts = { agent: false, headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': permalink,
+      'Connection': 'close'
+    } };
+    let h = '';
+    const req = https.get(permalink + 'embed/captioned/', opts, r => {
+      if (r.statusCode !== 200) { r.resume(); resolve([]); return; }
+      r.setEncoding('utf8');
+      r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
+      r.on('end', () => {
+        const imgs = parseIgEmbedImages(h);
+        if (!imgs.length) { resolve([]); return; }
+        const written = [];
+        let i = 0;
+        const next = () => {
+          if (i >= imgs.length) { resolve(written); return; }
+          const idx = i++, iu = imgs[idx];
+          let ext = '.jpg';
+          try { const e = path.extname(new URL(iu).pathname); if (/^\.(jpe?g|png|webp)$/i.test(e)) ext = e; } catch (_) {}
+          const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
+          igDownloadImage(iu, dest, permalink).then(ok => {
+            if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
+            next();
+          });
+        };
+        next();
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.setTimeout(15000, () => { req.destroy(); resolve([]); });
   });
 }
 
@@ -1092,19 +1218,30 @@ function igDownload(req, res, origin) {
     // produced files (a carousel where one entry 404s) counts as success.
     run(false, (ok1, err1) => {
       if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
-      // (dev0459) Cookies disabled → a login-walled post just fails (no cookie retry).
-      if (!IG_USE_COOKIES) {
-        rmTmp();
-        console.warn('[ig/download] ' + id + ' failed (cookieless): ' + (err1 || 'yt-dlp failed'));
-        sendJson(res, 502, { ok: false, error: (err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
-        return;
-      }
-      wipeTmp();   // clear any partial cookieless output before the cookie retry
-      run(true, (ok2, err2) => {
-        if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), note: 'needed Firefox cookies' }, origin); return; }
-        rmTmp();
-        console.warn('[ig/download] ' + id + ' failed: ' + (err2 || err1));
-        sendJson(res, 502, { ok: false, error: (err2 || err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
+      wipeTmp();   // (dev0491) clear any partial cookieless output before the fallbacks
+      // (dev0491) Photo /p/ posts: yt-dlp login-walls cookieless image extraction
+      // (reels work; images don't). Recover the image straight from the cookieless
+      // embed page before declaring a wall or reaching for Firefox cookies.
+      igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
+        if (emImgs.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' recovered ' + tmpFiles().length + ' image(s) via cookieless embed');
+          sendJson(res, 200, { ok: true, files: publish(), note: 'via embed (cookieless; may be reduced resolution)' }, origin);
+          return;
+        }
+        wipeTmp();   // drop any half-written embed output before deciding
+        // (dev0459) Cookies disabled → a login-walled post just fails (no cookie retry).
+        if (!IG_USE_COOKIES) {
+          rmTmp();
+          console.warn('[ig/download] ' + id + ' failed (cookieless): ' + (err1 || 'yt-dlp failed'));
+          sendJson(res, 502, { ok: false, error: (err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
+          return;
+        }
+        run(true, (ok2, err2) => {
+          if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), note: 'needed Firefox cookies' }, origin); return; }
+          rmTmp();
+          console.warn('[ig/download] ' + id + ' failed: ' + (err2 || err1));
+          sendJson(res, 502, { ok: false, error: (err2 || err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
+        });
       });
     });
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
