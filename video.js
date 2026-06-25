@@ -710,6 +710,23 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
   var swapping = false, killed = false, loopTimer = null;
   var initWarm = null, initRevealed = false, backWarm = null;
   var layerSeq = 0;
+  // Whether a "0 99999" (whole-clip) segment has had its end clamped to the real
+  // video duration yet. getDuration() reads 0 until metadata loads (well after
+  // onReady), so we keep retrying every loop tick — until this succeeds the loop
+  // point is unknown and NO tile can be scheduled. This was the core bug: with
+  // segEnd stuck at 99999 the spawn condition never fired, so the JIT tile never
+  // appeared and the clip just ran to YouTube's own (pause-chrome) replay.
+  var durCapped = false;
+  function capDuration() {
+    if (durCapped) return;
+    var d = 0;
+    try { d = (frontLayer && frontLayer.player && frontLayer.player.getDuration) ? frontLayer.player.getDuration() : 0; } catch (_) {}
+    if (d > 0 && d < 99990) {
+      segs.forEach(function(s) { if (s.dur > d) s.dur = Math.max(1, d - s.start); });
+      durCapped = true;
+      dbg('duration capped to', d.toFixed(1), '→ segEnd', (segs[0].start + segs[0].dur).toFixed(1));
+    }
+  }
 
   // Scale that renders the (cell-sized, overflow-clipped) layer as a ~START_PX
   // tile pinned to the top-left corner. Falls back to a 200px cell assumption
@@ -859,16 +876,14 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
   };
   window.seeLearnVideoPlayers[cellId] = controller;
 
-  // Initial FRONT: warm hidden (tiny, behind the poster), grow-in when clean.
-  frontLayer = makeLayer(1, true);
-  newPlayer(frontLayer, Math.max(0, segs[0].start - PREROLL)).then(function(p) {
+  // Initial FRONT: mount FULL-SIZE behind the poster and warm hidden there; the
+  // poster simply dissolves once it's playing clean (no tiny-grow). The grow-in
+  // tile is exclusively the just-in-time BACK layer that precedes each loop — so
+  // a stuck/blocked cell shows the poster thumbnail, never a frozen mini tile.
+  frontLayer = makeLayer(1, false);
+  newPlayer(frontLayer, Math.max(0, segs[0].start - PREROLL)).then(function() {
     if (killed) return;
-    try {
-      var realDur = p.getDuration();
-      if (realDur > 0 && realDur < 99990) {
-        segs.forEach(function(s) { if (s.dur > realDur) s.dur = Math.max(1, realDur - s.start); });
-      }
-    } catch (_) {}
+    capDuration();
     initWarm = beginWarm(frontLayer, segs[0]);
     refitSoon();
   });
@@ -878,23 +893,32 @@ window.mountYouTubeClipJit = async function(hostEl, url, segsArg, isMuted, prero
     if (controller._gridPaused || controller._salPaused) return;
     if (!frontLayer || !frontLayer.ready || !initWarm) return;
 
-    // Phase 1 — reveal the very first front (grow in, dissolve poster).
+    // Phase 1 — reveal the very first front by dissolving the poster (full-size,
+    // no grow) once it's playing clean.
     if (!initRevealed) {
+      capDuration();   // keep retrying until metadata gives us the real duration
       if (warmReady(initWarm)) {
-        dbg('initial front revealed (grow-in)');
-        growToFull(frontLayer);
+        dbg('initial front revealed');
         requestAnimationFrame(function() { if (!killed) poster.style.opacity = '0'; });
-        setTimeout(function() { try { if (poster.parentNode) poster.remove(); } catch (_) {} }, GROW_MS + 250);
+        setTimeout(function() { try { if (poster.parentNode) poster.remove(); } catch (_) {} }, 320);
         initRevealed = true;
       }
       return;
     }
+
+    // The loop point isn't known until the real duration is read — keep trying.
+    capDuration();
 
     var t;
     try { t = frontLayer.player.getCurrentTime(); } catch (_) { return; }
     var seg = segs[frontSeg];
     var segEnd = seg.start + seg.dur;
     var nextSeg = segs[(frontSeg + 1) % segs.length];
+
+    // No verified loop point yet (whole-clip row whose duration hasn't loaded) —
+    // can't time a tile, so wait. Once capDuration() succeeds, segEnd shrinks to
+    // the real end and the spawn below starts firing.
+    if (!durCapped && seg.dur >= 99990) return;
 
     // Self-heal a tile that never came clean (error / very slow link) so it can
     // re-spawn next cycle instead of wedging the cell.
