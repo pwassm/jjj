@@ -216,6 +216,8 @@ window.stopCellVideoLoop = function(cellId) {
     clearInterval(window.seeLearnVideoTimers[cellId]);
     delete window.seeLearnVideoTimers[cellId];
   }
+  // (dev0488) Take this cell's JIT corner preview down with it.
+  if (window._salCornerStopCell) { try { window._salCornerStopCell(cellId); } catch (_) {} }
   if (window.seeLearnVideoPlayers[cellId] &&
       typeof window.seeLearnVideoPlayers[cellId].destroy === 'function') {
     try { window.seeLearnVideoPlayers[cellId].destroy(); } catch(e) {}
@@ -258,11 +260,62 @@ window.pauseCellVideo = function(cellId) {
 // Desktop-only (2nd iframe/cell is too heavy for mobile). Thin outline marks the
 // phase (green→blue→magenta) — a debug aid, easy to drop. _salCornerProbe gates the
 // lifecycle from each YT loop tick, only on the LAST segment (the real loop-around).
+//
+// (dev0488) Each corner is an ISOLATED instance LOCKED to one cell: it is keyed by
+// the cell id in window._salCorners, carries a hostEl back-pointer, re-anchors to
+// the cell's live rect every probe tick, and self-destructs if the cell is
+// unmounted. stopCellVideoLoop kills the owning cell's corner; gridCleanupPlayers
+// (_salCornerStopAll) kills them ALL when G closes — no corner outlives the grid.
 window.SAL_CORNER_PREEND     = 8;     // s before the loop to begin the corner warm
 window.SAL_CORNER_WARMMIN    = 200;   // warm box SMALLER side (px) — YT start-gate floor; lower to experiment
 window.SAL_CORNER_SHRINK     = 0.15;  // shrunk corner WIDTH as a fraction of cell width
 window.SAL_CORNER_MINPX      = 45;    // …but the shrunk smaller side never below this
 window.SAL_CORNER_EXPANDHOLD = 1800;  // ms to hold the expanded preview before teardown
+
+// ── Per-cell corner registry + teardown (dev0488) ─────────────────────────────
+// Every live corner is one isolated instance LOCKED to its cell: it is keyed by
+// the cell's id, carries a back-pointer to its host, and self-destructs the moment
+// that cell is unmounted. The registry lets us tear them ALL down when G closes so
+// no position:fixed box (they live on <body>, outside the cell) can outlive the
+// grid. The .sal-corner-box class is the belt-and-braces sweep target.
+window._salCorners = window._salCorners || {};
+
+// Canonical teardown — takes the state object directly so it works even if the
+// host's _salCorner slot was already cleared. Idempotent.
+window._salCornerStopState = function (st) {
+  if (!st || st.killed) {
+    // Still ensure a half-built/orphan box is gone.
+    if (st && st.box) { try { st.box.remove(); } catch (_) {} }
+    return;
+  }
+  st.killed = true;
+  if (st.expandTimer) { clearTimeout(st.expandTimer); st.expandTimer = null; }
+  try { if (st.player && st.player.destroy) st.player.destroy(); } catch (_) {}
+  try { if (st.box && st.box.parentNode) st.box.remove(); } catch (_) {}
+  try { if (st.hostEl && st.hostEl._salCorner === st) st.hostEl._salCorner = null; } catch (_) {}
+  if (st.cellId && window._salCorners[st.cellId] === st) delete window._salCorners[st.cellId];
+};
+
+// Stop the corner that belongs to ONE cell (by id). Called from stopCellVideoLoop
+// so a cell remount/teardown takes its corner with it.
+window._salCornerStopCell = function (cellId) {
+  if (cellId && window._salCorners[cellId]) window._salCornerStopState(window._salCorners[cellId]);
+};
+
+// Stop EVERY live corner — called from gridCleanupPlayers when G closes. Sweeps
+// the DOM for any straggler box as a final guard against bookkeeping gaps.
+window._salCornerStopAll = function () {
+  try {
+    Object.keys(window._salCorners).forEach(function (id) {
+      window._salCornerStopState(window._salCorners[id]);
+    });
+  } catch (_) {}
+  window._salCorners = {};
+  try {
+    var boxes = document.querySelectorAll('.sal-corner-box');
+    for (var i = 0; i < boxes.length; i++) { try { boxes[i].remove(); } catch (_) {} }
+  } catch (_) {}
+};
 
 // Size an iframe to COVER a BW×BH box assuming a 16:9 video (matches the grid's
 // cover-fit), centered; the box's overflow:hidden crops the excess. No black bars.
@@ -279,6 +332,19 @@ window._salCornerCoverFit = function(iframe, BW, BH) {
 
 window._salCornerProbe = function(hostEl, player, segs, segIdx, videoId) {
   if (!hostEl) return;
+  // ── Lock to this cell ──────────────────────────────────────────────────────
+  // A live corner must still belong to a connected, sized cell. If the cell was
+  // unmounted (grid re-render / G close) or collapsed, self-destruct rather than
+  // drift onto / over the wrong cell. Otherwise re-anchor the position:fixed box
+  // to the cell's LIVE viewport rect each tick so it stays glued through any
+  // scroll/reflow (fixes "slightly misplaced").
+  var st0 = hostEl._salCorner;
+  if (st0) {
+    if (st0.hostEl !== hostEl || !hostEl.isConnected) { window._salCornerStopState(st0); return; }
+    var r0 = hostEl.getBoundingClientRect();
+    if (!r0.width || !r0.height) { window._salCornerStopState(st0); return; }
+    if (st0.box) { st0.box.style.top = r0.top + 'px'; st0.box.style.left = r0.left + 'px'; }
+  }
   var inWindow = false;
   try {
     // Only the final segment leads into the loop-around — ignore the others.
@@ -311,6 +377,9 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
   if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return;
   var rect = hostEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
+  // Clear any stale/orphan corner still registered under this cell id before we
+  // spawn a fresh one (one corner per cell, always).
+  if (hostEl.id) window._salCornerStopCell(hostEl.id);
 
   var cellW = rect.width, cellH = rect.height;
   var WM = window.SAL_CORNER_WARMMIN || 200;
@@ -320,11 +389,15 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
   if (cellW <= cellH) { warmW = WM; warmH = Math.round(WM * cellH / cellW); }
   else { warmH = WM; warmW = Math.round(WM * cellW / cellH); }
 
+  // cellId + hostEl back-pointer = this corner's lock to its one cell.
   var st = { player: null, phase: 'warm', killed: false, box: null, poster: null,
+             cellId: hostEl.id || null, hostEl: hostEl, videoId: videoId,
              cellW: cellW, cellH: cellH, warmW: warmW, warmH: warmH, warmMin: WM, expandTimer: null };
   hostEl._salCorner = st;
+  if (hostEl.id) window._salCorners[hostEl.id] = st;   // register for group teardown
 
   var box = document.createElement('div');
+  box.className = 'sal-corner-box';
   box.style.cssText = 'position:fixed;top:' + rect.top + 'px;left:' + rect.left + 'px;'
     + 'width:' + warmW + 'px;height:' + warmH + 'px;z-index:2147483600;pointer-events:none;'
     + 'overflow:hidden;transform-origin:0 0;transition:transform 0.35s ease;outline:1.5px solid #0f0;';
@@ -401,13 +474,7 @@ window._salCornerExpand = function(hostEl) {
 };
 
 window._salCornerStop = function(hostEl) {
-  var st = hostEl && hostEl._salCorner;
-  if (!st) return;
-  st.killed = true;
-  if (st.expandTimer) { clearTimeout(st.expandTimer); st.expandTimer = null; }
-  try { if (st.player && st.player.destroy) st.player.destroy(); } catch (_) {}
-  try { if (st.box && st.box.parentNode) st.box.remove(); } catch (_) {}
-  hostEl._salCorner = null;
+  window._salCornerStopState(hostEl && hostEl._salCorner);
 };
 
 // ─── Multi-segment playback ───────────────────────────────────────────────────
