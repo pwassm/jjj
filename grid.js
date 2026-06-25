@@ -146,9 +146,6 @@ function gridCleanupPlayers() {
     if (window.stopCellVideoLoop) window.stopCellVideoLoop(id);
   });
   _gridPlayers = {};
-  // (dev0488) Sweep every JIT corner preview — they live position:fixed on <body>
-  // (outside any cell), so closing G must tear them all down explicitly.
-  if (window._salCornerStopAll) { try { window._salCornerStopAll(); } catch (_) {} }
 }
 
 // (zip0144) Scale an HTML/text cell preview so the entire ftext is
