@@ -242,6 +242,46 @@ window.pauseCellVideo = function(cellId) {
   }
 };
 
+// ─── Corner-square probe (dev0483) ────────────────────────────────────────────
+// Feasibility step 1 toward a JIT corner preview: pin a 50×50 black square to the
+// upper-left of a YT cell, shown ONLY during the final SAL_CORNER_PREEND seconds
+// of the current loop and hidden the instant the clip loops back to its start.
+// Called from inside each YT loop tick (single + buffered mounts) where the live
+// currentTime and active segment are already in hand. Untransformed sibling of the
+// iframe, so it stays in the true cell corner regardless of cover-fit zoom/pan.
+window.SAL_CORNER_PREEND = 4;   // seconds before the loop point to show the square
+window._salCornerProbe = function(hostEl, player, seg) {
+  if (!hostEl) return;
+  var show = false;
+  if (player && seg) {
+    try {
+      var t = player.getCurrentTime();
+      var segEnd = seg.start + seg.dur;
+      // A still-uncapped full-video segment reads 99999 — fall back to the real
+      // duration (may have arrived after onReady) so the window lands at the end.
+      if (segEnd >= 99990 && player.getDuration) {
+        var rd = player.getDuration();
+        if (rd > 0 && rd < 99990) segEnd = rd;
+      }
+      var remain = segEnd - t;
+      show = (t >= 0 && remain > 0 && remain <= (window.SAL_CORNER_PREEND || 4));
+    } catch (_) {}
+  }
+  var sq = hostEl._salCornerSq;
+  if (show) {
+    if (!sq || !sq.isConnected) {
+      sq = document.createElement('div');
+      sq.style.cssText = 'position:absolute;top:0;left:0;width:50px;height:50px;'
+        + 'background:#000;z-index:2147483000;pointer-events:none;';
+      hostEl.appendChild(sq);
+      hostEl._salCornerSq = sq;
+    }
+    sq.style.display = 'block';
+  } else if (sq) {
+    sq.style.display = 'none';
+  }
+};
+
 // ─── Multi-segment playback ───────────────────────────────────────────────────
 // segsArg: optional array of {start,dur}. If omitted, uses legacy startSec+dur.
 // Plays each segment in order then loops back to first.
@@ -334,6 +374,7 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
             try {
               var t   = e.target.getCurrentTime();
               var seg = segs[segIdx];
+              window._salCornerProbe(hostEl, e.target, seg);
               if (t >= seg.start + seg.dur - 0.2) {
                 segIdx = (segIdx + 1) % segs.length;
                 e.target.seekTo(segs[segIdx].start, allowSeek);
@@ -354,6 +395,7 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
             try {
               var t   = e.target.getCurrentTime();
               var seg = segs[segIdx];
+              window._salCornerProbe(hostEl, e.target, seg);
               if (t >= seg.start + seg.dur - 0.2) {
                 segIdx = (segIdx + 1) % segs.length;
                 e.target.seekTo(segs[segIdx].start, allowSeek);
@@ -638,6 +680,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     var t;
     try { t = frontLayer.player.getCurrentTime(); } catch (_) { return; }
     var seg = segs[frontSeg];
+    window._salCornerProbe(hostEl, frontLayer.player, seg);
     var segEnd = seg.start + seg.dur;
     var nextSeg = segs[(frontSeg + 1) % segs.length];
 
