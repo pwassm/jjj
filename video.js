@@ -252,11 +252,15 @@ window.pauseCellVideo = function(cellId) {
 //            (no letterbox bars), a thumbnail POSTER masking the black until it
 //            paints. position:fixed on <body> at the cell's screen rect so it's
 //            unclipped (cells are overflow:hidden) — best chance at YT's gate.
+//            It seeks to (segStart − PREEND) and plays, so it burns off YT's startup
+//            chrome AND rolls forward to land on segStart right as the main loops.
 //   corner — the instant it reaches PLAYING, transform:scale down to ~SHRINK of the
 //            cell width (poster fades out). It plays here a while (YT eventually
 //            re-pauses small players — that's fine, the gate is only at START).
-//   expand — at the loop, scale UP to fill the cell, hold SAL_CORNER_EXPANDHOLD ms
-//            (masking the main cell's re-buffer flash), then tear down + re-warm.
+//   expand — at the loop, scale UP to fill the cell — WITHOUT re-seeking, so the
+//            frame that grows in is wherever it naturally reached (≈segStart, no
+//            pause mark) — hold SAL_CORNER_EXPANDHOLD ms (masking the main cell's
+//            re-buffer flash), then tear down + re-warm.
 // Desktop-only (2nd iframe/cell is too heavy for mobile). Thin outline marks the
 // phase (green→blue→magenta) — a debug aid, easy to drop. _salCornerProbe gates the
 // lifecycle from each YT loop tick, only on the LAST segment (the real loop-around).
@@ -266,7 +270,7 @@ window.pauseCellVideo = function(cellId) {
 // the cell's live rect every probe tick, and self-destructs if the cell is
 // unmounted. stopCellVideoLoop kills the owning cell's corner; gridCleanupPlayers
 // (_salCornerStopAll) kills them ALL when G closes — no corner outlives the grid.
-window.SAL_CORNER_PREEND     = 8;     // s before the loop to begin the corner warm
+window.SAL_CORNER_PREEND     = 4;     // s before the loop to begin warming = the pre-roll LEAD. Corner warms from (segStart − this) so it arrives AT segStart exactly when the main loops.
 window.SAL_CORNER_WARMMIN    = 200;   // warm box SMALLER side (px) — YT start-gate floor; lower to experiment
 window.SAL_CORNER_SHRINK     = 0.15;  // shrunk corner WIDTH as a fraction of cell width
 window.SAL_CORNER_MINPX      = 45;    // …but the shrunk smaller side never below this
@@ -389,9 +393,18 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
   if (cellW <= cellH) { warmW = WM; warmH = Math.round(WM * cellH / cellW); }
   else { warmH = WM; warmW = Math.round(WM * cellW / cellH); }
 
+  // Warm-from point: start the corner LEAD seconds BEFORE the segment start, so it
+  // burns off YT's startup chrome AND plays forward to land exactly on segStart at
+  // the moment the main cell loops (PREEND s from now). We never re-seek at expand,
+  // so wherever it has naturally reached is what grows in — no pause mark. (A 0-start
+  // full-video loop can't pre-roll before 0, so it clamps and lands a hair late.)
+  var LEAD = window.SAL_CORNER_PREEND || 4;
+  var warmFrom = Math.max(0, (startSec || 0) - LEAD);
+
   // cellId + hostEl back-pointer = this corner's lock to its one cell.
   var st = { player: null, phase: 'warm', killed: false, box: null, poster: null,
              cellId: hostEl.id || null, hostEl: hostEl, videoId: videoId,
+             segStart: startSec || 0, warmFrom: warmFrom,
              cellW: cellW, cellH: cellH, warmW: warmW, warmH: warmH, warmMin: WM, expandTimer: null };
   hostEl._salCorner = st;
   if (hostEl.id) window._salCorners[hostEl.id] = st;   // register for group teardown
@@ -424,7 +437,7 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
     videoId: videoId, host: _ytHost, width: warmW, height: warmH,
     playerVars: {
       autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0,
-      modestbranding: 1, playsinline: 1, start: Math.floor(startSec || 0),
+      modestbranding: 1, playsinline: 1, start: Math.floor(warmFrom),
       iv_load_policy: 3, cc_load_policy: 0,
       origin: window.location.origin || window.location.hostname || 'localhost'
     },
@@ -432,7 +445,7 @@ window._salCornerStart = function(hostEl, videoId, startSec) {
       onReady: function(e) {
         if (st.killed) { try { e.target.destroy(); } catch (_) {} return; }
         try { e.target.mute(); } catch (_) {}          // muted = required for autoplay
-        try { e.target.seekTo(startSec || 0, true); } catch (_) {}
+        try { e.target.seekTo(warmFrom, true); } catch (_) {}   // LEAD s before segStart → arrives at segStart by the loop
         try { e.target.playVideo(); } catch (_) {}
         // Cover-fit the freshly-created iframe so the video fills the cell-shaped box.
         try { var ifr = box.querySelector('iframe'); if (ifr) window._salCornerCoverFit(ifr, warmW, warmH); } catch (_) {}
