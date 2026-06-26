@@ -775,8 +775,12 @@
     // action + N/total, cookie tally + cap, running speed, and the pacing countdown.
     const fmtSpeed = () => (done ? `~${((Date.now() - t0) / 1000 / done).toFixed(1)}s/item` : '');
     const fmtClock = ms => { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + pad2(s % 60); };
-    // (dev0459) Cookies are off — reassurance line confirms the account is untouched.
-    const cookieSoFar = () => `🍪 cookies off — your IG account is never used`;
+    // (dev0495) Live-accurate cookie line: enrich + video downloads stay cookieless
+    // (cookieUsed never moves), but a gallery-dl image carousel uses Firefox cookies,
+    // so reflect the running tally instead of a blanket "cookies off".
+    const cookieSoFar = () => cookieUsed
+      ? `🍪 Firefox cookies used on ${cookieUsed} so far`
+      : `🍪 cookieless so far — your IG login is not used`;
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
     for (const id of ids) {
       if (batchAbort) break;
@@ -885,7 +889,7 @@
       applyAndRender();
     }
     try {
-      if (single) igToast('⏳ Downloading ' + r.id + '…\n🍪 cookieless only — your IG login is never used\nmax res — can take a bit', 12000);
+      if (single) igToast('⏳ Downloading ' + r.id + '…\n🍪 cookieless for video; image carousels use Firefox cookies (gallery-dl)\nmax res — can take a bit', 12000);
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r) })
@@ -906,10 +910,14 @@
         const n = r.localFiles.length;
         const fileLine = n > 1 ? n + ' files (carousel)\n' + (r.localFiles[0] || '') + ' …'
                                : (r.localFiles[0] || '');
-        igToast('✓ downloaded ' + r.id
-          + '\n🍪 cookieless only — your IG login was not used'
-          + (j.viaEmbed ? '\n📐 via embed page — may be reduced resolution' : '')
-          + '\n' + fileLine, 3500);
+        // (dev0495) Honest cookie line: gallery-dl image carousels DO use Firefox
+        // cookies (IG login-walls them cookieless); video/yt-dlp + embed stay cookieless.
+        const cookieLine = j.usedCookies
+          ? ('\n🍪 Firefox cookies used' + (j.viaGalleryDl ? ' — full image carousel via gallery-dl' : ''))
+          : '\n🍪 cookieless — your IG login was not used';
+        igToast('✓ downloaded ' + r.id + cookieLine
+          + (j.viaEmbed ? '\n📐 via embed page — first image only' : '')
+          + '\n' + fileLine, 3800);
       }
       return true;
     } catch (e) {
@@ -933,10 +941,10 @@
     if (!confirm(`Download ${todo.length} item(s) from ${authLine}\nat max resolution into ig_media/ ?`
       + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '') + `\n\n`
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
-      + `• Cookieless only (never uses your IG login); auto-stops at the first login-walled post (re-run to continue).\n`
+      + `• Video carousels download cookieless. IMAGE carousels use your Firefox cookies (gallery-dl) — IG login-walls those cookieless. Auto-stops at the first cookie use (re-run to continue).\n`
       + `• Press ⏹ Stop any time.`)) return;
     await runBatch('Downloading', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
-      '🍪 cookieless only — never uses your Firefox/IG login');
+      '🍪 cookieless for video — image carousels use Firefox cookies (gallery-dl)');
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────

@@ -43,6 +43,12 @@ const PORT = 8081;
 //   ALSO fails, surface a wall-class error ("login required …") instead of yt-dlp's
 //   raw "no video in this post" so the client's stop-at-first-wall actually fires
 //   (it was missing that string → batches kept hammering /p posts).
+// (dev0495) /ig/download adds a gallery-dl IMAGE-carousel net: yt-dlp fetches NO IG
+//   still images (video tool → 0 entries on a photo post), so an image-only /p only
+//   ever returned the embed's first picture. gallery-dl (new C:\Special\gallery-dl\
+//   gallery-dl.exe, +feature 'gallerydl') pulls the WHOLE carousel at full res, tried
+//   after yt-dlp and before the embed last resort. IG login-walls gallery-dl
+//   cookielessly, so it uses Firefox cookies (usedCookies:true, honest to the client).
 // (dev0494) /ig/download REVERTS dev0493's embed-first for /p — it was a regression:
 //   cookieless yt-dlp DOES pull the full carousel as MP4 at max res (verified live:
 //   DL9ttujtjT4→2 mp4s, DXBzATkDVQh→7 mp4s), so embed-first wrongly handed back a
@@ -89,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0494';
+const PROXY_BUILD = 'dev0495';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -105,6 +111,15 @@ const IG_USE_COOKIES = false;
 // because cookieless yt-dlp already pulls the full MP4 carousel for the tested posts —
 // turn it on only if specific posts genuinely wall cookielessly. Enrich stays cookieless.
 const IG_DOWNLOAD_USE_COOKIES = false;
+
+// (dev0495) gallery-dl image-carousel net for image-only /p posts (yt-dlp is a video
+// tool and fetches NO IG still images, so a photo carousel only yielded the embed's
+// first picture). gallery-dl grabs the whole carousel at full res, but IG login-walls
+// it cookielessly, so it always uses Firefox cookies (the user opted in for best /p
+// downloads). Set IG_GALLERYDL=false to disable. Standalone exe, no Python needed —
+// download with: Invoke-WebRequest <release>/gallery-dl.exe -OutFile the path below.
+const IG_GALLERYDL = true;
+const GALLERY_DL = 'C:\\Special\\gallery-dl\\gallery-dl.exe';
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -655,6 +670,32 @@ function igEmbedImageFallback(url, id, tmpDir) {
       };
       next();
     });
+  });
+}
+
+// (dev0495) Download EVERY image of an IG photo carousel with gallery-dl, straight into
+// tmpDir as ordered 001.jpg, 002.jpg … (the same autonumber scheme igDownload's
+// publish() expects). Always uses Firefox cookies because IG redirects gallery-dl to
+// the login page cookielessly. Resolves the basenames written (empty → caller falls
+// through to the embed last resort). A watchdog kills a hung process.
+function galleryDlImages(url, tmpDir) {
+  return new Promise(resolve => {
+    if (!IG_GALLERYDL) { resolve([]); return; }
+    const args = ['-D', tmpDir, '--no-part', '-f', '{num:>03}.{extension}',
+                  '--cookies-from-browser', 'firefox', '--', url];
+    let proc;
+    try { proc = spawn(GALLERY_DL, args, { windowsHide: true }); }
+    catch (_) { resolve([]); return; }
+    let done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      let files = [];
+      try { files = fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) {}
+      resolve(files);
+    };
+    const watchdog = setTimeout(() => { try { proc.kill(); } catch (_) {} }, 180000);
+    proc.on('error', () => { clearTimeout(watchdog); finish(); });
+    proc.on('close', () => { clearTimeout(watchdog); finish(); });
   });
 }
 
@@ -1275,21 +1316,38 @@ function igDownload(req, res, origin) {
       wipeTmp();
       igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
         if (emImgs.length && tmpFiles().length) {
-          console.log('[ig/download] ' + id + ' last-resort cookieless embed image (yt-dlp got nothing — likely throttled)');
+          console.log('[ig/download] ' + id + ' last-resort cookieless embed image (gallery-dl got nothing too)');
           sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false,
-            note: 'via embed — first image only, no video (yt-dlp got nothing; re-run later for the full MP4 carousel)' }, origin);
+            note: 'via embed — first image only (gallery-dl got nothing; re-run later for the full carousel)' }, origin);
         } else { fail502(err); }
+      });
+    }
+    // (dev0495) gallery-dl IMAGE-carousel net for photo posts. yt-dlp doesn't fetch IG
+    // still images (video tool → 0 entries), so an image-only /p only ever yielded the
+    // embed's first picture. gallery-dl pulls the WHOLE carousel at full res — but IG
+    // login-walls it cookielessly (redirects to /accounts/login/), so it MUST use the
+    // user's Firefox cookies (opted in; Firefox is logged into IG). Tried after yt-dlp,
+    // before the embed last resort. usedCookies:true is HONEST so the client reports it.
+    function galleryDlOrEmbed(err) {
+      if (!photoPost || !IG_GALLERYDL) { embedRescueOr502(err); return; }
+      wipeTmp();
+      galleryDlImages(url, tmpDir).then(files => {
+        if (files.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' image(s) via gallery-dl (Firefox cookies)');
+          sendJson(res, 200, { ok: true, files: publish(), viaGalleryDl: true, usedCookies: true,
+            note: 'full image carousel via gallery-dl (Firefox cookies — image posts are login-walled cookieless)' }, origin);
+        } else { embedRescueOr502(err); }
       });
     }
     run(false, (ok1, err1) => {
       if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
       // (dev0494) Download-only cookie net (separate from enrich's IG_USE_COOKIES):
       // cookieless yt-dlp came back empty → try Firefox cookies if the user opted in.
-      if (!IG_DOWNLOAD_USE_COOKIES) { embedRescueOr502(err1); return; }
+      if (!IG_DOWNLOAD_USE_COOKIES) { galleryDlOrEmbed(err1); return; }
       wipeTmp();   // clear any partial cookieless output before the cookie retry
       run(true, (ok2, err2) => {
         if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }
-        embedRescueOr502(err2 || err1);
+        galleryDlOrEmbed(err2 || err1);
       });
     });
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
@@ -1313,7 +1371,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl'] }));
     return;
   }
 
