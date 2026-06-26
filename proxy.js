@@ -43,6 +43,14 @@ const PORT = 8081;
 //   ALSO fails, surface a wall-class error ("login required …") instead of yt-dlp's
 //   raw "no video in this post" so the client's stop-at-first-wall actually fires
 //   (it was missing that string → batches kept hammering /p posts).
+// (dev0493) /ig/download PHOTO /p posts now go EMBED-FIRST (was: cookieless yt-dlp
+//   first, embed only as fallback). yt-dlp's cookieless image path is reliably login-
+//   walled, so trying it first per item wasted ~5s on a known wall AND doubled IG
+//   request volume (walled yt-dlp + embed) → in a batch that accelerated IG's IP-
+//   throttle until the embed call (fine in isolation) also failed = the "P won't
+//   download" batch failures. Now: embed first (~1440px, ~2s, 1 request), yt-dlp only
+//   if the embed misses; + one retry on a throttled embed fetch. Reels unchanged
+//   (yt-dlp first — embed has no video). Verified end-to-end against the real posts.
 // (dev0492) /ig/download now returns EXPLICIT usedCookies/viaEmbed flags so the
 //   client stops misreading the dev0491 embed rescue's human `note` as a Firefox-
 //   cookie use (which falsely tripped "cookie used" + the COOKIE_CAP batch auto-stop
@@ -74,7 +82,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0492';
+const PROXY_BUILD = 'dev0493';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -596,32 +604,41 @@ function igEmbedImageFallback(url, id, tmpDir) {
       'Referer': permalink,
       'Connection': 'close'
     } };
-    let h = '';
-    const req = https.get(permalink + 'embed/captioned/', opts, r => {
-      if (r.statusCode !== 200) { r.resume(); resolve([]); return; }
-      r.setEncoding('utf8');
-      r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
-      r.on('end', () => {
-        const imgs = parseIgEmbedImages(h);
-        if (!imgs.length) { resolve([]); return; }
-        const written = [];
-        let i = 0;
-        const next = () => {
-          if (i >= imgs.length) { resolve(written); return; }
-          const idx = i++, iu = imgs[idx];
-          let ext = '.jpg';
-          try { const e = path.extname(new URL(iu).pathname); if (/^\.(jpe?g|png|webp)$/i.test(e)) ext = e; } catch (_) {}
-          const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
-          igDownloadImage(iu, dest, permalink).then(ok => {
-            if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
-            next();
-          });
-        };
-        next();
+    // (dev0493) ONE retry on a non-200/error/timeout embed fetch. IG transiently
+    // throttles the embed endpoint during a batch (a fresh request a beat later
+    // usually returns 200); without this a single throttled GET failed the whole
+    // download. `settled` makes each attempt fire its callback exactly once.
+    function getHtml(triesLeft, cb) {
+      let settled = false, h = '';
+      const fail = () => { if (settled) return; settled = true; if (triesLeft > 0) setTimeout(() => getHtml(triesLeft - 1, cb), 1300); else cb(''); };
+      const ok = v => { if (settled) return; settled = true; cb(v); };
+      const req = https.get(permalink + 'embed/captioned/', opts, r => {
+        if (r.statusCode !== 200) { r.resume(); fail(); return; }
+        r.setEncoding('utf8');
+        r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
+        r.on('end', () => ok(h));
       });
+      req.on('error', fail);
+      req.setTimeout(15000, () => { req.destroy(); fail(); });
+    }
+    getHtml(1, h => {
+      const imgs = parseIgEmbedImages(h);
+      if (!imgs.length) { resolve([]); return; }
+      const written = [];
+      let i = 0;
+      const next = () => {
+        if (i >= imgs.length) { resolve(written); return; }
+        const idx = i++, iu = imgs[idx];
+        let ext = '.jpg';
+        try { const e = path.extname(new URL(iu).pathname); if (/^\.(jpe?g|png|webp)$/i.test(e)) ext = e; } catch (_) {}
+        const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
+        igDownloadImage(iu, dest, permalink).then(ok => {
+          if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
+          next();
+        });
+      };
+      next();
     });
-    req.on('error', () => resolve([]));
-    req.setTimeout(15000, () => { req.destroy(); resolve([]); });
   });
 }
 
@@ -1220,22 +1237,11 @@ function igDownload(req, res, origin) {
     // (dev0434) Cookieless FIRST (keeps the account out of it); only fall back to
     // Firefox cookies if the content is login-walled. A nonzero exit that STILL
     // produced files (a carousel where one entry 404s) counts as success.
-    run(false, (ok1, err1) => {
-      if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
-      wipeTmp();   // (dev0491) clear any partial cookieless output before the fallbacks
-      // (dev0491) Photo /p/ posts: yt-dlp login-walls cookieless image extraction
-      // (reels work; images don't). Recover the image straight from the cookieless
-      // embed page before declaring a wall or reaching for Firefox cookies.
-      igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
-        if (emImgs.length && tmpFiles().length) {
-          console.log('[ig/download] ' + id + ' recovered ' + tmpFiles().length + ' image(s) via cookieless embed');
-          // (dev0492) `viaEmbed` + `usedCookies:false` are EXPLICIT so the client
-          // doesn't misread the human `note` as a Firefox-cookie use (the old client
-          // flagged any `note` as a cookie → false "cookie used" + batch auto-stop).
-          sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false, note: 'via embed (cookieless; may be reduced resolution)' }, origin);
-          return;
-        }
-        wipeTmp();   // drop any half-written embed output before deciding
+    // (dev0492) Cookieless yt-dlp, then Firefox cookies only if IG_USE_COOKIES.
+    // This is the path reels use (and the fallback for /p when the embed misses).
+    function ytdlpPath() {
+      run(false, (ok1, err1) => {
+        if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
         // (dev0459) Cookies disabled → a login-walled post just fails (no cookie retry).
         if (!IG_USE_COOKIES) {
           rmTmp();
@@ -1243,6 +1249,7 @@ function igDownload(req, res, origin) {
           sendJson(res, 502, { ok: false, error: (err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
           return;
         }
+        wipeTmp();   // clear any partial cookieless output before the cookie retry
         run(true, (ok2, err2) => {
           if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }
           rmTmp();
@@ -1250,7 +1257,33 @@ function igDownload(req, res, origin) {
           sendJson(res, 502, { ok: false, error: (err2 || err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
         });
       });
-    });
+    }
+
+    // (dev0493) PHOTO /p/ (and /tv/) posts → EMBED-FIRST. yt-dlp's cookieless image
+    // extraction is reliably login-walled now, so trying it first per item burns ~5s
+    // on a known wall AND fires a 2nd IG request (walled yt-dlp + embed) — in a batch
+    // that doubled volume accelerates IG's IP-throttle until even the embed (which
+    // works in isolation) starts failing. The embed page is the path that actually
+    // works cookielessly for photos (~1440px), so hit it first; fall back to yt-dlp
+    // only if the embed yields nothing (a /p VIDEO post → parseIgEmbedImages returns
+    // [] via its is_video guard → yt-dlp still gets the video). Reels stay yt-dlp-first
+    // (the embed page carries no video). Carousels: the embed gives item 1 only.
+    const photoPost = IG_SHORTCODE_RE.test(url) && !/\/reels?\//i.test(url);
+    if (photoPost) {
+      igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
+        if (emImgs.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' image(s) via cookieless embed (primary for /p)');
+          // `viaEmbed` + `usedCookies:false` are EXPLICIT so the client doesn't misread
+          // the human `note` as a Firefox-cookie use (dev0492).
+          sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false, note: 'via embed (cookieless; may be reduced resolution)' }, origin);
+          return;
+        }
+        wipeTmp();   // embed missed (video post, private/deleted, or threw) → let yt-dlp try
+        ytdlpPath();
+      });
+    } else {
+      ytdlpPath();
+    }
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
