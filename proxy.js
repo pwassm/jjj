@@ -43,6 +43,10 @@ const PORT = 8081;
 //   ALSO fails, surface a wall-class error ("login required …") instead of yt-dlp's
 //   raw "no video in this post" so the client's stop-at-first-wall actually fires
 //   (it was missing that string → batches kept hammering /p posts).
+// (dev0492) /ig/download now returns EXPLICIT usedCookies/viaEmbed flags so the
+//   client stops misreading the dev0491 embed rescue's human `note` as a Firefox-
+//   cookie use (which falsely tripped "cookie used" + the COOKIE_CAP batch auto-stop
+//   on the very first /p photo post). Embed downloads are cookieless — flagged so.
 // (dev0491) /ig/download IMAGE-POST FIX: yt-dlp extracts reels cookielessly (the
 //   video URL is in the page's ld+json) but falls through to Instagram's login-
 //   walled media API for photo /p/ posts → cookieless download fails on images
@@ -70,7 +74,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0491';
+const PROXY_BUILD = 'dev0492';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1225,7 +1229,10 @@ function igDownload(req, res, origin) {
       igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
         if (emImgs.length && tmpFiles().length) {
           console.log('[ig/download] ' + id + ' recovered ' + tmpFiles().length + ' image(s) via cookieless embed');
-          sendJson(res, 200, { ok: true, files: publish(), note: 'via embed (cookieless; may be reduced resolution)' }, origin);
+          // (dev0492) `viaEmbed` + `usedCookies:false` are EXPLICIT so the client
+          // doesn't misread the human `note` as a Firefox-cookie use (the old client
+          // flagged any `note` as a cookie → false "cookie used" + batch auto-stop).
+          sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false, note: 'via embed (cookieless; may be reduced resolution)' }, origin);
           return;
         }
         wipeTmp();   // drop any half-written embed output before deciding
@@ -1237,7 +1244,7 @@ function igDownload(req, res, origin) {
           return;
         }
         run(true, (ok2, err2) => {
-          if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), note: 'needed Firefox cookies' }, origin); return; }
+          if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }
           rmTmp();
           console.warn('[ig/download] ' + id + ' failed: ' + (err2 || err1));
           sendJson(res, 502, { ok: false, error: (err2 || err1 || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);

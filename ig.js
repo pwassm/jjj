@@ -894,8 +894,11 @@
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       r.localFiles = j.files || [];
       if (r.status !== 'promoted') r.status = 'downloaded';
-      // The proxy only tags the response when it had to fall back to Firefox cookies.
-      lastOpInfo = j.note ? 'Firefox cookies used' : 'No firefox cookies used';
+      // (dev0492) Cookie use is now an EXPLICIT proxy flag — NOT "any note present".
+      // The dev0491 embed-image rescue is cookieless but carries a `note`; the old
+      // `j.note ? cookies` test misread it as a Firefox-cookie use → false "cookie
+      // used" toast + COOKIE_CAP auto-stop on the first /p post.
+      lastOpInfo = j.usedCookies ? 'Firefox cookies used' : 'No firefox cookies used';
       sel.delete(r.id);            // (dev0438) uncheck on every successful download
       dirty = true;
       if (single) {
@@ -905,6 +908,7 @@
                                : (r.localFiles[0] || '');
         igToast('✓ downloaded ' + r.id
           + '\n🍪 cookieless only — your IG login was not used'
+          + (j.viaEmbed ? '\n📐 via embed page — may be reduced resolution' : '')
           + '\n' + fileLine, 3500);
       }
       return true;
