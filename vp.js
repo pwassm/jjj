@@ -4227,11 +4227,9 @@ window._executeHotkey = function(key) {
     return;
   }
   
-  // M = Open Main Menu (hamburger)
-  if (key === 'm') {
-    toggleHM();
-    return;
-  }
+  // (dev0497) The bare-M hamburger-menu hotkey was removed (rarely used, and it
+  // collided with the I screen's m = select-top-18). The hamburger is still
+  // reachable by clicking its button. Use the toolbar to open the menu.
 
   // (zip0155) H = Toggle Help. Works from any screen and in any mode.
   // Was previously only wired through the table-only handler at line ~4886
