@@ -339,6 +339,28 @@
 #igModal button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:6px;
   padding:7px 14px;cursor:pointer;font:600 12px system-ui}
 #igModal button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
+/* (dev0500) Moveable PORTRAIT media-preview window — plays the focused row's
+   downloaded ig_media asset. Same idea/size as the T-screen row-preview pane
+   (core.js) but portrait (IG = 9:16). Drag it by its title bar. z above the
+   table/drawer, below the toasts (40000+). */
+#igPreview{position:fixed;width:320px;z-index:100;background:#000;border:1px solid #4df;
+  border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.78);overflow:hidden;
+  display:flex;flex-direction:column}
+#igPvBar{display:flex;align-items:center;gap:6px;padding:4px 6px;background:#0a1426;
+  border-bottom:1px solid #1a2a4a;cursor:move;user-select:none;flex:0 0 auto;touch-action:none}
+#igPvNav{display:flex;align-items:center;gap:2px}
+#igPvNav button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:4px;
+  padding:0 7px;font-size:14px;line-height:1.7;cursor:pointer}
+#igPvNav button:hover{background:#2b3543}
+#igPvNav .ct{font:11px ui-monospace,Consolas,monospace;color:#9fb0c2;padding:0 2px}
+#igPvTitle{flex:1;font:12px system-ui;color:#bcd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#igPvClose{background:none;border:0;color:#9aa;font-size:18px;line-height:1;cursor:pointer;padding:0 4px}
+#igPvClose:hover{color:#fff}
+#igPvBody{position:relative;width:320px;height:470px;background:#000;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+#igPvBody video,#igPvBody img{display:block;width:100%;height:100%;object-fit:contain;background:#000}
+#igPvBody .igPvPlace{color:#8a96a3;font:13px/1.5 system-ui;text-align:center;padding:24px}
+#igPvBody .igPvPlace span{color:#5a6573;font-size:11px}
 `;
     document.head.appendChild(s);
   }
@@ -661,6 +683,7 @@
     dr.classList.add('open');
     document.querySelectorAll('#igTable tr.focus').forEach(t => t.classList.remove('focus'));
     document.querySelector(`#igTable tr[data-id="${CSS.escape(r.id)}"]`)?.classList.add('focus');
+    igPreviewSyncToFocus();   // (dev0500) clicking a row also steps the open preview
   }
   function closeDrawer() {
     document.getElementById('igDrawer').classList.remove('open');
@@ -688,6 +711,7 @@
     if (drawerOpen()) openDrawer(row);     // browsing also steps the open drawer
     else focusId = row.id;
     applyFocusHighlight(row.id);
+    igPreviewSyncToFocus();                // (dev0500) follow focus in the media preview
   }
   function toggleFocusedSel() {
     if (focusId == null) return;
@@ -1254,9 +1278,179 @@
       rows = r.ok ? (await r.json()) : [];
       if (!Array.isArray(rows)) rows = [];
     } catch (e) { rows = []; igToast('Could not load ig.json: ' + e.message, 3000); }
+    igPreviewClose();   // (dev0500) old previewed row is gone after a reload
     sel.clear(); dirty = false; lastCheckedId = null; focusId = null; enrichFailed.clear();   // (dev0441) fresh retry after reload; (dev0474) clear row focus
     refreshAuthorOptions();
     applyAndRender();
+  }
+
+  // ── Moveable media preview (dev0500) ────────────────────────────────────────
+  // Ctrl+I pops a DRAGGABLE PORTRAIT window that plays the focused row's already-
+  // DOWNLOADED ig_media asset (video or image; multi-file carousels get ‹ › nav).
+  // Same idea/size as the T-screen row-preview pane (core.js) but portrait, since
+  // IG reels/posts are 9:16. Files live in ig_media/ and are served by the same
+  // :8080 origin as ig.json, so a relative URL works.
+  //   • Ctrl+I on a DOWNLOADED row → open/refresh the window (re-press = close).
+  //   • Ctrl+I on a NOT-downloaded row → open that post on Instagram in the
+  //     browser (identical to clicking its address) — no window.
+  //   • While open it follows ↑/↓ row focus; a non-downloaded focused row shows a
+  //     placeholder (only the explicit Ctrl+I press ever opens the browser).
+  const PV_VIDEO_RE = /\.(mp4|webm|mov|m4v|mkv)$/i;
+  const PV_IMAGE_RE = /\.(jpe?g|png|gif|webp|bmp|avif|tiff?)$/i;
+  const mediaUrl = name => 'ig_media/' + encodeURIComponent(name);
+  let pvOpen = false;        // preview window mounted
+  let pvRowId = null;        // row id currently shown
+  let pvIdx = 0;             // carousel index into the row's localFiles
+  let pvPos = null;          // {left,top} remembered across toggles + moves
+  let pvDrag = null;         // active drag offset
+
+  function igPreviewBuild() {
+    if (document.getElementById('igPreview')) return;
+    const el = document.createElement('div');
+    el.id = 'igPreview';
+    el.innerHTML =
+      '<div id="igPvBar">'
+      + '<span id="igPvNav"></span>'
+      + '<span id="igPvTitle"></span>'
+      + '<button id="igPvClose" title="Close (Ctrl+I or Esc)">×</button>'
+      + '</div>'
+      + '<div id="igPvBody"></div>';
+    const pos = pvPos || { left: 24, top: 84 };
+    el.style.left = pos.left + 'px';
+    el.style.top = pos.top + 'px';
+    (document.getElementById('igOverlay') || document.body).appendChild(el);
+    el.querySelector('#igPvClose').addEventListener('click', igPreviewClose);
+    el.querySelector('#igPvNav').addEventListener('click', e => {
+      const d = e.target.closest('button')?.dataset.d;
+      if (d === 'prev') igPreviewStep(-1);
+      else if (d === 'next') igPreviewStep(1);
+    });
+    el.querySelector('#igPvBar').addEventListener('pointerdown', pvDragStart);
+  }
+
+  function igPreviewToggle() {
+    const r = focusId != null ? rowById(focusId) : null;
+    if (!r) { igToast('👁 Focus a row first (↑/↓ or click), then Ctrl+I', 2400); return; }
+    // Not downloaded → open the post on Instagram (same as clicking its address).
+    if (!isDownloaded(r)) {
+      window.open(igLink(r), '_blank', 'noopener');
+      igToast('↗ ' + r.id + ' not downloaded — opened on Instagram', 2600);
+      return;
+    }
+    if (pvOpen && pvRowId === r.id) { igPreviewClose(); return; }   // re-press = close
+    pvOpen = true; pvRowId = r.id; pvIdx = 0;
+    igPreviewBuild();
+    igPreviewFill();
+  }
+
+  // (dev0500) Follow ↑/↓ row focus while the window is open. A non-downloaded row
+  // shows a placeholder rather than auto-opening the browser (that's Ctrl+I only).
+  function igPreviewSyncToFocus() {
+    if (!pvOpen || focusId == null || focusId === pvRowId) return;
+    if (!rowById(focusId)) return;
+    pvRowId = focusId; pvIdx = 0;
+    igPreviewFill();
+  }
+
+  function igPreviewStep(delta) {
+    const r = rowById(pvRowId); if (!r) return;
+    const n = (r.localFiles || []).length; if (n <= 1) return;
+    pvIdx = (pvIdx + delta + n) % n;
+    igPreviewFill();
+  }
+
+  function igPreviewFill() {
+    const el = document.getElementById('igPreview'); if (!el) return;
+    const r = rowById(pvRowId);
+    const body = el.querySelector('#igPvBody');
+    const oldV = body.querySelector('video'); if (oldV) { try { oldV.pause(); } catch (_) {} }
+    if (!r) { igPreviewClose(); return; }
+    const files = r.localFiles || [];
+    const n = files.length;
+    if (pvIdx >= n) pvIdx = 0;
+
+    const title = el.querySelector('#igPvTitle');
+    title.textContent = r.VidTitle || r.id;
+    title.title = (r.VidTitle ? r.VidTitle + '  ·  ' : '') + r.id;
+
+    const nav = el.querySelector('#igPvNav');
+    nav.innerHTML = n > 1
+      ? '<button data-d="prev" title="Previous">‹</button>'
+        + '<span class="ct">' + (pvIdx + 1) + '/' + n + '</span>'
+        + '<button data-d="next" title="Next">›</button>'
+      : '';
+
+    body.innerHTML = '';
+    if (!n) {
+      const ph = document.createElement('div');
+      ph.className = 'igPvPlace';
+      ph.innerHTML = isDownloaded(r)
+        ? '⚠ no media files listed for ' + esc(r.id)
+        : esc(r.id) + ' is not downloaded yet<br><span>⬇ Download it, or press Ctrl+I to open it on Instagram</span>';
+      body.appendChild(ph);
+      return;
+    }
+    const f = files[pvIdx];
+    if (PV_VIDEO_RE.test(f)) {
+      const v = document.createElement('video');
+      v.src = mediaUrl(f);
+      v.controls = true; v.loop = true; v.autoplay = true; v.playsInline = true;
+      v.addEventListener('click', () => { if (v.paused) v.play().catch(() => {}); else v.pause(); });
+      body.appendChild(v);
+      // Best-effort autoplay with sound; if the browser blocks it, retry muted
+      // (the native controls let the user unmute).
+      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+    } else if (PV_IMAGE_RE.test(f)) {
+      const img = document.createElement('img');
+      img.src = mediaUrl(f);
+      img.alt = r.id;
+      body.appendChild(img);
+    } else {
+      const d = document.createElement('div');
+      d.className = 'igPvPlace';
+      d.innerHTML = 'Unsupported file<br><span>' + esc(f) + '</span>';
+      body.appendChild(d);
+    }
+  }
+
+  function igPreviewClose() {
+    const el = document.getElementById('igPreview');
+    if (el) {
+      const v = el.querySelector('video');
+      if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (_) {} }
+      el.remove();
+    }
+    pvOpen = false; pvRowId = null; pvIdx = 0;
+  }
+
+  // Drag by the title bar (pointer events → preview-verifiable, mirrors the rest
+  // of the app). Position is clamped on-screen and remembered in pvPos so a
+  // re-opened window stays where you left it.
+  function pvDragStart(e) {
+    if (e.target.closest('button')) return;       // don't drag when hitting ×/‹/›
+    const el = document.getElementById('igPreview'); if (!el) return;
+    const rect = el.getBoundingClientRect();
+    pvDrag = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    el.addEventListener('pointermove', pvDragMove);
+    el.addEventListener('pointerup', pvDragEnd);
+    e.preventDefault();
+  }
+  function pvDragMove(e) {
+    if (!pvDrag) return;
+    const el = document.getElementById('igPreview'); if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let left = Math.max(2, Math.min(window.innerWidth - w - 2, e.clientX - pvDrag.dx));
+    let top = Math.max(2, Math.min(window.innerHeight - h - 2, e.clientY - pvDrag.dy));
+    el.style.left = left + 'px'; el.style.top = top + 'px';
+    pvPos = { left, top };
+  }
+  function pvDragEnd(e) {
+    pvDrag = null;
+    const el = document.getElementById('igPreview'); if (!el) return;
+    try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+    el.removeEventListener('pointermove', pvDragMove);
+    el.removeEventListener('pointerup', pvDragEnd);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -1270,6 +1464,7 @@
   }
   function closeIgScreen() {
     if (dirty) persist(false);     // best-effort flush on close
+    igPreviewClose();              // (dev0500) tear down the media preview
     closeDrawer();
     document.getElementById('igOverlay')?.classList.remove('open');
   }
@@ -1295,8 +1490,19 @@
       if (igStickyOpen()) { e.stopPropagation(); e.preventDefault(); igStickyHide(); return; }  // (dev0444) dismiss summary first
       if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
       if (typing) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }  // blur, filter stays
+      if (pvOpen) { e.stopPropagation(); e.preventDefault(); igPreviewClose(); return; }  // (dev0500) close media preview
       if (drawerOpen()) { e.stopPropagation(); e.preventDefault(); closeDrawer(); return; }
       e.stopPropagation(); e.preventDefault();   // swallow — do NOT return to T
+      return;
+    }
+    // (dev0500) Ctrl+I → moveable media preview of the focused row's downloaded
+    // asset (or open the post on Instagram if it isn't downloaded). Handled here on
+    // window-capture, BEFORE core.js's document-capture Ctrl+I, and stopped hard so
+    // core.js doesn't ALSO mount its T-screen row-preview behind this overlay.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'i' || e.key === 'I')) {
+      if (typing) return;   // leave Ctrl+I (italic) alone inside the paste textarea
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      igPreviewToggle();
       return;
     }
     if (typing || e.ctrlKey || e.metaKey || e.altKey || modalOpen()) return;
