@@ -302,7 +302,7 @@
 #igTable td.c-act button:disabled{opacity:.4;cursor:default}
 /* (dev0498) position:fixed (was absolute, which scrolled WITH the table content so
    the info panel slid out of view for lower rows). Fixed pins it to the viewport;
-   `top` is set in openDrawer to the table's top edge so it sits under the bar. */
+   its top is set in openDrawer to the table's top edge so it sits under the bar. */
 #igDrawer{position:fixed;top:0;right:0;bottom:0;width:400px;background:#0e1219;
   border-left:1px solid #2c3645;box-shadow:-6px 0 18px rgba(0,0,0,.4);overflow:auto;
   padding:14px;display:none;z-index:5}

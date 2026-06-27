@@ -970,6 +970,16 @@ function save() {
   // and was lost on reload. Mirroring it into localStorage = "ml.json saved
   // everywhere": load() restores Views/layout from whichever copy is newer.
   const meta = buildMeta();
+  // (dev0499) Stamp the meta row with the SAME save timestamp we store in the
+  // localStorage `sal-edited` key (below). load() compares the two: a successful
+  // disk write lands this stamp in ml.json, so disk == LS → "fresh". The old
+  // check compared `sal-edited` against the newest row DateModified, but saves
+  // that don't touch a row (config / grid / Views / IG ops) bumped sal-edited
+  // without advancing any DateModified — so the gap grew unbounded and the
+  // "disk was stale — re-pick folder" toast fired on nearly every load even
+  // though the disk write was fine. This stamp makes the comparison exact.
+  const savedAt = Date.now();
+  meta._salSavedAt = savedAt;
   // 1. localStorage (instant) — LIGHT mirror: meta row + data rows, but ftext
   // (HTML, ~90% of the file) is dropped so this synchronous setItem stays small
   // and never trips the browser's ~5 MB quota (which was silently failing and
@@ -981,7 +991,7 @@ function save() {
     (k === 'ftext' && typeof v === 'string' && v.length > 0) ? undefined : v;
   try {
     localStorage.setItem('seeandlearn-links', JSON.stringify([meta].concat(mlRows), ftextStripper));
-    localStorage.setItem('sal-edited',        Date.now().toString());
+    localStorage.setItem('sal-edited',        savedAt.toString());
     localStorage.setItem('ml-col-widths',     JSON.stringify(colWidths));
     localStorage.setItem('ml-col-order',      JSON.stringify(cols));
     localStorage.setItem('ml-col-hidden',     JSON.stringify([...hidden]));
@@ -1028,8 +1038,19 @@ async function load() {
       // `sal-edited` (left by a past /unlock edit on this domain) must NEVER
       // be allowed to discard the freshly-fetched ml.json — that's the "site
       // shows old data after I push" bug. Public viewers always trust the fetch.
+      // (dev0499) Prefer the exact save-stamp written into the disk meta row over
+      // the fragile "newest row DateModified" heuristic. When the last disk write
+      // succeeded, raw[0]._salSavedAt equals the lsEdited we set in that same
+      // save() → disk reads as fresh. diskMax is only a fallback for pre-dev0499
+      // ml.json files that predate the stamp (first load after upgrade).
+      let diskStamp = 0;
+      if (Array.isArray(raw) && raw.length && raw[0] && raw[0]._salMeta
+          && typeof raw[0]._salSavedAt === 'number') {
+        diskStamp = raw[0]._salSavedAt;
+      }
+      const diskFreshness = diskStamp || diskMax;
       const _inUserEarly = (typeof _isUserMode === 'function') ? _isUserMode() : false;
-      if (!_inUserEarly && lsEdited > diskMax + 2000) {
+      if (!_inUserEarly && lsEdited > diskFreshness + 2000) {
         try {
           const lsParsed = JSON.parse(lsRaw);
           if (Array.isArray(lsParsed) && lsParsed.length) {
