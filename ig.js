@@ -180,6 +180,8 @@
     t.querySelector('.msg').textContent = msg;
     t.querySelector('.stop').textContent = '⏹ Stop';
     t.classList.add('show');
+    // (dev0496) Focus Stop so Space/Enter halt the batch without aiming the mouse.
+    try { t.querySelector('.stop').focus(); } catch (_) {}
   }
   function igBatchUpdate(msg) {
     const t = document.getElementById('igBatch');
@@ -205,6 +207,8 @@
     }
     t.querySelector('.msg').textContent = msg;
     t.classList.add('show');
+    // (dev0496) Focus Close so Space/Enter dismiss the summary.
+    try { t.querySelector('.ok').focus(); } catch (_) {}
   }
   function igStickyHide() {
     document.getElementById('igSticky')?.classList.remove('show');
@@ -238,6 +242,11 @@
 #igBar button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
 #igBar button:disabled{opacity:.5;cursor:default}
 #igBar .spacer{flex:1}
+/* (dev0496) Action buttons live in their own right-anchored group so a changing
+   record-count / selection width never reflows them. margin-left:auto pins the
+   whole group to the right; it wraps as a unit on narrow windows. */
+#igBar .igActs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  justify-content:flex-end;margin-left:auto}
 #igBar #igClose{font-size:18px;padding:2px 10px;line-height:1}
 #igWrap{flex:1;overflow:auto;position:relative}
 #igTable{border-collapse:collapse;width:100%;table-layout:fixed}
@@ -344,18 +353,19 @@
         <input type="text" id="igSearch" placeholder="search author / id / title / caption…">
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
-        <select id="igStatus"><option value="all">all status</option><option value="new">new</option><option value="enriched">enriched</option><option value="downloaded">downloaded</option><option value="promoted">promoted</option></select>
+        <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option></select>
         <select id="igStaged" title="Full reels (harvested) vs NonFullReels (ffdown imports)"><option value="all">all sources</option><option value="non">NonFullReels</option><option value="full">Full reels</option></select>
-        <div class="spacer"></div>
+        <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked NonStaged, DevComment from the filename)">📁 Import ffdown</button>
-        <button id="igEnrichSel">✨ Enrich sel</button>
-        <button id="igDownloadSel">⬇ Download sel</button>
+        <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
+        <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igPromoteSel">➕ Promote sel</button>
-        <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter">✕ Clear sel</button>
+        <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
         <button id="igReload" title="Reload ig.json from disk">↻ Reload</button>
         <button id="igSave" class="primary" title="Write edits back to ig.json">💾 Save</button>
         <button id="igClose" title="Close (Esc)">×</button>
+        </div>
       </div>
       <div id="igWrap">
         <table id="igTable"><thead></thead><tbody></tbody></table>
@@ -674,6 +684,24 @@
     if (sel.has(focusId)) sel.delete(focusId); else sel.add(focusId);
     lastCheckedId = focusId;
     renderBody();                          // focusId persists → highlight stays
+  }
+  // (dev0496) Hotkey 'm': clear the whole selection, then check the first N visible
+  // rows from the top — a one-key way to grab a batch-sized chunk.
+  function selectTopN(n) {
+    sel.clear();
+    const picked = view.slice(0, n);
+    picked.forEach(r => sel.add(r.id));
+    lastCheckedId = picked.length ? picked[picked.length - 1].id : null;
+    renderBody();
+    igToast(`☑ selected ${picked.length} from the top`, 1500);
+  }
+  // (dev0496) Set the status dropdown + filter from a hotkey (mirrors the dropdown).
+  function setStatusFilter(val) {
+    statusFilter = val;
+    const s = document.getElementById('igStatus'); if (s) s.value = val;
+    applyAndRender();
+    const label = { all: 'all status', new: 'new', enriched: 'enriched', downloaded: 'downloaded' }[val] || val;
+    igToast('⛃ status filter: ' + label, 1400);
   }
 
   // ── ttxt builder (yt-dlp "everything" bucket — only when ttxt is empty so the
@@ -1230,6 +1258,9 @@
     if (!isIgScreenOpen()) return;
     const ae = document.activeElement;
     const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+    // (dev0496) When a button (e.g. a toast's focused Stop / Close) has focus, let
+    // Space / Enter activate it natively instead of stealing them for row selection.
+    if (ae && ae.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
 
     if (e.key === 'Escape') {
       if (igStickyOpen()) { e.stopPropagation(); e.preventDefault(); igStickyHide(); return; }  // (dev0444) dismiss summary first
@@ -1268,13 +1299,30 @@
       igToast('🔎 text filter cleared', 1400);
       return;
     }
-    if (e.key === 'c' || e.key === 'C') {         // toggle hide-completed
+    // (dev0496) I-specific batch hotkeys (lowercase). These fire only while the I
+    // screen is on top (the early isIgScreenOpen bail above), so D/E/C revert to the
+    // normal Dictionary/Edit/Config screen hotkeys whenever I isn't frontmost.
+    if (e.key === 'd') {                           // download selected
+      e.stopPropagation(); e.preventDefault(); batchDownload(); return;
+    }
+    if (e.key === 'e') {                           // enrich selected
+      e.stopPropagation(); e.preventDefault(); batchEnrich(); return;
+    }
+    if (e.key === 'c') {                           // clear selection
       e.stopPropagation(); e.preventDefault();
-      hideCompleted = !hideCompleted;
-      applyAndRender();
-      igToast(hideCompleted ? '✅ hiding completed (downloaded) rows' : '👁 showing all rows', 1600);
+      sel.clear(); lastCheckedId = null; applyAndRender();
+      igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600);
       return;
     }
+    if (e.key === 'm') {                           // clear, then select 18 from top
+      e.stopPropagation(); e.preventDefault(); selectTopN(18); return;
+    }
+    // (dev0496) Capital N/D/E/A → status filter new/downloaded/enriched/all
+    // (identical to choosing from the dropdown, which now shows the hotkey letter).
+    if (e.key === 'N') { e.stopPropagation(); e.preventDefault(); setStatusFilter('new'); return; }
+    if (e.key === 'D') { e.stopPropagation(); e.preventDefault(); setStatusFilter('downloaded'); return; }
+    if (e.key === 'E') { e.stopPropagation(); e.preventDefault(); setStatusFilter('enriched'); return; }
+    if (e.key === 'A') { e.stopPropagation(); e.preventDefault(); setStatusFilter('all'); return; }
   }, true);
 
   window.openIgScreen = openIgScreen;
