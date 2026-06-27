@@ -300,9 +300,12 @@
   border-radius:5px;padding:3px 7px;margin-right:3px;cursor:pointer;font:600 11px system-ui}
 #igTable td.c-act button:hover{background:#2b3543}
 #igTable td.c-act button:disabled{opacity:.4;cursor:default}
-#igDrawer{position:absolute;top:0;right:0;bottom:0;width:400px;background:#0e1219;
+/* (dev0498) position:fixed (was absolute, which scrolled WITH the table content so
+   the info panel slid out of view for lower rows). Fixed pins it to the viewport;
+   `top` is set in openDrawer to the table's top edge so it sits under the bar. */
+#igDrawer{position:fixed;top:0;right:0;bottom:0;width:400px;background:#0e1219;
   border-left:1px solid #2c3645;box-shadow:-6px 0 18px rgba(0,0,0,.4);overflow:auto;
-  padding:14px;display:none}
+  padding:14px;display:none;z-index:5}
 #igDrawer.open{display:block}
 #igDrawer h3{margin:0 26px 8px 0;font-size:14px;color:#9ad;white-space:normal}
 #igDrawer .meta{color:#8aa;font-size:12px;margin-bottom:8px;word-break:break-all}
@@ -361,6 +364,7 @@
         <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igPromoteSel">➕ Promote sel</button>
+        <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
         <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
         <button id="igReload" title="Reload ig.json from disk">↻ Reload</button>
         <button id="igSave" class="primary" title="Write edits back to ig.json">💾 Save</button>
@@ -389,6 +393,7 @@
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
     $('igPromoteSel').addEventListener('click', () => batchPromote());
+    $('igDeleteSel').addEventListener('click', () => deleteSelected());
     $('igClearSel').addEventListener('click', () => { sel.clear(); lastCheckedId = null; applyAndRender(); igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600); });
     $('igReload').addEventListener('click', () => loadData());
     $('igSave').addEventListener('click', () => persist(true));
@@ -648,7 +653,12 @@
       else if (a === 'promote') { promoteRow(r, true); openDrawer(r); }
       else if (a === 'open') window.open(igLink(r), '_blank', 'noopener');
     }));
-    document.getElementById('igDrawer').classList.add('open');
+    const dr = document.getElementById('igDrawer');
+    // (dev0498) Anchor the fixed drawer just under the toolbar so it stays put while
+    // the table scrolls (and re-measure each open in case the bar wrapped a line).
+    const wrap = document.getElementById('igWrap');
+    if (wrap) dr.style.top = Math.round(wrap.getBoundingClientRect().top) + 'px';
+    dr.classList.add('open');
     document.querySelectorAll('#igTable tr.focus').forEach(t => t.classList.remove('focus'));
     document.querySelector(`#igTable tr[data-id="${CSS.escape(r.id)}"]`)?.classList.add('focus');
   }
@@ -1019,8 +1029,27 @@
     igToast(`➕ promoted ${ok} row(s) → ml.json`, 2600);
   }
 
+  // (dev0498) Permanently remove the selected rows from ig.json. For pruning the
+  // occasional bad harvest entry. No archive — a confirm guards it; downloaded
+  // media files in ig_media/ are left on disk untouched.
+  function deleteSelected() {
+    if (busy) return;
+    const ids = selectedInView();
+    if (!ids.length) { igToast('Nothing checked in this view.\nCheck the rows to delete first.', 3000); return; }
+    if (!confirm(`Delete ${ids.length} row(s) from ig.json?\nThis removes the entries permanently (no archive).\nAny already-downloaded files in ig_media/ are left on disk.`)) return;
+    const idset = new Set(ids);
+    rows = rows.filter(r => !idset.has(r.id));
+    ids.forEach(id => { sel.delete(id); if (focusId === id) focusId = null; });
+    if (focusId == null && drawerOpen()) closeDrawer();
+    lastCheckedId = null;
+    dirty = true;
+    persist(false);
+    applyAndRender();
+    igToast(`🗑 deleted ${ids.length} row(s) from ig.json`, 2600);
+  }
+
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igClearSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igDeleteSel', 'igClearSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the
