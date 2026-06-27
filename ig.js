@@ -66,7 +66,13 @@
   // "login required" wall message, but match both in case the proxy isn't restarted).
   // This string is wall-class ONLY because the proxy always tries the embed page
   // first, so it never reaches the client on a post we could actually read.
-  const WALL_RE = /login\s*required|login[-\s]?wall|content is not available|empty metadata|rate-limit reached|no video in this post|walled this post/i;
+  // (dev0496) yt-dlp CHANGED its IG login-wall wording → "Instagram sent an empty media
+  // response … use --cookies-from-browser … for the authentication". None of the old
+  // phrases were in it, so isWall() returned false → WALL_CAP=1 never tripped and a
+  // walled reel batch ran past the first wall until the user hit Stop (the reported
+  // bug). Added the new signatures. isThrottle is still checked first (429s win), and
+  // this message carries no 429 text, so a wall is classified as a wall.
+  const WALL_RE = /login\s*required|login[-\s]?wall|content is not available|empty metadata|empty media response|rate-limit reached|no video in this post|walled this post|cookies-from-browser|for the authentication/i;
   const isWall = err => WALL_RE.test(err || '');
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const rnd = (a, b) => a + Math.random() * (b - a);
