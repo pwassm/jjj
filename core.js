@@ -4969,13 +4969,22 @@ function _classifyUrl(s) {
   return 'web';
 }
 
-// Normalize a pasted link before storing. YouTube URLs → canonical youtu.be/<id>
-// (strips playlist params, timestamps, embed variants, Shorts paths, etc.)
+// Normalize a pasted link before storing. YouTube watch/embed/youtu.be variants →
+// canonical youtu.be/<id>, BUT a /shorts/ URL keeps its /shorts/ form.
+// (dev0505) A Shorts URL is the one reliable, COOKIELESS portrait (P/S=1) signal —
+// the oEmbed thumbnail is always 16:9, and yt-dlp's real W×H is now bot-walled. The
+// old normalizer collapsed /shorts/<id> → youtu.be/<id>, erasing that signal so the
+// Short came back mislabeled landscape. Preserving /shorts/ lets the existing P/S
+// checks (add-path oEmbed + Fill P/S) classify it portrait with zero network cost.
+// Playback is unaffected: getYouTubeId / every embed mounter already parse /shorts/.
 function _normalizeLink(link) {
   if (/youtu\.be|youtube\.com/i.test(link)) {
     const ytId = _extractYTVideoId(link)
       || (window.getYouTubeId && window.getYouTubeId(link));
-    if (ytId) return 'https://youtu.be/' + ytId;
+    if (ytId) {
+      if (/\/shorts\//i.test(link)) return 'https://www.youtube.com/shorts/' + ytId;
+      return 'https://youtu.be/' + ytId;
+    }
   }
   // (dev0424) Strip Cloudflare `?turnstile=...` (and other tracking junk) that
   // Vimeo appends when copying a URL after its bot check — keep only the clean
