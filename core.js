@@ -7203,11 +7203,30 @@ function runVEPostOpenSetup(di) {
           toast('✓ Deleted row\n   ' + label, 2000);
           return;
         }
-        // S = toggle Selected/Full playback
+        // S = (dev0507) mark THIS YouTube row portrait (P/S=1). YouTube is excluded
+        // from Fill P/S (oEmbed is always 16:9, yt-dlp is bot-walled), so Shorts saved
+        // as watch/youtu.be links must have P/S set by hand. Non-YouTube rows keep the
+        // legacy behavior: S = toggle Selected/Full playback (#v2toggle).
+        // NOTE: E's keys are owned here (veKeyHandler), reached via
+        // _veEarlyClaimKeyHandler which stopImmediatePropagation()s 's' — so the
+        // matching block in video.js handleKey never runs. THIS is the live path.
         if (e.key === 's' || e.key === 'S') {
           e.preventDefault(); e.stopPropagation();
-          const tog = document.getElementById('v2toggle');
-          if (tog) tog.click();
+          const _di  = (_brRows && _brIdx >= 0 && _brIdx < _brRows.length) ? _brRows[_brIdx] : -1;
+          const _row = _di >= 0 ? data[_di] : null;
+          const _lk  = (_row && _row.link) || '';
+          const _isYT = /youtu\.be|youtube\.com/i.test(_lk)
+            || (window.getYouTubeId && window.getYouTubeId(_lk));
+          if (_isYT && _row) {
+            const _psCol = (typeof getPSCol === 'function') ? getPSCol() : 'P/S';
+            _row[_psCol] = '1';
+            _row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+            if (typeof save === 'function') save();
+            if (typeof toast === 'function') toast('✓ Marked portrait (P/S=1): ' + (_row.VidTitle || _lk.slice(0, 40)), 1600);
+          } else {
+            const tog = document.getElementById('v2toggle');
+            if (tog) tog.click();
+          }
           return;
         }
         // M = toggle Mute

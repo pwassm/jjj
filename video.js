@@ -2636,10 +2636,11 @@ window.openVideoEditor = function(it) {
       e.preventDefault(); e.stopPropagation(); saveEditor(); return;
     }
 
-    // (dev0506) s = mark THIS YouTube row portrait (P/S=1). YouTube is excluded from
-    // Fill P/S (oEmbed is always 16:9, yt-dlp is bot-walled), so P/S is set manually
-    // here for Shorts saved as watch/youtu.be links (or captured at import). Acts only
-    // on YouTube video rows; bare 's' (no modifiers, not in an input).
+    // (dev0506→dev0507) s = mark THIS YouTube row portrait (P/S=1). NOTE: when E is
+    // opened the standard way, core.js's _veEarlyClaimKeyHandler claims 's' and routes
+    // it to veKeyHandler (core.js) — so the LIVE implementation lives there now. This
+    // block is a fallback for any path where the early-claim wrapper isn't installed.
+    // Acts only on YouTube video rows; bare 's' (no modifiers, not in an input).
     if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey && !isInp) {
       e.preventDefault(); e.stopPropagation();
       var _lk = (it && it.link) || '';
