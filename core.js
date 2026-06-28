@@ -3797,17 +3797,29 @@ async function housekeepingFillYTMeta() {
   toast(msg, failed.length ? 7000 : 4000);
 }
 
-// ── (dev0508) Check YT Orientation ─────────────────────────────────────────
+// ── (dev0508/0509) Check YT Orientation ────────────────────────────────────
 // Classify every YouTube row portrait (Shorts) vs landscape by querying real
-// width×height via yt-dlp (proxy /exec/ytdlp → _ytdlpFetchMeta). YouTube has
-// bot-walled cookieless yt-dlp in the past (which is why Fill P/S SKIPS it and
-// orientation is otherwise set by hand). The user wants to re-try now that
-// cookieless ftext is flowing again — so this reports clearly WHETHER any
-// dimensions came back, shows a live progress toast (Esc aborts), bails early
-// if the first several rows all come back empty (the bot-wall signature), and
-// reports the portrait/landscape tally.
+// width×height via yt-dlp (proxy /exec/ytdlp → _ytdlpFetchMeta). The cookieless
+// path only works OFF-VPN — a VPN/datacenter IP gets bot-walled (that was the
+// "no dimensions" failure); a residential IP returns dims fine.
+// (dev0509) RATE-LIMIT SAFETY: ~700 cookieless calls in one burst can still trip
+// YouTube's per-IP throttle / bot-wall even from home. So requests are PACED with
+// a randomized per-row gap plus occasional longer "rest" pauses (irregular,
+// human-ish cadence). Esc short-circuits any pending delay and aborts. Reports
+// clearly WHETHER dims came back, shows a live progress toast, bails early if the
+// first rows all come back empty (bot-wall signature), and tallies portrait/landscape.
 let _ytOrientRunning = false;
 let _ytOrientAbort = false;
+// Abortable sleep: resolves after ms OR as soon as _ytOrientAbort flips (so Esc
+// doesn't have to wait out a multi-second gap / rest).
+function _ytOrientSleep(ms) {
+  return new Promise(resolve => {
+    const start = Date.now();
+    const id = setInterval(() => {
+      if (_ytOrientAbort || Date.now() - start >= ms) { clearInterval(id); resolve(); }
+    }, 150);
+  });
+}
 async function housekeepingFillYTOrient() {
   if (_ytOrientRunning) { toast('YT orientation check already running… (Esc to abort)', 2000); return; }
   if (typeof _ytdlpFetchMeta !== 'function') { toast('yt-dlp pipeline not loaded', 2500); return; }
@@ -3816,10 +3828,12 @@ async function housekeepingFillYTOrient() {
   if (!confirm(
     'Check portrait/landscape for ' + rows.length + ' YouTube row(s) via yt-dlp?\n\n'
     + 'Each video is queried for its real width×height and P/S is set\n'
-    + '(1 = portrait / Shorts, 0 = landscape). Runs one row at a time\n'
-    + '(~2–4s each) — press Esc to abort at any point.\n\n'
-    + 'YouTube may bot-wall cookieless yt-dlp; if no dimensions come\n'
-    + 'back you\'ll get a clear report and P/S is left unchanged.'
+    + '(1 = portrait / Shorts, 0 = landscape). Runs one row at a time with\n'
+    + 'randomized delays + occasional rests to avoid tripping YouTube\'s\n'
+    + 'per-IP rate-limit — expect roughly 1–1.5 hours for ' + rows.length + ' rows.\n'
+    + 'Press Esc to abort at any point.\n\n'
+    + 'NOTE: only works OFF-VPN. On a VPN, YouTube bot-walls and you\'ll\n'
+    + 'get a clear "no dimensions" report (P/S left unchanged).'
   )) return;
 
   _ytOrientRunning = true;
@@ -3833,6 +3847,12 @@ async function housekeepingFillYTOrient() {
   const psCol = (typeof getPSCol === 'function') ? getPSCol() : 'P/S';
   const TOTAL = rows.length;
   const PROBE_FAIL_LIMIT = 5;   // first N rows empty + 0 successes ⇒ assume bot-wall, bail
+  // (dev0509) Pacing knobs — randomized gap between rows + irregular longer rests.
+  const GAP_MIN = 1000, GAP_MAX = 4000;          // per-row delay (ms), random in range
+  const REST_ROWS_MIN = 35, REST_ROWS_MAX = 60;  // take a rest after a random row count
+  const REST_MIN = 20000, REST_MAX = 45000;      // rest duration (ms), random in range
+  const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+  let nextRestAt = randInt(REST_ROWS_MIN, REST_ROWS_MAX);
   let portrait = 0, landscape = 0, noInfo = 0, failed = 0, changed = 0, i = 0;
   let consecutiveEmpty = 0;
   let botWalled = false;
@@ -3875,6 +3895,22 @@ async function housekeepingFillYTOrient() {
         if (consecutiveEmpty >= PROBE_FAIL_LIMIT && (portrait + landscape) === 0) {
           botWalled = true;
           break;
+        }
+      }
+
+      // (dev0509) Pace before the next row (skip after the last / on abort). An
+      // occasional longer rest at an irregular interval keeps the request pattern
+      // from looking like a steady scrape.
+      if (i < TOTAL && !_ytOrientAbort) {
+        if (i >= nextRestAt) {
+          const restMs = randInt(REST_MIN, REST_MAX);
+          toast('💤 Resting ' + Math.round(restMs / 1000) + 's to stay under YouTube\'s rate-limit…'
+            + '\n   ' + i + '/' + TOTAL + '  (▯ ' + portrait + ' · ▭ ' + landscape + ')'
+            + '\n   (Esc to abort)', restMs + 800);
+          await _ytOrientSleep(restMs);
+          nextRestAt = i + randInt(REST_ROWS_MIN, REST_ROWS_MAX);
+        } else {
+          await _ytOrientSleep(randInt(GAP_MIN, GAP_MAX));
         }
       }
     }
