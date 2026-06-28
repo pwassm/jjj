@@ -2635,7 +2635,25 @@ window.openVideoEditor = function(it) {
       if (document.getElementById('v2comment-popup')) return;
       e.preventDefault(); e.stopPropagation(); saveEditor(); return;
     }
-    
+
+    // (dev0506) s = mark THIS YouTube row portrait (P/S=1). YouTube is excluded from
+    // Fill P/S (oEmbed is always 16:9, yt-dlp is bot-walled), so P/S is set manually
+    // here for Shorts saved as watch/youtu.be links (or captured at import). Acts only
+    // on YouTube video rows; bare 's' (no modifiers, not in an input).
+    if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey && !isInp) {
+      e.preventDefault(); e.stopPropagation();
+      var _lk = (it && it.link) || '';
+      var _isYT = /youtu\.be|youtube\.com/i.test(_lk)
+        || (window.getYouTubeId && window.getYouTubeId(_lk));
+      if (!_isYT) { if (window.toast) window.toast('Not a YouTube row — P/S unchanged', 1600); return; }
+      var _psCol = (typeof getPSCol === 'function') ? getPSCol() : 'P/S';
+      it[_psCol] = '1';
+      it.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+      if (typeof save === 'function') save();
+      if (window.toast) window.toast('✓ Marked portrait (P/S=1): ' + (it.VidTitle || _lk.slice(0, 40)), 1600);
+      return;
+    }
+
     // T = save and return to Table (with or without Alt)
     if ((e.key === 't' || e.key === 'T') && !e.ctrlKey && !e.metaKey && !isInp) {
       e.preventDefault(); e.stopPropagation();

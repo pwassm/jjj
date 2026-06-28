@@ -523,7 +523,7 @@ thead th.rn              { color: #fff !important; }
        click handlers still bind — and surfaced via the Housekeeping
        dropdown below. -->
   <div id="oldHousekeepingHidden" style="display:none;">
-  <button class="tbtn" id="fillPSBtn" title="Detect portrait/landscape for all rows: YT Shorts→1, images→measured, other YT→oEmbed thumbnail dims">⬍⬌ Fill P/S</button>
+  <button class="tbtn" id="fillPSBtn" title="Detect portrait/landscape for all rows: images/direct video/Vimeo measured, IG reels→1. YouTube is SKIPPED (set its P/S at import via /shorts/ or the E 's' hotkey).">⬍⬌ Fill P/S</button>
   <button class="tbtn" id="fillMpixBtn" title="Fill Mpix: megapixels for images, V for videos, X if unavailable">📐 Fill Mpix</button>
   <button class="tbtn" id="fixVRangeBtn" title="Sort VidRange segments earliest→latest, keep VidComment mapped">Fix vRange</button>
   <button class="tbtn" id="calcLengthsBtn" title="Calculate vidLength and segLength for all rows">Calc Lengths</button>
@@ -943,7 +943,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0505';
+  window.HELP_VERSION_STR = 'dev0506';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','slideshow.js','boot.js'];

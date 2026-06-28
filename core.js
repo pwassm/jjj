@@ -2952,37 +2952,11 @@ document.getElementById('fillPSBtn').addEventListener('click', async () => {
   const rows = data;
   if (!rows.length) { toast('No rows.'); return; }
 
-  // (dev0503) AUTHORITATIVE YouTube orientation via yt-dlp. The YT oEmbed thumbnail
-  // is ALWAYS 16:9, so a portrait Short saved as a watch?v= / youtu.be link used to
-  // come back landscape ('0'). yt-dlp reports the real width/height, so a Short is
-  // correctly portrait ('1') no matter how its URL is written. It's slower (spawns
-  // yt-dlp per video) so it's opt-in; declining falls back to the oEmbed path.
-  const ytTargets = rows.filter(r => {
-    const lk = String(r.link || '');
-    return /youtu\.be|youtube\.com/i.test(lk) && !/youtube\.com\/shorts\//i.test(lk);
-  });
-  const ytDims = new Map();   // row -> {w,h} from yt-dlp (absent → oEmbed fallback below)
-  if (ytTargets.length && typeof _ytdlpFetchMeta === 'function' &&
-      confirm('Fill P/S: measure ' + ytTargets.length + ' YouTube video(s) with yt-dlp for accurate '
-        + 'orientation?\n\n• OK = accurate (catches Shorts saved as watch links) but slow — needs '
-        + 'proxy.js on :8081, ~2-4s each.\n• Cancel = fast oEmbed only (16:9 thumbnails, so some '
-        + 'Shorts stay marked landscape).')) {
-    let yi = 0, ydone = 0;
-    toast('⇌ P/S: measuring ' + ytTargets.length + ' YouTube videos via yt-dlp…', 10000);
-    const worker = async () => {
-      while (yi < ytTargets.length) {
-        const r = ytTargets[yi++];
-        try { const m = await _ytdlpFetchMeta(r.link);
-          if (m && m.width && m.height) ytDims.set(r, { w: m.width, h: m.height }); }
-        catch (_) { /* leave unset → oEmbed fallback in the main loop */ }
-        ydone++;
-        if (ydone % 5 === 0 || ydone === ytTargets.length)
-          toast('P/S yt-dlp… ' + ydone + '/' + ytTargets.length + ' (' + ytDims.size + ' measured)', 10000);
-      }
-    };
-    // Concurrency 4 keeps the run to a few minutes without flooding the proxy.
-    await Promise.all(Array.from({ length: Math.min(4, ytTargets.length) }, worker));
-  }
+  // (dev0506) YouTube is EXCLUDED from Fill P/S — its oEmbed thumbnail is always 16:9
+  // (so even Shorts measure landscape) and yt-dlp's real W×H is now bot-walled, so
+  // both mislead. YouTube orientation is the P/S source of truth instead: set at
+  // import (/shorts/ → P/S=1) or via the E `s` hotkey. This pass therefore leaves
+  // every YouTube row's P/S untouched and never calls the proxy.
   toast('\u{21ec}\u{21CC} Filling P/S\u2026 0/' + rows.length, 10000);
   let done = 0, changed = 0;
   for (const row of rows) {
@@ -2992,13 +2966,11 @@ document.getElementById('fillPSBtn').addEventListener('click', async () => {
     let ps;
     if (kind === 'other') {
       ps = 'X';                       // teXt / html / quiz / non-media -> n/a
-    } else if (/youtube\.com\/shorts\//i.test(link)
-            || (window.isInstagramLink && window.isInstagramLink(link) && /\/reel\//i.test(link))) {
-      ps = '1';                       // YT Shorts / IG Reels are portrait by definition
-    } else if (ytDims.has(row)) {
-      const dd = ytDims.get(row);     // (dev0503) yt-dlp real dimensions win for YouTube
-      ps = dd.h > dd.w ? '1' : '0';
-    } else if (/youtu\.be|youtube\.com/i.test(link) || /vimeo\.com/i.test(link)) {
+    } else if (/youtu\.be|youtube\.com/i.test(link)) {
+      ps = prev;                      // (dev0506) YouTube — leave P/S as-is (manual / import)
+    } else if (window.isInstagramLink && window.isInstagramLink(link) && /\/reel\//i.test(link)) {
+      ps = '1';                       // IG Reels are portrait by definition
+    } else if (/vimeo\.com/i.test(link)) {
       const dims = await getOEmbedDims(link);
       ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
     } else if (window.isDirectVideoLink && window.isDirectVideoLink(link)) {
@@ -4969,22 +4941,19 @@ function _classifyUrl(s) {
   return 'web';
 }
 
-// Normalize a pasted link before storing. YouTube watch/embed/youtu.be variants →
-// canonical youtu.be/<id>, BUT a /shorts/ URL keeps its /shorts/ form.
-// (dev0505) A Shorts URL is the one reliable, COOKIELESS portrait (P/S=1) signal —
-// the oEmbed thumbnail is always 16:9, and yt-dlp's real W×H is now bot-walled. The
-// old normalizer collapsed /shorts/<id> → youtu.be/<id>, erasing that signal so the
-// Short came back mislabeled landscape. Preserving /shorts/ lets the existing P/S
-// checks (add-path oEmbed + Fill P/S) classify it portrait with zero network cost.
-// Playback is unaffected: getYouTubeId / every embed mounter already parse /shorts/.
+// Normalize a pasted link before storing. ALL YouTube variants (watch / embed /
+// shorts / youtu.be) → canonical youtu.be/<id>.
+// (dev0506) Orientation is NOT encoded in the URL — P/S is the single source of
+// truth (decision: keep canonical URLs, mark portrait in the P/S field instead).
+// A Short pasted as /shorts/ still gets P/S=1, but it's captured at IMPORT (see
+// _importBareLinks) before this collapses the URL; thereafter the E `s` hotkey sets
+// it manually. Canonical URLs also let the `w` dedup match every form of a video by
+// its 11-char id. (Supersedes dev0505's /shorts/-in-URL preservation.)
 function _normalizeLink(link) {
   if (/youtu\.be|youtube\.com/i.test(link)) {
     const ytId = _extractYTVideoId(link)
       || (window.getYouTubeId && window.getYouTubeId(link));
-    if (ytId) {
-      if (/\/shorts\//i.test(link)) return 'https://www.youtube.com/shorts/' + ytId;
-      return 'https://youtu.be/' + ytId;
-    }
+    if (ytId) return 'https://youtu.be/' + ytId;
   }
   // (dev0424) Strip Cloudflare `?turnstile=...` (and other tracking junk) that
   // Vimeo appends when copying a URL after its bot check — keep only the clean
@@ -5887,11 +5856,15 @@ function _cutMidArticleEditorsPicks(text) {
 // Rule 1 implementation. `lines` is the already-split, trimmed, non-empty
 // array — every entry must be a media URL.
 async function _importBareLinks(lines) {
-  // Normalize (YouTube → youtu.be/<id>) then de-dup within paste
+  // Normalize (YouTube → youtu.be/<id>) then de-dup within paste.
+  // (dev0506) A line pasted in /shorts/ form identifies a portrait Short — record its
+  // normalized link so makeRow can stamp P/S=1 (orientation → P/S, not the URL).
   const seen = new Set();
   const links = [];
+  const shortLinks = new Set();
   for (const line of lines) {
     const norm = _normalizeLink(line);
+    if (/\/shorts\//i.test(line)) shortLinks.add(norm);
     if (!seen.has(norm)) { seen.add(norm); links.push(norm); }
   }
 
@@ -5905,8 +5878,16 @@ async function _importBareLinks(lines) {
   // For 100K rows × 100 import lines: build ~5–15ms, total check ~5–15ms.
   // See chat: scaling discussion.
   const linkToDi = new Map();
+  // (dev0506) Also index existing YouTube rows by their 11-char video id, so a
+  // re-paste in ANY form (watch / shorts / youtu.be — or an old /shorts/ row stored
+  // before dev0506) is caught as "Already there" regardless of URL spelling.
+  const ytIdToDi = new Map();
   data.forEach((r, di) => {
-    if (r && r.link) linkToDi.set(String(r.link).trim(), di);
+    if (r && r.link) {
+      linkToDi.set(String(r.link).trim(), di);
+      const yid = _extractYTVideoId(r.link) || (window.getYouTubeId && window.getYouTubeId(r.link));
+      if (yid) ytIdToDi.set(yid, di);
+    }
   });
 
   // Build a fresh row from a media link. Used for genuinely new links and,
@@ -5930,6 +5911,9 @@ async function _importBareLinks(lines) {
     const cls = _classifyUrl(link);
     if (cls === 'video') {
       row.Mute = '0';
+      // (dev0506) Pasted as /shorts/ → portrait Short. Capture into P/S (source of
+      // truth) since the stored URL is now canonical youtu.be/<id> (no /shorts/).
+      if (shortLinks.has(link)) row[(typeof getPSCol === 'function') ? getPSCol() : 'P/S'] = '1';
     } else if (cls === 'image') {
       row.VidRange = 'i';
     } else if (cls === 'web') {
@@ -5944,9 +5928,13 @@ async function _importBareLinks(lines) {
   const dupLinks = []; // links already present in data (pending user choice)
 
   for (const link of links) {
-    if (linkToDi.has(link)) {
-      const di = linkToDi.get(link);
-      const r = data[di];
+    // (dev0506) Duplicate if the exact link exists OR (for YouTube) the same video id
+    // already exists in any URL form → "Already there".
+    const yid = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
+    const dupDi = linkToDi.has(link) ? linkToDi.get(link)
+                : (yid && ytIdToDi.has(yid) ? ytIdToDi.get(yid) : undefined);
+    if (dupDi !== undefined) {
+      const r = data[dupDi];
       dupRecords.push({
         UID: r ? r.UID : '',
         link: link,
@@ -5959,6 +5947,7 @@ async function _importBareLinks(lines) {
     data.push(row);
     newRows.push(row);
     linkToDi.set(link, data.length - 1);
+    if (yid) ytIdToDi.set(yid, data.length - 1);   // catch later dups within the same paste
     added++;
   }
 
@@ -5974,7 +5963,8 @@ async function _importBareLinks(lines) {
     const more = dupRecords.length > 12
       ? '\n…and ' + (dupRecords.length - 12) + ' more' : '';
     const addAnyway = confirm(
-      dupRecords.length + ' link(s) already exist in your data:\n\n'
+      'Already there — ' + dupRecords.length + ' link(s) already in your data'
+      + ' (YouTube matched by video id, any URL form):\n\n'
       + preview + more
       + '\n\nOK = add them as new rows anyway'
       + '\nCancel = send to duplicates pile (duplicateTries.txt)'
@@ -5995,7 +5985,7 @@ async function _importBareLinks(lines) {
   }
 
   if (!added) {
-    toast('All ' + links.length + ' link(s) already in data — sent to duplicates pile (duplicateTries.txt)', 2500);
+    toast('Already there — all ' + links.length + ' link(s) already in data; sent to duplicates pile (duplicateTries.txt)', 2500);
     return;
   }
 
