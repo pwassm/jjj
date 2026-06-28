@@ -3606,13 +3606,18 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
 
 // (dev0353) Delete UID range action removed — button gone, action retired.
 
-// Mark for Grid
-let _markGridMode = 'top'; // 'top' | 'focused' | 'random'
-// (dev0502) Orientation gates which cell counts are offered: 'L' = landscape/square
-// (25/16/9/4), 'P' = portrait YT-shorts (27/12/3, the new 3×9/2×6/1×3 grids).
-// Default to portrait — this chooser was extended specifically for shorts.
-let _markGridOrient = 'P';
-let _markGridSize = 12;    // (dev0331/0502) chosen cell count; default 12 (portrait 2×6)
+// Mark for Grid → "Mark4Grid" (dev0504 rework)
+// The chooser now sets THREE independent things:
+//   • SHAPE  — the grid's geometry, from the size chip: 'P' portrait (3/12/27),
+//              'L' square (4/9/16/25), or '17'/'19' special non-square layouts.
+//   • MEDIA  — which media types are eligible: 'all' (images+Xs+Quiz+video),
+//              'image', or 'video'.
+//   • the START × ORIENTATION mode, chosen by the clicked marking item (which is
+//              what runs the assignment) — from top / from focused, crossed with
+//              landscape-only / portrait-only / either.
+let _markGridSize  = 12;     // chosen cell count; default 12 (portrait 2×6)
+let _markGridShape = 'P';    // 'P' | 'L' | '17' | '19' — geometry of the grid
+let _markGridMedia = 'all';  // 'all' | 'image' | 'video' — candidate media filter
 
 function markGridMenuOpen() {
   const menu = document.getElementById('markGridMenu');
@@ -3622,35 +3627,37 @@ function markGridMenuOpen() {
 function markGridMenuClose() {
   document.getElementById('markGridMenu').style.display = 'none';
 }
-function markGridSetMode(mode) {
-  _markGridMode = mode;
-  document.querySelectorAll('.mgitem').forEach(el => {
-    el.classList.toggle('active', el.dataset.mode === mode);
-  });
-  markGridMenuClose();
-}
-// (dev0331) Pick the grid size in the dropdown (does NOT close it — you pick a
-// size, then a mode). Selecting a mode is what runs the assignment.
-// (dev0503) Each size chip carries its own orientation tag (P/L), so one click
-// sets BOTH the cell count and whether it's a portrait or landscape grid.
-function markGridSetSize(size, orient) {
+// (dev0504) Pick the grid size + shape (does NOT close the menu — you pick a size,
+// a media type, then a start/orientation mode; that last click runs the fill).
+// Each size chip's data-orient carries the SHAPE: 'P'/'L' for portrait/square,
+// or '17'/'19' for the special layouts.
+function markGridSetSize(size, shape) {
   _markGridSize = size;
-  if (orient === 'P' || orient === 'L') _markGridOrient = orient;
+  if (shape === 'P' || shape === 'L' || shape === '17' || shape === '19') _markGridShape = shape;
   document.querySelectorAll('.mgsize').forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.size, 10) === size);
   });
 }
+// (dev0504) Pick the media-type filter for the candidate pool.
+function markGridSetMedia(media) {
+  _markGridMedia = media;
+  document.querySelectorAll('.mgmedia').forEach(el => {
+    el.classList.toggle('active', el.dataset.media === media);
+  });
+}
 
-// (dev0331) The whole button now opens the dropdown (was: instant-run with the
-// last mode). Pick a SIZE (25/16/9/4) then a MODE (top/focused/random) — the
-// mode click runs the assignment.
+// (dev0504) The whole button opens the dropdown. Pick a SIZE, a MEDIA type, then a
+// START × ORIENTATION mode — the mode click runs the assignment.
 document.getElementById('markGridArrow').addEventListener('click', e => { e.stopPropagation(); markGridMenuOpen(); });
 document.getElementById('markGridBtn').addEventListener('click', e => { e.stopPropagation(); markGridMenuOpen(); });
 document.querySelectorAll('.mgsize').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetSize(parseInt(el.dataset.size, 10), el.dataset.orient); });
 });
+document.querySelectorAll('.mgmedia').forEach(el => {
+  el.addEventListener('click', e => { e.stopPropagation(); markGridSetMedia(el.dataset.media); });
+});
 document.querySelectorAll('.mgitem').forEach(el => {
-  el.addEventListener('click', e => { e.stopPropagation(); markGridSetMode(el.dataset.mode); runMarkGrid(); });
+  el.addEventListener('click', e => { e.stopPropagation(); runMarkGrid(el.dataset.start, el.dataset.orient); });
 });
 document.addEventListener('pointerdown', e => {
   const wrap = document.getElementById('markGridWrap');
@@ -3765,13 +3772,15 @@ function _extractYTVideoId(url) {
 }
 
 async function housekeepingFillYTMeta() {
-  // Only rows that are YouTube links AND have at least one of title/author missing
+  // (dev0504) YouTube rows missing title, author OR ftext. ftext is included so this
+  // can backfill the cookieless oEmbed ftext on videos added while YouTube bot-walls
+  // yt-dlp (which is why new YT rows currently come in with an author but no ftext).
   const rows = data.filter(r => {
     if (!r || !r.link) return false;
     if (!_extractYTVideoId(r.link)) return false;
-    return !r.VidTitle || !r.VidAuthor;
+    return !r.VidTitle || !r.VidAuthor || !r.ftext;
   });
-  if (!rows.length) { toast('No YouTube rows with missing title/author', 2500); return; }
+  if (!rows.length) { toast('No YouTube rows with missing title / author / ftext', 2500); return; }
   toast('📺 Fetching YouTube metadata for ' + rows.length + ' row(s)…', 3000);
   let done = 0, skipped = 0;
   const failed = [];
@@ -3788,15 +3797,14 @@ async function housekeepingFillYTMeta() {
       }
       const meta = await res.json();
       let changed = false;
+      // Prefer @handle from author_url if YouTube exposes the /@handle path.
+      let author = meta.author_name ? '@' + meta.author_name : '';
+      if (meta.author_url) { const m = meta.author_url.match(/\/@([^/?#]+)/); if (m) author = '@' + m[1]; }
       if (meta.title && !row.VidTitle) { row.VidTitle = meta.title; changed = true; }
-      if (meta.author_name && !row.VidAuthor) {
-        // Prefer @handle from author_url if YouTube exposes /@handle path
-        let author = '@' + meta.author_name;
-        if (meta.author_url) {
-          const m = meta.author_url.match(/\/@([^/?#]+)/);
-          if (m) author = '@' + m[1];
-        }
-        row.VidAuthor = author; changed = true;
+      if (author && !row.VidAuthor) { row.VidAuthor = author; changed = true; }
+      // (dev0504) Minimal cookieless ftext (title + @author + source link) when absent.
+      if (!row.ftext && (meta.title || author)) {
+        row.ftext = _oembedBuildFtext(meta.title || '', author, row.link); changed = true;
       }
       if (changed) {
         row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
@@ -3815,29 +3823,47 @@ async function housekeepingFillYTMeta() {
   toast(msg, failed.length ? 7000 : 4000);
 }
 
-function runMarkGrid() {
+// (dev0504) start = 'top' | 'focused'; rowOrient = 'L' | 'P' | 'any'. The grid SHAPE
+// (_markGridShape) + size + media filter (_markGridMedia) are set by the chips above.
+function runMarkGrid(start, rowOrient) {
   // (dev0331/0502) Build the ordered cell list (ALL) + capacity from the chooser's
-  // orientation + size. A Mark-Grid run is always a T-source grid, so force the
-  // source to T — otherwise a previously-activated C config would keep showing.
+  // shape + size. A Mark-Grid run is always a T-source grid, so force the source to
+  // T — otherwise a previously-activated C config would keep showing.
   if (!metaRow) metaRow = { _salMeta: true };
   _gridSource = 'T';
-  let gsize, cap;
+  let layout, gsize, cap;
   const ALL = [];
-  if (_markGridOrient === 'P') {
+  const sz = _markGridSize;
+  if (_markGridShape === 'P') {
     // (dev0502) Portrait shorts grid (3/12/27 → 1×3 / 2×6 / 3×9). Park the layout
     // token in meta so G renders the rows×cols rectangle (portrait ignores gsize).
     // Cells fill in reading order: 1a,1b,1c, then 2a,2b,… using a..i columns.
-    const pd = (typeof _gridPortraitDims === 'function') ? _gridPortraitDims('P' + _markGridSize) : null;
-    if (!pd) { toast('Unknown portrait size ' + _markGridSize, 1800); return; }
-    metaRow._salLayout = 'P' + _markGridSize;
+    const pd = (typeof _gridPortraitDims === 'function') ? _gridPortraitDims('P' + sz) : null;
+    if (!pd) { toast('Unknown portrait size ' + sz, 1800); return; }
+    layout = 'P' + sz;
     gsize = (typeof _gridGsize === 'number') ? _gridGsize : 5;
     cap = pd.rows * pd.cols;
     for (let r = 1; r <= pd.rows; r++) for (let c = 1; c <= pd.cols; c++) ALL.push(mkGridCell(r, c));
+  } else if (_markGridShape === '17' || _markGridShape === '19') {
+    // (dev0504) Special non-square: a 5×5 footprint with the 16-cell outer ring and a
+    // merged center — 17 = one big landscape cell (1L); 19 = three portrait cells
+    // (1P/2P/3P). _gridCellList enumerates the ring + the special center cells in
+    // reading order, so the "4 special grid designations" (1L / 1P / 2P / 3P) are
+    // AUTO-ASSIGNED here just like every other cell.
+    layout = _markGridShape;
+    gsize = 5;
+    if (gsize !== _gridGsize) {
+      _gridGsize = gsize;
+      if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
+    }
+    metaRow._salGsize = gsize;
+    for (const spec of _gridCellList(gsize, layout)) ALL.push(spec.cs);
+    cap = ALL.length;   // 17 or 19
   } else {
     // (dev0331) Landscape/square (25/16/9/4 → 5/4/3/2). Cell labels use the
     // 1a/1b/2a… scheme, constrained to the top-left gsize × gsize square.
-    metaRow._salLayout = 'square';
-    gsize = Math.max(2, Math.min(5, Math.round(Math.sqrt(_markGridSize))));  // 25→5, 16→4, 9→3, 4→2
+    layout = 'square';
+    gsize = Math.max(2, Math.min(5, Math.round(Math.sqrt(sz))));  // 25→5, 16→4, 9→3, 4→2
     if (gsize !== _gridGsize) {
       _gridGsize = gsize;
       if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
@@ -3846,64 +3872,66 @@ function runMarkGrid() {
     cap = gsize * gsize;
     for (let r = 1; r <= gsize; r++) for (let ci = 0; ci < gsize; ci++) ALL.push(r + 'abcde'.charAt(ci));
   }
+  metaRow._salLayout = layout;
 
-  // Collect visible rows (respecting sort + filter)
-  let visibleDI = [];
+  // Collect visible rows (respecting sort + filter) and remember each one's
+  // position so a "from focused" run can start at the right spot even after the
+  // media/orientation filters drop the focused row itself.
+  const visAll = [];
   for (let vi = 0; vi < data.length; vi++) {
     const di = vr(vi);
-    if (rowMatchesFilter(data[di]))
-      visibleDI.push(di);
+    if (rowMatchesFilter(data[di])) visAll.push(di);
   }
-  if (!visibleDI.length) { toast('No visible rows to assign.', 1500); return; }
+  if (!visAll.length) { toast('No visible rows to assign.', 1500); return; }
+  const posInVis = new Map(visAll.map((di, i) => [di, i]));
 
-  // (dev0503) Orientation rule: a Portrait grid takes ONLY portrait rows (P/S=1),
-  // a Landscape grid ONLY landscape rows (P/S=0). Rows whose orientation is unknown
-  // ('') or n/a ('X') are skipped — they never match either grid. This is the
-  // "autoassign in T" filter: pick from the visible set, keep only the rows whose
-  // shape fits the grid, then fill in the chosen order/mode.
-  const wantPS = _markGridOrient === 'P' ? '1' : '0';
-  const _visCount = visibleDI.length;
-  visibleDI = visibleDI.filter(di =>
-    (typeof rowPSValue === 'function' ? rowPSValue(data[di]) : String(data[di]['P/S'] || '')) === wantPS);
-  if (!visibleDI.length) {
-    toast('No ' + (_markGridOrient === 'P' ? 'portrait (P/S=1)' : 'landscape (P/S=0)')
-      + ' rows among the ' + _visCount + ' visible.\nRun “Fill P/S” to classify them, then retry.', 4000);
+  // (dev0504) MEDIA-TYPE filter: All = everything (images + Xs/Quiz + video).
+  let eligible = visAll;
+  if (_markGridMedia === 'image') {
+    eligible = eligible.filter(di => rowMediaKind(data[di]) === 'image');
+  } else if (_markGridMedia === 'video') {
+    eligible = eligible.filter(di =>
+      (typeof isVideoRow === 'function' && isVideoRow(data[di])) || rowMediaKind(data[di]) === 'video');
+  }
+  // (dev0504) ORIENTATION filter from the chosen mode. 'L' → P/S=0, 'P' → P/S=1,
+  // 'any' → no filter. Rows whose orientation is unknown ('')/n-a ('X') drop out of
+  // an L/P run (run Fill P/S to classify them first).
+  if (rowOrient === 'L' || rowOrient === 'P') {
+    const wantPS = rowOrient === 'P' ? '1' : '0';
+    eligible = eligible.filter(di =>
+      (typeof rowPSValue === 'function' ? rowPSValue(data[di]) : String(data[di]['P/S'] || '')) === wantPS);
+  }
+  if (!eligible.length) {
+    const ml = _markGridMedia === 'all' ? '' : (_markGridMedia + ' ');
+    const ol = rowOrient === 'L' ? 'landscape (P/S=0) ' : rowOrient === 'P' ? 'portrait (P/S=1) ' : '';
+    toast('No ' + ml + ol + 'rows among the ' + visAll.length + ' visible.'
+      + (rowOrient === 'L' || rowOrient === 'P' ? '\nRun “Fill P/S” to classify orientation, then retry.' : ''),
+      4000);
     return;
   }
 
-  // Clear ALL cell assignments first
-  data.forEach(r => { r.cell = ''; });
-
-  let toAssign = [];
-  if (_markGridMode === 'top') {
-    toAssign = visibleDI.slice(0, cap);
-  } else if (_markGridMode === 'focused') {
-    if (focus === null) { toast('No row focused — click a row first', 1800); data.forEach(r=>{r.cell='';}); save(); render(); return; }
-    const focusDI = vr(focus.r);
-    const startIdx = visibleDI.indexOf(focusDI);
-    if (startIdx < 0) { toast('Focused row not in visible set', 1500); save(); render(); return; }
-    toAssign = visibleDI.slice(startIdx, startIdx + cap);
-  } else if (_markGridMode === 'random') {
-    // Fisher-Yates shuffle, take up to `cap`
-    const pool = visibleDI.slice();
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    toAssign = pool.slice(0, cap);
-    // Sort assigned by original visible order for grid display
-    toAssign.sort((a, b) => visibleDI.indexOf(a) - visibleDI.indexOf(b));
+  // "From focused" starts at the focused row (or the first eligible row after it if
+  // the focus was filtered out); "from top" starts at the first eligible row.
+  if (start === 'focused') {
+    if (focus === null) { toast('No row focused — click a row first', 1800); return; }
+    const fPos = posInVis.has(vr(focus.r)) ? posInVis.get(vr(focus.r)) : 0;
+    eligible = eligible.filter(di => posInVis.get(di) >= fPos);
+    if (!eligible.length) { toast('No eligible rows at/after the focused row', 2000); return; }
   }
 
+  // Clear ALL cell assignments first, then fill in order.
+  data.forEach(r => { r.cell = ''; });
+  const toAssign = eligible.slice(0, cap);
   toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
   save(); render();
+  markGridMenuClose();
   // (dev0502) Label by the actual layout (portrait shows "▯ R×C portrait").
   const _gridLbl = (typeof _gridLayoutLabel === 'function')
-    ? _gridLayoutLabel(metaRow._salLayout || 'square', gsize)
+    ? _gridLayoutLabel(layout, gsize)
     : (gsize + '×' + gsize);
   toast('✓ Assigned ' + toAssign.length + ' rows to ' + _gridLbl + ' grid cells'
-    + (visibleDI.length > cap ? '\n(' + (visibleDI.length - cap) + ' rows beyond ' + cap + '-cell grid)' : ''),
-    2000);
+    + (eligible.length > cap ? '\n(' + (eligible.length - cap) + ' more eligible beyond ' + cap + '-cell grid)' : ''),
+    2200);
 }
 
 // Fix vRange/vComment — sort segments earliest to latest, keep VidComment mapped
@@ -6190,6 +6218,45 @@ function _ytdlpBuildFtext(meta, url) {
   return html;
 }
 
+// (dev0504) COOKIELESS YouTube/Vimeo metadata via the public oEmbed endpoint — no
+// login, no proxy, no yt-dlp. Returns { title, author } or null. YouTube now bot-walls
+// cookieless yt-dlp ("Sign in to confirm you're not a bot"), so this is the fallback
+// the user chose (pure cookieless): a Short/video added today still gets *some* ftext.
+async function _ytVimOEmbed(url) {
+  const isYT  = /youtu\.be|youtube\.com/i.test(url);
+  const isVim = /vimeo\.com/i.test(url);
+  let res;
+  if (isYT) {
+    const id = _extractYTVideoId(url) || (window.getYouTubeId && window.getYouTubeId(url));
+    if (!id) return null;
+    res = await fetchWithTimeout(
+      'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id), 8000);
+  } else if (isVim) {
+    res = await fetchWithTimeout('https://vimeo.com/api/oembed.json?url=' + encodeURIComponent(url), 8000);
+  } else { return null; }
+  if (!res || !res.ok) return null;
+  const m = await res.json();
+  let author = m.author_name ? '@' + m.author_name : '';
+  // YouTube exposes the real /@handle in author_url; prefer it over the display name.
+  if (isYT && m.author_url) { const mm = m.author_url.match(/\/@([^/?#]+)/); if (mm) author = '@' + mm[1]; }
+  if (isVim) author = (m.author_name || '').trim();   // Vimeo authors aren't @handles
+  return { title: (m.title || '').trim(), author };
+}
+
+// (dev0504) Build a minimal ftext from oEmbed data (no description — that needs
+// yt-dlp/cookies): clean <h2> title, a grey "By @author" line, and the source link.
+// Same skeleton as _ytdlpBuildFtext so a later yt-dlp pass / Xe edit feels consistent.
+function _oembedBuildFtext(title, author, url) {
+  const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
+    c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+  let html = '';
+  if (title)  html += '<h2>' + esc(title) + '</h2>\n';
+  if (author) html += '<p style="color:#888;font-size:.9em;">By ' + esc(author) + '</p>\n';
+  html += '<p>Source: <a href="' + esc(url) + '" target="_blank" rel="noopener" '
+        + 'style="color:#5bf;word-break:break-all;">' + esc(url) + '</a></p>';
+  return html;
+}
+
 // Import pass: for each yt-dlp-supported new row, fetch metadata and fill ftext +
 // VidAuthor (+ VidTitle when oEmbed didn't). Guarded assignments so it complements
 // the oEmbed pass (_fetchMetaForNewRows) instead of clobbering it. Sequential (one
@@ -6224,8 +6291,24 @@ async function _fetchYtdlpMetaForNewRows(rows) {
       toast('✓ yt-dlp: ' + (handle || row.link.slice(0, 40)), 1400);
     } catch (e) {
       console.warn('[ytdlp] meta failed for', row.link, e && e.message);
+      // (dev0504) COOKIELESS YouTube/Vimeo fallback. YouTube bot-walls cookieless
+      // yt-dlp, so the rich-description path throws here — fall back to the public
+      // oEmbed and build a minimal ftext (title + @author + source link) so a freshly
+      // added video still gets ftext. No login/cookies (the user's chosen posture).
+      if (!row.ftext && /youtu\.be|youtube\.com|vimeo\.com/i.test(row.link)) {
+        try {
+          const om = await _ytVimOEmbed(row.link);
+          if (om && (om.title || om.author)) {
+            row.ftext = _oembedBuildFtext(om.title, om.author, row.link);
+            if (!row.VidTitle && om.title)  row.VidTitle  = _normalizeText(om.title).replace(/\s+/g, ' ').trim();
+            if (!row.VidAuthor && om.author) row.VidAuthor = om.author;
+            row.DateModified = isoNow(); done++; save(); if (typeof render === 'function') render();
+            toast('✓ oEmbed ftext: ' + (om.author || row.link.slice(0, 40)), 1400);
+          }
+        } catch (_) { /* oEmbed also failed — leave ftext empty */ }
+      }
       // Fallback: Instagram-style web rows can still try the r.jina.ai reader.
-      if (row.ltype === 'w' && !row.ftext) {
+      else if (row.ltype === 'w' && !row.ftext) {
         try {
           const html = await _fetchAndExtractArticle(row.link);
           if (html) {
@@ -6236,7 +6319,7 @@ async function _fetchYtdlpMetaForNewRows(rows) {
       }
     }
   }
-  if (done) toast('✓ yt-dlp metadata: ' + done + ' row(s) populated', 2500);
+  if (done) toast('✓ video metadata: ' + done + ' row(s) populated', 2500);
 }
 
 // (dev0425) STUB — per-row max-resolution video download to <project>/video/*.mp4

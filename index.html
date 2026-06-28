@@ -361,9 +361,13 @@ td.editing input {
 .mgitem:last-child { border-bottom:none; }
 .mgitem:hover { background:rgba(255,160,0,0.15); color:#ffc; }
 .mgitem.active { color:#ffd; background:rgba(255,160,0,0.1); }
-.mgsize { flex:1; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:13px; cursor:pointer; user-select:none; }
+.mgsize { flex:1 1 18%; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:13px; cursor:pointer; user-select:none; }
 .mgsize:hover { background:rgba(255,160,0,0.18); }
 .mgsize.active { background:rgba(255,160,0,0.3); color:#ffe; border-color:#fc9; font-weight:bold; }
+/* (dev0504) Media-type filter chips (All / Image / Video) */
+.mgmedia { flex:1; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:12px; cursor:pointer; user-select:none; }
+.mgmedia:hover { background:rgba(255,160,0,0.18); }
+.mgmedia.active { background:rgba(255,160,0,0.3); color:#ffe; border-color:#fc9; font-weight:bold; }
 
 /* Browse / VideoEditor injected fields — focus highlighting */
 #browseOverlay input:focus, #browseOverlay select:focus, #browseOverlay textarea:focus,
@@ -528,26 +532,44 @@ thead th.rn              { color: #fff !important; }
   <button class="tbtn" id="saveFtextImgsBtn" title="Download all web-referenced images in ftext for visible rows, save under jpgs/<slug>/ and rewrite img tags with onerror fallback. Skips rows where FTLsaved=1. Sets FTLsaved: 1=all saved, 0=partial, -1=none saved." style="border-color:#8cf;color:#8cf;background:rgba(0,40,80,0.35);">📥 Save Imgs</button>
   <!-- Mark for Grid button + dropdown -->
   <div id="markGridWrap" style="position:relative;display:inline-flex;flex-shrink:0;">
-    <button class="tbtn" id="markGridBtn" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:5px 0 0 5px;border-right:none;padding:4px 10px;" title="Open chooser: pick grid size + fill mode, then assign cells (clears existing first)">⊞ Mark Grid</button>
-    <button class="tbtn" id="markGridArrow" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:0 5px 5px 0;padding:4px 7px;font-size:10px;" title="Choose grid size + Mark Grid mode">▾</button>
-    <div id="markGridMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #fa8;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:240px;font-family:monospace;overflow:hidden;margin-top:3px;">
-      <!-- (dev0503) Single size list, lowest→highest, each tagged P (portrait shorts)
-           or L (landscape/square). The tag reinforces the grid structure and sets
-           BOTH the cell count and the orientation in one click. -->
-      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE · P=portrait · L=landscape</div>
+    <button class="tbtn" id="markGridBtn" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:5px 0 0 5px;border-right:none;padding:4px 10px;" title="Open chooser: pick grid size + media type + start/orientation mode, then assign cells (clears existing first)">⊞ Mark4Grid</button>
+    <button class="tbtn" id="markGridArrow" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:0 5px 5px 0;padding:4px 7px;font-size:10px;" title="Choose grid size + Mark4Grid mode">▾</button>
+    <div id="markGridMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #fa8;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:260px;font-family:monospace;overflow:hidden;margin-top:3px;">
+      <!-- (dev0503/0504) Single size list, lowest→highest. P=portrait shorts grid,
+           L=landscape/square, 17/19=special non-square (16-cell ring + merged center).
+           One click sets the grid SHAPE; the start-marking row below sets which rows
+           fill it (orientation). -->
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE · P=portrait · L=landscape · 17/19=special</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;">
-        <span class="mgsize" data-size="3"  data-orient="P" title="1×3 portrait — three shorts">3 P</span>
-        <span class="mgsize" data-size="4"  data-orient="L" title="2×2 landscape">4 L</span>
-        <span class="mgsize" data-size="9"  data-orient="L" title="3×3 landscape">9 L</span>
+        <span class="mgsize" data-size="3"  data-orient="P"  title="1×3 portrait — three shorts">3 P</span>
+        <span class="mgsize" data-size="4"  data-orient="L"  title="2×2 landscape">4 L</span>
+        <span class="mgsize" data-size="9"  data-orient="L"  title="3×3 landscape">9 L</span>
         <span class="mgsize active" data-size="12" data-orient="P" title="2×6 portrait — twelve shorts">12 P</span>
-        <span class="mgsize" data-size="16" data-orient="L" title="4×4 landscape">16 L</span>
-        <span class="mgsize" data-size="25" data-orient="L" title="5×5 landscape">25 L</span>
-        <span class="mgsize" data-size="27" data-orient="P" title="3×9 portrait — twenty-seven shorts">27 P</span>
+        <span class="mgsize" data-size="16" data-orient="L"  title="4×4 landscape">16 L</span>
+        <span class="mgsize" data-size="17" data-orient="17" title="Special: 16-cell ring + 1 big landscape center (1L) — special cells auto-assigned">17 ▣</span>
+        <span class="mgsize" data-size="19" data-orient="19" title="Special: 16-cell ring + 3 portrait center cells (1P/2P/3P) — special cells auto-assigned">19 ▥</span>
+        <span class="mgsize" data-size="25" data-orient="L"  title="5×5 landscape">25 L</span>
+        <span class="mgsize" data-size="27" data-orient="P"  title="3×9 portrait — twenty-seven shorts">27 P</span>
       </div>
       <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
-      <div class="mgitem active" id="mgOpt0" data-mode="top">▤ From top (in order)</div>
-      <div class="mgitem" id="mgOpt1" data-mode="focused">⊙ From focused row</div>
-      <div class="mgitem" id="mgOpt2" data-mode="random">🎲 Random (visible rows)</div>
+      <!-- (dev0504) Media-type filter for the candidate pool. All = everything. -->
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">MEDIA TYPE</div>
+      <div style="display:flex;gap:6px;padding:0 12px 8px;">
+        <span class="mgmedia active" data-media="all"   title="All eligible rows: images, text/slides (Xs), quizzes and video">All</span>
+        <span class="mgmedia" data-media="image" title="Only image rows">Image</span>
+        <span class="mgmedia" data-media="video" title="Only video rows">Video</span>
+      </div>
+      <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
+      <!-- (dev0504) Start point × orientation. Clicking one runs the assignment. -->
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">▤ FROM TOP (in order)</div>
+      <div class="mgitem" data-start="top" data-orient="L">&nbsp;&nbsp;⬌ Landscape only</div>
+      <div class="mgitem" data-start="top" data-orient="P">&nbsp;&nbsp;⬍ Portrait only</div>
+      <div class="mgitem" data-start="top" data-orient="any">&nbsp;&nbsp;⬌⬍ Landscape or Portrait</div>
+      <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">⊙ FROM FOCUSED ROW</div>
+      <div class="mgitem" data-start="focused" data-orient="L">&nbsp;&nbsp;⬌ Landscape only</div>
+      <div class="mgitem" data-start="focused" data-orient="P">&nbsp;&nbsp;⬍ Portrait only</div>
+      <div class="mgitem" data-start="focused" data-orient="any">&nbsp;&nbsp;⬌⬍ Landscape or Portrait</div>
     </div>
   </div>
   <!-- (zip0151) Housekeeping dropdown — surfaces Fill P/S, Fill Mpix,
@@ -563,7 +585,7 @@ thead th.rn              { color: #fff !important; }
       <div class="hkitem" data-act="fixvrange" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">Fix vRange — sort segments</div>
       <div class="hkitem" data-act="calclengths" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">Calc Lengths — vidLength + segLength</div>
       <div class="hkitem" data-act="cleanmute" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">🔇 Clean Mute Column — blank for non-video</div>
-      <div class="hkitem" data-act="fillytmeta" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">📺 Fill YT Meta — VidTitle + VidAuthor from YouTube</div>
+      <div class="hkitem" data-act="fillytmeta" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">📺 Fill YT Meta — VidTitle + VidAuthor + ftext from YouTube</div>
       <div class="hkitem" data-act="resetftlsaved" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔄 Reset FTLsaved — re-download all images</div>
     </div>
   </div>
@@ -921,7 +943,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0503';
+  window.HELP_VERSION_STR = 'dev0504';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','slideshow.js','boot.js'];
