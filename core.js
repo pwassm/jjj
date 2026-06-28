@@ -3684,6 +3684,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingCleanMute();
     } else if (act === 'fillytmeta') {
       housekeepingFillYTMeta();
+    } else if (act === 'fillytorient') {
+      housekeepingFillYTOrient();
     } else if (act === 'resetftlsaved') {
       const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
       if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
@@ -3793,6 +3795,115 @@ async function housekeepingFillYTMeta() {
     if (failed.length > 5) msg += '\n…and ' + (failed.length - 5) + ' more';
   }
   toast(msg, failed.length ? 7000 : 4000);
+}
+
+// ── (dev0508) Check YT Orientation ─────────────────────────────────────────
+// Classify every YouTube row portrait (Shorts) vs landscape by querying real
+// width×height via yt-dlp (proxy /exec/ytdlp → _ytdlpFetchMeta). YouTube has
+// bot-walled cookieless yt-dlp in the past (which is why Fill P/S SKIPS it and
+// orientation is otherwise set by hand). The user wants to re-try now that
+// cookieless ftext is flowing again — so this reports clearly WHETHER any
+// dimensions came back, shows a live progress toast (Esc aborts), bails early
+// if the first several rows all come back empty (the bot-wall signature), and
+// reports the portrait/landscape tally.
+let _ytOrientRunning = false;
+let _ytOrientAbort = false;
+async function housekeepingFillYTOrient() {
+  if (_ytOrientRunning) { toast('YT orientation check already running… (Esc to abort)', 2000); return; }
+  if (typeof _ytdlpFetchMeta !== 'function') { toast('yt-dlp pipeline not loaded', 2500); return; }
+  const rows = data.filter(r => r && r.link && _extractYTVideoId(r.link));
+  if (!rows.length) { toast('No YouTube rows found', 2500); return; }
+  if (!confirm(
+    'Check portrait/landscape for ' + rows.length + ' YouTube row(s) via yt-dlp?\n\n'
+    + 'Each video is queried for its real width×height and P/S is set\n'
+    + '(1 = portrait / Shorts, 0 = landscape). Runs one row at a time\n'
+    + '(~2–4s each) — press Esc to abort at any point.\n\n'
+    + 'YouTube may bot-wall cookieless yt-dlp; if no dimensions come\n'
+    + 'back you\'ll get a clear report and P/S is left unchanged.'
+  )) return;
+
+  _ytOrientRunning = true;
+  _ytOrientAbort = false;
+  // Esc → abort (capture-phase so it pre-empts T/other Escape handlers during the run).
+  const onEsc = e => {
+    if (e.key === 'Escape') { _ytOrientAbort = true; e.stopPropagation(); e.preventDefault(); }
+  };
+  window.addEventListener('keydown', onEsc, true);
+
+  const psCol = (typeof getPSCol === 'function') ? getPSCol() : 'P/S';
+  const TOTAL = rows.length;
+  const PROBE_FAIL_LIMIT = 5;   // first N rows empty + 0 successes ⇒ assume bot-wall, bail
+  let portrait = 0, landscape = 0, noInfo = 0, failed = 0, changed = 0, i = 0;
+  let consecutiveEmpty = 0;
+  let botWalled = false;
+  const failSamples = [];
+  try {
+    for (const row of rows) {
+      if (_ytOrientAbort) break;
+      i++;
+      toast('📐 Checking YT orientation…  ' + i + '/' + TOTAL
+        + '\n   ▯ portrait ' + portrait + '  ·  ▭ landscape ' + landscape
+        + '  ·  ✕ ' + (noInfo + failed)
+        + '\n   (Esc to abort)', 120000);
+      let dims = null, errMsg = '';
+      try {
+        const meta = await _ytdlpFetchMeta(row.link);
+        const w = +(meta && meta.width) || 0, h = +(meta && meta.height) || 0;
+        if (w > 0 && h > 0) dims = { w: w, h: h };
+      } catch (e) { errMsg = (e && e.message) || 'error'; }
+      if (_ytOrientAbort) break;
+
+      if (dims) {
+        consecutiveEmpty = 0;
+        const ps = dims.h > dims.w ? '1' : '0';
+        if (dims.h > dims.w) portrait++; else landscape++;
+        if (row[psCol] !== ps) {
+          row[psCol] = ps;
+          row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+          changed++;
+        }
+      } else {
+        consecutiveEmpty++;
+        if (errMsg) {
+          failed++;
+          if (failSamples.length < 4) failSamples.push(_extractYTVideoId(row.link) + ': ' + errMsg.slice(0, 70));
+        } else {
+          noInfo++;   // proxy answered but yt-dlp gave no width/height
+        }
+        // Bot-wall signature: several rows in a row yield nothing and none have
+        // succeeded yet → stop grinding and report that info isn't available.
+        if (consecutiveEmpty >= PROBE_FAIL_LIMIT && (portrait + landscape) === 0) {
+          botWalled = true;
+          break;
+        }
+      }
+    }
+  } finally {
+    window.removeEventListener('keydown', onEsc, true);
+    _ytOrientRunning = false;
+  }
+
+  if (changed) { save(); render(); }
+
+  const gotInfo = (portrait + landscape) > 0;
+  let msg;
+  if (!gotInfo) {
+    msg = '⚠ No dimensions obtained from yt-dlp for any YouTube row.\n'
+      + (botWalled
+          ? '   YouTube is still bot-walling cookieless yt-dlp\n   (bailed after '
+            + i + ' empty row(s)). '
+          : '   ')
+      + 'Orientation could not be determined; P/S left unchanged.';
+    if (failSamples.length) msg += '\n\n   e.g. ' + failSamples[0];
+  } else {
+    msg = '✓ YT Orientation' + (_ytOrientAbort ? ' (aborted)' : '') + ' — checked ' + i + '/' + TOTAL + ':\n'
+      + '   ▯ portrait (Shorts): ' + portrait + '\n'
+      + '   ▭ landscape: ' + landscape + '\n'
+      + '   P/S updated on ' + changed + ' row(s)';
+    const miss = noInfo + failed;
+    if (miss) msg += '\n   ✕ no info: ' + miss + ' row(s)';
+  }
+  toast(msg, 10000);
 }
 
 // (dev0504) start = 'top' | 'focused'; rowOrient = 'L' | 'P' | 'any'. The grid SHAPE

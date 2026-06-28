@@ -586,6 +586,7 @@ thead th.rn              { color: #fff !important; }
       <div class="hkitem" data-act="calclengths" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">Calc Lengths — vidLength + segLength</div>
       <div class="hkitem" data-act="cleanmute" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">🔇 Clean Mute Column — blank for non-video</div>
       <div class="hkitem" data-act="fillytmeta" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">📺 Fill YT Meta — VidTitle + VidAuthor + ftext from YouTube</div>
+      <div class="hkitem" data-act="fillytorient" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Query each YouTube row's real width×height via yt-dlp and set P/S (1=portrait/Shorts, 0=landscape). Esc aborts; if YouTube bot-walls cookieless yt-dlp you get a clear 'no dimensions' report.">📐 Check YT Orientation — portrait/landscape via yt-dlp</div>
       <div class="hkitem" data-act="resetftlsaved" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔄 Reset FTLsaved — re-download all images</div>
     </div>
   </div>
@@ -943,7 +944,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0507';
+  window.HELP_VERSION_STR = 'dev0508';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','slideshow.js','boot.js'];
