@@ -317,9 +317,12 @@ window.addEventListener('keydown', function(e) {
       if (k >= '2' && k <= '5') {
         e.preventDefault();
         e.stopPropagation();
-        // (dev0370) Layouts 17/19 are config-only — the size keys must not switch
-        // into or out of them. Swallow the key (no resize) while one is active.
-        if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== 'square') {
+        // (dev0370) C-source layouts (17/19 + portrait 3/12/27) are config-only —
+        // the size keys must not switch into or out of them. Swallow the key while
+        // one is active. (dev0502) A T-source portrait grid is NOT locked: 2-5 drop
+        // it back to a square grid (handled by _setGridGsize clearing _salLayout).
+        if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== 'square'
+            && _gridSource === 'C') {
           if (typeof _gridToast === 'function') _gridToast('Layout locked — change it from the C screen', 1400);
           return false;
         }
@@ -682,6 +685,11 @@ function buildMeta() {
   // size the user was last working in.
   if (typeof _gridGsize === 'number' && _gridGsize >= 2 && _gridGsize <= 5) {
     m._salGsize = _gridGsize;
+  }
+  // (dev0502) Persist a T-source portrait layout token (P3/P12/P27) so a shorts
+  // grid reopens as portrait on reload. Square grids omit it (default 'square').
+  if (metaRow && metaRow._salLayout && metaRow._salLayout !== 'square') {
+    m._salLayout = metaRow._salLayout;
   }
   // Preserve Views data if it exists
   if (metaRow && metaRow._salViews) m._salViews = metaRow._salViews;
@@ -3565,7 +3573,11 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
 
 // Mark for Grid
 let _markGridMode = 'top'; // 'top' | 'focused' | 'random'
-let _markGridSize = 25;    // (dev0331) 25 | 16 | 9 | 4 — chosen in the dropdown; default 25 (5×5)
+// (dev0502) Orientation gates which cell counts are offered: 'L' = landscape/square
+// (25/16/9/4), 'P' = portrait YT-shorts (27/12/3, the new 3×9/2×6/1×3 grids).
+// Default to portrait — this chooser was extended specifically for shorts.
+let _markGridOrient = 'P';
+let _markGridSize = 12;    // (dev0331/0502) chosen cell count; default 12 (portrait 2×6)
 
 function markGridMenuOpen() {
   const menu = document.getElementById('markGridMenu');
@@ -3590,6 +3602,20 @@ function markGridSetSize(size) {
     el.classList.toggle('active', parseInt(el.dataset.size, 10) === size);
   });
 }
+// (dev0502) Toggle Landscape (square 25/16/9/4) vs Portrait (shorts 27/12/3). Swaps
+// which size-chip row is visible and re-defaults the size to that row's largest
+// usable wall (L→25, P→12). The mode click still runs the assignment.
+function markGridSetOrient(orient) {
+  _markGridOrient = orient;
+  document.querySelectorAll('.mgorient').forEach(el => {
+    el.classList.toggle('active', el.dataset.orient === orient);
+  });
+  const lRow = document.getElementById('mgSizesL');
+  const pRow = document.getElementById('mgSizesP');
+  if (lRow) lRow.style.display = orient === 'L' ? 'flex' : 'none';
+  if (pRow) pRow.style.display = orient === 'P' ? 'flex' : 'none';
+  markGridSetSize(orient === 'L' ? 25 : 12);
+}
 
 // (dev0331) The whole button now opens the dropdown (was: instant-run with the
 // last mode). Pick a SIZE (25/16/9/4) then a MODE (top/focused/random) — the
@@ -3599,9 +3625,15 @@ document.getElementById('markGridBtn').addEventListener('click', e => { e.stopPr
 document.querySelectorAll('.mgsize').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetSize(parseInt(el.dataset.size, 10)); });
 });
+// (dev0502) Orientation chips (L / P) swap the size-chip row in/out.
+document.querySelectorAll('.mgorient').forEach(el => {
+  el.addEventListener('click', e => { e.stopPropagation(); markGridSetOrient(el.dataset.orient); });
+});
 document.querySelectorAll('.mgitem').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetMode(el.dataset.mode); runMarkGrid(); });
 });
+// (dev0502) Apply the default orientation (P) once so the right size row shows.
+markGridSetOrient(_markGridOrient);
 document.addEventListener('pointerdown', e => {
   const wrap = document.getElementById('markGridWrap');
   if (wrap && !wrap.contains(e.target)) markGridMenuClose();
@@ -3766,22 +3798,36 @@ async function housekeepingFillYTMeta() {
 }
 
 function runMarkGrid() {
-  // (dev0331) Size comes from the mark-grid dropdown (_markGridSize: 25/16/9/4),
-  // NOT the ambient _gridGsize (which mirrored G's last-used size — the old
-  // "label reads 25 but it filled 9" bug). Apply the chosen size to the grid too
-  // so G opens at the matching dimension; runMarkGrid's own save() persists it.
-  // Cell labels still use the 1a/1b/2a... scheme, constrained to the top-left
-  // gsize × gsize square (so a 2×2 fills 1a/1b/2a/2b).
-  const gsize = Math.max(2, Math.min(5, Math.round(Math.sqrt(_markGridSize))));  // 25→5, 16→4, 9→3, 4→2
-  if (gsize !== _gridGsize) {
-    _gridGsize = gsize;
-    if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
-  }
+  // (dev0331/0502) Build the ordered cell list (ALL) + capacity from the chooser's
+  // orientation + size. A Mark-Grid run is always a T-source grid, so force the
+  // source to T — otherwise a previously-activated C config would keep showing.
   if (!metaRow) metaRow = { _salMeta: true };
-  metaRow._salGsize = gsize;
-  const cap = gsize * gsize;
+  _gridSource = 'T';
+  let gsize, cap;
   const ALL = [];
-  for (let r=1; r<=gsize; r++) for (let ci=0; ci<gsize; ci++) ALL.push(r+'abcde'.charAt(ci));
+  if (_markGridOrient === 'P') {
+    // (dev0502) Portrait shorts grid (3/12/27 → 1×3 / 2×6 / 3×9). Park the layout
+    // token in meta so G renders the rows×cols rectangle (portrait ignores gsize).
+    // Cells fill in reading order: 1a,1b,1c, then 2a,2b,… using a..i columns.
+    const pd = (typeof _gridPortraitDims === 'function') ? _gridPortraitDims('P' + _markGridSize) : null;
+    if (!pd) { toast('Unknown portrait size ' + _markGridSize, 1800); return; }
+    metaRow._salLayout = 'P' + _markGridSize;
+    gsize = (typeof _gridGsize === 'number') ? _gridGsize : 5;
+    cap = pd.rows * pd.cols;
+    for (let r = 1; r <= pd.rows; r++) for (let c = 1; c <= pd.cols; c++) ALL.push(mkGridCell(r, c));
+  } else {
+    // (dev0331) Landscape/square (25/16/9/4 → 5/4/3/2). Cell labels use the
+    // 1a/1b/2a… scheme, constrained to the top-left gsize × gsize square.
+    metaRow._salLayout = 'square';
+    gsize = Math.max(2, Math.min(5, Math.round(Math.sqrt(_markGridSize))));  // 25→5, 16→4, 9→3, 4→2
+    if (gsize !== _gridGsize) {
+      _gridGsize = gsize;
+      if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
+    }
+    metaRow._salGsize = gsize;
+    cap = gsize * gsize;
+    for (let r = 1; r <= gsize; r++) for (let ci = 0; ci < gsize; ci++) ALL.push(r + 'abcde'.charAt(ci));
+  }
 
   // Collect visible rows (respecting sort + filter)
   const visibleDI = [];
@@ -3818,7 +3864,11 @@ function runMarkGrid() {
 
   toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
   save(); render();
-  toast('✓ Assigned ' + toAssign.length + ' rows to '+gsize+'×'+gsize+' grid cells'
+  // (dev0502) Label by the actual layout (portrait shows "▯ R×C portrait").
+  const _gridLbl = (typeof _gridLayoutLabel === 'function')
+    ? _gridLayoutLabel(metaRow._salLayout || 'square', gsize)
+    : (gsize + '×' + gsize);
+  toast('✓ Assigned ' + toAssign.length + ' rows to ' + _gridLbl + ' grid cells'
     + (visibleDI.length > cap ? '\n(' + (visibleDI.length - cap) + ' rows beyond ' + cap + '-cell grid)' : ''),
     2000);
 }

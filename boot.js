@@ -1848,34 +1848,22 @@ async function _showMobileCPicker() {
       _gridSource = 'C';
       _gridName = cfg.gname || '';
       if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg); // (dev0346) global + per-cell zoom
-      // (zip0153) Derive grid size from cfg.cells (25/16/9/4 → 5/4/3/2).
-      const cellsN = parseInt(cfg.cells, 10);
-      let gsize = 5;
-      if (cellsN === 4) gsize = 2;
-      else if (cellsN === 9) gsize = 3;
-      else if (cellsN === 16) gsize = 4;
-      else if (cellsN === 25) gsize = 5;
+      // (zip0153/0502) Derive layout + footprint from cfg.cells and mirror the
+      // cell→UID map onto row.cell via the shared helper (handles square 25/16/9/4,
+      // the 17/19 ring layouts, and the 3/12/27 portrait grids identically).
+      let gsize = 5, info = { layout: 'square', gsize: 5 };
+      if (typeof data !== 'undefined' && Array.isArray(data) && typeof _gridApplyConfigToRows === 'function') {
+        info = _gridApplyConfigToRows(cfg, data);
+        gsize = info.gsize;
+      }
       _setGridGsize(gsize, { skipSave: true });
       metaRow = metaRow || { _salMeta: true };
       metaRow._salGsize = gsize;
-      // Mirror cell mapping into row.cell (matches activateGridConfig logic).
-      if (typeof data !== 'undefined' && Array.isArray(data)) {
-        data.forEach(r => { if (r && r.cell) r.cell = ''; });
-        for (let r = 1; r <= gsize; r++) {
-          for (let c = 1; c <= gsize; c++) {
-            const cs = r + 'abcde'.charAt(c - 1);
-            const uid = (typeof _gridParseCellVal === 'function') ? _gridParseCellVal(cfg[cs]).uid : (cfg[cs] ? String(cfg[cs]) : '');
-            if (uid) {
-              const row = data.find(d => String(d.UID) === uid);
-              if (row) row.cell = cs;
-            }
-          }
-        }
-      }
       if (typeof save === 'function') save();
       close();
       if (typeof gridShow === 'function') gridShow();
-      if (typeof toast === 'function') toast('✓ ' + (cfg.gname || '(unnamed)') + ' (' + gsize + '×' + gsize + ')', 1500);
+      const _lbl = (typeof _gridLayoutLabel === 'function') ? _gridLayoutLabel(info.layout, gsize) : (gsize + '×' + gsize);
+      if (typeof toast === 'function') toast('✓ ' + (cfg.gname || '(unnamed)') + ' (' + _lbl + ')', 1500);
     });
   });
 

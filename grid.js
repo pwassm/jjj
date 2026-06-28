@@ -3,8 +3,10 @@
 // GRID VIEW
 // ══════════════════════════════════════════════════════════════════════════════
 
-const GRID_ROWS = 5, GRID_COLS = 5;
-const GRID_LETTERS = 'abcde';
+// (dev0502) Columns widened to 9 so portrait grids can address a..i (P27 = 3×9).
+// Square grids still only ever generate a..e — the extra letters are inert there.
+const GRID_ROWS = 5, GRID_COLS = 9;
+const GRID_LETTERS = 'abcdefghi';
 
 // ── (zip0153) Variable grid size ─────────────────────────────────────────────
 // _gridGsize is the live edge length (2-5). The grid still uses the same cell
@@ -18,6 +20,14 @@ var _gridGsize = 5;
 function _gridApplyContainerCSS() {
   const c = document.getElementById('gridContainer');
   if (!c) return;
+  // (dev0502) Portrait layouts use a true rows×cols rectangle (not the square
+  // gsize footprint) so the 9:16 cells tile the 16:9 screen edge to edge.
+  const pd = (typeof _gridCurrentLayout === 'function') ? _gridPortraitDims(_gridCurrentLayout()) : null;
+  if (pd) {
+    c.style.gridTemplateRows    = 'repeat(' + pd.rows + ',1fr)';
+    c.style.gridTemplateColumns = 'repeat(' + pd.cols + ',1fr)';
+    return;
+  }
   c.style.gridTemplateRows    = 'repeat(' + _gridGsize + ',1fr)';
   c.style.gridTemplateColumns = 'repeat(' + _gridGsize + ',1fr)';
 }
@@ -27,7 +37,13 @@ function _gridApplyContainerCSS() {
 function _setGridGsize(n, opts) {
   n = parseInt(n, 10);
   if (!(n >= 2 && n <= 5)) return;
-  if (n === _gridGsize && !(opts && opts.force)) {
+  // (dev0502) Choosing a square size always exits a T-source portrait layout
+  // (P3/P12/P27). Detect it first so we still force a full re-render even when
+  // the target size equals the current gsize (otherwise the early-out below
+  // would skip the redraw and the portrait grid would stay on screen).
+  const wasPortrait = !!(metaRow && metaRow._salLayout && metaRow._salLayout !== 'square');
+  if (wasPortrait) metaRow._salLayout = 'square';
+  if (n === _gridGsize && !wasPortrait && !(opts && opts.force)) {
     _gridApplyContainerCSS();
     return;
   }
@@ -64,11 +80,81 @@ function mkGridCell(r, c) { return r + GRID_LETTERS[c - 1]; }
 // is active (see core.js). Each special cell obeys every normal cell rule
 // (tap-to-play, swipe→view, zoom, COI, cut) because gridShow builds it with the
 // same code path; only its grid-area — and therefore its size — differs.
+// ── (dev0502) Portrait grids for YouTube Shorts ─────────────────────────────
+// 9:16 cells tiled on a 16:9 1080p screen. The math: to fit a 9:16 cell in a
+// 16:9 frame you want columns/rows = (16/9)² ≈ 3.16, i.e. ~3 columns per row.
+// Rounding 3.16·rows to whole columns gives the three usable sizes:
+//   P3  = 1×3  (1a-1c)        P12 = 2×6  (1a-1f, 2a-2f)
+//   P27 = 3×9  (1a-1i .. 3a-3i)
+// (4 rows → 13 cols = 52 cells was dropped: cells too small to embed a short.)
+// A portrait grid is just another LAYOUT, keyed off the active config's `cells`
+// value (3/12/27) for C-source, or meta._salLayout for a T-source Mark-Grid run.
+// Cells are addressed with the normal 1a/2f scheme in left-to-right, top-to-
+// bottom reading order, so swap/zoom/COI/cut all work unchanged.
+const PORTRAIT_LAYOUTS = { 3: { rows: 1, cols: 3 }, 12: { rows: 2, cols: 6 }, 27: { rows: 3, cols: 9 } };
+
+// {rows,cols} for a portrait layout token ('P3'|'P12'|'P27'), else null. Accepts
+// either the 'P##' token or the bare cell-count number (3/12/27).
+function _gridPortraitDims(layout) {
+  if (typeof layout === 'string' && layout.charAt(0) === 'P') layout = layout.slice(1);
+  return PORTRAIT_LAYOUTS[parseInt(layout, 10)] || null;
+}
+// Total cells a layout renders (square → gsize²; specials → their fixed count).
+function _gridLayoutCount(layout, gsize) {
+  if (layout === '17') return 17;
+  if (layout === '19') return 19;
+  const pd = _gridPortraitDims(layout);
+  if (pd) return pd.rows * pd.cols;
+  return gsize * gsize;
+}
+// Short human label for the grid-info bar / C status line.
+function _gridLayoutLabel(layout, gsize) {
+  if (layout === 'square') return gsize + '×' + gsize;
+  const pd = _gridPortraitDims(layout);
+  if (pd) return '▯ ' + pd.rows + '×' + pd.cols + ' portrait';
+  return 'layout ' + layout;
+}
+
+// (dev0502) Derive a saved config's {layout, gsize} from its `cells` value. The
+// gsize is the square footprint (5 for the specials/portrait, which ignore it).
+function _gridConfigLayout(cfg) {
+  const cn = parseInt(cfg && cfg.cells, 10);
+  if (cn === 17) return { layout: '17', gsize: 5 };
+  if (cn === 19) return { layout: '19', gsize: 5 };
+  if (PORTRAIT_LAYOUTS[cn]) return { layout: 'P' + cn, gsize: 5 };
+  if (cn === 4)  return { layout: 'square', gsize: 2 };
+  if (cn === 9)  return { layout: 'square', gsize: 3 };
+  if (cn === 16) return { layout: 'square', gsize: 4 };
+  return { layout: 'square', gsize: 5 };   // 25 + older entries without `cells`
+}
+// (dev0502) Shared C-activation: clear every row.cell, then mirror the config's
+// cell→UID map onto row.cell for the layout's cell list (square/17/19/portrait).
+// Returns the {layout, gsize}. Used by cMakeActive and the mobile config picker.
+function _gridApplyConfigToRows(cfg, rows) {
+  const info = _gridConfigLayout(cfg);
+  rows.forEach(r => { if (r && r.cell) r.cell = ''; });
+  for (const spec of _gridCellList(info.gsize, info.layout)) {
+    const uid = (typeof _gridParseCellVal === 'function')
+      ? _gridParseCellVal(cfg[spec.cs]).uid
+      : (cfg[spec.cs] ? String(cfg[spec.cs]) : '');
+    if (uid) { const row = rows.find(d => String(d.UID) === uid); if (row) row.cell = spec.cs; }
+  }
+  return info;
+}
+
 function _gridCurrentLayout() {
   if (_gridSource === 'C' && _gridActiveConfig) {
     const cn = parseInt(_gridActiveConfig.cells, 10);
     if (cn === 17) return '17';
     if (cn === 19) return '19';
+    if (PORTRAIT_LAYOUTS[cn]) return 'P' + cn;
+  }
+  // (dev0502) T-source portrait grids (3/12/27) park their layout token in meta.
+  // Square Mark-Grid runs and every _setGridGsize reset it to 'square', so a stale
+  // portrait layout never lingers under a later square grid.
+  if (_gridSource === 'T' && typeof metaRow !== 'undefined' && metaRow
+      && metaRow._salLayout && metaRow._salLayout !== 'square') {
+    return metaRow._salLayout;
   }
   return 'square';
 }
@@ -77,7 +163,8 @@ function _gridCurrentLayout() {
 // the special 1L / 1P / 2P / 3P. The per-cell zoom scanners use this so zooms
 // stored on the big/portrait cells ("UID/zoom") restore like every other cell.
 function _isGridConfigCellKey(k) {
-  return /^[1-9][a-e]$/.test(k) || k === '1L' || /^[123]P$/.test(k);
+  // (dev0502) Columns now run a..i so portrait cells (1f..3i) count as cell keys.
+  return /^[1-9][a-i]$/.test(k) || k === '1L' || /^[123]P$/.test(k);
 }
 
 // Ordered list of the cells a layout renders, each with its CSS grid placement
@@ -89,6 +176,15 @@ function _isGridConfigCellKey(k) {
 // so all three agree on which cells exist and in what order.
 function _gridCellList(gsize, layout) {
   const out = [];
+  // (dev0502) Portrait grids: a plain rows×cols block (cols can exceed 5), each
+  // cell explicitly placed so gridShow lines them up against the rect template.
+  const pd = _gridPortraitDims(layout);
+  if (pd) {
+    for (let r = 1; r <= pd.rows; r++)
+      for (let c = 1; c <= pd.cols; c++)
+        out.push({ cs: mkGridCell(r, c), r: r, c: c, rs: 1, cls: 1 });
+    return out;
+  }
   if (layout === '17' || layout === '19') {
     for (let c = 1; c <= 5; c++) out.push({ cs: mkGridCell(1, c), r: 1, c: c, rs: 1, cls: 1 });
     out.push({ cs: '2a', r: 2, c: 1, rs: 1, cls: 1 });
@@ -1071,7 +1167,11 @@ function gridShow() {
           const img = document.createElement('img');
           img.className = 'grid-zoom-img';   // (dev0346) wheel-zoom target
           img.src = row.link;
-          img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;transform-origin:center center;';
+          // (dev0502) Portrait grids cover-fit (fill the cell height, crop the
+          // ~5% side overshoot) so a 9:16 short fills its near-9:16 cell with no
+          // pillarbars; square/landscape grids keep contain so nothing is cut.
+          const _imgFit = _gridPortraitDims(_layout) ? 'cover' : 'contain';
+          img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + _imgFit + ';pointer-events:none;z-index:1;transform-origin:center center;';
           img.onerror = () => { img.remove(); if (!isImgLink) _buildFtextImgCell(cell, row); };
           cell.appendChild(img);
         }
@@ -1137,9 +1237,10 @@ function gridShow() {
   // (dev0346) Show the whole-grid zoom whenever it's not 1× (zoomed in OR out).
   const _zoom = _gridFillZoom();
   const _zoomTag = Math.abs(_zoom - 1) > 1e-9 ? ' · ⤢' + _zoom.toFixed(1) + '×' : '';
-  // (zip0153) Total cells = _gridGsize²; (dev0370) special layouts show name+count.
-  const _total = _layout === '17' ? 17 : _layout === '19' ? 19 : _gridGsize * _gridGsize;
-  const _sizeLabel = _layout === 'square' ? (_gridGsize + '×' + _gridGsize) : ('layout ' + _layout);
+  // (zip0153) Total cells = _gridGsize²; (dev0370/0502) special + portrait layouts
+  // report their own fixed count + label via the shared helpers.
+  const _total = _gridLayoutCount(_layout, _gridGsize);
+  const _sizeLabel = _gridLayoutLabel(_layout, _gridGsize);
   document.getElementById('gridInfo').textContent =
     '['+srcLabel+'] ' + _sizeLabel + ' · '
     + occupied + '/' + _total + ' · ' + hint + _bufTag + _zoomTag;

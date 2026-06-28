@@ -64,10 +64,12 @@ function gridSavePrompt() {
     // Update grid info display
     // (zip0153) Show total = _gridGsize²
     const gsize = _gridGsize;
-    // (dev0371) Mirror gridShow's layout-aware label/count for 17/19.
+    // (dev0371/0502) Mirror gridShow's layout-aware label/count for 17/19/portrait.
     const layout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
-    const total = layout === '17' ? 17 : layout === '19' ? 19 : gsize * gsize;
-    const sizeLabel = layout === 'square' ? (gsize + '×' + gsize) : ('layout ' + layout);
+    const total = (typeof _gridLayoutCount === 'function') ? _gridLayoutCount(layout, gsize)
+      : (layout === '17' ? 17 : layout === '19' ? 19 : gsize * gsize);
+    const sizeLabel = (typeof _gridLayoutLabel === 'function') ? _gridLayoutLabel(layout, gsize)
+      : (layout === 'square' ? (gsize + '×' + gsize) : ('layout ' + layout));
     const occupied = (typeof _gridCellList === 'function')
       ? _gridCellList(gsize, layout).filter(s => {
           const row = (typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid(s.cs) : getRowByCell(s.cs);
@@ -104,8 +106,11 @@ async function gridSaveToFile(gname) {
   // and their merged 1L / 1P-3P cells, not as a 25-key square. Read each cell via
   // getRowByCellForGrid so the live (possibly rearranged) arrangement and the
   // special cells are both captured — getRowByCell only saw row.cell.
+  // (dev0502) Portrait grids (P3/P12/P27) save with their real cell count (3/12/27)
+  // so C reload restores the rectangle, not a square footprint.
   const layout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
-  const cellsVal = layout === '17' ? 17 : layout === '19' ? 19 : gsize * gsize;
+  const cellsVal = (typeof _gridLayoutCount === 'function') ? _gridLayoutCount(layout, gsize)
+    : (layout === '17' ? 17 : layout === '19' ? 19 : gsize * gsize);
   const gridData = {
     gname: gname,
     cells: cellsVal,
@@ -748,27 +753,17 @@ function cMakeActive() {
   const cfg = JSON.parse(JSON.stringify(stored));
   _gridActiveConfig = cfg; _gridSource = 'C'; _gridName = cfg.gname||'';
   if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg); // (dev0346) global + per-cell zoom
-  // (zip0153) Derive grid size from cfg.cells (25/16/9/4 → 5/4/3/2). Older
-  // entries without cells default to 5. Persist via _setGridGsize so the
-  // size sticks on reload.
-  const cellsN = parseInt(cfg.cells, 10);
-  let gsize = 5;
-  if (cellsN === 4) gsize = 2;
-  else if (cellsN === 9) gsize = 3;
-  else if (cellsN === 16) gsize = 4;
-  else if (cellsN === 25) gsize = 5;
+  // (zip0153/0502) Derive layout + footprint from cfg.cells (25/16/9/4 → square
+  // 5/4/3/2; 17/19 → ring; 3/12/27 → portrait). _gridApplyConfigToRows mirrors the
+  // cell→UID map onto row.cell for whichever layout it is. Persist via _setGridGsize.
+  const tdata = _tSave ? _tSave.data : data;
+  const info = _gridApplyConfigToRows(cfg, tdata);
+  const gsize = info.gsize;
   _setGridGsize(gsize, { skipSave: true }); // skipSave: about to save() below
   metaRow = metaRow || { _salMeta: true };
   metaRow._salGsize = gsize;
-  const tdata = _tSave ? _tSave.data : data;
-  tdata.forEach(r=>{if(r.cell)r.cell='';});
-  for (let r=1; r<=gsize; r++) for (let c=1; c<=gsize; c++) {
-    const cs=mkGridCell(r,c);
-    const uid = _gridParseCellVal(cfg[cs]).uid; // (dev0346) strip any /zoom suffix
-    if (uid) { const row=tdata.find(d=>String(d.UID)===uid); if(row) row.cell=cs; }
-  }
   closeCScreen(); save();
-  toast('✓ Active: '+(cfg.gname||'(unnamed)')+' ('+gsize+'×'+gsize+')',1500);
+  toast('✓ Active: '+(cfg.gname||'(unnamed)')+' ('+(typeof _gridLayoutLabel==='function'?_gridLayoutLabel(info.layout,gsize):gsize+'×'+gsize)+')',1500);
   gridShow();
 }
 
