@@ -4422,17 +4422,22 @@ function openIe(row) {
 function openEditorForRow(row) {
   // (zip0178) Shared E-screen router used by Xe/Ie arrow navigation.
   if (!row) return;
-  const isText = row.VidRange === 'text' || row.ltype === 'w'
-              || (typeof row.ftext === 'string' && row.ftext.length > 0);
-
-  if (isText) {
-    if (typeof gridOpenTextEditor === 'function')
-      gridOpenTextEditor(row.cell || '', row);
-    return;
-  }
+  // (dev0503) A VIDEO row wins first — before the text test. yt-dlp import auto-fills
+  // ftext (the caption) on YouTube/Vimeo videos, and IG video rows carry ltype 'w';
+  // the old text-first test mistook BOTH for slides and opened Xe, which is why
+  // E-screen down-arrow landed in the text editor instead of the next row's video.
   if (typeof isVideoRow === 'function' && isVideoRow(row)) {
     _cameFromGrid = false;
     if (window.openVideoEditor) window.openVideoEditor(row);
+    return;
+  }
+  // A row is "text" via an explicit marker (VidRange/ltype) or ftext WITHOUT a media
+  // link. Requiring !link (mirrors gridShow) keeps captioned image rows out of Xe.
+  const isText = row.VidRange === 'text' || row.ltype === 'w'
+              || (typeof row.ftext === 'string' && row.ftext.length > 0 && !row.link);
+  if (isText) {
+    if (typeof gridOpenTextEditor === 'function')
+      gridOpenTextEditor(row.cell || '', row);
     return;
   }
   if (row.link) {

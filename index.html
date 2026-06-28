@@ -364,10 +364,6 @@ td.editing input {
 .mgsize { flex:1; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:13px; cursor:pointer; user-select:none; }
 .mgsize:hover { background:rgba(255,160,0,0.18); }
 .mgsize.active { background:rgba(255,160,0,0.3); color:#ffe; border-color:#fc9; font-weight:bold; }
-/* (dev0502) Orientation toggle (Landscape vs Portrait) — blue to stand apart from the orange size chips. */
-.mgorient { flex:1; text-align:center; padding:5px 0; border:1px solid rgba(120,200,255,0.4); border-radius:4px; color:#9cf; font-size:12px; cursor:pointer; user-select:none; }
-.mgorient:hover { background:rgba(100,180,255,0.18); }
-.mgorient.active { background:rgba(100,180,255,0.3); color:#eef; border-color:#9cf; font-weight:bold; }
 
 /* Browse / VideoEditor injected fields — focus highlighting */
 #browseOverlay input:focus, #browseOverlay select:focus, #browseOverlay textarea:focus,
@@ -535,25 +531,18 @@ thead th.rn              { color: #fff !important; }
     <button class="tbtn" id="markGridBtn" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:5px 0 0 5px;border-right:none;padding:4px 10px;" title="Open chooser: pick grid size + fill mode, then assign cells (clears existing first)">⊞ Mark Grid</button>
     <button class="tbtn" id="markGridArrow" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:0 5px 5px 0;padding:4px 7px;font-size:10px;" title="Choose grid size + Mark Grid mode">▾</button>
     <div id="markGridMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #fa8;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:240px;font-family:monospace;overflow:hidden;margin-top:3px;">
-      <!-- (dev0502) Orientation: Landscape (square) vs Portrait (YT-shorts grids). -->
-      <div style="padding:7px 14px 3px;color:#9cf;font-size:10px;letter-spacing:0.6px;opacity:0.85;">ORIENTATION</div>
-      <div style="display:flex;gap:6px;padding:0 12px 8px;">
-        <span class="mgorient" data-orient="L" title="Landscape / square grids (4·9·16·25 cells)">▭ Land</span>
-        <span class="mgorient active" data-orient="P" title="Portrait grids for YouTube Shorts (9:16 cells)">▯ Port</span>
-      </div>
-      <div style="padding:3px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE (cells)</div>
-      <!-- Landscape sizes (square footprints) -->
-      <div id="mgSizesL" style="display:none;gap:6px;padding:0 12px 8px;">
-        <span class="mgsize active" data-size="25" title="5×5">25</span>
-        <span class="mgsize" data-size="16" title="4×4">16</span>
-        <span class="mgsize" data-size="9" title="3×3">9</span>
-        <span class="mgsize" data-size="4" title="2×2">4</span>
-      </div>
-      <!-- Portrait sizes (rows×cols rectangles tuned for 9:16 shorts on a 16:9 screen) -->
-      <div id="mgSizesP" style="display:flex;gap:6px;padding:0 12px 8px;">
-        <span class="mgsize" data-size="27" title="3×9 — twenty-seven shorts">27</span>
-        <span class="mgsize active" data-size="12" title="2×6 — twelve shorts">12</span>
-        <span class="mgsize" data-size="3" title="1×3 — three shorts">3</span>
+      <!-- (dev0503) Single size list, lowest→highest, each tagged P (portrait shorts)
+           or L (landscape/square). The tag reinforces the grid structure and sets
+           BOTH the cell count and the orientation in one click. -->
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE · P=portrait · L=landscape</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;">
+        <span class="mgsize" data-size="3"  data-orient="P" title="1×3 portrait — three shorts">3 P</span>
+        <span class="mgsize" data-size="4"  data-orient="L" title="2×2 landscape">4 L</span>
+        <span class="mgsize" data-size="9"  data-orient="L" title="3×3 landscape">9 L</span>
+        <span class="mgsize active" data-size="12" data-orient="P" title="2×6 portrait — twelve shorts">12 P</span>
+        <span class="mgsize" data-size="16" data-orient="L" title="4×4 landscape">16 L</span>
+        <span class="mgsize" data-size="25" data-orient="L" title="5×5 landscape">25 L</span>
+        <span class="mgsize" data-size="27" data-orient="P" title="3×9 portrait — twenty-seven shorts">27 P</span>
       </div>
       <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
       <div class="mgitem active" id="mgOpt0" data-mode="top">▤ From top (in order)</div>
@@ -932,7 +921,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0502';
+  window.HELP_VERSION_STR = 'dev0503';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','slideshow.js','boot.js'];

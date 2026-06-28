@@ -2951,6 +2951,38 @@ document.getElementById('fillPSBtn').addEventListener('click', async () => {
   // (no media link) must be stamped 'X' (n/a) rather than left blank/stale.
   const rows = data;
   if (!rows.length) { toast('No rows.'); return; }
+
+  // (dev0503) AUTHORITATIVE YouTube orientation via yt-dlp. The YT oEmbed thumbnail
+  // is ALWAYS 16:9, so a portrait Short saved as a watch?v= / youtu.be link used to
+  // come back landscape ('0'). yt-dlp reports the real width/height, so a Short is
+  // correctly portrait ('1') no matter how its URL is written. It's slower (spawns
+  // yt-dlp per video) so it's opt-in; declining falls back to the oEmbed path.
+  const ytTargets = rows.filter(r => {
+    const lk = String(r.link || '');
+    return /youtu\.be|youtube\.com/i.test(lk) && !/youtube\.com\/shorts\//i.test(lk);
+  });
+  const ytDims = new Map();   // row -> {w,h} from yt-dlp (absent → oEmbed fallback below)
+  if (ytTargets.length && typeof _ytdlpFetchMeta === 'function' &&
+      confirm('Fill P/S: measure ' + ytTargets.length + ' YouTube video(s) with yt-dlp for accurate '
+        + 'orientation?\n\n• OK = accurate (catches Shorts saved as watch links) but slow — needs '
+        + 'proxy.js on :8081, ~2-4s each.\n• Cancel = fast oEmbed only (16:9 thumbnails, so some '
+        + 'Shorts stay marked landscape).')) {
+    let yi = 0, ydone = 0;
+    toast('⇌ P/S: measuring ' + ytTargets.length + ' YouTube videos via yt-dlp…', 10000);
+    const worker = async () => {
+      while (yi < ytTargets.length) {
+        const r = ytTargets[yi++];
+        try { const m = await _ytdlpFetchMeta(r.link);
+          if (m && m.width && m.height) ytDims.set(r, { w: m.width, h: m.height }); }
+        catch (_) { /* leave unset → oEmbed fallback in the main loop */ }
+        ydone++;
+        if (ydone % 5 === 0 || ydone === ytTargets.length)
+          toast('P/S yt-dlp… ' + ydone + '/' + ytTargets.length + ' (' + ytDims.size + ' measured)', 10000);
+      }
+    };
+    // Concurrency 4 keeps the run to a few minutes without flooding the proxy.
+    await Promise.all(Array.from({ length: Math.min(4, ytTargets.length) }, worker));
+  }
   toast('\u{21ec}\u{21CC} Filling P/S\u2026 0/' + rows.length, 10000);
   let done = 0, changed = 0;
   for (const row of rows) {
@@ -2963,6 +2995,9 @@ document.getElementById('fillPSBtn').addEventListener('click', async () => {
     } else if (/youtube\.com\/shorts\//i.test(link)
             || (window.isInstagramLink && window.isInstagramLink(link) && /\/reel\//i.test(link))) {
       ps = '1';                       // YT Shorts / IG Reels are portrait by definition
+    } else if (ytDims.has(row)) {
+      const dd = ytDims.get(row);     // (dev0503) yt-dlp real dimensions win for YouTube
+      ps = dd.h > dd.w ? '1' : '0';
     } else if (/youtu\.be|youtube\.com/i.test(link) || /vimeo\.com/i.test(link)) {
       const dims = await getOEmbedDims(link);
       ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
@@ -3596,25 +3631,14 @@ function markGridSetMode(mode) {
 }
 // (dev0331) Pick the grid size in the dropdown (does NOT close it — you pick a
 // size, then a mode). Selecting a mode is what runs the assignment.
-function markGridSetSize(size) {
+// (dev0503) Each size chip carries its own orientation tag (P/L), so one click
+// sets BOTH the cell count and whether it's a portrait or landscape grid.
+function markGridSetSize(size, orient) {
   _markGridSize = size;
+  if (orient === 'P' || orient === 'L') _markGridOrient = orient;
   document.querySelectorAll('.mgsize').forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.size, 10) === size);
   });
-}
-// (dev0502) Toggle Landscape (square 25/16/9/4) vs Portrait (shorts 27/12/3). Swaps
-// which size-chip row is visible and re-defaults the size to that row's largest
-// usable wall (L→25, P→12). The mode click still runs the assignment.
-function markGridSetOrient(orient) {
-  _markGridOrient = orient;
-  document.querySelectorAll('.mgorient').forEach(el => {
-    el.classList.toggle('active', el.dataset.orient === orient);
-  });
-  const lRow = document.getElementById('mgSizesL');
-  const pRow = document.getElementById('mgSizesP');
-  if (lRow) lRow.style.display = orient === 'L' ? 'flex' : 'none';
-  if (pRow) pRow.style.display = orient === 'P' ? 'flex' : 'none';
-  markGridSetSize(orient === 'L' ? 25 : 12);
 }
 
 // (dev0331) The whole button now opens the dropdown (was: instant-run with the
@@ -3623,17 +3647,11 @@ function markGridSetOrient(orient) {
 document.getElementById('markGridArrow').addEventListener('click', e => { e.stopPropagation(); markGridMenuOpen(); });
 document.getElementById('markGridBtn').addEventListener('click', e => { e.stopPropagation(); markGridMenuOpen(); });
 document.querySelectorAll('.mgsize').forEach(el => {
-  el.addEventListener('click', e => { e.stopPropagation(); markGridSetSize(parseInt(el.dataset.size, 10)); });
-});
-// (dev0502) Orientation chips (L / P) swap the size-chip row in/out.
-document.querySelectorAll('.mgorient').forEach(el => {
-  el.addEventListener('click', e => { e.stopPropagation(); markGridSetOrient(el.dataset.orient); });
+  el.addEventListener('click', e => { e.stopPropagation(); markGridSetSize(parseInt(el.dataset.size, 10), el.dataset.orient); });
 });
 document.querySelectorAll('.mgitem').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetMode(el.dataset.mode); runMarkGrid(); });
 });
-// (dev0502) Apply the default orientation (P) once so the right size row shows.
-markGridSetOrient(_markGridOrient);
 document.addEventListener('pointerdown', e => {
   const wrap = document.getElementById('markGridWrap');
   if (wrap && !wrap.contains(e.target)) markGridMenuClose();
@@ -3830,13 +3848,28 @@ function runMarkGrid() {
   }
 
   // Collect visible rows (respecting sort + filter)
-  const visibleDI = [];
+  let visibleDI = [];
   for (let vi = 0; vi < data.length; vi++) {
     const di = vr(vi);
     if (rowMatchesFilter(data[di]))
       visibleDI.push(di);
   }
   if (!visibleDI.length) { toast('No visible rows to assign.', 1500); return; }
+
+  // (dev0503) Orientation rule: a Portrait grid takes ONLY portrait rows (P/S=1),
+  // a Landscape grid ONLY landscape rows (P/S=0). Rows whose orientation is unknown
+  // ('') or n/a ('X') are skipped — they never match either grid. This is the
+  // "autoassign in T" filter: pick from the visible set, keep only the rows whose
+  // shape fits the grid, then fill in the chosen order/mode.
+  const wantPS = _markGridOrient === 'P' ? '1' : '0';
+  const _visCount = visibleDI.length;
+  visibleDI = visibleDI.filter(di =>
+    (typeof rowPSValue === 'function' ? rowPSValue(data[di]) : String(data[di]['P/S'] || '')) === wantPS);
+  if (!visibleDI.length) {
+    toast('No ' + (_markGridOrient === 'P' ? 'portrait (P/S=1)' : 'landscape (P/S=0)')
+      + ' rows among the ' + _visCount + ' visible.\nRun “Fill P/S” to classify them, then retry.', 4000);
+    return;
+  }
 
   // Clear ALL cell assignments first
   data.forEach(r => { r.cell = ''; });
