@@ -398,6 +398,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
         <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
+        <button id="igResetSel" title="Reset selected rows to 'new' (hotkey R) so a fresh Enrich + Download rebuilds them — clears the derived title, W×H, duration, cover and downloaded-file record (caption ftext/ttxt is kept). Use this to re-try after a fix.">↺ Reset sel</button>
         <button id="igReload" title="Reload ig.json from disk">↻ Reload</button>
         <button id="igSave" class="primary" title="Write edits back to ig.json">💾 Save</button>
         <button id="igClose" title="Close (Esc)">×</button>
@@ -436,6 +437,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igPromoteSel').addEventListener('click', () => batchPromote());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
     $('igClearSel').addEventListener('click', () => { sel.clear(); lastCheckedId = null; applyAndRender(); igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600); });
+    $('igResetSel').addEventListener('click', () => resetSelected());
     $('igReload').addEventListener('click', () => loadData());
     $('igSave').addEventListener('click', () => persist(true));
     $('igClose').addEventListener('click', () => closeIgScreen());
@@ -674,10 +676,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         ${r.localFiles && r.localFiles.length ? `<b>File</b><span>📁 ${esc(r.localFiles.join(', '))}</span>` : ''}
       </div>
       <div class="sect"><b>Download filename ${(r.durSecs == null || r.width == null) ? '<span style="color:#d59a3a;font-weight:400">— finalizes after Enrich</span>' : ''}</b>
-        <div class="fname">${esc(downloadName(r))}.mp4</div></div>
+        <div class="fname">${esc(downloadName(r))}${coverOnly ? '.jpg' : '.mp4'}</div></div>
       <div class="acts">
         <button data-d="enrich" class="primary">✨ Enrich</button>
         <button data-d="download">⬇ Download</button>
+        <button data-d="reset" title="Reset this row to 'new' (clears title/W×H/duration/cover/file record, keeps caption) so a fresh Enrich + Download rebuilds it">↺ Reset</button>
         <button data-d="paste">📋 Saved-text</button>
         <button data-d="promote" ${r.status === 'promoted' ? 'disabled' : ''}>➕ Promote</button>
         <button data-d="open">↗ Instagram</button>
@@ -693,6 +696,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const a = b.dataset.d;
       if (a === 'enrich') enrichRow(r, true).then(() => openDrawer(r));
       else if (a === 'download') downloadRow(r, true).then(() => openDrawer(r));
+      else if (a === 'reset') {                 // (dev0513) re-try this row from scratch
+        resetRow(r); dirty = true; persist(false); applyAndRender(); openDrawer(r);
+        igToast('↺ reset ' + r.id + ' to "new" — ✨ Enrich then ⬇ Download to apply the new filename + jpg cover', 4000);
+      }
       else if (a === 'paste') openPasteModal(r);
       else if (a === 'promote') { promoteRow(r, true); openDrawer(r); }
       else if (a === 'open') window.open(igLink(r), '_blank', 'noopener');
@@ -1104,8 +1111,39 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igToast(`🗑 deleted ${ids.length} row(s) from ig.json`, 2600);
   }
 
+  // (dev0513) Reset a row to "new" so a fresh Enrich + Download rebuilds it with the
+  // current code (new filename W×H + species-name title, jpg cover). Clears only the
+  // AUTO-derived fields — VidTitle, W×H, duration, the stale cover URL and the
+  // downloaded-file record — and KEEPS the caption (ftext/ttxt), which may be curated.
+  // Clearing VidTitle is what lets re-Enrich re-derive the title (it's guarded by
+  // `if (!r.VidTitle)`); nulling localFiles is what lets a batch re-Download it (the
+  // batch skips rows isDownloaded() reports true for). "✕ Clear sel" only unchecks —
+  // it never touched status — so this is the dedicated re-try.
+  function resetRow(r) {
+    if (!r) return;
+    r.status = 'new';
+    delete r.VidTitle; delete r.width; delete r.height; delete r.localFiles; delete r.igImage;
+    r.durSecs = null;
+    enrichFailed.delete(r.id);
+  }
+  function resetSelected() {
+    if (busy) return;
+    const ids = selectedInView();
+    if (!ids.length) { igToast('Nothing checked in this view.\nCheck the rows to reset, then ↺ Reset.', 3000); return; }
+    if (!confirm(`Reset ${ids.length} row(s) to "new"?\n\n`
+      + `Clears the derived title, W×H, duration, cover preview and the downloaded-file `
+      + `record so a fresh Enrich + Download rebuilds them (new filename + jpg cover).\n`
+      + `The caption (ftext / ttxt) is kept.\n\n`
+      + `Then: ✨ Enrich the selection, then ⬇ Download.`)) return;
+    let n = 0;
+    ids.forEach(id => { const r = rowById(id); if (r) { resetRow(r); n++; } });
+    dirty = true; persist(false); applyAndRender();
+    if (drawerOpen() && focusId != null) { const fr = rowById(focusId); if (fr) openDrawer(fr); }
+    igToast(`↺ reset ${n} row(s) to "new"\nNow ✨ Enrich, then ⬇ Download to apply the new filename + jpg cover`, 4200);
+  }
+
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igDeleteSel', 'igClearSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the
@@ -1580,6 +1618,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       sel.clear(); lastCheckedId = null; applyAndRender();
       igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600);
       return;
+    }
+    if (e.key === 'r') {                           // (dev0513) reset selected → new (re-try)
+      e.stopPropagation(); e.preventDefault(); resetSelected(); return;
     }
     if (e.key === 'm') {                           // clear, then select 18 from top
       e.stopPropagation(); e.preventDefault(); selectTopN(18); return;

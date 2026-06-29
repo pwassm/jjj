@@ -569,13 +569,25 @@ function fetchIgEmbedMeta(url) {
 // file elsewhere on the page (same filename, no `stp=…sNNNxNNN`); fall back to og:image.
 function pickIgFullCover(html, ogImage) {
   if (!ogImage) return '';
-  const fn = ogImage.match(/\/(\d+_\d+_\d+_n\.(?:webp|jpe?g|heic))/i);
-  if (!fn) return ogImage.replace(/&amp;/g, '&');
-  const fname = fn[1];
-  const re = new RegExp('https?:[^"\'\\\\\\s]*?' + fname.replace(/\./g, '\\.') + '[^"\'\\\\\\s]*', 'gi');
-  const vars = [...html.matchAll(re)].map(m => m[0].replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/g, '&'));
-  const full = vars.find(u => !/[?&]stp=/.test(u) && !/s\d+x\d+/.test(u));   // no size crop = full res
-  return full || ogImage.replace(/&amp;/g, '&');
+  const og = ogImage.replace(/&amp;/g, '&');
+  // (dev0513) Match the media's numeric STEM (no extension) so we can collect every
+  // rendition the page lists for it — JPEG and WebP alike — and prefer a real .jpg.
+  const stemM = ogImage.match(/\/(\d+_\d+_\d+_n)\.(?:webp|jpe?g|heic)/i);
+  if (!stemM) return og;
+  const stem = stemM[1];
+  const re = new RegExp('https?:[^"\'\\\\\\s]*?' + stem + '\\.(?:webp|jpe?g|heic)[^"\'\\\\\\s]*', 'gi');
+  const vars = [...new Set([...html.matchAll(re)].map(m =>
+    m[0].replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/g, '&')))];
+  if (!vars.length) return og;
+  const full = u => !/[?&]stp=/.test(u) && !/s\d+x\d+/.test(u);   // no size crop = full res
+  const jpg  = u => /\.jpe?g(?:[?&]|$)/i.test(u);
+  // (dev0513) Prefer a full-res JPEG (saves a real .jpg, no transcode); then any full-
+  // res rendition; then any JPEG; finally og:image. A webp-only post still resolves here
+  // (the cover-only download then transcodes it to jpg at top quality).
+  return vars.find(u => full(u) && jpg(u))
+      || vars.find(full)
+      || vars.find(jpg)
+      || og;
 }
 // Parse the main page's Open-Graph metadata into a ytdlpCompact()-shaped object.
 function parseIgMainMeta(html, id) {
@@ -606,6 +618,15 @@ function parseIgMainMeta(html, id) {
   const cm = capSrc.match(/:\s*"([\s\S]*)"\s*\.?\s*$/); if (cm) caption = cm[1].trim();
   if (!caption && !owner && !ogImage) return null;
   const cover = isVideo ? undefined : pickIgFullCover(html, ogImage);
+  // (dev0513) Native pixel dims of the index-1 media, so a photo /p cover gets a real
+  // W×H in its filename (IG's logged-out page used to leave these blank → 0x0). The
+  // page's `"dimensions":{"height":H,"width":W}` JSON is the native size and matches the
+  // full-res cover; fetchIgMainMeta() probes the image header when this isn't present.
+  let width, height;
+  if (!isVideo) {
+    const dj = html.match(/"dimensions"\s*:\s*\{\s*"height"\s*:\s*(\d+)\s*,\s*"width"\s*:\s*(\d+)/);
+    if (dj) { height = +dj[1]; width = +dj[2]; }
+  }
   return {
     id, title: owner ? 'Post by ' + owner : 'Instagram post',
     description: caption || '',
@@ -613,7 +634,7 @@ function parseIgMainMeta(html, id) {
     uploader_url: owner ? 'https://www.instagram.com/' + owner + '/' : undefined,
     webpage_url: 'https://www.instagram.com/p/' + id + '/',
     upload_date, thumbnail: cover || undefined,
-    duration: undefined, width: undefined, height: undefined, _viaMain: true
+    duration: undefined, width: width || undefined, height: height || undefined, _viaMain: true
   };
 }
 // GET the logged-out main /p/ page (cookieless: fresh socket + short UA + IG Referer)
@@ -635,10 +656,91 @@ function fetchIgMainMeta(url) {
       if (r.statusCode !== 200) { r.resume(); resolve(null); return; }
       r.setEncoding('utf8');
       r.on('data', c => { h += c; if (h.length > 6e6) req.destroy(); });
-      r.on('end', () => { try { resolve(parseIgMainMeta(h, id)); } catch (_) { resolve(null); } });
+      r.on('end', () => {
+        let meta = null;
+        try { meta = parseIgMainMeta(h, id); } catch (_) {}
+        // (dev0513) Page carried no dims → read them straight from the cover's header
+        // bytes so the download filename gets a real W×H instead of 0x0.
+        if (meta && meta.thumbnail && (!meta.width || !meta.height)) {
+          probeImageDims(meta.thumbnail, permalink).then(d => {
+            if (d) { meta.width = d.width; meta.height = d.height; }
+            resolve(meta);
+          });
+        } else resolve(meta);
+      });
     });
     req.on('error', () => resolve(null));
     req.setTimeout(20000, () => { req.destroy(); resolve(null); });
+  });
+}
+// (dev0513) Parse pixel dimensions out of an image's leading bytes — JPEG / PNG / WebP /
+// GIF. Header-only, so a small ranged read is plenty. Returns {width,height} or null.
+function parseImageDims(buf) {
+  if (!buf || buf.length < 24) return null;
+  // PNG: 8-byte sig, then IHDR width@16 height@20 (big-endian).
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47)
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  // GIF: width@6 height@8 (little-endian).
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46)
+    return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
+  // WebP: 'RIFF'....'WEBP' then a VP8/VP8L/VP8X chunk.
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) {
+    const fmt = buf.toString('ascii', 12, 16);
+    if (fmt === 'VP8 ' && buf.length >= 30) {           // lossy: dims after the 9d 01 2a start code
+      const w = buf.readUInt16LE(26) & 0x3FFF, hgt = buf.readUInt16LE(28) & 0x3FFF;
+      if (w && hgt) return { width: w, height: hgt };
+    } else if (fmt === 'VP8L' && buf.length >= 25 && buf[20] === 0x2F) {   // lossless: 14-bit (w-1),(h-1)
+      const b = buf.readUInt32LE(21);
+      return { width: (b & 0x3FFF) + 1, height: ((b >> 14) & 0x3FFF) + 1 };
+    } else if (fmt === 'VP8X' && buf.length >= 30) {    // extended: 24-bit (w-1),(h-1)
+      return { width: (buf[24] | (buf[25] << 8) | (buf[26] << 16)) + 1,
+               height: (buf[27] | (buf[28] << 8) | (buf[29] << 16)) + 1 };
+    }
+    return null;
+  }
+  // JPEG: walk the marker segments to the SOF that carries height/width.
+  if (buf[0] === 0xFF && buf[1] === 0xD8) {
+    let off = 2;
+    while (off + 9 < buf.length) {
+      if (buf[off] !== 0xFF) { off++; continue; }
+      let marker = buf[off + 1];
+      while (marker === 0xFF && off + 2 < buf.length) { off++; marker = buf[off + 1]; }   // skip fill
+      if (marker === 0xD8 || marker === 0xD9 || (marker >= 0xD0 && marker <= 0xD7) || marker === 0x01) { off += 2; continue; }
+      const len = buf.readUInt16BE(off + 2);
+      if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC)
+        return { height: buf.readUInt16BE(off + 5), width: buf.readUInt16BE(off + 7) };
+      off += 2 + len;
+    }
+  }
+  return null;
+}
+// (dev0513) Fetch just an image's header (cookieless: short UA + IG Referer) and parse
+// its dimensions. Reads at most 256 KB then aborts; follows redirects. Resolves
+// {width,height} or null. Used to fill a photo /p cover's W×H for the download filename.
+function probeImageDims(fileUrl, referer, hops) {
+  return new Promise(resolve => {
+    if (hops == null) hops = 0;
+    let u; try { u = new URL(fileUrl); } catch (_) { resolve(null); return; }
+    if (u.protocol !== 'https:') { resolve(null); return; }
+    const opts = { agent: false, headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8',
+      'Referer': referer || 'https://www.instagram.com/', 'Connection': 'close'
+    } };
+    const chunks = []; let got = 0, done = false;
+    const finish = () => { if (done) return; done = true; try { resolve(parseImageDims(Buffer.concat(chunks))); } catch (_) { resolve(null); } };
+    const req = https.get(fileUrl, opts, r => {
+      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 3) {
+        r.resume(); if (!done) { done = true; probeImageDims(new URL(r.headers.location, fileUrl).href, referer, hops + 1).then(resolve); } return;
+      }
+      if (r.statusCode !== 200) { r.resume(); finish(); return; }
+      r.on('data', c => { chunks.push(c); got += c.length; if (got >= 262144) { req.destroy(); finish(); } });
+      r.on('end', finish);
+      r.on('error', finish);
+    });
+    req.on('error', () => { if (!done) { done = true; resolve(null); } });
+    req.setTimeout(15000, () => { req.destroy(); finish(); });
   });
 }
 // Best cookieless cover URL for a photo /p post (download path): main-page full-res
@@ -1368,6 +1470,30 @@ function igSanitizeName(s) {
 // the SAME name → 5 of 6 collided/were skipped; (2) image-only posts (no video)
 // now come through because we no longer assume one output file. yt-dlp's default
 // "best" format IS the image for an image entry, so they download like any other.
+// (dev0513) Cover-only must deliver a genuine .jpg. IG sometimes serves the cover only
+// as .webp; when the cover-only fetch lands a .webp we transcode it to .jpg at top
+// quality (-q:v 2, visually lossless) so the saved file is a real JPEG rather than webp
+// bytes wearing a .jpg name. JPEG covers are left untouched (no re-encode). Sequential;
+// resolves once every webp in tmpDir is converted (best-effort — a failed convert keeps
+// the original so publish() still has a file).
+function coverWebpToJpg(tmpDir) {
+  return new Promise(resolve => {
+    let files; try { files = fs.readdirSync(tmpDir).filter(f => /\.webp$/i.test(f)); } catch (_) { files = []; }
+    if (!files.length) { resolve(); return; }
+    let i = 0;
+    const next = () => {
+      if (i >= files.length) { resolve(); return; }
+      const src = path.join(tmpDir, files[i++]);
+      const dst = src.replace(/\.webp$/i, '.jpg');
+      let proc;
+      try { proc = spawn('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', src, '-q:v', '2', dst], { windowsHide: true }); }
+      catch (_) { next(); return; }
+      proc.on('error', () => next());
+      proc.on('close', () => { try { if (fs.existsSync(dst) && fs.statSync(dst).size > 0) fs.unlinkSync(src); else { try { fs.unlinkSync(dst); } catch (_) {} } } catch (_) {} next(); });
+    };
+    next();
+  });
+}
 function igDownload(req, res, origin) {
   readJson(req, 64 * 1024).then(payload => {
     const url = String(payload.url || '');
@@ -1464,9 +1590,11 @@ function igDownload(req, res, origin) {
     if (coverOnly) {
       igEmbedImageFallback(url, id, tmpDir).then(imgs => {
         if (imgs.length && tmpFiles().length) {
-          console.log('[ig/download] ' + id + ' cover-only (cookieless index-1)');
-          sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false, coverOnly: true,
-            note: 'cover only — index-1 image, cookieless (main /p/ page)' }, origin);
+          coverWebpToJpg(tmpDir).then(() => {     // (dev0513) webp cover → real .jpg
+            console.log('[ig/download] ' + id + ' cover-only (cookieless index-1)');
+            sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false, coverOnly: true,
+              note: 'cover only — index-1 image, cookieless (main /p/ page)' }, origin);
+          });
         } else { fail502('cover-only: no cookieless image found (is this a photo /p post?)'); }
       });
       return;

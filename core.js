@@ -6288,6 +6288,37 @@ function _commonRank(word) {
   return (r == null) ? -1 : r;
 }
 
+// (dev0513) Pull a short "(scientific / common name)" the author parked on its OWN
+// line below the headline — IG captions often read "Catchy phrase\n(Genus species)".
+// _smartIgTitle() only keeps the first line, so that name was being dropped from the
+// title (and the download filename). Scan the next few lines for either an explicit
+// (parenthetical) or a bare two-word Latin binomial, skipping obvious junk ("see
+// comments", "swipe →", links/handles) and anything already in the primary title.
+// Returns the bare name (caller re-parenthesizes it) or '' when there's nothing worthy.
+function _igSecondName(caption, primaryTitle) {
+  const s = _normalizeText(caption);
+  if (!s) return '';
+  const lines = s.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return '';
+  const prim = (primaryTitle || '').toLowerCase();
+  const JUNK = /^(see|swipe|link|links|comment|comments|bio|more|cont|continued|part|pt|day|ad|paid|sponsored|sound|audio|music|original|tap|follow|share|save|via|credit|credits|repost|reel|video|photo|new|sale|soon|today|tomorrow|open|closed|dm|info|location|shot|filmed|taken)\b/i;
+  const stripTags = x => x.replace(/(?:\s*#[A-Za-z0-9_]+)+\s*$/, '').trim();
+  const ok = t => !!t && t.length >= 2 && t.length <= 40 && /[A-Za-z]{2,}/.test(t)
+    && !JUNK.test(t) && !/https?:|www\.|@/.test(t) && !prim.includes(t.toLowerCase());
+  for (let i = 1; i < Math.min(lines.length, 4); i++) {
+    const ln = stripTags(lines[i]);
+    if (!ln || ln.length > 60) continue;
+    const p = ln.match(/\(([^)]{2,40})\)/);                 // explicit (parenthetical)
+    if (p) { const t = p[1].trim(); if (ok(t)) return t; continue; }
+    const w = ln.split(/\s+/);                              // bare Genus species binomial
+    if (w.length === 2 && /^[A-Z][a-z]{3,}$/.test(w[0]) && /^[a-z]{3,}$/.test(w[1])) {
+      const rare = x => { const r = _commonRank(x); return r < 0 || r >= 2500; };   // uncommon → likely Latin
+      if (_commonRankMap && rare(w[0]) && rare(w[1]) && ok(ln)) return ln;
+    }
+  }
+  return '';
+}
+
 // Derive a short clean VidTitle from a caption:
 //   1. normalize (de-accent + strip emoji), take the first non-empty line, drop a
 //      trailing #hashtag run — IG authors usually lead with a title line.
@@ -6297,6 +6328,7 @@ function _commonRank(word) {
 //      title a couple words past it; trailing stop-words/punct trimmed.
 //   4. graceful: no rare word → word-boundary cut at SOFT; empty caption → ''
 //      (and a generic caption like "Microscopic landscapes vol. 8" is kept as-is).
+//   5. (dev0513) append a second-line "(name)" the author broke onto its own line.
 function _smartIgTitle(caption) {
   const SOFT = 70, HARD = 120, EXTRA = 2, RARE = 2500;
   const s = _normalizeText(caption);
@@ -6306,10 +6338,12 @@ function _smartIgTitle(caption) {
   const stripTags = x => x.replace(/(?:\s*#[A-Za-z0-9_]+)+\s*$/, '').trim();
   const clean = x => x.replace(/[\s\-:;,.]+$/, '').trim();
   const stripTailStop = x => x.replace(/\s+(the|a|an|of|and|to|in|for|with|its|their|on|by|as|is|are|was|this|that|my|so|but|or|at)$/i, '').trim();
+  // (dev0513) re-attach a second-line name (always parenthesized) once at the end.
+  const withTag = t => { const tag = _igSecondName(s, t); return tag ? (t + ' (' + tag + ')') : t; };
   let base = stripTags(firstLine);
   if (!base) base = stripTags(s.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim());
   if (!base) return '';
-  if (base.length <= SOFT) return clean(base);
+  if (base.length <= SOFT) return withTag(clean(base));
 
   const words = base.split(/\s+/);
   const ends = []; let cum = 0;
@@ -6331,7 +6365,7 @@ function _smartIgTitle(caption) {
     for (let i = 0; i < words.length; i++) { if (ends[i] <= SOFT) cut = i; else break; }
   }
   const title = stripTailStop(clean(words.slice(0, cut + 1).join(' ')));
-  return title || clean(words.slice(0, cut + 1).join(' '));
+  return withTag(title || clean(words.slice(0, cut + 1).join(' ')));
 }
 
 // Build clean ftext HTML from yt-dlp metadata: caption headline as <h2>, caption
