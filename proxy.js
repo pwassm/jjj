@@ -463,6 +463,7 @@ function ytdlpCompact(j) {
     webpage_url: j.webpage_url || e0.webpage_url,
     timestamp: top('timestamp'), upload_date: top('upload_date'),
     like_count: top('like_count'), view_count: top('view_count'),
+    thumbnail: top('thumbnail'),   // (dev0510) cover URL, when yt-dlp itself supplies one
     duration: dur || undefined, width: mw || undefined, height: mh || undefined
   };
 }
@@ -506,12 +507,18 @@ function parseIgEmbed(h, id) {
     if (ow) owner = ow[1];
   }
   if (!caption && !owner) return null;
+  // (dev0510) Also lift the index-1 cover (og:image equivalent) off the same
+  // cookieless embed page, so enriching a photo /p/ post surfaces its first image
+  // (the keeper) without ever touching yt-dlp's login-walled carousel JSON. Reels
+  // return [] here (parseIgEmbedImages skips is_video), so only photos get a cover.
+  const cover = parseIgEmbedImages(h)[0];
   return {
     id, title: owner ? 'Post by ' + owner : 'Instagram post',
     description: caption || '',
     uploader: owner || undefined, uploader_id: owner || undefined,
     uploader_url: owner ? 'https://www.instagram.com/' + owner + '/' : undefined,
     webpage_url: 'https://www.instagram.com/p/' + id + '/',
+    thumbnail: cover || undefined,
     duration: undefined, width: undefined, height: undefined, _viaEmbed: true
   };
 }

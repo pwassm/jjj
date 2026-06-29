@@ -276,6 +276,7 @@
 #igTable a.idlink:hover{text-decoration:underline}
 #igTable .yes{color:#7fd47f;font-weight:700}.no{color:#4a5563}
 #igTable .walled{color:#d59a3a;cursor:help}
+img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;background:#0c1118}
 #igToast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.96);
   background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:12px;
   padding:16px 26px;font:14px/1.5 system-ui,Segoe UI,sans-serif;text-align:center;
@@ -669,6 +670,9 @@
         <button data-d="promote" ${r.status === 'promoted' ? 'disabled' : ''}>➕ Promote</button>
         <button data-d="open">↗ Instagram</button>
       </div>
+      ${r.igImage ? `<div class="sect"><b>Cover (index 1 — cookieless)</b>
+        <a href="${esc(r.igImage)}" target="_blank" rel="noopener"><img class="igcover" src="${esc(r.igImage)}" alt="cover"
+          onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<span class=&quot;no&quot;>— cover URL expired; re-enrich to refresh —</span>')"></a></div>` : ''}
       <div class="sect"><b>ftext (clean caption)</b><div class="ftext">${r.ftext || '<span class="no">— not enriched —</span>'}</div></div>
       <div class="sect"><b>ttxt (full info)</b><div class="ttxt">${r.ttxt || '<span class="no">— none —</span>'}</div></div>
     `;
@@ -795,6 +799,12 @@
       else if (r.durSecs == null) r.durSecs = 0;
       if (meta.width) r.width = +meta.width;
       if (meta.height) r.height = +meta.height;
+      // (dev0510) Cookieless index-1 cover for photo /p/ posts (the keeper image).
+      // The URL is a signed CDN link that expires (~a day), so it's a preview aid —
+      // re-enrich refreshes it; permanence still comes from ⬇ Download. Reels never
+      // set meta.thumbnail (the proxy skips covers on video posts), so this is a no-op
+      // for them and never overwrites with a stale value.
+      if (meta.thumbnail) r.igImage = meta.thumbnail;
       if (r.status === 'new' || !r.status) r.status = 'enriched';
       // (dev0442) honest cookie report — the proxy now falls back to Firefox cookies
       // when a post is login-walled (same as Download), and tells us which path won.
