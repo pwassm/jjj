@@ -31,6 +31,7 @@
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
   let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
+  let coverOnly = false;               // (dev0512) download toggle: cookieless index-1 cover only (no carousel, no cookies)
   let sel = new Set();                 // selected ids (batch ops)
   let lastCheckedId = null;            // anchor for shift-click range selection
   let focusId = null;                  // row open in the detail drawer
@@ -277,6 +278,7 @@
 #igTable .yes{color:#7fd47f;font-weight:700}.no{color:#4a5563}
 #igTable .walled{color:#d59a3a;cursor:help}
 img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;background:#0c1118}
+#igCoverOnly.on{background:#2e7d32;color:#eaffea;border-color:#43a047;font-weight:700}
 #igToast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.96);
   background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:12px;
   padding:16px 26px;font:14px/1.5 system-ui,Segoe UI,sans-serif;text-align:center;
@@ -392,6 +394,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked NonStaged, DevComment from the filename)">📁 Import ffdown</button>
         <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
+        <button id="igCoverOnly" title="Toggle download mode. ON = grab only the cookieless index-1 cover (no carousel, no Firefox cookies) — for authors whose page-1 is the keeper. OFF = normal (video cookieless; image carousels use gallery-dl + Firefox cookies).">📸 Cover-only: off</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
         <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
@@ -421,6 +424,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igStaged').addEventListener('change', e => { stagedFilter = e.target.value; applyAndRender(); });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
+    $('igCoverOnly').addEventListener('click', () => {
+      coverOnly = !coverOnly;
+      const b = $('igCoverOnly');
+      b.textContent = '📸 Cover-only: ' + (coverOnly ? 'ON' : 'off');
+      b.classList.toggle('on', coverOnly);
+      igToast(coverOnly
+        ? '📸 Cover-only ON — downloads grab just the index-1 cover, cookielessly\n(no carousel, no Firefox cookies). For authors whose page-1 is the keeper.'
+        : '📸 Cover-only off — normal download (video cookieless; image carousels use gallery-dl + Firefox cookies)', 3400);
+    });
     $('igPromoteSel').addEventListener('click', () => batchPromote());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
     $('igClearSel').addEventListener('click', () => { sel.clear(); lastCheckedId = null; applyAndRender(); igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600); });
@@ -967,10 +979,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       applyAndRender();
     }
     try {
-      if (single) igToast('⏳ Downloading ' + r.id + '…\n🍪 cookieless for video; image carousels use Firefox cookies (gallery-dl)\nmax res — can take a bit', 12000);
+      if (single) igToast('⏳ Downloading ' + r.id + '…\n' + (coverOnly
+        ? '📸 cover only (index 1) — cookieless'
+        : '🍪 cookieless for video; image carousels use Firefox cookies (gallery-dl)\nmax res — can take a bit'), 12000);
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r) })
+        body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly })
       });
       const j = await res.json();
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
@@ -1019,7 +1033,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (!confirm(`Download ${todo.length} item(s) from ${authLine}\nat max resolution into ig_media/ ?`
       + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '') + `\n\n`
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
-      + `• Video carousels download cookieless. IMAGE carousels use your Firefox cookies (gallery-dl) — IG login-walls those cookieless. Auto-stops at the first cookie use (re-run to continue).\n`
+      + (coverOnly
+          ? `• 📸 COVER-ONLY: just the index-1 image per post, cookieless (no carousel, no Firefox cookies).\n`
+          : `• Video carousels download cookieless. IMAGE carousels use your Firefox cookies (gallery-dl) — IG login-walls those cookieless. Auto-stops at the first cookie use (re-run to continue).\n`)
       + `• Press ⏹ Stop any time.`)) return;
     await runBatch('Downloading', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
       '🍪 cookieless for video — image carousels use Firefox cookies (gallery-dl)');

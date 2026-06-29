@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0511';
+const PROXY_BUILD = 'dev0512';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1372,6 +1372,7 @@ function igDownload(req, res, origin) {
   readJson(req, 64 * 1024).then(payload => {
     const url = String(payload.url || '');
     const id = String(payload.id || '').replace(/[^A-Za-z0-9_-]/g, '');
+    const coverOnly = !!payload.coverOnly;   // (dev0512) cookieless index-1 cover only
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     if (!id) { sendJson(res, 400, { ok: false, error: 'id required' }, origin); return; }
     try { fs.mkdirSync(IG_MEDIA_DIR, { recursive: true }); } catch (_) {}
@@ -1456,6 +1457,19 @@ function igDownload(req, res, origin) {
             note: 'full image carousel via gallery-dl (Firefox cookies — image posts are login-walled cookieless)' }, origin);
         } else { embedRescueOr502(err); }
       });
+    }
+    // (dev0512) COVER-ONLY mode (client toggle): skip the whole yt-dlp/gallery-dl chain
+    // and grab JUST the cookieless index-1 cover off the main /p/ page. For authors whose
+    // page-1 is the keeper and page-2 is camera/EXIF junk — pure cookieless, no carousel.
+    if (coverOnly) {
+      igEmbedImageFallback(url, id, tmpDir).then(imgs => {
+        if (imgs.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' cover-only (cookieless index-1)');
+          sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false, coverOnly: true,
+            note: 'cover only — index-1 image, cookieless (main /p/ page)' }, origin);
+        } else { fail502('cover-only: no cookieless image found (is this a photo /p post?)'); }
+      });
+      return;
     }
     run(false, (ok1, err1) => {
       if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
