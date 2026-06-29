@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0495';
+const PROXY_BUILD = 'dev0511';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -556,6 +556,99 @@ function fetchIgEmbedMeta(url) {
   });
 }
 
+// (dev0511) ── MAIN /p/ page cookieless scrape ───────────────────────────────────
+// The embed/captioned page (dev0460) now returns IG's heavy JS app shell — no
+// `.Caption` div, no image — for many posts, so enrich + cover capture were failing on
+// photo /p posts (the short-UA trick stopped forcing the lightweight embed). The
+// LOGGED-OUT main post page still carries the public Open-Graph metadata IG serves for
+// social/SEO previews: og:title/og:description (caption + @handle + date) and og:image
+// (the index-1 cover), with the FULL-res cover variant also embedded inline. This is a
+// far more stable cookieless surface than the embed trick.
+//
+// Given og:image (a 640 crop), find the uncropped full-res variant of the SAME media
+// file elsewhere on the page (same filename, no `stp=…sNNNxNNN`); fall back to og:image.
+function pickIgFullCover(html, ogImage) {
+  if (!ogImage) return '';
+  const fn = ogImage.match(/\/(\d+_\d+_\d+_n\.(?:webp|jpe?g|heic))/i);
+  if (!fn) return ogImage.replace(/&amp;/g, '&');
+  const fname = fn[1];
+  const re = new RegExp('https?:[^"\'\\\\\\s]*?' + fname.replace(/\./g, '\\.') + '[^"\'\\\\\\s]*', 'gi');
+  const vars = [...html.matchAll(re)].map(m => m[0].replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/g, '&'));
+  const full = vars.find(u => !/[?&]stp=/.test(u) && !/s\d+x\d+/.test(u));   // no size crop = full res
+  return full || ogImage.replace(/&amp;/g, '&');
+}
+// Parse the main page's Open-Graph metadata into a ytdlpCompact()-shaped object.
+function parseIgMainMeta(html, id) {
+  if (!html) return null;
+  const prop = p => {
+    const m = html.match(new RegExp('<meta[^>]+property="' + p + '"[^>]+content="([^"]*)"', 'i'))
+           || html.match(new RegExp('<meta[^>]+content="([^"]*)"[^>]+property="' + p + '"', 'i'));
+    return m ? decodeEntities(m[1]) : '';
+  };
+  const nameMeta = n => { const m = html.match(new RegExp('<meta[^>]+name="' + n + '"[^>]+content="([^"]*)"', 'i')); return m ? decodeEntities(m[1]) : ''; };
+  const ogDesc = prop('og:description') || nameMeta('description');
+  const ogTitle = prop('og:title');
+  const ogImage = prop('og:image');
+  const twTitle = nameMeta('twitter:title');
+  // Video posts: don't hand back a poster frame as a "cover" (mirrors the embed path's
+  // is_video skip) — yt-dlp owns video; the cover is photo-only.
+  const isVideo = /<meta[^>]+property="og:video"/i.test(html)
+               || /"is_video"\s*:\s*true/i.test(html)
+               || /<meta[^>]+property="og:type"[^>]+content="video/i.test(html);
+  // @handle: twitter:title "(@handle)" first, else the og:description "handle on …" prefix.
+  let owner = ''; const hm = twTitle.match(/\(@([\w.]+)\)/); if (hm) owner = hm[1];
+  if (!owner) { const dm = ogDesc.match(/^([\w.]+)\s+on\b/); if (dm) owner = dm[1]; }
+  // Date: og:description "… on June 27, 2026: …" → YYYYMMDD (client datePosted reads upload_date).
+  let upload_date; const dt = ogDesc.match(/\bon\s+([A-Z][a-z]+\.? \d{1,2},? \d{4})/);
+  if (dt) { const d = new Date(dt[1]); if (!isNaN(d)) upload_date = d.toISOString().slice(0, 10).replace(/-/g, ''); }
+  // Caption: the quoted text after the "handle on date:" prefix.
+  let caption = ''; const capSrc = ogDesc || ogTitle;
+  const cm = capSrc.match(/:\s*"([\s\S]*)"\s*\.?\s*$/); if (cm) caption = cm[1].trim();
+  if (!caption && !owner && !ogImage) return null;
+  const cover = isVideo ? undefined : pickIgFullCover(html, ogImage);
+  return {
+    id, title: owner ? 'Post by ' + owner : 'Instagram post',
+    description: caption || '',
+    uploader: owner || undefined, uploader_id: owner || undefined,
+    uploader_url: owner ? 'https://www.instagram.com/' + owner + '/' : undefined,
+    webpage_url: 'https://www.instagram.com/p/' + id + '/',
+    upload_date, thumbnail: cover || undefined,
+    duration: undefined, width: undefined, height: undefined, _viaMain: true
+  };
+}
+// GET the logged-out main /p/ page (cookieless: fresh socket + short UA + IG Referer)
+// and parse its Open-Graph metadata. Resolves null on any non-200/parse failure so the
+// caller can fall back to the embed page.
+function fetchIgMainMeta(url) {
+  return new Promise(resolve => {
+    const m = IG_SHORTCODE_RE.exec(url || '');
+    if (!m) { resolve(null); return; }
+    const id = m[1];
+    const permalink = 'https://www.instagram.com/p/' + id + '/';
+    const opts = { agent: false, headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
+    } };
+    let h = '';
+    const req = https.get(permalink, opts, r => {
+      if (r.statusCode !== 200) { r.resume(); resolve(null); return; }
+      r.setEncoding('utf8');
+      r.on('data', c => { h += c; if (h.length > 6e6) req.destroy(); });
+      r.on('end', () => { try { resolve(parseIgMainMeta(h, id)); } catch (_) { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(20000, () => { req.destroy(); resolve(null); });
+  });
+}
+// Best cookieless cover URL for a photo /p post (download path): main-page full-res
+// cover. '' when the page yields none (caller falls back to the embed-image parse).
+function igMainCoverUrl(sc) {
+  return fetchIgMainMeta('https://www.instagram.com/p/' + sc + '/')
+    .then(meta => (meta && meta.thumbnail) || '')
+    .catch(() => '');
+}
+
 // (dev0491) Pull the post image URL(s) out of an IG embed/captioned page so a photo
 // /p/ post can be downloaded cookielessly when yt-dlp's login-walled image path
 // fails. Picks the highest-resolution candidate IG advertises on that page
@@ -635,6 +728,21 @@ function igEmbedImageFallback(url, id, tmpDir) {
     if (!m || /\/reels?\//i.test(url)) { resolve([]); return; }   // photo posts only
     const sc = m[1];
     const permalink = 'https://www.instagram.com/p/' + sc + '/';
+    // (dev0511) MAIN page cover FIRST — the embed/captioned page (embedImages below) now
+    // serves IG's JS shell with no image for many posts; the logged-out /p/ page still
+    // carries the full-res index-1 cover. Embed-image parse stays as the secondary path.
+    igMainCoverUrl(sc).then(coverUrl => {
+      if (!coverUrl) { embedImages(); return; }
+      let ext = '.jpg';
+      try { const e = path.extname(new URL(coverUrl).pathname); if (/^\.(jpe?g|png|webp)$/i.test(e)) ext = e; } catch (_) {}
+      const dest = path.join(tmpDir, '001' + ext);
+      igDownloadImage(coverUrl, dest, permalink).then(ok => {
+        if (ok) { resolve([dest]); return; }
+        try { fs.unlinkSync(dest); } catch (_) {}
+        embedImages();
+      });
+    });
+    function embedImages() {
     const opts = { agent: false, headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -677,6 +785,7 @@ function igEmbedImageFallback(url, id, tmpDir) {
       };
       next();
     });
+    }
   });
 }
 
@@ -745,7 +854,9 @@ function streamYtdlpMeta(req, res, bin, args) {
       // Tried for ANY non-good instagram.com URL (embed is one cheap, cookieless GET;
       // also rescues a walled reel's caption). null embed → fall through to the error.
       if (!good && IG_SHORTCODE_RE.test(lastUrl || '')) {
-        fetchIgEmbedMeta(lastUrl).then(embed => {
+        // (dev0511) Main /p/ page FIRST — it carries caption+author+date+cover even when
+        // the embed/captioned page has degraded to IG's JS shell; embed page as a fallback.
+        fetchIgMainMeta(lastUrl).then(meta => meta || fetchIgEmbedMeta(lastUrl)).then(embed => {
           if (embed) {
             finish({ ok: true, exitCode: 0, durationMs: Date.now() - t0, result: embed, viaEmbed: true });
           } else {
