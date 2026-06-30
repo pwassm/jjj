@@ -931,7 +931,8 @@ function gridOpenFullscreen(row, contained) {
             const portrait =
                  /youtube\.com\/shorts\//i.test(link)
               || (window.isInstagramLink && window.isInstagramLink(link) && /\/reel\//i.test(link))
-              || (window.rowPSValue && window.rowPSValue(row) === '1');
+              || (window.rowMode && window.rowMode(row) === 'P')
+              || (window.rowPSValue && window.rowPSValue(row) === 'P');
             const ar = portrait ? (9 / 16) : (16 / 9);   // width / height
             let rw = hr.width, rh = rw / ar;
             if (rh > hr.height) { rh = hr.height; rw = rh * ar; }

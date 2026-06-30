@@ -2647,11 +2647,11 @@ window.openVideoEditor = function(it) {
       var _isYT = /youtu\.be|youtube\.com/i.test(_lk)
         || (window.getYouTubeId && window.getYouTubeId(_lk));
       if (!_isYT) { if (window.toast) window.toast('Not a YouTube row — P/S unchanged', 1600); return; }
-      var _psCol = (typeof getPSCol === 'function') ? getPSCol() : 'P/S';
-      it[_psCol] = '1';
+      var _psCol = (typeof getModeCol === 'function') ? getModeCol() : 'Mode';
+      it[_psCol] = 'P';
       it.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
       if (typeof save === 'function') save();
-      if (window.toast) window.toast('✓ Marked portrait (P/S=1): ' + (it.VidTitle || _lk.slice(0, 40)), 1600);
+      if (window.toast) window.toast('✓ Marked portrait (Mode=P): ' + (it.VidTitle || _lk.slice(0, 40)), 1600);
       return;
     }
 

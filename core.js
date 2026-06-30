@@ -443,15 +443,36 @@ function rowMediaKind(row) {
 window.isImageLink  = isImageLink;
 window.rowMediaKind = rowMediaKind;
 
-// (dev0343) Read a row's stored orientation, tolerating either column name
-// ('P/S' or legacy 'Portrait'). Returns '1' (portrait), '0' (landscape), or
-// '' / 'X' (n/a / unknown). Read-only — does not create the column.
-function rowPSValue(row) {
+// (dev0514) Read a row's stored orientation as a canonical Mode letter, tolerating
+// the new 'Mode' column, the legacy 'P/S' column, and the older 'Portrait' column.
+// Returns 'L' (landscape) | 'P' (portrait) | 'S' (square) | 'X' (n/a) | '' (unknown).
+// Maps obsolete numeric values '0'→'L', '1'→'P'. Read-only — never creates a column.
+function rowMode(row) {
   if (!row) return '';
-  const v = (row['P/S'] != null && row['P/S'] !== '') ? row['P/S'] : row['Portrait'];
-  return String(v == null ? '' : v);
+  let v = row['Mode'];
+  if (v == null || v === '') v = row['P/S'];
+  if (v == null || v === '') v = row['Portrait'];
+  v = String(v == null ? '' : v).trim();
+  if (v === '0') return 'L';
+  if (v === '1') return 'P';
+  const u = v.toUpperCase();
+  if (u === 'L' || u === 'P' || u === 'S' || u === 'X') return u;
+  return '';   // any other obsolete numeric (e.g. 50) reads as unknown → re-classify
 }
+window.rowMode = rowMode;
+// Back-compat alias: callers that predate the rename. Same canonical letter result.
+function rowPSValue(row) { return rowMode(row); }
 window.rowPSValue = rowPSValue;
+
+// (dev0514) Classify pixel dimensions into a Mode letter. Square if width and
+// height are within ~5% of each other; else portrait when taller, landscape when wider.
+function orientFromDims(w, h) {
+  w = +w || 0; h = +h || 0;
+  if (w <= 0 || h <= 0) return '';
+  if (Math.abs(w - h) / Math.max(w, h) <= 0.05) return 'S';
+  return h > w ? 'P' : 'L';
+}
+window.orientFromDims = orientFromDims;
 
 // Mojibake fix
 function fixMojibake(s) {
@@ -1176,8 +1197,41 @@ async function load() {
   if (window.tagsLib) {
     try { await window.tagsLib.load(); } catch(e) { console.warn('tags load failed:', e); }
   }
+  _migrateModeColumn();
   buildSort();
   render();
+}
+
+// (dev0514) One-time in-memory rename of the orientation column to 'Mode'. Any file
+// still carrying the legacy 'P/S' (or older 'Portrait') key is migrated by copying the
+// value verbatim (LAZY — old '0'/'1' stay until Fill Mode / YT housekeeping reclassify)
+// and dropping the old key. Persists to disk on the next save(). Idempotent.
+function _migrateModeColumn() {
+  const legacy = cols.includes('P/S') ? 'P/S' : (cols.includes('Portrait') ? 'Portrait' : null);
+  let touched = false;
+  for (const r of data) {
+    if (!r || r._salMeta) continue;
+    if (r['Mode'] === undefined || r['Mode'] === '') {
+      const src = (r['P/S'] !== undefined && r['P/S'] !== '') ? r['P/S']
+                : (r['Portrait'] !== undefined && r['Portrait'] !== '') ? r['Portrait']
+                : undefined;
+      if (src !== undefined) { r['Mode'] = src; touched = true; }
+    }
+    if ('P/S' in r)      { delete r['P/S']; touched = true; }
+    if ('Portrait' in r) { delete r['Portrait']; touched = true; }
+  }
+  // Swap the column-order entry so the header reads "Mode" in place.
+  if (legacy) {
+    const i = cols.indexOf(legacy);
+    if (i >= 0) {
+      if (cols.includes('Mode')) cols.splice(i, 1);   // 'Mode' already present elsewhere
+      else cols[i] = 'Mode';
+      touched = true;
+    }
+  }
+  // Drop any stray duplicate legacy names left in the column list.
+  cols = cols.filter((c, i) => !((c === 'P/S' || c === 'Portrait')) && cols.indexOf(c) === i);
+  if (touched && !cols.includes('Mode')) cols.push('Mode');
 }
 
 function buildCols() {
@@ -2306,13 +2360,13 @@ function rowMatchesFilter(row) {
       const kind = window.rowMediaKind ? window.rowMediaKind(row) : 'other';
       if (!media.includes(kind)) return false;
     }
-    // (dev0343) Orientation toggles — OR within the chosen set. Reads the P/S
-    // column: '1'=portrait, '0'=landscape, 'X'/blank=n/a (never matches).
+    // (dev0514) Orientation toggles — OR within the chosen set. Reads the Mode
+    // column via rowMode(): 'P'=portrait, 'L'=landscape, 'S'/'X'/blank never match.
     const orient = rowFilter.orient || [];
     if (orient.length) {
-      const ps = rowPSValue(row);
-      const ok = (orient.includes('portrait')  && ps === '1')
-              || (orient.includes('landscape') && ps === '0');
+      const ps = rowMode(row);
+      const ok = (orient.includes('portrait')  && ps === 'P')
+              || (orient.includes('landscape') && ps === 'L');
       if (!ok) return false;
     }
     return true;
@@ -2890,12 +2944,17 @@ document.getElementById('showAllBtn').addEventListener('click', () => { hidden.c
 
 // Populate Cells: assign 1a-5e to visible rows only; clear cell on invisible rows
 // Fill P/S — detect portrait/landscape orientation
-function getPSCol() {
+// (dev0514) The orientation column is now 'Mode' (L/P/S/X). Prefer it; fall back to
+// the legacy 'P/S'/'Portrait' names if a not-yet-migrated file is loaded; else create.
+function getModeCol() {
+  if (cols.includes('Mode'))     return 'Mode';
   if (cols.includes('P/S'))      return 'P/S';
   if (cols.includes('Portrait')) return 'Portrait';
-  cols.push('P/S'); data.forEach(r => { if(r['P/S']===undefined) r['P/S']=''; });
-  return 'P/S';
+  cols.push('Mode'); data.forEach(r => { if(r['Mode']===undefined) r['Mode']=''; });
+  return 'Mode';
 }
+// Back-compat alias for any caller still referencing the old name.
+function getPSCol() { return getModeCol(); }
 async function fetchWithTimeout(url, ms, opts) {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), ms);
@@ -2946,54 +3005,55 @@ async function getOEmbedDims(url) {
   return null;
 }
 document.getElementById('fillPSBtn').addEventListener('click', async () => {
-  const PS_COL = getPSCol();
+  const MODE_COL = getModeCol();
   // (dev0343) Process EVERY row, not just rows with a link — text/html/quiz rows
   // (no media link) must be stamped 'X' (n/a) rather than left blank/stale.
   const rows = data;
   if (!rows.length) { toast('No rows.'); return; }
 
-  // (dev0506) YouTube is EXCLUDED from Fill P/S — its oEmbed thumbnail is always 16:9
+  // (dev0506) YouTube is EXCLUDED from Fill Mode — its oEmbed thumbnail is always 16:9
   // (so even Shorts measure landscape) and yt-dlp's real W×H is now bot-walled, so
-  // both mislead. YouTube orientation is the P/S source of truth instead: set at
-  // import (/shorts/ → P/S=1) or via the E `s` hotkey. This pass therefore leaves
-  // every YouTube row's P/S untouched and never calls the proxy.
-  toast('\u{21ec}\u{21CC} Filling P/S\u2026 0/' + rows.length, 10000);
+  // both mislead. YouTube orientation is the Mode source of truth instead: set at
+  // import (/shorts/ → Mode=P) or via the E `s` hotkey. This pass therefore leaves
+  // every YouTube row's Mode untouched and never calls the proxy. (dev0514) Measured
+  // media classify L/P/S via orientFromDims (~5% of square → S).
+  toast('\u{21ec}\u{21CC} Filling Mode\u2026 0/' + rows.length, 10000);
   let done = 0, changed = 0;
   for (const row of rows) {
     const link = String(row.link || '');
     const kind = rowMediaKind(row);   // 'video' | 'image' | 'other'
-    const prev = String(row[PS_COL] || '');
+    const prev = rowMode(row);        // canonical letter (maps any legacy 0/1)
     let ps;
     if (kind === 'other') {
       ps = 'X';                       // teXt / html / quiz / non-media -> n/a
     } else if (/youtu\.be|youtube\.com/i.test(link)) {
-      ps = prev;                      // (dev0506) YouTube — leave P/S as-is (manual / import)
+      ps = prev;                      // (dev0506) YouTube — leave Mode as-is (manual / import)
     } else if (window.isInstagramLink && window.isInstagramLink(link) && /\/reel\//i.test(link)) {
-      ps = '1';                       // IG Reels are portrait by definition
+      ps = 'P';                       // IG Reels are portrait by definition
     } else if (/vimeo\.com/i.test(link)) {
       const dims = await getOEmbedDims(link);
-      ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
+      ps = dims ? orientFromDims(dims.w, dims.h) : '';
     } else if (window.isDirectVideoLink && window.isDirectVideoLink(link)) {
       const dims = await getVideoDims(link);
-      ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
+      ps = dims ? orientFromDims(dims.w, dims.h) : '';
     } else if (kind === 'image') {
       const dims = await getImageDims(link);
-      ps = dims ? (dims.h > dims.w ? '1' : '0') : '';
+      ps = dims ? orientFromDims(dims.w, dims.h) : '';
     } else {
       ps = '';                        // media we can't measure (e.g. IG post) -> leave for retry
     }
     // Don't clobber a previously-good orientation with a transient measurement
-    // failure: keep '0'/'1' if this pass came up blank. Blank is distinct from
-    // 'X' (which means definitively n/a — text/html/quiz).
-    if (ps === '' && (prev === '0' || prev === '1')) ps = prev;
-    if (prev !== ps) { row[PS_COL] = ps; changed++; }
+    // failure: keep any existing L/P/S letter if this pass came up blank. Blank is
+    // distinct from 'X' (which means definitively n/a — text/html/quiz).
+    if (ps === '' && (prev === 'L' || prev === 'P' || prev === 'S')) ps = prev;
+    if (prev !== ps) { row[MODE_COL] = ps; changed++; }
     done++;
     if (done % 3 === 0 || done === rows.length)
-      toast('Filling P/S\u2026 '+done+'/'+rows.length+' ('+changed+' changed)', 10000);
+      toast('Filling Mode\u2026 '+done+'/'+rows.length+' ('+changed+' changed)', 10000);
     await new Promise(r => setTimeout(r, 0));
   }
   save(); render();
-  toast('\u2713 Fill P/S done: '+changed+' updated of '+done+'\n(col: '+PS_COL+')', 5000);
+  toast('\u2713 Fill Mode done: '+changed+' updated of '+done+'\n(col: '+MODE_COL+')', 5000);
 });
 
 // Fill Mpix — megapixels for images, V for videos
@@ -3391,7 +3451,7 @@ async function saveFtextImages() {
   }
   if (!targets.length) { alert('Save Imgs: no eligible rows.\n(Need visible rows with ftext and FTLsaved ≠ 1.)'); return; }
 
-  if (!confirm('Save Imgs: process ' + targets.length + ' row(s)?\n\nFor each row:\n• Parse <img> tags in ftext\n• fetch() and save under jpgs/<domain>/<path>/\n• Fill MPix (d-prefix) and P/S from first saved image\n• Rewrite img tags with disk-fallback onerror\n• Set FTLsaved (1=all, 0=partial, -1=none)\n\nCross-origin images without CORS will fail — start proxy.js on 8081 first.')) return;
+  if (!confirm('Save Imgs: process ' + targets.length + ' row(s)?\n\nFor each row:\n• Parse <img> tags in ftext\n• fetch() and save under jpgs/<domain>/<path>/\n• Fill MPix (d-prefix) and Mode (L/P/S) from largest saved image\n• Rewrite img tags with disk-fallback onerror\n• Set FTLsaved (1=all, 0=partial, -1=none)\n\nCross-origin images without CORS will fail — start proxy.js on 8081 first.')) return;
 
   // Ensure required columns exist
   for (const c of ['FTLsaved', 'MPix']) {
@@ -3474,7 +3534,7 @@ async function saveFtextImages() {
             if (rowDims && rowDims.w > 0) {
               const mp = (rowDims.w * rowDims.h) / 1_000_000;
               row.MPix = 'd' + (mp >= 0.1 ? mp.toFixed(1) : mp.toFixed(2));
-              row[PS_COL] = rowDims.h > rowDims.w ? '1' : '0';
+              row[PS_COL] = orientFromDims(rowDims.w, rowDims.h);
             }
             if (okThisRow > 0 && failThisRow === 0) { row.FTLsaved = '1'; rowsAllOk++; }
             else if (okThisRow > 0) { row.FTLsaved = '0'; rowsPartial++; }
@@ -3669,7 +3729,7 @@ document.querySelectorAll('.hkitem').forEach(el => {
     // their own results. We add a "starting" balloon here for the heavier
     // operations so the user knows the click registered.
     if (act === 'fillps') {
-      toast('🧹 Fill P/S — scanning rows for orientation…', 1800);
+      toast('🧹 Fill Mode — scanning rows for orientation…', 1800);
       document.getElementById('fillPSBtn').click();
     } else if (act === 'fillmpix') {
       toast('🧹 Fill Mpix — measuring images…', 1800);
@@ -3823,17 +3883,29 @@ function _ytOrientSleep(ms) {
 async function housekeepingFillYTOrient() {
   if (_ytOrientRunning) { toast('YT orientation check already running… (Esc to abort)', 2000); return; }
   if (typeof _ytdlpFetchMeta !== 'function') { toast('yt-dlp pipeline not loaded', 2500); return; }
-  const rows = data.filter(r => r && r.link && _extractYTVideoId(r.link));
-  if (!rows.length) { toast('No YouTube rows found', 2500); return; }
+  const allYT = data.filter(r => r && r.link && _extractYTVideoId(r.link));
+  if (!allYT.length) { toast('No YouTube rows found', 2500); return; }
+  // (dev0514) Skip rows already classified with a Mode letter (L/P/S); only process
+  // cells that are empty or hold an obsolete number. rowMode() maps legacy 0/1 → L/P,
+  // so a not-yet-migrated '0'/'1' reads as a letter and is correctly skipped; truly
+  // obsolete numerics (e.g. 50) read as '' and fall into the to-do set.
+  const isLetter = r => /^[LPS]$/.test(rowMode(r));
+  const skipped = allYT.filter(isLetter).length;
+  const rows = allYT.filter(r => !isLetter(r));
+  if (!rows.length) {
+    toast('✓ All ' + allYT.length + ' YouTube row(s) already have a Mode (L/P/S) — nothing to do.', 4000);
+    return;
+  }
   if (!confirm(
     'Check portrait/landscape for ' + rows.length + ' YouTube row(s) via yt-dlp?\n\n'
-    + 'Each video is queried for its real width×height and P/S is set\n'
-    + '(1 = portrait / Shorts, 0 = landscape). Runs one row at a time with\n'
+    + (skipped ? '(' + skipped + ' already have a Mode letter and will be skipped.)\n\n' : '')
+    + 'Each video is queried for its real width×height and Mode is set\n'
+    + '(P = portrait / Shorts, L = landscape). Runs one row at a time with\n'
     + 'randomized delays + occasional rests to avoid tripping YouTube\'s\n'
     + 'per-IP rate-limit — expect roughly 1–1.5 hours for ' + rows.length + ' rows.\n'
     + 'Press Esc to abort at any point.\n\n'
     + 'NOTE: only works OFF-VPN. On a VPN, YouTube bot-walls and you\'ll\n'
-    + 'get a clear "no dimensions" report (P/S left unchanged).'
+    + 'get a clear "no dimensions" report (Mode left unchanged).'
   )) return;
 
   _ytOrientRunning = true;
@@ -3875,7 +3947,8 @@ async function housekeepingFillYTOrient() {
 
       if (dims) {
         consecutiveEmpty = 0;
-        const ps = dims.h > dims.w ? '1' : '0';
+        // (dev0514) YT orientation is binary L/P only — never S (Shorts vs widescreen).
+        const ps = dims.h > dims.w ? 'P' : 'L';
         if (dims.h > dims.w) portrait++; else landscape++;
         if (row[psCol] !== ps) {
           row[psCol] = ps;
@@ -3929,13 +4002,14 @@ async function housekeepingFillYTOrient() {
           ? '   YouTube is still bot-walling cookieless yt-dlp\n   (bailed after '
             + i + ' empty row(s)). '
           : '   ')
-      + 'Orientation could not be determined; P/S left unchanged.';
+      + 'Orientation could not be determined; Mode left unchanged.';
     if (failSamples.length) msg += '\n\n   e.g. ' + failSamples[0];
   } else {
     msg = '✓ YT Orientation' + (_ytOrientAbort ? ' (aborted)' : '') + ' — checked ' + i + '/' + TOTAL + ':\n'
       + '   ▯ portrait (Shorts): ' + portrait + '\n'
       + '   ▭ landscape: ' + landscape + '\n'
-      + '   P/S updated on ' + changed + ' row(s)';
+      + '   Mode updated on ' + changed + ' row(s)'
+      + (skipped ? '\n   ⏭ already assigned (skipped): ' + skipped + ' row(s)' : '');
     const miss = noInfo + failed;
     if (miss) msg += '\n   ✕ no info: ' + miss + ' row(s)';
   }
@@ -4012,19 +4086,19 @@ function runMarkGrid(start, rowOrient) {
     eligible = eligible.filter(di =>
       (typeof isVideoRow === 'function' && isVideoRow(data[di])) || rowMediaKind(data[di]) === 'video');
   }
-  // (dev0504) ORIENTATION filter from the chosen mode. 'L' → P/S=0, 'P' → P/S=1,
-  // 'any' → no filter. Rows whose orientation is unknown ('')/n-a ('X') drop out of
-  // an L/P run (run Fill P/S to classify them first).
+  // (dev0514) ORIENTATION filter from the chosen mode. 'L' → Mode=L, 'P' → Mode=P,
+  // 'any' → no filter. Rows whose orientation is unknown ('')/square ('S')/n-a ('X')
+  // drop out of an L/P run (run Fill Mode to classify them first).
   if (rowOrient === 'L' || rowOrient === 'P') {
-    const wantPS = rowOrient === 'P' ? '1' : '0';
+    const wantMode = rowOrient;
     eligible = eligible.filter(di =>
-      (typeof rowPSValue === 'function' ? rowPSValue(data[di]) : String(data[di]['P/S'] || '')) === wantPS);
+      (typeof rowMode === 'function' ? rowMode(data[di]) : String(data[di]['Mode'] || '')) === wantMode);
   }
   if (!eligible.length) {
     const ml = _markGridMedia === 'all' ? '' : (_markGridMedia + ' ');
-    const ol = rowOrient === 'L' ? 'landscape (P/S=0) ' : rowOrient === 'P' ? 'portrait (P/S=1) ' : '';
+    const ol = rowOrient === 'L' ? 'landscape (Mode=L) ' : rowOrient === 'P' ? 'portrait (Mode=P) ' : '';
     toast('No ' + ml + ol + 'rows among the ' + visAll.length + ' visible.'
-      + (rowOrient === 'L' || rowOrient === 'P' ? '\nRun “Fill P/S” to classify orientation, then retry.' : ''),
+      + (rowOrient === 'L' || rowOrient === 'P' ? '\nRun “Fill Mode” to classify orientation, then retry.' : ''),
       4000);
     return;
   }
@@ -5139,9 +5213,9 @@ async function _fetchMetaForNewRows(rows) {
           row.VidAuthor = author; changed = true;
         }
         if (!row[PS_COL]) {
-          const ps = /youtube\.com\/shorts\//i.test(link) ? '1'
-            : (meta.thumbnail_height > meta.thumbnail_width ? '1' : '0');
-          row[PS_COL] = ps; changed = true;
+          const ps = /youtube\.com\/shorts\//i.test(link) ? 'P'
+            : orientFromDims(meta.thumbnail_width, meta.thumbnail_height);
+          if (ps) { row[PS_COL] = ps; changed = true; }
         }
         if (changed) { row.DateModified = now(); save(); render(); }
       } else if (isVimeo) {
@@ -5153,7 +5227,7 @@ async function _fetchMetaForNewRows(rows) {
         if (meta.title       && !row.VidTitle)  { row.VidTitle  = meta.title; changed = true; }
         if (meta.author_name && !row.VidAuthor)  { row.VidAuthor = meta.author_name; changed = true; }
         if (!row[PS_COL] && meta.thumbnail_width && meta.thumbnail_height) {
-          row[PS_COL] = meta.thumbnail_height > meta.thumbnail_width ? '1' : '0'; changed = true;
+          row[PS_COL] = orientFromDims(meta.thumbnail_width, meta.thumbnail_height); changed = true;
         }
         if (changed) { row.DateModified = now(); save(); render(); }
       } else if (isImg) {
@@ -5165,7 +5239,7 @@ async function _fetchMetaForNewRows(rows) {
             row.MPix = mp >= 0.1 ? mp.toFixed(1) : mp.toFixed(2);
             changed = true;
           }
-          if (!row[PS_COL]) { row[PS_COL] = dims.h > dims.w ? '1' : '0'; changed = true; }
+          if (!row[PS_COL]) { row[PS_COL] = orientFromDims(dims.w, dims.h); changed = true; }
           if (changed) { row.DateModified = now(); save(); render(); }
         }
       } else if (isDirVid) {
@@ -6005,7 +6079,7 @@ function _cutMidArticleEditorsPicks(text) {
 async function _importBareLinks(lines) {
   // Normalize (YouTube → youtu.be/<id>) then de-dup within paste.
   // (dev0506) A line pasted in /shorts/ form identifies a portrait Short — record its
-  // normalized link so makeRow can stamp P/S=1 (orientation → P/S, not the URL).
+  // normalized link so makeRow can stamp Mode=P (orientation → Mode, not the URL).
   const seen = new Set();
   const links = [];
   const shortLinks = new Set();
@@ -6058,9 +6132,9 @@ async function _importBareLinks(lines) {
     const cls = _classifyUrl(link);
     if (cls === 'video') {
       row.Mute = '0';
-      // (dev0506) Pasted as /shorts/ → portrait Short. Capture into P/S (source of
+      // (dev0506) Pasted as /shorts/ → portrait Short. Capture into Mode (source of
       // truth) since the stored URL is now canonical youtu.be/<id> (no /shorts/).
-      if (shortLinks.has(link)) row[(typeof getPSCol === 'function') ? getPSCol() : 'P/S'] = '1';
+      if (shortLinks.has(link)) row[(typeof getModeCol === 'function') ? getModeCol() : 'Mode'] = 'P';
     } else if (cls === 'image') {
       row.VidRange = 'i';
     } else if (cls === 'web') {
@@ -7399,11 +7473,11 @@ function runVEPostOpenSetup(di) {
           const _isYT = /youtu\.be|youtube\.com/i.test(_lk)
             || (window.getYouTubeId && window.getYouTubeId(_lk));
           if (_isYT && _row) {
-            const _psCol = (typeof getPSCol === 'function') ? getPSCol() : 'P/S';
-            _row[_psCol] = '1';
+            const _psCol = (typeof getModeCol === 'function') ? getModeCol() : 'Mode';
+            _row[_psCol] = 'P';
             _row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
             if (typeof save === 'function') save();
-            if (typeof toast === 'function') toast('✓ Marked portrait (P/S=1): ' + (_row.VidTitle || _lk.slice(0, 40)), 1600);
+            if (typeof toast === 'function') toast('✓ Marked portrait (Mode=P): ' + (_row.VidTitle || _lk.slice(0, 40)), 1600);
           } else {
             const tog = document.getElementById('v2toggle');
             if (tog) tog.click();

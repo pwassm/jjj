@@ -523,7 +523,7 @@ thead th.rn              { color: #fff !important; }
        click handlers still bind — and surfaced via the Housekeeping
        dropdown below. -->
   <div id="oldHousekeepingHidden" style="display:none;">
-  <button class="tbtn" id="fillPSBtn" title="Detect portrait/landscape for all rows: images/direct video/Vimeo measured, IG reels→1. YouTube is SKIPPED (set its P/S at import via /shorts/ or the E 's' hotkey).">⬍⬌ Fill P/S</button>
+  <button class="tbtn" id="fillPSBtn" title="Fill Mode (L/P/S) for all rows: images/direct video/Vimeo measured (~5% square→S), IG reels→P, text/html→X. YouTube is SKIPPED (set its Mode at import via /shorts/ or the E 's' hotkey).">⬍⬌ Fill Mode</button>
   <button class="tbtn" id="fillMpixBtn" title="Fill Mpix: megapixels for images, V for videos, X if unavailable">📐 Fill Mpix</button>
   <button class="tbtn" id="fixVRangeBtn" title="Sort VidRange segments earliest→latest, keep VidComment mapped">Fix vRange</button>
   <button class="tbtn" id="calcLengthsBtn" title="Calculate vidLength and segLength for all rows">Calc Lengths</button>
@@ -580,7 +580,7 @@ thead th.rn              { color: #fff !important; }
   <div id="housekeepingWrap" style="position:relative;display:inline-flex;flex-shrink:0;">
     <button class="tbtn" id="housekeepingBtn" style="border-color:#bcf;color:#bcf;background:rgba(40,40,90,0.4);" title="Housekeeping: bulk-fix utilities for the table">🧹 Housekeeping ▾</button>
     <div id="housekeepingMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #bcf;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:260px;font-family:monospace;overflow:hidden;margin-top:3px;">
-      <div class="hkitem" data-act="fillps" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">⬍⬌ Fill P/S — orientation</div>
+      <div class="hkitem" data-act="fillps" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">⬍⬌ Fill Mode — orientation (L/P/S)</div>
       <div class="hkitem" data-act="fillmpix" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">📐 Fill Mpix — image megapixels</div>
       <div class="hkitem" data-act="fixvrange" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">Fix vRange — sort segments</div>
       <div class="hkitem" data-act="calclengths" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">Calc Lengths — vidLength + segLength</div>
@@ -944,7 +944,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0513';
+  window.HELP_VERSION_STR = 'dev0514';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','slideshow.js','boot.js'];
