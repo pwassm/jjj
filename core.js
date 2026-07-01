@@ -1202,21 +1202,35 @@ async function load() {
   render();
 }
 
-// (dev0514) One-time in-memory rename of the orientation column to 'Mode'. Any file
-// still carrying the legacy 'P/S' (or older 'Portrait') key is migrated by copying the
-// value verbatim (LAZY — old '0'/'1' stay until Fill Mode / YT housekeeping reclassify)
-// and dropping the old key. Persists to disk on the next save(). Idempotent.
+// (dev0515) One-time in-memory migration of the orientation column to 'Mode' with
+// LETTER values. CONVERTS the old numeric system outright: '0'→'L', '1'→'P' (existing
+// L/P/S/X pass through). So YouTube rows already measured as 0/1 become L/P with no
+// re-query, and no dual number/letter system lingers. Sources a value from an existing
+// 'Mode', else legacy 'P/S', else older 'Portrait', then drops the old keys. Any other
+// stray/obsolete numeric reads as '' (unknown) for Fill Mode to reclassify. Persists to
+// disk on the next save(). Idempotent.
 function _migrateModeColumn() {
+  const toLetter = (v) => {
+    v = String(v == null ? '' : v).trim();
+    if (v === '0') return 'L';
+    if (v === '1') return 'P';
+    const u = v.toUpperCase();
+    if (u === 'L' || u === 'P' || u === 'S' || u === 'X') return u;
+    return '';
+  };
   const legacy = cols.includes('P/S') ? 'P/S' : (cols.includes('Portrait') ? 'Portrait' : null);
   let touched = false;
   for (const r of data) {
     if (!r || r._salMeta) continue;
-    if (r['Mode'] === undefined || r['Mode'] === '') {
-      const src = (r['P/S'] !== undefined && r['P/S'] !== '') ? r['P/S']
-                : (r['Portrait'] !== undefined && r['Portrait'] !== '') ? r['Portrait']
-                : undefined;
-      if (src !== undefined) { r['Mode'] = src; touched = true; }
-    }
+    const hadKey = ('Mode' in r) || ('P/S' in r) || ('Portrait' in r);
+    const src = (r['Mode'] !== undefined && r['Mode'] !== '') ? r['Mode']
+              : (r['P/S'] !== undefined && r['P/S'] !== '') ? r['P/S']
+              : (r['Portrait'] !== undefined && r['Portrait'] !== '') ? r['Portrait']
+              : '';
+    const letter = toLetter(src);
+    // Set the letter whenever the row participated in the orientation column at all
+    // (so numeric Mode values written by the dev0514 pass also get converted).
+    if (hadKey && r['Mode'] !== letter) { r['Mode'] = letter; touched = true; }
     if ('P/S' in r)      { delete r['P/S']; touched = true; }
     if ('Portrait' in r) { delete r['Portrait']; touched = true; }
   }
