@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0512';
+const PROXY_BUILD = 'dev0519';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -800,14 +800,17 @@ function parseIgEmbedImages(html) {
 // (dev0491) GET an image URL → write to destPath. Cookieless, fresh socket + short UA
 // + IG Referer (same recipe that beats the wall on the embed page); follows up to a
 // couple of redirect hops. Resolves true only on a 200 with a non-empty body.
-function igDownloadImage(fileUrl, destPath, referer, hops) {
+function igDownloadImage(fileUrl, destPath, referer, hops, accept) {
   return new Promise(resolve => {
     if (hops == null) hops = 0;
     let u; try { u = new URL(fileUrl); } catch (_) { resolve(false); return; }
     if (u.protocol !== 'https:') { resolve(false); return; }
     const opts = { agent: false, headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8',
+      // (dev0519) Accept defaults to images; a video/mp4 CDN GET passes '*/*' so the
+      // header isn't semantically wrong for reels (the signed CDN URL ignores it, but
+      // keep it honest). Image callers omit the arg → identical header as before.
+      'Accept': accept || 'image/avif,image/webp,image/*,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
       'Referer': referer || 'https://www.instagram.com/',
       'Connection': 'close'
@@ -815,7 +818,7 @@ function igDownloadImage(fileUrl, destPath, referer, hops) {
     const req = https.get(fileUrl, opts, r => {
       if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 3) {
         r.resume();
-        igDownloadImage(new URL(r.headers.location, fileUrl).href, destPath, referer, hops + 1).then(resolve);
+        igDownloadImage(new URL(r.headers.location, fileUrl).href, destPath, referer, hops + 1, accept).then(resolve);
         return;
       }
       if (r.statusCode !== 200) { r.resume(); resolve(false); return; }
@@ -901,6 +904,74 @@ function igEmbedImageFallback(url, id, tmpDir) {
       next();
     });
     }
+  });
+}
+
+// (dev0519) Pull the reel/video MP4 URL(s) out of the LOGGED-OUT main /p/ page.
+// The intent was an og:video:secure_url scrape (parallel to how pickIgFullCover reads
+// og:image), BUT a live probe showed IG serves og:type="article" and NO og:video tag
+// for reels now — the playable MP4 is instead embedded in the page's inline JSON as
+// `"video_versions":[{ "type":101, "url":"…mp4?…", … }]`. That signed CDN URL fetches
+// cookielessly (verified 206 video/mp4). Take the FIRST url of each video_versions group
+// (IG lists the highest quality first; the probe's first url returned full video/mp4);
+// dedup across groups so a video carousel yields one URL per clip. Returns [] when the
+// page carries none (a photo post → no video_versions).
+function pickIgVideoUrls(html) {
+  if (!html) return [];
+  const out = [], seen = new Set();
+  const re = /"video_versions"\s*:\s*\[([^\]]*)\]/g;   // objects are flat → no nested ']'
+  let g;
+  while ((g = re.exec(html))) {
+    const um = g[1].match(/"url"\s*:\s*"([^"]+)"/);
+    if (!um) continue;
+    const u = um[1].replace(/\\u0026/gi, '&').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+    if (!seen.has(u)) { seen.add(u); out.push(u); }
+  }
+  return out;
+}
+// (dev0519) Cookieless video-download fallback for REEL / video /p posts — the mirror of
+// igEmbedImageFallback (which rescues photo posts). yt-dlp now login-walls reels
+// cookielessly (dev0518), but the logged-out /p/ page still embeds the signed MP4 CDN
+// URL in its video_versions JSON, and that URL downloads cookieless (short UA + IG
+// Referer + fresh socket — the same recipe that beats the photo wall). Writes each clip
+// into tmpDir with the NNN.mp4 autonumber scheme igDownload()'s publish() expects.
+// Resolves the files written ([] → caller falls through to its 502). Photo posts return
+// [] (no video_versions) so this never mis-fires on them.
+function igMainVideoFallback(url, id, tmpDir) {
+  return new Promise(resolve => {
+    const m = IG_SHORTCODE_RE.exec(url || '');
+    if (!m) { resolve([]); return; }
+    const sc = m[1];
+    const permalink = 'https://www.instagram.com/p/' + sc + '/';
+    const opts = { agent: false, headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
+    } };
+    let h = '';
+    const req = https.get(permalink, opts, r => {
+      if (r.statusCode !== 200) { r.resume(); resolve([]); return; }
+      r.setEncoding('utf8');
+      r.on('data', c => { h += c; if (h.length > 6e6) req.destroy(); });
+      r.on('end', () => {
+        const vids = pickIgVideoUrls(h);
+        if (!vids.length) { resolve([]); return; }
+        const written = [];
+        let i = 0;
+        const next = () => {
+          if (i >= vids.length) { resolve(written); return; }
+          const idx = i++;
+          const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + '.mp4');
+          igDownloadImage(vids[idx], dest, permalink, 0, '*/*').then(ok => {
+            if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
+            next();
+          });
+        };
+        next();
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.setTimeout(20000, () => { req.destroy(); resolve([]); });
   });
 }
 
@@ -1571,8 +1642,21 @@ function igDownload(req, res, origin) {
     }
     // Final cookieless rescue: the embed page's single static image, only after every
     // yt-dlp attempt came back empty. Skipped for reels (no image) and non-IG URLs.
+    // (dev0519) Reel/video rescue: yt-dlp is now login-walled for reels cookielessly,
+    // but the logged-out /p/ page still embeds the signed MP4 in its video_versions
+    // JSON, which downloads cookieless. Mirror of the photo embed rescue below.
+    function mainVideoRescueOr502(err) {
+      wipeTmp();
+      igMainVideoFallback(url, id, tmpDir).then(files => {
+        if (files.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' reel via cookieless main /p/ video_versions (yt-dlp walled)');
+          sendJson(res, 200, { ok: true, files: publish(), viaMainVideo: true, usedCookies: false,
+            note: 'reel via cookieless main /p/ page (video_versions) — yt-dlp was login-walled' }, origin);
+        } else { fail502(err); }
+      });
+    }
     function embedRescueOr502(err) {
-      if (!photoPost) { fail502(err); return; }
+      if (!photoPost) { mainVideoRescueOr502(err); return; }
       wipeTmp();
       igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
         if (emImgs.length && tmpFiles().length) {

@@ -1283,6 +1283,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           : '\n🍪 cookieless — your IG login was not used';
         igToast('✓ downloaded ' + r.id + cookieLine
           + (j.viaEmbed ? '\n📐 via embed page — first image only' : '')
+          + (j.viaMainVideo ? '\n🎞 reel via cookieless /p/ page (yt-dlp was walled)' : '')
           + '\n' + fileLine, 3800);
       }
       return true;
