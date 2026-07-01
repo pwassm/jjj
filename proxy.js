@@ -121,6 +121,19 @@ const IG_DOWNLOAD_USE_COOKIES = false;
 const IG_GALLERYDL = true;
 const GALLERY_DL = 'C:\\Special\\gallery-dl\\gallery-dl.exe';
 
+// (dev0518) yt-dlp browser IMPERSONATION for the cookieless DOWNLOAD path. Finding
+// (2026-07-01): photo /p COVERS download fine cookieless (18 at home, no wall) but
+// REELS now wall cookieless at the first one — IG moved its login gate onto video.
+// `--impersonate` makes yt-dlp use a real browser's TLS/HTTP fingerprint (curl_cffi,
+// bundled in the yt-dlp.exe — verified via --list-impersonate-targets), which can slip
+// past fingerprint-based blocks. HONEST caveat: it will NOT beat a genuine "must log in"
+// requirement — it only helps if the wall is (partly) heuristic on the client fingerprint.
+// Values: '' disables; 'chrome' (yt-dlp picks the best Chrome); or pin one from
+// --list-impersonate-targets, e.g. 'safari-18.4:ios-18.4' / 'chrome-131:android-14'
+// (mobile targets sometimes fare better on IG). Applies to yt-dlp downloads only —
+// enrich (which already works cookieless) and gallery-dl are untouched.
+const IG_IMPERSONATE = 'chrome';
+
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
 // :8082 — both 127.0.0.1 and localhost spellings allowed since the browser
@@ -1509,7 +1522,9 @@ function igDownload(req, res, origin) {
     const tmpDir = path.join(IG_MEDIA_DIR, '.tmp_' + id + '_' + Date.now().toString(36));
     try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
     const outTmpl = path.join(tmpDir, '%(autonumber)03d.%(ext)s');
-    const baseArgs = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '--no-part', '-o', outTmpl];
+    // (dev0518) --impersonate on the yt-dlp download path (reels wall cookieless now).
+    const impersonate = IG_IMPERSONATE ? ['--impersonate', IG_IMPERSONATE] : [];
+    const baseArgs = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '--no-part'].concat(impersonate, ['-o', outTmpl]);
 
     const tmpFiles = () => { try { return fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) { return []; } };
     const wipeTmp  = () => { try { fs.readdirSync(tmpDir).forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) {} }); } catch (_) {} };
