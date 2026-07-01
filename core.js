@@ -350,6 +350,22 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
+  // (dev0516) s from the GRID plays the slideshow (slideshowOpenGrid), same as
+  // slideshow.js's own bare-S handler would. We must own it here in window-
+  // capture because the dispatcher below forwards 's' to _executeHotkey, which
+  // opens St staging — so without this the grid never sees 's' as slideshow. St
+  // staging now opens with 's' only from the Table screen (grid not visible),
+  // handled by the normal dispatch below. V-over-grid keeps the old behaviour.
+  if (k === 's' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const gOpenS  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenS = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpenS && !vpOpenS) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.slideshowOpenGrid === 'function') window.slideshowOpenGrid();
+      return false;
+    }
+  }
   // (dev0447) S opens the St staging screen — but Xe (text editor) uses bare 's'
   // for save, so don't forward 's' to the dispatcher while Xe is open; let it
   // reach xe.js. (Slideshow / Dictionary / Video-editor already bail entirely

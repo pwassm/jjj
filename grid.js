@@ -1978,10 +1978,14 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
   const doView = () => { if (row) { _lastGridRow = row; gridOpenFullscreen(row); } gridHideContextMenu(); };
   const doSteps = () => { if (window._gridPlayStepsRoute) window._gridPlayStepsRoute(cellStr, row); gridHideContextMenu(); };
   const doStepsAll = () => { if (window.gridPlayStepsAll) window.gridPlayStepsAll(); gridHideContextMenu(); };
+  // (dev0516) Slideshow — play the whole active grid as a full-window slideshow
+  // (same as the bare-'s' hotkey from G / the hamburger Slideshow item).
+  const doSlideshow = () => { gridHideContextMenu(); if (window.slideshowOpenGrid) window.slideshowOpenGrid(); };
 
   if (row) _gridContextMenu.appendChild(mkItem('<u>V</u>iew', doView));
   _gridContextMenu.appendChild(mkItem('<u>P</u>lay steps', doSteps));
   _gridContextMenu.appendChild(mkItem('Play steps <u>A</u>ll', doStepsAll));
+  _gridContextMenu.appendChild(mkItem('<u>S</u>lideshow', doSlideshow));
 
   document.body.appendChild(_gridContextMenu);
 
@@ -1989,6 +1993,7 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
     if ((e.key === 'v' || e.key === 'V') && row) { e.preventDefault(); doView(); }
     else if (e.key === 'p' || e.key === 'P')     { e.preventDefault(); doSteps(); }
     else if (e.key === 'a' || e.key === 'A')     { e.preventDefault(); doStepsAll(); }
+    else if (e.key === 's' || e.key === 'S')     { e.preventDefault(); doSlideshow(); }
     else if (e.key === 'Escape')                 { gridHideContextMenu(); }
   };
   document.addEventListener('keydown', handleKey, true);
@@ -2081,6 +2086,19 @@ function gridShowContextMenu(x, y, cellStr, row) {
   };
   _gridContextMenu.appendChild(stepsBtn);
 
+  // (dev0516) Slideshow — play the whole active grid as a full-window slideshow
+  // (same as the bare-'s' hotkey from G / the hamburger Slideshow item).
+  const slideBtn = document.createElement('div');
+  slideBtn.innerHTML = '<u>S</u>lideshow';
+  slideBtn.style.cssText = 'padding:8px 16px; color:#8ef; cursor:pointer; font-size:13px;';
+  slideBtn.onmouseenter = () => slideBtn.style.background = '#2a2a4e';
+  slideBtn.onmouseleave = () => slideBtn.style.background = '';
+  slideBtn.onclick = () => {
+    gridHideContextMenu();
+    if (window.slideshowOpenGrid) window.slideshowOpenGrid();
+  };
+  _gridContextMenu.appendChild(slideBtn);
+
   // Delete option
   const deleteBtn = document.createElement('div');
   deleteBtn.innerHTML = '<u>D</u>elete cell';
@@ -2131,6 +2149,10 @@ function gridShowContextMenu(x, y, cellStr, row) {
       e.preventDefault();
       if (window._gridPlayStepsRoute) window._gridPlayStepsRoute(cellStr, row);   // route by link type
       gridHideContextMenu();                   // no steps → silent no-op
+    } else if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      gridHideContextMenu();
+      if (window.slideshowOpenGrid) window.slideshowOpenGrid();   // (dev0516) play grid as slideshow
     } else if (e.key === 'w' || e.key === 'W') {
       e.preventDefault();
       gridWriteToT();
