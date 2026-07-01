@@ -48,6 +48,25 @@
   // single ✨) retries. Session-only (not persisted) so a reload always re-tries.
   const enrichFailed = new Set();
 
+  // (dev0517) Auto-enrich driver — semi-auto batched enrich with per-Proton-location
+  // wall tracking. Browser JS can't switch the VPN, so YOU click the city you're on;
+  // the driver enriches N at a time, and when an exit walls it pauses, tallies a wall
+  // against that city (sinking it to the bottom of the list), and resumes when you
+  // click the next city. Enrich rides the proxy's current exit IP; the browser↔proxy
+  // link is loopback so it's unaffected by the VPN switch. State persists in localStorage.
+  const AUTO_KEY = 'slam-ig-autoenrich';
+  const AUTO_DEFAULT_CITIES = ['Reykjavik', 'Tallinn', 'Riga', 'Vilnius', 'Ljubljana',
+    'Bratislava', 'Zagreb', 'Luxembourg', 'Valletta', 'Nicosia', 'Sofia', 'Bucharest',
+    'Chisinau', 'Tbilisi', 'Skopje'];
+  let autoLocs = [];            // [{name, walled}] — the Proton exits + their enrich-wall tally
+  let autoActive = null;        // name of the city the user marked as currently in use
+  let autoLoaded = false;       // localStorage read once
+  let autoRunning = false;      // loop active (may be paused)
+  let autoPaused = false;       // paused: walled / no-progress / by user
+  let autoBatchSize = 18;       // rows per enrich batch
+  let autoGapMs = 4000;         // breather between clean batches
+  const autoDead = new Set();   // rows that walled while the exit was otherwise fine → skip
+
   // STRONG, unambiguous IG throttle signatures. If a batch item fails with one of
   // these we stop the whole batch so we don't keep hammering a real throttle.
   // (dev0440) Deliberately NO bare "rate-limit" match: yt-dlp's cookieless wall
@@ -370,6 +389,43 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 #igPvBody video,#igPvBody img{display:block;width:100%;height:100%;object-fit:contain;background:#000}
 #igPvBody .igPvPlace{color:#8a96a3;font:13px/1.5 system-ui;text-align:center;padding:24px}
 #igPvBody .igPvPlace span{color:#5a6573;font-size:11px}
+/* (dev0517) Auto-enrich panel — floating, top-right under the toolbar. */
+#igAuto{position:fixed;top:64px;right:14px;width:300px;max-height:calc(100vh - 90px);z-index:120;
+  background:#0e1219;border:1px solid #2c3645;border-radius:9px;box-shadow:0 12px 44px rgba(0,0,0,.7);
+  display:none;flex-direction:column;overflow:hidden;font:13px system-ui;color:#dfe6ee}
+#igAuto.open{display:flex}
+#igAutoBar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#0a1426;border-bottom:1px solid #1a2a4a}
+#igAutoBar b{font-size:14px}
+#igAutoState{margin-left:auto;font:11px ui-monospace,Consolas,monospace;padding:2px 7px;border-radius:10px;background:#1f2733;color:#9fb0c2}
+#igAutoState.st-running{background:#12351f;color:#7fe0a0}
+#igAutoState.st-paused{background:#3a2f12;color:#e6c268}
+#igAutoHide{background:none;border:0;color:#9aa;font-size:18px;line-height:1;cursor:pointer;padding:0 2px}
+#igAutoHide:hover{color:#fff}
+#igAutoCtl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid #1a2333}
+#igAutoCtl button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:5px;padding:4px 8px;cursor:pointer;font:600 12px system-ui}
+#igAutoCtl button:hover:not(:disabled){background:#2b3543}
+#igAutoCtl button:disabled{opacity:.45;cursor:default}
+#igAutoCtl label{font-size:12px;color:#9fb0c2;display:flex;align-items:center;gap:4px}
+#igAutoCtl input{width:44px;background:#0c1016;border:1px solid #2c3645;color:#dfe6ee;border-radius:4px;padding:2px 4px}
+#igAutoInfo{padding:7px 10px;font-size:12px;color:#b9c4d0;border-bottom:1px solid #1a2333}
+#igAutoInfo .warn{color:#e6a24a}
+#igAuto .hd{padding:7px 10px 3px;font-size:11px;color:#8a96a3;text-transform:uppercase;letter-spacing:.03em}
+#igAuto .hd span{text-transform:none;letter-spacing:0;color:#5a6573}
+#igAutoLocs{overflow:auto;padding:2px 8px 6px;flex:1 1 auto}
+#igAutoLocs .loc{display:flex;align-items:center;gap:6px;padding:5px 7px;margin:2px 0;border-radius:6px;
+  background:#141b26;border:1px solid #1e2836;cursor:pointer}
+#igAutoLocs .loc:hover{background:#1a2432}
+#igAutoLocs .loc.active{border-color:#4a7fe0;background:#16233b}
+#igAutoLocs .loc.walled{opacity:.72}
+#igAutoLocs .loc .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#igAutoLocs .loc .w{font:11px ui-monospace,Consolas,monospace;color:#8a96a3}
+#igAutoLocs .loc.walled .w{color:#d98a6a}
+#igAutoLocs .loc .rm{background:none;border:0;color:#5a6573;font-size:15px;line-height:1;cursor:pointer;padding:0 2px}
+#igAutoLocs .loc .rm:hover{color:#e06a6a}
+#igAutoAdd{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #1a2333}
+#igAutoAdd input{flex:1;min-width:0;background:#0c1016;border:1px solid #2c3645;color:#dfe6ee;border-radius:5px;padding:4px 7px}
+#igAutoAdd button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:5px;padding:4px 8px;cursor:pointer;font:600 12px system-ui;white-space:nowrap}
+#igAutoAdd button:hover{background:#2b3543}
 `;
     document.head.appendChild(s);
   }
@@ -377,6 +433,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // ── DOM scaffold ────────────────────────────────────────────────────────────
   function build() {
     injectCss();
+    if (!autoLoaded) { loadAuto(); autoLoaded = true; }   // (dev0517) restore exits + wall counts
     if (document.getElementById('igOverlay')) return;
     const o = document.createElement('div');
     o.id = 'igOverlay';
@@ -393,6 +450,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked NonStaged, DevComment from the filename)">📁 Import ffdown</button>
         <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
+        <button id="igAutoEnrich" title="Auto-enrich driver (hotkey A) — enriches N at a time and tracks per-Proton-location walls so you can grind the whole backlog by switching exits">🤖 Auto-enrich</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igCoverOnly" title="Toggle download mode. ON = grab only the cookieless index-1 cover (no carousel, no Firefox cookies) — for authors whose page-1 is the keeper. OFF = normal (video cookieless; image carousels use gallery-dl + Firefox cookies).">📸 Cover-only: off</button>
         <button id="igPromoteSel">➕ Promote sel</button>
@@ -424,6 +482,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igStatus').addEventListener('change', e => { statusFilter = e.target.value; applyAndRender(); });
     $('igStaged').addEventListener('change', e => { stagedFilter = e.target.value; applyAndRender(); });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
+    $('igAutoEnrich').addEventListener('click', () => toggleAutoPanel());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
     $('igCoverOnly').addEventListener('click', () => {
       coverOnly = !coverOnly;
@@ -975,6 +1034,214 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     }
     await runBatch('Enriching', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
       '🍪 cookieless only — never uses your Firefox/IG login');
+  }
+
+  // ══ Auto-enrich driver (dev0517) ═══════════════════════════════════════════════
+  // Semi-auto: enriches `autoBatchSize` rows, and when the current Proton exit walls
+  // it pauses, tallies the wall against the marked city, and waits for you to switch
+  // Proton + click the next city (that click resumes). Downloads are deliberately NOT
+  // driven here — IG's media CDN blocks datacenter/VPN exits, so downloads need your
+  // home IP; this tool is only for the tolerant metadata (enrich) surface.
+  function loadAuto() {
+    try {
+      const j = JSON.parse(localStorage.getItem(AUTO_KEY) || '{}');
+      autoLocs = (Array.isArray(j.locs) && j.locs.length)
+        ? j.locs.map(l => ({ name: String(l.name || '').trim(), walled: +l.walled || 0 })).filter(l => l.name)
+        : AUTO_DEFAULT_CITIES.map(n => ({ name: n, walled: 0 }));
+      autoActive = j.active || null;
+      autoBatchSize = Math.max(1, Math.min(50, +j.batchSize || 18));
+    } catch (_) {
+      autoLocs = AUTO_DEFAULT_CITIES.map(n => ({ name: n, walled: 0 }));
+      autoActive = null; autoBatchSize = 18;
+    }
+  }
+  function saveAuto() {
+    try { localStorage.setItem(AUTO_KEY, JSON.stringify({ locs: autoLocs, active: autoActive, batchSize: autoBatchSize })); } catch (_) {}
+  }
+  // clean (walled 0) first, then fewest walls; stable within a tier (insertion order).
+  function sortedLocs() {
+    return autoLocs.map((l, i) => ({ l, i })).sort((a, b) => (a.l.walled - b.l.walled) || (a.i - b.i)).map(x => x.l);
+  }
+  function activeLoc() { return autoLocs.find(l => l.name === autoActive) || null; }
+  function topCleanCity() { const s = sortedLocs().find(l => l.name !== autoActive); return s ? s.name : ((sortedLocs()[0] || {}).name || '—'); }
+
+  // A row still wants enriching if it isn't enriched, hasn't walled this exit, and
+  // isn't a known-dead post (walled while the exit was otherwise fine).
+  function needsEnrich(r) { return r && !isEnriched(r) && !enrichFailed.has(r.id) && !autoDead.has(r.id); }
+  function autoRemaining() { return view.reduce((n, r) => n + (needsEnrich(r) ? 1 : 0), 0); }
+  function pickNextBatchIds(n) {
+    const out = [];
+    for (const r of view) { if (needsEnrich(r)) { out.push(r.id); if (out.length >= n) break; } }
+    return out;
+  }
+
+  // Tell a dead POST from a walled EXIT: after a batch walls, enrich ONE more row on
+  // the same exit. 'ok' → the walled row was just unreadable (exit fine); 'wall' → the
+  // exit itself is walling; 'error' → transient/proxy; 'nomore' → nothing left to test.
+  async function probeExit(excludeId) {
+    const cand = view.find(r => needsEnrich(r) && r.id !== excludeId);
+    if (!cand) return 'nomore';
+    busy = true; setBatchUi(true);
+    igBatchShow('🤖 probing exit…\none more post — is it a dead post or a walled exit?');
+    const good = await enrichRow(cand, false);
+    busy = false; setBatchUi(false); igBatchHide();
+    applyAndRender();
+    if (good) { dirty = true; await persist(false); return 'ok'; }
+    return isWall(lastOpError) ? 'wall' : 'error';
+  }
+
+  async function autoLoop() {
+    while (autoRunning && !autoPaused) {
+      if (busy) { await sleep(400); continue; }              // wait out any manual batch
+      const ids = pickNextBatchIds(autoBatchSize);
+      if (!ids.length) { autoFinish(); return; }
+      const before = new Set(enrichFailed);
+      const ok = await runBatch('Auto-enrich', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
+        '🤖 auto · 🍪 cookieless — click your Proton city so walls are tracked');
+      if (!autoRunning) return;                               // Stop pressed mid-batch
+      const newWalls = [...enrichFailed].filter(id => !before.has(id));
+      renderAuto();
+      if (newWalls.length) {
+        const probe = await probeExit(newWalls[0]);
+        if (!autoRunning) return;
+        if (probe === 'ok') { autoDead.add(newWalls[0]); continue; }   // one dead post, exit fine
+        if (probe === 'nomore') { autoFinish(); return; }
+        if (probe === 'wall') { bumpWall(); autoPauseWalled(); return; }
+        autoPause('⚠ Enrich errored (not a wall) — likely a transient/proxy hiccup.\nCheck the proxy, then click your city (or ▶) to resume.');
+        return;
+      }
+      if (ok > 0) { await sleep(autoGapMs); continue; }       // clean progress → breather → next
+      autoPause('⚠ No progress and no wall — is the proxy (127.0.0.1:8081) running?\nFix it, then click your city (or ▶) to resume.');
+      return;
+    }
+  }
+
+  function bumpWall() {
+    const l = activeLoc();
+    if (l) { l.walled = (l.walled || 0) + 1; saveAuto(); }
+    renderAuto();
+  }
+  function autoPauseWalled() {
+    autoPaused = true;
+    const l = activeLoc();
+    igStickyShow('⏸ Walled' + (l ? ' on ' + l.name + ' (now walled ' + l.walled + ')' : ' (no city marked)') + '.\n\n'
+      + 'Switch Proton to a cleaner exit — try: ' + topCleanCity() + '\n'
+      + 'Then CLICK that city in the 🤖 Auto-enrich list to resume.\n\n'
+      + autoRemaining() + ' rows still to enrich.');
+    renderAuto();
+  }
+  function autoPause(msg) { autoPaused = true; igStickyShow(msg); renderAuto(); }
+  function autoStart() {
+    if (autoRunning && !autoPaused) return;
+    if (busy) { igToast('A batch is already running — wait for it to finish.', 2400); return; }
+    if (!autoRemaining()) { igToast('Nothing to enrich in the current view.\n(Clear filters / set status to new if needed.)', 3000); return; }
+    if (!autoActive) igToast('Tip: click the Proton city you\'re currently on so walls get tracked.', 3000);
+    autoRunning = true; autoPaused = false; igStickyHide(); renderAuto();
+    autoLoop();
+  }
+  function autoResume() {
+    if (!autoRunning) { autoStart(); return; }
+    if (!autoPaused) return;
+    autoPaused = false; igStickyHide(); renderAuto(); autoLoop();
+  }
+  function autoStopRun() {
+    autoRunning = false; autoPaused = false; batchAbort = true;   // break any in-flight batch
+    renderAuto();
+    igToast('🤖 auto-enrich stopped', 1500);
+  }
+  function autoFinish() {
+    autoRunning = false; autoPaused = false; renderAuto();
+    igStickyShow('✓ Auto-enrich complete — no rows left to enrich in this view.\n'
+      + (autoDead.size ? autoDead.size + ' post(s) were unreadable and skipped.\n' : '')
+      + 'For downloads use your HOME IP — IG\'s media CDN blocks datacenter/VPN exits.');
+  }
+  // User marks the exit they just switched Proton to. If a run is paused, this resumes it.
+  function activateLoc(name) {
+    const changed = name !== autoActive;
+    autoActive = name;
+    if (changed) enrichFailed.clear();     // fresh exit → retry rows that walled on the old one
+    saveAuto(); renderAuto();
+    if (autoRunning && autoPaused) { autoPaused = false; igStickyHide(); autoLoop(); }
+    else if (!autoRunning) igToast('📍 active exit: ' + name + ' — press ▶ Start to begin', 1800);
+    else igToast('📍 active exit: ' + name, 1400);
+  }
+  function addLoc(name) {
+    name = String(name || '').trim(); if (!name) return;
+    if (autoLocs.some(l => l.name.toLowerCase() === name.toLowerCase())) { igToast('Already in the list', 1400); return; }
+    autoLocs.push({ name, walled: 0 }); saveAuto(); renderAuto();
+  }
+  function removeLoc(name) {
+    autoLocs = autoLocs.filter(l => l.name !== name);
+    if (autoActive === name) autoActive = null;
+    saveAuto(); renderAuto();
+  }
+  function resetWalls() {
+    autoLocs.forEach(l => l.walled = 0); saveAuto(); renderAuto();
+    igToast('Wall counts reset to 0', 1400);
+  }
+
+  function toggleAutoPanel() {
+    const existing = document.getElementById('igAuto');
+    if (existing && existing.classList.contains('open')) { existing.classList.remove('open'); return; }
+    buildAutoPanel(); renderAuto();
+    document.getElementById('igAuto').classList.add('open');
+  }
+  function buildAutoPanel() {
+    if (document.getElementById('igAuto')) return;
+    const p = document.createElement('div');
+    p.id = 'igAuto';
+    p.innerHTML =
+      '<div id="igAutoBar"><b>🤖 Auto-enrich</b><span id="igAutoState"></span><button id="igAutoHide" title="Hide (A)">×</button></div>'
+      + '<div id="igAutoCtl">'
+        + '<button id="igAutoStartBtn">▶ Start</button>'
+        + '<button id="igAutoPauseBtn">⏸ Pause</button>'
+        + '<button id="igAutoStopBtn">⏹ Stop</button>'
+        + '<label>batch <input id="igAutoSize" type="number" min="1" max="50" value="18"></label>'
+      + '</div>'
+      + '<div id="igAutoInfo"></div>'
+      + '<div class="hd">Proton exits — click the one you\'re on <span>(walls sink to the bottom)</span></div>'
+      + '<div id="igAutoLocs"></div>'
+      + '<div id="igAutoAdd"><input id="igAutoNew" type="text" placeholder="add a city…"><button id="igAutoAddBtn">+ add</button>'
+        + '<button id="igAutoResetBtn" title="Zero all wall counts (e.g. a new day / the IP cooled down)">reset walls</button></div>';
+    (document.getElementById('igOverlay') || document.body).appendChild(p);
+    p.querySelector('#igAutoHide').addEventListener('click', () => p.classList.remove('open'));
+    p.querySelector('#igAutoStartBtn').addEventListener('click', autoStart);
+    p.querySelector('#igAutoPauseBtn').addEventListener('click', () => {
+      if (autoRunning && !autoPaused) autoPause('⏸ Paused by you.\nClick a city or ▶ Start to resume.');
+      else autoResume();
+    });
+    p.querySelector('#igAutoStopBtn').addEventListener('click', autoStopRun);
+    p.querySelector('#igAutoSize').addEventListener('change', e => { autoBatchSize = Math.max(1, Math.min(50, +e.target.value || 18)); saveAuto(); renderAuto(); });
+    p.querySelector('#igAutoAddBtn').addEventListener('click', () => { const i = p.querySelector('#igAutoNew'); addLoc(i.value); i.value = ''; });
+    p.querySelector('#igAutoNew').addEventListener('keydown', e => { if (e.key === 'Enter') { e.stopPropagation(); addLoc(e.target.value); e.target.value = ''; } });
+    p.querySelector('#igAutoResetBtn').addEventListener('click', resetWalls);
+  }
+  function renderAuto() {
+    const p = document.getElementById('igAuto'); if (!p) return;
+    const st = p.querySelector('#igAutoState');
+    const state = !autoRunning ? 'idle' : (autoPaused ? 'paused' : 'running');
+    if (st) { st.textContent = state; st.className = 'st-' + state; }
+    const info = p.querySelector('#igAutoInfo');
+    if (info) info.innerHTML = '<b>' + autoRemaining() + '</b> to enrich in view'
+      + (autoActive ? ' · on <b>' + esc(autoActive) + '</b>' : ' · <span class="warn">no city marked</span>')
+      + (autoDead.size ? ' · ' + autoDead.size + ' skipped' : '');
+    const size = p.querySelector('#igAutoSize'); if (size && document.activeElement !== size) size.value = autoBatchSize;
+    const startB = p.querySelector('#igAutoStartBtn'); if (startB) startB.disabled = autoRunning && !autoPaused;
+    renderLocs();
+  }
+  function renderLocs() {
+    const box = document.getElementById('igAutoLocs'); if (!box) return;
+    box.innerHTML = sortedLocs().map(l => {
+      const active = l.name === autoActive;
+      return '<div class="loc' + (active ? ' active' : '') + (l.walled ? ' walled' : '') + '" data-name="' + esc(l.name) + '">'
+        + '<span class="nm">' + (active ? '📍 ' : '') + esc(l.name) + '</span>'
+        + '<span class="w">walled ' + l.walled + '</span>'
+        + '<button class="rm" title="remove">×</button></div>';
+    }).join('');
+    box.querySelectorAll('.loc').forEach(el => el.addEventListener('click', ev => {
+      if (ev.target.classList.contains('rm')) { ev.stopPropagation(); removeLoc(el.dataset.name); return; }
+      activateLoc(el.dataset.name);
+    }));
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
@@ -1533,6 +1800,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // away; press f to jump into the filter box, Shift+F to clear it.
   }
   function closeIgScreen() {
+    if (autoRunning && !autoPaused) autoPause('⏸ Auto-enrich paused — I screen closed. Reopen (I) and click a city or ▶ to resume.');  // (dev0517)
     if (dirty) persist(false);     // best-effort flush on close
     igPreviewClose();              // (dev0500) tear down the media preview
     closeDrawer();
@@ -1621,6 +1889,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     }
     if (e.key === 'r') {                           // (dev0513) reset selected → new (re-try)
       e.stopPropagation(); e.preventDefault(); resetSelected(); return;
+    }
+    if (e.key === 'a') {                           // (dev0517) toggle the auto-enrich panel
+      e.stopPropagation(); e.preventDefault(); toggleAutoPanel(); return;
     }
     if (e.key === 'm') {                           // clear, then select 18 from top
       e.stopPropagation(); e.preventDefault(); selectTopN(18); return;
