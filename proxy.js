@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0523';
+const PROXY_BUILD = 'dev0524';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1854,6 +1854,7 @@ function xSearch(req, res, origin) {
     if (kind === 'image' && payload.allowStock)  args.push('--allow-stock');
     if (kind === 'video' && payload.allowTikTok) args.push('--allow-tiktok');
     if (kind === 'video' && payload.deep)        args.push('--deep');
+    if (payload.showBrowser)                     args.push('--show-browser');   // visible browser → beat Google's captcha wall
 
     let proc;
     // cwd = linkfinders/ so the finder's relative resources (_browser_profile, etc.)
@@ -1869,7 +1870,7 @@ function xSearch(req, res, origin) {
     proc.on('close', code => console.log(tag + ' finished (exit ' + code + ') — results POST to /x/import; X reloads on poll'));
 
     // Return immediately — hits land later via the finder's own POST /x/import.
-    sendJson(res, 200, { ok: true, spawned: true, kind, query, sources: picked, max, safe }, origin);
+    sendJson(res, 200, { ok: true, spawned: true, kind, query, sources: picked, max, safe, showBrowser: !!payload.showBrowser }, origin);
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 

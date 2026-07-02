@@ -127,6 +127,7 @@
       safe: c.safe !== false,
       max: (Number.isFinite(m) && m > 0) ? Math.min(200, m) : 40,
       allowStock: !!c.allowStock, allowTikTok: !!c.allowTikTok, deep: !!c.deep,
+      showBrowser: !!c.showBrowser,
       lastKind: c.lastKind === 'video' ? 'video' : 'image'
     };
   }
@@ -486,7 +487,8 @@
         </span>
         <span class="opts">
           <label class="xchip" title="SafeSearch on the finders that support it"><input type="checkbox" id="xSafe"${finderCfg.safe ? ' checked' : ''}>safe</label>
-          <label class="mx" title="Max results per source">max <input type="number" id="xMax" min="1" max="200" value="${esc(String(finderCfg.max))}"></label>
+          <label class="xchip adv" title="Run a VISIBLE browser so you can solve Google's captcha once — the persistent profile then unblocks later headless Google/Bing runs. Also used for the Vimeo harvest."><input type="checkbox" id="xShowBrowser"${finderCfg.showBrowser ? ' checked' : ''}>show browser</label>
+          <label class="mx" title="Max results PER SOURCE (the total scales with how many sources you tick)">max <input type="number" id="xMax" min="1" max="200" value="${esc(String(finderCfg.max))}"></label>
         </span>
         <span id="xSearchStatus"></span>
       </div>
@@ -530,6 +532,7 @@
       finderCfg.allowStock = !!$('xAllowStock').checked;
       finderCfg.allowTikTok = !!$('xAllowTikTok').checked;
       finderCfg.deep = !!$('xDeep').checked;
+      finderCfg.showBrowser = !!$('xShowBrowser').checked;
       const m = parseInt($('xMax').value, 10);
       if (Number.isFinite(m) && m > 0) finderCfg.max = Math.min(200, m);
       saveFinderCfg();
@@ -754,16 +757,12 @@
     const isImg = IMG_RE.test(link);
     const id = row.id;
     if (isVid) {
-      const segs = [{ start: 0, dur: 99999 }];
       setTimeout(() => {
         if (focusId !== id || !document.getElementById('xPreview')) return;
-        if (window.isYouTubeLink && window.isYouTubeLink(link) && window.mountYouTubeClip)
-          window.mountYouTubeClip(host, link, 0, 99999, true, undefined, segs);
-        else if (window.isVimeoLink && window.isVimeoLink(link) && window.mountVimeoClip)
-          window.mountVimeoClip(host, link, 0, 99999, true, undefined, segs);
-        else if (window.isDirectVideoLink && window.isDirectVideoLink(link) && window.mountDirectVideoClip)
-          window.mountDirectVideoClip(host, link, 0, 99999, true, undefined, segs);
-        else if (window.isTikTokLink && window.isTikTokLink(link) && window.mountTikTokEmbed)
+        // Full scrubbable player (native/embed seek bar) so you can jump ahead to
+        // check later segments — this is a review pane, not the clip editor.
+        if (_pvFullVideo(host, link)) return;
+        if (window.isTikTokLink && window.isTikTokLink(link) && window.mountTikTokEmbed)
           window.mountTikTokEmbed(host, link);
         else if (window.isInstagramLink && window.isInstagramLink(link) && window.mountInstagramEmbed)
           window.mountInstagramEmbed(host, link);
@@ -786,6 +785,42 @@
     img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;';
     img.onerror = onFail || (() => { img.style.opacity = '.25'; });
     host.appendChild(img);
+  }
+  // Mount a full player WITH a seek bar for YouTube / Vimeo / direct video (muted so
+  // autoplay is allowed; unmute via the player's own controls). Returns true if it
+  // handled the link; false leaves it for the TikTok/IG embed fallbacks.
+  function _pvFrame(host, src) {
+    const f = document.createElement('iframe');
+    f.src = src;
+    f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    f.allowFullscreen = true;
+    f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
+    host.appendChild(f);
+    return true;
+  }
+  function _pvFullVideo(host, link) {
+    if (window.isYouTubeLink && window.isYouTubeLink(link)) {
+      const yid = window.getYouTubeId ? window.getYouTubeId(link) : '';
+      if (yid) return _pvFrame(host, 'https://www.youtube.com/embed/' + yid
+        + '?autoplay=1&mute=1&controls=1&rel=0&playsinline=1&modestbranding=1');
+    }
+    if (window.isVimeoLink && window.isVimeoLink(link)) {
+      const norm = window.sanitizeVimeoUrl ? window.sanitizeVimeoUrl(link) : link;
+      const m = String(norm).match(/vimeo\.com\/(\d+)/);
+      if (m) {
+        const hm = String(norm).match(/[?&]h=([A-Za-z0-9]+)/);
+        return _pvFrame(host, 'https://player.vimeo.com/video/' + m[1]
+          + '?autoplay=1&muted=1&controls=1&title=0&byline=0&portrait=0' + (hm ? '&h=' + hm[1] : ''));
+      }
+    }
+    if (window.isDirectVideoLink && window.isDirectVideoLink(link)) {
+      const v = document.createElement('video');
+      v.src = link; v.controls = true; v.autoplay = true; v.muted = true; v.playsInline = true;
+      v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;';
+      host.appendChild(v);
+      return true;
+    }
+    return false;
   }
   function fillPreviewCaption(row) {
     const cap = document.getElementById('xPvCap');
@@ -1343,7 +1378,8 @@
     let max = parseInt((document.getElementById('xMax') || {}).value, 10);
     if (!Number.isFinite(max) || max < 1) max = 40;
     const safe = document.getElementById('xSafe') && document.getElementById('xSafe').checked ? 'on' : 'off';
-    const body = { kind, query: q, sources, max, safe };
+    const showBrowser = !!(document.getElementById('xShowBrowser') || {}).checked;
+    const body = { kind, query: q, sources, max, safe, showBrowser };
     if (kind === 'image') body.allowStock = !!(document.getElementById('xAllowStock') || {}).checked;
     else { body.allowTikTok = !!(document.getElementById('xAllowTikTok') || {}).checked; body.deep = !!(document.getElementById('xDeep') || {}).checked; }
 
@@ -1360,17 +1396,18 @@
     } catch (e) {
       setSearching(false);
       xToast('✗ couldn’t start the search: ' + (e && e.message)
-        + '\n(Restart proxy.js for dev0523; make sure python + the finders are installed and on PATH.)', 5600);
+        + '\n(Restart proxy.js for dev0524; make sure python + the finders are installed and on PATH.)', 5600);
       return;
     }
-    waitForResults(baseline, kind, q);
+    // A visible browser may pause on Google's captcha for up to ~3 min — poll longer.
+    waitForResults(baseline, kind, q, showBrowser ? 190000 : 105000);
   }
 
   // The proxy returns as soon as the finder is spawned; the finder POSTs all its hits
   // to /x/import at the END (10–60s later). Poll x.json for a size bump, then reload once.
-  function waitForResults(baseline, kind, q) {
+  function waitForResults(baseline, kind, q, capMs) {
     clearTimeout(_pollTimer);
-    const deadline = Date.now() + 105000;   // ~105s cap (search is 10–60s; allow slack)
+    const deadline = Date.now() + (capMs || 105000);   // ~105s cap (search is 10–60s; allow slack)
     const tick = async () => {
       if (!_searching) return;               // cancelled (screen closed / new search)
       let n = baseline;
