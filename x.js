@@ -108,6 +108,32 @@
   }
   const SOURCE_PRESETS = ['Flickr', 'Wikimedia', 'DuckDuckGo', 'YouTube', 'Vimeo', 'o.json'];
 
+  // ── Finder search (dev0523) — run imagefinder.py / videofinder.py headless via the
+  // proxy /x/search route (source toggles live HERE, sent per-search). The finder
+  // POSTs all hits at the end via /x/import; we poll x.json and reload once. These two
+  // source lists MUST mirror ALL_IMAGE_SOURCES / ALL_VIDEO_SOURCES in the finders. ──
+  const X_IMG_SOURCES = ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse', 'photomacro', 'ojson', 'featured'];
+  const X_VID_SOURCES = ['youtube', 'vimeo', 'ddgs'];
+  const X_IMG_DEFAULT = ['bing', 'google', 'ddgs', 'wikimedia', 'openverse'];  // the finder's own default web set
+  const X_VID_DEFAULT = ['youtube', 'vimeo', 'ddgs'];
+  const FINDER_CFG_KEY = 'x-finder-cfg';
+  function loadFinderCfg() {
+    let c = {};
+    try { c = JSON.parse(localStorage.getItem(FINDER_CFG_KEY) || '{}') || {}; } catch (_) { c = {}; }
+    const m = parseInt(c.max, 10);
+    return {
+      img: Array.isArray(c.img) ? c.img.filter(s => X_IMG_SOURCES.includes(s)) : X_IMG_DEFAULT.slice(),
+      vid: Array.isArray(c.vid) ? c.vid.filter(s => X_VID_SOURCES.includes(s)) : X_VID_DEFAULT.slice(),
+      safe: c.safe !== false,
+      max: (Number.isFinite(m) && m > 0) ? Math.min(200, m) : 40,
+      allowStock: !!c.allowStock, allowTikTok: !!c.allowTikTok, deep: !!c.deep,
+      lastKind: c.lastKind === 'video' ? 'video' : 'image'
+    };
+  }
+  let finderCfg = loadFinderCfg();
+  function saveFinderCfg() { try { localStorage.setItem(FINDER_CFG_KEY, JSON.stringify(finderCfg)); } catch (_) {} }
+  let _searching = false, _pollTimer = null;
+
   function normDur(d) {
     d = String(d || '').trim();
     if (!d) return '';
@@ -373,6 +399,33 @@
   padding:7px 14px;cursor:pointer;font:600 12px system-ui}
 #xCatModal button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
 #xCatModal button:hover{filter:brightness(1.15)}
+#xSearchBar{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;padding:6px 12px;
+  background:#0e1620;border-bottom:1px solid #232b36;flex:0 0 auto}
+#xSearchBar .lbl{font-weight:700;color:#7fd0ee}
+#xSearchBar input[type=text]{background:#1a212b;border:1px solid #2c3645;color:#dfe6ee;
+  border-radius:6px;padding:5px 8px;width:240px;font:14px system-ui}
+#xSearchBar .grp{display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+  padding:2px 6px;border:1px solid #202a36;border-radius:8px;background:#0c131c}
+#xSearchBar .gl{font-size:11px;color:#8aa6c2;font-weight:700;margin-right:2px}
+#xSearchBar .opts{display:flex;align-items:center;gap:10px}
+#xSearchBar .mx{font-size:12px;color:#bcd;display:flex;align-items:center;gap:4px}
+#xSearchBar .mx input{width:56px;background:#1a212b;border:1px solid #2c3645;color:#dfe6ee;
+  border-radius:6px;padding:4px 6px;font:13px system-ui}
+#xSearchBar button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:6px;
+  padding:5px 11px;cursor:pointer;font:600 12px system-ui}
+#xSearchBar button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
+#xSearchBar button:hover{filter:brightness(1.12)}
+#xSearchBar button:disabled{opacity:.5;cursor:default}
+.xchip{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:#cdd8e4;
+  padding:2px 6px;border-radius:5px;cursor:pointer;user-select:none}
+.xchip:hover{background:#182231}
+.xchip input{margin:0;cursor:pointer}
+.xchip.adv{color:#c6a06a}
+#xSearchStatus{font-size:12px;color:#9ad;display:none;align-items:center;gap:6px}
+#xSearchStatus.on{display:inline-flex}
+.xspin{width:13px;height:13px;border:2px solid #2b3a4d;border-top-color:#4df;border-radius:50%;
+  display:inline-block;animation:xspin .8s linear infinite}
+@keyframes xspin{to{transform:rotate(360deg)}}
 `;
     document.head.appendChild(s);
   }
@@ -412,6 +465,31 @@
         <button id="xSave" title="Write edits back to x.json">💾 Save</button>
         <button id="xClose" title="Close (Esc / T)">×</button>
       </div>
+      <div id="xSearchBar">
+        <span class="lbl">🔎 Finder</span>
+        <input type="text" id="xQ" list="xQList" autocomplete="off"
+          placeholder="query, or a page URL to scrape…  (Enter = repeat last)"
+          title="Run a live finder search. Ticked sources are sent per-search; results auto-stage to x.json and the table reloads when they land.">
+        <datalist id="xQList"></datalist>
+        <span class="grp">
+          <span class="gl">🖼 image</span>
+          ${srcChips('img', X_IMG_SOURCES, finderCfg.img)}
+          <label class="xchip adv" title="Don't block stock/watermark domains (alamy/pixabay etc.)"><input type="checkbox" id="xAllowStock"${finderCfg.allowStock ? ' checked' : ''}>+stock</label>
+          <button id="xRunImg" class="primary" title="Run imagefinder.py --search over the ticked image sources (hotkey: Enter in the query box repeats the last kind).">Search images</button>
+        </span>
+        <span class="grp">
+          <span class="gl">🎬 video</span>
+          ${srcChips('vid', X_VID_SOURCES, finderCfg.vid)}
+          <label class="xchip adv" title="Deeper (slower) Vimeo harvest"><input type="checkbox" id="xDeep"${finderCfg.deep ? ' checked' : ''}>deep</label>
+          <label class="xchip adv" title="Don't block TikTok links"><input type="checkbox" id="xAllowTikTok"${finderCfg.allowTikTok ? ' checked' : ''}>+tiktok</label>
+          <button id="xRunVid" class="primary" title="Run videofinder.py --search over the ticked video sources.">Search videos</button>
+        </span>
+        <span class="opts">
+          <label class="xchip" title="SafeSearch on the finders that support it"><input type="checkbox" id="xSafe"${finderCfg.safe ? ' checked' : ''}>safe</label>
+          <label class="mx" title="Max results per source">max <input type="number" id="xMax" min="1" max="200" value="${esc(String(finderCfg.max))}"></label>
+        </span>
+        <span id="xSearchStatus"></span>
+      </div>
       <div id="xWrap">
         <div id="xTable"></div>
         <div id="xEmpty"></div>
@@ -444,8 +522,44 @@
     $('xSave').addEventListener('click', () => persist(true));
     $('xClose').addEventListener('click', () => closeXScreen());
 
+    // ── Finder search bar (dev0523) — persist the source/opt picks, run on click ──
+    const persistPicks = () => {
+      finderCfg.img = collectGroup('img');
+      finderCfg.vid = collectGroup('vid');
+      finderCfg.safe = !!$('xSafe').checked;
+      finderCfg.allowStock = !!$('xAllowStock').checked;
+      finderCfg.allowTikTok = !!$('xAllowTikTok').checked;
+      finderCfg.deep = !!$('xDeep').checked;
+      const m = parseInt($('xMax').value, 10);
+      if (Number.isFinite(m) && m > 0) finderCfg.max = Math.min(200, m);
+      saveFinderCfg();
+    };
+    o.querySelectorAll('#xSearchBar input').forEach(el => el.addEventListener('change', persistPicks));
+    $('xRunImg').addEventListener('click', () => runFinderSearch('image'));
+    $('xRunVid').addEventListener('click', () => runFinderSearch('video'));
+    $('xQ').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); runFinderSearch(finderCfg.lastKind || 'image'); }
+    });
+    refreshQDatalist();
+
     applyPvBox();
     wirePreviewDrag();
+  }
+
+  // Render the per-kind source checkboxes for the finder search bar.
+  function srcChips(grp, all, checked) {
+    return all.map(s =>
+      `<label class="xchip"><input type="checkbox" data-grp="${grp}" data-src="${esc(s)}"${checked.includes(s) ? ' checked' : ''}>${esc(s)}</label>`
+    ).join('');
+  }
+  function collectGroup(grp) {
+    const o = document.getElementById('xOverlay');
+    if (!o) return [];
+    return [...o.querySelectorAll(`#xSearchBar input[data-grp="${grp}"]:checked`)].map(el => el.getAttribute('data-src'));
+  }
+  function refreshQDatalist() {
+    const dl = document.getElementById('xQList');
+    if (dl) dl.innerHTML = queryMru.slice(0, 40).map(v => `<option value="${esc(v)}"></option>`).join('');
   }
 
   window.addEventListener('resize', () => { if (isXScreenOpen()) applyPvBox(); });
@@ -1204,6 +1318,87 @@
     xToast(`🗑 Deleted ${ids.size} row(s)` + (archive ? ' → xdeleted.json' : ' (not archived — can re-import)'), 2400);
   }
 
+  // ── Run a finder search (proxy /x/search → finder POSTs /x/import → poll+reload) ─
+  function setSearching(on, kind, q) {
+    _searching = !!on;
+    const stat = document.getElementById('xSearchStatus');
+    const bi = document.getElementById('xRunImg'), bv = document.getElementById('xRunVid');
+    if (bi) bi.disabled = _searching;
+    if (bv) bv.disabled = _searching;
+    if (stat) {
+      if (_searching) { stat.innerHTML = `<span class="xspin"></span> searching ${esc(kind)} for “${esc(q)}”…`; stat.classList.add('on'); }
+      else { stat.textContent = ''; stat.classList.remove('on'); }
+    }
+  }
+
+  async function runFinderSearch(kind) {
+    if (kind !== 'image' && kind !== 'video') return;
+    if (_searching) { xToast('A finder search is already running — let it finish.', 2400); return; }
+    const qEl = document.getElementById('xQ');
+    const q = (qEl && qEl.value || '').trim();
+    if (!q) { xToast('Type a query in the 🔎 Finder box first.', 2400); if (qEl) qEl.focus(); return; }
+    const grp = kind === 'image' ? 'img' : 'vid';
+    const sources = collectGroup(grp);
+    if (!sources.length) { xToast(`Tick at least one ${kind} source to search.`, 2600); return; }
+    let max = parseInt((document.getElementById('xMax') || {}).value, 10);
+    if (!Number.isFinite(max) || max < 1) max = 40;
+    const safe = document.getElementById('xSafe') && document.getElementById('xSafe').checked ? 'on' : 'off';
+    const body = { kind, query: q, sources, max, safe };
+    if (kind === 'image') body.allowStock = !!(document.getElementById('xAllowStock') || {}).checked;
+    else { body.allowTikTok = !!(document.getElementById('xAllowTikTok') || {}).checked; body.deep = !!(document.getElementById('xDeep') || {}).checked; }
+
+    finderCfg.lastKind = kind; saveFinderCfg();
+    pushQueryMru(q); refreshQDatalist();
+    const baseline = rows.length;
+    setSearching(true, kind, q);
+    try {
+      const res = await fetch(PROXY + '/x/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      const j = await res.json().catch(() => null);
+      if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+    } catch (e) {
+      setSearching(false);
+      xToast('✗ couldn’t start the search: ' + (e && e.message)
+        + '\n(Restart proxy.js for dev0523; make sure python + the finders are installed and on PATH.)', 5600);
+      return;
+    }
+    waitForResults(baseline, kind, q);
+  }
+
+  // The proxy returns as soon as the finder is spawned; the finder POSTs all its hits
+  // to /x/import at the END (10–60s later). Poll x.json for a size bump, then reload once.
+  function waitForResults(baseline, kind, q) {
+    clearTimeout(_pollTimer);
+    const deadline = Date.now() + 105000;   // ~105s cap (search is 10–60s; allow slack)
+    const tick = async () => {
+      if (!_searching) return;               // cancelled (screen closed / new search)
+      let n = baseline;
+      try { const r = await fetch(STORE_URL()); if (r.ok) { const a = await r.json(); if (Array.isArray(a)) n = a.length; } } catch (_) {}
+      if (n > baseline) { finishSearch(n - baseline, kind, q); return; }
+      if (Date.now() > deadline) { finishSearch(0, kind, q); return; }
+      _pollTimer = setTimeout(tick, 2500);
+    };
+    _pollTimer = setTimeout(tick, 3000);
+  }
+
+  async function finishSearch(added, kind, q) {
+    clearTimeout(_pollTimer);
+    setSearching(false);
+    await loadData();
+    if (added > 0) {
+      // Scope the Query facet to the search just run so the fresh hits are front-and-centre.
+      sourceFilter = 'all'; queryFilter = q;
+      refreshFacetOptions();
+      const qf = document.getElementById('xQuery'); if (qf) qf.value = q;
+      applyFilters();
+      xToast(`🔎 ${added} new ${kind} result(s) for “${q}” → staged in x.json`, 3800);
+    } else {
+      xToast(`🔎 Search finished — no NEW ${kind} results for “${q}”.\n`
+        + '(Hits already in x.json or previously deleted are skipped. See the proxy console for finder notes.)', 5400);
+    }
+  }
+
   // ── Persist back to x.json (proxy /x/save) ───────────────────────────────────
   async function persist(announce) {
     try {
@@ -1273,6 +1468,8 @@
   }
   function closeXScreen() {
     if (dirty) persist(false);
+    if (_searching) setSearching(false);   // stop the poll spinner (the finder keeps running; reopen+↻ to see hits)
+    clearTimeout(_pollTimer);
     previewTeardown();
     document.getElementById('xOverlay')?.classList.remove('open');
   }

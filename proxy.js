@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0520';
+const PROXY_BUILD = 'dev0523';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1806,6 +1806,73 @@ function xImport(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev0523) /x/search — the X screen triggers a headless finder search here (replaces
+// the clumsy launch-the-GUI-then-clipboard path). Async-spawns the desktop finder in
+// --search mode; it runs aggregate_search (10–60s with a real browser) and POSTs its
+// hits back via /x/import — so THIS route returns immediately, and the X screen polls
+// x.json / reloads once the results land. Origin-locked like /exec/* (it spawns a
+// subprocess) — enforced in the router before we get here. All argv tokens are literal
+// under spawn(shell:false); the caller can pick the query/sources/max/safe but never
+// raw args. The .py finders live under gitignored linkfinders/ (local-only tools).
+const X_PYTHON = process.env.X_PYTHON || 'python';   // override if python isn't the PATH name
+const X_FINDER_DIR = path.join(__dirname, 'linkfinders');
+const X_FINDERS = {
+  // Must mirror ALL_IMAGE_SOURCES / ALL_VIDEO_SOURCES in the two finders.
+  image: { script: 'imagefinder.py',
+           sources: ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse', 'photomacro', 'ojson', 'featured'] },
+  video: { script: 'videofinder.py',
+           sources: ['youtube', 'vimeo', 'ddgs'] }
+};
+function xSearch(req, res, origin) {
+  readJson(req, 64 * 1024).then(payload => {
+    const kind = String(payload.kind || '').trim().toLowerCase();
+    const spec = X_FINDERS[kind];
+    if (!spec) { sendJson(res, 400, { ok: false, error: 'kind must be "image" or "video"' }, origin); return; }
+    const query = String(payload.query || '').trim();
+    if (!query) { sendJson(res, 400, { ok: false, error: 'query required' }, origin); return; }
+    if (query.length > 400) { sendJson(res, 400, { ok: false, error: 'query too long (max 400 chars)' }, origin); return; }
+
+    // sources: accept an array or a comma string; keep only ones valid for this kind.
+    let picked = [];
+    if (Array.isArray(payload.sources)) picked = payload.sources;
+    else if (typeof payload.sources === 'string') picked = payload.sources.split(',');
+    picked = [...new Set(picked.map(s => String(s || '').trim().toLowerCase()).filter(s => spec.sources.includes(s)))];
+
+    let max = parseInt(payload.max, 10);
+    if (!Number.isFinite(max) || max < 1) max = 40;
+    if (max > 200) max = 200;
+    const safe = (String(payload.safe || '').toLowerCase() === 'off') ? 'off' : 'on';
+
+    const scriptPath = path.join(X_FINDER_DIR, spec.script);
+    if (!fs.existsSync(scriptPath)) {
+      sendJson(res, 404, { ok: false, error: spec.script + ' not found under linkfinders/ (local-only finder tool)' }, origin);
+      return;
+    }
+
+    const args = [scriptPath, '--search', query, '--max', String(max), '--safe', safe];
+    if (picked.length) args.push('--sources', picked.join(','));            // else the finder uses its default set
+    if (kind === 'image' && payload.allowStock)  args.push('--allow-stock');
+    if (kind === 'video' && payload.allowTikTok) args.push('--allow-tiktok');
+    if (kind === 'video' && payload.deep)        args.push('--deep');
+
+    let proc;
+    // cwd = linkfinders/ so the finder's relative resources (_browser_profile, etc.)
+    // resolve exactly as they do when the user launches it by hand.
+    try { proc = spawn(X_PYTHON, args, { cwd: X_FINDER_DIR, windowsHide: true }); }
+    catch (e) { sendJson(res, 500, { ok: false, error: 'spawn failed: ' + e.message + ' (is python on PATH? set X_PYTHON=)' }, origin); return; }
+
+    const tag = '[x/search ' + kind + ']';
+    console.log(tag + ' ' + X_PYTHON + ' ' + args.map(a => /\s/.test(a) ? JSON.stringify(a) : a).join(' '));
+    proc.on('error', err => console.warn(tag + ' spawn error: ' + err.message + ' — is "' + X_PYTHON + '" on PATH?'));
+    if (proc.stdout) proc.stdout.on('data', d => process.stdout.write(tag + ' ' + d));
+    if (proc.stderr) proc.stderr.on('data', d => process.stderr.write(tag + ' ' + d));
+    proc.on('close', code => console.log(tag + ' finished (exit ' + code + ') — results POST to /x/import; X reloads on poll'));
+
+    // Return immediately — hits land later via the finder's own POST /x/import.
+    sendJson(res, 200, { ok: true, spawned: true, kind, query, sources: picked, max, safe }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 // (dev0429) /ig/download — yt-dlp downloads a reel/post's media into <project>/
 // ig_media/<stem>.<ext>. Returns the basenames of every file produced (a carousel
 // /p post yields several). All argv tokens are literal under spawn(shell:false);
@@ -2026,7 +2093,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch'] }));
     return;
   }
 
@@ -2085,6 +2152,16 @@ http.createServer((req, res) => {
     if (action === 'deleted')  { xArchiveDeleted(req, res, origin); return; }
     if (action === 'undelete') { xUnarchive(req, res, origin);      return; }
     if (action === 'import')   { xImport(req, res, origin);         return; }
+    if (action === 'search')   {
+      // (dev0523) Spawns a finder subprocess → lock to local dev origins like /exec/*.
+      if (!LOCAL_ORIGINS.has(origin)) {
+        console.warn(`[x/search 403] origin="${origin || '(none)'}" not in allowlist`);
+        send(res, 403, 'x/search: origin not allowed: ' + (origin || '(none)'));
+        return;
+      }
+      xSearch(req, res, origin);
+      return;
+    }
     sendJson(res, 404, { ok: false, error: 'unknown x action: ' + action }, origin);
     return;
   }
@@ -2179,5 +2256,7 @@ http.createServer((req, res) => {
   console.log(`  origin-locked to: ${[...LOCAL_ORIGINS].join(', ')}`);
   console.log(`Harvest store:     POST /ig/{add,save,download}  → ig.json + ig_media/ in ${__dirname}`);
   console.log(`Bulk staging:      POST /s/{save,deleted,undelete} → s.json / sdeleted.json in ${__dirname}`);
+  console.log(`Search store:      POST /x/{save,deleted,undelete,import,search} → x.json in ${__dirname}`);
+  console.log(`  /x/search spawns ${X_PYTHON} linkfinders/{image,video}finder.py --search … (origin-locked)`);
   console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
 });
