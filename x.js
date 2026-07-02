@@ -62,6 +62,9 @@
   // by the proxy). Import dedups against this too, so a link the user already threw away
   // isn't re-staged from a re-run search or a re-pasted clipboard list.
   let deletedLinks = new Set();
+  let _pvPlayer = null;          // handle to the preview video player (for ←/→ seek + duration)
+  let _pvDurationSecs = 0;       // last-known duration of the previewed video (seconds)
+  const SEEK_STEP = 5;           // ←/→ seek amount (seconds)
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -106,7 +109,35 @@
     if (/wikimedia\.org|wikipedia\.org/i.test(u)) return 'Wikimedia';
     return '';
   }
-  const SOURCE_PRESETS = ['Flickr', 'Wikimedia', 'DuckDuckGo', 'YouTube', 'Vimeo', 'o.json'];
+  const SOURCE_PRESETS = ['Flickr', 'Wikimedia', 'YouTube', 'Vimeo', 'o.json'];
+
+  // The page where the media is actually SHOWN (for the clickable Attribution cell).
+  // The finders put the source page in `attribution` (image page_url / video channel);
+  // otherwise we reconstruct it for the two big image hosts whose `link` is a raw file:
+  //   Flickr static → the photo page via Flickr's id-redirect
+  //   Wikimedia upload → the File: description page on Commons
+  function sourcePageUrl(r) {
+    const a = String((r && r.attribution) || '').trim();
+    if (/^https?:\/\//i.test(a)) return a;
+    for (const f of ['page_url', 'pageUrl', 'sourceUrl', 'srcPage', 'page']) {
+      const v = r && r[f];
+      if (v && /^https?:\/\//i.test(String(v))) return String(v);
+    }
+    const link = String((r && r.link) || '');
+    let m = link.match(/staticflickr\.com\/\d+\/(\d+)_/i);
+    if (m) return 'https://www.flickr.com/photo.gne?id=' + m[1];
+    m = link.match(/upload\.wikimedia\.org\/wikipedia\/[^/]+\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/?#]+\.(?:jpe?g|png|gif|webp|svg|tiff?))/i);
+    if (m) return 'https://commons.wikimedia.org/wiki/File:' + m[1];
+    return '';
+  }
+  const prettyUrl = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').replace(/\/+$/, '');
+  // Display text for the Attribution cell: the raw value, or the derived page if blank.
+  function attrLabel(r) {
+    const v = String((r && r.attribution) || '').trim();
+    if (v) return /^https?:\/\//i.test(v) ? prettyUrl(v) : v;
+    const p = sourcePageUrl(r);
+    return p ? prettyUrl(p) : '';
+  }
 
   // ── Finder search (dev0523) — run imagefinder.py / videofinder.py headless via the
   // proxy /x/search route (source toggles live HERE, sent per-search). The finder
@@ -145,6 +176,21 @@
     return m + ':' + String(s).padStart(2, '0');
   }
   const normLink = u => String(u || '').trim().replace(/\/+$/, '');
+  // A dedup key that collapses the many URL spellings of the SAME video to one key —
+  // youtu.be/ID · youtube.com/watch?v=ID · /shorts/ID · /embed/ID all map to yt:ID, and
+  // every vimeo.com/ID form to vimeo:ID. Non-video links keep their (query-preserving)
+  // normLink so signed image-CDN URLs aren't wrongly merged. Used everywhere we dedup,
+  // so DuckDuckGo's re-finds of a YouTube hit collapse into the direct hit.
+  function canonLink(u) {
+    const s = String(u || '').trim();
+    if (!s) return '';
+    if (window.getYouTubeId) { const id = window.getYouTubeId(s); if (id) return 'yt:' + id; }
+    const vm = s.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+    if (vm) return 'vimeo:' + vm[1];
+    return normLink(s);
+  }
+  // Bare hostname (no scheme / www) for labelling a source when nothing better is known.
+  function hostLabel(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (_) { return ''; } }
 
   // Numeric sort keys for the Res / Size / Len columns (their cell values are display
   // strings). Parse to a comparable number; unparseable / blank → 0.
@@ -251,14 +297,14 @@
   // Add parsed rows to the store, deduped by normalized link against x.json, ml.json,
   // and the deleted-links archive.
   function importRows(parsed) {
-    const haveX = new Set(rows.map(r => normLink(r.link)));
+    const haveX = new Set(rows.map(r => canonLink(r.link)));
     const haveMl = new Set((typeof data !== 'undefined' && Array.isArray(data)
-      ? data.map(r => normLink(r && r.link)) : []));
+      ? data.map(r => canonLink(r && r.link)) : []));
     let added = 0, dupX = 0, dupMl = 0, dupDel = 0;
     const stamp = now();
     const fresh = [];
     for (const p of parsed) {
-      const key = normLink(p.link);
+      const key = canonLink(p.link);
       if (!key) continue;
       if (haveX.has(key)) { dupX++; continue; }
       if (haveMl.has(key)) { dupMl++; continue; }
@@ -368,15 +414,23 @@
 #xTable .x-thumb-none{display:flex;align-items:center;justify-content:center;height:38px;color:#4a90d0;font-size:16px}
 #xTable .tabulator-cell a{color:#7fb8ff;text-decoration:none}
 #xTable .tabulator-cell a:hover{text-decoration:underline}
-#xTable .tabulator-row.x-focus{background:#16324e !important;box-shadow:inset 4px 0 0 #4df}
+/* Homogenize the UNFOCUSED rows (kill the odd/even grey stripe) so the FOCUSED row
+   clearly stands out — one flat backdrop, a bright band + cyan bar for the focus. */
+#xTable .tabulator-row{background:#141a22 !important}
+#xTable .tabulator-row.tabulator-selected{background:#1a3149 !important}
+#xTable .tabulator-row.tabulator-selectable:hover{background-color:#1b2532 !important;cursor:pointer}
+#xTable .tabulator-row.x-focus,
+#xTable .tabulator-row.x-focus.tabulator-selected,
+#xTable .tabulator-row.x-focus:hover{background:#28598a !important;box-shadow:inset 4px 0 0 #6cf;color:#f2f7ff}
 #xTable .tabulator-row.x-focus .tabulator-cell{background:transparent !important}
-#xTable .tabulator-row.tabulator-selectable:hover{background-color:transparent;cursor:pointer}
-#xTable .tabulator-row.tabulator-selected:hover{background-color:#000}
+#xTable .x-attr-go{color:#7fd0ee;text-decoration:none;font-weight:700;margin-right:3px}
+#xTable .x-attr-go:hover{text-decoration:underline}
 #xPreview{position:fixed;width:640px;height:460px;z-index:30200;
   background:#000;border:1px solid #4df;border-radius:8px;overflow:hidden;display:none;
   flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.72);
   resize:both;min-width:320px;min-height:230px;max-width:96vw;max-height:92vh}
 #xPreview.show{display:flex}
+#xPreview:focus{outline:none}
 #xPvDrag{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;
   cursor:move;user-select:none;padding:4px 9px;background:#0a1426;border-bottom:1px solid #1a2a4a;
   font:11px/1.3 system-ui;color:#9ad;touch-action:none}
@@ -496,8 +550,8 @@
         <div id="xTable"></div>
         <div id="xEmpty"></div>
       </div>
-      <div id="xPreview" title="Preview of the focused row (arrows move focus · Delete/d remove · a add to T)">
-        <div id="xPvDrag"><span class="h">▣ Preview</span><span class="hint">drag to move · drag corner to resize · double-click = recentre</span></div>
+      <div id="xPreview" tabindex="-1" title="Preview of the focused row (↑/↓ move focus · ←/→ seek video · Ctrl+I hide · Ctrl+↓ delete · a add to T)">
+        <div id="xPvDrag"><span class="h">▣ Preview</span><span class="hint">↑↓ rows · ←→ seek · drag to move · drag corner to resize · dbl-click = recentre</span></div>
         <div id="${PV_HOST}"></div>
         <div id="xPvCap"></div>
       </div>`;
@@ -547,6 +601,31 @@
 
     applyPvBox();
     wirePreviewDrag();
+    wireFocusGuard();
+  }
+
+  // When you click into the (cross-origin) YouTube/Vimeo preview iframe it steals
+  // keyboard focus, so our window keydown handler stops seeing ↑/↓ · ←/→ · Ctrl+I ·
+  // Ctrl+↓. Bounce focus back to the preview panel a beat after the iframe grabs it —
+  // the click (play / seek-bar) still lands, then the keyboard keeps working without
+  // having to click a row first. (Own ←/→ replaces the player's native key-seek.)
+  let _pvGuardWired = false;
+  function wireFocusGuard() {
+    if (_pvGuardWired) return;
+    _pvGuardWired = true;
+    window.addEventListener('blur', () => {
+      if (!isXScreenOpen() || !previewEnabled) return;
+      const host = document.getElementById(PV_HOST);
+      const ae = document.activeElement;
+      if (!host || !ae || ae.tagName !== 'IFRAME' || !host.contains(ae)) return;
+      setTimeout(() => {
+        if (!isXScreenOpen()) return;
+        const a2 = document.activeElement, h2 = document.getElementById(PV_HOST);
+        if (h2 && a2 && a2.tagName === 'IFRAME' && h2.contains(a2)) {
+          try { document.getElementById('xPreview')?.focus({ preventScroll: true }); } catch (_) {}
+        }
+      }, 300);
+    }, true);
   }
 
   // Render the per-kind source checkboxes for the finder search bar.
@@ -592,6 +671,15 @@
       const a = aspectOf(c.getData().resolution);
       return a ? `<span class="x-asp x-asp-${a}">${a}</span>` : '';
     };
+    const attrCell = c => {
+      const r = c.getData();
+      const label = attrLabel(r);
+      const page = sourcePageUrl(r);
+      const go = page
+        ? `<a class="x-attr-go" href="${esc(page)}" target="_blank" rel="noopener" title="Open where it's shown → ${esc(page)}" onclick="event.stopPropagation()">↗</a>`
+        : '';
+      return go + `<span>${esc(label)}</span>`;
+    };
     const statusCell = c => {
       const s = c.getValue() || 'new';
       return `<span class="x-stat-${esc(s)}">${esc(s)}</span>`;
@@ -613,7 +701,9 @@
       { title: 'Link', field: 'link', widthGrow: 3, formatter: linkCell, headerFilter: 'input' },
       { title: 'Title', field: 'VidTitle', widthGrow: 2, editor: 'input', headerFilter: 'input' },
       { title: 'Author', field: 'VidAuthor', width: 120, editor: 'input', headerFilter: 'input' },
-      { title: 'Attribution', field: 'attribution', width: 140, editor: 'input', headerFilter: 'input' },
+      { title: 'Attribution', field: 'attribution', width: 160, editor: 'input', headerFilter: 'input',
+        formatter: attrCell,
+        headerTooltip: 'Where the media is shown — click ↗ to open the source page (Flickr / Wikimedia / channel). Click the text to edit.' },
       { title: 'Len', field: 'vidLength', width: 58, editor: 'input', hozAlign: 'right',
         sorter: (a, b) => lenSecs(a) - lenSecs(b),
         headerTooltip: 'Length (m:ss) — auto-filled for video by 📐 Fill meta' },
@@ -716,9 +806,11 @@
   function moveFocus(delta) {
     const act = activeRowComps();
     if (!act.length) return;
+    const n = act.length;
     let idx = act.findIndex(r => r.getData().id === focusId);
-    if (idx < 0) idx = delta > 0 ? -1 : act.length;
-    const ni = Math.max(0, Math.min(act.length - 1, idx + delta));
+    if (idx < 0) idx = delta > 0 ? -1 : 0;
+    // Wrap around: past the bottom row comes back to the top (and vice-versa).
+    const ni = ((idx + delta) % n + n) % n;
     setFocus(act[ni].getData().id);
   }
 
@@ -741,6 +833,7 @@
     const host = document.getElementById(PV_HOST);
     if (!pv || !host) return;
     if (!previewEnabled) { previewTeardown(); return; }
+    _pvDestroyPlayer();
     if (window.stopCellVideoLoop) { try { window.stopCellVideoLoop(PV_HOST); } catch (_) {} }
     host.innerHTML = '';
     const row = focusId ? rows.find(r => r.id === focusId) : null;
@@ -757,11 +850,11 @@
     const isImg = IMG_RE.test(link);
     const id = row.id;
     if (isVid) {
+      // Full scrubbable player WITH a seek bar AND a real player handle, so ←/→ can
+      // seek and we can read the duration for the caption. Falls back to TikTok/IG.
+      if (mountPreviewVideo(host, row)) return;
       setTimeout(() => {
         if (focusId !== id || !document.getElementById('xPreview')) return;
-        // Full scrubbable player (native/embed seek bar) so you can jump ahead to
-        // check later segments — this is a review pane, not the clip editor.
-        if (_pvFullVideo(host, link)) return;
         if (window.isTikTokLink && window.isTikTokLink(link) && window.mountTikTokEmbed)
           window.mountTikTokEmbed(host, link);
         else if (window.isInstagramLink && window.isInstagramLink(link) && window.mountInstagramEmbed)
@@ -786,41 +879,111 @@
     img.onerror = onFail || (() => { img.style.opacity = '.25'; });
     host.appendChild(img);
   }
-  // Mount a full player WITH a seek bar for YouTube / Vimeo / direct video (muted so
-  // autoplay is allowed; unmute via the player's own controls). Returns true if it
-  // handled the link; false leaves it for the TikTok/IG embed fallbacks.
-  function _pvFrame(host, src) {
-    const f = document.createElement('iframe');
-    f.src = src;
-    f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-    f.allowFullscreen = true;
-    f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
-    host.appendChild(f);
-    return true;
+
+  // ── Preview video players (real handles → ←/→ seek + duration readout) ────────
+  // Reuses the app's own YT/Vimeo API loaders (video.js). Muted so autoplay is
+  // allowed; controls:1 keeps the visible seek bar. The handle is kept in _pvPlayer
+  // (NOT the seeLearnVideoPlayers registry) and torn down on focus change / close.
+  function _pvDestroyPlayer() {
+    const p = _pvPlayer; _pvPlayer = null; _pvDurationSecs = 0;
+    if (p && p.destroy) { try { p.destroy(); } catch (_) {} }
   }
-  function _pvFullVideo(host, link) {
-    if (window.isYouTubeLink && window.isYouTubeLink(link)) {
-      const yid = window.getYouTubeId ? window.getYouTubeId(link) : '';
-      if (yid) return _pvFrame(host, 'https://www.youtube.com/embed/' + yid
-        + '?autoplay=1&mute=1&controls=1&rel=0&playsinline=1&modestbranding=1');
+  function mountPreviewVideo(host, row) {
+    const link = row.link || '';
+    if (window.isYouTubeLink && window.isYouTubeLink(link) && window.getYouTubeId && window.getYouTubeId(link)) {
+      _pvMountYT(host, row, window.getYouTubeId(link)); return true;
     }
-    if (window.isVimeoLink && window.isVimeoLink(link)) {
-      const norm = window.sanitizeVimeoUrl ? window.sanitizeVimeoUrl(link) : link;
-      const m = String(norm).match(/vimeo\.com\/(\d+)/);
-      if (m) {
-        const hm = String(norm).match(/[?&]h=([A-Za-z0-9]+)/);
-        return _pvFrame(host, 'https://player.vimeo.com/video/' + m[1]
-          + '?autoplay=1&muted=1&controls=1&title=0&byline=0&portrait=0' + (hm ? '&h=' + hm[1] : ''));
-      }
-    }
-    if (window.isDirectVideoLink && window.isDirectVideoLink(link)) {
-      const v = document.createElement('video');
-      v.src = link; v.controls = true; v.autoplay = true; v.muted = true; v.playsInline = true;
-      v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;';
-      host.appendChild(v);
-      return true;
-    }
+    if (window.isVimeoLink && window.isVimeoLink(link)) { _pvMountVimeo(host, row); return true; }
+    if (window.isDirectVideoLink && window.isDirectVideoLink(link)) { _pvMountDirect(host, row); return true; }
     return false;
+  }
+  async function _pvMountYT(host, row, vid) {
+    const id = row.id;
+    if (typeof window.loadYouTubeApiOnce !== 'function') return;
+    try { await window.loadYouTubeApiOnce(); } catch (_) { return; }
+    if (focusId !== id || !document.getElementById('xPreview')) return;
+    host.innerHTML = '';
+    const div = document.createElement('div');
+    div.style.cssText = 'position:absolute;inset:0;';
+    host.appendChild(div);
+    let p;
+    try {
+      p = new window.YT.Player(div, {
+        videoId: vid, width: '100%', height: '100%',
+        playerVars: { autoplay: 1, mute: 1, controls: 1, rel: 0, playsinline: 1, modestbranding: 1 },
+        events: {
+          onReady: e => {
+            try { const f = e.target.getIframe(); if (f) f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;'; } catch (_) {}
+            try { e.target.playVideo(); } catch (_) {}
+            try { _pvOnDuration(id, e.target.getDuration()); } catch (_) {}
+          }
+        }
+      });
+    } catch (_) { return; }
+    _pvPlayer = {
+      kind: 'yt', obj: p,
+      seek: d => { try { const t = p.getCurrentTime() || 0; p.seekTo(Math.max(0, t + d), true); } catch (_) {} },
+      destroy: () => { try { p.destroy(); } catch (_) {} }
+    };
+  }
+  async function _pvMountVimeo(host, row) {
+    const id = row.id, link = row.link || '';
+    if (typeof window.loadVimeoApiOnce !== 'function') return;
+    try { await window.loadVimeoApiOnce(); } catch (_) { return; }
+    if (focusId !== id || !document.getElementById('xPreview')) return;
+    const norm = window.sanitizeVimeoUrl ? window.sanitizeVimeoUrl(link) : link;
+    const m = String(norm).match(/vimeo\.com\/(\d+)/);
+    if (!m) return;
+    host.innerHTML = '';
+    const div = document.createElement('div');
+    div.style.cssText = 'position:absolute;inset:0;';
+    host.appendChild(div);
+    const hm = String(norm).match(/[?&]h=([A-Za-z0-9]+)/);
+    const opts = { id: +m[1], autoplay: true, muted: true, controls: true, responsive: false, width: host.clientWidth || 640 };
+    if (hm) opts.h = hm[1];
+    let p;
+    try { p = new window.Vimeo.Player(div, opts); } catch (_) { return; }
+    try { if (p.element) p.element.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;'; } catch (_) {}
+    try { p.getDuration().then(d => _pvOnDuration(id, d)).catch(() => {}); } catch (_) {}
+    _pvPlayer = {
+      kind: 'vimeo', obj: p,
+      seek: d => { try { p.getCurrentTime().then(t => p.setCurrentTime(Math.max(0, (t || 0) + d))).catch(() => {}); } catch (_) {} },
+      destroy: () => { try { p.destroy(); } catch (_) {} }
+    };
+  }
+  function _pvMountDirect(host, row) {
+    const id = row.id, link = row.link || '';
+    host.innerHTML = '';
+    const v = document.createElement('video');
+    v.src = link; v.controls = true; v.autoplay = true; v.muted = true; v.playsInline = true;
+    v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;';
+    v.addEventListener('loadedmetadata', () => { if (Number.isFinite(v.duration)) _pvOnDuration(id, v.duration); });
+    host.appendChild(v);
+    _pvPlayer = {
+      kind: 'video', obj: v,
+      seek: d => { try { v.currentTime = Math.max(0, (v.currentTime || 0) + d); } catch (_) {} },
+      destroy: () => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (_) {} }
+    };
+  }
+  // Player reported a duration → cache it, backfill the row's Len if empty, refresh caption.
+  function _pvOnDuration(id, secs) {
+    if (id !== focusId) return;
+    secs = Math.round(+secs);
+    if (!Number.isFinite(secs) || secs <= 0) return;
+    _pvDurationSecs = secs;
+    const row = rows.find(r => r.id === id);
+    if (row && !String(row.vidLength || '').trim()) {
+      row.vidLength = fmtSecs(secs);
+      if (table) { try { table.updateData([{ id, vidLength: row.vidLength }]); } catch (_) {} }
+      markDirty(); scheduleSave();
+    }
+    if (row) fillPreviewCaption(row);
+  }
+  // ←/→ seek the previewed video (no-op for images / TikTok / IG).
+  function seekPreview(delta) {
+    if (!previewEnabled || !_pvPlayer || !_pvPlayer.seek) return false;
+    _pvPlayer.seek(delta);
+    return true;
   }
   function fillPreviewCaption(row) {
     const cap = document.getElementById('xPvCap');
@@ -829,13 +992,22 @@
     const title = (row.VidTitle || '').trim();
     const author = (row.VidAuthor || '').trim();
     const prov = [row.query, row.source].filter(Boolean).join(' · ');
+    // Dimensions (images) + length (videos), from the row or a just-loaded player.
+    const dims = String(row.resolution || '').trim();
+    const len = String(row.vidLength || '').trim()
+      || (_pvDurationSecs ? fmtSecs(_pvDurationSecs) : '');
+    const meta = [];
+    if (dims) meta.push('📐 ' + dims);
+    if (len) meta.push('⏱ ' + len);
     cap.innerHTML = `<span class="x-badge k-${esc(k)}">${esc(k)}</span> `
       + (title ? `<span style="color:#cfe;">${esc(title)}</span>` : '')
       + (author ? ` <span style="color:#d8c69a;">· ${esc(author)}</span>` : '')
+      + (meta.length ? ` <span style="color:#9fe0b6;">· ${esc(meta.join('  '))}</span>` : '')
       + (prov ? ` <span style="color:#8aa6c2;">· ${esc(prov)}</span>` : '')
       + `<div style="color:#7fb8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(row.link || '')}</div>`;
   }
   function previewTeardown() {
+    _pvDestroyPlayer();
     if (window.stopCellVideoLoop) { try { window.stopCellVideoLoop(PV_HOST); } catch (_) {} }
     const host = document.getElementById(PV_HOST);
     if (host) host.innerHTML = '';
@@ -1058,7 +1230,7 @@
   function archiveDeleted(removed) {
     const arr = (Array.isArray(removed) ? removed : [removed]).filter(Boolean);
     if (!arr.length) return;
-    arr.forEach(r => { const k = normLink(r.link); if (k) deletedLinks.add(k); });
+    arr.forEach(r => { const k = canonLink(r.link); if (k) deletedLinks.add(k); });
     fetch(PROXY + '/x/deleted', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: arr })
@@ -1067,7 +1239,7 @@
   function unarchiveDeleted(rowsArr) {
     const arr = (Array.isArray(rowsArr) ? rowsArr : [rowsArr]).filter(Boolean);
     if (!arr.length) return;
-    arr.forEach(r => { const k = normLink(r.link); if (k) deletedLinks.delete(k); });
+    arr.forEach(r => { const k = canonLink(r.link); if (k) deletedLinks.delete(k); });
     fetch(PROXY + '/x/undelete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: arr.map(r => r.id) })
@@ -1459,8 +1631,48 @@
     try {
       const r = await fetch('xdeleted.json?t=' + Date.now());
       const arc = r.ok ? await r.json() : [];
-      deletedLinks = new Set((Array.isArray(arc) ? arc : []).map(x => normLink(x && x.link)).filter(Boolean));
+      deletedLinks = new Set((Array.isArray(arc) ? arc : []).map(x => canonLink(x && x.link)).filter(Boolean));
     } catch (_) { deletedLinks = new Set(); }
+  }
+
+  // DuckDuckGo isn't the SOURCE of anything — it just re-finds YouTube/Vimeo videos
+  // the direct finders also return (source arrives as "DuckDuckGo/YouTube"). Relabel
+  // those rows to their real platform so the Source facet is honest.
+  function relabelDdgSources() {
+    let n = 0;
+    rows.forEach(r => {
+      if (!/duckduckgo/i.test(String(r.source || ''))) return;
+      const real = deriveSource(r.link)
+        || String(r.source).split('/').map(s => s.trim()).filter(s => s && !/duckduckgo/i.test(s))[0]
+        || hostLabel(r.link);
+      if (real && real !== r.source) { r.source = real; n++; }
+    });
+    return n;
+  }
+  // Collapse rows that are the SAME video (same YT/Vimeo id) into the first copy,
+  // filling any gaps in its metadata from the duplicates. Only videos are collapsed
+  // (image canonicalization keeps query params, so images are never merged here).
+  function collapseVideoDupes() {
+    const seen = new Map();
+    const keep = [];
+    let dropped = 0;
+    for (const r of rows) {
+      const key = canonLink(r.link);
+      if (key.indexOf('yt:') === 0 || key.indexOf('vimeo:') === 0) {
+        const k = seen.get(key);
+        if (k) {
+          ['VidTitle', 'VidAuthor', 'attribution', 'vidLength', 'resolution', 'size', 'query'].forEach(f => {
+            if (!String(k[f] || '').trim() && String(r[f] || '').trim()) k[f] = r[f];
+          });
+          dropped++;
+          continue;
+        }
+        seen.set(key, r);
+      }
+      keep.push(r);
+    }
+    if (dropped) rows = keep;
+    return dropped;
   }
 
   // ── Load ──────────────────────────────────────────────────────────────────────
@@ -1483,6 +1695,8 @@
       if (!r.resolution && r.width && r.height) r.resolution = r.width + '×' + r.height;
       r.aspect = aspectOf(r.resolution);
     });
+    const relabeled = relabelDdgSources();
+    const merged = collapseVideoDupes();
     dirty = false;
     focusId = null;
     if (table) {
@@ -1491,6 +1705,11 @@
     }
     refreshFacetOptions();
     updateCount();
+    // The relabel/merge changed x.json in memory — write it back once.
+    if (relabeled || merged) {
+      persist(false);
+      if (merged) xToast(`🧹 merged ${merged} duplicate video(s) — DuckDuckGo re-finds of YouTube/Vimeo`, 3200);
+    }
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -1543,6 +1762,15 @@
       return;
     }
 
+    // Ctrl+↓ — permanent delete of the focused row → xdeleted.json (won't re-import;
+    // that video is not allowed back into X via a re-run search). Ctrl+Z still undoes.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey
+        && e.key === 'ArrowDown' && !typing) {
+      e.stopPropagation(); e.preventDefault();
+      deleteFocused();
+      return;
+    }
+
     if (e.key === 'Escape') {
       if (typing) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }
       e.stopPropagation(); e.preventDefault();
@@ -1555,6 +1783,12 @@
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.stopPropagation(); e.preventDefault();
       moveFocus(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    // ←/→ scrub the previewed video earlier / later (no-op for images).
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.stopPropagation(); e.preventDefault();
+      seekPreview(e.key === 'ArrowRight' ? SEEK_STEP : -SEEK_STEP);
       return;
     }
     if (e.key === 'Delete' || e.key === 'd') {

@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0524';
+const PROXY_BUILD = 'dev0525';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1656,6 +1656,18 @@ function sUnarchive(req, res, origin) {
 const X_STORE = path.join(__dirname, 'x.json');
 const XDEL_STORE = path.join(__dirname, 'xdeleted.json');
 function xNormLink(u) { return String(u || '').trim().replace(/\/+$/, ''); }
+// Dedup key that collapses every URL spelling of the SAME video to one key — so a
+// DuckDuckGo re-find (youtu.be/ID) of a direct YouTube hit (watch?v=ID) is caught as a
+// duplicate. Non-video links keep their query-preserving normLink (image CDN URLs).
+function xCanonLink(u) {
+  const s = String(u || '').trim();
+  if (!s) return '';
+  let m = s.match(/(?:youtu\.be\/|youtube\.com\/(?:shorts\/|live\/|embed\/|v\/|watch\?(?:.*&)?v=|(?:.*\?)?v=))([A-Za-z0-9_-]{11})/i);
+  if (m) return 'yt:' + m[1];
+  m = s.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  if (m) return 'vimeo:' + m[1];
+  return xNormLink(s);
+}
 function xUrlType(u) {
   u = String(u || '');
   if (/youtube\.com|youtu\.be/i.test(u)) return 'yt';
@@ -1757,8 +1769,8 @@ function xImport(req, res, origin) {
     const items = Array.isArray(payload.items) ? payload.items : null;
     if (!items) { sendJson(res, 400, { ok: false, error: 'items[] required' }, origin); return; }
     const store = xReadStore();
-    const have = new Set(store.map(r => xNormLink(r && r.link)));
-    const del = new Set(xReadDel().map(r => xNormLink(r && r.link)));
+    const have = new Set(store.map(r => xCanonLink(r && r.link)));
+    const del = new Set(xReadDel().map(r => xCanonLink(r && r.link)));
     const defQuery = String(payload.query || '').trim();
     const defSource = String(payload.source || '').trim();
     const defKind = String(payload.kind || '').trim();
@@ -1767,7 +1779,7 @@ function xImport(req, res, origin) {
     for (const it of items) {
       if (!it || typeof it !== 'object') continue;
       const link = String(it.link || it.url || it.image_url || it.video_url || '').trim();
-      const key = xNormLink(link);
+      const key = xCanonLink(link);
       if (!key) continue;
       if (have.has(key)) { dup++; continue; }
       if (del.has(key)) { dropped++; continue; }
