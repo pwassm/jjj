@@ -272,6 +272,16 @@ window.addEventListener('keydown', function(e) {
     return;
   }
 
+  // (dev0521) The X search-results screen (x.js) owns w (import), f (focus search),
+  // a (add focused row → ml.json), d (delete focused row), e (fill meta) and c (open
+  // the Source/Query bulk dialog). Bail WITHOUT preventDefault so x.js's own capture
+  // handler — registered after this one — receives them. Other nav keys (t/g/x/…)
+  // still fall through so they close X / switch screens as before.
+  if (typeof window.isXScreenOpen === 'function' && window.isXScreenOpen()
+      && (k === 'w' || k === 'f' || k === 'a' || k === 'd' || k === 'e' || k === 'c')) {
+    return;
+  }
+
   // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
   // Only when the grid overlay is open; otherwise falls through so bare 'c'
   // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled
@@ -2492,6 +2502,9 @@ document.addEventListener('keydown', e => {
   // (dev0474) The Ig staging screen owns ↑/↓ (move its focused row). Bail so this
   // T-table handler doesn't ALSO move a hidden T row underneath the overlay.
   if (typeof window.isIgScreenOpen === 'function' && window.isIgScreenOpen()) return;
+  // (dev0521) The X search-results screen owns ↑/↓ (move its focused row) and Delete
+  // (remove its focused row). Bail so this T-table handler doesn't ALSO act underneath.
+  if (typeof window.isXScreenOpen === 'function' && window.isXScreenOpen()) return;
 
   // Up/Down arrow keys — navigate rows in table (works even when annotate panel open)
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {

@@ -1646,6 +1646,166 @@ function sUnarchive(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev0521) ── Search-results store (x.json) ─────────────────────────────────────
+// The X screen (x.js) reads x.json directly (GET) and writes it back via /x/save;
+// deletes archive to xdeleted.json via /x/deleted (+ /x/undelete for Ctrl+Z). NEW:
+// the two desktop finders (imagefinder.py / videofinder.py) AUTO-POST their search
+// results to /x/import, which appends+dedups them into x.json (server-side). Mirrors
+// the /s/* handlers above; kept a separate store because search hits come from a much
+// wider range of sources than the S bulk store.
+const X_STORE = path.join(__dirname, 'x.json');
+const XDEL_STORE = path.join(__dirname, 'xdeleted.json');
+function xNormLink(u) { return String(u || '').trim().replace(/\/+$/, ''); }
+function xUrlType(u) {
+  u = String(u || '');
+  if (/youtube\.com|youtu\.be/i.test(u)) return 'yt';
+  if (/vimeo\.com/i.test(u)) return 'vimeo';
+  if (/\.(jpe?g|png|gif|webp|avif|bmp|svg|tiff?)(\?|#|$)/i.test(u)) return 'jpg';
+  if (/\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i.test(u)) return 'video';
+  return 'other';
+}
+function xKindOf(type, link) {
+  if (type === 'jpg' || /\.(jpe?g|png|gif|webp|avif|bmp|svg|tiff?)(\?|#|$)/i.test(String(link || ''))) return 'image';
+  if (type === 'yt' || type === 'vimeo' || type === 'video') return 'video';
+  return 'other';
+}
+function xNormDur(d) {
+  if (d == null || d === '') return '';
+  if (typeof d === 'number' && Number.isFinite(d)) {
+    if (d <= 0) return '';
+    const m = Math.floor(d / 60), s = Math.round(d % 60);
+    return m + ':' + String(s).padStart(2, '0');
+  }
+  d = String(d).trim();
+  if (d.includes(':')) return d;
+  const n = parseInt(d, 10);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const m = Math.floor(n / 60), s = n % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+let _xIdSeq = 0;
+function xMkId() { return 'x' + Date.now().toString(36) + (_xIdSeq++).toString(36); }
+function xReadStore() {
+  try { if (fs.existsSync(X_STORE)) { const a = JSON.parse(fs.readFileSync(X_STORE, 'utf8')); return Array.isArray(a) ? a : []; } } catch (_) {}
+  return [];
+}
+function xReadDel() {
+  try { if (fs.existsSync(XDEL_STORE)) { const a = JSON.parse(fs.readFileSync(XDEL_STORE, 'utf8')); return Array.isArray(a) ? a : []; } } catch (_) {}
+  return [];
+}
+// /x/save — overwrite x.json with the X-screen's edited array (>50%-drop guard + .bak).
+function xSave(req, res, origin) {
+  readJson(req, 32 * 1024 * 1024).then(payload => {
+    const incoming = Array.isArray(payload.rows) ? payload.rows : null;
+    if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
+    const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
+    let prev = xReadStore();
+    if (prev.length > 10 && clean.length < prev.length * 0.5) {
+      console.warn('[x/save] REFUSED — ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)');
+      sendJson(res, 409, { ok: false, error: 'refused: ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)' }, origin);
+      return;
+    }
+    try { if (fs.existsSync(X_STORE)) fs.copyFileSync(X_STORE, X_STORE + '.bak'); } catch (_) {}
+    fs.writeFileSync(X_STORE, JSON.stringify(clean, null, 2));
+    console.log('[x/save] wrote ' + clean.length + ' rows (was ' + prev.length + ')');
+    sendJson(res, 200, { ok: true, total: clean.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+// /x/deleted — APPEND rows deleted in X to xdeleted.json (append-only, dedup by id).
+function xArchiveDeleted(req, res, origin) {
+  readJson(req, 32 * 1024 * 1024).then(payload => {
+    const incoming = Array.isArray(payload.rows) ? payload.rows : null;
+    if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
+    const arc = xReadDel();
+    const haveId = new Set(arc.map(r => r && r.id).filter(Boolean));
+    const stamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    let added = 0;
+    for (const r of incoming) {
+      if (!r || typeof r !== 'object') continue;
+      if (r.id && haveId.has(r.id)) continue;
+      if (r.id) haveId.add(r.id);
+      arc.push(Object.assign({}, r, { DateDeleted: r.DateDeleted || stamp }));
+      added++;
+    }
+    try { if (fs.existsSync(XDEL_STORE)) fs.copyFileSync(XDEL_STORE, XDEL_STORE + '.bak'); } catch (_) {}
+    fs.writeFileSync(XDEL_STORE, JSON.stringify(arc, null, 2));
+    console.log('[x/deleted] archived ' + added + ' row(s); xdeleted.json now ' + arc.length);
+    sendJson(res, 200, { ok: true, added, total: arc.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+// /x/undelete — remove rows (by id) from xdeleted.json (X's Ctrl+Z restore).
+function xUnarchive(req, res, origin) {
+  readJson(req, 1 * 1024 * 1024).then(payload => {
+    const ids = Array.isArray(payload.ids) ? payload.ids.filter(x => typeof x === 'string' && x) : null;
+    if (!ids) { sendJson(res, 400, { ok: false, error: 'ids[] required' }, origin); return; }
+    const arc = xReadDel();
+    const drop = new Set(ids);
+    const kept = arc.filter(r => !(r && drop.has(r.id)));
+    const removed = arc.length - kept.length;
+    try { if (fs.existsSync(XDEL_STORE)) fs.copyFileSync(XDEL_STORE, XDEL_STORE + '.bak'); } catch (_) {}
+    fs.writeFileSync(XDEL_STORE, JSON.stringify(kept, null, 2));
+    console.log('[x/undelete] removed ' + removed + ' from xdeleted.json; now ' + kept.length);
+    sendJson(res, 200, { ok: true, removed, total: kept.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+// /x/import — the finders' auto-send target. Body: { items:[{link,title,author,
+// page_url,width,height,duration,source,kind}], query, source, kind }. Each item is
+// normalized to an x.json row and APPENDED, deduped by normalized link against BOTH
+// x.json and xdeleted.json (so a re-run search / previously-deleted hit won't re-stage).
+function xImport(req, res, origin) {
+  readJson(req, 32 * 1024 * 1024).then(payload => {
+    const items = Array.isArray(payload.items) ? payload.items : null;
+    if (!items) { sendJson(res, 400, { ok: false, error: 'items[] required' }, origin); return; }
+    const store = xReadStore();
+    const have = new Set(store.map(r => xNormLink(r && r.link)));
+    const del = new Set(xReadDel().map(r => xNormLink(r && r.link)));
+    const defQuery = String(payload.query || '').trim();
+    const defSource = String(payload.source || '').trim();
+    const defKind = String(payload.kind || '').trim();
+    const stamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    let added = 0, dup = 0, dropped = 0;
+    for (const it of items) {
+      if (!it || typeof it !== 'object') continue;
+      const link = String(it.link || it.url || it.image_url || it.video_url || '').trim();
+      const key = xNormLink(link);
+      if (!key) continue;
+      if (have.has(key)) { dup++; continue; }
+      if (del.has(key)) { dropped++; continue; }
+      have.add(key);
+      const type = xUrlType(link);
+      const w = parseInt(it.width, 10), h = parseInt(it.height, 10);
+      const resolution = (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) ? (w + '×' + h) : '';
+      store.push({
+        id: xMkId(),
+        kind: String(it.kind || defKind || xKindOf(type, link)),
+        type,
+        link,
+        source: String(it.source || it.source_name || defSource || ''),
+        query: String(it.query || defQuery || ''),
+        VidTitle: String(it.title || it.VidTitle || ''),
+        VidAuthor: String(it.author || it.VidAuthor || it.creator || ''),
+        attribution: String(it.page_url || it.attribution || ''),
+        resolution,
+        width: Number.isFinite(w) ? w : undefined,
+        height: Number.isFinite(h) ? h : undefined,
+        vidLength: xNormDur(it.duration != null ? it.duration : it.vidLength),
+        size: '',
+        comment: '',
+        tags: [],
+        status: 'new',
+        DateAdded: stamp
+      });
+      added++;
+    }
+    if (added) {
+      try { if (fs.existsSync(X_STORE)) fs.copyFileSync(X_STORE, X_STORE + '.bak'); } catch (_) {}
+      fs.writeFileSync(X_STORE, JSON.stringify(store, null, 2));
+    }
+    console.log('[x/import] +' + added + ' new (dup ' + dup + ', prev-deleted ' + dropped + '); x.json now ' + store.length);
+    sendJson(res, 200, { ok: true, added, dup, dropped, total: store.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 // (dev0429) /ig/download — yt-dlp downloads a reel/post's media into <project>/
 // ig_media/<stem>.<ext>. Returns the basenames of every file produced (a carousel
 // /p post yields several). All argv tokens are literal under spawn(shell:false);
@@ -1911,6 +2071,21 @@ http.createServer((req, res) => {
     if (action === 'deleted')  { sArchiveDeleted(req, res, origin); return; }
     if (action === 'undelete') { sUnarchive(req, res, origin);      return; }
     sendJson(res, 404, { ok: false, error: 'unknown s action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0521) ── Search-results store (x.json) ──────────────────────────────
+  // The X screen (x.js) reads x.json (GET, static file server) and writes it back
+  // here; the desktop finders auto-POST results to /x/import (no browser Origin).
+  if (req.url.startsWith('/x/')) {
+    const origin = req.headers.origin || '';
+    if (req.method !== 'POST') { send(res, 405, 'x: POST required', corsForExec(origin)); return; }
+    const action = req.url.slice('/x/'.length).split('?')[0];
+    if (action === 'save')     { xSave(req, res, origin);           return; }
+    if (action === 'deleted')  { xArchiveDeleted(req, res, origin); return; }
+    if (action === 'undelete') { xUnarchive(req, res, origin);      return; }
+    if (action === 'import')   { xImport(req, res, origin);         return; }
+    sendJson(res, 404, { ok: false, error: 'unknown x action: ' + action }, origin);
     return;
   }
 
