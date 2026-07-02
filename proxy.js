@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0519';
+const PROXY_BUILD = 'dev0520';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -617,7 +617,13 @@ function parseIgMainMeta(html, id) {
   const twTitle = nameMeta('twitter:title');
   // Video posts: don't hand back a poster frame as a "cover" (mirrors the embed path's
   // is_video skip) — yt-dlp owns video; the cover is photo-only.
-  const isVideo = /<meta[^>]+property="og:video"/i.test(html)
+  // (dev0520) IG's logged-out reel page dropped ALL the old video signals — og:type is
+  // now "article", there's no og:video tag, and no `"is_video":true` in the shell — so a
+  // walled reel falling back here was mis-read as a PHOTO (it took the poster's small
+  // dims + no duration → filenames like `00.00.00~361x640~…`). The reliable signal now is
+  // the inline `"video_versions":[…]` MP4 array (same one dev0519's download path uses).
+  const isVideo = /"video_versions"\s*:/i.test(html)
+               || /<meta[^>]+property="og:video"/i.test(html)
                || /"is_video"\s*:\s*true/i.test(html)
                || /<meta[^>]+property="og:type"[^>]+content="video/i.test(html);
   // @handle: twitter:title "(@handle)" first, else the og:description "handle on …" prefix.
@@ -635,8 +641,22 @@ function parseIgMainMeta(html, id) {
   // W×H in its filename (IG's logged-out page used to leave these blank → 0x0). The
   // page's `"dimensions":{"height":H,"width":W}` JSON is the native size and matches the
   // full-res cover; fetchIgMainMeta() probes the image header when this isn't present.
-  let width, height;
-  if (!isVideo) {
+  let width, height, duration;
+  if (isVideo) {
+    // (dev0520) Reel source dims + duration off the logged-out page, so a walled reel
+    // enriches with the REAL video W×H + duration instead of the poster's. The
+    // video_versions objects carry no W×H — the native size is in
+    // "original_width"/"original_height"; the duration is the embedded DASH manifest's
+    // mediaPresentationDuration="PT<seconds>S" (there's no plain "duration" key). Take
+    // the max across a video carousel's manifests (mirrors ytdlpCompact's "longest").
+    const ow = html.match(/"original_width"\s*:\s*(\d+)/);
+    const oh = html.match(/"original_height"\s*:\s*(\d+)/);
+    if (ow && oh) { width = +ow[1]; height = +oh[1]; }
+    let maxDur = 0;
+    const dre = /mediaPresentationDuration=\\?"?PT([\d.]+)S/gi; let dm;
+    while ((dm = dre.exec(html))) { const s = parseFloat(dm[1]); if (s > maxDur) maxDur = s; }
+    if (maxDur) duration = Math.round(maxDur * 1000) / 1000;
+  } else {
     const dj = html.match(/"dimensions"\s*:\s*\{\s*"height"\s*:\s*(\d+)\s*,\s*"width"\s*:\s*(\d+)/);
     if (dj) { height = +dj[1]; width = +dj[2]; }
   }
@@ -647,7 +667,7 @@ function parseIgMainMeta(html, id) {
     uploader_url: owner ? 'https://www.instagram.com/' + owner + '/' : undefined,
     webpage_url: 'https://www.instagram.com/p/' + id + '/',
     upload_date, thumbnail: cover || undefined,
-    duration: undefined, width: width || undefined, height: height || undefined, _viaMain: true
+    duration: duration || undefined, width: width || undefined, height: height || undefined, _viaMain: true
   };
 }
 // GET the logged-out main /p/ page (cookieless: fresh socket + short UA + IG Referer)
@@ -963,6 +983,103 @@ function igMainVideoFallback(url, id, tmpDir) {
           const idx = i++;
           const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + '.mp4');
           igDownloadImage(vids[idx], dest, permalink, 0, '*/*').then(ok => {
+            if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
+            next();
+          });
+        };
+        next();
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.setTimeout(20000, () => { req.destroy(); resolve([]); });
+  });
+}
+
+// (dev0520) Bracket-match a JSON array/object embedded in HTML, starting at the '[' or
+// '{' at openIdx. String-aware (skips brackets inside quoted strings, honours \escapes)
+// so a URL/text value containing a bracket can't miscount depth. Returns the exact
+// substring (a valid JSON doc) or null. The logged-out /p/ page carries RAW JSON blobs
+// (quotes unescaped, `\/` and `\uXXXX` are standard JSON escapes JSON.parse resolves).
+function matchBracketedJson(html, openIdx) {
+  const open = html[openIdx];
+  if (open !== '[' && open !== '{') return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = openIdx; i < html.length; i++) {
+    const ch = html[i];
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; }
+    else if (ch === '"') inStr = true;
+    else if (ch === '[' || ch === '{') depth++;
+    else if (ch === ']' || ch === '}') { if (--depth === 0) return html.slice(openIdx, i + 1); }
+  }
+  return null;
+}
+// (dev0520) The VALIDATED full-carousel walker (the on-hold idea from the IG memo). The
+// logged-out /p/ page embeds the WHOLE carousel in its inline `"carousel_media":[…]`
+// JSON — each item is either a photo (image_versions2.candidates, largest-first, full
+// 1440px = gallery-dl parity) or a clip (video_versions). Returns [{kind,url}] in post
+// order (mixed photo+video carousels handled per item). All URLs download COOKIELESSLY
+// off the same lenient OG/metadata surface as enrich + cover-only + the reel path — so a
+// multi-item photo/mixed /p no longer needs gallery-dl + Firefox cookies. `"carousel_media"`
+// can also appear as a bare field-name reference elsewhere on the page, so anchor on
+// `"carousel_media":[`, scan every match, and keep the one with the most items.
+function pickIgCarouselMedia(html) {
+  if (!html) return [];
+  const re = /"carousel_media"\s*:\s*\[/g; let m, best = [];
+  while ((m = re.exec(html))) {
+    const arrStr = matchBracketedJson(html, m.index + m[0].length - 1);   // -1 → the '['
+    if (!arrStr) continue;
+    let items; try { items = JSON.parse(arrStr); } catch (_) { continue; }
+    if (Array.isArray(items) && items.length > best.length) best = items;
+  }
+  const out = [];
+  for (const it of best) {
+    if (!it || typeof it !== 'object') continue;
+    // Video item → its MP4 (prefer over the poster the item ALSO carries in
+    // image_versions2). Photo item → the widest candidate (candidates are listed
+    // largest-first, but pick by width when present to be safe).
+    if (Array.isArray(it.video_versions) && it.video_versions.length && it.video_versions[0] && it.video_versions[0].url) {
+      out.push({ kind: 'video', url: it.video_versions[0].url });
+    } else if (it.image_versions2 && Array.isArray(it.image_versions2.candidates) && it.image_versions2.candidates.length) {
+      const c = it.image_versions2.candidates;
+      let b = c[0]; for (const x of c) if ((+x.width || 0) > (+b.width || 0)) b = x;
+      if (b && b.url) out.push({ kind: 'image', url: b.url });
+    }
+  }
+  return out;
+}
+// (dev0520) Cookieless FULL-carousel download for a multi-item /p post (photos, videos,
+// or mixed) — the generalisation of dev0519's single-video igMainVideoFallback. Fetches
+// the logged-out /p/ page, walks carousel_media, and writes EVERY item into tmpDir with
+// the NNN.<ext> autonumber scheme igDownload()'s publish() expects. Resolves the files
+// written; resolves [] for a non-carousel post (single photo/reel → <2 items) so the
+// caller falls through to its single-item cover/video rescue. No Firefox cookies.
+function igMainCarouselFallback(url, id, tmpDir) {
+  return new Promise(resolve => {
+    const m = IG_SHORTCODE_RE.exec(url || '');
+    if (!m) { resolve([]); return; }
+    const sc = m[1];
+    const permalink = 'https://www.instagram.com/p/' + sc + '/';
+    const opts = { agent: false, headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
+    } };
+    let h = '';
+    const req = https.get(permalink, opts, r => {
+      if (r.statusCode !== 200) { r.resume(); resolve([]); return; }
+      r.setEncoding('utf8');
+      r.on('data', c => { h += c; if (h.length > 8e6) req.destroy(); });
+      r.on('end', () => {
+        const items = pickIgCarouselMedia(h);
+        if (items.length < 2) { resolve([]); return; }   // not a carousel → single-item path handles it
+        const written = [];
+        let i = 0;
+        const next = () => {
+          if (i >= items.length) { resolve(written); return; }
+          const idx = i++, it = items[idx];
+          const ext = it.kind === 'video' ? '.mp4' : '.jpg';
+          const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
+          igDownloadImage(it.url, dest, permalink, 0, it.kind === 'video' ? '*/*' : undefined).then(ok => {
             if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
             next();
           });
@@ -1683,6 +1800,25 @@ function igDownload(req, res, origin) {
         } else { embedRescueOr502(err); }
       });
     }
+    // (dev0520) COOKIELESS full-carousel walker — the validated fix for full /p photo
+    // (and mixed) carousels. The logged-out /p/ page already carries every item in its
+    // inline carousel_media JSON at full res (photos 1440px = gallery-dl parity), so this
+    // gets the WHOLE carousel with NO Firefox cookies — dropping the gallery-dl+cookie
+    // dependency for the common case (and the COOKIE_CAP=1 batch stop it caused). Tried
+    // before gallery-dl; gallery-dl stays as an opt-in fallback only if this yields
+    // nothing. Non-carousel posts (<2 items) resolve [] → fall through to gallery-dl/embed
+    // (single photo → index-1 cover) or the reel video_versions rescue (non-photo).
+    function mainCarouselOrGalleryDl(err) {
+      if (!photoPost) { galleryDlOrEmbed(err); return; }
+      wipeTmp();
+      igMainCarouselFallback(url, id, tmpDir).then(files => {
+        if (files.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' item(s) via cookieless main /p/ carousel_media');
+          sendJson(res, 200, { ok: true, files: publish(), viaMainCarousel: true, usedCookies: false,
+            note: 'full carousel via cookieless main /p/ page (carousel_media) — no Firefox cookies' }, origin);
+        } else { galleryDlOrEmbed(err); }
+      });
+    }
     // (dev0512) COVER-ONLY mode (client toggle): skip the whole yt-dlp/gallery-dl chain
     // and grab JUST the cookieless index-1 cover off the main /p/ page. For authors whose
     // page-1 is the keeper and page-2 is camera/EXIF junk — pure cookieless, no carousel.
@@ -1702,11 +1838,11 @@ function igDownload(req, res, origin) {
       if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
       // (dev0494) Download-only cookie net (separate from enrich's IG_USE_COOKIES):
       // cookieless yt-dlp came back empty → try Firefox cookies if the user opted in.
-      if (!IG_DOWNLOAD_USE_COOKIES) { galleryDlOrEmbed(err1); return; }
+      if (!IG_DOWNLOAD_USE_COOKIES) { mainCarouselOrGalleryDl(err1); return; }
       wipeTmp();   // clear any partial cookieless output before the cookie retry
       run(true, (ok2, err2) => {
         if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }
-        galleryDlOrEmbed(err2 || err1);
+        mainCarouselOrGalleryDl(err2 || err1);
       });
     });
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
