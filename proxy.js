@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0525';
+const PROXY_BUILD = 'dev0527';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1712,8 +1712,11 @@ function xSave(req, res, origin) {
     if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
     const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
     let prev = xReadStore();
-    if (prev.length > 10 && clean.length < prev.length * 0.5) {
-      console.warn('[x/save] REFUSED — ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)');
+    // The >50%-drop guard protects against a corrupted-load overwriting x.json. A
+    // deliberate X-screen delete sends force:true (the rows are also archived to
+    // xdeleted.json first), so intentional bulk deletes — including "delete all" — pass.
+    if (!payload.force && prev.length > 10 && clean.length < prev.length * 0.5) {
+      console.warn('[x/save] REFUSED — ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop; send force:true to override)');
       sendJson(res, 409, { ok: false, error: 'refused: ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)' }, origin);
       return;
     }

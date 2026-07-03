@@ -143,10 +143,11 @@
   // proxy /x/search route (source toggles live HERE, sent per-search). The finder
   // POSTs all hits at the end via /x/import; we poll x.json and reload once. These two
   // source lists MUST mirror ALL_IMAGE_SOURCES / ALL_VIDEO_SOURCES in the finders. ──
-  // 'photomacro' (Photomacrography forum) + 'featured' (curated gallery slice of
-  // o.json) were dropped from the offered sources — they return curated hits that
-  // ignore the search keyword. Paste a photomacrography.net URL to harvest that forum.
-  const X_IMG_SOURCES = ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse', 'ojson'];
+  // Dropped from the offered sources because they return curated hits that ignore the
+  // search keyword: 'photomacro' (Photomacrography forum), 'featured' (prizewinning
+  // slice of o.json), and 'ojson' (whole-page scrape of the user's saved o.json pages).
+  // Paste a photomacrography.net URL to still harvest that forum on demand.
+  const X_IMG_SOURCES = ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse'];
   const X_VID_SOURCES = ['youtube', 'vimeo', 'ddgs'];
   const X_IMG_DEFAULT = ['bing', 'google', 'ddgs', 'wikimedia', 'openverse'];  // the finder's own default web set
   const X_VID_DEFAULT = ['youtube', 'vimeo', 'ddgs'];
@@ -1267,7 +1268,7 @@
     if (table) { try { table.deleteRow(id); } catch (_) {} }
     undoStack.push({ kind: 'delete', row: removed, pos: idx });
     archiveDeleted(removed);
-    markDirty(); persist(false);
+    markDirty(); persist(false, { force: true });   // deliberate delete — bypass the mass-drop guard
     setFocus(nextId);
     updateCount();
     xToast('🗑 Deleted “' + (removed.VidTitle || removed.link || '').slice(0, 44) + '” — Ctrl+Z to undo', 2600);
@@ -1529,7 +1530,7 @@
     rows = rows.filter(r => !ids.has(r.id));
     sel.forEach(r => table.deleteRow(r.getData().id));
     if (archive) archiveDeleted(removed);
-    markDirty(); persist(false);
+    markDirty(); persist(false, { force: true });   // deliberate bulk delete — bypass the mass-drop guard
     refreshFacetOptions();
     applyFilters();
     xToast(`🗑 Deleted ${ids.size} row(s)` + (archive ? ' → xdeleted.json' : ' (not archived — can re-import)'), 2400);
@@ -1619,14 +1620,25 @@
   }
 
   // ── Persist back to x.json (proxy /x/save) ───────────────────────────────────
-  async function persist(announce) {
+  async function persist(announce, opts) {
+    opts = opts || {};
     try {
       const res = await fetch(PROXY + '/x/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows })
+        body: JSON.stringify({ rows, force: !!opts.force })
       });
-      const j = await res.json();
-      if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j || !j.ok) {
+        const msg = (j && j.error) || ('HTTP ' + res.status);
+        // A refused mass-drop must NEVER be silent — otherwise the UI looks saved but
+        // x.json on disk still has the "deleted" rows (they reappear on the next reload).
+        if (res.status === 409 || /refus/i.test(msg))
+          xToast('⚠ x.json NOT saved — ' + msg
+            + '\nRestart proxy.js (dev0527+) so intentional deletes are allowed.', 6500);
+        else if (announce)
+          xToast('✗ save failed: ' + msg + '\n(Is proxy.js running & dev0521+?)', 4200);
+        return false;
+      }
       dirty = false;
       updateCount();
       if (announce) xToast('💾 saved x.json (' + j.total + ' rows)', 1800);
