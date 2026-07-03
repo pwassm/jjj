@@ -1834,7 +1834,7 @@ const X_FINDER_DIR = path.join(__dirname, 'linkfinders');
 const X_FINDERS = {
   // Must mirror ALL_IMAGE_SOURCES / ALL_VIDEO_SOURCES in the two finders.
   image: { script: 'imagefinder.py',
-           sources: ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse', 'photomacro', 'ojson', 'featured'] },
+           sources: ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse'] },
   video: { script: 'videofinder.py',
            sources: ['youtube', 'vimeo', 'ddgs'] }
 };
