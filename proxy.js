@@ -1553,7 +1553,13 @@ function igFfdown(req, res, origin) {
 // store. Guard: refuse a write that drops > 50% of rows (likely a client bug) so a
 // mis-send can't wipe a 700-row harvest — the caller gets a clear 409 to surface.
 function igSave(req, res, origin) {
-  readJson(req, 16 * 1024 * 1024).then(payload => {
+  // (dev0529) DATA-LOSS FIX: the body cap was 16 MB, but ig.json's compact POST body
+  // crossed 16 MB as the store grew (10.9k rows w/ enriched ftext). readJson then
+  // req.destroy()+rejected EVERY save → 400 → the client's batch persist(false)
+  // swallowed it silently → enrich/download edits were never written (files still
+  // landed in ig_media via the separate /ig/download route, masking the loss).
+  // 256 MB gives the biggest, fastest-growing store years of headroom.
+  readJson(req, 256 * 1024 * 1024).then(payload => {
     const incoming = Array.isArray(payload.rows) ? payload.rows : null;
     if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
     const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);

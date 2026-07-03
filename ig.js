@@ -1577,7 +1577,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (announce) igToast('💾 saved ig.json (' + j.total + ' rows)', 1800);
       return true;
     } catch (e) {
-      if (announce) igToast('✗ save failed: ' + (e && e.message) + '\n(Is proxy.js running & dev0429+?)', 4000);
+      // (dev0529) A save failure is potential DATA LOSS, so NEVER swallow it — even in
+      // batch/auto-enrich, which call persist(false). This is exactly what hid the
+      // proxy's 16 MB body-cap rejection: enrich looked done on screen but nothing was
+      // written, and edits vanished on the next reload. dirty stays true (only set
+      // false on success) so the header keeps its ⚠ unsaved flag.
+      igToast('✗ ig.json SAVE FAILED — edits NOT written to disk!\n' + (e && e.message)
+        + '\nRestart proxy.js (dev0529+) & click 💾 Save. Do not reload/leave first.', 6500);
       return false;
     }
   }
