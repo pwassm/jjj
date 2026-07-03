@@ -143,7 +143,10 @@
   // proxy /x/search route (source toggles live HERE, sent per-search). The finder
   // POSTs all hits at the end via /x/import; we poll x.json and reload once. These two
   // source lists MUST mirror ALL_IMAGE_SOURCES / ALL_VIDEO_SOURCES in the finders. ──
-  const X_IMG_SOURCES = ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse', 'photomacro', 'ojson', 'featured'];
+  // 'photomacro' (Photomacrography forum) + 'featured' (curated gallery slice of
+  // o.json) were dropped from the offered sources — they return curated hits that
+  // ignore the search keyword. Paste a photomacrography.net URL to harvest that forum.
+  const X_IMG_SOURCES = ['bing', 'google', 'ddgs', 'flickr', 'wikimedia', 'openverse', 'ojson'];
   const X_VID_SOURCES = ['youtube', 'vimeo', 'ddgs'];
   const X_IMG_DEFAULT = ['bing', 'google', 'ddgs', 'wikimedia', 'openverse'];  // the finder's own default web set
   const X_VID_DEFAULT = ['youtube', 'vimeo', 'ddgs'];
@@ -673,12 +676,13 @@
     };
     const attrCell = c => {
       const r = c.getData();
-      const label = attrLabel(r);
       const page = sourcePageUrl(r);
-      const go = page
-        ? `<a class="x-attr-go" href="${esc(page)}" target="_blank" rel="noopener" title="Open where it's shown → ${esc(page)}" onclick="event.stopPropagation()">↗</a>`
-        : '';
-      return go + `<span>${esc(label)}</span>`;
+      const label = attrLabel(r);
+      // Whole cell is a link (like the Link column) → click opens the source page in a
+      // new tab AND focuses the row. No inline editor, so the cell never turns into a
+      // black input that would swallow Ctrl+I.
+      if (page) return `<a class="x-attr-go" href="${esc(page)}" target="_blank" rel="noopener" title="Open where it's shown → ${esc(page)}">↗ ${esc(label || prettyUrl(page))}</a>`;
+      return esc(label);
     };
     const statusCell = c => {
       const s = c.getValue() || 'new';
@@ -688,22 +692,18 @@
       const v = c.getValue();
       return Array.isArray(v) ? v.join(', ') : (v || '');
     };
+    // Column order: the media (thumb/Link/Title/Author/Attribution) + measurements
+    // on the LEFT; the provenance facets (Kind/Type/Query/Source) pushed to the FAR
+    // RIGHT per request (they're also faceted from the toolbar dropdowns).
     return [
       { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 40, frozen: true },
       { title: '▣', field: 'thumb', width: 56, formatter: thumbCell, headerSort: false, headerTooltip: 'Thumbnail (image rows) — full preview is the floating window (Ctrl+I)' },
-      { title: 'Kind', field: 'kind', width: 76, formatter: kindBadge, headerFilter: false,
-        headerTooltip: 'image / video — the primary split (facet in the toolbar)' },
-      { title: 'Type', field: 'type', width: 74, formatter: typeBadge, headerFilter: false },
-      { title: 'Query', field: 'query', width: 130, editor: 'input', headerFilter: 'input',
-        headerTooltip: 'The search keyword that produced this hit (set by the finder; editable).' },
-      { title: 'Source', field: 'source', width: 104, editor: 'input', headerFilter: 'input',
-        headerTooltip: 'Which search source/site the hit came from (Flickr / Wikimedia / DuckDuckGo / YouTube / Vimeo / o.json …).' },
       { title: 'Link', field: 'link', widthGrow: 3, formatter: linkCell, headerFilter: 'input' },
       { title: 'Title', field: 'VidTitle', widthGrow: 2, editor: 'input', headerFilter: 'input' },
       { title: 'Author', field: 'VidAuthor', width: 120, editor: 'input', headerFilter: 'input' },
-      { title: 'Attribution', field: 'attribution', width: 160, editor: 'input', headerFilter: 'input',
+      { title: 'Attribution', field: 'attribution', width: 180, headerFilter: 'input',
         formatter: attrCell,
-        headerTooltip: 'Where the media is shown — click ↗ to open the source page (Flickr / Wikimedia / channel). Click the text to edit.' },
+        headerTooltip: 'Where the media is shown — click to open the source page in a new tab (Flickr photo page / Wikimedia file page / channel).' },
       { title: 'Len', field: 'vidLength', width: 58, editor: 'input', hozAlign: 'right',
         sorter: (a, b) => lenSecs(a) - lenSecs(b),
         headerTooltip: 'Length (m:ss) — auto-filled for video by 📐 Fill meta' },
@@ -718,7 +718,14 @@
       { title: 'Tags', field: 'tags', width: 120, formatter: tagsCell, editor: 'input',
         mutatorEdit: v => String(v || '').split(',').map(s => s.trim()).filter(Boolean) },
       { title: 'Status', field: 'status', width: 86, formatter: statusCell },
-      { title: 'Added', field: 'DateAdded', width: 148, hozAlign: 'right' }
+      { title: 'Added', field: 'DateAdded', width: 148, hozAlign: 'right' },
+      { title: 'Kind', field: 'kind', width: 76, formatter: kindBadge, headerFilter: false,
+        headerTooltip: 'image / video — the primary split (facet in the toolbar)' },
+      { title: 'Type', field: 'type', width: 74, formatter: typeBadge, headerFilter: false },
+      { title: 'Query', field: 'query', width: 130, editor: 'input', headerFilter: 'input',
+        headerTooltip: 'The search keyword that produced this hit (set by the finder; editable).' },
+      { title: 'Source', field: 'source', width: 110, editor: 'input', headerFilter: 'input',
+        headerTooltip: 'Which search source/site the hit came from (Flickr / Wikimedia / YouTube / Vimeo / o.json …).' }
     ];
   }
 
@@ -790,7 +797,10 @@
       });
       if (focusId && opts.scroll !== false) {
         const r = table.getRow(focusId);
-        if (r) { try { const p = r.scrollTo('nearest', false); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+        // 'top' + scrollIfVisible=false: an already-visible focused row doesn't scroll
+        // (smooth intra-page ↑/↓); when it goes off the edge, snap it as high as
+        // possible (near the list end Tabulator clamps → highest it can reach).
+        if (r) { try { const p = r.scrollTo('top', false); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
       }
     }
     refreshPreview();
