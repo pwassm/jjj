@@ -1890,6 +1890,12 @@ let _tRowHLocked = false;             // (dev0332) once true, _tRowH never chang
 let _tWinFirst = -1, _tWinLast = -1;  // last-rendered window range (skip rebuild if unchanged)
 let _tScrollWired = false;
 const T_OVERSCAN = 8;                 // extra rows rendered above/below the viewport
+// (dev0532) Permanent scrollable gap kept BELOW the last row so it can lift clear
+// of the fixed lower-right badges (#ver-badge / #uid-badge ≈ 28px) and a bottom
+// horizontal scrollbar (≈ 17px). Without it the final row jams against the wrap's
+// bottom edge — half-hidden and mis-clicking to the row above (the C-screen's last
+// collection). Wide enough to clear both overlays with a little breathing room.
+const _T_BOTTOM_CLEARANCE = 48;
 
 function _tRowHeight() {
   return _tRowH;
@@ -1931,7 +1937,9 @@ function _tRenderWindow(force) {
   const clientH = (wrap && wrap.clientHeight) ? wrap.clientHeight : (window.innerHeight || 800);
   let scrollTop = wrap ? wrap.scrollTop : 0;
   // Clamp if the list shrank (filter/sort) below the current scroll offset.
-  const maxScroll = Math.max(0, total * rowH - clientH);
+  // (dev0532) Include the permanent bottom clearance in the max so scrolling INTO
+  // that gap (to reveal the last row) isn't yanked back.
+  const maxScroll = Math.max(0, total * rowH + _T_BOTTOM_CLEARANCE - clientH);
   if (wrap && scrollTop > maxScroll) { scrollTop = maxScroll; wrap.scrollTop = scrollTop; }
 
   let first = Math.max(0, Math.floor(scrollTop / rowH) - T_OVERSCAN);
@@ -1945,7 +1953,10 @@ function _tRenderWindow(force) {
     const ent = _tVisList[i];
     tbody.appendChild(_tBuildRow(ent.vi, ent.di));
   }
-  if (last < total) tbody.appendChild(_tSpacerRow((total - last) * rowH));
+  // (dev0532) Always leave _T_BOTTOM_CLEARANCE below the last row (plus the height
+  // of any not-yet-mounted rows) so the final row can scroll clear of the bottom
+  // overlays; _tScrollRowIntoView's margin then lifts it into the comfortable band.
+  tbody.appendChild(_tSpacerRow((last < total ? (total - last) * rowH : 0) + _T_BOTTOM_CLEARANCE));
 }
 
 // Scroll #wrap so display row vi sits in the viewport (below the sticky thead),
