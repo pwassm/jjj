@@ -6090,5 +6090,44 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "xanthidae",
+    "label": "Xanthidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "lybia",
+    "label": "Lybia",
+    "kind": "taxon",
+    "parents": [
+      "xanthidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "lybia-tessellata",
+    "label": "Lybia tessellata",
+    "kind": "taxon",
+    "parents": [
+      "lybia"
+    ],
+    "aliases": [
+      "Lybia tessellata (Latreille",
+      "1812)",
+      "Lybia tesselata"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "common boxing crab",
+    "extinct": false
   }
 ]

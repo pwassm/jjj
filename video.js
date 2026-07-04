@@ -2024,12 +2024,12 @@ window.openVideoEditor = function(it) {
       if (onDurationReady && vid.duration > 0) onDurationReady(vid.duration);
       try { vid.currentTime = seekSec; } catch(e) {}
       vid.play().catch(function(){});
-      if (!loopSeg) {
+      if (loopSeg === false) {
         setTimeout(function() { try { vid.pause(); vid._salPaused = true; paused = true; } catch(e) {} }, 1500);
       }
     });
 
-    if (loopSeg) {
+    if (loopSeg === true) {
       window.seeLearnVideoTimers['v2host'] = setInterval(function() {
         try {
           if (paused || vid._salPaused) return;
@@ -2107,7 +2107,7 @@ window.openVideoEditor = function(it) {
               if (d > 0) onDurationReady(d);
             } catch(ex) {}
           }
-          if (!loopSeg) {
+          if (loopSeg === false) {
             setTimeout(function() {
               try { ev.target.pauseVideo(); ev.target._salPaused = true; paused = true; } catch(ex) {}
             }, 1500);
@@ -2115,14 +2115,14 @@ window.openVideoEditor = function(it) {
         },
         onStateChange: function(ev) {
           if (paused || ev.target._salPaused) return;
-          if (loopSeg && ev.data === YT.PlayerState.ENDED) {
+          if (loopSeg === true && ev.data === YT.PlayerState.ENDED) {
             ev.target.seekTo(segStart, true); ev.target.playVideo();
           }
         }
       }
     });
 
-    if (loopSeg) {
+    if (loopSeg === true) {
       window.seeLearnVideoTimers['v2host'] = setInterval(function() {
         try {
           if (paused || player._salPaused) return;
@@ -2162,10 +2162,10 @@ window.openVideoEditor = function(it) {
       if (onDurationReady) {
         player.getDuration().then(function(d) { if (d > 0) onDurationReady(d); }).catch(function(){});
       }
-      if (!loopSeg) {
+      if (loopSeg === false) {
         setTimeout(function() { player.pause().catch(function(){}); paused = true; }, 1500);
       }
-      if (loopSeg) {
+      if (loopSeg === true) {
         window.seeLearnVideoTimers['v2host'] = setInterval(function() {
           if (paused) return;
           player.getCurrentTime().then(function(t) {
@@ -2815,18 +2815,13 @@ window.openVideoEditor = function(it) {
     renderSegTabs();
     renderTimeline();
     vrPrev.textContent = 'No segments — Ctrl+click video or timeline to define first segment';
-    // Mount and free-play (no loop, no pause — use resumeLoop with huge bound)
-    _mountEditorPlayer(0, 0, 0, false, onTotalDurKnown);
-    // After player is ready, play freely (override the 1.5s pause that loopSeg=false triggers)
-    setTimeout(function() {
-      var p = getEditorPlayer();
-      if (p) {
-        p._salPaused = false;
-        if (typeof p.playVideo === 'function') { try { p.playVideo(); } catch(ex) {} }
-        else if (p.play) p.play().catch(function(){});
-        // No loop interval — video just plays until end or spacebar
-      }
-    }, 2000);
+    // (dev0530) Free-play mode: mount and play straight through — NO segment
+    // loop and NO 1.5s warm-up pause. The old code mounted with loopSeg=false
+    // (which arms a 1.5s auto-pause), then tried to paper over it with a 2s
+    // "resume" timer — so a no-segment video visibly PLAYED, PAUSED ~1.5s in,
+    // then resumed: the "pauses after one second" stutter. 'free' arms neither
+    // the pause nor the loop, so the video just plays until its end or spacebar.
+    _mountEditorPlayer(0, 0, 0, 'free', onTotalDurKnown);
   } else {
     iStart.value = segs[0].start;
     iDur.value   = segs[0].dur;

@@ -1376,7 +1376,12 @@ function gridOpenFullscreen(row, contained) {
     // Wire up controls
     vpWireControls();
     
-  } else if (row.ftext || row.qfile) {
+  } else if ((row.ftext && !row.link) || row.qfile) {
+    // (dev0530) ftext must NEVER win over a media link: a row that carries
+    // BOTH ftext and an image/video link should show the MEDIA, not the text.
+    // The video branch above already claimed real video rows (isVideoRow), and
+    // the image branch below claims any remaining `row.link`; so ftext only
+    // renders when there is no link at all. (qfile quizzes have no link.)
     // QUIZ / HTML FULLSCREEN via srcdoc iframe
     //
     // (zip0174) Iframes capture keyboard focus, so once the user

@@ -151,7 +151,13 @@ function _slideshowCellSlides(row) {
   if (!row) return [];
   const out = [];
   if (_slideshowIsImageLink(row.link)) out.push({ url: row.link, row, kind: 'image' });
-  else if (_slideshowIsDirectVideoLink(row.link)) out.push({ url: row.link, row, kind: 'video' });
+  // (dev0530) Any video ROW joins the show, not just direct .mp4 links: YT/Vimeo/
+  // IG/TikTok were silently dropped (only images played). gridOpenFullscreen — the
+  // player a video slide hands off to — already mounts all of these, so detect the
+  // full set via isVideoRow (falls back to the direct-file test if it's unavailable).
+  else if (typeof isVideoRow === 'function' ? isVideoRow(row) : _slideshowIsDirectVideoLink(row.link)) {
+    out.push({ url: row.link, row, kind: 'video' });
+  }
   if (row.ftext) {
     _slideshowExtractImgs(row.ftext).forEach(u => out.push({ url: u, row, kind: 'image' }));
   }
