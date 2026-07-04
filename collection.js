@@ -791,15 +791,19 @@ function cDeleteSelected() {
   cSaveToFile();
 }
 
-// (dev0375) G in grid: open row.link of the cell under the mouse in a new tab.
+// (dev0375) G in grid: open the cell-under-the-mouse's source page in a new tab.
+// (dev0533) Prefer `linkpage` (the source webpage — set for videos and for
+// imagefinder3 image rows); fall back to `link` (the media URL itself) when a
+// row has no separate source page.
 window._gridOpenLink = function() {
   var cell = (typeof _gridHoverCell !== 'undefined') ? _gridHoverCell : null;
   var row = cell && cell._rowData;
-  if (!row || !row.link) {
+  var target = row && (row.linkpage || row.link);
+  if (!target) {
     if (typeof _gridToast === 'function') _gridToast('Hover over a cell with a link first', 1400);
     return;
   }
-  window.open(row.link, '_blank', 'noopener');
+  window.open(target, '_blank', 'noopener');
 };
 
 // (dev0375) C in grid: toggle closed captions on all YT/Vimeo iframes.
