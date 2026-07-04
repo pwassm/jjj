@@ -1208,16 +1208,13 @@ async function load() {
   updateFtextSizes();   // populate FtextSize before buildCols so the col shows
   buildCols();
   migrateDates(data);   // convert old yy.mm.dd format to ISO on every load
-  // Restore last-saved sort state so the table opens in the order the user
-  // left it. Falls through to "UID desc" (highest first) — the routine working
-  // order for editing — when metadata carries no saved sort.
-  if (metaRow && metaRow._salSort && metaRow._salSort.col) {
-    sortCol = metaRow._salSort.col;
-    sortDir = metaRow._salSort.dir === 'desc' ? 'desc' : 'asc';
-  } else {
-    sortCol = 'UID';
-    sortDir = 'desc';
-  }
+  // (dev0534) Always open the table UID-desc (highest first) so rows appended
+  // while the app was running — e.g. by imagefinder3/videofinder3 — show up at
+  // the TOP on a reload, instead of being buried under a restored column sort.
+  // (_salSort is still saved on header-click for the live session; it's just no
+  // longer restored across reloads.)
+  sortCol = 'UID';
+  sortDir = 'desc';
   // Load the tag dictionary (tags.json). Safe even if file doesn't exist —
   // tagsLib seeds a starter dictionary in that case.
   if (window.tagsLib) {
