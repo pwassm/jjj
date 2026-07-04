@@ -674,6 +674,18 @@ window.mountVimeoClip = async function(hostEl, url, startSec, dur, isMuted, cust
     var seekTo = customSeekTo !== undefined ? Number(customSeekTo) : segs[0].start;
     player.setCurrentTime(seekTo);
     player.play();
+    // (dev0531) Cap an open-ended "0 99999" segment to the REAL duration so a
+    // no-VidRange Vimeo LOOPS at its true end — mirrors the YouTube (line ~323)
+    // and direct-video (~600) mounts. Without it the segment timer's upper bound
+    // (99999) never triggers and, with loop:false, the clip plays ONCE then
+    // freezes — which is why CoralMorphologic17's big 1L Vimeo cell "stopped
+    // playing" (the grid's "Vimeo 'ended' loops back" note never held for Vimeo).
+    // getDuration is async on Vimeo, so cap when it resolves.
+    player.getDuration().then(function(realDur) {
+      if (realDur > 0 && realDur < 99990) {
+        segs.forEach(function(s) { if (s.dur > realDur) s.dur = Math.max(1, realDur - s.start); });
+      }
+    }).catch(function(){});
     // (dev0350) Autopause only when explicitly requested — match the YouTube and
     // direct-video mounts (which gate on a TRUTHY autoPauseGrid). This used
     // `!== false`, so Vimeo cells PAUSED by default in G while YT/mp4 played.
