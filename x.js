@@ -98,6 +98,35 @@
     if (!m) return '';
     return (+m[1] >= +m[2]) ? 'L' : 'P';
   }
+  // (dev0535) Canonical URL form for storage in ml.json — collapse the many YouTube
+  // spellings to youtu.be/ID and strip Vimeo's ?turnstile= junk. Mirrors core.js
+  // _normalizeLink so a promoted row's link matches the app's canonical spelling.
+  function canonUrl(link) {
+    const s = String(link || '').trim();
+    if (!s) return s;
+    if (window.getYouTubeId) { const id = window.getYouTubeId(s); if (id) return 'https://youtu.be/' + id; }
+    if (/vimeo\.com\/\d+/i.test(s) && window.sanitizeVimeoUrl) return window.sanitizeVimeoUrl(s);
+    return s;
+  }
+  // (dev0535) Best Mode letter (L/P/S) from what we already know: /shorts/ → P, a known
+  // resolution → orientFromDims, else the aspect column, else blank (the yt-dlp Fill meta
+  // 'e' pass or the T-screen orientation batch fills the rest).
+  function modeForRow(r) {
+    const link = String((r && r.link) || '');
+    if (/youtube\.com\/shorts\//i.test(link)) return 'P';
+    const m = String((r && r.resolution) || '').match(/(\d+)\s*[×x*]\s*(\d+)/);
+    if (m && window.orientFromDims) { const o = window.orientFromDims(+m[1], +m[2]); if (o) return o; }
+    if (r && (r.aspect === 'L' || r.aspect === 'P')) return r.aspect;
+    return '';
+  }
+  // (dev0535) yt-dlp upload_date "YYYYMMDD" (or unix timestamp) → "YYYY-MM-DD" (mirrors ig.js).
+  function datePosted(meta) {
+    if (!meta) return '';
+    const ud = String(meta.upload_date || '').trim();
+    if (/^\d{8}$/.test(ud)) return ud.slice(0, 4) + '-' + ud.slice(4, 6) + '-' + ud.slice(6, 8);
+    if (Number.isFinite(meta.timestamp)) return new Date(meta.timestamp * 1000).toISOString().slice(0, 10);
+    return '';
+  }
   // Source category (which search engine / site the hit came from). Derived from the
   // URL only where unambiguous — the finders send the real source_name on import; this
   // just backfills obvious cases for hand-edited / clipboard rows.
@@ -319,7 +348,7 @@
         id: mkId(), kind: kindOf(type, p.link), type, link: '',
         source: deriveSource(p.link), query: '',
         VidTitle: '', VidAuthor: '', attribution: '', vidLength: '', resolution: '',
-        size: '', comment: '', tags: [], status: 'new', DateAdded: stamp
+        size: '', comment: '', tags: [], status: 'new', VidDate: '', DateAdded: stamp
       }, p);
       row.type = type;
       row.kind = kindOf(type, row.link);
@@ -516,7 +545,7 @@
         <div class="spacer"></div>
         <button id="xImport" class="primary" title="Import links from the clipboard (hotkey w) — finders also auto-send via /x/import">📋 Import clipboard</button>
         <button id="xCat" title="Set Source / Query on the CHECKED rows in bulk.&#10;Hotkey c.">🏷 Source/Query</button>
-        <button id="xFillMeta" title="Fill Res / Size / Len on the CHECKED rows (or the focused row if none checked).&#10;Images &amp; direct videos are probed in-browser; YouTube/Vimeo use yt-dlp via the proxy.&#10;Hotkey e.">📐 Fill meta</button>
+        <button id="xFillMeta" title="Fill Res / Size / Len / Date on the CHECKED rows (or the focused row if none checked).&#10;Images &amp; direct videos are probed in-browser; YouTube/Vimeo use yt-dlp (dims + upload Date) via the proxy.&#10;Hotkey e.">📐 Fill meta</button>
         <button id="xPromote" title="Copy CHECKED rows into ml.json, keep them here as 'promoted' (stamped BA=1).&#10;Hotkey a = add the FOCUSED row to ml.json AND remove it from staging (Ctrl+Z undo).">➕ Promote sel</button>
         <button id="xDelete" class="danger" title="Remove CHECKED rows from the search store → xdeleted.json (won't re-import).&#10;Hotkey Delete or d = remove the FOCUSED row (Ctrl+Z undo).">🗑 Delete sel</button>
         <button id="xDeleteNoArc" class="danger" title="Remove CHECKED rows WITHOUT archiving to xdeleted.json — they are NOT remembered, so a re-run search CAN re-stage them.">🗑 Delete ¬xDel</button>
@@ -679,11 +708,11 @@
       const r = c.getData();
       const page = sourcePageUrl(r);
       const label = attrLabel(r);
-      // Whole cell is a link (like the Link column) → click opens the source page in a
-      // new tab AND focuses the row. No inline editor, so the cell never turns into a
-      // black input that would swallow Ctrl+I.
-      if (page) return `<a class="x-attr-go" href="${esc(page)}" target="_blank" rel="noopener" title="Open where it's shown → ${esc(page)}">↗ ${esc(label || prettyUrl(page))}</a>`;
-      return esc(label);
+      // (dev0535) Compact: the cell is just a ↗ link (full page in the tooltip) so the
+      // column can be a few characters wide — the freed width went to the new Date column.
+      // Click still opens the source page in a new tab AND focuses the row.
+      if (page) return `<a class="x-attr-go" href="${esc(page)}" target="_blank" rel="noopener" title="Open where it's shown → ${esc(page)}">↗</a>`;
+      return `<span title="${esc(label)}">${esc(label.slice(0, 6))}</span>`;
     };
     const statusCell = c => {
       const s = c.getValue() || 'new';
@@ -702,9 +731,10 @@
       { title: 'Link', field: 'link', widthGrow: 3, formatter: linkCell, headerFilter: 'input' },
       { title: 'Title', field: 'VidTitle', widthGrow: 2, editor: 'input', headerFilter: 'input' },
       { title: 'Author', field: 'VidAuthor', width: 120, editor: 'input', headerFilter: 'input' },
-      { title: 'Attribution', field: 'attribution', width: 180, headerFilter: 'input',
-        formatter: attrCell,
-        headerTooltip: 'Where the media is shown — click to open the source page in a new tab (Flickr photo page / Wikimedia file page / channel).' },
+      { title: '↗', field: 'attribution', width: 44, formatter: attrCell, headerSort: false,
+        headerTooltip: 'Attribution — click ↗ to open where the media is shown (Flickr photo page / Wikimedia file page / channel). Compacted (dev0535) to make room for Date.' },
+      { title: 'Date', field: 'VidDate', width: 100, editor: 'input', hozAlign: 'right',
+        headerTooltip: 'Video upload/publish date (YYYY-MM-DD) — filled by 📐 Fill meta (yt-dlp) for YouTube/Vimeo · carried into ml.json on promote.' },
       { title: 'Len', field: 'vidLength', width: 58, editor: 'input', hozAlign: 'right',
         sorter: (a, b) => lenSecs(a) - lenSecs(b),
         headerTooltip: 'Length (m:ss) — auto-filled for video by 📐 Fill meta' },
@@ -1007,9 +1037,11 @@
     const dims = String(row.resolution || '').trim();
     const len = String(row.vidLength || '').trim()
       || (_pvDurationSecs ? fmtSecs(_pvDurationSecs) : '');
+    const date = String(row.VidDate || '').trim();
     const meta = [];
     if (dims) meta.push('📐 ' + dims);
     if (len) meta.push('⏱ ' + len);
+    if (date) meta.push('📅 ' + date);
     cap.innerHTML = `<span class="x-badge k-${esc(k)}">${esc(k)}</span> `
       + (title ? `<span style="color:#cfe;">${esc(title)}</span>` : '')
       + (author ? ` <span style="color:#d8c69a;">· ${esc(author)}</span>` : '')
@@ -1178,6 +1210,7 @@
             patch.resolution = meta.width + '×' + meta.height;
           if ((opts.force || !row.vidLength) && Number.isFinite(meta.duration))
             patch.vidLength = fmtSecs(meta.duration);
+          if (opts.force || !row.VidDate) { const d = datePosted(meta); if (d) patch.VidDate = d; }
         }
       } else { return false; }
     } catch (_) { /* leave existing values */ }
@@ -1229,9 +1262,10 @@
   function toMlRow(r, stamp) {
     return {
       UID: nextUID(),
-      link: r.link, VidTitle: r.VidTitle || '', VidAuthor: r.VidAuthor || '',
+      link: canonUrl(r.link), VidTitle: r.VidTitle || '', VidAuthor: r.VidAuthor || '',
       attribution: r.attribution || '', vidLength: r.vidLength || '',
       comment: r.comment || '', resolution: r.resolution || '',
+      Mode: modeForRow(r), VidDate: r.VidDate || '',
       tags: Array.isArray(r.tags) ? r.tags : [], ltype: r.type || '',
       L1: r.source || '', L2: r.query || '',
       BA: '1', show: '1', DateAdded: stamp, DateModified: stamp, xSource: r.id

@@ -3940,23 +3940,26 @@ async function housekeepingFillYTOrient() {
   // cells that are empty or hold an obsolete number. rowMode() maps legacy 0/1 → L/P,
   // so a not-yet-migrated '0'/'1' reads as a letter and is correctly skipped; truly
   // obsolete numerics (e.g. 50) read as '' and fall into the to-do set.
-  const isLetter = r => /^[LPS]$/.test(rowMode(r));
-  const skipped = allYT.filter(isLetter).length;
-  const rows = allYT.filter(r => !isLetter(r));
+  // (dev0535) Process a row if it lacks a Mode letter OR a VidDate — one yt-dlp call
+  // returns both, so the same pass fills orientation and the upload date.
+  const hasMode = r => /^[LPS]$/.test(rowMode(r));
+  const hasDate = r => !!String(r.VidDate || '').trim();
+  const rows = allYT.filter(r => !hasMode(r) || !hasDate(r));
+  const skipped = allYT.length - rows.length;
   if (!rows.length) {
-    toast('✓ All ' + allYT.length + ' YouTube row(s) already have a Mode (L/P/S) — nothing to do.', 4000);
+    toast('✓ All ' + allYT.length + ' YouTube row(s) already have a Mode (L/P/S) and a date — nothing to do.', 4000);
     return;
   }
   if (!confirm(
-    'Check portrait/landscape for ' + rows.length + ' YouTube row(s) via yt-dlp?\n\n'
-    + (skipped ? '(' + skipped + ' already have a Mode letter and will be skipped.)\n\n' : '')
-    + 'Each video is queried for its real width×height and Mode is set\n'
-    + '(P = portrait / Shorts, L = landscape). Runs one row at a time with\n'
-    + 'randomized delays + occasional rests to avoid tripping YouTube\'s\n'
-    + 'per-IP rate-limit — expect roughly 1–1.5 hours for ' + rows.length + ' rows.\n'
+    'Check portrait/landscape + upload date for ' + rows.length + ' YouTube row(s) via yt-dlp?\n\n'
+    + (skipped ? '(' + skipped + ' already have both a Mode letter and a date — skipped.)\n\n' : '')
+    + 'Each video is queried once for its real width×height and upload date;\n'
+    + 'Mode is set (P = portrait / Shorts, L = landscape) and the date → VidDate.\n'
+    + 'Runs one row at a time with randomized delays + occasional rests to avoid\n'
+    + 'tripping YouTube\'s per-IP rate-limit — expect roughly 1–1.5 hours for ' + rows.length + ' rows.\n'
     + 'Press Esc to abort at any point.\n\n'
     + 'NOTE: only works OFF-VPN. On a VPN, YouTube bot-walls and you\'ll\n'
-    + 'get a clear "no dimensions" report (Mode left unchanged).'
+    + 'get a clear "no dimensions" report (Mode/date left unchanged).'
   )) return;
 
   _ytOrientRunning = true;
@@ -3976,7 +3979,7 @@ async function housekeepingFillYTOrient() {
   const REST_MIN = 20000, REST_MAX = 45000;      // rest duration (ms), random in range
   const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
   let nextRestAt = randInt(REST_ROWS_MIN, REST_ROWS_MAX);
-  let portrait = 0, landscape = 0, noInfo = 0, failed = 0, changed = 0, i = 0;
+  let portrait = 0, landscape = 0, noInfo = 0, failed = 0, changed = 0, datesFilled = 0, i = 0;
   let consecutiveEmpty = 0;
   let botWalled = false;
   const failSamples = [];
@@ -3988,13 +3991,24 @@ async function housekeepingFillYTOrient() {
         + '\n   ▯ portrait ' + portrait + '  ·  ▭ landscape ' + landscape
         + '  ·  ✕ ' + (noInfo + failed)
         + '\n   (Esc to abort)', 120000);
-      let dims = null, errMsg = '';
+      let dims = null, errMsg = '', vidDate = '';
       try {
         const meta = await _ytdlpFetchMeta(row.link);
         const w = +(meta && meta.width) || 0, h = +(meta && meta.height) || 0;
         if (w > 0 && h > 0) dims = { w: w, h: h };
+        // (dev0535) the same yt-dlp document carries the upload date → VidDate.
+        const ud = String((meta && meta.upload_date) || '').trim();
+        if (/^\d{8}$/.test(ud)) vidDate = ud.slice(0, 4) + '-' + ud.slice(4, 6) + '-' + ud.slice(6, 8);
+        else if (meta && Number.isFinite(meta.timestamp)) vidDate = new Date(meta.timestamp * 1000).toISOString().slice(0, 10);
       } catch (e) { errMsg = (e && e.message) || 'error'; }
       if (_ytOrientAbort) break;
+
+      // (dev0535) fill the date whenever one came back, independent of dims.
+      if (vidDate && String(row.VidDate || '') !== vidDate) {
+        row.VidDate = vidDate;
+        row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+        datesFilled++;
+      }
 
       if (dims) {
         consecutiveEmpty = 0;
@@ -4006,6 +4020,8 @@ async function housekeepingFillYTOrient() {
           row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
           changed++;
         }
+      } else if (vidDate) {
+        consecutiveEmpty = 0;   // yt-dlp answered (date came back) — not a bot-wall
       } else {
         consecutiveEmpty++;
         if (errMsg) {
@@ -4043,7 +4059,7 @@ async function housekeepingFillYTOrient() {
     _ytOrientRunning = false;
   }
 
-  if (changed) { save(); render(); }
+  if (changed || datesFilled) { save(); render(); }
 
   const gotInfo = (portrait + landscape) > 0;
   let msg;
@@ -4056,11 +4072,12 @@ async function housekeepingFillYTOrient() {
       + 'Orientation could not be determined; Mode left unchanged.';
     if (failSamples.length) msg += '\n\n   e.g. ' + failSamples[0];
   } else {
-    msg = '✓ YT Orientation' + (_ytOrientAbort ? ' (aborted)' : '') + ' — checked ' + i + '/' + TOTAL + ':\n'
+    msg = '✓ YT Orientation + Date' + (_ytOrientAbort ? ' (aborted)' : '') + ' — checked ' + i + '/' + TOTAL + ':\n'
       + '   ▯ portrait (Shorts): ' + portrait + '\n'
       + '   ▭ landscape: ' + landscape + '\n'
       + '   Mode updated on ' + changed + ' row(s)'
-      + (skipped ? '\n   ⏭ already assigned (skipped): ' + skipped + ' row(s)' : '');
+      + '\n   📅 date filled on ' + datesFilled + ' row(s)'
+      + (skipped ? '\n   ⏭ already have both (skipped): ' + skipped + ' row(s)' : '');
     const miss = noInfo + failed;
     if (miss) msg += '\n   ✕ no info: ' + miss + ' row(s)';
   }
