@@ -142,7 +142,12 @@
     const seen = new Set();
     if (typeof data !== 'undefined' && Array.isArray(data)) {
       data.forEach(r => {
-        (r.tags || []).forEach(id => {
+        // Guard against rows whose `tags` field isn't an array (a stray string,
+        // object, etc. from older imports). `("foo" || []).forEach` throws, and
+        // since buildIndex runs inside createTag/updateTag, that TypeError aborted
+        // the entire GBIF "Apply All" — the apply appeared to do nothing.
+        if (!Array.isArray(r.tags)) return;
+        r.tags.forEach(id => {
           if (!byId.has(id) && !seen.has(id)) { seen.add(id); orphanTags.push(id); }
         });
       });
@@ -3062,8 +3067,21 @@
             });
           }
         };
-        el.addEventListener('click',    () => handlePick(false));
-        el.addEventListener('dblclick', () => handlePick(true));
+        // Disambiguate single vs double click with a short timer. A single
+        // click (handlePick(false)) calls renderGbifResult → fetchAndRenderCandidates,
+        // which tears down and rebuilds this whole candidate list. If we ran that
+        // on the FIRST click of a double-click, `el` would be detached before the
+        // browser could fire `dblclick` — so Apply All never ran. Delaying the
+        // preview lets a double-click cancel it and run Apply All instead.
+        let clickTimer = null;
+        el.addEventListener('click', () => {
+          if (clickTimer) return;           // second click of a pair — dblclick handles it
+          clickTimer = setTimeout(() => { clickTimer = null; handlePick(false); }, 250);
+        });
+        el.addEventListener('dblclick', () => {
+          if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+          handlePick(true);
+        });
         el.title = 'Click to preview · Double-click to Apply All immediately';
       });
     } catch (e) {
