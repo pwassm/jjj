@@ -10,19 +10,25 @@
 // Two kinds of entries:
 //   • fn entries  — dispatched by _executeHotkey below. core.js's window-capture
 //     listener forwards bare letters here (see core.js ~line 401).
-//   • doc entries (no fn) — keys handled elsewhere (core.js window-capture
-//     specials like Ctrl+D / Alt+R / Shift+F, screen-gated grid keys). They are
-//     listed here ONLY so H shows the complete picture; `impl` says where the
-//     real handler lives. When migrating a screen's keys into the registry,
-//     replace its doc entry with a fn entry.
+//   • doc entries (no fn) — interactions handled elsewhere, listed here ONLY so
+//     H shows the complete picture; `impl` says where the real handler lives.
+//     Three flavours: (a) window-capture keys owned by core.js (Ctrl+D / Alt+R /
+//     Shift+F, screen-gated grid keys); (b) GESTURES — swipe/mouse idioms; and
+//     (c) MENUS — the hamburger + right-click context menus. Gestures and menus
+//     stay screen-local by design; they are documented, not dispatched, from
+//     here. When migrating a screen's KEY into the registry, replace its doc
+//     entry with a fn entry (gestures/menus have no fn form).
 //
 // Entry fields:
 //   key    lowercase key as delivered by core.js's dispatcher (fn entries only)
-//   label  how the binding is displayed in Help ('T', 'Ctrl+D', '2 / 3 / 4 / 5')
+//   label  how the binding is displayed in Help ('T', 'Ctrl+D', 'Swipe → cell')
 //   group  Help grouping line
-//   desc   what the key does — THIS IS WHAT H RENDERS
+//   desc   what the key/gesture does — THIS IS WHAT H RENDERS
 //   scope  where it fires: 'global' or a screen code (doc entries)
-//   impl   doc entries: file/handler that actually owns the key
+//   impl   doc entries: file/handler that actually owns the interaction
+//   helpSection  doc entries: which Help sub-section it renders under —
+//                default 'Screen-gated hotkeys'; also 'Gestures' and 'Menus'
+//   dev    doc entries: true = dev-only (hidden from the Hu/Hum user help)
 //   fn(ctx) executable handler; ctx = open-overlay snapshot (see _hkCtx)
 //
 // Keys blocked in user mode (public site) are listed in HK_USER_BLOCKED — the
@@ -487,6 +493,79 @@ window.HOTKEYS = [
   { label: 'Esc', group: 'Everywhere', scope: 'global', dev: false,
     impl: 'core.js window-capture + per-screen handlers',
     desc: 'Defocus text / deselect row; steps back Xs→Xe→T and closes V/Ie/Ev (never closes T)' },
+
+  // ── Gestures — swipe / mouse idioms (no fn; documented, not dispatched) ────
+  // helpSection:'Gestures' renders these as their own Help sub-section. Because
+  // that name has no "hotkey" in it, the Hum mobile filter keeps the swipe/tap
+  // rows and drops the Shift/Ctrl/Alt/R-click rows on its own.
+  { label: 'Swipe → on a cell', group: 'Gestures', scope: 'G', dev: false, helpSection: 'Gestures',
+    impl: 'grid.js pointer swipe',
+    desc: 'Open that cell fullscreen — V (video) / Ie (image) / Xs (slide) / Q (quiz)' },
+
+  { label: 'Swipe ← on a cell', group: 'Gestures', scope: 'G', dev: false, helpSection: 'Gestures',
+    impl: 'grid.js pointer swipe',
+    desc: 'Toggle that cell’s video play/pause' },
+
+  { label: 'Swipe ← in a viewer', group: 'Gestures', scope: 'V/Ie/Xs/Q', dev: false, helpSection: 'Gestures',
+    impl: 'vp.js / viewer swipe-back',
+    desc: 'Close the fullscreen viewer and return to the Grid' },
+
+  { label: 'Shift-hold LMB / RMB', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
+    impl: 'grid.js wireMouseV (dev0364)',
+    desc: 'Zoom the hovered cell in (left) / out (right); Ctrl+Shift+LMB also zooms out (Firefox-safe)' },
+
+  { label: 'Shift+drag on a cell', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
+    impl: 'grid.js _gridCellPan (dev0364)',
+    desc: 'Pan the zoomed cell content (transient — not saved)' },
+
+  { label: 'Alt+click a cell', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
+    impl: 'grid.js COI persist (dev0364)',
+    desc: 'Save the current zoom/pan framing (COI) onto that row' },
+
+  { label: 'Ctrl+click a cell', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
+    impl: 'grid.js',
+    desc: 'Open the Editor (Ev / Ie) for that cell' },
+
+  { label: 'Hold a cell, click another', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
+    impl: 'grid.js cut/swap',
+    desc: 'Cut a cell, then swap it with the next cell you click' },
+
+  { label: 'R-click in V', group: 'Gestures', scope: 'V', dev: true, helpSection: 'Gestures',
+    impl: 'vp.js floating step button (dev0410)',
+    desc: 'Open the floating step-button panel (frame nudge, free-run wheel, ping-pong/loop); right-click again closes it' },
+
+  { label: 'Swipe → / ← title bar', group: 'Gestures', scope: 'Xe', dev: true, helpSection: 'Gestures',
+    impl: 'xe.js title-bar swipe',
+    desc: 'Auto-save, then preview the slide (→) or close back to the Table (←)' },
+
+  { label: 'Shift+click down a column', group: 'Gestures', scope: 'T', dev: true, helpSection: 'Gestures',
+    impl: 'core.js range select',
+    desc: 'Range-select rows in that column, then bulk-set one value across all of them' },
+
+  // ── Menus — hamburger + right-click context menus (no fn) ──────────────────
+  { label: '☰ button (top-left)', group: 'Menus', scope: 'global', dev: false, helpSection: 'Menus',
+    impl: 'boot.js _showShareableMenu',
+    desc: 'Open the home menu — greeting, Search, saved views & Collections (the shareable landing page; this replaced the old M key)' },
+
+  { label: 'R-click a grid cell', group: 'Menus', scope: 'G', dev: true, helpSection: 'Menus',
+    impl: 'grid.js context menu',
+    desc: 'Cell context menu — T / V / E / D actions for that row' },
+
+  { label: 'R-click a tag chip', group: 'Menus', scope: 'T/A', dev: true, helpSection: 'Menus',
+    impl: 'tags.js chip menu',
+    desc: 'Tag menu — Copy tag / open Dictionary / Filter by tag / Remove from row' },
+
+  { label: 'R-click a tag cell', group: 'Menus', scope: 'T', dev: true, helpSection: 'Menus',
+    impl: 'core.js',
+    desc: 'Paste the copied tag onto this row (when one is on the clipboard)' },
+
+  { label: 'R-click a Dictionary node', group: 'Menus', scope: 'D', dev: true, helpSection: 'Menus',
+    impl: 'dictionary context menu',
+    desc: 'Node menu — Cut / Paste / Delete / GBIF lookup' },
+
+  { label: 'R-click a segment tab', group: 'Menus', scope: 'Ev', dev: true, helpSection: 'Menus',
+    impl: 'video.js',
+    desc: 'Rename / relabel that video segment' },
 ];
 
 // ── DISPATCHER ────────────────────────────────────────────────────────────────
@@ -545,16 +624,32 @@ window._hotkeysHelpSection = function() {
     if (typeof h.fn !== 'function' || !h.label || !h.desc) return; // 'w' rides the 'W or L' row
     fnItems.push({ key: h.label, desc: h.desc, dev: HK_USER_BLOCKED.includes(h.key) });
   });
-  const docItems = window.HOTKEYS
-    .filter(h => typeof h.fn !== 'function')
-    .map(h => ({ key: h.label + (h.scope !== 'global' ? '  (' + h.scope + ')' : ''), desc: h.desc, dev: !!h.dev }));
+  // Doc entries (no fn) are bucketed into named Help sub-sections via their
+  // `helpSection` field — default 'Screen-gated hotkeys' for the window-capture
+  // keys, plus 'Gestures' and 'Menus'. Order follows first appearance in the
+  // registry. Splitting them out means the Hum mobile filter (which keys off the
+  // section name) keeps the swipe/tap/button rows and drops the modifier/r-click
+  // rows without any per-entry flag.
+  const docSections = [];
+  window.HOTKEYS.forEach(h => {
+    if (typeof h.fn === 'function' || !h.label || !h.desc) return;
+    const name = h.helpSection || 'Screen-gated hotkeys';
+    let sec = docSections.find(s => s.name === name);
+    if (!sec) { sec = { name: name, items: [] }; docSections.push(sec); }
+    sec.items.push({
+      key: h.label + (h.scope && h.scope !== 'global' ? '  (' + h.scope + ')' : ''),
+      desc: h.desc,
+      dev: !!h.dev,
+    });
+  });
   return {
     id: 'GLOBAL', title: 'Global — works from any screen', devOnly: false,
     desc: 'Rendered live from the hotkey registry (hotkeys.js) — this list cannot drift from the code. '
-        + 'Single-letter hotkeys fire when no input/editable has focus.',
+        + 'Single-letter hotkeys fire when no input/editable has focus. '
+        + 'The gestures + menus below are documented here too, but each stays owned by its own screen.',
     sections: [
       { name: 'Hotkeys', items: fnItems },
-      { name: 'Screen-gated hotkeys', items: docItems },
+      ...docSections,
     ],
   };
 };
