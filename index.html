@@ -662,6 +662,10 @@ thead th.rn              { color: #fff !important; }
       <button type="button" class="fb-toggle" data-orient="landscape">⬌ landscape</button>
       <button type="button" class="fb-toggle" data-orient="portrait">⬍ portrait</button>
     </span>
+    <span style="color:#456;">│</span>
+    <span id="fbSourceBar" style="display:inline-flex;gap:4px;align-items:center;">
+      <button type="button" class="fb-toggle" data-source="needs" title="Only rows still needing a source page (linkpage = &quot;noLinkpageYet&quot;)">🔗 needs source</button>
+    </span>
   </div>
   <span style="color:#f8a;font-size:13px;font-weight:bold;white-space:nowrap;">🔍 Filter:</span>
   <label style="color:#888;font-size:11px;white-space:nowrap;">Anywhere:</label>
@@ -953,7 +957,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0548';
+  window.HELP_VERSION_STR = 'dev0549';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','boot.js'];

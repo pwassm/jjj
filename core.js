@@ -2614,7 +2614,7 @@ function rowMatchesFilter(row) {
       if (!q) continue;
       if (k === 'anywhere') {
         // OR across all text fields + tag labels
-        const textFields = ['VidAuthor', 'VidTitle', 'link', 'VidComment'];
+        const textFields = ['VidAuthor', 'VidTitle', 'link', 'linkpage', 'VidComment'];
         let found = textFields.some(f => String(row[f] || '').toLowerCase().includes(q));
         if (!found) found = String(row.ftext || '').replace(/<[^>]*>/g, ' ').toLowerCase().includes(q);
         if (!found && window.tagsLib && row.tags) {
@@ -2647,6 +2647,10 @@ function rowMatchesFilter(row) {
               || (orient.includes('landscape') && ps === 'L');
       if (!ok) return false;
     }
+    // (dev0549) "needs source" toggle — only rows still carrying the review
+    // marker (linkpage == "noLinkpageYet").
+    const source = rowFilter.source || [];
+    if (source.includes('needs') && row.linkpage !== 'noLinkpageYet') return false;
     return true;
   }
   if (rowFilter.col === 'tags' && rowFilter.hierarchical && window.tagsLib) {
@@ -4568,16 +4572,17 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   const text = { VidAuthor:'', VidTitle:'', link:'', ftext:'', anywhere:'' };
   let media  = [];  // (dev0343) media-type toggles: 'image'|'video'|'other' (OR)
   let orient = [];  // (dev0343) orientation toggles: 'landscape'|'portrait' (OR)
+  let source = [];  // (dev0549) source-page toggle: 'needs' = linkpage=='noLinkpageYet'
   let dd = null, ddIdx = -1, ddMatches = [];
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   let _flTimer = null;
   function applyLive() {
-    const hasAny = chips.length || media.length || orient.length
+    const hasAny = chips.length || media.length || orient.length || source.length
                 || Object.values(text).some(v => v && v.trim());
     rowFilter = hasAny ? { composite: true, tags: chips.slice(), text: Object.assign({}, text),
-                           media: media.slice(), orient: orient.slice() } : null;
+                           media: media.slice(), orient: orient.slice(), source: source.slice() } : null;
     if (rowFilter) _lastRowFilter = rowFilter;
     // (dev0326) Debounce the expensive render + count scan: typing in the filter
     // otherwise rebuilds the whole tbody (O(rows)) on EVERY keystroke. rowFilter
@@ -4620,9 +4625,11 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   // each bar). Media is live-computed from the link; orientation reads P/S.
   const mediaBtns  = Array.from(document.querySelectorAll('#fbMediaBar  [data-media]'));
   const orientBtns = Array.from(document.querySelectorAll('#fbOrientBar [data-orient]'));
+  const sourceBtns = Array.from(document.querySelectorAll('#fbSourceBar [data-source]'));
   function paintToggles() {
     mediaBtns.forEach(b  => b.classList.toggle('on', media.includes(b.dataset.media)));
     orientBtns.forEach(b => b.classList.toggle('on', orient.includes(b.dataset.orient)));
+    sourceBtns.forEach(b => b.classList.toggle('on', source.includes(b.dataset.source)));
   }
   function wireToggle(btn, arr, key) {
     btn.addEventListener('click', () => {
@@ -4633,6 +4640,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   }
   mediaBtns.forEach(b  => wireToggle(b, media,  b.dataset.media));
   orientBtns.forEach(b => wireToggle(b, orient, b.dataset.orient));
+  sourceBtns.forEach(b => wireToggle(b, source, b.dataset.source));
 
   // ── Tag dropdown ──
   function closeDd() { if (dd) { dd.remove(); dd = null; } ddIdx = -1; ddMatches = []; }
@@ -4779,7 +4787,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   // Buttons
   clearBtn.addEventListener('click', () => {
     chips = []; Object.keys(text).forEach(k => text[k] = '');
-    media.length = 0; orient.length = 0;   // mutate in place — toggle handlers hold these refs
+    media.length = 0; orient.length = 0; source.length = 0;   // mutate in place — toggle handlers hold these refs
     ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbAnywhere'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
@@ -4801,13 +4809,14 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
 
   // Public API — called by F hotkey (vp.js) and Shift-F
   window.openFilterBar = function () {
-    media.length = 0; orient.length = 0;   // reset toggles (refilled below if composite)
+    media.length = 0; orient.length = 0; source.length = 0;   // reset toggles (refilled below if composite)
     if (rowFilter && rowFilter.composite) {
       // Restore full composite filter state
       chips = (rowFilter.tags || []).slice();
       Object.assign(text, rowFilter.text || {});
       (rowFilter.media  || []).forEach(v => media.push(v));
       (rowFilter.orient || []).forEach(v => orient.push(v));
+      (rowFilter.source || []).forEach(v => source.push(v));
       document.getElementById('fbAuthor').value  = text.VidAuthor || '';
       document.getElementById('fbTitle').value   = text.VidTitle  || '';
       document.getElementById('fbLink').value    = text.link      || '';
