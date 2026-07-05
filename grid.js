@@ -261,16 +261,31 @@ function gridCleanupPlayers() {
 // iframe at a fixed natural size (326×620), scale it so its width matches
 // the cell, and offset top so the header is clipped above the visible area.
 function fitGridIgFrame(cellEl, iframe) {
-  const NAT_W = 326, HEADER = 54;
+  const NAT_W = 326, NAT_H = 620, HEADER = 54;
+  // (dev0541) Natural-px y where the embed's picture ends. IG caps a portrait
+  // post at ~4:5, so the media runs from just under the header to about
+  // HEADER + 326×(5/4); below that is the like/caption footer. Used to bound the
+  // COI pan so it can slide down to the picture bottom but not into the caption.
+  const MEDIA_BOTTOM = HEADER + Math.round(NAT_W * 5 / 4);
   function fit() {
     if (!cellEl.isConnected) return;
-    const cw = cellEl.clientWidth;
+    const cw = cellEl.clientWidth, ch = cellEl.clientHeight;
     if (!cw) return;
     const scale = cw / NAT_W;
+    // (dev0541) Vertical pan from the row's COI fy. A short landscape cell only
+    // shows a thin top strip of the scaled-to-width IG picture, hiding a subject
+    // in its lower half. fy=0 keeps the old top-aligned crop; higher fy slides
+    // the visible window down toward the picture bottom. Alt-click lower on the
+    // cell to reveal lower content (COI is now allowed on IG cells — gridSetCOI).
+    const coi = _gridCOIForCell(cellEl);
+    const fy = coi ? coi.fy : 0;
+    const winNat = ch ? (ch / scale) : (MEDIA_BOTTOM - HEADER);
+    const panNat = fy * Math.max(0, (MEDIA_BOTTOM - HEADER) - winNat);
     iframe.style.transform = 'scale(' + scale + ')';
     iframe.style.left = '0px';
-    iframe.style.top = (-HEADER * scale) + 'px';
+    iframe.style.top = (-(HEADER + panNat) * scale) + 'px';
   }
+  iframe._igFit = fit;   // (dev0541) let gridSetCOI re-run the fit after a COI change
   requestAnimationFrame(fit);
   setTimeout(fit, 50);
   if (typeof ResizeObserver !== 'undefined') {
@@ -881,7 +896,12 @@ function gridSetCOI(cellEl, cellStr, e) {
   const row = cellEl && cellEl._rowData;
   if (!row || row.UID == null) { if (typeof toast === 'function') toast('Alt-click: no row here for a COI', 1400); return; }
   const tgt = _gridCellZoomTarget(cellEl);
-  if (!tgt) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
+  // (dev0541) An IG embed isn't a zoom target (cross-origin iframe), but it can
+  // still take a COI: its fy vertically pans the clipped embed so a subject in
+  // the picture's lower half can be framed in a short cell (see fitGridIgFrame).
+  const igFrame = (!tgt && cellEl.querySelector) ? cellEl.querySelector('iframe') : null;
+  const isIgCell = !!igFrame && !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
+  if (!tgt && !isIgCell) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
   const rect = cellEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   const fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -891,7 +911,7 @@ function gridSetCOI(cellEl, cellStr, e) {
   // frameRef: a video records the current frame (≈ currentTime × 30 fps) so a
   // future autozoom can return to it; non-video cells record "image".
   let frameRef = 'image';
-  if (tgt.kind === 'vid') {
+  if (tgt && tgt.kind === 'vid') {
     frameRef = 'frame0';
     try {
       const p = (window.seeLearnVideoPlayers || {})['grid-vid-' + cellStr];
@@ -903,7 +923,10 @@ function gridSetCOI(cellEl, cellStr, e) {
   if (typeof isoNow === 'function') row.DateModified = isoNow();
   if (typeof save === 'function') save();
   // Reframe the clicked cell at once — it now anchors toward the new COI.
-  try { _gridApplyZoomToCell(cellEl); } catch (_) {}
+  try {
+    if (isIgCell && igFrame._igFit) igFrame._igFit();   // (dev0541) re-pan the IG embed
+    else _gridApplyZoomToCell(cellEl);
+  } catch (_) {}
   if (typeof toast === 'function') {
     toast('COI ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%  ·  ' + frameRef, 1800);
   }
