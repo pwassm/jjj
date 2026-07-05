@@ -714,10 +714,7 @@
       "stereolepis"
     ],
     "rank": "species",
-    "aliases": [
-      "giant sea bass",
-      "Stereolepis gigas Ayres, 1859"
-    ],
+    "aliases": [],
     "common": "Giant sea bass",
     "def": ""
   },
@@ -1000,9 +997,7 @@
     ],
     "rank": "species",
     "aliases": [
-      "giant anemone",
-      "Condylactis gigantea (Weinland",
-      "1860)"
+      "giant anemone"
     ],
     "common": "purple-tipped anemone",
     "def": "",
@@ -1413,10 +1408,7 @@
     "parents": [
       "neoclinus"
     ],
-    "aliases": [
-      "Sarcastic fringehead",
-      "Neoclinus blanchardi Girard, 1858"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Sarcastic fringehead",
@@ -1623,9 +1615,7 @@
     "parents": [
       "bathynomus"
     ],
-    "aliases": [
-      "Bathynomus giganteus A.Milne-Edwards, 1879"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "giant isopod"
@@ -1682,7 +1672,6 @@
       "sagittarius"
     ],
     "aliases": [
-      "Sagittarius serpentarius (J.F.Miller, 1779)",
       "Secretary bird"
     ],
     "def": "",
@@ -1901,11 +1890,7 @@
     "parents": [
       "branta"
     ],
-    "aliases": [
-      "Branta leucopsis (Bechstein",
-      "1803)",
-      "Barnacle goose"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Barnacle Goose",
@@ -1974,9 +1959,7 @@
     "parents": [
       "pelagonemertes"
     ],
-    "aliases": [
-      "Pelagonemertes rollestoni Moseley, 1875"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species"
   },
@@ -2031,10 +2014,7 @@
     "parents": [
       "chionodraco"
     ],
-    "aliases": [
-      "Chionodraco hamatus (Lönnberg",
-      "1905)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "crocodile icefish",
@@ -2192,9 +2172,7 @@
     "parents": [
       "lubricogobius"
     ],
-    "aliases": [
-      "Lubricogobius exiguus Tanaka, 1915"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Yellow pygmy-goby"
@@ -2206,10 +2184,7 @@
     "parents": [
       "mola"
     ],
-    "aliases": [
-      "Mola mola (Linnaeus",
-      "1758)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Ocean sunfish, Sunfish",
@@ -2277,10 +2252,7 @@
     "parents": [
       "loxodonta"
     ],
-    "aliases": [
-      "Loxodonta africana (Blumenbach",
-      "1797)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "African elephant",
@@ -2293,12 +2265,7 @@
     "parents": [
       "arothron"
     ],
-    "aliases": [
-      "Arothron hispidus (Linnaeus",
-      "1758)",
-      "Arothron hispidus (Linnaeus",
-      "1758)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "White spotted pufferfish",
@@ -2332,9 +2299,7 @@
     "parents": [
       "bradypodion"
     ],
-    "aliases": [
-      "Bradypodion thamnobates Raw, 1976"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Natal Midlands Dwarf Chameleon"
@@ -2452,10 +2417,7 @@
     "parents": [
       "eunice"
     ],
-    "aliases": [
-      "Eunice aphroditois (Pallas",
-      "1788)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Bobbit-worm",
@@ -2608,8 +2570,7 @@
       "enhydra"
     ],
     "aliases": [
-      "Enhydra lutris nereis (Merriam",
-      "1904)",
+      "Enhydra lutris nereis",
       "Enhydra lutis"
     ],
     "def": "",
@@ -2723,10 +2684,7 @@
     "parents": [
       "megaptera"
     ],
-    "aliases": [
-      "Megaptera novaeangliae (Borowski",
-      "1781)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Humpback whale",
@@ -2771,9 +2729,7 @@
     "parents": [
       "orcinus"
     ],
-    "aliases": [
-      "Orcinus orca (Linnaeus, 1758)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Killer Whale"
@@ -2972,7 +2928,6 @@
       "velella"
     ],
     "aliases": [
-      "Velella velella (Linnaeus, 1758)",
       "Velella vellela"
     ],
     "def": "",
@@ -2986,10 +2941,7 @@
     "parents": [
       "clione"
     ],
-    "aliases": [
-      "Clione limacina (Phipps",
-      "1774)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Sea angel",
@@ -3047,10 +2999,7 @@
     "parents": [
       "ptilosarcus"
     ],
-    "aliases": [
-      "Ptilosarcus gurneyi (Gray",
-      "1860)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Gurney's sea pen, Orange sea pen, Fleshy sea pen",
@@ -3129,9 +3078,7 @@
     "parents": [
       "physeter"
     ],
-    "aliases": [
-      "Physeter macrocephalus Linnaeus, 1758"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Sperm Whale"
@@ -3249,9 +3196,7 @@
     "parents": [
       "balaenoptera"
     ],
-    "aliases": [
-      "Balaenoptera musculus (Linnaeus, 1758)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Blue whale"
@@ -3292,10 +3237,7 @@
     "parents": [
       "paracentrotus"
     ],
-    "aliases": [
-      "Paracentrotus lividus (Lamarck",
-      "1816)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Rock Urchin",
@@ -3383,8 +3325,6 @@
       "lithopoma"
     ],
     "aliases": [
-      "Astraea tecta (Lightfoot",
-      "1786)",
       "Astraea tecta"
     ],
     "def": "",
@@ -3482,9 +3422,7 @@
     "parents": [
       "thaumoctopus"
     ],
-    "aliases": [
-      "Thaumoctopus mimicus Norman & Hochberg, 2005"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Mimic octopus"
@@ -3496,10 +3434,7 @@
     "parents": [
       "macrotritopus"
     ],
-    "aliases": [
-      "Macrotritopus defilippi (Vérany",
-      "1851)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Longarm Octopus",
@@ -3599,9 +3534,7 @@
     "parents": [
       "riftia"
     ],
-    "aliases": [
-      "Riftia pachyptila Jones, 1981"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "giant tubeworm"
@@ -3795,10 +3728,7 @@
     "parents": [
       "elysia"
     ],
-    "aliases": [
-      "Elysia marginata (Pease",
-      "1871)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Tri-banded Taco Slug",
@@ -3957,10 +3887,7 @@
     "parents": [
       "mertensia"
     ],
-    "aliases": [
-      "Mertensia ovum (Fabricius",
-      "1780)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Arctic comb jelly",
@@ -3995,9 +3922,7 @@
     "parents": [
       "lampocteis"
     ],
-    "aliases": [
-      "Lampocteis cruentiventer Harbison, Matsumoto & Robison, 2001"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Bloodbelly Comb Jelly"
@@ -4086,10 +4011,7 @@
     "parents": [
       "cryptochiton"
     ],
-    "aliases": [
-      "Cryptochiton stelleri (Middendorff",
-      "1847)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "gumboot chiton",
@@ -4299,10 +4221,7 @@
     "parents": [
       "remora"
     ],
-    "aliases": [
-      "Remora remora (Linnaeus",
-      "1758)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Common remora",
@@ -4382,11 +4301,7 @@
     "parents": [
       "ascarosepion"
     ],
-    "aliases": [
-      "Ascarosepion pfefferi (Hoyle",
-      "1885)",
-      "Flamboyant cuttlefish"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Flamboyant Cuttlefish",
@@ -4411,7 +4326,7 @@
       "acanthosepion"
     ],
     "aliases": [
-      "Sepia pharaonis Ehrenberg, 1831"
+      "Sepia pharaonis"
     ],
     "def": "",
     "rank": "species",
@@ -4486,10 +4401,7 @@
     "parents": [
       "richtersius"
     ],
-    "aliases": [
-      "Richtersius coronifer (Richters",
-      "1903)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Water bear",
@@ -4524,10 +4436,7 @@
     "parents": [
       "echiniscus"
     ],
-    "aliases": [
-      "Echiniscus testudo (Doyère",
-      "1840)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Water bear",
@@ -4629,10 +4538,7 @@
     "parents": [
       "calcinus"
     ],
-    "aliases": [
-      "Calcinus elegans (H.Milne-Edwards",
-      "1836)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "electric blue hermit crab",
@@ -4678,10 +4584,7 @@
     "parents": [
       "ctenoides"
     ],
-    "aliases": [
-      "Ctenoides mitis (Lamarck",
-      "1807)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Smooth Flame Scallop",
@@ -4738,9 +4641,7 @@
     "parents": [
       "cassis"
     ],
-    "aliases": [
-      "Cassis tuberosa (Linnaeus, 1758)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Caribbean Helmet"
@@ -4787,9 +4688,7 @@
     "parents": [
       "antennarius"
     ],
-    "aliases": [
-      "Antennarius striatus (Shaw, 1794)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Striated frogfish"
@@ -4820,9 +4719,7 @@
     "parents": [
       "pseudobiceros"
     ],
-    "aliases": [
-      "Pseudobiceros bedfordi (Laidlaw, 1903)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Persian Carpet Flatworm"
@@ -4934,7 +4831,6 @@
       "odontodactylus"
     ],
     "aliases": [
-      "Odontodactylus scyllarus (Linnaeus, 1758)",
       "Mantis shrimp"
     ],
     "def": "",
@@ -4948,9 +4844,7 @@
     "parents": [
       "strongylocentrotus"
     ],
-    "aliases": [
-      "Strongylocentrotus purpuratus (Stimpson, 1857)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "purple sea urchin"
@@ -5008,10 +4902,7 @@
     "parents": [
       "mesocentrotus"
     ],
-    "aliases": [
-      "Mesocentrotus franciscanus (A.Agassiz",
-      "1863)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "red sea urchin",
@@ -5035,9 +4926,7 @@
     "parents": [
       "bodianus"
     ],
-    "aliases": [
-      "Bodianus pulcher (Ayres, 1854)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "California sheephead"
@@ -5324,11 +5213,7 @@
     ],
     "aliases": [
       "Cacatua galerita galerita",
-      "Cacatua galerita eleonora (Finsch",
-      "1863)",
-      "Cacatua galerita eleonora",
-      "Cacatua galerita eleonora (Finsch",
-      "1863)"
+      "Cacatua galerita eleonora"
     ],
     "def": "",
     "rank": "species",
@@ -5485,11 +5370,7 @@
     "parents": [
       "delphinapterus"
     ],
-    "aliases": [
-      "Delphinapterus leucas (Pallas",
-      "1776)",
-      "Beluga whale"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Beluga whale",
@@ -5555,8 +5436,6 @@
       "ambystoma"
     ],
     "aliases": [
-      "Ambystoma mexicanum (Shaw & Nodder",
-      "1798)",
       "Axototl"
     ],
     "def": "",
@@ -5645,10 +5524,7 @@
     "parents": [
       "morus"
     ],
-    "aliases": [
-      "Morus capensis (Lichtenstein",
-      "1823)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Cape gannet, South African gannet",
@@ -5759,10 +5635,7 @@
     "parents": [
       "rhinopias"
     ],
-    "aliases": [
-      "Rhinopias frondosa (Günther",
-      "1892)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Weedy Scorpionfish",
@@ -5864,10 +5737,7 @@
     "parents": [
       "orectolobus"
     ],
-    "aliases": [
-      "Orectolobus maculatus (Bonnaterre",
-      "1788)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Spotted Wobbegong",
@@ -5935,10 +5805,7 @@
     "parents": [
       "aurelia"
     ],
-    "aliases": [
-      "Aurelia aurita (Linnaeus",
-      "1758)"
-    ],
+    "aliases": [],
     "def": "",
     "rank": "species",
     "common": "Moon Jelly, Common jellyfish",
@@ -6121,8 +5988,6 @@
       "lybia"
     ],
     "aliases": [
-      "Lybia tessellata (Latreille",
-      "1812)",
       "Lybia tesselata"
     ],
     "def": "",

@@ -173,6 +173,40 @@
       .replace(/^-|-$/g, '');
   }
 
+  // Strip taxonomic authorship from a scientific name, leaving the clean
+  // canonical Latin name. GBIF's `scientificName` carries author + year — e.g.
+  // "Lybia tessellata (Latreille, 1812)" — and that comma is poison: the
+  // Dictionary aliases field is comma-separated (split on save), so an author
+  // comma re-splits one alias into junk fragments ("…(Latreille" + "1812)").
+  // Common-name aliases (no year, no "(Author") pass through untouched.
+  // Returns '' for pure authorship fragments (e.g. "1812)") so callers drop them.
+  function stripAuthorship(name) {
+    const s = String(name || '').trim();
+    if (!s) return '';
+    if (!/\d{4}/.test(s) && !/\([A-Z]/.test(s)) return s;   // not a sci-name-with-author
+    // Leading Latin name: Genus + 1–2 lowercase epithets (species / subspecies).
+    const m = s.match(/^[A-Z][a-zë-]+(?:\s+[a-zë-]+){1,2}/);
+    return m ? m[0].trim() : '';
+  }
+
+  // Enforce the alias-field invariant: aliases NEVER contain commas (the field's
+  // own separator). Strip authorship, replace any remaining comma with a space,
+  // collapse whitespace, drop empties, dedupe case-insensitively. Applied at
+  // every write point so the comma-separated editor round-trips losslessly.
+  function cleanAliasList(arr) {
+    if (!Array.isArray(arr)) return [];
+    const out = [], seen = new Set();
+    arr.forEach(a => {
+      let s = stripAuthorship(a).replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!s) return;
+      const lc = s.toLowerCase();
+      if (seen.has(lc)) return;
+      seen.add(lc);
+      out.push(s);
+    });
+    return out;
+  }
+
   // ── graph operations ─────────────────────────────────────────────────────
   function tagAncestors(id) {
     // Returns Set of all ancestor IDs (NOT including self)
@@ -299,7 +333,7 @@
       label,
       kind: kind || 'topic',
       parents: Array.isArray(partial.parents) ? partial.parents.filter(Boolean) : [],
-      aliases: Array.isArray(partial.aliases) ? partial.aliases.filter(Boolean) : [],
+      aliases: cleanAliasList(partial.aliases),
       def: partial.def || '',
     };
     if (rank) rec.rank = rank;
@@ -324,7 +358,7 @@
         t.parents = patch.parents.filter(Boolean);
         if (t.kind === 'taxon' && t.parents.length > 1) t.parents = [t.parents[0]];
       } else if (k === 'aliases' && Array.isArray(patch.aliases)) {
-        t.aliases = patch.aliases.filter(Boolean);
+        t.aliases = cleanAliasList(patch.aliases);
       } else {
         t[k] = patch[k];
       }
@@ -393,7 +427,7 @@
         aliasesAdded++;
       }
     });
-    to.aliases = mergedAliases;
+    to.aliases = cleanAliasList(mergedAliases);
 
     // 2. Fill in common/def on target if missing
     if (!to.common && from.common) to.common = from.common;
@@ -2903,9 +2937,12 @@
       individualBtns.push({ id:'apply-rank', label:'Set rank → ' + rank });
     }
     if (matchType === 'EXACT' || matchType === 'FUZZY') {
-      if (res.scientificName && res.scientificName !== t.label
-          && !(t.aliases || []).some(a => a.toLowerCase() === res.scientificName.toLowerCase())) {
-        individualBtns.push({ id:'apply-alias', label:'Add "' + res.scientificName + '" as alias' });
+      const sciAlias = stripAuthorship(res.canonicalName || res.scientificName);
+      const sciAliasLc = sciAlias.toLowerCase();
+      if (sciAlias && sciAliasLc !== String(t.label || '').toLowerCase()
+          && sciAliasLc !== String(t.common || '').toLowerCase()
+          && !(t.aliases || []).some(a => a.toLowerCase() === sciAliasLc)) {
+        individualBtns.push({ id:'apply-alias', label:'Add "' + sciAlias + '" as alias' });
       }
       if (chain.length > 1) {
         individualBtns.push({ id:'apply-chain', label:'📥 Import chain only (' + chain.length + ' ranks)' });
@@ -2973,7 +3010,7 @@
         if (action === 'apply-spell') patch.label = canonical;
         if (action === 'apply-rank')  patch.rank  = rank;
         if (action === 'apply-alias') {
-          patch.aliases = [...(t.aliases || []), res.scientificName];
+          patch.aliases = [...(t.aliases || []), stripAuthorship(res.canonicalName || res.scientificName)];
         }
         const rr = updateTag(tagId, patch);
         if (rr.ok) {
@@ -3189,11 +3226,17 @@
         const target = byId.get(mostSpecificId);
         if (target) {
           const patch = {};
-          // 1) Add scientific name w/ authorship as alias if distinct from label
-          if (res.scientificName
-              && res.scientificName !== target.label
-              && !(target.aliases || []).some(a => String(a).toLowerCase() === res.scientificName.toLowerCase())) {
-            patch.aliases = [...(target.aliases || []), res.scientificName];
+          // 1) Add the clean canonical scientific name as an alias if it's a
+          // distinct synonym (e.g. an old genus name). Authorship is stripped so
+          // no comma ever enters the aliases field. Skip when it just duplicates
+          // the label/common — that produced redundant (and comma-split) junk.
+          const sci = stripAuthorship(res.canonicalName || res.scientificName);
+          const sciLc = sci.toLowerCase();
+          if (sci
+              && sciLc !== String(target.label || '').toLowerCase()
+              && sciLc !== String(target.common || '').toLowerCase()
+              && !(target.aliases || []).some(a => String(a).toLowerCase() === sciLc)) {
+            patch.aliases = [...(target.aliases || []), sci];
             aliasAdded = true;
           }
           // 2) Set English common name if target lacks one
