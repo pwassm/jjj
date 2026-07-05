@@ -32,7 +32,7 @@
     "parents": [],
     "aliases": [],
     "def": "",
-    "common": "Shark",
+    "common": "shark",
     "extinct": false
   },
   {
@@ -594,7 +594,7 @@
     ],
     "rank": "species",
     "aliases": [],
-    "common": "Skeleton shrimp",
+    "common": "skeleton shrimp",
     "def": ""
   },
   {
@@ -617,7 +617,7 @@
     ],
     "rank": "species",
     "aliases": [],
-    "common": "Skeleton shrimp",
+    "common": "skeleton shrimp",
     "def": ""
   },
   {
@@ -681,7 +681,7 @@
     "aliases": [
       "icefish"
     ],
-    "common": "Blackfin icefish",
+    "common": "blackfin icefish",
     "def": ""
   },
   {
@@ -715,7 +715,7 @@
     ],
     "rank": "species",
     "aliases": [],
-    "common": "Giant sea bass",
+    "common": "giant sea bass",
     "def": ""
   },
   {
@@ -753,7 +753,7 @@
     "aliases": [
       "yellowfin rockfish"
     ],
-    "common": "Yellowfin rockfish",
+    "common": "yellowfin rockfish",
     "def": ""
   },
   {
@@ -822,7 +822,7 @@
     "aliases": [
       "blue-spotted sea urchin"
     ],
-    "common": "Blue-spotted sea urchin",
+    "common": "blue-spotted sea urchin",
     "def": ""
   },
   {
@@ -878,7 +878,7 @@
       "swimming sea cucumber",
       "headless chicken monster"
     ],
-    "common": "Swimming sea cucumber",
+    "common": "swimming sea cucumber",
     "def": ""
   },
   {
@@ -974,7 +974,7 @@
     "aliases": [
       "painted anemone"
     ],
-    "common": "Painted anemone",
+    "common": "painted anemone",
     "def": ""
   },
   {
@@ -1025,7 +1025,7 @@
     "aliases": [
       "swimming anemone"
     ],
-    "common": "Swimming anemone",
+    "common": "swimming anemone",
     "def": ""
   },
   {
@@ -1135,7 +1135,7 @@
     "aliases": [
       "predatory tunicate"
     ],
-    "common": "Predatory tunicate",
+    "common": "predatory tunicate",
     "def": ""
   },
   {
@@ -1397,7 +1397,7 @@
       "2014"
     ],
     "def": "",
-    "common": "White-spotted pufferfish",
+    "common": "white-spotted pufferfish",
     "extinct": false,
     "rank": "species"
   },
@@ -1411,7 +1411,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Sarcastic fringehead",
+    "common": "sarcastic fringehead",
     "extinct": false
   },
   {
@@ -1451,7 +1451,7 @@
       "Ping Pong"
     ],
     "def": "",
-    "common": "Ping Pong",
+    "common": "ping pong",
     "extinct": false
   },
   {
@@ -1605,7 +1605,7 @@
     ],
     "def": "",
     "rank": "genus",
-    "common": "Giant Isopods",
+    "common": "giant isopods",
     "extinct": false
   },
   {
@@ -1676,7 +1676,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Secretarybird"
+    "common": "secretarybird"
   },
   {
     "id": "perciformes",
@@ -1800,7 +1800,7 @@
     "aliases": [],
     "def": "",
     "rank": "order",
-    "common": "Feather star",
+    "common": "feather star",
     "extinct": false
   },
   {
@@ -1893,7 +1893,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Barnacle Goose",
+    "common": "barnacle goose",
     "extinct": false
   },
   {
@@ -2140,7 +2140,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Bowhead Whale",
+    "common": "bowhead whale",
     "extinct": false
   },
   {
@@ -2175,7 +2175,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Yellow pygmy-goby"
+    "common": "yellow pygmy-goby"
   },
   {
     "id": "mola-mola",
@@ -2187,7 +2187,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Ocean sunfish, Sunfish",
+    "common": "ocean sunfish, sunfish",
     "extinct": false
   },
   {
@@ -2268,7 +2268,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "White spotted pufferfish",
+    "common": "white spotted pufferfish",
     "extinct": false
   },
   {
@@ -2302,7 +2302,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Natal Midlands Dwarf Chameleon"
+    "common": "Natal Midlands dwarf chameleon"
   },
   {
     "id": "squamata",
@@ -2347,7 +2347,7 @@
     "aliases": [],
     "def": "",
     "rank": "order",
-    "common": "Owls",
+    "common": "owls",
     "extinct": false
   },
   {
@@ -2420,7 +2420,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Bobbit-worm",
+    "common": "bobbit-worm",
     "extinct": false
   },
   {
@@ -2665,7 +2665,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Vampire amoeba",
+    "common": "vampire amoeba",
     "extinct": false
   },
   {
@@ -2687,7 +2687,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Humpback whale",
+    "common": "humpback whale",
     "extinct": false
   },
   {
@@ -2732,7 +2732,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Killer Whale"
+    "common": "killer whale"
   },
   {
     "id": "delphinidae",
@@ -2769,7 +2769,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Taylor's sea hare, Eelgrass sea hare, zebra leafslug",
+    "common": "Taylor's sea hare, eelgrass sea hare, zebra leafslug",
     "extinct": false
   },
   {
@@ -2932,7 +2932,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "By-the-wind-Sailor"
+    "common": "by-the-wind-sailor"
   },
   {
     "id": "clione-limacina",
@@ -2944,7 +2944,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Sea angel",
+    "common": "sea angel",
     "extinct": false
   },
   {
@@ -3002,7 +3002,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Gurney's sea pen, Orange sea pen, Fleshy sea pen",
+    "common": "Gurney's sea pen, orange sea pen, fleshy sea pen",
     "extinct": false
   },
   {
@@ -3048,7 +3048,7 @@
     "aliases": [],
     "def": "",
     "rank": "family",
-    "common": "Anglerfishes",
+    "common": "anglerfishes",
     "extinct": false
   },
   {
@@ -3081,7 +3081,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Sperm Whale"
+    "common": "sperm whale"
   },
   {
     "id": "physeteridae",
@@ -3154,7 +3154,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Shark"
+    "common": "shark"
   },
   {
     "id": "good-story",
@@ -3199,7 +3199,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Blue whale"
+    "common": "blue whale"
   },
   {
     "id": "balaenoptera",
@@ -3227,7 +3227,7 @@
     "parents": [],
     "aliases": [],
     "def": "",
-    "common": "Diatom",
+    "common": "diatom",
     "extinct": false
   },
   {
@@ -3240,7 +3240,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Rock Urchin",
+    "common": "rock urchin",
     "extinct": false
   },
   {
@@ -3341,7 +3341,7 @@
     ],
     "aliases": [],
     "def": "",
-    "common": "Bats",
+    "common": "bats",
     "extinct": false
   },
   {
@@ -3425,7 +3425,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Mimic octopus"
+    "common": "mimic octopus"
   },
   {
     "id": "macrotritopus-defilippi",
@@ -3437,7 +3437,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Longarm Octopus",
+    "common": "longarm octopus",
     "extinct": false
   },
   {
@@ -3552,7 +3552,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Pink vent fish",
+    "common": "pink vent fish",
     "extinct": false
   },
   {
@@ -3731,7 +3731,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Tri-banded Taco Slug",
+    "common": "tri-banded taco slug",
     "extinct": false
   },
   {
@@ -3795,7 +3795,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Deep-sea Octopus",
+    "common": "deep-sea octopus",
     "extinct": false
   },
   {
@@ -3833,7 +3833,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Red mid-water comb jelly",
+    "common": "red mid-water comb jelly",
     "extinct": false
   },
   {
@@ -3925,7 +3925,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Bloodbelly Comb Jelly"
+    "common": "bloodbelly comb jelly"
   },
   {
     "id": "lobata",
@@ -4156,7 +4156,7 @@
     "aliases": [],
     "def": "",
     "rank": "genus",
-    "common": "Manta ray",
+    "common": "manta ray",
     "extinct": false
   },
   {
@@ -4224,7 +4224,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Common remora",
+    "common": "common remora",
     "extinct": false
   },
   {
@@ -4259,7 +4259,7 @@
     "aliases": [],
     "def": "",
     "rank": "family",
-    "common": "Snipe-eels"
+    "common": "snipe-eels"
   },
   {
     "id": "sepiida",
@@ -4304,7 +4304,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Flamboyant Cuttlefish",
+    "common": "flamboyant cuttlefish",
     "extinct": false
   },
   {
@@ -4330,7 +4330,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Pharoh cuttlefish"
+    "common": "pharoh cuttlefish"
   },
   {
     "id": "hypsibius-exemplaris",
@@ -4347,7 +4347,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Water bear",
+    "common": "water bear",
     "extinct": false
   },
   {
@@ -4404,7 +4404,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Water bear",
+    "common": "water bear",
     "extinct": false
   },
   {
@@ -4439,7 +4439,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Water bear",
+    "common": "water bear",
     "extinct": false
   },
   {
@@ -4528,7 +4528,7 @@
     "aliases": [],
     "def": "",
     "rank": "family",
-    "common": "Moray eels",
+    "common": "moray eels",
     "extinct": false
   },
   {
@@ -4587,7 +4587,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Smooth Flame Scallop",
+    "common": "smooth flame scallop",
     "extinct": false
   },
   {
@@ -4644,7 +4644,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Caribbean Helmet"
+    "common": "Caribbean helmet"
   },
   {
     "id": "littorinimorpha",
@@ -4691,7 +4691,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Striated frogfish"
+    "common": "striated frogfish"
   },
   {
     "id": "antennarius",
@@ -4722,7 +4722,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Persian Carpet Flatworm"
+    "common": "Persian carpet flatworm"
   },
   {
     "id": "turbellaria",
@@ -5088,7 +5088,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Darwin's Frog",
+    "common": "Darwin's frog",
     "extinct": false
   },
   {
@@ -5148,7 +5148,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Green spoonworm",
+    "common": "green spoonworm",
     "extinct": false
   },
   {
@@ -5217,7 +5217,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Sulphur-crested cockatoo",
+    "common": "sulphur-crested cockatoo",
     "extinct": false
   },
   {
@@ -5286,7 +5286,7 @@
     ],
     "def": "",
     "rank": "genus",
-    "common": "Cockatiels",
+    "common": "cockatiels",
     "extinct": false
   },
   {
@@ -5307,7 +5307,7 @@
     "aliases": [],
     "def": "",
     "rank": "family",
-    "common": "Hummingbirds",
+    "common": "hummingbirds",
     "extinct": false
   },
   {
@@ -5373,7 +5373,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Beluga whale",
+    "common": "beluga whale",
     "extinct": false
   },
   {
@@ -5440,7 +5440,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Axolotl",
+    "common": "axolotl",
     "extinct": false
   },
   {
@@ -5492,7 +5492,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Harlequin Shrimp",
+    "common": "harlequin shrimp",
     "extinct": false
   },
   {
@@ -5638,7 +5638,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Weedy Scorpionfish",
+    "common": "weedy scorpionfish",
     "extinct": false
   },
   {
@@ -5688,7 +5688,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Lacy Scorpionfish",
+    "common": "lacy scorpionfish",
     "extinct": false
   },
   {
@@ -5727,7 +5727,7 @@
     ],
     "def": "",
     "rank": "genus",
-    "common": "Typical Wobbegongs",
+    "common": "typical wobbegongs",
     "extinct": false
   },
   {
@@ -5740,7 +5740,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Spotted Wobbegong",
+    "common": "spotted wobbegong",
     "extinct": false
   },
   {
@@ -5795,7 +5795,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Barred mudskipper",
+    "common": "barred mudskipper",
     "extinct": false
   },
   {
@@ -5808,7 +5808,7 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Moon Jelly, Common jellyfish",
+    "common": "moon jelly, common jellyfish",
     "extinct": false
   },
   {
@@ -5868,7 +5868,7 @@
     ],
     "def": "",
     "rank": "species",
-    "common": "Lynx Nudibranch",
+    "common": "lynx nudibranch",
     "extinct": false
   },
   {
