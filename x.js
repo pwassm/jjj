@@ -1594,11 +1594,14 @@
     const ids = new Set(dupes.map(r => r.id));
     rows = rows.filter(r => !ids.has(r.id));
     dupes.forEach(r => { try { table.deleteRow(r.id); } catch (_) {} });
-    archiveDeleted(dupes);
+    // (dev0537) stamp InML=1 on the archived copy — flags "duplicate of something already
+    // in ml.json (has some value)" vs a plain manual delete (junk, never reconsider), which
+    // archives with no InML. ml.json/x.json rows are untouched; the flag lives in xdeleted.json.
+    archiveDeleted(dupes.map(r => Object.assign({}, r, { InML: 1 })));
     markDirty(); persist(false, { force: true });   // deliberate bulk delete — bypass the mass-drop guard
     refreshFacetOptions();
     applyFilters();
-    xToast(`🗑 Purged ${ids.size} row(s) already in ml.json → xdeleted.json`, 3000);
+    xToast(`🗑 Purged ${ids.size} row(s) already in ml.json → xdeleted.json (InML=1)`, 3000);
   }
 
   // ── Run a finder search (proxy /x/search → finder POSTs /x/import → poll+reload) ─
