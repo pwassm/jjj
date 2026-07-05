@@ -8804,7 +8804,7 @@ function _renderHd() {
       html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
       sec.items.forEach(it => {
         html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
-              + '<td style="padding:2px 0;color:#ccc;">' + escH(it.desc) + '</td></tr>';
+              + '<td style="padding:2px 0;color:#ccc;overflow-wrap:break-word;word-break:break-word;">' + escH(it.desc) + '</td></tr>';
       });
       html += '</table>';
     });
@@ -8845,7 +8845,7 @@ function _renderHu() {
       html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
       sec.items.forEach(it => {
         html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
-              + '<td style="padding:2px 0;color:#ccc;">' + escH(it.desc) + '</td></tr>';
+              + '<td style="padding:2px 0;color:#ccc;overflow-wrap:break-word;word-break:break-word;">' + escH(it.desc) + '</td></tr>';
       });
       html += '</table>';
     });
@@ -8890,7 +8890,7 @@ function _renderHum() {
       html += '<table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:4px;">';
       sec.items.forEach(it => {
         html += '<tr><td style="padding:4px 8px 4px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
-              + '<td style="padding:4px 0;color:#ddd;line-height:1.4;">' + escH(it.desc) + '</td></tr>';
+              + '<td style="padding:4px 0;color:#ddd;line-height:1.4;overflow-wrap:break-word;word-break:break-word;">' + escH(it.desc) + '</td></tr>';
       });
       html += '</table>';
     });

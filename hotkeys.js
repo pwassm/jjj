@@ -142,7 +142,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'g', label: 'G', group: 'Screens', scope: 'global',
-    desc: 'Open the Grid (in the Grid: open the hovered cell’s link in a new tab)',
+    desc: 'Open the Grid (in the Grid: open the hovered cell’s source page — its linkpage, or the link itself for YouTube/Vimeo/IG/articles; for a raw image with no source page, dev opens a reverse-image search, user gets a toast)',
     fn(ctx) {
       if (ctx.tgOpen) { closeGridList(); gridShow(); return; }
       // If in VP (Video/Image View), close it and stay in grid

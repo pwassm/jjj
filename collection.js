@@ -795,15 +795,52 @@ function cDeleteSelected() {
 // (dev0533) Prefer `linkpage` (the source webpage — set for videos and for
 // imagefinder3 image rows); fall back to `link` (the media URL itself) when a
 // row has no separate source page.
+// (dev0547) Rewrite so `g` never just downloads a raw media file:
+//   1. A real recorded linkpage wins. The "noLinkpageYet" sentinel is a TODO
+//      marker (row still needs a source page) — treated as absent.
+//   2. If the link is itself a webpage (YouTube / Vimeo / IG / article), that
+//      page IS the source → open it.
+//   3. Raw media (image / direct video) with no recorded source page:
+//        · dev  + image → open a Google Lens reverse-image lookup (find source)
+//        · dev  + video → toast (a raw MP4 can't be reverse-searched)
+//        · user (any)   → toast "No source page recorded"
+var _RAW_IMG_RE = /\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)$/i;
+var _RAW_VID_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i;
 window._gridOpenLink = function() {
   var cell = (typeof _gridHoverCell !== 'undefined') ? _gridHoverCell : null;
   var row = cell && cell._rowData;
-  var target = row && (row.linkpage || row.link);
-  if (!target) {
-    if (typeof _gridToast === 'function') _gridToast('Hover over a cell with a link first', 1400);
+  if (!row) {
+    if (typeof _gridToast === 'function') _gridToast('Hover over a cell first', 1400);
     return;
   }
-  window.open(target, '_blank', 'noopener');
+  var lp = row.linkpage;
+  if (lp && lp !== 'noLinkpageYet') { window.open(lp, '_blank', 'noopener'); return; }
+
+  var link = row.link || '';
+  if (!link) {
+    if (typeof _gridToast === 'function') _gridToast('No link on this cell', 1400);
+    return;
+  }
+
+  var path = link.split(/[?#]/)[0];
+  var isImg = _RAW_IMG_RE.test(path);
+  var isVid = _RAW_VID_RE.test(path);
+  // Not a raw media file → the link is a real page (video watch page, article,
+  // IG post, …). Opening it goes to the source, so just open it.
+  if (!isImg && !isVid) { window.open(link, '_blank', 'noopener'); return; }
+
+  var userMode = (typeof _isUserMode === 'function') && _isUserMode();
+  if (userMode) {
+    if (typeof _gridToast === 'function') _gridToast('No source page recorded for this item', 1600);
+    return;
+  }
+  if (isImg) {
+    window.open('https://lens.google.com/uploadbyurl?url=' + encodeURIComponent(link), '_blank', 'noopener');
+    if (typeof _gridToast === 'function') _gridToast('No source page — opened reverse-image search', 1800);
+    return;
+  }
+  // dev + direct video: nothing useful to reverse-search.
+  if (typeof _gridToast === 'function') _gridToast('No source page recorded (direct video)', 1600);
 };
 
 // (dev0375) C in grid: toggle closed captions on all YT/Vimeo iframes.
