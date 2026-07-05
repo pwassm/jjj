@@ -64,6 +64,12 @@ orgzly/
 # that feeds the St screen via clipboard; never committed.
 linkfinders/
 
+# (dev0550) Cloudflare Worker (worker/) — wrangler local state + deps.
+# The source (src/, schema.sql, wrangler.toml, README) IS committed; secrets
+# only ever enter via `wrangler secret put`, never files.
+worker/.wrangler/
+worker/node_modules/
+
 # (dev0312) Local-media IndexedDB exports — privacy.
 # Q's index (the localmedia IDB) lives in Chrome's profile, not in this repo:
 #   %LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\http_localhost_8080\

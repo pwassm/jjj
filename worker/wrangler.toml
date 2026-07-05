@@ -1,0 +1,29 @@
+# SLAM API — Cloudflare Worker (auth + expert comments + messages) backed by D1.
+# Deploy from this folder with: npx wrangler deploy
+
+name = "sal-api"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# After running `npx wrangler d1 create sal-db`, paste the database_id it
+# prints into the line below.
+[[d1_databases]]
+binding = "DB"
+database_name = "sal-db"
+database_id = "PASTE_DATABASE_ID_HERE"
+
+[vars]
+# While ENVIRONMENT is "dev" and no RESEND_API_KEY secret is set, the magic
+# link is returned in the /auth/request-link response instead of being
+# emailed — handy for testing, MUST be flipped to "prod" before real users.
+ENVIRONMENT = "dev"
+SITE_ORIGIN = "https://sealifeandmore.com"
+
+# Optional secrets (set with `npx wrangler secret put <NAME>`):
+#   RESEND_API_KEY   — enables real login emails via resend.com
+#   EMAIL_FROM       — e.g. "SeaLifeAndMore <login@sealifeandmore.com>"
+#   TURNSTILE_SECRET — enables Cloudflare Turnstile bot-check on request-link
+
+# Later, once the sealifeandmore.com DNS zone is on Cloudflare (it already
+# hosts the video.sealifeandmore.com R2 domain), uncomment for a clean URL:
+# routes = [{ pattern = "api.sealifeandmore.com", custom_domain = true }]
