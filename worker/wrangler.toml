@@ -16,7 +16,7 @@ database_id = "c2244b20-9641-47bb-bacb-667e9377fbbc"
 # While ENVIRONMENT is "dev" and no RESEND_API_KEY secret is set, the magic
 # link is returned in the /auth/request-link response instead of being
 # emailed — handy for testing, MUST be flipped to "prod" before real users.
-ENVIRONMENT = "dev"
+ENVIRONMENT = "prod"
 SITE_ORIGIN = "https://sealifeandmore.com"
 
 # Optional secrets (set with `npx wrangler secret put <NAME>`):
