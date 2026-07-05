@@ -549,6 +549,7 @@
         <button id="xPromote" title="Copy CHECKED rows into ml.json, keep them here as 'promoted' (stamped BA=1).&#10;Hotkey a = add the FOCUSED row to ml.json AND remove it from staging (Ctrl+Z undo).">➕ Promote sel</button>
         <button id="xDelete" class="danger" title="Remove CHECKED rows from the search store → xdeleted.json (won't re-import).&#10;Hotkey Delete or d = remove the FOCUSED row (Ctrl+Z undo).">🗑 Delete sel</button>
         <button id="xDeleteNoArc" class="danger" title="Remove CHECKED rows WITHOUT archiving to xdeleted.json — they are NOT remembered, so a re-run search CAN re-stage them.">🗑 Delete ¬xDel</button>
+        <button id="xDelInMl" class="danger" title="Delete every staged row whose media is ALREADY in ml.json — matched by CANONICAL link, so a non-canonical x.json link still matches ml.json's youtu.be form.&#10;ml.json is NOT touched; the removed rows move to xdeleted.json so they won't re-import.">🗑 Del in ml</button>
         <button id="xReload" title="Reload x.json from disk (do this after running a finder search)">↻ Reload</button>
         <button id="xSave" title="Write edits back to x.json">💾 Save</button>
         <button id="xClose" title="Close (Esc / T)">×</button>
@@ -607,6 +608,7 @@
     $('xPromote').addEventListener('click', () => promoteSelected());
     $('xDelete').addEventListener('click', () => deleteSelected(true));
     $('xDeleteNoArc').addEventListener('click', () => deleteSelected(false));
+    $('xDelInMl').addEventListener('click', () => deleteAlreadyInMl());
     $('xReload').addEventListener('click', () => loadData());
     $('xSave').addEventListener('click', () => persist(true));
     $('xClose').addEventListener('click', () => closeXScreen());
@@ -1568,6 +1570,35 @@
     refreshFacetOptions();
     applyFilters();
     xToast(`🗑 Deleted ${ids.size} row(s)` + (archive ? ' → xdeleted.json' : ' (not archived — can re-import)'), 2400);
+  }
+
+  // (dev0536) Purge staged rows whose media is ALREADY in ml.json. Matched by
+  // canonLink() so a non-canonical x.json link (youtube.com/watch?v=ID) still collapses
+  // to ml.json's canonical youtu.be/ID. ml.json is NOT touched — these are pure dupes;
+  // they archive to xdeleted.json (like Delete sel) so a re-run search won't re-stage them.
+  function deleteAlreadyInMl() {
+    if (!table) return;
+    if (typeof data === 'undefined' || !Array.isArray(data)) {
+      xToast('ml.json not loaded — open the T screen once first, then retry.', 3200); return;
+    }
+    const inMl = new Set(data.map(r => canonLink(r && r.link)).filter(Boolean));
+    const dupes = rows.filter(r => { const k = canonLink(r.link); return k && inMl.has(k); });
+    if (!dupes.length) { xToast('✓ No staged rows are already in ml.json — nothing to purge.', 2800); return; }
+    const vids = dupes.filter(r => (r.kind || '') === 'video').length;
+    if (!confirm(
+      `Delete ${dupes.length} staged row(s) already in ml.json`
+      + (vids ? ` (${vids} video)` : '') + `?\n\n`
+      + `Matched by CANONICAL link (non-canonical x.json links still match).\n`
+      + `ml.json is NOT affected — they move to xdeleted.json so they won't re-import.`
+    )) return;
+    const ids = new Set(dupes.map(r => r.id));
+    rows = rows.filter(r => !ids.has(r.id));
+    dupes.forEach(r => { try { table.deleteRow(r.id); } catch (_) {} });
+    archiveDeleted(dupes);
+    markDirty(); persist(false, { force: true });   // deliberate bulk delete — bypass the mass-drop guard
+    refreshFacetOptions();
+    applyFilters();
+    xToast(`🗑 Purged ${ids.size} row(s) already in ml.json → xdeleted.json`, 3000);
   }
 
   // ── Run a finder search (proxy /x/search → finder POSTs /x/import → poll+reload) ─
