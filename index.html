@@ -251,6 +251,10 @@ tbody tr:nth-child(even) td { background:#101020; }
 tbody tr:hover td { background:rgba(60,120,200,0.09) !important; }
 tbody tr.row-sel td { background:#0e2240 !important; }
 td { padding:2px 5px; border-right:1px solid #252535; border-bottom:1px solid #1a1a28; font-size:12px; color:#ccc; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; height:24px; line-height:20px; }
+/* (dev0553) The global td rule above (for the Table screen) was truncating the
+   Help reference cells with ellipsis + a fixed 24px height. Reset it inside the
+   help modal + the T-hotkey overlay so hotkey descriptions wrap fully. */
+#helpModal td, #tHelpOverlay td { overflow:visible; text-overflow:clip; white-space:normal; height:auto; cursor:default; border-right:none; border-bottom:none; }
 td.rn  { color:#444; font-size:10px; text-align:center; cursor:default; border-right-color:#333; }
 td.cbc { text-align:center; padding:2px 3px; cursor:pointer; border-right-color:#333; }
 td.focus { background:#0a3060 !important; color:#fff !important; outline:2px solid #4df; outline-offset:-2px; font-weight:bold; }
@@ -943,7 +947,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0552';
+  window.HELP_VERSION_STR = 'dev0553';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];
