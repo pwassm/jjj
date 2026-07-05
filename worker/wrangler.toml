@@ -10,7 +10,7 @@ compatibility_date = "2026-07-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "sal-db"
-database_id = "PASTE_DATABASE_ID_HERE"
+database_id = "c2244b20-9641-47bb-bacb-667e9377fbbc"
 
 [vars]
 # While ENVIRONMENT is "dev" and no RESEND_API_KEY secret is set, the magic

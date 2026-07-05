@@ -400,6 +400,83 @@ function _wireFullscreenOnFirstTap() {
   return;
 }
 
+// (dev0551) Render + wire the optional sign-in strip on Page 1 of the
+// shareable menu. Anonymous browsing never touches this — it only reacts once
+// the viewer chooses to sign in. All API work goes through window.salAuth
+// (auth.js), which itself fails soft, so any failure here degrades to "signed
+// out" rather than breaking the menu.
+function _wireSignIn(ov) {
+  const box = ov.querySelector('#smAuth');
+  const A = window.salAuth;
+  if (!box || !A) return;   // auth.js absent → strip stays empty, browsing unaffected
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // Signed-in view: who you are + a sign-out link. Experts/admins get a hint
+  // that they can contribute comments on items.
+  function renderIn(u) {
+    const who = esc(u.name || u.email);
+    const canComment = (u.role === 'expert' || u.role === 'admin');
+    box.innerHTML = 'Signed in as <b>' + who + '</b>'
+      + (canComment ? ' <span style="color:#8fe8b0;">· you can comment on items</span>' : '')
+      + ' · <a class="sm-link" id="smSignOut">Sign out</a>';
+    box.querySelector('#smSignOut').addEventListener('click', () => {
+      A.logout().then(() => renderOut());
+    });
+  }
+
+  // Signed-out view: a quiet link that expands into an email field. Submitting
+  // asks the API to email a one-time sign-in link (or, in the worker's dev
+  // mode, hands the link straight back so it can be tested without email).
+  function renderOut() {
+    box.innerHTML = '<a class="sm-link" id="smSignInLink">Sign in to comment or send a note</a>';
+    box.querySelector('#smSignInLink').addEventListener('click', showForm);
+  }
+
+  function showForm() {
+    box.innerHTML =
+        '<div class="sm-authrow">'
+      +   '<input id="smEmail" type="email" placeholder="you@example.com" autocomplete="email">'
+      +   '<button id="smSend">Send me a sign-in link</button>'
+      + '</div>'
+      + '<div class="sm-authmsg" id="smAuthMsg" style="display:none;"></div>';
+    const inp = box.querySelector('#smEmail');
+    const btn = box.querySelector('#smSend');
+    const msg = box.querySelector('#smAuthMsg');
+    inp.focus();
+    const setMsg = (html, isErr) => {
+      msg.style.display = 'block';
+      msg.className = 'sm-authmsg' + (isErr ? ' err' : '');
+      msg.innerHTML = html;
+    };
+    const submit = () => {
+      const email = inp.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMsg('Please enter a valid email address.', true); return; }
+      btn.disabled = true; setMsg('Sending…', false);
+      A.requestLink(email).then(d => {
+        btn.disabled = false;
+        if (d && d.devLink) {
+          // Worker in dev mode: no email is sent, the link comes back inline.
+          setMsg('Dev mode — <a href="' + esc(d.devLink) + '">open your sign-in link</a>.', false);
+        } else if (d && d.sent) {
+          setMsg('Check your email ✉ — the sign-in link works once and expires in 15 minutes.', false);
+        } else if (d && d.error) {
+          setMsg(esc(d.error === 'network' ? 'Could not reach the server. Please try again.' : d.error), true);
+        } else {
+          setMsg('Check your email ✉', false);
+        }
+      });
+    };
+    btn.addEventListener('click', submit);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  }
+
+  // Decide initial state. me() short-circuits to null when there's no token,
+  // so anonymous visitors make no network call.
+  A.me().then(u => { u ? renderIn(u) : renderOut(); }).catch(() => renderOut());
+}
+
 // (dev0316) Shareable-menu (the "I" / Initial screen). On the public site
 // (slam.com, github.io), bare-URL boot lands here instead of on G. The menu
 // lists every shareable item:
@@ -780,6 +857,20 @@ async function _showShareableMenu() {
     // old "SeaLifeAndMore" header is gone). Flip the accent rule to the bottom
     // edge so the active indicator sits against the page on the top bar.
     + '.sm-tabs-top{border-top:none;border-bottom:2px solid #223;}'
+    // (dev0551) Sign-in strip on Page 1. Low-key by design — a quiet link when
+    // signed out, a status line when signed in. Never blocks browsing.
+    + '.sm-auth{max-width:620px;margin:6px auto 30px;padding:0 24px;font-family:sans-serif;color:#9fb0c8;font-size:14px;text-align:center;}'
+    + '.sm-auth a.sm-link{color:#5bf;cursor:pointer;text-decoration:underline;}'
+    + '.sm-auth a.sm-link:hover{color:#8cf;}'
+    + '.sm-authrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px;}'
+    + '.sm-authrow input{flex:1;min-width:0;max-width:320px;padding:10px 13px;border-radius:8px;border:1px solid #2a3550;background:#11132a;color:#fff;font-family:sans-serif;font-size:15px;outline:none;}'
+    + '.sm-authrow input:focus{border-color:#4af;}'
+    + '.sm-authrow button{flex:none;padding:10px 16px;border-radius:8px;border:1px solid #4af;background:rgba(0,60,120,0.5);color:#cfe8ff;font-family:sans-serif;font-size:14px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-authrow button:hover{background:rgba(0,80,150,0.65);}'
+    + '.sm-authrow button:disabled{opacity:.5;cursor:default;}'
+    + '.sm-authmsg{margin-top:10px;color:#8fe8b0;line-height:1.5;}'
+    + '.sm-authmsg.err{color:#ff9a9a;}'
+    + '.sm-authmsg a{color:#5bf;}'
     + '</style>';
 
   // (dev0384) One set of tab buttons, rendered both above and below the pages.
@@ -805,9 +896,10 @@ async function _showShareableMenu() {
         + (greetTop.trim() ? '<div class="smGreeting">' + greetTop + '</div>'
                            : '<div class="smGreeting"><p>Welcome.</p></div>')
         + '<button id="smGoView" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
-        // (dev0361) FUTURE sign-in field mounts here — let signed-in viewers
-        // submit prospective links. Deliberately absent for now (needs a
-        // backend: auth + a stored submission/moderation queue).
+        // (dev0551) Optional sign-in strip. Purely additive — browsing never
+        // requires it. Rendered signed-out by default; _wireSignIn (below)
+        // swaps in the signed-in state after salAuth.me() resolves.
+        + '<div id="smAuth" class="sm-auth"></div>'
       + '</div>'
       // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
       // Singles | Grids on desktop, stacked on phone)
@@ -974,6 +1066,11 @@ async function _showShareableMenu() {
   if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
   const _smGoTop = ov.querySelector('#smGoViewTop');
   if (_smGoTop) _smGoTop.addEventListener('click', () => _smShow(2));
+
+  // (dev0551) Wire the optional sign-in strip (#smAuth). Fails soft: if
+  // window.salAuth is missing (auth.js failed to load) or the API is down, the
+  // strip stays empty and browsing is entirely unaffected.
+  _wireSignIn(ov);
   // (dev0369) On the Search page, a right-to-left swipe returns to the Main
   // "Choose a view" page (the main menu) — the same swipe-back feel as the grid.
   // Pointer-based so it works with both touch and a mouse-drag (and is therefore

@@ -5994,5 +5994,100 @@
     "rank": "species",
     "common": "common boxing crab",
     "extinct": false
+  },
+  {
+    "id": "haemulidae",
+    "label": "Haemulidae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "anisotremus",
+    "label": "Anisotremus",
+    "kind": "taxon",
+    "parents": [
+      "haemulidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "anisotremus-davidsonii",
+    "label": "Anisotremus davidsonii",
+    "kind": "taxon",
+    "parents": [
+      "anisotremus"
+    ],
+    "aliases": [
+      "Anisostremus"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Xantic Sargo"
+  },
+  {
+    "id": "anisotremus-virginicus",
+    "label": "Anisotremus virginicus",
+    "kind": "taxon",
+    "parents": [
+      "anisotremus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "porkfish",
+    "extinct": false
+  },
+  {
+    "id": "rhacochilus-vacca",
+    "label": "Rhacochilus vacca",
+    "kind": "taxon",
+    "parents": [
+      "rhacochilus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Pile Perch"
+  },
+  {
+    "id": "embiotocidae",
+    "label": "Embiotocidae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "rhacochilus",
+    "label": "Rhacochilus",
+    "kind": "taxon",
+    "parents": [
+      "embiotocidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "rhacochilus-toxotes",
+    "label": "Rhacochilus toxotes",
+    "kind": "taxon",
+    "parents": [
+      "rhacochilus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "rubberlip seaperch"
   }
 ]
