@@ -1835,6 +1835,7 @@ function _rpvFillHost(host, row) {
   const isText    = row.VidRange === 'text' || (row.ftext && !row.link);
   const isQuiz    = !!(row.qfile || (row.ftext && !row.link && (row.ftext.trim().startsWith('[') || row.ftext.trim().startsWith('{'))));
   const isImgLink = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?)(\?.*)?$/i.test(row.link || '');
+  const hasFtextImgs = !!(row.ftext && row.ftext.includes('<img'));   // (dev0540) gate the ftext-montage branch (mirrors grid.js)
   const isIG      = !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
 
   if (isIG) {
@@ -1892,13 +1893,18 @@ function _rpvFillHost(host, row) {
         window.mountTikTokEmbed(host, row.link);
       }
     }, 60);
-  } else if (row.link && !isImgLink) {
+  } else if (row.link && !isImgLink && hasFtextImgs) {
     if (typeof _buildFtextImgCell === 'function') _buildFtextImgCell(host, row);
   } else if (row.link) {
+    // (dev0540) Direct image — including EXTENSIONLESS links (e.g. i.insider.com
+    // /<id>, squarespace-cdn …) that isImgLink can't detect. Load as an <img> and
+    // only fall back to the ftext montage if it genuinely fails. Mirrors grid.js
+    // — the preview previously routed these straight to _buildFtextImgCell (empty
+    // for rows with no ftext), so UIDs like 1425/1485 showed blank in the pane.
     const img = document.createElement('img');
     img.src = row.link;
     img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:1;';
-    img.onerror = () => { img.style.display = 'none'; };
+    img.onerror = () => { img.remove(); if (!isImgLink && typeof _buildFtextImgCell === 'function') _buildFtextImgCell(host, row); };
     host.appendChild(img);
   } else {
     const e0 = document.createElement('div');
@@ -2198,6 +2204,104 @@ function _richCellPreview(html) {
   return line || '';
 }
 
+// (dev0540) Inline tag editor — a small floating popup anchored to the T tags
+// cell, replacing the old "double-click tags → open the A/annotate window". It
+// reuses the SAME tag chip-input component the A panel uses (window.mountTagChipInput),
+// so add/remove/create + autocomplete behave identically. Edits persist straight to
+// the row (save + render) and an "↑ implies" ancestor hint updates live.
+let _tTagEditorEl = null;
+function _tCloseTagEditor() {
+  if (_tTagEditorEl) { _tTagEditorEl.remove(); _tTagEditorEl = null; }
+  document.removeEventListener('mousedown', _tTagEditorOutside, true);
+  document.removeEventListener('keydown', _tTagEditorEsc, true);
+}
+function _tTagEditorOutside(e) {
+  if (!_tTagEditorEl) return;
+  if (_tTagEditorEl.contains(e.target)) return;
+  // The autocomplete dropdown + chip context menu live OUTSIDE the popup (on body)
+  // and fire on mousedown — don't treat a click on them as "outside".
+  if (e.target.closest && e.target.closest('.tag-dd, #chipCtxMenu, #treeCtxMenu, #dictOverlay')) return;
+  _tCloseTagEditor();
+}
+function _tTagEditorEsc(e) {
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _tCloseTagEditor(); }
+}
+function _tOpenTagEditor(row, anchorEl) {
+  if (!window.mountTagChipInput || !window.tagsLib) {
+    // tagsLib not ready yet — fall back to the old behaviour so tags stay editable.
+    if (window.openBrowseForRow) window.openBrowseForRow(row);
+    return;
+  }
+  _tCloseTagEditor();
+  if (!Array.isArray(row.tags)) row.tags = [];
+
+  const box = document.createElement('div');
+  box.id = 'tTagEditor';
+  box.style.cssText = 'position:fixed;z-index:5000;width:380px;max-width:92vw;'
+    + 'background:#0d1424;border:1px solid #6af;border-radius:7px;'
+    + 'box-shadow:0 8px 30px rgba(0,0,0,0.78);padding:8px 10px;font-family:monospace;';
+
+  const hd = document.createElement('div');
+  hd.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;color:#8cf;font-size:11px;';
+  const ttl = document.createElement('span');
+  ttl.textContent = '🏷 Tags — #' + (row.UID != null && row.UID !== '' ? row.UID : '?');
+  const cx = document.createElement('span');
+  cx.textContent = '✕'; cx.title = 'Close (Esc)';
+  cx.style.cssText = 'cursor:pointer;color:#9ab;padding:0 3px;font-size:13px;';
+  cx.addEventListener('click', _tCloseTagEditor);
+  hd.appendChild(ttl); hd.appendChild(cx);
+  box.appendChild(hd);
+
+  const host = document.createElement('div');
+  box.appendChild(host);
+
+  const anc = document.createElement('div');
+  anc.style.cssText = 'margin-top:5px;font-size:10px;line-height:1.4;min-height:12px;color:#7a8;';
+  box.appendChild(anc);
+
+  document.body.appendChild(box);
+  _tTagEditorEl = box;
+
+  // Anchor below the cell, clamped to the viewport (flip above if no room).
+  const r = anchorEl.getBoundingClientRect();
+  const bw = box.offsetWidth || 380, bh = box.offsetHeight || 120;
+  let left = Math.min(r.left, window.innerWidth - bw - 6);
+  left = Math.max(6, left);
+  let top = r.bottom + 4;
+  if (top + bh > window.innerHeight - 6) top = Math.max(6, r.top - bh - 4);
+  box.style.left = left + 'px';
+  box.style.top  = top + 'px';
+
+  const updateAncestors = () => {
+    const ids = Array.isArray(row.tags) ? row.tags : [];
+    if (!ids.length) { anc.innerHTML = ''; return; }
+    const eff = window.tagsLib.expand(ids);
+    ids.forEach(id => eff.delete(id));
+    const labels = [...eff].map(id => window.tagsLib.labelFor(id)).filter(Boolean);
+    anc.innerHTML = labels.length ? '↑ implies: ' + labels.join(' · ') : '';
+  };
+
+  window.mountTagChipInput({
+    container: host,
+    getIds: () => row.tags,
+    setIds: (next) => {
+      row.tags = next;
+      row.DateModified = isoNow();
+      save();
+      render();
+      updateAncestors();
+    },
+    placeholder: 'add tag… (species, common name, topic, technique)'
+  });
+  updateAncestors();
+
+  setTimeout(() => { const i = host.querySelector('input'); if (i) i.focus(); }, 0);
+  document.addEventListener('mousedown', _tTagEditorOutside, true);
+  document.addEventListener('keydown', _tTagEditorEsc, true);
+}
+window._tOpenTagEditor  = _tOpenTagEditor;
+window._tCloseTagEditor = _tCloseTagEditor;
+
 // (dev0327) Build one <tr> for display row vi / data row di. Reads the cached
 // _tCtx so the scroll path never recomputes colW. Returns the tr (caller appends).
 function _tBuildRow(vi, di) {
@@ -2295,7 +2399,8 @@ function _tBuildRow(vi, di) {
         td.addEventListener('click',   e => onCell(e, vi, ci));
         td.addEventListener('dblclick', e => {
           e.stopPropagation();
-          if (window.openBrowseForRow) window.openBrowseForRow(row);
+          // (dev0540) Double-click tags → inline tag options popup (no longer opens A).
+          _tOpenTagEditor(row, td);
         });
         if (focus && focus.r === vi && focus.c === ci) td.className = 'focus';
         else if (pending && pending.c === ci && vi >= pending.r1 && vi <= pending.r2) td.className = 'sel';

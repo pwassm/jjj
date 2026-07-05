@@ -3908,6 +3908,9 @@ window._executeHotkey = function(key) {
   // re-shows it (video restarts from the beginning); only an explicit Ctrl+I/Esc
   // forgets it. Idempotent no-op when the preview isn't open.
   if (window.rowPreviewHide) window.rowPreviewHide();
+  // (dev0540) Leaving T also dismisses the inline tag-editor popup so it can't
+  // linger over another screen.
+  if (window._tCloseTagEditor) window._tCloseTagEditor();
   // Check what's currently open
   const veOpen = !!document.getElementById('video-editor-overlay');
   const ebOpen = document.getElementById('browseOverlay')?.style.display === 'flex';
