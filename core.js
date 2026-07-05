@@ -386,7 +386,11 @@ window.addEventListener('keydown', function(e) {
   // like Ctrl+I. The A (annotate/browse) screen is being retired; its code stays
   // but 'a' no longer opens it from T. From any other screen (Grid, etc.) 'a'
   // still falls through to _executeHotkey → the annotate/browse screen.
-  if (k === 'a' && _tScreenActive()) {
+  if (k === 'a' && _tScreenActive()
+      && !((typeof window.isOScreenOpen  === 'function' && window.isOScreenOpen())
+        || (typeof window.isXScreenOpen  === 'function' && window.isXScreenOpen())
+        || (typeof window.isStScreenOpen === 'function' && window.isStScreenOpen())
+        || (typeof window.isIgScreenOpen === 'function' && window.isIgScreenOpen()))) {
     e.preventDefault();
     e.stopPropagation();
     const di = focus !== null ? vr(focus.r) : -1;
