@@ -381,6 +381,19 @@ window.addEventListener('keydown', function(e) {
   // reach xe.js. (Slideshow / Dictionary / Video-editor already bail entirely
   // above, so they keep their own 's' too.)
   if (k === 's' && document.getElementById('textEditorOverlay')) return;
+  // (dev0538) In the Table screen (not editing a cell — the isEditable bail above
+  // already guards that), bare 'a' toggles the focused-row preview pane, exactly
+  // like Ctrl+I. The A (annotate/browse) screen is being retired; its code stays
+  // but 'a' no longer opens it from T. From any other screen (Grid, etc.) 'a'
+  // still falls through to _executeHotkey → the annotate/browse screen.
+  if (k === 'a' && _tScreenActive()) {
+    e.preventDefault();
+    e.stopPropagation();
+    const di = focus !== null ? vr(focus.r) : -1;
+    if (_rpvOpen && di === _rpvDi) rowPreviewClose();
+    else rowPreviewOpen();
+    return false;
+  }
   if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's' || k === 'o' || k === 'x') {
     // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
     // owned by the C-screen handler (boot.js). Don't also fire the global
@@ -428,6 +441,9 @@ var checkedRows = new Set();
 var sortCol = null, sortDir = 'asc', sortedIdx = null;
 var rowFilter = null;  // null = off | {col, val} = show only rows where data[di][col]===val
 var _lastRowFilter = null;  // remembered filter for F-toggle restore
+// (dev0538) Independent top-of-T "kind" dropdown filter, AND'd with rowFilter
+// (f/F) inside rowMatchesFilter. null/'' = All | 'image'|'video'|'webortext'|'quiz'.
+var _kindFilter = '';
 
 // (zip0162) Moved from grid.js so it's available across all modules.
 // Check if row is a video.
@@ -468,6 +484,21 @@ function rowMediaKind(row) {
 }
 window.isImageLink  = isImageLink;
 window.rowMediaKind = rowMediaKind;
+
+// (dev0538) Finer four-way classification for the top-of-T "kind" dropdown
+// (All / Image / Video / WebOrText / Quiz). Splits rowMediaKind's 'other' bucket
+// into 'quiz' (qfile, or JSON-ish ftext with no media link) and 'webortext'
+// (html slides + non-media web links + everything else). Mirrors the branch
+// order in _rpvFillHost so a row previews as the same kind it filters into.
+function rowKindFilter(row) {
+  if (!row) return 'webortext';
+  if (isVideoRow(row)) return 'video';
+  if (isImageLink(row.link)) return 'image';
+  const ft = String(row.ftext || '').trim();
+  if (row.qfile || (ft && !row.link && (ft.startsWith('[') || ft.startsWith('{')))) return 'quiz';
+  return 'webortext';
+}
+window.rowKindFilter = rowKindFilter;
 
 // (dev0514) Read a row's stored orientation as a canonical Mode letter, tolerating
 // the new 'Mode' column, the legacy 'P/S' column, and the older 'Portrait' column.
@@ -1222,6 +1253,7 @@ async function load() {
   }
   _migrateModeColumn();
   buildSort();
+  _tEnsureOpenFocus();   // (dev0538) focus the first row on initial load (no _lastUID yet)
   render();
 }
 
@@ -1396,6 +1428,31 @@ function render() {
   if (typeof _rpvMaybeReshow === 'function') _rpvMaybeReshow();
 }
 
+// (dev0538) When the Table opens, land on a focused row. Keep the current focus
+// if it's still valid and visible; otherwise restore the last-focused row (via
+// _lastUID) if it survives the active filters; otherwise focus the first visible
+// row. Returns true when focus was (re)assigned so the caller can scroll to it.
+function _tEnsureOpenFocus() {
+  // Keep a still-valid, still-visible focus untouched.
+  if (focus !== null) {
+    const di = vr(focus.r);
+    if (di >= 0 && di < data.length && rowMatchesFilter(data[di])) return false;
+  }
+  // Prefer the last-focused row (by UID) when it's present and passes filters.
+  if (window._lastUID) {
+    const di = data.findIndex(r => String(r.UID) === String(window._lastUID));
+    if (di >= 0 && rowMatchesFilter(data[di])) {
+      const vi = sortedIdx ? sortedIdx.indexOf(di) : di;
+      if (vi >= 0) { focus = { r: vi, c: (focus && focus.c) || 0 }; return true; }
+    }
+  }
+  // Fallback: first row that survives the active filters.
+  for (let vi = 0; vi < data.length; vi++) {
+    if (rowMatchesFilter(data[vr(vi)])) { focus = { r: vi, c: (focus && focus.c) || 0 }; return true; }
+  }
+  return false;
+}
+
 function buildTable() {
   // Close annotate panel if it somehow persists when not in E mode
   if (!document.getElementById('video-editor-overlay')) {
@@ -1405,7 +1462,11 @@ function buildTable() {
       const w = document.getElementById('wrap'); if (w) w.style.marginRight = '';
     }
   }
+  const _focusMoved = _tEnsureOpenFocus();   // (dev0538) last-focused row, else first
   render();
+  if (_focusMoved && focus !== null && typeof _tScrollRowIntoView === 'function') {
+    _tScrollRowIntoView(focus.r);
+  }
 }
 
 function renderHead() {
@@ -1519,6 +1580,7 @@ let _rpvOpen = false;
 let _rpvDi   = -1;                // data-row index currently previewed (drives the toggle)
 let _rpvWantOpen = false;         // (dev0332) sticky intent: re-show on return to T until an explicit Ctrl+I/Esc close
 let _rpvMuted = null;             // (dev0355) null = follow row.Mute; true/false = explicit override set by clicking the pane. Persists across row changes until the pane is dismissed.
+let _rpvPos = null;               // (dev0538) {left,top} once the user drags the pane; re-applied on every re-mount (row change / screen return) so it stays put.
 
 // Segment palette — MUST match video.js COLOURS / vp.js VP_COLOURS so a row's
 // segment colors are consistent across the V timeline bands, this caption, and
@@ -1609,6 +1671,35 @@ function _rpvTeardown() {
   _rpvDi = -1;
 }
 
+// (dev0538) Drag the preview pane by its header. Records the final position in
+// _rpvPos (persists across re-mounts) and clamps to the viewport while moving.
+function _rpvBeginDrag(e) {
+  if (e.button !== 0) return;
+  const ov = document.getElementById('rowPreview');
+  if (!ov) return;
+  e.preventDefault();
+  const rect = ov.getBoundingClientRect();
+  const w = rect.width, h = rect.height;
+  const offX = e.clientX - rect.left, offY = e.clientY - rect.top;
+  // Switch to absolute top/left positioning for the drag (drop the bottom anchor).
+  ov.style.bottom = 'auto';
+  ov.style.left = rect.left + 'px';
+  ov.style.top  = rect.top  + 'px';
+  const move = ev => {
+    const nl = Math.max(0, Math.min(ev.clientX - offX, window.innerWidth  - w));
+    const nt = Math.max(0, Math.min(ev.clientY - offY, window.innerHeight - h));
+    ov.style.left = nl + 'px';
+    ov.style.top  = nt + 'px';
+    _rpvPos = { left: nl, top: nt };
+  };
+  const up = () => {
+    document.removeEventListener('mousemove', move, true);
+    document.removeEventListener('mouseup', up, true);
+  };
+  document.addEventListener('mousemove', move, true);
+  document.addEventListener('mouseup', up, true);
+}
+
 // (dev0332) Hide the pane but REMEMBER it was open, so returning to T re-shows
 // it (video restarts from the beginning). Used when leaving T for another
 // screen — tears down the video so a backgrounded pane never burns
@@ -1634,6 +1725,32 @@ function rowPreviewOpen() {
   ov.style.cssText = 'position:fixed;left:14px;bottom:46px;width:450px;height:300px;'
     + 'z-index:4000;background:#000;border:1px solid #4df;border-radius:6px;'
     + 'box-shadow:0 8px 30px rgba(0,0,0,0.75);overflow:hidden;display:flex;flex-direction:column;';
+  // (dev0538) Re-apply a dragged position (clamped to the viewport) so the pane
+  // stays where the user put it across row changes and screen returns.
+  if (_rpvPos) {
+    const L = Math.max(0, Math.min(_rpvPos.left, window.innerWidth  - 460));
+    const T = Math.max(0, Math.min(_rpvPos.top,  window.innerHeight - 40));
+    ov.style.left = L + 'px'; ov.style.top = T + 'px'; ov.style.bottom = 'auto';
+  }
+
+  // (dev0538) Drag header — the pane is movable by this strip (the media area
+  // keeps its click-to-mute / Space behaviour). Grip label + a ✕ close button.
+  const hdr = document.createElement('div');
+  hdr.id = 'rpvHeader';
+  hdr.style.cssText = 'flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;'
+    + 'height:16px;padding:0 6px;background:#0a1426;border-bottom:1px solid #1a2a4a;'
+    + 'cursor:move;user-select:none;font:10px/16px monospace;color:#6aa6e0;';
+  const grip = document.createElement('span');
+  grip.textContent = '⠿ preview — drag to move';
+  grip.style.cssText = 'pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  const xBtn = document.createElement('span');
+  xBtn.textContent = '✕';
+  xBtn.title = 'Close (a / Ctrl+I / Esc)';
+  xBtn.style.cssText = 'cursor:pointer;color:#9ab;padding:0 2px;font-size:12px;';
+  xBtn.addEventListener('click', e => { e.stopPropagation(); rowPreviewClose(); });
+  hdr.appendChild(grip); hdr.appendChild(xBtn);
+  hdr.addEventListener('mousedown', _rpvBeginDrag);
+  ov.appendChild(hdr);
 
   // Media host: a fixed-size, position:relative box the grid helpers fill via inset:0.
   // Its id === RPV_HOST_ID so a mounted video registers under that key.
@@ -2205,9 +2322,11 @@ function _tBuildRow(vi, di) {
 
 function renderStatus() {
   const el = document.getElementById('status'), ck = checkedRows.size, vc = visCols();
-  const visCount = rowFilter === null ? data.length
+  // (dev0538) _kindFilter is an independent gate — count/report it alongside rowFilter.
+  const visCount = (rowFilter === null && !_kindFilter) ? data.length
     : data.filter(r => rowMatchesFilter(r)).length;
   let filterNote = '';
+  if (_kindFilter) filterNote += ' ▾ '+visCount+'/'+data.length+' rows ('+_kindFilter+')';
   if (rowFilter) {
     if (rowFilter.composite) {
       const parts = [];
@@ -2368,6 +2487,8 @@ const CONTENT_COLS = new Set(['t1','t2','n1','n2','n3','cname','sname','comment'
 //   rowFilter = {col, val}                      → classic exact-match
 //   rowFilter = {col:'tags', val:<tagId>, hierarchical:true} → tag + descendants
 function rowMatchesFilter(row) {
+  // (dev0538) Top-of-T kind dropdown — an independent gate AND'd with f/F below.
+  if (_kindFilter && rowKindFilter(row) !== _kindFilter) return false;
   if (!rowFilter) return true;
   // Composite: tags AND'd with each other AND'd with text-field substring matches.
   // Built by the F-hotkey filter modal.
@@ -4297,6 +4418,29 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   rowFilter = null;
   render();
 });
+
+// (dev0538) Top-of-T "kind" dropdown — filters to Image / Video / WebOrText /
+// Quiz, independent of (and AND'd with) the f/F filter. Changing it re-focuses
+// the first row that survives, so E/A/preview act on a visible row immediately.
+(function () {
+  const sel = document.getElementById('kindFilter');
+  if (!sel) return;
+  // Adopt whatever value the browser restored (defaults to '' = All) so the
+  // dropdown and the filter state agree from the first render.
+  _kindFilter = sel.value || '';
+  sel.addEventListener('change', () => {
+    _kindFilter = sel.value || '';
+    // Move focus to the first surviving row so nav/preview stay on-screen.
+    let firstVi = -1;
+    for (let vi = 0; vi < data.length; vi++) {
+      if (rowMatchesFilter(data[vr(vi)])) { firstVi = vi; break; }
+    }
+    focus = firstVi >= 0 ? { r: firstVi, c: (focus && focus.c) || 0 } : null;
+    const wrap = document.getElementById('wrap'); if (wrap) wrap.scrollTop = 0;
+    render();
+    if (focus !== null && typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(focus.r);
+  });
+})();
 
 // ── Filter bar (F hotkey in T) ────────────────────────────────────────────
 // Thin horizontal strip in DOM flow (no overlay). Composite filter: tags
