@@ -430,7 +430,8 @@ function _wireSignIn(ov) {
   // asks the API to email a one-time sign-in link (or, in the worker's dev
   // mode, hands the link straight back so it can be tested without email).
   function renderOut() {
-    box.innerHTML = '<a class="sm-link" id="smSignInLink">Sign in to comment or send a note</a>';
+    box.innerHTML = '<a class="sm-link" id="smSignInLink">Sign in</a>'
+      + ' <span style="color:#66788f;">(optional — to comment or send a note)</span>';
     box.querySelector('#smSignInLink').addEventListener('click', showForm);
   }
 
@@ -892,14 +893,15 @@ async function _showShareableMenu() {
       // top and the bottom so the viewer never has to scroll past the greeting
       // to advance into the tabbed view.
       + '<div id="smPage1" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;">'
+        // (dev0552) Optional sign-in strip — now at the TOP of the welcome menu.
+        // Purely additive; browsing never requires it. Rendered signed-out by
+        // default; _wireSignIn (below) swaps in the signed-in state after
+        // salAuth.me() resolves.
+        + '<div id="smAuth" class="sm-auth"></div>'
         + '<button id="smGoViewTop" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
         + (greetTop.trim() ? '<div class="smGreeting">' + greetTop + '</div>'
                            : '<div class="smGreeting"><p>Welcome.</p></div>')
         + '<button id="smGoView" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
-        // (dev0551) Optional sign-in strip. Purely additive — browsing never
-        // requires it. Rendered signed-out by default; _wireSignIn (below)
-        // swaps in the signed-in state after salAuth.me() resolves.
-        + '<div id="smAuth" class="sm-auth"></div>'
       + '</div>'
       // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
       // Singles | Grids on desktop, stacked on phone)

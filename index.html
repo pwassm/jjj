@@ -171,13 +171,6 @@ html.user-mode body { background: #0a0a14; }
    slideshow (and Help). */
 html.user-mode #fsa-status,
 html.user-mode #hm-setfolder,
-html.user-mode #hm-setfolder + .hm-divider,
-html.user-mode #hm-dict,
-html.user-mode #hm-dict + .hm-divider,
-html.user-mode #hm-push,
-html.user-mode #hm-loadgh,
-html.user-mode #hm-push + .hm-loadgh,
-html.user-mode #hm-loadgh + .hm-divider,
 html.user-mode #hm-settings,
 html.user-mode #hmPanel > div:last-child { display: none !important; }
 
@@ -627,14 +620,7 @@ thead th.rn              { color: #fff !important; }
 <div id="hmPanel">
   <div id="fsa-status">No project folder set</div>
   <div class="hm-item active" id="hm-setfolder"><u>F</u>older — Set project folder</div>
-  <div class="hm-divider"></div>
-  <div class="hm-item active" id="hm-dict">📚 <u>D</u>ictionary — Tag dictionary</div>
-  <div class="hm-divider"></div>
-  <div class="hm-item dim" id="hm-push"><u>P</u>ush to GitHub <span style="color:#555;font-size:10px;">[coming]</span></div>
-  <div class="hm-item dim" id="hm-loadgh"><u>L</u>oad from GitHub <span style="color:#555;font-size:10px;">[coming]</span></div>
-  <div class="hm-divider"></div>
-  <div class="hm-item active" id="hm-slideshow">▶▶ Slideshow — Play grid images</div>
-  <div class="hm-item active" id="hm-changesel">↩ Change Selection — Back to the menu</div>
+  <div class="hm-item active" id="hm-changesel">🏠 <u>W</u>elcome Menu — Back to the menu</div>
   <div class="hm-divider"></div>
   <div class="hm-item active" id="hm-settings"><u>S</u>ettings</div>
   <div class="hm-item active" id="hm-help"><u>H</u>elp</div>
@@ -957,7 +943,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0551';
+  window.HELP_VERSION_STR = 'dev0552';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];

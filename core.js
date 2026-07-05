@@ -3076,9 +3076,7 @@ function hmKeyHandler(e) {
   const k = e.key.toLowerCase();
   if (k === 'escape') { e.preventDefault(); closeHM(); return; }
   if (k === 'f') { e.preventDefault(); closeHM(); pickFolder(); return; }
-  if (k === 'd') { e.preventDefault(); closeHM(); if (window.openDictionary) window.openDictionary(); return; }
-  if (k === 'p') { e.preventDefault(); closeHM(); toast('☁ Push to GitHub\n[coming soon]'); return; }
-  if (k === 'l') { e.preventDefault(); closeHM(); toast('⬇ Load from GitHub\n[coming soon]'); return; }
+  if (k === 'w') { e.preventDefault(); closeHM(); if (typeof window._showShareableMenu === 'function') window._showShareableMenu(); return; }
   if (k === 's') { e.preventDefault(); closeHM(); openSettings(); return; }
   if (k === 'h') { e.preventDefault(); closeHM(); openHelp(); return; }
 }
@@ -3105,15 +3103,7 @@ document.addEventListener('pointerdown', e => {
 }, true);
 
 document.getElementById('hm-setfolder').addEventListener('click', async () => { closeHM(); await pickFolder(); });
-document.getElementById('hm-dict').addEventListener('click', () => { closeHM(); if (window.openDictionary) window.openDictionary(); });
-document.getElementById('hm-push').addEventListener('click',   () => { closeHM(); toast('☁ Push to GitHub\n[coming soon]'); });
-document.getElementById('hm-loadgh').addEventListener('click', () => { closeHM(); toast('⬇ Load from GitHub\n[coming soon]'); });
-document.getElementById('hm-slideshow').addEventListener('click', () => {
-  closeHM();
-  if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid();
-  else if (typeof toast === 'function') toast('Slideshow not loaded yet', 1500);
-});
-// (dev0360) Change Selection — back to the welcome / shareable menu to pick a
+// (dev0360) Welcome Menu — back to the welcome / shareable menu to pick a
 // different grid or item. Shown in user mode (id not in the user-mode hide list).
 document.getElementById('hm-changesel')?.addEventListener('click', () => {
   closeHM();
@@ -8812,7 +8802,7 @@ function _renderHd() {
       html += '<div style="margin-top:6px;color:#556;font-size:10px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
       html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
       sec.items.forEach(it => {
-        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;overflow-wrap:break-word;word-break:break-word;vertical-align:top;width:26%;">' + escH(it.key) + '</td>'
               + '<td style="padding:2px 0;color:#ccc;overflow-wrap:break-word;word-break:break-word;">' + escH(it.desc) + '</td></tr>';
       });
       html += '</table>';
@@ -8853,7 +8843,7 @@ function _renderHu() {
       html += '<div style="margin-top:6px;color:#556;font-size:10px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
       html += '<table style="border-collapse:collapse;width:100%;font-size:11px;margin-bottom:4px;">';
       sec.items.forEach(it => {
-        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+        html += '<tr><td style="padding:2px 8px 2px 0;color:#8ef;overflow-wrap:break-word;word-break:break-word;vertical-align:top;width:26%;">' + escH(it.key) + '</td>'
               + '<td style="padding:2px 0;color:#ccc;overflow-wrap:break-word;word-break:break-word;">' + escH(it.desc) + '</td></tr>';
       });
       html += '</table>';
@@ -8898,7 +8888,7 @@ function _renderHum() {
       html += '<div style="margin-top:6px;color:#556;font-size:11px;letter-spacing:0.05em;">' + escH(sec.name.toUpperCase()) + '</div>';
       html += '<table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:4px;">';
       sec.items.forEach(it => {
-        html += '<tr><td style="padding:4px 8px 4px 0;color:#8ef;white-space:nowrap;vertical-align:top;">' + escH(it.key) + '</td>'
+        html += '<tr><td style="padding:4px 8px 4px 0;color:#8ef;overflow-wrap:break-word;word-break:break-word;vertical-align:top;width:26%;">' + escH(it.key) + '</td>'
               + '<td style="padding:4px 0;color:#ddd;line-height:1.4;overflow-wrap:break-word;word-break:break-word;">' + escH(it.desc) + '</td></tr>';
       });
       html += '</table>';
