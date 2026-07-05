@@ -8536,7 +8536,7 @@ const HELP_DATA = [
         { key: 'Enter',            desc: 'Commit cell edit, move down',       dev: true },
         { key: 'Tab / Shift+Tab',  desc: 'Commit and move right / left',      dev: true },
         { key: 'Del / Backspace',  desc: 'Clear focused cell',               dev: true },
-        { key: 'Ctrl+I',           desc: 'Preview focused row (video/image/slide) — Space=play/pause, Esc=close', dev: true },
+        { key: 'A  or  Ctrl+I',    desc: 'Preview focused row (video/image/slide) — Space=play/pause, Esc=close', dev: true },
         { key: 'Esc',              desc: 'Deselect focused row',             dev: true },
       ]},
       { name: 'Mouse', items: [
@@ -8778,6 +8778,16 @@ function _itemMobileOk(it, sectionName) {
   return false;
 }
 
+// (dev0542) HELP_DATA with the static GLOBAL section swapped for the one
+// generated live from the hotkey registry (hotkeys.js). All four help
+// renderers + the ⬇ Download export go through this, so the Global panel
+// always shows what the dispatcher actually does.
+function _helpData() {
+  return HELP_DATA.map(s =>
+    (s.id === 'GLOBAL' && typeof window._hotkeysHelpSection === 'function')
+      ? window._hotkeysHelpSection() : s);
+}
+
 // Render Hd page 0 from HELP_DATA. Two-column responsive layout; each
 // section gets a panel with its hotkeys and mouse rows.
 function _renderHd() {
@@ -8808,7 +8818,7 @@ function _renderHd() {
            + 'Click <strong style="color:#5fa;">⬇ Download</strong> above to save a merged Hd+Hu reference as an HTML file (dev-only commands shown <strong>bold</strong>).</p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
   // (dev0264) Hd skips mobileOnly intro screens — devs work from desktop.
-  HELP_DATA.forEach(s => { if (!s.mobileOnly) html += panel(s); });
+  _helpData().forEach(s => { if (!s.mobileOnly) html += panel(s); });
   html += '</div>';
   root.innerHTML = html;
 }
@@ -8847,7 +8857,7 @@ function _renderHu() {
            + 'Quick reference for using SeeAndLearn. '
            + 'Tap a cell to play/pause, swipe right to view full-screen, swipe left to return.</p>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:10px;">';
-  HELP_DATA.forEach(s => {
+  _helpData().forEach(s => {
     if (s.devOnly) return;     // skip dev-only screens entirely in user help
     if (s.mobileOnly) return;  // (dev0264) skip phone-only intro on desktop
     const block = panel(s);
@@ -8892,7 +8902,7 @@ function _renderHum() {
            + 'Phone quick reference. Everything here works with taps and swipes — no keyboard required.</p>';
   // Single column on phones; auto-fit will widen on tablets.
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;">';
-  HELP_DATA.forEach(s => {
+  _helpData().forEach(s => {
     if (s.devOnly) return;
     const block = panel(s);
     if (block) html += block;
@@ -8912,7 +8922,7 @@ function _downloadHelp() {
   body += '<p style="color:#666;font-style:italic;">Version ' + escH(HELP_VERSION_STR)
         + ' · merged developer + user reference.<br>'
         + '<strong>Developer-only commands shown in bold</strong>; commands available to everyone are in normal type.</p>';
-  HELP_DATA.forEach(s => {
+  _helpData().forEach(s => {
     body += '<h2 style="color:#345;margin-top:22px;border-bottom:1px solid #ccd;padding-bottom:3px;">'
           + escH(s.title)
           + (s.devOnly ? ' <span style="font-size:11px;color:#a44;font-weight:normal;">[developer-only screen]</span>' : '')
@@ -9015,7 +9025,6 @@ const T_HOTKEY_HELP = [
   { group: 'Switch screen', keys: [
     ['G', 'Grid'],
     ['E', 'Edit the focused row (video / text / image editor)'],
-    ['A', 'Annotate — tag panel for the focused row'],
     ['V', 'View the focused row fullscreen'],
     ['C', 'Collections — c.json grid configs'],
     ['D', 'Dictionary — tag tree (jumps to the focused row’s first tag)'],
@@ -9031,7 +9040,7 @@ const T_HOTKEY_HELP = [
     ['Delete', 'Delete the focused row → archived to deleted.json'],
     ['Ctrl+D', 'Duplicate the focused row'],
     ['Alt+R', 'Re-sort by DateModified — newest rows to the top'],
-    ['Ctrl+I', 'Toggle a floating preview of the focused row (Space = play/pause)'],
+    ['A  or  Ctrl+I', 'Toggle a floating preview of the focused row (Space = play/pause)'],
     ['Esc', 'Clear focus / selection (inside a field: just unfocus it)'],
   ]},
   { group: 'Filter & import', keys: [
