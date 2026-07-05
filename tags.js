@@ -637,6 +637,17 @@
         (t.aliases || []).forEach(a => {
           if (a) haystacks.push({ s: String(a).toLowerCase(), field: 1 });
         });
+        // Also search the tag's id (dashes → spaces). A tag can have an id like
+        // "halichoeres-burekae" whose label/common/aliases don't literally spell
+        // out the scientific name (e.g. label is a common name). Without this,
+        // typing "halichoeres burekae" found nothing yet createTag rejected it as
+        // "id exists" — the match list and the create-check disagreed. Field 1
+        // (alias-tier) so canonical label/common still win ties.
+        if (t.id) {
+          haystacks.push({ s: String(t.id).toLowerCase(), field: 1 });
+          const idWords = String(t.id).toLowerCase().replace(/-/g, ' ');
+          if (idWords !== String(t.id).toLowerCase()) haystacks.push({ s: idWords, field: 1 });
+        }
         if (!q) {
           // Empty query: show root-level and recently-used (first 40)
           if (matches.length < 40) matches.push({ t, via: t.label.toLowerCase(), score: -1, field: 0, len: t.label.length });
@@ -673,9 +684,14 @@
         || a.t.label.localeCompare(b.t.label));
       const top = matches.slice(0, 30);
 
-      // "Create new" offer if no exact match and user typed something
+      // "Create new" offer if no exact match and user typed something.
+      // Guard against the id-collision case: if the typed text slugifies to an
+      // id that already exists, don't offer "Create new" (createTag would reject
+      // it as "id exists"). The id-haystack above should surface that tag in the
+      // list; this is a belt-and-suspenders check so we never show a Create that
+      // can't succeed.
       let showCreate = false;
-      if (q && !matches.some(m => m.score === 0)) showCreate = true;
+      if (q && !matches.some(m => m.score === 0) && !byId.has(slugify(q))) showCreate = true;
 
       if (!top.length && !showCreate) return;
 
