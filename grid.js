@@ -1280,6 +1280,8 @@ function gridShow() {
     }, true);
     overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; }, true);
   }
+  // (dev0548) Refresh the dev-only "N need source" backlog pill (bottom-left).
+  if (typeof window._gridUpdateBacklogPill === 'function') window._gridUpdateBacklogPill();
   // (dev0369) Grid-level "swipe back to the Main Page" gesture (user mode only).
   // A right-to-left swipe that CROSSES A CELL BOUNDARY — begins in one grid cell
   // and ends in a different cell (or off the grid) — returns to the shareable

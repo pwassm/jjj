@@ -306,6 +306,16 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // (dev0548) Ctrl+V over the hovered cell → paste the clipboard URL into that
+  // row's linkpage (the source page found via `g`'s reverse-image search),
+  // clearing the "noLinkpageYet" backlog marker. core.js's window-capture
+  // dispatcher bails on any modifier, so Ctrl+V reaches this handler cleanly.
+  if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'v' || e.code === 'KeyV')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof window._gridPasteSource === 'function') window._gridPasteSource();
+    return;
+  }
+
   // (dev0336) −/+ tune the buffer pre-roll (hidden warm-up seconds). Bare keys —
   // easy to tap while dialling in how much of YT's startup chrome to hide.
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '-' || e.key === '_')) {
@@ -841,6 +851,71 @@ window._gridOpenLink = function() {
   }
   // dev + direct video: nothing useful to reverse-search.
   if (typeof _gridToast === 'function') _gridToast('No source page recorded (direct video)', 1600);
+};
+
+// (dev0548) Companion to `g` (the reverse-image search): once you've found the
+// source page in the Lens tab and COPIED its URL, press Ctrl+V over the SAME
+// cell to record it as that row's linkpage — replacing the "noLinkpageYet"
+// backlog marker. Persists via save(); dev-only (needs FSA write + a secure
+// context for the clipboard read, which localhost provides).
+window._gridPasteSource = async function() {
+  var userMode = (typeof _isUserMode === 'function') && _isUserMode();
+  if (userMode) return;   // review workflow is dev-only
+  var cell = (typeof _gridHoverCell !== 'undefined') ? _gridHoverCell : null;
+  var row = cell && cell._rowData;
+  if (!row) { if (typeof _gridToast === 'function') _gridToast('Hover the cell first', 1400); return; }
+  var txt = '';
+  try { txt = (await navigator.clipboard.readText()) || ''; }
+  catch (err) {
+    if (typeof _gridToast === 'function') _gridToast('Clipboard blocked — copy the source URL first', 2200);
+    return;
+  }
+  txt = txt.trim();
+  if (!/^https?:\/\/\S+$/i.test(txt)) {
+    if (typeof _gridToast === 'function') _gridToast('Clipboard is not a URL', 1800);
+    return;
+  }
+  if (txt === (row.link || '')) {
+    if (typeof _gridToast === 'function') _gridToast('That is the image URL, not its source page', 2200);
+    return;
+  }
+  row.linkpage = txt;
+  if (typeof save === 'function') save();
+  if (typeof _gridUpdateBacklogPill === 'function') _gridUpdateBacklogPill();
+  var n = _countNoLinkpageYet();
+  if (typeof _gridToast === 'function') _gridToast('✓ Source saved · ' + n + ' left', 1800);
+};
+
+// (dev0548) How many rows still carry the linkpage="noLinkpageYet" TODO marker.
+function _countNoLinkpageYet() {
+  if (typeof data === 'undefined' || !Array.isArray(data)) return 0;
+  var n = 0;
+  for (var i = 0; i < data.length; i++) { if (data[i] && data[i].linkpage === 'noLinkpageYet') n++; }
+  return n;
+}
+window._countNoLinkpageYet = _countNoLinkpageYet;
+
+// (dev0548) Dev-only backlog pill (grid bottom-left): the count of rows still
+// needing a source page. Hidden in user mode and when the backlog is empty.
+// Lives on the persistent gridOverlay (survives gridShow's container rebuild).
+window._gridUpdateBacklogPill = function() {
+  var overlay = document.getElementById('gridOverlay');
+  if (!overlay) return;
+  var pill = document.getElementById('gridBacklogPill');
+  var userMode = (typeof _isUserMode === 'function') && _isUserMode();
+  var n = _countNoLinkpageYet();
+  if (userMode || n === 0) { if (pill) pill.style.display = 'none'; return; }
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'gridBacklogPill';
+    pill.style.cssText = 'position:absolute;left:10px;bottom:10px;z-index:40;'
+      + 'background:rgba(20,20,40,0.82);color:#8ef;border:1px solid #2a2a4a;'
+      + 'padding:3px 9px;border-radius:10px;font:11px ui-monospace,Consolas,monospace;'
+      + 'pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.5);';
+    overlay.appendChild(pill);
+  }
+  pill.textContent = '🔗 ' + n + ' need source';
+  pill.style.display = 'block';
 };
 
 // (dev0375) C in grid: toggle closed captions on all YT/Vimeo iframes.

@@ -482,6 +482,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture (dev0376)',
     desc: 'Toggle closed captions on all YT/Vimeo grid cells' },
 
+  { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
+    impl: 'collection.js _gridPasteSource (dev0548)',
+    desc: 'Over a hovered cell: paste the clipboard URL into the row’s linkpage (the source page found via g’s reverse-image search), clearing its “noLinkpageYet” marker. The bottom-left pill counts how many rows still need a source.' },
+
   { label: 'F', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0460)',
     desc: 'Toggle FallCells (perimeter waterfall conveyor)' },
