@@ -538,6 +538,14 @@ window.HOTKEYS = [
     impl: 'vp.js floating step button (dev0410)',
     desc: 'Open the floating step-button panel (frame nudge, free-run wheel, ping-pong/loop); right-click again closes it' },
 
+  { label: 'Wheel on a step-playing cell', group: 'Gestures', scope: 'G', dev: false, helpSection: 'Gestures',
+    impl: 'video.js gridStepWheel (dev0555)',
+    desc: 'Retune the step rate live; wheel down through 0.01 to 0 = freeze frame, wheel up resumes' },
+
+  { label: 'Shift+wheel on a step-playing cell', group: 'Gestures', scope: 'G', dev: false, helpSection: 'Gestures',
+    impl: 'video.js gridStepWheel (dev0555)',
+    desc: 'Grow/shrink the step window ±1 frame; 0 = hold the start frame' },
+
   { label: 'Swipe → / ← title bar', group: 'Gestures', scope: 'Xe', dev: true, helpSection: 'Gestures',
     impl: 'xe.js title-bar swipe',
     desc: 'Auto-save, then preview the slide (→) or close back to the Table (←)' },

@@ -648,7 +648,9 @@ function gridOpenFullscreen(row, contained) {
     // (it never centers and never moves itself). It has NOTHING to do with the
     // A-B select feature — Row 3 carries its OWN start/duration. Rows:
     //   Row 1 PLAY-IN-STEPS:  ◀ [secs] ▶  ◀ free-runs backward / ▶ forward,
-    //         one frame every `secs` s (wheel secs ±0.05, range 0.05–10).
+    //         one frame every `secs` s (wheel secs ±0.05, range 0–10;
+    //         (dev0555) wheeling down to 0 FREEZES on the current frame,
+    //         wheel back up to resume).
     //   Row 2 SINGLE STEP:    ◀ [▶/⏸] ▶  ◀/▶ nudge one frame; center = normal
     //         play / pause toggle.
     //   Row 3 FRAME WINDOW:   ⇄ [s] [d] ▶  two boxes define the window in
@@ -749,14 +751,15 @@ function gridOpenFullscreen(row, contained) {
       function buildFSB(clientX, clientY, init) {
         init = init || {};
         // (dev0415) Optional seed: saved x/s/d replayed from G "Play steps".
-        let secs = isFinite(init.secs) ? clamp(+(+init.secs).toFixed(2), 0.01, 10) : 0.50;  // Row-1 rate: 1 frame / secs
+        let secs = isFinite(init.secs) ? clamp(+(+init.secs).toFixed(2), 0, 10) : 0.50;  // Row-1 rate: 1 frame / secs (0 = frozen)
         let startFrame = isFinite(init.startFrame) ? Math.max(0, init.startFrame | 0)
                                                    : Math.max(0, Math.round(curT() / FRAME));  // box "s"
-        let numFrames  = isFinite(init.numFrames) ? Math.max(1, init.numFrames | 0) : 10;      // box "d"
+        let numFrames  = isFinite(init.numFrames) ? Math.max(0, init.numFrames | 0) : 10;      // box "d" (0 = hold start frame)
         let activeStart = startFrame, activeDur = numFrames;       // what a running loop uses
         let autoTimer = null, autoDir = 0;            // Row-1 free-run step
         let playTimer = null, playMode = null;        // Row-3: 'fwd' | 'boom'
         let playPos = 0, playDir = 1;                 // frame offset + direction
+        let lastTickFrame = -1;                       // (dev0555) last frame tickPlay seeked — lets d=0 hold without re-seeking
         let recording = false;                        // (dev0418) Row-4 "Choose" screen-record toggle
 
         const intervalMs = () => Math.max(16, Math.round(secs * 1000));
@@ -775,6 +778,7 @@ function gridOpenFullscreen(row, contained) {
         function armAuto() {
           if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
           if (!autoDir) return;
+          if (secs === 0) return;                    // (dev0555) rate 0 = freeze on the current frame; wheel up re-arms
           autoTimer = setInterval(() => {
             if (seekBusy()) return;                    // let the prior seek land first
             try { vpSeekRelative(autoDir * FRAME); } catch (_) {}
@@ -805,11 +809,15 @@ function gridOpenFullscreen(row, contained) {
           } else if (playPos > span) {                // ▶ play to end, restart from s
             playPos = 0; applyPending();
           }
-          seekAbs((activeStart + playPos) * FRAME);
+          const f = activeStart + playPos;
+          if (span === 0 && f === lastTickFrame) return;   // (dev0555) d=0 → hold the start frame, don't re-seek every tick
+          lastTickFrame = f;
+          seekAbs(f * FRAME);
         }
         function armPlay() {                           // (re)start ticking at the current rate
           if (playTimer) { clearInterval(playTimer); playTimer = null; }
           if (!playMode) return;
+          if (secs === 0) return;                      // (dev0555) rate 0 = freeze in place; wheel up re-arms
           playTimer = setInterval(tickPlay, intervalMs());
         }
         function startPlay(mode) {
@@ -827,18 +835,20 @@ function gridOpenFullscreen(row, contained) {
         // Row 1 — play in steps (free-running)
         const r1 = mkRow();
         const r1back = mkBtn('◀', 'Play backward in steps');
-        const r1box  = mkBox(secs.toFixed(2), 'Seconds per step (wheel 0.01–10)');
+        const r1box  = mkBox(secs.toFixed(2), 'Seconds per step (wheel; down to 0 = freeze frame)');
         const r1fwd  = mkBtn('▶', 'Play forward in steps');
         r1back.onclick = e => { e.stopPropagation(); startAuto(-1); };
         r1fwd.onclick  = e => { e.stopPropagation(); startAuto(1); };
         r1.append(r1back, r1box, r1fwd);
         r1.addEventListener('wheel', e => {
           e.preventDefault(); e.stopPropagation();
-          // Fine 0.01 steps at/below 0.10, coarse 0.05 steps above; floor 0.01.
+          // Fine 0.01 steps at/below 0.10, coarse 0.05 steps above; floor 0.00.
           // (At exactly 0.10: scrolling up coarsens to 0.15, down refines to 0.09.)
+          // (dev0555) Wheeling down THROUGH 0.01 lands on 0.00 = FREEZE FRAME
+          // (armAuto/armPlay skip the timer at 0); wheel up resumes at 0.01.
           const up = e.deltaY < 0;
           const step = (up ? secs < 0.10 : secs <= 0.10) ? 0.01 : 0.05;
-          secs = clamp(+(secs + (up ? step : -step)).toFixed(2), 0.01, 10);
+          secs = clamp(+(secs + (up ? step : -step)).toFixed(2), 0, 10);
           r1box.textContent = secs.toFixed(2);
           if (autoDir) armAuto();                      // x value re-rates the loop IMMEDIATELY
           if (playMode) armPlay();
@@ -858,7 +868,7 @@ function gridOpenFullscreen(row, contained) {
         const r3 = mkRow();
         const r3boom = mkBtn('⇄', 'Loop the window back-and-forth (ping-pong)');
         const r3sBox = mkBox(String(startFrame), 'Start frame (wheel ±1)');
-        const r3dBox = mkBox(String(numFrames),  'Frames to play (wheel ±1)');
+        const r3dBox = mkBox(String(numFrames),  'Frames to play (wheel ±1; 0 = hold the start frame)');
         const r3fwd  = mkBtn('▶', 'Loop the window forward (restart from start)');
         r3boom.onclick = e => { e.stopPropagation(); startPlay('boom'); };
         r3fwd.onclick  = e => { e.stopPropagation(); startPlay('fwd'); };
@@ -870,9 +880,9 @@ function gridOpenFullscreen(row, contained) {
           if (!playMode) activeStart = startFrame;     // idle → now; running → end of cycle
           refreshPendingMarks();
         }, { passive: false });
-        r3dBox.addEventListener('wheel', e => {        // d = # frames, ±1
+        r3dBox.addEventListener('wheel', e => {        // d = # frames, ±1; (dev0555) floor 0 = hold the start frame
           e.preventDefault(); e.stopPropagation();
-          numFrames = clamp(numFrames + (e.deltaY < 0 ? 1 : -1), 1, 100000);
+          numFrames = clamp(numFrames + (e.deltaY < 0 ? 1 : -1), 0, 100000);
           r3dBox.textContent = String(numFrames);
           if (!playMode) activeDur = numFrames;
           refreshPendingMarks();
@@ -2072,7 +2082,7 @@ function _vpPlayStepsInV(row) {
   if (!row || !row.steps) return;
   const parts = String(row.steps).split(',');
   const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
-  if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 1) return;
+  if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 0 || x < 0) return;  // (dev0555) d=0 / x=0 = saved freeze-frame
   const FRAME = 1 / 30;
   const LEAD_IN = 5;                              // seconds of normal-speed run-up to `s` (floored at video start)
   const sT = s * FRAME, leadInT = Math.max(0, sT - LEAD_IN);

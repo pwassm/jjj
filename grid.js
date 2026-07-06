@@ -1790,6 +1790,17 @@ function gridWireInteractor(interactor, cell, cellStr) {
   interactor.addEventListener('contextmenu', ev => {
     if (ev.shiftKey || _szActive) ev.preventDefault();
   }, true);
+
+  // (dev0555) Wheel over a STEP-PLAYING cell = live step control: plain wheel
+  // retunes the rate (down through 0.01 → 0 = freeze frame; up resumes),
+  // Shift+wheel resizes the frame window (0 = hold the start frame). Cells
+  // that aren't step-playing ignore the wheel entirely (gridStepWheel says
+  // false), so nothing else changes.
+  interactor.addEventListener('wheel', ev => {
+    if (window.gridStepWheel && window.gridStepWheel(cellStr, ev)) {
+      ev.preventDefault(); ev.stopPropagation();
+    }
+  }, { passive: false });
   
   // (zip0143) TOUCH FALLBACK for browsers that don't fire pointer events
   // reliably on touch (Opera Mini's compressed mode, some Brave shields

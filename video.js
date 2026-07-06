@@ -789,6 +789,7 @@ window.cleanupAllVideos = function() {
   for (var cid in window.seeLearnVideoTimers) clearInterval(window.seeLearnVideoTimers[cid]);
   window.seeLearnVideoTimers  = {};
   window.seeLearnVideoPlayers = {};
+  window._gridStepStates      = {};   // (dev0555) live wheel-tunable step states die with the players
 };
 
 // (dev0413/dev0414) Play a saved "steps" window in a grid cell. Replaces the
@@ -809,7 +810,7 @@ window.gridPlaySteps = function(cellStr, row) {
   if (!row || !row.steps) return;
   var parts = String(row.steps).split(',');
   var x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
-  if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 1) return;
+  if (!isFinite(x) || !isFinite(s) || !isFinite(d) || d < 0 || x < 0) return;  // (dev0555) d=0 / x=0 = saved freeze-frame at s
 
   var cellId = 'grid-vid-' + cellStr;
   var player = (window.seeLearnVideoPlayers || {})[cellId];
@@ -859,15 +860,79 @@ window.gridPlaySteps = function(cellStr, row) {
     else if (typeof player.pause === 'function')      player.pause();
   } catch (e) {}
 
-  var interval = Math.max(16, Math.round(x * 1000));
-  var pos = 0;
+  // (dev0555) Keep LIVE per-cell step state so the wheel-over-cell control
+  // (gridStepWheel below) can retune a running loop: x (secs/frame, 0 =
+  // freeze on the current frame) and d (frames, 0 = hold the start frame).
+  // st.player pins the state to THIS mount — if the cell is remounted for
+  // normal playback the stale state is detected and dropped, never clearing
+  // the new mount's timer.
+  var st = { x: x, s: s, d: d, pos: 0, cellId: cellId, player: player, seek: seek, busy: busy };
+  st.arm = function() {
+    var timers = (window.seeLearnVideoTimers = window.seeLearnVideoTimers || {});
+    if (timers[cellId]) { clearInterval(timers[cellId]); delete timers[cellId]; }
+    if (st.d === 0) { st.pos = 0; st.seek(st.s * FRAME); return; }   // hold the start frame
+    if (st.x === 0) return;                                          // freeze wherever the loop is
+    timers[cellId] = setInterval(function() {
+      if (st.busy()) return;                     // let the prior seek land first (disk/Vimeo)
+      st.pos = (st.pos >= st.d) ? 0 : st.pos + 1;   // forward loop: s … s+d … restart at s
+      st.seek((st.s + st.pos) * FRAME);
+    }, Math.max(16, Math.round(st.x * 1000)));
+  };
+  window._gridStepStates = window._gridStepStates || {};
+  window._gridStepStates[cellId] = st;
   seek(s * FRAME);
-  window.seeLearnVideoTimers[cellId] = setInterval(function() {
-    if (busy()) return;                          // let the prior seek land first (disk/Vimeo)
-    pos = (pos >= d) ? 0 : pos + 1;              // forward loop: s … s+d … restart at s
-    seek((s + pos) * FRAME);
-  }, interval);
+  st.arm();
 };
+
+// (dev0555) Wheel over a STEP-PLAYING grid cell = live control. Plain wheel
+// retunes the rate with the V-panel ladder (fine 0.01 at/below 0.10s, coarse
+// 0.05 above) and wheeling down THROUGH 0.01 lands on 0 = FREEZE FRAME; wheel
+// up resumes. Shift+wheel resizes the frame window d ±1, floor 0 = hold the
+// start frame. Returns true when handled (cell is actively step-playing) so
+// the caller can preventDefault; false otherwise. A small badge on the cell
+// echoes the new value and fades out.
+window.gridStepWheel = function(cellStr, ev) {
+  var cellId = 'grid-vid-' + cellStr;
+  var st = (window._gridStepStates || {})[cellId];
+  if (!st) return false;
+  if (st.player !== (window.seeLearnVideoPlayers || {})[cellId]) {   // cell remounted since — state is stale
+    delete window._gridStepStates[cellId];
+    return false;
+  }
+  var up = ev.deltaY < 0;
+  if (ev.shiftKey) {
+    st.d = Math.max(0, Math.min(100000, st.d + (up ? 1 : -1)));
+    if (st.pos > st.d) st.pos = 0;
+  } else {
+    var step = (up ? st.x < 0.10 : st.x <= 0.10) ? 0.01 : 0.05;
+    st.x = Math.max(0, Math.min(10, +(st.x + (up ? step : -step)).toFixed(2)));
+  }
+  st.arm();
+  _gridStepBadge(st, !!ev.shiftKey);
+  return true;
+};
+
+// (dev0555) Transient value badge inside the cell's video host (the host is
+// pointer-events:none so the badge never intercepts anything).
+function _gridStepBadge(st, showD) {
+  var host = document.getElementById(st.cellId);
+  if (!host) return;
+  var b = host.querySelector('.grid-step-badge');
+  if (!b) {
+    b = document.createElement('div');
+    b.className = 'grid-step-badge';
+    b.style.cssText = 'position:absolute;left:6px;bottom:6px;z-index:6;padding:2px 8px;'
+      + 'background:rgba(0,0,20,0.85);border:1px solid #08a;border-radius:4px;'
+      + 'color:#fd6;font:bold 13px monospace;pointer-events:none;transition:opacity 0.4s;';
+    host.appendChild(b);
+  }
+  b.textContent = (st.d === 0) ? ('❄ frame ' + st.s)
+                : (st.x === 0) ? '❄ frozen'
+                : (showD ? (st.d + 'f @ ' + st.x.toFixed(2) + 's') : (st.x.toFixed(2) + 's/step'));
+  b.style.opacity = '1';
+  clearTimeout(b._fadeT);
+  b._fadeT = setTimeout(function() { b.style.opacity = '0'; }, 1400);
+}
 
 // (dev0419) "Play steps All" — convert EVERY mounted grid cell that has saved
 // steps to in-cell frame-step playback at once (gridPlaySteps on each). Used by
