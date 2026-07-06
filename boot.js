@@ -393,29 +393,24 @@ async function _enterFullscreenLandscape() {
 }
 
 function _wireFullscreenOnFirstTap() {
-  // (dev0557) RE-ENABLED for desktop as a persistent fullscreen keeper.
-  // The app should run fullscreen (like F11) for its whole life. Browser
-  // policy forbids entering fullscreen without a user gesture, so:
-  //   • the first click/keypress after load enters fullscreen;
-  //   • if fullscreen is ever lost (Esc, F11, alt-tab quirks), the next
-  //     gesture re-enters it — fullscreen persists while the app runs;
-  //   • pagehide (tab close / navigation away) exits fullscreen so the
-  //     browser returns to its normal windowed state.
+  // (dev0557/dev0558) RE-ENABLED for desktop: enter browser fullscreen ONCE
+  // on the first user gesture after load, then stand down. Browser policy
+  // forbids entering fullscreen without a user gesture, so the very first
+  // click/keypress arms it; after that we never re-enter (Esc/F11 leave
+  // fullscreen and stay left — no fighting the user). pagehide exits
+  // fullscreen on tab close / navigation so the browser returns to normal.
   // Mobile keeps the zip0173 CSS rotate-wrap approach instead — the
   // fullscreen API there had tap-on-chrome / iOS quirks (see above).
   if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return;
-  const enter = () => {
+  const enterOnce = () => {
+    document.removeEventListener('pointerdown', enterOnce, true);
+    document.removeEventListener('keydown', enterOnce, true);
     if (document.fullscreenElement) return;
     const el = document.documentElement;
     if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   };
-  document.addEventListener('pointerdown', enter, true);
-  document.addEventListener('keydown', e => {
-    // Don't re-enter on the very keys the browser uses to LEAVE fullscreen —
-    // Esc/F11 must be allowed to exit; the next other gesture re-enters.
-    if (e.key === 'Escape' || e.key === 'F11') return;
-    enter();
-  }, true);
+  document.addEventListener('pointerdown', enterOnce, true);
+  document.addEventListener('keydown', enterOnce, true);
   window.addEventListener('pagehide', () => {
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch (_) {}
   });
