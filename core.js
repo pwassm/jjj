@@ -3052,6 +3052,10 @@ function openHM()  {
     hmPanel.style.top  = (r.bottom + 6) + 'px';
     hmPanel.style.left = Math.min(r.left, window.innerWidth - 250) + 'px';
   }
+  // (dev0554) "Message to Webmaster" is offered only to signed-in visitors —
+  // reveal it each time the menu opens based on the current salAuth state.
+  const _wm = document.getElementById('hm-webmaster');
+  if (_wm) _wm.style.display = (window.salAuth && window.salAuth.loggedIn()) ? '' : 'none';
   hmPanel.classList.add('open');
   // Add keyboard handler when menu opens
   document.addEventListener('keydown', hmKeyHandler, true);
@@ -3079,6 +3083,12 @@ function hmKeyHandler(e) {
   if (k === 'w') { e.preventDefault(); closeHM(); if (typeof window._showShareableMenu === 'function') window._showShareableMenu(); return; }
   if (k === 's') { e.preventDefault(); closeHM(); openSettings(); return; }
   if (k === 'h') { e.preventDefault(); closeHM(); openHelp(); return; }
+  if (k === 'm') {
+    // Only actionable when the item is visible (signed in); ignore otherwise.
+    const wm = document.getElementById('hm-webmaster');
+    if (wm && wm.style.display !== 'none') { e.preventDefault(); closeHM(); openWebmasterMessage(); }
+    return;
+  }
 }
 
 hmBtn.addEventListener('click', e => { e.stopPropagation(); toggleHM(); });
@@ -3112,6 +3122,74 @@ document.getElementById('hm-changesel')?.addEventListener('click', () => {
 });
 document.getElementById('hm-settings').addEventListener('click', () => { closeHM(); openSettings(); });
 document.getElementById('hm-help').addEventListener('click', () => { closeHM(); openHelp(); });
+document.getElementById('hm-webmaster')?.addEventListener('click', () => { closeHM(); openWebmasterMessage(); });
+
+// (dev0554) Message to Webmaster — any signed-in visitor sends a private note
+// to the site owner via sal-api POST /messages (kind:general). Purely additive:
+// the menu item is hidden unless salAuth reports a live session, and a failed
+// send just shows an inline error (never blocks browsing).
+function openWebmasterMessage() {
+  const A = window.salAuth;
+  if (!A || !A.loggedIn()) {
+    if (typeof toast === 'function') toast('Please sign in first (Welcome Menu).', 2200);
+    return;
+  }
+  const old = document.getElementById('wmMsgModal');
+  if (old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'wmMsgModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999997;background:rgba(0,0,0,0.7);'
+    + 'display:flex;align-items:center;justify-content:center;font-family:monospace;';
+  modal.innerHTML = `
+    <div style="background:#0d0d1e;border:2px solid #4af;border-radius:10px;padding:20px 24px;
+                min-width:420px;max-width:560px;color:#eee;box-shadow:0 12px 40px rgba(0,0,0,0.9);">
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <h2 style="margin:0;font-size:16px;color:#8ef;flex:1;">✉ Message to Webmaster</h2>
+        <button id="wmMsgClose" style="background:none;border:1px solid #555;color:#aaa;
+                padding:3px 9px;border-radius:5px;cursor:pointer;font-family:monospace;">✕</button>
+      </div>
+      <div style="color:#9ab;font-size:11px;margin-bottom:10px;line-height:1.4;">
+        Send a private note to the site owner. Your sign-in email travels with it so he can reply.
+      </div>
+      <textarea id="wmMsgText" maxlength="4000" placeholder="Type your message…"
+                style="width:100%;height:140px;box-sizing:border-box;background:#111;border:1px solid #345;
+                       border-radius:6px;color:#eee;font-family:monospace;font-size:13px;padding:10px;resize:vertical;"></textarea>
+      <div style="display:flex;align-items:center;margin-top:12px;">
+        <span id="wmMsgStatus" style="flex:1;color:#888;font-size:11px;"></span>
+        <button id="wmMsgSend" style="background:#1a6;border:none;color:#fff;padding:7px 18px;border-radius:6px;
+                cursor:pointer;font-family:monospace;font-size:13px;font-weight:bold;">Send</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const ta = modal.querySelector('#wmMsgText');
+  const sendBtn = modal.querySelector('#wmMsgSend');
+  const statusEl = modal.querySelector('#wmMsgStatus');
+  const close = () => modal.remove();
+  modal.querySelector('#wmMsgClose').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  setTimeout(() => ta.focus(), 30);
+  function doSend() {
+    const body = (ta.value || '').trim();
+    if (!body) { statusEl.style.color = '#fc8'; statusEl.textContent = 'Nothing to send yet.'; return; }
+    sendBtn.disabled = true; statusEl.style.color = '#888'; statusEl.textContent = 'Sending…';
+    A.postMessage(body, { kind: 'general' }).then(d => {
+      if (d && d.error) {
+        sendBtn.disabled = false; statusEl.style.color = '#f88';
+        statusEl.textContent = 'Send failed: ' + d.error + (d.detail ? '' : '');
+      } else {
+        statusEl.style.color = '#8f8'; statusEl.textContent = 'Sent — thank you!';
+        if (typeof toast === 'function') toast('Message sent to webmaster.', 2000);
+        setTimeout(close, 900);
+      }
+    });
+  }
+  sendBtn.onclick = doSend;
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSend(); }
+  });
+}
+window.openWebmasterMessage = openWebmasterMessage;
 
 // ── Settings modal (zip0124) ───────────────────────────────────────────────
 // Persistent prefs stored in localStorage under 'ml-settings'. Currently:
