@@ -45,6 +45,8 @@ const SLIDESHOW_DEFAULTS = {
   //   'image' — image slides only (legacy behavior)
   //   'video' — direct-video slides only (played via the full V player)
   //   'both'  — images and videos interleaved in cell order
+  //   'bothshort' — like 'both', but each video is capped at slideSec × 3
+  //                 (3× the image dwell) then the show advances (dev0557)
   // Only direct video files (.mp4/.webm/…) are eligible — YouTube/Vimeo links
   // are never collected as video slides.
   showMode:      'image',
@@ -142,7 +144,7 @@ function _slideshowIsDirectVideoLink(link) {
 function _slideshowFilterByShow(list, mode) {
   if (mode === 'video') return list.filter(s => s.kind === 'video');
   if (mode === 'image') return list.filter(s => s.kind !== 'video');
-  return list.slice(); // 'both'
+  return list.slice(); // 'both' | 'bothshort'
 }
 
 // Per-cell slides: link image (if image URL) OR a direct-video slide (if the
@@ -615,6 +617,9 @@ function _slideshowStart(allOrdered, opts) {
     _videoActive: false,
     _vpObserver: null,
     _prevFsZ: '',
+    // (dev0557) Both-ShortVid cap timer — closes V after slideSec × 3 so
+    // video slides run 3× the image dwell instead of playing out in full.
+    _videoCapTimer: null,
     // (dev0281) Direction the show advances when the current video closes:
     // +1 (R→L flick = next) or -1 (L→R flick = previous). Reset after each use.
     _closeDir: 1,
@@ -644,6 +649,22 @@ function _slideshowStart(allOrdered, opts) {
 
   // Apply transition duration to image layers (live, in case settings change)
   _slideshowApplyTransitionTiming();
+
+  // (dev0557) Wheel navigation while PAUSED: wheel up = next slide, wheel
+  // down = previous. Only when paused — while running the dwell timer owns
+  // advancement — and never over a playing video (V sits above the overlay,
+  // so its wheel gestures stay untouched). A short throttle keeps trackpad
+  // momentum from skipping several slides per notch.
+  overlay.addEventListener('wheel', e => {
+    const st = _slideshowState;
+    if (!st || !st.paused || st._videoActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const now = Date.now();
+    if (st._lastWheelNav && now - st._lastWheelNav < 150) return;
+    st._lastWheelNav = now;
+    _slideshowAdvance(e.deltaY < 0 ? +1 : -1);
+  }, { passive: false });
 
   // (dev0265) Desktop mouse — modeled on V/vp.js:
   //   • Hold LMB: after 180ms settle, scale ramps up (slow→fast) capped at MAX,
@@ -1212,6 +1233,20 @@ function _slideshowPlayVideo(slide) {
   }
   _slideshowWatchVpClose();
   gridOpenFullscreen(slide.row);
+  // (dev0557) Both-ShortVid: cap playback at slideSec × 3, then close V —
+  // the close observer then advances the show like a natural video end.
+  // If the show is paused when the cap fires, poll until resumed so Pause
+  // holds the video on screen just like it holds an image.
+  clearTimeout(st._videoCapTimer);
+  if (st.settings.showMode === 'bothshort') {
+    const capMs = st.settings.slideSec * 3 * 1000;
+    const fire = () => {
+      if (!_slideshowState || _slideshowState !== st || !st._videoActive) return;
+      if (st.paused) { st._videoCapTimer = setTimeout(fire, 1000); return; }
+      if (typeof vpClose === 'function') vpClose();
+    };
+    st._videoCapTimer = setTimeout(fire, capMs);
+  }
   // (dev0302/0303) Review mode: paint our bottom filename+resolution+path
   // overlay over V, paint the corner tally, and tell V to skip its own
   // upper-left disk-info caption (we own the on-screen file naming now).
@@ -1285,6 +1320,7 @@ function _slideshowAfterVideoClose() {
   // stale observer) re-triggering the advance.
   if (!st._videoActive) return;
   st._videoActive = false;
+  clearTimeout(st._videoCapTimer); // (dev0557) video closed — drop the ShortVid cap
   const fs = document.getElementById('gridFullscreen');
   if (fs) fs.style.zIndex = st._prevFsZ || '';
   // (dev0281) Advance in the direction the close gesture asked for: R→L flick
@@ -2380,6 +2416,7 @@ function slideshowClose() {
   if (!_slideshowState) return;
   clearTimeout(_slideshowState.timer);
   clearTimeout(_slideshowState.delayTimer); // (zip0239) cancel any queued zoom
+  clearTimeout(_slideshowState._videoCapTimer); // (dev0557) Both-ShortVid cap
   // (dev0279) Stop watching the V player and undo our z-index lift if a video
   // hand-off was in flight when the show was closed.
   if (_slideshowState._vpObserver) {
@@ -2515,7 +2552,8 @@ function _slideshowSizeSelect(id, cur, selCSS) {
 
 // (dev0279) Show dropdown — which media kinds appear in the slideshow.
 function _slideshowShowSelect(id, cur, selCSS) {
-  const opts = [['image','Image only'],['video','Video only'],['both','Both']];
+  const opts = [['image','Image only'],['video','Video only'],['both','Both'],
+                ['bothshort','Both-ShortVid']];
   return '<select id="' + id + '" style="' + selCSS + '">' +
     opts.map(o => '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
     '</select>';

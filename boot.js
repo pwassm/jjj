@@ -393,11 +393,32 @@ async function _enterFullscreenLandscape() {
 }
 
 function _wireFullscreenOnFirstTap() {
-  // (zip0173) DISABLED — see _enterFullscreenLandscape comment above.
-  // The CSS rotate-wrap in index.html handles portrait-on-phone display
-  // without needing fullscreen or an orientation lock. Function kept
-  // for backward compatibility with the call site in load().then().
-  return;
+  // (dev0557) RE-ENABLED for desktop as a persistent fullscreen keeper.
+  // The app should run fullscreen (like F11) for its whole life. Browser
+  // policy forbids entering fullscreen without a user gesture, so:
+  //   • the first click/keypress after load enters fullscreen;
+  //   • if fullscreen is ever lost (Esc, F11, alt-tab quirks), the next
+  //     gesture re-enters it — fullscreen persists while the app runs;
+  //   • pagehide (tab close / navigation away) exits fullscreen so the
+  //     browser returns to its normal windowed state.
+  // Mobile keeps the zip0173 CSS rotate-wrap approach instead — the
+  // fullscreen API there had tap-on-chrome / iOS quirks (see above).
+  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return;
+  const enter = () => {
+    if (document.fullscreenElement) return;
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+  };
+  document.addEventListener('pointerdown', enter, true);
+  document.addEventListener('keydown', e => {
+    // Don't re-enter on the very keys the browser uses to LEAVE fullscreen —
+    // Esc/F11 must be allowed to exit; the next other gesture re-enters.
+    if (e.key === 'Escape' || e.key === 'F11') return;
+    enter();
+  }, true);
+  window.addEventListener('pagehide', () => {
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (_) {}
+  });
 }
 
 // (dev0551) Render + wire the optional sign-in strip on Page 1 of the
