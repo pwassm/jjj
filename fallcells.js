@@ -77,6 +77,12 @@
   var CLICK_GROW = 1.2, CLICK_HOLD = 10, CLICK_FADE = 1.0;   // seconds
   var EASE      = 'cubic-bezier(.4,0,.2,1)';
   var FALL_EASE = 'cubic-bezier(.45,0,.9,.4)';        // accelerating — gravity drop
+  // (dev0560) "Pushed off a cliff": as the cell slides into 1e it tips its right
+  // side down, then keeps rotating a full turn on the way down, landing upright.
+  var TILT_MID = 5;      // deg of tilt at the HALFWAY point of the slide into 1e
+  var TILT_DEG = 24;     // deg of tilt once it reaches the cliff edge (1e), poised to fall
+  // The fall then continues the clockwise spin from TILT_DEG all the way to 360°
+  // (≡ upright) so the total motion (tip + fall) is one clean 360° rotation.
 
   // ── Ring geometry (clockwise from top-left) + 1-based [row,col] placement ────
   var RING = ['1a','1b','1c','1d','1e','2e','3e','4e','5e','5d','5c','5b','5a','4a','3a','2a'];
@@ -178,13 +184,17 @@
     });
   }
 
-  // ── Phase 2: the cliff — drop and creep ALTERNATE (dev0559) ──────────────────
+  // ── Phase 2: the cliff — drop and creep ALTERNATE (dev0559 · tip+spin dev0560) ─
   // DROP turn (1e occupied AND 5e clear): ONLY the cell at 1e falls the chute to
   // 5e and bounces — the rest of the ring holds still, so 1d visibly waits at the
-  // cliff edge instead of being shoved into 1e mid-fall.
+  // cliff edge instead of being shoved into 1e mid-fall. (dev0560) The faller keeps
+  // the tilt it earned sliding in and spins the rest of a full 360° on the way
+  // down, landing upright to bounce.
   // CREEP turn (otherwise): every belt cell advances one slot clockwise, but a
   // cell only moves if the slot ahead is empty or being vacated this turn — so if
-  // 1e is somehow still occupied, 1d (and everything behind it) holds too.
+  // 1e is somehow still occupied, 1d (and everything behind it) holds too. The one
+  // cell arriving at 1e (from 1d) tips its right side down as it reaches the edge
+  // (dev0560), then the next turn's drop follows with NO pause — pushed off a cliff.
   function cycle() {
     if (!active || phase !== 'run') return;
     var cont = container();
@@ -195,23 +205,52 @@
     var total;
 
     if (z && !ring[SLOT_5E]) {
-      // ── DROP turn: the zipper falls alone; the belt holds. ────────────────
-      var zOld = z.getBoundingClientRect();
+      // ── DROP turn: the faller drops + spins alone; the belt holds. ────────
       ring[SLOT_1E] = null;
       ring[SLOT_5E] = z;
-      z.style.transition = 'none'; z.style.transform = '';
+      var startRot, fdx, fdy;
+      if (z._fcPending && typeof z._fallDy === 'number') {
+        // Continue seamlessly from the tilt: it's held at rotate(TILT_DEG) at 1e,
+        // and we already measured the exact 1e→5e offset when it slid in.
+        startRot = TILT_DEG; fdx = z._fallDx; fdy = z._fallDy;
+        z.style.transition = 'none';
+        z.style.transform  = 'translate(0px,0px) rotate(' + TILT_DEG + 'deg)';
+        if (z._tiltAnim) { try { z._tiltAnim.cancel(); } catch (e) {} z._tiltAnim = null; }
+      } else {
+        // Fallback (no tilt preceded this — rare): spin from upright. Measure the
+        // 1e→5e offset live (the cell is unrotated here, so the rect is clean).
+        startRot = 0;
+        z.style.transition = 'none'; z.style.transform = '';
+        z.style.transformOrigin = '50% 50%';
+        var r1 = z.getBoundingClientRect();
+        z.style.gridRow = RC['5e'][0]; z.style.gridColumn = RC['5e'][1];
+        var r5 = z.getBoundingClientRect();
+        fdx = r5.left - r1.left; fdy = r5.top - r1.top;
+      }
       z.style.gridRow = RC['5e'][0]; z.style.gridColumn = RC['5e'][1];
-      z.style.zIndex = ++zc;                            // ride over the bottom row
-      cont.offsetWidth;                                 // force the new layout
-      var znr = z.getBoundingClientRect();
-      z.style.transform = 'translate(' + (zOld.left - znr.left) + 'px,' + (zOld.top - znr.top) + 'px)';
-      cont.offsetWidth;                                 // commit inverted transform
-      requestAnimationFrame(function () {
-        z.style.transition = 'transform ' + moveDur + 's ' + FALL_EASE;
-        z.style.transform  = 'translate(0,0)';
-      });
+      z.style.zIndex  = ++zc;                            // ride over everything on the way down
+      z.style.transformOrigin = '50% 50%';              // spin about the centre
+      z.style.transition = 'none';
+      z.style.transform  = 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(' + startRot + 'deg)';
+      cont.offsetWidth;                                 // commit the start pose (at 1e)
       zipperEl = z;
-      fxTimers.push(setTimeout(function () { bounce(z); }, moveDur * 1000));
+      requestAnimationFrame(function () {
+        var fa = z.animate([
+          { transform: 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(' + startRot + 'deg)' },
+          { transform: 'translate(0px,0px) rotate(360deg)' }
+        ], { duration: moveDur * 1000, easing: FALL_EASE, fill: 'forwards' });
+        z._fallAnim = fa;
+        fa.onfinish = function () {
+          z._fallAnim = null; z._fcPending = false; z._fallDy = undefined;
+          if (!active || !z.isConnected) { try { fa.cancel(); } catch (e) {} return; }
+          z.style.transition = 'none';
+          z.style.transform  = 'translate(0,0)';        // upright at 5e (360° ≡ 0°)
+          z.style.transformOrigin = '50% 100%';         // floor origin for the squash
+          try { fa.cancel(); } catch (e) {}             // drop fill-forwards so inline renders
+          cont.offsetWidth;
+          bounce(z);
+        };
+      });
       total = moveDur + BOUNCE + PAUSE;
     } else {
       // ── CREEP turn: the L (and the lander at 5e) advances one notch. ──────
@@ -238,18 +277,44 @@
         m.el.style.gridRow = rc[0]; m.el.style.gridColumn = rc[1];
       });
       cont.offsetWidth;                                 // force the new layout
+      // Measure new boxes + set the inverted transforms. Along the way capture the
+      // geometry the faller (the cell arriving at 1e) needs for its later drop.
+      var fallerM = null, row1Top = null, row5Top = null;
       moves.forEach(function (m, k) {
         var nr = m.el.getBoundingClientRect();
-        m.el.style.transform = 'translate(' + (lOld[k].left - nr.left) + 'px,' + (lOld[k].top - nr.top) + 'px)';
+        m.el._fcDx = lOld[k].left - nr.left;
+        m.el._fcDy = lOld[k].top  - nr.top;
+        m.el.style.transform = 'translate(' + m.el._fcDx + 'px,' + m.el._fcDy + 'px)';
+        if (m.to === SLOT_1E) { fallerM = m; row1Top = nr.top; }
+        if (RC[RING[m.to]][0] === 5) row5Top = nr.top;   // any row-5 lander gives us 5e's top
       });
       cont.offsetWidth;                                 // commit inverted transforms
       requestAnimationFrame(function () {
         moves.forEach(function (m) {
+          if (m === fallerM) return;                    // faller is WAAPI-tilted below
           m.el.style.transition = 'transform ' + moveDur + 's ' + EASE;
           m.el.style.transform  = 'translate(0,0)';
         });
+        if (fallerM) {
+          var el = fallerM.el, dx = el._fcDx, dy = el._fcDy;
+          el._fcPending = true;
+          el._fallDx = 0;                               // 1e and 5e share column 5
+          el._fallDy = (row5Top != null && row1Top != null)
+                       ? (row5Top - row1Top)
+                       : 4 * el.getBoundingClientRect().height;
+          el.style.transformOrigin = '50% 50%';         // tip about the centre
+          el.style.zIndex = ++zc;                       // cover the cells it tips over
+          el.style.transition = 'none';
+          el._tiltAnim = el.animate([
+            { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg)', offset: 0 },
+            { transform: 'translate(' + (dx * 0.5) + 'px,' + (dy * 0.5) + 'px) rotate(' + TILT_MID + 'deg)', offset: 0.5 },
+            { transform: 'translate(0px,0px) rotate(' + TILT_DEG + 'deg)', offset: 1 }
+          ], { duration: moveDur * 1000, easing: EASE, fill: 'forwards' });
+        }
       });
-      total = moveDur + PAUSE;
+      // No pause when a faller just reached the cliff and 5e is clear: the drop
+      // must start the instant the tilt finishes, so tip flows into fall.
+      total = (fallerM && !ring[SLOT_5E]) ? moveDur : (moveDur + PAUSE);
     }
 
     fillLGaps();                                        // no empties off the chute
@@ -319,7 +384,8 @@
     var tcand = [];
     for (var i = 0; i < 16; i++) {
       var re = ring[i];
-      if (re && re !== zipperEl && re._rowData) tcand.push({ el: re, slot: i, st: null });
+      // Never swap over the faller — not while it's tilting (_fcPending) or falling.
+      if (re && re !== zipperEl && !re._fcPending && re._rowData) tcand.push({ el: re, slot: i, st: null });
     }
     statics.forEach(function (s) { if (s.el && s.el._rowData) tcand.push({ el: s.el, slot: -1, st: s }); });
     if (!tcand.length) return;
@@ -368,7 +434,7 @@
   function onCellClick(e) {
     if (!active || phase !== 'run') return;
     var el = e.target && e.target.closest ? e.target.closest('#gridContainer .grid-cell') : null;
-    if (!el || zoomEl || el === zipperEl || !el._rowData) return;
+    if (!el || zoomEl || el === zipperEl || el._fcPending || !el._rowData) return;
     if (reserve.indexOf(el) >= 0) return;               // faded ghosts aren't featured
     e.stopPropagation(); e.preventDefault();
 
@@ -435,6 +501,11 @@
     var cont = container(); if (!cont) return;
     var cells = cont.querySelectorAll('.grid-cell');
     cells.forEach(function (el) {
+      // (dev0560) Kill any live WAAPI tip/fall — its fill:forwards would otherwise
+      // override the reset transform and pin the cell mid-air.
+      if (el._tiltAnim) { try { el._tiltAnim.cancel(); } catch (e) {} el._tiltAnim = null; }
+      if (el._fallAnim) { try { el._fallAnim.cancel(); } catch (e) {} el._fallAnim = null; }
+      el._fcPending = false; el._fallDy = undefined;
       el.style.transition = 'none';
       el.style.transform  = '';
       el.style.opacity    = '';
