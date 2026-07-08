@@ -6257,5 +6257,131 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "aeolidiidae",
+    "label": "Aeolidiidae",
+    "kind": "taxon",
+    "parents": [
+      "nudibranchs"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "aeolidia",
+    "label": "Aeolidia",
+    "kind": "taxon",
+    "parents": [
+      "aeolidiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "aeolidia-papillosa",
+    "label": "Aeolidia papillosa",
+    "kind": "taxon",
+    "parents": [
+      "aeolidia"
+    ],
+    "aliases": [
+      "Aeolodia papillosa"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "shag-rug nudibranch",
+    "extinct": false
+  },
+  {
+    "id": "strongylocentrotus-droebachiensis",
+    "label": "Strongylocentrotus droebachiensis",
+    "kind": "taxon",
+    "parents": [
+      "strongylocentrotus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "green sea urchin",
+    "extinct": false
+  },
+  {
+    "id": "haliphron-atlanticus",
+    "label": "Haliphron atlanticus",
+    "kind": "taxon",
+    "parents": [
+      "haliphron"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Seven-arm Octopus"
+  },
+  {
+    "id": "alloposidae",
+    "label": "Alloposidae",
+    "kind": "taxon",
+    "parents": [
+      "octopoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "haliphron",
+    "label": "Haliphron",
+    "kind": "taxon",
+    "parents": [
+      "alloposidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "mbari",
+    "label": "Mbari",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "caristius-macropus",
+    "label": "Caristius macropus",
+    "kind": "taxon",
+    "parents": [
+      "caristius"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "manefish"
+  },
+  {
+    "id": "caristiidae",
+    "label": "Caristiidae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "caristius",
+    "label": "Caristius",
+    "kind": "taxon",
+    "parents": [
+      "caristiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

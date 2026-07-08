@@ -319,12 +319,14 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
 
         // Get actual video duration so VidRange "0 99999" loops at real end
         // (critical for Shorts whose duration is 15-60s, not 99999s)
+        var durCapped = false;
         try {
           var realDur = e.target.getDuration();
           if (realDur > 0 && realDur < 99990) {
             segs.forEach(function(s) {
               if (s.dur > realDur) s.dur = Math.max(1, realDur - s.start);
             });
+            durCapped = true;
           }
         } catch(_de) {}
 
@@ -332,6 +334,16 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
           return setInterval(function() {
             if (e.target._salPaused) return;
             try {
+              // (dev0567) getDuration() is often 0 at onReady (metadata not yet
+              // loaded), so a no-VidRange loop keeps seg.dur=99999 and would run
+              // to YouTube's end screen. Re-cap once the real duration is known.
+              if (!durCapped) {
+                var rd = e.target.getDuration();
+                if (rd > 0 && rd < 99990) {
+                  segs.forEach(function(s) { if (s.dur > rd) s.dur = Math.max(1, rd - s.start); });
+                  durCapped = true;
+                }
+              }
               var t   = e.target.getCurrentTime();
               var seg = segs[segIdx];
               if (t >= seg.start + seg.dur - 0.2) {
@@ -368,7 +380,14 @@ window.mountYouTubeClip = async function(hostEl, url, startSec, dur, isMuted, cu
         }
       },
       onStateChange: function(e) {
-        // No ENDED handler — interval handles looping at -0.2s
+        // (dev0567) Safety net: the -0.2s reseek can miss — getDuration() may be 0
+        // at onReady so a no-VidRange loop keeps seg.dur=99999 and never reseeks,
+        // and a backgrounded setInterval throttles to ~1s and overshoots. Either
+        // way the clip hits its true end and YouTube paints its replay button with
+        // no recovery. On ENDED (state 0), snap back to the current segment start.
+        if (e.data === 0 && !e.target._salPaused) {
+          try { e.target.seekTo(segs[segIdx].start, !window.keyframeOnly); e.target.playVideo(); } catch (_) {}
+        }
       }
     }
   });
@@ -474,7 +493,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // Live role pointers. front = visible/playing, back = warming/idle, hidden.
   var frontLayer = A, backLayer = B;
   var frontSeg = 0;
-  var swapping = false, killed = false, loopTimer = null;
+  var swapping = false, killed = false, loopTimer = null, durCapped = false;
   // In-flight warm-ups (null when none). backWarm drives segment swaps; initWarm
   // is the very first front's warm-up.
   var backWarm = null, initWarm = null, initRevealed = false;
@@ -495,6 +514,16 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
             if (isMuted) e.target.mute(); else e.target.unMute();
             layer.ready = true;
             resolve(e.target);
+          },
+          onStateChange: function(e) {
+            // (dev0567) Safety net for a full-video loop whose duration cap missed
+            // (getDuration()==0 at onReady): the front reaches its true end and
+            // YouTube paints its replay button. Snap the front back to its segment
+            // start so the cell never sticks on the end screen.
+            if (e.data === 0 && !killed && layer === frontLayer
+                && !(controller && (controller._gridPaused || controller._salPaused))) {
+              try { e.target.seekTo(segs[frontSeg].start, true); e.target.playVideo(); } catch (_) {}
+            }
           }
         }
       });
@@ -600,6 +629,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
       var realDur = p.getDuration();
       if (realDur > 0 && realDur < 99990) {
         segs.forEach(function(s) { if (s.dur > realDur) s.dur = Math.max(1, realDur - s.start); });
+        durCapped = true;
       }
     } catch (_) {}
     initWarm = beginWarm(A, segs[0]);
@@ -615,6 +645,19 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     if (killed || swapping) return;
     if (controller._gridPaused || controller._salPaused) return;
     if (!frontLayer.ready || !initWarm) return;
+
+    // (dev0567) getDuration() is often 0 at onReady, leaving a no-VidRange loop at
+    // seg.dur=99999 so the pre-end warm-up never triggers and the clip runs to
+    // YouTube's replay screen. Re-cap once the real duration is known.
+    if (!durCapped) {
+      try {
+        var rd = frontLayer.player.getDuration();
+        if (rd > 0 && rd < 99990) {
+          segs.forEach(function(s) { if (s.dur > rd) s.dur = Math.max(1, rd - s.start); });
+          durCapped = true;
+        }
+      } catch (_) {}
+    }
 
     // Phase 1 — reveal the very first front once its startup chrome has burned
     // off hidden, dissolving the poster out.
