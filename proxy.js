@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0565';
+const PROXY_BUILD = 'dev0566';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1526,13 +1526,25 @@ async function frameGrab(req, res, origin) {
     const n = freeze ? 1 : Math.min(d + 1, STEP_MAX);
     const t0 = Date.now();
 
+    // Resolve a stream URL via yt-dlp, optionally as a specific YT player
+    // client. --js-runtimes node lets the nightly solve YT's n-challenge
+    // (same fix as the AHK downloader's 360p bug).
+    async function resolveStream(client) {
+      const args = ['--no-warnings', '--no-playlist', '--ignore-config',
+                    '--socket-timeout', '20', '--js-runtimes', 'node'];
+      if (client) args.push('--extractor-args', 'youtube:player_client=' + client);
+      args.push('-f', STEP_FMT, '-g', p.url);
+      const r = await frameRunCollect('yt-dlp', args, 45000);
+      return { url: String(r.out).split(/\r?\n/).find(l => /^https?:\/\//i.test(l)) || '',
+               err: r.err, code: r.code };
+    }
+
     // Direct media links go straight to ffmpeg; everything else through yt-dlp.
-    let streamUrl = p.url;
-    if (!/\.(mp4|webm|m4v|mov|avi|mkv|ogv)([?#]|$)/i.test(p.url)) {
-      const r = await frameRunCollect('yt-dlp',
-        ['--no-warnings', '--no-playlist', '--ignore-config', '--socket-timeout', '20',
-         '-f', STEP_FMT, '-g', p.url], 45000);
-      streamUrl = String(r.out).split(/\r?\n/).find(l => /^https?:\/\//i.test(l)) || '';
+    const isDirect = /\.(mp4|webm|m4v|mov|avi|mkv|ogv)([?#]|$)/i.test(p.url);
+    let streamUrl = p.url, client = '';
+    if (!isDirect) {
+      const r = await resolveStream('');
+      streamUrl = r.url;
       if (r.code !== 0 || !streamUrl) {
         sendJson(res, 502, { ok: false, error: 'yt-dlp could not resolve a stream URL'
           + (r.err ? ': ' + r.err.slice(-300) : '') }, origin);
@@ -1557,15 +1569,41 @@ async function frameGrab(req, res, origin) {
     // of the source's real fps.
     tmpDir = path.join(STEPS_DIR, '.tmp-' + Date.now() + '-' + (++_stepTmpSeq));
     fs.mkdirSync(tmpDir, { recursive: true });
-    const p1 = await frameRunCollect('ffmpeg',
-      ['-hide_banner', '-loglevel', 'warning', '-y',
-       '-ss', (s / 30).toFixed(3), '-i', streamUrl,
-       '-vf', 'fps=30', '-frames:v', String(n), '-q:v', '2',
-       '-start_number', '0', path.join(tmpDir, 'f_%d.jpg')], 120000);
-    let got = 0;
-    while (fs.existsSync(path.join(tmpDir, 'f_' + got + '.jpg'))) got++;
+    const extract = async (url, timeoutMs) => {
+      for (const f of fs.readdirSync(tmpDir)) {       // clean a failed prior attempt
+        try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) {}
+      }
+      const r = await frameRunCollect('ffmpeg',
+        ['-hide_banner', '-loglevel', 'warning', '-y',
+         '-ss', (s / 30).toFixed(3), '-i', url,
+         '-vf', 'fps=30', '-frames:v', String(n), '-q:v', '2',
+         '-start_number', '0', path.join(tmpDir, 'f_%d.jpg')], timeoutMs);
+      let k = 0;
+      while (fs.existsSync(path.join(tmpDir, 'f_' + k + '.jpg'))) k++;
+      return { got: k, err: r.err, code: r.code };
+    };
+
+    // (dev0566) Tiered attempt. Some YT videos are in the "PO-token-bound
+    // streaming" experiment: without a PO token every decent https format is
+    // withheld or TRICKLED to ~8KiB/s no matter the client (yt-dlp#12482), so
+    // the full-res grab starves and hits the kill-timer. For those, retry via
+    // the android player client — unthrottled but 360p-only cookieless. A
+    // clean ffmpeg exit with fewer frames than asked = window ran past the end
+    // of the video (legitimate), NOT a starve.
+    let e1 = await extract(streamUrl, isDirect ? 300000 : 90000);
+    let got = e1.got;
+    const starved = !isDirect && !(got > 0 && (got === n || e1.code === 0));
+    if (starved && /youtube\.com|youtu\.be/i.test(p.url)) {
+      console.warn('[frame grab] full-res starved (' + got + '/' + n
+        + ' frames) — retrying via android client at 360p:', name);
+      const r2 = await resolveStream('android');
+      if (r2.url) {
+        const e2 = await extract(r2.url, 60000);
+        if (e2.got > got) { got = e2.got; e1 = e2; client = 'android-360p'; }
+      }
+    }
     if (!got) throw new Error('ffmpeg extracted no frames'
-      + (p1.err ? ': ' + p1.err.slice(-300) : ''));
+      + (e1.err ? ': ' + e1.err.slice(-300) : ''));
 
     // Pass 2 — assemble the clip. Sequences: each frame lasts x seconds
     // (-framerate 1/x), re-timed to a standard 30fps stream. Freeze: one frame
@@ -1586,8 +1624,10 @@ async function frameGrab(req, res, origin) {
     if (!fs.existsSync(outPath)) throw new Error('ffmpeg wrote no clip'
       + (p2.err ? ': ' + p2.err.slice(-300) : ''));
 
-    console.log('[frame grab]', name, '·', got + '/' + n, 'frames ·', (Date.now() - t0) + 'ms');
-    sendJson(res, 200, { ok: true, file: name, frames: got, want: n, freeze }, origin);
+    console.log('[frame grab]', name, '·', got + '/' + n, 'frames ·',
+      (Date.now() - t0) + 'ms' + (client ? ' · ' + client : ''));
+    sendJson(res, 200, { ok: true, file: name, frames: got, want: n, freeze,
+                         client: client || undefined }, origin);
   } catch (e) {
     sendJson(res, e.message && /must|required|too long/.test(e.message) ? 400 : 502,
              { ok: false, error: e.message }, origin);

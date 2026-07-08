@@ -6220,5 +6220,42 @@
     "rank": "species",
     "common": "short-snouted seahorse",
     "extinct": false
+  },
+  {
+    "id": "liparidae",
+    "label": "Liparidae",
+    "kind": "taxon",
+    "parents": [
+      "scorpaeniformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "snailfish",
+    "extinct": false
+  },
+  {
+    "id": "careproctus-rastrinus",
+    "label": "Careproctus rastrinus",
+    "kind": "taxon",
+    "parents": [
+      "careproctus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "salmon snailfish",
+    "extinct": false
+  },
+  {
+    "id": "careproctus",
+    "label": "Careproctus",
+    "kind": "taxon",
+    "parents": [
+      "liparidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

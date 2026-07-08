@@ -772,7 +772,8 @@ function gridOpenFullscreen(row, contained) {
           if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
           if (typeof toast === 'function')
             toast('✓ steps/' + j.file + ' (' + j.frames + ' frame' + (j.frames === 1 ? '' : 's')
-              + ') — press A on the grid to show it.', 3200);
+              + (j.client ? ' · ' + j.client + ' — YT throttles this video\'s full-res streams' : '')
+              + ') — press A on the grid to show it.', j.client ? 4600 : 3200);
         } catch (e) {
           if (typeof toast === 'function')
             toast('Step clip failed: ' + (e && e.message ? e.message : e)
