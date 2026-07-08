@@ -76,13 +76,15 @@
   // (dev0559) Click-to-feature: grow to the 1L block, hold, fade away.
   var CLICK_GROW = 1.2, CLICK_HOLD = 10, CLICK_FADE = 1.0;   // seconds
   var EASE      = 'cubic-bezier(.4,0,.2,1)';
-  var FALL_EASE = 'cubic-bezier(.45,0,.9,.4)';        // accelerating — gravity drop
-  // (dev0560) "Pushed off a cliff": as the cell slides into 1e it tips its right
-  // side down, then keeps rotating a full turn on the way down, landing upright.
-  var TILT_MID = 5;      // deg of tilt at the HALFWAY point of the slide into 1e
-  var TILT_DEG = 24;     // deg of tilt once it reaches the cliff edge (1e), poised to fall
-  // The fall then continues the clockwise spin from TILT_DEG all the way to 360°
-  // (≡ upright) so the total motion (tip + fall) is one clean 360° rotation.
+  var FALL_EASE = 'cubic-bezier(.45,0,.9,.4)';        // (unused now) old gravity ease-in
+  // (dev0561) "Pushed off a cliff": the cell slides flat into 1e, then tips AND
+  // falls in ONE motion — no hang. The rotation pivots on the cell's bottom-left
+  // corner, which sits exactly on the top-right corner of 2d / the 1L block, so
+  // the lower edge stays in contact with that corner as it tips over the edge.
+  // It keeps spinning a full 360° on the way down, landing upright to bounce.
+  // Fast-start easing (moves immediately, settles into the landing) — NOT the old
+  // slow gravity ease-in, which made the fall look delayed / suspended.
+  var DROP_EASE = 'cubic-bezier(.16,.72,.34,1)';
 
   // ── Ring geometry (clockwise from top-left) + 1-based [row,col] placement ────
   var RING = ['1a','1b','1c','1d','1e','2e','3e','4e','5e','5d','5c','5b','5a','4a','3a','2a'];
@@ -184,17 +186,17 @@
     });
   }
 
-  // ── Phase 2: the cliff — drop and creep ALTERNATE (dev0559 · tip+spin dev0560) ─
-  // DROP turn (1e occupied AND 5e clear): ONLY the cell at 1e falls the chute to
-  // 5e and bounces — the rest of the ring holds still, so 1d visibly waits at the
-  // cliff edge instead of being shoved into 1e mid-fall. (dev0560) The faller keeps
-  // the tilt it earned sliding in and spins the rest of a full 360° on the way
-  // down, landing upright to bounce.
-  // CREEP turn (otherwise): every belt cell advances one slot clockwise, but a
-  // cell only moves if the slot ahead is empty or being vacated this turn — so if
-  // 1e is somehow still occupied, 1d (and everything behind it) holds too. The one
-  // cell arriving at 1e (from 1d) tips its right side down as it reaches the edge
-  // (dev0560), then the next turn's drop follows with NO pause — pushed off a cliff.
+  // ── Phase 2: the cliff — drop and creep ALTERNATE (dev0559 · tip=fall dev0561) ─
+  // CREEP turn: every belt cell advances one slot clockwise, delivering the next
+  // cell FLAT into 1e (the cliff edge). No tip here — a cell only advances if the
+  // slot ahead is free/vacating, so 1d waits its turn. When a cell lands at 1e and
+  // 5e is clear, the drop follows with NO pause.
+  // DROP turn (1e occupied AND 5e clear): the faller tips AND falls in ONE motion —
+  // the rotation pivots on its bottom-left corner (which sits exactly on the
+  // top-right corner of 2d / the 1L block), so its lower edge stays in contact with
+  // that corner as it tips over the edge; meanwhile it's already plummeting (fast
+  // from the first frame), spinning a full 360° down the chute to land upright at
+  // 5e and bounce. The belt holds while it falls.
   function cycle() {
     if (!active || phase !== 'run') return;
     var cont = container();
@@ -205,43 +207,31 @@
     var total;
 
     if (z && !ring[SLOT_5E]) {
-      // ── DROP turn: the faller drops + spins alone; the belt holds. ────────
+      // ── DROP turn: the faller tips+falls+spins as one motion; belt holds. ──
       ring[SLOT_1E] = null;
       ring[SLOT_5E] = z;
-      var startRot, fdx, fdy;
-      if (z._fcPending && typeof z._fallDy === 'number') {
-        // Continue seamlessly from the tilt: it's held at rotate(TILT_DEG) at 1e,
-        // and we already measured the exact 1e→5e offset when it slid in.
-        startRot = TILT_DEG; fdx = z._fallDx; fdy = z._fallDy;
-        z.style.transition = 'none';
-        z.style.transform  = 'translate(0px,0px) rotate(' + TILT_DEG + 'deg)';
-        if (z._tiltAnim) { try { z._tiltAnim.cancel(); } catch (e) {} z._tiltAnim = null; }
-      } else {
-        // Fallback (no tilt preceded this — rare): spin from upright. Measure the
-        // 1e→5e offset live (the cell is unrotated here, so the rect is clean).
-        startRot = 0;
-        z.style.transition = 'none'; z.style.transform = '';
-        z.style.transformOrigin = '50% 50%';
-        var r1 = z.getBoundingClientRect();
-        z.style.gridRow = RC['5e'][0]; z.style.gridColumn = RC['5e'][1];
-        var r5 = z.getBoundingClientRect();
-        fdx = r5.left - r1.left; fdy = r5.top - r1.top;
-      }
+      // Measure the exact 1e→5e offset (the cell is flat/upright here, clean rect).
+      z.style.transition = 'none'; z.style.transform = '';
+      var r1 = z.getBoundingClientRect();               // at 1e
       z.style.gridRow = RC['5e'][0]; z.style.gridColumn = RC['5e'][1];
-      z.style.zIndex  = ++zc;                            // ride over everything on the way down
-      z.style.transformOrigin = '50% 50%';              // spin about the centre
-      z.style.transition = 'none';
-      z.style.transform  = 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(' + startRot + 'deg)';
+      var r5 = z.getBoundingClientRect();               // at 5e
+      var fdx = r5.left - r1.left, fdy = r5.top - r1.top;
+      z.style.zIndex = ++zc;                            // ride over everything on the way down
+      // Pivot on the bottom-left corner = the top-right corner of 2d / 1L. Start
+      // pose: flat, translated back up to 1e (FLIP), so it's continuous with the
+      // flat slide that just delivered it.
+      z.style.transformOrigin = '0% 100%';
+      z.style.transform = 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(0deg)';
       cont.offsetWidth;                                 // commit the start pose (at 1e)
       zipperEl = z;
       requestAnimationFrame(function () {
         var fa = z.animate([
-          { transform: 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(' + startRot + 'deg)' },
+          { transform: 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(0deg)' },
           { transform: 'translate(0px,0px) rotate(360deg)' }
-        ], { duration: moveDur * 1000, easing: FALL_EASE, fill: 'forwards' });
+        ], { duration: moveDur * 1000, easing: DROP_EASE, fill: 'forwards' });
         z._fallAnim = fa;
         fa.onfinish = function () {
-          z._fallAnim = null; z._fcPending = false; z._fallDy = undefined;
+          z._fallAnim = null;
           if (!active || !z.isConnected) { try { fa.cancel(); } catch (e) {} return; }
           z.style.transition = 'none';
           z.style.transform  = 'translate(0,0)';        // upright at 5e (360° ≡ 0°)
@@ -271,50 +261,28 @@
       ring = next;                                      // commit occupancy
 
       var lOld = moves.map(function (m) { return m.el.getBoundingClientRect(); });
+      var reached1e = false;
       moves.forEach(function (m) {
         var rc = RC[RING[m.to]];
         m.el.style.transition = 'none'; m.el.style.transform = '';
         m.el.style.gridRow = rc[0]; m.el.style.gridColumn = rc[1];
+        if (m.to === SLOT_1E) reached1e = true;
       });
       cont.offsetWidth;                                 // force the new layout
-      // Measure new boxes + set the inverted transforms. Along the way capture the
-      // geometry the faller (the cell arriving at 1e) needs for its later drop.
-      var fallerM = null, row1Top = null, row5Top = null;
       moves.forEach(function (m, k) {
         var nr = m.el.getBoundingClientRect();
-        m.el._fcDx = lOld[k].left - nr.left;
-        m.el._fcDy = lOld[k].top  - nr.top;
-        m.el.style.transform = 'translate(' + m.el._fcDx + 'px,' + m.el._fcDy + 'px)';
-        if (m.to === SLOT_1E) { fallerM = m; row1Top = nr.top; }
-        if (RC[RING[m.to]][0] === 5) row5Top = nr.top;   // any row-5 lander gives us 5e's top
+        m.el.style.transform = 'translate(' + (lOld[k].left - nr.left) + 'px,' + (lOld[k].top - nr.top) + 'px)';
       });
       cont.offsetWidth;                                 // commit inverted transforms
       requestAnimationFrame(function () {
         moves.forEach(function (m) {
-          if (m === fallerM) return;                    // faller is WAAPI-tilted below
           m.el.style.transition = 'transform ' + moveDur + 's ' + EASE;
           m.el.style.transform  = 'translate(0,0)';
         });
-        if (fallerM) {
-          var el = fallerM.el, dx = el._fcDx, dy = el._fcDy;
-          el._fcPending = true;
-          el._fallDx = 0;                               // 1e and 5e share column 5
-          el._fallDy = (row5Top != null && row1Top != null)
-                       ? (row5Top - row1Top)
-                       : 4 * el.getBoundingClientRect().height;
-          el.style.transformOrigin = '50% 50%';         // tip about the centre
-          el.style.zIndex = ++zc;                       // cover the cells it tips over
-          el.style.transition = 'none';
-          el._tiltAnim = el.animate([
-            { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg)', offset: 0 },
-            { transform: 'translate(' + (dx * 0.5) + 'px,' + (dy * 0.5) + 'px) rotate(' + TILT_MID + 'deg)', offset: 0.5 },
-            { transform: 'translate(0px,0px) rotate(' + TILT_DEG + 'deg)', offset: 1 }
-          ], { duration: moveDur * 1000, easing: EASE, fill: 'forwards' });
-        }
       });
-      // No pause when a faller just reached the cliff and 5e is clear: the drop
-      // must start the instant the tilt finishes, so tip flows into fall.
-      total = (fallerM && !ring[SLOT_5E]) ? moveDur : (moveDur + PAUSE);
+      // No pause when a cell just reached the cliff and 5e is clear: the tip+fall
+      // must start the instant the slide finishes — pushed straight off the cliff.
+      total = (reached1e && !ring[SLOT_5E]) ? moveDur : (moveDur + PAUSE);
     }
 
     fillLGaps();                                        // no empties off the chute
@@ -384,8 +352,8 @@
     var tcand = [];
     for (var i = 0; i < 16; i++) {
       var re = ring[i];
-      // Never swap over the faller — not while it's tilting (_fcPending) or falling.
-      if (re && re !== zipperEl && !re._fcPending && re._rowData) tcand.push({ el: re, slot: i, st: null });
+      // Never swap over the faller mid-fall.
+      if (re && re !== zipperEl && re._rowData) tcand.push({ el: re, slot: i, st: null });
     }
     statics.forEach(function (s) { if (s.el && s.el._rowData) tcand.push({ el: s.el, slot: -1, st: s }); });
     if (!tcand.length) return;
@@ -434,7 +402,7 @@
   function onCellClick(e) {
     if (!active || phase !== 'run') return;
     var el = e.target && e.target.closest ? e.target.closest('#gridContainer .grid-cell') : null;
-    if (!el || zoomEl || el === zipperEl || el._fcPending || !el._rowData) return;
+    if (!el || zoomEl || el === zipperEl || !el._rowData) return;
     if (reserve.indexOf(el) >= 0) return;               // faded ghosts aren't featured
     e.stopPropagation(); e.preventDefault();
 
@@ -503,9 +471,7 @@
     cells.forEach(function (el) {
       // (dev0560) Kill any live WAAPI tip/fall — its fill:forwards would otherwise
       // override the reset transform and pin the cell mid-air.
-      if (el._tiltAnim) { try { el._tiltAnim.cancel(); } catch (e) {} el._tiltAnim = null; }
       if (el._fallAnim) { try { el._fallAnim.cancel(); } catch (e) {} el._fallAnim = null; }
-      el._fcPending = false; el._fallDy = undefined;
       el.style.transition = 'none';
       el.style.transform  = '';
       el.style.opacity    = '';
