@@ -31,9 +31,12 @@ deleted.json
 # proxy.js /rec/*; kept local, never committed.
 vsteps-*.mp4
 
-# (dev0564) Step-frame jpgs grabbed from web videos by proxy /frame/grab (V step
-# panel Save) and shown by G's step-frame mode (hotkey A). LOCAL ONLY — grabbed
-# YT stills must never be committed or served publicly (YT TOS).
+# (dev0564/0565) Step clips built from web videos by proxy /frame/grab (V step
+# panel Save + G on-demand) — steps/<VidTitle>.<x_s_d>.mp4, looped by G's
+# step-frame mode (hotkey A). LOCAL ONLY — grabbed YT material must never be
+# committed or served publicly (YT TOS). frames/ was dev0564's short-lived jpg
+# variant of the same thing.
+steps/
 frames/
 
 # (dev0428/0429) IG harvest staging store + downloaded media — a LOCAL store

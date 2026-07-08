@@ -896,6 +896,25 @@ window.gridPlayStepsAll = function() {
   return n;
 };
 
+// (dev0565) Canonical step-clip filename for a row's saved steps:
+// "<VidTitle>.<x_s_d>.mp4" (e.g. "Sheephead Eats Urchin.0.10_2389_95.mp4"),
+// living in the gitignored local steps/ folder. SINGLE SOURCE OF TRUTH — used
+// by BOTH the V step-panel Save grab (vp.js grabStepFrames) and the G
+// step-frame display/on-demand grab (grid.js gridToggleStepFrames), so the
+// name the proxy writes is byte-identical to the src the grid requests. The
+// proxy VALIDATES this name but never transforms it. Printable-ASCII only
+// (emoji/unicode in titles stripped — safest over HTTP), Windows-illegal
+// chars removed, title capped at 80; no title → "uid-<UID>".
+window.stepClipName = function(row) {
+  if (!row || !row.steps) return '';
+  const title = String(row.VidTitle || '')
+    .replace(/[^\x20-\x7E]/g, '')          // non-ASCII (emoji etc.)
+    .replace(/[\\/:*?"<>|]/g, '')          // Windows-illegal
+    .replace(/\s+/g, ' ').trim().slice(0, 80).replace(/[. ]+$/, '');
+  const base = title || ('uid-' + String(row.UID != null ? row.UID : 'x'));
+  return base + '.' + String(row.steps).trim().replace(/,/g, '_') + '.mp4';
+};
+
 // (dev0416) Route G "Play steps" by link type. Vimeo and direct-link cells step
 // in place (gridPlaySteps above). YouTube cells open V instead and play in at
 // normal speed from 4s before `s`, then drop the fsc at `s` (_vpPlayStepsInV) —

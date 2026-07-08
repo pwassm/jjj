@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0564';
+const PROXY_BUILD = 'dev0565';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1468,20 +1468,26 @@ function recStop(req, res, origin) {
   try { rec.proc.stdin.end(); } catch (_) {}
 }
 
-// (dev0564) ── /frame/grab — step-frame extractor for G's step-frame mode ─────
-// V's step panel Save POSTs {url, uid, x, s, d} here so the grid (hotkey A) can
-// show saved steps as plain <img>s — the only way to display a YT frame with
-// ZERO player chrome (no centre play button; see video.js _gridPlayStepsRoute).
-// yt-dlp -g resolves the direct googlevideo/CDN stream URL (skipped when the
-// row link is already a direct media file), then ffmpeg input-seeks to frame s
-// on the app's 30fps clock and writes frames/<uid>_<frameNo>.jpg. Freeze steps
-// (x=0 or d=0) grab 1 frame; sequences grab d+1 (capped) matching the
-// gridPlaySteps s..s+d forward loop. LOCAL ONLY: frames/ is gitignored —
-// grabbed YT stills must never be committed or served publicly (YT TOS).
-// Grabs need the HOME IP: yt-dlp/googlevideo 403 behind a VPN.
-const FRAMES_DIR = path.join(__dirname, 'frames');
-const FRAME_MAX  = 121;   // most frames per grab (caps d at 120)
-const FRAME_FMT  = 'bv*[height<=1080][ext=mp4]/bv*[height<=1080]/bv*/b';
+// (dev0564/0565) ── /frame/grab — step-clip builder for G's step-frame mode ───
+// V's step panel Save (and G's on-demand fallback) POSTs {url, name, x, s, d}
+// so the grid (hotkey A) can show saved steps as a plain looping <video> — the
+// only way to display YT frames with ZERO player chrome (no centre play
+// button; see video.js _gridPlayStepsRoute). yt-dlp -g resolves the direct
+// googlevideo/CDN stream URL (skipped when the row link is already a direct
+// media file), then a two-pass ffmpeg: (1) input-seek to s/30 and extract the
+// d+1 window frames on the app's 30fps clock; (2) assemble them into
+// steps/<name> = "<VidTitle>.<x_s_d>.mp4" with each frame HELD x seconds
+// (input -framerate 1/x, output 30fps) — the stepped playback baked into the
+// file. Freeze steps (x=0 or d=0) become a 5s single-frame still clip. The
+// grid computes the same name client-side (video.js stepClipName) and loops
+// the mp4 muted. LOCAL ONLY: steps/ is gitignored — grabbed YT material must
+// never be committed or served publicly (YT TOS). Grabs need the HOME IP:
+// yt-dlp/googlevideo 403 behind a VPN ([frame 403]s in this log = VPN on).
+const STEPS_DIR    = path.join(__dirname, 'steps');
+const STEP_MAX     = 301;   // most frames per clip (caps d at 300)
+const STEP_FMT     = 'bv*[height<=1080][ext=mp4]/bv*[height<=1080]/bv*/b';
+const FREEZE_SECS  = 5;     // still-clip length for freeze frames (loops seamlessly)
+let   _stepTmpSeq  = 0;     // unique temp-dir suffix per request
 
 // Run a binary to completion, collecting stdout + a stderr tail (no streaming).
 function frameRunCollect(bin, args, timeoutMs) {
@@ -1502,17 +1508,22 @@ async function frameGrab(req, res, origin) {
   let p;
   try { p = await readJson(req, 64 * 1024); }
   catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
+  let tmpDir = null;
   try {
     must(typeof p.url === 'string' && /^https?:\/\//i.test(p.url), 'url must be http(s)');
     must(p.url.length <= 2048, 'url too long (max 2048)');
-    const uid = String(p.uid == null ? '' : p.uid).trim();
-    must(/^[A-Za-z0-9_-]{1,40}$/.test(uid), 'uid must be 1-40 chars of [A-Za-z0-9_-]');
+    // name is computed client-side by stepClipName (video.js) — VALIDATE, never
+    // transform, so the grid's computed src always matches the file on disk.
+    const name = String(p.name == null ? '' : p.name);
+    must(/^[\x20-\x7E]{5,140}$/.test(name) && name.endsWith('.mp4')
+         && !/[\\/:*?"<>|]/.test(name) && !name.includes('..') && !name.startsWith('.'),
+         'name must be a plain printable-ASCII *.mp4 filename (no path chars)');
     const x = +p.x, s = Math.round(+p.s), d = Math.round(+p.d);
-    must(Number.isFinite(x) && x >= 0, 'x must be a number >= 0');
+    must(Number.isFinite(x) && x >= 0 && x <= 10, 'x must be a number 0-10');
     must(Number.isInteger(s) && s >= 0, 's must be an integer >= 0');
     must(Number.isInteger(d) && d >= 0, 'd must be an integer >= 0');
     const freeze = (x === 0 || d === 0);
-    const n = freeze ? 1 : Math.min(d + 1, FRAME_MAX);
+    const n = freeze ? 1 : Math.min(d + 1, STEP_MAX);
     const t0 = Date.now();
 
     // Direct media links go straight to ffmpeg; everything else through yt-dlp.
@@ -1520,7 +1531,7 @@ async function frameGrab(req, res, origin) {
     if (!/\.(mp4|webm|m4v|mov|avi|mkv|ogv)([?#]|$)/i.test(p.url)) {
       const r = await frameRunCollect('yt-dlp',
         ['--no-warnings', '--no-playlist', '--ignore-config', '--socket-timeout', '20',
-         '-f', FRAME_FMT, '-g', p.url], 45000);
+         '-f', STEP_FMT, '-g', p.url], 45000);
       streamUrl = String(r.out).split(/\r?\n/).find(l => /^https?:\/\//i.test(l)) || '';
       if (r.code !== 0 || !streamUrl) {
         sendJson(res, 502, { ok: false, error: 'yt-dlp could not resolve a stream URL'
@@ -1529,37 +1540,59 @@ async function frameGrab(req, res, origin) {
       }
     }
 
-    fs.mkdirSync(FRAMES_DIR, { recursive: true });
-    // Drop this row's stale frames so a re-save with a different s/d can't mix.
-    for (const f of fs.readdirSync(FRAMES_DIR)) {
-      if (f.startsWith(uid + '_') && f.endsWith('.jpg')) {
-        try { fs.unlinkSync(path.join(FRAMES_DIR, f)); } catch (_) {}
+    fs.mkdirSync(STEPS_DIR, { recursive: true });
+    // Drop stale clips for the same title so a re-save with new times can't
+    // leave the grid finding yesterday's window ("<base>.<x_s_d>.mp4").
+    const base = name.replace(/\.[^.]*_[^.]*_[^.]*\.mp4$/, '');
+    if (base && base !== name) {
+      for (const f of fs.readdirSync(STEPS_DIR)) {
+        if (f.startsWith(base + '.') && f.endsWith('.mp4')) {
+          try { fs.unlinkSync(path.join(STEPS_DIR, f)); } catch (_) {}
+        }
       }
     }
 
-    // Input-seek to s/30, then sample at fps=30 so frame numbers line up with
-    // the app's seekAbs(f/30) stepping regardless of the source's real fps.
-    // -start_number names the %d outputs by ABSOLUTE frame number.
-    const fr = await frameRunCollect('ffmpeg',
+    // Pass 1 — extract the window frames. Input-seek to s/30, sample at fps=30
+    // so frame indexes line up with the app's seekAbs(f/30) stepping regardless
+    // of the source's real fps.
+    tmpDir = path.join(STEPS_DIR, '.tmp-' + Date.now() + '-' + (++_stepTmpSeq));
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const p1 = await frameRunCollect('ffmpeg',
       ['-hide_banner', '-loglevel', 'warning', '-y',
        '-ss', (s / 30).toFixed(3), '-i', streamUrl,
        '-vf', 'fps=30', '-frames:v', String(n), '-q:v', '2',
-       '-start_number', String(s), path.join(FRAMES_DIR, uid + '_%d.jpg')], 120000);
+       '-start_number', '0', path.join(tmpDir, 'f_%d.jpg')], 120000);
+    let got = 0;
+    while (fs.existsSync(path.join(tmpDir, 'f_' + got + '.jpg'))) got++;
+    if (!got) throw new Error('ffmpeg extracted no frames'
+      + (p1.err ? ': ' + p1.err.slice(-300) : ''));
 
-    const files = [];
-    for (let i = 0; i < n; i++) {
-      const name = uid + '_' + (s + i) + '.jpg';
-      if (fs.existsSync(path.join(FRAMES_DIR, name))) files.push(name);
+    // Pass 2 — assemble the clip. Sequences: each frame lasts x seconds
+    // (-framerate 1/x), re-timed to a standard 30fps stream. Freeze: one frame
+    // looped for FREEZE_SECS. Even dims for yuv420p.
+    const outPath = path.join(STEPS_DIR, name);
+    const p2args = ['-hide_banner', '-loglevel', 'warning', '-y'];
+    if (freeze || got === 1) {
+      p2args.push('-loop', '1', '-framerate', '30', '-t', String(FREEZE_SECS),
+                  '-i', path.join(tmpDir, 'f_0.jpg'));
+    } else {
+      p2args.push('-framerate', (1 / x).toFixed(4), '-start_number', '0',
+                  '-i', path.join(tmpDir, 'f_%d.jpg'));
     }
-    if (!files.length) {
-      sendJson(res, 502, { ok: false, error: 'ffmpeg wrote no frames'
-        + (fr.err ? ': ' + fr.err.slice(-300) : '') }, origin);
-      return;
-    }
-    console.log('[frame grab]', uid, '·', files.length + '/' + n, 'frames ·', (Date.now() - t0) + 'ms');
-    sendJson(res, 200, { ok: true, count: files.length, want: n, freeze, files }, origin);
+    p2args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-r', '30',
+                '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart', outPath);
+    const p2 = await frameRunCollect('ffmpeg', p2args, 120000);
+    if (!fs.existsSync(outPath)) throw new Error('ffmpeg wrote no clip'
+      + (p2.err ? ': ' + p2.err.slice(-300) : ''));
+
+    console.log('[frame grab]', name, '·', got + '/' + n, 'frames ·', (Date.now() - t0) + 'ms');
+    sendJson(res, 200, { ok: true, file: name, frames: got, want: n, freeze }, origin);
   } catch (e) {
-    sendJson(res, 400, { ok: false, error: e.message }, origin);
+    sendJson(res, e.message && /must|required|too long/.test(e.message) ? 400 : 502,
+             { ok: false, error: e.message }, origin);
+  } finally {
+    if (tmpDir) { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {} }
   }
 }
 

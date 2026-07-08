@@ -449,25 +449,28 @@ function gridClearCut() {
   if (cutInfo) cutInfo.style.display = 'none';
 }
 
-// ── Step-frame mode (dev0564, hotkey A on the grid) ──────────────────────────
+// ── Step-frame mode (dev0564/0565, hotkey A on the grid) ─────────────────────
 // Toggles every cell whose row has saved `steps` ("x,s,d" from the V step
-// panel) to show the pre-grabbed LOCAL frame jpgs (frames/<uid>_<frameNo>.jpg,
-// written by V Save → proxy /frame/grab) as a plain <img> overlay — the only
-// way to show a YT frame with ZERO player chrome (a paused in-cell YT iframe
-// paints its own centre play button; see _gridPlayStepsRoute). Freeze steps
-// (x=0 or d=0) hold frame s; real sequences cycle s..s+d every x seconds,
-// mirroring gridPlaySteps' forward loop. Overlays sit at z-index:50 — above
-// the media (z:1), below the interactor (z:100) — so clicks/swipes still work,
-// and grid video is ALWAYS muted (zip0152) so the covered player can't leak
-// audio. frames/ is gitignored (grabbed YT stills stay local, never the public
-// site), so a missing jpg shows a "Save steps in V" hint instead.
+// panel) to loop its LOCAL step clip (steps/<VidTitle>.<x_s_d>.mp4, stepped
+// playback baked in by proxy /frame/grab; freeze = 5s still clip) in a plain
+// muted <video> overlay — the only way to show YT frames with ZERO player
+// chrome (a paused in-cell YT iframe paints its own centre play button; see
+// _gridPlayStepsRoute). If the clip doesn't exist yet (steps saved before
+// dev0564, or Save's grab failed), the overlay GRABS IT ON DEMAND through the
+// proxy and then plays it — so old rows just work. Overlays sit at z-index:50
+// — above the media (z:1), below the interactor (z:100) — so clicks/swipes
+// still work, and grid video is ALWAYS muted (zip0152) so the covered player
+// can't leak audio. steps/ is gitignored (grabbed YT material stays local,
+// never the public site).
 let _gridStepFrameMode = false;
-let _gridStepFrameTimers = [];
+const _gridStepGrabbing = {};   // clip name → true while an on-demand grab runs
 
 function gridStepFramesOff() {
-  _gridStepFrameTimers.forEach(t => clearInterval(t));
-  _gridStepFrameTimers = [];
-  document.querySelectorAll('.grid-step-frame').forEach(el => el.remove());
+  document.querySelectorAll('.grid-step-frame').forEach(el => {
+    const v = el.querySelector('video');
+    if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {} }
+    el.remove();
+  });
   _gridStepFrameMode = false;
 }
 
@@ -479,39 +482,64 @@ function gridToggleStepFrames() {
   }
   // Match the grid's image fit policy (dev0502): portrait grids cover, else contain.
   const fit = _gridPortraitDims(_gridCurrentLayout()) ? 'cover' : 'contain';
+  const proxyBase = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
   let n = 0;
   document.querySelectorAll('#gridContainer .grid-cell').forEach(cell => {
     const row = cell._rowData;
-    if (!row || !row.steps || row.UID == null || row.UID === '') return;
+    if (!row || !row.steps) return;
     const parts = String(row.steps).split(',');
     const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
     if (!isFinite(x) || !isFinite(s) || !isFinite(d) || x < 0 || s < 0 || d < 0) return;
-    const uid = encodeURIComponent(String(row.UID));
-    const src = f => 'frames/' + uid + '_' + f + '.jpg';
+    const name = (typeof window.stepClipName === 'function') ? window.stepClipName(row) : '';
+    if (!name) return;
 
     const ov = document.createElement('div');
     ov.className = 'grid-step-frame';
     ov.style.cssText = 'position:absolute;inset:0;background:#000;z-index:50;pointer-events:none;';
-    const img = document.createElement('img');
-    img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + fit + ';';
-    img.onerror = () => {
-      ov.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;'
-        + 'justify-content:center;text-align:center;color:#fa0;font:bold 12px sans-serif;'
-        + 'padding:8px;">No saved frames —<br>right-click V, set steps, Save</div>';
-    };
-    img.src = src(s);
-    ov.appendChild(img);
     cell.appendChild(ov);
     n++;
 
-    if (x > 0 && d > 0) {
-      for (let i = 1; i <= d; i++) { const pre = new Image(); pre.src = src(s + i); }  // warm the cycle
-      let pos = 0;
-      _gridStepFrameTimers.push(setInterval(() => {
-        pos = (pos >= d) ? 0 : pos + 1;   // forward loop: s … s+d … restart (matches gridPlaySteps)
-        img.src = src(s + pos);
-      }, Math.max(50, Math.round(x * 1000))));
+    const hint = msg => {
+      ov.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;'
+        + 'justify-content:center;text-align:center;color:#fa0;font:bold 12px sans-serif;'
+        + 'padding:8px;">' + msg + '</div>';
+    };
+    const mount = srcUrl => {
+      ov.innerHTML = '';
+      const vid = document.createElement('video');
+      vid.muted = true; vid.autoplay = true; vid.loop = true; vid.playsInline = true;
+      vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + fit + ';';
+      vid.onerror = () => onMissing();
+      vid.src = srcUrl;
+      ov.appendChild(vid);
+      vid.play && vid.play().catch(() => {});
+    };
+    // Clip 404s → grab it on demand (steps saved pre-dev0564, or a re-save
+    // whose grab failed). One grab per clip name at a time.
+    let attempted = false;
+    async function onMissing() {
+      if (attempted || _gridStepGrabbing[name]) { hint('Step clip not ready yet'); return; }
+      attempted = true;
+      if (!/^https?:\/\//i.test(row.link || '')) { hint('No step clip —<br>web videos only'); return; }
+      _gridStepGrabbing[name] = true;
+      hint('⏳ Grabbing step clip…');
+      try {
+        const r = await fetch(proxyBase + '/frame/grab', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: row.link, name, x, s, d })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        if (!ov.isConnected) return;               // mode toggled off meanwhile
+        mount('steps/' + encodeURIComponent(name) + '?t=' + Date.now());  // bust the 404
+      } catch (e) {
+        hint('Step clip failed —<br>' + String(e && e.message ? e.message : e).slice(0, 120)
+          + '<br>(proxy on 8081? off VPN?)');
+      } finally {
+        delete _gridStepGrabbing[name];
+      }
     }
+    mount('steps/' + encodeURIComponent(name));
   });
   _gridStepFrameMode = n > 0;
   if (typeof toast === 'function')

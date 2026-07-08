@@ -293,7 +293,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'a', label: 'A', group: 'Screens', scope: 'global',
-    desc: 'Annotate panel from V; on the Grid, A toggles STEP-FRAME mode (cells with saved steps show their grabbed frame jpgs); in the Table, bare A toggles the row preview — see below',
+    desc: 'Annotate panel from V; on the Grid, A toggles STEP-FRAME mode (cells with saved steps loop their local step clip, grabbed on demand); in the Table, bare A toggles the row preview — see below',
     fn(ctx) {
       // A = Annotate panel (images and videos), from V. (dev0538) From the
       // bare Table screen, core.js intercepts 'a' as the row-preview toggle

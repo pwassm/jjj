@@ -747,39 +747,35 @@ function gridOpenFullscreen(row, contained) {
         return !!(p && p.el && p.el.seeking);
       }
 
-      // (dev0564) After Save, pre-grab the saved steps as LOCAL jpgs via the
-      // proxy (/frame/grab → yt-dlp -g + ffmpeg → frames/<uid>_<frameNo>.jpg).
-      // G's step-frame mode (hotkey A on the grid) shows them as plain <img>s —
-      // the only chrome-free way to display a YT frame in a cell. frames/ is
-      // gitignored (grabbed stills stay on this machine, never the public
-      // site). Web-video rows only — disk/FSA rows have no URL the proxy can
-      // fetch. Fire-and-forget: the steps themselves are already saved.
+      // (dev0564/0565) After Save, pre-build the saved steps as a LOCAL clip via
+      // the proxy (/frame/grab → yt-dlp -g + ffmpeg → steps/<VidTitle>.<x_s_d>.mp4,
+      // stepped playback baked in; freeze = 5s still clip). G's step-frame mode
+      // (hotkey A on the grid) loops it in a plain muted <video> — the only
+      // chrome-free way to display YT frames in a cell. steps/ is gitignored
+      // (grabbed material stays on this machine, never the public site). Web-video
+      // rows only — disk/FSA rows have no URL the proxy can fetch. Fire-and-forget:
+      // the steps themselves are already saved; G can also re-grab on demand.
       async function grabStepFrames(row, secs, startFrame, numFrames) {
-        const uid = (row && row.UID != null) ? String(row.UID) : '';
-        if (!uid) {
-          if (typeof toast === 'function') toast('Frames not grabbed — row has no UID.', 2200);
-          return;
-        }
+        const name = (typeof window.stepClipName === 'function') ? window.stepClipName(row) : '';
+        if (!name) return;
         if (!/^https?:\/\//i.test(row.link || '')) {
-          if (typeof toast === 'function') toast('Frames not grabbed — web videos only.', 2200);
+          if (typeof toast === 'function') toast('Step clip not grabbed — web videos only.', 2200);
           return;
         }
-        const n = (secs === 0 || numFrames === 0) ? 1 : numFrames + 1;
-        if (typeof toast === 'function')
-          toast('⏳ Grabbing ' + n + ' frame' + (n === 1 ? '' : 's') + ' for G step-frame mode…', 2600);
+        if (typeof toast === 'function') toast('⏳ Building step clip for G…', 2600);
         try {
           const r = await fetch(PROXY_BASE + '/frame/grab', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: row.link, uid, x: secs, s: startFrame, d: numFrames })
+            body: JSON.stringify({ url: row.link, name, x: secs, s: startFrame, d: numFrames })
           });
           const j = await r.json().catch(() => ({}));
           if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
           if (typeof toast === 'function')
-            toast('✓ ' + j.count + ' frame' + (j.count === 1 ? '' : 's')
-              + ' saved to frames/ — press A on the grid to show them.', 3200);
+            toast('✓ steps/' + j.file + ' (' + j.frames + ' frame' + (j.frames === 1 ? '' : 's')
+              + ') — press A on the grid to show it.', 3200);
         } catch (e) {
           if (typeof toast === 'function')
-            toast('Frame grab failed: ' + (e && e.message ? e.message : e)
+            toast('Step clip failed: ' + (e && e.message ? e.message : e)
               + ' — proxy restarted on 8081? Off VPN?', 4200);
         }
       }
