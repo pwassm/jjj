@@ -13,12 +13,19 @@
 // THE CHOREOGRAPHY (dev0463):
 //   1. INTRO — 1e 2e 3e 4e fade out one-by-one (5e STAYS). Those four cells leave
 //      the belt and become a 4-cell "reserve" pool; their ring slots go empty.
-//   2. THE CLIFF — one cell at a time drops off the edge: the cell at 1e falls the
-//      whole right column to 5e (fast, gravity-eased), WHILE — concurrently — the
-//      rest of the ring creeps one notch clockwise: the top row feeds right (next
-//      cell toward 1e), the left column rises (5a out of the way), and the bottom
-//      row 5b-5e slides left so 5e clears JUST IN TIME for the lander. On impact
-//      the lander SQUASHES to ½ height (slowly), then settles back to full — repeat.
+//   2. THE CLIFF (dev0559: drop and creep now ALTERNATE, no more concurrent push) —
+//      DROP turn: the cell at 1e falls the whole right column to 5e (fast,
+//      gravity-eased) while everything else HOLDS — nobody shoves 1d into the
+//      empty 1e while the faller is still in the air. On impact the lander
+//      SQUASHES to ½ height (slowly), then settles back to full.
+//      CREEP turn: the ring creeps one notch clockwise — the lander clears 5e,
+//      the top row feeds 1d → 1e, the left column rises. Then the next drop.
+//      A cell only advances when the slot ahead is free or being vacated, so 1d
+//      always waits for 5e to be out of the way before stepping onto the cliff.
+//   2b. CLICK-TO-FEATURE — clicking any live cell pulls it out of the choreography
+//      and grows it over the 1L position (rows 2-4 × cols 2-4 — the literal 1L in
+//      the 17 layout, the 2b-4d block in 5×5 / 19); it holds there 10 s, fades
+//      out, and joins the reserve. Its old slot is backfilled from the reserve.
 //   3. RE-ENTRY — every 2-3s, 2-3 reserve cells (the hidden 1e-4e) crossfade back
 //      in over random live cells (belt / static centre / 1L / 1P-3P); each displaced
 //      cell becomes the new reserve. The pool stays at four; the cast keeps churning.
@@ -66,6 +73,8 @@
   // 1 (no overshoot, no stretch phase).
   var SQUASH = 0.35, SETTLE = 0.30;   // seconds per phase
   var BOUNCE = SQUASH + SETTLE;
+  // (dev0559) Click-to-feature: grow to the 1L block, hold, fade away.
+  var CLICK_GROW = 1.2, CLICK_HOLD = 10, CLICK_FADE = 1.0;   // seconds
   var EASE      = 'cubic-bezier(.4,0,.2,1)';
   var FALL_EASE = 'cubic-bezier(.45,0,.9,.4)';        // accelerating — gravity drop
 
@@ -96,6 +105,7 @@
   var statics  = null;       // [{ el }] non-ring centre cells (swap targets)
   var reserve  = null;       // [el] faded-out cells waiting to re-enter
   var zipperEl = null;       // the cell currently dropping (excluded from re-entry)
+  var zoomEl   = null;       // the cell currently featured at 1L (one at a time)
   var zc = 300;              // climbing z-index for re-entering / dropping cells
 
   function container() { return document.getElementById('gridContainer'); }
@@ -168,10 +178,13 @@
     });
   }
 
-  // ── Phase 2: the cliff — zipper drops 1e→5e while the L creeps one notch ─────
-  // One full cycle: the cell at 1e (slot 4) zips down the chute to 5e (slot 8),
-  // and CONCURRENTLY every other ring cell glides one slot clockwise (the L). The
-  // zipper bounces on landing; then PAUSE; then the next cycle.
+  // ── Phase 2: the cliff — drop and creep ALTERNATE (dev0559) ──────────────────
+  // DROP turn (1e occupied AND 5e clear): ONLY the cell at 1e falls the chute to
+  // 5e and bounces — the rest of the ring holds still, so 1d visibly waits at the
+  // cliff edge instead of being shoved into 1e mid-fall.
+  // CREEP turn (otherwise): every belt cell advances one slot clockwise, but a
+  // cell only moves if the slot ahead is empty or being vacated this turn — so if
+  // 1e is somehow still occupied, 1d (and everything behind it) holds too.
   function cycle() {
     if (!active || phase !== 'run') return;
     var cont = container();
@@ -179,66 +192,67 @@
 
     var z = ring[SLOT_1E];                              // the cell poised at 1e
     if (z && !z.isConnected) { stop(true); return; }
+    var total;
 
-    // Read OLD rects first (zipper + every L cell) before any grid-area mutation.
-    var zOld = z ? z.getBoundingClientRect() : null;
-    var moves = [], next = new Array(16).fill(null);
-    for (var i = 0; i < 16; i++) {
-      if (i === SLOT_1E) continue;                      // zipper handled separately
-      var el = ring[i];
-      if (!el) continue;
-      if (!el.isConnected) { stop(true); return; }
-      var to = (i + 1) % 16;                            // clockwise creep
-      moves.push({ el: el, to: to });
-      next[to] = el;
-    }
-    if (z) next[SLOT_5E] = z;                           // zipper lands at 5e
-    ring = next;                                        // commit occupancy
-
-    var lOld = moves.map(function (m) { return m.el.getBoundingClientRect(); });
-
-    // FIRST: assign new grid-areas (zipper → 5e, L cells → next slot), drop transforms.
-    moves.forEach(function (m) {
-      var rc = RC[RING[m.to]];
-      m.el.style.transition = 'none'; m.el.style.transform = '';
-      m.el.style.gridRow = rc[0]; m.el.style.gridColumn = rc[1];
-    });
-    if (z) {
+    if (z && !ring[SLOT_5E]) {
+      // ── DROP turn: the zipper falls alone; the belt holds. ────────────────
+      var zOld = z.getBoundingClientRect();
+      ring[SLOT_1E] = null;
+      ring[SLOT_5E] = z;
       z.style.transition = 'none'; z.style.transform = '';
       z.style.gridRow = RC['5e'][0]; z.style.gridColumn = RC['5e'][1];
       z.style.zIndex = ++zc;                            // ride over the bottom row
-    }
-    cont.offsetWidth;                                   // force the new layout
-
-    // INVERT: translate each element back to its old box.
-    moves.forEach(function (m, k) {
-      var nr = m.el.getBoundingClientRect();
-      m.el.style.transform = 'translate(' + (lOld[k].left - nr.left) + 'px,' + (lOld[k].top - nr.top) + 'px)';
-    });
-    if (z) {
+      cont.offsetWidth;                                 // force the new layout
       var znr = z.getBoundingClientRect();
       z.style.transform = 'translate(' + (zOld.left - znr.left) + 'px,' + (zOld.top - znr.top) + 'px)';
-    }
-    cont.offsetWidth;                                   // commit inverted transforms
-
-    // PLAY: L creeps with EASE, zipper falls with gravity FALL_EASE.
-    requestAnimationFrame(function () {
-      moves.forEach(function (m) {
-        m.el.style.transition = 'transform ' + moveDur + 's ' + EASE;
-        m.el.style.transform  = 'translate(0,0)';
-      });
-      if (z) {
+      cont.offsetWidth;                                 // commit inverted transform
+      requestAnimationFrame(function () {
         z.style.transition = 'transform ' + moveDur + 's ' + FALL_EASE;
         z.style.transform  = 'translate(0,0)';
-      }
-    });
-
-    if (z) {
+      });
       zipperEl = z;
       fxTimers.push(setTimeout(function () { bounce(z); }, moveDur * 1000));
+      total = moveDur + BOUNCE + PAUSE;
+    } else {
+      // ── CREEP turn: the L (and the lander at 5e) advances one notch. ──────
+      // Walk the chain head-first (1d back around to 5e): a cell may move only
+      // if the slot ahead is free or was just vacated by the cell in front.
+      var ORDER = [3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8];
+      var free = !ring[SLOT_1E];                        // is 1e open for 1d?
+      var moves = [], next = ring.slice();
+      for (var n = 0; n < ORDER.length; n++) {
+        var i = ORDER[n], el = ring[i];
+        if (!el) { free = true; continue; }             // gap: the cell behind may advance
+        if (!el.isConnected) { stop(true); return; }
+        if (!free) continue;                            // blocked: hold (stays blocked behind)
+        var to = (i + 1) % 16;
+        moves.push({ el: el, to: to });
+        next[i] = null; next[to] = el;                  // vacates its slot for the follower
+      }
+      ring = next;                                      // commit occupancy
+
+      var lOld = moves.map(function (m) { return m.el.getBoundingClientRect(); });
+      moves.forEach(function (m) {
+        var rc = RC[RING[m.to]];
+        m.el.style.transition = 'none'; m.el.style.transform = '';
+        m.el.style.gridRow = rc[0]; m.el.style.gridColumn = rc[1];
+      });
+      cont.offsetWidth;                                 // force the new layout
+      moves.forEach(function (m, k) {
+        var nr = m.el.getBoundingClientRect();
+        m.el.style.transform = 'translate(' + (lOld[k].left - nr.left) + 'px,' + (lOld[k].top - nr.top) + 'px)';
+      });
+      cont.offsetWidth;                                 // commit inverted transforms
+      requestAnimationFrame(function () {
+        moves.forEach(function (m) {
+          m.el.style.transition = 'transform ' + moveDur + 's ' + EASE;
+          m.el.style.transform  = 'translate(0,0)';
+        });
+      });
+      total = moveDur + PAUSE;
     }
+
     fillLGaps();                                        // no empties off the chute
-    var total = moveDur + (z ? BOUNCE : 0) + PAUSE;
     cycleTimer = setTimeout(function () { zipperEl = null; cycle(); }, total * 1000);
   }
 
@@ -345,6 +359,77 @@
     }, fade * 1000));
   }
 
+  // ── Click-to-feature (dev0559): click a live cell → it grows over the 1L block
+  // (rows 2-4 × cols 2-4 — the real 1L in the 17 layout, 2b-4d in 5×5 / 19),
+  // holds there CLICK_HOLD seconds, fades out and joins the reserve. Its old slot
+  // is backfilled from the reserve (belt slots via fillLGaps next cycle; a static
+  // centre slot immediately). One featured cell at a time. Capture-phase so the
+  // cell's normal click behaviour doesn't also fire while fall mode is on.
+  function onCellClick(e) {
+    if (!active || phase !== 'run') return;
+    var el = e.target && e.target.closest ? e.target.closest('#gridContainer .grid-cell') : null;
+    if (!el || zoomEl || el === zipperEl || !el._rowData) return;
+    if (reserve.indexOf(el) >= 0) return;               // faded ghosts aren't featured
+    e.stopPropagation(); e.preventDefault();
+
+    // Pull it out of the choreography.
+    var ri = ring.indexOf(el);
+    if (ri >= 0) ring[ri] = null;                       // belt gap → fillLGaps refills
+    else for (var s = 0; s < statics.length; s++)
+      if (statics[s].el === el) { backfillStatic(statics[s]); break; }
+
+    zoomEl = el;
+    var old = el.getBoundingClientRect();
+    el.style.transition = 'none';
+    el.style.transform  = '';
+    el.style.transformOrigin = '0 0';                   // FLIP scale from the top-left
+    el.style.gridRow    = '2 / span 3';
+    el.style.gridColumn = '2 / span 3';
+    el.style.zIndex     = ++zc;
+    container().offsetWidth;
+    var nr = el.getBoundingClientRect();
+    el.style.transform = 'translate(' + (old.left - nr.left) + 'px,' + (old.top - nr.top) + 'px) ' +
+                         'scale(' + (old.width / nr.width) + ',' + (old.height / nr.height) + ')';
+    container().offsetWidth;
+    requestAnimationFrame(function () {
+      el.style.transition = 'transform ' + CLICK_GROW + 's ' + EASE;
+      el.style.transform  = 'translate(0,0) scale(1,1)';
+    });
+
+    fxTimers.push(setTimeout(function () {              // hold, then fade away
+      if (!active || !el.isConnected) { if (zoomEl === el) zoomEl = null; return; }
+      el.style.transition = 'opacity ' + CLICK_FADE + 's ease';
+      el.style.opacity = '0';
+      fxTimers.push(setTimeout(function () {
+        if (!active) return;
+        el.style.pointerEvents = 'none';
+        el.style.transformOrigin = '50% 100%';          // back to floor-squash origin
+        if (reserve.indexOf(el) < 0) reserve.push(el);
+        if (zoomEl === el) zoomEl = null;
+      }, CLICK_FADE * 1000));
+    }, (CLICK_GROW + CLICK_HOLD) * 1000));
+  }
+
+  // Replace a featured-away static centre cell with a spare from the reserve,
+  // faded in at the same grid position (mirrors fillLGaps for the belt).
+  function backfillStatic(st) {
+    var gr = st.el.style.gridRow, gc = st.el.style.gridColumn;
+    st.el = null;
+    var sp = null, j;
+    for (j = 0; j < reserve.length; j++) {
+      if (reserve[j] && reserve[j].isConnected && reserve[j]._rowData) { sp = reserve[j]; break; }
+    }
+    if (!sp) return;                                    // no spare — spot stays empty
+    reserve.splice(j, 1);
+    sp.style.transition = 'none'; sp.style.transform = '';
+    sp.style.gridRow = gr; sp.style.gridColumn = gc;
+    sp.style.opacity = '0'; sp.style.pointerEvents = ''; sp.style.zIndex = ++zc;
+    st.el = sp;
+    container().offsetWidth;
+    sp.style.transition = 'opacity ' + GAP_FADE + 's ease';
+    sp.style.opacity = '1';
+  }
+
   // Snap every cell home, dropping all inline styling this feature added.
   function restoreAll() {
     var cont = container(); if (!cont) return;
@@ -373,8 +458,9 @@
     reserve = [];
     if (!pinAndCapture()) { toast('Grid still drawing — try again in a moment', 1800); restoreAll(); ring = statics = reserve = null; return false; }
     active = true;
-    zc = 300; zipperEl = null;
-    toast('▼ Fall cells ON — cells drop off the cliff & bounce; the belt creeps along; hidden cells re-enter constantly.   ( { slower · } faster · F / r stop )', 4600);
+    zc = 300; zipperEl = null; zoomEl = null;
+    container().addEventListener('click', onCellClick, true);
+    toast('▼ Fall cells ON — cells drop off the cliff & bounce; the belt creeps along; hidden cells re-enter constantly. Click a cell to feature it big for 10 s.   ( { slower · } faster · F / r stop )', 4600);
     runIntro();
     return true;
   }
@@ -388,7 +474,9 @@
     if (injectTimer) { clearTimeout(injectTimer); injectTimer = null; }
     introTimers.forEach(function (t) { clearTimeout(t); });
     fxTimers.forEach(function (t) { clearTimeout(t); });
-    introTimers = []; fxTimers = []; zipperEl = null;
+    introTimers = []; fxTimers = []; zipperEl = null; zoomEl = null;
+    var cont = container();
+    if (cont) cont.removeEventListener('click', onCellClick, true);
     if (ring || statics || reserve) restoreAll();
     ring = statics = reserve = null;
     if (!silent && was && typeof toast === 'function') toast('■ Fall cells OFF', 1400);

@@ -6089,5 +6089,136 @@
     "def": "",
     "rank": "species",
     "common": "rubberlip seaperch"
+  },
+  {
+    "id": "pisaster-giganteus",
+    "label": "Pisaster giganteus",
+    "kind": "taxon",
+    "parents": [
+      "pisaster"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Knobby Sea Star",
+    "extinct": false
+  },
+  {
+    "id": "forcipulatida",
+    "label": "Forcipulatida",
+    "kind": "taxon",
+    "parents": [
+      "asteroidea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "asteriidae",
+    "label": "Asteriidae",
+    "kind": "taxon",
+    "parents": [
+      "forcipulatida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "pisaster",
+    "label": "Pisaster",
+    "kind": "taxon",
+    "parents": [
+      "asteriidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "hippocampus",
+    "label": "Hippocampus",
+    "kind": "taxon",
+    "parents": [
+      "syngnathidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "seahorse",
+    "extinct": false
+  },
+  {
+    "id": "gasterosteiformes",
+    "label": "Gasterosteiformes",
+    "kind": "taxon",
+    "parents": [
+      "actinopterygii"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "syngnathidae",
+    "label": "Syngnathidae",
+    "kind": "taxon",
+    "parents": [
+      "gasterosteiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "hippocampus-bargibanti",
+    "label": "Hippocampus bargibanti",
+    "kind": "taxon",
+    "parents": [
+      "hippocampus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Bargibant's Seahorse pygmy seahorse",
+    "extinct": false
+  },
+  {
+    "id": "syngnathiformes",
+    "label": "Syngnathiformes",
+    "kind": "taxon",
+    "parents": [
+      "chordata"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "hippocampus-ingens",
+    "label": "Hippocampus ingens",
+    "kind": "taxon",
+    "parents": [
+      "hippocampus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Giant Seahorse",
+    "extinct": false
+  },
+  {
+    "id": "hippocampus-hippocampus",
+    "label": "Hippocampus hippocampus",
+    "kind": "taxon",
+    "parents": [
+      "hippocampus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "short-snouted seahorse",
+    "extinct": false
   }
 ]
