@@ -13,15 +13,15 @@
 // THE CHOREOGRAPHY (dev0463):
 //   1. INTRO — 1e 2e 3e 4e fade out one-by-one (5e STAYS). Those four cells leave
 //      the belt and become a 4-cell "reserve" pool; their ring slots go empty.
-//   2. THE CLIFF (dev0559: drop and creep now ALTERNATE, no more concurrent push) —
-//      DROP turn: the cell at 1e falls the whole right column to 5e (fast,
-//      gravity-eased) while everything else HOLDS — nobody shoves 1d into the
-//      empty 1e while the faller is still in the air. On impact the lander
-//      SQUASHES to ½ height (slowly), then settles back to full.
-//      CREEP turn: the ring creeps one notch clockwise — the lander clears 5e,
-//      the top row feeds 1d → 1e, the left column rises. Then the next drop.
-//      A cell only advances when the slot ahead is free or being vacated, so 1d
-//      always waits for 5e to be out of the way before stepping onto the cliff.
+//   2. THE CLIFF (dev0562: one continuous slide-tip-fall, per the user's sketch) —
+//      each cycle the whole 12-slot loop (the L + the cliff jump 1d → 5e) creeps
+//      one notch. The cell leaving 1d slides right at belt speed and, the INSTANT
+//      its centre passes the top-right corner of 2d / 1L (= it loses its support),
+//      tips AND falls TOGETHER — no pause, no hang — tumbling a full 360° about
+//      its own centre, fast from the first airborne frame, landing upright at 5e.
+//      On impact it SQUASHES to ½ height (slowly), then settles back to full.
+//      The old lander creeps out of 5e during the same cycle (long gone before
+//      touchdown); the next cell waits at 1d through the fall + bounce.
 //   2b. CLICK-TO-FEATURE — clicking any live cell pulls it out of the choreography
 //      and grows it over the 1L position (rows 2-4 × cols 2-4 — the literal 1L in
 //      the 17 layout, the 2b-4d block in 5×5 / 19); it holds there 10 s, fades
@@ -30,11 +30,11 @@
 //      in over random live cells (belt / static centre / 1L / 1P-3P); each displaced
 //      cell becomes the new reserve. The pool stays at four; the cast keeps churning.
 //
-// MODEL: the ring is 16 slots (RING below). The right column 1e→5e is a "chute"
-// one cell zips down per cycle (4 slots, fast); everything else is an "L" conveyor
-// that creeps one slot per cycle. A single gap circulates the L, so ~once per loop
-// 1e is momentarily empty and that cycle just creeps (no drop). Occupancy is a
-// rigid clockwise +1 on the L slots, plus the zipper jumping slot 4 → slot 8.
+// MODEL: the ring is 16 slots (RING below), but occupancy lives on a 12-slot LOOP
+// (CHAIN): the L slots plus the jump 1d → 5e. Slots 4-7 (1e-4e) are pure air space
+// the faller tumbles through — never occupied after the intro. Each cycle is one
+// rigid loop rotation (a cell advances iff the slot ahead is empty or vacating);
+// the 1d cell's rotation step IS the cliff jump, animated as slide + tip + fall.
 //
 // KEEPS LIVE VIDEO ALIVE: like movingcells.js / flycells.js it NEVER reparents or
 // rebuilds a cell — it only reassigns CSS grid-area and FLIP-animates with a
@@ -76,15 +76,14 @@
   // (dev0559) Click-to-feature: grow to the 1L block, hold, fade away.
   var CLICK_GROW = 1.2, CLICK_HOLD = 10, CLICK_FADE = 1.0;   // seconds
   var EASE      = 'cubic-bezier(.4,0,.2,1)';
-  var FALL_EASE = 'cubic-bezier(.45,0,.9,.4)';        // (unused now) old gravity ease-in
-  // (dev0561) "Pushed off a cliff": the cell slides flat into 1e, then tips AND
-  // falls in ONE motion — no hang. The rotation pivots on the cell's bottom-left
-  // corner, which sits exactly on the top-right corner of 2d / the 1L block, so
-  // the lower edge stays in contact with that corner as it tips over the edge.
-  // It keeps spinning a full 360° on the way down, landing upright to bounce.
-  // Fast-start easing (moves immediately, settles into the landing) — NOT the old
-  // slow gravity ease-in, which made the fall look delayed / suspended.
-  var DROP_EASE = 'cubic-bezier(.16,.72,.34,1)';
+  // (dev0562) "Pushed off a cliff", per the user's sketch: the faller's whole
+  // journey is ONE timeline. It slides right at belt speed; the INSTANT its centre
+  // passes the top-right corner of 2d / 1L (halfway to 1e — where a real block
+  // loses its support) it tips AND falls TOGETHER — rotation about its own CENTRE,
+  // vertical drop starting immediately at full speed (linear with a slight
+  // second-half acceleration; no gravity ease-in, no hang at the edge). It spins
+  // a full 360° so it lands upright at 5e for the squash-bounce.
+  // The slide-to-tip takes moveDur/2, the tip+fall takes moveDur → 1.5×moveDur total.
 
   // ── Ring geometry (clockwise from top-left) + 1-based [row,col] placement ────
   var RING = ['1a','1b','1c','1d','1e','2e','3e','4e','5e','5d','5c','5b','5a','4a','3a','2a'];
@@ -95,7 +94,11 @@
     '4a':[4,1],'3a':[3,1],'2a':[2,1]
   };
   var FADE_CELLS = ['1e','2e','3e','4e'];   // (dev0463) 5e no longer fades
-  var SLOT_1E = 4, SLOT_5E = 8;             // ring indices of the chute endpoints
+  var SLOT_1D = 3, SLOT_5E = 8;             // ring indices of the cliff edge + landing pad
+  // (dev0562) The belt is a 12-slot LOOP: the L (1a-1d, 5e-2a up the left) plus the
+  // cliff jump 1d → 5e. CHAIN[k] moves into CHAIN[(k+1)%12]; slots 4-7 (1e-4e, the
+  // old chute) are pure air space the faller tumbles through — never occupied.
+  var CHAIN = [3, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2];
   // (dev0464) Slots that must NEVER be empty (everything but the right-column chute
   // 1e-5e = ring indices 4-8). An empty here is undesirable and gets filled from
   // the reserve; the first such fill promotes a spare into the belt, after which the
@@ -186,49 +189,92 @@
     });
   }
 
-  // ── Phase 2: the cliff — drop and creep ALTERNATE (dev0559 · tip=fall dev0561) ─
-  // CREEP turn: every belt cell advances one slot clockwise, delivering the next
-  // cell FLAT into 1e (the cliff edge). No tip here — a cell only advances if the
-  // slot ahead is free/vacating, so 1d waits its turn. When a cell lands at 1e and
-  // 5e is clear, the drop follows with NO pause.
-  // DROP turn (1e occupied AND 5e clear): the faller tips AND falls in ONE motion —
-  // the rotation pivots on its bottom-left corner (which sits exactly on the
-  // top-right corner of 2d / the 1L block), so its lower edge stays in contact with
-  // that corner as it tips over the edge; meanwhile it's already plummeting (fast
-  // from the first frame), spinning a full 360° down the chute to land upright at
-  // 5e and bounce. The belt holds while it falls.
+  // ── Phase 2: the cliff — one continuous slide-tip-fall (dev0562, per sketch) ──
+  // Every cycle the whole 12-slot loop advances one notch (a cell moves iff the
+  // slot ahead is empty or being vacated). The cell leaving 1d gets the SPECIAL
+  // move — the cliff jump straight to 5e, as ONE timeline:
+  //   • it slides right at belt speed, flat, pushed by the cell behind it;
+  //   • the INSTANT its centre passes the top-right corner of 2d / 1L (halfway to
+  //     1e — where a real block loses its support) it tips AND falls TOGETHER,
+  //     immediately, no pause and no hang at the edge;
+  //   • it tumbles about its own CENTRE, a full 360°, dropping at full speed from
+  //     the first airborne frame, and lands upright at 5e for the squash-bounce.
+  // Meanwhile the old lander creeps out of 5e (gone well before touchdown) and the
+  // next cell arrives at 1d, where it waits out the fall + bounce — then it's next.
   function cycle() {
     if (!active || phase !== 'run') return;
     var cont = container();
     if (!cont || !gridOpen()) { stop(true); return; }
 
-    var z = ring[SLOT_1E];                              // the cell poised at 1e
-    if (z && !z.isConnected) { stop(true); return; }
-    var total;
+    // Who moves? Walk the loop backwards from each gap: the cell behind a gap (or
+    // behind a mover) advances. A full loop is a rigid rotation — everyone moves.
+    var canMove = new Array(12).fill(false), gaps = [];
+    for (var g = 0; g < 12; g++) if (!ring[CHAIN[g]]) gaps.push(g);
+    if (!gaps.length) canMove.fill(true);
+    else gaps.forEach(function (gp) {
+      var k = (gp + 11) % 12;
+      while (k !== gp && ring[CHAIN[k]]) { canMove[k] = true; k = (k + 11) % 12; }
+    });
 
-    if (z && !ring[SLOT_5E]) {
-      // ── DROP turn: the faller tips+falls+spins as one motion; belt holds. ──
-      ring[SLOT_1E] = null;
-      ring[SLOT_5E] = z;
-      // Measure the exact 1e→5e offset (the cell is flat/upright here, clean rect).
-      z.style.transition = 'none'; z.style.transform = '';
-      var r1 = z.getBoundingClientRect();               // at 1e
-      z.style.gridRow = RC['5e'][0]; z.style.gridColumn = RC['5e'][1];
-      var r5 = z.getBoundingClientRect();               // at 5e
-      var fdx = r5.left - r1.left, fdy = r5.top - r1.top;
-      z.style.zIndex = ++zc;                            // ride over everything on the way down
-      // Pivot on the bottom-left corner = the top-right corner of 2d / 1L. Start
-      // pose: flat, translated back up to 1e (FLIP), so it's continuous with the
-      // flat slide that just delivered it.
-      z.style.transformOrigin = '0% 100%';
-      z.style.transform = 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(0deg)';
-      cont.offsetWidth;                                 // commit the start pose (at 1e)
-      zipperEl = z;
-      requestAnimationFrame(function () {
+    var faller = null, moves = [], next = ring.slice();
+    for (var n = 0; n < 12; n++) {
+      if (!canMove[n]) continue;
+      var i = CHAIN[n], el = ring[i];
+      if (!el) continue;
+      if (!el.isConnected) { stop(true); return; }
+      if (i === SLOT_1D) faller = el;                   // the cliff jump 1d → 5e
+      else moves.push({ el: el, to: CHAIN[(n + 1) % 12] });
+      if (next[i] === el) next[i] = null;               // vacate (unless already re-filled)
+      next[CHAIN[(n + 1) % 12]] = el;
+    }
+    ring = next;                                        // commit occupancy
+
+    // FLIP: read old boxes, assign new grid areas, invert.
+    var fOld = faller ? faller.getBoundingClientRect() : null;
+    var lOld = moves.map(function (m) { return m.el.getBoundingClientRect(); });
+    moves.forEach(function (m) {
+      var rc = RC[RING[m.to]];
+      m.el.style.transition = 'none'; m.el.style.transform = '';
+      m.el.style.gridRow = rc[0]; m.el.style.gridColumn = rc[1];
+    });
+    var sdx = 0, sdy = 0;
+    if (faller) {
+      faller.style.transition = 'none'; faller.style.transform = '';
+      faller.style.gridRow = RC['5e'][0]; faller.style.gridColumn = RC['5e'][1];
+      faller.style.zIndex = ++zc;                       // covers everything on the way down
+      faller.style.transformOrigin = '50% 50%';         // tumbles about its centre
+    }
+    cont.offsetWidth;                                   // force the new layout
+    moves.forEach(function (m, k) {
+      var nr = m.el.getBoundingClientRect();
+      m.el.style.transform = 'translate(' + (lOld[k].left - nr.left) + 'px,' + (lOld[k].top - nr.top) + 'px)';
+    });
+    if (faller) {
+      var fNew = faller.getBoundingClientRect();
+      sdx = fOld.left - fNew.left; sdy = fOld.top - fNew.top;   // 5e → back up at 1d
+      faller.style.transform = 'translate(' + sdx + 'px,' + sdy + 'px)';
+    }
+    cont.offsetWidth;                                   // commit inverted transforms
+
+    var z = faller;
+    if (z) zipperEl = z;
+    requestAnimationFrame(function () {
+      moves.forEach(function (m) {
+        m.el.style.transition = 'transform ' + moveDur + 's ' + EASE;
+        m.el.style.transform  = 'translate(0,0)';
+      });
+      if (z) {
+        // ONE timeline, 1.5×moveDur: linear slide to the tipping point (½ cell at
+        // belt speed = moveDur/2), then tip + fall TOGETHER for the last moveDur.
+        // Vertical is immediate and near-linear (55% of the height left at fall-
+        // mid = mild acceleration, zero hang); the sideways drift into column e is
+        // 90% done by fall-mid; rotation runs straight 0→360° about the centre.
         var fa = z.animate([
-          { transform: 'translate(' + (-fdx) + 'px,' + (-fdy) + 'px) rotate(0deg)' },
-          { transform: 'translate(0px,0px) rotate(360deg)' }
-        ], { duration: moveDur * 1000, easing: DROP_EASE, fill: 'forwards' });
+          { transform: 'translate(' + sdx + 'px,' + sdy + 'px) rotate(0deg)',                        offset: 0,     easing: 'linear' },
+          { transform: 'translate(' + (sdx / 2) + 'px,' + sdy + 'px) rotate(0deg)',                  offset: 1 / 3, easing: 'linear' },
+          { transform: 'translate(' + (sdx * 0.1) + 'px,' + (sdy * 0.55) + 'px) rotate(180deg)',     offset: 2 / 3, easing: 'linear' },
+          { transform: 'translate(0px,0px) rotate(360deg)',                                          offset: 1 }
+        ], { duration: moveDur * 1500, fill: 'forwards' });
         z._fallAnim = fa;
         fa.onfinish = function () {
           z._fallAnim = null;
@@ -240,52 +286,11 @@
           cont.offsetWidth;
           bounce(z);
         };
-      });
-      total = moveDur + BOUNCE + PAUSE;
-    } else {
-      // ── CREEP turn: the L (and the lander at 5e) advances one notch. ──────
-      // Walk the chain head-first (1d back around to 5e): a cell may move only
-      // if the slot ahead is free or was just vacated by the cell in front.
-      var ORDER = [3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8];
-      var free = !ring[SLOT_1E];                        // is 1e open for 1d?
-      var moves = [], next = ring.slice();
-      for (var n = 0; n < ORDER.length; n++) {
-        var i = ORDER[n], el = ring[i];
-        if (!el) { free = true; continue; }             // gap: the cell behind may advance
-        if (!el.isConnected) { stop(true); return; }
-        if (!free) continue;                            // blocked: hold (stays blocked behind)
-        var to = (i + 1) % 16;
-        moves.push({ el: el, to: to });
-        next[i] = null; next[to] = el;                  // vacates its slot for the follower
       }
-      ring = next;                                      // commit occupancy
+    });
 
-      var lOld = moves.map(function (m) { return m.el.getBoundingClientRect(); });
-      var reached1e = false;
-      moves.forEach(function (m) {
-        var rc = RC[RING[m.to]];
-        m.el.style.transition = 'none'; m.el.style.transform = '';
-        m.el.style.gridRow = rc[0]; m.el.style.gridColumn = rc[1];
-        if (m.to === SLOT_1E) reached1e = true;
-      });
-      cont.offsetWidth;                                 // force the new layout
-      moves.forEach(function (m, k) {
-        var nr = m.el.getBoundingClientRect();
-        m.el.style.transform = 'translate(' + (lOld[k].left - nr.left) + 'px,' + (lOld[k].top - nr.top) + 'px)';
-      });
-      cont.offsetWidth;                                 // commit inverted transforms
-      requestAnimationFrame(function () {
-        moves.forEach(function (m) {
-          m.el.style.transition = 'transform ' + moveDur + 's ' + EASE;
-          m.el.style.transform  = 'translate(0,0)';
-        });
-      });
-      // No pause when a cell just reached the cliff and 5e is clear: the tip+fall
-      // must start the instant the slide finishes — pushed straight off the cliff.
-      total = (reached1e && !ring[SLOT_5E]) ? moveDur : (moveDur + PAUSE);
-    }
-
-    fillLGaps();                                        // no empties off the chute
+    fillLGaps();                                        // no empties off the belt
+    var total = z ? (moveDur * 1.5 + BOUNCE + PAUSE) : (moveDur + PAUSE);
     cycleTimer = setTimeout(function () { zipperEl = null; cycle(); }, total * 1000);
   }
 
