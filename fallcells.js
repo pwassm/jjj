@@ -19,9 +19,11 @@
 //      its centre passes the top-right corner of 2d / 1L (= it loses its support),
 //      tips AND falls TOGETHER — no pause, no hang — tumbling a full 360° about
 //      its own centre, fast from the first airborne frame, landing upright at 5e.
-//      On impact it SQUASHES to ½ height (slowly), then settles back to full.
+//      On impact it SQUASHES to ½ height (slowly), then — dev0563 — SHATTERS into
+//      20 irregular pieces that burst out to 4d's corner and reassemble full-size
+//      at 5e (see shatter()), rather than settling back up as one block.
 //      The old lander creeps out of 5e during the same cycle (long gone before
-//      touchdown); the next cell waits at 1d through the fall + bounce.
+//      touchdown); the next cell waits at 1d through the fall + shatter.
 //   2b. CLICK-TO-FEATURE — clicking any live cell pulls it out of the choreography
 //      and grows it over the 1L position (rows 2-4 × cols 2-4 — the literal 1L in
 //      the 17 layout, the 2b-4d block in 5×5 / 19); it holds there 10 s, fades
@@ -68,11 +70,16 @@
   var SUB_MIN = 2.0, SUB_MAX = 3.0;            // seconds between re-entry bursts
   var SUB_FADE_MIN = 2.0, SUB_FADE_MAX = 3.0;  // (dev0464) slow, obvious substitution crossfade
   var SUB_CELLS_MIN = 2, SUB_CELLS_MAX = 3;    // cells swapped per burst
-  // Impact bounce (fixed, not scaled by moveDur). (dev0464) Slower squash, and the
-  // cell never rises above its own height — it compresses to ½ then settles back to
-  // 1 (no overshoot, no stretch phase).
-  var SQUASH = 0.35, SETTLE = 0.30;   // seconds per phase
-  var BOUNCE = SQUASH + SETTLE;
+  // Impact (fixed, not scaled by moveDur). (dev0563) The cell compresses to ½
+  // height on landing, then — instead of settling back up as one block — it SHATTERS
+  // into 20 irregular pieces that burst outward across a disk reaching up to 4d's
+  // upper-left corner (radius from 5e's centre), then implode and reassemble to full
+  // size at 5e. See shatter() for the geometry.
+  var SQUASH = 0.35;                          // seconds: compress to ½ height on impact
+  var SHATTER_OUT = 0.42, SHATTER_IN = 0.42;  // seconds: burst apart, then reassemble
+  var BOUNCE = SQUASH + SHATTER_OUT + SHATTER_IN;   // total landing time (cycle timing)
+  var SHARD_COLS = 4, SHARD_ROWS = 5;         // 4×5 = 20 jittered-quad pieces
+  var SHARD_JITTER = 0.34;                    // interior/edge vertex wobble (× cell-step)
   // (dev0559) Click-to-feature: grow to the 1L block, hold, fade away.
   var CLICK_GROW = 1.2, CLICK_HOLD = 10, CLICK_FADE = 1.0;   // seconds
   var EASE      = 'cubic-bezier(.4,0,.2,1)';
@@ -320,20 +327,140 @@
     }
   }
 
-  // Squash on impact: ½ height → settle back to full (no overshoot). transform-origin
+  // Squash on impact: ½ height, then SHATTER instead of settling. transform-origin
   // is bottom-centre (set at pin time) so it compresses onto the floor. A mild
   // counter-scale on X keeps it feeling springy rather than rubbery.
   function bounce(z) {
     if (!active || !z.isConnected) return;
-    // (dev0464) Slow squash to ½ height, then settle back to full — never taller
-    // than its starting height (no overshoot, no stretch phase).
+    // (dev0464) Slow squash to ½ height. (dev0563) Then break apart rather than
+    // settle back up as one block — shatter() takes over from the squashed pose.
     z.style.transition = 'transform ' + SQUASH + 's ease-out';
-    z.style.transform  = 'translate(0,0) scaleX(1.08) scaleY(0.5)';     // squash
+    z.style.transform  = 'translate(0,0) scaleX(1.08) scaleY(0.5)';     // squash (compress)
     fxTimers.push(setTimeout(function () {
       if (!active || !z.isConnected) return;
-      z.style.transition = 'transform ' + SETTLE + 's cubic-bezier(.2,.7,.3,1)';
-      z.style.transform  = 'translate(0,0) scaleX(1) scaleY(1)';        // settle (no overshoot)
+      shatter(z);
     }, SQUASH * 1000));
+  }
+
+  // ── The shatter (dev0563) ─────────────────────────────────────────────────────
+  // Instead of the squashed cell rising back to full height, it BREAKS into 20
+  // irregular pieces that burst outward and then reassemble to full size at 5e.
+  //   • PIECES — a 4×5 grid of quads whose shared interior/edge vertices are jittered,
+  //     so the 20 fragments tile the cell seamlessly yet each edge is irregular. Every
+  //     shard is a full-cell-size clone of the cell's static look (live iframe/video
+  //     stripped — no 20 reloads) clipped to its own polygon, so together they redraw
+  //     the whole cell and split cleanly along the jittered seams.
+  //   • REACH — the burst fills a disk centred on 5e's centre out to the radius of
+  //     4d's upper-left corner ( = 1.5·diag(cell) ). Each piece flies outward along
+  //     its own radial, tumbling about its centroid, to a random 0.42–1.0 of that R.
+  //   • LIFE — the real cell is only HIDDEN (opacity 0) for the ~0.85 s, never rebuilt,
+  //     so its video keeps playing; the shards are transient clones on a throwaway
+  //     layer in #gridContainer (cells are overflow:hidden, so pieces must live above
+  //     them to fly clear). On finish the whole live cell is revealed, full-size at 5e.
+  // The shard layer starts in the just-finished squashed pose and inflates to full as
+  // the pieces scatter, so the squash flows straight into the break-apart with no pop.
+  function shatter(z) {
+    if (!active || !z.isConnected) return;
+    var cont = container(); if (!cont) { return; }
+
+    // Full (untransformed) box of the landed cell, in #gridContainer coordinates
+    // (offset* ignore the squash transform; #gridContainer is the offsetParent).
+    var S = z.offsetWidth, H = z.offsetHeight, Lx = z.offsetLeft, Ly = z.offsetTop;
+    var cx0 = S / 2, cy0 = H / 2;
+    var R = 1.5 * Math.hypot(S, H);        // 5e centre → 4d upper-left corner
+    var bg = getComputedStyle(z).backgroundColor || '#000';
+    var faceHTML = buildFaceHTML(z);       // the cell's look, minus live media
+
+    // Shard layer over 5e, opened in the squashed pose so the swap is seamless.
+    var layer = document.createElement('div');
+    layer.className = 'fc-shatter';
+    layer.style.cssText = 'position:absolute;pointer-events:none;z-index:' + (++zc) + ';' +
+      'left:' + Lx + 'px;top:' + Ly + 'px;width:' + S + 'px;height:' + H + 'px;' +
+      'transform-origin:50% 100%;transform:scaleX(1.08) scaleY(0.5);';
+    z._fallShatter = layer;
+
+    // Jittered shared-vertex grid → 20 irregular quads that tile the cell exactly.
+    var V = [];
+    for (var r = 0; r <= SHARD_ROWS; r++) {
+      V[r] = [];
+      for (var c = 0; c <= SHARD_COLS; c++) {
+        var x = c / SHARD_COLS, y = r / SHARD_ROWS;
+        var jx = SHARD_JITTER / SHARD_COLS, jy = SHARD_JITTER / SHARD_ROWS;
+        if (c !== 0 && c !== SHARD_COLS) x += rrange(-jx, jx);   // pin the outer silhouette,
+        if (r !== 0 && r !== SHARD_ROWS) y += rrange(-jy, jy);   // wobble every inner vertex
+        V[r][c] = { x: x, y: y };
+      }
+    }
+    var shards = [];
+    for (var rr = 0; rr < SHARD_ROWS; rr++) for (var cc = 0; cc < SHARD_COLS; cc++) {
+      var p = [V[rr][cc], V[rr][cc + 1], V[rr + 1][cc + 1], V[rr + 1][cc]];
+      var poly = 'polygon(' + p.map(function (q) {
+        return (q.x * 100).toFixed(2) + '% ' + (q.y * 100).toFixed(2) + '%';
+      }).join(',') + ')';
+      var ccx = (p[0].x + p[1].x + p[2].x + p[3].x) / 4 * S;      // fragment centroid
+      var ccy = (p[0].y + p[1].y + p[2].y + p[3].y) / 4 * H;
+      var sh = document.createElement('div');
+      sh.style.cssText = 'position:absolute;left:0;top:0;width:' + S + 'px;height:' + H + 'px;' +
+        'overflow:hidden;background:' + bg + ';box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);' +
+        '-webkit-clip-path:' + poly + ';clip-path:' + poly + ';' +
+        'transform-origin:' + ccx.toFixed(1) + 'px ' + ccy.toFixed(1) + 'px;will-change:transform;';
+      sh.innerHTML = faceHTML;
+      layer.appendChild(sh);
+      var vx = ccx - cx0, vy = ccy - cy0, len = Math.hypot(vx, vy) || 1;
+      var dist = R * rrange(0.42, 1.0);
+      shards.push({
+        el:  sh,
+        out: 'translate(' + (vx / len * dist).toFixed(1) + 'px,' + (vy / len * dist).toFixed(1) + 'px) ' +
+             'rotate(' + (rrange(60, 210) * (Math.random() < 0.5 ? -1 : 1)).toFixed(1) + 'deg) ' +
+             'scale(' + rrange(0.6, 0.9).toFixed(3) + ')'
+      });
+    }
+    cont.appendChild(layer);
+
+    // Hide the live cell (video keeps playing) and reset its transform so the eventual
+    // reveal is a clean full-size cell. Commit this squashed-layer / hidden-cell state.
+    z.style.transition = 'none';
+    z.style.opacity   = '0';
+    z.style.transform = 'translate(0,0)';
+    cont.offsetWidth;
+
+    // BURST: layer inflates squashed→full while each piece scatters out toward R.
+    layer.animate([{ transform: 'scaleX(1.08) scaleY(0.5)' }, { transform: 'none' }],
+      { duration: SHATTER_OUT * 1000, easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'forwards' });
+    shards.forEach(function (s) {
+      s.el.animate([{ transform: 'translate(0,0) rotate(0deg) scale(1)' }, { transform: s.out }],
+        { duration: SHATTER_OUT * 1000, easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'forwards' });
+    });
+
+    // REASSEMBLE: pull every piece home, then reveal the whole live cell and drop the shards.
+    fxTimers.push(setTimeout(function () {
+      if (!active || !z.isConnected) { cleanupShatter(z, layer); return; }
+      shards.forEach(function (s) {
+        s.el.animate([{ transform: s.out }, { transform: 'translate(0,0) rotate(0deg) scale(1)' }],
+          { duration: SHATTER_IN * 1000, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+      });
+      fxTimers.push(setTimeout(function () {
+        if (active && z.isConnected) { z.style.transition = 'none'; z.style.opacity = '1'; z.style.transform = 'translate(0,0)'; }
+        cleanupShatter(z, layer);
+      }, SHATTER_IN * 1000));
+    }, SHATTER_OUT * 1000));
+  }
+
+  // The cell's static appearance for the shards: a clone with live media and overlays
+  // removed (iframe/video would each reload — 20× — and show nothing in <1 s anyway;
+  // the label/interactor don't belong on a fragment). Image / HTML cells keep their
+  // real content, so they visibly break along the seams; video / IG cells shatter as
+  // their backing colour. Returned as a string so all 20 shards stamp it cheaply.
+  function buildFaceHTML(cell) {
+    var clone = cell.cloneNode(true);
+    clone.querySelectorAll('iframe,video,script,.grid-interactor,[id^="grid-vid-"]')
+         .forEach(function (n) { n.remove(); });
+    return clone.innerHTML;
+  }
+
+  function cleanupShatter(z, layer) {
+    if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
+    if (z && z._fallShatter === layer) z._fallShatter = null;
   }
 
   // ── Phase 3: re-entry — bursts of 2-3 reserve cells crossfade over live cells ──
@@ -472,11 +599,15 @@
   // Snap every cell home, dropping all inline styling this feature added.
   function restoreAll() {
     var cont = container(); if (!cont) return;
+    // (dev0563) Drop any in-flight shatter layer (transient clones, live above the
+    // cells) so a stop mid-break-apart leaves nothing behind.
+    cont.querySelectorAll('.fc-shatter').forEach(function (l) { l.remove(); });
     var cells = cont.querySelectorAll('.grid-cell');
     cells.forEach(function (el) {
       // (dev0560) Kill any live WAAPI tip/fall — its fill:forwards would otherwise
       // override the reset transform and pin the cell mid-air.
       if (el._fallAnim) { try { el._fallAnim.cancel(); } catch (e) {} el._fallAnim = null; }
+      if (el._fallShatter) el._fallShatter = null;
       el.style.transition = 'none';
       el.style.transform  = '';
       el.style.opacity    = '';
