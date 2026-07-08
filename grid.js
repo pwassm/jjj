@@ -238,6 +238,7 @@ var _gridCellZoom = {};
 var _gridCellPan = {};
 
 function gridCleanupPlayers() {
+  gridStepFramesOff();   // (dev0564) leaving/rebuilding the grid exits step-frame mode
   Object.keys(_gridPlayers).forEach(id => {
     if (window.stopCellVideoLoop) window.stopCellVideoLoop(id);
   });
@@ -447,6 +448,77 @@ function gridClearCut() {
   const cutInfo = document.getElementById('gridCutInfo');
   if (cutInfo) cutInfo.style.display = 'none';
 }
+
+// ── Step-frame mode (dev0564, hotkey A on the grid) ──────────────────────────
+// Toggles every cell whose row has saved `steps` ("x,s,d" from the V step
+// panel) to show the pre-grabbed LOCAL frame jpgs (frames/<uid>_<frameNo>.jpg,
+// written by V Save → proxy /frame/grab) as a plain <img> overlay — the only
+// way to show a YT frame with ZERO player chrome (a paused in-cell YT iframe
+// paints its own centre play button; see _gridPlayStepsRoute). Freeze steps
+// (x=0 or d=0) hold frame s; real sequences cycle s..s+d every x seconds,
+// mirroring gridPlaySteps' forward loop. Overlays sit at z-index:50 — above
+// the media (z:1), below the interactor (z:100) — so clicks/swipes still work,
+// and grid video is ALWAYS muted (zip0152) so the covered player can't leak
+// audio. frames/ is gitignored (grabbed YT stills stay local, never the public
+// site), so a missing jpg shows a "Save steps in V" hint instead.
+let _gridStepFrameMode = false;
+let _gridStepFrameTimers = [];
+
+function gridStepFramesOff() {
+  _gridStepFrameTimers.forEach(t => clearInterval(t));
+  _gridStepFrameTimers = [];
+  document.querySelectorAll('.grid-step-frame').forEach(el => el.remove());
+  _gridStepFrameMode = false;
+}
+
+function gridToggleStepFrames() {
+  if (_gridStepFrameMode) {
+    gridStepFramesOff();
+    if (typeof toast === 'function') toast('Step frames off', 1200);
+    return;
+  }
+  // Match the grid's image fit policy (dev0502): portrait grids cover, else contain.
+  const fit = _gridPortraitDims(_gridCurrentLayout()) ? 'cover' : 'contain';
+  let n = 0;
+  document.querySelectorAll('#gridContainer .grid-cell').forEach(cell => {
+    const row = cell._rowData;
+    if (!row || !row.steps || row.UID == null || row.UID === '') return;
+    const parts = String(row.steps).split(',');
+    const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+    if (!isFinite(x) || !isFinite(s) || !isFinite(d) || x < 0 || s < 0 || d < 0) return;
+    const uid = encodeURIComponent(String(row.UID));
+    const src = f => 'frames/' + uid + '_' + f + '.jpg';
+
+    const ov = document.createElement('div');
+    ov.className = 'grid-step-frame';
+    ov.style.cssText = 'position:absolute;inset:0;background:#000;z-index:50;pointer-events:none;';
+    const img = document.createElement('img');
+    img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + fit + ';';
+    img.onerror = () => {
+      ov.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;'
+        + 'justify-content:center;text-align:center;color:#fa0;font:bold 12px sans-serif;'
+        + 'padding:8px;">No saved frames —<br>right-click V, set steps, Save</div>';
+    };
+    img.src = src(s);
+    ov.appendChild(img);
+    cell.appendChild(ov);
+    n++;
+
+    if (x > 0 && d > 0) {
+      for (let i = 1; i <= d; i++) { const pre = new Image(); pre.src = src(s + i); }  // warm the cycle
+      let pos = 0;
+      _gridStepFrameTimers.push(setInterval(() => {
+        pos = (pos >= d) ? 0 : pos + 1;   // forward loop: s … s+d … restart (matches gridPlaySteps)
+        img.src = src(s + pos);
+      }, Math.max(50, Math.round(x * 1000))));
+    }
+  });
+  _gridStepFrameMode = n > 0;
+  if (typeof toast === 'function')
+    toast(n ? ('🖼 Step frames — ' + n + ' cell' + (n === 1 ? '' : 's') + ' (A toggles back)')
+            : 'No grid cells have saved steps.', 1800);
+}
+window.gridToggleStepFrames = gridToggleStepFrames;
 
 // ── Clean-playback buffering (dev0336) ───────────────────────────────────────
 // G can play YouTube cells through a desktop-only A/B double-buffer that hides

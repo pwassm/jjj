@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0527';
+const PROXY_BUILD = 'dev0564';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1468,6 +1468,101 @@ function recStop(req, res, origin) {
   try { rec.proc.stdin.end(); } catch (_) {}
 }
 
+// (dev0564) ── /frame/grab — step-frame extractor for G's step-frame mode ─────
+// V's step panel Save POSTs {url, uid, x, s, d} here so the grid (hotkey A) can
+// show saved steps as plain <img>s — the only way to display a YT frame with
+// ZERO player chrome (no centre play button; see video.js _gridPlayStepsRoute).
+// yt-dlp -g resolves the direct googlevideo/CDN stream URL (skipped when the
+// row link is already a direct media file), then ffmpeg input-seeks to frame s
+// on the app's 30fps clock and writes frames/<uid>_<frameNo>.jpg. Freeze steps
+// (x=0 or d=0) grab 1 frame; sequences grab d+1 (capped) matching the
+// gridPlaySteps s..s+d forward loop. LOCAL ONLY: frames/ is gitignored —
+// grabbed YT stills must never be committed or served publicly (YT TOS).
+// Grabs need the HOME IP: yt-dlp/googlevideo 403 behind a VPN.
+const FRAMES_DIR = path.join(__dirname, 'frames');
+const FRAME_MAX  = 121;   // most frames per grab (caps d at 120)
+const FRAME_FMT  = 'bv*[height<=1080][ext=mp4]/bv*[height<=1080]/bv*/b';
+
+// Run a binary to completion, collecting stdout + a stderr tail (no streaming).
+function frameRunCollect(bin, args, timeoutMs) {
+  return new Promise(resolve => {
+    let proc;
+    try { proc = spawn(bin, args, { windowsHide: true }); }
+    catch (e) { resolve({ code: -1, out: '', err: e.message }); return; }
+    let out = '', err = '';
+    proc.stdout.on('data', c => { out += c.toString('utf8'); });
+    proc.stderr.on('data', c => { err = (err + c.toString('utf8')).slice(-4000); });
+    const killT = setTimeout(() => { try { proc.kill(); } catch (_) {} }, timeoutMs);
+    proc.on('error', e => { clearTimeout(killT); resolve({ code: -1, out, err: err || e.message }); });
+    proc.on('close', code => { clearTimeout(killT); resolve({ code, out, err }); });
+  });
+}
+
+async function frameGrab(req, res, origin) {
+  let p;
+  try { p = await readJson(req, 64 * 1024); }
+  catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
+  try {
+    must(typeof p.url === 'string' && /^https?:\/\//i.test(p.url), 'url must be http(s)');
+    must(p.url.length <= 2048, 'url too long (max 2048)');
+    const uid = String(p.uid == null ? '' : p.uid).trim();
+    must(/^[A-Za-z0-9_-]{1,40}$/.test(uid), 'uid must be 1-40 chars of [A-Za-z0-9_-]');
+    const x = +p.x, s = Math.round(+p.s), d = Math.round(+p.d);
+    must(Number.isFinite(x) && x >= 0, 'x must be a number >= 0');
+    must(Number.isInteger(s) && s >= 0, 's must be an integer >= 0');
+    must(Number.isInteger(d) && d >= 0, 'd must be an integer >= 0');
+    const freeze = (x === 0 || d === 0);
+    const n = freeze ? 1 : Math.min(d + 1, FRAME_MAX);
+    const t0 = Date.now();
+
+    // Direct media links go straight to ffmpeg; everything else through yt-dlp.
+    let streamUrl = p.url;
+    if (!/\.(mp4|webm|m4v|mov|avi|mkv|ogv)([?#]|$)/i.test(p.url)) {
+      const r = await frameRunCollect('yt-dlp',
+        ['--no-warnings', '--no-playlist', '--ignore-config', '--socket-timeout', '20',
+         '-f', FRAME_FMT, '-g', p.url], 45000);
+      streamUrl = String(r.out).split(/\r?\n/).find(l => /^https?:\/\//i.test(l)) || '';
+      if (r.code !== 0 || !streamUrl) {
+        sendJson(res, 502, { ok: false, error: 'yt-dlp could not resolve a stream URL'
+          + (r.err ? ': ' + r.err.slice(-300) : '') }, origin);
+        return;
+      }
+    }
+
+    fs.mkdirSync(FRAMES_DIR, { recursive: true });
+    // Drop this row's stale frames so a re-save with a different s/d can't mix.
+    for (const f of fs.readdirSync(FRAMES_DIR)) {
+      if (f.startsWith(uid + '_') && f.endsWith('.jpg')) {
+        try { fs.unlinkSync(path.join(FRAMES_DIR, f)); } catch (_) {}
+      }
+    }
+
+    // Input-seek to s/30, then sample at fps=30 so frame numbers line up with
+    // the app's seekAbs(f/30) stepping regardless of the source's real fps.
+    // -start_number names the %d outputs by ABSOLUTE frame number.
+    const fr = await frameRunCollect('ffmpeg',
+      ['-hide_banner', '-loglevel', 'warning', '-y',
+       '-ss', (s / 30).toFixed(3), '-i', streamUrl,
+       '-vf', 'fps=30', '-frames:v', String(n), '-q:v', '2',
+       '-start_number', String(s), path.join(FRAMES_DIR, uid + '_%d.jpg')], 120000);
+
+    const files = [];
+    for (let i = 0; i < n; i++) {
+      const name = uid + '_' + (s + i) + '.jpg';
+      if (fs.existsSync(path.join(FRAMES_DIR, name))) files.push(name);
+    }
+    if (!files.length) {
+      sendJson(res, 502, { ok: false, error: 'ffmpeg wrote no frames'
+        + (fr.err ? ': ' + fr.err.slice(-300) : '') }, origin);
+      return;
+    }
+    console.log('[frame grab]', uid, '·', files.length + '/' + n, 'frames ·', (Date.now() - t0) + 'ms');
+    sendJson(res, 200, { ok: true, count: files.length, want: n, freeze, files }, origin);
+  } catch (e) {
+    sendJson(res, 400, { ok: false, error: e.message }, origin);
+  }
+}
+
 // (dev0428) ── /ig/add — IG reel-URL staging store ────────────────────────────
 // The Tampermonkey harvester (ig-harvest.user.js) auto-scrolls an author's profile
 // in the user's own logged-in Firefox (reading rendered DOM only — no API/cookie
@@ -2101,7 +2196,7 @@ http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -2115,7 +2210,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab'] }));
     return;
   }
 
@@ -2132,6 +2227,21 @@ http.createServer((req, res) => {
     if (action === 'start') { recStart(req, res, origin); return; }
     if (action === 'stop')  { recStop(req, res, origin);  return; }
     sendJson(res, 404, { ok: false, error: 'unknown rec action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0564) ── Step-frame grabber (origin-locked, like /rec/) ─────────────
+  if (req.url.startsWith('/frame/')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      console.warn(`[frame 403] ${req.method} ${req.url} origin="${origin || '(none)'}" not in allowlist`);
+      send(res, 403, 'frame: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    if (req.method !== 'POST') { send(res, 405, 'frame: POST required', corsForExec(origin)); return; }
+    const action = req.url.slice('/frame/'.length).split('?')[0];
+    if (action === 'grab') { frameGrab(req, res, origin); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown frame action: ' + action }, origin);
     return;
   }
 

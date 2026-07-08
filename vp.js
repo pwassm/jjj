@@ -747,6 +747,43 @@ function gridOpenFullscreen(row, contained) {
         return !!(p && p.el && p.el.seeking);
       }
 
+      // (dev0564) After Save, pre-grab the saved steps as LOCAL jpgs via the
+      // proxy (/frame/grab → yt-dlp -g + ffmpeg → frames/<uid>_<frameNo>.jpg).
+      // G's step-frame mode (hotkey A on the grid) shows them as plain <img>s —
+      // the only chrome-free way to display a YT frame in a cell. frames/ is
+      // gitignored (grabbed stills stay on this machine, never the public
+      // site). Web-video rows only — disk/FSA rows have no URL the proxy can
+      // fetch. Fire-and-forget: the steps themselves are already saved.
+      async function grabStepFrames(row, secs, startFrame, numFrames) {
+        const uid = (row && row.UID != null) ? String(row.UID) : '';
+        if (!uid) {
+          if (typeof toast === 'function') toast('Frames not grabbed — row has no UID.', 2200);
+          return;
+        }
+        if (!/^https?:\/\//i.test(row.link || '')) {
+          if (typeof toast === 'function') toast('Frames not grabbed — web videos only.', 2200);
+          return;
+        }
+        const n = (secs === 0 || numFrames === 0) ? 1 : numFrames + 1;
+        if (typeof toast === 'function')
+          toast('⏳ Grabbing ' + n + ' frame' + (n === 1 ? '' : 's') + ' for G step-frame mode…', 2600);
+        try {
+          const r = await fetch(PROXY_BASE + '/frame/grab', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: row.link, uid, x: secs, s: startFrame, d: numFrames })
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+          if (typeof toast === 'function')
+            toast('✓ ' + j.count + ' frame' + (j.count === 1 ? '' : 's')
+              + ' saved to frames/ — press A on the grid to show them.', 3200);
+        } catch (e) {
+          if (typeof toast === 'function')
+            toast('Frame grab failed: ' + (e && e.message ? e.message : e)
+              + ' — proxy restarted on 8081? Off VPN?', 4200);
+        }
+      }
+
       // ── the floating step button: one A-B-free frame-window panel ──────
       function buildFSB(clientX, clientY, init) {
         init = init || {};
@@ -1065,7 +1102,8 @@ function gridOpenFullscreen(row, contained) {
           if (typeof save === 'function') save();
           if (typeof toast === 'function')
             toast('✓ Steps saved: start ' + startFrame + ' · ' + numFrames
-              + 'f @ ' + secs.toFixed(2) + 's', 1800); };
+              + 'f @ ' + secs.toFixed(2) + 's', 1800);
+          grabStepFrames(row, secs, startFrame, numFrames); };  // (dev0564) pre-grab jpgs for G's A toggle
         r4.append(chooseBtn, saveBtn);
 
         panel.append(r1, r2, r3, r4);

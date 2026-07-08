@@ -293,12 +293,21 @@ window.HOTKEYS = [
     } },
 
   { key: 'a', label: 'A', group: 'Screens', scope: 'global',
-    desc: 'Open the Annotate panel (from Grid/V; in the Table, bare A toggles the row preview instead — see below)',
+    desc: 'Annotate panel from V; on the Grid, A toggles STEP-FRAME mode (cells with saved steps show their grabbed frame jpgs); in the Table, bare A toggles the row preview — see below',
     fn(ctx) {
-      // A = Annotate panel (images and videos), from G or V. (dev0538) From the
+      // A = Annotate panel (images and videos), from V. (dev0538) From the
       // bare Table screen, core.js intercepts 'a' as the row-preview toggle
       // before it ever reaches this handler.
       if (ctx.veOpen) return; // VE takes priority
+
+      // (dev0564) On the bare grid (no V/C/annotate overlay on top), A toggles
+      // step-frame mode instead of Annotate — cells with saved steps swap to
+      // their pre-grabbed local frame jpgs (grid.js gridToggleStepFrames).
+      if (ctx.gridOpen && !ctx.vpOpen && !ctx.ebOpen && !ctx.tgOpen) {
+        if (window.gridToggleStepFrames) window.gridToggleStepFrames();
+        return;
+      }
+
       if (ctx.tgOpen) closeCScreen(); // close C-screen before opening annotate
       if (ctx.vpOpen) vpClose();
 
