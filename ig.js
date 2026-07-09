@@ -452,7 +452,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
         <button id="igAutoEnrich" title="Auto-enrich driver (hotkey A) — enriches N at a time and tracks per-Proton-location walls so you can grind the whole backlog by switching exits">🤖 Auto-enrich</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
-        <button id="igCoverOnly" title="Toggle download mode. ON = grab only the cookieless index-1 cover (no carousel, no Firefox cookies) — for authors whose page-1 is the keeper. OFF = normal (video cookieless; image carousels use gallery-dl + Firefox cookies).">📸 Cover-only: off</button>
+        <button id="igCoverOnly" title="Toggle download mode. ON = grab only the index-1 cover (no carousel) — for authors whose page-1 is the keeper. OFF = normal full download. Both are cookieless — your IG login is never used either way.">📸 Cover-only: off</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
         <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
@@ -490,8 +490,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       b.textContent = '📸 Cover-only: ' + (coverOnly ? 'ON' : 'off');
       b.classList.toggle('on', coverOnly);
       igToast(coverOnly
-        ? '📸 Cover-only ON — downloads grab just the index-1 cover, cookielessly\n(no carousel, no Firefox cookies). For authors whose page-1 is the keeper.'
-        : '📸 Cover-only off — normal download (video cookieless; image carousels use gallery-dl + Firefox cookies)', 3400);
+        ? '📸 Cover-only ON — downloads grab just the index-1 cover, cookielessly\n(no carousel). For authors whose page-1 is the keeper.'
+        : '📸 Cover-only off — normal full download, cookieless (your IG login is never used)', 3400);
     });
     $('igPromoteSel').addEventListener('click', () => batchPromote());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
@@ -657,7 +657,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <td class="mono">${esc(r.DatePosted || '') || '<span class="no">—</span>'}</td>
         <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
         <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
-        <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Download uses Firefox cookies, or 📋 Saved-text; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}</td>
+        <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Try 📋 Saved-text, or grab it from a logged-in Firefox; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}</td>
         <td class="mono">${esc(r.DateAdded || '')}</td>
         <td class="c-act">
           <button data-act="enrich" title="yt-dlp → title/caption/ttxt/author/date/res">✨</button>
@@ -982,31 +982,49 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // add up (this was the "26 marked but only 19 shown" puzzle — the couldn't-read
     // rows had no line). cookieless + cookie + couldn'tRead + notReached === total.
     const cookieless  = ok - cookieUsed;       // read with no Firefox cookies
-    const couldntRead = fail;                  // attempted, failed cookieless AND cookie
+    const couldntRead = fail;                  // attempted, failed (all cookieless paths)
     const notReached  = total - done;          // never attempted (stopped early)
+    const isDl = /download/i.test(label);      // (dev0568) tailor wording for downloads
     const head = throttled     ? `⏸ ${label} stopped — IG rate-limit detected`
                : cookieStopped ? `⏹ ${label} auto-stopped — 🍪 cookie used (cap ${COOKIE_CAP})`
-               : walledStopped ? `⏹ ${label} auto-stopped — first login-walled post`
+               // (dev0568) A cookieless download that can't be fetched now just fails —
+               // no cookie fallback. Say so plainly (the user's ask) instead of the
+               // enrich-flavoured "login-walled post" line.
+               : walledStopped ? (isDl ? `⏹ Download failed — downloads stopped`
+                                       : `⏹ ${label} auto-stopped — first login-walled post`)
                : batchAbort    ? `⏹ ${label} stopped by you`
-               : couldntRead   ? `✓ ${label} done — ${ok}/${total} read`
+               : couldntRead   ? `✓ ${label} done — ${ok}/${total} ${isDl ? 'downloaded' : 'read'}`
                :                 `✓ ${label} complete`;
     const lines = [
       head,
       ``,
       `${total} marked to do`,
-      `${cookieless} read cookielessly  (account-safe)`,
-      `🍪 cookies off — your IG account was never used`,
+      `${cookieless} ${isDl ? 'downloaded' : 'read'} cookielessly  (account-safe)`,
+      // (dev0568) HONEST cookie line — only promise "never used" when it's actually true.
+      // The old UNCONDITIONAL "cookies off — never used" printed even under a "🍪 cookie
+      // used" head → the exact contradiction the user saw. Downloads are pure-cookieless
+      // now (gallery-dl off), so this stays true; kept conditional so it can never lie.
+      cookieUsed ? `🍪 Firefox cookies used on ${cookieUsed}  (the rest were cookieless)`
+                 : `🍪 no Firefox cookies used — your IG account was never touched`,
     ];
-    if (couldntRead) lines.push(`${couldntRead} couldn't be read  (login-walled)`);
+    if (couldntRead) lines.push(`${couldntRead} ${isDl ? "couldn't be downloaded" : "couldn't be read"}  (needs a login)`);
     if (notReached)  lines.push(`${notReached} not reached  (run stopped early)`);
     lines.push(`⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`);
     if (throttled)          lines.push('', 'Wait a few minutes, then re-run — only un-done rows are retried.');
     else if (cookieStopped) lines.push('', 'Stopped after 1 Firefox-cookie use (your account-safety setting).',
                                            'Re-run to continue — the cap resets each run.');
-    else if (walledStopped) lines.push('', 'Stopped at the first login-walled post (your account-safety setting).',
-                                           'Re-run to step past it, or use 📋 Saved-text. Cookieless rows before it are done.');
-    else if (couldntRead)   lines.push('', `These ${couldntRead} are login-walled — spacing or order won't read them.`,
-                                           `Use 📋 Saved-text, or check Firefox is logged into Instagram.`);
+    else if (walledStopped) lines.push('', isDl
+                                           ? 'This post needs a login to download — no Firefox cookies were used.'
+                                           : 'Stopped at the first login-walled post (your account-safety setting).',
+                                           isDl
+                                           ? 'Re-run to skip it, or grab it from a logged-in Firefox.'
+                                           : 'Re-run to step past it, or use 📋 Saved-text. Cookieless rows before it are done.');
+    else if (couldntRead)   lines.push('', isDl
+                                           ? `These ${couldntRead} need a login to download — no cookies were used.`
+                                           : `These ${couldntRead} are login-walled — spacing or order won't read them.`,
+                                           isDl
+                                           ? `Re-run later, or download from a logged-in Firefox.`
+                                           : `Use 📋 Saved-text, or check Firefox is logged into Instagram.`);
     if (throttled && lastOpError) lines.push((lastOpError || '').slice(0, 80));
     igStickyShow(lines.join('\n'));
     return ok;
@@ -1255,7 +1273,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     try {
       if (single) igToast('⏳ Downloading ' + r.id + '…\n' + (coverOnly
         ? '📸 cover only (index 1) — cookieless'
-        : '🍪 cookieless for video; image carousels use Firefox cookies (gallery-dl)\nmax res — can take a bit'), 12000);
+        : '🍪 cookieless — your IG login is never used\nmax res — can take a bit'), 12000);
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly })
@@ -1311,10 +1329,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
       + (coverOnly
           ? `• 📸 COVER-ONLY: just the index-1 image per post, cookieless (no carousel, no Firefox cookies).\n`
-          : `• Video carousels download cookieless. IMAGE carousels use your Firefox cookies (gallery-dl) — IG login-walls those cookieless. Auto-stops at the first cookie use (re-run to continue).\n`)
+          : `• Every download is COOKIELESS — your IG login is never used. A post that can't be fetched without a login is skipped and the run stops (no cookie is ever sent).\n`)
       + `• Press ⏹ Stop any time.`)) return;
     await runBatch('Downloading', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
-      '🍪 cookieless for video — image carousels use Firefox cookies (gallery-dl)');
+      '🍪 cookieless — your IG login is never used');
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────

@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0566';
+const PROXY_BUILD = 'dev0568';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -115,10 +115,19 @@ const IG_DOWNLOAD_USE_COOKIES = false;
 // (dev0495) gallery-dl image-carousel net for image-only /p posts (yt-dlp is a video
 // tool and fetches NO IG still images, so a photo carousel only yielded the embed's
 // first picture). gallery-dl grabs the whole carousel at full res, but IG login-walls
-// it cookielessly, so it always uses Firefox cookies (the user opted in for best /p
-// downloads). Set IG_GALLERYDL=false to disable. Standalone exe, no Python needed —
+// it cookielessly, so it ALWAYS uses Firefox cookies. Standalone exe, no Python needed —
 // download with: Invoke-WebRequest <release>/gallery-dl.exe -OutFile the path below.
-const IG_GALLERYDL = true;
+// (dev0568) DISABLED — this was the LAST remaining Firefox-cookie path in the whole IG
+// pipeline (enrich + the two yt-dlp download nets are already cookieless). It ran BEFORE
+// the cookieless embed rescue, so a single-image /p (walker returns <2 items) fell to
+// gallery-dl WITH COOKIES even though the cookieless embed index-1 could have fetched it
+// — that's the surprise "🍪 cookie used (cap 1)" the user hit after a long download run.
+// Per the user's account-safety choice, downloads are now PURE COOKIELESS: the cookieless
+// carousel walker (dev0520) + video_versions reel rescue (dev0519) + embed index-1 cover
+// handle the common cases; a post that genuinely needs a login now just FAILS cleanly
+// (502 → I-screen stops the batch, no cookie sent). Flip back to true only to re-enable
+// the Firefox-cookie full-carousel fallback for image posts the cookieless paths miss.
+const IG_GALLERYDL = false;
 const GALLERY_DL = 'C:\\Special\\gallery-dl\\gallery-dl.exe';
 
 // (dev0518) yt-dlp browser IMPERSONATION for the cookieless DOWNLOAD path. Finding
