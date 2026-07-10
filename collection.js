@@ -269,6 +269,20 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // (dev0571) USER-MODE GATE: Gu is a curated VIEWING surface — a strict subset of
+  // Gd's keys. Everything below this point is DEV grid editing/tuning that must NOT
+  // fire on the public site: moving-cells (r / { / }), buffer cycle (Ctrl+B),
+  // source-paste (Ctrl+V), buffer pre-roll (- / +), and all zoom/framing ([ ] z
+  // Shift+Z, Ctrl+[ ]). Only viewer-safe keys pass through: Space (pause/unpause all)
+  // and Escape (leave grid / back to menu), both handled further down. Slideshow (S)
+  // and captions (Shift+C) live in core.js's window-capture and stay available.
+  // NB returns WITHOUT preventDefault/stopPropagation so the Gu right-click menu's own
+  // V/P/A/S key handler (a separate listener) is unaffected.
+  if ((typeof _isUserMode === 'function') && _isUserMode()
+      && e.key !== 'Escape' && !(e.key === ' ' || e.code === 'Space')) {
+    return;
+  }
+
   // (dev0374/0386/0387) Grid "moving cells" family — see the _gm* orchestrator
   // above. r = master toggle (off → ring conveyor). The VARIANT number keys
   // (1 = cascade, 2 = swap) are owned by core.js's window-capture digit handler

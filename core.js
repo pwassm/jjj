@@ -337,7 +337,10 @@ window.addEventListener('keydown', function(e) {
         if (typeof window._gmSelectDigit === 'function') window._gmSelectDigit(k);
         return false;
       }
-      if (k >= '2' && k <= '5') {
+      // (dev0571) Grid RESIZE is a curation action — dev-only. In user mode the grid
+      // is a curated c.json layout; don't let a stray 2-5 reshape it (Gu = subset).
+      if (k >= '2' && k <= '5'
+          && !((typeof _isUserMode === 'function') && _isUserMode())) {
         e.preventDefault();
         e.stopPropagation();
         // (dev0370) C-source layouts (17/19 + portrait 3/12/27) are config-only —
@@ -366,7 +369,8 @@ window.addEventListener('keydown', function(e) {
   if (k === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
     const gOpenF = document.getElementById('gridOverlay')?.style.display === 'flex';
     const vpOpenF = document.getElementById('gridFullscreen')?.style.display === 'flex';
-    if (gOpenF && !vpOpenF) {
+    // (dev0571) FallCells is a dev screensaver toy — not part of Gu's viewing subset.
+    if (gOpenF && !vpOpenF && !((typeof _isUserMode === 'function') && _isUserMode())) {
       e.preventDefault();
       e.stopPropagation();
       if (typeof window._gmToggleFall === 'function') window._gmToggleFall();

@@ -2073,6 +2073,28 @@ function gridWireInteractor(interactor, cell, cellStr) {
 // ══════════════════════════════════════════════════════════════════════════════
 let _gridContextMenu = null;
 
+// (dev0571) Keep the right-click menu fully ON-SCREEN. Right-clicking a
+// bottom-row (or right-edge) cell used to push the menu partly past the viewport
+// so its lowest item(s) were clipped — worst on the public Gu menu and on small
+// phone screens (the user report). Call this AFTER the menu is in the DOM so its
+// real size is measurable: cap its height (scroll if still taller than the
+// screen), then flip it up/left off the cursor and clamp inside a small margin.
+// Shared by BOTH the user (Gu) and dev (Gd) menus.
+function _gridClampContextMenu(menu, x, y) {
+  if (!menu) return;
+  const m = 6, vw = window.innerWidth, vh = window.innerHeight;
+  menu.style.maxHeight = (vh - 2 * m) + 'px';
+  menu.style.overflowY = 'auto';
+  const r = menu.getBoundingClientRect();
+  let left = x, top = y;
+  if (left + r.width  > vw - m) left = Math.max(m, x - r.width);        // flip left off cursor
+  if (left + r.width  > vw - m) left = Math.max(m, vw - m - r.width);   // else clamp
+  if (top  + r.height > vh - m) top  = Math.max(m, y - r.height);       // flip up off cursor
+  if (top  + r.height > vh - m) top  = Math.max(m, vh - m - r.height);  // else clamp
+  menu.style.left = left + 'px';
+  menu.style.top  = top  + 'px';
+}
+
 // (dev0419) Lean user-mode (Gu) right-click menu: View / Play steps / Play
 // steps All — viewing actions only, no edit/cut/delete/write. Shares the dev
 // menu's chrome + close/keyboard plumbing (gridHideContextMenu) but builds its
@@ -2113,6 +2135,7 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
   _gridContextMenu.appendChild(mkItem('<u>S</u>lideshow', doSlideshow));
 
   document.body.appendChild(_gridContextMenu);
+  _gridClampContextMenu(_gridContextMenu, x, y);   // (dev0571) keep on-screen (bottom row / phones)
 
   const handleKey = e => {
     if ((e.key === 'v' || e.key === 'V') && row) { e.preventDefault(); doView(); }
@@ -2251,7 +2274,8 @@ function gridShowContextMenu(x, y, cellStr, row) {
   _gridContextMenu.appendChild(writeBtn);
 
   document.body.appendChild(_gridContextMenu);
-  
+  _gridClampContextMenu(_gridContextMenu, x, y);   // (dev0571) keep on-screen (bottom row / phones)
+
   // Handle keyboard shortcuts
   const handleKey = e => {
     if (e.key === 't' || e.key === 'T') {

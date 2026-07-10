@@ -374,6 +374,19 @@ window.HOTKEYS = [
       // (dev0376) Caption toggle moved to Shift+C, handled in core.js before
       // the key is lowercased.
       if (ctx.teOpen) return;
+      // (dev0571) User/mobile mode: 'c' opens the FRIENDLY config picker overlay
+      // (_showMobileCPicker), NOT the dev C-table. openCScreen() renders the raw
+      // Table engine, which is hidden in user mode — so on the public site 'c' hid
+      // the grid and showed a blank table = BLACK SCREEN (user report). The picker
+      // floats above the grid (z 999991); leave the grid mounted behind it, toggle.
+      const userC = (typeof _isUserMode === 'function' && _isUserMode())
+                 || (typeof _isMobileDevice === 'function' && _isMobileDevice());
+      if (userC) {
+        const open = document.getElementById('mobileCPicker');
+        if (open) { open.remove(); return; }                       // toggle off
+        if (typeof _showMobileCPicker === 'function') _showMobileCPicker();
+        return;
+      }
       if (ctx.tgOpen) { closeCScreen(); return; } // toggle off
       // Close any open overlays first
       if (ctx.vpOpen) vpClose();
