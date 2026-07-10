@@ -923,6 +923,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
     let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
+    const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
     const t0 = Date.now();
     // Rows that still need work. Already-done rows are passed over silently — no
     // "skipped" line anywhere (per request: that count was ambiguous noise).
@@ -965,7 +966,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         fail++;
         if (isThrottle(lastOpError)) throttled = true;
         // (dev0458) Stop at the first login-walled result (cookie-conservative).
-        else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
+        // (dev0569) For DOWNLOADS, ANY failure is the stop signal — never keep hammering
+        // IG past the first post we couldn't fetch. Deliberately NOT gated on isWall():
+        // yt-dlp's wall wording drifts and has silently broken this WALL_CAP stop 3×
+        // (dev0442/0470/0501); since dev0568 downloads are cookieless-or-fail, so a
+        // failure always warrants stopping. Enrich keeps the isWall() test (its
+        // auto-enrich driver tells a walled VPN exit from a dead post to grind on).
+        else if ((isDl || isWall(lastOpError)) && ++walled >= WALL_CAP) walledStopped = true;
       }
       applyAndRender();
       if (throttled || cookieStopped || walledStopped) break;
@@ -984,7 +991,6 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const cookieless  = ok - cookieUsed;       // read with no Firefox cookies
     const couldntRead = fail;                  // attempted, failed (all cookieless paths)
     const notReached  = total - done;          // never attempted (stopped early)
-    const isDl = /download/i.test(label);      // (dev0568) tailor wording for downloads
     const head = throttled     ? `⏸ ${label} stopped — IG rate-limit detected`
                : cookieStopped ? `⏹ ${label} auto-stopped — 🍪 cookie used (cap ${COOKIE_CAP})`
                // (dev0568) A cookieless download that can't be fetched now just fails —
@@ -1014,10 +1020,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     else if (cookieStopped) lines.push('', 'Stopped after 1 Firefox-cookie use (your account-safety setting).',
                                            'Re-run to continue — the cap resets each run.');
     else if (walledStopped) lines.push('', isDl
-                                           ? 'This post needs a login to download — no Firefox cookies were used.'
+                                           ? 'Stopped at the first post IG would not serve cookielessly — no Firefox cookies were used.'
                                            : 'Stopped at the first login-walled post (your account-safety setting).',
                                            isDl
-                                           ? 'Re-run to skip it, or grab it from a logged-in Firefox.'
+                                           ? 'Often a temporary IP block — wait a bit and re-run, or grab it from a logged-in Firefox.'
                                            : 'Re-run to step past it, or use 📋 Saved-text. Cookieless rows before it are done.');
     else if (couldntRead)   lines.push('', isDl
                                            ? `These ${couldntRead} need a login to download — no cookies were used.`
