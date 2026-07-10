@@ -77,6 +77,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
                   border-bottom:2px solid #6af; background:#3a4d75;">
         <span style="color:#ff8; font-weight:bold;">Text Slide · ${cellStr}${mediaNote}</span>
         <span id="teStats" style="color:#9ab; font-weight:normal; font-size:11px; font-family:monospace;" title="ftext size · % real text · % strippable junk (inline styles/classes/empty wrappers; image & link URLs are NOT junk)"></span>
+        <span id="teSaved" style="color:#6d8; font-weight:normal; font-size:11px; font-family:monospace; white-space:nowrap;" title="Last autosave — ftext is written to the row ~1s after you stop typing"></span>
         <div style="display:flex; gap:8px;">
           <button id="teSlide" class="tbtn" style="padding:6px 12px; border-color:#8ef; color:#8ef;" title="Preview as slide — auto-saves first. Key: S (when not typing). Esc closes preview.">▶ <u>S</u>lide</button>
           <button id="teSlideshow" class="tbtn" style="padding:6px 12px; border-color:#fc8; color:#fc8;" title="Play embedded images as a full-window slideshow (5s/slide, click or Esc to exit).">▶▶ Slideshow</button>
@@ -107,6 +108,8 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" id="teWrap" title="Wrap current selection in a collapsible section — turns multi-line content, pictures, or tables into a hideable block">[▶…]</button>
         <button class="te-btn" id="teWrap2" title="Wrap selection as a collapsible, split into title + detail — the FIRST line becomes the click-to-expand summary, the remaining lines become the hidden body">[[2]]</button>
         <button class="te-btn" id="teUndetail" title="Undetail — turn the collapsible block at the cursor back into a heading (H3) with a bullet list of its lines underneath (inverse of [▶…])">Un[▶]</button>
+        <button class="te-btn" id="teLineBefore" title="Blank line ABOVE the detail block at the cursor — inserted OUTSIDE the block, so new text there is not absorbed into it (same as Ctrl+Shift+Enter)">¶↑</button>
+        <button class="te-btn" id="teLineAfter" title="Blank line BELOW the detail block at the cursor — inserted OUTSIDE the block, so new text there is not absorbed into it (same as Ctrl+Enter)">¶↓</button>
         <button class="te-btn" id="teExpandAll" title="Expand all collapsible blocks in this slide">▼ All</button>
         <button class="te-btn" id="teCollapseAll" title="Collapse all collapsible blocks in this slide">▶ All</button>
         <button class="te-btn" id="teCut" title="Park everything from the cursor down — wrapped in a hidden div that's invisible when rendered (slide, grid, exports) but still editable here in Xe. Click on the red banner above the parked block to unpark it.">✂ Cut</button>
@@ -138,7 +141,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
       </div>
 
       <div style="padding:8px 16px; color:#556; font-size:11px; border-top:1px solid #333;">
-        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · Swipe ← title bar = save+close · Shift+Enter new collapsible · Ctrl+Enter blank line AFTER block · Ctrl+Shift+Enter blank line BEFORE block · ⋮⋮ handle = select block for cut
+        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · FAST swipe ← anywhere = save+back (slow drag still selects text) · Shift+Enter new collapsible · ¶↑/¶↓ or Ctrl(+Shift)+Enter = blank line outside block · ⋮⋮ handle = select block for cut
       </div>
     </div>
   `;
@@ -559,6 +562,20 @@ function gridOpenTextEditor(cellStr, row, opts) {
     e.preventDefault();
     const ed = document.getElementById('teEditor');
     if (ed) ed.querySelectorAll('details').forEach(d => d.removeAttribute('open'));
+  };
+
+  // (dev0573) ¶↑ / ¶↓ — blank line ABOVE / BELOW the detail block at the caret,
+  // inserted OUTSIDE the block. Button twins of Ctrl+Shift+Enter / Ctrl+Enter:
+  // the WYSIWYG problem was that new lines typed next to a <details> get
+  // absorbed INTO it; these guarantee an independent paragraph. Work on the
+  // block whether it's collapsed or expanded (caret in summary or body).
+  document.getElementById('teLineBefore').onmousedown = (e) => {
+    e.preventDefault();
+    _teInsertLineAroundDetails('before');
+  };
+  document.getElementById('teLineAfter').onmousedown = (e) => {
+    e.preventDefault();
+    _teInsertLineAroundDetails('after');
   };
 
   // (dev0341) Undetail — inverse of [▶…] Wrap. Turn the <details> block at the
@@ -1044,10 +1061,10 @@ function gridOpenTextEditor(cellStr, row, opts) {
     }
   }, true);
 
-  // (zip0161) Swipes on the title bar:
+  // (zip0161) Swipe on the title bar:
   //   L→R  = auto-save + show slide (Xs preview)
-  //   R→L  = auto-save + close Xe (back to T)
-  // Attached to title bar only so drags inside the editor don't trigger.
+  // (dev0573) The R→L branch moved OFF the title bar: it's now the overlay-wide
+  // FAST flick below (the title-bar-only zone was too easy to miss).
   const titleBar = _textEditorOverlay.querySelector('#teBox > div');
   if (titleBar) {
     let sStart = null;
@@ -1071,18 +1088,41 @@ function gridOpenTextEditor(cellStr, row, opts) {
       const dy = e.clientY - sStart.y;
       const ms = Date.now() - sStart.t;
       sStart = null;
-      if (Math.abs(dx) < 40 || Math.abs(dy) >= Math.abs(dx) || ms > 800) return;
-      if (dx > 0) {
-        // L→R: save + preview slide
-        _textEditorDoSave();
-        textEditorPreviewSlide();
-      } else {
-        // R→L: save + close Xe
-        _textEditorDoSave();
-        textEditorClose();
-      }
+      if (dx < 40 || Math.abs(dy) >= dx || ms > 800) return;
+      // L→R: save + preview slide
+      _textEditorDoSave();
+      textEditorPreviewSlide();
     });
     titleBar.addEventListener('pointercancel', () => { sStart = null; });
+  }
+
+  // (dev0573) FAST R→L flick ANYWHERE on Xe = auto-save + leave (back to G if we
+  // arrived from the grid, else reveal T underneath) — mirrors the Esc exit.
+  // Speed-gated so a slow right-to-left drag still SELECTS TEXT in the editor:
+  // the flick must cover ≥120px within 250ms, mostly horizontal. Flicks that
+  // start on a button or input are ignored (those own their own pointer UX).
+  // Capture phase so child handlers can't hide the gesture; no preventDefault,
+  // so clicks/selection are never interfered with — we only act on the flick.
+  {
+    let _flick = null;
+    _textEditorOverlay.addEventListener('pointerdown', e => {
+      const t = e.target;
+      if (t && t.closest && t.closest('button, input')) { _flick = null; return; }
+      _flick = { x: e.clientX, y: e.clientY, t: Date.now() };
+    }, true);
+    _textEditorOverlay.addEventListener('pointerup', e => {
+      if (!_flick) return;
+      const dx = e.clientX - _flick.x;
+      const dy = e.clientY - _flick.y;
+      const ms = Date.now() - _flick.t;
+      _flick = null;
+      if (dx > -120 || ms > 250 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+      _textEditorDoSave();
+      const backToGrid = !!window._cameFromGrid;
+      textEditorClose();
+      if (backToGrid) { window._cameFromGrid = false; if (typeof gridShow === 'function') gridShow(); }
+    }, true);
+    _textEditorOverlay.addEventListener('pointercancel', () => { _flick = null; }, true);
   }
   
   // Keyboard handling on editor
@@ -1275,11 +1315,20 @@ function gridOpenTextEditor(cellStr, row, opts) {
     // last keystroke. Debounced so a long paragraph isn't a save per character.
     // The timeout re-checks that the editor is still mounted before saving, so a
     // late tick after Close is a silent no-op; textEditorClose also clears it.
+    // (dev0573) The save WAS happening but was invisible — save() doesn't repaint
+    // the T table, so its ftext column looked stale ("autosave isn't working").
+    // Now: the #teSaved header stamp confirms each autosave live (cleared the
+    // moment you type again), and textEditorClose re-renders T on the way out.
     editor.addEventListener('input', () => {
+      const _sv = document.getElementById('teSaved');
+      if (_sv) _sv.textContent = '';
       clearTimeout(window._teAutosaveTimer);
       window._teAutosaveTimer = setTimeout(() => {
         if (document.getElementById('teEditor') && typeof _textEditorDoSave === 'function') {
-          _textEditorDoSave();
+          if (_textEditorDoSave()) {
+            const _sv2 = document.getElementById('teSaved');
+            if (_sv2) _sv2.textContent = '✓ autosaved ' + new Date().toTimeString().slice(0, 8);
+          }
         }
       }, 900);
     });
@@ -1343,19 +1392,12 @@ function textEditorSave() {
   // dropdown that the user reported.
   _sanitizeTextEditorHtml(editor);
 
-  const html = editor.innerHTML.trim();
-
-  // (dev0378) Title prompt + link/VidRange are slide-only (ftext). ttxt/ctxt
-  // are free-form details blocks — save them verbatim without those rituals.
+  // (dev0378) link/VidRange are slide-only (ftext). ttxt/ctxt are free-form
+  // details blocks — save them verbatim without those rituals.
+  // (dev0573) The "Enter a title for this slide" prompt is GONE: the first line
+  // of the slide IS its title — no separate stored copy, so it auto-updates
+  // whenever the first line is edited. (H2-style it via the toolbar if wanted.)
   const _slideField = (_textEditorField === 'ftext');
-
-  // Check if we need a title (first h1 or h2)
-  if (_slideField && !html.match(/<h[12][^>]*>.*?\S.*?<\/h[12]>/i)) {
-    const title = prompt('Enter a title for this slide:', '');
-    if (title) {
-      editor.innerHTML = '<h2>' + title + '</h2>' + html;
-    }
-  }
 
   // Save to the bound field (keeps existing video/image data)
   _textEditorRow[_textEditorField] = editor.innerHTML.trim();
@@ -1393,6 +1435,39 @@ function _sanitizeTextEditorHtml(rootEl) {
   // handles are UI chrome, not part of the saved ftext.
   rootEl.querySelectorAll('.te-dh').forEach(h => h.remove());
   rootEl.querySelectorAll('details.te-selected').forEach(d => d.classList.remove('te-selected'));
+}
+
+// (dev0573) Insert an empty paragraph immediately BEFORE or AFTER the detail
+// block at the caret — always OUTSIDE the block (top-level sibling), so the new
+// line can't be absorbed into the <details>. Shared by the ¶↑/¶↓ toolbar
+// buttons; same insertion the Ctrl+Shift+Enter / Ctrl+Enter keydown paths do.
+// Falls back to a ⋮⋮-selected block when the caret isn't inside one.
+function _teInsertLineAroundDetails(where) {
+  const ed = document.getElementById('teEditor');
+  if (!ed) return;
+  const sel = window.getSelection();
+  let details = null;
+  if (sel && sel.rangeCount) {
+    let n = sel.getRangeAt(0).startContainer;
+    while (n && n !== ed) {
+      if (n.nodeType === 1 && n.tagName === 'DETAILS') details = n;  // keep climbing → outermost
+      n = n.parentNode;
+    }
+  }
+  if (!details) details = ed.querySelector('details.te-selected');
+  if (!details) {
+    if (typeof toast === 'function') toast('Put the cursor inside a detail block first', 1800);
+    return;
+  }
+  let top = details;
+  while (top.parentNode && top.parentNode !== ed) top = top.parentNode;
+  const p = document.createElement('p');
+  p.appendChild(document.createElement('br'));
+  ed.insertBefore(p, where === 'before' ? top : top.nextSibling);
+  const r = document.createRange();
+  r.setStart(p, 0); r.collapse(true);
+  sel.removeAllRanges(); sel.addRange(r);
+  ed.focus();
 }
 
 // (dev0243) Ensure every <details> in the editor has a small left-edge
@@ -2119,6 +2194,11 @@ function textEditorClose() {
   if (style) style.remove();
   _textEditorCell = null;
   _textEditorRow = null;
+  // (dev0573) Repaint T so its ftext/DateModified columns show this session's
+  // edits — save() writes data+disk but never re-renders the table, which made
+  // Xe's autosave look broken from T. One render per close is cheap; when the
+  // grid is on top the repaint is invisible but harmless.
+  if (typeof render === 'function') { try { render(); } catch (_) {} }
 }
 
 function gridClose() {

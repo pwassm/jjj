@@ -565,9 +565,9 @@ window.HOTKEYS = [
     desc: 'Open the floating step-button panel (frame nudge, free-run wheel, ping-pong/loop); right-click again closes it. '
       + 'Wheel the rate box down to 0 = freeze frame; wheel the frames box down to 0 = hold the start frame (dev0555)' },
 
-  { label: 'Swipe → / ← title bar', group: 'Gestures', scope: 'Xe', dev: true, helpSection: 'Gestures',
-    impl: 'xe.js title-bar swipe',
-    desc: 'Auto-save, then preview the slide (→) or close back to the Table (←)' },
+  { label: 'Swipe → title bar / FAST swipe ← anywhere', group: 'Gestures', scope: 'Xe', dev: true, helpSection: 'Gestures',
+    impl: 'xe.js swipe + flick',
+    desc: 'Auto-save, then preview the slide (→ on title bar) or leave Xe (fast ← anywhere → back to Grid/T; slow ← drag still selects text)' },
 
   { label: 'Shift+click down a column', group: 'Gestures', scope: 'T', dev: true, helpSection: 'Gestures',
     impl: 'core.js range select',

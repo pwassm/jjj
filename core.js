@@ -8782,7 +8782,7 @@ const HELP_DATA = [
 
   // ─── Xe — TEXT EDITOR ───────────────────────────────────────────────
   { id: 'Xe', title: 'Xe — HTML Text Editor', devOnly: true,
-    desc: 'Rich-text editor for row.ftext. Auto-opens Annotate (A) on the right (340px). Arrows navigate rows. Close: X button or swipe-left on title bar.',
+    desc: 'Rich-text editor for row.ftext. Auto-opens Annotate (A) on the right (340px). Arrows navigate rows. Autosaves ~1s after you stop typing (see the ✓ stamp in the header). Close: X button, Esc, or a FAST swipe-left anywhere.',
     sections: [
       { name: 'Hotkeys', items: [
         { key: '↑ ↓',           desc: 'Navigate to previous / next T row (saves current first)', dev: true },
@@ -8794,7 +8794,7 @@ const HELP_DATA = [
       ]},
       { name: 'Mouse / Touch', items: [
         { key: 'Swipe → title bar',  desc: 'Auto-save + preview slide (Xs)',     dev: true },
-        { key: 'Swipe ← title bar',  desc: 'Auto-save + close Xe (back to T)',   dev: true },
+        { key: 'FAST swipe ← anywhere', desc: 'Auto-save + close Xe (back to Grid/T). Must be quick — a slow ← drag still selects text.', dev: true },
         { key: '▶ Slide button',     desc: 'Auto-save + preview as Xs',          dev: true },
         { key: '✓ Save button',      desc: 'Save + close editor',                dev: true },
         { key: '✕ Close button',     desc: 'Close editor (unsaved changes lost)', dev: true },

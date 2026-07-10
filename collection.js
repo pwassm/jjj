@@ -258,6 +258,13 @@ document.addEventListener('keydown', e => {
   // leaking to the grid behind the show.
   if (document.getElementById('slideshowOverlay')) return;
 
+  // (dev0573) Xe (text editor) can sit ON TOP of the grid (double-click a cell).
+  // While it's open, Xe owns the keyboard — without this bail, typing r / { / } /
+  // z / [ / ] into the contenteditable fell through to THIS handler and toggled
+  // moving-cells / zoom under the overlay ("the r key is not recognized" bug:
+  // preventDefault here cancels the character insertion in the editor).
+  if (document.getElementById('textEditorOverlay')) return;
+
   // (dev0373) While the Ctrl+Alt+G "Save Grid Configuration" name dialog is open it
   // owns the keyboard: Enter → Save, Escape → Cancel (dismiss). This handler fires in
   // capture before the dialog's own input listener, and previously its Escape branch
