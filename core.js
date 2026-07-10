@@ -184,6 +184,19 @@ window.addEventListener('keydown', function(e) {
   }
   if (isEditable) return;
 
+  // (dev0570) Bare 0 = toggle browser fullscreen (the F11 equivalent), from ANY
+  // screen. Placed BEFORE the modifier/overlay bails below so it fires everywhere
+  // (T, Grid, V, Xe, slideshow, menu…), but AFTER the isEditable return above so
+  // typing 0 in a field is unaffected. Guarded to BARE 0 so Ctrl+0 (browser zoom
+  // reset) and Alt/Shift combos still pass through. Replaces the removed
+  // auto-fullscreen-on-first-tap (boot.js _toggleFullscreen).
+  if (e.key === '0' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window._toggleFullscreen) window._toggleFullscreen();
+    return false;
+  }
+
   // (dev0352) Modified-key Table actions that must beat the browser defaults,
   // checked BEFORE the bare-modifier bail-out below. Only when the Table screen
   // owns the keyboard — elsewhere the browser default is left intact.

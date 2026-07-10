@@ -507,6 +507,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture + per-screen handlers',
     desc: 'Defocus text / deselect row; steps back Xs→Xe→T and closes V/Ie/Ev (never closes T)' },
 
+  { label: '0', group: 'Everywhere', scope: 'global', dev: false,
+    impl: 'core.js window-capture (dev0570) → boot.js _toggleFullscreen',
+    desc: 'Toggle browser fullscreen (the F11 equivalent) — works from any screen' },
+
   // ── Gestures — swipe / mouse idioms (no fn; documented, not dispatched) ────
   // helpSection:'Gestures' renders these as their own Help sub-section. Because
   // that name has no "hotkey" in it, the Hum mobile filter keeps the swipe/tap

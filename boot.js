@@ -393,28 +393,29 @@ async function _enterFullscreenLandscape() {
 }
 
 function _wireFullscreenOnFirstTap() {
-  // (dev0557/dev0558) RE-ENABLED for desktop: enter browser fullscreen ONCE
-  // on the first user gesture after load, then stand down. Browser policy
-  // forbids entering fullscreen without a user gesture, so the very first
-  // click/keypress arms it; after that we never re-enter (Esc/F11 leave
-  // fullscreen and stay left — no fighting the user). pagehide exits
-  // fullscreen on tab close / navigation so the browser returns to normal.
-  // Mobile keeps the zip0173 CSS rotate-wrap approach instead — the
-  // fullscreen API there had tap-on-chrome / iOS quirks (see above).
-  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return;
-  const enterOnce = () => {
-    document.removeEventListener('pointerdown', enterOnce, true);
-    document.removeEventListener('keydown', enterOnce, true);
-    if (document.fullscreenElement) return;
-    const el = document.documentElement;
-    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-  };
-  document.addEventListener('pointerdown', enterOnce, true);
-  document.addEventListener('keydown', enterOnce, true);
-  window.addEventListener('pagehide', () => {
-    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (_) {}
-  });
+  // (dev0570) AUTO-FULLSCREEN REMOVED per user ("get rid of auto-F11, it is a
+  // nuisance"). The dev0557/0558 behaviour silently entered browser fullscreen on
+  // the FIRST click/keypress after load — surprising and unwanted. Fullscreen is
+  // now MANUAL ONLY: press 0 from any screen to toggle it (window._toggleFullscreen,
+  // wired into core.js's window-capture keydown). Kept as a no-op so the existing
+  // call site (load().then) still resolves without error.
 }
+
+// (dev0570) Toggle browser fullscreen — the F11 equivalent, driven by the bare-0
+// hotkey (core.js window-capture). MUST be called from a user gesture (a keydown
+// qualifies) or the browser rejects requestFullscreen. Enters if not currently
+// fullscreen, otherwise exits. Fails soft on any browser that lacks the API.
+function _toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) {
+      if (document.exitFullscreen) document.exitFullscreen();
+    } else {
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    }
+  } catch (_) {}
+}
+window._toggleFullscreen = _toggleFullscreen;
 
 // (dev0551) Render + wire the optional sign-in strip on Page 1 of the
 // shareable menu. Anonymous browsing never touches this — it only reacts once
