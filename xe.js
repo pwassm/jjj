@@ -124,7 +124,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
         padding:24px 32px; color:#fff; font-family:sans-serif; font-size:18px; line-height:1.7;
         background:#0a0a1a; outline:none; cursor:text;
         -webkit-user-modify:read-write; -moz-user-modify:read-write;
-      ">${existingText || '<h2>Title</h2><p>Your content here...</p>'}</div>
+      ">${existingText || ''}</div>
 
       <div id="teLinkBar" style="display:flex;align-items:center;gap:8px;padding:5px 16px;
            background:#0d0d1e;border-top:1px solid #333;">
@@ -1241,10 +1241,8 @@ function gridOpenTextEditor(cellStr, row, opts) {
       _textEditorOverlay.focus();
     } else {
       editor.focus();
-      // If default text, select it
-      if (editor.innerHTML.includes('Your content here')) {
-        document.execCommand('selectAll', false, null);
-      }
+      // (dev0572) The editor now opens BLANK (or with the row's existing text) —
+      // no "Title / Your content here" placeholder to select-all over.
     }
     // (zip0134) Clean stray empty <details> on open so the user doesn't see
     // the residual caret/dropdown UI from previously saved malformed content.
@@ -1271,6 +1269,20 @@ function gridOpenTextEditor(cellStr, row, opts) {
     // (dev0278) Live size/junk readout, refreshed as the user edits.
     editor.addEventListener('input', teUpdateStats);
     teUpdateStats();
+    // (dev0572) Autosave as you type. Xe already saves on Esc / Slide / swipe;
+    // this makes in-progress typing durable too (esp. the reserved HTML
+    // instruction cell), writing ftext back to the row + ml.json ~0.9s after the
+    // last keystroke. Debounced so a long paragraph isn't a save per character.
+    // The timeout re-checks that the editor is still mounted before saving, so a
+    // late tick after Close is a silent no-op; textEditorClose also clears it.
+    editor.addEventListener('input', () => {
+      clearTimeout(window._teAutosaveTimer);
+      window._teAutosaveTimer = setTimeout(() => {
+        if (document.getElementById('teEditor') && typeof _textEditorDoSave === 'function') {
+          _textEditorDoSave();
+        }
+      }, 900);
+    });
     // Pre-fill and wire the video URL bar
     const _li = document.getElementById('teLinkInput');
     if (_li) {
@@ -2089,6 +2101,9 @@ function textEditorPreviewSlide() {
 }
 
 function textEditorClose() {
+  // (dev0572) Cancel any pending type-autosave so it can't fire against a
+  // torn-down editor / the next row opened after this one.
+  clearTimeout(window._teAutosaveTimer);
   // (zip0183) Sync T's focus to the last Xe row before clearing state, so
   // pressing T/G/A from Xe leaves the selection on the row that was open.
   if (_textEditorRow && typeof window._setFocusToRow === 'function') {

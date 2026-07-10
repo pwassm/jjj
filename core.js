@@ -295,6 +295,22 @@ window.addEventListener('keydown', function(e) {
     return;
   }
 
+  // (dev0572) Table screen: m = open the Mark4Grid chooser; Shift+M = toggle the
+  // htMl reserve (upper-left cell kept for an HTML instruction slide). Gated on
+  // _tScreenActive() so C / Grid / Xe / staging screens keep their own m. This is
+  // additive — bare 'm' otherwise no-ops in plain T (the hamburger opens via its
+  // button). Runs before the generic dispatcher below, so 'm' never reaches HM here.
+  if (k === 'm' && typeof _tScreenActive === 'function' && _tScreenActive()) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.shiftKey) {
+      if (typeof window._markGridToggleHtml === 'function') window._markGridToggleHtml();
+    } else {
+      if (typeof window._markGridMenuToggle === 'function') window._markGridMenuToggle();
+    }
+    return false;
+  }
+
   // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
   // Only when the grid overlay is open; otherwise falls through so bare 'c'
   // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled
@@ -4020,6 +4036,10 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
 let _markGridSize  = 12;     // chosen cell count; default 12 (portrait 2×6)
 let _markGridShape = 'P';    // 'P' | 'L' | '17' | '19' — geometry of the grid
 let _markGridMedia = 'all';  // 'all' | 'image' | 'video' — candidate media filter
+// (dev0572) htMl reserve: when true, a Mark4Grid run on a ≥4-cell grid (4L…27P)
+// leaves the upper-left cell (1a) EMPTY so it can hold an HTML instruction slide.
+// 3P is excluded (too few cells). Toggled by the htMl chip or Shift+M in T.
+let _markGridReserveHtml = false;
 
 function markGridMenuOpen() {
   const menu = document.getElementById('markGridMenu');
@@ -4047,6 +4067,20 @@ function markGridSetMedia(media) {
     el.classList.toggle('active', el.dataset.media === media);
   });
 }
+// (dev0572) Toggle the htMl reserve. `force` (boolean) sets it explicitly; omit
+// to flip. Reflects the state on the chip and toasts. Exposed for the Shift+M
+// hotkey so it works whether the dropdown is open or not.
+function markGridToggleHtml(force) {
+  _markGridReserveHtml = (typeof force === 'boolean') ? force : !_markGridReserveHtml;
+  const el = document.getElementById('mgHtmlToggle');
+  if (el) el.classList.toggle('active', _markGridReserveHtml);
+  toast(_markGridReserveHtml
+    ? '⌸ htMl reserve ON — grids 4L–27P keep the upper-left cell (1a) for an HTML slide'
+    : 'htMl reserve OFF — upper-left cell fills with media', 2200);
+}
+window._markGridToggleHtml = markGridToggleHtml;
+// (dev0572) Menu open/close toggle, exposed for the bare-m hotkey in T.
+window._markGridMenuToggle = markGridMenuOpen;
 
 // (dev0504) The whole button opens the dropdown. Pick a SIZE, a MEDIA type, then a
 // START × ORIENTATION mode — the mode click runs the assignment.
@@ -4058,6 +4092,12 @@ document.querySelectorAll('.mgsize').forEach(el => {
 document.querySelectorAll('.mgmedia').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetMedia(el.dataset.media); });
 });
+// (dev0572) htMl reserve toggle chip (before 3P). Clicking flips the reserve;
+// the menu stays open (like the size/media chips) so you can pick a size next.
+{
+  const _mgHtml = document.getElementById('mgHtmlToggle');
+  if (_mgHtml) _mgHtml.addEventListener('click', e => { e.stopPropagation(); markGridToggleHtml(); });
+}
 document.querySelectorAll('.mgitem').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); runMarkGrid(el.dataset.start, el.dataset.orient); });
 });
@@ -4501,8 +4541,14 @@ function runMarkGrid(start, rowOrient) {
 
   // Clear ALL cell assignments first, then fill in order.
   data.forEach(r => { r.cell = ''; });
-  const toAssign = eligible.slice(0, cap);
-  toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
+  // (dev0572) htMl reserve: when the toggle is ON and the grid has ≥4 cells
+  // (4L…27P — 3P is too small), leave the upper-left cell (ALL[0] = 1a) EMPTY so
+  // it can hold an HTML instruction/learning slide. Media then fills from the
+  // 2nd cell onward. The reserved cell is edited in G (double-click → blank Xe).
+  const reserveHtml = (_markGridReserveHtml && cap >= 4);
+  const cells = reserveHtml ? ALL.slice(1) : ALL;
+  const toAssign = eligible.slice(0, cells.length);
+  toAssign.forEach((di, i) => { data[di].cell = cells[i]; });
   save(); render();
   markGridMenuClose();
   // (dev0502) Label by the actual layout (portrait shows "▯ R×C portrait").
@@ -4510,8 +4556,9 @@ function runMarkGrid(start, rowOrient) {
     ? _gridLayoutLabel(layout, gsize)
     : (gsize + '×' + gsize);
   toast('✓ Assigned ' + toAssign.length + ' rows to ' + _gridLbl + ' grid cells'
-    + (eligible.length > cap ? '\n(' + (eligible.length - cap) + ' more eligible beyond ' + cap + '-cell grid)' : ''),
-    2200);
+    + (reserveHtml ? '\n⌸ upper-left cell (1a) reserved for HTML — double-click it in G to edit' : '')
+    + (eligible.length > cells.length ? '\n(' + (eligible.length - cells.length) + ' more eligible beyond ' + cells.length + ' cells)' : ''),
+    reserveHtml ? 3200 : 2200);
 }
 
 // Fix vRange/vComment — sort segments earliest to latest, keep VidComment mapped
@@ -8608,7 +8655,7 @@ const HELP_DATA = [
         { key: 'E',       desc: 'Open Editor (Ev/Xe/Ie) for focused T row; selects row 1 if none focused', dev: true },
         { key: 'A',       desc: 'Open Annotate panel (A)',                     dev: true  },
         { key: 'D',       desc: 'Open Dictionary on focused row\'s first tag', dev: true  },
-        { key: 'M',       desc: 'Hamburger menu (→ Settings, Dictionary, Folder…)', dev: true },
+        { key: 'm / ⇧M',  desc: 'T: open Mark4Grid chooser · Shift+M toggles htMl reserve (upper-left cell → HTML slide)', dev: true },
         { key: 'F',       desc: 'Toggle row filter (T view)',                  dev: true  },
         { key: 'W / L',   desc: 'Smart clipboard import — add rows from pasted URLs', dev: true },
         { key: 'Esc',     desc: 'Defocus text / deselect row. Does NOT close any screen.', dev: false },
@@ -9122,7 +9169,7 @@ const T_HOTKEY_HELP = [
     ['V', 'View the focused row fullscreen'],
     ['C', 'Collections — c.json grid configs'],
     ['D', 'Dictionary — tag tree (jumps to the focused row’s first tag)'],
-    ['M', 'Main menu (hamburger)'],
+    ['m', 'Mark4Grid chooser (⇧M toggles htMl reserve — upper-left cell → HTML slide)'],
     ['H', 'Help — species / HALO taxonomy pages'],
     ['Q', 'Local-media table (q.html, opens in a new tab)'],
     ['R', 'Slideshow — Review mode'],

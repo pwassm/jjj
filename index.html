@@ -361,6 +361,11 @@ td.editing input {
 .mgsize { flex:1 1 18%; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:13px; cursor:pointer; user-select:none; }
 .mgsize:hover { background:rgba(255,160,0,0.18); }
 .mgsize.active { background:rgba(255,160,0,0.3); color:#ffe; border-color:#fc9; font-weight:bold; }
+/* (dev0572) htMl reserve toggle — distinct blue so it reads as a toggle, not a size. */
+.mghtml { flex:1 1 18%; text-align:center; padding:5px 0; border:1px dashed rgba(140,200,255,0.6);
+  border-radius:4px; color:#8cf; font-size:12px; cursor:pointer; user-select:none; background:rgba(0,40,80,0.28); }
+.mghtml:hover { background:rgba(0,60,110,0.45); }
+.mghtml.active { background:rgba(0,120,220,0.38); color:#dff; border-color:#8cf; border-style:solid; font-weight:bold; }
 /* (dev0504) Media-type filter chips (All / Image / Video) */
 .mgmedia { flex:1; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:12px; cursor:pointer; user-select:none; }
 .mgmedia:hover { background:rgba(255,160,0,0.18); }
@@ -547,6 +552,10 @@ thead th.rn              { color: #fff !important; }
            fill it (orientation). -->
       <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE · P=portrait · L=landscape · 17/19=special</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;">
+        <!-- (dev0572) htMl reserve toggle — sits before 3P. When ON, sizes 4L…27P
+             leave the upper-left cell (1a) EMPTY for an HTML instruction/learning
+             slide. 3P (only 3 cells) is excluded. Hotkey: Shift+M in the T screen. -->
+        <span class="mghtml" id="mgHtmlToggle" title="htMl reserve (Shift+M): when ON, grids 4L–27P keep the upper-left cell (1a) empty for an HTML instruction slide — double-click it in G to edit">htMl</span>
         <span class="mgsize" data-size="3"  data-orient="P"  title="1×3 portrait — three shorts">3 P</span>
         <span class="mgsize" data-size="4"  data-orient="L"  title="2×2 landscape">4 L</span>
         <span class="mgsize" data-size="9"  data-orient="L"  title="3×3 landscape">9 L</span>
@@ -948,7 +957,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0571';
+  window.HELP_VERSION_STR = 'dev0572';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];
