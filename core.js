@@ -500,7 +500,7 @@ var colWidths   = {};   // col → px (saved widths only; absent means use autoC
 var focus       = null;
 var pending     = null;
 var checkedRows = new Set();
-var _tCheckboxAnchor = null;  // (dev0582) last non-shift checkbox click, for shift-click range-check
+var _tCheckboxAnchor = null;  // (dev0582/0583) last plain checkbox click as a VIEW index (vi), for shift-click range-check
 var sortCol = null, sortDir = 'asc', sortedIdx = null;
 var rowFilter = null;  // null = off | {col, val} = show only rows where data[di][col]===val
 var _lastRowFilter = null;  // remembered filter for F-toggle restore
@@ -2376,17 +2376,20 @@ function _tBuildRow(vi, di) {
 
     const tdcb = document.createElement('td'); tdcb.className = 'cbc'; setTdW(tdcb,26);
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checkedRows.has(di);
-    // (dev0582) shift-click a checkbox = check every row between the last plain
-    // click and this one (like the T cell-range popup, but for delete-via-checkbox).
+    // (dev0582/0583) shift-click a checkbox = check every row VISUALLY between the
+    // last plain click and this one (like the T cell-range popup, but for
+    // delete-via-checkbox). The anchor + range walk VIEW indices (vi) and map each
+    // back to its data index via vr(); iterating data indices directly was wrong
+    // under sort/filter (swept up unrelated rows — the "390 selected" bug).
     cb.addEventListener('click', e => {
       e.stopPropagation();
       if (e.shiftKey && _tCheckboxAnchor !== null) {
         e.preventDefault();  // skip the native toggle — we set checked state ourselves below
-        const lo = Math.min(_tCheckboxAnchor, di), hi = Math.max(_tCheckboxAnchor, di);
-        for (let d = lo; d <= hi; d++) checkedRows.add(d);
+        const lo = Math.min(_tCheckboxAnchor, vi), hi = Math.max(_tCheckboxAnchor, vi);
+        for (let v = lo; v <= hi; v++) { const d = vr(v); if (d >= 0 && d < data.length) checkedRows.add(d); }
         renderBody(); renderStatus();
       } else {
-        _tCheckboxAnchor = di;
+        _tCheckboxAnchor = vi;
       }
     });
     cb.addEventListener('change', e => { e.stopPropagation(); if (cb.checked) checkedRows.add(di); else checkedRows.delete(di); renderBody(); renderStatus(); });
