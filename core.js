@@ -2376,18 +2376,26 @@ function _tBuildRow(vi, di) {
 
     const tdcb = document.createElement('td'); tdcb.className = 'cbc'; setTdW(tdcb,26);
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checkedRows.has(di);
-    // (dev0582/0583) shift-click a checkbox = check every row VISUALLY between the
+    // (dev0582/0584) shift-click a checkbox = check every row VISUALLY between the
     // last plain click and this one (like the T cell-range popup, but for
-    // delete-via-checkbox). The anchor + range walk VIEW indices (vi) and map each
-    // back to its data index via vr(); iterating data indices directly was wrong
-    // under sort/filter (swept up unrelated rows — the "390 selected" bug).
+    // delete-via-checkbox). The range must walk POSITIONS in _tVisList — the
+    // filtered, display-ordered row list — NOT raw vi/di: the filter is applied at
+    // render time (renderBody skips non-matching rows), so vi keeps its gaps and
+    // walking vi→vr(vi) (dev0583) or di (dev0582) swept up every filtered-out row
+    // in between (the "392 selected for a 15-row span" bug).
     cb.addEventListener('click', e => {
       e.stopPropagation();
       if (e.shiftKey && _tCheckboxAnchor !== null) {
         e.preventDefault();  // skip the native toggle — we set checked state ourselves below
-        const lo = Math.min(_tCheckboxAnchor, vi), hi = Math.max(_tCheckboxAnchor, vi);
-        for (let v = lo; v <= hi; v++) { const d = vr(v); if (d >= 0 && d < data.length) checkedRows.add(d); }
-        renderBody(); renderStatus();
+        const a = _tVisList.findIndex(o => o.vi === _tCheckboxAnchor);
+        const b = _tVisList.findIndex(o => o.vi === vi);
+        if (a !== -1 && b !== -1) {
+          const lo = Math.min(a, b), hi = Math.max(a, b);
+          for (let i = lo; i <= hi; i++) checkedRows.add(_tVisList[i].di);
+          renderBody(); renderStatus();
+        } else {
+          _tCheckboxAnchor = vi;  // stale anchor (filter/sort changed) — restart from here
+        }
       } else {
         _tCheckboxAnchor = vi;
       }
