@@ -714,7 +714,10 @@ function _gridIsTextRow(row) {
   if (!row) return false;
   if (typeof isVideoRow === 'function' && isVideoRow(row)) return false;
   if (/\.(jpe?g|png|gif|webp|svg|bmp|tiff?|avif)(\?|#|$)/i.test(row.link || '')) return false;
-  return row.VidRange === 'text' || !!(row.ftext && String(row.ftext).trim());
+  // (dev0581) A blank Shift+T text row (ltype='t') has empty ftext, so treat the
+  // ltype as the text-row marker too — otherwise its first double-click / Ctrl+click
+  // in G never opens Xe (the ftext-truthy gate below misses it until content exists).
+  return row.ltype === 't' || row.VidRange === 'text' || !!(row.ftext && String(row.ftext).trim());
 }
 
 // Apply the current effective zoom to a single cell's content (no remount).
@@ -2049,7 +2052,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
       if (isQuizRow) {
         _lastGridRow = row;
         gridOpenFullscreen(row);
-      } else if (row.ftext || row.VidRange === 'text') {
+      } else if (_gridIsTextRow(row)) {
+        // (dev0581) Was `row.ftext || row.VidRange==='text'`, which missed a blank
+        // Shift+T text row (empty ftext) — _gridIsTextRow now covers ltype='t' too.
         gridOpenTextEditor(cellS, row);
       }
     } else {

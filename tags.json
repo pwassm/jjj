@@ -6391,5 +6391,13 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "fungi",
+    "label": "Fungi",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

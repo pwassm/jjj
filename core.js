@@ -4145,9 +4145,14 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
 //   • the START × ORIENTATION mode, chosen by the clicked marking item (which is
 //              what runs the assignment) — from top / from focused, crossed with
 //              landscape-only / portrait-only / either.
-let _markGridSize  = 12;     // chosen cell count; default 12 (portrait 2×6)
-let _markGridShape = 'P';    // 'P' | 'L' | '17' | '19' — geometry of the grid
+let _markGridSize  = 25;     // (dev0581) default 25 (5×5 landscape) — was 12 P
+let _markGridShape = 'L';    // 'P' | 'L' | '17' | '19' — geometry of the grid
 let _markGridMedia = 'all';  // 'all' | 'image' | 'video' — candidate media filter
+// (dev0581) NoText: when ON (default) grid fills skip web-article text rows
+// (ltype='w') — they have no visual media to show in a cell. IG image rows are
+// ltype='i' (see makeRow) so they are NOT skipped; dev0580 slide rows (ltype='t')
+// are intentionally kept too.
+let _markGridNoText = true;
 
 function markGridMenuOpen() {
   const menu = document.getElementById('markGridMenu');
@@ -4174,6 +4179,15 @@ function markGridSetMedia(media) {
   document.querySelectorAll('.mgmedia').forEach(el => {
     el.classList.toggle('active', el.dataset.media === media);
   });
+}
+// (dev0581) Toggle the NoText option (skip ltype='w' rows). On by default.
+function markGridToggleNoText() {
+  _markGridNoText = !_markGridNoText;
+  const el = document.getElementById('mgNoText');
+  if (el) {
+    el.classList.toggle('active', _markGridNoText);
+    el.textContent = (_markGridNoText ? '✓ ' : '') + 'NoText';
+  }
 }
 // (dev0574) Digit keys while the chooser is open select a size by its leading
 // digit (same effect as clicking the chip). 3/4/9 pick 3P/4L/9L directly; 1
@@ -4207,6 +4221,7 @@ document.querySelectorAll('.mgsize').forEach(el => {
 document.querySelectorAll('.mgmedia').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetMedia(el.dataset.media); });
 });
+document.getElementById('mgNoText')?.addEventListener('click', e => { e.stopPropagation(); markGridToggleNoText(); });
 document.querySelectorAll('.mgitem').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); runMarkGrid(el.dataset.start, el.dataset.orient); });
 });
@@ -4265,6 +4280,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingFillYTMeta();
     } else if (act === 'fillytorient') {
       housekeepingFillYTOrient();
+    } else if (act === 'igltype') {
+      housekeepingFixIgLtype();
     } else if (act === 'resetftlsaved') {
       const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
       if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
@@ -4311,6 +4328,22 @@ function housekeepingCleanMute() {
     + '   ' + alreadyBlank + ' already blank',
     4500
   );
+}
+
+// (dev0581) Fix IG ltype: Instagram rows were imported as web-text (ltype='w')
+// because their /p/ URLs carry no media extension. The user only collects IG
+// image posts, so reassign every IG-link row from 'w' to 'i' (image). Idempotent
+// — rows already 'i' are untouched — and scoped strictly to Instagram links, so
+// genuine web-article 'w' rows are never affected.
+function housekeepingFixIgLtype() {
+  if (!(window.isInstagramLink)) { toast('IG link detector unavailable', 2500); return; }
+  const hits = data.filter(r => r && r.link && r.ltype === 'w' && window.isInstagramLink(r.link));
+  if (!hits.length) { toast('No Instagram rows with ltype=w — nothing to fix', 2500); return; }
+  if (!confirm('Reassign ' + hits.length + ' Instagram row(s) from ltype=w to ltype=i (image)?')) return;
+  const now = isoNow();
+  hits.forEach(r => { r.ltype = 'i'; r.DateModified = now; });
+  save(); render();
+  toast('✓ Fixed IG ltype — ' + hits.length + ' row(s) reassigned w → i', 3500);
 }
 
 function _extractYTVideoId(url) {
@@ -4619,6 +4652,15 @@ function runMarkGrid(start, rowOrient) {
     eligible = eligible.filter(di =>
       (typeof isVideoRow === 'function' && isVideoRow(data[di])) || rowMediaKind(data[di]) === 'video');
   }
+  // (dev0581) NoText (default ON): drop web-article text rows (ltype='w') — no
+  // visual media for a grid cell. IG image rows (ltype='i') and slide rows
+  // (ltype='t') are unaffected.
+  let noTextDropped = 0;
+  if (_markGridNoText) {
+    const before = eligible.length;
+    eligible = eligible.filter(di => String(data[di] && data[di].ltype || '') !== 'w');
+    noTextDropped = before - eligible.length;
+  }
   // (dev0514) ORIENTATION filter from the chosen mode. 'L' → Mode=L, 'P' → Mode=P,
   // 'any' → no filter. Rows whose orientation is unknown ('')/square ('S')/n-a ('X')
   // drop out of an L/P run (run Fill Mode to classify them first).
@@ -4656,7 +4698,8 @@ function runMarkGrid(start, rowOrient) {
     ? _gridLayoutLabel(layout, gsize)
     : (gsize + '×' + gsize);
   toast('✓ Assigned ' + toAssign.length + ' rows to ' + _gridLbl + ' grid cells'
-    + (eligible.length > ALL.length ? '\n(' + (eligible.length - ALL.length) + ' more eligible beyond ' + ALL.length + ' cells)' : ''),
+    + (eligible.length > ALL.length ? '\n(' + (eligible.length - ALL.length) + ' more eligible beyond ' + ALL.length + ' cells)' : '')
+    + (noTextDropped ? '\n(NoText skipped ' + noTextDropped + ' web-text row' + (noTextDropped === 1 ? '' : 's') + ')' : ''),
     2200);
 }
 
@@ -6699,10 +6742,19 @@ async function _importBareLinks(lines) {
     } else if (cls === 'image') {
       row.VidRange = 'i';
     } else if (cls === 'web') {
-      // (zip0166) Web (article) URL — mark with ltype='w' so the row is
-      // recognizable as a web-text row. ftext is fetched asynchronously
-      // below (after the row is added) so the import doesn't block.
-      row.ltype = 'w';
+      // (dev0581) Instagram links classify as 'web' (no media extension) but the
+      // user only copies IG image posts — mark them ltype='i' (image), not 'w'.
+      // This keeps them out of the NoText grid-skip and correctly labels them.
+      // Enrichment is unaffected (the yt-dlp caption/@author path keys off
+      // _ytdlpSupports(link), not ltype).
+      if (window.isInstagramLink && window.isInstagramLink(link)) {
+        row.ltype = 'i';
+      } else {
+        // (zip0166) Web (article) URL — mark with ltype='w' so the row is
+        // recognizable as a web-text row. ftext is fetched asynchronously
+        // below (after the row is added) so the import doesn't block.
+        row.ltype = 'w';
+      }
     }
     return row;
   };

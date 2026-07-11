@@ -552,11 +552,11 @@ thead th.rn              { color: #fff !important; }
         <span class="mgsize" data-size="3"  data-orient="P"  title="1×3 portrait — three shorts (key 3)">3 P</span>
         <span class="mgsize" data-size="4"  data-orient="L"  title="2×2 landscape">4 L</span>
         <span class="mgsize" data-size="9"  data-orient="L"  title="3×3 landscape">9 L</span>
-        <span class="mgsize active" data-size="12" data-orient="P" title="2×6 portrait — twelve shorts">12 P</span>
+        <span class="mgsize" data-size="12" data-orient="P" title="2×6 portrait — twelve shorts">12 P</span>
         <span class="mgsize" data-size="16" data-orient="L"  title="4×4 landscape">16 L</span>
         <span class="mgsize" data-size="17" data-orient="17" title="Special: 16-cell ring + 1 big landscape center (1L) — special cells auto-assigned">17 ▣</span>
         <span class="mgsize" data-size="19" data-orient="19" title="Special: 16-cell ring + 3 portrait center cells (1P/2P/3P) — special cells auto-assigned">19 ▥</span>
-        <span class="mgsize" data-size="25" data-orient="L"  title="5×5 landscape">25 L</span>
+        <span class="mgsize active" data-size="25" data-orient="L"  title="5×5 landscape (default)">25 L</span>
         <span class="mgsize" data-size="27" data-orient="P"  title="3×9 portrait — twenty-seven shorts">27 P</span>
       </div>
       <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
@@ -566,6 +566,14 @@ thead th.rn              { color: #fff !important; }
         <span class="mgmedia active" data-media="all"   title="All eligible rows: images, text/slides (Xs), quizzes and video">All</span>
         <span class="mgmedia" data-media="image" title="Only image rows">Image</span>
         <span class="mgmedia" data-media="video" title="Only video rows">Video</span>
+      </div>
+      <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
+      <!-- (dev0581) NoText toggle — independent on/off (not a radio). On by default:
+           skips web-article text rows (ltype=w) from the fill. IG image rows (ltype=i)
+           and slide rows (ltype=t) are kept. Reuses .mgmedia styling for the active pill. -->
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">OPTIONS</div>
+      <div style="display:flex;gap:6px;padding:0 12px 8px;">
+        <span class="mgmedia active" id="mgNoText" title="Skip web-article text rows (ltype=w) — they have no visual media for a grid cell. IG images (ltype=i) and slides (ltype=t) are kept.">✓ NoText</span>
       </div>
       <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
       <!-- (dev0504) Start point × orientation. Clicking one runs the assignment. -->
@@ -595,6 +603,7 @@ thead th.rn              { color: #fff !important; }
       <div class="hkitem" data-act="cleanmute" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">🔇 Clean Mute Column — blank for non-video</div>
       <div class="hkitem" data-act="fillytmeta" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">📺 Fill YT Meta — VidTitle + VidAuthor + ftext from YouTube</div>
       <div class="hkitem" data-act="fillytorient" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Query each YouTube row's real width×height AND upload date via yt-dlp — sets Mode (P=portrait/Shorts, L=landscape) and VidDate. Runs rows missing either. Esc aborts; if YouTube bot-walls cookieless yt-dlp you get a clear 'no dimensions' report.">📐 Check YT Orientation + Date — via yt-dlp</div>
+      <div class="hkitem" data-act="igltype" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Instagram rows were mistakenly imported as web-text (ltype=w). Reassign them to ltype=i (image) so NoText grid-fills keep them.">📷 Fix IG ltype — reassign w → i (image)</div>
       <div class="hkitem" data-act="resetftlsaved" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔄 Reset FTLsaved — re-download all images</div>
     </div>
   </div>
@@ -950,7 +959,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0580';
+  window.HELP_VERSION_STR = 'dev0581';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];
