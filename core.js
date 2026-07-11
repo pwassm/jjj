@@ -2390,8 +2390,8 @@ function _tBuildRow(vi, di) {
           td.innerHTML = window.tagsLib.renderChipsForRecord(row);
           // Click a chip → filter the table to that tag (hierarchical).
           // (dev0575) Right-click a chip → COPY that tag (for R-click paste onto
-          // another row's tags cell). Ctrl+right-click → DELETE that tag from this
-          // row. No menu — those were the only two actions worth keeping.
+          // another row's tags cell). (dev0577) Shift+right-click → DELETE that tag
+          // from this row. No menu — those were the only two actions worth keeping.
           [...td.querySelectorAll('.tag-chip')].forEach(chip => {
             chip.addEventListener('click', e => {
               e.stopPropagation();
@@ -2399,19 +2399,20 @@ function _tBuildRow(vi, di) {
               if (!tid) return;
               window.setRowFilter({ col: 'tags', val: tid, hierarchical: true });
             });
-            // (dev0576) Do the right-click work on mousedown, where the Ctrl
-            // modifier is reliably reported. Several browsers drop ctrlKey (or
-            // suppress the contextmenu event entirely) when Ctrl is held during a
-            // right-click, so keying off contextmenu made Ctrl+R-click a silent
-            // no-op (it fell through to the copy branch instead of deleting).
+            // (dev0576) Do the right-click work on mousedown, where the modifier
+            // is reliably reported. Several browsers drop the modifier flag (or
+            // suppress the contextmenu event entirely) when a modifier is held
+            // during a right-click, so keying off contextmenu made the delete a
+            // silent no-op (it fell through to the copy branch instead).
+            // (dev0577) Delete modifier is Shift (Ctrl proved unreliable here).
             chip.addEventListener('mousedown', e => {
               if (e.button !== 2) return;            // right button only
               e.preventDefault();
               e.stopPropagation();
               const tid = chip.getAttribute('data-tag-id');
               if (!tid) return;
-              if (e.ctrlKey) {
-                // Ctrl+R-click → remove this tag from this row. Defer render() so
+              if (e.shiftKey) {
+                // Shift+R-click → remove this tag from this row. Defer render() so
                 // the follow-up contextmenu still lands on this (now-stale) chip —
                 // which just swallows it — rather than on the tags cell, where it
                 // could trigger a stray paste of the copied tag.
@@ -8708,7 +8709,7 @@ const HELP_DATA = [
         { key: 'Double-click cell',     desc: 'Edit cell (text, link, etc.)',           dev: true },
         { key: 'Shift+click (col)',     desc: 'Range select → bulk-set value',          dev: true },
         { key: 'R-click tag chip',      desc: 'Copy this tag (flashes) for a subsequent R-click paste', dev: true },
-        { key: 'Ctrl+R-click tag chip', desc: 'Delete this tag from the row',           dev: true },
+        { key: 'Shift+R-click tag chip', desc: 'Delete this tag from the row',          dev: true },
         { key: 'R-click tag cell',      desc: 'Paste copied tag to this row (if one copied)', dev: true },
         { key: 'Double-click tag cell', desc: 'Open Annotate panel on this row',       dev: true },
       ]}
