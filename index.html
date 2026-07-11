@@ -361,11 +361,6 @@ td.editing input {
 .mgsize { flex:1 1 18%; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:13px; cursor:pointer; user-select:none; }
 .mgsize:hover { background:rgba(255,160,0,0.18); }
 .mgsize.active { background:rgba(255,160,0,0.3); color:#ffe; border-color:#fc9; font-weight:bold; }
-/* (dev0572) htMl reserve toggle — distinct blue so it reads as a toggle, not a size. */
-.mghtml { flex:1 1 18%; text-align:center; padding:5px 0; border:1px dashed rgba(140,200,255,0.6);
-  border-radius:4px; color:#8cf; font-size:12px; cursor:pointer; user-select:none; background:rgba(0,40,80,0.28); }
-.mghtml:hover { background:rgba(0,60,110,0.45); }
-.mghtml.active { background:rgba(0,120,220,0.38); color:#dff; border-color:#8cf; border-style:solid; font-weight:bold; }
 /* (dev0504) Media-type filter chips (All / Image / Video) */
 .mgmedia { flex:1; text-align:center; padding:5px 0; border:1px solid rgba(255,180,80,0.4); border-radius:4px; color:#fc9; font-size:12px; cursor:pointer; user-select:none; }
 .mgmedia:hover { background:rgba(255,160,0,0.18); }
@@ -543,20 +538,16 @@ thead th.rn              { color: #fff !important; }
   <button class="tbtn" id="saveFtextImgsBtn" title="Download all web-referenced images in ftext for visible rows, save under jpgs/<slug>/ and rewrite img tags with onerror fallback. Skips rows where FTLsaved=1. Sets FTLsaved: 1=all saved, 0=partial, -1=none saved." style="border-color:#8cf;color:#8cf;background:rgba(0,40,80,0.35);">📥 Save Imgs</button>
   <!-- Mark for Grid button + dropdown -->
   <div id="markGridWrap" style="position:relative;display:inline-flex;flex-shrink:0;">
-    <button class="tbtn" id="markGridBtn" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:5px 0 0 5px;border-right:none;padding:4px 10px;" title="Open chooser: pick grid size + media type + start/orientation mode, then assign cells (clears existing first)">⊞ Mark4Grid</button>
+    <button class="tbtn" id="markGridBtn" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:5px 0 0 5px;border-right:none;padding:4px 10px;" title="Open chooser (m): pick grid size (digit keys work while open) + media type + start/orientation mode, then assign cells (clears existing first). Shift+M = fill from focused row, landscape or portrait">⊞ Mark4Grid</button>
     <button class="tbtn" id="markGridArrow" style="border-color:#fa8;color:#fa8;background:rgba(80,40,0,0.35);border-radius:0 5px 5px 0;padding:4px 7px;font-size:10px;" title="Choose grid size + Mark4Grid mode">▾</button>
     <div id="markGridMenu" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:#1a1420;border:1px solid #fa8;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.8);min-width:260px;font-family:monospace;overflow:hidden;margin-top:3px;">
       <!-- (dev0503/0504) Single size list, lowest→highest. P=portrait shorts grid,
            L=landscape/square, 17/19=special non-square (16-cell ring + merged center).
            One click sets the grid SHAPE; the start-marking row below sets which rows
            fill it (orientation). -->
-      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE · P=portrait · L=landscape · 17/19=special</div>
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">GRID SIZE · P=portrait · L=landscape · 17/19=special · keys 3/4/9, 1↻12·16·17·19, 2↻25·27</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;">
-        <!-- (dev0572) htMl reserve toggle — sits before 3P. When ON, sizes 4L…27P
-             leave the upper-left cell (1a) EMPTY for an HTML instruction/learning
-             slide. 3P (only 3 cells) is excluded. Hotkey: Shift+M in the T screen. -->
-        <span class="mghtml" id="mgHtmlToggle" title="htMl reserve (Shift+M): when ON, grids 4L–27P keep the upper-left cell (1a) empty for an HTML instruction slide — double-click it in G to edit">htMl</span>
-        <span class="mgsize" data-size="3"  data-orient="P"  title="1×3 portrait — three shorts">3 P</span>
+        <span class="mgsize" data-size="3"  data-orient="P"  title="1×3 portrait — three shorts (key 3)">3 P</span>
         <span class="mgsize" data-size="4"  data-orient="L"  title="2×2 landscape">4 L</span>
         <span class="mgsize" data-size="9"  data-orient="L"  title="3×3 landscape">9 L</span>
         <span class="mgsize active" data-size="12" data-orient="P" title="2×6 portrait — twelve shorts">12 P</span>
@@ -584,7 +575,7 @@ thead th.rn              { color: #fff !important; }
       <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">⊙ FROM FOCUSED ROW</div>
       <div class="mgitem" data-start="focused" data-orient="L">&nbsp;&nbsp;⬌ Landscape only</div>
       <div class="mgitem" data-start="focused" data-orient="P">&nbsp;&nbsp;⬍ Portrait only</div>
-      <div class="mgitem" data-start="focused" data-orient="any">&nbsp;&nbsp;⬌⬍ Landscape or Portrait</div>
+      <div class="mgitem" data-start="focused" data-orient="any">&nbsp;&nbsp;⬌⬍ Landscape or Portrait (⇧M)</div>
     </div>
   </div>
   <!-- (zip0151) Housekeeping dropdown — surfaces Fill P/S, Fill Mpix,
@@ -957,7 +948,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0573';
+  window.HELP_VERSION_STR = 'dev0574';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];

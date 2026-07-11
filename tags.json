@@ -6383,5 +6383,13 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "zinc",
+    "label": "Zinc",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

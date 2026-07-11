@@ -295,20 +295,34 @@ window.addEventListener('keydown', function(e) {
     return;
   }
 
-  // (dev0572) Table screen: m = open the Mark4Grid chooser; Shift+M = toggle the
-  // htMl reserve (upper-left cell kept for an HTML instruction slide). Gated on
-  // _tScreenActive() so C / Grid / Xe / staging screens keep their own m. This is
-  // additive — bare 'm' otherwise no-ops in plain T (the hamburger opens via its
-  // button). Runs before the generic dispatcher below, so 'm' never reaches HM here.
+  // (dev0572/0574) Table screen: m = open the Mark4Grid chooser; Shift+M = run the
+  // fill from the FOCUSED row, landscape or portrait (same as the chooser's
+  // "FROM FOCUSED ROW → Landscape or Portrait" item, using the current size/media
+  // chips). Gated on _tScreenActive() so C / Grid / Xe / staging screens keep their
+  // own m. Runs before the generic dispatcher below, so 'm' never reaches HM here.
   if (k === 'm' && typeof _tScreenActive === 'function' && _tScreenActive()) {
     e.preventDefault();
     e.stopPropagation();
     if (e.shiftKey) {
-      if (typeof window._markGridToggleHtml === 'function') window._markGridToggleHtml();
+      if (typeof runMarkGrid === 'function') runMarkGrid('focused', 'any');
     } else {
       if (typeof window._markGridMenuToggle === 'function') window._markGridMenuToggle();
     }
     return false;
+  }
+
+  // (dev0574) While the Mark4Grid chooser is open, digits pick the grid size by
+  // leading digit: 3/4/9 select 3P/4L/9L directly; 1 cycles 12P→16L→17→19; 2
+  // cycles 25L→27P. ALL digits are swallowed while the chooser is open (so a
+  // stray 0 doesn't toggle fullscreen mid-choose); only 1/2/3/4/9 act.
+  if (k >= '0' && k <= '9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const mgMenu = document.getElementById('markGridMenu');
+    if (mgMenu && mgMenu.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window._markGridDigit === 'function') window._markGridDigit(k);
+      return false;
+    }
   }
 
   // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
@@ -4036,10 +4050,6 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
 let _markGridSize  = 12;     // chosen cell count; default 12 (portrait 2×6)
 let _markGridShape = 'P';    // 'P' | 'L' | '17' | '19' — geometry of the grid
 let _markGridMedia = 'all';  // 'all' | 'image' | 'video' — candidate media filter
-// (dev0572) htMl reserve: when true, a Mark4Grid run on a ≥4-cell grid (4L…27P)
-// leaves the upper-left cell (1a) EMPTY so it can hold an HTML instruction slide.
-// 3P is excluded (too few cells). Toggled by the htMl chip or Shift+M in T.
-let _markGridReserveHtml = false;
 
 function markGridMenuOpen() {
   const menu = document.getElementById('markGridMenu');
@@ -4067,18 +4077,25 @@ function markGridSetMedia(media) {
     el.classList.toggle('active', el.dataset.media === media);
   });
 }
-// (dev0572) Toggle the htMl reserve. `force` (boolean) sets it explicitly; omit
-// to flip. Reflects the state on the chip and toasts. Exposed for the Shift+M
-// hotkey so it works whether the dropdown is open or not.
-function markGridToggleHtml(force) {
-  _markGridReserveHtml = (typeof force === 'boolean') ? force : !_markGridReserveHtml;
-  const el = document.getElementById('mgHtmlToggle');
-  if (el) el.classList.toggle('active', _markGridReserveHtml);
-  toast(_markGridReserveHtml
-    ? '⌸ htMl reserve ON — grids 4L–27P keep the upper-left cell (1a) for an HTML slide'
-    : 'htMl reserve OFF — upper-left cell fills with media', 2200);
+// (dev0574) Digit keys while the chooser is open select a size by its leading
+// digit (same effect as clicking the chip). 3/4/9 pick 3P/4L/9L directly; 1
+// cycles 12P→16L→17→19 and 2 cycles 25L→27P on repeated presses (a current
+// size outside the digit's sequence starts at its first entry).
+const _MG_DIGIT_SIZES = {
+  '1': [[12, 'P'], [16, 'L'], [17, '17'], [19, '19']],
+  '2': [[25, 'L'], [27, 'P']],
+  '3': [[3, 'P']],
+  '4': [[4, 'L']],
+  '9': [[9, 'L']],
+};
+function markGridDigit(d) {
+  const seq = _MG_DIGIT_SIZES[d];
+  if (!seq) return;
+  const at = seq.findIndex(p => p[0] === _markGridSize);
+  const pick = seq[(at + 1) % seq.length];
+  markGridSetSize(pick[0], pick[1]);
 }
-window._markGridToggleHtml = markGridToggleHtml;
+window._markGridDigit = markGridDigit;
 // (dev0572) Menu open/close toggle, exposed for the bare-m hotkey in T.
 window._markGridMenuToggle = markGridMenuOpen;
 
@@ -4092,12 +4109,6 @@ document.querySelectorAll('.mgsize').forEach(el => {
 document.querySelectorAll('.mgmedia').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); markGridSetMedia(el.dataset.media); });
 });
-// (dev0572) htMl reserve toggle chip (before 3P). Clicking flips the reserve;
-// the menu stays open (like the size/media chips) so you can pick a size next.
-{
-  const _mgHtml = document.getElementById('mgHtmlToggle');
-  if (_mgHtml) _mgHtml.addEventListener('click', e => { e.stopPropagation(); markGridToggleHtml(); });
-}
 document.querySelectorAll('.mgitem').forEach(el => {
   el.addEventListener('click', e => { e.stopPropagation(); runMarkGrid(el.dataset.start, el.dataset.orient); });
 });
@@ -4451,7 +4462,7 @@ function runMarkGrid(start, rowOrient) {
   // T — otherwise a previously-activated C config would keep showing.
   if (!metaRow) metaRow = { _salMeta: true };
   _gridSource = 'T';
-  let layout, gsize, cap;
+  let layout, gsize;
   const ALL = [];
   const sz = _markGridSize;
   if (_markGridShape === 'P') {
@@ -4462,7 +4473,6 @@ function runMarkGrid(start, rowOrient) {
     if (!pd) { toast('Unknown portrait size ' + sz, 1800); return; }
     layout = 'P' + sz;
     gsize = (typeof _gridGsize === 'number') ? _gridGsize : 5;
-    cap = pd.rows * pd.cols;
     for (let r = 1; r <= pd.rows; r++) for (let c = 1; c <= pd.cols; c++) ALL.push(mkGridCell(r, c));
   } else if (_markGridShape === '17' || _markGridShape === '19') {
     // (dev0504) Special non-square: a 5×5 footprint with the 16-cell outer ring and a
@@ -4478,7 +4488,6 @@ function runMarkGrid(start, rowOrient) {
     }
     metaRow._salGsize = gsize;
     for (const spec of _gridCellList(gsize, layout)) ALL.push(spec.cs);
-    cap = ALL.length;   // 17 or 19
   } else {
     // (dev0331) Landscape/square (25/16/9/4 → 5/4/3/2). Cell labels use the
     // 1a/1b/2a… scheme, constrained to the top-left gsize × gsize square.
@@ -4489,7 +4498,6 @@ function runMarkGrid(start, rowOrient) {
       if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
     }
     metaRow._salGsize = gsize;
-    cap = gsize * gsize;
     for (let r = 1; r <= gsize; r++) for (let ci = 0; ci < gsize; ci++) ALL.push(r + 'abcde'.charAt(ci));
   }
   metaRow._salLayout = layout;
@@ -4541,14 +4549,8 @@ function runMarkGrid(start, rowOrient) {
 
   // Clear ALL cell assignments first, then fill in order.
   data.forEach(r => { r.cell = ''; });
-  // (dev0572) htMl reserve: when the toggle is ON and the grid has ≥4 cells
-  // (4L…27P — 3P is too small), leave the upper-left cell (ALL[0] = 1a) EMPTY so
-  // it can hold an HTML instruction/learning slide. Media then fills from the
-  // 2nd cell onward. The reserved cell is edited in G (double-click → blank Xe).
-  const reserveHtml = (_markGridReserveHtml && cap >= 4);
-  const cells = reserveHtml ? ALL.slice(1) : ALL;
-  const toAssign = eligible.slice(0, cells.length);
-  toAssign.forEach((di, i) => { data[di].cell = cells[i]; });
+  const toAssign = eligible.slice(0, ALL.length);
+  toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
   save(); render();
   markGridMenuClose();
   // (dev0502) Label by the actual layout (portrait shows "▯ R×C portrait").
@@ -4556,9 +4558,8 @@ function runMarkGrid(start, rowOrient) {
     ? _gridLayoutLabel(layout, gsize)
     : (gsize + '×' + gsize);
   toast('✓ Assigned ' + toAssign.length + ' rows to ' + _gridLbl + ' grid cells'
-    + (reserveHtml ? '\n⌸ upper-left cell (1a) reserved for HTML — double-click it in G to edit' : '')
-    + (eligible.length > cells.length ? '\n(' + (eligible.length - cells.length) + ' more eligible beyond ' + cells.length + ' cells)' : ''),
-    reserveHtml ? 3200 : 2200);
+    + (eligible.length > ALL.length ? '\n(' + (eligible.length - ALL.length) + ' more eligible beyond ' + ALL.length + ' cells)' : ''),
+    2200);
 }
 
 // Fix vRange/vComment — sort segments earliest to latest, keep VidComment mapped
@@ -8655,7 +8656,7 @@ const HELP_DATA = [
         { key: 'E',       desc: 'Open Editor (Ev/Xe/Ie) for focused T row; selects row 1 if none focused', dev: true },
         { key: 'A',       desc: 'Open Annotate panel (A)',                     dev: true  },
         { key: 'D',       desc: 'Open Dictionary on focused row\'s first tag', dev: true  },
-        { key: 'm / ⇧M',  desc: 'T: open Mark4Grid chooser · Shift+M toggles htMl reserve (upper-left cell → HTML slide)', dev: true },
+        { key: 'm / ⇧M',  desc: 'T: open Mark4Grid chooser (digits pick size: 3/4/9 direct, 1 cycles 12/16/17/19, 2 cycles 25/27) · Shift+M fills from focused row, landscape or portrait', dev: true },
         { key: 'F',       desc: 'Toggle row filter (T view)',                  dev: true  },
         { key: 'W / L',   desc: 'Smart clipboard import — add rows from pasted URLs', dev: true },
         { key: 'Esc',     desc: 'Defocus text / deselect row. Does NOT close any screen.', dev: false },
