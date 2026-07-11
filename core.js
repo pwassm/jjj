@@ -2760,6 +2760,13 @@ function rowMatchesFilter(row) {
     // marker (linkpage == "noLinkpageYet").
     const source = rowFilter.source || [];
     if (source.includes('needs') && row.linkpage !== 'noLinkpageYet') return false;
+    // (dev0585) ltype toggles — OR within the chosen set; 'none' matches rows
+    // with a blank/absent ltype.
+    const lts = rowFilter.ltype || [];
+    if (lts.length) {
+      const v = String(row.ltype || '').trim() || 'none';
+      if (!lts.includes(v)) return false;
+    }
     return true;
   }
   if (rowFilter.col === 'tags' && rowFilter.hierarchical && window.tagsLib) {
@@ -3123,25 +3130,42 @@ function deleteChecked() { if(!confirm('Delete '+checkedRows.size+' row(s)?'))re
 // "<anchorUID>_t", ltype 't', cell '1a', and is spliced immediately above the
 // anchor in data order (under the default UID-desc sort, parseFloat ties
 // "935_t" with "935" and the stable sort keeps it directly above). Every
-// assigned 5×5 cell bumps one slot in reading order (1a→1b … 5d→5e); a row on
-// 5e falls off the grid (cell cleared) without warning, per spec. The grid is
-// forced to the 25-cell square T-source layout so all bumped cells render.
+// occupied cell shifts down one slot; rows past the 25th slot fall off the
+// grid (cell cleared) without warning, per spec. The grid is forced to the
+// 25-cell square T-source layout so all shifted cells render.
 function tInsertTextRowAboveCellA() {
   const ai = data.findIndex(r => r && !r._salMeta && String(r.cell) === '1a');
   if (ai < 0) { toast('No row with cell 1a — fill a grid first (m)', 2200); return; }
   const anchor = data[ai];
   const now = isoNow();
 
-  // Bump every assigned cell one slot in 25-cell reading order (1a..1e, 2a..5e).
+  // (dev0585) Collect the occupants in the CURRENT layout's cell order, then
+  // reassign them consecutively into the 25-cell square reading order (1a..1e,
+  // 2a..5e). The old code bumped each cell one slot in hardcoded 5×5 order,
+  // which broke non-5×5 sources: a 4×4 grid bumped 1d→1e instead of →2a,
+  // leaving 2a/3a/4a permanently blank. Cells not in the current layout (stale
+  // assignments) keep their data order and slot in after the layout's cells.
+  const curLayout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  const curGsize  = (typeof _gridGsize === 'number') ? _gridGsize : 5;
+  const curPos = new Map();
+  if (typeof _gridCellList === 'function') {
+    _gridCellList(curGsize, curLayout).forEach((spec, i) => curPos.set(spec.cs, i));
+  }
+  const occupants = data
+    .map((r, i) => ({ r, i }))
+    .filter(o => o.r && !o.r._salMeta && o.r.cell)
+    .sort((a, b) => {
+      const pa = curPos.has(a.r.cell) ? curPos.get(a.r.cell) : 1e9 + a.i;
+      const pb = curPos.has(b.r.cell) ? curPos.get(b.r.cell) : 1e9 + b.i;
+      return pa - pb;
+    });
   const order = [];
   for (let r = 1; r <= 5; r++) for (let ci = 0; ci < 5; ci++) order.push(r + 'abcde'.charAt(ci));
-  const slot = new Map(order.map((cs, i) => [cs, i]));
   let bumped = 0, dropped = 0;
-  data.forEach(r => {
-    if (!r || r._salMeta || !r.cell || !slot.has(r.cell)) return;
-    const ni = slot.get(r.cell) + 1;
-    if (ni >= order.length) { r.cell = ''; dropped++; }
-    else { r.cell = order[ni]; bumped++; }
+  occupants.forEach((o, i) => {
+    const ni = i + 1;                     // slot 0 (1a) goes to the new text row
+    if (ni >= order.length) { o.r.cell = ''; dropped++; }
+    else { o.r.cell = order[ni]; bumped++; }
   });
 
   const nr = {};
@@ -3175,7 +3199,7 @@ function tInsertTextRowAboveCellA() {
   }
   if (typeof window.setLastUID === 'function') window.setLastUID(nr.UID);
   toast('✓ New text row #' + nr.UID + ' → cell 1a\n'
-    + bumped + ' cell(s) bumped' + (dropped ? ' · 1 pushed off 5e' : '') + ' · grid 5×5', 2600);
+    + bumped + ' cell(s) bumped' + (dropped ? ' · ' + dropped + ' pushed off the grid' : '') + ' · grid 5×5', 2600);
 }
 
 // Bulk popup
@@ -4871,16 +4895,18 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   let media  = [];  // (dev0343) media-type toggles: 'image'|'video'|'other' (OR)
   let orient = [];  // (dev0343) orientation toggles: 'landscape'|'portrait' (OR)
   let source = [];  // (dev0549) source-page toggle: 'needs' = linkpage=='noLinkpageYet'
+  const ltype = []; // (dev0585) ltype toggles: exact ltype values + 'none' = blank (OR)
   let dd = null, ddIdx = -1, ddMatches = [];
 
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   let _flTimer = null;
   function applyLive() {
-    const hasAny = chips.length || media.length || orient.length || source.length
+    const hasAny = chips.length || media.length || orient.length || source.length || ltype.length
                 || Object.values(text).some(v => v && v.trim());
     rowFilter = hasAny ? { composite: true, tags: chips.slice(), text: Object.assign({}, text),
-                           media: media.slice(), orient: orient.slice(), source: source.slice() } : null;
+                           media: media.slice(), orient: orient.slice(), source: source.slice(),
+                           ltype: ltype.slice() } : null;
     if (rowFilter) _lastRowFilter = rowFilter;
     // (dev0326) Debounce the expensive render + count scan: typing in the filter
     // otherwise rebuilds the whole tbody (O(rows)) on EVERY keystroke. rowFilter
@@ -4939,6 +4965,38 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   mediaBtns.forEach(b  => wireToggle(b, media,  b.dataset.media));
   orientBtns.forEach(b => wireToggle(b, orient, b.dataset.orient));
   sourceBtns.forEach(b => wireToggle(b, source, b.dataset.source));
+
+  // ── (dev0585) ltype toggle pills — built from the values actually present in
+  // the data (plus 'none' for blank), rebuilt each time the bar opens so new
+  // ltype values show up automatically. OR within the group, like media/orient.
+  const ltypeBar = document.getElementById('fbLtypeBar');
+  function renderLtypePills() {
+    if (!ltypeBar) return;
+    const counts = new Map();
+    for (const r of data) {
+      if (!r || r._salMeta) continue;
+      const v = String(r.ltype || '').trim() || 'none';
+      counts.set(v, (counts.get(v) || 0) + 1);
+    }
+    const vals = [...counts.keys()].sort((a, b) =>
+      (a === 'none') - (b === 'none') || counts.get(b) - counts.get(a));
+    ltypeBar.innerHTML = vals.map(v =>
+      '<button type="button" class="fb-toggle" data-ltype="' + esc(v) + '" title="'
+      + counts.get(v) + ' row(s)">' + esc(v) + '</button>').join('');
+    paintLtype();
+  }
+  function paintLtype() {
+    if (!ltypeBar) return;
+    ltypeBar.querySelectorAll('[data-ltype]').forEach(b =>
+      b.classList.toggle('on', ltype.includes(b.dataset.ltype)));
+  }
+  if (ltypeBar) ltypeBar.addEventListener('click', e => {
+    const b = e.target.closest('[data-ltype]');
+    if (!b) return;
+    const i = ltype.indexOf(b.dataset.ltype);
+    if (i >= 0) ltype.splice(i, 1); else ltype.push(b.dataset.ltype);
+    paintLtype(); applyLive();
+  });
 
   // ── Tag dropdown ──
   function closeDd() { if (dd) { dd.remove(); dd = null; } ddIdx = -1; ddMatches = []; }
@@ -5085,11 +5143,11 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   // Buttons
   clearBtn.addEventListener('click', () => {
     chips = []; Object.keys(text).forEach(k => text[k] = '');
-    media.length = 0; orient.length = 0; source.length = 0;   // mutate in place — toggle handlers hold these refs
+    media.length = 0; orient.length = 0; source.length = 0; ltype.length = 0;   // mutate in place — toggle handlers hold these refs
     ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbAnywhere'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
-    closeDd(); renderChips(); paintToggles(); applyLive();
+    closeDd(); renderChips(); paintToggles(); paintLtype(); applyLive();
     tagInp.focus();
   });
   closeBtn.addEventListener('click', () => window.closeFilterBar());
@@ -5107,7 +5165,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
 
   // Public API — called by F hotkey (vp.js) and Shift-F
   window.openFilterBar = function () {
-    media.length = 0; orient.length = 0; source.length = 0;   // reset toggles (refilled below if composite)
+    media.length = 0; orient.length = 0; source.length = 0; ltype.length = 0;   // reset toggles (refilled below if composite)
     if (rowFilter && rowFilter.composite) {
       // Restore full composite filter state
       chips = (rowFilter.tags || []).slice();
@@ -5115,6 +5173,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
       (rowFilter.media  || []).forEach(v => media.push(v));
       (rowFilter.orient || []).forEach(v => orient.push(v));
       (rowFilter.source || []).forEach(v => source.push(v));
+      (rowFilter.ltype  || []).forEach(v => ltype.push(v));
       document.getElementById('fbAuthor').value  = text.VidAuthor || '';
       document.getElementById('fbTitle').value   = text.VidTitle  || '';
       document.getElementById('fbLink').value    = text.link      || '';
@@ -5132,7 +5191,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
       });
       closeDd();
     }
-    renderChips(); paintToggles();
+    renderChips(); paintToggles(); renderLtypePills();
     bar.style.display = 'flex';
     setTimeout(() => anywhereInp.focus(), 30);
     applyLive();

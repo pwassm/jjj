@@ -668,6 +668,10 @@ thead th.rn              { color: #fff !important; }
     <span id="fbSourceBar" style="display:inline-flex;gap:4px;align-items:center;">
       <button type="button" class="fb-toggle" data-source="needs" title="Only rows still needing a source page (linkpage = &quot;noLinkpageYet&quot;)">🔗 needs source</button>
     </span>
+    <span style="color:#456;">│</span>
+    <span style="color:#777;font-size:10px;font-weight:bold;white-space:nowrap;letter-spacing:0.5px;">LTYPE</span>
+    <!-- (dev0585) ltype pills injected by core.js from the values present in the data -->
+    <span id="fbLtypeBar" style="display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap;"></span>
   </div>
   <span style="color:#f8a;font-size:13px;font-weight:bold;white-space:nowrap;">🔍 Filter:</span>
   <label style="color:#888;font-size:11px;white-space:nowrap;">Anywhere:</label>
@@ -959,7 +963,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0584';
+  window.HELP_VERSION_STR = 'dev0585';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];
