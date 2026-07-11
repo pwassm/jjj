@@ -2399,20 +2399,29 @@ function _tBuildRow(vi, di) {
               if (!tid) return;
               window.setRowFilter({ col: 'tags', val: tid, hierarchical: true });
             });
-            chip.addEventListener('contextmenu', e => {
+            // (dev0576) Do the right-click work on mousedown, where the Ctrl
+            // modifier is reliably reported. Several browsers drop ctrlKey (or
+            // suppress the contextmenu event entirely) when Ctrl is held during a
+            // right-click, so keying off contextmenu made Ctrl+R-click a silent
+            // no-op (it fell through to the copy branch instead of deleting).
+            chip.addEventListener('mousedown', e => {
+              if (e.button !== 2) return;            // right button only
               e.preventDefault();
               e.stopPropagation();
               const tid = chip.getAttribute('data-tag-id');
               if (!tid) return;
               if (e.ctrlKey) {
-                // Ctrl+R-click → remove this tag from this row.
-                if (!Array.isArray(row.tags)) return;
-                if (!row.tags.includes(tid)) return;
+                // Ctrl+R-click → remove this tag from this row. Defer render() so
+                // the follow-up contextmenu still lands on this (now-stale) chip —
+                // which just swallows it — rather than on the tags cell, where it
+                // could trigger a stray paste of the copied tag.
+                if (!Array.isArray(row.tags) || !row.tags.includes(tid)) return;
                 const lbl = (window.tagsLib && window.tagsLib.labelFor) ? window.tagsLib.labelFor(tid) : tid;
                 row.tags = row.tags.filter(x => x !== tid);
                 row.DateModified = isoNow();
-                save(); render();
+                save();
                 toast('Removed "' + lbl + '" from row', 1400);
+                setTimeout(() => render(), 0);
               } else {
                 // R-click → copy this tag for a subsequent R-click paste.
                 window._copiedTagId = tid;
@@ -2420,6 +2429,9 @@ function _tBuildRow(vi, di) {
                 setTimeout(() => chip.classList.remove('tag-chip-copied'), 260);
               }
             });
+            // Swallow the follow-up contextmenu so no native menu appears and it
+            // doesn't bubble to the row/column context-menu handlers.
+            chip.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
             chip.style.cursor = 'pointer';
           });
         } else {
