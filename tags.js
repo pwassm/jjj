@@ -944,83 +944,9 @@
   // Expose for outside callers (e.g. the table chip-click in renderBody)
   window.openDictForTag = openDictForTag;
 
-  // Table-context chip menu: shown on right-click of a chip in the T view.
-  // Slightly different items than the Annotate chip menu — there's no
-  // "remove from this row" because we'd need to mutate the data record
-  // and re-save; instead the table provides Annotate / Filter / Dictionary / GBIF.
-  window.openTableChipMenu = function (x, y, tagId, row) {
-    // (zip0158) Toggle: if a menu was just open for this tag, close it
-    // without action.
-    const now = Date.now();
-    if (_lastChipMenuClose
-        && _lastChipMenuClose.tagId === tagId
-        && (now - _lastChipMenuClose.t) < 300) {
-      _lastChipMenuClose = null;
-      return;
-    }
-
-    closeChipContextMenu();  // reuse the same DOM slot for any chip menu
-    const t = byId.get(tagId);
-    if (!t) return;
-
-    // (zip0186) Simplified 3-item menu: Copy · Dictionary · Filter
-    const items = [
-      {
-        key: 'c',
-        labelHtml: '<u>C</u>opy this tag',
-        action: () => {
-          // (dev0326) Copy tag for R-click paste. Toast removed per user — the
-          // "ready to paste" balloon was a timewaster; R-click paste still works.
-          window._copiedTagId = tagId;
-        }
-      },
-      {
-        key: 'd',
-        labelHtml: 'Open in <u>D</u>ictionary',
-        action: () => openDictForTag(tagId)
-      },
-      {
-        key: 'g',
-        labelHtml: t.kind === 'taxon' ? 'Check <u>G</u>BIF' : 'Check <u>G</u>BIF (verify as taxon)',
-        action: () => {
-          openDictForTag(tagId);
-          requestAnimationFrame(() => requestAnimationFrame(() => {
-            const btn = document.getElementById('de-gbif');
-            if (btn) btn.click();
-          }));
-        }
-      },
-      { sep: true },
-      {
-        key: 'f',
-        labelHtml: '<u>F</u>ilter table to this tag',
-        action: () => {
-          if (typeof window.setRowFilter === 'function') {
-            window.setRowFilter({ col: 'tags', val: tagId, hierarchical: true });
-          }
-        }
-      },
-      { sep: true },
-      {
-        key: 'x',
-        labelHtml: 'Delete tag from this row',
-        warn: true,
-        action: () => {
-          if (!row) return;
-          if (!Array.isArray(row.tags)) return;
-          row.tags = row.tags.filter(x => x !== tagId);
-          if (row.DateModified !== undefined || row.DateAdded !== undefined) {
-            row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0,19).replace('T',' ');
-          }
-          if (typeof save === 'function') save();
-          if (typeof render === 'function') render();
-          if (typeof toast === 'function') toast('Removed "' + t.label + '" from row', 1400);
-        }
-      }
-    ];
-
-    _buildChipMenu(x, y, t, items);
-  };
+  // (dev0575) The T-view chip right-click menu was removed: R-click now copies
+  // the tag and Ctrl+R-click deletes it from the row directly (see core.js
+  // renderBody). _buildChipMenu below still serves the Annotate panel's menu.
 
   // Internal: builds and shows the menu DOM. Shared by chip menus from the
   // Annotate panel (with "Remove from this row") and from the T view (with
@@ -1114,7 +1040,8 @@
   }
 
   function openChipContextMenu(x, y, tagId, removeFn) {
-    // (zip0158) Toggle behavior — see openTableChipMenu for full detail.
+    // (zip0158) Toggle behavior: a second R-click on the same chip within 300ms
+    // closes the just-opened menu without action.
     const now = Date.now();
     if (_lastChipMenuClose
         && _lastChipMenuClose.tagId === tagId

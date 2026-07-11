@@ -2389,7 +2389,9 @@ function _tBuildRow(vi, di) {
         } else if (ids.length) {
           td.innerHTML = window.tagsLib.renderChipsForRecord(row);
           // Click a chip → filter the table to that tag (hierarchical).
-          // Right-click → context menu with Open in Dictionary / GBIF / Filter.
+          // (dev0575) Right-click a chip → COPY that tag (for R-click paste onto
+          // another row's tags cell). Ctrl+right-click → DELETE that tag from this
+          // row. No menu — those were the only two actions worth keeping.
           [...td.querySelectorAll('.tag-chip')].forEach(chip => {
             chip.addEventListener('click', e => {
               e.stopPropagation();
@@ -2402,12 +2404,20 @@ function _tBuildRow(vi, di) {
               e.stopPropagation();
               const tid = chip.getAttribute('data-tag-id');
               if (!tid) return;
-              // We can't easily wire "remove from this row" generically here
-              // (no removeFn), so the chip menu in the table is a subset:
-              // Open in Dictionary + Check GBIF only. The Annotate panel
-              // chip-menu retains the Remove option.
-              if (typeof window.openTableChipMenu === 'function') {
-                window.openTableChipMenu(e.clientX, e.clientY, tid, row);
+              if (e.ctrlKey) {
+                // Ctrl+R-click → remove this tag from this row.
+                if (!Array.isArray(row.tags)) return;
+                if (!row.tags.includes(tid)) return;
+                const lbl = (window.tagsLib && window.tagsLib.labelFor) ? window.tagsLib.labelFor(tid) : tid;
+                row.tags = row.tags.filter(x => x !== tid);
+                row.DateModified = isoNow();
+                save(); render();
+                toast('Removed "' + lbl + '" from row', 1400);
+              } else {
+                // R-click → copy this tag for a subsequent R-click paste.
+                window._copiedTagId = tid;
+                chip.classList.add('tag-chip-copied');
+                setTimeout(() => chip.classList.remove('tag-chip-copied'), 260);
               }
             });
             chip.style.cursor = 'pointer';
@@ -8685,8 +8695,9 @@ const HELP_DATA = [
         { key: 'Click cell',            desc: 'Focus cell',                             dev: true },
         { key: 'Double-click cell',     desc: 'Edit cell (text, link, etc.)',           dev: true },
         { key: 'Shift+click (col)',     desc: 'Range select → bulk-set value',          dev: true },
-        { key: 'R-click tag chip',      desc: 'Menu: Copy tag / Dictionary / Filter',  dev: true },
-        { key: 'R-click tag cell',      desc: 'Paste clipboard tag to this row (if one copied)', dev: true },
+        { key: 'R-click tag chip',      desc: 'Copy this tag (flashes) for a subsequent R-click paste', dev: true },
+        { key: 'Ctrl+R-click tag chip', desc: 'Delete this tag from the row',           dev: true },
+        { key: 'R-click tag cell',      desc: 'Paste copied tag to this row (if one copied)', dev: true },
         { key: 'Double-click tag cell', desc: 'Open Annotate panel on this row',       dev: true },
       ]}
     ]

@@ -304,6 +304,8 @@ input[type=checkbox] { cursor:pointer; accent-color:#4af; width:13px; height:13p
 /* Tags-expanded mode (Ctrl+I) — stacks chips vertically */
 td.tags-expanded { white-space:normal !important; overflow:visible !important; height:auto !important; line-height:1.4 !important; padding:3px 4px !important; }
 td.tags-expanded .tag-chip { display:block !important; margin:2px 0 !important; }
+/* (dev0575) Brief flash when a tag chip is R-click-copied (silent, no toast). */
+.tag-chip.tag-chip-copied { background:rgba(95,250,170,0.45) !important; box-shadow:0 0 0 2px #5fa; transition:none; }
 
 /* Inline cell editor */
 td.editing { padding:0 !important; overflow:visible !important; }
@@ -948,7 +950,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0574';
+  window.HELP_VERSION_STR = 'dev0575';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];
