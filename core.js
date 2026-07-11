@@ -500,6 +500,7 @@ var colWidths   = {};   // col → px (saved widths only; absent means use autoC
 var focus       = null;
 var pending     = null;
 var checkedRows = new Set();
+var _tCheckboxAnchor = null;  // (dev0582) last non-shift checkbox click, for shift-click range-check
 var sortCol = null, sortDir = 'asc', sortedIdx = null;
 var rowFilter = null;  // null = off | {col, val} = show only rows where data[di][col]===val
 var _lastRowFilter = null;  // remembered filter for F-toggle restore
@@ -2375,8 +2376,20 @@ function _tBuildRow(vi, di) {
 
     const tdcb = document.createElement('td'); tdcb.className = 'cbc'; setTdW(tdcb,26);
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checkedRows.has(di);
+    // (dev0582) shift-click a checkbox = check every row between the last plain
+    // click and this one (like the T cell-range popup, but for delete-via-checkbox).
+    cb.addEventListener('click', e => {
+      e.stopPropagation();
+      if (e.shiftKey && _tCheckboxAnchor !== null) {
+        e.preventDefault();  // skip the native toggle — we set checked state ourselves below
+        const lo = Math.min(_tCheckboxAnchor, di), hi = Math.max(_tCheckboxAnchor, di);
+        for (let d = lo; d <= hi; d++) checkedRows.add(d);
+        renderBody(); renderStatus();
+      } else {
+        _tCheckboxAnchor = di;
+      }
+    });
     cb.addEventListener('change', e => { e.stopPropagation(); if (cb.checked) checkedRows.add(di); else checkedRows.delete(di); renderBody(); renderStatus(); });
-    cb.addEventListener('click', e => e.stopPropagation());
     tdcb.appendChild(cb); tr.appendChild(tdcb);
 
     vc.forEach((col, ci) => {
