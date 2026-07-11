@@ -311,6 +311,17 @@ window.addEventListener('keydown', function(e) {
     return false;
   }
 
+  // (dev0580) Table screen: Shift+T = insert a new empty TEXT row at grid cell
+  // 1a (tInsertTextRowAboveCellA — bumps every assigned 5×5 cell one slot and
+  // switches to the 25-cell grid). Gated on _tScreenActive() so other screens
+  // keep their own T; bare 't' still falls through to the dispatcher below.
+  if (k === 't' && e.shiftKey && typeof _tScreenActive === 'function' && _tScreenActive()) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof tInsertTextRowAboveCellA === 'function') tInsertTextRowAboveCellA();
+    return false;
+  }
+
   // (dev0574) While the Mark4Grid chooser is open, digits pick the grid size by
   // leading digit: 3/4/9 select 3P/4L/9L directly; 1 cycles 12P→16L→17→19; 2
   // cycles 25L→27P. ALL digits are swallowed while the chooser is open (so a
@@ -3082,6 +3093,66 @@ function deleteCol(col) { if(!confirm('Delete "'+col+'" from ALL rows?'))return;
 function insertRow(at) { const r={}; cols.forEach(k=>r[k]=''); let mx=0; data.forEach(rr=>{const n=parseInt(rr.UID||'0',10);if(n>mx)mx=n;}); r.UID=String(mx+1); const now=isoNow(); r.DateAdded=now; r.DateModified=now; data.splice(at,0,r); save();buildSort();render(); }
 function deleteRow(di) { if(!confirm('Delete row '+(di+1)+'?'))return; if(data[di])_saveToDeletedJson(data[di]); data.splice(di,1); checkedRows.delete(di); const nc=new Set(); checkedRows.forEach(i=>{if(i<di)nc.add(i);else if(i>di)nc.add(i-1);}); checkedRows=nc; save();buildSort();render(); }
 function deleteChecked() { if(!confirm('Delete '+checkedRows.size+' row(s)?'))return; const idxs=[...checkedRows].sort((a,b)=>b-a); const dead=idxs.map(di=>data[di]).filter(Boolean); if(dead.length)_saveToDeletedJson(dead); idxs.forEach(di=>data.splice(di,1)); checkedRows.clear(); save();buildSort();render(); }
+
+// (dev0580) Shift+T in the Table screen: insert a new empty TEXT row at grid
+// cell 1a. The row currently holding 1a is the anchor — the new row takes UID
+// "<anchorUID>_t", ltype 't', cell '1a', and is spliced immediately above the
+// anchor in data order (under the default UID-desc sort, parseFloat ties
+// "935_t" with "935" and the stable sort keeps it directly above). Every
+// assigned 5×5 cell bumps one slot in reading order (1a→1b … 5d→5e); a row on
+// 5e falls off the grid (cell cleared) without warning, per spec. The grid is
+// forced to the 25-cell square T-source layout so all bumped cells render.
+function tInsertTextRowAboveCellA() {
+  const ai = data.findIndex(r => r && !r._salMeta && String(r.cell) === '1a');
+  if (ai < 0) { toast('No row with cell 1a — fill a grid first (m)', 2200); return; }
+  const anchor = data[ai];
+  const now = isoNow();
+
+  // Bump every assigned cell one slot in 25-cell reading order (1a..1e, 2a..5e).
+  const order = [];
+  for (let r = 1; r <= 5; r++) for (let ci = 0; ci < 5; ci++) order.push(r + 'abcde'.charAt(ci));
+  const slot = new Map(order.map((cs, i) => [cs, i]));
+  let bumped = 0, dropped = 0;
+  data.forEach(r => {
+    if (!r || r._salMeta || !r.cell || !slot.has(r.cell)) return;
+    const ni = slot.get(r.cell) + 1;
+    if (ni >= order.length) { r.cell = ''; dropped++; }
+    else { r.cell = order[ni]; bumped++; }
+  });
+
+  const nr = {};
+  cols.forEach(k => nr[k] = '');
+  nr.UID   = String(anchor.UID) + '_t';
+  nr.ltype = 't';
+  nr.cell  = '1a';
+  nr.show  = '1';           // grid renders only show===undefined/'1' rows
+  nr.DateAdded = now; nr.DateModified = now;
+  data.splice(ai, 0, nr);
+
+  // Force the 25-cell square T-source grid (same moves as runMarkGrid).
+  if (!metaRow) metaRow = { _salMeta: true };
+  _gridSource = 'T';
+  metaRow._salLayout = 'square';
+  metaRow._salGsize = 5;
+  if (typeof _gridGsize !== 'undefined' && _gridGsize !== 5) {
+    _gridGsize = 5;
+    if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
+  }
+
+  save(); buildSort(); render();
+
+  // Focus the new row + sync the UID badge.
+  const di = data.indexOf(nr);
+  const vi = sortedIdx ? sortedIdx.indexOf(di) : di;
+  if (vi >= 0) {
+    focus = { r: vi, c: 0 };
+    render();
+    if (typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(vi);
+  }
+  if (typeof window.setLastUID === 'function') window.setLastUID(nr.UID);
+  toast('✓ New text row #' + nr.UID + ' → cell 1a\n'
+    + bumped + ' cell(s) bumped' + (dropped ? ' · 1 pushed off 5e' : '') + ' · grid 5×5', 2600);
+}
 
 // Bulk popup
 function openPopup() {

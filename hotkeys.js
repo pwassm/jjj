@@ -484,6 +484,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture',
     desc: 'Clear all filters instantly' },
 
+  { label: 'Shift+T', group: 'Table (window-capture)', scope: 'T', dev: true,
+    impl: 'core.js window-capture (dev0580) + tInsertTextRowAboveCellA',
+    desc: 'Insert a new empty text row (ltype t, UID <1a-row>_t) at grid cell 1a — bumps every assigned cell one slot (5e falls off) and switches to the 5×5/25 grid' },
+
   { label: 'R', group: 'Table (window-capture)', scope: 'T', dev: true,
     impl: 'core.js table-level handler',
     desc: 'Slideshow — Review mode (local-media triage)' },
