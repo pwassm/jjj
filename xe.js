@@ -141,7 +141,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
       </div>
 
       <div style="padding:8px 16px; color:#556; font-size:11px; border-top:1px solid #333;">
-        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · FAST swipe ← anywhere = save+back (slow drag still selects text) · Shift+Enter new collapsible · ¶↑/¶↓ or Ctrl(+Shift)+Enter = blank line outside block · ⋮⋮ handle = select block for cut
+        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · brisk drag ← anywhere = save+back to T/G (slow drag still selects text) · Shift+Enter new collapsible · ¶↑/¶↓ or Ctrl(+Shift)+Enter = blank line outside block · ⋮⋮ handle = select block for cut
       </div>
     </div>
   `;
@@ -1098,25 +1098,41 @@ function gridOpenTextEditor(cellStr, row, opts) {
 
   // (dev0573) FAST R→L flick ANYWHERE on Xe = auto-save + leave (back to G if we
   // arrived from the grid, else reveal T underneath) — mirrors the Esc exit.
-  // Speed-gated so a slow right-to-left drag still SELECTS TEXT in the editor:
-  // the flick must cover ≥120px within 250ms, mostly horizontal. Flicks that
-  // start on a button or input are ignored (those own their own pointer UX).
-  // Capture phase so child handlers can't hide the gesture; no preventDefault,
-  // so clicks/selection are never interfered with — we only act on the flick.
+  // (dev0579) Rework: the old gate (≥120px within 250ms measured over the WHOLE
+  // gesture) only caught lightning flicks — a natural brisk drag takes 350-600ms
+  // and never fired. Now we sample pointermove into a short trail and gate on
+  // RELEASE VELOCITY (the last ~160ms of travel): a brisk right-to-left drag
+  // triggers no matter how long the whole gesture took, while a slow selection
+  // drag — or a fast drag that STOPS before release (careful text selection) —
+  // never does. Gestures that start on a button or input are ignored (those own
+  // their own pointer UX). Capture phase so child handlers can't hide the
+  // gesture; no preventDefault, so clicks/selection are never interfered with.
   {
-    let _flick = null;
+    let _flick = null;          // { trail: [{x,y,t}, …] } while the pointer is down
+    const TAIL_MS = 160;        // velocity window: movement just before release
     _textEditorOverlay.addEventListener('pointerdown', e => {
       const t = e.target;
       if (t && t.closest && t.closest('button, input')) { _flick = null; return; }
-      _flick = { x: e.clientX, y: e.clientY, t: Date.now() };
+      _flick = { trail: [{ x: e.clientX, y: e.clientY, t: Date.now() }] };
+    }, true);
+    _textEditorOverlay.addEventListener('pointermove', e => {
+      if (!_flick) return;
+      const now = Date.now();
+      _flick.trail.push({ x: e.clientX, y: e.clientY, t: now });
+      // Prune so trail[0] stays the newest sample ≥ TAIL_MS old — the anchor
+      // the release velocity is measured against.
+      while (_flick.trail.length > 2 && _flick.trail[1].t < now - TAIL_MS) _flick.trail.shift();
     }, true);
     _textEditorOverlay.addEventListener('pointerup', e => {
       if (!_flick) return;
-      const dx = e.clientX - _flick.x;
-      const dy = e.clientY - _flick.y;
-      const ms = Date.now() - _flick.t;
+      const anchor = _flick.trail[0];
       _flick = null;
-      if (dx > -120 || ms > 250 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+      const dx = e.clientX - anchor.x;
+      const dy = e.clientY - anchor.y;
+      const ms = Math.max(1, Date.now() - anchor.t);
+      if (dx > -80) return;                          // real leftward travel at release
+      if (Math.abs(dy) > Math.abs(dx) * 0.6) return; // mostly horizontal
+      if (Math.abs(dx) / ms < 0.45) return;          // px/ms — brisk, not a slow select
       _textEditorDoSave();
       const backToGrid = !!window._cameFromGrid;
       textEditorClose();
