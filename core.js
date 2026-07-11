@@ -2390,7 +2390,7 @@ function _tBuildRow(vi, di) {
           td.innerHTML = window.tagsLib.renderChipsForRecord(row);
           // Click a chip → filter the table to that tag (hierarchical).
           // (dev0575) Right-click a chip → COPY that tag (for R-click paste onto
-          // another row's tags cell). (dev0577) Shift+right-click → DELETE that tag
+          // another row's tags cell). (dev0578) Ctrl+right-click → DELETE that tag
           // from this row. No menu — those were the only two actions worth keeping.
           [...td.querySelectorAll('.tag-chip')].forEach(chip => {
             chip.addEventListener('click', e => {
@@ -2404,15 +2404,19 @@ function _tBuildRow(vi, di) {
             // suppress the contextmenu event entirely) when a modifier is held
             // during a right-click, so keying off contextmenu made the delete a
             // silent no-op (it fell through to the copy branch instead).
-            // (dev0577) Delete modifier is Shift (Ctrl proved unreliable here).
+            // (dev0577) Briefly moved the delete modifier to Shift because Ctrl
+            // wasn't arriving — root cause turned out to be the user's AHK script
+            // (*RButton::return swallowed ALL modified right-clicks system-wide,
+            // fixed 2026-07-10 to Send {Blind}{RButton}). (dev0578) Ctrl restored
+            // now that it reaches the browser intact; Shift is free again.
             chip.addEventListener('mousedown', e => {
               if (e.button !== 2) return;            // right button only
               e.preventDefault();
               e.stopPropagation();
               const tid = chip.getAttribute('data-tag-id');
               if (!tid) return;
-              if (e.shiftKey) {
-                // Shift+R-click → remove this tag from this row. Defer render() so
+              if (e.ctrlKey) {
+                // Ctrl+R-click → remove this tag from this row. Defer render() so
                 // the follow-up contextmenu still lands on this (now-stale) chip —
                 // which just swallows it — rather than on the tags cell, where it
                 // could trigger a stray paste of the copied tag.
@@ -8709,7 +8713,7 @@ const HELP_DATA = [
         { key: 'Double-click cell',     desc: 'Edit cell (text, link, etc.)',           dev: true },
         { key: 'Shift+click (col)',     desc: 'Range select → bulk-set value',          dev: true },
         { key: 'R-click tag chip',      desc: 'Copy this tag (flashes) for a subsequent R-click paste', dev: true },
-        { key: 'Shift+R-click tag chip', desc: 'Delete this tag from the row',          dev: true },
+        { key: 'Ctrl+R-click tag chip', desc: 'Delete this tag from the row',           dev: true },
         { key: 'R-click tag cell',      desc: 'Paste copied tag to this row (if one copied)', dev: true },
         { key: 'Double-click tag cell', desc: 'Open Annotate panel on this row',       dev: true },
       ]}
