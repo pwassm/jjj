@@ -1705,15 +1705,21 @@ function _teSplitFirstLine(frag) {
     frag.removeChild(lead);
     return { first, rest: frag };
   }
-  // Inline content: split at the first <br>.
-  let br = null;
+  // (dev0586) Inline lead content: the first line ends at the first <br> OR at
+  // the first block-level sibling, whichever comes first. Chrome contenteditable
+  // commonly leaves the first line as a bare text node followed by <div> line-
+  // blocks — the old code only split on <br>, hit the block, and (with br still
+  // null) dumped EVERY line into the summary. Splitting at the block boundary
+  // too keeps line 1 as the title and the rest as the hidden body. A <br> split
+  // is consumed; a block split stays in the body.
+  let splitNode = null, dropSplit = false;
   for (let n = frag.firstChild; n; n = n.nextSibling) {
-    if (n.nodeType === 1 && n.tagName === 'BR') { br = n; break; }
-    if (n.nodeType === 1 && BLOCK.test(n.tagName)) break; // a later block ends the first line
+    if (n.nodeType === 1 && n.tagName === 'BR') { splitNode = n; dropSplit = true; break; }
+    if (n.nodeType === 1 && BLOCK.test(n.tagName)) { splitNode = n; dropSplit = false; break; }
   }
-  if (br) {
-    while (frag.firstChild && frag.firstChild !== br) first.appendChild(frag.firstChild);
-    frag.removeChild(br);
+  if (splitNode) {
+    while (frag.firstChild && frag.firstChild !== splitNode) first.appendChild(frag.firstChild);
+    if (dropSplit) frag.removeChild(splitNode);
     return { first, rest: frag };
   }
   while (frag.firstChild) first.appendChild(frag.firstChild);

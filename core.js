@@ -3130,27 +3130,27 @@ function deleteChecked() { if(!confirm('Delete '+checkedRows.size+' row(s)?'))re
 // "<anchorUID>_t", ltype 't', cell '1a', and is spliced immediately above the
 // anchor in data order (under the default UID-desc sort, parseFloat ties
 // "935_t" with "935" and the stable sort keeps it directly above). Every
-// occupied cell shifts down one slot; rows past the 25th slot fall off the
-// grid (cell cleared) without warning, per spec. The grid is forced to the
-// 25-cell square T-source layout so all shifted cells render.
+// occupied cell shifts down one slot within the CURRENT grid layout; rows past
+// the layout's last cell fall off the grid (cell cleared) without warning.
 function tInsertTextRowAboveCellA() {
   const ai = data.findIndex(r => r && !r._salMeta && String(r.cell) === '1a');
   if (ai < 0) { toast('No row with cell 1a — fill a grid first (m)', 2200); return; }
   const anchor = data[ai];
   const now = isoNow();
 
-  // (dev0585) Collect the occupants in the CURRENT layout's cell order, then
-  // reassign them consecutively into the 25-cell square reading order (1a..1e,
-  // 2a..5e). The old code bumped each cell one slot in hardcoded 5×5 order,
-  // which broke non-5×5 sources: a 4×4 grid bumped 1d→1e instead of →2a,
-  // leaving 2a/3a/4a permanently blank. Cells not in the current layout (stale
-  // assignments) keep their data order and slot in after the layout's cells.
+  // (dev0586) Redistribute occupants within the CURRENT grid layout — do NOT
+  // force a 5×5. `order` is the active layout's cell list in reading order
+  // (4×4, portrait, and the 17/19 specials all supported); occupants slot in
+  // consecutively starting at cell 2 (slot 0 = the first cell, taken by the new
+  // text row). dev0585 fixed the hardcoded-5×5 bump (blank 2a/3a/4a on a 4×4)
+  // but still resized to 5×5; this keeps the grid at its current size (e.g.
+  // 16 → 4×4). Cells outside the current layout (stale assignments) keep their
+  // data order and slot in after the layout's cells.
   const curLayout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
   const curGsize  = (typeof _gridGsize === 'number') ? _gridGsize : 5;
-  const curPos = new Map();
-  if (typeof _gridCellList === 'function') {
-    _gridCellList(curGsize, curLayout).forEach((spec, i) => curPos.set(spec.cs, i));
-  }
+  const cellSpecs = (typeof _gridCellList === 'function') ? _gridCellList(curGsize, curLayout) : [];
+  const order = cellSpecs.map(s => s.cs);
+  const curPos = new Map(order.map((cs, i) => [cs, i]));
   const occupants = data
     .map((r, i) => ({ r, i }))
     .filter(o => o.r && !o.r._salMeta && o.r.cell)
@@ -3159,11 +3159,9 @@ function tInsertTextRowAboveCellA() {
       const pb = curPos.has(b.r.cell) ? curPos.get(b.r.cell) : 1e9 + b.i;
       return pa - pb;
     });
-  const order = [];
-  for (let r = 1; r <= 5; r++) for (let ci = 0; ci < 5; ci++) order.push(r + 'abcde'.charAt(ci));
   let bumped = 0, dropped = 0;
   occupants.forEach((o, i) => {
-    const ni = i + 1;                     // slot 0 (1a) goes to the new text row
+    const ni = i + 1;                     // slot 0 (first cell) goes to the new text row
     if (ni >= order.length) { o.r.cell = ''; dropped++; }
     else { o.r.cell = order[ni]; bumped++; }
   });
@@ -3172,18 +3170,20 @@ function tInsertTextRowAboveCellA() {
   cols.forEach(k => nr[k] = '');
   nr.UID   = String(anchor.UID) + '_t';
   nr.ltype = 't';
-  nr.cell  = '1a';
+  nr.cell  = order[0] || '1a';   // first cell of the current layout (always '1a')
   nr.show  = '1';           // grid renders only show===undefined/'1' rows
   nr.DateAdded = now; nr.DateModified = now;
   data.splice(ai, 0, nr);
 
-  // Force the 25-cell square T-source grid (same moves as runMarkGrid).
+  // (dev0586) Keep the CURRENT layout & size — Shift+T is a T-cell op, so force
+  // T-source display so the row.cell reassignments above render (a stale C
+  // config would ignore them), but preserve the grid's existing shape.
   if (!metaRow) metaRow = { _salMeta: true };
   _gridSource = 'T';
-  metaRow._salLayout = 'square';
-  metaRow._salGsize = 5;
-  if (typeof _gridGsize !== 'undefined' && _gridGsize !== 5) {
-    _gridGsize = 5;
+  metaRow._salLayout = curLayout;
+  metaRow._salGsize = curGsize;
+  if (typeof _gridGsize !== 'undefined' && _gridGsize !== curGsize) {
+    _gridGsize = curGsize;
     if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
   }
 
@@ -3198,8 +3198,9 @@ function tInsertTextRowAboveCellA() {
     if (typeof _tScrollRowIntoView === 'function') _tScrollRowIntoView(vi);
   }
   if (typeof window.setLastUID === 'function') window.setLastUID(nr.UID);
-  toast('✓ New text row #' + nr.UID + ' → cell 1a\n'
-    + bumped + ' cell(s) bumped' + (dropped ? ' · ' + dropped + ' pushed off the grid' : '') + ' · grid 5×5', 2600);
+  const gl = (typeof _gridLayoutLabel === 'function') ? _gridLayoutLabel(curLayout, curGsize) : (curGsize + '×' + curGsize);
+  toast('✓ New text row #' + nr.UID + ' → cell ' + nr.cell + '\n'
+    + bumped + ' cell(s) bumped' + (dropped ? ' · ' + dropped + ' pushed off the grid' : '') + ' · grid ' + gl, 2600);
 }
 
 // Bulk popup
