@@ -120,13 +120,15 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" id="teLineAfter" title="Blank line BELOW the detail block at the cursor — inserted OUTSIDE the block, so new text there is not absorbed into it (same as Ctrl+Enter)">¶↓</button>
         <button class="te-btn" id="teExpandAll" title="Expand all collapsible blocks in this slide">▼ All</button>
         <button class="te-btn" id="teCollapseAll" title="Collapse all collapsible blocks in this slide">▶ All</button>
-        <button class="te-btn" id="teCut" title="Park everything from the cursor down — wrapped in a hidden div that's invisible when rendered (slide, grid, exports) but still editable here in Xe. Click on the red banner above the parked block to unpark it.">✂ Cut</button>
+        <button class="te-btn" id="teCut" title="Hide the SELECTED text/lines from the rendered slide (grid, Xs, exports) while keeping it here in Xe as reference notes. Select a region first — everything AFTER it still renders. Click the banner above a hidden block to show it again.">⊘ Hide</button>
         <button class="te-btn" id="teHr" title="Insert a divider line across the page — separates sections (renders as a horizontal rule in the slide)">══</button>
         <button class="te-btn" id="teImage" title="Insert image — accepts UID number or https:// URL, with size and alignment">🖼</button>
         <button class="te-btn" id="teLink" title="Link the selected text — enter any URL (a bare domain like pwassm.github.io/braintrain is auto-prefixed with https://). Select link text first; blank URL removes the link.">🔗</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" id="teTextColor"  title="Slide-wide text color — choose one for the whole slide">A▾</button>
         <button class="te-btn" id="teBgColor"    title="Slide-wide background color">▣▾</button>
+        <span style="width:1px; background:#444; margin:0 6px;"></span>
+        <button class="te-btn" id="teErase" style="border-color:#a44; color:#f99;" title="Erase ALL text in this slide — the reliable equivalent of Ctrl+A then Backspace (which can leave a stray block behind). The slide's colors are kept.">🗑 Erase all</button>
       </div>
       
       <!-- Editor area - FULLSCREEN -->
@@ -149,7 +151,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
       </div>
 
       <div style="padding:8px 16px; color:#556; font-size:11px; border-top:1px solid #333;">
-        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · brisk drag ← anywhere = save+back to T/G (slow drag still selects text) · Shift+Enter new collapsible · ¶↑/¶↓ or Ctrl(+Shift)+Enter = blank line outside block · ⋮⋮ handle = select block for cut
+        Ctrl+B/I/U · Ctrl+S save+close · Esc close · S = slide · brisk drag ← anywhere = save+back to T/G (slow drag still selects text) · Shift+Enter new collapsible · ¶↑/¶↓ or Ctrl(+Shift)+Enter = blank line outside block · ⋮⋮ handle = select block to hide/move
       </div>
     </div>
   `;
@@ -254,7 +256,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
       position:relative;
     }
     #teEditor .te-cut::before {
-      content:'✂ Parked — hidden from render. Click here to unpark.';
+      content:'⊘ Hidden from the rendered slide — click here to show it again.';
       position:absolute; top:-12px; left:8px;
       background:#3a0a0a; color:#fcc; border:1px solid #f88;
       padding:2px 8px; border-radius:4px; font-size:10px;
@@ -315,10 +317,14 @@ function gridOpenTextEditor(cellStr, row, opts) {
     }, 0);
   };
 
-  // (dev0247) ✂ Cut — park everything from the caret to the end of the
-  // editor in a <div class="te-cut">. Hidden in every render context
-  // (CSS sets display:none for .te-cut globally); shown faded with a
-  // banner inside #teEditor so the user can still see/edit/recover it.
+  // (dev0247, redesigned dev0594) ⊘ Hide — wrap the SELECTED region in a
+  // <div class="te-cut">. Hidden in every render context (CSS sets display:none
+  // for .te-cut globally); shown faded with a banner inside #teEditor so the
+  // user can still see/edit/recover it. Unlike the old "Cut" (which parked
+  // everything from the caret to the END of the slide — burying content the
+  // user still wanted rendered), this hides ONLY the selection, so anything
+  // after it keeps rendering. Class name stays 'te-cut' for backward
+  // compatibility with content already hidden in saved rows.
   document.getElementById('teCut').onmousedown = (e) => {
     e.preventDefault();
     const ed = document.getElementById('teEditor');
@@ -326,60 +332,84 @@ function gridOpenTextEditor(cellStr, row, opts) {
     const sel = window.getSelection();
     if (!sel.rangeCount) { ed.focus(); return; }
     const range = sel.getRangeAt(0);
-    // If already inside a .te-cut, no-op
-    let n = range.startContainer;
+    // Hide operates on a REGION. With no selection there's nothing to bound, so
+    // prompt for one rather than silently hiding everything below (the old bug).
+    if (sel.isCollapsed) {
+      if (typeof toast === 'function') toast('Select the text or lines to hide first, then click Hide', 1800);
+      return;
+    }
+    // If the selection is already inside a .te-cut, no-op.
+    let n = range.commonAncestorContainer;
     while (n && n !== ed) {
       if (n.nodeType === 1 && n.classList && n.classList.contains('te-cut')) {
-        if (typeof toast === 'function') toast('Already inside a parked block', 1200);
+        if (typeof toast === 'function') toast('That is already hidden', 1200);
         return;
       }
       n = n.parentNode;
     }
-    // Build a range from the caret to the end of the editor
-    const cut = document.createRange();
-    cut.setStart(range.startContainer, range.startOffset);
-    cut.setEnd(ed, ed.childNodes.length);
-    const frag = cut.extractContents();
+    const frag = range.extractContents();
     const wrap = document.createElement('div');
     wrap.className = 'te-cut';
     wrap.appendChild(frag);
-    // If wrap is effectively empty, drop in a placeholder so the user
-    // sees the parked-area banner.
     if (!wrap.textContent.trim() && !wrap.querySelector('img,video,details,table')) {
       const p = document.createElement('p');
       p.appendChild(document.createElement('br'));
       wrap.appendChild(p);
     }
-    cut.insertNode(wrap);
-    // Place caret just BEFORE the parked block so the user can keep writing
-    // above it. Create a fresh <p> if there's nothing above.
-    if (!wrap.previousSibling) {
-      const p = document.createElement('p');
-      p.appendChild(document.createElement('br'));
-      ed.insertBefore(p, wrap);
+    range.insertNode(wrap);
+    // Place caret just AFTER the hidden block so writing continues in the
+    // still-visible content below it. Create a fresh <p> if nothing follows.
+    let after = wrap.nextSibling;
+    if (!after) {
+      after = document.createElement('p');
+      after.appendChild(document.createElement('br'));
+      ed.appendChild(after);
     }
-    const before = wrap.previousSibling;
     const r = document.createRange();
-    r.selectNodeContents(before);
-    r.collapse(false);
+    r.selectNodeContents(after);
+    r.collapse(true);
     sel.removeAllRanges(); sel.addRange(r);
     ed.focus();
+    if (typeof toast === 'function') toast('Hidden — click the banner to show it again', 1500);
   };
 
-  // Click the red "Parked" banner to unpark — unwrap the .te-cut div in
-  // place, restoring its children as direct children of the editor.
+  // (dev0594) 🗑 Erase all — the reliable equivalent of Ctrl+A + Backspace.
+  // Native select-all-delete can leave a stray block (the dev0593 corruption
+  // that swallows new content); this hard-resets to one clean empty paragraph.
+  // The .te-slide colour wrapper is preserved (empty) so an erase keeps the
+  // slide's text/background theme.
+  document.getElementById('teErase').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const only = ed.children.length === 1 ? ed.children[0] : null;
+    const slideWrap = (only && only.classList && only.classList.contains('te-slide')) ? only : null;
+    const host = slideWrap || ed;
+    host.innerHTML = '<p><br></p>';
+    const target = host.querySelector('p') || host;
+    const r = document.createRange();
+    r.selectNodeContents(target);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(r);
+    ed.focus();
+    if (typeof toast === 'function') toast('Erased all text', 1000);
+  };
+
+  // Click the faded banner to SHOW hidden content again — unwrap the .te-cut
+  // div in place, restoring its children as direct children of the editor.
   document.getElementById('teEditor').addEventListener('click', e => {
     const cut = e.target && e.target.classList && e.target.classList.contains('te-cut')
       ? e.target : null;
     if (!cut) return;
-    // Only the banner area (the ::before pseudo) is clickable for unpark —
+    // Only the banner area (the ::before pseudo) is clickable for unhide —
     // detect by checking the click Y is within the banner band (top 24px).
     const rect = cut.getBoundingClientRect();
     if (e.clientY - rect.top > 24) return;
     e.preventDefault(); e.stopPropagation();
     while (cut.firstChild) cut.parentNode.insertBefore(cut.firstChild, cut);
     cut.remove();
-    if (typeof toast === 'function') toast('Unparked', 900);
+    if (typeof toast === 'function') toast('Shown again', 900);
   });
 
   // (dev0242) Wrap current selection in a collapsible. Lets the user take
@@ -877,37 +907,13 @@ function gridOpenTextEditor(cellStr, row, opts) {
     }
   }, true);
 
-  // (dev0245) Guard typing/Backspace/Delete/Cut against accidentally erasing
-  // a <details> block that's currently selected via its ⋮⋮ handle.
-  // Cut is allowed (the cut handler runs separately and is intentional).
-  // For other destructive keys, drop the selection and continue with a
-  // collapsed caret, so the next character lands at the end of the block
-  // instead of replacing it.
-  _ov.addEventListener('keydown', function(e) {
-    // Allow navigation, selection, copy/cut/paste, formatting, save, undo/redo
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key.length !== 1 && e.key !== 'Backspace' && e.key !== 'Delete') return;
-    const ed = document.getElementById('teEditor');
-    if (!ed) return;
-    const sel = window.getSelection();
-    if (!sel.rangeCount || sel.isCollapsed) return;
-    const range = sel.getRangeAt(0);
-    const frag = range.cloneContents();
-    if (!(frag.querySelector && frag.querySelector('details'))) return;
-    // Selection includes a <details>. Confirm before replacing.
-    const ok = window.confirm(
-      'Your selection includes a collapsible block. Replace it with the typed key?\n\n' +
-      'OK = replace (you can Ctrl+Z to undo)\n' +
-      'Cancel = keep the block; caret will move to after it.'
-    );
-    if (!ok) {
-      e.preventDefault(); e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-      sel.collapseToEnd();
-      ed.querySelectorAll('details.te-selected').forEach(d => d.classList.remove('te-selected'));
-    }
-    // If user confirmed, let the browser proceed with default behavior.
-  }, true);
+  // (dev0245, removed dev0594) The confirm() dialog that popped up when a
+  // selection including a <details> was about to be replaced by a keystroke is
+  // gone — the user found the warning unwanted and wants detail blocks to
+  // delete like any other selected content. Native selection-replace now
+  // proceeds silently (Ctrl+Z still undoes it). The dev0246 Backspace/Delete
+  // boundary guard above (which silently protects an INVISIBLE collapsed
+  // details from being merged away) is intentionally kept — it isn't a warning.
 
   // (dev0244/0245) Capture-phase Enter handler — runs BEFORE the browser's
   // native behavior so we can:
