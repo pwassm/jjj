@@ -283,9 +283,11 @@
       '#xe2Overlay .xe2-btn:hover{background:#33335f;border-color:#6af;}',
       '#xe2Editor{flex:1;overflow:auto;padding:22px 26px;color:#eee;font-size:18px;line-height:1.5;outline:none;}',
       '#xe2Editor .ProseMirror{outline:none;min-height:100%;}',
-      // (dev0591) Flat text size — headings match the body size, keep bold so the
-      // H-buttons still visibly change the text. Mirrors the Xs/iframe/grid render.
-      '#xe2Editor h1,#xe2Editor h2,#xe2Editor h3,#xe2Editor h4,#xe2Editor h5,#xe2Editor h6{font-size:1em;font-weight:bold;}',
+      // (dev0592) Working, consistent heading ladder so H1/H2/H3 visibly change
+      // size (dev0591's flatten made the buttons look like no-ops). Same em values
+      // as the Xs/iframe/grid render → an H-level is the same size everywhere.
+      '#xe2Editor h1{font-size:2em;} #xe2Editor h2{font-size:1.5em;} #xe2Editor h3{font-size:1.25em;} #xe2Editor h4{font-size:1.1em;} #xe2Editor h5{font-size:1em;} #xe2Editor h6{font-size:0.9em;}',
+      '#xe2Editor h1,#xe2Editor h2,#xe2Editor h3,#xe2Editor h4,#xe2Editor h5,#xe2Editor h6{font-weight:bold;}',
       '#xe2Editor details{border-left:3px solid #6af;padding:2px 0 2px 12px;margin:8px 0;background:rgba(90,140,220,0.06);}',
       '#xe2Editor summary{cursor:text;font-weight:bold;color:#9cf;list-style:none;}',
       '#xe2Editor summary::-webkit-details-marker{display:none;}',
@@ -329,8 +331,8 @@
 
       ov.innerHTML =
         '<div style="background:#161628;border:1px solid #445;border-radius:12px;flex:1;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:2px solid #6af;background:#2b3a5c;">' +
-            '<span style="color:#ff8;font-weight:bold;">Text Slide <span style="color:#8ef;">v2</span> · ' + cellStr + mediaNote + '</span>' +
+          '<div id="xe2HeaderBar" title="Swipe ← (drag right-to-left) to save and go back" style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:2px solid #6af;background:#2b3a5c;touch-action:none;">' +
+            '<span style="color:#ff8;font-weight:bold;">Text Slide <span style="color:#8ef;">v2</span> · ' + cellStr + mediaNote + ' <span style="color:#89a;font-weight:normal;font-size:11px;">· swipe ← to go back</span></span>' +
             '<span id="xe2Saved" style="color:#6d8;font-size:11px;font-family:monospace;"></span>' +
             '<div style="display:flex;gap:8px;">' +
               '<button id="xe2V1" class="xe2-btn" title="Switch this cell back to the classic v1 editor">v1</button>' +
@@ -384,6 +386,28 @@
       ov.querySelector('#xe2Close').onclick = close;
       ov.querySelector('#xe2V1').onclick = switchToV1;
       document.addEventListener('keydown', _onKeydown, true);
+
+      // (dev0592) R→L drag on the header bar = save + return to G/T. A drag on the
+      // editor body would just select text, so the header is the swipe zone (same
+      // pattern as the Xs top bar). Pointer events cover both mouse and touch.
+      (function wireHeaderSwipeBack() {
+        var bar = ov.querySelector('#xe2HeaderBar');
+        if (!bar) return;
+        var s = null;
+        var xy = function (e) { return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY }; };
+        bar.addEventListener('pointerdown', function (e) {
+          if (e.target && e.target.closest && e.target.closest('button')) return; // let buttons work
+          var p = xy(e); s = { x: p.x, y: p.y, t: Date.now() };
+          try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+        bar.addEventListener('pointerup', function (e) {
+          if (!s) return;
+          var p = xy(e), dx = p.x - s.x, dy = p.y - s.y, ms = Date.now() - s.t;
+          s = null;
+          if (dx < -60 && Math.abs(dy) < Math.abs(dx) && ms < 900) commitAndClose();
+        });
+        bar.addEventListener('pointercancel', function () { s = null; });
+      })();
 
       setTimeout(function () { if (_api) _api.editor.commands.focus('start'); }, 30);
       console.log('[xe2] opened cell', cellStr, 'field', _field);

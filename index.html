@@ -427,13 +427,16 @@ html.locked-mode #vp-close { display: none !important; }
    Inline headings share the marker's line in every render context. */
 summary > h1, summary > h2, summary > h3,
 summary > h4, summary > h5, summary > h6 { display: inline; }
-/* (dev0591) Uniform text size in grid thumbnails + details indent under a
-   centered summary, matching the Xs slide render (which flattens headings to
-   the body size and centers a centered-summary details block to its content
-   width so the body left-aligns under the ▼). Xs preview (#teSlideContent) and
-   the iframe Xs handle their own copies; this covers the direct-DOM .grid-cell. */
+/* (dev0592) Consistent heading ladder in grid thumbnails + details indent under
+   a centered summary, matching the Xs slide render (same em values, and a
+   centered-summary details block shrinks to content width so the body left-aligns
+   under the ▼). Xs preview (#teSlideContent) and the iframe Xs keep their own
+   copies; this covers the direct-DOM .grid-cell. dev0591 had flattened these to
+   1em, which made H1–H6 look inert — restored to a working ladder. */
+.grid-cell h1 { font-size: 2em; } .grid-cell h2 { font-size: 1.5em; } .grid-cell h3 { font-size: 1.25em; }
+.grid-cell h4 { font-size: 1.1em; } .grid-cell h5 { font-size: 1em; } .grid-cell h6 { font-size: 0.9em; }
 .grid-cell h1, .grid-cell h2, .grid-cell h3,
-.grid-cell h4, .grid-cell h5, .grid-cell h6 { font-size: 1em; font-weight: bold; margin: 0 0 6px; }
+.grid-cell h4, .grid-cell h5, .grid-cell h6 { font-weight: bold; margin: 0 0 6px; }
 .grid-cell details:has(> summary[style*="center"]) {
   width: fit-content; max-width: 100%; margin: 8px auto; text-align: left;
 }
@@ -980,7 +983,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0591';
+  window.HELP_VERSION_STR = 'dev0592';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','xe2-bundle.js','xe2.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];

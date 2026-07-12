@@ -80,10 +80,10 @@ function gridOpenTextEditor(cellStr, row, opts) {
   _textEditorOverlay.innerHTML = `
     <div id="teBox" style="background:#1a1a2e; border:1px solid #444; border-radius:12px;
                 flex:1; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-      <div style="display:flex; justify-content:space-between; align-items:center;
-                  padding:22px 16px; min-height:64px;
+      <div id="teHeaderBar" title="Swipe ← (drag right-to-left) to save and go back" style="display:flex; justify-content:space-between; align-items:center;
+                  padding:22px 16px; min-height:64px; touch-action:none;
                   border-bottom:2px solid #6af; background:#3a4d75;">
-        <span style="color:#ff8; font-weight:bold;">Text Slide · ${cellStr}${mediaNote}</span>
+        <span style="color:#ff8; font-weight:bold;">Text Slide · ${cellStr}${mediaNote} <span style="color:#89a;font-weight:normal;font-size:11px;">· swipe ← to go back</span></span>
         <span id="teStats" style="color:#9ab; font-weight:normal; font-size:11px; font-family:monospace;" title="ftext size · % real text · % strippable junk (inline styles/classes/empty wrappers; image & link URLs are NOT junk)"></span>
         <span id="teSaved" style="color:#6d8; font-weight:normal; font-size:11px; font-family:monospace; white-space:nowrap;" title="Last autosave — ftext is written to the row ~1s after you stop typing"></span>
         <div style="display:flex; gap:8px;">
@@ -203,19 +203,26 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor a, #teSlideContent a { color:#5bf !important; }
     /* (dev0246) Summary text/links — explicit color so anchors-only summaries
        don't render as black-on-dark in any preview context. */
-    /* (dev0591) Uniform text size: every heading renders at the body size (18px)
-       so a slide reads as one flat size. dev0587 had scaled H1–H6 UP in the editor
-       to match the old rendered-slide ladder; that ladder is now removed in every
-       context (editor + Xs + iframe + grid) per user request. Headings keep BOLD
-       (+ tint colors in the slide render) so the H-buttons still visibly change
-       something — only the SIZE is flattened. */
+    /* (dev0592) Working, CONSISTENT heading ladder. dev0591 flattened every
+       heading to the body size, which made H1–H6 look like no-ops (changing size
+       is their whole job). Restored here as ONE em ladder used verbatim in every
+       render context (editor + Xs + iframe + grid), so an H-level is the SAME size
+       everywhere — a summary H1 == a body H1. That cross-context mismatch (same
+       tag, different size) was the ORIGINAL "hard to make text the same size"
+       complaint; identical em values fix it while keeping the buttons useful. */
     #teSlideContent summary, #teSlideContent summary a { color:#8ef !important; }
     #teEditor p, #teEditor div, #teEditor summary, #teEditor li, #teEditor span {
       font-size:18px; font-weight:normal; color:#fff;
     }
     #teEditor h1, #teEditor h2, #teEditor h3, #teEditor h4, #teEditor h5, #teEditor h6 {
-      color:#fff; font-weight:bold; margin:0 0 8px; line-height:1.25; font-size:18px;
+      color:#fff; font-weight:bold; margin:0 0 8px; line-height:1.25;
     }
+    #teEditor h1 { font-size:2em; }
+    #teEditor h2 { font-size:1.5em; }
+    #teEditor h3 { font-size:1.25em; }
+    #teEditor h4 { font-size:1.1em; }
+    #teEditor h5 { font-size:1em; }
+    #teEditor h6 { font-size:0.9em; }
     #teEditor small { font-size:0.8em; opacity:0.85; }
     #teEditor a, #teEditor summary a { color:#5bf !important; }
     #teSlideContent small { font-size:0.8em; opacity:0.85; }
@@ -735,6 +742,27 @@ function gridOpenTextEditor(cellStr, row, opts) {
   const _ov = _textEditorOverlay;
   _ov.querySelector('#teSave').onclick  = () => textEditorSave();
   _ov.querySelector('#teClose').onclick = () => textEditorClose();
+  // (dev0592) R→L drag on the header bar = save + return to G/T (mirrors the Xs
+  // top-bar swipe). The editor body can't host the gesture — a drag there selects
+  // text — so the header is the swipe zone. Pointer events cover mouse + touch.
+  (function wireXeHeaderSwipeBack() {
+    const bar = _ov.querySelector('#teHeaderBar');
+    if (!bar) return;
+    let s = null;
+    const xy = (e) => window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.target && e.target.closest && e.target.closest('button')) return; // let buttons work
+      const p = xy(e); s = { x: p.x, y: p.y, t: Date.now() };
+      try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    bar.addEventListener('pointerup', (e) => {
+      if (!s) return;
+      const p = xy(e), dx = p.x - s.x, dy = p.y - s.y, ms = Date.now() - s.t;
+      s = null;
+      if (dx < -60 && Math.abs(dy) < Math.abs(dx) && ms < 900) textEditorSave();
+    });
+    bar.addEventListener('pointercancel', () => { s = null; });
+  })();
   // (zip0160) Slide button auto-saves before previewing. The S key (when
   // the editor's contenteditable is not focused) also triggers slide.
   _ov.querySelector('#teSlide').onclick = () => {
@@ -2170,8 +2198,8 @@ function textEditorPreviewSlide() {
       #teSlideContent table{border-collapse:collapse;margin:12px 0;max-width:100%;}
       #teSlideContent th,#teSlideContent td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}
       #teSlideContent th{font-weight:bold;}
-      #teSlideContent h1,#teSlideContent h2,#teSlideContent h3,#teSlideContent h4,#teSlideContent h5,#teSlideContent h6{font-size:1em;font-weight:bold;margin:0 0 8px;}
-      #teSlideContent h3{color:#9ef;} #teSlideContent h4{color:#adf;} #teSlideContent h5{color:#bdf;} #teSlideContent h6{color:#cdf;}
+      #teSlideContent h1,#teSlideContent h2,#teSlideContent h3,#teSlideContent h4,#teSlideContent h5,#teSlideContent h6{font-weight:bold;margin:0 0 8px;}
+      #teSlideContent h1{font-size:2em;} #teSlideContent h2{font-size:1.5em;} #teSlideContent h3{font-size:1.25em;color:#9ef;} #teSlideContent h4{font-size:1.1em;color:#adf;} #teSlideContent h5{font-size:1em;color:#bdf;} #teSlideContent h6{font-size:0.9em;color:#cdf;}
       #teSlideContent hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;}
       #teSlideContent small{font-size:0.8em;opacity:0.85;}
       /* (dev0591) Details under a centered summary: shrink the block to its

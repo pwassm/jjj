@@ -1546,10 +1546,11 @@ function gridOpenFullscreen(row, contained) {
           + 'table{border-collapse:collapse;margin:12px 0;max-width:100%;}'
           + 'th,td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}'
           + 'th{font-weight:bold;}'
-          // (dev0591) Uniform text size — headings render at the body size, keep
-          // bold. This iframe has its OWN document; the global index.html rules
-          // (heading flatten, summary>h font inline) don't reach it, so re-declare.
-          + 'h1,h2,h3,h4,h5,h6{font-size:1em;font-weight:bold;margin:0 0 8px;}'
+          // (dev0592) Working, consistent heading ladder (same em values as the
+          // editor + Xs). This iframe has its OWN document; global index.html rules
+          // don't reach it, so re-declare sizes + summary>heading inline.
+          + 'h1{font-size:2em;}h2{font-size:1.5em;}h3{font-size:1.25em;}h4{font-size:1.1em;}h5{font-size:1em;}h6{font-size:0.9em;}'
+          + 'h1,h2,h3,h4,h5,h6{font-weight:bold;margin:0 0 8px;}'
           + 'summary>h1,summary>h2,summary>h3,summary>h4,summary>h5,summary>h6{display:inline;}'
           // (dev0591) Details under a centered summary: shrink+center the block so
           // the body left-aligns under the ▼ arrow instead of running full width.
