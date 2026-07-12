@@ -42,7 +42,15 @@ function gridOpenTextEditor(cellStr, row, opts) {
     data.push(row);
   }
   _textEditorRow = row;
-  
+
+  // (dev0590) Xe v2 (TipTap schema editor) — opt-in via localStorage 'xe2'=1 or
+  // ?xe2=1. Delegates to the schema editor where <details> can't be corrupted;
+  // the v1 contenteditable path below is untouched and is the fallback if v2
+  // is off or open() fails. See xe2.js / memory project_xe_editor_rebuild.
+  if (window.XE2 && window.XE2.isEnabled() && window.XE2.open(cellStr, row, opts)) {
+    return;
+  }
+
   // (zip0168) Linkify URL patterns in existing ftext so the editor shows
   // clickable links. On save, the linkified HTML persists — old plain-text
   // URLs become anchor tags after the first edit-save cycle.
@@ -2251,6 +2259,9 @@ function textEditorPreviewSlide() {
 }
 
 function textEditorClose() {
+  // (dev0590) If the Xe v2 overlay is open, tear it down too — external closers
+  // (gridClose, Escape-nav) call textEditorClose and must close either editor.
+  if (window.XE2 && document.getElementById('xe2Overlay')) { try { window.XE2.close(); } catch (_) {} }
   // (dev0572) Cancel any pending type-autosave so it can't fire against a
   // torn-down editor / the next row opened after this one.
   clearTimeout(window._teAutosaveTimer);
