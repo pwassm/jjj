@@ -736,7 +736,8 @@ function _slideshowStart(allOrdered, opts) {
       if (e.target.closest('#slideshowReviewVid')) return;
       if (_slideshowState._touchActive) return;
       e.preventDefault();
-      down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null };
+      down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null,
+               ctrl: e.ctrlKey };
       zoomStarted = false; // (dev0268) reset per press
       zoomDelay = setTimeout(_startZoom, HOLD_MS);
     });
@@ -768,14 +769,21 @@ function _slideshowStart(allOrdered, opts) {
       const ms = Date.now() - down.t0;
       const mz = _ensureMZ();
       const heldZoom = zoomStarted; // (dev0268) snapshot before reset
+      const heldCtrl = (down && down.ctrl) || e.ctrlKey; // (dev0595) Ctrl+swipe
       down = null;
       const st = _slideshowState;
       if (wasDragging && mz.scale < 1.1) {
         const horiz = Math.abs(dx) > SWIPE_DX && Math.abs(dx) > Math.abs(dy) && ms < SWIPE_MS;
         const vert  = Math.abs(dy) > SWIPE_DX && Math.abs(dy) > Math.abs(dx) && ms < SWIPE_MS;
         if (horiz) {
-          // Horizontal swipe at ~1× → navigate. Pause (if any) persists.
-          _slideshowAdvance(dx > 0 ? -1 : +1);
+          if (heldCtrl && dx < 0) {
+            // (dev0595) Ctrl + right-to-left swipe exits the slideshow back to
+            // the previous screen (e.g. G). Plain R→L still advances a slide.
+            slideshowClose();
+          } else {
+            // Horizontal swipe at ~1× → navigate. Pause (if any) persists.
+            _slideshowAdvance(dx > 0 ? -1 : +1);
+          }
         } else if (vert && st && st.paused) {
           // (dev0268) Vertical drag on a paused, unzoomed slide toggles
           // the slideset between original and the current row's ftext
@@ -2583,7 +2591,9 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
   const rowCSS  = 'display:flex;align-items:center;justify-content:space-between;'
                 + 'padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);'
                 + 'gap:8px;';
-  const numCSS  = 'width:48px;padding:3px 5px;font-family:monospace;font-size:' + baseFs + 'px;'
+  // (dev0595) Wider box + a little left-shift of the centered text so the
+  // native up/down spinner no longer sits on top of the digits.
+  const numCSS  = 'width:64px;padding:3px 16px 3px 6px;font-family:monospace;font-size:' + baseFs + 'px;'
                 + 'background:#0a0a1a;border:1px solid #4af;color:#fff;border-radius:4px;'
                 + 'text-align:center;outline:none;';
   const selCSS  = 'padding:3px 6px;font-family:monospace;font-size:' + baseFs + 'px;'
@@ -2867,8 +2877,12 @@ function _slideshowWireMenu(menu) {
   function wireNum(id, key, min, max) {
     const el = menu.querySelector('#' + id);
     if (!el) return;
-    el.addEventListener('input', () => {
-      const v = parseFloat(el.value);
+    // Round to the input's step so wheel/keyboard nudges don't accumulate
+    // floating-point noise (e.g. 0.1 + 0.2 → 0.30000000000000004).
+    const step = parseFloat(el.step) || 1;
+    const decimals = (String(step).split('.')[1] || '').length;
+    // Shared commit path: clamp, persist, re-apply timing where relevant.
+    function commit(v) {
       if (isNaN(v)) return;
       const clamped = Math.max(min, Math.min(max, v));
       st.settings[key] = clamped;
@@ -2881,7 +2895,23 @@ function _slideshowWireMenu(menu) {
       // For slideSec changes, the current dwell timer is already scheduled —
       // the new value takes effect after the next advance. That matches user
       // expectations (current slide finishes its current dwell).
-    });
+    }
+    el.addEventListener('input', () => { commit(parseFloat(el.value)); });
+    // (dev0595) Wheel-over-box adjusts the value by one step (wheel up =
+    // increase, wheel down = decrease) without needing to click into the box.
+    // passive:false so preventDefault can stop the page/menu from scrolling.
+    el.addEventListener('wheel', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const base = parseFloat(el.value);
+      const cur  = isNaN(base) ? (st.settings[key] ?? min) : base;
+      const dir  = e.deltaY < 0 ? 1 : -1;
+      let next   = cur + dir * step;
+      next = Math.max(min, Math.min(max, next));
+      next = parseFloat(next.toFixed(decimals)); // kill FP drift
+      el.value = next;
+      commit(next);
+    }, { passive: false });
     // Stop bubble so clicks on the spinner don't dismiss the slideshow.
     el.addEventListener('click', e => e.stopPropagation());
     // (dev0362) Tapping the box (which pops the numpad on phones) clears it so

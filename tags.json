@@ -1059,7 +1059,7 @@
     "label": "Octopoda",
     "kind": "taxon",
     "parents": [
-      "cephalopoda"
+      "octopodidae"
     ],
     "rank": "order",
     "aliases": [
@@ -3199,7 +3199,8 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "blue whale"
+    "common": "blue whale",
+    "extinct": false
   },
   {
     "id": "balaenoptera",
@@ -6537,5 +6538,253 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "hypsopops-rubundicum",
+    "label": "Hypsopops rubundicum",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
+  },
+  {
+    "id": "pomacentridae",
+    "label": "Pomacentridae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "hypsypops",
+    "label": "Hypsypops",
+    "kind": "taxon",
+    "parents": [
+      "pomacentridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "hypsypops-rubicundus",
+    "label": "Hypsypops rubicundus",
+    "kind": "taxon",
+    "parents": [
+      "hypsypops"
+    ],
+    "aliases": [
+      "Hypsopops rubundicum"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "garibaldi"
+  },
+  {
+    "id": "oxyjulis",
+    "label": "Oxyjulis",
+    "kind": "taxon",
+    "parents": [
+      "labridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "oxyjulis-californica",
+    "label": "Oxyjulis californica",
+    "kind": "taxon",
+    "parents": [
+      "oxyjulis"
+    ],
+    "aliases": [
+      "Oxyjulis californicus"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "señorita",
+    "extinct": false
+  },
+  {
+    "id": "juv",
+    "label": "Juvenile",
+    "kind": "topic",
+    "parents": [
+      "stage"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "portrait",
+    "label": "Portrait",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "tendon",
+    "label": "Tendon",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "phaeophyceae",
+    "label": "Phaeophyceae",
+    "kind": "taxon",
+    "parents": [
+      "ochrophyta"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "laminariales",
+    "label": "Laminariales",
+    "kind": "taxon",
+    "parents": [
+      "phaeophyceae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "laminariaceae",
+    "label": "Laminariaceae",
+    "kind": "taxon",
+    "parents": [
+      "laminariales"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "macrocystis",
+    "label": "Macrocystis",
+    "kind": "taxon",
+    "parents": [
+      "laminariaceae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "macrocystis-pyrifera",
+    "label": "Macrocystis pyrifera",
+    "kind": "taxon",
+    "parents": [
+      "macrocystis"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "giant kelp",
+    "extinct": false
+  },
+  {
+    "id": "enteroctopus-dofleini",
+    "label": "Enteroctopus dofleini",
+    "kind": "taxon",
+    "parents": [
+      "enteroctopus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "giant Pacific octopus",
+    "extinct": false
+  },
+  {
+    "id": "enteroctopodidae",
+    "label": "Enteroctopodidae",
+    "kind": "taxon",
+    "parents": [
+      "octopoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "enteroctopus",
+    "label": "Enteroctopus",
+    "kind": "taxon",
+    "parents": [
+      "enteroctopodidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "hatchling",
+    "label": "Hatchling",
+    "kind": "topic",
+    "parents": [
+      "stage"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "stage",
+    "label": "Stage",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "octopus-pallidus",
+    "label": "Octopus pallidus",
+    "kind": "taxon",
+    "parents": [
+      "octopoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "pale octopus",
+    "extinct": false
+  },
+  {
+    "id": "thoracica",
+    "label": "Thoracica",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "class",
+    "common": "barnacle",
+    "extinct": false
+  },
+  {
+    "id": "pollicipes",
+    "label": "Pollicipes",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "acorn barnacle",
+    "extinct": false
   }
 ]
