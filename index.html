@@ -427,6 +427,17 @@ html.locked-mode #vp-close { display: none !important; }
    Inline headings share the marker's line in every render context. */
 summary > h1, summary > h2, summary > h3,
 summary > h4, summary > h5, summary > h6 { display: inline; }
+/* (dev0593) No list markers or 40px indent in any RENDER context, matching the
+   Xe editor (xe.js dev0379). Pasted answers keep their <ul>/<li>, and a
+   select-all delete can leave empty <li> spacers; the editor hides both but the
+   grid / Xs / fullscreen render did not, so bullets and a big left margin
+   appeared only once rendered. One rule across every context fixes that. */
+#teEditor ul, #teEditor ol,
+#teSlideContent ul, #teSlideContent ol,
+.grid-cell ul, .grid-cell ol,
+#gridFsContent ul, #gridFsContent ol { list-style: none; margin: 8px 0; padding-left: 0; }
+#teEditor li, #teSlideContent li,
+.grid-cell li, #gridFsContent li { list-style: none; margin: 0 0 4px; }
 /* (dev0592) Consistent heading ladder in grid thumbnails + details indent under
    a centered summary, matching the Xs slide render (same em values, and a
    centered-summary details block shrinks to content width so the body left-aligns
@@ -983,7 +994,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0592';
+  window.HELP_VERSION_STR = 'dev0593';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','xe2-bundle.js','xe2.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];

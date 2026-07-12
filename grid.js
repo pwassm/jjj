@@ -352,6 +352,23 @@ function _gridSectionSetup(cell, wrap, inner, row) {
   let host = tmp, slideWrap = null;
   const only = tmp.children.length === 1 ? tmp.children[0] : null;
   if (only && only.classList && only.classList.contains('te-slide')) { host = only; slideWrap = only; }
+  // (dev0593) Hoist any section-divider <hr> that a wrapper swallowed up to a
+  // direct child of host, so the top-level split below still sees it. A
+  // select-all delete in Xe can leave a stray <h1>/<div> that later absorbs the
+  // ══ divider (<h1><div><hr></div></h1>); without this the divider is invisible
+  // to the splitter and the whole slide collapses into one section. Skip <hr>
+  // inside <details> (those are in-body rules, not section breaks). Unwrapping
+  // an ancestor preserves child order, so content on either side of the divider
+  // lands in the correct section.
+  host.querySelectorAll('hr').forEach(hr => {
+    if (hr.closest('details')) return;
+    let guard = 0;
+    while (hr.parentNode && hr.parentNode !== host && guard++ < 30) {
+      const p = hr.parentNode, pp = p.parentNode;
+      while (p.firstChild) pp.insertBefore(p.firstChild, p);
+      pp.removeChild(p);
+    }
+  });
   const sections = [];
   let cur = [];
   const flush = () => {

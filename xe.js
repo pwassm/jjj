@@ -1487,6 +1487,58 @@ function textEditorSave() {
   toast('✓ Saved ' + (_slideField ? 'text slide' : _textEditorField), 1000);
 }
 
+// (dev0593) Repair the structural corruption contenteditable produces when a
+// select-all + Backspace leaves a stray empty block (typically an <h1>) that
+// then swallows everything the user types or pastes after it. Three idempotent
+// fixes, run on every save so the damage self-heals and can't reach the render:
+//   1. Unwrap headings that (illegally) contain block content. A heading is
+//      phrasing-only, so <h1><ul>…</h1> or <h1><div><hr></h1> is always damage;
+//      unwrapping frees the trapped content AND surfaces any buried <hr>.
+//   2. Hoist section-divider <hr>s (outside <details>) up to a direct child of
+//      the slide root, so the grid section-splitter — which only breaks at a
+//      top-level <hr> — sees dividers a wrapper had swallowed.
+//   3. Drop empty leftovers (list spacers, empty headings/wrappers) with no
+//      text or media. Intentional blank lines carry a <br> and are preserved.
+function _teNormalizeSlideDom(rootEl) {
+  if (!rootEl) return;
+  const BLOCK = new Set(['UL','OL','LI','DIV','DETAILS','HR','TABLE','BLOCKQUOTE',
+    'P','H1','H2','H3','H4','H5','H6']);
+  const unwrap = (el) => {
+    const p = el.parentNode; if (!p) return;
+    while (el.firstChild) p.insertBefore(el.firstChild, el);
+    p.removeChild(el);
+  };
+  // 1. Unwrap block-holding headings (repeat for nested cases, guarded).
+  let pass = 0;
+  while (pass++ < 8) {
+    const bad = Array.from(rootEl.querySelectorAll('h1,h2,h3,h4,h5,h6'))
+      .filter(h => Array.from(h.children).some(c => BLOCK.has(c.tagName)));
+    if (!bad.length) break;
+    bad.forEach(unwrap);
+  }
+  // Slide root = the .te-slide colour wrapper when it's the sole element child.
+  const kids = Array.from(rootEl.children);
+  const root = (kids.length === 1 && kids[0].classList &&
+                kids[0].classList.contains('te-slide')) ? kids[0] : rootEl;
+  // 2. Hoist buried section dividers to top level (unwrap preserves order).
+  root.querySelectorAll('hr').forEach(hr => {
+    if (hr.closest('details')) return;
+    let guard = 0;
+    while (hr.parentNode && hr.parentNode !== root && guard++ < 30) unwrap(hr.parentNode);
+  });
+  // 3. Remove empty leftovers — no text, no media, no <br> line-break.
+  const isEmpty = (el) => !el.textContent.trim() &&
+    !el.querySelector('img,video,br,hr,details,table,a');
+  let changed = true, guard = 0;
+  while (changed && guard++ < 20) {
+    changed = false;
+    root.querySelectorAll('li,ul,ol,p,div,span,h1,h2,h3,h4,h5,h6').forEach(el => {
+      if (el === root) return;
+      if (isEmpty(el)) { el.remove(); changed = true; }
+    });
+  }
+}
+
 // (zip0134/0135) Walk the editor DOM and remove malformed <details>
 // elements that contenteditable can produce. Only removes ones with NO
 // <summary> child at all — that's the "stray <details><p></p></details>"
@@ -1494,6 +1546,7 @@ function textEditorSave() {
 // may have just inserted a fresh collapsible and not yet typed in it.
 function _sanitizeTextEditorHtml(rootEl) {
   if (!rootEl) return;
+  _teNormalizeSlideDom(rootEl);   // (dev0593) repair select-all-delete corruption first
   const allDetails = rootEl.querySelectorAll('details');
   allDetails.forEach(d => {
     const summaries = d.querySelectorAll(':scope > summary');
