@@ -283,7 +283,9 @@
       '#xe2Overlay .xe2-btn:hover{background:#33335f;border-color:#6af;}',
       '#xe2Editor{flex:1;overflow:auto;padding:22px 26px;color:#eee;font-size:18px;line-height:1.5;outline:none;}',
       '#xe2Editor .ProseMirror{outline:none;min-height:100%;}',
-      '#xe2Editor h1{font-size:1.9em;} #xe2Editor h2{font-size:1.55em;} #xe2Editor h3{font-size:1.3em;}',
+      // (dev0591) Flat text size — headings match the body size, keep bold so the
+      // H-buttons still visibly change the text. Mirrors the Xs/iframe/grid render.
+      '#xe2Editor h1,#xe2Editor h2,#xe2Editor h3,#xe2Editor h4,#xe2Editor h5,#xe2Editor h6{font-size:1em;font-weight:bold;}',
       '#xe2Editor details{border-left:3px solid #6af;padding:2px 0 2px 12px;margin:8px 0;background:rgba(90,140,220,0.06);}',
       '#xe2Editor summary{cursor:text;font-weight:bold;color:#9cf;list-style:none;}',
       '#xe2Editor summary::-webkit-details-marker{display:none;}',

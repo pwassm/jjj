@@ -203,25 +203,19 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor a, #teSlideContent a { color:#5bf !important; }
     /* (dev0246) Summary text/links — explicit color so anchors-only summaries
        don't render as black-on-dark in any preview context. */
-    /* (dev0587) Editor shows REAL heading sizes so H1–H6 / P / sm visibly change
-       the on-screen font. dev0379 had flattened everything in #teEditor to 18px
-       !important "for now", which made those toolbar buttons look like no-ops
-       (the tag changed but nothing on screen did). Base text (p/div/summary/li/
-       span) stays white 18px; headings scale up + bold, roughly matching the
-       rendered slide. Only #teEditor is touched; #teSlideContent keeps its CSS. */
+    /* (dev0591) Uniform text size: every heading renders at the body size (18px)
+       so a slide reads as one flat size. dev0587 had scaled H1–H6 UP in the editor
+       to match the old rendered-slide ladder; that ladder is now removed in every
+       context (editor + Xs + iframe + grid) per user request. Headings keep BOLD
+       (+ tint colors in the slide render) so the H-buttons still visibly change
+       something — only the SIZE is flattened. */
     #teSlideContent summary, #teSlideContent summary a { color:#8ef !important; }
     #teEditor p, #teEditor div, #teEditor summary, #teEditor li, #teEditor span {
       font-size:18px; font-weight:normal; color:#fff;
     }
     #teEditor h1, #teEditor h2, #teEditor h3, #teEditor h4, #teEditor h5, #teEditor h6 {
-      color:#fff; font-weight:bold; margin:0 0 8px; line-height:1.25;
+      color:#fff; font-weight:bold; margin:0 0 8px; line-height:1.25; font-size:18px;
     }
-    #teEditor h1 { font-size:34px; }
-    #teEditor h2 { font-size:28px; }
-    #teEditor h3 { font-size:23px; }
-    #teEditor h4 { font-size:20px; }
-    #teEditor h5 { font-size:16px; }
-    #teEditor h6 { font-size:14px; }
     #teEditor small { font-size:0.8em; opacity:0.85; }
     #teEditor a, #teEditor summary a { color:#5bf !important; }
     #teSlideContent small { font-size:0.8em; opacity:0.85; }
@@ -2176,12 +2170,14 @@ function textEditorPreviewSlide() {
       #teSlideContent table{border-collapse:collapse;margin:12px 0;max-width:100%;}
       #teSlideContent th,#teSlideContent td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}
       #teSlideContent th{font-weight:bold;}
-      #teSlideContent h3{font-size:1.25em;color:#9ef;}
-      #teSlideContent h4{font-size:1.1em;color:#adf;}
-      #teSlideContent h5{font-size:1em;color:#bdf;}
-      #teSlideContent h6{font-size:0.9em;color:#cdf;}
+      #teSlideContent h1,#teSlideContent h2,#teSlideContent h3,#teSlideContent h4,#teSlideContent h5,#teSlideContent h6{font-size:1em;font-weight:bold;margin:0 0 8px;}
+      #teSlideContent h3{color:#9ef;} #teSlideContent h4{color:#adf;} #teSlideContent h5{color:#bdf;} #teSlideContent h6{color:#cdf;}
       #teSlideContent hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;}
-      #teSlideContent small{font-size:0.8em;opacity:0.85;}</style>
+      #teSlideContent small{font-size:0.8em;opacity:0.85;}
+      /* (dev0591) Details under a centered summary: shrink the block to its
+         content width and center it so the body left-aligns under the ▼ arrow
+         (the summary keeps its inline text-align:center). */
+      #teSlideContent details:has(> summary[style*="center"]){width:fit-content;max-width:100%;margin:8px auto;text-align:left;}</style>
     <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:64px;
          display:flex;align-items:center;justify-content:space-between;
          padding:0 16px;background:#3a4d75;border-bottom:2px solid #6af;">

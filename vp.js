@@ -1546,6 +1546,14 @@ function gridOpenFullscreen(row, contained) {
           + 'table{border-collapse:collapse;margin:12px 0;max-width:100%;}'
           + 'th,td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}'
           + 'th{font-weight:bold;}'
+          // (dev0591) Uniform text size — headings render at the body size, keep
+          // bold. This iframe has its OWN document; the global index.html rules
+          // (heading flatten, summary>h font inline) don't reach it, so re-declare.
+          + 'h1,h2,h3,h4,h5,h6{font-size:1em;font-weight:bold;margin:0 0 8px;}'
+          + 'summary>h1,summary>h2,summary>h3,summary>h4,summary>h5,summary>h6{display:inline;}'
+          // (dev0591) Details under a centered summary: shrink+center the block so
+          // the body left-aligns under the ▼ arrow instead of running full width.
+          + 'details:has(> summary[style*="center"]){width:fit-content;max-width:100%;margin:8px auto;text-align:left;}'
           + 'summary{color:#2563eb!important;background:transparent!important;font-weight:bold;}'
           + 'summary a,summary a:visited{color:#2563eb!important;text-decoration:underline;}';
         const _aStyle = '<style>' + _ftStyles + '</style>';
