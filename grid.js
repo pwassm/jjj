@@ -1815,15 +1815,19 @@ function gridWireInteractor(interactor, cell, cellStr) {
     
     if (didHold) { didHold = false; return; }
     
-    // Swipe RIGHT → VP / fullscreen image
+    // Swipe RIGHT → VP / fullscreen image. (dev0587) In dev mode a forward-swipe
+    // on a text cell opens the Xe editor instead — same routing as double-click
+    // (_runDoubleTapAction sends quiz→fullscreen, text→editor). Video/image/IG
+    // rows are not text rows, so they still go fullscreen.
     if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
-        gridOpenFullscreen(cell._rowData);
+        if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
+        else gridOpenFullscreen(cell._rowData);
       }
       return;
     }
-    
+
     // Swipe LEFT → pause video
     if (dx < -40 && Math.abs(dy) < Math.abs(dx)) {
       gridTogglePauseCell(cellStr);
@@ -1949,11 +1953,13 @@ function gridWireInteractor(interactor, cell, cellStr) {
   // this intentionally does NOT handle hold-to-cut or right-click —
   // those only apply on devices with proper pointer/contextmenu events.
   function _dispatchGesture(dx, dy, ms, endX, endY) {
-    // Swipe RIGHT → fullscreen view
+    // Swipe RIGHT → fullscreen view. (dev0587) Dev-mode forward-swipe on a text
+    // cell opens Xe (same as double-click), mirroring the pointer path above.
     if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
-        gridOpenFullscreen(cell._rowData);
+        if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
+        else gridOpenFullscreen(cell._rowData);
       }
       return;
     }
@@ -2055,9 +2061,16 @@ function gridWireInteractor(interactor, cell, cellStr) {
       } else if (_gridIsTextRow(row)) {
         // (dev0581) Was `row.ftext || row.VidRange==='text'`, which missed a blank
         // Shift+T text row (empty ftext) — _gridIsTextRow now covers ltype='t' too.
+        // (dev0587) Mark the return-to-grid flag so Xe's close path calls
+        // gridShow() and the edited cell repaints. Without it, Xe closed and the
+        // grid overlay (never hidden) just reappeared showing the STALE cell.
+        _lastGridRow = row;
+        _cameFromGrid = true;
         gridOpenTextEditor(cellS, row);
       }
     } else {
+      // (dev0587) New text row from an empty cell — same fresh-grid return.
+      _cameFromGrid = true;
       gridOpenTextEditor(cellS, null);
     }
   }

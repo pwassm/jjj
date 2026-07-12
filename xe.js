@@ -195,17 +195,26 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor a, #teSlideContent a { color:#5bf !important; }
     /* (dev0246) Summary text/links — explicit color so anchors-only summaries
        don't render as black-on-dark in any preview context. */
-    /* (dev0379) Editor view: uniform WHITE text at one size for the summary,
-       every detail line, and any text outside a details block. Headings keep
-       their meaning in the saved HTML and in the rendered slide/site — this only
-       flattens how they LOOK while editing ("for now", per the user). Only
-       #teEditor is touched; the #teSlideContent preview keeps its own styling. */
+    /* (dev0587) Editor shows REAL heading sizes so H1–H6 / P / sm visibly change
+       the on-screen font. dev0379 had flattened everything in #teEditor to 18px
+       !important "for now", which made those toolbar buttons look like no-ops
+       (the tag changed but nothing on screen did). Base text (p/div/summary/li/
+       span) stays white 18px; headings scale up + bold, roughly matching the
+       rendered slide. Only #teEditor is touched; #teSlideContent keeps its CSS. */
     #teSlideContent summary, #teSlideContent summary a { color:#8ef !important; }
-    #teEditor h1, #teEditor h2, #teEditor h3, #teEditor h4, #teEditor h5, #teEditor h6,
     #teEditor p, #teEditor div, #teEditor summary, #teEditor li, #teEditor span {
-      font-size:18px !important; font-weight:normal !important; color:#fff !important;
+      font-size:18px; font-weight:normal; color:#fff;
     }
-    #teEditor h1, #teEditor h2, #teEditor h3, #teEditor h4, #teEditor h5, #teEditor h6 { margin:0 0 8px; }
+    #teEditor h1, #teEditor h2, #teEditor h3, #teEditor h4, #teEditor h5, #teEditor h6 {
+      color:#fff; font-weight:bold; margin:0 0 8px; line-height:1.25;
+    }
+    #teEditor h1 { font-size:34px; }
+    #teEditor h2 { font-size:28px; }
+    #teEditor h3 { font-size:23px; }
+    #teEditor h4 { font-size:20px; }
+    #teEditor h5 { font-size:16px; }
+    #teEditor h6 { font-size:14px; }
+    #teEditor small { font-size:0.8em; opacity:0.85; }
     #teEditor a, #teEditor summary a { color:#5bf !important; }
     #teSlideContent small { font-size:0.8em; opacity:0.85; }
     #teEditor p { margin:0 0 8px; }
@@ -466,6 +475,14 @@ function gridOpenTextEditor(cellStr, row, opts) {
       while (enclosing.firstChild) parent.insertBefore(enclosing.firstChild, enclosing);
       parent.removeChild(enclosing);
       ed.focus();
+      return;
+    }
+    // (dev0587) extractContents() across a collapsible boundary splits the
+    // <details>, leaving a summary-less fragment the save-time sanitizer then
+    // deletes — the hidden body vanishes. Refuse when the selection only
+    // partly overlaps a details (fully-inside is safe).
+    if (_teRangePartlyCrossesDetails(ed, range)) {
+      if (typeof toast === 'function') toast('Selection crosses a collapsible block — select inside it', 2400);
       return;
     }
     const frag = range.extractContents();
@@ -1597,6 +1614,20 @@ function _teNearestBlock(ed, node) {
   return null;
 }
 
+// (dev0587) True when the range enters or exits a <details> — i.e. it overlaps
+// one without fully containing both endpoints. Such a selection can't be
+// extractContents()'d or native-formatBlock'd without splitting the collapsible
+// (which the save sanitizer then deletes, losing the hidden body). A selection
+// wholly inside one details is safe and returns false.
+function _teRangePartlyCrossesDetails(ed, range) {
+  const ds = ed.querySelectorAll('details');
+  for (const d of ds) {
+    if (!range.intersectsNode(d)) continue;
+    if (!d.contains(range.startContainer) || !d.contains(range.endContainer)) return true;
+  }
+  return false;
+}
+
 // A heading inside a <summary> still belongs to the summary — never re-tag it
 // directly (that yields invalid <summary><p>…). Snap such a block up to its
 // enclosing <summary> so the summary path handles it.
@@ -1658,7 +1689,16 @@ function _teFormatBlock(tag) {
   const endEl   = range.endContainer.nodeType === 3   ? range.endContainer.parentNode   : range.endContainer;
   const b1 = _teSnapToSummary(ed, _teNearestBlock(ed, startEl));
   const b2 = _teSnapToSummary(ed, _teNearestBlock(ed, endEl));
-  const inDetails = !!((startEl.closest && startEl.closest('details')) ||
+  // (dev0587) A <details> ANYWHERE in the range — not just under an endpoint —
+  // must block the native path. Selecting across a whole collapsible (e.g. an
+  // intro line + a details below it, then H1) left both endpoints OUTSIDE any
+  // details, so the old endpoint-only check took the native branch;
+  // execCommand('formatBlock') then mangled the details into a summary-less
+  // block and the save-time sanitizer DELETED it — the hidden body was lost.
+  let rangeHitsDetails = false;
+  ed.querySelectorAll('details').forEach(d => { if (range.intersectsNode(d)) rangeHitsDetails = true; });
+  const inDetails = rangeHitsDetails
+                 || !!((startEl.closest && startEl.closest('details')) ||
                        (endEl.closest && endEl.closest('details')));
   const summaryTouched = (b1 && b1.tagName === 'SUMMARY') || (b2 && b2.tagName === 'SUMMARY');
 
