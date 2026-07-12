@@ -911,15 +911,17 @@ function gridOpenTextEditor(cellStr, row, opts) {
         const endContainer = range.endContainer;
         // Find the nearest top-level <details> ancestor of the end of the
         // selection, then place the caret just after it.
-        let anchor = endContainer;
+        let anchor = endContainer, aDetails = null;
         while (anchor && anchor !== ed) {
-          if (anchor.nodeType === 1 && anchor.tagName === 'DETAILS' && anchor.parentNode === ed) break;
+          if (anchor.nodeType === 1 && anchor.tagName === 'DETAILS') aDetails = anchor;  // (dev0589) outermost
           anchor = anchor.parentNode;
         }
-        if (anchor && anchor.parentNode === ed) {
+        if (aDetails) {
           const p = document.createElement('p');
           p.appendChild(document.createElement('br'));
-          ed.insertBefore(p, anchor.nextSibling);
+          // (dev0589) Sibling of the details in its own parent (may be a
+          // .te-slide color wrapper), not forced to be a direct child of ed.
+          aDetails.parentNode.insertBefore(p, aDetails.nextSibling);
           const r = document.createRange();
           r.setStart(p, 0); r.collapse(true);
           sel.removeAllRanges(); sel.addRange(r);
@@ -942,15 +944,16 @@ function gridOpenTextEditor(cellStr, row, opts) {
         if (n.nodeType === 1 && n.tagName === 'DETAILS') details = n;
         n = n.parentNode;
       }
-      // Climb to the top-level <details> (a direct child of the editor).
-      let top = details;
-      while (top && top.parentNode && top.parentNode !== ed) top = top.parentNode;
-      if (top && top.parentNode === ed) {
+      // (dev0589) Insert the blank line as a sibling of the outermost <details>
+      // in ITS OWN parent (which may be a .te-slide color wrapper, not the
+      // editor). The old "must be a direct child of ed" guard failed inside a
+      // wrapper and dropped the line at the very top of the whole slide.
+      if (details) {
         e.preventDefault(); e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
         const p = document.createElement('p');
         p.appendChild(document.createElement('br'));
-        ed.insertBefore(p, top);
+        details.parentNode.insertBefore(p, details);
         const r = document.createRange();
         r.setStart(p, 0); r.collapse(true);
         sel.removeAllRanges(); sel.addRange(r);
@@ -963,15 +966,17 @@ function gridOpenTextEditor(cellStr, row, opts) {
       let n = range.startContainer;
       let details = null;
       while (n && n !== ed) {
-        if (n.nodeType === 1 && n.tagName === 'DETAILS') { details = n; break; }
+        if (n.nodeType === 1 && n.tagName === 'DETAILS') details = n;  // (dev0589) outermost
         n = n.parentNode;
       }
-      if (details && details.parentNode === ed) {
+      // (dev0589) Sibling of the outermost <details> in its own parent — works
+      // whether that parent is the editor or a .te-slide color wrapper.
+      if (details) {
         e.preventDefault(); e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
         const p = document.createElement('p');
         p.appendChild(document.createElement('br'));
-        ed.insertBefore(p, details.nextSibling);
+        details.parentNode.insertBefore(p, details.nextSibling);
         const r = document.createRange();
         r.setStart(p, 0); r.collapse(true);
         sel.removeAllRanges(); sel.addRange(r);
@@ -1492,11 +1497,16 @@ function _teInsertLineAroundDetails(where) {
     if (typeof toast === 'function') toast('Put the cursor inside a detail block first', 1800);
     return;
   }
-  let top = details;
-  while (top.parentNode && top.parentNode !== ed) top = top.parentNode;
+  // (dev0589) Insert as a sibling of the <details> in ITS OWN parent — not as
+  // a child of the editor. When the slide carries a .te-slide color/background
+  // wrapper, every block (incl. this <details>) lives INSIDE that single
+  // wrapper; climbing to the editor's direct child then dropped the blank line
+  // before the whole wrapper (top of everything) or after it (END of the text)
+  // instead of immediately above/below the detail block.
+  const parent = details.parentNode;
   const p = document.createElement('p');
   p.appendChild(document.createElement('br'));
-  ed.insertBefore(p, where === 'before' ? top : top.nextSibling);
+  parent.insertBefore(p, where === 'before' ? details : details.nextSibling);
   const r = document.createRange();
   r.setStart(p, 0); r.collapse(true);
   sel.removeAllRanges(); sel.addRange(r);
