@@ -1649,7 +1649,10 @@ function _teSetSummaryHeading(summary, tag) {
     ':scope > h1,:scope > h2,:scope > h3,:scope > h4,:scope > h5,:scope > h6');
   if (/^H[1-6]$/i.test(tag)) {
     const h = document.createElement(tag);
-    h.setAttribute('style', 'margin:0');
+    // (dev0588) display:inline keeps the title on the marker's line — a block
+    // heading wraps below the inside-positioned ▶/▼ marker (see index.html rule).
+    // Carried inline so saved ftext renders right outside this stylesheet too.
+    h.setAttribute('style', 'margin:0;display:inline');
     if (inner) { while (inner.firstChild) h.appendChild(inner.firstChild); summary.replaceChild(h, inner); }
     else { while (summary.firstChild) h.appendChild(summary.firstChild); summary.appendChild(h); }
   } else if (inner) {

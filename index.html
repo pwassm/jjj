@@ -420,6 +420,13 @@ html.locked-mode #vp-close { display: none !important; }
 #gridFsContent summary, #gridFsContent summary a {
   color: #8ef !important;
 }
+/* (dev0588) Keep a heading-styled summary title on the SAME line as the ▶/▼
+   disclosure marker. <summary> defaults to list-style-position:inside, so a
+   block-level h1-h6 child wraps below the inline marker — the marker sat
+   alone on line 1 with the (now larger, dev0587) title displaced to line 2.
+   Inline headings share the marker's line in every render context. */
+summary > h1, summary > h2, summary > h3,
+summary > h4, summary > h5, summary > h6 { display: inline; }
 /* Same for centered-image wrapper divs we generate */
 #teEditor div[style*="text-align:center"],
 #teSlideContent div[style*="text-align:center"],
@@ -963,7 +970,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0587';
+  window.HELP_VERSION_STR = 'dev0588';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];

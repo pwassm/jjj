@@ -434,6 +434,25 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
+  // (dev0588) Arrow keys while G is open (and no V-fullscreen, Xe, or Xs on
+  // top — the slideshow/dictionary/video-editor overlays already bailed above)
+  // drive the SECTIONED 1a text slide: ←/→ = previous/next section, ↓/↑ =
+  // expand/collapse its collapsibles. _gridSectionKey returns false when 1a
+  // isn't a sectioned text cell, so the arrows stay inert there as before.
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')
+      && !e.shiftKey) {
+    const gOpenAr  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenAr = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpenAr && !vpOpenAr
+        && !document.getElementById('textEditorOverlay')
+        && !document.getElementById('teSlideOverlay')) {
+      if (typeof window._gridSectionKey === 'function' && window._gridSectionKey(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    }
+  }
   // (dev0447) S opens the St staging screen — but Xe (text editor) uses bare 's'
   // for save, so don't forward 's' to the dispatcher while Xe is open; let it
   // reach xe.js. (Slideshow / Dictionary / Video-editor already bail entirely

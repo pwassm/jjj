@@ -296,6 +296,8 @@ function fitGridIgFrame(cellEl, iframe) {
 
 function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
   const VIRT_W = 600;
+  // (dev0588) The sectioned 1a text cell mutates innerEl (section switch,
+  // details toggle) and needs to re-measure — park the fit closure on the cell.
   function fit() {
     if (!cellEl.isConnected) return;
     const cw = cellEl.clientWidth;
@@ -316,6 +318,7 @@ function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
     innerEl.style.left = offX + 'px';
     innerEl.style.top  = offY + 'px';
   }
+  cellEl._htmlThumbFit = fit;
   // First fit happens on the next animation frame (the grid is mid-
   // build at this point and cells haven't been measured yet). A second
   // pass at 0ms catches images that load asynchronously and resize
@@ -328,6 +331,119 @@ function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
     ro.observe(cellEl);
   }
 }
+
+// ── (dev0588) Sectioned text slide in cell 1a ───────────────────────────────
+// A text slide (ltype 't' / VidRange 'text') sitting on grid cell 1a renders
+// in SECTIONS: the ftext splits at each top-level <hr> and only the current
+// section shows — the portion above the first separator at start — with every
+// <details> collapsed. Interactions (both modes; arrows arrive from core.js's
+// window-capture dispatcher via window._gridSectionKey):
+//   tap a summary line → toggle that one collapsible open/closed
+//   → / ←              → next / previous section
+//   ↓ / ↑              → expand / collapse every collapsible in the section
+// Every other cell keeps the whole-document thumbnail.
+function _gridSectionSetup(cell, wrap, inner, row) {
+  const html = (typeof renderFtext === 'function') ? renderFtext(row.ftext) : (row.ftext || '');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  // A slide saved with a .te-slide color wrapper keeps that wrapper on each
+  // section, so the bg/text colors survive the split (and
+  // _gridThumbApplySlideColors still finds it).
+  let host = tmp, slideWrap = null;
+  const only = tmp.children.length === 1 ? tmp.children[0] : null;
+  if (only && only.classList && only.classList.contains('te-slide')) { host = only; slideWrap = only; }
+  const sections = [];
+  let cur = [];
+  const flush = () => {
+    if (!cur.length) return;
+    const box = document.createElement('div');
+    cur.forEach(n => box.appendChild(n));
+    if (!box.textContent.trim() && !box.querySelector('img,video,details,table')) { cur = []; return; }
+    if (slideWrap) {
+      const w = slideWrap.cloneNode(false);
+      w.innerHTML = box.innerHTML;
+      sections.push(w.outerHTML);
+    } else {
+      sections.push(box.innerHTML);
+    }
+    cur = [];
+  };
+  Array.from(host.childNodes).forEach(n => {
+    if (n.nodeType === 1 && n.tagName === 'HR') flush();
+    else cur.push(n);
+  });
+  flush();
+  if (!sections.length) sections.push(html);
+  cell._salSect = { list: sections, idx: 0, inner: inner };
+  // Re-fit whenever a collapsible toggles ('toggle' doesn't bubble — capture).
+  inner.addEventListener('toggle', () => { if (cell._htmlThumbFit) cell._htmlThumbFit(); }, true);
+  _gridSectionRender(cell);
+}
+
+function _gridSectionRender(cell) {
+  const s = cell._salSect;
+  if (!s) return;
+  s.inner.innerHTML = s.list[s.idx] || '';
+  // Start collapsed — a tap on the summary (or ↓) reveals the hidden body.
+  s.inner.querySelectorAll('details[open]').forEach(d => d.removeAttribute('open'));
+  if (cell._htmlThumbFit) requestAnimationFrame(cell._htmlThumbFit);
+}
+
+// Which <summary> sits under viewport point (x,y) in this cell? Cell content
+// is pointer-events:none BELOW the interactor, and elementFromPoint skips
+// pointer-events:none targets — so momentarily flip both, probe, restore.
+function _gridSectionSummaryAt(cell, x, y) {
+  const s = cell._salSect;
+  if (!s || !s.inner.isConnected) return null;
+  const wrap = s.inner.parentNode;
+  const inter = cell.querySelector('.grid-interactor');
+  const pw = wrap.style.pointerEvents, pi = inter ? inter.style.pointerEvents : '';
+  wrap.style.pointerEvents = 'auto';
+  if (inter) inter.style.pointerEvents = 'none';
+  const el = document.elementFromPoint(x, y);
+  wrap.style.pointerEvents = pw || 'none';
+  if (inter) inter.style.pointerEvents = pi;
+  const sum = (el && el.closest) ? el.closest('summary') : null;
+  return (sum && cell.contains(sum)) ? sum : null;
+}
+
+function _gridSectionToggleSummary(cell, sum) {
+  const d = sum.closest('details');
+  if (!d) return;
+  if (d.hasAttribute('open')) d.removeAttribute('open');
+  else d.setAttribute('open', '');
+  if (cell._htmlThumbFit) cell._htmlThumbFit();
+}
+
+// Arrow-key section nav for the 1a text slide — called from core.js's
+// window-capture dispatcher while G is open. Returns true when consumed;
+// false (1a isn't a sectioned text cell) leaves arrows inert as before.
+window._gridSectionKey = function (key) {
+  const cell = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
+  if (!cell || !cell._salSect || !cell._salSect.inner.isConnected) return false;
+  const s = cell._salSect;
+  if (key === 'ArrowRight' || key === 'ArrowLeft') {
+    const dir = key === 'ArrowRight' ? 1 : -1;
+    const ni = s.idx + dir;
+    if (ni < 0 || ni >= s.list.length) {
+      _gridToast(dir > 0 ? 'Last section' : 'First section', 900);
+      return true;
+    }
+    s.idx = ni;
+    _gridSectionRender(cell);
+    if (s.list.length > 1) _gridToast('Section ' + (ni + 1) + '/' + s.list.length, 900);
+    return true;
+  }
+  if (key === 'ArrowDown' || key === 'ArrowUp') {
+    const open = key === 'ArrowDown';
+    s.inner.querySelectorAll('details').forEach(d => {
+      if (open) d.setAttribute('open', ''); else d.removeAttribute('open');
+    });
+    if (cell._htmlThumbFit) cell._htmlThumbFit();
+    return true;
+  }
+  return false;
+};
 
 // Update visual state of T / C source buttons
 function gridUpdateSourceBtns() {
@@ -1254,7 +1370,10 @@ function gridShow() {
           inner.style.cssText = 'position:absolute;top:0;left:0;width:600px;'
             + 'transform-origin:top left;font-family:Arial,sans-serif;'
             + 'color:#222;padding:16px;box-sizing:border-box;';
-          inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
+          // (dev0588) Cell 1a renders SECTIONED (split at <hr>, details
+          // collapsed, arrow/tap nav); every other cell keeps the full thumb.
+          if (cellStr === '1a') _gridSectionSetup(cell, wrap, inner, row);
+          else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
           _ensureGridThumbTableCss();
           _gridThumbApplySlideColors(wrap, inner);
           wrap.appendChild(inner);
@@ -1520,6 +1639,7 @@ function gridUpdateCell(cellStr, row) {
   // Remove old content (but keep interactor)
   const interactor = cellEl.querySelector('.grid-interactor');
   cellEl.innerHTML = '';
+  cellEl._salSect = null;   // (dev0588) drop stale section state on content swap
   
   if (row) {
     cellEl._rowData = row;
@@ -1566,7 +1686,9 @@ function gridUpdateCell(cellStr, row) {
       inner.style.cssText = 'position:absolute;top:0;left:0;width:600px;'
         + 'transform-origin:top left;font-family:Arial,sans-serif;'
         + 'color:#222;padding:16px;box-sizing:border-box;';
-      inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
+      // (dev0588) Cell 1a renders SECTIONED — same as gridShow's branch.
+      if (cellStr === '1a') _gridSectionSetup(cellEl, wrap, inner, row);
+      else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
       _ensureGridThumbTableCss();
       _gridThumbApplySlideColors(wrap, inner);
       wrap.appendChild(inner);
@@ -1867,7 +1989,16 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       
       if (cell._rowData) _lastGridRow = cell._rowData;
-      
+
+      // (dev0588) Tap on a summary line of the sectioned 1a text slide toggles
+      // that collapsible (both modes). Reset the double-tap clock so click-click
+      // on a summary keeps toggling instead of ALSO opening the editor —
+      // double-click on any non-summary part of the cell still edits.
+      if (cell._salSect) {
+        const _sum = _gridSectionSummaryAt(cell, e.clientX, e.clientY);
+        if (_sum) { _gridSectionToggleSummary(cell, _sum); _lastShortTapT = 0; return; }
+      }
+
       // (zip0142) Manual double-tap detection. Calling preventDefault on
       // pointerdown (above) suppresses the browser's synthesized dblclick
       // in many browsers — that's why the dblclick listener below stopped
@@ -1994,6 +2125,12 @@ function gridWireInteractor(interactor, cell, cellStr) {
         return;
       }
       if (cell._rowData) _lastGridRow = cell._rowData;
+      // (dev0588) Summary tap on the sectioned 1a text slide — touch mirror of
+      // the pointer path above.
+      if (cell._salSect && endX != null) {
+        const _sum = _gridSectionSummaryAt(cell, endX, endY);
+        if (_sum) { _gridSectionToggleSummary(cell, _sum); _lastShortTapT = 0; return; }
+      }
       // Manual double-tap detection (same threshold as pointer path)
       const nowT = Date.now();
       if (nowT - _lastShortTapT < 400 && !userMode) {
