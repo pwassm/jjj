@@ -276,29 +276,29 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0597) Whole-grid magnification is viewer-safe, so let bare [ / ] tune the
-  // zoom on the PUBLIC site (Gu) too. Handled BEFORE the user-mode gate below,
-  // which otherwise swallows every non-Escape/Space grid key. It only nudges THIS
-  // browser's gridFillZoom (localStorage) and re-fits cells live — it never writes
-  // c.json, so a viewer's zoom can't change the saved collection or affect anyone
-  // else. Shift+[ / ] ({ } conveyor speed) and Ctrl+[ / ] (per-cell zoom) stay
-  // dev-only: they carry modifiers, so they fall through to the gate and are blocked.
-  if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && (e.key === '[' || e.key === ']')) {
-    e.preventDefault(); e.stopPropagation();
-    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(e.key === '[' ? -0.1 : 0.1);
-    return;
-  }
+  // (dev0598) "Fun keys" allowlist. When the guFunKeys switch is ON (default), the
+  // user-mode gate below lets a harmless extra set of grid keys through to their
+  // normal handlers on the public site (Gu): [ ] whole-grid zoom, Ctrl+[ ] per-cell
+  // zoom (hovered cell), and r / z / Shift+Z (moving-cells conveyor + zoom reset).
+  // FallCells (f) is enabled in the matching core.js gate. None of these write
+  // c.json — they only tweak this browser's live view. Shift+[ / ] ({ } conveyor
+  // speed) and the data-editing keys (Ctrl+V, Ctrl+B, -/+) stay dev-only.
+  const _guFun = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn()
+    && !e.altKey && !e.metaKey
+    && ( (e.key === '[' || e.key === ']')                                    // bare or Ctrl [ ] zoom
+         || (!e.ctrlKey && (e.key === 'r' || e.key === 'R'                   // conveyor toggle
+                            || e.key === 'z' || e.key === 'Z')) );           // zoom reset / restore
 
   // (dev0571) USER-MODE GATE: Gu is a curated VIEWING surface — a strict subset of
   // Gd's keys. Everything below this point is DEV grid editing/tuning that must NOT
-  // fire on the public site: moving-cells (r / { / }), buffer cycle (Ctrl+B),
-  // source-paste (Ctrl+V), buffer pre-roll (- / +), and per-cell / reset zoom+framing
-  // (z Shift+Z, Ctrl+[ ]). Viewer-safe keys pass through: bare [ / ] (whole-grid zoom,
-  // handled just above), Space (pause/unpause all), and Escape (leave grid / back to
-  // menu). Slideshow (S) and captions (Shift+C) live in core.js's window-capture and
-  // stay available. NB returns WITHOUT preventDefault/stopPropagation so the Gu
-  // right-click menu's own V/P/A/S key handler (a separate listener) is unaffected.
-  if ((typeof _isUserMode === 'function') && _isUserMode()
+  // fire on the public site: buffer cycle (Ctrl+B), source-paste (Ctrl+V), buffer
+  // pre-roll (- / +), and grid framing. Viewer-safe keys pass through: Space
+  // (pause/unpause all), Escape (leave grid / back to menu), and — while the
+  // guFunKeys switch is on (see _guFun above) — the fun keys. Slideshow (S) and
+  // captions (Shift+C) live in core.js's window-capture and stay available.
+  // NB returns WITHOUT preventDefault/stopPropagation so the Gu right-click menu's
+  // own V/P/A/S key handler (a separate listener) is unaffected.
+  if ((typeof _isUserMode === 'function') && _isUserMode() && !_guFun
       && e.key !== 'Escape' && !(e.key === ' ' || e.code === 'Space')) {
     return;
   }
@@ -376,8 +376,20 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // (dev0346/0597) Bare [ / ] whole-grid zoom is handled above, before the
-  // user-mode gate, so it also works for viewers on the public site (Gu).
+  // (dev0346) [ / ] tune the whole-grid zoom by ±0.1 (keyboard). Bare keys; floor
+  // 0.2, no upper limit. Applies whether or not buffering is on. 1× = plain
+  // cover/contain; <1 shrinks, >1 crops in. (dev0598) Reaches here in user mode too
+  // when the guFunKeys switch is on (see the _guFun allowlist above the gate).
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === '[') {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(-0.1);
+    return;
+  }
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key === ']') {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustFillZoom === 'function') gridAdjustFillZoom(0.1);
+    return;
+  }
 
   // (dev0368) Shift+Z restores every cell's relative zoom to the values saved in
   // the active c.json config — reverting unsaved per-cell tweaks, window zoom kept.

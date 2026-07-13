@@ -410,8 +410,12 @@ window.addEventListener('keydown', function(e) {
   if (k === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
     const gOpenF = document.getElementById('gridOverlay')?.style.display === 'flex';
     const vpOpenF = document.getElementById('gridFullscreen')?.style.display === 'flex';
-    // (dev0571) FallCells is a dev screensaver toy — not part of Gu's viewing subset.
-    if (gOpenF && !vpOpenF && !((typeof _isUserMode === 'function') && _isUserMode())) {
+    // (dev0571) FallCells is a dev screensaver toy — normally not part of Gu's
+    // viewing subset. (dev0598) But the guFunKeys switch (default ON) lets viewers
+    // on the public site play with it too; window.guFunKeys(false) restores lockdown.
+    const _uModeF = (typeof _isUserMode === 'function') && _isUserMode();
+    const _guFunF = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
+    if (gOpenF && !vpOpenF && (!_uModeF || _guFunF)) {
       e.preventDefault();
       e.stopPropagation();
       if (typeof window._gmToggleFall === 'function') window._gmToggleFall();
@@ -3421,6 +3425,22 @@ window.setSetting = function(key, val) {
   try { s = JSON.parse(localStorage.getItem('ml-settings') || '{}'); } catch(_) {}
   s[key] = val;
   try { localStorage.setItem('ml-settings', JSON.stringify(s)); } catch(_) {}
+};
+
+// (dev0598) "Fun keys" switch. When ON (the default), viewers on the public site
+// (Gu / slam.com) get a harmless extra set of grid keys that are otherwise dev-only:
+//   [ ]  whole-grid magnify · Ctrl+[ ]  per-cell magnify (hovered cell) ·
+//   z / Shift+Z  zoom reset / restore · r  moving-cells conveyor · f  FallCells.
+// None of these write c.json — they only tweak this browser's live view. Genuinely
+// data-editing keys (Ctrl+V paste-source, Ctrl+B buffer, -/+ preroll, resize digits)
+// are NEVER exposed by this switch. Turn it off if it misbehaves:
+//   window.guFunKeys(false)   (or setSetting('guFunKeys', false)); window.guFunKeys() toggles.
+window._guFunKeysOn = function() { return window.getSetting('guFunKeys') !== false; };
+window.guFunKeys = function(on) {
+  const next = (on === undefined) ? !window._guFunKeysOn() : !!on;
+  window.setSetting('guFunKeys', next);
+  if (typeof toast === 'function') toast('Fun grid keys ' + (next ? 'ON' : 'OFF'), 1400);
+  return next;
 };
 
 function openSettings() {
