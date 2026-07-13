@@ -6873,14 +6873,13 @@ async function _importBareLinks(lines) {
       DateModified: now,
       tags: []
     };
-    // (dev0599) Flickr link (photo page or CDN) → always an image row, and flag it
-    // for the async resolver (which upgrades link→best-res and fills VidTitle/
-    // VidAuthor/VidDate/comment/MPix/Mode). Checked before _classifyUrl so a
-    // flickr.com/photos/… page URL isn't mis-classified as a web article (ltype='w').
-    const fpid = _flickrPhotoId(link);
-    if (fpid) {
+    // (dev0599) Flickr link (photo page or CDN) → always an image row. The async
+    // resolver below (keyed off _flickrPhotoId(link), no temp field to leak into
+    // ml.json) upgrades link→best-res and fills VidTitle/VidAuthor/VidDate/comment/
+    // MPix/Mode. Checked before _classifyUrl so a flickr.com/photos/… page URL
+    // isn't mis-classified as a web article (ltype='w').
+    if (_flickrPhotoId(link)) {
       row.VidRange = 'i';
-      row._flickrPid = fpid;
       return row;
     }
     const cls = _classifyUrl(link);
@@ -6987,8 +6986,8 @@ async function _importBareLinks(lines) {
   // (dev0599) Flickr rows are enriched by the dedicated resolver below (best-res +
   // author/date/caption via the API) — keep them out of the generic image probe so
   // it can't overwrite the authoritative values.
-  _fetchMetaForNewRows(newRows.filter(r => !r._flickrPid));
-  const flickrRows = newRows.filter(r => r && r._flickrPid);
+  _fetchMetaForNewRows(newRows.filter(r => !_flickrPhotoId(r.link)));
+  const flickrRows = newRows.filter(r => r && _flickrPhotoId(r.link));
   if (flickrRows.length) _fetchFlickrForNewRows(flickrRows);
   // (dev0425) Route yt-dlp-supported providers (IG/YouTube/Vimeo/TikTok) through
   // the proxy yt-dlp bridge for caption (ftext) + @author; the rest still use the
@@ -7005,7 +7004,7 @@ async function _importBareLinks(lines) {
   const ytNote   = ytRows.length ? '\n   ' + ytRows.length + ' video link(s) — yt-dlp caption/author…' : '';
   const flickrNote = flickrRows.length ? '\n   ' + flickrRows.length + ' Flickr link(s) — resolving best-res + metadata…' : '';
   const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
-  const metaNote = newRows.some(r => !r.ltype && !r._flickrPid) ? '\n   fetching metadata…' : '';
+  const metaNote = newRows.some(r => !r.ltype && !_flickrPhotoId(r.link)) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
     + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + webNote + metaNote,
@@ -7028,9 +7027,9 @@ async function _fetchFlickrForNewRows(rows) {
     const src = (row.linkpage && _flickrPhotoId(row.linkpage)) ? row.linkpage : row.link;
     try {
       const resp = await fetch(_YTDLP_PROXY + '/flickr/resolve?url=' + encodeURIComponent(src));
-      if (!resp.ok) { failed++; delete row._flickrPid; continue; }
+      if (!resp.ok) { failed++; continue; }
       const j = await resp.json();
-      if (!j || !j.ok) { failed++; delete row._flickrPid; continue; }
+      if (!j || !j.ok) { failed++; continue; }
       if (j.link)                       row.link = j.link;      // upgrade → best-res
       if (j.linkpage)                   row.linkpage = j.linkpage;
       if (j.VidTitle && !row.VidTitle)  row.VidTitle = j.VidTitle;
@@ -7043,7 +7042,6 @@ async function _fetchFlickrForNewRows(rows) {
       row.DateModified = isoNow();
       done++;
     } catch (e) { failed++; }
-    delete row._flickrPid;
   }
   if (done) { save(); if (typeof render === 'function') render(); }
   toast('✓ Flickr: ' + done + ' resolved'
