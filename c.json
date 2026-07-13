@@ -59,7 +59,7 @@
       "3i"
     ],
     "_salHidden": [],
-    "_salGsize": 5,
+    "_salGsize": 3,
     "_salViews": {
       "9basic": {
         "name": "9basic",
@@ -1451,8 +1451,8 @@
   {
     "gname": "OctopusHatchlings!",
     "cells": 9,
-    "Zoom": 1.6,
-    "DateModified": "2026-07-13 04:07:21",
+    "Zoom": "1.1",
+    "DateModified": "2026-07-13 04:15:41",
     "1a": "1728_t",
     "1b": "1728",
     "1c": "1728_1",
