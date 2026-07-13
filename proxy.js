@@ -95,7 +95,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0568';
+const PROXY_BUILD = 'dev0599';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2274,6 +2274,121 @@ function igDownload(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev0599) ── Flickr single-photo resolver ────────────────────────────────────
+// GET /flickr/resolve?url=<flickr photo-page OR staticflickr CDN url> (or ?id=<n>).
+// Two light, unsigned read calls — flickr.photos.getSizes (best-res URL) and
+// flickr.photos.getInfo (title / author / date-taken / caption) — assembled into
+// the exact field split ml.json uses for image rows:
+//     link=best-res · linkpage=photo page · VidTitle · VidAuthor · VidDate · comment
+// Powers the T-screen `w` import's Flickr enrichment + the manual housekeeping
+// pass. The api_key is the one the linkfinders share (linkfinders/flickr_api.json,
+// gitignored) and stays SERVER-SIDE — never shipped to the browser. Best-res logic
+// mirrors linkfinders/imagefinder.py's flickr_choose_best so `w` ≡ imagefinder4.
+const FLICKR_API_JSON = path.join(X_FINDER_DIR, 'flickr_api.json');
+let _flickrKey = null, _flickrKeyTried = false;
+function flickrApiKey() {
+  if (_flickrKeyTried) return _flickrKey;
+  _flickrKeyTried = true;
+  try { _flickrKey = JSON.parse(fs.readFileSync(FLICKR_API_JSON, 'utf8')).api_key || null; }
+  catch (_) { _flickrKey = null; }
+  return _flickrKey;
+}
+function flickrPhotoId(url) {
+  if (!url) return null;
+  const s = String(url);
+  let m = s.match(/flickr\.com\/photos\/[^/]+\/(\d+)/i);  if (m) return m[1];
+  m = s.match(/staticflickr\.com\/\d+\/(\d+)_/i);          if (m) return m[1];
+  m = s.match(/flickr\.com\/photo\.gne\?id=(\d+)/i);       if (m) return m[1];
+  m = s.match(/^\s*(\d{6,})\s*$/);                         if (m) return m[1];
+  return null;
+}
+function flickrApi(method, params) {
+  return new Promise((resolve, reject) => {
+    const key = flickrApiKey();
+    if (!key) { reject(new Error('no flickr api key (linkfinders/flickr_api.json)')); return; }
+    const qs = new URLSearchParams(Object.assign(
+      { method, api_key: key, format: 'json', nojsoncallback: 1 }, params)).toString();
+    const r = https.get('https://api.flickr.com/services/rest/?' + qs, resp => {
+      let buf = '';
+      resp.on('data', c => buf += c);
+      resp.on('end', () => {
+        try {
+          const j = JSON.parse(buf);
+          if (j.stat !== 'ok') { reject(new Error(j.message || ('flickr ' + method + ' error'))); return; }
+          resolve(j);
+        } catch (e) { reject(e); }
+      });
+    });
+    r.on('error', reject);
+    r.setTimeout(20000, () => r.destroy(new Error('flickr api timeout')));
+  });
+}
+function flickrStripHtml(s) {
+  return String(s || '')
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#0?39;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function flickrPickBest(sizes) {
+  if (!sizes || !sizes.length) return null;
+  const rank = s => {
+    const w = +s.width || 0, h = +s.height || 0;
+    const u = s.source || '';
+    let bonus = /original/i.test(s.label || '') ? 6 : 0;
+    if (!bonus) for (const [suf, b] of [['_o.', 6], ['_k.', 5], ['_h.', 4], ['_b.', 3], ['_c.', 2], ['_z.', 1]]) {
+      if (u.includes(suf)) { bonus = b; break; }
+    }
+    return w * h * 10 + bonus;
+  };
+  return sizes.reduce((a, b) => (rank(b) > rank(a) ? b : a));
+}
+async function flickrResolve(req, res, origin) {
+  let q;
+  try { q = new URL(req.url, 'http://x').searchParams; } catch (_) { q = new URLSearchParams(); }
+  const raw = q.get('url') || q.get('id') || '';
+  const pid = flickrPhotoId(raw);
+  if (!pid) { sendJson(res, 400, { ok: false, error: 'no flickr photo id in: ' + raw }, origin); return; }
+  try {
+    const [info, sizesResp] = await Promise.all([
+      flickrApi('flickr.photos.getInfo',  { photo_id: pid }).catch(() => null),
+      flickrApi('flickr.photos.getSizes', { photo_id: pid }).catch(() => null),
+    ]);
+    const out = { ok: true, photo_id: pid };
+    const sizes = (sizesResp && sizesResp.sizes && sizesResp.sizes.size) || [];
+    const best = flickrPickBest(sizes.filter(s => !s.media || s.media === 'photo'));
+    if (best) {
+      out.link = best.source;
+      out.width = +best.width || 0;
+      out.height = +best.height || 0;
+      if (out.width && out.height) out.MPix = (out.width * out.height / 1e6).toFixed(1);
+      out.Mode = out.width > out.height ? 'L' : (out.width < out.height ? 'P' : 'S');
+    }
+    if (info && info.photo) {
+      const p = info.photo;
+      const title = (p.title && p.title._content || '').trim();
+      if (title) out.VidTitle = title;
+      const author = (p.owner && (p.owner.realname || p.owner.username) || '').trim();
+      if (author) out.VidAuthor = author;
+      const taken = (p.dates && p.dates.taken) || '';
+      if (taken) out.VidDate = String(taken).slice(0, 10);
+      const desc = flickrStripHtml(p.description && p.description._content || '');
+      if (desc) out.comment = desc;
+      let page = '';
+      if (p.urls && p.urls.url) for (const u of p.urls.url) { if (u.type === 'photopage') { page = u._content; break; } }
+      if (!page) {
+        const owner = (p.owner && (p.owner.path_alias || p.owner.nsid)) || '';
+        if (owner) page = 'https://www.flickr.com/photos/' + owner + '/' + pid + '/';
+      }
+      if (page) out.linkpage = page;
+    }
+    if (!out.link && !out.VidTitle) { sendJson(res, 502, { ok: false, error: 'flickr returned nothing for ' + pid }, origin); return; }
+    sendJson(res, 200, out, origin);
+  } catch (e) {
+    sendJson(res, 502, { ok: false, error: String((e && e.message) || e) }, origin);
+  }
+}
+
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
@@ -2292,7 +2407,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve'] }));
     return;
   }
 
@@ -2421,6 +2536,19 @@ http.createServer((req, res) => {
     return;
   }
 
+  // (dev0599) ── Flickr single-photo resolver (best-res + metadata) ─────────
+  // GET only, read-only. Origin-lock isn't required (harmless reads, key stays
+  // server-side) but sendJson still echoes the local origin so the browser can
+  // read the response. Must sit BEFORE the CORS proxy or "/flickr/…" would be
+  // treated as a bad passthrough URL.
+  if (req.url.startsWith('/flickr/')) {
+    const origin = req.headers.origin || '';
+    const action = req.url.slice('/flickr/'.length).split('?')[0];
+    if (action !== 'resolve') { sendJson(res, 404, { ok: false, error: 'unknown flickr action: ' + action }, origin); return; }
+    flickrResolve(req, res, origin);
+    return;
+  }
+
   // ── CORS proxy (unchanged) ────────────────────────────────────────────
   const target = req.url.slice(1); // strip leading '/'
   if (!/^https?:\/\//i.test(target)) {
@@ -2472,5 +2600,6 @@ http.createServer((req, res) => {
   console.log(`Bulk staging:      POST /s/{save,deleted,undelete} → s.json / sdeleted.json in ${__dirname}`);
   console.log(`Search store:      POST /x/{save,deleted,undelete,import,search} → x.json in ${__dirname}`);
   console.log(`  /x/search spawns ${X_PYTHON} linkfinders/{image,video}finder.py --search … (origin-locked)`);
+  console.log(`Flickr resolver:   GET  /flickr/resolve?url=<flickr photo/CDN url> → best-res + author/date/title/caption`);
   console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
 });

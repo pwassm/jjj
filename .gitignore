@@ -72,6 +72,12 @@ orgzly/
 # that feeds the St screen via clipboard; never committed.
 linkfinders/
 
+# flickrScraper/ — standalone Playwright GUI batch scraper for Flickr pools /
+# photostreams (writes flickr_*.txt blocks that the St screen imports via `w`).
+# Local desktop tool + its .txt output; never committed. Its Flickr-sizing logic
+# now also lives in linkfinders/imagefinder.py (flickr_sizes_via_api).
+flickrScraper/
+
 # (dev0550) Cloudflare Worker (worker/) — wrangler local state + deps.
 # The source (src/, schema.sql, wrangler.toml, README) IS committed; secrets
 # only ever enter via `wrangler secret put`, never files.

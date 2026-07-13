@@ -6803,6 +6803,18 @@ function _cutMidArticleEditorsPicks(text) {
 
 // Rule 1 implementation. `lines` is the already-split, trimmed, non-empty
 // array — every entry must be a media URL.
+// (dev0599) Pull a Flickr photo id out of a photo-page URL or a staticflickr CDN
+// URL. Used to (a) route Flickr links to the image-row + resolver path and (b)
+// dedup by photo id regardless of URL spelling (page vs CDN vs upgraded best-res).
+function _flickrPhotoId(url) {
+  if (!url) return null;
+  const s = String(url);
+  let m = s.match(/flickr\.com\/photos\/[^/]+\/(\d+)/i);  if (m) return m[1];
+  m = s.match(/staticflickr\.com\/\d+\/(\d+)_/i);          if (m) return m[1];
+  m = s.match(/flickr\.com\/photo\.gne\?id=(\d+)/i);       if (m) return m[1];
+  return null;
+}
+
 async function _importBareLinks(lines) {
   // Normalize (YouTube → youtu.be/<id>) then de-dup within paste.
   // (dev0506) A line pasted in /shorts/ form identifies a portrait Short — record its
@@ -6830,11 +6842,16 @@ async function _importBareLinks(lines) {
   // re-paste in ANY form (watch / shorts / youtu.be — or an old /shorts/ row stored
   // before dev0506) is caught as "Already there" regardless of URL spelling.
   const ytIdToDi = new Map();
+  // (dev0599) Same idea for Flickr: index by photo id (from link OR linkpage) so a
+  // re-paste as page URL / CDN URL / already-upgraded best-res URL is caught.
+  const flickrIdToDi = new Map();
   data.forEach((r, di) => {
     if (r && r.link) {
       linkToDi.set(String(r.link).trim(), di);
       const yid = _extractYTVideoId(r.link) || (window.getYouTubeId && window.getYouTubeId(r.link));
       if (yid) ytIdToDi.set(yid, di);
+      const fpid = _flickrPhotoId(r.link) || _flickrPhotoId(r.linkpage);
+      if (fpid) flickrIdToDi.set(fpid, di);
     }
   });
 
@@ -6856,6 +6873,16 @@ async function _importBareLinks(lines) {
       DateModified: now,
       tags: []
     };
+    // (dev0599) Flickr link (photo page or CDN) → always an image row, and flag it
+    // for the async resolver (which upgrades link→best-res and fills VidTitle/
+    // VidAuthor/VidDate/comment/MPix/Mode). Checked before _classifyUrl so a
+    // flickr.com/photos/… page URL isn't mis-classified as a web article (ltype='w').
+    const fpid = _flickrPhotoId(link);
+    if (fpid) {
+      row.VidRange = 'i';
+      row._flickrPid = fpid;
+      return row;
+    }
     const cls = _classifyUrl(link);
     if (cls === 'video') {
       row.Mute = '0';
@@ -6888,8 +6915,10 @@ async function _importBareLinks(lines) {
     // (dev0506) Duplicate if the exact link exists OR (for YouTube) the same video id
     // already exists in any URL form → "Already there".
     const yid = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
+    const fpid = _flickrPhotoId(link);
     const dupDi = linkToDi.has(link) ? linkToDi.get(link)
-                : (yid && ytIdToDi.has(yid) ? ytIdToDi.get(yid) : undefined);
+                : (yid && ytIdToDi.has(yid) ? ytIdToDi.get(yid)
+                : (fpid && flickrIdToDi.has(fpid) ? flickrIdToDi.get(fpid) : undefined));
     if (dupDi !== undefined) {
       const r = data[dupDi];
       dupRecords.push({
@@ -6905,6 +6934,7 @@ async function _importBareLinks(lines) {
     newRows.push(row);
     linkToDi.set(link, data.length - 1);
     if (yid) ytIdToDi.set(yid, data.length - 1);   // catch later dups within the same paste
+    if (fpid) flickrIdToDi.set(fpid, data.length - 1);
     added++;
   }
 
@@ -6954,7 +6984,12 @@ async function _importBareLinks(lines) {
 
   // Kick off async metadata fetch for new rows (title/author/Mpix/P/S).
   // Also kick off web-text fetch for article rows.
-  _fetchMetaForNewRows(newRows);
+  // (dev0599) Flickr rows are enriched by the dedicated resolver below (best-res +
+  // author/date/caption via the API) — keep them out of the generic image probe so
+  // it can't overwrite the authoritative values.
+  _fetchMetaForNewRows(newRows.filter(r => !r._flickrPid));
+  const flickrRows = newRows.filter(r => r && r._flickrPid);
+  if (flickrRows.length) _fetchFlickrForNewRows(flickrRows);
   // (dev0425) Route yt-dlp-supported providers (IG/YouTube/Vimeo/TikTok) through
   // the proxy yt-dlp bridge for caption (ftext) + @author; the rest still use the
   // r.jina.ai reader path. (Instagram now login-walls jina, so yt-dlp owns it.)
@@ -6968,14 +7003,92 @@ async function _importBareLinks(lines) {
   const dupInPaste = links.length - added - dupRecords.length;
   const pasteDupNote = dupInPaste > 0 ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
   const ytNote   = ytRows.length ? '\n   ' + ytRows.length + ' video link(s) — yt-dlp caption/author…' : '';
+  const flickrNote = flickrRows.length ? '\n   ' + flickrRows.length + ' Flickr link(s) — resolving best-res + metadata…' : '';
   const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
-  const metaNote = newRows.some(r => !r.ltype) ? '\n   fetching metadata…' : '';
+  const metaNote = newRows.some(r => !r.ltype && !r._flickrPid) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + dupAddedNote + pasteDupNote + ytNote + webNote + metaNote,
+    + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + webNote + metaNote,
     3500
   );
 }
+
+// (dev0599) ── Flickr enrichment (best-res link + split metadata) ───────────────
+// For each freshly-imported Flickr row, ask the proxy resolver (/flickr/resolve →
+// flickr.photos.getSizes + getInfo) for the best-resolution direct URL and the
+// author / date-taken / title / caption, then write them into the exact field
+// split ml.json uses for image rows — identical to what imagefinder4 produces:
+//   link=best-res · linkpage=photo page · VidTitle · VidAuthor · VidDate · comment
+// Local-dev only (needs the 127.0.0.1:8081 proxy); on the live site the row simply
+// stays as the pasted link. Fresh rows have empty title/comment so the guards just
+// fill them; link/MPix/Mode are always taken from the API (authoritative).
+async function _fetchFlickrForNewRows(rows) {
+  let done = 0, failed = 0;
+  for (const row of rows) {
+    const src = (row.linkpage && _flickrPhotoId(row.linkpage)) ? row.linkpage : row.link;
+    try {
+      const resp = await fetch(_YTDLP_PROXY + '/flickr/resolve?url=' + encodeURIComponent(src));
+      if (!resp.ok) { failed++; delete row._flickrPid; continue; }
+      const j = await resp.json();
+      if (!j || !j.ok) { failed++; delete row._flickrPid; continue; }
+      if (j.link)                       row.link = j.link;      // upgrade → best-res
+      if (j.linkpage)                   row.linkpage = j.linkpage;
+      if (j.VidTitle && !row.VidTitle)  row.VidTitle = j.VidTitle;
+      if (j.VidAuthor)                  row.VidAuthor = j.VidAuthor;
+      if (j.VidDate)                    row.VidDate = j.VidDate;
+      if (j.comment && !row.comment)    row.comment = j.comment;
+      if (j.MPix)                       row.MPix = j.MPix;
+      if (j.Mode)                       row.Mode = j.Mode;
+      row.VidRange = 'i';
+      row.DateModified = isoNow();
+      done++;
+    } catch (e) { failed++; }
+    delete row._flickrPid;
+  }
+  if (done) { save(); if (typeof render === 'function') render(); }
+  toast('✓ Flickr: ' + done + ' resolved'
+    + (failed ? ', ' + failed + ' failed (is the proxy running?)' : ''), 3200);
+}
+
+// (dev0599) ── Manual Flickr housekeeping pass ────────────────────────────────
+// Dev-triggered (window.flickrHousekeeping() from the console). Re-resolves every
+// existing Flickr row: ALWAYS upgrades link → best resolution (Original when the
+// owner allows it) and refreshes MPix, but only BACKFILLS empty VidAuthor/VidDate/
+// comment/VidTitle/Mode — your curated values and any custom (non-Flickr) linkpage
+// are never overwritten. Periodic saves so a mid-run interruption keeps progress.
+async function _flickrHousekeeping() {
+  const rows = data.filter(r => r && (_flickrPhotoId(r.link) || _flickrPhotoId(r.linkpage)));
+  if (!rows.length) { toast('No Flickr rows found.', 2000); return; }
+  if (!confirm('Flickr housekeeping — re-resolve ' + rows.length + ' row(s):\n\n'
+    + '• upgrade link → best resolution (Original when allowed) + refresh MPix\n'
+    + '• backfill EMPTY VidAuthor / VidDate / comment / VidTitle / Mode\n\n'
+    + 'Your existing non-empty fields and any custom linkpage are preserved.\n\nProceed?')) return;
+  let done = 0, failed = 0, i = 0;
+  for (const row of rows) {
+    const src = (row.linkpage && _flickrPhotoId(row.linkpage)) ? row.linkpage : row.link;
+    try {
+      const resp = await fetch(_YTDLP_PROXY + '/flickr/resolve?url=' + encodeURIComponent(src));
+      const j = resp.ok ? await resp.json() : null;
+      if (!j || !j.ok) { failed++; }
+      else {
+        if (j.link)                        row.link = j.link;
+        if (j.linkpage && !row.linkpage)   row.linkpage = j.linkpage;
+        if (j.VidTitle && !row.VidTitle)   row.VidTitle = j.VidTitle;
+        if (j.VidAuthor && !row.VidAuthor) row.VidAuthor = j.VidAuthor;
+        if (j.VidDate && !row.VidDate)     row.VidDate = j.VidDate;
+        if (j.comment && !row.comment)     row.comment = j.comment;
+        if (j.MPix)                        row.MPix = j.MPix;
+        if (j.Mode && !row.Mode)           row.Mode = j.Mode;
+        row.DateModified = isoNow();
+        done++;
+      }
+    } catch (e) { failed++; }
+    if ((++i % 15) === 0) { save(); toast('Flickr housekeeping… ' + i + '/' + rows.length, 1200); }
+  }
+  save(); if (typeof render === 'function') render();
+  toast('✓ Flickr housekeeping done: ' + done + ' updated, ' + failed + ' failed', 4500);
+}
+window.flickrHousekeeping = _flickrHousekeeping;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // WEB-ARTICLE FETCH + EXTRACT (zip0166)
