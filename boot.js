@@ -731,26 +731,21 @@ async function _showShareableMenu() {
                  summary: _smSummaryText(r.ttxt) || ('UID ' + r.UID),
                  date: _smDateShort(r.DateModified), dmRaw: String(r.DateModified || ''),
                  type: _smType(r) }));
+  // (dev0596) A collection is only shown on the public "Grids" tab when its
+  // config row is flagged active=1 (the c.json `active` column). Draft/unlisted
+  // grids stay hidden from viewers until curated in.
   const gItems = cRows
     .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname)
-                 && String(g.gname).trim().toLowerCase() !== 'other')
+                 && String(g.gname).trim().toLowerCase() !== 'other'
+                 && String(g.active).trim() === '1')
     .map(g => ({ kind: 'ss', gname: String(g.gname).trim(), html: String(g.ctxt),
                  summary: _smSummaryText(g.ctxt) || String(g.gname).trim(),
                  date: _smDateShort(g.DateModified), dmRaw: String(g.DateModified || ''),
                  cells: Number(g.cells) || 0 }));
   const items = vItems.concat(gItems);
 
-  // (dev0383) Navigation-Training choices — a SECOND choice table, identical in
-  // shape to "Choose a view" but sourced from each config row's `ss` field
-  // (editable in C exactly like ctxt). Each ss block supplies the card label
-  // (its <summary>) and body, and opens its grid by gname — same as a grid item.
-  const navItems = cRows
-    .filter(g => g && !g._salMeta && String(g.ss || '').trim() && g.gname && !_isGreeting(g.gname)
-                 && String(g.gname).trim().toLowerCase() !== 'other')
-    .map(g => ({ kind: 'ss', gname: String(g.gname).trim(), html: String(g.ss),
-                 summary: _smSummaryText(g.ss) || String(g.gname).trim(),
-                 date: _smDateShort(g.DateModified), dmRaw: String(g.DateModified || ''),
-                 cells: Number(g.cells) || 0 }));
+  // (dev0596) Navigation-Training choices removed with the tab (was sourced from
+  // each config row's `ss` field).
 
   const ov = document.createElement('div');
   ov.id = 'shareableMenu';
@@ -898,8 +893,7 @@ async function _showShareableMenu() {
       '<button class="sm-tab" data-pg="2">Grids</button>'
     + '<button class="sm-tab" data-pg="3">Search</button>'
     + '<button class="sm-tab" data-pg="6">SavedSearches</button>'
-    + '<button class="sm-tab" data-pg="4">Other</button>'
-    + '<button class="sm-tab" data-pg="5">Navigation Training</button>';
+    + '<button class="sm-tab" data-pg="4">Other</button>';
 
   ov.innerHTML = menuStyle
     // (dev0384) Top tab bar — replaces the former header (there is no header now).
@@ -961,55 +955,21 @@ async function _showShareableMenu() {
       // PAGE 3 — search anywhere across all of T; result cards appear once the
       // match count drops below n (the Greeting row's MPix).
       + '<div id="smPage3" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        // (dev0400) Search now uses the same toolbar shape as the Grids filter:
-        // text box + Clear to its right (Tab cycles box ↔ Clear ↔ Make grid),
-        // plus a "Make grid" button. Enter in the box (or Make grid) turns the
-        // current ≤25 results into a grid (size scales with the count).
-        + '<div class="sm-chmax">'
-          + '<div class="sm-chtools">'
-            + '<div class="sm-chfwrap">'
-              + '<input id="smSearchBox" class="sm-chfilter" type="text" placeholder="Search everything…" autocomplete="off">'
-              + '<button id="smSearchClear" class="sm-chclear" type="button">Clear</button>'
-            + '</div>'
-            + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make + Show grid</button>'
-            + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
-          + '</div>'
-          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When 25 or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
-          // (dev0366) Active COI filters, shown so a narrowed result set doesn't
-          // look broken. Populated from _filtTaxon / _filtMedia after mount.
-          + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
-          + '<div id="smSugg" class="sm-sugg"></div>'
-          + '<div id="smCount" class="sm-count"></div>'
-          + '<div id="smResults" class="sm-results"></div>'
-        + '</div>'
+        // (dev0596) Search is stubbed to "Pending" for now — the full search UI
+        // (box + suggestions + result cards + ▦ Make grid + ★ Save) is held back.
+        // The post-mount wiring below is all null-guarded, so it no-ops with the
+        // search elements absent; restore the toolbar markup here to re-enable it.
+        + '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>'
       + '</div>'
-      // PAGE 5 — "Navigation Training": same sortable choice table as page 2,
-      // but built from the config rows' `ss` field instead of `ctxt`.
-      + '<div id="smPage5" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + (navItems.length
-            ? '<div class="sm-chmax">'
-                + '<div class="sm-chtools">'
-                  + '<div class="sm-chfwrap">'
-                    + '<input id="smNavFilter" class="sm-chfilter" type="text" placeholder="Filter choices…" autocomplete="off">'
-                    + '<button id="smNavClear" class="sm-chclear" type="button">Clear filter</button>'
-                  + '</div>'
-                  + '<button id="smNavExpandAll" class="sm-chbtn">▼ Expand all</button>'
-                  + '<button id="smNavCollapseAll" class="sm-chbtn">▶ Collapse all</button>'
-                + '</div>'
-                + '<div class="sm-chhead">'
-                  + '<span class="sm-chh-spacer"></span>'
-                  + '<button class="sm-chh sm-chh-name" data-sort="name">Name<span class="sm-arrow"></span></button>'
-                  + '<button class="sm-chh sm-chh-date" data-sort="date">Modified<span class="sm-arrow"></span></button>'
-                + '</div>'
-                + '<div id="smNavBody"></div>'
-              + '</div>'
-            : _smNoItems)
-      + '</div>'
+      // (dev0596) PAGE 5 ("Navigation Training") removed — the tab is gone.
       // (dev0401) PAGE 6 — "SavedSearches": searches the viewer kept via the
       // Search tab's ★ Save button, persisted in localStorage. Empty notice
       // until the first save; otherwise a Grids-style list with Open / Delete.
+      // (dev0596) SavedSearches is stubbed to "Pending" for now. The render/wiring
+      // below null-guards on #smSavedBody, so it no-ops with the body absent;
+      // restore <div id="smSavedBody"></div> here to re-enable it.
       + '<div id="smPage6" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + '<div class="sm-chmax"><div id="smSavedBody"></div></div>'
+        + '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>'
       + '</div>'
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.
@@ -1024,7 +984,7 @@ async function _showShareableMenu() {
   // remembered in window._smLastTab so a reopen lands back on it.
   // (dev0401) SavedSearches (6) sits between Search (3) and Other (4) in the
   // tab bar, so the Tab-key order reflects that left-to-right placement.
-  const _smTabOrder = [2, 3, 6, 4, 5];
+  const _smTabOrder = [2, 3, 6, 4];
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
     if (n >= 2) window._smLastTab = n; // (dev0384) remember the last tab used
@@ -1056,14 +1016,14 @@ async function _showShareableMenu() {
     }));
   // (dev0384) Keyboard: Tab hops to the next tab (Shift+Tab the previous),
   // wrapping after the last, and opens that page immediately. `f` jumps focus to
-  // the live filter on Choices (and, by the same token, on Navigation Training).
+  // the live filter on Choices.
   // Skipped while focus is inside a field or the filter toolbar, which own Tab
   // for their own filter↔Clear cycle.
   ov.addEventListener('keydown', e => {
     const ae = document.activeElement;
     const inField = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
     if (!inField && (e.key === 'f' || e.key === 'F')) {
-      const fid = window._smCurPage === 2 ? '#smChFilter' : (window._smCurPage === 5 ? '#smNavFilter' : null);
+      const fid = window._smCurPage === 2 ? '#smChFilter' : null;
       if (fid) { const fi = ov.querySelector(fid); if (fi) { e.preventDefault(); e.stopPropagation(); fi.focus(); return; } }
     }
     if (e.key === 'Tab') {
@@ -1256,71 +1216,7 @@ async function _showShareableMenu() {
   const _smColA = ov.querySelector('#smCollapseAll');
   if (_smColA) _smColA.addEventListener('click', () => _smSetAllOpen(false));
 
-  // (dev0383) Navigation-Training choice table — a self-contained mirror of the
-  // page-2 list, with its own sort/filter state, over `navItems` (the `ss`
-  // source). Reuses _smDetCard / _smLaunch (kind 'ss' opens the grid by gname).
-  let _smNavSortKey = 'date', _smNavSortDir = -1, _smNavFilter = '';
-  const _smRenderNav = () => {
-    const body = ov.querySelector('#smNavBody');
-    if (!body) return;
-    let arr = navItems.slice().sort((a, b) => {
-      let av, bv;
-      if (_smNavSortKey === 'name') { av = (a.summary || '').toLowerCase(); bv = (b.summary || '').toLowerCase(); }
-      else { av = a.dmRaw || ''; bv = b.dmRaw || ''; }
-      if (av < bv) return -1 * _smNavSortDir;
-      if (av > bv) return  1 * _smNavSortDir;
-      return 0;
-    });
-    if (_smNavFilter) arr = arr.filter(it =>
-      ((it.summary || '') + ' ' + (it.html || '')).toLowerCase().includes(_smNavFilter));
-    if (!arr.length) { body.innerHTML = '<div class="sm-chnone">No matches.</div>'; return; }
-    body.innerHTML = arr.map(it => _smDetCard(it, navItems.indexOf(it))).join('');
-    ov.querySelectorAll('#smPage5 .sm-chh').forEach(h => {
-      const on = h.dataset.sort === _smNavSortKey;
-      h.classList.toggle('on', on);
-      const ar = h.querySelector('.sm-arrow');
-      if (ar) ar.textContent = on ? (_smNavSortDir < 0 ? ' ▾' : ' ▴') : '';
-    });
-    body.querySelectorAll('.sm-open').forEach(el => {
-      el.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        _smLaunch(navItems[parseInt(el.dataset.i, 10)]);
-      });
-    });
-  };
-  ov.querySelectorAll('#smPage5 .sm-chh').forEach(h => {
-    h.addEventListener('click', () => {
-      const k = h.dataset.sort;
-      if (_smNavSortKey === k) { _smNavSortDir *= -1; }
-      else { _smNavSortKey = k; _smNavSortDir = (k === 'date') ? -1 : 1; }
-      _smRenderNav();
-    });
-  });
-  if (navItems.length) _smRenderNav();
-  const _smNavFilt = ov.querySelector('#smNavFilter');
-  const _smNavClear = ov.querySelector('#smNavClear');
-  if (_smNavFilt) _smNavFilt.addEventListener('input', () => {
-    _smNavFilter = _smNavFilt.value.trim().toLowerCase();
-    _smRenderNav();
-  });
-  if (_smNavFilt && _smNavClear) {
-    _smNavFilt.addEventListener('keydown', e => {
-      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smNavClear.focus(); }
-    });
-    _smNavClear.addEventListener('keydown', e => {
-      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smNavFilt.focus(); }
-    });
-    _smNavClear.addEventListener('click', () => {
-      _smNavFilt.value = ''; _smNavFilter = ''; _smRenderNav(); _smNavFilt.focus();
-    });
-  }
-  const _smNavSetAllOpen = open => ov.querySelectorAll('#smNavBody details.sm-detcard')
-    .forEach(d => { d.open = open; });
-  const _smNavExpA = ov.querySelector('#smNavExpandAll');
-  if (_smNavExpA) _smNavExpA.addEventListener('click', () => _smNavSetAllOpen(true));
-  const _smNavColA = ov.querySelector('#smNavCollapseAll');
-  if (_smNavColA) _smNavColA.addEventListener('click', () => _smNavSetAllOpen(false));
+  // (dev0596) Navigation-Training choice table + wiring removed with its tab.
 
   // (dev0362/0400) Search page — live anywhere-filter over all of T (static
   // blobs + lazily-resolved dictionary-tag text), dictionary suggestions from

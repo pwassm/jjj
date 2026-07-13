@@ -10,7 +10,7 @@
     "_salColOrder": [
       "gname",
       "ctxt",
-      "Active",
+      "active",
       "cells",
       "ss",
       "Zoom",
@@ -159,7 +159,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful (if not useful) form</div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div><div>Because I vibe-coded it with Claude code, I don't know if this program has&nbsp;</div><div>&nbsp; &nbsp;negative unforseen capabilities.&nbsp; I think it's unlikely, but wanted to put it&nbsp;</div><div>&nbsp; &nbsp;out there, especially if you use the slideshow option for your local files.</div></details><p><br></p><p>Currently available:</p><details open=\"\"><summary>I'm limiting it to teaching Gridviews for now</summary><div>Learn by doing, start with OctopusHatchling! grid</div></details><p><br></p><details open=\"\"><summary>Help!</summary><div><p>In Gridveiw, swipe right on cell for full screen.</p><p>Once full screen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-hold-mouse reduces zoom.&nbsp; Double-click goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><b>To get back to gridview:</b></p><p><b>- Swipe left on desktop or phone.</b></p></div></details><p><br></p><details open=\"\"><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore.com as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files (probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.)</p></div></details><details><summary><br></summary><div><br></div></details><hr class=\"te-hr\"><p><br></p>",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "SecondGridToSave",
@@ -198,7 +198,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Other",
@@ -237,7 +237,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "<h2>My other websites:&nbsp;</h2><div><a href=\"https://www.sealifeandmore.org\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.sealifeandmore.org</a></div><div>A Wordpress site, still the best place to see Instagram videos</div><div><br></div><div><a href=\"https://pwassm.github.io/braintrain\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pwassm.github.io/braintrain</a></div><div>My first site, exploring double decision paradigm..</div><div><br></div><div><br></div><div><br></div>",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Quiz2Snowflakes",
@@ -276,7 +276,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "April16",
@@ -315,7 +315,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Pufferfish Plus",
@@ -354,7 +354,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "PhotosBeautiful1",
@@ -393,7 +393,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "LotsOf121Clicks25a",
@@ -432,7 +432,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Big Pictures - 25!",
@@ -471,7 +471,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "TaylorSeaHare1",
@@ -510,7 +510,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "SkelShrimp",
@@ -549,7 +549,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "InstaTryMyvideo",
@@ -587,7 +587,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "4 Creatures",
@@ -606,7 +606,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "gchiton1",
@@ -628,7 +628,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "All Portrait",
@@ -657,7 +657,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "ShowoffSlideshow",
@@ -695,7 +695,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "gchiton1zoomed",
@@ -718,7 +718,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Vimeo",
@@ -756,7 +756,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "HermitCrabAndPix",
@@ -795,7 +795,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "EatingKelpAndBryozoans",
@@ -834,7 +834,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Sheephead v Urchin 1",
@@ -856,7 +856,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Sheephead v Urchin 2",
@@ -879,7 +879,7 @@
     "2P": "",
     "3P": "",
     "ctxt": "<details open=\"\"><summary>Sheephead eats sea urchin</summary><div><h2>Last frame: Garabaldi takes a bite, too.</h2></div><div>Purple sea urchins can live up to 40 years, this one was pretty big,</div><div>big enough for a California sheephead's lunch!</div></details><p><br></p>",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "1st try 17",
@@ -914,7 +914,7 @@
     "DateAdded": "2026-06-11 05:02:40",
     "1L": "1032",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "1st try 19",
@@ -942,7 +942,7 @@
     "5e": "749",
     "DateAdded": "2026-06-11 06:10:25",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "ConsiderEdgeMove",
@@ -971,7 +971,7 @@
     "DateAdded": "2026-06-11 14:05:42",
     "ss": "EdgeMoves!",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Ttennis",
@@ -1008,7 +1008,7 @@
     "2P": "87_4",
     "3P": "87_5",
     "ctxt": "<h2></h2><details open=\"\"><summary>Table tennis fun</summary><div><h2>Table tennis fun!</h2><div>amazing rallies</div></div></details><div></div>",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "2nd try 17",
@@ -1033,7 +1033,7 @@
     "5d": "750",
     "5e": "1033/0.8",
     "DateAdded": "2026-06-13 05:13:24",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Instagrams",
@@ -1066,7 +1066,7 @@
     "5d": "",
     "5e": "",
     "DateAdded": "2026-06-17 03:16:38",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Sunfish2",
@@ -1084,7 +1084,7 @@
     "3c": "1149",
     "DateAdded": "2026-06-17 17:58:54",
     "ctxt": "Sunfish2",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Marginalian Birds 1",
@@ -1118,7 +1118,7 @@
     "5e": "1212",
     "DateAdded": "2026-06-18 16:29:47",
     "ctxt": "Marginalian Birds",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Marginalian Birds 2 and Mola",
@@ -1151,7 +1151,7 @@
     "5d": "1189",
     "5e": "1149",
     "DateAdded": "2026-06-18 16:37:27",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Marginalian Birds 2 and Mola 2",
@@ -1185,7 +1185,7 @@
     "5e": "1149",
     "DateAdded": "2026-06-18 16:51:39",
     "ss": "<h2>Title</h2><p>Your content here...</p>",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "TtennisSmaller",
@@ -1212,7 +1212,7 @@
     "5d": "",
     "5e": "",
     "DateAdded": "2026-06-25 04:38:55",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "PortraitBirds",
@@ -1248,7 +1248,7 @@
     "3i": "1214",
     "DateAdded": "2026-06-28 12:56:25",
     "ctxt": "PortraitBirds",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "Squares!",
@@ -1281,7 +1281,7 @@
     "5d": "1295",
     "5e": "1296",
     "DateAdded": "2026-07-01 04:50:54",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "CoralMorphologic17",
@@ -1306,7 +1306,7 @@
     "5d": "1361",
     "5e": "1360",
     "DateAdded": "2026-07-02 18:36:25",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "CoralMorphologic17No2",
@@ -1332,7 +1332,7 @@
     "5e": "1360",
     "DateAdded": "2026-07-04 03:58:07",
     "ctxt": "CoralM Videos",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "BoxerCrabsImages17",
@@ -1358,7 +1358,7 @@
     "5e": "1407",
     "DateAdded": "2026-07-04 17:53:43",
     "ctxt": "BoxerCrabImages",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "BoxerCrabsVideos25",
@@ -1392,7 +1392,7 @@
     "5e": "1441",
     "DateAdded": "2026-07-04 21:41:41",
     "ctxt": "BoxerCrabVideos25!",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "TestReloadFail",
@@ -1409,7 +1409,7 @@
     "3b": "1627",
     "3c": "1611",
     "DateAdded": "2026-07-08 17:24:18",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "First_T",
@@ -1433,7 +1433,7 @@
     "4c": "",
     "4d": "",
     "DateAdded": "2026-07-12 02:51:09",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "GPO Hatchlings",
@@ -1446,7 +1446,7 @@
     "2b": "1726_3",
     "DateAdded": "2026-07-12 23:49:28",
     "ctxt": "",
-    "Active": ""
+    "active": ""
   },
   {
     "gname": "OctopusHatchlings!",
@@ -1464,6 +1464,6 @@
     "3c": "1726_3",
     "DateAdded": "2026-07-13 04:00:58",
     "ctxt": "OctopusHatchlings!",
-    "Active": "1"
+    "active": "1"
   }
 ]
