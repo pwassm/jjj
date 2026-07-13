@@ -10,6 +10,7 @@
     "_salColOrder": [
       "gname",
       "ctxt",
+      "Active",
       "cells",
       "ss",
       "Zoom",
@@ -150,14 +151,15 @@
     "5d": "24",
     "5e": "25",
     "DateAdded": "2026-04-16 04:26:25",
-    "DateModified": "2026-07-06 02:01:58",
+    "DateModified": "2026-07-13 04:05:32",
     "ss": "",
     "Zoom": "",
     "1L": "",
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful (if not useful) form</div><div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div><div>Because I vibe-coded it with Claude code, I don't know if this program has&nbsp;</div><div>&nbsp; &nbsp;negative unforseen capabilities.&nbsp; I think it's unlikely, but wanted to put it&nbsp;</div><div>&nbsp; &nbsp;out there, especially if you use the slideshow option for your local files.</div></details><p><br></p><p></p><details><summary>Latest changes (may or may not work!)</summary><div><p>Hotkeys on Grid:</p><p>R (rotate), F (falling).&nbsp; Fun animations</p><p>G (go), opens web page of that youtube or vimeo video, for image opens source page or Google image search</p><p>C (captions) toggles captions on videos and images.</p></div></details><p></p><p><br></p><p>Currently available:</p><details><summary>Single videos or images; slides</summary><div>Adjust size and zoom of videos or images as noted in Gridview section.</div><div>Help will be in hamburger menu upper left in Gridviiew, but this website is a beta, and probably will aways be a beta!</div></details><p><br></p><p></p><details><summary>Help!</summary><div><p>In gridveiw, swipe right on cell for full screen.</p><p>Once fullscreen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-heldmouse reduces zoom.&nbsp; Doubleclick goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><b>To get back to gridview:</b></p><p><b>- Swipe left on desktop or phone.</b></p><p>To turn grid into slideshow:</p><p>Desktop, type S, or use hamburger menu.&nbsp; Phone, menu upper left corner.</p><p></p></div></details><p><br></p><p></p><details><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files.</p><p>Probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.</p></div></details><p></p><p></p><details><summary><br></summary><div><br></div></details><p></p><hr class=\"te-hr\"><p><br></p></div><div><h6></h6></div>"
+    "ctxt": "<h2>Welcome to sealifeandmore.com!</h2><div>Inspired by my desire to share great video and image links (and a few of my own images and videos mostly from the fabulous Monterey Bay Aquarium), as well as my desire to put images in a beautiful (if not useful) form</div><details><summary>Disclaimer</summary><div>Not complete in any way, shape, or form!</div><div>Because I vibe-coded it with Claude code, I don't know if this program has&nbsp;</div><div>&nbsp; &nbsp;negative unforseen capabilities.&nbsp; I think it's unlikely, but wanted to put it&nbsp;</div><div>&nbsp; &nbsp;out there, especially if you use the slideshow option for your local files.</div></details><p><br></p><p>Currently available:</p><details open=\"\"><summary>I'm limiting it to teaching Gridviews for now</summary><div>Learn by doing, start with OctopusHatchling! grid</div></details><p><br></p><details open=\"\"><summary>Help!</summary><div><p>In Gridveiw, swipe right on cell for full screen.</p><p>Once full screen:</p><p>Sizing on computer:</p><p>- mouse hold zooms and held mouse pans.&nbsp; Control-hold-mouse reduces zoom.&nbsp; Double-click goes to 1:1</p><p>Sizing on phone/tablet:</p><p>- two fingers separate to zoom, two fingers pan, pinch to reduce zoom.&nbsp; Tap to go to 1:1</p><p><b>To get back to gridview:</b></p><p><b>- Swipe left on desktop or phone.</b></p></div></details><p><br></p><details open=\"\"><summary>Slideshows!</summary><div><p>in Gridview, on desktop type s, on phone use menu.</p><p>Shows images from sealifeandmore.com as an adjustable slide show.</p><p>Local disk shows your option for playing from your own image files (probably available on Chrome and Edge browsers on Windows computers, possibly available on other browsers.)</p></div></details><details><summary><br></summary><div><br></div></details><hr class=\"te-hr\"><p><br></p>",
+    "Active": ""
   },
   {
     "gname": "SecondGridToSave",
@@ -195,12 +197,13 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "Other",
     "cells": 25,
-    "DateModified": "2026-07-06 02:07:44",
+    "DateModified": "2026-07-13 04:05:56",
     "1a": "13",
     "1b": "3",
     "1c": "2",
@@ -233,7 +236,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": "<h2>My other websites:&nbsp;</h2><div><a href=\"https://www.sealifeandmore.org\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.sealifeandmore.org</a></div><div>A Wordpress site, still the best place to see Instagram videos</div><div><br></div><div>https://pwassm.github.io/braintrain</div><div>My first site, exploring double decision paradigm..</div><div><br></div><div></div><details><summary>Testing details block</summary><div><div>Will it work the way I want?</div><div>We will see.</div></div></details><div></div><div><br></div><div><br></div><div><br></div>"
+    "ctxt": "<h2>My other websites:&nbsp;</h2><div><a href=\"https://www.sealifeandmore.org\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.sealifeandmore.org</a></div><div>A Wordpress site, still the best place to see Instagram videos</div><div><br></div><div><a href=\"https://pwassm.github.io/braintrain\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://pwassm.github.io/braintrain</a></div><div>My first site, exploring double decision paradigm..</div><div><br></div><div><br></div><div><br></div>",
+    "Active": ""
   },
   {
     "gname": "Quiz2Snowflakes",
@@ -271,7 +275,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "April16",
@@ -309,7 +314,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "Pufferfish Plus",
@@ -347,7 +353,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "PhotosBeautiful1",
@@ -385,7 +392,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "LotsOf121Clicks25a",
@@ -423,7 +431,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "Big Pictures - 25!",
@@ -461,7 +470,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "TaylorSeaHare1",
@@ -499,7 +509,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "SkelShrimp",
@@ -537,7 +548,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "InstaTryMyvideo",
@@ -574,7 +586,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "4 Creatures",
@@ -592,7 +605,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "gchiton1",
@@ -613,7 +627,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "All Portrait",
@@ -641,7 +656,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "ShowoffSlideshow",
@@ -678,7 +694,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "gchiton1zoomed",
@@ -700,7 +717,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "Vimeo",
@@ -737,7 +755,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "HermitCrabAndPix",
@@ -775,7 +794,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "EatingKelpAndBryozoans",
@@ -813,7 +833,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "Sheephead v Urchin 1",
@@ -834,13 +855,14 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "Sheephead v Urchin 2",
     "cells": 9,
     "Zoom": 1.2,
-    "DateModified": "2026-06-12 23:22:49",
+    "DateModified": "2026-07-13 03:58:17",
     "1a": "8_1/1.5",
     "1b": "8_2/1.6",
     "1c": "8_3/1.4",
@@ -856,7 +878,8 @@
     "1P": "",
     "2P": "",
     "3P": "",
-    "ctxt": "<h2></h2><details open=\"\"><summary>Sheephead eats sea urchin</summary><div><h2>Last frame: Garabaldi takes a bite, too.</h2></div><div>Purple sea urchins can live up to 40 years, this one was pretty big,</div><div>big enough for a California sheephead's lunch!</div></details><p><br></p><p></p>"
+    "ctxt": "<details open=\"\"><summary>Sheephead eats sea urchin</summary><div><h2>Last frame: Garabaldi takes a bite, too.</h2></div><div>Purple sea urchins can live up to 40 years, this one was pretty big,</div><div>big enough for a California sheephead's lunch!</div></details><p><br></p>",
+    "Active": ""
   },
   {
     "gname": "1st try 17",
@@ -890,7 +913,8 @@
     "5e": "1033/0.8",
     "DateAdded": "2026-06-11 05:02:40",
     "1L": "1032",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "1st try 19",
@@ -917,7 +941,8 @@
     "5d": "750",
     "5e": "749",
     "DateAdded": "2026-06-11 06:10:25",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "ConsiderEdgeMove",
@@ -945,7 +970,8 @@
     "5e": "",
     "DateAdded": "2026-06-11 14:05:42",
     "ss": "EdgeMoves!",
-    "ctxt": ""
+    "ctxt": "",
+    "Active": ""
   },
   {
     "gname": "Ttennis",
@@ -981,7 +1007,8 @@
     "1P": "87_3",
     "2P": "87_4",
     "3P": "87_5",
-    "ctxt": "<h2></h2><details open=\"\"><summary>Table tennis fun</summary><div><h2>Table tennis fun!</h2><div>amazing rallies</div></div></details><div></div>"
+    "ctxt": "<h2></h2><details open=\"\"><summary>Table tennis fun</summary><div><h2>Table tennis fun!</h2><div>amazing rallies</div></div></details><div></div>",
+    "Active": ""
   },
   {
     "gname": "2nd try 17",
@@ -1005,7 +1032,8 @@
     "5c": "943",
     "5d": "750",
     "5e": "1033/0.8",
-    "DateAdded": "2026-06-13 05:13:24"
+    "DateAdded": "2026-06-13 05:13:24",
+    "Active": ""
   },
   {
     "gname": "Instagrams",
@@ -1037,7 +1065,8 @@
     "5c": "",
     "5d": "",
     "5e": "",
-    "DateAdded": "2026-06-17 03:16:38"
+    "DateAdded": "2026-06-17 03:16:38",
+    "Active": ""
   },
   {
     "gname": "Sunfish2",
@@ -1054,7 +1083,8 @@
     "3b": "1182",
     "3c": "1149",
     "DateAdded": "2026-06-17 17:58:54",
-    "ctxt": "Sunfish2"
+    "ctxt": "Sunfish2",
+    "Active": ""
   },
   {
     "gname": "Marginalian Birds 1",
@@ -1087,7 +1117,8 @@
     "5d": "1213",
     "5e": "1212",
     "DateAdded": "2026-06-18 16:29:47",
-    "ctxt": "Marginalian Birds"
+    "ctxt": "Marginalian Birds",
+    "Active": ""
   },
   {
     "gname": "Marginalian Birds 2 and Mola",
@@ -1119,7 +1150,8 @@
     "5c": "1188",
     "5d": "1189",
     "5e": "1149",
-    "DateAdded": "2026-06-18 16:37:27"
+    "DateAdded": "2026-06-18 16:37:27",
+    "Active": ""
   },
   {
     "gname": "Marginalian Birds 2 and Mola 2",
@@ -1152,7 +1184,8 @@
     "5d": "1189",
     "5e": "1149",
     "DateAdded": "2026-06-18 16:51:39",
-    "ss": "<h2>Title</h2><p>Your content here...</p>"
+    "ss": "<h2>Title</h2><p>Your content here...</p>",
+    "Active": ""
   },
   {
     "gname": "TtennisSmaller",
@@ -1178,7 +1211,8 @@
     "5c": "",
     "5d": "",
     "5e": "",
-    "DateAdded": "2026-06-25 04:38:55"
+    "DateAdded": "2026-06-25 04:38:55",
+    "Active": ""
   },
   {
     "gname": "PortraitBirds",
@@ -1213,7 +1247,8 @@
     "3h": "1215",
     "3i": "1214",
     "DateAdded": "2026-06-28 12:56:25",
-    "ctxt": "PortraitBirds"
+    "ctxt": "PortraitBirds",
+    "Active": ""
   },
   {
     "gname": "Squares!",
@@ -1245,7 +1280,8 @@
     "5c": "1251",
     "5d": "1295",
     "5e": "1296",
-    "DateAdded": "2026-07-01 04:50:54"
+    "DateAdded": "2026-07-01 04:50:54",
+    "Active": ""
   },
   {
     "gname": "CoralMorphologic17",
@@ -1269,7 +1305,8 @@
     "5c": "1362",
     "5d": "1361",
     "5e": "1360",
-    "DateAdded": "2026-07-02 18:36:25"
+    "DateAdded": "2026-07-02 18:36:25",
+    "Active": ""
   },
   {
     "gname": "CoralMorphologic17No2",
@@ -1294,7 +1331,8 @@
     "5d": "1361",
     "5e": "1360",
     "DateAdded": "2026-07-04 03:58:07",
-    "ctxt": "CoralM Videos"
+    "ctxt": "CoralM Videos",
+    "Active": ""
   },
   {
     "gname": "BoxerCrabsImages17",
@@ -1319,7 +1357,8 @@
     "5d": "1408",
     "5e": "1407",
     "DateAdded": "2026-07-04 17:53:43",
-    "ctxt": "BoxerCrabImages"
+    "ctxt": "BoxerCrabImages",
+    "Active": ""
   },
   {
     "gname": "BoxerCrabsVideos25",
@@ -1352,7 +1391,8 @@
     "5d": "1442",
     "5e": "1441",
     "DateAdded": "2026-07-04 21:41:41",
-    "ctxt": "BoxerCrabVideos25!"
+    "ctxt": "BoxerCrabVideos25!",
+    "Active": ""
   },
   {
     "gname": "TestReloadFail",
@@ -1368,7 +1408,8 @@
     "3a": "1628",
     "3b": "1627",
     "3c": "1611",
-    "DateAdded": "2026-07-08 17:24:18"
+    "DateAdded": "2026-07-08 17:24:18",
+    "Active": ""
   },
   {
     "gname": "First_T",
@@ -1391,6 +1432,38 @@
     "4b": "1643",
     "4c": "",
     "4d": "",
-    "DateAdded": "2026-07-12 02:51:09"
+    "DateAdded": "2026-07-12 02:51:09",
+    "Active": ""
+  },
+  {
+    "gname": "GPO Hatchlings",
+    "cells": 4,
+    "Zoom": 1.6,
+    "DateModified": "2026-07-13 04:00:04",
+    "1a": "1726",
+    "1b": "1726_1",
+    "2a": "1726_2",
+    "2b": "1726_3",
+    "DateAdded": "2026-07-12 23:49:28",
+    "ctxt": "",
+    "Active": ""
+  },
+  {
+    "gname": "OctopusHatchlings!",
+    "cells": 9,
+    "Zoom": 1.6,
+    "DateModified": "2026-07-13 04:07:21",
+    "1a": "1728_t",
+    "1b": "1728",
+    "1c": "1728_1",
+    "2a": "1728_2",
+    "2b": "1728_3",
+    "2c": "1726",
+    "3a": "1726_1",
+    "3b": "1726_2",
+    "3c": "1726_3",
+    "DateAdded": "2026-07-13 04:00:58",
+    "ctxt": "OctopusHatchlings!",
+    "Active": "1"
   }
 ]
