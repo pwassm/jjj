@@ -545,7 +545,11 @@ function isVideoRow(row) {
   const isIG = link && window.isInstagramLink && window.isInstagramLink(link);
   const isTT = link && window.isTikTokLink && window.isTikTokLink(link);
   if (isYT || isVimeo || isIG || isTT) return true;
-  if (link && /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(link)) return true;
+  // Direct video file (extension) OR extensionless provider stream (Macaulay
+  // Library /mp4/ asset) — window.isDirectVideoLink owns both; keep the inline
+  // extension test as a fallback in case video.js hasn't defined it yet.
+  if (link && ((window.isDirectVideoLink && window.isDirectVideoLink(link))
+      || /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(link))) return true;
   if (vrn && vrn !== 'i' && window.parseVideoAsset && window.parseVideoAsset(vrn) !== null) {
     if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(link)) return false;
     return true;
@@ -5864,6 +5868,7 @@ function _looksLikeMediaUrl(s) {
   const t = s.trim();
   if (!/^https?:\/\//i.test(t)) return false;
   if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return true;
+  if (window.isMacaulayVideoLink && window.isMacaulayVideoLink(t)) return true;
   const path = t.split(/[?#]/)[0];
   if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return true;
   if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return true;
@@ -5883,6 +5888,9 @@ function _classifyUrl(s) {
   const t = s.trim();
   if (!/^https?:\/\/\S+$/i.test(t)) return null;
   if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return 'video';
+  // Macaulay Library /mp4/ asset — extensionless direct video (else it would
+  // fall through to 'web' and be mis-imported as an article row).
+  if (window.isMacaulayVideoLink && window.isMacaulayVideoLink(t)) return 'video';
   const path = t.split(/[?#]/)[0];
   if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return 'video';
   if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return 'image';
@@ -5923,7 +5931,8 @@ async function _fetchMetaForNewRows(rows) {
     const isYT    = /youtu\.be|youtube\.com/i.test(link);
     const isVimeo = /vimeo\.com/i.test(link);
     const isImg   = row.VidRange === 'i';
-    const isDirVid = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path);
+    const isDirVid = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)
+      || (window.isMacaulayVideoLink && window.isMacaulayVideoLink(link));
     try {
       if (isYT) {
         const ytId = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
@@ -6885,6 +6894,14 @@ async function _importBareLinks(lines) {
     const cls = _classifyUrl(link);
     if (cls === 'video') {
       row.Mute = '0';
+      // (dev0600) Macaulay Library / Cornell mp4 asset → carry a reviewable
+      // linkpage to the public asset page (macaulaylibrary.org/asset/<id>) so
+      // the source — species, recordist, date, location, and the Birds of the
+      // World link — can be reviewed (G `g` source-page). Parallels Flickr.
+      if (window.macaulayAssetPage) {
+        const mp = window.macaulayAssetPage(link);
+        if (mp && !row.linkpage) row.linkpage = mp;
+      }
       // (dev0506) Pasted as /shorts/ → portrait Short. Capture into Mode (source of
       // truth) since the stored URL is now canonical youtu.be/<id> (no /shorts/).
       if (shortLinks.has(link)) row[(typeof getModeCol === 'function') ? getModeCol() : 'Mode'] = 'P';

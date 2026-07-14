@@ -82,10 +82,36 @@ window.sanitizeVimeoUrl = function(url) {
   return base + hash;
 };
 
-// Direct video file URL (self-hosted mp4/webm/etc on R2, GitHub Pages, etc).
-// Match by extension before any ?query or #fragment.
+// ── Macaulay Library / eBird media CDN (Cornell) ────────────────────────────
+// These are direct media streams with NO file extension — the format lives in
+// the path instead: .../api/v1/asset/<id>/mp4/<width>  (video),
+// .../asset/<id>/1200 or /large (photo), .../asset/<id>/audio (sound).
+// We (a) recognise the /mp4/ form as a direct video everywhere, and (b) expose
+// the numeric asset id so an imported row can carry a reviewable linkpage back
+// to the public asset page (macaulaylibrary.org/asset/<id>), which shows the
+// species, recordist, date and location and links to Birds of the World.
+// Parallels the Flickr photo-id → linkpage machinery in core.js.
+window.macaulayAsset = function(url) {
+  var m = String(url || '').match(
+    /(?:cdn\.download\.ams\.birds\.cornell\.edu|(?:www\.)?macaulaylibrary\.org)\/(?:api\/v\d+\/)?asset\/(\d+)(?:\/([a-z0-9]+))?/i);
+  return m ? { id: m[1], fmt: (m[2] || '').toLowerCase() } : null;
+};
+window.macaulayAssetPage = function(url) {
+  var a = window.macaulayAsset(url);
+  return a ? 'https://macaulaylibrary.org/asset/' + a.id : '';
+};
+window.isMacaulayVideoLink = function(url) {
+  var a = window.macaulayAsset(url);
+  return !!(a && a.fmt === 'mp4');
+};
+
+// Direct video file URL (self-hosted mp4/webm/etc on R2, GitHub Pages, etc, or
+// an extensionless Macaulay Library /mp4/ asset). Match by extension before any
+// ?query or #fragment.
 window.isDirectVideoLink = function(url) {
-  return /\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(url || '');
+  if (/\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(url || '')) return true;
+  if (window.isMacaulayVideoLink && window.isMacaulayVideoLink(url)) return true;
+  return false;
 };
 
 // ── Instagram (sandbox experiment) ────────────────────────────────────────
