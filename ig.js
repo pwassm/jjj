@@ -460,6 +460,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igCoverOnly" title="Toggle download mode. ON = grab only the index-1 cover (no carousel) — for authors whose page-1 is the keeper. OFF = normal full download. Both are cookieless — your IG login is never used either way.">📸 Cover-only: off</button>
         <button id="igPromoteSel">➕ Promote sel</button>
+        <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
         <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
         <button id="igResetSel" title="Reset selected rows to 'new' (hotkey R) so a fresh Enrich + Download rebuilds them — clears the derived title, W×H, duration, cover and downloaded-file record (caption ftext/ttxt is kept). Use this to re-try after a fix.">↺ Reset sel</button>
@@ -500,6 +501,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         : '📸 Cover-only off — normal full download, cookieless (your IG login is never used)', 3400);
     });
     $('igPromoteSel').addEventListener('click', () => batchPromote());
+    $('igCreateGrid').addEventListener('click', () => createGridFromView());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
     $('igClearSel').addEventListener('click', () => { sel.clear(); lastCheckedId = null; applyAndRender(); igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600); });
     $('igResetSel').addEventListener('click', () => resetSelected());
@@ -1391,6 +1393,60 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igToast(`➕ promoted ${ok} row(s) → ml.json`, 2600);
   }
 
+  // ── (dev0609) Create → one P12 grid in c.json ────────────────────────────────
+  // Takes the 12 rows starting at the focused row (or the top of the current
+  // view when nothing is focused) and writes them as a single c.json config with
+  // cells:12 — the 2×6 portrait layout, which suits IG reels' 9:16 shape.
+  //
+  // The cells hold each row's IG LINK rather than an ml.json UID, so a grid can
+  // be thrown together straight from the harvest with no Promote step. G reads
+  // that shape via _gridLinkCellRow (grid.js); if a link later gains an ml.json
+  // row, the cell adopts it automatically and picks up its ftext/tags.
+  const IG_GRID_CELLS = 12;
+
+  function createGridFromView() {
+    if (!view.length) { igToast('Nothing in view to build a grid from', 2000); return; }
+    if (typeof _cEnsureLoaded !== 'function' || typeof cSaveToFile !== 'function') {
+      igToast('c.json not available — open the C screen once first', 3000); return;
+    }
+    const start = focusId != null ? Math.max(0, view.findIndex(r => r.id === focusId)) : 0;
+    const picked = view.slice(start, start + IG_GRID_CELLS).filter(r => r && r.url);
+    if (!picked.length) { igToast('No rows with a URL from here down', 2200); return; }
+
+    const first = picked[0];
+    const dflt = 'IG ' + (first.author || 'mixed') + ' ' + new Date().toISOString().slice(0, 10);
+    const gname = (prompt('Grid name for these ' + picked.length + ' row(s):', dflt) || '').trim();
+    if (!gname) return;
+
+    const now = (typeof isoNow === 'function') ? isoNow()
+      : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const cfg = { gname: gname, cells: IG_GRID_CELLS, Zoom: 1, DateAdded: now, DateModified: now };
+    // Fill 1a..1f then 2a..2f — the same cell list G renders P12 from. Short
+    // picks leave the tail cells blank rather than shrinking the layout.
+    const cellList = (typeof _gridCellList === 'function' && typeof _gridPortraitDims === 'function')
+      ? _gridCellList(5, 'P' + IG_GRID_CELLS).map(s => s.cs)
+      : ['1a','1b','1c','1d','1e','1f','2a','2b','2c','2d','2e','2f'];
+    cellList.forEach((cs, i) => { cfg[cs] = picked[i] ? picked[i].url : ''; });
+
+    _cEnsureLoaded().then(async () => {
+      const arr = (typeof _cData !== 'undefined' && Array.isArray(_cData)) ? _cData : null;
+      if (!arr) { igToast('c.json did not load — cannot save the grid', 3000); return; }
+      const at = arr.findIndex(c => c && String(c.gname || '').trim() === gname);
+      if (at >= 0) {
+        if (!confirm('A grid named "' + gname + '" already exists.\nOverwrite it?')) return;
+        cfg.DateAdded = arr[at].DateAdded || now;
+        arr[at] = cfg;
+      } else {
+        arr.push(cfg);
+      }
+      if (typeof _gridConfigs !== 'undefined') _gridConfigs = arr;
+      const ok = await cSaveToFile();
+      igToast(ok
+        ? '🔲 "' + gname + '" → c.json (' + picked.length + ' of 12 cells, P12)\nOpen it from the C screen.'
+        : '⚠ "' + gname + '" saved to localStorage only — re-grant the project folder', 3400);
+    });
+  }
+
   // (dev0498) Permanently remove the selected rows from ig.json. For pruning the
   // occasional bad harvest entry. No archive — a confirm guards it; downloaded
   // media files in ig_media/ are left on disk untouched.
@@ -1442,7 +1498,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   }
 
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igCreateGrid', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the

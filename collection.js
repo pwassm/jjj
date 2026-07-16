@@ -128,10 +128,18 @@ async function gridSaveToFile(gname) {
   for (const spec of list) {
     const cellStr = spec.cs;
     const row = resolve(cellStr);
-    if (row && row.UID) {
-      // (dev0346) Encode any per-cell zoom as "UID/zoom"; a bare UID = full size.
-      const z = (typeof _gridCellZoom !== 'undefined') ? _gridCellZoom[row.UID] : 0;
-      gridData[cellStr] = (z && Math.abs(z - 1) > 1e-9) ? (row.UID + '/' + z) : row.UID;
+    // (dev0609) A link cell writes its LINK back, not a UID. _gridCellKey picks
+    // the right one — link-ness wins even when the cell adopted a real ml.json
+    // row (whose UID it inherits), so re-saving can't quietly convert the cell
+    // from a link to a UID. (dev0346) Any per-cell zoom rides along as a suffix.
+    const key = (typeof _gridCellKey === 'function')
+      ? _gridCellKey(row)
+      : (row && row.UID ? String(row.UID) : '');
+    if (key) {
+      const z = (typeof _gridCellZoom !== 'undefined') ? _gridCellZoom[key] : 0;
+      gridData[cellStr] = (typeof _gridMakeCellVal === 'function')
+        ? _gridMakeCellVal(key, z)
+        : ((z && Math.abs(z - 1) > 1e-9) ? (key + '/' + z) : key);
     } else {
       gridData[cellStr] = '';
     }

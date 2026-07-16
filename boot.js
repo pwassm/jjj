@@ -1608,29 +1608,22 @@ async function _openConfigByName(name) {
   window._gridSource = 'C';
   window._gridName = cfg.gname || '';
   if (typeof _gridApplyConfigZoom === 'function') _gridApplyConfigZoom(cfg); // (dev0346) global + per-cell zoom
-  const cellsN = parseInt(cfg.cells, 10);
+  // (dev0609) Derive the footprint through the shared helper cMakeActive uses,
+  // instead of the old square-only 4/9/16/25 ladder that this path had of its
+  // own. That ladder defaulted every other `cells` value to gsize 5, so a grid
+  // opened BY NAME (menu pick / ?grid= deep link) rendered the 17/19 specials
+  // and the portrait layouts (cells 3/12/27) as a 5×5 — only C's Make-Active
+  // got them right. One helper now means every activation route agrees.
   let gsize = 5;
-  if (cellsN === 4) gsize = 2;
-  else if (cellsN === 9) gsize = 3;
-  else if (cellsN === 16) gsize = 4;
-  else if (cellsN === 25) gsize = 5;
+  if (typeof _gridApplyConfigToRows === 'function' && Array.isArray(data)) {
+    gsize = _gridApplyConfigToRows(cfg, data).gsize;
+  } else if (typeof _gridConfigLayout === 'function') {
+    gsize = _gridConfigLayout(cfg).gsize;
+  }
   if (typeof _setGridGsize === 'function') _setGridGsize(gsize, { skipSave: true });
   if (typeof metaRow !== 'undefined') {
     if (!metaRow) metaRow = { _salMeta: true };
     metaRow._salGsize = gsize;
-  }
-  if (Array.isArray(data)) {
-    data.forEach(r => { if (r && r.cell) r.cell = ''; });
-    for (let r = 1; r <= gsize; r++) {
-      for (let c = 1; c <= gsize; c++) {
-        const cs = r + 'abcde'.charAt(c - 1);
-        const uid = (typeof _gridParseCellVal === 'function') ? _gridParseCellVal(cfg[cs]).uid : (cfg[cs] ? String(cfg[cs]) : '');
-        if (uid) {
-          const row = data.find(d => String(d.UID) === uid);
-          if (row) row.cell = cs;
-        }
-      }
-    }
   }
   if (typeof save === 'function') save();
   if (typeof gridShow === 'function') gridShow();

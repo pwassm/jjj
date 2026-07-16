@@ -623,6 +623,9 @@ function getRowByCellForGrid(cellStr) {
     // value may carry a per-cell zoom suffix ("UID/zoom") — parse out the UID.
     if (!_gridActiveConfig) return null;
     const pv = _gridParseCellVal(_gridActiveConfig[cellStr]);
+    // (dev0609) A link cell holds the media URL itself, not a UID — synthesize
+    // (or adopt) a row for it so the rest of the grid can't tell the difference.
+    if (pv.link) return _gridLinkCellRow(pv.link, cellStr);
     if (!pv.uid) return null;
     return data.find(r => String(r.UID) === pv.uid) || null;
   }
@@ -873,8 +876,9 @@ function _gridZoomForCell(cellEl) {
   // (and still apply on desktop); they're just ignored for mobile rendering.
   if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return 1;
   const g = _gridFillZoom();
-  const row = cellEl && cellEl._rowData;
-  const indiv = (row && row.UID && _gridCellZoom[row.UID] > 0) ? _gridCellZoom[row.UID] : 1;
+  // (dev0609) Keyed via _gridCellKey — a UID normally, the link for a link cell.
+  const ck = _gridCellKey(cellEl && cellEl._rowData);
+  const indiv = (ck && _gridCellZoom[ck] > 0) ? _gridCellZoom[ck] : 1;
   return g * indiv;
 }
 
@@ -911,9 +915,9 @@ function _gridCOIForCell(cellEl) {
 }
 // (dev0364) Transient drag-pan offset for a cell, or null when none/zero.
 function _gridCellPanForCell(cellEl) {
-  const row = cellEl && cellEl._rowData;
-  if (!row || row.UID == null) return null;
-  const p = _gridCellPan[row.UID];
+  const ck = _gridCellKey(cellEl && cellEl._rowData);   // (dev0609) UID or link
+  if (!ck) return null;
+  const p = _gridCellPan[ck];
   return (p && (p.x || p.y)) ? p : null;
 }
 
@@ -1062,15 +1066,89 @@ function _gridRefitAll() {
   document.querySelectorAll('#gridContainer .grid-cell').forEach(_gridApplyZoomToCell);
 }
 
-// Parse a c.json cell value into { uid, zoom }. Stored as "UID/zoom" (e.g.
-// "204/1.8"); a bare "UID" means full size (zoom 1). Tolerates blanks/null.
+// Parse a c.json cell value into { uid, link, zoom }. Two grammars:
+//   UID cell  — "204" or "204/1.8" (zoom after a slash). The original form.
+//   LINK cell — (dev0609) "https://…" or "https://…|1.8". A cell may hold a
+//     direct media URL instead of an ml.json UID, so a grid can be built from
+//     links that were never promoted into ml.json (see _gridLinkCellRow).
+// The two never collide: a UID is digits, a link starts with a scheme. Links
+// use "|" for the zoom suffix because a URL is already full of slashes.
+// Exactly one of .uid / .link is ever set. Tolerates blanks/null.
 function _gridParseCellVal(v) {
   const s = (v === undefined || v === null) ? '' : String(v).trim();
-  if (!s) return { uid: '', zoom: 1 };
+  if (!s) return { uid: '', link: '', zoom: 1 };
+  if (_isLinkCellVal(s)) {
+    const li = s.indexOf('|');
+    if (li < 0) return { uid: '', link: s, zoom: 1 };
+    const lz = parseFloat(s.slice(li + 1));
+    return { uid: '', link: s.slice(0, li).trim(), zoom: (isFinite(lz) && lz > 0) ? lz : 1 };
+  }
   const i = s.indexOf('/');
-  if (i < 0) return { uid: s, zoom: 1 };
+  if (i < 0) return { uid: s, link: '', zoom: 1 };
   const z = parseFloat(s.slice(i + 1));
-  return { uid: s.slice(0, i).trim(), zoom: (isFinite(z) && z > 0) ? z : 1 };
+  return { uid: s.slice(0, i).trim(), link: '', zoom: (isFinite(z) && z > 0) ? z : 1 };
+}
+
+// (dev0609) True when a raw c.json cell value is a link rather than a UID.
+function _isLinkCellVal(v) { return /^https?:\/\//i.test(String(v || '').trim()); }
+
+// (dev0609) Encode a cell value for c.json — the inverse of _gridParseCellVal.
+// Links take the "|zoom" suffix, UIDs the "/zoom" one; zoom 1 = bare value.
+function _gridMakeCellVal(idOrLink, zoom) {
+  const s = String(idOrLink || '').trim();
+  if (!s) return '';
+  if (!(zoom > 0) || Math.abs(zoom - 1) < 1e-9) return s;
+  return s + (_isLinkCellVal(s) ? '|' : '/') + zoom;
+}
+
+// (dev0609) The key a row's per-cell zoom/pan is stored under. Normally the
+// row's ml.json UID; for a link cell it's the link itself, so the zoom round-
+// trips to c.json as "link|zoom". Link-ness is checked FIRST because an
+// ADOPTED link cell (a proxy over a real ml row) inherits that row's UID —
+// keying it by UID would write the cell back as a UID and lose the link.
+function _gridCellKey(row) {
+  if (!row) return '';
+  if (row._salLinkCell) return row.link || '';
+  return (row.UID == null) ? '' : String(row.UID);
+}
+
+// (dev0609) Cache of link-cell rows, keyed by link, so repeated renders hand
+// back the SAME object — cell._rowData identity, _lastGridRow and the zoom/pan
+// dicts all depend on it being stable.
+var _gridLinkRowCache = {};
+
+// (dev0609) Resolve a link cell to something the grid can render. Every cell
+// consumer downstream (gridShow, gridOpenFullscreen/V, the zoom + swipe
+// handlers) works off a ROW OBJECT, so a link cell only has to produce one.
+//
+// If ml.json happens to hold a row with this exact link — e.g. the IG entry was
+// promoted after the grid was built — we adopt it via Object.create so ftext,
+// tags, VidRange, Mode and the rest come along for free, and the cell silently
+// upgrades itself. Otherwise we synthesize a bare row that knows only its link;
+// isVideoRow/isInstagramLink read row.link alone, so the IG embed still mounts.
+//
+// Either way the returned object carries an OWN _salLinkCell flag (an adopted
+// prototype never does), which is how the save path knows to write the link
+// back instead of a UID.
+function _gridLinkCellRow(link, cellStr) {
+  link = String(link || '').trim();
+  if (!link) return null;
+  const ml = (typeof data !== 'undefined' && Array.isArray(data))
+    ? (data.find(r => r && String(r.link || '').trim() === link
+        && (r.show === undefined || r.show === '1')) || null)
+    : null;
+  const hit = _gridLinkRowCache[link];
+  // Rebuild when adoption flips — ml.json may not have finished loading on the
+  // first render, or the row may have been promoted/deleted since.
+  if (hit && hit._salMlSrc === ml) { hit.cell = cellStr || ''; return hit; }
+  const row = ml ? Object.create(ml) : {};
+  row._salLinkCell = true;
+  row._salMlSrc = ml;
+  row.link = link;
+  row.cell = cellStr || '';
+  if (!ml) { row.UID = ''; row.show = '1'; row.VidRange = ''; }
+  _gridLinkRowCache[link] = row;
+  return row;
 }
 
 // (dev0346) Restore zoom state when a c.json config is activated: the global
@@ -1086,7 +1164,9 @@ function _gridApplyConfigZoom(cfg) {
   Object.keys(cfg).forEach(k => {
     if (!_isGridConfigCellKey(k)) return;
     const pv = _gridParseCellVal(cfg[k]);
-    if (pv.uid && pv.zoom !== 1) _gridCellZoom[pv.uid] = pv.zoom;
+    // (dev0609) Link cells key their zoom by the link — see _gridCellKey.
+    const ck = pv.uid || pv.link;
+    if (ck && pv.zoom !== 1) _gridCellZoom[ck] = pv.zoom;
   });
 }
 
@@ -1219,7 +1299,8 @@ function gridRestoreCellZoomFromConfig() {
   Object.keys(cfg).forEach(k => {
     if (!_isGridConfigCellKey(k)) return;
     const pv = _gridParseCellVal(cfg[k]);
-    if (pv.uid && pv.zoom !== 1) _gridCellZoom[pv.uid] = pv.zoom;
+    const ck = pv.uid || pv.link;     // (dev0609) link cells key by link
+    if (ck && pv.zoom !== 1) _gridCellZoom[ck] = pv.zoom;
   });
   _gridZResetArmed = false;
   _gridToast('Per-cell zooms restored from config', 1500);
@@ -1230,17 +1311,18 @@ function gridRestoreCellZoomFromConfig() {
 // THAT cell's zoom — a multiplier on top of the global zoom. Only video/image/
 // montage cells are zoomable; stored per row UID so it can persist to c.json
 // ("UID/zoom") and restore. Snapped to 0.2; exactly 1.0 clears the per-cell entry.
+// (dev0609) A link cell stores its zoom under the link instead ("link|zoom").
 function gridAdjustCellZoom(cellEl, delta) {
   _gridZResetArmed = false;   // (dev0350) a per-cell zoom nudge breaks the Z double-reset chain
   if (!cellEl) { if (typeof toast === 'function') toast('Hover a cell, then Ctrl+[ or Ctrl+]', 1200); return; }
   const t = _gridCellZoomTarget(cellEl);
   if (!t) { if (typeof toast === 'function') toast('No per-cell zoom for this cell', 1000); return; }
-  const row = cellEl._rowData;
-  if (!row || !row.UID) { if (typeof toast === 'function') toast('Cell needs a UID to store its zoom', 1200); return; }
-  const cur = _gridCellZoom[row.UID] > 0 ? _gridCellZoom[row.UID] : 1;
+  const ck = _gridCellKey(cellEl._rowData);
+  if (!ck) { if (typeof toast === 'function') toast('Cell needs a UID to store its zoom', 1200); return; }
+  const cur = _gridCellZoom[ck] > 0 ? _gridCellZoom[ck] : 1;
   const next = _gridSnapZoom(cur + delta);
-  if (Math.abs(next - 1) < 1e-9) delete _gridCellZoom[row.UID];
-  else _gridCellZoom[row.UID] = next;
+  if (Math.abs(next - 1) < 1e-9) delete _gridCellZoom[ck];
+  else _gridCellZoom[ck] = next;
   _gridApplyZoomToCell(cellEl);
   _gridToast((cellEl.dataset.cell || 'cell') + ' zoom: ' + next.toFixed(1) + '×', 1000);
 }
@@ -1939,7 +2021,8 @@ function gridWireInteractor(interactor, cell, cellStr) {
   let _szActive = false, _szDown = false, _szDragging = false;
   let _szStart = null, _szPanBase = null, _szBtn = 0;
   let _szDelay = null, _szTimer = null, _szStep = 0;
-  const _szUID = () => (cell._rowData ? cell._rowData.UID : null);
+  // (dev0609) Zoom/pan store key — the row's UID, or its link for a link cell.
+  const _szKey = () => _gridCellKey(cell._rowData);
   function _szStop() {
     if (_szDelay) { clearTimeout(_szDelay);  _szDelay = null; }
     if (_szTimer) { clearInterval(_szTimer); _szTimer = null; }
@@ -1951,8 +2034,8 @@ function gridWireInteractor(interactor, cell, cellStr) {
     interactor.style.cursor = '';
   }
   function _szBegin(e) {
-    const uid = _szUID();
-    if (uid == null) return;
+    const ck = _szKey();
+    if (!ck) return;
     _szActive = true; _szDown = true; _szDragging = false;
     _szBtn = e.button;                       // 0=left → zoom in, 2=right → zoom out
     _szStart = { x: e.clientX, y: e.clientY };
@@ -1968,12 +2051,12 @@ function gridWireInteractor(interactor, cell, cellStr) {
     _szDelay = setTimeout(() => {
       _szDelay = null;
       _szTimer = setInterval(() => {
-        const cur = _gridCellZoom[uid] > 0 ? _gridCellZoom[uid] : 1;
+        const cur = _gridCellZoom[ck] > 0 ? _gridCellZoom[ck] : 1;
         let next = cur + dir * _szStep;
         // Floor the EFFECTIVE zoom (global × per-cell) at the grid minimum.
         const g = _gridFillZoom();
         if (g * next < _GRID_ZOOM_MIN) next = _GRID_ZOOM_MIN / g;
-        _gridCellZoom[uid] = next;
+        _gridCellZoom[ck] = next;
         _szStep = Math.min(0.08, _szStep + 0.004);
         _gridApplyZoomToCell(cell);
       }, 50);
@@ -1984,15 +2067,15 @@ function gridWireInteractor(interactor, cell, cellStr) {
     if (!_szDragging && Math.hypot(e.clientX - _szStart.x, e.clientY - _szStart.y) > 8) {
       _szDragging = true;
       _szStop();                             // a drag cancels the zoom ramp
-      const uid = _szUID();
-      const b = (_gridCellPan[uid] && typeof _gridCellPan[uid].x === 'number')
-        ? _gridCellPan[uid] : { x: 0, y: 0 };
+      const ck = _szKey();
+      const b = (_gridCellPan[ck] && typeof _gridCellPan[ck].x === 'number')
+        ? _gridCellPan[ck] : { x: 0, y: 0 };
       _szPanBase = { x: b.x, y: b.y, px: e.clientX, py: e.clientY };
       interactor.style.cursor = 'grabbing';
     }
     if (_szDragging && _gridZoomForCell(cell) > 1.05) {
-      const uid = _szUID();
-      _gridCellPan[uid] = {
+      const ck = _szKey();
+      _gridCellPan[ck] = {
         x: _szPanBase.x + (e.clientX - _szPanBase.px),
         y: _szPanBase.y + (e.clientY - _szPanBase.py)
       };
@@ -2001,11 +2084,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
   }
   function _szEnd(e) {
     _szStop();
-    const uid = _szUID();
-    if (uid != null && _gridCellZoom[uid] > 0) {
-      const snapped = _gridSnapZoom(_gridCellZoom[uid]);
-      if (Math.abs(snapped - 1) < 1e-9) delete _gridCellZoom[uid];
-      else _gridCellZoom[uid] = snapped;
+    const ck = _szKey();
+    if (ck && _gridCellZoom[ck] > 0) {
+      const snapped = _gridSnapZoom(_gridCellZoom[ck]);
+      if (Math.abs(snapped - 1) < 1e-9) delete _gridCellZoom[ck];
+      else _gridCellZoom[ck] = snapped;
     }
     _gridApplyZoomToCell(cell);
     _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
