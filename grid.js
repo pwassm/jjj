@@ -263,27 +263,55 @@ function gridCleanupPlayers() {
 // the cell, and offset top so the header is clipped above the visible area.
 function fitGridIgFrame(cellEl, iframe) {
   const NAT_W = 326, NAT_H = 620, HEADER = 54;
-  // (dev0541) Natural-px y where the embed's picture ends. IG caps a portrait
-  // post at ~4:5, so the media runs from just under the header to about
-  // HEADER + 326×(5/4); below that is the like/caption footer. Used to bound the
-  // COI pan so it can slide down to the picture bottom but not into the caption.
-  const MEDIA_BOTTOM = HEADER + Math.round(NAT_W * 5 / 4);
+  // (dev0541) Natural-px height of the embed's picture: it runs from just under
+  // the header down to HEADER + MEDIA_H, and below that is the like/caption
+  // footer. Bounds the COI pan so it can slide to the picture bottom but not
+  // into the caption, and (dev0608) sets the height cover-fit fills.
+  //
+  // (dev0608) MEASURED, and only approximately true: a reel's media box comes
+  // out at exactly 4:5, but a photo post measured 1.334 (served natural
+  // 326×434) — IG does NOT cap embeds at 4:5. So this is an assumption that is
+  // right for reels, under-estimates taller posts (harmless: cover-fit just
+  // crops a little more), and OVER-estimates squarer ones — a square or
+  // landscape post in a very tall cell can still leak caption below the
+  // picture. The real aspect cannot be sensed at runtime: the embed is
+  // cross-origin, and its MEASURE postMessage reports height:0. Fixing the
+  // remainder needs the post's true og:image dimensions fetched at enrich time
+  // (the /p/ OG-tag scrape already reads them) and stored on the row for this
+  // function to read — the "more IG information" build, deliberately deferred.
+  const MEDIA_H = Math.round(NAT_W * 5 / 4);
   function fit() {
     if (!cellEl.isConnected) return;
     const cw = cellEl.clientWidth, ch = cellEl.clientHeight;
     if (!cw) return;
-    const scale = cw / NAT_W;
+    // (dev0608) COVER-fit, was width-fit. Pinning scale to cw/NAT_W meant any
+    // cell TALLER than 1.25×its width ran out of picture and filled the
+    // remainder with IG's caption — in a 12P/portrait grid that was ~30% of
+    // every cell as text. Taking the larger of the two ratios keeps the picture
+    // covering the cell and pushes the caption out of view, at the cost of
+    // cropping the sides (4:5 media in a 9:16 cell loses ~21% per side). Cells
+    // at or below 1.25 aspect — every landscape/square grid — still take the
+    // width ratio and render exactly as before. Mirrors dev0502's cover-fit for
+    // images in portrait grids.
+    const scale = Math.max(cw / NAT_W, ch / MEDIA_H);
     // (dev0541) Vertical pan from the row's COI fy. A short landscape cell only
-    // shows a thin top strip of the scaled-to-width IG picture, hiding a subject
-    // in its lower half. fy=0 keeps the old top-aligned crop; higher fy slides
-    // the visible window down toward the picture bottom. Alt-click lower on the
+    // shows a thin top strip of the scaled IG picture, hiding a subject in its
+    // lower half. fy=0 keeps the old top-aligned crop; higher fy slides the
+    // visible window down toward the picture bottom. Alt-click lower on the
     // cell to reveal lower content (COI is now allowed on IG cells — gridSetCOI).
     const coi = _gridCOIForCell(cellEl);
     const fy = coi ? coi.fy : 0;
-    const winNat = ch ? (ch / scale) : (MEDIA_BOTTOM - HEADER);
-    const panNat = fy * Math.max(0, (MEDIA_BOTTOM - HEADER) - winNat);
+    const winNat = ch ? (ch / scale) : MEDIA_H;
+    const panNat = fy * Math.max(0, MEDIA_H - winNat);
+    // (dev0608) Horizontal pan, newly meaningful: width-fit left no horizontal
+    // overflow, so fx did nothing and left was always 0. Cover-fit crops the
+    // sides, so honour fx the same way fy works (0=left, 1=right) and CENTRE by
+    // default — fx's 0 default would otherwise hard-left-align every cell.
+    const fx = coi ? coi.fx : 0.5;
+    const winNatW = scale ? (cw / scale) : NAT_W;
+    const panNatX = fx * Math.max(0, NAT_W - winNatW);
     iframe.style.transform = 'scale(' + scale + ')';
-    iframe.style.left = '0px';
+    iframe.style.left = (-panNatX * scale) + 'px';
     iframe.style.top = (-(HEADER + panNat) * scale) + 'px';
   }
   iframe._igFit = fit;   // (dev0541) let gridSetCOI re-run the fit after a COI change
