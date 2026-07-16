@@ -294,6 +294,71 @@ function fitGridIgFrame(cellEl, iframe) {
   }
 }
 
+// ── IG cell arming (dev0604) ────────────────────────────────────────────────
+// An IG embed is a cross-origin iframe: its play button only responds to a real
+// click landing INSIDE the frame, and nothing can drive it from out here (same
+// wall as V — see vpMountInstagram). But .grid-interactor (z:100) owns every
+// cell click, so the caret was unclickable. Rather than surrender the cell's
+// gestures (swipe→V, alt-click COI per dev0541, cut/paste), an IG cell is ARMED
+// by a first plain click: the interactor goes inert, the embed takes pointer
+// events, and the NEXT click reaches IG's caret. Moving off the cell disarms.
+// Sizing was never the obstacle — fitGridIgFrame keeps the iframe at its
+// natural 326×620 and only CSS-scales it, so IG believes it's full-size (cf.
+// the YT tile spinner) and clicks map correctly through the transform.
+//
+// MOUSE ONLY, deliberately: disarm hangs on mouseleave, which touch never
+// fires, so a tap would strand the cell inert with no way back to V. Touch
+// keeps its gestures and plays in V. Repeats are impossible either way (no JS
+// API), so this buys exactly one play per click — which is all IG allows.
+let _gridIgArmed = null;   // { cell, onLeave } — at most one armed cell
+
+function _gridIsIgCell(cellEl) {
+  const row = cellEl && cellEl._rowData;
+  return !!(row && row.link && window.isInstagramLink
+    && window.isInstagramLink(row.link) && cellEl.querySelector('.grid-ig-wrap'));
+}
+
+function _gridIgDisarm() {
+  const st = _gridIgArmed;
+  if (!st) return;
+  _gridIgArmed = null;
+  try { st.cell.removeEventListener('mouseleave', st.onLeave); } catch (_) {}
+  if (!st.cell.isConnected) return;   // grid re-rendered under us
+  const wrap  = st.cell.querySelector('.grid-ig-wrap');
+  const frame = wrap && wrap.querySelector('iframe');
+  const inter = st.cell.querySelector('.grid-interactor');
+  if (wrap)  wrap.style.pointerEvents  = 'none';
+  if (frame) frame.style.pointerEvents = 'none';
+  if (inter) inter.style.pointerEvents = '';
+  const badge = st.cell.querySelector('.grid-ig-armed');
+  if (badge) badge.remove();
+}
+
+function _gridIgArm(cellEl) {
+  if (_gridIgArmed && _gridIgArmed.cell === cellEl) return;   // already armed
+  _gridIgDisarm();                                            // one at a time
+  const wrap  = cellEl.querySelector('.grid-ig-wrap');
+  const frame = wrap && wrap.querySelector('iframe');
+  const inter = cellEl.querySelector('.grid-interactor');
+  if (!wrap || !frame || !inter) return;
+  wrap.style.pointerEvents  = 'auto';
+  frame.style.pointerEvents = 'auto';
+  inter.style.pointerEvents = 'none';
+  // Badge sits above the dead interactor and stays pointer-events:none, so the
+  // click still falls through to the embed.
+  const badge = document.createElement('div');
+  badge.className = 'grid-ig-armed';
+  badge.textContent = '▶ play';
+  badge.style.cssText = 'position:absolute;left:4px;top:4px;z-index:101;pointer-events:none;'
+    + 'font:bold 9px monospace;color:#fff;padding:2px 5px;border-radius:3px;'
+    + 'background:linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%);'
+    + 'text-shadow:0 1px 2px rgba(0,0,0,0.4);';
+  cellEl.appendChild(badge);
+  const onLeave = () => _gridIgDisarm();
+  cellEl.addEventListener('mouseleave', onLeave);
+  _gridIgArmed = { cell: cellEl, onLeave: onLeave };
+}
+
 function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
   const VIRT_W = 600;
   // (dev0588) The sectioned 1a text cell mutates innerEl (section switch,
@@ -1349,9 +1414,11 @@ function gridShow() {
           // 326×620 size, scaled to cell width, and offset upward by the
           // header height — overflow:hidden on the wrap drops the footer.
           // The center play caret IG paints on reel posters can't be hidden
-          // (cross-origin). Click is routed through the cell interactor as
-          // usual, so tapping opens V (vpMountInstagram handles full view).
+          // (cross-origin). Clicks route through the cell interactor as usual;
+          // (dev0604) a plain mouse click ARMS the embed so a second click can
+          // reach that caret — see _gridIgArm. Swipe right still opens V.
           const igWrap = document.createElement('div');
+          igWrap.className = 'grid-ig-wrap';
           igWrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;pointer-events:none;z-index:1;';
           const igFrame = document.createElement('iframe');
           igFrame.src = window.instagramEmbedUrl(row.link);
@@ -1670,8 +1737,9 @@ function gridUpdateCell(cellStr, row) {
 
     if (isIG) {
       // Live IG embed clipped to fit — see gridShow's matching block for the
-      // rationale on scaling + header clip.
+      // rationale on scaling + header clip (and dev0604 click-arming).
       const igWrap = document.createElement('div');
+      igWrap.className = 'grid-ig-wrap';
       igWrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;pointer-events:none;z-index:1;';
       const igFrame = document.createElement('iframe');
       igFrame.src = window.instagramEmbedUrl(row.link);
@@ -2006,6 +2074,17 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       
       if (cell._rowData) _lastGridRow = cell._rowData;
+
+      // (dev0604) IG cell + plain left-click: arm it so the NEXT click reaches
+      // IG's play caret (nothing else can start a cross-origin embed). Returns
+      // before the double-tap check, which costs IG rows nothing —
+      // _runDoubleTapAction only acts on quiz/text rows. Touch is excluded on
+      // purpose (see _gridIgArm). Ctrl+click returned above; alt-click (COI)
+      // never gets here — pointerdown handles it and clears pStart.
+      if (e.pointerType === 'mouse' && leftBtn && _gridIsIgCell(cell)) {
+        _gridIgArm(cell);
+        return;
+      }
 
       // (dev0588) Tap on a summary line of the sectioned 1a text slide toggles
       // that collapsible (both modes). Reset the double-tap clock so click-click
