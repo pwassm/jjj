@@ -3861,6 +3861,24 @@ function vpMountInstagram(host, link) {
   wrap.appendChild(clipBox);
   host.appendChild(wrap);
 
+  // (dev0602) IG's player lives inside the cross-origin iframe, so the ONLY way
+  // to start it is a real click landing on IG's own play button. #vp-swipe-
+  // catcher (z:50) covers the whole host and ate that click — the exact failure
+  // dev0292 hit with the crop UI: cursor stays "zoom-in" and the embed looks
+  // dead. Direct video shrinks the catcher (bottom 136px) because it only needs
+  // the native control strip; IG needs the CENTRE, so shrinking can't help —
+  // neutralize the catcher entirely for IG rows. Cost: no swipe-close / hold-
+  // zoom / pinch here, which is cheap because none of it worked on this embed
+  // anyway (zoom scales a fixed-size cross-origin iframe; a tap can't play it).
+  // Both escape routes survive: Esc, and the toolbar's Close — the toolbar is
+  // the bottom 80px, outside host/catcher, so touch keeps a way out.
+  // The catcher is rebuilt on every V open, so there's nothing to restore.
+  var _sc = document.getElementById('vp-swipe-catcher');
+  if (_sc) {
+    _sc.style.pointerEvents = 'none';
+    _sc.style.cursor = 'default';
+  }
+
   // Replace the seek-bar (timelineRow — first child of #vp-toolbar) with an
   // "Open on Instagram" gradient button. The bar's playback markers / scrub
   // are useless without a JS API; reusing that real estate keeps the visible
