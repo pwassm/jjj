@@ -3898,10 +3898,14 @@ function _vpWireEmbedGestures(wrap, clipBox, stripId) {
 
 function vpMountInstagram(host, link) {
   host.innerHTML = '';
-  var m = String(link || '').match(/instagram\.com\/(reels?|p)\/([A-Za-z0-9_-]+)/i);
-  if (!m) return;
-  var kind = m[1].toLowerCase() === 'p' ? 'p' : 'reel';
-  var src = 'https://www.instagram.com/' + kind + '/' + m[2] + '/embed/';
+  // (dev0611) Was a private copy of the shortcode regex, which is exactly how it
+  // rotted: dev0610 taught video.js that the author-prefixed "/<author>/reel/
+  // <id>/" form is an IG link, but this copy still demanded "/reel/<id>/" and
+  // bailed. host was already cleared, so V painted BLACK — toolbar, no frame —
+  // for every harvested row, while G (which calls instagramEmbedUrl) showed it
+  // fine. One source of truth now; do NOT re-inline this.
+  var src = window.instagramEmbedUrl ? window.instagramEmbedUrl(link) : '';
+  if (!src) return;
 
   // Clip chrome via an overflow:hidden box that's shorter than the iframe.
   // Iframe is sized W×(W*2.5) and offset top:-(W*0.16) so the header sits
