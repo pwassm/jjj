@@ -330,6 +330,7 @@ function _gridEmbedDisarm() {
   if (!st) return;
   _gridEmbedArmed = null;
   try { st.cell.removeEventListener('mouseleave', st.onLeave); } catch (_) {}
+  try { window.removeEventListener('blur', st.onBlur); } catch (_) {}
   if (!st.cell.isConnected) return;   // grid re-rendered under us
   const wrap  = st.cell.querySelector('.grid-embed-wrap');
   const frame = wrap && wrap.querySelector('iframe');
@@ -368,7 +369,25 @@ function _gridEmbedArm(cellEl) {
   cellEl.appendChild(badge);
   const onLeave = () => _gridEmbedDisarm();
   cellEl.addEventListener('mouseleave', onLeave);
-  _gridEmbedArmed = { cell: cellEl, onLeave: onLeave };
+
+  // (dev0607) The click that starts the embed also moves KEYBOARD focus into
+  // its document, and from then on every global hotkey — T above all — is
+  // delivered there instead of here. Cross-origin, so we can neither read those
+  // keys nor ask for them back: the only move is to not leave focus there.
+  // Blur fires after the click has already reached the embed, so taking focus
+  // straight back costs the embed nothing (clicks never needed focus, and there
+  // is no JS API whose keyboard we'd want). Net: the cell plays AND T still
+  // works with the pointer sitting on it.
+  const onBlur = () => setTimeout(() => {
+    if (document.activeElement !== frame) return;   // focus went elsewhere — not ours to take
+    try { frame.blur(); } catch (_) {}
+    // Only re-focus while the window is still ours; if the user alt-tabbed away
+    // mid-play, window.focus() would try to raise the browser at them.
+    if (document.hasFocus()) { try { window.focus(); } catch (_) {} }
+  }, 0);
+  window.addEventListener('blur', onBlur);
+
+  _gridEmbedArmed = { cell: cellEl, onLeave: onLeave, onBlur: onBlur };
 }
 
 function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
