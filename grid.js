@@ -294,50 +294,57 @@ function fitGridIgFrame(cellEl, iframe) {
   }
 }
 
-// ── IG cell arming (dev0604) ────────────────────────────────────────────────
-// An IG embed is a cross-origin iframe: its play button only responds to a real
-// click landing INSIDE the frame, and nothing can drive it from out here (same
-// wall as V — see vpMountInstagram). But .grid-interactor (z:100) owns every
-// cell click, so the caret was unclickable. Rather than surrender the cell's
-// gestures (swipe→V, alt-click COI per dev0541, cut/paste), an IG cell is ARMED
-// by a first plain click: the interactor goes inert, the embed takes pointer
-// events, and the NEXT click reaches IG's caret. Moving off the cell disarms.
-// Sizing was never the obstacle — fitGridIgFrame keeps the iframe at its
+// ── Embed cell arming (dev0604 IG · dev0606 TikTok) ─────────────────────────
+// An IG or TikTok embed is a cross-origin iframe: its play button only responds
+// to a real click landing INSIDE the frame, and nothing can drive it from out
+// here (same wall as V — see _vpWireEmbedGestures). But .grid-interactor (z:100)
+// owns every cell click, so the caret was unclickable. Rather than surrender the
+// cell's gestures (swipe→V, alt-click COI per dev0541, cut/paste), an embed cell
+// is ARMED by a first plain click: the interactor goes inert, the embed takes
+// pointer events, and the NEXT click reaches the caret. Moving off disarms.
+// Sizing was never the obstacle for IG — fitGridIgFrame keeps the iframe at its
 // natural 326×620 and only CSS-scales it, so IG believes it's full-size (cf.
-// the YT tile spinner) and clicks map correctly through the transform.
+// the YT tile spinner) and clicks map correctly through the transform. TikTok's
+// iframe is sized to the cell instead, so on a small cell its player may balk at
+// the tile the way YT does; if so, the fix is IG's natural-size + scale trick.
 //
 // MOUSE ONLY, deliberately: disarm hangs on mouseleave, which touch never
 // fires, so a tap would strand the cell inert with no way back to V. Touch
 // keeps its gestures and plays in V. Repeats are impossible either way (no JS
-// API), so this buys exactly one play per click — which is all IG allows.
-let _gridIgArmed = null;   // { cell, onLeave } — at most one armed cell
+// API), so this buys exactly one play per click — which is all either allows.
+//
+// Both providers are tagged .grid-embed-wrap on the element wrapping their
+// iframe: IG at its two build sites (gridShow / gridUpdateCell), TikTok on the
+// vidHost in _gridMountVideo, since it rides the normal video branch.
+let _gridEmbedArmed = null;   // { cell, onLeave } — at most one armed cell
 
-function _gridIsIgCell(cellEl) {
+function _gridIsEmbedCell(cellEl) {
   const row = cellEl && cellEl._rowData;
-  return !!(row && row.link && window.isInstagramLink
-    && window.isInstagramLink(row.link) && cellEl.querySelector('.grid-ig-wrap'));
+  if (!row || !row.link || !cellEl.querySelector('.grid-embed-wrap')) return false;
+  return !!((window.isInstagramLink && window.isInstagramLink(row.link))
+    || (window.isTikTokLink && window.isTikTokLink(row.link)));
 }
 
-function _gridIgDisarm() {
-  const st = _gridIgArmed;
+function _gridEmbedDisarm() {
+  const st = _gridEmbedArmed;
   if (!st) return;
-  _gridIgArmed = null;
+  _gridEmbedArmed = null;
   try { st.cell.removeEventListener('mouseleave', st.onLeave); } catch (_) {}
   if (!st.cell.isConnected) return;   // grid re-rendered under us
-  const wrap  = st.cell.querySelector('.grid-ig-wrap');
+  const wrap  = st.cell.querySelector('.grid-embed-wrap');
   const frame = wrap && wrap.querySelector('iframe');
   const inter = st.cell.querySelector('.grid-interactor');
   if (wrap)  wrap.style.pointerEvents  = 'none';
   if (frame) frame.style.pointerEvents = 'none';
   if (inter) inter.style.pointerEvents = '';
-  const badge = st.cell.querySelector('.grid-ig-armed');
+  const badge = st.cell.querySelector('.grid-embed-armed');
   if (badge) badge.remove();
 }
 
-function _gridIgArm(cellEl) {
-  if (_gridIgArmed && _gridIgArmed.cell === cellEl) return;   // already armed
-  _gridIgDisarm();                                            // one at a time
-  const wrap  = cellEl.querySelector('.grid-ig-wrap');
+function _gridEmbedArm(cellEl) {
+  if (_gridEmbedArmed && _gridEmbedArmed.cell === cellEl) return;   // already armed
+  _gridEmbedDisarm();                                               // one at a time
+  const wrap  = cellEl.querySelector('.grid-embed-wrap');
   const frame = wrap && wrap.querySelector('iframe');
   const inter = cellEl.querySelector('.grid-interactor');
   if (!wrap || !frame || !inter) return;
@@ -345,18 +352,23 @@ function _gridIgArm(cellEl) {
   frame.style.pointerEvents = 'auto';
   inter.style.pointerEvents = 'none';
   // Badge sits above the dead interactor and stays pointer-events:none, so the
-  // click still falls through to the embed.
+  // click still falls through to the embed. Provider colours match V's
+  // "Open on …" button so an armed cell reads as the same thing in both screens.
+  const link = (cellEl._rowData && cellEl._rowData.link) || '';
+  const isTT = !!(window.isTikTokLink && window.isTikTokLink(link));
   const badge = document.createElement('div');
-  badge.className = 'grid-ig-armed';
+  badge.className = 'grid-embed-armed';
   badge.textContent = '▶ play';
   badge.style.cssText = 'position:absolute;left:4px;top:4px;z-index:101;pointer-events:none;'
     + 'font:bold 9px monospace;color:#fff;padding:2px 5px;border-radius:3px;'
-    + 'background:linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%);'
+    + 'background:' + (isTT
+        ? 'linear-gradient(135deg,#25F4EE 0%,#000 50%,#FE2C55 100%)'
+        : 'linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%)') + ';'
     + 'text-shadow:0 1px 2px rgba(0,0,0,0.4);';
   cellEl.appendChild(badge);
-  const onLeave = () => _gridIgDisarm();
+  const onLeave = () => _gridEmbedDisarm();
   cellEl.addEventListener('mouseleave', onLeave);
-  _gridIgArmed = { cell: cellEl, onLeave: onLeave };
+  _gridEmbedArmed = { cell: cellEl, onLeave: onLeave };
 }
 
 function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
@@ -1058,6 +1070,11 @@ function _gridMountVideo(vidHost, row, segs, muted) {
     window.mountInstagramEmbed(vidHost, row.link);
   } else if (window.isTikTokLink && window.isTikTokLink(row.link) && window.mountTikTokEmbed) {
     window.mountTikTokEmbed(vidHost, row.link);
+    // (dev0606) TikTok rides the normal video branch, so its host is a plain
+    // [id^=grid-vid-] div rather than an IG-style wrap — tag it so click-to-arm
+    // finds it exactly the way it finds an IG cell. Same cross-origin wall, so
+    // the same escape: see _gridEmbedArm.
+    vidHost.classList.add('grid-embed-wrap');
   }
 }
 
@@ -1416,9 +1433,9 @@ function gridShow() {
           // The center play caret IG paints on reel posters can't be hidden
           // (cross-origin). Clicks route through the cell interactor as usual;
           // (dev0604) a plain mouse click ARMS the embed so a second click can
-          // reach that caret — see _gridIgArm. Swipe right still opens V.
+          // reach that caret — see _gridEmbedArm. Swipe right still opens V.
           const igWrap = document.createElement('div');
-          igWrap.className = 'grid-ig-wrap';
+          igWrap.className = 'grid-embed-wrap';
           igWrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;pointer-events:none;z-index:1;';
           const igFrame = document.createElement('iframe');
           igFrame.src = window.instagramEmbedUrl(row.link);
@@ -1739,7 +1756,7 @@ function gridUpdateCell(cellStr, row) {
       // Live IG embed clipped to fit — see gridShow's matching block for the
       // rationale on scaling + header clip (and dev0604 click-arming).
       const igWrap = document.createElement('div');
-      igWrap.className = 'grid-ig-wrap';
+      igWrap.className = 'grid-embed-wrap';
       igWrap.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;pointer-events:none;z-index:1;';
       const igFrame = document.createElement('iframe');
       igFrame.src = window.instagramEmbedUrl(row.link);
@@ -2075,14 +2092,15 @@ function gridWireInteractor(interactor, cell, cellStr) {
       
       if (cell._rowData) _lastGridRow = cell._rowData;
 
-      // (dev0604) IG cell + plain left-click: arm it so the NEXT click reaches
-      // IG's play caret (nothing else can start a cross-origin embed). Returns
-      // before the double-tap check, which costs IG rows nothing —
-      // _runDoubleTapAction only acts on quiz/text rows. Touch is excluded on
-      // purpose (see _gridIgArm). Ctrl+click returned above; alt-click (COI)
-      // never gets here — pointerdown handles it and clears pStart.
-      if (e.pointerType === 'mouse' && leftBtn && _gridIsIgCell(cell)) {
-        _gridIgArm(cell);
+      // (dev0604 IG · dev0606 TikTok) Embed cell + plain left-click: arm it so
+      // the NEXT click reaches the play caret (nothing else can start a
+      // cross-origin embed). Returns before the double-tap check, which costs
+      // these rows nothing — _runDoubleTapAction only acts on quiz/text rows.
+      // Touch is excluded on purpose (see _gridEmbedArm). Ctrl+click returned
+      // above; alt-click (COI) never gets here — pointerdown handles it and
+      // clears pStart.
+      if (e.pointerType === 'mouse' && leftBtn && _gridIsEmbedCell(cell)) {
+        _gridEmbedArm(cell);
         return;
       }
 

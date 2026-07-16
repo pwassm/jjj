@@ -3829,6 +3829,73 @@ function vpMountVimeo(host, link, seg, muted) {
 // Replaces the toolbar's inert seek-bar row with an "Open on Instagram"
 // gradient button — none of the playback controls work for IG (no JS API),
 // but Prev/Next/Close in the bottom row remain functional.
+// (dev0606) ── Cross-origin embed gestures in V — shared by IG and TikTok ─────
+// Both are sandboxed cross-origin players: the ONLY way to start one is a real
+// click landing on its own play button, and over its pixels the parent gets NO
+// pointer events — so "gesture anywhere" and "click-to-play" can never share
+// those pixels. This is the settled split (dev0602/0603): the frame is left
+// alone so it stays clickable, and swipe-back lives everywhere the frame isn't.
+//
+// GENERAL RULE: every new cross-origin view-only embed in V must call this, or
+// #vp-swipe-catcher (z:50, covers the whole host, cursor:zoom-in) eats the play
+// click and the embed looks dead — the exact dev0292 crop-UI failure, which the
+// comment at ~3175 names symptom-for-symptom.
+//
+//   wrap     black letterbox filling the host (must set touch-action:none)
+//   clipBox  the embed's own box — gets a 44px swipe lane down its right edge
+//   stripId  element id for that lane
+function _vpWireEmbedGestures(wrap, clipBox, stripId) {
+  // Neutralize the catcher outright. Shrinking it (what direct video does — it
+  // only needs the native control strip) can't help: an embed needs its CENTRE.
+  // The catcher is rebuilt on every V open, so there's nothing to restore.
+  // Leaving it INERT rather than removing it also keeps host.style.transform
+  // empty, which matters: a non-empty transform makes host a stacking context
+  // and buries the z:60 strip under the z:50 catcher — dev0292, one layer down.
+  var sc = document.getElementById('vp-swipe-catcher');
+  if (sc) {
+    sc.style.pointerEvents = 'none';
+    sc.style.cursor = 'default';
+  }
+
+  // Swipe-back lane down the embed's right edge (z:60 inside clipBox). The
+  // letterbox alone can't carry the gesture — on a phone it shrinks to ~10px.
+  // Costs the embed its rightmost 44px; play buttons are centred, so nothing
+  // playable is lost. Bubbles into wrap's handler — no separate wiring.
+  var strip = document.createElement('div');
+  strip.id = stripId;
+  strip.style.cssText = 'position:absolute;top:0;right:0;width:44px;height:100%;'
+    + 'z-index:60;background:transparent;touch-action:none;cursor:w-resize;';
+  clipBox.appendChild(strip);
+
+  // Swipe-close on `wrap` (letterbox + strip above). Pointer capture lets a
+  // swipe that STARTS there keep tracking across the embed. Deliberately
+  // swipe-close only — no zoom/pan (see the stacking note above), no
+  // tap-to-play (vpTogglePlay can't drive these players), no double-tap.
+  var sw = null;
+  var xy = function(e) {
+    return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+  };
+  wrap.addEventListener('pointerdown', function(e) {
+    var p = xy(e);
+    sw = { x: p.x, y: p.y, t: Date.now() };
+    try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  wrap.addEventListener('pointerup', function(e) {
+    if (!sw) return;
+    var p = xy(e);
+    var dx = p.x - sw.x, dy = p.y - sw.y;
+    var ms = Date.now() - sw.t;
+    sw = null;
+    // Mirrors the catcher's R→L rule (vp.js ~518): >40px, mostly horizontal,
+    // under 1.5s. The slideshow signal is a no-op outside a slideshow.
+    if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 1500) {
+      if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(1);
+      vpClose();
+    }
+  });
+  wrap.addEventListener('pointercancel', function() { sw = null; });
+}
+
 function vpMountInstagram(host, link) {
   host.innerHTML = '';
   var m = String(link || '').match(/instagram\.com\/(reels?|p)\/([A-Za-z0-9_-]+)/i);
@@ -3859,70 +3926,13 @@ function vpMountInstagram(host, link) {
     + 'height:calc(100% + 200px);top:-60px;border:0;background:#000;';
   clipBox.appendChild(iframe);
 
-  // (dev0603) Swipe-back strip down the reel's right edge. See the swipe note
-  // below: the parent can only watch a gesture where the iframe isn't, and on a
-  // phone the letterbox margin shrinks to ~10px — so reserve a thumb-sized lane
-  // inside the reel. Sits above the iframe (z:60 inside clipBox), costing IG the
-  // rightmost 44px; its play button is centred, so nothing playable is lost.
-  // Bubbles into wrap's handler — no separate wiring.
-  var swipeStrip = document.createElement('div');
-  swipeStrip.id = 'vp-ig-swipe-strip';
-  swipeStrip.style.cssText = 'position:absolute;top:0;right:0;width:44px;height:100%;'
-    + 'z-index:60;background:transparent;touch-action:none;cursor:w-resize;';
-  clipBox.appendChild(swipeStrip);
-
   wrap.appendChild(clipBox);
   host.appendChild(wrap);
 
-  // (dev0602) IG's player lives inside the cross-origin iframe, so the ONLY way
-  // to start it is a real click landing on IG's own play button. #vp-swipe-
-  // catcher (z:50) covers the whole host and ate that click — the exact failure
-  // dev0292 hit with the crop UI: cursor stays "zoom-in" and the embed looks
-  // dead. Direct video shrinks the catcher (bottom 136px) because it only needs
-  // the native control strip; IG needs the CENTRE, so shrinking can't help —
-  // neutralize the catcher entirely for IG rows.
-  // The catcher is rebuilt on every V open, so there's nothing to restore.
-  // Keeping it inert also keeps host.style.transform empty, which matters: a
-  // non-empty transform makes host a stacking context and would bury the strip
-  // below (z:60) under the catcher (z:50) — the dev0292 trap, one layer down.
-  var _sc = document.getElementById('vp-swipe-catcher');
-  if (_sc) {
-    _sc.style.pointerEvents = 'none';
-    _sc.style.cursor = 'default';
-  }
-
-  // (dev0603) dev0602 neutralized the catcher and took R→L swipe-close with it.
-  // Rewire a minimal swipe-close on `wrap` (the black letterbox) + the strip
-  // above. It can't cover the reel itself: a cross-origin iframe hands the
-  // parent NO pointer events over its own pixels, so swipe-anywhere and
-  // click-to-play cannot share those pixels — one or the other. Play won, since
-  // it's the point of the screen. Pointer capture means a swipe that STARTS in
-  // the margin/strip keeps tracking across the reel. Deliberately swipe-close
-  // only — no zoom/pan (see stacking note above), no tap-to-play (vpTogglePlay
-  // can't drive this player), no double-tap.
-  var _igSwipe = null;
-  var _igXY = function(e) {
-    return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
-  };
-  wrap.addEventListener('pointerdown', function(e) {
-    var p = _igXY(e);
-    _igSwipe = { x: p.x, y: p.y, t: Date.now() };
-    try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
-  });
-  wrap.addEventListener('pointerup', function(e) {
-    if (!_igSwipe) return;
-    var p = _igXY(e);
-    var dx = p.x - _igSwipe.x, dy = p.y - _igSwipe.y;
-    var ms = Date.now() - _igSwipe.t;
-    _igSwipe = null;
-    // Mirrors the catcher's R→L rule (vp.js ~518): >40px, mostly horizontal,
-    // under 1.5s. The slideshow signal is a no-op outside a slideshow.
-    if (dx < -40 && Math.abs(dy) < Math.abs(dx) && ms < 1500) {
-      if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(1);
-      vpClose();
-    }
-  });
-  wrap.addEventListener('pointercancel', function() { _igSwipe = null; });
+  // (dev0602/0603, shared since dev0606) Free the swipe-catcher so IG's play
+  // caret is clickable, and rebuild swipe-close on the letterbox + right-edge
+  // strip. See _vpWireEmbedGestures for the whole rationale.
+  _vpWireEmbedGestures(wrap, clipBox, 'vp-ig-swipe-strip');
 
   // Replace the seek-bar (timelineRow — first child of #vp-toolbar) with an
   // "Open on Instagram" gradient button. The bar's playback markers / scrub
@@ -3969,7 +3979,7 @@ function vpMountTikTok(host, link) {
 
   var wrap = document.createElement('div');
   wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
-    + 'justify-content:center;background:#000;';
+    + 'justify-content:center;background:#000;touch-action:none;';
   var clipBox = document.createElement('div');
   // 9:16 portrait box, capped to fit desktop and phones alike.
   clipBox.style.cssText = 'position:relative;width:min(450px,95vw);'
@@ -3984,6 +3994,12 @@ function vpMountTikTok(host, link) {
   clipBox.appendChild(iframe);
   wrap.appendChild(clipBox);
   host.appendChild(wrap);
+
+  // (dev0606) TikTok hits the identical wall as IG — dev0602/0603 predicted this
+  // ("the same code shape and almost certainly the same bug") and it was: the
+  // swipe-catcher ate the play click, leaving the zoom-in cursor and a dead
+  // embed. Same fix, same helper: catcher inert + swipe-back on letterbox/strip.
+  _vpWireEmbedGestures(wrap, clipBox, 'vp-tt-swipe-strip');
 
   // Replace the inert seek-bar with an "Open on TikTok" button (same pattern as
   // Instagram). Prev/Play/Next/Close in the row below stay functional.
