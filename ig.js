@@ -26,6 +26,12 @@
 
   // ── State ────────────────────────────────────────────────────────────────
   let rows = [];                       // the live ig.json array (mutated in place)
+  // (dev0601) Every id this session has EVER SEEN — stamped at load, never pruned on
+  // delete. Sent with each persist() so the proxy can tell "the client deleted this"
+  // (id is here) from "the client never knew about this" (id is not) and carry the
+  // latter over instead of letting our stale rows[] wipe a mid-session harvest.
+  let knownIds = new Set();
+  let rescueNoted = false;             // only toast the "rows were rescued" hint once
   let view = [];                       // filtered + sorted slice of `rows`
   let sortCol = 'DateAdded', sortDir = -1;
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
@@ -1592,13 +1598,22 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     try {
       const res = await fetch(PROXY + '/ig/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows })
+        body: JSON.stringify({ rows, knownIds: [...knownIds] })
       });
       const j = await res.json();
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       dirty = false;
       updateCount();
       if (announce) igToast('💾 saved ig.json (' + j.total + ' rows)', 1800);
+      // (dev0601) The proxy kept rows that were harvested while this screen sat open
+      // — they're on disk but not in our rows[], so say so instead of leaving the
+      // count looking wrong. Once per session, and never mid-batch auto-reload: a
+      // reload here would reset a running enrich/download batch.
+      if (j.rescued && !rescueNoted) {
+        rescueNoted = true;
+        igToast('↻ ' + j.rescued + ' row(s) harvested while this screen was open were'
+          + ' kept (not shown here yet) — click ↻ Reload to see them.', 5000);
+      }
       return true;
     } catch (e) {
       // (dev0529) A save failure is potential DATA LOSS, so NEVER swallow it — even in
@@ -1647,6 +1662,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       rows = r.ok ? (await r.json()) : [];
       if (!Array.isArray(rows)) rows = [];
     } catch (e) { rows = []; igToast('Could not load ig.json: ' + e.message, 3000); }
+    // (dev0601) Re-stamp the "ever seen" set from what we just loaded. A reload is
+    // exactly the point where a mid-session harvest becomes visible to us, so rows
+    // rescued by the proxy up to now are folded in here and become deletable again.
+    knownIds = new Set(rows.map(r => r && r.id).filter(Boolean));
+    rescueNoted = false;
     igPreviewClose();   // (dev0500) old previewed row is gone after a reload
     sel.clear(); dirty = false; lastCheckedId = null; focusId = null; enrichFailed.clear();   // (dev0441) fresh retry after reload; (dev0474) clear row focus
     refreshAuthorOptions();

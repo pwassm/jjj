@@ -6989,5 +6989,13 @@
     "aliases": [],
     "def": "",
     "rank": "family"
+  },
+  {
+    "id": "jazz",
+    "label": "Jazz",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

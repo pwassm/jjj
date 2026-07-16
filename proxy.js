@@ -26,6 +26,9 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+// (dev0601) /ig/save no longer blind-overwrites: it keeps any ig.json row the client
+//   never saw (id in neither its rows[] nor its new `knownIds`) so a harvest landing
+//   via /ig/add while the I screen is open survives that screen's next persist().
 // (dev0429) Bumped + added 'igstore' feature for the I/Ig screen (ig.js):
 //   /ig/save     overwrites ig.json with the client's edited array (enrich/promote
 //                state) — keeps a one-deep ig.json.bak first.
@@ -95,7 +98,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0599';
+const PROXY_BUILD = 'dev0601';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1742,15 +1745,40 @@ function igSave(req, res, origin) {
     const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
     let prev = [];
     try { if (fs.existsSync(IG_STORE)) prev = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) {}
-    if (Array.isArray(prev) && prev.length > 10 && clean.length < prev.length * 0.5) {
-      console.warn('[ig/save] REFUSED — ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)');
-      sendJson(res, 409, { ok: false, error: 'refused: ' + clean.length + ' rows would replace ' + prev.length + ' (>50% drop)' }, origin);
+    if (!Array.isArray(prev)) prev = [];
+    // (dev0601) DATA-LOSS FIX: this used to blind-overwrite ig.json with the client's
+    // whole in-memory array, so a HARVEST landing via /ig/add while the I screen was
+    // open was silently wiped by the screen's next persist() — its rows[] predated
+    // the harvest. That killed a full mbari_news harvest. The >50% guard never fired
+    // (a few hundred lost out of 11k is nowhere near half), so it was invisible.
+    //   The client now sends `knownIds` = every id it EVER SAW (stamped at load; NOT
+    // pruned on delete). Any disk row absent from BOTH the incoming rows and knownIds
+    // is one the client never knew about — i.e. harvested mid-session — so we carry
+    // it over instead of dropping it. A row the client deleted on purpose IS in
+    // knownIds, so intentional deletes still work. The incoming-ids check keeps a
+    // client-created row from being re-added as a duplicate.
+    //   Clock-free by design: the client's isoNow() is UTC while igAdd stamps LOCAL
+    // wall-clock (dev0476), so a DateAdded>loadedAt watermark would compare skewed
+    // strings and rescue nothing (or everything). Ids can't drift.
+    //   Safe no-op: no knownIds in the payload (older client) → previous behaviour.
+    const knownIds = Array.isArray(payload.knownIds) ? new Set(payload.knownIds) : null;
+    let rescued = [];
+    if (knownIds) {
+      const incomingIds = new Set(clean.map(r => r.id));
+      rescued = prev.filter(r => r && typeof r.id === 'string' && r.id
+        && !incomingIds.has(r.id) && !knownIds.has(r.id));
+    }
+    const final = rescued.length ? clean.concat(rescued) : clean;
+    if (prev.length > 10 && final.length < prev.length * 0.5) {
+      console.warn('[ig/save] REFUSED — ' + final.length + ' rows would replace ' + prev.length + ' (>50% drop)');
+      sendJson(res, 409, { ok: false, error: 'refused: ' + final.length + ' rows would replace ' + prev.length + ' (>50% drop)' }, origin);
       return;
     }
     try { if (fs.existsSync(IG_STORE)) fs.copyFileSync(IG_STORE, IG_STORE + '.bak'); } catch (_) {}
-    fs.writeFileSync(IG_STORE, JSON.stringify(clean, null, 2));
-    console.log('[ig/save] wrote ' + clean.length + ' rows (was ' + (Array.isArray(prev) ? prev.length : 0) + ')');
-    sendJson(res, 200, { ok: true, total: clean.length }, origin);
+    fs.writeFileSync(IG_STORE, JSON.stringify(final, null, 2));
+    console.log('[ig/save] wrote ' + final.length + ' rows (was ' + prev.length + ')'
+      + (rescued.length ? ' · RESCUED ' + rescued.length + ' row(s) harvested mid-session' : ''));
+    sendJson(res, 200, { ok: true, total: final.length, rescued: rescued.length }, origin);
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
