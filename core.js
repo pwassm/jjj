@@ -6915,6 +6915,13 @@ async function _importBareLinks(lines) {
       // _ytdlpSupports(link), not ltype).
       if (window.isInstagramLink && window.isInstagramLink(link)) {
         row.ltype = 'i';
+      } else if (window.isTikTokLink && window.isTikTokLink(link)) {
+        // (dev0605) TikTok post URLs carry no media extension either, so they
+        // classified as 'web' and imported as ltype='w' — wrong label, and the
+        // NoText grid-skip then dropped them from autoassign. Mark ltype='v'
+        // (matching the three hand-fixed TikTok rows already in ml.json).
+        // ftext/@author are unaffected: they come from the _ytdlpSupports path.
+        row.ltype = 'v';
       } else {
         // (zip0166) Web (article) URL — mark with ltype='w' so the row is
         // recognizable as a web-text row. ftext is fetched asynchronously
