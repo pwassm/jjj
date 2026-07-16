@@ -120,11 +120,20 @@ window.isDirectVideoLink = function(url) {
 // V and G show the player; E (segment selection) is not possible because
 // there's no way to drive the player back. parseVideoAsset returns null for
 // the empty VidRange these rows carry, which keeps E out of the picture.
+// (dev0610) Both forms of the public URL are accepted:
+//   instagram.com/p/<id>/                 — canonical, what a share link gives
+//   instagram.com/<author>/reel/<id>/     — what the harvester and IG's own UI use
+// The author segment is optional and backtracks cleanly: for "/p/<id>/" the
+// optional group first tries to eat "p/", fails to find a kind after it, and
+// gives the "p" back. Before this the author-prefixed form matched NOTHING, so
+// such a row fell past the IG branch in G/V all the way to the <img> fallback
+// and rendered as a text label — and ~11k ig.json rows carry that form.
+var _IG_PATH_RE = /instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(reels?|p)\/([A-Za-z0-9_-]+)/i;
 window.isInstagramLink = function(url) {
-  return /instagram\.com\/(reels?|p)\//i.test(url || '');
+  return _IG_PATH_RE.test(url || '');
 };
 window.getInstagramKind = function(url) {
-  var m = String(url || '').match(/instagram\.com\/(reels?|p)\/([A-Za-z0-9_-]+)/i);
+  var m = String(url || '').match(_IG_PATH_RE);
   if (!m) return null;
   // /reel/ and /reels/ are equivalent on the public site; the embed URL uses /reel/.
   var kind = m[1].toLowerCase() === 'p' ? 'p' : 'reel';

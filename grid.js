@@ -1117,6 +1117,20 @@ function _gridCellKey(row) {
 // dicts all depend on it being stable.
 var _gridLinkRowCache = {};
 
+// (dev0610) Identity of a media link, for deciding whether two URLs are the same
+// post. IG addresses one post several ways — "/p/<id>/" (canonical, what a share
+// link and most ml.json rows carry) and "/<author>/reel/<id>/" (what the
+// harvester and the c.json cells it writes carry) — so a plain string compare
+// would never adopt an IG cell's real ml.json row, however many times it was
+// promoted. The shortcode is the post, so IG links reduce to it. Anything else
+// is its own trimmed self.
+function _gridLinkIdentity(url) {
+  const s = String(url || '').trim();
+  if (!s) return '';
+  const k = window.getInstagramKind && window.getInstagramKind(s);
+  return k ? 'ig:' + k.id : s;
+}
+
 // (dev0609) Resolve a link cell to something the grid can render. Every cell
 // consumer downstream (gridShow, gridOpenFullscreen/V, the zoom + swipe
 // handlers) works off a ROW OBJECT, so a link cell only has to produce one.
@@ -1133,8 +1147,10 @@ var _gridLinkRowCache = {};
 function _gridLinkCellRow(link, cellStr) {
   link = String(link || '').trim();
   if (!link) return null;
+  // (dev0610) Matched on link IDENTITY, not raw string — see _gridLinkIdentity.
+  const want = _gridLinkIdentity(link);
   const ml = (typeof data !== 'undefined' && Array.isArray(data))
-    ? (data.find(r => r && String(r.link || '').trim() === link
+    ? (data.find(r => r && r.link && _gridLinkIdentity(r.link) === want
         && (r.show === undefined || r.show === '1')) || null)
     : null;
   const hit = _gridLinkRowCache[link];
