@@ -3844,18 +3844,67 @@ function vpMountVimeo(host, link, seg, muted) {
 //   wrap     black letterbox filling the host (must set touch-action:none)
 //   clipBox  the embed's own box — gets a 44px swipe lane down its right edge
 //   stripId  element id for that lane
+// (dev0612) ── Zoom as a MODE for cross-origin embeds ────────────────────────
+// V's hold-to-enlarge / drag-to-pan / dblclick-to-reset lives entirely on
+// #vp-swipe-catcher (wireMouseV, ~line 562) and works by transforming `host` —
+// it never reaches into the iframe, which is why it magnifies a cross-origin
+// embed just as happily as it does YouTube. The obstacle was never the zoom: the
+// catcher must stay inert for an embed (see below) or the play click never
+// lands, and one set of pixels cannot both start IG and capture a hold-gesture.
+//
+// So arming is explicit. `on` hands the pixels to the catcher for as long as the
+// user is reframing; `off` gives them back so pause/replay reach the player. The
+// zoom SURVIVES a disarm on purpose — reframe, disarm, then poke the player.
+// That leaves a transform on host, which makes host a stacking context and
+// paints the z:60 swipe strip under the z:50 catcher (the dev0292 shape); it is
+// harmless here because an inert catcher does not hit-test at all, so the strip
+// still receives the swipe.
+//
+// The toggle lives in the toolbar, which is OUTSIDE host and so stays clickable
+// whatever the iframe is doing. A modifier-key gate (what G uses) would die the
+// moment the play click moves focus into the cross-origin frame and the parent
+// stops seeing keydown — i.e. exactly once the video is playing.
+function _vpEmbedZoomArm(on) {
+  var sc = document.getElementById('vp-swipe-catcher');
+  if (sc) {
+    sc.style.pointerEvents = on ? 'auto' : 'none';
+    sc.style.cursor        = on ? 'zoom-in' : 'default';
+  }
+  var btn = document.getElementById('vp-embed-zoom');
+  if (btn) {
+    btn.style.background = on ? '#06f' : '#222';
+    btn.style.color      = on ? '#fff' : '#888';
+    btn.title = on
+      ? 'Zoom armed — hold to enlarge, drag to pan, double-click for usual size. Click to hand the picture back to the player.'
+      : 'Arm zoom — hold to enlarge, drag to pan, double-click for usual size.';
+  }
+  window._vpEmbedZoomArmed = !!on;
+}
+
+// The ⤢ toggle itself. Sized to sit left of an "↗ Open on …" button in a flex
+// row. Any cross-origin embed mount can drop this in; only IG uses it so far.
+function _vpBuildEmbedZoomToggle() {
+  var btn = document.createElement('button');
+  btn.id = 'vp-embed-zoom';
+  btn.textContent = '⤢';
+  btn.style.cssText = 'flex:0 0 34px;height:24px;background:#222;color:#888;'
+    + 'border:0;border-radius:4px;font-size:13px;font-weight:bold;line-height:1;'
+    + 'cursor:pointer;';
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    _vpEmbedZoomArm(!window._vpEmbedZoomArmed);
+  });
+  return btn;
+}
+
 function _vpWireEmbedGestures(wrap, clipBox, stripId) {
   // Neutralize the catcher outright. Shrinking it (what direct video does — it
   // only needs the native control strip) can't help: an embed needs its CENTRE.
   // The catcher is rebuilt on every V open, so there's nothing to restore.
-  // Leaving it INERT rather than removing it also keeps host.style.transform
-  // empty, which matters: a non-empty transform makes host a stacking context
-  // and buries the z:60 strip under the z:50 catcher — dev0292, one layer down.
-  var sc = document.getElementById('vp-swipe-catcher');
-  if (sc) {
-    sc.style.pointerEvents = 'none';
-    sc.style.cursor = 'default';
-  }
+  // (dev0612) Inert is now the DEFAULT rather than the permanent state — the
+  // toolbar ⤢ toggle can hand these pixels back for a reframe. This call also
+  // clears _vpEmbedZoomArmed for the new mount.
+  _vpEmbedZoomArm(false);
 
   // Swipe-back lane down the embed's right edge (z:60 inside clipBox). The
   // letterbox alone can't carry the gesture — on a phone it shrinks to ~10px.
@@ -3946,10 +3995,14 @@ function vpMountInstagram(host, link) {
   if (toolbar && toolbar.firstElementChild) {
     var tlRow = toolbar.firstElementChild;
     tlRow.style.display = 'none';
+    // (dev0612) The reclaimed seek-bar row now carries two buttons: the ⤢
+    // zoom-arm toggle and the open-on-IG link.
+    var igRow = document.createElement('div');
+    igRow.style.cssText = 'display:flex;gap:4px;height:24px;margin:0 0 4px 0;';
     var openBtn = document.createElement('button');
     openBtn.id = 'vp-ig-open';
     openBtn.textContent = '↗ Open on Instagram';
-    openBtn.style.cssText = 'display:block;width:100%;height:24px;margin:0 0 4px 0;'
+    openBtn.style.cssText = 'flex:1;height:24px;'
       + 'background:linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%);'
       + 'color:#fff;border:0;border-radius:4px;font-family:monospace;font-weight:bold;'
       + 'font-size:12px;letter-spacing:0.04em;cursor:pointer;'
@@ -3958,7 +4011,9 @@ function vpMountInstagram(host, link) {
       e.stopPropagation();
       window.open(link, '_blank', 'noopener');
     });
-    toolbar.insertBefore(openBtn, tlRow);
+    igRow.appendChild(_vpBuildEmbedZoomToggle());
+    igRow.appendChild(openBtn);
+    toolbar.insertBefore(igRow, tlRow);
   }
 
   // Stub player so generic toolbar code that pokes _vpState.player doesn't
