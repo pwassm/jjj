@@ -816,9 +816,18 @@ async function _gridStepGrabOne(job) {
 // Mount one cell's step overlay: play the clip if it exists, else queue a grab
 // and play it when the queue delivers. Returns true if an overlay was placed.
 function _gridStepMountCell(cell, row, sp, fit) {
-  const name = (typeof window.stepClipName === 'function')
-    ? window.stepClipName(sp.auto ? { VidTitle: row.VidTitle, UID: row.UID, steps: sp.spec } : row)
-    : '';
+  let nameRow = row;
+  if (sp.auto) {
+    // (dev0615) Bare c.json LINK cells synthesize rows with UID:'' and no
+    // VidTitle (_gridLinkCellRow) — stepClipName would give every one the same
+    // "uid-." base, so their clips would collide and the proxy's stale-purge
+    // would eat each other. Fall back to the YT video id as the identity.
+    let uid = row.UID;
+    if (!row.VidTitle && (uid == null || uid === ''))
+      uid = (window.getYouTubeId && window.getYouTubeId(row.link)) || 'x';
+    nameRow = { VidTitle: row.VidTitle, UID: uid, steps: sp.spec };
+  }
+  const name = (typeof window.stepClipName === 'function') ? window.stepClipName(nameRow) : '';
   if (!name) return false;
 
   const ov = document.createElement('div');
