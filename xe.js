@@ -2268,7 +2268,7 @@ function textEditorPreviewSlide() {
     <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:64px;
          display:flex;align-items:center;justify-content:space-between;
          padding:0 16px;background:#3a4d75;border-bottom:2px solid #6af;">
-      <span style="font-family:monospace;font-size:13px;color:#cde;">
+      <span id="teSlideHint" style="font-family:monospace;font-size:13px;color:#cde;">
         ← Swipe on this bar to go back · Esc to go back
       </span>
       <div style="display:flex;gap:8px;align-items:center;">
@@ -2286,9 +2286,27 @@ function textEditorPreviewSlide() {
     <div id="teSlideContent" style="max-width:1200px;width:100%;color:#fff;
                 font-family:sans-serif;font-size:24px;line-height:1.6;
                 background:#0a0a1a;padding:40px 60px;border-radius:8px;
-                max-height:90vh;overflow-y:auto;margin-top:64px;">${html}</div>
+                max-height:90vh;overflow-y:auto;margin-top:64px;"></div>
   `;
   document.body.appendChild(ov);
+
+  // (dev0617) Xs shows ONE section per page — split at each top-level <hr>
+  // (same splitter as the 1a grid cell and the fullscreen viewer) instead of
+  // the whole document with separator lines. →/← page through sections.
+  const _sects = (typeof window._salSplitSections === 'function')
+    ? window._salSplitSections(html) : [html];
+  let _sIdx = 0;
+  const _content = ov.querySelector('#teSlideContent');
+  const _hint = ov.querySelector('#teSlideHint');
+  function _showSect() {
+    _content.innerHTML = _sects[_sIdx] || '';
+    _content.scrollTop = 0;
+    if (_hint && _sects.length > 1) {
+      _hint.textContent = 'Page ' + (_sIdx + 1) + '/' + _sects.length
+        + ' · → next · ← prev · Esc / swipe ← on this bar to go back';
+    }
+  }
+  _showSect();
 
   function close() {
     document.removeEventListener('keydown', onKey, true);
@@ -2298,6 +2316,18 @@ function textEditorPreviewSlide() {
     if (e.key === 'Escape') {
       e.preventDefault(); e.stopImmediatePropagation();
       close();
+      return;
+    }
+    if (_sects.length > 1 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      const dir = e.key === 'ArrowRight' ? 1 : -1;
+      const ni = _sIdx + dir;
+      if (ni < 0 || ni >= _sects.length) {
+        if (typeof toast === 'function') toast(dir > 0 ? 'Last page' : 'First page', 900);
+        return;
+      }
+      _sIdx = ni;
+      _showSect();
     }
   }
   document.addEventListener('keydown', onKey, true);

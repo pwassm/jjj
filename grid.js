@@ -466,8 +466,11 @@ function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
 //   → / ←              → next / previous section
 //   ↓ / ↑              → expand / collapse every collapsible in the section
 // Every other cell keeps the whole-document thumbnail.
-function _gridSectionSetup(cell, wrap, inner, row) {
-  const html = (typeof renderFtext === 'function') ? renderFtext(row.ftext) : (row.ftext || '');
+// (dev0617) Shared top-level-<hr> section splitter. Takes rendered ftext HTML,
+// returns an array of section-HTML strings (always ≥1). Used by the 1a grid
+// cell below, the fullscreen text viewer (vp.js) and the Xs slide preview
+// (xe.js) so all three break pages at exactly the same separators.
+window._salSplitSections = function (html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
   // A slide saved with a .te-slide color wrapper keeps that wrapper on each
@@ -515,6 +518,12 @@ function _gridSectionSetup(cell, wrap, inner, row) {
   });
   flush();
   if (!sections.length) sections.push(html);
+  return sections;
+};
+
+function _gridSectionSetup(cell, wrap, inner, row) {
+  const html = (typeof renderFtext === 'function') ? renderFtext(row.ftext) : (row.ftext || '');
+  const sections = window._salSplitSections(html);
   cell._salSect = { list: sections, idx: 0, inner: inner };
   // Re-fit whenever a collapsible toggles ('toggle' doesn't bubble — capture).
   inner.addEventListener('toggle', () => { if (cell._htmlThumbFit) cell._htmlThumbFit(); }, true);
@@ -2193,7 +2202,12 @@ function gridWireInteractor(interactor, cell, cellStr) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
-        else gridOpenFullscreen(cell._rowData);
+        else {
+          // (dev0617) Sectioned 1a text cell → fullscreen viewer opens on the
+          // SAME section the cell was showing (vp.js reads + clears the hint).
+          window._vpSectStart = cell._salSect ? cell._salSect.idx : 0;
+          gridOpenFullscreen(cell._rowData);
+        }
       }
       return;
     }
@@ -2350,7 +2364,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
-        else gridOpenFullscreen(cell._rowData);
+        else {
+          // (dev0617) mirror of the pointer path — open on the cell's current section
+          window._vpSectStart = cell._salSect ? cell._salSect.idx : 0;
+          gridOpenFullscreen(cell._rowData);
+        }
       }
       return;
     }

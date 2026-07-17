@@ -370,6 +370,7 @@ function gridOpenFullscreen(row, contained) {
   info.innerHTML = '';
   info.style.cssText = '';
   _vpState = null;
+  window._vpSectNav = null;   // (dev0617) reset section pager from a previous text open
   
   // (zip0178) Track current row so vpKeyHandler can navigate from Iu/Ie.
   window._vpCurrentRow = row;
@@ -1443,7 +1444,7 @@ function gridOpenFullscreen(row, contained) {
       + 'display:flex;align-items:center;justify-content:space-between;'
       + 'padding:0 14px;background:#3a4d75;border-bottom:2px solid #6af;z-index:60;'
       + 'touch-action:none;user-select:none;';
-    topBar.innerHTML = '<span style="font-family:monospace;font-size:13px;color:#cde;'
+    topBar.innerHTML = '<span id="vp-html-hint" style="font-family:monospace;font-size:13px;color:#cde;'
       + 'pointer-events:none;">← Swipe right-to-left on this bar to return · Esc</span>'
       + '<button id="vp-html-close" style="background:#1a1a2e;border:1px solid #888;'
       + 'color:#ccc;padding:4px 12px;border-radius:4px;cursor:pointer;'
@@ -1464,6 +1465,12 @@ function gridOpenFullscreen(row, contained) {
         var idoc = iframe.contentDocument;
         if (idoc) idoc.addEventListener('keydown', function (ev) {
           if (ev.key === 'Escape') { ev.preventDefault(); vpClose(); }
+          // (dev0617) The srcdoc document owns keyboard focus once clicked, so
+          // section paging must also be forwarded from inside the iframe.
+          else if ((ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') && window._vpSectNav) {
+            ev.preventDefault();
+            window._vpSectNav(ev.key === 'ArrowRight' ? 1 : -1);
+          }
         }, true);
       } catch (_) {}
     });
@@ -1564,12 +1571,45 @@ function gridOpenFullscreen(row, contained) {
         const _bodyCss = 'body{font-family:Arial,sans-serif;line-height:1.5;'
           + 'max-width:880px;margin:0 auto;padding:24px;'
           + 'box-sizing:border-box;}';
-        const html = ftLink.includes('<html')
-          ? ftLink.replace(/<\/head>/i, _aStyle + '</head>')
-          : '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-            + '<style>' + _bodyCss + _ftStyles + '</style></head>'
-            + '<body>' + ftLink + '</body></html>';
-        loadIframe(html);
+        if (ftLink.includes('<html')) {
+          // Full-document ftext can't be sectioned (splitting would strip its
+          // head/body scaffold) — show it whole, as before.
+          loadIframe(ftLink.replace(/<\/head>/i, _aStyle + '</head>'));
+        } else {
+          // (dev0617) SECTIONED text slide — split at each top-level <hr>
+          // (same splitter as the 1a grid cell / Xs) and show ONE section per
+          // "page". →/← page through sections (forwarded from inside the
+          // iframe too); the top-bar hint doubles as the page counter.
+          const sects = (typeof window._salSplitSections === 'function')
+            ? window._salSplitSections(ftLink) : [ftLink];
+          let sIdx = 0;
+          if (sects.length > 1 && typeof window._vpSectStart === 'number') {
+            sIdx = Math.max(0, Math.min(window._vpSectStart, sects.length - 1));
+          }
+          window._vpSectStart = null;
+          const hintEl = topBar.querySelector('#vp-html-hint');
+          const showSect = () => {
+            loadIframe('<!DOCTYPE html><html><head><meta charset="UTF-8">'
+              + '<style>' + _bodyCss + _ftStyles + '</style></head>'
+              + '<body>' + sects[sIdx] + '</body></html>');
+            if (hintEl && sects.length > 1) {
+              hintEl.textContent = 'Page ' + (sIdx + 1) + '/' + sects.length
+                + ' · → next · ← prev · Esc / swipe ← on this bar to return';
+            }
+          };
+          if (sects.length > 1) {
+            window._vpSectNav = (dir) => {
+              const ni = sIdx + dir;
+              if (ni < 0 || ni >= sects.length) {
+                if (typeof toast === 'function') toast(dir > 0 ? 'Last page' : 'First page', 900);
+                return;
+              }
+              sIdx = ni;
+              showSect();
+            };
+          }
+          showSect();
+        }
       }
     }
 
@@ -1853,6 +1893,7 @@ function vpClose() {
   }
 
   window._vpCurrentRow = null; // (zip0178) clear tracked row
+  window._vpSectNav = null;    // (dev0617) drop the text-slide section pager
   
   // Stop/destroy YouTube or Vimeo player
   if (_vpState && _vpState.player) {
@@ -1920,6 +1961,14 @@ function vpKeyHandler(e) {
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopImmediatePropagation();
     vpClose();
+    return;
+  }
+
+  // (dev0617) ←/→ page through a sectioned fullscreen text slide. Only set for
+  // multi-section text opens (never for video/image, where _vpState is live).
+  if (window._vpSectNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault(); e.stopPropagation();
+    window._vpSectNav(e.key === 'ArrowRight' ? 1 : -1);
     return;
   }
 
