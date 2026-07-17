@@ -239,7 +239,6 @@ var _gridCellPan = {};
 
 function gridCleanupPlayers() {
   gridStepFramesOff();   // (dev0564) leaving/rebuilding the grid exits step-frame mode
-  gridSbFramesOff();     // (dev0613) …and storyboard-frame mode (no resume — grid is going away)
   Object.keys(_gridPlayers).forEach(id => {
     if (window.stopCellVideoLoop) window.stopCellVideoLoop(id);
   });
@@ -710,21 +709,27 @@ function gridClearCut() {
   if (cutInfo) cutInfo.style.display = 'none';
 }
 
-// ── Step-frame mode (dev0564/0565, hotkey A on the grid) ─────────────────────
-// Toggles every cell whose row has saved `steps` ("x,s,d" from the V step
-// panel) to loop its LOCAL step clip (steps/<VidTitle>.<x_s_d>.mp4, stepped
+// ── Step-frame modes (dev0564/0565 hotkey A; dev0614 hotkey 9) ───────────────
+// Cells wear their LOCAL step clip (steps/<VidTitle>.<x_s_d>.mp4, stepped
 // playback baked in by proxy /frame/grab; freeze = 5s still clip) in a plain
 // muted <video> overlay — the only way to show YT frames with ZERO player
 // chrome (a paused in-cell YT iframe paints its own centre play button; see
-// _gridPlayStepsRoute). If the clip doesn't exist yet (steps saved before
-// dev0564, or Save's grab failed), the overlay GRABS IT ON DEMAND through the
-// proxy and then plays it — so old rows just work. Overlays sit at z-index:50
-// — above the media (z:1), below the interactor (z:100) — so clicks/swipes
-// still work, and grid video is ALWAYS muted (zip0152) so the covered player
-// can't leak audio. steps/ is gitignored (grabbed YT material stays local,
-// never the public site).
-let _gridStepFrameMode = false;
-const _gridStepGrabbing = {};   // clip name → true while an on-demand grab runs
+// _gridPlayStepsRoute). Overlays sit at z-index:50 — above the media (z:1),
+// below the interactor (z:100) — so clicks/swipes still work, and grid video
+// is ALWAYS muted (zip0152) so the covered player can't leak audio. steps/ is
+// gitignored (grabbed YT material stays local, never the public site).
+//
+// TWO entry points share the machinery:
+//   A — manual toggle, cells with SAVED row.steps only (dev0564 behaviour).
+//   9 — STEP-FACE mode (dev0614): every YT cell gets a clip — saved steps, or
+//       an AUTO-DEFAULT ~3s real-time loop at the VidRange start (x=0.033 ≈
+//       one frame per 30fps tick, s=start×30, d=90; nothing written to
+//       ml.json). Missing clips are batch-grabbed through a small queue
+//       (2 concurrent /frame/grab calls, progress toasts). The mode PERSISTS
+//       (ml-settings 'gridStepMode') and re-applies on every grid build.
+let _gridStepFrameMode = false;   // A: manual saved-steps overlays
+let _gridStepFaceMode  = false;   // 9: persisted all-YT-cell step faces
+const _gridStepGrabbing = {};     // clip name → [callbacks] while its grab runs
 
 function gridStepFramesOff() {
   document.querySelectorAll('.grid-step-frame').forEach(el => {
@@ -733,74 +738,145 @@ function gridStepFramesOff() {
     el.remove();
   });
   _gridStepFrameMode = false;
+  _gridStepFaceMode  = false;
 }
 
+// Resolve the step spec a cell should wear: saved row.steps wins (any link
+// type, matching A's behaviour); otherwise YT rows get the auto-default loop
+// when allowAuto (the 9 mode). Returns {x,s,d,spec,auto} or null.
+function _gridStepSpecFor(row, allowAuto) {
+  if (row.steps) {
+    const parts = String(row.steps).split(',');
+    const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+    if (isFinite(x) && isFinite(s) && isFinite(d) && x >= 0 && s >= 0 && d >= 0)
+      return { x, s, d, spec: String(row.steps).trim(), auto: false };
+  }
+  if (!allowAuto) return null;
+  if (!(window.isYouTubeLink && window.isYouTubeLink(row.link))) return null;
+  const segs = (window.parseVideoAsset && window.parseVideoAsset(row.VidRange)) || null;
+  const t0 = (segs && segs[0] && isFinite(segs[0].start)) ? Math.max(0, segs[0].start) : 0;
+  const x = 0.033, s = Math.round(t0 * 30), d = 90;
+  return { x, s, d, spec: x + ',' + s + ',' + d, auto: true };
+}
+
+// ── Batch-grab queue (dev0614) ── missing clips funnel through here so a
+// 25-cell grid doesn't fire 25 concurrent yt-dlp+ffmpeg jobs. Per-name waiter
+// lists dedupe clone cells sharing one clip; progress toasts count the batch.
+const _gridStepQueue = [];
+let _gridStepActive = 0, _gridStepBatchDone = 0, _gridStepBatchTotal = 0;
+const _GRID_STEP_CONC = 2;
+
+function _gridStepGrab(link, name, sp, cb) {
+  if (_gridStepGrabbing[name]) { _gridStepGrabbing[name].push(cb); return; }
+  _gridStepGrabbing[name] = [cb];
+  _gridStepQueue.push({ link, name, sp });
+  _gridStepBatchTotal++;
+  _gridStepPump();
+}
+
+function _gridStepPump() {
+  while (_gridStepActive < _GRID_STEP_CONC && _gridStepQueue.length) {
+    const job = _gridStepQueue.shift();
+    _gridStepActive++;
+    _gridStepGrabOne(job).finally(() => {
+      _gridStepActive--;
+      _gridStepBatchDone++;
+      if (typeof toast === 'function') {
+        if (_gridStepBatchDone >= _gridStepBatchTotal) {
+          toast('✅ Step grabs done (' + _gridStepBatchTotal + ')', 1500);
+          _gridStepBatchDone = _gridStepBatchTotal = 0;
+        } else {
+          toast('⏳ Step grabs ' + _gridStepBatchDone + '/' + _gridStepBatchTotal, 1000);
+        }
+      }
+      _gridStepPump();
+    });
+  }
+}
+
+async function _gridStepGrabOne(job) {
+  const proxyBase = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
+  let ok = false, err = '';
+  try {
+    const r = await fetch(proxyBase + '/frame/grab', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: job.link, name: job.name, x: job.sp.x, s: job.sp.s, d: job.sp.d })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    ok = true;
+  } catch (e) {
+    err = String(e && e.message ? e.message : e).slice(0, 120);
+  }
+  const cbs = _gridStepGrabbing[job.name] || [];
+  delete _gridStepGrabbing[job.name];
+  cbs.forEach(cb => { try { cb(ok, err); } catch (e) {} });
+}
+
+// Mount one cell's step overlay: play the clip if it exists, else queue a grab
+// and play it when the queue delivers. Returns true if an overlay was placed.
+function _gridStepMountCell(cell, row, sp, fit) {
+  const name = (typeof window.stepClipName === 'function')
+    ? window.stepClipName(sp.auto ? { VidTitle: row.VidTitle, UID: row.UID, steps: sp.spec } : row)
+    : '';
+  if (!name) return false;
+
+  const ov = document.createElement('div');
+  ov.className = 'grid-step-frame';
+  ov.style.cssText = 'position:absolute;inset:0;background:#000;z-index:50;pointer-events:none;';
+  cell.appendChild(ov);
+
+  const hint = msg => {
+    ov.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;'
+      + 'justify-content:center;text-align:center;color:#fa0;font:bold 12px sans-serif;'
+      + 'padding:8px;">' + msg + '</div>';
+  };
+  const mount = srcUrl => {
+    ov.innerHTML = '';
+    const vid = document.createElement('video');
+    vid.muted = true; vid.autoplay = true; vid.loop = true; vid.playsInline = true;
+    vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + fit + ';';
+    vid.onerror = () => onMissing();
+    vid.src = srcUrl;
+    ov.appendChild(vid);
+    vid.play && vid.play().catch(() => {});
+  };
+  // Clip 404s → queue an on-demand grab (steps saved pre-dev0564, an auto
+  // default never grabbed, or a re-save whose grab failed).
+  let attempted = false;
+  function onMissing() {
+    if (attempted) { hint('Step clip not ready yet'); return; }
+    attempted = true;
+    if (!/^https?:\/\//i.test(row.link || '')) { hint('No step clip —<br>web videos only'); return; }
+    hint('⏳ Step clip queued…');
+    _gridStepGrab(row.link, name, sp, (ok, err) => {
+      if (!ov.isConnected) return;               // mode toggled off meanwhile
+      if (ok) mount('steps/' + encodeURIComponent(name) + '?t=' + Date.now());  // bust the 404
+      else hint('Step clip failed —<br>' + err + '<br>(proxy on 8081? off VPN?)');
+    });
+  }
+  mount('steps/' + encodeURIComponent(name));
+  return true;
+}
+
+// A — manual toggle, saved-steps cells only (dev0564 behaviour, exclusive
+// with the 9 mode).
 function gridToggleStepFrames() {
   if (_gridStepFrameMode) {
     gridStepFramesOff();
     if (typeof toast === 'function') toast('Step frames off', 1200);
     return;
   }
+  gridStepFramesOff();   // drop any 9-mode overlays first
   // Match the grid's image fit policy (dev0502): portrait grids cover, else contain.
   const fit = _gridPortraitDims(_gridCurrentLayout()) ? 'cover' : 'contain';
-  const proxyBase = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
   let n = 0;
   document.querySelectorAll('#gridContainer .grid-cell').forEach(cell => {
     const row = cell._rowData;
     if (!row || !row.steps) return;
-    const parts = String(row.steps).split(',');
-    const x = parseFloat(parts[0]), s = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
-    if (!isFinite(x) || !isFinite(s) || !isFinite(d) || x < 0 || s < 0 || d < 0) return;
-    const name = (typeof window.stepClipName === 'function') ? window.stepClipName(row) : '';
-    if (!name) return;
-
-    const ov = document.createElement('div');
-    ov.className = 'grid-step-frame';
-    ov.style.cssText = 'position:absolute;inset:0;background:#000;z-index:50;pointer-events:none;';
-    cell.appendChild(ov);
-    n++;
-
-    const hint = msg => {
-      ov.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;'
-        + 'justify-content:center;text-align:center;color:#fa0;font:bold 12px sans-serif;'
-        + 'padding:8px;">' + msg + '</div>';
-    };
-    const mount = srcUrl => {
-      ov.innerHTML = '';
-      const vid = document.createElement('video');
-      vid.muted = true; vid.autoplay = true; vid.loop = true; vid.playsInline = true;
-      vid.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + fit + ';';
-      vid.onerror = () => onMissing();
-      vid.src = srcUrl;
-      ov.appendChild(vid);
-      vid.play && vid.play().catch(() => {});
-    };
-    // Clip 404s → grab it on demand (steps saved pre-dev0564, or a re-save
-    // whose grab failed). One grab per clip name at a time.
-    let attempted = false;
-    async function onMissing() {
-      if (attempted || _gridStepGrabbing[name]) { hint('Step clip not ready yet'); return; }
-      attempted = true;
-      if (!/^https?:\/\//i.test(row.link || '')) { hint('No step clip —<br>web videos only'); return; }
-      _gridStepGrabbing[name] = true;
-      hint('⏳ Grabbing step clip…');
-      try {
-        const r = await fetch(proxyBase + '/frame/grab', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: row.link, name, x, s, d })
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
-        if (!ov.isConnected) return;               // mode toggled off meanwhile
-        mount('steps/' + encodeURIComponent(name) + '?t=' + Date.now());  // bust the 404
-      } catch (e) {
-        hint('Step clip failed —<br>' + String(e && e.message ? e.message : e).slice(0, 120)
-          + '<br>(proxy on 8081? off VPN?)');
-      } finally {
-        delete _gridStepGrabbing[name];
-      }
-    }
-    mount('steps/' + encodeURIComponent(name));
+    const sp = _gridStepSpecFor(row, false);
+    if (!sp) return;
+    if (_gridStepMountCell(cell, row, sp, fit)) n++;
   });
   _gridStepFrameMode = n > 0;
   if (typeof toast === 'function')
@@ -809,137 +885,47 @@ function gridToggleStepFrames() {
 }
 window.gridToggleStepFrames = gridToggleStepFrames;
 
-// ── Storyboard-frame mode (dev0613, hotkey 9 on the grid — EXPERIMENT) ───────
-// Swaps every YouTube cell to YouTube's own STORYBOARD frame — the low-res
-// seek-preview sprite sheets on i.ytimg.com/sb/… — at the moment the cell is
-// currently playing. Unlike step clips these are plain hotlinkable images (same
-// class as thumbnails), so this is the ONE chrome-free-still route that could
-// ever work on the PUBLIC site. The catch is resolution: the best level is
-// usually 160×90 or 320×180, and this mode exists purely to JUDGE whether that
-// reads acceptably in G cells (each overlay carries a small "SB w×h @ m:ss"
-// badge so you know what you're looking at). The sprite spec lives in the
-// watch page (CORS-blocked client-side) → proxy /yt/storyboard resolves it.
-// Overlays sit at z:50 like step frames; underlying players are paused while
-// the mode is on and resumed on toggle-off.
-let _gridSbMode = false;
-let _gridSbPausedIds = [];
-const _gridSbSpecCache = {};   // videoId → Promise<spec JSON>
-
-function _gridSbSpec(videoId) {
-  if (!_gridSbSpecCache[videoId]) {
-    const proxyBase = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
-    _gridSbSpecCache[videoId] =
-      fetch(proxyBase + '/yt/storyboard?id=' + encodeURIComponent(videoId)).then(async r => {
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
-        return j;
-      });
-    // Don't cache failures — a proxy restart / VPN drop should be retryable.
-    _gridSbSpecCache[videoId].catch(() => { delete _gridSbSpecCache[videoId]; });
-  }
-  return _gridSbSpecCache[videoId];
+// 9 — persisted step-face mode ------------------------------------------------
+function _gridStepModePersisted() {
+  return (typeof window.getSetting === 'function') && window.getSetting('gridStepMode') === 'on';
 }
 
-function gridSbFramesOff(resume) {
-  document.querySelectorAll('.grid-sb-frame').forEach(el => el.remove());
-  if (resume) {
-    const players = window.seeLearnVideoPlayers || {};
-    _gridSbPausedIds.forEach(id => {
-      const p = players[id];
-      if (!p) return;
-      p._salPaused = false; p._gridPaused = false;
-      try { if (typeof p.playVideo === 'function') p.playVideo(); } catch (e) {}
-    });
-  }
-  _gridSbPausedIds = [];
-  _gridSbMode = false;
-}
-
-function gridToggleStoryboardFrames() {
-  if (_gridSbMode) {
-    gridSbFramesOff(true);
-    if (typeof toast === 'function') toast('Storyboard frames off', 1200);
-    return;
-  }
-  if (_gridStepFrameMode) gridStepFramesOff();   // the two overlay modes are exclusive
+function _gridStepFacesOn(quiet) {
+  gridStepFramesOff();   // clear A-mode / stale overlays first
   const fit = _gridPortraitDims(_gridCurrentLayout()) ? 'cover' : 'contain';
-  const players = window.seeLearnVideoPlayers || {};
   let n = 0;
   document.querySelectorAll('#gridContainer .grid-cell').forEach(cell => {
     const row = cell._rowData;
-    if (!row || !row.link) return;
-    if (!(window.isYouTubeLink && window.isYouTubeLink(row.link))) return;
-    const vid = window.getYouTubeId ? window.getYouTubeId(row.link) : '';
-    if (!vid) return;
-
-    // Freeze the cell where it is: live player time if reachable, else the
-    // row's VidRange start (cell never mounted / buffered layers unreachable).
-    const host = cell.querySelector('[id^="grid-vid-"]');
-    const p = host ? players[host.id] : null;
-    let t = NaN;
-    try { if (p && typeof p.getCurrentTime === 'function') t = p.getCurrentTime(); } catch (e) {}
-    if (!isFinite(t) || t < 0) {
-      const segs = (window.parseVideoAsset && window.parseVideoAsset(row.VidRange)) || null;
-      t = (segs && segs[0] && isFinite(segs[0].start)) ? segs[0].start : 0;
-    }
-    if (p) {
-      p._salPaused = true; p._gridPaused = true;
-      try { if (typeof p.pauseVideo === 'function') p.pauseVideo(); } catch (e) {}
-      _gridSbPausedIds.push(host.id);
-    }
-
-    const ov = document.createElement('div');
-    ov.className = 'grid-sb-frame';
-    ov.style.cssText = 'position:absolute;inset:0;background:#000;z-index:50;pointer-events:none;overflow:hidden;';
-    cell.appendChild(ov);
-    n++;
-
-    const hint = msg => {
-      ov.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;'
-        + 'justify-content:center;text-align:center;color:#fa0;font:bold 12px sans-serif;'
-        + 'padding:8px;">' + msg + '</div>';
-    };
-    _gridSbSpec(vid).then(data => {
-      if (!ov.isConnected) return;               // mode toggled off meanwhile
-      const lv = data.levels && data.levels[data.levels.length - 1];
-      if (!lv) { hint('No storyboard on this video'); return; }
-      const durr = data.duration > 0 ? data.duration : 1;
-      let idx = Math.floor((Math.max(0, Math.min(t, durr)) / durr) * lv.count);
-      idx = Math.max(0, Math.min(lv.count - 1, idx));
-      const per = lv.cols * lv.rows;
-      const sheet = Math.floor(idx / per), pos = idx % per;
-      const fr = Math.floor(pos / lv.cols), fc = pos % lv.cols;
-      const url = lv.urlTemplate.indexOf('$M') >= 0
-        ? lv.urlTemplate.replace('$M', String(sheet)) : lv.urlTemplate;
-      const rect = cell.getBoundingClientRect();
-      const scale = (fit === 'cover')
-        ? Math.max(rect.width / lv.w, rect.height / lv.h)
-        : Math.min(rect.width / lv.w, rect.height / lv.h);
-      ov.innerHTML = '';
-      const f = document.createElement('div');
-      f.style.cssText = 'position:absolute;left:50%;top:50%;width:' + lv.w + 'px;height:' + lv.h + 'px;'
-        + 'transform:translate(-50%,-50%) scale(' + scale + ');'
-        + 'background-image:url("' + url + '");background-repeat:no-repeat;'
-        + 'background-position:-' + (fc * lv.w) + 'px -' + (fr * lv.h) + 'px;';
-      ov.appendChild(f);
-      const badge = document.createElement('div');
-      const mm = Math.floor(t / 60), ss = ('0' + Math.floor(t % 60)).slice(-2);
-      badge.textContent = 'SB ' + lv.w + '×' + lv.h + ' @ ' + mm + ':' + ss;
-      badge.style.cssText = 'position:absolute;left:4px;bottom:4px;padding:1px 5px;'
-        + 'background:rgba(0,0,0,.55);color:#9cf;font:10px sans-serif;border-radius:3px;';
-      ov.appendChild(badge);
-    }).catch(e => {
-      if (ov.isConnected)
-        hint('Storyboard failed —<br>' + String(e && e.message ? e.message : e).slice(0, 120)
-          + '<br>(proxy RESTARTED on 8081? off VPN?)');
-    });
+    if (!row) return;
+    const sp = _gridStepSpecFor(row, true);
+    if (!sp) return;
+    if (_gridStepMountCell(cell, row, sp, fit)) n++;
   });
-  _gridSbMode = n > 0;
-  if (typeof toast === 'function')
-    toast(n ? ('🎬 Storyboard frames — ' + n + ' cell' + (n === 1 ? '' : 's') + ' (9 toggles back)')
-            : 'No YouTube cells in this grid.', 1800);
+  _gridStepFaceMode = n > 0;
+  if (!quiet && typeof toast === 'function')
+    toast(n ? ('🎬 Step faces ON — ' + n + ' cell' + (n === 1 ? '' : 's') + ' (persists; 9 toggles off)')
+            : 'Step faces ON — no step-able cells here (persists; 9 toggles off)', 1800);
 }
-window.gridToggleStoryboardFrames = gridToggleStoryboardFrames;
+
+// Hotkey 9 (core.js window-capture): flip + persist + apply.
+function gridToggleStepMode() {
+  const on = !_gridStepModePersisted();
+  if (typeof window.setSetting === 'function') window.setSetting('gridStepMode', on ? 'on' : 'off');
+  if (on) _gridStepFacesOn(false);
+  else {
+    gridStepFramesOff();
+    if (typeof toast === 'function') toast('Step faces OFF (persisted)', 1200);
+  }
+}
+window.gridToggleStepMode = gridToggleStepMode;
+
+// Called at the end of every gridShow build: re-wear the step faces if the
+// persisted mode is on. Dev-only — steps/ clips don't exist on the public site.
+function _gridApplyStepFaces() {
+  if (!_gridStepModePersisted()) return;
+  if ((typeof _isUserMode === 'function') && _isUserMode()) return;
+  _gridStepFacesOn(true);
+}
 
 // ── Clean-playback buffering (dev0336) ───────────────────────────────────────
 // G can play YouTube cells through a desktop-only A/B double-buffer that hides
@@ -1935,6 +1921,9 @@ function gridShow() {
   // gridUpdateSourceBtns may have re-set display/opacity on the dev
   // buttons. Idempotent and a no-op in dev mode.
   if (typeof _applyUserModeChromeOnGrid === 'function') _applyUserModeChromeOnGrid();
+  // (dev0614) Persisted step-face mode: if ON, every build re-wears the clean
+  // step-clip faces (hotkey 9 toggles + persists via ml-settings).
+  _gridApplyStepFaces();
 }
 
 function gridCut(cellStr) {

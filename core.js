@@ -396,16 +396,18 @@ window.addEventListener('keydown', function(e) {
         if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10));
         return false;
       }
-      // (dev0613) 9 = storyboard-frame EXPERIMENT — swap every YT cell to its
-      // i.ytimg.com storyboard frame at the current moment (grid.js
-      // gridToggleStoryboardFrames; needs the local proxy, so dev-only like
-      // resize). While a moving mode is active the digits still pick variants
+      // (dev0614) 9 = persisted STEP-FACE mode — every YT cell wears its local
+      // step clip (saved steps, else an auto-default ~3s loop at the VidRange
+      // start), missing clips batch-grabbed via the proxy queue; toggles +
+      // persists (ml-settings 'gridStepMode') and re-applies on every grid
+      // build (grid.js gridToggleStepMode). Dev-only like resize — steps/ is
+      // local. While a moving mode is active the digits still pick variants
       // (handled above).
       if (k === '9' && !e.ctrlKey && !e.altKey && !e.metaKey
           && !((typeof _isUserMode === 'function') && _isUserMode())) {
         e.preventDefault();
         e.stopPropagation();
-        if (typeof window.gridToggleStoryboardFrames === 'function') window.gridToggleStoryboardFrames();
+        if (typeof window.gridToggleStepMode === 'function') window.gridToggleStepMode();
         return false;
       }
     }

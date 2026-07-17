@@ -98,7 +98,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0613';
+const PROXY_BUILD = 'dev0601';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2417,75 +2417,6 @@ async function flickrResolve(req, res, origin) {
   }
 }
 
-// (dev0613) ── /yt/storyboard — YouTube storyboard-spec resolver ─────────────
-// G's storyboard-frame experiment (hotkey 9) needs the sprite-sheet URLs for a
-// video, which live in the watch page's ytInitialPlayerResponse — CORS-blocked
-// in the browser, trivial here. GET /yt/storyboard?id=<11-char id> →
-//   { ok, id, duration, levels:[{ level, w, h, count, cols, rows, frags,
-//     urlTemplate }] }
-// levels are ordered small→large (last = best res, typically 160×90 or
-// 320×180). Multi-sheet levels keep a literal $M in urlTemplate — the client
-// swaps in the sheet index. Frames are treated as evenly spaced across the
-// duration (yt-dlp makes the same assumption). In-memory cache per id; the
-// sigh-signed URLs stay valid plenty long for a session.
-const _ytSbCache = new Map();
-function ytStoryboardParse(html) {
-  const m = /"playerStoryboardSpecRenderer"\s*:\s*\{\s*"spec"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(html);
-  if (!m) return null;
-  let spec;
-  try { spec = JSON.parse('"' + m[1] + '"'); } catch (_) { return null; }
-  const dm = /"lengthSeconds"\s*:\s*"(\d+)"/.exec(html);
-  const duration = dm ? parseInt(dm[1], 10) : 0;
-  // Spec: BASE_URL|w#h#count#cols#rows#interval#name#sigh|… (one section per
-  // level). BASE_URL carries $L (level) and $N (name, usually "M$M") slots.
-  const parts = spec.split('|');
-  const base = parts[0];
-  const levels = [];
-  for (let i = 1; i < parts.length; i++) {
-    const a = parts[i].split('#');
-    if (a.length !== 8) continue;
-    const w = +a[0], h = +a[1], count = +a[2], cols = +a[3], rows = +a[4];
-    if (!(w > 0 && h > 0 && count > 0 && cols > 0 && rows > 0)) continue;
-    const urlTemplate = base.replace('$L', String(i - 1)).replace('$N', a[6]) + '&sigh=' + a[7];
-    levels.push({ level: i - 1, w, h, count, cols, rows,
-                  frags: Math.ceil(count / (cols * rows)), urlTemplate });
-  }
-  return levels.length ? { duration, levels } : null;
-}
-function ytStoryboard(req, res, origin) {
-  let q;
-  try { q = new URL(req.url, 'http://x').searchParams; } catch (_) { q = new URLSearchParams(); }
-  const id = (q.get('id') || '').trim();
-  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) { sendJson(res, 400, { ok: false, error: 'bad YouTube id: ' + id }, origin); return; }
-  if (_ytSbCache.has(id)) { sendJson(res, 200, _ytSbCache.get(id), origin); return; }
-  let done = false;
-  const fin = (code, obj) => { if (done) return; done = true; sendJson(res, code, obj, origin); };
-  const opts = { headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9'
-  } };
-  let h = '';
-  const r2 = https.get('https://www.youtube.com/watch?v=' + id + '&hl=en', opts, r => {
-    if (r.statusCode !== 200) {
-      r.resume();
-      fin(502, { ok: false, error: 'watch page HTTP ' + r.statusCode + ' (VPN bot-wall?)' });
-      return;
-    }
-    r.setEncoding('utf8');
-    r.on('data', c => { if (h.length < 6e6) h += c; });
-    r.on('end', () => {
-      const parsed = ytStoryboardParse(h);
-      if (!parsed) { fin(502, { ok: false, error: 'no storyboard spec in watch page (bot-wall? storyboardless video?)' }); return; }
-      const out = Object.assign({ ok: true, id }, parsed);
-      _ytSbCache.set(id, out);
-      fin(200, out);
-    });
-  });
-  r2.on('error', e => fin(502, { ok: false, error: String((e && e.message) || e) }));
-  r2.setTimeout(20000, () => { r2.destroy(new Error('watch page timeout')); });
-}
-
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
@@ -2504,7 +2435,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'ytstoryboard'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve'] }));
     return;
   }
 
@@ -2643,15 +2574,6 @@ http.createServer((req, res) => {
     const action = req.url.slice('/flickr/'.length).split('?')[0];
     if (action !== 'resolve') { sendJson(res, 404, { ok: false, error: 'unknown flickr action: ' + action }, origin); return; }
     flickrResolve(req, res, origin);
-    return;
-  }
-
-  // (dev0613) ── YouTube storyboard resolver (read-only, like /flickr/) ────
-  if (req.url.startsWith('/yt/')) {
-    const origin = req.headers.origin || '';
-    const action = req.url.slice('/yt/'.length).split('?')[0];
-    if (action !== 'storyboard') { sendJson(res, 404, { ok: false, error: 'unknown yt action: ' + action }, origin); return; }
-    ytStoryboard(req, res, origin);
     return;
   }
 
