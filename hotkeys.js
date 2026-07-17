@@ -516,10 +516,6 @@ window.HOTKEYS = [
     impl: 'core.js window-capture (dev0460)',
     desc: 'Toggle FallCells (perimeter waterfall conveyor)' },
 
-  { label: '9', group: 'Grid (window-capture)', scope: 'G', dev: true,
-    impl: 'core.js window-capture (dev0614)',
-    desc: 'Toggle STEP-FACE mode — every YouTube cell wears its local step clip (saved steps, else an auto-default ~3s real-time loop at the VidRange start; nothing written to ml.json). Missing clips are batch-grabbed through the proxy (2 at a time, progress toasts). PERSISTS across grid rebuilds and reloads (ml-settings); A remains the manual saved-steps-only toggle.' },
-
   { label: 'S', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0516)',
     desc: 'Play the grid as a slideshow' },
