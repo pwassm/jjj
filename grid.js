@@ -239,6 +239,7 @@ var _gridCellPan = {};
 
 function gridCleanupPlayers() {
   gridStepFramesOff();   // (dev0564) leaving/rebuilding the grid exits step-frame mode
+  gridSbFramesOff();     // (dev0613) …and storyboard-frame mode (no resume — grid is going away)
   Object.keys(_gridPlayers).forEach(id => {
     if (window.stopCellVideoLoop) window.stopCellVideoLoop(id);
   });
@@ -807,6 +808,138 @@ function gridToggleStepFrames() {
             : 'No grid cells have saved steps.', 1800);
 }
 window.gridToggleStepFrames = gridToggleStepFrames;
+
+// ── Storyboard-frame mode (dev0613, hotkey 9 on the grid — EXPERIMENT) ───────
+// Swaps every YouTube cell to YouTube's own STORYBOARD frame — the low-res
+// seek-preview sprite sheets on i.ytimg.com/sb/… — at the moment the cell is
+// currently playing. Unlike step clips these are plain hotlinkable images (same
+// class as thumbnails), so this is the ONE chrome-free-still route that could
+// ever work on the PUBLIC site. The catch is resolution: the best level is
+// usually 160×90 or 320×180, and this mode exists purely to JUDGE whether that
+// reads acceptably in G cells (each overlay carries a small "SB w×h @ m:ss"
+// badge so you know what you're looking at). The sprite spec lives in the
+// watch page (CORS-blocked client-side) → proxy /yt/storyboard resolves it.
+// Overlays sit at z:50 like step frames; underlying players are paused while
+// the mode is on and resumed on toggle-off.
+let _gridSbMode = false;
+let _gridSbPausedIds = [];
+const _gridSbSpecCache = {};   // videoId → Promise<spec JSON>
+
+function _gridSbSpec(videoId) {
+  if (!_gridSbSpecCache[videoId]) {
+    const proxyBase = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
+    _gridSbSpecCache[videoId] =
+      fetch(proxyBase + '/yt/storyboard?id=' + encodeURIComponent(videoId)).then(async r => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        return j;
+      });
+    // Don't cache failures — a proxy restart / VPN drop should be retryable.
+    _gridSbSpecCache[videoId].catch(() => { delete _gridSbSpecCache[videoId]; });
+  }
+  return _gridSbSpecCache[videoId];
+}
+
+function gridSbFramesOff(resume) {
+  document.querySelectorAll('.grid-sb-frame').forEach(el => el.remove());
+  if (resume) {
+    const players = window.seeLearnVideoPlayers || {};
+    _gridSbPausedIds.forEach(id => {
+      const p = players[id];
+      if (!p) return;
+      p._salPaused = false; p._gridPaused = false;
+      try { if (typeof p.playVideo === 'function') p.playVideo(); } catch (e) {}
+    });
+  }
+  _gridSbPausedIds = [];
+  _gridSbMode = false;
+}
+
+function gridToggleStoryboardFrames() {
+  if (_gridSbMode) {
+    gridSbFramesOff(true);
+    if (typeof toast === 'function') toast('Storyboard frames off', 1200);
+    return;
+  }
+  if (_gridStepFrameMode) gridStepFramesOff();   // the two overlay modes are exclusive
+  const fit = _gridPortraitDims(_gridCurrentLayout()) ? 'cover' : 'contain';
+  const players = window.seeLearnVideoPlayers || {};
+  let n = 0;
+  document.querySelectorAll('#gridContainer .grid-cell').forEach(cell => {
+    const row = cell._rowData;
+    if (!row || !row.link) return;
+    if (!(window.isYouTubeLink && window.isYouTubeLink(row.link))) return;
+    const vid = window.getYouTubeId ? window.getYouTubeId(row.link) : '';
+    if (!vid) return;
+
+    // Freeze the cell where it is: live player time if reachable, else the
+    // row's VidRange start (cell never mounted / buffered layers unreachable).
+    const host = cell.querySelector('[id^="grid-vid-"]');
+    const p = host ? players[host.id] : null;
+    let t = NaN;
+    try { if (p && typeof p.getCurrentTime === 'function') t = p.getCurrentTime(); } catch (e) {}
+    if (!isFinite(t) || t < 0) {
+      const segs = (window.parseVideoAsset && window.parseVideoAsset(row.VidRange)) || null;
+      t = (segs && segs[0] && isFinite(segs[0].start)) ? segs[0].start : 0;
+    }
+    if (p) {
+      p._salPaused = true; p._gridPaused = true;
+      try { if (typeof p.pauseVideo === 'function') p.pauseVideo(); } catch (e) {}
+      _gridSbPausedIds.push(host.id);
+    }
+
+    const ov = document.createElement('div');
+    ov.className = 'grid-sb-frame';
+    ov.style.cssText = 'position:absolute;inset:0;background:#000;z-index:50;pointer-events:none;overflow:hidden;';
+    cell.appendChild(ov);
+    n++;
+
+    const hint = msg => {
+      ov.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;'
+        + 'justify-content:center;text-align:center;color:#fa0;font:bold 12px sans-serif;'
+        + 'padding:8px;">' + msg + '</div>';
+    };
+    _gridSbSpec(vid).then(data => {
+      if (!ov.isConnected) return;               // mode toggled off meanwhile
+      const lv = data.levels && data.levels[data.levels.length - 1];
+      if (!lv) { hint('No storyboard on this video'); return; }
+      const durr = data.duration > 0 ? data.duration : 1;
+      let idx = Math.floor((Math.max(0, Math.min(t, durr)) / durr) * lv.count);
+      idx = Math.max(0, Math.min(lv.count - 1, idx));
+      const per = lv.cols * lv.rows;
+      const sheet = Math.floor(idx / per), pos = idx % per;
+      const fr = Math.floor(pos / lv.cols), fc = pos % lv.cols;
+      const url = lv.urlTemplate.indexOf('$M') >= 0
+        ? lv.urlTemplate.replace('$M', String(sheet)) : lv.urlTemplate;
+      const rect = cell.getBoundingClientRect();
+      const scale = (fit === 'cover')
+        ? Math.max(rect.width / lv.w, rect.height / lv.h)
+        : Math.min(rect.width / lv.w, rect.height / lv.h);
+      ov.innerHTML = '';
+      const f = document.createElement('div');
+      f.style.cssText = 'position:absolute;left:50%;top:50%;width:' + lv.w + 'px;height:' + lv.h + 'px;'
+        + 'transform:translate(-50%,-50%) scale(' + scale + ');'
+        + 'background-image:url("' + url + '");background-repeat:no-repeat;'
+        + 'background-position:-' + (fc * lv.w) + 'px -' + (fr * lv.h) + 'px;';
+      ov.appendChild(f);
+      const badge = document.createElement('div');
+      const mm = Math.floor(t / 60), ss = ('0' + Math.floor(t % 60)).slice(-2);
+      badge.textContent = 'SB ' + lv.w + '×' + lv.h + ' @ ' + mm + ':' + ss;
+      badge.style.cssText = 'position:absolute;left:4px;bottom:4px;padding:1px 5px;'
+        + 'background:rgba(0,0,0,.55);color:#9cf;font:10px sans-serif;border-radius:3px;';
+      ov.appendChild(badge);
+    }).catch(e => {
+      if (ov.isConnected)
+        hint('Storyboard failed —<br>' + String(e && e.message ? e.message : e).slice(0, 120)
+          + '<br>(proxy RESTARTED on 8081? off VPN?)');
+    });
+  });
+  _gridSbMode = n > 0;
+  if (typeof toast === 'function')
+    toast(n ? ('🎬 Storyboard frames — ' + n + ' cell' + (n === 1 ? '' : 's') + ' (9 toggles back)')
+            : 'No YouTube cells in this grid.', 1800);
+}
+window.gridToggleStoryboardFrames = gridToggleStoryboardFrames;
 
 // ── Clean-playback buffering (dev0336) ───────────────────────────────────────
 // G can play YouTube cells through a desktop-only A/B double-buffer that hides

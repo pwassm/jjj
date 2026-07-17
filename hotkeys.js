@@ -516,6 +516,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture (dev0460)',
     desc: 'Toggle FallCells (perimeter waterfall conveyor)' },
 
+  { label: '9', group: 'Grid (window-capture)', scope: 'G', dev: true,
+    impl: 'core.js window-capture (dev0613)',
+    desc: 'EXPERIMENT: toggle STORYBOARD frames — every YouTube cell swaps to YT’s low-res seek-preview frame (i.ytimg.com storyboard sprite) at the moment it was playing, players pause underneath; 9 again resumes play. Judges whether storyboard stills could give the public site chrome-free YT frames. Needs the proxy (/yt/storyboard).' },
+
   { label: 'S', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0516)',
     desc: 'Play the grid as a slideshow' },

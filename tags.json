@@ -6997,5 +6997,15 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "rhodolith",
+    "label": "Rhodolith",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
   }
 ]
