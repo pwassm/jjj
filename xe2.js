@@ -877,6 +877,40 @@
           // nothing (the schema allows only one summary), so a collapsed [[2]]
           // block had no way in.
           handleKeyDown: function (view, event) {
+            // (dev0627) Backspace/Delete inside an EMPTY .te-slide section
+            // removes the whole section — plus ONE adjacent ══ divider so no
+            // double-hr is left behind. A divider inserted at a section edge
+            // splits off an empty half (insertSectionBreak), and that empty
+            // white box was otherwise un-erasable: slideSection is a defining
+            // block+ node, so backspace in its empty paragraph just sat there.
+            if ((event.key === 'Backspace' || event.key === 'Delete')
+                && !event.ctrlKey && !event.metaKey && !event.altKey
+                && view.state.selection.empty) {
+              var st = view.state, $f2 = st.selection.$from;
+              for (var sd = $f2.depth; sd >= 1; sd--) {
+                if ($f2.node(sd).type.name !== 'slideSection') continue;
+                var secNode = $f2.node(sd);
+                var hasContent = secNode.textContent.trim() !== '';
+                if (!hasContent) {
+                  secNode.descendants(function (n) {
+                    if (n.type.name === 'image' || n.type.name === 'table' || n.isAtom) hasContent = true;
+                  });
+                }
+                if (hasContent) break;
+                var delFrom = $f2.before(sd), delTo = $f2.after(sd);
+                var parent = $f2.node(sd - 1), idx = $f2.index(sd - 1);
+                var prevSib = idx > 0 ? parent.child(idx - 1) : null;
+                var nextSib = idx + 1 < parent.childCount ? parent.child(idx + 1) : null;
+                if (prevSib && prevSib.type.name === 'horizontalRule') delFrom -= prevSib.nodeSize;
+                else if (nextSib && nextSib.type.name === 'horizontalRule') delTo += nextSib.nodeSize;
+                try {
+                  view.dispatch(st.tr.delete(delFrom, delTo).scrollIntoView());
+                  event.preventDefault();
+                  return true;
+                } catch (err) { /* schema refused — fall through to default */ }
+                break;
+              }
+            }
             if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
               event.preventDefault();
               if (_api) lineOutsideDetails(_api.editor, event.shiftKey ? -1 : 1);

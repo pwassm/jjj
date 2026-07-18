@@ -2349,6 +2349,18 @@ function textEditorPreviewSlide(htmlOverride) {
   }
   let _cellMode = null;      // null | 'cell' | 'grid'
   let _cellObserver = null;  // watches for the viewer being closed by its own UI
+  // (dev0627) The viewer/grid live INSIDE #rotateWrap, which is position:fixed
+  // and therefore its own stacking context — no z-index in there can ever beat
+  // the body-level Xe overlays (35000). The dev0626 z-boost was trapped; the
+  // editor overlay itself must vanish while the designation cell is up.
+  let _cellHiddenEditor = null;
+  function _hideEditorOverlay() {
+    const eo = document.getElementById('xe2Overlay') || _textEditorOverlay;
+    if (eo) { _cellHiddenEditor = eo; eo.style.visibility = 'hidden'; }
+  }
+  function _unhideEditorOverlay() {
+    if (_cellHiddenEditor) { _cellHiddenEditor.style.visibility = ''; _cellHiddenEditor = null; }
+  }
   function _leaveCellMode() {
     if (_cellObserver) { _cellObserver.disconnect(); _cellObserver = null; }
     if (_cellMode === 'cell') {
@@ -2362,6 +2374,7 @@ function textEditorPreviewSlide(htmlOverride) {
       if (go) { go.style.display = 'none'; go.style.zIndex = ''; }
     }
     _cellMode = null;
+    _unhideEditorOverlay();
     ov.style.display = 'flex';
   }
   // If the viewer/grid is dismissed by its own UI (swipe-close, ✕), un-hide Xs
@@ -2377,6 +2390,7 @@ function textEditorPreviewSlide(htmlOverride) {
     if (spec === 'G') {
       if (typeof gridShow !== 'function') return false;
       ov.style.display = 'none';
+      _hideEditorOverlay();
       _cellMode = 'grid';
       gridShow();
       // (dev0626) G ships at z-index 28000 — UNDER the Xe overlay (35000), so
@@ -2393,6 +2407,7 @@ function textEditorPreviewSlide(htmlOverride) {
     }
     if (typeof gridOpenFullscreen !== 'function') return false;
     ov.style.display = 'none';
+    _hideEditorOverlay();
     _cellMode = 'cell';
     gridOpenFullscreen(row);
     // (dev0626) Same stacking fix as G: the V viewer ships at 28500, below the
