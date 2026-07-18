@@ -820,8 +820,17 @@
       '#xe2Editor .te-slide[style*="color:"] :is(p,div,summary,li,span,h1,h2,h3,h4,h5,h6){color:inherit;}',
       // (dev0621) ══ divider — same 2px line as v1/Xs/grid; without this the
       // browser-default thin inset hr made new dividers look like a stray line.
-      '#xe2Editor hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;}',
+      // (dev0631) clear:both so a floated image before a divider can't spill
+      // across the ══ bar into the next section (the "section bars covered by
+      // the image" report) — Xs never shows this because it pages at each hr,
+      // but the editor is one continuous document so the float must be cleared
+      // at the section boundary.
+      '#xe2Editor hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;clear:both;}',
+      // (dev0631) A floated image needs a line-box tall enough to sit in, else a
+      // short section lets it overhang; give images a small bottom margin and
+      // let the ProseMirror root contain trailing floats.
       '#xe2Editor img{max-width:100%;}',
+      '#xe2Editor .ProseMirror::after{content:"";display:block;clear:both;}',
       // (dev0623) selected image/wrapper highlight — click an image, then 🖼 edits it
       '#xe2Editor img.ProseMirror-selectednode,#xe2Editor .ProseMirror-selectednode{outline:3px solid #4af;outline-offset:2px;border-radius:4px;}',
       // (dev0623) hidden-from-render (te-cut) blocks: global CSS hides them
@@ -997,6 +1006,22 @@
             // toggle stays suppressed). The caret still lands where clicked
             // (ProseMirror places it on mousedown), so the title stays editable.
             click: function (view, event) {
+              // (dev0631) Single click on an IMAGE selects the image node so the
+              // blue outline shows (the "click doesn't highlight it" report).
+              // Inline images don't auto-select on click — PM drops a text caret
+              // beside them — so force a NodeSelection at the image's position.
+              var cimg = (event.target && event.target.tagName === 'IMG') ? event.target : null;
+              if (cimg) {
+                try {
+                  var ipos = view.posAtDOM(cimg, 0);
+                  var inode = view.state.doc.nodeAt(ipos);
+                  if (inode && inode.type.name === 'image' && _api) {
+                    event.preventDefault();
+                    _api.editor.commands.setNodeSelection(ipos);
+                    return true;
+                  }
+                } catch (e2) { /* odd geometry — ignore */ }
+              }
               var sum = (event.target && event.target.closest) ? event.target.closest('summary') : null;
               if (!sum) return false;
               event.preventDefault();
