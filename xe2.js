@@ -113,10 +113,41 @@
     },
   });
 
+  // (dev0622) Generic styled <div> block — v1's image modal emits centered /
+  // captioned images as <div style="text-align:center..."><img>..<div>caption
+  // </div></div>, and many saved rows contain them. Without a node for it the
+  // schema UNWRAPPED those divs on save (centering + caption style lost).
+  // .te-slide divs are excluded (SlideSection owns those).
+  var StyledDiv = Node.create({
+    name: 'styledDiv',
+    group: 'block',
+    content: 'block+',
+    defining: true,
+    addAttributes: function () {
+      return {
+        style: {
+          default: null,
+          parseHTML: function (el) { return el.getAttribute('style'); },
+          renderHTML: function (attrs) { return attrs.style ? { style: attrs.style } : {}; },
+        },
+      };
+    },
+    parseHTML: function () {
+      return [{
+        tag: 'div[style]',
+        getAttrs: function (el) {
+          if (el.classList && el.classList.contains('te-slide')) return false;
+          return { style: el.getAttribute('style') };
+        },
+      }];
+    },
+    renderHTML: function (p) { return ['div', mergeAttributes(p.HTMLAttributes), 0]; },
+  });
+
   function buildExtensions() {
     return [
       StarterKit,
-      DetailsSummary, Details, Small, SlideSection,
+      DetailsSummary, Details, Small, SlideSection, StyledDiv,
       Underline,
       StyledImage.configure({ inline: false }),
       Link.configure({ openOnClick: false, autolink: false }),
@@ -505,6 +536,14 @@
   }
 
   function insertImage(editor) {
+    // (dev0622) Reuse v1's full image modal (UID-or-URL source, size, alignment,
+    // caption) — it just hands back HTML; StyledDiv/StyledImage preserve it.
+    if (typeof window.teShowImageModal === 'function') {
+      window.teShowImageModal(function (html) {
+        editor.chain().focus().insertContent(html).run();
+      });
+      return;
+    }
     var url = prompt('Image URL (https://…):', '');
     if (!url) return;
     url = url.trim();
@@ -583,10 +622,14 @@
       '#xe2Editor h1{font-size:2em;} #xe2Editor h2{font-size:1.5em;} #xe2Editor h3{font-size:1.25em;} #xe2Editor h4{font-size:1.1em;} #xe2Editor h5{font-size:1em;} #xe2Editor h6{font-size:0.9em;}',
       '#xe2Editor h1,#xe2Editor h2,#xe2Editor h3,#xe2Editor h4,#xe2Editor h5,#xe2Editor h6{font-weight:bold;}',
       '#xe2Editor details{border-left:3px solid #6af;padding:2px 0 2px 12px;margin:8px 0;background:rgba(90,140,220,0.06);}',
-      '#xe2Editor summary{cursor:text;font-weight:bold;color:#9cf;list-style:none;}',
+      // (dev0622) Real triangle + real collapse in the editor: ▶/▼ drawn in a
+      // left gutter (click IT to toggle — clicking the text still edits), and
+      // closed details hide their body natively (the old always-show-dimmed
+      // rule made [[2]] blocks look uneditable and confusing).
+      '#xe2Editor summary{cursor:text;font-weight:bold;color:#9cf;list-style:none;position:relative;padding-left:22px;}',
       '#xe2Editor summary::-webkit-details-marker{display:none;}',
-      // keep collapsed-details CONTENT visible+editable inside the editor (dimmed)
-      '#xe2Editor details:not([open]) > *:not(summary){display:block;opacity:0.5;}',
+      '#xe2Editor summary::before{content:"\\25B6";position:absolute;left:2px;top:3px;font-size:11px;color:#6af;cursor:pointer;}',
+      '#xe2Editor details[open] > summary::before{content:"\\25BC";}',
       // (dev0620) section wrapper: faint outline so the colored-section extent is
       // visible while editing; an explicit section color must WIN over the
       // element defaults above (same inherit trick as dev0619 in v1/render).
@@ -662,19 +705,56 @@
         editorProps: {
           // (dev0621) Ctrl+Enter / Ctrl+Shift+Enter = blank line below/above the
           // collapsible at the cursor (v1 parity; same as the ¶↓/¶↑ buttons).
+          // (dev0622) Plain Enter in a SUMMARY = open the block and jump the
+          // caret to the first body line — before this, Enter in a summary did
+          // nothing (the schema allows only one summary), so a collapsed [[2]]
+          // block had no way in.
           handleKeyDown: function (view, event) {
             if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
               event.preventDefault();
               if (_api) lineOutsideDetails(_api.editor, event.shiftKey ? -1 : 1);
               return true;
             }
+            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+              var state = view.state, $from = state.selection.$from;
+              for (var d = $from.depth; d >= 2; d--) {
+                if ($from.node(d).type.name !== 'detailsSummary') continue;
+                var det = $from.node(d - 1);
+                if (det.type.name !== 'details') break;
+                var detPos = $from.before(d - 1);
+                var tr = state.tr;
+                if (!det.attrs.open) tr.setNodeMarkup(detPos, undefined, Object.assign({}, det.attrs, { open: true }));
+                view.dispatch(tr);
+                var bodyStart = detPos + 1 + $from.node(d).nodeSize + 1;
+                if (_api) _api.editor.commands.setTextSelection(bodyStart);
+                event.preventDefault();
+                return true;
+              }
+            }
             return false;
           },
           handleDOMEvents: {
+            // (dev0622) Click on the ▶/▼ gutter (left 20px of the summary)
+            // toggles the block via a schema transaction; clicks on the summary
+            // TEXT just place the caret. Native toggle stays suppressed so the
+            // DOM can never drift from the node's open attr.
             click: function (view, event) {
-              if (event.target && event.target.closest && event.target.closest('summary')) {
-                event.preventDefault(); // don't let the browser toggle open/closed
-              }
+              var sum = (event.target && event.target.closest) ? event.target.closest('summary') : null;
+              if (!sum) return false;
+              event.preventDefault();
+              var rect = sum.getBoundingClientRect();
+              if (event.clientX - rect.left > 20) return false; // text area — just edit
+              try {
+                var $pos = view.state.doc.resolve(view.posAtDOM(sum, 0));
+                for (var d = $pos.depth; d >= 1; d--) {
+                  if ($pos.node(d).type.name === 'details') {
+                    var node = $pos.node(d), pos = $pos.before(d);
+                    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined,
+                      Object.assign({}, node.attrs, { open: !node.attrs.open })));
+                    return true;
+                  }
+                }
+              } catch (err) { /* gutter click on odd geometry — ignore */ }
               return false;
             },
           },
@@ -758,7 +838,7 @@
     _wrapSelectionInDetails: wrapSelectionInDetails,
     _undetail: undetail,
     _lineOutsideDetails: lineOutsideDetails,
-    version: 'xe2-m5',
+    version: 'xe2-m6',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
 })();
