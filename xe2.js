@@ -65,6 +65,12 @@
 
   // Image that PRESERVES the inline style (float/width/margin) ftext uses for
   // sizing + alignment. Default extension-image drops all of it.
+  // (dev0630) INLINE (see buildExtensions .configure) so it lives INSIDE a
+  // paragraph exactly as ftext stores it (<p><img …></p>). As a block node it
+  // couldn't sit in a paragraph, so on load ProseMirror hoisted/mangled every
+  // inserted image — the editor diverged from Xs (which renders the raw HTML).
+  // Inline also makes a single click select the image (NodeSelection → blue
+  // outline) and lets text be typed before/after it and wrap around a float.
   var StyledImage = Image.extend({
     addAttributes: function () {
       var parent = this.parent ? this.parent() : {};
@@ -162,7 +168,7 @@
       StarterKit,
       DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut,
       Underline,
-      StyledImage.configure({ inline: false }),
+      StyledImage.configure({ inline: true }),
       Link.configure({ openOnClick: false, autolink: false }),
       Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
     ];
@@ -185,7 +191,18 @@
   // owns that structure — losing only HTML comments, same as v1.
   function _transformPastedHTML(html) {
     if (!html) return html;
-    if (/<details[\s>]/i.test(html)) return html.replace(/<!--[\s\S]*?-->/g, '');
+    // (dev0630) INTERNAL copy — a block cut/copied out of THIS editor. PM's own
+    // clipboard serializer tags it data-pm-slice; the schema round-trips those
+    // nodes verbatim (details / te-slide colors preserved, already clean), so
+    // pass it through untouched. This is the ONLY case that skips the sanitizer.
+    if (/data-pm-slice/i.test(html)) return html;
+    // Everything else is a FOREIGN paste (web page, v1 copy). ALWAYS sanitize.
+    // The old rule bypassed sanitizing for ANY paste containing a <details>
+    // anywhere — but PMC/NCBI pages carry <details> sections, so a whole article
+    // paste went in raw and its inline styles leaked (UID1782's reddish italic
+    // "Introduction" = a surviving <p style="color:#a66;font-style:italic;">).
+    // The sanitizer KEEPS <details>/<summary> tags, it only strips junk
+    // styles/attrs, so pasted collapsibles still come in as structure.
     if (typeof window._sanitizePastedHtml === 'function') {
       var clean = window._sanitizePastedHtml(html);
       if (clean && clean.trim()) return clean;
@@ -894,6 +911,26 @@
           // nothing (the schema allows only one summary), so a collapsed [[2]]
           // block had no way in.
           handleKeyDown: function (view, event) {
+            // (dev0630) Enter while an IMAGE node is selected (single-click it →
+            // blue outline) drops a fresh empty line just below it, image kept —
+            // the "highlight image, press Enter, get a new line" request. Without
+            // this, Enter on a NodeSelection either did nothing or replaced the
+            // image.
+            if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+              var nsel = view.state.selection;
+              if (nsel.node && nsel.node.type && nsel.node.type.name === 'image') {
+                event.preventDefault();
+                if (_api) {
+                  _api.editor.chain()
+                    .insertContentAt(nsel.to, { type: 'paragraph' })
+                    .setTextSelection(nsel.to + 1)
+                    .scrollIntoView()
+                    .focus()
+                    .run();
+                }
+                return true;
+              }
+            }
             // (dev0627) Backspace/Delete inside an EMPTY .te-slide section
             // removes the whole section — plus ONE adjacent ══ divider so no
             // double-hr is left behind. A divider inserted at a section edge
