@@ -804,7 +804,18 @@
   function _onKeydown(e) {
     var ov = document.getElementById('xe2Overlay');
     if (!ov) return;
+    // (dev0626) Xs on top owns the keys (Esc must close Xs, not this editor;
+    // Alt+S must not re-open a second preview). This handler registered before
+    // Xs's, so without the guard Esc closed BOTH layers at once.
+    if (document.getElementById('teSlideOverlay')) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+    // (dev0626) Alt+S = Slide preview (Xs), same as the S toolbar button —
+    // works while typing. e.code so Alt-composition layouts can't hide the S.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyS') {
+      e.preventDefault(); e.stopPropagation();
+      if (_api && typeof window.textEditorPreviewSlide === 'function') window.textEditorPreviewSlide(_api.getFtext());
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
       e.preventDefault(); e.stopPropagation(); commitAndClose(); return;
     }

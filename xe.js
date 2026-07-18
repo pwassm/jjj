@@ -1069,11 +1069,21 @@ function gridOpenTextEditor(cellStr, row, opts) {
       if (backToGrid) { window._cameFromGrid = false; if (typeof gridShow === 'function') gridShow(); }
       return;
     }
+    // (dev0626) Alt+S = Slide preview from ANYWHERE in Xe — including while
+    // typing in the editor (bare S below only fires unfocused). e.code so a
+    // keyboard-layout Alt-composition can't hide the S.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyS') {
+      e.preventDefault();
+      e.stopPropagation();
+      _textEditorDoSave();
+      textEditorPreviewSlide();
+      return;
+    }
     if (e.key === 's' || e.key === 'S') {
       // Only fire if the contenteditable editor itself is NOT focused.
       const ae = document.activeElement;
       const editorFocused = ae && (ae.id === 'teEditor' || ae.closest('#teEditor'));
-      if (!editorFocused && !e.ctrlKey && !e.metaKey) {
+      if (!editorFocused && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         _textEditorDoSave();
@@ -2343,11 +2353,13 @@ function textEditorPreviewSlide(htmlOverride) {
     if (_cellObserver) { _cellObserver.disconnect(); _cellObserver = null; }
     if (_cellMode === 'cell') {
       if (typeof vpClose === 'function') { try { vpClose(); } catch (_) {} }
+      const fs = document.getElementById('gridFullscreen');
+      if (fs) fs.style.zIndex = '';   // (dev0626) drop the above-Xe boost
     } else if (_cellMode === 'grid') {
       // NOT gridClose() — that calls textEditorClose() and would kill Xe under us.
       if (typeof gridCleanupPlayers === 'function') { try { gridCleanupPlayers(); } catch (_) {} }
       const go = document.getElementById('gridOverlay');
-      if (go) go.style.display = 'none';
+      if (go) { go.style.display = 'none'; go.style.zIndex = ''; }
     }
     _cellMode = null;
     ov.style.display = 'flex';
@@ -2367,7 +2379,11 @@ function textEditorPreviewSlide(htmlOverride) {
       ov.style.display = 'none';
       _cellMode = 'grid';
       gridShow();
-      _watchExternalClose(document.getElementById('gridOverlay'), 'grid');
+      // (dev0626) G ships at z-index 28000 — UNDER the Xe overlay (35000), so
+      // hiding Xs just exposed Xe. Boost above Xe/Xs while the slide owns it.
+      const go = document.getElementById('gridOverlay');
+      if (go) go.style.zIndex = '36200';
+      _watchExternalClose(go, 'grid');
       return true;
     }
     const row = (typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid(spec) : null;
@@ -2379,7 +2395,11 @@ function textEditorPreviewSlide(htmlOverride) {
     ov.style.display = 'none';
     _cellMode = 'cell';
     gridOpenFullscreen(row);
-    _watchExternalClose(document.getElementById('gridFullscreen'), 'flex');
+    // (dev0626) Same stacking fix as G: the V viewer ships at 28500, below the
+    // Xe overlay (35000) — without the boost the "fullscreen cell" was Xe.
+    const fs = document.getElementById('gridFullscreen');
+    if (fs) fs.style.zIndex = '36200';
+    _watchExternalClose(fs, 'flex');
     return true;
   }
   function _showSect() {
@@ -2405,9 +2425,12 @@ function textEditorPreviewSlide(htmlOverride) {
       close();
       return;
     }
-    if (_sects.length > 1 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    // (dev0626) Space = next slide (like →). Intercepted even over a
+    // designation-cell viewer — Xs paging wins over V's play/pause there,
+    // matching the arrow rule.
+    if (_sects.length > 1 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === ' ')) {
       e.preventDefault(); e.stopImmediatePropagation();
-      const dir = e.key === 'ArrowRight' ? 1 : -1;
+      const dir = e.key === 'ArrowLeft' ? -1 : 1;
       const ni = _sIdx + dir;
       if (ni < 0 || ni >= _sects.length) {
         if (typeof toast === 'function') toast(dir > 0 ? 'Last page' : 'First page', 900);
