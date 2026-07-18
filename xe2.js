@@ -176,6 +176,23 @@
 
   function serialize(editor) { return editor.getHTML(); }
 
+  // (dev0628) PASTE SANITIZER — v1 parity (xe.js paste listener → core.js
+  // _sanitizePastedHtml). v2 had NO paste handling, so a rich web paste went
+  // into ProseMirror RAW: every framework <div style="--ricos-…"> matched the
+  // StyledDiv rule and the whole styled-div soup became the document (UID1778's
+  // Wix article pasted as junk that displayed as one un-deletable image).
+  // <details> pastes (internal block copies) bypass the sanitizer — the schema
+  // owns that structure — losing only HTML comments, same as v1.
+  function _transformPastedHTML(html) {
+    if (!html) return html;
+    if (/<details[\s>]/i.test(html)) return html.replace(/<!--[\s\S]*?-->/g, '');
+    if (typeof window._sanitizePastedHtml === 'function') {
+      var clean = window._sanitizePastedHtml(html);
+      if (clean && clean.trim()) return clean;
+    }
+    return html;
+  }
+
   function createEditor(element, raw, opts) {
     opts = opts || {};
     var editor = new Editor({
@@ -183,7 +200,7 @@
       extensions: buildExtensions(),
       content: raw || '',
       editable: opts.editable !== false,
-      editorProps: opts.editorProps || {},
+      editorProps: Object.assign({ transformPastedHTML: _transformPastedHTML }, opts.editorProps),
     });
     if (opts.onUpdate) editor.on('update', opts.onUpdate);
     return {
