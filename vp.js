@@ -372,6 +372,10 @@ function gridOpenFullscreen(row, contained) {
   // opaque backdrop back. NB: #gridFullscreen's #000 ships as an INLINE style
   // (index.html), so restore the value — '' would strip it for good.
   fs.style.background = '#000';
+  // (dev0637) Stale section-page arrows from a previous sectioned open — every
+  // open starts clean; the sectioned branch re-adds them when it needs them.
+  const _staleArr = fs.querySelector('#vpSectArrows');
+  if (_staleArr) _staleArr.remove();
   info.innerHTML = '';
   info.style.cssText = '';
   _vpState = null;
@@ -1626,6 +1630,35 @@ function gridOpenFullscreen(row, contained) {
             if (window.stopCellVideoLoop) window.stopCellVideoLoop('grid-fs-video');
             fs.style.background = '#000';   // drop a G-page transparency (inline style — restore, don't clear)
           };
+          // (dev0637) Floating ‹ › page arrows — touch users had NO way to page
+          // sections (paging was arrow-key only). Appended to fs, NOT content,
+          // so they sit above a designation page's media viewer too; the
+          // top-of-open reset removes them on every gridOpenFullscreen, so the
+          // media path re-adds them after its re-entry returns.
+          const _addSectArrows = () => {
+            if (sects.length < 2 || fs.querySelector('#vpSectArrows')) return;
+            const holder = document.createElement('div');
+            holder.id = 'vpSectArrows';
+            holder.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:70;';
+            [[-1, 'left'], [1, 'right']].forEach(([dir, side]) => {
+              const b = document.createElement('button');
+              b.textContent = dir > 0 ? '›' : '‹';
+              b.style.cssText = 'position:absolute;top:50%;' + side + ':10px;'
+                + 'transform:translateY(-50%);pointer-events:auto;width:46px;height:46px;'
+                + 'border-radius:50%;border:1px solid rgba(255,255,255,0.35);'
+                + 'background:rgba(0,0,0,0.45);color:#fff;font-size:26px;line-height:1;'
+                + 'cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;';
+              // Swallow the gesture start so the image/video swipe catchers
+              // underneath never treat an arrow tap as a swipe.
+              b.addEventListener('pointerdown', e => e.stopPropagation());
+              b.addEventListener('click', e => {
+                e.stopPropagation();
+                if (typeof window._vpSectNav === 'function') window._vpSectNav(dir);
+              });
+              holder.appendChild(b);
+            });
+            fs.appendChild(holder);
+          };
           const showSect = () => {
             const spec = (typeof window._salSectCellSpec === 'function')
               ? window._salSectCellSpec(sects[sIdx]) : null;
@@ -1636,6 +1669,7 @@ function gridOpenFullscreen(row, contained) {
               _desigCleanup();
               gridOpenFullscreen(dRow);
               window._vpSectNav = nav;
+              _addSectArrows();   // (dev0637) re-entry's top reset removed them
               return;
             }
             if (!iframe.isConnected) {
@@ -1675,6 +1709,7 @@ function gridOpenFullscreen(row, contained) {
             };
           }
           showSect();
+          _addSectArrows();   // (dev0637) no-op when single-section or already added
         }
       }
     }
@@ -1992,6 +2027,10 @@ function vpClose() {
   const fs = document.getElementById('gridFullscreen');
   fs.style.display = 'none';
   fs.onclick = null;
+  // (dev0637) Tear down the floating section-page arrows (they live on fs,
+  // outside content, so the content wipe never reaches them).
+  const _sectArr = fs.querySelector('#vpSectArrows');
+  if (_sectArr) _sectArr.remove();
   // If V forced gridOverlay open from T (no real grid underneath), hide it
   // again so we land back on T instead of a blank dark overlay.
   if (window._vpForcedGridFromT) {

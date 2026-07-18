@@ -868,7 +868,44 @@ function _gridBufferPreroll() {
 
 // Buffering is heavy (2 iframes/cell) — only engage on desktop and small grids.
 // Larger/mobile grids transparently fall back to the single-iframe mount.
+//
+// (dev0637) PROOF-OF-CONCEPT expansion switches — try buffered playback on ANY
+// grid size (incl. the 27-cell portrait grid) and on fast phones (S25-class):
+//   • URL param  ?buf=1  (or buf=all) — this load only; phone-friendly, just
+//     add it to a slam.com deep link. ?buf=0 forces buffering fully OFF
+//     (escape hatch if a device melts).
+//   • window.gridBufferAll(true|false) / setSetting('gridBufferAll', true) —
+//     persists on this browser+origin; no-arg call toggles.
+// Default behavior (no param, no setting) is unchanged: desktop && ≤4×4.
+// Expect pain at scale: buffered = 2 YT iframes per cell, so 27 cells = 54
+// live players — desktop-class GPUs sweat, phones likely cap out around 3×3.
+let _gridBufAllCache = null;
+function _gridBufferAllState() {
+  if (_gridBufAllCache === null) {
+    let q = null;
+    try { q = new URLSearchParams(window.location.search).get('buf'); } catch (_) {}
+    if (q === '1' || q === 'all') _gridBufAllCache = 'all';
+    else if (q === '0') _gridBufAllCache = 'none';
+    else _gridBufAllCache = ((typeof window.getSetting === 'function')
+      && window.getSetting('gridBufferAll') === true) ? 'all' : 'normal';
+  }
+  return _gridBufAllCache;
+}
+window.gridBufferAll = function (on) {
+  const next = (on === undefined) ? (_gridBufferAllState() !== 'all') : !!on;
+  if (typeof window.setSetting === 'function') window.setSetting('gridBufferAll', next);
+  _gridBufAllCache = next ? 'all' : 'normal';
+  if (typeof toast === 'function') {
+    toast('Buffer everywhere: ' + (next ? 'ON — all sizes & devices' : 'OFF — desktop ≤4×4 only'), 1800);
+  }
+  if (typeof gridShow === 'function'
+      && document.getElementById('gridOverlay')?.style.display === 'flex') gridShow();
+  return next;
+};
 function _gridBufferEligible() {
+  const st = _gridBufferAllState();
+  if (st === 'all')  return true;
+  if (st === 'none') return false;
   const desktop = (typeof _isMobileDevice === 'function') ? !_isMobileDevice() : true;
   return desktop && _gridGsize <= 4;
 }
