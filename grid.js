@@ -1440,10 +1440,14 @@ function _gridThumbApplySlideColors(wrap, inner) {
   if (!m) return;
   const [r, g, b] = m[1].split(',').map(s => parseFloat(s));
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  if (lum < 0.5) {
-    wrap.style.background = bg;
-    inner.style.color = '#fff';
-  }
+  // (dev0618) ANY explicit slide background paints the whole cell — the old
+  // dark-only gate (lum<0.5) left a mid-luminance slide (e.g. blue #4488ff,
+  // lum≈0.507) on the paper-white default, so the chosen color "didn't show
+  // up on G". Text color: the slide's own explicit color wins (it inherits
+  // inside the wrapper anyway; setting inner too covers stray content outside
+  // it), else contrast-pick white-on-dark / dark-on-light as before.
+  wrap.style.background = bg;
+  inner.style.color = slide.style.color || (lum < 0.5 ? '#fff' : '#222');
 }
 
 // (dev0277) One-time injection of table styling for grid HTML thumbnails.
