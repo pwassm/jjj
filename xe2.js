@@ -78,10 +78,45 @@
     },
   });
 
+  // (dev0620) Slide SECTION wrapper — <div class="te-slide" style="color:..;
+  // background:..">. In v1 ONE wrapper spanned the whole ftext; here it is a
+  // first-class block node, so each ══(hr)-delimited section can carry its OWN
+  // colors. grid.js _salSplitSections + _gridThumbApplySlideColors and the
+  // dev0619 [style*="color:"] CSS already tolerate per-section wrappers.
+  var SlideSection = Node.create({
+    name: 'slideSection',
+    group: 'block',
+    content: 'block+',
+    defining: true,
+    addAttributes: function () {
+      return {
+        color: {
+          default: '',
+          parseHTML: function (el) { return el.style.color || ''; },
+          renderHTML: function () { return {}; }, // composed in node renderHTML
+        },
+        background: {
+          default: '',
+          parseHTML: function (el) { return el.style.background || el.style.backgroundColor || ''; },
+          renderHTML: function () { return {}; },
+        },
+      };
+    },
+    parseHTML: function () { return [{ tag: 'div.te-slide' }]; },
+    renderHTML: function (p) {
+      var a = p.node.attrs, css = '';
+      if (a.color) css += 'color: ' + a.color + '; ';
+      if (a.background) css += 'background: ' + a.background + ';';
+      var attrs = { 'class': 'te-slide' };
+      if (css) attrs.style = css.trim();
+      return ['div', mergeAttributes(p.HTMLAttributes, attrs), 0];
+    },
+  });
+
   function buildExtensions() {
     return [
       StarterKit,
-      DetailsSummary, Details, Small,
+      DetailsSummary, Details, Small, SlideSection,
       Underline,
       StyledImage.configure({ inline: false }),
       Link.configure({ openOnClick: false, autolink: false }),
@@ -89,67 +124,43 @@
     ];
   }
 
-  // ── Slide-wide color: current ftext wraps the whole slide in
-  //    <div class="te-slide" style="color:..;background:..">. TipTap has no div
-  //    node so the wrapper would be lost. Strip on the way in, re-wrap on out.
-  function parseFtext(raw) {
-    raw = raw || '';
-    try {
-      var doc = new DOMParser().parseFromString(raw, 'text/html');
-      var wrap = doc.body && doc.body.firstElementChild;
-      if (wrap && wrap.classList && wrap.classList.contains('te-slide') &&
-          doc.body.children.length === 1) {
-        return {
-          inner: wrap.innerHTML,
-          slide: {
-            color: wrap.style.color || '',
-            background: wrap.style.background || wrap.style.backgroundColor || '',
-          },
-        };
-      }
-    } catch (e) { /* fall through */ }
-    return { inner: raw, slide: null };
-  }
+  // (dev0620) The .te-slide wrapper is now a schema node (SlideSection above),
+  // so ftext goes into TipTap verbatim — a legacy whole-doc wrapper parses as
+  // one section and serializes back byte-identically. parseFtext/serialize kept
+  // as exported names for the headless round-trip tests.
+  function parseFtext(raw) { return { inner: raw || '', slide: null }; }
 
-  function serialize(editor, slide) {
-    var html = editor.getHTML();
-    if (slide && (slide.color || slide.background)) {
-      var css = '';
-      if (slide.color) css += 'color: ' + slide.color + '; ';
-      if (slide.background) css += 'background: ' + slide.background + ';';
-      return '<div class="te-slide" style="' + css.trim() + '">' + html + '</div>';
-    }
-    return html;
-  }
+  function serialize(editor) { return editor.getHTML(); }
 
   function createEditor(element, raw, opts) {
     opts = opts || {};
-    var parsed = parseFtext(raw);
     var editor = new Editor({
       element: element,
       extensions: buildExtensions(),
-      content: parsed.inner,
+      content: raw || '',
       editable: opts.editable !== false,
       editorProps: opts.editorProps || {},
     });
     if (opts.onUpdate) editor.on('update', opts.onUpdate);
     return {
       editor: editor,
-      slide: parsed.slide,
-      getFtext: function () { return serialize(editor, parsed.slide); },
+      slide: null,
+      getFtext: function () { return serialize(editor); },
     };
   }
 
   // ══ FLAG ════════════════════════════════════════════════════════════════════
+  // (dev0620) v2 is now the DEFAULT editor. Opt OUT via localStorage 'xe2'='0'
+  // (the header "v1" button / XE2.disable()) or ?xe2=0; ?xe2=1 forces on.
   function isEnabled() {
     try {
       if (/[?&]xe2=1(&|$)/.test(location.search)) return true;
       if (/[?&]xe2=0(&|$)/.test(location.search)) return false;
-      return localStorage.getItem('xe2') === '1';
-    } catch (e) { return false; }
+      return localStorage.getItem('xe2') !== '0';
+    } catch (e) { return true; }
   }
   function enable() { try { localStorage.setItem('xe2', '1'); } catch (e) {} console.log('[xe2] enabled — reopen a text cell'); }
-  function disable() { try { localStorage.removeItem('xe2'); } catch (e) {} console.log('[xe2] disabled — v1 editor active'); }
+  function disable() { try { localStorage.setItem('xe2', '0'); } catch (e) {} console.log('[xe2] disabled — v1 editor active'); }
 
   // ══ EDITOR OVERLAY ══════════════════════════════════════════════════════════
   var _api = null;      // { editor, slide, getFtext }
@@ -227,6 +238,193 @@
     if (changed) editor.view.dispatch(tr);
   }
 
+  // ── (dev0620) section commands ──────────────────────────────────────────────
+  function _frag(state, nodes) { return state.doc.content.constructor.fromArray(nodes); }
+
+  // Nearest slideSection ancestor of the selection, or null.
+  function _findSection(state) {
+    var $from = state.selection.$from;
+    for (var d = $from.depth; d >= 1; d--) {
+      if ($from.node(d).type.name === 'slideSection') {
+        return { node: $from.node(d), pos: $from.before(d), depth: d };
+      }
+    }
+    return null;
+  }
+
+  // Set text/bg color on the SECTION containing the cursor. mode 'text'|'bg';
+  // empty value clears. A legacy whole-doc wrapper still holding ══(hr)
+  // dividers is first split into per-section wrappers so each slide can be
+  // colored independently. Cursor outside any wrapper → the hr-delimited
+  // top-level segment around it gets wrapped in a fresh colored section.
+  function applySectionColor(editor, mode, value) {
+    var state = editor.state;
+    var secType = editor.schema.nodes.slideSection;
+    if (!secType) return;
+    var key = (mode === 'bg') ? 'background' : 'color';
+    var sec = _findSection(state);
+
+    if (sec) {
+      var hasHr = false;
+      sec.node.forEach(function (ch) { if (ch.type.name === 'horizontalRule') hasHr = true; });
+      if (hasHr) {
+        // migrate: one wrapper spanning dividers → one wrapper per section,
+        // recoloring ONLY the cursor's segment, all in ONE transaction (after a
+        // replaceWith the mapped selection lands past the replacement, so a
+        // re-find would pick the wrong section).
+        var childIdx = state.selection.$from.index(sec.depth);
+        var targetSeg = 0, segScan = 0, scanI = 0;
+        sec.node.forEach(function (ch) {
+          if (scanI === childIdx) targetSeg = segScan;
+          if (ch.type.name === 'horizontalRule') segScan++;
+          scanI++;
+        });
+        var pieces = [], cur = [], segN = 0;
+        var flushPiece = function () {
+          if (!cur.length) return;
+          var a = Object.assign({}, sec.node.attrs);
+          if (segN === targetSeg) a[key] = value || '';
+          if (!a.color && !a.background) cur.forEach(function (n) { pieces.push(n); }); // fully cleared → no wrapper
+          else pieces.push(secType.create(a, cur));
+          cur = [];
+        };
+        sec.node.forEach(function (ch) {
+          if (ch.type.name === 'horizontalRule') { flushPiece(); segN++; pieces.push(ch); }
+          else cur.push(ch);
+        });
+        flushPiece();
+        try {
+          editor.view.dispatch(state.tr.replaceWith(sec.pos, sec.pos + sec.node.nodeSize, _frag(state, pieces)));
+        } catch (e) { console.warn('[xe2] section migrate failed', e); }
+        editor.commands.focus();
+        return;
+      }
+      var attrs = Object.assign({}, sec.node.attrs);
+      attrs[key] = value || '';
+      try {
+        if (!attrs.color && !attrs.background) {
+          // both cleared → drop the wrapper so saved HTML stays clean
+          editor.view.dispatch(state.tr.replaceWith(sec.pos, sec.pos + sec.node.nodeSize, sec.node.content));
+        } else {
+          editor.view.dispatch(state.tr.setNodeMarkup(sec.pos, undefined, attrs));
+        }
+      } catch (e) { console.warn('[xe2] section color failed', e); }
+      editor.commands.focus();
+      return;
+    }
+
+    if (!value) { editor.commands.focus(); return; } // nothing to clear
+    // wrap the top-level blocks between the surrounding dividers
+    var doc = state.doc, idx = state.selection.$from.index(0);
+    var startIdx = 0, endIdx = doc.childCount, i;
+    for (i = 0; i < doc.childCount; i++) {
+      if (doc.child(i).type.name !== 'horizontalRule') continue;
+      if (i < idx) startIdx = i + 1;
+      else { endIdx = i; break; }
+    }
+    var nodes = [], from = 0, to = 0, pos = 0;
+    for (i = 0; i < doc.childCount; i++) {
+      var c = doc.child(i);
+      if (i === startIdx) from = pos;
+      if (i >= startIdx && i < endIdx) {
+        if (c.type.name === 'slideSection') { nodes = null; break; } // mixed segment — bail
+        nodes.push(c);
+      }
+      pos += c.nodeSize;
+      if (i === endIdx - 1) to = pos;
+    }
+    if (!nodes || !nodes.length) return;
+    var a2 = { color: '', background: '' };
+    a2[key] = value;
+    try {
+      editor.view.dispatch(state.tr.replaceWith(from, to, secType.create(a2, nodes)));
+    } catch (e) { console.warn('[xe2] section wrap failed', e); }
+    editor.commands.focus();
+  }
+
+  // ══ button: inside a colored section, SPLIT the section at the cursor and
+  // put the divider between the halves (each keeps the color) — a plain hr
+  // dropped inside the wrapper would get the wrapper unwrapped by grid.js's
+  // dev0593 hoist, losing the color. Outside a section: plain hr.
+  function insertSectionBreak(editor) {
+    var state = editor.state, sec = _findSection(state);
+    if (!sec) { editor.chain().focus().setHorizontalRule().run(); return; }
+    var $from = state.selection.$from;
+    if ($from.depth !== 2 || $from.node(1).type.name !== 'slideSection') {
+      if (typeof window.toast === 'function') window.toast('Move the cursor out of the collapsible first, then insert the divider', 1600);
+      return;
+    }
+    try {
+      var tr = state.tr.split($from.pos, 2);
+      tr.insert($from.pos + 2, editor.schema.nodes.horizontalRule.create());
+      editor.view.dispatch(tr);
+      editor.commands.focus();
+    } catch (e) {
+      editor.chain().focus().setHorizontalRule().run();
+    }
+  }
+
+  // A+/A− text size stepper: walks the current block along the em ladder
+  // (h6 0.9 → p 1 → h4 1.1 → h3 1.25 → h2 1.5 → h1 2). Stays schema-clean —
+  // no inline font-size spans (the v1 corruption vector).
+  var SIZE_LADDER = [['heading', 6], ['paragraph', 0], ['heading', 4], ['heading', 3], ['heading', 2], ['heading', 1]];
+  function stepBlockSize(editor, dir) {
+    var cur = 1; // default slot: paragraph (h5 is the same size — treated as p)
+    for (var i = 0; i < SIZE_LADDER.length; i++) {
+      var t = SIZE_LADDER[i];
+      var hit = (t[0] === 'paragraph') ? editor.isActive('paragraph')
+                                       : editor.isActive('heading', { level: t[1] });
+      if (hit) { cur = i; break; }
+    }
+    var ni = cur + dir;
+    if (ni < 0 || ni >= SIZE_LADDER.length) return;
+    var n = SIZE_LADDER[ni];
+    if (n[0] === 'paragraph') editor.chain().focus().setParagraph().run();
+    else editor.chain().focus().setHeading({ level: n[1] }).run();
+  }
+
+  // Color swatch popup (same palette as v1's teShowColorPicker).
+  function showColorPicker(anchorBtn, mode) {
+    var old = document.getElementById('xe2ColorPicker');
+    if (old) { old.remove(); return; } // re-click toggles
+    var COLORS = [
+      { v: '',        label: 'default — clear/reset' },
+      { v: '#ffffff', label: 'white' }, { v: '#000000', label: 'black' },
+      { v: '#ff4444', label: 'red' },   { v: '#ff8c00', label: 'orange' },
+      { v: '#ffd700', label: 'yellow' }, { v: '#44cc44', label: 'green' },
+      { v: '#4488ff', label: 'blue' },  { v: '#aa66ff', label: 'purple' },
+      { v: '#aaaaaa', label: 'gray' },  { v: '#0a0a1a', label: 'editor-bg' },
+    ];
+    var r = anchorBtn.getBoundingClientRect();
+    var pop = document.createElement('div');
+    pop.id = 'xe2ColorPicker';
+    pop.style.cssText = 'position:fixed;z-index:36800;background:#0d0d1e;border:1px solid #4af;' +
+      'border-radius:8px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,0.7);' +
+      'left:' + r.left + 'px;top:' + (r.bottom + 4) + 'px;' +
+      'display:grid;grid-template-columns:repeat(6,1fr);gap:6px;';
+    COLORS.forEach(function (c) {
+      var sw = document.createElement('button');
+      sw.style.cssText = 'width:28px;height:28px;border:1px solid #555;border-radius:4px;cursor:pointer;' +
+        'background:' + (c.v || 'repeating-linear-gradient(45deg,#444,#444 4px,#222 4px,#222 8px)') + ';' +
+        (c.v === '#ffffff' ? 'border-color:#888;' : '');
+      sw.title = c.label + (c.v ? ' (' + c.v + ')' : '');
+      sw.onmousedown = function (ev) { ev.preventDefault(); }; // keep editor selection
+      sw.onclick = function () {
+        pop.remove();
+        if (_api) applySectionColor(_api.editor, mode, c.v);
+      };
+      pop.appendChild(sw);
+    });
+    function onDoc(e) {
+      if (!pop.contains(e.target) && e.target !== anchorBtn) {
+        pop.remove();
+        document.removeEventListener('mousedown', onDoc, true);
+      }
+    }
+    document.addEventListener('mousedown', onDoc, true);
+    document.body.appendChild(pop);
+  }
+
   function insertImage(editor) {
     var url = prompt('Image URL (https://…):', '');
     if (!url) return;
@@ -258,6 +456,8 @@
       ['H2', 'Heading 2', function (e) { e.chain().focus().toggleHeading({ level: 2 }).run(); }],
       ['H3', 'Heading 3', function (e) { e.chain().focus().toggleHeading({ level: 3 }).run(); }],
       ['P', 'Paragraph', function (e) { e.chain().focus().setParagraph().run(); }],
+      ['A&#8722;', 'Smaller text — step the current line down the size ladder', function (e) { stepBlockSize(e, -1); }],
+      ['A+', 'Larger text — step the current line up the size ladder', function (e) { stepBlockSize(e, 1); }],
       ['&bull;', 'Bullet list', function (e) { e.chain().focus().toggleBulletList().run(); }],
       ['1.', 'Numbered list', function (e) { e.chain().focus().toggleOrderedList().run(); }],
       ['|'],
@@ -265,9 +465,19 @@
       ['&#9660; All', 'Expand all collapsibles', function (e) { setAllDetails(e, true); }],
       ['&#9654; All', 'Collapse all collapsibles', function (e) { setAllDetails(e, false); }],
       ['|'],
-      ['&equiv;', 'Divider line (hr)', function (e) { e.chain().focus().setHorizontalRule().run(); }],
+      ['&#9552;&#9552;', 'Divider line — separates sections/slides; inside a colored section it splits the section so both halves keep the color', function (e) { insertSectionBreak(e); }],
       ['&#128444;', 'Insert image', function (e) { insertImage(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
+      ['|'],
+      ['A&#9662;', 'Text color for the SECTION the cursor is in (whole slide when there are no ══ dividers)', function (e, btn) { showColorPicker(btn, 'text'); }],
+      ['&#9635;&#9662;', 'Background color for the section the cursor is in', function (e, btn) { showColorPicker(btn, 'bg'); }],
+      ['|'],
+      ['S', 'Preview slide (Xs) — pages at each ══ divider, exactly as G/fullscreen will show it', function () {
+        if (_api && typeof window.textEditorPreviewSlide === 'function') window.textEditorPreviewSlide(_api.getFtext());
+      }],
+      ['&#9654;&#9654;', 'Slideshow — play this slide\'s embedded images full-window (5s each)', function () {
+        if (_api && typeof window.slideshowOpen === 'function') window.slideshowOpen(_api.getFtext());
+      }],
       ['|'],
       ['&#8630;', 'Undo (Ctrl+Z)', function (e) { e.chain().focus().undo().run(); }],
       ['&#8631;', 'Redo (Ctrl+Shift+Z)', function (e) { e.chain().focus().redo().run(); }],
@@ -293,6 +503,11 @@
       '#xe2Editor summary::-webkit-details-marker{display:none;}',
       // keep collapsed-details CONTENT visible+editable inside the editor (dimmed)
       '#xe2Editor details:not([open]) > *:not(summary){display:block;opacity:0.5;}',
+      // (dev0620) section wrapper: faint outline so the colored-section extent is
+      // visible while editing; an explicit section color must WIN over the
+      // element defaults above (same inherit trick as dev0619 in v1/render).
+      '#xe2Editor .te-slide{border:1px dashed rgba(120,160,255,0.22);border-radius:6px;padding:4px 10px;margin:6px 0;}',
+      '#xe2Editor .te-slide[style*="color:"] :is(p,div,summary,li,span,h1,h2,h3,h4,h5,h6){color:inherit;}',
       '#xe2Editor img{max-width:100%;}',
       '#xe2Editor table{border-collapse:collapse;} #xe2Editor td,#xe2Editor th{border:1px solid #557;padding:4px 8px;}',
       '#xe2Editor a{color:#7cf;}',
@@ -378,7 +593,7 @@
         b.innerHTML = item[0];
         b.title = item[1];
         b.onmousedown = function (ev) { ev.preventDefault(); }; // keep editor selection
-        b.onclick = function () { if (_api) item[2](_api.editor); };
+        b.onclick = function () { if (_api) item[2](_api.editor, b); };
         tb.appendChild(b);
       });
 
@@ -431,8 +646,10 @@
     disable: disable,
     open: open,
     close: close,
-    _nodes: { Details: Details, DetailsSummary: DetailsSummary, Small: Small, StyledImage: StyledImage },
-    version: 'xe2-m3',
+    _nodes: { Details: Details, DetailsSummary: DetailsSummary, Small: Small, StyledImage: StyledImage, SlideSection: SlideSection },
+    _applySectionColor: applySectionColor,
+    _insertSectionBreak: insertSectionBreak,
+    version: 'xe2-m4',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
 })();

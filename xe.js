@@ -43,10 +43,11 @@ function gridOpenTextEditor(cellStr, row, opts) {
   }
   _textEditorRow = row;
 
-  // (dev0590) Xe v2 (TipTap schema editor) — opt-in via localStorage 'xe2'=1 or
-  // ?xe2=1. Delegates to the schema editor where <details> can't be corrupted;
-  // the v1 contenteditable path below is untouched and is the fallback if v2
-  // is off or open() fails. See xe2.js / memory project_xe_editor_rebuild.
+  // (dev0590) Xe v2 (TipTap schema editor) — (dev0620) now the DEFAULT; opt out
+  // via the header "v1" button / localStorage 'xe2'='0' / ?xe2=0. Delegates to
+  // the schema editor where <details> can't be corrupted; the v1 contenteditable
+  // path below is untouched and is the fallback if v2 is off or open() fails.
+  // See xe2.js / memory project_xe_editor_rebuild.
   if (window.XE2 && window.XE2.isEnabled() && window.XE2.open(cellStr, row, opts)) {
     return;
   }
@@ -2244,12 +2245,19 @@ function teEditImage(img) {
 // (zip0134) Slide preview: render the saved-or-current ftext at full screen
 // the way it appears when clicked from the Grid. Closes via R-to-L swipe,
 // Esc, or click outside.
-function textEditorPreviewSlide() {
-  const editor = document.getElementById('teEditor');
-  if (!editor) return;
-  // Use the live editor content (not the saved row) so user can preview
-  // unsaved changes.
-  const rawHtml = editor.innerHTML.trim();
+function textEditorPreviewSlide(htmlOverride) {
+  // (dev0620) Optional htmlOverride so the v2 editor (xe2.js) can reuse this
+  // Xs preview — v2 has no #teEditor, it passes its live serialized ftext.
+  let rawHtml;
+  if (typeof htmlOverride === 'string') {
+    rawHtml = htmlOverride.trim();
+  } else {
+    const editor = document.getElementById('teEditor');
+    if (!editor) return;
+    // Use the live editor content (not the saved row) so user can preview
+    // unsaved changes.
+    rawHtml = editor.innerHTML.trim();
+  }
   // (zip0168) Linkify URLs at render time so old ftext also displays
   // clickable links, even if the editor's HTML was plain text URLs.
   const html = (typeof renderFtext === 'function') ? renderFtext(rawHtml) : rawHtml;
