@@ -521,6 +521,26 @@ window._salSplitSections = function (html) {
   return sections;
 };
 
+// (dev0624→dev0636) A section whose ENTIRE content is a bare cell designation
+// ("1a"…"5e", "1L", "1P"…"3P") or "G" is a *pointer page*: viewers show that
+// cell's row (or the whole grid) instead of the literal letters. This matcher
+// was born inside Xs (xe.js dev0624); it moved here so the V fullscreen text
+// viewer (vp.js) — the path slam.com/Gu visitors actually take — applies the
+// SAME rule and the two contexts can't diverge again. Returns 'G', a canonical
+// cell string ("1b", "1L"), or null.
+window._salSectCellSpec = function (sectHtml) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = sectHtml || '';
+  if (tmp.querySelector('img,video,iframe,hr,table')) return null; // media = not a bare designation
+  const t = (tmp.textContent || '').replace(/[ ​]/g, ' ').trim();
+  if (/^g$/i.test(t)) return 'G';
+  if (t.length === 2 && /[1-9]/.test(t[0]) && /[a-iPL]/i.test(t[1])) {
+    const c2 = t[1];
+    return t[0] + (/[pl]/i.test(c2) ? c2.toUpperCase() : c2.toLowerCase());
+  }
+  return null;
+};
+
 function _gridSectionSetup(cell, wrap, inner, row) {
   const html = (typeof renderFtext === 'function') ? renderFtext(row.ftext) : (row.ftext || '');
   const sections = window._salSplitSections(html);
@@ -824,7 +844,15 @@ window.gridToggleStepFrames = gridToggleStepFrames;
 // cycled with Ctrl+B: 'off' → 'cut' (instant swap) → 'fade' (crossfade).
 function _gridBufferMode() {
   const m = (typeof window.getSetting === 'function') ? window.getSetting('gridBuffer') : null;
-  return (m === 'cut' || m === 'fade') ? m : 'off';
+  // (dev0636) Default is 'cut' when the setting has never been touched. The
+  // setting lives in per-origin localStorage and Ctrl+B is deliberately never
+  // exposed to Gu (dev0598), so slam.com visitors ALWAYS fell back to the
+  // single-iframe mount and saw YT's center play/pause chrome — localhost only
+  // looked "fixed" because the dev browser carried a persisted Ctrl+B choice.
+  // An explicit 'off' (cycled via Ctrl+B) is still honored, and eligibility
+  // (desktop, ≤4×4) still gates the heavy path — mobile/5×5 grids unchanged.
+  if (m === 'cut' || m === 'fade' || m === 'off') return m;
+  return 'cut';
 }
 
 // Seconds of hidden warm-up before a buffered layer is revealed — long enough to

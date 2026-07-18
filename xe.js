@@ -2421,7 +2421,10 @@ function textEditorPreviewSlide(htmlOverride) {
   }
   function _showSect() {
     _leaveCellMode();
-    const spec = _sectCellSpec(_sects[_sIdx]);
+    // (dev0636) Canonical matcher now lives in grid.js (window._salSectCellSpec)
+    // so vp.js applies the identical rule in Gu; local fn kept as fallback.
+    const spec = (typeof window._salSectCellSpec === 'function')
+      ? window._salSectCellSpec(_sects[_sIdx]) : _sectCellSpec(_sects[_sIdx]);
     if (spec && _enterCellMode(spec)) return;
     _content.innerHTML = _sects[_sIdx] || '';
     _content.scrollTop = 0;

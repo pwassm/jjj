@@ -367,6 +367,11 @@ function gridOpenFullscreen(row, contained) {
   // absolute-positioning that <div id="gridFsContent"> ships with in
   // the HTML.
   content.style.cssText = 'position:absolute;inset:0;';
+  // (dev0636) Drop a leftover "G page" transparency (see the sectioned text
+  // branch) so the next open — possibly a different row — gets its normal
+  // opaque backdrop back. NB: #gridFullscreen's #000 ships as an INLINE style
+  // (index.html), so restore the value — '' would strip it for good.
+  fs.style.background = '#000';
   info.innerHTML = '';
   info.style.cssText = '';
   _vpState = null;
@@ -1591,10 +1596,68 @@ function gridOpenFullscreen(row, contained) {
           }
           window._vpSectStart = null;
           const hintEl = topBar.querySelector('#vp-html-hint');
+          // (dev0636) Cell-designation sections — the dev0624 Xs rule, now in V
+          // (the fullscreen viewer Gu/slam.com actually uses; until now it
+          // rendered "1b"/"g" pages as literal letters, which is why the
+          // feature "worked on localhost" — the dev previews via Xs — "but
+          // never on slam.com"). A section whose entire content is a bare cell
+          // designation shows that cell's row as REAL fullscreen media, by
+          // re-entering gridOpenFullscreen with the designated row and
+          // re-arming _vpSectNav after (the re-entry nulls it; vpKeyHandler
+          // consults _vpSectNav before any video keys, so ←/→ stay slide
+          // paging — same precedence Xs settled on in dev0626). Paging from a
+          // media page to a text/G page re-enters with the ORIGINAL row at the
+          // target index (_vpSectStart), rebuilding this viewer. "G" pages go
+          // transparent so the live grid behind shows through, view-only (the
+          // overlay still swallows pointer events); Esc/✕ close back to it for
+          // real. A designation pointing at a text-only row (no link, not a
+          // video) falls through and renders as text, as before.
+          const _desigCleanup = () => {
+            // Mini vpClose: stop the CURRENT media player/timers before a
+            // re-entry wipes its DOM (gridOpenFullscreen never cleans up the
+            // previous open — vpClose normally does that).
+            if (_vpState && _vpState.interval) clearInterval(_vpState.interval);
+            if (_vpState && _vpState.player) {
+              try {
+                if (_vpState.isYT) { _vpState.player.stopVideo(); _vpState.player.destroy(); }
+                else if (typeof _vpState.player.destroy === 'function') _vpState.player.destroy();
+              } catch (_) {}
+            }
+            if (window.stopCellVideoLoop) window.stopCellVideoLoop('grid-fs-video');
+            fs.style.background = '#000';   // drop a G-page transparency (inline style — restore, don't clear)
+          };
           const showSect = () => {
-            loadIframe('<!DOCTYPE html><html><head><meta charset="UTF-8">'
-              + '<style>' + _bodyCss + _ftStyles + '</style></head>'
-              + '<body>' + sects[sIdx] + '</body></html>');
+            const spec = (typeof window._salSectCellSpec === 'function')
+              ? window._salSectCellSpec(sects[sIdx]) : null;
+            const dRow = (spec && spec !== 'G' && typeof getRowByCellForGrid === 'function')
+              ? getRowByCellForGrid(spec) : null;
+            if (dRow && (dRow.link || (typeof isVideoRow === 'function' && isVideoRow(dRow)))) {
+              const nav = window._vpSectNav;   // survive the re-entry's reset
+              _desigCleanup();
+              gridOpenFullscreen(dRow);
+              window._vpSectNav = nav;
+              return;
+            }
+            if (!iframe.isConnected) {
+              // Returning from a media page — this viewer's DOM is gone.
+              // Re-enter with the original row at the target page.
+              _desigCleanup();
+              window._vpSectStart = sIdx;
+              gridOpenFullscreen(row);
+              return;
+            }
+            if (spec === 'G') {
+              // Grid page: viewer goes transparent; the live grid shows
+              // through. Top bar stays for the counter / swipe-back.
+              fs.style.background = 'transparent';
+              iframe.style.visibility = 'hidden';
+            } else {
+              fs.style.background = '#000';
+              iframe.style.visibility = '';
+              loadIframe('<!DOCTYPE html><html><head><meta charset="UTF-8">'
+                + '<style>' + _bodyCss + _ftStyles + '</style></head>'
+                + '<body>' + sects[sIdx] + '</body></html>');
+            }
             if (hintEl && sects.length > 1) {
               hintEl.textContent = 'Page ' + (sIdx + 1) + '/' + sects.length
                 + ' · → next · ← prev · Esc / swipe ← on this bar to return';
