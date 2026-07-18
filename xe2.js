@@ -136,7 +136,7 @@
       return [{
         tag: 'div[style]',
         getAttrs: function (el) {
-          if (el.classList && el.classList.contains('te-slide')) return false;
+          if (el.classList && (el.classList.contains('te-slide') || el.classList.contains('te-cut'))) return false;
           return { style: el.getAttribute('style') };
         },
       }];
@@ -144,10 +144,23 @@
     renderHTML: function (p) { return ['div', mergeAttributes(p.HTMLAttributes), 0]; },
   });
 
+  // (dev0623) v1 ⊘ Hide markup — <div class="te-cut"> is hidden in every render
+  // context (.te-cut{display:none!important} in index.html + the vp iframe) but
+  // kept as notes. Without this node the schema UNWRAPPED it on save, i.e. a
+  // v2 save would have UN-hidden old parked text.
+  var TeCut = Node.create({
+    name: 'teCut',
+    group: 'block',
+    content: 'block+',
+    defining: true,
+    parseHTML: function () { return [{ tag: 'div.te-cut' }]; },
+    renderHTML: function (p) { return ['div', mergeAttributes(p.HTMLAttributes, { 'class': 'te-cut' }), 0]; },
+  });
+
   function buildExtensions() {
     return [
       StarterKit,
-      DetailsSummary, Details, Small, SlideSection, StyledDiv,
+      DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut,
       Underline,
       StyledImage.configure({ inline: false }),
       Link.configure({ openOnClick: false, autolink: false }),
@@ -535,13 +548,77 @@
     document.body.appendChild(pop);
   }
 
+  // ── (dev0623) image editing ─────────────────────────────────────────────────
+  function _styleProbe(css) {
+    var el = document.createElement('span');
+    el.style.cssText = css || '';
+    return el.style;
+  }
+  function _sizeBucket(width) {
+    if (width === '100%') return 'full';
+    var n = parseFloat(width);
+    if (!n) return 'medium';
+    if (n <= 280) return 'small';
+    if (n <= 540) return 'medium';
+    return 'large';
+  }
+
+  // If the selection is an image (NodeSelection) or sits inside a styledDiv
+  // image wrapper (centered / captioned / floated form from the modal), return
+  // { from, to, defaults:{src,size,align,caption} } for edit-in-place.
+  function _findImageEditContext(editor) {
+    var state = editor.state, sel = state.selection;
+    // outermost styledDiv ancestor that contains an image = modal wrapper
+    var $from = sel.$from;
+    for (var d = 1; d <= $from.depth; d++) {
+      if ($from.node(d).type.name !== 'styledDiv') continue;
+      var wrapNode = $from.node(d), found = null;
+      wrapNode.descendants(function (n) { if (n.type.name === 'image' && !found) found = n; });
+      if (!found) continue;
+      var ws = _styleProbe(wrapNode.attrs.style), is = _styleProbe(found.attrs.style);
+      var align = (ws.float === 'left' || ws.cssFloat === 'left') ? 'left'
+                : (ws.float === 'right' || ws.cssFloat === 'right') ? 'right' : 'center';
+      var width = ws.width || is.width || '';
+      var caption = '';
+      wrapNode.descendants(function (n) {
+        if (n.type.name === 'styledDiv') n.descendants(function (t) { if (t.isText) caption += t.text; });
+        return n.type.name !== 'styledDiv';
+      });
+      return {
+        from: $from.before(d), to: $from.before(d) + wrapNode.nodeSize,
+        defaults: { src: found.attrs.src, size: _sizeBucket(width), align: align, caption: caption.trim() },
+      };
+    }
+    // bare selected image node
+    var selNode = sel.node && sel.node.type && sel.node.type.name === 'image' ? sel.node : null;
+    if (selNode) {
+      var st = _styleProbe(selNode.attrs.style);
+      var al = (st.float === 'left' || st.cssFloat === 'left') ? 'left'
+             : (st.float === 'right' || st.cssFloat === 'right') ? 'right' : 'center';
+      return {
+        from: sel.from, to: sel.to,
+        defaults: { src: selNode.attrs.src, size: _sizeBucket(st.width), align: al, caption: '' },
+      };
+    }
+    return null;
+  }
+
   function insertImage(editor) {
     // (dev0622) Reuse v1's full image modal (UID-or-URL source, size, alignment,
     // caption) — it just hands back HTML; StyledDiv/StyledImage preserve it.
+    // (dev0623) If an image is selected (click it, or double-click), the modal
+    // opens pre-filled and REPLACES that image instead of inserting a new one.
+    var editCtx = _findImageEditContext(editor);
     if (typeof window.teShowImageModal === 'function') {
       window.teShowImageModal(function (html) {
-        editor.chain().focus().insertContent(html).run();
-      });
+        if (editCtx) {
+          editor.chain().focus()
+            .deleteRange({ from: editCtx.from, to: editCtx.to })
+            .insertContentAt(editCtx.from, html).run();
+        } else {
+          editor.chain().focus().insertContent(html).run();
+        }
+      }, editCtx ? editCtx.defaults : undefined);
       return;
     }
     var url = prompt('Image URL (https://…):', '');
@@ -551,6 +628,67 @@
     editor.chain().focus().insertContent(
       '<img src="' + url.replace(/"/g, '&quot;') + '" style="max-width:100%;width:400px;display:inline-block;border-radius:4px;">'
     ).run();
+  }
+
+  // (dev0623) Row of up to 3 images side by side (flex; 3 = left/center/right,
+  // 2 = left/right). Each cell is a styledDiv, so you can click into a cell and
+  // type a caption line under its image.
+  function _resolveImgSrc(v) {
+    v = (v || '').trim();
+    if (!v) return null;
+    if (/^https?:\/\//i.test(v)) return v;
+    var rows = Array.isArray(window.data) ? window.data : [];
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && String(rows[i].UID) === v) return rows[i].link || null;
+    }
+    return null;
+  }
+  function insertImageRow(editor) {
+    var raw = prompt('Image row — up to 3 sources (UID number or https:// URL), separated by spaces or commas:', '');
+    if (!raw) return;
+    var parts = raw.split(/[,\s]+/).filter(Boolean).slice(0, 3);
+    var urls = [], bad = [];
+    parts.forEach(function (p) {
+      var u = _resolveImgSrc(p);
+      if (u) urls.push(u); else bad.push(p);
+    });
+    if (bad.length) _toast('No image link for: ' + bad.join(', '));
+    if (!urls.length) return;
+    var cells = urls.map(function (u) {
+      return '<div style="flex:1 1 0;min-width:0;text-align:center;">' +
+        '<img src="' + u.replace(/"/g, '&quot;') + '" style="max-width:100%;border-radius:4px;" alt=""></div>';
+    }).join('');
+    editor.chain().focus().insertContent(
+      '<div style="display:flex;gap:12px;justify-content:space-between;align-items:flex-start;margin:12px 0;">' + cells + '</div>'
+    ).run();
+  }
+
+  // ── (dev0623) ⊘ Hide — v1 parity: wrap the selected lines in div.te-cut
+  // (hidden in every render, kept as notes in Xe). Cursor inside a hidden
+  // block → the same button SHOWS it again (unwraps).
+  function toggleHide(editor) {
+    var state = editor.state;
+    var cut = _findAncestor(state, 'teCut');
+    if (cut) {
+      try {
+        editor.view.dispatch(state.tr.replaceWith(cut.pos, cut.pos + cut.node.nodeSize, cut.node.content));
+        _toast('Shown again — renders in the slide now');
+      } catch (e) { console.warn('[xe2] unhide failed', e); }
+      editor.commands.focus();
+      return;
+    }
+    var sel = state.selection;
+    var range = sel.$from.blockRange(sel.$to);
+    if (!range) return;
+    var parent = range.parent;
+    var nodes = [];
+    for (var i = range.startIndex; i < range.endIndex; i++) nodes.push(parent.child(i));
+    if (!nodes.length) return;
+    try {
+      var cutNode = editor.schema.nodes.teCut.create(null, nodes);
+      editor.view.dispatch(state.tr.replaceWith(range.start, range.end, cutNode));
+    } catch (e) { _toast('That selection can’t be hidden as a block — select whole lines'); }
+    editor.commands.focus();
   }
   function setLink(editor) {
     var prev = editor.getAttributes('link').href || '';
@@ -589,8 +727,10 @@
       ['&#9654; All', 'Collapse all collapsibles', function (e) { setAllDetails(e, false); }],
       ['|'],
       ['&#9552;&#9552;', 'Divider line — separates sections/slides; inside a colored section it splits the section so both halves keep the color', function (e) { insertSectionBreak(e); }],
-      ['&#128444;', 'Insert image', function (e) { insertImage(e); }],
+      ['&#128444;', 'Insert image — or EDIT the selected image (click/double-click an image first to change its size, alignment or caption)', function (e) { insertImage(e); }],
+      ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
+      ['&#8856; Hide', 'Hide the SELECTED lines from the rendered slide (kept here, faded, as notes). Cursor inside a hidden block = show it again.', function (e) { toggleHide(e); }],
       ['|'],
       ['A&#9662;', 'Text color for the SECTION the cursor is in (whole slide when there are no ══ dividers)', function (e, btn) { showColorPicker(btn, 'text'); }],
       ['&#9635;&#9662;', 'Background color for the section the cursor is in', function (e, btn) { showColorPicker(btn, 'bg'); }],
@@ -626,9 +766,11 @@
       // left gutter (click IT to toggle — clicking the text still edits), and
       // closed details hide their body natively (the old always-show-dimmed
       // rule made [[2]] blocks look uneditable and confusing).
-      '#xe2Editor summary{cursor:text;font-weight:bold;color:#9cf;list-style:none;position:relative;padding-left:22px;}',
+      // (dev0623) bigger triangle; whole summary line is click-to-toggle now,
+      // so pointer cursor on the whole line.
+      '#xe2Editor summary{cursor:pointer;font-weight:bold;color:#9cf;list-style:none;position:relative;padding-left:28px;}',
       '#xe2Editor summary::-webkit-details-marker{display:none;}',
-      '#xe2Editor summary::before{content:"\\25B6";position:absolute;left:2px;top:3px;font-size:11px;color:#6af;cursor:pointer;}',
+      '#xe2Editor summary::before{content:"\\25B6";position:absolute;left:2px;top:1px;font-size:16px;color:#6af;cursor:pointer;}',
       '#xe2Editor details[open] > summary::before{content:"\\25BC";}',
       // (dev0620) section wrapper: faint outline so the colored-section extent is
       // visible while editing; an explicit section color must WIN over the
@@ -639,6 +781,13 @@
       // browser-default thin inset hr made new dividers look like a stray line.
       '#xe2Editor hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;}',
       '#xe2Editor img{max-width:100%;}',
+      // (dev0623) selected image/wrapper highlight — click an image, then 🖼 edits it
+      '#xe2Editor img.ProseMirror-selectednode,#xe2Editor .ProseMirror-selectednode{outline:3px solid #4af;outline-offset:2px;border-radius:4px;}',
+      // (dev0623) hidden-from-render (te-cut) blocks: global CSS hides them
+      // everywhere (display:none!important in index.html); higher-specificity
+      // override re-shows them faded here, with a banner (matches v1 #teEditor).
+      '#xe2Editor .te-cut{display:block!important;opacity:0.45;border:1px dashed #a66;border-radius:6px;padding:4px 10px;margin:6px 0;}',
+      '#xe2Editor .te-cut::before{content:"\\2298 hidden in slide \\2014 cursor here + \\2298 Hide shows it again";display:block;font-size:10px;color:#f99;font-weight:bold;}',
       '#xe2Editor table{border-collapse:collapse;} #xe2Editor td,#xe2Editor th{border:1px solid #557;padding:4px 8px;}',
       '#xe2Editor a{color:#7cf;}',
     ].join('\n');
@@ -715,6 +864,8 @@
               if (_api) lineOutsideDetails(_api.editor, event.shiftKey ? -1 : 1);
               return true;
             }
+            // (dev0623) Enter anywhere on a summary TOGGLES the block: closed →
+            // open with the caret dropped on the first body line; open → close.
             if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
               var state = view.state, $from = state.selection.$from;
               for (var d = $from.depth; d >= 2; d--) {
@@ -722,11 +873,12 @@
                 var det = $from.node(d - 1);
                 if (det.type.name !== 'details') break;
                 var detPos = $from.before(d - 1);
-                var tr = state.tr;
-                if (!det.attrs.open) tr.setNodeMarkup(detPos, undefined, Object.assign({}, det.attrs, { open: true }));
-                view.dispatch(tr);
-                var bodyStart = detPos + 1 + $from.node(d).nodeSize + 1;
-                if (_api) _api.editor.commands.setTextSelection(bodyStart);
+                var opening = !det.attrs.open;
+                view.dispatch(state.tr.setNodeMarkup(detPos, undefined, Object.assign({}, det.attrs, { open: opening })));
+                if (opening && _api) {
+                  var bodyStart = detPos + 1 + $from.node(d).nodeSize + 1;
+                  _api.editor.commands.setTextSelection(bodyStart);
+                }
                 event.preventDefault();
                 return true;
               }
@@ -734,16 +886,14 @@
             return false;
           },
           handleDOMEvents: {
-            // (dev0622) Click on the ▶/▼ gutter (left 20px of the summary)
-            // toggles the block via a schema transaction; clicks on the summary
-            // TEXT just place the caret. Native toggle stays suppressed so the
-            // DOM can never drift from the node's open attr.
+            // (dev0623) Click ANYWHERE on a summary line toggles the block via a
+            // schema transaction (DOM can never drift from the open attr; native
+            // toggle stays suppressed). The caret still lands where clicked
+            // (ProseMirror places it on mousedown), so the title stays editable.
             click: function (view, event) {
               var sum = (event.target && event.target.closest) ? event.target.closest('summary') : null;
               if (!sum) return false;
               event.preventDefault();
-              var rect = sum.getBoundingClientRect();
-              if (event.clientX - rect.left > 20) return false; // text area — just edit
               try {
                 var $pos = view.state.doc.resolve(view.posAtDOM(sum, 0));
                 for (var d = $pos.depth; d >= 1; d--) {
@@ -754,8 +904,23 @@
                     return true;
                   }
                 }
-              } catch (err) { /* gutter click on odd geometry — ignore */ }
+              } catch (err) { /* odd geometry — ignore */ }
               return false;
+            },
+            // (dev0623) Double-click an image = edit it (size/alignment/caption)
+            // in the modal, replacing in place.
+            dblclick: function (view, event) {
+              var img = (event.target && event.target.tagName === 'IMG') ? event.target : null;
+              if (!img) return false;
+              event.preventDefault();
+              try {
+                var pos = view.posAtDOM(img, 0);
+                if (_api) {
+                  _api.editor.commands.setNodeSelection(pos);
+                  insertImage(_api.editor);
+                }
+                return true;
+              } catch (err) { return false; }
             },
           },
         },
@@ -838,7 +1003,9 @@
     _wrapSelectionInDetails: wrapSelectionInDetails,
     _undetail: undetail,
     _lineOutsideDetails: lineOutsideDetails,
-    version: 'xe2-m6',
+    _toggleHide: toggleHide,
+    _findImageEditContext: _findImageEditContext,
+    version: 'xe2-m7',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
 })();

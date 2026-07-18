@@ -2052,6 +2052,7 @@ function teShowImageModal(onInsert, defaults) {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
         <label style="color:#8ef;font-size:11px;white-space:nowrap;flex-shrink:0;">Caption</label>
         <input id="teImgCaption" type="text" placeholder="optional — shows below image in small font"
+          value="${(defaults.caption || '').replace(/"/g, '&quot;')}"
           style="flex:1;padding:5px 8px;background:#0a0a1a;border:1px solid #555;color:#fff;
                  border-radius:4px;font-family:monospace;font-size:12px;outline:none;">
         <button id="teImgCaptionPaste" title="Paste from clipboard"
