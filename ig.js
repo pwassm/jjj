@@ -140,6 +140,19 @@
   // /author/reel/ opens the arrow-less reels player. r.url is still used for
   // enrich/download. (kindOf still reads r.url, so the kind filter is unaffected.)
   const igLink = r => 'https://www.instagram.com/p/' + r.id + '/';
+  // (dev0635) Instagram URL → shortcode / author, for the 'w' clipboard-add path.
+  // Mirrors ig-harvest.user.js shortcode(): handles the bare /p/<id>/ and the
+  // username-scoped /<author>/reel/<id>/ forms, ignores any ?query (e.g. ?img_index=1).
+  function _igShortcodeFromUrl(u) {
+    const m = String(u || '').match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/i);
+    return m ? m[1] : '';
+  }
+  function _igAuthorFromUrl(u) {
+    // Only the author-scoped form (.../<author>/reel/<id>/) carries the handle in the
+    // URL; the bare /p/<id>/ form has none (Enrich fills VidAuthor+author from yt-dlp).
+    const m = String(u || '').match(/instagram\.com\/([A-Za-z0-9_.]+)\/(?:reels?|p|tv)\//i);
+    return m ? m[1] : '';
+  }
   const pad2 = n => String(n).padStart(2, '0');
 
   // hh.mm.ss (AHK FormatHMS — used in the download filename).
@@ -451,10 +464,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option></select>
-        <select id="igStaged" title="Full reels (harvested) vs NonFullReels (ffdown imports)"><option value="all">all sources</option><option value="non">NonFullReels</option><option value="full">Full reels</option></select>
+        <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links or ffdown imports)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
         <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
-        <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked NonStaged, DevComment from the filename)">📁 Import ffdown</button>
+        <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
+        <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked Unharvested, DevComment from the filename)">📁 Import ffdown</button>
         <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
         <button id="igAutoEnrich" title="Auto-enrich driver (hotkey A) — enriches N at a time and tracks per-Proton-location walls so you can grind the whole backlog by switching exits">🤖 Auto-enrich</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
@@ -510,6 +524,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igClose').addEventListener('click', () => closeIgScreen());
     $('igDrawerClose').addEventListener('click', () => closeDrawer());
     $('igPaste').addEventListener('click', () => openPasteModal(null));
+    $('igAddSingle').addEventListener('click', () => addUnharvestedFromClipboard());
     $('igFfdown').addEventListener('click', () => importFfdown());
     $('igModalCancel').addEventListener('click', () => closePasteModal());
     $('igModalApply').addEventListener('click', () => applyPaste());
@@ -562,8 +577,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
   // ── Filter + sort ───────────────────────────────────────────────────────────
   function applyAndRender() {
+    // (dev0635) Class-level author filters. An author is "Unharvested" only while ALL
+    // their rows are staged:false (the same rule refreshAuthorOptions groups by), so
+    // choosing "Unharvested authors — all" shows every row under that dropdown group
+    // (and "Harvested authors — all" the rest). Computed once per render.
+    const unharvestedAuthors = (authorFilter === '__unharvested__' || authorFilter === '__harvested__')
+      ? unharvestedAuthorSet() : null;
     view = rows.filter(r => {
-      if (authorFilter !== 'all' && r.author !== authorFilter) return false;
+      if (authorFilter === '__unharvested__') { if (!unharvestedAuthors.has(r.author || '')) return false; }
+      else if (authorFilter === '__harvested__') { if (unharvestedAuthors.has(r.author || '')) return false; }
+      else if (authorFilter !== 'all' && r.author !== authorFilter) return false;
       if (kindFilter !== 'all' && kindOf(r) !== kindFilter) return false;
       if (statusFilter !== 'all' && (r.status || 'new') !== statusFilter) return false;
       // (dev0472) NonFullReels = ffdown imports (staged===false); Full reels = harvested (everything else)
@@ -737,7 +760,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <b>Duration</b><span>${r.durSecs ? esc(fmtDur(r.durSecs)) : '—'}</span>
         <b>W×H (max)</b><span>${(r.width && r.height) ? (r.width + ' × ' + r.height) : '—'}</span>
         <b>Harvested</b><span>${esc(r.DateAdded || '—')}</span>
-        ${r.source ? `<b>Source</b><span>${esc(r.source)}${r.staged === false ? ' · NonStaged' : ''}</span>` : ''}
+        ${r.source ? `<b>Source</b><span>${esc(r.source)}${r.staged === false ? ' · Unharvested' : ''}</span>` : ''}
+        ${r.imgIndex ? `<b>img_index</b><span>${esc(r.imgIndex)}${r.imgIndex === 1 ? ' · 📸 Cover-only grabs just it' : ''}</span>` : ''}
         ${r.DevComment ? `<b>DevComment</b><span>${esc(r.DevComment)}</span>` : ''}
         ${r.mlUID ? `<b>ml UID</b><span>${esc(r.mlUID)}</span>` : ''}
         ${r.localFiles && r.localFiles.length ? `<b>File</b><span>📁 ${esc(r.localFiles.join(', '))}</span>` : ''}
@@ -834,6 +858,72 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igToast('⛃ status filter: ' + label, 1400);
   }
 
+  // (dev0635) Hotkey 'w' — add the single Instagram post/reel URL on the clipboard as a
+  // NEW "Unharvested" row (staged:false), for grabbing individual posts/images from
+  // authors whose whole reels you don't want to harvest. The row lands as status 'new'
+  // so the usual Enrich (E) / Download (D) / Promote work on it right away. A carousel's
+  // ?img_index=N is remembered (r.imgIndex) and surfaced; for index-1 the 📸 Cover-only
+  // download mode grabs just that image. A URL already in ig.json isn't duplicated —
+  // its existing row is selected instead.
+  async function addUnharvestedFromClipboard() {
+    let text = '';
+    try { text = ((await navigator.clipboard.readText()) || '').trim(); }
+    catch (e) {
+      igToast('✗ couldn\'t read the clipboard (' + ((e && e.message) || '?') + ')\nCopy an Instagram post/reel URL first, then press w', 4200);
+      return;
+    }
+    if (!text) { igToast('Clipboard is empty — copy an Instagram post/reel URL, then press w', 3200); return; }
+    const url = text.split(/\s+/)[0];                 // first token = the URL
+    const id = _igShortcodeFromUrl(url);
+    if (!id) {
+      igToast('✗ no Instagram post id in the clipboard:\n' + url.slice(0, 120)
+        + '\n(want a .../p/<id>/ or .../reel/<id>/ link)', 4800);
+      return;
+    }
+    // Clear the filters that would hide a brand-new staged:false 'new' row, so it's
+    // always visible after adding (whether it's new or an already-tracked dup).
+    authorFilter = 'all'; query = '';
+    setStatusFilterSilent('all'); setStagedFilterSilent('all');
+    const sBox = document.getElementById('igSearch'); if (sBox) sBox.value = '';
+
+    const existing = rows.find(r => r.id === id);
+    if (existing) {
+      refreshAuthorOptions(); applyAndRender();
+      focusId = existing.id; sel.clear(); sel.add(existing.id);
+      applyAndRender(); applyFocusHighlight(existing.id);
+      igToast('• ' + id + ' is already in ig.json (@' + (existing.author || '?')
+        + ' · ' + (existing.status || 'new') + ') — selected it, not duplicated', 4600);
+      return;
+    }
+    const author = _igAuthorFromUrl(url);
+    const im = url.match(/[?&]img_index=(\d+)/i);
+    const imgIndex = im ? +im[1] : 0;
+    const kindSeg = /\/reels?\//i.test(url) ? 'reel' : /\/tv\//i.test(url) ? 'tv' : 'p';
+    const cleanUrl = 'https://www.instagram.com/' + kindSeg + '/' + id + '/';
+    const now = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const r = { id, url: cleanUrl, author: author || '', status: 'new', staged: false, source: 'manual', DateAdded: now };
+    if (imgIndex) r.imgIndex = imgIndex;
+    rows.push(r); knownIds.add(id);
+    dirty = true;
+    refreshAuthorOptions(); applyAndRender();
+    focusId = id; sel.clear(); sel.add(id);
+    applyAndRender(); applyFocusHighlight(id);
+    await persist(false);
+    igToast('➕ Unharvested single added → ' + id
+      + (author ? ' · @' + author : ' · author fills on Enrich')
+      + (imgIndex ? ' · img_index ' + imgIndex + (imgIndex === 1 ? ' (📸 Cover-only grabs just it)' : '') : '')
+      + '\nstatus new — press E to enrich, D to download', 6000);
+  }
+  // Silent variants of the status/source filters (no toast) for the 'w' add path.
+  function setStatusFilterSilent(val) {
+    statusFilter = val;
+    const s = document.getElementById('igStatus'); if (s) s.value = val;
+  }
+  function setStagedFilterSilent(val) {
+    stagedFilter = val;
+    const s = document.getElementById('igStaged'); if (s) s.value = val;
+  }
+
   // ── ttxt builder (yt-dlp "everything" bucket — only when ttxt is empty so the
   //    richer Firefox-saved-page ttxt, with comments + sibling URLs, never clobbered)
   function buildTtxt(meta, url) {
@@ -870,6 +960,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (!r.ftext && typeof _ytdlpBuildFtext === 'function') r.ftext = _ytdlpBuildFtext(meta, r.url);
       if (!r.ttxt) r.ttxt = buildTtxt(meta, r.url);
       if (!r.VidAuthor && handle) r.VidAuthor = handle;
+      // (dev0635) A 'w'-added single from a bare /p/<id>/ URL has no author until now;
+      // fill it from yt-dlp's handle so it groups under the right Unharvested author
+      // (harvested/ffdown rows already carry an author, so this only touches blanks).
+      if (!r.author && handle) r.author = handle.replace(/^@/, '').trim();
       if (!r.VidTitle) {
         const t = (meta.title || '').trim();
         // yt-dlp's generic titles: single reel = "Video by <h>", carousel = "Post by
@@ -1646,7 +1740,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + (dup ? ', ' + dup + ' already-imported (skipped)' : '')
       + (redated ? ', ' + redated + ' re-dated' : '')
       + (skipped ? ', ' + skipped + ' skipped (no reel id)' : '')
-      + '\nNonStaged · author caption only · DevComment from filename · Harvested = .txt creation time', 6500);
+      + '\nUnharvested · author caption only · DevComment from filename · Harvested = .txt creation time', 6500);
   }
 
   // ── Persist back to ig.json (proxy /ig/save) ────────────────────────────────
@@ -1685,28 +1779,42 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
   // Rebuild the author dropdown from the loaded rows (count per author), preserving
   // the current selection if it still exists.
+  // (dev0471/0635) An author is "Unharvested" only while ALL their rows are singles
+  // (staged===false — ffdown imports or 'w'-added clipboard posts); a single harvested
+  // full-reel row promotes them to "Harvested" (the user's "unless already imported"
+  // rule). Shared by the dropdown grouping and the class-level author filter so the two
+  // never disagree.
+  function unharvestedAuthorSet() {
+    const only = {};
+    rows.forEach(r => {
+      const a = r.author || '';
+      if (only[a] === undefined) only[a] = true;
+      if (r.staged !== false) only[a] = false;
+    });
+    return new Set(Object.keys(only).filter(a => only[a]));
+  }
   function refreshAuthorOptions() {
     const sel2 = document.getElementById('igAuthor');
     if (!sel2) return;
-    // (dev0471) An author is "NonStaged" only while ALL their rows are ffdown
-    // (staged===false); a single harvested row promotes them back to "Harvested"
-    // (the user's "unless already imported" rule). Pure visual grouping — the
-    // filter value is still just the author string.
-    const counts = {}, nonStagedOnly = {};
-    rows.forEach(r => {
-      const a = r.author || '';
-      counts[a] = (counts[a] || 0) + 1;
-      if (nonStagedOnly[a] === undefined) nonStagedOnly[a] = true;
-      if (r.staged !== false) nonStagedOnly[a] = false;
-    });
-    if (!counts[authorFilter]) authorFilter = 'all';
+    const counts = {};
+    rows.forEach(r => { const a = r.author || ''; counts[a] = (counts[a] || 0) + 1; });
+    // Keep a valid selection: 'all' / the two class sentinels / a still-present author.
+    if (authorFilter !== 'all' && authorFilter !== '__harvested__'
+        && authorFilter !== '__unharvested__' && !counts[authorFilter]) authorFilter = 'all';
+    const unh = unharvestedAuthorSet();
     const all = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    const harvested = all.filter(a => !nonStagedOnly[a]);
-    const nonStaged = all.filter(a => nonStagedOnly[a]);
+    const harvested = all.filter(a => !unh.has(a));
+    const unharvested = all.filter(a => unh.has(a));
+    const nH = harvested.reduce((n, a) => n + counts[a], 0);
+    const nU = unharvested.reduce((n, a) => n + counts[a], 0);
     const opt = a => `<option value="${esc(a)}">${esc(a || '(none)')} (${counts[a]})</option>`;
     let html = '<option value="all">all authors (' + rows.length + ')</option>';
-    if (harvested.length) html += '<optgroup label="Harvested (full reels)">' + harvested.map(opt).join('') + '</optgroup>';
-    if (nonStaged.length) html += '<optgroup label="NonStaged (ffdown)">' + nonStaged.map(opt).join('') + '</optgroup>';
+    // (dev0635) Optgroup labels aren't selectable, so these two options let you pick a
+    // whole CLASS and see every row in it (the user's "click Unharvested → show all").
+    if (nH) html += `<option value="__harvested__">▸ Harvested authors — all (${nH})</option>`;
+    if (nU) html += `<option value="__unharvested__">▸ Unharvested authors — all (${nU})</option>`;
+    if (harvested.length) html += '<optgroup label="Harvested authors (full reels)">' + harvested.map(opt).join('') + '</optgroup>';
+    if (unharvested.length) html += '<optgroup label="Unharvested authors (singles)">' + unharvested.map(opt).join('') + '</optgroup>';
     sel2.innerHTML = html;
     sel2.value = authorFilter;
   }
@@ -2003,6 +2111,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     }
     if (e.key === 'm') {                           // clear, then select 18 from top
       e.stopPropagation(); e.preventDefault(); selectTopN(18); return;
+    }
+    if (e.key === 'w') {                           // (dev0635) clipboard IG URL → new Unharvested single
+      e.stopPropagation(); e.preventDefault(); addUnharvestedFromClipboard(); return;
     }
     // (dev0496) Capital N/D/E/A → status filter new/downloaded/enriched/all
     // (identical to choosing from the dropdown, which now shows the hotkey letter).
