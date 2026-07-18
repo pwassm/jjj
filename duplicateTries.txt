@@ -25,3 +25,4 @@
 2026-07-06T02:16:44.787Z	bare-links paste	1578	https://vimeo.com/33031310	Diatoms
 2026-07-06T03:51:06.997Z	bare-links paste	936	https://youtu.be/4gyC_mfgrbc	I Caught a Waterbear Hatching on Camera
 2026-07-15T03:12:38.691Z	bare-links paste	1348	https://youtu.be/GSwL3Lgw6zI	Why Your Tendons Never Heal (And How To Fix Them)
+2026-07-18T15:41:55.134Z	bare-links paste	858_3	https://youtu.be/GG2A_bWtJAM	Gumboot Chitons Spawning 2012-05-20.

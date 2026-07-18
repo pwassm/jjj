@@ -815,6 +815,13 @@ function cMakeActive() {
   _setGridGsize(gsize, { skipSave: true }); // skipSave: about to save() below
   metaRow = metaRow || { _salMeta: true };
   metaRow._salGsize = gsize;
+  // (dev0629) Persist the layout token too — after a page reload _gridSource
+  // resets to 'T' and _gridActiveConfig to null, so _gridCurrentLayout() fell
+  // back to 'square': a 17/19 config rendered as a plain 5×5 and the 1L/1P-3P
+  // row (whose cell matches no square cell) silently vanished, leaving an empty
+  // 3×3 center. With the token in meta, the T-source fallback renders it right.
+  // Must be stamped AFTER _setGridGsize, which clears any non-square _salLayout.
+  metaRow._salLayout = info.layout;
   closeCScreen(); save();
   toast('✓ Active: '+(cfg.gname||'(unnamed)')+' ('+(typeof _gridLayoutLabel==='function'?_gridLayoutLabel(info.layout,gsize):gsize+'×'+gsize)+')',1500);
   gridShow();

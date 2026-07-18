@@ -1614,16 +1614,22 @@ async function _openConfigByName(name) {
   // opened BY NAME (menu pick / ?grid= deep link) rendered the 17/19 specials
   // and the portrait layouts (cells 3/12/27) as a 5×5 — only C's Make-Active
   // got them right. One helper now means every activation route agrees.
-  let gsize = 5;
+  let gsize = 5, layout = 'square';
   if (typeof _gridApplyConfigToRows === 'function' && Array.isArray(data)) {
-    gsize = _gridApplyConfigToRows(cfg, data).gsize;
+    const info = _gridApplyConfigToRows(cfg, data);
+    gsize = info.gsize; layout = info.layout;
   } else if (typeof _gridConfigLayout === 'function') {
-    gsize = _gridConfigLayout(cfg).gsize;
+    const info = _gridConfigLayout(cfg);
+    gsize = info.gsize; layout = info.layout;
   }
   if (typeof _setGridGsize === 'function') _setGridGsize(gsize, { skipSave: true });
   if (typeof metaRow !== 'undefined') {
     if (!metaRow) metaRow = { _salMeta: true };
     metaRow._salGsize = gsize;
+    // (dev0629) Persist the layout token so a reload (which resets _gridSource
+    // to 'T') still renders 17/19/portrait instead of a square 5×5 that drops
+    // the 1L/1P-3P cell. Stamped AFTER _setGridGsize (it clears non-square).
+    metaRow._salLayout = layout;
   }
   if (typeof save === 'function') save();
   if (typeof gridShow === 'function') gridShow();
@@ -1864,6 +1870,9 @@ async function _showMobileCPicker() {
       _setGridGsize(gsize, { skipSave: true });
       metaRow = metaRow || { _salMeta: true };
       metaRow._salGsize = gsize;
+      // (dev0629) Persist the layout token (see cMakeActive) — after _setGridGsize,
+      // which clears any non-square _salLayout.
+      metaRow._salLayout = info.layout;
       if (typeof save === 'function') save();
       close();
       if (typeof gridShow === 'function') gridShow();
