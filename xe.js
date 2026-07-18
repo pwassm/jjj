@@ -2318,7 +2318,74 @@ function textEditorPreviewSlide(htmlOverride) {
   let _sIdx = 0;
   const _content = ov.querySelector('#teSlideContent');
   const _hint = ov.querySelector('#teSlideHint');
+
+  // (dev0624) A section whose ENTIRE content is a cell designation ("1a"…"5e",
+  // "1L", "1P"…"3P") or "G" doesn't render as text — it opens that cell's row
+  // in the V fullscreen viewer (or the whole grid for "G") while Xs stays the
+  // key owner: ←/→ still page sections (this overlay's capture handler was
+  // registered before vpKeyHandler, so its stopImmediatePropagation wins), Esc
+  // closes everything back to Xe. Returns 'G', a canonical cell string, or null.
+  function _sectCellSpec(sectHtml) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = sectHtml || '';
+    if (tmp.querySelector('img,video,iframe,hr,table')) return null; // media = not a bare designation
+    const t = (tmp.textContent || '').replace(/[ ​]/g, ' ').trim();
+    if (/^g$/i.test(t)) return 'G';
+    if (t.length === 2 && /[1-9]/.test(t[0]) && /[a-iPL]/i.test(t[1])) {
+      const c2 = t[1];
+      return t[0] + (/[pl]/i.test(c2) ? c2.toUpperCase() : c2.toLowerCase());
+    }
+    return null;
+  }
+  let _cellMode = null;      // null | 'cell' | 'grid'
+  let _cellObserver = null;  // watches for the viewer being closed by its own UI
+  function _leaveCellMode() {
+    if (_cellObserver) { _cellObserver.disconnect(); _cellObserver = null; }
+    if (_cellMode === 'cell') {
+      if (typeof vpClose === 'function') { try { vpClose(); } catch (_) {} }
+    } else if (_cellMode === 'grid') {
+      // NOT gridClose() — that calls textEditorClose() and would kill Xe under us.
+      if (typeof gridCleanupPlayers === 'function') { try { gridCleanupPlayers(); } catch (_) {} }
+      const go = document.getElementById('gridOverlay');
+      if (go) go.style.display = 'none';
+    }
+    _cellMode = null;
+    ov.style.display = 'flex';
+  }
+  // If the viewer/grid is dismissed by its own UI (swipe-close, ✕), un-hide Xs
+  // so the user isn't left staring at a blank screen with no overlay.
+  function _watchExternalClose(el, expectShown) {
+    if (!el || typeof MutationObserver !== 'function') return;
+    _cellObserver = new MutationObserver(() => {
+      if (_cellMode && el.style.display !== expectShown) _leaveCellMode();
+    });
+    _cellObserver.observe(el, { attributes: true, attributeFilter: ['style'] });
+  }
+  function _enterCellMode(spec) {
+    if (spec === 'G') {
+      if (typeof gridShow !== 'function') return false;
+      ov.style.display = 'none';
+      _cellMode = 'grid';
+      gridShow();
+      _watchExternalClose(document.getElementById('gridOverlay'), 'grid');
+      return true;
+    }
+    const row = (typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid(spec) : null;
+    if (!row) {
+      if (typeof toast === 'function') toast('No row in cell ' + spec, 1400);
+      return false;
+    }
+    if (typeof gridOpenFullscreen !== 'function') return false;
+    ov.style.display = 'none';
+    _cellMode = 'cell';
+    gridOpenFullscreen(row);
+    _watchExternalClose(document.getElementById('gridFullscreen'), 'flex');
+    return true;
+  }
   function _showSect() {
+    _leaveCellMode();
+    const spec = _sectCellSpec(_sects[_sIdx]);
+    if (spec && _enterCellMode(spec)) return;
     _content.innerHTML = _sects[_sIdx] || '';
     _content.scrollTop = 0;
     if (_hint && _sects.length > 1) {
@@ -2326,9 +2393,9 @@ function textEditorPreviewSlide(htmlOverride) {
         + ' · → next · ← prev · Esc / swipe ← on this bar to go back';
     }
   }
-  _showSect();
 
   function close() {
+    _leaveCellMode();   // (dev0624) tear down a designation-cell viewer / grid too
     document.removeEventListener('keydown', onKey, true);
     ov.remove();
   }
@@ -2350,7 +2417,12 @@ function textEditorPreviewSlide(htmlOverride) {
       _showSect();
     }
   }
+  // (dev0624) Register BEFORE the first _showSect: if the opening section is a
+  // cell designation, gridOpenFullscreen registers vpKeyHandler at document
+  // capture, and same-phase order is registration order — ours must be first
+  // so ←/→/Esc stay slide navigation while a designation cell is fullscreen.
   document.addEventListener('keydown', onKey, true);
+  _showSect();
   ov.querySelector('#teSlideClose').onclick = close;
   // (zip0228) Slideshow button on the Xs top bar — plays images from the
   // ftext currently being previewed. stopPropagation so the overlay's
