@@ -245,6 +245,13 @@
     var ov = document.getElementById('xe2Overlay'); if (ov) ov.remove();
     var st = document.getElementById('xe2Styles'); if (st) st.remove();
     document.removeEventListener('keydown', _onKeydown, true);
+    // (dev0625) Re-sort BEFORE refocus/render: doSave() stamped _row.DateModified,
+    // but render() alone reuses the stale sortedIdx, so in a DateModified-sorted
+    // view ("LastModOnTop") the edited row kept its old position while showing a
+    // newer timestamp — reading as "the modification date isn't updating." Match
+    // v1 textEditorClose (which does the same). _setFocusToRow runs after the sort
+    // so the row is highlighted at its new position.
+    if (typeof window.buildSort === 'function') { try { window.buildSort(); } catch (e) {} }
     if (_row && typeof window._setFocusToRow === 'function') { try { window._setFocusToRow(_row); } catch (e) {} }
     _row = null; _cell = null;
     if (typeof window.render === 'function') { try { window.render(); } catch (e) {} }

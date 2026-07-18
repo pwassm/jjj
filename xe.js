@@ -2470,11 +2470,9 @@ function textEditorClose() {
   // (dev0572) Cancel any pending type-autosave so it can't fire against a
   // torn-down editor / the next row opened after this one.
   clearTimeout(window._teAutosaveTimer);
-  // (zip0183) Sync T's focus to the last Xe row before clearing state, so
-  // pressing T/G/A from Xe leaves the selection on the row that was open.
-  if (_textEditorRow && typeof window._setFocusToRow === 'function') {
-    window._setFocusToRow(_textEditorRow);
-  }
+  // (zip0183) Remember the last Xe row so, after teardown, T's focus lands on
+  // the row that was open (even after it re-sorts, below).
+  const _closedRow = _textEditorRow;
   if (_textEditorOverlay) {
     const ed = _textEditorOverlay.querySelector('#teEditor');
     if (ed && ed._teHandleObserver) { ed._teHandleObserver.disconnect(); ed._teHandleObserver = null; }
@@ -2489,6 +2487,17 @@ function textEditorClose() {
   // edits — save() writes data+disk but never re-renders the table, which made
   // Xe's autosave look broken from T. One render per close is cheap; when the
   // grid is on top the repaint is invisible but harmless.
+  // (dev0625) Also re-run buildSort() FIRST: an Xe edit stamps row.DateModified,
+  // but render() alone reuses the stale sortedIdx, so in a DateModified-sorted
+  // view ("LastModOnTop") the just-edited row kept its old position while showing
+  // a newer timestamp — which read as "the modification date isn't updating."
+  // Every other data mutation (insertRow/deleteRow/inline cell edits) already
+  // does buildSort()+render(); Xe's close was the odd one out. Re-focus AFTER the
+  // re-sort so the edited row is highlighted at its new spot (e.g. jumped to top).
+  if (typeof buildSort === 'function') { try { buildSort(); } catch (_) {} }
+  if (_closedRow && typeof window._setFocusToRow === 'function') {
+    try { window._setFocusToRow(_closedRow); } catch (_) {}
+  }
   if (typeof render === 'function') { try { render(); } catch (_) {} }
 }
 

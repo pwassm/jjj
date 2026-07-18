@@ -2723,7 +2723,10 @@ const T2_BY_T1 = {
 };
 
 // Columns that represent meaningful content — editing these stamps DateModified
-const CONTENT_COLS = new Set(['t1','t2','n1','n2','n3','cname','sname','comment','Val',
+// (dev0625) 'ftext' added — it's the primary content column (text slides / HTML
+// scripts). Xe already stamps DateModified on its own save, but a direct inline
+// edit of the ftext cell in T went unstamped, so "LastModOnTop" missed those.
+const CONTENT_COLS = new Set(['ftext','t1','t2','n1','n2','n3','cname','sname','comment','Val',
   'VidRange','VidTitle','VidComment','VidAuthor','attribution','Topic','tags']);
 
 // Test whether a data row passes the current rowFilter.
