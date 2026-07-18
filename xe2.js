@@ -561,9 +561,42 @@
   // float/margin restyled; otherwise the paragraphs/headings in the selection
   // get text-align. Images wrapped by the 🖼 modal (centered/captioned divs)
   // are re-aligned via the modal (double-click the image).
+  // styledDiv ancestor (containing an image) of the current selection, or null.
+  function _imageWrapperAt(state, sel) {
+    var $pos = state.doc.resolve(sel.from);
+    for (var d = $pos.depth; d >= 1; d--) {
+      if ($pos.node(d).type.name !== 'styledDiv') continue;
+      var n = $pos.node(d), has = false;
+      n.descendants(function (c) { if (c.type.name === 'image') has = true; });
+      if (has) return { node: n, pos: $pos.before(d) };
+    }
+    return null;
+  }
   function alignImage(editor, align) {
-    var sel = editor.state.selection, node = sel.node;
+    var state = editor.state, sel = state.selection, node = sel.node;
     var st = _styleProbe(node.attrs.style);
+    // (dev0633) captioned/centered image (modal wrapper): restyle the WRAPPER
+    // so the caption travels with the image and text can flow beside a float —
+    // same shapes v1's modal buildHtml emits. Restyling only the inner <img>
+    // did nothing useful inside a centered wrapper.
+    var wrap = _imageWrapperAt(state, sel);
+    if (wrap) {
+      var ws = _styleProbe(wrap.node.attrs.style);
+      var w = ws.width || st.width || '400px';
+      var wrapCss, imgCss;
+      if (align === 'left') { wrapCss = 'float:left;margin:6px 14px 6px 0;width:' + w + ';'; imgCss = 'width:100%;border-radius:4px;'; }
+      else if (align === 'right') { wrapCss = 'float:right;margin:6px 0 6px 14px;width:' + w + ';'; imgCss = 'width:100%;border-radius:4px;'; }
+      else { wrapCss = 'text-align:center;margin:12px 0;'; imgCss = 'max-width:100%;width:' + w + ';display:inline-block;border-radius:4px;'; }
+      try {
+        var trw = state.tr;
+        trw.setNodeMarkup(wrap.pos, undefined, Object.assign({}, wrap.node.attrs, { style: wrapCss }));
+        trw.setNodeMarkup(sel.from, undefined, Object.assign({}, node.attrs, { style: imgCss }));
+        editor.view.dispatch(trw);
+        editor.commands.setNodeSelection(sel.from);
+      } catch (e) { console.warn('[xe2] wrapper align failed', e); }
+      editor.commands.focus();
+      return;
+    }
     var css = 'max-width:100%;border-radius:4px;';
     if (st.width) css += 'width:' + st.width + ';';
     if (align === 'left') css += 'float:left;margin:4px 14px 10px 0;';
@@ -580,10 +613,26 @@
     var sel = editor.state.selection;
     if (sel.node && sel.node.type && sel.node.type.name === 'image') { alignImage(editor, align); return; }
     var state = editor.state, tr = state.tr;
+    // (dev0633) "left" normally CLEARS the attr (left is the default) — but a
+    // line inside a centered wrapper div (the modal's text-align:center image
+    // wrapper) INHERITS center, so clearing looked like a no-op (the b/c lines
+    // that "can't be left justified"). Inside such an ancestor, write an
+    // explicit text-align:left that beats the inherited one.
+    var explicitLeft = false;
+    if (align === 'left') {
+      var $f = sel.$from;
+      for (var d = 1; d <= $f.depth; d++) {
+        var an = $f.node(d);
+        if (an.type.name === 'styledDiv') {
+          var ta = _styleProbe(an.attrs.style).textAlign;
+          if (ta && ta !== 'left') explicitLeft = true;
+        }
+      }
+    }
     state.doc.nodesBetween(sel.from, sel.to, function (node, pos) {
       if (node.type.name === 'paragraph' || node.type.name === 'heading') {
         tr.setNodeMarkup(pos, undefined, Object.assign({}, node.attrs,
-          { textAlign: (align === 'left') ? null : align }));
+          { textAlign: (align === 'left') ? (explicitLeft ? 'left' : null) : align }));
       }
     });
     if (tr.steps.length) editor.view.dispatch(tr);
@@ -1248,7 +1297,7 @@
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,
     _findImageEditContext: _findImageEditContext,
-    version: 'xe2-m8',
+    version: 'xe2-m9',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
 })();
