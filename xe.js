@@ -2108,7 +2108,9 @@ function teShowImageModal(onInsert, defaults) {
     const w = widthMap[size] || '400px';
     const cap = caption ? caption.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     const capHtml = cap
-      ? '<div style="font-size:0.78em;color:#aaa;text-align:center;margin-top:3px;">' + cap + '</div>'
+      // (dev0634) no color — caption inherits the slide/section text color
+      // (was #aaa gray, which stuck out and infected lines typed near it).
+      ? '<div style="font-size:0.78em;text-align:center;margin-top:3px;">' + cap + '</div>'
       : '';
     if (align === 'left') {
       if (cap) return '<div style="float:left;margin:6px 14px 6px 0;width:' + w + ';">'

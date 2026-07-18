@@ -591,8 +591,18 @@
         var trw = state.tr;
         trw.setNodeMarkup(wrap.pos, undefined, Object.assign({}, wrap.node.attrs, { style: wrapCss }));
         trw.setNodeMarkup(sel.from, undefined, Object.assign({}, node.attrs, { style: imgCss }));
+        // (dev0634) Drop the CARET into the block after the wrapper (creating a
+        // paragraph if none) instead of re-selecting the image — with the image
+        // still node-selected, typing REPLACED it, and beside a float there was
+        // no line to click into. Now align-left → just type: text flows on the
+        // image's right.
+        var wAfter = wrap.pos + wrap.node.nodeSize;
+        var $wAfter = state.doc.resolve(wAfter);
+        if (!$wAfter.nodeAfter || !$wAfter.nodeAfter.isTextblock) {
+          trw.insert(wAfter, editor.schema.nodes.paragraph.create());
+        }
         editor.view.dispatch(trw);
-        editor.commands.setNodeSelection(sel.from);
+        editor.commands.setTextSelection(wAfter + 1);
       } catch (e) { console.warn('[xe2] wrapper align failed', e); }
       editor.commands.focus();
       return;
@@ -605,7 +615,9 @@
     try {
       editor.view.dispatch(editor.state.tr.setNodeMarkup(sel.from, undefined,
         Object.assign({}, node.attrs, { style: css })));
-      editor.commands.setNodeSelection(sel.from);
+      // (dev0634) Caret right AFTER the image (not a NodeSelection) so typing
+      // adds text beside a float instead of replacing the highlighted image.
+      editor.commands.setTextSelection(sel.to);
     } catch (e) { console.warn('[xe2] image align failed', e); }
     editor.commands.focus();
   }
@@ -1297,7 +1309,7 @@
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,
     _findImageEditContext: _findImageEditContext,
-    version: 'xe2-m9',
+    version: 'xe2-m10',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
 })();

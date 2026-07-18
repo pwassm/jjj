@@ -1567,9 +1567,13 @@ async function _openConfigByName(name) {
   function ready() {
     return typeof data !== 'undefined' && Array.isArray(data) && data.length > 0;
   }
+  // (dev0634) 30s (was 5s): ml.json is ~5MB and cache-busted, and GitHub Pages
+  // hiccups (observed 503 first-byte timeouts) — the 5s cap made ?c=/?ss=
+  // deep-links on the public site die SILENTLY whenever the data fetch ran
+  // long, which reproduced intermittently on sealifeandmore.com.
   while (!ready()) {
-    if (Date.now() - startedAt > 5000) {
-      if (typeof toast === 'function') toast('Could not load data — check your connection', 3000);
+    if (Date.now() - startedAt > 30000) {
+      if (typeof toast === 'function') toast('Could not load data — check your connection and reload', 5000);
       return;
     }
     await new Promise(r => setTimeout(r, 100));
@@ -1584,11 +1588,13 @@ async function _openConfigByName(name) {
         parsed = JSON.parse(await (await fh.getFile()).text());
       } catch (e) {}
     }
-    if (!parsed) {
+    // (dev0634) One retry after 1.5s — a single Pages 503 killed the deep link.
+    for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
       try {
         const r = await fetch('c.json?t=' + Date.now());
         if (r.ok) parsed = await r.json();
       } catch (e) {}
+      if (!parsed) await new Promise(r2 => setTimeout(r2, 1500));
     }
   } catch (e) {}
   if (!parsed) {
@@ -1649,9 +1655,11 @@ async function _openSlideshowBySsId(ssVal, launch) {
   function ready() {
     return typeof data !== 'undefined' && Array.isArray(data) && data.length > 0;
   }
+  // (dev0634) 30s cap + c.json retry — same silent-death fix as
+  // _openConfigByName (see comment there).
   while (!ready()) {
-    if (Date.now() - startedAt > 5000) {
-      if (typeof toast === 'function') toast('Could not load data — check your connection', 3000);
+    if (Date.now() - startedAt > 30000) {
+      if (typeof toast === 'function') toast('Could not load data — check your connection and reload', 5000);
       return;
     }
     await new Promise(r => setTimeout(r, 100));
@@ -1665,11 +1673,12 @@ async function _openSlideshowBySsId(ssVal, launch) {
         parsed = JSON.parse(await (await fh.getFile()).text());
       } catch (e) {}
     }
-    if (!parsed) {
+    for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
       try {
         const r = await fetch('c.json?t=' + Date.now());
         if (r.ok) parsed = await r.json();
       } catch (e) {}
+      if (!parsed) await new Promise(r2 => setTimeout(r2, 1500));
     }
   } catch (e) {}
   if (!parsed) {
