@@ -106,13 +106,21 @@
           parseHTML: function (el) { return el.style.background || el.style.backgroundColor || ''; },
           renderHTML: function () { return {}; },
         },
+        // (dev0632) side-margin "fit" level — stored as inline padding-left/right
+        // (%) so Xs/G/fullscreen render it with zero extra code.
+        pad: {
+          default: '',
+          parseHTML: function (el) { return el.style.paddingLeft || ''; },
+          renderHTML: function () { return {}; },
+        },
       };
     },
     parseHTML: function () { return [{ tag: 'div.te-slide' }]; },
     renderHTML: function (p) {
       var a = p.node.attrs, css = '';
       if (a.color) css += 'color: ' + a.color + '; ';
-      if (a.background) css += 'background: ' + a.background + ';';
+      if (a.background) css += 'background: ' + a.background + '; ';
+      if (a.pad) css += 'padding-left: ' + a.pad + '; padding-right: ' + a.pad + ';';
       var attrs = { 'class': 'te-slide' };
       if (css) attrs.style = css.trim();
       return ['div', mergeAttributes(p.HTMLAttributes, attrs), 0];
@@ -163,9 +171,29 @@
     renderHTML: function (p) { return ['div', mergeAttributes(p.HTMLAttributes, { 'class': 'te-cut' }), 0]; },
   });
 
+  // (dev0632) text-align as a first-class attribute on paragraphs/headings —
+  // the vendored bundle has no TextAlign extension, so a minimal global attr
+  // serializes to style="text-align:…" (what Xs/G already render).
+  var TextAlignAttr = L.Extension.create({
+    name: 'xe2TextAlign',
+    addGlobalAttributes: function () {
+      return [{
+        types: ['paragraph', 'heading'],
+        attributes: {
+          textAlign: {
+            default: null,
+            parseHTML: function (el) { return el.style.textAlign || null; },
+            renderHTML: function (attrs) { return attrs.textAlign ? { style: 'text-align: ' + attrs.textAlign } : {}; },
+          },
+        },
+      }];
+    },
+  });
+
   function buildExtensions() {
     return [
       StarterKit,
+      TextAlignAttr,
       DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut,
       Underline,
       StyledImage.configure({ inline: true }),
@@ -425,7 +453,7 @@
     var state = editor.state;
     var secType = editor.schema.nodes.slideSection;
     if (!secType) return;
-    var key = (mode === 'bg') ? 'background' : 'color';
+    var key = (mode === 'bg') ? 'background' : (mode === 'pad') ? 'pad' : 'color';
     var sec = _findSection(state);
 
     if (sec) {
@@ -448,7 +476,7 @@
           if (!cur.length) return;
           var a = Object.assign({}, sec.node.attrs);
           if (segN === targetSeg) a[key] = value || '';
-          if (!a.color && !a.background) cur.forEach(function (n) { pieces.push(n); }); // fully cleared → no wrapper
+          if (!a.color && !a.background && !a.pad) cur.forEach(function (n) { pieces.push(n); }); // fully cleared → no wrapper
           else pieces.push(secType.create(a, cur));
           cur = [];
         };
@@ -466,7 +494,7 @@
       var attrs = Object.assign({}, sec.node.attrs);
       attrs[key] = value || '';
       try {
-        if (!attrs.color && !attrs.background) {
+        if (!attrs.color && !attrs.background && !attrs.pad) {
           // both cleared → drop the wrapper so saved HTML stays clean
           editor.view.dispatch(state.tr.replaceWith(sec.pos, sec.pos + sec.node.nodeSize, sec.node.content));
         } else {
@@ -498,7 +526,7 @@
       if (i === endIdx - 1) to = pos;
     }
     if (!nodes || !nodes.length) return;
-    var a2 = { color: '', background: '' };
+    var a2 = { color: '', background: '', pad: '' };
     a2[key] = value;
     try {
       editor.view.dispatch(state.tr.replaceWith(from, to, secType.create(a2, nodes)));
@@ -526,6 +554,85 @@
     } catch (e) {
       editor.chain().focus().setHorizontalRule().run();
     }
+  }
+
+  // ── (dev0632) alignment ─────────────────────────────────────────────────────
+  // One button set covers BOTH cases: an image selected (blue outline) gets its
+  // float/margin restyled; otherwise the paragraphs/headings in the selection
+  // get text-align. Images wrapped by the 🖼 modal (centered/captioned divs)
+  // are re-aligned via the modal (double-click the image).
+  function alignImage(editor, align) {
+    var sel = editor.state.selection, node = sel.node;
+    var st = _styleProbe(node.attrs.style);
+    var css = 'max-width:100%;border-radius:4px;';
+    if (st.width) css += 'width:' + st.width + ';';
+    if (align === 'left') css += 'float:left;margin:4px 14px 10px 0;';
+    else if (align === 'right') css += 'float:right;margin:4px 0 10px 14px;';
+    else css += 'float:none;display:block;margin:10px auto;';
+    try {
+      editor.view.dispatch(editor.state.tr.setNodeMarkup(sel.from, undefined,
+        Object.assign({}, node.attrs, { style: css })));
+      editor.commands.setNodeSelection(sel.from);
+    } catch (e) { console.warn('[xe2] image align failed', e); }
+    editor.commands.focus();
+  }
+  function applyAlign(editor, align) {
+    var sel = editor.state.selection;
+    if (sel.node && sel.node.type && sel.node.type.name === 'image') { alignImage(editor, align); return; }
+    var state = editor.state, tr = state.tr;
+    state.doc.nodesBetween(sel.from, sel.to, function (node, pos) {
+      if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+        tr.setNodeMarkup(pos, undefined, Object.assign({}, node.attrs,
+          { textAlign: (align === 'left') ? null : align }));
+      }
+    });
+    if (tr.steps.length) editor.view.dispatch(tr);
+    editor.commands.focus();
+  }
+
+  // (dev0632) section side-margin picker — 4 fit levels, applied to the
+  // .te-slide wrapper of the section under the cursor (wrapper created on
+  // demand, same machinery as the section colors).
+  function showMarginPicker(anchorBtn) {
+    var old = document.getElementById('xe2MarginPicker');
+    if (old) { old.remove(); return; }
+    var LEVELS = [
+      { v: '',    label: 'Full width — no side margin' },
+      { v: '6%',  label: 'Slim margin (6% each side)' },
+      { v: '12%', label: 'Medium margin (12% each side)' },
+      { v: '20%', label: 'Wide margin (20% each side)' },
+    ];
+    var r = anchorBtn.getBoundingClientRect();
+    var pop = document.createElement('div');
+    pop.id = 'xe2MarginPicker';
+    pop.style.cssText = 'position:fixed;z-index:36800;background:#0d0d1e;border:1px solid #4af;' +
+      'border-radius:8px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.7);' +
+      'left:' + r.left + 'px;top:' + (r.bottom + 4) + 'px;display:flex;flex-direction:column;gap:4px;';
+    LEVELS.forEach(function (lv) {
+      var b = document.createElement('button');
+      b.className = 'xe2-btn';
+      b.style.textAlign = 'left';
+      // little "fit" preview bar + label
+      var inset = lv.v ? parseFloat(lv.v) : 0;
+      b.innerHTML = '<span style="display:inline-block;width:64px;height:10px;background:#223;border:1px solid #456;' +
+        'border-radius:2px;vertical-align:middle;margin-right:8px;position:relative;overflow:hidden;">' +
+        '<span style="position:absolute;top:1px;bottom:1px;left:' + inset + '%;right:' + inset + '%;background:#6af;border-radius:1px;"></span>' +
+        '</span>' + lv.label;
+      b.onmousedown = function (ev) { ev.preventDefault(); };
+      b.onclick = function () {
+        pop.remove();
+        if (_api) applySectionColor(_api.editor, 'pad', lv.v);
+      };
+      pop.appendChild(b);
+    });
+    function onDoc(e) {
+      if (!pop.contains(e.target) && e.target !== anchorBtn) {
+        pop.remove();
+        document.removeEventListener('mousedown', onDoc, true);
+      }
+    }
+    document.addEventListener('mousedown', onDoc, true);
+    document.body.appendChild(pop);
   }
 
   // A+/A− text size stepper: walks the current block along the em ladder
@@ -758,6 +865,10 @@
       ['&bull;', 'Bullet list', function (e) { e.chain().focus().toggleBulletList().run(); }],
       ['1.', 'Numbered list', function (e) { e.chain().focus().toggleOrderedList().run(); }],
       ['|'],
+      ['&#8676;', 'Align LEFT — selected text lines, or a selected (clicked) image floats left with text wrapping', function (e) { applyAlign(e, 'left'); }],
+      ['&#8596;', 'Align CENTER — selected text lines, or a selected image on its own centered line', function (e) { applyAlign(e, 'center'); }],
+      ['&#8677;', 'Align RIGHT — selected text lines, or a selected image floats right with text wrapping', function (e) { applyAlign(e, 'right'); }],
+      ['|'],
       ['&#9654;&hellip;', 'Insert collapsible section', function (e) { insertCollapsible(e); }],
       ['[&#9654;&hellip;]', 'Wrap the selected lines in a collapsible — type the summary title after', function (e) { wrapSelectionInDetails(e, false); }],
       ['[[2]]', 'Wrap selection as collapsible, split into title + detail — FIRST line becomes the summary, the rest the hidden body', function (e) { wrapSelectionInDetails(e, true); }],
@@ -775,6 +886,7 @@
       ['|'],
       ['A&#9662;', 'Text color for the SECTION the cursor is in (whole slide when there are no ══ dividers)', function (e, btn) { showColorPicker(btn, 'text'); }],
       ['&#9635;&#9662;', 'Background color for the section the cursor is in', function (e, btn) { showColorPicker(btn, 'bg'); }],
+      ['&#8677;&#8676;&#9662;', 'Side margins for the SECTION the cursor is in — 4 fit levels from full width to wide margins', function (e, btn) { showMarginPicker(btn); }],
       ['|'],
       ['S', 'Preview slide (Xs) — pages at each ══ divider, exactly as G/fullscreen will show it', function () {
         if (_api && typeof window.textEditorPreviewSlide === 'function') window.textEditorPreviewSlide(_api.getFtext());
@@ -1136,7 +1248,7 @@
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,
     _findImageEditContext: _findImageEditContext,
-    version: 'xe2-m7',
+    version: 'xe2-m8',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
 })();
