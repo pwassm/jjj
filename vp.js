@@ -1563,7 +1563,10 @@ function gridOpenFullscreen(row, contained) {
           // the body left-aligns under the ▼ arrow instead of running full width.
           + 'details:has(> summary[style*="center"]){width:fit-content;max-width:100%;margin:8px auto;text-align:left;}'
           + 'summary{color:#2563eb!important;background:transparent!important;font-weight:bold;}'
-          + 'summary a,summary a:visited{color:#2563eb!important;text-decoration:underline;}';
+          + 'summary a,summary a:visited{color:#2563eb!important;text-decoration:underline;}'
+          // (dev0619) Slide-wide text color (inline on the .te-slide wrapper)
+          // wins over the forced summary blue — matches Xe/Xs/G behavior.
+          + '.te-slide[style*="color:"] summary{color:inherit!important;}';
         const _aStyle = '<style>' + _ftStyles + '</style>';
         // (dev0249) Body scaffold for fragment-style ftext: cap content at
         // ~880px and auto-center so desktop has reasonable side margins

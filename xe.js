@@ -226,6 +226,14 @@ function gridOpenTextEditor(cellStr, row, opts) {
     #teEditor h5 { font-size:1em; }
     #teEditor h6 { font-size:0.9em; }
     #teEditor small { font-size:0.8em; opacity:0.85; }
+    /* (dev0619) A slide-wide text color (A▾ → inline color on the .te-slide
+       wrapper) must WIN over the editor's default white element rules above —
+       inheritance loses to any direct element rule, so the chosen color never
+       showed in Xe (all-white) and only partially in Xs (headings/summaries
+       kept their own colors → mixed lines). Scope: only slides whose wrapper
+       carries an explicit color. Links stay #5bf for readability. */
+    #teEditor .te-slide[style*="color:"] :is(p,div,summary,li,span,h1,h2,h3,h4,h5,h6) { color:inherit; }
+    #teSlideContent .te-slide[style*="color:"] summary { color:inherit !important; }
     #teEditor a, #teEditor summary a { color:#5bf !important; }
     #teSlideContent small { font-size:0.8em; opacity:0.85; }
     #teEditor p { margin:0 0 8px; }
@@ -2264,7 +2272,10 @@ function textEditorPreviewSlide() {
       /* (dev0591) Details under a centered summary: shrink the block to its
          content width and center it so the body left-aligns under the ▼ arrow
          (the summary keeps its inline text-align:center). */
-      #teSlideContent details:has(> summary[style*="center"]){width:fit-content;max-width:100%;margin:8px auto;text-align:left;}</style>
+      #teSlideContent details:has(> summary[style*="center"]){width:fit-content;max-width:100%;margin:8px auto;text-align:left;}
+      /* (dev0619) Slide-wide text color wins over the h3–h6 tint ladder above,
+         matching Xe/G — only when the .te-slide wrapper has an explicit color. */
+      #teSlideContent .te-slide[style*="color:"] :is(h1,h2,h3,h4,h5,h6){color:inherit;}</style>
     <div id="teSlideTopBar" style="position:absolute;top:0;left:0;right:0;height:64px;
          display:flex;align-items:center;justify-content:space-between;
          padding:0 16px;background:#3a4d75;border-bottom:2px solid #6af;">
