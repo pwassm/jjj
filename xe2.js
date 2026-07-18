@@ -238,19 +238,98 @@
     if (changed) editor.view.dispatch(tr);
   }
 
+  // ── (dev0621) details family — v1 parity: [▶…] wrap, [[2]] title+body split,
+  //    Un[▶] undetail, ¶↑/¶↓ blank line OUTSIDE the block ─────────────────────
+  // Wrap the selected top-level lines in a <details>. splitTitle=false ([▶…]):
+  // empty summary, caret placed in it, block left open. splitTitle=true ([[2]]):
+  // first selected line becomes the summary, the rest becomes the (collapsed) body.
+  function wrapSelectionInDetails(editor, splitTitle) {
+    var state = editor.state;
+    if (_findAncestor(state, 'details')) { _toast('Already inside a collapsible — Un[▶] first'); return; }
+    var sel = state.selection;
+    var range = sel.$from.blockRange(sel.$to);
+    if (!range) return;
+    var parent = range.parent;
+    if (parent.type.name !== 'doc' && parent.type.name !== 'slideSection') {
+      _toast('Select whole lines (not list items / table cells) to wrap');
+      return;
+    }
+    var nodes = [];
+    for (var i = range.startIndex; i < range.endIndex; i++) nodes.push(parent.child(i));
+    if (!nodes.length) return;
+    var detType = editor.schema.nodes.details;
+    var sumType = editor.schema.nodes.detailsSummary;
+    var paraType = editor.schema.nodes.paragraph;
+    var summaryNode, body;
+    if (splitTitle && nodes[0].isTextblock) {
+      summaryNode = sumType.create(null, nodes[0].content);
+      body = nodes.slice(1);
+    } else {
+      summaryNode = sumType.create();
+      body = nodes;
+    }
+    if (!body.length) body = [paraType.create()];
+    var det;
+    try { det = detType.create({ open: !splitTitle }, [summaryNode].concat(body)); }
+    catch (e) { _toast('That selection can’t go inside a collapsible'); return; }
+    try {
+      editor.view.dispatch(state.tr.replaceWith(range.start, range.end, det));
+      if (!splitTitle) editor.commands.setTextSelection(range.start + 2); // caret into the empty summary
+    } catch (e) { console.warn('[xe2] wrap-in-details failed', e); }
+    editor.commands.focus();
+  }
+
+  // Un[▶]: dissolve the collapsible at the cursor — summary text becomes an H3
+  // line, the body blocks stay as-is. (v1 made a bullet list, but bullets are
+  // suppressed in every render context since dev0379, so plain blocks it is.)
+  function undetail(editor) {
+    var state = editor.state;
+    var det = _findAncestor(state, 'details');
+    if (!det) { _toast('Cursor is not inside a collapsible'); return; }
+    var hType = editor.schema.nodes.heading;
+    var out = [];
+    det.node.forEach(function (ch) {
+      if (ch.type.name === 'detailsSummary') {
+        if (ch.content.size) out.push(hType.create({ level: 3 }, ch.content));
+      } else out.push(ch);
+    });
+    if (!out.length) out = [editor.schema.nodes.paragraph.create()];
+    try {
+      editor.view.dispatch(state.tr.replaceWith(det.pos, det.pos + det.node.nodeSize, _frag(state, out)));
+    } catch (e) { console.warn('[xe2] undetail failed', e); }
+    editor.commands.focus();
+  }
+
+  // ¶↑ / ¶↓: blank paragraph OUTSIDE the collapsible at the cursor, so text
+  // typed there is not absorbed into the block. where: -1 above, +1 below.
+  function lineOutsideDetails(editor, where) {
+    var state = editor.state;
+    var det = _findAncestor(state, 'details');
+    if (!det) { _toast('Cursor is not inside a collapsible'); return; }
+    var pos = (where < 0) ? det.pos : det.pos + det.node.nodeSize;
+    try {
+      editor.view.dispatch(state.tr.insert(pos, editor.schema.nodes.paragraph.create()));
+      editor.commands.setTextSelection(pos + 1);
+    } catch (e) { console.warn('[xe2] line-outside failed', e); }
+    editor.commands.focus();
+  }
+
   // ── (dev0620) section commands ──────────────────────────────────────────────
   function _frag(state, nodes) { return state.doc.content.constructor.fromArray(nodes); }
 
-  // Nearest slideSection ancestor of the selection, or null.
-  function _findSection(state) {
+  // Nearest ancestor node of the given type containing the selection, or null.
+  function _findAncestor(state, name) {
     var $from = state.selection.$from;
     for (var d = $from.depth; d >= 1; d--) {
-      if ($from.node(d).type.name === 'slideSection') {
+      if ($from.node(d).type.name === name) {
         return { node: $from.node(d), pos: $from.before(d), depth: d };
       }
     }
     return null;
   }
+  function _findSection(state) { return _findAncestor(state, 'slideSection'); }
+
+  function _toast(msg) { if (typeof window.toast === 'function') window.toast(msg, 1500); }
 
   // Set text/bg color on the SECTION containing the cursor. mode 'text'|'bg';
   // empty value clears. A legacy whole-doc wrapper still holding ══(hr)
@@ -462,6 +541,11 @@
       ['1.', 'Numbered list', function (e) { e.chain().focus().toggleOrderedList().run(); }],
       ['|'],
       ['&#9654;&hellip;', 'Insert collapsible section', function (e) { insertCollapsible(e); }],
+      ['[&#9654;&hellip;]', 'Wrap the selected lines in a collapsible — type the summary title after', function (e) { wrapSelectionInDetails(e, false); }],
+      ['[[2]]', 'Wrap selection as collapsible, split into title + detail — FIRST line becomes the summary, the rest the hidden body', function (e) { wrapSelectionInDetails(e, true); }],
+      ['Un[&#9654;]', 'Undetail — dissolve the collapsible at the cursor: summary becomes an H3 line, body stays', function (e) { undetail(e); }],
+      ['&para;&#8593;', 'Blank line ABOVE the collapsible at the cursor, outside it (Ctrl+Shift+Enter)', function (e) { lineOutsideDetails(e, -1); }],
+      ['&para;&#8595;', 'Blank line BELOW the collapsible at the cursor, outside it (Ctrl+Enter)', function (e) { lineOutsideDetails(e, 1); }],
       ['&#9660; All', 'Expand all collapsibles', function (e) { setAllDetails(e, true); }],
       ['&#9654; All', 'Collapse all collapsibles', function (e) { setAllDetails(e, false); }],
       ['|'],
@@ -508,6 +592,9 @@
       // element defaults above (same inherit trick as dev0619 in v1/render).
       '#xe2Editor .te-slide{border:1px dashed rgba(120,160,255,0.22);border-radius:6px;padding:4px 10px;margin:6px 0;}',
       '#xe2Editor .te-slide[style*="color:"] :is(p,div,summary,li,span,h1,h2,h3,h4,h5,h6){color:inherit;}',
+      // (dev0621) ══ divider — same 2px line as v1/Xs/grid; without this the
+      // browser-default thin inset hr made new dividers look like a stray line.
+      '#xe2Editor hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;height:0;}',
       '#xe2Editor img{max-width:100%;}',
       '#xe2Editor table{border-collapse:collapse;} #xe2Editor td,#xe2Editor th{border:1px solid #557;padding:4px 8px;}',
       '#xe2Editor a{color:#7cf;}',
@@ -529,6 +616,8 @@
   function open(cellStr, row, opts) {
     opts = opts || {};
     try {
+      // (dev0621) Re-entry (e.g. E-scroll to another row) must not stack overlays.
+      if (document.getElementById('xe2Overlay')) close();
       _cell = cellStr;
       _field = opts.field || 'ftext';
       if (!row) return false; // v1 handles row creation before delegating
@@ -557,13 +646,30 @@
           '</div>' +
           '<div id="xe2Toolbar" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:8px 14px;background:#0d0d1e;border-bottom:1px solid #333;"></div>' +
           '<div id="xe2Editor"></div>' +
-        '</div>';
+        '</div>' +
+        // (dev0621) HOTKEY GUARD: every global-hotkey gate in core.js/boot.js/
+        // collection.js/slideshow.js/hotkeys.js tests presence of the v1 id
+        // #textEditorOverlay (pure existence checks, verified). Without it, bare
+        // letters typed in v2 fired G hotkeys (r = conveyor, ] = ring). This
+        // hidden marker makes v2 look like Xe to all of them; v1 and v2 are
+        // never open at once (delegation/switchToV1), so the id can't collide.
+        '<span id="textEditorOverlay" style="display:none;"></span>';
       document.body.appendChild(ov);
 
       // Build the TipTap editor (prevent native <details> toggle fighting PM).
       var mount = ov.querySelector('#xe2Editor');
       _api = createEditor(mount, row[_field] || '', {
         editorProps: {
+          // (dev0621) Ctrl+Enter / Ctrl+Shift+Enter = blank line below/above the
+          // collapsible at the cursor (v1 parity; same as the ¶↓/¶↑ buttons).
+          handleKeyDown: function (view, event) {
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+              event.preventDefault();
+              if (_api) lineOutsideDetails(_api.editor, event.shiftKey ? -1 : 1);
+              return true;
+            }
+            return false;
+          },
           handleDOMEvents: {
             click: function (view, event) {
               if (event.target && event.target.closest && event.target.closest('summary')) {
@@ -649,7 +755,10 @@
     _nodes: { Details: Details, DetailsSummary: DetailsSummary, Small: Small, StyledImage: StyledImage, SlideSection: SlideSection },
     _applySectionColor: applySectionColor,
     _insertSectionBreak: insertSectionBreak,
-    version: 'xe2-m4',
+    _wrapSelectionInDetails: wrapSelectionInDetails,
+    _undetail: undetail,
+    _lineOutsideDetails: lineOutsideDetails,
+    version: 'xe2-m5',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
 })();
