@@ -423,6 +423,25 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
+  // (dev0638) b while G is open (no V on top) toggles "buffer everywhere"
+  // (window.gridBufferAll — lifts the desktop-only + ≤4×4 buffered-playback
+  // limits; toasts + re-renders live cells itself). POC switch for testing
+  // buffered YT on any grid size. View-only (never writes c.json/ml.json), so
+  // it rides the guFunKeys gate in user mode like the other harmless toys.
+  // Ctrl+B (buffer MODE cycle, collection.js) is untouched — modifiers fall
+  // through here.
+  if (k === 'b' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const gOpenB  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenB = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    const _uModeB = (typeof _isUserMode === 'function') && _isUserMode();
+    const _guFunB = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
+    if (gOpenB && !vpOpenB && (!_uModeB || _guFunB)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.gridBufferAll === 'function') window.gridBufferAll();
+      return false;
+    }
+  }
   // (dev0516) s from the GRID plays the slideshow (slideshowOpenGrid), same as
   // slideshow.js's own bare-S handler would. We must own it here in window-
   // capture because the dispatcher below forwards 's' to _executeHotkey, which

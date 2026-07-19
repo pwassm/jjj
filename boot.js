@@ -267,6 +267,15 @@ _markUserModeClass();
 // so routing is unaffected.
 (function _restorePrettyUrl() {
   try {
+    // (dev0638) Stash utility params BEFORE the rewrite below erases the query
+    // — grid.js reads ?buf= lazily at mount time, long after this runs, so on
+    // the public site the param silently vanished (the dev0637 phone POC's
+    // "no evidence of pre-roll" report). Dev mode keeps the query; stashing
+    // unconditionally is harmless there.
+    try {
+      var _bufQ = new URLSearchParams(window.location.search).get('buf');
+      if (_bufQ !== null) window._salBufParam = _bufQ;
+    } catch (e) {}
     if (typeof _isUserMode === 'function' && !_isUserMode()) return;
     if (!(window._deepUid || window._deepConfig || window._deepSs)) return;
     if (!(window.history && history.replaceState)) return;

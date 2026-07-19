@@ -2437,6 +2437,9 @@ function textEditorPreviewSlide(htmlOverride) {
   function close() {
     _leaveCellMode();   // (dev0624) tear down a designation-cell viewer / grid too
     document.removeEventListener('keydown', onKey, true);
+    // (dev0638) drop the floating page/exit buttons (body-level, not in ov)
+    const _nb = document.getElementById('teSlideNavBtns');
+    if (_nb) _nb.remove();
     ov.remove();
   }
   function onKey(e) {
@@ -2450,15 +2453,19 @@ function textEditorPreviewSlide(htmlOverride) {
     // matching the arrow rule.
     if (_sects.length > 1 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === ' ')) {
       e.preventDefault(); e.stopImmediatePropagation();
-      const dir = e.key === 'ArrowLeft' ? -1 : 1;
-      const ni = _sIdx + dir;
-      if (ni < 0 || ni >= _sects.length) {
-        if (typeof toast === 'function') toast(dir > 0 ? 'Last page' : 'First page', 900);
-        return;
-      }
-      _sIdx = ni;
-      _showSect();
+      _page(e.key === 'ArrowLeft' ? -1 : 1);
     }
+  }
+  // (dev0638) Shared pager — used by onKey above and the floating ‹ › buttons.
+  function _page(dir) {
+    if (_sects.length < 2) return;
+    const ni = _sIdx + dir;
+    if (ni < 0 || ni >= _sects.length) {
+      if (typeof toast === 'function') toast(dir > 0 ? 'Last page' : 'First page', 900);
+      return;
+    }
+    _sIdx = ni;
+    _showSect();
   }
   // (dev0624) Register BEFORE the first _showSect: if the opening section is a
   // cell designation, gridOpenFullscreen registers vpKeyHandler at document
@@ -2466,6 +2473,37 @@ function textEditorPreviewSlide(htmlOverride) {
   // so ←/→/Esc stay slide navigation while a designation cell is fullscreen.
   document.addEventListener('keydown', onKey, true);
   _showSect();
+  // (dev0638) Floating ‹ › page buttons + red ✕ — the same affordance V's
+  // sectioned viewer got in dev0637/38, so Xs (the desktop/dev path) pages by
+  // mouse too. Body-level, NOT inside ov, at z 36400: above ov AND above a
+  // designation cell's boosted V viewer (36200), so paging/exit stay clickable
+  // while a media page is up. close() removes the holder.
+  const _navHolder = document.createElement('div');
+  _navHolder.id = 'teSlideNavBtns';
+  _navHolder.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:36400;';
+  (function _buildNavBtns() {
+    const mk = (txt, side, topCss, extra) => {
+      const b = document.createElement('button');
+      b.textContent = txt;
+      b.style.cssText = 'position:absolute;top:' + topCss + ';' + side + ':10px;'
+        + 'transform:translateY(-50%);pointer-events:auto;width:46px;height:46px;'
+        + 'border-radius:50%;border:1px solid rgba(255,255,255,0.35);'
+        + 'background:rgba(0,0,0,0.45);color:#fff;font-size:26px;line-height:1;'
+        + 'cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;'
+        + (extra || '');
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      _navHolder.appendChild(b);
+      return b;
+    };
+    if (_sects.length > 1) {
+      mk('‹', 'left',  '50%').addEventListener('click', e => { e.stopPropagation(); _page(-1); });
+      mk('›', 'right', '50%').addEventListener('click', e => { e.stopPropagation(); _page(1); });
+    }
+    mk('✕', 'right', 'calc(50% + 58px)',
+      'background:rgba(60,0,0,0.65);border-color:#f44;color:#f88;font-size:20px;')
+      .addEventListener('click', e => { e.stopPropagation(); close(); });
+    document.body.appendChild(_navHolder);
+  })();
   ov.querySelector('#teSlideClose').onclick = close;
   // (zip0228) Slideshow button on the Xs top bar — plays images from the
   // ftext currently being previewed. stopPropagation so the overlay's

@@ -882,8 +882,13 @@ function _gridBufferPreroll() {
 let _gridBufAllCache = null;
 function _gridBufferAllState() {
   if (_gridBufAllCache === null) {
-    let q = null;
-    try { q = new URLSearchParams(window.location.search).get('buf'); } catch (_) {}
+    // (dev0638) boot.js's pretty-URL rewrite ERASES the query on the public
+    // site before the grid ever mounts, so consult the stash it saves first
+    // (window._salBufParam); a live location.search read only works in dev.
+    let q = (window._salBufParam !== undefined) ? window._salBufParam : null;
+    if (q === null) {
+      try { q = new URLSearchParams(window.location.search).get('buf'); } catch (_) {}
+    }
     if (q === '1' || q === 'all') _gridBufAllCache = 'all';
     else if (q === '0') _gridBufAllCache = 'none';
     else _gridBufAllCache = ((typeof window.getSetting === 'function')

@@ -1636,27 +1636,41 @@ function gridOpenFullscreen(row, contained) {
           // top-of-open reset removes them on every gridOpenFullscreen, so the
           // media path re-adds them after its re-entry returns.
           const _addSectArrows = () => {
-            if (sects.length < 2 || fs.querySelector('#vpSectArrows')) return;
+            if (fs.querySelector('#vpSectArrows')) return;
             const holder = document.createElement('div');
             holder.id = 'vpSectArrows';
             holder.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:70;';
-            [[-1, 'left'], [1, 'right']].forEach(([dir, side]) => {
+            const _mkBtn = (txt, side, topCss, extra) => {
               const b = document.createElement('button');
-              b.textContent = dir > 0 ? '›' : '‹';
-              b.style.cssText = 'position:absolute;top:50%;' + side + ':10px;'
+              b.textContent = txt;
+              b.style.cssText = 'position:absolute;top:' + topCss + ';' + side + ':10px;'
                 + 'transform:translateY(-50%);pointer-events:auto;width:46px;height:46px;'
                 + 'border-radius:50%;border:1px solid rgba(255,255,255,0.35);'
                 + 'background:rgba(0,0,0,0.45);color:#fff;font-size:26px;line-height:1;'
-                + 'cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;';
+                + 'cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;'
+                + (extra || '');
               // Swallow the gesture start so the image/video swipe catchers
-              // underneath never treat an arrow tap as a swipe.
+              // underneath never treat a button tap as a swipe.
               b.addEventListener('pointerdown', e => e.stopPropagation());
-              b.addEventListener('click', e => {
-                e.stopPropagation();
-                if (typeof window._vpSectNav === 'function') window._vpSectNav(dir);
-              });
               holder.appendChild(b);
-            });
+              return b;
+            };
+            if (sects.length > 1) {
+              _mkBtn('‹', 'left',  '50%').addEventListener('click', e => {
+                e.stopPropagation();
+                if (typeof window._vpSectNav === 'function') window._vpSectNav(-1);
+              });
+              _mkBtn('›', 'right', '50%').addEventListener('click', e => {
+                e.stopPropagation();
+                if (typeof window._vpSectNav === 'function') window._vpSectNav(1);
+              });
+            }
+            // (dev0638) Red ✕ just below the › — one thumb-reachable exit from
+            // fullscreen text, on every page kind (text / media / G), shown
+            // even on single-page slides.
+            _mkBtn('✕', 'right', 'calc(50% + 58px)',
+              'background:rgba(60,0,0,0.65);border-color:#f44;color:#f88;font-size:20px;')
+              .addEventListener('click', e => { e.stopPropagation(); vpClose(); });
             fs.appendChild(holder);
           };
           const showSect = () => {
@@ -1709,7 +1723,7 @@ function gridOpenFullscreen(row, contained) {
             };
           }
           showSect();
-          _addSectArrows();   // (dev0637) no-op when single-section or already added
+          _addSectArrows();   // (dev0637/38) ‹ › when multi-page; red ✕ always
         }
       }
     }
