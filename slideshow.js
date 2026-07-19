@@ -1984,9 +1984,9 @@ function _slideshowSizeBand(filter) {
     case 'ge3':   return [3, Infinity];
     case 'ge2':   return [2, Infinity];
     case 'ge1':   return [1, Infinity];
-    case 'b0610': return [0.6, 1.0];
-    case 'b0306': return [0.3, 0.6];
-    case 'b0103': return [0.1, 0.3];
+    case 'b0610': return [0.6, Infinity];
+    case 'b0306': return [0.3, Infinity];
+    case 'b0103': return [0.1, Infinity];
     default:      return null;
   }
 }
@@ -2575,9 +2575,9 @@ function _slideshowSizeFilterSelect(id, cur, selCSS) {
     ['ge3',   '≥ 3 MP'],
     ['ge2',   '≥ 2 MP'],
     ['ge1',   '≥ 1 MP'],
-    ['b0610', '.6–1.0 MP'],
-    ['b0306', '.3–.6 MP'],
-    ['b0103', '.1–.3 MP']
+    ['b0610', '≥ .6 MP'],
+    ['b0306', '≥ .3 MP'],
+    ['b0103', '≥ .1 MP']
   ];
   return '<select id="' + id + '" style="' + selCSS + '">' +
     opts.map(o => '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') +
