@@ -411,6 +411,10 @@ html.locked-mode #mobileToCBtn,
 html.locked-mode #gridControls,
 html.locked-mode #gridHmBtn,
 html.locked-mode #vp-close { display: none !important; }
+/* (dev0641) On phones (Gu is always user-mode there) drop the UID badge
+   and the ⚙ Configs button — desktop Gu keeps both. */
+html.is-mobile #uid-badge,
+html.is-mobile #mobileToCBtn { display: none !important; }
 /* (dev0246) Make <summary> readable in every render context. Without
    explicit color, a summary whose only child is an <a> can render as
    black-on-dark (browser default link color). */
@@ -994,7 +998,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0640';
+  window.HELP_VERSION_STR = 'dev0641';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','xe2-bundle.js','xe2.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];

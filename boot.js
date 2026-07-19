@@ -193,6 +193,9 @@ function _isUserMode() {
 function _markUserModeClass() {
   document.documentElement.classList.toggle('user-mode', _isUserMode());
   document.documentElement.classList.toggle('dev-mode', !_isUserMode());
+  // (dev0641) Mark phones so CSS can drop chrome that's only wanted on
+  // desktop Gu (the UID badge + the ⚙ Configs button).
+  document.documentElement.classList.toggle('is-mobile', _isMobileDevice());
 }
 _markUserModeClass();
 
