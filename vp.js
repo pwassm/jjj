@@ -2264,7 +2264,7 @@ function vpTogglePlay() {
   const p = _vpState.player;
   if (_vpState.isYT) {
     const state = p.getPlayerState();
-    if (state === 1) p.pauseVideo(); else p.playVideo();
+    if (state === 1) p.pauseVideo(); else _vpYtNudgePlay(p);   // (dev0642)
   } else {
     p.getPaused().then(paused => { if (paused) p.play(); else p.pause(); });
   }
@@ -2875,6 +2875,33 @@ function vpUpdateTimeline() {
       _vpState.player.getDuration()
     ]).then(([ct, dur]) => updateUI(ct, dur));
   }
+}
+
+// (dev0642) Play with a mute-fallback. Mobile browsers refuse UNMUTED
+// play for rows with Mute='0': autoplay at mount is gestureless, and even
+// V's ▶ button doesn't help because the tap gesture never crosses into the
+// cross-origin iframe (playVideo is just a postMessage). The player then
+// sits "unstarted" showing YT's big red button — which is itself dead,
+// since V stamps pointer-events:none on the iframe (dev0335). So: try to
+// play, and if the player hasn't reached playing/buffering shortly after,
+// mute and retry (muted play is always permitted), syncing _vpState.muted
+// + the 🔇 icon so one tap on the mute button restores sound (that tap IS
+// a real gesture on an already-playing video, which browsers allow).
+function _vpYtNudgePlay(p) {
+  try { p.playVideo(); } catch (_) {}
+  setTimeout(() => {
+    if (!_vpState || _vpState.player !== p || _vpState.muted) return;
+    try {
+      const st = p.getPlayerState();
+      if (st === 1 || st === 3) return;   // playing / buffering — all good
+      _vpState.muted = true;
+      p.mute();
+      p.playVideo();
+      const mb = document.getElementById('vp-mute');
+      if (mb) mb.innerHTML = window.muteIconHTML ? window.muteIconHTML(true) : '🔇';
+      if (typeof toast === 'function') toast('started muted — tap 🔇 for sound', 1800);
+    } catch (_) {}
+  }, 1200);
 }
 
 // YouTube mount for VP
@@ -3897,7 +3924,7 @@ function vpMountYouTube(host, link, seg, muted) {
           _vpState.isYT = true;
           if (muted) e.target.mute();
           e.target.seekTo(seg.start, true);
-          e.target.playVideo();
+          _vpYtNudgePlay(e.target);   // (dev0642) mute-fallback if unmuted play is refused
           // (zip0149) Belt-and-braces: re-stamp `allow` on the live iframe
           // once we have a guaranteed reference to it, in case the
           // observer missed it (some browsers fire mutations late).
