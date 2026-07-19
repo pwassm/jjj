@@ -460,9 +460,10 @@ window.addEventListener('keydown', function(e) {
   }
   // (dev0588) Arrow keys while G is open (and no V-fullscreen, Xe, or Xs on
   // top — the slideshow/dictionary/video-editor overlays already bailed above)
-  // drive the SECTIONED 1a text slide: ←/→ = previous/next section, ↓/↑ =
-  // expand/collapse its collapsibles. _gridSectionKey returns false when 1a
-  // isn't a sectioned text cell, so the arrows stay inert there as before.
+  // drive the t cell: ←/→ = previous/next section of the sectioned 1a slide,
+  // ↑ = expand a t cell to the full-window reader (dev0644; ↓ inside the
+  // reader returns to G). _gridSectionKey returns false when there's nothing
+  // to act on, so the arrows stay inert there as before.
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')
       && !e.shiftKey) {
     const gOpenAr  = document.getElementById('gridOverlay')?.style.display === 'flex';
@@ -2296,7 +2297,7 @@ function _tMeasureRowH() {
 // tags (the full markup stays in the tooltip, and inline/Xe editing still reads
 // the raw row value — see startEdit). This is a per-visible-cell string op on a
 // windowed table (~a screenful of rows), so it adds no measurable render cost.
-const _RICH_PREVIEW_COLS = new Set(['ftext', 'ttxt', 'ctxt', 'ss']);
+const _RICH_PREVIEW_COLS = new Set(['ftext', 'ttxt', 'ctxt', 'ss', 'pres']);
 function _richCellPreview(html) {
   let s = String(html || '');
   if (!s) return '';

@@ -171,7 +171,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'e', label: 'E', group: 'Screens', scope: 'global',
-    desc: 'Open the Editor for the focused row — video → Ev, ftext → Xe, image → Ie; ttxt/ctxt/ss column focus edits THAT field',
+    desc: 'Open the Editor for the focused row — video → Ev, ftext → Xe, image → Ie; ttxt/ctxt/ss/pres column focus edits THAT field',
     fn(ctx) {
       // E = Editor — Video Editor for video rows, Text/HTML editor for ftext rows
       // (zip0133) Routing is row-content based:
@@ -187,9 +187,10 @@ window.HOTKEYS = [
       // same table engine, so `focus`/visCols() resolve against _cData in _cMode
       // and the editor's save() routes to c.json via the boot.js patch.
       // (dev0383) C's `ss` field edits in the SAME editor.
+      // (dev0644) C's `pres` (instructional presentation deck) too.
       if (!ctx.gridOpen && focus !== null && typeof visCols === 'function') {
         const _fcol = visCols()[focus.c];
-        if (_fcol === 'ttxt' || _fcol === 'ctxt' || _fcol === 'ss') {
+        if (_fcol === 'ttxt' || _fcol === 'ctxt' || _fcol === 'ss' || _fcol === 'pres') {
           if (ctx.vpOpen) vpClose();
           const _tdi = vr(focus.r);
           const _trow = (_tdi >= 0 && _tdi < data.length) ? data[_tdi] : null;

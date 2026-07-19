@@ -380,7 +380,8 @@ function gridOpenFullscreen(row, contained) {
   info.style.cssText = '';
   _vpState = null;
   window._vpSectNav = null;   // (dev0617) reset section pager from a previous text open
-  
+  window._vpTextReader = false; // (dev0644) reset; the text branch re-sets it
+
   // (zip0178) Track current row so vpKeyHandler can navigate from Iu/Ie.
   window._vpCurrentRow = row;
   
@@ -1448,6 +1449,11 @@ function gridOpenFullscreen(row, contained) {
     // The video branch above already claimed real video rows (isVideoRow), and
     // the image branch below claims any remaining `row.link`; so ftext only
     // renders when there is no link at all. (qfile quizzes have no link.)
+    // (dev0644) Mark this open as the TEXT READER: ↓ closes it back to the
+    // grid (vpKeyHandler), pairing with the grid's ↑ = expand-t-cell. The
+    // designation-page re-entries re-arm this flag after gridOpenFullscreen
+    // resets it, so ↓ returns to the grid from a media page too.
+    window._vpTextReader = true;
     // QUIZ / HTML FULLSCREEN via srcdoc iframe
     //
     // (zip0174) Iframes capture keyboard focus, so once the user
@@ -1721,6 +1727,7 @@ function gridOpenFullscreen(row, contained) {
               _desigCleanup();
               gridOpenFullscreen(dRow);
               window._vpSectNav = nav;
+              window._vpTextReader = true;  // (dev0644) still the reader — ↓ closes
               _addSectArrows();   // (dev0637) re-entry's top reset removed them
               return;
             }
@@ -2053,6 +2060,7 @@ function vpClose() {
 
   window._vpCurrentRow = null; // (zip0178) clear tracked row
   window._vpSectNav = null;    // (dev0617) drop the text-slide section pager
+  window._vpTextReader = false; // (dev0644) leaving the reader (if we were in it)
   
   // Stop/destroy YouTube or Vimeo player
   if (_vpState && _vpState.player) {
@@ -2097,6 +2105,9 @@ function vpClose() {
     window._vpForcedGridFromT = false;
   }
   document.removeEventListener('keydown', vpKeyHandler, true);
+  // (dev0644) Re-sync sectioned grid cells to the reader's last page
+  // (_salSectIdxByUid) so ↓/Esc lands with the t cell "back in frame".
+  if (typeof window._gridSectionSyncAll === 'function') window._gridSectionSyncAll();
   // Restore focus to main document so hotkeys work immediately
   document.body.setAttribute('tabindex', '-1');
   document.body.focus();
@@ -2129,16 +2140,27 @@ function vpKeyHandler(e) {
 
   // (dev0617) ←/→ page through a sectioned fullscreen text slide. Only set for
   // multi-section text opens.
-  // (dev0643) EXCEPTION: when the current section is a designation page showing
-  // a live VIDEO, ←/→ must frame-step that video (the whole point of opening it
-  // in V), not page sections — so let those keys fall through to the frame-step
-  // block below. Section paging on a video page stays available via the floating
-  // ‹ › arrows and left/right swipe (both call _vpSectNav directly). Image/text
-  // sections have no player, so they still page on ←/→ as before.
+  // (dev0644) Slide paging WINS everywhere — including a designation page with
+  // a live video (dev0643 frame-stepped there; user verdict: moving the slide
+  // takes priority). Frame-stepping a video page is Shift+←/→ — shifted arrows
+  // skip this block and fall through to the frame-step block below, which
+  // doesn't care about modifiers.
   if (window._vpSectNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
-      && !(_vpState && _vpState.player)) {
+      && !e.shiftKey) {
     e.preventDefault(); e.stopPropagation();
     window._vpSectNav(e.key === 'ArrowRight' ? 1 : -1);
+    return;
+  }
+
+  // (dev0644) In the text reader (a t cell expanded via ↑ / swipe-right), ↓
+  // returns to the grid — vpClose re-syncs the sectioned cell so it lands
+  // "back in frame" on the reader's last page. Applies on designation media
+  // pages too (the flag is re-armed there). ↑ is consumed but inert, so it
+  // can't fall through to the Iu/Ie row-navigation below (which would hop to
+  // an unrelated row from inside a lesson).
+  if (window._vpTextReader && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'ArrowDown') vpClose();
     return;
   }
 

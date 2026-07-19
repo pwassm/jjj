@@ -599,8 +599,28 @@ function _gridSectionToggleSummary(cell, sum) {
 
 // Arrow-key section nav for the 1a text slide — called from core.js's
 // window-capture dispatcher while G is open. Returns true when consumed;
-// false (1a isn't a sectioned text cell) leaves arrows inert as before.
+// false (no t cell to act on) leaves arrows inert as before.
+// (dev0644) ↑ now EXPANDS a t cell to the full-window reader (↓ inside the
+// reader returns to G — see vpKeyHandler); the old ↓/↑ = expand/collapse-all
+// collapsibles is gone. Target cell: the hovered t cell (desktop mouse),
+// else 1a, else the first t cell in the grid.
 window._gridSectionKey = function (key) {
+  if (key === 'ArrowUp') {
+    let tc = (_gridHoverCell && _gridHoverCell._rowData
+              && _gridIsTextRow(_gridHoverCell._rowData)) ? _gridHoverCell : null;
+    if (!tc) {
+      const all = [...document.querySelectorAll('#gridContainer .grid-cell')]
+        .filter(c => c._rowData && _gridIsTextRow(c._rowData));
+      tc = all.find(c => c.dataset && c.dataset.cell === '1a') || all[0] || null;
+    }
+    if (!tc) return false;
+    _lastGridRow = tc._rowData;
+    // Open the reader on the SAME section the cell is showing (dev0617 hint).
+    window._vpSectStart = tc._salSect ? tc._salSect.idx : 0;
+    gridOpenFullscreen(tc._rowData);
+    return true;
+  }
+  if (key === 'ArrowDown') return false;   // ↓ only acts inside the reader
   const cell = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
   if (!cell || !cell._salSect || !cell._salSect.inner.isConnected) return false;
   const s = cell._salSect;
@@ -616,15 +636,24 @@ window._gridSectionKey = function (key) {
     if (s.list.length > 1) _gridToast('Section ' + (ni + 1) + '/' + s.list.length, 900);
     return true;
   }
-  if (key === 'ArrowDown' || key === 'ArrowUp') {
-    const open = key === 'ArrowDown';
-    s.inner.querySelectorAll('details').forEach(d => {
-      if (open) d.setAttribute('open', ''); else d.removeAttribute('open');
-    });
-    if (cell._htmlThumbFit) cell._htmlThumbFit();
-    return true;
-  }
   return false;
+};
+
+// (dev0644) After the fullscreen reader closes, re-render any sectioned cell
+// whose persisted page (written by the reader's _vpSectNav into
+// _salSectIdxByUid) moved on — so the t cell is "back in frame" on the page
+// the reader left off. Called from vpClose.
+window._gridSectionSyncAll = function () {
+  document.querySelectorAll('#gridContainer .grid-cell').forEach(cell => {
+    const s = cell._salSect;
+    if (!s || s.uid == null || !s.inner.isConnected) return;
+    const want = (window._salSectIdxByUid || {})[s.uid];
+    if (typeof want === 'number' && want !== s.idx
+        && want >= 0 && want < s.list.length) {
+      s.idx = want;
+      _gridSectionRender(cell);
+    }
+  });
 };
 
 // Update visual state of T / C source buttons
@@ -655,6 +684,24 @@ function gridUpdateSourceBtns() {
   }
 }
 
+// (dev0644) Instructional presentations live IN c.json: a config's `pres`
+// field holds the deck HTML (edit it from C — focus the pres column, press E,
+// same as ctxt). When set, it drives the 1a cell as a synthesized t-row,
+// overriding any UID wired there. Cached per gname so cell._rowData identity
+// stays stable across renders; rebuilt when the HTML changes.
+const _gridPresRowCache = {};
+function _gridPresRow(cfg) {
+  const html = String((cfg && cfg.pres) || '').trim();
+  if (!html) return null;
+  const key = String((cfg && cfg.gname) || '');
+  const hit = _gridPresRowCache[key];
+  if (hit && hit.ftext === html) return hit;
+  const row = { UID: 'pres:' + key, show: '1', ltype: 't', VidRange: 'text',
+                link: '', cell: '1a', ftext: html, n1: key + ' instructions' };
+  _gridPresRowCache[key] = row;
+  return row;
+}
+
 // Resolve a grid cell to a data row — respects current source mode
 function getRowByCellForGrid(cellStr) {
   if (_gridSource === 'T') {
@@ -663,6 +710,11 @@ function getRowByCellForGrid(cellStr) {
     // C mode: look up UID from active config, then find row. (dev0346) The cell
     // value may carry a per-cell zoom suffix ("UID/zoom") — parse out the UID.
     if (!_gridActiveConfig) return null;
+    // (dev0644) The config's own presentation claims 1a when `pres` is set.
+    if (cellStr === '1a') {
+      const pr = _gridPresRow(_gridActiveConfig);
+      if (pr) return pr;
+    }
     const pv = _gridParseCellVal(_gridActiveConfig[cellStr]);
     // (dev0609) A link cell holds the media URL itself, not a UID — synthesize
     // (or adopt) a row for it so the rest of the grid can't tell the difference.
@@ -1845,7 +1897,9 @@ function gridShow() {
   }
   // (dev0548) Refresh the dev-only "N need source" backlog pill (bottom-left).
   if (typeof window._gridUpdateBacklogPill === 'function') window._gridUpdateBacklogPill();
-  // (dev0369) Grid-level "swipe back to the Main Page" gesture (user mode only).
+  // (dev0369) Grid-level "swipe back to the Main Page" gesture. (dev0644) Now
+  // in BOTH modes — Gd gets the same exit; with the Gu hamburger/Configs
+  // chrome gone this swipe (and Esc) is THE way back to the choice menu.
   // A right-to-left swipe that CROSSES A CELL BOUNDARY — begins in one grid cell
   // and ends in a different cell (or off the grid) — returns to the shareable
   // menu's Main Page. A left-swipe that STAYS inside a single cell keeps its
@@ -1874,7 +1928,6 @@ function gridShow() {
       const x0 = _swX, y0 = _swY, mod = _swMod, startCell = _swCell;
       _swX = _swY = null; _swMod = false; _swCell = null;
       if (x0 == null || mod || !startCell) return;
-      if (typeof _isUserMode === 'function' && !_isUserMode()) return;
       // Direction in the user's visual frame (handles rotated portrait).
       const a = window.rotateXY ? window.rotateXY({ clientX: x0, clientY: y0 }) : { x: x0, y: y0 };
       const b = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
@@ -2461,12 +2514,12 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       return;
     }
-    // Swipe LEFT → (dev0369, Gu only) a swipe that crosses into another cell
-    // returns to the Main Page; one that stays inside the cell pauses it. This
-    // is the touch-fallback mirror of the overlay-level pointer handler in
-    // gridShow(), for browsers that don't fire pointer events on touch.
+    // Swipe LEFT → (dev0369; dev0644 both modes) a swipe that crosses into
+    // another cell returns to the Main Page; one that stays inside the cell
+    // pauses it. This is the touch-fallback mirror of the overlay-level
+    // pointer handler in gridShow(), for browsers without pointer events.
     if (dx < -40 && Math.abs(dy) < Math.abs(dx)) {
-      if (userMode && endX != null) {
+      if (endX != null) {
         const el = document.elementFromPoint(endX, endY);
         const endCell = (el && el.closest) ? el.closest('.grid-cell') : null;
         if (!endCell || (endCell.dataset && endCell.dataset.cell !== cellStr)) {
