@@ -544,7 +544,14 @@ window._salSectCellSpec = function (sectHtml) {
 function _gridSectionSetup(cell, wrap, inner, row) {
   const html = (typeof renderFtext === 'function') ? renderFtext(row.ftext) : (row.ftext || '');
   const sections = window._salSplitSections(html);
-  cell._salSect = { list: sections, idx: 0, inner: inner };
+  // (dev0643) Resume on the section the viewer last left — leaving the 1a cell
+  // for ANY reason (into V, out to the menu, a config switch, a grid rebuild)
+  // used to snap it back to section 0. Remember the last index per row UID (the
+  // fullscreen reader writes the same map, so paging there is honored too).
+  window._salSectIdxByUid = window._salSectIdxByUid || {};
+  let startIdx = window._salSectIdxByUid[row.UID] || 0;
+  if (!(startIdx >= 0 && startIdx < sections.length)) startIdx = 0;
+  cell._salSect = { list: sections, idx: startIdx, inner: inner, uid: row.UID };
   // Re-fit whenever a collapsible toggles ('toggle' doesn't bubble — capture).
   inner.addEventListener('toggle', () => { if (cell._htmlThumbFit) cell._htmlThumbFit(); }, true);
   _gridSectionRender(cell);
@@ -556,6 +563,11 @@ function _gridSectionRender(cell) {
   s.inner.innerHTML = s.list[s.idx] || '';
   // Start collapsed — a tap on the summary (or ↓) reveals the hidden body.
   s.inner.querySelectorAll('details[open]').forEach(d => d.removeAttribute('open'));
+  // (dev0643) Persist the current section so a later rebuild resumes here.
+  if (s.uid != null) {
+    window._salSectIdxByUid = window._salSectIdxByUid || {};
+    window._salSectIdxByUid[s.uid] = s.idx;
+  }
   if (cell._htmlThumbFit) requestAnimationFrame(cell._htmlThumbFit);
 }
 
@@ -2286,8 +2298,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
       return;
     }
 
-    // Swipe LEFT → pause video
+    // Swipe LEFT → (dev0643) on the sectioned 1a text slide, advance to the
+    // NEXT section (there is no video to pause on a text cell); swipe RIGHT
+    // above still opens the fullscreen reader. Every other cell pauses/plays.
     if (dx < -40 && Math.abs(dy) < Math.abs(dx)) {
+      if (cell._salSect) { if (window._gridSectionKey) window._gridSectionKey('ArrowRight'); return; }
       gridTogglePauseCell(cellStr);
       return;
     }
@@ -2466,6 +2481,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
           return;
         }
       }
+      // (dev0643) Within-cell swipe left on the sectioned 1a text slide advances
+      // a section (touch mirror of the pointer path above).
+      if (cell._salSect) { if (window._gridSectionKey) window._gridSectionKey('ArrowRight'); return; }
       gridTogglePauseCell(cellStr);
       return;
     }

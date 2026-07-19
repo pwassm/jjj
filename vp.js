@@ -526,6 +526,9 @@ function gridOpenFullscreen(row, contained) {
             const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
             const ms = Date.now() - _swipe.t;
             const horiz = Math.abs(dx) > 40 && Math.abs(dy) < Math.abs(dx) && ms < 800 && _vScale < 1.1;
+            // (dev0643) Sectioned-text designation video page → swipe pages the
+            // lesson slides (left = next, right = previous) instead of closing.
+            if (horiz && window._vpSectNav) { window._vpSectNav(dx < 0 ? 1 : -1); _swipe = null; return; }
             // R→L swipe (legacy close). In a slideshow this advances to the
             // NEXT slide (the signal is a no-op outside a slideshow video).
             if (horiz && dx < 0) {
@@ -626,6 +629,14 @@ function gridOpenFullscreen(row, contained) {
           const dx = p.x - mStart.x, dy = p.y - mStart.y;
           const horiz = Math.abs(dx) > 60 && Math.abs(dy) < Math.abs(dx) &&
                         Date.now() - mStart.t < 1500;
+          // (dev0643) On a sectioned-text designation VIDEO page, a horizontal
+          // swipe pages the lesson slides (left = next, right = previous) rather
+          // than closing V — matching the floating ‹ › arrows. ←/→ keys are left
+          // to frame-step the video (vpKeyHandler dev0643).
+          if (horiz && window._vpSectNav) {
+            window._vpSectNav(dx < 0 ? 1 : -1);
+            mStart = null; mPanBase = null; _vApply(); return;
+          }
           // R→L drag → close (slideshow: next slide).
           if (horiz && dx < 0) {
             if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(1);
@@ -1481,6 +1492,24 @@ function gridOpenFullscreen(row, contained) {
             window._vpSectNav(ev.key === 'ArrowRight' ? 1 : -1);
           }
         }, true);
+        // (dev0643) Swipe left / right inside the reader pages sections too —
+        // swipe left = next, swipe right = previous. A small drag (a tap on the
+        // triangle or a link) stays under the threshold, so those still work.
+        if (idoc && window._vpSectNav) {
+          let _ss = null;
+          idoc.addEventListener('pointerdown', function (ev) {
+            _ss = { x: ev.clientX, y: ev.clientY, t: Date.now() };
+          }, true);
+          idoc.addEventListener('pointerup', function (ev) {
+            if (!_ss) return;
+            var dx = ev.clientX - _ss.x, dy = ev.clientY - _ss.y, ms = Date.now() - _ss.t;
+            _ss = null;
+            if (Math.abs(dx) > 55 && Math.abs(dy) < Math.abs(dx) && ms < 800 && window._vpSectNav) {
+              ev.preventDefault();
+              window._vpSectNav(dx < 0 ? 1 : -1);
+            }
+          }, true);
+        }
       } catch (_) {}
     });
 
@@ -1575,7 +1604,16 @@ function gridOpenFullscreen(row, contained) {
           + 'summary a,summary a:visited{color:#2563eb!important;text-decoration:underline;}'
           // (dev0619) Slide-wide text color (inline on the .te-slide wrapper)
           // wins over the forced summary blue — matches Xe/Xs/G behavior.
-          + '.te-slide[style*="color:"] summary{color:inherit!important;}';
+          + '.te-slide[style*="color:"] summary{color:inherit!important;}'
+          // (dev0643) Large rotating blue triangle — the same prominent
+          // disclosure control the grid uses (index.html), re-declared here
+          // because this iframe has its own document.
+          + 'summary{list-style:none;cursor:pointer;}'
+          + 'summary::-webkit-details-marker{display:none;}'
+          + 'summary::before{content:"\\25B6";display:inline-block;font-size:1.6em;'
+          + 'line-height:0;vertical-align:-0.16em;margin-right:0.32em;color:#2563eb;'
+          + 'text-shadow:0 0 3px rgba(255,255,255,0.95);transition:transform 0.15s ease;}'
+          + 'details[open]>summary::before{transform:rotate(90deg);}';
         const _aStyle = '<style>' + _ftStyles + '</style>';
         // (dev0249) Body scaffold for fragment-style ftext: cap content at
         // ~880px and auto-center so desktop has reasonable side margins
@@ -1719,6 +1757,12 @@ function gridOpenFullscreen(row, contained) {
                 return;
               }
               sIdx = ni;
+              // (dev0643) Remember where the reader is so returning to the grid
+              // resumes on the same section (see grid.js _salSectIdxByUid).
+              if (row && row.UID != null) {
+                window._salSectIdxByUid = window._salSectIdxByUid || {};
+                window._salSectIdxByUid[row.UID] = sIdx;
+              }
               showSect();
             };
           }
@@ -2084,8 +2128,15 @@ function vpKeyHandler(e) {
   }
 
   // (dev0617) ←/→ page through a sectioned fullscreen text slide. Only set for
-  // multi-section text opens (never for video/image, where _vpState is live).
-  if (window._vpSectNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+  // multi-section text opens.
+  // (dev0643) EXCEPTION: when the current section is a designation page showing
+  // a live VIDEO, ←/→ must frame-step that video (the whole point of opening it
+  // in V), not page sections — so let those keys fall through to the frame-step
+  // block below. Section paging on a video page stays available via the floating
+  // ‹ › arrows and left/right swipe (both call _vpSectNav directly). Image/text
+  // sections have no player, so they still page on ←/→ as before.
+  if (window._vpSectNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && !(_vpState && _vpState.player)) {
     e.preventDefault(); e.stopPropagation();
     window._vpSectNav(e.key === 'ArrowRight' ? 1 : -1);
     return;

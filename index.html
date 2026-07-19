@@ -431,6 +431,34 @@ html.is-mobile #mobileToCBtn { display: none !important; }
    Inline headings share the marker's line in every render context. */
 summary > h1, summary > h2, summary > h3,
 summary > h4, summary > h5, summary > h6 { display: inline; }
+/* (dev0643) Prominent disclosure control. The tiny native ▸ marker was easy to
+   miss, and inside a light .te-slide the light-blue summary text (#8ef, below)
+   washed out — so a collapsible card did not read as "there is more here."
+   Hide the native marker and draw a LARGE blue triangle that rotates to point
+   down when the card opens. A white halo keeps it visible on light OR dark slide
+   backgrounds; the triangle — not the text color — is now the primary affordance. */
+.grid-cell summary, #teSlideContent summary, #gridFsContent summary {
+  list-style: none; cursor: pointer;
+}
+.grid-cell summary::-webkit-details-marker,
+#teSlideContent summary::-webkit-details-marker,
+#gridFsContent summary::-webkit-details-marker { display: none; }
+.grid-cell summary::before,
+#teSlideContent summary::before,
+#gridFsContent summary::before {
+  content: "\25B6"; display: inline-block; font-size: 1.6em; line-height: 0;
+  vertical-align: -0.16em; margin-right: 0.32em; color: #2563eb;
+  text-shadow: 0 0 3px rgba(255,255,255,0.95), 0 0 2px rgba(255,255,255,0.95);
+  transition: transform 0.15s ease;
+}
+.grid-cell details[open] > summary::before,
+#teSlideContent details[open] > summary::before,
+#gridFsContent details[open] > summary::before { transform: rotate(90deg); }
+/* Inside a colored slide, let the summary TITLE take the slide's own (contrast-
+   chosen) text color instead of the dark-context #8ef, which was invisible on a
+   white slide. The big blue triangle above stays the affordance either way. */
+.grid-cell .te-slide summary, #teSlideContent .te-slide summary,
+#gridFsContent .te-slide summary { color: inherit !important; }
 /* (dev0593) No list markers or 40px indent in any RENDER context, matching the
    Xe editor (xe.js dev0379). Pasted answers keep their <ul>/<li>, and a
    select-all delete can leave empty <li> spacers; the editor hides both but the
@@ -998,7 +1026,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0642';
+  window.HELP_VERSION_STR = 'dev0643';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     var files = ['DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','xe2-bundle.js','xe2.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];
