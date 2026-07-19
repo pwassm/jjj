@@ -1276,7 +1276,7 @@
     "gname": "BoxerCrabsImages17",
     "cells": 17,
     "Zoom": 1.6,
-    "DateModified": "2026-07-19 04:09:25",
+    "DateModified": "2026-07-19 04:32:01",
     "1a": "1424",
     "1b": "1423",
     "1c": "1422",
@@ -1296,7 +1296,7 @@
     "5e": "1407",
     "DateAdded": "2026-07-04 17:53:43",
     "ctxt": "BoxerCrabImages",
-    "active": "1"
+    "active": ""
   },
   {
     "gname": "BoxerCrabsVideos25",
@@ -1481,7 +1481,7 @@
     "gname": "RadulaMixedTextAndVideo",
     "cells": 25,
     "Zoom": 1.2,
-    "DateModified": "2026-07-19 04:03:34",
+    "DateModified": "2026-07-19 04:32:31",
     "1a": "1784",
     "1b": "1783_d",
     "1c": "1783",
@@ -1508,13 +1508,14 @@
     "5d": "1787",
     "5e": "1786",
     "DateAdded": "2026-07-19 04:02:31",
-    "active": "1"
+    "active": "1",
+    "ctxt": "RadulaMixedTextVideo"
   },
   {
     "gname": "GridOf9video to teach navigation",
     "cells": 9,
     "Zoom": 2,
-    "DateModified": "2026-07-19 04:08:58",
+    "DateModified": "2026-07-19 04:32:49",
     "1a": "1627",
     "1b": "1633",
     "1c": "1632",
@@ -1525,13 +1526,14 @@
     "3b": "1634",
     "3c": "1611",
     "DateAdded": "2026-07-19 04:08:43",
-    "active": "1"
+    "active": "1",
+    "ctxt": "GridOf9toTeachNavigation"
   },
   {
     "gname": "CoralMorphologic17No3",
     "cells": 17,
     "Zoom": 1.2,
-    "DateModified": "2026-07-19 04:18:30",
+    "DateModified": "2026-07-19 04:33:03",
     "1a": "1801",
     "1b": "1370",
     "1c": "1372",
@@ -1550,6 +1552,7 @@
     "5d": "1362",
     "5e": "1363",
     "DateAdded": "2026-07-19 04:18:02",
-    "active": "1"
+    "active": "1",
+    "ctxt": "CoralMorphologic3"
   }
 ]
