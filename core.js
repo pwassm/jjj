@@ -7665,22 +7665,16 @@ async function _fetchWebTextForRows(rows) {
         // only toasting every 2nd one if 3+ pending. Simpler: just toast.
         toast('✓ Fetched: ' + (row.link.length > 50 ? row.link.slice(0, 47) + '…' : row.link), 1200);
       } else {
-        // Fetch returned nothing — leave ftext empty, mark with a hint
-        row.ftext = '<p style="color:#a66;font-style:italic;">[Fetch failed — paste text manually]</p>';
-        row.DateModified = isoNow();
-        save();
-        if (typeof render === 'function') render();
-        toast('⚠ Could not fetch: ' + (row.link.length > 50 ? row.link.slice(0, 47) + '…' : row.link), 2200);
+        // (dev0639) Fetch returned nothing — leave ftext EMPTY (never write a
+        // placeholder into ftext; the user pastes the text manually later and a
+        // stub would just be junk to clear first). Brief toast only.
+        toast('cannot fetch', 1200);
       }
     } catch (e) {
+      // (dev0639) Same: on a fetch error leave ftext untouched (empty), no
+      // stub, just a brief toast. Detail still goes to the console.
       console.warn('Fetch error for', row.link, e);
-      row.ftext = '<p style="color:#a66;font-style:italic;">[Fetch error: '
-        + (e && e.message ? e.message.replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c])) : 'unknown')
-        + ']</p>';
-      row.DateModified = isoNow();
-      save();
-      if (typeof render === 'function') render();
-      toast('⚠ Fetch error: ' + (row.link.length > 50 ? row.link.slice(0, 47) + '…' : row.link), 3000);
+      toast('cannot fetch', 1200);
     }
   }
 }
