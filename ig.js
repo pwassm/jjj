@@ -117,6 +117,13 @@
   // COOKIE_CAP=1 this means the run halts the instant it leaves cookieless territory —
   // one authenticated request at most per run. Re-run to step past a wall.
   const WALL_CAP = 1;
+  // (dev0645) DOWNLOADS get a looser, CONSECUTIVE-failure stop instead of the first-
+  // failure abort. The cookieless photo-carousel walker is easily (and transiently) IG-
+  // throttled, so one blocked item shouldn't kill the whole run. A single in-item retry
+  // (see runBatch) heals most transient throttles; if downloads fail this many times IN
+  // A ROW (no success between), it's a real block → stop. A success resets the streak.
+  const DOWNLOAD_WALL_CAP = 2;
+  const DOWNLOAD_RETRY_MS = [8000, 15000];   // pause before the single per-item retry
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -1025,6 +1032,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
     let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
+    let consecFail = 0;                      // (dev0645) run of back-to-back download failures
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
     const t0 = Date.now();
     // Rows that still need work. Already-done rows are passed over silently — no
@@ -1054,9 +1062,20 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       lastOpError = ''; lastOpInfo = '';
       processingId = r.id; renderBody();   // (dev0445) highlight the row being worked on
       igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
-      const good = await doOne(r);
+      let good = await doOne(r);
+      // (dev0645) Single in-item retry for DOWNLOADS. The cookieless photo-carousel walker
+      // is easily but usually transiently IG-throttled; a short pause + one retry clears
+      // most first-attempt blocks so a lone throttled item never aborts the run. Skipped
+      // if the failure is a hard rate-limit (429) — retrying that just hammers IG.
+      if (!good && isDl && !batchAbort && !isThrottle(lastOpError)) {
+        const rg = rnd(DOWNLOAD_RETRY_MS[0], DOWNLOAD_RETRY_MS[1]);
+        igBatchUpdate(`${label} ${r.id} — retrying in ${(rg / 1000).toFixed(0)}s (transient block?)\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}`);
+        await sleep(rg);
+        if (!batchAbort) { lastOpError = ''; lastOpInfo = ''; good = await doOne(r); }
+      }
       if (good) {
         ok++;
+        consecFail = 0;                       // (dev0645) success breaks the failure streak
         if (lastOpInfo === 'Firefox cookies used') cookieUsed++;
         igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}`);
         if (cookieUsed >= COOKIE_CAP) cookieStopped = true;   // (dev0444) account-safety cap hit
@@ -1068,13 +1087,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         fail++;
         if (isThrottle(lastOpError)) throttled = true;
         // (dev0458) Stop at the first login-walled result (cookie-conservative).
-        // (dev0569) For DOWNLOADS, ANY failure is the stop signal — never keep hammering
-        // IG past the first post we couldn't fetch. Deliberately NOT gated on isWall():
-        // yt-dlp's wall wording drifts and has silently broken this WALL_CAP stop 3×
-        // (dev0442/0470/0501); since dev0568 downloads are cookieless-or-fail, so a
-        // failure always warrants stopping. Enrich keeps the isWall() test (its
-        // auto-enrich driver tells a walled VPN exit from a dead post to grind on).
-        else if ((isDl || isWall(lastOpError)) && ++walled >= WALL_CAP) walledStopped = true;
+        // (dev0645) DOWNLOADS now stop only after DOWNLOAD_WALL_CAP failures IN A ROW (a
+        // success resets the streak) — replacing dev0569's first-failure abort, which let
+        // one transiently-throttled photo kill the run. Combined with the single in-item
+        // retry above, a real block still halts fast while transient blips are ridden out.
+        // Deliberately NOT gated on isWall(): yt-dlp's wall wording drifts and has silently
+        // broken the wall stop 3× (dev0442/0470/0501); downloads are cookieless-or-fail
+        // (dev0568) so a failure always counts. Enrich keeps the cumulative isWall() test
+        // (its auto-enrich driver tells a walled VPN exit from a dead post to grind on).
+        else if (isDl) { if (++consecFail >= DOWNLOAD_WALL_CAP) walledStopped = true; }
+        else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
       }
       applyAndRender();
       if (throttled || cookieStopped || walledStopped) break;
@@ -1122,7 +1144,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     else if (cookieStopped) lines.push('', 'Stopped after 1 Firefox-cookie use (your account-safety setting).',
                                            'Re-run to continue — the cap resets each run.');
     else if (walledStopped) lines.push('', isDl
-                                           ? 'Stopped at the first post IG would not serve cookielessly — no Firefox cookies were used.'
+                                           ? `Stopped after ${DOWNLOAD_WALL_CAP} downloads failed in a row (each retried once) — likely a real IP block. No Firefox cookies were used.`
                                            : 'Stopped at the first login-walled post (your account-safety setting).',
                                            isDl
                                            ? 'Often a temporary IP block — wait a bit and re-run, or grab it from a logged-in Firefox.'

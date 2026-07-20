@@ -2186,12 +2186,18 @@ function igDownload(req, res, origin) {
     }
     function run(withCookies, onDone) {
       const args = baseArgs.concat(withCookies ? ['--cookies-from-browser', 'firefox', url] : [url]);
-      let proc, stderr = '';
+      let proc, stderr = '', done = false;
       try { proc = spawn('yt-dlp', args, { windowsHide: true }); }
       catch (e) { onDone(false, 'spawn failed: ' + e.message); return; }
+      // (dev0645) HARD wall-clock kill. --socket-timeout only bounds yt-dlp's own sockets;
+      // a child that hangs otherwise lingers as a node-owned zombie, and over a long
+      // session these pile up and contend for IG connections — the "restart node to fix
+      // reel downloads" symptom. Kill any child that outruns this so none can accumulate.
+      const finish = (ok, err) => { if (done) return; done = true; clearTimeout(killT); onDone(ok, err); };
+      const killT = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} finish(false, 'yt-dlp timed out (killed after 90s)'); }, 90000);
       proc.stderr.on('data', d => { stderr += d.toString('utf8'); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
-      proc.on('error', e => onDone(false, e.message));
-      proc.on('close', code => onDone(code === 0, stderr.trim()));
+      proc.on('error', e => finish(false, e.message));
+      proc.on('close', code => finish(code === 0, stderr.trim()));
     }
     // (dev0434) Cookieless FIRST (keeps the account out of it); only fall back to
     // Firefox cookies if the content is login-walled. A nonzero exit that STILL
