@@ -98,7 +98,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0648';
+const PROXY_BUILD = 'dev0648c';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -475,6 +475,10 @@ function ytdlpCompact(j) {
   const top = k => (j[k] != null && j[k] !== '') ? j[k] : (e0[k] != null ? e0[k] : undefined);
   let mw = 0, mh = 0, dur = 0;
   const scan = o => {
+    // (dev0648c) yt-dlp puts a bare `null` in entries[] for a carousel item it
+    // couldn't extract — scan(null) then threw on `.width` INSIDE a ChildProcess
+    // close handler, an uncaught throw that CRASHED the whole proxy on one bad post.
+    if (!o || typeof o !== 'object') return;
     const w = +o.width || 0, h = +o.height || 0;
     if (h > mh || (h === mh && w > mw)) { mh = h; mw = w; }
     if ((+o.duration || 0) > dur) dur = +o.duration || 0;
