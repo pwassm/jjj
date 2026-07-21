@@ -1584,7 +1584,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     await vpnRefresh(false);
     const exitNow = vpnStatus && vpnStatus.tunnelUp
       ? 'current exit: ' + (vpnStatus.server || vpnStatus.ip || '?')
-      : '⚠ no Proton tunnel up yet — it will switch one on before the 2nd batch';
+      : '⚠ no Proton tunnel up yet — it will bring one up BEFORE batch 1';
     const auths = [...new Set(todo.map(id => rowById(id)?.author).filter(Boolean))];
     const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
     if (!confirm(
@@ -1597,6 +1597,18 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
     let totalOk = 0, batches = 0, switches = 0, endMsg = '';
     busy = true; setBatchUi(true);
+    // (dev0650) Bring a tunnel up BEFORE batch 1 if none is live, so no batch ever
+    // downloads on the home IP (user request).
+    if (!(vpnStatus && vpnStatus.tunnelUp)) {
+      igBatchShow('🔀 bringing up a Proton VPN exit before batch 1…');
+      const sw0 = await vpnSwitchNow('starting — bringing up the first exit');
+      if (sw0 && sw0.tunnelUp) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}`, 3000); }
+      else {
+        busy = false; setBatchUi(false); igBatchHide();
+        igStickyShow('⏹ Stopped — could not bring up a VPN tunnel before batch 1.\nTest with vpn-rotate.bat (watch for a CONNECTED line), then retry.');
+        return;
+      }
+    }
     while (!batchAbort) {
       todo = readyIds();
       if (!todo.length) { endMsg = `✓ Done — no more enriched rows to download in this view.`; break; }

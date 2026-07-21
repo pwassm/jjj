@@ -18,6 +18,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# PS 7.3+ turns a nonzero native exit into a terminating error under Stop; keep it off.
+$PSNativeCommandUseErrorActionPreference = $false
 
 # --- self-elevate (installing/removing a tunnel service needs admin) ------------
 $admin = ([Security.Principal.WindowsPrincipal]`
@@ -43,6 +45,26 @@ function Log($msg) {
     $line = ('{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg)
     Add-Content -Path $LogFile -Value $line
     Write-Host $line
+}
+
+# Any terminating error now lands in the log instead of a silent exit-1 (this is
+# how the dev0649 "switching then nothing" failure would have been visible).
+trap {
+    try { Log ('FATAL: ' + $_.Exception.Message) } catch {}
+    Start-Sleep 4
+    exit 1
+}
+
+# Run wireguard.exe capturing all output, WITHOUT letting native stderr / nonzero
+# exit throw (Windows PowerShell 5.1 turns native stderr into a terminating error
+# under $ErrorActionPreference='Stop'; that killed the swap before dev0650).
+function Wg([string[]]$wgArgs) {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $text = (& $wg @wgArgs 2>&1 | Out-String)
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $old
+    return [pscustomobject]@{ code = $code; out = ($text -replace '\s+', ' ').Trim() }
 }
 
 # --- locate wireguard.exe -------------------------------------------------------
@@ -97,14 +119,16 @@ Log ("switching -> {0}   (mode={1}, {2} US servers available)" -f $chosen.Name, 
 # --- swap the tunnel ------------------------------------------------------------
 # Always stage the chosen config under one fixed name so the tunnel name is stable
 # and the original filenames (which may be long or have odd characters) never matter.
-& $wg /uninstalltunnelservice $TunName 2>$null | Out-Null
+$u = Wg @('/uninstalltunnelservice', $TunName)   # fine to fail — tunnel may not exist yet
+if ($u.code -ne 0) { Log ("(uninstall old tunnel: exit {0}{1})" -f $u.code, $(if($u.out){' - '+$u.out}else{''})) }
 Start-Sleep -Milliseconds 1500
 Copy-Item -LiteralPath $chosen.FullName -Destination $Staging -Force
-& $wg /installtunnelservice $Staging
-if ($LASTEXITCODE -ne 0) {
-    Log ("ERROR: wireguard failed to install tunnel (exit {0})" -f $LASTEXITCODE)
+$i = Wg @('/installtunnelservice', $Staging)
+if ($i.code -ne 0) {
+    Log ("ERROR: installtunnelservice failed (exit {0}): {1}" -f $i.code, $i.out)
     Start-Sleep 5; exit 1
 }
+Log ("tunnel service installed{0}" -f $(if($i.out){' - '+$i.out}else{''}))
 
 # --- confirm the new public IP --------------------------------------------------
 $ip = $null; $city = ''; $country = ''
