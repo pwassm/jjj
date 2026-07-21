@@ -98,7 +98,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0601';
+const PROXY_BUILD = 'dev0647';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -691,31 +691,22 @@ function fetchIgMainMeta(url) {
     if (!m) { resolve(null); return; }
     const id = m[1];
     const permalink = 'https://www.instagram.com/p/' + id + '/';
-    const opts = { agent: false, headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
-    } };
-    let h = '';
-    const req = https.get(permalink, opts, r => {
-      if (r.statusCode !== 200) { r.resume(); resolve(null); return; }
-      r.setEncoding('utf8');
-      r.on('data', c => { h += c; if (h.length > 6e6) req.destroy(); });
-      r.on('end', () => {
-        let meta = null;
-        try { meta = parseIgMainMeta(h, id); } catch (_) {}
-        // (dev0513) Page carried no dims → read them straight from the cover's header
-        // bytes so the download filename gets a real W×H instead of 0x0.
-        if (meta && meta.thumbnail && (!meta.width || !meta.height)) {
-          probeImageDims(meta.thumbnail, permalink).then(d => {
-            if (d) { meta.width = d.width; meta.height = d.height; }
-            resolve(meta);
-          });
-        } else resolve(meta);
-      });
+    // (dev0647) Node-first, curl_cffi-impersonate-if-walled — so a photo cover (single-item
+    // /p) resolves on VPN IPs too, not just the multi-item carousel path. Enrich shares
+    // this fetch, so it gets the same VPN resilience; home IPs never spawn the helper.
+    igGetPageHtml(permalink, 6e6, null, igPageHasMedia).then(h => {
+      if (!h) { resolve(null); return; }
+      let meta = null;
+      try { meta = parseIgMainMeta(h, id); } catch (_) {}
+      // (dev0513) Page carried no dims → read them straight from the cover's header
+      // bytes so the download filename gets a real W×H instead of 0x0.
+      if (meta && meta.thumbnail && (!meta.width || !meta.height)) {
+        probeImageDims(meta.thumbnail, permalink).then(d => {
+          if (d) { meta.width = d.width; meta.height = d.height; }
+          resolve(meta);
+        });
+      } else resolve(meta);
     });
-    req.on('error', () => resolve(null));
-    req.setTimeout(20000, () => { req.destroy(); resolve(null); });
   });
 }
 // (dev0513) Parse pixel dimensions out of an image's leading bytes — JPEG / PNG / WebP /
@@ -829,10 +820,95 @@ function parseIgEmbedImages(html) {
   return best ? [best.url] : [];
 }
 
+// (dev0647) ── TLS-impersonated fetch bridge (PHOTO path) ─────────────────────────────
+// Reels download on VPN/datacenter IPs because yt-dlp's bundled curl_cffi gives them a
+// real-Chrome TLS handshake (JA3) IG's IP-reputation wall trusts. PHOTOS have NO yt-dlp
+// path (yt-dlp fetches zero IG still images), so the proxy scrapes the /p/ inline JSON
+// and pulls fbcdn media with Node's https.get — whose TLS fingerprint IG flags on those
+// IPs, walling photos cookielessly. These helpers reuse the SAME impersonation (via
+// ig_impersonate_fetch.py — curl_cffi, cookieless, the IG account is never touched) so the
+// photo page scrape + CDN fetch slip the wall too. If curl_cffi isn't installed the first
+// probe flips _igImpersonateOk=false and every call no-ops (proxy keeps using Node paths).
+const IG_PYTHON = process.env.IG_PYTHON || 'python';
+const IG_IMPERSONATE_PY = path.join(__dirname, 'ig_impersonate_fetch.py');
+let _igImpersonateOk = null;   // null=untried, true=works, false=curl_cffi missing (stop spawning)
+function igImpersonatedGet(fileUrl, destPath, referer, accept, ua) {
+  return new Promise(resolve => {
+    if (_igImpersonateOk === false) { resolve(false); return; }
+    let u; try { u = new URL(fileUrl); } catch (_) { resolve(false); return; }
+    if (u.protocol !== 'https:') { resolve(false); return; }
+    let proc;
+    try { proc = spawn(IG_PYTHON, [IG_IMPERSONATE_PY, fileUrl, destPath, referer || '', accept || '', ua || ''], { windowsHide: true }); }
+    catch (_) { resolve(false); return; }
+    let out = '', done = false;
+    const finish = ok => { if (done) return; done = true; clearTimeout(killT); resolve(ok); };
+    const killT = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} finish(false); }, 40000);
+    proc.stdout.on('data', d => { out += d.toString('utf8'); if (out.length > 2000) out = out.slice(-2000); });
+    proc.on('error', () => finish(false));
+    proc.on('close', code => {
+      const s = out.trim();
+      if (/^ERR curl_cffi import/i.test(s)) _igImpersonateOk = false;   // not installed → stop trying
+      else if (/^\d/.test(s)) _igImpersonateOk = true;
+      let sz = 0; try { sz = fs.statSync(destPath).size; } catch (_) {}
+      finish(code === 0 && sz > 0);
+    });
+  });
+}
+// Impersonated fetch of an IG PAGE → HTML string ('' on failure). Throwaway temp file.
+function igImpersonatedHtml(permalink, referer, ua) {
+  const tmp = path.join(IG_MEDIA_DIR, '.html_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+  return igImpersonatedGet(permalink, tmp, referer || permalink,
+    'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', ua).then(ok => {
+    let html = '';
+    if (ok) { try { html = fs.readFileSync(tmp, 'utf8'); } catch (_) {} }
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    return html;
+  });
+}
+// Plain Node https GET of an IG page → HTML ('' on any failure). Cookieless: fresh socket.
+function igFetchNodeHtml(permalink, maxBytes, ua) {
+  return new Promise(resolve => {
+    const opts = { agent: false, headers: {
+      'User-Agent': ua || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
+    } };
+    let h = '';
+    const req = https.get(permalink, opts, r => {
+      if (r.statusCode !== 200) { r.resume(); resolve(''); return; }
+      r.setEncoding('utf8');
+      r.on('data', c => { h += c; if (h.length > (maxBytes || 8e6)) req.destroy(); });
+      r.on('end', () => resolve(h));
+    });
+    req.on('error', () => resolve(''));
+    req.setTimeout(20000, () => { req.destroy(); resolve(''); });
+  });
+}
+// Node-first, impersonate-if-walled page fetch. `isGood(html)` returns true once the Node
+// HTML already carries what the caller needs, so home-IP fetches never spawn the Python
+// helper — only a walled/thin page (typical on VPN) triggers the impersonated retry.
+function igGetPageHtml(permalink, maxBytes, ua, isGood) {
+  return igFetchNodeHtml(permalink, maxBytes, ua).then(h => {
+    if (h && isGood(h)) return h;
+    return igImpersonatedHtml(permalink, permalink, ua).then(h2 => (h2 && isGood(h2)) ? h2 : (h || h2 || ''));
+  });
+}
+// A logged-out /p/ page is "good" once it carries the inline media JSON (walled pages don't).
+const igPageHasMedia = h => /"image_versions2"|"video_versions"|"carousel_media"/.test(h);
+
 // (dev0491) GET an image URL → write to destPath. Cookieless, fresh socket + short UA
 // + IG Referer (same recipe that beats the wall on the embed page); follows up to a
 // couple of redirect hops. Resolves true only on a 200 with a non-empty body.
+// (dev0647) On any Node failure, retry ONCE via curl_cffi TLS impersonation — the fbcdn
+// CDN 403s Node on VPN IPs the same way the page does, so a walled photo's media now
+// downloads with the reel-grade handshake. Pure cookieless.
 function igDownloadImage(fileUrl, destPath, referer, hops, accept) {
+  return igDownloadImageNode(fileUrl, destPath, referer, hops, accept).then(ok => {
+    if (ok) return true;
+    return igImpersonatedGet(fileUrl, destPath, referer, accept || 'image/avif,image/webp,image/*,*/*;q=0.8');
+  });
+}
+function igDownloadImageNode(fileUrl, destPath, referer, hops, accept) {
   return new Promise(resolve => {
     if (hops == null) hops = 0;
     let u; try { u = new URL(fileUrl); } catch (_) { resolve(false); return; }
@@ -850,7 +926,7 @@ function igDownloadImage(fileUrl, destPath, referer, hops, accept) {
     const req = https.get(fileUrl, opts, r => {
       if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 3) {
         r.resume();
-        igDownloadImage(new URL(r.headers.location, fileUrl).href, destPath, referer, hops + 1, accept).then(resolve);
+        igDownloadImageNode(new URL(r.headers.location, fileUrl).href, destPath, referer, hops + 1, accept).then(resolve);
         return;
       }
       if (r.statusCode !== 200) { r.resume(); resolve(false); return; }
@@ -1071,36 +1147,24 @@ function igMainCarouselFallback(url, id, tmpDir) {
     if (!m) { resolve([]); return; }
     const sc = m[1];
     const permalink = 'https://www.instagram.com/p/' + sc + '/';
-    const opts = { agent: false, headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
-    } };
-    let h = '';
-    const req = https.get(permalink, opts, r => {
-      if (r.statusCode !== 200) { r.resume(); resolve([]); return; }
-      r.setEncoding('utf8');
-      r.on('data', c => { h += c; if (h.length > 8e6) req.destroy(); });
-      r.on('end', () => {
-        const items = pickIgCarouselMedia(h);
-        if (items.length < 2) { resolve([]); return; }   // not a carousel → single-item path handles it
-        const written = [];
-        let i = 0;
-        const next = () => {
-          if (i >= items.length) { resolve(written); return; }
-          const idx = i++, it = items[idx];
-          const ext = it.kind === 'video' ? '.mp4' : '.jpg';
-          const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
-          igDownloadImage(it.url, dest, permalink, 0, it.kind === 'video' ? '*/*' : undefined).then(ok => {
-            if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
-            next();
-          });
-        };
-        next();
-      });
+    // (dev0647) Node-first, curl_cffi-impersonate-if-walled — beats IG's VPN photo wall.
+    igGetPageHtml(permalink, 8e6, null, igPageHasMedia).then(h => {
+      const items = pickIgCarouselMedia(h);
+      if (items.length < 2) { resolve([]); return; }   // not a carousel → single-item path handles it
+      const written = [];
+      let i = 0;
+      const next = () => {
+        if (i >= items.length) { resolve(written); return; }
+        const idx = i++, it = items[idx];
+        const ext = it.kind === 'video' ? '.mp4' : '.jpg';
+        const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
+        igDownloadImage(it.url, dest, permalink, 0, it.kind === 'video' ? '*/*' : undefined).then(ok => {
+          if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
+          next();
+        });
+      };
+      next();
     });
-    req.on('error', () => resolve([]));
-    req.setTimeout(20000, () => { req.destroy(); resolve([]); });
   });
 }
 
