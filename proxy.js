@@ -2324,25 +2324,6 @@ function igDownload(req, res, origin) {
         } else { embedRescueOr502(err); }
       });
     }
-    // (dev0520) COOKIELESS full-carousel walker — the validated fix for full /p photo
-    // (and mixed) carousels. The logged-out /p/ page already carries every item in its
-    // inline carousel_media JSON at full res (photos 1440px = gallery-dl parity), so this
-    // gets the WHOLE carousel with NO Firefox cookies — dropping the gallery-dl+cookie
-    // dependency for the common case (and the COOKIE_CAP=1 batch stop it caused). Tried
-    // before gallery-dl; gallery-dl stays as an opt-in fallback only if this yields
-    // nothing. Non-carousel posts (<2 items) resolve [] → fall through to gallery-dl/embed
-    // (single photo → index-1 cover) or the reel video_versions rescue (non-photo).
-    function mainCarouselOrGalleryDl(err) {
-      if (!photoPost) { galleryDlOrEmbed(err); return; }
-      wipeTmp();
-      igMainCarouselFallback(url, id, tmpDir).then(files => {
-        if (files.length && tmpFiles().length) {
-          console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' item(s) via cookieless main /p/ carousel_media');
-          sendJson(res, 200, { ok: true, files: publish(), viaMainCarousel: true, usedCookies: false,
-            note: 'full carousel via cookieless main /p/ page (carousel_media) — no Firefox cookies' }, origin);
-        } else { galleryDlOrEmbed(err); }
-      });
-    }
     // (dev0512) COVER-ONLY mode (client toggle): skip the whole yt-dlp/gallery-dl chain
     // and grab JUST the cookieless index-1 cover off the main /p/ page. For authors whose
     // page-1 is the keeper and page-2 is camera/EXIF junk — pure cookieless, no carousel.
@@ -2358,17 +2339,47 @@ function igDownload(req, res, origin) {
       });
       return;
     }
-    run(false, (ok1, err1) => {
-      if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
-      // (dev0494) Download-only cookie net (separate from enrich's IG_USE_COOKIES):
-      // cookieless yt-dlp came back empty → try Firefox cookies if the user opted in.
-      if (!IG_DOWNLOAD_USE_COOKIES) { mainCarouselOrGalleryDl(err1); return; }
-      wipeTmp();   // clear any partial cookieless output before the cookie retry
-      run(true, (ok2, err2) => {
-        if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }
-        mainCarouselOrGalleryDl(err2 || err1);
+    // (dev0648) FULL-CAROUSEL-FIRST for /p posts. yt-dlp is a video tool, so on a MIXED
+    // photo+video carousel its cookieless run fetches ONLY the video items and returns a
+    // PARTIAL — which the old yt-dlp-first flow accepted (tmpFiles().length>0 → publish)
+    // and never completed to the full set. The cookieless walker assembles the WHOLE
+    // carousel (photos+videos) from the /p/ page's inline carousel_media, and dev0647's
+    // igGetPageHtml rides out the VPN photo wall, so try it FIRST for any /p post: a real
+    // carousel (≥2 items) wins outright; only a single-item post (<2 → []) falls through
+    // to the yt-dlp-first chain below (single reel/video, or single-photo cover). Reels
+    // (/reel/) aren't photoPosts (single-item by nature) and skip straight to yt-dlp.
+    // Cover-only mode above is untouched — the page-1-only path for its author survives.
+
+    // The yt-dlp-first chain: single-item /p posts and all reels. The terminal fallback
+    // splits by kind — a /p that already missed the carousel walker goes to gallery-dl/
+    // embed cover (no point re-walking), a reel goes to the video_versions rescue.
+    const ytdlpChain = () => {
+      const terminal = photoPost ? galleryDlOrEmbed : mainVideoRescueOr502;
+      run(false, (ok1, err1) => {
+        if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
+        // (dev0494) Download-only cookie net (separate from enrich's IG_USE_COOKIES):
+        // cookieless yt-dlp came back empty → try Firefox cookies if the user opted in.
+        if (!IG_DOWNLOAD_USE_COOKIES) { terminal(err1); return; }
+        wipeTmp();   // clear any partial cookieless output before the cookie retry
+        run(true, (ok2, err2) => {
+          if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }
+          terminal(err2 || err1);
+        });
       });
-    });
+    };
+    // A /p post may be a carousel — assemble the whole thing cookielessly first. <2 items
+    // (single photo/video, or a throttled walk) falls through to the yt-dlp-first chain.
+    if (photoPost) {
+      igMainCarouselFallback(url, id, tmpDir).then(files => {
+        if (files.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' item(s) via cookieless main /p/ carousel_media (carousel-first)');
+          sendJson(res, 200, { ok: true, files: publish(), viaMainCarousel: true, usedCookies: false,
+            note: 'full carousel via cookieless main /p/ page (carousel_media) — no Firefox cookies' }, origin);
+        } else { wipeTmp(); ytdlpChain(); }
+      });
+      return;
+    }
+    ytdlpChain();
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
