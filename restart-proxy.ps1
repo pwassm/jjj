@@ -39,11 +39,17 @@ if ($n -ge 20) {
 Start-Process cmd -ArgumentList '/k', 'title SLAM proxy :8081 && node proxy.js' -WorkingDirectory 'M:\jjj'
 
 # 3) Verify: does the LIVE build match proxy.js on disk? (polls up to ~25s while node boots)
+#    MUST poll 127.0.0.1, NOT localhost: proxy.js binds .listen(PORT,'127.0.0.1') (IPv4-only,
+#    on purpose - the exec bridge stays off the network). On Win11 'localhost' resolves to
+#    IPv6 ::1 FIRST, nothing listens there, and the ::1 packet is DROPPED (times out) rather
+#    than refused - so a localhost poll burns its whole timeout every iteration and hangs at
+#    "waiting for the proxy to answer" even when the proxy is up. (Browsers dodge this via
+#    Happy Eyeballs; Invoke-RestMethod does not.) 127.0.0.1 hits the real listener directly.
 $disk = (Select-String -Path 'M:\jjj\proxy.js' -Pattern "PROXY_BUILD = '([^']+)'" | Select-Object -First 1).Matches.Groups[1].Value
 Write-Host "  waiting for the proxy to answer (build on disk = $disk) ..."
 $live = '(no response)'
 for ($i = 0; $i -lt 50; $i++) {
-    try { $live = (Invoke-RestMethod 'http://localhost:8081/version' -TimeoutSec 2).build; break }
+    try { $live = (Invoke-RestMethod 'http://127.0.0.1:8081/version' -TimeoutSec 2).build; break }
     catch { Start-Sleep -Milliseconds 500 }
 }
 Write-Host ''

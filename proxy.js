@@ -98,7 +98,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0647';
+const PROXY_BUILD = 'dev0648';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
