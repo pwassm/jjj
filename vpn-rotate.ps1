@@ -116,38 +116,68 @@ else {  # random, avoid an immediate repeat
 
 Log ("switching -> {0}   (mode={1}, {2} US servers available)" -f $chosen.Name, $Mode, $configs.Count)
 
+# Always write state.json at the end of EVERY run (success or fail) with a fresh
+# `at` and an `ok` flag, so the proxy/I-screen see the result immediately instead
+# of waiting out the switch timeout. `ok:$false` leaves no proton_active adapter,
+# so the UI reads it as VPN OFF and the downloader retries/stops.
+function WriteState([bool]$ok, $ip, $city, $country) {
+    @{ lastFile = $chosen.Name; at = (Get-Date -Format o); ip = $ip; city = $city; country = $country; ok = $ok } |
+        ConvertTo-Json | Set-Content -Path $StateFile
+}
+
 # --- swap the tunnel ------------------------------------------------------------
 # Always stage the chosen config under one fixed name so the tunnel name is stable
 # and the original filenames (which may be long or have odd characters) never matter.
 $u = Wg @('/uninstalltunnelservice', $TunName)   # fine to fail — tunnel may not exist yet
 if ($u.code -ne 0) { Log ("(uninstall old tunnel: exit {0}{1})" -f $u.code, $(if($u.out){' - '+$u.out}else{''})) }
-Start-Sleep -Milliseconds 1500
+Start-Sleep -Seconds 2
+
+# Baseline (home) IP captured while NO tunnel is up — the truth-check below needs
+# it: a server whose tunnel doesn't really route leaves us on this exact IP.
+$homeIp = $null
+try { $homeIp = (Invoke-RestMethod 'https://ipinfo.io/json' -TimeoutSec 6).ip } catch {}
+Log ("baseline (no-tunnel) IP: {0}" -f $(if($homeIp){$homeIp}else{'(unknown)'}))
+
 Copy-Item -LiteralPath $chosen.FullName -Destination $Staging -Force
 $i = Wg @('/installtunnelservice', $Staging)
 if ($i.code -ne 0) {
     Log ("ERROR: installtunnelservice failed (exit {0}): {1}" -f $i.code, $i.out)
-    Start-Sleep 5; exit 1
+    WriteState $false $null '' ''; Start-Sleep 3; exit 1
 }
 Log ("tunnel service installed{0}" -f $(if($i.out){' - '+$i.out}else{''}))
 
-# --- confirm the new public IP --------------------------------------------------
-$ip = $null; $city = ''; $country = ''
-foreach ($try in 1..6) {
+# --- VERIFY the tunnel actually routes (dev0651) --------------------------------
+# 1) the proton_active interface must get its 10.2.x WireGuard address.
+$ifUp = $false
+foreach ($t in 1..12) {
+    Start-Sleep -Milliseconds 800
+    if (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $TunName -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -like '10.2.*' }) { $ifUp = $true; break }
+}
+if (-not $ifUp) {
+    Log ("FAIL: {0} never brought the tunnel interface up (server dead/full?). Removing it." -f $chosen.Name)
+    Wg @('/uninstalltunnelservice', $TunName) | Out-Null
+    WriteState $false $null '' ''; Start-Sleep 2; exit 2
+}
+
+# 2) traffic must actually EXIT via the tunnel — the public IP has to change away
+#    from the home baseline. A dead free server leaves us on the home IP (this is
+#    exactly the wg-US-FREE-40 failure). Retry to allow the handshake to complete.
+$ip = $null; $city = ''; $country = ''; $org = ''
+foreach ($try in 1..8) {
     Start-Sleep 2
     try {
         $r = Invoke-RestMethod -Uri 'https://ipinfo.io/json' -TimeoutSec 6
-        if ($r.ip) { $ip = $r.ip; $city = $r.city; $country = $r.country; break }
-    } catch {
-        try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org?format=json' -TimeoutSec 6).ip; if ($ip) { break } } catch {}
-    }
+        if ($r.ip) { $ip = $r.ip; $city = $r.city; $country = $r.country; $org = $r.org
+            if (-not $homeIp -or $ip -ne $homeIp) { break } }
+    } catch {}
+}
+if (-not $ip -or ($homeIp -and $ip -eq $homeIp)) {
+    Log ("FAIL: {0} up but traffic still exits the home IP {1} (handshake failed). Removing it." -f $chosen.Name, $(if($ip){$ip}else{'(no internet)'}))
+    Wg @('/uninstalltunnelservice', $TunName) | Out-Null
+    WriteState $false $ip $city $country; Start-Sleep 2; exit 3
 }
 
-# Record the result LAST (single write). The I screen / proxy read this file and
-# wait for `at` to change, so writing it only after the IP is known means the UI
-# never shows a half-switched state. lastFile also drives -Mode cycle next run.
-@{ lastFile = $chosen.Name; at = (Get-Date -Format o); ip = $ip; city = $city; country = $country } |
-    ConvertTo-Json | Set-Content -Path $StateFile
-
+WriteState $true $ip $city $country
 $where = @($city, $country | Where-Object { $_ }) -join ', '
-if ($ip) { Log ("CONNECTED  {0}   public IP {1}  ({2})" -f $chosen.Name, $ip, $where) }
-else     { Log ("CONNECTED  {0}   (couldn't read public IP -- tunnel is up though)" -f $chosen.Name) }
+Log ("CONNECTED  {0}   public IP {1}  ({2})  [{3}]" -f $chosen.Name, $ip, $where, $org)

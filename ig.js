@@ -337,6 +337,22 @@
     return out;
   }
 
+  // (dev0651) Switch until we land on a WORKING exit (proxy confirms tunnelUp).
+  // Each attempt stages a fresh server, and the .ps1 only reports success once the
+  // public IP has actually changed off the home baseline — so a dead server is
+  // skipped, never silently accepted. Returns the working status, or null.
+  async function vpnEnsureUp(note, tries) {
+    tries = tries || 3;
+    let sw = await vpnSwitchNow(note);
+    let n = 1;
+    while ((!sw || !sw.tunnelUp) && n < tries && !batchAbort) {
+      igToast(`⚠ that exit didn't route — trying another Proton server (${n + 1}/${tries})…`, 2800);
+      sw = await vpnSwitchNow(note + ' (retry ' + (n + 1) + ')');
+      n++;
+    }
+    return (sw && sw.tunnelUp) ? sw : null;
+  }
+
   // ── CSS (scoped under #igOverlay, injected once) ────────────────────────────
   function injectCss() {
     if (document.getElementById('ig-css')) return;
@@ -1601,11 +1617,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // downloads on the home IP (user request).
     if (!(vpnStatus && vpnStatus.tunnelUp)) {
       igBatchShow('🔀 bringing up a Proton VPN exit before batch 1…');
-      const sw0 = await vpnSwitchNow('starting — bringing up the first exit');
-      if (sw0 && sw0.tunnelUp) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}`, 3000); }
+      const sw0 = await vpnEnsureUp('bringing up the first exit');
+      if (sw0) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}`, 3000); }
       else {
         busy = false; setBatchUi(false); igBatchHide();
-        igStickyShow('⏹ Stopped — could not bring up a VPN tunnel before batch 1.\nTest with vpn-rotate.bat (watch for a CONNECTED line), then retry.');
+        igStickyShow('⏹ Stopped before downloading — no VPN exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.');
         return;
       }
     }
@@ -1634,9 +1650,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // switch exits before the next batch
       busy = true; setBatchUi(true);
       igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${totalOk} downloaded so far`);
-      const sw = await vpnSwitchNow(`batch ${batches} done — ✓${totalOk} so far`);
-      if (sw && sw.tunnelUp) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}`, 3000); }
-      else igToast('⚠ VPN switch didn\'t confirm — continuing on the current exit.\n(Fix: re-run vpn-rotate-setup.bat so the switch task works.)', 4600);
+      const sw = await vpnEnsureUp(`switching after batch ${batches}`);
+      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}`, 3000); }
+      else {
+        // Never download on the home IP — the user wants everything through a VPN.
+        endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
+        break;
+      }
       await sleep(1500);
     }
     busy = false; setBatchUi(false); igBatchHide();
