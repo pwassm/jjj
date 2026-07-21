@@ -106,24 +106,24 @@ if ($LASTEXITCODE -ne 0) {
     Start-Sleep 5; exit 1
 }
 
-# record choice
-@{ lastFile = $chosen.Name; at = (Get-Date -Format o) } |
-    ConvertTo-Json | Set-Content -Path $StateFile
-
 # --- confirm the new public IP --------------------------------------------------
-$ip = $null; $where = ''
+$ip = $null; $city = ''; $country = ''
 foreach ($try in 1..6) {
     Start-Sleep 2
     try {
         $r = Invoke-RestMethod -Uri 'https://ipinfo.io/json' -TimeoutSec 6
-        if ($r.ip) {
-            $ip = $r.ip
-            $where = ('{0}, {1}' -f $r.city, $r.country) -replace '^, ',''
-            break
-        }
+        if ($r.ip) { $ip = $r.ip; $city = $r.city; $country = $r.country; break }
     } catch {
         try { $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org?format=json' -TimeoutSec 6).ip; if ($ip) { break } } catch {}
     }
 }
+
+# Record the result LAST (single write). The I screen / proxy read this file and
+# wait for `at` to change, so writing it only after the IP is known means the UI
+# never shows a half-switched state. lastFile also drives -Mode cycle next run.
+@{ lastFile = $chosen.Name; at = (Get-Date -Format o); ip = $ip; city = $city; country = $country } |
+    ConvertTo-Json | Set-Content -Path $StateFile
+
+$where = @($city, $country | Where-Object { $_ }) -join ', '
 if ($ip) { Log ("CONNECTED  {0}   public IP {1}  ({2})" -f $chosen.Name, $ip, $where) }
 else     { Log ("CONNECTED  {0}   (couldn't read public IP -- tunnel is up though)" -f $chosen.Name) }

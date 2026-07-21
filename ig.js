@@ -104,6 +104,7 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const ENRICH_GAP = [1200, 3000];     // ms between batch enrich items (cookieless)
   const DOWNLOAD_GAP = [2500, 6000];   // ms between batch downloads (heavier, may use cookies)
+  const ROTATE_CHUNK = 18;             // (dev0649) downloads per Proton exit before auto-switching
   // (dev0444) Account-safety guard: auto-stop a batch once this many items have had
   // to fall back to Firefox cookies (i.e. login-walled posts fetched AS your logged-in
   // account). Cookieless work is unlimited and account-safe; only the authenticated
@@ -269,6 +270,72 @@
     return document.getElementById('igSticky')?.classList.contains('show') || false;
   }
 
+  // ══ Proton VPN exit pill + rotation (dev0649) ═══════════════════════════════
+  // The pill (bottom-left of the bar) is the "am I actually on a VPN?" answer the
+  // user wanted: it polls the proxy's /vpn/status (which reads what vpn-rotate.ps1
+  // wrote) while the screen is open. batchDownloadRotating() then downloads in
+  // chunks of ROTATE_CHUNK and calls /vpn/switch between chunks, updating the pill.
+  let vpnStatus = null;          // last { tunnelUp, server, ip, city, country, at }
+  let vpnPollTimer = null;
+  let vpnBusy = false;           // a switch is in flight → pill shows a pulse
+
+  function vpnRenderPill() {
+    const el = document.getElementById('igVpn');
+    if (!el) return;
+    const dot = el.querySelector('.dot'), txt = el.querySelector('.txt');
+    el.classList.toggle('busy', vpnBusy);
+    if (vpnBusy) { el.classList.remove('up', 'down'); txt.textContent = 'VPN switching…'; return; }
+    if (!vpnStatus) { el.classList.remove('up', 'down'); txt.textContent = 'VPN ?'; el.title = 'VPN status unavailable — is the proxy (127.0.0.1:8081) running the dev0649 build?'; return; }
+    const s = vpnStatus;
+    el.classList.toggle('up', !!s.tunnelUp);
+    el.classList.toggle('down', !s.tunnelUp);
+    const place = [s.city, s.country].filter(Boolean).join(', ');
+    const label = s.server ? s.server.replace(/^US-?/i, 'US ') : (s.ip || 'unknown');
+    txt.textContent = (s.tunnelUp ? 'VPN ' : 'VPN OFF ') + label + (s.ip ? '  ' + s.ip : '');
+    el.title = (s.tunnelUp ? 'Proton VPN tunnel UP' : '⚠ No Proton tunnel detected — traffic is going out your real IP!')
+      + (s.server ? '\nServer: ' + s.server : '')
+      + (s.ip ? '\nExit IP: ' + s.ip : '')
+      + (place ? '\nLocation: ' + place : '')
+      + (s.at ? '\nSwitched: ' + new Date(s.at).toLocaleString() : '')
+      + '\n(click to refresh)';
+  }
+
+  async function vpnRefresh(toast) {
+    try {
+      const r = await fetch(PROXY + '/vpn/status', { cache: 'no-store' });
+      const j = await r.json();
+      if (j && j.ok) vpnStatus = j;
+    } catch (_) { vpnStatus = null; }
+    vpnRenderPill();
+    if (toast) {
+      const s = vpnStatus;
+      igToast(s
+        ? (s.tunnelUp
+            ? '🟢 Proton VPN UP\nServer: ' + (s.server || '?') + '\nExit IP: ' + (s.ip || '?')
+              + ([s.city, s.country].filter(Boolean).length ? '\n' + [s.city, s.country].filter(Boolean).join(', ') : '')
+            : '🔴 No Proton tunnel detected — your real IP is exposed.\nSwitch on the VPN, then click the pill again.')
+        : '⚠ Could not read VPN status.\nIs the proxy running the dev0649 build?', 4200);
+    }
+  }
+
+  function vpnStartPoll() { if (!vpnPollTimer) vpnPollTimer = setInterval(() => { if (isIgScreenOpen()) vpnRefresh(false); }, 12000); }
+  function vpnStopPoll()  { if (vpnPollTimer) { clearInterval(vpnPollTimer); vpnPollTimer = null; } }
+
+  // Fire a switch and wait for the proxy to confirm the new exit. Returns the new
+  // status (or null on failure). Shows progress in the shared batch panel.
+  async function vpnSwitchNow(note) {
+    vpnBusy = true; vpnRenderPill();
+    igBatchUpdate((note ? note + '\n' : '') + '🔀 switching Proton VPN to a fresh US exit…');
+    let out = null;
+    try {
+      const r = await fetch(PROXY + '/vpn/switch', { method: 'POST' });
+      const j = await r.json();
+      if (j && j.ok) { out = j; vpnStatus = j; }
+    } catch (_) {}
+    vpnBusy = false; vpnRenderPill();
+    return out;
+  }
+
   // ── CSS (scoped under #igOverlay, injected once) ────────────────────────────
   function injectCss() {
     if (document.getElementById('ig-css')) return;
@@ -324,6 +391,21 @@
 #igTable .walled{color:#d59a3a;cursor:help}
 img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;background:#0c1118}
 #igCoverOnly.on{background:#2e7d32;color:#eaffea;border-color:#43a047;font-weight:700}
+/* (dev0649) Proton VPN exit pill + rotating-download button. The pill is always
+   visible in the bar so the current exit (and that a VPN is even ON) is never a
+   mystery; green = tunnel up, red = no tunnel, grey = unknown/proxy down. */
+#igVpn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  padding:3px 9px;border-radius:999px;font:600 12px system-ui;cursor:pointer;
+  border:1px solid #34404f;background:#161d27;color:#9aa7b4}
+#igVpn .dot{width:8px;height:8px;border-radius:50%;background:#4a5563;flex:0 0 auto}
+#igVpn.up{background:#0f2a17;border-color:#2e7d32;color:#c6f0cd}
+#igVpn.up .dot{background:#43d16a;box-shadow:0 0 6px #43d16a}
+#igVpn.down{background:#2a1010;border-color:#7d322e;color:#f0c4c4}
+#igVpn.down .dot{background:#ff5a4d}
+#igVpn.busy{opacity:.7}
+#igVpn.busy .dot{animation:igVpnPulse 1s ease-in-out infinite}
+@keyframes igVpnPulse{0%,100%{opacity:.35}50%{opacity:1}}
+#igRotate.on{background:#0a84ff;border-color:#0a84ff;color:#fff}
 #igToast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.96);
   background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:12px;
   padding:16px 26px;font:14px/1.5 system-ui,Segoe UI,sans-serif;text-align:center;
@@ -467,6 +549,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       <div id="igBar">
         <h2>I · Ig staging</h2>
         <span class="ct" id="igCount"></span>
+        <span id="igVpn" title="Current Proton VPN exit — click to refresh"><span class="dot"></span><span class="txt">VPN …</span></span>
         <input type="text" id="igSearch" placeholder="search author / id / title / caption…">
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
@@ -480,6 +563,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igAutoEnrich" title="Auto-enrich driver (hotkey A) — enriches N at a time and tracks per-Proton-location walls so you can grind the whole backlog by switching exits">🤖 Auto-enrich</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igCoverOnly" title="Toggle download mode. ON = grab only the index-1 cover (no carousel) — for authors whose page-1 is the keeper. OFF = normal full download. Both are cookieless — your IG login is never used either way.">📸 Cover-only: off</button>
+        <button id="igRotate" title="Download the checked rows in batches of 18, switching the Proton VPN to a fresh US exit between batches (via vpn-rotate.ps1). Same cookieless download as ⬇ Download sel, just paced across exits so no single IP does the whole night. Shows the live exit in the VPN pill.">⬇⟳ Download + rotate VPN</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
@@ -512,6 +596,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igAutoEnrich').addEventListener('click', () => toggleAutoPanel());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
+    $('igRotate').addEventListener('click', () => batchDownloadRotating());
+    $('igVpn').addEventListener('click', () => vpnRefresh(true));
     $('igCoverOnly').addEventListener('click', () => {
       coverOnly = !coverOnly;
       const b = $('igCoverOnly');
@@ -1475,6 +1561,77 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       '🍪 cookieless — your IG login is never used');
   }
 
+  // (dev0649) Download the checked rows in chunks of ROTATE_CHUNK, switching the
+  // Proton VPN to a fresh US exit between chunks. Reuses runBatch for each chunk
+  // (same cookieless download + pacing + wall-stop) and re-derives the eligible
+  // set each round, so rows a walled exit couldn't fetch get another try on the
+  // next IP. Terminates when nothing eligible remains, on Stop, or when a whole
+  // chunk downloads zero even after a switch (a login wall, not an IP block).
+  async function batchDownloadRotating() {
+    if (busy) return;
+    // reel-first eligible ids (photos last — see batchDownload's dev0646 note)
+    const eligible = () => {
+      const dlRank = r => (kindOf(r) === 'p' ? 1 : 0);
+      return selectedInView()
+        .filter(id => { const r = rowById(id); return r && !isDownloaded(r); })
+        .sort((a, b) => dlRank(rowById(a) || {}) - dlRank(rowById(b) || {}));
+    };
+    let todo = eligible();
+    if (!todo.length) { igToast('Nothing checked to download in this view.\nCheck rows first (checkbox; Shift-click for a range).', 3600); return; }
+
+    await vpnRefresh(false);
+    const exitNow = vpnStatus && vpnStatus.tunnelUp
+      ? 'current exit: ' + (vpnStatus.server || vpnStatus.ip || '?')
+      : '⚠ no Proton tunnel detected right now — turn the VPN on first';
+    const auths = [...new Set(todo.map(id => rowById(id)?.author).filter(Boolean))];
+    const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
+    if (!confirm(
+        `Download ${todo.length} item(s) from ${authLine}\n`
+      + `in batches of ${ROTATE_CHUNK}, switching the Proton VPN to a fresh US exit between batches.\n\n`
+      + `• ${exitNow}\n`
+      + `• Every download is COOKIELESS — your IG login is never used.\n`
+      + `• Switching uses vpn-rotate.ps1 — run vpn-rotate-setup.bat ONCE for silent (no-UAC) switches.\n`
+      + `• Press ⏹ Stop any time.`)) return;
+
+    let totalOk = 0, batches = 0, switches = 0, stagnant = 0;
+    busy = true; setBatchUi(true);
+    igBatchShow('⬇⟳ Download + rotate VPN\nstarting…');
+    while (!batchAbort) {
+      todo = eligible();
+      if (!todo.length) break;
+      const chunk = todo.slice(0, ROTATE_CHUNK);
+      batches++;
+      // runBatch manages its own busy/UI/abort; it clears batchAbort at its start,
+      // so we always re-check batchAbort AFTER it returns (never call it with one
+      // pending — the while-guard + the break below ensure that).
+      const okThis = await runBatch(`Downloading (batch ${batches})`, chunk, DOWNLOAD_GAP,
+        r => downloadRow(r, false), isDownloaded, '🍪 cookieless — your IG login is never used');
+      totalOk += okThis;
+      igStickyHide();                 // drop runBatch's per-chunk report; one final report at the end
+      if (batchAbort) break;          // Stop pressed during the chunk
+      const remain = eligible();
+      if (!remain.length) break;      // all eligible rows downloaded
+      if (okThis === 0) { if (++stagnant >= 2) break; } else stagnant = 0;
+      // keep the UI locked + Stop visible across the switch
+      busy = true; setBatchUi(true);
+      igBatchShow(`⬇⟳ batch ${batches} done · ✓${totalOk} downloaded\n${remain.length} still to go`);
+      const sw = await vpnSwitchNow(`batch ${batches} done — ✓${totalOk} so far`);
+      if (sw) switches++;
+      else igBatchUpdate('⚠ VPN switch failed — continuing on the current exit\n(is vpn-rotate-setup.bat done? proxy on dev0649?)');
+      await sleep(2000);
+      if (batchAbort) break;
+    }
+    busy = false; setBatchUi(false); igBatchHide();
+    await vpnRefresh(false);
+    const exit = vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'unknown';
+    igStickyShow(
+        `✓ Download + rotate ${batchAbort ? 'stopped' : 'complete'}\n\n`
+      + `${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}\n`
+      + `${switches} VPN switch${switches === 1 ? '' : 'es'}\n`
+      + `current exit: ${exit}`
+      + (stagnant >= 2 ? `\n\nStopped early — a whole batch downloaded nothing even after switching exits, so the rest likely need a login (not a new IP).` : ''));
+  }
+
   // ── Promote → ml.json ───────────────────────────────────────────────────────
   function promoteRow(r, single) {
     if (r.status === 'promoted') { igToast(r.id + ' already promoted (UID ' + r.mlUID + ')', 2200); return null; }
@@ -2044,6 +2201,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     build();
     document.getElementById('igOverlay').classList.add('open');
     loadData();
+    vpnRefresh(false); vpnStartPoll();   // (dev0649) show the current Proton exit + keep it live
     // (dev0438) Come up UNFOCUSED so bare-letter hotkeys (f/F/c/…) work right
     // away; press f to jump into the filter box, Shift+F to clear it.
   }
@@ -2052,6 +2210,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (dirty) persist(false);     // best-effort flush on close
     igPreviewClose();              // (dev0500) tear down the media preview
     closeDrawer();
+    vpnStopPoll();                 // (dev0649) stop polling the VPN status
     document.getElementById('igOverlay')?.classList.remove('open');
   }
   function isIgScreenOpen() {

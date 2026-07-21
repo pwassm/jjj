@@ -15,6 +15,7 @@ const http  = require('http');
 const https = require('https');
 const path  = require('path');
 const fs    = require('fs');
+const os    = require('os');
 const { spawn } = require('child_process');
 
 const PORT = 8081;
@@ -98,7 +99,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0648c';
+const PROXY_BUILD = 'dev0649';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2502,11 +2503,90 @@ async function flickrResolve(req, res, origin) {
   }
 }
 
+// (dev0649) ── Proton VPN rotation state/bridge ───────────────────────────
+// vpn-rotate.ps1 writes the chosen server + confirmed public IP into state.json
+// under %LOCALAPPDATA%\ProtonVpnRotate; this reads it (no network call of its
+// own) so /vpn/status is instant. A switch is fired via the no-UAC scheduled
+// task, falling back to running the script directly (self-elevates → one UAC).
+const VPN_STATE = path.join(process.env.LOCALAPPDATA || os.homedir(), 'ProtonVpnRotate', 'state.json');
+const VPN_PS1   = path.join(__dirname, 'vpn-rotate.ps1');
+const VPN_TASK  = 'ProtonVpnRotate';
+
+function vpnReadState() {
+  try { return JSON.parse(fs.readFileSync(VPN_STATE, 'utf8')); }
+  catch (_) { return null; }
+}
+
+// Tunnel-up test that doesn't depend on the adapter's friendly name: Proton's
+// WireGuard configs hand the client a 10.2.x.x address, so any local IPv4 in
+// 10.2.0.0/16 means a Proton tunnel is live. The 'proton_active' adapter name
+// (our fixed staging tunnel) is accepted too as a fallback signal.
+function vpnTunnelUp() {
+  const ifs = os.networkInterfaces();
+  for (const name of Object.keys(ifs)) {
+    for (const a of ifs[name] || []) {
+      if ((a.family === 'IPv4' || a.family === 4) && /^10\.2\./.test(a.address)) return true;
+    }
+  }
+  return !!ifs['proton_active'];
+}
+
+function vpnStateOut(st) {
+  return {
+    tunnelUp: vpnTunnelUp(),
+    server:  st && st.lastFile ? String(st.lastFile).replace(/\.conf$/i, '') : null,
+    ip:      st ? (st.ip || null) : null,
+    city:    st ? (st.city || null) : null,
+    country: st ? (st.country || null) : null,
+    at:      st ? (st.at || null) : null
+  };
+}
+
+function vpnStatus(res, origin) {
+  sendJson(res, 200, Object.assign({ ok: true }, vpnStateOut(vpnReadState())), origin);
+}
+
+function vpnSwitch(res, origin) {
+  const before = vpnReadState();
+  const beforeAt = (before && before.at) || '';
+
+  // Fire the rotation. Prefer the no-UAC scheduled task; if it isn't registered
+  // (schtasks /run exits non-zero), fall back to launching the script, which
+  // self-elevates with one UAC prompt.
+  const runScript = () => {
+    try {
+      const p = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', VPN_PS1],
+                      { detached: true, stdio: 'ignore' });
+      p.on('error', () => {});
+      p.unref();
+    } catch (_) {}
+  };
+  let via = 'task';
+  const t = spawn('schtasks', ['/run', '/tn', VPN_TASK], { windowsHide: true });
+  t.on('error', () => { via = 'script'; runScript(); });
+  t.on('close', code => { if (code !== 0) { via = 'script'; runScript(); } });
+
+  // Wait (up to ~40s) for vpn-rotate.ps1 to write a NEW state.json — its `at`
+  // only changes once the new tunnel is up and the fresh public IP was read.
+  const t0 = Date.now();
+  const poll = () => {
+    const cur = vpnReadState();
+    const changed = cur && cur.at && cur.at !== beforeAt;
+    if (changed || Date.now() - t0 > 40000) {
+      sendJson(res, 200, Object.assign(
+        { ok: true, via, switched: !!changed }, vpnStateOut(cur || before)), origin);
+      return;
+    }
+    setTimeout(poll, 1200);
+  };
+  setTimeout(poll, 1500);
+}
+
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -2520,7 +2600,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn'] }));
     return;
   }
 
@@ -2552,6 +2632,31 @@ http.createServer((req, res) => {
     const action = req.url.slice('/frame/'.length).split('?')[0];
     if (action === 'grab') { frameGrab(req, res, origin); return; }
     sendJson(res, 404, { ok: false, error: 'unknown frame action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0649) ── Proton VPN rotation bridge ─────────────────────────────────
+  // Lets the I screen show the current WireGuard exit (server/city/IP) and
+  // trigger a switch between download batches. All the real work is in
+  // vpn-rotate.ps1 (+ the ProtonVpnRotate scheduled task); this just reports
+  // the state vpn-rotate.ps1 writes and kicks a switch.
+  //   GET  /vpn/status → { tunnelUp, server, ip, city, country, at }
+  //   POST /vpn/switch → runs the rotation, waits for the new exit, returns it
+  if (req.url.startsWith('/vpn/')) {
+    const origin = req.headers.origin || '';
+    const action = req.url.slice('/vpn/'.length).split('?')[0];
+    if (action === 'status') { vpnStatus(res, origin); return; }
+    if (action === 'switch') {
+      if (!LOCAL_ORIGINS.has(origin)) {
+        console.warn(`[vpn 403] origin="${origin || '(none)'}" not in allowlist`);
+        send(res, 403, 'vpn: origin not allowed: ' + (origin || '(none)'));
+        return;
+      }
+      if (req.method !== 'POST') { send(res, 405, 'vpn: POST required', corsForExec(origin)); return; }
+      vpnSwitch(res, origin);
+      return;
+    }
+    sendJson(res, 404, { ok: false, error: 'unknown vpn action: ' + action }, origin);
     return;
   }
 
