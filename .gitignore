@@ -94,6 +94,13 @@ localmedia-export*.json
 *.idb.json
 *.idb.txt
 
+# (dev0649) Proton VPN WireGuard rotation. The scripts (vpn-rotate*.bat / .ps1)
+# ARE committed; the .conf files under vpn-configs/ hold PRIVATE KEYS and the
+# staged active tunnel must NEVER be committed. (Runtime state/log live under
+# %LOCALAPPDATA%\ProtonVpnRotate, outside the repo.)
+vpn-configs/*.conf
+proton_active.conf
+
 # Logs
 logs
 *.log
