@@ -12,8 +12,10 @@ if %errorlevel% neq 0 (
 )
 
 echo Registering scheduled task "ProtonVpnRotate"...
+REM Full path to powershell.exe — a bare "powershell" makes Task Scheduler fail
+REM to launch with 0x80070002 (file not found), so the switch never runs.
 schtasks /Create /TN "ProtonVpnRotate" /F /SC ONCE /ST 00:00 /RL HIGHEST ^
-  /TR "powershell -NoProfile -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Mode random"
+  /TR "\"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Mode random"
 
 if %errorlevel%==0 (
     echo.

@@ -47,6 +47,7 @@
   let batchAbort = false;              // user pressed Stop during a batch
   let lastOpError = '';                // last enrich/download error (for throttle detection)
   let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
+  let lastDlName = '';                 // (dev0649) title/id of the most recent successful download (rotate toasts)
   // (dev0441) Posts that FAILED cookieless enrich this session because they're
   // login-walled (yt-dlp can't read them without cookies). They keep status 'new'
   // — so without this they'd be re-hit on EVERY bulk Enrich, never succeeding and
@@ -563,7 +564,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igAutoEnrich" title="Auto-enrich driver (hotkey A) — enriches N at a time and tracks per-Proton-location walls so you can grind the whole backlog by switching exits">🤖 Auto-enrich</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igCoverOnly" title="Toggle download mode. ON = grab only the index-1 cover (no carousel) — for authors whose page-1 is the keeper. OFF = normal full download. Both are cookieless — your IG login is never used either way.">📸 Cover-only: off</button>
-        <button id="igRotate" title="Download the checked rows in batches of 18, switching the Proton VPN to a fresh US exit between batches (via vpn-rotate.ps1). Same cookieless download as ⬇ Download sel, just paced across exits so no single IP does the whole night. Shows the live exit in the VPN pill.">⬇⟳ Download + rotate VPN</button>
+        <button id="igRotate" title="Grind the ENRICHED backlog in this view: downloads the top 18 enriched-but-not-downloaded rows (no checkboxes needed), then switches the Proton VPN to a fresh US exit and repeats with the next 18. Cookieless. Success toasts report the running total + most recent; stops when no enriched rows remain, a batch downloads nothing, or you press Stop. Filter the view first (e.g. Status → enriched) to control what it grinds.">⬇⟳ Download + rotate VPN</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
@@ -1498,6 +1499,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       r.localFiles = j.files || [];
       if (r.status !== 'promoted') r.status = 'downloaded';
+      lastDlName = r.VidTitle || r.id;   // (dev0649) "most recent download" for the rotate toasts
       // (dev0492) Cookie use is now an EXPLICIT proxy flag — NOT "any note present".
       // The dev0491 embed-image rescue is cookieless but carries a `note`; the old
       // `j.note ? cookies` test misread it as a Firefox-cookie use → false "cookie
@@ -1561,75 +1563,75 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       '🍪 cookieless — your IG login is never used');
   }
 
-  // (dev0649) Download the checked rows in chunks of ROTATE_CHUNK, switching the
-  // Proton VPN to a fresh US exit between chunks. Reuses runBatch for each chunk
-  // (same cookieless download + pacing + wall-stop) and re-derives the eligible
-  // set each round, so rows a walled exit couldn't fetch get another try on the
-  // next IP. Terminates when nothing eligible remains, on Stop, or when a whole
-  // chunk downloads zero even after a switch (a login wall, not an IP block).
+  // (dev0649) Auto-grind the ENRICHED backlog in the current view: grab the top
+  // ROTATE_CHUNK enriched-but-not-yet-downloaded rows (view order — no checkboxes
+  // needed), download them, and on success switch the Proton VPN to a fresh US
+  // exit and repeat with the next 18. Because downloaded rows drop out of `isReady`,
+  // each round re-derives the top of the remaining backlog automatically.
+  //   • per-batch success → auto-dismissing toast (cumulative total + most recent)
+  //   • terminates (persistent final report) on: no enriched rows left · a whole
+  //     batch downloads 0 (a wall/login — a new IP won't help) · you press Stop.
+  const isReady = r => !!r && r.status === 'enriched' && !isDownloaded(r);
   async function batchDownloadRotating() {
     if (busy) return;
-    // reel-first eligible ids (photos last — see batchDownload's dev0646 note)
-    const eligible = () => {
-      const dlRank = r => (kindOf(r) === 'p' ? 1 : 0);
-      return selectedInView()
-        .filter(id => { const r = rowById(id); return r && !isDownloaded(r); })
-        .sort((a, b) => dlRank(rowById(a) || {}) - dlRank(rowById(b) || {}));
-    };
-    let todo = eligible();
-    if (!todo.length) { igToast('Nothing checked to download in this view.\nCheck rows first (checkbox; Shift-click for a range).', 3600); return; }
+    const readyIds = () => view.filter(isReady).map(r => r.id);   // top-of-view first
+    let todo = readyIds();
+    if (!todo.length) {
+      igToast('No enriched rows to download in this view.\nEnrich rows first (E), or set the Status filter to "enriched", then run this.', 4600);
+      return;
+    }
 
     await vpnRefresh(false);
     const exitNow = vpnStatus && vpnStatus.tunnelUp
       ? 'current exit: ' + (vpnStatus.server || vpnStatus.ip || '?')
-      : '⚠ no Proton tunnel detected right now — turn the VPN on first';
+      : '⚠ no Proton tunnel up yet — it will switch one on before the 2nd batch';
     const auths = [...new Set(todo.map(id => rowById(id)?.author).filter(Boolean))];
     const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
     if (!confirm(
-        `Download ${todo.length} item(s) from ${authLine}\n`
+        `Download ${todo.length} enriched item(s) from ${authLine}\n`
       + `in batches of ${ROTATE_CHUNK}, switching the Proton VPN to a fresh US exit between batches.\n\n`
       + `• ${exitNow}\n`
-      + `• Every download is COOKIELESS — your IG login is never used.\n`
-      + `• Switching uses vpn-rotate.ps1 — run vpn-rotate-setup.bat ONCE for silent (no-UAC) switches.\n`
+      + `• Cookieless — your IG login is never used.\n`
+      + `• Stops on the first batch that downloads nothing, or when no enriched rows remain.\n`
       + `• Press ⏹ Stop any time.`)) return;
 
-    let totalOk = 0, batches = 0, switches = 0, stagnant = 0;
+    let totalOk = 0, batches = 0, switches = 0, endMsg = '';
     busy = true; setBatchUi(true);
-    igBatchShow('⬇⟳ Download + rotate VPN\nstarting…');
     while (!batchAbort) {
-      todo = eligible();
-      if (!todo.length) break;
+      todo = readyIds();
+      if (!todo.length) { endMsg = `✓ Done — no more enriched rows to download in this view.`; break; }
       const chunk = todo.slice(0, ROTATE_CHUNK);
-      batches++;
-      // runBatch manages its own busy/UI/abort; it clears batchAbort at its start,
-      // so we always re-check batchAbort AFTER it returns (never call it with one
-      // pending — the while-guard + the break below ensure that).
+      batches++; lastDlName = '';
+      // runBatch owns its own busy/UI/abort + per-item live panel; it resets
+      // batchAbort at its start, so we re-check batchAbort AFTER it returns.
       const okThis = await runBatch(`Downloading (batch ${batches})`, chunk, DOWNLOAD_GAP,
         r => downloadRow(r, false), isDownloaded, '🍪 cookieless — your IG login is never used');
       totalOk += okThis;
-      igStickyHide();                 // drop runBatch's per-chunk report; one final report at the end
-      if (batchAbort) break;          // Stop pressed during the chunk
-      const remain = eligible();
-      if (!remain.length) break;      // all eligible rows downloaded
-      if (okThis === 0) { if (++stagnant >= 2) break; } else stagnant = 0;
-      // keep the UI locked + Stop visible across the switch
+      igStickyHide();                 // suppress runBatch's per-chunk report — we toast instead
+      if (batchAbort) { endMsg = `⏹ Stopped by you — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}.`; break; }
+      if (okThis === 0) {             // a whole batch got nothing → a wall/login, not an IP block
+        endMsg = `⏹ Batch ${batches} downloaded 0 — stopped.\n${totalOk} downloaded before this. Likely a login wall or a blocked exit — try again later or check the VPN.`;
+        break;
+      }
+      const remain = readyIds().length;
+      // auto-dismissing success toast: cumulative + most recent (the user's ask)
+      igToast(`✓ Batch ${batches}: ${okThis} downloaded  ·  ${totalOk} total`
+        + (lastDlName ? `\nlast: ${lastDlName}` : '')
+        + (remain ? `\n${remain} enriched still to go — 🔀 switching VPN…` : ''), 4200);
+      if (!remain) { endMsg = `✓ Done — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}; no enriched rows left.`; break; }
+      // switch exits before the next batch
       busy = true; setBatchUi(true);
-      igBatchShow(`⬇⟳ batch ${batches} done · ✓${totalOk} downloaded\n${remain.length} still to go`);
+      igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${totalOk} downloaded so far`);
       const sw = await vpnSwitchNow(`batch ${batches} done — ✓${totalOk} so far`);
-      if (sw) switches++;
-      else igBatchUpdate('⚠ VPN switch failed — continuing on the current exit\n(is vpn-rotate-setup.bat done? proxy on dev0649?)');
-      await sleep(2000);
-      if (batchAbort) break;
+      if (sw && sw.tunnelUp) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}`, 3000); }
+      else igToast('⚠ VPN switch didn\'t confirm — continuing on the current exit.\n(Fix: re-run vpn-rotate-setup.bat so the switch task works.)', 4600);
+      await sleep(1500);
     }
     busy = false; setBatchUi(false); igBatchHide();
     await vpnRefresh(false);
-    const exit = vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'unknown';
-    igStickyShow(
-        `✓ Download + rotate ${batchAbort ? 'stopped' : 'complete'}\n\n`
-      + `${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}\n`
-      + `${switches} VPN switch${switches === 1 ? '' : 'es'}\n`
-      + `current exit: ${exit}`
-      + (stagnant >= 2 ? `\n\nStopped early — a whole batch downloaded nothing even after switching exits, so the rest likely need a login (not a new IP).` : ''));
+    const exit = vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
+    igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
+      + `\n\n${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`);
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
