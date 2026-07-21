@@ -14,7 +14,8 @@
 
 param(
     [ValidateSet('random','cycle')]
-    [string]$Mode = 'random'
+    [string]$Mode = 'random',
+    [switch]$Stop      # tear down proton_active and hand control back to the Proton tray app
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,9 +27,9 @@ $admin = ([Security.Principal.WindowsPrincipal]`
           [Security.Principal.WindowsIdentity]::GetCurrent()`
          ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
-    Start-Process powershell.exe -Verb RunAs -ArgumentList @(
-        '-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"",'-Mode',$Mode
-    )
+    $relaunch = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"",'-Mode',$Mode)
+    if ($Stop) { $relaunch += '-Stop' }
+    Start-Process powershell.exe -Verb RunAs -ArgumentList $relaunch
     exit
 }
 
@@ -80,6 +81,15 @@ if (-not $wg) {
 if (-not $wg) {
     Log 'ERROR: wireguard.exe not found. Install WireGuard from https://www.wireguard.com/install/'
     Start-Sleep 4; exit 1
+}
+
+# --- -Stop: tear down the tunnel and hand control back to the Proton tray --------
+if ($Stop) {
+    $r = Wg @('/uninstalltunnelservice', $TunName)
+    @{ lastFile = ''; at = (Get-Date -Format o); ip = $null; city = ''; country = ''; ok = $false; stopped = $true } |
+        ConvertTo-Json | Set-Content -Path $StateFile
+    Log ("STOPPED  proton_active removed (exit {0}). The Proton tray app now controls the VPN." -f $r.code)
+    exit 0
 }
 
 # --- gather configs -------------------------------------------------------------

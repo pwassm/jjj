@@ -17,6 +17,10 @@ REM to launch with 0x80070002 (file not found), so the switch never runs.
 schtasks /Create /TN "ProtonVpnRotate" /F /SC ONCE /ST 00:00 /RL HIGHEST ^
   /TR "\"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Mode random"
 
+echo Registering scheduled task "ProtonVpnStop" (Drop VPN button)...
+schtasks /Create /TN "ProtonVpnStop" /F /SC ONCE /ST 00:00 /RL HIGHEST ^
+  /TR "\"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Stop"
+
 if %errorlevel%==0 (
     echo.
     echo Done. From now on, vpn-rotate.bat switches the VPN silently.

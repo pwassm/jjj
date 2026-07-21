@@ -319,6 +319,24 @@
     }
   }
 
+  // (dev0652) Tear down the rotating WireGuard tunnel → back to the Proton tray app.
+  async function vpnStopTunnel() {
+    if (busy) { igToast('A batch is running — press ⏹ Stop first.', 2600); return; }
+    if (!confirm('Stop the rotating WireGuard tunnel (proton_active)?\n\nThis removes it and hands VPN control back to the Proton tray app,\nwhere you can pick a server manually or turn the VPN off.')) return;
+    vpnBusy = true; vpnRenderPill();
+    igToast('⏏ stopping WireGuard tunnel…', 2000);
+    try {
+      const r = await fetch(PROXY + '/vpn/stop', { method: 'POST' });
+      const j = await r.json();
+      if (j && j.ok) vpnStatus = j;
+    } catch (_) {}
+    vpnBusy = false;
+    await vpnRefresh(false);
+    igToast(vpnStatus && !vpnStatus.tunnelUp
+      ? '⏏ WireGuard tunnel stopped.\nThe Proton tray app now controls the VPN — pick a server there, or leave it off.'
+      : '⚠ The tunnel may still be up — check the Proton app / WireGuard.', 4600);
+  }
+
   function vpnStartPoll() { if (!vpnPollTimer) vpnPollTimer = setInterval(() => { if (isIgScreenOpen()) vpnRefresh(false); }, 12000); }
   function vpnStopPoll()  { if (vpnPollTimer) { clearInterval(vpnPollTimer); vpnPollTimer = null; } }
 
@@ -423,6 +441,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 #igVpn.busy .dot{animation:igVpnPulse 1s ease-in-out infinite}
 @keyframes igVpnPulse{0%,100%{opacity:.35}50%{opacity:1}}
 #igRotate.on{background:#0a84ff;border-color:#0a84ff;color:#fff}
+#igVpnStop{font:600 12px system-ui;padding:3px 9px}
 #igToast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.96);
   background:#10151d;color:#eaf1f8;border:1px solid #34404f;border-radius:12px;
   padding:16px 26px;font:14px/1.5 system-ui,Segoe UI,sans-serif;text-align:center;
@@ -567,6 +586,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <h2>I · Ig staging</h2>
         <span class="ct" id="igCount"></span>
         <span id="igVpn" title="Current Proton VPN exit — click to refresh"><span class="dot"></span><span class="txt">VPN …</span></span>
+        <button id="igVpnStop" title="Stop the rotating WireGuard tunnel (proton_active) and hand VPN control back to the Proton tray app — where you can pick a server or turn the VPN off entirely.">⏏ Drop VPN</button>
         <input type="text" id="igSearch" placeholder="search author / id / title / caption…">
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
@@ -615,6 +635,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igDownloadSel').addEventListener('click', () => batchDownload());
     $('igRotate').addEventListener('click', () => batchDownloadRotating());
     $('igVpn').addEventListener('click', () => vpnRefresh(true));
+    $('igVpnStop').addEventListener('click', () => vpnStopTunnel());
     $('igCoverOnly').addEventListener('click', () => {
       coverOnly = !coverOnly;
       const b = $('igCoverOnly');

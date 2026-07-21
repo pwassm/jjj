@@ -99,7 +99,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0649';
+const PROXY_BUILD = 'dev0652';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2511,6 +2511,7 @@ async function flickrResolve(req, res, origin) {
 const VPN_STATE = path.join(process.env.LOCALAPPDATA || os.homedir(), 'ProtonVpnRotate', 'state.json');
 const VPN_PS1   = path.join(__dirname, 'vpn-rotate.ps1');
 const VPN_TASK  = 'ProtonVpnRotate';
+const VPN_STOP_TASK = 'ProtonVpnStop';
 
 function vpnReadState() {
   try { return JSON.parse(fs.readFileSync(VPN_STATE, 'utf8')); }
@@ -2582,6 +2583,34 @@ function vpnSwitch(res, origin) {
   setTimeout(poll, 1500);
 }
 
+// (dev0652) Tear down the proton_active tunnel so the Proton tray app takes over.
+// Same trigger pattern as vpnSwitch (no-UAC task, script fallback with -Stop), then
+// wait for the tunnel to actually go down (vpnTunnelUp() false).
+function vpnStop(res, origin) {
+  const runScript = () => {
+    try {
+      const p = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', VPN_PS1, '-Stop'],
+                      { detached: true, stdio: 'ignore' });
+      p.on('error', () => {});
+      p.unref();
+    } catch (_) {}
+  };
+  const t = spawn('schtasks', ['/run', '/tn', VPN_STOP_TASK], { windowsHide: true });
+  t.on('error', () => runScript());
+  t.on('close', code => { if (code !== 0) runScript(); });
+
+  const t0 = Date.now();
+  const poll = () => {
+    if (!vpnTunnelUp() || Date.now() - t0 > 20000) {
+      sendJson(res, 200, Object.assign(
+        { ok: true, stopped: !vpnTunnelUp() }, vpnStateOut(vpnReadState())), origin);
+      return;
+    }
+    setTimeout(poll, 1000);
+  };
+  setTimeout(poll, 1200);
+}
+
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
@@ -2646,14 +2675,15 @@ http.createServer((req, res) => {
     const origin = req.headers.origin || '';
     const action = req.url.slice('/vpn/'.length).split('?')[0];
     if (action === 'status') { vpnStatus(res, origin); return; }
-    if (action === 'switch') {
+    if (action === 'switch' || action === 'stop') {
       if (!LOCAL_ORIGINS.has(origin)) {
         console.warn(`[vpn 403] origin="${origin || '(none)'}" not in allowlist`);
         send(res, 403, 'vpn: origin not allowed: ' + (origin || '(none)'));
         return;
       }
       if (req.method !== 'POST') { send(res, 405, 'vpn: POST required', corsForExec(origin)); return; }
-      vpnSwitch(res, origin);
+      if (action === 'switch') vpnSwitch(res, origin);
+      else                     vpnStop(res, origin);
       return;
     }
     sendJson(res, 404, { ok: false, error: 'unknown vpn action: ' + action }, origin);
