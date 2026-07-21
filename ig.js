@@ -1461,7 +1461,17 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           ? `• 📸 COVER-ONLY: just the index-1 image per post, cookieless (no carousel, no Firefox cookies).\n`
           : `• Every download is COOKIELESS — your IG login is never used. A post that can't be fetched without a login is skipped and the run stops (no cookie is ever sent).\n`)
       + `• Press ⏹ Stop any time.`)) return;
-    await runBatch('Downloading', ids, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
+    // (dev0646) REEL-FIRST ordering. On a VPN/IP where IG walls cookieless PHOTO fetches
+    // (a node HTTPS scrape of the /p/ inline JSON — Node's TLS fingerprint gets flagged)
+    // but still serves REELS (yt-dlp's bundled curl_cffi mimics a real Chrome TLS
+    // handshake, so it slips the IP-reputation wall), a run of walled photos must never
+    // starve the reels. Download every video post first, photos last, so the 2-in-a-row
+    // wall-stop can only ever cut into the already-hopeless photo tail — every reel is
+    // attempted regardless of how the selection was ordered. Sort is stable, so within
+    // each group the original selection order is preserved. (kindOf reads r.url.)
+    const dlRank = r => (kindOf(r) === 'p' ? 1 : 0);   // reels/tv → 0 (first), photos → 1 (last)
+    const ordered = [...ids].sort((a, b) => dlRank(rowById(a) || {}) - dlRank(rowById(b) || {}));
+    await runBatch('Downloading', ordered, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
       '🍪 cookieless — your IG login is never used');
   }
 
