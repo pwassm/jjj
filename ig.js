@@ -37,6 +37,17 @@
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
   let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
+  // (dev0655) Windowed rendering — the tbody paints only the rows in (and just around)
+  // the #igWrap viewport, with top/bottom spacer <tr>s reserving the off-screen height,
+  // so an 11k-row ig.json no longer builds 11k DOM rows on every filter/grind re-render.
+  let rowH = 29;                       // measured row height (px), refined after first paint
+  let _rowHMeasured = false;
+  let _winStart = -1, _winEnd = -1;    // last painted slice [start,end)
+  let _scrollRaf = false;              // rAF throttle for the scroll handler
+  const ROW_BUFFER = 12;               // rows rendered above/below the viewport
+  // (dev0655) Persisted filter/sort state — resumed on reopen (survives reboot).
+  const IG_FILTER_KEY = 'slam-ig-filters';
+  let _lastFilterSig = null;           // detects a real filter/sort change vs a data re-render
   let coverOnly = false;               // (dev0512) download toggle: cookieless index-1 cover only (no carousel, no cookies)
   let sel = new Set();                 // selected ids (batch ops)
   let lastCheckedId = null;            // anchor for shift-click range selection
@@ -412,6 +423,7 @@
 #igTable td{padding:5px 8px;border-bottom:1px solid #1d242e;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 #igTable tr:hover td{background:#161d27}
+#igTable tr.igspacer td,#igTable tr.igspacer:hover td{background:transparent;padding:0;border:0}
 #igTable tr.focus td{background:#1d2a3a}
 #igTable tr.st-enriched td{box-shadow:inset 3px 0 0 #4caf50}
 #igTable tr.st-downloaded td{box-shadow:inset 3px 0 0 #ffb300}
@@ -646,6 +658,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igModalApply').addEventListener('click', () => applyPaste());
     o.querySelector('#igTable thead').addEventListener('click', onHeadClick);
     o.querySelector('#igTable tbody').addEventListener('click', onBodyClick);
+    o.querySelector('#igWrap').addEventListener('scroll', onWrapScroll, { passive: true });   // (dev0655) windowed render
   }
 
   // ── Columns ─────────────────────────────────────────────────────────────────
@@ -692,7 +705,55 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   }
 
   // ── Filter + sort ───────────────────────────────────────────────────────────
+  // (dev0655) Filter/sort persistence. A "signature" of the current filter+sort lets
+  // applyAndRender tell a real filter change (jump to top + persist) from a data
+  // re-render during a grind (keep scroll position, no write).
+  function _filterSig() {
+    return [query, kindFilter, statusFilter, authorFilter, stagedFilter,
+      hideCompleted ? 1 : 0, sortCol, sortDir].join('');
+  }
+  function saveFilters() {
+    try {
+      localStorage.setItem(IG_FILTER_KEY, JSON.stringify({
+        query, kindFilter, statusFilter, authorFilter, stagedFilter,
+        hideCompleted, sortCol, sortDir
+      }));
+    } catch (_) {}
+  }
+  function loadFilters() {
+    try {
+      const j = JSON.parse(localStorage.getItem(IG_FILTER_KEY) || '{}');
+      if (typeof j.query === 'string') query = j.query;
+      if (typeof j.kindFilter === 'string') kindFilter = j.kindFilter;
+      if (typeof j.statusFilter === 'string') statusFilter = j.statusFilter;
+      if (typeof j.authorFilter === 'string') authorFilter = j.authorFilter;
+      if (typeof j.stagedFilter === 'string') stagedFilter = j.stagedFilter;
+      if (typeof j.hideCompleted === 'boolean') hideCompleted = j.hideCompleted;
+      if (typeof j.sortCol === 'string') sortCol = j.sortCol;
+      if (j.sortDir === 1 || j.sortDir === -1) sortDir = j.sortDir;
+    } catch (_) {}
+  }
+  // Push restored values into the toolbar controls (author select is set later by
+  // refreshAuthorOptions, once its option list exists).
+  function syncFilterControls() {
+    const g = id => document.getElementById(id);
+    if (g('igSearch')) g('igSearch').value = query;
+    if (g('igKind')) g('igKind').value = kindFilter;
+    if (g('igStatus')) g('igStatus').value = statusFilter;
+    if (g('igStaged')) g('igStaged').value = stagedFilter;
+  }
+
   function applyAndRender() {
+    // (dev0655) A real filter/sort/search change (not a data re-render mid-grind) →
+    // jump back to the top of the list and persist the new filter for next time.
+    const sig = _filterSig();
+    if (sig !== _lastFilterSig) {
+      _lastFilterSig = sig;
+      const wrap = document.getElementById('igWrap');
+      if (wrap) wrap.scrollTop = 0;
+      _winStart = _winEnd = -1;
+      saveFilters();
+    }
     // (dev0635) Class-level author filters. An author is "Unharvested" only while ALL
     // their rows are staged:false (the same rule refreshAuthorOptions groups by), so
     // choosing "Unharvested authors — all" shows every row under that dropdown group
@@ -771,29 +832,21 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (sv) sv.classList.toggle('primary', dirty);
   }
 
-  // ── Body render ─────────────────────────────────────────────────────────────
-  function renderBody() {
-    const tb = document.querySelector('#igTable tbody');
-    const empty = document.getElementById('igEmpty');
-    if (!view.length) {
-      tb.innerHTML = '';
-      empty.style.display = 'block';
-      empty.textContent = rows.length ? 'No rows match the filter.' : 'ig.json is empty — harvest some reels first.';
-      updateCount();
-      return;
-    }
-    empty.style.display = 'none';
-    tb.innerHTML = view.map(r => {
-      const k = kindOf(r);
-      const st = r.status || 'new';
-      const cap = r.ftext ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
-      const tt = r.ttxt ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
-      // (dev0474) hover the cell → see the actual ftext/ttxt content as a tooltip
-      const capTip = r.ftext ? ` title="${esc(htmlToText(r.ftext))}"` : '';
-      const ttTip = r.ttxt ? ` title="${esc(htmlToText(r.ttxt))}"` : '';
-      const wxh = (r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>';
-      const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
-      return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''} ${r.id === processingId ? 'proc' : ''}">
+  // ── Body render (windowed) ──────────────────────────────────────────────────
+  // (dev0655) rowHtml builds ONE row; renderWindow paints only the slice around the
+  // viewport (see the state block up top). renderBody is the full entry point callers
+  // use — it repaints the window + header + count.
+  function rowHtml(r) {
+    const k = kindOf(r);
+    const st = r.status || 'new';
+    const cap = r.ftext ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
+    const tt = r.ttxt ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
+    // (dev0474) hover the cell → see the actual ftext/ttxt content as a tooltip
+    const capTip = r.ftext ? ` title="${esc(htmlToText(r.ftext))}"` : '';
+    const ttTip = r.ttxt ? ` title="${esc(htmlToText(r.ttxt))}"` : '';
+    const wxh = (r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>';
+    const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
+    return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''} ${r.id === processingId ? 'proc' : ''}">
         <td class="c-sel"><input type="checkbox" class="igchk" ${sel.has(r.id) ? 'checked' : ''}></td>
         <td><span class="badge k-${k}">${k}</span></td>
         <td title="${esc(r.author)}">${esc(r.author)}</td>
@@ -813,7 +866,63 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           <button data-act="detail" title="Details">⋯</button>
         </td>
       </tr>`;
-    }).join('');
+  }
+  const _spacerRow = h => h > 0
+    ? `<tr class="igspacer"><td colspan="${COLS.length}" style="height:${h}px;padding:0;border:0"></td></tr>`
+    : '';
+  // Paint the rows in [start,end) around the current scroll, bracketed by spacers that
+  // reserve the off-screen height so the scrollbar still spans the whole list. force=true
+  // always repaints (content changed); the scroll handler passes false to skip when the
+  // visible slice hasn't moved.
+  function renderWindow(force) {
+    const tb = document.querySelector('#igTable tbody');
+    const wrap = document.getElementById('igWrap');
+    if (!tb || !wrap) return;
+    const n = view.length;
+    if (!n) { tb.innerHTML = ''; _winStart = _winEnd = -1; return; }
+    const vh = wrap.clientHeight || 600;
+    const visCount = Math.ceil(vh / rowH);
+    let start = Math.floor((wrap.scrollTop || 0) / rowH) - ROW_BUFFER;
+    if (start < 0) start = 0;
+    let end = start + visCount + ROW_BUFFER * 2;
+    if (end > n) end = n;
+    if (start > end) start = end;
+    if (!force && start === _winStart && end === _winEnd) return;
+    let html = _spacerRow(start * rowH);
+    for (let i = start; i < end; i++) html += rowHtml(view[i]);
+    html += _spacerRow((n - end) * rowH);
+    tb.innerHTML = html;
+    _winStart = start; _winEnd = end;
+    // Refine the assumed row height once from a real rendered row, then repaint.
+    if (!_rowHMeasured) {
+      const real = tb.querySelector('tr[data-id]');
+      if (real) {
+        _rowHMeasured = true;
+        const h = real.getBoundingClientRect().height;
+        if (h > 8 && Math.abs(h - rowH) > 1) { rowH = h; _winStart = _winEnd = -1; renderWindow(true); }
+      }
+    }
+  }
+  function onWrapScroll() {
+    if (_scrollRaf) return;
+    _scrollRaf = true;
+    requestAnimationFrame(() => { _scrollRaf = false; if (view.length) renderWindow(false); });
+  }
+  function renderBody() {
+    const empty = document.getElementById('igEmpty');
+    if (!view.length) {
+      const tb = document.querySelector('#igTable tbody');
+      if (tb) tb.innerHTML = '';
+      _winStart = _winEnd = -1;
+      if (empty) {
+        empty.style.display = 'block';
+        empty.textContent = rows.length ? 'No rows match the filter.' : 'ig.json is empty — harvest some reels first.';
+      }
+      renderHead(); updateCount();
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    renderWindow(true);
     renderHead();
     updateCount();
   }
@@ -932,12 +1041,24 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // highlight (same one the drawer uses); ↑/↓ step to the prev/next VISIBLE row,
   // scrolling it into view. focusId persists across re-renders (renderBody re-adds
   // the class from the template), so the highlight survives filter/sort changes.
+  // (dev0655) With windowed rendering the target row may be outside the painted slice,
+  // so scroll by index first (that brings it into the window), repaint, then highlight.
+  function scrollIndexIntoView(i) {
+    const wrap = document.getElementById('igWrap');
+    if (!wrap || i < 0) return;
+    const top = i * rowH, bot = top + rowH;
+    if (top < wrap.scrollTop) wrap.scrollTop = top;
+    else if (bot > wrap.scrollTop + wrap.clientHeight) wrap.scrollTop = bot - wrap.clientHeight;
+  }
   function applyFocusHighlight(id) {
-    document.querySelectorAll('#igTable tr.focus').forEach(t => t.classList.remove('focus'));
-    if (id == null) return null;
-    const tr = document.querySelector(`#igTable tr[data-id="${CSS.escape(id)}"]`);
-    if (tr) { tr.classList.add('focus'); tr.scrollIntoView({ block: 'nearest' }); }
-    return tr;
+    if (id == null) {
+      document.querySelectorAll('#igTable tr.focus').forEach(t => t.classList.remove('focus'));
+      return null;
+    }
+    const i = view.findIndex(r => r.id === id);
+    if (i >= 0) scrollIndexIntoView(i);
+    renderWindow(true);   // focusId is baked into rowHtml, so the row paints already-focused
+    return document.querySelector(`#igTable tr[data-id="${CSS.escape(id)}"]`);
   }
   function moveFocus(delta) {
     if (!view.length) return;
@@ -2023,7 +2144,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (authorFilter !== 'all' && authorFilter !== '__harvested__'
         && authorFilter !== '__unharvested__' && !counts[authorFilter]) authorFilter = 'all';
     const unh = unharvestedAuthorSet();
-    const all = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    // (dev0655) Alphabetical (case-insensitive) — was count-descending. Both the
+    // Harvested and Unharvested groups derive from this list, so both end up A→Z.
+    const all = Object.keys(counts).sort((a, b) =>
+      (a || '').toLowerCase().localeCompare((b || '').toLowerCase()));
     const harvested = all.filter(a => !unh.has(a));
     const unharvested = all.filter(a => unh.has(a));
     const nH = harvested.reduce((n, a) => n + counts[a], 0);
@@ -2231,6 +2355,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   function openIgScreen() {
     if (typeof _isUserMode === 'function' && _isUserMode()) return;   // dev-only
     build();
+    loadFilters(); syncFilterControls();   // (dev0655) resume the last filter/sort
     document.getElementById('igOverlay').classList.add('open');
     loadData();
     vpnRefresh(false); vpnStartPoll();   // (dev0649) show the current Proton exit + keep it live
