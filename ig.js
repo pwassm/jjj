@@ -1633,6 +1633,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `• Press ⏹ Stop any time.`)) return;
 
     let totalOk = 0, batches = 0, switches = 0, endMsg = '';
+    // (dev0653) A prior Stop left batchAbort=true; clear it here or the outer
+    // `while (!batchAbort)` loop (and vpnEnsureUp's own !batchAbort guard) would
+    // be skipped on the very first check → an instant "0 downloaded, 0 switches".
+    batchAbort = false;
     busy = true; setBatchUi(true);
     // (dev0650) Bring a tunnel up BEFORE batch 1 if none is live, so no batch ever
     // downloads on the home IP (user request).
