@@ -55,23 +55,23 @@
   // single ✨) retries. Session-only (not persisted) so a reload always re-tries.
   const enrichFailed = new Set();
 
-  // (dev0517) Auto-enrich driver — semi-auto batched enrich with per-Proton-location
-  // wall tracking. Browser JS can't switch the VPN, so YOU click the city you're on;
-  // the driver enriches N at a time, and when an exit walls it pauses, tallies a wall
-  // against that city (sinking it to the bottom of the list), and resumes when you
-  // click the next city. Enrich rides the proxy's current exit IP; the browser↔proxy
-  // link is loopback so it's unaffected by the VPN switch. State persists in localStorage.
+  // (dev0517, reworked dev0654) Auto-enrich driver — grinds the not-yet-enriched
+  // backlog `autoBatchSize` at a time and AUTO-ROTATES the Proton VPN to a fresh US
+  // exit the moment an exit actually walls (via the same vpnEnsureUp switcher the
+  // Download+rotate button uses). Enrich rides the proxy's current exit IP (yt-dlp is
+  // spawned by the proxy and routes through the WireGuard tunnel; the browser↔proxy
+  // link is loopback, so a switch never drops this UI). No manual city picking anymore
+  // — the old per-Proton-city menu (European exits) is gone. State: only batch size.
   const AUTO_KEY = 'slam-ig-autoenrich';
-  const AUTO_DEFAULT_CITIES = ['Reykjavik', 'Tallinn', 'Riga', 'Vilnius', 'Ljubljana',
-    'Bratislava', 'Zagreb', 'Luxembourg', 'Valletta', 'Nicosia', 'Sofia', 'Bucharest',
-    'Chisinau', 'Tbilisi', 'Skopje'];
-  let autoLocs = [];            // [{name, walled}] — the Proton exits + their enrich-wall tally
-  let autoActive = null;        // name of the city the user marked as currently in use
   let autoLoaded = false;       // localStorage read once
   let autoRunning = false;      // loop active (may be paused)
-  let autoPaused = false;       // paused: walled / no-progress / by user
-  let autoBatchSize = 18;       // rows per enrich batch
+  let autoPaused = false;       // paused: no-progress / errored / by user
+  let autoBatchSize = 38;       // (dev0654) rows per enrich batch (was 18)
   let autoGapMs = 4000;         // breather between clean batches
+  let autoTotalOk = 0;          // (dev0654) enriched this run (readout + final report)
+  let autoSwitches = 0;         // (dev0654) VPN exits rotated through this run
+  let autoDry = 0;              // (dev0654) consecutive walled rotations with 0 progress
+  const AUTO_DRY_LIMIT = 3;     // (dev0654) that many dry rotations → stop (backlog is walled/dead)
   const autoDead = new Set();   // rows that walled while the exit was otherwise fine → skip
 
   // STRONG, unambiguous IG throttle signatures. If a batch item fails with one of
@@ -553,23 +553,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 #igAutoCtl input{width:44px;background:#0c1016;border:1px solid #2c3645;color:#dfe6ee;border-radius:4px;padding:2px 4px}
 #igAutoInfo{padding:7px 10px;font-size:12px;color:#b9c4d0;border-bottom:1px solid #1a2333}
 #igAutoInfo .warn{color:#e6a24a}
-#igAuto .hd{padding:7px 10px 3px;font-size:11px;color:#8a96a3;text-transform:uppercase;letter-spacing:.03em}
-#igAuto .hd span{text-transform:none;letter-spacing:0;color:#5a6573}
-#igAutoLocs{overflow:auto;padding:2px 8px 6px;flex:1 1 auto}
-#igAutoLocs .loc{display:flex;align-items:center;gap:6px;padding:5px 7px;margin:2px 0;border-radius:6px;
-  background:#141b26;border:1px solid #1e2836;cursor:pointer}
-#igAutoLocs .loc:hover{background:#1a2432}
-#igAutoLocs .loc.active{border-color:#4a7fe0;background:#16233b}
-#igAutoLocs .loc.walled{opacity:.72}
-#igAutoLocs .loc .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#igAutoLocs .loc .w{font:11px ui-monospace,Consolas,monospace;color:#8a96a3}
-#igAutoLocs .loc.walled .w{color:#d98a6a}
-#igAutoLocs .loc .rm{background:none;border:0;color:#5a6573;font-size:15px;line-height:1;cursor:pointer;padding:0 2px}
-#igAutoLocs .loc .rm:hover{color:#e06a6a}
-#igAutoAdd{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #1a2333}
-#igAutoAdd input{flex:1;min-width:0;background:#0c1016;border:1px solid #2c3645;color:#dfe6ee;border-radius:5px;padding:4px 7px}
-#igAutoAdd button{background:#1f2733;border:1px solid #34404f;color:#cfe;border-radius:5px;padding:4px 8px;cursor:pointer;font:600 12px system-ui;white-space:nowrap}
-#igAutoAdd button:hover{background:#2b3543}
+#igAutoNote{padding:9px 11px;font-size:11.5px;line-height:1.5;color:#8fa0b0}
+#igAutoNote b{color:#b9c4d0}
 `;
     document.head.appendChild(s);
   }
@@ -597,10 +582,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
         <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked Unharvested, DevComment from the filename)">📁 Import ffdown</button>
         <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
-        <button id="igAutoEnrich" title="Auto-enrich driver (hotkey A) — enriches N at a time and tracks per-Proton-location walls so you can grind the whole backlog by switching exits">🤖 Auto-enrich</button>
+        <button id="igAutoEnrich" title="Auto-enrich (hotkey A) — grinds the not-yet-enriched backlog 38 at a time, cookielessly, and AUTO-ROTATES the Proton VPN to a fresh US exit whenever an exit walls (same switcher as Download+rotate). No manual city picking.">🤖 Auto-enrich</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igCoverOnly" title="Toggle download mode. ON = grab only the index-1 cover (no carousel) — for authors whose page-1 is the keeper. OFF = normal full download. Both are cookieless — your IG login is never used either way.">📸 Cover-only: off</button>
-        <button id="igRotate" title="Grind the ENRICHED backlog in this view: downloads the top 18 enriched-but-not-downloaded rows (no checkboxes needed), then switches the Proton VPN to a fresh US exit and repeats with the next 18. Cookieless. Success toasts report the running total + most recent; stops when no enriched rows remain, a batch downloads nothing, or you press Stop. Filter the view first (e.g. Status → enriched) to control what it grinds.">⬇⟳ Download + rotate VPN</button>
+        <button id="igRotate" title="Grind the downloadable backlog in this view: downloads the top 18 not-yet-downloaded rows (new OR enriched — 'new' rows enrich inline first, no quality lost), then switches the Proton VPN to a fresh US exit and repeats with the next 18. Cookieless. Success toasts report the running total + most recent; stops when none remain, a batch downloads nothing, or you press Stop. Filter the view first (e.g. Status → new/enriched) to control what it grinds.">⬇⟳ Download + rotate VPN</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
@@ -1317,25 +1302,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   function loadAuto() {
     try {
       const j = JSON.parse(localStorage.getItem(AUTO_KEY) || '{}');
-      autoLocs = (Array.isArray(j.locs) && j.locs.length)
-        ? j.locs.map(l => ({ name: String(l.name || '').trim(), walled: +l.walled || 0 })).filter(l => l.name)
-        : AUTO_DEFAULT_CITIES.map(n => ({ name: n, walled: 0 }));
-      autoActive = j.active || null;
-      autoBatchSize = Math.max(1, Math.min(50, +j.batchSize || 18));
-    } catch (_) {
-      autoLocs = AUTO_DEFAULT_CITIES.map(n => ({ name: n, walled: 0 }));
-      autoActive = null; autoBatchSize = 18;
-    }
+      autoBatchSize = Math.max(1, Math.min(50, +j.batchSize || 38));
+    } catch (_) { autoBatchSize = 38; }
   }
   function saveAuto() {
-    try { localStorage.setItem(AUTO_KEY, JSON.stringify({ locs: autoLocs, active: autoActive, batchSize: autoBatchSize })); } catch (_) {}
+    try { localStorage.setItem(AUTO_KEY, JSON.stringify({ batchSize: autoBatchSize })); } catch (_) {}
   }
-  // clean (walled 0) first, then fewest walls; stable within a tier (insertion order).
-  function sortedLocs() {
-    return autoLocs.map((l, i) => ({ l, i })).sort((a, b) => (a.l.walled - b.l.walled) || (a.i - b.i)).map(x => x.l);
-  }
-  function activeLoc() { return autoLocs.find(l => l.name === autoActive) || null; }
-  function topCleanCity() { const s = sortedLocs().find(l => l.name !== autoActive); return s ? s.name : ((sortedLocs()[0] || {}).name || '—'); }
 
   // A row still wants enriching if it isn't enriched, hasn't walled this exit, and
   // isn't a known-dead post (walled while the exit was otherwise fine).
@@ -1369,52 +1341,80 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (!ids.length) { autoFinish(); return; }
       const before = new Set(enrichFailed);
       const ok = await runBatch('Auto-enrich', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
-        '🤖 auto · 🍪 cookieless — click your Proton city so walls are tracked');
+        '🤖 auto · 🍪 cookieless · auto-rotating US VPN exits');
       if (!autoRunning) return;                               // Stop pressed mid-batch
+      autoTotalOk += ok;
+      if (ok > 0) autoDry = 0;                                // real progress resets the dry-rotation guard
       const newWalls = [...enrichFailed].filter(id => !before.has(id));
       renderAuto();
       if (newWalls.length) {
+        // Tell a dead POST from a walled EXIT (one extra enrich on the SAME exit).
         const probe = await probeExit(newWalls[0]);
         if (!autoRunning) return;
-        if (probe === 'ok') { autoDead.add(newWalls[0]); continue; }   // one dead post, exit fine
+        if (probe === 'ok') { autoDead.add(newWalls[0]); autoDry = 0; continue; }   // dead post, exit fine → carry on
         if (probe === 'nomore') { autoFinish(); return; }
-        if (probe === 'wall') { bumpWall(); autoPauseWalled(); return; }
-        autoPause('⚠ Enrich errored (not a wall) — likely a transient/proxy hiccup.\nCheck the proxy, then click your city (or ▶) to resume.');
-        return;
+        if (probe === 'error') {                             // transient/proxy — a fresh IP won't help
+          autoPause('⚠ Enrich errored (not a wall) — likely a transient/proxy hiccup.\nCheck the proxy, then ▶ Start to resume.');
+          return;
+        }
+        // probe === 'wall' → the EXIT itself is walling → rotate to a fresh US exit.
+        if (ok === 0 && ++autoDry >= AUTO_DRY_LIMIT) { autoFinishDry(); return; }
+        const rotated = await autoRotateExit('⚠ exit walled — rotating to a fresh US exit');
+        if (!autoRunning) return;
+        if (!rotated) { autoPause('⏸ Couldn\'t bring up a fresh VPN exit (tried a few).\nCheck the VPN, then ▶ Start to resume.'); return; }
+        continue;
       }
       if (ok > 0) { await sleep(autoGapMs); continue; }       // clean progress → breather → next
-      autoPause('⚠ No progress and no wall — is the proxy (127.0.0.1:8081) running?\nFix it, then click your city (or ▶) to resume.');
+      autoPause('⚠ No progress and no wall — is the proxy (127.0.0.1:8081) running?\nFix it, then ▶ Start to resume.');
       return;
     }
   }
 
-  function bumpWall() {
-    const l = activeLoc();
-    if (l) { l.walled = (l.walled || 0) + 1; saveAuto(); }
+  // (dev0654) Auto-rotation — swap the Proton VPN to a fresh US exit (the same
+  // vpnEnsureUp switcher the Download+rotate button uses), then clear this session's
+  // per-exit wall marks so rows that walled on the OLD exit retry on the new one.
+  // Genuinely-dead posts stay in autoDead and never come back. Returns true once a
+  // working exit is confirmed up.
+  async function autoRotateExit(note) {
+    busy = true; setBatchUi(true);
+    igBatchShow((note || '🔀 rotating VPN') + '\nswitching Proton VPN to a fresh US exit…');
+    const sw = await vpnEnsureUp('auto-enrich rotate');
+    busy = false; setBatchUi(false); igBatchHide();
+    if (!sw) return false;
+    autoSwitches++;
+    enrichFailed.clear();
+    await vpnRefresh(false);
+    igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}`, 3000);
     renderAuto();
+    return true;
   }
-  function autoPauseWalled() {
-    autoPaused = true;
-    const l = activeLoc();
-    igStickyShow('⏸ Walled' + (l ? ' on ' + l.name + ' (now walled ' + l.walled + ')' : ' (no city marked)') + '.\n\n'
-      + 'Switch Proton to a cleaner exit — try: ' + topCleanCity() + '\n'
-      + 'Then CLICK that city in the 🤖 Auto-enrich list to resume.\n\n'
-      + autoRemaining() + ' rows still to enrich.');
-    renderAuto();
-  }
+
   function autoPause(msg) { autoPaused = true; igStickyShow(msg); renderAuto(); }
-  function autoStart() {
+  async function autoStart() {
     if (autoRunning && !autoPaused) return;
     if (busy) { igToast('A batch is already running — wait for it to finish.', 2400); return; }
     if (!autoRemaining()) { igToast('Nothing to enrich in the current view.\n(Clear filters / set status to new if needed.)', 3000); return; }
-    if (!autoActive) igToast('Tip: click the Proton city you\'re currently on so walls get tracked.', 3000);
-    autoRunning = true; autoPaused = false; igStickyHide(); renderAuto();
+    autoRunning = true; autoPaused = false; batchAbort = false;   // (dev0653-style) clear a prior Stop
+    autoTotalOk = 0; autoSwitches = 0; autoDry = 0;
+    igStickyHide(); renderAuto();
+    // Bring a US Proton exit up BEFORE batch 1 so enrich never rides the home IP.
+    await vpnRefresh(false);
+    if (autoRunning && !(vpnStatus && vpnStatus.tunnelUp)) {
+      const up = await autoRotateExit('🔀 bringing up a US VPN exit before batch 1');
+      if (!autoRunning) { renderAuto(); return; }
+      if (!up) {
+        autoRunning = false; renderAuto();
+        igStickyShow('⏹ Couldn\'t bring up a VPN exit — nothing enriched on your home IP.\nCheck the VPN, then ▶ Start.');
+        return;
+      }
+    }
+    if (!autoRunning) return;
     autoLoop();
   }
   function autoResume() {
     if (!autoRunning) { autoStart(); return; }
     if (!autoPaused) return;
-    autoPaused = false; igStickyHide(); renderAuto(); autoLoop();
+    autoPaused = false; batchAbort = false; igStickyHide(); renderAuto(); autoLoop();
   }
   function autoStopRun() {
     autoRunning = false; autoPaused = false; batchAbort = true;   // break any in-flight batch
@@ -1424,32 +1424,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   function autoFinish() {
     autoRunning = false; autoPaused = false; renderAuto();
     igStickyShow('✓ Auto-enrich complete — no rows left to enrich in this view.\n'
-      + (autoDead.size ? autoDead.size + ' post(s) were unreadable and skipped.\n' : '')
-      + 'For downloads use your HOME IP — IG\'s media CDN blocks datacenter/VPN exits.');
+      + `${autoTotalOk} enriched · ${autoSwitches} VPN switch${autoSwitches === 1 ? '' : 'es'}`
+      + (autoDead.size ? ` · ${autoDead.size} unreadable post(s) skipped` : '') + '.\n'
+      + 'Downloads now also rotate US VPN exits — use ⬇⟳ Download + rotate.');
   }
-  // User marks the exit they just switched Proton to. If a run is paused, this resumes it.
-  function activateLoc(name) {
-    const changed = name !== autoActive;
-    autoActive = name;
-    if (changed) enrichFailed.clear();     // fresh exit → retry rows that walled on the old one
-    saveAuto(); renderAuto();
-    if (autoRunning && autoPaused) { autoPaused = false; igStickyHide(); autoLoop(); }
-    else if (!autoRunning) igToast('📍 active exit: ' + name + ' — press ▶ Start to begin', 1800);
-    else igToast('📍 active exit: ' + name, 1400);
-  }
-  function addLoc(name) {
-    name = String(name || '').trim(); if (!name) return;
-    if (autoLocs.some(l => l.name.toLowerCase() === name.toLowerCase())) { igToast('Already in the list', 1400); return; }
-    autoLocs.push({ name, walled: 0 }); saveAuto(); renderAuto();
-  }
-  function removeLoc(name) {
-    autoLocs = autoLocs.filter(l => l.name !== name);
-    if (autoActive === name) autoActive = null;
-    saveAuto(); renderAuto();
-  }
-  function resetWalls() {
-    autoLocs.forEach(l => l.walled = 0); saveAuto(); renderAuto();
-    igToast('Wall counts reset to 0', 1400);
+  function autoFinishDry() {
+    autoRunning = false; autoPaused = false; renderAuto();
+    igStickyShow(`⏹ Stopped — rotated ${autoSwitches} VPN exit${autoSwitches === 1 ? '' : 'es'} with no new enriches.\n`
+      + `${autoTotalOk} enriched this run. The remaining rows are almost certainly login-walled / private\n`
+      + '(a fresh IP won\'t help). Re-run later, or leave them.');
   }
 
   function toggleAutoPanel() {
@@ -1468,52 +1451,34 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         + '<button id="igAutoStartBtn">▶ Start</button>'
         + '<button id="igAutoPauseBtn">⏸ Pause</button>'
         + '<button id="igAutoStopBtn">⏹ Stop</button>'
-        + '<label>batch <input id="igAutoSize" type="number" min="1" max="50" value="18"></label>'
+        + '<label>batch <input id="igAutoSize" type="number" min="1" max="50" value="38"></label>'
       + '</div>'
       + '<div id="igAutoInfo"></div>'
-      + '<div class="hd">Proton exits — click the one you\'re on <span>(walls sink to the bottom)</span></div>'
-      + '<div id="igAutoLocs"></div>'
-      + '<div id="igAutoAdd"><input id="igAutoNew" type="text" placeholder="add a city…"><button id="igAutoAddBtn">+ add</button>'
-        + '<button id="igAutoResetBtn" title="Zero all wall counts (e.g. a new day / the IP cooled down)">reset walls</button></div>';
+      + '<div id="igAutoNote">Grinds the not-yet-enriched backlog in this view, cookielessly, and <b>auto-rotates the Proton VPN to a fresh US exit</b> whenever an exit walls — no manual switching. Filter the view (e.g. Status → new) to control what it grinds.</div>';
     (document.getElementById('igOverlay') || document.body).appendChild(p);
     p.querySelector('#igAutoHide').addEventListener('click', () => p.classList.remove('open'));
-    p.querySelector('#igAutoStartBtn').addEventListener('click', autoStart);
+    p.querySelector('#igAutoStartBtn').addEventListener('click', () => autoStart());
     p.querySelector('#igAutoPauseBtn').addEventListener('click', () => {
-      if (autoRunning && !autoPaused) autoPause('⏸ Paused by you.\nClick a city or ▶ Start to resume.');
+      if (autoRunning && !autoPaused) autoPause('⏸ Paused by you.\nPress ▶ Start to resume.');
       else autoResume();
     });
     p.querySelector('#igAutoStopBtn').addEventListener('click', autoStopRun);
-    p.querySelector('#igAutoSize').addEventListener('change', e => { autoBatchSize = Math.max(1, Math.min(50, +e.target.value || 18)); saveAuto(); renderAuto(); });
-    p.querySelector('#igAutoAddBtn').addEventListener('click', () => { const i = p.querySelector('#igAutoNew'); addLoc(i.value); i.value = ''; });
-    p.querySelector('#igAutoNew').addEventListener('keydown', e => { if (e.key === 'Enter') { e.stopPropagation(); addLoc(e.target.value); e.target.value = ''; } });
-    p.querySelector('#igAutoResetBtn').addEventListener('click', resetWalls);
+    p.querySelector('#igAutoSize').addEventListener('change', e => { autoBatchSize = Math.max(1, Math.min(50, +e.target.value || 38)); saveAuto(); renderAuto(); });
   }
   function renderAuto() {
     const p = document.getElementById('igAuto'); if (!p) return;
     const st = p.querySelector('#igAutoState');
     const state = !autoRunning ? 'idle' : (autoPaused ? 'paused' : 'running');
     if (st) { st.textContent = state; st.className = 'st-' + state; }
+    const exit = (vpnStatus && vpnStatus.tunnelUp)
+      ? esc(vpnStatus.server || vpnStatus.ip || '?')
+      : '<span class="warn">no VPN tunnel</span>';
     const info = p.querySelector('#igAutoInfo');
-    if (info) info.innerHTML = '<b>' + autoRemaining() + '</b> to enrich in view'
-      + (autoActive ? ' · on <b>' + esc(autoActive) + '</b>' : ' · <span class="warn">no city marked</span>')
+    if (info) info.innerHTML = '<b>' + autoRemaining() + '</b> to enrich in view · exit <b>' + exit + '</b>'
+      + ((autoRunning || autoTotalOk) ? ' · ' + autoTotalOk + ' done · ' + autoSwitches + ' switch' + (autoSwitches === 1 ? '' : 'es') : '')
       + (autoDead.size ? ' · ' + autoDead.size + ' skipped' : '');
     const size = p.querySelector('#igAutoSize'); if (size && document.activeElement !== size) size.value = autoBatchSize;
     const startB = p.querySelector('#igAutoStartBtn'); if (startB) startB.disabled = autoRunning && !autoPaused;
-    renderLocs();
-  }
-  function renderLocs() {
-    const box = document.getElementById('igAutoLocs'); if (!box) return;
-    box.innerHTML = sortedLocs().map(l => {
-      const active = l.name === autoActive;
-      return '<div class="loc' + (active ? ' active' : '') + (l.walled ? ' walled' : '') + '" data-name="' + esc(l.name) + '">'
-        + '<span class="nm">' + (active ? '📍 ' : '') + esc(l.name) + '</span>'
-        + '<span class="w">walled ' + l.walled + '</span>'
-        + '<button class="rm" title="remove">×</button></div>';
-    }).join('');
-    box.querySelectorAll('.loc').forEach(el => el.addEventListener('click', ev => {
-      if (ev.target.classList.contains('rm')) { ev.stopPropagation(); removeLoc(el.dataset.name); return; }
-      activateLoc(el.dataset.name);
-    }));
   }
 
   // ── Download (max res → ig_media/ named per AHK convention) ─────────────────
@@ -1608,13 +1573,19 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   //   • per-batch success → auto-dismissing toast (cumulative total + most recent)
   //   • terminates (persistent final report) on: no enriched rows left · a whole
   //     batch downloads 0 (a wall/login — a new IP won't help) · you press Stop.
-  const isReady = r => !!r && r.status === 'enriched' && !isDownloaded(r);
+  // (dev0654) Grindable by Download+rotate = not-yet-downloaded AND (already enriched OR
+  // still 'new'): downloadRow enriches a 'new' row inline (it needs title/duration/res for
+  // the filename + best quality anyway), so one grind now enriches+downloads in a pass —
+  // nothing lost vs enriching separately first. Skip rows that login-walled enrich this
+  // session (a retry would just wall again) and already-promoted rows.
+  const isReady = r => !!r && !isDownloaded(r) && r.status !== 'promoted'
+    && (r.status === 'enriched' || r.status === 'new') && !enrichFailed.has(r.id);
   async function batchDownloadRotating() {
     if (busy) return;
     const readyIds = () => view.filter(isReady).map(r => r.id);   // top-of-view first
     let todo = readyIds();
     if (!todo.length) {
-      igToast('No enriched rows to download in this view.\nEnrich rows first (E), or set the Status filter to "enriched", then run this.', 4600);
+      igToast('No downloadable rows in this view.\nNeed rows that are new or enriched (not yet downloaded).\nClear filters, or set Status → new / enriched, then run this.', 4600);
       return;
     }
 
@@ -1622,14 +1593,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const exitNow = vpnStatus && vpnStatus.tunnelUp
       ? 'current exit: ' + (vpnStatus.server || vpnStatus.ip || '?')
       : '⚠ no Proton tunnel up yet — it will bring one up BEFORE batch 1';
+    const nNew = todo.filter(id => (rowById(id) || {}).status === 'new').length;
     const auths = [...new Set(todo.map(id => rowById(id)?.author).filter(Boolean))];
     const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
     if (!confirm(
-        `Download ${todo.length} enriched item(s) from ${authLine}\n`
+        `Download ${todo.length} item(s) from ${authLine}`
+      + (nNew ? `  (${nNew} not-yet-enriched — they enrich inline first)` : '') + `\n`
       + `in batches of ${ROTATE_CHUNK}, switching the Proton VPN to a fresh US exit between batches.\n\n`
       + `• ${exitNow}\n`
       + `• Cookieless — your IG login is never used.\n`
-      + `• Stops on the first batch that downloads nothing, or when no enriched rows remain.\n`
+      + `• Stops on the first batch that downloads nothing, or when none remain.\n`
       + `• Press ⏹ Stop any time.`)) return;
 
     let totalOk = 0, batches = 0, switches = 0, endMsg = '';
@@ -1652,7 +1625,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     }
     while (!batchAbort) {
       todo = readyIds();
-      if (!todo.length) { endMsg = `✓ Done — no more enriched rows to download in this view.`; break; }
+      if (!todo.length) { endMsg = `✓ Done — no more downloadable rows in this view.`; break; }
       const chunk = todo.slice(0, ROTATE_CHUNK);
       batches++; lastDlName = '';
       // runBatch owns its own busy/UI/abort + per-item live panel; it resets
@@ -1670,8 +1643,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // auto-dismissing success toast: cumulative + most recent (the user's ask)
       igToast(`✓ Batch ${batches}: ${okThis} downloaded  ·  ${totalOk} total`
         + (lastDlName ? `\nlast: ${lastDlName}` : '')
-        + (remain ? `\n${remain} enriched still to go — 🔀 switching VPN…` : ''), 4200);
-      if (!remain) { endMsg = `✓ Done — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}; no enriched rows left.`; break; }
+        + (remain ? `\n${remain} still to go — 🔀 switching VPN…` : ''), 4200);
+      if (!remain) { endMsg = `✓ Done — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}; nothing left to download.`; break; }
       // switch exits before the next batch
       busy = true; setBatchUi(true);
       igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${totalOk} downloaded so far`);
@@ -2265,7 +2238,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // away; press f to jump into the filter box, Shift+F to clear it.
   }
   function closeIgScreen() {
-    if (autoRunning && !autoPaused) autoPause('⏸ Auto-enrich paused — I screen closed. Reopen (I) and click a city or ▶ to resume.');  // (dev0517)
+    if (autoRunning && !autoPaused) autoPause('⏸ Auto-enrich paused — I screen closed. Reopen (I) and press ▶ Start to resume.');  // (dev0517)
     if (dirty) persist(false);     // best-effort flush on close
     igPreviewClose();              // (dev0500) tear down the media preview
     closeDrawer();
