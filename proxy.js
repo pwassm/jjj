@@ -18,6 +18,18 @@ const fs    = require('fs');
 const os    = require('os');
 const { spawn } = require('child_process');
 
+// (dev0658) Every in-flight IG media downloader (yt-dlp / gallery-dl / the
+// curl_cffi impersonate fetch) registers here so the VPN kill-switch can stop
+// them the instant the tunnel drops — IG must never touch the home IP. Killing
+// is precise (tracked child handles), so unrelated yt-dlp/ffmpeg are untouched.
+const ACTIVE_DL = new Set();
+function killActiveDownloads() {
+  let n = 0;
+  for (const p of ACTIVE_DL) { try { p.kill('SIGKILL'); n++; } catch (_) {} }
+  ACTIVE_DL.clear();
+  return n;
+}
+
 // (dev0656) STAY ALIVE. A WireGuard rotation tears the tunnel down, which RSTs any
 // in-flight download socket; a socket/stream 'error' event with no listener at that
 // instant would otherwise crash the whole node process — killing /vpn AND every
@@ -112,7 +124,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0657';
+const PROXY_BUILD = 'dev0658';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -858,8 +870,9 @@ function igImpersonatedGet(fileUrl, destPath, referer, accept, ua) {
     let proc;
     try { proc = spawn(IG_PYTHON, [IG_IMPERSONATE_PY, fileUrl, destPath, referer || '', accept || '', ua || ''], { windowsHide: true }); }
     catch (_) { resolve(false); return; }
+    ACTIVE_DL.add(proc);   // (dev0658) killable by the VPN kill-switch
     let out = '', done = false;
-    const finish = ok => { if (done) return; done = true; clearTimeout(killT); resolve(ok); };
+    const finish = ok => { if (done) return; done = true; ACTIVE_DL.delete(proc); clearTimeout(killT); resolve(ok); };
     const killT = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} finish(false); }, 40000);
     proc.stdout.on('data', d => { out += d.toString('utf8'); if (out.length > 2000) out = out.slice(-2000); });
     proc.on('error', () => finish(false));
@@ -1199,9 +1212,10 @@ function galleryDlImages(url, tmpDir) {
     let proc;
     try { proc = spawn(GALLERY_DL, args, { windowsHide: true }); }
     catch (_) { resolve([]); return; }
+    ACTIVE_DL.add(proc);   // (dev0658) killable by the VPN kill-switch
     let done = false;
     const finish = () => {
-      if (done) return; done = true;
+      if (done) return; done = true; ACTIVE_DL.delete(proc);
       let files = [];
       try { files = fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) {}
       resolve(files);
@@ -2271,11 +2285,12 @@ function igDownload(req, res, origin) {
       let proc, stderr = '', done = false;
       try { proc = spawn('yt-dlp', args, { windowsHide: true }); }
       catch (e) { onDone(false, 'spawn failed: ' + e.message); return; }
+      ACTIVE_DL.add(proc);   // (dev0658) killable by the VPN kill-switch
       // (dev0645) HARD wall-clock kill. --socket-timeout only bounds yt-dlp's own sockets;
       // a child that hangs otherwise lingers as a node-owned zombie, and over a long
       // session these pile up and contend for IG connections — the "restart node to fix
       // reel downloads" symptom. Kill any child that outruns this so none can accumulate.
-      const finish = (ok, err) => { if (done) return; done = true; clearTimeout(killT); onDone(ok, err); };
+      const finish = (ok, err) => { if (done) return; done = true; ACTIVE_DL.delete(proc); clearTimeout(killT); onDone(ok, err); };
       const killT = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} finish(false, 'yt-dlp timed out (killed after 90s)'); }, 90000);
       proc.stderr.on('data', d => { stderr += d.toString('utf8'); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
       proc.on('error', e => finish(false, e.message));
@@ -2528,8 +2543,6 @@ const VPN_STOP_TASK = 'ProtonVpnStop';
 // (dev0657) Recovery-tool targets for the I screen's "Fix" panel.
 const SETUP_BAT   = path.join(__dirname, 'vpn-rotate-setup.bat');
 const RESTART_PS1 = path.join(__dirname, 'restart-proxy.ps1');
-const WATCHDOG_PS1  = path.join(__dirname, 'watchdog.ps1');
-const WATCHDOG_TASK = 'SlamProxyWatchdog';
 const PS_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
 function vpnReadState() {
@@ -2676,26 +2689,7 @@ function fixRestartProxy(res, origin) {
   }, 400);
 }
 
-// (Re)install the per-user watchdog task that relaunches the proxy when :8081
-// goes dead. /RL LIMITED + current user → no elevation. action=off deletes it.
-function fixWatchdog(res, origin, off) {
-  if (off) {
-    const p = spawn('schtasks', ['/delete', '/tn', WATCHDOG_TASK, '/f'], { windowsHide: true });
-    p.on('error', () => sendJson(res, 200, { ok: true, watchdog: false }, origin));
-    p.on('close', () => sendJson(res, 200, { ok: true, watchdog: false }, origin));
-    return;
-  }
-  const tr = `\"${PS_EXE}\" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"${WATCHDOG_PS1}\"`;
-  const args = ['/Create', '/TN', WATCHDOG_TASK, '/F', '/SC', 'MINUTE', '/MO', '1', '/RL', 'LIMITED', '/TR', tr];
-  const p = spawn('schtasks', args, { windowsHide: true });
-  let err = '';
-  if (p.stderr) p.stderr.on('data', d => { err += d; });
-  p.on('error', e => sendJson(res, 500, { ok: false, error: e.message }, origin));
-  p.on('close', code => sendJson(res, code === 0 ? 200 : 500,
-    code === 0 ? { ok: true, watchdog: true } : { ok: false, error: err.trim() || ('schtasks exit ' + code) }, origin));
-}
-
-// Snapshot for the Fix panel: proxy build + whether the watchdog/VPN tasks exist.
+// Snapshot for the Fix panel: proxy build + whether the VPN tasks are registered.
 // schtasks /query exit 0 = registered. Non-sensitive, but origin-locked anyway.
 function fixStatus(res, origin) {
   const has = tn => new Promise(resolve => {
@@ -2703,8 +2697,8 @@ function fixStatus(res, origin) {
     p.on('error', () => resolve(false));
     p.on('close', code => resolve(code === 0));
   });
-  Promise.all([has(WATCHDOG_TASK), has(VPN_TASK), has(VPN_STOP_TASK)]).then(([wd, rot, stop]) => {
-    sendJson(res, 200, { ok: true, build: PROXY_BUILD, watchdog: wd, rotateTask: rot, stopTask: stop, tunnelUp: vpnTunnelUp() }, origin);
+  Promise.all([has(VPN_TASK), has(VPN_STOP_TASK)]).then(([rot, stop]) => {
+    sendJson(res, 200, { ok: true, build: PROXY_BUILD, rotateTask: rot, stopTask: stop, tunnelUp: vpnTunnelUp() }, origin);
   });
 }
 
@@ -2788,11 +2782,12 @@ http.createServer((req, res) => {
   }
 
   // (dev0657) ── Recovery / "Fix" tools (origin-locked, like /vpn/) ──────────
-  //   GET  /fix/status         → { build, watchdog, rotateTask, stopTask, tunnelUp }
+  //   GET  /fix/status         → { build, rotateTask, stopTask, tunnelUp }
   //   POST /fix/restart-proxy   → relaunch node proxy.js (loads new code)
   //   POST /fix/harden-vpn      → run vpn-rotate-setup.bat (1 UAC) — durable fix
   //   POST /fix/unstick-vpn     → schtasks /end both VPN tasks (clears a zombie)
-  //   POST /fix/watchdog[?off=1]→ (re)install / remove the proxy watchdog task
+  //   POST /fix/kill-downloads  → (dev0658) SIGKILL every in-flight IG downloader
+  //                               (the VPN kill-switch — nothing runs on home IP)
   if (req.url.startsWith('/fix/')) {
     const origin = req.headers.origin || '';
     if (!LOCAL_ORIGINS.has(origin)) {
@@ -2806,7 +2801,7 @@ http.createServer((req, res) => {
     if (action === 'restart-proxy') { fixRestartProxy(res, origin); return; }
     if (action === 'harden-vpn')    { fixHardenVpn(res, origin);    return; }
     if (action === 'unstick-vpn')   { fixUnstickVpn(res, origin);   return; }
-    if (action === 'watchdog')      { fixWatchdog(res, origin, /[?&]off=1/.test(req.url)); return; }
+    if (action === 'kill-downloads') { sendJson(res, 200, { ok: true, killed: killActiveDownloads() }, origin); return; }
     sendJson(res, 404, { ok: false, error: 'unknown fix action: ' + action }, origin);
     return;
   }

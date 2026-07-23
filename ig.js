@@ -56,6 +56,8 @@
   let dirty = false;                   // unsaved enrich/promote/status edits
   let busy = false;                    // a batch op is running
   let batchAbort = false;              // user pressed Stop during a batch
+  let vpnDropAbort = false;            // (dev0658) VPN kill-switch tripped (tunnel dropped mid-grind)
+  let rotatingActive = false;          // (dev0658) a VPN-committed Download+rotate grind is running
   let lastOpError = '';                // last enrich/download error (for throttle detection)
   let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
   let lastDlName = '';                 // (dev0649) title/id of the most recent successful download (rotate toasts)
@@ -319,6 +321,7 @@
       if (j && j.ok) vpnStatus = j;
     } catch (_) { vpnStatus = null; }
     vpnRenderPill();
+    vpnKillSwitchCheck();               // (dev0658) tunnel dropped mid-grind → stop everything
     if (toast) {
       const s = vpnStatus;
       igToast(s
@@ -350,10 +353,10 @@
 
   // ── (dev0657) Recovery "Fix" panel ────────────────────────────────────────
   // One-click versions of the CLI recovery steps, so nothing has to be
-  // remembered. Every action POSTs to the proxy's /fix/* routes. NOTE: these can
-  // only work while the proxy is answering — a dead proxy is what the background
-  // watchdog (SlamProxyWatchdog) auto-heals; if it's off, the status line says
-  // to run startproxy.bat.
+  // remembered. Every action POSTs to the proxy's /fix/* routes. NOTE: these only
+  // work while the proxy is answering — if it's fully dead the status line says to
+  // run startproxy.bat (no background auto-restart: see the VPN kill-switch, which
+  // STOPS activity on a tunnel drop rather than keeping anything alive).
   let fixPanelEl = null, fixStatusCache = null;
 
   function fixEnsureCss() {
@@ -387,8 +390,7 @@
       '<button id="fixRestart" class="frow">↻ Restart proxy<small>reloads proxy.js — use if downloads / VPN calls stop responding</small></button>' +
       '<button id="fixHarden" class="frow">🛡 Harden VPN tasks <em>(1 UAC)</em><small>the permanent fix for "no exit comes up" — run once</small></button>' +
       '<button id="fixUnstick" class="frow">🔓 Unstick VPN task<small>clears a jammed rotation so switching works again</small></button>' +
-      '<button id="fixBringUp" class="frow">🔀 Bring VPN up<small>switch until a US exit actually routes</small></button>' +
-      '<button id="fixWatchdog" class="frow"><span class="lbl">🐶 Watchdog…</span><small>auto-restarts the proxy in the background if it ever dies</small></button>';
+      '<button id="fixBringUp" class="frow">🔀 Bring VPN up<small>switch until a US exit actually routes</small></button>';
     document.body.appendChild(p);
     fixPanelEl = p;
     const q = id => p.querySelector('#' + id);
@@ -397,7 +399,6 @@
     q('fixHarden').onclick  = () => fixHardenVpn();
     q('fixUnstick').onclick = () => fixUnstickVpn();
     q('fixBringUp').onclick = () => fixBringVpnUp();
-    q('fixWatchdog').onclick = () => fixToggleWatchdog();
     fixRefreshStatus();
   }
 
@@ -408,16 +409,13 @@
     try { const r = await fetch(PROXY + '/fix/status', { cache: 'no-store' }); j = await r.json(); } catch (_) {}
     fixStatusCache = j;
     if (!fixPanelEl) return;
-    const wdLbl = fixPanelEl.querySelector('#fixWatchdog .lbl');
     if (!j || !j.ok) {
       stat.className = 'fstat bad';
-      stat.innerHTML = '⚠ <b>Proxy isn\'t answering.</b> A button can\'t restart a dead proxy — double-click <code>startproxy.bat</code>. (The 🐶 watchdog normally does this for you.)';
-      if (wdLbl) wdLbl.textContent = '🐶 Watchdog: unknown';
+      stat.innerHTML = '⚠ <b>Proxy isn\'t answering.</b> A button can\'t restart a dead proxy — double-click <code>startproxy.bat</code>.';
       return;
     }
     stat.className = 'fstat ok';
     stat.innerHTML = 'Proxy <b>' + j.build + '</b> ✓ · ' + (j.tunnelUp ? '🟢 VPN up' : '🔴 VPN off');
-    if (wdLbl) wdLbl.textContent = '🐶 Watchdog: ' + (j.watchdog ? 'ON (click to disable)' : 'OFF (click to enable)');
   }
 
   async function fixRestartProxy() {
@@ -466,21 +464,45 @@
     fixRefreshStatus();
   }
 
-  async function fixToggleWatchdog() {
-    const on = !!(fixStatusCache && fixStatusCache.watchdog);
-    igToast(on ? '🐶 disabling watchdog…' : '🐶 enabling watchdog…', 1800);
-    try {
-      const r = await fetch(PROXY + '/fix/watchdog' + (on ? '?off=1' : ''), { method: 'POST' });
-      const j = await r.json();
-      if (j && j.ok) igToast(j.watchdog
-        ? '🐶 Watchdog ON — the proxy now auto-restarts within a minute if it dies.'
-        : '🐶 Watchdog OFF.', 4200);
-      else igToast('⚠ watchdog change failed: ' + ((j && j.error) || '?'), 5500);
-    } catch (_) { igToast('⚠ proxy not responding.', 4000); }
-    fixRefreshStatus();
+  // ── (dev0658) VPN kill-switch ─────────────────────────────────────────────
+  // IG activity must NEVER run on the home IP. Two guards stop a grind the moment
+  // the WireGuard tunnel drops (a deliberate Drop VPN, a Proton-app disconnect, or
+  // a dead exit): (1) the pill poll below, sped to 5s, trips the abort + kills any
+  // in-flight downloader; (2) runBatch re-checks the tunnel before each row so no
+  // NEW download/enrich starts on a dead tunnel. Both set vpnDropAbort so the end
+  // report + auto-enrich driver stop cleanly. Skipped while vpnBusy (a legit switch
+  // is briefly down by design). Replaces the rejected auto-restart watchdog.
+  async function igKillDownloads() {
+    try { await fetch(PROXY + '/fix/kill-downloads', { method: 'POST' }); } catch (_) {}
   }
 
-  function vpnStartPoll() { if (!vpnPollTimer) vpnPollTimer = setInterval(() => { if (isIgScreenOpen()) vpnRefresh(false); }, 12000); }
+  // Fresh confirm the tunnel is up. Fast path returns on the first UP; only pays a
+  // ~600ms re-check when it looks down, so a single localhost blip can't false-stop
+  // a healthy grind. Returns false on confirmed-down OR proxy-unreachable (either
+  // way IG can't safely run). Updates the pill as a side effect.
+  async function vpnStillUp() {
+    for (let i = 0; i < 2; i++) {
+      try {
+        const r = await fetch(PROXY + '/vpn/status', { cache: 'no-store' });
+        const j = await r.json();
+        if (j && j.ok) { vpnStatus = j; vpnRenderPill(); if (j.tunnelUp) return true; }
+      } catch (_) {}
+      if (i === 0) await sleep(600);
+    }
+    return false;
+  }
+
+  // Called from vpnRefresh (the poll) — if a grind is live and the tunnel just
+  // dropped, stop EVERYTHING now: abort the loop + kill the in-flight downloader.
+  function vpnKillSwitchCheck() {
+    if ((rotatingActive || autoRunning) && !vpnBusy && vpnStatus && vpnStatus.ok && vpnStatus.tunnelUp === false && !vpnDropAbort) {
+      vpnDropAbort = true; batchAbort = true;
+      igKillDownloads();
+      igToast('🛑 VPN tunnel dropped — stopping the IG grind.\nNothing runs on your home IP.', 6000);
+    }
+  }
+
+  function vpnStartPoll() { if (!vpnPollTimer) vpnPollTimer = setInterval(() => { if (isIgScreenOpen()) vpnRefresh(false); }, 5000); }
   function vpnStopPoll()  { if (vpnPollTimer) { clearInterval(vpnPollTimer); vpnPollTimer = null; } }
 
   // Fire a switch and wait for the proxy to confirm the new exit. Returns the new
@@ -1392,7 +1414,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // (no network, no delay), so re-running with everything still selected only
   // touches the rows that still need work.
   async function runBatch(label, ids, gap, doOne, skipIf, posture) {
-    busy = true; batchAbort = false; setBatchUi(true);
+    busy = true; batchAbort = false; vpnDropAbort = false; setBatchUi(true);
     igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
     let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
@@ -1415,6 +1437,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
     for (const id of ids) {
       if (batchAbort) break;
+      // (dev0658) VPN kill-switch: in a VPN-committed grind (Download+rotate /
+      // Auto-enrich), never start a row on a dead tunnel. A deliberate switch
+      // (vpnBusy) is briefly down by design, so it's exempt. Manual Download/Enrich
+      // sel are NOT gated — those are deliberate single actions (fbcdn photos may
+      // legitimately need the home IP).
+      if ((rotatingActive || autoRunning) && !vpnBusy && !(await vpnStillUp())) {
+        vpnDropAbort = true; batchAbort = true; igKillDownloads(); break;
+      }
       const r = rowById(id); if (!r) continue;
       if (skipIf && skipIf(r)) continue;             // already done → pass over silently
       if (done > 0) {
@@ -1486,6 +1516,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
                // enrich-flavoured "login-walled post" line.
                : walledStopped ? (isDl ? `⏹ Download failed — downloads stopped`
                                        : `⏹ ${label} auto-stopped — first login-walled post`)
+               : vpnDropAbort  ? `🛑 ${label} stopped — VPN tunnel dropped (nothing ran on your home IP)`
                : batchAbort    ? `⏹ ${label} stopped by you`
                : couldntRead   ? `✓ ${label} done — ${ok}/${total} ${isDl ? 'downloaded' : 'read'}`
                :                 `✓ ${label} complete`;
@@ -1598,6 +1629,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const ok = await runBatch('Auto-enrich', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
         '🤖 auto · 🍪 cookieless · auto-rotating US VPN exits');
       if (!autoRunning) return;                               // Stop pressed mid-batch
+      if (vpnDropAbort) {                                     // (dev0658) tunnel dropped → stop, do NOT rotate back up
+        autoRunning = false; autoPaused = false;
+        igStickyShow('🛑 VPN tunnel dropped — auto-enrich stopped.\nNothing ran on your home IP. Bring the VPN up (🛠 Fix ▸ Bring VPN up), then ▶ Start.');
+        renderAuto(); return;
+      }
       autoTotalOk += ok;
       if (ok > 0) autoDry = 0;                                // real progress resets the dry-rotation guard
       const newWalls = [...enrichFailed].filter(id => !before.has(id));
@@ -1864,7 +1900,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0653) A prior Stop left batchAbort=true; clear it here or the outer
     // `while (!batchAbort)` loop (and vpnEnsureUp's own !batchAbort guard) would
     // be skipped on the very first check → an instant "0 downloaded, 0 switches".
-    batchAbort = false;
+    batchAbort = false; vpnDropAbort = false;
     busy = true; setBatchUi(true);
     // (dev0650) Bring a tunnel up BEFORE batch 1 if none is live, so no batch ever
     // downloads on the home IP (user request).
@@ -1878,6 +1914,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         return;
       }
     }
+    rotatingActive = true;             // (dev0658) arm the VPN kill-switch for this grind
     while (!batchAbort) {
       todo = readyIds();
       if (!todo.length) { endMsg = `✓ Done — no more downloadable rows in this view.`; break; }
@@ -1889,7 +1926,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         r => downloadRow(r, false), isDownloaded, '🍪 cookieless — your IG login is never used');
       totalOk += okThis;
       igStickyHide();                 // suppress runBatch's per-chunk report — we toast instead
-      if (batchAbort) { endMsg = `⏹ Stopped by you — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}.`; break; }
+      if (batchAbort) { endMsg = vpnDropAbort
+        ? `🛑 VPN tunnel dropped — stopped. ${totalOk} downloaded, all through a VPN. Nothing ran on your home IP.`
+        : `⏹ Stopped by you — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}.`; break; }
       if (okThis === 0) {             // a whole batch got nothing → a wall/login, not an IP block
         endMsg = `⏹ Batch ${batches} downloaded 0 — stopped.\n${totalOk} downloaded before this. Likely a login wall or a blocked exit — try again later or check the VPN.`;
         break;
@@ -1912,6 +1951,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
       await sleep(1500);
     }
+    rotatingActive = false;
     busy = false; setBatchUi(false); igBatchHide();
     await vpnRefresh(false);
     const exit = vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
