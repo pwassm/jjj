@@ -34,7 +34,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  $x = schtasks /query /tn $t /xml ONE | Out-String;" ^
   "  $x = $x -replace '<MultipleInstancesPolicy>\w+</MultipleInstancesPolicy>','<MultipleInstancesPolicy>StopExisting</MultipleInstancesPolicy>';" ^
   "  if ($x -match '<ExecutionTimeLimit>') { $x = $x -replace '<ExecutionTimeLimit>[^<]+</ExecutionTimeLimit>','<ExecutionTimeLimit>PT5M</ExecutionTimeLimit>' }" ^
-  "  else { $x = $x -replace '(</Settings>)','  <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>`r`n$1' }" ^
+  "  else { $x = $x -replace '</Settings>','  <ExecutionTimeLimit>PT5M</ExecutionTimeLimit></Settings>' }" ^
   "  $f = Join-Path $env:TEMP ($t + '.xml'); Set-Content -Path $f -Value $x -Encoding Unicode;" ^
   "  schtasks /create /tn $t /xml $f /f | Out-Null; Remove-Item $f -Force;" ^
   "  $s = (Get-ScheduledTask -TaskName $t).Settings; Write-Host ('  ' + $t + ': ' + $s.MultipleInstances + ', ' + $s.ExecutionTimeLimit) }"

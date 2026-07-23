@@ -348,6 +348,138 @@
       : '⚠ The tunnel may still be up — check the Proton app / WireGuard.', 4600);
   }
 
+  // ── (dev0657) Recovery "Fix" panel ────────────────────────────────────────
+  // One-click versions of the CLI recovery steps, so nothing has to be
+  // remembered. Every action POSTs to the proxy's /fix/* routes. NOTE: these can
+  // only work while the proxy is answering — a dead proxy is what the background
+  // watchdog (SlamProxyWatchdog) auto-heals; if it's off, the status line says
+  // to run startproxy.bat.
+  let fixPanelEl = null, fixStatusCache = null;
+
+  function fixEnsureCss() {
+    if (document.getElementById('igFixCss')) return;
+    const s = document.createElement('style');
+    s.id = 'igFixCss';
+    s.textContent =
+      '#igFixPanel{position:fixed;top:46px;left:12px;z-index:70;width:326px;background:#0c0f14;' +
+      'border:1px solid #34404f;border-radius:10px;box-shadow:0 14px 38px rgba(0,0,0,.6);padding:10px;font-size:13px;color:#cfe}' +
+      '#igFixPanel .fhdr{display:flex;align-items:center;justify-content:space-between;font-weight:700;color:#9ad;margin-bottom:8px}' +
+      '#igFixPanel .fhdr .fx{background:none;border:none;color:#9aa7b4;font-size:18px;cursor:pointer;padding:0 4px;line-height:1}' +
+      '#igFixPanel .fstat{background:#141b24;border:1px solid #22303c;border-radius:6px;padding:6px 8px;margin-bottom:6px;line-height:1.4}' +
+      '#igFixPanel .fstat.ok{color:#bfe} #igFixPanel .fstat.bad{color:#ffd7d7;border-color:#5a2b2b;background:#241416}' +
+      '#igFixPanel .fstat code{background:#000;padding:1px 4px;border-radius:3px}' +
+      '#igFixPanel .frow{display:block;width:100%;text-align:left;background:#1f2733;border:1px solid #34404f;' +
+      'color:#e8f0f7;border-radius:8px;padding:7px 10px;margin:6px 0;cursor:pointer;font-weight:600}' +
+      '#igFixPanel .frow:hover{background:#27313f} #igFixPanel .frow:disabled{opacity:.5;cursor:default}' +
+      '#igFixPanel .frow small{display:block;font-weight:400;color:#9aa7b4;margin-top:2px}' +
+      '#igFixPanel .frow em{color:#ffcf7a;font-style:normal}';
+    document.head.appendChild(s);
+  }
+
+  function toggleFixPanel() {
+    if (fixPanelEl) { fixPanelEl.remove(); fixPanelEl = null; return; }
+    fixEnsureCss();
+    const p = document.createElement('div');
+    p.id = 'igFixPanel';
+    p.innerHTML =
+      '<div class="fhdr">🛠 Recovery tools<button class="fx" id="fixClose" title="Close">×</button></div>' +
+      '<div class="fstat" id="fixStat">checking the proxy…</div>' +
+      '<button id="fixRestart" class="frow">↻ Restart proxy<small>reloads proxy.js — use if downloads / VPN calls stop responding</small></button>' +
+      '<button id="fixHarden" class="frow">🛡 Harden VPN tasks <em>(1 UAC)</em><small>the permanent fix for "no exit comes up" — run once</small></button>' +
+      '<button id="fixUnstick" class="frow">🔓 Unstick VPN task<small>clears a jammed rotation so switching works again</small></button>' +
+      '<button id="fixBringUp" class="frow">🔀 Bring VPN up<small>switch until a US exit actually routes</small></button>' +
+      '<button id="fixWatchdog" class="frow"><span class="lbl">🐶 Watchdog…</span><small>auto-restarts the proxy in the background if it ever dies</small></button>';
+    document.body.appendChild(p);
+    fixPanelEl = p;
+    const q = id => p.querySelector('#' + id);
+    q('fixClose').onclick   = () => { p.remove(); fixPanelEl = null; };
+    q('fixRestart').onclick = () => fixRestartProxy();
+    q('fixHarden').onclick  = () => fixHardenVpn();
+    q('fixUnstick').onclick = () => fixUnstickVpn();
+    q('fixBringUp').onclick = () => fixBringVpnUp();
+    q('fixWatchdog').onclick = () => fixToggleWatchdog();
+    fixRefreshStatus();
+  }
+
+  async function fixRefreshStatus() {
+    if (!fixPanelEl) return;
+    const stat = fixPanelEl.querySelector('#fixStat');
+    let j = null;
+    try { const r = await fetch(PROXY + '/fix/status', { cache: 'no-store' }); j = await r.json(); } catch (_) {}
+    fixStatusCache = j;
+    if (!fixPanelEl) return;
+    const wdLbl = fixPanelEl.querySelector('#fixWatchdog .lbl');
+    if (!j || !j.ok) {
+      stat.className = 'fstat bad';
+      stat.innerHTML = '⚠ <b>Proxy isn\'t answering.</b> A button can\'t restart a dead proxy — double-click <code>startproxy.bat</code>. (The 🐶 watchdog normally does this for you.)';
+      if (wdLbl) wdLbl.textContent = '🐶 Watchdog: unknown';
+      return;
+    }
+    stat.className = 'fstat ok';
+    stat.innerHTML = 'Proxy <b>' + j.build + '</b> ✓ · ' + (j.tunnelUp ? '🟢 VPN up' : '🔴 VPN off');
+    if (wdLbl) wdLbl.textContent = '🐶 Watchdog: ' + (j.watchdog ? 'ON (click to disable)' : 'OFF (click to enable)');
+  }
+
+  async function fixRestartProxy() {
+    igToast('↻ restarting the proxy…', 2000);
+    const stat = fixPanelEl && fixPanelEl.querySelector('#fixStat');
+    if (stat) { stat.className = 'fstat'; stat.textContent = 'restarting proxy — waiting for it to come back…'; }
+    try { await fetch(PROXY + '/fix/restart-proxy', { method: 'POST' }); } catch (_) {}
+    const t0 = Date.now(); let back = null;
+    while (Date.now() - t0 < 30000) {
+      await new Promise(r => setTimeout(r, 1200));
+      try { const r = await fetch(PROXY + '/version', { cache: 'no-store' }); const v = await r.json(); if (v && v.build) { back = v.build; break; } } catch (_) {}
+    }
+    if (back) { igToast('✅ proxy back up (' + back + ')', 3200); vpnRefresh(false); }
+    else igToast('⚠ proxy didn\'t answer in 30s — check the "SLAM proxy :8081" window, or run startproxy.bat.', 6500);
+    fixRefreshStatus();
+  }
+
+  async function fixHardenVpn() {
+    if (!confirm('Harden the VPN scheduled tasks?\n\nA Windows UAC prompt will appear — click Yes.\nA small setup window opens; close it when it says "Done".\n\nThis permanently stops a stuck rotation from blocking VPN switches (the recurring "no exit" cause).')) return;
+    try {
+      const r = await fetch(PROXY + '/fix/harden-vpn', { method: 'POST' });
+      const j = await r.json();
+      igToast(j && j.ok
+        ? '🛡 setup launched — approve the UAC prompt, then close its window when it says Done.'
+        : '⚠ could not launch setup: ' + ((j && j.error) || '?'), 6500);
+    } catch (_) { igToast('⚠ proxy not responding — can\'t launch setup. Run startproxy.bat first.', 4500); }
+  }
+
+  async function fixUnstickVpn() {
+    igToast('🔓 ending any stuck rotation…', 1800);
+    try { await fetch(PROXY + '/fix/unstick-vpn', { method: 'POST' }); } catch (_) {}
+    await vpnRefresh(false);
+    igToast('🔓 stuck task cleared. Try 🔀 Bring VPN up, or Download + rotate again.', 4200);
+    fixRefreshStatus();
+  }
+
+  async function fixBringVpnUp() {
+    if (busy) { igToast('A batch is running — press ⏹ Stop first.', 2600); return; }
+    batchAbort = false;
+    igToast('🔀 bringing a US exit up…', 2000);
+    const sw = await vpnEnsureUp('Fix ▸ Bring VPN up');
+    await vpnRefresh(false);
+    igToast(sw && sw.tunnelUp
+      ? '🟢 VPN up: ' + (sw.server || '?') + (sw.ip ? '  ' + sw.ip : '')
+      : '⚠ no exit routed — try 🔓 Unstick, or check the Proton app.', 5000);
+    fixRefreshStatus();
+  }
+
+  async function fixToggleWatchdog() {
+    const on = !!(fixStatusCache && fixStatusCache.watchdog);
+    igToast(on ? '🐶 disabling watchdog…' : '🐶 enabling watchdog…', 1800);
+    try {
+      const r = await fetch(PROXY + '/fix/watchdog' + (on ? '?off=1' : ''), { method: 'POST' });
+      const j = await r.json();
+      if (j && j.ok) igToast(j.watchdog
+        ? '🐶 Watchdog ON — the proxy now auto-restarts within a minute if it dies.'
+        : '🐶 Watchdog OFF.', 4200);
+      else igToast('⚠ watchdog change failed: ' + ((j && j.error) || '?'), 5500);
+    } catch (_) { igToast('⚠ proxy not responding.', 4000); }
+    fixRefreshStatus();
+  }
+
   function vpnStartPoll() { if (!vpnPollTimer) vpnPollTimer = setInterval(() => { if (isIgScreenOpen()) vpnRefresh(false); }, 12000); }
   function vpnStopPoll()  { if (vpnPollTimer) { clearInterval(vpnPollTimer); vpnPollTimer = null; } }
 
@@ -584,6 +716,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <span class="ct" id="igCount"></span>
         <span id="igVpn" title="Current Proton VPN exit — click to refresh"><span class="dot"></span><span class="txt">VPN …</span></span>
         <button id="igVpnStop" title="Stop the rotating WireGuard tunnel (proton_active) and hand VPN control back to the Proton tray app — where you can pick a server or turn the VPN off entirely.">⏏ Drop VPN</button>
+        <button id="igFix" title="Recovery tools — one click each: restart the proxy, permanently harden the VPN tasks, unstick a jammed rotation, or force a working VPN exit up. Use this whenever downloads/VPN stop working.">🛠 Fix</button>
         <input type="text" id="igSearch" placeholder="search author / id / title / caption…">
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
@@ -633,6 +766,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igRotate').addEventListener('click', () => batchDownloadRotating());
     $('igVpn').addEventListener('click', () => vpnRefresh(true));
     $('igVpnStop').addEventListener('click', () => vpnStopTunnel());
+    $('igFix').addEventListener('click', () => toggleFixPanel());
     $('igCoverOnly').addEventListener('click', () => {
       coverOnly = !coverOnly;
       const b = $('igCoverOnly');

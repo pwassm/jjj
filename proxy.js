@@ -112,7 +112,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0656';
+const PROXY_BUILD = 'dev0657';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2525,6 +2525,12 @@ const VPN_STATE = path.join(process.env.LOCALAPPDATA || os.homedir(), 'ProtonVpn
 const VPN_PS1   = path.join(__dirname, 'vpn-rotate.ps1');
 const VPN_TASK  = 'ProtonVpnRotate';
 const VPN_STOP_TASK = 'ProtonVpnStop';
+// (dev0657) Recovery-tool targets for the I screen's "Fix" panel.
+const SETUP_BAT   = path.join(__dirname, 'vpn-rotate-setup.bat');
+const RESTART_PS1 = path.join(__dirname, 'restart-proxy.ps1');
+const WATCHDOG_PS1  = path.join(__dirname, 'watchdog.ps1');
+const WATCHDOG_TASK = 'SlamProxyWatchdog';
+const PS_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
 function vpnReadState() {
   try { return JSON.parse(fs.readFileSync(VPN_STATE, 'utf8')); }
@@ -2624,11 +2630,89 @@ function vpnStop(res, origin) {
   setTimeout(poll, 1200);
 }
 
+// (dev0657) ── Recovery tools for the I screen's "Fix" panel ────────────────
+// One-click equivalents of the CLI steps that un-stick the VPN/proxy, so the
+// user never has to remember schtasks/PowerShell incantations.
+
+// End any zombie 'Running' rotation/stop task. A rotation that hung (e.g. the PC
+// slept mid-switch) sits Running under MultipleInstancesPolicy=IgnoreNew and
+// REFUSES every later /vpn/switch with 0x800710E0 for up to 72h. schtasks /end
+// clears it with NO elevation. Errors (not running / not registered) are benign.
+function fixUnstickVpn(res, origin) {
+  const tasks = [VPN_TASK, VPN_STOP_TASK];
+  let done = 0;
+  tasks.forEach(tn => {
+    const p = spawn('schtasks', ['/end', '/tn', tn], { windowsHide: true });
+    p.on('error', () => { if (++done === tasks.length) sendJson(res, 200, { ok: true, ended: tasks }, origin); });
+    p.on('close', () => { if (++done === tasks.length) sendJson(res, 200, { ok: true, ended: tasks }, origin); });
+  });
+}
+
+// Re-run vpn-rotate-setup.bat (self-elevates → one UAC) to (re)register both VPN
+// tasks HARDENED to StopExisting + PT5M — the durable fix so a hung rotation can
+// never block switching again. We can't wait on the UAC, so return immediately.
+function fixHardenVpn(res, origin) {
+  try {
+    const p = spawn(process.env.COMSPEC || 'cmd.exe', ['/c', SETUP_BAT],
+                    { cwd: __dirname, detached: true, stdio: 'ignore', windowsHide: false });
+    p.on('error', () => {});
+    p.unref();
+    sendJson(res, 200, { ok: true, spawned: true, note: 'Approve the Windows UAC prompt, then close the setup window when it says Done.' }, origin);
+  } catch (e) { sendJson(res, 500, { ok: false, error: e.message }, origin); }
+}
+
+// Restart the proxy itself (loads new code / clears a wedged state). We respond
+// FIRST because restart-proxy.ps1 is about to kill THIS node, then spawn it
+// detached so it outlives us. The client then polls /version until it's back.
+function fixRestartProxy(res, origin) {
+  sendJson(res, 200, { ok: true, restarting: true, build: PROXY_BUILD }, origin);
+  setTimeout(() => {
+    try {
+      const p = spawn(PS_EXE, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', RESTART_PS1],
+                      { cwd: __dirname, detached: true, stdio: 'ignore', windowsHide: false });
+      p.on('error', () => {});
+      p.unref();
+    } catch (_) {}
+  }, 400);
+}
+
+// (Re)install the per-user watchdog task that relaunches the proxy when :8081
+// goes dead. /RL LIMITED + current user → no elevation. action=off deletes it.
+function fixWatchdog(res, origin, off) {
+  if (off) {
+    const p = spawn('schtasks', ['/delete', '/tn', WATCHDOG_TASK, '/f'], { windowsHide: true });
+    p.on('error', () => sendJson(res, 200, { ok: true, watchdog: false }, origin));
+    p.on('close', () => sendJson(res, 200, { ok: true, watchdog: false }, origin));
+    return;
+  }
+  const tr = `\"${PS_EXE}\" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"${WATCHDOG_PS1}\"`;
+  const args = ['/Create', '/TN', WATCHDOG_TASK, '/F', '/SC', 'MINUTE', '/MO', '1', '/RL', 'LIMITED', '/TR', tr];
+  const p = spawn('schtasks', args, { windowsHide: true });
+  let err = '';
+  if (p.stderr) p.stderr.on('data', d => { err += d; });
+  p.on('error', e => sendJson(res, 500, { ok: false, error: e.message }, origin));
+  p.on('close', code => sendJson(res, code === 0 ? 200 : 500,
+    code === 0 ? { ok: true, watchdog: true } : { ok: false, error: err.trim() || ('schtasks exit ' + code) }, origin));
+}
+
+// Snapshot for the Fix panel: proxy build + whether the watchdog/VPN tasks exist.
+// schtasks /query exit 0 = registered. Non-sensitive, but origin-locked anyway.
+function fixStatus(res, origin) {
+  const has = tn => new Promise(resolve => {
+    const p = spawn('schtasks', ['/query', '/tn', tn], { windowsHide: true });
+    p.on('error', () => resolve(false));
+    p.on('close', code => resolve(code === 0));
+  });
+  Promise.all([has(WATCHDOG_TASK), has(VPN_TASK), has(VPN_STOP_TASK)]).then(([wd, rot, stop]) => {
+    sendJson(res, 200, { ok: true, build: PROXY_BUILD, watchdog: wd, rotateTask: rot, stopTask: stop, tunnelUp: vpnTunnelUp() }, origin);
+  });
+}
+
 http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -2642,7 +2726,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 
@@ -2700,6 +2784,30 @@ http.createServer((req, res) => {
       return;
     }
     sendJson(res, 404, { ok: false, error: 'unknown vpn action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0657) ── Recovery / "Fix" tools (origin-locked, like /vpn/) ──────────
+  //   GET  /fix/status         → { build, watchdog, rotateTask, stopTask, tunnelUp }
+  //   POST /fix/restart-proxy   → relaunch node proxy.js (loads new code)
+  //   POST /fix/harden-vpn      → run vpn-rotate-setup.bat (1 UAC) — durable fix
+  //   POST /fix/unstick-vpn     → schtasks /end both VPN tasks (clears a zombie)
+  //   POST /fix/watchdog[?off=1]→ (re)install / remove the proxy watchdog task
+  if (req.url.startsWith('/fix/')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      console.warn(`[fix 403] origin="${origin || '(none)'}" not in allowlist`);
+      send(res, 403, 'fix: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    const action = req.url.slice('/fix/'.length).split('?')[0];
+    if (req.method === 'GET' && action === 'status') { fixStatus(res, origin); return; }
+    if (req.method !== 'POST') { send(res, 405, 'fix: POST required', corsForExec(origin)); return; }
+    if (action === 'restart-proxy') { fixRestartProxy(res, origin); return; }
+    if (action === 'harden-vpn')    { fixHardenVpn(res, origin);    return; }
+    if (action === 'unstick-vpn')   { fixUnstickVpn(res, origin);   return; }
+    if (action === 'watchdog')      { fixWatchdog(res, origin, /[?&]off=1/.test(req.url)); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown fix action: ' + action }, origin);
     return;
   }
 
