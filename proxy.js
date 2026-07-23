@@ -18,6 +18,19 @@ const fs    = require('fs');
 const os    = require('os');
 const { spawn } = require('child_process');
 
+// (dev0656) STAY ALIVE. A WireGuard rotation tears the tunnel down, which RSTs any
+// in-flight download socket; a socket/stream 'error' event with no listener at that
+// instant would otherwise crash the whole node process — killing /vpn AND every
+// download at once. That was the "no VPN exit would come up / current exit: no tunnel"
+// failure: the proxy had silently died mid-batch, so the client's /vpn/status and
+// /vpn/switch calls got ECONNREFUSED. Log and keep serving instead of exiting.
+process.on('uncaughtException', (err) => {
+  try { console.error(`[${new Date().toISOString()}] uncaughtException (proxy stays up):`, err && err.stack || err); } catch (_) {}
+});
+process.on('unhandledRejection', (reason) => {
+  try { console.error(`[${new Date().toISOString()}] unhandledRejection (proxy stays up):`, reason && reason.stack || reason); } catch (_) {}
+});
+
 const PORT = 8081;
 // (dev0319) Build/capability tag — surfaced at GET /version so the client can
 // detect a stale proxy before sending a deskew (rotate) job that an old build
@@ -99,7 +112,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0652';
+const PROXY_BUILD = 'dev0656';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
