@@ -2413,13 +2413,18 @@ function igDownload(req, res, origin) {
     const ytdlpChain = () => {
       const terminal = photoPost ? galleryDlOrEmbed : mainVideoRescueOr502;
       run(false, (ok1, err1) => {
-        if (ok1 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
+        // (dev0660) Require actual FILES on disk, not just a yt-dlp exit-0. A pure-photo /p
+        // post makes yt-dlp (a video tool) exit 0 having written NOTHING; the old `ok1 ||`
+        // then returned {ok:true, files:[]}, and the client stamped status='downloaded' on a
+        // download that landed no media (found 18 such rows). A nonzero exit that still wrote
+        // files (partial carousel) is unaffected — tmpFiles().length already covers it.
+        if (tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
         // (dev0494) Download-only cookie net (separate from enrich's IG_USE_COOKIES):
         // cookieless yt-dlp came back empty → try Firefox cookies if the user opted in.
         if (!IG_DOWNLOAD_USE_COOKIES) { terminal(err1); return; }
         wipeTmp();   // clear any partial cookieless output before the cookie retry
         run(true, (ok2, err2) => {
-          if (ok2 || tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }
+          if (tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }  // (dev0660) files-not-exit-code, see above
           terminal(err2 || err1);
         });
       });

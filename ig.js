@@ -1790,6 +1790,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       });
       const j = await res.json();
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+      // (dev0660) A success carrying ZERO files is a FALSE success — never mark the row
+      // downloaded on it. The old code stamped status='downloaded' with an empty localFiles
+      // whenever the proxy returned {ok:true, files:[]}, leaving 18 photo /p rows flagged
+      // downloaded with nothing on disk. Treat it as a failure so status stays put.
+      if (!j.files || !j.files.length) throw new Error('download returned no files (nothing landed on disk)');
       r.localFiles = j.files || [];
       // (dev0659) The proxy stamps the real ffprobe'd length into the filename; adopt it so
       // the row's durSecs matches the file — fixes the 00.00.00 that missing enrich metadata
