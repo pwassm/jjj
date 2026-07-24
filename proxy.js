@@ -16,7 +16,7 @@ const https = require('https');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 
 // (dev0658) Every in-flight IG media downloader (yt-dlp / gallery-dl / the
 // curl_cffi impersonate fetch) registers here so the VPN kill-switch can stop
@@ -2270,9 +2270,33 @@ function igDownload(req, res, origin) {
     // Rename tmp files → ig_media/<stem>[ [i of N]].<ext>; return the basenames.
     function publish() {
       const files = tmpFiles(), n = files.length, out = [];
+      // (dev0659) Ground-truth the filename's leading hh.mm.ss from the ACTUAL downloaded
+      // video(s). The client builds `name` from enrich metadata, whose duration is often
+      // missing on the cookieless OG/reel path → durSecs 0 → a "00.00.00~…" name even
+      // though a full-length clip just landed. ffprobe the real file(s), take the max
+      // duration (mirrors the client's per-row "one duration" convention) and stamp the
+      // true length in. Best-effort: any probe hiccup leaves the client's stem untouched,
+      // and image-only posts (no video ext) keep their legitimate 00.00.00.
+      let outStem = stem;
+      try {
+        let maxDur = 0;
+        for (const f of files) {
+          if (!/\.(mp4|mov|webm|mkv|m4v)$/i.test(f)) continue;
+          const raw = execFileSync('ffprobe', ['-v', 'quiet', '-show_entries',
+            'format=duration', '-of', 'default=nw=1:nk=1', path.join(tmpDir, f)],
+            { encoding: 'utf8', timeout: 15000 }).trim();
+          const d = parseFloat(raw);
+          if (Number.isFinite(d) && d > maxDur) maxDur = d;
+        }
+        if (maxDur > 0) {
+          const s = Math.round(maxDur), p2 = x => String(x).padStart(2, '0');
+          const hms = p2(Math.floor(s / 3600)) + '.' + p2(Math.floor((s % 3600) / 60)) + '.' + p2(s % 60);
+          outStem = stem.replace(/^\d{2}\.\d{2}\.\d{2}/, hms);   // only the duration field
+        }
+      } catch (_) {}
       files.forEach((f, i) => {
         const ext = path.extname(f);
-        const base = stem + (n > 1 ? ' [' + (i + 1) + ' of ' + n + ']' : '') + ext;
+        const base = outStem + (n > 1 ? ' [' + (i + 1) + ' of ' + n + ']' : '') + ext;
         const dest = path.join(IG_MEDIA_DIR, base);
         try { fs.renameSync(path.join(tmpDir, f), dest); out.push(base); }
         catch (_) { try { fs.copyFileSync(path.join(tmpDir, f), dest); out.push(base); } catch (_) {} }

@@ -1791,6 +1791,20 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const j = await res.json();
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       r.localFiles = j.files || [];
+      // (dev0659) The proxy stamps the real ffprobe'd length into the filename; adopt it so
+      // the row's durSecs matches the file — fixes the 00.00.00 that missing enrich metadata
+      // left behind, and makes a later Promote carry the right length. Images stay 0.
+      const _nm0 = r.localFiles[0] || '';
+      const _hm = _nm0.match(/^(\d{2})\.(\d{2})\.(\d{2})~/);
+      if (_hm) { const _s = (+_hm[1]) * 3600 + (+_hm[2]) * 60 + (+_hm[3]); if (_s > 0) r.durSecs = _s; }
+      // (dev0659) Surface a resolution-lossy fallback even in batch/rotate (single=false
+      // suppresses the normal per-row toast). The embed rescue is first-image-only — clearly
+      // not top-res — so always warn. The /p video_versions + carousel + gallery-dl paths are
+      // max-res-equivalent to yt-dlp, so they get a quieter "used a fallback" note.
+      if (!single) {
+        if (j.viaEmbed) igToast('⚠ ' + r.id + ': low-res EMBED fallback (first image only) — re-download later for full res', 4200);
+        else if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl) igToast('ℹ ' + r.id + ': cookieless fallback path used (still full res)', 2400);
+      }
       if (r.status !== 'promoted') r.status = 'downloaded';
       lastDlName = r.VidTitle || r.id;   // (dev0649) "most recent download" for the rotate toasts
       // (dev0492) Cookie use is now an EXPLICIT proxy flag — NOT "any note present".
