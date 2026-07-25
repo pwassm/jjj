@@ -37,6 +37,8 @@
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
   let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
   let embedFilter = 'all';             // (dev0665) all | 1 (embeddable) | 0 (not) | un (unprobed)
+  const lowResIds = new Set();         // (dev0666) rows this run that came via the low-res embed fallback
+  const fallbackIds = new Set();       // (dev0666) rows this run that used a non-yt-dlp but full-res path
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
   // (dev0655) Windowed rendering — the tbody paints only the rows in (and just around)
   // the #igWrap viewport, with top/bottom spacer <tr>s reserving the off-screen height,
@@ -1026,7 +1028,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0474) hover the cell → see the actual ftext/ttxt content as a tooltip
     const capTip = r.ftext ? ` title="${esc(htmlToText(r.ftext))}"` : '';
     const ttTip = r.ttxt ? ` title="${esc(htmlToText(r.ttxt))}"` : '';
-    const wxh = (r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>';
+    // (dev0666) A download that landed only the low-res embed image stays visible here,
+    // long after its toast is gone — same "flag it so it can't pile up unseen" rule as
+    // the ⚠ partial Posted cell.
+    const wxh = r.lowResDl
+      ? '<span class="walled" title="Downloaded via the low-res EMBED fallback (first image only) — re-download later for full res">⚠ low-res</span>'
+      : ((r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>');
     const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
     return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''} ${r.id === processingId ? 'proc' : ''}">
         <td class="c-sel"><input type="checkbox" class="igchk" ${sel.has(r.id) ? 'checked' : ''}></td>
@@ -1466,6 +1473,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
     let consecFail = 0;                      // (dev0645) run of back-to-back download failures
+    lowResIds.clear(); fallbackIds.clear();  // (dev0666) per-run download-path tallies
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
     const t0 = Date.now();
     // Rows that still need work. Already-done rows are passed over silently — no
@@ -1581,6 +1589,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     ];
     if (couldntRead) lines.push(`${couldntRead} ${isDl ? "couldn't be downloaded" : "couldn't be read"}  (needs a login)`);
     if (notReached)  lines.push(`${notReached} not reached  (run stopped early)`);
+    // (dev0666) Download-path quality, reported once at the end instead of per-row toasts
+    // the live panel used to cover. Low-res rows also carry a ⚠ marker in their W×H cell.
+    if (isDl && lowResIds.size) {
+      const ids = [...lowResIds];
+      lines.push(`⚠ ${ids.length} came via the low-res EMBED fallback (first image only) — marked ⚠ in W×H`,
+        `   ${ids.slice(0, 6).join(', ')}${ids.length > 6 ? ` +${ids.length - 6} more` : ''}`);
+    }
+    if (isDl && fallbackIds.size) lines.push(`ℹ ${fallbackIds.size} used a cookieless fallback path (still full res)`);
     lines.push(`⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`);
     if (throttled)          lines.push('', 'Wait a few minutes, then re-run — only un-done rows are retried.');
     else if (cookieStopped) lines.push('', 'Stopped after 1 Firefox-cookie use (your account-safety setting).',
@@ -1853,9 +1869,18 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // suppresses the normal per-row toast). The embed rescue is first-image-only — clearly
       // not top-res — so always warn. The /p video_versions + carousel + gallery-dl paths are
       // max-res-equivalent to yt-dlp, so they get a quieter "used a fallback" note.
-      if (!single) {
-        if (j.viaEmbed) igToast('⚠ ' + r.id + ': low-res EMBED fallback (first image only) — re-download later for full res', 4200);
-        else if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl) igToast('ℹ ' + r.id + ': cookieless fallback path used (still full res)', 2400);
+      // (dev0666) In a BATCH these used to fire a transient igToast per row, which the
+      // live progress panel immediately covered — the user saw only a flash of "…download
+      // later" and could never read which row it was. Tally them on the run instead: the
+      // low-res rows also get a PERSISTENT ⚠ marker in the W×H cell (so they stay findable
+      // after the toast is long gone) and both counts land in the end-of-run report.
+      if (j.viaEmbed) {
+        r.lowResDl = true;
+        lowResIds.add(r.id);
+        if (single) igToast('⚠ ' + r.id + ': low-res EMBED fallback (first image only) — re-download later for full res', 4200);
+      } else {
+        if (r.lowResDl) delete r.lowResDl;          // a later full-res download clears the flag
+        if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl) fallbackIds.add(r.id);
       }
       if (r.status !== 'promoted') r.status = 'downloaded';
       // (dev0663) Close the last date-loss hole: if the inline enrich failed (or came
