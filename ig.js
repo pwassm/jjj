@@ -58,6 +58,7 @@
   let batchAbort = false;              // user pressed Stop during a batch
   let vpnDropAbort = false;            // (dev0658) VPN kill-switch tripped (tunnel dropped mid-grind)
   let rotatingActive = false;          // (dev0658) a VPN-committed Download+rotate grind is running
+  let vpnDownStreak = 0;               // (dev0661) consecutive tunnel-down poll reads (kill-switch debounce)
   let lastOpError = '';                // last enrich/download error (for throttle detection)
   let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
   let lastDlName = '';                 // (dev0649) title/id of the most recent successful download (rotate toasts)
@@ -481,24 +482,37 @@
   // a healthy grind. Returns false on confirmed-down OR proxy-unreachable (either
   // way IG can't safely run). Updates the pill as a side effect.
   async function vpnStillUp() {
-    for (let i = 0; i < 2; i++) {
+    // (dev0661) Ride out a WireGuard rekey blip: a datacenter exit can drop its
+    // handshake for a few seconds and self-heal. Re-check a few times over ~2.4s
+    // before declaring down, so one transient miss can't false-kill a healthy
+    // grind. First UP short-circuits, so a healthy tunnel still pays ~0ms.
+    for (let i = 0; i < 4; i++) {
       try {
         const r = await fetch(PROXY + '/vpn/status', { cache: 'no-store' });
         const j = await r.json();
         if (j && j.ok) { vpnStatus = j; vpnRenderPill(); if (j.tunnelUp) return true; }
       } catch (_) {}
-      if (i === 0) await sleep(600);
+      if (i < 3) await sleep(800);
     }
     return false;
   }
 
   // Called from vpnRefresh (the poll) — if a grind is live and the tunnel just
   // dropped, stop EVERYTHING now: abort the loop + kill the in-flight downloader.
+  // (dev0661) Debounce: the 5s poll must see the tunnel down on TWO consecutive
+  // reads (~5-10s of confirmed-down) before killing the grind. A single blip from
+  // a WireGuard rekey on a flaky datacenter exit self-heals in seconds and used to
+  // false-stop a perfectly healthy 300+ item grind. Any UP read resets the streak.
   function vpnKillSwitchCheck() {
-    if ((rotatingActive || autoRunning) && !vpnBusy && vpnStatus && vpnStatus.ok && vpnStatus.tunnelUp === false && !vpnDropAbort) {
+    if (!(rotatingActive || autoRunning) || vpnBusy || !vpnStatus || !vpnStatus.ok || vpnDropAbort) return;
+    if (vpnStatus.tunnelUp === false) {
+      if (++vpnDownStreak < 2) return;         // first miss is tolerated (rekey blip)
+      vpnDownStreak = 0;
       vpnDropAbort = true; batchAbort = true;
       igKillDownloads();
       igToast('🛑 VPN tunnel dropped — stopping the IG grind.\nNothing runs on your home IP.', 6000);
+    } else {
+      vpnDownStreak = 0;                        // healthy read clears the streak
     }
   }
 
@@ -1919,7 +1933,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0653) A prior Stop left batchAbort=true; clear it here or the outer
     // `while (!batchAbort)` loop (and vpnEnsureUp's own !batchAbort guard) would
     // be skipped on the very first check → an instant "0 downloaded, 0 switches".
-    batchAbort = false; vpnDropAbort = false;
+    batchAbort = false; vpnDropAbort = false; vpnDownStreak = 0;
     busy = true; setBatchUi(true);
     // (dev0650) Bring a tunnel up BEFORE batch 1 if none is live, so no batch ever
     // downloads on the home IP (user request).
