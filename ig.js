@@ -1838,6 +1838,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         else if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl) igToast('ℹ ' + r.id + ': cookieless fallback path used (still full res)', 2400);
       }
       if (r.status !== 'promoted') r.status = 'downloaded';
+      // (dev0663) Close the last date-loss hole: if the inline enrich failed (or came
+      // via the caption-only embed) the download still succeeds, but the row would be
+      // stamped 'downloaded' with a blank Posted date — invisibly, which is how 73
+      // such rows piled up. Flag it partial so it stays visible; a later re-fetch that
+      // does land a date clears it.
+      if (!(r.DatePosted && String(r.DatePosted).trim())) r.metaPartial = true;
+      else if (r.metaPartial) delete r.metaPartial;
       lastDlName = r.VidTitle || r.id;   // (dev0649) "most recent download" for the rotate toasts
       // (dev0492) Cookie use is now an EXPLICIT proxy flag — NOT "any note present".
       // The dev0491 embed-image rescue is cookieless but carries a `note`; the old
