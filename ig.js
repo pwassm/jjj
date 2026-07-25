@@ -36,6 +36,7 @@
   let sortCol = 'DateAdded', sortDir = -1;
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
   let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
+  let embedFilter = 'all';             // (dev0665) all | 1 (embeddable) | 0 (not) | un (unprobed)
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
   // (dev0655) Windowed rendering — the tbody paints only the rows in (and just around)
   // the #igWrap viewport, with top/bottom spacer <tr>s reserving the off-screen height,
@@ -758,6 +759,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option></select>
         <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links or ffdown imports)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
+        <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
         <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
@@ -796,6 +798,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igKind').addEventListener('change', e => { kindFilter = e.target.value; applyAndRender(); });
     $('igStatus').addEventListener('change', e => { statusFilter = e.target.value; applyAndRender(); });
     $('igStaged').addEventListener('change', e => { stagedFilter = e.target.value; applyAndRender(); });
+    $('igEmbed').addEventListener('change', e => { embedFilter = e.target.value; applyAndRender(); });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igAutoEnrich').addEventListener('click', () => toggleAutoPanel());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
@@ -841,6 +844,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     { key: 'durSecs', label: 'Dur', w: 60, sort: true },
     { key: '_wxh', label: 'W×H', w: 80, sort: true },
     { key: 'DatePosted', label: 'Posted', w: 96, sort: true },
+    { key: 'embed', label: 'Embed', w: 52, sort: true },
     { key: '_cap', label: 'ftext', w: 46, sort: false },
     { key: '_ttxt', label: 'ttxt', w: 46, sort: false },
     { key: 'status', label: 'Status', w: 86, sort: true },
@@ -879,13 +883,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // applyAndRender tell a real filter change (jump to top + persist) from a data
   // re-render during a grind (keep scroll position, no write).
   function _filterSig() {
-    return [query, kindFilter, statusFilter, authorFilter, stagedFilter,
+    return [query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter,
       hideCompleted ? 1 : 0, sortCol, sortDir].join('');
   }
   function saveFilters() {
     try {
       localStorage.setItem(IG_FILTER_KEY, JSON.stringify({
-        query, kindFilter, statusFilter, authorFilter, stagedFilter,
+        query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter,
         hideCompleted, sortCol, sortDir
       }));
     } catch (_) {}
@@ -898,6 +902,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (typeof j.statusFilter === 'string') statusFilter = j.statusFilter;
       if (typeof j.authorFilter === 'string') authorFilter = j.authorFilter;
       if (typeof j.stagedFilter === 'string') stagedFilter = j.stagedFilter;
+      if (typeof j.embedFilter === 'string') embedFilter = j.embedFilter;
       if (typeof j.hideCompleted === 'boolean') hideCompleted = j.hideCompleted;
       if (typeof j.sortCol === 'string') sortCol = j.sortCol;
       if (j.sortDir === 1 || j.sortDir === -1) sortDir = j.sortDir;
@@ -911,6 +916,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (g('igKind')) g('igKind').value = kindFilter;
     if (g('igStatus')) g('igStatus').value = statusFilter;
     if (g('igStaged')) g('igStaged').value = stagedFilter;
+    if (g('igEmbed')) g('igEmbed').value = embedFilter;
   }
 
   function applyAndRender() {
@@ -939,6 +945,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (dev0472) NonFullReels = ffdown imports (staged===false); Full reels = harvested (everything else)
       if (stagedFilter === 'non' && r.staged !== false) return false;
       if (stagedFilter === 'full' && r.staged === false) return false;
+      // (dev0665) Official-embed verdict from igEmbedProbe.js: 1 / 0 / absent (unprobed)
+      if (embedFilter === '1' && r.embed !== 1) return false;
+      if (embedFilter === '0' && r.embed !== 0) return false;
+      if (embedFilter === 'un' && (r.embed === 0 || r.embed === 1)) return false;
       if (hideCompleted && isDownloaded(r)) return false;   // (dev0438) 'c' = hide completed
       if (query) {
         const hay = (r.author + ' ' + r.id + ' ' + (r.VidTitle || '') + ' ' + (r.ftext || '') + ' ' + (r.status || '')).toLowerCase();
@@ -951,6 +961,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (sortCol === 'status') return r.status || 'new';
       if (sortCol === 'durSecs') return +r.durSecs || 0;
       if (sortCol === '_wxh') return (+r.height || 0) * 100000 + (+r.width || 0);
+      if (sortCol === 'embed') return r.embed === 1 ? 2 : (r.embed === 0 ? 1 : 0);   // ✓ > ✗ > unprobed
       return (r[sortCol] != null ? r[sortCol] : '');
     };
     view.sort((a, b) => {
@@ -980,6 +991,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const vEnriched  = view.reduce((n, r) => n + (st(r) === 'enriched' ? 1 : 0), 0);
     const vDownload  = view.reduce((n, r) => n + (st(r) === 'downloaded' ? 1 : 0), 0);
     const vPromoted  = view.reduce((n, r) => n + (st(r) === 'promoted' ? 1 : 0), 0);
+    const vEmbed     = view.reduce((n, r) => n + (r.embed === 1 ? 1 : 0), 0);   // (dev0665)
     // (dev0445) Selected-AND-visible vs total selected, so a selection hidden by the
     // filter can't masquerade (it used to silently get batch-processed).
     const selHere = view.reduce((n, r) => n + (sel.has(r.id) ? 1 : 0), 0);
@@ -992,7 +1004,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // Prominent white "N shown" (the records-in-filter count); dim breakdown after.
       const sub = [
         filtered ? `of ${rows.length}` : null,
-        `new ${vNew}`, `enriched ${vEnriched}`, `downloaded ${vDownload}`, `promoted ${vPromoted}`,
+        `new ${vNew}`, `enriched ${vEnriched}`, `downloaded ${vDownload}`, `promoted ${vPromoted}`, `embed ✓ ${vEmbed}`,
         selTxt,
         dirty ? '⚠ unsaved' : null,
       ].filter(Boolean).join(' · ');
@@ -1028,6 +1040,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           : (r.metaPartial
               ? '<span class="walled" title="caption-only embed fallback — no date/dims were available; re-download on a healthy VPN to fill it">⚠ partial</span>'
               : '<span class="no">—</span>')}</td>
+        <td style="text-align:center" title="${r.embed === 1
+          ? 'Embeddable — IG’s official /embed/ page serves the video; a public iframe single-plays it'
+          : (r.embed === 0
+              ? 'Not embeddable — the embed page shows caption/poster only (photos always; some accounts refuse)'
+              : 'Unprobed — run igEmbedProbe.js to stamp a verdict')}">${r.embed === 1
+          ? '<span class="yes">✓</span>' : (r.embed === 0 ? '<span class="no">✗</span>' : '<span class="no">—</span>')}</td>
         <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
         <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
         <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Try 📋 Saved-text, or grab it from a logged-in Firefox; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}</td>
@@ -1155,6 +1173,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       <div class="kv">
         <b>VidAuthor</b><span>${esc(r.VidAuthor || '—')}</span>
         <b>Posted</b><span>${esc(r.DatePosted || '—')}</span>
+        <b>Embed</b><span>${r.embed === 1 ? '✓ embeddable (official iframe single-plays)'
+          : (r.embed === 0 ? '✗ not embeddable (embed page has no video)' : '— unprobed')}</span>
         <b>Duration</b><span>${r.durSecs ? esc(fmtDur(r.durSecs)) : '—'}</span>
         <b>W×H (max)</b><span>${(r.width && r.height) ? (r.width + ' × ' + r.height) : '—'}</span>
         <b>Harvested</b><span>${esc(r.DateAdded || '—')}</span>
@@ -2041,6 +2061,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       tags: [],
       igSource: r.id            // provenance: which ig.json row this came from
     };
+    // (dev0665) Carry the official-embed verdict so grid/public code can gate on it.
+    if (r.embed === 0 || r.embed === 1) mlRow.embed = r.embed;
     data.push(mlRow);
     save();
     r.status = 'promoted';
