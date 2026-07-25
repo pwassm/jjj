@@ -1024,7 +1024,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <td title="${esc(r.VidTitle || '')}">${esc(r.VidTitle || '')}</td>
         <td class="mono">${dur}</td>
         <td class="mono">${wxh}</td>
-        <td class="mono">${esc(r.DatePosted || '') || '<span class="no">—</span>'}</td>
+        <td class="mono">${r.DatePosted ? esc(r.DatePosted)
+          : (r.metaPartial
+              ? '<span class="walled" title="caption-only embed fallback — no date/dims were available; re-download on a healthy VPN to fill it">⚠ partial</span>'
+              : '<span class="no">—</span>')}</td>
         <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
         <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
         <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Try 📋 Saved-text, or grab it from a logged-in Firefox; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}</td>
@@ -1392,6 +1395,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // set meta.thumbnail (the proxy skips covers on video posts), so this is a no-op
       // for them and never overwrites with a stale value.
       if (meta.thumbnail) r.igImage = meta.thumbnail;
+      // (dev0662) The old date-loss bug: when yt-dlp AND the cookieless /p/ page both
+      // fail, enrich drops to the embed page, which returns caption+handle ONLY — no
+      // upload_date, no dims, no duration (parseIgEmbed). Those rows were stamped a
+      // clean 'enriched'/'downloaded' with a blank Posted date and quietly piled up
+      // (the jam_and_germs / undersea_gameqmi / pedrovalenciam mid-June backlog). Flag
+      // an embed-only enrich as partial so it's visibly incomplete and gets re-fetched;
+      // any real source (yt-dlp or the /p/ page — both carry the date) clears it. This
+      // never fabricates a date, it only marks the gap so it can't accumulate unseen.
+      if (meta._viaEmbed && !(r.DatePosted && String(r.DatePosted).trim())) r.metaPartial = true;
+      else if (r.metaPartial) delete r.metaPartial;
       if (r.status === 'new' || !r.status) r.status = 'enriched';
       // (dev0442) honest cookie report — the proxy now falls back to Firefox cookies
       // when a post is login-walled (same as Download), and tells us which path won.
