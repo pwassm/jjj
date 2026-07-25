@@ -1950,6 +1950,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `• Press ⏹ Stop any time.`)) return;
 
     let totalOk = 0, batches = 0, switches = 0, endMsg = '';
+    // (dev0664) elapsed clock for the grind — every toast reports time since start.
+    const t0 = Date.now();
+    const elapsed = () => fmtDur((Date.now() - t0) / 1000);
     // (dev0653) A prior Stop left batchAbort=true; clear it here or the outer
     // `while (!batchAbort)` loop (and vpnEnsureUp's own !batchAbort guard) would
     // be skipped on the very first check → an instant "0 downloaded, 0 switches".
@@ -1988,15 +1991,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
       const remain = readyIds().length;
       // auto-dismissing success toast: cumulative + most recent (the user's ask)
-      igToast(`✓ Batch ${batches}: ${okThis} downloaded  ·  ${totalOk} total`
+      igToast(`✓ Batch ${batches}: ${okThis} downloaded  ·  ${totalOk} total  ·  ${elapsed()} elapsed`
         + (lastDlName ? `\nlast: ${lastDlName}` : '')
         + (remain ? `\n${remain} still to go — 🔀 switching VPN…` : ''), 4200);
       if (!remain) { endMsg = `✓ Done — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}; nothing left to download.`; break; }
       // switch exits before the next batch
       busy = true; setBatchUi(true);
-      igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${totalOk} downloaded so far`);
+      igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${totalOk} downloaded so far  ·  ${elapsed()} elapsed`);
       const sw = await vpnEnsureUp(`switching after batch ${batches}`);
-      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}`, 3000); }
+      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}\n${totalOk} downloaded  ·  ${elapsed()} elapsed`, 3000); }
       else {
         // Never download on the home IP — the user wants everything through a VPN.
         endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
@@ -2009,7 +2012,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     await vpnRefresh(false);
     const exit = vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
-      + `\n\n${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`);
+      // (dev0664) final report always states the run total + wall-clock time since start.
+      + `\n\nTOTAL: ${totalOk} downloaded in ${elapsed()}`
+      + (totalOk ? `  (${fmtDur(((Date.now() - t0) / 1000) / totalOk)} each)` : '')
+      + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`);
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
