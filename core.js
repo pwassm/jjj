@@ -450,16 +450,21 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
-  // (dev0669) z while G is open = "new embed": swap the hovered IG/TikTok cell's
+  // (dev0669) q while G is open = "new embed": swap the hovered IG/TikTok cell's
   // iframe for a freshly loaded one so the post can play IN THE CELL again (the
   // providers allow exactly one inline play per embed instance — that is why the
-  // same post plays once in G and again in V). ⇧Z does the whole grid at once.
+  // same post plays once in G and again in V). ⇧Q does the whole grid at once.
   // View-only — no ml.json/c.json write — so user mode (Gu) gets it too; a
   // viewer who has already watched a cell is exactly who needs it.
-  if (k === 'z' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    const gOpenZ  = document.getElementById('gridOverlay')?.style.display === 'flex';
-    const vpOpenZ = document.getElementById('gridFullscreen')?.style.display === 'flex';
-    if (gOpenZ && !vpOpenZ) {
+  //
+  // (dev0671) Was z/⇧Z for one version, which was wrong: collection.js has owned
+  // both since dev0350/0368 (zoom reset / restore cell zooms from config) and
+  // this window-capture handler runs first, so it silently ate them. q is free
+  // in G — core.js's q (open q.html) is gated on the grid being CLOSED.
+  if (k === 'q' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const gOpenQ  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenQ = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpenQ && !vpOpenQ) {
       e.preventDefault();
       e.stopPropagation();
       if (typeof window.gridNewEmbed === 'function') window.gridNewEmbed(e.shiftKey);

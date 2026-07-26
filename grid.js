@@ -293,7 +293,17 @@ function fitGridIgFrame(cellEl, iframe) {
     // at or below 1.25 aspect — every landscape/square grid — still take the
     // width ratio and render exactly as before. Mirrors dev0502's cover-fit for
     // images in portrait grids.
-    const scale = Math.max(cw / NAT_W, ch / MEDIA_H);
+    // (dev0671) Whole-grid + per-cell ZOOM now reaches IG cells too. It could
+    // not before: _gridCellZoomTarget knew about video hosts, images and the
+    // ftext montage box, and an IG cell is none of those, so every zoom path —
+    // [ ], Ctrl+[ ], Shift+hold, the config's saved per-cell zoom — quietly
+    // no-opped on the one cell type that fills a 12P grid. The magnification
+    // rides the fit's own scale, which keeps the iframe at its natural 326×620
+    // (the reason IG believes it is full-size and maps clicks correctly — cf.
+    // the YT tile spinner). Raising the scale shrinks the visible natural-px
+    // window below, so the fx/fy crop re-anchors on its own.
+    const _z = (typeof _gridZoomForCell === 'function') ? _gridZoomForCell(cellEl) : 1;
+    const scale = Math.max(cw / NAT_W, ch / MEDIA_H) * (_z > 0 ? _z : 1);
     // (dev0541) Vertical pan from the row's COI fy. A short landscape cell only
     // shows a thin top strip of the scaled IG picture, hiding a subject in its
     // lower half. fy=0 keeps the old top-aligned crop; higher fy slides the
@@ -310,9 +320,14 @@ function fitGridIgFrame(cellEl, iframe) {
     const fx = coi ? coi.fx : 0.5;
     const winNatW = scale ? (cw / scale) : NAT_W;
     const panNatX = fx * Math.max(0, NAT_W - winNatW);
+    // (dev0671) Transient Shift+drag pan, in screen px like every other cell
+    // type — added straight to the offsets rather than through
+    // _gridAnchoredTransform, since this frame is positioned, not translated.
+    const _pan = (typeof _gridCellPanForCell === 'function') ? _gridCellPanForCell(cellEl) : null;
+    const _px = _pan ? (_pan.x || 0) : 0, _py = _pan ? (_pan.y || 0) : 0;
     iframe.style.transform = 'scale(' + scale + ')';
-    iframe.style.left = (-panNatX * scale) + 'px';
-    iframe.style.top = (-(HEADER + panNat) * scale) + 'px';
+    iframe.style.left = (-panNatX * scale + _px) + 'px';
+    iframe.style.top = (-(HEADER + panNat) * scale + _py) + 'px';
   }
   iframe._igFit = fit;   // (dev0541) let gridSetCOI re-run the fit after a COI change
   requestAnimationFrame(fit);
@@ -425,7 +440,7 @@ function _gridEmbedArm(cellEl) {
   const nu = document.createElement('div');
   nu.className = 'grid-embed-new';
   nu.textContent = '↻';
-  nu.title = 'New embed — reload this post so it plays in the cell again (hotkey z · ⇧Z = whole grid)';
+  nu.title = 'New embed — reload this post so it plays in the cell again (hotkey q · ⇧Q = whole grid)';
   const nuBg = played => 'position:absolute;right:4px;top:4px;z-index:102;cursor:pointer;'
     + 'font:bold 18px monospace;line-height:1;color:#fff;padding:3px 8px;border-radius:5px;'
     + 'border:1px solid rgba(255,255,255,0.35);text-shadow:0 1px 2px rgba(0,0,0,0.4);'
@@ -465,6 +480,8 @@ function _gridEmbedArm(cellEl) {
     // click actually reached the embed, i.e. that its one play is now spent.
     cellEl._embedPlayed = true;
     if (nu.isConnected) nu.style.cssText = nuBg(true);
+    _gridEmbedPrimeLater(cellEl);   // (dev0671) re-prime once the clip has run
+
     try { frame.blur(); } catch (_) {}
     // Only re-focus while the window is still ours; if the user alt-tabbed away
     // mid-play, window.focus() would try to raise the browser at them.
@@ -507,9 +524,37 @@ function _gridEmbedReload(cellEl) {
   const armedHere = !!(_gridEmbedArmed && _gridEmbedArmed.cell === cellEl);
   fresh.style.pointerEvents = armedHere ? 'auto' : 'none';
   cellEl._embedPlayed = false;
+  clearTimeout(cellEl._primeTmr);                // (dev0671) this IS the prime
+  const chip = cellEl.querySelector('.grid-embed-new');
+  if (chip) chip.style.background = 'rgba(0,0,0,0.55)';   // amber → primed
   if (isIG) fitGridIgFrame(cellEl, fresh);       // re-attach _igFit + the cell's observer
   else if (typeof _gridApplyZoomToCell === 'function') _gridApplyZoomToCell(cellEl);
   return true;
+}
+
+// (dev0671) AUTO-PRIME. The embed cannot be heard finishing (see igMetaFetch),
+// so the clip is TIMED instead: ig.json knows every enriched post's durSecs, and
+// when that much time has passed since the play click the cell quietly swaps in
+// a fresh embed. Net effect on a grid of reels — every cell you have already
+// watched goes back to "one click plays me" on its own, no ↻ needed.
+//
+// The reload is skipped while the pointer is still ON the cell: sitting there is
+// what watching a paused/scrubbed clip looks like, and yanking the frame out
+// from under it would be the one visibly rude thing this could do. The timer is
+// re-armed on mouseleave instead, so it primes as soon as you move away.
+function _gridEmbedPrimeLater(cellEl, waitMs) {
+  clearTimeout(cellEl._primeTmr);
+  const link = (cellEl._rowData && cellEl._rowData.link) || '';
+  const wait = (typeof waitMs === 'number') ? waitMs
+             : (typeof window.igClipDwellMs === 'function') ? window.igClipDwellMs(link) : 41200;
+  cellEl._primeTmr = setTimeout(() => {
+    if (!cellEl.isConnected || !cellEl._embedPlayed) return;
+    if (cellEl.matches(':hover')) {                 // still watching — prime on the way out
+      cellEl.addEventListener('mouseleave', () => _gridEmbedPrimeLater(cellEl, 400), { once: true });
+      return;
+    }
+    _gridEmbedReload(cellEl);
+  }, wait);
 }
 
 // (dev0669) Hotkey/menu entry point: z = the cell under the pointer, ⇧Z = every
@@ -526,7 +571,7 @@ window.gridNewEmbed = function(all) {
     return;
   }
   const cell = _gridHoverCell || (_gridEmbedArmed && _gridEmbedArmed.cell);
-  if (!cell)                     { say('Point at an IG/TikTok cell first  (⇧Z = whole grid)'); return; }
+  if (!cell)                     { say('Point at an IG/TikTok cell first  (⇧Q = whole grid)'); return; }
   if (!_gridEmbedReload(cell))   { say('Not an IG/TikTok embed cell'); return; }
   say('↻ new embed ' + (cell.dataset.cell || '') + ' — click ▶ in the middle to play', 1800);
 };
@@ -1217,6 +1262,11 @@ function _gridCellZoomTarget(cellEl) {
   if (!cellEl) return null;
   const host = cellEl.querySelector('[id^="grid-vid-"]');
   if (host) return { kind: 'vid', el: host };
+  // (dev0671) IG cell — the scaled/clipped embed iframe. Its framing is owned
+  // end-to-end by fitGridIgFrame (which now folds in zoom + pan), so applying
+  // the zoom here means re-running that fit, not writing a transform.
+  const igf = cellEl.querySelector('.grid-embed-wrap > iframe');
+  if (igf && typeof igf._igFit === 'function') return { kind: 'ig', el: igf };
   const img = cellEl.querySelector('img.grid-zoom-img');
   if (img) return { kind: 'img', el: img };
   const box = cellEl.querySelector('.grid-zoom-box');   // montage of ftext images
@@ -1246,6 +1296,7 @@ function _gridApplyZoomToCell(cellEl) {
   if (!t) return;
   const z = _gridZoomForCell(cellEl);
   if (t.kind === 'vid') { _gridApplyCoverFit(t.el, z); return; }
+  if (t.kind === 'ig')  { t.el._igFit(); return; }   // (dev0671) fit reads zoom+pan itself
   const coi = _gridCOIForCell(cellEl);
   // (dev0349) A COI'd image must COVER the cell (like <video>) so its anchored
   // crop fills the cell with no letterbox — the shared anchor math assumes the
@@ -1981,7 +2032,19 @@ function gridShow() {
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
     : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
   // (dev0669) Only advertise the embed reset on grids that actually have one.
-  if (container.querySelector('.grid-embed-wrap')) hint += ' · z=new embed (⇧Z=all)';
+  if (container.querySelector('.grid-embed-wrap')) hint += ' · q=new embed (⇧Q=all)';
+  // (dev0671) One batched duration lookup for every IG cell on the grid, so the
+  // auto-prime timer knows how long each clip runs. Fire-and-forget: the answer
+  // only has to be in the cache before a cell's play ENDS, and nothing here
+  // waits on it (proxy down → the default dwell).
+  if (typeof window.igMetaFetch === 'function') {
+    const _igLinks = [];
+    container.querySelectorAll('.grid-cell').forEach(c => {
+      const l = c._rowData && c._rowData.link;
+      if (l && window.isInstagramLink && window.isInstagramLink(l)) _igLinks.push(l);
+    });
+    if (_igLinks.length) window.igMetaFetch(_igLinks);
+  }
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
@@ -2300,6 +2363,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
   let _szActive = false, _szDown = false, _szDragging = false;
   let _szStart = null, _szPanBase = null, _szBtn = 0;
   let _szDelay = null, _szTimer = null, _szStep = 0;
+  let _szLastQuick = 0;   // (dev0671) timestamp of the last non-ramping Shift+click
   // (dev0609) Zoom/pan store key — the row's UID, or its link for a link cell.
   const _szKey = () => _gridCellKey(cell._rowData);
   function _szStop() {
@@ -2362,6 +2426,14 @@ function gridWireInteractor(interactor, cell, cellStr) {
     }
   }
   function _szEnd(e) {
+    // (dev0671) BACK TO 1:1. A Shift+click released before the 180ms ramp that
+    // never dragged is not a zoom at all; two of them inside 400ms are the
+    // double-click reset. Detected here rather than from a dblclick event for
+    // two reasons: pointerdown preventDefaults, which kills the browser's
+    // synthesized dblclick in many browsers (the zip0142 finding), and on an
+    // embed cell the plain double-click is gone regardless — the first click
+    // arms the frame and the second belongs to the provider's own caret.
+    const quick = !_szTimer && !_szDragging;
     _szStop();
     const ck = _szKey();
     if (ck && _gridCellZoom[ck] > 0) {
@@ -2369,8 +2441,19 @@ function gridWireInteractor(interactor, cell, cellStr) {
       if (Math.abs(snapped - 1) < 1e-9) delete _gridCellZoom[ck];
       else _gridCellZoom[ck] = snapped;
     }
+    let didReset = false;
+    if (quick && ck) {
+      const nowQ = Date.now();
+      if (nowQ - _szLastQuick < 400) {
+        _szLastQuick = 0;
+        delete _gridCellZoom[ck];
+        delete _gridCellPan[ck];
+        didReset = true;
+      } else _szLastQuick = nowQ;
+    }
     _gridApplyZoomToCell(cell);
-    _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
+    if (didReset) _gridToast((cell.dataset.cell || 'cell') + ' → 1:1 (cell zoom cleared)', 1100);
+    else if (!quick) _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
     try { interactor.releasePointerCapture(e.pointerId); } catch (_) {}
     _szActive = _szDown = _szDragging = false;
     _szStart = _szPanBase = null;
@@ -2853,7 +2936,7 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
     else if (e.key === 'p' || e.key === 'P')     { e.preventDefault(); doSteps(); }
     else if (e.key === 'a' || e.key === 'A')     { e.preventDefault(); doStepsAll(); }
     else if (e.key === 's' || e.key === 'S')     { e.preventDefault(); doSlideshow(); }
-    else if (isEmbedRow && /^[nNzZ]$/.test(e.key)) { e.preventDefault(); doNewEmbed(); }
+    else if (isEmbedRow && /^[nN]$/.test(e.key))   { e.preventDefault(); doNewEmbed(); }
     else if (e.key === 'Escape')                 { gridHideContextMenu(); }
   };
   document.addEventListener('keydown', handleKey, true);
@@ -3011,8 +3094,9 @@ function gridShowContextMenu(x, y, cellStr, row) {
 
   // Handle keyboard shortcuts
   const handleKey = e => {
-    // (dev0669) n (and z, matching the grid hotkey) = new embed, when offered
-    if (newEmbedBtn && (e.key === 'n' || e.key === 'N' || e.key === 'z' || e.key === 'Z')) {
+    // (dev0669) n = new embed, when offered. No q alias here — this menu's q is
+    // "Quiz file…", and no z alias — z is the grid's zoom reset.
+    if (newEmbedBtn && (e.key === 'n' || e.key === 'N')) {
       e.preventDefault();
       newEmbedBtn.onclick();
       return;

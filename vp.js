@@ -4372,12 +4372,49 @@ function vpMountInstagram(host, link) {
     toolbar.insertBefore(igRow, tlRow);
   }
 
+  // (dev0671) ── Auto-prime + focus recapture ────────────────────────────────
+  // Same two problems G has, same two answers. IG hands the embed ONE inline
+  // play and there is no way to hear it end from out here, so the clip is timed
+  // (ig.json durSecs via the proxy — a local read, no IG traffic, nothing
+  // downloaded) and a fresh iframe is swapped in when it must have finished.
+  // V then sits ready to replay on a single click instead of offering to open
+  // the post on instagram.com.
+  //
+  // The blur is doing double duty. It is the only signal that a click actually
+  // reached the embed — i.e. that the play has started and the clock should run
+  // — and it is also the moment V's keyboard is lost: focus moves into a
+  // cross-origin document and Esc/←/→ are delivered there, where we can neither
+  // read them nor ask for them back. Taking focus straight back costs the embed
+  // nothing (the click has already landed; there is no JS API whose keyboard we
+  // would want) and keeps V's keys alive after a play. Ported from dev0607,
+  // which fixed exactly this in G.
+  if (window.igMetaFetch) window.igMetaFetch([link]);
+  var primeTmr = 0;
+  var onBlur = function() {
+    setTimeout(function() {
+      if (document.activeElement !== iframe) return;   // focus went elsewhere — not ours
+      try { iframe.blur(); } catch (e) {}
+      if (document.hasFocus()) { try { window.focus(); } catch (e) {} }
+      clearTimeout(primeTmr);
+      primeTmr = setTimeout(function() {
+        if (!iframe.isConnected) return;
+        iframe.src = src;                              // fresh instance = a new play
+        if (typeof toast === 'function') toast('↻ primed — click ▶ to play it again', 1600);
+      }, window.igClipDwellMs ? window.igClipDwellMs(link) : 41200);
+    }, 0);
+  };
+  window.addEventListener('blur', onBlur);
+
   // Stub player so generic toolbar code that pokes _vpState.player doesn't
   // throw. No interval — the timeline stays at zero.
   if (typeof _vpState === 'object' && _vpState) {
     _vpState.player = { isInstagram: true,
       pauseVideo: function(){}, playVideo: function(){},
-      destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
+      destroy: function(){
+        clearTimeout(primeTmr);
+        window.removeEventListener('blur', onBlur);    // (dev0671) don't outlive the mount
+        try { iframe.src = 'about:blank'; } catch(e) {}
+      } };
     _vpState.isYT = false;
   }
 }

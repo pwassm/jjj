@@ -143,6 +143,49 @@ window.instagramEmbedUrl = function(url) {
   var k = window.getInstagramKind(url);
   return k ? 'https://www.instagram.com/' + k.kind + '/' + k.id + '/embed/' : '';
 };
+// (dev0671) ── IG clip metadata (duration) ──────────────────────────────────
+// An IG embed gives ONE inline play and there is no way to hear it end from out
+// here (cross-origin: no playback events, no audio API, and the caret can only
+// be fired by a real click). But the clip LENGTH is already known — ig.json has
+// durSecs for every enriched post — so G and V time the play instead of sensing
+// it, and swap in a fresh embed when the clip must have finished. That leaves
+// every cell primed for its next single click.
+//
+// The store is 42 MB, so the proxy answers by shortcode (POST /ig/meta, a local
+// file read — NO Instagram traffic and nothing downloaded). Answers are cached
+// for the session; misses are cached too, so a stopped proxy is asked once.
+window.IG_DEFAULT_DUR = 40;          // dwell when the length is unknown (reels run 15-90s)
+window._igMetaCache = window._igMetaCache || Object.create(null);
+window.igMetaFetch = function(links) {
+  const ids = [];
+  (links || []).forEach(function(l) {
+    const k = window.getInstagramKind && window.getInstagramKind(l);
+    if (k && k.id && !(k.id in window._igMetaCache)) ids.push(k.id);
+  });
+  if (!ids.length) return Promise.resolve(window._igMetaCache);
+  ids.forEach(function(id) { window._igMetaCache[id] = null; });   // in-flight: don't re-ask
+  // PROXY_BASE is a top-level const in vp.js — a const never lands on window,
+  // so probe the binding itself the way grid.js does.
+  const base = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
+  return fetch(base + '/ig/meta', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: ids })
+  }).then(function(r) { return r.ok ? r.json() : null; }).then(function(j) {
+    if (j && j.ok && j.meta) {
+      Object.keys(j.meta).forEach(function(id) { window._igMetaCache[id] = j.meta[id]; });
+    }
+    return window._igMetaCache;
+  }).catch(function() { return window._igMetaCache; });   // proxy down / public site → defaults
+};
+// Seconds to wait before a played embed is assumed finished. Real length when we
+// have it, plus a second of tail so the reload never cuts the last frame.
+window.igClipDwellMs = function(link) {
+  const k = window.getInstagramKind && window.getInstagramKind(link);
+  const m = k && window._igMetaCache[k.id];
+  const secs = (m && m.dur > 0) ? m.dur : window.IG_DEFAULT_DUR;
+  return Math.round(secs * 1000) + 1200;
+};
+
 window.mountInstagramEmbed = function(hostEl, url) {
   if (!hostEl) return;
   var cellId = hostEl.id;

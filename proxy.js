@@ -1823,6 +1823,45 @@ function igFfdown(req, res, origin) {
   } catch (err) { sendJson(res, 500, { ok: false, error: err.message }, origin); }
 }
 
+// (dev0671) /ig/meta — clip duration (+ the dev0665 embed verdict, and the true
+// pixel W×H) for a list of shortcodes, read from ig.json HERE. G and V need the
+// duration to know when a played embed has finished so they can re-prime it, and
+// ig.json is 42 MB — far too big to hand the browser for twelve numbers.
+//
+// STRICTLY a local file read: no Instagram traffic, nothing downloaded, nothing
+// written. Unknown ids are simply absent from the reply; callers fall back to a
+// default dwell, so a stopped proxy (or the public site) degrades quietly.
+let _igMetaCache = { mtime: 0, byId: null };
+function igMeta(req, res, origin) {
+  readJson(req, 1024 * 1024).then(payload => {
+    const ids = Array.isArray(payload.ids) ? payload.ids.filter(x => typeof x === 'string' && x) : [];
+    if (!ids.length) { sendJson(res, 400, { ok: false, error: 'ids[] required' }, origin); return; }
+    let st = null;
+    try { st = fs.statSync(IG_STORE); } catch (_) { sendJson(res, 200, { ok: true, meta: {} }, origin); return; }
+    // Re-parse only when the store has actually changed — a harvest or an
+    // I-screen save bumps mtime; otherwise this is a map lookup.
+    if (!_igMetaCache.byId || _igMetaCache.mtime !== st.mtimeMs) {
+      let rows = [];
+      try { rows = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) { rows = []; }
+      const byId = Object.create(null);
+      for (const r of rows) {
+        if (!r || !r.id) continue;
+        byId[r.id] = {
+          dur: Number(r.durSecs) || 0,
+          embed: (r.embed === 0 || r.embed === 1) ? r.embed : null,
+          w: Number(r.width) || 0,
+          h: Number(r.height) || 0
+        };
+      }
+      _igMetaCache = { mtime: st.mtimeMs, byId };
+      console.log('[ig/meta] indexed ' + Object.keys(byId).length + ' rows from ig.json');
+    }
+    const meta = {};
+    for (const id of ids) if (_igMetaCache.byId[id]) meta[id] = _igMetaCache.byId[id];
+    sendJson(res, 200, { ok: true, meta }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 // (dev0429) /ig/save — overwrite ig.json with the I-screen's edited array (enrich/
 // promote/download state). Each row must still carry a shortcode `id`. A one-deep
 // ig.json.bak is written first so a bad client payload can't silently nuke the
@@ -2845,6 +2884,7 @@ http.createServer((req, res) => {
     if (action === 'save')     { igSave(req, res, origin);     return; }
     if (action === 'ffdown')   { igFfdown(req, res, origin);   return; }
     if (action === 'download') { igDownload(req, res, origin); return; }
+    if (action === 'meta')     { igMeta(req, res, origin);     return; }   // (dev0671) local ig.json read
     sendJson(res, 404, { ok: false, error: 'unknown ig action: ' + action }, origin);
     return;
   }
