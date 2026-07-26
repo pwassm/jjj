@@ -53,6 +53,13 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+// (dev0677) PHOTO RESOLUTION FIX: pickIgFullCover had silently degraded to returning
+//   og:image — a CENTRE-CROPPED 640² thumbnail — so every single-item photo /p landed
+//   cropped and small while the page advertised the uncropped original (verified live:
+//   640² → 1440x1800). Two causes, both era-shifts in IG's page: escaped inline URLs
+//   (the old scan excluded backslashes → matched nothing) and a "full = no stp= param"
+//   test that modern IG always fails. publish() now also ground-truths the filename's
+//   W×H from the file that actually landed, since the row's metadata was the thumbnail's.
 // (dev0675) /ig/download now answers with the dev0665 official-embed verdict
 //   (`embed: 1|0` + `embedProbe: ok|dead|shell|wall`) for rows the client says are
 //   unstamped — one cookieless GET of /p/<id>/embed/captioned/ on the success path
@@ -129,7 +136,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0676';
+const PROXY_BUILD = 'dev0677';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -645,27 +652,55 @@ function fetchIgEmbedMeta(url) {
 //
 // Given og:image (a 640 crop), find the uncropped full-res variant of the SAME media
 // file elsewhere on the page (same filename, no `stp=…sNNNxNNN`); fall back to og:image.
+// (dev0677) REWRITTEN — this function had silently degraded to "return og:image", and
+// og:image is a CENTRE-CROPPED 640² thumbnail (`stp=c288.0.864.864a_…_s640x640`). Every
+// single-item photo /p download therefore landed a cropped 640 square while the page was
+// openly advertising the uncropped original (e.g. 1440x1800). Two era-shifts broke it:
+//   1. IG's inline JSON escapes every URL — "https:\/\/scontent…" with \u0026 for & — and
+//      the old scan's character class EXCLUDED backslashes, so it could never match a
+//      single inline rendition. Only og:image (a plain HTML attribute) ever matched.
+//   2. `full()` demanded a URL with NO `stp=` param, but modern IG puts every transform
+//      in stp=, so the true original (`stp=dst-jpg_e35_tt6`) was rejected as "not full".
+// Now: unescape first, collect every rendition of THIS post's media stem, and rank by
+// what the stp transform actually does to the pixels. Verified live 2026-07-26 against
+// DJ1jPioN60P (640² crop → 1440x1800), DYlgQhSoFhU, BMq7AAjDawt, 7YBuEznLRZ.
 function pickIgFullCover(html, ogImage) {
   if (!ogImage) return '';
   const og = ogImage.replace(/&amp;/g, '&');
   // (dev0513) Match the media's numeric STEM (no extension) so we can collect every
   // rendition the page lists for it — JPEG and WebP alike — and prefer a real .jpg.
-  const stemM = ogImage.match(/\/(\d+_\d+_\d+_n)\.(?:webp|jpe?g|heic)/i);
+  const stemM = og.match(/\/(\d+_\d+_\d+_n)\.(?:webp|jpe?g|heic)/i);
   if (!stemM) return og;
   const stem = stemM[1];
-  const re = new RegExp('https?:[^"\'\\\\\\s]*?' + stem + '\\.(?:webp|jpe?g|heic)[^"\'\\\\\\s]*', 'gi');
-  const vars = [...new Set([...html.matchAll(re)].map(m =>
-    m[0].replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/g, '&')))];
+  // Flatten the page's JSON escaping so inline URLs become matchable plain URLs. The
+  // stem anchor keeps us on THIS post's media — a /p/ page also lists sibling posts.
+  // ALL \uXXXX escapes must go, not just &: IG writes '%' as % inside the
+  // signed query (…ig_cache_key=…%3D%3D…), and since a URL can't contain a
+  // backslash the match would otherwise stop dead there — handing back a TRUNCATED,
+  // signature-invalid URL that the CDN rejects. (Cost me one test run; keep this.)
+  const flat = String(html || '').replace(/\\\//g, '/')
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hx) => String.fromCharCode(parseInt(hx, 16)));
+  const re = new RegExp('https?://[^"\'\\s\\\\]*?' + stem + '\\.(?:webp|jpe?g|heic)[^"\'\\s\\\\]*', 'gi');
+  const vars = [...new Set([...flat.matchAll(re)].map(m => m[0].replace(/&amp;/g, '&')))];
   if (!vars.length) return og;
-  const full = u => !/[?&]stp=/.test(u) && !/s\d+x\d+/.test(u);   // no size crop = full res
-  const jpg  = u => /\.jpe?g(?:[?&]|$)/i.test(u);
-  // (dev0513) Prefer a full-res JPEG (saves a real .jpg, no transcode); then any full-
-  // res rendition; then any JPEG; finally og:image. A webp-only post still resolves here
-  // (the cover-only download then transcodes it to jpg at top quality).
-  return vars.find(u => full(u) && jpg(u))
-      || vars.find(full)
-      || vars.find(jpg)
-      || og;
+  // What IG's `stp=` says it did to the pixels:
+  //   no size directive at all → the uncropped original (what we want)
+  //   sNNNxNNN / pNNNxNNN      → scaled into that box (take the smallest = final size)
+  //   cA.B.W.Ha                → a CROP: content is lost, not just resolution
+  const info = u => {
+    const stp = (u.match(/[?&]stp=([^&]*)/) || [, ''])[1];
+    const boxes = [...stp.matchAll(/(?:^|_)[sp](\d+)x(\d+)/g)].map(m => Math.min(+m[1], +m[2]));
+    return {
+      cropped: /(?:^|_)c[\d.]+\.[\d.]+\.[\d.]+\.[\d.]+a/.test(stp) ? 1 : 0,
+      box: boxes.length ? Math.min(...boxes) : 1e9,          // 1e9 = "no cap" (original)
+      jpg: /\.jpe?g(?:[?&]|$)/i.test(u) ? 1 : 0
+    };
+  };
+  // Uncropped first, then the largest box, then a real JPEG over WebP (dev0513: saves
+  // the transcode). og:image remains the last resort for a page that lists nothing else.
+  const best = vars.map(u => ({ u, i: info(u) }))
+    .sort((a, b) => (a.i.cropped - b.i.cropped) || (b.i.box - a.i.box) || (b.i.jpg - a.i.jpg))[0];
+  return best ? best.u : og;
 }
 // Parse the main page's Open-Graph metadata into a ytdlpCompact()-shaped object.
 function parseIgMainMeta(html, id) {
@@ -2355,6 +2390,30 @@ function igDownload(req, res, origin) {
           const hms = p2(Math.floor(s / 3600)) + '.' + p2(Math.floor((s % 3600) / 60)) + '.' + p2(s % 60);
           outStem = stem.replace(/^\d{2}\.\d{2}\.\d{2}/, hms);   // only the duration field
         }
+      } catch (_) {}
+      // (dev0677) Same treatment for the W×H field — for the same reason, one field over.
+      // The client builds it from the ROW's enrich metadata, which for every photo /p was
+      // the cropped 640² thumbnail's size (the dev0677 pickIgFullCover bug), so a corrected
+      // full-res download would still have landed under a "640x640" name. Read the real
+      // pixels off the file that actually landed (index-1, mirroring the row's one-W×H
+      // convention). Best-effort: an unreadable header leaves the client's stem alone.
+      try {
+        const first = files[0] ? path.join(tmpDir, files[0]) : '';
+        let dw = 0, dh = 0;
+        if (first && /\.(mp4|mov|webm|mkv|m4v)$/i.test(first)) {
+          const raw = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', first],
+            { encoding: 'utf8', timeout: 15000 }).trim();
+          const mm = raw.match(/(\d+)x(\d+)/); if (mm) { dw = +mm[1]; dh = +mm[2]; }
+        } else if (first) {
+          const buf = Buffer.alloc(65536);
+          const fd = fs.openSync(first, 'r');
+          const n = fs.readSync(fd, buf, 0, 65536, 0);
+          fs.closeSync(fd);
+          const d = parseImageDims(buf.slice(0, n));
+          if (d) { dw = d.width; dh = d.height; }
+        }
+        if (dw > 0 && dh > 0) outStem = outStem.replace(/^(\d{2}\.\d{2}\.\d{2}~)\d+x\d+~/, '$1' + dw + 'x' + dh + '~');
       } catch (_) {}
       files.forEach((f, i) => {
         const ext = path.extname(f);

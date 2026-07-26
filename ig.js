@@ -37,6 +37,7 @@
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
   let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
   let embedFilter = 'all';             // (dev0665) all | 1 (embeddable) | 0 (not) | un (unprobed)
+  let refetchFilter = 'all';           // (dev0677) all | need (needsFullRes) | done (was marked, now re-fetched)
   const lowResIds = new Set();         // (dev0666) rows this run that came via the low-res embed fallback
   const fallbackIds = new Set();       // (dev0666) rows this run that used a non-yt-dlp but full-res path
   let embedStamped = 0, embedNoVerdict = 0;   // (dev0675) download-time embed verdicts this run
@@ -763,6 +764,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option></select>
         <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links or ffdown imports)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
         <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
+        <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option></select>
         <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
@@ -802,6 +804,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igStatus').addEventListener('change', e => { statusFilter = e.target.value; applyAndRender(); });
     $('igStaged').addEventListener('change', e => { stagedFilter = e.target.value; applyAndRender(); });
     $('igEmbed').addEventListener('change', e => { embedFilter = e.target.value; applyAndRender(); });
+    $('igRefetch').addEventListener('change', e => { refetchFilter = e.target.value; applyAndRender(); });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igAutoEnrich').addEventListener('click', () => toggleAutoPanel());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
@@ -886,13 +889,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // applyAndRender tell a real filter change (jump to top + persist) from a data
   // re-render during a grind (keep scroll position, no write).
   function _filterSig() {
-    return [query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter,
+    return [query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter, refetchFilter,
       hideCompleted ? 1 : 0, sortCol, sortDir].join('');
   }
   function saveFilters() {
     try {
       localStorage.setItem(IG_FILTER_KEY, JSON.stringify({
-        query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter,
+        query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter, refetchFilter,
         hideCompleted, sortCol, sortDir
       }));
     } catch (_) {}
@@ -906,6 +909,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (typeof j.authorFilter === 'string') authorFilter = j.authorFilter;
       if (typeof j.stagedFilter === 'string') stagedFilter = j.stagedFilter;
       if (typeof j.embedFilter === 'string') embedFilter = j.embedFilter;
+      if (typeof j.refetchFilter === 'string') refetchFilter = j.refetchFilter;
       if (typeof j.hideCompleted === 'boolean') hideCompleted = j.hideCompleted;
       if (typeof j.sortCol === 'string') sortCol = j.sortCol;
       if (j.sortDir === 1 || j.sortDir === -1) sortDir = j.sortDir;
@@ -920,6 +924,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (g('igStatus')) g('igStatus').value = statusFilter;
     if (g('igStaged')) g('igStaged').value = stagedFilter;
     if (g('igEmbed')) g('igEmbed').value = embedFilter;
+    if (g('igRefetch')) g('igRefetch').value = refetchFilter;
   }
 
   function applyAndRender() {
@@ -952,6 +957,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (embedFilter === '1' && r.embed !== 1) return false;
       if (embedFilter === '0' && r.embed !== 0) return false;
       if (embedFilter === 'un' && (r.embed === 0 || r.embed === 1)) return false;
+      // (dev0677) Re-fetch queue: rows marked for a full-res re-download of a cropped cover.
+      if (refetchFilter === 'need' && !r.needsFullRes) return false;
+      if (refetchFilter === 'done' && !(r.refetchedAt && !r.needsFullRes)) return false;
       if (hideCompleted && isDownloaded(r)) return false;   // (dev0438) 'c' = hide completed
       if (query) {
         const hay = (r.author + ' ' + r.id + ' ' + (r.VidTitle || '') + ' ' + (r.ftext || '') + ' ' + (r.status || '')).toLowerCase();
@@ -1875,6 +1883,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const _nm0 = r.localFiles[0] || '';
       const _hm = _nm0.match(/^(\d{2})\.(\d{2})\.(\d{2})~/);
       if (_hm) { const _s = (+_hm[1]) * 3600 + (+_hm[2]) * 60 + (+_hm[3]); if (_s > 0) r.durSecs = _s; }
+      // (dev0677) Same for W×H, which the proxy now ground-truths from the landed file.
+      // A re-fetched photo comes back BIGGER than the row's stored dims (the old cropped
+      // 640² cover), so adopt the file's real size — otherwise the row keeps advertising
+      // a resolution it no longer has, and a later Promote would carry the wrong one.
+      const _wh = _nm0.match(/^\d{2}\.\d{2}\.\d{2}~(\d+)x(\d+)~/);
+      if (_wh) { const _w = +_wh[1], _h = +_wh[2]; if (_w > 0 && _h > 0) { r.width = _w; r.height = _h; } }
       // (dev0659) Surface a resolution-lossy fallback even in batch/rotate (single=false
       // suppresses the normal per-row toast). The embed rescue is first-image-only — clearly
       // not top-res — so always warn. The /p video_versions + carousel + gallery-dl paths are
@@ -1891,6 +1905,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       } else {
         if (r.lowResDl) delete r.lowResDl;          // a later full-res download clears the flag
         if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl) fallbackIds.add(r.id);
+      }
+      // (dev0677) The re-fetch queue drains itself: a row marked needsFullRes clears the
+      // mark as soon as a download lands, and keeps `prevFiles` (the superseded low-res
+      // filename) + a timestamp so the old file can be swept afterwards and the "done"
+      // filter can show what was rebuilt. A row that fails stays queued for the next run.
+      if (r.needsFullRes) {
+        delete r.needsFullRes;
+        r.refetchedAt = (typeof isoNow === 'function') ? isoNow()
+          : new Date().toISOString().slice(0, 19).replace('T', ' ');
       }
       // (dev0675) Adopt the download-time embed verdict. Only a CONCLUSIVE probe writes
       // the field; a walled/inconclusive one leaves the row unstamped so igEmbedProbe.js
