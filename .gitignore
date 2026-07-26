@@ -44,6 +44,12 @@ frames/
 # (ig.js) reads/writes ig.json locally; proxy.js /ig/download saves media to
 # ig_media/. Kept local, never committed.
 ig.json
+# (dev0676) Timestamped ig.json backups — igEmbedProbe.js, the dev0663 reset script
+# and the various backfills each drop one before writing. The `*.bak` rule above
+# does NOT catch them (the timestamp trails the .bak), so a dozen 15k-row copies
+# were sitting in `git status` waiting to be committed by accident.
+ig.json.bak*
+ig.json.tmp-*
 ig_media/
 # (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts, bulk-imported into
 # ig.json via the I-screen "📁 Import ffdown" button. Local source data — keep out
