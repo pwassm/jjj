@@ -1157,14 +1157,16 @@ window.gridBufferSetScope = function (scope) {
   if (_GRID_BUF_SCOPES.indexOf(scope) < 0) return _gridBufferScope();
   if (typeof window.setSetting === 'function') window.setSetting('gridBufferScope', scope);
   _gridBufScopeCache = scope;
-  if (typeof toast === 'function') {
+  // (dev0674) The sticky panel replaces the toast — it says everything the toast
+  // said and keeps saying it while you cycle.
+  if (_gridBufPanelOpen()) _gridBufPanelRefresh();
+  else if (typeof toast === 'function') {
     const off = _gridBufferMode() === 'off' ? '  (buffer mode is OFF — ^B)' : '';
     const here = (scope !== 'none' && _gridBufferMode() !== 'off' && !_gridBufferEligible())
       ? '  ·  this grid still falls back' : '';
     toast(_GRID_BUF_SCOPE_LABELS[scope] + off + here, 2200);
   }
-  if (typeof gridShow === 'function'
-      && document.getElementById('gridOverlay')?.style.display === 'flex') gridShow();
+  _gridBufRerenderSoon(250);
   return scope;
 };
 // `b` in G walks the four scopes in increasing reach, then wraps.
@@ -1215,14 +1217,14 @@ function _gridBufferAdaptOn() {
 window.gridBufferAdapt = function (on) {
   const next = (on === undefined) ? !_gridBufferAdaptOn() : !!on;
   if (typeof window.setSetting === 'function') window.setSetting('gridBufferAdapt', next);
-  if (typeof toast === 'function') {
+  if (_gridBufPanelOpen()) _gridBufPanelRefresh();
+  else if (typeof toast === 'function') {
     const off = _gridBufferMode() === 'off' ? '  (buffer mode is OFF — ^B)' : '';
     toast(next
       ? '⇢ Adaptive pre-roll ON — short segments warm min(' + _gridBufferPreroll().toFixed(1) + 's, dur/2.5)' + off
       : '⇥ Adaptive pre-roll OFF — every segment warms the full ' + _gridBufferPreroll().toFixed(1) + 's' + off, 2200);
   }
-  if (typeof gridShow === 'function'
-      && document.getElementById('gridOverlay')?.style.display === 'flex') gridShow();
+  _gridBufRerenderSoon(250);
   return next;
 };
 
@@ -1639,30 +1641,121 @@ function gridCycleBufferMode() {
     ? '  ·  falls back on this grid (scope ' + _gridBufferScope() + ' — b to widen)' : '';
   const roll = next === 'off' ? '' : ('  ·  pre-roll ' + _gridBufferPreroll().toFixed(1) + 's'
     + (_gridBufferAdaptOn() ? ' adaptive' : '') + ' (−/+ tune · ⇧B adaptive)');
-  if (typeof toast === 'function') toast(labels[next] + note + roll, 2400);
+  // (dev0674) Panel open → it is already showing all of this; just refresh it.
+  if (_gridBufPanelOpen()) _gridBufPanelRefresh();
+  else if (typeof toast === 'function') toast(labels[next] + note + roll, 2400);
   if (typeof gridShow === 'function'
       && document.getElementById('gridOverlay')?.style.display === 'flex') {
     gridShow();
   }
 }
 
-// −/+ in G nudges the buffer pre-roll by 0.5s (clamped 1–8) and persists it.
-// Re-renders so live buffered cells remount with the new warm-up. A longer
-// pre-roll more fully hides YT's startup chrome (esp. across multi-segment seeks)
-// at the cost of a longer initial poster + more skipped lead on start<pre-roll
-// segments.
+// −/+ in G (and [ ] while the clean-playback panel is open) nudge the buffer
+// pre-roll by 0.5s (clamped 1–8) and persist it. A longer pre-roll more fully
+// hides YT's startup chrome (esp. across multi-segment seeks) at the cost of a
+// longer initial poster + more skipped lead on start<pre-roll segments.
+//
+// (dev0674) The re-render is DEBOUNCED. Remounting is what makes the new value
+// take effect, but on a 19-cell grid that is 30 iframes torn down and rebuilt —
+// unusable when you are tapping the key to dial a value in. Wait for the tapping
+// to stop, then rebuild once.
+let _gridBufRerenderTmr = null;
+function _gridBufRerenderSoon(ms) {
+  clearTimeout(_gridBufRerenderTmr);
+  _gridBufRerenderTmr = setTimeout(() => {
+    if (typeof gridShow === 'function'
+        && document.getElementById('gridOverlay')?.style.display === 'flex') gridShow();
+    _gridBufPanelRefresh();
+  }, ms || 700);
+}
 function gridAdjustPreroll(delta) {
   const next = Math.max(1, Math.min(8, Math.round((_gridBufferPreroll() + delta) * 2) / 2));
   if (typeof window.setSetting === 'function') window.setSetting('gridBufferPreroll', next);
   const on = _gridBufferMode() !== 'off';
-  if (typeof toast === 'function') {
+  // The panel is its own live readout — no toast on top of it.
+  if (!_gridBufPanelOpen() && typeof toast === 'function') {
     toast('Buffer pre-roll: ' + next.toFixed(1) + 's' + (on ? '' : '  (turn buffer on with ^B)'), 1500);
   }
-  if (on && typeof gridShow === 'function'
-      && document.getElementById('gridOverlay')?.style.display === 'flex') {
-    gridShow();
-  }
+  _gridBufPanelRefresh();
+  if (on) _gridBufRerenderSoon();
 }
+
+// ── (dev0674) Clean-playback panel ──────────────────────────────────────────
+// A STICKY status card — it stays up until Escape rather than fading like a
+// toast — opened by b / ⇧B in G. Everything that steers buffered playback is on
+// it and stays live as you change it, so tuning is a read-adjust-read loop
+// instead of "press a key, watch a toast, guess". While it is open, [ and ]
+// retarget from grid zoom to the pre-roll (collection.js routes them here); the
+// existing − / + keep working too.
+//
+// The "measured" line is the interesting one: video.js publishes the observed
+// seek→PLAYING latency (window._salBufStats.spinAvg) and a count of reveals it
+// had to show dirty. If the late count keeps climbing on a grid, the pre-roll is
+// genuinely too short for these clips and ] is the fix; if it stays at 0 and the
+// cells still look chromy, the pre-roll is not the problem.
+function _gridBufPanelOpen() { return !!document.getElementById('gridBufPanel'); }
+window._gridBufPanelOpen = _gridBufPanelOpen;
+
+function _gridBufPanelHtml() {
+  const mode = _gridBufferMode();
+  const scope = _gridBufferScope();
+  const elig = _gridBufferEligible();
+  const st = window._salBufStats || {};
+  const row = (label, val, keys) =>
+    '<div style="display:flex;gap:10px;align-items:baseline;margin:3px 0;">'
+    + '<span style="opacity:.6;width:74px;flex:none;">' + label + '</span>'
+    + '<span style="flex:1;">' + val + '</span>'
+    + '<span style="opacity:.45;font-size:11px;white-space:nowrap;">' + keys + '</span></div>';
+  const modeTxt = { off: '○ off — single iframe', cut: '◐ cut', fade: '◑ crossfade' }[mode] || mode;
+  const here = mode === 'off' ? '<span style="opacity:.6;">buffer off</span>'
+    : (elig ? '<span style="color:#7ddba0;">buffered ✓</span>'
+            : '<span style="color:#e8a33d;">falls back ✗</span>');
+  const meas = st.n
+    ? 'spin-up ~' + Number(st.spinAvg || 0).toFixed(1) + 's · ' + (st.late || 0) + ' late reveal'
+      + ((st.late === 1) ? '' : 's')
+    : '<span style="opacity:.5;">(no samples yet)</span>';
+  return '<div style="font-weight:600;letter-spacing:.5px;margin-bottom:6px;'
+      + 'display:flex;justify-content:space-between;gap:16px;">'
+      + '<span>CLEAN PLAYBACK</span><span style="opacity:.5;font-weight:400;">Esc closes</span></div>'
+    + row('mode', modeTxt, '^B')
+    + row('scope', scope + ' · ' + here, 'b')
+    + row('pre-roll', _gridBufferPreroll().toFixed(1) + 's', '[ ]  or  − +')
+    + row('adaptive', _gridBufferAdaptOn()
+        ? '<span style="color:#7ddba0;">ON</span> — per segment, min(pre-roll, dur÷2.5)'
+        : '<span style="opacity:.7;">off</span> — flat pre-roll everywhere', '⇧B')
+    + row('measured', meas, '');
+}
+
+function _gridBufPanelRefresh() {
+  const el = document.getElementById('gridBufPanel');
+  if (el) el.innerHTML = _gridBufPanelHtml();
+}
+
+function _gridBufPanelShow() {
+  let el = document.getElementById('gridBufPanel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'gridBufPanel';
+    // Bottom-LEFT: the grid info bar owns the bottom strip and cells own the
+    // middle; this corner is the one place a persistent card covers nothing.
+    el.style.cssText = 'position:fixed;left:14px;bottom:52px;z-index:100000;'
+      + 'background:rgba(16,16,18,0.93);color:#eee;border:1px solid rgba(255,255,255,0.14);'
+      + 'border-radius:10px;padding:11px 14px;min-width:330px;'
+      + 'font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;'
+      + 'box-shadow:0 6px 24px rgba(0,0,0,0.5);pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  _gridBufPanelRefresh();
+  return el;
+}
+window._gridBufPanelShow = _gridBufPanelShow;
+
+function _gridBufPanelClose() {
+  const el = document.getElementById('gridBufPanel');
+  if (el) el.remove();
+  return !!el;
+}
+window._gridBufPanelClose = _gridBufPanelClose;
 
 // (dev0351) Grid size/zoom toasts sit just above the grid (not dead-center,
 // where they'd cover the cells being resized/zoomed). Falls back to a normal
@@ -2124,7 +2217,7 @@ function gridShow() {
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   let hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · b=scope · ⇧B=adapt · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
+    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · b=buffer panel · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
   // (dev0669) Only advertise the embed reset on grids that actually have one.
   if (container.querySelector('.grid-embed-wrap')) hint += ' · q=new embed (⇧Q=all)';
   // (dev0671) One batched duration lookup for every IG cell on the grid, so the

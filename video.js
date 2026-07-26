@@ -560,11 +560,39 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // any other caller gets the better behaviour by default.
   var ADAPT = (adapt === undefined) ? true : !!adapt;
   var ADAPT_DIV = 2.5, ADAPT_MIN = 0.8;
+  // (dev0674) …and the segment length is only half the story. How long a cell
+  // needs is mostly how long ITS player takes to start rendering after a seek,
+  // which varies per cell, per video and with how many other players are
+  // competing. So the pre-roll is now measured rather than assumed:
+  //   spinAvg   EWMA of seek→PLAYING latency for this cell (see warmReady)
+  //   SETTLE    margin after that for YT's overlay to fade
+  //   leadBoost climbs 25% whenever a reveal had to be clamped (dirty) and
+  //             relaxes 3% per clean lap — a slow cell converges upward on its
+  //             own instead of waiting for the user to notice and press +.
+  // The result is clamped to at most half a segment, so tuning can never eat the
+  // content. All of this rides the ⇧B switch: with adaptive OFF every segment
+  // gets the flat global pre-roll exactly as it did in dev0672, which keeps the
+  // toggle an honest A/B. The stall guard in warmReady is NOT switchable — it is
+  // a plain bug fix.
+  var SETTLE = 1.0, STALL_CLEAR_MS = 600;
+  var spinAvg = 0, leadBoost = 1;
+  window._salBufStats = window._salBufStats || { spinAvg: 0, n: 0, late: 0 };
+  function noteSpinUp(s) {
+    if (!isFinite(s) || s <= 0 || s > 20) return;
+    spinAvg = spinAvg ? (spinAvg * 0.7 + s * 0.3) : s;
+    var g = window._salBufStats;
+    g.spinAvg = g.spinAvg ? (g.spinAvg * 0.8 + s * 0.2) : s;
+    g.n++;
+  }
   function prerollFor(seg) {
     if (!ADAPT) return PREROLL;
     var d = Number(seg && seg.dur);
-    if (!isFinite(d) || d <= 0) return PREROLL;
-    return Math.max(ADAPT_MIN, Math.min(PREROLL, d / ADAPT_DIV));
+    var hasDur = isFinite(d) && d > 0 && d < 99990;
+    var cap = hasDur ? Math.min(PREROLL, d / ADAPT_DIV) : PREROLL;
+    var need = spinAvg ? spinAvg + SETTLE : 0;
+    var pre = Math.max(cap, need) * leadBoost;
+    var hard = hasDur ? Math.min(PREROLL, Math.max(ADAPT_MIN, d * 0.5)) : PREROLL;
+    return Math.max(ADAPT_MIN, Math.min(pre, hard));
   }
 
   var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
@@ -656,47 +684,99 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // count PREROLL from there rather than trusting a fixed timestamp. The reveal
   // is also held to ≥ seg.start so we never show pre-segment footage, and capped
   // just shy of a short segment's end.
+  //
+  // (dev0674) Two additions, both aimed at the residual "brief play/pause glyph"
+  // on a minority of cells:
+  //   • STALL GUARD. Reaching the reveal timestamp is not the same as being
+  //     ready to be seen. With 15 cells × 2 players competing for bandwidth a
+  //     layer can re-buffer mid-warm — YT paints its spinner/glyph — and the old
+  //     test would happily reveal into that. currentTime freezing between polls
+  //     is the tell, so we require a clear run after the last freeze.
+  //   • MEASURED SPIN-UP. The first stable PLAYING sample also tells us how long
+  //     THIS cell took to get going after the seek, which is the part of the
+  //     chrome nobody can shorten. That measurement becomes the floor for the
+  //     cell's later pre-rolls (see prerollFor), so slow cells warm longer and
+  //     fast cells stop wasting segment on warm-up they never needed.
   function warmReady(w) {
     if (!w) return false;
-    if (Date.now() - w.issuedAt < 500) return false;     // let the seek register
+    var now = Date.now();
+    if (now - w.issuedAt < 500) return false;            // let the seek register
     var st, ct;
     try { st = w.layer.player.getPlayerState(); ct = w.layer.player.getCurrentTime(); }
     catch (_) { return false; }
-    if (st !== 1 /* PLAYING */) return false;
+    // Anything but PLAYING (buffering/paused/cued) is painting chrome right now.
+    if (st !== 1 /* PLAYING */) { w.stalledAt = now; return false; }
     if (w.landPos === null) {
       // First stable playing sample near the seek target = the real landing.
       // Reject a transient stale (pre-seek) currentTime far outside the window.
-      if (ct >= w.from - 1 && ct <= w.from + 8) w.landPos = ct;
+      if (ct >= w.from - 1 && ct <= w.from + 8) {
+        w.landPos = ct; w.prevCt = ct; w.advAt = now;
+        noteSpinUp((now - w.issuedAt) / 1000);
+      }
       return false;
     }
+    // Forward progress since the last poll? getCurrentTime() is fine-grained
+    // enough at a 150ms tick that a genuine stall shows as no movement; allow
+    // ~2 quiet polls before calling it one.
+    if (ct > w.prevCt + 0.001) { w.prevCt = ct; w.advAt = now; }
+    else if (now - w.advAt > 350) w.stalledAt = now;
+
     var revealAt = Math.max(w.seg.start, w.landPos + (w.pre || PREROLL));
     var segEnd = w.seg.start + w.seg.dur;
-    if (revealAt > segEnd - 0.2) revealAt = Math.max(w.seg.start, segEnd - 0.2);
-    return ct >= revealAt;
+    if (revealAt > segEnd - 0.2) {
+      // The budget did not fit inside the segment: this reveal WILL be dirty.
+      // Show it rather than skip the segment, but record the miss so the next lap
+      // on this cell warms earlier (leadBoost).
+      revealAt = Math.max(w.seg.start, segEnd - 0.2);
+      if (!w.clamped) {
+        w.clamped = true;
+        leadBoost = Math.min(2, leadBoost * 1.25);
+        try { window._salBufStats.late++; } catch (_) {}
+      }
+    }
+    if (ct < revealAt) return false;
+    // Hold a reveal that would land inside a stall — unless we have been waiting
+    // absurdly long, where a flash beats a frozen cell. The front simply plays on
+    // past its segment end meanwhile, which is continuous video, not a glitch.
+    if (w.stalledAt && now - w.stalledAt < STALL_CLEAR_MS
+        && now - w.issuedAt < (w.pre + 8) * 1000) return false;
+    if (!w.clamped) leadBoost = Math.max(1, leadBoost * 0.97);   // clean lap → relax
+    return true;
   }
 
   function doSwap() {
     if (swapping || killed) return;
     swapping = true;
     var newFront = backLayer, oldFront = frontLayer;
-    // BACK is already playing clean (past its chrome) at the segment start —
-    // just cross/cut it in.
+    // (dev0674) Idle the layer that just left the screen. Pausing a YT player
+    // makes it draw its big centre play glyph, so this MUST NOT happen until the
+    // opacity flip has actually been painted — the old code armed it on a flat
+    // FADE_MS+120 timer started before the flip was even committed, and on a busy
+    // grid (15 cells = 30 players) a frame can take longer than that, so the
+    // glyph landed on a layer the user could still see. That is the "brief pause
+    // button" at the swap point. Runs exactly once, from whichever path gets
+    // there first: the double-rAF (normal) or the timer (backgrounded tab, where
+    // rAF never fires at all and both layers would otherwise keep playing).
+    var idled = false;
+    function idleOldFront() {
+      if (idled) return;
+      idled = true;
+      if (!killed) { try { oldFront.player.pauseVideo(); } catch (_) {} }
+      swapping = false;
+    }
     requestAnimationFrame(function() {
-      if (killed) return;
+      if (killed) { idleOldFront(); return; }
       newFront.wrap.style.opacity = '1';
       oldFront.wrap.style.opacity = '0';
+      // Second rAF = the flip has been through a paint; the margin covers the
+      // compositor and, in fade mode, the dissolve itself.
+      requestAnimationFrame(function() { setTimeout(idleOldFront, FADE_MS + 300); });
     });
     // Commit roles synchronously so the loop watches the new front immediately.
     frontLayer = newFront; backLayer = oldFront;
     frontSeg = (frontSeg + 1) % segs.length;
     backWarm = null;
-    // After the dissolve, idle the old front (now the back) until its next
-    // warm-up reseeks + replays it.
-    setTimeout(function() {
-      if (killed) { swapping = false; return; }
-      try { backLayer.player.pauseVideo(); } catch (_) {}
-      swapping = false;
-    }, FADE_MS + 120);
+    setTimeout(idleOldFront, FADE_MS + 1500);   // rAF-never-fires backstop
   }
 
   var controller = {

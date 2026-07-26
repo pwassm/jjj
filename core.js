@@ -450,6 +450,15 @@ window.addEventListener('keydown', function(e) {
     if (gOpenB && !vpOpenB && (!_uModeB || _guFunB)) {
       e.preventDefault();
       e.stopPropagation();
+      // (dev0674) The first press raises the sticky clean-playback panel and
+      // changes NOTHING — it is a card that stays up (and hands [ ] to the
+      // pre-roll) instead of a toast that fades, so you can read the current
+      // state before touching it. Once it is up, b/⇧B cycle as before and the
+      // card updates live. Esc closes it and gives [ ] back to zoom.
+      const _panelWasUp = (typeof window._gridBufPanelOpen === 'function')
+        && window._gridBufPanelOpen();
+      if (typeof window._gridBufPanelShow === 'function') window._gridBufPanelShow();
+      if (!_panelWasUp) return false;
       if (e.shiftKey) {
         if (typeof window.gridBufferAdapt === 'function') window.gridBufferAdapt();
       } else if (typeof window.gridBufferScopeCycle === 'function') {

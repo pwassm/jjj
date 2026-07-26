@@ -522,12 +522,16 @@ window.HOTKEYS = [
     desc: 'Play the grid as a slideshow' },
 
   { label: 'B', group: 'Grid (window-capture)', scope: 'G', dev: false,
-    impl: 'core.js window-capture (dev0638/0673) → grid.js gridBufferScopeCycle',
-    desc: 'Cycle how far buffered ("clean") YT playback reaches: NORMAL (desktop squares ≤4×4) → WIDE (plus the 17/19 layouts — the default since dev0673) → ALL (every size & device; 2 players per cell, so 27 cells = 54) → NONE (hard off). Anything outside the scope falls back to the single-iframe mount and shows YT’s center play/pause chrome. Ctrl+B still cycles the buffer MODE (off/cut/fade); ?buf=normal|wide|all|0 sets the scope for one load.' },
+    impl: 'core.js window-capture (dev0638/0673/0674) → grid.js gridBufferScopeCycle',
+    desc: 'First press raises the sticky CLEAN PLAYBACK panel (bottom-left; Esc closes it) showing mode, scope, pre-roll, adaptive and the measured spin-up. While it is up, b cycles how far buffered playback reaches: NORMAL (desktop squares ≤4×4) → WIDE (plus the 17/19 layouts — the default since dev0673) → ALL (every size & device; 2 players per cell, so 27 cells = 54) → NONE (hard off). Anything outside the scope falls back to the single-iframe mount and shows YT’s center play/pause chrome. Ctrl+B still cycles the buffer MODE (off/cut/fade); ?buf=normal|wide|all|0 sets the scope for one load.' },
 
   { label: 'Shift+B', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0673) → grid.js gridBufferAdapt',
-    desc: 'Toggle adaptive per-segment pre-roll (default ON). Each segment warms its hidden layer for min(global pre-roll, its own duration ÷ 2.5) instead of the one global value — the fix for short segments, which with a fixed 3.5s warm-up got revealed before the chrome burned off. Only ever shortens the warm-up, floored at 0.8s. −/+ still set the global pre-roll.' },
+    desc: 'Raises the same CLEAN PLAYBACK panel; while it is up, toggles adaptive per-segment pre-roll (default ON). Each segment warms its hidden layer for min(global pre-roll, its own duration ÷ 2.5) rather than one flat value, floored at 0.8s and never more than half a segment. (dev0674) It also measures each cell’s real seek→playing latency and uses that as the floor, climbing 25% after any reveal it had to show dirty and relaxing on clean laps — so a slow cell tunes itself up without you pressing anything.' },
+
+  { label: '[  /  ]', group: 'Grid', scope: 'G', dev: true,
+    impl: 'collection.js (dev0346/0674)',
+    desc: 'Whole-grid zoom ±0.1 — EXCEPT while the CLEAN PLAYBACK panel is open (b), where they become buffer pre-roll ∓0.5s with the panel as the live readout. − / + always adjust the pre-roll regardless of the panel. Ctrl+[ / Ctrl+] zoom just the hovered cell either way.' },
 
   { label: 'Z', group: 'Viewer', scope: 'V', dev: false,
     impl: 'vp.js vpKeyHandler (dev0672) → _vpEmbedZoomArm',

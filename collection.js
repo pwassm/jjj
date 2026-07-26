@@ -384,6 +384,18 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // (dev0674) While the clean-playback panel is up (b / ⇧B), [ and ] retarget
+  // from grid zoom to the buffer pre-roll — the one number worth dialling in by
+  // feel, and the panel is right there showing the result. Esc closes the panel
+  // and hands [ ] back to zoom. Ctrl+[ / Ctrl+] (per-cell zoom) are matched
+  // above this and keep working throughout.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '[' || e.key === ']')
+      && typeof window._gridBufPanelOpen === 'function' && window._gridBufPanelOpen()) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof gridAdjustPreroll === 'function') gridAdjustPreroll(e.key === '[' ? -0.5 : 0.5);
+    return;
+  }
+
   // (dev0346) [ / ] tune the whole-grid zoom by ±0.1 (keyboard). Bare keys; floor
   // 0.2, no upper limit. Applies whether or not buffering is on. 1× = plain
   // cover/contain; <1 shrinks, >1 crops in. (dev0598) Reaches here in user mode too
@@ -433,6 +445,10 @@ document.addEventListener('keydown', e => {
   // Dev-mode grids with no menu origin keep the old Esc→Table behaviour.
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopPropagation();
+    // (dev0674) The clean-playback panel is sticky by design, so Esc dismisses it
+    // FIRST and leaves the grid alone — same step-back convention as the cut
+    // marker below it.
+    if (typeof window._gridBufPanelClose === 'function' && window._gridBufPanelClose()) return;
     if (_gridCutCell) {
       gridClearCut();
       toast('Cut cancelled', 800);

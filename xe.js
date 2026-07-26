@@ -2590,6 +2590,7 @@ function gridClose() {
   gridCleanupPlayers();
   gridClearCut();
   gridHideContextMenu();
+  window._gridBufPanelClose?.();    // (dev0674) sticky clean-playback card
   textEditorClose();
   document.getElementById('gridOverlay').style.display = 'none';
   document.getElementById('gridFullscreen').style.display = 'none';
