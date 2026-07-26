@@ -401,16 +401,16 @@ function _gridEmbedArm(cellEl) {
   // Badge sits above the dead interactor and stays pointer-events:none, so the
   // click still falls through to the embed. Provider colours match V's
   // "Open on …" button so an armed cell reads as the same thing in both screens.
-  // (dev0669) Double size — at 9px it was easy to miss that the cell had armed
-  // at all. It is a STATE LAMP, not a button: the play click still has to land
-  // on the provider's own caret in the middle of the picture.
+  // (dev0670) Back to 9px: it is a STATE LAMP, not a button — the play click
+  // still has to land on the provider's own caret in the middle of the picture,
+  // so a big tag only invited clicks on the one corner that opens instagram.com.
   const link = (cellEl._rowData && cellEl._rowData.link) || '';
   const isTT = !!(window.isTikTokLink && window.isTikTokLink(link));
   const badge = document.createElement('div');
   badge.className = 'grid-embed-armed';
   badge.textContent = '▶ play';
   badge.style.cssText = 'position:absolute;left:4px;top:4px;z-index:101;pointer-events:none;'
-    + 'font:bold 18px monospace;color:#fff;padding:4px 10px;border-radius:5px;'
+    + 'font:bold 9px monospace;color:#fff;padding:2px 5px;border-radius:3px;'
     + 'background:' + (isTT
         ? 'linear-gradient(135deg,#25F4EE 0%,#000 50%,#FE2C55 100%)'
         : 'linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%)') + ';'
