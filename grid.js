@@ -318,7 +318,12 @@ function fitGridIgFrame(cellEl, iframe) {
   requestAnimationFrame(fit);
   setTimeout(fit, 50);
   if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(fit).observe(cellEl);
+    // (dev0669) One observer per CELL, not per call: _gridEmbedReload re-fits the
+    // same cell with a new iframe, and without this every reload left another
+    // observer alive re-fitting a detached frame.
+    try { if (cellEl._igRO) cellEl._igRO.disconnect(); } catch (_) {}
+    cellEl._igRO = new ResizeObserver(fit);
+    cellEl._igRO.observe(cellEl);
   }
 }
 
@@ -344,7 +349,15 @@ function fitGridIgFrame(cellEl, iframe) {
 // Both providers are tagged .grid-embed-wrap on the element wrapping their
 // iframe: IG at its two build sites (gridShow / gridUpdateCell), TikTok on the
 // vidHost in _gridMountVideo, since it rides the normal video branch.
-let _gridEmbedArmed = null;   // { cell, onLeave } — at most one armed cell
+//
+// (dev0669) TIMING. The handshake is two clicks, and half a second was not
+// enough to land them: the arming click had to press-and-release inside 500ms
+// (longer, in dev mode, and hold-to-cut took the cell instead), and the armed
+// state died the instant the pointer wandered a pixel outside the cell on its
+// way to the caret. All three budgets are now EMBED_CLICK_MS — tripled — and
+// leaving the cell only starts a grace timer that coming back cancels.
+const EMBED_CLICK_MS = 1500;
+let _gridEmbedArmed = null;   // { cell, onLeave, onEnter, onBlur, leaveTmr } — at most one
 
 function _gridIsEmbedCell(cellEl) {
   const row = cellEl && cellEl._rowData;
@@ -357,7 +370,9 @@ function _gridEmbedDisarm() {
   const st = _gridEmbedArmed;
   if (!st) return;
   _gridEmbedArmed = null;
+  clearTimeout(st.leaveTmr);
   try { st.cell.removeEventListener('mouseleave', st.onLeave); } catch (_) {}
+  try { st.cell.removeEventListener('mouseenter', st.onEnter); } catch (_) {}
   try { window.removeEventListener('blur', st.onBlur); } catch (_) {}
   if (!st.cell.isConnected) return;   // grid re-rendered under us
   const wrap  = st.cell.querySelector('.grid-embed-wrap');
@@ -366,12 +381,14 @@ function _gridEmbedDisarm() {
   if (wrap)  wrap.style.pointerEvents  = 'none';
   if (frame) frame.style.pointerEvents = 'none';
   if (inter) inter.style.pointerEvents = '';
-  const badge = st.cell.querySelector('.grid-embed-armed');
-  if (badge) badge.remove();
+  st.cell.querySelectorAll('.grid-embed-armed, .grid-embed-new').forEach(el => el.remove());
 }
 
 function _gridEmbedArm(cellEl) {
-  if (_gridEmbedArmed && _gridEmbedArmed.cell === cellEl) return;   // already armed
+  if (_gridEmbedArmed && _gridEmbedArmed.cell === cellEl) {
+    clearTimeout(_gridEmbedArmed.leaveTmr);   // (dev0669) re-click inside the grace window
+    return;                                   // already armed
+  }
   _gridEmbedDisarm();                                               // one at a time
   const wrap  = cellEl.querySelector('.grid-embed-wrap');
   const frame = wrap && wrap.querySelector('iframe');
@@ -380,23 +397,59 @@ function _gridEmbedArm(cellEl) {
   wrap.style.pointerEvents  = 'auto';
   frame.style.pointerEvents = 'auto';
   inter.style.pointerEvents = 'none';
+  const st = { cell: cellEl, leaveTmr: 0 };
   // Badge sits above the dead interactor and stays pointer-events:none, so the
   // click still falls through to the embed. Provider colours match V's
   // "Open on …" button so an armed cell reads as the same thing in both screens.
+  // (dev0669) Double size — at 9px it was easy to miss that the cell had armed
+  // at all. It is a STATE LAMP, not a button: the play click still has to land
+  // on the provider's own caret in the middle of the picture.
   const link = (cellEl._rowData && cellEl._rowData.link) || '';
   const isTT = !!(window.isTikTokLink && window.isTikTokLink(link));
   const badge = document.createElement('div');
   badge.className = 'grid-embed-armed';
   badge.textContent = '▶ play';
   badge.style.cssText = 'position:absolute;left:4px;top:4px;z-index:101;pointer-events:none;'
-    + 'font:bold 9px monospace;color:#fff;padding:2px 5px;border-radius:3px;'
+    + 'font:bold 18px monospace;color:#fff;padding:4px 10px;border-radius:5px;'
     + 'background:' + (isTT
         ? 'linear-gradient(135deg,#25F4EE 0%,#000 50%,#FE2C55 100%)'
         : 'linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%)') + ';'
     + 'text-shadow:0 1px 2px rgba(0,0,0,0.4);';
   cellEl.appendChild(badge);
-  const onLeave = () => _gridEmbedDisarm();
+
+  // (dev0669) "New embed" chip, opposite corner from the lamp. A provider embed
+  // is good for ONE inline play; after that its caret only offers to open the
+  // post on instagram.com. This swaps in a fresh iframe so the cell is playable
+  // again — see _gridEmbedReload. Unlike the badge it IS clickable, and it turns
+  // amber once this cell has spent its play.
+  const nu = document.createElement('div');
+  nu.className = 'grid-embed-new';
+  nu.textContent = '↻';
+  nu.title = 'New embed — reload this post so it plays in the cell again (hotkey z · ⇧Z = whole grid)';
+  const nuBg = played => 'position:absolute;right:4px;top:4px;z-index:102;cursor:pointer;'
+    + 'font:bold 18px monospace;line-height:1;color:#fff;padding:3px 8px;border-radius:5px;'
+    + 'border:1px solid rgba(255,255,255,0.35);text-shadow:0 1px 2px rgba(0,0,0,0.4);'
+    + 'background:' + (played ? 'rgba(214,138,0,0.92)' : 'rgba(0,0,0,0.55)') + ';';
+  nu.style.cssText = nuBg(!!cellEl._embedPlayed);
+  // pointerdown too: the interactor is inert while armed, but swallowing the
+  // press keeps the chip from reading as a click on the frame underneath.
+  nu.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); }, true);
+  nu.addEventListener('click', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (_gridEmbedReload(cellEl)) {
+      nu.style.cssText = nuBg(false);
+      if (typeof _gridToast === 'function') _gridToast('↻ new embed — click ▶ in the middle of the picture', 1800);
+    }
+  }, true);
+  cellEl.appendChild(nu);
+
+  // (dev0669) Leaving no longer disarms on the spot — it starts a grace timer
+  // that re-entering cancels. Touch still never fires either event, so a tap
+  // cannot strand the cell inert (the dev0604 reason this stayed mouse-only).
+  const onLeave = () => { clearTimeout(st.leaveTmr); st.leaveTmr = setTimeout(_gridEmbedDisarm, EMBED_CLICK_MS); };
+  const onEnter = () => clearTimeout(st.leaveTmr);
   cellEl.addEventListener('mouseleave', onLeave);
+  cellEl.addEventListener('mouseenter', onEnter);
 
   // (dev0607) The click that starts the embed also moves KEYBOARD focus into
   // its document, and from then on every global hotkey — T above all — is
@@ -408,6 +461,10 @@ function _gridEmbedArm(cellEl) {
   // works with the pointer sitting on it.
   const onBlur = () => setTimeout(() => {
     if (document.activeElement !== frame) return;   // focus went elsewhere — not ours to take
+    // (dev0669) Focus landing in the frame is the only signal out here that a
+    // click actually reached the embed, i.e. that its one play is now spent.
+    cellEl._embedPlayed = true;
+    if (nu.isConnected) nu.style.cssText = nuBg(true);
     try { frame.blur(); } catch (_) {}
     // Only re-focus while the window is still ours; if the user alt-tabbed away
     // mid-play, window.focus() would try to raise the browser at them.
@@ -415,8 +472,64 @@ function _gridEmbedArm(cellEl) {
   }, 0);
   window.addEventListener('blur', onBlur);
 
-  _gridEmbedArmed = { cell: cellEl, onLeave: onLeave, onBlur: onBlur };
+  st.onLeave = onLeave;
+  st.onEnter = onEnter;
+  st.onBlur  = onBlur;
+  _gridEmbedArmed = st;
 }
+
+// (dev0669) NEW EMBED — swap a cell's cross-origin iframe for a freshly loaded
+// one. IG (and TikTok) hand an embed exactly one inline play: after it, the
+// caret stops playing and starts offering to open the post on their site. There
+// is no API out here to reset that — but it is per-INSTANCE state, which is why
+// the same post plays once in G and again in V. A brand-new iframe is a new
+// instance, so the cell gets its play back. Also recovers a frame that has been
+// navigated away (a stray click on the header opens the profile inside it): IG
+// cells rebuild the src from the row rather than trusting the frame.
+// Returns true if a frame was swapped.
+function _gridEmbedReload(cellEl) {
+  if (!_gridIsEmbedCell(cellEl)) return false;
+  const wrap = cellEl.querySelector('.grid-embed-wrap');
+  const old  = wrap && wrap.querySelector('iframe');
+  if (!wrap || !old) return false;
+  const row  = cellEl._rowData || {};
+  const isIG = !!(window.isInstagramLink && window.isInstagramLink(row.link || ''));
+  const src  = (isIG && window.instagramEmbedUrl) ? window.instagramEmbedUrl(row.link)
+                                                  : old.getAttribute('src');
+  if (!src) return false;
+  // Clone carries the attributes AND the inline style — including the fit
+  // transform — so the fresh frame paints in place with no jump.
+  const fresh = old.cloneNode(false);
+  fresh.removeAttribute('src');
+  wrap.insertBefore(fresh, old);
+  old.remove();
+  fresh.src = src;                       // set after insert: one load, not two
+  const armedHere = !!(_gridEmbedArmed && _gridEmbedArmed.cell === cellEl);
+  fresh.style.pointerEvents = armedHere ? 'auto' : 'none';
+  cellEl._embedPlayed = false;
+  if (isIG) fitGridIgFrame(cellEl, fresh);       // re-attach _igFit + the cell's observer
+  else if (typeof _gridApplyZoomToCell === 'function') _gridApplyZoomToCell(cellEl);
+  return true;
+}
+
+// (dev0669) Hotkey/menu entry point: z = the cell under the pointer, ⇧Z = every
+// embed on the grid. View-only (no row or c.json writes), so both modes get it.
+window.gridNewEmbed = function(all) {
+  const overlay = document.getElementById('gridOverlay');
+  if (!overlay || overlay.style.display !== 'flex') return;
+  const say = (m, ms) => { if (typeof _gridToast === 'function') _gridToast(m, ms || 1400); };
+  if (all) {
+    let n = 0;
+    overlay.querySelectorAll('.grid-cell').forEach(c => { if (_gridEmbedReload(c)) n++; });
+    say(n ? '↻ ' + n + ' embed' + (n === 1 ? '' : 's') + ' reloaded — playable again'
+          : 'No IG/TikTok embeds on this grid');
+    return;
+  }
+  const cell = _gridHoverCell || (_gridEmbedArmed && _gridEmbedArmed.cell);
+  if (!cell)                     { say('Point at an IG/TikTok cell first  (⇧Z = whole grid)'); return; }
+  if (!_gridEmbedReload(cell))   { say('Not an IG/TikTok embed cell'); return; }
+  say('↻ new embed ' + (cell.dataset.cell || '') + ' — click ▶ in the middle to play', 1800);
+};
 
 function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
   const VIRT_W = 600;
@@ -1864,9 +1977,11 @@ function gridShow() {
   // (zip0141) Tailor the help hint string by mode. Dev shows the full
   // edit/save shortcut list; user (Gu) just sees the viewing actions.
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
-  const hint = userModeHere
+  let hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
     : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
+  // (dev0669) Only advertise the embed reset on grids that actually have one.
+  if (container.querySelector('.grid-embed-wrap')) hint += ' · z=new embed (⇧Z=all)';
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
   const _bufMode = _gridBufferMode();
@@ -2295,13 +2410,17 @@ function gridWireInteractor(interactor, cell, cellStr) {
     wasLeftBtn = (e.button === 0); // 0=left, 2=right
     
     // (zip0141) Hold-to-cut is dev-only — disabled in user mode (Gu).
+    // (dev0669) On an embed cell the hold runs to EMBED_CLICK_MS instead of
+    // 500ms: the click that arms it is a deliberate, aimed one and often ran
+    // long enough to be taken as a cut. Holding still cuts — it just takes the
+    // same tripled beat the rest of the handshake now allows.
     if (!userMode && cell._rowData && !_gridCutCell && !e.ctrlKey) {
       holdTmr = setTimeout(() => {
         didHold = true;
         gridCut(cellStr);
         cell.style.transform = 'scale(0.95)';
         cell.style.opacity = '0.7';
-      }, 500);
+      }, _gridIsEmbedCell(cell) ? EMBED_CLICK_MS : 500);
     }
   }, true);
   
@@ -2371,8 +2490,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
       return;
     }
 
-    // Short click
-    if (Math.abs(dx) < 15 && Math.abs(dy) < 15 && ms < 500) {
+    // Short click. (dev0669) Embed cells get the tripled budget — a press-release
+    // that ran 600ms used to fall through this gate entirely and never arm.
+    if (Math.abs(dx) < 15 && Math.abs(dy) < 15
+        && ms < (_gridIsEmbedCell(cell) ? EMBED_CLICK_MS : 500)) {
       // (zip0142) Ctrl+left-click is dev-only — user mode (Gu) treats it
       // as an ordinary tap (sets last row, does not open the editor).
       if (ctrl && leftBtn && cell._rowData && !userMode) {
@@ -2707,10 +2828,22 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
   // (same as the bare-'s' hotkey from G / the hamburger Slideshow item).
   const doSlideshow = () => { gridHideContextMenu(); if (window.slideshowOpenGrid) window.slideshowOpenGrid(); };
 
+  // (dev0669) New embed — same view-only reload the dev menu offers, on the
+  // rows that need it (one inline play per IG/TikTok embed).
+  const isEmbedRow = !!(row && row.link
+    && ((window.isInstagramLink && window.isInstagramLink(row.link))
+     || (window.isTikTokLink && window.isTikTokLink(row.link))));
+  const doNewEmbed = () => {
+    gridHideContextMenu();
+    const c = document.querySelector('#gridOverlay [data-cell="' + cellStr + '"]');
+    if (c && _gridEmbedReload(c)) _gridToast('↻ new embed — click ▶ in the middle to play', 1800);
+  };
+
   if (row) _gridContextMenu.appendChild(mkItem('<u>V</u>iew', doView));
   _gridContextMenu.appendChild(mkItem('<u>P</u>lay steps', doSteps));
   _gridContextMenu.appendChild(mkItem('Play steps <u>A</u>ll', doStepsAll));
   _gridContextMenu.appendChild(mkItem('<u>S</u>lideshow', doSlideshow));
+  if (isEmbedRow) _gridContextMenu.appendChild(mkItem('↻ <u>N</u>ew embed', doNewEmbed));
 
   document.body.appendChild(_gridContextMenu);
   _gridClampContextMenu(_gridContextMenu, x, y);   // (dev0571) keep on-screen (bottom row / phones)
@@ -2720,6 +2853,7 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
     else if (e.key === 'p' || e.key === 'P')     { e.preventDefault(); doSteps(); }
     else if (e.key === 'a' || e.key === 'A')     { e.preventDefault(); doStepsAll(); }
     else if (e.key === 's' || e.key === 'S')     { e.preventDefault(); doSlideshow(); }
+    else if (isEmbedRow && /^[nNzZ]$/.test(e.key)) { e.preventDefault(); doNewEmbed(); }
     else if (e.key === 'Escape')                 { gridHideContextMenu(); }
   };
   document.addEventListener('keydown', handleKey, true);
@@ -2825,6 +2959,27 @@ function gridShowContextMenu(x, y, cellStr, row) {
   };
   _gridContextMenu.appendChild(slideBtn);
 
+  // (dev0669) New embed — only on IG/TikTok cells, where one inline play is all
+  // the provider gives. Mouse-reachable twin of the z hotkey / the ↻ chip.
+  const _embCell = document.querySelector('#gridOverlay [data-cell="' + cellStr + '"]');
+  const isEmbedRow = !!(row && row.link
+    && ((window.isInstagramLink && window.isInstagramLink(row.link))
+     || (window.isTikTokLink && window.isTikTokLink(row.link))));
+  let newEmbedBtn = null;
+  if (isEmbedRow) {
+    newEmbedBtn = document.createElement('div');
+    newEmbedBtn.innerHTML = '↻ <u>N</u>ew embed';
+    newEmbedBtn.title = 'Reload this post so it can play in the cell again';
+    newEmbedBtn.style.cssText = 'padding:8px 16px; color:#f8c; cursor:pointer; font-size:13px;';
+    newEmbedBtn.onmouseenter = () => newEmbedBtn.style.background = '#2a2a4e';
+    newEmbedBtn.onmouseleave = () => newEmbedBtn.style.background = '';
+    newEmbedBtn.onclick = () => {
+      gridHideContextMenu();
+      if (_embCell && _gridEmbedReload(_embCell)) _gridToast('↻ new embed — click ▶ in the middle to play', 1800);
+    };
+    _gridContextMenu.appendChild(newEmbedBtn);
+  }
+
   // Delete option
   const deleteBtn = document.createElement('div');
   deleteBtn.innerHTML = '<u>D</u>elete cell';
@@ -2856,6 +3011,12 @@ function gridShowContextMenu(x, y, cellStr, row) {
 
   // Handle keyboard shortcuts
   const handleKey = e => {
+    // (dev0669) n (and z, matching the grid hotkey) = new embed, when offered
+    if (newEmbedBtn && (e.key === 'n' || e.key === 'N' || e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault();
+      newEmbedBtn.onclick();
+      return;
+    }
     if (e.key === 't' || e.key === 'T') {
       e.preventDefault();
       gridOpenTextEditor(cellStr, row);

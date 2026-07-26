@@ -525,6 +525,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture (dev0638)',
     desc: 'Toggle "buffer everywhere" — lifts the desktop-only + ≤4×4 limits on buffered YT playback (POC; Ctrl+B still cycles the buffer mode; ?buf=1 in a URL does the same for one load)' },
 
+  { label: 'Z  /  Shift+Z', group: 'Grid (window-capture)', scope: 'G', dev: false,
+    impl: 'core.js window-capture (dev0669) → grid.js gridNewEmbed',
+    desc: 'New embed — reload the hovered IG/TikTok cell (Shift+Z: every embed on the grid) so it can play in the cell again. Those embeds allow ONE inline play each; after it the caret only offers to open the post on their site. Also on the cell’s right-click menu and the ↻ chip on an armed cell.' },
+
   { label: 'Esc', group: 'Everywhere', scope: 'global', dev: false,
     impl: 'core.js window-capture + per-screen handlers',
     desc: 'Defocus text / deselect row; steps back Xs→Xe→T and closes V/Ie/Ev (never closes T)' },

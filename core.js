@@ -450,6 +450,22 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
+  // (dev0669) z while G is open = "new embed": swap the hovered IG/TikTok cell's
+  // iframe for a freshly loaded one so the post can play IN THE CELL again (the
+  // providers allow exactly one inline play per embed instance — that is why the
+  // same post plays once in G and again in V). ⇧Z does the whole grid at once.
+  // View-only — no ml.json/c.json write — so user mode (Gu) gets it too; a
+  // viewer who has already watched a cell is exactly who needs it.
+  if (k === 'z' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const gOpenZ  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenZ = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpenZ && !vpOpenZ) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window.gridNewEmbed === 'function') window.gridNewEmbed(e.shiftKey);
+      return false;
+    }
+  }
   // (dev0516) s from the GRID plays the slideshow (slideshowOpenGrid), same as
   // slideshow.js's own bare-S handler would. We must own it here in window-
   // capture because the dispatcher below forwards 's' to _executeHotkey, which
