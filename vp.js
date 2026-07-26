@@ -2213,6 +2213,10 @@ function vpKeyHandler(e) {
       return; // video — image-row nav doesn't apply
     }
     e.preventDefault(); e.stopPropagation();
+    // (dev0668) A link the viewer added themselves ("Add your own") is NOT in
+    // `data`, so data.indexOf below returns -1 and ↑/↓ would hop to an
+    // unrelated collection row. There is no row list to walk here — stand down.
+    if (window._vpCurrentRow && window._vpCurrentRow._userLink) return;
     // (zip0185) Always reseed _brRows from the current filter so navigation
     // walks the live filtered T (not a stale snapshot).
     window._brRows = (typeof brGetVisibleRows === 'function')

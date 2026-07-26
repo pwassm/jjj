@@ -7023,5 +7023,60 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "mobula-munkiana",
+    "label": "Mobula munkiana",
+    "kind": "taxon",
+    "parents": [
+      "mobula"
+    ],
+    "aliases": [
+      "Mobula mukiana"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "Munk's Pygmy Devil Ray",
+    "extinct": false
+  },
+  {
+    "id": "chaunacops",
+    "label": "Chaunacops",
+    "kind": "taxon",
+    "parents": [
+      "chaunacidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "coffinfish",
+    "extinct": false
+  },
+  {
+    "id": "chaunacidae",
+    "label": "Chaunacidae",
+    "kind": "taxon",
+    "parents": [
+      "lophiiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "psoas",
+    "label": "Psoas",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "isometrics",
+    "label": "Isometrics",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

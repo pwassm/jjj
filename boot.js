@@ -507,6 +507,24 @@ function _wireSignIn(ov) {
   A.me().then(u => { u ? renderIn(u) : renderOut(); }).catch(() => renderOut());
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev0668) PUBLIC-MENU FEATURE SWITCHES — one line each, nothing else to edit.
+//
+//   SM_FEAT_SEARCH  false → the Search AND SavedSearches tabs vanish completely
+//                           (no tab buttons, no pages, dropped from the Tab-key
+//                           order, and a remembered "last tab" of 3/6 falls back
+//                           to Grids). true → both are live. ONE switch, BOTH
+//                           tabs — they are one feature: a saved search is just
+//                           a query the Search tab produced.
+//   SM_FEAT_ADDOWN  false → the "Add your own" tab vanishes the same way.
+//                           Existing user links/loops are untouched in storage,
+//                           just unreachable until it's switched back on.
+//
+// Flipping either one needs a HELP_VERSION_STR bump like any other JS edit, or
+// browsers will keep serving the cached boot.js.
+const SM_FEAT_SEARCH = true;
+const SM_FEAT_ADDOWN = true;
+
 // (dev0316) Shareable-menu (the "I" / Initial screen). On the public site
 // (slam.com, github.io), bare-URL boot lands here instead of on G. The menu
 // lists every shareable item:
@@ -654,22 +672,47 @@ async function _showShareableMenu() {
   // VidAuthor/VidTitle/link/VidComment + de-tagged ftext + tag label/common).
   // Also precompute `hasTaxon` and the link-derived media `kind` so the COI
   // filters above are a cheap boolean check per row.
+  // (dev0668) THE ml.json SEARCH LIMITATION, applied here in one place.
+  // A viewer-facing search only offers what a viewer can actually WATCH and
+  // LOOP: YouTube, Vimeo, a direct video file, or a direct image. Everything
+  // else in ml.json is filtered out of the counts, the result cards and the
+  // "Make + Show grid" set alike, so the number the viewer sees always matches
+  // what they get.
+  //   • Instagram / TikTok rows — their embeds are sandboxed cross-origin
+  //     iframes with no seek API, so A→B loops on them are impossible.
+  //   • Slides / quizzes / bare web links — no media to play.
+  // Same rule as salLinks.classify (loops.js), so a row found by Search and a
+  // URL the viewer pastes on "Add your own" behave identically.
+  const _smPlayable = r => {
+    const link = String((r && r.link) || '').trim();
+    if (!link) return false;
+    if (window.isYouTubeLink && window.isYouTubeLink(link)) return true;
+    if (window.isVimeoLink && window.isVimeoLink(link)) return true;
+    if (window.isDirectVideoLink && window.isDirectVideoLink(link)) return true;
+    if (window.isImageLink && window.isImageLink(link)) return true;
+    return false;
+  };
   const _tBlobs = mlRows
     .filter(r => r && !r._salMeta && r.UID != null && !_isGreeting(r.ttxt))
     .map(r => {
       const staticBlob = (['VidAuthor', 'VidTitle', 'link', 'VidComment'].map(f => String(r[f] || '')).join(' ')
         + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' ')).toLowerCase();
       const kind = window.rowMediaKind ? window.rowMediaKind(r) : 'other';
+      const playable = _smPlayable(r);
       // (dev0400) Tag text is resolved LAZILY (see _smResolveTags) rather than
       // here at build time. The menu can open before tags.js finishes loading,
       // and a build-time miss left dictionary terms (a species' common name,
       // scientific name, or alias) permanently unsearchable for that menu
       // instance — the cause of "search 'cocka' misses the Snowball/cockatoo
       // rows". Resolving at search time means it works as soon as tags load.
-      return { r, staticBlob, kind,
+      return { r, staticBlob, kind, playable,
                tagIds: Array.isArray(r.tags) ? r.tags : [],
                tagBlob: null, hasTaxon: false };
     });
+  // How many of the collection's rows the viewer can reach through Search —
+  // shown under the box so a smaller-than-expected result set reads as a stated
+  // rule rather than a bug.
+  const _smPlayableN = _tBlobs.filter(x => x.playable).length;
   // (dev0400) Resolve a blob entry's dictionary-tag text once tagsLib exists.
   // Caches on first success; retries (leaves tagBlob null) while tags are still
   // loading. Includes label + common + aliases + def so every facet of a tag is
@@ -901,14 +944,21 @@ async function _showShareableMenu() {
   // (dev0384) One set of tab buttons, rendered both above and below the pages.
   // _smShow syncs the `.on` class across every `.sm-tab`, so the two bars stay
   // in lockstep automatically.
+  // (dev0668) The Search pair and "Add your own" are each gated by their switch
+  // at the top of this file — an off feature contributes no tab button at all.
   const _tabBtns =
       '<button class="sm-tab" data-pg="2">Grids</button>'
-    + '<button class="sm-tab" data-pg="3">Search</button>'
-    + '<button class="sm-tab" data-pg="6">SavedSearches</button>'
+    + (SM_FEAT_SEARCH
+        ? '<button class="sm-tab" data-pg="3">Search</button>'
+          + '<button class="sm-tab" data-pg="6">SavedSearches</button>'
+        : '')
     // (dev0667) "My Loops" — the viewer's own A→B segments. Sits after
     // SavedSearches because they're siblings: a saved search is a QUERY, a loop
     // is a UID + start/stop. Different entities, separate lists, one tab each.
     + '<button class="sm-tab" data-pg="7">My Loops</button>'
+    // (dev0668) "Add your own" — a URL the viewer pastes themselves. Follows
+    // My Loops because that's where its loops end up.
+    + (SM_FEAT_ADDOWN ? '<button class="sm-tab" data-pg="8">Add your own</button>' : '')
     + '<button class="sm-tab" data-pg="4">Other</button>';
 
   ov.innerHTML = menuStyle
@@ -971,21 +1021,53 @@ async function _showShareableMenu() {
       // PAGE 3 — search anywhere across all of T; result cards appear once the
       // match count drops below n (the Greeting row's MPix).
       + '<div id="smPage3" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        // (dev0596) Search is stubbed to "Pending" for now — the full search UI
-        // (box + suggestions + result cards + ▦ Make grid + ★ Save) is held back.
-        // The post-mount wiring below is all null-guarded, so it no-ops with the
-        // search elements absent; restore the toolbar markup here to re-enable it.
-        + '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>'
+        // (dev0596) Search was stubbed to "Pending"; (dev0668) restored, now
+        // behind SM_FEAT_SEARCH. The post-mount wiring below is all null-guarded,
+        // so with the switch off these elements are simply absent and every
+        // handler no-ops — no separate "disabled" code path to keep in step.
+        // (dev0400) Search uses the same toolbar shape as the Grids filter:
+        // text box + Clear to its right (Tab cycles box ↔ Clear ↔ Make grid ↔
+        // Save), plus Make grid. Enter in the box (or Make grid) turns the
+        // current ≤25 results into a grid (size scales with the count).
+        + (SM_FEAT_SEARCH
+          ? '<div class="sm-chmax">'
+            + '<div class="sm-chtools">'
+              + '<div class="sm-chfwrap">'
+                + '<input id="smSearchBox" class="sm-chfilter" type="text" placeholder="Search everything…" autocomplete="off">'
+                + '<button id="smSearchClear" class="sm-chclear" type="button">Clear</button>'
+              + '</div>'
+              + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make + Show grid</button>'
+              + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
+            + '</div>'
+            + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When ' + _smN + ' or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
+            // (dev0668) State the two limits up front — both are the search
+            // behaving as designed, and both otherwise read as bugs.
+            + '<div id="smSearchLimits" class="sm-count" style="color:#8a93a8;margin:0 0 4px;">'
+              + 'Searches ' + _smPlayableN + ' playable items (YouTube, Vimeo, video files, images) — '
+              + 'the formats that can be watched and looped here. '
+              + 'One term at a time; it matches any part of a title, author, comment, description or tag.'
+            + '</div>'
+            // (dev0366) Active COI filters, shown so a narrowed result set doesn't
+            // look broken. Populated from _filtTaxon / _filtMedia after mount.
+            + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
+            + '<div id="smSugg" class="sm-sugg"></div>'
+            + '<div id="smCount" class="sm-count"></div>'
+            + '<div id="smResults" class="sm-results"></div>'
+          + '</div>'
+          : '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>')
       + '</div>'
       // (dev0596) PAGE 5 ("Navigation Training") removed — the tab is gone.
       // (dev0401) PAGE 6 — "SavedSearches": searches the viewer kept via the
       // Search tab's ★ Save button, persisted in localStorage. Empty notice
       // until the first save; otherwise a Grids-style list with Open / Delete.
-      // (dev0596) SavedSearches is stubbed to "Pending" for now. The render/wiring
-      // below null-guards on #smSavedBody, so it no-ops with the body absent;
-      // restore <div id="smSavedBody"></div> here to re-enable it.
+      // (dev0596) SavedSearches was stubbed to "Pending"; (dev0668) restored on
+      // the same SM_FEAT_SEARCH switch as the Search tab that feeds it. The
+      // render/wiring below null-guards on #smSavedBody, so with the switch off
+      // the body is absent and _smRenderSaved no-ops.
       + '<div id="smPage6" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>'
+        + (SM_FEAT_SEARCH
+          ? '<div class="sm-chmax"><div id="smSavedBody"></div></div>'
+          : '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>')
       + '</div>'
       // (dev0667) PAGE 7 — "My Loops": A→B segments the viewer marked on V and
       // kept with the toolbar's AB💾 button. Stored in THEIR browser (loops.js
@@ -993,6 +1075,36 @@ async function _showShareableMenu() {
       + '<div id="smPage7" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + '<div class="sm-chmax"><div id="smLoopsBody"></div></div>'
       + '</div>'
+      // (dev0668) PAGE 8 — "Add your own": a URL the viewer pastes themselves,
+      // opened in V and loopable exactly like a collection row. The links live
+      // in the viewer's browser (loops.js → salLinks), never in ml.json.
+      // The manual paste box below the button is the fallback for every browser
+      // that won't hand a page the clipboard (Safari, Firefox, any denied
+      // permission prompt) — it is revealed, not hidden, when the read fails.
+      + (SM_FEAT_ADDOWN
+        ? '<div id="smPage8" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+          + '<div class="sm-chmax">'
+            + '<div class="sm-chtools">'
+              + '<button id="smPasteUrl" class="sm-chbtn" type="button" style="font-size:14px;padding:10px 16px;">📋 Paste new URL</button>'
+              + '<button id="smTypeUrl" class="sm-chbtn" type="button">⌨ Type / paste it myself</button>'
+            + '</div>'
+            + '<div id="smAddManual" style="display:none;padding:0 22px 4px;">'
+              + '<div class="sm-chfwrap" style="margin:0;">'
+                + '<input id="smAddBox" class="sm-chfilter" type="text" placeholder="Paste a link here (Ctrl+V), then press Enter" autocomplete="off" spellcheck="false">'
+                + '<button id="smAddGo" class="sm-chclear" type="button">Add</button>'
+              + '</div>'
+            + '</div>'
+            + '<div class="sm-count" style="color:#8a93a8;margin:6px 0 2px;">'
+              + 'Works with <b>YouTube</b>, <b>Vimeo</b>, a <b>video file</b> link (.mp4 / .webm / .mov) or an <b>image</b> link. '
+              + 'Instagram and TikTok can\'t be looped — their players don\'t allow it.'
+            + '</div>'
+            + '<div class="sm-count" style="color:#8a93a8;margin:0 0 6px;">'
+              + 'Your links stay in this browser only — they aren\'t uploaded, shared, or added to the collection.'
+            + '</div>'
+            + '<div id="smAddBody"></div>'
+          + '</div>'
+        + '</div>'
+        : '')
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.
     + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>';
@@ -1007,11 +1119,17 @@ async function _showShareableMenu() {
   // (dev0401) SavedSearches (6) sits between Search (3) and Other (4) in the
   // tab bar, so the Tab-key order reflects that left-to-right placement.
   // (dev0667) My Loops (7) follows SavedSearches (6), matching the tab bar.
-  const _smTabOrder = [2, 3, 6, 7, 4];
+  // (dev0668) Built from the feature switches so the Tab key visits exactly the
+  // tabs that exist — a switched-off page is never landed on.
+  const _smTabOrder = [2]
+    .concat(SM_FEAT_SEARCH ? [3, 6] : [])
+    .concat([7])
+    .concat(SM_FEAT_ADDOWN ? [8] : [])
+    .concat([4]);
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
     if (n >= 2) window._smLastTab = n; // (dev0384) remember the last tab used
-    [1, 2, 3, 4, 5, 6, 7].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
+    [1, 2, 3, 4, 5, 6, 7, 8].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = (n === 1) ? 'none' : 'flex');
@@ -1037,6 +1155,13 @@ async function _showShareableMenu() {
     if (b) { b.focus(); return true; }
     return false;
   };
+  // (dev0668) "Add your own" lands on its Paste button — the one thing that tab
+  // is for. Falls back to the tab button if the feature is switched off.
+  const _smFocusAdd = () => {
+    const b = ov.querySelector('#smPasteUrl');
+    if (b) { b.focus(); return true; }
+    return false;
+  };
   // Tab click → show that page. Search focuses its box (mouse users type
   // immediately); SavedSearches focuses its first Open button; every other tab
   // keeps focus on the tab for keyboard cycling.
@@ -1047,6 +1172,7 @@ async function _showShareableMenu() {
       if (pg === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
       else if (pg === 6) { setTimeout(() => { if (!_smFocusFirstSaved()) t.focus(); }, 30); }
       else if (pg === 7) { setTimeout(() => { if (!_smFocusFirstLoop()) t.focus(); }, 30); }
+      else if (pg === 8) { setTimeout(() => { if (!_smFocusAdd()) t.focus(); }, 30); }
       else t.focus();
     }));
   // (dev0384) Keyboard: Tab hops to the next tab (Shift+Tab the previous),
@@ -1073,6 +1199,7 @@ async function _showShareableMenu() {
       _smShow(next);
       if (next === 6 && _smFocusFirstSaved()) return; // (dev0403) land on first Open
       if (next === 7 && _smFocusFirstLoop()) return;  // (dev0667) same for My Loops
+      if (next === 8 && _smFocusAdd()) return;        // (dev0668) Add your own → Paste
       _smFocusTab(next);
     }
   });
@@ -1119,14 +1246,20 @@ async function _showShareableMenu() {
   //    the first hop after Welcome always lands on Choices.
   //  • else (very first entry) — show the Welcome splash and mark it seen.
   let _smStartPg;
-  // (dev0667) Range now runs to 7 so a return from a looped V lands back on My Loops.
-  if (window._smReturnPage >= 2 && window._smReturnPage <= 7) {
+  // (dev0667) Range now runs to 7 so a return from a looped V lands back on My
+  // Loops. (dev0668) …and to 8 for "Add your own".
+  if (window._smReturnPage >= 2 && window._smReturnPage <= 8) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
-    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 7) ? window._smLastTab : 2;
+    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 8) ? window._smLastTab : 2;
   } else {
     _smStartPg = 1;
   }
+  // (dev0668) A page belonging to a switched-off feature can still be reached
+  // through a remembered last tab (or a return set before the switch flipped),
+  // and that page no longer exists in the DOM — every tab would look inactive
+  // over blank space. Fall back to Grids.
+  if (_smStartPg !== 1 && _smTabOrder.indexOf(_smStartPg) < 0) _smStartPg = 2;
   window._smReturnPage = undefined;
   if (_smStartPg === 1) window._smWelcomeSeen = true;
   // (dev0403) Capture-then-clear the "returned from a Search-tab grid" flag so
@@ -1145,6 +1278,7 @@ async function _showShareableMenu() {
     }
     if (_smStartPg === 6 && _smFocusFirstSaved()) return;
     if (_smStartPg === 7 && _smFocusFirstLoop()) return;   // (dev0667)
+    if (_smStartPg === 8 && _smFocusAdd()) return;         // (dev0668)
     _smFocusTab(_smStartPg);
   }, 40);
 
@@ -1158,6 +1292,41 @@ async function _showShareableMenu() {
     const gOvl = document.getElementById('gridOverlay');
     if (gOvl) { gOvl.style.display = 'flex'; window._vpForcedGridFromT = true; }
     _openItemByUid(uid);
+  };
+
+  // (dev0668) Open a row that is NOT in ml.json — a link the viewer added on
+  // "Add your own". Same staging as _smOpenV (return page, forced grid backdrop,
+  // _fromShareableMenu so vpClose comes home), but it hands the synthetic row
+  // straight to gridOpenFullscreen: _openItemByUid resolves against `data`, and
+  // a ul_… UID is deliberately not in there.
+  //
+  // `pend` optionally arms a loop, exactly as the My Loops tab does.
+  const _smOpenUserRow = (row, pend) => {
+    if (!row || !row.link) return;
+    window._smReturnPage = window._smCurPage;
+    ov.remove();
+    window._fromShareableMenu = true;
+    const gOvl = document.getElementById('gridOverlay');
+    if (gOvl) { gOvl.style.display = 'flex'; window._vpForcedGridFromT = true; }
+    if (pend) window._vpPendingLoop = pend;
+    if (typeof _lastGridRow !== 'undefined') _lastGridRow = row;
+    setTimeout(() => {
+      if (typeof gridOpenFullscreen === 'function') gridOpenFullscreen(row);
+      // Same safety net as _openItemByUid: a dead link (or a kind V won't
+      // mount) must not strand the viewer on a blank forced grid backdrop.
+      setTimeout(() => {
+        const fsEl = document.getElementById('gridFullscreen');
+        if (fsEl && fsEl.style.display === 'flex') return;
+        window._fromShareableMenu = false;
+        if (window._vpForcedGridFromT) {
+          const g = document.getElementById('gridOverlay');
+          if (g) g.style.display = 'none';
+          window._vpForcedGridFromT = false;
+        }
+        if (typeof toast === 'function') toast('That link could not be opened', 2400);
+        if (typeof window._showShareableMenu === 'function') setTimeout(() => window._showShareableMenu(), 50);
+      }, 200);
+    }, 60);
   };
 
   // (dev0378) Launch happens via the "▶ Open" button on each <details> card.
@@ -1282,6 +1451,7 @@ async function _showShareableMenu() {
     // (dev0366/0400) Apply the COI-declared filters before the threshold/render.
     // The tag text is resolved here (lazily) so dictionary terms match.
     let _hits = _tBlobs.filter(x => {
+      if (!x.playable) return false;   // (dev0668) see _smPlayable
       _smResolveTags(x);
       return x.staticBlob.includes(lq) || (x.tagBlob && x.tagBlob.includes(lq));
     });
@@ -1372,7 +1542,11 @@ async function _showShareableMenu() {
   // uses). Shared by the SavedSearches live count and its Open-the-grid action.
   const _smRowsForQuery = q => {
     const lq = String(q || '').toLowerCase();
-    let hits = _tBlobs.filter(x => { _smResolveTags(x); return x.staticBlob.includes(lq) || (x.tagBlob && x.tagBlob.includes(lq)); });
+    let hits = _tBlobs.filter(x => {
+      if (!x.playable) return false;   // (dev0668) same rule as _smRunSearch
+      _smResolveTags(x);
+      return x.staticBlob.includes(lq) || (x.tagBlob && x.tagBlob.includes(lq));
+    });
     if (_filtTaxon) hits = hits.filter(x => x.hasTaxon);
     if (_filtMedia) hits = hits.filter(x => x.kind === 'video' || x.kind === 'image');
     return hits.map(x => x.r);
@@ -1480,7 +1654,9 @@ async function _showShareableMenu() {
       if (!list.length) {
         _smLoopsBody.innerHTML = '<div class="sm-chnone">No loops yet. '
           + 'Open a video, set <b>A</b> and <b>B</b> on the player toolbar, then press '
-          + '<b>AB&#128190;</b> (or the <b>L</b> key) to keep that stretch here.<br><br>'
+          + '<b>AB&#128190;</b> (or the <b>L</b> key) to keep that stretch here.'
+          + (SM_FEAT_ADDOWN ? ' That works on your own links too — see <b>Add your own</b>.' : '')
+          + '<br><br>'
           + '<span style="color:#8a93a8;font-size:12px;">Loops are saved in this browser only — '
           + 'they aren\'t shared to another device or to the site.</span></div>';
         return;
@@ -1488,6 +1664,9 @@ async function _showShareableMenu() {
       // Resolve every loop to a live row up front so a card can show what it
       // points at (and grey out the ones whose row has gone).
       const rowById = {};
+      // (dev0668) Which of those rows is one of the viewer's own added links
+      // rather than a collection row — Open has to take a different route.
+      const ownById = {};
       list.forEach(e => {
         const res = window.salLoops.resolve(e, mlRows);
         rowById[e.id] = res.row || null;
@@ -1495,6 +1674,19 @@ async function _showShareableMenu() {
         // the card in front of the viewer is already correct either way.
         if (res.byLink && res.row && res.row.UID != null) {
           window.salLoops.update(e.id, { uid: String(res.row.UID) });
+        }
+        // (dev0668) Not in ml.json — try the viewer's own links (uid first, then
+        // the URL, matching salLoops' own keying rule). A loop marked on a
+        // pasted URL lands here every time; one whose link was since deleted
+        // stays null and the card greys out like any other missing row.
+        if (!rowById[e.id] && window.salLinks) {
+          const own = window.salLinks.getSync(e.uid)
+                   || (e.link ? window.salLinks.byLinkSync(e.link) : null);
+          if (own) {
+            rowById[e.id] = window.salLinks.rowFor(own);
+            ownById[e.id] = true;
+            if (String(own.uid) !== String(e.uid)) window.salLoops.update(e.id, { uid: own.uid });
+          }
         }
       });
       const fmt = window.salLoops.fmt;
@@ -1508,7 +1700,10 @@ async function _showShareableMenu() {
         const src = row
           ? (_smBadge[window.rowMediaKind ? window.rowMediaKind(row) : 'other'] || '🔗')
             + ' ' + _smResultLabel(row)
-          : '⚠ this item is no longer in the collection';
+            // (dev0668) Say which loops sit on a link the viewer added, since
+            // those live or die with the "Add your own" entry, not the collection.
+            + (ownById[e.id] ? '  (your link)' : '')
+          : '⚠ this item is no longer available';
         const meta = _smEsc(src) + '  ·  ' + span
           + (e.ts ? '  ·  saved ' + _smDateShort(new Date(e.ts).toISOString()) : '');
         return '<div class="sm-item sm-card"' + (row ? '' : ' style="opacity:.55;"') + '>'
@@ -1532,10 +1727,15 @@ async function _showShareableMenu() {
       const _smOpenLoop = e => {
         const row = rowById[e.id];
         if (!row) { if (typeof toast === 'function') toast('That item is no longer in the collection', 2200); return; }
-        window._vpPendingLoop = {
+        const pend = {
           uid: String(row.UID), link: String(row.link || ''),
           a: e.a, b: e.b, name: e.name
         };
+        // (dev0668) A loop on one of the viewer's own links can't go through
+        // _smOpenV — that resolves the UID against ml.json, where a ul_… UID
+        // will never be. _smOpenUserRow mounts the synthetic row directly.
+        if (ownById[e.id]) { _smOpenUserRow(row, pend); return; }
+        window._vpPendingLoop = pend;
         _smOpenV(String(row.UID));                 // sets _smReturnPage = 7 (this page)
       };
       _smLoopsBody.querySelectorAll('.sm-svbtn').forEach(b => {
@@ -1578,6 +1778,211 @@ async function _showShareableMenu() {
     });
   };
   _smRenderLoops();
+
+  // (dev0668) ── "Add your own" tab ─────────────────────────────────────────
+  // Paste a URL → it opens in V → mark A and B → AB💾 keeps the loop, exactly
+  // as on a collection row. The link itself is stored by loops.js (salLinks) in
+  // the viewer's browser; nothing here ever touches ml.json.
+  const _smAddBody   = ov.querySelector('#smAddBody');
+  const _smPasteBtn  = ov.querySelector('#smPasteUrl');
+  const _smTypeBtn   = ov.querySelector('#smTypeUrl');
+  const _smAddManual = ov.querySelector('#smAddManual');
+  const _smAddBox    = ov.querySelector('#smAddBox');
+  const _smAddGo     = ov.querySelector('#smAddGo');
+
+  if (_smAddBody) {
+    // Reveal (and focus) the manual box. Called both by the ⌨ button and
+    // whenever a clipboard read is refused or comes back with nothing usable.
+    const _smShowManual = (msg, prefill) => {
+      if (!_smAddManual || !_smAddBox) return;
+      _smAddManual.style.display = '';
+      if (prefill) _smAddBox.value = prefill;
+      _smAddBox.focus();
+      _smAddBox.select();
+      if (msg && typeof toast === 'function') toast(msg, 2600);
+    };
+
+    // What a rejected paste gets told. Naming the four accepted kinds is the
+    // whole message — "invalid URL" would leave the viewer guessing.
+    const _smAddReject = raw => {
+      const short = String(raw || '').slice(0, 60);
+      if (typeof toast === 'function') {
+        toast('Can\'t use that link' + (short ? ':\n' + short : '')
+          + '\nUse a YouTube, Vimeo, video-file or image link.', 3600);
+      }
+    };
+
+    // Add + immediately open. Re-adding a URL already in the list re-uses that
+    // entry (keeping its UID, and therefore any loops already marked on it).
+    const _smAddUrl = raw => {
+      if (!window.salLinks) { if (typeof toast === 'function') toast('Saved links aren\'t available in this browser', 2600); return; }
+      const url = window.salLinks.normalize(raw);
+      if (!url || !window.salLinks.classify(url)) { _smAddReject(raw); return; }
+      window.salLinks.add({ link: url }).then(res => {
+        if (_smAddBox) _smAddBox.value = '';
+        _smRenderAdded();
+        if (typeof toast === 'function') {
+          toast(res.created ? '➕ Added — opening it now' : 'Already in your list — opening it', 1800);
+        }
+        const row = window.salLinks.rowFor(res.entry);
+        setTimeout(() => _smOpenUserRow(row), 120);
+      }).catch(err => {
+        if (err && err.message === 'unsupported') { _smAddReject(raw); return; }
+        if (typeof toast === 'function') toast('Could not save that link — browser storage may be full', 3000);
+      });
+    };
+
+    // 📋 Paste new URL. navigator.clipboard.readText() is the direct route, but
+    // it is unavailable or permission-gated in plenty of browsers (and on any
+    // non-secure origin), so EVERY failure path lands on the manual box rather
+    // than on an error — the viewer can always finish the job with Ctrl+V.
+    const _smPasteFlow = () => {
+      const nav = navigator.clipboard;
+      if (!nav || typeof nav.readText !== 'function') {
+        _smShowManual('Your browser won\'t share the clipboard — paste it here with Ctrl+V');
+        return;
+      }
+      nav.readText().then(txt => {
+        const raw = String(txt || '').trim();
+        if (!raw) { _smShowManual('Clipboard is empty — copy a link first, or paste it here'); return; }
+        if (!window.salLinks || !window.salLinks.classify(raw)) {
+          // Something IS on the clipboard but we can't play it — show it in the
+          // box so the viewer can see what was read and fix it, rather than
+          // wondering what the toast was about.
+          _smShowManual('');
+          _smAddReject(raw);
+          if (_smAddBox) { _smAddBox.value = raw; _smAddBox.select(); }
+          return;
+        }
+        _smAddUrl(raw);
+      }).catch(() => {
+        _smShowManual('Couldn\'t read the clipboard — paste it here with Ctrl+V');
+      });
+    };
+
+    if (_smPasteBtn) _smPasteBtn.addEventListener('click', _smPasteFlow);
+    if (_smTypeBtn)  _smTypeBtn.addEventListener('click', () => _smShowManual(''));
+    if (_smAddGo)    _smAddGo.addEventListener('click', () => _smAddUrl(_smAddBox ? _smAddBox.value : ''));
+    if (_smAddBox) {
+      _smAddBox.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); _smAddUrl(_smAddBox.value); }
+      });
+      // A real paste INTO the box is the happy path on browsers that refuse a
+      // programmatic read — take it straight through without a second click.
+      _smAddBox.addEventListener('paste', e => {
+        const txt = e.clipboardData && e.clipboardData.getData('text');
+        if (!txt) return;
+        e.preventDefault();
+        _smAddBox.value = txt.trim();
+        _smAddUrl(_smAddBox.value);
+      });
+    }
+
+    // Tab keeps focus inside this page and wraps — the same rule SavedSearches
+    // and My Loops follow, rather than escaping to the menu's tab-switcher.
+    // One delegated listener; the control list is rebuilt on each press so it
+    // picks up the manual box the moment it's revealed and every card the list
+    // re-renders. Unhandled presses fall through to the menu's own handler.
+    const _smPage8El = ov.querySelector('#smPage8');
+    if (_smPage8El) _smPage8El.addEventListener('keydown', e => {
+      if (e.key !== 'Tab') return;
+      const els = [_smPasteBtn, _smTypeBtn];
+      if (_smAddManual && _smAddManual.style.display !== 'none') els.push(_smAddBox, _smAddGo);
+      _smAddBody.querySelectorAll('.sm-svbtn[data-act="open"]').forEach(b => els.push(b));
+      const ring = els.filter(Boolean);
+      const i = ring.indexOf(document.activeElement);
+      if (i < 0) return;
+      e.preventDefault(); e.stopPropagation();
+      const nxt = ring[(i + (e.shiftKey ? -1 : 1) + ring.length) % ring.length];
+      if (nxt) nxt.focus();
+    });
+
+    // The viewer's link list. Same card shape as SavedSearches / My Loops:
+    // name, what it is, and Open / Rename / Delete.
+    var _smRenderAdded = () => {
+      if (!_smAddBody) return;
+      if (!window.salLinks) {
+        _smAddBody.innerHTML = '<div class="sm-chnone">Saved links aren\'t available in this browser.</div>';
+        return;
+      }
+      window.salLinks.list().then(list => {
+        if (!list.length) {
+          _smAddBody.innerHTML = '<div class="sm-chnone">Nothing added yet. '
+            + 'Copy a link, then press <b>📋 Paste new URL</b>. It opens straight away — '
+            + 'set <b>A</b> and <b>B</b> on the player toolbar and press <b>AB&#128190;</b> '
+            + '(or <b>L</b>) to keep a loop of it in <b>My Loops</b>.</div>';
+          return;
+        }
+        // How many loops each link carries, so Delete can say what it takes
+        // with it (and the card can show the link is doing something).
+        const loopN = {};
+        const countLoops = window.salLoops
+          ? window.salLoops.list().then(ls => {
+              ls.forEach(l => {
+                const hit = list.filter(x => x.uid === String(l.uid) || x.link === String(l.link))[0];
+                if (hit) loopN[hit.uid] = (loopN[hit.uid] || 0) + 1;
+              });
+            }).catch(() => {})
+          : Promise.resolve();
+        countLoops.then(() => {
+          _smAddBody.innerHTML = list.map(e => {
+            const n = loopN[e.uid] || 0;
+            const meta = (e.kind === 'image' ? 'image' : 'video') + '  ·  ' + e.link
+              + (n ? '  ·  ' + n + ' loop' + (n === 1 ? '' : 's') : '')
+              + (e.ts ? '  ·  added ' + _smDateShort(new Date(e.ts).toISOString()) : '');
+            return '<div class="sm-item sm-card">'
+              + '<span class="sm-ico">' + (e.kind === 'image' ? '🖼' : '🎬') + '</span>'
+              + '<span class="sm-rcol">'
+                + '<span class="sm-rname">' + _smEsc(e.name) + '</span>'
+                + '<span class="sm-rmeta" style="word-break:break-all;">' + _smEsc(meta) + '</span>'
+              + '</span>'
+              + '<span class="sm-svbtns">'
+                + '<button class="sm-svbtn" data-act="open" data-uid="' + _smEsc(e.uid) + '">Open</button>'
+                + '<button class="sm-svbtn" data-act="ren" data-uid="' + _smEsc(e.uid) + '">Rename</button>'
+                + '<button class="sm-svbtn del" data-act="del" data-uid="' + _smEsc(e.uid) + '">Delete</button>'
+              + '</span>'
+            + '</div>';
+          }).join('');
+          const byUid = {};
+          list.forEach(e => { byUid[e.uid] = e; });
+          // Deleting a link takes its loops with it. Leaving them behind would
+          // put permanently dead "⚠ no longer available" cards in My Loops that
+          // the viewer has no way to revive — the source URL is gone.
+          const _smDelLink = e => {
+            const n = loopN[e.uid] || 0;
+            const msg = 'Remove "' + e.name + '" from your links?'
+              + (n ? '\n\nThis also deletes ' + n + ' loop' + (n === 1 ? '' : 's') + ' you saved on it.' : '');
+            if (!confirm(msg)) return;
+            const dropLoops = (window.salLoops && n)
+              ? window.salLoops.list().then(ls => Promise.all(ls
+                  .filter(l => String(l.uid) === e.uid || String(l.link) === e.link)
+                  .map(l => window.salLoops.remove(l.id))))
+              : Promise.resolve();
+            dropLoops.catch(() => {}).then(() => window.salLinks.remove(e.uid))
+              .then(() => { _smRenderAdded(); _smRenderLoops(); _smFocusAdd(); });
+          };
+          _smAddBody.querySelectorAll('.sm-svbtn').forEach(b => {
+            b.addEventListener('click', ev => {
+              ev.stopPropagation();
+              const e = byUid[b.dataset.uid];
+              if (!e) return;
+              if (b.dataset.act === 'del') { _smDelLink(e); return; }
+              if (b.dataset.act === 'ren') {
+                const nn = prompt('Rename this link:', e.name);
+                if (nn === null || !nn.trim() || nn.trim() === e.name) return;
+                window.salLinks.update(e.uid, { name: nn.trim() }).then(() => _smRenderAdded());
+                return;
+              }
+              _smOpenUserRow(window.salLinks.rowFor(e));   // sets _smReturnPage = 8
+            });
+          });
+        });
+      }).catch(() => {
+        _smAddBody.innerHTML = '<div class="sm-chnone">Could not read your saved links.</div>';
+      });
+    };
+    _smRenderAdded();
+  }
 }
 
 // (dev0401) Saved-search persistence — a small list in localStorage. It lives

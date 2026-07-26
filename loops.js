@@ -211,3 +211,198 @@
 
   window.salLoops = salLoops;
 })();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// salLinks — USER-ADDED LINKS (dev0668)
+//
+// The menu's "Add your own" tab lets a viewer paste a URL of their own and
+// watch it in V — including marking A→B loops on it. Those URLs are NOT in
+// ml.json and must never be written there (same reason as loops: ml.json is
+// dev-owned and FSA-clobbered on every save), so they get the same treatment —
+// the viewer's own browser, behind the same Promise-returning seam so a future
+// sal-api sync drops in without touching the UI.
+//
+// UID: every entry gets a synthetic `ul_…` UID. The `ul_` prefix can never
+// collide with an ml.json UID (those are numeric), so one loop list can hold
+// loops on collection rows AND on the viewer's own links, and salLoops.resolve
+// simply misses on the latter — the menu then falls back to salLinks.
+//
+// WHAT IS ACCEPTED: YouTube, Vimeo, a direct video file, or a direct image —
+// the same four kinds the Search tab surfaces, and for the same reason. An
+// A→B loop needs a player we can SEEK: YouTube (IFrame API), Vimeo (Player
+// API) and a native <video> all seek; Instagram and TikTok embeds are
+// sandboxed cross-origin iframes with no seek API at all, so a loop on one is
+// impossible. Images have no time dimension — they're accepted as plain
+// bookmarks, and V just shows them.
+(function () {
+  'use strict';
+
+  var KEY = 'slam-user-links';
+  var MAX = 100;
+  var VERSION = 1;
+
+  function _readRaw() {
+    try {
+      var v = JSON.parse(localStorage.getItem(KEY) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+  function _writeRaw(list) { localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX))); }
+  function _num(v) { var n = Number(v); return Number.isFinite(n) ? n : null; }
+  function _newUid() {
+    return 'ul_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  }
+  function _clean(e) {
+    if (!e || typeof e !== 'object') return null;
+    var link = String(e.link || '').trim();
+    if (!link) return null;
+    var uid = String(e.uid || '').trim() || _newUid();
+    return {
+      uid: uid,
+      link: link,
+      name: String(e.name || '').trim() || _defaultName(link),
+      kind: e.kind === 'image' ? 'image' : 'video',
+      ts:  _num(e.ts)  || Date.now(),
+      mts: _num(e.mts) || _num(e.ts) || Date.now(),
+      v:   _num(e.v) || VERSION
+    };
+  }
+  function _sorted(list) {
+    return list.slice().sort(function (x, y) { return (y.ts || 0) - (x.ts || 0); });
+  }
+  function _load() { return _sorted(_readRaw().map(_clean).filter(Boolean)); }
+
+  // Last meaningful path segment, de-slugged — a readable stand-in until the
+  // viewer renames the entry. YouTube/Vimeo ids are opaque, so those fall back
+  // to the host name.
+  function _defaultName(link) {
+    var s = String(link || '');
+    try {
+      var u = new URL(s);
+      var last = u.pathname.split('/').filter(Boolean).pop() || '';
+      last = decodeURIComponent(last).replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[-_+]+/g, ' ').trim();
+      if (last && last.length > 2 && !/^[A-Za-z0-9_-]{8,}$/.test(last)) return last.slice(0, 60);
+      return u.hostname.replace(/^www\./, '');
+    } catch (e) { return s.slice(0, 60) || 'Link'; }
+  }
+
+  // http(s) only, and a scheme is added for a bare "youtube.com/watch?v=…"
+  // paste. Anything else (javascript:, data:, file:, …) is refused outright by
+  // classify() below — this only normalises the shape.
+  function _normalize(raw) {
+    // A clipboard rarely holds JUST a URL — a copied link often arrives with a
+    // trailing newline, and a copied line of text with the URL first. Take the
+    // first whitespace-delimited token of the first non-empty line, then strip
+    // the quotes/brackets that copying from HTML or markdown leaves behind.
+    var lines = String(raw || '').split(/[\r\n]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var s = (lines[0] || '').split(/\s+/)[0].replace(/^["'<(\[]+|["'>)\].,;]+$/g, '');
+    if (!s) return '';
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = 'https://' + s;
+    if (window.sanitizeVimeoUrl && /vimeo\.com/i.test(s)) s = window.sanitizeVimeoUrl(s);
+    return s;
+  }
+
+  // → 'video' | 'image' | null (null = we can't play it, see WHAT IS ACCEPTED).
+  function _classify(link) {
+    var s = String(link || '');
+    if (!/^https?:\/\//i.test(s)) return null;
+    if (window.isYouTubeLink && window.isYouTubeLink(s)) return 'video';
+    if (window.isVimeoLink && window.isVimeoLink(s)) return 'video';
+    if (window.isDirectVideoLink && window.isDirectVideoLink(s)) return 'video';
+    if (/\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(s)) return 'video';
+    if (window.isImageLink && window.isImageLink(s)) return 'image';
+    return null;
+  }
+
+  var salLinks = {
+    backend: 'local',
+    remote: null,
+
+    normalize: _normalize,
+    classify: function (link) { return _classify(_normalize(link)); },
+
+    list: function () {
+      try { return Promise.resolve(_load()); }
+      catch (e) { return Promise.resolve([]); }
+    },
+    countSync: function () { return _load().length; },
+
+    // Add (or re-find) a link. Re-pasting a URL already in the list returns the
+    // EXISTING entry rather than a second one — its uid must stay stable or any
+    // loops already marked on it would orphan.
+    // Resolves { entry, created }; rejects Error('unsupported') for a link we
+    // can't play, so the caller can explain rather than fail silently.
+    add: function (o) {
+      var link = _normalize(o && o.link);
+      var kind = _classify(link);
+      if (!kind) return Promise.reject(new Error('unsupported'));
+      var list = _load();
+      var hit = list.filter(function (x) { return x.link === link; })[0];
+      if (hit) {
+        if (o && o.name && String(o.name).trim()) hit.name = String(o.name).trim();
+        hit.mts = Date.now();
+        try { _writeRaw(_sorted(list)); } catch (err) { return Promise.reject(err); }
+        return Promise.resolve({ entry: hit, created: false });
+      }
+      var e = _clean({ link: link, name: o && o.name, kind: kind, ts: Date.now(), mts: Date.now() });
+      list.unshift(e);
+      try { _writeRaw(_sorted(list)); } catch (err) { return Promise.reject(err); }
+      return Promise.resolve({ entry: e, created: true });
+    },
+
+    update: function (uid, patch) {
+      var list = _load(), found = null;
+      list = list.map(function (e) {
+        if (e.uid !== String(uid)) return e;
+        found = _clean(Object.assign({}, e, patch || {}, { uid: e.uid, ts: e.ts, mts: Date.now() })) || e;
+        return found;
+      });
+      if (!found) return Promise.resolve(null);
+      try { _writeRaw(list); } catch (err) { return Promise.reject(err); }
+      return Promise.resolve(found);
+    },
+
+    remove: function (uid) {
+      var list = _load();
+      var next = list.filter(function (e) { return e.uid !== String(uid); });
+      if (next.length === list.length) return Promise.resolve(false);
+      try { _writeRaw(next); } catch (err) { return Promise.reject(err); }
+      return Promise.resolve(true);
+    },
+
+    // Synchronous lookups — the menu resolves a loop against ml.json rows first
+    // and only then falls back here, so this has to answer without a Promise.
+    getSync: function (uid) {
+      var want = String(uid || '');
+      return _load().filter(function (e) { return e.uid === want; })[0] || null;
+    },
+    byLinkSync: function (link) {
+      var want = _normalize(link);
+      return _load().filter(function (e) { return e.link === want; })[0] || null;
+    },
+
+    // A synthetic ml.json-SHAPED row, so V (gridOpenFullscreen) and the loop
+    // save path can treat a viewer's own link exactly like a collection row.
+    // No VidRange → parseVideoAsset returns null → V plays the whole thing.
+    // `_userLink` marks it so anything that writes back to ml.json can refuse.
+    rowFor: function (e) {
+      if (!e) return null;
+      return {
+        UID: e.uid,
+        link: e.link,
+        VidTitle: e.name,
+        VidComment: '',
+        VidRange: '',
+        ftext: '',
+        tags: [],
+        _userLink: true
+      };
+    },
+
+    exportJson: function () { return JSON.stringify(_load(), null, 2); },
+    clearAll:   function () { try { localStorage.removeItem(KEY); } catch (e) {} return Promise.resolve(true); },
+    STORAGE_KEY: KEY
+  };
+
+  window.salLinks = salLinks;
+})();
