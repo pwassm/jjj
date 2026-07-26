@@ -17,6 +17,7 @@ const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
 const { spawn, execFileSync } = require('child_process');
+const { probeEmbed } = require('./igEmbedProbeCore');   // (dev0675) download-time embed verdict
 
 // (dev0658) Every in-flight IG media downloader (yt-dlp / gallery-dl / the
 // curl_cffi impersonate fetch) registers here so the VPN kill-switch can stop
@@ -52,6 +53,10 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+// (dev0675) /ig/download now answers with the dev0665 official-embed verdict
+//   (`embed: 1|0` + `embedProbe: ok|dead|shell|wall`) for rows the client says are
+//   unstamped — one cookieless GET of /p/<id>/embed/captioned/ on the success path
+//   only. Classification lives in igEmbedProbeCore.js, shared with igEmbedProbe.js.
 // (dev0601) /ig/save no longer blind-overwrites: it keeps any ig.json row the client
 //   never saw (id in neither its rows[] nor its new `knownIds`) so a harvest landing
 //   via /ig/add while the I screen is open survives that screen's next persist().
@@ -124,7 +129,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0658';
+const PROXY_BUILD = 'dev0675';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -171,6 +176,24 @@ const GALLERY_DL = 'C:\\Special\\gallery-dl\\gallery-dl.exe';
 // (mobile targets sometimes fare better on IG). Applies to yt-dlp downloads only —
 // enrich (which already works cookieless) and gallery-dl are untouched.
 const IG_IMPERSONATE = 'chrome';
+
+// (dev0675) Stamp the dev0665 official-embed verdict at DOWNLOAD time. Until now the
+// flag came ONLY from the overnight igEmbedProbe.js grind, so every freshly harvested
+// + downloaded row sat unstamped until someone remembered to re-run it — the verdict
+// gap grows with every harvest, and it's the flag the grids gate their official-iframe
+// playback on. Downloading is the right moment: IG is already answering us about this
+// exact post, and embeddability is a live per-post permission best read when fresh.
+// Deliberately conservative about request volume (the dev0494 lesson — extra calls in
+// a batch accelerate IG's IP throttle):
+//   • ONE extra cookieless GET of /p/<id>/embed/captioned/, and only on a SUCCESSFUL
+//     download. A walled/failed download adds nothing.
+//   • Only when the client says the row has no verdict yet (`probeEmbed:true`) —
+//     already-stamped rows are never re-probed.
+//   • No verdict (wall/timeout/shell) → the field is left ABSENT, exactly like the
+//     script, so a later backfill resumes it. A wall never writes a wrong 0.
+//   • Best-effort: any probe failure still returns the download result unchanged.
+// Set false to go back to script-only stamping.
+const IG_EMBED_PROBE_ON_DOWNLOAD = true;
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -2343,6 +2366,23 @@ function igDownload(req, res, origin) {
       rmTmp();
       return out;
     }
+    // (dev0675) Every 200-OK download answer goes through here so the official-embed
+    // verdict is stamped on the way out — one cookieless GET of the post's embed page,
+    // piggybacked on the moment IG is already serving us this exact post. The client
+    // sets probeEmbed:false for a row that already has a verdict, so nothing is ever
+    // re-probed. Adds `embed` (1|0) only when the probe is CONCLUSIVE; `embedProbe`
+    // always carries the kind (ok|dead|shell|wall) so the client can report a miss.
+    // Failures are swallowed — a download result must never be lost to a probe hiccup.
+    const wantProbe = IG_EMBED_PROBE_ON_DOWNLOAD && payload.probeEmbed !== false;
+    function sendDl(body) {
+      if (!wantProbe) { sendJson(res, 200, body, origin); return; }
+      probeEmbed(id, { track: ACTIVE_DL, cffiTimeoutMs: 25000 }).then(p => {
+        if (p.v === 0 || p.v === 1) body.embed = p.v;
+        body.embedProbe = p.kind;
+        console.log('[ig/download] ' + id + ' embed probe → ' + (p.v === null ? 'no verdict' : p.v) + ' (' + p.kind + ', via ' + p.via + ')');
+        sendJson(res, 200, body, origin);
+      }).catch(() => sendJson(res, 200, body, origin));
+    }
     function run(withCookies, onDone) {
       const args = baseArgs.concat(withCookies ? ['--cookies-from-browser', 'firefox', url] : [url]);
       let proc, stderr = '', done = false;
@@ -2387,8 +2427,8 @@ function igDownload(req, res, origin) {
       igMainVideoFallback(url, id, tmpDir).then(files => {
         if (files.length && tmpFiles().length) {
           console.log('[ig/download] ' + id + ' reel via cookieless main /p/ video_versions (yt-dlp walled)');
-          sendJson(res, 200, { ok: true, files: publish(), viaMainVideo: true, usedCookies: false,
-            note: 'reel via cookieless main /p/ page (video_versions) — yt-dlp was login-walled' }, origin);
+          sendDl({ ok: true, files: publish(), viaMainVideo: true, usedCookies: false,
+            note: 'reel via cookieless main /p/ page (video_versions) — yt-dlp was login-walled' });
         } else { fail502(err); }
       });
     }
@@ -2398,8 +2438,8 @@ function igDownload(req, res, origin) {
       igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
         if (emImgs.length && tmpFiles().length) {
           console.log('[ig/download] ' + id + ' last-resort cookieless embed image (gallery-dl got nothing too)');
-          sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false,
-            note: 'via embed — first image only (gallery-dl got nothing; re-run later for the full carousel)' }, origin);
+          sendDl({ ok: true, files: publish(), viaEmbed: true, usedCookies: false,
+            note: 'via embed — first image only (gallery-dl got nothing; re-run later for the full carousel)' });
         } else { fail502(err); }
       });
     }
@@ -2415,8 +2455,8 @@ function igDownload(req, res, origin) {
       galleryDlImages(url, tmpDir).then(files => {
         if (files.length && tmpFiles().length) {
           console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' image(s) via gallery-dl (Firefox cookies)');
-          sendJson(res, 200, { ok: true, files: publish(), viaGalleryDl: true, usedCookies: true,
-            note: 'full image carousel via gallery-dl (Firefox cookies — image posts are login-walled cookieless)' }, origin);
+          sendDl({ ok: true, files: publish(), viaGalleryDl: true, usedCookies: true,
+            note: 'full image carousel via gallery-dl (Firefox cookies — image posts are login-walled cookieless)' });
         } else { embedRescueOr502(err); }
       });
     }
@@ -2428,8 +2468,8 @@ function igDownload(req, res, origin) {
         if (imgs.length && tmpFiles().length) {
           coverWebpToJpg(tmpDir).then(() => {     // (dev0513) webp cover → real .jpg
             console.log('[ig/download] ' + id + ' cover-only (cookieless index-1)');
-            sendJson(res, 200, { ok: true, files: publish(), viaEmbed: true, usedCookies: false, coverOnly: true,
-              note: 'cover only — index-1 image, cookieless (main /p/ page)' }, origin);
+            sendDl({ ok: true, files: publish(), viaEmbed: true, usedCookies: false, coverOnly: true,
+              note: 'cover only — index-1 image, cookieless (main /p/ page)' });
           });
         } else { fail502('cover-only: no cookieless image found (is this a photo /p post?)'); }
       });
@@ -2457,13 +2497,13 @@ function igDownload(req, res, origin) {
         // then returned {ok:true, files:[]}, and the client stamped status='downloaded' on a
         // download that landed no media (found 18 such rows). A nonzero exit that still wrote
         // files (partial carousel) is unaffected — tmpFiles().length already covers it.
-        if (tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish() }, origin); return; }
+        if (tmpFiles().length) { sendDl({ ok: true, files: publish() }); return; }
         // (dev0494) Download-only cookie net (separate from enrich's IG_USE_COOKIES):
         // cookieless yt-dlp came back empty → try Firefox cookies if the user opted in.
         if (!IG_DOWNLOAD_USE_COOKIES) { terminal(err1); return; }
         wipeTmp();   // clear any partial cookieless output before the cookie retry
         run(true, (ok2, err2) => {
-          if (tmpFiles().length) { sendJson(res, 200, { ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }, origin); return; }  // (dev0660) files-not-exit-code, see above
+          if (tmpFiles().length) { sendDl({ ok: true, files: publish(), usedCookies: true, note: 'needed Firefox cookies' }); return; }  // (dev0660) files-not-exit-code, see above
           terminal(err2 || err1);
         });
       });
@@ -2474,8 +2514,8 @@ function igDownload(req, res, origin) {
       igMainCarouselFallback(url, id, tmpDir).then(files => {
         if (files.length && tmpFiles().length) {
           console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' item(s) via cookieless main /p/ carousel_media (carousel-first)');
-          sendJson(res, 200, { ok: true, files: publish(), viaMainCarousel: true, usedCookies: false,
-            note: 'full carousel via cookieless main /p/ page (carousel_media) — no Firefox cookies' }, origin);
+          sendDl({ ok: true, files: publish(), viaMainCarousel: true, usedCookies: false,
+            note: 'full carousel via cookieless main /p/ page (carousel_media) — no Firefox cookies' });
         } else { wipeTmp(); ytdlpChain(); }
       });
       return;

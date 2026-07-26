@@ -39,6 +39,7 @@
   let embedFilter = 'all';             // (dev0665) all | 1 (embeddable) | 0 (not) | un (unprobed)
   const lowResIds = new Set();         // (dev0666) rows this run that came via the low-res embed fallback
   const fallbackIds = new Set();       // (dev0666) rows this run that used a non-yt-dlp but full-res path
+  let embedStamped = 0, embedNoVerdict = 0;   // (dev0675) download-time embed verdicts this run
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
   // (dev0655) Windowed rendering — the tbody paints only the rows in (and just around)
   // the #igWrap viewport, with top/bottom spacer <tr>s reserving the off-screen height,
@@ -1051,7 +1052,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           ? 'Embeddable — IG’s official /embed/ page serves the video; a public iframe single-plays it'
           : (r.embed === 0
               ? 'Not embeddable — the embed page shows caption/poster only (photos always; some accounts refuse)'
-              : 'Unprobed — run igEmbedProbe.js to stamp a verdict')}">${r.embed === 1
+              : 'Unprobed — downloads stamp this automatically (dev0675); older rows: node igEmbedProbe.js')}">${r.embed === 1
           ? '<span class="yes">✓</span>' : (r.embed === 0 ? '<span class="no">✗</span>' : '<span class="no">—</span>')}</td>
         <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
         <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
@@ -1474,6 +1475,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
     let consecFail = 0;                      // (dev0645) run of back-to-back download failures
     lowResIds.clear(); fallbackIds.clear();  // (dev0666) per-run download-path tallies
+    embedStamped = 0; embedNoVerdict = 0;    // (dev0675) per-run embed-verdict tallies
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
     const t0 = Date.now();
     // Rows that still need work. Already-done rows are passed over silently — no
@@ -1597,6 +1599,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         `   ${ids.slice(0, 6).join(', ')}${ids.length > 6 ? ` +${ids.length - 6} more` : ''}`);
     }
     if (isDl && fallbackIds.size) lines.push(`ℹ ${fallbackIds.size} used a cookieless fallback path (still full res)`);
+    // (dev0675) Embed verdicts stamped as part of this run. A "no verdict" row is not a
+    // failure — it stays unstamped for igEmbedProbe.js to resolve later.
+    if (isDl && (embedStamped || embedNoVerdict)) {
+      lines.push(`▶ embed verdict stamped on ${embedStamped}${embedNoVerdict ? ` · ${embedNoVerdict} inconclusive (still unprobed, backfill later)` : ''}`);
+    }
     lines.push(`⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`);
     if (throttled)          lines.push('', 'Wait a few minutes, then re-run — only un-done rows are retried.');
     else if (cookieStopped) lines.push('', 'Stopped after 1 Firefox-cookie use (your account-safety setting).',
@@ -1847,9 +1854,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (single) igToast('⏳ Downloading ' + r.id + '…\n' + (coverOnly
         ? '📸 cover only (index 1) — cookieless'
         : '🍪 cookieless — your IG login is never used\nmax res — can take a bit'), 12000);
+      // (dev0675) Ask the proxy to stamp the official-embed verdict on the way back —
+      // but ONLY for a row that has none yet, so a re-download never re-probes IG.
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly })
+        body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly,
+          probeEmbed: r.embed !== 0 && r.embed !== 1 })
       });
       const j = await res.json();
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
@@ -1882,6 +1892,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         if (r.lowResDl) delete r.lowResDl;          // a later full-res download clears the flag
         if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl) fallbackIds.add(r.id);
       }
+      // (dev0675) Adopt the download-time embed verdict. Only a CONCLUSIVE probe writes
+      // the field; a walled/inconclusive one leaves the row unstamped so igEmbedProbe.js
+      // can still resolve it later — the flag must never be a guess, the grids gate
+      // official-iframe playback on it.
+      if (j.embed === 0 || j.embed === 1) { r.embed = j.embed; embedStamped++; }
+      else if (j.embedProbe) embedNoVerdict++;
       if (r.status !== 'promoted') r.status = 'downloaded';
       // (dev0663) Close the last date-loss hole: if the inline enrich failed (or came
       // via the caption-only embed) the download still succeeds, but the row would be
@@ -1909,6 +1925,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           ? ('\n🍪 Firefox cookies used' + (j.viaGalleryDl ? ' — full image carousel via gallery-dl' : ''))
           : '\n🍪 cookieless — your IG login was not used';
         igToast('✓ downloaded ' + r.id + cookieLine
+          + (j.embed === 1 ? '\n▶ embeddable ✓ — IG’s official iframe will play it'
+             : (j.embed === 0 ? '\n▶ not embeddable ✗ — official iframe shows poster only'
+                : (j.embedProbe ? '\n▶ embed verdict: none (' + j.embedProbe + ') — left unstamped' : '')))
           + (j.viaEmbed ? '\n📐 via embed page — first image only' : '')
           + (j.viaMainVideo ? '\n🎞 reel via cookieless /p/ page (yt-dlp was walled)' : '')
           + (j.viaMainCarousel ? '\n🖼 full carousel via cookieless /p/ page (no cookies)' : '')

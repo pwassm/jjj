@@ -11,7 +11,12 @@
 //   node igEmbedProbe.js --calib <id1,id2,...>   probe ids, print markers, save HTML
 //                                                to the scratch dir — NO ig.json writes
 //   node igEmbedProbe.js --limit 30              probe the first 30 unstamped rows
+//   node igEmbedProbe.js --status downloaded,promoted   only rows in those states
 //   node igEmbedProbe.js                         full run (checkpoints every 100 rows)
+//
+// Since dev0675 /ig/download stamps the verdict as each row is downloaded, so this
+// script is now a BACKFILL for pre-dev0675 rows (and for the never-downloaded tail),
+// not the only source of the flag.
 //
 // Fetch strategy mirrors proxy.js: lightweight embed HTML via the SHORT UA (a full
 // Chrome UA makes IG serve the React app shell), fresh socket per request, and a
@@ -20,25 +25,26 @@
 // Pacing ~1.5s/row + backoff on consecutive walls, so a full 15k pass is an
 // overnight grind by design. DO NOT open the I screen (localhost:8080) while this
 // runs: its /ig/save persists whole rows and would clobber fields written here.
+//
+// (dev0675) The fetchers + classification now live in igEmbedProbeCore.js, shared
+// with proxy.js's download-time stamp — this file keeps the ig.json grind (target
+// selection, checkpointing, canary backoff) and nothing else.
 
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const { spawn } = require('child_process');
+const { probeEmbed } = require('./igEmbedProbeCore');
 
 const DIR = __dirname;
 const IG_STORE = path.join(DIR, 'ig.json');
-const IG_PYTHON = process.env.IG_PYTHON || 'python';
-const IG_IMPERSONATE_PY = path.join(DIR, 'ig_impersonate_fetch.py');
 const SCRATCH = process.env.PROBE_SCRATCH || DIR;   // calib HTML + tmp files land here
-const SHORT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';   // do NOT modernize (dev0460)
 const LOG = path.join(SCRATCH, 'igEmbedProbe.log');
 
 const argv = process.argv.slice(2);
 function argVal(name) { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; }
 const CALIB = argVal('--calib');
 const LIMIT = +(argVal('--limit') || 0);
+const ONLY_STATUS = argVal('--status');   // (dev0675) e.g. --status downloaded,promoted
 
 function log(msg) {
   const line = new Date().toISOString().slice(11, 19) + ' ' + msg;
@@ -47,107 +53,8 @@ function log(msg) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── fetchers (ported from proxy.js fetchIgEmbedMeta / igImpersonatedHtml) ──────
-function fetchNode(url) {
-  return new Promise(resolve => {
-    const opts = { agent: false, headers: {
-      'User-Agent': SHORT_UA,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': url.replace(/embed\/captioned\/?$/, ''),
-      'Connection': 'close'
-    } };
-    let h = '';
-    const req = https.get(url, opts, r => {
-      if (r.statusCode !== 200) { r.resume(); resolve({ status: r.statusCode, html: '' }); return; }
-      r.setEncoding('utf8');
-      r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
-      r.on('end', () => resolve({ status: 200, html: h }));
-    });
-    req.on('error', () => resolve({ status: 0, html: '' }));
-    req.setTimeout(15000, () => { req.destroy(); resolve({ status: -1, html: '' }); });
-  });
-}
-
-let impersonateOk = null;   // null=untried  false=curl_cffi missing (stop spawning)
-function fetchImpersonated(url) {
-  return new Promise(resolve => {
-    if (impersonateOk === false) { resolve({ status: 0, html: '' }); return; }
-    const tmp = path.join(SCRATCH, '.probe_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
-    let proc;
-    try {
-      proc = spawn(IG_PYTHON, [IG_IMPERSONATE_PY, url, tmp,
-        url.replace(/embed\/captioned\/?$/, ''),
-        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', SHORT_UA],
-        { windowsHide: true });
-    } catch (_) { resolve({ status: 0, html: '' }); return; }
-    let out = '', done = false;
-    const finish = res => {
-      if (done) return; done = true; clearTimeout(killT);
-      let html = '';
-      try { html = fs.readFileSync(tmp, 'utf8'); } catch (_) {}
-      try { fs.unlinkSync(tmp); } catch (_) {}
-      resolve({ status: res, html });
-    };
-    const killT = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} finish(-1); }, 40000);
-    proc.stdout.on('data', d => { out += d.toString('utf8'); });
-    proc.on('error', () => finish(0));
-    proc.on('close', () => {
-      const s = out.trim();
-      if (/^ERR curl_cffi import/i.test(s)) { impersonateOk = false; log('⚠ curl_cffi missing — node-only from here'); }
-      else if (/^\d+$/.test(s)) impersonateOk = true;
-      finish(/^\d+$/.test(s) ? +s : 0);
-    });
-  });
-}
-
-// ── classification ────────────────────────────────────────────────────────────
-function markers(html) {
-  const h = html || '';
-  return {
-    len: h.length,
-    vurl: /video_url\\?["']\s*:\s*\\?["']http/i.test(h),   // plain or \"-escaped JSON
-    vtag: /<video[\s>]/i.test(h),
-    isv: /is_video\\?["']\s*:\s*true/i.test(h),
-    cap: /class="Caption"/.test(h),
-    emi: /EmbeddedMediaImage/i.test(h),
-    scm: /shortcode_media/.test(h),
-    woi: /WatchOnInstagram/i.test(h),
-    dres: /display_resources/.test(h),
-    login: /accounts\/login/.test(h),
-    shell: /PolarisEmbedSimple/.test(h) && /contextJSON\\?["']\s*:\s*null/.test(h)
-  };
-}
-// verdict: 1 = playable video in embed · 0 = embed page valid but video-less
-// kind:   ok   → stamped 1/0
-//         dead → 404/410, post gone → stamped 0 (nothing to embed)
-//         shell→ dataless React shell (per-post, IP is fine) → skip, no breaker
-//         wall → anything else (timeout/429/403/302/thin) → breaker counts
-function verdict(m, status) {
-  if (status === 404 || status === 410) return { v: 0, kind: 'dead' };
-  if (status !== 200 || m.len < 2000) return { v: null, kind: 'wall' };
-  if (m.vurl || m.vtag) return { v: 1, kind: 'ok' };
-  if (m.cap || m.emi || m.scm || m.isv || m.woi || m.dres) return { v: 0, kind: 'ok' };
-  if (m.shell) return { v: null, kind: 'shell' };
-  return { v: null, kind: 'wall' };
-}
-
-async function probeOne(id, saveHtmlTo) {
-  const url = 'https://www.instagram.com/p/' + id + '/embed/captioned/';
-  let r = await fetchNode(url);
-  let m = markers(r.html), via = 'node';
-  let d = verdict(m, r.status);
-  if (d.kind === 'wall') {                 // walled/thin → impersonated retry
-    const r2 = await fetchImpersonated(url);
-    const m2 = markers(r2.html);
-    const d2 = verdict(m2, r2.status);
-    if (d2.kind !== 'wall' || (r2.html && r2.html.length > (r.html || '').length)) { r = r2; m = m2; d = d2; via = 'cffi'; }
-  }
-  if (saveHtmlTo) {
-    try { fs.writeFileSync(path.join(saveHtmlTo, 'calib_' + id + '_' + via + '.html'), r.html || ''); } catch (_) {}
-  }
-  return { id, status: r.status, via, m, v: d.v, kind: d.kind };
-}
+// ── probe (igEmbedProbeCore.js) ───────────────────────────────────────────────
+const probeOne = (id, saveHtmlTo) => probeEmbed(id, { scratch: SCRATCH, saveHtmlTo, log });
 
 // ── main ──────────────────────────────────────────────────────────────────────
 (async () => {
@@ -163,9 +70,15 @@ async function probeOne(id, saveHtmlTo) {
   const rows = JSON.parse(fs.readFileSync(IG_STORE, 'utf8'));
   if (!Array.isArray(rows) || !rows.length) { log('ig.json empty/unreadable — abort'); process.exit(1); }
   const statusRank = { downloaded: 0, enriched: 1, new: 2 };
-  const targets = rows.filter(r => r && r.id && r.embed === undefined)
+  // (dev0675) --status narrows the run to one/some row states. The catch-up case is
+  // `--status downloaded,promoted`: rows whose media is already on disk but that
+  // predate the download-time stamp, so the keepers get a verdict without grinding
+  // the whole unstamped tail (which the harvester keeps refilling).
+  const wantStatus = ONLY_STATUS ? new Set(ONLY_STATUS.split(',').map(s => s.trim()).filter(Boolean)) : null;
+  const targets = rows.filter(r => r && r.id && r.embed === undefined && (!wantStatus || wantStatus.has(r.status)))
     .sort((a, b) => (statusRank[a.status] ?? 3) - (statusRank[b.status] ?? 3));
   const todo = LIMIT ? targets.slice(0, LIMIT) : targets;
+  if (wantStatus) log('status filter: ' + [...wantStatus].join(','));
   log(`ig.json rows=${rows.length} · unstamped=${targets.length} · this run=${todo.length}`);
   if (!todo.length) { log('nothing to do'); return; }
 
