@@ -384,7 +384,17 @@ function gridOpenFullscreen(row, contained) {
 
   // (zip0178) Track current row so vpKeyHandler can navigate from Iu/Ie.
   window._vpCurrentRow = row;
-  
+
+  // (dev0667) USER LOOP arming. The menu's "My Loops" tab sets
+  // window._vpPendingLoop = {uid, link, a, b, name} immediately before opening
+  // V, because the loop's A→B lives in the viewer's own storage (loops.js) and
+  // must never be written into the ml.json row. Read-and-CLEAR on EVERY open —
+  // matching row or not — so an arming that misses can't leak into the next V.
+  const _pendLoop = window._vpPendingLoop || null;
+  window._vpPendingLoop = null;
+  const _armLoop = (_pendLoop && window.salLoops
+                    && window.salLoops.matchRow(_pendLoop, row)) ? _pendLoop : null;
+
   const isVid = isVideoRow(row);
   
   if (isVid && row.link) {
@@ -402,12 +412,16 @@ function gridOpenFullscreen(row, contained) {
       player: null,
       segs: segs,
       segIdx: 0,
-      isSelected: true, // Start in "Selected" mode (segment only)
+      // (dev0667) A user loop opens in FULL mode: its A→B is in real video
+      // time, and Selected mode's timeline maps to the concatenated VidRange
+      // segments instead — the playhead would sit at 0 the whole way round.
+      // (The A-B branch in vpUpdateTimeline already outranks the seg walk.)
+      isSelected: !_armLoop, // Start in "Selected" mode (segment only)
       speed: 1.0,
       muted: row.Mute !== '0',
       ccOn: false,
-      aPoint: null,
-      bPoint: null,
+      aPoint: _armLoop ? _armLoop.a : null,
+      bPoint: _armLoop ? _armLoop.b : null,
       duration: 0,
       currentTime: 0
     };
@@ -1310,6 +1324,9 @@ function gridOpenFullscreen(row, contained) {
     toggleBtn.style.cssText += 'font-size:10px;padding:4px 8px;min-width:60px;';
     toggleBtn.innerHTML = '● Selected<br><span style="font-size:9px;color:#666;">Full</span>';
     toggleBtn.title = 'Toggle Selected/Full';
+    // (dev0667) Opened from a user loop → the state above starts in Full, so
+    // the button must say so or the first click toggles the wrong way.
+    if (_armLoop) toggleBtn.innerHTML = '<span style="font-size:9px;color:#666;">Selected</span><br>● Full';
     
     // CC button
     const ccBtn = document.createElement('button');
@@ -1354,7 +1371,8 @@ function gridOpenFullscreen(row, contained) {
     abSaveBtn.id = 'vp-ab-save';
     abSaveBtn.className = 'vp-btn';
     abSaveBtn.textContent = 'AB💾';
-    abSaveBtn.title = 'Save A-B range to AB field';
+    // (dev0667) Now saves a user loop (loops.js → menu "My Loops"), not a field.
+    abSaveBtn.title = 'Save A→B as a loop in My Loops (L)';
     abSaveBtn.style.cssText += 'background:#350;border-color:#8f0;color:#8f0;font-size:10px;';
     
     // B- caret
@@ -1421,7 +1439,10 @@ function gridOpenFullscreen(row, contained) {
     
     // Mount video
     setTimeout(() => {
-      const seg = segs[0];
+      // (dev0667) A user loop mounts at its own A point (every mount path seeks
+      // to seg.start), so the loop is already running on the first frame rather
+      // than after one full lap from the row's first VidRange segment.
+      const seg = _armLoop ? { start: _armLoop.a, dur: _armLoop.b - _armLoop.a } : segs[0];
       const muted = _vpState.muted;
       
       // For "Selected" mode, we loop the segment
@@ -1442,7 +1463,18 @@ function gridOpenFullscreen(row, contained) {
     
     // Wire up controls
     vpWireControls();
-    
+    // (dev0667) Paint the armed loop onto the A/B buttons + timeline markers.
+    // The YT and Vimeo mounts don't call this themselves (only the direct-video
+    // one does), and either way it has to run after the buttons exist.
+    if (_armLoop) {
+      try { vpUpdateABStyle(); } catch (_) {}
+      if (typeof toast === 'function') {
+        toast('🔁 ' + _armLoop.name + '  ('
+          + (window.salLoops ? window.salLoops.fmt(_armLoop.a) + ' → ' + window.salLoops.fmt(_armLoop.b)
+                             : _armLoop.a.toFixed(1) + 's → ' + _armLoop.b.toFixed(1) + 's') + ')', 2400);
+      }
+    }
+
   } else if ((row.ftext && !row.link) || row.qfile) {
     // (dev0530) ftext must NEVER win over a media link: a row that carries
     // BOTH ftext and an image/video link should show the MEDIA, not the text.
@@ -2301,6 +2333,16 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0667) L — save the current A→B as a user loop (same as the AB💾 button).
+  // Follows the ASDF/G convention: inert unless BOTH points are set, so the key
+  // stays free everywhere else.
+  if (e.key === 'l' || e.key === 'L') {
+    if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) return;
+    e.preventDefault(); e.stopPropagation();
+    vpSaveAB();
+    return;
+  }
+
   // (dev0293) G — Go: save the A→B segment of the current disk video.
   // No crop overlay visible → lossless stream copy. Crop overlay visible →
   // crop+scale re-encode (current crop path). Prompts for an ID; filename
@@ -2545,6 +2587,11 @@ function _vpUpdateABLines() {
   let dur = 0;
   const p = _vpState && _vpState.player;
   if (p && p.el && Number.isFinite(p.el.duration)) dur = p.el.duration;
+  // (dev0667) YT/Vimeo have no `el` to read a duration off, so the A/B lines
+  // used to be permanently hidden there. vpUpdateTimeline has been stashing the
+  // real duration on _vpState every tick — use it, and the markers show for
+  // embedded players too (which is where user loops mostly live).
+  if (!(dur > 0) && _vpState && Number.isFinite(_vpState.duration)) dur = _vpState.duration;
   function ensureLine(id, color) {
     let el = document.getElementById(id);
     if (!el) {
@@ -2718,12 +2765,17 @@ function vpAdjustAB(which, delta) {
   }
 }
 
-// Save A-B range — runtime only as of zip0128.
-// User renamed the AB column in ml.json to BA (BatchAdd marker for
-// channel-imported rows). The V screen still has Set A / Set B / Show A:B
-// as a runtime convenience for jumping between two timestamps within a
-// video, but it no longer writes anything to the row. Toast still shows
-// the computed range so the user can copy it manually if needed.
+// Save A-B range.
+//
+// (zip0128) It stopped writing to the row: the AB column in ml.json was renamed
+// BA (BatchAdd marker for channel-imported rows), so A/B became a runtime-only
+// convenience and this button did nothing but toast the numbers.
+//
+// (dev0667) It now saves the range as a USER LOOP — the viewer's own named A→B
+// bookmark, stored in their browser via loops.js and listed on the menu's "My
+// Loops" tab. Still nothing is written to ml.json: that file is dev-owned and
+// FSA-clobbered on every save, so a viewer's marks could not survive there (and
+// would leak into everyone else's data if they did).
 function vpSaveAB() {
   if (!_vpState || _vpState.aPoint === null || _vpState.bPoint === null) {
     toast('Set both A and B points first', 1500);
@@ -2732,11 +2784,43 @@ function vpSaveAB() {
   const a = Math.min(_vpState.aPoint, _vpState.bPoint);
   const b = Math.max(_vpState.aPoint, _vpState.bPoint);
   const abStr = a.toFixed(2) + ':' + (b - a).toFixed(2);
+  const row = (_vpState && _vpState.row) || window._vpCurrentRow;
 
-  // (zip0128) Removed: row.AB = abStr; save(); buildTable();
-  // The AB column was renamed BA in ml.json and is now used to mark
-  // batch-imported rows. AB is runtime-only.
-  toast('A:B range = ' + abStr + '\n(not saved — display only)', 2500);
+  // No store, or a row with no identity to key the loop by (a slideshow disk
+  // video has no UID) — fall back to the old display-only toast so the numbers
+  // are still there to copy.
+  if (!window.salLoops || !row || row.UID == null) {
+    toast('A:B range = ' + abStr + '\n(not saved — display only)', 2500);
+    return;
+  }
+  // A loop with no width would mount and instantly re-seek to itself.
+  if (b - a < 0.05) {
+    toast('A and B are at the same point — move one of them first', 2200);
+    return;
+  }
+  const name = prompt('Save this A→B loop as:', _vpLoopDefaultName(row, a, b));
+  if (name === null) return;                       // cancelled — nothing saved
+  window.salLoops.add({
+    uid: String(row.UID), link: String(row.link || ''),
+    name: name.trim() || _vpLoopDefaultName(row, a, b), a: a, b: b
+  }).then(res => {
+    toast((res.created ? '★ Loop saved — see "My Loops"' : '★ Loop updated')
+      + '\n' + window.salLoops.fmt(a) + ' → ' + window.salLoops.fmt(b), 2400);
+  }).catch(() => {
+    toast('Could not save the loop — browser storage may be full', 3000);
+  });
+}
+
+// (dev0667) Default name offered when saving a loop: what the viewer would call
+// this bit of this video. Title first (that's what the search results show),
+// then the comment, then a bare UID, with the range appended so several loops
+// on one video are told apart at a glance.
+function _vpLoopDefaultName(row, a, b) {
+  let base = String(row.VidTitle || row.VidComment || '').trim();
+  if (!base) base = 'UID ' + row.UID;
+  if (base.length > 44) base = base.slice(0, 44).trim() + '…';
+  const f = window.salLoops ? window.salLoops.fmt : (s => Number(s).toFixed(1) + 's');
+  return base + '  ' + f(a) + '–' + f(b);
 }
 
 function vpToggleCC() {

@@ -905,6 +905,10 @@ async function _showShareableMenu() {
       '<button class="sm-tab" data-pg="2">Grids</button>'
     + '<button class="sm-tab" data-pg="3">Search</button>'
     + '<button class="sm-tab" data-pg="6">SavedSearches</button>'
+    // (dev0667) "My Loops" — the viewer's own A→B segments. Sits after
+    // SavedSearches because they're siblings: a saved search is a QUERY, a loop
+    // is a UID + start/stop. Different entities, separate lists, one tab each.
+    + '<button class="sm-tab" data-pg="7">My Loops</button>'
     + '<button class="sm-tab" data-pg="4">Other</button>';
 
   ov.innerHTML = menuStyle
@@ -983,6 +987,12 @@ async function _showShareableMenu() {
       + '<div id="smPage6" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>'
       + '</div>'
+      // (dev0667) PAGE 7 — "My Loops": A→B segments the viewer marked on V and
+      // kept with the toolbar's AB💾 button. Stored in THEIR browser (loops.js
+      // → localStorage), never in ml.json. Same list shape as SavedSearches.
+      + '<div id="smPage7" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + '<div class="sm-chmax"><div id="smLoopsBody"></div></div>'
+      + '</div>'
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.
     + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>';
@@ -996,11 +1006,12 @@ async function _showShareableMenu() {
   // remembered in window._smLastTab so a reopen lands back on it.
   // (dev0401) SavedSearches (6) sits between Search (3) and Other (4) in the
   // tab bar, so the Tab-key order reflects that left-to-right placement.
-  const _smTabOrder = [2, 3, 6, 4];
+  // (dev0667) My Loops (7) follows SavedSearches (6), matching the tab bar.
+  const _smTabOrder = [2, 3, 6, 7, 4];
   const _smShow = n => {
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
     if (n >= 2) window._smLastTab = n; // (dev0384) remember the last tab used
-    [1, 2, 3, 4, 5, 6].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
+    [1, 2, 3, 4, 5, 6, 7].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = (n === 1) ? 'none' : 'flex');
@@ -1015,6 +1026,17 @@ async function _showShareableMenu() {
     if (b) { b.focus(); return true; }
     return false;
   };
+  // (dev0667) Same for My Loops. Returns false while the list is empty (or
+  // still rendering — the list load is async), so the caller falls back to the
+  // tab button and keyboard cycling never dead-ends.
+  const _smFocusFirstLoop = () => {
+    // :not([disabled]) — a loop whose row has left the collection renders its
+    // Open disabled, and focusing that would report success while focus never
+    // moved (leaving the viewer with no visible focus at all).
+    const b = ov.querySelector('#smLoopsBody .sm-svbtn[data-act="open"]:not([disabled])');
+    if (b) { b.focus(); return true; }
+    return false;
+  };
   // Tab click → show that page. Search focuses its box (mouse users type
   // immediately); SavedSearches focuses its first Open button; every other tab
   // keeps focus on the tab for keyboard cycling.
@@ -1024,6 +1046,7 @@ async function _showShareableMenu() {
       _smShow(pg);
       if (pg === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
       else if (pg === 6) { setTimeout(() => { if (!_smFocusFirstSaved()) t.focus(); }, 30); }
+      else if (pg === 7) { setTimeout(() => { if (!_smFocusFirstLoop()) t.focus(); }, 30); }
       else t.focus();
     }));
   // (dev0384) Keyboard: Tab hops to the next tab (Shift+Tab the previous),
@@ -1049,6 +1072,7 @@ async function _showShareableMenu() {
         : _smTabOrder[(idx + 1) % _smTabOrder.length];
       _smShow(next);
       if (next === 6 && _smFocusFirstSaved()) return; // (dev0403) land on first Open
+      if (next === 7 && _smFocusFirstLoop()) return;  // (dev0667) same for My Loops
       _smFocusTab(next);
     }
   });
@@ -1095,10 +1119,11 @@ async function _showShareableMenu() {
   //    the first hop after Welcome always lands on Choices.
   //  • else (very first entry) — show the Welcome splash and mark it seen.
   let _smStartPg;
-  if (window._smReturnPage >= 2 && window._smReturnPage <= 6) {
+  // (dev0667) Range now runs to 7 so a return from a looped V lands back on My Loops.
+  if (window._smReturnPage >= 2 && window._smReturnPage <= 7) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
-    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 6) ? window._smLastTab : 2;
+    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 7) ? window._smLastTab : 2;
   } else {
     _smStartPg = 1;
   }
@@ -1119,6 +1144,7 @@ async function _showShareableMenu() {
       if (_smSaveBtn) { _smSaveBtn.focus(); return; }
     }
     if (_smStartPg === 6 && _smFocusFirstSaved()) return;
+    if (_smStartPg === 7 && _smFocusFirstLoop()) return;   // (dev0667)
     _smFocusTab(_smStartPg);
   }, 40);
 
@@ -1433,6 +1459,125 @@ async function _showShareableMenu() {
     }
   };
   _smRenderSaved();
+
+  // (dev0667) ── My Loops tab ────────────────────────────────────────────────
+  // The viewer's own A→B segments, kept in their browser by loops.js. Each card
+  // shows the loop's name, the row it belongs to, its range, and Open / Rename /
+  // Delete — deliberately the same shape as a SavedSearches card, since the two
+  // lists do the same job for different things (a query vs a UID + start/stop).
+  //
+  // Loops are keyed by UID with the link as a fallback, so a row that gets
+  // renumbered doesn't orphan a viewer's loop; when the link rescues a lookup we
+  // silently re-stamp the entry's UID so the next open is a direct hit.
+  const _smLoopsBody = ov.querySelector('#smLoopsBody');
+  const _smRenderLoops = () => {
+    if (!_smLoopsBody) return;
+    if (!window.salLoops) {
+      _smLoopsBody.innerHTML = '<div class="sm-chnone">Loops aren\'t available in this browser.</div>';
+      return;
+    }
+    window.salLoops.list().then(list => {
+      if (!list.length) {
+        _smLoopsBody.innerHTML = '<div class="sm-chnone">No loops yet. '
+          + 'Open a video, set <b>A</b> and <b>B</b> on the player toolbar, then press '
+          + '<b>AB&#128190;</b> (or the <b>L</b> key) to keep that stretch here.<br><br>'
+          + '<span style="color:#8a93a8;font-size:12px;">Loops are saved in this browser only — '
+          + 'they aren\'t shared to another device or to the site.</span></div>';
+        return;
+      }
+      // Resolve every loop to a live row up front so a card can show what it
+      // points at (and grey out the ones whose row has gone).
+      const rowById = {};
+      list.forEach(e => {
+        const res = window.salLoops.resolve(e, mlRows);
+        rowById[e.id] = res.row || null;
+        // Link rescued a stale UID — repair it for next time. Fire-and-forget:
+        // the card in front of the viewer is already correct either way.
+        if (res.byLink && res.row && res.row.UID != null) {
+          window.salLoops.update(e.id, { uid: String(res.row.UID) });
+        }
+      });
+      const fmt = window.salLoops.fmt;
+      _smLoopsBody.innerHTML = list.map(e => {
+        const row = rowById[e.id];
+        const span = fmt(e.a) + ' → ' + fmt(e.b)
+          + '  (' + (e.b - e.a).toFixed(1) + 's)';
+        // Badge by MEDIA kind (always 🎬 here) rather than _smResultBadge, which
+        // would call a video row carrying ftext a "slide" — true for a search
+        // result, misleading for something you're about to watch on a loop.
+        const src = row
+          ? (_smBadge[window.rowMediaKind ? window.rowMediaKind(row) : 'other'] || '🔗')
+            + ' ' + _smResultLabel(row)
+          : '⚠ this item is no longer in the collection';
+        const meta = _smEsc(src) + '  ·  ' + span
+          + (e.ts ? '  ·  saved ' + _smDateShort(new Date(e.ts).toISOString()) : '');
+        return '<div class="sm-item sm-card"' + (row ? '' : ' style="opacity:.55;"') + '>'
+          + '<span class="sm-ico">&#128257;</span>'
+          + '<span class="sm-rcol">'
+            + '<span class="sm-rname">' + _smEsc(e.name) + '</span>'
+            + '<span class="sm-rmeta">' + meta + '</span>'
+          + '</span>'
+          + '<span class="sm-svbtns">'
+            + '<button class="sm-svbtn" data-act="open" data-id="' + _smEsc(e.id) + '"' + (row ? '' : ' disabled') + '>Open</button>'
+            + '<button class="sm-svbtn" data-act="ren" data-id="' + _smEsc(e.id) + '">Rename</button>'
+            + '<button class="sm-svbtn del" data-act="del" data-id="' + _smEsc(e.id) + '">Delete</button>'
+          + '</span>'
+        + '</div>';
+      }).join('');
+      const byId = {};
+      list.forEach(e => { byId[e.id] = e; });
+      // Open = arm the loop, then launch V exactly as a search result does.
+      // The A→B rides on window._vpPendingLoop (read and cleared by
+      // gridOpenFullscreen) so nothing about the loop touches the ml.json row.
+      const _smOpenLoop = e => {
+        const row = rowById[e.id];
+        if (!row) { if (typeof toast === 'function') toast('That item is no longer in the collection', 2200); return; }
+        window._vpPendingLoop = {
+          uid: String(row.UID), link: String(row.link || ''),
+          a: e.a, b: e.b, name: e.name
+        };
+        _smOpenV(String(row.UID));                 // sets _smReturnPage = 7 (this page)
+      };
+      _smLoopsBody.querySelectorAll('.sm-svbtn').forEach(b => {
+        b.addEventListener('click', ev => {
+          ev.stopPropagation();
+          const e = byId[b.dataset.id];
+          if (!e) return;
+          if (b.dataset.act === 'del') {
+            window.salLoops.remove(e.id).then(() => { _smRenderLoops(); });
+          } else if (b.dataset.act === 'ren') {
+            const nn = prompt('Rename loop:', e.name);
+            if (nn === null || !nn.trim() || nn.trim() === e.name) return;
+            window.salLoops.update(e.id, { name: nn.trim() }).then(() => { _smRenderLoops(); });
+          } else {
+            _smOpenLoop(e);
+          }
+        });
+      });
+      // (dev0403 pattern) Tab cycles the Open buttons within the list and wraps,
+      // instead of escaping to the menu's tab-switcher.
+      const _openBtns = [..._smLoopsBody.querySelectorAll('.sm-svbtn[data-act="open"]:not([disabled])')];
+      _openBtns.forEach((btn, i) => {
+        btn.addEventListener('keydown', ev => {
+          if (ev.key !== 'Tab') return;
+          ev.preventDefault(); ev.stopPropagation();
+          const dir = ev.shiftKey ? -1 : 1;
+          const nxt = _openBtns[(i + dir + _openBtns.length) % _openBtns.length];
+          if (nxt) nxt.focus();
+        });
+      });
+      // The list load is async, so a viewer who landed on this tab before it
+      // painted still has focus on the tab button — pull it onto the first Open.
+      if (window._smCurPage === 7 && document.activeElement
+          && document.activeElement.classList
+          && document.activeElement.classList.contains('sm-tab')) {
+        _smFocusFirstLoop();
+      }
+    }).catch(() => {
+      _smLoopsBody.innerHTML = '<div class="sm-chnone">Could not read your saved loops.</div>';
+    });
+  };
+  _smRenderLoops();
 }
 
 // (dev0401) Saved-search persistence — a small list in localStorage. It lives

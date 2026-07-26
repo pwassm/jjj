@@ -250,6 +250,14 @@ window.addEventListener('keydown', function(e) {
 
   const k = e.key.toLowerCase();
 
+  // (dev0667) V owns `l` — save the current A→B as a user loop (vpKeyHandler).
+  // This handler is on WINDOW and V's is on DOCUMENT, so the stopPropagation in
+  // the dispatcher below would consume the key before V ever saw it. Bail
+  // WITHOUT preventDefault, the same way the staging screens do, so vp.js's
+  // capture handler receives it. Nothing is lost: the global `l` (clipboard
+  // import) already no-ops while V is open, and in user mode it's blocked.
+  if (k === 'l' && document.getElementById('gridFullscreen')?.style.display === 'flex') return;
+
   // (dev0438) The Ig staging screen owns f / Shift+F (filter focus / clear) and
   // c (clear sel). (dev0497) It also owns d (download sel), e (enrich sel),
   // m (clear+select top 18) and — via Shift — N/D/E/A (status filter, which
@@ -9258,12 +9266,16 @@ const HELP_DATA = [
         { key: '← →',   desc: 'Frame-step ±0.1s',              dev: false },
         { key: 'M',     desc: 'Mute toggle (live)',            dev: false },
         { key: 'A / B', desc: 'Set loop points',               dev: false },
+        // (dev0667) User loops — saved in YOUR browser, listed on the menu's
+        // "My Loops" tab. Nothing is written to the shared data file.
+        { key: 'L',     desc: 'Save the current A→B as a named loop in "My Loops" (needs both points set)', dev: false },
         { key: 'V',     desc: 'Close (toggle with same key that opened)', dev: false },
         { key: 'T',     desc: 'Return to Table (dev)',         dev: true  },
       ]},
       { name: 'Mouse / Touch', items: [
         { key: 'Swipe ← on image', desc: 'Close → back to grid', dev: false },
         { key: 'Bottom bar buttons', desc: 'Play / Pause / loop controls', dev: false },
+        { key: 'AB💾 button', desc: 'Save the current A→B as a loop in "My Loops" (same as L)', dev: false },
       ]}
     ]
   },
