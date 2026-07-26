@@ -129,7 +129,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0675';
+const PROXY_BUILD = 'dev0676';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2373,7 +2373,11 @@ function igDownload(req, res, origin) {
     // re-probed. Adds `embed` (1|0) only when the probe is CONCLUSIVE; `embedProbe`
     // always carries the kind (ok|dead|shell|wall) so the client can report a miss.
     // Failures are swallowed — a download result must never be lost to a probe hiccup.
-    const wantProbe = IG_EMBED_PROBE_ON_DOWNLOAD && payload.probeEmbed !== false;
+    // (dev0676) EXPLICIT opt-in, not "unless disabled": a browser still running a cached
+    // pre-dev0675 ig.js sends no flag at all, and a default-on read would then re-probe
+    // rows that already carry a verdict — the one thing this feature must never do.
+    // Absent flag → no probe (fail-safe toward fewer IG requests).
+    const wantProbe = IG_EMBED_PROBE_ON_DOWNLOAD && payload.probeEmbed === true;
     function sendDl(body) {
       if (!wantProbe) { sendJson(res, 200, body, origin); return; }
       probeEmbed(id, { track: ACTIVE_DL, cffiTimeoutMs: 25000 }).then(p => {
