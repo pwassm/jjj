@@ -431,14 +431,18 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
-  // (dev0638) b while G is open (no V on top) toggles "buffer everywhere"
-  // (window.gridBufferAll — lifts the desktop-only + ≤4×4 buffered-playback
-  // limits; toasts + re-renders live cells itself). POC switch for testing
-  // buffered YT on any grid size. View-only (never writes c.json/ml.json), so
-  // it rides the guFunKeys gate in user mode like the other harmless toys.
-  // Ctrl+B (buffer MODE cycle, collection.js) is untouched — modifiers fall
-  // through here.
-  if (k === 'b' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+  // (dev0638) b while G is open (no V on top) cycles the buffered-playback SCOPE
+  // — how far clean playback reaches (dev0673: normal → wide → all → none; was a
+  // plain "buffer everywhere" on/off). ⇧B toggles adaptive per-segment pre-roll,
+  // which is what makes short segments (6-10s table-tennis rallies) hideable at
+  // all. Both toast + re-render live cells themselves.
+  //
+  // Both are view-only (never write c.json/ml.json), so they ride the guFunKeys
+  // gate in user mode like the other harmless toys. Ctrl+B (buffer MODE cycle,
+  // collection.js) is untouched — modifiers other than Shift fall through here.
+  // ⇧B is free: `b` is not in the letter-dispatch list below, so nothing else
+  // claims either case of it.
+  if (k === 'b' && !e.ctrlKey && !e.altKey && !e.metaKey) {
     const gOpenB  = document.getElementById('gridOverlay')?.style.display === 'flex';
     const vpOpenB = document.getElementById('gridFullscreen')?.style.display === 'flex';
     const _uModeB = (typeof _isUserMode === 'function') && _isUserMode();
@@ -446,7 +450,13 @@ window.addEventListener('keydown', function(e) {
     if (gOpenB && !vpOpenB && (!_uModeB || _guFunB)) {
       e.preventDefault();
       e.stopPropagation();
-      if (typeof window.gridBufferAll === 'function') window.gridBufferAll();
+      if (e.shiftKey) {
+        if (typeof window.gridBufferAdapt === 'function') window.gridBufferAdapt();
+      } else if (typeof window.gridBufferScopeCycle === 'function') {
+        window.gridBufferScopeCycle();
+      } else if (typeof window.gridBufferAll === 'function') {
+        window.gridBufferAll();
+      }
       return false;
     }
   }

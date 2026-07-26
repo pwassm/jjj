@@ -1100,22 +1100,32 @@ function _gridBufferPreroll() {
   return Math.max(1, Math.min(8, v));
 }
 
-// Buffering is heavy (2 iframes/cell) — only engage on desktop and small grids.
-// Larger/mobile grids transparently fall back to the single-iframe mount.
+// Buffering is heavy (2 iframes/cell), so a SCOPE setting decides how far it
+// reaches; anything outside the scope transparently falls back to the
+// single-iframe mount. Cycled with `b` in G, persisted per browser+origin as
+// 'gridBufferScope', and overridable for one load with ?buf=.
 //
-// (dev0637) PROOF-OF-CONCEPT expansion switches — try buffered playback on ANY
-// grid size (incl. the 27-cell portrait grid) and on fast phones (S25-class):
-//   • URL param  ?buf=1  (or buf=all) — this load only; phone-friendly, just
-//     add it to a slam.com deep link. ?buf=0 forces buffering fully OFF
-//     (escape hatch if a device melts).
-//   • window.gridBufferAll(true|false) / setSetting('gridBufferAll', true) —
-//     persists on this browser+origin; no-arg call toggles.
-// Default behavior (no param, no setting) is unchanged: desktop && ≤4×4.
-// Expect pain at scale: buffered = 2 YT iframes per cell, so 27 cells = 54
-// live players — desktop-class GPUs sweat, phones likely cap out around 3×3.
-let _gridBufAllCache = null;
-function _gridBufferAllState() {
-  if (_gridBufAllCache === null) {
+//   'normal' — desktop && ≤4×4 square. The dev0336 original.
+//   'wide'   — 'normal' PLUS the 17/19 special layouts. THE DEFAULT since
+//              dev0673. Those two sit on a 5×5 footprint so _gridGsize reports
+//              5 and the old ≤4 test excluded them — but they only render 17/19
+//              cells (Ttennis = 15 videos, not 25), so they were excluded by
+//              accident of the footprint rather than by measured cost. The
+//              symptom: every c.json 17/19 config took the unbuffered mount and
+//              showed YT's center play/pause chrome on start AND at every
+//              segment seek, while a 9-cell config right next to it was clean.
+//   'all'    — any size, any device (incl. 25/27 and phones). The dev0637
+//              proof-of-concept reach. Expect pain: 27 cells = 54 live players.
+//   'none'   — hard off regardless of mode; escape hatch if a device melts.
+//
+// (dev0637/0638) URL param ?buf= still wins for the current load and is the
+// phone-friendly way to test on a slam.com deep link: buf=1|all, buf=wide,
+// buf=normal, buf=0|none.
+const _GRID_BUF_SCOPES = ['normal', 'wide', 'all', 'none'];
+const _GRID_BUF_SCOPE_DEFAULT = 'wide';
+let _gridBufScopeCache = null;
+function _gridBufferScope() {
+  if (_gridBufScopeCache === null) {
     // (dev0638) boot.js's pretty-URL rewrite ERASES the query on the public
     // site before the grid ever mounts, so consult the stash it saves first
     // (window._salBufParam); a live location.search read only works in dev.
@@ -1123,31 +1133,98 @@ function _gridBufferAllState() {
     if (q === null) {
       try { q = new URLSearchParams(window.location.search).get('buf'); } catch (_) {}
     }
-    if (q === '1' || q === 'all') _gridBufAllCache = 'all';
-    else if (q === '0') _gridBufAllCache = 'none';
-    else _gridBufAllCache = ((typeof window.getSetting === 'function')
-      && window.getSetting('gridBufferAll') === true) ? 'all' : 'normal';
+    if (q === '1' || q === 'all') _gridBufScopeCache = 'all';
+    else if (q === '0' || q === 'none') _gridBufScopeCache = 'none';
+    else if (q === 'wide' || q === 'normal') _gridBufScopeCache = q;
+    else {
+      const st = (typeof window.getSetting === 'function') ? window.getSetting('gridBufferScope') : null;
+      if (_GRID_BUF_SCOPES.indexOf(st) >= 0) _gridBufScopeCache = st;
+      // (dev0673) Honor the dev0637 boolean for anyone who flipped it in devtools.
+      else if ((typeof window.getSetting === 'function')
+               && window.getSetting('gridBufferAll') === true) _gridBufScopeCache = 'all';
+      else _gridBufScopeCache = _GRID_BUF_SCOPE_DEFAULT;
+    }
   }
-  return _gridBufAllCache;
+  return _gridBufScopeCache;
 }
-window.gridBufferAll = function (on) {
-  const next = (on === undefined) ? (_gridBufferAllState() !== 'all') : !!on;
-  if (typeof window.setSetting === 'function') window.setSetting('gridBufferAll', next);
-  _gridBufAllCache = next ? 'all' : 'normal';
+const _GRID_BUF_SCOPE_LABELS = {
+  normal: '◱ Buffer scope NORMAL — desktop squares ≤4×4',
+  wide:   '◲ Buffer scope WIDE — ≤4×4 plus the 17/19 layouts',
+  all:    '◼ Buffer scope ALL — every size & device (heavy: 2 players/cell)',
+  none:   '○ Buffer scope NONE — buffering hard off'
+};
+window.gridBufferSetScope = function (scope) {
+  if (_GRID_BUF_SCOPES.indexOf(scope) < 0) return _gridBufferScope();
+  if (typeof window.setSetting === 'function') window.setSetting('gridBufferScope', scope);
+  _gridBufScopeCache = scope;
   if (typeof toast === 'function') {
-    toast('Buffer everywhere: ' + (next ? 'ON — all sizes & devices' : 'OFF — desktop ≤4×4 only'), 1800);
+    const off = _gridBufferMode() === 'off' ? '  (buffer mode is OFF — ^B)' : '';
+    const here = (scope !== 'none' && _gridBufferMode() !== 'off' && !_gridBufferEligible())
+      ? '  ·  this grid still falls back' : '';
+    toast(_GRID_BUF_SCOPE_LABELS[scope] + off + here, 2200);
+  }
+  if (typeof gridShow === 'function'
+      && document.getElementById('gridOverlay')?.style.display === 'flex') gridShow();
+  return scope;
+};
+// `b` in G walks the four scopes in increasing reach, then wraps.
+window.gridBufferScopeCycle = function () {
+  const cur = _gridBufferScope();
+  const next = _GRID_BUF_SCOPES[(_GRID_BUF_SCOPES.indexOf(cur) + 1) % _GRID_BUF_SCOPES.length];
+  return window.gridBufferSetScope(next);
+};
+// (dev0637) Back-compat for the documented devtools call: gridBufferAll(true)
+// still means "reach everywhere", false drops back to the default scope.
+window.gridBufferAll = function (on) {
+  const next = (on === undefined) ? (_gridBufferScope() !== 'all') : !!on;
+  return window.gridBufferSetScope(next ? 'all' : _GRID_BUF_SCOPE_DEFAULT);
+};
+function _gridBufferEligible() {
+  const scope = _gridBufferScope();
+  if (scope === 'none') return false;
+  if (scope === 'all')  return true;
+  const desktop = (typeof _isMobileDevice === 'function') ? !_isMobileDevice() : true;
+  if (!desktop) return false;
+  if (_gridGsize <= 4) return true;
+  if (scope === 'wide') {
+    // 17/19 only — the portrait layouts (P3/P12/P27) and plain 5×5 stay out of
+    // 'wide'; P27 is 27 cells and P12's short IG-style clips aren't YT at all.
+    const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+    return lay === '17' || lay === '19';
+  }
+  return false;
+}
+
+// (dev0673) Adaptive per-segment pre-roll. The buffered mount normally warms a
+// hidden layer for one FIXED pre-roll (default 3.5s) before revealing it. That
+// works while segments are long — the octopus grid's are 40-85s — but a segment
+// shorter than about 2× the pre-roll cannot be hidden at all: warmReady() clamps
+// the reveal to segEnd−0.2 and shows the layer whether or not the chrome has
+// burned off, and the pre-warm for the next segment starts before the current
+// one has really begun. Ttennis's seven 6-10.5s cells are exactly that case.
+// With this ON, each segment gets its own pre-roll = min(global, dur/2.5), so a
+// 6s segment warms 2.4s and still reveals with ~60% of itself left to play.
+// Only ever REDUCES the global value, floored at 0.8s (below that YT's startup
+// chrome outlives the warm-up and there is no point pretending).
+// Toggle: ⇧B in G, or window.gridBufferAdapt(true|false) in devtools.
+function _gridBufferAdaptOn() {
+  const v = (typeof window.getSetting === 'function') ? window.getSetting('gridBufferAdapt') : null;
+  if (v === true || v === false) return v;
+  return true;   // default ON
+}
+window.gridBufferAdapt = function (on) {
+  const next = (on === undefined) ? !_gridBufferAdaptOn() : !!on;
+  if (typeof window.setSetting === 'function') window.setSetting('gridBufferAdapt', next);
+  if (typeof toast === 'function') {
+    const off = _gridBufferMode() === 'off' ? '  (buffer mode is OFF — ^B)' : '';
+    toast(next
+      ? '⇢ Adaptive pre-roll ON — short segments warm min(' + _gridBufferPreroll().toFixed(1) + 's, dur/2.5)' + off
+      : '⇥ Adaptive pre-roll OFF — every segment warms the full ' + _gridBufferPreroll().toFixed(1) + 's' + off, 2200);
   }
   if (typeof gridShow === 'function'
       && document.getElementById('gridOverlay')?.style.display === 'flex') gridShow();
   return next;
 };
-function _gridBufferEligible() {
-  const st = _gridBufferAllState();
-  if (st === 'all')  return true;
-  if (st === 'none') return false;
-  const desktop = (typeof _isMobileDevice === 'function') ? !_isMobileDevice() : true;
-  return desktop && _gridGsize <= 4;
-}
 
 // ── Cover-fit + zoom (dev0338 / dev0346) ─────────────────────────────────────
 // A YouTube/Vimeo iframe shows the video letterboxed to the clip's native aspect;
@@ -1515,7 +1592,8 @@ function _gridMountVideo(vidHost, row, segs, muted) {
     && window.isYouTubeLink && window.isYouTubeLink(row.link);
   if (useBuffer) {
     window.mountYouTubeClipBuffered(vidHost, row.link, segs, muted,
-      _gridBufferMode() === 'fade' ? 'fade' : 'cut', _gridBufferPreroll());
+      _gridBufferMode() === 'fade' ? 'fade' : 'cut', _gridBufferPreroll(),
+      _gridBufferAdaptOn());   // (dev0673) per-segment pre-roll shrink
     _gridCoverFitHost(vidHost);
     return;
   }
@@ -1555,8 +1633,12 @@ function gridCycleBufferMode() {
     cut:  '◐ Buffer CUT — instant double-buffer swap',
     fade: '◑ Buffer CROSSFADE — dissolve end→start'
   };
-  const note = (next !== 'off' && _gridGsize > 4) ? '  ·  ≤4×4 only (falls back at 5×5)' : '';
-  const roll = next === 'off' ? '' : ('  ·  pre-roll ' + _gridBufferPreroll().toFixed(1) + 's (−/+ to tune)');
+  // (dev0673) The fallback note now asks the eligibility test itself rather than
+  // re-stating the old ≤4×4 rule, so it stays honest as `b` cycles the scope.
+  const note = (next !== 'off' && !_gridBufferEligible())
+    ? '  ·  falls back on this grid (scope ' + _gridBufferScope() + ' — b to widen)' : '';
+  const roll = next === 'off' ? '' : ('  ·  pre-roll ' + _gridBufferPreroll().toFixed(1) + 's'
+    + (_gridBufferAdaptOn() ? ' adaptive' : '') + ' (−/+ tune · ⇧B adaptive)');
   if (typeof toast === 'function') toast(labels[next] + note + roll, 2400);
   if (typeof gridShow === 'function'
       && document.getElementById('gridOverlay')?.style.display === 'flex') {
@@ -2042,7 +2124,7 @@ function gridShow() {
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   let hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
+    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · b=scope · ⇧B=adapt · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
   // (dev0669) Only advertise the embed reset on grids that actually have one.
   if (container.querySelector('.grid-embed-wrap')) hint += ' · q=new embed (⇧Q=all)';
   // (dev0671) One batched duration lookup for every IG cell on the grid, so the
@@ -2058,10 +2140,14 @@ function gridShow() {
     if (_igLinks.length) window.igMetaFetch(_igLinks);
   }
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
-  // when on, plus a "(≤4×4)" flag when the current size makes it fall back.
+  // when on. (dev0673) A trailing ~ means adaptive per-segment pre-roll, and a
+  // fallback now names the SCOPE that excluded this grid ("wide:off") instead of
+  // the old fixed "(≤4×4)" — the scope is what `b` cycles.
   const _bufMode = _gridBufferMode();
   const _bufTag = _bufMode === 'off' ? ''
-    : ' · ⟳' + _bufMode + ' ' + _gridBufferPreroll().toFixed(1) + 's' + (_gridBufferEligible() ? '' : '(≤4×4)');
+    : ' · ⟳' + _bufMode + ' ' + _gridBufferPreroll().toFixed(1) + 's'
+      + (_gridBufferAdaptOn() ? '~' : '')
+      + (_gridBufferEligible() ? '' : '(' + _gridBufferScope() + ':off)');
   // (dev0346) Show the whole-grid zoom whenever it's not 1× (zoomed in OR out).
   const _zoom = _gridFillZoom();
   const _zoomTag = Math.abs(_zoom - 1) > 1e-9 ? ' · ⤢' + _zoom.toFixed(1) + '×' : '';

@@ -522,8 +522,12 @@ window.HOTKEYS = [
     desc: 'Play the grid as a slideshow' },
 
   { label: 'B', group: 'Grid (window-capture)', scope: 'G', dev: false,
-    impl: 'core.js window-capture (dev0638)',
-    desc: 'Toggle "buffer everywhere" — lifts the desktop-only + ≤4×4 limits on buffered YT playback (POC; Ctrl+B still cycles the buffer mode; ?buf=1 in a URL does the same for one load)' },
+    impl: 'core.js window-capture (dev0638/0673) → grid.js gridBufferScopeCycle',
+    desc: 'Cycle how far buffered ("clean") YT playback reaches: NORMAL (desktop squares ≤4×4) → WIDE (plus the 17/19 layouts — the default since dev0673) → ALL (every size & device; 2 players per cell, so 27 cells = 54) → NONE (hard off). Anything outside the scope falls back to the single-iframe mount and shows YT’s center play/pause chrome. Ctrl+B still cycles the buffer MODE (off/cut/fade); ?buf=normal|wide|all|0 sets the scope for one load.' },
+
+  { label: 'Shift+B', group: 'Grid (window-capture)', scope: 'G', dev: false,
+    impl: 'core.js window-capture (dev0673) → grid.js gridBufferAdapt',
+    desc: 'Toggle adaptive per-segment pre-roll (default ON). Each segment warms its hidden layer for min(global pre-roll, its own duration ÷ 2.5) instead of the one global value — the fix for short segments, which with a fixed 3.5s warm-up got revealed before the chrome burned off. Only ever shortens the warm-up, floored at 0.8s. −/+ still set the global pre-roll.' },
 
   { label: 'Z', group: 'Viewer', scope: 'V', dev: false,
     impl: 'vp.js vpKeyHandler (dev0672) → _vpEmbedZoomArm',

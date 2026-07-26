@@ -524,7 +524,7 @@ window._ensureBufLayerCss = function() {
 // built-in default win.
 // e.g. in devtools:  window.SAL_BUF_PREROLL = 5;
 
-window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, transition, preroll) {
+window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, transition, preroll, adapt) {
   var vid = getYouTubeId(url);
   if (!vid || !hostEl) return;
 
@@ -547,6 +547,25 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   var PREROLL = Number(preroll) || Number(window.SAL_BUF_PREROLL) || 3.5;
   PREROLL = Math.max(0.5, Math.min(10, PREROLL));
   var FADE_MS = transition === 'fade' ? 420 : 0;
+
+  // (dev0673) Adaptive per-segment pre-roll. One fixed PREROLL is fine for long
+  // segments but unusable on short ones: a 6s segment with a 3.5s warm-up has no
+  // room to reveal cleanly (warmReady clamps the reveal to segEnd−0.2 and shows
+  // the layer chrome or not), and the next segment's pre-warm starts before the
+  // current one has settled. So each segment gets its own warm-up length —
+  // min(PREROLL, dur/2.5) — which leaves ≥60% of any segment to play after the
+  // reveal. Only ever shrinks; floored at ADAPT_MIN, because below ~0.8s the
+  // startup chrome outlives the warm-up and hiding it is a fiction. The caller
+  // passes the switch (grid.js _gridBufferAdaptOn — ⇧B in G); undefined = ON, so
+  // any other caller gets the better behaviour by default.
+  var ADAPT = (adapt === undefined) ? true : !!adapt;
+  var ADAPT_DIV = 2.5, ADAPT_MIN = 0.8;
+  function prerollFor(seg) {
+    if (!ADAPT) return PREROLL;
+    var d = Number(seg && seg.dur);
+    if (!isFinite(d) || d <= 0) return PREROLL;
+    return Math.max(ADAPT_MIN, Math.min(PREROLL, d / ADAPT_DIV));
+  }
 
   var _ytPrivacy = (typeof window.getSetting === 'function') ? window.getSetting('ytPrivacy') : null;
   var _ytHost = _ytPrivacy === 'nocookie' ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
@@ -620,9 +639,12 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   // Begin a hidden warm-up on `layer` for `seg`: seek to (start − PREROLL) and
   // play, so it runs through YouTube's startup/title/spinner chrome OFF-SCREEN.
   // Returns a warm record; `warmReady()` decides when it's safe to reveal.
+  // (dev0673) The warm records its OWN pre-roll (prerollFor(seg)) so warmReady
+  // measures the reveal against the length this segment actually warmed for.
   function beginWarm(layer, seg) {
-    var from = Math.max(0, seg.start - PREROLL);
-    var w = { layer: layer, seg: seg, from: from, issuedAt: Date.now(), landPos: null };
+    var pre = prerollFor(seg);
+    var from = Math.max(0, seg.start - pre);
+    var w = { layer: layer, seg: seg, from: from, pre: pre, issuedAt: Date.now(), landPos: null };
     try { layer.player.seekTo(from, true); layer.player.playVideo(); } catch (_) {}
     return w;
   }
@@ -647,7 +669,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
       if (ct >= w.from - 1 && ct <= w.from + 8) w.landPos = ct;
       return false;
     }
-    var revealAt = Math.max(w.seg.start, w.landPos + PREROLL);
+    var revealAt = Math.max(w.seg.start, w.landPos + (w.pre || PREROLL));
     var segEnd = w.seg.start + w.seg.dur;
     if (revealAt > segEnd - 0.2) revealAt = Math.max(w.seg.start, segEnd - 0.2);
     return ct >= revealAt;
@@ -710,7 +732,7 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
 
   // FRONT: warm up hidden from its pre-roll point; the loop reveals it (and
   // dissolves the poster) once it's playing clean.
-  newPlayer(A, Math.max(0, segs[0].start - PREROLL)).then(function(p) {
+  newPlayer(A, Math.max(0, segs[0].start - prerollFor(segs[0]))).then(function(p) {
     if (killed) return;
     try {
       var realDur = p.getDuration();
@@ -723,7 +745,8 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
   });
 
   // BACK: created then idled; the first swap's warm-up reseeks + replays it.
-  var bWarm = segs.length > 1 ? Math.max(0, segs[1].start - PREROLL) : Math.max(0, segs[0].start - PREROLL);
+  var _bSeg = segs.length > 1 ? segs[1] : segs[0];
+  var bWarm = Math.max(0, _bSeg.start - prerollFor(_bSeg));
   newPlayer(B, bWarm).then(function(p) {
     if (!killed) { try { p.pauseVideo(); } catch (_) {} }
   });
@@ -771,7 +794,13 @@ window.mountYouTubeClipBuffered = async function(hostEl, url, segsArg, isMuted, 
     var segEnd = seg.start + seg.dur;
     var nextSeg = segs[(frontSeg + 1) % segs.length];
 
-    if (!backWarm && t >= segEnd - PREROLL) backWarm = beginWarm(backLayer, nextSeg);
+    // (dev0673) The lead time comes out of the CURRENT segment but is sized by
+    // the NEXT one, since that is the layer being warmed. Also capped at ~80% of
+    // the current segment so a long next-warm can't be due before the current
+    // segment has shown anything (6s current → 27s next: warm at 4.8s in, not at
+    // once). Segments shorter than the lead simply warm from their own start.
+    var lead = Math.min(prerollFor(nextSeg), Math.max(0.4, seg.dur * 0.8));
+    if (!backWarm && t >= segEnd - lead) backWarm = beginWarm(backLayer, nextSeg);
     if (backWarm && warmReady(backWarm)) doSwap();
   }, 150);
   window.seeLearnVideoTimers[cellId] = loopTimer;
