@@ -466,6 +466,15 @@ function _gridEmbedArm(cellEl) {
   cellEl.addEventListener('mouseleave', onLeave);
   cellEl.addEventListener('mouseenter', onEnter);
 
+  // (dev0672) Start the auto-prime clock HERE, on the arm, rather than only from
+  // the play signal below. Arming is a deliberate click on this one cell, so the
+  // intent to play it is already established, and unlike the blur signal it
+  // cannot be missed — if focus never moves the way dev0607 expects, the cell
+  // still re-primes. A few seconds of grace covers the gap between arming and
+  // finding the caret. Re-priming a cell that was armed but never played costs
+  // one reload of a poster that looks identical; missing one leaves a dead cell.
+  _gridEmbedPrimeLater(cellEl, (window.igClipDwellMs ? window.igClipDwellMs(link) : 41200) + 3000);
+
   // (dev0607) The click that starts the embed also moves KEYBOARD focus into
   // its document, and from then on every global hotkey — T above all — is
   // delivered there instead of here. Cross-origin, so we can neither read those
@@ -545,15 +554,18 @@ function _gridEmbedReload(cellEl) {
 function _gridEmbedPrimeLater(cellEl, waitMs) {
   clearTimeout(cellEl._primeTmr);
   const link = (cellEl._rowData && cellEl._rowData.link) || '';
-  const wait = (typeof waitMs === 'number') ? waitMs
-             : (typeof window.igClipDwellMs === 'function') ? window.igClipDwellMs(link) : 41200;
+  const dwell = (typeof window.igClipDwellMs === 'function') ? window.igClipDwellMs(link) : 41200;
+  const wait = (typeof waitMs === 'number') ? waitMs : dwell;
   cellEl._primeTmr = setTimeout(() => {
-    if (!cellEl.isConnected || !cellEl._embedPlayed) return;
+    if (!cellEl.isConnected) return;
     if (cellEl.matches(':hover')) {                 // still watching — prime on the way out
       cellEl.addEventListener('mouseleave', () => _gridEmbedPrimeLater(cellEl, 400), { once: true });
       return;
     }
-    _gridEmbedReload(cellEl);
+    if (!_gridEmbedReload(cellEl)) return;
+    const _secs = Math.round((dwell - 1200) / 1000);
+    _gridToast('↻ ' + (cellEl.dataset.cell || 'cell') + ' primed'
+      + (_secs && _secs !== window.IG_DEFAULT_DUR ? '  (' + _secs + 's clip)' : ''), 900);
   }, wait);
 }
 

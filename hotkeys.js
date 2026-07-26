@@ -525,6 +525,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture (dev0638)',
     desc: 'Toggle "buffer everywhere" — lifts the desktop-only + ≤4×4 limits on buffered YT playback (POC; Ctrl+B still cycles the buffer mode; ?buf=1 in a URL does the same for one load)' },
 
+  { label: 'Z', group: 'Viewer', scope: 'V', dev: false,
+    impl: 'vp.js vpKeyHandler (dev0672) → _vpEmbedZoomArm',
+    desc: 'On an IG/TikTok post in V: arm/disarm the ⤢ zoom (same as the toolbar button). Armed = hold to enlarge, drag to pan, double-click for usual size; disarm to hand the picture back to the player. Inert on any other kind of row, where Z still rotates a visible crop frame.' },
+
   { label: 'Q  /  Shift+Q', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0669/0671) → grid.js gridNewEmbed',
     desc: 'New embed — reload the hovered IG/TikTok cell (Shift+Q: every embed on the grid) so it can play in the cell again. Those embeds allow ONE inline play each; after it the caret only offers to open the post on their site. Mostly a manual override now: since dev0671 a played cell re-primes itself once its clip has run. Also on the cell’s right-click menu and the ↻ chip on an armed cell.' },

@@ -2302,6 +2302,26 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0672) z toggles the ⤢ embed-zoom arm — the keyboard twin of the toolbar
+  // button. Gated on that button existing, so it only ever fires on a
+  // cross-origin embed (IG/TikTok) and leaves z free everywhere else — including
+  // the crop-rotate below, which is why this sits ABOVE it: that block returns
+  // outright when there is no crop overlay, so anything after it never runs.
+  //
+  // dev0612 ruled out a key gate here because the play click moves focus into
+  // the frame and the parent stops seeing keydown. That is no longer true: the
+  // IG mount recaptures focus (dev0671), so the key survives a play.
+  if ((e.key === 'z' || e.key === 'Z') && document.getElementById('vp-embed-zoom')) {
+    e.preventDefault(); e.stopPropagation();
+    _vpEmbedZoomArm(!window._vpEmbedZoomArmed);
+    if (typeof toast === 'function') {
+      toast(window._vpEmbedZoomArmed
+        ? '⤢ zoom armed — hold to enlarge · drag to pan · double-click = usual size · z to hand it back'
+        : '⤢ zoom off — the picture is the player’s again', 1800);
+    }
+    return;
+  }
+
   // (dev0318) Z / X = rotate the crop frame −/+ 0.5° (straighten). Gated to a
   // visible crop overlay like T, so they pass through in any other context.
   if (e.key === 'z' || e.key === 'Z' || e.key === 'x' || e.key === 'X') {
@@ -4231,8 +4251,8 @@ function _vpEmbedZoomArm(on) {
     btn.style.background = on ? '#06f' : '#222';
     btn.style.color      = on ? '#fff' : '#888';
     btn.title = on
-      ? 'Zoom armed — hold to enlarge, drag to pan, double-click for usual size. Click to hand the picture back to the player.'
-      : 'Arm zoom — hold to enlarge, drag to pan, double-click for usual size.';
+      ? 'Zoom armed (z) — hold to enlarge, drag to pan, double-click for usual size. Click to hand the picture back to the player.'
+      : 'Arm zoom (z) — hold to enlarge, drag to pan, double-click for usual size.';
   }
   window._vpEmbedZoomArmed = !!on;
 }

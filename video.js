@@ -167,15 +167,24 @@ window.igMetaFetch = function(links) {
   // PROXY_BASE is a top-level const in vp.js — a const never lands on window,
   // so probe the binding itself the way grid.js does.
   const base = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
+  const drop = function() {
+    ids.forEach(function(id) { if (!window._igMetaCache[id]) delete window._igMetaCache[id]; });
+    return window._igMetaCache;
+  };
   return fetch(base + '/ig/meta', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids: ids })
+  // (dev0672) A FAILED lookup must not stick. The first cut cached the in-flight
+  // nulls forever, so a grid opened against a proxy that had not been restarted
+  // yet (404 — the route was brand new) stayed on the 40s default for the whole
+  // session, even after the restart. Clear the markers on failure so the next
+  // gridShow / V open simply asks again. Only a real answer is cached — including
+  // "not in ig.json", which is worth remembering so we stop asking.
   }).then(function(r) { return r.ok ? r.json() : null; }).then(function(j) {
-    if (j && j.ok && j.meta) {
-      Object.keys(j.meta).forEach(function(id) { window._igMetaCache[id] = j.meta[id]; });
-    }
+    if (!j || !j.ok || !j.meta) return drop();
+    ids.forEach(function(id) { window._igMetaCache[id] = j.meta[id] || { dur: 0, miss: true }; });
     return window._igMetaCache;
-  }).catch(function() { return window._igMetaCache; });   // proxy down / public site → defaults
+  }).catch(drop);   // proxy down / public site → defaults, retried next time
 };
 // Seconds to wait before a played embed is assumed finished. Real length when we
 // have it, plus a second of tail so the reload never cuts the last frame.
