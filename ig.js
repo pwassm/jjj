@@ -74,6 +74,13 @@
   // showing no change. Bulk Enrich skips them after one attempt; ↻ Reload (or a
   // single ✨) retries. Session-only (not persisted) so a reload always re-tries.
   const enrichFailed = new Set();
+  // (dev0681) Rows that FAILED A DOWNLOAD this session while the exit was proven
+  // healthy — i.e. unreadable posts (deleted / made private / region-locked), not a
+  // block. Download+rotate skips them for the rest of the session so the grind moves
+  // on instead of re-hitting the same dead rows at the top of the view every round.
+  // Session-only, like enrichFailed: a reload gives every row a fresh chance.
+  const dlFailed = new Set();
+  const dlRunFailed = new Set();   // (dev0681) rows that failed in the CURRENT batch
 
   // (dev0517, reworked dev0654) Auto-enrich driver — grinds the not-yet-enriched
   // backlog `autoBatchSize` at a time and AUTO-ROTATES the Proton VPN to a fresh US
@@ -146,6 +153,19 @@
   // A ROW (no success between), it's a real block → stop. A success resets the streak.
   const DOWNLOAD_WALL_CAP = 2;
   const DOWNLOAD_RETRY_MS = [8000, 15000];   // pause before the single per-item retry
+  // (dev0681) …and the 2-strike stop is no longer the END of a Download+rotate grind.
+  // It cannot tell a DEAD POST from a WALLED EXIT, and on 2026-07-27 that killed a
+  // 1799-row grind at row 2: the top two pending rows were two unreadable
+  // moana_ryukyu posts (verified — every OTHER post of that same account enriches
+  // fine on the same exit), so every press of ⬇⟳ stopped after ~36s with 0
+  // downloaded, forever, because the same two dead rows sit at the top each time.
+  // The grind now probes the exit (auto-enrich has done this since dev0654) and only
+  // stops when the EXIT is the problem. This many WALLED exits in a row ends it.
+  const DOWNLOAD_DRY_LIMIT = 3;
+  // …and this many rounds in a row that hit only unreadable posts (exit tested fine
+  // each time). Generous, because dead posts are scattered through the backlog and
+  // each round steps over a couple: the grind should walk past them, not give up.
+  const DOWNLOAD_DEAD_ROUNDS = 10;
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -1607,6 +1627,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
     let consecFail = 0;                      // (dev0645) run of back-to-back download failures
     lowResIds.clear(); fallbackIds.clear();  // (dev0666) per-run download-path tallies
+    dlRunFailed.clear();                     // (dev0681) rows that failed THIS batch
     embedStamped = 0; embedNoVerdict = 0;    // (dev0675) per-run embed-verdict tallies
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
     const t0 = Date.now();
@@ -1700,7 +1721,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // broken the wall stop 3× (dev0442/0470/0501); downloads are cookieless-or-fail
         // (dev0568) so a failure always counts. Enrich keeps the cumulative isWall() test
         // (its auto-enrich driver tells a walled VPN exit from a dead post to grind on).
-        else if (isDl) { if (++consecFail >= DOWNLOAD_WALL_CAP) walledStopped = true; }
+        // (dev0681) Remember WHICH rows failed, so the driver can park them once it has
+        // proven the exit was fine — otherwise the same top-of-view rows are retried
+        // every round and the grind can never advance past them.
+        else if (isDl) { dlRunFailed.add(r.id); if (++consecFail >= DOWNLOAD_WALL_CAP) walledStopped = true; }
         else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
       }
       applyAndRender();
@@ -2180,7 +2204,28 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // nothing lost vs enriching separately first. Skip rows that login-walled enrich this
   // session (a retry would just wall again) and already-promoted rows.
   const isReady = r => !!r && !isDownloaded(r) && r.status !== 'promoted'
-    && (r.status === 'enriched' || r.status === 'new') && !enrichFailed.has(r.id);
+    && (r.status === 'enriched' || r.status === 'new') && !enrichFailed.has(r.id)
+    && !dlFailed.has(r.id);        // (dev0681) proven-unreadable this session → skip
+
+  // (dev0681) Dead post, or dead exit? Same question auto-enrich answers with
+  // probeExit, asked for the download grind: enrich ONE other pending row on the
+  // SAME exit (metadata only — no download, no cookies). It succeeds → the exit is
+  // healthy and the rows that just failed are unreadable posts. It walls → the exit
+  // is the problem and a fresh one is worth rotating to.
+  //   → 'ok' | 'wall' | 'error' | 'nomore'
+  async function probeDownloadExit(skipIds) {
+    const skip = new Set(skipIds || []);
+    const cand = view.find(r => isReady(r) && !skip.has(r.id));
+    if (!cand) return 'nomore';
+    busy = true; setBatchUi(true);
+    igBatchShow('🔎 checking the exit…\nis this a dead post, or a blocked IP?');
+    const good = await enrichRow(cand, false);
+    busy = false; setBatchUi(false); igBatchHide();
+    applyAndRender();
+    if (good) { dirty = true; await persist(false); return 'ok'; }
+    if (isNetErr(lastOpError) && !(await proxyAlive())) return 'error';
+    return isWall(lastOpError) ? 'wall' : 'error';
+  }
   async function batchDownloadRotating() {
     if (busy) return;
     const readyIds = () => view.filter(isReady).map(r => r.id);   // top-of-view first
@@ -2207,6 +2252,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `• Press ⏹ Stop any time.`)) return;
 
     let totalOk = 0, batches = 0, switches = 0, endMsg = '';
+    // (dev0681) Two separate streaks, because two different things end a grind:
+    // dryRounds  = fresh exits that were WALLED in a row (IG is blocking us)
+    // deadRounds = rounds that hit only UNREADABLE posts in a row (the exit was fine)
+    let dryRounds = 0, deadRounds = 0, deadSkipped = 0;
     // (dev0664) elapsed clock for the grind — every toast reports time since start.
     const t0 = Date.now();
     const elapsed = () => fmtDur((Date.now() - t0) / 1000);
@@ -2274,10 +2323,52 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (batchAbort) { endMsg = vpnDropAbort
         ? `🛑 VPN tunnel dropped — stopped. ${totalOk} downloaded, all through a VPN. Nothing ran on your home IP.`
         : `⏹ Stopped by you — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}.`; break; }
-      if (okThis === 0) {             // a whole batch got nothing → a wall/login, not an IP block
-        endMsg = `⏹ Batch ${batches} downloaded 0 — stopped.\n${totalOk} downloaded before this. Likely a login wall or a blocked exit — try again later or check the VPN.`;
+      // (dev0681) A zero-download batch no longer ends the grind on its own. Ask the
+      // exit first — that is the only way to tell "these particular posts are
+      // unreadable" (skip them, keep going) from "this IP is blocked" (rotate).
+      if (okThis === 0) {
+        const failedNow = [...dlRunFailed];
+        const probe = await probeDownloadExit(failedNow);
+        igLog(`0-download batch ${batches} → exit probe = ${probe} (failed rows: ${failedNow.join(',') || 'none'})`);
+        if (probe === 'ok') {
+          // Exit proven healthy → those rows are unreadable posts, not a block.
+          // Park them for this session and carry on with the backlog.
+          failedNow.forEach(id => dlFailed.add(id));
+          deadSkipped += failedNow.length;
+          if (++deadRounds >= DOWNLOAD_DEAD_ROUNDS) {
+            endMsg = `⏹ Stopped — ${DOWNLOAD_DEAD_ROUNDS} rounds in a row hit only unreadable posts (${deadSkipped} skipped).\n${totalOk} downloaded. The VPN exit tested fine each time, so this looks like a stretch of deleted/private posts — ↻ Reload to retry them, or filter the view.`;
+            break;
+          }
+          igToast(`⏭ ${failedNow.length} unreadable post${failedNow.length === 1 ? '' : 's'} skipped (deleted/private) — the VPN exit tested fine.\nCarrying on with the rest.`, 4600);
+          igBatchHide();
+          continue;
+        }
+        if (probe === 'wall') {
+          if (++dryRounds >= DOWNLOAD_DRY_LIMIT) {
+            endMsg = `⏹ Stopped — ${DOWNLOAD_DRY_LIMIT} fresh exits in a row were walled by IG.\n${totalOk} downloaded, all through a VPN. Rotating again won't help right now — try later.`;
+            break;
+          }
+          igBatchShow(`🔀 this exit is walled — rotating to a fresh US exit…\n${totalOk} downloaded so far  ·  ${elapsed()} elapsed`);
+          const swW = await vpnEnsureUp(`exit walled after batch ${batches}`);
+          if (swW) { switches++; igBatchHide(); continue; }
+          if (proxyDown) {
+            if (!(await awaitProxyBack())) {
+              endMsg = `⛔ Stopped — the proxy went down while rotating and never came back.\n${totalOk} downloaded. Start it with startproxy.bat.`;
+              break;
+            }
+            igBatchHide();
+            continue;
+          }
+          endMsg = `⏹ Stopped — the exit is walled and no fresh VPN exit would come up.\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
+          break;
+        }
+        // 'nomore' (nothing left to probe) or 'error' (not a wall — proxy/transient)
+        endMsg = probe === 'nomore'
+          ? `✓ Done — ${totalOk} downloaded; nothing readable left in this view.`
+          : `⏹ Batch ${batches} downloaded 0 and the exit probe errored — stopped.\n${totalOk} downloaded before this. Check the proxy, then retry.`;
         break;
       }
+      dryRounds = 0; deadRounds = 0;  // a batch that downloaded something clears both streaks
       const remain = readyIds().length;
       // auto-dismissing success toast: cumulative + most recent (the user's ask)
       igToast(`✓ Batch ${batches}: ${okThis} downloaded  ·  ${totalOk} total  ·  ${elapsed()} elapsed`
@@ -2319,13 +2410,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // the proxy couldn't be asked. Distinguish "unknown" from "really down".
     const exit = proxyDown ? 'unknown — the proxy is down, the VPN was never asked'
                : vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
-    igLog(`GRIND END ${totalOk} downloaded · ${batches} batches · ${switches} switches · ${elapsed()} · `
-      + `exit=${exit} · ${(endMsg || 'finished').split('\n')[0]}`);
+    igLog(`GRIND END ${totalOk} downloaded · ${batches} batches · ${switches} switches · `
+      + `${deadSkipped} unreadable skipped · ${elapsed()} · exit=${exit} · ${(endMsg || 'finished').split('\n')[0]}`);
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
       + `\n\nTOTAL: ${totalOk} downloaded in ${elapsed()}`
       + (totalOk ? `  (${fmtDur(((Date.now() - t0) / 1000) / totalOk)} each)` : '')
-      + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`);
+      + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
+      // (dev0681) Say plainly that unreadable posts were stepped over, so a lower
+      // total than expected is explained rather than mysterious.
+      + (deadSkipped ? `\n⏭ ${deadSkipped} unreadable post${deadSkipped === 1 ? '' : 's'} skipped (deleted/private — the exit tested fine). ↻ Reload to retry them.` : ''));
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
