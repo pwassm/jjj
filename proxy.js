@@ -200,7 +200,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0684';
+const PROXY_BUILD = 'dev0685';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2538,12 +2538,20 @@ function igDownload(req, res, origin) {
           + (body.usedCookies ? ' COOKIES' : '');
       } catch (_) {}
       if (!wantProbe) { sendJson(res, 200, body, origin); return; }
+      // (dev0685) Phase markers. The 22:47:29 death happened INSIDE this request:
+      // the media file landed at 22:47:35, and the process was gone by 22:47:37 —
+      // between the file landing and this probe's result. proxy.log could only say
+      // "somewhere inside /ig/download". These two lines make the next one exact:
+      // a "probe start" with no "probe done" means it died in the probe (a network
+      // fetch + a python spawn); the reverse means it died on the way out.
+      plog(`ig/download ${id} · embed probe start`);
       probeEmbed(id, { track: ACTIVE_DL, cffiTimeoutMs: 25000 }).then(p => {
         if (p.v === 0 || p.v === 1) body.embed = p.v;
         body.embedProbe = p.kind;
+        plog(`ig/download ${id} · embed probe done → ${p.v === null ? 'no verdict' : p.v} (${p.kind}, via ${p.via})`);
         console.log('[ig/download] ' + id + ' embed probe → ' + (p.v === null ? 'no verdict' : p.v) + ' (' + p.kind + ', via ' + p.via + ')');
         sendJson(res, 200, body, origin);
-      }).catch(() => sendJson(res, 200, body, origin));
+      }).catch(e => { plog(`ig/download ${id} · embed probe threw: ${(e && e.message) || e}`); sendJson(res, 200, body, origin); });
     }
     function run(withCookies, onDone) {
       const args = baseArgs.concat(withCookies ? ['--cookies-from-browser', 'firefox', url] : [url]);
