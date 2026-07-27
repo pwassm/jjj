@@ -31,6 +31,46 @@ function killActiveDownloads() {
   return n;
 }
 
+// (dev0683) ══ BLACK BOX — DIAGNOSTICS ONLY, no behaviour change ═══════════════
+// A long Download+rotate grind keeps failing, and the two candidate causes (the
+// proxy stopping / rows in ig.json being marked so they can never download) leave
+// NO evidence behind: the console window is this process's only record and it dies
+// with the window. proxy.log is a durable, append-only trace of start / every
+// request with status+duration / a 60s heartbeat with memory + handles / how this
+// process ended. NOTHING here changes what the proxy does — it only writes lines.
+//
+// Reading it after the next failure:
+//   • last line is a heartbeat, nothing after      → froze, or was killed hard
+//   • "signal SIGINT|SIGHUP|SIGBREAK" then "exit"  → something stopped it
+//     (window closed, Stop-Process, restart-proxy.ps1)
+//   • rss climbing run-over-run                    → memory exhaustion; watch the
+//     `/ig/save` lines, each one buffers a ~49MB body + parses + rewrites the file
+//   • a request line with no matching ← line       → it died INSIDE that handler
+//   • uncaughtException right before the gap       → a real bug, with its stack
+//   • "client:" lines                              → what the I screen was doing
+//     (mirrored from ig.js so both stories share one clock)
+const LOG_FILE = path.join(__dirname, 'proxy.log');
+let LOG_REQS = 0;                      // requests served since the last heartbeat
+const POLL_LOG = { last: '', at: 0, n: 0 };   // /vpn/status poll de-duplication
+function plog(line) {
+  try {
+    // Roll at 8MB so a long-lived proxy can't grow it without bound (one .1 kept).
+    try {
+      if (fs.statSync(LOG_FILE).size > 8 * 1024 * 1024) fs.renameSync(LOG_FILE, LOG_FILE + '.1');
+    } catch (_) {}
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 23);
+    fs.appendFileSync(LOG_FILE, `${ts}  pid${process.pid}  ${line}\n`);
+  } catch (_) {}
+}
+function memLine() {
+  const m = process.memoryUsage();
+  const mb = b => Math.round(b / 1048576);
+  let handles = -1;
+  try { handles = process._getActiveHandles().length; } catch (_) {}
+  return `rss=${mb(m.rss)}MB heap=${mb(m.heapUsed)}/${mb(m.heapTotal)}MB ext=${mb(m.external)}MB `
+       + `handles=${handles} activeDl=${ACTIVE_DL.size}`;
+}
+
 // (dev0656) STAY ALIVE. A WireGuard rotation tears the tunnel down, which RSTs any
 // in-flight download socket; a socket/stream 'error' event with no listener at that
 // instant would otherwise crash the whole node process — killing /vpn AND every
@@ -39,10 +79,25 @@ function killActiveDownloads() {
 // /vpn/switch calls got ECONNREFUSED. Log and keep serving instead of exiting.
 process.on('uncaughtException', (err) => {
   try { console.error(`[${new Date().toISOString()}] uncaughtException (proxy stays up):`, err && err.stack || err); } catch (_) {}
+  plog('uncaughtException (proxy stays up): ' + ((err && err.stack) || err));
 });
 process.on('unhandledRejection', (reason) => {
   try { console.error(`[${new Date().toISOString()}] unhandledRejection (proxy stays up):`, reason && reason.stack || reason); } catch (_) {}
+  plog('unhandledRejection (proxy stays up): ' + ((reason && reason.stack) || reason));
 });
+
+// (dev0683) How this process ended — the line that was missing every time. A closed
+// console window arrives as SIGHUP/SIGBREAK, Ctrl+C as SIGINT, Stop-Process/taskkill
+// as no line at all (which is itself the answer: killed, not crashed).
+['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'].forEach(sig => {
+  try {
+    process.on(sig, () => {
+      plog(`signal ${sig} — shutting down · ${memLine()}`);
+      process.exit(0);
+    });
+  } catch (_) {}
+});
+process.on('exit', code => plog(`exit code=${code} · uptime=${Math.round(process.uptime())}s · ${memLine()}`));
 
 const PORT = 8081;
 // (dev0319) Build/capability tag — surfaced at GET /version so the client can
@@ -136,7 +191,13 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0682';
+// (dev0683) DIAGNOSTICS ONLY: proxy.log black box (start / every /ig|/vpn|/fix|/exec
+//   request with status+duration / 60s heartbeat with rss+handles / signals + exit),
+//   per-phase timing on /ig/save (the ~49MB write that follows every batch), the
+//   winning path + error tail on /ig/download, tunnelUp on /vpn/status, and
+//   POST /diag/log so the I screen's own events land in the same file. No behaviour
+//   changed — every route answers exactly as it did in dev0682.
+const PROXY_BUILD = 'dev0683';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1938,12 +1999,22 @@ function igSave(req, res, origin) {
   // swallowed it silently → enrich/download edits were never written (files still
   // landed in ig_media via the separate /ig/download route, masking the loss).
   // 256 MB gives the biggest, fastest-growing store years of headroom.
+  // (dev0683) DIAGNOSTIC TIMING ONLY — no logic change. Every batch of 18 downloads
+  // ends with one of these, and ig.json is ~49MB: the body is buffered and parsed
+  // (~49MB), the previous file is read and parsed again (~49MB), copied to .bak
+  // (~49MB of I/O), then re-serialised and written (~49MB). ~200MB of churn per
+  // save, ~100 saves in a 3.5h grind. If the proxy is dying of memory or stalling
+  // on disk, it will show here first — so time each phase and print the rss.
+  const _sv = { t0: Date.now(), read: 0, bak: 0, write: 0 };
   readJson(req, 256 * 1024 * 1024).then(payload => {
+    _sv.body = Date.now() - _sv.t0;
     const incoming = Array.isArray(payload.rows) ? payload.rows : null;
     if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
     const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
     let prev = [];
+    const _tRead = Date.now();
     try { if (fs.existsSync(IG_STORE)) prev = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) {}
+    _sv.read = Date.now() - _tRead;
     if (!Array.isArray(prev)) prev = [];
     // (dev0601) DATA-LOSS FIX: this used to blind-overwrite ig.json with the client's
     // whole in-memory array, so a HARVEST landing via /ig/add while the I screen was
@@ -1973,10 +2044,21 @@ function igSave(req, res, origin) {
       sendJson(res, 409, { ok: false, error: 'refused: ' + final.length + ' rows would replace ' + prev.length + ' (>50% drop)' }, origin);
       return;
     }
+    const _tBak = Date.now();
     try { if (fs.existsSync(IG_STORE)) fs.copyFileSync(IG_STORE, IG_STORE + '.bak'); } catch (_) {}
+    _sv.bak = Date.now() - _tBak;
+    const _tWrite = Date.now();
     fs.writeFileSync(IG_STORE, JSON.stringify(final, null, 2));
+    _sv.write = Date.now() - _tWrite;
     console.log('[ig/save] wrote ' + final.length + ' rows (was ' + prev.length + ')'
       + (rescued.length ? ' · RESCUED ' + rescued.length + ' row(s) harvested mid-session' : ''));
+    // (dev0683) black-box note: size + where the time went + memory after.
+    try {
+      let bytes = 0; try { bytes = fs.statSync(IG_STORE).size; } catch (_) {}
+      res._diagNote = `rows=${final.length} file=${(bytes / 1048576).toFixed(1)}MB`
+        + ` body=${_sv.body}ms readPrev=${_sv.read}ms bak=${_sv.bak}ms write=${_sv.write}ms`
+        + (rescued.length ? ` rescued=${rescued.length}` : '') + ` · ${memLine()}`;
+    } catch (_) {}
     sendJson(res, 200, { ok: true, total: final.length, rescued: rescued.length }, origin);
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
@@ -2444,6 +2526,14 @@ function igDownload(req, res, origin) {
     // Absent flag → no probe (fail-safe toward fewer IG requests).
     const wantProbe = IG_EMBED_PROBE_ON_DOWNLOAD && payload.probeEmbed === true;
     function sendDl(body) {
+      // (dev0683) black-box note: which path actually served this row, and what
+      // landed. A run of "files=0" or one repeating path is the marking story.
+      try {
+        const via = ['viaEmbed', 'viaCover', 'viaMainVideo', 'viaMainCarousel', 'viaGalleryDl']
+          .filter(k => body[k]).join('+') || 'ytdlp';
+        res._diagNote = `${id} ok via=${via} files=${(body.files || []).length}`
+          + (body.usedCookies ? ' COOKIES' : '');
+      } catch (_) {}
       if (!wantProbe) { sendJson(res, 200, body, origin); return; }
       probeEmbed(id, { track: ACTIVE_DL, cffiTimeoutMs: 25000 }).then(p => {
         if (p.v === 0 || p.v === 1) body.embed = p.v;
@@ -2484,6 +2574,9 @@ function igDownload(req, res, origin) {
     function fail502(err) {
       rmTmp();
       console.warn('[ig/download] ' + id + ' failed: ' + (err || 'yt-dlp failed'));
+      // (dev0683) black-box note — every path this row tried is already in the
+      // error text; keep the tail of it so proxy.log alone shows WHY it failed.
+      try { res._diagNote = `${id} FAIL ${String(err || 'yt-dlp failed').replace(/\s+/g, ' ').slice(-220)}`; } catch (_) {}
       sendJson(res, 502, { ok: false, error: (err || 'yt-dlp failed').split('\n').slice(-3).join(' ') }, origin);
     }
     // Final cookieless rescue: the embed page's single static image, only after every
@@ -2762,7 +2855,12 @@ function vpnStateOut(st) {
 }
 
 function vpnStatus(res, origin) {
-  sendJson(res, 200, Object.assign({ ok: true }, vpnStateOut(vpnReadState())), origin);
+  const out = Object.assign({ ok: true }, vpnStateOut(vpnReadState()));
+  // (dev0683) black-box note only — the answer itself is unchanged. This is the
+  // line that settles "VPN dropped" vs "proxy stopped answering": if these keep
+  // saying tunnelUp=true right up to the gap, the tunnel was never the problem.
+  try { res._diagNote = `tunnelUp=${out.tunnelUp} ${out.server || out.ip || '?'}`; } catch (_) {}
+  sendJson(res, 200, out, origin);
 }
 
 function vpnSwitch(res, origin) {
@@ -2889,10 +2987,59 @@ function fixStatus(res, origin) {
 }
 
 http.createServer((req, res) => {
+  // (dev0683) ── black-box request trace (diagnostics only) ──────────────────
+  // One line in, one line out, for the routes a grind uses. A "→" with no "←"
+  // pins the death to that handler; the duration column shows a stall building
+  // before it. GET /vpn/status is the 5s pill poll — logged only when its verdict
+  // changes, once a minute otherwise, or whenever it takes >1s (a slow status
+  // read IS the early symptom of a proxy stall), so the poll can't drown the log.
+  const _lp = req.url.split('?')[0];
+  if (/^\/(ig|vpn|fix|exec|rec|frame|x|s|diag)\//.test(_lp) || _lp === '/version') {
+    LOG_REQS++;
+    const _t0 = Date.now();
+    const _isPoll = (req.method === 'GET' && _lp === '/vpn/status');
+    const _clen = +(req.headers['content-length'] || 0);
+    if (!_isPoll) plog(`→ ${req.method} ${_lp}${_clen ? ` body=${(_clen / 1048576).toFixed(1)}MB` : ''}`);
+    let _logged = false;
+    const _done = () => {
+      if (_logged) return; _logged = true;
+      const ms = Date.now() - _t0;
+      const extra = res._diagNote ? '  · ' + res._diagNote : '';
+      if (_isPoll) {
+        // Poll: log on verdict change / once a minute / slow answer only.
+        const verdict = (res._diagNote || '') + ' ' + res.statusCode;
+        const stale = Date.now() - (POLL_LOG.at || 0) > 60000;
+        if (verdict !== POLL_LOG.last || stale || ms > 1000) {
+          POLL_LOG.last = verdict; POLL_LOG.at = Date.now();
+          plog(`← GET /vpn/status ${res.statusCode} ${ms}ms${extra}${POLL_LOG.n ? `  (+${POLL_LOG.n} like it)` : ''}`);
+          POLL_LOG.n = 0;
+        } else POLL_LOG.n++;
+        return;
+      }
+      plog(`← ${req.method} ${_lp} ${res.statusCode} ${ms}ms${extra}`
+        + (ms > 5000 ? '  · ' + memLine() : ''));
+    };
+    res.on('finish', _done);
+    res.on('close', () => { if (!_logged) { _logged = true; plog(`✗ ${req.method} ${_lp} client closed after ${Date.now() - _t0}ms`); } });
+  }
+
+  // (dev0683) /diag/log — the I screen mirrors its own events here so the client's
+  // story and the proxy's share one clock and one file. Diagnostics only: it just
+  // appends text. The client ALSO keeps its own copy in localStorage, because if
+  // the proxy is the thing that dies, everything it was told dies with it.
+  if (req.method === 'POST' && _lp === '/diag/log') {
+    readJson(req, 256 * 1024).then(p => {
+      const lines = Array.isArray(p.lines) ? p.lines : [String(p.line || '')];
+      lines.forEach(l => plog('client: ' + String(l).slice(0, 1200)));
+      sendJson(res, 200, { ok: true }, req.headers.origin || '');
+    }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, req.headers.origin || ''));
+    return;
+  }
+
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -3153,4 +3300,14 @@ http.createServer((req, res) => {
   console.log(`  /x/search spawns ${X_PYTHON} linkfinders/{image,video}finder.py --search … (origin-locked)`);
   console.log(`Flickr resolver:   GET  /flickr/resolve?url=<flickr photo/CDN url> → best-res + author/date/title/caption`);
   console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
+  // (dev0683) black box: first line of this process's life, plus a 60s pulse. The
+  // pulse is what dates a silent death (last heartbeat = last moment it was alive)
+  // and what shows memory climbing across a long grind. In-process only — it spawns
+  // nothing, opens no window, and touches nothing but proxy.log.
+  plog(`START build=${PROXY_BUILD} node=${process.version} cwd=${__dirname} · ${memLine()}`);
+  console.log(`  black box:       ${LOG_FILE} (dev0683 — start/requests/60s heartbeat/exit)`);
+  setInterval(() => {
+    plog(`heartbeat uptime=${Math.round(process.uptime())}s reqs+${LOG_REQS} · ${memLine()}`);
+    LOG_REQS = 0;
+  }, 60000);
 });

@@ -217,6 +217,112 @@
     return dur + '~' + res + '~' + sanitizePart(title) + '~@' + sanitizePart(chan) + '~[[i[' + r.id + ']]]';
   }
 
+  // ══ (dev0683) CLIENT BLACK BOX — DIAGNOSTICS ONLY ═══════════════════════════
+  // Download+rotate keeps dying part-way through a long grind, and the two suspects
+  // — the proxy stopping, and rows in ig.json marked so they can never download —
+  // both leave the same useless evidence: a toast that says "VPN dropped" and a
+  // report that says "batch downloaded 0". Nothing here changes what the grind
+  // DOES. It only records what happened, in two places:
+  //   • localStorage (this ring buffer) — survives a proxy death, a proxy restart,
+  //     and closing the tab. This is the primary copy, precisely because the prime
+  //     suspect is the proxy: anything mirrored to it dies with it.
+  //   • proxy.log via POST /diag/log — fire-and-forget, so the client's story and
+  //     the proxy's requests interleave on one clock while the proxy is alive.
+  // Read it from 🛠 Fix ▸ 🩺 Diagnostics (Copy / Save .txt / Clear).
+  const DIAG_KEY = 'slam-ig-diag';
+  const DIAG_MAX = 1500;               // events kept (oldest dropped) — ~1MB worst case
+  let diagBuf = null;                  // lazily loaded from localStorage
+  let diagFlushT = null;
+  let diagMirror = [];                 // pending lines for /diag/log
+  let diagMirrorT = null;
+  const diagRunId = Math.random().toString(36).slice(2, 7);   // groups one page-load's events
+
+  function diagLoad() {
+    if (diagBuf) return diagBuf;
+    try { diagBuf = JSON.parse(localStorage.getItem(DIAG_KEY) || '[]'); } catch (_) { diagBuf = []; }
+    if (!Array.isArray(diagBuf)) diagBuf = [];
+    return diagBuf;
+  }
+  function diagFlush() {
+    diagFlushT = null;
+    try { localStorage.setItem(DIAG_KEY, JSON.stringify(diagBuf || [])); }
+    catch (_) {
+      // Quota — halve the buffer and try once. Losing old events beats losing new ones.
+      try { diagBuf = (diagBuf || []).slice(-Math.floor(DIAG_MAX / 2)); localStorage.setItem(DIAG_KEY, JSON.stringify(diagBuf)); } catch (_) {}
+    }
+  }
+  // One event. `ev` is a short tag; `o` any small object of fields. Never throws,
+  // never awaits, never blocks the caller — a diagnostic that can change the run's
+  // timing would be diagnosing itself.
+  function diag(ev, o) {
+    try {
+      const buf = diagLoad();
+      const e = Object.assign({ t: new Date().toISOString().slice(11, 23), run: diagRunId, ev }, o || {});
+      buf.push(e);
+      if (buf.length > DIAG_MAX) buf.splice(0, buf.length - DIAG_MAX);
+      // Batched write: a 1500-entry stringify on every row would itself be a stall.
+      // Serious events flush immediately — those are the ones a crash must not lose.
+      if (/FAIL|END|STOP|DROP|NOPROXY|ERROR|START/.test(ev)) diagFlush();
+      else if (!diagFlushT) diagFlushT = setTimeout(diagFlush, 2000);
+      console.log('[ig-diag]', diagLine(e));
+      diagMirror.push(diagLine(e));
+      if (!diagMirrorT) diagMirrorT = setTimeout(diagMirrorSend, 1500);
+    } catch (_) {}
+  }
+  function diagLine(e) {
+    const skip = { t: 1, ev: 1, run: 1 };
+    const rest = Object.keys(e).filter(k => !skip[k] && e[k] !== undefined && e[k] !== '')
+      .map(k => k + '=' + (typeof e[k] === 'object' ? JSON.stringify(e[k]) : String(e[k])))
+      .join(' ');
+    return `${e.t} ${e.ev}${rest ? ' · ' + rest : ''}`;
+  }
+  function diagMirrorSend() {
+    diagMirrorT = null;
+    const lines = diagMirror.splice(0, diagMirror.length);
+    if (!lines.length) return;
+    // Fire-and-forget: if the proxy is the thing that died, this fails silently and
+    // the localStorage copy (already written) is the record.
+    try {
+      fetch(PROXY + '/diag/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines })
+      }).catch(() => {});
+    } catch (_) {}
+  }
+  // Is the proxy answering AT ALL? Used only to LABEL a failure (proxy-down vs
+  // IG-wall vs tunnel-down) — nothing branches on it, the run continues exactly as
+  // before. 4s cap so a hung proxy can't hold a row open.
+  async function diagProxyAlive() {
+    try {
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 4000);
+      const r = await fetch(PROXY + '/version', { cache: 'no-store', signal: ctl.signal });
+      clearTimeout(to);
+      const j = await r.json();
+      return j && j.build ? ('alive ' + j.build) : 'answered-but-odd';
+    } catch (e) { return 'NOPROXY (' + ((e && e.name) || 'fetch failed') + ')'; }
+  }
+  // The marks that decide whether a row is grindable — snapshotted around every
+  // attempt so "the row was marked so it could never download" becomes visible.
+  function diagMarks(r) {
+    return {
+      status: r.status || '(none)',
+      files: (r.localFiles || []).length,
+      enrichWalled: enrichFailed.has(r.id) ? 1 : 0,
+      autoDead: autoDead.has(r.id) ? 1 : 0,
+      hasTitle: r.VidTitle ? 1 : 0,
+      dur: r.durSecs == null ? 'null' : r.durSecs,
+      wh: (r.width || 0) + 'x' + (r.height || 0),
+      embed: r.embed === 0 || r.embed === 1 ? r.embed : 'un',
+      lowRes: r.lowResDl ? 1 : 0,
+      needsFullRes: r.needsFullRes ? 1 : 0,
+      partial: r.metaPartial ? 1 : 0
+    };
+  }
+  function diagDump() {
+    return (diagLoad() || []).map(diagLine).join('\n');
+  }
+
   // (dev0437) Centered toast that renders ABOVE the I overlay. The global `toast`
   // sits at z-index 9999 — BEHIND #igOverlay (29500) — so it was invisible here;
   // this one lives inside the overlay's stacking context, screen-centered, and
@@ -298,6 +404,7 @@
   let vpnStatus = null;          // last { tunnelUp, server, ip, city, country, at }
   let vpnPollTimer = null;
   let vpnBusy = false;           // a switch is in flight → pill shows a pulse
+  let _pollSig = '', _pollSame = 0;   // (dev0683) last poll verdict + how long it has held
 
   function vpnRenderPill() {
     const el = document.getElementById('igVpn');
@@ -321,11 +428,29 @@
   }
 
   async function vpnRefresh(toast) {
+    // (dev0683) The 5s poll is the client's own pulse — and the ONLY place that can
+    // tell "the tunnel went down" apart from "the proxy stopped answering", because
+    // a thrown fetch (proxy unreachable) and a tunnelUp:false answer both ended up
+    // as `vpnStatus = null`-ish silence before. Log only TRANSITIONS so a 3-hour
+    // grind leaves a readable trail, not 2,000 identical lines.
+    const _t0 = Date.now();
+    let _reach = 'ok', _err = '';
     try {
       const r = await fetch(PROXY + '/vpn/status', { cache: 'no-store' });
       const j = await r.json();
-      if (j && j.ok) vpnStatus = j;
-    } catch (_) { vpnStatus = null; }
+      if (j && j.ok) vpnStatus = j; else { _reach = 'bad-json'; }
+    } catch (e) { vpnStatus = null; _reach = 'NOPROXY'; _err = (e && e.message) || 'fetch failed'; }
+    const _sig = _reach + '/' + (vpnStatus ? (vpnStatus.tunnelUp ? 'up' : 'down') : 'null')
+               + '/' + ((vpnStatus && (vpnStatus.server || vpnStatus.ip)) || '');
+    const _slow = Date.now() - _t0 > 2000;
+    if (_sig !== _pollSig || _slow) {
+      diag(_reach === 'NOPROXY' ? 'POLL-NOPROXY' : 'poll', {
+        was: _pollSig || '(first)', now: _sig, ms: Date.now() - _t0,
+        sameFor: _pollSame, grind: rotatingActive ? 1 : 0, auto: autoRunning ? 1 : 0,
+        err: _err || undefined
+      });
+      _pollSig = _sig; _pollSame = 0;
+    } else _pollSame++;
     vpnRenderPill();
     vpnKillSwitchCheck();               // (dev0658) tunnel dropped mid-grind → stop everything
     if (toast) {
@@ -396,7 +521,8 @@
       '<button id="fixRestart" class="frow">↻ Restart proxy<small>reloads proxy.js — use if downloads / VPN calls stop responding</small></button>' +
       '<button id="fixHarden" class="frow">🛡 Harden VPN tasks <em>(1 UAC)</em><small>the permanent fix for "no exit comes up" — run once</small></button>' +
       '<button id="fixUnstick" class="frow">🔓 Unstick VPN task<small>clears a jammed rotation so switching works again</small></button>' +
-      '<button id="fixBringUp" class="frow">🔀 Bring VPN up<small>switch until a US exit actually routes</small></button>';
+      '<button id="fixBringUp" class="frow">🔀 Bring VPN up<small>switch until a US exit actually routes</small></button>'
+      + '<button id="fixDiag" class="frow">🩺 Diagnostics<small>(dev0683) what the last grind actually did — every row, batch, VPN check and save, kept in this browser so it survives the proxy dying</small></button>';
     document.body.appendChild(p);
     fixPanelEl = p;
     const q = id => p.querySelector('#' + id);
@@ -405,7 +531,80 @@
     q('fixHarden').onclick  = () => fixHardenVpn();
     q('fixUnstick').onclick = () => fixUnstickVpn();
     q('fixBringUp').onclick = () => fixBringVpnUp();
+    q('fixDiag').onclick    = () => showDiagPanel();
     fixRefreshStatus();
+  }
+
+  // ── (dev0683) Diagnostics viewer ──────────────────────────────────────────
+  // Reads the client black box back out: a short summary (built from the events,
+  // not from anything remembered) then the raw trail, newest last. Save .txt hands
+  // the whole thing over in one file. Nothing here writes to ig.json.
+  function diagSummary() {
+    const b = diagLoad();
+    const cnt = {};
+    b.forEach(e => { cnt[e.ev] = (cnt[e.ev] || 0) + 1; });
+    const last = k => { for (let i = b.length - 1; i >= 0; i--) if (b[i].ev === k) return b[i]; return null; };
+    const gs = last('GRIND-START'), ge = last('GRIND-END'), be = last('BATCH-END'), sv = last('save');
+    const fails = b.filter(e => e.ev === 'ROW-FAIL');
+    const failIds = {};
+    fails.forEach(e => { failIds[e.id] = (failIds[e.id] || 0) + 1; });
+    const repeat = Object.entries(failIds).filter(([, n]) => n > 1).sort((a, b2) => b2[1] - a[1]).slice(0, 8);
+    const L = [];
+    L.push(`${b.length} events recorded` + (b.length ? ` · ${b[0].t} → ${b[b.length - 1].t}` : ''));
+    if (gs) L.push(`last grind START: ${gs.ready} ready · chunk ${gs.chunk} · exit ${gs.exit}`);
+    if (ge) L.push(`last grind END:   ${ge.totalOk} downloaded in ${ge.elapsed} · ${ge.batches} batches · proxy at that moment: ${ge.proxy}`);
+    if (ge) L.push(`   reason: ${ge.msg}`);
+    if (be) L.push(`last batch stop:  ${be.stop} (ok ${be.ok}, fail ${be.fail} of ${be.total})`);
+    if (sv) L.push(`last ig.json save: ${sv.MB}MB in ${sv.totalMs}ms (stringify ${sv.stringifyMs}ms)`);
+    L.push(`row failures: ${fails.length} · enrich failures: ${cnt['ENRICH-FAIL'] || 0}`
+      + ` · proxy-unreachable events: ${(cnt['POLL-NOPROXY'] || 0) + (cnt['vpnStillUp-FALSE-NOPROXY'] || 0) + (cnt['DL-NETWORK-ERROR'] || 0)}`
+      + ` · real tunnel drops: ${cnt['KILLSWITCH-TRIP-vpn-down'] || 0}`);
+    if (repeat.length) L.push('rows that failed more than once (they come back every round):\n   '
+      + repeat.map(([id, n]) => `${id} ×${n}`).join(', '));
+    return L.join('\n');
+  }
+
+  function showDiagPanel() {
+    document.getElementById('igDiagPanel')?.remove();
+    const d = document.createElement('div');
+    d.id = 'igDiagPanel';
+    d.style.cssText = 'position:fixed;inset:5% 6%;z-index:80;background:#0c0f14;border:1px solid #34404f;'
+      + 'border-radius:10px;box-shadow:0 18px 46px rgba(0,0,0,.7);padding:12px;display:flex;flex-direction:column;color:#cfe;font-size:13px';
+    d.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      + '<b style="color:#9ad">🩺 IG grind diagnostics</b>'
+      + '<span style="color:#7a8794">client black box · localStorage · survives a proxy death</span>'
+      + '<span style="flex:1"></span>'
+      + '<button id="dgCopy">Copy all</button><button id="dgSave">Save .txt</button>'
+      + '<button id="dgClear">Clear</button><button id="dgClose">×</button></div>'
+      + '<pre id="dgSum" style="white-space:pre-wrap;background:#141b24;border:1px solid #22303c;border-radius:6px;padding:8px;margin:0 0 8px;color:#bfe"></pre>'
+      + '<pre id="dgBody" style="flex:1;overflow:auto;white-space:pre-wrap;background:#0a0d12;border:1px solid #22303c;border-radius:6px;padding:8px;margin:0;font-size:11.5px;line-height:1.45"></pre>';
+    document.body.appendChild(d);
+    d.querySelectorAll('button').forEach(b => { b.style.cssText = 'background:#1f2733;border:1px solid #34404f;color:#e8f0f7;border-radius:6px;padding:4px 9px;cursor:pointer'; });
+    const text = () => diagSummary() + '\n\n' + diagDump();
+    d.querySelector('#dgSum').textContent = diagSummary();
+    const body = d.querySelector('#dgBody');
+    body.textContent = diagDump();
+    body.scrollTop = body.scrollHeight;
+    d.querySelector('#dgClose').onclick = () => d.remove();
+    d.querySelector('#dgCopy').onclick = () => {
+      navigator.clipboard.writeText(text()).then(() => igToast('📋 diagnostics copied', 1800),
+        () => igToast('✗ clipboard blocked — use Save .txt', 2600));
+    };
+    d.querySelector('#dgSave').onclick = () => {
+      const blob = new Blob([text()], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'ig-diag-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '') + '.txt';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    };
+    d.querySelector('#dgClear').onclick = () => {
+      if (!confirm('Clear the recorded diagnostics?\n\nOnly do this AFTER a failure has been read/saved — this is the only copy that survives a proxy restart.')) return;
+      diagBuf = []; diagFlush();
+      d.querySelector('#dgSum').textContent = diagSummary(); body.textContent = '';
+      igToast('🩺 diagnostics cleared', 1600);
+    };
   }
 
   async function fixRefreshStatus() {
@@ -491,14 +690,29 @@
     // handshake for a few seconds and self-heal. Re-check a few times over ~2.4s
     // before declaring down, so one transient miss can't false-kill a healthy
     // grind. First UP short-circuits, so a healthy tunnel still pays ~0ms.
+    // (dev0683) DIAGNOSTIC ONLY: record WHY each attempt failed. This function
+    // returns a bare `false` for two completely different worlds — "the tunnel is
+    // down" and "the proxy never answered" — and the caller then reports the first
+    // one. `throws` counts the second. The return value is unchanged.
+    const attempts = [];
     for (let i = 0; i < 4; i++) {
       try {
         const r = await fetch(PROXY + '/vpn/status', { cache: 'no-store' });
         const j = await r.json();
-        if (j && j.ok) { vpnStatus = j; vpnRenderPill(); if (j.tunnelUp) return true; }
-      } catch (_) {}
+        if (j && j.ok) {
+          vpnStatus = j; vpnRenderPill();
+          attempts.push(j.tunnelUp ? 'up' : 'down');
+          if (j.tunnelUp) { if (i) diag('vpnStillUp-recovered', { attempts: attempts.join(','), tries: i + 1 }); return true; }
+        } else attempts.push('bad-json');
+      } catch (e) { attempts.push('THREW:' + ((e && e.message) || 'fetch failed')); }
       if (i < 3) await sleep(800);
     }
+    const threw = attempts.filter(a => /^THREW/.test(a)).length;
+    diag(threw ? 'vpnStillUp-FALSE-NOPROXY' : 'vpnStillUp-FALSE-tunnelDown', {
+      attempts: attempts.join(','), threw,
+      verdict: threw === 4 ? 'proxy never answered — the VPN was NOT the cause'
+             : threw ? 'mixed: proxy flaky' : 'proxy answered, tunnel really down'
+    });
     return false;
   }
 
@@ -511,9 +725,13 @@
   function vpnKillSwitchCheck() {
     if (!(rotatingActive || autoRunning) || vpnBusy || !vpnStatus || !vpnStatus.ok || vpnDropAbort) return;
     if (vpnStatus.tunnelUp === false) {
-      if (++vpnDownStreak < 2) return;         // first miss is tolerated (rekey blip)
+      if (++vpnDownStreak < 2) { diag('killswitch-armed', { streak: vpnDownStreak, exit: vpnStatus.server || vpnStatus.ip || '?' }); return; }   // first miss is tolerated (rekey blip)
       vpnDownStreak = 0;
       vpnDropAbort = true; batchAbort = true;
+      // (dev0683) This is the toast the user has been shown for a failure that was
+      // usually NOT the VPN. Record that the proxy DID answer here (it must have —
+      // vpnStatus came from it), so a later "VPN dropped" report can be checked.
+      diag('KILLSWITCH-TRIP-vpn-down', { exit: vpnStatus.server || vpnStatus.ip || '?', at: vpnStatus.at || '', note: 'proxy answered with tunnelUp:false — a real tunnel drop' });
       igKillDownloads();
       igToast('🛑 VPN tunnel dropped — stopping the IG grind.\nNothing runs on your home IP.', 6000);
     } else {
@@ -530,11 +748,20 @@
     vpnBusy = true; vpnRenderPill();
     igBatchUpdate((note ? note + '\n' : '') + '🔀 switching Proton VPN to a fresh US exit…');
     let out = null;
+    // (dev0683) Time every switch and record how it ended. "Couldn't get a working
+    // VPN exit (tried a few)" is one of the two ways a long grind dies, and a switch
+    // that THREW (proxy gone) looks identical to one that came back tunnelUp:false.
+    const _t0 = Date.now(); let _how = '';
     try {
       const r = await fetch(PROXY + '/vpn/switch', { method: 'POST' });
       const j = await r.json();
-      if (j && j.ok) { out = j; vpnStatus = j; }
-    } catch (_) {}
+      if (j && j.ok) { out = j; vpnStatus = j; _how = j.tunnelUp ? 'up' : 'answered-but-down'; }
+      else _how = 'not-ok';
+    } catch (e) { _how = 'THREW:' + ((e && e.message) || 'fetch failed'); }
+    diag(out && out.tunnelUp ? 'vpn-switch-ok' : 'VPN-SWITCH-FAIL', {
+      how: _how, ms: Date.now() - _t0,
+      exit: (out && (out.server || out.ip)) || '', note: (note || '').slice(0, 60)
+    });
     vpnBusy = false; vpnRenderPill();
     return out;
   }
@@ -1458,6 +1685,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // video" + embed failed) is marked too — otherwise it kept status 'new' and,
       // with stop-at-first-wall, every re-run halted on the SAME row, never advancing.
       if (WALL_RE.test(lastOpError)) enrichFailed.add(r.id);
+      // (dev0683) Enrich failures matter to DOWNLOADS too: downloadRow enriches a
+      // 'new' row inline for the filename, and gives up before it ever asks for the
+      // media if that fails. So a "download failure" is often this. Record which.
+      diag('ENRICH-FAIL', { id: r.id, single: single ? 1 : 0, status: r.status || '(none)',
+        marked: WALL_RE.test(lastOpError) ? 'enrichFailed(session)' : 'not marked',
+        err: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 240) });
       if (single) {
         // (dev0442) Enrich now tries cookieless THEN Firefox cookies — reaching here
         // means BOTH failed. A login-wall message means even cookies didn't read it
@@ -1500,6 +1733,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       ? `🍪 Firefox cookies used on ${cookieUsed} so far`
       : `🍪 cookieless so far — your IG login is not used`;
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
+    // (dev0683) What this batch was handed, and what state those rows were in. If a
+    // grind stops at "batch downloaded 0", this line says whether the batch was 18
+    // fresh rows or the same 2 unreadable ones it choked on last time.
+    diag('BATCH-START', {
+      label, ids: ids.length, todo: total, wallCap: isDl ? DOWNLOAD_WALL_CAP : WALL_CAP,
+      first: ids.slice(0, 6).map(id => { const r = rowById(id); return r ? r.id + ':' + (r.status || '?') + ':' + kindOf(r) : id + ':gone'; })
+    });
     for (const id of ids) {
       if (batchAbort) break;
       // (dev0658) VPN kill-switch: in a VPN-committed grind (Download+rotate /
@@ -1521,24 +1761,41 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       lastOpError = ''; lastOpInfo = '';
       processingId = r.id; renderBody();   // (dev0445) highlight the row being worked on
       igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
+      // (dev0683) marks BEFORE the attempt — half of the "was this row marked so it
+      // could never download?" answer; the other half is logged right after.
+      const _marks0 = diagMarks(r);
+      const _rowT0 = Date.now();
       let good = await doOne(r);
       // (dev0645) Single in-item retry for DOWNLOADS. The cookieless photo-carousel walker
       // is easily but usually transiently IG-throttled; a short pause + one retry clears
       // most first-attempt blocks so a lone throttled item never aborts the run. Skipped
       // if the failure is a hard rate-limit (429) — retrying that just hammers IG.
       if (!good && isDl && !batchAbort && !isThrottle(lastOpError)) {
+        diag('row-retry', { id: r.id, after: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 140) });
         const rg = rnd(DOWNLOAD_RETRY_MS[0], DOWNLOAD_RETRY_MS[1]);
         igBatchUpdate(`${label} ${r.id} — retrying in ${(rg / 1000).toFixed(0)}s (transient block?)\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}`);
         await sleep(rg);
         if (!batchAbort) { lastOpError = ''; lastOpInfo = ''; good = await doOne(r); }
       }
       if (good) {
+        // (dev0683) verdict + the row's marks before/after the attempt.
+        diag('row-ok', { id: r.id, n: `${done}/${total}`, ms: Date.now() - _rowT0,
+          was: _marks0, now: diagMarks(r), cookies: lastOpInfo === 'Firefox cookies used' ? 1 : 0 });
         ok++;
         consecFail = 0;                       // (dev0645) success breaks the failure streak
         if (lastOpInfo === 'Firefox cookies used') cookieUsed++;
         igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}`);
         if (cookieUsed >= COOKIE_CAP) cookieStopped = true;   // (dev0444) account-safety cap hit
       } else {
+        // (dev0683) The failing verdict, with the raw error text the wall/throttle
+        // tests actually saw — those tests have silently drifted out of date three
+        // times (dev0442/0470/0501), so record their input, not just their answer.
+        diag('ROW-FAIL', { id: r.id, n: `${done}/${total}`, ms: Date.now() - _rowT0,
+          kind: kindOf(r), was: _marks0, now: diagMarks(r),
+          wall: isWall(lastOpError) ? 1 : 0, throttle: isThrottle(lastOpError) ? 1 : 0,
+          net: /failed to fetch|networkerror|load failed/i.test(lastOpError || '') ? 1 : 0,
+          consecFailWillBe: isDl ? consecFail + 1 : undefined,
+          err: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 300) });
         // (dev0457) Attempted but couldn't be read — count it so the end report's
         // numbers close (marked = cookieless + cookie + couldn't-read + not-reached).
         // These are login-walled posts that failed BOTH cookieless and the Firefox-
@@ -1561,6 +1818,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (throttled || cookieStopped || walledStopped) break;
     }
     processingId = null; busy = false; setBatchUi(false); igBatchHide();
+    // (dev0683) Exactly which guard ended this batch. "batch downloaded 0" has five
+    // different causes and the end report collapses them; this does not.
+    diag('BATCH-END', {
+      label, ok, fail, done, total, secs: Math.round((Date.now() - t0) / 1000),
+      stop: throttled ? 'THROTTLE' : cookieStopped ? 'COOKIE-CAP'
+          : walledStopped ? (isDl ? `WALL-${DOWNLOAD_WALL_CAP}-IN-A-ROW` : 'FIRST-WALL')
+          : vpnDropAbort ? 'VPN-DROP' : batchAbort ? 'USER-STOP'
+          : done < total ? 'INCOMPLETE' : 'ran-out',
+      consecFail, lastErr: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 200)
+    });
     if (ok) { dirty = true; await persist(false); }
     applyAndRender();
 
@@ -1864,12 +2131,20 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         : '🍪 cookieless — your IG login is never used\nmax res — can take a bit'), 12000);
       // (dev0675) Ask the proxy to stamp the official-embed verdict on the way back —
       // but ONLY for a row that has none yet, so a re-download never re-probes IG.
+      const _dlT0 = Date.now();
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly,
           probeEmbed: r.embed !== 0 && r.embed !== 1 })
       });
       const j = await res.json();
+      // (dev0683) The proxy's own verdict for this row, timed. A download that takes
+      // minutes and then fails is a different disease from one that fails in 2s.
+      diag('dl-reply', { id: r.id, http: res.status, ms: Date.now() - _dlT0,
+        ok: j && j.ok ? 1 : 0, files: (j && j.files || []).length,
+        via: j ? ['viaEmbed', 'viaCover', 'viaMainVideo', 'viaMainCarousel', 'viaGalleryDl'].filter(k => j[k]).join('+') : '',
+        embed: j && (j.embed === 0 || j.embed === 1) ? j.embed : (j && j.embedProbe) || '',
+        err: (j && j.error || '').replace(/\s+/g, ' ').slice(0, 200) });
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       // (dev0660) A success carrying ZERO files is a FALSE success — never mark the row
       // downloaded on it. The old code stamped status='downloaded' with an empty localFiles
@@ -1962,6 +2237,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       return true;
     } catch (e) {
       lastOpError = (e && e.message) || '';
+      // (dev0683) A bare "Failed to fetch" here means the PROXY didn't answer — the
+      // run then counts it as an Instagram failure and can stop the whole grind on
+      // it. Confirm which world we're in, for the record only; nothing branches.
+      if (/failed to fetch|networkerror|load failed|refused/i.test(lastOpError)) {
+        diag('DL-NETWORK-ERROR', { id: r.id, err: lastOpError, proxy: await diagProxyAlive() });
+      }
       if (single) igToast('✗ download ' + r.id + ': ' + lastOpError, 3500);
       return false;
     }
@@ -2061,6 +2342,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
     }
     rotatingActive = true;             // (dev0658) arm the VPN kill-switch for this grind
+    // (dev0683) The grind's opening state: how many rows it believes are grindable,
+    // under which filters, and what the first rows in view order are. `readyIds()`
+    // re-derives from `view` EVERY round, so if the head of the view is a row that
+    // can never download, every round hands it back — that is visible from here on.
+    diag('GRIND-START', {
+      ready: todo.length, chunk: ROTATE_CHUNK, exit: (vpnStatus && (vpnStatus.server || vpnStatus.ip)) || 'none',
+      filters: { author: authorFilter, status: statusFilter, kind: kindFilter, staged: stagedFilter, embed: embedFilter, refetch: refetchFilter, hideCompleted: hideCompleted ? 1 : 0, q: query || '' },
+      sort: sortCol + (sortDir < 0 ? '↓' : '↑'), view: view.length, coverOnly: coverOnly ? 1 : 0,
+      head: todo.slice(0, 8).map(id => { const r = rowById(id); return r.id + ':' + r.status + ':' + kindOf(r) + ':' + (r.VidTitle ? 'T' : '-'); })
+    });
     while (!batchAbort) {
       todo = readyIds();
       if (!todo.length) { endMsg = `✓ Done — no more downloadable rows in this view.`; break; }
@@ -2071,6 +2362,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const okThis = await runBatch(`Downloading (batch ${batches})`, chunk, DOWNLOAD_GAP,
         r => downloadRow(r, false), isDownloaded, '🍪 cookieless — your IG login is never used');
       totalOk += okThis;
+      // (dev0683) Round-level view: did the backlog actually shrink? A round that
+      // downloads nothing while `remaining` stays put is the same rows coming back.
+      diag('grind-round', { batch: batches, ok: okThis, totalOk,
+        remaining: readyIds().length, elapsed: elapsed(),
+        abort: batchAbort ? 1 : 0, vpnDrop: vpnDropAbort ? 1 : 0 });
       igStickyHide();                 // suppress runBatch's per-chunk report — we toast instead
       if (batchAbort) { endMsg = vpnDropAbort
         ? `🛑 VPN tunnel dropped — stopped. ${totalOk} downloaded, all through a VPN. Nothing ran on your home IP.`
@@ -2101,11 +2397,21 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     busy = false; setBatchUi(false); igBatchHide();
     await vpnRefresh(false);
     const exit = vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
+    // (dev0683) The end of the story, next to the proxy's verdict at the same moment.
+    // Whatever the report says, `proxy` here is the ground truth about the proxy.
+    diag('GRIND-END', {
+      totalOk, batches, switches, elapsed: elapsed(), exit,
+      leftInView: view.filter(isReady).length,
+      proxy: await diagProxyAlive(),
+      msg: (endMsg || '').replace(/\s+/g, ' ').slice(0, 200)
+    });
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
       + `\n\nTOTAL: ${totalOk} downloaded in ${elapsed()}`
       + (totalOk ? `  (${fmtDur(((Date.now() - t0) / 1000) / totalOk)} each)` : '')
-      + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`);
+      + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
+      // (dev0683) Point at the evidence while the run is still fresh.
+      + `\n\n🩺 Every step of this run was recorded — 🛠 Fix ▸ 🩺 Diagnostics (and proxy.log).`);
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
@@ -2412,12 +2718,29 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
   // ── Persist back to ig.json (proxy /ig/save) ────────────────────────────────
   async function persist(announce) {
+    // (dev0683) MEASURE THE SAVE — diagnostics only, same request as before. Every
+    // batch of 18 downloads ends here, and ig.json is ~49MB: this stringify blocks
+    // the browser, the POST ships 49MB over loopback, and the proxy then reads +
+    // copies + rewrites the same 49MB (see its /ig/save line). If a long grind is
+    // dying of memory or I/O rather than of Instagram, the trend lives in these
+    // numbers — they are the reason a grind gets slower the longer it runs.
+    const _t0 = Date.now();
+    let _body = '', _strMs = 0;
     try {
+      _body = JSON.stringify({ rows, knownIds: [...knownIds] });
+      _strMs = Date.now() - _t0;
       const res = await fetch(PROXY + '/ig/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, knownIds: [...knownIds] })
+        body: _body
       });
       const j = await res.json();
+      diag('save', {
+        MB: (_body.length / 1048576).toFixed(1), rows: rows.length,
+        stringifyMs: _strMs, totalMs: Date.now() - _t0,
+        ok: j && j.ok ? 1 : 0, rescued: (j && j.rescued) || 0,
+        mem: (performance && performance.memory)
+          ? Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB' : ''
+      });
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       dirty = false;
       updateCount();
@@ -2438,6 +2761,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // proxy's 16 MB body-cap rejection: enrich looked done on screen but nothing was
       // written, and edits vanished on the next reload. dirty stays true (only set
       // false on success) so the header keeps its ⚠ unsaved flag.
+      // (dev0683) A save that fails mid-grind is one of the ways the run "dies" —
+      // and if the cause is the proxy, this is often the FIRST place it shows.
+      diag('SAVE-FAILED', {
+        MB: (_body.length / 1048576).toFixed(1), rows: rows.length,
+        stringifyMs: _strMs, totalMs: Date.now() - _t0, err: (e && e.message) || '',
+        proxy: await diagProxyAlive()
+      });
       igToast('✗ ig.json SAVE FAILED — edits NOT written to disk!\n' + (e && e.message)
         + '\nRestart proxy.js (dev0529+) & click 💾 Save. Do not reload/leave first.', 6500);
       return false;
@@ -2684,6 +3014,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     document.getElementById('igOverlay').classList.add('open');
     loadData();
     vpnRefresh(false); vpnStartPoll();   // (dev0649) show the current Proton exit + keep it live
+    // (dev0683) Mark the session boundary in the black box, and make sure the last
+    // few buffered events survive a tab close / reload / crash. `pagehide` fires in
+    // cases `beforeunload` does not, so both are wired, once.
+    diag('screen-open', { ua: navigator.userAgent.slice(0, 60), href: location.host + location.pathname });
+    if (!window._igDiagUnload) {
+      window._igDiagUnload = true;
+      const bye = () => { try { diagFlush(); diagMirrorSend(); } catch (_) {} };
+      window.addEventListener('pagehide', bye);
+      window.addEventListener('beforeunload', bye);
+    }
     // (dev0438) Come up UNFOCUSED so bare-letter hotkeys (f/F/c/…) work right
     // away; press f to jump into the filter box, Shift+F to clear it.
   }
