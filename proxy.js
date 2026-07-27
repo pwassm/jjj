@@ -58,6 +58,32 @@ function plog(line) {
     fs.appendFileSync(LOG_FILE, `${ts}  pid${process.pid}  ${line}\n`);
   } catch (_) {}
 }
+// (dev0680) Turn a JSON response body into one short verdict for proxy.log. Only the
+// fields that ever explain a failure — an IG row that "failed" is always one of:
+// ok:false + error, a wall, a zero-file download, or a yt-dlp stderr line.
+function summarizeBody(body) {
+  if (!body || body[0] !== '{') return '';
+  let j; try { j = JSON.parse(body); } catch (_) { return ''; }
+  const bits = [];
+  const cut = (s, n) => String(s).replace(/\s+/g, ' ').trim().slice(0, n || 200);
+  if (j.ok === false) bits.push('FAILED');
+  if (j.wall) bits.push('WALL');
+  if (j.error) bits.push('error=' + cut(j.error));
+  if (j.stderr) bits.push('stderr=' + cut(j.stderr));
+  if (Array.isArray(j.files)) bits.push('files=' + j.files.length + (j.files[0] ? ' first="' + cut(j.files[0], 90) + '"' : ''));
+  if (j.result) bits.push('meta title="' + cut(j.result.title, 60) + '" ' + (j.result.width || '?') + 'x' + (j.result.height || '?')
+                        + (j.result.upload_date ? ' d=' + j.result.upload_date : ''));
+  if (j.viaEmbed) bits.push('viaEmbed');
+  if (j.viaCover) bits.push('viaCover');
+  if (j.viaMainVideo) bits.push('viaMainVideo');
+  if (j.viaMainCarousel) bits.push('viaMainCarousel');
+  if (j.usedCookies) bits.push('COOKIES');
+  if (j.embedProbe) bits.push('embed=' + (j.embed === 1 ? '1' : j.embed === 0 ? '0' : '?') + '/' + j.embedProbe);
+  if (typeof j.switched === 'boolean') bits.push('switched=' + j.switched + (j.waitedMs ? ' waited=' + Math.round(j.waitedMs / 1000) + 's' : ''));
+  if (typeof j.tunnelUp === 'boolean') bits.push('tunnelUp=' + j.tunnelUp + (j.server ? ' ' + j.server : ''));
+  return bits.length ? '  · ' + bits.join(' · ') : '';
+}
+
 function memLine() {
   const m = process.memoryUsage();
   const mb = b => Math.round(b / 1048576);
@@ -192,7 +218,7 @@ const PORT = 8081;
 //   gone; /vpn/switch waits 130s (was 40s — shorter than vpn-rotate.ps1's own
 //   ~90s worst case, so it could answer mid-rotation and let the script tear the
 //   tunnel down under a running batch) and reports `switched` + `waitedMs` honestly.
-const PROXY_BUILD = 'dev0679';
+const PROXY_BUILD = 'dev0680';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2962,12 +2988,23 @@ http.createServer((req, res) => {
   // duration — so the log's last entry names the exact request the proxy was
   // serving when it stopped, and a request that never finished shows as an "in"
   // with no matching "done".
-  if (req.method !== 'OPTIONS' && /^\/(ig|vpn|fix|exec|rec)\//.test(req.url)) {
+  // /fix/log is the client WRITING to this log — trace it and every line appears twice.
+  if (req.method !== 'OPTIONS' && /^\/(ig|vpn|fix|exec|rec)\//.test(req.url) && !req.url.startsWith('/fix/log')) {
     LOG_REQS++;
     const rt0 = Date.now();
     const tag = `${req.method} ${req.url.split('?')[0]}`;
     plog(`→ ${tag}`);
-    res.on('finish', () => plog(`← ${tag} ${res.statusCode} ${Date.now() - rt0}ms`));
+    // (dev0680) Record the VERDICT, not just the status code. "200 6669ms" told us a
+    // row failed but not why — every enrich/download answers 200 and puts the real
+    // outcome (ok:false, wall, "no files landed", the yt-dlp stderr) in the JSON body.
+    // Capturing it here covers every endpoint and every exit path with one hook.
+    let body = '';
+    const _end = res.end.bind(res);
+    res.end = function (chunk) {
+      try { if (chunk && body.length < 65536) body += chunk.toString('utf8'); } catch (_) {}
+      return _end.apply(res, arguments);
+    };
+    res.on('finish', () => plog(`← ${tag} ${res.statusCode} ${Date.now() - rt0}ms${summarizeBody(body)}`));
     res.on('close', () => { if (!res.writableEnded) plog(`✗ ${tag} client-aborted ${Date.now() - rt0}ms`); });
   }
 
@@ -3070,6 +3107,18 @@ http.createServer((req, res) => {
     if (action === 'harden-vpn')    { fixHardenVpn(res, origin);    return; }
     if (action === 'unstick-vpn')   { fixUnstickVpn(res, origin);   return; }
     if (action === 'kill-downloads') { sendJson(res, 200, { ok: true, killed: killActiveDownloads() }, origin); return; }
+    // (dev0680) POST /fix/log — the I screen writes its side of the story into the
+    // SAME black box. Without this, half the evidence lives only on the user's screen:
+    // proxy.log could show "/exec/ytdlp 200" while the client called that row a failure,
+    // and nobody could see the error text that decided it. Now both sides interleave in
+    // one file, in order, with timestamps.
+    if (action === 'log') {
+      readJson(req, 8 * 1024).then(p => {
+        plog('client: ' + String(p && p.msg || '').replace(/\s+/g, ' ').slice(0, 600));
+        sendJson(res, 200, { ok: true }, origin);
+      }).catch(() => sendJson(res, 400, { ok: false }, origin));
+      return;
+    }
     sendJson(res, 404, { ok: false, error: 'unknown fix action: ' + action }, origin);
     return;
   }

@@ -499,6 +499,20 @@
     try { await fetch(PROXY + '/fix/kill-downloads', { method: 'POST' }); } catch (_) {}
   }
 
+  // (dev0680) Write one line into the proxy's black box (proxy.log). Fire-and-forget:
+  // never awaited, never toasts, never throws — a logging call must not be able to
+  // affect a grind. This exists because dev0679's log could show "/exec/ytdlp → 200"
+  // while the client had already called that row a failure, and the error text that
+  // decided it lived only on screen. Both sides now land in one file, in order.
+  function igLog(msg) {
+    try {
+      fetch(PROXY + '/fix/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg: String(msg).slice(0, 600) })
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
   // (dev0679) Browser-level "the request never got anywhere" errors. Chrome says
   // "Failed to fetch", Firefox "NetworkError when attempting to fetch resource",
   // Safari "Load failed" — none of which mean IG, or the VPN, said no.
@@ -589,6 +603,9 @@
     // which it was so the caller's message can name the real problem.
     if (!reached) proxyDown = !(await proxyAlive());
     else          proxyDown = false;
+    igLog(`vpn/switch → ${out ? ('tunnelUp=' + out.tunnelUp + ' switched=' + out.switched + ' ' + (out.server || out.ip || '?')
+                                 + (out.waitedMs ? ' waited=' + Math.round(out.waitedMs / 1000) + 's' : ''))
+                            : ('NO ANSWER · proxyDown=' + proxyDown)}`);
     // (dev0679) The proxy now answers `switched:false` when its own wait for
     // vpn-rotate.ps1 timed out. Surface that instead of silently counting a
     // rotation that was never confirmed.
@@ -1607,6 +1624,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       ? `🍪 Firefox cookies used on ${cookieUsed} so far`
       : `🍪 cookieless so far — your IG login is not used`;
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
+    igLog(`BATCH START "${label}" rows=${total}/${ids.length} exit=${(vpnStatus && (vpnStatus.server || vpnStatus.ip)) || '?'}`
+      + ` tunnelUp=${vpnStatus ? vpnStatus.tunnelUp : '?'} rotating=${rotatingActive} auto=${autoRunning}`);
     for (const id of ids) {
       if (batchAbort) break;
       // (dev0658) VPN kill-switch: in a VPN-committed grind (Download+rotate /
@@ -1665,6 +1684,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // These are login-walled posts that failed BOTH cookieless and the Firefox-
         // cookie retry; order/pacing can't change that (see igStickyShow report).
         fail++;
+        // (dev0680) THE line that was missing. This error string is what decides the
+        // whole run's fate (retry / wall-stop / keep going) and it only ever existed on
+        // screen — so a failed grind could not be explained after the fact.
+        igLog(`row FAIL ${r.id} (${r.status || '?'}, ${kindOf(r) === 'p' ? 'photo' : 'reel'}) `
+          + `consecFail=${consecFail + 1}/${DOWNLOAD_WALL_CAP} err="${lastOpError || '(none)'}" `
+          + `wall=${isWall(lastOpError)} throttle=${isThrottle(lastOpError)} net=${isNetErr(lastOpError)} url=${r.url || ''}`);
         if (isThrottle(lastOpError)) throttled = true;
         // (dev0458) Stop at the first login-walled result (cookie-conservative).
         // (dev0645) DOWNLOADS now stop only after DOWNLOAD_WALL_CAP failures IN A ROW (a
@@ -1709,6 +1734,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
                : batchAbort    ? `⏹ ${label} stopped by you`
                : couldntRead   ? `✓ ${label} done — ${ok}/${total} ${isDl ? 'downloaded' : 'read'}`
                :                 `✓ ${label} complete`;
+    // (dev0680) Why the batch ended, in the black box, next to the row failures that
+    // caused it — so "it stopped on the first attempt" is answerable from the log alone.
+    igLog(`BATCH END "${label}" ok=${ok} fail=${fail} of ${total} in ${Math.round((Date.now() - t0) / 1000)}s · stop=`
+      + (throttled ? 'RATE-LIMIT' : cookieStopped ? 'COOKIE-CAP' : walledStopped ? (isDl ? 'WALL/2-STRIKE' : 'WALL')
+         : proxyDownAbort ? 'PROXY-DOWN' : vpnDropAbort ? 'VPN-DROP' : batchAbort ? 'USER-STOP' : 'finished'));
     const lines = [
       head,
       ``,
@@ -2206,6 +2236,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
     }
     rotatingActive = true;             // (dev0658) arm the VPN kill-switch for this grind
+    igLog(`GRIND START Download+rotate · ${todo.length} ready · chunk=${ROTATE_CHUNK} · exit=`
+      + `${(vpnStatus && (vpnStatus.server || vpnStatus.ip)) || '?'} · authors=${authLine}`);
     while (!batchAbort) {
       todo = readyIds();
       if (!todo.length) { endMsg = `✓ Done — no more downloadable rows in this view.`; break; }
@@ -2287,6 +2319,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // the proxy couldn't be asked. Distinguish "unknown" from "really down".
     const exit = proxyDown ? 'unknown — the proxy is down, the VPN was never asked'
                : vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
+    igLog(`GRIND END ${totalOk} downloaded · ${batches} batches · ${switches} switches · ${elapsed()} · `
+      + `exit=${exit} · ${(endMsg || 'finished').split('\n')[0]}`);
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
       + `\n\nTOTAL: ${totalOk} downloaded in ${elapsed()}`
