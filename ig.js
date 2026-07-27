@@ -1904,7 +1904,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         if (single) igToast('⚠ ' + r.id + ': low-res EMBED fallback (first image only) — re-download later for full res', 4200);
       } else {
         if (r.lowResDl) delete r.lowResDl;          // a later full-res download clears the flag
-        if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl) fallbackIds.add(r.id);
+        // (dev0678) viaCover = the main /p/ page's index-1 cover. Since dev0677 that is
+        // the FULL-RES original, so it counts as a fallback PATH, not a loss of quality.
+        if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl || j.viaCover) fallbackIds.add(r.id);
       }
       // (dev0677) The re-fetch queue drains itself: a row marked needsFullRes clears the
       // mark as soon as a download lands, and keeps `prevFiles` (the superseded low-res
@@ -1951,7 +1953,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           + (j.embed === 1 ? '\n▶ embeddable ✓ — IG’s official iframe will play it'
              : (j.embed === 0 ? '\n▶ not embeddable ✗ — official iframe shows poster only'
                 : (j.embedProbe ? '\n▶ embed verdict: none (' + j.embedProbe + ') — left unstamped' : '')))
-          + (j.viaEmbed ? '\n📐 via embed page — first image only' : '')
+          + (j.viaEmbed ? '\n📐 via embed page — first image only (thumbnail)' : '')
+          + (j.viaCover ? '\n🖼 index-1 cover at full resolution (main /p/ page)' : '')
           + (j.viaMainVideo ? '\n🎞 reel via cookieless /p/ page (yt-dlp was walled)' : '')
           + (j.viaMainCarousel ? '\n🖼 full carousel via cookieless /p/ page (no cookies)' : '')
           + '\n' + fileLine, 3800);

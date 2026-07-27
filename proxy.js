@@ -136,7 +136,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-const PROXY_BUILD = 'dev0677';
+const PROXY_BUILD = 'dev0678';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1037,6 +1037,12 @@ function igDownloadImageNode(fileUrl, destPath, referer, hops, accept) {
 // NNN.<ext> autonumber scheme igDownload()'s publish() expects. Resolves the list of
 // files written (empty → caller proceeds to its normal wall/cookie handling). Skips
 // reels entirely (no extra IG request) so a walled reel never yields a poster image.
+// (dev0678) The resolved array is TAGGED with `.source`: 'main' = the logged-out /p/
+// page's cover, which since the dev0677 picker fix is the FULL-RES original, versus
+// 'embed' = the embed page's picture, which really is a first-image-only thumbnail.
+// The two used to be reported identically as `viaEmbed`, so every full-res cover was
+// labelled a "low-res fallback" and got the ⚠ marker (1,818 rows wore a false ⚠ after
+// the dev0677 re-fetch, all of them ≥1080). Callers must keep the distinction.
 function igEmbedImageFallback(url, id, tmpDir) {
   return new Promise(resolve => {
     const m = IG_SHORTCODE_RE.exec(url || '');
@@ -1052,7 +1058,7 @@ function igEmbedImageFallback(url, id, tmpDir) {
       try { const e = path.extname(new URL(coverUrl).pathname); if (/^\.(jpe?g|png|webp)$/i.test(e)) ext = e; } catch (_) {}
       const dest = path.join(tmpDir, '001' + ext);
       igDownloadImage(coverUrl, dest, permalink).then(ok => {
-        if (ok) { resolve([dest]); return; }
+        if (ok) { const out = [dest]; out.source = 'main'; resolve(out); return; }   // (dev0678) full-res
         try { fs.unlinkSync(dest); } catch (_) {}
         embedImages();
       });
@@ -1088,7 +1094,7 @@ function igEmbedImageFallback(url, id, tmpDir) {
       const written = [];
       let i = 0;
       const next = () => {
-        if (i >= imgs.length) { resolve(written); return; }
+        if (i >= imgs.length) { written.source = 'embed'; resolve(written); return; }   // (dev0678)
         const idx = i++, iu = imgs[idx];
         let ext = '.jpg';
         try { const e = path.extname(new URL(iu).pathname); if (/^\.(jpe?g|png|webp)$/i.test(e)) ext = e; } catch (_) {}
@@ -2500,9 +2506,16 @@ function igDownload(req, res, origin) {
       wipeTmp();
       igEmbedImageFallback(url, id, tmpDir).then(emImgs => {
         if (emImgs.length && tmpFiles().length) {
-          console.log('[ig/download] ' + id + ' last-resort cookieless embed image (gallery-dl got nothing too)');
-          sendDl({ ok: true, files: publish(), viaEmbed: true, usedCookies: false,
-            note: 'via embed — first image only (gallery-dl got nothing; re-run later for the full carousel)' });
+          // (dev0678) Only the genuine embed-page picture is the low-res "first image
+          // only" case; the main /p/ cover is the full-res original (dev0677).
+          const viaMainCover = emImgs.source === 'main';
+          console.log('[ig/download] ' + id + (viaMainCover
+            ? ' cookieless full-res cover off the main /p/ page'
+            : ' last-resort cookieless EMBED image (thumbnail)'));
+          sendDl({ ok: true, files: publish(), viaEmbed: !viaMainCover, viaCover: viaMainCover, usedCookies: false,
+            note: viaMainCover
+              ? 'index-1 cover at full resolution, cookieless (main /p/ page)'
+              : 'via embed — first image only (re-run later for the full carousel)' });
         } else { fail502(err); }
       });
     }
@@ -2530,9 +2543,11 @@ function igDownload(req, res, origin) {
       igEmbedImageFallback(url, id, tmpDir).then(imgs => {
         if (imgs.length && tmpFiles().length) {
           coverWebpToJpg(tmpDir).then(() => {     // (dev0513) webp cover → real .jpg
-            console.log('[ig/download] ' + id + ' cover-only (cookieless index-1)');
-            sendDl({ ok: true, files: publish(), viaEmbed: true, usedCookies: false, coverOnly: true,
-              note: 'cover only — index-1 image, cookieless (main /p/ page)' });
+            const viaMainCover = imgs.source === 'main';   // (dev0678) full-res vs embed thumb
+            console.log('[ig/download] ' + id + ' cover-only (cookieless index-1, ' + (viaMainCover ? 'full-res main page' : 'embed thumbnail') + ')');
+            sendDl({ ok: true, files: publish(), viaEmbed: !viaMainCover, viaCover: viaMainCover,
+              usedCookies: false, coverOnly: true,
+              note: 'cover only — index-1 image, cookieless (' + (viaMainCover ? 'main /p/ page, full res' : 'embed page thumbnail') + ')' });
           });
         } else { fail502('cover-only: no cookieless image found (is this a photo /p post?)'); }
       });
