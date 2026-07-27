@@ -197,7 +197,10 @@ const PORT = 8081;
 //   winning path + error tail on /ig/download, tunnelUp on /vpn/status, and
 //   POST /diag/log so the I screen's own events land in the same file. No behaviour
 //   changed — every route answers exactly as it did in dev0682.
-const PROXY_BUILD = 'dev0683';
+// (dev0684) START now reports the V8 heap cap and flags a previous run that ended
+//   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
+//   to proxy.err.log so a fatal message outlives the console window.
+const PROXY_BUILD = 'dev0684';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -3304,7 +3307,25 @@ http.createServer((req, res) => {
   // pulse is what dates a silent death (last heartbeat = last moment it was alive)
   // and what shows memory climbing across a long grind. In-process only — it spawns
   // nothing, opens no window, and touches nothing but proxy.log.
-  plog(`START build=${PROXY_BUILD} node=${process.version} cwd=${__dirname} · ${memLine()}`);
+  // (dev0684) Did the LAST run end properly? Every clean shutdown writes an "exit
+  // code=" line, so if the previous tail is anything else, the process was killed
+  // hard (TerminateProcess / End task) or aborted — no signal handler, no exit
+  // handler, no Windows crash report. That is exactly what happened at 15:47:29 on
+  // 2026-07-27, mid-/ig/download, 2h07 into a 510-item grind. Say so at the top of
+  // the next run so the pattern is impossible to miss.
+  try {
+    const prev = fs.readFileSync(LOG_FILE, 'utf8').trimEnd().split('\n');
+    const tail = prev[prev.length - 1] || '';
+    if (tail && !/exit code=/.test(tail)) {
+      plog('⚠ PREVIOUS RUN DID NOT EXIT CLEANLY — its last line was:');
+      plog('⚠   ' + tail.slice(0, 300));
+      plog('⚠   (no signal + no exit line = killed hard or aborted; check proxy.err.log'
+         + ' for a fatal message, and whether the "SLAM proxy :8081" window is still open)');
+    }
+  } catch (_) {}
+  let heapCap = '?';
+  try { heapCap = Math.round(require('v8').getHeapStatistics().heap_size_limit / 1048576) + 'MB'; } catch (_) {}
+  plog(`START build=${PROXY_BUILD} node=${process.version} heapCap=${heapCap} cwd=${__dirname} · ${memLine()}`);
   console.log(`  black box:       ${LOG_FILE} (dev0683 — start/requests/60s heartbeat/exit)`);
   setInterval(() => {
     plog(`heartbeat uptime=${Math.round(process.uptime())}s reqs+${LOG_REQS} · ${memLine()}`);

@@ -495,7 +495,14 @@
     const s = document.createElement('style');
     s.id = 'igFixCss';
     s.textContent =
-      '#igFixPanel{position:fixed;top:46px;left:12px;z-index:70;width:326px;background:#0c0f14;' +
+      // (dev0684) z-index 70 → 40010, and the panel now mounts INSIDE #igOverlay.
+      // #igOverlay is a full-screen opaque stacking context at z-index 29500, so a
+      // body-level panel at 70 was painted BEHIND it: clicking 🛠 Fix built the
+      // panel, appended it, wired it up — and nothing appeared. That has been true
+      // since dev0657, and it hid the recovery tools exactly when the proxy dies
+      // and they are needed. igToast/igSticky already mount inside the overlay
+      // (40000-40002); these sit just above them.
+      '#igFixPanel{position:fixed;top:46px;left:12px;z-index:40010;width:326px;background:#0c0f14;' +
       'border:1px solid #34404f;border-radius:10px;box-shadow:0 14px 38px rgba(0,0,0,.6);padding:10px;font-size:13px;color:#cfe}' +
       '#igFixPanel .fhdr{display:flex;align-items:center;justify-content:space-between;font-weight:700;color:#9ad;margin-bottom:8px}' +
       '#igFixPanel .fhdr .fx{background:none;border:none;color:#9aa7b4;font-size:18px;cursor:pointer;padding:0 4px;line-height:1}' +
@@ -523,7 +530,7 @@
       '<button id="fixUnstick" class="frow">🔓 Unstick VPN task<small>clears a jammed rotation so switching works again</small></button>' +
       '<button id="fixBringUp" class="frow">🔀 Bring VPN up<small>switch until a US exit actually routes</small></button>'
       + '<button id="fixDiag" class="frow">🩺 Diagnostics<small>(dev0683) what the last grind actually did — every row, batch, VPN check and save, kept in this browser so it survives the proxy dying</small></button>';
-    document.body.appendChild(p);
+    (document.getElementById('igOverlay') || document.body).appendChild(p);   // (dev0684) see the CSS note
     fixPanelEl = p;
     const q = id => p.querySelector('#' + id);
     q('fixClose').onclick   = () => { p.remove(); fixPanelEl = null; };
@@ -568,7 +575,9 @@
     document.getElementById('igDiagPanel')?.remove();
     const d = document.createElement('div');
     d.id = 'igDiagPanel';
-    d.style.cssText = 'position:fixed;inset:5% 6%;z-index:80;background:#0c0f14;border:1px solid #34404f;'
+    // (dev0684) Same mount + z-index rule as #igFixPanel — this panel was born with
+    // the same defect (body-level, z-index 80, invisible behind #igOverlay).
+    d.style.cssText = 'position:fixed;inset:5% 6%;z-index:40011;background:#0c0f14;border:1px solid #34404f;'
       + 'border-radius:10px;box-shadow:0 18px 46px rgba(0,0,0,.7);padding:12px;display:flex;flex-direction:column;color:#cfe;font-size:13px';
     d.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
@@ -579,7 +588,7 @@
       + '<button id="dgClear">Clear</button><button id="dgClose">×</button></div>'
       + '<pre id="dgSum" style="white-space:pre-wrap;background:#141b24;border:1px solid #22303c;border-radius:6px;padding:8px;margin:0 0 8px;color:#bfe"></pre>'
       + '<pre id="dgBody" style="flex:1;overflow:auto;white-space:pre-wrap;background:#0a0d12;border:1px solid #22303c;border-radius:6px;padding:8px;margin:0;font-size:11.5px;line-height:1.45"></pre>';
-    document.body.appendChild(d);
+    (document.getElementById('igOverlay') || document.body).appendChild(d);   // (dev0684)
     d.querySelectorAll('button').forEach(b => { b.style.cssText = 'background:#1f2733;border:1px solid #34404f;color:#e8f0f7;border-radius:6px;padding:4px 9px;cursor:pointer'; });
     const text = () => diagSummary() + '\n\n' + diagDump();
     d.querySelector('#dgSum').textContent = diagSummary();

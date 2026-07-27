@@ -36,7 +36,14 @@ if ($n -ge 20) {
 }
 
 # 2) Launch the proxy in its OWN titled window (keeps running after this closes).
-Start-Process cmd -ArgumentList '/k', 'title SLAM proxy :8081 && node proxy.js' -WorkingDirectory 'M:\jjj'
+#    (dev0684) stderr is APPENDED to proxy.err.log. It used to go only to this window,
+#    and the window dies with the process - so when node was killed/aborted mid-grind
+#    on 2026-07-27 its last words were unrecoverable: proxy.log stopped mid-request
+#    with no signal and no exit line, and Windows logged no crash. A V8 fatal error
+#    ("FATAL ERROR: ... heap out of memory", an abort, a native crash) prints on
+#    stderr, so from now on it lands in a file. stdout stays in the window, so the
+#    startup banner and the [ig/download] chatter are unchanged.
+Start-Process cmd -ArgumentList '/k', 'title SLAM proxy :8081 && node proxy.js 2>> proxy.err.log' -WorkingDirectory 'M:\jjj'
 
 # 3) Verify: does the LIVE build match proxy.js on disk? (polls up to ~25s while node boots)
 #    MUST poll 127.0.0.1, NOT localhost: proxy.js binds .listen(PORT,'127.0.0.1') (IPv4-only,
