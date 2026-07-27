@@ -62,6 +62,7 @@
   let busy = false;                    // a batch op is running
   let batchAbort = false;              // user pressed Stop during a batch
   let vpnDropAbort = false;            // (dev0658) VPN kill-switch tripped (tunnel dropped mid-grind)
+  let proxyDownAbort = false;          // (dev0679) the PROXY stopped answering — not a VPN failure
   let rotatingActive = false;          // (dev0658) a VPN-committed Download+rotate grind is running
   let vpnDownStreak = 0;               // (dev0661) consecutive tunnel-down poll reads (kill-switch debounce)
   let lastOpError = '';                // last enrich/download error (for throttle detection)
@@ -298,6 +299,7 @@
   let vpnStatus = null;          // last { tunnelUp, server, ip, city, country, at }
   let vpnPollTimer = null;
   let vpnBusy = false;           // a switch is in flight → pill shows a pulse
+  let proxyDown = false;         // (dev0679) the proxy on :8081 isn't answering (NOT a VPN fault)
 
   function vpnRenderPill() {
     const el = document.getElementById('igVpn');
@@ -305,6 +307,15 @@
     const dot = el.querySelector('.dot'), txt = el.querySelector('.txt');
     el.classList.toggle('busy', vpnBusy);
     if (vpnBusy) { el.classList.remove('up', 'down'); txt.textContent = 'VPN switching…'; return; }
+    // (dev0679) Say PROXY DOWN, not "VPN ?" — the pill was the first place the old
+    // code turned a dead proxy into a VPN question.
+    if (proxyDown) {
+      el.classList.remove('up'); el.classList.add('down');
+      txt.textContent = '⛔ proxy down';
+      el.title = 'The proxy on 127.0.0.1:8081 is not answering — this is NOT a VPN problem.\n'
+               + 'Your Proton tunnel may well still be up.\n\nStart it with startproxy.bat, then click this pill.';
+      return;
+    }
     if (!vpnStatus) { el.classList.remove('up', 'down'); txt.textContent = 'VPN ?'; el.title = 'VPN status unavailable — is the proxy (127.0.0.1:8081) running the dev0649 build?'; return; }
     const s = vpnStatus;
     el.classList.toggle('up', !!s.tunnelUp);
@@ -321,16 +332,22 @@
   }
 
   async function vpnRefresh(toast) {
+    let reached = false;
     try {
       const r = await fetch(PROXY + '/vpn/status', { cache: 'no-store' });
       const j = await r.json();
-      if (j && j.ok) vpnStatus = j;
+      if (j && j.ok) { vpnStatus = j; reached = true; }
     } catch (_) { vpnStatus = null; }
+    // (dev0679) A failed read means one of two very different things. Ask which.
+    if (reached) proxyDown = false;
+    else         proxyDown = !(await proxyAlive());
     vpnRenderPill();
     vpnKillSwitchCheck();               // (dev0658) tunnel dropped mid-grind → stop everything
     if (toast) {
       const s = vpnStatus;
-      igToast(s
+      igToast(proxyDown
+        ? '⛔ The proxy (127.0.0.1:8081) is not answering.\nThis is NOT a VPN failure — your tunnel may still be up.\nStart it with startproxy.bat, then click the pill again.'
+        : s
         ? (s.tunnelUp
             ? '🟢 Proton VPN UP\nServer: ' + (s.server || '?') + '\nExit IP: ' + (s.ip || '?')
               + ([s.city, s.country].filter(Boolean).length ? '\n' + [s.city, s.country].filter(Boolean).join(', ') : '')
@@ -482,24 +499,56 @@
     try { await fetch(PROXY + '/fix/kill-downloads', { method: 'POST' }); } catch (_) {}
   }
 
-  // Fresh confirm the tunnel is up. Fast path returns on the first UP; only pays a
-  // ~600ms re-check when it looks down, so a single localhost blip can't false-stop
-  // a healthy grind. Returns false on confirmed-down OR proxy-unreachable (either
-  // way IG can't safely run). Updates the pill as a side effect.
-  async function vpnStillUp() {
+  // (dev0679) Browser-level "the request never got anywhere" errors. Chrome says
+  // "Failed to fetch", Firefox "NetworkError when attempting to fetch resource",
+  // Safari "Load failed" — none of which mean IG, or the VPN, said no.
+  function isNetErr(msg) {
+    return /failed to fetch|networkerror|load failed|network request failed|err_connection/i.test(String(msg || ''));
+  }
+
+  // (dev0679) Is the PROXY itself answering? One cheap /version GET with a hard
+  // timeout (a fetch with no timeout can hang forever against a wedged server).
+  // This is the question the whole VPN kill-switch was missing: every /vpn/* answer
+  // arrives THROUGH the proxy, so a dead proxy is indistinguishable from a dead
+  // tunnel unless you ask separately.
+  async function proxyAlive(ms) {
+    try {
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), ms || 2500);
+      const r = await fetch(PROXY + '/version', { cache: 'no-store', signal: ac.signal });
+      clearTimeout(t);
+      return r.ok;
+    } catch (_) { return false; }
+  }
+
+  // Fresh confirm the tunnel is up. Returns 'up' | 'down' | 'noproxy'.
+  // Fast path returns on the first UP; only pays a re-check when it looks down, so
+  // a single localhost blip can't false-stop a healthy grind.
+  // (dev0679) 'noproxy' is the new, separate verdict. This used to return a bare
+  // false for BOTH "tunnel is down" and "couldn't reach the proxy" — which is how a
+  // 3.5h/1003-item grind died reporting "VPN tunnel dropped" while vpn-rotate.log and
+  // the Windows event log both prove the tunnel was up and untouched: the node proxy
+  // on :8081 had stopped answering, so /vpn/status simply failed. Blaming the VPN
+  // sent the user hunting the wrong thing (and the "fix" — restart the proxy — was
+  // being found by accident). Now the two are told apart and named.
+  async function tunnelCheck() {
     // (dev0661) Ride out a WireGuard rekey blip: a datacenter exit can drop its
     // handshake for a few seconds and self-heal. Re-check a few times over ~2.4s
     // before declaring down, so one transient miss can't false-kill a healthy
     // grind. First UP short-circuits, so a healthy tunnel still pays ~0ms.
+    let reachable = false;
     for (let i = 0; i < 4; i++) {
       try {
         const r = await fetch(PROXY + '/vpn/status', { cache: 'no-store' });
         const j = await r.json();
-        if (j && j.ok) { vpnStatus = j; vpnRenderPill(); if (j.tunnelUp) return true; }
+        if (j && j.ok) { reachable = true; proxyDown = false; vpnStatus = j; vpnRenderPill(); if (j.tunnelUp) return 'up'; }
       } catch (_) {}
       if (i < 3) await sleep(800);
     }
-    return false;
+    // Never answered? Separate the two causes before accusing the VPN of anything.
+    if (!reachable && !(await proxyAlive())) { proxyDown = true; vpnRenderPill(); return 'noproxy'; }
+    proxyDown = false;
+    return 'down';
   }
 
   // Called from vpnRefresh (the poll) — if a grind is live and the tunnel just
@@ -529,12 +578,25 @@
   async function vpnSwitchNow(note) {
     vpnBusy = true; vpnRenderPill();
     igBatchUpdate((note ? note + '\n' : '') + '🔀 switching Proton VPN to a fresh US exit…');
-    let out = null;
+    let out = null, reached = false;
     try {
       const r = await fetch(PROXY + '/vpn/switch', { method: 'POST' });
       const j = await r.json();
+      reached = true;
       if (j && j.ok) { out = j; vpnStatus = j; }
     } catch (_) {}
+    // (dev0679) A switch that never left the building isn't a VPN failure. Record
+    // which it was so the caller's message can name the real problem.
+    if (!reached) proxyDown = !(await proxyAlive());
+    else          proxyDown = false;
+    // (dev0679) The proxy now answers `switched:false` when its own wait for
+    // vpn-rotate.ps1 timed out. Surface that instead of silently counting a
+    // rotation that was never confirmed.
+    if (out && out.switched === false) {
+      igToast('⚠ the VPN switch never confirmed (waited '
+        + Math.round((out.waitedMs || 0) / 1000) + 's).\nStill on '
+        + (vpnStatus && vpnStatus.server || 'the previous exit') + ' — the rotation may still be finishing.', 4200);
+    }
     vpnBusy = false; vpnRenderPill();
     return out;
   }
@@ -547,12 +609,57 @@
     tries = tries || 3;
     let sw = await vpnSwitchNow(note);
     let n = 1;
-    while ((!sw || !sw.tunnelUp) && n < tries && !batchAbort) {
+    // (dev0679) Stop retrying the moment it's clear the proxy is the problem —
+    // three futile 130s switch attempts against a dead proxy is how "no VPN exit
+    // would come up (tried a few)" got printed for a VPN that was never asked.
+    while ((!sw || !sw.tunnelUp) && n < tries && !batchAbort && !proxyDown) {
       igToast(`⚠ that exit didn't route — trying another Proton server (${n + 1}/${tries})…`, 2800);
       sw = await vpnSwitchNow(note + ' (retry ' + (n + 1) + ')');
       n++;
     }
     return (sw && sw.tunnelUp) ? sw : null;
+  }
+
+  // (dev0679) ── Proxy-down pause/resume ────────────────────────────────────────
+  // A long grind must not be thrown away because the local proxy died — that cost a
+  // 3.5h run once. Park the grind, tell the user exactly what to restart, and poll
+  // /version until it answers again. Nothing is auto-started or auto-restarted (no
+  // watchdogs, per the standing rule): this only waits, visibly, while the user is
+  // at the screen, and ⏹ Stop cancels it like any other batch step.
+  async function awaitProxyBack(maxMs) {
+    const t0 = Date.now();
+    maxMs = maxMs || 15 * 60 * 1000;
+    const panel = () => '⛔ The proxy (127.0.0.1:8081) stopped answering — the grind is PAUSED.\n\n'
+      + 'This is NOT a VPN failure. Your Proton tunnel is probably still up.\n\n'
+      + 'Start the proxy again (startproxy.bat, the "SLAM proxy :8081" window),\n'
+      + 'and this picks up exactly where it left off — nothing is lost.\n\n'
+      + `waiting ${fmtDur((Date.now() - t0) / 1000)} · gives up after `
+      + `${fmtDur(maxMs / 1000)} · ⏹ Stop to end now`;
+    igStickyHide();
+    batchAbort = false;                    // Stop during the wait is the only abort here
+    igBatchShow(panel());
+    while (!batchAbort && Date.now() - t0 < maxMs) {
+      if (await proxyAlive(2000)) {
+        proxyDown = false; vpnRenderPill();
+        igToast('✅ proxy is back — resuming where the grind left off.', 3000);
+        return true;
+      }
+      await sleep(4000);
+      igBatchUpdate(panel());
+    }
+    return false;
+  }
+
+  // (dev0679) After the proxy comes back, make sure we're still on a VPN before a
+  // single further row runs. The tunnel normally survives a proxy restart untouched
+  // (it's a Windows service, nothing to do with node), so this usually costs one
+  // /vpn/status; if it really is down we rotate a fresh exit, and if that fails we
+  // stop rather than continue on the home IP. → { ok, rotated }
+  async function resumeVpnAfterProxy() {
+    await vpnRefresh(false);
+    if (vpnStatus && vpnStatus.tunnelUp) return { ok: true, rotated: false };
+    const sw = await vpnEnsureUp('bringing the VPN back up after the proxy restart');
+    return { ok: !!sw, rotated: !!sw };
   }
 
   // ── CSS (scoped under #igOverlay, injected once) ────────────────────────────
@@ -1477,7 +1584,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // (no network, no delay), so re-running with everything still selected only
   // touches the rows that still need work.
   async function runBatch(label, ids, gap, doOne, skipIf, posture) {
-    busy = true; batchAbort = false; vpnDropAbort = false; setBatchUi(true);
+    busy = true; batchAbort = false; vpnDropAbort = false; proxyDownAbort = false; setBatchUi(true);
     igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
     let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
@@ -1507,8 +1614,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (vpnBusy) is briefly down by design, so it's exempt. Manual Download/Enrich
       // sel are NOT gated — those are deliberate single actions (fbcdn photos may
       // legitimately need the home IP).
-      if ((rotatingActive || autoRunning) && !vpnBusy && !(await vpnStillUp())) {
-        vpnDropAbort = true; batchAbort = true; igKillDownloads(); break;
+      if ((rotatingActive || autoRunning) && !vpnBusy) {
+        const chk = await tunnelCheck();
+        if (chk === 'noproxy') {
+          // (dev0679) The proxy died, not the tunnel. Don't accuse the VPN, and don't
+          // bother trying to kill downloads through the very proxy that isn't there.
+          proxyDownAbort = true; batchAbort = true; break;
+        }
+        if (chk === 'down') { vpnDropAbort = true; batchAbort = true; igKillDownloads(); break; }
       }
       const r = rowById(id); if (!r) continue;
       if (skipIf && skipIf(r)) continue;             // already done → pass over silently
@@ -1522,6 +1635,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       processingId = r.id; renderBody();   // (dev0445) highlight the row being worked on
       igBatchUpdate(`${label} ${r.id}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}${done > 1 ? '\n' + fmtSpeed() : ''}`);
       let good = await doOne(r);
+      // (dev0679) A dead proxy surfaces HERE first — as a bare "Failed to fetch" on
+      // the very request that was mid-flight — and the old code counted it as an IG
+      // failure. Two of those in a row tripped the wall-stop, so the run ended with
+      // "Download failed" or "Batch N downloaded 0 … check the VPN": three different
+      // wrong stories for one cause. Confirm the proxy before blaming anything else.
+      if (!good && isNetErr(lastOpError) && !(await proxyAlive())) {
+        proxyDownAbort = true; batchAbort = true; break;
+      }
       // (dev0645) Single in-item retry for DOWNLOADS. The cookieless photo-carousel walker
       // is easily but usually transiently IG-throttled; a short pause + one retry clears
       // most first-attempt blocks so a lone throttled item never aborts the run. Skipped
@@ -1581,6 +1702,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
                // enrich-flavoured "login-walled post" line.
                : walledStopped ? (isDl ? `⏹ Download failed — downloads stopped`
                                        : `⏹ ${label} auto-stopped — first login-walled post`)
+               // (dev0679) Proxy-down is checked FIRST and named plainly: it used to
+               // be reported as "VPN tunnel dropped", which was never true.
+               : proxyDownAbort ? `⛔ ${label} stopped — the proxy (127.0.0.1:8081) stopped answering.\nNOT a VPN failure — restart the proxy (startproxy.bat)`
                : vpnDropAbort  ? `🛑 ${label} stopped — VPN tunnel dropped (nothing ran on your home IP)`
                : batchAbort    ? `⏹ ${label} stopped by you`
                : couldntRead   ? `✓ ${label} done — ${ok}/${total} ${isDl ? 'downloaded' : 'read'}`
@@ -1707,6 +1831,19 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const ok = await runBatch('Auto-enrich', ids, ENRICH_GAP, r => enrichRow(r, false), igEnrichDone,
         '🤖 auto · 🍪 cookieless · auto-rotating US VPN exits');
       if (!autoRunning) return;                               // Stop pressed mid-batch
+      if (proxyDownAbort) {                                   // (dev0679) proxy died → pause, resume when it's back
+        proxyDownAbort = false; batchAbort = false;
+        if (!(await awaitProxyBack())) {
+          autoRunning = false; autoPaused = false; igBatchHide();
+          igStickyShow(batchAbort
+            ? '⏹ Auto-enrich stopped by you while the proxy was down.\nStart the proxy (startproxy.bat), then ▶ Start.'
+            : '⛔ Auto-enrich stopped — the proxy (127.0.0.1:8081) stopped answering and never came back.\n\nThis is NOT a VPN failure. Start it with startproxy.bat, then ▶ Start.');
+          renderAuto(); return;
+        }
+        igBatchHide();
+        if (!autoRunning) return;
+        continue;                                             // proxy back → carry on where we left off
+      }
       if (vpnDropAbort) {                                     // (dev0658) tunnel dropped → stop, do NOT rotate back up
         autoRunning = false; autoPaused = false;
         igStickyShow('🛑 VPN tunnel dropped — auto-enrich stopped.\nNothing ran on your home IP. Bring the VPN up (🛠 Fix ▸ Bring VPN up), then ▶ Start.');
@@ -2046,7 +2183,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0653) A prior Stop left batchAbort=true; clear it here or the outer
     // `while (!batchAbort)` loop (and vpnEnsureUp's own !batchAbort guard) would
     // be skipped on the very first check → an instant "0 downloaded, 0 switches".
-    batchAbort = false; vpnDropAbort = false; vpnDownStreak = 0;
+    batchAbort = false; vpnDropAbort = false; proxyDownAbort = false; vpnDownStreak = 0;
     busy = true; setBatchUi(true);
     // (dev0650) Bring a tunnel up BEFORE batch 1 if none is live, so no batch ever
     // downloads on the home IP (user request).
@@ -2056,7 +2193,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (sw0) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}`, 3000); }
       else {
         busy = false; setBatchUi(false); igBatchHide();
-        igStickyShow('⏹ Stopped before downloading — no VPN exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.');
+        // (dev0679) Name the real culprit. This exact panel said "no VPN exit would
+        // come up" on 2026-07-27 when the VPN was never contacted at all — the proxy
+        // was down, so /vpn/switch never even reached it (vpn-rotate.log shows no
+        // rotation was attempted). That sent the user checking a healthy VPN.
+        igStickyShow(proxyDown
+          ? '⛔ Stopped before downloading — the proxy (127.0.0.1:8081) is not answering.\n\n'
+            + 'This is NOT a VPN failure: nothing was even asked of the VPN.\n'
+            + 'Start the proxy (startproxy.bat), then run this again.'
+          : '⏹ Stopped before downloading — no VPN exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.');
         return;
       }
     }
@@ -2072,6 +2217,28 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         r => downloadRow(r, false), isDownloaded, '🍪 cookieless — your IG login is never used');
       totalOk += okThis;
       igStickyHide();                 // suppress runBatch's per-chunk report — we toast instead
+      // (dev0679) Proxy died mid-grind → PAUSE and wait for it to come back rather
+      // than binning the run (and rather than calling it a VPN drop, which it isn't).
+      if (proxyDownAbort) {
+        proxyDownAbort = false; batchAbort = false;
+        busy = true; setBatchUi(true);
+        const back = await awaitProxyBack();
+        if (!back) {
+          endMsg = batchAbort
+            ? `⏹ Stopped by you while the proxy was down — ${totalOk} downloaded.`
+            : `⛔ Stopped — the proxy (127.0.0.1:8081) never came back.\n${totalOk} downloaded, all through a VPN. This was a PROXY failure, not a VPN one — start it with startproxy.bat.`;
+          break;
+        }
+        // Proxy is back — confirm we're still on a VPN before resuming.
+        const rv = await resumeVpnAfterProxy();
+        if (!rv.ok) {
+          endMsg = `⏹ Stopped — proxy came back but no VPN exit would.\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
+          break;
+        }
+        if (rv.rotated) switches++;
+        igBatchHide();
+        continue;                     // re-derive the backlog and carry on
+      }
       if (batchAbort) { endMsg = vpnDropAbort
         ? `🛑 VPN tunnel dropped — stopped. ${totalOk} downloaded, all through a VPN. Nothing ran on your home IP.`
         : `⏹ Stopped by you — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}.`; break; }
@@ -2090,6 +2257,22 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${totalOk} downloaded so far  ·  ${elapsed()} elapsed`);
       const sw = await vpnEnsureUp(`switching after batch ${batches}`);
       if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}\n${totalOk} downloaded  ·  ${elapsed()} elapsed`, 3000); }
+      else if (proxyDown) {
+        // (dev0679) The switch never reached the VPN — the proxy is gone. Pause, don't quit.
+        busy = true; setBatchUi(true);
+        if (!(await awaitProxyBack())) {
+          endMsg = `⛔ Stopped — the proxy (127.0.0.1:8081) went down between batches and never came back.\n${totalOk} downloaded, all through a VPN. A PROXY failure, not a VPN one — start it with startproxy.bat.`;
+          break;
+        }
+        const rv2 = await resumeVpnAfterProxy();
+        if (!rv2.ok) {
+          endMsg = `⏹ Stopped — proxy came back but no VPN exit would.\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
+          break;
+        }
+        if (rv2.rotated) switches++;
+        igBatchHide();
+        continue;
+      }
       else {
         // Never download on the home IP — the user wants everything through a VPN.
         endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
@@ -2100,7 +2283,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     rotatingActive = false;
     busy = false; setBatchUi(false); igBatchHide();
     await vpnRefresh(false);
-    const exit = vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
+    // (dev0679) "current exit: no tunnel" was printed on a live tunnel simply because
+    // the proxy couldn't be asked. Distinguish "unknown" from "really down".
+    const exit = proxyDown ? 'unknown — the proxy is down, the VPN was never asked'
+               : vpnStatus && vpnStatus.tunnelUp ? (vpnStatus.server || vpnStatus.ip || '?') : 'no tunnel';
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
       + `\n\nTOTAL: ${totalOk} downloaded in ${elapsed()}`
