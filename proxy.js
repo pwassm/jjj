@@ -31,68 +31,6 @@ function killActiveDownloads() {
   return n;
 }
 
-// (dev0679) ── BLACK BOX ────────────────────────────────────────────────────
-// The console window is the only record this process has ever kept, and it dies
-// with the window — so when the proxy stopped answering 3.5h into a 1003-item
-// Download+rotate grind (2026-07-27 ~01:35), there was NOTHING to read afterwards:
-// no Windows crash/WER record, no last request, no memory trend. The I screen
-// then blamed the VPN for it (its /vpn calls just got ECONNREFUSED), even though
-// vpn-rotate.log + the System event log prove the tunnel stayed up the whole time.
-// proxy.log fixes that: a durable, append-only trace of start / every /ig|/vpn|/fix
-// request / a 60s heartbeat with memory + handles / and how this process ended.
-// Next failure is then a one-look diagnosis:
-//   • last line is a heartbeat, nothing after     → froze or was killed hard
-//   • "signal SIGINT|SIGHUP|SIGBREAK" then "exit"  → someone/something stopped it
-//     (window closed, Stop-Process, restart-proxy.ps1)
-//   • rss climbing toward ~4GB before it stops    → heap exhaustion
-//   • uncaughtException right before the gap      → a real bug, with its stack
-const LOG_FILE = path.join(__dirname, 'proxy.log');
-let LOG_REQS = 0;                      // requests served since the last heartbeat
-function plog(line) {
-  try {
-    // Roll at 8MB so a long-lived proxy can't grow it without bound (one .1 kept).
-    try {
-      if (fs.statSync(LOG_FILE).size > 8 * 1024 * 1024) fs.renameSync(LOG_FILE, LOG_FILE + '.1');
-    } catch (_) {}
-    const ts = new Date().toISOString().replace('T', ' ').slice(0, 23);
-    fs.appendFileSync(LOG_FILE, `${ts}  pid${process.pid}  ${line}\n`);
-  } catch (_) {}
-}
-// (dev0680) Turn a JSON response body into one short verdict for proxy.log. Only the
-// fields that ever explain a failure — an IG row that "failed" is always one of:
-// ok:false + error, a wall, a zero-file download, or a yt-dlp stderr line.
-function summarizeBody(body) {
-  if (!body || body[0] !== '{') return '';
-  let j; try { j = JSON.parse(body); } catch (_) { return ''; }
-  const bits = [];
-  const cut = (s, n) => String(s).replace(/\s+/g, ' ').trim().slice(0, n || 200);
-  if (j.ok === false) bits.push('FAILED');
-  if (j.wall) bits.push('WALL');
-  if (j.error) bits.push('error=' + cut(j.error));
-  if (j.stderr) bits.push('stderr=' + cut(j.stderr));
-  if (Array.isArray(j.files)) bits.push('files=' + j.files.length + (j.files[0] ? ' first="' + cut(j.files[0], 90) + '"' : ''));
-  if (j.result) bits.push('meta title="' + cut(j.result.title, 60) + '" ' + (j.result.width || '?') + 'x' + (j.result.height || '?')
-                        + (j.result.upload_date ? ' d=' + j.result.upload_date : ''));
-  if (j.viaEmbed) bits.push('viaEmbed');
-  if (j.viaCover) bits.push('viaCover');
-  if (j.viaMainVideo) bits.push('viaMainVideo');
-  if (j.viaMainCarousel) bits.push('viaMainCarousel');
-  if (j.usedCookies) bits.push('COOKIES');
-  if (j.embedProbe) bits.push('embed=' + (j.embed === 1 ? '1' : j.embed === 0 ? '0' : '?') + '/' + j.embedProbe);
-  if (typeof j.switched === 'boolean') bits.push('switched=' + j.switched + (j.waitedMs ? ' waited=' + Math.round(j.waitedMs / 1000) + 's' : ''));
-  if (typeof j.tunnelUp === 'boolean') bits.push('tunnelUp=' + j.tunnelUp + (j.server ? ' ' + j.server : ''));
-  return bits.length ? '  · ' + bits.join(' · ') : '';
-}
-
-function memLine() {
-  const m = process.memoryUsage();
-  const mb = b => Math.round(b / 1048576);
-  let handles = -1;
-  try { handles = process._getActiveHandles().length; } catch (_) {}
-  return `rss=${mb(m.rss)}MB heap=${mb(m.heapUsed)}/${mb(m.heapTotal)}MB ext=${mb(m.external)}MB `
-       + `handles=${handles} activeDl=${ACTIVE_DL.size}`;
-}
-
 // (dev0656) STAY ALIVE. A WireGuard rotation tears the tunnel down, which RSTs any
 // in-flight download socket; a socket/stream 'error' event with no listener at that
 // instant would otherwise crash the whole node process — killing /vpn AND every
@@ -101,25 +39,10 @@ function memLine() {
 // /vpn/switch calls got ECONNREFUSED. Log and keep serving instead of exiting.
 process.on('uncaughtException', (err) => {
   try { console.error(`[${new Date().toISOString()}] uncaughtException (proxy stays up):`, err && err.stack || err); } catch (_) {}
-  plog('uncaughtException (proxy stays up): ' + ((err && err.stack) || err));
 });
 process.on('unhandledRejection', (reason) => {
   try { console.error(`[${new Date().toISOString()}] unhandledRejection (proxy stays up):`, reason && reason.stack || reason); } catch (_) {}
-  plog('unhandledRejection (proxy stays up): ' + ((reason && reason.stack) || reason));
 });
-
-// (dev0679) How this process ended — the line that was missing. A closed console
-// window arrives as SIGHUP/SIGBREAK, Stop-Process/taskkill as an abrupt end (no
-// line at all, which is itself the answer), Ctrl+C as SIGINT.
-['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'].forEach(sig => {
-  try {
-    process.on(sig, () => {
-      plog(`signal ${sig} — shutting down · ${memLine()}`);
-      process.exit(0);
-    });
-  } catch (_) {}
-});
-process.on('exit', code => plog(`exit code=${code} · uptime=${Math.round(process.uptime())}s · ${memLine()}`));
 
 const PORT = 8081;
 // (dev0319) Build/capability tag — surfaced at GET /version so the client can
@@ -213,12 +136,7 @@ const PORT = 8081;
 // (dev0450) /s/deleted + /s/undelete — archive rows deleted from s.json into
 //   sdeleted.json (append, dedup by id) so St imports can skip previously-deleted
 //   links; undelete pulls them back out (Ctrl+Z undo in St).
-// (dev0679) BLACK BOX + honest VPN switch. proxy.log records start/requests/60s
-//   heartbeat/exit so a silent death is diagnosable after the console window is
-//   gone; /vpn/switch waits 130s (was 40s — shorter than vpn-rotate.ps1's own
-//   ~90s worst case, so it could answer mid-rotation and let the script tear the
-//   tunnel down under a running batch) and reports `switched` + `waitedMs` honestly.
-const PROXY_BUILD = 'dev0680';
+const PROXY_BUILD = 'dev0682';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2867,27 +2785,15 @@ function vpnSwitch(res, origin) {
   t.on('error', () => { via = 'script'; runScript(); });
   t.on('close', code => { if (code !== 0) { via = 'script'; runScript(); } });
 
-  // Wait for vpn-rotate.ps1 to write a NEW state.json — its `at` only changes once
-  // the new tunnel is up and the fresh public IP was read.
-  // (dev0679) Window raised 40s → 130s. The script's worst case is ~90s (2s settle +
-  // a 6s baseline-IP call + up to 9.6s waiting for the 10.2.x address + up to 8×8s
-  // proving the public IP actually changed), so a 40s cap could return WHILE the
-  // rotation was still running. That answer is worse than late: the old tunnel may
-  // still be up, so `tunnelUp:true` reads as success, the client starts the next
-  // batch — and then the still-running script fails its check and runs
-  // /uninstalltunnelservice, dropping the tunnel MID-BATCH. That is one way to get a
-  // genuine "VPN tunnel dropped" with a perfectly healthy VPN. `switched` is now
-  // reported honestly (false = we timed out, nothing was confirmed) so the client
-  // can say so instead of counting a rotation that never happened.
+  // Wait (up to ~40s) for vpn-rotate.ps1 to write a NEW state.json — its `at`
+  // only changes once the new tunnel is up and the fresh public IP was read.
   const t0 = Date.now();
   const poll = () => {
     const cur = vpnReadState();
     const changed = cur && cur.at && cur.at !== beforeAt;
-    if (changed || Date.now() - t0 > 130000) {
-      const waitedMs = Date.now() - t0;
-      if (!changed) plog(`vpn/switch TIMED OUT after ${waitedMs}ms — rotation never confirmed (script still running? task not firing?)`);
+    if (changed || Date.now() - t0 > 40000) {
       sendJson(res, 200, Object.assign(
-        { ok: true, via, switched: !!changed, waitedMs }, vpnStateOut(cur || before)), origin);
+        { ok: true, via, switched: !!changed }, vpnStateOut(cur || before)), origin);
       return;
     }
     setTimeout(poll, 1200);
@@ -2983,31 +2889,6 @@ function fixStatus(res, origin) {
 }
 
 http.createServer((req, res) => {
-  // (dev0679) Black-box request trace for the local bridges only (never the CORS
-  // image proxy, which would flood it). One line in, one line out with status +
-  // duration — so the log's last entry names the exact request the proxy was
-  // serving when it stopped, and a request that never finished shows as an "in"
-  // with no matching "done".
-  // /fix/log is the client WRITING to this log — trace it and every line appears twice.
-  if (req.method !== 'OPTIONS' && /^\/(ig|vpn|fix|exec|rec)\//.test(req.url) && !req.url.startsWith('/fix/log')) {
-    LOG_REQS++;
-    const rt0 = Date.now();
-    const tag = `${req.method} ${req.url.split('?')[0]}`;
-    plog(`→ ${tag}`);
-    // (dev0680) Record the VERDICT, not just the status code. "200 6669ms" told us a
-    // row failed but not why — every enrich/download answers 200 and puts the real
-    // outcome (ok:false, wall, "no files landed", the yt-dlp stderr) in the JSON body.
-    // Capturing it here covers every endpoint and every exit path with one hook.
-    let body = '';
-    const _end = res.end.bind(res);
-    res.end = function (chunk) {
-      try { if (chunk && body.length < 65536) body += chunk.toString('utf8'); } catch (_) {}
-      return _end.apply(res, arguments);
-    };
-    res.on('finish', () => plog(`← ${tag} ${res.statusCode} ${Date.now() - rt0}ms${summarizeBody(body)}`));
-    res.on('close', () => { if (!res.writableEnded) plog(`✗ ${tag} client-aborted ${Date.now() - rt0}ms`); });
-  }
-
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
@@ -3107,18 +2988,6 @@ http.createServer((req, res) => {
     if (action === 'harden-vpn')    { fixHardenVpn(res, origin);    return; }
     if (action === 'unstick-vpn')   { fixUnstickVpn(res, origin);   return; }
     if (action === 'kill-downloads') { sendJson(res, 200, { ok: true, killed: killActiveDownloads() }, origin); return; }
-    // (dev0680) POST /fix/log — the I screen writes its side of the story into the
-    // SAME black box. Without this, half the evidence lives only on the user's screen:
-    // proxy.log could show "/exec/ytdlp 200" while the client called that row a failure,
-    // and nobody could see the error text that decided it. Now both sides interleave in
-    // one file, in order, with timestamps.
-    if (action === 'log') {
-      readJson(req, 8 * 1024).then(p => {
-        plog('client: ' + String(p && p.msg || '').replace(/\s+/g, ' ').slice(0, 600));
-        sendJson(res, 200, { ok: true }, origin);
-      }).catch(() => sendJson(res, 400, { ok: false }, origin));
-      return;
-    }
     sendJson(res, 404, { ok: false, error: 'unknown fix action: ' + action }, origin);
     return;
   }
@@ -3273,18 +3142,7 @@ http.createServer((req, res) => {
 
   req.pipe(proxyReq);
 }).listen(PORT, '127.0.0.1', () => {
-  // (dev0679) Black box: startup mark + a 60s heartbeat. The heartbeat is what
-  // dates a silent death (last beat = last moment the event loop was alive) and
-  // what shows a memory/handle climb building up to one. unref'd, so it can never
-  // hold the process open — this is a log line, not a daemon.
-  plog(`START build=${PROXY_BUILD} node=${process.version} cwd=${__dirname} · ${memLine()}`);
-  const beat = setInterval(() => {
-    plog(`heartbeat uptime=${Math.round(process.uptime())}s reqs+${LOG_REQS} · ${memLine()}`);
-    LOG_REQS = 0;
-  }, 60000);
-  try { beat.unref(); } catch (_) {}
   console.log(`Custom proxy on http://127.0.0.1:${PORT} — Ctrl+C to stop`);
-  console.log(`Black box: ${LOG_FILE} (start/requests/60s heartbeat/exit)`);
   console.log('Spoofs Referer (target apex domain) + Chrome User-Agent');
   console.log(`Local exec bridge: POST /exec/{${Object.keys(EXEC_ALLOW).join(',')}}`);
   console.log(`Screen recorder:   POST /rec/{start,stop}  → vsteps-<ts>.mp4 in ${__dirname}`);

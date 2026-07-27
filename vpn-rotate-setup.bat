@@ -11,29 +11,10 @@ REM   "Running" state and REFUSES every later run for up to 72h (0x800710E0 -
 REM   "the operator or administrator has refused the request"): the VPN pill
 REM   never gets a new exit. We repair that to StopExisting + PT5M below.
 
-title SLAM - one-time VPN task setup (not the proxy)
-REM (dev0680) Confirm-first gate, asked ONCE: the elevated relaunch carries the
-REM "confirmed" argument so you don't answer twice. Opening this file by mistake
-REM now costs one N keypress and does nothing.
-if /I "%~1"=="confirmed" goto :gated
-echo.
-echo  ------------------------------------------------------------
-echo   vpn-rotate-setup.bat  -  ONE-TIME setup. Asks for admin (UAC).
-echo.
-echo   Registers the two scheduled tasks so VPN switches happen
-echo   with no UAC prompt. Run it once; repeating it is harmless.
-echo.
-echo   Wanted to START THE PROXY? Press N, then run startproxy.bat
-echo  ------------------------------------------------------------
-echo.
-choice /C YN /N /M "Run the one-time VPN setup now?  [Y/N] "
-if errorlevel 2 exit /b
-:gated
-
 REM --- self-elevate ---------------------------------------------------------
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    powershell -NoProfile -Command "Start-Process '%~f0' -Verb RunAs -ArgumentList 'confirmed'"
+    powershell -NoProfile -Command "Start-Process '%~f0' -Verb RunAs"
     exit /b
 )
 
