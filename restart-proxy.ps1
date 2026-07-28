@@ -49,7 +49,16 @@ if ($n -ge 20) {
 #    record nothing in that situation, but the SHELL that launched it can: cmd is
 #    /v:on (delayed expansion) so !ERRORLEVEL! is read AFTER node ends, and the code
 #    lands in proxy.log. That single number names the killer:
-#       1  or 0        → TerminateProcess: something ended it deliberately
+#    (dev0688) TABLE CORRECTED against a measured exit. The first code captured was
+#    -1, from THIS script's own Stop-Process at line 18 — so -1 is now calibrated,
+#    not guessed: .NET Process.Kill() (which Stop-Process -Force uses) calls
+#    TerminateProcess(handle, -1), giving 0xFFFFFFFF, which cmd reads as -1. node's
+#    own exits are 0-13 or 128+n, so -1 can never be node ending itself.
+#       -1 (0xFFFFFFFF)          → Process.Kill(): something force-killed it. If a
+#                                  MID-DOWNLOAD death shows this, look for a stray
+#                                  restart-proxy.ps1 / Stop-Process (AHK misfire?),
+#                                  NOT a crash.
+#       0                        → a clean, deliberate shutdown
 #       -1073741819 (0xC0000005) → access violation: node crashed natively
 #       -1073740791 (0xC0000409) → stack/abort: a V8 fatal
 #       -1073741510 (0xC000013A) → Ctrl+C / console close
