@@ -7078,5 +7078,27 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "amblyglyphidodon",
+    "label": "Amblyglyphidodon",
+    "kind": "taxon",
+    "parents": [
+      "pomacentridae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "Damselfish",
+    "extinct": false
+  },
+  {
+    "id": "strength-training",
+    "label": "Strength training",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
   }
 ]

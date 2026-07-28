@@ -64,6 +64,8 @@
   let vpnDropAbort = false;            // (dev0658) VPN kill-switch tripped (tunnel dropped mid-grind)
   let rotatingActive = false;          // (dev0658) a VPN-committed Download+rotate grind is running
   let vpnDownStreak = 0;               // (dev0661) consecutive tunnel-down poll reads (kill-switch debounce)
+  let proxyDown = false;               // (dev0688) the proxy stopped answering mid-run → pause, don't abandon
+  let lastBatchDead = 0;               // (dev0688) rows runBatch retired as permanently dead (grind reads it)
   let lastOpError = '';                // last enrich/download error (for throttle detection)
   let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
   let lastDlName = '';                 // (dev0649) title/id of the most recent successful download (rotate toasts)
@@ -145,6 +147,24 @@
   // A ROW (no success between), it's a real block → stop. A success resets the streak.
   const DOWNLOAD_WALL_CAP = 2;
   const DOWNLOAD_RETRY_MS = [8000, 15000];   // pause before the single per-item retry
+  // (dev0688) PERMANENTLY DEAD POSTS — a third failure class, distinct from a wall
+  // (needs auth) and a throttle (needs pacing). The post is gone, or is restricted to
+  // an audience we will never be in. No new VPN exit, no wait and no cookie can change
+  // that answer, so the only correct response is to retire the row and carry on.
+  // Treating these as ordinary failures is what killed the 2026-07-27 grinds: two
+  // audience-restricted reels sat at the head of the view, each burned its retry, the
+  // pair tripped DOWNLOAD_WALL_CAP, and a 1103-row run ended in 37 seconds under a
+  // "check the VPN" message — with the proxy alive and the VPN healthy. Then, because
+  // nothing was ever written to the rows, they came back at the head of the NEXT run
+  // and did it again (CpDuwjPJB7L alone burned ~10 attempts across runs).
+  // Ordering note: isThrottle() is still tested FIRST (a 429 wins), so a rate-limit
+  // that happens to mention a missing post can't be mistaken for a dead one.
+  const PERMANENT_RE = /available to everyone|certain audiences|no longer available|has been deleted|been removed|HTTP Error 404|Page not found/i;
+  const isPermanent = err => !!err && PERMANENT_RE.test(err);
+  // (dev0688) Rows retired this run (for the end report) and rows that were in flight
+  // when the proxy died (quarantined for the rest of the run — see awaitProxyReturn).
+  const deadThisRun = new Set();
+  const proxyKillIds = new Set();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -310,6 +330,8 @@
       files: (r.localFiles || []).length,
       enrichWalled: enrichFailed.has(r.id) ? 1 : 0,
       autoDead: autoDead.has(r.id) ? 1 : 0,
+      dead: r.dead ? 1 : 0,                       // (dev0688) retired: permanently undownloadable
+      proxyKills: r.proxyKills || 0,              // (dev0688) times this row was in flight when the proxy died
       hasTitle: r.VidTitle ? 1 : 0,
       dur: r.durSecs == null ? 'null' : r.durSecs,
       wh: (r.width || 0) + 'x' + (r.height || 0),
@@ -722,6 +744,12 @@
       verdict: threw === 4 ? 'proxy never answered — the VPN was NOT the cause'
              : threw ? 'mixed: proxy flaky' : 'proxy answered, tunnel really down'
     });
+    // (dev0688) dev0683 recorded this distinction; now it ACTS on it. Every probe
+    // throwing means the proxy is gone and the tunnel's state is simply unknown —
+    // calling that "VPN tunnel dropped" is the misreading that sent three sessions
+    // chasing a VPN that was healthy all along. The return value stays false either
+    // way (the run must still stop here); the flag tells the caller WHICH stop it is.
+    if (threw === 4) proxyDown = true;
     return false;
   }
 
@@ -1005,7 +1033,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <input type="text" id="igSearch" placeholder="search author / id / title / caption…">
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
-        <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option></select>
+        <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option><option value="__retired__">🪦 retired (dead posts)</option></select>
         <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links or ffdown imports)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
         <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
         <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option></select>
@@ -1193,7 +1221,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       else if (authorFilter === '__harvested__') { if (unharvestedAuthors.has(r.author || '')) return false; }
       else if (authorFilter !== 'all' && r.author !== authorFilter) return false;
       if (kindFilter !== 'all' && kindOf(r) !== kindFilter) return false;
-      if (statusFilter !== 'all' && (r.status || 'new') !== statusFilter) return false;
+      // (dev0688) `__retired__` is a cross-cutting mark, not a status value — it's the
+      // only way to SEE the rows the grind has permanently stopped offering (and to
+      // check one and force a retry if a retirement was wrong).
+      if (statusFilter === '__retired__') { if (!r.dead) return false; }
+      else if (statusFilter !== 'all' && (r.status || 'new') !== statusFilter) return false;
       // (dev0472) NonFullReels = ffdown imports (staged===false); Full reels = harvested (everything else)
       if (stagedFilter === 'non' && r.staged !== false) return false;
       if (stagedFilter === 'full' && r.staged === false) return false;
@@ -1308,7 +1340,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           ? '<span class="yes">✓</span>' : (r.embed === 0 ? '<span class="no">✗</span>' : '<span class="no">—</span>')}</td>
         <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
         <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
-        <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Try 📋 Saved-text, or grab it from a logged-in Firefox; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}</td>
+        <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Try 📋 Saved-text, or grab it from a logged-in Firefox; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}${
+          // (dev0688) A retired row keeps its old status ('enriched'), so without this
+          // marker it looks identical to a row still waiting its turn — and the reason
+          // it is silently never picked would be invisible. Status → 🪦 retired lists them.
+          r.dead ? `<span class="walled" title="🪦 RETIRED — permanently undownloadable, so Download+rotate skips it.\n${esc(r.deadReason || 'no reason recorded')}\n${esc(r.deadAt || '')}\nCheck the box and press Download to force a retry anyway."> 🪦</span>` : ''
+        }${
+          r.proxyKills ? `<span class="walled" title="This row was in flight when the proxy died ${r.proxyKills}× — at 2 it is dropped from Download+rotate for good."> ⛔${r.proxyKills}</span>` : ''
+        }</td>
         <td class="mono">${esc(r.DateAdded || '')}</td>
         <td class="c-act">
           <button data-act="enrich" title="yt-dlp → title/caption/ttxt/author/date/res">✨</button>
@@ -1726,12 +1765,32 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // rate-limit signature. `skipIf(r)` → already-done rows are skipped instantly
   // (no network, no delay), so re-running with everything still selected only
   // touches the rows that still need work.
+  // (dev0688) Retire a row that can never download. The mark is written to the ROW —
+  // the whole trap was that nothing persisted, so a dead post returned to the head of
+  // the view on every later run. Reversible on purpose: isReady() (the automatic
+  // grind) honours it, but a manually-checked Download still retries the row, so a
+  // wrongly-retired post is one checkbox away from another attempt.
+  function markDead(r, err) {
+    if (!r.dead) deadThisRun.add(r.id);
+    r.dead = 1;
+    r.deadReason = (err || '').replace(/\s+/g, ' ').slice(0, 200);
+    r.deadAt = (typeof isoNow === 'function') ? isoNow()
+             : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    dirty = true;
+    diag('ROW-RETIRED', { id: r.id, kind: kindOf(r), reason: r.deadReason });
+  }
+
   async function runBatch(label, ids, gap, doOne, skipIf, posture) {
-    busy = true; batchAbort = false; vpnDropAbort = false; setBatchUi(true);
+    // (dev0688) proxyDown is cleared HERE, for every caller. It's a per-batch verdict,
+    // and a stale true left over from an earlier run would make the next enrich or
+    // download batch break on its very first row for no visible reason.
+    busy = true; batchAbort = false; vpnDropAbort = false; proxyDown = false; setBatchUi(true);
     igStickyHide();                    // clear any prior run's summary so it can't cover the live panel
     let ok = 0, fail = 0, done = 0, throttled = false, cookieStopped = false, cookieUsed = 0;
     let walled = 0, walledStopped = false;   // (dev0458) login-walled results + first-wall stop
     let consecFail = 0;                      // (dev0645) run of back-to-back download failures
+    let deadMarked = 0;                      // (dev0688) rows retired as permanently dead this batch
+    const deadIdsThisBatch = [];             // …and which ones, for THIS batch's report
     lowResIds.clear(); fallbackIds.clear();  // (dev0666) per-run download-path tallies
     embedStamped = 0; embedNoVerdict = 0;    // (dev0675) per-run embed-verdict tallies
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
@@ -1765,6 +1824,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // sel are NOT gated — those are deliberate single actions (fbcdn photos may
       // legitimately need the home IP).
       if ((rotatingActive || autoRunning) && !vpnBusy && !(await vpnStillUp())) {
+        // (dev0688) A dead proxy also fails this probe. Don't call that a VPN drop and
+        // don't fire igKillDownloads() at a proxy that isn't there — break out and let
+        // the grind pause on it instead (proxyDown was set by vpnStillUp).
+        if (proxyDown) break;
         vpnDropAbort = true; batchAbort = true; igKillDownloads(); break;
       }
       const r = rowById(id); if (!r) continue;
@@ -1787,7 +1850,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // is easily but usually transiently IG-throttled; a short pause + one retry clears
       // most first-attempt blocks so a lone throttled item never aborts the run. Skipped
       // if the failure is a hard rate-limit (429) — retrying that just hammers IG.
-      if (!good && isDl && !batchAbort && !isThrottle(lastOpError)) {
+      // (dev0688) …and skipped when the post is permanently dead: retrying an
+      // audience-restricted or deleted post just spends 19s to get the same sentence.
+      if (!good && isDl && !batchAbort && !isThrottle(lastOpError) && !isPermanent(lastOpError) && !proxyDown) {
         diag('row-retry', { id: r.id, after: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 140) });
         const rg = rnd(DOWNLOAD_RETRY_MS[0], DOWNLOAD_RETRY_MS[1]);
         igBatchUpdate(`${label} ${r.id} — retrying in ${(rg / 1000).toFixed(0)}s (transient block?)\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}`);
@@ -1818,7 +1883,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // These are login-walled posts that failed BOTH cookieless and the Firefox-
         // cookie retry; order/pacing can't change that (see igStickyShow report).
         fail++;
-        if (isThrottle(lastOpError)) throttled = true;
+        // (dev0688) The proxy vanishing is not Instagram's verdict on this row. Don't
+        // let it count toward the consecutive-failure stop and don't let it retire the
+        // row — end the batch so the grind can pause and resume (awaitProxyReturn).
+        if (proxyDown) { /* no verdict from IG at all — see the break below */ }
+        else if (isThrottle(lastOpError)) throttled = true;
+        // (dev0688) Permanently dead → retire it and DON'T touch consecFail. Note this
+        // sits ahead of the isDl branch below deliberately: that branch counts every
+        // download failure regardless of wording, which is right for walls but is
+        // exactly what let two dead posts end a 1103-row run.
+        else if (isDl && isPermanent(lastOpError)) { markDead(r, lastOpError); deadMarked++; deadIdsThisBatch.push(r.id); }
         // (dev0458) Stop at the first login-walled result (cookie-conservative).
         // (dev0645) DOWNLOADS now stop only after DOWNLOAD_WALL_CAP failures IN A ROW (a
         // success resets the streak) — replacing dev0569's first-failure abort, which let
@@ -1832,20 +1906,27 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
       }
       applyAndRender();
-      if (throttled || cookieStopped || walledStopped) break;
+      if (throttled || cookieStopped || walledStopped || proxyDown) break;
     }
+    lastBatchDead = deadMarked;          // (dev0688) the grind reads this to tell "0 downloaded
+                                         // because everything's blocked" from "0 downloaded
+                                         // because the batch was all dead posts" (real progress).
     processingId = null; busy = false; setBatchUi(false); igBatchHide();
     // (dev0683) Exactly which guard ended this batch. "batch downloaded 0" has five
     // different causes and the end report collapses them; this does not.
     diag('BATCH-END', {
       label, ok, fail, done, total, secs: Math.round((Date.now() - t0) / 1000),
-      stop: throttled ? 'THROTTLE' : cookieStopped ? 'COOKIE-CAP'
+      stop: proxyDown ? 'PROXY-DIED' : throttled ? 'THROTTLE' : cookieStopped ? 'COOKIE-CAP'
           : walledStopped ? (isDl ? `WALL-${DOWNLOAD_WALL_CAP}-IN-A-ROW` : 'FIRST-WALL')
           : vpnDropAbort ? 'VPN-DROP' : batchAbort ? 'USER-STOP'
           : done < total ? 'INCOMPLETE' : 'ran-out',
-      consecFail, lastErr: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 200)
+      consecFail, dead: deadMarked, lastErr: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 200)
     });
-    if (ok) { dirty = true; await persist(false); }
+    // (dev0688) Save when rows were RETIRED too, not only when some downloaded. A batch
+    // that downloads 0 and retires 2 has changed real state; under the old `if (ok)` it
+    // was thrown away, which is why the same dead posts greeted the next run. Skipped
+    // while the proxy is down — there's nothing to save to; awaitProxyReturn flushes it.
+    if ((ok || deadMarked) && !proxyDown) { dirty = true; await persist(false); }
     applyAndRender();
 
     // (dev0444) Persistent end-of-run report — exactly the fields requested: how many
@@ -1881,7 +1962,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       cookieUsed ? `🍪 Firefox cookies used on ${cookieUsed}  (the rest were cookieless)`
                  : `🍪 no Firefox cookies used — your IG account was never touched`,
     ];
-    if (couldntRead) lines.push(`${couldntRead} ${isDl ? "couldn't be downloaded" : "couldn't be read"}  (needs a login)`);
+    // (dev0688) Retired rows are a SUBSET of couldntRead, but they're the opposite of a
+    // problem — they're the backlog getting permanently smaller. Name them separately so
+    // "3 couldn't be downloaded" doesn't read as three things still to do.
+    if (deadMarked) {
+      const ids = deadIdsThisBatch;
+      lines.push(`🪦 ${deadMarked} retired — the post is gone or restricted to an audience you can't be in`,
+        `   ${ids.slice(0, 6).join(', ')}${ids.length > 6 ? ` +${ids.length - 6} more` : ''}`,
+        `   These will not be offered again. Check one and press Download to force a retry.`);
+    }
+    if (couldntRead) lines.push(`${couldntRead} ${isDl ? "couldn't be downloaded" : "couldn't be read"}  (needs a login)${deadMarked ? ` — ${deadMarked} of them retired, above` : ''}`);
     if (notReached)  lines.push(`${notReached} not reached  (run stopped early)`);
     // (dev0666) Download-path quality, reported once at the end instead of per-row toasts
     // the live panel used to cover. Low-res rows also carry a ⚠ marker in their W×H cell.
@@ -2258,7 +2348,21 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // run then counts it as an Instagram failure and can stop the whole grind on
       // it. Confirm which world we're in, for the record only; nothing branches.
       if (/failed to fetch|networkerror|load failed|refused/i.test(lastOpError)) {
-        diag('DL-NETWORK-ERROR', { id: r.id, err: lastOpError, proxy: await diagProxyAlive() });
+        const _alive = await diagProxyAlive();
+        diag('DL-NETWORK-ERROR', { id: r.id, err: lastOpError, proxy: _alive });
+        // (dev0688) This used to be pure commentary ("nothing branches on it"). It now
+        // branches: a network-class failure whose proxy check says NOPROXY is the proxy
+        // death we've chased since dev0683, and it is NOT a verdict on this row or on
+        // Instagram. Flag it so runBatch ends the batch cleanly and the grind PAUSES
+        // instead of reporting a fake login-wall and losing its final save.
+        if (/^NOPROXY/.test(_alive)) {
+          proxyDown = true;
+          proxyKillIds.add(r.id);
+          r.proxyKills = (r.proxyKills || 0) + 1;
+          dirty = true;
+          diag('PROXY-DIED', { id: r.id, kind: kindOf(r), kills: r.proxyKills,
+            url: r.url || '', retiredNow: r.proxyKills >= 2 ? 1 : 0 });
+        }
       }
       if (single) igToast('✗ download ' + r.id + ': ' + lastOpError, 3500);
       return false;
@@ -2291,6 +2395,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // wall-stop can only ever cut into the already-hopeless photo tail — every reel is
     // attempted regardless of how the selection was ordered. Sort is stable, so within
     // each group the original selection order is preserved. (kindOf reads r.url.)
+    // (dev0688) A manual, checked Download is the deliberate override: it does NOT
+    // filter out retired rows, so re-checking a wrongly-retired post retries it. Reset
+    // the run tallies so this batch's report counts only itself.
+    deadThisRun.clear(); proxyKillIds.clear(); proxyDown = false;
     const dlRank = r => (kindOf(r) === 'p' ? 1 : 0);   // reels/tv → 0 (first), photos → 1 (last)
     const ordered = [...ids].sort((a, b) => dlRank(rowById(a) || {}) - dlRank(rowById(b) || {}));
     await runBatch('Downloading', ordered, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
@@ -2310,8 +2418,56 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // the filename + best quality anyway), so one grind now enriches+downloads in a pass —
   // nothing lost vs enriching separately first. Skip rows that login-walled enrich this
   // session (a retry would just wall again) and already-promoted rows.
+  // (dev0688) …and skip rows retired as permanently dead, plus any row that was in
+  // flight when the proxy died. The latter is the reason dev0679's resume felt WORSE
+  // than abandoning the run: on resume the killer row was still top-of-view, so the
+  // grind fed it straight back in, died again, and ping-ponged. A row gets one strike
+  // per run (proxyKillIds) and is retired for good at two (r.proxyKills) — so a resume
+  // always makes forward progress instead of re-running the thing that just killed it.
   const isReady = r => !!r && !isDownloaded(r) && r.status !== 'promoted'
-    && (r.status === 'enriched' || r.status === 'new') && !enrichFailed.has(r.id);
+    && (r.status === 'enriched' || r.status === 'new') && !enrichFailed.has(r.id)
+    && !r.dead && !proxyKillIds.has(r.id) && !(r.proxyKills >= 2);
+  // (dev0688) THE PROXY DIED MID-GRIND → PAUSE, don't abandon.
+  // Every death so far cost more than the run: the final persist() never happened, so
+  // files that were already on disk kept rows marked un-downloaded (22 had to be
+  // reconciled by hand on 2026-07-27). Waiting costs nothing and saves both.
+  // Deliberately does NOT restart anything. No daemon, no spawned window, no scheduled
+  // task — all previously rejected, and a flashing window every minute is worse than
+  // the bug. This only WATCHES /version and picks up the instant you restart it by
+  // hand; while it waits, ⏹ Stop still ends the run.
+  // Returns true if the proxy came back and the grind should continue.
+  async function awaitProxyReturn(totalOk) {
+    const t0 = Date.now();
+    const LIMIT_MS = 30 * 60 * 1000;      // give up after 30 min of silence
+    const killer = [...proxyKillIds].pop() || '?';
+    diag('PROXY-PAUSE', { totalOk, killer, unsaved: dirty ? 1 : 0 });
+    while (!batchAbort && Date.now() - t0 < LIMIT_MS) {
+      const w = Math.round((Date.now() - t0) / 1000);
+      igBatchShow(`⛔ The proxy stopped answering — this run is PAUSED, not lost.\n`
+        + `${totalOk} downloaded so far${dirty ? ' (not yet written to ig.json)' : ''}.\n\n`
+        + `▶ Double-click startproxy.bat to bring it back.\n`
+        + `It saves and resumes by itself the moment the proxy answers.\n\n`
+        + `waiting ${Math.floor(w / 60)}:${pad2(w % 60)}  ·  ⏹ Stop to give up`);
+      await sleep(5000);
+      if (batchAbort) break;
+      const alive = await diagProxyAlive();
+      if (/^NOPROXY/.test(alive)) continue;
+      // Back. FIRST thing: flush the save the death would have swallowed.
+      proxyDown = false;
+      igBatchShow('✓ proxy is back — saving what the run already had…');
+      const saved = await persist(false);
+      diag('PROXY-BACK', { downSecs: Math.round((Date.now() - t0) / 1000), build: alive,
+        saved: saved ? 1 : 0, skipping: killer });
+      igToast(`🟢 Proxy back after ${fmtDur((Date.now() - t0) / 1000)} — resuming.\n`
+        + (saved ? `${totalOk} downloaded so far are saved.` : `⚠ save STILL failing — check the proxy window.`)
+        + `\nSkipping ${killer} (it was in flight when the proxy died).`, 5200);
+      return true;
+    }
+    diag('PROXY-GONE', { waitedSecs: Math.round((Date.now() - t0) / 1000),
+      stoppedByUser: batchAbort ? 1 : 0, unsaved: dirty ? 1 : 0 });
+    return false;
+  }
+
   async function batchDownloadRotating() {
     if (busy) return;
     const readyIds = () => view.filter(isReady).map(r => r.id);   // top-of-view first
@@ -2338,6 +2494,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `• Press ⏹ Stop any time.`)) return;
 
     let totalOk = 0, batches = 0, switches = 0, endMsg = '';
+    // (dev0688) Per-RUN tallies. Cleared here (not in runBatch) so a grind's report
+    // covers every batch it ran, and so a fresh grind forgives rows the last one
+    // quarantined for killing the proxy — one strike is per-run, two is permanent.
+    let _proxyPauses = 0;
+    deadThisRun.clear(); proxyKillIds.clear(); proxyDown = false;
     // (dev0664) elapsed clock for the grind — every toast reports time since start.
     const t0 = Date.now();
     const elapsed = () => fmtDur((Date.now() - t0) / 1000);
@@ -2385,16 +2546,35 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         remaining: readyIds().length, elapsed: elapsed(),
         abort: batchAbort ? 1 : 0, vpnDrop: vpnDropAbort ? 1 : 0 });
       igStickyHide();                 // suppress runBatch's per-chunk report — we toast instead
+      // (dev0688) Proxy death is the ONE stop reason that isn't a verdict on the work,
+      // so it gets a pause instead of an ending. Checked before the abort/zero-batch
+      // tests below, both of which would otherwise mis-report it (a dead proxy makes
+      // every row fail, which reads exactly like a login wall — that misreading is what
+      // sent three sessions chasing the VPN).
+      if (proxyDown) {
+        _proxyPauses++;
+        if (await awaitProxyReturn(totalOk)) continue;
+        endMsg = batchAbort
+          ? `⏹ Stopped by you while waiting for the proxy.\n${totalOk} downloaded before it died.`
+          : `⛔ The proxy never came back (waited 30 min).\n${totalOk} downloaded before it died — ⚠ the last few may not be written to ig.json.\nRestart it with startproxy.bat, then press 💾 Save.`;
+        break;
+      }
       if (batchAbort) { endMsg = vpnDropAbort
         ? `🛑 VPN tunnel dropped — stopped. ${totalOk} downloaded, all through a VPN. Nothing ran on your home IP.`
         : `⏹ Stopped by you — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}.`; break; }
-      if (okThis === 0) {             // a whole batch got nothing → a wall/login, not an IP block
+      // (dev0688) …unless the batch's zero came from RETIRING dead posts. That is real
+      // forward progress — the backlog just shrank permanently — so the grind carries on
+      // to rows that can actually download, instead of stopping and blaming the VPN.
+      if (okThis === 0 && !lastBatchDead) {   // a whole batch got nothing → a wall/login, not an IP block
         endMsg = `⏹ Batch ${batches} downloaded 0 — stopped.\n${totalOk} downloaded before this. Likely a login wall or a blocked exit — try again later or check the VPN.`;
         break;
       }
       const remain = readyIds().length;
       // auto-dismissing success toast: cumulative + most recent (the user's ask)
       igToast(`✓ Batch ${batches}: ${okThis} downloaded  ·  ${totalOk} total  ·  ${elapsed()} elapsed`
+        // (dev0688) Retirements are progress, so they belong in the running readout —
+        // otherwise a batch that retired 3 dead posts and downloaded 2 just looks slow.
+        + (lastBatchDead ? `\n🪦 ${lastBatchDead} retired (gone / restricted) — won't be offered again` : '')
         + (lastDlName ? `\nlast: ${lastDlName}` : '')
         + (remain ? `\n${remain} still to go — 🔀 switching VPN…` : ''), 4200);
       if (!remain) { endMsg = `✓ Done — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}; nothing left to download.`; break; }
@@ -2419,6 +2599,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     diag('GRIND-END', {
       totalOk, batches, switches, elapsed: elapsed(), exit,
       leftInView: view.filter(isReady).length,
+      dead: deadThisRun.size, proxyPauses: _proxyPauses, unsaved: dirty ? 1 : 0,
       proxy: await diagProxyAlive(),
       msg: (endMsg || '').replace(/\s+/g, ' ').slice(0, 200)
     });
@@ -2427,6 +2608,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `\n\nTOTAL: ${totalOk} downloaded in ${elapsed()}`
       + (totalOk ? `  (${fmtDur(((Date.now() - t0) / 1000) / totalOk)} each)` : '')
       + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
+      // (dev0688) Two new facts the old report couldn't state, both of which used to
+      // masquerade as "batch downloaded 0 — check the VPN".
+      + (deadThisRun.size ? `\n🪦 ${deadThisRun.size} retired as permanently unavailable (gone / audience-restricted) — never offered again  ·  Status ▸ 🪦 retired to see them` : '')
+      + (_proxyPauses ? `\n⛔ the proxy died ${_proxyPauses}× — the run paused and resumed; nothing was lost` : '')
+      + (dirty ? `\n⚠ ig.json has UNSAVED changes — press 💾 Save` : '')
       // (dev0683) Point at the evidence while the run is still fresh.
       + `\n\n🩺 Every step of this run was recorded — 🛠 Fix ▸ 🩺 Diagnostics (and proxy.log).`);
   }
