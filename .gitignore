@@ -53,6 +53,8 @@ ig.json.tmp-*
 # (dev0689) Same trap, new prefix: the ig_media author-foldering migration drops an
 # ig.json.premigrate-<stamp> copy (52MB) that ig.json.bak* does not catch.
 ig.json.premigrate-*
+# (dev0690) igOrphans.js deletion manifest — the audit trail of an irreversible run.
+ig.json.orphans-*
 ig_media/
 # (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts, bulk-imported into
 # ig.json via the I-screen "📁 Import ffdown" button. Local source data — keep out

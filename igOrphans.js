@@ -44,8 +44,14 @@
 //   node igOrphans.js                 report only — nothing is written (default)
 //   node igOrphans.js --apply         back up ig.json, then delete the duplicates and
 //                                     lower-res copies, and promote the higher-res ones
+//   node igOrphans.js --apply --no-replace   deletions only — leave the files each row
+//                                            points at exactly as they are
 //   node igOrphans.js --apply --file  …and ALSO move the no-twin strays into their author
 //                                     folder and append them to the row (read the warning)
+//
+// Every deletion is recorded in ig.json.orphans-deleted-<stamp>.txt (gitignored): the
+// file removed, why, and the twin that justified it. Deleting is the one irreversible
+// thing this script does, so it leaves a receipt.
 //
 // DO NOT run with the I screen open: it persists whole rows and would clobber the
 // ig.json edits (the same hazard igFolderByAuthor.js and igMarkLowRes.js carry).
@@ -61,7 +67,8 @@ const MEDIA = path.join(DIR, 'ig_media');
 
 const argv = process.argv.slice(2);
 const APPLY = argv.includes('--apply');
-const DO_FILE = argv.includes('--file');   // off by default — see the header
+const DO_FILE = argv.includes('--file');            // off by default — see the header
+const NO_REPLACE = argv.includes('--no-replace');   // deletions only, leave the row files alone
 
 // Author → folder name. MUST stay byte-identical to igFolderByAuthor.js's folderFor()
 // and proxy.js's igAuthorFolder(), or a filed stray lands beside its siblings instead
@@ -271,27 +278,56 @@ if (!APPLY) {
 
 // ── apply ─────────────────────────────────────────────────────────────────────
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-const backup = path.join(DIR, `ig.json.bak-orphans-${stamp}`);
-fs.copyFileSync(IG_STORE, backup);
-console.log(`\nig.json backed up → ${path.basename(backup)}`);
-
-let del = 0, delFail = 0;
-for (const x of identical.concat(worse)) {
-  try { fs.unlinkSync(path.join(MEDIA, x.name)); del++; }
-  catch (e) { delFail++; if (delFail <= 5) console.warn(`  delete failed: ${x.name} — ${e.message}`); }
+// ig.json is 55 MB and is only WRITTEN by the filing step, so only back it up when that
+// step is actually going to run. Deleting and replacing never touch it.
+if (DO_FILE) {
+  const backup = path.join(DIR, `ig.json.bak-orphans-${stamp}`);
+  fs.copyFileSync(IG_STORE, backup);
+  console.log(`\nig.json backed up → ${path.basename(backup)}`);
 }
-console.log(`deleted ${del} duplicate/lower-res orphan(s)${delFail ? ` (${delFail} failed)` : ''}`);
+
+// DELETE. The one irreversible act here, so it leaves a receipt: every removed file, the
+// reason, and the twin whose continued existence on disk justified the removal.
+const manifest = [
+  `igOrphans.js --apply${NO_REPLACE ? ' --no-replace' : ''}${DO_FILE ? ' --file' : ''}   ${new Date().toISOString()}`,
+  `deleting ${identical.length} byte-identical + ${worse.length} lower-res orphan(s) from ig_media/`,
+  ''
+];
+let del = 0, delFail = 0, freed = 0;
+for (const x of identical.concat(worse)) {
+  const why = x.sd ? `LOWER-RES ${x.sd.w}x${x.sd.h} vs ${x.td.w}x${x.td.h}` : 'BYTE-IDENTICAL';
+  const p = path.join(MEDIA, x.name);
+  const sz = sizeOf(p);
+  try {
+    fs.unlinkSync(p);
+    del++; if (sz > 0) freed += sz;
+    manifest.push(`DELETED  ${why}\n  file: ${x.name}\n  twin: ${x.twin}`);
+  } catch (e) {
+    delFail++;
+    manifest.push(`FAILED   ${why} — ${e.message}\n  file: ${x.name}`);
+    if (delFail <= 5) console.warn(`  delete failed: ${x.name} — ${e.message}`);
+  }
+}
+const manifestPath = path.join(DIR, `ig.json.orphans-deleted-${stamp}.txt`);
+try { fs.writeFileSync(manifestPath, manifest.join('\n') + '\n'); } catch (_) {}
+console.log(`\ndeleted ${del} duplicate/lower-res orphan(s)${delFail ? ` (${delFail} failed)` : ''}`
+  + `  ·  ${(freed / 1048576).toFixed(1)} MB freed`);
+console.log(`receipt → ${path.basename(manifestPath)}`);
 
 // REPLACE: the orphan moves onto the twin's exact path, so no row changes. Rename over
 // the target rather than unlink-then-rename — nothing is destroyed until the better copy
 // is in place, and rename overwrites on every platform Node supports.
 let rep = 0, repFail = 0;
-for (const x of better) {
-  const from = path.join(MEDIA, x.name), to = path.join(MEDIA, x.twin);
-  try { fs.renameSync(from, to); rep++; }
-  catch (e) { repFail++; if (repFail <= 5) console.warn(`  replace failed: ${x.name} — ${e.message}`); }
+if (NO_REPLACE) {
+  console.log(`skipped ${better.length} higher-res replacement(s) (--no-replace) — those orphans are untouched`);
+} else {
+  for (const x of better) {
+    const from = path.join(MEDIA, x.name), to = path.join(MEDIA, x.twin);
+    try { fs.renameSync(from, to); rep++; }
+    catch (e) { repFail++; if (repFail <= 5) console.warn(`  replace failed: ${x.name} — ${e.message}`); }
+  }
+  console.log(`replaced ${rep} row file(s) with a higher-res orphan${repFail ? ` (${repFail} failed)` : ''}`);
 }
-console.log(`replaced ${rep} row file(s) with a higher-res orphan${repFail ? ` (${repFail} failed)` : ''}`);
 
 // FILE: a carousel item its row never recorded. Move it into the author's folder and
 // append the relative subpath, matching the layout every other entry uses.
