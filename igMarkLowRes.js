@@ -80,6 +80,17 @@ function dimsOf(file) {
 }
 
 const rows = JSON.parse(fs.readFileSync(IG_STORE, 'utf8'));
+// (dev0689) HARD STOP after the ig_media author-foldering migration. Everything below
+// assumes the FLAT layout: it moves files to ig_media/<folder> while rows keep BARE
+// names, and --finish moves them back by bare name. Against "<author>/<name>" entries
+// the byName map misses every row, so --finish would treat the whole review folder as
+// unreferenced and the deletion pass would work off paths that no longer resolve.
+// This was a one-shot dev0677 triage and is done; refuse rather than misfire.
+if (rows.some(r => r && Array.isArray(r.localFiles) && r.localFiles.some(f => f && /[\\/]/.test(f)))) {
+  console.error('ig.json uses foldered localFiles ("<author>/<name>") — this dev0677 one-shot\n'
+              + 'predates that layout and would corrupt it. Refusing to run. See igFolderByAuthor.js.');
+  process.exit(1);
+}
 const backup = () => {
   const bak = IG_STORE + '.bak-marklowres-' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
   fs.copyFileSync(IG_STORE, bak);

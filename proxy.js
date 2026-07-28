@@ -2401,6 +2401,20 @@ function igSanitizeName(s) {
   s = String(s || '').replace(/[<>":\/\\|?*\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '');
   return s || 'unknown';
 }
+// (dev0689) Author → ig_media subfolder name. 25k files in one directory made
+// Explorer crawl; there are only ~25 harvested authors, so one folder each.
+// MUST stay byte-identical to folderFor() in igFolderByAuthor.js — the migration
+// script and this live path have to agree on the folder for a given author, or a
+// re-download would land beside its siblings instead of among them.
+// Empty author → '' → files land in ig_media/ exactly as before (fail-safe: an old
+// cached ig.js sends no author, and igFolderByAuthor.js re-files whatever lands).
+const IG_RESERVED_DIR = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+function igAuthorFolder(author) {
+  let s = String(author || '').trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '');
+  if (!s) return '';
+  if (IG_RESERVED_DIR.test(s)) s = '_' + s;
+  return s.slice(0, 100);
+}
 // (dev0439) Multi-file carousels now download. yt-dlp is pointed at a PRIVATE
 // temp dir with autonumbered output; the results are then renamed into ig_media/
 // — a single item keeps the bare AHK-convention stem, a carousel (e.g. a 6-image
@@ -2506,12 +2520,19 @@ function igDownload(req, res, origin) {
         }
         if (dw > 0 && dh > 0) outStem = outStem.replace(/^(\d{2}\.\d{2}\.\d{2}~)\d+x\d+~/, '$1' + dw + 'x' + dh + '~');
       } catch (_) {}
+      // (dev0689) Land the files in the author's subfolder and record the RELATIVE
+      // subpath in localFiles, so every consumer resolves correctly without having to
+      // re-derive the folder from the row (which would break on an author rename, and
+      // on a collab post harvested under one account — see reference_ig_author_vs_vidauthor).
+      const folder = igAuthorFolder(payload.author);
+      if (folder) { try { fs.mkdirSync(path.join(IG_MEDIA_DIR, folder), { recursive: true }); } catch (_) {} }
       files.forEach((f, i) => {
         const ext = path.extname(f);
         const base = outStem + (n > 1 ? ' [' + (i + 1) + ' of ' + n + ']' : '') + ext;
-        const dest = path.join(IG_MEDIA_DIR, base);
-        try { fs.renameSync(path.join(tmpDir, f), dest); out.push(base); }
-        catch (_) { try { fs.copyFileSync(path.join(tmpDir, f), dest); out.push(base); } catch (_) {} }
+        const rel  = folder ? folder + '/' + base : base;
+        const dest = path.join(IG_MEDIA_DIR, folder, base);   // folder '' → base dir
+        try { fs.renameSync(path.join(tmpDir, f), dest); out.push(rel); }
+        catch (_) { try { fs.copyFileSync(path.join(tmpDir, f), dest); out.push(rel); } catch (_) {} }
       });
       rmTmp();
       return out;

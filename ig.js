@@ -2241,8 +2241,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const _dlT0 = Date.now();
       const res = await fetch(PROXY + '/ig/download', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // (dev0689) `author` picks the ig_media subfolder. The proxy falls back to the
+        // base directory if it is absent, so a stale cached ig.js degrades to the old
+        // flat behaviour rather than failing — igFolderByAuthor.js re-files the strays.
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly,
-          probeEmbed: r.embed !== 0 && r.embed !== 1 })
+          author: r.author || '', probeEmbed: r.embed !== 0 && r.embed !== 1 })
       });
       const j = await res.json();
       // (dev0683) The proxy's own verdict for this row, timed. A download that takes
@@ -2262,7 +2265,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (dev0659) The proxy stamps the real ffprobe'd length into the filename; adopt it so
       // the row's durSecs matches the file — fixes the 00.00.00 that missing enrich metadata
       // left behind, and makes a later Promote carry the right length. Images stay 0.
-      const _nm0 = r.localFiles[0] || '';
+      // (dev0689) localFiles now carries "<author>/<name>"; both regexes below are
+      // ^-anchored on the AHK stem, so match on the BASENAME or they silently stop
+      // firing and every new download keeps a 00.00.00 duration and stale W×H.
+      const _nm0 = (r.localFiles[0] || '').split('/').pop();
       const _hm = _nm0.match(/^(\d{2})\.(\d{2})\.(\d{2})~/);
       if (_hm) { const _s = (+_hm[1]) * 3600 + (+_hm[2]) * 60 + (+_hm[3]); if (_s > 0) r.durSecs = _s; }
       // (dev0677) Same for W×H, which the proxy now ground-truths from the landed file.
@@ -3053,7 +3059,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   //     placeholder (only the explicit Ctrl+I press ever opens the browser).
   const PV_VIDEO_RE = /\.(mp4|webm|mov|m4v|mkv)$/i;
   const PV_IMAGE_RE = /\.(jpe?g|png|gif|webp|bmp|avif|tiff?)$/i;
-  const mediaUrl = name => 'ig_media/' + encodeURIComponent(name);
+  // (dev0689) Encode PER SEGMENT: localFiles is now "<author>/<name>", and a whole-string
+  // encodeURIComponent turns the separator into %2F, which the static server will not
+  // decode back into a path — every preview would 404.
+  const mediaUrl = name => 'ig_media/' + String(name).split('/').map(encodeURIComponent).join('/');
   let pvOpen = false;        // preview window mounted
   let pvRowId = null;        // row id currently shown
   let pvIdx = 0;             // carousel index into the row's localFiles
