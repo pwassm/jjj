@@ -55,6 +55,9 @@ ig.json.tmp-*
 ig.json.premigrate-*
 # (dev0690) igOrphans.js deletion manifest — the audit trail of an irreversible run.
 ig.json.orphans-*
+# (dev0690b) igMeasure.js — the path|size|mtime measurement cache (25k entries, so a
+# re-run is instant instead of 10 minutes of ffprobe) and its --sweep receipt.
+ig.json.measure-*
 ig_media/
 # (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts, bulk-imported into
 # ig.json via the I-screen "📁 Import ffdown" button. Local source data — keep out
