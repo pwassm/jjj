@@ -779,8 +779,16 @@
   // Each attempt stages a fresh server, and the .ps1 only reports success once the
   // public IP has actually changed off the home baseline — so a dead server is
   // skipped, never silently accepted. Returns the working status, or null.
+  // (dev0686) 3 → 5 tries, per request. The dev0683 black box caught two switches
+  // that answered "answered-but-down" after 13.6s and 40.2s (batches 8 and 23 of a
+  // 29-batch grind): /vpn/switch's own wait capped out while vpn-rotate.ps1 was
+  // still working, so the switch looked failed when it wasn't. Both recovered on a
+  // retry — but with only 3 tries a run of those ends the grind ("couldn't get a
+  // working VPN exit"). Two more attempts costs nothing when exits come up first
+  // try, which is the normal case. It does not FIX the timeout race, it just
+  // outlasts it.
   async function vpnEnsureUp(note, tries) {
-    tries = tries || 3;
+    tries = tries || 5;
     let sw = await vpnSwitchNow(note);
     let n = 1;
     while ((!sw || !sw.tunnelUp) && n < tries && !batchAbort) {
