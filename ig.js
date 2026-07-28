@@ -41,6 +41,14 @@
   let resFilter = 'all';               // (dev0690) all | low (<1080 wide) | ok | unmeasured | best
   const lowResIds = new Set();         // (dev0666) rows this run that came via the low-res embed fallback
   const fallbackIds = new Set();       // (dev0666) rows this run that used a non-yt-dlp but full-res path
+  // (dev0690c) Rows this run whose re-fetch actually came back BIGGER, measured: the only
+  // number that says the re-fetch grind is worth running. Pixels, never bytes.
+  const resGainIds = new Set();
+  // …and the same count across every batch ever run, since a 4,245-row backlog is ground
+  // down over many sessions and the per-run figure alone never shows the total won.
+  const RESGAIN_LS = 'slam-ig-resgain';
+  const resGainTotal = () => { const n = +localStorage.getItem(RESGAIN_LS); return n > 0 ? n : 0; };
+  const resGainBump = n => { try { localStorage.setItem(RESGAIN_LS, String(resGainTotal() + n)); } catch (_) {} };
   let embedStamped = 0, embedNoVerdict = 0;   // (dev0675) download-time embed verdicts this run
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
   // (dev0655) Windowed rendering — the tbody paints only the rows in (and just around)
@@ -1906,7 +1914,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let deadMarked = 0;                      // (dev0688) rows retired as permanently dead this batch
     const deadIdsThisBatch = [];             // …and which ones, for THIS batch's report
     batchItems = 0;                          // (dev0690) files landed this batch (rotation budget)
-    lowResIds.clear(); fallbackIds.clear();  // (dev0666) per-run download-path tallies
+    lowResIds.clear(); fallbackIds.clear(); resGainIds.clear();  // (dev0666) per-run download-path tallies
     embedStamped = 0; embedNoVerdict = 0;    // (dev0675) per-run embed-verdict tallies
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
     const t0 = Date.now();
@@ -2102,6 +2110,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         `   ${ids.slice(0, 6).join(', ')}${ids.length > 6 ? ` +${ids.length - 6} more` : ''}`);
     }
     if (isDl && fallbackIds.size) lines.push(`ℹ ${fallbackIds.size} used a cookieless fallback path (still full res)`);
+    // (dev0690c) The re-fetch scoreboard. Banked to the lifetime total exactly once, here
+    // at the end of the run, so a resumed/paused grind can't double-count.
+    if (isDl && resGainIds.size) {
+      resGainBump(resGainIds.size);
+      lines.push(`⬆ ${resGainIds.size} came back at HIGHER resolution this run  ·  ${resGainTotal()} total across all batches`);
+    }
     // (dev0675) Embed verdicts stamped as part of this run. A "no verdict" row is not a
     // failure — it stays unstamped for igEmbedProbe.js to resolve later.
     if (isDl && (embedStamped || embedNoVerdict)) {
@@ -2457,6 +2471,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // these, nothing on disk distinguished a capped file from a full one without
       // re-probing it — which is exactly why 3,381 capped clips went unnoticed.
       if (j.media && j.media.maxW > 0) {
+        // (dev0690c) Did this re-fetch actually WIN? Compare the measured pixels of what
+        // just landed against what the row held a moment ago (igMeasure.js stamped that
+        // for the back catalogue). Only counts a row that already had a measurement —
+        // a first download is not a gain, it's an arrival.
+        if (r.dlW > 0 && r.dlH > 0 && j.media.maxW * j.media.maxH > r.dlW * r.dlH) resGainIds.add(r.id);
         r.dlW = j.media.maxW; r.dlH = j.media.maxH; r.dlMinW = j.media.minW;
         if (r.dlMinW >= RES_TARGET_W && r.resBest) delete r.resBest;   // it improved after all
       } else { delete r.dlW; delete r.dlH; delete r.dlMinW; }
