@@ -43,7 +43,17 @@ if ($n -ge 20) {
 #    ("FATAL ERROR: ... heap out of memory", an abort, a native crash) prints on
 #    stderr, so from now on it lands in a file. stdout stays in the window, so the
 #    startup banner and the [ig/download] chatter are unchanged.
-Start-Process cmd -ArgumentList '/k', 'title SLAM proxy :8081 && node proxy.js 2>> proxy.err.log' -WorkingDirectory 'M:\jjj'
+#    (dev0687) EXIT CODE CAPTURE — the one fact still missing. Three times now the
+#    proxy has vanished mid-download with no signal line, no exit line, nothing on
+#    stderr, and no Windows record, while its cmd window survived. node itself can
+#    record nothing in that situation, but the SHELL that launched it can: cmd is
+#    /v:on (delayed expansion) so !ERRORLEVEL! is read AFTER node ends, and the code
+#    lands in proxy.log. That single number names the killer:
+#       1  or 0        → TerminateProcess: something ended it deliberately
+#       -1073741819 (0xC0000005) → access violation: node crashed natively
+#       -1073740791 (0xC0000409) → stack/abort: a V8 fatal
+#       -1073741510 (0xC000013A) → Ctrl+C / console close
+Start-Process cmd -ArgumentList '/v:on', '/k', 'title SLAM proxy :8081 && node proxy.js 2>> proxy.err.log & echo !DATE! !TIME!  node exited EXITCODE=!ERRORLEVEL! >> proxy.log' -WorkingDirectory 'M:\jjj'
 
 # 3) Verify: does the LIVE build match proxy.js on disk? (polls up to ~25s while node boots)
 #    MUST poll 127.0.0.1, NOT localhost: proxy.js binds .listen(PORT,'127.0.0.1') (IPv4-only,
