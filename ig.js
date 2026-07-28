@@ -38,6 +38,7 @@
   let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
   let embedFilter = 'all';             // (dev0665) all | 1 (embeddable) | 0 (not) | un (unprobed)
   let refetchFilter = 'all';           // (dev0677) all | need (needsFullRes) | done (was marked, now re-fetched)
+  let resFilter = 'all';               // (dev0690) all | low (<1080 wide) | ok | unmeasured | best
   const lowResIds = new Set();         // (dev0666) rows this run that came via the low-res embed fallback
   const fallbackIds = new Set();       // (dev0666) rows this run that used a non-yt-dlp but full-res path
   let embedStamped = 0, embedNoVerdict = 0;   // (dev0675) download-time embed verdicts this run
@@ -126,7 +127,16 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const ENRICH_GAP = [1200, 3000];     // ms between batch enrich items (cookieless)
   const DOWNLOAD_GAP = [2500, 6000];   // ms between batch downloads (heavier, may use cookies)
-  const ROTATE_CHUNK = 18;             // (dev0649) downloads per Proton exit before auto-switching
+  // (dev0649) Work per Proton exit before auto-switching.
+  // (dev0690) The unit changed from ROWS to DOWNLOADED FILES, per request. It was always
+  // meant to be "18 downloads"; those coincided while a row meant one fetch. Now that a
+  // carousel row can be six or seven fetches — and the yt-dlp video pass makes each of
+  // those a real request — 18 rows could be 100+ downloads on one exit. ROTATE_CHUNK is
+  // the item budget; ROTATE_ROW_CAP still bounds a batch in rows, so a run of FAILURES
+  // (which land no items and so never spend the budget) can't grind on one exit forever.
+  const ROTATE_CHUNK = 18;
+  const ROTATE_ROW_CAP = 18;
+  let batchItems = 0;                  // (dev0690) files landed in the current runBatch
   // (dev0444) Account-safety guard: auto-stop a batch once this many items have had
   // to fall back to Firefox cookies (i.e. login-walled posts fetched AS your logged-in
   // account). Cookieless work is unlimited and account-safe; only the authenticated
@@ -182,6 +192,34 @@
   const kindOf = r => /\/reel\//i.test(r.url || '') ? 'reel'
                    : /\/p\//i.test(r.url || '') ? 'p'
                    : /\/tv\//i.test(r.url || '') ? 'tv' : '?';
+  // (dev0690) IG encodes at a width of 1080 or 720; a landscape clip is 1080 wide too.
+  // So WIDTH is the resolution ceiling to measure against, not the long edge — a
+  // 720x1280 portrait clip is capped even though its long edge is well over 1080.
+  const RES_TARGET_W = 1080;
+  // (dev0690) The post's item count, and how sure we are of it. Nothing in ig.json
+  // recorded this before this build, so most rows have to infer:
+  //   nItems     — written by enrich (the /p page's carousel_media length) or by a
+  //                download (the walker's inventory). The only authoritative source.
+  //   reel / tv  — single-item by definition; no fetch needed to know that.
+  //   localFiles — a download that landed n>1 files proves the post has AT LEAST n
+  //                items, but a partial walk lands fewer, so it is a floor, not a count.
+  // n === null means genuinely unknown, which is not the same as "not a carousel" and
+  // must not be displayed as 0.
+  function carouselCount(r) {
+    if (Number.isFinite(r.nItems) && r.nItems > 0) return { n: r.nItems, exact: true };
+    if (kindOf(r) !== 'p') return { n: 1, exact: true };
+    const f = (r.localFiles || []).length;
+    if (f > 1) return { n: f, exact: false };
+    return { n: null, exact: false };
+  }
+  // (dev0690) Real measured pixels of what is on disk (proxy `media`, stamped at
+  // download), falling back to the row's ENRICH dims — which for a carousel video are
+  // the logged-out page's capped 720-wide figures, i.e. not what the file actually is.
+  const dlDims = r => (r.dlW > 0 && r.dlH > 0) ? { w: r.dlW, h: r.dlH, measured: true }
+                    : ((r.width > 0 && r.height > 0) ? { w: r.width, h: r.height, measured: false } : null);
+  // Below target = the NARROWEST item on disk is under 1080 wide. Uses the per-post
+  // minimum so a carousel where five items are 1080 and one is 720 still shows up.
+  const belowTarget = r => r.dlMinW > 0 && r.dlMinW < RES_TARGET_W;
   // (dev0472) Always link the BARE /p/<id>/ permalink, NOT r.url (which may be the
   // username-scoped /author/reel/<id>/ form). The bare /p/ permalink is the one that
   // opens IG's grid modal WITH the ◀▶ arrows so the user can keep arrowing the feed;
@@ -338,7 +376,12 @@
       embed: r.embed === 0 || r.embed === 1 ? r.embed : 'un',
       lowRes: r.lowResDl ? 1 : 0,
       needsFullRes: r.needsFullRes ? 1 : 0,
-      partial: r.metaPartial ? 1 : 0
+      partial: r.metaPartial ? 1 : 0,
+      // (dev0690) measured-on-disk size, item count, and the two new marks
+      dl: r.dlW ? r.dlW + 'x' + r.dlH + (r.dlMinW !== r.dlW ? '/min' + r.dlMinW : '') : '-',
+      items: Number.isFinite(r.nItems) ? r.nItems : '?',
+      partialDl: r.partialDl ? 1 : 0,
+      resBest: r.resBest ? 1 : 0
     };
   }
   function diagDump() {
@@ -1036,7 +1079,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option><option value="__retired__">🪦 retired (dead posts)</option></select>
         <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links or ffdown imports)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
         <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
-        <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option></select>
+        <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option><option value="stuck">⤓ gave up (3 tries)</option></select>
+        <select id="igRes" title="(dev0690) Real resolution OF THE FILES ON DISK, measured at download time — not the enrich metadata, which for a carousel video is IG's logged-out page figure and is capped at 720 wide. ‘below 1080’ = the narrowest item of the post is under 1080px wide (the backfill queue). ‘not measured’ = downloaded before dev0690, so nothing knows what it is without re-downloading. ‘at best’ = a re-download was tried and IG had nothing better, so stop offering it."><option value="all">all res</option><option value="low">📐 below 1080 wide</option><option value="ok">1080+ wide</option><option value="unmeasured">not measured yet</option><option value="best">already at IG's best</option></select>
         <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
@@ -1077,6 +1121,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igStaged').addEventListener('change', e => { stagedFilter = e.target.value; applyAndRender(); });
     $('igEmbed').addEventListener('change', e => { embedFilter = e.target.value; applyAndRender(); });
     $('igRefetch').addEventListener('change', e => { refetchFilter = e.target.value; applyAndRender(); });
+    $('igRes').addEventListener('change', e => { resFilter = e.target.value; applyAndRender(); });
     $('igEnrichSel').addEventListener('click', () => batchEnrich());
     $('igAutoEnrich').addEventListener('click', () => toggleAutoPanel());
     $('igDownloadSel').addEventListener('click', () => batchDownload());
@@ -1121,6 +1166,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     { key: 'VidTitle', label: 'Title', w: 250, sort: true },
     { key: 'durSecs', label: 'Dur', w: 60, sort: true },
     { key: '_wxh', label: 'W×H', w: 80, sort: true },
+    // (dev0690) How many items the post carries. 0 = not a carousel; n = an n-item one.
+    { key: '_car', label: 'Carousel', w: 66, sort: true },
     { key: 'DatePosted', label: 'Posted', w: 96, sort: true },
     { key: 'embed', label: 'Embed', w: 52, sort: true },
     { key: '_cap', label: 'ftext', w: 46, sort: false },
@@ -1162,13 +1209,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // re-render during a grind (keep scroll position, no write).
   function _filterSig() {
     return [query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter, refetchFilter,
-      hideCompleted ? 1 : 0, sortCol, sortDir].join('');
+      resFilter, hideCompleted ? 1 : 0, sortCol, sortDir].join('');
   }
   function saveFilters() {
     try {
       localStorage.setItem(IG_FILTER_KEY, JSON.stringify({
         query, kindFilter, statusFilter, authorFilter, stagedFilter, embedFilter, refetchFilter,
-        hideCompleted, sortCol, sortDir
+        resFilter, hideCompleted, sortCol, sortDir
       }));
     } catch (_) {}
   }
@@ -1182,6 +1229,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (typeof j.stagedFilter === 'string') stagedFilter = j.stagedFilter;
       if (typeof j.embedFilter === 'string') embedFilter = j.embedFilter;
       if (typeof j.refetchFilter === 'string') refetchFilter = j.refetchFilter;
+      if (typeof j.resFilter === 'string') resFilter = j.resFilter;
       if (typeof j.hideCompleted === 'boolean') hideCompleted = j.hideCompleted;
       if (typeof j.sortCol === 'string') sortCol = j.sortCol;
       if (j.sortDir === 1 || j.sortDir === -1) sortDir = j.sortDir;
@@ -1197,6 +1245,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (g('igStaged')) g('igStaged').value = stagedFilter;
     if (g('igEmbed')) g('igEmbed').value = embedFilter;
     if (g('igRefetch')) g('igRefetch').value = refetchFilter;
+    if (g('igRes')) g('igRes').value = resFilter;
   }
 
   function applyAndRender() {
@@ -1236,7 +1285,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (dev0677) Re-fetch queue: rows marked for a full-res re-download of a cropped cover.
       if (refetchFilter === 'need' && !r.needsFullRes) return false;
       if (refetchFilter === 'done' && !(r.refetchedAt && !r.needsFullRes)) return false;
-      if (hideCompleted && isDownloaded(r)) return false;   // (dev0438) 'c' = hide completed
+      if (refetchFilter === 'stuck' && !r.refetchStuck) return false;   // (dev0690) gave up after 3 tries
+      // (dev0690) Resolution of what is actually on disk. Only DOWNLOADED rows can
+      // answer this at all, so every option below implicitly means "…and downloaded".
+      if (resFilter === 'low' && !(belowTarget(r) && !r.resBest)) return false;
+      if (resFilter === 'ok' && !(r.dlMinW >= RES_TARGET_W)) return false;
+      if (resFilter === 'unmeasured' && !(isDownloaded(r) && !(r.dlMinW > 0))) return false;
+      if (resFilter === 'best' && !r.resBest) return false;
+      // (dev0438) 'c' = hide completed. (dev0690) A row queued for a full-res re-fetch is
+      // NOT completed — hiding it would also hide it from the grind, which reads `view`.
+      if (hideCompleted && isDownloadDone(r)) return false;
       if (query) {
         const hay = (r.author + ' ' + r.id + ' ' + (r.VidTitle || '') + ' ' + (r.ftext || '') + ' ' + (r.status || '')).toLowerCase();
         if (!hay.includes(query)) return false;
@@ -1247,7 +1305,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (sortCol === 'kind') return kindOf(r);
       if (sortCol === 'status') return r.status || 'new';
       if (sortCol === 'durSecs') return +r.durSecs || 0;
-      if (sortCol === '_wxh') return (+r.height || 0) * 100000 + (+r.width || 0);
+      // (dev0690) Sort on what the cell SHOWS — measured pixels when we have them.
+      if (sortCol === '_wxh') { const d = dlDims(r); return d ? d.h * 100000 + d.w : 0; }
+      // Unknown sorts below "not a carousel", which sorts below every real carousel.
+      if (sortCol === '_car') { const c = carouselCount(r); return c.n == null ? -1 : (c.n <= 1 ? 0 : c.n); }
       if (sortCol === 'embed') return r.embed === 1 ? 2 : (r.embed === 0 ? 1 : 0);   // ✓ > ✗ > unprobed
       return (r[sortCol] != null ? r[sortCol] : '');
     };
@@ -1279,6 +1340,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const vDownload  = view.reduce((n, r) => n + (st(r) === 'downloaded' ? 1 : 0), 0);
     const vPromoted  = view.reduce((n, r) => n + (st(r) === 'promoted' ? 1 : 0), 0);
     const vEmbed     = view.reduce((n, r) => n + (r.embed === 1 ? 1 : 0), 0);   // (dev0665)
+    // (dev0690) Backfill progress, in the one place that's always on screen.
+    const vLowRes    = view.reduce((n, r) => n + (belowTarget(r) && !r.resBest ? 1 : 0), 0);
+    const vCarousel  = view.reduce((n, r) => { const c = carouselCount(r); return n + (c.n > 1 ? 1 : 0); }, 0);
     // (dev0445) Selected-AND-visible vs total selected, so a selection hidden by the
     // filter can't masquerade (it used to silently get batch-processed).
     const selHere = view.reduce((n, r) => n + (sel.has(r.id) ? 1 : 0), 0);
@@ -1292,6 +1356,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const sub = [
         filtered ? `of ${rows.length}` : null,
         `new ${vNew}`, `enriched ${vEnriched}`, `downloaded ${vDownload}`, `promoted ${vPromoted}`, `embed ✓ ${vEmbed}`,
+        vCarousel ? `carousels ${vCarousel}` : null,
+        vLowRes ? `📐 below ${RES_TARGET_W}: ${vLowRes}` : null,
         selTxt,
         dirty ? '⚠ unsaved' : null,
       ].filter(Boolean).join(' · ');
@@ -1316,9 +1382,33 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0666) A download that landed only the low-res embed image stays visible here,
     // long after its toast is gone — same "flag it so it can't pile up unseen" rule as
     // the ⚠ partial Posted cell.
+    // (dev0690) Prefer the MEASURED size of what is on disk over the row's enrich dims:
+    // for a carousel video the enrich figure is the logged-out page's capped 720-wide
+    // number, so the cell used to advertise a resolution the file didn't have. A
+    // measured value below 1080 wide gets a persistent ⚠ (same "flag it so it can't
+    // pile up unseen" rule as ⚠ partial), which is also what the Res filter selects on.
+    const _d = dlDims(r);
     const wxh = r.lowResDl
       ? '<span class="walled" title="Downloaded via the low-res EMBED fallback (first image only) — re-download later for full res">⚠ low-res</span>'
-      : ((r.width && r.height) ? (r.width + '×' + r.height) : '<span class="no">—</span>');
+      : (_d
+          ? `<span${_d.measured ? '' : ' class="no"'} title="${_d.measured
+              ? 'Measured from the file(s) on disk' + (r.dlMinW && r.dlMinW !== _d.w ? ' — narrowest item ' + r.dlMinW + 'px wide' : '')
+              : 'From enrich metadata — NOT measured. For a carousel video this is IG’s logged-out page figure, which is capped at 720 wide.'}">${_d.w}×${_d.h}</span>`
+            + (belowTarget(r) ? `<span class="walled" title="Below ${RES_TARGET_W}px wide — queued by Res ▸ below ${RES_TARGET_W}"> ⚠</span>` : '')
+          : '<span class="no">—</span>');
+    // (dev0690) 0 = not a carousel · n = an n-item carousel · ≥n = at least that many
+    // (inferred from the files that landed) · — = never established.
+    const _c = carouselCount(r);
+    const carCell = _c.n == null
+      ? '<span class="no" title="Unknown — enrich or download this row and the count is recorded">—</span>'
+      : (_c.n <= 1
+          ? '<span class="no" title="Single-item post — not a carousel">0</span>'
+          : `<span${_c.exact ? '' : ' class="no"'} title="${_c.exact
+              ? _c.n + '-item carousel (read from the post itself)'
+              : 'At least ' + _c.n + ' items — inferred from the ' + _c.n + ' files on disk, so a partial download reads low. Re-enrich to record the true count.'}">${_c.exact ? '' : '≥'}${_c.n}</span>`)
+      // (dev0690) Fewer files on disk than the post has items — a throttled walk. The
+      // row is re-queued for a full re-fetch; this is how you can see which ones.
+      + (r.partialDl ? `<span class="walled" title="Only ${(r.localFiles || []).length} of ${_c.n} items landed — queued for a full re-fetch (Re-fetch ▸ needs full-res)"> ⚠</span>` : '');
     const dur = r.durSecs ? fmtDur(r.durSecs) : '<span class="no">—</span>';
     return `<tr data-id="${esc(r.id)}" class="st-${st} ${r.id === focusId ? 'focus' : ''} ${r.id === processingId ? 'proc' : ''}">
         <td class="c-sel"><input type="checkbox" class="igchk" ${sel.has(r.id) ? 'checked' : ''}></td>
@@ -1328,6 +1418,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <td title="${esc(r.VidTitle || '')}">${esc(r.VidTitle || '')}</td>
         <td class="mono">${dur}</td>
         <td class="mono">${wxh}</td>
+        <td class="mono" style="text-align:center">${carCell}</td>
         <td class="mono">${r.DatePosted ? esc(r.DatePosted)
           : (r.metaPartial
               ? '<span class="walled" title="caption-only embed fallback — no date/dims were available; re-download on a healthy VPN to fill it">⚠ partial</span>'
@@ -1475,7 +1566,20 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <b>Embed</b><span>${r.embed === 1 ? '✓ embeddable (official iframe single-plays)'
           : (r.embed === 0 ? '✗ not embeddable (embed page has no video)' : '— unprobed')}</span>
         <b>Duration</b><span>${r.durSecs ? esc(fmtDur(r.durSecs)) : '—'}</span>
-        <b>W×H (max)</b><span>${(r.width && r.height) ? (r.width + ' × ' + r.height) : '—'}</span>
+        <b>W×H (enrich)</b><span>${(r.width && r.height) ? (r.width + ' × ' + r.height) : '—'}${
+          (r.width && kindOf(r) === 'p' && Number.isFinite(r.nItems) && r.nItems > 1)
+            ? ' <span style="color:#8a8f98">· IG’s logged-out figure for a carousel video is capped at 720 wide</span>' : ''}</span>
+        <b>W×H (on disk)</b><span>${r.dlW ? `${r.dlW} × ${r.dlH}${r.dlMinW && r.dlMinW !== r.dlW ? ` · narrowest item ${r.dlMinW}px` : ''}${
+          belowTarget(r) ? ` <span style="color:#d59a3a">⚠ below ${RES_TARGET_W}</span>` : ''}`
+          : '<span style="color:#8a8f98">not measured — downloaded before dev0690, or not downloaded</span>'}</span>
+        <b>Carousel</b><span>${(() => {
+          const c = carouselCount(r);
+          if (c.n == null) return '<span style="color:#8a8f98">unknown — Enrich records it</span>';
+          if (c.n <= 1) return '0 · single-item post';
+          return `${c.exact ? '' : 'at least '}${c.n} items${c.exact ? '' : ' (inferred from files on disk)'}`
+               + (r.partialDl ? ` · <span style="color:#d59a3a">⚠ only ${(r.localFiles || []).length} landed</span>` : '');
+        })()}</span>
+        ${r.resBest ? `<b>Res</b><span>already at IG’s best — a re-download was tried, came back worse, and was discarded; this row is no longer queued for re-fetch</span>` : ''}
         <b>Harvested</b><span>${esc(r.DateAdded || '—')}</span>
         ${r.source ? `<b>Source</b><span>${esc(r.source)}${r.staged === false ? ' · Unharvested' : ''}</span>` : ''}
         ${r.imgIndex ? `<b>img_index</b><span>${esc(r.imgIndex)}${r.imgIndex === 1 ? ' · 📸 Cover-only grabs just it' : ''}</span>` : ''}
@@ -1708,6 +1812,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       else if (r.durSecs == null) r.durSecs = 0;
       if (meta.width) r.width = +meta.width;
       if (meta.height) r.height = +meta.height;
+      // (dev0690) The post's item count, for the Carousel column. Only the cookieless
+      // /p/ page can answer it (parseIgMainMeta walks carousel_media), so a row enriched
+      // by yt-dlp alone keeps whatever it had — yt-dlp lists only the VIDEO entries, so
+      // trusting its count would report a 6-item mixed carousel as 5. A /reel/ or /tv/
+      // URL is single-item by definition and needs no page read at all.
+      if (Number.isFinite(meta.nItems) && meta.nItems > 0) r.nItems = meta.nItems;
+      else if (kindOf(r) !== 'p') r.nItems = 1;
       // (dev0510) Cookieless index-1 cover for photo /p/ posts (the keeper image).
       // The URL is a signed CDN link that expires (~a day), so it's a preview aid —
       // re-enrich refreshes it; permanence still comes from ⬇ Download. Reels never
@@ -1780,7 +1891,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     diag('ROW-RETIRED', { id: r.id, kind: kindOf(r), reason: r.deadReason });
   }
 
-  async function runBatch(label, ids, gap, doOne, skipIf, posture) {
+  // (dev0690) `itemBudget` (opt) — stop the batch once this many FILES have been
+  // downloaded, not rows. Only Download+rotate passes it; every other caller runs the
+  // whole id list exactly as before.
+  async function runBatch(label, ids, gap, doOne, skipIf, posture, itemBudget) {
     // (dev0688) proxyDown is cleared HERE, for every caller. It's a per-batch verdict,
     // and a stale true left over from an earlier run would make the next enrich or
     // download batch break on its very first row for no visible reason.
@@ -1791,6 +1905,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let consecFail = 0;                      // (dev0645) run of back-to-back download failures
     let deadMarked = 0;                      // (dev0688) rows retired as permanently dead this batch
     const deadIdsThisBatch = [];             // …and which ones, for THIS batch's report
+    batchItems = 0;                          // (dev0690) files landed this batch (rotation budget)
     lowResIds.clear(); fallbackIds.clear();  // (dev0666) per-run download-path tallies
     embedStamped = 0; embedNoVerdict = 0;    // (dev0675) per-run embed-verdict tallies
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
@@ -1907,6 +2022,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
       applyAndRender();
       if (throttled || cookieStopped || walledStopped || proxyDown) break;
+      // (dev0690) Item budget spent → hand back to the caller so it can rotate the exit.
+      // Checked AFTER the row completes, so a carousel is never cut in half.
+      if (itemBudget && batchItems >= itemBudget) {
+        diag('batch-item-budget', { label, items: batchItems, budget: itemBudget, rows: done });
+        break;
+      }
     }
     lastBatchDead = deadMarked;          // (dev0688) the grind reads this to tell "0 downloaded
                                          // because everything's blocked" from "0 downloaded
@@ -2015,6 +2136,17 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   const igEnrichDone = r => isEnriched(r) || enrichFailed.has(r.id);
   // A row counts as already downloaded once it has media files on disk.
   const isDownloaded = r => !!(r.localFiles && r.localFiles.length);
+  // (dev0690) …but having files is not the same as being FINISHED. A row flagged
+  // needsFullRes has real media on disk and is still provisional — a 640px embed
+  // thumbnail, or a carousel that landed fewer files than the post has items. Downloads
+  // skip on THIS, not on isDownloaded, so the re-fetch queue actually drains instead of
+  // being invisible to every batch. dev0677 had to null out localFiles to get the same
+  // effect, which meant losing the file record if the re-fetch never happened.
+  // Terminating by construction: a better download clears the flag, a worse one is
+  // refused and marks resBest, and a download that is provisional AGAIN gives up after
+  // REFETCH_TRIES so an embed-only post cannot be re-queued forever.
+  const REFETCH_TRIES = 3;
+  const isDownloadDone = r => isDownloaded(r) && !r.needsFullRes;
 
   async function batchEnrich() {
     const ids = selectedInView();
@@ -2244,8 +2376,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // (dev0689) `author` picks the ig_media subfolder. The proxy falls back to the
         // base directory if it is absent, so a stale cached ig.js degrades to the old
         // flat behaviour rather than failing — igFolderByAuthor.js re-files the strays.
+        // (dev0690) keepPixels/keepCount describe what this row ALREADY has on disk, so
+        // the proxy can refuse a re-download that would be a downgrade (it answers
+        // kept:… instead of publishing). Sent only when there IS something to protect;
+        // a first download sends 0/0 and is never blocked. Guarding here rather than
+        // after the fact matters because the file lands under a name containing its own
+        // W×H, so a worse copy would sit alongside the good one rather than replace it.
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly,
-          author: r.author || '', probeEmbed: r.embed !== 0 && r.embed !== 1 })
+          author: r.author || '', probeEmbed: r.embed !== 0 && r.embed !== 1,
+          keepPixels: (r.localFiles || []).length && r.dlW > 0 && r.dlH > 0 ? r.dlW * r.dlH : 0,
+          keepCount: (r.localFiles || []).length })
       });
       const j = await res.json();
       // (dev0683) The proxy's own verdict for this row, timed. A download that takes
@@ -2254,14 +2394,47 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         ok: j && j.ok ? 1 : 0, files: (j && j.files || []).length,
         via: j ? ['viaEmbed', 'viaCover', 'viaMainVideo', 'viaMainCarousel', 'viaGalleryDl'].filter(k => j[k]).join('+') : '',
         embed: j && (j.embed === 0 || j.embed === 1) ? j.embed : (j && j.embedProbe) || '',
+        res: j && j.media ? j.media.maxW + 'x' + j.media.maxH + (j.media.minW !== j.media.maxW ? ' min' + j.media.minW : '') : '',
+        items: j && j.postItems != null ? j.postItems : '',
+        up: j && j.videoItems ? j.upgraded + '/' + j.videoItems : '',
+        kept: j && j.kept ? j.kept.reason : '',
         err: (j && j.error || '').replace(/\s+/g, ' ').slice(0, 200) });
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+      // (dev0690) The post's item count is worth recording even on a refusal — it comes
+      // from reading the post, not from downloading it.
+      if (Number.isFinite(j.postItems) && j.postItems > 0 && r.nItems !== j.postItems) { r.nItems = j.postItems; dirty = true; }
+      // (dev0690) REFUSED as a downgrade: the proxy measured what it fetched, found it
+      // worse than what this row already has, and threw the new copy away rather than
+      // let it land beside the good one. That is a success, not a failure — but it must
+      // also END the re-fetch queue for this row, or the grind would offer it forever.
+      if (j.kept) {
+        // The two refusal reasons mean different things and must not be conflated.
+        // 'fewer pixels' is a VERDICT — IG served us its best and it is worse than what we
+        // hold, so stop asking. 'fewer items' is usually a THROTTLED walk, which says
+        // nothing about the post, so the row keeps its place in the queue and tries again.
+        if (j.kept.reason === 'fewer pixels') {
+          delete r.needsFullRes;
+          r.resBest = 1;                    // Res ▸ already at IG's best
+          r.refetchedAt = (typeof isoNow === 'function') ? isoNow()
+                        : new Date().toISOString().slice(0, 19).replace('T', ' ');
+        }
+        dirty = true;
+        sel.delete(r.id);                   // treated as done, like any other success
+        lastOpInfo = 'kept the existing file';
+        if (single) igToast('↩ ' + r.id + ': kept the existing download\nIG offered ' + j.kept.reason
+          + ' (' + (j.kept.newCount || 0) + ' item(s), ' + (j.kept.newPixels || 0) + 'px) — nothing was overwritten.'
+          + (j.kept.reason === 'fewer pixels'
+              ? '\nMarked “already at IG’s best” so it stops being re-queued.'
+              : '\nProbably a throttled read — left queued to try again.'), 4600);
+        return true;
+      }
       // (dev0660) A success carrying ZERO files is a FALSE success — never mark the row
       // downloaded on it. The old code stamped status='downloaded' with an empty localFiles
       // whenever the proxy returned {ok:true, files:[]}, leaving 18 photo /p rows flagged
       // downloaded with nothing on disk. Treat it as a failure so status stays put.
       if (!j.files || !j.files.length) throw new Error('download returned no files (nothing landed on disk)');
       r.localFiles = j.files || [];
+      batchItems += r.localFiles.length;   // (dev0690) spends the rotation budget
       // (dev0659) The proxy stamps the real ffprobe'd length into the filename; adopt it so
       // the row's durSecs matches the file — fixes the 00.00.00 that missing enrich metadata
       // left behind, and makes a later Promote carry the right length. Images stay 0.
@@ -2277,6 +2450,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // a resolution it no longer has, and a later Promote would carry the wrong one.
       const _wh = _nm0.match(/^\d{2}\.\d{2}\.\d{2}~(\d+)x(\d+)~/);
       if (_wh) { const _w = +_wh[1], _h = +_wh[2]; if (_w > 0 && _h > 0) { r.width = _w; r.height = _h; } }
+      // (dev0690) The MEASURED size of what actually landed, kept separate from r.width/
+      // r.height (which are enrich metadata, and for a carousel video are IG's capped
+      // logged-out figures). dlW/dlH are the largest item; dlMinW is the NARROWEST, so a
+      // six-item carousel with one 720 item among five 1080s is still findable. Without
+      // these, nothing on disk distinguished a capped file from a full one without
+      // re-probing it — which is exactly why 3,381 capped clips went unnoticed.
+      if (j.media && j.media.maxW > 0) {
+        r.dlW = j.media.maxW; r.dlH = j.media.maxH; r.dlMinW = j.media.minW;
+        if (r.dlMinW >= RES_TARGET_W && r.resBest) delete r.resBest;   // it improved after all
+      } else { delete r.dlW; delete r.dlH; delete r.dlMinW; }
       // (dev0659) Surface a resolution-lossy fallback even in batch/rotate (single=false
       // suppresses the normal per-row toast). The embed rescue is first-image-only — clearly
       // not top-res — so always warn. The /p video_versions + carousel + gallery-dl paths are
@@ -2305,6 +2488,31 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         r.refetchedAt = (typeof isoNow === 'function') ? isoNow()
           : new Date().toISOString().slice(0, 19).replace('T', ' ');
       }
+      // (dev0690) A download can succeed and still be PROVISIONAL. Two cases, both of
+      // which used to be stamped a clean 'downloaded' and then sat there forever:
+      //   • viaEmbed — the embed page's thumbnail, which the proxy itself labels a last
+      //     resort. 2,577 images ≤640px accumulated this way.
+      //   • a carousel that landed FEWER files than the post has items (a throttled walk).
+      //     Knowable only now that the item count is recorded.
+      // Both re-queue through the existing dev0677 mechanism (Re-fetch ▸ needs full-res),
+      // so they stay 'downloaded' — the file on disk is real and is not thrown away —
+      // but they are visibly unfinished instead of invisibly wrong.
+      const _items = Number.isFinite(r.nItems) ? r.nItems : 0;
+      const _partial = _items > 1 && r.localFiles.length < _items;
+      if ((j.viaEmbed || _partial) && !coverOnly && !r.resBest) {
+        // Bounded: a post that keeps coming back provisional (an embed-only account, an
+        // item IG will not serve) gives up after REFETCH_TRIES rather than reappearing in
+        // every grind for good. refetchStuck keeps it findable without pretending it's done.
+        r.fullResTries = (r.fullResTries || 0) + 1;
+        if (r.fullResTries >= REFETCH_TRIES) { delete r.needsFullRes; r.refetchStuck = 1; }
+        else { r.needsFullRes = true; delete r.refetchedAt; }
+      } else if (!coverOnly) {
+        // A clean, complete download settles the row: drop the counters so a LATER
+        // regression starts its allowance over rather than inheriting an old tally.
+        if (r.fullResTries) delete r.fullResTries;
+        if (r.refetchStuck) delete r.refetchStuck;
+      }
+      if (_partial) r.partialDl = 1; else if (r.partialDl) delete r.partialDl;
       // (dev0675) Adopt the download-time embed verdict. Only a CONCLUSIVE probe writes
       // the field; a walled/inconclusive one leaves the row unstamped so igEmbedProbe.js
       // can still resolve it later — the flag must never be a guess, the grids gate
@@ -2345,6 +2553,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           + (j.viaCover ? '\n🖼 index-1 cover at full resolution (main /p/ page)' : '')
           + (j.viaMainVideo ? '\n🎞 reel via cookieless /p/ page (yt-dlp was walled)' : '')
           + (j.viaMainCarousel ? '\n🖼 full carousel via cookieless /p/ page (no cookies)' : '')
+          // (dev0690) The three facts this build added, when they apply.
+          + (j.videoItems ? '\n🎬 ' + j.upgraded + ' of ' + j.videoItems + ' video item(s) via yt-dlp at max res'
+                          + (j.upgraded < j.videoItems ? ' — the rest came off the 720-capped page' : '') : '')
+          + (j.media ? '\n📐 measured ' + j.media.maxW + '×' + j.media.maxH
+                     + (j.media.minW !== j.media.maxW ? '  (narrowest item ' + j.media.minW + 'px)' : '')
+                     + (j.media.minW < RES_TARGET_W ? '  ⚠ below ' + RES_TARGET_W : '') : '')
+          + (_partial ? '\n⚠ PARTIAL — this post has ' + _items + ' items but only ' + n + ' landed; re-queued for a full re-fetch' : '')
           + '\n' + fileLine, 3800);
       }
       return true;
@@ -2379,15 +2594,19 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const ids = selectedInView();
     if (!ids.length) { igToast('Nothing checked in this view.\nBatches act only on filtered rows that are checked (checkbox; Shift-click for a range).', 3400); return; }
     if (busy) return;
-    const todo = ids.filter(id => { const r = rowById(id); return r && !isDownloaded(r); });
+    // (dev0690) isDownloadDone, not isDownloaded — a row queued for a full-res re-fetch
+    // has files and still needs work, and used to be silently skipped by every batch.
+    const todo = ids.filter(id => { const r = rowById(id); return r && !isDownloadDone(r); });
     if (!todo.length) { igToast('All selected rows are already downloaded — nothing to do', 2600); return; }
     const already = ids.length - todo.length;
+    const nRefetch = todo.filter(id => (rowById(id) || {}).needsFullRes).length;
     // (dev0446) Name the author(s) in the prompt so a stray selection can't slip
     // through unnoticed — if it isn't the author you filtered to, you'll see it here.
     const auths = [...new Set(todo.map(id => rowById(id)?.author).filter(Boolean))];
     const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
     if (!confirm(`Download ${todo.length} item(s) from ${authLine}\nat max resolution into ig_media/ ?`
-      + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '') + `\n\n`
+      + (already ? `\n(${already} already-downloaded selected rows will be skipped.)` : '')
+      + (nRefetch ? `\n(${nRefetch} of these already have files and are queued for a full-res RE-FETCH — a result that isn't better is discarded, nothing is overwritten with something worse.)` : '') + `\n\n`
       + `• Paced (a few seconds between each) and auto-stops if IG rate-limits.\n`
       + (coverOnly
           ? `• 📸 COVER-ONLY: just the index-1 image per post, cookieless (no carousel, no Firefox cookies).\n`
@@ -2407,15 +2626,17 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     deadThisRun.clear(); proxyKillIds.clear(); proxyDown = false;
     const dlRank = r => (kindOf(r) === 'p' ? 1 : 0);   // reels/tv → 0 (first), photos → 1 (last)
     const ordered = [...ids].sort((a, b) => dlRank(rowById(a) || {}) - dlRank(rowById(b) || {}));
-    await runBatch('Downloading', ordered, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloaded,
+    await runBatch('Downloading', ordered, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloadDone,
       '🍪 cookieless — your IG login is never used');
   }
 
-  // (dev0649) Auto-grind the ENRICHED backlog in the current view: grab the top
-  // ROTATE_CHUNK enriched-but-not-yet-downloaded rows (view order — no checkboxes
-  // needed), download them, and on success switch the Proton VPN to a fresh US
-  // exit and repeat with the next 18. Because downloaded rows drop out of `isReady`,
-  // each round re-derives the top of the remaining backlog automatically.
+  // (dev0649) Auto-grind the ENRICHED backlog in the current view: take the top
+  // not-yet-downloaded rows (view order — no checkboxes needed), download them, and on
+  // success switch the Proton VPN to a fresh US exit and repeat. Because downloaded rows
+  // drop out of `isReady`, each round re-derives the top of the remaining backlog.
+  // (dev0690) A round now ends at ROTATE_CHUNK downloaded FILES or ROTATE_ROW_CAP rows,
+  // whichever comes first — see the constants. For reels these are the same thing; for
+  // carousels the file budget is what actually bounds the requests made on one exit.
   //   • per-batch success → auto-dismissing toast (cumulative total + most recent)
   //   • terminates (persistent final report) on: no enriched rows left · a whole
   //     batch downloads 0 (a wall/login — a new IP won't help) · you press Stop.
@@ -2430,8 +2651,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // grind fed it straight back in, died again, and ping-ponged. A row gets one strike
   // per run (proxyKillIds) and is retired for good at two (r.proxyKills) — so a resume
   // always makes forward progress instead of re-running the thing that just killed it.
-  const isReady = r => !!r && !isDownloaded(r) && r.status !== 'promoted'
-    && (r.status === 'enriched' || r.status === 'new') && !enrichFailed.has(r.id)
+  // (dev0690) …and a row queued for a full-res re-fetch is grindable too: its status is
+  // 'downloaded', so without the needsFullRes clause the backfill queue would be visible
+  // in the filters and reachable by nothing.
+  const isReady = r => !!r && !isDownloadDone(r) && r.status !== 'promoted'
+    && (r.status === 'enriched' || r.status === 'new' || !!r.needsFullRes) && !enrichFailed.has(r.id)
     && !r.dead && !proxyKillIds.has(r.id) && !(r.proxyKills >= 2);
   // (dev0688) THE PROXY DIED MID-GRIND → PAUSE, don't abandon.
   // Every death so far cost more than the run: the final persist() never happened, so
@@ -2493,13 +2717,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (!confirm(
         `Download ${todo.length} item(s) from ${authLine}`
       + (nNew ? `  (${nNew} not-yet-enriched — they enrich inline first)` : '') + `\n`
-      + `in batches of ${ROTATE_CHUNK}, switching the Proton VPN to a fresh US exit between batches.\n\n`
+      + `in batches of ${ROTATE_CHUNK} downloaded FILES (max ${ROTATE_ROW_CAP} posts), switching the Proton VPN to a fresh US exit between batches.\n`
+      + `A carousel post counts as all of its items, so a batch may be only a few posts.\n\n`
       + `• ${exitNow}\n`
       + `• Cookieless — your IG login is never used.\n`
       + `• Stops on the first batch that downloads nothing, or when none remain.\n`
       + `• Press ⏹ Stop any time.`)) return;
 
-    let totalOk = 0, batches = 0, switches = 0, endMsg = '';
+    let totalOk = 0, totalItems = 0, batches = 0, switches = 0, endMsg = '';
     // (dev0688) Per-RUN tallies. Cleared here (not in runBatch) so a grind's report
     // covers every batch it ran, and so a fresh grind forgives rows the last one
     // quarantined for killing the proxy — one strike is per-run, two is permanent.
@@ -2531,7 +2756,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // re-derives from `view` EVERY round, so if the head of the view is a row that
     // can never download, every round hands it back — that is visible from here on.
     diag('GRIND-START', {
-      ready: todo.length, chunk: ROTATE_CHUNK, exit: (vpnStatus && (vpnStatus.server || vpnStatus.ip)) || 'none',
+      ready: todo.length, itemBudget: ROTATE_CHUNK, rowCap: ROTATE_ROW_CAP,
+      exit: (vpnStatus && (vpnStatus.server || vpnStatus.ip)) || 'none',
       filters: { author: authorFilter, status: statusFilter, kind: kindFilter, staged: stagedFilter, embed: embedFilter, refetch: refetchFilter, hideCompleted: hideCompleted ? 1 : 0, q: query || '' },
       sort: sortCol + (sortDir < 0 ? '↓' : '↑'), view: view.length, coverOnly: coverOnly ? 1 : 0,
       head: todo.slice(0, 8).map(id => { const r = rowById(id); return r.id + ':' + r.status + ':' + kindOf(r) + ':' + (r.VidTitle ? 'T' : '-'); })
@@ -2539,16 +2765,22 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     while (!batchAbort) {
       todo = readyIds();
       if (!todo.length) { endMsg = `✓ Done — no more downloadable rows in this view.`; break; }
-      const chunk = todo.slice(0, ROTATE_CHUNK);
+      // (dev0690) Rows are the CAP, items are the budget: the batch ends at whichever
+      // comes first. For single-item reels the two coincide (18 rows = 18 files, exactly
+      // the old cadence); for carousels it now switches exits every ~18 files instead of
+      // after 18 posts, which on a six-item post was well over a hundred downloads.
+      const chunk = todo.slice(0, ROTATE_ROW_CAP);
       batches++; lastDlName = '';
       // runBatch owns its own busy/UI/abort + per-item live panel; it resets
       // batchAbort at its start, so we re-check batchAbort AFTER it returns.
       const okThis = await runBatch(`Downloading (batch ${batches})`, chunk, DOWNLOAD_GAP,
-        r => downloadRow(r, false), isDownloaded, '🍪 cookieless — your IG login is never used');
+        r => downloadRow(r, false), isDownloadDone, '🍪 cookieless — your IG login is never used',
+        ROTATE_CHUNK);
       totalOk += okThis;
+      totalItems += batchItems;
       // (dev0683) Round-level view: did the backlog actually shrink? A round that
       // downloads nothing while `remaining` stays put is the same rows coming back.
-      diag('grind-round', { batch: batches, ok: okThis, totalOk,
+      diag('grind-round', { batch: batches, ok: okThis, totalOk, items: batchItems, totalItems,
         remaining: readyIds().length, elapsed: elapsed(),
         abort: batchAbort ? 1 : 0, vpnDrop: vpnDropAbort ? 1 : 0 });
       igStickyHide();                 // suppress runBatch's per-chunk report — we toast instead
@@ -2577,7 +2809,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
       const remain = readyIds().length;
       // auto-dismissing success toast: cumulative + most recent (the user's ask)
-      igToast(`✓ Batch ${batches}: ${okThis} downloaded  ·  ${totalOk} total  ·  ${elapsed()} elapsed`
+      igToast(`✓ Batch ${batches}: ${okThis} post(s), ${batchItems} file(s)  ·  ${totalOk} posts / ${totalItems} files total  ·  ${elapsed()} elapsed`
         // (dev0688) Retirements are progress, so they belong in the running readout —
         // otherwise a batch that retired 3 dead posts and downloaded 2 just looks slow.
         + (lastBatchDead ? `\n🪦 ${lastBatchDead} retired (gone / restricted) — won't be offered again` : '')
@@ -2611,8 +2843,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     });
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
-      + `\n\nTOTAL: ${totalOk} downloaded in ${elapsed()}`
-      + (totalOk ? `  (${fmtDur(((Date.now() - t0) / 1000) / totalOk)} each)` : '')
+      + `\n\nTOTAL: ${totalOk} post(s) — ${totalItems} file(s) — in ${elapsed()}`
+      + (totalOk ? `  (${fmtDur(((Date.now() - t0) / 1000) / totalOk)} per post)` : '')
       + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
       // (dev0688) Two new facts the old report couldn't state, both of which used to
       // masquerade as "batch downloaded 0 — check the VPN".

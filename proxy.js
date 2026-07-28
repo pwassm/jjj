@@ -108,6 +108,20 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+// (dev0690) VIDEO RESOLUTION FIX — the carousel counterpart of dev0677's photo fix.
+//   dev0648 routed every /p post through the cookieless carousel walker (right, for
+//   completeness: yt-dlp is a video tool and returned partial mixed carousels). But the
+//   logged-out page's video surface is hard-capped — video_versions is three entries all
+//   pointing at ONE 720-wide progressive MP4, carrying no width/height to choose between,
+//   and its DASH manifest offers only 720p/360p. Collection-wide that took videos at
+//   ≥1080 from 65.5% to 47.2% (3,381 of one author's 4,259 clips capped). Now the walker
+//   supplies the INVENTORY and one yt-dlp spawn supplies the video BYTES, joined on each
+//   carousel item's `code` (verified identical to yt-dlp's per-entry %(id)s) so a photo
+//   sitting mid-carousel cannot shift clips into the wrong slots. Measured on
+//   DY-r79ADcUC: 5 items 720x960 → 1080x1440, photo still 3024x4032.
+//   Also: publish() measures every landed file and returns real dims (`media`), and
+//   refuses a re-download that has fewer pixels or fewer items than the row already
+//   holds (`kept`) — pixels, never bytes, because the 720p h264 is often the LARGER file.
 // (dev0677) PHOTO RESOLUTION FIX: pickIgFullCover had silently degraded to returning
 //   og:image — a CENTRE-CROPPED 640² thumbnail — so every single-item photo /p landed
 //   cropped and small while the page advertised the uncropped original (verified live:
@@ -200,7 +214,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0689';
+const PROXY_BUILD = 'dev0690';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -824,6 +838,15 @@ function parseIgMainMeta(html, id) {
     const dj = html.match(/"dimensions"\s*:\s*\{\s*"height"\s*:\s*(\d+)\s*,\s*"width"\s*:\s*(\d+)/);
     if (dj) { height = +dj[1]; width = +dj[2]; }
   }
+  // (dev0690) How many items the post carries — the ONE fact nothing in ig.json recorded,
+  // so nothing on the I screen could say "this is a 6-item carousel" without downloading
+  // it first. This page already contains the answer; walk it while we have the HTML.
+  // >=2 → a real carousel; no carousel_media key at all → a genuine single-item post;
+  // anything else (key present but unparsable) stays undefined rather than guessing.
+  let nItems;
+  const cItems = pickIgCarouselMedia(html);
+  if (cItems.length >= 2) nItems = cItems.length;
+  else if (!/"carousel_media"\s*:\s*\[\s*\{/.test(html)) nItems = 1;
   return {
     id, title: owner ? 'Post by ' + owner : 'Instagram post',
     description: caption || '',
@@ -831,7 +854,8 @@ function parseIgMainMeta(html, id) {
     uploader_url: owner ? 'https://www.instagram.com/' + owner + '/' : undefined,
     webpage_url: 'https://www.instagram.com/p/' + id + '/',
     upload_date, thumbnail: cover || undefined,
-    duration: duration || undefined, width: width || undefined, height: height || undefined, _viaMain: true
+    duration: duration || undefined, width: width || undefined, height: height || undefined,
+    nItems, _viaMain: true
   };
 }
 // GET the logged-out main /p/ page (cookieless: fresh socket + short UA + IG Referer)
@@ -1269,6 +1293,12 @@ function matchBracketedJson(html, openIdx) {
 // multi-item photo/mixed /p no longer needs gallery-dl + Firefox cookies. `"carousel_media"`
 // can also appear as a bare field-name reference elsewhere on the page, so anchor on
 // `"carousel_media":[`, scan every match, and keep the one with the most items.
+// (dev0690) A cdninstagram URL's `stp=` parameter describes the transform IG applied.
+// A leading `c<top>.<left>.<w>.<h>a_` token means the image was CROPPED (usually to a
+// square), and a `s|p<W>x<H>` token means it was resized. The full-res original is the
+// candidate with NEITHER. Mirrors pickIgFullCover's reasoning — that function exists
+// because dev0677 shipped a cropped 640² og:image as "the cover" for months.
+function igCandCropped(u) { return /[?&]stp=c\d+\.\d+\.\d+\.\d+/i.test(String(u || '')); }
 function pickIgCarouselMedia(html) {
   if (!html) return [];
   const re = /"carousel_media"\s*:\s*\[/g; let m, best = [];
@@ -1281,15 +1311,36 @@ function pickIgCarouselMedia(html) {
   const out = [];
   for (const it of best) {
     if (!it || typeof it !== 'object') continue;
+    // (dev0690) `code` is the ITEM's own shortcode, and it is the exact value yt-dlp
+    // reports as each carousel entry's %(id)s — VERIFIED live on DY-r79ADcUC, whose
+    // five video items are DY-r1qPjRvd … DY-r3C_jUL1 on both sides. That makes it a
+    // join key, so the yt-dlp upgrade below never has to guess at slot POSITIONS
+    // (which would silently shuffle clips whenever a photo sits mid-carousel).
+    const code = String(it.code || '');
     // Video item → its MP4 (prefer over the poster the item ALSO carries in
-    // image_versions2). Photo item → the widest candidate (candidates are listed
-    // largest-first, but pick by width when present to be safe).
+    // image_versions2). Photo item → the largest UNCROPPED candidate.
+    // `w`/`h` are the page's DECLARED native size for the item. On the logged-out
+    // surface a video's declared size is the capped one (720x960 where the real source
+    // is 1080x1440), so treat it as a FLOOR — "whatever we fetch should be at least
+    // this" — never as the truth about the source.
+    const w = +it.original_width || 0, h = +it.original_height || 0;
     if (Array.isArray(it.video_versions) && it.video_versions.length && it.video_versions[0] && it.video_versions[0].url) {
-      out.push({ kind: 'video', url: it.video_versions[0].url });
+      out.push({ kind: 'video', url: it.video_versions[0].url, code, w, h });
     } else if (it.image_versions2 && Array.isArray(it.image_versions2.candidates) && it.image_versions2.candidates.length) {
-      const c = it.image_versions2.candidates;
-      let b = c[0]; for (const x of c) if ((+x.width || 0) > (+b.width || 0)) b = x;
-      if (b && b.url) out.push({ kind: 'image', url: b.url });
+      // (dev0690) The old rule was "widest declared width, else candidates[0]". On a
+      // photo item IG omits width/height from EVERY candidate (verified: 14 candidates,
+      // all `width:undefined`), so it fell through to candidates[0] — which happens to
+      // be the uncropped original, so photos were fine by luck. Where it could bite is a
+      // page that DOES declare widths: the square crops (`c0.504.3024.3024a_…s1080x1080`)
+      // can out-declare the real original. Rank uncropped first, then by declared width,
+      // then by list order (IG lists largest-first), so both cases land on the original.
+      const cands = it.image_versions2.candidates
+        .map((x, i) => ({ x, i }))
+        .filter(e => e.x && e.x.url)
+        .sort((a, b) => (igCandCropped(a.x.url) - igCandCropped(b.x.url))
+                     || ((+b.x.width || 0) - (+a.x.width || 0))
+                     || (a.i - b.i));
+      if (cands.length) out.push({ kind: 'image', url: cands[0].x.url, code, w, h });
     }
   }
   return out;
@@ -1297,35 +1348,199 @@ function pickIgCarouselMedia(html) {
 // (dev0520) Cookieless FULL-carousel download for a multi-item /p post (photos, videos,
 // or mixed) — the generalisation of dev0519's single-video igMainVideoFallback. Fetches
 // the logged-out /p/ page, walks carousel_media, and writes EVERY item into tmpDir with
-// the NNN.<ext> autonumber scheme igDownload()'s publish() expects. Resolves the files
-// written; resolves [] for a non-carousel post (single photo/reel → <2 items) so the
-// caller falls through to its single-item cover/video rescue. No Firefox cookies.
+// the NNN.<ext> autonumber scheme igDownload()'s publish() expects. No Firefox cookies.
+// (dev0690) Now resolves an OBJECT, not a bare file list, because two callers need to
+// know things a file list cannot express:
+//   files  — the paths written (as before; empty → the caller's single-item rescue)
+//   items  — the carousel INVENTORY [{kind,url,code}] (drives the yt-dlp video upgrade
+//            and the row's new Carousel count)
+//   slots  — items-indexed, slots[i] = the file written for item i, or null if that one
+//            item failed. `files` cannot say WHICH item is missing; the upgrade must
+//            know, or it would fill a gap with the wrong clip.
+//   single — the page loaded AND carries no carousel_media at all → a genuinely
+//            single-item post. Distinguishes that from "the walk was throttled", which
+//            also yields no items but says nothing about the post.
+//   upgraded / videoItems — how many video items came from yt-dlp, of how many.
+//
+// (dev0690) …and the SOURCE per item changed. dev0648 fetched every item — photos and
+// videos alike — from the logged-out page. That page's video surface is hard-capped at
+// 720p (see igCarouselYtdlpVideos), which quietly took the collection from 65.5% to
+// 47.2% of videos at ≥1080. Now: photos still come from the page (they are the full
+// uncropped originals there), while video items come from ONE yt-dlp spawn that fetches
+// the whole post at max res. The page's video_versions URL survives as the per-item
+// RESCUE, used only when yt-dlp didn't produce that item or produced a smaller one — so
+// a walled/failed yt-dlp degrades exactly to dev0648's behaviour, never below it.
+// Deliberately not "download both and pick": that would double every carousel's IG
+// requests, and IG throttling is the single biggest cost in a long grind.
 function igMainCarouselFallback(url, id, tmpDir) {
+  const none = { files: [], items: [], slots: [], single: false, upgraded: 0, videoItems: 0 };
   return new Promise(resolve => {
     const m = IG_SHORTCODE_RE.exec(url || '');
-    if (!m) { resolve([]); return; }
+    if (!m) { resolve(none); return; }
     const sc = m[1];
     const permalink = 'https://www.instagram.com/p/' + sc + '/';
     // (dev0647) Node-first, curl_cffi-impersonate-if-walled — beats IG's VPN photo wall.
     igGetPageHtml(permalink, 8e6, null, igPageHasMedia).then(h => {
-      const items = pickIgCarouselMedia(h);
-      if (items.length < 2) { resolve([]); return; }   // not a carousel → single-item path handles it
-      const written = [];
-      let i = 0;
-      const next = () => {
-        if (i >= items.length) { resolve(written); return; }
-        const idx = i++, it = items[idx];
-        const ext = it.kind === 'video' ? '.mp4' : '.jpg';
-        const dest = path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
-        igDownloadImage(it.url, dest, permalink, 0, it.kind === 'video' ? '*/*' : undefined).then(ok => {
-          if (ok) written.push(dest); else { try { fs.unlinkSync(dest); } catch (_) {} }
-          next();
-        });
-      };
-      next();
-    });
+      const items = h ? pickIgCarouselMedia(h) : [];
+      // igPageHasMedia gates the fetch, so a non-empty `h` IS a real media page: no
+      // carousel_media key there means one item, not a failed read.
+      const single = !!h && !/"carousel_media"\s*:\s*\[\s*\{/.test(h);
+      if (items.length < 2) { resolve({ files: [], items: [], slots: [], single, upgraded: 0, videoItems: 0 }); return; }
+      const vidCount = items.filter(it => it.kind === 'video' && it.code).length;
+      const upDir = path.join(tmpDir, '.up');   // dot-prefixed → invisible to tmpFiles()
+      // A photo-only carousel never spawns yt-dlp: it is a video tool and has nothing
+      // to add, and the page already carries those photos at full resolution.
+      // RETURNED, so a rejection anywhere below reaches the .catch at the bottom. Without
+      // the return this inner chain is detached: a throw would leave the outer promise
+      // pending forever and hang /ig/download — and with it the whole grind round.
+      return (vidCount ? igCarouselYtdlpVideos(url, upDir, vidCount) : Promise.resolve({})).then(byCode => {
+        const slots = new Array(items.length).fill(null);
+        const slotPath = (idx, ext) => path.join(tmpDir, String(idx + 1).padStart(3, '0') + ext);
+        let adopted = 0, i = 0;
+        const next = () => {
+          if (i >= items.length) {
+            try { (fs.rmSync || fs.rmdirSync)(upDir, { recursive: true, force: true }); } catch (_) {}
+            resolve({ files: slots.filter(Boolean), items, slots, single: false,
+                      upgraded: adopted, videoItems: vidCount });
+            return;
+          }
+          const idx = i++, it = items[idx];
+          // 1 — yt-dlp's copy, joined on the item's `code` (never on position, so a photo
+          //     sitting mid-carousel cannot shift clips into the wrong slots). Accepted
+          //     outright when it is at least as wide as the page declares the item to be.
+          const src = (it.kind === 'video' && it.code) ? byCode[it.code] : null;
+          const dNew = src ? probeMediaDims(src) : null;
+          if (dNew && (!it.w || dNew.w >= it.w)) {
+            const dest = slotPath(idx, path.extname(src) || '.mp4');
+            try { fs.renameSync(src, dest); slots[idx] = dest; adopted++; next(); return; } catch (_) {}
+          }
+          // 2 — otherwise fetch the item from the page, as dev0648 always did.
+          const dest = slotPath(idx, it.kind === 'video' ? '.mp4' : '.jpg');
+          igDownloadImage(it.url, dest, permalink, 0, it.kind === 'video' ? '*/*' : undefined).then(ok => {
+            if (!ok) { try { fs.unlinkSync(dest); } catch (_) {} }
+            // 3 — and if yt-dlp DID have this item after all (it just looked small, or
+            //     the page fetch failed), keep whichever file actually has more pixels.
+            //     Pixels, not bytes: the 720p progressive h264 is often the bigger file.
+            if (dNew) {
+              const dOld = ok ? probeMediaDims(dest) : null;
+              if (!dOld || dNew.w * dNew.h > dOld.w * dOld.h) {
+                // Secure the replacement BEFORE discarding what we have. rename overwrites
+                // an existing target on every platform Node supports, so when d2 and dest
+                // are the same path (both .mp4, the usual case) this is a single atomic
+                // swap; only a differing extension leaves a stale file to clean up after.
+                const d2 = slotPath(idx, path.extname(src) || '.mp4');
+                let took = false;
+                try { fs.renameSync(src, d2); took = true; }
+                catch (_) { try { fs.copyFileSync(src, d2); took = true; } catch (_) {} }
+                if (took) {
+                  if (ok && d2 !== dest) { try { fs.unlinkSync(dest); } catch (_) {} }
+                  slots[idx] = d2; adopted++; next(); return;
+                }
+              }
+            }
+            if (ok) slots[idx] = dest;
+            next();
+          });
+        };
+        next();
+      });
+    // A rejection here used to leave the promise pending forever, hanging /ig/download
+    // (and with it a whole grind round) on a single bad page read.
+    }).catch(() => resolve(none));
   });
 }
+
+// (dev0690) Real pixel dimensions of a file already on disk: ffprobe for video, header
+// bytes for stills. Synchronous by design — every caller is deciding, right then, which
+// of two files to keep, and both are local. Returns null when the file can't be read,
+// and every caller treats null as "no opinion" rather than "zero pixels".
+//
+// Memoized on path+size+mtime, because a carousel's video files get measured twice: once
+// by the walker choosing between yt-dlp's copy and the page's, and again by publish().
+// ffprobe is a process spawn and the proxy is single-threaded, so on a 15-item post that
+// is 15 spawns of avoidable event-loop blocking. The size+mtime key means a file that was
+// REPLACED at the same path (exactly what the walker does) re-measures rather than
+// returning the previous occupant's dimensions.
+const _dimMemo = new Map();
+function probeMediaDims(file) {
+  let key = '';
+  try { const st = fs.statSync(file); key = file + '|' + st.size + '|' + st.mtimeMs; } catch (_) { return null; }
+  if (_dimMemo.has(key)) return _dimMemo.get(key);
+  const d = _probeMediaDimsUncached(file);
+  if (_dimMemo.size > 500) _dimMemo.clear();   // bounded — this is a long-running process
+  _dimMemo.set(key, d);
+  return d;
+}
+function _probeMediaDimsUncached(file) {
+  try {
+    if (/\.(mp4|mov|webm|mkv|m4v)$/i.test(file)) {
+      const raw = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', file],
+        { encoding: 'utf8', timeout: 15000 }).trim();
+      const mm = raw.match(/(\d+)x(\d+)/);
+      return mm ? { w: +mm[1], h: +mm[2] } : null;
+    }
+    const buf = Buffer.alloc(65536);
+    const fd = fs.openSync(file, 'r');
+    const n = fs.readSync(fd, buf, 0, 65536, 0);
+    fs.closeSync(fd);
+    const d = parseImageDims(buf.slice(0, n));
+    return d && d.width && d.height ? { w: d.width, h: d.height } : null;
+  } catch (_) { return null; }
+}
+
+// (dev0690) Download a carousel's VIDEO items with yt-dlp, into their own directory,
+// named by each entry's %(id)s — which is the carousel item's `code`. Resolves a
+// { code: filepath } map (empty on any failure: the caller then simply keeps what the
+// walker already fetched, so this can only ever improve a result, never damage one).
+//
+// WHY THIS EXISTS: dev0648 put the cookieless walker FIRST for every /p post, to fix
+// mixed photo+video carousels that yt-dlp returned half of. That was right about
+// completeness and wrong about resolution — the logged-out page's video_versions are
+// three entries all pointing at ONE 720-wide progressive MP4 (…CAROUSEL_ITEM.C3.720…)
+// with no width/height to choose between, and its DASH manifest offers only 720p/360p.
+// yt-dlp bootstraps a session and reaches the full ladder: 1080x1440 where the walker
+// gets 720x960 (measured, same post, same minute). Collection-wide that cost 65.5% →
+// 47.2% of videos at ≥1080. So: walker for the inventory, yt-dlp for the video bytes.
+//
+// A photo item makes yt-dlp raise "No video formats found" for that entry; --ignore-errors
+// keeps the rest of the playlist going, and the exit code is ignored entirely — what
+// landed in the directory is the only thing that counts.
+function igCarouselYtdlpVideos(url, outDir, nVideos) {
+  return new Promise(resolve => {
+    try { fs.mkdirSync(outDir, { recursive: true }); } catch (_) {}
+    const impersonate = IG_IMPERSONATE ? ['--impersonate', IG_IMPERSONATE] : [];
+    const args = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '--no-part',
+                  '--ignore-errors']
+      .concat(impersonate, ['-o', path.join(outDir, '%(id)s.%(ext)s'), url]);
+    let proc, done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      ACTIVE_DL.delete(proc); clearTimeout(killT);
+      const out = {};
+      try {
+        for (const f of fs.readdirSync(outDir)) {
+          if (f.startsWith('.') || /\.part$/i.test(f)) continue;
+          // Key on the stem. Intermediate per-format files (`<id>.f303.webm`) would key
+          // as "<id>.f303", which matches no item code, so they can never be adopted.
+          out[f.replace(/\.[^.]+$/, '')] = path.join(outDir, f);
+        }
+      } catch (_) {}
+      resolve(out);
+    };
+    try { proc = spawn('yt-dlp', args, { windowsHide: true }); }
+    catch (_) { resolve({}); return; }
+    ACTIVE_DL.add(proc);   // (dev0658) killable by the VPN kill-switch
+    // dev0645's flat 90s wall-clock is a SINGLE-item budget; this one spawn fetches the
+    // whole carousel, so scale with the work and still cap it.
+    const killT = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} finish(); },
+      Math.min(240000, 60000 + 30000 * Math.max(1, nVideos)));
+    proc.stderr.on('data', () => {});    // drain (a photo item always writes one error)
+    proc.on('error', finish);
+    proc.on('close', finish);
+  });
+}
+
 
 // (dev0495) Download EVERY image of an IG photo carousel with gallery-dl, straight into
 // tmpDir as ordered 001.jpg, 002.jpg … (the same autonumber scheme igDownload's
@@ -2452,6 +2667,11 @@ function igDownload(req, res, origin) {
     const url = String(payload.url || '');
     const id = String(payload.id || '').replace(/[^A-Za-z0-9_-]/g, '');
     const coverOnly = !!payload.coverOnly;   // (dev0512) cookieless index-1 cover only
+    // (dev0690) What the row ALREADY has on disk, so a re-download can be refused when it
+    // would be a downgrade. Both are 0/absent for a first download, and both are ignored
+    // in coverOnly mode (which deliberately fetches one image and would always "lose").
+    const keepPixels = coverOnly ? 0 : Math.max(0, +payload.keepPixels || 0);
+    const keepCount  = coverOnly ? 0 : Math.max(0, +payload.keepCount  || 0);
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     if (!id) { sendJson(res, 400, { ok: false, error: 'id required' }, origin); return; }
     try { fs.mkdirSync(IG_MEDIA_DIR, { recursive: true }); } catch (_) {}
@@ -2469,9 +2689,47 @@ function igDownload(req, res, origin) {
     const tmpFiles = () => { try { return fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) { return []; } };
     const wipeTmp  = () => { try { fs.readdirSync(tmpDir).forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) {} }); } catch (_) {} };
     const rmTmp    = () => { try { (fs.rmSync || fs.rmdirSync)(tmpDir, { recursive: true, force: true }); } catch (_) {} };
+    // (dev0690) Filled by publish() and read by sendDl() on the way out. The ordering is
+    // guaranteed by construction: every success path is written `sendDl({… files: publish() …})`,
+    // and JS evaluates the argument object — and therefore publish() — before sendDl runs.
+    let pubStats = null;   // { n, maxW, maxH, minW, pixels, dims:[[w,h],…] } — real, measured
+    let pubKept  = null;   // set instead when the download was REFUSED as a downgrade
     // Rename tmp files → ig_media/<stem>[ [i of N]].<ext>; return the basenames.
     function publish() {
       const files = tmpFiles(), n = files.length, out = [];
+      pubStats = null; pubKept = null;
+      // (dev0690) Measure everything ONCE, up front: the same numbers answer three
+      // questions — is this download a downgrade (below), what goes in the filename, and
+      // what resolution does the row actually have on disk (`media`, new this build).
+      // Nothing on disk previously distinguished a 720-capped file from a 1080 one
+      // without re-probing it, which is why the collection-wide cap went unnoticed for
+      // five weeks. A null entry means unreadable, and is excluded from every min/max.
+      const dims = files.map(f => probeMediaDims(path.join(tmpDir, f)));
+      const good = dims.filter(Boolean);
+      if (good.length) {
+        pubStats = {
+          n,
+          maxW: Math.max(...good.map(d => d.w)), maxH: Math.max(...good.map(d => d.h)),
+          minW: Math.min(...good.map(d => d.w)),
+          pixels: Math.max(...good.map(d => d.w * d.h)),
+          dims: dims.map(d => d ? [d.w, d.h] : null)
+        };
+      }
+      // (dev0690) The overwrite guard. A re-download must never replace a better file
+      // with a worse one, and "better" is PIXELS, never bytes — IG's 720p progressive
+      // h264 is high-bitrate and is frequently a LARGER file than the 1080p VP9 that
+      // supersedes it, so a size heuristic would keep the worse copy every time. The
+      // count test catches the other loss: a throttled walk that returns 1 item of 6
+      // would otherwise publish as a "successful" download over a complete carousel.
+      // Refusing is a SUCCESS (ok:true, kept:…) — nothing failed, we just kept what we had.
+      const worse = (keepPixels > 0 && pubStats && pubStats.pixels < keepPixels)
+        ? 'fewer pixels' : ((keepCount > 0 && n > 0 && n < keepCount) ? 'fewer items' : '');
+      if (worse) {
+        pubKept = { reason: worse, newPixels: (pubStats && pubStats.pixels) || 0, keepPixels,
+                    newCount: n, keepCount };
+        wipeTmp(); rmTmp();
+        return out;
+      }
       // (dev0659) Ground-truth the filename's leading hh.mm.ss from the ACTUAL downloaded
       // video(s). The client builds `name` from enrich metadata, whose duration is often
       // missing on the cookieless OG/reel path → durSecs 0 → a "00.00.00~…" name even
@@ -2502,24 +2760,11 @@ function igDownload(req, res, origin) {
       // full-res download would still have landed under a "640x640" name. Read the real
       // pixels off the file that actually landed (index-1, mirroring the row's one-W×H
       // convention). Best-effort: an unreadable header leaves the client's stem alone.
-      try {
-        const first = files[0] ? path.join(tmpDir, files[0]) : '';
-        let dw = 0, dh = 0;
-        if (first && /\.(mp4|mov|webm|mkv|m4v)$/i.test(first)) {
-          const raw = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
-            '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', first],
-            { encoding: 'utf8', timeout: 15000 }).trim();
-          const mm = raw.match(/(\d+)x(\d+)/); if (mm) { dw = +mm[1]; dh = +mm[2]; }
-        } else if (first) {
-          const buf = Buffer.alloc(65536);
-          const fd = fs.openSync(first, 'r');
-          const n = fs.readSync(fd, buf, 0, 65536, 0);
-          fs.closeSync(fd);
-          const d = parseImageDims(buf.slice(0, n));
-          if (d) { dw = d.width; dh = d.height; }
-        }
-        if (dw > 0 && dh > 0) outStem = outStem.replace(/^(\d{2}\.\d{2}\.\d{2}~)\d+x\d+~/, '$1' + dw + 'x' + dh + '~');
-      } catch (_) {}
+      // (dev0690) Reuses the `dims` measured above rather than re-probing index-1.
+      const d0 = dims[0];
+      if (d0 && d0.w > 0 && d0.h > 0) {
+        outStem = outStem.replace(/^(\d{2}\.\d{2}\.\d{2}~)\d+x\d+~/, '$1' + d0.w + 'x' + d0.h + '~');
+      }
       // (dev0689) Land the files in the author's subfolder and record the RELATIVE
       // subpath in localFiles, so every consumer resolves correctly without having to
       // re-derive the folder from the row (which would break on an author rename, and
@@ -2549,13 +2794,27 @@ function igDownload(req, res, origin) {
     // rows that already carry a verdict — the one thing this feature must never do.
     // Absent flag → no probe (fail-safe toward fewer IG requests).
     const wantProbe = IG_EMBED_PROBE_ON_DOWNLOAD && payload.probeEmbed === true;
+    // (dev0690) How many items the POST has, when we know it — set by the carousel walker
+    // (its inventory length, or 1 when the page carries no carousel_media at all) and by
+    // the reel path (a /reel/ or /tv/ URL is single-item by definition — set below, where
+    // photoPost is declared). Left null when the walk was throttled, because "we couldn't
+    // read it" must not be recorded as "this post has one item".
+    let postItemsHint = null;
     function sendDl(body) {
+      // (dev0690) Attach the measured facts publish() just produced. Doing it here rather
+      // than at each of the seven call sites means no success path can forget to.
+      if (body.postItems == null && postItemsHint != null) body.postItems = postItemsHint;
+      if (pubStats) body.media = pubStats;
+      if (pubKept)  body.kept  = pubKept;
       // (dev0683) black-box note: which path actually served this row, and what
       // landed. A run of "files=0" or one repeating path is the marking story.
       try {
         const via = ['viaEmbed', 'viaCover', 'viaMainVideo', 'viaMainCarousel', 'viaGalleryDl']
           .filter(k => body[k]).join('+') || 'ytdlp';
         res._diagNote = `${id} ok via=${via} files=${(body.files || []).length}`
+          + (body.media ? ` ${body.media.maxW}x${body.media.maxH}` : '')
+          + (body.upgraded ? ` +${body.upgraded}up` : '')
+          + (body.kept ? ` KEPT-EXISTING (${body.kept.reason})` : '')
           + (body.usedCookies ? ' COOKIES' : '');
       } catch (_) {}
       if (!wantProbe) { sendJson(res, 200, body, origin); return; }
@@ -2603,6 +2862,7 @@ function igDownload(req, res, origin) {
     // (photo posts only; first frame, no video — clearly labelled so a throttled item
     // can be re-run for the real MP4). Embed is strictly inferior, hence dead last.
     const photoPost = IG_SHORTCODE_RE.test(url) && !/\/reels?\//i.test(url);
+    if (!photoPost) postItemsHint = 1;   // (dev0690) a /reel/ or /tv/ post is one item
     function fail502(err) {
       rmTmp();
       console.warn('[ig/download] ' + id + ' failed: ' + (err || 'yt-dlp failed'));
@@ -2714,11 +2974,18 @@ function igDownload(req, res, origin) {
     // A /p post may be a carousel — assemble the whole thing cookielessly first. <2 items
     // (single photo/video, or a throttled walk) falls through to the yt-dlp-first chain.
     if (photoPost) {
-      igMainCarouselFallback(url, id, tmpDir).then(files => {
-        if (files.length && tmpFiles().length) {
-          console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' item(s) via cookieless main /p/ carousel_media (carousel-first)');
+      igMainCarouselFallback(url, id, tmpDir).then(walk => {
+        // (dev0690) The walk answers "how many items does this post have?" even when it
+        // decides not to handle the post — record that before branching either way.
+        if (walk.items.length >= 2) postItemsHint = walk.items.length;
+        else if (walk.single) postItemsHint = 1;
+        if (walk.files.length && tmpFiles().length) {
+          console.log('[ig/download] ' + id + ' got ' + tmpFiles().length + ' item(s) via cookieless main /p/ carousel_media (carousel-first)'
+            + (walk.videoItems ? ' · ' + walk.upgraded + '/' + walk.videoItems + ' video item(s) from yt-dlp at max res' : ''));
           sendDl({ ok: true, files: publish(), viaMainCarousel: true, usedCookies: false,
-            note: 'full carousel via cookieless main /p/ page (carousel_media) — no Firefox cookies' });
+            upgraded: walk.upgraded, videoItems: walk.videoItems,
+            note: 'full carousel via cookieless main /p/ page (carousel_media) — no Firefox cookies'
+                + (walk.videoItems ? '; ' + walk.upgraded + ' of ' + walk.videoItems + ' video item(s) via yt-dlp at max res' : '') });
         } else { wipeTmp(); ytdlpChain(); }
       });
       return;
