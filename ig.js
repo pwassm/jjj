@@ -435,9 +435,16 @@
     // (dev0496) Focus Stop so Space/Enter halt the batch without aiming the mouse.
     try { t.querySelector('.stop').focus(); } catch (_) {}
   }
+  // (dev0691) Every progress repaint carries the re-fetch scoreboard. Appended HERE, at
+  // the single point all four call sites pass through, rather than into each template —
+  // so it also covers any future one. resGainIds only ever fills during a download batch,
+  // so a harvest/enrich run is untouched without needing to test the mode.
   function igBatchUpdate(msg) {
     const t = document.getElementById('igBatch');
-    if (t) t.querySelector('.msg').textContent = msg;
+    if (!t) return;
+    const g = resGainIds.size;
+    t.querySelector('.msg').textContent = msg
+      + (g ? `\n⬆ ${g} bigger this run · ${resGainTotal() + g} total` : '');
   }
   function igBatchHide() {
     const t = document.getElementById('igBatch');
