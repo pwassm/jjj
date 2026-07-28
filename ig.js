@@ -49,6 +49,17 @@
   const RESGAIN_LS = 'slam-ig-resgain';
   const resGainTotal = () => { const n = +localStorage.getItem(RESGAIN_LS); return n > 0 ? n : 0; };
   const resGainBump = n => { try { localStorage.setItem(RESGAIN_LS, String(resGainTotal() + n)); } catch (_) {} };
+  // (dev0692) True from the first DOWNLOAD batch of a run onward, so the scoreboard shows
+  // "⬆ 0 bigger" from the start. dev0691 only drew the line once a row had actually won,
+  // which made "nothing has come back bigger yet" look identical to "the feature isn't
+  // there" — the whole point is to watch the number, including while it is still 0.
+  // Stays true between batches so the rotate loop's "batch N" panel keeps it too.
+  let resGainActive = false;
+  // "this batch", not "this run": runBatch clears these tallies on every call, and a
+  // Download+rotate grind calls it once per 18-row batch. The TOTAL is the cross-batch
+  // number — resGainBump banks each batch as it ends, so it climbs all grind long.
+  const resGainLine = () => resGainActive
+    ? `\n⬆ ${resGainIds.size} bigger this batch · ${resGainTotal() + resGainIds.size} total` : '';
   let embedStamped = 0, embedNoVerdict = 0;   // (dev0675) download-time embed verdicts this run
   let hideCompleted = false;           // (dev0438) hotkey 'c' → hide downloaded ("completed") rows
   // (dev0655) Windowed rendering — the tbody paints only the rows in (and just around)
@@ -429,22 +440,20 @@
         t.querySelector('.stop').textContent = '⏹ Stopping…';
       });
     }
-    t.querySelector('.msg').textContent = msg;
+    t.querySelector('.msg').textContent = msg + resGainLine();
     t.querySelector('.stop').textContent = '⏹ Stop';
     t.classList.add('show');
     // (dev0496) Focus Stop so Space/Enter halt the batch without aiming the mouse.
     try { t.querySelector('.stop').focus(); } catch (_) {}
   }
-  // (dev0691) Every progress repaint carries the re-fetch scoreboard. Appended HERE, at
-  // the single point all four call sites pass through, rather than into each template —
-  // so it also covers any future one. resGainIds only ever fills during a download batch,
-  // so a harvest/enrich run is untouched without needing to test the mode.
+  // (dev0691) Every progress repaint carries the re-fetch scoreboard. Appended HERE and in
+  // igBatchShow — the two points all panel paints pass through — rather than into each of
+  // the templates, so it covers any future call site too. (dev0692: igBatchShow was the
+  // miss. It paints the batch-start and the rotate loop's "batch N" panels, so during a
+  // Download+rotate grind the line vanished at every batch boundary.)
   function igBatchUpdate(msg) {
     const t = document.getElementById('igBatch');
-    if (!t) return;
-    const g = resGainIds.size;
-    t.querySelector('.msg').textContent = msg
-      + (g ? `\n⬆ ${g} bigger this run · ${resGainTotal() + g} total` : '');
+    if (t) t.querySelector('.msg').textContent = msg + resGainLine();
   }
   function igBatchHide() {
     const t = document.getElementById('igBatch');
@@ -1922,6 +1931,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const deadIdsThisBatch = [];             // …and which ones, for THIS batch's report
     batchItems = 0;                          // (dev0690) files landed this batch (rotation budget)
     lowResIds.clear(); fallbackIds.clear(); resGainIds.clear();  // (dev0666) per-run download-path tallies
+    resGainActive = false;               // (dev0692) re-armed by the first download batch
     embedStamped = 0; embedNoVerdict = 0;    // (dev0675) per-run embed-verdict tallies
     const isDl = /download/i.test(label);    // (dev0569) downloads stop at the FIRST failure
     const t0 = Date.now();
@@ -1938,6 +1948,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const cookieSoFar = () => cookieUsed
       ? `🍪 Firefox cookies used on ${cookieUsed} so far`
       : `🍪 cookieless so far — your IG login is not used`;
+    if (isDl) resGainActive = true;   // (dev0692) scoreboard on, from 0, for the whole run
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
     // (dev0683) What this batch was handed, and what state those rows were in. If a
     // grind stops at "batch downloaded 0", this line says whether the batch was 18
@@ -2121,7 +2132,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // at the end of the run, so a resumed/paused grind can't double-count.
     if (isDl && resGainIds.size) {
       resGainBump(resGainIds.size);
-      lines.push(`⬆ ${resGainIds.size} came back at HIGHER resolution this run  ·  ${resGainTotal()} total across all batches`);
+      lines.push(`⬆ ${resGainIds.size} came back at HIGHER resolution this batch  ·  ${resGainTotal()} total across all batches`);
     }
     // (dev0675) Embed verdicts stamped as part of this run. A "no verdict" row is not a
     // failure — it stays unstamped for igEmbedProbe.js to resolve later.
