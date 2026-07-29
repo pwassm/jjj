@@ -176,6 +176,15 @@
   // A ROW (no success between), it's a real block → stop. A success resets the streak.
   const DOWNLOAD_WALL_CAP = 2;
   const DOWNLOAD_RETRY_MS = [8000, 15000];   // pause before the single per-item retry
+  // (dev0694) A zero-batch is a verdict on ONE EXIT, not on the run. The 2026-07-29
+  // grind proved it: 21 straight batches of 18/18, then the 22nd landed on a freshly
+  // rotated exit that IG had walled, its first two rows tripped DOWNLOAD_WALL_CAP,
+  // and a healthy 3,100-row backlog stopped at "batch downloaded 0". Auto-enrich has
+  // rotated past walled exits since dev0654 — downloads now do the same: a walled
+  // zero-batch rotates to a fresh exit and retries, and only this many zero-batches
+  // IN A ROW (a success resets the streak) end the grind, because that many distinct
+  // exits all walling means IG is blocking broadly and rotation can't help.
+  const WALL_ROTATE_CAP = 3;
   // (dev0688) PERMANENTLY DEAD POSTS — a third failure class, distinct from a wall
   // (needs auth) and a throttle (needs pacing). The post is gone, or is restricted to
   // an audience we will never be in. No new VPN exit, no wait and no cookie can change
@@ -2762,6 +2771,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `• Press ⏹ Stop any time.`)) return;
 
     let totalOk = 0, totalItems = 0, batches = 0, switches = 0, endMsg = '';
+    let zeroBatches = 0;   // (dev0694) consecutive walled zero-batches — see WALL_ROTATE_CAP
     // (dev0688) Per-RUN tallies. Cleared here (not in runBatch) so a grind's report
     // covers every batch it ran, and so a fresh grind forgives rows the last one
     // quarantined for killing the proxy — one strike is per-run, two is permanent.
@@ -2841,9 +2851,24 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // forward progress — the backlog just shrank permanently — so the grind carries on
       // to rows that can actually download, instead of stopping and blaming the VPN.
       if (okThis === 0 && !lastBatchDead) {   // a whole batch got nothing → a wall/login, not an IP block
-        endMsg = `⏹ Batch ${batches} downloaded 0 — stopped.\n${totalOk} downloaded before this. Likely a login wall or a blocked exit — try again later or check the VPN.`;
+        // (dev0694) …which condemns THIS exit, not the run — rotate and retry (see
+        // WALL_ROTATE_CAP). Only a streak of walled exits ends the grind.
+        zeroBatches++;
+        if (zeroBatches < WALL_ROTATE_CAP) {
+          diag('wall-rotate', { batch: batches, zeroBatches, cap: WALL_ROTATE_CAP,
+            exit: (vpnStatus && (vpnStatus.server || vpnStatus.ip)) || '?' });
+          igToast(`⚠ Batch ${batches} downloaded 0 — this exit looks walled.\n🔀 rotating to a fresh exit and retrying (walled exit ${zeroBatches} of ${WALL_ROTATE_CAP} tolerated)…`, 4600);
+          busy = true; setBatchUi(true);
+          igBatchShow(`🔀 exit walled — switching Proton VPN, then retrying…\n${totalOk} downloaded so far  ·  ${elapsed()} elapsed`);
+          const swW = await vpnEnsureUp(`wall-rotate after batch ${batches}`);
+          if (swW) { switches++; await sleep(1500); continue; }
+          endMsg = `⏹ Stopped — batch ${batches} downloaded 0 and no fresh VPN exit would come up (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
+          break;
+        }
+        endMsg = `⏹ ${WALL_ROTATE_CAP} exits in a row walled (each batch downloaded 0) — stopped.\n${totalOk} downloaded before this. IG is likely blocking broadly right now — try again later.`;
         break;
       }
+      zeroBatches = 0;                        // a batch that downloaded something clears the streak
       const remain = readyIds().length;
       // auto-dismissing success toast: cumulative + most recent (the user's ask)
       igToast(`✓ Batch ${batches}: ${okThis} post(s), ${batchItems} file(s)  ·  ${totalOk} posts / ${totalItems} files total  ·  ${elapsed()} elapsed`
