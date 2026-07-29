@@ -378,7 +378,8 @@ function _gridIsEmbedCell(cellEl) {
   const row = cellEl && cellEl._rowData;
   if (!row || !row.link || !cellEl.querySelector('.grid-embed-wrap')) return false;
   return !!((window.isInstagramLink && window.isInstagramLink(row.link))
-    || (window.isTikTokLink && window.isTikTokLink(row.link)));
+    || (window.isTikTokLink && window.isTikTokLink(row.link))
+    || (window.isPinterestLink && window.isPinterestLink(row.link)));   // (dev0693)
 }
 
 function _gridEmbedDisarm() {
@@ -420,7 +421,8 @@ function _gridEmbedArm(cellEl) {
   // still has to land on the provider's own caret in the middle of the picture,
   // so a big tag only invited clicks on the one corner that opens instagram.com.
   const link = (cellEl._rowData && cellEl._rowData.link) || '';
-  const isTT = !!(window.isTikTokLink && window.isTikTokLink(link));
+  const isTT  = !!(window.isTikTokLink && window.isTikTokLink(link));
+  const isPin = !!(window.isPinterestLink && window.isPinterestLink(link));   // (dev0693)
   const badge = document.createElement('div');
   badge.className = 'grid-embed-armed';
   badge.textContent = '▶ play';
@@ -428,6 +430,8 @@ function _gridEmbedArm(cellEl) {
     + 'font:bold 9px monospace;color:#fff;padding:2px 5px;border-radius:3px;'
     + 'background:' + (isTT
         ? 'linear-gradient(135deg,#25F4EE 0%,#000 50%,#FE2C55 100%)'
+        : isPin
+        ? 'linear-gradient(135deg,#e60023 0%,#bd081c 100%)'
         : 'linear-gradient(135deg,#833ab4 0%,#fd1d1d 50%,#fcb045 100%)') + ';'
     + 'text-shadow:0 1px 2px rgba(0,0,0,0.4);';
   cellEl.appendChild(badge);
@@ -1616,6 +1620,12 @@ function _gridMountVideo(vidHost, row, segs, muted) {
     // [id^=grid-vid-] div rather than an IG-style wrap — tag it so click-to-arm
     // finds it exactly the way it finds an IG cell. Same cross-origin wall, so
     // the same escape: see _gridEmbedArm.
+    vidHost.classList.add('grid-embed-wrap');
+  } else if (window.isPinterestLink && window.isPinterestLink(row.link) && window.mountPinterestEmbed) {
+    // (dev0693) Only HLS-only (or unresolved) pins reach here — a resolved pin is
+    // an i./v1.pinimg.com file and was already claimed by the isDirectVideoLink
+    // branch above. Same cross-origin deal as TikTok, so same arming tag.
+    window.mountPinterestEmbed(vidHost, row.link);
     vidHost.classList.add('grid-embed-wrap');
   }
 }
@@ -3106,7 +3116,8 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
   // rows that need it (one inline play per IG/TikTok embed).
   const isEmbedRow = !!(row && row.link
     && ((window.isInstagramLink && window.isInstagramLink(row.link))
-     || (window.isTikTokLink && window.isTikTokLink(row.link))));
+     || (window.isTikTokLink && window.isTikTokLink(row.link))
+     || (window.isPinterestLink && window.isPinterestLink(row.link))));   // (dev0693)
   const doNewEmbed = () => {
     gridHideContextMenu();
     const c = document.querySelector('#gridOverlay [data-cell="' + cellStr + '"]');
@@ -3238,7 +3249,8 @@ function gridShowContextMenu(x, y, cellStr, row) {
   const _embCell = document.querySelector('#gridOverlay [data-cell="' + cellStr + '"]');
   const isEmbedRow = !!(row && row.link
     && ((window.isInstagramLink && window.isInstagramLink(row.link))
-     || (window.isTikTokLink && window.isTikTokLink(row.link))));
+     || (window.isTikTokLink && window.isTikTokLink(row.link))
+     || (window.isPinterestLink && window.isPinterestLink(row.link))));   // (dev0693)
   let newEmbedBtn = null;
   if (isEmbedRow) {
     newEmbedBtn = document.createElement('div');

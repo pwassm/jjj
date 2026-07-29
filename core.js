@@ -613,7 +613,14 @@ function isVideoRow(row) {
   const isVimeo = link && (window.isVimeoLink ? window.isVimeoLink(link) : /vimeo\.com/i.test(link));
   const isIG = link && window.isInstagramLink && window.isInstagramLink(link);
   const isTT = link && window.isTikTokLink && window.isTikTokLink(link);
-  if (isYT || isVimeo || isIG || isTT) return true;
+  // (dev0693) A row still holding a pinterest.com/pin/ link is one the resolver
+  // couldn't reduce to a direct file — an HLS-only video pin, or a row imported
+  // with the proxy down. Either way the Pinterest iframe is what mounts, so it
+  // has to count as video here or it renders nowhere. A RESOLVED pin no longer
+  // matches this at all: its link is an i./v1.pinimg.com file and it qualifies
+  // via isDirectVideoLink (video) or falls through to the image path (photo).
+  const isPin = link && window.isPinterestLink && window.isPinterestLink(link);
+  if (isYT || isVimeo || isIG || isTT || isPin) return true;
   // Direct video file (extension) OR extensionless provider stream (Macaulay
   // Library /mp4/ asset) — window.isDirectVideoLink owns both; keep the inline
   // extension test as a fallback in case video.js hasn't defined it yet.
@@ -2046,6 +2053,8 @@ function _rpvFillHost(host, row) {
         window.mountInstagramEmbed(host, row.link);
       } else if (window.isTikTokLink && window.isTikTokLink(row.link) && window.mountTikTokEmbed) {
         window.mountTikTokEmbed(host, row.link);
+      } else if (window.isPinterestLink && window.isPinterestLink(row.link) && window.mountPinterestEmbed) {
+        window.mountPinterestEmbed(host, row.link);   // (dev0693) HLS-only / unresolved pin
       }
     }, 60);
   } else if (row.link && !isImgLink && hasFtextImgs) {
@@ -5941,6 +5950,9 @@ function _looksLikeMediaUrl(s) {
   if (!/^https?:\/\//i.test(t)) return false;
   if (/youtu\.be|youtube\.com|vimeo\.com/i.test(t)) return true;
   if (window.isMacaulayVideoLink && window.isMacaulayVideoLink(t)) return true;
+  // (dev0693) A pin URL has no extension but always points at media — without this
+  // a clipboard of pure pin links failed Rule 1's "all-links, no text" test.
+  if (window.isPinterestLink && window.isPinterestLink(t)) return true;
   const path = t.split(/[?#]/)[0];
   if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return true;
   if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return true;
@@ -5963,6 +5975,12 @@ function _classifyUrl(s) {
   // Macaulay Library /mp4/ asset — extensionless direct video (else it would
   // fall through to 'web' and be mis-imported as an article row).
   if (window.isMacaulayVideoLink && window.isMacaulayVideoLink(t)) return 'video';
+  // (dev0693) A pin can be either photo or video and only /pinterest/resolve knows
+  // which, so this is the placeholder answer, not the verdict: 'video' matches what
+  // isVideoRow says about an unresolved pin, and the resolver rewrites the row to
+  // VidRange='i' the moment it comes back "image". The one thing it must NOT be is
+  // 'web' — that was the original bug (ltype='w', article row, no media).
+  if (window.isPinterestLink && window.isPinterestLink(t)) return 'video';
   const path = t.split(/[?#]/)[0];
   if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return 'video';
   if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return 'image';
@@ -6926,6 +6944,11 @@ async function _importBareLinks(lines) {
   // (dev0599) Same idea for Flickr: index by photo id (from link OR linkpage) so a
   // re-paste as page URL / CDN URL / already-upgraded best-res URL is caught.
   const flickrIdToDi = new Map();
+  // (dev0693) And for Pinterest — this one MATTERS, because a resolved pin's link is
+  // an i./v1.pinimg.com file that looks nothing like the pin URL that was pasted. The
+  // id only survives in linkpage, so without indexing it every re-paste of an
+  // already-imported pin would sail past the dup check and add a second row.
+  const pinIdToDi = new Map();
   data.forEach((r, di) => {
     if (r && r.link) {
       linkToDi.set(String(r.link).trim(), di);
@@ -6933,6 +6956,9 @@ async function _importBareLinks(lines) {
       if (yid) ytIdToDi.set(yid, di);
       const fpid = _flickrPhotoId(r.link) || _flickrPhotoId(r.linkpage);
       if (fpid) flickrIdToDi.set(fpid, di);
+      const ppid = window.getPinterestId
+        && (window.getPinterestId(r.link) || window.getPinterestId(r.linkpage));
+      if (ppid) pinIdToDi.set(ppid, di);
     }
   });
 
@@ -6961,6 +6987,18 @@ async function _importBareLinks(lines) {
     // isn't mis-classified as a web article (ltype='w').
     if (_flickrPhotoId(link)) {
       row.VidRange = 'i';
+      return row;
+    }
+    // (dev0693) Pinterest pin → hand straight to the resolver below, which decides
+    // photo vs video and rewrites link/linkpage/ltype accordingly. Checked before
+    // _classifyUrl for the same reason as Flickr: the pin URL carries no extension,
+    // so it would otherwise import as an ltype='w' article — the exact bug this
+    // build fixes. linkpage is stamped now so the row is reviewable even if the
+    // resolver never runs (proxy down / live site) and so the dup index can key on it.
+    if (window.isPinterestLink && window.isPinterestLink(link)) {
+      row.ltype = 'v';
+      row.Mute = '0';
+      if (!row.linkpage) row.linkpage = link;
       return row;
     }
     const cls = _classifyUrl(link);
@@ -7011,9 +7049,11 @@ async function _importBareLinks(lines) {
     // already exists in any URL form → "Already there".
     const yid = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
     const fpid = _flickrPhotoId(link);
+    const ppid = window.getPinterestId ? window.getPinterestId(link) : null;
     const dupDi = linkToDi.has(link) ? linkToDi.get(link)
                 : (yid && ytIdToDi.has(yid) ? ytIdToDi.get(yid)
-                : (fpid && flickrIdToDi.has(fpid) ? flickrIdToDi.get(fpid) : undefined));
+                : (fpid && flickrIdToDi.has(fpid) ? flickrIdToDi.get(fpid)
+                : (ppid && pinIdToDi.has(ppid) ? pinIdToDi.get(ppid) : undefined)));
     if (dupDi !== undefined) {
       const r = data[dupDi];
       dupRecords.push({
@@ -7030,6 +7070,7 @@ async function _importBareLinks(lines) {
     linkToDi.set(link, data.length - 1);
     if (yid) ytIdToDi.set(yid, data.length - 1);   // catch later dups within the same paste
     if (fpid) flickrIdToDi.set(fpid, data.length - 1);
+    if (ppid) pinIdToDi.set(ppid, data.length - 1);
     added++;
   }
 
@@ -7082,13 +7123,20 @@ async function _importBareLinks(lines) {
   // (dev0599) Flickr rows are enriched by the dedicated resolver below (best-res +
   // author/date/caption via the API) — keep them out of the generic image probe so
   // it can't overwrite the authoritative values.
-  _fetchMetaForNewRows(newRows.filter(r => !_flickrPhotoId(r.link)));
+  // (dev0693) Pinterest, like Flickr, owns its whole enrichment (one resolver call
+  // returns media + metadata + ftext), so keep pins out of BOTH generic passes: the
+  // image probe would fight the resolver over link/MPix, and _fetchYtdlpMetaForNewRows
+  // would write an IG-shaped ftext over the Pinterest one.
+  const _isPin = r => !!(r && r.link && window.isPinterestLink && window.isPinterestLink(r.link));
+  _fetchMetaForNewRows(newRows.filter(r => !_flickrPhotoId(r.link) && !_isPin(r)));
   const flickrRows = newRows.filter(r => r && _flickrPhotoId(r.link));
   if (flickrRows.length) _fetchFlickrForNewRows(flickrRows);
+  const pinRows = newRows.filter(_isPin);
+  if (pinRows.length) _fetchPinterestForNewRows(pinRows);
   // (dev0425) Route yt-dlp-supported providers (IG/YouTube/Vimeo/TikTok) through
   // the proxy yt-dlp bridge for caption (ftext) + @author; the rest still use the
   // r.jina.ai reader path. (Instagram now login-walls jina, so yt-dlp owns it.)
-  const ytRows = newRows.filter(r => r && r.link && _ytdlpSupports(r.link));
+  const ytRows = newRows.filter(r => r && r.link && _ytdlpSupports(r.link) && !_isPin(r));
   if (ytRows.length) _fetchYtdlpMetaForNewRows(ytRows);
   const webRows = data.filter(r => r && r.ltype === 'w' && !r.ftext && r.DateAdded === now && !_ytdlpSupports(r.link));
   if (webRows.length) _fetchWebTextForRows(webRows);
@@ -7099,11 +7147,12 @@ async function _importBareLinks(lines) {
   const pasteDupNote = dupInPaste > 0 ? '\n   ' + dupInPaste + ' duplicates within paste removed' : '';
   const ytNote   = ytRows.length ? '\n   ' + ytRows.length + ' video link(s) — yt-dlp caption/author…' : '';
   const flickrNote = flickrRows.length ? '\n   ' + flickrRows.length + ' Flickr link(s) — resolving best-res + metadata…' : '';
+  const pinNote  = pinRows.length ? '\n   ' + pinRows.length + ' Pinterest pin(s) — resolving direct media + metadata…' : '';
   const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
   const metaNote = newRows.some(r => !r.ltype && !_flickrPhotoId(r.link)) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + webNote + metaNote,
+    + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + pinNote + webNote + metaNote,
     3500
   );
 }
@@ -7184,6 +7233,228 @@ async function _flickrHousekeeping() {
 }
 window.flickrHousekeeping = _flickrHousekeeping;
 
+// (dev0693) ── Pinterest enrichment (direct media + metadata + ftext) ──────────
+// A pin page carries no file extension, so before this build every pinterest.com
+// link imported as an ltype='w' ARTICLE row: no picture, no player, nothing to
+// play — which is what "not recognized as image" was.
+//
+// One proxy call (/pinterest/resolve → yt-dlp's Pinterest extractor + a cookieless
+// OG-tag read) answers everything, and the row is rewritten into the SAME field
+// split Flickr/imagefinder4 produce, so nothing downstream needs to know a pin is
+// a pin:
+//   photo pin            link = i.pinimg.com/originals/….jpg   VidRange='i' ltype='i'
+//   video pin, mp4 found link = v1.pinimg.com/…/720p/….mp4     ltype='v'
+//   video pin, HLS only  link = the pin page (embed fallback)  ltype='v'
+// plus linkpage = the pin page, VidTitle / VidAuthor / VidDate / comment / MPix /
+// Mode, and an ftext built by _pinterestBuildFtext.
+//
+// THE DIRECT-MP4 INDICATION the user asked for is deliberately not a new column —
+// it's readable three ways, all of which stay true after a reload: the toast counts
+// at the end of this pass, the badge line in ftext, and the link itself (a
+// pinimg.com link IS a direct file; a pinterest.com/pin link IS the embed fallback).
+//
+// Local-dev only, like Flickr: needs the 127.0.0.1:8081 proxy. With the proxy down
+// the row keeps the pasted pin URL and still renders — as the Pinterest iframe —
+// so a failed resolve degrades to the embed rather than to nothing.
+async function _fetchPinterestForNewRows(rows) {
+  let direct = 0, hls = 0, images = 0, failed = 0;
+  for (const row of rows) {
+    const src = (row.linkpage && window.getPinterestId && window.getPinterestId(row.linkpage))
+      ? row.linkpage : row.link;
+    try {
+      const resp = await fetch(_YTDLP_PROXY + '/pinterest/resolve?url=' + encodeURIComponent(src));
+      if (!resp.ok) { failed++; continue; }
+      const j = await resp.json();
+      if (!j || !j.ok) { failed++; continue; }
+      _pinterestApplyResolved(row, j);
+      if (j.kind === 'image') images++;
+      else if (j.hls) hls++;
+      else direct++;
+    } catch (e) { failed++; }
+  }
+  if (direct || hls || images) { save(); if (typeof render === 'function') render(); }
+  const bits = [];
+  if (direct) bits.push(direct + ' direct MP4');
+  if (images) bits.push(images + ' image');
+  if (hls)    bits.push(hls + ' embed-only (HLS)');
+  toast('✓ Pinterest: ' + (direct + hls + images) + ' resolved'
+    + (bits.length ? ' — ' + bits.join(', ') : '')
+    + (failed ? ', ' + failed + ' failed (is the proxy running?)' : ''), 4200);
+}
+
+// Write one /pinterest/resolve answer onto a row. Shared by the import pass and the
+// housekeeping re-run, so both produce byte-identical rows. `fresh` (import) fills
+// blanks freely; housekeeping passes fresh=false to protect curated text.
+function _pinterestApplyResolved(row, j, fresh) {
+  if (fresh === undefined) fresh = true;
+  if (j.link)     row.link = j.link;
+  if (j.linkpage) row.linkpage = j.linkpage;
+  if (j.VidTitle && (fresh || !row.VidTitle)) row.VidTitle = j.VidTitle;
+  if (j.VidAuthor && (fresh || !row.VidAuthor)) row.VidAuthor = j.VidAuthor;
+  if (j.VidDate && (fresh || !row.VidDate))   row.VidDate = j.VidDate;
+  if (j.comment && (fresh || !row.comment))   row.comment = j.comment;
+  if (j.MPix) row.MPix = j.MPix;
+  if (j.Mode) row[(typeof getModeCol === 'function') ? getModeCol() : 'Mode'] = j.Mode;
+  if (j.kind === 'image') {
+    row.VidRange = 'i';
+    row.ltype = 'i';
+  } else {
+    row.ltype = 'v';
+    if (row.VidRange === 'i') row.VidRange = '';   // was mis-typed as an image
+  }
+  const ft = _pinterestBuildFtext(j);
+  if (ft && (fresh || !row.ftext)) row.ftext = ft;
+  row.DateModified = isoNow();
+}
+
+// ftext for a resolved pin. Same skeleton as _ytdlpBuildFtext (h2 title, body, grey
+// meta line, source link) so a Pinterest row reads like every other enriched row in
+// Xe/Xs, plus the two things Pinterest specifically gives that are worth keeping:
+//   • the media badge — direct MP4 (with W×H) vs embed-only HLS vs image. This is
+//     the at-a-glance "can I actually scrub this row" answer.
+//   • Pinterest's own keyword cluster (og:title's right-hand side + yt-dlp
+//     `categories`) as a tag-fodder line. It is the one genuinely useful extra the
+//     platform exposes; everything else it offers is chrome.
+// Kept deliberately COMPACT — see the ftext-bloat rule: this is a caption, not a
+// scrape of the page.
+function _pinterestBuildFtext(j) {
+  const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
+    c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+  let html = '';
+  if (j.VidTitle) html += '<h2>' + esc(j.VidTitle) + '</h2>\n';
+  const desc = String(j.comment || '').trim();
+  if (desc) {
+    html += desc.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+      .map(l => '<p>' + esc(l) + '</p>').join('\n') + '\n';
+  }
+  // Media badge — the direct-MP4 indication, surviving in the row itself.
+  let badge;
+  if (j.kind === 'image') {
+    badge = '🖼 image' + (j.width && j.height ? ' · ' + j.width + '×' + j.height : '');
+  } else if (j.hls) {
+    badge = '⚠ HLS only — no direct MP4, plays via the Pinterest embed (no seek/segments)';
+  } else {
+    badge = '▶ direct MP4' + (j.width && j.height ? ' · ' + j.width + '×' + j.height : '')
+          + (j.duration ? ' · ' + j.duration + 's' : '');
+  }
+  html += '<p style="color:#888;font-size:.9em;">' + esc(badge) + '</p>\n';
+
+  const bits = [];
+  if (j.VidAuthor) bits.push('By ' + esc(j.VidAuthor));
+  if (j.VidDate)   bits.push(esc(j.VidDate));
+  if (j.board)     bits.push('board: ' + esc(j.board));
+  if (j.repins)    bits.push(Number(j.repins).toLocaleString() + ' saves');
+  if (bits.length) html += '<p style="color:#888;font-size:.9em;">' + bits.join(' · ') + '</p>\n';
+
+  if (j.categories && j.categories.length) {
+    html += '<p style="color:#888;font-size:.85em;">Pinterest keywords: '
+          + esc(j.categories.join(', ')) + '</p>\n';
+  }
+  // The pin's OUTBOUND link — where the pinner got it. Often the real origin of the
+  // media and much more reviewable than the pin; absent for direct uploads.
+  if (j.sourceLink) {
+    html += '<p>Original source: <a href="' + esc(j.sourceLink) + '" target="_blank" rel="noopener" '
+          + 'style="color:#5bf;word-break:break-all;">' + esc(j.sourceLink) + '</a></p>\n';
+  }
+  const page = j.linkpage || '';
+  if (page) {
+    html += '<p>Pin: <a href="' + esc(page) + '" target="_blank" rel="noopener" '
+          + 'style="color:#5bf;word-break:break-all;">' + esc(page) + '</a></p>';
+  }
+  return html;
+}
+
+// (dev0693) ── Manual Pinterest housekeeping ───────────────────────────────────
+// window.pinterestHousekeeping() from the console. Re-resolves every Pinterest row
+// (matched on link OR linkpage, so already-resolved rows are found by their pin
+// page): always refreshes link/MPix/Mode, but only BACKFILLS empty title/author/
+// date/comment/ftext so curated text survives. Mirrors _flickrHousekeeping.
+async function _pinterestHousekeeping() {
+  const rows = data.filter(r => r && window.getPinterestId
+    && (window.getPinterestId(r.link) || window.getPinterestId(r.linkpage)));
+  if (!rows.length) { toast('No Pinterest rows found.', 2000); return; }
+  if (!confirm('Pinterest housekeeping — re-resolve ' + rows.length + ' row(s):\n\n'
+    + '• link → direct MP4 / best image (always)\n'
+    + '• MPix + Mode (always)\n'
+    + '• title / author / date / comment / ftext — only if EMPTY\n\nProceed?')) return;
+  let done = 0, failed = 0, i = 0;
+  for (const row of rows) {
+    const src = (window.getPinterestId(row.linkpage) ? row.linkpage : row.link);
+    try {
+      const resp = await fetch(_YTDLP_PROXY + '/pinterest/resolve?url=' + encodeURIComponent(src));
+      if (!resp.ok) { failed++; continue; }
+      const j = await resp.json();
+      if (!j || !j.ok) { failed++; continue; }
+      _pinterestApplyResolved(row, j, false);
+      done++;
+    } catch (e) { failed++; }
+    if ((++i % 15) === 0) { save(); toast('Pinterest housekeeping… ' + i + '/' + rows.length, 1200); }
+  }
+  save(); if (typeof render === 'function') render();
+  toast('✓ Pinterest housekeeping done: ' + done + ' updated, ' + failed + ' failed', 4500);
+}
+window.pinterestHousekeeping = _pinterestHousekeeping;
+
+// (dev0693) ── Download pins to pin_media/ ────────────────────────────────────
+// window.pinterestDownload()          → every Pinterest row
+// window.pinterestDownload(true)      → checked rows only
+// Files land in pin_media/<pinner>/<name>.<ext> via proxy /pinterest/download,
+// foldered by author exactly like ig_media (dev0689) and gitignored. The filename
+// follows the same AHK convention ig.js uses, with a [[p[<id>]]] tail (p = pin) so
+// a file can always be traced back to its row:
+//   hh.mm.ss~WxH~Title~@author~[[p[<pinid>]]].<ext>
+// Nothing about this changes the row's link — ml.json keeps pointing at the web
+// media; the local copy is an archive, not a substitution.
+async function _pinterestDownloadRows(checkedOnly) {
+  // checkedRows holds data INDICES (not row objects), so the filter has to run over
+  // indices to honour the T checkboxes.
+  const rows = [];
+  data.forEach((r, di) => {
+    if (!r || !window.getPinterestId) return;
+    if (!(window.getPinterestId(r.link) || window.getPinterestId(r.linkpage))) return;
+    if (checkedOnly && !checkedRows.has(di)) return;
+    rows.push(r);
+  });
+  if (!rows.length) {
+    toast(checkedOnly ? 'No checked Pinterest rows.' : 'No Pinterest rows to download.', 2000);
+    return;
+  }
+  if (!confirm('Download ' + rows.length + ' Pinterest pin(s) to pin_media/ ?\n\n'
+    + 'HLS-only pins have no progressive MP4 and will be reported as failures.')) return;
+
+  const sanitize = s => String(s || '').replace(/[<>":\/\\|?*\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '') || 'unknown';
+
+  let ok = 0, failed = 0, i = 0;
+  for (const row of rows) {
+    const id = window.getPinterestId(row.link) || window.getPinterestId(row.linkpage);
+    // Prefer the already-resolved direct media URL; fall back to the pin page and
+    // let yt-dlp resolve it again.
+    const url = /pinimg\.com\//i.test(row.link || '') ? row.link : (row.linkpage || row.link);
+    const author = String(row.VidAuthor || '').replace(/^@+/, '') || 'unknown';
+    // Duration and W×H go in as the placeholders `00.00.00~0x0`; the proxy replaces
+    // them with values it MEASURES off the finished file. ml.json has no per-row
+    // width/height (only MPix) and vidLength is filled by E, not by import — so a
+    // client-side guess would bake a wrong number into the filename forever. The
+    // downloader already runs ffprobe to report dims; this just uses that answer.
+    const name = '00.00.00~0x0~'
+      + sanitize(String(row.VidTitle || 'pin').slice(0, 80)) + '~@' + sanitize(author)
+      + '~[[p[' + id + ']]]';
+    try {
+      const resp = await fetch(_YTDLP_PROXY + '/pinterest/download', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, id, name, author })
+      });
+      const j = await resp.json().catch(() => null);
+      if (j && j.ok && (j.files || []).length) ok++; else failed++;
+    } catch (e) { failed++; }
+    if ((++i % 5) === 0) toast('Downloading… ' + i + '/' + rows.length, 1200);
+  }
+  toast('✓ Pinterest download: ' + ok + ' saved to pin_media/'
+    + (failed ? ', ' + failed + ' failed (HLS-only or proxy down)' : ''), 5000);
+}
+window.pinterestDownload = _pinterestDownloadRows;
+
 // ══════════════════════════════════════════════════════════════════════════════
 // WEB-ARTICLE FETCH + EXTRACT (zip0166)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -7221,7 +7492,10 @@ function _ytdlpSupports(url) {
   if (window.isYouTubeLink   && window.isYouTubeLink(url))   return true;
   if (window.isVimeoLink     && window.isVimeoLink(url))     return true;
   if (window.isTikTokLink    && window.isTikTokLink(url))    return true;
-  return /instagram\.com|youtu\.be|youtube\.com|vimeo\.com|tiktok\.com/i.test(url);
+  // (dev0693) yt-dlp ships a native Pinterest extractor (verified 2026-07-28:
+  // title/uploader/upload_date/duration/WxH/thumbnail/categories, cookieless).
+  if (window.isPinterestLink && window.isPinterestLink(url)) return true;
+  return /instagram\.com|youtu\.be|youtube\.com|vimeo\.com|tiktok\.com|pinterest\.[a-z.]{2,6}\/pin\//i.test(url);
 }
 
 // POST the URL to the proxy's yt-dlp bridge; resolve the parsed metadata object

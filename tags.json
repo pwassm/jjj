@@ -7100,5 +7100,27 @@
     "aliases": [],
     "def": "",
     "rank": "species"
+  },
+  {
+    "id": "backhand-return",
+    "label": "Backhand return",
+    "kind": "taxon",
+    "parents": [
+      "ttennis"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "cooperative-hunting",
+    "label": "Cooperative hunting",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
   }
 ]

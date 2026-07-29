@@ -1458,6 +1458,10 @@ function gridOpenFullscreen(row, contained) {
         vpMountInstagram(host, row.link);
       } else if (window.isTikTokLink && window.isTikTokLink(row.link)) {
         vpMountTikTok(host, row.link);
+      } else if (window.isPinterestLink && window.isPinterestLink(row.link)) {
+        // (dev0693) Only HLS-only / unresolved pins get here — a resolved pin's
+        // link is a .mp4 and the direct-video branch above already took it.
+        vpMountPinterest(host, row.link);
       }
     }, 50);
     
@@ -4496,6 +4500,70 @@ function vpMountTikTok(host, link) {
 
   if (typeof _vpState === 'object' && _vpState) {
     _vpState.player = { isTikTok: true,
+      pauseVideo: function(){}, playVideo: function(){},
+      destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
+    _vpState.isYT = false;
+  }
+}
+
+// (dev0693) Pinterest mount — the FALLBACK renderer, not the normal one. A pin
+// imported through W is resolved to its direct i./v1.pinimg.com file and plays via
+// vpMountDirectVideo (or renders as an image) with full seek and segments; only a
+// video pin Pinterest serves solely as HLS — which no browser but Safari can put in
+// a <video> — keeps its pin URL and lands here, in a view-only cross-origin iframe.
+//
+// The widget is a CARD (picture + title + "Save" chrome), not a bare player, and it
+// sizes itself to its container, so this uses a 3:4-ish box rather than TikTok's
+// hard 9:16. Same catcher rule as IG/TikTok: _vpWireEmbedGestures frees
+// #vp-swipe-catcher (which would otherwise eat the play click — dev0602) and puts
+// swipe-close back on the letterbox plus a right-edge strip.
+function vpMountPinterest(host, link) {
+  host.innerHTML = '';
+  var src = window.pinterestEmbedUrl ? window.pinterestEmbedUrl(link) : '';
+  if (!src) return;
+
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
+    + 'justify-content:center;background:#000;touch-action:none;';
+  var clipBox = document.createElement('div');
+  clipBox.style.cssText = 'position:relative;width:min(560px,95vw);'
+    + 'height:min(860px,95%);aspect-ratio:3/4;overflow:hidden;background:#fff;';
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;';
+  clipBox.appendChild(iframe);
+  wrap.appendChild(clipBox);
+  host.appendChild(wrap);
+
+  _vpWireEmbedGestures(wrap, clipBox, 'vp-pin-swipe-strip');
+
+  // Inert seek-bar → "Open on Pinterest" (same pattern as IG/TikTok). Prev/Play/
+  // Next/Close in the row below stay functional.
+  var toolbar = document.getElementById('vp-toolbar');
+  if (toolbar && toolbar.firstElementChild) {
+    var tlRow = toolbar.firstElementChild;
+    tlRow.style.display = 'none';
+    var openBtn = document.createElement('button');
+    openBtn.id = 'vp-pin-open';
+    openBtn.textContent = '↗ Open on Pinterest';
+    openBtn.style.cssText = 'display:block;width:100%;height:24px;margin:0 0 4px 0;'
+      + 'background:linear-gradient(135deg,#e60023 0%,#bd081c 100%);'
+      + 'color:#fff;border:0;border-radius:4px;font-family:monospace;font-weight:bold;'
+      + 'font-size:12px;letter-spacing:0.04em;cursor:pointer;'
+      + 'text-shadow:0 1px 2px rgba(0,0,0,0.6);';
+    openBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      window.open(link, '_blank', 'noopener');
+    });
+    toolbar.insertBefore(openBtn, tlRow);
+  }
+
+  if (typeof _vpState === 'object' && _vpState) {
+    _vpState.player = { isPinterest: true,
       pauseVideo: function(){}, playVideo: function(){},
       destroy: function(){ try { iframe.src = 'about:blank'; } catch(e) {} } };
     _vpState.isYT = false;

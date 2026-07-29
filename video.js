@@ -263,6 +263,64 @@ window.mountTikTokEmbed = function(hostEl, url) {
   };
 };
 
+// ── Pinterest (official widget iframe, view-only — the FALLBACK path) ──────
+// (dev0693) Unlike IG/TikTok, a Pinterest pin is normally NOT embedded at all:
+// the W import runs it through proxy /pinterest/resolve, which hands back the
+// direct i.pinimg.com jpg or v1.pinimg.com mp4, and the row then rides the plain
+// image / isDirectVideoLink paths with full seek, VidRange segments and steps.
+//
+// This embed exists for the one case the resolver can't fix: video pins Pinterest
+// serves ONLY as HLS (`videos/iht/hls/*.m3u8`). Chrome and Firefox can't play an
+// m3u8 in a <video> without hls.js, so those rows keep the pin URL and land here.
+// A row still holding a pinterest.com/pin/ link is therefore either HLS-only or
+// not yet resolved (proxy down / live site) — both want the iframe.
+//
+// Verified 2026-07-28: assets.pinterest.com/ext/embed.html?id=<id> returns 200
+// with NO X-Frame-Options and no frame-ancestors CSP, and loads cookieless.
+// View-only like IG/TikTok: cross-origin, no postMessage seek API, so E and step
+// playback can't work (parseVideoAsset returns null for the empty VidRange, which
+// keeps E out). Must stay in step with pinEmbedUrl()/PIN_PATH_RE in proxy.js.
+//
+// Pinterest addresses one pin as /pin/<id>/, /pin/<slug>--<id>/ and on country
+// hosts (pinterest.co.uk/.de/…). All three are one regex here — the dev0611 rule:
+// a provider predicate lives in video.js ONLY. `pin.it/<code>` shorteners carry no
+// id and can only be resolved server-side (proxy /pinterest/resolve follows them).
+var _PIN_PATH_RE = /pinterest\.[a-z.]{2,6}\/pin\/(?:[^/?#]*?--)?(\d{6,25})/i;
+window.isPinterestLink = function(url) {
+  return _PIN_PATH_RE.test(url || '');
+};
+window.getPinterestId = function(url) {
+  var m = String(url || '').match(_PIN_PATH_RE);
+  return m ? m[1] : null;
+};
+window.pinterestEmbedUrl = function(url) {
+  var id = window.getPinterestId(url);
+  return id ? 'https://assets.pinterest.com/ext/embed.html?id=' + id : '';
+};
+window.mountPinterestEmbed = function(hostEl, url) {
+  if (!hostEl) return;
+  var cellId = hostEl.id;
+  if (window.stopCellVideoLoop) window.stopCellVideoLoop(cellId);
+  hostEl.innerHTML = '';
+  var src = window.pinterestEmbedUrl(url);
+  if (!src) return;
+  var iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;';
+  hostEl.appendChild(iframe);
+  // Stub player so generic stop/pause paths don't choke.
+  window.seeLearnVideoPlayers[cellId] = {
+    isPinterest: true,
+    destroy:     function() { try { iframe.src = 'about:blank'; iframe.remove(); } catch(e) {} },
+    pauseVideo:  function() {},
+    playVideo:   function() {}
+  };
+};
+
 // ─── API loaders ──────────────────────────────────────────────────────────────
 window.loadYouTubeApiOnce = function() {
   if (window.YT && window.YT.Player) { window.seeLearnYTReady = true; return Promise.resolve(); }

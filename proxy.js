@@ -3109,6 +3109,409 @@ async function flickrResolve(req, res, origin) {
   }
 }
 
+// (dev0693) ── Pinterest resolver + downloader ───────────────────────────────
+// Pinterest pin pages read fine COOKIELESS (measured 2026-07-28: HTTP 200 with the
+// full OG tag set AND the video manifest URLs — no login wall, no bot check), and
+// yt-dlp ships a native Pinterest extractor, so this needs no credentials and no
+// new scraping stack. Rides the existing yt-dlp binary (see EXEC_BIN).
+//
+// The resolver's job is to turn `pinterest.com/pin/<id>/` — which carries no file
+// extension and therefore imports as an ltype='w' article, the same trap as IG
+// (dev0581), TikTok (dev0605) and Macaulay (dev0600) — into something SLAM can
+// actually play:
+//
+//   image pin       → i.pinimg.com/originals/….jpg          (normal image row)
+//   video + mp4     → v1.pinimg.com/videos/mc/720p/….mp4     (direct <video>: seek,
+//                     VidRange segments, steps — everything an embed can't do)
+//   video, HLS only → no progressive mp4 exists; the row KEEPS the pin URL and the
+//                     client falls back to the official iframe (`hls:true` says so)
+//
+// The HLS split is real and roughly even in sampling: pins served from `videos/mc/`
+// usually expose a progressive `mc/720p/<hash>.mp4`, pins from `videos/iht/` are
+// often HLS-only. The progressive path can SOMETIMES be guessed from an HLS hash
+// (worked for 1 of 2 tried), so it's probed as a last resort — never assumed.
+const PIN_MEDIA_DIR = path.join(__dirname, 'pin_media');
+// Full desktop-Chrome UA. A short UA still gets HTML but Pinterest drops some of the
+// OG tags for it; this is the string the resolve/download paths were verified with.
+const PIN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+             + '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+// Pin id from any public pin address. Pinterest addresses one pin several ways:
+//   /pin/<id>/ · /pin/<slug>--<id>/ · country hosts (pinterest.co.uk, .de, …)
+// plus the `pin.it/<code>` shortener, which has no id at all and is resolved by
+// following its redirect (pinResolveShort). One regex, one place — the dev0611
+// rule: never let a provider predicate exist in two files with two answers.
+const PIN_PATH_RE = /(?:^|\/\/|\.)pinterest\.[a-z.]{2,6}\/pin\/(?:[^/?#]*?--)?(\d{6,25})/i;
+function pinterestPinId(url) {
+  const m = PIN_PATH_RE.exec(String(url || ''));
+  return m ? m[1] : '';
+}
+function pinIsShortLink(url) { return /(?:^|\/\/|\.)pin\.it\//i.test(String(url || '')); }
+function pinPageUrl(id) { return 'https://www.pinterest.com/pin/' + id + '/'; }
+// Official widget iframe — what Pinterest's own embed.js resolves a pin to. Verified
+// 2026-07-28: HTTP 200, and NO X-Frame-Options / frame-ancestors, so it frames from
+// any origin cookielessly. Must stay in step with pinterestEmbedUrl() in video.js.
+function pinEmbedUrl(id) { return 'https://assets.pinterest.com/ext/embed.html?id=' + id; }
+
+// GET a page cookieless, following redirects, resolving { status, html, finalUrl }.
+// finalUrl is what makes pin.it work: the shortener 301s to the real /pin/<id>/.
+function pinFetchHtml(url, hops) {
+  return new Promise(resolve => {
+    if (hops == null) hops = 0;
+    let u; try { u = new URL(url); } catch (_) { resolve({ status: 0, html: '', finalUrl: url }); return; }
+    if (u.protocol !== 'https:') { resolve({ status: 0, html: '', finalUrl: url }); return; }
+    const opts = { agent: false, headers: {
+      'User-Agent': PIN_UA,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9', 'Connection': 'close'
+    } };
+    const req = https.get(url, opts, r => {
+      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 4) {
+        r.resume();
+        pinFetchHtml(new URL(r.headers.location, url).href, hops + 1).then(resolve);
+        return;
+      }
+      if (r.statusCode !== 200) { r.resume(); resolve({ status: r.statusCode, html: '', finalUrl: url }); return; }
+      let h = '';
+      r.setEncoding('utf8');
+      // Pin pages are ~1MB of app JSON; 8MB is headroom, not a target.
+      r.on('data', c => { h += c; if (h.length > 8e6) req.destroy(); });
+      r.on('end', () => resolve({ status: 200, html: h, finalUrl: url }));
+    });
+    req.on('error', () => resolve({ status: 0, html: '', finalUrl: url }));
+    req.setTimeout(20000, () => { req.destroy(); resolve({ status: 0, html: '', finalUrl: url }); });
+  });
+}
+
+// Pinterest emits <meta content="…" name="og:image" property="og:image"/> — content
+// FIRST — so an attribute-order-sensitive regex silently returns nothing (it did,
+// during this build). Parse each tag whole and read its attributes in any order.
+function pinMetaTags(html) {
+  const out = {};
+  const tags = String(html || '').match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    const key = (/\b(?:property|name)\s*=\s*"([^"]+)"/i.exec(tag) || [])[1];
+    const val = (/\bcontent\s*=\s*"([^"]*)"/i.exec(tag) || [])[1];
+    if (key && val != null && !(key in out)) out[key] = pinDecodeEntities(val);
+  }
+  return out;
+}
+function pinDecodeEntities(s) {
+  return String(s == null ? '' : s)
+    .replace(/&#x27;/gi, "'").replace(/&#39;/g, "'").replace(/&quot;/gi, '"')
+    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&');
+}
+
+function pinHeadOk(url) {
+  return new Promise(resolve => {
+    let u; try { u = new URL(url); } catch (_) { resolve(0); return; }
+    const opts = { method: 'HEAD', agent: false, headers: { 'User-Agent': PIN_UA, 'Connection': 'close' } };
+    const req = https.request(u, opts, r => {
+      r.resume();
+      resolve(r.statusCode === 200 ? (+r.headers['content-length'] || 1) : 0);
+    });
+    req.on('error', () => resolve(0));
+    req.setTimeout(12000, () => { req.destroy(); resolve(0); });
+    req.end();
+  });
+}
+
+// og:image arrives as a SIZED derivative (i.pinimg.com/736x/ab/cd/ef/<hash>.jpg).
+// Swap the size segment for /originals/ and keep it only if it really serves; some
+// pins have no original, so /1200x/ then the untouched og:image are the fallbacks.
+// Returns { url, bytes }.
+async function pinBestImage(ogImage) {
+  const src = String(ogImage || '');
+  if (!/i\.pinimg\.com\//i.test(src)) return { url: src, bytes: 0 };
+  const cands = [];
+  for (const size of ['originals', '1200x']) {
+    const alt = src.replace(/\/(originals|\d+x(?:\d+)?(?:_RS)?)\//i, '/' + size + '/');
+    if (alt !== src || /\/originals\//i.test(src)) cands.push(alt);
+  }
+  cands.push(src);
+  for (const c of cands) {
+    const bytes = await pinHeadOk(c);
+    if (bytes) return { url: c, bytes };
+  }
+  return { url: src, bytes: 0 };
+}
+
+// yt-dlp -J on a pin. Resolves the parsed document or null (a static image pin has
+// no video and yt-dlp exits non-zero — that is a normal outcome here, not an error).
+function pinYtdlpMeta(url) {
+  return new Promise(resolve => {
+    let out = '', done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
+    let proc;
+    try {
+      proc = spawn(EXEC_BIN.ytdlp, ['--no-warnings', '--ignore-config', '--socket-timeout', '20',
+                                    '-J', '--skip-download', url], { windowsHide: true });
+    } catch (_) { finish(null); return; }
+    proc.stdout.on('data', c => { out += c; if (out.length > 12e6) proc.kill(); });
+    proc.stderr.on('data', () => {});
+    proc.on('error', () => finish(null));
+    proc.on('close', () => { try { finish(JSON.parse(out)); } catch (_) { finish(null); } });
+    setTimeout(() => { try { proc.kill(); } catch (_) {} finish(null); }, 60000);
+  });
+}
+
+// Best PROGRESSIVE (plain-mp4) video format. Manifest protocols are rejected outright
+// — an m3u8 in a <video src> is a dead player in Chrome/Firefox, which is the entire
+// reason the embed fallback exists. HEVC is rejected too: it downloads fine and then
+// won't decode in most browsers, which is a worse failure than falling back honestly.
+function pinPickProgressive(meta) {
+  const fmts = (meta && meta.formats) || [];
+  let best = null;
+  for (const f of fmts) {
+    if (!f || f.protocol !== 'https' || !f.url) continue;
+    if (f.vcodec === 'none') continue;                       // audio-only
+    if (/hev1|hvc1|h265/i.test(String(f.vcodec || ''))) continue;
+    if (!/\.mp4(\?|#|$)/i.test(f.url)) continue;
+    const px = (+f.width || 0) * (+f.height || 0);
+    if (!best || px > best._px) { best = Object.assign({}, f, { _px: px }); }
+  }
+  return best;
+}
+
+// Media duration in seconds via ffprobe, or 0. Images (and anything unreadable)
+// return 0, which the filename stamps as 00.00.00.
+function pinProbeDuration(file) {
+  try {
+    const raw = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'csv=p=0', file], { encoding: 'utf8', windowsHide: true, timeout: 20000 });
+    return Math.max(0, Math.round(parseFloat(String(raw).trim()) || 0));
+  } catch (_) { return 0; }
+}
+// Replace the client's `00.00.00~0x0~` placeholders with values measured off the
+// finished file. The client cannot know either number (ml.json stores neither a
+// per-row W×H nor a duration at import time), so the filename is built from what is
+// actually on disk rather than from a guess — same principle as the dev0690 guard.
+function pinStampName(base, file) {
+  const d = probeMediaDims(file);
+  const secs = pinProbeDuration(file);
+  const hms = [Math.floor(secs / 3600), Math.floor(secs / 60) % 60, secs % 60]
+    .map(x => String(x).padStart(2, '0')).join('.');
+  const wh = (d && d.w && d.h) ? (d.w + 'x' + d.h) : '0x0';
+  return base.replace(/^00\.00\.00~0x0~/, hms + '~' + wh + '~');
+}
+
+// Last resort for an HLS-only pin: Pinterest sometimes ALSO stores a progressive mp4
+// at the mirrored `mc/720p/<aa>/<bb>/<cc>/<hash>.mp4` path even when it isn't in the
+// manifest. Probed, never assumed — it existed for 1 of 2 HLS-only pins tested.
+async function pinProbeProgressive(meta) {
+  const fmts = (meta && meta.formats) || [];
+  let hash = '';
+  for (const f of fmts) {
+    const m = /\/videos\/(?:mc|iht)\/[^/]+\/(?:[0-9a-f]{2}\/){3}([0-9a-f]{32})/i.exec(String((f && (f.url || f.manifest_url)) || ''));
+    if (m) { hash = m[1]; break; }
+  }
+  if (!hash) return null;
+  const seg = hash.slice(0, 2) + '/' + hash.slice(2, 4) + '/' + hash.slice(4, 6) + '/' + hash;
+  for (const variant of ['mc/720p', 'iht/720p']) {
+    const url = 'https://v1.pinimg.com/videos/' + variant + '/' + seg + '.mp4';
+    if (await pinHeadOk(url)) return url;
+  }
+  return null;
+}
+
+// GET /pinterest/resolve?url=…  — read-only, mirrors /flickr/resolve (including its
+// open-origin stance: harmless public reads, and sendJson echoes the local origin).
+async function pinterestResolve(req, res, origin) {
+  let q;
+  try { q = new URL(req.url, 'http://x').searchParams; } catch (_) { q = new URLSearchParams(); }
+  const raw = (q.get('url') || q.get('id') || '').trim();
+  if (!raw) { sendJson(res, 400, { ok: false, error: 'url required' }, origin); return; }
+  try {
+    // pin.it has no id in the URL — one fetch both resolves the redirect and gives
+    // us the page, so the shortener costs nothing extra.
+    let pageUrl = /^https?:\/\//i.test(raw) ? raw : pinPageUrl(raw.replace(/\D/g, ''));
+    let page = await pinFetchHtml(pageUrl);
+    let id = pinterestPinId(page.finalUrl) || pinterestPinId(pageUrl);
+    if (!id && pinIsShortLink(pageUrl)) {
+      sendJson(res, 502, { ok: false, error: 'pin.it did not resolve to a pin: ' + pageUrl }, origin); return;
+    }
+    if (!id) { sendJson(res, 400, { ok: false, error: 'no pinterest pin id in: ' + raw }, origin); return; }
+    const canonical = pinPageUrl(id);
+    if (page.status !== 200) page = await pinFetchHtml(canonical);
+
+    const meta = pinMetaTags(page.html);
+    const yt   = await pinYtdlpMeta(canonical);
+
+    const out = { ok: true, pin_id: id, linkpage: canonical, embedUrl: pinEmbedUrl(id) };
+
+    // ── title / author / date / description / categories ──────────────────
+    // yt-dlp's title for a video pin is the useless placeholder "Pinterest video
+    // #<id>", so og:title wins. og:title is "<real title> | <kw>, <kw>, <kw>" —
+    // split once on the first '|': left = title, right = Pinterest's own keyword
+    // cluster, which is decent tag fodder and joins yt-dlp's `categories`.
+    const ogTitle = (meta['og:title'] || '').trim();
+    const pipe = ogTitle.indexOf('|');
+    let title = pipe > 0 ? ogTitle.slice(0, pipe).trim() : ogTitle;
+    const kws = [];
+    if (pipe > 0) ogTitle.slice(pipe + 1).split(',').forEach(s => { s = s.trim(); if (s) kws.push(s); });
+    for (const c of (yt && yt.categories) || []) { const s = String(c || '').trim(); if (s) kws.push(s); }
+    if (!title && yt && !/^Pinterest video #/i.test(yt.title || '')) title = (yt.title || '').trim();
+    if (title) out.VidTitle = title;
+    out.categories = Array.from(new Set(kws.map(s => s.replace(/\s+/g, ' ')))).slice(0, 24);
+
+    const pinner = (meta['pinterestapp:pinner'] || '').replace(/\/+$/, '').split('/').pop();
+    const uploader = (yt && (yt.uploader || yt.channel)) || pinner || '';
+    if (uploader) { out.VidAuthor = '@' + uploader; out.authorUrl = 'https://www.pinterest.com/' + uploader + '/'; }
+    if (yt && /^\d{8}$/.test(yt.upload_date || '')) {
+      out.VidDate = yt.upload_date.slice(0, 4) + '-' + yt.upload_date.slice(4, 6) + '-' + yt.upload_date.slice(6, 8);
+    } else if (meta['og:updated_time']) {
+      out.VidDate = String(meta['og:updated_time']).slice(0, 10);
+    }
+    const desc = (meta['og:description'] || (yt && yt.description) || '').trim();
+    if (desc) out.comment = desc;
+    const board = (meta['pinterestapp:pinboard'] || '').replace(/\/+$/, '');
+    if (board) { out.boardUrl = board; out.board = board.split('/').pop().replace(/-/g, ' '); }
+    if (meta['pinterestapp:repins']) out.repins = +meta['pinterestapp:repins'] || 0;
+    // The pin's OUTBOUND link — where the pinner sourced it. Often the real origin of
+    // the media and far more reviewable than the pin itself. Empty for user uploads.
+    const srcLink = (/"link"\s*:\s*"(https?:[^"\\]{4,400})"/i.exec(page.html) || [])[1];
+    if (srcLink) { try { out.sourceLink = JSON.parse('"' + srcLink + '"'); } catch (_) { out.sourceLink = srcLink; } }
+
+    // ── the media itself ──────────────────────────────────────────────────
+    const poster = (meta['og:image'] || (yt && yt.thumbnail) || '').trim();
+    const prog = pinPickProgressive(yt);
+    if (yt && (yt.formats || []).length) {
+      out.kind = 'video';
+      if (yt.duration) out.duration = Math.round(+yt.duration);
+      let vurl = prog && prog.url, vw = prog && +prog.width, vh = prog && +prog.height;
+      if (!vurl) {
+        const probed = await pinProbeProgressive(yt);
+        if (probed) { vurl = probed; vw = +yt.width || 0; vh = +yt.height || 0; }
+      }
+      if (vurl) {
+        out.direct = true;
+        out.hls = false;
+        out.link = vurl;
+        out.width = vw || +yt.width || 0;
+        out.height = vh || +yt.height || 0;
+      } else {
+        // HLS-only. Keep the PIN page as the link so the client mounts the official
+        // iframe; report the manifest + best manifest size for the record.
+        out.direct = false;
+        out.hls = true;
+        out.link = canonical;
+        out.width = +yt.width || 0;
+        out.height = +yt.height || 0;
+        const man = (yt.formats || []).filter(f => f && f.manifest_url).pop();
+        if (man) out.hlsUrl = man.manifest_url;
+      }
+      if (poster) out.poster = (await pinBestImage(poster)).url;
+    } else {
+      // No video formats at all → a static image pin.
+      out.kind = 'image';
+      out.direct = true;
+      out.hls = false;
+      const best = await pinBestImage(poster);
+      out.link = best.url;
+      out.width = +meta['og:image:width'] || 0;
+      out.height = +meta['og:image:height'] || 0;
+      out.poster = best.url;
+    }
+
+    if (out.width && out.height) {
+      out.MPix = (out.width * out.height / 1e6).toFixed(1);
+      out.Mode = out.width > out.height ? 'L' : (out.width < out.height ? 'P' : 'S');
+    }
+    if (!out.link) { sendJson(res, 502, { ok: false, error: 'pinterest returned no media for ' + id }, origin); return; }
+    sendJson(res, 200, out, origin);
+  } catch (e) {
+    sendJson(res, 502, { ok: false, error: String((e && e.message) || e) }, origin);
+  }
+}
+
+// POST /pinterest/download { url, id, name, author } — saves the pin's media into
+// pin_media/<author>/<stem>.<ext>. Deliberately a SIBLING of igDownload rather than a
+// reuse of it: IG's version carries the impersonate/cookie/wall-retry ladder that
+// Pinterest simply doesn't need (everything here is public and cookieless), and the
+// shared naming/measuring helpers (igSanitizeName / igAuthorFolder / probeMediaDims)
+// are already generic. Video pins go through yt-dlp; image pins are a plain GET.
+function pinterestDownload(req, res, origin) {
+  readJson(req, 64 * 1024).then(async payload => {
+    const url = String(payload.url || '');
+    if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
+    const id = String(payload.id || pinterestPinId(url) || '').replace(/[^0-9]/g, '');
+    if (!id) { sendJson(res, 400, { ok: false, error: 'pin id required' }, origin); return; }
+    const folder = igAuthorFolder(String(payload.author || '').replace(/^@/, ''));
+    const stem = igSanitizeName(payload.name || id).slice(0, 180);
+    const destDir = path.join(PIN_MEDIA_DIR, folder);
+    try { fs.mkdirSync(destDir, { recursive: true }); } catch (_) {}
+
+    const finish = files => {
+      const dims = files.map(f => probeMediaDims(path.join(destDir, f))).filter(Boolean);
+      const px = dims.length ? Math.max(...dims.map(d => d.w * d.h)) : 0;
+      sendJson(res, 200, {
+        ok: files.length > 0,
+        pin_id: id,
+        folder,
+        files,
+        localFiles: files.map(f => (folder ? folder + '/' + f : f)),
+        pixels: px,
+        dims: dims.map(d => [d.w, d.h]),
+        error: files.length ? undefined : 'nothing downloaded'
+      }, origin);
+    };
+
+    // A direct media URL (mp4/jpg the resolver already found) is just a GET — no
+    // reason to re-run yt-dlp and re-resolve the pin.
+    const isDirectMedia = /(?:i|v\d*)\.pinimg\.com\//i.test(url);
+    if (isDirectMedia) {
+      const ext = (/\.([a-z0-9]{2,4})(?:\?|#|$)/i.exec(url) || [])[1] || 'jpg';
+      // Land it under a temp name first: the duration/W×H stamp can only be measured
+      // once the bytes are on disk.
+      const tmpName = '.dl_' + id + '_' + Date.now().toString(36) + '.' + ext.toLowerCase();
+      const tmpPath = path.join(destDir, tmpName);
+      const got = await igDownloadImage(url, tmpPath, 'https://www.pinterest.com/', 0, '*/*');
+      if (!got) { try { fs.unlinkSync(tmpPath); } catch (_) {} finish([]); return; }
+      const base = pinStampName(stem, tmpPath) + '.' + ext.toLowerCase();
+      try { fs.renameSync(tmpPath, path.join(destDir, base)); }
+      catch (_) { try { fs.unlinkSync(tmpPath); } catch (_) {} finish([]); return; }
+      finish([base]);
+      return;
+    }
+
+    const tmpDir = path.join(destDir, '.tmp_' + id + '_' + Date.now().toString(36));
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+    const rmTmp = () => { try { (fs.rmSync || fs.rmdirSync)(tmpDir, { recursive: true, force: true }); } catch (_) {} };
+    // No --impersonate and no cookie ladder: Pinterest serves this cookieless.
+    // -f picks the best NON-manifest mp4 so an HLS-only pin fails loudly here rather
+    // than silently producing a remuxed file the rest of SLAM can't seek.
+    const args = ['--no-warnings', '--ignore-config', '--socket-timeout', '20', '--no-part',
+                  '-f', 'best[protocol=https][ext=mp4]/best[protocol=https]',
+                  '-o', path.join(tmpDir, '%(autonumber)03d.%(ext)s'), url];
+    let proc;
+    try { proc = spawn(EXEC_BIN.ytdlp, args, { windowsHide: true }); }
+    catch (e) { rmTmp(); sendJson(res, 500, { ok: false, error: 'spawn yt-dlp: ' + e.message }, origin); return; }
+    let stderr = '';
+    proc.stderr.on('data', c => { stderr += c; if (stderr.length > 20000) stderr = stderr.slice(-20000); });
+    proc.stdout.on('data', () => {});
+    proc.on('error', () => { rmTmp(); sendJson(res, 500, { ok: false, error: 'yt-dlp not runnable' }, origin); });
+    proc.on('close', () => {
+      let tmp = [];
+      try { tmp = fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) {}
+      const out = [];
+      tmp.forEach((f, i) => {
+        const src = path.join(tmpDir, f);
+        const ext = (/\.([^.]+)$/.exec(f) || [])[1] || 'mp4';
+        const base = pinStampName(stem, src)
+          + (tmp.length > 1 ? ' [' + (i + 1) + ' of ' + tmp.length + ']' : '') + '.' + ext;
+        try { fs.renameSync(src, path.join(destDir, base)); out.push(base); } catch (_) {}
+      });
+      rmTmp();
+      if (!out.length) {
+        sendJson(res, 502, { ok: false, pin_id: id, error: (stderr.trim().split(/\r?\n/).pop() || 'yt-dlp produced no file') }, origin);
+        return;
+      }
+      finish(out);
+    });
+  }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
+}
+
 // (dev0649) ── Proton VPN rotation state/bridge ───────────────────────────
 // vpn-rotate.ps1 writes the chosen server + confirmed public IP into state.json
 // under %LOCALAPPDATA%\ProtonVpnRotate; this reads it (no network call of its
@@ -3293,7 +3696,7 @@ http.createServer((req, res) => {
   // changes, once a minute otherwise, or whenever it takes >1s (a slow status
   // read IS the early symptom of a proxy stall), so the poll can't drown the log.
   const _lp = req.url.split('?')[0];
-  if (/^\/(ig|vpn|fix|exec|rec|frame|x|s|diag)\//.test(_lp) || _lp === '/version') {
+  if (/^\/(ig|vpn|fix|exec|rec|frame|x|s|diag|pinterest)\//.test(_lp) || _lp === '/version') {
     LOG_REQS++;
     const _t0 = Date.now();
     const _isPoll = (req.method === 'GET' && _lp === '/vpn/status');
@@ -3543,6 +3946,24 @@ http.createServer((req, res) => {
     const action = req.url.slice('/flickr/'.length).split('?')[0];
     if (action !== 'resolve') { sendJson(res, 404, { ok: false, error: 'unknown flickr action: ' + action }, origin); return; }
     flickrResolve(req, res, origin);
+    return;
+  }
+
+  // (dev0693) ── Pinterest resolver + downloader ──────────────────────────
+  // Same placement rule as Flickr: must sit BEFORE the CORS proxy or "/pinterest/…"
+  // would be read as a malformed passthrough URL. `resolve` is an open read (public
+  // pages, no key); `download` writes to disk, so it is origin-locked like /ig/.
+  if (req.url.startsWith('/pinterest/')) {
+    const origin = req.headers.origin || '';
+    const action = req.url.slice('/pinterest/'.length).split('?')[0];
+    if (action === 'resolve') { pinterestResolve(req, res, origin); return; }
+    if (action === 'download') {
+      if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
+      if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
+      pinterestDownload(req, res, origin);
+      return;
+    }
+    sendJson(res, 404, { ok: false, error: 'unknown pinterest action: ' + action }, origin);
     return;
   }
 
