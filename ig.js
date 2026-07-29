@@ -185,6 +185,21 @@
   // IN A ROW (a success resets the streak) end the grind, because that many distinct
   // exits all walling means IG is blocking broadly and rotation can't help.
   const WALL_ROTATE_CAP = 3;
+  // (dev0695) …and the exit that walled is REMEMBERED across reloads, because the grind
+  // leaves the tunnel sitting on it. On 2026-07-29 the 08:34 run died on WA-247; both
+  // manual retries five hours later started on WA-247 (`switches=0`) and re-walled on
+  // the same three head rows, which read as "the servers that worked now wall" when in
+  // fact no other server was ever tried. A run that starts on the last-walled exit now
+  // rotates BEFORE batch 1 instead of spending the batch rediscovering it.
+  const WALLED_EXIT_KEY = 'slam-ig-walled-exit';
+  const curExitName = () => (vpnStatus && (vpnStatus.server || vpnStatus.ip)) || '';
+  function noteWalledExit(name) {
+    try { name ? localStorage.setItem(WALLED_EXIT_KEY, name) : localStorage.removeItem(WALLED_EXIT_KEY); }
+    catch (e) {}
+  }
+  function lastWalledExit() {
+    try { return localStorage.getItem(WALLED_EXIT_KEY) || ''; } catch (e) { return ''; }
+  }
   // (dev0688) PERMANENTLY DEAD POSTS — a third failure class, distinct from a wall
   // (needs auth) and a throttle (needs pacing). The post is gone, or is restricted to
   // an audience we will never be in. No new VPN exit, no wait and no cookie can change
@@ -2797,6 +2812,23 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         return;
       }
     }
+    // (dev0695) A live tunnel is not necessarily a USABLE one: the last grind died ON
+    // this exit because IG walled it, and nothing since has moved off it. Rotate now —
+    // otherwise batch 1 just re-runs the same head rows against the same wall.
+    else if (curExitName() && curExitName() === lastWalledExit()) {
+      const burned = curExitName();
+      diag('walled-exit-at-start', { exit: burned });
+      igBatchShow(`🔀 last run walled on ${burned} — switching before batch 1…`);
+      const swB = await vpnEnsureUp('rotating off the last-walled exit');
+      if (swB) {
+        switches++; noteWalledExit('');
+        igToast(`🟢 rotated off ${burned} (it walled the last run)\n→ ${swB.server || swB.ip || '?'}`, 3600);
+      } else {
+        busy = false; setBatchUi(false); igBatchHide();
+        igStickyShow(`⏹ Stopped before downloading — the last run walled on ${burned} and no fresh exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.`);
+        return;
+      }
+    }
     rotatingActive = true;             // (dev0658) arm the VPN kill-switch for this grind
     // (dev0683) The grind's opening state: how many rows it believes are grindable,
     // under which filters, and what the first rows in view order are. `readyIds()`
@@ -2854,9 +2886,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // (dev0694) …which condemns THIS exit, not the run — rotate and retry (see
         // WALL_ROTATE_CAP). Only a streak of walled exits ends the grind.
         zeroBatches++;
+        // (dev0695) Remember WHICH exit walled — the grind leaves the tunnel on it, so
+        // the next run (possibly hours later, after a reload) must know to move first.
+        noteWalledExit(curExitName());
         if (zeroBatches < WALL_ROTATE_CAP) {
           diag('wall-rotate', { batch: batches, zeroBatches, cap: WALL_ROTATE_CAP,
-            exit: (vpnStatus && (vpnStatus.server || vpnStatus.ip)) || '?' });
+            exit: curExitName() || '?' });
           igToast(`⚠ Batch ${batches} downloaded 0 — this exit looks walled.\n🔀 rotating to a fresh exit and retrying (walled exit ${zeroBatches} of ${WALL_ROTATE_CAP} tolerated)…`, 4600);
           busy = true; setBatchUi(true);
           igBatchShow(`🔀 exit walled — switching Proton VPN, then retrying…\n${totalOk} downloaded so far  ·  ${elapsed()} elapsed`);
@@ -2868,7 +2903,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         endMsg = `⏹ ${WALL_ROTATE_CAP} exits in a row walled (each batch downloaded 0) — stopped.\n${totalOk} downloaded before this. IG is likely blocking broadly right now — try again later.`;
         break;
       }
-      zeroBatches = 0;                        // a batch that downloaded something clears the streak
+      // (dev0695) A batch that downloaded something clears the streak — and clears the
+      // burned-exit note, since the exit we're on demonstrably works.
+      zeroBatches = 0; noteWalledExit('');
       const remain = readyIds().length;
       // auto-dismissing success toast: cumulative + most recent (the user's ask)
       igToast(`✓ Batch ${batches}: ${okThis} post(s), ${batchItems} file(s)  ·  ${totalOk} posts / ${totalItems} files total  ·  ${elapsed()} elapsed`
