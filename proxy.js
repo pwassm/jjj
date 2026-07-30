@@ -108,6 +108,17 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+// (dev0696) THE DOWNGRADE GUARD NOW COMPARES minW TOO, and can say 'no gain'. dev0690's
+//   guard tested one number — the LARGEST item's pixels — which on a mixed carousel is
+//   both too weak and too strong. Too weak: a re-fetch whose max item was unchanged
+//   republished silently, so a row could be re-downloaded in full, land identical files,
+//   and stay ⚠ below-1080 — re-offered on every grind for good. Too strong: a re-fetch
+//   that lifted the NARROWEST item but shrank the largest was thrown away as a downgrade.
+//   The client now sends keepMinW (r.dlMinW) and publish() refuses with 'no gain' when
+//   nothing improved on any axis, which is the signal the client concludes the row on.
+//   'fewer items' also now outranks 'fewer pixels': a throttled walk is a throttle, and
+//   must not be mistaken for IG's final word. See igResAudit.js for the cheap way to
+//   settle the rest of the ⚠ backlog without re-downloading anything at all.
 // (dev0690) VIDEO RESOLUTION FIX — the carousel counterpart of dev0677's photo fix.
 //   dev0648 routed every /p post through the cookieless carousel walker (right, for
 //   completeness: yt-dlp is a video tool and returned partial mixed carousels). But the
@@ -2672,6 +2683,10 @@ function igDownload(req, res, origin) {
     // in coverOnly mode (which deliberately fetches one image and would always "lose").
     const keepPixels = coverOnly ? 0 : Math.max(0, +payload.keepPixels || 0);
     const keepCount  = coverOnly ? 0 : Math.max(0, +payload.keepCount  || 0);
+    // (dev0696) The NARROWEST item the row already holds (r.dlMinW). dev0690 compared only
+    // the largest item, so a mixed carousel could not be reasoned about at all — see the
+    // guard in publish() below. Absent on a stale client, which keeps the dev0690 behaviour.
+    const keepMinW   = coverOnly ? 0 : Math.max(0, +payload.keepMinW   || 0);
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     if (!id) { sendJson(res, 400, { ok: false, error: 'id required' }, origin); return; }
     try { fs.mkdirSync(IG_MEDIA_DIR, { recursive: true }); } catch (_) {}
@@ -2722,11 +2737,36 @@ function igDownload(req, res, origin) {
       // count test catches the other loss: a throttled walk that returns 1 item of 6
       // would otherwise publish as a "successful" download over a complete carousel.
       // Refusing is a SUCCESS (ok:true, kept:…) — nothing failed, we just kept what we had.
-      const worse = (keepPixels > 0 && pubStats && pubStats.pixels < keepPixels)
-        ? 'fewer pixels' : ((keepCount > 0 && n > 0 && n < keepCount) ? 'fewer items' : '');
+      // (dev0696) THREE axes, not one. dev0690 tested only max pixels, and that single
+      // test was wrong in two directions on a mixed carousel:
+      //   • a re-fetch that lifts a 640px item to 1080 while the LARGEST item stays put
+      //     has equal max pixels, so it fell through and republished — an in-place
+      //     overwrite of identical-looking files that taught the row nothing. It kept
+      //     dlMinW < 1080, stayed ⚠ below target, and was re-offered on every grind
+      //     forever (verified on CotWRZFqxQT: 10 items re-pulled to no effect).
+      //   • conversely a re-fetch that raises the narrowest item but lowers the largest
+      //     was refused as a downgrade, discarding a real win.
+      // minW is what the ⚠ filter actually reads (ig.js belowTarget), so it belongs in
+      // the comparison. keepMinW absent → every test below behaves exactly as dev0690.
+      const haveMinW = keepMinW > 0;
+      const gainMinW = haveMinW && pubStats && pubStats.minW > keepMinW;
+      const worse =
+        // A short walk is a THROTTLE, not a verdict about the post — so it has to win over
+        // 'fewer pixels', which the client treats as final and would conclude the row on.
+        (keepCount > 0 && n > 0 && n < keepCount) ? 'fewer items'
+        // A genuine downgrade — unless the narrowest item improved, which is a real gain
+        // even when the largest one shrank.
+        : (keepPixels > 0 && pubStats && pubStats.pixels < keepPixels && !gainMinW) ? 'fewer pixels'
+        // Nothing moved on ANY axis: IG has nothing better than what is already on disk.
+        // Refusing is what lets the client CONCLUDE the row (resBest) instead of writing
+        // identical bytes over identical bytes and leaving it queued for the next grind.
+        : (haveMinW && pubStats && n === keepCount
+           && pubStats.pixels <= keepPixels && pubStats.minW <= keepMinW) ? 'no gain'
+        : '';
       if (worse) {
         pubKept = { reason: worse, newPixels: (pubStats && pubStats.pixels) || 0, keepPixels,
-                    newCount: n, keepCount };
+                    newCount: n, keepCount,
+                    newMinW: (pubStats && pubStats.minW) || 0, keepMinW };
         wipeTmp(); rmTmp();
         return out;
       }

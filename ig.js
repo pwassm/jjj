@@ -1627,7 +1627,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           return `${c.exact ? '' : 'at least '}${c.n} items${c.exact ? '' : ' (inferred from files on disk)'}`
                + (r.partialDl ? ` · <span style="color:#d59a3a">⚠ only ${(r.localFiles || []).length} landed</span>` : '');
         })()}</span>
-        ${r.resBest ? `<b>Res</b><span>already at IG’s best — a re-download was tried, came back worse, and was discarded; this row is no longer queued for re-fetch</span>` : ''}
+        ${r.resBest ? `<b>Res</b><span>already at IG’s best — this row is no longer queued for re-fetch.<br><span style="color:#8a8f98">${
+          // (dev0696) resBest now has three provenances and they are not equally strong.
+          // Saying "came back worse" for all of them was wrong the moment igMeasure.js
+          // started inferring it for reels.
+          r.resBestVia === 'audit'
+            ? `Proven from IG’s own metadata (igResAudit.js${r.resBestDecl ? ' — the post declares ' + esc(r.resBestDecl).replace('w/', 'px over ').replace('i', ' item(s)') : ''}): the originals IG holds are no bigger than the files on disk. No media was re-downloaded to establish this.`
+            : r.resBestVia === 'infer'
+              ? 'Inferred from the download path (igMeasure.js): reels come through yt-dlp with no format filter, so IG’s best was already taken. Not a per-post measurement — reversible with <code>igMeasure.js --unmark</code>.'
+              : 'Proven by re-download: it came back no better than what is on disk and was discarded.'
+        }</span></span>` : ''}
         <b>Harvested</b><span>${esc(r.DateAdded || '—')}</span>
         ${r.source ? `<b>Source</b><span>${esc(r.source)}${r.staged === false ? ' · Unharvested' : ''}</span>` : ''}
         ${r.imgIndex ? `<b>img_index</b><span>${esc(r.imgIndex)}${r.imgIndex === 1 ? ' · 📸 Cover-only grabs just it' : ''}</span>` : ''}
@@ -2441,7 +2450,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         body: JSON.stringify({ id: r.id, url: r.url, name: downloadName(r), coverOnly,
           author: r.author || '', probeEmbed: r.embed !== 0 && r.embed !== 1,
           keepPixels: (r.localFiles || []).length && r.dlW > 0 && r.dlH > 0 ? r.dlW * r.dlH : 0,
-          keepCount: (r.localFiles || []).length })
+          keepCount: (r.localFiles || []).length,
+          // (dev0696) The NARROWEST item we hold. keepPixels alone describes only the
+          // biggest item, so on a mixed carousel the proxy could not tell an improvement
+          // from a no-op — and a no-op silently republished, leaving the row queued for
+          // ever. This is the number belowTarget() actually reads.
+          keepMinW: (r.localFiles || []).length && r.dlMinW > 0 ? r.dlMinW : 0 })
       });
       const j = await res.json();
       // (dev0683) The proxy's own verdict for this row, timed. A download that takes
@@ -2464,22 +2478,32 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // let it land beside the good one. That is a success, not a failure — but it must
       // also END the re-fetch queue for this row, or the grind would offer it forever.
       if (j.kept) {
-        // The two refusal reasons mean different things and must not be conflated.
-        // 'fewer pixels' is a VERDICT — IG served us its best and it is worse than what we
-        // hold, so stop asking. 'fewer items' is usually a THROTTLED walk, which says
-        // nothing about the post, so the row keeps its place in the queue and tries again.
-        if (j.kept.reason === 'fewer pixels') {
+        // The refusal reasons mean different things and must not be conflated.
+        // 'fewer pixels' and (dev0696) 'no gain' are both VERDICTS — IG served us its best
+        // and it is no better than what we hold, so stop asking. 'fewer items' is usually a
+        // THROTTLED walk, which says nothing about the post, so the row keeps its place in
+        // the queue and tries again.
+        //
+        // (dev0696) 'no gain' is the case that used to be invisible: every axis came back
+        // EQUAL, so dev0690's strict < test let it publish, identical files were written
+        // over identical files, and the row stayed ⚠ below-1080 to be re-offered on the
+        // next grind. It is the commonest outcome on an old photo carousel, where IG's
+        // original genuinely is under 1080 and no re-fetch can ever change that.
+        const _verdict = j.kept.reason === 'fewer pixels' || j.kept.reason === 'no gain';
+        if (_verdict) {
           delete r.needsFullRes;
+          delete r.fullResTries;
           r.resBest = 1;                    // Res ▸ already at IG's best
           r.refetchedAt = (typeof isoNow === 'function') ? isoNow()
                         : new Date().toISOString().slice(0, 19).replace('T', ' ');
         }
         dirty = true;
         sel.delete(r.id);                   // treated as done, like any other success
-        lastOpInfo = 'kept the existing file';
+        lastOpInfo = _verdict ? 'already at IG’s best' : 'kept the existing file';
         if (single) igToast('↩ ' + r.id + ': kept the existing download\nIG offered ' + j.kept.reason
-          + ' (' + (j.kept.newCount || 0) + ' item(s), ' + (j.kept.newPixels || 0) + 'px) — nothing was overwritten.'
-          + (j.kept.reason === 'fewer pixels'
+          + ' (' + (j.kept.newCount || 0) + ' item(s), ' + (j.kept.newPixels || 0) + 'px'
+          + (j.kept.newMinW ? ', narrowest ' + j.kept.newMinW + 'px' : '') + ') — nothing was overwritten.'
+          + (_verdict
               ? '\nMarked “already at IG’s best” so it stops being re-queued.'
               : '\nProbably a throttled read — left queued to try again.'), 4600);
         return true;
