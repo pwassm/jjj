@@ -153,6 +153,15 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+// (dev0698) /ig/probe-res — the CHEAP answer to "is there a better video than the one
+//   on disk?". `yt-dlp -J --skip-download` returns the format ladder without fetching a
+//   byte; the top rung is exactly what a re-download would land, so a whole view can be
+//   audited for the price of one metadata call per post instead of 3,454 re-downloads.
+//   The held side is ffprobe'd from the real files (video only — dlW/dlH is the max
+//   across ALL items, so on a mixed carousel it compares a photo against a video). This
+//   is the VIDEO counterpart of igResAudit.js, which settles photos from the /p page:
+//   that page cannot answer for video because dev0690 proved its video_versions are the
+//   720-capped logged-out entries.
 // (dev0696) THE DOWNGRADE GUARD NOW COMPARES minW TOO, and can say 'no gain'. dev0690's
 //   guard tested one number — the LARGEST item's pixels — which on a mixed carousel is
 //   both too weak and too strong. Too weak: a re-fetch whose max item was unchanged
@@ -278,7 +287,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0697';
+const PROXY_BUILD = 'dev0698';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -3214,6 +3223,203 @@ function igDownload(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// (dev0698) /ig/probe-res — DOES INSTAGRAM STILL HAVE A BIGGER VIDEO THAN THE
+// FILE ON DISK?  Metadata only: nothing is downloaded, nothing is overwritten.
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// WHY THIS AND NOT A RE-DOWNLOAD. The only way this collection could previously
+// answer "is there a better copy?" was to fetch the whole post again and let
+// publish()'s overwrite guard measure the result — 3,454 files' worth of traffic
+// to learn a fact yt-dlp will state for free. `yt-dlp -J --skip-download` returns
+// the FORMAT LADDER (every rung IG will serve), which is the same ladder the
+// downloader picks from, so its top rung is exactly what a re-download would land.
+//
+// WHY yt-dlp AND NOT THE PAGE. igResAudit.js settles the PHOTO side from the /p
+// page's declared `original_width`. That page cannot answer for video: dev0690
+// established that its `video_versions` are the 720-capped logged-out entries, so
+// a declared-vs-held comparison there is meaningless. yt-dlp bootstraps a session
+// and reaches the real ladder (1080x1440 where the page offers 720x960, measured
+// same post, same minute). So: page for photos, yt-dlp for video.
+//
+// The two sides of the comparison:
+//   HELD  — ffprobe'd from the actual video files in ig_media (via probeMediaDims,
+//           which memoizes on size+mtime, so a re-probe of an unchanged file is
+//           free). NOT the row's dlW/dlH: those are the max across ALL items, so a
+//           carousel whose biggest item is a photo would compare a photo against a
+//           video and conclude nonsense.
+//   AVAIL — the biggest rung per VIDEO entry of the post. --ignore-errors makes a
+//           photo carousel item come back as a bare null in entries[] (the same
+//           behaviour ytdlpCompact relies on), so what survives IS the video set.
+//
+// Both lists are sorted by pixels and compared pairwise, so item ORDER never
+// matters — only how many rungs are bigger than what we hold, and by how much.
+// A shortfall in COUNT (IG has 3 video items, disk has 2) is reported separately
+// as `missing`: that is a throttled walk, not a resolution verdict.
+//
+// Refusing to guess: if the row claims video files and none of them can be read
+// off disk, this answers with an error instead of "IG has more", because an
+// empty held-side would otherwise look identical to a genuine gap.
+const IG_PROBE_VIDEO_EXT = /\.(mp4|mov|webm|mkv|m4v)$/i;
+
+// A client-supplied localFiles entry ("<author>/<name>", dev0689) → an absolute
+// path that is provably INSIDE ig_media, or null. The client is local and trusted,
+// but this is the one place it names a filesystem path, so it is validated as if
+// it weren't: no traversal, no absolute path, no drive letter escapes.
+function igResolveMediaFile(rel) {
+  const s = String(rel == null ? '' : rel);
+  if (!s || s.length > 400 || s.includes('\0')) return null;
+  const base = path.resolve(IG_MEDIA_DIR);
+  const abs = path.resolve(base, s.replace(/\\/g, '/'));
+  if (abs !== base && !abs.startsWith(base + path.sep)) return null;
+  return abs;
+}
+
+// yt-dlp -J, no media. Resolves { ok:true, doc } or { ok:false, error } — the error
+// being yt-dlp's own last stderr line, so the client's WALL_RE recognises a login
+// wall / rate-limit in it exactly as it does for enrich and download.
+function igYtdlpProbe(url) {
+  return new Promise(resolve => {
+    const impersonate = IG_IMPERSONATE ? ['--impersonate', IG_IMPERSONATE] : [];
+    const args = ['--no-warnings', '--ignore-config', '--socket-timeout', '20',
+                  '--skip-download', '--ignore-errors', '-J']
+      .concat(impersonate, [url]);
+    let proc;
+    try { proc = spawn(EXEC_BIN.ytdlp, args, { windowsHide: true }); }
+    catch (e) { resolve({ ok: false, error: 'spawn yt-dlp: ' + e.message }); return; }
+    ACTIVE_DL.add(proc);   // (dev0658) a dropped tunnel kills probes too
+    let out = '', err = '', done = false;
+    const finish = o => {
+      if (done) return; done = true;
+      ACTIVE_DL.delete(proc); clearTimeout(killT);
+      resolve(o);
+    };
+    const killT = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch (_) {}
+      finish({ ok: false, error: 'yt-dlp timed out (60s)' });
+    }, 60000);
+    proc.stdout.on('data', c => {
+      out += c.toString('utf8');
+      // A -J document for one post is tens of KB. Anything past this is a runaway.
+      if (out.length > 24e6) { try { proc.kill('SIGKILL'); } catch (_) {} }
+    });
+    proc.stderr.on('data', c => { if (err.length < 4000) err += c.toString('utf8'); });
+    proc.on('error', e => finish({ ok: false, error: e.message }));
+    proc.on('close', () => {
+      let doc = null; try { doc = JSON.parse(out || 'null'); } catch (_) {}
+      if (!doc || typeof doc !== 'object') {
+        finish({ ok: false, error: (err.trim().split(/\r?\n/).filter(Boolean).pop() || 'yt-dlp returned no JSON').slice(0, 300) });
+        return;
+      }
+      finish({ ok: true, doc });
+    });
+  });
+}
+
+// A -J document → one {w,h} per VIDEO item: the biggest rung yt-dlp lists for it.
+// A single reel is the document itself; a carousel is entries[] (photo items are
+// null there, and are simply not video).
+function igProbeRungs(doc) {
+  const entries = Array.isArray(doc.entries) ? doc.entries : [doc];
+  const out = [];
+  for (const e of entries) {
+    if (!e || typeof e !== 'object') continue;
+    let best = null;
+    const fmts = Array.isArray(e.formats) ? e.formats : [];
+    for (const f of fmts) {
+      if (!f || f.vcodec === 'none') continue;      // audio-only rung
+      const w = +f.width || 0, h = +f.height || 0;
+      if (w <= 0 || h <= 0) continue;
+      if (!best || w * h > best.w * best.h) best = { w, h };
+    }
+    // No formats[] at all (an older extractor shape) — adopt the entry's own
+    // dimensions, but only when it actually claims to be video, so a photo item
+    // can never be counted as a video rung we're missing.
+    if (!best && (+e.width > 0 && +e.height > 0) && e.vcodec && e.vcodec !== 'none') {
+      best = { w: +e.width, h: +e.height };
+    }
+    if (best) out.push(best);
+  }
+  return out;
+}
+
+// held[] vs avail[] → the verdict the I screen stamps on the row.
+function igProbeVerdict(held, avail) {
+  const px = d => d.w * d.h;
+  const desc = l => l.slice().sort((a, b) => px(b) - px(a));
+  const stat = l => l.length
+    ? { n: l.length, maxW: Math.max(...l.map(d => d.w)), maxH: Math.max(...l.map(d => d.h)),
+        minW: Math.min(...l.map(d => d.w)), dims: l.map(d => [d.w, d.h]) }
+    : { n: 0, maxW: 0, maxH: 0, minW: 0, dims: [] };
+  const H = desc(held), A = desc(avail);
+  let gain = 0, gainW = 0, pair = null, bestDelta = 0;
+  for (let i = 0; i < Math.min(H.length, A.length); i++) {
+    const delta = px(A[i]) - px(H[i]);
+    if (delta <= 0) continue;
+    gain++;
+    if (A[i].w - H[i].w > gainW) gainW = A[i].w - H[i].w;
+    if (!pair || delta > bestDelta) { pair = { held: [H[i].w, H[i].h], avail: [A[i].w, A[i].h] }; bestDelta = delta; }
+  }
+  const missing = Math.max(0, A.length - H.length);
+  return { held: stat(H), avail: stat(A), gain, gainW, missing,
+           upgrade: (gain > 0 || missing > 0) ? 1 : 0, pair };
+}
+
+async function igProbeOne(it) {
+  const id = String((it && it.id) || '').replace(/[^A-Za-z0-9_-]/g, '');
+  const url = String((it && it.url) || '');
+  if (!id) return { id: '', ok: false, error: 'id required' };
+  if (!/^https?:\/\//i.test(url) || url.length > 2048) return { id, ok: false, error: 'valid http(s) url required' };
+  // ── held side, before spending a fetch: an unreadable disk side can't be
+  // compared with anything, and finding that out is free.
+  const files = Array.isArray(it.files) ? it.files : [];
+  const held = [];
+  let claimed = 0;
+  for (const f of files) {
+    if (!IG_PROBE_VIDEO_EXT.test(String(f || ''))) continue;
+    claimed++;
+    const abs = igResolveMediaFile(f);
+    const d = abs ? probeMediaDims(abs) : null;
+    if (d && d.w > 0 && d.h > 0) held.push(d);
+  }
+  if (claimed > 0 && !held.length) {
+    return { id, ok: false, error: 'held video file(s) unreadable on disk (' + claimed + ' claimed)' };
+  }
+  const p = await igYtdlpProbe(url);
+  if (!p.ok) return { id, ok: false, error: String(p.error || '').slice(0, 300) };
+  const avail = igProbeRungs(p.doc);
+  // yt-dlp read the post and it has no video at all. That is a real answer for a
+  // photo-only /p (nothing here to upgrade), so it is ok:true with n=0 — the client
+  // records it and stops asking. Only IG failing to answer is an error.
+  return Object.assign({ id, ok: true, unreadable: claimed - held.length }, igProbeVerdict(held, avail));
+}
+
+// POST /ig/probe-res  { items:[{id,url,files:[…]}], jobs? } → { ok, results:[…] }
+// The CLIENT chunks and paces; this runs one chunk with a small parallel pool
+// (same shape as igResAudit.js --jobs) and a jitter between spawns.
+function igProbeRes(req, res, origin) {
+  readJson(req, 2 * 1024 * 1024).then(async payload => {
+    const items = Array.isArray(payload.items) ? payload.items.slice(0, 24) : [];
+    if (!items.length) { sendJson(res, 400, { ok: false, error: 'items[] required' }, origin); return; }
+    const jobs = Math.max(1, Math.min(4, +payload.jobs || 3));
+    const results = new Array(items.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(jobs, items.length) }, async () => {
+      for (;;) {
+        const k = next++;
+        if (k >= items.length) return;
+        try { results[k] = await igProbeOne(items[k]); }
+        catch (e) { results[k] = { id: String((items[k] && items[k].id) || ''), ok: false, error: (e && e.message) || 'probe failed' }; }
+        await new Promise(r => setTimeout(r, 150 + Math.floor(Math.random() * 350)));
+      }
+    }));
+    const up = results.filter(r => r && r.ok && r.upgrade).length;
+    console.log('[ig/probe-res] ' + items.length + ' post(s) · ' + up + ' with a bigger video available'
+      + ' · ' + results.filter(r => r && !r.ok).length + ' unreadable');
+    sendJson(res, 200, { ok: true, results }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 // (dev0599) ── Flickr single-photo resolver ────────────────────────────────────
 // GET /flickr/resolve?url=<flickr photo-page OR staticflickr CDN url> (or ?id=<n>).
 // Two light, unsigned read calls — flickr.photos.getSizes (best-res URL) and
@@ -3975,7 +4181,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 
@@ -4072,6 +4278,7 @@ http.createServer((req, res) => {
     if (action === 'save-delta') { igSaveDelta(req, res, origin); return; }  // (dev0697) per-batch upsert
     if (action === 'ffdown')   { igFfdown(req, res, origin);   return; }
     if (action === 'download') { igDownload(req, res, origin); return; }
+    if (action === 'probe-res') { igProbeRes(req, res, origin); return; }  // (dev0698) metadata-only res probe
     if (action === 'meta')     { igMeta(req, res, origin);     return; }   // (dev0671) local ig.json read
     sendJson(res, 404, { ok: false, error: 'unknown ig action: ' + action }, origin);
     return;

@@ -10,6 +10,11 @@
 //                 <project>/ig_media/ named per the user's AHK convention:
 //                 hh.mm.ss~WxH~Title~@author~[[i[id]]].mp4  (one — max — W×H).
 //   • Promoted  → a real ml.json row is minted (data.push + save()) so it joins T/G.
+//   • Probed    → (dev0698) 🔬 Probe video res asks Instagram, for every downloaded
+//                 video row IN THE CURRENT VIEW, whether it still serves a bigger
+//                 video than the file on disk — from yt-dlp's format ladder, with no
+//                 media downloaded. Verdicts land on the row (Res ▸ 🔬 filters, ⬆ in
+//                 W×H); queueing the winners for a re-fetch is a separate confirm.
 // All edits persist back to ig.json via the proxy /ig/save endpoint.
 //
 // Hotkey: I (dev-only, blocked in user mode like T). Esc closes the detail drawer,
@@ -988,6 +993,10 @@
 #igTable a.idlink:hover{text-decoration:underline}
 #igTable .yes{color:#7fd47f;font-weight:700}.no{color:#4a5563}
 #igTable .walled{color:#d59a3a;cursor:help}
+/* (dev0698) 🔬 probe verdict: blue = Instagram still has a bigger video than the
+   file on disk. Deliberately NOT amber — ⚠ means "something is wrong with what we
+   have", ⬆ means "a better copy exists and can be fetched". */
+#igTable .up{color:#6fb6ff;cursor:help;font-weight:700}
 img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;background:#0c1118}
 #igCoverOnly.on{background:#2e7d32;color:#eaffea;border-color:#43a047;font-weight:700}
 /* (dev0649) Proton VPN exit pill + rotating-download button. The pill is always
@@ -1144,7 +1153,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links or ffdown imports)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
         <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
         <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option><option value="stuck">⤓ gave up (3 tries)</option></select>
-        <select id="igRes" title="(dev0690) Real resolution OF THE FILES ON DISK, measured at download time — not the enrich metadata, which for a carousel video is IG's logged-out page figure and is capped at 720 wide. ‘below 1080’ = the narrowest item of the post is under 1080px wide (the backfill queue). ‘not measured’ = downloaded before dev0690, so nothing knows what it is without re-downloading. ‘at best’ = a re-download was tried and IG had nothing better, so stop offering it."><option value="all">all res</option><option value="low">📐 below 1080 wide</option><option value="ok">1080+ wide</option><option value="unmeasured">not measured yet</option><option value="best">already at IG's best</option></select>
+        <select id="igRes" title="(dev0690) Real resolution OF THE FILES ON DISK, measured at download time — not the enrich metadata, which for a carousel video is IG’s logged-out page figure and is capped at 720 wide. ‘below 1080’ = the narrowest item of the post is under 1080px wide (the backfill queue). ‘not measured’ = downloaded before dev0690, so nothing knows what it is without re-downloading. ‘at best’ = a re-download was tried and IG had nothing better, so stop offering it. (dev0698) The 🔬 options are the video probe’s verdicts — see the 🔬 Probe video res button."><option value="all">all res</option><option value="low">📐 below 1080 wide</option><option value="ok">1080+ wide</option><option value="unmeasured">not measured yet</option><option value="best">already at IG’s best</option><option value="pup">🔬⬆ probe: bigger available</option><option value="pmax">🔬✔ probe: at IG’s max</option><option value="punprobed">🔬 video, not probed yet</option></select>
         <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
@@ -1154,6 +1163,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
         <button id="igCoverOnly" title="Toggle download mode. ON = grab only the index-1 cover (no carousel) — for authors whose page-1 is the keeper. OFF = normal full download. Both are cookieless — your IG login is never used either way.">📸 Cover-only: off</button>
         <button id="igRotate" title="Grind the downloadable backlog in this view: downloads the top 18 not-yet-downloaded rows (new OR enriched — 'new' rows enrich inline first, no quality lost), then switches the Proton VPN to a fresh US exit and repeats with the next 18. Cookieless. Success toasts report the running total + most recent; stops when none remain, a batch downloads nothing, or you press Stop. Filter the view first (e.g. Status → new/enriched) to control what it grinds.">⬇⟳ Download + rotate VPN</button>
+        <button id="igProbeRes" title="(dev0698) Ask Instagram, for EVERY downloaded video row in this view, whether it still has a bigger version than the file on disk. Metadata only — yt-dlp reads the format ladder (-J, --skip-download) without downloading a byte, and the top rung is exactly what a re-download would land. Nothing is fetched, overwritten or re-downloaded by this button. Verdicts are stamped on the rows (Res ▸ 🔬 filters, ⬆ marker in W×H); at the end you are ASKED whether to queue the upgradeable ones for a re-fetch. Already-probed rows are skipped — Alt-click to re-probe them.">🔬 Probe video res</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
@@ -1202,6 +1212,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         ? '📸 Cover-only ON — downloads grab just the index-1 cover, cookielessly\n(no carousel). For authors whose page-1 is the keeper.'
         : '📸 Cover-only off — normal full download, cookieless (your IG login is never used)', 3400);
     });
+    // (dev0698) Alt-click re-probes rows that already have a verdict (the plain click
+    // only asks about rows nothing has answered for yet).
+    $('igProbeRes').addEventListener('click', e => probeVideoRes(!!e.altKey));
     $('igPromoteSel').addEventListener('click', () => batchPromote());
     $('igCreateGrid').addEventListener('click', () => createGridFromView());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
@@ -1356,6 +1369,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (resFilter === 'ok' && !(r.dlMinW >= RES_TARGET_W)) return false;
       if (resFilter === 'unmeasured' && !(isDownloaded(r) && !(r.dlMinW > 0))) return false;
       if (resFilter === 'best' && !r.resBest) return false;
+      // (dev0698) The video probe's three verdicts. 'pup' is the actionable one: IG
+      // still serves a bigger rung than the file on disk, proven from the format
+      // ladder without downloading anything.
+      if (resFilter === 'pup' && !r.probeUp) return false;
+      if (resFilter === 'pmax' && !(r.probeAt && !r.probeUp && !r.probeErr)) return false;
+      if (resFilter === 'punprobed' && !(probeEligible(r) && !r.probeAt)) return false;
       // (dev0438) 'c' = hide completed. (dev0690) A row queued for a full-res re-fetch is
       // NOT completed — hiding it would also hide it from the grind, which reads `view`.
       if (hideCompleted && isDownloadDone(r)) return false;
@@ -1406,6 +1425,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const vEmbed     = view.reduce((n, r) => n + (r.embed === 1 ? 1 : 0), 0);   // (dev0665)
     // (dev0690) Backfill progress, in the one place that's always on screen.
     const vLowRes    = view.reduce((n, r) => n + (belowTarget(r) && !r.resBest ? 1 : 0), 0);
+    // (dev0698) Rows the video probe found a bigger copy for — the actionable backlog,
+    // visible without having to switch the Res filter to see whether there is one.
+    const vProbeUp   = view.reduce((n, r) => n + (r.probeUp ? 1 : 0), 0);
     const vCarousel  = view.reduce((n, r) => { const c = carouselCount(r); return n + (c.n > 1 ? 1 : 0); }, 0);
     // (dev0445) Selected-AND-visible vs total selected, so a selection hidden by the
     // filter can't masquerade (it used to silently get batch-processed).
@@ -1422,6 +1444,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         `new ${vNew}`, `enriched ${vEnriched}`, `downloaded ${vDownload}`, `promoted ${vPromoted}`, `embed ✓ ${vEmbed}`,
         vCarousel ? `carousels ${vCarousel}` : null,
         vLowRes ? `📐 below ${RES_TARGET_W}: ${vLowRes}` : null,
+        vProbeUp ? `🔬⬆ bigger available: ${vProbeUp}` : null,
         selTxt,
         dirty ? '⚠ unsaved' : null,
       ].filter(Boolean).join(' · ');
@@ -1452,14 +1475,28 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // measured value below 1080 wide gets a persistent ⚠ (same "flag it so it can't
     // pile up unseen" rule as ⚠ partial), which is also what the Res filter selects on.
     const _d = dlDims(r);
-    const wxh = r.lowResDl
+    // (dev0698) …plus what the VIDEO PROBE found, which is a different question from ⚠
+    // (that one is "is this under 1080?"; this one is "does IG still have better?"). A
+    // 1080 file with a 1440 rung still on offer gets ⬆ and no ⚠, and vice versa — so
+    // the marker is appended to the cell in every case, not just the measured branch.
+    const probeMark = r.probeUp
+      ? `<span class="up" title="🔬 Probed ${esc(r.probeAt || '')}: Instagram still serves a bigger video.`
+        + `\non disk ${r.probeHeldW || '?'}×${r.probeHeldH || '?'} → IG has ${r.probeW || '?'}×${r.probeH || '?'}`
+        + `${r.probeGain > 1 ? ' (' + r.probeGain + ' items would improve)' : ''}`
+        + `${r.probeMissing ? '\n' + r.probeMissing + ' video item(s) of this post were never downloaded' : ''}`
+        + `\nRes ▸ 🔬⬆ lists these; ⬇ Download re-fetches it (a result that isn’t better is discarded)."> ⬆${r.probeW || ''}</span>`
+      : (r.probeErr
+          ? `<span class="walled" title="🔬 The probe couldn’t read this post (${esc(r.probeAt || '')}): ${esc(r.probeErr)}`
+            + `\nNo verdict — Alt-click 🔬 Probe video res to retry."> 🔬✗</span>`
+          : '');
+    const wxh = (r.lowResDl
       ? '<span class="walled" title="Downloaded via the low-res EMBED fallback (first image only) — re-download later for full res">⚠ low-res</span>'
       : (_d
           ? `<span${_d.measured ? '' : ' class="no"'} title="${_d.measured
               ? 'Measured from the file(s) on disk' + (r.dlMinW && r.dlMinW !== _d.w ? ' — narrowest item ' + r.dlMinW + 'px wide' : '')
               : 'From enrich metadata — NOT measured. For a carousel video this is IG’s logged-out page figure, which is capped at 720 wide.'}">${_d.w}×${_d.h}</span>`
             + (belowTarget(r) ? `<span class="walled" title="Below ${RES_TARGET_W}px wide — queued by Res ▸ below ${RES_TARGET_W}"> ⚠</span>` : '')
-          : '<span class="no">—</span>');
+          : '<span class="no">—</span>')) + probeMark;
     // (dev0690) 0 = not a carousel · n = an n-item carousel · ≥n = at least that many
     // (inferred from the files that landed) · — = never established.
     const _c = carouselCount(r);
@@ -1643,11 +1680,27 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           return `${c.exact ? '' : 'at least '}${c.n} items${c.exact ? '' : ' (inferred from files on disk)'}`
                + (r.partialDl ? ` · <span style="color:#d59a3a">⚠ only ${(r.localFiles || []).length} landed</span>` : '');
         })()}</span>
+        ${r.probeAt ? `<b>🔬 Video probe</b><span>${r.probeErr
+            ? `<span style="color:#d59a3a">no verdict</span> — ${esc(r.probeErr)}`
+            : (r.probeUp
+                ? `<span style="color:#6fb6ff">Instagram still has a bigger video.</span><br>`
+                  + `on disk ${r.probeHeldW || '?'} × ${r.probeHeldH || '?'}`
+                  + `${r.probeHeldN > 1 ? ` · ${r.probeHeldN} video items, narrowest ${r.probeHeldMinW}px` : ''}`
+                  + ` &nbsp;→&nbsp; IG offers ${r.probeW || '?'} × ${r.probeH || '?'}`
+                  + `${r.probeN > 1 ? ` · ${r.probeN} video items, narrowest ${r.probeMinW}px` : ''}`
+                  + `${r.probeGain ? `<br>${r.probeGain} item(s) would come back bigger` + (r.probeGainW ? ` (up to +${r.probeGainW}px wide)` : '') : ''}`
+                  + `${r.probeMissing ? `<br><span style="color:#d59a3a">${r.probeMissing} video item(s) of this post are not on disk at all</span>` : ''}`
+                : `<span style="color:#7fd47f">already at IG’s maximum</span> — the top rung of the format ladder is no bigger than the file on disk`
+                  + `${r.probeN ? ` (${r.probeN} video item(s), best ${r.probeW} × ${r.probeH})` : ' (this post has no video)'}`)
+          }<br><span style="color:#8a8f98">Read from yt-dlp’s format ladder on ${esc(r.probeAt)} — no media was downloaded to establish this.</span></span>` : ''}
         ${r.resBest ? `<b>Res</b><span>already at IG’s best — this row is no longer queued for re-fetch.<br><span style="color:#8a8f98">${
           // (dev0696) resBest now has three provenances and they are not equally strong.
           // Saying "came back worse" for all of them was wrong the moment igMeasure.js
           // started inferring it for reels.
-          r.resBestVia === 'audit'
+          // (dev0698) …and a fourth: 'probe', the strongest of the lot for video.
+          r.resBestVia === 'probe'
+            ? 'Proven from yt-dlp’s format ladder (🔬 Probe video res): the biggest rung Instagram will serve is no bigger than the video already on disk. No media was downloaded to establish this.'
+            : r.resBestVia === 'audit'
             ? `Proven from IG’s own metadata (igResAudit.js${r.resBestDecl ? ' — the post declares ' + esc(r.resBestDecl).replace('w/', 'px over ').replace('i', ' item(s)') : ''}): the originals IG holds are no bigger than the files on disk. No media was re-downloaded to establish this.`
             : r.resBestVia === 'infer'
               ? 'Inferred from the download path (igMeasure.js): reels come through yt-dlp with no format filter, so IG’s best was already taken. Not a per-post measurement — reversible with <code>igMeasure.js --unmark</code>.'
@@ -2567,6 +2620,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         r.dlW = j.media.maxW; r.dlH = j.media.maxH; r.dlMinW = j.media.minW;
         if (r.dlMinW >= RES_TARGET_W && r.resBest) delete r.resBest;   // it improved after all
       } else { delete r.dlW; delete r.dlH; delete r.dlMinW; }
+      // (dev0698) New files landed, so the 🔬 verdict — which compares IG's ladder
+      // against the files that were here BEFORE — no longer describes anything. Drop
+      // it rather than leave a stale ⬆ pointing at a size the row may now have.
+      // (A REFUSED re-download, handled above under j.kept, changes no file and
+      // therefore keeps its verdict.)
+      if (r.probeAt) ['probeAt', 'probeUp', 'probeErr', 'probeW', 'probeH', 'probeMinW', 'probeN',
+        'probeHeldW', 'probeHeldH', 'probeHeldMinW', 'probeHeldN',
+        'probeGain', 'probeGainW', 'probeMissing'].forEach(k => { delete r[k]; });
       // (dev0659) Surface a resolution-lossy fallback even in batch/rotate (single=false
       // suppresses the normal per-row toast). The embed rescue is first-image-only — clearly
       // not top-res — so always warn. The /p video_versions + carousel + gallery-dl paths are
@@ -2735,6 +2796,251 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const ordered = [...ids].sort((a, b) => dlRank(rowById(a) || {}) - dlRank(rowById(b) || {}));
     await runBatch('Downloading', ordered, DOWNLOAD_GAP, r => downloadRow(r, false), isDownloadDone,
       '🍪 cookieless — your IG login is never used');
+  }
+
+  // ══ (dev0698) 🔬 VIDEO-RESOLUTION PROBE ════════════════════════════════════
+  // "Does Instagram still have a bigger video than the file on disk?" — asked for
+  // EVERY eligible row in the current view, and answered WITHOUT downloading media.
+  //
+  // The proxy runs `yt-dlp -J --skip-download` per post and compares the format
+  // ladder's top rung against the real ffprobe'd dimensions of the video files in
+  // ig_media (see /ig/probe-res in proxy.js for why it is the ladder and not the /p
+  // page, and why the held side is measured rather than read off r.dlW).
+  //
+  // This is deliberately NOT a download button and must never become one: the rule
+  // here is that viewing/auditing never re-fetches IG media. The only thing that can
+  // start a re-download is the explicit confirm at the end of the run, which sets
+  // needsFullRes and leaves the actual fetching to ⬇ Download / Download+rotate.
+  const PROBE_VIDEO_EXT = /\.(mp4|mov|webm|mkv|m4v)$/i;
+  const holdsVideo = r => (r.localFiles || []).some(f => PROBE_VIDEO_EXT.test(f || ''));
+  // Rows this probe can answer for: something on disk, and a post that is (or should
+  // have been) video. A photo-only /p is igResAudit.js's question, not this one — the
+  // logged-out page settles those for free and yt-dlp can't see them at all.
+  const probeEligible = r => isDownloaded(r) && !r.dead
+    && (holdsVideo(r) || kindOf(r) === 'reel' || kindOf(r) === 'tv');
+  const PROBE_CHUNK = 12;              // posts per proxy request
+  const PROBE_JOBS = 3;                // parallel yt-dlp spawns inside one request
+  const PROBE_GAP = [900, 2200];       // ms between chunks (metadata reads are cheap)
+  // Consecutive UNREADABLE posts that mean the exit is walled rather than the posts
+  // being gone. Higher than the download caps on purpose: a probe writes nothing and
+  // fetches nothing, so riding out a few dead posts costs only seconds.
+  const PROBE_WALL_CAP = 6;
+
+  async function probeVideoRes(force) {
+    if (busy) return;
+    const eligible = view.filter(probeEligible);
+    if (!eligible.length) {
+      igToast('🔬 Nothing in this view to probe.\nThe probe answers for DOWNLOADED video rows (reels, tv, or a /p that landed a video file).'
+        + '\nFilter to Status ▸ downloaded, or clear the filters, and try again.', 5000);
+      return;
+    }
+    const targets = force ? eligible : eligible.filter(r => !r.probeAt);
+    const already = eligible.length - targets.length;
+    if (!targets.length) {
+      igToast('🔬 All ' + eligible.length + ' video row(s) in this view are already probed.'
+        + '\nRes ▸ 🔬⬆ shows the ones with a bigger copy available.'
+        + '\nAlt-click 🔬 Probe video res to ask Instagram again.', 5200);
+      return;
+    }
+    const auths = [...new Set(targets.map(r => r.author).filter(Boolean))];
+    const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
+    if (!confirm(`🔬 Probe ${targets.length} downloaded video row(s) from ${authLine}?\n\n`
+      + `Asks Instagram — via yt-dlp's format ladder — whether it still serves a bigger\n`
+      + `video than the file already on disk.\n\n`
+      + `• METADATA ONLY. No media is downloaded, nothing on disk is touched or overwritten.\n`
+      + `• Cookieless — your IG login is never used.\n`
+      + `• ~${Math.ceil(targets.length / PROBE_CHUNK * 12 / 60)} min at ${PROBE_CHUNK} posts per request, ${PROBE_JOBS} at a time.\n`
+      + (already ? `• ${already} row(s) in this view already have a verdict and are skipped (Alt-click to re-probe).\n` : '')
+      + `• Press ⏹ Stop any time — verdicts already recorded are kept.\n\n`
+      + `At the end you'll be ASKED whether to queue the upgradeable rows for a re-fetch.`)) return;
+
+    busy = true; batchAbort = false; setBatchUi(true);
+    igStickyHide();
+    const t0 = Date.now();
+    let done = 0, upgrades = 0, atMax = 0, failed = 0, missingItems = 0, noVideo = 0;
+    let consecFail = 0, walledStopped = false, netStopped = false;
+    let bestGain = null;                     // the single biggest win found, for the report
+    const upIds = [], failIds = [], concluded = [];
+    const total = targets.length;
+    const fmtClock = ms => { const s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + pad2(s % 60); };
+    const speed = () => (done ? `~${((Date.now() - t0) / 1000 / done).toFixed(1)}s/post` : '');
+    igBatchShow(`🔬 Probing video resolution…\nmetadata only — nothing is downloaded\n0/${total}`);
+    diag('PROBE-START', { total, eligible: eligible.length, already, force: force ? 1 : 0 });
+
+    for (let i = 0; i < targets.length && !batchAbort; i += PROBE_CHUNK) {
+      const chunk = targets.slice(i, i + PROBE_CHUNK);
+      if (i > 0) {
+        const g = rnd(PROBE_GAP[0], PROBE_GAP[1]);
+        igBatchUpdate(`🔬 Probing ${done}/${total} · ⬆${upgrades} bigger · ✔${atMax} at max${failed ? ` · ✗${failed}` : ''}\n${speed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s…`);
+        await sleep(g);
+        if (batchAbort) break;
+      }
+      igBatchUpdate(`🔬 Probing ${done + 1}–${Math.min(done + chunk.length, total)} of ${total}\n`
+        + `⬆${upgrades} bigger · ✔${atMax} at max${failed ? ` · ✗${failed}` : ''}\n${done ? speed() : 'metadata only — nothing is downloaded'}`);
+      let j = null;
+      try {
+        const res = await fetch(PROXY + '/ig/probe-res', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobs: PROBE_JOBS,
+            items: chunk.map(r => ({ id: r.id, url: r.url, files: r.localFiles || [] }))
+          })
+        });
+        // A proxy older than dev0698 has no such route. Say so plainly — forgetting to
+        // restart proxy.js after pulling new code is the standing trap here.
+        if (res.status === 404) {
+          igStickyShow('🔬 This proxy is too old for the video probe.\n\n'
+            + 'proxy.js needs to be dev0698 or newer (it answers /ig/probe-res).\n'
+            + 'Close the proxy window and double-click startproxy.bat, then try again.\n\n'
+            + 'Nothing was changed.');
+          break;
+        }
+        j = await res.json();
+        if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+      } catch (e) {
+        // The proxy stopped answering — not a verdict on any post. Stop and keep what
+        // we have rather than recording a wall for the rest of the backlog.
+        lastOpError = (e && e.message) || '';
+        diag('PROBE-NETWORK-ERROR', { err: lastOpError, proxy: await diagProxyAlive() });
+        netStopped = true;
+        break;
+      }
+      const byId = new Map((j.results || []).filter(Boolean).map(x => [x.id, x]));
+      for (const r of chunk) {
+        const v = byId.get(r.id);
+        done++;
+        if (!v) { failed++; failIds.push(r.id); continue; }
+        r.probeAt = (typeof isoNow === 'function') ? isoNow()
+                  : new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const H = v.held || {}, A = v.avail || {};
+        // NO VERDICT, two ways. Either yt-dlp couldn't read the post at all (v.ok
+        // false — a wall, a 404, a dead exit), or it returned a document listing no
+        // video formats for a row that demonstrably HOLDS video. The second is an
+        // extractor that got a stub, not a post that lost its video, and calling it
+        // "at max" would silently retire a row on no evidence.
+        const _stub = v.ok && !(A.n > 0) && (H.n > 0);
+        if (!v.ok || _stub) {
+          // probeErr makes the failure visible (🔬✗ in W×H) rather than letting it
+          // look like "probed, nothing found".
+          r.probeErr = _stub
+            ? 'yt-dlp read the post but listed no video formats — blocked extractor or walled exit'
+            : String(v.error || 'unreadable').slice(0, 200);
+          delete r.probeUp;
+          failed++; failIds.push(r.id);
+          consecFail++;
+          markDirty(r.id);
+          if (consecFail >= PROBE_WALL_CAP) { walledStopped = true; }
+          continue;
+        }
+        consecFail = 0;
+        delete r.probeErr;
+        r.probeW = A.maxW || 0; r.probeH = A.maxH || 0; r.probeMinW = A.minW || 0; r.probeN = A.n || 0;
+        r.probeHeldW = H.maxW || 0; r.probeHeldH = H.maxH || 0; r.probeHeldMinW = H.minW || 0; r.probeHeldN = H.n || 0;
+        r.probeGain = v.gain || 0;
+        r.probeGainW = v.gainW || 0;
+        r.probeMissing = v.missing || 0;
+        if (v.upgrade) {
+          r.probeUp = 1;
+          upgrades++; upIds.push(r.id);
+          if (v.missing) missingItems += v.missing;
+          // The probe outranks every earlier "already at IG's best" verdict for video:
+          // resBest via 'infer' is a heuristic about the download PATH, and via 'audit'
+          // is a photo-page reading that dev0690 proved blind to video. A ladder that
+          // still lists a bigger rung is direct evidence against all of them.
+          if (r.resBest) { delete r.resBest; delete r.resBestVia; delete r.resBestAt; delete r.resBestDecl; }
+          if (v.pair && (!bestGain || (v.pair.avail[0] - v.pair.held[0]) > bestGain.px)) {
+            bestGain = { id: r.id, author: r.author || '?', held: v.pair.held, avail: v.pair.avail,
+                         px: v.pair.avail[0] - v.pair.held[0] };
+          }
+        } else {
+          delete r.probeUp;
+          atMax++;
+          if (!A.n) noVideo++;       // yt-dlp read it and this post genuinely has no video
+          // CONCLUDE the row — but only where the conclusion covers everything on disk.
+          // A mixed carousel's photos are not in this comparison at all (igResAudit
+          // settles those), and a partial download's missing items are unknown, so
+          // neither may be stamped "already at IG's best" on video evidence alone.
+          const _c = carouselCount(r);
+          const allVideo = (r.localFiles || []).length > 0
+            && (r.localFiles || []).every(f => PROBE_VIDEO_EXT.test(f || ''));
+          const complete = !r.partialDl && !(_c.n > 1 && (r.localFiles || []).length < _c.n);
+          if (A.n > 0 && allVideo && complete && !r.resBest) {
+            r.resBest = 1;
+            r.resBestVia = 'probe';
+            r.resBestAt = r.probeAt;
+            delete r.needsFullRes; delete r.fullResTries; delete r.refetchStuck;
+            concluded.push(r.id);
+          }
+        }
+        markDirty(r.id);
+      }
+      applyAndRender();
+      // Save as we go: a 40-minute probe that loses everything because the browser was
+      // closed at minute 39 would be worse than not having run it. Deltas are ~12 rows.
+      if (dirty) await persist(false);
+      if (walledStopped) break;
+    }
+
+    busy = false; setBatchUi(false); igBatchHide();
+    if (dirty) await persist(false);
+    applyAndRender();
+    diag('PROBE-END', { done, total, up: upgrades, atMax, failed, concluded: concluded.length,
+      secs: Math.round((Date.now() - t0) / 1000),
+      stop: netStopped ? 'PROXY-DIED' : walledStopped ? `WALL-${PROBE_WALL_CAP}-IN-A-ROW`
+          : batchAbort ? 'USER-STOP' : done < total ? 'INCOMPLETE' : 'ran-out' });
+
+    const byAuthor = ids => {
+      const m = {};
+      ids.forEach(id => { const a = (rowById(id) || {}).author || '?'; m[a] = (m[a] || 0) + 1; });
+      return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 4).map(e => '@' + e[0] + '=' + e[1]).join('  ');
+    };
+    const lines = [
+      netStopped     ? '⏸ Probe stopped — the proxy stopped answering'
+      : walledStopped ? `⏸ Probe stopped — ${PROBE_WALL_CAP} posts in a row came back unreadable`
+      : batchAbort    ? '⏹ Probe stopped by you'
+      :                 '✓ Video probe complete',
+      '',
+      `${done} of ${total} post(s) asked  ·  METADATA ONLY, nothing was downloaded`,
+      '',
+      `⬆ ${upgrades} still have a BIGGER video on Instagram`,
+    ];
+    if (upgrades) {
+      if (bestGain) lines.push(`   biggest: @${bestGain.author} ${bestGain.id}  ${bestGain.held[0]}×${bestGain.held[1]} → ${bestGain.avail[0]}×${bestGain.avail[1]}  (+${bestGain.px}px wide)`);
+      lines.push('   ' + byAuthor(upIds));
+      if (missingItems) lines.push(`   (includes ${missingItems} video item(s) of carousels that were never downloaded)`);
+    }
+    lines.push(`✔ ${atMax} are already at Instagram's maximum`);
+    if (concluded.length) lines.push(`   ${concluded.length} of those were video-only and complete, so they are now marked`,
+      `   “already at IG’s best” and drop out of the re-fetch queue for good.`);
+    if (noVideo) lines.push(`   (${noVideo} turned out to have no video at all — photo posts; igResAudit.js settles those)`);
+    if (failed) lines.push(`✗ ${failed} couldn't be read  (login-walled, retired, or gone)`,
+      `   ${failIds.slice(0, 6).join(', ')}${failIds.length > 6 ? ` +${failIds.length - 6} more` : ''}`);
+    if (done < total) lines.push(`${total - done} not reached (run ended early) — re-run to continue where it left off`);
+    lines.push(`⏱ ${fmtClock(Date.now() - t0)}${done ? '   ·   ' + speed() : ''}`);
+    lines.push('', 'Res ▸ 🔬⬆ lists the upgradeable rows; the ⬆ marker in W×H shows the target size.');
+    if (walledStopped) lines.push('', 'Rotate the Proton VPN exit and re-run — probed rows are skipped, so nothing is repeated.');
+    igStickyShow(lines.join('\n'));
+
+    // The ONE place this feature can cause a download, and it is a question, not a
+    // side effect. needsFullRes is the existing dev0677 queue: ⬇ Download and
+    // Download+rotate pick those rows up, and publish()'s guard discards anything
+    // that doesn't actually come back bigger.
+    if (upgrades) {
+      const queueable = upIds.map(id => rowById(id)).filter(r => r && !r.needsFullRes);
+      if (queueable.length && confirm(`🔬 ${upgrades} row(s) have a bigger video on Instagram.\n\n`
+        + `Queue ${queueable.length} of them for a full-res re-fetch now?\n\n`
+        + `• This only MARKS them (Re-fetch ▸ ⤓ needs full-res). Nothing downloads yet.\n`
+        + `• ⬇ Download sel or ⬇⟳ Download + rotate VPN then re-fetches them.\n`
+        + `• A re-fetch that isn't actually better is discarded — no file is ever\n`
+        + `  overwritten with something worse.\n\n`
+        + `Answer No to just leave the verdicts on the rows.`)) {
+        queueable.forEach(r => { r.needsFullRes = true; delete r.refetchedAt; delete r.refetchStuck; markDirty(r.id); });
+        await persist(false);
+        applyAndRender();
+        igToast(`⤓ queued ${queueable.length} row(s) for a full-res re-fetch\n`
+          + `Re-fetch ▸ ⤓ needs full-res lists them · ⬇⟳ Download + rotate VPN grinds them`, 5000);
+      }
+    }
   }
 
   // (dev0649) Auto-grind the ENRICHED backlog in the current view: take the top
@@ -3131,6 +3437,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (!r) return;
     r.status = 'new';
     delete r.VidTitle; delete r.width; delete r.height; delete r.localFiles; delete r.igImage;
+    // (dev0698) The probe's verdict is a statement about the FILES this reset just
+    // dropped ("IG has nothing bigger than what's on disk"), so it cannot outlive
+    // them — left behind it would claim a comparison against nothing.
+    ['probeAt', 'probeUp', 'probeErr', 'probeW', 'probeH', 'probeMinW', 'probeN',
+     'probeHeldW', 'probeHeldH', 'probeHeldMinW', 'probeHeldN',
+     'probeGain', 'probeGainW', 'probeMissing'].forEach(k => { delete r[k]; });
+    if (r.resBestVia === 'probe') { delete r.resBest; delete r.resBestVia; delete r.resBestAt; }
     r.durSecs = null;
     enrichFailed.delete(r.id);
   }
@@ -3151,7 +3464,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   }
 
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igPromoteSel', 'igCreateGrid', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igProbeRes', 'igPromoteSel', 'igCreateGrid', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the
