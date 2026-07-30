@@ -79,6 +79,22 @@
   let focusId = null;                  // row open in the detail drawer
   let processingId = null;             // (dev0445) row currently being enriched/downloaded (live highlight)
   let dirty = false;                   // unsaved enrich/promote/status edits
+  // (dev0697) WHICH rows are unsaved, so a batch can persist 18 rows instead of 22,452.
+  // Shipping the whole store after every batch is what killed six overnight grinds:
+  // the browser stringified 59MB while the proxy parsed the same 59MB, and this
+  // machine only has ~1.8GB of free system commit — the paired spike aborted node
+  // (0xC0000409). See the store-layer note in proxy.js.
+  //   dirtyIds names rows that were CHANGED IN PLACE (an upsert can express that).
+  // dirtyAll means the shape of rows[] itself moved — a delete, a bulk import, a
+  // multi-row reset — which only a whole-store save can express. FAIL SAFE: markDirty()
+  // with no id sets dirtyAll, so anything unclassified keeps the old full-save
+  // behaviour. A missed call site costs a big save, never a lost edit.
+  let dirtyIds = new Set();
+  let dirtyAll = false;
+  function markDirty(id) {
+    dirty = true;
+    if (id) dirtyIds.add(id); else dirtyAll = true;
+  }
   let busy = false;                    // a batch op is running
   let batchAbort = false;              // user pressed Stop during a batch
   let vpnDropAbort = false;            // (dev0658) VPN kill-switch tripped (tunnel dropped mid-grind)
@@ -1666,7 +1682,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (a === 'enrich') enrichRow(r, true).then(() => openDrawer(r));
       else if (a === 'download') downloadRow(r, true).then(() => openDrawer(r));
       else if (a === 'reset') {                 // (dev0513) re-try this row from scratch
-        resetRow(r); dirty = true; persist(false); applyAndRender(); openDrawer(r);
+        resetRow(r); markDirty(r.id); persist(false); applyAndRender(); openDrawer(r);
         igToast('↺ reset ' + r.id + ' to "new" — ✨ Enrich then ⬇ Download to apply the new filename + jpg cover', 4000);
       }
       else if (a === 'paste') openPasteModal(r);
@@ -1794,7 +1810,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const r = { id, url: cleanUrl, author: author || '', status: 'new', staged: false, source: 'manual', DateAdded: now };
     if (imgIndex) r.imgIndex = imgIndex;
     rows.push(r); knownIds.add(id);
-    dirty = true;
+    markDirty(id);
     refreshAuthorOptions(); applyAndRender();
     focusId = id; sel.clear(); sel.add(id);
     applyAndRender(); applyFocusHighlight(id);
@@ -1897,7 +1913,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // when a post is login-walled (same as Download), and tells us which path won.
       lastOpInfo = meta._usedCookies ? 'Firefox cookies used' : 'No firefox cookies used';
       enrichFailed.delete(r.id);     // succeeded → clear any prior wall mark
-      dirty = true;
+      markDirty(r.id);
       if (single) { applyAndRender(); persist(false); igToast('✓ enriched ' + r.id + '\n🍪 ' + lastOpInfo, 2000); }
       return true;
     } catch (e) {
@@ -1944,7 +1960,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     r.deadReason = (err || '').replace(/\s+/g, ' ').slice(0, 200);
     r.deadAt = (typeof isoNow === 'function') ? isoNow()
              : new Date().toISOString().slice(0, 19).replace('T', ' ');
-    dirty = true;
+    markDirty(r.id);
     diag('ROW-RETIRED', { id: r.id, kind: kindOf(r), reason: r.deadReason });
   }
 
@@ -2106,6 +2122,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // that downloads 0 and retires 2 has changed real state; under the old `if (ok)` it
     // was thrown away, which is why the same dead posts greeted the next run. Skipped
     // while the proxy is down — there's nothing to save to; awaitProxyReturn flushes it.
+    // (dev0697) THE save this whole fix is about: it fires ~35 times in a night grind.
+    // The individual rows were already named by downloadRow/markDead, so persist()
+    // sends just those (~18) instead of the whole 59MB store. The bare `dirty = true`
+    // stays as the belt: if some path ever changes a row without naming it, dirtyIds
+    // is empty, and persist() falls back to the old whole-store save rather than
+    // silently writing nothing.
     if ((ok || deadMarked) && !proxyDown) { dirty = true; await persist(false); }
     applyAndRender();
 
@@ -2472,7 +2494,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       // (dev0690) The post's item count is worth recording even on a refusal — it comes
       // from reading the post, not from downloading it.
-      if (Number.isFinite(j.postItems) && j.postItems > 0 && r.nItems !== j.postItems) { r.nItems = j.postItems; dirty = true; }
+      if (Number.isFinite(j.postItems) && j.postItems > 0 && r.nItems !== j.postItems) { r.nItems = j.postItems; markDirty(r.id); }
       // (dev0690) REFUSED as a downgrade: the proxy measured what it fetched, found it
       // worse than what this row already has, and threw the new copy away rather than
       // let it land beside the good one. That is a success, not a failure — but it must
@@ -2497,7 +2519,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           r.refetchedAt = (typeof isoNow === 'function') ? isoNow()
                         : new Date().toISOString().slice(0, 19).replace('T', ' ');
         }
-        dirty = true;
+        markDirty(r.id);
         sel.delete(r.id);                   // treated as done, like any other success
         lastOpInfo = _verdict ? 'already at IG’s best' : 'kept the existing file';
         if (single) igToast('↩ ' + r.id + ': kept the existing download\nIG offered ' + j.kept.reason
@@ -2619,7 +2641,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // used" toast + COOKIE_CAP auto-stop on the first /p post.
       lastOpInfo = j.usedCookies ? 'Firefox cookies used' : 'No firefox cookies used';
       sel.delete(r.id);            // (dev0438) uncheck on every successful download
-      dirty = true;
+      markDirty(r.id);
       if (single) {
         applyAndRender(); persist(false);
         const n = r.localFiles.length;
@@ -2665,7 +2687,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           proxyDown = true;
           proxyKillIds.add(r.id);
           r.proxyKills = (r.proxyKills || 0) + 1;
-          dirty = true;
+          markDirty(r.id);
           diag('PROXY-DIED', { id: r.id, kind: kindOf(r), kills: r.proxyKills,
             url: r.url || '', retiredNow: r.proxyKills >= 2 ? 1 : 0 });
         }
@@ -3007,7 +3029,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     save();
     r.status = 'promoted';
     r.mlUID = mlRow.UID;
-    dirty = true;
+    markDirty(r.id);
     if (single) { applyAndRender(); persist(false); igToast('➕ promoted ' + r.id + ' → ml.json UID ' + mlRow.UID, 2400); }
     return mlRow;
   }
@@ -3091,7 +3113,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     ids.forEach(id => { sel.delete(id); if (focusId === id) focusId = null; });
     if (focusId == null && drawerOpen()) closeDrawer();
     lastCheckedId = null;
-    dirty = true;
+    markDirty();          // (dev0697) rows were REMOVED — only a whole-store save says that
     persist(false);
     applyAndRender();
     igToast(`🗑 deleted ${ids.length} row(s) from ig.json`, 2600);
@@ -3122,8 +3144,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `The caption (ftext / ttxt) is kept.\n\n`
       + `Then: ✨ Enrich the selection, then ⬇ Download.`)) return;
     let n = 0;
-    ids.forEach(id => { const r = rowById(id); if (r) { resetRow(r); n++; } });
-    dirty = true; persist(false); applyAndRender();
+    ids.forEach(id => { const r = rowById(id); if (r) { resetRow(r); markDirty(id); n++; } });
+    persist(false); applyAndRender();
     if (drawerOpen() && focusId != null) { const fr = rowById(focusId); if (fr) openDrawer(fr); }
     igToast(`↺ reset ${n} row(s) to "new"\nNow ✨ Enrich, then ⬇ Download to apply the new filename + jpg cover`, 4200);
   }
@@ -3187,7 +3209,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if ((!row.ftext || isStub) && p.caption && typeof _igCaptionFtext === 'function') { row.ftext = _igCaptionFtext(p.caption); parts.push('ftext'); }
     row.ttxt = _igTtxtHtml(p); parts.push('ttxt');           // rich dump always wins (it's the prize)
     if (row.status === 'new' || !row.status) row.status = 'enriched';
-    dirty = true;
+    markDirty(row.id);
     const sib = p.reels.filter(x => x.id !== p.currentId).length;
     const hadTarget = !!_pasteTarget;
     closePasteModal();
@@ -3269,7 +3291,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (!r.source) r.source = 'ffdown';
       if (r.status === 'new' || !r.status) r.status = 'enriched';
     }
-    dirty = true;
+    markDirty();          // (dev0697) a bulk import creates rows too — save the whole store
     refreshAuthorOptions();
     applyAndRender();
     await persist(false);
@@ -3288,25 +3310,65 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // copies + rewrites the same 49MB (see its /ig/save line). If a long grind is
     // dying of memory or I/O rather than of Instagram, the trend lives in these
     // numbers — they are the reason a grind gets slower the longer it runs.
+    //
+    // (dev0697) …and they were also the reason it DIED. That trend was the clue and
+    // it pointed at the browser as much as the proxy: this stringify allocated a
+    // 59MB string beside the live rows[] at the same instant the proxy allocated its
+    // own copy of the same 59MB. Measured free system commit on this machine while
+    // idle: 1.85GB. The pair crossed it and Windows aborted node — six times in one
+    // night, always at a save or at the process spawn right after one.
+    //   So a save now ships only the rows that CHANGED, whenever it can name them:
+    // 18 rows / ~38KB instead of 22,452 rows / 59MB. Measured on the real store, the
+    // proxy's cost per save drops from +260MB to +90MB, and this stringify goes from
+    // 59MB to nothing. A whole-store save is still exactly one line away (dirtyAll)
+    // and is what deletes, imports and the manual 💾 button use.
+    // Delta only when every unsaved change can be named as a row that still exists.
+    // Anything else — dirtyAll, nothing marked at all, or ids whose rows have since
+    // gone from rows[] — takes the unchanged whole-store path.
+    let _ids = (!dirtyAll && dirtyIds.size) ? [...dirtyIds] : null;
+    let _send = null;
+    if (_ids) {
+      const byId = new Map(rows.map(r => [r && r.id, r]));
+      _send = _ids.map(id => byId.get(id)).filter(Boolean);
+      if (_send.length !== _ids.length) { _ids = null; _send = null; }   // stale mark → full save
+    }
+    const _delta = !!_send;
     const _t0 = Date.now();
     let _body = '', _strMs = 0;
     try {
-      _body = JSON.stringify({ rows, knownIds: [...knownIds] });
+      _body = _delta ? JSON.stringify({ rows: _send })
+                     : JSON.stringify({ rows, knownIds: [...knownIds] });
       _strMs = Date.now() - _t0;
-      const res = await fetch(PROXY + '/ig/save', {
+      const res = await fetch(PROXY + (_delta ? '/ig/save-delta' : '/ig/save'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: _body
       });
+      // A proxy older than dev0697 has no /ig/save-delta and 404s it. Forgetting to
+      // restart the proxy after pulling new code is a standing trap here, and it must
+      // not read as data loss: fall back to the whole-store save exactly once (setting
+      // dirtyAll makes the retry take the full path, so it cannot loop).
+      if (_delta && res.status === 404) {
+        dirtyAll = true;
+        diag('save-delta-404', { note: 'proxy predates dev0697 — restart it; saving whole store instead' });
+        return persist(announce);
+      }
       const j = await res.json();
       diag('save', {
-        MB: (_body.length / 1048576).toFixed(1), rows: rows.length,
+        mode: _delta ? 'delta' : 'full',
+        MB: (_body.length / 1048576).toFixed(1),
+        sent: _delta ? _send.length : rows.length, rows: rows.length,
         stringifyMs: _strMs, totalMs: Date.now() - _t0,
         ok: j && j.ok ? 1 : 0, rescued: (j && j.rescued) || 0,
         mem: (performance && performance.memory)
           ? Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB' : ''
       });
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
-      dirty = false;
+      // Clear ONLY what this save actually covered. A delta leaves any row marked
+      // while the request was in flight still marked, so the next save picks it up —
+      // that window is real: a batch's rows are marked by async download callbacks.
+      if (_delta) _ids.forEach(id => dirtyIds.delete(id));
+      else { dirtyIds.clear(); dirtyAll = false; }
+      dirty = dirtyAll || dirtyIds.size > 0;
       updateCount();
       if (announce) igToast('💾 saved ig.json (' + j.total + ' rows)', 1800);
       // (dev0601) The proxy kept rows that were harvested while this screen sat open
@@ -3328,6 +3390,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (dev0683) A save that fails mid-grind is one of the ways the run "dies" —
       // and if the cause is the proxy, this is often the FIRST place it shows.
       diag('SAVE-FAILED', {
+        mode: _delta ? 'delta' : 'full',
         MB: (_body.length / 1048576).toFixed(1), rows: rows.length,
         stringifyMs: _strMs, totalMs: Date.now() - _t0, err: (e && e.message) || '',
         proxy: await diagProxyAlive()
@@ -3397,6 +3460,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     rescueNoted = false;
     igPreviewClose();   // (dev0500) old previewed row is gone after a reload
     sel.clear(); dirty = false; lastCheckedId = null; focusId = null; enrichFailed.clear();   // (dev0441) fresh retry after reload; (dev0474) clear row focus
+    dirtyIds.clear(); dirtyAll = false;  // (dev0697) rows[] is fresh from disk — no marks can be owed
     refreshAuthorOptions();
     applyAndRender();
   }

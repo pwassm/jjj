@@ -46,6 +46,9 @@ function killActiveDownloads() {
 //   • rss climbing run-over-run                    → memory exhaustion; watch the
 //     `/ig/save` lines, each one buffers a ~49MB body + parses + rewrites the file
 //   • a request line with no matching ← line       → it died INSIDE that handler
+//   • "node exited EXITCODE=-1073740791"           → SOLVED, dev0697: the system ran
+//     out of COMMIT, not node out of heap. Read the "system memory" line at the top
+//     of each run; a JS-heap OOM would instead exit 134 and print pages of GC detail.
 //   • uncaughtException right before the gap       → a real bug, with its stack
 //   • "client:" lines                              → what the I screen was doing
 //     (mirrored from ig.js so both stories share one clock)
@@ -69,6 +72,48 @@ function memLine() {
   try { handles = process._getActiveHandles().length; } catch (_) {}
   return `rss=${mb(m.rss)}MB heap=${mb(m.heapUsed)}/${mb(m.heapTotal)}MB ext=${mb(m.external)}MB `
        + `handles=${handles} activeDl=${ACTIVE_DL.size}`;
+}
+
+// (dev0697) COMMIT HEADROOM — the number that was missing from every previous
+// investigation, and the one that actually explains the deaths.
+//   Windows refuses an allocation when the system COMMIT CHARGE would exceed the
+// commit limit (RAM + pagefile), regardless of how much physical RAM is free. On
+// this machine, idle: limit 32.8GB, charged 30.9GB, free 1.85GB — with ~10GB of
+// RAM free, and a pagefile pinned MANUAL at 1000-5000MB so the limit can barely
+// grow. When a burst crossed that line V8 could not reserve, called abort(), and
+// Windows killed node with 0xC0000409 and no message. rss/heap in every heartbeat
+// looked healthy the whole time, which is exactly why this hid for so long.
+//   So log it: at boot and every 15 minutes. If a future night dies, the log now
+// shows whether headroom was gone at that moment instead of leaving us to guess.
+// windowsHide so the probe never flashes a console (dev0657: a window that pops
+// up on a timer is not acceptable, and rightly so).
+function logCommitHeadroom() {
+  const ps = "$o=Get-CimInstance Win32_OperatingSystem;"
+    + "$p=@(Get-CimInstance Win32_PageFileSetting);$pf='system-managed';"
+    + "if($p.Count -gt 0){$pf='manual '+$p[0].InitialSize+'-'+$p[0].MaximumSize+'MB'};"
+    + "Write-Output ([string][int]($o.TotalVisibleMemorySize/1024)+'|'+[int]($o.FreePhysicalMemory/1024)"
+    + "+'|'+[int]($o.TotalVirtualMemorySize/1024)+'|'+[int]($o.FreeVirtualMemory/1024)+'|'+$pf)";
+  let out = '';
+  try {
+    const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps],
+      { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    p.stdout.on('data', d => { out += d.toString('utf8'); });
+    p.on('error', () => {});
+    p.on('close', () => {
+      const f = out.trim().split('|');
+      if (f.length < 5) return;
+      const gb = mb => (Number(mb) / 1024).toFixed(1);
+      const commitFreeMB = Number(f[3]);
+      plog(`system memory: RAM ${gb(f[0])}GB (free ${gb(f[1])}GB) · COMMIT limit ${gb(f[2])}GB`
+        + ` free ${gb(f[3])}GB · pagefile ${f[4]}`);
+      if (commitFreeMB < 3072) {
+        plog(`⚠ COMMIT HEADROOM IS LOW (${gb(f[3])}GB). This — not the VPN and not Instagram —`
+          + ` is what has been aborting node (0xC0000409) mid-grind. Raise the pagefile`
+          + ` (System ▸ Advanced ▸ Performance ▸ Virtual memory: system-managed, or 16384-32768MB)`
+          + ` and/or close the biggest commit consumers (each Everything instance held 1.3GB).`);
+      }
+    });
+  } catch (_) {}
 }
 
 // (dev0656) STAY ALIVE. A WireGuard rotation tears the tunnel down, which RSTs any
@@ -151,6 +196,14 @@ const PORT = 8081;
 //   /ig/save     overwrites ig.json with the client's edited array (enrich/promote
 //                state) — keeps a one-deep ig.json.bak first.
 //   /ig/download yt-dlp downloads a reel/post's media into <project>/ig_media/.
+// (dev0697) /ig/save-delta — the endpoint a GRIND uses: upsert just the rows a batch
+//   changed (18 of 22,452) instead of shipping the whole 59MB store after every batch.
+//   That whole-store round trip is what aborted node six times in one night: this
+//   machine has ~1.85GB of free system COMMIT, and browser + proxy each allocated a
+//   copy of the same 59MB at the same instant. Upsert-only, so it can never shrink the
+//   store; deletes and bulk imports still take /ig/save. Both writers now stream the
+//   file out row by row and rename it into place, so no save holds a 62MB string and a
+//   crash mid-write can no longer truncate ig.json.
 // (dev0430) ytdlp meta now also returns width,height (for the I-screen W×H column +
 //   filename); /ig/download accepts a client-built `name` → files land in ig_media/
 //   under the user's AHK naming convention (hh.mm.ss~WxH~title~@author~[[i[id]]]).
@@ -225,7 +278,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0690';
+const PROXY_BUILD = 'dev0697';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2115,14 +2168,89 @@ function igIsoNow() {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' '
        + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
+
+// (dev0697) ── ONE ig.json store layer: parse once, write atomically ───────────
+// WHY THIS EXISTS — the six-crash night of 2026-07-29/30, and every "the proxy
+// died mid-grind" before it. Measured on this machine while IDLE:
+//     commit limit 32.78 GB · committed 30.93 GB · FREE 1.85 GB
+//     pagefile is MANUAL, capped at 1000-5000 MB (so the limit can't grow much)
+// Windows had ~10 GB of free physical RAM but almost no COMMIT left, and commit
+// is what an allocation actually needs. Every batch of 18 downloads then made two
+// processes burst at the same instant:
+//     browser: JSON.stringify(whole store) → a 59MB string beside the live rows
+//     proxy:   buffer a 59MB body → 59MB string → JSON.parse (heap 429MB,
+//              rss 688MB) → read + parse the 62MB FILE again → 62MB stringify
+// ~1 GB of simultaneous demand against 1.85 GB of headroom. When VirtualAlloc
+// fails V8 cannot reserve, calls abort(), and Windows reports 0xC0000409
+// (-1073740791) — silently, which is why proxy.err.log stayed empty and six
+// crashes left no fatal message. 3 of the 6 landed exactly on POST /ig/save,
+// 2 on the spawn that opens /ig/download (a new yt-dlp process needs commit
+// too), 1 on the embed probe while rss still sat at its post-save 688MB peak.
+// It was never the VPN, never Instagram, and never a bug in the download path.
+//
+// So: hold the parsed store ONCE (flat ~430MB instead of allocating and freeing
+// that much on every save), and write by STREAMING row by row — no 62MB string,
+// no 62MB buffer beside it. Peak demand per save drops from ~500MB to ~1 row.
+//   Cache key is (mtimeMs, size): any other writer — a harvest via /ig/add, a
+// backfill script, an editor — changes one or both, so the next read re-parses.
+// Never trust the cache across a foreign write.
+let _igStore = { mtimeMs: 0, size: -1, rows: null };
+function igStoreLoad() {
+  let st = null;
+  try { st = fs.statSync(IG_STORE); } catch (_) { return []; }
+  if (_igStore.rows && _igStore.mtimeMs === st.mtimeMs && _igStore.size === st.size) return _igStore.rows;
+  let rows = [];
+  try { rows = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) { rows = []; }
+  if (!Array.isArray(rows)) rows = [];
+  _igStore = { mtimeMs: st.mtimeMs, size: st.size, rows };
+  return rows;
+}
+// Write the store to disk and re-stamp the cache. Two deliberate properties:
+//   1) STREAMED — one row is serialised at a time into a 1MB pipe, so the peak
+//      allocation is a row, not the file. Byte-identical to the old
+//      JSON.stringify(rows, null, 2): each row is stringified at indent 2 and
+//      every one of its lines shifted 2 more spaces, exactly as nesting would.
+//   2) ATOMIC — tmp file + rename. Until now a crash DURING the write left a
+//      truncated ig.json, which is the one way a proxy death could actually cost
+//      data. rename() on NTFS is MoveFileEx(REPLACE_EXISTING): the store is
+//      either wholly old or wholly new, never half-written.
+// The tmp name matches the ig.json.tmp-* .gitignore rule on purpose.
+function igStoreWriteRows(rows) {
+  const tmp = IG_STORE + '.tmp-save';
+  let fd = null;
+  try {
+    fd = fs.openSync(tmp, 'w');
+    if (!rows.length) { fs.writeSync(fd, '[]'); }
+    else {
+      fs.writeSync(fd, '[\n');
+      for (let i = 0; i < rows.length; i++) {
+        const body = JSON.stringify(rows[i], null, 2).split('\n').map(l => '  ' + l).join('\n');
+        fs.writeSync(fd, i ? ',\n' + body : body);
+      }
+      fs.writeSync(fd, '\n]');
+    }
+    fs.closeSync(fd); fd = null;
+    fs.renameSync(tmp, IG_STORE);
+  } catch (e) {
+    // A reader holding ig.json open can make rename fail on Windows (EPERM/EBUSY).
+    // Leave the store untouched rather than half-written, and let the caller 500 —
+    // the client treats a failed save as unsaved and keeps its ⚠ flag.
+    if (fd !== null) { try { fs.closeSync(fd); } catch (_) {} }
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw e;
+  }
+  try { const st = fs.statSync(IG_STORE); _igStore = { mtimeMs: st.mtimeMs, size: st.size, rows }; }
+  catch (_) { _igStore = { mtimeMs: 0, size: -1, rows: null }; }
+}
+
 function igAdd(req, res, origin) {
   readJson(req, 4 * 1024 * 1024).then(payload => {
     const urls = Array.isArray(payload.urls) ? payload.urls : [];
     const author = (payload.author || '').toString().slice(0, 80);
     const source = (payload.source || '').toString().slice(0, 300);
-    let store = [];
-    try { if (fs.existsSync(IG_STORE)) store = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) {}
-    if (!Array.isArray(store)) store = [];
+    // (dev0697) via the shared store layer: same read, but it reuses the parse a
+    // running grind already paid for instead of adding a second 62MB one.
+    const store = igStoreLoad().slice();
     const have = new Set(store.map(r => r && r.id).filter(Boolean));
     let added = 0, dup = 0, bad = 0;
     const now = igIsoNow();
@@ -2136,7 +2264,7 @@ function igAdd(req, res, origin) {
       store.push({ id, url, author, status: 'new', DateAdded: now, source });
       added++;
     }
-    if (added) fs.writeFileSync(IG_STORE, JSON.stringify(store, null, 2));
+    if (added) igStoreWriteRows(store);
     console.log('[ig/add] +' + added + ' new, ' + dup + ' dup, ' + bad + ' bad · total ' + store.length + ' · @' + (author || '?'));
     sendJson(res, 200, { ok: true, added, dup, bad, total: store.length }, origin);
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
@@ -2195,8 +2323,11 @@ function igMeta(req, res, origin) {
     // Re-parse only when the store has actually changed — a harvest or an
     // I-screen save bumps mtime; otherwise this is a map lookup.
     if (!_igMetaCache.byId || _igMetaCache.mtime !== st.mtimeMs) {
-      let rows = [];
-      try { rows = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) { rows = []; }
+      // (dev0697) share the store layer's parse. This used to be a THIRD 62MB
+      // JSON.parse — and it re-fired after every save during a grind (each save
+      // bumps mtime), i.e. another ~430MB commit spike at the worst moment, if a
+      // G/V screen happened to be asking for durations.
+      const rows = igStoreLoad();
       const byId = Object.create(null);
       for (const r of rows) {
         if (!r || !r.id) continue;
@@ -2240,11 +2371,9 @@ function igSave(req, res, origin) {
     const incoming = Array.isArray(payload.rows) ? payload.rows : null;
     if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
     const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
-    let prev = [];
     const _tRead = Date.now();
-    try { if (fs.existsSync(IG_STORE)) prev = JSON.parse(fs.readFileSync(IG_STORE, 'utf8')) || []; } catch (_) {}
+    const prev = igStoreLoad();                      // (dev0697) shared parse
     _sv.read = Date.now() - _tRead;
-    if (!Array.isArray(prev)) prev = [];
     // (dev0601) DATA-LOSS FIX: this used to blind-overwrite ig.json with the client's
     // whole in-memory array, so a HARVEST landing via /ig/add while the I screen was
     // open was silently wiped by the screen's next persist() — its rows[] predated
@@ -2277,7 +2406,7 @@ function igSave(req, res, origin) {
     try { if (fs.existsSync(IG_STORE)) fs.copyFileSync(IG_STORE, IG_STORE + '.bak'); } catch (_) {}
     _sv.bak = Date.now() - _tBak;
     const _tWrite = Date.now();
-    fs.writeFileSync(IG_STORE, JSON.stringify(final, null, 2));
+    igStoreWriteRows(final);                         // (dev0697) streamed + atomic
     _sv.write = Date.now() - _tWrite;
     console.log('[ig/save] wrote ' + final.length + ' rows (was ' + prev.length + ')'
       + (rescued.length ? ' · RESCUED ' + rescued.length + ' row(s) harvested mid-session' : ''));
@@ -2289,6 +2418,57 @@ function igSave(req, res, origin) {
         + (rescued.length ? ` rescued=${rescued.length}` : '') + ` · ${memLine()}`;
     } catch (_) {}
     sendJson(res, 200, { ok: true, total: final.length, rescued: rescued.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
+// (dev0697) /ig/save-delta — persist only the rows a batch actually changed.
+// This is the endpoint a grind uses. A batch of 18 downloads changes 18 rows out
+// of 22,452, and the old /ig/save shipped all of them: the client stringified
+// 59MB, the body carried 59MB, the proxy parsed 59MB, then read and re-parsed the
+// 62MB file. That ~1GB of paired demand against 1.85GB of free system commit is
+// what aborted node six times in one night (see the store-layer note above).
+// Here the body is ~50KB, the store is already parsed, and the write streams.
+//
+// UPSERT ONLY — by design, this can never shrink the store:
+//   · a row whose id is on disk is REPLACED by the incoming one
+//   · a row whose id is new is APPENDED
+//   · a row on disk that isn't mentioned is left exactly as it is
+// So the dev0601 knownIds rescue is structurally unnecessary here (nothing can be
+// dropped, so nothing needs rescuing), and the >50% drop guard cannot trigger.
+// Deletions and any bulk reshuffle still go through the full /ig/save — the
+// client keeps sending that whenever it can't name the rows it touched.
+//   No .bak: the full save still writes one, and an upsert of 18 known rows is
+// not the operation a one-deep backup protects against — a bad whole-store
+// payload is, and that path is unchanged.
+function igSaveDelta(req, res, origin) {
+  const t0 = Date.now();
+  readJson(req, 64 * 1024 * 1024).then(payload => {
+    const incoming = Array.isArray(payload.rows) ? payload.rows : null;
+    if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
+    const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
+    if (!clean.length) { sendJson(res, 400, { ok: false, error: 'no rows with a string id' }, origin); return; }
+    const body = Date.now() - t0;
+    const _tRead = Date.now();
+    const rows = igStoreLoad().slice();               // copy: never mutate the cached array in place
+    const read = Date.now() - _tRead;
+    const at = new Map();
+    for (let i = 0; i < rows.length; i++) if (rows[i] && rows[i].id) at.set(rows[i].id, i);
+    let patched = 0, appended = 0;
+    for (const r of clean) {
+      const i = at.get(r.id);
+      if (i === undefined) { at.set(r.id, rows.length); rows.push(r); appended++; }
+      else { rows[i] = r; patched++; }
+    }
+    const _tWrite = Date.now();
+    igStoreWriteRows(rows);
+    const write = Date.now() - _tWrite;
+    try {
+      let bytes = 0; try { bytes = fs.statSync(IG_STORE).size; } catch (_) {}
+      res._diagNote = `delta patched=${patched} appended=${appended} rows=${rows.length}`
+        + ` file=${(bytes / 1048576).toFixed(1)}MB body=${body}ms readPrev=${read}ms write=${write}ms`
+        + ` · ${memLine()}`;
+    } catch (_) {}
+    sendJson(res, 200, { ok: true, total: rows.length, patched, appended }, origin);
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
@@ -3795,7 +3975,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 
@@ -3889,6 +4069,7 @@ http.createServer((req, res) => {
     const action = req.url.slice('/ig/'.length).split('?')[0];
     if (action === 'add')      { igAdd(req, res, origin);      return; }
     if (action === 'save')     { igSave(req, res, origin);     return; }
+    if (action === 'save-delta') { igSaveDelta(req, res, origin); return; }  // (dev0697) per-batch upsert
     if (action === 'ffdown')   { igFfdown(req, res, origin);   return; }
     if (action === 'download') { igDownload(req, res, origin); return; }
     if (action === 'meta')     { igMeta(req, res, origin);     return; }   // (dev0671) local ig.json read
@@ -4070,20 +4251,47 @@ http.createServer((req, res) => {
   // handler, no Windows crash report. That is exactly what happened at 15:47:29 on
   // 2026-07-27, mid-/ig/download, 2h07 into a 510-item grind. Say so at the top of
   // the next run so the pattern is impossible to miss.
+  // (dev0697) …and NAME the killer instead of only flagging it. Two problems with the
+  // dev0684 version: it looked at the last line only, and the launcher appends its own
+  // "node exited EXITCODE=n" line AFTER the process's "exit code=n" — so the tail never
+  // matched /exit code=/ and every start, clean or not, warned "DID NOT EXIT CLEANLY".
+  // A warning that always fires is a warning nobody reads. Now: read the last few
+  // lines, prefer the launcher's captured code (it is the only witness to an abort),
+  // and translate it. The table is calibrated, not guessed — -1 was measured coming
+  // from this repo's own Stop-Process (dev0688), and 0xC0000409 was traced to system
+  // commit exhaustion (dev0697, see logCommitHeadroom).
   try {
     const prev = fs.readFileSync(LOG_FILE, 'utf8').trimEnd().split('\n');
-    const tail = prev[prev.length - 1] || '';
-    if (tail && !/exit code=/.test(tail)) {
-      plog('⚠ PREVIOUS RUN DID NOT EXIT CLEANLY — its last line was:');
-      plog('⚠   ' + tail.slice(0, 300));
-      plog('⚠   (no signal + no exit line = killed hard or aborted; check proxy.err.log'
-         + ' for a fatal message, and whether the "SLAM proxy :8081" window is still open)');
+    const tail = prev.slice(-4);
+    const hit = tail.map(l => l.match(/node exited EXITCODE=(-?\d+)/)).filter(Boolean).pop();
+    const clean = tail.some(l => /exit code=/.test(l));
+    const code = hit ? Number(hit[1]) : null;
+    const WHY = {
+      0: 'clean shutdown',
+      '-1': 'FORCE-KILLED (TerminateProcess) — a restart script, End task, or an AHK misfire. NOT a crash.',
+      '-1073740791': 'ABORTED (0xC0000409) — and NOT a JS-heap OOM: that exits 134 after printing pages'
+        + ' of GC detail. A silent 0xC0000409 is Windows __fastfail, i.e. a NATIVE allocation failed and the'
+        + ' process was torn down before it could write a word. On this machine that means the SYSTEM ran out'
+        + ' of COMMIT — see the "system memory" line below.',
+      '-1073741819': 'ACCESS VIOLATION (0xC0000005) — a genuine native crash in node.',
+      '-1073741510': 'Ctrl+C or the console window was closed (0xC000013A).',
+      '-1073741571': 'STACK OVERFLOW (0xC00000FD) — runaway recursion in native code.'
+    };
+    if (code !== null && code !== 0) {
+      plog(`⚠ PREVIOUS RUN ENDED BADLY — EXITCODE=${code}: ${WHY[String(code)] || 'unrecognised code.'}`);
+      if (!clean) plog('⚠   No "exit code=" line either, so it died without unwinding —'
+        + ' check proxy.err.log and any report.*.json (--report-on-fatalerror) next to proxy.js.');
+    } else if (code === null && !clean) {
+      plog('⚠ PREVIOUS RUN LEFT NO EXIT LINE AT ALL — killed hard with nothing recording it.');
+      plog('⚠   Last line was: ' + (tail[tail.length - 1] || '').slice(0, 300));
     }
   } catch (_) {}
   let heapCap = '?';
   try { heapCap = Math.round(require('v8').getHeapStatistics().heap_size_limit / 1048576) + 'MB'; } catch (_) {}
   plog(`START build=${PROXY_BUILD} node=${process.version} heapCap=${heapCap} cwd=${__dirname} · ${memLine()}`);
   console.log(`  black box:       ${LOG_FILE} (dev0683 — start/requests/60s heartbeat/exit)`);
+  logCommitHeadroom();
+  setInterval(logCommitHeadroom, 15 * 60000).unref();   // (dev0697) headroom trend across a night
   setInterval(() => {
     plog(`heartbeat uptime=${Math.round(process.uptime())}s reqs+${LOG_REQS} · ${memLine()}`);
     LOG_REQS = 0;

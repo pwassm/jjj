@@ -12,6 +12,16 @@ Write-Host '=== Restarting SLAM proxy on :8081 ===' -ForegroundColor Cyan
 # 1) Clean slate: kill the proxy node(s), their leftover cmd host windows, and anything
 #    still holding :8081. This also reaps dead "SLAM proxy" windows from prior restarts.
 $killed = $false
+# (dev0697) THE SUPERVISOR GOES FIRST. proxy-loop.ps1 restarts node whenever it dies
+# unexpectedly, so killing node while the supervisor still lives would hand :8081 to a
+# replacement that races the one this script is about to start. (The supervisor also
+# stops itself on exit code -1 — Stop-Process's code — but belt and braces: order here
+# is what actually guarantees it, and this runs even if that check ever regresses.)
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like '*proxy-loop.ps1*' } | ForEach-Object {
+        Write-Host "  killing proxy supervisor PID $($_.ProcessId)"
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $killed = $true
+    }
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like '*proxy.js*' } | ForEach-Object {
         Write-Host "  killing proxy node PID $($_.ProcessId)"
@@ -62,7 +72,18 @@ if ($n -ge 20) {
 #       -1073741819 (0xC0000005) → access violation: node crashed natively
 #       -1073740791 (0xC0000409) → stack/abort: a V8 fatal
 #       -1073741510 (0xC000013A) → Ctrl+C / console close
-Start-Process cmd -ArgumentList '/v:on', '/k', 'title SLAM proxy :8081 && node proxy.js 2>> proxy.err.log & echo !DATE! !TIME!  node exited EXITCODE=!ERRORLEVEL! >> proxy.log' -WorkingDirectory 'M:\jjj'
+#    (dev0697) THE CODE WAS CAPTURED, AND IT WAS 0xC0000409 SIX TIMES IN ONE NIGHT —
+#    a V8 abort, traced to the SYSTEM running out of commit (limit 32.8GB, charged
+#    30.9GB, free 1.85GB, pagefile pinned manual at 1000-5000MB) while node and the
+#    browser each allocated a copy of the same 59MB store after every batch. proxy.js
+#    now shrinks that per-batch demand by ~65% and logs the headroom; two things here
+#    finish the job:
+#      · the launch moved into proxy-loop.ps1, which RESTARTS node after a crash. The
+#        old `cmd /k` printed the exit code and sat at a prompt, so a 3:43 AM abort
+#        ended the night — the client waited its full 30 minutes for a proxy that was
+#        never coming back. Now it is back in ~3s and the paused grind continues.
+#      · --report-on-fatalerror, so the next abort finally leaves a reason behind.
+Start-Process powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'M:\jjj\proxy-loop.ps1' -WorkingDirectory 'M:\jjj'
 
 # 3) Verify: does the LIVE build match proxy.js on disk? (polls up to ~25s while node boots)
 #    MUST poll 127.0.0.1, NOT localhost: proxy.js binds .listen(PORT,'127.0.0.1') (IPv4-only,

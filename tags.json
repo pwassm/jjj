@@ -2402,12 +2402,12 @@
       "costasiella"
     ],
     "aliases": [
-      "Costasiella cf. kuroshimae species 6 JEV-2018",
+      "Costasiella cf",
       "Costasiella kuroshimae"
     ],
     "def": "",
     "rank": "species",
-    "common": "",
+    "common": "leaf sheep",
     "extinct": false
   },
   {
@@ -7122,5 +7122,40 @@
     "aliases": [],
     "def": "",
     "rank": "species"
+  },
+  {
+    "id": "jorunna-parva",
+    "label": "Jorunna parva",
+    "kind": "taxon",
+    "parents": [
+      "jorunna"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "sea bunny",
+    "extinct": false
+  },
+  {
+    "id": "discodorididae",
+    "label": "Discodorididae",
+    "kind": "taxon",
+    "parents": [
+      "nudibranchs"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "jorunna",
+    "label": "Jorunna",
+    "kind": "taxon",
+    "parents": [
+      "discodorididae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]
