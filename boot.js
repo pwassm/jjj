@@ -587,6 +587,15 @@ async function _showShareableMenu() {
   if (!greetingHtml) {
     try { const r = await fetch('greeting.html?t=' + Date.now()); if (r.ok) greetingHtml = await r.text(); } catch (e) {}
   }
+  // (dev0700) A ⊘ Hide block (div.te-cut) in the GREETING acts as a cut-to-the-
+  // end marker, not just an in-place hide: everything from the marker down is
+  // dropped. The greeting isn't a slide, but the author expects it to behave
+  // like one — park work-in-progress prose below the marker and it disappears
+  // from the public landing page (and from the page-2 lead text after the <hr>).
+  {
+    const _cut = greetingHtml.match(/<div\b[^>]*class="[^"]*\bte-cut\b[^"]*"[^>]*>/i);
+    if (_cut) greetingHtml = greetingHtml.slice(0, _cut.index);
+  }
   // (dev0361) Split the greeting at its FIRST <hr> (the Xe ══ divider): prose
   // BEFORE the rule is page 1 (welcome / landing), prose AFTER is the lead text
   // shown atop page 2 ("Choose a view"). No <hr> → it all stays on page 1.
@@ -787,15 +796,20 @@ async function _showShareableMenu() {
                  date: _smDateShort(r.DateModified), dmRaw: String(r.DateModified || ''),
                  type: _smType(r) }));
   // (dev0596) A collection is only shown on the public "Grids" tab when its
-  // config row is flagged active=1 (the c.json `active` column). Draft/unlisted
+  // config row carries a number in the c.json `active` column. Draft/unlisted
   // grids stay hidden from viewers until curated in.
+  // (dev0700) `active` is now an ORDER, not a flag: any positive number lists
+  // the grid, and the list is presented in ascending `active` order (1 first).
+  // Equal numbers fall back to whatever order c.json holds them in.
+  const _smOrd = v => { const n = parseFloat(String(v == null ? '' : v).trim()); return n > 0 ? n : 0; };
   const gItems = cRows
     .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname)
                  && String(g.gname).trim().toLowerCase() !== 'other'
-                 && String(g.active).trim() === '1')
+                 && _smOrd(g.active) > 0)
     .map(g => ({ kind: 'ss', gname: String(g.gname).trim(), html: String(g.ctxt),
                  summary: _smSummaryText(g.ctxt) || String(g.gname).trim(),
                  date: _smDateShort(g.DateModified), dmRaw: String(g.DateModified || ''),
+                 ord: _smOrd(g.active),
                  cells: Number(g.cells) || 0 }));
   const items = vItems.concat(gItems);
 
@@ -1352,13 +1366,17 @@ async function _showShareableMenu() {
   // (dev0379) Sortable, table-like choice list. Header clicks toggle the sort
   // key/direction; the body is re-rendered (and its Open buttons re-bound) each
   // time. Default: Modified, newest at top.
-  let _smSortKey = 'date', _smSortDir = -1, _smFilter = '';
+  // (dev0700) Default order is the curated one: c.json `active` ascending, with
+  // un-numbered entries (the ml.json singles) after them. Clicking a header
+  // still switches to Name/Modified. sort() is stable, so ties keep c.json order.
+  let _smSortKey = 'ord', _smSortDir = 1, _smFilter = '';
   const _smRenderChoose = () => {
     const body = ov.querySelector('#smChooseBody');
     if (!body) return;
     let arr = items.slice().sort((a, b) => {
       let av, bv;
-      if (_smSortKey === 'name') { av = (a.summary || '').toLowerCase(); bv = (b.summary || '').toLowerCase(); }
+      if (_smSortKey === 'ord') { av = a.ord || Infinity; bv = b.ord || Infinity; }
+      else if (_smSortKey === 'name') { av = (a.summary || '').toLowerCase(); bv = (b.summary || '').toLowerCase(); }
       else { av = a.dmRaw || ''; bv = b.dmRaw || ''; }
       if (av < bv) return -1 * _smSortDir;
       if (av > bv) return  1 * _smSortDir;
