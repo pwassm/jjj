@@ -261,6 +261,30 @@ function gridCleanupPlayers() {
 // at 326-wide has a ~54px header strip and ~80px footer strip; we render the
 // iframe at a fixed natural size (326×620), scale it so its width matches
 // the cell, and offset top so the header is clipped above the visible area.
+// (dev0699) Natural-px height of THIS post's picture inside a 326-wide embed.
+// Real aspect from ig.json via window._igMetaCache (POST /ig/meta, a local file
+// read — no Instagram traffic); the 4:5 guess only when we have no answer, which
+// is the public site and any post the store has never seen. Capped at 4:5 —
+// IG's embed never serves a taller media box, and a too-SHORT estimate merely
+// crops, while a too-tall one lets the caption/footer into the cell.
+function _igMediaNatH(cellEl, natW) {
+  const FALLBACK = 5 / 4;
+  let ratio = FALLBACK;
+  const link = (cellEl && cellEl._rowData && cellEl._rowData.link) || '';
+  const k = (link && window.getInstagramKind) ? window.getInstagramKind(link) : null;
+  const m = (k && k.id && window._igMetaCache) ? window._igMetaCache[k.id] : null;
+  if (m && m.w > 0 && m.h > 0) ratio = Math.min(m.h / m.w, FALLBACK);
+  return Math.round(natW * ratio);
+}
+
+// (dev0699) Re-run every mounted IG cell's fit. Called once /ig/meta answers,
+// because the real aspect that fit depends on arrives after the grid is built.
+window._gridRefitIgCells = function() {
+  document.querySelectorAll('.grid-cell .grid-embed-wrap iframe').forEach(f => {
+    if (typeof f._igFit === 'function') f._igFit();
+  });
+};
+
 function fitGridIgFrame(cellEl, iframe) {
   const NAT_W = 326, NAT_H = 620, HEADER = 54;
   // (dev0541) Natural-px height of the embed's picture: it runs from just under
@@ -279,11 +303,26 @@ function fitGridIgFrame(cellEl, iframe) {
   // remainder needs the post's true og:image dimensions fetched at enrich time
   // (the /p/ OG-tag scrape already reads them) and stored on the row for this
   // function to read — the "more IG information" build, deliberately deferred.
-  const MEDIA_H = Math.round(NAT_W * 5 / 4);
+  //
+  // (dev0699) THE ASSUMPTION IS NOW ONLY A FALLBACK. The "real og:image
+  // dimensions fetched at enrich time" the note above deferred already exist:
+  // ig.json carries width/height per post, and POST /ig/meta has been handing
+  // them to the browser (as m.w/m.h) since dev0671 — nothing was reading them.
+  // A grid of 9:16 reels looked perfect because 4:5 is exactly what IG serves
+  // for a reel; a grid of OLD square posts (my.microscopic.world, 640×640) had
+  // ~25% of every portrait cell filled with IG's caption/footer strip, because
+  // cover-fit was scaling to reach a picture bottom 80px lower than the real one.
+  // Capped at 4:5: that is the tallest media box IG's embed serves, and erring
+  // SHORT only crops a little more (the harmless direction) while erring tall is
+  // the leak itself.
   function fit() {
     if (!cellEl.isConnected) return;
     const cw = cellEl.clientWidth, ch = cellEl.clientHeight;
     if (!cw) return;
+    // Re-read per fit, not once per mount: /ig/meta is fetched in parallel with
+    // the grid build, so the first fit usually runs before the answer lands and
+    // _gridRefitIgCells() re-runs this closure when it does.
+    const MEDIA_H = _igMediaNatH(cellEl, NAT_W);
     // (dev0608) COVER-fit, was width-fit. Pinning scale to cw/NAT_W meant any
     // cell TALLER than 1.25×its width ran out of picture and filled the
     // remainder with IG's caption — in a 12P/portrait grid that was ~30% of
@@ -2240,7 +2279,14 @@ function gridShow() {
       const l = c._rowData && c._rowData.link;
       if (l && window.isInstagramLink && window.isInstagramLink(l)) _igLinks.push(l);
     });
-    if (_igLinks.length) window.igMetaFetch(_igLinks);
+    // (dev0699) …except the FIT now waits on it too: the answer carries each
+    // post's true W×H, which is what decides how far the picture reaches down
+    // the cell. Re-fit when it lands (cached after the first grid, so this is a
+    // no-op resolve from then on).
+    if (_igLinks.length) {
+      const _r = window.igMetaFetch(_igLinks);
+      if (_r && _r.then) _r.then(() => window._gridRefitIgCells && window._gridRefitIgCells());
+    }
   }
   // (dev0336) Live buffer-mode badge — shows the current clean-playback mode
   // when on. (dev0673) A trailing ~ means adaptive per-segment pre-roll, and a
@@ -2276,9 +2322,13 @@ function gridShow() {
   }
   // (dev0548) Refresh the dev-only "N need source" backlog pill (bottom-left).
   if (typeof window._gridUpdateBacklogPill === 'function') window._gridUpdateBacklogPill();
-  // (dev0369) Grid-level "swipe back to the Main Page" gesture. (dev0644) Now
-  // in BOTH modes — Gd gets the same exit; with the Gu hamburger/Configs
-  // chrome gone this swipe (and Esc) is THE way back to the choice menu.
+  // (dev0369) Grid-level "swipe back to the Main Page" gesture. (dev0644) Was
+  // extended to BOTH modes; (dev0699) USER MODE ONLY again. In Gu the gesture
+  // earns its place — the hamburger/Configs chrome is gone, so this and Esc are
+  // the only ways back to the choice menu. In Gd the chrome is all still there,
+  // and the same drag is how a developer pauses a cell: a swipe that drifted a
+  // few px past the cell edge threw away the whole grid and landed on the
+  // shareable menu. Dev keeps Esc; the gesture falls through to per-cell pause.
   // A right-to-left swipe that CROSSES A CELL BOUNDARY — begins in one grid cell
   // and ends in a different cell (or off the grid) — returns to the shareable
   // menu's Main Page. A left-swipe that STAYS inside a single cell keeps its
@@ -2307,6 +2357,11 @@ function gridShow() {
       const x0 = _swX, y0 = _swY, mod = _swMod, startCell = _swCell;
       _swX = _swY = null; _swMod = false; _swCell = null;
       if (x0 == null || mod || !startCell) return;
+      // (dev0699) Dev mode never exits the grid on a swipe — checked HERE, at
+      // gesture time, not at wire time: the overlay is wired once and survives
+      // a mode flip (the dev/user toggle badge) that this handler would
+      // otherwise outlive.
+      if (!(typeof _isUserMode === 'function' ? _isUserMode() : false)) return;
       // Direction in the user's visual frame (handles rotated portrait).
       const a = window.rotateXY ? window.rotateXY({ clientX: x0, clientY: y0 }) : { x: x0, y: y0 };
       const b = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
@@ -2919,12 +2974,13 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       return;
     }
-    // Swipe LEFT → (dev0369; dev0644 both modes) a swipe that crosses into
+    // Swipe LEFT → (dev0369; dev0699 USER MODE ONLY) a swipe that crosses into
     // another cell returns to the Main Page; one that stays inside the cell
     // pauses it. This is the touch-fallback mirror of the overlay-level
-    // pointer handler in gridShow(), for browsers without pointer events.
+    // pointer handler in gridShow(), for browsers without pointer events —
+    // including its dev-mode exclusion, or the two paths would disagree.
     if (dx < -40 && Math.abs(dy) < Math.abs(dx)) {
-      if (endX != null) {
+      if (endX != null && userMode) {
         const el = document.elementFromPoint(endX, endY);
         const endCell = (el && el.closest) ? el.closest('.grid-cell') : null;
         if (!endCell || (endCell.dataset && endCell.dataset.cell !== cellStr)) {

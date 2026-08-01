@@ -7157,5 +7157,30 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "autophagy",
+    "label": "Autophagy",
+    "kind": "topic",
+    "parents": [
+      "health"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "technique-tt",
+    "label": "Technique tt",
+    "kind": "taxon",
+    "parents": [
+      "pp"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
   }
 ]
