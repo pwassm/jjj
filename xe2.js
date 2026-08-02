@@ -162,13 +162,34 @@
   // context (.te-cut{display:none!important} in index.html + the vp iframe) but
   // kept as notes. Without this node the schema UNWRAPPED it on save, i.e. a
   // v2 save would have UN-hidden old parked text.
+  // (dev0712) `below` = this block is a CUT LINE, not a hidden block: nothing
+  // from here down renders (core.js _salApplyCutBelow). An EMPTY te-cut written
+  // before this change is read as one — it hid nothing by itself, so a marker is
+  // all it can ever have been — and is re-saved with the explicit class.
   var TeCut = Node.create({
     name: 'teCut',
     group: 'block',
     content: 'block+',
     defining: true,
+    addAttributes: function () {
+      return {
+        below: {
+          default: false,
+          parseHTML: function (el) {
+            if (el.classList && el.classList.contains('te-cut-below')) return true;
+            return !(el.textContent || '').trim()
+              && !el.querySelector('img,video,iframe,audio,svg,table,details,hr');
+          },
+          renderHTML: function () { return {}; },   // class composed below
+        },
+      };
+    },
     parseHTML: function () { return [{ tag: 'div.te-cut' }]; },
-    renderHTML: function (p) { return ['div', mergeAttributes(p.HTMLAttributes, { 'class': 'te-cut' }), 0]; },
+    renderHTML: function (p) {
+      return ['div', mergeAttributes(p.HTMLAttributes, {
+        'class': p.node.attrs.below ? 'te-cut te-cut-below' : 'te-cut',
+      }), 0];
+    },
   });
 
   // (dev0632) text-align as a first-class attribute on paragraphs/headings —
@@ -356,15 +377,24 @@
   // Wrap the selected top-level lines in a <details>. splitTitle=false ([▶…]):
   // empty summary, caret placed in it, block left open. splitTitle=true ([[2]]):
   // first selected line becomes the summary, the rest becomes the (collapsed) body.
+  // (dev0712) A selection INSIDE a collapsible is now legal — it nests, which is
+  // the only way to build "one collapsible per numbered point" under a heading
+  // block. The old blanket "Already inside a collapsible — Un[▶] first" refused
+  // it outright. Only the summary line itself is still off limits: details is
+  // `detailsSummary block+`, so a range starting at index 0 would eat the title
+  // and the node could not be rebuilt.
   function wrapSelectionInDetails(editor, splitTitle) {
     var state = editor.state;
-    if (_findAncestor(state, 'details')) { _toast('Already inside a collapsible — Un[▶] first'); return; }
     var sel = state.selection;
     var range = sel.$from.blockRange(sel.$to);
     if (!range) return;
     var parent = range.parent;
-    if (parent.type.name !== 'doc' && parent.type.name !== 'slideSection') {
+    if (!_wrappableParent(parent)) {
       _toast('Select whole lines (not list items / table cells) to wrap');
+      return;
+    }
+    if (parent.type.name === 'details' && range.startIndex === 0) {
+      _toast('Select the lines UNDER the title, not the title line itself');
       return;
     }
     var nodes = [];
@@ -389,6 +419,94 @@
       editor.view.dispatch(state.tr.replaceWith(range.start, range.end, det));
       if (!splitTitle) editor.commands.setTextSelection(range.start + 2); // caret into the empty summary
     } catch (e) { console.warn('[xe2] wrap-in-details failed', e); }
+    editor.commands.focus();
+  }
+
+  // Block containers whose children are plain lines we may re-group. Lists and
+  // table cells are excluded — their children are list items / cells, not lines.
+  function _wrappableParent(parent) {
+    var n = parent.type.name;
+    return n === 'doc' || n === 'slideSection' || n === 'details' || n === 'teCut' || n === 'styledDiv';
+  }
+
+  // (dev0712) 1▶ — a numbered outline becomes one collapsible per point. Any
+  // selected line STARTING with a number ("1 Doubts…", "2. …", "3) …") turns
+  // into a summary; the un-numbered lines beneath it become that block's body,
+  // up to the next numbered line. Lines before the first number are left alone.
+  // Works inside an existing collapsible, so a list of points under a heading
+  // block can be exploded in one click.
+  // 1–3 digits, optional . ) ] : or -, then a space and real text — so "$10,000"
+  // and "2026 was a good year" are not mistaken for list numbering.
+  var _NUMLEAD = /^\s*\d{1,3}\s*[.)\]:–-]?\s+\S/;
+  function numberedToDetails(editor) {
+    var state = editor.state, sel = state.selection;
+    var range = sel.$from.blockRange(sel.$to);
+    if (!range) return;
+    var parent = range.parent;
+    if (!_wrappableParent(parent)) {
+      _toast('Select whole lines (not list items / table cells) to convert');
+      return;
+    }
+    if (parent.type.name === 'details' && range.startIndex === 0) {
+      _toast('Select the lines UNDER the title, not the title line itself');
+      return;
+    }
+    var nodes = [];
+    for (var i = range.startIndex; i < range.endIndex; i++) nodes.push(parent.child(i));
+    if (!nodes.length) return;
+    var detType = editor.schema.nodes.details;
+    var sumType = editor.schema.nodes.detailsSummary;
+    var paraType = editor.schema.nodes.paragraph;
+    var groups = [], cur = null, found = 0;
+    nodes.forEach(function (n) {
+      if (n.isTextblock && _NUMLEAD.test(n.textContent)) {
+        cur = { sum: n, body: [] }; groups.push(cur); found++;
+      } else if (cur) {
+        cur.body.push(n);
+      } else {
+        groups.push({ plain: n });
+      }
+    });
+    if (!found) { _toast('No lines starting with a number in the selection'); return; }
+    var built = [];
+    groups.forEach(function (g) {
+      if (g.plain) { built.push(g.plain); return; }
+      var body = g.body.length ? g.body : [paraType.create()];
+      try {
+        built.push(detType.create({ open: false }, [sumType.create(null, g.sum.content)].concat(body)));
+      } catch (e) {
+        // Something in the body can't live in a collapsible — leave that group flat.
+        built.push(g.sum);
+        g.body.forEach(function (b) { built.push(b); });
+      }
+    });
+    try {
+      editor.view.dispatch(state.tr.replaceWith(range.start, range.end, _frag(state, built)));
+      _toast(found + (found === 1 ? ' numbered line' : ' numbered lines') + ' → collapsible');
+    } catch (e) {
+      console.warn('[xe2] numbered→details failed', e);
+      _toast('Could not convert that selection');
+    }
+    editor.commands.focus();
+  }
+
+  // (dev0712) ⊘▼ — drop a CUT LINE after the current line. Everything below it
+  // stops rendering in the slide (core.js _salApplyCutBelow) while staying here,
+  // tinted red, as notes. Cursor inside it + ⊘ Hide removes it again.
+  function insertCutLine(editor) {
+    var state = editor.state;
+    if (_findAncestor(state, 'details')) { _toast('Move the cursor outside the collapsible first'); return; }
+    if (_findAncestor(state, 'teCut')) { _toast('There is already a cut line here'); return; }
+    var $from = state.selection.$from, pos;
+    try { pos = $from.after($from.depth); } catch (e) { pos = null; }
+    if (pos == null) { _toast('Click the line the cut should follow first'); return; }
+    var cut;
+    try { cut = editor.schema.nodes.teCut.create({ below: true }, [editor.schema.nodes.paragraph.create()]); }
+    catch (e) { return; }
+    try {
+      editor.view.dispatch(state.tr.insert(pos, cut));
+      _toast('Cut line added — nothing below it shows in the slide');
+    } catch (e) { _toast('A cut line can’t go here'); }
     editor.commands.focus();
   }
 
@@ -932,7 +1050,8 @@
       ['|'],
       ['&#9654;&hellip;', 'Insert collapsible section', function (e) { insertCollapsible(e); }],
       ['[&#9654;&hellip;]', 'Wrap the selected lines in a collapsible — type the summary title after', function (e) { wrapSelectionInDetails(e, false); }],
-      ['[[2]]', 'Wrap selection as collapsible, split into title + detail — FIRST line becomes the summary, the rest the hidden body', function (e) { wrapSelectionInDetails(e, true); }],
+      ['[[2]]', 'Wrap selection as collapsible, split into title + detail — FIRST line becomes the summary, the rest the hidden body. Works inside another collapsible too (it nests) — just don\'t include the title line in the selection.', function (e) { wrapSelectionInDetails(e, true); }],
+      ['1&#9654;', 'Numbered lines → collapsibles — every selected line starting with a number (1, 2., 3) …) becomes a summary, the lines under it become its body', function (e) { numberedToDetails(e); }],
       ['Un[&#9654;]', 'Undetail — dissolve the collapsible at the cursor: summary becomes an H3 line, body stays', function (e) { undetail(e); }],
       ['&para;&#8593;', 'Blank line ABOVE the collapsible at the cursor, outside it (Ctrl+Shift+Enter)', function (e) { lineOutsideDetails(e, -1); }],
       ['&para;&#8595;', 'Blank line BELOW the collapsible at the cursor, outside it (Ctrl+Enter)', function (e) { lineOutsideDetails(e, 1); }],
@@ -943,7 +1062,8 @@
       ['&#128444;', 'Insert image — or EDIT the selected image (click/double-click an image first to change its size, alignment or caption)', function (e) { insertImage(e); }],
       ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
-      ['&#8856; Hide', 'Hide the SELECTED lines from the rendered slide (kept here, faded, as notes). Cursor inside a hidden block = show it again.', function (e) { toggleHide(e); }],
+      ['&#8856; Hide', 'Hide the SELECTED lines from the rendered slide (kept here, faded red, as notes). Cursor inside a hidden block = show it again.', function (e) { toggleHide(e); }],
+      ['&#8856;&#9660;', 'Cut line — everything BELOW it stops showing in the slide (kept here, red-tinted, as notes). Cursor on the line it should follow, then click.', function (e) { insertCutLine(e); }],
       ['|'],
       ['A&#9662;', 'Text color for the SECTION the cursor is in (whole slide when there are no ══ dividers)', function (e, btn) { showColorPicker(btn, 'text'); }],
       ['&#9635;&#9662;', 'Background color for the section the cursor is in', function (e, btn) { showColorPicker(btn, 'bg'); }],
@@ -1009,8 +1129,18 @@
       // (dev0623) hidden-from-render (te-cut) blocks: global CSS hides them
       // everywhere (display:none!important in index.html); higher-specificity
       // override re-shows them faded here, with a banner (matches v1 #teEditor).
-      '#xe2Editor .te-cut{display:block!important;opacity:0.45;border:1px dashed #a66;border-radius:6px;padding:4px 10px;margin:6px 0;}',
+      // (dev0712) red tint, so "this won't render" is readable at a glance and
+      // not just a faint dashed outline.
+      '#xe2Editor .te-cut{display:block!important;opacity:0.6;background:rgba(200,50,50,0.16);border:1px dashed #a66;border-radius:6px;padding:4px 10px;margin:6px 0;}',
       '#xe2Editor .te-cut::before{content:"\\2298 hidden in slide \\2014 cursor here + \\2298 Hide shows it again";display:block;font-size:10px;color:#f99;font-weight:bold;}',
+      // (dev0712) CUT LINE (te-cut-below): a bar, not a box — and everything
+      // AFTER it is red-tinted too, because none of it renders either. The
+      // sibling tint is pure CSS (~ combinator over the ProseMirror children),
+      // so no class-stamping fights the editor's own DOM management.
+      '#xe2Editor .te-cut-below{opacity:1;background:rgba(200,50,50,0.26);border:0;border-top:3px dashed #f66;border-radius:0;padding:0 6px 2px;margin:14px 0 0;}',
+      '#xe2Editor .te-cut-below::before{content:"\\2298 CUT \\2014 nothing below this line shows in the slide";color:#fbb;}',
+      '#xe2Editor .te-cut-below ~ *{background:rgba(200,50,50,0.13);opacity:0.7;}',
+      '#xe2Editor .te-slide:has(.te-cut-below) ~ *{background:rgba(200,50,50,0.13);opacity:0.7;}',
       '#xe2Editor table{border-collapse:collapse;} #xe2Editor td,#xe2Editor th{border:1px solid #557;padding:4px 8px;}',
       '#xe2Editor a{color:#7cf;}',
     ].join('\n');
@@ -1305,6 +1435,8 @@
     _applySectionColor: applySectionColor,
     _insertSectionBreak: insertSectionBreak,
     _wrapSelectionInDetails: wrapSelectionInDetails,
+    _numberedToDetails: numberedToDetails,
+    _insertCutLine: insertCutLine,
     _undetail: undetail,
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,

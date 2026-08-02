@@ -6518,9 +6518,57 @@ function _detectArticleUrl(text) {
 // Implementation: tokenize the HTML into anchors / tags / text, only
 // touch text segments. This avoids the classic "linkifier ate my image
 // src" bug.
+// (dev0712) ⊘ Hide has TWO shapes, and only one of them was honoured at render
+// time:
+//   • a te-cut div WITH content  → hide just that block (dev0594). Unchanged:
+//     the global .te-cut{display:none} rule already does it, and everything
+//     after it keeps rendering.
+//   • an EMPTY te-cut div        → a CUT LINE. It hides nothing by itself (it
+//     has no content), so it only ever meant "stop here": nothing from this
+//     line down renders. boot.js has treated the greeting that way since
+//     dev0700, but the slide views did not — hence "Hide line doesn't hide
+//     what's below when looked at in slide".
+// v2 now tags the marker `te-cut-below` on save; an untagged empty block is
+// still read as one, so rows written before this keep working.
+//
+// Everything after the marker goes: its following siblings, and the following
+// siblings of every ancestor up to the root (the ancestors themselves stay —
+// they may hold content from BEFORE the marker). That matches the string slice
+// boot.js was doing, minus the orphaned tags.
+function _salIsCutLine(el) {
+  return !(el.textContent || '').trim()
+    && !el.querySelector('img,video,iframe,audio,svg,table,details,hr');
+}
+function _salApplyCutBelow(html) {
+  if (!html || html.indexOf('te-cut') < 0) return html || '';
+  const host = document.createElement('div');
+  host.innerHTML = html;
+  let marker = null;
+  for (const el of host.querySelectorAll('div.te-cut')) {
+    if (el.classList.contains('te-cut-below') || _salIsCutLine(el)) { marker = el; break; }
+  }
+  if (!marker) return html;
+  let node = marker;
+  const parent = node.parentNode;
+  while (node.nextSibling) parent.removeChild(node.nextSibling);
+  parent.removeChild(node);
+  node = parent;
+  while (node && node !== host) {
+    const up = node.parentNode;
+    if (!up) break;
+    while (node.nextSibling) up.removeChild(node.nextSibling);
+    node = up;
+  }
+  return host.innerHTML;
+}
+window._salApplyCutBelow = _salApplyCutBelow;
+
+// NOTE: renderFtext is the DISPLAY path (Xs, G thumbs/cells, V fullscreen).
+// Never use it to fill an editor — the cut above would delete the author's
+// parked notes on the next save. Editors call _linkifyHtml directly.
 function renderFtext(ftext) {
   if (!ftext) return '';
-  return _linkifyHtml(ftext);
+  return _linkifyHtml(_salApplyCutBelow(ftext));
 }
 
 // (dev0278) ftext size / junk readout. "Junk" = bytes a cleanup would strip

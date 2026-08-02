@@ -55,9 +55,12 @@ function gridOpenTextEditor(cellStr, row, opts) {
   // (zip0168) Linkify URL patterns in existing ftext so the editor shows
   // clickable links. On save, the linkified HTML persists — old plain-text
   // URLs become anchor tags after the first edit-save cycle.
+  // (dev0712) _linkifyHtml, NOT renderFtext — renderFtext now also strips
+  // everything below a ⊘ cut line, which is right for a slide and fatal for an
+  // editor (the parked notes would be gone the moment this content is saved).
   const rawExisting = row[_textEditorField] || '';
-  const existingText = (typeof renderFtext === 'function')
-    ? renderFtext(rawExisting)
+  const existingText = (typeof _linkifyHtml === 'function')
+    ? _linkifyHtml(rawExisting)
     : rawExisting;
   const hasMedia = !!(row.link);
   
@@ -263,13 +266,21 @@ function gridOpenTextEditor(cellStr, row, opts) {
       display:block; opacity:0.55;
       border-top:2px dashed #f88; margin-top:14px; padding:22px 0 0;
       position:relative;
+      /* (dev0712) red tint — "this will not render" at a glance. */
+      background:rgba(200,50,50,0.16);
     }
+    /* (dev0712) Cut line: everything below it is dropped from the slide too. */
+    #teEditor .te-cut-below { background:rgba(200,50,50,0.26); }
+    #teEditor .te-cut-below ~ * { background:rgba(200,50,50,0.13); opacity:0.7; }
     #teEditor .te-cut::before {
       content:'⊘ Hidden from the rendered slide — click here to show it again.';
       position:absolute; top:-12px; left:8px;
       background:#3a0a0a; color:#fcc; border:1px solid #f88;
       padding:2px 8px; border-radius:4px; font-size:10px;
       font-family:monospace; cursor:pointer; user-select:none;
+    }
+    #teEditor .te-cut-below::before {
+      content:'⊘ CUT — nothing below this line shows in the slide. Click here to remove the cut.';
     }
     /* (dev0379) Summary now matches detail lines (white, normal weight, same
        size — set in the uniform rule above). Keep it clickable + a hit area. */

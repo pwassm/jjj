@@ -629,10 +629,10 @@ async function _showShareableMenu() {
   // dropped. The greeting isn't a slide, but the author expects it to behave
   // like one — park work-in-progress prose below the marker and it disappears
   // from the public landing page (and from the page-2 lead text after the <hr>).
-  {
-    const _cut = greetingHtml.match(/<div\b[^>]*class="[^"]*\bte-cut\b[^"]*"[^>]*>/i);
-    if (_cut) greetingHtml = greetingHtml.slice(0, _cut.index);
-  }
+  // (dev0712) Same rule, now from the one shared helper in core.js, so the
+  // landing page and the Xs slide preview of this very ctxt agree. The helper
+  // also re-balances the tags the old string slice left orphaned.
+  if (typeof _salApplyCutBelow === 'function') greetingHtml = _salApplyCutBelow(greetingHtml);
   // (dev0361) Split the greeting at its FIRST <hr> (the Xe ══ divider): prose
   // BEFORE the rule is page 1 (welcome / landing), prose AFTER is the lead text
   // shown atop page 2 ("Choose a view"). No <hr> → it all stays on page 1.
