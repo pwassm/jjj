@@ -422,6 +422,8 @@ function gridOpenFullscreen(row, contained) {
       ccOn: false,
       aPoint: _armLoop ? _armLoop.a : null,
       bPoint: _armLoop ? _armLoop.b : null,
+      abSuspended: false,   // (dev0701) set by a manual scrub outside A→B
+
       duration: 0,
       currentTime: 0
     };
@@ -2181,8 +2183,12 @@ function vpKeyHandler(e) {
   // takes priority). Frame-stepping a video page is Shift+←/→ — shifted arrows
   // skip this block and fall through to the frame-step block below, which
   // doesn't care about modifiers.
+  // (dev0701) …with one exception: a video page whose video is PAUSED. Pausing
+  // is the deliberate "I want to look at this frame" act, so there the plain
+  // arrows frame-step (falling through to the block below). Playing video, or
+  // no video at all (text / image / G page) → the arrows page the slide.
   if (window._vpSectNav && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
-      && !e.shiftKey) {
+      && !e.shiftKey && !_vpIsPausedNow()) {
     e.preventDefault(); e.stopPropagation();
     window._vpSectNav(e.key === 'ArrowRight' ? 1 : -1);
     return;
@@ -2395,6 +2401,32 @@ function _vpIsPlaying() {
   try { return _vpState.player.getPlayerState() === 1; } catch (_) { return false; }
 }
 
+// (dev0701) The strict counterpart: TRUE only when a video is genuinely paused
+// — not merely "not playing". YT's unstarted (-1), ended (0) and buffering (3)
+// states must NOT read as paused, or a PM page would frame-step the arrows
+// before the viewer ever pressed play. Vimeo has no sync state getter (its
+// getPaused() is a promise), so it answers false and keeps paging the slides;
+// Shift+←/→ still frame-steps there.
+// (dev0701) Best duration available RIGHT NOW, in seconds, or 0. The poller's
+// cached _vpState.duration first (one tick old at worst), then the media
+// element for a direct/disk video, then YT's sync getDuration(). Vimeo's is a
+// promise, so it only ever answers through the cache.
+function _vpDurNow() {
+  if (!_vpState || !_vpState.player) return 0;
+  if (_vpState.duration > 0) return _vpState.duration;
+  const p = _vpState.player;
+  try {
+    if (p.el && isFinite(p.el.duration) && p.el.duration > 0) return p.el.duration;
+    if (_vpState.isYT) { const d = p.getDuration(); if (d > 0) return d; }
+  } catch (_) {}
+  return 0;
+}
+
+function _vpIsPausedNow() {
+  if (!_vpState || !_vpState.player) return false;
+  try { return _vpState.player.getPlayerState() === 2; } catch (_) { return false; }
+}
+
 function _vpPauseNow() {
   if (!_vpState || !_vpState.player) return;
   const p = _vpState.player;
@@ -2583,6 +2615,9 @@ function vpSetBPoint() {
 function vpUpdateABStyle() {
   const aBtn = document.getElementById('vp-a');
   const bBtn = document.getElementById('vp-b');
+  // (dev0701) Setting/clearing/nudging A or B is a fresh arming — drop any
+  // scrub-suspension so the new window loops immediately.
+  if (_vpState) _vpState.abSuspended = false;
   if (_vpState.aPoint !== null) {
     aBtn.style.background = '#080';
     aBtn.style.borderColor = '#0f0';
@@ -2690,7 +2725,13 @@ function vpWireControls() {
     return { left, top, right, bottom, width: right - left, height: bottom - top };
   };
   const _vpScrubTo = (e) => {
-    if (!_vpState || !_vpState.duration) return;
+    // (dev0701) Duration read LIVE, not off the poller's last tick. It used to
+    // bail on `!_vpState.duration`, which is 0 until vpUpdateTimeline has run
+    // with a player that answers — so an early click on the bar (and every
+    // click on a player whose duration the poller never managed to read) was a
+    // silent no-op instead of a seek.
+    const dur = _vpDurNow();
+    if (!_vpState || !dur) return;
     const p = (typeof window.rotateXY === 'function')
       ? window.rotateXY(e)
       : { x: e.clientX, y: e.clientY };
@@ -2712,7 +2753,16 @@ function vpWireControls() {
         cumul += segs[i].dur;
       }
     } else {
-      const t = pct * _vpState.duration;
+      const t = pct * dur;
+      // (dev0701) A manual scrub OUTSIDE an armed A→B window used to be undone
+      // within one poller tick: the A-B branch in vpUpdateTimeline sees ct past
+      // B and yanks the playhead back to A, so on any row with a loop armed
+      // (every "My Loops" open — those start in FULL mode) clicking the far end
+      // of the bar looked like the timeline was dead. The click wins now; the
+      // loop re-arms by itself when playback re-enters A→B.
+      if (_vpState.aPoint !== null && _vpState.bPoint !== null) {
+        _vpState.abSuspended = (t < _vpState.aPoint || t >= _vpState.bPoint);
+      }
       if (_vpState.isYT) _vpState.player.seekTo(t, true);
       else _vpState.player.setCurrentTime(t);
     }
@@ -2721,13 +2771,13 @@ function vpWireControls() {
     // (dev0293) Ctrl+click on timeline sets A/B alternating: first Ctrl-click
     // sets A, second sets B, third resets both and starts a new pair. Plain
     // click still scrubs. Computes time from click position (not playhead).
-    if (e.ctrlKey && _vpState && _vpState.duration) {
+    if (e.ctrlKey && _vpState && _vpDurNow()) {
       e.preventDefault(); e.stopPropagation();
       const p = (typeof window.rotateXY === 'function')
         ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
       const r = _vpWrapLocalRect(timeline);
       const pct = Math.max(0, Math.min(1, (p.x - r.left) / r.width));
-      const t = pct * _vpState.duration;
+      const t = pct * _vpDurNow();
       if (_vpState.aPoint == null) {
         _vpState.aPoint = t;
       } else if (_vpState.bPoint == null) {
@@ -3001,7 +3051,15 @@ function vpUpdateTimeline() {
     // (dev0410) Pause this background A-B auto-loop while the manual step panel
     // is open so the two don't fight over seeks. The fsb itself is independent
     // of A-B; this is only a "don't fight the open panel" guard.
-    if (!window._vpFSB && _vpState.aPoint !== null && _vpState.bPoint !== null
+    // (dev0701) …and stands down while a manual scrub has parked the playhead
+    // outside the window (see _vpScrubTo); it re-arms the moment playback is
+    // back inside A→B.
+    if (_vpState.abSuspended && _vpState.aPoint !== null && _vpState.bPoint !== null
+        && ct >= _vpState.aPoint && ct < _vpState.bPoint) {
+      _vpState.abSuspended = false;
+    }
+    if (!window._vpFSB && !_vpState.abSuspended
+        && _vpState.aPoint !== null && _vpState.bPoint !== null
         && _vpState.bPoint > _vpState.aPoint) {
       if (ct >= _vpState.bPoint) {
         if (_vpState.isYT) {
