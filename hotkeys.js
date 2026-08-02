@@ -40,6 +40,9 @@
 // and must never fire on the public site. G/V/C/H stay accessible — those are
 // the user's home/view/config/help surfaces.
 const HK_USER_BLOCKED = ['t', 'e', 'a', 'd', 'm', 'l', 'w', 'f', 'i', 's', 'o', 'x'];
+// (dev0702) helpfloat.js's floating panel marks its "global" rows dev/user from
+// this same list, so its marking can't drift from the dispatcher's either.
+window.HK_USER_BLOCKED = HK_USER_BLOCKED;
 
 // Snapshot of which overlays are open — computed once per dispatch and passed
 // to every handler (same flags the old vp.js if-chain computed up front).
@@ -326,9 +329,16 @@ window.HOTKEYS = [
       brOpen(startDi);
     } },
 
-  { key: 'h', label: 'H', group: 'Screens', scope: 'global',
-    desc: 'Toggle Help (works from any screen, any mode)',
+  { key: 'h', label: 'H  /  ⇧H', group: 'Screens', scope: 'global',
+    desc: 'H toggles the floating CONTEXT help — only the hotkeys and gestures of the window you are looking at, with the context-sensitive ones (◆) showing which branch is live right now. Shift+H opens this full reference instead.',
     fn(ctx) {
+      // (dev0702) helpfloat.js owns `h` outright: its window-capture listener is
+      // registered first (helpfloat.js leads the script list in index.html) and
+      // stopImmediatePropagation()s, so core.js never reaches this dispatcher for
+      // h. That is what lets H work on Ev / Xe / D / Slideshow, which core.js
+      // bails out of before dispatching. This fn is the FALLBACK for a load where
+      // helpfloat.js is missing — it keeps the old full-reference behaviour.
+      if (typeof window.hpToggle === 'function') { window.hpToggle(); return; }
       // (zip0155) Works from any screen and in any mode.
       if (ctx.teOpen || ctx.veOpen) return; // text/video editors own their own keys
       if (typeof isHelpOpen === 'function' && typeof openHelp === 'function') {

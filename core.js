@@ -9448,7 +9448,10 @@ const HELP_DATA = [
       { name: 'Hotkeys', items: [
         { key: '2 / 3 / 4 / 5', desc: 'Resize grid to 2×2 / 3×3 / 4×4 / 5×5', dev: false },
         { key: 'G',             desc: 'Open hovered cell\'s video link in a new tab', dev: false },
-        { key: 'C',             desc: 'Toggle closed captions on all video cells', dev: false },
+        // (dev0702) Bare C has opened the Collection/Config screen since dev0376
+        // — captions moved to Shift+C. The old row said the opposite, which the
+        // context panel showed right next to the registry's correct Shift+C row.
+        { key: 'C',             desc: 'Open the Collection / Config screen (Shift+C is the caption toggle)', dev: false },
         { key: 'V',             desc: 'View cell fullscreen',                    dev: false },
         { key: 'E',             desc: 'Open Editor for current cell (dev)',       dev: true  },
         { key: 'T',             desc: 'Return to Table',                         dev: true  },
