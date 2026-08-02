@@ -416,7 +416,15 @@ var HP_ADD = {
     // is the wrong end of the column for the one key that leaves the app.
     // Dev keeps the ◆ version further down — a developer needs the T meaning too.
     { k: 'G', user: true,
-      d: 'Open where this came from — the video’s own page on YouTube, Vimeo or Instagram (or the article it belongs to) in a new tab. Uses the cell under the pointer.' },
+      d: 'Go to cell’s page. For cell under mouse.' },
+    // (dev0708) FULL SCREEN IS THE BROWSER'S, NOT OURS — see the long note above
+    // _toggleFullscreen in boot.js. The site used to request it on "Choose a
+    // view", but API fullscreen is defined to exit on Esc and cannot block that,
+    // and Esc is this app's navigation key. F11 fullscreen ignores Esc, which is
+    // the behaviour a viewer actually wants; script cannot press it, so the help
+    // says the key instead.
+    { k: 'F11', user: true,
+      d: 'Full screen — your browser’s own (⌃⌘F on a Mac), not a key of ours. Use it rather than 0: browser full screen ignores Esc, so Esc keeps working for getting around the site instead of dropping you back out.' },
     // The presentation-mode pair. Shown only when cell 1a really is a text slide,
     // because that is the only time either key does anything (state.gText).
     { k: '↑  /  ↓', when: function (s) { return s.gText; },
@@ -439,7 +447,11 @@ var HP_ADD = {
     // (dev0705) F is FUN, not Fall: it raises the card that offers both modes.
     { k: 'F',
       d: 'FUN — raises the FUN MODES window: both moving modes, the variant numbers, and what a click on a cell does in each. Press F again there for the waterfall.' },
-    { k: 'R',
+    // (dev0708) DEV ONLY now. R still works in Gu — it is the same key it always
+    // was — but it stopped being a CHOICE the moment dev0705 made F raise the FUN
+    // MODES card, which offers the conveyor as one of its options. Listing it
+    // again at the top level presented one menu as two.
+    { k: 'R', dev: true,
       d: 'FUN MODE — conveyor: the cells travel round the grid. Press R again to leave it.' }
   ]
 };

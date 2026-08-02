@@ -435,37 +435,25 @@ function _wireFullscreenOnFirstTap() {
 // hotkey (core.js window-capture). MUST be called from a user gesture (a keydown
 // qualifies) or the browser rejects requestFullscreen. Enters if not currently
 // fullscreen, otherwise exits. Fails soft on any browser that lacks the API.
-// (dev0707) ENTER fullscreen from the "Choose a view →" button, and from nowhere
-// else. Three constraints shaped this:
+// (dev0708) THE SITE NO LONGER REQUESTS FULLSCREEN ANYWHERE BY ITSELF. dev0707
+// put a requestFullscreen() on the "Choose a view →" button, and it was wrong for
+// a reason that is worth recording so it is not tried a third time:
 //
-//  • A page CANNOT fullscreen itself on load — every browser requires a user
-//    gesture, and there is no way to send a real F11 (that is browser chrome, not
-//    a web API). requestFullscreen() is the nearest thing: same hidden chrome,
-//    Esc to leave. A click on "Choose a view" is a qualifying gesture, which is
-//    why the request is made HERE and not in the boot path.
-//  • It must not repeat dev0570. That build fullscreened on the first click or
-//    keypress ANYWHERE after load, which is why it was pulled ("get rid of
-//    auto-F11, it is a nuisance"). Bound to one labelled button on the way INTO
-//    the viewing experience, the fullscreen is at least attributable to a
-//    deliberate press.
-//  • USER MODE ONLY. Fullscreening the dev box mid-edit is the nuisance itself,
-//    and the dev already has the bare-0 toggle below.
+//   The Fullscreen API REQUIRES the browser to offer an escape hatch, and in
+//   every browser that hatch is the Esc key. A page cannot preventDefault() it.
+//   SLAM uses Esc as its main navigation key (Xs→Xe→T, closing V / the filter /
+//   a slideshow), so API fullscreen and this app's navigation are fighting over
+//   the same key and the API always wins — every navigational Esc also dumped
+//   the viewer out of fullscreen.
 //
-// Fails soft everywhere it is unsupported — notably iPhone Safari, which has no
-// element fullscreen at all (video only); iPad/macOS Safari need the webkit-
-// prefixed call. Already-fullscreen is left alone so this never toggles OUT.
-function _smEnterFullscreen() {
-  try {
-    if (!_isUserMode()) return;
-    if (document.fullscreenElement || document.webkitFullscreenElement) return;
-    const el = document.documentElement;
-    const rq = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (!rq) return;
-    const p = rq.call(el);
-    if (p && p.catch) p.catch(() => {});   // denied (no gesture credit / blocked) → stay windowed
-  } catch (_) {}
-}
-
+//   The browser's OWN fullscreen (F11 on Windows/Linux, ⌃⌘F on macOS) is a
+//   DIFFERENT mode and ignores Esc entirely, so it is the one that actually
+//   stays. It cannot be triggered from script — F11 is browser chrome, not a web
+//   API — so the only honest thing the site can do is TELL the viewer the key.
+//   That is now a row in the grid's help panel (helpfloat.js HP_ADD.G).
+//
+// Bare 0 below is kept: it is the in-page toggle, useful on a phone or kiosk
+// where there is no F11 and no Esc key to collide with in the first place.
 function _toggleFullscreen() {
   try {
     if (document.fullscreenElement) {
@@ -1267,11 +1255,13 @@ async function _showShareableMenu() {
     }
   });
   // Welcome → Main Page (both the top and bottom "Choose a view" buttons).
-  // (dev0707) …and the one place fullscreen can legitimately be asked for.
+  // (dev0708) dev0707's fullscreen request is GONE from here again — Esc is this
+  // app's navigation key and API fullscreen is defined to exit on it. See the
+  // note above _toggleFullscreen; the F11 row in helpfloat.js HP_ADD.G replaces it.
   const _smGo = ov.querySelector('#smGoView');
-  if (_smGo) _smGo.addEventListener('click', () => { _smEnterFullscreen(); _smShow(2); });
+  if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
   const _smGoTop = ov.querySelector('#smGoViewTop');
-  if (_smGoTop) _smGoTop.addEventListener('click', () => { _smEnterFullscreen(); _smShow(2); });
+  if (_smGoTop) _smGoTop.addEventListener('click', () => _smShow(2));
 
   // (dev0551) Wire the optional sign-in strip (#smAuth). Fails soft: if
   // window.salAuth is missing (auth.js failed to load) or the API is down, the

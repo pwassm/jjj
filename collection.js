@@ -992,9 +992,25 @@ function cDeleteSelected() {
 //   2. If the link is itself a webpage (YouTube / Vimeo / IG / article), that
 //      page IS the source → open it.
 //   3. Raw media (image / direct video) with no recorded source page:
-//        · dev  + image → open a Google Lens reverse-image lookup (find source)
-//        · dev  + video → toast (a raw MP4 can't be reverse-searched)
-//        · user (any)   → toast "No source page recorded"
+//        · image → open a Google reverse-image search for it (find the source)
+//        · video → toast (a raw MP4 can't be reverse-searched)
+//      …in BOTH modes (dev0708; was dev-only + Google Lens).
+//
+// (dev0708) STEP 3 NOW ANSWERS IN BOTH MODES, and with a different Google. The
+// user-mode branch was a dead end: g is documented in Gu as "go to cell's page",
+// and on an image with no recorded linkpage it did nothing but apologise. A
+// reverse-image search is the honest answer to "where is this from" when nobody
+// has recorded one yet — often it is the ONLY answer.
+//
+// searchbyimage, not Lens. Both start from the same image URL, but Lens's
+// uploadbyurl opens on VISUAL MATCHES (things that look similar), while
+// searchbyimage is the classic Google Images entry that leads to the list of
+// pages carrying this exact image — several candidate sources rather than one
+// guess, which is the point of pressing g. Google redirects it into the modern
+// Lens surface these days; the landing tab is still the source list.
+//
+// The image URL is handed to Google, so this only ever runs on rows whose media
+// is already public — which is every row that can appear in a grid.
 var _RAW_IMG_RE = /\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)$/i;
 var _RAW_VID_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i;
 window._gridOpenLink = function() {
@@ -1020,17 +1036,16 @@ window._gridOpenLink = function() {
   // IG post, …). Opening it goes to the source, so just open it.
   if (!isImg && !isVid) { window.open(link, '_blank', 'noopener'); return; }
 
-  var userMode = (typeof _isUserMode === 'function') && _isUserMode();
-  if (userMode) {
-    if (typeof _gridToast === 'function') _gridToast('No source page recorded for this item', 1600);
-    return;
-  }
   if (isImg) {
-    window.open('https://lens.google.com/uploadbyurl?url=' + encodeURIComponent(link), '_blank', 'noopener');
-    if (typeof _gridToast === 'function') _gridToast('No source page — opened reverse-image search', 1800);
+    window.open('https://www.google.com/searchbyimage?image_url=' + encodeURIComponent(link),
+                '_blank', 'noopener');
+    if (typeof _gridToast === 'function') {
+      _gridToast('No source page recorded — searching Google for this image', 2000);
+    }
     return;
   }
-  // dev + direct video: nothing useful to reverse-search.
+  // Direct video, either mode: nothing useful to reverse-search — a raw MP4 has
+  // no image for Google to match on.
   if (typeof _gridToast === 'function') _gridToast('No source page recorded (direct video)', 1600);
 };
 

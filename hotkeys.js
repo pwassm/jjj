@@ -37,9 +37,18 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 // (zip0141/dev0315) User mode (Gu/Cu only): these keys lead to dev-only screens
-// and must never fire on the public site. G/V/C/H stay accessible — those are
-// the user's home/view/config/help surfaces.
-const HK_USER_BLOCKED = ['t', 'e', 'a', 'd', 'm', 'l', 'w', 'f', 'i', 's', 'o', 'x'];
+// and must never fire on the public site. G/C/H stay accessible — those are the
+// user's home/config/help surfaces.
+// (dev0708) 'v' JOINS THE LIST, and for a different reason than the rest — it
+// does not lead to a dev-only screen, it leads to the WRONG ITEM. From the grid
+// the handler below takes _lastGridRow, and in Gu a viewer who has not yet
+// touched a cell has no such row; it then falls through to window._lastUID, a
+// leftover from some earlier grid or session. So v in Gu played a video with no
+// relation to what was on screen (user report). V the SCREEN is unaffected and
+// still reachable the way a viewer actually reaches it — the swipe, or tapping a
+// cell — this only makes the bare KEY inert there. Because the help derives its
+// dev/user marking from this list, the V row also leaves the Gu panel.
+const HK_USER_BLOCKED = ['t', 'e', 'a', 'd', 'm', 'l', 'w', 'f', 'i', 's', 'o', 'x', 'v'];
 // (dev0702) helpfloat.js's floating panel marks its "global" rows dev/user from
 // this same list, so its marking can't drift from the dispatcher's either.
 window.HK_USER_BLOCKED = HK_USER_BLOCKED;
