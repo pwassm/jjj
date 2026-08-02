@@ -173,6 +173,15 @@ function hpState() {
       var c = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
       return !!(c && c._salSect && c._salSect.inner && c._salSect.inner.isConnected);
     }, false),
+    // (dev0705) IS CELL 1a A TEXT SLIDE? The presentation-mode pair (↑ ↓ and
+    // ← →) exists only when it is, so the panel senses it rather than printing
+    // both keys and an "inert" caveat under them. Broader than gSect on purpose:
+    // gSect needs the slide to be SECTIONED (split at a top-level <hr>), and a
+    // one-section deck is still a presentation the arrows belong to.
+    gText: probe(function () {
+      var c = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
+      return !!(c && c._rowData && _gridIsTextRow(c._rowData));
+    }, false),
     // (dev0704) Q / ⇧Q only mean anything on a grid that HAS an IG / TikTok /
     // Pinterest embed in it — those are the cells that spend their one inline
     // play. On any other grid the key is inert, so the row is not offered.
@@ -180,6 +189,9 @@ function hpState() {
     // (dev0704) The two "fun" modes get their own tiny help screen, so the panel
     // has to tell them apart rather than just knowing something is moving.
     fall:      probe(function () { return !!(window.FallCells && window.FallCells.active); }, false),
+    // (dev0705) F raises the FUN MODES card, which answers the fun-mode questions
+    // itself — H over it is a reader asking about the card, not about the grid.
+    funPanel:  probe(function () { return !!(window._gmFunPanelOpen && window._gmFunPanelOpen()); }, false),
     conveyor:  probe(function () {
       return !!((window.MovingCells && window.MovingCells.running)
              || (window.FlyCells  && window.FlyCells.active)
@@ -307,18 +319,14 @@ var HP_CTX = [
     note: 'A swipe that stays INSIDE one cell keeps its own meaning: pause/play that cell.',
     noteU: '' },
 
-  // ── G: arrows only do something when a sectioned t cell is on the grid.
-  { screens: ['G'], k: '←  /  →', kind: 'key',
-    hide: ['← →'],
-    d: 'Depends on the 1a cell:',
-    variants: [
-      { d: 'Page the sectioned lesson slide in cell 1a back / forward',
-        on: function (s) { return s.gSect; } },
-      { d: 'Inert — cell 1a is not a sectioned text slide', on: function () { return true; } }
-    ] },
   // (dev0704) ↑ / ↓ used to ride along as a footnote on the ← / → row, where it
   // read as a variant of paging. It is a different action — the presentation
   // window growing and shrinking — so it gets its own line (see HP_ADD).
+  // (dev0705) ← / → left the ◆ rules entirely for the same reason. It had two
+  // variants and one of them was "Inert", which is not a behaviour — it is the
+  // key not being there. The panel now SENSES cell 1a (state.gText): a text slide
+  // gets one flat line right under ↑ / ↓, and any other grid gets no row at all.
+  // See HP_ADD; the pre-claim in hpRows keeps the shadowed labels down either way.
 
   // ── G: the bracket keys are shared between zoom and buffer pre-roll (dev0674).
   // (dev0704) DEV ONLY. In Gu the CLEAN PLAYBACK panel gets its own little help
@@ -376,7 +384,7 @@ var HP_CTX = [
     hide: ['F'],
     d: 'Same key, two jobs:',
     variants: [
-      { d: 'Grid: FUN MODE — FallCells, the waterfall. Press F again to leave it.',
+      { d: 'Grid: FUN — raises the FUN MODES window (waterfall / conveyor, the variant numbers, what a click does). F again there is the waterfall toggle.',
         on: function (s) { return s.code === 'G'; } },
       { d: 'Table: toggle the filter — tags ∧ text (⇧F clears every filter)',
         dev: true, on: function (s) { return s.code === 'T'; } }
@@ -401,8 +409,20 @@ var HP_CTX = [
 // ─────────────────────────────────────────────────────────────────────────────
 var HP_ADD = {
   G: [
-    { k: '↑  /  ↓',
+    // (dev0705) FIRST ROW IN Gu, deliberately. A viewer's most common question on
+    // a grid is "where is this from / how do I see the rest of it", and G is the
+    // only answer — it is how you reach YouTube, Vimeo or the Instagram post
+    // itself. It was the LAST row (a ◆ T-vs-G rule collapsed to one line), which
+    // is the wrong end of the column for the one key that leaves the app.
+    // Dev keeps the ◆ version further down — a developer needs the T meaning too.
+    { k: 'G', user: true,
+      d: 'Open where this came from — the video’s own page on YouTube, Vimeo or Instagram (or the article it belongs to) in a new tab. Uses the cell under the pointer.' },
+    // The presentation-mode pair. Shown only when cell 1a really is a text slide,
+    // because that is the only time either key does anything (state.gText).
+    { k: '↑  /  ↓', when: function (s) { return s.gText; },
       d: 'Expand / shrink the presentation-mode window — ↑ opens the lesson slide in cell 1a to the whole window, ↓ puts it back in its cell' },
+    { k: '←  /  →', when: function (s) { return s.gText; },
+      d: 'Presentation mode back / forward' },
     // Not "toggles to the previous level": z is a RESET, and ⇧Z is the one that
     // brings a level back (the one saved with the grid). Said plainly, because
     // the pair is what makes zooming safe to play with.
@@ -416,6 +436,9 @@ var HP_ADD = {
       d: 'Show / hide the captions on the videos — zoom level 1 to see them' },
     { k: 'Shift+C', user: true,
       d: 'Choose a different grid' },
+    // (dev0705) F is FUN, not Fall: it raises the card that offers both modes.
+    { k: 'F',
+      d: 'FUN — raises the FUN MODES window: both moving modes, the variant numbers, and what a click on a cell does in each. Press F again there for the waterfall.' },
     { k: 'R',
       d: 'FUN MODE — conveyor: the cells travel round the grid. Press R again to leave it.' }
   ]
@@ -437,18 +460,36 @@ var HP_MODES = [
       { k: '[  /  ]',  d: 'Less / more warm-up (∓0.5 s) — the panel shows the new value' },
       { k: 'Esc',      d: 'Close this window. [ and ] go back to zooming the grid.' }
     ] },
+  // (dev0705) The FUN MODES card is itself the answer, so H over it just says how
+  // to work the card. Listed FIRST: it can be up while a mode runs, and then it,
+  // not the mode, is what the reader is looking at.
+  { screens: ['G'], on: function (s) { return s.funPanel; },
+    title: '✨ FUN MODES window',
+    desc: 'The window in the middle offers both moving modes — it stays up while they run and keeps saying what each key does now:',
+    rows: [
+      { k: 'F',       d: 'Start the waterfall — cells drop off the cliff, bounce and re-enter. F again stops it.' },
+      { k: 'R',       d: 'Start the conveyor — the cells travel round the grid. R again stops it.' },
+      { k: '1  /  2', d: 'While a mode runs: 1 = cascade · 2 = swap (the same number again gives the plain conveyor)' },
+      { k: 'Click a cell', d: 'Does something different in each mode — the window says which' },
+      { k: '{  /  }', d: 'Slower / faster' },
+      { k: 'Esc',     d: 'Close this window. Anything running keeps running — F and R are the off switches.' }
+    ] },
   { screens: ['G'], on: function (s) { return s.fall; },
     title: '🌊 FALL mode',
     desc: 'A fun mode — the cells fall around the edge of the grid.',
     rows: [
       { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain conveyor)' },
-      { k: 'F',       d: 'LEAVE fall mode — the grid goes back to normal' }
+      { k: 'Click a cell', d: 'Features that cell BIG for about 10 seconds, then it fades back into the flow' },
+      { k: '{  /  }', d: 'Slower / faster' },
+      { k: 'F',       d: 'Opens the FUN MODES window; F again there LEAVES fall mode' }
     ] },
   { screens: ['G'], on: function (s) { return s.conveyor; },
     title: '↻ CONVEYOR mode',
     desc: 'A fun mode — the cells travel round the grid.',
     rows: [
       { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain conveyor)' },
+      { k: 'Click a cell', d: 'Plain conveyor: play / pause it · cascade: flies it to a free slot · swap: glides it into another cell’s place' },
+      { k: '{  /  }', d: 'Slower / faster' },
       { k: 'R',       d: 'LEAVE conveyor mode — the grid goes back to normal' }
     ] }
 ];
@@ -650,6 +691,10 @@ function hpRows(s) {
   // (dev0704) Q / ⇧Q re-prime an IG / TikTok embed. On a grid with no embed on
   // it there is nothing to re-prime, so the row is dropped rather than explained.
   if (code === 'G' && !s.hasEmbed) seen[normKey('Q  /  Shift+Q')] = true;
+  // (dev0705) HELP_DATA / the registry may carry a bare '← →' row for the grid.
+  // The presentation-mode line in HP_ADD is the wording we want when 1a IS a text
+  // slide, and when it is not, ← / → do nothing there — so claim it either way.
+  if (code === 'G') seen[normKey('← →')] = true;
 
   function push(list, k, d, dev) {
     if (!k || !d) return;
@@ -660,9 +705,12 @@ function hpRows(s) {
   }
 
   // 0 — HP_ADD: mode-specific wording, first so it beats every other source.
+  // (dev0705) `when` is the live-state gate — a row whose key does nothing on THIS
+  // grid is left out entirely rather than printed with an "inert" caveat.
   (HP_ADD[code] || []).forEach(function (r) {
     if (r.user && !s.userMode) return;
     if (r.dev  && s.userMode)  return;
+    if (r.when && !probe(function () { return r.when(s); }, false)) return;
     push(r.kind === 'gesture' ? gests : keys, r.k, r.d, r.dev && !r.user);
   });
 
@@ -670,8 +718,15 @@ function hpRows(s) {
   //     shadow, whether or not the rule itself survives the mode filter.
   HP_CTX.forEach(function (r) {
     if (r.screens.indexOf(code) < 0) return;
+    // (dev0705) Read `claimed` BEFORE applying the hide list, not after. Most of
+    // these rules hide their OWN label (the flat 'G' / 'Esc' / 'F' rows they are
+    // replacing are worded identically), so applying hides first made every such
+    // rule claim itself and return — and because the hides had already landed,
+    // the flat rows were suppressed too. Seven of the ten rules, G's Esc / G / A /
+    // S / F / [ ] / 1-9 among them, rendered nothing at all. `claimed` only ever
+    // meant "an HP_ADD row already said this better".
+    var claimed = seen[normKey(r.k)];
     (r.hide || []).forEach(function (lbl) { seen[normKey(lbl)] = true; });
-    var claimed = seen[normKey(r.k)];            // an HP_ADD row already said it
     seen[normKey(r.k)] = true;
     if (claimed) return;
     if (s.userMode && r.dev) return;

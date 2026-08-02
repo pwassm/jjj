@@ -236,6 +236,9 @@ function _gmSelectDigit(k) {
   } else if (typeof toast === 'function') {
     toast('Variant ' + k + ' not built yet — 1 = cascade · 2 = swap · r exits', 2200);
   }
+  // (dev0705) The FUN MODES card names the live variant and what a click now does,
+  // so it has to follow a variant change wherever the digit came from.
+  if (typeof window._gmFunPanelRefresh === 'function') window._gmFunPanelRefresh();
 }
 // (dev0460) F → the FallCells "perimeter waterfall" variant. Unlike 1 / 2 (which
 // only pick a variant WHILE a mode is already running), F has its own key and can
@@ -254,6 +257,108 @@ function _gmToggleFall() {
 window._gmAnyMoving = _gmAnyMoving;
 window._gmSelectDigit = _gmSelectDigit;
 window._gmToggleFall = _gmToggleFall;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev0705) THE FUN WINDOW — F is now "Fun", not "Fall".
+//
+// There are two fun modes and they were reachable only by knowing that F meant
+// one of them and R the other, with the numbers and the click behaviour living
+// nowhere but a 4-second toast. So bare F over the grid now raises this card:
+// both modes, what the numbers do, and what a CLICK does in each one — which is
+// the part that differs most (feature-big vs fly vs swap vs plain play/pause).
+//
+// It is a live control panel, not a modal: it stays up while you play so it can
+// keep saying what each key will do NEXT (the F row flips to "stop" while the
+// waterfall runs). Every key still reaches its normal handler underneath — the
+// card only reads state and refreshes. Esc drops it; the modes keep running.
+// ─────────────────────────────────────────────────────────────────────────────
+function _gmFunPanelOpen() { return !!document.getElementById('gridFunPanel'); }
+
+function _gmLiveMode() {
+  if (window.FallCells && window.FallCells.active) return 'fall';
+  if (window.FlyCells  && window.FlyCells.active)  return 'fly1';
+  if (window.FlyCells2 && window.FlyCells2.active) return 'fly2';
+  if (window.MovingCells && window.MovingCells.running) return 'conveyor';
+  return '';
+}
+
+function _gmFunPanelHtml() {
+  const live = _gmLiveMode();
+  const on = (yes) => yes ? 'color:#7ddba0;' : 'opacity:.85;';
+  const row = (key, name, desc, active) =>
+    '<div style="display:flex;gap:12px;align-items:baseline;margin:5px 0;' + on(active) + '">'
+    + '<span style="flex:none;width:52px;font-weight:700;letter-spacing:.5px;">' + key + '</span>'
+    + '<span style="flex:none;width:104px;">' + name + '</span>'
+    + '<span style="flex:1;opacity:.72;font-size:12px;">' + desc + '</span></div>';
+  // What a click does depends on the mode, which is exactly why it needs saying.
+  const clickTxt = live === 'fall'
+      ? 'features that cell BIG for 10s, then it fades back into the flow'
+    : live === 'fly1'
+      ? 'flies that cell to a random free slot — the others close the gap'
+    : live === 'fly2'
+      ? 'glides that cell into another’s place — they swap in one smooth path'
+    : live === 'conveyor'
+      ? 'plays / pauses that cell — the belt keeps moving'
+      : 'each mode gives the click its own trick — turn one on to see';
+  return '<div style="font-weight:600;letter-spacing:.5px;margin-bottom:8px;'
+      + 'display:flex;justify-content:space-between;gap:20px;">'
+      + '<span>✨ FUN MODES</span><span style="opacity:.5;font-weight:400;">Esc closes</span></div>'
+    + row('F', '🌊 Waterfall', live === 'fall'
+        ? '<b>running</b> — press F again to stop'
+        : 'cells drop off the cliff, bounce and re-enter', live === 'fall')
+    + row('R', '↻ Conveyor', live && live !== 'fall'
+        ? '<b>running</b> — press R again to stop'
+        : 'the cells travel round the grid', !!live && live !== 'fall')
+    + '<div style="height:1px;background:rgba(255,255,255,.12);margin:8px 0 7px;"></div>'
+    + row('1 / 2', 'variant', 'while a mode runs: 1 = cascade · 2 = swap (same number again = plain conveyor)', false)
+    + row('Click', 'a cell', clickTxt, !!live)
+    + row('{ / }', 'speed', 'slower / faster', false);
+}
+
+function _gmFunPanelRefresh() {
+  const el = document.getElementById('gridFunPanel');
+  if (el) el.innerHTML = _gmFunPanelHtml();
+}
+
+function _gmFunPanelShow() {
+  let el = document.getElementById('gridFunPanel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'gridFunPanel';
+    // Centred, biased up: it is a chooser you read once and dismiss, and the
+    // bottom-left corner already belongs to the CLEAN PLAYBACK card.
+    el.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);'
+      + 'z-index:100001;background:rgba(16,16,18,0.95);color:#eee;'
+      + 'border:1px solid rgba(255,255,255,0.16);border-radius:12px;padding:13px 17px;'
+      + 'min-width:430px;max-width:min(92vw,560px);'
+      + 'font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;'
+      + 'box-shadow:0 8px 34px rgba(0,0,0,0.6);pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  _gmFunPanelRefresh();
+  return el;
+}
+
+function _gmFunPanelClose() {
+  const el = document.getElementById('gridFunPanel');
+  if (el) el.remove();
+  return !!el;
+}
+
+// Bare F over the grid. First press = raise the card; while it is up F is the
+// waterfall toggle, so the old F,F muscle memory still lands on the waterfall
+// and still turns it off again.
+function _gmFunKey() {
+  if (!_gmFunPanelOpen()) { _gmFunPanelShow(); return; }
+  _gmToggleFall();
+  _gmFunPanelRefresh();
+}
+
+window._gmFunPanelOpen    = _gmFunPanelOpen;
+window._gmFunPanelShow    = _gmFunPanelShow;
+window._gmFunPanelClose   = _gmFunPanelClose;
+window._gmFunPanelRefresh = _gmFunPanelRefresh;
+window._gmFunKey          = _gmFunKey;
 
 // Grid keyboard handler - only Escape (Alt keys handled globally)
 document.addEventListener('keydown', e => {
@@ -321,6 +426,7 @@ document.addEventListener('keydown', e => {
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
     e.preventDefault(); e.stopPropagation();
     _gmMasterToggle();
+    _gmFunPanelRefresh();                           // (dev0705) live readout
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '{' || (e.shiftKey && e.code === 'BracketLeft'))) {
@@ -449,6 +555,9 @@ document.addEventListener('keydown', e => {
     // FIRST and leaves the grid alone — same step-back convention as the cut
     // marker below it.
     if (typeof window._gridBufPanelClose === 'function' && window._gridBufPanelClose()) return;
+    // (dev0705) …and the FUN MODES card the same way. Dropping the card does not
+    // stop a running mode: it is a readout, and F / R are still the off switches.
+    if (_gmFunPanelClose()) return;
     if (_gridCutCell) {
       gridClearCut();
       toast('Cut cancelled', 800);

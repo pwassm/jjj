@@ -2076,6 +2076,11 @@ window._returnToMenuFromGrid = function () {
   if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
   if (typeof gridClearCut === 'function') gridClearCut();
   if (typeof gridHideContextMenu === 'function') gridHideContextMenu();
+  // (dev0705) Both grid cards are position:fixed on <body>, so hiding the overlay
+  // alone leaves them floating over the menu. gridClose() already drops them; this
+  // path is the user-mode way out and has to as well.
+  if (typeof window._gridBufPanelClose === 'function') window._gridBufPanelClose();
+  if (typeof window._gmFunPanelClose === 'function') window._gmFunPanelClose();
   const g = document.getElementById('gridOverlay');
   if (g) g.style.display = 'none';
   const fs = document.getElementById('gridFullscreen');

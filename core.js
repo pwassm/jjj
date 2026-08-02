@@ -419,23 +419,28 @@ window.addEventListener('keydown', function(e) {
   // letter shortcuts (T/Q/D/V/W). Don't let the global dispatcher swallow them
   // (e.g. 'w' = clipboard import) — bail so the menu's capture handler runs.
   if (document.getElementById('gridContextMenu')) return;
-  // (dev0460) F → toggle "fall cells" (the perimeter-drain waterfall conveyor)
-  // while G is open. Bare key only — Shift+F (clear filters) is handled above, and
-  // F is otherwise forwarded to _executeHotkey('f') (the filter modal, a no-op in
-  // G). Own it here in window-capture, alongside the digit variant keys, and route
-  // to the moving-cells family.
+  // (dev0460) F → the "fall cells" perimeter-drain waterfall while G is open.
+  // (dev0705) F now stands for FUN, not Fall: the first press raises the FUN MODES
+  // card (collection.js _gmFunKey) listing BOTH modes, the variant numbers and what
+  // a click on a cell does in each — none of which was discoverable from a key that
+  // silently started one of them. While the card is up F is still the waterfall
+  // toggle, so F,F lands where F used to and F,F again turns it off.
+  // Bare key only — Shift+F (clear filters) is handled above, and F is otherwise
+  // forwarded to _executeHotkey('f') (the filter modal, a no-op in G). Own it here
+  // in window-capture, alongside the digit variant keys.
   if (k === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
     const gOpenF = document.getElementById('gridOverlay')?.style.display === 'flex';
     const vpOpenF = document.getElementById('gridFullscreen')?.style.display === 'flex';
-    // (dev0571) FallCells is a dev screensaver toy — normally not part of Gu's
+    // (dev0571) The fun modes are dev screensaver toys — normally not part of Gu's
     // viewing subset. (dev0598) But the guFunKeys switch (default ON) lets viewers
-    // on the public site play with it too; window.guFunKeys(false) restores lockdown.
+    // on the public site play with them too; window.guFunKeys(false) restores lockdown.
     const _uModeF = (typeof _isUserMode === 'function') && _isUserMode();
     const _guFunF = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
     if (gOpenF && !vpOpenF && (!_uModeF || _guFunF)) {
       e.preventDefault();
       e.stopPropagation();
-      if (typeof window._gmToggleFall === 'function') window._gmToggleFall();
+      if (typeof window._gmFunKey === 'function') window._gmFunKey();
+      else if (typeof window._gmToggleFall === 'function') window._gmToggleFall();
       return false;
     }
   }

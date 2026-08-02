@@ -524,8 +524,8 @@ window.HOTKEYS = [
     desc: 'Over a hovered cell: paste the clipboard URL into the row’s linkpage (the source page found via g’s reverse-image search), clearing its “noLinkpageYet” marker. The bottom-left pill counts how many rows still need a source.' },
 
   { label: 'F', group: 'Grid (window-capture)', scope: 'G', dev: false,
-    impl: 'core.js window-capture (dev0460)',
-    desc: 'Toggle FallCells (perimeter waterfall conveyor)' },
+    impl: 'core.js window-capture (dev0460/0705) → collection.js _gmFunKey',
+    desc: 'F is FUN. The first press raises the FUN MODES window: both moving modes (F = waterfall, R = conveyor), the variant numbers (1 = cascade, 2 = swap), the { } speed keys and — the part that was documented nowhere — what a CLICK on a cell does in each mode. The window stays up while a mode runs and keeps saying what each key does next; Esc drops it without stopping anything. While it is up, F is the waterfall toggle, so F,F still starts the waterfall and F,F again stops it.' },
 
   { label: 'S', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0516)',
