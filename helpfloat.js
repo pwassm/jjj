@@ -445,8 +445,11 @@ var HP_ADD = {
       d: 'Adjust playback — raises the CLEAN PLAYBACK window. Press H while it is up and this help explains its keys.' },
     { k: 'C', user: true,
       d: 'Show / hide the captions on the videos — zoom level 1 to see them' },
-    { k: 'Shift+C', user: true,
-      d: 'Choose a different grid' },
+    // (dev0710) ⇧C (choose a different grid) is DELIBERATELY NOT LISTED in Gu —
+    // the key still works, it is just not advertised to a viewer. See
+    // HP_DROP_USER.G, which also keeps the registry's own row out of Gu.
+    { k: 'L', user: true,
+      d: 'Clean view — hides the ← arrow, the cell letters (1a, 1b …) and the line of text along the top. Press L again to bring them back.' },
     // (dev0705) F is FUN, not Fall: it raises the card that offers both modes.
     { k: 'F',
       d: 'FUN — raises the FUN MODES window: both moving modes, the variant numbers, and what a click on a cell does in each. Press F again there for the waterfall.' },
@@ -675,7 +678,10 @@ function normKey(k) {
 // standing in T — from a grid a viewer reaches the same view by clicking or
 // swiping a cell, which the grid's own rows already say. One route, one row.
 var HP_DROP_USER = {
-  G: ['Shift+B', 'V']
+  // (dev0710) 'Shift+C' — the grid picker still WORKS in Gu, it is just not
+  // advertised there (owner's request); dropping it here keeps the registry row
+  // out too, not only the HP_ADD one.
+  G: ['Shift+B', 'V', 'Shift+C']
 };
 
 var HP_DROP = {

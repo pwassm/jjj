@@ -528,6 +528,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture (dev0376/0704)',
     desc: 'Toggle closed captions on all YT/Vimeo grid cells. (dev0704) USER MODE SWAPS THE PAIR on the grid: there bare c toggles the captions (zoom level 1 to see them) and Shift+C opens the grid picker. Dev is unchanged.' },
 
+  { label: 'L', group: 'Grid (window-capture)', scope: 'G', dev: false,
+    impl: 'core.js window-capture (dev0710) → grid.js _gridToggleClean',
+    desc: 'cLean view — hides every piece of chrome the app paints over the pictures: the per-cell labels (1a, 1b …), the top-left info line and the floating ← back arrow. Nothing stops working; L again restores them. Persisted in localStorage (slam-grid-clean). Grid overlay only — bare l on other screens is still the clipboard import, and in a full-screen cell V keeps it (save loop).' },
+
   { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
     impl: 'collection.js _gridPasteSource (dev0548)',
     desc: 'Over a hovered cell: paste the clipboard URL into the row’s linkpage (the source page found via g’s reverse-image search), clearing its “noLinkpageYet” marker. The bottom-left pill counts how many rows still need a source.' },

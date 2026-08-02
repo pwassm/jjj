@@ -345,6 +345,22 @@ window.addEventListener('keydown', function(e) {
     }
   }
 
+  // (dev0710) l = cLean: on the grid, hide/show the chrome the app paints over
+  // the pictures (cell labels 1a…, the top info line, the floating back arrow).
+  // Claimed HERE, before the dispatcher, because bare `l` is the global
+  // clipboard-import hotkey — which has no business on a grid — and is blocked
+  // outright in user mode (HK_USER_BLOCKED). Grid overlay only, and not while a
+  // cell is full-screen (V owns `l` there — see the bail above).
+  if (k === 'l' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const gOpenL = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const gFsL   = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpenL && !gFsL) {
+      e.preventDefault(); e.stopPropagation();
+      if (window._gridToggleClean) window._gridToggleClean();
+      return false;
+    }
+  }
+
   // (dev0376) Shift+C = toggle closed captions on all YT/Vimeo grid cells.
   // Only when the grid overlay is open; otherwise falls through so bare 'c'
   // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled

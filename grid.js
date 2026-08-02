@@ -2128,6 +2128,38 @@ function _buildFtextImgCell(cell, row) {
   return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev0710) CLEAN CHROME — the `l` key (cLean). Hides everything the app draws
+// ON TOP of the pictures that is about the app rather than the content: the
+// per-cell labels (1a, 1b …), the top-left info line, and the floating back
+// arrow. The pictures themselves and every key still work — this is purely
+// what is painted over them, so it is a display toggle, not a mode.
+// Persisted, because a viewer who wants the grid bare wants it bare next time
+// too. Re-applied after every render (labels are rebuilt each time).
+// ─────────────────────────────────────────────────────────────────────────────
+var _gridCleanChrome = (function () {
+  try { return localStorage.getItem('slam-grid-clean') === '1'; } catch (_) { return false; }
+})();
+
+function _gridApplyClean() {
+  const on = _gridCleanChrome;
+  document.querySelectorAll('#gridOverlay .grid-cell-label')
+    .forEach(el => { el.style.display = on ? 'none' : ''; });
+  const info = document.getElementById('gridInfo');
+  if (info) info.style.display = on ? 'none' : '';
+  const arrow = document.getElementById('gridBackArrow');
+  if (arrow) arrow.style.display = on ? 'none' : '';
+}
+window._gridApplyClean = _gridApplyClean;
+
+window._gridToggleClean = function () {
+  _gridCleanChrome = !_gridCleanChrome;
+  try { localStorage.setItem('slam-grid-clean', _gridCleanChrome ? '1' : '0'); } catch (_) {}
+  _gridApplyClean();
+  if (typeof toast === 'function')
+    toast(_gridCleanChrome ? 'Clean view ON — press L to bring the labels back' : 'Clean view off', 1800);
+};
+
 function gridShow() {
   gridCleanupPlayers();
   gridClearCut();
@@ -2283,6 +2315,7 @@ function gridShow() {
       // The previous single 1px/1px/2px shadow vanished against light
       // page backgrounds.
       const lbl = document.createElement('div');
+      lbl.className = 'grid-cell-label';
       lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(120,180,255,0.95);font-weight:bold;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;';
       lbl.textContent = cellStr;
       interactor.appendChild(lbl);
@@ -2431,6 +2464,23 @@ function gridShow() {
   // gridUpdateSourceBtns may have re-set display/opacity on the dev
   // buttons. Idempotent and a no-op in dev mode.
   if (typeof _applyUserModeChromeOnGrid === 'function') _applyUserModeChromeOnGrid();
+  // (dev0710) The back arrow is wired once — the button lives in the overlay and
+  // survives every re-render. Same destination as Esc and the R→L swipe.
+  const _backArrow = document.getElementById('gridBackArrow');
+  if (_backArrow && !_backArrow._wired) {
+    _backArrow._wired = true;
+    _backArrow.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (typeof window._returnToMenuFromGrid === 'function') window._returnToMenuFromGrid();
+      else {
+        if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
+        overlay.style.display = 'none';
+        if (typeof _showShareableMenu === 'function') _showShareableMenu();
+      }
+    });
+  }
+  // (dev0710) Labels are rebuilt by this render — re-apply the cLean toggle.
+  _gridApplyClean();
 }
 
 function gridCut(cellStr) {
@@ -2619,6 +2669,7 @@ function gridUpdateCell(cellStr, row) {
   // (zip0144) Match gridShow's label/info shadow strengthening so
   // re-rendered cells stay readable on white HTML thumbnails.
   const lbl = document.createElement('div');
+  lbl.className = 'grid-cell-label';
   lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(120,180,255,0.95);font-weight:bold;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;';
   lbl.textContent = cellStr;
   newInteractor.appendChild(lbl);
@@ -2634,6 +2685,8 @@ function gridUpdateCell(cellStr, row) {
   // Re-wire pointer interactions
   gridWireInteractor(newInteractor, cellEl, cellStr);
   cellEl.appendChild(newInteractor);
+  // (dev0710) This cell's label is brand new — honour the cLean toggle.
+  if (typeof _gridApplyClean === 'function') _gridApplyClean();
 }
 
 // Wire up pointer events on an interactor (extracted for reuse)
