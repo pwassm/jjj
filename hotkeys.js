@@ -516,8 +516,8 @@ window.HOTKEYS = [
     desc: 'While a moving-cells mode is active: pick the variant' },
 
   { label: 'Shift+C', group: 'Grid (window-capture)', scope: 'G', dev: false,
-    impl: 'core.js window-capture (dev0376)',
-    desc: 'Toggle closed captions on all YT/Vimeo grid cells' },
+    impl: 'core.js window-capture (dev0376/0704)',
+    desc: 'Toggle closed captions on all YT/Vimeo grid cells. (dev0704) USER MODE SWAPS THE PAIR on the grid: there bare c toggles the captions (zoom level 1 to see them) and Shift+C opens the grid picker. Dev is unchanged.' },
 
   { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
     impl: 'collection.js _gridPasteSource (dev0548)',

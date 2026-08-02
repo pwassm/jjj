@@ -349,10 +349,18 @@ window.addEventListener('keydown', function(e) {
   // Only when the grid overlay is open; otherwise falls through so bare 'c'
   // (and Shift+C elsewhere) reaches the C-screen dispatcher normally. Handled
   // here because the dispatcher below lowercases the key, losing the Shift.
-  if (k === 'c' && e.shiftKey) {
+  //
+  // (dev0704) ON THE GRID IN USER MODE THE PAIR IS SWAPPED: bare c = captions,
+  // ⇧C = the grid picker. Captions are the thing a VIEWER reaches for (the
+  // unshifted key), while changing grid is the rarer, deliberate one. Dev keeps
+  // c = C screen / ⇧C = captions, where the C table is a working screen.
+  // Whichever case is NOT captions here simply falls through to the dispatcher
+  // below, which lowercases and routes 'c' to its normal handler.
+  if (k === 'c' && !e.ctrlKey && !e.altKey && !e.metaKey) {
     const gOpen = document.getElementById('gridOverlay')?.style.display === 'flex';
     const gFs   = document.getElementById('gridFullscreen')?.style.display === 'flex';
-    if (gOpen && !gFs) {
+    const uModeC = (typeof _isUserMode === 'function') && _isUserMode();
+    if (gOpen && !gFs && (uModeC ? !e.shiftKey : e.shiftKey)) {
       e.preventDefault(); e.stopPropagation();
       if (window._gridToggleCaptions) window._gridToggleCaptions();
       return false;
@@ -9451,7 +9459,9 @@ const HELP_DATA = [
         // (dev0702) Bare C has opened the Collection/Config screen since dev0376
         // — captions moved to Shift+C. The old row said the opposite, which the
         // context panel showed right next to the registry's correct Shift+C row.
-        { key: 'C',             desc: 'Open the Collection / Config screen (Shift+C is the caption toggle)', dev: false },
+        // (dev0704) The pair is SWAPPED in user mode — captions are what a viewer
+        // reaches for, so they get the unshifted key there.
+        { key: 'C',             desc: 'Dev: open the Collection / Config screen (Shift+C toggles captions). User mode: c shows/hides captions, Shift+C picks another grid.', dev: false },
         { key: 'V',             desc: 'View cell fullscreen',                    dev: false },
         { key: 'E',             desc: 'Open Editor for current cell (dev)',       dev: true  },
         { key: 'T',             desc: 'Return to Table',                         dev: true  },

@@ -173,6 +173,18 @@ function hpState() {
       var c = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
       return !!(c && c._salSect && c._salSect.inner && c._salSect.inner.isConnected);
     }, false),
+    // (dev0704) Q / ⇧Q only mean anything on a grid that HAS an IG / TikTok /
+    // Pinterest embed in it — those are the cells that spend their one inline
+    // play. On any other grid the key is inert, so the row is not offered.
+    hasEmbed:  probe(function () { return !!document.querySelector('#gridContainer .grid-embed-wrap'); }, false),
+    // (dev0704) The two "fun" modes get their own tiny help screen, so the panel
+    // has to tell them apart rather than just knowing something is moving.
+    fall:      probe(function () { return !!(window.FallCells && window.FallCells.active); }, false),
+    conveyor:  probe(function () {
+      return !!((window.MovingCells && window.MovingCells.running)
+             || (window.FlyCells  && window.FlyCells.active)
+             || (window.FlyCells2 && window.FlyCells2.active));
+    }, false),
     bufPanel:  probe(function () { return !!(window._gridBufPanelOpen && window._gridBufPanelOpen()); }, false),
     gCut:      probe(function () { return !!_gridCutCell; }, false),
     fromMenu:  probe(function () { return window._smReturnPage >= 2 && window._smReturnPage <= 6; }, false),
@@ -193,6 +205,14 @@ function hpState() {
 // instead. Variants are evaluated TOP-DOWN and the first `on(s)` that is true
 // becomes "now ▸", so the order must mirror the real handler's if-chain — that
 // is the whole point: if the code re-orders its branches, this list moves too.
+//
+// (dev0704) USER MODE IS A DIFFERENT DOCUMENT, not a filtered dev one. A rule or
+// a single variant marked `dev:true` is dropped in Gu, and `noteU` replaces the
+// note there. When the filtering leaves ONE variant, the row collapses to a flat
+// line — a ◆ badge over a branch that can no longer branch is just noise, and a
+// Gu viewer has no Table, no cut cell and no dev mode to be told about. A dropped
+// RULE still claims its `hide` labels, so the flat rows it was shadowing don't
+// crawl back out of HELP_DATA / the registry in their place.
 // ─────────────────────────────────────────────────────────────────────────────
 var HP_CTX = [
   // ── V: the arrows. Mirrors vp.js vpKeyHandler (dev0286 / dev0644 / dev0701).
@@ -264,13 +284,14 @@ var HP_CTX = [
     hide: ['Esc'],
     d: 'Steps back one thing at a time:',
     variants: [
-      { d: 'Dismiss the CLEAN PLAYBACK panel, stay on the grid', on: function (s) { return s.bufPanel; } },
-      { d: 'Cancel the cut cell', on: function (s) { return s.gCut; } },
-      { d: 'Leave the Grid for the Main Page you came from',
+      { d: 'Dismiss the floating window, stay on the grid', on: function (s) { return s.bufPanel; } },
+      { d: 'Cancel the cut cell', dev: true, on: function (s) { return s.gCut; } },
+      { d: 'Leave the grid and go to the Main Page',
         on: function (s) { return s.userMode || s.fromMenu; } },
-      { d: 'Close the Grid and return to the Table', on: function () { return true; } }
+      { d: 'Close the Grid and return to the Table', dev: true, on: function () { return true; } }
     ],
-    note: 'In Gu this is the same result as swiping ← across a cell border.' },
+    note: 'In Gu this is the same result as swiping ← across a cell border.',
+    noteU: 'Swiping ← across a cell border does the same.' },
 
   // ── G: the back gesture is mode-dependent, and Gu viewers depend on it —
   //    it and Esc are their only way off the grid (dev0369/0699).
@@ -278,12 +299,13 @@ var HP_CTX = [
     hide: ['Swipe ← across a border'],
     d: 'A swipe that STARTS in one cell and ENDS in another (or off the grid):',
     variants: [
-      { d: 'Leaves the Grid for the Main Page you came from — same as Esc',
+      { d: 'Leaves the grid for the Main Page — same as Esc',
         on: function (s) { return s.userMode; } },
       { d: 'Nothing — in DEV the drag stays reserved for pausing a cell, so a swipe that drifts past the edge can’t throw the grid away. Use Esc.',
-        on: function () { return true; } }
+        dev: true, on: function () { return true; } }
     ],
-    note: 'A swipe that stays INSIDE one cell keeps its own meaning: pause/play that cell.' },
+    note: 'A swipe that stays INSIDE one cell keeps its own meaning: pause/play that cell.',
+    noteU: '' },
 
   // ── G: arrows only do something when a sectioned t cell is on the grid.
   { screens: ['G'], k: '←  /  →', kind: 'key',
@@ -293,11 +315,15 @@ var HP_CTX = [
       { d: 'Page the sectioned lesson slide in cell 1a back / forward',
         on: function (s) { return s.gSect; } },
       { d: 'Inert — cell 1a is not a sectioned text slide', on: function () { return true; } }
-    ],
-    note: '↑ expands the t cell to the full-window reader; ↓ inside the reader comes back.' },
+    ] },
+  // (dev0704) ↑ / ↓ used to ride along as a footnote on the ← / → row, where it
+  // read as a variant of paging. It is a different action — the presentation
+  // window growing and shrinking — so it gets its own line (see HP_ADD).
 
   // ── G: the bracket keys are shared between zoom and buffer pre-roll (dev0674).
-  { screens: ['G'], k: '[  /  ]', kind: 'key',
+  // (dev0704) DEV ONLY. In Gu the CLEAN PLAYBACK panel gets its own little help
+  // screen (HP_MODES), so [ ] there is simply zoom — see HP_ADD.
+  { screens: ['G'], k: '[  /  ]', kind: 'key', dev: true,
     hide: ['[  /  ]'],
     d: 'Shared — the CLEAN PLAYBACK panel takes them while it is up:',
     variants: [
@@ -308,8 +334,10 @@ var HP_CTX = [
     ],
     note: '− / + always adjust the pre-roll, panel or no panel. b raises the panel; Esc drops it.' },
 
-  // ── G: digits.
-  { screens: ['G'], k: '1 – 9', kind: 'key',
+  // ── G: digits. (dev0704) DEV ONLY — in Gu resizing is locked (dev0571) and the
+  // one thing the digits DO reach, the moving-cells variant, is documented on the
+  // fun-mode screen that is up while they work.
+  { screens: ['G'], k: '1 – 9', kind: 'key', dev: true,
     hide: ['2 / 3 / 4 / 5', '1–9'],
     d: 'Depends on what the grid is running:',
     variants: [
@@ -322,7 +350,9 @@ var HP_CTX = [
     ] },
 
   // ── Letters whose meaning flips between T and G. Listed on BOTH screens so
-  //    neither reader has to guess which one they are holding.
+  //    neither reader has to guess which one they are holding. (dev0704) The
+  //    Table half is dev-only, so in Gu each of these collapses to its one true
+  //    grid meaning — a viewer has no Table to be told about.
   { screens: ['T', 'G'], k: 'A', kind: 'key',
     hide: ['A', 'A  or  Ctrl+I'],
     d: 'Same key, two jobs:',
@@ -330,7 +360,7 @@ var HP_CTX = [
       { d: 'Grid: toggle STEP-FRAME mode — cells with saved steps loop their clip',
         on: function (s) { return s.code === 'G'; } },
       { d: 'Table: toggle the floating preview of the focused row (= Ctrl+I)',
-        on: function (s) { return s.code === 'T'; } }
+        dev: true, on: function (s) { return s.code === 'T'; } }
     ] },
 
   { screens: ['T', 'G'], k: 'S', kind: 'key',
@@ -338,17 +368,18 @@ var HP_CTX = [
     d: 'Same key, two jobs:',
     variants: [
       { d: 'Grid: play the grid as a slideshow', on: function (s) { return s.code === 'G'; } },
-      { d: 'Table: open the St bulk-staging screen (s.json)', on: function (s) { return s.code === 'T'; } }
+      { d: 'Table: open the St bulk-staging screen (s.json)',
+        dev: true, on: function (s) { return s.code === 'T'; } }
     ] },
 
   { screens: ['T', 'G'], k: 'F', kind: 'key',
     hide: ['F'],
     d: 'Same key, two jobs:',
     variants: [
-      { d: 'Grid: toggle FallCells (the perimeter waterfall conveyor)',
+      { d: 'Grid: FUN MODE — FallCells, the waterfall. Press F again to leave it.',
         on: function (s) { return s.code === 'G'; } },
       { d: 'Table: toggle the filter — tags ∧ text (⇧F clears every filter)',
-        on: function (s) { return s.code === 'T'; } }
+        dev: true, on: function (s) { return s.code === 'T'; } }
     ] },
 
   { screens: ['T', 'G'], k: 'G', kind: 'key',
@@ -357,9 +388,79 @@ var HP_CTX = [
     variants: [
       { d: 'Grid: open the hovered cell’s SOURCE PAGE in a new tab (its linkpage, or the link itself for YouTube / Vimeo / IG / articles)',
         on: function (s) { return s.code === 'G'; } },
-      { d: 'Table: open the Grid', on: function (s) { return s.code === 'T'; } }
+      { d: 'Table: open the Grid', dev: true, on: function (s) { return s.code === 'T'; } }
     ] }
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HP_ADD — extra flat rows for a screen that IS covered by HELP_DATA / the
+// registry, added BEFORE anything else so they win the de-duplication and
+// replace the wording those tables carry.
+//   user:true → Gu only     dev:true → Gd only     neither → both
+// This is where Gu's plain-language grid rows live (dev0704).
+// ─────────────────────────────────────────────────────────────────────────────
+var HP_ADD = {
+  G: [
+    { k: '↑  /  ↓',
+      d: 'Expand / shrink the presentation-mode window — ↑ opens the lesson slide in cell 1a to the whole window, ↓ puts it back in its cell' },
+    // Not "toggles to the previous level": z is a RESET, and ⇧Z is the one that
+    // brings a level back (the one saved with the grid). Said plainly, because
+    // the pair is what makes zooming safe to play with.
+    { k: 'Z',
+      d: 'Zoom OFF — the whole grid back to 1×; press Z again to flatten every cell’s own zoom too. ⇧Z puts back the zoom levels saved with this grid.' },
+    { k: '[  /  ]', user: true,
+      d: 'Zoom the whole grid out / in (Ctrl+[ and Ctrl+] zoom just the cell under the pointer)' },
+    { k: 'B', user: true,
+      d: 'Adjust playback — raises the CLEAN PLAYBACK window. Press H while it is up and this help explains its keys.' },
+    { k: 'C', user: true,
+      d: 'Show / hide the captions on the videos — zoom level 1 to see them' },
+    { k: 'Shift+C', user: true,
+      d: 'Choose a different grid' },
+    { k: 'R',
+      d: 'FUN MODE — conveyor: the cells travel round the grid. Press R again to leave it.' }
+  ]
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HP_MODES — while one of these is running, Gu's H is a SMALL dedicated card
+// rather than the three-column strip: the reader raised it to answer one
+// question ("what do these keys do, and how do I get out?"). Gd keeps the full
+// strip (dev0704). First match wins.
+// ─────────────────────────────────────────────────────────────────────────────
+var HP_MODES = [
+  { screens: ['G'], on: function (s) { return s.bufPanel; },
+    title: '⚙ CLEAN PLAYBACK window',
+    desc: 'The panel in the corner is the live readout — these keys change it:',
+    rows: [
+      { k: 'B',        d: 'How far clean playback reaches: normal → wide → all → off' },
+      { k: 'Shift+B',  d: 'Adaptive warm-up on / off (each clip warms for its own length)' },
+      { k: '[  /  ]',  d: 'Less / more warm-up (∓0.5 s) — the panel shows the new value' },
+      { k: 'Esc',      d: 'Close this window. [ and ] go back to zooming the grid.' }
+    ] },
+  { screens: ['G'], on: function (s) { return s.fall; },
+    title: '🌊 FALL mode',
+    desc: 'A fun mode — the cells fall around the edge of the grid.',
+    rows: [
+      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain conveyor)' },
+      { k: 'F',       d: 'LEAVE fall mode — the grid goes back to normal' }
+    ] },
+  { screens: ['G'], on: function (s) { return s.conveyor; },
+    title: '↻ CONVEYOR mode',
+    desc: 'A fun mode — the cells travel round the grid.',
+    rows: [
+      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain conveyor)' },
+      { k: 'R',       d: 'LEAVE conveyor mode — the grid goes back to normal' }
+    ] }
+];
+
+function hpMode(s) {
+  for (var i = 0; i < HP_MODES.length; i++) {
+    var m = HP_MODES[i];
+    if (m.screens.indexOf(s.code) < 0) continue;
+    if (probe(function () { return m.on(s); }, false)) return m;
+  }
+  return null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HP_EXTRA — ONLY the screens HELP_DATA and the registry don't cover. Anything
@@ -510,6 +611,13 @@ function normKey(k) {
 // Explicit on purpose — fuzzy subset-matching collapsed rows that are genuinely
 // different ("Click cell" = play/pause vs "Click another cell" = swap the cut
 // cell), which is worse than a little duplication.
+// (dev0704) Rows a Gu reader is better off not seeing at all. ⇧B is the adaptive
+// pre-roll knob: a paragraph about warm-up heuristics, and its one plain-language
+// line already lives on the clean-playback card that is up whenever it works.
+var HP_DROP_USER = {
+  G: ['Shift+B']
+};
+
 var HP_DROP = {
   // 'Swipe ← on cell' is HELP_DATA's thinner wording of the registry's
   // 'Swipe ← within a cell' — the registry row says WHY it has to stay inside.
@@ -538,19 +646,10 @@ function hpRows(s) {
   var keys = [], gests = [], globals = [];
   var seen = {};
   (HP_DROP[code] || []).forEach(function (lbl) { seen[normKey(lbl)] = true; });
-
-  // 1 — context rules first: they own their key and suppress the flat rows.
-  HP_CTX.forEach(function (r) {
-    if (r.screens.indexOf(code) < 0) return;
-    (r.hide || []).forEach(function (lbl) { seen[normKey(lbl)] = true; });
-    var live = -1;
-    for (var i = 0; i < r.variants.length; i++) {
-      if (probe(function () { return r.variants[i].on(s); }, false)) { live = i; break; }
-    }
-    var row = { k: r.k, d: r.d, ctx: r.variants, live: live, note: r.note, dev: false };
-    seen[normKey(r.k)] = true;
-    (r.kind === 'gesture' ? gests : keys).push(row);
-  });
+  if (s.userMode) (HP_DROP_USER[code] || []).forEach(function (lbl) { seen[normKey(lbl)] = true; });
+  // (dev0704) Q / ⇧Q re-prime an IG / TikTok embed. On a grid with no embed on
+  // it there is nothing to re-prime, so the row is dropped rather than explained.
+  if (code === 'G' && !s.hasEmbed) seen[normKey('Q  /  Shift+Q')] = true;
 
   function push(list, k, d, dev) {
     if (!k || !d) return;
@@ -559,6 +658,41 @@ function hpRows(s) {
     seen[n] = true;
     list.push({ k: k, d: d, dev: !!dev });
   }
+
+  // 0 — HP_ADD: mode-specific wording, first so it beats every other source.
+  (HP_ADD[code] || []).forEach(function (r) {
+    if (r.user && !s.userMode) return;
+    if (r.dev  && s.userMode)  return;
+    push(r.kind === 'gesture' ? gests : keys, r.k, r.d, r.dev && !r.user);
+  });
+
+  // 1 — context rules: they own their key and suppress the flat rows they
+  //     shadow, whether or not the rule itself survives the mode filter.
+  HP_CTX.forEach(function (r) {
+    if (r.screens.indexOf(code) < 0) return;
+    (r.hide || []).forEach(function (lbl) { seen[normKey(lbl)] = true; });
+    var claimed = seen[normKey(r.k)];            // an HP_ADD row already said it
+    seen[normKey(r.k)] = true;
+    if (claimed) return;
+    if (s.userMode && r.dev) return;
+    var vars = s.userMode
+      ? r.variants.filter(function (v) { return !v.dev; })
+      : r.variants;
+    if (!vars.length) return;
+    var note = (s.userMode && r.noteU !== undefined) ? r.noteU : r.note;
+    var row;
+    if (vars.length === 1) {
+      // One branch left = not a branch. Flat row, no ◆.
+      row = { k: r.k, d: vars[0].d, note: note, dev: false };
+    } else {
+      var live = -1;
+      for (var i = 0; i < vars.length; i++) {
+        if (probe(function () { return vars[i].on(s); }, false)) { live = i; break; }
+      }
+      row = { k: r.k, d: r.d, ctx: vars, live: live, note: note, dev: false };
+    }
+    (r.kind === 'gesture' ? gests : keys).push(row);
+  });
 
   // 2 — the HELP_DATA panel whose id is this screen.
   var hd = probe(function () { return window._helpData ? window._helpData() : []; }, []) || [];
@@ -716,7 +850,7 @@ function injectCss() {
 // ─────────────────────────────────────────────────────────────────────────────
 // THE PANEL
 // ─────────────────────────────────────────────────────────────────────────────
-var _hpTimer = null, _hpScreenAt = null;
+var _hpTimer = null, _hpScreenAt = null, _hpModeAt = null;
 
 function hpIsOpen() { var p = $id(PANEL_ID); return !!p && !p.classList.contains('hp-hidden'); }
 
@@ -770,8 +904,10 @@ function rowHtml(r) {
          + '<span class="hp-mark">' + (live ? 'now ▸' : '▹') + '</span>'
          + '<span>' + esc(clip(r.ctx[i].d, 190)) + '</span></div>';
     }
-    if (r.note) h += '<div class="hp-note">' + esc(clip(r.note, 190)) + '</div>';
   }
+  // (dev0704) A collapsed single-variant row keeps its note too — it is the
+  // caveat, not decoration for the ◆ list.
+  if (r.note) h += '<div class="hp-note">' + esc(clip(r.note, 190)) + '</div>';
   return h + '</div></div>';
 }
 
@@ -831,7 +967,6 @@ function hpRender() {
   var p = $id(PANEL_ID) || hpBuild();
   var s = hpState();
   _hpScreenAt = s.code;
-  var R = hpRows(s);
   var name = HP_TITLES[s.code] || s.code;
 
   $id('hpTitle').textContent = '⌨ ' + name;
@@ -839,6 +974,20 @@ function hpRender() {
     return '<span class="' + (c.on ? 'on' : '') + '">' + esc(c.t) + '</span>';
   }).join('');
 
+  // (dev0704) Gu + a mode running (clean playback / fall / conveyor) = one small
+  // card answering "what do these keys do, how do I get out". Gd keeps the strip.
+  var M = s.userMode ? hpMode(s) : null;
+  _hpModeAt = M ? M.title : null;
+  if (M) {
+    var body = $id('hpBody');
+    body.style.gridTemplateColumns = '1fr';
+    body.innerHTML = colHtml('⌨ ' + esc(M.title), M.desc, M.rows, '');
+    hpFit();
+    return;
+  }
+
+  var R = hpRows(s);
+  $id('hpBody').style.gridTemplateColumns = '';
   $id('hpBody').innerHTML =
       colHtml('⌨ HOTKEYS — ' + esc(s.code), R.desc, R.keys,
               'No keys of its own here.')
@@ -857,6 +1006,11 @@ function hpTick() {
   if (!hpIsOpen()) return;
   var s = hpState();
   if (s.code !== _hpScreenAt) { hpRender(); return; }
+  // (dev0704) Raising / dropping the clean-playback panel or a fun mode swaps the
+  // whole card in Gu — that is a redraw, not a marker move.
+  var mNow = s.userMode ? hpMode(s) : null;
+  if ((mNow ? mNow.title : null) !== _hpModeAt) { hpRender(); return; }
+  if (mNow) return;
 
   $id('hpChips').innerHTML = hpChips(s).map(function (c) {
     return '<span class="' + (c.on ? 'on' : '') + '">' + esc(c.t) + '</span>';

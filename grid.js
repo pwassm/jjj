@@ -983,6 +983,24 @@ function gridTogglePauseCell(cellStr) {
   }
 }
 
+// (dev0704) A plain click / tap on a cell plays or pauses THAT cell's video.
+// Help has promised this since the beginning ("Click cell → play/pause") but no
+// code path ever did it: only the within-cell swipe ← and Space (all cells) got
+// wired, so a mouse user clicking a single video got nothing (user report).
+//
+// Deliberately narrow, because the short-click branch it hangs off is shared:
+// it acts ONLY when this cell has a registered player, so a click on an image /
+// text / quiz cell, on an empty cell, or on an IG embed (which returns earlier
+// to spend its one arming click) is untouched. Cut/paste, the summary tap and
+// the dev double-tap all return before this, so it can't steal their click —
+// and in dev a first click pausing before a double-click opens the editor is
+// harmless, since only text/quiz rows have a double-click action at all.
+function _gridClickPlayPause(cellStr) {
+  const p = (window.seeLearnVideoPlayers || {})['grid-vid-' + cellStr];
+  if (!p) return;
+  if (typeof gridTogglePauseCell === 'function') gridTogglePauseCell(cellStr);
+}
+
 // (dev0335) Space in G pauses/unpauses ALL grid videos at once. The action is
 // derived from live state (if any cell is playing → pause all; else play all) so
 // it stays correct across re-renders without a tracking flag. Uses the same
@@ -2888,9 +2906,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
         return;
       }
       _lastShortTapT = nowT;
+      _gridClickPlayPause(cellStr);
     }
   }, true);
-  
+
   interactor.addEventListener('pointercancel', () => {
     if (_szActive) { _szCancel(); return; }  // (dev0364) abort Shift zoom/pan gesture
     clearTimeout(holdTmr);
@@ -3023,9 +3042,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
         return;
       }
       _lastShortTapT = nowT;
+      _gridClickPlayPause(cellStr);
     }
   }
-  
+
   // Right-click → show context menu OR Ctrl+right-click → View mode
   interactor.addEventListener('contextmenu', e => {
     e.preventDefault();
