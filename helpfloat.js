@@ -1,21 +1,29 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// helpfloat.js — H = FLOATING CONTEXT HELP + BALLOON TOOLTIPS (dev0702)
+// helpfloat.js — H = FLOATING CONTEXT HELP + BALLOON TOOLTIPS (dev0702/0703)
 //
 // Two features, one file, both live on slam.com (sealifeandmore.com) AND on
 // localhost — there is no host gate: the panel reads the SCREEN, not the URL.
 //
-//  1. Hf — the floating help window (`H`, or ✕ / Esc / H to close).
-//     Shows ONLY what applies to the window you are looking at right now:
-//       • ⌨ HOTKEYS — this screen
-//       • 👆 GESTURES — this screen (swipe / click / hold / menus)
-//       • 🌐 GLOBAL — the any-screen keys, collapsed by default
+//  1. Hf — the floating help strip (`H`, or ✕ / Esc / H to close).
+//     (dev0703) A full-width band across the TOP of the screen, split into three
+//     columns so nothing has to scroll:
+//       1  ⌨ HOTKEYS — this screen
+//       2  👆 MOUSE / SWIPE — this screen
+//       3  🌐 GLOBAL KEYS that actually reach the dispatcher FROM this screen
+//     Column 3 is filtered, not a dump: core.js's window-capture listener bails
+//     out entirely for Ev / Xe / D / Slideshow / Menu, and several global keys
+//     no-op while the grid or a viewer is up. Promising a key that is swallowed
+//     before it arrives is exactly the kind of drift this panel exists to kill.
+//
 //     Rows whose meaning CHANGES with live state carry a ◆ badge and list their
 //     variants underneath, with the one that is active RIGHT NOW marked "now ▸"
-//     in green. That is the answer to "← / → are different while V is playing"
-//     and "swipe is different when you're zoomed in" — the panel says which
-//     branch you are in, live, and re-checks every 700 ms while it is open.
-//     Shift+H still opens the FULL reference (the old Hd/Hu modal); so does the
-//     panel's "Full ref" button.
+//     in green — the answer to "← / → are different while V is playing" and
+//     "swipe is different when you're zoomed in". Re-checked every 700 ms.
+//     Shift+H opens the FULL reference (the old Hd/Hu modal) instead.
+//
+//     NO SCROLL BARS: hpFit() steps the base font down from 17px until the tall
+//     est column fits the band. Only if it still overflows at the 9px floor does
+//     the body get a scrollbar — clipping the text silently would be worse.
 //
 //  2. Balloons — hover (or touch-and-hold) any icon button and a styled balloon
 //     names its function. Sources the text from the `title` the control already
@@ -50,7 +58,6 @@
 
 var PANEL_ID = 'hpPanel';
 var TIP_ID   = 'hpTip';
-var LS_POS   = 'slam-hp-pos';
 var LS_GLOB  = 'slam-hp-global';
 
 function $id(id) { return document.getElementById(id); }
@@ -72,14 +79,15 @@ function probe(fn, dflt) { try { var v = fn(); return v === undefined ? dflt : v
 // ─────────────────────────────────────────────────────────────────────────────
 var HP_TITLES = {
   T:  'T — Table',                 G:  'G — Grid',
-  C:  'C — Collection / Config',   A:  'A — Annotate panel',
-  Ev: 'Ev — Video editor',         Xe: 'Xe — Text editor (HTML)',
-  Xs: 'Xs — Slide, fullscreen',    V:  'V — Video viewer',
-  Ie: 'Ie — Image viewer',         Q:  'Q — Quiz',
-  D:  'D — Dictionary',            I:  'I — Instagram staging',
-  St: 'St — Bulk staging',         O:  'O — Org review',
-  X:  'X — Search results',        SS: 'Slideshow',
-  Menu: 'Menu — home / greeting',  H:  'H — Full reference'
+  C:  'C — Collection / Config',   Cu: 'Cu — Choose a grid',
+  A:  'A — Annotate panel',        Ev: 'Ev — Video editor',
+  Xe: 'Xe — Text editor (HTML)',   Xs: 'Xs — Slide, fullscreen',
+  V:  'V — Video viewer',          Ie: 'Ie — Image viewer',
+  Q:  'Q — Quiz',                  D:  'D — Dictionary',
+  I:  'I — Instagram staging',     St: 'St — Bulk staging',
+  O:  'O — Org review',            X:  'X — Search results',
+  SS: 'SS — Slideshow',            Menu: 'Menu — home / greeting',
+  H:  'H — Full reference'
 };
 
 function hpScreen() {
@@ -88,6 +96,9 @@ function hpScreen() {
   if ($id('teSlideOverlay'))            return 'Xs';
   if ($id('textEditorOverlay'))         return 'Xe';
   if ($id('video-editor-overlay'))      return 'Ev';
+  // (dev0703) The user-mode 'c' is a floating picker over the grid, NOT the dev
+  // C table — different screen, different gestures (boot.js _showMobileCPicker).
+  if ($id('mobileCPicker'))             return 'Cu';
   // The fullscreen viewer is checked BEFORE the slideshow overlay on purpose: a
   // slideshow playing a video hands the keyboard to V, and V's arrows are what
   // the reader needs listed. The slideshow-ness survives as a context chip.
@@ -153,15 +164,18 @@ function hpState() {
     textReader: !!window._vpTextReader,
     slideshow:  !!$id('slideshowOverlay'),
     zoom:       hpZoom(),
+    // ── SS ── (its zoom lives in a slideshow.js closure; the helper is global)
+    ssZoom:  probe(function () { return !!(window._slideshowIsZoomed && window._slideshowIsZoomed()); }, false),
+    ssPaused: probe(function () { return !!(_slideshowState && _slideshowState.paused); }, false),
+    ssReview: probe(function () { return !!(_slideshowState && _slideshowState.mode === 'review'); }, false),
     // ── G ──
     gSect: probe(function () {
       var c = document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
       return !!(c && c._salSect && c._salSect.inner && c._salSect.inner.isConnected);
     }, false),
-    gTextCell: probe(function () {
-      return !!document.querySelector('#gridContainer .grid-cell[data-cell="1a"]');
-    }, false),
     bufPanel:  probe(function () { return !!(window._gridBufPanelOpen && window._gridBufPanelOpen()); }, false),
+    gCut:      probe(function () { return !!_gridCutCell; }, false),
+    fromMenu:  probe(function () { return window._smReturnPage >= 2 && window._smReturnPage <= 6; }, false),
     moving:    probe(function () { return !!(window._gmAnyMoving && window._gmAnyMoving()); }, false),
     gridSrc:   probe(function () { return _gridSource; }, 'T'),
     layout:    probe(function () { return _gridCurrentLayout ? _gridCurrentLayout() : 'square'; }, 'square'),
@@ -183,10 +197,10 @@ function hpState() {
 var HP_CTX = [
   // ── V: the arrows. Mirrors vp.js vpKeyHandler (dev0286 / dev0644 / dev0701).
   { screens: ['V'], k: '←  /  →', kind: 'key',
-    hide: ['← →', '←   →'],
+    hide: ['← →'],
     d: 'Depends on what the page is doing right now:',
     variants: [
-      { d: 'Page the lesson slide back / forward (multi-section page, video not paused)',
+      { d: 'Page the lesson slide back / forward (deck page, video not paused)',
         on: function (s) { return s.sectNav && !s.paused; } },
       { d: 'Previous / next slideshow slide — closes V on the way',
         on: function (s) { return s.slideshow && s.playing; } },
@@ -194,34 +208,82 @@ var HP_CTX = [
         on: function (s) { return s.video; } },
       { d: 'Nothing to step here (no video on this page)', on: function () { return true; } }
     ],
-    note: 'Shift+← / → always frame-steps, even on a slide page that would otherwise page.' },
+    note: 'Shift+← / → always frame-steps, even on a deck page that would otherwise page.' },
 
-  // ── V / Ie: the swipe, and why it sometimes refuses to close.
-  { screens: ['V', 'Ie', 'Q', 'Xs'], k: 'Swipe ←  /  drag R→L', kind: 'gesture',
+  // ── The app-wide back gesture (dev0703). Same rule in V/Ie/Q/Xs and in SS.
+  { screens: ['V', 'Ie', 'Q', 'Xs'], k: 'Swipe ←', kind: 'gesture',
     hide: ['Swipe ← on image', 'Swipe ← in a viewer', 'Swipe ← (top bar)',
-           'Swipe ← (from edge)', 'Swipe ←'],
-    d: 'Depends on the zoom:',
+           'Swipe ← (from edge)', 'Swipe ←', 'Swipe ←  (the back gesture)'],
+    d: 'The back gesture — depends on the zoom:',
     variants: [
-      { d: 'PANS the zoomed picture — the swipe no longer closes the viewer',
+      { d: 'PANS the zoomed picture — it cannot close while zoomed',
         on: function (s) { return s.zoom > 1.05; } },
-      { d: 'Closes the viewer and returns to the Grid',
-        on: function (s) { return s.zoom <= 1.05; } }
+      { d: 'Leaves the SLIDESHOW entirely, back to the screen it was launched from',
+        on: function (s) { return s.slideshow; } },
+      { d: 'Closes this page and returns to the Grid', on: function () { return true; } }
     ],
-    note: 'Double-click (double-tap) resets the zoom to 1× and gives the closing swipe back. '
-        + 'Esc and the ✕ button always close, zoomed or not.' },
+    note: 'Double-click (double-tap) resets the zoom to 1× and gives the gesture back. Esc and ✕ always close, zoomed or not.' },
 
-  // ── V / Ie: vertical arrows.
-  { screens: ['V', 'Ie', 'Xs', 'Q'], k: '↑  /  ↓', kind: 'key',
-    hide: ['↑ ↓'],
-    d: 'Depends on what is open:',
+  { screens: ['V', 'Xs', 'Q'], k: 'Swipe →   ⇧Swipe ← →', kind: 'gesture',
+    hide: ['⇧ Swipe ←  /  ⇧ Swipe →'],
+    d: 'Paging INSIDE a deck or a show:',
     variants: [
-      { d: '↓ returns to the Grid (you are in the expanded text reader); ↑ is inert',
-        on: function (s) { return s.textReader; } },
-      { d: 'Mark / un-mark this slide for deletion (slideshow triage)',
-        on: function (s) { return s.slideshow && s.video; } },
-      { d: 'Inert — a video owns the arrows here', on: function (s) { return s.video; } },
-      { d: 'Previous / next row in the current filter', on: function () { return true; } }
-    ] },
+      { d: 'Deck (PM): → and ⇧→ = next section · ⇧← = previous section',
+        on: function (s) { return s.sectNav; } },
+      { d: 'Slideshow: → and ⇧→ = next slide · ⇧← = previous slide',
+        on: function (s) { return s.slideshow; } },
+      { d: 'Nothing to page on this one — it is a single item', on: function () { return true; } }
+    ],
+    note: 'Plain → does what ⇧→ does so a phone, which has no Shift key, can still move forward.' },
+
+  { screens: ['SS'], k: 'Swipe ←', kind: 'gesture',
+    hide: ['Swipe ←', 'Swipe ← / →', 'Swipe ←  (the back gesture)'],
+    d: 'The back gesture — depends on the zoom:',
+    variants: [
+      { d: 'PANS the zoomed slide — it cannot leave while zoomed',
+        on: function (s) { return s.ssZoom; } },
+      { d: 'LEAVES the slideshow for the screen it was launched from',
+        on: function () { return true; } }
+    ],
+    note: 'Double-click resets the zoom. Ctrl+swipe ← still exits too (kept from dev0595).' },
+
+  { screens: ['SS'], k: 'Swipe →   ⇧Swipe ← →', kind: 'gesture',
+    hide: ['⇧ Swipe ←  /  ⇧ Swipe →'],
+    d: '→ and ⇧→ = next slide · ⇧← = previous slide.',
+    variants: [
+      { d: 'Zoomed — a drag pans instead; double-click to reset',
+        on: function (s) { return s.ssZoom; } },
+      { d: 'Live: paging the show', on: function () { return true; } }
+    ],
+    note: 'Plain → doubles for ⇧→ so a phone, which has no Shift key, can still move forward.' },
+
+  // ── G: Esc steps back one thing at a time (collection.js). The global Esc row
+  //    ("defocus / steps back Xs→Xe→T") is true elsewhere but says nothing about
+  //    leaving the grid, which is the thing a Gu viewer most needs to know.
+  { screens: ['G'], k: 'Esc', kind: 'key',
+    hide: ['Esc'],
+    d: 'Steps back one thing at a time:',
+    variants: [
+      { d: 'Dismiss the CLEAN PLAYBACK panel, stay on the grid', on: function (s) { return s.bufPanel; } },
+      { d: 'Cancel the cut cell', on: function (s) { return s.gCut; } },
+      { d: 'Leave the Grid for the Main Page you came from',
+        on: function (s) { return s.userMode || s.fromMenu; } },
+      { d: 'Close the Grid and return to the Table', on: function () { return true; } }
+    ],
+    note: 'In Gu this is the same result as swiping ← across a cell border.' },
+
+  // ── G: the back gesture is mode-dependent, and Gu viewers depend on it —
+  //    it and Esc are their only way off the grid (dev0369/0699).
+  { screens: ['G'], k: 'Swipe ← across a border', kind: 'gesture',
+    hide: ['Swipe ← across a border'],
+    d: 'A swipe that STARTS in one cell and ENDS in another (or off the grid):',
+    variants: [
+      { d: 'Leaves the Grid for the Main Page you came from — same as Esc',
+        on: function (s) { return s.userMode; } },
+      { d: 'Nothing — in DEV the drag stays reserved for pausing a cell, so a swipe that drifts past the edge can’t throw the grid away. Use Esc.',
+        on: function () { return true; } }
+    ],
+    note: 'A swipe that stays INSIDE one cell keeps its own meaning: pause/play that cell.' },
 
   // ── G: arrows only do something when a sectioned t cell is on the grid.
   { screens: ['G'], k: '←  /  →', kind: 'key',
@@ -237,7 +299,7 @@ var HP_CTX = [
   // ── G: the bracket keys are shared between zoom and buffer pre-roll (dev0674).
   { screens: ['G'], k: '[  /  ]', kind: 'key',
     hide: ['[  /  ]'],
-    d: 'Shared keys — the CLEAN PLAYBACK panel takes them while it is up:',
+    d: 'Shared — the CLEAN PLAYBACK panel takes them while it is up:',
     variants: [
       { d: 'Buffer pre-roll ∓0.5 s — the panel is the live readout',
         on: function (s) { return s.bufPanel; } },
@@ -253,9 +315,9 @@ var HP_CTX = [
     variants: [
       { d: 'Pick the moving-cells variant (a moving mode is running)',
         on: function (s) { return s.moving; } },
-      { d: 'LOCKED — a C-source 17 / 19 / portrait layout is active; resize it on the C screen',
+      { d: 'LOCKED — a C-source 17 / 19 / portrait layout is active; resize it on C',
         on: function (s) { return s.layoutLocked; } },
-      { d: 'Resize the grid: 2 → 2×2, 3 → 3×3, 4 → 4×4, 5 → 5×5 (1 and 6–9 do nothing)',
+      { d: 'Resize: 2 → 2×2, 3 → 3×3, 4 → 4×4, 5 → 5×5 (1 and 6–9 do nothing)',
         on: function () { return true; } }
     ] },
 
@@ -265,9 +327,9 @@ var HP_CTX = [
     hide: ['A', 'A  or  Ctrl+I'],
     d: 'Same key, two jobs:',
     variants: [
-      { d: 'Grid: toggle STEP-FRAME mode — cells with saved steps loop their local clip',
+      { d: 'Grid: toggle STEP-FRAME mode — cells with saved steps loop their clip',
         on: function (s) { return s.code === 'G'; } },
-      { d: 'Table: toggle the floating preview of the focused row (Ctrl+I does the same)',
+      { d: 'Table: toggle the floating preview of the focused row (= Ctrl+I)',
         on: function (s) { return s.code === 'T'; } }
     ] },
 
@@ -285,7 +347,7 @@ var HP_CTX = [
     variants: [
       { d: 'Grid: toggle FallCells (the perimeter waterfall conveyor)',
         on: function (s) { return s.code === 'G'; } },
-      { d: 'Table: toggle the filter modal — tags ∧ text search (Shift+F clears every filter)',
+      { d: 'Table: toggle the filter — tags ∧ text (⇧F clears every filter)',
         on: function (s) { return s.code === 'T'; } }
     ] },
 
@@ -304,24 +366,24 @@ var HP_CTX = [
 // that exists in either of those two tables must NOT be duplicated here.
 // ─────────────────────────────────────────────────────────────────────────────
 var HP_EXTRA = {
-  I: { desc: 'ig.json review — enrich / download / promote Instagram rows. The list is windowed; filters persist per browser.',
+  I: { desc: 'ig.json review — enrich / download / promote Instagram rows.',
     rows: [
       { k: '↑ / ↓',  d: 'Move the focused row' },
       { k: 'Enter',  d: 'Open the focused post' },
       { k: 'Space',  d: 'Select / deselect the focused row' },
-      { k: 'f',      d: 'Focus the filter box  ·  Shift+F clears the text filter' },
+      { k: 'f',      d: 'Focus the filter box  ·  ⇧F clears the text filter' },
       { k: 'd',      d: 'Download the selected rows' },
       { k: 'e',      d: 'Enrich the selected rows (cookieless /p OG-tag fetch)' },
       { k: 'c',      d: 'Clear the selection' },
-      { k: 'r',      d: 'Reset the selected rows back to “new” so they can be retried' },
+      { k: 'r',      d: 'Reset the selected rows to “new” so they can be retried' },
       { k: 'a',      d: 'Toggle the auto-enrich panel' },
       { k: 'm',      d: 'Clear, then select the top 18' },
       { k: 'w',      d: 'Paste an IG URL from the clipboard as a new Unharvested single' },
-      { k: '⇧N / ⇧D / ⇧E / ⇧A', d: 'Status filter: new / downloaded / enriched / all' },
+      { k: '⇧N ⇧D ⇧E ⇧A', d: 'Status filter: new / downloaded / enriched / all' },
       { k: 'Ctrl+I', d: 'Toggle the floating preview' },
-      { k: 't',      d: 'Leave — back to the Table (Esc no longer closes the screen)' }
+      { k: 't',      d: 'Leave — back to the Table (Esc no longer closes this screen)' }
     ] },
-  St: { desc: 'Bulk staging over s.json — import links in bulk, fill their metadata, then promote the good ones into ml.json.',
+  St: { desc: 'Bulk staging over s.json — import links, fill metadata, promote the good ones into ml.json.',
     rows: [
       { k: '↑ / ↓',      d: 'Move the focused row' },
       { k: 'w',          d: 'Import links from the clipboard' },
@@ -329,40 +391,46 @@ var HP_EXTRA = {
       { k: 'd / Delete', d: 'Delete the focused row (archived to sdeleted.json)' },
       { k: 'e',          d: 'Fill Res / Size / Len metadata' },
       { k: 'c',          d: 'Open the L1 / L2 bulk-category dialog' },
-      { k: 'f',          d: 'Focus the search box  ·  Shift+F clears the filters' },
+      { k: 'f',          d: 'Focus the search box  ·  ⇧F clears the filters' },
       { k: 'Ctrl+Z',     d: 'Undo the last Delete / Add' },
       { k: 'Ctrl+I',     d: 'Toggle the floating preview window' },
       { k: 'Esc / t',    d: 'Leave — back to the Table' }
     ] },
   O: { desc: 'Org-review over o.json — Orgzly notes imported by orgToO.js.',
     rows: [
-      { k: '↑ / ↓',  d: 'Move the focused row' },
-      { k: 'r',      d: 'Toggle the reading pane' },
-      { k: 'f',      d: 'Focus the search box  ·  Shift+F clears EVERY filter, column boxes included' },
-      { k: 'Delete', d: 'Delete the focused record (archived)' },
+      { k: '↑ / ↓',   d: 'Move the focused row' },
+      { k: 'r',       d: 'Toggle the reading pane' },
+      { k: 'f',       d: 'Focus the search box  ·  ⇧F clears EVERY filter, column boxes included' },
+      { k: 'Delete',  d: 'Delete the focused record (archived)' },
       { k: 'Esc / t', d: 'Leave — back to the Table' }
     ] },
-  X: { desc: 'Search-results review over x.json — hits from the linkfinders tools. Promote canonicalises YouTube / Vimeo links.',
+  X: { desc: 'Search-results review over x.json — hits from the linkfinders tools.',
     rows: [
-      { k: '↑ / ↓',     d: 'Move the focused row' },
-      { k: '← / →',     d: 'Seek the preview back / forward' },
-      { k: 'w',         d: 'Import results from the clipboard' },
-      { k: 'a',         d: 'Add the focused row to ml.json (promote)' },
+      { k: '↑ / ↓',      d: 'Move the focused row' },
+      { k: '← / →',      d: 'Seek the preview back / forward' },
+      { k: 'w',          d: 'Import results from the clipboard' },
+      { k: 'a',          d: 'Add the focused row to ml.json (promote)' },
       { k: 'd / Delete', d: 'Delete the focused row (archived to xdeleted.json)' },
-      { k: 'e',         d: 'Fill Res / Size / Len metadata' },
-      { k: 'c',         d: 'Open the Source / Query bulk dialog' },
-      { k: 'f',         d: 'Focus the search box  ·  Shift+F clears the filters' },
-      { k: 'Ctrl+↓',    d: 'PERMANENT delete → xdeleted.json (that video will not come back on a re-run)' },
-      { k: 'Ctrl+Z',    d: 'Undo the last Delete / Add' },
-      { k: 'Esc / t',   d: 'Leave — back to the Table' }
+      { k: 'e',          d: 'Fill Res / Size / Len metadata' },
+      { k: 'c',          d: 'Open the Source / Query bulk dialog' },
+      { k: 'f',          d: 'Focus the search box  ·  ⇧F clears the filters' },
+      { k: 'Ctrl+↓',     d: 'PERMANENT delete → xdeleted.json (it will not come back on a re-run)' },
+      { k: 'Ctrl+Z',     d: 'Undo the last Delete / Add' },
+      { k: 'Esc / t',    d: 'Leave — back to the Table' }
     ] },
+  // (dev0703) Space became pause/resume and the swipes now follow the app-wide
+  // back rule — see _slideshowHorizSwipe. The ◆ swipe rows above cover gestures.
   SS: { desc: 'Slideshow / Review. Owns the keyboard outright — global hotkeys stand down while it is up.',
     rows: [
-      { k: '→ / Space', d: 'Next slide' },
-      { k: '←',         d: 'Previous slide' },
-      { k: '↑ / ↓',     d: 'Mark / un-mark this slide for deletion (Review triage)' },
-      { k: 'Esc',       d: 'Close the slideshow' },
-      { k: 'Swipe ← / →', d: 'Previous / next slide', kind: 'gesture' }
+      { k: 'Space',   d: 'PAUSE / RESUME the show — while a VIDEO slide is up, V owns Space and it plays/pauses that video instead' },
+      { k: '→ / ←',   d: 'Next / previous slide' },
+      { k: '↑ / ↓',   d: 'Mark / un-mark this slide for deletion (Review triage)' },
+      { k: 'a s d f', d: 'Review mode only: rate best / good / fair / poor, then move on' },
+      { k: 'Esc',     d: 'Close the slideshow' },
+      { k: 'Tap a slide',  d: 'Resume a paused show (otherwise aims the Ken Burns pan)', kind: 'gesture' },
+      { k: 'Double-tap',   d: 'Close the slideshow', kind: 'gesture' },
+      { k: 'Hold LMB',     d: 'Zoom in (pauses the show); drag to pan; double-click resets', kind: 'gesture' },
+      { k: 'Swipe ↑ / ↓',  d: 'On a PAUSED unzoomed slide: switch between the original set and the row’s ftext images', kind: 'gesture' }
     ] },
   Menu: { desc: 'The shareable landing page — greeting, Search, saved views, Collections, My Loops.',
     rows: [
@@ -377,6 +445,45 @@ var HP_EXTRA = {
       { k: '◀ / ▶',   d: 'Previous / next help page' },
       { k: '⬇ Download', d: 'Export the whole reference as rich text', kind: 'gesture' }
     ] }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COLUMN 3 — which global keys actually REACH the dispatcher from this screen.
+//
+// core.js's window-capture listener returns early (no dispatch at all) while the
+// dictionary, slideshow, video editor or shareable menu is open, and hotkeys.js
+// fn entries bail on their own for several overlays. Listing a key that is
+// swallowed before it arrives is worse than listing nothing.
+// ─────────────────────────────────────────────────────────────────────────────
+// Screens where core.js bails wholesale: an explicit ALLOW list.
+var HP_GLOBAL_ONLY = {
+  Ev:   ['H  /  ⇧H', 'Esc', '0'],
+  // (zip0183) Xe is the exception — hotkeys.js auto-saves and closes it first,
+  // so these four still work from the editor.
+  Xe:   ['T', 'G', 'A', 'D', 'H  /  ⇧H', 'Esc', '0'],
+  D:    ['T', 'G', 'H  /  ⇧H', 'Esc', '0'],
+  SS:   ['H  /  ⇧H', 'Esc', '0'],
+  Menu: ['H  /  ⇧H', 'Esc', '0'],
+  H:    ['H  /  ⇧H', 'Esc', '0'],
+  Cu:   ['C', 'H  /  ⇧H', 'Esc', '0']
+};
+// Everywhere else: a DENY list of keys that dispatch but then no-op.
+var HP_GLOBAL_OFF = {
+  G:  ['W  or  L'],                         // bails while the grid is up
+  // The ☰ / ⚙ chrome is HIDDEN behind a fullscreen page (_wireMobileToCBtn
+  // hides both whenever #gridFullscreen is up) — verified in the browser, not
+  // assumed. Offering a button the viewer cannot see is the same lie as
+  // offering a key that never arrives.
+  V:  ['W  or  L', 'F', '☰ button (top-left)'],
+  Ie: ['W  or  L', 'F', '☰ button (top-left)'],
+  Q:  ['W  or  L', 'F', '☰ button (top-left)'],
+  Xs: ['W  or  L', 'F', '☰ button (top-left)'],
+  C:  ['W  or  L', 'F'], A:  ['W  or  L', 'F'],
+  // The staging screens own these letters themselves (core.js bails per-letter).
+  I:  ['W  or  L', 'F', 'A', 'D', 'E', 'C'],
+  St: ['W  or  L', 'F', 'A', 'D', 'E', 'C'],
+  X:  ['W  or  L', 'F', 'A', 'D', 'E', 'C'],
+  O:  ['W  or  L', 'F']
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -404,7 +511,9 @@ function normKey(k) {
 // different ("Click cell" = play/pause vs "Click another cell" = swap the cut
 // cell), which is worse than a little duplication.
 var HP_DROP = {
-  G: ['Hold a cell, click another', 'R-click a grid cell'],
+  // 'Swipe ← on cell' is HELP_DATA's thinner wording of the registry's
+  // 'Swipe ← within a cell' — the registry row says WHY it has to stay inside.
+  G: ['Hold a cell, click another', 'R-click a grid cell', 'Swipe ← on cell'],
   T: ['Shift+click down a column']
 };
 
@@ -423,7 +532,7 @@ function scopeHas(scope, code) {
 }
 
 // Everything the panel shows for one screen, already split into the three
-// buckets the renderer draws.
+// columns the renderer draws.
 function hpRows(s) {
   var code = s.code;
   var keys = [], gests = [], globals = [];
@@ -479,19 +588,27 @@ function hpRows(s) {
     push(r.kind === 'gesture' ? gests : keys, r.k, r.d, r.dev);
   });
 
-  // 5 — the global any-screen keys (their own collapsed section; a key already
-  //     listed above is NOT repeated — the screen-specific meaning wins).
+  // 5 — column 3: the global keys that actually work FROM here.
+  var only = HP_GLOBAL_ONLY[code] || null;
+  var off  = HP_GLOBAL_OFF[code] || [];
+  var offSet = {}; off.forEach(function (l) { offSet[normKey(l)] = true; });
+  var onlySet = null;
+  if (only) { onlySet = {}; only.forEach(function (l) { onlySet[normKey(l)] = true; }); }
   var blocked = window.HK_USER_BLOCKED || [];
+  function pushGlobal(label, desc, dev) {
+    var n = normKey(label);
+    if (seen[n]) return;                       // the screen-specific meaning wins
+    if (onlySet ? !onlySet[n] : offSet[n]) return;
+    globals.push({ k: label, d: desc, dev: dev });
+  }
   reg.forEach(function (h) {
     if (typeof h.fn !== 'function' || !h.label || !h.desc) return;
-    if (seen[normKey(h.label)]) return;
-    globals.push({ k: h.label, d: h.desc, dev: blocked.indexOf(h.key) >= 0 });
+    pushGlobal(h.label, h.desc, blocked.indexOf(h.key) >= 0);
   });
   reg.forEach(function (h) {
     if (typeof h.fn === 'function' || !h.label || !h.desc) return;
     if (h.scope !== 'global') return;
-    if (seen[normKey(h.label)]) return;
-    globals.push({ k: h.label, d: h.desc, dev: h.dev });
+    pushGlobal(h.label, h.desc, !!h.dev);
   });
 
   if (s.userMode) {
@@ -513,14 +630,18 @@ function hpChips(s) {
   if (s.code === 'V' || s.code === 'Ie' || s.code === 'Q' || s.code === 'Xs') {
     if (s.video) c.push({ t: s.playing ? '▶ playing' : (s.paused ? '⏸ paused' : '• video idle'), on: true });
     if (s.zoom > 1.05) c.push({ t: '⤢ zoomed ' + s.zoom.toFixed(1) + '×', on: true });
-    else if (!s.textReader) c.push({ t: '⤢ 1× (swipe closes)', on: false });
-    if (s.sectNav) c.push({ t: '▤ paged slide', on: true });
+    else if (!s.textReader) c.push({ t: '⤢ 1× — swipe ← leaves', on: false });
+    if (s.sectNav) c.push({ t: '▤ deck page', on: true });
     if (s.slideshow) c.push({ t: '🖼 in slideshow', on: true });
     if (s.textReader) c.push({ t: '📖 text reader', on: true });
+  } else if (s.code === 'SS') {
+    c.push({ t: s.ssPaused ? '⏸ paused' : '▶ running', on: true });
+    if (s.ssReview) c.push({ t: 'review mode', on: true });
+    c.push({ t: s.ssZoom ? '⤢ zoomed' : '⤢ 1× — swipe ← leaves', on: !!s.ssZoom });
   } else if (s.code === 'G') {
     c.push({ t: s.gridSrc === 'C' ? 'source: C' + (s.cfgName ? ' · ' + s.cfgName : '') : 'source: T', on: s.gridSrc === 'C' });
     c.push({ t: 'layout: ' + s.layout + (s.layoutLocked ? ' (locked)' : ''), on: s.layoutLocked });
-    if (s.gSect)    c.push({ t: '▤ 1a is a paged slide', on: true });
+    if (s.gSect)    c.push({ t: '▤ 1a is a deck page', on: true });
     if (s.bufPanel) c.push({ t: '⚙ clean-playback panel up', on: true });
     if (s.moving)   c.push({ t: '↻ moving cells', on: true });
   }
@@ -533,48 +654,57 @@ function hpChips(s) {
 // One <style> injected once. Written with plain string concatenation on
 // purpose — a stray backtick inside a template literal here would break the
 // parse and silently kill the H key (see the save-stale/backtick note).
+//
+// (dev0703) Every size is in em off --hp-fs so hpFit() can shrink the whole
+// strip with one property write until the tallest column fits without a bar.
 // ─────────────────────────────────────────────────────────────────────────────
 function injectCss() {
   if ($id('hpCss')) return;
   var st = document.createElement('style');
   st.id = 'hpCss';
   st.textContent = [
-    '#hpPanel{position:fixed;z-index:10000050;width:430px;max-width:calc(100vw - 20px);',
-      'max-height:78vh;display:flex;flex-direction:column;background:rgba(10,10,26,0.985);',
-      'border:2px solid #4af;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.92);',
-      'font-family:monospace;color:#cde;overflow:hidden;}',
+    '#hpPanel{position:fixed;top:0;left:0;right:0;z-index:10000050;',
+      '--hp-fs:15px;font-size:var(--hp-fs);font-family:monospace;color:#cde;',
+      'background:rgba(10,10,26,0.975);border-bottom:2px solid #4af;',
+      'box-shadow:0 6px 30px rgba(0,0,0,0.85);display:flex;flex-direction:column;}',
     '#hpPanel.hp-hidden{display:none;}',
-    '#hpHead{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#16213e;',
-      'border-bottom:1px solid #2a2a4a;cursor:move;user-select:none;touch-action:none;}',
-    '#hpHead .hp-t{flex:1;font-size:13px;font-weight:bold;color:#8cf;white-space:nowrap;',
-      'overflow:hidden;text-overflow:ellipsis;}',
-    '#hpPanel button{background:#1a1a2e;border:1px solid #46c;color:#bde;border-radius:4px;',
-      'font-family:monospace;font-size:11px;padding:3px 8px;cursor:pointer;}',
-    '#hpPanel button:hover{background:#24406e;border-color:#8cf;}',
-    '#hpChips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px 0;}',
-    '#hpChips span{font-size:10px;padding:2px 7px;border-radius:9px;border:1px solid #2a3a5a;',
-      'background:#111a2e;color:#8a9;}',
+    '#hpHead{display:flex;align-items:center;gap:0.6em;flex-wrap:wrap;',
+      'padding:0.35em 0.7em;background:#16213e;border-bottom:1px solid #2a2a4a;}',
+    '#hpTitle{font-size:1.05em;font-weight:bold;color:#8cf;white-space:nowrap;}',
+    '#hpChips{display:flex;flex-wrap:wrap;gap:0.35em;flex:1;}',
+    '#hpChips span{font-size:0.78em;padding:0.1em 0.6em;border-radius:1em;',
+      'border:1px solid #2a3a5a;background:#111a2e;color:#8a9;white-space:nowrap;}',
     '#hpChips span.on{border-color:#3d8;background:#0d2a1e;color:#7ec;}',
-    '#hpDesc{padding:7px 10px 0;font-size:10px;line-height:1.5;color:#778;}',
-    '#hpBody{overflow-y:auto;padding:4px 10px 10px;}',
-    '.hp-sec{margin-top:10px;color:#556;font-size:10px;letter-spacing:0.06em;',
-      'border-bottom:1px solid #1e2440;padding-bottom:3px;}',
-    '.hp-sec.hp-fold{cursor:pointer;color:#79a;}',
-    '.hp-row{display:flex;gap:9px;padding:4px 0;border-bottom:1px solid #14182c;align-items:baseline;}',
-    '.hp-k{flex:0 0 118px;color:#fd8;font-size:11px;font-weight:bold;word-break:break-word;}',
-    '.hp-d{flex:1;color:#bcd;font-size:11px;line-height:1.45;}',
-    '.hp-dev{color:#647;font-size:9px;margin-left:5px;}',
+    '#hpPanel button{background:#1a1a2e;border:1px solid #46c;color:#bde;border-radius:4px;',
+      'font-family:monospace;font-size:0.82em;padding:0.2em 0.7em;cursor:pointer;white-space:nowrap;}',
+    '#hpPanel button:hover{background:#24406e;border-color:#8cf;}',
+    // The band: three equal columns, capped so it only ever covers the TOP of
+    // the screen. overflow:hidden is the no-scrollbar promise; hpFit shrinks the
+    // type until the content honours it, and only adds .hp-of as a last resort.
+    '#hpBody{display:grid;grid-template-columns:1fr 1fr 1fr;',
+      'max-height:calc(80vh - 3em);overflow:hidden;}',
+    '#hpBody.hp-of{overflow-y:auto;}',
+    '.hp-col{padding:0.35em 0.8em 0.6em;border-left:1px solid #1e2440;min-width:0;}',
+    '.hp-col:first-child{border-left:none;}',
+    '.hp-colhead{color:#79a;font-size:0.82em;letter-spacing:0.05em;',
+      'border-bottom:1px solid #1e2440;padding-bottom:0.2em;margin-bottom:0.25em;}',
+    '.hp-cdesc{color:#667;font-size:0.75em;line-height:1.4;margin-bottom:0.3em;}',
+    '.hp-row{display:flex;gap:0.6em;padding:0.12em 0;align-items:baseline;}',
+    '.hp-k{flex:0 0 6.4em;color:#fd8;font-weight:bold;word-break:break-word;line-height:1.3;}',
+    '.hp-d{flex:1;color:#cde;font-size:0.95em;line-height:1.35;min-width:0;}',
+    '.hp-dev{color:#647;font-size:0.75em;margin-left:0.4em;}',
     '.hp-badge{display:inline-block;background:#3a2a52;border:1px solid #96f;color:#c9f;',
-      'border-radius:3px;font-size:9px;padding:0 4px;margin-right:5px;vertical-align:1px;}',
-    '.hp-var{display:flex;gap:6px;font-size:10.5px;line-height:1.45;padding:2px 0 2px 10px;color:#89a;}',
-    '.hp-var .hp-mark{flex:0 0 40px;color:#445;font-size:9px;}',
+      'border-radius:3px;font-size:0.75em;padding:0 0.3em;margin-right:0.3em;vertical-align:0.1em;}',
+    '.hp-var{display:flex;gap:0.4em;font-size:0.88em;line-height:1.35;padding:0.05em 0 0.05em 0.5em;color:#89a;}',
+    '.hp-var .hp-mark{flex:0 0 2.9em;color:#445;font-size:0.85em;}',
     '.hp-var.live{color:#8f9;}',
     '.hp-var.live .hp-mark{color:#3d8;font-weight:bold;}',
-    '.hp-note{font-size:9.5px;color:#667;padding:2px 0 2px 10px;line-height:1.45;font-style:italic;}',
-    '#hpFoot{padding:6px 10px;border-top:1px solid #2a2a4a;background:#0c1020;font-size:9.5px;color:#667;}',
+    '.hp-note{font-size:0.8em;color:#667;padding:0.05em 0 0.15em 0.5em;line-height:1.35;font-style:italic;}',
+    '#hpFoot{padding:0.25em 0.7em;border-top:1px solid #2a2a4a;background:#0c1020;',
+      'font-size:0.76em;color:#667;}',
     '#hpTip{position:fixed;z-index:10000060;pointer-events:none;max-width:280px;',
       'background:#101a30;color:#dfe;border:1px solid #6af;border-radius:6px;padding:5px 9px;',
-      'font-family:monospace;font-size:11px;line-height:1.4;box-shadow:0 4px 18px rgba(0,0,0,0.8);',
+      'font-family:monospace;font-size:12px;line-height:1.4;box-shadow:0 4px 18px rgba(0,0,0,0.8);',
       'opacity:0;transition:opacity .09s;white-space:pre-wrap;}',
     '#hpTip.on{opacity:1;}',
     '#hpTip .hp-arrow{position:absolute;width:8px;height:8px;background:#101a30;',
@@ -586,8 +716,7 @@ function injectCss() {
 // ─────────────────────────────────────────────────────────────────────────────
 // THE PANEL
 // ─────────────────────────────────────────────────────────────────────────────
-var _hpTimer = null, _hpScreenAt = null, _hpGlobalOpen = false;
-try { _hpGlobalOpen = localStorage.getItem(LS_GLOB) === '1'; } catch (_) {}
+var _hpTimer = null, _hpScreenAt = null;
 
 function hpIsOpen() { var p = $id(PANEL_ID); return !!p && !p.classList.contains('hp-hidden'); }
 
@@ -597,82 +726,105 @@ function hpBuild() {
   p.id = PANEL_ID;
   p.innerHTML =
       '<div id="hpHead">'
-    +   '<span class="hp-t" id="hpTitle">Help</span>'
+    +   '<span id="hpTitle">Help</span>'
+    +   '<span id="hpChips"></span>'
     +   '<button id="hpFull" title="Open the FULL reference — every screen, every key (Shift+H)">Full ref</button>'
     +   '<button id="hpClose" title="Close this panel (H or Esc)">✕</button>'
     + '</div>'
-    + '<div id="hpChips"></div>'
-    + '<div id="hpDesc"></div>'
     + '<div id="hpBody"></div>'
     + '<div id="hpFoot">'
     +   '<span class="hp-badge">◆</span>behaviour changes with context — the green <b>now ▸</b> is what it does at this moment. '
-    +   'H closes · Shift+H = full reference.'
+    +   'Long entries are trimmed with “…” · H closes · ⇧H = the full untrimmed reference.'
     + '</div>';
-  // Appended to <body>, i.e. OUTSIDE #rotateWrap — same as the shareable menu,
-  // so the drag maths can use raw client coords without rotateXY().
+  // Appended to <body>, i.e. OUTSIDE #rotateWrap — same as the shareable menu.
   document.body.appendChild(p);
 
   $id('hpClose').addEventListener('click', hpClose);
   $id('hpFull').addEventListener('click', function () {
     if (typeof openHelp === 'function') openHelp();
   });
-  hpWireDrag(p, $id('hpHead'));
-  hpRestorePos(p);
   return p;
 }
 
-function hpRestorePos(p) {
-  var pos = null;
-  try { pos = JSON.parse(localStorage.getItem(LS_POS) || 'null'); } catch (_) {}
-  if (pos && isFinite(pos.l) && isFinite(pos.t)) {
-    p.style.left = Math.max(0, Math.min(window.innerWidth  - 80, pos.l)) + 'px';
-    p.style.top  = Math.max(0, Math.min(window.innerHeight - 40, pos.t)) + 'px';
-  } else {
-    p.style.left = Math.max(8, window.innerWidth - 450) + 'px';
-    p.style.top  = '64px';
-  }
-}
-
-function hpWireDrag(p, head) {
-  var d = null;
-  head.addEventListener('pointerdown', function (e) {
-    if (e.target.tagName === 'BUTTON') return;
-    var r = p.getBoundingClientRect();
-    d = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-    try { head.setPointerCapture(e.pointerId); } catch (_) {}
-    e.preventDefault();
-  });
-  head.addEventListener('pointermove', function (e) {
-    if (!d) return;
-    var l = Math.max(0, Math.min(window.innerWidth  - 60, e.clientX - d.dx));
-    var t = Math.max(0, Math.min(window.innerHeight - 30, e.clientY - d.dy));
-    p.style.left = l + 'px'; p.style.top = t + 'px';
-  });
-  function end() {
-    if (!d) return;
-    d = null;
-    var r = p.getBoundingClientRect();
-    try { localStorage.setItem(LS_POS, JSON.stringify({ l: Math.round(r.left), t: Math.round(r.top) })); } catch (_) {}
-  }
-  head.addEventListener('pointerup', end);
-  head.addEventListener('pointercancel', end);
+// Several registry entries are paragraphs (B, ⇧B, Ctrl+V, Q/⇧Q all explain a
+// whole subsystem). At a third of the window wide, one of those swallows the
+// column. Trim to the first ~170 characters on a word boundary — the untrimmed
+// text is one ⇧H away, and the footer says so.
+function clip(s, n) {
+  s = String(s == null ? '' : s);
+  if (s.length <= n) return s;
+  var cut = s.slice(0, n);
+  var sp = cut.lastIndexOf(' ');
+  return (sp > n * 0.6 ? cut.slice(0, sp) : cut).replace(/[ ,;.—-]+$/, '') + ' …';
 }
 
 function rowHtml(r) {
   var h = '<div class="hp-row"><div class="hp-k">'
         + (r.ctx ? '<span class="hp-badge">◆</span>' : '')
-        + esc(r.k) + '</div><div class="hp-d">' + esc(r.d)
+        + esc(r.k) + '</div><div class="hp-d">' + esc(clip(r.d, r.ctx ? 240 : 170))
         + (r.dev ? '<span class="hp-dev">dev</span>' : '');
   if (r.ctx) {
     for (var i = 0; i < r.ctx.length; i++) {
       var live = (i === r.live);
       h += '<div class="hp-var' + (live ? ' live' : '') + '" data-var="' + i + '">'
          + '<span class="hp-mark">' + (live ? 'now ▸' : '▹') + '</span>'
-         + '<span>' + esc(r.ctx[i].d) + '</span></div>';
+         + '<span>' + esc(clip(r.ctx[i].d, 190)) + '</span></div>';
     }
-    if (r.note) h += '<div class="hp-note">' + esc(r.note) + '</div>';
+    if (r.note) h += '<div class="hp-note">' + esc(clip(r.note, 190)) + '</div>';
   }
   return h + '</div></div>';
+}
+
+function colHtml(head, desc, rows, empty) {
+  var h = '<div class="hp-col"><div class="hp-colhead">' + head + '</div>';
+  if (desc) h += '<div class="hp-cdesc">' + esc(desc) + '</div>';
+  if (!rows.length) h += '<div class="hp-cdesc">' + esc(empty) + '</div>';
+  rows.forEach(function (r) { h += rowHtml(r); });
+  return h + '</div>';
+}
+
+// Shrink the type until the tallest column fits the band. Stops at the first
+// size that fits, so a sparse screen gets large text and a dense one gets as
+// much as it can without a scrollbar.
+//
+// The STARTING size tracks the viewport WIDTH, not just the height: each column
+// is a third of the window, and at 17px on a 900px-wide window every second word
+// wrapped. Width sets the ceiling, then the height loop takes it from there.
+// The band is as tall as its TALLEST column, so equal thirds waste the space:
+// column 1 (this screen's hotkeys) routinely carries three times the text of
+// column 3 (the handful of globals that reach it), overflowed, and dragged a
+// scrollbar in while two thirds of the strip sat empty. Weight the widths by how
+// much text each column actually holds — clamped so no column collapses — and
+// the tall one gets the room it needs to be short.
+function hpBalance() {
+  var body = $id('hpBody');
+  if (!body) return;
+  var cols = body.querySelectorAll('.hp-col');
+  if (cols.length !== 3) return;
+  var w = [], tot = 0;
+  for (var i = 0; i < 3; i++) {
+    var n = Math.max(60, (cols[i].textContent || '').length);
+    w.push(n); tot += n;
+  }
+  body.style.gridTemplateColumns = w.map(function (n) {
+    return Math.max(0.65, Math.min(1.7, (n / tot) * 3)).toFixed(2) + 'fr';
+  }).join(' ');
+}
+
+function hpFit() {
+  var p = $id(PANEL_ID), body = $id('hpBody');
+  if (!p || !body) return;
+  body.classList.remove('hp-of');
+  hpBalance();
+  var top = Math.max(11, Math.min(17, Math.round(window.innerWidth / 95)));
+  for (var n = top; n >= 11; n--) {
+    p.style.setProperty('--hp-fs', n + 'px');
+    if (body.scrollHeight <= body.clientHeight + 1) return;   // reading forces layout
+  }
+  // Still too tall at the 11px floor — scroll rather than shrink into
+  // illegibility or clip. Losing rows silently would be worse than the bar we
+  // were trying to avoid, and so would type nobody can read.
+  body.classList.add('hp-of');
 }
 
 function hpRender() {
@@ -680,59 +832,33 @@ function hpRender() {
   var s = hpState();
   _hpScreenAt = s.code;
   var R = hpRows(s);
+  var name = HP_TITLES[s.code] || s.code;
 
-  $id('hpTitle').textContent = '⌨ ' + (HP_TITLES[s.code] || s.code);
-
-  var chips = hpChips(s);
-  $id('hpChips').innerHTML = chips.map(function (c) {
+  $id('hpTitle').textContent = '⌨ ' + name;
+  $id('hpChips').innerHTML = hpChips(s).map(function (c) {
     return '<span class="' + (c.on ? 'on' : '') + '">' + esc(c.t) + '</span>';
   }).join('');
 
-  $id('hpDesc').innerHTML = R.desc ? esc(R.desc) : '';
+  $id('hpBody').innerHTML =
+      colHtml('⌨ HOTKEYS — ' + esc(s.code), R.desc, R.keys,
+              'No keys of its own here.')
+    + colHtml('👆 MOUSE / SWIPE — ' + esc(s.code), '', R.gests,
+              'No pointer gestures of its own here.')
+    + colHtml('🌐 GLOBAL KEYS THAT WORK HERE', '', R.globals,
+              'This screen owns the keyboard — no global keys reach it.');
 
-  var h = '';
-  if (R.keys.length) {
-    h += '<div class="hp-sec">⌨ HOTKEYS — THIS SCREEN</div>';
-    R.keys.forEach(function (r) { h += rowHtml(r); });
-  }
-  if (R.gests.length) {
-    h += '<div class="hp-sec">👆 GESTURES &amp; CONTROLS — THIS SCREEN</div>';
-    R.gests.forEach(function (r) { h += rowHtml(r); });
-  }
-  if (!R.keys.length && !R.gests.length) {
-    h += '<div class="hp-sec">NOTHING SCREEN-SPECIFIC HERE</div>'
-       + '<div class="hp-row"><div class="hp-d">This window has no keys or gestures of its own — the global list below is all of it.</div></div>';
-  }
-  if (R.globals.length) {
-    h += '<div class="hp-sec hp-fold" id="hpFold">'
-       + (_hpGlobalOpen ? '▾' : '▸') + ' 🌐 GLOBAL — ANY SCREEN (' + R.globals.length + ')</div>'
-       + '<div id="hpGlob" style="display:' + (_hpGlobalOpen ? 'block' : 'none') + '">';
-    R.globals.forEach(function (r) { h += rowHtml(r); });
-    h += '</div>';
-  }
-  var body = $id('hpBody');
-  var keepScroll = body.scrollTop;
-  body.innerHTML = h;
-  body.scrollTop = keepScroll;
-
-  var fold = $id('hpFold');
-  if (fold) fold.addEventListener('click', function () {
-    _hpGlobalOpen = !_hpGlobalOpen;
-    try { localStorage.setItem(LS_GLOB, _hpGlobalOpen ? '1' : '0'); } catch (_) {}
-    hpRender();
-  });
+  hpFit();
 }
 
 // Cheap re-check while the panel is up: if the screen changed, redraw; otherwise
-// just re-point the "now ▸" markers and refresh the chips. Full re-render on
-// every tick would fight the reader's scroll position.
+// just re-point the "now ▸" markers and refresh the chips. A full re-render on
+// every tick would re-run the font fit and make the strip twitch.
 function hpTick() {
   if (!hpIsOpen()) return;
   var s = hpState();
   if (s.code !== _hpScreenAt) { hpRender(); return; }
 
-  var chips = hpChips(s);
-  $id('hpChips').innerHTML = chips.map(function (c) {
+  $id('hpChips').innerHTML = hpChips(s).map(function (c) {
     return '<span class="' + (c.on ? 'on' : '') + '">' + esc(c.t) + '</span>';
   }).join('');
 
@@ -756,7 +882,6 @@ function hpTick() {
 function hpOpen() {
   var p = $id(PANEL_ID) || hpBuild();
   p.classList.remove('hp-hidden');
-  hpRestorePos(p);
   hpRender();
   if (_hpTimer) clearInterval(_hpTimer);
   _hpTimer = setInterval(hpTick, 700);
@@ -769,6 +894,8 @@ function hpClose() {
 }
 
 function hpToggle() { hpIsOpen() ? hpClose() : hpOpen(); }
+
+window.addEventListener('resize', function () { if (hpIsOpen()) hpFit(); });
 
 window.hpOpen = hpOpen;
 window.hpClose = hpClose;
@@ -826,8 +953,7 @@ function tipTarget(node) {
 
 function tipShow(el) {
   var t = tipNode();
-  var txt = el.getAttribute('data-tip') || '';
-  $id('hpTipTxt').textContent = txt;
+  $id('hpTipTxt').textContent = el.getAttribute('data-tip') || '';
   t.style.left = '0px'; t.style.top = '0px';
   t.classList.add('on');
   _tipFor = el;

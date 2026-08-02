@@ -9466,24 +9466,56 @@ const HELP_DATA = [
         { key: 'Ctrl+click cell',     desc: 'Open Editor (Ev / Ie) (dev)',               dev: true  },
         { key: 'R-click cell',        desc: 'Context menu: T / V / E / D (dev)',         dev: true  },
         { key: 'Double-click text',   desc: 'Edit text slide (Xe) (dev)',                dev: true  },
+        // (dev0703) The two on-screen buttons a Gu viewer actually has — the rest
+        // of the grid chrome is hidden in user mode, so these plus Esc and the
+        // cross-a-border swipe are the whole way out.
+        { key: '⚙ Configs button',    desc: 'User mode: back to the Main Page (pick another grid, a saved view or a search). Dev/mobile-dev: the friendly grid picker.', dev: false },
+        { key: '☰ button (top-left)', desc: 'User mode: the menu — Slideshow and Help',  dev: false },
       ]}
     ]
   },
 
   // ─── C / Cu — COLLECTION ────────────────────────────────────────────
-  { id: 'C', title: 'C / Cu — Collection (c.json)', devOnly: false,
-    desc: 'Saved grid layouts. Each entry maps cell positions to UIDs. Loading one sets which content appears in each grid slot.',
+  // (dev0703) Corrected against boot.js's actual C-screen handlers. The old rows
+  // claimed double-click LOADED a config and that a swipe deleted one; neither
+  // was true. C reuses the Table engine, so double-click is the Table's inline
+  // CELL EDIT, and it is right-click (or Ctrl+click) that makes a config active
+  // and jumps to G. There is no swipe handler on the C table at all.
+  { id: 'C', title: 'C — Collection / Config (c.json)', devOnly: true,
+    desc: 'Saved grid layouts, edited in the Table engine — every row is one config, every column one of its fields. Making one active is what decides which content fills each grid slot.',
     sections: [
       { name: 'Hotkeys', items: [
-        { key: 'G',      desc: 'Return to Grid',    dev: false },
-        { key: 'T',      desc: 'Return to Table',   dev: true  },
-        { key: 'Enter',  desc: 'Load selected config and go to Grid', dev: false },
-        { key: 'Delete', desc: 'Delete selected config (dev)', dev: true },
+        { key: 'Enter  or  M', desc: 'Make the selected config ACTIVE and jump to the Grid', dev: true },
+        { key: 'G',      desc: 'Close C and go to the Grid',   dev: true },
+        { key: 'T',      desc: 'Close C and return to the Table', dev: true },
+        { key: 'Delete', desc: 'Delete the selected config',   dev: true },
+        { key: 'E',      desc: 'With the ctxt / ss / pres column focused, edit THAT field in the HTML editor', dev: true },
+        { key: 'Esc',    desc: 'Defocus — Esc does NOT close C; use T or G', dev: true },
       ]},
       { name: 'Mouse / Touch', items: [
-        { key: 'Click row',   desc: 'Select config',                      dev: false },
-        { key: 'Double-click', desc: 'Load config and go to Grid',         dev: false },
-        { key: 'Swipe ← on row', desc: 'Delete config (dev)',             dev: true  },
+        { key: 'Click a cell',        desc: 'Focus that cell',                     dev: true },
+        { key: 'Double-click a cell', desc: 'Edit that cell inline (this is the config table — it edits the FIELD, it does not load the config)', dev: true },
+        { key: 'R-click a row',       desc: 'Make THAT config active and go straight to the Grid — no need to focus it first', dev: true },
+        { key: 'Ctrl+click a row',    desc: 'Same as right-click: make active and go to the Grid', dev: true },
+      ]}
+    ]
+  },
+
+  // ─── Cu — USER CONFIG PICKER ────────────────────────────────────────
+  // (dev0703) The public-site 'c'. NOT the C table above: user mode opens a
+  // friendly full-screen list (boot.js _showMobileCPicker) that floats over the
+  // grid. Rendering the dev table there gave viewers a black screen (dev0571).
+  { id: 'Cu', title: 'Cu — Choose a grid', devOnly: false,
+    desc: 'The list of saved grids. Pick one and it fills the Grid behind this list.',
+    sections: [
+      { name: 'Mouse / Touch', items: [
+        { key: 'Tap a grid',   desc: 'Load that grid and return to the Grid view', dev: false },
+        { key: 'Swipe ←',      desc: 'Cancel — back to the Grid, nothing changed',  dev: false },
+        { key: '✕ button',     desc: 'Cancel — back to the Grid, nothing changed',  dev: false },
+      ]},
+      { name: 'Hotkeys', items: [
+        { key: 'C',   desc: 'Close this list again (C is a toggle)', dev: false },
+        { key: 'Esc', desc: 'Cancel — back to the Grid, nothing changed',    dev: false },
       ]}
     ]
   },

@@ -2516,6 +2516,13 @@ function _wireMobileToCBtn() {
     const gridUp = grid.style.display === 'flex';
     const fsUp   = fs && fs.style.display === 'flex';
     btn.style.display = (gridUp && showWhenOpen && !fsUp) ? 'block' : 'none';
+    // (dev0703) The button does two different things (see its click handler
+    // below) and the static index.html title only described the dev one. Keep
+    // the label honest per mode — helpfloat.js's balloons read this title, so a
+    // wrong one here becomes a wrong balloon.
+    btn.title = _isUserMode()
+      ? 'Back to the Main Page — pick another grid, a saved view or a search'
+      : 'Switch to Configurations (choose a different grid)';
     // (dev0316) The user-mode top-left hamburger follows the same gate so
     // the slideshow launcher is only available while a grid is mounted.
     // On the shareable menu / V / locked-mode it stays hidden.

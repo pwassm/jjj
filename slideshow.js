@@ -737,7 +737,7 @@ function _slideshowStart(allOrdered, opts) {
       if (_slideshowState._touchActive) return;
       e.preventDefault();
       down = { x0: e.clientX, y0: e.clientY, t0: Date.now(), dragging: false, panBase: null,
-               ctrl: e.ctrlKey };
+               ctrl: e.ctrlKey, shift: e.shiftKey };   // (dev0703) ⇧ = slide nav
       zoomStarted = false; // (dev0268) reset per press
       zoomDelay = setTimeout(_startZoom, HOLD_MS);
     });
@@ -769,21 +769,15 @@ function _slideshowStart(allOrdered, opts) {
       const ms = Date.now() - down.t0;
       const mz = _ensureMZ();
       const heldZoom = zoomStarted; // (dev0268) snapshot before reset
-      const heldCtrl = (down && down.ctrl) || e.ctrlKey; // (dev0595) Ctrl+swipe
+      const heldCtrl = (down && down.ctrl) || e.ctrlKey;   // (dev0595) Ctrl+swipe
+      const heldShift = (down && down.shift) || e.shiftKey; // (dev0703) ⇧+swipe
       down = null;
       const st = _slideshowState;
       if (wasDragging && mz.scale < 1.1) {
         const horiz = Math.abs(dx) > SWIPE_DX && Math.abs(dx) > Math.abs(dy) && ms < SWIPE_MS;
         const vert  = Math.abs(dy) > SWIPE_DX && Math.abs(dy) > Math.abs(dx) && ms < SWIPE_MS;
         if (horiz) {
-          if (heldCtrl && dx < 0) {
-            // (dev0595) Ctrl + right-to-left swipe exits the slideshow back to
-            // the previous screen (e.g. G). Plain R→L still advances a slide.
-            slideshowClose();
-          } else {
-            // Horizontal swipe at ~1× → navigate. Pause (if any) persists.
-            _slideshowAdvance(dx > 0 ? -1 : +1);
-          }
+          _slideshowHorizSwipe(dx, heldShift, heldCtrl);
         } else if (vert && st && st.paused) {
           // (dev0268) Vertical drag on a paused, unzoomed slide toggles
           // the slideset between original and the current row's ftext
@@ -958,15 +952,15 @@ function _slideshowStart(allOrdered, opts) {
         if (_swipe) {
           const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
           const ms = Date.now() - _swipe.t;
-          // Horizontal swipe → navigate (dev0265: standardized to desktop conv).
-          // L→R (dx > 0) = previous; R→L (dx < 0) = next.
+          // Horizontal swipe → _slideshowHorizSwipe (dev0703: plain ← leaves the
+          // show, plain → is the next slide, ⇧ pages within it).
           // When the current image is zoomed (manual pinch or auto-zoom > 1),
           // a single-finger drag is a pan, not a navigation — skip and let the
           // dedicated pan path handle it via _slideshowSetPanTargetFromEvent.
           const zoomedNow = _slideshowIsZoomed();
           if (!zoomedNow && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && ms < 800) {
             _swipe = null;
-            _slideshowAdvance(dx > 0 ? -1 : +1);
+            _slideshowHorizSwipe(dx, e.shiftKey, e.ctrlKey);
             return;
           }
           // (dev0268) Vertical swipe on a paused, unzoomed slide toggles
@@ -1681,7 +1675,13 @@ function _slideshowKey(e) {
   const inSelect    = (tag === 'SELECT');
   // (dev0344) Esc is handled at the top of this function (works during video too).
   if (inTextField) return;
-  if (e.key === 'ArrowRight' || e.key === ' ') {
+  if (e.key === ' ') {
+    // (dev0703) Space = PAUSE / RESUME the show, matching Space everywhere else
+    // in the app (V, the row preview). It used to be a second "next slide",
+    // duplicating → for no gain and leaving pause reachable only from the menu.
+    e.preventDefault();
+    if (_slideshowState.paused) _slideshowResume(); else _slideshowPause();
+  } else if (e.key === 'ArrowRight') {
     e.preventDefault();
     _slideshowAdvance(+1);              // next
   } else if (e.key === 'ArrowLeft') {
@@ -2237,6 +2237,29 @@ function _slideshowAdvance(step) {
   }
   // Everything filtered/errored.
   if (typeof toast === 'function') toast('No viewable images.', 1800);
+  slideshowClose();
+}
+
+// (dev0703) ── THE horizontal-swipe rule ────────────────────────────────────
+// One app-wide idiom, shared with V/PM (vp.js _vpHorizSwipe):
+//
+//   plain swipe ←   PREVIOUS VIEW — leave the slideshow for the screen it was
+//                   launched from. This is what ← means everywhere else (G, V,
+//                   Ie, Xe, the Cu picker), and the slideshow was the one place
+//                   that disagreed.
+//   plain swipe →   next slide. "Forward" keeps its usual meaning, and it is
+//                   what makes the show still navigable on a phone, where there
+//                   is no Shift key to hold.
+//   ⇧ swipe ←  / →  previous / next slide — paging INSIDE the show, now that the
+//                   plain gestures carry the app-wide meaning.
+//
+// Ctrl+← is kept as an alias for the plain ← exit (dev0595 muscle memory).
+// Callers gate on "not zoomed" first: while zoomed a drag is a pan, not a swipe.
+function _slideshowHorizSwipe(dx, shift, ctrl) {
+  const right = dx > 0;
+  if (shift) { _slideshowAdvance(right ? +1 : -1); return; }
+  if (right) { _slideshowAdvance(+1); return; }
+  if (ctrl)  { slideshowClose(); return; }   // (dev0595) alias, same result
   slideshowClose();
 }
 

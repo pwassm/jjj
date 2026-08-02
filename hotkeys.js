@@ -145,7 +145,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'g', label: 'G', group: 'Screens', scope: 'global',
-    desc: 'Open the Grid (in the Grid: open the hovered cell’s source page — its linkpage, or the link itself for YouTube/Vimeo/IG/articles; for a raw image with no source page, dev opens a reverse-image search, user gets a toast)',
+    desc: 'Open the Grid — from a fullscreen page (V/Ie/Xs/Q) it closes that page and drops you back on the Grid. In the Grid itself G opens the hovered cell’s SOURCE PAGE instead (its linkpage, or the link itself for YouTube/Vimeo/IG/articles; for a raw image with no source page, dev opens a reverse-image search, user gets a toast).',
     fn(ctx) {
       if (ctx.tgOpen) { closeGridList(); gridShow(); return; }
       // If in VP (Video/Image View), close it and stay in grid
@@ -330,7 +330,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'h', label: 'H  /  ⇧H', group: 'Screens', scope: 'global',
-    desc: 'H toggles the floating CONTEXT help — only the hotkeys and gestures of the window you are looking at, with the context-sensitive ones (◆) showing which branch is live right now. Shift+H opens this full reference instead.',
+    desc: 'Toggle the floating CONTEXT help — the keys and gestures of THIS window only, with the context-sensitive ones (◆) marked live. ⇧H opens this full reference instead.',
     fn(ctx) {
       // (dev0702) helpfloat.js owns `h` outright: its window-capture listener is
       // registered first (helpfloat.js leads the script list in index.html) and
@@ -557,7 +557,10 @@ window.HOTKEYS = [
 
   { label: '0', group: 'Everywhere', scope: 'global', dev: false,
     impl: 'core.js window-capture (dev0570) → boot.js _toggleFullscreen',
-    desc: 'Toggle browser fullscreen (the F11 equivalent) — works from any screen' },
+    // (dev0703) Don't call it "the F11 key": F11 is the WINDOWS browser
+    // shortcut. On a Mac the browser's own fullscreen is Ctrl+⌘+F (and ⌘+Ctrl+F
+    // in Safari), so `0` is the one binding that means the same thing on both.
+    desc: 'Toggle browser fullscreen from any screen — the app’s own key for it (the browser’s equivalent is F11 on Windows, Ctrl+⌘+F on a Mac)' },
 
   // ── Gestures — swipe / mouse idioms (no fn; documented, not dispatched) ────
   // helpSection:'Gestures' renders these as their own Help sub-section. Because
@@ -567,13 +570,30 @@ window.HOTKEYS = [
     impl: 'grid.js pointer swipe',
     desc: 'Open that cell fullscreen — V (video) / Ie (image) / Xs (slide) / Q (quiz)' },
 
-  { label: 'Swipe ← on a cell', group: 'Gestures', scope: 'G', dev: false, helpSection: 'Gestures',
+  { label: 'Swipe ← within a cell', group: 'Gestures', scope: 'G', dev: false, helpSection: 'Gestures',
     impl: 'grid.js pointer swipe',
-    desc: 'Toggle that cell’s video play/pause' },
+    desc: 'Toggle that cell’s video play/pause — the swipe has to start and end inside the SAME cell. On the sectioned 1a lesson cell it advances a section instead.' },
 
-  { label: 'Swipe ← in a viewer', group: 'Gestures', scope: 'V/Ie/Xs/Q', dev: false, helpSection: 'Gestures',
-    impl: 'vp.js / viewer swipe-back',
-    desc: 'Close the fullscreen viewer and return to the Grid' },
+  // (dev0703) The user-mode escape hatch, undocumented until now — and the one
+  // gesture a Gu viewer cannot do without, since Gu hides the ☰ / Configs chrome.
+  { label: 'Swipe ← across a border', group: 'Gestures', scope: 'G', dev: false, helpSection: 'Gestures',
+    impl: 'grid.js gridShow overlay pointer handler (dev0369/0699) → _returnToMenuFromGrid',
+    desc: 'Gu only — leave the Grid for the Main Page you came from. The swipe must START in one cell and END in a different one (or off the grid); one that stays inside a cell just pauses that cell. Esc does the same. In DEV mode this is deliberately off — there the same drag is how you pause a cell, and a swipe that drifted a few px past the edge used to throw the whole grid away.' },
+
+  // (dev0703) THE app-wide swipe rule. Stated once here; helpfloat.js renders it
+  // per screen with the live branch marked. Implemented by vp.js _vpHorizSwipe
+  // and slideshow.js _slideshowHorizSwipe, which are twins on purpose.
+  // Scope stops at the fullscreen pages: on G the back gesture is the
+  // cross-a-border swipe above, and Cu states its own. helpfloat.js's per-screen
+  // ◆ row supersedes this one in the floating panel; it stays here so the FULL
+  // reference carries the rule in one sentence.
+  { label: 'Swipe ←  (the back gesture)', group: 'Gestures', scope: 'V/Ie/Xs/Q/SS', dev: false, helpSection: 'Gestures',
+    impl: 'vp.js _vpHorizSwipe + slideshow.js _slideshowHorizSwipe (dev0703)',
+    desc: 'PREVIOUS VIEW, everywhere: closes the viewer / the slideshow / the grid-choice list and hands you back the screen you came from. The one exception is a zoomed picture, where a drag pans instead — double-click to reset the zoom and the gesture comes back.' },
+
+  { label: '⇧ Swipe ←  /  ⇧ Swipe →', group: 'Gestures', scope: 'SS/V/Xs', dev: false, helpSection: 'Gestures',
+    impl: 'vp.js _vpHorizSwipe + slideshow.js _slideshowHorizSwipe (dev0703)',
+    desc: 'PREVIOUS / NEXT slide, inside a slideshow (SS) or a presentation deck (PM). Holding Shift is what says “move within this show” rather than “leave it”. Plain swipe → is the same as ⇧ swipe → (next slide), so a phone — which has no Shift key — can still page forward.' },
 
   { label: 'Shift-hold LMB / RMB', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
     impl: 'grid.js wireMouseV (dev0364)',

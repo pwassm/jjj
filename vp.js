@@ -543,21 +543,9 @@ function gridOpenFullscreen(row, contained) {
             const dx = p.x - _swipe.x, dy = p.y - _swipe.y;
             const ms = Date.now() - _swipe.t;
             const horiz = Math.abs(dx) > 40 && Math.abs(dy) < Math.abs(dx) && ms < 800 && _vScale < 1.1;
-            // (dev0643) Sectioned-text designation video page → swipe pages the
-            // lesson slides (left = next, right = previous) instead of closing.
-            if (horiz && window._vpSectNav) { window._vpSectNav(dx < 0 ? 1 : -1); _swipe = null; return; }
-            // R→L swipe (legacy close). In a slideshow this advances to the
-            // NEXT slide (the signal is a no-op outside a slideshow video).
-            if (horiz && dx < 0) {
-              if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(1);
-              _swipe = null; vpClose(); return;
-            }
-            // (dev0281) L→R swipe — only meaningful in a slideshow: close and
-            // go to the PREVIOUS slide. Standalone V keeps its old behavior.
-            if (horiz && dx > 0 && _vpState && _vpState.slideshowNoLoop) {
-              if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(-1);
-              _swipe = null; vpClose(); return;
-            }
+            // (dev0703) One shared rule — see _vpHorizSwipe. Touch has no Shift,
+            // so a phone gets plain ← = leave, plain → = next slide.
+            if (horiz && _vpHorizSwipe(dx, e.shiftKey)) { _swipe = null; return; }
             // Quick stationary tap
             if (Math.abs(dx) < 14 && Math.abs(dy) < 14 && ms < 300) {
               const now = Date.now();
@@ -646,23 +634,10 @@ function gridOpenFullscreen(row, contained) {
           const dx = p.x - mStart.x, dy = p.y - mStart.y;
           const horiz = Math.abs(dx) > 60 && Math.abs(dy) < Math.abs(dx) &&
                         Date.now() - mStart.t < 1500;
-          // (dev0643) On a sectioned-text designation VIDEO page, a horizontal
-          // swipe pages the lesson slides (left = next, right = previous) rather
-          // than closing V — matching the floating ‹ › arrows. ←/→ keys are left
-          // to frame-step the video (vpKeyHandler dev0643).
-          if (horiz && window._vpSectNav) {
-            window._vpSectNav(dx < 0 ? 1 : -1);
+          // (dev0703) One shared rule — see _vpHorizSwipe. ⇧+drag pages the deck
+          // / the show; a plain R→L drag leaves the page, as it does everywhere.
+          if (horiz && _vpHorizSwipe(dx, e.shiftKey)) {
             mStart = null; mPanBase = null; _vApply(); return;
-          }
-          // R→L drag → close (slideshow: next slide).
-          if (horiz && dx < 0) {
-            if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(1);
-            vpClose(); return;
-          }
-          // (dev0281) L→R drag in a slideshow → previous slide.
-          if (horiz && dx > 0 && _vpState && _vpState.slideshowNoLoop) {
-            if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(-1);
-            vpClose(); return;
           }
         }
         mStart = null; mPanBase = null;
@@ -2396,6 +2371,42 @@ function vpKeyHandler(e) {
 // getPlayerState() (YT native; the direct-video wrapper at vpMountDirectVideo).
 // State 1 = playing for both. Used by the keyboard handler to decide between
 // frame-step (paused) and slide-navigate (playing slideshow video).
+// (dev0703) ── THE horizontal-swipe rule, V/PM side ──────────────────────────
+// Twin of slideshow.js _slideshowHorizSwipe, so one sentence covers the whole
+// app: plain ← = PREVIOUS VIEW, plain → = next slide, ⇧← / ⇧→ = previous / next
+// slide. "Slide" means whatever this page is paging: a PM lesson deck section
+// (window._vpSectNav) or, for a video opened from the slideshow, a show slide.
+//
+// Before dev0703 a plain horizontal swipe on a PM page paged the deck and never
+// closed V, which is exactly the inconsistency this rule removes — plain ← now
+// leaves, the same as on every other fullscreen page.
+//
+// Callers have already established a real horizontal swipe at ~1× zoom.
+// Returns true when it acted (the caller then stops).
+function _vpHorizSwipe(dx, shift) {
+  const right = dx > 0;
+  const inSS  = !!(_vpState && _vpState.slideshowNoLoop);
+
+  if (window._vpSectNav) {                       // PM — a paged lesson deck
+    if (shift || right) { window._vpSectNav(right ? 1 : -1); return true; }
+    // plain ← falls through to the exit below
+  } else if (inSS) {                             // a slideshow video
+    if (shift || right) {
+      if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(right ? 1 : -1);
+      vpClose();
+      return true;
+    }
+  } else if (right) {
+    return false;                                // ordinary V: nothing "forward"
+  }
+
+  // plain ← — leave for the previous view. Inside a slideshow that means the
+  // whole show, not just this video (slideshowClose tears V down with it).
+  if (inSS && typeof slideshowClose === 'function') { slideshowClose(); return true; }
+  vpClose();
+  return true;
+}
+
 function _vpIsPlaying() {
   if (!_vpState || !_vpState.player) return false;
   try { return _vpState.player.getPlayerState() === 1; } catch (_) { return false; }
