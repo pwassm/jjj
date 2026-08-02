@@ -377,12 +377,14 @@
   // Wrap the selected top-level lines in a <details>. splitTitle=false ([▶…]):
   // empty summary, caret placed in it, block left open. splitTitle=true ([[2]]):
   // first selected line becomes the summary, the rest becomes the (collapsed) body.
-  // (dev0712) A selection INSIDE a collapsible is now legal — it nests, which is
-  // the only way to build "one collapsible per numbered point" under a heading
-  // block. The old blanket "Already inside a collapsible — Un[▶] first" refused
-  // it outright. Only the summary line itself is still off limits: details is
-  // `detailsSummary block+`, so a range starting at index 0 would eat the title
-  // and the node could not be rebuilt.
+  // (dev0712) A selection INSIDE a collapsible is legal — it NESTS, which is how
+  // a point inside an existing block becomes its own sub-block: highlight the
+  // point's line plus the n lines under it, hit [[2]], and the first highlighted
+  // line becomes the summary of a secondary collapsible holding the rest. The old
+  // blanket "Already inside a collapsible — Un[▶] first" refused that outright.
+  // Only the summary line itself is off limits: details is `detailsSummary
+  // block+`, so a range starting at index 0 would eat the title and the node
+  // could not be rebuilt.
   function wrapSelectionInDetails(editor, splitTitle) {
     var state = editor.state;
     var sel = state.selection;
@@ -395,6 +397,14 @@
     }
     if (parent.type.name === 'details' && range.startIndex === 0) {
       _toast('Select the lines UNDER the title, not the title line itself');
+      return;
+    }
+    // (dev0713) A highlight that STARTS inside a collapsible and runs past its
+    // end lifts the common range up to the doc, so the whole outer block would
+    // be swallowed into a new one. Selecting a couple of lines and overshooting
+    // the closing edge is easy to do with the mouse — say so instead.
+    if (_findAncestor(state, 'details') && parent.type.name !== 'details') {
+      _toast('The highlight runs outside the collapsible — select only lines inside it');
       return;
     }
     var nodes = [];
@@ -427,67 +437,6 @@
   function _wrappableParent(parent) {
     var n = parent.type.name;
     return n === 'doc' || n === 'slideSection' || n === 'details' || n === 'teCut' || n === 'styledDiv';
-  }
-
-  // (dev0712) 1▶ — a numbered outline becomes one collapsible per point. Any
-  // selected line STARTING with a number ("1 Doubts…", "2. …", "3) …") turns
-  // into a summary; the un-numbered lines beneath it become that block's body,
-  // up to the next numbered line. Lines before the first number are left alone.
-  // Works inside an existing collapsible, so a list of points under a heading
-  // block can be exploded in one click.
-  // 1–3 digits, optional . ) ] : or -, then a space and real text — so "$10,000"
-  // and "2026 was a good year" are not mistaken for list numbering.
-  var _NUMLEAD = /^\s*\d{1,3}\s*[.)\]:–-]?\s+\S/;
-  function numberedToDetails(editor) {
-    var state = editor.state, sel = state.selection;
-    var range = sel.$from.blockRange(sel.$to);
-    if (!range) return;
-    var parent = range.parent;
-    if (!_wrappableParent(parent)) {
-      _toast('Select whole lines (not list items / table cells) to convert');
-      return;
-    }
-    if (parent.type.name === 'details' && range.startIndex === 0) {
-      _toast('Select the lines UNDER the title, not the title line itself');
-      return;
-    }
-    var nodes = [];
-    for (var i = range.startIndex; i < range.endIndex; i++) nodes.push(parent.child(i));
-    if (!nodes.length) return;
-    var detType = editor.schema.nodes.details;
-    var sumType = editor.schema.nodes.detailsSummary;
-    var paraType = editor.schema.nodes.paragraph;
-    var groups = [], cur = null, found = 0;
-    nodes.forEach(function (n) {
-      if (n.isTextblock && _NUMLEAD.test(n.textContent)) {
-        cur = { sum: n, body: [] }; groups.push(cur); found++;
-      } else if (cur) {
-        cur.body.push(n);
-      } else {
-        groups.push({ plain: n });
-      }
-    });
-    if (!found) { _toast('No lines starting with a number in the selection'); return; }
-    var built = [];
-    groups.forEach(function (g) {
-      if (g.plain) { built.push(g.plain); return; }
-      var body = g.body.length ? g.body : [paraType.create()];
-      try {
-        built.push(detType.create({ open: false }, [sumType.create(null, g.sum.content)].concat(body)));
-      } catch (e) {
-        // Something in the body can't live in a collapsible — leave that group flat.
-        built.push(g.sum);
-        g.body.forEach(function (b) { built.push(b); });
-      }
-    });
-    try {
-      editor.view.dispatch(state.tr.replaceWith(range.start, range.end, _frag(state, built)));
-      _toast(found + (found === 1 ? ' numbered line' : ' numbered lines') + ' → collapsible');
-    } catch (e) {
-      console.warn('[xe2] numbered→details failed', e);
-      _toast('Could not convert that selection');
-    }
-    editor.commands.focus();
   }
 
   // (dev0712) ⊘▼ — drop a CUT LINE after the current line. Everything below it
@@ -1050,8 +999,7 @@
       ['|'],
       ['&#9654;&hellip;', 'Insert collapsible section', function (e) { insertCollapsible(e); }],
       ['[&#9654;&hellip;]', 'Wrap the selected lines in a collapsible — type the summary title after', function (e) { wrapSelectionInDetails(e, false); }],
-      ['[[2]]', 'Wrap selection as collapsible, split into title + detail — FIRST line becomes the summary, the rest the hidden body. Works inside another collapsible too (it nests) — just don\'t include the title line in the selection.', function (e) { wrapSelectionInDetails(e, true); }],
-      ['1&#9654;', 'Numbered lines → collapsibles — every selected line starting with a number (1, 2., 3) …) becomes a summary, the lines under it become its body', function (e) { numberedToDetails(e); }],
+      ['[[2]]', 'Highlight a line plus the lines under it → collapsible: the FIRST highlighted line becomes the summary, the rest becomes the hidden body. Works INSIDE another collapsible — it nests, making a secondary block. Highlight only lines inside the block, never its title line.', function (e) { wrapSelectionInDetails(e, true); }],
       ['Un[&#9654;]', 'Undetail — dissolve the collapsible at the cursor: summary becomes an H3 line, body stays', function (e) { undetail(e); }],
       ['&para;&#8593;', 'Blank line ABOVE the collapsible at the cursor, outside it (Ctrl+Shift+Enter)', function (e) { lineOutsideDetails(e, -1); }],
       ['&para;&#8595;', 'Blank line BELOW the collapsible at the cursor, outside it (Ctrl+Enter)', function (e) { lineOutsideDetails(e, 1); }],
@@ -1435,7 +1383,6 @@
     _applySectionColor: applySectionColor,
     _insertSectionBreak: insertSectionBreak,
     _wrapSelectionInDetails: wrapSelectionInDetails,
-    _numberedToDetails: numberedToDetails,
     _insertCutLine: insertCutLine,
     _undetail: undetail,
     _lineOutsideDetails: lineOutsideDetails,
