@@ -423,8 +423,11 @@ var HP_ADD = {
     // and Esc is this app's navigation key. F11 fullscreen ignores Esc, which is
     // the behaviour a viewer actually wants; script cannot press it, so the help
     // says the key instead.
+    // (dev0709) ONE LINE, no reasoning. The paragraph explained WHY the browser's
+    // own full screen is the one to use — true, and of no interest to a reader
+    // scanning a key column. The key and the Mac equivalent are the whole answer.
     { k: 'F11', user: true,
-      d: 'Full screen — your browser’s own (⌃⌘F on a Mac), not a key of ours. Use it rather than 0: browser full screen ignores Esc, so Esc keeps working for getting around the site instead of dropping you back out.' },
+      d: 'Full screen — use ⌃⌘F on a Mac' },
     // The presentation-mode pair. Shown only when cell 1a really is a text slide,
     // because that is the only time either key does anything (state.gText).
     { k: '↑  /  ↓', when: function (s) { return s.gText; },
@@ -667,8 +670,12 @@ function normKey(k) {
 // (dev0704) Rows a Gu reader is better off not seeing at all. ⇧B is the adaptive
 // pre-roll knob: a paragraph about warm-up heuristics, and its one plain-language
 // line already lives on the clean-playback card that is up whenever it works.
+// (dev0709) V dropped from Gu too. The registry's V is a global ("view the
+// focused T row / last grid row fullscreen"), and it is worded for a developer
+// standing in T — from a grid a viewer reaches the same view by clicking or
+// swiping a cell, which the grid's own rows already say. One route, one row.
 var HP_DROP_USER = {
-  G: ['Shift+B']
+  G: ['Shift+B', 'V']
 };
 
 var HP_DROP = {

@@ -445,6 +445,9 @@ function _gridEmbedArm(cellEl) {
     return;                                   // already armed
   }
   _gridEmbedDisarm();                                               // one at a time
+  // (dev0709) …and one SOUND at a time. Arming is a deliberate click on this
+  // cell, so any other embed still talking is now competing with it.
+  _gridStopOtherEmbeds(cellEl);
   const wrap  = cellEl.querySelector('.grid-embed-wrap');
   const frame = wrap && wrap.querySelector('iframe');
   const inter = cellEl.querySelector('.grid-interactor');
@@ -611,6 +614,32 @@ function _gridEmbedPrimeLater(cellEl, waitMs) {
       + (_secs && _secs !== window.IG_DEFAULT_DUR ? '  (' + _secs + 's clip)' : ''), 900);
   }, wait);
 }
+
+// (dev0709) ONE SOUND AT A TIME on an IG grid. The embeds are cross-origin, so
+// there is no mute, no pause and no volume out here — the ONLY lever this side
+// of the wall is the one _gridEmbedReload already pulls: swap the iframe for a
+// fresh one. A new instance has never played, so the old instance's audio stops
+// dead and the cell comes back primed, which is where we wanted it anyway.
+//
+// So "stop the others" and "prime the others" are literally the same action —
+// this is the auto-prime of dev0671, just triggered by a second cell wanting the
+// speakers instead of by a clock. Only cells that have actually SPENT their play
+// (_embedPlayed, set when focus lands in the frame) are touched: reloading a
+// never-played cell would cost a poster reload and silence nothing.
+function _gridStopOtherEmbeds(exceptCell) {
+  const overlay = document.getElementById('gridOverlay');
+  if (!overlay) return 0;
+  let n = 0;
+  overlay.querySelectorAll('.grid-cell').forEach(c => {
+    if (c === exceptCell || !c._embedPlayed) return;
+    clearTimeout(c._primeTmr);
+    if (_gridEmbedReload(c)) n++;
+  });
+  return n;
+}
+// V is the one screen allowed to have the sound to itself (vp.js calls this on
+// open), and the grid is still mounted behind it playing whatever it was playing.
+window._gridStopEmbedAudio = function() { return _gridStopOtherEmbeds(null); };
 
 // (dev0669) Hotkey/menu entry point: z = the cell under the pointer, ⇧Z = every
 // embed on the grid. View-only (no row or c.json writes), so both modes get it.

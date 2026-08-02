@@ -1002,12 +1002,15 @@ function cDeleteSelected() {
 // reverse-image search is the honest answer to "where is this from" when nobody
 // has recorded one yet — often it is the ONLY answer.
 //
-// searchbyimage, not Lens. Both start from the same image URL, but Lens's
-// uploadbyurl opens on VISUAL MATCHES (things that look similar), while
-// searchbyimage is the classic Google Images entry that leads to the list of
-// pages carrying this exact image — several candidate sources rather than one
-// guess, which is the point of pressing g. Google redirects it into the modern
-// Lens surface these days; the landing tab is still the source list.
+// (dev0709) BACK TO LENS. dev0708 sent this to www.google.com/searchbyimage
+// because the classic Google Images entry lands on the LIST of pages carrying
+// the exact image, which is a better answer to "where is this from" than Lens's
+// visual matches. It no longer exists: Google now serves a plain 404 ("The
+// requested URL /searchbyimage was not found on this server") for that path,
+// with no redirect into the Lens surface the note assumed. A 404 is a worse
+// answer than an imperfect one, so lens.google.com/uploadbyurl is the URL again
+// — it opens on visual matches, and its own "Exact matches" tab is one click
+// from the source list dev0708 was reaching for.
 //
 // The image URL is handed to Google, so this only ever runs on rows whose media
 // is already public — which is every row that can appear in a grid.
@@ -1037,7 +1040,7 @@ window._gridOpenLink = function() {
   if (!isImg && !isVid) { window.open(link, '_blank', 'noopener'); return; }
 
   if (isImg) {
-    window.open('https://www.google.com/searchbyimage?image_url=' + encodeURIComponent(link),
+    window.open('https://lens.google.com/uploadbyurl?url=' + encodeURIComponent(link),
                 '_blank', 'noopener');
     if (typeof _gridToast === 'function') {
       _gridToast('No source page recorded — searching Google for this image', 2000);

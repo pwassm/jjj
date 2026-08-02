@@ -154,7 +154,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'g', label: 'G', group: 'Screens', scope: 'global',
-    desc: 'Open the Grid — from a fullscreen page (V/Ie/Xs/Q) it closes that page and drops you back on the Grid. In the Grid itself G opens the hovered cell’s SOURCE PAGE instead (its linkpage, or the link itself for YouTube/Vimeo/IG/articles; for a raw image with no source page, dev opens a reverse-image search, user gets a toast).',
+    desc: 'Open the Grid — from a fullscreen page (V/Ie/Xs/Q) it closes that page and drops you back on the Grid. In the Grid itself G opens the hovered cell’s SOURCE PAGE instead (its linkpage, or the link itself for YouTube/Vimeo/IG/articles; for a raw image with no source page, either mode opens a Google Lens reverse-image search; a raw video gets a toast).',
     fn(ctx) {
       if (ctx.tgOpen) { closeGridList(); gridShow(); return; }
       // If in VP (Video/Image View), close it and stay in grid

@@ -350,6 +350,12 @@ ${qHtml}
 
 
 function gridOpenFullscreen(row, contained) {
+  // (dev0709) V gets the speakers to itself. The grid is still mounted behind
+  // this overlay, and a cross-origin IG embed on it keeps playing (and talking)
+  // there is no way to mute — grid.js stops them the only way the wall allows,
+  // by swapping in fresh iframes. They come back primed, so nothing is lost.
+  if (typeof window._gridStopEmbedAudio === 'function') window._gridStopEmbedAudio();
+
   // (zip0122) Update last-record memory
   if (row && row.UID && typeof window.setLastUID === 'function') {
     window.setLastUID(row.UID);
