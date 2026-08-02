@@ -156,6 +156,35 @@ window.instagramEmbedUrl = function(url) {
 // for the session; misses are cached too, so a stopped proxy is asked once.
 window.IG_DEFAULT_DUR = 40;          // dwell when the length is unknown (reels run 15-90s)
 window._igMetaCache = window._igMetaCache || Object.create(null);
+
+// (dev0707) The PUBLIC site's copy of the same answers: igmeta.json, baked out of
+// ig.json by igMetaBake.js and committed alongside c.json. Same-origin, ~5 KB,
+// and it holds only {dur,embed,w,h} per shortcode — the exact shape /ig/meta
+// returns, so the two sources are interchangeable below.
+//
+// This exists because the proxy route CANNOT work off the dev box, and asking it
+// anyway was doing active harm: a POST from https://sealifeandmore.com to
+// http://127.0.0.1:8081 is a local-network request from a public origin, which
+// Firefox and Chrome 138+ gate behind a permission prompt ("… wants to access
+// other apps and services on this device"). The viewer saw that prompt on every
+// IG grid, and whichever way they answered it the request still failed — leaving
+// _igMetaCache empty, which is what made grid.js _igMediaNatH fall back to its
+// 4:5 guess and let IG's caption strip into every cell of a square-post grid.
+//
+// Fetched at most once per session; the promise itself is the memo, so a miss
+// costs nothing on later grids.
+let _igStaticMeta = null;
+function _igMetaStatic() {
+  if (_igStaticMeta) return _igStaticMeta;
+  // Relative URL: resolves against the document base, so this works from a
+  // project subfolder as readily as from the site root.
+  _igStaticMeta = fetch('igmeta.json')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(j) { return (j && j.meta) ? j.meta : Object.create(null); })
+    .catch(function() { return Object.create(null); });   // absent → dev0699 fallback
+  return _igStaticMeta;
+}
+
 window.igMetaFetch = function(links) {
   const ids = [];
   (links || []).forEach(function(l) {
@@ -164,13 +193,29 @@ window.igMetaFetch = function(links) {
   });
   if (!ids.length) return Promise.resolve(window._igMetaCache);
   ids.forEach(function(id) { window._igMetaCache[id] = null; });   // in-flight: don't re-ask
-  // PROXY_BASE is a top-level const in vp.js — a const never lands on window,
-  // so probe the binding itself the way grid.js does.
-  const base = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
   const drop = function() {
     ids.forEach(function(id) { if (!window._igMetaCache[id]) delete window._igMetaCache[id]; });
     return window._igMetaCache;
   };
+
+  // (dev0707) OFF THE DEV BOX: the baked file, and nothing else. No conditional
+  // "try the proxy first" — the attempt IS the prompt, so it must never be made.
+  // Misses are cached as such (like the proxy path below) rather than dropped:
+  // igmeta.json won't change under a live page, so re-asking only churns.
+  if (window._salIsLocalHost && !window._salIsLocalHost()) {
+    return _igMetaStatic().then(function(m) {
+      ids.forEach(function(id) {
+        window._igMetaCache[id] = m[id] || { dur: 0, miss: true };
+      });
+      return window._igMetaCache;
+    }).catch(drop);
+  }
+
+  // DEV BOX: ig.json through the proxy stays the live truth, so a post harvested
+  // five minutes ago fits correctly without re-running the bake first.
+  // PROXY_BASE is a top-level const in vp.js — a const never lands on window,
+  // so probe the binding itself the way grid.js does.
+  const base = (typeof PROXY_BASE !== 'undefined') ? PROXY_BASE : 'http://127.0.0.1:8081';
   return fetch(base + '/ig/meta', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids: ids })
@@ -184,7 +229,7 @@ window.igMetaFetch = function(links) {
     if (!j || !j.ok || !j.meta) return drop();
     ids.forEach(function(id) { window._igMetaCache[id] = j.meta[id] || { dur: 0, miss: true }; });
     return window._igMetaCache;
-  }).catch(drop);   // proxy down / public site → defaults, retried next time
+  }).catch(drop);   // proxy down → defaults, retried next time (dev0707: dev box only)
 };
 // Seconds to wait before a played embed is assumed finished. Real length when we
 // have it, plus a second of tail so the reload never cuts the last frame.

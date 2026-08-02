@@ -148,6 +148,30 @@ function _isMobileDevice() {
 // dev-only interactions (right-click cut/paste, hold-to-cut, dblclick to
 // open the text editor). See _applyUserModeChromeOnGrid() and the
 // gridWireInteractor() guards.
+// (dev0707) The hostname half of the test above, on its own and WITHOUT the
+// mode overrides. Two different questions were being conflated:
+//
+//   _isUserMode()      "which UI should this viewer get?"   — honours ?mode= and
+//                      the localStorage toggle, so it is TRUE on localhost when
+//                      a dev is previewing the user build.
+//   _salIsLocalHost()  "is the 127.0.0.1:8081 proxy even reachable?" — a pure
+//                      fact about the origin that no override can change.
+//
+// Anything that talks to the proxy must ask THIS one. Asking _isUserMode()
+// instead would silently kill the proxy during a ?mode=user preview; asking
+// neither is what shipped a POST to 127.0.0.1:8081 from sealifeandmore.com and
+// earned every viewer of an IG grid a browser permission prompt ("… wants to
+// access other apps and services on this device"). See video.js igMetaFetch.
+function _salIsLocalHost() {
+  const h = (window.location.hostname || '').toLowerCase();
+  return (
+    h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0'
+    || /^192\.168\./.test(h) || /^10\./.test(h)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+  );
+}
+window._salIsLocalHost = _salIsLocalHost;
+
 function _isUserMode() {
   if (window._userModeCached !== undefined) return window._userModeCached;
   const params = new URLSearchParams(window.location.search);
@@ -162,13 +186,7 @@ function _isUserMode() {
   // be stuck in dev mode there forever — which is exactly the symptom
   // observed on slam.com booting "dev0315". The override is also
   // purged so it can't follow back into a future dev test.
-  const h = (window.location.hostname || '').toLowerCase();
-  const isLocalHost = (
-    h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0'
-    || /^192\.168\./.test(h) || /^10\./.test(h)
-    || /^172\.(1[6-9]|2\d|3[01])\./.test(h)
-  );
-  if (!isLocalHost) {
+  if (!_salIsLocalHost()) {
     try { localStorage.removeItem('sal-mode-override'); } catch (e) {}
     window._userModeCached = true;
     return true;
@@ -417,6 +435,37 @@ function _wireFullscreenOnFirstTap() {
 // hotkey (core.js window-capture). MUST be called from a user gesture (a keydown
 // qualifies) or the browser rejects requestFullscreen. Enters if not currently
 // fullscreen, otherwise exits. Fails soft on any browser that lacks the API.
+// (dev0707) ENTER fullscreen from the "Choose a view →" button, and from nowhere
+// else. Three constraints shaped this:
+//
+//  • A page CANNOT fullscreen itself on load — every browser requires a user
+//    gesture, and there is no way to send a real F11 (that is browser chrome, not
+//    a web API). requestFullscreen() is the nearest thing: same hidden chrome,
+//    Esc to leave. A click on "Choose a view" is a qualifying gesture, which is
+//    why the request is made HERE and not in the boot path.
+//  • It must not repeat dev0570. That build fullscreened on the first click or
+//    keypress ANYWHERE after load, which is why it was pulled ("get rid of
+//    auto-F11, it is a nuisance"). Bound to one labelled button on the way INTO
+//    the viewing experience, the fullscreen is at least attributable to a
+//    deliberate press.
+//  • USER MODE ONLY. Fullscreening the dev box mid-edit is the nuisance itself,
+//    and the dev already has the bare-0 toggle below.
+//
+// Fails soft everywhere it is unsupported — notably iPhone Safari, which has no
+// element fullscreen at all (video only); iPad/macOS Safari need the webkit-
+// prefixed call. Already-fullscreen is left alone so this never toggles OUT.
+function _smEnterFullscreen() {
+  try {
+    if (!_isUserMode()) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) return;
+    const el = document.documentElement;
+    const rq = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!rq) return;
+    const p = rq.call(el);
+    if (p && p.catch) p.catch(() => {});   // denied (no gesture credit / blocked) → stay windowed
+  } catch (_) {}
+}
+
 function _toggleFullscreen() {
   try {
     if (document.fullscreenElement) {
@@ -1218,10 +1267,11 @@ async function _showShareableMenu() {
     }
   });
   // Welcome → Main Page (both the top and bottom "Choose a view" buttons).
+  // (dev0707) …and the one place fullscreen can legitimately be asked for.
   const _smGo = ov.querySelector('#smGoView');
-  if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
+  if (_smGo) _smGo.addEventListener('click', () => { _smEnterFullscreen(); _smShow(2); });
   const _smGoTop = ov.querySelector('#smGoViewTop');
-  if (_smGoTop) _smGoTop.addEventListener('click', () => _smShow(2));
+  if (_smGoTop) _smGoTop.addEventListener('click', () => { _smEnterFullscreen(); _smShow(2); });
 
   // (dev0551) Wire the optional sign-in strip (#smAuth). Fails soft: if
   // window.salAuth is missing (auth.js failed to load) or the API is down, the
