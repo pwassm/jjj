@@ -2583,10 +2583,11 @@ function textEditorClose() {
 }
 
 function gridClose() {
-  window.MovingCells?.stop(true);   // (dev0374) halt the ring conveyor if running
-  window.FlyCells?.stop();          // (dev0385) clear any flung cells / fly mode
-  window.FlyCells2?.stop();         // (dev0387) clear the swap-engine variant
-  window.FallCells?.stop(true);     // (dev0460) halt the perimeter waterfall
+  // (dev0374/0385/0387/0460) Halt the whole moving-cells family — conveyor, both
+  // fly variants and the perimeter waterfall. (dev0706) The list moved to
+  // collection.js's _gmStopAll so this and _returnToMenuFromGrid (boot.js, the
+  // user-mode way out) share one stop; a fifth engine only has to be added there.
+  if (typeof window._gmStopAll === 'function') window._gmStopAll();
   gridCleanupPlayers();
   gridClearCut();
   gridHideContextMenu();

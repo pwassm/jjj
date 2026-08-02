@@ -2073,6 +2073,11 @@ window._showShareableMenu = _showShareableMenu;
 // swipe-back (grid.js). Tears the grid players down first so nothing keeps
 // playing behind the menu.
 window._returnToMenuFromGrid = function () {
+  // (dev0706) Halt the moving-cells family FIRST. This path only HIDES the grid,
+  // so a fun mode left running kept animating cells nobody could see — and it is
+  // the one viewers actually use (Esc, or the swipe across a cell border). Shared
+  // with gridClose() via collection.js's _gmStopAll so the two can't drift.
+  if (typeof window._gmStopAll === 'function') window._gmStopAll();
   if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
   if (typeof gridClearCut === 'function') gridClearCut();
   if (typeof gridHideContextMenu === 'function') gridHideContextMenu();

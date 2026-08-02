@@ -257,6 +257,12 @@ function _gmToggleFall() {
 window._gmAnyMoving = _gmAnyMoving;
 window._gmSelectDigit = _gmSelectDigit;
 window._gmToggleFall = _gmToggleFall;
+// (dev0706) Exported so the grid's EXIT paths share one stop instead of each
+// re-listing the four engines. gridClose() (xe.js) had its own copy of the list;
+// _returnToMenuFromGrid (boot.js) — the user-mode way out, via Esc or the swipe
+// across a cell border — had none, so leaving a fun mode running there kept it
+// animating a hidden grid until the page reloaded.
+window._gmStopAll = _gmStopAll;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // (dev0705) THE FUN WINDOW — F is now "Fun", not "Fall".
