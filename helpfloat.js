@@ -448,8 +448,11 @@ var HP_ADD = {
     // (dev0710) ⇧C (choose a different grid) is DELIBERATELY NOT LISTED in Gu —
     // the key still works, it is just not advertised to a viewer. See
     // HP_DROP_USER.G, which also keeps the registry's own row out of Gu.
-    { k: 'L', user: true,
-      d: 'Clean view — hides the ← arrow, the cell letters (1a, 1b …) and the line of text along the top. Press L again to bring them back.' },
+    // (dev0711) BOTH modes — the same key, the same job. `l` no longer means
+    // anything anywhere else (its old clipboard-import alias of `w` is gone), so
+    // there is nothing for a developer to confuse it with.
+    { k: 'L',
+      d: 'Clean view — hides the ← back arrow, the cell letters (1a, 1b …) and the line of text along the top. Press L again to bring them back.' },
     // (dev0705) F is FUN, not Fall: it raises the card that offers both modes.
     { k: 'F',
       d: 'FUN — raises the FUN MODES window: both moving modes, the variant numbers, and what a click on a cell does in each. Press F again there for the waterfall.' },
@@ -629,21 +632,21 @@ var HP_GLOBAL_ONLY = {
 };
 // Everywhere else: a DENY list of keys that dispatch but then no-op.
 var HP_GLOBAL_OFF = {
-  G:  ['W  or  L'],                         // bails while the grid is up
+  G:  ['W'],                         // bails while the grid is up
   // The ☰ / ⚙ chrome is HIDDEN behind a fullscreen page (_wireMobileToCBtn
   // hides both whenever #gridFullscreen is up) — verified in the browser, not
   // assumed. Offering a button the viewer cannot see is the same lie as
   // offering a key that never arrives.
-  V:  ['W  or  L', 'F', '☰ button (top-left)'],
-  Ie: ['W  or  L', 'F', '☰ button (top-left)'],
-  Q:  ['W  or  L', 'F', '☰ button (top-left)'],
-  Xs: ['W  or  L', 'F', '☰ button (top-left)'],
-  C:  ['W  or  L', 'F'], A:  ['W  or  L', 'F'],
+  V:  ['W', 'F', '☰ button (top-left)'],
+  Ie: ['W', 'F', '☰ button (top-left)'],
+  Q:  ['W', 'F', '☰ button (top-left)'],
+  Xs: ['W', 'F', '☰ button (top-left)'],
+  C:  ['W', 'F'], A:  ['W', 'F'],
   // The staging screens own these letters themselves (core.js bails per-letter).
-  I:  ['W  or  L', 'F', 'A', 'D', 'E', 'C'],
-  St: ['W  or  L', 'F', 'A', 'D', 'E', 'C'],
-  X:  ['W  or  L', 'F', 'A', 'D', 'E', 'C'],
-  O:  ['W  or  L', 'F']
+  I:  ['W', 'F', 'A', 'D', 'E', 'C'],
+  St: ['W', 'F', 'A', 'D', 'E', 'C'],
+  X:  ['W', 'F', 'A', 'D', 'E', 'C'],
+  O:  ['W', 'F']
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

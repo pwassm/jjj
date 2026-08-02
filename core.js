@@ -577,7 +577,12 @@ window.addEventListener('keydown', function(e) {
     else rowPreviewOpen();
     return false;
   }
-  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'l' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's' || k === 'o' || k === 'x') {
+  // (dev0711) 'l' is NOT in this list any more. It used to forward to the
+  // registry's clipboard-import alias (identical to 'w'); that entry is gone, so
+  // forwarding it would only make `l` close whichever staging screen is open on
+  // its way to nothing. The grid's cLean toggle is claimed earlier in this same
+  // handler, and V keeps `l` in a full-screen cell.
+  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's' || k === 'o' || k === 'x') {
     // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
     // owned by the C-screen handler (boot.js). Don't also fire the global
     // hamburger-menu dispatcher here, or it pops HM right after. Let the event

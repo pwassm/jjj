@@ -988,18 +988,9 @@ thead th.rn              { color: #fff !important; }
     <button id="gridBackBtn" class="tbtn" style="border-color:#f8f;color:#f8f;background:rgba(80,0,80,0.4);padding:7px 16px;font-size:12px;opacity:0.7;"><u>T</u>M</button>
   </div>
   <div id="gridInfo" style="position:fixed;top:8px;left:12px;font-size:11px;color:#556;z-index:28010;"></div>
-  <!-- (dev0710) Floating BACK arrow — left edge, vertically centred. The same
-       action as Esc / the R→L swipe (window._returnToMenuFromGrid), given a
-       visible control: on a touch screen the swipe is undiscoverable and Esc
-       isn't there at all. Deliberately half-transparent so it doesn't compete
-       with the pictures, and hidden by the `l` (cLean) toggle along with the
-       cell labels and the top info line. -->
-  <button id="gridBackArrow" title="Back (Esc)"
-    style="position:fixed;left:10px;top:50%;transform:translateY(-50%);z-index:28011;
-           width:44px;height:56px;border-radius:8px;border:1px solid rgba(140,200,255,0.45);
-           background:rgba(0,20,50,0.35);color:rgba(190,225,255,0.85);
-           font-family:monospace;font-size:26px;line-height:1;cursor:pointer;
-           opacity:0.45;padding:0;">←</button>
+  <!-- (dev0711) The grid's own back arrow is GONE — backarrow.js now owns one
+       #salBackArrow for every user screen, the grid included. -->
+
   <!-- (zip0234) In-grid hamburger — shown in user/mobile mode (dev has toolbar).
        Positioned top-left to match where the desktop hamburger lives. -->
   <button id="gridHmBtn" title="Menu"
@@ -1044,13 +1035,13 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0710';
+  window.HELP_VERSION_STR = 'dev0711';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
     // keydown listener that claims `h`, and listeners on the same node fire in
     // registration order — it has to beat core.js's dispatcher to the key.
-    var files = ['helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','boot.js'];
+    var files = ['helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','ig.js','s.js','o.js','x.js','slideshow.js','auth.js','backarrow.js','boot.js'];
     files.forEach(function(f) {
       document.write('<script src="' + f + '?v=' + v + '"><\/script>');
     });

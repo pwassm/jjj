@@ -2147,10 +2147,12 @@ function _gridApplyClean() {
     .forEach(el => { el.style.display = on ? 'none' : ''; });
   const info = document.getElementById('gridInfo');
   if (info) info.style.display = on ? 'none' : '';
-  const arrow = document.getElementById('gridBackArrow');
-  if (arrow) arrow.style.display = on ? 'none' : '';
+  // (dev0711) The back arrow is backarrow.js's now, shared with every other
+  // screen — it reads _gridCleanOn on its own poll rather than being poked here.
+  if (typeof window._salBackArrowSync === 'function') window._salBackArrowSync();
 }
 window._gridApplyClean = _gridApplyClean;
+window._gridCleanOn = function () { return !!_gridCleanChrome; };
 
 window._gridToggleClean = function () {
   _gridCleanChrome = !_gridCleanChrome;
@@ -2464,21 +2466,6 @@ function gridShow() {
   // gridUpdateSourceBtns may have re-set display/opacity on the dev
   // buttons. Idempotent and a no-op in dev mode.
   if (typeof _applyUserModeChromeOnGrid === 'function') _applyUserModeChromeOnGrid();
-  // (dev0710) The back arrow is wired once — the button lives in the overlay and
-  // survives every re-render. Same destination as Esc and the R→L swipe.
-  const _backArrow = document.getElementById('gridBackArrow');
-  if (_backArrow && !_backArrow._wired) {
-    _backArrow._wired = true;
-    _backArrow.addEventListener('click', e => {
-      e.preventDefault(); e.stopPropagation();
-      if (typeof window._returnToMenuFromGrid === 'function') window._returnToMenuFromGrid();
-      else {
-        if (typeof gridCleanupPlayers === 'function') gridCleanupPlayers();
-        overlay.style.display = 'none';
-        if (typeof _showShareableMenu === 'function') _showShareableMenu();
-      }
-    });
-  }
   // (dev0710) Labels are rebuilt by this render — re-apply the cLean toggle.
   _gridApplyClean();
 }

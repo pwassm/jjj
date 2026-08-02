@@ -48,7 +48,10 @@
 // still reachable the way a viewer actually reaches it — the swipe, or tapping a
 // cell — this only makes the bare KEY inert there. Because the help derives its
 // dev/user marking from this list, the V row also leaves the Gu panel.
-const HK_USER_BLOCKED = ['t', 'e', 'a', 'd', 'm', 'l', 'w', 'f', 'i', 's', 'o', 'x', 'v'];
+// (dev0711) 'l' left this list with its registry entry: nothing dispatches the
+// letter any more (core.js claims it on the grid and forwards it nowhere else),
+// so blocking it here would be guarding a door that no longer exists.
+const HK_USER_BLOCKED = ['t', 'e', 'a', 'd', 'm', 'w', 'f', 'i', 's', 'o', 'x', 'v'];
 // (dev0702) helpfloat.js's floating panel marks its "global" rows dev/user from
 // this same list, so its marking can't drift from the dispatcher's either.
 window.HK_USER_BLOCKED = HK_USER_BLOCKED;
@@ -451,18 +454,14 @@ window.HOTKEYS = [
       if (!opened && window.openDictionary) window.openDictionary();
     } },
 
-  { key: 'l', label: 'W  or  L', group: 'Import & filter', scope: 'global',
+  // (dev0711) The old bare-`l` clipboard-import entry is GONE. It called exactly
+  // the same wantLinks() behind exactly the same guards as `w` — a duplicate
+  // alias, not a second feature — and it was standing on the letter `l` (cLean)
+  // wanted for the grid. `w` is the import key everywhere now; `l` is the grid's
+  // clean-view toggle (core.js window-capture → _gridToggleClean) and nothing at
+  // all on T or any other screen.
+  { key: 'w', label: 'W', group: 'Import & filter', scope: 'global',
     desc: 'Smart clipboard import — bare media links, or @channel + CSV (T only)',
-    fn(ctx) {
-      // L = same as W (smart clipboard import)
-      if (ctx.teOpen || ctx.veOpen || ctx.ebOpen || ctx.gridOpen || ctx.vpOpen || ctx.tgOpen) return;
-      if (document.getElementById('dictOverlay'))    return;  // Dictionary open
-      if (document.getElementById('mergeModal'))     return;  // Merge modal open
-      if (typeof wantLinks === 'function') wantLinks();
-    } },
-
-  { key: 'w', label: null, group: 'Import & filter', scope: 'global',
-    desc: null, // rendered under the 'W  or  L' row above
     fn(ctx) {
       // W = smart clipboard import (Rule 1 bare links or Rule 2 channel CSV)
       if (ctx.teOpen || ctx.veOpen || ctx.ebOpen || ctx.gridOpen || ctx.vpOpen || ctx.tgOpen) return;
@@ -530,7 +529,7 @@ window.HOTKEYS = [
 
   { label: 'L', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0710) → grid.js _gridToggleClean',
-    desc: 'cLean view — hides every piece of chrome the app paints over the pictures: the per-cell labels (1a, 1b …), the top-left info line and the floating ← back arrow. Nothing stops working; L again restores them. Persisted in localStorage (slam-grid-clean). Grid overlay only — bare l on other screens is still the clipboard import, and in a full-screen cell V keeps it (save loop).' },
+    desc: 'cLean view — hides every piece of chrome the app paints over the pictures: the per-cell labels (1a, 1b …), the top-left info line and the floating ← back arrow. Nothing stops working; L again restores them. Persisted in localStorage (slam-grid-clean). Grid overlay only — (dev0711) bare l means NOTHING on any other screen now (its old clipboard-import alias of w was retired), and in a full-screen cell V keeps it (save loop).' },
 
   { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
     impl: 'collection.js _gridPasteSource (dev0548)',
@@ -603,6 +602,13 @@ window.HOTKEYS = [
   { label: 'Swipe ←  (the back gesture)', group: 'Gestures', scope: 'V/Ie/Xs/Q/SS', dev: false, helpSection: 'Gestures',
     impl: 'vp.js _vpHorizSwipe + slideshow.js _slideshowHorizSwipe (dev0703)',
     desc: 'PREVIOUS VIEW, everywhere: closes the viewer / the slideshow / the grid-choice list and hands you back the screen you came from. The one exception is a zoomed picture, where a drag pans instead — double-click to reset the zoom and the gesture comes back.' },
+
+  // (dev0711) The visible twin of the rule above. Same destination, drawn rather
+  // than hidden — a phone has no Esc key and a swipe is invisible until someone
+  // tells you it exists.
+  { label: '← button (left edge)', group: 'Gestures', scope: 'G/V/Ie/Xs/Q/SS/Cu/T/C/A', dev: false, helpSection: 'Gestures',
+    impl: 'backarrow.js #salBackArrow (dev0711)',
+    desc: 'PREVIOUS VIEW — the round ← at the middle of the left edge does exactly what Esc and the back swipe do. User mode only, and not on the home menu (nothing is behind it) or in a presentation (PM draws its own ‹ › and ✕). On the grid, L hides it with the rest of the chrome.' },
 
   { label: '⇧ Swipe ←  /  ⇧ Swipe →', group: 'Gestures', scope: 'SS/V/Xs', dev: false, helpSection: 'Gestures',
     impl: 'vp.js _vpHorizSwipe + slideshow.js _slideshowHorizSwipe (dev0703)',
