@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1785713033094,
+    "_salPushTime": 1785713360389,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -510,7 +510,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1785713033094
+    "_salSavedAt": 1785713360389
   },
   {
     "UID": "1",
@@ -36342,12 +36342,12 @@
     "FTLsaved": "",
     "ltype": "t",
     "Mode": "",
-    "ftextSize": "2462",
+    "ftextSize": "2414",
     "tags": "",
     "comment": "",
     "link": "",
     "linkpage": "",
-    "DateModified": "2026-08-02 23:19:44",
+    "DateModified": "2026-08-02 23:29:20",
     "DateAdded": "2026-07-13 04:25:41",
     "VidTitle": "",
     "VidAuthor": "",
@@ -36367,7 +36367,7 @@
     "xSource": "",
     "VidDate": "",
     "attribution": "",
-    "ftext": "<h1>Octopus hatchlings!</h1><h3>The first 4 videos involve the pallid octopus, while the last 4 videos show the giant pacific octopus.</h3><h3>You can see the full videos and valuable author comments by&nbsp;typing \"g\" (go) while the mouse is over the video you&nbsp;want to see in full.</h3><h3>Both YouTube authors have amazing channels to explore.</h3><h3>Press the right arrow key for more instructions about seeing these 8 video segments on this site.</h3><hr><h4>For any video, you can swipe to the right to make it full-screen.&nbsp;&nbsp;</h4><h4>Once video is full screen, left button stationary hold on it produced image enlargement.&nbsp;&nbsp;</h4><h4>The enlarged image \"pans\" (moves)&nbsp;with movement of the held left button.&nbsp;&nbsp;</h4><h4>Double-click brings the frame back to normal size.&nbsp;&nbsp;</h4><h4>Swipe to the left on the full-screen video to returns to the grid.</h4><h4>==&gt; Main thing easily forgotten returning to grid: double-click needed before swipe left if image enlarged.</h4><hr><p><strong>If you want to try extra: Right or left arrow during full-frame video should move the video 1 frame forward or backward. Spacebar toggles pause on grid or full-frame.</strong></p><p><strong>\"Zero\" = \"0\" key toggles full screen in your browser (like F11 but more convenient).&nbsp; (More with (R arrow key), or take a rest!)</strong></p><p></p><p></p><hr><p>3c</p><hr><h4>A word or two about this website</h4><p>While there's certainly awkwardness to providing links to other people's work without their explicit permission: it simply isn't practical for me to contact all authors; I'm not trying to sell product or gain fame by use of their work; I'm using interfaces provide by their website hosts, in this case YouTube and Vimeo; and I was doing much the same thing, just not as refined, through WordPress, a widely-used and legitimate website.&nbsp;&nbsp;</p><p>In 2025 I established a website <a target=\"_blank\" rel=\"noopener\" href=\"https://marinelifeandmore.org\">marinelifeandmore.org</a> through WordPress, which has a standard block editor that allows embedding of YouTube videos, and it has some nice touches like being able to start the video at a particular second.&nbsp; But it wouldn't allow refinements in duration or reliable looping.&nbsp; The current program allows frame-accurate start and stop, and looping.&nbsp; That capability has allowed me to hone in on the best parts of some really great videos.</p>"
+    "ftext": "<h1>Octopus hatchlings!</h1><h3>The first 4 videos show the pallid octopus, the last 4 show the giant pacific octopus.</h3><h3>You can see the full videos with valuable author comments and links by&nbsp;entering \"g\" (go) while the mouse is over a video cell.</h3><h3>Both YouTube authors have amazing channels to explore.</h3><h3>Press the right arrow key for more instructions about navigating on this site.</h3><hr><h4>For any video, you can swipe to the right to make it full-screen.&nbsp;&nbsp;</h4><h4>Once video is full screen, left button stationary hold on it produced image enlargement.&nbsp;&nbsp;</h4><h4>The enlarged image \"pans\" (moves)&nbsp;with movement of the held left button.&nbsp;&nbsp;</h4><h4>Double-click brings the frame back to normal size.&nbsp;&nbsp;</h4><h4>Swipe to the left on the full-screen video to returns to the grid.</h4><h4>==&gt; Main thing easily forgotten returning to grid: double-click needed before swipe left if image enlarged.</h4><hr><p><strong>If you want to try extra: Right or left arrow during full-frame video should move the video 1 frame forward or backward. Spacebar toggles pause on grid or full-frame.</strong></p><p><strong>\"Zero\" = \"0\" key toggles full screen in your browser (like F11 but more convenient).&nbsp; (More with (R arrow key), or take a rest!)</strong></p><p></p><p></p><hr><p>3c</p><hr><h4>A word or two about this website</h4><p>While there's certainly awkwardness to providing links to other people's work without their explicit permission: it simply isn't practical for me to contact all authors; I'm not trying to sell product or gain fame by use of their work; I'm using interfaces provide by their website hosts, in this case YouTube and Vimeo; and I was doing much the same thing, just not as refined, through WordPress, a widely-used and legitimate website.&nbsp;&nbsp;</p><p>In 2025 I established a website <a target=\"_blank\" rel=\"noopener\" href=\"https://marinelifeandmore.org\">marinelifeandmore.org</a> through WordPress, which has a standard block editor that allows embedding of YouTube videos, and it has some nice touches like being able to start the video at a particular second.&nbsp; But it wouldn't allow refinements in duration or reliable looping.&nbsp; The current program allows frame-accurate start and stop, and looping.&nbsp; That capability has allowed me to hone in on the best parts of some really great videos.</p>"
   },
   {
     "show": "1",
