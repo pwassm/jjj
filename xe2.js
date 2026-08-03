@@ -54,6 +54,36 @@
     },
     parseHTML: function () { return [{ tag: 'details' }]; },
     renderHTML: function (p) { return ['details', mergeAttributes(p.HTMLAttributes), 0]; },
+    // (dev0714) The EDITOR shows a plain <div class="xe2-details"> stand-in, not
+    // a real <details>. Chrome's native <details> is built on an internal
+    // shadow/slot tree, and native mouse selection (drag, shift+click) refuses
+    // to CROSS from one slotted child to the next — so highlighting two body
+    // lines inside a collapsible clamped to the first line, which made [[2]]
+    // nesting unreachable. A div has no slots; selection behaves normally.
+    // Saved ftext is unaffected: serialize() → getHTML() uses renderHTML above,
+    // so real <details> still goes to disk. Open/closed never relied on the
+    // native toggle anyway (dev0623 suppresses it; the open attr + CSS do the
+    // work), the attribute is mirrored onto the div for the same selectors.
+    addNodeView: function () {
+      return function (props) {
+        var dom = document.createElement('div');
+        dom.className = 'xe2-details';
+        if (props.node.attrs.open) dom.setAttribute('open', '');
+        return {
+          dom: dom,
+          contentDOM: dom,
+          update: function (node) {
+            if (node.type.name !== 'details') return false;
+            if (node.attrs.open) dom.setAttribute('open', '');
+            else dom.removeAttribute('open');
+            return true;
+          },
+          // Our own open-attr writes above would otherwise be reported back to
+          // ProseMirror as DOM drift and trigger a re-parse.
+          ignoreMutation: function (m) { return m.type === 'attributes'; },
+        };
+      };
+    },
   });
 
   // <small> as a mark (StarterKit has no small).
@@ -1043,17 +1073,21 @@
       // as the Xs/iframe/grid render → an H-level is the same size everywhere.
       '#xe2Editor h1{font-size:2em;} #xe2Editor h2{font-size:1.5em;} #xe2Editor h3{font-size:1.25em;} #xe2Editor h4{font-size:1.1em;} #xe2Editor h5{font-size:1em;} #xe2Editor h6{font-size:0.9em;}',
       '#xe2Editor h1,#xe2Editor h2,#xe2Editor h3,#xe2Editor h4,#xe2Editor h5,#xe2Editor h6{font-weight:bold;}',
-      '#xe2Editor details{border-left:3px solid #6af;padding:2px 0 2px 12px;margin:8px 0;background:rgba(90,140,220,0.06);}',
+      '#xe2Editor details,#xe2Editor .xe2-details{border-left:3px solid #6af;padding:2px 0 2px 12px;margin:8px 0;background:rgba(90,140,220,0.06);}',
+      // (dev0714) The editor's collapsible is now a <div class="xe2-details">
+      // stand-in (see Details addNodeView) — a div hides nothing natively, so
+      // the closed state needs this explicit body-hiding rule.
+      '#xe2Editor .xe2-details:not([open]) > :not(summary){display:none;}',
       // (dev0622) Real triangle + real collapse in the editor: ▶/▼ drawn in a
       // left gutter (click IT to toggle — clicking the text still edits), and
-      // closed details hide their body natively (the old always-show-dimmed
+      // closed details hide their body (the old always-show-dimmed
       // rule made [[2]] blocks look uneditable and confusing).
       // (dev0623) bigger triangle; whole summary line is click-to-toggle now,
       // so pointer cursor on the whole line.
       '#xe2Editor summary{cursor:pointer;font-weight:bold;color:#9cf;list-style:none;position:relative;padding-left:28px;}',
       '#xe2Editor summary::-webkit-details-marker{display:none;}',
       '#xe2Editor summary::before{content:"\\25B6";position:absolute;left:2px;top:1px;font-size:16px;color:#6af;cursor:pointer;}',
-      '#xe2Editor details[open] > summary::before{content:"\\25BC";}',
+      '#xe2Editor details[open] > summary::before,#xe2Editor .xe2-details[open] > summary::before{content:"\\25BC";}',
       // (dev0620) section wrapper: faint outline so the colored-section extent is
       // visible while editing; an explicit section color must WIN over the
       // element defaults above (same inherit trick as dev0619 in v1/render).
