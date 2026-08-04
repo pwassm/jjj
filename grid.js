@@ -700,8 +700,13 @@ function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
     innerEl.style.transform = 'scale(' + scale + ')';
     // Center horizontally and vertically inside the cell when the
     // scaled content is smaller than the cell on either axis.
+    // (dev0730) …except vertically on a toggleable text cell, which sits a
+    // quarter of the way down instead of dead centre — the title line reads as
+    // the head of something that opens downward, and the body it reveals has
+    // the room to grow there.
     const offX = Math.max(0, (cw - VIRT_W * scale) / 2);
-    const offY = Math.max(0, (ch - naturalH * scale) / 2);
+    const freeY = Math.max(0, ch - naturalH * scale);
+    const offY = cellEl._salSect ? freeY * 0.25 : freeY / 2;
     innerEl.style.left = offX + 'px';
     innerEl.style.top  = offY + 'px';
   }

@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1785881014939,
+    "_salPushTime": 1785886301872,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -510,7 +510,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1785881014939
+    "_salSavedAt": 1785886301872
   },
   {
     "UID": "1",
@@ -40715,10 +40715,10 @@
     "cell": "1a",
     "show": "1",
     "VidRange": "text",
-    "ftext": "<details open=\"\"><summary>This is a text slide.</summary><h1>It can be used for information, or for presentations.</h1><h1>The Triangle on its side, indicated that there are hidden \"details\".</h1></details><h1></h1>",
+    "ftext": "<details open=\"\"><summary>From the beginning</summary><h1>Can a text heading</h1><h1>Be big big big?</h1></details>",
     "DateAdded": "2026-08-04 22:00:51",
-    "DateModified": "2026-08-04 22:03:16",
-    "ftextSize": "215",
+    "DateModified": "2026-08-04 23:31:41",
+    "ftextSize": "115",
     "FtextJunk": "0"
   }
 ]

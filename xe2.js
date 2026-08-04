@@ -28,13 +28,47 @@
   // ══ SCHEMA ══════════════════════════════════════════════════════════════════
   // <details> as summary + block+ DIRECTLY (no wrapper div) so output HTML is
   // byte-compatible with the current ftext format.
+  // (dev0730) The title carries a SIZE. A <summary> holds inline content only —
+  // a heading node can never live inside it — so H1/H2/H3, P and A+/A− were
+  // silent no-ops on a collapsible's title while they resized every body line.
+  // The level lives on this node as an attribute instead and serializes to the
+  // exact markup v1 wrote (<summary><h1 style="margin:0;display:inline">…), so
+  // every render context (G, Xs, the fullscreen reader) sizes it with the CSS it
+  // already has, and a v1-authored title parses back into the attribute rather
+  // than being flattened to plain text on the next autosave.
+  var _SUM_H = ':scope > h1,:scope > h2,:scope > h3,:scope > h4,:scope > h5,:scope > h6';
   var DetailsSummary = Node.create({
     name: 'detailsSummary',
     content: 'inline*',
     defining: true,
     isolating: true,
-    parseHTML: function () { return [{ tag: 'summary' }]; },
-    renderHTML: function (p) { return ['summary', mergeAttributes(p.HTMLAttributes), 0]; },
+    addAttributes: function () {
+      return {
+        level: {
+          default: 0,             // 0 = plain title; 1-6 = that heading size
+          parseHTML: function (el) {
+            var h = el.querySelector(_SUM_H);
+            return h ? Number(h.tagName.slice(1)) : 0;
+          },
+          renderHTML: function () { return {}; },   // composed in renderHTML below
+        },
+      };
+    },
+    parseHTML: function () {
+      return [{
+        tag: 'summary',
+        // Title text comes from INSIDE the heading when there is one.
+        contentElement: function (el) { return el.querySelector(_SUM_H) || el; },
+      }];
+    },
+    renderHTML: function (p) {
+      var lv = p.node && p.node.attrs ? p.node.attrs.level : 0;
+      var attrs = mergeAttributes(p.HTMLAttributes);
+      // margin:0;display:inline keeps the title on the ▶ marker's line — a block
+      // heading wraps below the inside-positioned marker (index.html dev0588).
+      if (lv >= 1 && lv <= 6) return ['summary', attrs, ['h' + lv, { style: 'margin:0;display:inline' }, 0]];
+      return ['summary', attrs, 0];
+    },
   });
 
   var Details = Node.create({
@@ -837,7 +871,47 @@
   // (h6 0.9 → p 1 → h4 1.1 → h3 1.25 → h2 1.5 → h1 2). Stays schema-clean —
   // no inline font-size spans (the v1 corruption vector).
   var SIZE_LADDER = [['heading', 6], ['paragraph', 0], ['heading', 4], ['heading', 3], ['heading', 2], ['heading', 1]];
+
+  // (dev0730) Heading level of the <summary> the cursor sits in — 0 for a plain
+  // title, null when the cursor isn't in a summary at all (i.e. the ordinary
+  // heading commands apply). See the DetailsSummary `level` attribute.
+  function summaryLevel(editor) {
+    var $f = editor.state.selection.$from;
+    for (var d = $f.depth; d > 0; d--) {
+      if ($f.node(d).type.name === 'detailsSummary') return $f.node(d).attrs.level || 0;
+    }
+    return null;
+  }
+  function setSummaryLevel(editor, level) {
+    editor.chain().focus().updateAttributes('detailsSummary', { level: level }).run();
+  }
+  // H1/H2/H3 button: the block for a body line, the title size for a summary.
+  // Re-clicking the level a title already has clears it, matching toggleHeading.
+  function headingOrSummary(editor, level) {
+    var cur = summaryLevel(editor);
+    if (cur === null) { editor.chain().focus().toggleHeading({ level: level }).run(); return; }
+    setSummaryLevel(editor, cur === level ? 0 : level);
+  }
+  function paragraphOrSummary(editor) {
+    if (summaryLevel(editor) === null) editor.chain().focus().setParagraph().run();
+    else setSummaryLevel(editor, 0);
+  }
+
   function stepBlockSize(editor, dir) {
+    // A summary walks the SAME ladder, expressed as its own level attribute.
+    var sl = summaryLevel(editor);
+    if (sl !== null) {
+      var sc = 1;
+      for (var j = 0; j < SIZE_LADDER.length; j++) {
+        var s = SIZE_LADDER[j];
+        var shit = (s[0] === 'paragraph') ? (!sl || sl === 5) : (s[1] === sl);
+        if (shit) { sc = j; break; }
+      }
+      var sn = sc + dir;
+      if (sn < 0 || sn >= SIZE_LADDER.length) return;
+      setSummaryLevel(editor, SIZE_LADDER[sn][0] === 'paragraph' ? 0 : SIZE_LADDER[sn][1]);
+      return;
+    }
     var cur = 1; // default slot: paragraph (h5 is the same size — treated as p)
     for (var i = 0; i < SIZE_LADDER.length; i++) {
       var t = SIZE_LADDER[i];
@@ -1072,10 +1146,10 @@
       ['<u>U</u>', 'Underline (Ctrl+U)', function (e) { e.chain().focus().toggleUnderline().run(); }],
       ['<small>sm</small>', 'Small text', function (e) { e.chain().focus().toggleMark('small').run(); }],
       ['|'],
-      ['H1', 'Heading 1', function (e) { e.chain().focus().toggleHeading({ level: 1 }).run(); }],
-      ['H2', 'Heading 2', function (e) { e.chain().focus().toggleHeading({ level: 2 }).run(); }],
-      ['H3', 'Heading 3', function (e) { e.chain().focus().toggleHeading({ level: 3 }).run(); }],
-      ['P', 'Paragraph', function (e) { e.chain().focus().setParagraph().run(); }],
+      ['H1', 'Heading 1 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 1); }],
+      ['H2', 'Heading 2 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 2); }],
+      ['H3', 'Heading 3 — on a collapsible’s title line it sizes the title', function (e) { headingOrSummary(e, 3); }],
+      ['P', 'Paragraph — on a collapsible’s title line it clears the title size', function (e) { paragraphOrSummary(e); }],
       ['A&#8722;', 'Smaller text — step the current line down the size ladder', function (e) { stepBlockSize(e, -1); }],
       ['A+', 'Larger text — step the current line up the size ladder', function (e) { stepBlockSize(e, 1); }],
       ['&bull;', 'Bullet list', function (e) { e.chain().focus().toggleBulletList().run(); }],

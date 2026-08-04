@@ -433,10 +433,14 @@ html.is-mobile #mobileToCBtn { display: none !important; }
    black-on-dark (browser default link color). */
 #teEditor summary, #teEditor summary a,
 #teSlideContent summary, #teSlideContent summary a,
-.grid-cell summary, .grid-cell summary a,
 #gridFsContent summary, #gridFsContent summary a {
   color: #8ef !important;
 }
+/* (dev0730) …except in a GRID CELL, whose text thumbnail is painted on WHITE —
+   there the pale #8ef washed out to near-invisible. The title takes the same
+   royal blue as its ▶ triangle, which is also what the fullscreen reader uses
+   on its white page, so a collapsible reads the same in G and in V. */
+.grid-cell summary, .grid-cell summary a { color: #2563eb !important; }
 /* (dev0588) Keep a heading-styled summary title on the SAME line as the ▶/▼
    disclosure marker. <summary> defaults to list-style-position:inside, so a
    block-level h1-h6 child wraps below the inline marker — the marker sat
@@ -1051,7 +1055,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0729';
+  window.HELP_VERSION_STR = 'dev0730';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
