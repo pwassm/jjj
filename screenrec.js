@@ -1,11 +1,17 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// screenrec.js — Ctrl+.  FULL-SCREEN RECORDER  (dev0723)
+// screenrec.js — Ctrl+.  FULL-SCREEN RECORDER  (dev0723, dev0724)
 //
 // One key, from any screen: Ctrl+. starts recording the whole screen (mouse
 // pointer included, no sound) and Ctrl+. again stops it and saves
 //   Downloads/ScreenRecording_<YYYYMMDD-HHMMSS>.mp4
 // Before it starts it puts the app in full-window (browser fullscreen) if it
 // isn't already, so what gets recorded is the app and nothing else.
+//
+// (dev0724) NOTHING THE RECORDER ITSELF DRAWS IS IN THE FILE. The capture is of
+// the desktop, so the dev0723 on-screen dot was in every take — it's gone, and
+// the state lives in the tab title and favicon instead (see srIndicatorOn). The
+// pointer goes the other way: while recording it is deliberately drawn at 2×
+// (srBigCursor) so it can be followed in a downscaled instructional video.
 //
 // TWO CAPTURE PATHS, in this order:
 //
@@ -49,7 +55,8 @@
   let srMode    = null;                 // 'proxy' | 'browser'
   let srName    = '';                   // filename, stamped when the recording starts
   let srProxyOk = null;                 // null = not probed yet, true/false = last answer
-  let srDot     = null;
+  let srTitle0  = null;                 // page title before the ● REC prefix
+  let srIcon0   = null;                 // { el, href } of the favicon we swapped
   let srStream = null, srRec = null, srChunks = null, srMime = '', srExt = 'mp4';
 
   function srToast(msg, ms) {
@@ -64,31 +71,112 @@
            '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
   }
 
-  // ── The recording dot ────────────────────────────────────────────────────────
-  // Everything on screen is in the video, so this is as small as it can be while
-  // still answering "am I recording?" — a 9px pulsing dot in the top-right
-  // corner. Click it to stop, same as Ctrl+.
-  function srShowDot() {
-    if (srDot) return;
-    if (!document.getElementById('srDotCss')) {
+  // ── The recording indicator ──────────────────────────────────────────────────
+  // (dev0724) There is no on-screen dot any more, and there can't be: BOTH
+  // capture paths record the desktop, so anything painted in the page is in the
+  // file — the dev0723 dot pulsed away in the corner of every take. The
+  // indicator moved to the two places the recording cannot see:
+  //
+  //   • the tab TITLE  — "● REC · …"
+  //   • the FAVICON    — a red disc
+  //
+  // Recording forces full-window (see srGoFullscreen), where the tab strip isn't
+  // on screen at all, so in the normal case this costs the video nothing and
+  // still answers "am I recording?" the moment you leave fullscreen or alt-tab.
+  // Stopping is Ctrl+. — the dot's click-to-stop went with it.
+  const SR_ICON_REC = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+    '<circle cx="16" cy="16" r="13" fill="#f22"/></svg>');
+
+  function srIndicatorOn() {
+    if (srTitle0 === null) {
+      srTitle0 = document.title;
+      document.title = '● REC · ' + srTitle0;
+    }
+    if (!srIcon0) {
+      let el = document.querySelector('link[rel~="icon"]');
+      if (!el) {
+        el = document.createElement('link');
+        el.rel = 'icon';
+        document.head.appendChild(el);
+        srIcon0 = { el, href: null };       // href null = we made it, remove on stop
+      } else {
+        srIcon0 = { el, href: el.getAttribute('href') };
+      }
+      el.setAttribute('href', SR_ICON_REC);
+    }
+    srBigCursor(true);
+  }
+
+  function srIndicatorOff() {
+    if (srTitle0 !== null) { document.title = srTitle0; srTitle0 = null; }
+    if (srIcon0) {
+      if (srIcon0.href === null) srIcon0.el.remove();
+      else srIcon0.el.setAttribute('href', srIcon0.href);
+      srIcon0 = null;
+    }
+    srBigCursor(false);
+  }
+
+  // ── The double-size pointer ──────────────────────────────────────────────────
+  // (dev0724) A 32px system arrow is hard to follow in a downscaled instructional
+  // recording, so while recording the page draws its own at 2×. These are CSS
+  // cursors, not an overlay chasing the mouse: the OS pointer IS this image, so
+  // it lands in the capture with no lag and no second pointer on screen.
+  //
+  // Only the four shapes this app actually uses are mapped, keyed off the INLINE
+  // cursor styles it sets (the crop overlay is styled that way throughout) plus
+  // the usual interactive tags. Anything unmapped — the resize grips, grab —
+  // keeps the system cursor at its normal size rather than being forced into a
+  // wrong shape.
+  //
+  // For a bigger pointer everywhere, including outside the browser, Windows has
+  // its own knob: Settings → Accessibility → Mouse pointer → size.
+  const SR_CUR = {};
+  function srCursor(svg, hx, hy) {
+    return 'url("data:image/svg+xml,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 32 32">' +
+      svg + '</svg>') + '") ' + hx + ' ' + hy + ', auto';
+  }
+  function srBuildCursors() {
+    if (SR_CUR.arrow) return;
+    const ink = 'fill="#fff" stroke="#000" stroke-width="1.4" stroke-linejoin="round"';
+    SR_CUR.arrow = srCursor(
+      '<path ' + ink + ' d="M3,2 L3,23 L8.2,18.1 L11.6,26.4 L15.2,24.9 L11.9,16.9 L18.6,16.9 Z"/>', 4, 3);
+    SR_CUR.hand = srCursor(
+      '<path ' + ink + ' d="M12,3 c-1.4,0 -2.5,1.1 -2.5,2.5 v10.5 l-2.2,-2.2 c-1,-1 -2.6,-1 -3.5,0 ' +
+      '-1,1 -1,2.5 0,3.5 l6,7 c0.9,1 2.2,1.6 3.6,1.6 h5.6 c3,0 5.5,-2.5 5.5,-5.5 v-6.4 ' +
+      'c0,-1.3 -1,-2.3 -2.3,-2.3 -0.5,0 -1,0.2 -1.4,0.5 -0.2,-1.1 -1.2,-2 -2.4,-2 -0.6,0 -1.2,0.2 -1.6,0.6 ' +
+      '-0.4,-0.8 -1.3,-1.4 -2.3,-1.4 -0.4,0 -0.8,0.1 -1.2,0.3 V5.5 C14.5,4.1 13.4,3 12,3 Z"/>', 22, 5);
+    SR_CUR.text = srCursor(
+      '<path ' + ink + ' d="M11,4 h10 v2.4 h-3.8 v19.2 h3.8 V28 h-10 v-2.4 h3.8 V6.4 H11 Z"/>', 32, 32);
+    SR_CUR.move = srCursor(
+      '<path ' + ink + ' d="M16,1 l5,5 h-3 v7 h7 v-3 l5,5 -5,5 v-3 h-7 v7 h3 l-5,5 -5,-5 h3 v-7 h-7 v3 ' +
+      'l-5,-5 5,-5 v3 h7 V6 h-3 Z"/>', 32, 32);
+  }
+  function srBigCursor(on) {
+    const html = document.documentElement;
+    if (!on) {
+      html.classList.remove('salBigCursor');
+      return;
+    }
+    srBuildCursors();
+    if (!document.getElementById('srBigCursorCss')) {
       const st = document.createElement('style');
-      st.id = 'srDotCss';
-      st.textContent = '@keyframes srPulse{0%,100%{opacity:.95}50%{opacity:.3}}';
+      st.id = 'srBigCursorCss';
+      const R = (sel, cur) => 'html.salBigCursor ' + sel + '{cursor:' + cur + ' !important}';
+      st.textContent = [
+        'html.salBigCursor,html.salBigCursor body{cursor:' + SR_CUR.arrow + '}',
+        R('[style*="cursor:pointer"],[style*="cursor: pointer"],a,button,select,summary,label,' +
+          'input[type="button"],input[type="submit"],input[type="checkbox"],input[type="radio"]',
+          SR_CUR.hand),
+        R('[style*="cursor:move"],[style*="cursor: move"]', SR_CUR.move),
+        R('[style*="cursor:text"],[style*="cursor: text"],textarea,input[type="text"],' +
+          'input[type="search"],input:not([type]),[contenteditable="true"]', SR_CUR.text)
+      ].join('\n');
       document.head.appendChild(st);
     }
-    const d = document.createElement('div');
-    d.id = 'salRecDot';
-    d.title = 'Recording the screen — click (or Ctrl+.) to stop and save';
-    d.style.cssText = 'position:fixed;top:6px;right:6px;width:9px;height:9px;' +
-      'border-radius:50%;background:#f22;box-shadow:0 0 4px rgba(0,0,0,.6);' +
-      'cursor:pointer;z-index:2147483647;animation:srPulse 1.4s ease-in-out infinite;';
-    d.onclick = () => srToggle();
-    document.body.appendChild(d);
-    srDot = d;
-  }
-  function srHideDot() {
-    if (srDot && srDot.parentNode) srDot.parentNode.removeChild(srDot);
-    srDot = null;
+    html.classList.add('salBigCursor');
   }
 
   // Already full-window? Two ways to be, and only one of them is visible to the
@@ -180,7 +268,7 @@
     }
     srGoFullscreen();
     srOn = true; srMode = 'browser'; srName = SR_STEM + '_' + srStamp();
-    srShowDot();
+    srIndicatorOn();
 
     p.then(stream => {
       if (!srOn) { stream.getTracks().forEach(t => t.stop()); return; }  // stopped while picking
@@ -204,7 +292,7 @@
       srRec.start(1000);                       // 1s chunks — nothing is lost on a crash-stop
       srToast('● Recording the screen — Ctrl+. to stop', 1300);
     }).catch(err => {
-      srOn = false; srMode = null; srHideDot();
+      srOn = false; srMode = null; srIndicatorOff();
       srToast(err && err.name === 'NotAllowedError'
         ? 'Screen recording cancelled.'
         : 'Record failed: ' + (err && err.message ? err.message : err), 2600);
@@ -232,12 +320,12 @@
     if (srOn) {
       // ── STOP ──
       if (srMode === 'browser') {
-        srOn = false; srMode = null; srHideDot();
+        srOn = false; srMode = null; srIndicatorOff();
         try { if (srRec && srRec.state !== 'inactive') srRec.stop(); else srBrowserFinish(); }
         catch (e) { srToast('Stop failed: ' + (e && e.message ? e.message : e), 3000); }
         return;
       }
-      srOn = false; srMode = null; srHideDot();
+      srOn = false; srMode = null; srIndicatorOff();
       try {
         const j = await srProxyStop();
         if (j && j.output) {
@@ -260,14 +348,14 @@
 
     srGoFullscreen();
     srOn = true; srMode = 'proxy'; srName = SR_STEM + '_' + srStamp();
-    srShowDot();
+    srIndicatorOn();
     try {
       const j = await srProxyStart();
       srProxyOk = true;
       if (j && j.output) srName = String(j.output).split(/[\\/]/).pop().replace(/\.mp4$/i, '');
       srToast('● Recording the screen — Ctrl+. to stop', 1300);
     } catch (e) {
-      srOn = false; srMode = null; srHideDot();
+      srOn = false; srMode = null; srIndicatorOff();
       const msg = (e && e.message) ? e.message : String(e);
       if (e && e.status === 409) {       // V's step recorder owns the single slot
         srProxyOk = true;
@@ -317,6 +405,9 @@
   window.salScreenRec = {
     toggle: srToggle,
     isRecording: () => srOn,
-    probe: srProbeProxy
+    probe: srProbeProxy,
+    // (dev0724) The 2× pointer on its own, for trying it (or filming with an
+    // external recorder) without starting a capture: salScreenRec.bigCursor(true).
+    bigCursor: srBigCursor
   };
 })();

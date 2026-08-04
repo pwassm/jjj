@@ -149,6 +149,8 @@ const PORT = 8081;
 // detect a stale proxy before sending a deskew (rotate) job that an old build
 // would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
 // (dev0418) Bumped + added 'screenrec' feature for the /rec/* screen recorder.
+// (dev0724) 'drawtext' = the crop render also takes {texts:[…]} and burns each
+//   one in with ffmpeg drawtext. See buildDrawtextChain for the quoting rules.
 // (dev0723) 'screenrec2' = /rec/start also takes {dest:'downloads', stem, maxWidth,
 //   crf, drawMouse}. screenrec.js probes for it and falls back to the browser's own
 //   getDisplayMedia capture when this proxy is old or not running at all.
@@ -290,7 +292,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0723';
+const PROXY_BUILD = 'dev0724';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -413,6 +415,80 @@ function corsForExec(origin) {
 
 function must(cond, msg) { if (!cond) throw new Error(msg); }
 
+// (dev0724) ── drawtext: burn the V crop overlay's text boxes into the render ──
+//
+// QUOTING, the part that took a session to get right. There is no shell here
+// (spawn shell:false), so the filtergraph string in argv is parsed by ffmpeg
+// alone — and it needs BOTH levels of protection on every Windows path:
+//   fontfile='C\:/Windows/Fonts/arial.ttf'      ← quoted AND colon-escaped
+// Quoted-only is "No option name near '/Windows/…'"; escaped-only is the same.
+// Verified with a real ffmpeg run before this shipped.
+//
+// The user's text never enters the graph at all: each box is written to its own
+// UTF-8 temp file and passed as `textfile=`, so apostrophes, colons, percent
+// signs and commas can't break the parse or be mistaken for filter syntax.
+// `expansion=none` finishes the job — without it a bare % makes drawtext give
+// up on the whole string and draw nothing (silently, exit 0).
+//
+// The temp DIRECTORY is pushed onto tmpSink; the caller deletes it when ffmpeg
+// exits. Geometry is in fractions of the crop window, which — since drawtext is
+// appended AFTER crop/scale/zoompan — is the same as fractions of the output
+// frame. That also means a Ken Burns zoom moves the picture UNDER the caption
+// and leaves the caption itself parked, which is what a caption should do.
+const DT_FONT_DIR = path.join(process.env.WINDIR || 'C:/Windows', 'Fonts');
+const DT_FONT_CANDIDATES = ['arial.ttf', 'segoeui.ttf', 'verdana.ttf', 'tahoma.ttf'];
+
+function dtFontFile() {
+  for (const f of DT_FONT_CANDIDATES) {
+    const p = path.join(DT_FONT_DIR, f);
+    try { if (fs.existsSync(p)) return p; } catch (_) {}
+  }
+  throw new Error('no usable TrueType font found in ' + DT_FONT_DIR);
+}
+
+// Filtergraph-safe literal: forward slashes, quoted, colons escaped.
+function dtQuote(s) {
+  return "'" + String(s).replace(/\\/g, '/').replace(/:/g, '\\:') + "'";
+}
+
+function buildDrawtextChain(texts, ow, oh, tmpSink) {
+  must(Array.isArray(texts), 'texts must be an array');
+  must(texts.length <= 12, 'at most 12 text boxes');
+  const font = dtFontFile();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slam-dt-'));
+  if (tmpSink) tmpSink.push(dir);
+  let chain = '';
+  texts.forEach((t, i) => {
+    must(t && typeof t === 'object', 'texts[' + i + '] must be an object');
+    for (const k of ['x', 'y', 'w']) {
+      const v = +t[k];
+      must(Number.isFinite(v) && v >= 0 && v <= 1, `texts[${i}].${k} must be within 0..1`);
+    }
+    const size = +t.size;
+    must(Number.isFinite(size) && size >= 0.005 && size <= 1, `texts[${i}].size must be within 0.005..1`);
+    must(Array.isArray(t.lines) && t.lines.length && t.lines.length <= 40,
+         `texts[${i}].lines must be 1-40 strings`);
+    const lines = t.lines.map(l => String(l == null ? '' : l).replace(/[\r\n]/g, ' ').slice(0, 400));
+    if (!lines.some(l => l.trim())) return;          // an empty box draws nothing
+    const file = path.join(dir, 'txt' + i + '.txt');
+    fs.writeFileSync(file, lines.join('\n'), 'utf8');
+    const fontPx = Math.max(6, Math.round(size * oh));
+    chain += ',drawtext=' + [
+      'fontfile=' + dtQuote(font),
+      'textfile=' + dtQuote(file),
+      'expansion=none',
+      'fontsize=' + fontPx,
+      'fontcolor=white',
+      'borderw=' + Math.max(1, Math.round(fontPx * 0.07)),
+      'bordercolor=black@0.85',
+      'line_spacing=0',
+      'x=' + Math.round((+t.x) * ow),
+      'y=' + Math.round((+t.y) * oh)
+    ].join(':');
+  });
+  return chain;
+}
+
 // (dev0292) Builder accepts:
 //   crop      {w,h,x,y}      — OPTIONAL (dev0293); even-pixel ints when set
 //   crf       0..51           — default 18 (re-encode only)
@@ -436,6 +512,13 @@ function must(cond, msg) { if (!cond) throw new Error(msg); }
 //                                 filter — zoompan emits the final size itself.
 //                                 fps must be the SOURCE rate ("30000/1001" or
 //                                 a number): zoompan sets the output frame rate.
+//   texts     [{x,y,w,size,lines[]}]
+//                              — OPTIONAL (dev0724); CROP path only. Burned-in
+//                                 captions. x/y/w are fractions of the crop
+//                                 window, size is a fraction of its HEIGHT, and
+//                                 `lines` is the text ALREADY WRAPPED by the
+//                                 client (drawtext cannot wrap). Appended after
+//                                 crop/scale/zoompan → see buildDrawtextChain.
 //   audio     true|false       — OPTIONAL (dev0719); CROP path only. false → '-an'
 //                                 (silent output), true/absent → '-c:a copy' as
 //                                 before. Absent defaults to KEEPING audio so an
@@ -452,7 +535,12 @@ function must(cond, msg) { if (!cond) throw new Error(msg); }
 //     True lossless. Cuts snap to nearest keyframe for video; audio is
 //     packet-accurate. For AB clips this is usually fine; if frame-exact
 //     start is critical, the user can crop instead.
-function buildFfmpegArgs(p) {
+// (dev0724) tmpSink — an array the caller passes in to collect temp DIRECTORIES
+// this build created (drawtext's text files). The caller deletes them once
+// ffmpeg has exited; they must outlive the spawn, so they cannot be cleaned up
+// here. Absent → nothing is collected (and a texts[] payload leaks a temp dir,
+// which is why /exec always passes one).
+function buildFfmpegArgs(p, tmpSink) {
   must(p.input  && typeof p.input  === 'string', 'input (string) required');
   must(p.output && typeof p.output === 'string', 'output (string) required');
   const overwrite = !!p.overwrite;
@@ -533,6 +621,15 @@ function buildFfmpegArgs(p) {
     const resH = p.resHeight;
     const scaling = Number.isFinite(resH) && resH > 0;
     const aspect = (p.aspect === 'P') ? 'P' : 'L';
+    // (dev0724) The OUTPUT frame size, hoisted out of the Ken Burns branch: the
+    // zoompan needs it as its own `s=`, and drawtext needs it to turn fractions
+    // into pixels. Matches what `scale=-2:H` / `scale=H:-2` produce below.
+    const even = n => Math.max(2, Math.round(n / 2) * 2);
+    let ow = p.crop.w, oh = p.crop.h;
+    if (scaling) {
+      if (aspect === 'P') { ow = resH; oh = even(p.crop.h * resH / p.crop.w); }
+      else                { oh = resH; ow = even(p.crop.w * resH / p.crop.h); }
+    }
     if (p.ken) {
       // (dev0720) ── Ken Burns ────────────────────────────────────────────────
       // Glide from the whole crop into an inner box, arriving at holdSec and
@@ -570,15 +667,9 @@ function buildFfmpegArgs(p) {
       const N = Math.max(1, Math.round(fpsNum * hold));   // ramp length in frames
       const P = `min(on/${N},1)`;
       const S = `(${P})*(${P})*(3-2*(${P}))`;             // smoothstep ease
-      // Output size. zoompan scales the window straight to this, so when a
-      // resolution is chosen we render it here and skip the trailing scale —
-      // one resample instead of two.
-      const even = n => Math.max(2, Math.round(n / 2) * 2);
-      let ow = p.crop.w, oh = p.crop.h;
-      if (scaling) {
-        if (aspect === 'P') { ow = resH; oh = even(p.crop.h * resH / p.crop.w); }
-        else                { oh = resH; ow = even(p.crop.w * resH / p.crop.h); }
-      }
+      // Output size (ow/oh above). zoompan scales the window straight to it, so
+      // when a resolution is chosen we render it here and skip the trailing
+      // scale — one resample instead of two.
       // Single-quoted expressions: commas inside them would otherwise read as
       // filter separators in the graph string.
       vf += `,zoompan=z='1/(1-(${S})*(1-${KW}))'` +
@@ -587,6 +678,9 @@ function buildFfmpegArgs(p) {
     } else if (scaling) {
       vf += (aspect === 'P') ? `,scale=${resH}:-2` : `,scale=-2:${resH}`;
     }
+    // (dev0724) Captions go on LAST, so they sit on the finished frame at a
+    // fixed size and a Ken Burns move slides the picture beneath them.
+    if (p.texts && p.texts.length) vf += buildDrawtextChain(p.texts, ow, oh, tmpSink);
     // (dev0719) Output audio, driven by the crop bar's 🔇/🔊 switch. Absent →
     // true, so a pre-dev0719 payload still gets its soundtrack.
     const audio = (p.audio === undefined || p.audio === null) ? true : !!p.audio;
@@ -1885,8 +1979,12 @@ function makeLineSplitter(emit) {
 
 // (dev0289) Spawn the binary, NDJSON-stream stdout(progress)/stderr/done to
 // the response. Uses shell:false (the default) so argv strings are literal.
-function streamExec(req, res, bin, args) {
+// (dev0724) onDone — optional cleanup the caller needs run once the child has
+// exited (drawtext's temp text files). Fires on every exit path, including the
+// spawn failure below.
+function streamExec(req, res, bin, args, onDone) {
   const origin = req.headers.origin || '';
+  const done = () => { if (onDone) { try { onDone(); } catch (_) {} } };
   const headers = Object.assign({}, corsForExec(origin), {
     'Content-Type': 'application/x-ndjson',
     'Cache-Control': 'no-store'
@@ -1901,6 +1999,7 @@ function streamExec(req, res, bin, args) {
   } catch (err) {
     emit({ type: 'done', error: err.message, exitCode: -1 });
     res.end();
+    done();
     return;
   }
   const t0 = Date.now();
@@ -1911,10 +2010,12 @@ function streamExec(req, res, bin, args) {
   proc.on('error', err => {
     emit({ type: 'done', error: err.message, exitCode: -1, durationMs: Date.now() - t0 });
     res.end();
+    done();
   });
   proc.on('close', code => {
     emit({ type: 'done', exitCode: code, durationMs: Date.now() - t0 });
     res.end();
+    done();
   });
   // If the client disconnects mid-job, kill the child to avoid orphans.
   req.on('close', () => { try { proc.kill(); } catch (_) {} });
@@ -1923,7 +2024,8 @@ function streamExec(req, res, bin, args) {
 // (dev0391) Non-streaming exec for ffprobe: buffer stdout fully and return one
 // JSON response. streamExec pipes stdout through the ffmpeg progress parser,
 // which would mangle ffprobe's JSON — so probe-style binaries use this instead.
-function streamExecCollect(req, res, bin, args) {
+// (dev0724) onDone — same cleanup hook streamExec takes.
+function streamExecCollect(req, res, bin, args, onDone) {
   const origin = req.headers.origin || '';
   const headers = Object.assign({}, corsForExec(origin), {
     'Content-Type': 'application/json',
@@ -1931,6 +2033,7 @@ function streamExecCollect(req, res, bin, args) {
   });
   let ended = false;
   const finish = obj => {
+    if (onDone) { try { onDone(); } catch (_) {} }
     if (ended) return; ended = true;
     res.writeHead(200, headers);
     res.end(JSON.stringify(obj));
@@ -4307,7 +4410,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'metadata', 'exiftool', 'screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'metadata', 'exiftool', 'screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 
@@ -4471,8 +4574,15 @@ http.createServer((req, res) => {
     }
     readJson(req, 64 * 1024).then(payload => {
       let args;
-      try { args = builder(payload); }
-      catch (e) { send(res, 400, 'exec: ' + e.message, corsForExec(origin)); return; }
+      // (dev0724) Temp dirs a builder had to create (drawtext text files). They
+      // must survive the spawn, so streamExec deletes them when ffmpeg exits;
+      // a builder that throws is cleaned up here and now.
+      const tmpDirs = [];
+      const dropTmp = () => tmpDirs.splice(0).forEach(d => {
+        try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) {}
+      });
+      try { args = builder(payload, tmpDirs); }
+      catch (e) { dropTmp(); send(res, 400, 'exec: ' + e.message, corsForExec(origin)); return; }
       // (dev0391) ffprobe returns JSON on stdout — collect it whole rather than
       // streaming it through the ffmpeg progress parser. (dev0394) exiftool in
       // READ mode (no payload.metadata) also emits JSON, so collect it too;
@@ -4484,8 +4594,8 @@ http.createServer((req, res) => {
       if (bin === 'ytdlp') { streamYtdlpMeta(req, res, realBin, args); return; }
       const wantsCollect = bin === 'ffprobe'
                         || (bin === 'exiftool' && !payload.metadata);
-      if (wantsCollect) streamExecCollect(req, res, realBin, args);
-      else              streamExec(req, res, realBin, args);
+      if (wantsCollect) streamExecCollect(req, res, realBin, args, dropTmp);
+      else              streamExec(req, res, realBin, args, dropTmp);
     }).catch(err => send(res, 400, 'exec: ' + err.message, corsForExec(origin)));
     return;
   }

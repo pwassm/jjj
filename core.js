@@ -258,6 +258,19 @@ window.addEventListener('keydown', function(e) {
   // import) already no-ops while V is open, and in user mode it's blocked.
   if (k === 'l' && document.getElementById('gridFullscreen')?.style.display === 'flex') return;
 
+  // (dev0724) …and V's crop overlay owns `e` (new text box) and `w` (widen the
+  // cheat-sheet). Same shape as the `l` bail above and for the same reason —
+  // this window-capture handler beats vp.js's document-capture one and both
+  // letters are in the forwarding list at the bottom, so without this they
+  // never arrive. Narrowed to an OPEN crop overlay, so `e` is still the global
+  // "open the editor for this row" everywhere else.
+  //
+  // A crop started from the slideshow already worked, but only by accident: the
+  // slideshowOverlay bail above drops this whole handler while a show is up.
+  // Standalone V (from T or the grid) had no such luck.
+  if ((k === 'e' || k === 'w')
+      && typeof _vpCropHolding === 'function' && _vpCropHolding()) return;
+
   // (dev0438) The Ig staging screen owns f / Shift+F (filter focus / clear) and
   // c (clear sel). (dev0497) It also owns d (download sel), e (enrich sel),
   // m (clear+select top 18) and — via Shift — N/D/E/A (status filter, which

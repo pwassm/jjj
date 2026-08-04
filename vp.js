@@ -2148,6 +2148,27 @@ function vpClose() {
 function vpKeyHandler(e) {
   if (document.getElementById('gridFullscreen').style.display !== 'flex') return;
 
+  // (dev0724) A crop text box being typed into owns the keyboard: ↑ / ↓ resize
+  // the text, Esc ends the entry, everything else is a character. The test is
+  // e.target and NOT an "am I editing" flag on purpose — core.js's "Esc blurs
+  // the focused field" rule runs first (window-capture beats this document one)
+  // and would clear such a flag before we ever saw the key, letting Escape fall
+  // through to vpClose and take the whole video down mid-sentence.
+  if (e.target && e.target.classList
+      && e.target.classList.contains('vp-crop-text-input')) {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      _vpTextNudgeSize(e.key === 'ArrowUp' ? 1 : -1);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      _vpTextEndEdit();
+      return;
+    }
+    return;
+  }
+
   // (dev0344) Esc closes V / Ie back to T (re-enabled — was removed in zip0186).
   // vpClose() handles teardown and silently refuses in locked-share mode, so no
   // separate guard is needed here.
@@ -2301,13 +2322,18 @@ function vpKeyHandler(e) {
     return;
   }
 
-  // (dev0720) K = Ken Burns box · W = widen/narrow the cheat-sheet. Both gated
-  // to a visible crop overlay, like T above, so the letters stay free elsewhere.
-  if (e.key === 'k' || e.key === 'K' || e.key === 'w' || e.key === 'W') {
+  // (dev0724) W = widen/narrow the cheat-sheet · E = drop a text box on the
+  // frame. Both gated to a visible crop overlay, like T above, so the letters
+  // stay free elsewhere. (The zoom box moved off K onto Z — see below.)
+  //
+  // E also needs a bail in core.js's window-capture dispatcher, which runs
+  // FIRST and would otherwise open the row editor: `e` is a registry hotkey and
+  // — unlike `w` — its fn doesn't stand down while V is up.
+  if (e.key === 'w' || e.key === 'W' || e.key === 'e' || e.key === 'E') {
     if (!_vpCropHolding()) return;
     e.preventDefault(); e.stopPropagation();
-    if (e.key === 'k' || e.key === 'K') _vpKenToggle();
-    else                                _vpCropHelpToggleWidth();
+    if (e.key === 'w' || e.key === 'W') _vpCropHelpToggleWidth();
+    else                                _vpTextAdd();
     return;
   }
 
@@ -2331,14 +2357,26 @@ function vpKeyHandler(e) {
     return;
   }
 
-  // (dev0318) Z / X = rotate the crop frame −/+ 0.5° (straighten). Gated to a
-  // visible crop overlay like T, so they pass through in any other context.
-  if (e.key === 'z' || e.key === 'Z' || e.key === 'x' || e.key === 'X') {
-    if (!_vpState || !_vpState.crop) return;
-    if (_vpState.crop.el.container.style.display === 'none') return;
+  // (dev0724) Z = arm / disarm the zoom box (was K in dev0720). It sits BELOW
+  // the embed-zoom block above, which returns outright when its toolbar button
+  // exists — and it never does here, since the crop overlay only mounts on disk
+  // videos while ⤢ only exists on a cross-origin embed. Nothing is shadowed.
+  if (e.key === 'z' || e.key === 'Z') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpKenToggle();
+    return;
+  }
+
+  // (dev0318/dev0724) 1 / 2 = rotate the crop frame −/+ 0.5° (straighten) —
+  // they took this over from Z / X so Z could become the zoom. Gated to a
+  // visible crop overlay like T, so they pass through in any other context
+  // (core.js only claims digits for the grid when V is NOT on top of it).
+  if (e.key === '1' || e.key === '2') {
+    if (!_vpCropHolding()) return;
     e.preventDefault(); e.stopPropagation();
     const s = _vpState.crop;
-    if (s.setAngle) s.setAngle(s.angle + ((e.key === 'z' || e.key === 'Z') ? -0.5 : 0.5));
+    if (s.setAngle) s.setAngle(s.angle + (e.key === '1' ? -0.5 : 0.5));
     return;
   }
 
@@ -3379,8 +3417,8 @@ function _vpNowSec() {
   return 0;
 }
 
-// (dev0720) K — arm / disarm the Ken Burns box. Arming stamps the current
-// playhead as the frame the zoom lands on; moving the box re-stamps it.
+// (dev0720/dev0724) Z (was K) — arm / disarm the zoom box. Arming stamps the
+// current playhead as the frame the zoom lands on; moving the box re-stamps it.
 function _vpKenToggle() {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
@@ -3395,6 +3433,93 @@ function _vpKenToggle() {
         'parked on the frame it should get there (' + s.ken.atSec.toFixed(1) + 's)'
       : '🎬 Ken Burns off — the crop renders static', s.ken.on ? 3400 : 1600);
   }
+}
+
+// (dev0724) ── Text boxes ────────────────────────────────────────────────────
+// E drops a resizable box on the frame; click inside it and every key is a
+// character until you click out again (↑ / ↓ resize the type). What you see
+// wrapped in the box is what ffmpeg burns in at G, because drawtext CANNOT
+// wrap — the client hands it lines, not a paragraph, and _vpTextWrapLines is
+// where the paragraph becomes those lines.
+//
+// Geometry is in fractions of the CROP window on every axis, size included, so
+// a box means the same thing after a resize, an aspect swap or a change of
+// output resolution — and the proxy can turn it into output pixels without
+// knowing anything about this screen.
+const VP_TEXT_FONT     = 'Arial, Helvetica, sans-serif';   // matches arial.ttf at render
+const VP_TEXT_MIN_SIZE = 0.02;    // of the crop height
+const VP_TEXT_MAX_SIZE = 0.40;
+const VP_TEXT_STEP     = 0.005;
+const VP_TEXT_MIN_W    = 0.06;
+// ffmpeg's freetype lays a line out a shade wider than the browser does, so the
+// wrap is measured against a slightly narrower box than the one on screen.
+const VP_TEXT_WRAP_SAFETY = 0.98;
+
+function _vpTextAdd()            { const s = _vpState && _vpState.crop; if (s && s.addText)        s.addText(); }
+function _vpTextEndEdit()        { const s = _vpState && _vpState.crop; if (s && s.endTextEdit)    s.endTextEdit(); }
+function _vpTextNudgeSize(dir)   { const s = _vpState && _vpState.crop; if (s && s.nudgeTextSize)  s.nudgeTextSize(dir); }
+
+// The OUTPUT frame, in pixels, for a crop of sw × sh source pixels. Twin of the
+// hoisted ow/oh in the proxy's buildFfmpegArgs — text px are derived from this,
+// so the two must agree.
+function _vpOutputDims(state, sw, sh) {
+  const even = n => Math.max(2, Math.round(n / 2) * 2);
+  const resH = +state.resHeight;
+  if (!Number.isFinite(resH) || resH <= 0) return { ow: sw, oh: sh };
+  return (state.aspect === 'P')
+    ? { ow: resH, oh: even(sh * resH / sw) }
+    : { oh: resH, ow: even(sw * resH / sh) };
+}
+
+// Wrap `text` the way the browser would in a box `widthPx` wide at `fontPx`,
+// and return the visual lines. Done with a real hidden element and per-character
+// rects rather than a canvas measureText loop, so it reproduces the browser's
+// own line breaking exactly — including hard newlines, which are kept by
+// splitting into paragraphs first (an empty paragraph is an empty line, and a
+// character loop alone would silently drop it).
+function _vpTextWrapLines(text, widthPx, fontPx) {
+  const mirror = document.createElement('div');
+  mirror.style.cssText =
+    'position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
+    'margin:0;padding:0;border:0;white-space:pre-wrap;overflow-wrap:break-word;' +
+    'line-height:1.15;font-family:' + VP_TEXT_FONT + ';' +
+    'width:' + Math.max(8, widthPx) + 'px;font-size:' + Math.max(4, fontPx) + 'px;';
+  document.body.appendChild(mirror);
+  const out = [];
+  try {
+    const rng = document.createRange();
+    String(text == null ? '' : text).split('\n').forEach(para => {
+      if (!para.length) { out.push(''); return; }
+      mirror.textContent = para;
+      const node = mirror.firstChild;
+      let cur = '', top = null;
+      for (let i = 0; i < para.length; i++) {
+        rng.setStart(node, i); rng.setEnd(node, i + 1);
+        const t = Math.round(rng.getBoundingClientRect().top);
+        if (top === null) top = t;
+        if (t - top > 1) { out.push(cur.replace(/\s+$/, '')); cur = ''; top = t; }
+        cur += para[i];
+      }
+      out.push(cur.replace(/\s+$/, ''));
+    });
+  } finally { mirror.remove(); }
+  return out;
+}
+
+// The `texts` payload for a render: every non-empty box, wrapped at the size it
+// will actually be drawn (so a line that fits here fits there), in crop
+// fractions. Empty boxes are dropped rather than sent as blank drawtexts.
+function _vpTextRenderList(state, ow, oh) {
+  if (!state || !Array.isArray(state.texts) || !state.texts.length) return [];
+  const out = [];
+  state.texts.forEach(t => {
+    const raw = (t.ta ? t.ta.value : t.text) || '';
+    if (!raw.trim()) return;
+    const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, t.size * oh);
+    if (!lines.some(l => l.trim())) return;
+    out.push({ x: t.x, y: t.y, w: t.w, size: t.size, lines: lines.slice(0, 40) });
+  });
+  return out;
 }
 
 function _vpMountCropOverlay(host, vid, row) {
@@ -3539,15 +3664,24 @@ function _vpMountCropOverlay(host, vid, row) {
     kenHandles[pos] = h;
   });
 
+  // (dev0724) ── Text layer ────────────────────────────────────────────────
+  // A child of `rect` like the zoom box, so the boxes tilt with the crop —
+  // which is right, because the render straightens the picture and leaves the
+  // caption level, and a tilted preview is the only honest way to show that.
+  const textLayer = document.createElement('div');
+  textLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+  rect.appendChild(textLayer);
+
   const state = {
     aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
+    texts: [],                        // (dev0724) burned-in captions, see addText
     // (dev0720) `on` = armed; frac is inside the CROP rect (fw === fh, since a
     // same-aspect box inside a box has equal fractions on both axes); atSec is
     // the playhead when the box was last placed — where the zoom finishes.
     ken: { on: false, frac: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }, atSec: 0 },
     frac: _vpCropFracForAspect('L', vid),
-    el: { container: c, rect, bar, handles, knob, grid, kenBox }
+    el: { container: c, rect, bar, handles, knob, grid, kenBox, textLayer }
   };
 
   // (dev0318) Rotation helpers. Declared before paint() (which calls
@@ -3609,6 +3743,7 @@ function _vpMountCropOverlay(host, vid, row) {
     }
     updateAngleUI();
     paintKen();
+    paintTexts();
   }
 
   // (dev0720) Place + label the Ken Burns box. Geometry is in % of `rect`, so
@@ -3624,6 +3759,181 @@ function _vpMountCropOverlay(host, vid, row) {
     kenBox.style.height = (k.frac.h * 100) + '%';
     kenLbl.textContent  = '🎬 ' + (1 / k.frac.w).toFixed(2) + '× · lands ' + k.atSec.toFixed(1) + 's';
     kenLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
+  }
+
+  // (dev0724) ── Text boxes ──────────────────────────────────────────────────
+  // One box = one drawtext at render. The <textarea> is the preview AND the
+  // editor: it wraps exactly as the burned-in text will, and it makes core.js's
+  // "is a field focused?" test true, so every global letter hotkey stands down
+  // while it has focus without a single extra guard.
+  let editing = null;              // the box currently taking keystrokes
+
+  function paintTexts() {
+    const r = _vpCropRenderRect(host, vid);
+    const rectH = Math.max(1, state.frac.h * r.rh);
+    state.texts.forEach(t => {
+      t.el.style.left  = (t.x * 100) + '%';
+      t.el.style.top   = (t.y * 100) + '%';
+      t.el.style.width = (t.w * 100) + '%';
+      t.ta.style.fontSize = Math.max(5, t.size * rectH) + 'px';
+      growText(t);
+    });
+  }
+
+  // The box hugs its text, so the dashed outline shows the real footprint.
+  function growText(t) {
+    t.ta.style.height = 'auto';
+    t.ta.style.height = Math.max(8, t.ta.scrollHeight) + 'px';
+  }
+
+  function updateChip(t) {
+    t.chip.textContent = '↑↓ type size · ' + (t.size * 100).toFixed(1) + '% of frame';
+  }
+
+  function addText() {
+    if (state.texts.length >= 12) {
+      if (typeof toast === 'function') toast('12 text boxes is the limit', 1800);
+      return;
+    }
+    const n = state.texts.length;
+    const t = { x: Math.min(0.60, 0.06 + 0.03 * n), y: Math.min(0.76, 0.06 + 0.11 * n),
+                w: 0.55, size: 0.07, text: '' };
+
+    const box = document.createElement('div');
+    box.className = 'vp-crop-text';
+    box.style.cssText =
+      'position:absolute;box-sizing:border-box;pointer-events:auto;cursor:move;' +
+      'border:1px dashed rgba(120,230,170,0.85);background:rgba(0,0,0,0.10);';
+
+    const ta = document.createElement('textarea');
+    ta.className = 'vp-crop-text-input';       // vpKeyHandler's gate — keep in sync
+    ta.spellcheck = false;
+    ta.readOnly = true;
+    ta.rows = 1;
+    ta.placeholder = 'type…';
+    ta.style.cssText =
+      'display:block;box-sizing:border-box;width:100%;margin:0;padding:0;border:0;outline:0;' +
+      'background:transparent;resize:none;overflow:hidden;pointer-events:none;' +
+      'color:#fff;caret-color:#9f9;font-family:' + VP_TEXT_FONT + ';line-height:1.15;' +
+      'white-space:pre-wrap;overflow-wrap:break-word;' +
+      'text-shadow:0 0 2px #000,0 0 3px #000,1px 1px 0 #000,-1px -1px 0 #000;';
+    ta.addEventListener('input', () => { t.text = ta.value; growText(t); });
+    box.appendChild(ta);
+
+    // Side grips set the WRAP width — the one thing the arrows can't do.
+    ['l', 'r'].forEach(side => {
+      const h = document.createElement('div');
+      h.style.cssText =
+        'position:absolute;top:0;bottom:0;width:9px;cursor:ew-resize;pointer-events:auto;' +
+        'background:rgba(120,230,170,0.28);' + (side === 'l' ? 'left:-5px;' : 'right:-5px;');
+      h.addEventListener('pointerdown', e => textStart('tw', side, e, h, t));
+      box.appendChild(h);
+    });
+
+    const del = document.createElement('div');
+    del.textContent = '✕';
+    del.title = 'Remove this text box';
+    del.style.cssText =
+      'position:absolute;top:-10px;right:-10px;width:18px;height:18px;border-radius:50%;' +
+      'background:#1a1a2e;color:#f9c;border:1px solid #a67;text-align:center;' +
+      'font:11px/16px ui-monospace,Consolas,monospace;cursor:pointer;pointer-events:auto;';
+    del.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); });
+    del.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); removeText(t); });
+    box.appendChild(del);
+
+    const chip = document.createElement('div');
+    chip.style.cssText =
+      'position:absolute;left:0;top:-17px;background:rgba(0,0,0,0.62);color:#9fb;' +
+      'padding:0 5px;border-radius:3px;font:10px ui-monospace,Consolas,monospace;' +
+      'pointer-events:none;white-space:nowrap;display:none;';
+    box.appendChild(chip);
+
+    // A press that doesn't travel is a click = start typing; one that does is a
+    // move. Same gesture the zoom box uses, one meaning further.
+    box.addEventListener('pointerdown', e => {
+      if (editing === t) return;                          // typing — the field owns it
+      if (e.target !== box && e.target !== ta) return;     // grips and ✕ have their own
+      textStart('tmove', null, e, box, t);
+    });
+
+    t.el = box; t.ta = ta; t.chip = chip;
+    textLayer.appendChild(box);
+    state.texts.push(t);
+    paintTexts();
+    beginEdit(t);
+  }
+
+  function removeText(t) {
+    if (editing === t) {
+      editing = null;
+      document.removeEventListener('pointerdown', onDocDown, true);
+    }
+    const i = state.texts.indexOf(t);
+    if (i >= 0) state.texts.splice(i, 1);
+    if (t.el && t.el.parentNode) t.el.parentNode.removeChild(t.el);
+  }
+
+  function beginEdit(t) {
+    if (editing && editing !== t) endEdit();
+    editing = t;
+    t.el.style.borderColor = 'rgba(150,255,200,1)';
+    t.el.style.background  = 'rgba(0,0,0,0.30)';
+    t.ta.readOnly = false;
+    t.ta.style.pointerEvents = 'auto';
+    t.chip.style.display = '';
+    updateChip(t);
+    try { t.ta.focus({ preventScroll: true }); } catch (_) { try { t.ta.focus(); } catch (__) {} }
+    const n = t.ta.value.length;
+    try { t.ta.setSelectionRange(n, n); } catch (_) {}
+    document.addEventListener('pointerdown', onDocDown, true);
+    if (typeof toast === 'function') {
+      toast('✎ typing — ↑ ↓ resize the type · click outside when done', 2200);
+    }
+  }
+
+  function endEdit() {
+    const t = editing;
+    if (!t) return;
+    editing = null;
+    document.removeEventListener('pointerdown', onDocDown, true);
+    t.ta.readOnly = true;
+    t.ta.style.pointerEvents = 'none';
+    t.el.style.borderColor = 'rgba(120,230,170,0.85)';
+    t.el.style.background  = 'rgba(0,0,0,0.10)';
+    t.chip.style.display = 'none';
+    try { t.ta.blur(); } catch (_) {}
+    t.text = t.ta.value;
+    if (!t.text.trim()) removeText(t);   // an empty box is an abandoned one
+  }
+
+  // The first click OUTSIDE the box ends the entry and is swallowed, so it can't
+  // also start a crop drag — or land on the backdrop, where V's own click
+  // handler would close the player.
+  function onDocDown(e) {
+    if (!editing) return;
+    if (editing.el.contains(e.target)) return;
+    e.preventDefault(); e.stopPropagation();
+    endEdit();
+  }
+
+  function nudgeSize(dir) {
+    const t = editing || state.texts[state.texts.length - 1];
+    if (!t) return;
+    t.size = Math.max(VP_TEXT_MIN_SIZE,
+             Math.min(VP_TEXT_MAX_SIZE, +(t.size + dir * VP_TEXT_STEP).toFixed(4)));
+    updateChip(t);
+    paintTexts();
+  }
+
+  function textStart(kind, pos, e, capEl, t) {
+    e.preventDefault(); e.stopPropagation();
+    if (editing && editing !== t) endEdit();
+    const r = _vpCropRenderRect(host, vid);
+    drag = { kind, pos, el: capEl, t, moved: false,
+             sx: e.clientX, sy: e.clientY, of: { x: t.x, y: t.y, w: t.w },
+             kw: Math.max(1, state.frac.w * r.rw),
+             kh: Math.max(1, state.frac.h * r.rh), r };
+    try { capEl.setPointerCapture(e.pointerId); } catch (_) {}
   }
 
   const ensureMeta = () => { state.frac = _vpCropFracForAspect(state.aspect, vid); paint(); };
@@ -3736,6 +4046,28 @@ function _vpMountCropOverlay(host, vid, row) {
       k.y = Math.max(0, Math.min(1 - n, (py >= ay) ? ay : ay - n));
       paintKen();
       paint();   // the ⚠ enlargement label now depends on the zoom depth
+    } else if (drag.kind === 'tmove') {
+      // (dev0724) Slide a text box inside the crop window. Same un-rotation as
+      // the zoom box — a tilted crop must still move by what the pointer did on
+      // screen. The travel test decides click-vs-drag when the press is let go.
+      const d = kenLocal(e), t = drag.t, of = drag.of;
+      if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 4) drag.moved = true;
+      t.x = Math.max(0, Math.min(1 - t.w, of.x + d.dxF));
+      t.y = Math.max(0, Math.min(0.995, of.y + d.dyF));
+      paintTexts();
+    } else if (drag.kind === 'tw') {
+      // Wrap width. The right grip grows the box; the left one moves the edge
+      // and keeps the other side pinned.
+      const d = kenLocal(e), t = drag.t, of = drag.of;
+      drag.moved = true;
+      if (drag.pos === 'r') {
+        t.w = Math.max(VP_TEXT_MIN_W, Math.min(1 - t.x, of.w + d.dxF));
+      } else {
+        const nx = Math.max(0, Math.min(of.x + of.w - VP_TEXT_MIN_W, of.x + d.dxF));
+        t.x = nx;
+        t.w = of.x + of.w - nx;
+      }
+      paintTexts();
     }
   }
   function onUp(e) {
@@ -3747,6 +4079,9 @@ function _vpMountCropOverlay(host, vid, row) {
         state.ken.atSec = _vpNowSec();
         paintKen();
       }
+      // (dev0724) A press on a text box that never travelled is a click: start
+      // typing in it.
+      if (drag.kind === 'tmove' && !drag.moved) beginEdit(drag.t);
       hideGridSoon();
     }
     drag = null;
@@ -3852,6 +4187,7 @@ function _vpMountCropOverlay(host, vid, row) {
   state.dispose = () => {
     // (dev0718) Closing V mid-crop must hand the slideshow back its chrome and
     // its autopilot, and take the cheat-sheet down with the player.
+    endEdit();   // (dev0724) …and drop the text box's document listener
     _vpCropHelpHide();
     if (typeof window._slideshowCropHold === 'function') {
       try { window._slideshowCropHold(false); } catch (_) {}
@@ -3865,7 +4201,12 @@ function _vpMountCropOverlay(host, vid, row) {
   state.paint = paint;
   state.setAngle = setAngle;
   state.paintAudio = paintAudio;   // (dev0719) M repaints the audio chip
-  state.paintKen = paintKen;       // (dev0720) K arms/disarms the Ken Burns box
+  state.paintKen = paintKen;       // (dev0720) Z arms/disarms the zoom box
+  // (dev0724) E adds a text box; the key handler resizes and ends the entry.
+  state.addText = addText;
+  state.paintTexts = paintTexts;
+  state.endTextEdit = endEdit;
+  state.nudgeTextSize = nudgeSize;
   if (_vpState) _vpState.crop = state;
 }
 
@@ -3895,12 +4236,12 @@ const VP_CROP_HELP_Z = 42500;
 const VP_CROP_HELP_POS_KEY = 'vpCropHelpPos';
 // (dev0720) Two widths, toggled by W (or the ⇔ button), remembered across
 // videos and sessions. Narrow is the original 290px — small enough to leave the
-// frame alone; wide is big enough that every description reads out in full,
-// wrapping to a second line at worst. Capped at 94vw so it can't outgrow a
-// small window.
+// frame alone. (dev0724) Wide is now the FULL window rather than 720px: at
+// 720 the descriptions still wrapped, and a panel you flip to for a moment to
+// read may as well use the whole width while it's up.
 const VP_CROP_HELP_WIDE_KEY = 'vpCropHelpWide';
 const VP_CROP_HELP_W_NARROW = '290px';
-const VP_CROP_HELP_W_WIDE   = 'min(720px, 94vw)';
+const VP_CROP_HELP_W_WIDE   = 'calc(100vw - 8px)';
 
 function _vpCropHelpIsWide() {
   try { return localStorage.getItem(VP_CROP_HELP_WIDE_KEY) === '1'; } catch (_) { return false; }
@@ -3909,8 +4250,16 @@ function _vpCropHelpIsWide() {
 function _vpCropHelpApplyWidth(el) {
   const wide = _vpCropHelpIsWide();
   el.style.width = wide ? VP_CROP_HELP_W_WIDE : VP_CROP_HELP_W_NARROW;
+  // (dev0724) Full width leaves the clamp below nowhere to put the panel but
+  // the left edge — so coming back to narrow restores the spot the user
+  // actually parked it in, instead of abandoning it there.
+  if (!wide) {
+    let pos = null;
+    try { pos = JSON.parse(localStorage.getItem(VP_CROP_HELP_POS_KEY) || 'null'); } catch (_) {}
+    el.style.left = ((pos && Number.isFinite(pos.x)) ? pos.x : (window.innerWidth - 306)) + 'px';
+  }
   const btn = el.querySelector('#vp-crop-help-wide');
-  if (btn) btn.title = wide ? 'Narrow the panel (W)' : 'Widen the panel (W)';
+  if (btn) btn.title = wide ? 'Narrow the panel (W)' : 'Full width (W)';
   _vpCropHelpClamp(el);
 }
 
@@ -3954,7 +4303,7 @@ function _vpCropHelpShow() {
       'padding:6px 8px;background:rgba(40,70,110,0.55);border-radius:8px 8px 0 0;' +
       'border-bottom:1px solid rgba(102,170,255,0.35);">' +
       '<span style="flex:1;font-weight:bold;color:#8ef;">✂ Crop &amp; trim</span>' +
-      '<span id="vp-crop-help-wide" title="Widen the panel (W)" ' +
+      '<span id="vp-crop-help-wide" title="Full width / narrow (W)" ' +
         'style="cursor:pointer;padding:0 4px;color:#ccc;">⇔</span>' +
       '<span id="vp-crop-help-close" title="Close crop (same as C)" ' +
         'style="cursor:pointer;padding:0 4px;color:#ccc;">✕</span>' +
@@ -3965,28 +4314,34 @@ function _vpCropHelpShow() {
       '</div>' +
       '<table style="border-collapse:collapse;width:100%;">' +
         head('The frame') +
-        row('drag inside',   'move the crop box') +
-        row('drag a corner', 'resize (aspect stays locked)') +
+        // (dev0724) One line each for the two mouse gestures, and 1/2 took the
+        // tilt over from Z/X so Z could become the zoom below.
+        row('drag inside / a corner', 'move the crop box / resize it (aspect stays locked)') +
         row(K('T'),          'swap 16:9 ↔ 9:16') +
-        row(K('Z') + K('X'), 'tilt ∓0.5° to straighten a horizon') +
+        row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
         row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
-        head('The move (Ken Burns)') +
-        row(K('K'),          'amber box on / off — where the zoom ENDS') +
-        row('drag it',       'move / resize it inside the crop box (always the ' +
-                             'same shape, so the shot keeps its aspect)') +
-        row('lands at',      'the frame you are parked on when you place it: ' +
-                             'the render glides from the full crop at ' + K('A') +
+        head('Zoom into') +
+        row(K('Z'),          'amber box on / off — where the zoom ENDS') +
+        row('drag it',       'move / resize it inside the crop box (always the same ' +
+                             'shape, so the shot keeps its aspect) — and it lands on ' +
+                             'the frame you are parked on when you place it: the ' +
+                             'render glides from the full crop at ' + K('A') +
                              ' to the box by then, and holds it to ' + K('B') + '.') +
+        head('Text on the picture') +
+        row(K('E'),          'new text box between ' + K('A') + ' and ' + K('B') +
+                             ' — burned in at render, for the whole clip') +
+        row('click inside',  'type. No hotkeys while you do — ' + K('↑') + K('↓') +
+                             ' size the type, click outside to finish') +
+        row('drag it / ↔',   'move the box / drag a side grip to set the wrap width — ' +
+                             'the wrap you see is the wrap you get. ✕ removes it.') +
         head('The clip') +
         // (dev0719) asdf now walk the PLAYHEAD and shifted A/B stamp the point
         // it's parked on — find the frame, then mark it.
-        row(K('a') + K('s'), 'playhead back 5 / back 1 frame') +
-        row(K('d') + K('f'), 'playhead forward 1 / forward 5 frames') +
+        row(K('a') + K('s') + K('d') + K('f'),
+                             'playhead −5 / −1 / +1 / +5 frames') +
         row(K('←') + K('→'), 'step one frame (pauses first)') +
-        row(K('⇧A'),         'start of clip = the frame you are on ' +
-                             '(again to clear) — same as the A button') +
-        row(K('⇧B'),         'end of clip = the frame you are on ' +
-                             '(again to clear) — same as the B button') +
+        row(K('⇧A') + K('⇧B'), 'start / end of clip = the frame you are on ' +
+                             '(again to clear) — same as the A and B buttons') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
         row(K('Space'),      'play / pause') +
         head('The output') +
@@ -3995,12 +4350,12 @@ function _vpCropHelpShow() {
         row('res',   '2160p (4K) · 1440p (2K) · 1080p · 720p · Same') +
         row('CRF',   'lower = better + bigger · Slow = smaller, slower') +
         row('⚠',     'amber size label = output is BIGGER than the crop — or ' +
-                     'than the Ken Burns box, once armed, since that is the ' +
+                     'than the zoom box, once armed, since that is the ' +
                      'tightest the shot gets. Pixels would be enlarged: grow ' +
                      'the box or drop the res.') +
         head('Finish') +
         row(K('G'),   'render (or the Crop button) — writes next to the source') +
-        row(K('W'),   'widen / narrow this panel') +
+        row(K('W'),   'this panel: full width / narrow') +
         row(K('C'),   'close crop, hand the show back to the slideshow') +
         row(K('R'),   'toggle the disk-info caption') +
         row(K('Esc'), 'close the video entirely') +
@@ -4073,6 +4428,9 @@ function _vpCropToggle() {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
   const isOpening = (s.el.container.style.display === 'none');
+  // (dev0724) Closing on top of a half-typed caption must hand the keyboard
+  // back, or the next bare letter goes into an invisible field.
+  if (!isOpening && s.endTextEdit) s.endTextEdit();
   s.el.container.style.display = isOpening ? '' : 'none';
   // (dev0718) Trade the slideshow's chrome for the crop cheat-sheet, and take
   // the show off autopilot so it can't advance mid-edit. Both directions are
@@ -4402,7 +4760,7 @@ async function _vpGoSave(opts) {
       if (!fps) {
         if (typeof toast === 'function') {
           toast('Ken Burns needs the source frame rate and ffprobe could not read it — ' +
-                'press K to turn the zoom off, or fix the proxy', 4600);
+                'press Z to turn the zoom off, or fix the proxy', 4600);
         }
         return;
       }
@@ -4415,6 +4773,11 @@ async function _vpGoSave(opts) {
       kenTok = 'kb' + (1 / k.frac.w).toFixed(1).replace('.', '_') + 'x';
       nameParts.push(kenTok);
     }
+    // (dev0724) Burned-in captions. Wrapped HERE, at the size ffmpeg will draw
+    // them (drawtext can't wrap), and dropped entirely when every box is empty.
+    const dims  = _vpOutputDims(s, sw, sh);
+    const texts = _vpTextRenderList(s, dims.ow, dims.oh);
+    if (texts.length) nameParts.push('tx' + texts.length);
     nameParts.push(durStr);
     outName = nameParts.join('~') + '~.mp4';
     payload = {
@@ -4430,6 +4793,7 @@ async function _vpGoSave(opts) {
     };
     if (rotate) payload.rotate = rotate;
     if (kenPayload) payload.ken = kenPayload;   // (dev0720)
+    if (texts.length) payload.texts = texts;    // (dev0724)
   } else {
     // (dev0296) Source dims drive size+aspect for lossless filenames so the
     // resulting name still tells you the resolution at a glance.
@@ -4469,6 +4833,14 @@ async function _vpGoSave(opts) {
   if (payload.ken && !(await _vpProxyHasFeature('kenburns'))) {
     if (typeof toast === 'function') {
       toast('Ken Burns needs an updated proxy — restart "node proxy.js" and retry', 4200);
+    }
+    return;
+  }
+  // (dev0724) …and the captions: an old proxy ignores payload.texts and writes a
+  // clean clip with no text in it, which reads as success until you play it.
+  if (payload.texts && !(await _vpProxyHasFeature('drawtext'))) {
+    if (typeof toast === 'function') {
+      toast('Burned-in text needs an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }
