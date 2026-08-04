@@ -2301,6 +2301,16 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0720) K = Ken Burns box · W = widen/narrow the cheat-sheet. Both gated
+  // to a visible crop overlay, like T above, so the letters stay free elsewhere.
+  if (e.key === 'k' || e.key === 'K' || e.key === 'w' || e.key === 'W') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'k' || e.key === 'K') _vpKenToggle();
+    else                                _vpCropHelpToggleWidth();
+    return;
+  }
+
   // (dev0672) z toggles the ⤢ embed-zoom arm — the keyboard twin of the toolbar
   // button. Gated on that button existing, so it only ever fires on a
   // cross-origin embed (IG/TikTok) and leaves z free everywhere else — including
@@ -3352,9 +3362,39 @@ function _vpCropHolding() {
 function _vpCropUpscaleFactor(state, sw, sh) {
   const resH = state.resHeight;
   if (!Number.isFinite(resH) || resH <= 0) return 1;
-  const srcShort = (state.aspect === 'P') ? sw : sh;
+  let srcShort = (state.aspect === 'P') ? sw : sh;
+  // (dev0720) A Ken Burns move ENDS on the inner box, so that — not the whole
+  // crop — is the framing that has to carry the output resolution. Judge the
+  // enlargement by the tightest moment of the shot.
+  if (state.ken && state.ken.on && state.ken.frac.w > 0) srcShort *= state.ken.frac.w;
   if (!srcShort) return 1;
   return resH / srcShort;
+}
+
+// (dev0720) Playhead now, in seconds, for a disk video. The crop overlay only
+// mounts on those, so the media element is always the source of truth here.
+function _vpNowSec() {
+  const p = _vpState && _vpState.player;
+  if (p && p.el && Number.isFinite(p.el.currentTime)) return p.el.currentTime;
+  return 0;
+}
+
+// (dev0720) K — arm / disarm the Ken Burns box. Arming stamps the current
+// playhead as the frame the zoom lands on; moving the box re-stamps it.
+function _vpKenToggle() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  if (!s.ken) return;
+  s.ken.on = !s.ken.on;
+  if (s.ken.on) s.ken.atSec = _vpNowSec();
+  if (s.paintKen) s.paintKen();
+  if (s.paint) s.paint();   // ⚠ enlargement label depends on the zoom
+  if (typeof toast === 'function') {
+    toast(s.ken.on
+      ? '🎬 Ken Burns armed — drag the amber box to where the zoom should end, ' +
+        'parked on the frame it should get there (' + s.ken.atSec.toFixed(1) + 's)'
+      : '🎬 Ken Burns off — the crop renders static', s.ken.on ? 3400 : 1600);
+  }
 }
 
 function _vpMountCropOverlay(host, vid, row) {
@@ -3466,11 +3506,48 @@ function _vpMountCropOverlay(host, vid, row) {
     'pointer-events:auto;box-shadow:0 1px 3px rgba(0,0,0,0.6);';
   rect.appendChild(knob);
 
+  // (dev0720) ── Ken Burns box ──────────────────────────────────────────────
+  // The END of the zoom, drawn INSIDE the crop window: the render starts on the
+  // full crop at A, glides in until this box fills the frame, and holds there
+  // to B. A child of `rect`, so it inherits the tilt for free and its geometry
+  // stays in fractions OF THE CROP — resize or re-aspect the crop and the move
+  // still means the same thing. Sized in %, so paint() never has to touch it.
+  const kenBox = document.createElement('div');
+  kenBox.style.cssText =
+    'position:absolute;box-sizing:border-box;border:2px dashed #ffd24a;' +
+    'background:rgba(255,210,74,0.05);cursor:move;pointer-events:auto;display:none;';
+  rect.appendChild(kenBox);
+  const kenLbl = document.createElement('div');
+  kenLbl.style.cssText =
+    'position:absolute;left:50%;bottom:3px;transform:translateX(-50%);' +
+    'background:rgba(0,0,0,0.62);color:#ffd24a;padding:1px 6px;border-radius:3px;' +
+    'font:11px ui-monospace,Consolas,monospace;pointer-events:none;white-space:nowrap;';
+  kenBox.appendChild(kenLbl);
+  const kenHandles = {};
+  const KHSZ = 12;
+  ['nw','ne','sw','se'].forEach(pos => {
+    const h = document.createElement('div');
+    h.style.cssText =
+      'position:absolute;width:' + KHSZ + 'px;height:' + KHSZ + 'px;' +
+      'background:#ffd24a;border:1px solid #402;pointer-events:auto;' +
+      'cursor:' + pos + '-resize;';
+    if (pos.includes('n')) h.style.top    = (-KHSZ/2) + 'px';
+    if (pos.includes('s')) h.style.bottom = (-KHSZ/2) + 'px';
+    if (pos.includes('w')) h.style.left   = (-KHSZ/2) + 'px';
+    if (pos.includes('e')) h.style.right  = (-KHSZ/2) + 'px';
+    kenBox.appendChild(h);
+    kenHandles[pos] = h;
+  });
+
   const state = {
     aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
+    // (dev0720) `on` = armed; frac is inside the CROP rect (fw === fh, since a
+    // same-aspect box inside a box has equal fractions on both axes); atSec is
+    // the playhead when the box was last placed — where the zoom finishes.
+    ken: { on: false, frac: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }, atSec: 0 },
     frac: _vpCropFracForAspect('L', vid),
-    el: { container: c, rect, bar, handles, knob, grid }
+    el: { container: c, rect, bar, handles, knob, grid, kenBox }
   };
 
   // (dev0318) Rotation helpers. Declared before paint() (which calls
@@ -3531,7 +3608,24 @@ function _vpMountCropOverlay(host, vid, row) {
         (upTxt || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
     }
     updateAngleUI();
+    paintKen();
   }
+
+  // (dev0720) Place + label the Ken Burns box. Geometry is in % of `rect`, so
+  // this only has to run when the box itself changes — or when the tilt does,
+  // since the label counter-rotates to stay upright (same trick as dimLbl).
+  function paintKen() {
+    const k = state.ken;
+    kenBox.style.display = k.on ? '' : 'none';
+    if (!k.on) return;
+    kenBox.style.left   = (k.frac.x * 100) + '%';
+    kenBox.style.top    = (k.frac.y * 100) + '%';
+    kenBox.style.width  = (k.frac.w * 100) + '%';
+    kenBox.style.height = (k.frac.h * 100) + '%';
+    kenLbl.textContent  = '🎬 ' + (1 / k.frac.w).toFixed(2) + '× · lands ' + k.atSec.toFixed(1) + 's';
+    kenLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
+  }
+
   const ensureMeta = () => { state.frac = _vpCropFracForAspect(state.aspect, vid); paint(); };
   if (vid.videoWidth) ensureMeta();
   else vid.addEventListener('loadedmetadata', ensureMeta, { once: true });
@@ -3544,18 +3638,47 @@ function _vpMountCropOverlay(host, vid, row) {
   rect.addEventListener('pointerdown', e => {
     if (e.target !== rect) return;
     e.preventDefault(); e.stopPropagation();
-    drag = { kind: 'move', sx: e.clientX, sy: e.clientY,
+    drag = { kind: 'move', el: rect, sx: e.clientX, sy: e.clientY,
              ox: state.frac.x, oy: state.frac.y, r: _vpCropRenderRect(host, vid) };
     rect.setPointerCapture(e.pointerId);
   });
   Object.entries(handles).forEach(([pos, h]) => {
     h.addEventListener('pointerdown', e => {
       e.preventDefault(); e.stopPropagation();
-      drag = { kind: 'resize', pos, sx: e.clientX, sy: e.clientY,
+      drag = { kind: 'resize', pos, el: h, sx: e.clientX, sy: e.clientY,
                of: { ...state.frac }, r: _vpCropRenderRect(host, vid) };
       h.setPointerCapture(e.pointerId);
     });
   });
+
+  // (dev0720) Ken Burns box — same gestures, one frame down. Its fractions are
+  // relative to the crop window, so the pointer delta is measured against the
+  // crop's on-screen size and un-rotated into the crop's own axes first
+  // (dragging a tilted box by screen-x must slide it along the box's x).
+  function kenStart(kind, pos, e, capEl) {
+    e.preventDefault(); e.stopPropagation();
+    const r = _vpCropRenderRect(host, vid);
+    drag = { kind, pos, el: capEl, sx: e.clientX, sy: e.clientY,
+             of: { ...state.ken.frac },
+             kw: Math.max(1, state.frac.w * r.rw),
+             kh: Math.max(1, state.frac.h * r.rh), r };
+    try { capEl.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+  kenBox.addEventListener('pointerdown', e => {
+    if (e.target !== kenBox) return;      // corner handles have their own
+    kenStart('kmove', null, e, kenBox);
+  });
+  Object.entries(kenHandles).forEach(([pos, h]) => {
+    h.addEventListener('pointerdown', e => kenStart('kresize', pos, e, h));
+  });
+  // Un-rotate a screen-space delta into the crop rect's own axes.
+  function kenLocal(e) {
+    const dxs = e.clientX - drag.sx, dys = e.clientY - drag.sy;
+    const th = (state.angle || 0) * Math.PI / 180;
+    const ct = Math.cos(th), st = Math.sin(th);
+    return { dxF: ( dxs * ct + dys * st) / drag.kw,
+             dyF: (-dxs * st + dys * ct) / drag.kh };
+  }
   function onMove(e) {
     if (!drag) return;
     showGrid();   // (dev0318) thirds grid visible while moving/resizing
@@ -3588,11 +3711,42 @@ function _vpMountCropOverlay(host, vid, row) {
       if (ny + nh > 1)   { nh = 1 - ny; nw = nh * ratio; }
       state.frac.x = nx; state.frac.y = ny; state.frac.w = nw; state.frac.h = nh;
       paint();
+    } else if (drag.kind === 'kmove') {
+      // (dev0720) Move the Ken Burns box inside the crop window.
+      const d = kenLocal(e), k = state.ken.frac, of = drag.of;
+      k.x = Math.max(0, Math.min(1 - k.w, of.x + d.dxF));
+      k.y = Math.max(0, Math.min(1 - k.h, of.y + d.dyF));
+      paintKen();
+    } else if (drag.kind === 'kresize') {
+      // Square in FRACTION space (a same-aspect box inside a box has equal
+      // fractions both ways), so one number drives width and height. The
+      // opposite corner is the anchor; the box may not leave the crop window.
+      const d = kenLocal(e), of = drag.of;
+      let ax, ay, px, py;
+      if (drag.pos === 'se') { ax = of.x;      ay = of.y;      px = of.x+of.w+d.dxF; py = of.y+of.h+d.dyF; }
+      if (drag.pos === 'sw') { ax = of.x+of.w; ay = of.y;      px = of.x     +d.dxF; py = of.y+of.h+d.dyF; }
+      if (drag.pos === 'ne') { ax = of.x;      ay = of.y+of.h; px = of.x+of.w+d.dxF; py = of.y     +d.dyF; }
+      if (drag.pos === 'nw') { ax = of.x+of.w; ay = of.y+of.h; px = of.x     +d.dxF; py = of.y     +d.dyF; }
+      let n = Math.max(Math.abs(px - ax), Math.abs(py - ay));
+      n = Math.min(n, (px >= ax) ? (1 - ax) : ax, (py >= ay) ? (1 - ay) : ay);
+      n = Math.max(0.08, Math.min(1, n));   // 0.08 → a 12.5× zoom ceiling
+      const k = state.ken.frac;
+      k.w = k.h = n;
+      k.x = Math.max(0, Math.min(1 - n, (px >= ax) ? ax : ax - n));
+      k.y = Math.max(0, Math.min(1 - n, (py >= ay) ? ay : ay - n));
+      paintKen();
+      paint();   // the ⚠ enlargement label now depends on the zoom depth
     }
   }
   function onUp(e) {
     if (drag) {
-      try { (drag.kind === 'move' ? rect : handles[drag.pos]).releasePointerCapture(e.pointerId); } catch (_) {}
+      try { if (drag.el) drag.el.releasePointerCapture(e.pointerId); } catch (_) {}
+      // (dev0720) Placing the box also stamps WHEN it lands: the zoom finishes
+      // on the frame you were parked on while positioning it, then holds to B.
+      if (drag.kind === 'kmove' || drag.kind === 'kresize') {
+        state.ken.atSec = _vpNowSec();
+        paintKen();
+      }
       hideGridSoon();
     }
     drag = null;
@@ -3711,6 +3865,7 @@ function _vpMountCropOverlay(host, vid, row) {
   state.paint = paint;
   state.setAngle = setAngle;
   state.paintAudio = paintAudio;   // (dev0719) M repaints the audio chip
+  state.paintKen = paintKen;       // (dev0720) K arms/disarms the Ken Burns box
   if (_vpState) _vpState.crop = state;
 }
 
@@ -3738,6 +3893,35 @@ function _vpMountCropOverlay(host, vid, row) {
 // (42000) and the V player (41000) — so no host stacking context clips it.
 const VP_CROP_HELP_Z = 42500;
 const VP_CROP_HELP_POS_KEY = 'vpCropHelpPos';
+// (dev0720) Two widths, toggled by W (or the ⇔ button), remembered across
+// videos and sessions. Narrow is the original 290px — small enough to leave the
+// frame alone; wide is big enough that every description reads out in full,
+// wrapping to a second line at worst. Capped at 94vw so it can't outgrow a
+// small window.
+const VP_CROP_HELP_WIDE_KEY = 'vpCropHelpWide';
+const VP_CROP_HELP_W_NARROW = '290px';
+const VP_CROP_HELP_W_WIDE   = 'min(720px, 94vw)';
+
+function _vpCropHelpIsWide() {
+  try { return localStorage.getItem(VP_CROP_HELP_WIDE_KEY) === '1'; } catch (_) { return false; }
+}
+
+function _vpCropHelpApplyWidth(el) {
+  const wide = _vpCropHelpIsWide();
+  el.style.width = wide ? VP_CROP_HELP_W_WIDE : VP_CROP_HELP_W_NARROW;
+  const btn = el.querySelector('#vp-crop-help-wide');
+  if (btn) btn.title = wide ? 'Narrow the panel (W)' : 'Widen the panel (W)';
+  _vpCropHelpClamp(el);
+}
+
+// W — flip the panel between the two widths. No-op when the sheet isn't up,
+// which is the same gate the rest of the crop keys use.
+function _vpCropHelpToggleWidth() {
+  const el = document.getElementById('vp-crop-help');
+  if (!el) return;
+  try { localStorage.setItem(VP_CROP_HELP_WIDE_KEY, _vpCropHelpIsWide() ? '0' : '1'); } catch (_) {}
+  _vpCropHelpApplyWidth(el);
+}
 
 function _vpCropHelpShow() {
   let el = document.getElementById('vp-crop-help');
@@ -3756,11 +3940,10 @@ function _vpCropHelpShow() {
 
   el = document.createElement('div');
   el.id = 'vp-crop-help';
-  // (dev0719) 290px clipped the descriptions to one cramped word per line.
-  // 380px lets most of them sit on one line and the long ones wrap to two,
-  // which reads better than truncation.
+  // (dev0720) Width comes from _vpCropHelpApplyWidth below (narrow by default,
+  // W widens); everything else is fixed.
   el.style.cssText = [
-    'position:fixed', 'width:380px', 'max-height:86vh', 'overflow-y:auto',
+    'position:fixed', 'max-height:86vh', 'overflow-y:auto',
     'background:rgba(14,14,28,0.95)', 'border:1px solid #4af', 'border-radius:9px',
     'color:#dfe6f0', 'font:12px ui-monospace,Consolas,monospace',
     'box-shadow:0 8px 32px rgba(0,0,0,0.9)', 'z-index:' + VP_CROP_HELP_Z,
@@ -3771,6 +3954,8 @@ function _vpCropHelpShow() {
       'padding:6px 8px;background:rgba(40,70,110,0.55);border-radius:8px 8px 0 0;' +
       'border-bottom:1px solid rgba(102,170,255,0.35);">' +
       '<span style="flex:1;font-weight:bold;color:#8ef;">✂ Crop &amp; trim</span>' +
+      '<span id="vp-crop-help-wide" title="Widen the panel (W)" ' +
+        'style="cursor:pointer;padding:0 4px;color:#ccc;">⇔</span>' +
       '<span id="vp-crop-help-close" title="Close crop (same as C)" ' +
         'style="cursor:pointer;padding:0 4px;color:#ccc;">✕</span>' +
     '</div>' +
@@ -3785,6 +3970,13 @@ function _vpCropHelpShow() {
         row(K('T'),          'swap 16:9 ↔ 9:16') +
         row(K('Z') + K('X'), 'tilt ∓0.5° to straighten a horizon') +
         row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
+        head('The move (Ken Burns)') +
+        row(K('K'),          'amber box on / off — where the zoom ENDS') +
+        row('drag it',       'move / resize it inside the crop box (always the ' +
+                             'same shape, so the shot keeps its aspect)') +
+        row('lands at',      'the frame you are parked on when you place it: ' +
+                             'the render glides from the full crop at ' + K('A') +
+                             ' to the box by then, and holds it to ' + K('B') + '.') +
         head('The clip') +
         // (dev0719) asdf now walk the PLAYHEAD and shifted A/B stamp the point
         // it's parked on — find the frame, then mark it.
@@ -3802,10 +3994,13 @@ function _vpCropHelpShow() {
                      'and it starts off. (Muting the player is the toolbar 🔇.)') +
         row('res',   '2160p (4K) · 1440p (2K) · 1080p · 720p · Same') +
         row('CRF',   'lower = better + bigger · Slow = smaller, slower') +
-        row('⚠',     'amber size label = output is BIGGER than the crop, ' +
-                     'so pixels get enlarged. Grow the box or drop the res.') +
+        row('⚠',     'amber size label = output is BIGGER than the crop — or ' +
+                     'than the Ken Burns box, once armed, since that is the ' +
+                     'tightest the shot gets. Pixels would be enlarged: grow ' +
+                     'the box or drop the res.') +
         head('Finish') +
         row(K('G'),   'render (or the Crop button) — writes next to the source') +
+        row(K('W'),   'widen / narrow this panel') +
         row(K('C'),   'close crop, hand the show back to the slideshow') +
         row(K('R'),   'toggle the disk-info caption') +
         row(K('Esc'), 'close the video entirely') +
@@ -3817,9 +4012,9 @@ function _vpCropHelpShow() {
   // crop toolbar which centers itself over the rect.
   let pos = null;
   try { pos = JSON.parse(localStorage.getItem(VP_CROP_HELP_POS_KEY) || 'null'); } catch (_) {}
-  el.style.left = ((pos && Number.isFinite(pos.x)) ? pos.x : (window.innerWidth - 396)) + 'px';
+  el.style.left = ((pos && Number.isFinite(pos.x)) ? pos.x : (window.innerWidth - 306)) + 'px';
   el.style.top  = ((pos && Number.isFinite(pos.y)) ? pos.y : 64) + 'px';
-  _vpCropHelpClamp(el);
+  _vpCropHelpApplyWidth(el);   // (dev0720) also clamps
 
   // Clicks must not reach #gridFullscreen's handler (which would close V).
   el.addEventListener('click', e => e.stopPropagation());
@@ -3827,11 +4022,15 @@ function _vpCropHelpShow() {
     e.stopPropagation();
     _vpCropToggle();
   });
+  el.querySelector('#vp-crop-help-wide').addEventListener('click', e => {
+    e.stopPropagation();
+    _vpCropHelpToggleWidth();
+  });
 
   const bar = el.querySelector('#vp-crop-help-bar');
   let drag = null;
   bar.addEventListener('pointerdown', e => {
-    if (e.target.id === 'vp-crop-help-close') return;
+    if (e.target.id === 'vp-crop-help-close' || e.target.id === 'vp-crop-help-wide') return;
     e.preventDefault(); e.stopPropagation();
     const b = el.getBoundingClientRect();
     drag = { dx: e.clientX - b.left, dy: e.clientY - b.top };
@@ -3858,7 +4057,7 @@ function _vpCropHelpShow() {
 // Keep the panel on screen — a saved position can outlive the window size that
 // produced it, and a drag can park the title bar past an edge (unreachable).
 function _vpCropHelpClamp(el) {
-  const w = el.offsetWidth || 380, h = el.offsetHeight || 200;
+  const w = el.offsetWidth || 290, h = el.offsetHeight || 200;
   const x = Math.max(4, Math.min(window.innerWidth  - w - 4, parseFloat(el.style.left) || 0));
   const y = Math.max(4, Math.min(window.innerHeight - h - 4, parseFloat(el.style.top)  || 0));
   el.style.left = x + 'px';
@@ -4126,13 +4325,22 @@ async function _vpGoSave(opts) {
     const sh0 = even0(s0.frac.h * (vid.videoHeight || 0));
     const up  = _vpCropUpscaleFactor(s0, sw0, sh0);
     if (up > 1.005) {
-      const srcShort = (s0.aspect === 'P') ? sw0 : sh0;
+      // (dev0720) With a Ken Burns move the tightest framing is the amber box,
+      // not the crop — say so, and quote the size the zoom actually ends on.
+      const kenOn = !!(s0.ken && s0.ken.on);
+      const kf = kenOn ? s0.ken.frac.w : 1;
+      const srcShort = Math.round(((s0.aspect === 'P') ? sw0 : sh0) * kf);
+      const what = kenOn
+        ? ('Ken Burns ends on ' + Math.round(sw0 * kf) + ' × ' + Math.round(sh0 * kf) +
+           ' source pixels\n(inside a ' + sw0 + ' × ' + sh0 + ' crop).')
+        : ('Crop rect is ' + sw0 + ' × ' + sh0 + ' source pixels.');
       const ok = confirm(
         '⚠ Pixel enlargement\n\n' +
-        'Crop rect is ' + sw0 + ' × ' + sh0 + ' source pixels. Its short side (' +
+        what + ' Its short side (' +
         srcShort + 'px)\nis under the ' + s0.resHeight + 'p output, so ffmpeg would upscale it ' +
         up.toFixed(2) + '×.\n\nThat adds no detail — only encode time and file size.\n\n' +
-        'Enlarge the crop rect, or pick a lower output resolution.\n\nEncode anyway?');
+        'Enlarge the ' + (kenOn ? 'Ken Burns box' : 'crop rect') +
+        ', or pick a lower output resolution.\n\nEncode anyway?');
       if (!ok) {
         if (typeof toast === 'function') toast('save cancelled — would enlarge pixels', 2400);
         return;
@@ -4145,7 +4353,7 @@ async function _vpGoSave(opts) {
   const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
   const endSec   = Math.max(_vpState.aPoint, _vpState.bPoint);
   const durStr = _vpDurStr(endSec - startSec);
-  let outName, payload;
+  let outName, payload, kenPayload = null;   // (dev0720) kenPayload: zoom ramp
   if (cropOn) {
     const s = _vpState.crop;
     const VW = vid.videoWidth, VH = vid.videoHeight;
@@ -4183,6 +4391,30 @@ async function _vpGoSave(opts) {
     }
     const nameParts = [parts.base, safeId, sizeStr, s.aspect, 'crop'];
     if (angTok) nameParts.push(angTok);
+    // (dev0720) Ken Burns: the amber box is where the zoom ENDS, reached at the
+    // frame it was placed on and held from there to B. Sent as fractions of the
+    // crop window plus that landing time relative to A; the proxy turns them
+    // into a zoompan ramp. Needs the source frame rate, since zoompan re-times
+    // the stream — probe it, and stand down rather than guess if that fails.
+    let kenTok = '';
+    if (s.ken && s.ken.on) {
+      const fps = await _vpProbeFps(absInput);
+      if (!fps) {
+        if (typeof toast === 'function') {
+          toast('Ken Burns needs the source frame rate and ffprobe could not read it — ' +
+                'press K to turn the zoom off, or fix the proxy', 4600);
+        }
+        return;
+      }
+      const k = s.ken;
+      kenPayload = {
+        x: k.frac.x, y: k.frac.y, w: k.frac.w, h: k.frac.h,
+        holdSec: Math.max(0, Math.min(endSec - startSec, k.atSec - startSec)),
+        fps: fps
+      };
+      kenTok = 'kb' + (1 / k.frac.w).toFixed(1).replace('.', '_') + 'x';
+      nameParts.push(kenTok);
+    }
     nameParts.push(durStr);
     outName = nameParts.join('~') + '~.mp4';
     payload = {
@@ -4197,6 +4429,7 @@ async function _vpGoSave(opts) {
       overwrite: false
     };
     if (rotate) payload.rotate = rotate;
+    if (kenPayload) payload.ken = kenPayload;   // (dev0720)
   } else {
     // (dev0296) Source dims drive size+aspect for lossless filenames so the
     // resulting name still tells you the resolution at a glance.
@@ -4228,6 +4461,14 @@ async function _vpGoSave(opts) {
     if (typeof toast === 'function') {
       toast('Silent output needs an updated proxy — restart "node proxy.js", ' +
             'or press M for 🔊 audio and retry', 4600);
+    }
+    return;
+  }
+  // (dev0720) …and the zoom: an old proxy drops payload.ken and renders a static
+  // crop, which looks like a success until you play it back.
+  if (payload.ken && !(await _vpProxyHasFeature('kenburns'))) {
+    if (typeof toast === 'function') {
+      toast('Ken Burns needs an updated proxy — restart "node proxy.js" and retry', 4200);
     }
     return;
   }
@@ -4308,6 +4549,34 @@ async function _vpProxyHasFeature(name) {
     const j = await r.json();
     return !!(j && Array.isArray(j.features) && j.features.includes(name));
   } catch (_) { return false; }
+}
+
+// (dev0720) Source frame rate, as ffprobe's exact rational string ("30000/1001",
+// "25/1") — handed to zoompan verbatim so the Ken Burns pass re-times the stream
+// to exactly what came in. HTMLVideoElement exposes no frame rate, hence the
+// round trip. Returns null when the probe fails or answers something unusable;
+// the caller refuses the render rather than inventing 30fps and juddering it.
+async function _vpProbeFps(absPath) {
+  try {
+    const r = await fetch(PROXY_BASE + '/exec/ffprobe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: absPath, streams: true })
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const st = j && j.result && Array.isArray(j.result.streams) && j.result.streams[0];
+    if (!st) return null;
+    // r_frame_rate is the container's nominal rate; avg_frame_rate can read 0/0
+    // on some captures, so prefer r_ and fall back.
+    for (const cand of [st.r_frame_rate, st.avg_frame_rate]) {
+      const m = /^(\d+)\/(\d+)$/.exec(String(cand || ''));
+      if (m && +m[1] > 0 && +m[2] > 0) return m[1] + '/' + m[2];
+      const n = parseFloat(cand);
+      if (Number.isFinite(n) && n > 0) return String(n);
+    }
+    return null;
+  } catch (_) { return null; }
 }
 
 // (dev0289) One request/response cycle to /exec/ffmpeg. Resolves with

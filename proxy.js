@@ -287,7 +287,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0719';
+const PROXY_BUILD = 'dev0720';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -424,6 +424,15 @@ function must(cond, msg) { if (!cond) throw new Error(msg); }
 //   resHeight 2160|1440|1080|720|'source' (dev0717) — when numeric, append ',scale=-2:H' (L) or
 //                                 ',scale=H:-2' (P) to the filter chain.
 //                                 'source' or undefined → no scale.
+//   ken       {x,y,w,h,holdSec,fps}
+//                              — OPTIONAL (dev0720); CROP path only. Ken Burns:
+//                                 zoom from the full crop into the box at
+//                                 x/y/w/h (fractions OF THE CROP), arriving at
+//                                 holdSec (seconds from the clip's own start)
+//                                 and holding to the end. Replaces the scale
+//                                 filter — zoompan emits the final size itself.
+//                                 fps must be the SOURCE rate ("30000/1001" or
+//                                 a number): zoompan sets the output frame rate.
 //   audio     true|false       — OPTIONAL (dev0719); CROP path only. false → '-an'
 //                                 (silent output), true/absent → '-c:a copy' as
 //                                 before. Absent defaults to KEEPING audio so an
@@ -519,8 +528,60 @@ function buildFfmpegArgs(p) {
     }
     let vf = prefix + `crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`;
     const resH = p.resHeight;
-    if (Number.isFinite(resH) && resH > 0) {
-      const aspect = (p.aspect === 'P') ? 'P' : 'L';
+    const scaling = Number.isFinite(resH) && resH > 0;
+    const aspect = (p.aspect === 'P') ? 'P' : 'L';
+    if (p.ken) {
+      // (dev0720) ── Ken Burns ────────────────────────────────────────────────
+      // Glide from the whole crop into an inner box, arriving at holdSec and
+      // sitting there to the end. zoompan is the only stock filter that can
+      // move the visible region per frame at a fixed output size — crop's w/h
+      // are configure-time constants, and scale takes no time expression.
+      //
+      // Geometry: interpolate the WINDOW, then derive the zoom from it. At eased
+      // progress s the window is iw*(1-s*(1-KW)) wide with its left edge at
+      // s*KX*iw, so z = 1/(1-s*(1-KW)). That keeps the window inside the frame
+      // for every s (KX+KW ≤ 1 ⇒ s*KX + 1-s*(1-KW) ≤ 1), so zoompan never
+      // clamps and the pan stays linear on screen. s is smoothstepped, which is
+      // what stops the move looking like a machine.
+      //
+      // zoompan re-times the stream (its fps option IS the output rate), so the
+      // caller sends the source's real rate and the ramp is counted in frames.
+      const k = p.ken;
+      must(typeof k === 'object', 'ken must be an object');
+      for (const key of ['x','y','w','h']) {
+        const v = +k[key];
+        must(Number.isFinite(v) && v >= 0 && v <= 1, `ken.${key} must be within 0..1`);
+      }
+      must(+k.w >= 0.02 && +k.h >= 0.02, 'ken.w/h must be ≥ 0.02 (sane zoom ceiling)');
+      must(+k.x + +k.w <= 1.001 && +k.y + +k.h <= 1.001, 'ken box must sit inside the crop');
+      const hold = +k.holdSec;
+      must(Number.isFinite(hold) && hold >= 0, 'ken.holdSec must be a number ≥ 0');
+      // fps: "num/den" or a plain number. Kept verbatim for zoompan (exact
+      // 30000/1001), and evaluated here only to count the ramp's frames.
+      const fpsStr = String(k.fps == null ? '' : k.fps).trim();
+      const mRat = /^(\d+)\/(\d+)$/.exec(fpsStr);
+      const fpsNum = mRat ? (+mRat[1] / +mRat[2]) : parseFloat(fpsStr);
+      must(Number.isFinite(fpsNum) && fpsNum > 0 && fpsNum <= 1000,
+           'ken.fps must be a positive rate ("30000/1001" or a number)');
+      const KW = (+k.w).toFixed(6), KX = (+k.x).toFixed(6), KY = (+k.y).toFixed(6);
+      const N = Math.max(1, Math.round(fpsNum * hold));   // ramp length in frames
+      const P = `min(on/${N},1)`;
+      const S = `(${P})*(${P})*(3-2*(${P}))`;             // smoothstep ease
+      // Output size. zoompan scales the window straight to this, so when a
+      // resolution is chosen we render it here and skip the trailing scale —
+      // one resample instead of two.
+      const even = n => Math.max(2, Math.round(n / 2) * 2);
+      let ow = p.crop.w, oh = p.crop.h;
+      if (scaling) {
+        if (aspect === 'P') { ow = resH; oh = even(p.crop.h * resH / p.crop.w); }
+        else                { oh = resH; ow = even(p.crop.w * resH / p.crop.h); }
+      }
+      // Single-quoted expressions: commas inside them would otherwise read as
+      // filter separators in the graph string.
+      vf += `,zoompan=z='1/(1-(${S})*(1-${KW}))'` +
+            `:x='(${S})*${KX}*iw':y='(${S})*${KY}*ih'` +
+            `:d=1:s=${ow}x${oh}:fps=${fpsStr}`;
+    } else if (scaling) {
       vf += (aspect === 'P') ? `,scale=${resH}:-2` : `,scale=-2:${resH}`;
     }
     // (dev0719) Output audio, driven by the crop bar's 🔇/🔊 switch. Absent →
@@ -573,6 +634,18 @@ function buildFfmpegArgs(p) {
 // doesn't shred the JSON.
 function buildFfprobeArgs(p) {
   must(p.input && typeof p.input === 'string', 'input (string) required');
+  // (dev0720) streams mode — first video stream's geometry + frame rate. The V
+  // crop overlay needs the real rate before a Ken Burns render, because zoompan
+  // sets the OUTPUT frame rate and would otherwise resample the clip to 25.
+  if (p.streams) {
+    return [
+      '-v', 'error',
+      '-print_format', 'json',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height,r_frame_rate,avg_frame_rate',
+      p.input
+    ];
+  }
   // (dev0396) -v error (was -v quiet): on a bad/stale path ffprobe must emit
   // "No such file or directory" to stderr so streamExecCollect can surface it
   // and the Q client can detect ENOENT and offer to re-enter the disk path.
@@ -4188,7 +4261,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 
