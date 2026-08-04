@@ -271,6 +271,13 @@ window.addEventListener('keydown', function(e) {
   if ((k === 'e' || k === 'w')
       && typeof _vpCropHolding === 'function' && _vpCropHolding()) return;
 
+  // (dev0727) …and `e` again with the overlay CLOSED but a disk video up, where
+  // it loads a saved .edit instead of opening the row editor. `_vpState` is a
+  // top-level `let` in vp.js — a global LEXICAL binding, reachable by name from
+  // here but never as a window property, so it can't be tested with `window.`.
+  if (k === 'e' && document.getElementById('gridFullscreen')?.style.display === 'flex'
+      && typeof _vpState !== 'undefined' && _vpState && _vpState.crop) return;
+
   // (dev0438) The Ig staging screen owns f / Shift+F (filter focus / clear) and
   // c (clear sel). (dev0497) It also owns d (download sel), e (enrich sel),
   // m (clear+select top 18) and — via Shift — N/D/E/A (status filter, which

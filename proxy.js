@@ -292,7 +292,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0725';
+const PROXY_BUILD = 'dev0727';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -456,6 +456,53 @@ function dtQuote(s) {
   return "'" + String(s).replace(/\\/g, '/').replace(/:/g, '\\:') + "'";
 }
 
+// (dev0727) ── Freeze frames ("pause") ─────────────────────────────────────
+// Cut the stream at each pause point and hold the last frame of that segment
+// with tpad, then stitch the pieces back together:
+//
+//   ,split=3[ps0][ps1][ps2];
+//   [ps0]trim=end=2,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=3.5[pa0];
+//   [ps1]trim=start=2,setpts=PTS-STARTPTS[pa1];
+//   [pa0][pa1]concat=n=2:v=1
+//
+// tpad rather than the usual trim-one-frame + loop + re-time dance: it clones
+// the last frame of a segment for a duration, which IS this feature, and it
+// needs no frame rate. The freeze is many real frames, not one long one, which
+// is what lets drawtext turn the caption off part-way through the hold.
+//
+// setpts=PTS-STARTPTS on every segment because trim keeps the source
+// timestamps; concat wants each input to start at 0.
+//
+// Caller has already put these in ascending order and expressed `at` in seconds
+// from the start of the (already trimmed) clip.
+function buildPauseChain(pauses) {
+  must(Array.isArray(pauses) && pauses.length, 'pauses must be a non-empty array');
+  must(pauses.length <= 6, 'at most 6 pauses');
+  const n = pauses.length;
+  let prev = 0;
+  pauses.forEach((p, i) => {
+    const at = +p.at, hold = +p.hold;
+    must(Number.isFinite(at) && at > 0, `pauses[${i}].at must be a number > 0`);
+    must(Number.isFinite(hold) && hold > 0 && hold <= 60, `pauses[${i}].hold must be 0-60s`);
+    must(at >= prev, 'pauses must be in ascending order');
+    prev = at;
+  });
+  let g = ',split=' + (n + 1);
+  for (let i = 0; i <= n; i++) g += `[ps${i}]`;
+  g += ';';
+  for (let i = 0; i <= n; i++) {
+    const opts = [];
+    if (i > 0) opts.push('start=' + (+pauses[i - 1].at).toFixed(3));
+    if (i < n) opts.push('end='   + (+pauses[i].at).toFixed(3));
+    g += `[ps${i}]trim=${opts.join(':')},setpts=PTS-STARTPTS`;
+    if (i < n) g += `,tpad=stop_mode=clone:stop_duration=${(+pauses[i].hold).toFixed(3)}`;
+    g += `[pa${i}];`;
+  }
+  for (let i = 0; i <= n; i++) g += `[pa${i}]`;
+  g += `concat=n=${n + 1}:v=1`;
+  return g;
+}
+
 function buildDrawtextChain(texts, ow, oh, tmpSink) {
   must(Array.isArray(texts), 'texts must be an array');
   must(texts.length <= 12, 'at most 12 text boxes');
@@ -542,6 +589,10 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 //                                 window it with enable=; absent = whole clip.
 //                                 Appended after crop/scale/zoompan → see
 //                                 buildDrawtextChain.
+//   pauses    [{at,hold}]      — OPTIONAL (dev0727); CROP path only. Freeze the
+//                                 last frame before `at` (seconds from the
+//                                 clip's start) for `hold` seconds, ascending.
+//                                 Forces silence — see buildPauseChain.
 //   audio     true|false       — OPTIONAL (dev0719); CROP path only. false → '-an'
 //                                 (silent output), true/absent → '-c:a copy' as
 //                                 before. Absent defaults to KEEPING audio so an
@@ -701,12 +752,21 @@ function buildFfmpegArgs(p, tmpSink) {
     } else if (scaling) {
       vf += (aspect === 'P') ? `,scale=${resH}:-2` : `,scale=-2:${resH}`;
     }
+    // (dev0727) Freezes go in before the captions and after the framing, so the
+    // hold is of the finished picture and the caption times below are read
+    // against the lengthened timeline the client already mapped them onto.
+    if (p.pauses && p.pauses.length) vf += buildPauseChain(p.pauses);
     // (dev0724) Captions go on LAST, so they sit on the finished frame at a
     // fixed size and a Ken Burns move slides the picture beneath them.
     if (p.texts && p.texts.length) vf += buildDrawtextChain(p.texts, ow, oh, tmpSink);
     // (dev0719) Output audio, driven by the crop bar's 🔇/🔊 switch. Absent →
     // true, so a pre-dev0719 payload still gets its soundtrack.
-    const audio = (p.audio === undefined || p.audio === null) ? true : !!p.audio;
+    // (dev0727) A freeze makes the picture longer than the sound, so a paused
+    // render is silent no matter what was asked for — copying the track in would
+    // drift further out of sync with every hold.
+    const audio = (p.pauses && p.pauses.length)
+      ? false
+      : ((p.audio === undefined || p.audio === null) ? true : !!p.audio);
     return [
       ...common,
       ...pre,
@@ -4419,7 +4479,7 @@ http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/') || req.url.startsWith('/edit/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -4433,7 +4493,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'metadata', 'exiftool', 'screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 
@@ -4572,6 +4632,40 @@ http.createServer((req, res) => {
       return;
     }
     sendJson(res, 404, { ok: false, error: 'unknown x action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0727) ── /edit/save — keep a V crop session as JSON ─────────────────
+  // The one write this proxy does outside its own folders, so it is narrow on
+  // purpose: an ABSOLUTE path ending in .edit, no traversal segments, and a
+  // body that must already be an object. It writes a recipe next to the video
+  // it describes — never the video itself, and never over anything that isn't
+  // an .edit. Origin-locked like /exec/.
+  if (req.url.split('?')[0] === '/edit/save') {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      send(res, 403, 'edit: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    if (req.method !== 'POST') { send(res, 405, 'edit: POST required', corsForExec(origin)); return; }
+    readJson(req, 4 * 1024 * 1024).then(p => {
+      const out = String(p.path || '');
+      try {
+        must(/^([A-Za-z]:[\\/]|\/)/.test(out), 'path must be absolute');
+        must(/\.edit$/i.test(out), 'path must end in .edit');
+        must(!/(^|[\\/])\.\.([\\/]|$)/.test(out), 'path may not contain ".."');
+        must(p.doc && typeof p.doc === 'object' && !Array.isArray(p.doc), 'doc (object) required');
+        const dir = path.dirname(out);
+        must(fs.existsSync(dir), 'folder does not exist: ' + dir);
+      } catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
+      try {
+        fs.writeFileSync(out, JSON.stringify(p.doc, null, 2), 'utf8');
+        plog(`edit/save ${out} (${(JSON.stringify(p.doc).length / 1024).toFixed(1)} KB)`);
+        sendJson(res, 200, { ok: true, path: out }, origin);
+      } catch (e) {
+        sendJson(res, 500, { ok: false, error: e.message }, origin);
+      }
+    }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
     return;
   }
 

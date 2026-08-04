@@ -2373,11 +2373,34 @@ function vpKeyHandler(e) {
   // E also needs a bail in core.js's window-capture dispatcher, which runs
   // FIRST and would otherwise open the row editor: `e` is a registry hotkey and
   // — unlike `w` — its fn doesn't stand down while V is up.
-  if (e.key === 'w' || e.key === 'W' || e.key === 'e' || e.key === 'E') {
+  if (e.key === 'w' || e.key === 'W') {
     if (!_vpCropHolding()) return;
     e.preventDefault(); e.stopPropagation();
-    if (e.key === 'w' || e.key === 'W') _vpCropHelpToggleWidth();
-    else                                _vpTextAdd();
+    _vpCropHelpToggleWidth();
+    return;
+  }
+
+  // (dev0724/dev0727) E does one of two things, and which one is never in
+  // doubt: with the crop overlay OPEN it drops a text box on the frame; with it
+  // CLOSED, on a disk video, it opens a saved .edit — the counterpart of K.
+  // (Loading one opens the overlay, so the two never compete for the key.)
+  if (e.key === 'e' || e.key === 'E') {
+    if (_vpCropHolding()) {
+      e.preventDefault(); e.stopPropagation();
+      _vpTextAdd();
+      return;
+    }
+    if (!_vpState || !_vpState.crop) return;      // not a disk video — leave E alone
+    e.preventDefault(); e.stopPropagation();
+    _vpCropLoadEditPick();
+    return;
+  }
+
+  // (dev0727) K = keep: write the whole session next to the source as an .edit.
+  if (e.key === 'k' || e.key === 'K') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpCropSaveEdit();
     return;
   }
 
@@ -3533,7 +3556,8 @@ const VP_TEXT_MIN_W    = 0.06;
 const VP_TEXT_WRAP_SAFETY = 0.98;
 
 function _vpTextAdd()            { const s = _vpState && _vpState.crop; if (s && s.addText)        s.addText(); }
-function _vpTextEndEdit()        { const s = _vpState && _vpState.crop; if (s && s.endTextEdit)    s.endTextEdit(); }
+function _vpTextEndEdit()        { _vpTextMenuClose();
+                                  const s = _vpState && _vpState.crop; if (s && s.endTextEdit) s.endTextEdit(); }
 function _vpTextNudgeSize(dir)   { const s = _vpState && _vpState.crop; if (s && s.nudgeTextSize)  s.nudgeTextSize(dir); }
 
 // (dev0725) ── The text box's own right-click menu ──────────────────────────
@@ -3554,9 +3578,21 @@ function _vpTextMenuKey(e) {
   const el = document.getElementById(VP_TEXT_MENU_ID);
   if (!el) { document.removeEventListener('keydown', _vpTextMenuKey, true); return; }
   const k = (e.key || '').toLowerCase();
-  if (k === 'escape' || k === 's' || k === 'e') {
+  const t = el._vpBox;
+  // Second level: the menu is asking how many seconds, so only a s d f g (and
+  // Escape) mean anything — s no longer means "starts here".
+  if (el._vpAsking) {
+    if (k === 'escape') { e.preventDefault(); e.stopImmediatePropagation(); _vpTextMenuClose(); return; }
+    if (VP_TEXT_PAUSE_KEYS[k]) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      _vpTextMenuClose();
+      _vpTextSetPause(t, VP_TEXT_PAUSE_KEYS[k]);
+    }
+    return;
+  }
+  if (k === 'escape' || k === 's' || k === 'e' || k === 'a') {
     e.preventDefault(); e.stopImmediatePropagation();
-    const t = el._vpBox;
+    if (k === 'a') { _vpTextPauseAsk(el, t); return; }   // stays open, asks seconds
     _vpTextMenuClose();
     if (k === 's' || k === 'e') _vpTextSetMark(t, k === 's' ? 'start' : 'end');
   }
@@ -3579,9 +3615,69 @@ function _vpTextSetMark(t, which) {
 function _vpTextClearMarks(t) {
   const s = _vpState && _vpState.crop;
   if (!s || !t) return;
-  t.atStart = null; t.atEnd = null;
+  t.atStart = null; t.atEnd = null; t.pauseSec = null;
   if (s.paintTextMarks) s.paintTextMarks(t);
   if (typeof toast === 'function') toast('⏱ cleared — this text is on for the whole clip', 1600);
+}
+
+// (dev0727) ── Pause: hold the picture while the caption is up ──────────────
+// The render freezes the last frame before this caption's start, sits there for
+// N seconds with the text on it, then holds the SAME frame VP_TEXT_PAUSE_TAIL
+// longer with the text already gone, and only then plays on. That half second
+// is the point: cutting straight from the last word back to motion reads as a
+// glitch, and a beat of still picture after the words land does not.
+//
+// So a pause REPLACES the caption's end mark — the text ends when the pause
+// does. Seconds are picked on the left hand, a s d f g = 1..5, the same row of
+// keys the playhead walks on.
+const VP_TEXT_PAUSE_TAIL = 0.5;
+const VP_TEXT_PAUSE_KEYS = { a: 1, s: 2, d: 3, f: 4, g: 5 };
+
+function _vpTextSetPause(t, secs) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !t) return;
+  if (t.atStart == null) t.atStart = _vpNowSec();   // no start yet → here
+  t.pauseSec = secs;
+  t.atEnd = t.atStart + secs;                       // the pause IS the end
+  if (s.paintTextMarks) s.paintTextMarks(t);
+  if (typeof toast === 'function') {
+    toast('⏸ hold ' + secs + 's on this frame with the text, then ' +
+          VP_TEXT_PAUSE_TAIL + 's more without it, then play on', 3400);
+  }
+}
+
+// Keep the menu on screen wherever it was raised (and after it re-fills with
+// the seconds question, which is a different height).
+function _vpTextMenuPlace(el, x, y) {
+  el._vpX = (x == null) ? el._vpX : x;
+  el._vpY = (y == null) ? el._vpY : y;
+  const w = el.offsetWidth || 210, h = el.offsetHeight || 120;
+  el.style.left = Math.max(4, Math.min(window.innerWidth  - w - 4, el._vpX)) + 'px';
+  el.style.top  = Math.max(4, Math.min(window.innerHeight - h - 4, el._vpY)) + 'px';
+}
+
+// Second level of the same menu: how long to hold. Replaces the rows in place
+// rather than opening a second panel, so the click-away and key handlers that
+// are already live keep working.
+function _vpTextPauseAsk(el, t) {
+  el._vpAsking = true;
+  el.innerHTML = '';
+  const head = document.createElement('div');
+  head.textContent = 'How many seconds?';
+  head.style.cssText = 'padding:4px 8px 6px;color:#8ef;font-weight:bold;white-space:nowrap;';
+  el.appendChild(head);
+  Object.keys(VP_TEXT_PAUSE_KEYS).forEach(k => {
+    const secs = VP_TEXT_PAUSE_KEYS[k];
+    const d = document.createElement('div');
+    d.innerHTML = '<u>' + k + '</u> &nbsp;' + secs + ' second' + (secs === 1 ? '' : 's') +
+                  ' <span style="opacity:0.55;">(+ ' + VP_TEXT_PAUSE_TAIL + 's still, no text)</span>';
+    d.style.cssText = 'padding:5px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    d.onclick = () => { _vpTextMenuClose(); _vpTextSetPause(t, secs); };
+    el.appendChild(d);
+  });
+  _vpTextMenuPlace(el);
 }
 
 function _vpTextCtxMenu(ev) {
@@ -3632,15 +3728,16 @@ function _vpTextCtxMenu(ev) {
   mk('<u>e</u>nds here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
      'This text is gone after the playhead')
     .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'end'); };
-  if (t.atStart != null || t.atEnd != null) {
+  mk('p<u>a</u>use here' + (t.pauseSec ? ' <span style="opacity:0.6;">· now ' + t.pauseSec + 's</span>' : ''),
+     'Freeze the picture while this text is up, then play on without it')
+    .onclick = () => _vpTextPauseAsk(el, t);
+  if (t.atStart != null || t.atEnd != null || t.pauseSec) {
     mk('<span style="opacity:0.75;">✕ clear — on for the whole clip</span>')
       .onclick = () => { _vpTextMenuClose(); _vpTextClearMarks(t); };
   }
 
   document.body.appendChild(el);
-  const w = el.offsetWidth || 210, h = el.offsetHeight || 120;
-  el.style.left = Math.max(4, Math.min(window.innerWidth  - w - 4, ev.clientX)) + 'px';
-  el.style.top  = Math.max(4, Math.min(window.innerHeight - h - 4, ev.clientY)) + 'px';
+  _vpTextMenuPlace(el, ev.clientX, ev.clientY);
 
   // Any press outside closes it. Capture, so it beats the crop overlay's own
   // pointer handling; the box's edit session survives (see onDocDown).
@@ -3710,9 +3807,38 @@ function _vpTextWrapLines(text, widthPx, fontPx) {
 // from the source. Marks outside the clip clamp to its ends; a backwards pair
 // is read as the window the user meant and swapped.
 function _vpTextRenderList(state, ow, oh, startSec, endSec) {
-  if (!state || !Array.isArray(state.texts) || !state.texts.length) return [];
+  if (!state || !Array.isArray(state.texts) || !state.texts.length) {
+    return { texts: [], pauses: [] };
+  }
   const dur = Math.max(0, (+endSec || 0) - (+startSec || 0));
   const rel = v => Math.max(0, Math.min(dur, v - startSec));
+
+  // (dev0727) The freezes come first, because they bend the timeline everything
+  // else is measured against. A pause at `at` makes the output `hold` seconds
+  // longer from that point on, so any later time slides by that much — map()
+  // is that shift, and every from/to below is expressed in OUTPUT seconds
+  // because that is the clock ffmpeg's enable= is read against.
+  //
+  // The freeze point is nudged off the very ends of the clip: trim=end=0 is an
+  // empty segment, and concat refuses to take one.
+  const EDGE = 0.05;
+  const pauses = [];
+  state.texts.forEach(t => {
+    if (!t.pauseSec) return;
+    const raw = (t.ta ? t.ta.value : t.text) || '';
+    if (!raw.trim()) return;                       // an empty box renders nothing to hold for
+    const at = Math.max(EDGE, Math.min(Math.max(EDGE, dur - EDGE),
+                        rel(t.atStart == null ? startSec : t.atStart)));
+    const hold = t.pauseSec + VP_TEXT_PAUSE_TAIL;
+    pauses.push({ at: +at.toFixed(3), hold: +hold.toFixed(3), _t: t });
+  });
+  pauses.sort((p, q) => p.at - q.at);
+  const map = x => {
+    let out = x;
+    pauses.forEach(p => { if (p.at < x) out += p.hold; });
+    return out;
+  };
+
   const out = [];
   state.texts.forEach(t => {
     const raw = (t.ta ? t.ta.value : t.text) || '';
@@ -3720,14 +3846,23 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
     const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, t.size * oh);
     if (!lines.some(l => l.trim())) return;
     const box = { x: t.x, y: t.y, w: t.w, size: t.size, lines: lines.slice(0, 40) };
-    let from = (t.atStart == null) ? null : rel(t.atStart);
-    let to   = (t.atEnd   == null) ? null : rel(t.atEnd);
-    if (from != null && to != null && to < from) { const s0 = from; from = to; to = s0; }
-    if (from != null && from > 0)   box.from = +from.toFixed(3);
-    if (to   != null && to   < dur) box.to   = +to.toFixed(3);
+    const mine = pauses.find(p => p._t === t);
+    if (mine) {
+      // On for the freeze, off for its tail. map(at) is where the freeze STARTS
+      // in the output (its own hold isn't counted — `p.at < x` is strict).
+      box.from = +map(mine.at).toFixed(3);
+      box.to   = +(map(mine.at) + t.pauseSec).toFixed(3);
+    } else {
+      let from = (t.atStart == null) ? null : map(rel(t.atStart));
+      let to   = (t.atEnd   == null) ? null : map(rel(t.atEnd));
+      if (from != null && to != null && to < from) { const s0 = from; from = to; to = s0; }
+      const outDur = map(dur);
+      if (from != null && from > 0)      box.from = +from.toFixed(3);
+      if (to   != null && to   < outDur) box.to   = +to.toFixed(3);
+    }
     out.push(box);
   });
-  return out;
+  return { texts: out, pauses: pauses.map(p => ({ at: p.at, hold: p.hold })) };
 }
 
 function _vpMountCropOverlay(host, vid, row) {
@@ -4007,8 +4142,10 @@ function _vpMountCropOverlay(host, vid, row) {
     if (a == null && b == null) { t.tlbl.style.display = 'none'; }
     else {
       t.tlbl.style.display = '';
-      t.tlbl.textContent = '⏱ ' + (a == null ? 'clip start' : a.toFixed(2) + 's') +
-                           ' → ' + (b == null ? 'clip end' : b.toFixed(2) + 's');
+      t.tlbl.textContent = t.pauseSec
+        ? ('⏸ ' + a.toFixed(2) + 's · hold ' + t.pauseSec + 's + ' + VP_TEXT_PAUSE_TAIL + 's')
+        : ('⏱ ' + (a == null ? 'clip start' : a.toFixed(2) + 's') +
+           ' → ' + (b == null ? 'clip end' : b.toFixed(2) + 's'));
     }
     syncTextWindow();
   }
@@ -4050,16 +4187,19 @@ function _vpMountCropOverlay(host, vid, row) {
     try { ta.setSelectionRange(caret, caret); } catch (_) {}
   }
 
-  function addText() {
+  // opts.silent — build the box but don't open it for typing (the .edit loader
+  // restores several at once and opens none of them).
+  function addText(opts) {
+    opts = opts || {};
     if (state.texts.length >= 12) {
       if (typeof toast === 'function') toast('12 text boxes is the limit', 1800);
-      return;
+      return null;
     }
     const n = state.texts.length;
     // (dev0725) atStart / atEnd — absolute seconds this caption comes and goes,
     // set from the right-click menu. Null = on for the whole clip.
     const t = { x: Math.min(0.60, 0.06 + 0.03 * n), y: Math.min(0.76, 0.06 + 0.11 * n),
-                w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null };
+                w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null, pauseSec: null };
 
     const box = document.createElement('div');
     box.className = 'vp-crop-text';
@@ -4131,7 +4271,8 @@ function _vpMountCropOverlay(host, vid, row) {
     textLayer.appendChild(box);
     state.texts.push(t);
     paintTexts();
-    beginEdit(t);
+    if (!opts.silent) beginEdit(t);
+    return t;
   }
 
   function removeText(t) {
@@ -4501,7 +4642,228 @@ function _vpMountCropOverlay(host, vid, row) {
   state.textInsertAt = textInsertAt;
   state.textBeginEdit = beginEdit;
   state.paintTextMarks = paintTextMarks;
+
+  // (dev0727) Restore a whole session from a saved .edit document. Everything
+  // the bar owns has to be pushed back into the WIDGETS as well as the state,
+  // or the next click on a control snaps the value back to what it shows.
+  state.applyEdit = function (doc) {
+    endEdit();
+    state.texts.slice().forEach(removeText);
+    const c0 = doc.crop || {};
+    if (c0.aspect === 'L' || c0.aspect === 'P') state.aspect = c0.aspect;
+    if (c0.frac && Number.isFinite(+c0.frac.w)) {
+      state.frac = { x: +c0.frac.x || 0, y: +c0.frac.y || 0,
+                     w: +c0.frac.w, h: +c0.frac.h,
+                     ratio: +c0.frac.ratio || (+c0.frac.w / (+c0.frac.h || 1)) };
+    }
+    if (Number.isFinite(+c0.crf)) { state.crf = +c0.crf; crfSlider.value = state.crf; crfVal.textContent = state.crf; }
+    if (c0.resHeight != null) { state.resHeight = c0.resHeight; resSel.value = String(c0.resHeight); }
+    state.slow  = !!c0.slow;  slowBox.checked = state.slow;
+    state.audio = !!c0.audio; paintAudio();
+    const lbl = bar.querySelector('#vp-crop-aspect');
+    if (lbl) lbl.textContent = (state.frac.w >= 0.999 && state.frac.h >= 0.999)
+      ? 'full' : (state.aspect === 'L' ? '16:9' : '9:16');
+    const k0 = doc.ken || {};
+    state.ken.on = !!k0.on;
+    if (k0.frac && Number.isFinite(+k0.frac.w)) {
+      state.ken.frac = { x: +k0.frac.x || 0, y: +k0.frac.y || 0, w: +k0.frac.w, h: +k0.frac.h };
+    }
+    state.ken.atSec = +k0.atSec || 0;
+    (Array.isArray(doc.texts) ? doc.texts : []).forEach(td => {
+      const t = addText({ silent: true });
+      if (!t) return;
+      if (Number.isFinite(+td.x))    t.x = +td.x;
+      if (Number.isFinite(+td.y))    t.y = +td.y;
+      if (Number.isFinite(+td.w))    t.w = +td.w;
+      if (Number.isFinite(+td.size)) t.size = +td.size;
+      t.text = String(td.text == null ? '' : td.text);
+      t.ta.value = t.text;
+      t.atStart = Number.isFinite(+td.atStart) ? +td.atStart : null;
+      t.atEnd   = Number.isFinite(+td.atEnd)   ? +td.atEnd   : null;
+      t.pauseSec = Number.isFinite(+td.pauseSec) ? +td.pauseSec : null;
+      paintTextMarks(t);
+    });
+    endEdit();                       // addText opens each box for typing; close it
+    setAngle(Number.isFinite(+c0.angle) ? +c0.angle : 0);   // setAngle repaints everything
+  };
+
+  // A snapshot of everything K writes out.
+  state.snapshot = function () {
+    return {
+      crop: { aspect: state.aspect, frac: { ...state.frac }, angle: state.angle,
+              resHeight: state.resHeight, crf: state.crf, slow: !!state.slow,
+              audio: !!state.audio },
+      ken: { on: !!state.ken.on, frac: { ...state.ken.frac }, atSec: state.ken.atSec },
+      texts: state.texts.map(t => ({
+        x: t.x, y: t.y, w: t.w, size: t.size,
+        text: (t.ta ? t.ta.value : t.text) || '',
+        atStart: t.atStart, atEnd: t.atEnd, pauseSec: t.pauseSec
+      }))
+    };
+  };
   if (_vpState) _vpState.crop = state;
+}
+
+// (dev0727) ── K / E: keep an edit, and pick one up again ────────────────────
+// An .edit is the whole crop session as JSON — framing, tilt, output settings,
+// the zoom, the clip's A→B, and every text box with its window and pause. It
+// sits next to the source as `<base>.<YYYYMMDD-HHMMSS>.edit`, so the edits of
+// one video sort together and nothing is ever overwritten.
+//
+// It is a RECIPE, not a render: nothing in it touches the source file, and
+// loading one costs nothing until G. That's the point — the expensive thing
+// about this tool was that a session died with the page.
+const VP_EDIT_EXT = '.edit';
+
+function _vpEditStamp() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+         '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+async function _vpCropSaveEdit() {
+  if (!_vpState || !_vpState.crop || !_vpState.crop.snapshot) return;
+  const row = window._vpCurrentRow;
+  const relPath = (row && (row.comment || row.VidTitle)) || '';
+  if (!relPath) { if (typeof toast === 'function') toast('K: no source file path on this row', 2400); return; }
+  const absInput = _vpCropResolveAbsPath(relPath);
+  if (!absInput) { if (typeof toast === 'function') toast('K cancelled (need the folder path)', 2200); return; }
+  const parts = _vpSplitPath(absInput);
+  if (!parts) { if (typeof toast === 'function') toast('K: cannot parse that path', 2400); return; }
+
+  const vid = _vpState.player && _vpState.player.el;
+  const snap = _vpState.crop.snapshot();
+  const doc = Object.assign({
+    format: 'slam.edit/1',
+    savedAt: (typeof isoNow === 'function') ? isoNow() : new Date().toISOString(),
+    app: window.HELP_VERSION_STR || '',
+    source: { path: absInput, base: parts.base, ext: parts.ext,
+              width: (vid && vid.videoWidth) || 0, height: (vid && vid.videoHeight) || 0 },
+    clip: { startSec: _vpState.aPoint, endSec: _vpState.bPoint },
+    pauseTail: VP_TEXT_PAUSE_TAIL
+  }, snap);
+
+  const outPath = parts.dir + parts.sep + parts.base + '.' + _vpEditStamp() + VP_EDIT_EXT;
+  try {
+    const r = await fetch(PROXY_BASE + '/edit/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: outPath, doc })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    if (typeof toast === 'function') {
+      toast('✓ kept ' + outPath.split(/[\\/]/).pop() + ' · ' +
+            snap.texts.length + ' text box' + (snap.texts.length === 1 ? '' : 'es'), 3200);
+    }
+  } catch (err) {
+    if (typeof toast === 'function') {
+      toast('K failed: ' + ((err && err.message) || err) + ' — proxy restarted on 8081?', 4200);
+    }
+  }
+}
+
+// E (crop overlay CLOSED) — pick a folder, then one of the .edit files in it.
+// The folder picker is the "disk info/permission" step: the browser hands out a
+// directory handle, we read the names ourselves, and only .edit is offered.
+async function _vpCropLoadEditPick() {
+  if (!_vpState || !_vpState.crop) { if (typeof toast === 'function') toast('E: open a disk video first', 2200); return; }
+  if (!window.showDirectoryPicker) {
+    if (typeof toast === 'function') toast('E: this browser has no folder picker (needs Chrome)', 3000);
+    return;
+  }
+  let dir;
+  try { dir = await window.showDirectoryPicker({ id: 'salEditDir', mode: 'read' }); }
+  catch (_) { return; }                                   // user cancelled
+  const files = [];
+  try {
+    for await (const [name, h] of dir.entries()) {
+      if (h.kind !== 'file' || !/\.edit$/i.test(name)) continue;
+      files.push({ name, handle: h });
+      if (files.length >= 200) break;
+    }
+  } catch (err) {
+    if (typeof toast === 'function') toast('E: could not read that folder — ' + ((err && err.message) || err), 3600);
+    return;
+  }
+  if (!files.length) {
+    if (typeof toast === 'function') toast('No .edit files in “' + dir.name + '” — K keeps one next to the video', 3600);
+    return;
+  }
+  files.sort((a, b) => b.name.localeCompare(a.name));      // newest stamp first
+  _vpEditChooser(files);
+}
+
+function _vpEditChooser(files) {
+  const old = document.getElementById('vp-edit-pick');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'vp-edit-pick';
+  el.style.cssText =
+    'position:fixed;left:50%;top:12vh;transform:translateX(-50%);z-index:42700;' +
+    'max-height:74vh;overflow-y:auto;min-width:340px;max-width:92vw;background:rgba(10,10,22,0.97);' +
+    'border:2px solid #4af;border-radius:9px;padding:8px;color:#dfe6f0;' +
+    'font:12px ui-monospace,Consolas,monospace;box-shadow:0 8px 32px rgba(0,0,0,0.9);';
+  const hd = document.createElement('div');
+  hd.innerHTML = '<b style="color:#8ef;">Load an edit</b> ' +
+                 '<span style="opacity:0.6;">· newest first · Esc to cancel</span>';
+  hd.style.cssText = 'padding:4px 6px 8px;border-bottom:1px solid rgba(102,170,255,0.3);margin-bottom:5px;';
+  el.appendChild(hd);
+  const close = () => { el.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+  };
+  files.forEach(f => {
+    const d = document.createElement('div');
+    d.textContent = f.name;
+    d.style.cssText = 'padding:5px 7px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    d.onclick = async () => {
+      close();
+      try {
+        const file = await f.handle.getFile();
+        _vpCropApplyEdit(JSON.parse(await file.text()), f.name);
+      } catch (err) {
+        if (typeof toast === 'function') toast('Could not read ' + f.name + ' — ' + ((err && err.message) || err), 3600);
+      }
+    };
+    el.appendChild(d);
+  });
+  document.body.appendChild(el);
+  el.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('keydown', onKey, true);
+}
+
+function _vpCropApplyEdit(doc, name) {
+  if (!doc || typeof doc !== 'object' || !/^slam\.edit\//.test(String(doc.format || ''))) {
+    if (typeof toast === 'function') toast(name + ' is not a SLAM edit file', 3000);
+    return;
+  }
+  const s = _vpState && _vpState.crop;
+  if (!s || !s.applyEdit) return;
+  if (!_vpCropHolding()) _vpCropToggle();          // an edit is a crop session
+
+  // Made for a different video? Load it anyway — the geometry is in fractions,
+  // so it transfers — but say so, because the clip times are in SECONDS and a
+  // shorter video will clamp them.
+  const row = window._vpCurrentRow;
+  const here = String((row && (row.comment || row.VidTitle)) || '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+  const there = String((doc.source && doc.source.base) || '');
+  s.applyEdit(doc);
+
+  const clip = doc.clip || {};
+  if (Number.isFinite(+clip.startSec)) _vpState.aPoint = +clip.startSec;
+  if (Number.isFinite(+clip.endSec))   _vpState.bPoint = +clip.endSec;
+  if (typeof vpUpdateABStyle === 'function') vpUpdateABStyle();
+  if (Number.isFinite(+clip.startSec)) _vpSeekAbsolute(+clip.startSec);
+
+  const n = (doc.texts || []).length;
+  if (typeof toast === 'function') {
+    toast('✓ loaded ' + name + ' — ' + n + ' text box' + (n === 1 ? '' : 'es') +
+          (doc.ken && doc.ken.on ? ' · zoom' : '') +
+          (there && here && there !== here ? '  ⚠ saved from “' + there + '”, not this video' : ''),
+          (there && here && there !== here) ? 5200 : 3200);
+  }
 }
 
 // (dev0288) Toggle crop overlay visibility (C hotkey + ✕ button).
@@ -4575,9 +4937,14 @@ function _vpCropHelpShow() {
     '<kbd style="display:inline-block;min-width:13px;padding:1px 5px;margin:0 1px;' +
     'background:#1d3149;border:1px solid #6af;border-radius:3px;color:#cfe;' +
     'font:11px ui-monospace,Consolas,monospace;text-align:center;">' + k + '</kbd>';
+  // (dev0727) width:1% / 99% is the shrink-to-fit trick: a percentage that small
+  // can't be honoured, so the auto table layout collapses the key column onto
+  // its (nowrap) content and hands every remaining pixel to the description.
+  // Without it, full width split the table down the middle and left a ~700px
+  // gully between the keys and text that was still wrapping.
   const row = (keys, txt) =>
-    '<tr><td style="padding:2px 9px 2px 0;white-space:nowrap;vertical-align:top;">' + keys +
-    '</td><td style="padding:2px 0;color:#b9c6d6;">' + txt + '</td></tr>';
+    '<tr><td style="width:1%;padding:2px 9px 2px 0;white-space:nowrap;vertical-align:top;">' + keys +
+    '</td><td style="width:99%;padding:2px 0;color:#b9c6d6;">' + txt + '</td></tr>';
   const head = t =>
     '<tr><td colspan="2" style="padding:9px 0 3px;color:#6af;font-weight:bold;' +
     'border-bottom:1px solid rgba(102,170,255,0.28);">' + t + '</td></tr>';
@@ -4636,6 +5003,12 @@ function _vpCropHelpShow() {
                              '<u>s</u>tarts / <u>e</u>nds at the playhead — click, or ' +
                              'press ' + K('s') + ' / ' + K('e') + '. An amber ⏱ under ' +
                              'the box means it is windowed; no badge = the whole clip.') +
+        row('p<u>a</u>use',  'also on that menu (or ' + K('a') + '): hold the picture ' +
+                             'where this text starts — ' + K('a') + K('s') + K('d') +
+                             K('f') + K('g') + ' = 1…5 seconds with the text, then ' +
+                             VP_TEXT_PAUSE_TAIL + 's more of still picture without it, ' +
+                             'then play on. A pause SETS the end. The clip gets that ' +
+                             'much longer, so it renders silent.') +
         row('⏱ windowed',    'a windowed box VANISHES here whenever the playhead is ' +
                              'outside its window — same as in the file. It is not ' +
                              'deleted: scrub back inside the window to see or edit it.') +
@@ -4662,6 +5035,11 @@ function _vpCropHelpShow() {
                      'the box or drop the res.') +
         head('Finish') +
         row(K('G'),   'render (or the Crop button) — writes next to the source') +
+        row(K('K'),   'keep this whole session — framing, tilt, zoom, clip, every ' +
+                      'text box — next to the source as <i>name</i>.<i>stamp</i>.edit. ' +
+                      'Nothing is rendered; it is a recipe.') +
+        row(K('E') + '<span style="opacity:0.6;"> (crop closed)</span>',
+                      'load one back: pick the folder, then the .edit') +
         row(K('W'),   'this panel: full width / narrow') +
         row(K('C'),   'close crop, hand the show back to the slideshow') +
         row(K('R'),   'toggle the disk-info caption') +
@@ -5104,8 +5482,10 @@ async function _vpGoSave(opts) {
     // (dev0724) Burned-in captions. Wrapped HERE, at the size ffmpeg will draw
     // them (drawtext can't wrap), and dropped entirely when every box is empty.
     const dims  = _vpOutputDims(s, sw, sh);
-    const texts = _vpTextRenderList(s, dims.ow, dims.oh, startSec, endSec);
-    if (texts.length) nameParts.push('tx' + texts.length);
+    const tr    = _vpTextRenderList(s, dims.ow, dims.oh, startSec, endSec);
+    const texts = tr.texts, pauses = tr.pauses;
+    if (texts.length)  nameParts.push('tx' + texts.length);
+    if (pauses.length) nameParts.push('pz' + pauses.length);
     nameParts.push(durStr);
     outName = nameParts.join('~') + '~.mp4';
     payload = {
@@ -5122,6 +5502,18 @@ async function _vpGoSave(opts) {
     if (rotate) payload.rotate = rotate;
     if (kenPayload) payload.ken = kenPayload;   // (dev0720)
     if (texts.length) payload.texts = texts;    // (dev0724)
+    // (dev0727) Freeze frames. They make the video longer than its soundtrack,
+    // so the render goes silent whatever the M switch says — say so rather than
+    // hand back a clip that drifts further out of sync the longer it runs.
+    if (pauses.length) {
+      payload.pauses = pauses;
+      if (payload.audio) {
+        payload.audio = false;
+        if (typeof toast === 'function') {
+          toast('⏸ a pause makes the picture longer than the sound — this render is silent', 3600);
+        }
+      }
+    }
   } else {
     // (dev0296) Source dims drive size+aspect for lossless filenames so the
     // resulting name still tells you the resolution at a glance.
@@ -5172,7 +5564,18 @@ async function _vpGoSave(opts) {
     }
     return;
   }
-  const totalMs = Math.max(0, (endSec - startSec) * 1000);
+  // (dev0727) …and the freeze frames, which an old proxy would drop — leaving a
+  // clip that plays straight through with the captions at the wrong moments.
+  if (payload.pauses && !(await _vpProxyHasFeature('vpause'))) {
+    if (typeof toast === 'function') {
+      toast('Pauses need an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  // (dev0727) Freezes lengthen the output, so the progress bar has to count them
+  // too or it reads 100% while ffmpeg is still writing.
+  const holdMs = (payload.pauses || []).reduce((n, p) => n + p.hold * 1000, 0);
+  const totalMs = Math.max(0, (endSec - startSec) * 1000 + holdMs);
   const useBtn = cropOn ? _vpState.crop.el.bar.querySelector('#vp-crop-do') : null;
   const origLabel = useBtn ? useBtn.textContent : null;
   const pill = useBtn ? null : _vpMakeProgressPill(cropOn ? '' : 'Saving ');
