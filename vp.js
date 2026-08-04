@@ -2264,8 +2264,13 @@ function vpKeyHandler(e) {
   }
   
   // M = mute toggle
+  // (dev0719) …except while the crop overlay is open, where M belongs to the
+  // OUTPUT: it decides whether the rendered clip carries a soundtrack (the bar
+  // says which). Muting the PLAYER during a crop is still one click away on the
+  // V toolbar's 🔇, so nothing is lost by handing the key over.
   if (e.key === 'm' || e.key === 'M') {
     e.preventDefault();
+    if (_vpCropHolding()) { _vpCropToggleAudio(); return; }
     vpToggleMute();
     return;
   }
@@ -2327,27 +2332,38 @@ function vpKeyHandler(e) {
     return;
   }
 
-  // (dev0293 / dev0296) ASDF — symmetric 1-frame nudges. ONLY active when
-  // BOTH A and B are set; otherwise these keys pass through untouched so
-  // they stay free for other features outside the crop/trim context.
-  //   a → A -1/30s (≈ 1 frame earlier)
-  //   s → A +1/30s (≈ 1 frame later)
-  //   d → B -1/30s (≈ 1 frame earlier)
-  //   f → B +1/30s (≈ 1 frame later)
-  // Clamped to [0, duration]. For 1-second jumps, use the existing per-0.1s
-  // toolbar buttons or Ctrl+click on the timeline.
-  if (e.key === 'a' || e.key === 's' || e.key === 'd' || e.key === 'f' ||
-      e.key === 'A' || e.key === 'S' || e.key === 'D' || e.key === 'F') {
-    if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) return;
-    const dur = _vpState.duration || 0;
-    const FRAME = 1 / 30;
-    const k = e.key.toLowerCase();
-    if      (k === 'a') _vpState.aPoint = Math.max(0,   _vpState.aPoint - FRAME);
-    else if (k === 's') _vpState.aPoint = Math.min(dur, _vpState.aPoint + FRAME);
-    else if (k === 'd') _vpState.bPoint = Math.max(0,   _vpState.bPoint - FRAME);
-    else                _vpState.bPoint = Math.min(dur, _vpState.bPoint + FRAME);
+  // (dev0719) Shift+A / Shift+B — the keyboard twins of the A and B buttons:
+  // set the trim start / end at the playhead, or clear it if it's already set
+  // (same toggle the buttons do). They used to be swallowed by the ASDF block
+  // below, which lower-cased them and nudged instead — so capital A/B appeared
+  // dead. Live whenever a player is up, since the buttons are too.
+  if (e.key === 'A' || e.key === 'B') {
+    // The buttons themselves must be mounted — vpUpdateABStyle writes straight
+    // into them, and an embed-only toolbar (IG/TikTok) has no A/B pair.
+    if (!_vpState || !_vpState.player) return;
+    if (!document.getElementById('vp-a') || !document.getElementById('vp-b')) return;
     e.preventDefault(); e.stopPropagation();
-    vpUpdateABStyle();
+    if (e.key === 'A') vpToggleA(); else vpToggleB();
+    return;
+  }
+
+  // (dev0719) a s d f — walk the PLAYHEAD: a −5, s −1, d +1, f +5 frames
+  // (frame ≈ 1/30 s, same approximation the arrow keys use). Pairs with
+  // Shift+A / Shift+B above: park the playhead on the exact frame you want,
+  // then stamp it as the start or the end.
+  //
+  // Gated to an OPEN crop overlay — which is exactly when the cheat-sheet
+  // listing them is on screen. Outside it these keys stay free, and they must:
+  // review mode rates with a/s/d/f, and a plain slideshow uses d for the
+  // folder picker. (Superseded the dev0293 A/B ±1-frame nudges; the ±0.1 s
+  // toolbar buttons still cover fine-tuning a point in place.)
+  if (e.key === 'a' || e.key === 's' || e.key === 'd' || e.key === 'f') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    const FRAME = 1 / 30;
+    const steps = (e.key === 'a') ? -5 : (e.key === 's') ? -1 : (e.key === 'd') ? 1 : 5;
+    if (_vpIsPlaying()) _vpPauseNow();   // pause so the step is actually visible
+    vpSeekRelative(steps * FRAME);
     return;
   }
 
@@ -3371,9 +3387,12 @@ function _vpMountCropOverlay(host, vid, row) {
   // (dev0320) Hugs the top of the crop window (left/top set in paint), flipping
   // to just inside the top edge when the window nears the host top. Kept a
   // container child (not the rect) so it stays LEVEL while the rect tilts.
+  // (dev0719) min-height + wrap, not a fixed 30px: the audio chip pushed the
+  // row past a narrow window's 96% cap, and a clipped Crop button is worse than
+  // a two-line bar. paint() reads the real height back when placing it.
   bar.style.cssText =
-    'position:absolute;transform:translateX(-50%);height:30px;' +
-    'display:flex;align-items:center;gap:8px;padding:0 8px;max-width:96%;white-space:nowrap;' +
+    'position:absolute;transform:translateX(-50%);min-height:30px;' +
+    'display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:2px 8px;max-width:96%;white-space:nowrap;' +
     'background:rgba(0,0,0,0.7);color:#dfe6f0;font:12px ui-monospace,Consolas,monospace;' +
     'border-radius:4px;pointer-events:auto;z-index:2;';
   bar.innerHTML =
@@ -3389,6 +3408,12 @@ function _vpMountCropOverlay(host, vid, row) {
       '<option value="720">720p</option>' +
       '<option value="source">Same</option>' +
     '</select>' +
+    // (dev0719) Output-audio switch. This is about the RENDERED clip, not the
+    // player: the crop path re-encodes video and stream-copies audio, and most
+    // of these clips are wanted silent, so the default is OFF. M toggles it
+    // while the overlay is open (the player's own mute stays on the V toolbar).
+    '<span id="vp-crop-audio" title="Does the saved clip keep its soundtrack? (M) — the player&#39;s own mute is the toolbar 🔇" ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">🔇 no audio</span>' +
     '<span id="vp-crop-rot" title="Drag ↕ to straighten · wheel ±0.1° · double-click reset" ' +
       'style="cursor:ns-resize;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">⟲ 0.0°</span>' +
     '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
@@ -3443,6 +3468,7 @@ function _vpMountCropOverlay(host, vid, row) {
 
   const state = {
     aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
+    audio: false,                     // (dev0719) rendered clip is silent unless asked
     frac: _vpCropFracForAspect('L', vid),
     el: { container: c, rect, bar, handles, knob, grid }
   };
@@ -3481,7 +3507,10 @@ function _vpMountCropOverlay(host, vid, row) {
     const bwHalf = (bar.offsetWidth || 0) / 2;
     const bx = Math.max(bwHalf + 4, Math.min(host.clientWidth - bwHalf - 4, rl + rw / 2));
     bar.style.left = bx + 'px';
-    bar.style.top  = (rt < 40 ? (rt + 4) : (rt - 34)) + 'px';
+    // (dev0719) Measured height, so a wrapped two-line bar clears the rect's top
+    // edge instead of sitting on it.
+    const bh = bar.offsetHeight || 30;
+    bar.style.top  = (rt < bh + 10 ? (rt + 4) : (rt - bh - 4)) + 'px';
     // (dev0293/dev0318) W×H label in source px (what ffmpeg crops) plus the tilt
     // angle. Counter-rotate so the text stays upright; turn amber when a tilted
     // corner leaves the source frame (ffmpeg will black-fill that wedge on save).
@@ -3589,6 +3618,18 @@ function _vpMountCropOverlay(host, vid, row) {
     paint();   // (dev0717) re-evaluate the enlargement warning for the new target
   });
 
+  // (dev0719) Output-audio chip — click or M. Lit blue when the clip will carry
+  // sound, so the bar always answers "will this render silent?" at a glance.
+  const audioChip = bar.querySelector('#vp-crop-audio');
+  function paintAudio() {
+    if (!audioChip) return;
+    audioChip.textContent    = state.audio ? '🔊 audio' : '🔇 no audio';
+    audioChip.style.background = state.audio ? '#2a5d9a' : '#234';
+    audioChip.style.color      = state.audio ? '#fff' : '#dfe6f0';
+  }
+  paintAudio();
+  if (audioChip) audioChip.addEventListener('click', _vpCropToggleAudio);
+
   // (dev0318) ── Rotation controls ───────────────────────────────────────────
   // Knob: arc-drag about the rect center (getBoundingClientRect's box center
   // equals the true center even when rotated, since we rotate about center).
@@ -3669,6 +3710,7 @@ function _vpMountCropOverlay(host, vid, row) {
   // (dev0318) Exposed for the Z/X keyboard nudges and aspect-swap repaint.
   state.paint = paint;
   state.setAngle = setAngle;
+  state.paintAudio = paintAudio;   // (dev0719) M repaints the audio chip
   if (_vpState) _vpState.crop = state;
 }
 
@@ -3714,8 +3756,11 @@ function _vpCropHelpShow() {
 
   el = document.createElement('div');
   el.id = 'vp-crop-help';
+  // (dev0719) 290px clipped the descriptions to one cramped word per line.
+  // 380px lets most of them sit on one line and the long ones wrap to two,
+  // which reads better than truncation.
   el.style.cssText = [
-    'position:fixed', 'width:290px', 'max-height:86vh', 'overflow-y:auto',
+    'position:fixed', 'width:380px', 'max-height:86vh', 'overflow-y:auto',
     'background:rgba(14,14,28,0.95)', 'border:1px solid #4af', 'border-radius:9px',
     'color:#dfe6f0', 'font:12px ui-monospace,Consolas,monospace',
     'box-shadow:0 8px 32px rgba(0,0,0,0.9)', 'z-index:' + VP_CROP_HELP_Z,
@@ -3741,13 +3786,20 @@ function _vpCropHelpShow() {
         row(K('Z') + K('X'), 'tilt ∓0.5° to straighten a horizon') +
         row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
         head('The clip') +
-        row(K('A') + K('B'), 'set start / end (or Ctrl+click the timeline)') +
-        row(K('a') + K('s'), 'nudge start ∓1 frame') +
-        row(K('d') + K('f'), 'nudge end ∓1 frame') +
+        // (dev0719) asdf now walk the PLAYHEAD and shifted A/B stamp the point
+        // it's parked on — find the frame, then mark it.
+        row(K('a') + K('s'), 'playhead back 5 / back 1 frame') +
+        row(K('d') + K('f'), 'playhead forward 1 / forward 5 frames') +
         row(K('←') + K('→'), 'step one frame (pauses first)') +
+        row(K('⇧A'),         'start of clip = the frame you are on ' +
+                             '(again to clear) — same as the A button') +
+        row(K('⇧B'),         'end of clip = the frame you are on ' +
+                             '(again to clear) — same as the B button') +
+        row('Ctrl+click',    'set start / end straight off the timeline') +
         row(K('Space'),      'play / pause') +
-        row(K('M'),          'mute') +
         head('The output') +
+        row(K('M'),  'audio on / off in the SAVED clip — the bar says which, ' +
+                     'and it starts off. (Muting the player is the toolbar 🔇.)') +
         row('res',   '2160p (4K) · 1440p (2K) · 1080p · 720p · Same') +
         row('CRF',   'lower = better + bigger · Slow = smaller, slower') +
         row('⚠',     'amber size label = output is BIGGER than the crop, ' +
@@ -3765,7 +3817,7 @@ function _vpCropHelpShow() {
   // crop toolbar which centers itself over the rect.
   let pos = null;
   try { pos = JSON.parse(localStorage.getItem(VP_CROP_HELP_POS_KEY) || 'null'); } catch (_) {}
-  el.style.left = ((pos && Number.isFinite(pos.x)) ? pos.x : (window.innerWidth - 306)) + 'px';
+  el.style.left = ((pos && Number.isFinite(pos.x)) ? pos.x : (window.innerWidth - 396)) + 'px';
   el.style.top  = ((pos && Number.isFinite(pos.y)) ? pos.y : 64) + 'px';
   _vpCropHelpClamp(el);
 
@@ -3806,7 +3858,7 @@ function _vpCropHelpShow() {
 // Keep the panel on screen — a saved position can outlive the window size that
 // produced it, and a drag can park the title bar past an edge (unreachable).
 function _vpCropHelpClamp(el) {
-  const w = el.offsetWidth || 290, h = el.offsetHeight || 200;
+  const w = el.offsetWidth || 380, h = el.offsetHeight || 200;
   const x = Math.max(4, Math.min(window.innerWidth  - w - 4, parseFloat(el.style.left) || 0));
   const y = Math.max(4, Math.min(window.innerHeight - h - 4, parseFloat(el.style.top)  || 0));
   el.style.left = x + 'px';
@@ -3846,6 +3898,21 @@ function _vpCropToggle() {
       sc.style.pointerEvents = s._savedSCPE || '';
       sc.style.cursor = s._savedSCCursor || '';
     }
+  }
+}
+
+// (dev0719) Toggle whether the RENDERED clip keeps its soundtrack (chip + M).
+// Default off: these crops are mostly silent b-roll, and a wrong default that
+// costs an audio track is easier to notice than one that smuggles it in.
+// Only the crop path honors it — the lossless trim (crop closed) always
+// stream-copies audio, and its switch isn't on screen to say otherwise.
+function _vpCropToggleAudio() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  s.audio = !s.audio;
+  if (s.paintAudio) s.paintAudio();
+  if (typeof toast === 'function') {
+    toast(s.audio ? '🔊 saved clip keeps its audio' : '🔇 saved clip will be silent', 1400);
   }
 }
 
@@ -4125,6 +4192,7 @@ async function _vpGoSave(opts) {
       crf: s.crf,
       preset: s.slow ? 'slow' : 'medium',
       aspect: s.aspect, resHeight: s.resHeight,
+      audio: !!s.audio,               // (dev0719) bar's 🔇/🔊 switch → -an / -c:a copy
       trim: { startSec, endSec },
       overwrite: false
     };
@@ -4149,8 +4217,18 @@ async function _vpGoSave(opts) {
   // (dev0319) Deskew preflight — a stale proxy silently ignores payload.rotate
   // and applies the rotated-canvas crop coords to the raw frame (grabs the wrong
   // region, no deskew). Refuse loudly instead of writing a mis-cropped file.
-  if (payload.rotate && !(await _vpProxySupportsRotate())) {
+  if (payload.rotate && !(await _vpProxyHasFeature('rotate'))) {
     if (typeof toast === 'function') toast('Deskew needs an updated proxy — restart "node proxy.js" and retry', 4000);
+    return;
+  }
+  // (dev0719) Same for the silent-output switch: a stale proxy ignores
+  // payload.audio and stream-copies the soundtrack in anyway. That's a quiet
+  // wrong answer on a long encode, so refuse it the same way.
+  if (payload.audio === false && !(await _vpProxyHasFeature('noaudio'))) {
+    if (typeof toast === 'function') {
+      toast('Silent output needs an updated proxy — restart "node proxy.js", ' +
+            'or press M for 🔊 audio and retry', 4600);
+    }
     return;
   }
   const totalMs = Math.max(0, (endSec - startSec) * 1000);
@@ -4219,15 +4297,16 @@ function _vpCropStderrSaysExists(lines) {
   return lines.some(l => /already exists/i.test(l) || /not overwriting/i.test(l));
 }
 
-// (dev0319) Capability check — true only if the proxy advertises rotate support
-// at GET /version. A stale proxy (pre-dev0318, or any without /version) returns
-// false, letting the caller refuse a deskew job instead of mis-cropping silently.
-async function _vpProxySupportsRotate() {
+// (dev0319) Capability check — true only if the proxy advertises the named
+// feature at GET /version. A stale proxy (or any without /version) returns
+// false, letting the caller refuse the job instead of writing a wrong file.
+// (dev0719) Generalized from _vpProxySupportsRotate; 'noaudio' joined 'rotate'.
+async function _vpProxyHasFeature(name) {
   try {
     const r = await fetch(PROXY_BASE + '/version', { method: 'GET' });
     if (!r.ok) return false;
     const j = await r.json();
-    return !!(j && Array.isArray(j.features) && j.features.includes('rotate'));
+    return !!(j && Array.isArray(j.features) && j.features.includes(name));
   } catch (_) { return false; }
 }
 

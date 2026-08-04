@@ -287,7 +287,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0698';
+const PROXY_BUILD = 'dev0719';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -424,6 +424,10 @@ function must(cond, msg) { if (!cond) throw new Error(msg); }
 //   resHeight 2160|1440|1080|720|'source' (dev0717) — when numeric, append ',scale=-2:H' (L) or
 //                                 ',scale=H:-2' (P) to the filter chain.
 //                                 'source' or undefined → no scale.
+//   audio     true|false       — OPTIONAL (dev0719); CROP path only. false → '-an'
+//                                 (silent output), true/absent → '-c:a copy' as
+//                                 before. Absent defaults to KEEPING audio so an
+//                                 older client's payload behaves unchanged.
 //   rotate    {rad,ow,oh}      — OPTIONAL (dev0318); horizon-straighten. Prepends
 //                                 'rotate=rad:ow:oh:c=black,' before crop. rad is
 //                                 radians (ffmpeg +=clockwise); the caller has
@@ -519,18 +523,21 @@ function buildFfmpegArgs(p) {
       const aspect = (p.aspect === 'P') ? 'P' : 'L';
       vf += (aspect === 'P') ? `,scale=${resH}:-2` : `,scale=-2:${resH}`;
     }
+    // (dev0719) Output audio, driven by the crop bar's 🔇/🔊 switch. Absent →
+    // true, so a pre-dev0719 payload still gets its soundtrack.
+    const audio = (p.audio === undefined || p.audio === null) ? true : !!p.audio;
     return [
       ...common,
       ...pre,
       '-i', p.input,
       '-filter:v', vf,
       '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
-      '-c:a', 'copy',
+      ...(audio ? ['-c:a', 'copy'] : ['-an']),
       // (dev0297) Same flag the lossless path already uses. Video is re-encoded
       // from PTS 0, but audio is stream-copied — its first packets can carry a
       // small leading offset that downstream editors (e.g. LosslessCut) render
       // as a blank video frame at the start. `make_zero` rebases the muxer's
-      // timestamps so both streams begin at 0.
+      // timestamps so both streams begin at 0. Harmless with -an.
       '-avoid_negative_ts', 'make_zero',
       overwrite ? '-y' : '-n',
       p.output
@@ -4181,7 +4188,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 

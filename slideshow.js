@@ -1692,6 +1692,29 @@ function _slideshowKey(e) {
       return;
     }
   }
+  // (dev0719) d = Directory: the 📁 button's job (pick a source folder) without
+  // opening the settings menu first. Deliberately ABOVE the _videoActive stand-
+  // down so it also works while a slide's video is up — the picker's own
+  // slideshowClose() tears V down on the way through. keydown carries user
+  // activation, and the reuseSaved=false path awaits nothing before the picker,
+  // so the gesture survives.
+  //
+  // Two contexts already own d and keep it: review mode rates "fair" (handled
+  // just above), and an open crop overlay steps a frame forward (vp.js), where
+  // yanking the show out from under a half-finished crop would be the opposite
+  // of what dev0718's hold is for.
+  if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const _dae = document.activeElement;
+    const _dtag = _dae && _dae.tagName;
+    const _dInText = !!(_dae && (_dtag === 'INPUT' || _dtag === 'TEXTAREA' || _dae.isContentEditable));
+    const _cropOpen = (typeof _vpCropHolding === 'function') && _vpCropHolding();
+    if (!_dInText && !_cropOpen) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      slideshowOpenSourceFolder(false, _slideshowState.mode || 'slideshow');
+      return;
+    }
+  }
   // (dev0279) While a video plays, the V player owns the keyboard (Space,
   // arrows for frame-step, M). Stand down so we don't double-handle.
   if (_slideshowState._videoActive) return;
