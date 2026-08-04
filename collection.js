@@ -1117,7 +1117,6 @@ window._gridPasteSource = async function() {
   }
   row.linkpage = txt;
   if (typeof save === 'function') save();
-  if (typeof _gridUpdateBacklogPill === 'function') _gridUpdateBacklogPill();
   var n = _countNoLinkpageYet();
   if (typeof _gridToast === 'function') _gridToast('✓ Source saved · ' + n + ' left', 1800);
 };
@@ -1131,28 +1130,11 @@ function _countNoLinkpageYet() {
 }
 window._countNoLinkpageYet = _countNoLinkpageYet;
 
-// (dev0548) Dev-only backlog pill (grid bottom-left): the count of rows still
-// needing a source page. Hidden in user mode and when the backlog is empty.
-// Lives on the persistent gridOverlay (survives gridShow's container rebuild).
-window._gridUpdateBacklogPill = function() {
-  var overlay = document.getElementById('gridOverlay');
-  if (!overlay) return;
-  var pill = document.getElementById('gridBacklogPill');
-  var userMode = (typeof _isUserMode === 'function') && _isUserMode();
-  var n = _countNoLinkpageYet();
-  if (userMode || n === 0) { if (pill) pill.style.display = 'none'; return; }
-  if (!pill) {
-    pill = document.createElement('div');
-    pill.id = 'gridBacklogPill';
-    pill.style.cssText = 'position:absolute;left:10px;bottom:10px;z-index:40;'
-      + 'background:rgba(20,20,40,0.82);color:#8ef;border:1px solid #2a2a4a;'
-      + 'padding:3px 9px;border-radius:10px;font:11px ui-monospace,Consolas,monospace;'
-      + 'pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.5);';
-    overlay.appendChild(pill);
-  }
-  pill.textContent = '🔗 ' + n + ' need source';
-  pill.style.display = 'block';
-};
+// (dev0548) The backlog count used to be a pill in the grid's bottom-left
+// corner. (dev0721) That pill is gone: it reported on the whole table, not on
+// the pictures it was drawn over, so it was chrome in the way of the content.
+// The count now lives in T's Housekeeping menu (🔗 Need Source), which both
+// shows it and filters the table down to the rows in question.
 
 // (dev0375) C in grid: toggle closed captions on all YT/Vimeo iframes.
 // postMessage works for both buffered and unbuffered YT players.

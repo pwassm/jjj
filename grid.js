@@ -2419,8 +2419,9 @@ function gridShow() {
     }, true);
     overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; }, true);
   }
-  // (dev0548) Refresh the dev-only "N need source" backlog pill (bottom-left).
-  if (typeof window._gridUpdateBacklogPill === 'function') window._gridUpdateBacklogPill();
+  // (dev0721) The "N need source" backlog pill is GONE from the grid — a
+  // table-wide TODO count is not about the pictures in front of you, so it was
+  // just one more thing painted over them. It lives in T's Housekeeping menu now.
   // (dev0369) Grid-level "swipe back to the Main Page" gesture. (dev0644) Was
   // extended to BOTH modes; (dev0699) USER MODE ONLY again. In Gu the gesture
   // earns its place — the hamburger/Configs chrome is gone, so this and Esc are

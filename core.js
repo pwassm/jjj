@@ -4445,6 +4445,15 @@ document.addEventListener('pointerdown', e => {
 // handler logic in one place.
 function housekeepingMenuOpen() {
   const menu = document.getElementById('housekeepingMenu');
+  // (dev0721) The Need Source item carries a live count, so read it as the menu
+  // opens rather than keeping a stale number on screen.
+  const lbl = document.getElementById('hkNeedSourceLbl');
+  if (lbl && typeof _countNoLinkpageYet === 'function') {
+    const n = _countNoLinkpageYet();
+    lbl.textContent = n
+      ? 'Need Source — ' + n + ' rows with no source page'
+      : 'Need Source — none, all rows have one';
+  }
   menu.style.display = (menu.style.display === 'none' ? 'block' : 'none');
 }
 function housekeepingMenuClose() {
@@ -4489,6 +4498,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingFillYTOrient();
     } else if (act === 'igltype') {
       housekeepingFixIgLtype();
+    } else if (act === 'needsource') {
+      housekeepingNeedSource();
     } else if (act === 'resetftlsaved') {
       const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
       if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
@@ -4498,6 +4509,25 @@ document.querySelectorAll('.hkitem').forEach(el => {
     }
   });
 });
+
+// (dev0721) Need Source — the rows whose `linkpage` is still the TODO marker
+// "noLinkpageYet": the picture or video is in the table, but the page it came
+// from was never recorded, so G's `g` (open source page) has nowhere to go.
+// This was the grid's bottom-left backlog pill until dev0721; a whole-table
+// count belongs where the whole table is. Toggles a filter down to those rows.
+function housekeepingNeedSource() {
+  const n = (typeof _countNoLinkpageYet === 'function') ? _countNoLinkpageYet() : 0;
+  const cur = (typeof getRowFilter === 'function') ? getRowFilter() : rowFilter;
+  if (cur && cur._needSource) {
+    setRowFilter(null);
+    toast('Need Source filter off', 1500);
+    return;
+  }
+  if (!n) { toast('✓ Every row has a source page', 2000); return; }
+  setRowFilter({ composite: true, _needSource: true, tags: [],
+                 text: { linkpage: 'noLinkpageYet' } });
+  toast('🔗 ' + n + ' rows need a source page — Housekeeping ▸ Need Source again to clear', 3500);
+}
 
 // (zip0151) Clean Mute Column: for each row, if it's NOT a video link,
 // blank the Mute field; if it IS a video, leave Mute unchanged. This

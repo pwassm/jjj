@@ -680,6 +680,7 @@ thead th.rn              { color: #fff !important; }
       <div class="hkitem" data-act="fillytmeta" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;">📺 Fill YT Meta — VidTitle + VidAuthor + ftext from YouTube</div>
       <div class="hkitem" data-act="fillytorient" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Query each YouTube row's real width×height AND upload date via yt-dlp — sets Mode (P=portrait/Shorts, L=landscape) and VidDate. Runs rows missing either. Esc aborts; if YouTube bot-walls cookieless yt-dlp you get a clear 'no dimensions' report.">📐 Check YT Orientation + Date — via yt-dlp</div>
       <div class="hkitem" data-act="igltype" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Instagram rows were mistakenly imported as web-text (ltype=w). Reassign them to ltype=i (image) so NoText grid-fills keep them.">📷 Fix IG ltype — reassign w → i (image)</div>
+      <div class="hkitem" data-act="needsource" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Rows whose linkpage is still the TODO marker &quot;noLinkpageYet&quot; — the image/video is in, but the page it came from was never recorded. Filters T down to them; run it again with the filter on to clear it.">🔗 <span id="hkNeedSourceLbl">Need Source — rows with no source page</span></div>
       <div class="hkitem" data-act="resetftlsaved" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔄 Reset FTLsaved — re-download all images</div>
     </div>
   </div>
@@ -1043,7 +1044,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0721';
+  window.HELP_VERSION_STR = 'dev0722';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
