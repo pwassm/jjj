@@ -1122,7 +1122,23 @@ function gridOpenFullscreen(row, contained) {
           grabStepFrames(row, secs, startFrame, numFrames); };  // (dev0564) pre-grab jpgs for G's A toggle
         r4.append(chooseBtn, saveBtn);
 
-        panel.append(r1, r2, r3, r4);
+        // (dev0725) Close ✕, top right. Right-clicking anywhere already dismissed
+        // the panel, but that is not something the panel says about itself —
+        // and on a touchpad it isn't much of an offer either. Its own row rather
+        // than an absolutely-placed corner, so it can never sit over Row 1.
+        const r0 = mkRow();
+        r0.style.justifyContent = 'flex-end';
+        r0.style.margin = '-4px -2px -4px 0';
+        const closeX = document.createElement('span');
+        closeX.textContent = '✕';
+        closeX.title = 'Close the step panel (right-click anywhere does it too)';
+        closeX.style.cssText = 'cursor:pointer;color:#9ab;padding:0 3px;font:13px ui-monospace,Consolas,monospace;';
+        closeX.onmouseenter = () => { closeX.style.color = '#fff'; };
+        closeX.onmouseleave = () => { closeX.style.color = '#9ab'; };
+        closeX.onclick = ev => { ev.stopPropagation(); removeFSB(false); };
+        r0.append(closeX);
+
+        panel.append(r0, r1, r2, r3, r4);
         content.appendChild(panel);
         const pos = placePanel(panel, clientX, clientY);
         syncBtns();
@@ -1181,6 +1197,14 @@ function gridOpenFullscreen(row, contained) {
         // Only over an active video player; leave images/quiz/etc. alone.
         if (!_vpState || !_vpState.player) return;
         e.preventDefault(); e.stopPropagation();
+        // (dev0725) Inside a crop text box the right-click is about the TEXT —
+        // arrows to drop in, and when the caption comes and goes — so the step
+        // panel stays out of the way entirely.
+        if (e.target && e.target.closest && e.target.closest('.vp-crop-text')) {
+          if (window._vpFSB) removeFSB(false);
+          _vpTextCtxMenu(e);
+          return;
+        }
         if (window._vpFSB) {
           removeFSB(true);                                       // right-click anywhere → dismiss + resume
           return;
@@ -2270,6 +2294,26 @@ function vpKeyHandler(e) {
   //     it first so the single-frame step is actually visible.
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
+    // (dev0725) ⇧← / ⇧→ jump to the START / END of the clip — the A and B marks,
+    // or the ends of the video when they aren't set yet. Crop-overlay-only, so
+    // shifted arrows keep their frame-step meaning on a PM lesson page (dev0644).
+    if (e.shiftKey && _vpCropHolding()) {
+      e.stopPropagation();
+      if (_vpIsPlaying()) _vpPauseNow();
+      const el  = _vpState.player && _vpState.player.el;
+      const dur = (el && Number.isFinite(el.duration)) ? el.duration : 0;
+      const at  = (e.key === 'ArrowLeft')
+        ? ((_vpState.aPoint != null) ? _vpState.aPoint : 0)
+        : ((_vpState.bPoint != null) ? _vpState.bPoint : dur);
+      _vpSeekAbsolute(at);
+      if (typeof toast === 'function') {
+        toast((e.key === 'ArrowLeft' ? '⏮ start' : '⏭ end') + ' of clip · ' +
+              at.toFixed(2) + 's' +
+              ((e.key === 'ArrowLeft' ? _vpState.aPoint : _vpState.bPoint) == null
+                 ? ' (no mark — the video’s own end)' : ''), 1600);
+      }
+      return;
+    }
     const dir = e.key === 'ArrowRight' ? 1 : -1;
     // (dev0718) A crop in progress pins the show to this video, so the arrows
     // keep their frame-step meaning — which is what you want when nudging a
@@ -2334,6 +2378,16 @@ function vpKeyHandler(e) {
     e.preventDefault(); e.stopPropagation();
     if (e.key === 'w' || e.key === 'W') _vpCropHelpToggleWidth();
     else                                _vpTextAdd();
+    return;
+  }
+
+  // (dev0725) ⇧F = the whole frame, no crop. Capital only — bare f still walks
+  // the playhead +5 frames below. Like `e`/`w` it needs a core.js bail, which
+  // otherwise spends ⇧F on "clear all filters".
+  if (e.key === 'F') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpCropFullFrame();
     return;
   }
 
@@ -2528,6 +2582,18 @@ function vpTogglePlay() {
     p.getPaused().then(paused => { if (paused) p.play(); else p.pause(); });
   }
   vpUpdatePlayBtn();
+}
+
+// (dev0725) Seek to an ABSOLUTE time, both player shapes. The FSB has had its
+// own copy of this since dev0410; ⇧←/⇧→ needed one outside that closure.
+function _vpSeekAbsolute(t) {
+  if (!_vpState || !_vpState.player) return;
+  const p = _vpState.player;
+  const at = Math.max(0, +t || 0);
+  try {
+    if (_vpState.isYT) p.seekTo(at, true);
+    else p.setCurrentTime(at);
+  } catch (_) {}
 }
 
 function vpSeekRelative(delta) {
@@ -3442,11 +3508,22 @@ function _vpKenToggle() {
 // wrap — the client hands it lines, not a paragraph, and _vpTextWrapLines is
 // where the paragraph becomes those lines.
 //
+// (dev0725) Right-clicking a box opens its own menu instead of V's step panel:
+// ⬇ / ⬆ arrows to drop at the caret, and s / e to mark when the caption comes
+// and goes (absolute seconds here, enable= times at render).
+//
 // Geometry is in fractions of the CROP window on every axis, size included, so
 // a box means the same thing after a resize, an aspect swap or a change of
 // output resolution — and the proxy can turn it into output pixels without
 // knowing anything about this screen.
-const VP_TEXT_FONT     = 'Arial, Helvetica, sans-serif';   // matches arial.ttf at render
+// (dev0725) Segoe UI Symbol, not Arial: it is the one stock Windows text font
+// that carries the HEAVY arrows (U+2B07 ⬇ / U+2B06 ⬆) the right-click menu
+// inserts — Arial draws them as tofu — and its Latin is Segoe UI, so ordinary
+// captions look right. Must stay in step with the proxy's DT_FONT_CANDIDATES,
+// or the wrap measured here won't be the wrap ffmpeg draws.
+const VP_TEXT_FONT     = '"Segoe UI Symbol","Segoe UI",Arial,sans-serif';
+const VP_TEXT_ARROW_DN = '⬇';
+const VP_TEXT_ARROW_UP = '⬆';
 const VP_TEXT_MIN_SIZE = 0.02;    // of the crop height
 const VP_TEXT_MAX_SIZE = 0.40;
 const VP_TEXT_STEP     = 0.005;
@@ -3458,6 +3535,123 @@ const VP_TEXT_WRAP_SAFETY = 0.98;
 function _vpTextAdd()            { const s = _vpState && _vpState.crop; if (s && s.addText)        s.addText(); }
 function _vpTextEndEdit()        { const s = _vpState && _vpState.crop; if (s && s.endTextEdit)    s.endTextEdit(); }
 function _vpTextNudgeSize(dir)   { const s = _vpState && _vpState.crop; if (s && s.nudgeTextSize)  s.nudgeTextSize(dir); }
+
+// (dev0725) ── The text box's own right-click menu ──────────────────────────
+// Right-click INSIDE a box is about the text, not about stepping frames, so the
+// V step panel stands down (see the contextmenu handler) and this comes up:
+// two arrows to drop at the caret, and the two ends of the window this caption
+// is on screen for — taken from wherever the playhead is sitting. s / e work as
+// keys as well as clicks, which is what the underlines mean.
+const VP_TEXT_MENU_ID = 'vp-text-menu';
+
+function _vpTextMenuClose() {
+  const el = document.getElementById(VP_TEXT_MENU_ID);
+  if (el) el.remove();
+  document.removeEventListener('keydown', _vpTextMenuKey, true);
+}
+
+function _vpTextMenuKey(e) {
+  const el = document.getElementById(VP_TEXT_MENU_ID);
+  if (!el) { document.removeEventListener('keydown', _vpTextMenuKey, true); return; }
+  const k = (e.key || '').toLowerCase();
+  if (k === 'escape' || k === 's' || k === 'e') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    const t = el._vpBox;
+    _vpTextMenuClose();
+    if (k === 's' || k === 'e') _vpTextSetMark(t, k === 's' ? 'start' : 'end');
+  }
+}
+
+// Stamp the playhead as this caption's in- or out-point. Stored ABSOLUTE (like
+// the zoom box's atSec) and turned into clip-relative seconds only at render,
+// so moving A or B afterwards doesn't silently shift every caption.
+function _vpTextSetMark(t, which) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !t) return;
+  const now = _vpNowSec();
+  if (which === 'start') t.atStart = now; else t.atEnd = now;
+  if (s.paintTextMarks) s.paintTextMarks(t);
+  if (typeof toast === 'function') {
+    toast('⏱ text ' + (which === 'start' ? 'starts' : 'ends') + ' at ' + now.toFixed(2) + 's', 1600);
+  }
+}
+
+function _vpTextClearMarks(t) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !t) return;
+  t.atStart = null; t.atEnd = null;
+  if (s.paintTextMarks) s.paintTextMarks(t);
+  if (typeof toast === 'function') toast('⏱ cleared — this text is on for the whole clip', 1600);
+}
+
+function _vpTextCtxMenu(ev) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !s.textBoxFor) return;
+  const boxEl = ev.target.closest('.vp-crop-text');
+  const t = s.textBoxFor(boxEl);
+  if (!t) return;
+  _vpTextMenuClose();
+  // Right-clicking a box that isn't being typed in has no caret to insert at,
+  // so open it for editing first — the arrows then land at the end of the text.
+  if (s.textBeginEdit) s.textBeginEdit(t);
+
+  const el = document.createElement('div');
+  el.id = VP_TEXT_MENU_ID;
+  el._vpBox = t;
+  el.style.cssText =
+    'position:fixed;z-index:42600;min-width:210px;background:#000;border:2px solid #06f;' +
+    'border-radius:9px;padding:5px;box-shadow:0 4px 18px rgba(0,0,0,0.75);' +
+    'font:13px ui-monospace,Consolas,monospace;color:#dfe6f0;user-select:none;';
+  const mk = (html, title) => {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    if (title) d.title = title;
+    d.style.cssText = 'padding:5px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    el.appendChild(d);
+    return d;
+  };
+  const sep = () => {
+    const h = document.createElement('div');
+    h.style.cssText = 'height:1px;margin:4px 2px;background:rgba(102,170,255,0.35);';
+    el.appendChild(h);
+  };
+  const now = _vpNowSec();
+
+  mk('<span style="font-size:17px;">' + VP_TEXT_ARROW_DN + '</span>&nbsp; arrow down at the cursor',
+     'Inserted as a character — it grows and shrinks with the type size')
+    .onclick = () => { _vpTextMenuClose(); if (s.textInsertAt) s.textInsertAt(t, VP_TEXT_ARROW_DN); };
+  mk('<span style="font-size:17px;">' + VP_TEXT_ARROW_UP + '</span>&nbsp; arrow up at the cursor',
+     'Inserted as a character — it grows and shrinks with the type size')
+    .onclick = () => { _vpTextMenuClose(); if (s.textInsertAt) s.textInsertAt(t, VP_TEXT_ARROW_UP); };
+  sep();
+  mk('<u>s</u>tarts here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
+     'This text appears from the playhead onward')
+    .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'start'); };
+  mk('<u>e</u>nds here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
+     'This text is gone after the playhead')
+    .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'end'); };
+  if (t.atStart != null || t.atEnd != null) {
+    mk('<span style="opacity:0.75;">✕ clear — on for the whole clip</span>')
+      .onclick = () => { _vpTextMenuClose(); _vpTextClearMarks(t); };
+  }
+
+  document.body.appendChild(el);
+  const w = el.offsetWidth || 210, h = el.offsetHeight || 120;
+  el.style.left = Math.max(4, Math.min(window.innerWidth  - w - 4, ev.clientX)) + 'px';
+  el.style.top  = Math.max(4, Math.min(window.innerHeight - h - 4, ev.clientY)) + 'px';
+
+  // Any press outside closes it. Capture, so it beats the crop overlay's own
+  // pointer handling; the box's edit session survives (see onDocDown).
+  const away = e2 => {
+    if (el.contains(e2.target)) return;
+    document.removeEventListener('pointerdown', away, true);
+    _vpTextMenuClose();
+  };
+  setTimeout(() => document.addEventListener('pointerdown', away, true), 0);
+  document.addEventListener('keydown', _vpTextMenuKey, true);
+}
 
 // The OUTPUT frame, in pixels, for a crop of sw × sh source pixels. Twin of the
 // hoisted ow/oh in the proxy's buildFfmpegArgs — text px are derived from this,
@@ -3509,15 +3703,29 @@ function _vpTextWrapLines(text, widthPx, fontPx) {
 // The `texts` payload for a render: every non-empty box, wrapped at the size it
 // will actually be drawn (so a line that fits here fits there), in crop
 // fractions. Empty boxes are dropped rather than sent as blank drawtexts.
-function _vpTextRenderList(state, ow, oh) {
+//
+// (dev0725) startSec/endSec are the clip's own A→B bounds. Per-box marks are
+// stored ABSOLUTE and become clip-relative here, because the output starts at 0
+// — verified: with `-ss` before `-i`, drawtext's `t` counts from the trim, not
+// from the source. Marks outside the clip clamp to its ends; a backwards pair
+// is read as the window the user meant and swapped.
+function _vpTextRenderList(state, ow, oh, startSec, endSec) {
   if (!state || !Array.isArray(state.texts) || !state.texts.length) return [];
+  const dur = Math.max(0, (+endSec || 0) - (+startSec || 0));
+  const rel = v => Math.max(0, Math.min(dur, v - startSec));
   const out = [];
   state.texts.forEach(t => {
     const raw = (t.ta ? t.ta.value : t.text) || '';
     if (!raw.trim()) return;
     const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, t.size * oh);
     if (!lines.some(l => l.trim())) return;
-    out.push({ x: t.x, y: t.y, w: t.w, size: t.size, lines: lines.slice(0, 40) });
+    const box = { x: t.x, y: t.y, w: t.w, size: t.size, lines: lines.slice(0, 40) };
+    let from = (t.atStart == null) ? null : rel(t.atStart);
+    let to   = (t.atEnd   == null) ? null : rel(t.atEnd);
+    if (from != null && to != null && to < from) { const s0 = from; from = to; to = s0; }
+    if (from != null && from > 0)   box.from = +from.toFixed(3);
+    if (to   != null && to   < dur) box.to   = +to.toFixed(3);
+    out.push(box);
   });
   return out;
 }
@@ -3790,14 +3998,45 @@ function _vpMountCropOverlay(host, vid, row) {
     t.chip.textContent = '↑↓ type size · ' + (t.size * 100).toFixed(1) + '% of frame';
   }
 
+  // (dev0725) The amber ⏱ badge under a box that isn't on for the whole clip.
+  // Absolute seconds, the same units the timeline shows, so it reads against
+  // the playhead; the render turns them into clip-relative enable= times.
+  function paintTextMarks(t) {
+    const a = t.atStart, b = t.atEnd;
+    if (a == null && b == null) { t.tlbl.style.display = 'none'; return; }
+    t.tlbl.style.display = '';
+    t.tlbl.textContent = '⏱ ' + (a == null ? 'clip start' : a.toFixed(2) + 's') +
+                         ' → ' + (b == null ? 'clip end' : b.toFixed(2) + 's');
+  }
+
+  function textBoxFor(el) {
+    return state.texts.find(t => t.el === el) || null;
+  }
+
+  // Drop a character at the caret (right-click menu arrows). The box is always
+  // in edit mode by the time this runs, so selectionStart is real.
+  function textInsertAt(t, str) {
+    const ta = t.ta;
+    const i = (typeof ta.selectionStart === 'number') ? ta.selectionStart : ta.value.length;
+    const j = (typeof ta.selectionEnd   === 'number') ? ta.selectionEnd   : i;
+    ta.value = ta.value.slice(0, i) + str + ta.value.slice(j);
+    t.text = ta.value;
+    growText(t);
+    try { ta.focus({ preventScroll: true }); } catch (_) {}
+    const caret = i + str.length;
+    try { ta.setSelectionRange(caret, caret); } catch (_) {}
+  }
+
   function addText() {
     if (state.texts.length >= 12) {
       if (typeof toast === 'function') toast('12 text boxes is the limit', 1800);
       return;
     }
     const n = state.texts.length;
+    // (dev0725) atStart / atEnd — absolute seconds this caption comes and goes,
+    // set from the right-click menu. Null = on for the whole clip.
     const t = { x: Math.min(0.60, 0.06 + 0.03 * n), y: Math.min(0.76, 0.06 + 0.11 * n),
-                w: 0.55, size: 0.07, text: '' };
+                w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null };
 
     const box = document.createElement('div');
     box.className = 'vp-crop-text';
@@ -3848,6 +4087,15 @@ function _vpMountCropOverlay(host, vid, row) {
       'pointer-events:none;white-space:nowrap;display:none;';
     box.appendChild(chip);
 
+    // (dev0725) The ⏱ window badge — only there when the caption isn't on for
+    // the whole clip. Sits under the box so it can't be mistaken for the text.
+    const tlbl = document.createElement('div');
+    tlbl.style.cssText =
+      'position:absolute;left:0;bottom:-17px;background:rgba(0,0,0,0.62);color:#ffd24a;' +
+      'padding:0 5px;border-radius:3px;font:10px ui-monospace,Consolas,monospace;' +
+      'pointer-events:none;white-space:nowrap;display:none;';
+    box.appendChild(tlbl);
+
     // A press that doesn't travel is a click = start typing; one that does is a
     // move. Same gesture the zoom box uses, one meaning further.
     box.addEventListener('pointerdown', e => {
@@ -3856,7 +4104,7 @@ function _vpMountCropOverlay(host, vid, row) {
       textStart('tmove', null, e, box, t);
     });
 
-    t.el = box; t.ta = ta; t.chip = chip;
+    t.el = box; t.ta = ta; t.chip = chip; t.tlbl = tlbl;
     textLayer.appendChild(box);
     state.texts.push(t);
     paintTexts();
@@ -3874,7 +4122,8 @@ function _vpMountCropOverlay(host, vid, row) {
   }
 
   function beginEdit(t) {
-    if (editing && editing !== t) endEdit();
+    if (editing === t) return;      // (dev0725) right-click re-entry — already live
+    if (editing) endEdit();
     editing = t;
     t.el.style.borderColor = 'rgba(150,255,200,1)';
     t.el.style.background  = 'rgba(0,0,0,0.30)';
@@ -3912,6 +4161,10 @@ function _vpMountCropOverlay(host, vid, row) {
   function onDocDown(e) {
     if (!editing) return;
     if (editing.el.contains(e.target)) return;
+    // (dev0725) …but the box's own right-click menu is body-mounted, so it is
+    // "outside" the box while being entirely about it. Clicking it must not end
+    // the entry, or the arrow would land in a box that just lost its caret.
+    if (e.target && e.target.closest && e.target.closest('#' + VP_TEXT_MENU_ID)) return;
     e.preventDefault(); e.stopPropagation();
     endEdit();
   }
@@ -4207,6 +4460,12 @@ function _vpMountCropOverlay(host, vid, row) {
   state.paintTexts = paintTexts;
   state.endTextEdit = endEdit;
   state.nudgeTextSize = nudgeSize;
+  // (dev0725) …and the right-click menu needs to find a box, type into it and
+  // repaint its ⏱ badge.
+  state.textBoxFor = textBoxFor;
+  state.textInsertAt = textInsertAt;
+  state.textBeginEdit = beginEdit;
+  state.paintTextMarks = paintTextMarks;
   if (_vpState) _vpState.crop = state;
 }
 
@@ -4234,18 +4493,18 @@ function _vpMountCropOverlay(host, vid, row) {
 // (42000) and the V player (41000) — so no host stacking context clips it.
 const VP_CROP_HELP_Z = 42500;
 const VP_CROP_HELP_POS_KEY = 'vpCropHelpPos';
-// (dev0720) Two widths, toggled by W (or the ⇔ button), remembered across
-// videos and sessions. Narrow is the original 290px — small enough to leave the
-// frame alone. (dev0724) Wide is now the FULL window rather than 720px: at
-// 720 the descriptions still wrapped, and a panel you flip to for a moment to
-// read may as well use the whole width while it's up.
-const VP_CROP_HELP_WIDE_KEY = 'vpCropHelpWide';
+// (dev0720) Two widths, toggled by W (or the ⇔ button). Narrow is the original
+// 290px — small enough to leave the frame alone. (dev0724) Wide is now the FULL
+// window rather than 720px: at 720 the descriptions still wrapped, and a panel
+// you flip to for a moment to read may as well use the whole width while it's up.
+// (dev0725) …and it is no longer remembered. Full width covers the picture, so
+// every crop session STARTS narrow and W is a look-something-up gesture within
+// it, not a setting that follows you into the next video.
 const VP_CROP_HELP_W_NARROW = '290px';
 const VP_CROP_HELP_W_WIDE   = 'calc(100vw - 8px)';
+let _vpCropHelpWide = false;
 
-function _vpCropHelpIsWide() {
-  try { return localStorage.getItem(VP_CROP_HELP_WIDE_KEY) === '1'; } catch (_) { return false; }
-}
+function _vpCropHelpIsWide() { return _vpCropHelpWide; }
 
 function _vpCropHelpApplyWidth(el) {
   const wide = _vpCropHelpIsWide();
@@ -4268,13 +4527,14 @@ function _vpCropHelpApplyWidth(el) {
 function _vpCropHelpToggleWidth() {
   const el = document.getElementById('vp-crop-help');
   if (!el) return;
-  try { localStorage.setItem(VP_CROP_HELP_WIDE_KEY, _vpCropHelpIsWide() ? '0' : '1'); } catch (_) {}
+  _vpCropHelpWide = !_vpCropHelpWide;
   _vpCropHelpApplyWidth(el);
 }
 
 function _vpCropHelpShow() {
+  _vpCropHelpWide = false;               // (dev0725) every session starts narrow
   let el = document.getElementById('vp-crop-help');
-  if (el) { el.style.display = ''; _vpCropHelpClamp(el); return; }
+  if (el) { el.style.display = ''; _vpCropHelpApplyWidth(el); return; }
 
   const K = k =>
     '<kbd style="display:inline-block;min-width:13px;padding:1px 5px;margin:0 1px;' +
@@ -4318,6 +4578,8 @@ function _vpCropHelpShow() {
         // tilt over from Z/X so Z could become the zoom below.
         row('drag inside / a corner', 'move the crop box / resize it (aspect stays locked)') +
         row(K('T'),          'swap 16:9 ↔ 9:16') +
+        row(K('⇧F'),         'the WHOLE frame — no crop, the source’s own shape ' +
+                             '(' + K('T') + ' goes back to a locked rect)') +
         row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
         row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
         head('Zoom into') +
@@ -4334,12 +4596,19 @@ function _vpCropHelpShow() {
                              ' size the type, click outside to finish') +
         row('drag it / ↔',   'move the box / drag a side grip to set the wrap width — ' +
                              'the wrap you see is the wrap you get. ✕ removes it.') +
+        row('right-click it', 'drop a ⬇ or ⬆ arrow at the cursor (it sizes with the ' +
+                             'type), or set when this text comes and goes: ' +
+                             '<u>s</u>tarts / <u>e</u>nds at the playhead — click, or ' +
+                             'press ' + K('s') + ' / ' + K('e') + '. An amber ⏱ under ' +
+                             'the box means it is windowed; no badge = the whole clip.') +
         head('The clip') +
         // (dev0719) asdf now walk the PLAYHEAD and shifted A/B stamp the point
         // it's parked on — find the frame, then mark it.
         row(K('a') + K('s') + K('d') + K('f'),
                              'playhead −5 / −1 / +1 / +5 frames') +
         row(K('←') + K('→'), 'step one frame (pauses first)') +
+        row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip (the ' +
+                             K('A') + ' and ' + K('B') + ' marks)') +
         row(K('⇧A') + K('⇧B'), 'start / end of clip = the frame you are on ' +
                              '(again to clear) — same as the A and B buttons') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
@@ -4470,6 +4739,27 @@ function _vpCropToggleAudio() {
   if (s.paintAudio) s.paintAudio();
   if (typeof toast === 'function') {
     toast(s.audio ? '🔊 saved clip keeps its audio' : '🔇 saved clip will be silent', 1400);
+  }
+}
+
+// (dev0725) ⇧F — the whole frame, no crop. Drops the 16:9 / 9:16 lock and takes
+// the source's own shape, so the render is a straight trim (plus whatever zoom,
+// tilt and text are armed) at the full picture. The aspect flag still has to be
+// right either way: it decides which side `resHeight` scales, and it is the
+// SHORT one. T afterwards goes back to a locked 16:9 / 9:16 rect.
+function _vpCropFullFrame() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  const vid = _vpState.player && _vpState.player.el;
+  if (!vid) return;
+  const VW = vid.videoWidth || 16, VH = vid.videoHeight || 9;
+  s.aspect = (VW >= VH) ? 'L' : 'P';
+  s.frac = { x: 0, y: 0, w: 1, h: 1, ratio: 1 };   // ratio 1 in FRACTION space = the source aspect
+  const label = s.el.bar.querySelector('#vp-crop-aspect');
+  if (label) label.textContent = 'full';
+  if (s.paint) s.paint();
+  if (typeof toast === 'function') {
+    toast('⛶ whole frame — ' + VW + ' × ' + VH + ', no crop (T returns to 16:9 / 9:16)', 2400);
   }
 }
 
@@ -4776,7 +5066,7 @@ async function _vpGoSave(opts) {
     // (dev0724) Burned-in captions. Wrapped HERE, at the size ffmpeg will draw
     // them (drawtext can't wrap), and dropped entirely when every box is empty.
     const dims  = _vpOutputDims(s, sw, sh);
-    const texts = _vpTextRenderList(s, dims.ow, dims.oh);
+    const texts = _vpTextRenderList(s, dims.ow, dims.oh, startSec, endSec);
     if (texts.length) nameParts.push('tx' + texts.length);
     nameParts.push(durStr);
     outName = nameParts.join('~') + '~.mp4';

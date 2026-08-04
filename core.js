@@ -397,6 +397,9 @@ window.addEventListener('keydown', function(e) {
   }
 
   // Shift-F = clear all filters instantly (T-view only, not inside text input)
+  // (dev0725) …except over an open crop overlay, where ⇧F is "the whole frame,
+  // no crop" (vp.js). Same bail-without-preventDefault as `e` / `w` above.
+  if (k === 'f' && e.shiftKey && typeof _vpCropHolding === 'function' && _vpCropHolding()) return;
   if (k === 'f' && e.shiftKey) {
     e.preventDefault(); e.stopPropagation();
     rowFilter = null;

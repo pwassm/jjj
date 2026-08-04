@@ -292,7 +292,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0724';
+const PROXY_BUILD = 'dev0725';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -435,8 +435,13 @@ function must(cond, msg) { if (!cond) throw new Error(msg); }
 // appended AFTER crop/scale/zoompan — is the same as fractions of the output
 // frame. That also means a Ken Burns zoom moves the picture UNDER the caption
 // and leaves the caption itself parked, which is what a caption should do.
+// (dev0725) Segoe UI Symbol leads: it is the one stock font that has the HEAVY
+// arrows (U+2B07 ⬇ / U+2B06 ⬆) the crop overlay's right-click menu inserts —
+// Arial renders those as tofu — while its Latin is plain Segoe UI. vp.js's
+// VP_TEXT_FONT names the same font for the preview, and the two must match or
+// the wrap measured in the browser is not the wrap drawn here.
 const DT_FONT_DIR = path.join(process.env.WINDIR || 'C:/Windows', 'Fonts');
-const DT_FONT_CANDIDATES = ['arial.ttf', 'segoeui.ttf', 'verdana.ttf', 'tahoma.ttf'];
+const DT_FONT_CANDIDATES = ['seguisym.ttf', 'arial.ttf', 'segoeui.ttf', 'verdana.ttf', 'tahoma.ttf'];
 
 function dtFontFile() {
   for (const f of DT_FONT_CANDIDATES) {
@@ -468,11 +473,26 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
     must(Number.isFinite(size) && size >= 0.005 && size <= 1, `texts[${i}].size must be within 0.005..1`);
     must(Array.isArray(t.lines) && t.lines.length && t.lines.length <= 40,
          `texts[${i}].lines must be 1-40 strings`);
-    const lines = t.lines.map(l => String(l == null ? '' : l).replace(/[\r\n]/g, ' ').slice(0, 400));
+    // Variation selectors (a browser paste can smuggle U+FE0E/FE0F in behind an
+    // arrow) are dropped: freetype has no glyph for them and draws tofu.
+    const lines = t.lines.map(l => String(l == null ? '' : l)
+      .replace(/[\r\n]/g, ' ').replace(/[︎️]/g, '').slice(0, 400));
     if (!lines.some(l => l.trim())) return;          // an empty box draws nothing
     const file = path.join(dir, 'txt' + i + '.txt');
     fs.writeFileSync(file, lines.join('\n'), 'utf8');
     const fontPx = Math.max(6, Math.round(size * oh));
+    // (dev0725) Optional window this caption is on screen for, in seconds from
+    // the START OF THE CLIP — with `-ss` before `-i`, drawtext's `t` counts from
+    // the trim. Single-quoted: the commas are the filtergraph's separator.
+    let enable = '';
+    const hasF = t.from != null, hasT = t.to != null;
+    if (hasF) must(Number.isFinite(+t.from) && +t.from >= 0, `texts[${i}].from must be a number ≥ 0`);
+    if (hasT) must(Number.isFinite(+t.to)   && +t.to   >= 0, `texts[${i}].to must be a number ≥ 0`);
+    if (hasF && hasT) {
+      must(+t.to > +t.from, `texts[${i}].to must be after .from`);
+      enable = `:enable='between(t,${(+t.from).toFixed(3)},${(+t.to).toFixed(3)})'`;
+    } else if (hasF) enable = `:enable='gte(t,${(+t.from).toFixed(3)})'`;
+    else if (hasT)   enable = `:enable='lte(t,${(+t.to).toFixed(3)})'`;
     chain += ',drawtext=' + [
       'fontfile=' + dtQuote(font),
       'textfile=' + dtQuote(file),
@@ -484,7 +504,7 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
       'line_spacing=0',
       'x=' + Math.round((+t.x) * ow),
       'y=' + Math.round((+t.y) * oh)
-    ].join(':');
+    ].join(':') + enable;
   });
   return chain;
 }
@@ -512,13 +532,16 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 //                                 filter — zoompan emits the final size itself.
 //                                 fps must be the SOURCE rate ("30000/1001" or
 //                                 a number): zoompan sets the output frame rate.
-//   texts     [{x,y,w,size,lines[]}]
+//   texts     [{x,y,w,size,lines[],from?,to?}]
 //                              — OPTIONAL (dev0724); CROP path only. Burned-in
 //                                 captions. x/y/w are fractions of the crop
 //                                 window, size is a fraction of its HEIGHT, and
 //                                 `lines` is the text ALREADY WRAPPED by the
-//                                 client (drawtext cannot wrap). Appended after
-//                                 crop/scale/zoompan → see buildDrawtextChain.
+//                                 client (drawtext cannot wrap). from/to
+//                                 (dev0725, seconds from the clip's own start)
+//                                 window it with enable=; absent = whole clip.
+//                                 Appended after crop/scale/zoompan → see
+//                                 buildDrawtextChain.
 //   audio     true|false       — OPTIONAL (dev0719); CROP path only. false → '-an'
 //                                 (silent output), true/absent → '-c:a copy' as
 //                                 before. Absent defaults to KEEPING audio so an
