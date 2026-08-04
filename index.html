@@ -690,6 +690,7 @@ thead th.rn              { color: #fff !important; }
   <span style="width:1px;height:22px;background:#334;flex-shrink:0;"></span>
   <button class="tbtn" id="cMakeActiveBtn" style="border-color:#0f0;color:#0f0;background:rgba(0,80,0,0.3);" title="Make selected collection active and open Grid (M or Ctrl+click row)">✓ MakeActive→G (M/^click)</button>
   <button class="tbtn" id="cDeleteBtn" style="border-color:#f44;color:#f88;background:rgba(100,0,0,0.3);" title="Delete selected collection">✕ Delete</button>
+  <button class="tbtn" id="cDuplicateBtn" style="border-color:#ad8;color:#cfa;background:rgba(0,60,20,0.3);" title="Duplicate selected collection as &lt;gname&gt;_d (_d2, _d3, … if taken)">⧉ Duplicate</button>
   <span style="width:1px;height:22px;background:#334;flex-shrink:0;"></span>
   <button class="tbtn" id="cFilterGnameBtn" style="border-color:#adf;color:#adf;background:rgba(0,40,80,0.3);" title="Filter rows by gname (type to search)">🔍 Filter Gname</button>
   <input id="cFilterGnameInput" type="text" placeholder="type to filter gname…" autocomplete="off"
@@ -1035,7 +1036,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0714';
+  window.HELP_VERSION_STR = 'dev0715';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

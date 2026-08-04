@@ -7190,5 +7190,20 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "lophius",
+    "label": "Lophius",
+    "kind": "taxon",
+    "parents": [
+      "life"
+    ],
+    "aliases": [
+      "Lophius vomerinus"
+    ],
+    "def": "",
+    "rank": "genus",
+    "common": "Monkfish",
+    "extinct": false
   }
 ]

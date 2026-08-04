@@ -982,6 +982,43 @@ function cDeleteSelected() {
   cSaveToFile();
 }
 
+// (dev0715) Duplicate the selected collection. The copy is a deep clone inserted
+// directly below the source, named "<gname>_d" — or "_d2", "_d3", … when that
+// name is already taken (comparison is case-insensitive, matching how the user
+// reads the list). Dates are re-stamped so the copy looks new, not inherited.
+function _cNextDupName(base) {
+  const taken = new Set(_cData.map(r => String(r && r.gname || '').trim().toLowerCase()));
+  let cand = base + '_d';
+  if (!taken.has(cand.toLowerCase())) return cand;
+  for (let n = 2; ; n++) {
+    cand = base + '_d' + n;
+    if (!taken.has(cand.toLowerCase())) return cand;
+  }
+}
+
+function cDuplicateSelected() {
+  if (!_cMode) return;
+  const sel = [...checkedRows];
+  let idx = null;
+  if (sel.length === 1) idx = sel[0];
+  else if (sel.length > 1) { toast('Duplicate works on one row — check just one', 1800); return; }
+  else if (focus !== null) idx = vr(focus.r);
+  if (idx === null || !_cData[idx]) { toast('Select a row first (click or check)', 1500); return; }
+
+  const src  = _cData[idx];
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.gname = _cNextDupName(String(src.gname || '').trim());
+  const now = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+  copy.DateAdded = now; copy.DateModified = now;
+
+  _cData.splice(idx + 1, 0, copy);
+  data = _cData; _gridConfigs = _cData;
+  checkedRows.clear();
+  buildSort(); render(); cUpdateStatus();
+  cSaveToFile();
+  toast('✓ Duplicated as "' + copy.gname + '"', 2000);
+}
+
 // (dev0375) G in grid: open the cell-under-the-mouse's source page in a new tab.
 // (dev0533) Prefer `linkpage` (the source webpage — set for videos and for
 // imagefinder3 image rows); fall back to `link` (the media URL itself) when a

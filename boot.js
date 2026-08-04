@@ -34,6 +34,7 @@ document.getElementById('cCloseBtn').addEventListener('click', closeCScreen);
 document.getElementById('cGridBtn').addEventListener('click', ()=>{ closeCScreen(); gridShow(); });
 document.getElementById('cMakeActiveBtn').addEventListener('click', cMakeActive);
 document.getElementById('cDeleteBtn').addEventListener('click', cDeleteSelected);
+document.getElementById('cDuplicateBtn').addEventListener('click', cDuplicateSelected);
 document.getElementById('cShowAllBtn').addEventListener('click', ()=>{
   hidden.clear(); _cHidden.clear(); _cMeta._salHidden=[];
   cSaveToFile(); render(); cUpdateStatus();
