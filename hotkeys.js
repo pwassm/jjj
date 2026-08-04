@@ -529,7 +529,7 @@ window.HOTKEYS = [
 
   { label: 'L', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0710) → grid.js _gridToggleClean',
-    desc: 'cLean view — hides every piece of chrome the app paints over the pictures: the per-cell labels (1a, 1b …), the top-left info line and the floating ← back arrow. Nothing stops working; L again restores them. Persisted in localStorage (slam-grid-clean). Grid overlay only — (dev0711) bare l means NOTHING on any other screen now (its old clipboard-import alias of w was retired), and in a full-screen cell V keeps it (save loop).' },
+    desc: 'cLean view — hides every piece of chrome the app paints over the pictures: the per-cell labels (1a, 1b …), the top-left info line, the floating ← back arrow and (dev0721) the bottom-right button strip (grid name / T / C / TM) plus the UID and version badges. Nothing stops working; L again restores them. Persisted in localStorage (slam-grid-clean). Grid overlay only — (dev0711) bare l means NOTHING on any other screen now (its old clipboard-import alias of w was retired), and in a full-screen cell V keeps it (save loop).' },
 
   { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
     impl: 'collection.js _gridPasteSource (dev0548)',

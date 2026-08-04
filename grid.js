@@ -2147,10 +2147,27 @@ function _gridApplyClean() {
     .forEach(el => { el.style.display = on ? 'none' : ''; });
   const info = document.getElementById('gridInfo');
   if (info) info.style.display = on ? 'none' : '';
+  // (dev0721) The rest of the painted-on chrome — the bottom-right button strip
+  // (grid name / T / C / TM), the UID badge and the version badge — is hidden by
+  // one class on <html> rather than by inline writes, because those three are
+  // shown and hidden by other code (setLastUID, locked-mode CSS) that would
+  // fight an inline display we set here.
+  _gridSyncCleanClass();
   // (dev0711) The back arrow is backarrow.js's now, shared with every other
   // screen — it reads _gridCleanOn on its own poll rather than being poked here.
   if (typeof window._salBackArrowSync === 'function') window._salBackArrowSync();
 }
+
+// (dev0721) The class must come off when the grid is left, and the grid is
+// closed by direct style writes in eight places (hotkeys.js, xe.js, …), so —
+// same reasoning as backarrow.js's poll — a slow tick is the honest way to
+// track it rather than hunting every exit.
+function _gridSyncCleanClass() {
+  const g  = document.getElementById('gridOverlay');
+  const up = !!(g && g.style.display === 'flex');
+  document.documentElement.classList.toggle('grid-clean', _gridCleanChrome && up);
+}
+setInterval(_gridSyncCleanClass, 300);
 window._gridApplyClean = _gridApplyClean;
 window._gridCleanOn = function () { return !!_gridCleanChrome; };
 
