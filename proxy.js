@@ -149,6 +149,9 @@ const PORT = 8081;
 // detect a stale proxy before sending a deskew (rotate) job that an old build
 // would silently mis-crop (rotate ignored → canvas crop coords on raw frame).
 // (dev0418) Bumped + added 'screenrec' feature for the /rec/* screen recorder.
+// (dev0723) 'screenrec2' = /rec/start also takes {dest:'downloads', stem, maxWidth,
+//   crf, drawMouse}. screenrec.js probes for it and falls back to the browser's own
+//   getDisplayMedia capture when this proxy is old or not running at all.
 // (dev0425) Bumped + added 'ytdlp' feature: /exec/ytdlp pulls caption/author
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
@@ -287,7 +290,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0720';
+const PROXY_BUILD = 'dev0723';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1979,6 +1982,9 @@ function sendJson(res, code, obj, origin) {
 // so the fsc "Choose" button just toggles ffmpeg's Windows gdigrab capture:
 //   POST /rec/start  → spawn ffmpeg gdigrab → vsteps-<ts>.mp4 in the project
 //                      folder (this proxy's dir). Optional {fps, region}.
+//                      (dev0723) …and {dest:'downloads', stem, maxWidth, crf,
+//                      drawMouse} for the Ctrl+. full-screen recorder, which
+//                      writes ScreenRecording_<ts>.mp4 into ~/Downloads.
 //   POST /rec/stop   → 'q' on ffmpeg's stdin = graceful finalize (writes the
 //                      moov atom so the mp4 is playable), then return the path.
 // Single-recording model (one user, one screen). Origin-locked like /exec/.
@@ -1999,11 +2005,20 @@ function recTimestamp() {
 // {region:{x,y,w,h}} crops to a screen rect (device pixels). Re-encoded
 // ultrafast/yuv420p for real-time capture + broad playability. All numeric
 // fields are validated here, so argv stays literal under spawn(shell:false).
+// (dev0723) Three options joined for the Ctrl+. full-screen recorder:
+//   drawMouse  false = omit the pointer (gdigrab draws it by default, and the
+//              screen recorder WANTS it — stated explicitly either way).
+//   maxWidth   downscale to at most N px wide, aspect kept, both dims forced
+//              even for yuv420p. 1920 desktop + maxWidth 1280 → a 720p file.
+//   crf        quality/size knob (higher = smaller). Omitted = x264's default.
+// The scale filter's comma is BACKSLASH-ESCAPED: a filtergraph splits on bare
+// commas, and there is no shell here to strip quotes (spawn shell:false).
 function buildGdigrabArgs(p, outPath) {
   const fps = (Number.isFinite(+p.fps) && +p.fps >= 1 && +p.fps <= 60)
               ? Math.round(+p.fps) : 30;
   const args = ['-hide_banner', '-loglevel', 'warning',
-                '-f', 'gdigrab', '-framerate', String(fps)];
+                '-f', 'gdigrab', '-framerate', String(fps),
+                '-draw_mouse', p.drawMouse === false ? '0' : '1'];
   if (p.region) {
     const r = p.region;
     for (const k of ['x', 'y', 'w', 'h'])
@@ -2013,9 +2028,20 @@ function buildGdigrabArgs(p, outPath) {
     args.push('-offset_x', String(r.x), '-offset_y', String(r.y),
               '-video_size', w + 'x' + h);
   }
-  args.push('-i', 'desktop',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
-            '-movflags', '+faststart',
+  args.push('-i', 'desktop', '-an');                  // gdigrab has no audio anyway
+  if (p.maxWidth != null) {
+    must(Number.isInteger(+p.maxWidth) && +p.maxWidth >= 320 && +p.maxWidth <= 3840,
+         'maxWidth must be an integer 320-3840');
+    const mw = Math.round(+p.maxWidth);
+    args.push('-vf', 'scale=trunc(min(' + mw + '\\,iw)/2)*2:-2');
+  }
+  args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p');
+  if (p.crf != null) {
+    must(Number.isInteger(+p.crf) && +p.crf >= 0 && +p.crf <= 51,
+         'crf must be an integer 0-51');
+    args.push('-crf', String(Math.round(+p.crf)));
+  }
+  args.push('-movflags', '+faststart',
             '-y', outPath);
   return args;
 }
@@ -2026,7 +2052,27 @@ function recStart(req, res, origin) {
     return;
   }
   readJson(req, 16 * 1024).then(payload => {
-    const output = path.join(__dirname, 'vsteps-' + recTimestamp() + '.mp4');
+    // (dev0723) Destination + filename. Default is unchanged from dev0418 —
+    // vsteps-<ts>.mp4 beside proxy.js, what V's step recorder still wants.
+    // {dest:'downloads', stem:'ScreenRecording'} writes <stem>_<ts>.mp4 into the
+    // user's Downloads folder instead, which is where the Ctrl+. screen recorder
+    // puts its files so they land where a browser download would. `stem` is
+    // regex-locked to a bare name — no separators, so it cannot walk the path.
+    let output;
+    try {
+      let stem = '';
+      if (payload.stem != null) {
+        must(typeof payload.stem === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(payload.stem),
+             'stem must be 1-40 chars of A-Z a-z 0-9 _ -');
+        stem = payload.stem;
+      }
+      let dir = __dirname;
+      if (payload.dest === 'downloads') {
+        const dl = path.join(os.homedir(), 'Downloads');
+        if (fs.existsSync(dl)) dir = dl;      // no Downloads folder → project dir
+      }
+      output = path.join(dir, (stem ? stem + '_' : 'vsteps-') + recTimestamp() + '.mp4');
+    } catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
     let args;
     try { args = buildGdigrabArgs(payload, output); }
     catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
@@ -4261,7 +4307,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'metadata', 'exiftool', 'screenrec', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'metadata', 'exiftool', 'screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
     return;
   }
 

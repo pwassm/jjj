@@ -574,6 +574,10 @@ window.HOTKEYS = [
     // in Safari), so `0` is the one binding that means the same thing on both.
     desc: 'Toggle browser fullscreen from any screen — the app’s own key for it (the browser’s equivalent is F11 on Windows, Ctrl+⌘+F on a Mac)' },
 
+  { label: 'Ctrl+.', group: 'Everywhere', scope: 'global', dev: true,
+    impl: 'screenrec.js window-capture (dev0723) → /rec/start · getDisplayMedia',
+    desc: 'SCREEN RECORDER — press once to go full-window (if it isn’t already) and start recording the whole screen, mouse pointer and all, with no sound; press again to stop. Saves Downloads/ScreenRecording_<date-time>.mp4 at a modest 1280-wide / 20fps, so a few minutes of demo is a few MB. A small red dot in the top-right corner says it is running (clicking it stops too). It records through proxy.js — ffmpeg gdigrab, no dialog — and only if that is not running does it fall back to the browser’s own capture, which asks you to pick a screen first. Dev mode only.' },
+
   // ── Gestures — swipe / mouse idioms (no fn; documented, not dispatched) ────
   // helpSection:'Gestures' renders these as their own Help sub-section. Because
   // that name has no "hotkey" in it, the Hum mobile filter keeps the swipe/tap
