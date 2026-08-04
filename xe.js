@@ -1769,6 +1769,23 @@ function _teSnapToSummary(ed, b) {
   return b;
 }
 
+// (dev0729) Every block the selection actually covers, summaries included —
+// used instead of the two-endpoint walk whenever a <details> is in range. Each
+// hit is snapped to its enclosing <summary> (a heading inside a summary belongs
+// to the summary), then any block that CONTAINS another hit is dropped: those
+// are scaffolding (the .te-slide colour wrapper, a details body div) and
+// re-tagging one would swallow its children into a single heading.
+function _teBlocksInRange(ed, range) {
+  const out = [];
+  ed.querySelectorAll('p,h1,h2,h3,h4,h5,h6,div,summary,li,blockquote').forEach(b => {
+    if (b.classList && b.classList.contains('te-slide')) return;
+    if (!range.intersectsNode(b)) return;
+    const t = _teSnapToSummary(ed, b);
+    if (t && out.indexOf(t) === -1) out.push(t);
+  });
+  return out.filter(b => !out.some(o => o !== b && b.contains(o)));
+}
+
 // Resize a <summary> WITHOUT breaking the <details>: a summary legally holds a
 // single heading element, so H1–H6 wrap its content in that heading (margin:0
 // keeps it on the marker line); P/DIV unwrap any existing heading back to a
@@ -1837,6 +1854,19 @@ function _teFormatBlock(tag) {
 
   // Safe case: leave it to the native command (keeps undo history + list logic).
   if (!inDetails && !summaryTouched) { document.execCommand('formatBlock', false, tag); return; }
+
+  // (dev0729) A real selection that spans blocks — Ctrl+A above all — re-tags
+  // EVERY block it covers, <summary> titles included. Ctrl+A leaves both range
+  // endpoints on the editor element itself, so _teNearestBlock returned null for
+  // each and the old code fell through to native formatBlock; that re-tags the
+  // body blocks but never a <summary> (not a formatBlock target), so "highlight
+  // everything → H1" sized a collapsible's body and left its title at body size
+  // (UID 1960). The endpoint-pair walk below also skipped any block BETWEEN the
+  // two endpoints — e.g. the summary sitting between an intro line and a body.
+  if (!range.collapsed) {
+    const spanned = _teBlocksInRange(ed, range);
+    if (spanned.length) { spanned.forEach(b => _teRetagBlock(b, tag)); ed.focus(); return; }
+  }
   if (!b1 || !b2) { document.execCommand('formatBlock', false, tag); return; }
 
   // Manual path — collect the block siblings spanned and re-tag each in place.

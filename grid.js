@@ -662,10 +662,28 @@ window.gridNewEmbed = function(all) {
 
 function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
   const VIRT_W = 600;
+  // (dev0729) Height of this content with EVERY collapsible open. Used as the
+  // fit height on cells whose cards the viewer can open in place, so the scale
+  // and the offsets below are the same whether the cards are open or closed —
+  // tapping a summary reveals its body without the line under the pointer
+  // resizing or sliding to a new spot. The temporary open/close fires 'toggle'
+  // (async, and the section cell listens for it), so it is flagged and the
+  // listener skips a re-fit while it runs. Call only with the transform already
+  // cleared and the virtual width set.
+  function expandedH() {
+    const closed = innerEl.querySelectorAll('details:not([open])');
+    if (!closed.length) return 0;
+    cellEl._thumbMeasuring = true;
+    closed.forEach(d => d.setAttribute('open', ''));
+    const h = innerEl.scrollHeight;
+    closed.forEach(d => d.removeAttribute('open'));
+    cellEl._thumbMeasuring = false;
+    return h;
+  }
   // (dev0588) The sectioned 1a text cell mutates innerEl (section switch,
   // details toggle) and needs to re-measure — park the fit closure on the cell.
   function fit() {
-    if (!cellEl.isConnected) return;
+    if (!cellEl.isConnected || cellEl._thumbMeasuring) return;
     const cw = cellEl.clientWidth;
     const ch = cellEl.clientHeight;
     if (!cw || !ch) return;
@@ -674,7 +692,10 @@ function fitGridHtmlThumb(cellEl, wrapEl, innerEl) {
     // measurements and the fit ratio gets progressively wrong.
     innerEl.style.transform = '';
     innerEl.style.width = VIRT_W + 'px';
-    const naturalH = Math.max(1, innerEl.scrollHeight);
+    let naturalH = Math.max(1, innerEl.scrollHeight);
+    // Toggleable cell (the sectioned text slide) → lay it out at its open size
+    // in both states. Every other thumbnail still fits exactly what it shows.
+    if (cellEl._salSect) naturalH = Math.max(naturalH, expandedH());
     const scale = Math.min(cw / VIRT_W, ch / naturalH);
     innerEl.style.transform = 'scale(' + scale + ')';
     // Center horizontally and vertically inside the cell when the
@@ -794,8 +815,10 @@ function _gridSectionSetup(cell, wrap, inner, row) {
   let startIdx = window._salSectIdxByUid[row.UID] || 0;
   if (!(startIdx >= 0 && startIdx < sections.length)) startIdx = 0;
   cell._salSect = { list: sections, idx: startIdx, inner: inner, uid: row.UID };
-  // Re-fit whenever a collapsible toggles ('toggle' doesn't bubble — capture).
-  inner.addEventListener('toggle', () => { if (cell._htmlThumbFit) cell._htmlThumbFit(); }, true);
+  // (dev0729) No re-fit on 'toggle' any more. fitGridHtmlThumb now sizes this
+  // cell for its FULLY EXPANDED content, so opening a card needs no new fit —
+  // and re-fitting here would be self-feeding, since the fit itself opens and
+  // closes the cards to measure them.
   _gridSectionRender(cell);
 }
 
