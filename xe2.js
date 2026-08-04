@@ -187,6 +187,40 @@
     renderHTML: function (p) { return ['video', mergeAttributes(p.HTMLAttributes)]; },
   });
 
+  // (dev0731) EMBEDDED FRAME (<iframe>) — same reasoning as Video above, found
+  // the hard way: a headless round-trip of all 702 ftext rows showed UID 989
+  // (a pasted article) losing ALL TEN of its embeds, because a tag with no
+  // schema node is dropped on the way in AND on the way out. Opening such a row
+  // and letting it autosave DELETED the embeds. Attributes are passed through
+  // verbatim rather than modelled — the editor doesn't offer inserting one, it
+  // only has to carry what is already there without damaging it.
+  var Iframe = Node.create({
+    name: 'iframe',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    draggable: true,
+    addAttributes: function () {
+      var attrs = {};
+      ['src', 'style', 'width', 'height', 'frameborder', 'scrolling', 'allow',
+       'referrerpolicy', 'loading', 'title', 'name', 'sandbox', 'srcdoc'].forEach(function (a) {
+        attrs[a] = {
+          default: null,
+          parseHTML: function (el) { return el.getAttribute(a); },
+          renderHTML: function (v) { var o = {}; if (v[a] != null) o[a] = v[a]; return o; },
+        };
+      });
+      attrs.allowfullscreen = {
+        default: false,
+        parseHTML: function (el) { return el.hasAttribute('allowfullscreen'); },
+        renderHTML: function (v) { return v.allowfullscreen ? { allowfullscreen: 'allowfullscreen' } : {}; },
+      };
+      return attrs;
+    },
+    parseHTML: function () { return [{ tag: 'iframe' }]; },
+    renderHTML: function (p) { return ['iframe', mergeAttributes(p.HTMLAttributes)]; },
+  });
+
   // (dev0620) Slide SECTION wrapper — <div class="te-slide" style="color:..;
   // background:..">. In v1 ONE wrapper spanned the whole ftext; here it is a
   // first-class block node, so each ══(hr)-delimited section can carry its OWN
@@ -322,6 +356,7 @@
       Underline,
       StyledImage.configure({ inline: true }),
       Video,
+      Iframe,
       Link.configure({ openOnClick: false, autolink: false }),
       Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
     ];
