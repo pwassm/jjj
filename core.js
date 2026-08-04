@@ -6584,7 +6584,8 @@ function ftextStats(html) {
     .replace(/&[a-z#0-9]+;/gi, ' ')
     .replace(/\s+/g, ' ').trim().length;
   // Exclude <img …> so image sizing-styles + src URLs don't count as junk.
-  const scan = html.replace(/<img\b[^>]*>/gi, '');
+  // (dev0716) …and <video …>, which carries the same deliberate sizing style.
+  const scan = html.replace(/<img\b[^>]*>/gi, '').replace(/<video\b[^>]*>/gi, '');
   let junk = 0;
   for (const m of scan.matchAll(/\sstyle="[^"]*"/gi)) junk += m[0].length;
   for (const m of scan.matchAll(/\sclass="([^"]*)"/gi)) {

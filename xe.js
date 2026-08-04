@@ -126,7 +126,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" id="teCollapseAll" title="Collapse all collapsible blocks in this slide">▶ All</button>
         <button class="te-btn" id="teCut" title="Hide the SELECTED text/lines from the rendered slide (grid, Xs, exports) while keeping it here in Xe as reference notes. Select a region first — everything AFTER it still renders. Click the banner above a hidden block to show it again.">⊘ Hide</button>
         <button class="te-btn" id="teHr" title="Insert a divider line across the page — separates sections (renders as a horizontal rule in the slide)">══</button>
-        <button class="te-btn" id="teImage" title="Insert image — accepts UID number or https:// URL, with size and alignment">🖼</button>
+        <button class="te-btn" id="teImage" title="Insert image or direct video file — accepts UID number or https:// URL, with size and alignment. A .mp4/.webm URL is detected automatically and plays inline in the slide.">🖼</button>
         <button class="te-btn" id="teLink" title="Link the selected text — enter any URL (a bare domain like pwassm.github.io/braintrain is auto-prefixed with https://). Select link text first; blank URL removes the link.">🔗</button>
         <span style="width:1px; background:#444; margin:0 6px;"></span>
         <button class="te-btn" id="teTextColor"  title="Slide-wide text color — choose one for the whole slide">A▾</button>
@@ -1356,8 +1356,9 @@ function gridOpenTextEditor(cellStr, row, opts) {
   // pre-filled with the image's current src and size, so the user can
   // resize, re-align, or replace it. The original <img> is removed and
   // a new one inserted at the same position with the chosen settings.
+  // (dev0716) …and on an inserted <video>, whose controls own the single click.
   editor.addEventListener('dblclick', e => {
-    if (!e.target || e.target.tagName !== 'IMG') return;
+    if (!e.target || (e.target.tagName !== 'IMG' && e.target.tagName !== 'VIDEO')) return;
     e.preventDefault(); e.stopPropagation();
     teEditImage(e.target);
   });
@@ -2018,6 +2019,22 @@ function teSyncEditorBgFromWrapper() {
 //
 // (zip0136) Optional `defaults` arg pre-fills the form so dblclick-to-edit
 // can show the existing image's current settings: { src, size, align }.
+//
+// (dev0716) DIRECT VIDEO FILES. The same modal now recognises a media-file
+// extension on the source and switches to <video> — a self-hosted .mp4/.webm
+// (e.g. video.sealifeandmore.com off R2) plays inline in the slide with native
+// controls, at the same size/alignment/caption settings an image gets. This is
+// deliberately ONE button rather than a second "insert video" icon: the user
+// pastes a URL and the modal works out what it is. NOT for YouTube/Vimeo — a
+// watch page is not a media file, and those need an iframe embed (grid/V own
+// that path).
+var TE_MEDIA_VIDEO_RE = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
+var TE_MEDIA_IMAGE_RE = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i;
+function teUrlPath(u) { return String(u || '').trim().split(/[?#]/)[0]; }
+function teIsVideoUrl(u) { return TE_MEDIA_VIDEO_RE.test(teUrlPath(u)); }
+function teIsImageUrl(u) { return TE_MEDIA_IMAGE_RE.test(teUrlPath(u)); }
+window.teIsVideoUrl = teIsVideoUrl;
+
 function teShowImageModal(onInsert, defaults) {
   defaults = defaults || {};
   // Remove any existing modal so re-clicking the button doesn't stack
@@ -2028,6 +2045,11 @@ function teShowImageModal(onInsert, defaults) {
   const dSize  = defaults.size  || 'medium';
   const dAlign = defaults.align || 'center';
   const isEdit = !!defaults.src;
+  // (dev0716) Video playback flags. Editing an existing <video> pre-fills from
+  // its attributes; a fresh insert gets the sane default — visible controls,
+  // no autoplay, sound on until the user asks for muted.
+  const dVid = Object.assign({ controls: true, autoplay: false, loop: false, muted: false },
+                             defaults.video || {});
 
   const modal = document.createElement('div');
   modal.id = 'teImageModal';
@@ -2039,15 +2061,16 @@ function teShowImageModal(onInsert, defaults) {
                 padding:18px 22px;min-width:420px;max-width:560px;color:#eee;
                 box-shadow:0 12px 40px rgba(0,0,0,0.9);">
       <div style="display:flex;align-items:center;margin-bottom:14px;">
-        <h2 style="margin:0;font-size:14px;color:#8ef;flex:1;">🖼 ${isEdit ? 'Edit image' : 'Insert image'}</h2>
+        <h2 id="teImgTitle" style="margin:0;font-size:14px;color:#8ef;flex:1;">🖼 ${isEdit ? 'Edit image' : 'Insert image'}</h2>
         <button id="teImgClose" style="background:none;border:1px solid #555;color:#aaa;
                 padding:3px 9px;border-radius:5px;cursor:pointer;font-family:monospace;">✕</button>
       </div>
 
       <label style="display:block;font-size:11px;color:#8ef;margin-bottom:4px;">
         Source — UID number (looks up row.link) or full https:// URL
+        <span style="color:#666;">· .mp4 / .webm plays as video</span>
       </label>
-      <input id="teImgSrc" type="text" autocomplete="off" placeholder="e.g. 27   or   https://example.com/foo.jpg"
+      <input id="teImgSrc" type="text" autocomplete="off" placeholder="e.g. 27   or   https://example.com/foo.jpg   or   https://…/clip.mp4"
         value="${dSrc.replace(/"/g, '&quot;')}"
         style="width:100%;box-sizing:border-box;padding:6px 8px;background:#0a0a1a;
                border:1px solid #555;color:#fff;border-radius:4px;font-family:monospace;
@@ -2068,6 +2091,15 @@ function teShowImageModal(onInsert, defaults) {
         <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgAlign" value="left"${dAlign==='left'?' checked':''}>  Left (text wraps right)</label>
         <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgAlign" value="center"${dAlign==='center'?' checked':''}>  Centered</label>
         <label style="cursor:pointer;"><input type="radio" name="teImgAlign" value="right"${dAlign==='right'?' checked':''}>  Right (text wraps left)</label>
+      </fieldset>
+
+      <fieldset id="teImgVidOpts" style="display:none;border:1px solid #383;border-radius:6px;
+                       padding:8px 12px;margin-bottom:14px;background:rgba(0,50,20,0.25);">
+        <legend style="color:#8f8;font-size:11px;padding:0 6px;">Video (direct file — plays in the slide)</legend>
+        <label style="margin-right:14px;cursor:pointer;"><input type="checkbox" id="teVidControls"${dVid.controls?' checked':''}>  Controls</label>
+        <label style="margin-right:14px;cursor:pointer;"><input type="checkbox" id="teVidAutoplay"${dVid.autoplay?' checked':''}>  Autoplay (forces muted)</label>
+        <label style="margin-right:14px;cursor:pointer;"><input type="checkbox" id="teVidLoop"${dVid.loop?' checked':''}>  Loop</label>
+        <label style="cursor:pointer;"><input type="checkbox" id="teVidMuted"${dVid.muted?' checked':''}>  Muted</label>
       </fieldset>
 
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
@@ -2093,52 +2125,73 @@ function teShowImageModal(onInsert, defaults) {
     </div>`;
   document.body.appendChild(modal);
 
-  // Resolve a "source" (UID or URL) into an actual image URL.
-  // Returns { url } on success, { error } on failure.
+  // Resolve a "source" (UID or URL) into an actual media URL.
+  // Returns { url, kind:'image'|'video' } on success, { error } on failure.
+  // (dev0716) A URL ending .mp4/.webm/.ogv/.mov/.m4v resolves as a VIDEO; the
+  // UID branch accepts a video link the same way it accepts an image one.
   function resolveSrc(raw) {
     const v = (raw || '').trim();
     if (!v) return { error: 'Source is empty.' };
     if (/^https?:\/\//i.test(v)) {
       // Full URL — accept as-is
-      return { url: v };
+      return { url: v, kind: teIsVideoUrl(v) ? 'video' : 'image' };
     }
     // Treat as UID lookup. Accept numeric or alphanumeric.
     const row = (typeof data !== 'undefined' && Array.isArray(data))
       ? data.find(r => r && String(r.UID) === v) : null;
     if (!row) return { error: 'No row with UID "' + v + '"' };
     if (!row.link) return { error: 'Row UID "' + v + '" has no link.' };
-    if (!/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(row.link)) {
-      return { error: 'Row UID "' + v + '" link is not an image file.\n' + row.link.slice(0, 60) };
+    if (teIsVideoUrl(row.link)) return { url: row.link, kind: 'video' };
+    if (!teIsImageUrl(row.link)) {
+      return { error: 'Row UID "' + v + '" link is not an image or video file.\n'
+        + '(YouTube/Vimeo pages can\'t be embedded here — use a direct .mp4)\n'
+        + row.link.slice(0, 60) };
     }
-    return { url: row.link };
+    return { url: row.link, kind: 'image' };
   }
 
   // Build the HTML for a given URL + size + alignment + optional caption.
-  function buildHtml(url, size, align, caption) {
+  // (dev0716) `kind==='video'` emits a <video> with the same wrapper/size/float
+  // markup an <img> gets, so alignment, captions and the Xe edit-in-place path
+  // behave identically for both. preload="metadata" keeps a slide with several
+  // clips cheap to open — only the first frame + duration are fetched.
+  function buildHtml(url, size, align, caption, kind, vopts) {
     const widthMap  = { small: '200px', medium: '400px', large: '700px', full: '100%' };
     const w = widthMap[size] || '400px';
+    const isVid = kind === 'video';
     const cap = caption ? caption.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     const capHtml = cap
       // (dev0634) no color — caption inherits the slide/section text color
       // (was #aaa gray, which stuck out and infected lines typed near it).
       ? '<div style="font-size:0.78em;text-align:center;margin-top:3px;">' + cap + '</div>'
       : '';
+    // Autoplay only works muted in every current browser, so tie the two.
+    const v = Object.assign({ controls: true, autoplay: false, loop: false, muted: false }, vopts || {});
+    const flags = isVid
+      ? (v.controls ? ' controls' : '')
+        + (v.autoplay ? ' autoplay' : '')
+        + (v.loop ? ' loop' : '')
+        + ((v.muted || v.autoplay) ? ' muted' : '')
+        + ' playsinline preload="metadata"'
+      : '';
+    // tag(styleCss) → the media element itself
+    const tag = (css) => isVid
+      ? '<video src="' + url + '" style="' + css + '"' + flags + '></video>'
+      : '<img src="' + url + '" style="' + css + '" alt="">';
+
     if (align === 'left') {
       if (cap) return '<div style="float:left;margin:6px 14px 6px 0;width:' + w + ';">'
-        + '<img src="' + url + '" style="width:100%;border-radius:4px;" alt="">' + capHtml + '</div>';
-      return '<img src="' + url + '" style="float:left;width:' + w + ';margin:6px 14px 6px 0;'
-        + 'border-radius:4px;" alt="">';
+        + tag('width:100%;border-radius:4px;') + capHtml + '</div>';
+      return tag('float:left;width:' + w + ';margin:6px 14px 6px 0;border-radius:4px;');
     }
     if (align === 'right') {
       if (cap) return '<div style="float:right;margin:6px 0 6px 14px;width:' + w + ';">'
-        + '<img src="' + url + '" style="width:100%;border-radius:4px;" alt="">' + capHtml + '</div>';
-      return '<img src="' + url + '" style="float:right;width:' + w + ';margin:6px 0 6px 14px;'
-        + 'border-radius:4px;" alt="">';
+        + tag('width:100%;border-radius:4px;') + capHtml + '</div>';
+      return tag('float:right;width:' + w + ';margin:6px 0 6px 14px;border-radius:4px;');
     }
     // Centered: wrap in figure/div with margin auto for predictable centering.
     return '<div style="text-align:center;margin:12px 0;">'
-      + '<img src="' + url + '" style="max-width:100%;width:' + w + ';display:inline-block;'
-      + 'border-radius:4px;" alt="">'
+      + tag('max-width:100%;width:' + w + ';display:inline-block;border-radius:4px;')
       + capHtml + '</div>';
   }
 
@@ -2146,6 +2199,24 @@ function teShowImageModal(onInsert, defaults) {
   modal.querySelector('#teImgClose').onclick = close;
   modal.querySelector('#teImgCancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+  // (dev0716) Live source sniff — retitle the modal and reveal the video
+  // options as soon as what's typed/pasted looks like a media file, so the
+  // form tells the user what it is about to insert before they commit.
+  function syncKind() {
+    const raw = (modal.querySelector('#teImgSrc').value || '').trim();
+    let isVid = teIsVideoUrl(raw);
+    if (!isVid && raw && !/^https?:\/\//i.test(raw)) {
+      const row = (typeof data !== 'undefined' && Array.isArray(data))
+        ? data.find(r => r && String(r.UID) === raw) : null;
+      if (row && row.link) isVid = teIsVideoUrl(row.link);
+    }
+    modal.querySelector('#teImgVidOpts').style.display = isVid ? 'block' : 'none';
+    modal.querySelector('#teImgTitle').textContent =
+      (isVid ? '🎬 ' : '🖼 ') + (isEdit ? 'Edit ' : 'Insert ') + (isVid ? 'video' : 'image');
+    const ins = modal.querySelector('#teImgInsert');
+    ins.textContent = isEdit ? 'Replace' : (isVid ? 'Insert video' : 'Insert');
+  }
 
   function doInsert() {
     const srcRaw = modal.querySelector('#teImgSrc').value;
@@ -2157,15 +2228,23 @@ function teShowImageModal(onInsert, defaults) {
       modal.querySelector('#teImgErr').textContent = r.error;
       return;
     }
-    const html = buildHtml(r.url, size, align, caption);
+    const vopts = {
+      controls: modal.querySelector('#teVidControls').checked,
+      autoplay: modal.querySelector('#teVidAutoplay').checked,
+      loop:     modal.querySelector('#teVidLoop').checked,
+      muted:    modal.querySelector('#teVidMuted').checked,
+    };
+    const html = buildHtml(r.url, size, align, caption, r.kind, vopts);
     close();
     if (typeof onInsert === 'function') onInsert(html);
   }
   modal.querySelector('#teImgInsert').onclick = doInsert;
+  modal.querySelector('#teImgSrc').addEventListener('input', syncKind);
   modal.querySelector('#teImgSrc').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); doInsert(); }
     if (e.key === 'Escape') { e.preventDefault(); close(); }
   });
+  syncKind();
 
   // Esc anywhere on the modal closes
   function onKey(e) {
@@ -2191,7 +2270,7 @@ function teShowImageModal(onInsert, defaults) {
     if (!srcInput.value) {
       try {
         const t = (await navigator.clipboard.readText()).trim();
-        if (/^https?:\/\//i.test(t)) srcInput.value = t;
+        if (/^https?:\/\//i.test(t)) { srcInput.value = t; syncKind(); }
       } catch (_e) {}
     }
     srcInput.focus();
@@ -2204,7 +2283,10 @@ function teShowImageModal(onInsert, defaults) {
 // wrapping centered-figure <div>) is removed and the new HTML inserted at
 // that position.
 function teEditImage(img) {
-  if (!img || img.tagName !== 'IMG') return;
+  // (dev0716) <video> is edited through the same modal — it carries the same
+  // width/float markup, so every readback below applies unchanged.
+  if (!img || (img.tagName !== 'IMG' && img.tagName !== 'VIDEO')) return;
+  const isVid = img.tagName === 'VIDEO';
 
   // Recover settings from the inline style we wrote in buildHtml.
   // src: try the data-source-uid attribute first (TODO if added later);
@@ -2263,7 +2345,11 @@ function teEditImage(img) {
     // Marker should be replaced by insertHTML, but tidy up if not
     const stale = document.getElementById('te-img-replace-marker');
     if (stale) stale.remove();
-  }, { src: displaySrc, size: size, align: align });
+  }, { src: displaySrc, size: size, align: align,
+       video: isVid ? { controls: img.hasAttribute('controls'),
+                        autoplay: img.hasAttribute('autoplay'),
+                        loop:     img.hasAttribute('loop'),
+                        muted:    img.hasAttribute('muted') } : null });
 }
 
 // (zip0134) Slide preview: render the saved-or-current ftext at full screen

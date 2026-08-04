@@ -114,6 +114,45 @@
     },
   });
 
+  // (dev0716) DIRECT-FILE VIDEO (<video src="…mp4">) as a first-class node.
+  // The 🖼 modal can now emit one (xe.js buildHtml, kind==='video'). Without a
+  // schema node ProseMirror would drop the tag on the way in AND on the way out
+  // — i.e. opening any slide that already contained a <video> and letting it
+  // autosave would DELETE the video. Inline + atom for the same reasons as
+  // StyledImage (dev0630): ftext stores media inside a paragraph, one click
+  // selects it, and text can wrap around a float.
+  var Video = Node.create({
+    name: 'video',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    draggable: true,
+    addAttributes: function () {
+      function boolAttr(name) {
+        return {
+          default: false,
+          parseHTML: function (el) { return el.hasAttribute(name); },
+          renderHTML: function (attrs) { var o = {}; if (attrs[name]) o[name] = name; return o; },
+        };
+      }
+      return {
+        src:    { default: null },
+        style:  { default: null,
+                  parseHTML: function (el) { return el.getAttribute('style'); },
+                  renderHTML: function (attrs) { return attrs.style ? { style: attrs.style } : {}; } },
+        poster: { default: null },
+        preload:{ default: null },
+        controls: boolAttr('controls'),
+        autoplay: boolAttr('autoplay'),
+        loop:     boolAttr('loop'),
+        muted:    boolAttr('muted'),
+        playsinline: boolAttr('playsinline'),
+      };
+    },
+    parseHTML: function () { return [{ tag: 'video' }]; },
+    renderHTML: function (p) { return ['video', mergeAttributes(p.HTMLAttributes)]; },
+  });
+
   // (dev0620) Slide SECTION wrapper — <div class="te-slide" style="color:..;
   // background:..">. In v1 ONE wrapper spanned the whole ftext; here it is a
   // first-class block node, so each ══(hr)-delimited section can carry its OWN
@@ -248,6 +287,7 @@
       DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut,
       Underline,
       StyledImage.configure({ inline: true }),
+      Video,
       Link.configure({ openOnClick: false, autolink: false }),
       Table.configure({ resizable: false }), TableRow, TableHeader, TableCell,
     ];
@@ -872,14 +912,23 @@
   // If the selection is an image (NodeSelection) or sits inside a styledDiv
   // image wrapper (centered / captioned / floated form from the modal), return
   // { from, to, defaults:{src,size,align,caption} } for edit-in-place.
+  // (dev0716) `video` counts as media here too, so the 🖼 button edits an
+  // inserted clip's size/alignment/caption exactly like an image's.
+  function _mediaDefaults(node) {
+    if (!node || node.type.name !== 'video') return null;
+    var a = node.attrs;
+    return { controls: !!a.controls, autoplay: !!a.autoplay, loop: !!a.loop, muted: !!a.muted };
+  }
   function _findImageEditContext(editor) {
     var state = editor.state, sel = state.selection;
-    // outermost styledDiv ancestor that contains an image = modal wrapper
+    // outermost styledDiv ancestor that contains an image/video = modal wrapper
     var $from = sel.$from;
     for (var d = 1; d <= $from.depth; d++) {
       if ($from.node(d).type.name !== 'styledDiv') continue;
       var wrapNode = $from.node(d), found = null;
-      wrapNode.descendants(function (n) { if (n.type.name === 'image' && !found) found = n; });
+      wrapNode.descendants(function (n) {
+        if (!found && (n.type.name === 'image' || n.type.name === 'video')) found = n;
+      });
       if (!found) continue;
       var ws = _styleProbe(wrapNode.attrs.style), is = _styleProbe(found.attrs.style);
       var align = (ws.float === 'left' || ws.cssFloat === 'left') ? 'left'
@@ -892,18 +941,21 @@
       });
       return {
         from: $from.before(d), to: $from.before(d) + wrapNode.nodeSize,
-        defaults: { src: found.attrs.src, size: _sizeBucket(width), align: align, caption: caption.trim() },
+        defaults: { src: found.attrs.src, size: _sizeBucket(width), align: align,
+                    caption: caption.trim(), video: _mediaDefaults(found) },
       };
     }
-    // bare selected image node
-    var selNode = sel.node && sel.node.type && sel.node.type.name === 'image' ? sel.node : null;
+    // bare selected image/video node
+    var selNode = sel.node && sel.node.type
+      && (sel.node.type.name === 'image' || sel.node.type.name === 'video') ? sel.node : null;
     if (selNode) {
       var st = _styleProbe(selNode.attrs.style);
       var al = (st.float === 'left' || st.cssFloat === 'left') ? 'left'
              : (st.float === 'right' || st.cssFloat === 'right') ? 'right' : 'center';
       return {
         from: sel.from, to: sel.to,
-        defaults: { src: selNode.attrs.src, size: _sizeBucket(st.width), align: al, caption: '' },
+        defaults: { src: selNode.attrs.src, size: _sizeBucket(st.width), align: al, caption: '',
+                    video: _mediaDefaults(selNode) },
       };
     }
     return null;
@@ -927,12 +979,18 @@
       }, editCtx ? editCtx.defaults : undefined);
       return;
     }
-    var url = prompt('Image URL (https://…):', '');
+    // Fallback when v1's modal isn't loaded — still honours a video URL.
+    var url = prompt('Image or video URL (https://…):', '');
     if (!url) return;
     url = url.trim();
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    var css = 'max-width:100%;width:400px;display:inline-block;border-radius:4px;';
+    var isVid = (typeof window.teIsVideoUrl === 'function')
+      ? window.teIsVideoUrl(url) : /\.(mp4|webm|ogv|mov|m4v)$/i.test(url.split(/[?#]/)[0]);
     editor.chain().focus().insertContent(
-      '<img src="' + url.replace(/"/g, '&quot;') + '" style="max-width:100%;width:400px;display:inline-block;border-radius:4px;">'
+      isVid
+        ? '<video src="' + url.replace(/"/g, '&quot;') + '" style="' + css + '" controls playsinline preload="metadata"></video>'
+        : '<img src="' + url.replace(/"/g, '&quot;') + '" style="' + css + '">'
     ).run();
   }
 
@@ -1037,7 +1095,7 @@
       ['&#9654; All', 'Collapse all collapsibles', function (e) { setAllDetails(e, false); }],
       ['|'],
       ['&#9552;&#9552;', 'Divider line — separates sections/slides; inside a colored section it splits the section so both halves keep the color', function (e) { insertSectionBreak(e); }],
-      ['&#128444;', 'Insert image — or EDIT the selected image (click/double-click an image first to change its size, alignment or caption)', function (e) { insertImage(e); }],
+      ['&#128444;', 'Insert image OR direct video file — a .mp4/.webm URL (e.g. your Cloudflare one) is detected automatically and plays inline. Or EDIT the selected image/video (click/double-click it first to change size, alignment or caption).', function (e) { insertImage(e); }],
       ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
       ['&#8856; Hide', 'Hide the SELECTED lines from the rendered slide (kept here, faded red, as notes). Cursor inside a hidden block = show it again.', function (e) { toggleHide(e); }],
@@ -1105,6 +1163,8 @@
       // short section lets it overhang; give images a small bottom margin and
       // let the ProseMirror root contain trailing floats.
       '#xe2Editor img{max-width:100%;}',
+      // (dev0716) inserted <video> behaves like an image in the editor flow
+      '#xe2Editor video{max-width:100%;background:#000;border-radius:4px;}',
       '#xe2Editor .ProseMirror::after{content:"";display:block;clear:both;}',
       // (dev0623) selected image/wrapper highlight — click an image, then 🖼 edits it
       '#xe2Editor img.ProseMirror-selectednode,#xe2Editor .ProseMirror-selectednode{outline:3px solid #4af;outline-offset:2px;border-radius:4px;}',
@@ -1325,8 +1385,12 @@
             },
             // (dev0623) Double-click an image = edit it (size/alignment/caption)
             // in the modal, replacing in place.
+            // (dev0716) VIDEO too — a clip's controls eat the single click that
+            // would node-select an image, so double-click is the way in to the
+            // modal for one (single click still works on the wrapper/caption).
             dblclick: function (view, event) {
-              var img = (event.target && event.target.tagName === 'IMG') ? event.target : null;
+              var t = event.target, tn = t && t.tagName;
+              var img = (tn === 'IMG' || tn === 'VIDEO') ? t : null;
               if (!img) return false;
               event.preventDefault();
               try {
