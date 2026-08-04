@@ -2250,7 +2250,10 @@ function vpKeyHandler(e) {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
     const dir = e.key === 'ArrowRight' ? 1 : -1;
-    if (_vpState.slideshowNoLoop && _vpIsPlaying()) {
+    // (dev0718) A crop in progress pins the show to this video, so the arrows
+    // keep their frame-step meaning — which is what you want when nudging a
+    // crop's in/out points anyway.
+    if (_vpState.slideshowNoLoop && _vpIsPlaying() && !_vpCropHolding()) {
       if (window._slideshowVideoSwipe) window._slideshowVideoSwipe(dir);
       if (typeof vpClose === 'function') vpClose();
       return;
@@ -3096,7 +3099,10 @@ function vpUpdateTimeline() {
       if (ct >= seg.start + seg.dur - 0.05) {
         // (dev0280) Slideshow: when the LAST segment finishes, don't loop —
         // close V so the slideshow advances to the next slide.
-        if (_vpState.slideshowNoLoop && _vpState.segIdx >= _vpState.segs.length - 1) {
+        // (dev0718) …unless a crop holds this video, in which case fall through
+        // and loop back to the first segment rather than closing.
+        if (_vpState.slideshowNoLoop && !_vpCropHolding() &&
+            _vpState.segIdx >= _vpState.segs.length - 1) {
           if (typeof vpClose === 'function') vpClose();
           return;
         }
@@ -3318,6 +3324,15 @@ function _vpCropTiltOOB(state, VW, VH) {
 // whichever source dimension that is. >1 means ffmpeg upscales: no new detail,
 // only a bigger file. Returns 1 for 'Same', which emits no scale filter at all.
 // Drives both the live amber dim-label and the save-time confirm.
+// (dev0718) True while the crop overlay is open. A crop session HOLDS the
+// current video: the slideshow must not advance out from under a half-finished
+// crop when the clip ends, and ←/→ frame-step instead of changing slides.
+// Consulted by the 'ended' listener, the segment walk, and the arrow keys.
+function _vpCropHolding() {
+  return !!(_vpState && _vpState.crop &&
+            _vpState.crop.el.container.style.display !== 'none');
+}
+
 function _vpCropUpscaleFactor(state, sw, sh) {
   const resH = state.resHeight;
   if (!Number.isFinite(resH) || resH <= 0) return 1;
@@ -3640,6 +3655,12 @@ function _vpMountCropOverlay(host, vid, row) {
 
   // Disposal — called from vpClose to drop document listeners + ResizeObserver.
   state.dispose = () => {
+    // (dev0718) Closing V mid-crop must hand the slideshow back its chrome and
+    // its autopilot, and take the cheat-sheet down with the player.
+    _vpCropHelpHide();
+    if (typeof window._slideshowCropHold === 'function') {
+      try { window._slideshowCropHold(false); } catch (_) {}
+    }
     try { ro.disconnect(); } catch (_) {}
     if (_gridTimer) clearTimeout(_gridTimer);
     document.removeEventListener('pointermove', onMove, true);
@@ -3668,11 +3689,147 @@ function _vpMountCropOverlay(host, vid, row) {
 //   • Clearing host.style.transform unwinds any lingering stacking context
 //     so things look normal again on close, and so multiple open/close
 //     cycles don't accumulate state.
+// (dev0718) Floating crop cheat-sheet. It stands in for the slideshow chrome
+// that the crop hold hides, so the keys are on screen exactly when they apply.
+// Dragged by its title bar; the position persists across videos and sessions.
+// Body-mounted `position:fixed` at z 42500 — above the slideshow menu layer
+// (42000) and the V player (41000) — so no host stacking context clips it.
+const VP_CROP_HELP_Z = 42500;
+const VP_CROP_HELP_POS_KEY = 'vpCropHelpPos';
+
+function _vpCropHelpShow() {
+  let el = document.getElementById('vp-crop-help');
+  if (el) { el.style.display = ''; _vpCropHelpClamp(el); return; }
+
+  const K = k =>
+    '<kbd style="display:inline-block;min-width:13px;padding:1px 5px;margin:0 1px;' +
+    'background:#1d3149;border:1px solid #6af;border-radius:3px;color:#cfe;' +
+    'font:11px ui-monospace,Consolas,monospace;text-align:center;">' + k + '</kbd>';
+  const row = (keys, txt) =>
+    '<tr><td style="padding:2px 9px 2px 0;white-space:nowrap;vertical-align:top;">' + keys +
+    '</td><td style="padding:2px 0;color:#b9c6d6;">' + txt + '</td></tr>';
+  const head = t =>
+    '<tr><td colspan="2" style="padding:9px 0 3px;color:#6af;font-weight:bold;' +
+    'border-bottom:1px solid rgba(102,170,255,0.28);">' + t + '</td></tr>';
+
+  el = document.createElement('div');
+  el.id = 'vp-crop-help';
+  el.style.cssText = [
+    'position:fixed', 'width:290px', 'max-height:86vh', 'overflow-y:auto',
+    'background:rgba(14,14,28,0.95)', 'border:1px solid #4af', 'border-radius:9px',
+    'color:#dfe6f0', 'font:12px ui-monospace,Consolas,monospace',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.9)', 'z-index:' + VP_CROP_HELP_Z,
+    'user-select:none'
+  ].join(';') + ';';
+  el.innerHTML =
+    '<div id="vp-crop-help-bar" style="display:flex;align-items:center;gap:6px;cursor:move;' +
+      'padding:6px 8px;background:rgba(40,70,110,0.55);border-radius:8px 8px 0 0;' +
+      'border-bottom:1px solid rgba(102,170,255,0.35);">' +
+      '<span style="flex:1;font-weight:bold;color:#8ef;">✂ Crop &amp; trim</span>' +
+      '<span id="vp-crop-help-close" title="Close crop (same as C)" ' +
+        'style="cursor:pointer;padding:0 4px;color:#ccc;">✕</span>' +
+    '</div>' +
+    '<div style="padding:8px 10px 11px;">' +
+      '<div style="color:#8ef;opacity:0.85;margin-bottom:2px;">' +
+        'Slideshow is held — it will not advance off this video until ' + K('C') + ' closes crop.' +
+      '</div>' +
+      '<table style="border-collapse:collapse;width:100%;">' +
+        head('The frame') +
+        row('drag inside',   'move the crop box') +
+        row('drag a corner', 'resize (aspect stays locked)') +
+        row(K('T'),          'swap 16:9 ↔ 9:16') +
+        row(K('Z') + K('X'), 'tilt ∓0.5° to straighten a horizon') +
+        row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
+        head('The clip') +
+        row(K('A') + K('B'), 'set start / end (or Ctrl+click the timeline)') +
+        row(K('a') + K('s'), 'nudge start ∓1 frame') +
+        row(K('d') + K('f'), 'nudge end ∓1 frame') +
+        row(K('←') + K('→'), 'step one frame (pauses first)') +
+        row(K('Space'),      'play / pause') +
+        row(K('M'),          'mute') +
+        head('The output') +
+        row('res',   '2160p (4K) · 1440p (2K) · 1080p · 720p · Same') +
+        row('CRF',   'lower = better + bigger · Slow = smaller, slower') +
+        row('⚠',     'amber size label = output is BIGGER than the crop, ' +
+                     'so pixels get enlarged. Grow the box or drop the res.') +
+        head('Finish') +
+        row(K('G'),   'render (or the Crop button) — writes next to the source') +
+        row(K('C'),   'close crop, hand the show back to the slideshow') +
+        row(K('R'),   'toggle the disk-info caption') +
+        row(K('Esc'), 'close the video entirely') +
+      '</table>' +
+    '</div>';
+  document.body.appendChild(el);
+
+  // Restore the last position; default to the upper right, clear of the
+  // crop toolbar which centers itself over the rect.
+  let pos = null;
+  try { pos = JSON.parse(localStorage.getItem(VP_CROP_HELP_POS_KEY) || 'null'); } catch (_) {}
+  el.style.left = ((pos && Number.isFinite(pos.x)) ? pos.x : (window.innerWidth - 306)) + 'px';
+  el.style.top  = ((pos && Number.isFinite(pos.y)) ? pos.y : 64) + 'px';
+  _vpCropHelpClamp(el);
+
+  // Clicks must not reach #gridFullscreen's handler (which would close V).
+  el.addEventListener('click', e => e.stopPropagation());
+  el.querySelector('#vp-crop-help-close').addEventListener('click', e => {
+    e.stopPropagation();
+    _vpCropToggle();
+  });
+
+  const bar = el.querySelector('#vp-crop-help-bar');
+  let drag = null;
+  bar.addEventListener('pointerdown', e => {
+    if (e.target.id === 'vp-crop-help-close') return;
+    e.preventDefault(); e.stopPropagation();
+    const b = el.getBoundingClientRect();
+    drag = { dx: e.clientX - b.left, dy: e.clientY - b.top };
+    try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  bar.addEventListener('pointermove', e => {
+    if (!drag) return;
+    el.style.left = (e.clientX - drag.dx) + 'px';
+    el.style.top  = (e.clientY - drag.dy) + 'px';
+  });
+  bar.addEventListener('pointerup', e => {
+    if (!drag) return;
+    try { bar.releasePointerCapture(e.pointerId); } catch (_) {}
+    drag = null;
+    _vpCropHelpClamp(el);
+    try {
+      localStorage.setItem(VP_CROP_HELP_POS_KEY, JSON.stringify({
+        x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0
+      }));
+    } catch (_) {}
+  });
+}
+
+// Keep the panel on screen — a saved position can outlive the window size that
+// produced it, and a drag can park the title bar past an edge (unreachable).
+function _vpCropHelpClamp(el) {
+  const w = el.offsetWidth || 290, h = el.offsetHeight || 200;
+  const x = Math.max(4, Math.min(window.innerWidth  - w - 4, parseFloat(el.style.left) || 0));
+  const y = Math.max(4, Math.min(window.innerHeight - h - 4, parseFloat(el.style.top)  || 0));
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+}
+
+function _vpCropHelpHide() {
+  const el = document.getElementById('vp-crop-help');
+  if (el) el.remove();
+}
+
 function _vpCropToggle() {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
   const isOpening = (s.el.container.style.display === 'none');
   s.el.container.style.display = isOpening ? '' : 'none';
+  // (dev0718) Trade the slideshow's chrome for the crop cheat-sheet, and take
+  // the show off autopilot so it can't advance mid-edit. Both directions are
+  // driven from here, so C is the single switch between the two modes.
+  if (typeof window._slideshowCropHold === 'function') {
+    try { window._slideshowCropHold(isOpening); } catch (_) {}
+  }
+  if (isOpening) _vpCropHelpShow(); else _vpCropHelpHide();
   const sc = document.getElementById('vp-swipe-catcher');
   const host = s.el.container.parentElement;
   if (isOpening) {
@@ -3734,6 +3891,38 @@ const PROXY_BASE = 'http://127.0.0.1:8081';
 // localStorage. Subsequent crops from the same folder are silent.
 //
 // Returns null if the user cancels the prompt — caller aborts the crop.
+// (dev0718) The prompt asks for a FOLDER, but the natural gesture is Explorer's
+// "Copy as path" on the video itself. Accept either. `rest` is the file's path
+// under the slideshow root, so if the answer ends with that, lopping it off
+// gives the root exactly — right even when the file sits in a subfolder. If it
+// doesn't match (a different file was copied), fall back to dropping a trailing
+// segment that carries a media extension. That fallback is deliberately keyed
+// to media extensions rather than "any dot", so a real folder like
+// "M:\clips.new" is never mistaken for a filename.
+//   M:\Candidates\20260803_…use.mp4  →  M:\Candidates
+// Explorer wraps its copied path in quotes; those and trailing separators go too.
+const _VP_MEDIA_EXT_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v|jpe?g|png|gif|webp|avif|bmp)$/i;
+function _vpCropAnswerToRoot(answer, rest) {
+  const s = String(answer || '').trim().replace(/^"+|"+$/g, '').trim();
+  if (!s) return '';
+  const sep  = s.includes('\\') ? '\\' : '/';
+  const segs = s.split(/[\\/]+/);
+  while (segs.length > 1 && segs[segs.length - 1] === '') segs.pop();  // trailing sep
+  const restSegs = String(rest || '').split(/[\\/]+/).filter(Boolean);
+  const eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  let drop = 0;
+  if (restSegs.length && segs.length > restSegs.length &&
+      restSegs.every((r, i) => eq(segs[segs.length - restSegs.length + i], r))) {
+    drop = restSegs.length;
+  } else if (segs.length > 1 && _VP_MEDIA_EXT_RE.test(segs[segs.length - 1])) {
+    drop = 1;
+  }
+  segs.length -= drop;
+  let out = segs.join(sep);
+  if (/^[A-Za-z]:$/.test(out)) out += sep;   // "M:" alone is CWD-relative — "M:\"
+  return out;
+}
+
 function _vpCropResolveAbsPath(relPath) {
   if (!relPath) return null;
   // Already absolute (Windows drive letter or POSIX root) → pass through.
@@ -3744,11 +3933,14 @@ function _vpCropResolveAbsPath(relPath) {
   const key = 'vpDiskRoot:' + rootName;
   let absRoot = localStorage.getItem(key) || '';
   if (!absRoot) {
-    absRoot = prompt(
+    const answer = prompt(
       'Crop needs the absolute disk path of the folder "' + rootName + '"\n' +
-      'you picked in the slideshow.\n\nExample: M:\\videos\\' + rootName,
+      'you picked in the slideshow.\n\nExample: M:\\videos\\' + rootName + '\n\n' +
+      "Pasting the VIDEO's full path works too — the file part is trimmed off.",
       ''
     );
+    if (!answer) return null;
+    absRoot = _vpCropAnswerToRoot(answer, rest);
     if (!absRoot) return null;
     localStorage.setItem(key, absRoot);
   }
@@ -4159,7 +4351,10 @@ function vpMountDirectVideo(host, link, seg, muted) {
   // fires only when nothing is looping the clip (e.g. Full mode) — the
   // Selected-mode end is handled in vpUpdateTimeline. Gated on the slideshow
   // flag so standalone V playback is unaffected.
+  // (dev0718) …and not while a crop is open — the clip parks on its last frame
+  // instead of the show marching on to the next file mid-edit.
   vid.addEventListener('ended', () => {
+    if (_vpCropHolding()) return;
     if (_vpState && _vpState.slideshowNoLoop && typeof vpClose === 'function') vpClose();
   });
   // (dev0281) Apply a carried-over playback speed (e.g. a slideshow session

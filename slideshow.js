@@ -1244,7 +1244,8 @@ function _slideshowPlayVideo(slide) {
     const capMs = st.settings.slideSec * 3 * 1000;
     const fire = () => {
       if (!_slideshowState || _slideshowState !== st || !st._videoActive) return;
-      if (st.paused) { st._videoCapTimer = setTimeout(fire, 1000); return; }
+      // (dev0718) A crop in progress holds the video exactly like Pause does.
+      if (st.paused || st._cropHold) { st._videoCapTimer = setTimeout(fire, 1000); return; }
       if (typeof vpClose === 'function') vpClose();
     };
     st._videoCapTimer = setTimeout(fire, capMs);
@@ -1342,6 +1343,35 @@ function _slideshowAfterVideoClose() {
 window._slideshowVideoSwipe = function (dir) {
   if (_slideshowState && _slideshowState._videoActive) {
     _slideshowState._closeDir = (dir < 0) ? -1 : 1;
+  }
+};
+
+// (dev0718) Crop hold — vp.js calls this when C opens/closes the crop overlay.
+// Opening a crop is a commitment to THIS video, so the show comes off
+// autopilot: the Both-ShortVid cap timer stands down (see _slideshowPlayVideo),
+// and vp.js separately suppresses its own end-of-video close. The slideshow's
+// chrome hides too, so the crop rect gets a clear frame — the settings menu,
+// its collapsed "+" stub, and review mode's tally card + bottom file strip.
+// Everything is restored, in place, when C toggles back.
+window._slideshowCropHold = function (on) {
+  const st = _slideshowState;
+  if (!st) return;
+  st._cropHold = !!on;
+  for (const id of ['slideshowMenu', 'slideshowMenuStub',
+                    'slideshowTally', 'slideshowReviewInfo']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (on) {
+      // Stash the pre-hold display ONCE — a second hold must not record the
+      // 'none' we ourselves just wrote.
+      if (el.dataset.ssCropPrevDisplay === undefined) {
+        el.dataset.ssCropPrevDisplay = el.style.display;
+      }
+      el.style.display = 'none';
+    } else {
+      el.style.display = el.dataset.ssCropPrevDisplay || '';
+      delete el.dataset.ssCropPrevDisplay;
+    }
   }
 };
 
