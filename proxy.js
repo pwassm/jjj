@@ -421,7 +421,7 @@ function must(cond, msg) { if (!cond) throw new Error(msg); }
 //                                 crop is absent (otherwise the call is a
 //                                 no-op).
 //   aspect    'L'|'P'         — used with resHeight to derive the scale filter
-//   resHeight 1080|720|'source' — when numeric, append ',scale=-2:H' (L) or
+//   resHeight 2160|1440|1080|720|'source' (dev0717) — when numeric, append ',scale=-2:H' (L) or
 //                                 ',scale=H:-2' (P) to the filter chain.
 //                                 'source' or undefined → no scale.
 //   rotate    {rad,ow,oh}      — OPTIONAL (dev0318); horizon-straighten. Prepends

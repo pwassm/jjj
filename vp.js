@@ -3312,6 +3312,20 @@ function _vpCropTiltOOB(state, VW, VH) {
   return false;
 }
 
+// (dev0717) How much the chosen output resolution would ENLARGE the crop rect.
+// resHeight is the SHORT side either way — the proxy scales height for L
+// (`scale=-2:H`) and width for P (`scale=H:-2`) — so it is compared against
+// whichever source dimension that is. >1 means ffmpeg upscales: no new detail,
+// only a bigger file. Returns 1 for 'Same', which emits no scale filter at all.
+// Drives both the live amber dim-label and the save-time confirm.
+function _vpCropUpscaleFactor(state, sw, sh) {
+  const resH = state.resHeight;
+  if (!Number.isFinite(resH) || resH <= 0) return 1;
+  const srcShort = (state.aspect === 'P') ? sw : sh;
+  if (!srcShort) return 1;
+  return resH / srcShort;
+}
+
 function _vpMountCropOverlay(host, vid, row) {
   if (!row || !row._directVideoFile) return;
 
@@ -3352,7 +3366,10 @@ function _vpMountCropOverlay(host, vid, row) {
     '<span style="opacity:0.7;">CRF</span>' +
     '<input id="vp-crop-crf" type="range" min="0" max="28" value="18" style="width:90px;vertical-align:middle;">' +
     '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">18</span>' +
-    '<select id="vp-crop-res" style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
+    '<select id="vp-crop-res" title="Output short side. The W×H label turns amber when the crop rect is smaller than this — ffmpeg would enlarge pixels rather than add detail." ' +
+      'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
+      '<option value="2160">2160p (4K)</option>' +
+      '<option value="1440">1440p (2K)</option>' +
       '<option value="1080">1080p</option>' +
       '<option value="720">720p</option>' +
       '<option value="source">Same</option>' +
@@ -3457,9 +3474,17 @@ function _vpMountCropOverlay(host, vid, row) {
       const even = n => Math.max(2, Math.floor(n / 2) * 2);
       const sw = even(state.frac.w * r.VW);
       const sh = even(state.frac.h * r.VH);
-      dimLbl.textContent = sw + ' × ' + sh + (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '');
+      // (dev0717) Second amber trigger: the rect is smaller than the chosen
+      // output resolution, so the proxy's scale filter would ENLARGE it — no
+      // new detail, just bigger pixels and a fatter file. Live while dragging
+      // so the rect can be grown before committing to an encode.
+      const up = _vpCropUpscaleFactor(state, sw, sh);
+      const upTxt = (up > 1.005) ? ('  ·  ⚠ ' + up.toFixed(2) + '× enlarged') : '';
+      dimLbl.textContent = sw + ' × ' + sh +
+        (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '') + upTxt;
       dimLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
-      dimLbl.style.color = (state.angle && _vpCropTiltOOB(state, r.VW, r.VH)) ? '#fb3' : '#dfe6f0';
+      dimLbl.style.color =
+        (upTxt || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
     }
     updateAngleUI();
   }
@@ -3546,6 +3571,7 @@ function _vpMountCropOverlay(host, vid, row) {
   resSel.addEventListener('change', () => {
     const v = resSel.value;
     state.resHeight = (v === 'source') ? 'source' : (+v || 1080);
+    paint();   // (dev0717) re-evaluate the enlargement warning for the new target
   });
 
   // (dev0318) ── Rotation controls ───────────────────────────────────────────
@@ -3828,15 +3854,38 @@ async function _vpGoSave(opts) {
     if (typeof toast === 'function') toast('save: cannot parse path', 2400);
     return;
   }
+  // Crop overlay visible → crop+scale. Else → lossless trim.
+  const cropOn = !!(_vpState.crop && _vpState.crop.el.container.style.display !== 'none');
+  const vid = _vpState.player && _vpState.player.el;
+  // (dev0717) Enlargement preflight, deliberately BEFORE the name prompt — the
+  // fix is to resize the rect or drop the output res, not to rename. Only the
+  // crop path scales; the lossless trim is exempt.
+  if (cropOn && vid) {
+    const s0 = _vpState.crop;
+    const even0 = n => Math.max(2, Math.floor(n / 2) * 2);
+    const sw0 = even0(s0.frac.w * (vid.videoWidth  || 0));
+    const sh0 = even0(s0.frac.h * (vid.videoHeight || 0));
+    const up  = _vpCropUpscaleFactor(s0, sw0, sh0);
+    if (up > 1.005) {
+      const srcShort = (s0.aspect === 'P') ? sw0 : sh0;
+      const ok = confirm(
+        '⚠ Pixel enlargement\n\n' +
+        'Crop rect is ' + sw0 + ' × ' + sh0 + ' source pixels. Its short side (' +
+        srcShort + 'px)\nis under the ' + s0.resHeight + 'p output, so ffmpeg would upscale it ' +
+        up.toFixed(2) + '×.\n\nThat adds no detail — only encode time and file size.\n\n' +
+        'Enlarge the crop rect, or pick a lower output resolution.\n\nEncode anyway?');
+      if (!ok) {
+        if (typeof toast === 'function') toast('save cancelled — would enlarge pixels', 2400);
+        return;
+      }
+    }
+  }
   const id = prompt('Save name/ID for this clip:', '');
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
   const safeId = id.replace(/[<>:"/\\|?*~]/g, '_').trim() || 'unnamed';
-  // Crop overlay visible → crop+scale. Else → lossless trim.
-  const cropOn = !!(_vpState.crop && _vpState.crop.el.container.style.display !== 'none');
   const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
   const endSec   = Math.max(_vpState.aPoint, _vpState.bPoint);
   const durStr = _vpDurStr(endSec - startSec);
-  const vid = _vpState.player && _vpState.player.el;
   let outName, payload;
   if (cropOn) {
     const s = _vpState.crop;
