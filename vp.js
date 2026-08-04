@@ -3986,6 +3986,7 @@ function _vpMountCropOverlay(host, vid, row) {
       t.ta.style.fontSize = Math.max(5, t.size * rectH) + 'px';
       growText(t);
     });
+    syncTextWindow();
   }
 
   // The box hugs its text, so the dashed outline shows the real footprint.
@@ -4003,10 +4004,32 @@ function _vpMountCropOverlay(host, vid, row) {
   // the playhead; the render turns them into clip-relative enable= times.
   function paintTextMarks(t) {
     const a = t.atStart, b = t.atEnd;
-    if (a == null && b == null) { t.tlbl.style.display = 'none'; return; }
-    t.tlbl.style.display = '';
-    t.tlbl.textContent = '⏱ ' + (a == null ? 'clip start' : a.toFixed(2) + 's') +
-                         ' → ' + (b == null ? 'clip end' : b.toFixed(2) + 's');
+    if (a == null && b == null) { t.tlbl.style.display = 'none'; }
+    else {
+      t.tlbl.style.display = '';
+      t.tlbl.textContent = '⏱ ' + (a == null ? 'clip start' : a.toFixed(2) + 's') +
+                           ' → ' + (b == null ? 'clip end' : b.toFixed(2) + 's');
+    }
+    syncTextWindow();
+  }
+
+  // (dev0726) A windowed caption is on screen ONLY between its marks — here as
+  // well as in the file. Without this the overlay showed every box at every
+  // moment and the window was invisible until the render was already written.
+  //
+  // `visibility`, not `display`: the box keeps its layout, so growText's
+  // scrollHeight still measures, and hidden children can't be clicked either
+  // (visibility is inherited, pointer-events:none on the wrapper is not — the
+  // grips and ✕ set their own). The box being TYPED IN is always shown; you
+  // can't edit what isn't on screen, and the playhead doesn't move while typing.
+  function syncTextWindow(now) {
+    const t0 = (now == null) ? _vpNowSec() : now;
+    state.texts.forEach(t => {
+      const on = (editing === t)
+              || ((t.atStart == null || t0 >= t.atStart - 0.001)
+               && (t.atEnd   == null || t0 <= t.atEnd   + 0.001));
+      t.el.style.visibility = on ? '' : 'hidden';
+    });
   }
 
   function textBoxFor(el) {
@@ -4135,6 +4158,7 @@ function _vpMountCropOverlay(host, vid, row) {
     const n = t.ta.value.length;
     try { t.ta.setSelectionRange(n, n); } catch (_) {}
     document.addEventListener('pointerdown', onDocDown, true);
+    syncTextWindow();               // (dev0726) the box being typed in is always shown
     if (typeof toast === 'function') {
       toast('✎ typing — ↑ ↓ resize the type · click outside when done', 2200);
     }
@@ -4153,6 +4177,7 @@ function _vpMountCropOverlay(host, vid, row) {
     try { t.ta.blur(); } catch (_) {}
     t.text = t.ta.value;
     if (!t.text.trim()) removeText(t);   // an empty box is an abandoned one
+    else syncTextWindow();               // (dev0726) …and it hides again if off-window
   }
 
   // The first click OUTSIDE the box ends the entry and is swallowed, so it can't
@@ -4195,6 +4220,12 @@ function _vpMountCropOverlay(host, vid, row) {
 
   const ro = new ResizeObserver(paint);
   ro.observe(host);
+
+  // (dev0726) Keep the windowed captions honest as the playhead moves — during
+  // playback (timeupdate, ~4/s) and after every scrub or frame-step (seeked).
+  const onTimeTick = () => syncTextWindow();
+  vid.addEventListener('timeupdate', onTimeTick);
+  vid.addEventListener('seeked',     onTimeTick);
 
   // ── Drag-to-move (rect body) and corner resize (handles) ────────────────
   let drag = null;
@@ -4446,6 +4477,10 @@ function _vpMountCropOverlay(host, vid, row) {
       try { window._slideshowCropHold(false); } catch (_) {}
     }
     try { ro.disconnect(); } catch (_) {}
+    try {
+      vid.removeEventListener('timeupdate', onTimeTick);
+      vid.removeEventListener('seeked',     onTimeTick);
+    } catch (_) {}
     if (_gridTimer) clearTimeout(_gridTimer);
     document.removeEventListener('pointermove', onMove, true);
     document.removeEventListener('pointerup',   onUp,   true);
@@ -4601,6 +4636,9 @@ function _vpCropHelpShow() {
                              '<u>s</u>tarts / <u>e</u>nds at the playhead — click, or ' +
                              'press ' + K('s') + ' / ' + K('e') + '. An amber ⏱ under ' +
                              'the box means it is windowed; no badge = the whole clip.') +
+        row('⏱ windowed',    'a windowed box VANISHES here whenever the playhead is ' +
+                             'outside its window — same as in the file. It is not ' +
+                             'deleted: scrub back inside the window to see or edit it.') +
         head('The clip') +
         // (dev0719) asdf now walk the PLAYHEAD and shifted A/B stamp the point
         // it's parked on — find the frame, then mark it.
