@@ -4845,7 +4845,7 @@ async function housekeepingFillYTOrient() {
   toast(msg, 10000);
 }
 
-// (dev0504) start = 'top' | 'focused'; rowOrient = 'L' | 'P' | 'any'. The grid SHAPE
+// (dev0504) start = 'top' | 'focused' | 'selected' (dev0728); rowOrient = 'L' | 'P' | 'any'. The grid SHAPE
 // (_markGridShape) + size + media filter (_markGridMedia) are set by the chips above.
 function runMarkGrid(start, rowOrient) {
   // (dev0331/0502) Build the ordered cell list (ALL) + capacity from the chooser's
@@ -4906,6 +4906,13 @@ function runMarkGrid(start, rowOrient) {
 
   // (dev0504) MEDIA-TYPE filter: All = everything (images + Xs/Quiz + video).
   let eligible = visAll;
+  // (dev0728) "Only selected rows": restrict the pool to the checkbox selection
+  // (checkedRows holds DATA indices) before any other filter, keeping visible order.
+  if (start === 'selected') {
+    if (!checkedRows.size) { toast('No rows checked — use the checkboxes to select rows first', 2200); return; }
+    eligible = eligible.filter(di => checkedRows.has(di));
+    if (!eligible.length) { toast('None of the checked rows are visible under the current filter', 2600); return; }
+  }
   if (_markGridMedia === 'image') {
     eligible = eligible.filter(di => rowMediaKind(data[di]) === 'image');
   } else if (_markGridMedia === 'video') {
@@ -4932,7 +4939,8 @@ function runMarkGrid(start, rowOrient) {
   if (!eligible.length) {
     const ml = _markGridMedia === 'all' ? '' : (_markGridMedia + ' ');
     const ol = rowOrient === 'L' ? 'landscape (Mode=L) ' : rowOrient === 'P' ? 'portrait (Mode=P) ' : '';
-    toast('No ' + ml + ol + 'rows among the ' + visAll.length + ' visible.'
+    toast('No ' + ml + ol + 'rows among the '
+      + (start === 'selected' ? checkedRows.size + ' checked' : visAll.length + ' visible') + '.'
       + (rowOrient === 'L' || rowOrient === 'P' ? '\nRun “Fill Mode” to classify orientation, then retry.' : ''),
       4000);
     return;

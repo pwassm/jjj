@@ -662,6 +662,13 @@ thead th.rn              { color: #fff !important; }
       <div class="mgitem" data-start="focused" data-orient="L">&nbsp;&nbsp;⬌ Landscape only</div>
       <div class="mgitem" data-start="focused" data-orient="P">&nbsp;&nbsp;⬍ Portrait only</div>
       <div class="mgitem" data-start="focused" data-orient="any">&nbsp;&nbsp;⬌⬍ Landscape or Portrait (⇧M)</div>
+      <div style="height:1px;background:rgba(255,180,80,0.18);"></div>
+      <!-- (dev0728) Only the checkbox-selected rows, in visible order. Same media /
+           NoText / orientation filters apply; unchecked rows are never assigned. -->
+      <div style="padding:7px 14px 3px;color:#fc9;font-size:10px;letter-spacing:0.6px;opacity:0.85;">☑ ONLY SELECTED ROWS</div>
+      <div class="mgitem" data-start="selected" data-orient="L">&nbsp;&nbsp;⬌ Landscape only</div>
+      <div class="mgitem" data-start="selected" data-orient="P">&nbsp;&nbsp;⬍ Portrait only</div>
+      <div class="mgitem" data-start="selected" data-orient="any">&nbsp;&nbsp;⬌⬍ Landscape or Portrait</div>
     </div>
   </div>
   <!-- (zip0151) Housekeeping dropdown — surfaces Fill P/S, Fill Mpix,
@@ -1044,7 +1051,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0727';
+  window.HELP_VERSION_STR = 'dev0728';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
