@@ -4700,6 +4700,13 @@ http.createServer((req, res) => {
       });
       try { args = builder(payload, tmpDirs); }
       catch (e) { dropTmp(); send(res, 400, 'exec: ' + e.message, corsForExec(origin)); return; }
+      // (dev0742) The V crop/trim save now writes into a dated subfolder of the
+      // source folder (<dir>/YYYYMMDD/). ffmpeg does not create directories — it
+      // just fails — so make the output's folder here, after the builder has
+      // validated the payload.
+      if (bin === 'ffmpeg' && payload && typeof payload.output === 'string') {
+        try { fs.mkdirSync(path.dirname(payload.output), { recursive: true }); } catch (_) {}
+      }
       // (dev0391) ffprobe returns JSON on stdout — collect it whole rather than
       // streaming it through the ffmpeg progress parser. (dev0394) exiftool in
       // READ mode (no payload.metadata) also emits JSON, so collect it too;

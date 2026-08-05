@@ -5377,6 +5377,14 @@ function _vpDurStr(sec) {
 // (dev0293) Split an absolute path into {dir, base, ext}. Handles both
 // Windows and POSIX separators. Returns null if it doesn't look like a
 // path with an extension.
+// (dev0742) Renders land in a dated subfolder of the source folder — YYYYMMDD —
+// so a day's crops/trims stay together instead of silting up the video folder.
+// The proxy creates the folder before spawning ffmpeg (it won't make it itself).
+function _vpOutDirStamp() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+}
+
 function _vpSplitPath(p) {
   const m = p.match(/^(.*)([\\/])([^\\/]+)\.([^.\\/]+)$/);
   if (!m) return null;
@@ -5446,6 +5454,8 @@ async function _vpGoSave(opts) {
     if (typeof toast === 'function') toast('save: cannot parse path', 2400);
     return;
   }
+  // (dev0742) Both paths below write into <source folder>/YYYYMMDD/.
+  const outDir = parts.dir + parts.sep + _vpOutDirStamp();
   // Crop overlay visible → crop+scale. Else → lossless trim.
   const cropOn = !!(_vpState.crop && _vpState.crop.el.container.style.display !== 'none');
   const vid = _vpState.player && _vpState.player.el;
@@ -5560,7 +5570,7 @@ async function _vpGoSave(opts) {
     outName = nameParts.join('~') + '~.mp4';
     payload = {
       input: absInput,
-      output: parts.dir + parts.sep + outName,
+      output: outDir + parts.sep + outName,
       crop: cropBox,
       crf: s.crf,
       preset: s.slow ? 'slow' : 'medium',
@@ -5595,7 +5605,7 @@ async function _vpGoSave(opts) {
     outName = [parts.base, safeId, sourceSizeStr, sourceAspect, 'full', durStr].join('~') + '~.mp4';
     payload = {
       input: absInput,
-      output: parts.dir + parts.sep + outName,
+      output: outDir + parts.sep + outName,
       trim: { startSec, endSec },
       overwrite: false
       // No `crop` → builder takes the lossless -c copy path.
