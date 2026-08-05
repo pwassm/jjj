@@ -237,8 +237,9 @@ function _gmSelectDigit(k) {
     toast('Variant ' + k + ' not built yet — 1 = cascade · 2 = swap · r exits', 2200);
   }
   // (dev0705) The FUN MODES card names the live variant and what a click now does,
-  // so it has to follow a variant change wherever the digit came from.
-  if (typeof window._gmFunPanelRefresh === 'function') window._gmFunPanelRefresh();
+  // so it has to follow a variant change wherever the digit came from. (dev0736)
+  // And a chosen variant IS a chosen mode — the card leaves rather than narrating.
+  if (_gmAnyMoving()) _gmFunPanelClose(); else _gmFunPanelRefresh();
 }
 // (dev0460) F → the FallCells "perimeter waterfall" variant. Unlike 1 / 2 (which
 // only pick a variant WHILE a mode is already running), F has its own key and can
@@ -354,10 +355,20 @@ function _gmFunPanelClose() {
 // Bare F over the grid. First press = raise the card; while it is up F is the
 // waterfall toggle, so the old F,F muscle memory still lands on the waterfall
 // and still turns it off again.
+//
+// (dev0736) The card is a CHOOSER, so it gets out of the way the moment a mode is
+// running — you asked for the waterfall, you want to watch the waterfall, not read
+// about it. It stays up only when nothing started (a mode that refused, e.g. a 2×2
+// grid, leaves the card + its toast on screen). Because it no longer stays up, F
+// can't depend on it: while ANY mode is running F is the waterfall toggle, exactly
+// as it was when the card was still there.
 function _gmFunKey() {
-  if (!_gmFunPanelOpen()) { _gmFunPanelShow(); return; }
-  _gmToggleFall();
-  _gmFunPanelRefresh();
+  if (_gmAnyMoving() || _gmFunPanelOpen()) {
+    _gmToggleFall();
+    if (_gmAnyMoving()) _gmFunPanelClose(); else _gmFunPanelRefresh();
+    return;
+  }
+  _gmFunPanelShow();
 }
 
 window._gmFunPanelOpen    = _gmFunPanelOpen;
@@ -432,7 +443,9 @@ document.addEventListener('keydown', e => {
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
     e.preventDefault(); e.stopPropagation();
     _gmMasterToggle();
-    _gmFunPanelRefresh();                           // (dev0705) live readout
+    // (dev0705) live readout → (dev0736) the card drops away once a mode is
+    // actually running; it only stays to explain a mode that didn't start.
+    if (_gmAnyMoving()) _gmFunPanelClose(); else _gmFunPanelRefresh();
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '{' || (e.shiftKey && e.code === 'BracketLeft'))) {

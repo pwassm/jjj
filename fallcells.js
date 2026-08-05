@@ -159,15 +159,18 @@
   function cellEl(cs)  { return document.querySelector('#gridContainer .grid-cell[data-cell="' + cs + '"]'); }
 
   // (dev0735) The grid edge to run on, or 0 if the layout has no usable ring:
-  // square 4×4 and 5×5 (a 3×3 leaves only a 2-cell reserve — too thin for the
-  // re-entry bursts), plus the 17 / 19 layouts, which sit on a 5×5 footprint and
-  // keep the 5×5 ring. Portrait layouts (P3/P12/P27) aren't square and stay out.
+  // square 3×3-5×5 (a 2×2 is all corner — no interior, so no belt), plus the 17 /
+  // 19 layouts, which sit on a 5×5 footprint and keep the 5×5 ring. Portrait
+  // layouts (P3/P12/P27) aren't square and stay out.
+  // (dev0736) 3×3 opened up: ring 8, belt 6, chute 1c-2c, pad 3c, cliff 1b, and a
+  // single centre cell (2b) as the click-to-feature block. Its reserve is only 2
+  // cells, so the re-entry burst is clamped to what the pool actually holds.
   function ringSize() {
     var lay = layout();
     if (lay === '17' || lay === '19') return 5;
     if (lay !== 'square') return 0;
     var n = (typeof _gridGsize === 'number') ? _gridGsize : 5;
-    return (n === 4 || n === 5) ? n : 0;
+    return (n >= 3 && n <= 5) ? n : 0;
   }
 
   // Pin every cell to explicit grid placement (square cells are normally auto-
@@ -189,6 +192,7 @@
       el.style.gridColumn = s.c + (s.cls > 1 ? ' / span ' + s.cls : '');
       el.style.willChange = 'transform, opacity';
       el.style.transformOrigin = '50% 100%';
+      thumbOf(el);        // (dev0736) prime any YouTube still while the intro runs
       var ri = RING.indexOf(s.cs);
       if (ri >= 0) ring[ri] = el;
       else statics.push({ el: el });
@@ -379,9 +383,9 @@
   // irregular pieces that burst outward and then reassemble to full size at 5e.
   //   • PIECES — a 4×5 grid of quads whose shared interior/edge vertices are jittered,
   //     so the 20 fragments tile the cell seamlessly yet each edge is irregular. Every
-  //     shard is a full-cell-size clone of the cell's static look (live iframe/video
-  //     stripped — no 20 reloads) clipped to its own polygon, so together they redraw
-  //     the whole cell and split cleanly along the jittered seams.
+  //     shard is a full-cell-size copy of the cell's FACE (see grabFace / buildFaceHTML)
+  //     clipped to its own polygon, so together they redraw the whole cell and split
+  //     cleanly along the jittered seams.
   //   • REACH — the burst fills a disk centred on 5e's centre out to the radius of
   //     4d's upper-left corner ( = 1.5·diag(cell) ). Each piece flies outward along
   //     its own radial, tumbling about its centroid, to a random 0.42–1.0 of that R.
@@ -401,7 +405,22 @@
     var cx0 = S / 2, cy0 = H / 2;
     var R = 1.5 * Math.hypot(S, H);        // 5e centre → 4d upper-left corner
     var bg = getComputedStyle(z).backgroundColor || '#000';
-    var faceHTML = buildFaceHTML(z);       // the cell's look, minus live media
+    // (dev0736) The cell's real picture if the browser will give us the pixels
+    // (see grabFace): a video frame or a YouTube still, painted once here and
+    // copied onto every shard. faceHTML is the fallback — the cell's own markup
+    // minus live media, which is already the real thing for image / text cells.
+    var master = grabFace(z, S, H);
+    var faceURL = null;
+    if (master) {
+      // A readable canvas gives one data URL that all 20 shards share as a
+      // background — cheaper and sharper than 20 canvases. Cross-origin video
+      // taints the canvas, which blocks READING it but not drawing or showing
+      // it, so that case just falls through to a canvas copy per shard.
+      var dom = domColor(master);          // null when the canvas is tainted
+      if (dom) bg = dom;
+      try { faceURL = master.toDataURL('image/jpeg', 0.7); } catch (e) { faceURL = null; }
+    }
+    var faceHTML = master ? '' : buildFaceHTML(z);
 
     // Shard layer over 5e, opened in the squashed pose so the swap is seamless.
     var layer = document.createElement('div');
@@ -434,9 +453,13 @@
       var sh = document.createElement('div');
       sh.style.cssText = 'position:absolute;left:0;top:0;width:' + S + 'px;height:' + H + 'px;' +
         'overflow:hidden;background:' + bg + ';box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);' +
+        (faceURL ? 'background-image:url(' + faceURL + ');background-size:100% 100%;' : '') +
         '-webkit-clip-path:' + poly + ';clip-path:' + poly + ';' +
         'transform-origin:' + ccx.toFixed(1) + 'px ' + ccy.toFixed(1) + 'px;will-change:transform;';
-      sh.innerHTML = faceHTML;
+      if (!faceURL) {
+        if (master) sh.appendChild(copyCanvas(master, S, H));   // tainted: draw it, don't read it
+        else sh.innerHTML = faceHTML;                           // image / text cells: their own markup
+      }
       layer.appendChild(sh);
       var vx = ccx - cx0, vy = ccy - cy0, len = Math.hypot(vx, vy) || 1;
       var dist = R * rrange(0.42, 1.0);
@@ -478,16 +501,127 @@
     }, SHATTER_OUT * 1000));
   }
 
-  // The cell's static appearance for the shards: a clone with live media and overlays
-  // removed (iframe/video would each reload — 20× — and show nothing in <1 s anyway;
-  // the label/interactor don't belong on a fragment). Image / HTML cells keep their
-  // real content, so they visibly break along the seams; video / IG cells shatter as
-  // their backing colour. Returned as a string so all 20 shards stamp it cheaply.
+  // The FALLBACK face — the cell's static appearance as a clone with live media and
+  // overlays removed (iframe/video would each reload, 20×, and show nothing in <1 s
+  // anyway; the label/interactor don't belong on a fragment). Image / HTML cells keep
+  // their real content here, so they visibly break along the seams. (dev0736) Video
+  // and YouTube cells no longer come through here at all — grabFace paints their real
+  // pixels instead. Returned as a string so all 20 shards stamp it cheaply.
   function buildFaceHTML(cell) {
     var clone = cell.cloneNode(true);
     clone.querySelectorAll('iframe,video,script,.grid-interactor,[id^="grid-vid-"]')
          .forEach(function (n) { n.remove(); });
     return clone.innerHTML;
+  }
+
+  // ── (dev0736) Shard faces — the cell's real picture wherever it can be had ────
+  // A shard used to be buildFaceHTML's clone and nothing else, so an IMAGE or text
+  // cell broke into pieces of itself while a VIDEO cell broke into 20 black
+  // rectangles. The face now comes from the best source the browser will let us
+  // paint:
+  //   • <video> (disk / R2 / any direct link) → drawImage the CURRENT frame. Drawing
+  //     a cross-origin video is allowed; only READING the canvas back (toDataURL /
+  //     getImageData) is blocked — so the frame shows either way. A readable canvas
+  //     becomes one shared data URL, a tainted one a canvas copy per shard.
+  //   • YouTube iframe → the player's pixels are off limits at any price, but the
+  //     video's own still isn't: i.ytimg.com/vi/<id>/mqdefault.jpg, preloaded when
+  //     the mode starts so it's cached well before the first cell falls. Not the
+  //     frame that's on screen, but unmistakably the same video.
+  //   • image / text cells → buildFaceHTML's clone already IS their real content.
+  //   • Vimeo / IG / TikTok / Pinterest embeds → cross-origin iframes with no
+  //     readable pixels and no cheap still. Nothing to sample, so they keep the flat
+  //     cell background (the one case that stays black).
+  // Whenever a canvas does turn out to be readable, domColor() reduces it to the
+  // frame's dominant colour and that backs the shards, so any gap around the face
+  // is the picture's own colour instead of black.
+
+  var YT_RE = /(?:youtube(?:-nocookie)?\.com\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/;
+
+  // The YouTube still for a cell, kicked off the first time we look at it (start()
+  // primes every cell; a buffered mount that builds its iframe late gets picked up
+  // on a later fall). CORS is requested first — if i.ytimg.com grants it the canvas
+  // stays readable, which buys the cheap data-URL path and a real dominant colour;
+  // if it refuses, the load errors and we retry plain, since drawImage needs no
+  // permission and only the read-back is lost.
+  function thumbOf(cell) {
+    if (cell._fcThumb) return cell._fcThumb;
+    var fr = cell.querySelector('iframe');
+    var m = (fr && fr.src) ? YT_RE.exec(fr.src) : null;
+    if (!m) return null;
+    var url = 'https://i.ytimg.com/vi/' + m[1] + '/mqdefault.jpg';
+    var im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onerror = function () { var p = new Image(); p.src = url; cell._fcThumb = p; };
+    im.src = url;
+    cell._fcThumb = im;
+    return im;
+  }
+
+  // Paint a source (video frame / still) into a cell-sized canvas, matching the fit
+  // the cell itself uses so the shards break up the picture the viewer was looking
+  // at, not a re-cropped one. Returns null if the source can't be drawn.
+  function paintCover(src, sw, sh, S, H, fit) {
+    if (!sw || !sh) return null;
+    var cv = document.createElement('canvas');
+    cv.width  = Math.max(1, Math.round(S));
+    cv.height = Math.max(1, Math.round(H));
+    var g = cv.getContext('2d');
+    if (!g) return null;
+    var sc = (fit === 'contain') ? Math.min(cv.width / sw, cv.height / sh)
+                                 : Math.max(cv.width / sw, cv.height / sh);
+    var w = sw * sc, h = sh * sc;
+    try { g.drawImage(src, (cv.width - w) / 2, (cv.height - h) / 2, w, h); }
+    catch (e) { return null; }
+    return cv;
+  }
+
+  function grabFace(cell, S, H) {
+    var v = cell.querySelector('video');
+    if (v && v.readyState >= 2 && v.videoWidth) {
+      var cv = paintCover(v, v.videoWidth, v.videoHeight, S, H,
+                          getComputedStyle(v).objectFit || 'cover');
+      if (cv) return cv;
+    }
+    var t = thumbOf(cell);
+    if (t && t.complete && t.naturalWidth)
+      return paintCover(t, t.naturalWidth, t.naturalHeight, S, H, 'cover');
+    return null;
+  }
+
+  function copyCanvas(master, S, H) {
+    var cv = document.createElement('canvas');
+    cv.width = master.width; cv.height = master.height;
+    cv.style.cssText = 'position:absolute;left:0;top:0;width:' + S + 'px;height:' + H + 'px;';
+    var g = cv.getContext('2d');
+    if (g) { try { g.drawImage(master, 0, 0); } catch (e) {} }
+    return cv;
+  }
+
+  // The frame's DOMINANT colour, or null if the canvas is tainted (cross-origin
+  // media — reads are refused, and that's not recoverable). Downscale to 16×16,
+  // drop the 256 samples into a coarse 8×8×8 colour cube, take the fullest bucket
+  // and average only those samples: cheap, and much truer than a flat mean, which
+  // turns any colourful frame to mud.
+  function domColor(cv) {
+    try {
+      var t = document.createElement('canvas'); t.width = t.height = 16;
+      var g = t.getContext('2d');
+      if (!g) return null;
+      g.drawImage(cv, 0, 0, 16, 16);
+      var d = g.getImageData(0, 0, 16, 16).data;      // throws on a tainted canvas
+      var bins = {}, best = null, bestN = 0;
+      for (var i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 8) continue;                   // ignore transparent samples
+        var k = (d[i] >> 5) * 64 + (d[i + 1] >> 5) * 8 + (d[i + 2] >> 5);
+        var b = bins[k] || (bins[k] = { n: 0, r: 0, g: 0, b: 0 });
+        b.n++; b.r += d[i]; b.g += d[i + 1]; b.b += d[i + 2];
+        if (b.n > bestN) { bestN = b.n; best = b; }
+      }
+      if (!best) return null;
+      return 'rgb(' + Math.round(best.r / best.n) + ',' +
+                      Math.round(best.g / best.n) + ',' +
+                      Math.round(best.b / best.n) + ')';
+    } catch (e) { return null; }
   }
 
   function cleanupShatter(z, layer) {
@@ -500,7 +634,10 @@
     if (!active) return;
     injectTimer = setTimeout(function () {
       if (!active) return;
+      // (dev0736) Never ask for more cells than the pool holds — a 3×3's reserve is
+      // two, so a burst of three would just no-op its way through injectOnce.
       var burst = SUB_CELLS_MIN + rint(SUB_CELLS_MAX - SUB_CELLS_MIN + 1);
+      burst = Math.max(1, Math.min(burst, reserve ? reserve.length : 0));
       for (var k = 0; k < burst; k++) injectOnce();
       scheduleInject();
     }, rrange(SUB_MIN, SUB_MAX) * 1000);
@@ -661,7 +798,7 @@
     if (!gridOpen()) return false;
     if (!DESKTOP) { toast('Fall cells is desktop-only (too heavy for phones)', 2200); return false; }
     var n = ringSize();
-    if (!n) { toast('Fall cells needs a 4×4, 5×5, 17 or 19 grid', 2200); return false; }
+    if (!n) { toast('Fall cells needs a square 3×3-5×5, 17 or 19 grid', 2200); return false; }
     buildGeom(n);
     reserve = [];
     if (!pinAndCapture()) { toast('Grid still drawing — try again in a moment', 1800); restoreAll(); ring = statics = reserve = null; return false; }
