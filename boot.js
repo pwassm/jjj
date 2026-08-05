@@ -894,7 +894,11 @@ async function _showShareableMenu() {
   // render inline so an Xe-resized collapsible title sits on the marker line.
   const menuStyle =
     '<style>'
-    + '.smGreeting{font-family:sans-serif;color:#dfe3ea;line-height:1.6;padding:22px 24px 12px;max-width:760px;margin:0 auto;}'
+    // (dev0734) 760px is no longer a literal here — it's --sal-prose-w, declared
+    // once in index.html and shared with the Xs slide overlay. The left/right
+    // gap on the landing page is NOT a margin anyone set: it's this max-width
+    // being centred by `margin:0 auto`, so the leftover splits evenly.
+    + '.smGreeting{font-family:sans-serif;color:#dfe3ea;line-height:1.6;padding:22px 24px 12px;max-width:var(--sal-prose-w,760px);margin:0 auto;}'
     + '.smGreeting h1,.smGreeting h2{color:#8ef;margin:0 0 10px;}'
     + '.smGreeting h2{font-size:22px;}.smGreeting h1{font-size:26px;}'
     + '.smGreeting h3{color:#9ef;font-size:18px;margin:6px 0;}'
@@ -937,7 +941,7 @@ async function _showShareableMenu() {
     + '.sm-chh.on{color:#cfe8ff;}'
     + '.sm-chh-name{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
     + '.sm-chh-date{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
-    + '.sm-chmax{max-width:760px;margin:0 auto;}'
+    + '.sm-chmax{max-width:var(--sal-prose-w,760px);margin:0 auto;}'
     // (dev0381) Choices toolbar: filter box + expand/collapse-all buttons.
     + '.sm-chtools{display:flex;gap:8px;align-items:center;padding:10px 22px 8px;}'
     + '.sm-chfwrap{flex:1;min-width:0;display:flex;gap:6px;}'

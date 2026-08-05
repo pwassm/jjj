@@ -96,6 +96,17 @@
 })();
 </script>
 <style>
+/* (dev0734) Prose column width — the ONE place the reading-column numbers
+ * live. Until now each render context carried its own literal: the landing
+ * greeting 760px (boot.js .smGreeting), the Xs slide overlay 1200px
+ * (xe.js #teSlideContent). That divergence is what forced dev0733's
+ * %-of-line media sizing, so the numbers are named here first and the
+ * contexts read them. Values are UNCHANGED from the literals they replace —
+ * converging the two is a deliberate follow-up, not a side effect of this. */
+:root {
+  --sal-prose-w: 760px;        /* landing greeting / menu reading column */
+  --sal-prose-w-slide: 1200px; /* Xs slide overlay */
+}
 * { box-sizing:border-box; margin:0; padding:0; }
 html, body { height:100%; overflow:hidden; touch-action:manipulation; }
 body { background:#0a0a14; color:#ddd; font-family:monospace,sans-serif; }
@@ -1055,7 +1066,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0733';
+  window.HELP_VERSION_STR = 'dev0734';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

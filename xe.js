@@ -2503,7 +2503,10 @@ function textEditorPreviewSlide(htmlOverride) {
         </button>
       </div>
     </div>
-    <div id="teSlideContent" style="max-width:1200px;width:100%;color:#fff;
+    <!-- (dev0734) 1200px is now --sal-prose-w-slide (index.html :root), the
+         Xs half of the shared prose-width pair with the landing greeting's
+         --sal-prose-w. Same value as before; named so the two can converge. -->
+    <div id="teSlideContent" style="max-width:var(--sal-prose-w-slide,1200px);width:100%;color:#fff;
                 font-family:sans-serif;font-size:24px;line-height:1.6;
                 background:#0a0a1a;padding:40px 60px;border-radius:8px;
                 max-height:90vh;overflow-y:auto;margin-top:64px;"></div>
