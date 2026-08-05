@@ -5751,6 +5751,9 @@ function vpMountDirectVideo(host, link, seg, muted) {
   vid.playsInline = true;
   vid.muted = !!muted;
   vid.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+  // (dev0740) No ⤓ and no native "Save video as…" here — this is the viewer's
+  // player. See salLockDownVideo: it removes the offer, not the ability.
+  if (window.salLockDownVideo) window.salLockDownVideo(vid);
   if (seg && seg.start) vid.currentTime = seg.start;
   host.appendChild(vid);
   _vpMountDiskInfoOverlay(host, vid, window._vpCurrentRow);

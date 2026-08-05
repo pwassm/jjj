@@ -368,7 +368,34 @@
   // as exported names for the headless round-trip tests.
   function parseFtext(raw) { return { inner: raw || '', slide: null }; }
 
-  function serialize(editor) { return editor.getHTML(); }
+  // (dev0740) An empty TipTap document serializes to '<p></p>', never ''. So
+  // opening a row with no ftext, touching nothing and letting the ~1s autosave
+  // run wrote '<p></p>' onto a field that had been genuinely empty — a row that
+  // now counts as "has ftext" everywhere downstream, purely because someone
+  // looked at it. Collapse an empty document back to the empty string.
+  //
+  // '' and not `delete`: core.js's ftext-loss guard treats an ABSENT ftext as
+  // "in-memory copy was stripped, restore it from disk" and would put the
+  // '<p></p>' straight back. It leaves '' alone as a deliberate clear, which is
+  // exactly what this is.
+  function _isBlankDoc(html) {
+    if (!html) return true;
+    var s = String(html);
+    if (!s.trim()) return true;
+    var d = document.createElement('div');
+    d.innerHTML = s;
+    // Anything with no text of its own still counts as content — a slide that
+    // is one image, one video or a divider must never serialize to empty.
+    if (d.querySelector('img,video,audio,iframe,hr,table,details,svg,embed,object,source')) {
+      return false;
+    }
+    return (d.textContent || '').replace(/[ ​]/g, ' ').trim() === '';
+  }
+
+  function serialize(editor) {
+    var html = editor.getHTML();
+    return _isBlankDoc(html) ? '' : html;
+  }
 
   // (dev0628) PASTE SANITIZER — v1 parity (xe.js paste listener → core.js
   // _sanitizePastedHtml). v2 had NO paste handling, so a rich web paste went

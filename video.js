@@ -7,6 +7,57 @@ window.seeLearnYTLoading    = false;
 window.seeLearnVimeoReady   = false;
 window.seeLearnVimeoLoading = false;
 
+// (dev0740) Take the browser's own download affordances off a <video controls>.
+//
+// A right-click (or a phone long-press) on a native player opens the BROWSER's
+// menu, not ours — "Save video as…", "Download", "Cast", "Picture in picture" —
+// and it does so before any of our grid/V handlers see the gesture. This turns
+// off the ones that offer to take the file away:
+//   controlsList=nodownload        — drops ⤓ from the control strip
+//   disablePictureInPicture        — drops the PiP item
+//   contextmenu → preventDefault   — suppresses the native menu on the element
+//
+// BE CLEAR ABOUT WHAT THIS IS. It removes the buttons, not the ability: the
+// media URL is in the page and the file is public (every row in a grid has to
+// be, or it could not play). Anyone who opens devtools, or reads the network
+// tab, still has it. This is tidying the UI, NOT protection — do not let it be
+// described as protection anywhere it might be believed.
+//
+// Applied to the VIEWER surfaces only (V's direct player, slide videos). The dev
+// screens — I, X, St, the slideshow's review player — keep the native menu,
+// since downloading from them is something the developer actually does.
+window.salLockDownVideo = function(vid) {
+  if (!vid) return vid;
+  try {
+    vid.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
+    vid.disablePictureInPicture = true;
+    vid.setAttribute('disablePictureInPicture', '');
+    vid.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+  } catch (_) {}
+  return vid;
+};
+
+// (dev0740) …and the same for every OTHER <video> a viewer can reach, without
+// having to find and patch each place one gets built. Slide-embedded videos
+// (Xe's 🖼 insert) are rendered from stored ftext in several contexts, and
+// baking attributes into that HTML is the one thing the xe2 schema is known to
+// strip on the next autosave. A delegated listener sidesteps all of it.
+//
+// USER MODE ONLY, deliberately: the dev screens (I, X, St, the slideshow review
+// player) keep the native menu, because saving a file off one of them is a
+// thing the developer actually does. Capture phase, so it lands before the
+// element's own handlers; it does not stopPropagation, so the grid's and V's
+// own contextmenu handlers still run and our menus still open.
+document.addEventListener('contextmenu', function(e) {
+  try {
+    if (!(typeof _isUserMode === 'function' && _isUserMode())) return;
+    var t = e.target;
+    if (t && (t.tagName === 'VIDEO' || (t.closest && t.closest('video')))) {
+      e.preventDefault();
+    }
+  } catch (_) {}
+}, true);
+
 window.getYouTubeId = function(url) {
   if (!url) return '';
   // Shorts:  youtube.com/shorts/ID

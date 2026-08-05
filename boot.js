@@ -759,10 +759,13 @@ async function _showShareableMenu() {
                tagIds: Array.isArray(r.tags) ? r.tags : [],
                tagBlob: null, hasTaxon: false };
     });
-  // How many of the collection's rows the viewer can reach through Search —
-  // shown under the box so a smaller-than-expected result set reads as a stated
-  // rule rather than a bug.
+  // (dev0740) The "Searches N playable items" line this counted for is gone —
+  // the count is dropped, not merely hidden. Kept as a one-liner rather than
+  // deleted because `playable` is the filter _smRunSearch applies (see the
+  // x.playable check there), and the total is the first thing anyone will want
+  // back if a result set ever looks short.
   const _smPlayableN = _tBlobs.filter(x => x.playable).length;
+  void _smPlayableN;
   // (dev0400) Resolve a blob entry's dictionary-tag text once tagsLib exists.
   // Caches on first success; retries (leaves tagBlob null) while tags are still
   // loading. Includes label + common + aliases + def so every facet of a tag is
@@ -1116,15 +1119,14 @@ async function _showShareableMenu() {
               + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make + Show grid</button>'
               + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
             + '</div>'
-            // (dev0739) Condensed to two lines from three-plus. The old copy
+            // (dev0739/0740) Condensed from three-plus lines to one. The old copy
             // spent a paragraph naming the playable formats and explaining that
-            // one term matches any field — true, but it was reference material
-            // sitting permanently above the results, and on a phone it pushed
-            // them off-screen. The scope count stays (a search that quietly
-            // skips items does read as a bug) and now shares the line it
-            // belongs on; the rest is gone. Same on desktop — it was no more
+            // one term matches any field — reference material parked permanently
+            // above the results, which on a phone pushed them off-screen.
+            // dev0739 kept the "Searches N playable items" count on the end of
+            // this line; dev0740 drops that too. Same on desktop — it was no more
             // useful there, just less costly.
-            + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When ' + _smN + ' or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab. Searches ' + _smPlayableN + ' playable items.</div>'
+            + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When ' + _smN + ' or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
             // (dev0366) Active COI filters, shown so a narrowed result set doesn't
             // look broken. Populated from _filtTaxon / _filtMedia after mount.
             + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'

@@ -95,7 +95,13 @@
 
     var wrap = document.createElement('div');
     wrap.id = KB_ID;
-    wrap.style.cssText = 'position:fixed;right:6px;bottom:6px;z-index:43500;'
+    // (dev0740) z-index has to clear #shareableMenu's 999990. The menu is an
+    // OPAQUE full-screen panel and, since dev0737, a sibling of this in the same
+    // stacking context — at dev0739's 43500 the keyboard was built, mounted and
+    // typing correctly, and painted entirely behind the menu. A keyboard is
+    // always the topmost thing on screen while it is up, so this is high on
+    // purpose rather than tuned to one caller.
+    wrap.style.cssText = 'position:fixed;right:6px;bottom:6px;z-index:999996;'
       + 'width:' + panelW + 'px;padding:8px 10px;border-radius:10px;'
       + 'background:rgba(14,14,28,0.97);border:1px solid #4af;'
       + 'box-shadow:0 6px 28px rgba(0,0,0,0.85);font-family:monospace;'
