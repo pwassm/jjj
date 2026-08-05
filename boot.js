@@ -1177,7 +1177,20 @@ async function _showShareableMenu() {
     // (dev0384) Bottom tab bar — same buttons as the top one.
     + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>';
 
-  document.body.appendChild(ov);
+  // (dev0737) Mount INSIDE #rotateWrap, not on <body>. The menu used to be a
+  // body-level sibling of the wrap, so on a portrait phone it painted in the
+  // PHYSICAL frame (upright, narrow) while everything it launches — the grid,
+  // the viewer, the slideshow — lives inside the wrap and is CSS-rotated 90°.
+  // Opening a view therefore flipped the whole UI portrait→landscape, and the
+  // flip landed on the same frame as the grid mount + first media load, which
+  // is what read as a delay. Inside the wrap the landing page is already in the
+  // rotated (landscape) frame on first paint, so nothing switches afterwards.
+  // Because the wrap is transformed in portrait it is the containing block for
+  // this position:fixed overlay, so inset:0 fills the rotated box — the same
+  // mechanism #gridOverlay already relies on. Out-of-flow, so it is not a flex
+  // item and does not disturb the wrap's column layout. In landscape the wrap
+  // has no transform and inset:0 resolves against the viewport, as before.
+  (document.getElementById('rotateWrap') || document.body).appendChild(ov);
 
   // (dev0361/0362/0366/0368) Nav. Welcome (page 1) is a one-time splash shown
   // only on first entry; both tab bars are hidden there. Pages 2–5 each carry
@@ -1287,17 +1300,22 @@ async function _showShareableMenu() {
   // (dev0369) On the Search page, a right-to-left swipe returns to the Main
   // "Choose a view" page (the main menu) — the same swipe-back feel as the grid.
   // Pointer-based so it works with both touch and a mouse-drag (and is therefore
-  // verifiable on desktop, unlike the old touch-only version). The shareable menu
-  // lives OUTSIDE the rotate-wrap, so its coords are already in the user's visual
-  // frame — no rotateXY needed.
+  // verifiable on desktop, unlike the old touch-only version).
+  // (dev0737) The menu now lives INSIDE the rotate-wrap, so pointer coords arrive
+  // in the PHYSICAL frame and must be mapped through rotateXY to get the visual
+  // frame this direction test is written in. Without the mapping a portrait
+  // phone reads a right-to-left swipe as vertical and the swipe-back dies —
+  // exactly the failure dev0368 hit on the grid.
   let _smSwX = null, _smSwY = null;
+  const _smXY = e => window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
   ov.addEventListener('pointerdown', e => {
-    _smSwX = e.clientX; _smSwY = e.clientY;
+    const p = _smXY(e); _smSwX = p.x; _smSwY = p.y;
   }, true);
   ov.addEventListener('pointerup', e => {
     const x0 = _smSwX, y0 = _smSwY; _smSwX = _smSwY = null;
     if (x0 == null || window._smCurPage !== 3) return;
-    const dx = e.clientX - x0, dy = e.clientY - y0;
+    const p = _smXY(e);
+    const dx = p.x - x0, dy = p.y - y0;
     if (dx < -60 && Math.abs(dx) > Math.abs(dy)) _smShow(2);
   }, true);
   // Populate the search-filter note from the COI-declared filters.
