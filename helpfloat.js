@@ -529,6 +529,15 @@ function hpMode(s) {
 // that exists in either of those two tables must NOT be duplicated here.
 // ─────────────────────────────────────────────────────────────────────────────
 var HP_EXTRA = {
+  // (dev0733) C is the T table over c.json, so ↑/↓ navigate exactly as they do
+  // in T. Alt+↑/↓ is the one key pair that is C's own — it reorders the FILE,
+  // which is the order the menu and the config pickers list grids in.
+  C: { desc: 'The grid configurations in c.json — one row per Collection.',
+    rows: [
+      { k: 'Alt+↑ / Alt+↓', d: 'Move the focused collection up / down one place in c.json — saved straight away. Clear any column sort first (the sorted view is not the file order); with a filter on, it steps past the neighbour you can see.' },
+      { k: '↑ / ↓',         d: 'Move the focused row (navigate) — as in T' },
+      { k: 'Esc / t',       d: 'Leave — back to the Table' }
+    ] },
   I: { desc: 'ig.json review — enrich / download / promote Instagram rows.',
     rows: [
       { k: '↑ / ↓',  d: 'Move the focused row' },

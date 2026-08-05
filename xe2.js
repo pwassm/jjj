@@ -754,7 +754,15 @@
       pos += c.nodeSize;
       if (i === endIdx - 1) to = pos;
     }
-    if (!nodes || !nodes.length) return;
+    // (dev0733) Say so rather than dying quietly. These two bails are the one
+    // path where a colour/margin click looks like a dead button: part of this
+    // segment is already wrapped in its own section, so there is nothing safe to
+    // wrap around the rest. Silence read as "the margin tool does nothing".
+    if (!nodes) {
+      _toast('This stretch is already split into sections — put the cursor inside one of them');
+      return;
+    }
+    if (!nodes.length) { _toast('Nothing here to give a margin to'); return; }
     var a2 = { color: '', background: '', pad: '' };
     a2[key] = value;
     try {
@@ -813,8 +821,15 @@
       var ws = _styleProbe(wrap.node.attrs.style);
       var w = ws.width || st.width || '400px';
       var wrapCss, imgCss;
-      if (align === 'left') { wrapCss = 'float:left;margin:6px 14px 6px 0;width:' + w + ';'; imgCss = 'width:100%;border-radius:4px;'; }
-      else if (align === 'right') { wrapCss = 'float:right;margin:6px 0 6px 14px;width:' + w + ';'; imgCss = 'width:100%;border-radius:4px;'; }
+      // (dev0733) One float-CSS source of truth with the modal's buildHtml, so a
+      // percentage width keeps its inside gutter instead of reverting to the
+      // 14px outside margin that pushes the last item off the line.
+      var _fl = (typeof window.teFloatCss === 'function') ? window.teFloatCss
+        : function (wd, side) {
+            return 'float:' + side + ';width:' + wd + ';'
+              + (side === 'right' ? 'margin:6px 0 6px 14px;' : 'margin:6px 14px 6px 0;');
+          };
+      if (align === 'left' || align === 'right') { wrapCss = _fl(w, align); imgCss = 'width:100%;border-radius:4px;'; }
       else { wrapCss = 'text-align:center;margin:12px 0;'; imgCss = 'max-width:100%;width:' + w + ';display:inline-block;border-radius:4px;'; }
       try {
         var trw = state.tr;
@@ -836,11 +851,20 @@
       editor.commands.focus();
       return;
     }
+    // (dev0733) A bare (unwrapped) image floats by the same rules — a percentage
+    // width gets the inside gutter, a pixel width the classic outside margin.
     var css = 'max-width:100%;border-radius:4px;';
-    if (st.width) css += 'width:' + st.width + ';';
-    if (align === 'left') css += 'float:left;margin:4px 14px 10px 0;';
-    else if (align === 'right') css += 'float:right;margin:4px 0 10px 14px;';
-    else css += 'float:none;display:block;margin:10px auto;';
+    if (align === 'left' || align === 'right') {
+      if (/%\s*$/.test(String(st.width || '')) && typeof window.teFloatCss === 'function') {
+        css += window.teFloatCss(st.width, align);
+      } else {
+        if (st.width) css += 'width:' + st.width + ';';
+        css += (align === 'left') ? 'float:left;margin:4px 14px 10px 0;' : 'float:right;margin:4px 0 10px 14px;';
+      }
+    } else {
+      if (st.width) css += 'width:' + st.width + ';';
+      css += 'float:none;display:block;margin:10px auto;';
+    }
     try {
       editor.view.dispatch(editor.state.tr.setNodeMarkup(sel.from, undefined,
         Object.assign({}, node.attrs, { style: css })));
@@ -892,6 +916,14 @@
       { v: '12%', label: 'Medium margin (12% each side)' },
       { v: '20%', label: 'Wide margin (20% each side)' },
     ];
+    // (dev0733) Mark the level this section already has. Without it the picker
+    // gave no read-out at all, so re-picking the level it was already on looked
+    // identical to the tool not working.
+    var curPad = '';
+    if (_api) {
+      var _sec = _findSection(_api.editor.state);
+      if (_sec) curPad = _sec.node.attrs.pad || '';
+    }
     var r = anchorBtn.getBoundingClientRect();
     var pop = document.createElement('div');
     pop.id = 'xe2MarginPicker';
@@ -907,7 +939,7 @@
       b.innerHTML = '<span style="display:inline-block;width:64px;height:10px;background:#223;border:1px solid #456;' +
         'border-radius:2px;vertical-align:middle;margin-right:8px;position:relative;overflow:hidden;">' +
         '<span style="position:absolute;top:1px;bottom:1px;left:' + inset + '%;right:' + inset + '%;background:#6af;border-radius:1px;"></span>' +
-        '</span>' + lv.label;
+        '</span>' + lv.label + (lv.v === curPad ? ' <span style="color:#6d8;">&#10003;</span>' : '');
       b.onmousedown = function (ev) { ev.preventDefault(); };
       b.onclick = function () {
         pop.remove();
@@ -1032,8 +1064,13 @@
     el.style.cssText = css || '';
     return el.style;
   }
+  // (dev0733) A percentage width is its own Size choice in the modal — hand the
+  // literal value back so re-opening 🖼 on a 30%-wide clip shows 30%, not the
+  // px bucket its rendered size happens to land in.
   function _sizeBucket(width) {
+    width = String(width || '').trim();
     if (width === '100%') return 'full';
+    if (/^\d+(\.\d+)?%$/.test(width)) return width;
     var n = parseFloat(width);
     if (!n) return 'medium';
     if (n <= 280) return 'small';

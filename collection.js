@@ -986,7 +986,13 @@ function cDeleteSelected() {
 // directly below the source, named "<gname>_d" — or "_d2", "_d3", … when that
 // name is already taken (comparison is case-insensitive, matching how the user
 // reads the list). Dates are re-stamped so the copy looks new, not inherited.
+// (dev0733) Duplicating a COPY continues the same series instead of stacking a
+// second suffix: "Greeting_d3" → "Greeting_d4", never "Greeting_d3_d". Any
+// trailing _d / _d<N> is stripped off first, so the whole family always numbers
+// off the one original stem. Other suffixes ("Greeting_o") are left alone —
+// only the duplicate marker this function itself writes is treated as one.
 function _cNextDupName(base) {
+  base = String(base || '').replace(/_d\d*$/i, '');
   const taken = new Set(_cData.map(r => String(r && r.gname || '').trim().toLowerCase()));
   let cand = base + '_d';
   if (!taken.has(cand.toLowerCase())) return cand;
@@ -1018,6 +1024,58 @@ function cDuplicateSelected() {
   cSaveToFile();
   toast('✓ Duplicated as "' + copy.gname + '"', 2000);
 }
+
+// (dev0733) Alt+↑ / Alt+↓ — move the focused collection UP or DOWN one place in
+// c.json (plain ↑/↓ still navigate, as everywhere else in the table). The order
+// in c.json is the order the menu and the config pickers list grids in, so this
+// is how a grid gets promoted or filed away without hand-editing the file.
+//
+// The move is by VISIBLE neighbour, not by raw array index: with a gname filter
+// (or the F row filter) on, Alt+↓ swaps past the row you can actually see below,
+// hopping over the hidden ones in between. A column SORT is different — the view
+// order isn't the file order at all there, so the move is refused rather than
+// silently rearranging rows somewhere off-screen.
+function cMoveFocusedRow(dir) {
+  if (!_cMode) return;
+  if (sortCol) {
+    toast('Sorted view — click the ' + sortCol + ' header until the sort clears, then Alt+↑/↓ moves rows', 2600);
+    return;
+  }
+  if (focus === null || focus.r == null) { toast('Click a row first', 1500); return; }
+  const vis = [], nView = sortedIdx ? sortedIdx.length : data.length;
+  for (let vi = 0; vi < nView; vi++) { if (rowMatchesFilter(data[vr(vi)])) vis.push(vi); }
+  const pos = vis.indexOf(focus.r);
+  if (pos < 0) return;
+  const targetVi = vis[pos + dir];
+  if (targetVi === undefined) { toast(dir < 0 ? 'Already first' : 'Already last', 1200); return; }
+
+  const di = vr(focus.r), tdi = vr(targetVi);
+  const row = data[di];
+  if (!row) return;
+  // splice-out then splice-in at the target index: when tdi > di everything above
+  // di has already shifted down one, so tdi is exactly "just past the target".
+  data.splice(di, 1);
+  data.splice(tdi, 0, row);
+  _cData = data; _gridConfigs = _cData;
+
+  buildSort();
+  const newDi = data.indexOf(row);
+  focus = { r: sortedIdx ? sortedIdx.indexOf(newDi) : newDi, c: focus.c || 0 };
+  render(); cUpdateStatus();
+  cSaveToFile();
+  toast('↕ "' + (row.gname || '(unnamed)') + '" moved ' + (dir < 0 ? 'up' : 'down')
+    + ' — now #' + (newDi + 1) + ' of ' + data.length, 1400);
+}
+
+document.addEventListener('keydown', e => {
+  if (!_cMode) return;
+  if (!e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  const t = e.target, tag = t && t.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+  e.preventDefault(); e.stopPropagation();
+  cMoveFocusedRow(e.key === 'ArrowUp' ? -1 : 1);
+}, true);
 
 // (dev0375) G in grid: open the cell-under-the-mouse's source page in a new tab.
 // (dev0533) Prefer `linkpage` (the source webpage — set for videos and for

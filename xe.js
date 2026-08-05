@@ -2065,6 +2065,44 @@ function teIsVideoUrl(u) { return TE_MEDIA_VIDEO_RE.test(teUrlPath(u)); }
 function teIsImageUrl(u) { return TE_MEDIA_IMAGE_RE.test(teUrlPath(u)); }
 window.teIsVideoUrl = teIsVideoUrl;
 
+// (dev0733) Media width, from the image modal's Size choice. The four named
+// buckets are FIXED PIXELS — which is why a row of media that lined up in Xe
+// (a ~1470px editing column) wrapped on the landing page (.smGreeting caps the
+// column at 760px): 200+400+700px simply doesn't fit there. A percentage width
+// is of the LINE, so the same row keeps its proportions in every render context
+// and on a phone. Anything else (a hand-written width) is passed through.
+const TE_WIDTH_MAP = { small: '200px', medium: '400px', large: '700px', full: '100%' };
+function teSizeToWidth(size) {
+  if (TE_WIDTH_MAP[size]) return TE_WIDTH_MAP[size];
+  if (/^\d+(\.\d+)?%$/.test(String(size || '').trim())) return String(size).trim();
+  return '400px';
+}
+// Wrapper CSS for a floated image/video. A PIXEL width keeps the classic 14px
+// outside margin. A PERCENT width can't: three floats at 20/30/50% already fill
+// the line exactly, and any outside margin then pushes the last one onto its own
+// row — the wrap this whole change exists to stop. So the gutter moves INSIDE
+// the box (border-box + padding), where it costs no line width. The caption sits
+// in that same content box, so it stays centred under the picture either way.
+function teFloatCss(width, align) {
+  const side = align === 'right' ? 'right' : 'left';
+  const isPct = /%\s*$/.test(String(width || ''));
+  if (isPct) {
+    return 'float:' + side + ';width:' + width + ';box-sizing:border-box;'
+      + 'padding-' + (side === 'left' ? 'right' : 'left') + ':14px;margin:6px 0;';
+  }
+  return 'float:' + side + ';width:' + width + ';'
+    + (side === 'left' ? 'margin:6px 14px 6px 0;' : 'margin:6px 0 6px 14px;');
+}
+// Map an existing inline width back to a Size choice for edit-in-place:
+// a named bucket, or the literal percentage so the % option re-selects with
+// the value the media already has.
+function teWidthToSize(w) {
+  w = String(w || '').trim();
+  if (/^\d+(\.\d+)?%$/.test(w) && w !== '100%') return w;
+  for (const k in TE_WIDTH_MAP) if (TE_WIDTH_MAP[k] === w) return k;
+  return 'medium';
+}
+
 function teShowImageModal(onInsert, defaults) {
   defaults = defaults || {};
   // Remove any existing modal so re-clicking the button doesn't stack
@@ -2074,6 +2112,10 @@ function teShowImageModal(onInsert, defaults) {
   const dSrc   = defaults.src   || '';
   const dSize  = defaults.size  || 'medium';
   const dAlign = defaults.align || 'center';
+  // (dev0733) A percentage size arrives as the literal width ("30%"); the radio
+  // that owns it is "pct", and the dropdown beside it carries the number.
+  const dIsPct = /^\d+(\.\d+)?%$/.test(dSize);
+  const dPct   = dIsPct ? dSize : '33%';
   const isEdit = !!defaults.src;
   // (dev0716) Video playback flags. Editing an existing <video> pre-fills from
   // its attributes; a fresh insert gets the sane default — visible controls,
@@ -2113,6 +2155,21 @@ function teShowImageModal(onInsert, defaults) {
         <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgSize" value="medium"${dSize==='medium'?' checked':''}>  Medium (400px)</label>
         <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgSize" value="large"${dSize==='large'?' checked':''}>  Large (700px)</label>
         <label style="cursor:pointer;"><input type="radio" name="teImgSize" value="full"${dSize==='full'?' checked':''}>  Full width</label>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333;">
+          <label style="cursor:pointer;"><input type="radio" name="teImgSize" value="pct"${dIsPct?' checked':''}>  % of line</label>
+          <select id="teImgPct" style="margin-left:8px;background:#0a0a1a;border:1px solid #555;color:#fff;
+                  border-radius:4px;font-family:monospace;font-size:12px;padding:3px 6px;outline:none;">
+            ${(() => {
+              const list = ['15%','20%','25%','30%','33%','40%','50%','60%','66%','75%'];
+              // Keep an off-list width the media already has, so re-opening the
+              // modal and pressing Replace can't silently resize it.
+              if (dIsPct && !list.includes(dPct)) list.unshift(dPct);
+              return list.map(p => `<option value="${p}"${p===dPct?' selected':''}>${p}</option>`).join('');
+            })()}
+          </select>
+          <span style="color:#666;font-size:11px;margin-left:8px;">scales with the page —
+            side-by-side media stay side by side (20+30+50 fills a line)</span>
+        </div>
       </fieldset>
 
       <fieldset style="border:1px solid #333;border-radius:6px;padding:8px 12px;
@@ -2186,8 +2243,9 @@ function teShowImageModal(onInsert, defaults) {
   // behave identically for both. preload="metadata" keeps a slide with several
   // clips cheap to open — only the first frame + duration are fetched.
   function buildHtml(url, size, align, caption, kind, vopts) {
-    const widthMap  = { small: '200px', medium: '400px', large: '700px', full: '100%' };
-    const w = widthMap[size] || '400px';
+    // (dev0733) `size` is either a named px bucket or a literal percentage
+    // ("30%") from the "% of line" option — see teSizeToWidth.
+    const w = teSizeToWidth(size);
     const isVid = kind === 'video';
     const cap = caption ? caption.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     const capHtml = cap
@@ -2209,15 +2267,11 @@ function teShowImageModal(onInsert, defaults) {
       ? '<video src="' + url + '" style="' + css + '"' + flags + '></video>'
       : '<img src="' + url + '" style="' + css + '" alt="">';
 
-    if (align === 'left') {
-      if (cap) return '<div style="float:left;margin:6px 14px 6px 0;width:' + w + ';">'
+    if (align === 'left' || align === 'right') {
+      const fl = teFloatCss(w, align);
+      if (cap) return '<div style="' + fl + '">'
         + tag('width:100%;border-radius:4px;') + capHtml + '</div>';
-      return tag('float:left;width:' + w + ';margin:6px 14px 6px 0;border-radius:4px;');
-    }
-    if (align === 'right') {
-      if (cap) return '<div style="float:right;margin:6px 0 6px 14px;width:' + w + ';">'
-        + tag('width:100%;border-radius:4px;') + capHtml + '</div>';
-      return tag('float:right;width:' + w + ';margin:6px 0 6px 14px;border-radius:4px;');
+      return tag(fl + 'border-radius:4px;');
     }
     // Centered: wrap in figure/div with margin auto for predictable centering.
     return '<div style="text-align:center;margin:12px 0;">'
@@ -2250,7 +2304,9 @@ function teShowImageModal(onInsert, defaults) {
 
   function doInsert() {
     const srcRaw = modal.querySelector('#teImgSrc').value;
-    const size  = (modal.querySelector('input[name="teImgSize"]:checked')  || {}).value || 'medium';
+    let size  = (modal.querySelector('input[name="teImgSize"]:checked')  || {}).value || 'medium';
+    // (dev0733) "% of line" carries its value in the dropdown beside the radio.
+    if (size === 'pct') size = modal.querySelector('#teImgPct').value || '33%';
     const align = (modal.querySelector('input[name="teImgAlign"]:checked') || {}).value || 'center';
     const caption = (modal.querySelector('#teImgCaption').value || '').trim();
     const r = resolveSrc(srcRaw);
@@ -2269,6 +2325,12 @@ function teShowImageModal(onInsert, defaults) {
     if (typeof onInsert === 'function') onInsert(html);
   }
   modal.querySelector('#teImgInsert').onclick = doInsert;
+  // (dev0733) Touching the % dropdown selects the % radio — otherwise picking a
+  // percentage while "Medium" is still checked silently does nothing.
+  modal.querySelector('#teImgPct').addEventListener('change', () => {
+    const r = modal.querySelector('input[name="teImgSize"][value="pct"]');
+    if (r) r.checked = true;
+  });
   modal.querySelector('#teImgSrc').addEventListener('input', syncKind);
   modal.querySelector('#teImgSrc').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); doInsert(); }
@@ -2323,15 +2385,14 @@ function teEditImage(img) {
   //      fall back to img.src.
   const src = img.getAttribute('src') || '';
 
-  // Try to map current width back to one of our named sizes. If the width
-  // doesn't match exactly (user resized via DevTools or pasted from
-  // elsewhere), default to medium.
-  const w = (img.style.width || '').trim();
-  let size = 'medium';
-  if (w === '200px')      size = 'small';
-  else if (w === '400px') size = 'medium';
-  else if (w === '700px') size = 'large';
-  else if (w === '100%')  size = 'full';
+  // Map the current width back to a Size choice — a named px bucket, or the
+  // literal percentage (dev0733), so re-opening the modal shows what it has.
+  // An unrecognised width (hand-edited, pasted) falls back to medium.
+  // In the captioned/floated form the media is width:100% inside a wrapper that
+  // carries the real width — read the wrapper in that case, not the 100%.
+  const ownW = (img.style.width || '').trim();
+  const wrapEl = img.closest && img.closest('div[style*="width"]');
+  const size = teWidthToSize((ownW === '100%' && wrapEl && wrapEl.style.width) || ownW);
 
   // Alignment: left-floated images have float:left; right-floated have
   // float:right; centered ones live inside a wrapping <div style="text-align:center">.

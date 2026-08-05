@@ -4312,12 +4312,26 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
   const src = data[di];
   if (!src) { toast('Active row not found', 1600); return; }
   const now = isoNow();
-  const base = String(src.UID || '');
+  const uid = String(src.UID || '');
+  // (dev0733) Duplicating a duplicate continues the SAME series rather than
+  // stacking suffixes: 904_d3 → 904_d4, never 904_d3_d. Strip any trailing
+  // _d / _d<N> so every copy numbers off the one original UID. Only the marker
+  // this handler itself writes counts — other suffixes (1728_t) stay put, and
+  // the segment split below keeps numbering off the row's own UID.
+  const base = uid.replace(/_d\d*$/i, '');
   // Track existing UIDs so generated suffixes never collide.
   const used = new Set(data.map(rr => String(rr.UID)));
   const uniqueUID = want => {
     let u = want, k = 2;
     while (used.has(u)) { u = want + '_' + (k++); }
+    used.add(u);
+    return u;
+  };
+  // (dev0733) The duplicate marker walks its own numbered series off `base`:
+  // 904_d, 904_d2, 904_d3 … — one suffix per row, however many copies exist.
+  const nextDupUID = () => {
+    let u = base + '_d';
+    for (let n = 2; used.has(u); n++) u = base + '_d' + n;
     used.add(u);
     return u;
   };
@@ -4340,12 +4354,12 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
   let newRows;
   if (segs && segs.length >= 2) {
     newRows = segs.map((seg, i) => {
-      const c = mkCopy(uniqueUID(base + '_' + (i + 1)));
+      const c = mkCopy(uniqueUID(uid + '_' + (i + 1)));
       c.VidRange = window.serializeSegments([seg]);
       return c;
     });
   } else {
-    newRows = [mkCopy(uniqueUID(base + '_d'))];
+    newRows = [mkCopy(nextDupUID())];
   }
 
   data.splice(di + 1, 0, ...newRows);

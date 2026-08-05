@@ -899,8 +899,20 @@ async function _showShareableMenu() {
     + '.smGreeting h2{font-size:22px;}.smGreeting h1{font-size:26px;}'
     + '.smGreeting h3{color:#9ef;font-size:18px;margin:6px 0;}'
     + '.smGreeting p{margin:6px 0;}.smGreeting a{color:#5bf;}'
-    + '.smGreeting details{margin:8px 0;padding:8px 12px;background:#11131f;border-left:3px solid #06f;border-radius:4px;}'
+    // (dev0733) clear:both;overflow:hidden — the SAME float containment every
+    // other render context has had since zip0138 (#teSlideContent details in
+    // index.html) and that Xe itself got in dev0732. Without it a collapsible
+    // full of floated media didn't contain them here: the tinted block collapsed
+    // to the height of its title and the pictures hung out below it, so the
+    // landing page never matched what the editor showed.
+    + '.smGreeting details{margin:8px 0;padding:8px 12px;background:#11131f;border-left:3px solid #06f;border-radius:4px;clear:both;overflow:hidden;}'
     + '.smGreeting summary{cursor:pointer;color:#8ef;}'
+    // (dev0733) A float wider than this 760px column can only wrap. Percentage
+    // widths (the 🖼 "% of line" size) are the fix; this is the safety net for
+    // media still carrying an authored pixel width — it shrinks to the column
+    // instead of shoving its neighbours onto the next line.
+    + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
+    + '.smGreeting img,.smGreeting video{max-width:100%;}'
     + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#8ef;margin:0;}'
     + '.smGreeting hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;}'
     + '.te-cut{display:none;}'
