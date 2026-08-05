@@ -398,6 +398,22 @@
     return html;
   }
 
+  // (dev0732) A <video muted> only STARTS muted when an HTML PARSER built it.
+  // Verified in this Chrome: innerHTML'd `<video muted>` → .muted === true, but
+  // createElement + setAttribute('muted') → .muted === FALSE (the content
+  // attribute maps to defaultMuted, and only the parser copies that into the
+  // live muted property). Xs / the grid / the greeting page all render ftext
+  // through innerHTML, so Muted works there — but ProseMirror builds the
+  // editor's DOM with createElement, so the very same video autoplayed WITH
+  // SOUND inside Xe. Re-assert the property on the element itself.
+  function _forceMutedVideos(el) {
+    if (!el || !el.querySelectorAll) return;
+    var vids = el.querySelectorAll('video[muted],video[autoplay]');
+    for (var i = 0; i < vids.length; i++) {
+      if (!vids[i].muted) { vids[i].defaultMuted = true; vids[i].muted = true; }
+    }
+  }
+
   function createEditor(element, raw, opts) {
     opts = opts || {};
     var editor = new Editor({
@@ -407,6 +423,13 @@
       editable: opts.editable !== false,
       editorProps: Object.assign({ transformPastedHTML: _transformPastedHTML }, opts.editorProps),
     });
+    // Once for the initial render, then after every doc change — ProseMirror
+    // re-creates the <video> element whenever the node is touched (inserting,
+    // dragging, or re-editing it through the 🖼 modal), and each new one arrives
+    // unmuted again.
+    _forceMutedVideos(element);
+    editor.on('create', function () { _forceMutedVideos(element); });
+    editor.on('update', function () { _forceMutedVideos(element); });
     if (opts.onUpdate) editor.on('update', opts.onUpdate);
     return {
       editor: editor,
@@ -1241,6 +1264,16 @@
       '#xe2Editor h1{font-size:2em;} #xe2Editor h2{font-size:1.5em;} #xe2Editor h3{font-size:1.25em;} #xe2Editor h4{font-size:1.1em;} #xe2Editor h5{font-size:1em;} #xe2Editor h6{font-size:0.9em;}',
       '#xe2Editor h1,#xe2Editor h2,#xe2Editor h3,#xe2Editor h4,#xe2Editor h5,#xe2Editor h6{font-weight:bold;}',
       '#xe2Editor details,#xe2Editor .xe2-details{border-left:3px solid #6af;padding:2px 0 2px 12px;margin:8px 0;background:rgba(90,140,220,0.06);}',
+      // (dev0732) …and the SAME float rules every render context has had since
+      // zip0138 (index.html: `#teSlideContent details {clear:both;overflow:hidden}`).
+      // Those selectors name the v1 root #teEditor, which v2 is not — and v2's
+      // collapsible is a <div class="xe2-details"> stand-in (dev0714) that no
+      // `details` selector matches anyway. Missing them, a collapsible after a
+      // float:left video WRAPPED BESIDE the video instead of starting below it:
+      // the tinted block ran under the video (its absolutely-positioned ▶ marker
+      // landed ON the picture) while Xs put the same block underneath. Editor and
+      // slide now agree.
+      '#xe2Editor details,#xe2Editor .xe2-details{clear:both;overflow:hidden;}',
       // (dev0714) The editor's collapsible is now a <div class="xe2-details">
       // stand-in (see Details addNodeView) — a div hides nothing natively, so
       // the closed state needs this explicit body-hiding rule.
