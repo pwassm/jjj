@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1785907042447,
+    "_salPushTime": 1785948335998,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -86,7 +86,7 @@
       "col": "UID",
       "dir": "desc"
     },
-    "_salGsize": 4,
+    "_salGsize": 2,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -510,7 +510,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1785907042447
+    "_salSavedAt": 1785948335998
   },
   {
     "UID": "1",
@@ -1721,7 +1721,7 @@
     "UID": "29",
     "show": "1",
     "VidRange": "",
-    "cell": "4c",
+    "cell": "",
     "fit": "ei",
     "link": "https://www.youtube.com/watch?v=MW97VsO_GWk",
     "linkpage": "",
@@ -2436,7 +2436,7 @@
     "UID": "50",
     "show": "1",
     "VidRange": "",
-    "cell": "4b",
+    "cell": "1a",
     "fit": "ei",
     "link": "https://sealifeandmore.org/wp-content/uploads/2025/07/codblackface_20250720.gif",
     "linkpage": "noLinkpageYet",
@@ -17860,7 +17860,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:42",
-    "cell": "2a",
+    "cell": "2b",
     "VidRange": "0 4.1, 26.7 10.1",
     "VidComment": "Starting Quest, ",
     "ftextSize": "0",
@@ -17886,7 +17886,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:42",
-    "cell": "3d",
+    "cell": "",
     "VidRange": "0 4.1, 26.7 10.1",
     "VidComment": "Starting Quest, ",
     "ftextSize": "0",
@@ -18592,7 +18592,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:35",
-    "cell": "3b",
+    "cell": "1b",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "9",
@@ -18637,7 +18637,7 @@
     ],
     "Mute": "0",
     "MPix": "V",
-    "cell": "3a",
+    "cell": "2a",
     "ftextSize": "0",
     "FtextJunk": "0",
     "vidLength": "0:53",
@@ -23823,7 +23823,7 @@
     "ftextSize": "7",
     "FtextJunk": "0",
     "MPix": "V",
-    "cell": "2d",
+    "cell": "",
     "ttxt": "",
     "Mode": "P",
     "ftext": "<p></p>",
@@ -25717,7 +25717,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "1:11",
     "comment": "Poly singing his own song, in your face!",
-    "cell": "2c",
+    "cell": "",
     "Mode": "L"
   },
   {
@@ -25725,20 +25725,21 @@
     "link": "https://youtu.be/AY3iFRR5eKk",
     "show": "1",
     "DateAdded": "2026-06-13 19:10:45",
-    "DateModified": "2026-06-15 01:31:19",
+    "DateModified": "2026-08-05 13:19:01",
     "tags": [
       "myvideo",
       "nymphicus"
     ],
     "Mute": "0",
-    "ftextSize": "0",
+    "ftextSize": "7",
     "FtextJunk": "0",
     "VidTitle": "Up and down the ladder, triple rate",
     "VidAuthor": "@bird211",
     "vidLength": "0:25",
     "comment": "Cockatiel training, run up the ladder for seeds.  Triple speed.",
-    "cell": "2b",
-    "Mode": "L"
+    "cell": "",
+    "Mode": "L",
+    "ftext": "<p></p>"
   },
   {
     "UID": "1131",
@@ -25845,7 +25846,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "1:01",
     "comment": "1st 8 seconds is my (poor) model Stars and Stripes, then Poly does his version!",
-    "cell": "4a",
+    "cell": "",
     "Mode": "L"
   },
   {
@@ -25865,7 +25866,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "0:37",
     "comment": "Poly on Pio, just having fun?!?",
-    "cell": "1d",
+    "cell": "",
     "Mode": "L"
   },
   {
@@ -25885,7 +25886,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "0:14",
     "comment": "Ms. Pio flies to my finger.  Clicker briefly visible.",
-    "cell": "1c",
+    "cell": "",
     "Mode": "L"
   },
   {
@@ -25905,7 +25906,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "0:51",
     "comment": "Rub a dub dub, more exciting with music!",
-    "cell": "1b",
+    "cell": "",
     "Mode": "L"
   },
   {
@@ -25924,7 +25925,7 @@
     "VidTitle": "HummingbirdComesToNest1.AVI",
     "VidAuthor": "@bird211",
     "vidLength": "0:15",
-    "cell": "4d",
+    "cell": "",
     "Mode": "L"
   },
   {
@@ -40712,7 +40713,7 @@
   },
   {
     "UID": "1960",
-    "cell": "1a",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "ftext": "<details open=\"\"><summary><h1 style=\"margin: 0px; display: inline;\">Show some navigation keys</h1></summary><h1>Up arrow: this text window gets big</h1><h1>Down arrow: this text window returns to cell</h1><h1>Right arrow (keyboard or screen): next slide</h1><h1>Left arrow (keyboard or screen): previous slide</h1></details><p></p><hr><p></p><p>Page 2</p><p></p><hr><p></p><p>Page 3</p>",

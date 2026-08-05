@@ -349,6 +349,37 @@ ${qHtml}
 }
 
 
+// (dev0741) Keep the video host's bottom inset equal to the toolbar's REAL
+// height. It used to be the literal `inset:0 0 80px 0` — the toolbar's fixed 70
+// plus a 10px breather — which stopped being true the moment the bar was allowed
+// to grow: a wrapped control row on a narrow phone, or the extra "↗ Open on …"
+// row the Instagram / TikTok / Pinterest mounts insert into it.
+//
+// A ResizeObserver rather than a one-shot measure, because most of the causes
+// land AFTER this runs: those mounts fire on a 50ms timeout, wrapping changes on
+// an orientation flip, and the rotated wrap's width itself moves whenever the
+// phone's URL bar hides or returns. Falls back to a couple of delayed measures
+// where ResizeObserver is missing. The observer dies with the element.
+function _vpSyncToolbarHeight(host, toolbar) {
+  if (!host || !toolbar) return;
+  const apply = () => {
+    if (!host.isConnected || !toolbar.isConnected) return;
+    const h = toolbar.offsetHeight || 70;
+    host.style.bottom = (h + 10) + 'px';
+  };
+  apply();
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(apply);
+    ro.observe(toolbar);
+    // vpClose blows away content.innerHTML; disconnect then so the observer
+    // isn't left holding a detached node for the rest of the session.
+    if (_vpState) _vpState.toolbarRO = ro;
+  } else {
+    setTimeout(apply, 120);
+    setTimeout(apply, 400);
+  }
+}
+
 function gridOpenFullscreen(row, contained) {
   // (dev0709) V gets the speakers to itself. The grid is still mounted behind
   // this overlay, and a cross-origin IG embed on it keeps playing (and talking)
@@ -1221,9 +1252,23 @@ function gridOpenFullscreen(row, contained) {
     host._resetZoom = _vResetZoom;
     
     // Build controls toolbar
+    //
+    // (dev0741) height:70px was a FIXED height, and the control row inside it a
+    // single non-wrapping flex line. Measured, that line needs 725px: three
+    // transport buttons + mute (80px) + the speed slider + Selected/Full + CC +
+    // the seven-button A-B cluster + close. A phone's landscape frame is often
+    // narrower than that — and its width MOVES, because in portrait the rotated
+    // wrap's width is window.innerHeight, which grows and shrinks as the URL bar
+    // hides and returns. So the same row would fit on one open and overflow on
+    // the next, which is exactly the "some cells, not all" symptom: A-B sits
+    // second from the right, so it is the first thing pushed off the edge.
+    //
+    // min-height, not height: the bar is anchored at bottom:0 and now grows
+    // UPWARD as its rows wrap, so nothing it contains can leave the screen.
+    // _vpSyncToolbarHeight (below) keeps the video host clear of it.
     const toolbar = document.createElement('div');
     toolbar.id = 'vp-toolbar';
-    toolbar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:70px;background:#000;border-top:2px solid #06f;display:flex;flex-direction:column;padding:4px 12px;box-sizing:border-box;';
+    toolbar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;min-height:70px;background:#000;border-top:2px solid #06f;display:flex;flex-direction:column;padding:4px 12px;box-sizing:border-box;';
     
     // Timeline row
     const timelineRow = document.createElement('div');
@@ -1259,8 +1304,14 @@ function gridOpenFullscreen(row, contained) {
     toolbar.appendChild(timelineRow);
     
     // Controls row
+    // (dev0741) Wraps. On a frame wide enough for all 725px this is the single
+    // line it has always been; on a narrower one the A-B cluster drops to a
+    // second line instead of running off the right edge. height→min-height so
+    // the row can actually be two lines tall, and row-gap keeps them apart.
     const ctrlRow = document.createElement('div');
-    ctrlRow.style.cssText = 'display:flex;align-items:center;gap:6px;height:36px;margin-top:4px;';
+    ctrlRow.id = 'vp-ctrlrow';
+    ctrlRow.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;'
+      + 'gap:6px;row-gap:4px;min-height:36px;margin-top:4px;';
     
     // Prev/Next buttons
     const btnPrev = document.createElement('button');
@@ -1304,7 +1355,9 @@ function gridOpenFullscreen(row, contained) {
     
     // Speed control
     const speedWrap = document.createElement('div');
-    speedWrap.style.cssText = 'display:flex;align-items:center;gap:4px;';
+    // (dev0741) flex:0 0 auto — in a wrapping row a shrinkable group squeezes
+    // to an unusable width rather than moving to the next line. Whole or moved.
+    speedWrap.style.cssText = 'display:flex;align-items:center;gap:4px;flex:0 0 auto;';
     const speedLbl = document.createElement('span');
     speedLbl.style.cssText = 'color:#888;font-size:11px;';
     speedLbl.textContent = 'Spd';
@@ -1347,8 +1400,11 @@ function gridOpenFullscreen(row, contained) {
     // its new definition for the reasoning.
     
     // A-B buttons with carets
+    // (dev0741) flex:0 0 auto for the same reason as speedWrap — these seven are
+    // the whole point of the bar on a phone and must never be shaved.
     const abWrap = document.createElement('div');
-    abWrap.style.cssText = 'display:flex;align-items:center;gap:2px;';
+    abWrap.id = 'vp-abwrap';
+    abWrap.style.cssText = 'display:flex;align-items:center;gap:2px;flex:0 0 auto;';
     
     // A- caret
     const aMinusBtn = document.createElement('button');
@@ -1435,7 +1491,15 @@ function gridOpenFullscreen(row, contained) {
     
     toolbar.appendChild(ctrlRow);
     content.appendChild(toolbar);
-    
+
+    // (dev0741) The host's bottom inset was the literal 80px that matched the
+    // toolbar's old fixed 70. Now that the bar grows — a wrapped control row, or
+    // the extra "↗ Open on Instagram / TikTok / Pinterest" row those three mounts
+    // insert into it — the gap has to be measured rather than assumed, or a
+    // two-line bar covers the bottom of the video. A ResizeObserver catches every
+    // cause at once: wrap, orientation flip, URL bar, late-inserted rows.
+    _vpSyncToolbarHeight(host, toolbar);
+
     // (zip0144) No info bar for video — video extends to the top edge.
     // The cell label / title was removed because it took meaningful
     // screen height on phones and added little value (the user knows
@@ -2094,6 +2158,12 @@ function vpClose() {
 
   // Stop interval
   if (_vpState && _vpState.interval) clearInterval(_vpState.interval);
+
+  // (dev0741) Drop the toolbar-height observer with the toolbar it watched.
+  if (_vpState && _vpState.toolbarRO) {
+    try { _vpState.toolbarRO.disconnect(); } catch (_) {}
+    _vpState.toolbarRO = null;
+  }
 
   // (dev0406) Tear down the floating step button + its live intervals.
   if (window._vpFSB && typeof window._vpFSB.cleanup === 'function') {

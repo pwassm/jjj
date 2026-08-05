@@ -16,6 +16,10 @@ window.seeLearnVimeoLoading = false;
 //   controlsList=nodownload        — drops ⤓ from the control strip
 //   disablePictureInPicture        — drops the PiP item
 //   contextmenu → preventDefault   — suppresses the native menu on the element
+//   -webkit-touch-callout:none     — (dev0741) the PHONE long-press. WebKit's
+//     long-press sheet is not a contextmenu event, so preventDefault never sees
+//     it; this property is the only thing that suppresses it. Chrome/Android
+//     does raise contextmenu on long-press, so there it is belt and braces.
 //
 // BE CLEAR ABOUT WHAT THIS IS. It removes the buttons, not the ability: the
 // media URL is in the page and the file is public (every row in a grid has to
@@ -28,13 +32,39 @@ window.seeLearnVimeoLoading = false;
 // since downloading from them is something the developer actually does.
 window.salLockDownVideo = function(vid) {
   if (!vid) return vid;
+  // (dev0741) Idempotent — salLockDownVideosIn re-sweeps its root on every menu
+  // page change, and a second contextmenu listener on the same element would
+  // just pile up.
+  if (vid._salLockedDown) return vid;
   try {
+    vid._salLockedDown = true;
     vid.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
     vid.disablePictureInPicture = true;
     vid.setAttribute('disablePictureInPicture', '');
+    // (dev0741) The phone long-press. Set on .style, so it lives on the ELEMENT
+    // and not in the ftext the slide was built from — nothing here is ever
+    // serialized back to a row.
+    vid.style.webkitTouchCallout = 'none';
+    vid.style.WebkitTouchCallout = 'none';
     vid.addEventListener('contextmenu', function(e) { e.preventDefault(); });
   } catch (_) {}
   return vid;
+};
+
+// (dev0741) Sweep every <video> under `root`. The delegated guard below only
+// stops the CONTEXT MENU, and only in user mode; the download offers that come
+// with the browser's own control strip (⤓, the ⋮ overflow's "Download", PiP)
+// are attributes on the element, so something has to walk the DOM and set them.
+//
+// Written for the Intro/greeting screen, whose videos come out of a c.json ctxt
+// blob as innerHTML and so never pass through any of the mount functions that
+// call salLockDownVideo directly. Safe to call repeatedly.
+window.salLockDownVideosIn = function(root) {
+  if (!root || !root.querySelectorAll) return;
+  try {
+    var v = root.querySelectorAll('video');
+    for (var i = 0; i < v.length; i++) window.salLockDownVideo(v[i]);
+  } catch (_) {}
 };
 
 // (dev0740) …and the same for every OTHER <video> a viewer can reach, without

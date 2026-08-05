@@ -1204,6 +1204,22 @@ async function _showShareableMenu() {
   // has no transform and inset:0 resolves against the viewport, as before.
   (document.getElementById('rotateWrap') || document.body).appendChild(ov);
 
+  // (dev0741) The Intro/greeting videos. Their markup is authored in Xe and
+  // stored in c.json's ctxt, then dropped in here as innerHTML — so they never
+  // go through vpMountDirectVideo and never picked up dev0740's lockdown. A
+  // long-press on one still offered to save it. Sweep the whole overlay: the
+  // greeting appears on page 1 (Welcome), again on page 2, and inside the
+  // per-view detail bodies.
+  //
+  // Unconditional, not user-mode-only. dev0740 spared the DEV SCREENS on the
+  // grounds that saving a file off one is something the developer does; the
+  // landing page is not one of those — it is the public front door in either
+  // mode, and the developer reaches the same file from T or the disk.
+  //
+  // Removes the offer, not the ability: the URL is in the page and the file is
+  // public. This is UI tidying, not protection.
+  if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
+
   // (dev0361/0362/0366/0368) Nav. Welcome (page 1) is a one-time splash shown
   // only on first entry; both tab bars are hidden there. Pages 2–5 each carry
   // the tab bar at top AND bottom and are where all returns land.
@@ -1229,6 +1245,9 @@ async function _showShareableMenu() {
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = (n === 1) ? 'none' : 'flex');
+    // (dev0741) Re-sweep on every page change — Search results and SavedSearches
+    // build their bodies after the overlay was first stamped. Idempotent.
+    if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
     // (dev0739) Let the floating back arrow re-evaluate now rather than on its
     // next 300ms poll — leaving Welcome should light it immediately.
     if (window._salBackArrowSync) window._salBackArrowSync();
