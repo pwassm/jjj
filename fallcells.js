@@ -3,16 +3,21 @@
 // FALL CELLS  (dev0460 · reworked dev0463)  —  Grid "moving cells" VARIANT — key F
 // ══════════════════════════════════════════════════════════════════════════════
 //
-// A perimeter conveyor for the 16-cell outer ring (square 5×5, or the 17 / 19
-// layouts — all three share the same ring). Sibling to the r CONVEYOR
-// (movingcells.js) and the 1 / 2 FlyCells variants, but it has its OWN dedicated
-// key: F toggles it on/off. Starting it stops whatever other moving mode was on;
-// r (master off) and the 1 / 2 variant keys stop it in turn (orchestrated by the
-// _gm* family in collection.js). { / } slow / speed it up live.
+// A perimeter conveyor for the outer ring of a square grid — 16 cells on a 5×5
+// (and on the 17 / 19 layouts, which share that footprint), 12 on a 4×4 (dev0735).
+// Sibling to the r CONVEYOR (movingcells.js) and the 1 / 2 FlyCells variants, but
+// it has its OWN dedicated key: F toggles it on/off. Starting it stops whatever
+// other moving mode was on; r (master off) and the 1 / 2 variant keys stop it in
+// turn (orchestrated by the _gm* family in collection.js). { / } slow / speed it
+// up live.
+//
+// The walk-through below names the 5×5 cells; buildGeom() derives the same shape
+// for any N (a 4×4's chute is 1d-3d, its landing pad 4d, its cliff edge 1c).
 //
 // THE CHOREOGRAPHY (dev0463):
-//   1. INTRO — 1e 2e 3e 4e fade out one-by-one (5e STAYS). Those four cells leave
-//      the belt and become a 4-cell "reserve" pool; their ring slots go empty.
+//   1. INTRO — the chute 1e 2e 3e 4e fades out one-by-one (5e, the landing pad,
+//      STAYS). Those cells leave the belt and become the "reserve" pool; their ring
+//      slots go empty. (4 cells on a 5×5, 3 on a 4×4 — FADE_CELLS is derived.)
 //   2. THE CLIFF (dev0562: one continuous slide-tip-fall, per the user's sketch) —
 //      each cycle the whole 12-slot loop (the L + the cliff jump 1d → 5e) creeps
 //      one notch. The cell leaving 1d slides right at belt speed and, the INSTANT
@@ -25,16 +30,17 @@
 //      The old lander creeps out of 5e during the same cycle (long gone before
 //      touchdown); the next cell waits at 1d through the fall + shatter.
 //   2b. CLICK-TO-FEATURE — clicking any live cell pulls it out of the choreography
-//      and grows it over the 1L position (rows 2-4 × cols 2-4 — the literal 1L in
-//      the 17 layout, the 2b-4d block in 5×5 / 19); it holds there 10 s, fades
+//      and grows it over the interior block (rows/cols 2..N-1 — the literal 1L in
+//      the 17 layout, 2b-4d in a 5×5 / 19, 2b-3c on a 4×4); it holds there 10 s, fades
 //      out, and joins the reserve. Its old slot is backfilled from the reserve.
 //   3. RE-ENTRY — every 2-3s, 2-3 reserve cells (the hidden 1e-4e) crossfade back
 //      in over random live cells (belt / static centre / 1L / 1P-3P); each displaced
 //      cell becomes the new reserve. The pool stays at four; the cast keeps churning.
 //
-// MODEL: the ring is 16 slots (RING below), but occupancy lives on a 12-slot LOOP
-// (CHAIN): the L slots plus the jump 1d → 5e. Slots 4-7 (1e-4e) are pure air space
-// the faller tumbles through — never occupied after the intro. Each cycle is one
+// MODEL: the ring is 4(N-1) slots (RING below), but occupancy lives on a shorter
+// LOOP of 3(N-1) (CHAIN): the L slots plus the jump 1d → 5e. The chute slots (1e-4e
+// on a 5×5) are pure air space the faller tumbles through — never occupied after
+// the intro. On a 5×5 that's a 16-slot ring and a 12-slot loop. Each cycle is one
 // rigid loop rotation (a cell advances iff the slot ahead is empty or vacating);
 // the 1d cell's rotation step IS the cliff jump, animated as slide + tip + fall.
 //
@@ -93,24 +99,43 @@
   // The slide-to-tip takes moveDur/2, the tip+fall takes moveDur → 1.5×moveDur total.
 
   // ── Ring geometry (clockwise from top-left) + 1-based [row,col] placement ────
-  var RING = ['1a','1b','1c','1d','1e','2e','3e','4e','5e','5d','5c','5b','5a','4a','3a','2a'];
-  var RC = {
-    '1a':[1,1],'1b':[1,2],'1c':[1,3],'1d':[1,4],'1e':[1,5],
-    '2e':[2,5],'3e':[3,5],'4e':[4,5],
-    '5e':[5,5],'5d':[5,4],'5c':[5,3],'5b':[5,2],'5a':[5,1],
-    '4a':[4,1],'3a':[3,1],'2a':[2,1]
-  };
-  var FADE_CELLS = ['1e','2e','3e','4e'];   // (dev0463) 5e no longer fades
-  var SLOT_1D = 3, SLOT_5E = 8;             // ring indices of the cliff edge + landing pad
-  // (dev0562) The belt is a 12-slot LOOP: the L (1a-1d, 5e-2a up the left) plus the
-  // cliff jump 1d → 5e. CHAIN[k] moves into CHAIN[(k+1)%12]; slots 4-7 (1e-4e, the
-  // old chute) are pure air space the faller tumbles through — never occupied.
-  var CHAIN = [3, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2];
-  // (dev0464) Slots that must NEVER be empty (everything but the right-column chute
-  // 1e-5e = ring indices 4-8). An empty here is undesirable and gets filled from
-  // the reserve; the first such fill promotes a spare into the belt, after which the
-  // flow runs gap-free (13 belt cells = full L + a cell always transiting the chute).
-  var FILL_SLOTS = [0,1,2,3,9,10,11,12,13,14,15];
+  // (dev0735) Built for the LIVE grid size at start(), not hard-coded to 5×5, so a
+  // 4×4 runs the same choreography on its 12-cell ring (chute 1d-3d, landing 4d).
+  // N = grid edge, RLEN = ring length = 4(N-1). Everything below is derived:
+  //   SLOT_CLIFF = the top-row cell one in from the top-right corner — the cell
+  //                that gets pushed off (1d on a 5×5, 1c on a 4×4)
+  //   SLOT_LAND  = the bottom-right corner, the landing pad (5e / 4d)
+  //   FADE_CELLS = the chute: the right column from the top-right corner down to
+  //                just above the landing pad — these fade out in the intro and
+  //                become the reserve pool (4 cells on a 5×5, 3 on a 4×4)
+  //   CHAIN      = the belt LOOP: the cliff slot, then the bottom row + left column
+  //                + top row back round to it. CHAIN[k] moves into CHAIN[(k+1)%CLEN];
+  //                the chute slots are pure air the faller tumbles through.
+  //   FILL_SLOTS = every slot that must never be empty (all but the chute + pad).
+  var N = 5, RLEN = 16, CLEN = 12;
+  var RING = [], RC = {}, FADE_CELLS = [], CHAIN = [], FILL_SLOTS = [];
+  var SLOT_CLIFF = 3, SLOT_LAND = 8;
+
+  function buildGeom(n) {
+    N = n;
+    RLEN = 4 * (n - 1);
+    CLEN = 3 * n - 3;
+    RING = []; RC = {};
+    var add = function (r, c) { var s = r + 'abcde'[c - 1]; RING.push(s); RC[s] = [r, c]; };
+    var i;
+    for (i = 1; i <= n; i++)     add(1, i);   // top row     →   idx 0 … n-1
+    for (i = 2; i <= n; i++)     add(i, n);   // right column ↓  idx n … 2n-2
+    for (i = n - 1; i >= 1; i--) add(n, i);   // bottom row  ←
+    for (i = n - 1; i >= 2; i--) add(i, 1);   // left column ↑
+    SLOT_CLIFF = n - 2;                       // 1d on a 5×5, 1c on a 4×4
+    SLOT_LAND  = 2 * (n - 1);                 // 5e on a 5×5, 4d on a 4×4
+    FADE_CELLS = RING.slice(n - 1, SLOT_LAND);          // the chute (pad stays)
+    CHAIN = [SLOT_CLIFF];
+    for (i = SLOT_LAND; i < RLEN; i++) CHAIN.push(i);   // pad → bottom row → left col
+    for (i = 0; i < SLOT_CLIFF; i++)   CHAIN.push(i);   // → top row, back to the cliff
+    FILL_SLOTS = [];
+    for (i = 0; i < RLEN; i++) if (i < n - 1 || i > SLOT_LAND) FILL_SLOTS.push(i);
+  }
 
   var DESKTOP = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
 
@@ -133,22 +158,28 @@
   function rrange(a, b){ return a + Math.random() * (b - a); }
   function cellEl(cs)  { return document.querySelector('#gridContainer .grid-cell[data-cell="' + cs + '"]'); }
 
-  function eligibleLayout() {
+  // (dev0735) The grid edge to run on, or 0 if the layout has no usable ring:
+  // square 4×4 and 5×5 (a 3×3 leaves only a 2-cell reserve — too thin for the
+  // re-entry bursts), plus the 17 / 19 layouts, which sit on a 5×5 footprint and
+  // keep the 5×5 ring. Portrait layouts (P3/P12/P27) aren't square and stay out.
+  function ringSize() {
     var lay = layout();
-    if (lay === '17' || lay === '19') return true;
-    return lay === 'square' && (typeof _gridGsize === 'undefined' || _gridGsize === 5);
+    if (lay === '17' || lay === '19') return 5;
+    if (lay !== 'square') return 0;
+    var n = (typeof _gridGsize === 'number') ? _gridGsize : 5;
+    return (n === 4 || n === 5) ? n : 0;
   }
 
   // Pin every cell to explicit grid placement (square cells are normally auto-
   // flowed) and capture its HOME area so stop() can restore it. transform-origin
   // is bottom-centre so the landing squash/stretch compresses against the floor.
-  // Splits cells into the 16-slot ring vs. the static centre cells. Returns false
+  // Splits cells into the ring slots vs. the static centre cells. Returns false
   // if the ring isn't fully laid out yet.
   function pinAndCapture() {
-    ring = new Array(16).fill(null);
+    ring = new Array(RLEN).fill(null);
     statics = [];
     var lay = layout();
-    var specs = (typeof _gridCellList === 'function') ? _gridCellList(5, lay) : [];
+    var specs = (typeof _gridCellList === 'function') ? _gridCellList(N, lay) : [];
     if (!specs.length) return false;
     specs.forEach(function (s) {
       var el = cellEl(s.cs);
@@ -162,7 +193,7 @@
       if (ri >= 0) ring[ri] = el;
       else statics.push({ el: el });
     });
-    for (var i = 0; i < 16; i++) if (!ring[i]) return false;
+    for (var i = 0; i < RLEN; i++) if (!ring[i]) return false;
     return true;
   }
 
@@ -215,24 +246,24 @@
 
     // Who moves? Walk the loop backwards from each gap: the cell behind a gap (or
     // behind a mover) advances. A full loop is a rigid rotation — everyone moves.
-    var canMove = new Array(12).fill(false), gaps = [];
-    for (var g = 0; g < 12; g++) if (!ring[CHAIN[g]]) gaps.push(g);
+    var canMove = new Array(CLEN).fill(false), gaps = [];
+    for (var g = 0; g < CLEN; g++) if (!ring[CHAIN[g]]) gaps.push(g);
     if (!gaps.length) canMove.fill(true);
     else gaps.forEach(function (gp) {
-      var k = (gp + 11) % 12;
-      while (k !== gp && ring[CHAIN[k]]) { canMove[k] = true; k = (k + 11) % 12; }
+      var k = (gp + CLEN - 1) % CLEN;
+      while (k !== gp && ring[CHAIN[k]]) { canMove[k] = true; k = (k + CLEN - 1) % CLEN; }
     });
 
     var faller = null, moves = [], next = ring.slice();
-    for (var n = 0; n < 12; n++) {
+    for (var n = 0; n < CLEN; n++) {
       if (!canMove[n]) continue;
       var i = CHAIN[n], el = ring[i];
       if (!el) continue;
       if (!el.isConnected) { stop(true); return; }
-      if (i === SLOT_1D) faller = el;                   // the cliff jump 1d → 5e
-      else moves.push({ el: el, to: CHAIN[(n + 1) % 12] });
+      if (i === SLOT_CLIFF) faller = el;                // the cliff jump 1d → 5e
+      else moves.push({ el: el, to: CHAIN[(n + 1) % CLEN] });
       if (next[i] === el) next[i] = null;               // vacate (unless already re-filled)
-      next[CHAIN[(n + 1) % 12]] = el;
+      next[CHAIN[(n + 1) % CLEN]] = el;
     }
     ring = next;                                        // commit occupancy
 
@@ -247,7 +278,8 @@
     var sdx = 0, sdy = 0;
     if (faller) {
       faller.style.transition = 'none'; faller.style.transform = '';
-      faller.style.gridRow = RC['5e'][0]; faller.style.gridColumn = RC['5e'][1];
+      var pad = RC[RING[SLOT_LAND]];                    // bottom-right corner
+      faller.style.gridRow = pad[0]; faller.style.gridColumn = pad[1];
       faller.style.zIndex = ++zc;                       // covers everything on the way down
       faller.style.transformOrigin = '50% 50%';         // tumbles about its centre
     }
@@ -482,7 +514,7 @@
     var rcand = reserve.filter(function (el) { return el && el.isConnected && el._rowData; });
     if (!rcand.length) return;
     var tcand = [];
-    for (var i = 0; i < 16; i++) {
+    for (var i = 0; i < RLEN; i++) {
       var re = ring[i];
       // Never swap over the faller mid-fall.
       if (re && re !== zipperEl && re._rowData) tcand.push({ el: re, slot: i, st: null });
@@ -525,8 +557,8 @@
     }, fade * 1000));
   }
 
-  // ── Click-to-feature (dev0559): click a live cell → it grows over the 1L block
-  // (rows 2-4 × cols 2-4 — the real 1L in the 17 layout, 2b-4d in 5×5 / 19),
+  // ── Click-to-feature (dev0559): click a live cell → it grows over the interior
+  // block (rows/cols 2..N-1 — the real 1L in the 17 layout, 2b-4d in 5×5 / 19),
   // holds there CLICK_HOLD seconds, fades out and joins the reserve. Its old slot
   // is backfilled from the reserve (belt slots via fillLGaps next cycle; a static
   // centre slot immediately). One featured cell at a time. Capture-phase so the
@@ -549,8 +581,9 @@
     el.style.transition = 'none';
     el.style.transform  = '';
     el.style.transformOrigin = '0 0';                   // FLIP scale from the top-left
-    el.style.gridRow    = '2 / span 3';
-    el.style.gridColumn = '2 / span 3';
+    var span = '2 / span ' + (N - 2);                   // the interior block (1L on a 17)
+    el.style.gridRow    = span;
+    el.style.gridColumn = span;
     el.style.zIndex     = ++zc;
     container().offsetWidth;
     var nr = el.getBoundingClientRect();
@@ -627,7 +660,9 @@
     if (active) return false;
     if (!gridOpen()) return false;
     if (!DESKTOP) { toast('Fall cells is desktop-only (too heavy for phones)', 2200); return false; }
-    if (!eligibleLayout()) { toast('Fall cells needs a 5×5, 17 or 19 grid', 2200); return false; }
+    var n = ringSize();
+    if (!n) { toast('Fall cells needs a 4×4, 5×5, 17 or 19 grid', 2200); return false; }
+    buildGeom(n);
     reserve = [];
     if (!pinAndCapture()) { toast('Grid still drawing — try again in a moment', 1800); restoreAll(); ring = statics = reserve = null; return false; }
     active = true;

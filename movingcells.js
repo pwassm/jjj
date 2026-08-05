@@ -3,19 +3,22 @@
 // MOVING CELLS  (dev0374)  —  optional "ring conveyor" screensaver for the Grid
 // ══════════════════════════════════════════════════════════════════════════════
 //
-// CONCEPT: the 16-cell outer ring of a 5-footprint grid (square 5×5, or layouts
-// 17 / 19) rotates CLOCKWISE one whole edge (4 tiles) at a time, pausing between
-// edges. A ring cell may start EMPTY — that hole travels counter-clockwise
-// corner-to-corner and is what the rotation slides into. (dev0383) If no cell is
-// empty the conveyor still runs: 5e becomes the mover, gliding to 1e and around
-// the ring just like a hole would. With the empty (or mover) at 5e the
-// motion is exactly:
+// CONCEPT: the outer ring of an N×N grid — 4(N-1) cells — rotates CLOCKWISE one
+// whole edge (N-1 tiles) at a time, pausing between edges. A ring cell may start
+// EMPTY — that hole travels counter-clockwise corner-to-corner and is what the
+// rotation slides into. (dev0383) If no cell is empty the conveyor still runs:
+// the bottom-right corner becomes the mover, gliding to the top-right and on
+// around the ring just like a hole would. On a 5×5 (ring 16, empty at 5e):
 //     move 1  right edge   1e2e3e4e → 2e3e4e5e   (empty lands on 1e)
 //     move 2  top edge     1a1b1c1d → 1b1c1d1e   (empty lands on 1a)
 //     move 3  left edge     2a3a4a5a → 1a2a3a4a   (empty lands on 5a)
 //     move 4  bottom edge   5b5c5d5e → 5a5b5c5d   (empty lands on 5e) → repeat
-// (Generalised: it shifts the 4 ring tiles preceding the hole, so any starting
+// (Generalised: it shifts the N-1 ring tiles preceding the hole, so any starting
 // empty works — at a non-corner the slide just bends around the corner.)
+//
+// (dev0735) N is the LIVE grid size, not a hard-wired 5: a 4×4 runs the same
+// conveyor on its 12-cell ring (3 tiles per edge), a 3×3 on its 8-cell ring. The
+// 17 / 19 layouts sit on a 5×5 footprint and share the 5×5 ring as before.
 //
 // HOW IT STAYS SMOOTH WITHOUT KILLING LIVE VIDEO: it never re-parents or rebuilds
 // a cell — it only changes each .grid-cell's CSS grid-area and FLIP-animates the
@@ -45,13 +48,23 @@
   var EASE = 'cubic-bezier(.4,0,.2,1)';
 
   // ── Ring geometry (clockwise from top-left) + 1-based [row,col] placement ────
-  var RING = ['1a','1b','1c','1d','1e','2e','3e','4e','5e','5d','5c','5b','5a','4a','3a','2a'];
-  var RC = {
-    '1a':[1,1],'1b':[1,2],'1c':[1,3],'1d':[1,4],'1e':[1,5],
-    '2e':[2,5],'3e':[3,5],'4e':[4,5],
-    '5e':[5,5],'5d':[5,4],'5c':[5,3],'5b':[5,2],'5a':[5,1],
-    '4a':[4,1],'3a':[3,1],'2a':[2,1]
-  };
+  // (dev0735) Built for the live grid size at start(), not hard-coded to 5×5.
+  // N = grid edge, RLEN = ring length = 4(N-1). RING[i] is the cell string at ring
+  // index i (clockwise from the top-left corner); RC[cs] is its [row,col].
+  var N = 5, RLEN = 16;
+  var RING = [], RC = {};
+
+  function buildGeom(n) {
+    N = n;
+    RLEN = 4 * (n - 1);
+    RING = []; RC = {};
+    var add = function (r, c) { var s = r + 'abcde'[c - 1]; RING.push(s); RC[s] = [r, c]; };
+    var i;
+    for (i = 1; i <= n; i++)     add(1, i);   // top row     →
+    for (i = 2; i <= n; i++)     add(i, n);   // right column ↓
+    for (i = n - 1; i >= 1; i--) add(n, i);   // bottom row  ←
+    for (i = n - 1; i >= 2; i--) add(i, 1);   // left column ↑
+  }
 
   var DESKTOP = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
 
@@ -66,10 +79,16 @@
     return ov && ov.style.display === 'flex';
   }
 
-  function eligibleLayout() {
+  // (dev0735) The grid edge this conveyor should run on, or 0 if the layout has no
+  // usable ring: square 3×3 / 4×4 / 5×5 all do (a 2×2 is all corner, no interior),
+  // and the 17 / 19 layouts sit on a 5×5 footprint so they keep the 5×5 ring. The
+  // portrait layouts (P3/P12/P27) aren't square and stay out.
+  function ringSize() {
     var lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
-    if (lay === '17' || lay === '19') return true;
-    return lay === 'square' && (typeof _gridGsize === 'undefined' || _gridGsize === 5);
+    if (lay === '17' || lay === '19') return 5;
+    if (lay !== 'square') return 0;
+    var n = (typeof _gridGsize === 'number') ? _gridGsize : 5;
+    return (n >= 3 && n <= 5) ? n : 0;
   }
 
   // Pin every cell to explicit grid placement so square-layout auto-flow can't
@@ -91,9 +110,9 @@
   // Map the live ring elements + locate the empty cell. Returns false if the grid
   // isn't fully laid out yet.
   function buildElemAt() {
-    elemAt = new Array(16).fill(null);
+    elemAt = new Array(RLEN).fill(null);
     gapIdx = -1;
-    for (var i = 0; i < 16; i++) {
+    for (var i = 0; i < RLEN; i++) {
       var el = document.querySelector('#gridContainer .grid-cell[data-cell="' + RING[i] + '"]');
       if (!el) return false;
       elemAt[i] = el;
@@ -102,24 +121,26 @@
     return true;
   }
 
-  // One edge-slide: rotate the 5-cell window [gap-4 … gap] forward by one, FLIP-
-  // animating each element from its old box to its new box. The 4 content tiles
-  // move one cell each; the empty slides the whole edge to the far corner.
+  // One edge-slide: rotate the N-cell window [gap-(N-1) … gap] forward by one,
+  // FLIP-animating each element from its old box to its new box. The N-1 content
+  // tiles move one cell each; the empty slides the whole edge to the far corner.
   function step() {
     if (!running) return;
     var container = document.getElementById('gridContainer');
     if (!container || !gridOpen()) { stop(true); return; }
-    for (var v = 0; v < 16; v++) { if (!elemAt[v] || !elemAt[v].isConnected) { stop(true); return; } }
+    for (var v = 0; v < RLEN; v++) { if (!elemAt[v] || !elemAt[v].isConnected) { stop(true); return; } }
 
     var gi = gapIdx;
-    var W = [(gi + 12) % 16, (gi + 13) % 16, (gi + 14) % 16, (gi + 15) % 16, gi];  // gap-4..gap
+    var W = [];                                    // gap-(N-1) … gap-1, gap
+    for (var w = N - 1; w >= 1; w--) W.push((gi + RLEN - w) % RLEN);
+    W.push(gi);
     var E = W.map(function (i) { return elemAt[i]; });
 
     var oldR = E.map(function (el) { return el.getBoundingClientRect(); });
 
     // FIRST→LAST: drop any prior transform, move each element to its new grid cell.
-    for (var k = 0; k < 5; k++) {
-      var rc = RC[RING[W[(k + 1) % 5]]];
+    for (var k = 0; k < N; k++) {
+      var rc = RC[RING[W[(k + 1) % N]]];
       E[k].style.transition = 'none';
       E[k].style.transform  = '';
       E[k].style.gridRow    = rc[0];
@@ -128,7 +149,7 @@
 
     // INVERT: read the new boxes (forces layout), translate back to the old box.
     var newR = E.map(function (el) { return el.getBoundingClientRect(); });
-    for (var j = 0; j < 5; j++) {
+    for (var j = 0; j < N; j++) {
       var dx = oldR[j].left - newR[j].left;
       var dy = oldR[j].top  - newR[j].top;
       E[j].style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
@@ -138,15 +159,15 @@
 
     // PLAY: glide each element to its real position.
     requestAnimationFrame(function () {
-      for (var m = 0; m < 5; m++) {
+      for (var m = 0; m < N; m++) {
         E[m].style.transition = 'transform ' + moveDur + 's ' + EASE;
         E[m].style.transform  = 'translate(0px,0px)';
       }
     });
 
-    // Commit the logical rotation in our position map; the hole moves back 4 cells.
+    // Commit the logical rotation in our position map; the hole moves back N-1 cells.
     var snap = W.map(function (i) { return elemAt[i]; });
-    for (var n = 0; n < 5; n++) elemAt[W[(n + 1) % 5]] = snap[n];
+    for (var n = 0; n < N; n++) elemAt[W[(n + 1) % N]] = snap[n];
     gapIdx = W[0];
   }
 
@@ -160,12 +181,15 @@
     if (running) return;
     if (!gridOpen()) return;
     if (!DESKTOP) { toast('Moving cells is desktop-only (too heavy for phones)', 2200); return; }
-    if (!eligibleLayout()) { toast('Moving cells needs a 5×5, 17 or 19 grid', 2200); return; }
+    var n = ringSize();
+    if (!n) { toast('Moving cells needs a square 3×3-5×5, 17 or 19 grid', 2200); return; }
+    buildGeom(n);
     if (!buildElemAt()) { toast('Grid still drawing — try again in a moment', 1800); return; }
-    // (dev0383) No empty cell? Run anyway: seed the gap at 5e so that cell itself
-    // becomes the mover — it glides 5e→1e and on counter-clockwise around the ring
-    // exactly as a blank hole would, every ring tile shifting one slot per edge.
-    if (gapIdx < 0) gapIdx = RING.indexOf('5e');
+    // (dev0383) No empty cell? Run anyway: seed the gap at the bottom-right corner
+    // so that cell itself becomes the mover — it glides up the right edge and on
+    // counter-clockwise around the ring exactly as a blank hole would, every ring
+    // tile shifting one slot per edge.
+    if (gapIdx < 0) gapIdx = RING.indexOf(N + 'abcde'[N - 1]);
 
     running = true;
     pinAll();
