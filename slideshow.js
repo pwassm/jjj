@@ -26,8 +26,12 @@
 // inherit the wrap's 90° rotation and show images in visual landscape.
 // ══════════════════════════════════════════════════════════════════════════════
 
+// (dev0738) slideSec 5→2 and canvasBlur off→'med' are the OUT-OF-THE-BOX show:
+// what a device that has never opened the slideshow gets. Anyone who has run it
+// before is unaffected — _slideshowSaveSettings writes the whole settings object
+// to localStorage, so every existing key already overrides its default here.
 const SLIDESHOW_DEFAULTS = {
-  slideSec:      5,
+  slideSec:      2,
   zoomSec:       3,
   zoom:          'off',   // 'off'|'min'|'med'|'max'
   transitionSec: 1,
@@ -40,7 +44,7 @@ const SLIDESHOW_DEFAULTS = {
   labelSize:     'small',
   commentSize:   'off',
   order:         'order', // (dev0265) 'order'|'random' — show in cell/file order or shuffled
-  canvasBlur:    'off',   // 'off'|'min'|'med'|'max' (was boolean `bokeh` pre-zip0236)
+  canvasBlur:    'med',   // 'off'|'min'|'med'|'max' (was boolean `bokeh` pre-zip0236)
   // (dev0279) Which media types participate in the show:
   //   'image' — image slides only (legacy behavior)
   //   'video' — direct-video slides only (played via the full V player)
@@ -2755,7 +2759,9 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
       🗑 Delete marked
     </button>
 
-    <!-- (dev0361) Mobile pages: 1 = selection · 2 = timing · 3 = effects -->
+    <!-- (dev0361) Mobile pages. (dev0738) FOUR pages, not three: page 1 carried
+         six rows and ran off the bottom of a phone. Now 3·3·4·4 —
+         1 = what to show · 2 = pacing · 3 = motion · 4 = look. -->
     <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Source</span>
       <span style="display:flex;align-items:center;gap:5px;">
@@ -2768,13 +2774,6 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
     </div>
 
     <div class="ss-row ss-page-1" style="${rowCSS}">
-      <span>Each slide</span>
-      <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
-                   inputmode="decimal" value="${s.slideSec}"
-                   style="${numCSS}"> sec</span>
-    </div>
-
-    <div class="ss-row ss-page-1" style="${rowCSS}">
       <span>Show</span>
       ${_slideshowShowSelect('ssShowMode', s.showMode, selCSS)}
     </div>
@@ -2784,60 +2783,67 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
       ${_slideshowSizeFilterSelect('ssImgSizeFilter', s.imgSizeFilter, selCSS)}
     </div>
 
-    <div class="ss-row ss-page-1" style="${rowCSS}">
+    <div class="ss-row ss-page-2" style="${rowCSS}">
+      <span>Each slide</span>
+      <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
+                   inputmode="decimal" value="${s.slideSec}"
+                   style="${numCSS}"> sec</span>
+    </div>
+
+    <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Order</span>
       <button id="ssOrder" style="${togCSS(true)}">
         ${s.order === 'order' ? 'IN ORDER' : 'RANDOM'}
       </button>
     </div>
 
-    <div class="ss-row ss-page-1" style="${rowCSS}">
+    <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Loop</span>
       <button class="ss-tog" data-key="loop"    style="${togCSS(s.loop)}">${s.loop?'ON':'OFF'}</button>
     </div>
 
-    <div class="ss-row ss-page-2" style="${rowCSS}">
+    <div class="ss-row ss-page-3" style="${rowCSS}">
       <span>Zoom</span>
       <span><input id="ssZoomSec"   type="number" min="0.5" max="60" step="0.5"
                    inputmode="decimal" value="${s.zoomSec}"
                    style="${numCSS}"> sec</span>
     </div>
 
-    <div class="ss-row ss-page-2" style="${rowCSS}">
+    <div class="ss-row ss-page-3" style="${rowCSS}">
       <span>Zoom</span>
       ${lvlZoom(s.zoom).replace('$ID', 'ssZoomLevel')}
     </div>
 
-    <div class="ss-row ss-page-2" style="${rowCSS}">
+    <div class="ss-row ss-page-3" style="${rowCSS}">
       <span>Transition</span>
       <span><input id="ssTransSec"  type="number" min="0" max="10" step="0.1"
                    inputmode="decimal" value="${s.transitionSec}"
                    style="${numCSS}"> sec</span>
     </div>
 
-    <div class="ss-row ss-page-2" style="${rowCSS}">
+    <div class="ss-row ss-page-3" style="${rowCSS}">
       <span>Delay</span>
       <span><input id="ssDelaySec"  type="number" min="0" max="30" step="0.1"
                    inputmode="decimal" value="${s.delaySec}"
                    style="${numCSS}"> sec</span>
     </div>
 
-    <div class="ss-row ss-page-3" style="${rowCSS}">
+    <div class="ss-row ss-page-4" style="${rowCSS}">
       <span>Pan</span>
       ${lvl(s.pan).replace('$ID', 'ssPan')}
     </div>
 
-    <div class="ss-row ss-page-3" style="${rowCSS}">
+    <div class="ss-row ss-page-4" style="${rowCSS}">
       <span>Title</span>
       ${_slideshowSizeSelect('ssLabelSize', s.labelSize, selCSS)}
     </div>
 
-    <div class="ss-row ss-page-3" style="${rowCSS}">
+    <div class="ss-row ss-page-4" style="${rowCSS}">
       <span>Comment</span>
       ${_slideshowSizeSelect('ssCommentSize', s.commentSize, selCSS)}
     </div>
 
-    <div class="ss-row ss-page-3" style="${rowCSS};border-bottom:none;">
+    <div class="ss-row ss-page-4" style="${rowCSS};border-bottom:none;">
       <span>CanvasBlur</span>
       ${lvl(s.canvasBlur).replace('$ID', 'ssCanvasBlur')}
     </div>
@@ -2847,8 +2853,139 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
       <button class="ss-tab" data-page="1" style="${tabCSS}">1</button>
       <button class="ss-tab" data-page="2" style="${tabCSS}">2</button>
       <button class="ss-tab" data-page="3" style="${tabCSS}">3</button>
+      <button class="ss-tab" data-page="4" style="${tabCSS}">4</button>
     </div>
   `;
+}
+
+// (dev0738) In-app numeric keypad for the slideshow menu's number boxes.
+//
+// WHY THIS EXISTS: the boxes were <input type="number" inputmode="decimal">, so
+// tapping one raised the DEVICE's numeric keypad. That keypad is drawn by the OS
+// in the phone's physical orientation, and on a portrait phone our UI is rotated
+// 90° — so the keypad came up sideways relative to everything else, with no way
+// to fix it. No web API can rotate the system keyboard. Drawing our own keypad
+// inside #rotateWrap is the only way it can share the UI's frame, and it buys
+// the explicit Go button the OS keypad never offered.
+//
+// Opens EMPTY with the current value as a dimmed hint, so a tap starts a fresh
+// number rather than editing the old one. Cancel / backdrop / Esc leave the
+// setting untouched.
+function _slideshowNumpad(opts) {
+  const prior = document.getElementById('ssNumpad');
+  if (prior) prior.remove();
+
+  const step     = opts.step || 1;
+  const decimals = (String(step).split('.')[1] || '').length;
+  const allowDot = decimals > 0;
+  let buf = '';
+
+  const vp = (typeof window.salViewport === 'function')
+    ? window.salViewport() : { w: window.innerWidth, h: window.innerHeight };
+  const panelW = Math.min(300, Math.max(220, vp.w - 48));
+  // Key height tracks the SHORT side — in the rotated frame that is the height,
+  // and it is tight: the panel is five key-rows tall (four of digits plus the
+  // Cancel/Go row) on top of ~120px of padding, label and display. Solve for
+  // keyH against that budget rather than guessing, or the Go button lands off
+  // the bottom edge — the same cut-off that pushed the menu itself to 4 pages.
+  const keyH = Math.max(30, Math.min(52, Math.floor((vp.h - 140) / 5)));
+
+  const root = document.createElement('div');
+  root.id = 'ssNumpad';
+  root.style.cssText = 'position:fixed;inset:0;z-index:43000;'
+    + 'background:rgba(0,0,0,0.62);display:flex;align-items:center;'
+    + 'justify-content:center;font-family:monospace;';
+
+  const keyCSS = 'padding:0;height:' + keyH + 'px;border-radius:6px;'
+    + 'border:1px solid #4af;background:rgba(0,40,80,0.6);color:#cfe8ff;'
+    + 'font-family:monospace;font-size:' + Math.round(keyH * 0.42) + 'px;'
+    + 'font-weight:bold;cursor:pointer;touch-action:manipulation;';
+
+  // An integer-stepped field gets a blank where the decimal point would be, so
+  // the 0 and ⌫ keys stay under the same fingers on every field.
+  const keys = ['7','8','9','4','5','6','1','2','3', allowDot ? '.' : '', '0', '⌫'];
+  const keysHtml = keys.map(function (k) {
+    if (k === '') return '<span></span>';
+    return '<button class="ss-np-key" data-k="' + _slideshowEsc(k) + '" style="'
+         + keyCSS + '">' + k + '</button>';
+  }).join('');
+
+  root.innerHTML =
+      '<div id="ssNpPanel" style="width:' + panelW + 'px;background:#151528;'
+    +      'border:2px solid #4af;border-radius:10px;padding:12px;'
+    +      'box-shadow:0 8px 32px rgba(0,0,0,0.8);">'
+    +   '<div style="color:#8ef;font-size:13px;margin-bottom:6px;">'
+    +     _slideshowEsc(opts.label) + '</div>'
+    +   '<div id="ssNpDisp" style="min-height:34px;line-height:34px;padding:0 10px;'
+    +        'margin-bottom:10px;border-radius:6px;background:#0a0a18;'
+    +        'border:1px solid #345;color:#fff;font-size:22px;text-align:right;'
+    +        'overflow:hidden;white-space:nowrap;">'
+    +     '<span style="color:#5a6a80;font-size:15px;">now ' + _slideshowEsc(String(opts.value)) + '</span>'
+    +   '</div>'
+    +   '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">'
+    +     keysHtml
+    +   '</div>'
+    +   '<div style="display:flex;gap:8px;margin-top:10px;">'
+    +     '<button id="ssNpCancel" style="flex:1;height:' + keyH + 'px;border-radius:6px;'
+    +          'border:1px solid #f88;background:rgba(80,0,0,0.45);color:#fbb;'
+    +          'font-family:monospace;font-size:15px;font-weight:bold;cursor:pointer;">Cancel</button>'
+    +     '<button id="ssNpGo" style="flex:1;height:' + keyH + 'px;border-radius:6px;'
+    +          'border:1px solid #6c8;background:rgba(0,80,30,0.55);color:#cfd;'
+    +          'font-family:monospace;font-size:15px;font-weight:bold;cursor:pointer;">Go</button>'
+    +   '</div>'
+    + '</div>';
+
+  const disp = root.querySelector('#ssNpDisp');
+  function redraw() {
+    disp.innerHTML = buf === ''
+      ? '<span style="color:#5a6a80;font-size:15px;">now ' + _slideshowEsc(String(opts.value)) + '</span>'
+      : _slideshowEsc(buf);
+  }
+
+  function close() {
+    document.removeEventListener('keydown', onKey, true);
+    root.remove();
+  }
+  function go() {
+    const v = parseFloat(buf);
+    close();
+    if (buf !== '' && !isNaN(v)) opts.onCommit(v);
+  }
+  function press(k) {
+    if (k === '⌫') buf = buf.slice(0, -1);
+    else if (k === '.') { if (allowDot && buf.indexOf('.') === -1) buf += (buf === '' ? '0.' : '.'); }
+    else if (buf.replace('.', '').length < 6) buf += k;
+    redraw();
+  }
+
+  // The slideshow overlay under this has its own tap/swipe catchers — swallow
+  // everything so a keypress never also advances or closes the show.
+  root.addEventListener('pointerdown', e => e.stopPropagation(), true);
+  root.addEventListener('click', e => {
+    e.stopPropagation();
+    const key = e.target.closest ? e.target.closest('.ss-np-key') : null;
+    if (key) { press(key.dataset.k); return; }
+    if (e.target.closest('#ssNpGo'))     { go();    return; }
+    if (e.target.closest('#ssNpCancel')) { close(); return; }
+    if (!e.target.closest('#ssNpPanel')) close();   // backdrop
+  }, true);
+
+  function onKey(e) {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'Enter') { e.preventDefault(); go(); }
+    else if (e.key === 'Backspace') { e.preventDefault(); press('⌫'); }
+    else if (/^[0-9]$/.test(e.key)) { e.preventDefault(); press(e.key); }
+    else if (e.key === '.') { e.preventDefault(); press('.'); }
+  }
+  document.addEventListener('keydown', onKey, true);
+
+  (window.salOverlayRoot ? window.salOverlayRoot() : document.body).appendChild(root);
+}
+
+function _slideshowEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function _slideshowWireMenu(menu) {
@@ -2904,9 +3041,9 @@ function _slideshowWireMenu(menu) {
     };
   }
 
-  // (dev0265/0361) Mobile pagination — split rows across THREE pages; the
-  // bottom tabs (1 · 2 · 3) flip between them. Desktop ignores it (all rows
-  // visible, tabs hidden) so nothing is hidden when the menu fits comfortably.
+  // (dev0265/0361) Mobile pagination — the bottom tabs flip between pages.
+  // Desktop ignores it (all rows visible, tabs hidden) so nothing is hidden when
+  // the menu fits comfortably. (dev0738) FOUR pages — see the markup above.
   const mobile = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
   const pager  = menu.querySelector('#ssPager');
   if (mobile && pager) {
@@ -2988,11 +3125,39 @@ function _slideshowWireMenu(menu) {
       el.value = next;
       commit(next);
     }, { passive: false });
+    // (dev0738) On touch, the box no longer raises the OS keypad — `readonly`
+    // is what suppresses it — and taps open our own rotated keypad instead.
+    // The label comes off the row's first <span> so the keypad says which
+    // setting is being changed.
+    const touch = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
+    if (touch) {
+      el.readOnly = true;
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        e.preventDefault();
+        el.blur();
+        const rowEl = el.closest('.ss-row');
+        const lbl = rowEl && rowEl.querySelector('span')
+          ? rowEl.querySelector('span').textContent.trim() : 'Value';
+        _slideshowNumpad({
+          label: lbl + '  (' + min + '–' + max + ' sec)',
+          value: st.settings[key],
+          step: step,
+          onCommit: v => {
+            const clamped = parseFloat(
+              Math.max(min, Math.min(max, v)).toFixed(decimals));
+            el.value = clamped;
+            commit(clamped);
+          }
+        });
+      });
+      return;   // no focus/blur clearing — the keypad owns entry now
+    }
     // Stop bubble so clicks on the spinner don't dismiss the slideshow.
     el.addEventListener('click', e => e.stopPropagation());
-    // (dev0362) Tapping the box (which pops the numpad on phones) clears it so
-    // the next entry is a fresh number, not appended. If the user enters
-    // nothing, restore the value that was erased on blur.
+    // (dev0362) Tapping the box clears it so the next entry is a fresh number,
+    // not appended. If the user enters nothing, restore the value that was
+    // erased, on blur.
     el.addEventListener('focus', () => { el.dataset.prev = el.value; el.value = ''; });
     el.addEventListener('blur', () => {
       if (el.value.trim() === '' || isNaN(parseFloat(el.value))) el.value = el.dataset.prev || '';

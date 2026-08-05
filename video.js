@@ -1215,8 +1215,11 @@ window.gridPlaySteps = function(cellStr, row) {
 };
 
 // (dev0419) "Play steps All" — convert EVERY mounted grid cell that has saved
-// steps to in-cell frame-step playback at once (gridPlaySteps on each). Used by
-// the Gu (user-mode) right-click menu. In-cell for ALL link types — only one V
+// steps to in-cell frame-step playback at once (gridPlaySteps on each).
+// (dev0738) No longer on the Gu long-press menu — acting on every mounted cell
+// is not what a press on ONE cell should mean, and the menu needed the room.
+// Still exported, so a hotkey or dev path can call it. In-cell for ALL link
+// types — only one V
 // exists, so YouTube can't route through V here the way single "Play steps"
 // does; it steps in its own cell instead. Cells with no steps or no steppable
 // player are silently skipped. Returns how many cells were converted.

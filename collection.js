@@ -426,8 +426,9 @@ document.addEventListener('keydown', e => {
   // (pause/unpause all), Escape (leave grid / back to menu), and — while the
   // guFunKeys switch is on (see _guFun above) — the fun keys. Slideshow (S) and
   // captions (Shift+C) live in core.js's window-capture and stay available.
-  // NB returns WITHOUT preventDefault/stopPropagation so the Gu right-click menu's
-  // own V/P/A/S key handler (a separate listener) is unaffected.
+  // NB returns WITHOUT preventDefault/stopPropagation so the Gu long-press menu's
+  // own V/S/G/P key handler (a separate listener) is unaffected. (dev0738: the
+  // A alias went with "Play steps All"; G was added for "Go author site".)
   if ((typeof _isUserMode === 'function') && _isUserMode() && !_guFun
       && e.key !== 'Escape' && !(e.key === ' ' || e.code === 'Space')) {
     return;
@@ -1124,11 +1125,24 @@ document.addEventListener('keydown', e => {
 // is already public — which is every row that can appear in a grid.
 var _RAW_IMG_RE = /\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)$/i;
 var _RAW_VID_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i;
+//
+// (dev0738) Split in two. The resolution below is now _gridOpenRowSource(row),
+// taking the row explicitly, because the Gu long-press menu's "Go author site"
+// has a row but no hovered cell — a finger leaves no hover. `g` on desktop is
+// unchanged: it still reads _gridHoverCell and hands the row straight down.
 window._gridOpenLink = function() {
   var cell = (typeof _gridHoverCell !== 'undefined') ? _gridHoverCell : null;
   var row = cell && cell._rowData;
   if (!row) {
     if (typeof _gridToast === 'function') _gridToast('Hover over a cell first', 1400);
+    return;
+  }
+  window._gridOpenRowSource(row);
+};
+
+window._gridOpenRowSource = function(row) {
+  if (!row) {
+    if (typeof _gridToast === 'function') _gridToast('No row on this cell', 1400);
     return;
   }
   var lp = row.linkpage;

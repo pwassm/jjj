@@ -3174,28 +3174,33 @@ function gridWireInteractor(interactor, cell, cellStr) {
       return;
     }
 
+    // (dev0738) Both menus mount inside #rotateWrap now, so they position in the
+    // wrap's frame — map the press point out of the physical frame to match, or
+    // a portrait phone opens the menu nowhere near the finger.
+    const _mp = window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+
     // (zip0141) In user mode (Gu): no cut/paste/edit menu. Ctrl+right-click
-    // still opens View directly. (dev0419) Plain right-click now pops a lean
-    // viewer menu — View / Play steps / Play steps All — and nothing else.
+    // still opens View directly. (dev0419) Plain right-click / long-press pops a
+    // lean viewer menu — see gridShowUserContextMenu for the item list.
     if (userMode) {
       if (e.ctrlKey && cell._rowData) {
         _lastGridRow = cell._rowData;
         gridOpenFullscreen(cell._rowData);
         return;
       }
-      gridShowUserContextMenu(e.clientX, e.clientY, cellStr, cell._rowData);
+      gridShowUserContextMenu(_mp.x, _mp.y, cellStr, cell._rowData);
       return;
     }
-    
+
     // Ctrl+right-click = View mode (VP fullscreen)
     if (e.ctrlKey && cell._rowData) {
       _lastGridRow = cell._rowData;
       gridOpenFullscreen(cell._rowData);
       return;
     }
-    
+
     // Plain right-click = context menu
-    gridShowContextMenu(e.clientX, e.clientY, cellStr, cell._rowData);
+    gridShowContextMenu(_mp.x, _mp.y, cellStr, cell._rowData);
   }, true);
   
   // Double-click on text slide → open large text editor
@@ -3256,7 +3261,13 @@ let _gridContextMenu = null;
 // Shared by BOTH the user (Gu) and dev (Gd) menus.
 function _gridClampContextMenu(menu, x, y) {
   if (!menu) return;
-  const m = 6, vw = window.innerWidth, vh = window.innerHeight;
+  // (dev0738) Measure in the VISUAL frame. The menu now lives inside
+  // #rotateWrap, so on a portrait phone the box it must stay inside is the
+  // wrap's rotated box — window.innerWidth/innerHeight are the physical device
+  // and had width and height the wrong way round there.
+  const _vp = (typeof window.salViewport === 'function')
+    ? window.salViewport() : { w: window.innerWidth, h: window.innerHeight };
+  const m = 6, vw = _vp.w, vh = _vp.h;
   menu.style.maxHeight = (vh - 2 * m) + 'px';
   menu.style.overflowY = 'auto';
   const r = menu.getBoundingClientRect();
@@ -3269,27 +3280,45 @@ function _gridClampContextMenu(menu, x, y) {
   menu.style.top  = top  + 'px';
 }
 
-// (dev0419) Lean user-mode (Gu) right-click menu: View / Play steps / Play
-// steps All — viewing actions only, no edit/cut/delete/write. Shares the dev
-// menu's chrome + close/keyboard plumbing (gridHideContextMenu) but builds its
-// own short item list. "Play steps" routes by link type exactly like Gd (in
-// cell for Vimeo/direct, in V for YouTube); "Play steps All" converts every
-// playing cell with saved steps to in-cell step playback at once.
+// (dev0419) Lean user-mode (Gu) long-press / right-click menu: viewing actions
+// only, no edit/cut/delete/write. Shares the dev menu's chrome + close/keyboard
+// plumbing (gridHideContextMenu) but builds its own short item list.
+//
+// (dev0738) Items are now: View full window · Slideshow · Go author site ·
+// Play steps. "Play steps All" is off the menu (the function survives for the
+// dev paths that call it) — on a phone it acted on every mounted cell at once,
+// which is not something you reach for from a single cell's press. "Go author
+// site" is the same answer desktop `g` gives, now reachable by touch.
+// "Play steps" routes by link type exactly like Gd (in cell for Vimeo/direct,
+// in V for YouTube).
+//
+// x/y arrive in the VISUAL frame (the caller maps them through rotateXY), and
+// the menu mounts inside #rotateWrap, so on a portrait phone it opens at the
+// point of the hold and reads the same way round as the grid under it.
 function gridShowUserContextMenu(x, y, cellStr, row) {
   gridHideContextMenu();
+
+  // (dev0738) Touch needs a bigger target than a mouse. The rows were 13px text
+  // in 8px padding — fine for a cursor, a poke for a fingertip, and with four
+  // items the whole menu still has to fit a phone's short side.
+  const touch = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
+  const padCSS   = touch ? '13px 20px' : '8px 16px';
+  const fsCSS    = touch ? '16px' : '13px';
+  const minW     = touch ? 220 : 160;
 
   _gridContextMenu = document.createElement('div');
   _gridContextMenu.id = 'gridContextMenu';
   _gridContextMenu.style.cssText = `
     position:fixed; left:${x}px; top:${y}px; z-index:30000;
     background:#1a1a2e; border:1px solid #444; border-radius:6px;
-    padding:4px 0; min-width:160px; box-shadow:0 4px 12px rgba(0,0,0,0.5);
+    padding:4px 0; min-width:${minW}px; box-shadow:0 4px 12px rgba(0,0,0,0.5);
   `;
 
   const mkItem = (html, onclick) => {
     const b = document.createElement('div');
     b.innerHTML = html;
-    b.style.cssText = 'padding:8px 16px; color:#8ef; cursor:pointer; font-size:13px;';
+    b.style.cssText = 'padding:' + padCSS + '; color:#8ef; cursor:pointer;'
+      + 'font-size:' + fsCSS + '; white-space:nowrap;';
     b.onmouseenter = () => b.style.background = '#2a2a4e';
     b.onmouseleave = () => b.style.background = '';
     b.onclick = onclick;
@@ -3298,7 +3327,13 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
 
   const doView = () => { if (row) { _lastGridRow = row; gridOpenFullscreen(row); } gridHideContextMenu(); };
   const doSteps = () => { if (window._gridPlayStepsRoute) window._gridPlayStepsRoute(cellStr, row); gridHideContextMenu(); };
-  const doStepsAll = () => { if (window.gridPlayStepsAll) window.gridPlayStepsAll(); gridHideContextMenu(); };
+  // (dev0738) Same resolution desktop `g` does — recorded linkpage, else the
+  // link when it is itself a page, else a reverse-image search. Takes the row
+  // explicitly because there is no hovered cell behind a long-press.
+  const doAuthor = () => {
+    gridHideContextMenu();
+    if (window._gridOpenRowSource) window._gridOpenRowSource(row);
+  };
   // (dev0516) Slideshow — play the whole active grid as a full-window slideshow
   // (same as the bare-'s' hotkey from G / the hamburger Slideshow item).
   const doSlideshow = () => { gridHideContextMenu(); if (window.slideshowOpenGrid) window.slideshowOpenGrid(); };
@@ -3315,19 +3350,21 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
     if (c && _gridEmbedReload(c)) _gridToast('↻ new embed — click ▶ in the middle to play', 1800);
   };
 
-  if (row) _gridContextMenu.appendChild(mkItem('<u>V</u>iew', doView));
-  _gridContextMenu.appendChild(mkItem('<u>P</u>lay steps', doSteps));
-  _gridContextMenu.appendChild(mkItem('Play steps <u>A</u>ll', doStepsAll));
+  if (row) _gridContextMenu.appendChild(mkItem('<u>V</u>iew full window', doView));
   _gridContextMenu.appendChild(mkItem('<u>S</u>lideshow', doSlideshow));
+  if (row) _gridContextMenu.appendChild(mkItem('<u>G</u>o author site', doAuthor));
+  _gridContextMenu.appendChild(mkItem('<u>P</u>lay steps', doSteps));
   if (isEmbedRow) _gridContextMenu.appendChild(mkItem('↻ <u>N</u>ew embed', doNewEmbed));
 
-  document.body.appendChild(_gridContextMenu);
+  // (dev0738) Inside the wrap — see salOverlayRoot in index.html.
+  (window.salOverlayRoot ? window.salOverlayRoot() : document.body)
+    .appendChild(_gridContextMenu);
   _gridClampContextMenu(_gridContextMenu, x, y);   // (dev0571) keep on-screen (bottom row / phones)
 
   const handleKey = e => {
     if ((e.key === 'v' || e.key === 'V') && row) { e.preventDefault(); doView(); }
     else if (e.key === 'p' || e.key === 'P')     { e.preventDefault(); doSteps(); }
-    else if (e.key === 'a' || e.key === 'A')     { e.preventDefault(); doStepsAll(); }
+    else if ((e.key === 'g' || e.key === 'G') && row) { e.preventDefault(); doAuthor(); }
     else if (e.key === 's' || e.key === 'S')     { e.preventDefault(); doSlideshow(); }
     else if (isEmbedRow && /^[nN]$/.test(e.key))   { e.preventDefault(); doNewEmbed(); }
     else if (e.key === 'Escape')                 { gridHideContextMenu(); }
@@ -3483,7 +3520,10 @@ function gridShowContextMenu(x, y, cellStr, row) {
   writeBtn.onclick = () => { gridWriteToT(); };
   _gridContextMenu.appendChild(writeBtn);
 
-  document.body.appendChild(_gridContextMenu);
+  // (dev0738) Inside the wrap, so a portrait phone gets the menu in the same
+  // (landscape) frame as the grid under it. See salOverlayRoot in index.html.
+  (window.salOverlayRoot ? window.salOverlayRoot() : document.body)
+    .appendChild(_gridContextMenu);
   _gridClampContextMenu(_gridContextMenu, x, y);   // (dev0571) keep on-screen (bottom row / phones)
 
   // Handle keyboard shortcuts

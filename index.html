@@ -93,6 +93,23 @@
     // 90° CW visual rotation: physical (cx,cy) → wrap-local (cy, vw-cx)
     return { x: cy, y: window.innerWidth - cx };
   };
+  // (dev0738) The two facts every full-screen overlay needs to share the UI's
+  // frame instead of the device's. An overlay appended to <body> is a SIBLING
+  // of the wrap, so on a portrait phone it paints upright while the rest of the
+  // UI is rotated 90° — sideways text, and "left edge" lands at the visual
+  // bottom. Mounting it at salOverlayRoot() puts it in the wrap, where its
+  // position:fixed resolves against the wrap's (rotated) box.
+  window.salOverlayRoot = function() {
+    return document.getElementById('rotateWrap') || document.body;
+  };
+  // Viewport size in the VISUAL frame — the wrap's own box when rotated, the
+  // window otherwise. Anything clamping an overlay on-screen must measure with
+  // this, not window.innerWidth/innerHeight (those are the physical device).
+  window.salViewport = function() {
+    var w = document.getElementById('rotateWrap');
+    if (window._salRotated && w) return { w: w.offsetWidth, h: w.offsetHeight };
+    return { w: window.innerWidth, h: window.innerHeight };
+  };
 })();
 </script>
 <style>
@@ -1066,7 +1083,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0737';
+  window.HELP_VERSION_STR = 'dev0738';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

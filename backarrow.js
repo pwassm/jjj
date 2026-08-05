@@ -109,7 +109,13 @@
       e.preventDefault(); e.stopPropagation();
       _goBack();
     });
-    document.body.appendChild(b);
+    // (dev0738) Mount inside #rotateWrap. On <body> it was a sibling of the wrap,
+    // so left:10px/top:50% were read in the DEVICE frame: on a portrait phone the
+    // UI is rotated 90° CW, which put this "left edge" button along the visual
+    // BOTTOM. Inside the wrap the same two numbers mean the visual left edge, in
+    // both orientations. Landscape is unaffected — the wrap has no transform
+    // there, so fixed still resolves against the viewport at the same z-index.
+    (window.salOverlayRoot ? window.salOverlayRoot() : document.body).appendChild(b);
     return b;
   }
 
