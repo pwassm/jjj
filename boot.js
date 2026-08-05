@@ -587,6 +587,9 @@ async function _showShareableMenu() {
   });
   const prev = document.getElementById('shareableMenu');
   if (prev) prev.remove();
+  // (dev0739) The on-screen keyboard is a sibling of the menu, not a child, so
+  // removing the menu leaves it floating over whatever comes next.
+  if (window.salKeyboardClose) window.salKeyboardClose();
 
   // Load ml.json and c.json — FSA folder first, HTTP fallback.
   let ml = null, cj = null;
@@ -993,6 +996,12 @@ async function _showShareableMenu() {
     // old "SeaLifeAndMore" header is gone). Flip the accent rule to the bottom
     // edge so the active indicator sits against the page on the top bar.
     + '.sm-tabs-top{border-top:none;border-bottom:2px solid #223;}'
+    // (dev0739) Phones get the BOTTOM bar only. Two identical tab rows cost
+    // ~90px of a 375px-tall rotated frame to say the same thing twice, and the
+    // bottom one is the reachable one. Desktop keeps both — there the height is
+    // free and the top bar is what Tab-key focus anchors to. !important because
+    // _smShow writes display inline on every .sm-tabs.
+    + 'html.is-mobile .sm-tabs-top{display:none !important;}'
     // (dev0551) Sign-in strip on Page 1. Low-key by design — a quiet link when
     // signed out, a status line when signed in. Never blocks browsing.
     + '.sm-auth{max-width:620px;margin:6px auto 30px;padding:0 24px;font-family:sans-serif;color:#9fb0c8;font-size:14px;text-align:center;}'
@@ -1107,14 +1116,15 @@ async function _showShareableMenu() {
               + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make + Show grid</button>'
               + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
             + '</div>'
-            + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When ' + _smN + ' or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
-            // (dev0668) State the two limits up front — both are the search
-            // behaving as designed, and both otherwise read as bugs.
-            + '<div id="smSearchLimits" class="sm-count" style="color:#8a93a8;margin:0 0 4px;">'
-              + 'Searches ' + _smPlayableN + ' playable items (YouTube, Vimeo, video files, images) — '
-              + 'the formats that can be watched and looped here. '
-              + 'One term at a time; it matches any part of a title, author, comment, description or tag.'
-            + '</div>'
+            // (dev0739) Condensed to two lines from three-plus. The old copy
+            // spent a paragraph naming the playable formats and explaining that
+            // one term matches any field — true, but it was reference material
+            // sitting permanently above the results, and on a phone it pushed
+            // them off-screen. The scope count stays (a search that quietly
+            // skips items does read as a bug) and now shares the line it
+            // belongs on; the rest is gone. Same on desktop — it was no more
+            // useful there, just less costly.
+            + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When ' + _smN + ' or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab. Searches ' + _smPlayableN + ' playable items.</div>'
             // (dev0366) Active COI filters, shown so a narrowed result set doesn't
             // look broken. Populated from _filtTaxon / _filtMedia after mount.
             + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
@@ -1208,16 +1218,32 @@ async function _showShareableMenu() {
     .concat(SM_FEAT_ADDOWN ? [8] : [])
     .concat([4]);
   const _smShow = n => {
+    // (dev0739) A page change means the box our keyboard was typing into is
+    // gone — take it with us rather than leaving it floating over the new page.
+    if (window.salKeyboardClose) window.salKeyboardClose();
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
     if (n >= 2) window._smLastTab = n; // (dev0384) remember the last tab used
     [1, 2, 3, 4, 5, 6, 7, 8].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = (n === 1) ? 'none' : 'flex');
+    // (dev0739) Let the floating back arrow re-evaluate now rather than on its
+    // next 300ms poll — leaving Welcome should light it immediately.
+    if (window._salBackArrowSync) window._salBackArrowSync();
   };
-  // (dev0384) Focus the active tab button on the TOP bar — used on open and on
-  // every Tab-key hop so keyboard cycling stays anchored to the tab row.
-  const _smFocusTab = n => { const b = ov.querySelector('.sm-tabs-top .sm-tab[data-pg="' + n + '"]'); if (b) b.focus(); };
+  // (dev0739) The floating back arrow's route home on the menu — it takes the
+  // viewer to the Intro (Welcome) page without a reload. Re-exported on every
+  // menu build so it always points at the live overlay's pager.
+  window._smShowPage = _smShow;
+  // (dev0384) Focus the active tab button — used on open and on every Tab-key
+  // hop so keyboard cycling stays anchored to the tab row. (dev0739) Falls back
+  // to the bottom bar: the top bar is hidden on phones, and focusing a
+  // display:none button silently moves focus nowhere.
+  const _smFocusTab = n => {
+    const b = ov.querySelector('.sm-tabs-top .sm-tab[data-pg="' + n + '"]')
+           || ov.querySelector('.sm-tabs-bottom .sm-tab[data-pg="' + n + '"]');
+    if (b) b.focus();
+  };
   // (dev0403) Focus the first SavedSearches "Open" button — Tab then cycles the
   // Open buttons (see _smRenderSaved). Returns false when there are none yet.
   const _smFocusFirstSaved = () => {
@@ -1495,6 +1521,11 @@ async function _showShareableMenu() {
     _smFilter = _smChFilt.value.trim().toLowerCase();
     _smRenderChoose();
   });
+  // (dev0739) Our own keyboard here too — same reason as the Search box. This
+  // one filters live, so Go has nothing left to do but put the keyboard away.
+  if (_smChFilt && window.salKeyboardAttach) {
+    window.salKeyboardAttach(_smChFilt, { onGo: () => window.salKeyboardClose() });
+  }
   // (dev0382) Tab cycles filter ↔ Clear so the button is one Tab away and a
   // second Tab returns to the filter. Clear (click / Enter / Space — native on a
   // <button>) blanks the filter and refocuses the now-empty box.
@@ -1579,6 +1610,7 @@ async function _showShareableMenu() {
         toast('Narrow to ' + _smN + ' or fewer results first', 1800);
       return;
     }
+    if (window.salKeyboardClose) window.salKeyboardClose();   // (dev0739)
     const rows = _smGridable.slice();
     window._smReturnPage = 3;          // Esc / swipe-back returns here, to Search
     // (dev0403) Remember the query so the return-to-Search restores the box and
@@ -1608,6 +1640,13 @@ async function _showShareableMenu() {
       if (e.key === 'Enter') { e.preventDefault(); _smMakeGridNow(); return; }
       if (e.key === 'Tab') { e.preventDefault(); (e.shiftKey ? _smSaveBtn : _smClearBtn).focus(); }
     });
+    // (dev0739) On a phone this box raised the SYSTEM keyboard, which the OS
+    // draws in the device's physical orientation — sideways across our rotated
+    // UI, and unturnable. Use our own instead. Go builds the grid, the same as
+    // Enter. Desktop is untouched: salKeyboardAttach returns on non-touch.
+    if (window.salKeyboardAttach) {
+      window.salKeyboardAttach(_smBox, { onGo: () => _smMakeGridNow() });
+    }
   }
   if (_smClearBtn) {
     _smClearBtn.addEventListener('click', _smDoClear);

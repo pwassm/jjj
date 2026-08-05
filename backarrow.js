@@ -19,7 +19,10 @@
 //
 // WHERE IT SHOWS
 //   USER MODE ONLY, on every screen EXCEPT:
-//     • Menu — the shareable menu is home; there is nothing behind it.
+//     • Menu page 1 (Welcome/Intro) — that IS home; nothing is behind it. On the
+//       other menu tabs it DOES show (dev0739) and goes back to the Intro in
+//       place. That is the one screen where it does not send Esc, because Esc on
+//       the menu leaves the menu; here it calls the menu's own pager instead.
 //     • PM (the full-window presentation reader) — it already carries its own
 //       ‹ › page arrows and a red ✕, and a second control in the same corner
 //       would just be in the way.
@@ -51,10 +54,23 @@
   // PM = the full-window text reader (↑ from a grid t cell). vp.js flags it.
   function _inPM() { return !!window._vpTextReader; }
 
+  // (dev0739) On the menu the arrow means "back to the Intro page". It is the
+  // one screen where Esc is NOT the right answer — Esc on the menu leaves for
+  // the grid — so this is the single case that routes somewhere of its own.
+  function _onMenuTab() {
+    return _screen() === 'Menu'
+        && !!document.getElementById('shareableMenu')
+        && window._smCurPage !== 1
+        && typeof window._smShowPage === 'function';
+  }
+
   function _shouldShow() {
     if (!_userMode()) return false;
     var c = _screen();
-    if (c === 'Menu' || c === 'H') return false;
+    // Welcome (page 1) is home — nothing behind it. Every other menu tab has
+    // the Intro to go back to.
+    if (c === 'Menu') return _onMenuTab();
+    if (c === 'H') return false;
     if (_inPM()) return false;
     // (dev0711) The grid's clean view hides every overlaid control, this one
     // included — grid.js owns that flag and the display it forces.
@@ -63,6 +79,12 @@
   }
 
   function _goBack() {
+    // (dev0739) On a menu tab, go to the Intro page in place — no reload, and
+    // no Esc, which would leave the menu entirely.
+    if (_onMenuTab()) {
+      try { window._smShowPage(1); } catch (_) {}
+      return;
+    }
     // The grid has a purpose-built exit that also stops the players, the fun
     // modes and the floating cards, and lands on the menu PAGE it came from.
     var gridUp = false;
@@ -122,8 +144,16 @@
   function _sync() {
     if (!document.body) return;
     var b = _ensure();
+    var onMenu = _onMenuTab();
     var want = _shouldShow() ? 'block' : 'none';
     if (b.style.display !== want) b.style.display = want;
+    // (dev0739) #shareableMenu sits at z-index 999990 and, since dev0737, in the
+    // same stacking context as this button — at the standing 29500 the arrow
+    // would be behind the menu it is meant to sit on. Lift it only while the
+    // menu is up: raising it everywhere would also float it over the slideshow
+    // and V, whose own stacking was settled long before this button existed.
+    var z = onMenu ? '999995' : '29500';
+    if (b.style.zIndex !== z) b.style.zIndex = z;
   }
   window._salBackArrowSync = _sync;
 
