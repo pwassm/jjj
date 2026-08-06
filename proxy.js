@@ -2253,6 +2253,79 @@ function streamYtdlpMeta(req, res, bin, args) {
   attempt(false, '');
 }
 
+// (dev0746) ── /localfile: serve one disk file to the page ─────────────────
+// See the route comment for why this is as narrow as it is.
+const LOCALFILE_TYPES = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  gif: 'image/gif',  bmp: 'image/bmp',   avif: 'image/avif',
+  mp4: 'video/mp4',  m4v: 'video/mp4',   mov: 'video/quicktime',
+  webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo'
+};
+
+function serveLocalFile(req, res) {
+  const bail = (code, msg) => { res.writeHead(code, { 'Content-Type': 'text/plain' }); res.end(msg); };
+  if (req.method !== 'GET' && req.method !== 'HEAD') return bail(405, 'GET only');
+  // A media element sends no Origin, so Origin cannot be the gate. When the
+  // browser does send a Referer it must be one of ours; a request with none
+  // (curl, a direct address-bar hit) is a local process either way.
+  const ref = req.headers.referer || '';
+  if (ref) {
+    let ok = false;
+    try { ok = LOCAL_ORIGINS.has(new URL(ref).origin); } catch (_) {}
+    if (!ok) return bail(403, 'localfile: referer not allowed');
+  }
+  let p = '';
+  try { p = new URL(req.url, 'http://x').searchParams.get('p') || ''; } catch (_) {}
+  if (!p) return bail(400, 'localfile: ?p= required');
+  p = p.replace(/\//g, path.sep === '\\' ? '\\' : '/');
+  if (p.includes('..')) return bail(400, 'localfile: no traversal');
+  if (!/^[A-Za-z]:[\\/]/.test(p) && !/^[\\/]{2}[^\\/]/.test(p) && !/^\//.test(p)) {
+    return bail(400, 'localfile: absolute path required');
+  }
+  const ext = p.split('.').pop().toLowerCase();
+  const type = LOCALFILE_TYPES[ext];
+  if (!type) return bail(415, 'localfile: not a media extension: ' + ext);
+  let st;
+  try { st = fs.statSync(p); } catch (_) { return bail(404, 'localfile: not found'); }
+  if (!st.isFile()) return bail(404, 'localfile: not a file');
+
+  const headers = {
+    'Content-Type': type,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*'
+  };
+  // Range — what makes a <video> scrubbable. One range only; a multipart
+  // response is more than any media element asks for.
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (m && (m[1] || m[2])) {
+    let start = m[1] ? parseInt(m[1], 10) : NaN;
+    let end   = m[2] ? parseInt(m[2], 10) : NaN;
+    if (Number.isNaN(start)) { start = st.size - end; end = st.size - 1; }   // bytes=-N (suffix)
+    if (Number.isNaN(end))   { end = st.size - 1; }
+    start = Math.max(0, start); end = Math.min(st.size - 1, end);
+    if (start > end) {
+      res.writeHead(416, Object.assign({ 'Content-Range': 'bytes */' + st.size }, headers));
+      res.end();
+      return;
+    }
+    headers['Content-Range']  = `bytes ${start}-${end}/${st.size}`;
+    headers['Content-Length'] = String(end - start + 1);
+    res.writeHead(206, headers);
+    if (req.method === 'HEAD') { res.end(); return; }
+    const rs = fs.createReadStream(p, { start, end });
+    rs.on('error', () => { try { res.destroy(); } catch (_) {} });
+    rs.pipe(res);
+    return;
+  }
+  headers['Content-Length'] = String(st.size);
+  res.writeHead(200, headers);
+  if (req.method === 'HEAD') { res.end(); return; }
+  const rs = fs.createReadStream(p);
+  rs.on('error', () => { try { res.destroy(); } catch (_) {} });
+  rs.pipe(res);
+}
+
 const EXEC_ALLOW = {
   ffmpeg:   buildFfmpegArgs,
   ffprobe:  buildFfprobeArgs,
@@ -4767,7 +4840,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
     return;
   }
 
@@ -4940,6 +5013,25 @@ http.createServer((req, res) => {
         sendJson(res, 500, { ok: false, error: e.message }, origin);
       }
     }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+    return;
+  }
+
+  // (dev0746) ── /localfile — hand ONE disk file to the page ───────────────
+  // The bridge that lets a file picked in a file manager open straight in the
+  // crop tool. Everything else in the app reaches disk media through the File
+  // System Access API, which never tells the page an absolute path; here the
+  // path is what we START with, so the media element just needs a URL for it.
+  //
+  // Deliberately narrow, because it is the one route that reads arbitrary
+  // paths: GET only, an allowlisted media extension, no directory listing, no
+  // traversal, and — since a media element's request is not a fetch and so
+  // carries no Origin — a Referer check when the browser sends one. The proxy
+  // is bound to 127.0.0.1, so the caller is local either way.
+  //
+  // Range matters: without it a <video> cannot seek, and the crop tool is
+  // nothing but seeking.
+  if (req.url.split('?')[0] === '/localfile') {
+    serveLocalFile(req, res);
     return;
   }
 

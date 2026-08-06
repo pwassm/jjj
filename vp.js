@@ -5883,11 +5883,15 @@ async function _vpProbeExifOrientation(absPath) {
 // which owns the decision that this slide IS an image and has already frozen
 // the picture (the show's own zoom/pan is a CSS transform on the <img>, and
 // the overlay's screen→source mapping assumes an untransformed contain-fit).
-window._vpImageCropOpen = function (host, img, row) {
+// (dev0746) `onClose` — what to tear down when the session ends, for callers
+// that built their own host (the ?vect= standalone opener). The slideshow
+// needs none: its picture was already on screen and stays there.
+window._vpImageCropOpen = function (host, img, row, onClose) {
   if (_vpState) return false;                 // V is up — its own crop owns C
   if (!host || !img || !img.naturalWidth) return false;
   const vidLike = _vpImgAdapter(img);
-  _vpState = { imageMode: true, row, player: { el: vidLike }, crop: null, _img: img };
+  _vpState = { imageMode: true, row, player: { el: vidLike }, crop: null,
+               _img: img, _onClose: (typeof onClose === 'function') ? onClose : null };
   window._vpCurrentRow = row;
   _vpMountCropOverlay(host, vidLike, row, { image: true });
   const s = _vpState.crop;
@@ -5928,12 +5932,15 @@ window._vpImageCropClose = function () {
     if (typeof s.dispose === 'function') { try { s.dispose(); } catch (_) {} }
     try { s.el.container.remove(); } catch (_) {}
   }
+  const onClose = _vpState._onClose;
   _vpState = null;
   window._vpCurrentRow = null;
   // Hand the picture and the clock back to the show.
   if (typeof window._slideshowImageCropDone === 'function') {
     try { window._slideshowImageCropDone(); } catch (_) {}
   }
+  // (dev0746) …and take down a host the caller built for us.
+  if (onClose) { try { onClose(); } catch (_) {} }
 };
 
 // True while a still is being cropped. The slideshow asks before acting on any
@@ -7320,3 +7327,128 @@ function openEditorForRow(row) {
   if (typeof toast === 'function') toast('No editor available for this row type', 1500);
 }
 window.openEditorForRow = openEditorForRow;
+
+// ══════════════════════════════════════════════════════════════════════════
+// (dev0746) OPEN A DISK FILE STRAIGHT IN THE CROP TOOL
+//
+//   http://localhost:8080/?vect=<url-encoded absolute path>
+//
+// A file manager copies a path; a hotkey (AHK\vectOpen.ahk) or the Send-to
+// entry turns it into that URL; the page lands with the picture or the clip
+// already open and the crop overlay up. No folder picker, no slideshow, and —
+// because the absolute path is where this starts rather than something we have
+// to reconstruct — no "which folder is this?" prompt at save time either.
+//
+// Media comes off the proxy's /localfile route: a page cannot read file:// and
+// the File System Access API will not hand back a real path, so the one thing
+// that CAN turn a path into pixels here is the local proxy.
+//
+// Dev-only by construction: it needs the proxy, and it refuses to run anywhere
+// but localhost so a shared link can never carry someone's disk layout.
+// ══════════════════════════════════════════════════════════════════════════
+const VECT_VIDEO_RE = /\.(mp4|m4v|mov|webm|mkv|avi)$/i;
+const VECT_IMAGE_RE = /\.(jpe?g|png|webp|gif|bmp|avif)$/i;
+
+function _vectIsLocalHost() {
+  const h = location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+}
+
+function _vectFileUrl(absPath) {
+  return PROXY_BASE + '/localfile?p=' + encodeURIComponent(absPath);
+}
+
+// The row every disk-media path in this app already understands. `comment`
+// carries the ABSOLUTE path, which is exactly what _vpCropResolveAbsPath
+// passes straight through — the drive letter is the short-circuit.
+function _vectRowFor(absPath, isVideo) {
+  const name = absPath.split(/[\\/]/).pop() || absPath;
+  const row = { link: _vectFileUrl(absPath), VidTitle: name, comment: absPath, Mute: '' };
+  if (isVideo) row._directVideoFile = true; else row._directImageFile = true;
+  return row;
+}
+
+window.vectOpenLocalFile = function (absPath) {
+  if (!absPath) return false;
+  if (!_vectIsLocalHost()) {
+    if (typeof toast === 'function') toast('Opening disk files works on the local dev server only', 3000);
+    return false;
+  }
+  const isVideo = VECT_VIDEO_RE.test(absPath);
+  const isImage = VECT_IMAGE_RE.test(absPath);
+  if (!isVideo && !isImage) {
+    if (typeof toast === 'function') toast('Not a picture or a video: ' + absPath, 3600);
+    return false;
+  }
+  if (isVideo) return _vectOpenVideo(absPath);
+  return _vectOpenImage(absPath);
+};
+
+// Video → the ordinary V player on a synthesized disk-video row, which brings
+// its crop overlay (C) with it. Same preconditions T's own V hotkey sets up.
+function _vectOpenVideo(absPath) {
+  if (typeof gridOpenFullscreen !== 'function') return false;
+  const gOvl = document.getElementById('gridOverlay');
+  if (gOvl && gOvl.style.display !== 'flex') {
+    gOvl.style.display = 'flex';
+    window._vpForcedGridFromT = true;
+  }
+  gridOpenFullscreen(_vectRowFor(absPath, true));
+  if (typeof toast === 'function') {
+    toast('▶ ' + (absPath.split(/[\\/]/).pop()) + ' — C opens crop · ⇧A / ⇧B mark the clip · G saves', 4200);
+  }
+  return true;
+}
+
+// Picture → a bare full-window host with the file in it, then the same crop
+// overlay the slideshow mounts. The host is ours, so closing the crop takes it
+// down with it (the onClose below) and the app is where it was.
+function _vectOpenImage(absPath) {
+  const old = document.getElementById('vect-standalone');
+  if (old) old.remove();
+  const host = document.createElement('div');
+  host.id = 'vect-standalone';
+  host.style.cssText =
+    'position:fixed;inset:0;z-index:41000;background:#000;overflow:hidden;touch-action:none;';
+  const img = document.createElement('img');
+  img.alt = '';
+  img.style.cssText =
+    'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
+    'user-select:none;-webkit-user-drag:none;';
+  host.appendChild(img);
+  const note = document.createElement('div');
+  note.style.cssText =
+    'position:absolute;left:0;right:0;bottom:10px;text-align:center;color:#8ea;' +
+    'font:12px ui-monospace,Consolas,monospace;text-shadow:0 1px 4px #000;pointer-events:none;';
+  note.textContent = absPath;
+  host.appendChild(note);
+  document.body.appendChild(host);
+
+  img.onerror = () => {
+    host.remove();
+    if (typeof toast === 'function') {
+      toast('Could not read that file — is "node proxy.js" running?  ' + absPath, 5000);
+    }
+  };
+  img.onload = () => {
+    // The path caption would be burned into a screenshot of the crop, and it
+    // sits exactly where the bar can end up. It has done its job by now.
+    note.remove();
+    const ok = window._vpImageCropOpen(host, img, _vectRowFor(absPath, false),
+                                       () => { try { host.remove(); } catch (_) {} });
+    if (!ok) { host.remove(); if (typeof toast === 'function') toast('Could not open the crop tool', 2600); }
+  };
+  img.src = _vectFileUrl(absPath);
+  return true;
+}
+
+// Read the parameter once the page has finished its own start-up, so opening V
+// doesn't race the landing screen that would paint over it.
+(function _vectBoot() {
+  let p = '';
+  try { p = new URLSearchParams(location.search).get('vect') || ''; } catch (_) {}
+  if (!p) return;
+  const go = () => setTimeout(() => { try { window.vectOpenLocalFile(p); } catch (e) { console.error('[vect]', e); } }, 400);
+  if (document.readyState === 'complete') go();
+  else window.addEventListener('load', go, { once: true });
+})();
