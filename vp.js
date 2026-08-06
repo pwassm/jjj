@@ -1228,14 +1228,10 @@ function gridOpenFullscreen(row, contained) {
         // Only over an active video player; leave images/quiz/etc. alone.
         if (!_vpState || !_vpState.player) return;
         e.preventDefault(); e.stopPropagation();
-        // (dev0725) Inside a crop text box the right-click is about the TEXT —
-        // arrows to drop in, and when the caption comes and goes — so the step
-        // panel stays out of the way entirely.
-        if (e.target && e.target.closest && e.target.closest('.vp-crop-text')) {
-          if (window._vpFSB) removeFSB(false);
-          _vpTextCtxMenu(e);
-          return;
-        }
+        // (dev0725) Inside a crop text box the right-click is about the TEXT, so
+        // that case never reaches here: (dev0750) the box carries its own
+        // contextmenu listener and stops the event there, which is what makes
+        // the same menu work on a still, where there is no V around this at all.
         if (window._vpFSB) {
           removeFSB(true);                                       // right-click anywhere → dismiss + resume
           return;
@@ -3640,6 +3636,114 @@ const VP_TEXT_MIN_W    = 0.06;
 // wrap is measured against a slightly narrower box than the one on screen.
 const VP_TEXT_WRAP_SAFETY = 0.98;
 
+// (dev0750) ── The font list ─────────────────────────────────────────────────
+// One typeface per box, picked off the right-click menu, where every row is
+// drawn IN the font it offers — a font list without samples is a list of names.
+//
+// Each entry carries both halves of the same face: the CSS family the textarea
+// and the wrap mirror use, and the .ttf the proxy hands drawtext (its twin is
+// DT_FONTS there, and the two lists must stay in step — a mismatch means the
+// wrap measured on screen is not the wrap that gets burned in).
+//
+// FAMILIES, never weights: "Segoe UI Semibold" and "Arial Black" are separate
+// families on Windows, so no CSS font-weight is involved and the browser can't
+// faux-bold a face ffmpeg would draw plain. All ten are stock Windows fonts.
+//
+// `arrows` — only Segoe UI Symbol carries U+2B07 ⬇ / U+2B06 ⬆. The others fall
+// back to some system font for those glyphs HERE and draw tofu THERE, so
+// picking one with an arrow already in the box says so out loud.
+const VP_TEXT_FONT_DEF = 'sym';
+const VP_TEXT_FONT_KEY = 'salCropFont';
+const VP_TEXT_FONTS = [
+  { id: 'sym',   key: '1', name: 'Segoe UI Symbol', arrows: true,
+    css: VP_TEXT_FONT, note: 'the ⬇ ⬆ arrows live here' },
+  { id: 'segoe', key: '2', name: 'Segoe UI',
+    css: '"Segoe UI",Arial,sans-serif' },
+  { id: 'segoesb', key: '3', name: 'Segoe UI Semibold',
+    css: '"Segoe UI Semibold","Segoe UI",sans-serif' },
+  { id: 'segoebl', key: '4', name: 'Segoe UI Black',
+    css: '"Segoe UI Black","Segoe UI",sans-serif' },
+  { id: 'arial', key: '5', name: 'Arial',
+    css: 'Arial,Helvetica,sans-serif' },
+  { id: 'arialbl', key: '6', name: 'Arial Black',
+    css: '"Arial Black",Arial,sans-serif' },
+  { id: 'impact', key: '7', name: 'Impact',
+    css: 'Impact,"Arial Black",sans-serif', note: 'condensed — poster headlines' },
+  { id: 'verdana', key: '8', name: 'Verdana',
+    css: 'Verdana,Geneva,sans-serif', note: 'wide — legible when small' },
+  { id: 'georgia', key: '9', name: 'Georgia',
+    css: 'Georgia,"Times New Roman",serif', note: 'serif' },
+  { id: 'times', key: '0', name: 'Times New Roman',
+    css: '"Times New Roman",Times,serif', note: 'serif' }
+];
+
+function _vpTextFont(id) {
+  return VP_TEXT_FONTS.find(f => f.id === id) || VP_TEXT_FONTS[0];
+}
+
+// The same family list, safe to drop into a double-quoted style="" attribute.
+// Every family here is spelled with "double quotes", and an innerHTML sample row
+// carrying them raw would close the attribute on the first one and lose the rest
+// of the row. CSS takes 'single quotes' around a family name just as happily.
+function _vpTextFontAttr(f) { return f.css.replace(/"/g, "'"); }
+
+// The last font picked becomes the one a NEW box starts in — the same reasoning
+// as the saved-text list: a credit line you stamp on every picture should not
+// need re-choosing every picture.
+function _vpTextFontDefault() {
+  try {
+    const v = localStorage.getItem(VP_TEXT_FONT_KEY);
+    if (v && VP_TEXT_FONTS.some(f => f.id === v)) return v;
+  } catch (_) {}
+  return VP_TEXT_FONT_DEF;
+}
+
+function _vpTextSetFont(t, id) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !t) return;
+  const f = _vpTextFont(id);
+  t.font = f.id;
+  try { localStorage.setItem(VP_TEXT_FONT_KEY, f.id); } catch (_) {}
+  if (s.paintTexts) s.paintTexts();
+  const raw = (t.ta ? t.ta.value : t.text) || '';
+  const lost = !f.arrows &&
+               (raw.indexOf(VP_TEXT_ARROW_DN) >= 0 || raw.indexOf(VP_TEXT_ARROW_UP) >= 0);
+  if (typeof toast === 'function') {
+    toast(lost
+      ? ('🅰 ' + f.name + ' — but it has no ⬇ ⬆ glyph. The arrow in this box looks ' +
+         'right here and renders as an empty box; Segoe UI Symbol is the one that has them.')
+      : ('🅰 ' + f.name), lost ? 5600 : 1600);
+  }
+}
+
+// Third level of the text menu, same in-place trick the pause and strength
+// questions use. Each row is a live sample: the name of the font, set in it.
+function _vpTextFontAsk(el, t) {
+  el._vpAsking = 'font';
+  el.innerHTML = '';
+  const head = document.createElement('div');
+  head.textContent = 'Which font?  (1-9, 0)';
+  head.style.cssText = 'padding:4px 8px 6px;color:#8ef;font-weight:bold;white-space:nowrap;';
+  el.appendChild(head);
+  const cur = _vpTextFont(t.font).id;
+  VP_TEXT_FONTS.forEach(f => {
+    const d = document.createElement('div');
+    d.innerHTML =
+      '<u>' + f.key + '</u> &nbsp;' +
+      '<span style="font-family:' + _vpTextFontAttr(f) + ';font-size:17px;">' +
+        _vpEscHtml(f.name) + '</span>' +
+      (f.id === cur ? ' <span style="color:#8ef;">·  now</span>' : '') +
+      (f.note ? ' <span style="opacity:0.55;">· ' + f.note + '</span>' : '') +
+      (f.arrows ? '' : ' <span style="opacity:0.4;">· no ⬇ ⬆</span>');
+    d.style.cssText = 'padding:4px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    d.onclick = () => { _vpTextMenuClose(); _vpTextSetFont(t, f.id); };
+    el.appendChild(d);
+  });
+  _vpTextMenuPlace(el);
+}
+
 function _vpTextAdd()            { const s = _vpState && _vpState.crop; if (s && s.addText)        s.addText(); }
 function _vpTextEndEdit()        { _vpTextMenuClose();
                                   const s = _vpState && _vpState.crop; if (s && s.endTextEdit) s.endTextEdit(); }
@@ -3675,6 +3779,15 @@ function _vpTextMenuKey(e) {
         e.preventDefault(); e.stopImmediatePropagation();
         _vpTextMenuClose();
         _vpTextSetAlpha(t, VP_TEXT_ALPHAS[i]);
+      }
+      return;
+    }
+    if (el._vpAsking === 'font') {
+      const f = VP_TEXT_FONTS.find(x => x.key === k);
+      if (f) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        _vpTextMenuClose();
+        _vpTextSetFont(t, f.id);
       }
       return;
     }
@@ -4043,6 +4156,12 @@ function _vpTextCtxMenu(ev) {
        ' <span style="opacity:0.6;">· now ' + Math.round(t.alpha * 100) + '%</span>'),
      'Fade the letters and their outline together — a watermark instead of a caption')
     .onclick = () => _vpTextAlphaAsk(el, t);
+  // (dev0750) The typeface, on both bars for the same reason strength is: the
+  // face a credit line is set in is as much a part of it as how faint it is.
+  mk('<span style="font-family:' + _vpTextFontAttr(_vpTextFont(t.font)) + ';font-size:15px;">Aa</span>' +
+     ' &nbsp;font <span style="opacity:0.6;">· ' + _vpEscHtml(_vpTextFont(t.font).name) + '</span>',
+     'Pick the typeface — every row on that list is drawn in the font it offers')
+    .onclick = () => _vpTextFontAsk(el, t);
   // The rest of this menu is about WHEN the text is on screen, which a still
   // has no answer to. Nothing here is hidden to be tidy — every one of these
   // rows would be a lie on a photograph.
@@ -4095,12 +4214,14 @@ function _vpOutputDims(state, sw, sh) {
 // own line breaking exactly — including hard newlines, which are kept by
 // splitting into paragraphs first (an empty paragraph is an empty line, and a
 // character loop alone would silently drop it).
-function _vpTextWrapLines(text, widthPx, fontPx) {
+// (dev0750) cssFont — the box's own face. Measuring every box in the default
+// one would hand ffmpeg the wrong line breaks for any box that isn't in it.
+function _vpTextWrapLines(text, widthPx, fontPx, cssFont) {
   const mirror = document.createElement('div');
   mirror.style.cssText =
     'position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
     'margin:0;padding:0;border:0;white-space:pre-wrap;overflow-wrap:break-word;' +
-    'line-height:1.15;font-family:' + VP_TEXT_FONT + ';' +
+    'line-height:1.15;font-family:' + (cssFont || VP_TEXT_FONT) + ';' +
     'width:' + Math.max(8, widthPx) + 'px;font-size:' + Math.max(4, fontPx) + 'px;';
   document.body.appendChild(mirror);
   const out = [];
@@ -4170,12 +4291,16 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
   state.texts.forEach(t => {
     const raw = (t.ta ? t.ta.value : t.text) || '';
     if (!raw.trim()) return;
-    const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, t.size * oh);
+    const face = _vpTextFont(t.font);
+    const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, t.size * oh, face.css);
     if (!lines.some(l => l.trim())) return;
     const box = { x: t.x, y: t.y, w: t.w, size: t.size, lines: lines.slice(0, 40) };
     // (dev0745) Only sent when it isn't 1 — an older proxy then behaves exactly
     // as it always did for every ordinary caption.
     if (t.alpha != null && t.alpha < 1) box.alpha = +(+t.alpha).toFixed(3);
+    // (dev0750) …and the same for the face: absent means the default one, which
+    // is what every box was before this existed.
+    if (face.id !== VP_TEXT_FONT_DEF) box.font = face.id;
     const mine = pauses.find(p => p._t === t);
     if (mine) {
       // On for the freeze, off for its tail. map(at) is where the freeze STARTS
@@ -4310,9 +4435,15 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (rect, handles, bar) still work, and nothing reaches the show.
     c.style.pointerEvents = 'auto';
     ['pointerdown', 'pointermove', 'pointerup', 'pointercancel',
-     'wheel', 'click', 'dblclick', 'contextmenu'].forEach(ev => {
+     'wheel', 'click', 'dblclick'].forEach(ev => {
       c.addEventListener(ev, e => e.stopPropagation());
     });
+    // (dev0750) contextmenu is the one that also needs preventDefault. Stopping
+    // it only kept it from the slideshow — nothing above was cancelling it, so
+    // the browser's own menu opened over the tool. Text boxes swallow it first
+    // and show their menu (see addText); this covers the rect, the handles and
+    // the bar, where a native menu is never what was meant.
+    c.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
   }
 
   const handles = {};
@@ -4542,6 +4673,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       // (dev0745) Show the opacity, don't just record it — a watermark you
       // cannot see here is a watermark you cannot place.
       t.ta.style.opacity = (t.alpha == null) ? '' : String(t.alpha);
+      // (dev0750) Same for the face — it is what the box wraps at, so it has to
+      // be on screen before the render, not discovered in the file afterwards.
+      t.ta.style.fontFamily = _vpTextFont(t.font).css;
       growText(t);
     });
     syncTextWindow();
@@ -4621,8 +4755,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const n = state.texts.length;
     // (dev0725) atStart / atEnd — absolute seconds this caption comes and goes,
     // set from the right-click menu. Null = on for the whole clip.
+    // (dev0750) `font` — the face this box is set in, id from VP_TEXT_FONTS. A
+    // new box opens in whichever one was picked last.
     const t = { x: Math.min(0.60, 0.06 + 0.03 * n), y: Math.min(0.76, 0.06 + 0.11 * n),
-                w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null, pauseSec: null };
+                w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null, pauseSec: null,
+                font: _vpTextFontDefault() };
 
     const box = document.createElement('div');
     box.className = 'vp-crop-text';
@@ -4639,7 +4776,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     ta.style.cssText =
       'display:block;box-sizing:border-box;width:100%;margin:0;padding:0;border:0;outline:0;' +
       'background:transparent;resize:none;overflow:hidden;pointer-events:none;' +
-      'color:#fff;caret-color:#9f9;font-family:' + VP_TEXT_FONT + ';line-height:1.15;' +
+      'color:#fff;caret-color:#9f9;font-family:' + _vpTextFont(t.font).css + ';line-height:1.15;' +
       'white-space:pre-wrap;overflow-wrap:break-word;' +
       'text-shadow:0 0 2px #000,0 0 3px #000,1px 1px 0 #000,-1px -1px 0 #000;';
     ta.addEventListener('input', () => { t.text = ta.value; growText(t); });
@@ -4688,6 +4825,22 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       if (editing === t) return;                          // typing — the field owns it
       if (e.target !== box && e.target !== ta) return;     // grips and ✕ have their own
       textStart('tmove', null, e, box, t);
+    });
+
+    // (dev0750) The box's own right-click menu, wired HERE rather than on the V
+    // screen's content element, where dev0725 put it. A STILL's crop overlay is
+    // mounted over the slideshow's <img> — nowhere inside V — so that listener
+    // never saw the event, nothing called preventDefault, and right-clicking a
+    // caption on a picture raised the browser's native menu instead of ours.
+    // On the box it works in both modes; stopping the event is what keeps V's
+    // step panel out of the way, since inside a box the click is about the text.
+    box.addEventListener('contextmenu', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (window._vpFSB) {                                // V's step panel stands down
+        try { window._vpFSB.cleanup(); } catch (_) {}
+        window._vpFSB = null;
+      }
+      _vpTextCtxMenu(e);
     });
 
     t.el = box; t.ta = ta; t.chip = chip; t.tlbl = tlbl;
@@ -5150,6 +5303,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       t.atStart = Number.isFinite(+td.atStart) ? +td.atStart : null;
       t.atEnd   = Number.isFinite(+td.atEnd)   ? +td.atEnd   : null;
       t.pauseSec = Number.isFinite(+td.pauseSec) ? +td.pauseSec : null;
+      // (dev0750) The look of the caption, not just its geometry and its clock.
+      // alpha was written out by dev0745 and never read back, so a reloaded
+      // watermark came back at full strength; font joins it here.
+      t.alpha = (Number.isFinite(+td.alpha) && +td.alpha > 0 && +td.alpha < 1) ? +td.alpha : null;
+      t.font  = _vpTextFont(td.font).id;
       paintTextMarks(t);
     });
     endEdit();                       // addText opens each box for typing; close it
@@ -5166,7 +5324,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       texts: state.texts.map(t => ({
         x: t.x, y: t.y, w: t.w, size: t.size,
         text: (t.ta ? t.ta.value : t.text) || '',
-        atStart: t.atStart, atEnd: t.atEnd, pauseSec: t.pauseSec
+        atStart: t.atStart, atEnd: t.atEnd, pauseSec: t.pauseSec,
+        alpha: t.alpha, font: t.font          // (dev0750) how it looks, not just where
       }))
     };
   };
@@ -5501,6 +5660,9 @@ function _vpCropHelpShow() {
         row('◻ strength',    '(right-click menu) fade the letters and their outline ' +
                              'together — 100% is a caption, 35% or 20% is a watermark ' +
                              'the picture shows through') +
+        row('Aa font',       '(same menu) ten stock faces, each row set in the font it ' +
+                             'offers. Per box, and the last one picked is what the next ' +
+                             'box opens in. Only Segoe UI Symbol draws the ⬇ ⬆ arrows.') +
         row('▾ saved text',  'every caption you finish is remembered; pick one off the ' +
                              'bar to drop it on this clip') +
         row('right-click it', 'drop a ⬇ or ⬆ arrow at the cursor (it sizes with the ' +
@@ -5616,6 +5778,10 @@ function _vpCropHelpImageRows(K, row, head) {
     row('right-click it', 'drop a ⬇ or ⬆ arrow at the cursor, or <b>◻ strength</b>: ' +
                          'fade the letters AND their outline together. 100% is a ' +
                          'caption; 35% or 20% is a watermark you can see through.') +
+    row('Aa font',       'on that same menu — ten stock faces, each row set in the ' +
+                         'font it offers, so you pick by eye. It is per box, and the ' +
+                         'last one picked is what the next box opens in. Only Segoe UI ' +
+                         'Symbol has the ⬇ ⬆ arrows; the others render them blank.') +
     row('▾ saved text',  'every caption you finish is remembered. Pick one off the ' +
                          'bar to drop it on this picture — type your credit line ' +
                          'once and it is there for every photograph after.') +
@@ -6166,6 +6332,15 @@ async function _vpImageSave(opts) {
     }
     return;
   }
+  // (dev0750) A face other than the default one is a separate ask of the proxy:
+  // an old one draws every caption in Segoe UI Symbol, silently.
+  if (wantsText && (s.texts || []).some(t => _vpTextFont(t.font).id !== VP_TEXT_FONT_DEF) &&
+      !(await _vpProxyHasFeature('textfont'))) {
+    if (typeof toast === 'function') {
+      toast('Choosing the font needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   if (wantsMotion && !(await _vpProxyHasFeature('imagemotion'))) {
     if (typeof toast === 'function') {
       toast('Clips from a picture need an updated proxy — restart "node proxy.js" and retry', 4400);
@@ -6585,6 +6760,15 @@ async function _vpGoSave(opts) {
       !(await _vpProxyHasFeature('textalpha'))) {
     if (typeof toast === 'function') {
       toast('Faded text needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  // (dev0750) …and the same for the face. A stale proxy draws every caption in
+  // Segoe UI Symbol whatever was picked, which on a headline font is the wrong
+  // wrap as well as the wrong letters.
+  if ((payload.texts || []).some(t => t.font) && !(await _vpProxyHasFeature('textfont'))) {
+    if (typeof toast === 'function') {
+      toast('Choosing the font needs an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }

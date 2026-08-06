@@ -151,6 +151,9 @@ const PORT = 8081;
 // (dev0418) Bumped + added 'screenrec' feature for the /rec/* screen recorder.
 // (dev0724) 'drawtext' = the crop render also takes {texts:[…]} and burns each
 //   one in with ffmpeg drawtext. See buildDrawtextChain for the quoting rules.
+// (dev0750) 'textfont' = a text box may carry `font`, a DT_FONTS id, and each
+//   one is drawn in its own face. Without this flag the client refuses to send
+//   a non-default face rather than let it come back silently in the old one.
 // (dev0723) 'screenrec2' = /rec/start also takes {dest:'downloads', stem, maxWidth,
 //   crf, drawMouse}. screenrec.js probes for it and falls back to the browser's own
 //   getDisplayMedia capture when this proxy is old or not running at all.
@@ -292,7 +295,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0727';
+const PROXY_BUILD = 'dev0750';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -451,6 +454,40 @@ function dtFontFile() {
   throw new Error('no usable TrueType font found in ' + DT_FONT_DIR);
 }
 
+// (dev0750) A box may name its own face: `font` is an id from this table, whose
+// twin is VP_TEXT_FONTS in vp.js. Both lists have to hold the same ten faces —
+// the client measures the wrap in the CSS family and ffmpeg draws it from the
+// .ttf, so a pair that drifts apart is a caption that wraps differently in the
+// file than it did on screen.
+//
+// An id, never a path: the value arrives over HTTP, and the only filenames this
+// can ever reach are the ten spelled out here, inside the Fonts directory.
+const DT_FONTS = {
+  sym:     'seguisym.ttf',
+  segoe:   'segoeui.ttf',
+  segoesb: 'seguisb.ttf',
+  segoebl: 'seguibl.ttf',
+  arial:   'arial.ttf',
+  arialbl: 'ariblk.ttf',
+  impact:  'impact.ttf',
+  verdana: 'verdana.ttf',
+  georgia: 'georgia.ttf',
+  times:   'times.ttf'
+};
+
+// The file for a box's `font`, or the default face when it names none. An id
+// that isn't in the table, or one whose file isn't installed on this machine,
+// falls back rather than failing the render: a caption in the wrong face is a
+// far smaller loss than an encode that refuses to run.
+function dtFontFileFor(id) {
+  if (id == null || id === '') return dtFontFile();
+  must(typeof id === 'string' && Object.prototype.hasOwnProperty.call(DT_FONTS, id),
+       'font must be one of: ' + Object.keys(DT_FONTS).join(', '));
+  const p = path.join(DT_FONT_DIR, DT_FONTS[id]);
+  try { if (fs.existsSync(p)) return p; } catch (_) {}
+  return dtFontFile();
+}
+
 // Filtergraph-safe literal: forward slashes, quoted, colons escaped.
 function dtQuote(s) {
   return "'" + String(s).replace(/\\/g, '/').replace(/:/g, '\\:') + "'";
@@ -506,7 +543,6 @@ function buildPauseChain(pauses) {
 function buildDrawtextChain(texts, ow, oh, tmpSink) {
   must(Array.isArray(texts), 'texts must be an array');
   must(texts.length <= 12, 'at most 12 text boxes');
-  const font = dtFontFile();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slam-dt-'));
   if (tmpSink) tmpSink.push(dir);
   let chain = '';
@@ -550,6 +586,9 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
       must(Number.isFinite(a) && a > 0 && a <= 1, `texts[${i}].alpha must be within 0..1`);
       if (a < 1) alphaOpt = ':alpha=' + a.toFixed(3);
     }
+    // (dev0750) Per-box face, resolved to a file here — one drawtext per box
+    // already, so nothing else has to change to let them differ.
+    const font = dtFontFileFor(t.font);
     chain += ',drawtext=' + [
       'fontfile=' + dtQuote(font),
       'textfile=' + dtQuote(file),
@@ -589,7 +628,7 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 //                                 filter — zoompan emits the final size itself.
 //                                 fps must be the SOURCE rate ("30000/1001" or
 //                                 a number): zoompan sets the output frame rate.
-//   texts     [{x,y,w,size,lines[],from?,to?}]
+//   texts     [{x,y,w,size,lines[],from?,to?,alpha?,font?}]
 //                              — OPTIONAL (dev0724); CROP path only. Burned-in
 //                                 captions. x/y/w are fractions of the crop
 //                                 window, size is a fraction of its HEIGHT, and
@@ -597,6 +636,9 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 //                                 client (drawtext cannot wrap). from/to
 //                                 (dev0725, seconds from the clip's own start)
 //                                 window it with enable=; absent = whole clip.
+//                                 alpha (dev0745, 0..1) fades letters+outline;
+//                                 font (dev0750) is a DT_FONTS id, absent =
+//                                 the default face.
 //                                 Appended after crop/scale/zoompan → see
 //                                 buildDrawtextChain.
 //   pauses    [{at,hold}]      — OPTIONAL (dev0727); CROP path only. Freeze the
@@ -4840,7 +4882,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
     return;
   }
 
