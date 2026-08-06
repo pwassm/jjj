@@ -540,6 +540,16 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
       enable = `:enable='between(t,${(+t.from).toFixed(3)},${(+t.to).toFixed(3)})'`;
     } else if (hasF) enable = `:enable='gte(t,${(+t.from).toFixed(3)})'`;
     else if (hasT)   enable = `:enable='lte(t,${(+t.to).toFixed(3)})'`;
+    // (dev0745) Per-box opacity — what turns a caption into a watermark. One
+    // knob for the whole glyph: drawtext's `alpha` multiplies the fill AND the
+    // outline, so a faint caption stays legible instead of showing a hard
+    // black border around ghost-grey letters. Absent = 1 = as before.
+    let alphaOpt = '';
+    if (t.alpha != null) {
+      const a = +t.alpha;
+      must(Number.isFinite(a) && a > 0 && a <= 1, `texts[${i}].alpha must be within 0..1`);
+      if (a < 1) alphaOpt = ':alpha=' + a.toFixed(3);
+    }
     chain += ',drawtext=' + [
       'fontfile=' + dtQuote(font),
       'textfile=' + dtQuote(file),
@@ -551,7 +561,7 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
       'line_spacing=0',
       'x=' + Math.round((+t.x) * ow),
       'y=' + Math.round((+t.y) * oh)
-    ].join(':') + enable;
+    ].join(':') + alphaOpt + enable;
   });
   return chain;
 }
@@ -667,7 +677,7 @@ function buildFfmpegArgs(p, tmpSink) {
   // (dev0744) ── IMAGE path (one frame in, one frame out) ──────────────────
   // Above the crop path because an image render shares its `crop` shape but
   // none of the video machinery (no trim, no audio, no x264 settings).
-  if (p.image) return buildImageFfmpegArgs(p, common, overwrite);
+  if (p.image) return buildImageFfmpegArgs(p, common, overwrite, tmpSink);
 
   if (p.crop) {
     // ── CROP path (re-encode) ────────────────────────────────────────────
@@ -834,7 +844,7 @@ const EXIF_XPOSE = {
   2: 'hflip', 3: 'hflip,vflip', 4: 'vflip',
   5: 'transpose=0', 6: 'transpose=1', 7: 'transpose=3', 8: 'transpose=2'
 };
-function buildImageFfmpegArgs(p, common, overwrite) {
+function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   must(p.crop && typeof p.crop === 'object', 'image render requires crop');
   for (const k of ['w', 'h', 'x', 'y']) {
     must(Number.isInteger(p.crop[k]) && p.crop[k] >= 0,
@@ -860,10 +870,38 @@ function buildImageFfmpegArgs(p, common, overwrite) {
   }
   chain.push(`crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
 
+  // The OUTPUT frame in pixels. Hoisted because three things need it: the
+  // scale filter, zoompan's own `s=`, and drawtext turning fractions into
+  // pixels. Same arithmetic as the video path, so a caption placed over a
+  // still lands where it does over a clip.
   const resH = p.resHeight;
-  if (resH !== 'source' && resH != null) {
-    must(Number.isInteger(+resH) && +resH > 0, 'resHeight must be a positive integer or "source"');
-    chain.push(p.aspect === 'P' ? `scale=${+resH}:-2` : `scale=-2:${+resH}`);
+  const scaling = Number.isInteger(+resH) && +resH > 0;
+  const aspect = (p.aspect === 'P') ? 'P' : 'L';
+  const even = n => Math.max(2, Math.round(n / 2) * 2);
+  let ow = p.crop.w, oh = p.crop.h;
+  if (scaling) {
+    if (aspect === 'P') { ow = +resH; oh = even(p.crop.h * +resH / p.crop.w); }
+    else                { oh = +resH; ow = even(p.crop.w * +resH / p.crop.h); }
+  } else {
+    must(resH === 'source' || resH == null, 'resHeight must be a positive integer or "source"');
+  }
+
+  // (dev0745) ── MOTION: a still becomes a clip ────────────────────────────
+  // Ken Burns on a photograph, out as mp4 or gif. The input is looped at the
+  // target rate for the chosen duration, which gives zoompan a real stream to
+  // walk — so the ramp expressions are the VIDEO path's, character for
+  // character, and a move learned on clips behaves the same on stills.
+  if (p.motion) return buildImageMotionArgs(p, common, overwrite, tmpSink, chain, ow, oh);
+
+  if (scaling) chain.push(aspect === 'P' ? `scale=${+resH}:-2` : `scale=-2:${+resH}`);
+  // (dev0745) Captions last, on the finished frame — same order as the clip.
+  if (p.texts && p.texts.length) {
+    // buildDrawtextChain speaks the video path's dialect — a leading comma,
+    // ready to append to a filter STRING. Here the chain is an array, and an
+    // all-empty text list returns '' (which would join into a `,,` and break
+    // the graph), so both are normalised away.
+    const dt = buildDrawtextChain(p.texts, ow, oh, tmpSink).replace(/^,/, '');
+    if (dt) chain.push(dt);
   }
 
   const ext = String(p.output).split('.').pop().toLowerCase();
@@ -886,6 +924,90 @@ function buildImageFfmpegArgs(p, common, overwrite) {
     '-frames:v', '1',
     '-update', '1',
     ...codec,
+    overwrite ? '-y' : '-n',
+    p.output
+  ];
+}
+
+// (dev0745) ── Still → clip: Ken Burns out as mp4 or gif ───────────────────
+//
+// The input is the trick. `-loop 1 -framerate F -t D` turns one photograph
+// into a D-second stream at F fps BEFORE any filter sees it, so zoompan gets
+// exactly what it gets on video: a stream where `on` counts output frames.
+// That is why the ramp expression below is the video path's verbatim — one
+// geometry, two sources, no second thing to keep in step.
+//
+// GIF cannot take the plain -vf route: a decent palette needs the whole clip
+// measured first (palettegen) and then applied (paletteuse), which is two
+// filter branches over one stream — a filter_complex by definition. The mp4
+// side stays on -vf.
+//
+//   motion { durSec, fps, format:'mp4'|'gif' }
+//   ken    { x,y,w,h }   — fractions of the crop; absent = a static clip
+function buildImageMotionArgs(p, common, overwrite, tmpSink, chain, ow, oh) {
+  const m = p.motion;
+  must(typeof m === 'object', 'motion must be an object');
+  const format = (m.format === 'gif') ? 'gif' : 'mp4';
+  const dur = +m.durSec;
+  must(Number.isFinite(dur) && dur >= 0.5 && dur <= 60, 'motion.durSec must be 0.5-60s');
+  const fps = Math.round(+m.fps || (format === 'gif' ? 15 : 30));
+  must(fps >= 1 && fps <= 60, 'motion.fps must be 1-60');
+  const ext = String(p.output).split('.').pop().toLowerCase();
+  must(ext === format, `motion.format ${format} but output is .${ext}`);
+
+  // libx264 needs even dimensions; a gif does not care but is happier small.
+  const even = n => Math.max(2, Math.round(n / 2) * 2);
+  const OW = even(ow), OH = even(oh);
+
+  if (p.ken) {
+    const k = p.ken;
+    must(typeof k === 'object', 'ken must be an object');
+    for (const key of ['x', 'y', 'w', 'h']) {
+      const v = +k[key];
+      must(Number.isFinite(v) && v >= 0 && v <= 1, `ken.${key} must be within 0..1`);
+    }
+    must(+k.w >= 0.02 && +k.h >= 0.02, 'ken.w/h must be ≥ 0.02 (sane zoom ceiling)');
+    must(+k.x + +k.w <= 1.001 && +k.y + +k.h <= 1.001, 'ken box must sit inside the crop');
+    // The move lands at the END of the clip unless the caller says otherwise —
+    // on a still there is no playhead to have parked it on.
+    const hold = (k.holdSec == null) ? dur : +k.holdSec;
+    must(Number.isFinite(hold) && hold >= 0 && hold <= dur, 'ken.holdSec must be 0..durSec');
+    const KW = (+k.w).toFixed(6), KX = (+k.x).toFixed(6), KY = (+k.y).toFixed(6);
+    const N = Math.max(1, Math.round(fps * hold));
+    const P = `min(on/${N},1)`;
+    const S = `(${P})*(${P})*(3-2*(${P}))`;
+    chain.push(`zoompan=z='1/(1-(${S})*(1-${KW}))'` +
+               `:x='(${S})*${KX}*iw':y='(${S})*${KY}*ih'` +
+               `:d=1:s=${OW}x${OH}:fps=${fps}`);
+  } else {
+    chain.push(`scale=${OW}:${OH}`);
+  }
+  if (p.texts && p.texts.length) {
+    const dt = buildDrawtextChain(p.texts, OW, OH, tmpSink).replace(/^,/, '');
+    if (dt) chain.push(dt);
+  }
+
+  const input = ['-loop', '1', '-framerate', String(fps), '-t', dur.toFixed(3), '-i', p.input];
+  if (format === 'gif') {
+    const g = '[0:v]' + chain.join(',') + ',split[gsa][gsb];' +
+              '[gsa]palettegen=stats_mode=diff[gp];' +
+              '[gsb][gp]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle';
+    return [
+      ...common, ...input,
+      '-filter_complex', g,
+      '-loop', '0',                 // gif muxer: play forever
+      overwrite ? '-y' : '-n',
+      p.output
+    ];
+  }
+  return [
+    ...common, ...input,
+    '-vf', chain.join(','),
+    '-c:v', 'libx264', '-crf', String(Number.isFinite(p.crf) ? p.crf : 18),
+    '-preset', (p.preset === 'slow' ? 'slow' : 'medium'),
+    '-pix_fmt', 'yuv420p',          // the format every player actually reads
+    '-movflags', '+faststart',
+    '-an',
     overwrite ? '-y' : '-n',
     p.output
   ];
@@ -4645,7 +4767,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
     return;
   }
 

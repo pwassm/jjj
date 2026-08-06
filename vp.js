@@ -3584,13 +3584,27 @@ function _vpKenToggle() {
   if (!s.ken) return;
   s.ken.on = !s.ken.on;
   if (s.ken.on) s.ken.atSec = _vpNowSec();
+  // (dev0745) On a still, arming the zoom is ASKING for a clip — a picture with
+  // a move on it and no format to move in is a box that does nothing at save.
+  let armed = false;
+  if (s.imageMode && s.ken.on && s.motion && s.motion.format === 'still') {
+    s.motion.format = 'mp4';
+    armed = true;
+  }
   if (s.paintKen) s.paintKen();
   if (s.paint) s.paint();   // ⚠ enlargement label depends on the zoom
   if (typeof toast === 'function') {
-    toast(s.ken.on
-      ? '🎬 Ken Burns armed — drag the amber box to where the zoom should end, ' +
-        'parked on the frame it should get there (' + s.ken.atSec.toFixed(1) + 's)'
-      : '🎬 Ken Burns off — the crop renders static', s.ken.on ? 3400 : 1600);
+    if (s.imageMode) {
+      toast(s.ken.on
+        ? '🎬 zoom armed — drag the amber box to where the move should END' +
+          (armed ? ' · output is now an mp4 clip (M for gif)' : '')
+        : '🎬 zoom off — the picture is held still', s.ken.on ? 3600 : 1600);
+    } else {
+      toast(s.ken.on
+        ? '🎬 Ken Burns armed — drag the amber box to where the zoom should end, ' +
+          'parked on the frame it should get there (' + s.ken.atSec.toFixed(1) + 's)'
+        : '🎬 Ken Burns off — the crop renders static', s.ken.on ? 3400 : 1600);
+    }
   }
 }
 
@@ -3649,10 +3663,20 @@ function _vpTextMenuKey(e) {
   if (!el) { document.removeEventListener('keydown', _vpTextMenuKey, true); return; }
   const k = (e.key || '').toLowerCase();
   const t = el._vpBox;
-  // Second level: the menu is asking how many seconds, so only a s d f g (and
-  // Escape) mean anything — s no longer means "starts here".
+  // Second level: the menu is asking a follow-up question, so the letters mean
+  // what THAT question needs — s no longer means "starts here". (dev0745) There
+  // are two such questions now, and they must not answer each other's keys.
   if (el._vpAsking) {
     if (k === 'escape') { e.preventDefault(); e.stopImmediatePropagation(); _vpTextMenuClose(); return; }
+    if (el._vpAsking === 'alpha') {
+      const i = '123456'.indexOf(k);
+      if (i >= 0 && VP_TEXT_ALPHAS[i] != null) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        _vpTextMenuClose();
+        _vpTextSetAlpha(t, VP_TEXT_ALPHAS[i]);
+      }
+      return;
+    }
     if (VP_TEXT_PAUSE_KEYS[k]) {
       e.preventDefault(); e.stopImmediatePropagation();
       _vpTextMenuClose();
@@ -3660,7 +3684,10 @@ function _vpTextMenuKey(e) {
     }
     return;
   }
-  if (k === 'escape' || k === 's' || k === 'e' || k === 'a') {
+  // (dev0745) On a still, s / e / a have no meaning — those rows aren't on the
+  // menu — so the keys stay free rather than silently marking an invisible clip.
+  const imgMode = !!(_vpState && _vpState.crop && _vpState.crop.imageMode);
+  if (k === 'escape' || (!imgMode && (k === 's' || k === 'e' || k === 'a'))) {
     e.preventDefault(); e.stopImmediatePropagation();
     if (k === 'a') { _vpTextPauseAsk(el, t); return; }   // stays open, asks seconds
     _vpTextMenuClose();
@@ -3703,6 +3730,101 @@ function _vpTextClearMarks(t) {
 const VP_TEXT_PAUSE_TAIL = 0.5;
 const VP_TEXT_PAUSE_KEYS = { a: 1, s: 2, d: 3, f: 4, g: 5 };
 
+// (dev0745) ── Saved text ───────────────────────────────────────────────────
+// Every caption that gets finished is banked here, most recent first, so the
+// next picture can have it back off the bar's ▾ list. This is what makes the
+// tool a watermarker: type your credit line once, pick it forever after.
+// Kept deliberately dumb — a flat list of strings in localStorage, no naming,
+// no editing. The box on the frame is still the editor.
+const VP_TEXT_STORE_KEY = 'salCropTexts';
+const VP_TEXT_STORE_MAX = 30;
+
+function _vpTextSaved() {
+  try {
+    const a = JSON.parse(localStorage.getItem(VP_TEXT_STORE_KEY) || '[]');
+    return Array.isArray(a) ? a.filter(s => typeof s === 'string' && s.trim()) : [];
+  } catch (_) { return []; }
+}
+
+function _vpTextRemember(str) {
+  const s = String(str == null ? '' : str).trim();
+  if (!s || s.length > 400) return;
+  const list = _vpTextSaved().filter(x => x !== s);   // re-used text floats up
+  list.unshift(s);
+  try { localStorage.setItem(VP_TEXT_STORE_KEY, JSON.stringify(list.slice(0, VP_TEXT_STORE_MAX))); }
+  catch (_) {}
+}
+
+function _vpTextForgetAll() {
+  try { localStorage.removeItem(VP_TEXT_STORE_KEY); } catch (_) {}
+}
+
+function _vpEscHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// (dev0745) ── Opacity ───────────────────────────────────────────────────────
+// One number per box, 0..1, dimming the letters AND their outline together
+// (drawtext's `alpha`, which is why it reads as a faded stamp rather than
+// ghost text in a hard black frame). Null = fully opaque = a plain caption.
+const VP_TEXT_ALPHAS = [1, 0.7, 0.5, 0.35, 0.2, 0.1];
+
+function _vpTextSetAlpha(t, a) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !t) return;
+  t.alpha = (a >= 1) ? null : a;
+  if (s.paintTexts) s.paintTexts();
+  if (typeof toast === 'function') {
+    toast(t.alpha == null ? '◼ caption at full strength'
+                          : ('◻ watermark at ' + Math.round(a * 100) + '%'), 1600);
+  }
+}
+
+// Second level of the text menu, same trick the pause question uses: replace
+// the rows in place so the click-away and key handlers already live keep working.
+function _vpTextAlphaAsk(el, t) {
+  el._vpAsking = 'alpha';
+  el.innerHTML = '';
+  const head = document.createElement('div');
+  head.textContent = 'How strong?  (1-6)';
+  head.style.cssText = 'padding:4px 8px 6px;color:#8ef;font-weight:bold;white-space:nowrap;';
+  el.appendChild(head);
+  VP_TEXT_ALPHAS.forEach((a, i) => {
+    const pct = Math.round(a * 100);
+    const cur = (t.alpha == null ? 1 : t.alpha);
+    const d = document.createElement('div');
+    d.innerHTML = '<u>' + (i + 1) + '</u> &nbsp;' + pct + '%' +
+                  (a === 1 ? ' <span style="opacity:0.55;">(a plain caption)</span>' : '') +
+                  (Math.abs(cur - a) < 0.001 ? ' <span style="color:#8ef;">·  now</span>' : '');
+    d.style.cssText = 'padding:5px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    d.onclick = () => { _vpTextMenuClose(); _vpTextSetAlpha(t, a); };
+    el.appendChild(d);
+  });
+  _vpTextMenuPlace(el);
+}
+
+// (dev0745) ── Motion (image mode) ───────────────────────────────────────────
+// still → mp4 → gif → still. On a still the M key has nothing else to do (the
+// audio switch it drives on video isn't there), so it takes this.
+function _vpMotionCycle() {
+  const s = _vpState && _vpState.crop;
+  if (!s || !s.motion) return;
+  const order = ['still', 'mp4', 'gif'];
+  s.motion.format = order[(order.indexOf(s.motion.format) + 1) % order.length];
+  if (s.paint) s.paint();
+  if (typeof toast === 'function') {
+    const msg = {
+      still: '🖼 a still picture',
+      mp4:   '🎬 an mp4 clip of ' + s.motion.durSec + 's — Z puts the zoom box where the move ENDS',
+      gif:   '🎞 a gif of ' + s.motion.durSec + 's — smaller sizes and shorter runs keep it sane'
+    }[s.motion.format];
+    toast(msg, 3000);
+  }
+}
+
 function _vpTextSetPause(t, secs) {
   const s = _vpState && _vpState.crop;
   if (!s || !t) return;
@@ -3730,7 +3852,7 @@ function _vpTextMenuPlace(el, x, y) {
 // rather than opening a second panel, so the click-away and key handlers that
 // are already live keep working.
 function _vpTextPauseAsk(el, t) {
-  el._vpAsking = true;
+  el._vpAsking = 'pause';
   el.innerHTML = '';
   const head = document.createElement('div');
   head.textContent = 'How many seconds?';
@@ -3792,18 +3914,30 @@ function _vpTextCtxMenu(ev) {
      'Inserted as a character — it grows and shrinks with the type size')
     .onclick = () => { _vpTextMenuClose(); if (s.textInsertAt) s.textInsertAt(t, VP_TEXT_ARROW_UP); };
   sep();
-  mk('<u>s</u>tarts here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
-     'This text appears from the playhead onward')
-    .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'start'); };
-  mk('<u>e</u>nds here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
-     'This text is gone after the playhead')
-    .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'end'); };
-  mk('p<u>a</u>use here' + (t.pauseSec ? ' <span style="opacity:0.6;">· now ' + t.pauseSec + 's</span>' : ''),
-     'Freeze the picture while this text is up, then play on without it')
-    .onclick = () => _vpTextPauseAsk(el, t);
-  if (t.atStart != null || t.atEnd != null || t.pauseSec) {
-    mk('<span style="opacity:0.75;">✕ clear — on for the whole clip</span>')
-      .onclick = () => { _vpTextMenuClose(); _vpTextClearMarks(t); };
+  // (dev0745) Opacity — the row that turns a caption into a watermark. On both
+  // bars: a faded credit line belongs on video as much as on a photograph.
+  mk('◻ strength' + (t.alpha == null ? '' :
+       ' <span style="opacity:0.6;">· now ' + Math.round(t.alpha * 100) + '%</span>'),
+     'Fade the letters and their outline together — a watermark instead of a caption')
+    .onclick = () => _vpTextAlphaAsk(el, t);
+  // The rest of this menu is about WHEN the text is on screen, which a still
+  // has no answer to. Nothing here is hidden to be tidy — every one of these
+  // rows would be a lie on a photograph.
+  if (!s.imageMode) {
+    sep();
+    mk('<u>s</u>tarts here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
+       'This text appears from the playhead onward')
+      .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'start'); };
+    mk('<u>e</u>nds here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
+       'This text is gone after the playhead')
+      .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'end'); };
+    mk('p<u>a</u>use here' + (t.pauseSec ? ' <span style="opacity:0.6;">· now ' + t.pauseSec + 's</span>' : ''),
+       'Freeze the picture while this text is up, then play on without it')
+      .onclick = () => _vpTextPauseAsk(el, t);
+    if (t.atStart != null || t.atEnd != null || t.pauseSec) {
+      mk('<span style="opacity:0.75;">✕ clear — on for the whole clip</span>')
+        .onclick = () => { _vpTextMenuClose(); _vpTextClearMarks(t); };
+    }
   }
 
   document.body.appendChild(el);
@@ -3916,6 +4050,9 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
     const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, t.size * oh);
     if (!lines.some(l => l.trim())) return;
     const box = { x: t.x, y: t.y, w: t.w, size: t.size, lines: lines.slice(0, 40) };
+    // (dev0745) Only sent when it isn't 1 — an older proxy then behaves exactly
+    // as it always did for every ordinary caption.
+    if (t.alpha != null && t.alpha < 1) box.alpha = +(+t.alpha).toFixed(3);
     const mine = pauses.find(p => p._t === t);
     if (mine) {
       // On for the freeze, off for its tail. map(at) is where the freeze STARTS
@@ -4004,10 +4141,23 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       'style="cursor:ns-resize;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">⟲ 0.0°</span>' +
     '<label id="vp-crop-slow-lbl" style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
       '<input id="vp-crop-slow" type="checkbox" style="margin:0;vertical-align:middle;">Slow</label>' +
+    // (dev0745) Saved text — every caption you finish typing is remembered, and
+    // this puts it back on the next picture. Lives on both bars: a watermark is
+    // exactly the text you want to type once and never again.
+    '<select id="vp-crop-textpick" title="Text you have used before — pick one to drop it on this frame (E types a fresh one)" ' +
+      'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;max-width:150px;font:12px ui-monospace,Consolas,monospace;">' +
+      '<option value="">▾ saved text</option></select>' +
+    // (dev0745) Image mode only: still, or a Ken Burns clip out as mp4 / gif.
+    '<span id="vp-crop-motion" title="Still picture · or a moving clip from the zoom box (M)" ' +
+      'style="display:none;cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">🖼 still</span>' +
+    '<select id="vp-crop-dur" title="How long the clip runs" ' +
+      'style="display:none;background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
+      '<option value="2">2s</option><option value="3" selected>3s</option><option value="4">4s</option>' +
+      '<option value="5">5s</option><option value="8">8s</option><option value="10">10s</option></select>' +
     // (dev0744) Image mode only: which of the two engines this save will use.
     // Hidden for video, where there is only ever one.
     '<span id="vp-crop-engine" title="Lossless = jpegtran copies the JPEG blocks across untouched. ' +
-      'A tilt or a resolution change cannot be done that way, so those switch it to a re-encode." ' +
+      'A tilt, a caption, a resolution change or a clip cannot be done that way — those switch it to a re-encode." ' +
       'style="display:none;padding:2px 6px;border-radius:3px;background:#234;">–</span>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
@@ -4026,6 +4176,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     });
     const eng = bar.querySelector('#vp-crop-engine');
     if (eng) eng.style.display = '';
+    const mo = bar.querySelector('#vp-crop-motion');
+    if (mo) mo.style.display = '';
     // The container is click-through for video so the native <video> controls
     // underneath stay reachable. A still has no controls to protect, and it
     // does have a slideshow underneath whose swipe / pinch / wheel / hold-zoom
@@ -4124,6 +4276,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
 
   const state = {
     imageMode,                        // (dev0744) still, not clip
+    // (dev0745) Image mode only: 'still' | 'mp4' | 'gif'. Anything but 'still'
+    // turns the picture into a clip of durSec seconds — the zoom box (Z) is
+    // what makes it move, and without one it is simply held.
+    motion: { format: 'still', durSec: 3 },
     aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
     texts: [],                        // (dev0724) burned-in captions, see addText
@@ -4205,11 +4361,24 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   function paintEngine() {
     if (!imageMode) return;
     const chip = bar.querySelector('#vp-crop-engine');
-    if (!chip) return;
-    const v = _vpImgLossless(state, row);
-    chip.textContent = v.ok ? '⧉ lossless' : ('↻ re-encode · ' + v.why);
-    chip.style.background = v.ok ? '#1d5c3a' : '#5c4a1d';
-    chip.style.color = '#eaf3ea';
+    if (chip) {
+      const v = _vpImgLossless(state, row);
+      chip.textContent = v.ok ? '⧉ lossless' : ('↻ re-encode · ' + v.why);
+      chip.style.background = v.ok ? '#1d5c3a' : '#5c4a1d';
+      chip.style.color = '#eaf3ea';
+    }
+    // (dev0745) The motion chip and its duration, which only exists once the
+    // picture is going to move.
+    const mo = bar.querySelector('#vp-crop-motion');
+    const du = bar.querySelector('#vp-crop-dur');
+    const isStill = state.motion.format === 'still';
+    if (mo) {
+      mo.textContent = isStill ? '🖼 still'
+                     : (state.motion.format === 'gif' ? '🎞 gif' : '🎬 mp4');
+      mo.style.background = isStill ? '#234' : '#2a5d9a';
+      mo.style.color      = isStill ? '#dfe6f0' : '#fff';
+    }
+    if (du) du.style.display = isStill ? 'none' : '';
   }
 
   // (dev0720) Place + label the Ken Burns box. Geometry is in % of `rect`, so
@@ -4223,7 +4392,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     kenBox.style.top    = (k.frac.y * 100) + '%';
     kenBox.style.width  = (k.frac.w * 100) + '%';
     kenBox.style.height = (k.frac.h * 100) + '%';
-    kenLbl.textContent  = '🎬 ' + (1 / k.frac.w).toFixed(2) + '× · lands ' + k.atSec.toFixed(1) + 's';
+    // (dev0745) A still has no playhead for the move to land on — it lands at
+    // the end of the clip, so the label says the zoom and leaves time out of it.
+    kenLbl.textContent = imageMode
+      ? ('🎬 ' + (1 / k.frac.w).toFixed(2) + '× · the move ends here')
+      : ('🎬 ' + (1 / k.frac.w).toFixed(2) + '× · lands ' + k.atSec.toFixed(1) + 's');
     kenLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
   }
 
@@ -4242,6 +4415,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       t.el.style.top   = (t.y * 100) + '%';
       t.el.style.width = (t.w * 100) + '%';
       t.ta.style.fontSize = Math.max(5, t.size * rectH) + 'px';
+      // (dev0745) Show the opacity, don't just record it — a watermark you
+      // cannot see here is a watermark you cannot place.
+      t.ta.style.opacity = (t.alpha == null) ? '' : String(t.alpha);
       growText(t);
     });
     syncTextWindow();
@@ -4406,6 +4582,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const i = state.texts.indexOf(t);
     if (i >= 0) state.texts.splice(i, 1);
     if (t.el && t.el.parentNode) t.el.parentNode.removeChild(t.el);
+    paintEngine();   // (dev0745) the last caption leaving can restore lossless
   }
 
   function beginEdit(t) {
@@ -4441,7 +4618,14 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     try { t.ta.blur(); } catch (_) {}
     t.text = t.ta.value;
     if (!t.text.trim()) removeText(t);   // an empty box is an abandoned one
-    else syncTextWindow();               // (dev0726) …and it hides again if off-window
+    else {
+      syncTextWindow();                  // (dev0726) …and it hides again if off-window
+      // (dev0745) Finishing a caption is what banks it. Typing is the only way
+      // text gets here, so the list can only ever hold things the user wrote.
+      _vpTextRemember(t.text);
+      paintTextPick();
+    }
+    paintEngine();   // text present ⇒ no longer a lossless save
   }
 
   // The first click OUTSIDE the box ends the entry and is swallowed, so it can't
@@ -4666,6 +4850,56 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   }
   paintAudio();
   if (audioChip) audioChip.addEventListener('click', _vpCropToggleAudio);
+
+    // (dev0745) ── Saved text ─────────────────────────────────────────────────
+  // Refilled every time the bar is built AND after each caption is finished,
+  // so the list is never behind what has been typed. Choosing an entry drops a
+  // NEW box carrying that text: the empty box an aborted E left behind removes
+  // itself on endEdit, so the two never pile up.
+  const textPick = bar.querySelector('#vp-crop-textpick');
+  function paintTextPick() {
+    if (!textPick) return;
+    const saved = _vpTextSaved();
+    const keep = textPick.value;
+    textPick.innerHTML = '<option value="">▾ saved text</option>' +
+      saved.map((s, i) => '<option value="i' + i + '">' +
+        _vpEscHtml(s.length > 42 ? s.slice(0, 41) + '…' : s).replace(/\n/g, ' ⏎ ') +
+        '</option>').join('') +
+      (saved.length ? '<option value="__clear">— forget them all —</option>' : '');
+    textPick.value = '';
+    void keep;
+  }
+  paintTextPick();
+  if (textPick) {
+    textPick.addEventListener('change', () => {
+      const v = textPick.value;
+      textPick.value = '';
+      if (!v) return;
+      if (v === '__clear') {
+        if (confirm('Forget every saved text?')) { _vpTextForgetAll(); paintTextPick(); }
+        return;
+      }
+      const s = _vpTextSaved()[+v.slice(1)];
+      if (s == null) return;
+      const t = addText({ silent: true });
+      if (!t) return;
+      t.text = s; t.ta.value = s;
+      growText(t); paintTexts();
+      beginEdit(t);
+    });
+  }
+
+  // (dev0745) ── Motion (image mode) ────────────────────────────────────────
+  const motionChip = bar.querySelector('#vp-crop-motion');
+  if (motionChip) motionChip.addEventListener('click', _vpMotionCycle);
+  const durSel = bar.querySelector('#vp-crop-dur');
+  if (durSel) {
+    durSel.value = String(state.motion.durSec);
+    durSel.addEventListener('change', () => {
+      state.motion.durSec = +durSel.value || 3;
+      paint();
+    });
+  }
 
   // (dev0318) ── Rotation controls ───────────────────────────────────────────
   // Knob: arc-drag about the rect center (getBoundingClientRect's box center
@@ -5130,6 +5364,11 @@ function _vpCropHelpShow() {
                              ' size the type, click outside to finish') +
         row('drag it / ↔',   'move the box / drag a side grip to set the wrap width — ' +
                              'the wrap you see is the wrap you get. ✕ removes it.') +
+        row('◻ strength',    '(right-click menu) fade the letters and their outline ' +
+                             'together — 100% is a caption, 35% or 20% is a watermark ' +
+                             'the picture shows through') +
+        row('▾ saved text',  'every caption you finish is remembered; pick one off the ' +
+                             'bar to drop it on this clip') +
         row('right-click it', 'drop a ⬇ or ⬆ arrow at the cursor (it sizes with the ' +
                              'type), or set when this text comes and goes: ' +
                              '<u>s</u>tarts / <u>e</u>nds at the playhead — click, or ' +
@@ -5236,15 +5475,36 @@ function _vpCropHelpImageRows(K, row, head) {
                          '(' + K('T') + ' goes back to a locked rect)') +
     row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
     row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
+    head('Text on the picture') +
+    row(K('E'),          'new text box — burned into the saved file') +
+    row('click inside',  'type. No hotkeys while you do — ' + K('↑') + K('↓') +
+                         ' size the type, click outside to finish') +
+    row('drag it / ↔',   'move the box / drag a side grip to set the wrap width — ' +
+                         'the wrap you see is the wrap you get. ✕ removes it.') +
+    row('right-click it', 'drop a ⬇ or ⬆ arrow at the cursor, or <b>◻ strength</b>: ' +
+                         'fade the letters AND their outline together. 100% is a ' +
+                         'caption; 35% or 20% is a watermark you can see through.') +
+    row('▾ saved text',  'every caption you finish is remembered. Pick one off the ' +
+                         'bar to drop it on this picture — type your credit line ' +
+                         'once and it is there for every photograph after.') +
+    head('Or make it move') +
+    row(K('M'),          'still → 🎬 mp4 → 🎞 gif → still (the bar chip says which)') +
+    row(K('Z'),          'the amber box = where the zoom ENDS. The clip glides from ' +
+                         'the whole crop into it and holds there.') +
+    row('duration',      'next to the chip: 2–10s. Without a zoom box the picture ' +
+                         'is simply held for that long.') +
+    row('gif vs mp4',    'gif is 15fps and carries its own palette — keep it short ' +
+                         'and small. mp4 is 30fps, h264, silent.') +
     head('The output') +
     row('⧉ lossless',    'jpegtran copies the JPEG’s blocks straight across — the ' +
                          'pixels that survive the crop are the ORIGINAL pixels, not ' +
                          're-compressed ones. The box is snapped to the 16px block ' +
                          'grid so the cut lands exactly where you drew it.') +
-    row('↻ re-encode',   'a tilt, a resolution other than <i>Same</i>, a non-JPEG, or ' +
-                         'an EXIF-rotated original — none can be done by copying ' +
-                         'blocks, so ffmpeg redraws the picture at high quality. The ' +
-                         'chip on the bar says which one is armed before you commit.') +
+    row('↻ re-encode',   'a tilt, a caption, a clip, a resolution other than ' +
+                         '<i>Same</i>, a non-JPEG, or an EXIF-rotated original — none ' +
+                         'can be done by copying blocks, so ffmpeg redraws the picture ' +
+                         'at high quality. The chip on the bar says which one is armed ' +
+                         'before you commit.') +
     row('res',           '2160p (4K) · 1440p (2K) · 1080p · 720p · Same ' +
                          '(<i>Same</i> is what keeps it lossless)') +
     row('⚠',             'amber size label = the output is BIGGER than the box: pixels ' +
@@ -5569,6 +5829,13 @@ function _vpImgAdapter(img) {
 function _vpImgLossless(state, row) {
   const name = String((row && (row.comment || row.VidTitle)) || '');
   const ext  = name.split('.').pop().toLowerCase();
+  // (dev0745) A clip and burned-in text are both new pixels by definition —
+  // there is nothing to copy across. Checked first, since they are the choices
+  // the user just made and the likeliest reason the chip changed.
+  if (state.motion && state.motion.format !== 'still')
+                                       return { ok: false, why: 'a clip' };
+  if (state.texts && state.texts.some(t => ((t.ta ? t.ta.value : t.text) || '').trim()))
+                                       return { ok: false, why: 'text on it' };
   if (ext !== 'jpg' && ext !== 'jpeg') return { ok: false, why: 'not a JPEG' };
   if (state._hasJpegtran === false)    return { ok: false, why: 'no jpegtran' };
   if (state.angle)                     return { ok: false, why: 'tilted' };
@@ -5681,10 +5948,23 @@ window._vpImageCropActive = function () {
 // the slideshow underneath doesn't also act on them.
 function _vpImgKey(e) {
   if (!_vpState || !_vpState.imageMode || !_vpState.crop) return;
-  const ae = document.activeElement, tag = ae && ae.tagName;
-  if (ae && (tag === 'INPUT' || tag === 'TEXTAREA' || ae.isContentEditable)) return;
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
   const take = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+  // (dev0745) A caption being typed into owns the keyboard, exactly as it does
+  // in the video player: ↑ / ↓ size the type, Esc ends the entry, everything
+  // else is a character. Tested on e.target rather than an "am I editing" flag
+  // for the same reason vpKeyHandler does — core.js's "Esc blurs the field"
+  // rule runs first and would clear such a flag before we saw the key.
+  if (e.target && e.target.classList &&
+      e.target.classList.contains('vp-crop-text-input')) {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      take(); _vpTextNudgeSize(e.key === 'ArrowUp' ? 1 : -1); return;
+    }
+    if (e.key === 'Escape') { take(); _vpTextEndEdit(); return; }
+    return;
+  }
+  const ae = document.activeElement, tag = ae && ae.tagName;
+  if (ae && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ae.isContentEditable)) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') { take(); window._vpImageCropClose(); return; }
   if (e.key === 't' || e.key === 'T') { take(); _vpCropSwapAspect(); return; }
   if (e.key === 'F')                  { take(); _vpCropFullFrame();  return; }
@@ -5694,6 +5974,12 @@ function _vpImgKey(e) {
     if (s.setAngle) s.setAngle(s.angle + (e.key === '1' ? -0.5 : 0.5));
     return;
   }
+  // (dev0745) E text · Z zoom box · M still/mp4/gif — the three the still half
+  // of this tool gained. M is free here because the audio switch it drives on
+  // video has nothing to say about a photograph.
+  if (e.key === 'e' || e.key === 'E') { take(); _vpTextAdd();   return; }
+  if (e.key === 'z' || e.key === 'Z') { take(); _vpKenToggle(); return; }
+  if (e.key === 'm' || e.key === 'M') { take(); _vpMotionCycle(); return; }
   if (e.key === 'w' || e.key === 'W') { take(); _vpCropHelpToggleWidth(); return; }
   if (e.key === 'g' || e.key === 'G') { take(); _vpGoSave({ fromButton: true }); return; }
 }
@@ -5725,16 +6011,51 @@ async function _vpImageSave(opts) {
     }
     return;
   }
+  // (dev0745) The same rule the video path follows for every new payload key:
+  // a proxy that doesn't know about it drops it silently and writes a file
+  // that LOOKS like a success. Refuse loudly instead.
+  const wantsText   = (s.texts || []).some(t => ((t.ta ? t.ta.value : t.text) || '').trim());
+  const wantsMotion = !!(s.motion && s.motion.format !== 'still');
+  if (wantsText && !(await _vpProxyHasFeature('imagetext'))) {
+    if (typeof toast === 'function') {
+      toast('Text on a picture needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  if (wantsMotion && !(await _vpProxyHasFeature('imagemotion'))) {
+    if (typeof toast === 'function') {
+      toast('Clips from a picture need an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
 
   const VW = img.naturalWidth, VH = img.naturalHeight;
   if (!VW || !VH) { if (typeof toast === 'function') toast('save: image not measured yet', 2200); return; }
+  const even = n => Math.max(2, Math.floor(n / 2) * 2);
+  // (dev0745) A gif is uncompressed-ish frames with a 256-colour palette: a
+  // full-resolution one runs to hundreds of megabytes and takes minutes. Say
+  // so BEFORE the encode rather than after it, with the number that matters.
+  if (wantsMotion && s.motion.format === 'gif') {
+    const gw = even(s.frac.w * VW), gh = even(s.frac.h * VH);
+    const short = (s.resHeight === 'source') ? Math.min(gw, gh) : +s.resHeight;
+    if (short > 720) {
+      const ok = confirm('⚠ Big gif\n\nThis one is ' + short + 'p for ' + s.motion.durSec +
+        's at 15fps — gifs that size run to hundreds of MB and take minutes.\n\n' +
+        'Dropping the resolution to 720p or lower is the usual answer.\n\nEncode anyway?');
+      if (!ok) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
+    }
+  }
   const id = prompt('Save name/ID for this crop:', '');
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
   const safeId = id.replace(/[<>:"/\\|?*~]/g, '_').trim() || 'unnamed';
 
-  const even = n => Math.max(2, Math.floor(n / 2) * 2);
   const verdict = _vpImgLossless(s, row);
-  const outExt = verdict.ok ? parts.ext : (/^(png|webp)$/i.test(parts.ext) ? parts.ext : 'jpg');
+  const moving  = !!(s.motion && s.motion.format !== 'still');
+  // A clip names its own container; a still keeps the source's format where
+  // ffmpeg can write it (png/webp stay lossless), else lands as JPEG.
+  const outExt = moving ? s.motion.format
+               : (verdict.ok ? parts.ext
+                             : (/^(png|webp)$/i.test(parts.ext) ? parts.ext : 'jpg'));
   const outDir = parts.dir + parts.sep + _vpOutDirStamp();
   let payload, route, sizeStr, engTok;
 
@@ -5783,6 +6104,32 @@ async function _vpImageSave(opts) {
     // An EXIF-rotated original is baked upright first, so the rect means what
     // it looked like it meant on screen.
     if (s._exif > 1) payload.exif = s._exif;
+    // (dev0745) Captions. Wrapped here at the size ffmpeg will draw them, in
+    // the OUTPUT frame's pixels — and always for the whole picture, since a
+    // still has no clock to window them against.
+    const dims = _vpOutputDims(s, sw, sh);
+    const tr = _vpTextRenderList(s, dims.ow, dims.oh, 0, 0);
+    const toks = [];
+    if (tr.texts.length) {
+      payload.texts = tr.texts;
+      toks.push('txt' + tr.texts.length);
+      // A faded caption is a watermark, and the filename should say so — that
+      // is the difference between a file you can publish and one you can't.
+      if (tr.texts.some(t => t.alpha != null)) toks.push('wm');
+    }
+    // (dev0745) …and the clip, if one was asked for. The zoom box comes along
+    // when it is armed; without it the picture is simply held for the duration.
+    if (s.motion && s.motion.format !== 'still') {
+      const fmt = s.motion.format;
+      payload.motion = { durSec: s.motion.durSec, format: fmt,
+                         fps: (fmt === 'gif') ? 15 : 30 };
+      if (s.ken && s.ken.on) {
+        payload.ken = { x: s.ken.frac.x, y: s.ken.frac.y, w: s.ken.frac.w, h: s.ken.frac.h };
+        toks.push('kb');
+      }
+      toks.push(fmt + s.motion.durSec + 'sec');
+    }
+    if (toks.length) engTok = toks.join('~');
   }
 
   const angTok = s.angle ? ('r' + s.angle.toFixed(1).replace('.', '_') + 'deg') : '';
@@ -5797,7 +6144,9 @@ async function _vpImageSave(opts) {
   const restore = () => { if (btn) { btn.disabled = false; btn.textContent = origLabel; } };
   const run = async () => {
     try {
-      return await _vpCropRun(payload, btn, 0, route);
+      // A clip has a real duration to count progress against; a still is done
+      // before the label can say anything useful.
+      return await _vpCropRun(payload, btn, moving ? s.motion.durSec * 1000 : 0, route);
     } catch (err) {
       // jpegtran has no -n, so the proxy refuses an existing output with a 400
       // rather than a non-zero exit. Same situation, different shape — fold it
@@ -6083,6 +6432,15 @@ async function _vpGoSave(opts) {
   if (payload.texts && !(await _vpProxyHasFeature('drawtext'))) {
     if (typeof toast === 'function') {
       toast('Burned-in text needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  // (dev0745) …and a faded caption on a stale proxy comes out at full strength,
+  // which is a watermark that ruins the picture it was meant to sit quietly on.
+  if ((payload.texts || []).some(t => t.alpha != null) &&
+      !(await _vpProxyHasFeature('textalpha'))) {
+    if (typeof toast === 'function') {
+      toast('Faded text needs an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }
