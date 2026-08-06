@@ -3337,6 +3337,12 @@ function _slideshowWireMenu(menu) {
 
 function _slideshowHotkeyShouldFire() {
   if (_slideshowState) return false;
+  // (dev0749) An open crop overlay owns `s` — it steps a frame back. This
+  // listener is its own document handler, so core.js's crop bail does not
+  // cover it, and a show launching mid-crop takes the video off the screen
+  // being cropped. Bites hardest from ?vect=, where there is no show to have
+  // set _slideshowState above.
+  if (typeof _vpCropHolding === 'function' && _vpCropHolding()) return false;
   const ae = document.activeElement;
   const tag = ae && ae.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;

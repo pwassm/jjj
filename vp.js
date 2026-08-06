@@ -2263,6 +2263,15 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0749) A text box's own menu, or the saved-text list, owns the keyboard
+  // while it is up: its letters are answers to the question on screen. Both
+  // register their handlers AFTER this one, so without standing down here the
+  // key would be acted on twice — picking "1 second" for a pause would also
+  // stamp a clip mark, and Escape would close the whole video rather than the
+  // menu in front of it.
+  if (document.getElementById(VP_TEXT_MENU_ID) ||
+      document.getElementById(VP_TEXT_PICK_ID)) return;
+
   // (dev0344) Esc closes V / Ie back to T (re-enabled — was removed in zip0186).
   // vpClose() handles teardown and silently refuses in locked-share mode, so no
   // separate guard is needed here.
@@ -2410,15 +2419,9 @@ function vpKeyHandler(e) {
     return;
   }
 
-  // (dev0287) R = toggle disk-video info overlay (resolution+duration+filename).
-  // No-op when no overlay exists (web videos, YouTube, Vimeo, images, quiz).
-  if (e.key === 'r' || e.key === 'R') {
-    const ov = _vpState && _vpState.diskInfoOverlay;
-    if (!ov) return;
-    e.preventDefault();
-    ov.style.display = (ov.style.display === 'none') ? '' : 'none';
-    return;
-  }
+  // (dev0287→0749) R used to toggle the disk-info caption. It is now simply
+  // always on — it is the answer to "what am I looking at", which is not a
+  // question that comes and goes — so the key is gone and R is free again.
 
   // (dev0288) C = toggle crop overlay. T = swap landscape↔portrait aspect
   // (only while overlay is visible). Both no-op when no crop state exists.
@@ -2527,38 +2530,33 @@ function vpKeyHandler(e) {
     return;
   }
 
-  // (dev0719) Shift+A / Shift+B — the keyboard twins of the A and B buttons:
-  // set the trim start / end at the playhead, or clear it if it's already set
-  // (same toggle the buttons do). They used to be swallowed by the ASDF block
-  // below, which lower-cased them and nudged instead — so capital A/B appeared
-  // dead. Live whenever a player is up, since the buttons are too.
-  if (e.key === 'A' || e.key === 'B') {
+  // (dev0749) a / f — the clip's start / end at the frame you are on (again to
+  // clear), the keyboard twins of the A and B buttons. They took this over from
+  // ⇧A / ⇧B, which no longer mark anything: one row of left-hand keys now does
+  // the whole job, with the two marks on the outside and the frame-step between
+  // them.
+  //
+  // s / d — one frame back / forward, the ← / → twins. (dev0719's ±5 jumps are
+  // gone with a and f; the ±0.1s toolbar buttons still nudge a mark in place.)
+  //
+  // All four are gated to an OPEN crop overlay, which is exactly when the
+  // cheat-sheet listing them is on screen. Outside it the letters stay free,
+  // and they must: review mode rates with a/s/d/f and a plain slideshow uses d
+  // for the folder picker.
+  if (e.key === 'a' || e.key === 'f') {
+    if (!_vpCropHolding()) return;
     // The buttons themselves must be mounted — vpUpdateABStyle writes straight
     // into them, and an embed-only toolbar (IG/TikTok) has no A/B pair.
-    if (!_vpState || !_vpState.player) return;
     if (!document.getElementById('vp-a') || !document.getElementById('vp-b')) return;
     e.preventDefault(); e.stopPropagation();
-    if (e.key === 'A') vpToggleA(); else vpToggleB();
+    if (e.key === 'a') vpToggleA(); else vpToggleB();
     return;
   }
-
-  // (dev0719) a s d f — walk the PLAYHEAD: a −5, s −1, d +1, f +5 frames
-  // (frame ≈ 1/30 s, same approximation the arrow keys use). Pairs with
-  // Shift+A / Shift+B above: park the playhead on the exact frame you want,
-  // then stamp it as the start or the end.
-  //
-  // Gated to an OPEN crop overlay — which is exactly when the cheat-sheet
-  // listing them is on screen. Outside it these keys stay free, and they must:
-  // review mode rates with a/s/d/f, and a plain slideshow uses d for the
-  // folder picker. (Superseded the dev0293 A/B ±1-frame nudges; the ±0.1 s
-  // toolbar buttons still cover fine-tuning a point in place.)
-  if (e.key === 'a' || e.key === 's' || e.key === 'd' || e.key === 'f') {
+  if (e.key === 's' || e.key === 'd') {
     if (!_vpCropHolding()) return;
     e.preventDefault(); e.stopPropagation();
-    const FRAME = 1 / 30;
-    const steps = (e.key === 'a') ? -5 : (e.key === 's') ? -1 : (e.key === 'd') ? 1 : 5;
     if (_vpIsPlaying()) _vpPauseNow();   // pause so the step is actually visible
-    vpSeekRelative(steps * FRAME);
+    vpSeekRelative((e.key === 's' ? -1 : 1) / 30);
     return;
   }
 
@@ -3464,10 +3462,13 @@ function _vpMountDiskInfoOverlay(host, vid, row) {
   if (_vpState && _vpState.suppressDiskInfoOverlay) return;
   const ov = document.createElement('div');
   ov.id = 'vp-disk-info';
+  // (dev0749) Twice the type, and no longer toggleable — see the note where R
+  // used to live. At 24px it reads from across the room, which is the point of
+  // a caption that says which file is on screen.
   ov.style.cssText =
     'position:absolute;top:8px;left:8px;z-index:50;pointer-events:none;' +
     'background:rgba(0,0,0,0.55);color:#dfe6f0;padding:6px 9px;border-radius:4px;' +
-    'font:12px/1.35 ui-monospace,Consolas,monospace;white-space:pre;' +
+    'font:24px/1.35 ui-monospace,Consolas,monospace;white-space:pre;' +
     'max-width:60%;overflow:hidden;text-overflow:ellipsis;';
   host.appendChild(ov);
   const fname = row.VidTitle || (row.comment || '').split(/[\\/]/).pop() || '(unnamed)';
@@ -3738,25 +3739,147 @@ const VP_TEXT_PAUSE_KEYS = { a: 1, s: 2, d: 3, f: 4, g: 5 };
 // no editing. The box on the frame is still the editor.
 const VP_TEXT_STORE_KEY = 'salCropTexts';
 const VP_TEXT_STORE_MAX = 30;
+// (dev0749) KEPT entries — the ones right-click starred. They show a `*`, they
+// sort to the top, and "forget them all" leaves them alone: a credit line you
+// use on every picture should not be a casualty of clearing out the clutter.
+// A separate key, so the plain list stays the plain list it has always been.
+const VP_TEXT_KEEP_KEY = 'salCropTextsKept';
 
-function _vpTextSaved() {
+function _vpTextReadList(key) {
   try {
-    const a = JSON.parse(localStorage.getItem(VP_TEXT_STORE_KEY) || '[]');
+    const a = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(a) ? a.filter(s => typeof s === 'string' && s.trim()) : [];
   } catch (_) { return []; }
+}
+function _vpTextWriteList(key, list) {
+  try { localStorage.setItem(key, JSON.stringify(list.slice(0, VP_TEXT_STORE_MAX))); } catch (_) {}
+}
+
+function _vpTextKept() { return _vpTextReadList(VP_TEXT_KEEP_KEY); }
+function _vpTextIsKept(s) { return _vpTextKept().indexOf(s) >= 0; }
+
+// Kept first, then the rest in most-recent order.
+function _vpTextSaved() {
+  const kept = _vpTextKept();
+  const rest = _vpTextReadList(VP_TEXT_STORE_KEY).filter(s => kept.indexOf(s) < 0);
+  return kept.concat(rest);
 }
 
 function _vpTextRemember(str) {
   const s = String(str == null ? '' : str).trim();
   if (!s || s.length > 400) return;
-  const list = _vpTextSaved().filter(x => x !== s);   // re-used text floats up
+  if (_vpTextIsKept(s)) return;                        // already held, and held first
+  const list = _vpTextReadList(VP_TEXT_STORE_KEY).filter(x => x !== s);  // re-used floats up
   list.unshift(s);
-  try { localStorage.setItem(VP_TEXT_STORE_KEY, JSON.stringify(list.slice(0, VP_TEXT_STORE_MAX))); }
-  catch (_) {}
+  _vpTextWriteList(VP_TEXT_STORE_KEY, list);
 }
 
+function _vpTextToggleKeep(str) {
+  const s = String(str == null ? '' : str).trim();
+  if (!s) return false;
+  const kept = _vpTextKept();
+  const i = kept.indexOf(s);
+  if (i >= 0) kept.splice(i, 1); else kept.unshift(s);
+  _vpTextWriteList(VP_TEXT_KEEP_KEY, kept);
+  // A kept entry lives in the keep list only, so it can't be lost to a clear-out
+  // of the ordinary one; un-keeping puts it back among the ordinary ones.
+  const plain = _vpTextReadList(VP_TEXT_STORE_KEY).filter(x => x !== s);
+  if (i >= 0) plain.unshift(s);
+  _vpTextWriteList(VP_TEXT_STORE_KEY, plain);
+  return i < 0;
+}
+
+// Clears the ordinary list. Kept entries survive by construction — they are in
+// the other one.
 function _vpTextForgetAll() {
   try { localStorage.removeItem(VP_TEXT_STORE_KEY); } catch (_) {}
+}
+
+// ── The saved-text list ─────────────────────────────────────────────────────
+// A real menu rather than a <select>, because an <option> cannot carry a
+// right-click and right-click is how an entry gets kept.
+const VP_TEXT_PICK_ID = 'vp-text-pick';
+
+function _vpTextPickClose() {
+  const el = document.getElementById(VP_TEXT_PICK_ID);
+  if (el) el.remove();
+}
+
+function _vpTextPickMenu(x, y, onPick, onChanged) {
+  _vpTextPickClose();
+  const saved = _vpTextSaved();
+  const el = document.createElement('div');
+  el.id = VP_TEXT_PICK_ID;
+  el.style.cssText =
+    'position:fixed;z-index:42600;min-width:230px;max-width:min(620px,92vw);' +
+    'max-height:60vh;overflow:auto;background:#000;border:2px solid #06f;' +
+    'border-radius:9px;padding:5px;box-shadow:0 4px 18px rgba(0,0,0,0.75);' +
+    'font:13px ui-monospace,Consolas,monospace;color:#dfe6f0;user-select:none;';
+
+  const head = document.createElement('div');
+  head.innerHTML = saved.length
+    ? 'click = put it on the frame &nbsp;·&nbsp; right-click = <span style="color:#ffd24a;">keep</span>'
+    : 'Nothing saved yet — finish a text box and it lands here.';
+  head.style.cssText = 'padding:4px 8px 6px;color:#8ef;white-space:nowrap;';
+  el.appendChild(head);
+
+  saved.forEach(s => {
+    const kept = _vpTextIsKept(s);
+    const d = document.createElement('div');
+    d.textContent = (kept ? '* ' : '') + s.replace(/\n/g, ' ⏎ ');
+    d.title = kept ? 'Kept — right-click to release it' : 'Right-click to keep this one';
+    d.style.cssText =
+      'padding:5px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;' +
+      'overflow:hidden;text-overflow:ellipsis;' + (kept ? 'color:#ffd24a;' : '');
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    d.onclick = e => { e.stopPropagation(); _vpTextPickClose(); if (onPick) onPick(s); };
+    d.oncontextmenu = e => {
+      e.preventDefault(); e.stopPropagation();
+      const nowKept = _vpTextToggleKeep(s);
+      if (onChanged) onChanged();
+      if (typeof toast === 'function') {
+        toast(nowKept ? '* kept — "forget them all" will leave this one alone'
+                      : '· released — this one goes with the next clear-out', 2200);
+      }
+      _vpTextPickMenu(x, y, onPick, onChanged);   // redraw where it stood
+    };
+    el.appendChild(d);
+  });
+
+  if (saved.length) {
+    const hr = document.createElement('div');
+    hr.style.cssText = 'height:1px;margin:4px 2px;background:rgba(102,170,255,0.35);';
+    el.appendChild(hr);
+    const clear = document.createElement('div');
+    const nPlain = saved.filter(s => !_vpTextIsKept(s)).length;
+    clear.innerHTML = '<span style="opacity:0.75;">— forget them all' +
+      (nPlain === saved.length ? '' : ' (the ' + (saved.length - nPlain) + ' kept stay)') + ' —</span>';
+    clear.style.cssText = 'padding:5px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    clear.onmouseenter = () => { clear.style.background = '#12325c'; };
+    clear.onmouseleave = () => { clear.style.background = ''; };
+    clear.onclick = e => {
+      e.stopPropagation();
+      if (!nPlain) { _vpTextPickClose(); return; }
+      if (!confirm('Forget ' + nPlain + ' saved text' + (nPlain === 1 ? '' : 's') + '?')) return;
+      _vpTextForgetAll();
+      if (onChanged) onChanged();
+      _vpTextPickMenu(x, y, onPick, onChanged);
+    };
+    el.appendChild(clear);
+  }
+
+  document.body.appendChild(el);
+  const w = el.offsetWidth || 230, h = el.offsetHeight || 120;
+  el.style.left = Math.max(4, Math.min(window.innerWidth  - w - 4, x)) + 'px';
+  el.style.top  = Math.max(4, Math.min(window.innerHeight - h - 4, y)) + 'px';
+
+  const away = e2 => {
+    if (el.contains(e2.target)) return;
+    document.removeEventListener('pointerdown', away, true);
+    _vpTextPickClose();
+  };
+  setTimeout(() => document.addEventListener('pointerdown', away, true), 0);
 }
 
 function _vpEscHtml(s) {
@@ -4144,9 +4267,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (dev0745) Saved text — every caption you finish typing is remembered, and
     // this puts it back on the next picture. Lives on both bars: a watermark is
     // exactly the text you want to type once and never again.
-    '<select id="vp-crop-textpick" title="Text you have used before — pick one to drop it on this frame (E types a fresh one)" ' +
-      'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;max-width:150px;font:12px ui-monospace,Consolas,monospace;">' +
-      '<option value="">▾ saved text</option></select>' +
+    // (dev0749) A chip, not a <select>: an <option> cannot be right-clicked,
+    // and right-click is what keeps an entry (see _vpTextPickMenu).
+    '<span id="vp-crop-textpick" title="Text you have used before — click to pick one · right-click an entry to keep it (E types a fresh one)" ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">▾ saved text</span>' +
     // (dev0745) Image mode only: still, or a Ken Burns clip out as mp4 / gif.
     '<span id="vp-crop-motion" title="Still picture · or a moving clip from the zoom box (M)" ' +
       'style="display:none;cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">🖼 still</span>' +
@@ -4851,41 +4975,29 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   paintAudio();
   if (audioChip) audioChip.addEventListener('click', _vpCropToggleAudio);
 
-    // (dev0745) ── Saved text ─────────────────────────────────────────────────
-  // Refilled every time the bar is built AND after each caption is finished,
-  // so the list is never behind what has been typed. Choosing an entry drops a
-  // NEW box carrying that text: the empty box an aborted E left behind removes
-  // itself on endEdit, so the two never pile up.
+  // (dev0745) ── Saved text ─────────────────────────────────────────────────
+  // The chip counts what is banked; the list itself is built fresh each time it
+  // opens, so it is never behind what has just been typed. Picking an entry
+  // drops a NEW box carrying that text — the empty box an aborted E left behind
+  // removes itself on endEdit, so the two never pile up.
   const textPick = bar.querySelector('#vp-crop-textpick');
   function paintTextPick() {
     if (!textPick) return;
-    const saved = _vpTextSaved();
-    const keep = textPick.value;
-    textPick.innerHTML = '<option value="">▾ saved text</option>' +
-      saved.map((s, i) => '<option value="i' + i + '">' +
-        _vpEscHtml(s.length > 42 ? s.slice(0, 41) + '…' : s).replace(/\n/g, ' ⏎ ') +
-        '</option>').join('') +
-      (saved.length ? '<option value="__clear">— forget them all —</option>' : '');
-    textPick.value = '';
-    void keep;
+    const n = _vpTextSaved().length;
+    textPick.textContent = '▾ saved text' + (n ? ' (' + n + ')' : '');
+  }
+  function dropSavedText(s) {
+    const t = addText({ silent: true });
+    if (!t) return;
+    t.text = s; t.ta.value = s;
+    growText(t); paintTexts();
+    beginEdit(t);
   }
   paintTextPick();
   if (textPick) {
-    textPick.addEventListener('change', () => {
-      const v = textPick.value;
-      textPick.value = '';
-      if (!v) return;
-      if (v === '__clear') {
-        if (confirm('Forget every saved text?')) { _vpTextForgetAll(); paintTextPick(); }
-        return;
-      }
-      const s = _vpTextSaved()[+v.slice(1)];
-      if (s == null) return;
-      const t = addText({ silent: true });
-      if (!t) return;
-      t.text = s; t.ta.value = s;
-      growText(t); paintTexts();
-      beginEdit(t);
+    textPick.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      _vpTextPickMenu(e.clientX, e.clientY, dropSavedText, paintTextPick);
     });
   }
 
@@ -5260,9 +5372,27 @@ let _vpCropHelpWide = false;
 
 function _vpCropHelpIsWide() { return _vpCropHelpWide; }
 
+// (dev0749) How wide the key column is pinned at full width. Comfortably past
+// the widest thing in it ("drag inside / a corner"), so nothing is clipped.
+const VP_CROP_HELP_KEYCOL = '186px';
+
 function _vpCropHelpApplyWidth(el) {
   const wide = _vpCropHelpIsWide();
   el.style.width = wide ? VP_CROP_HELP_W_WIDE : VP_CROP_HELP_W_NARROW;
+  // (dev0749) The key column, and ONLY at full width.
+  //
+  //   wide   — table-layout:fixed makes the <col> width an instruction rather
+  //            than the hint auto layout is free to ignore (dev0727's
+  //            width:1%/99% was exactly such a hint, and at full width the
+  //            browser handed the keys half the panel: ~900px of black beside
+  //            descriptions still wrapping in what was left).
+  //   narrow — nothing set at all, so auto layout behaves as it always has:
+  //            the sheet may run past the panel edge, which is what keeps
+  //            every hint on one line and the whole thing visible at a glance.
+  const tbl = el.querySelector('#vp-crop-help-table');
+  const c1  = el.querySelector('#vp-crop-help-c1');
+  if (tbl) tbl.style.tableLayout = wide ? 'fixed' : '';
+  if (c1)  c1.style.width        = wide ? VP_CROP_HELP_KEYCOL : '';
   // (dev0724) Full width leaves the clamp below nowhere to put the panel but
   // the left edge — so coming back to narrow restores the spot the user
   // actually parked it in, instead of abandoning it there.
@@ -5294,22 +5424,21 @@ function _vpCropHelpShow() {
     '<kbd style="display:inline-block;min-width:13px;padding:1px 5px;margin:0 1px;' +
     'background:#1d3149;border:1px solid #6af;border-radius:3px;color:#cfe;' +
     'font:11px ui-monospace,Consolas,monospace;text-align:center;">' + k + '</kbd>';
-  // (dev0748) A two-column GRID, not a table. dev0727's width:1%/99% was meant
-  // to shrink the key column onto its content, but a percentage is only a hint
-  // to auto table layout: at full width the browser handed the key column
-  // roughly half the panel anyway, so ~900px of black sat between the keys and
-  // descriptions that were STILL wrapping in the strip left over.
+  // (dev0749) Back to the table, because NARROW has to stay as it was: auto
+  // layout lets the sheet run wider than the 290px panel rather than squeezing
+  // every description into a column three words across, and that is what keeps
+  // the whole cheat-sheet on screen at a glance instead of behind a scrollbar.
+  // dev0748's grid forced the wrap and cost exactly that.
   //
-  // `max-content` is not a hint. The key column ends up exactly as wide as the
-  // widest set of key chips and not one pixel more, and `minmax(0,1fr)` gives
-  // the description every remaining pixel — while the 0 minimum stops a long
-  // unbreakable word from pushing the column back out again.
+  // The full-width gully is fixed where it actually happens — see the
+  // table-layout switch in _vpCropHelpApplyWidth, which pins the key column
+  // only when the panel is wide enough for pinning to mean anything.
   const row = (keys, txt) =>
-    '<div style="padding:2px 0;white-space:nowrap;">' + keys + '</div>' +
-    '<div style="padding:2px 0;color:#b9c6d6;">' + txt + '</div>';
+    '<tr><td style="padding:2px 9px 2px 0;white-space:nowrap;vertical-align:top;">' + keys +
+    '</td><td style="padding:2px 0;color:#b9c6d6;">' + txt + '</td></tr>';
   const head = t =>
-    '<div style="grid-column:1/-1;padding:9px 0 3px;color:#6af;font-weight:bold;' +
-    'border-bottom:1px solid rgba(102,170,255,0.28);">' + t + '</div>';
+    '<tr><td colspan="2" style="padding:9px 0 3px;color:#6af;font-weight:bold;' +
+    'border-bottom:1px solid rgba(102,170,255,0.28);">' + t + '</td></tr>';
 
   // (dev0744) A still gets its own sheet. Half the video one is about time —
   // A/B, frame-stepping, pauses, the zoom's landing frame — and listing keys
@@ -5343,8 +5472,8 @@ function _vpCropHelpShow() {
         'Slideshow is held — it will not advance off this ' +
         (imageMode ? 'picture' : 'video') + ' until ' + K('C') + ' closes crop.' +
       '</div>' +
-      '<div style="display:grid;grid-template-columns:max-content minmax(0,1fr);' +
-        'column-gap:14px;align-items:start;">' +
+      '<table id="vp-crop-help-table" style="border-collapse:collapse;width:100%;">' +
+        '<colgroup><col id="vp-crop-help-c1"><col></colgroup>' +
         (imageMode ? _vpCropHelpImageRows(K, row, head) : '') +
         (imageMode ? '' :
         head('The frame') +
@@ -5361,11 +5490,10 @@ function _vpCropHelpShow() {
         row('drag it',       'move / resize it inside the crop box (always the same ' +
                              'shape, so the shot keeps its aspect) — and it lands on ' +
                              'the frame you are parked on when you place it: the ' +
-                             'render glides from the full crop at ' + K('A') +
-                             ' to the box by then, and holds it to ' + K('B') + '.') +
+                             'render glides from the full crop at the start mark ' +
+                             'to the box by then, and holds it to the end mark.') +
         head('Text on the picture') +
-        row(K('E'),          'new text box between ' + K('A') + ' and ' + K('B') +
-                             ' — burned in at render, for the whole clip') +
+        row(K('E'),          'new text box — burned in at render, for the whole clip') +
         row('click inside',  'type. No hotkeys while you do — ' + K('↑') + K('↓') +
                              ' size the type, click outside to finish') +
         row('drag it / ↔',   'move the box / drag a side grip to set the wrap width — ' +
@@ -5390,15 +5518,14 @@ function _vpCropHelpShow() {
                              'outside its window — same as in the file. It is not ' +
                              'deleted: scrub back inside the window to see or edit it.') +
         head('The clip') +
-        // (dev0719) asdf now walk the PLAYHEAD and shifted A/B stamp the point
-        // it's parked on — find the frame, then mark it.
-        row(K('a') + K('s') + K('d') + K('f'),
-                             'playhead −5 / −1 / +1 / +5 frames') +
-        row(K('←') + K('→'), 'step one frame (pauses first)') +
-        row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip (the ' +
-                             K('A') + ' and ' + K('B') + ' marks)') +
-        row(K('⇧A') + K('⇧B'), 'start / end of clip = the frame you are on ' +
-                             '(again to clear) — same as the A and B buttons') +
+        // (dev0749) One row of left-hand keys: the two marks on the outside,
+        // the frame-step between them. ⇧A / ⇧B no longer mark anything.
+        row(K('a') + ' / ' + K('f'),
+                             'set start / end of clip at the position of the current ' +
+                             'frame (again to clear) — same as the A and B buttons') +
+        row(K('s') + ' or ' + K('←') + ' / ' + K('d') + ' or ' + K('→'),
+                             'step one frame back or forward (pauses first)') +
+        row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
         row(K('Space'),      'play / pause') +
         head('The output') +
@@ -5419,9 +5546,8 @@ function _vpCropHelpShow() {
                       'load one back: pick the folder, then the .edit') +
         row(K('W'),   'this panel: full width / narrow') +
         row(K('C'),   'close crop, hand the show back to the slideshow') +
-        row(K('R'),   'toggle the disk-info caption') +
         row(K('Esc'), 'close the video entirely')) +
-      '</div>' +
+      '</table>' +
     '</div>';
   document.body.appendChild(el);
 
@@ -5978,6 +6104,11 @@ function _vpImgKey(e) {
   const ae = document.activeElement, tag = ae && ae.tagName;
   if (ae && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ae.isContentEditable)) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
+  // (dev0749) …and stand down for the two menus, same as vpKeyHandler does —
+  // both register after this handler, so their letters would be acted on here
+  // first. Escape especially: it should shut the menu, not the whole session.
+  if (document.getElementById(VP_TEXT_MENU_ID) ||
+      document.getElementById(VP_TEXT_PICK_ID)) return;
   if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') { take(); window._vpImageCropClose(); return; }
   if (e.key === 't' || e.key === 'T') { take(); _vpCropSwapAspect(); return; }
   if (e.key === 'F')                  { take(); _vpCropFullFrame();  return; }
