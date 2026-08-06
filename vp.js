@@ -5294,17 +5294,22 @@ function _vpCropHelpShow() {
     '<kbd style="display:inline-block;min-width:13px;padding:1px 5px;margin:0 1px;' +
     'background:#1d3149;border:1px solid #6af;border-radius:3px;color:#cfe;' +
     'font:11px ui-monospace,Consolas,monospace;text-align:center;">' + k + '</kbd>';
-  // (dev0727) width:1% / 99% is the shrink-to-fit trick: a percentage that small
-  // can't be honoured, so the auto table layout collapses the key column onto
-  // its (nowrap) content and hands every remaining pixel to the description.
-  // Without it, full width split the table down the middle and left a ~700px
-  // gully between the keys and text that was still wrapping.
+  // (dev0748) A two-column GRID, not a table. dev0727's width:1%/99% was meant
+  // to shrink the key column onto its content, but a percentage is only a hint
+  // to auto table layout: at full width the browser handed the key column
+  // roughly half the panel anyway, so ~900px of black sat between the keys and
+  // descriptions that were STILL wrapping in the strip left over.
+  //
+  // `max-content` is not a hint. The key column ends up exactly as wide as the
+  // widest set of key chips and not one pixel more, and `minmax(0,1fr)` gives
+  // the description every remaining pixel — while the 0 minimum stops a long
+  // unbreakable word from pushing the column back out again.
   const row = (keys, txt) =>
-    '<tr><td style="width:1%;padding:2px 9px 2px 0;white-space:nowrap;vertical-align:top;">' + keys +
-    '</td><td style="width:99%;padding:2px 0;color:#b9c6d6;">' + txt + '</td></tr>';
+    '<div style="padding:2px 0;white-space:nowrap;">' + keys + '</div>' +
+    '<div style="padding:2px 0;color:#b9c6d6;">' + txt + '</div>';
   const head = t =>
-    '<tr><td colspan="2" style="padding:9px 0 3px;color:#6af;font-weight:bold;' +
-    'border-bottom:1px solid rgba(102,170,255,0.28);">' + t + '</td></tr>';
+    '<div style="grid-column:1/-1;padding:9px 0 3px;color:#6af;font-weight:bold;' +
+    'border-bottom:1px solid rgba(102,170,255,0.28);">' + t + '</div>';
 
   // (dev0744) A still gets its own sheet. Half the video one is about time —
   // A/B, frame-stepping, pauses, the zoom's landing frame — and listing keys
@@ -5338,7 +5343,8 @@ function _vpCropHelpShow() {
         'Slideshow is held — it will not advance off this ' +
         (imageMode ? 'picture' : 'video') + ' until ' + K('C') + ' closes crop.' +
       '</div>' +
-      '<table style="border-collapse:collapse;width:100%;">' +
+      '<div style="display:grid;grid-template-columns:max-content minmax(0,1fr);' +
+        'column-gap:14px;align-items:start;">' +
         (imageMode ? _vpCropHelpImageRows(K, row, head) : '') +
         (imageMode ? '' :
         head('The frame') +
@@ -5415,7 +5421,7 @@ function _vpCropHelpShow() {
         row(K('C'),   'close crop, hand the show back to the slideshow') +
         row(K('R'),   'toggle the disk-info caption') +
         row(K('Esc'), 'close the video entirely')) +
-      '</table>' +
+      '</div>' +
     '</div>';
   document.body.appendChild(el);
 
