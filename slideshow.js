@@ -1379,6 +1379,63 @@ window._slideshowCropHold = function (on) {
   }
 };
 
+// (dev0744) ── c on a still → the crop overlay, over this picture ───────────
+// The tool itself lives in vp.js (it is the video crop's overlay, mounted over
+// an <img> instead of a <video>). Everything the SHOW has to do to make that
+// safe is here: park the picture at 1×, and stop the clock.
+//
+// The parking matters. A slideshow image is not a plain contain-fit — the Ken
+// Burns zoom and pan are a CSS transform on the <img>, and the crop overlay
+// maps screen pixels to source pixels assuming there isn't one. Crop against a
+// mid-zoom picture and the render cuts somewhere else entirely.
+window._slideshowImageCropOpen = function () {
+  const st = _slideshowState;
+  if (!st) return false;
+  if (typeof window._vpImageCropOpen !== 'function') return false;
+  const slide = st.slides[st.idx];
+  if (!slide || slide.kind !== 'image') return false;
+  if (!slide.path) {
+    if (typeof toast === 'function') toast('crop: this slide has no disk path', 2400);
+    return false;
+  }
+  const img = st.overlay.querySelector('#slideshowImg' + st.front);
+  if (!img || !img.naturalWidth) {
+    if (typeof toast === 'function') toast('crop: picture not loaded yet', 1800);
+    return false;
+  }
+  st._cropPrev = { el: img, transform: img.style.transform, transition: img.style.transition };
+  img.style.transition = 'none';
+  img.style.transform  = 'translate(0,0) scale(1)';
+  void img.offsetHeight;                       // commit before the overlay measures
+  st._cropPausedByUs = !st.paused;
+  if (st._cropPausedByUs) _slideshowPause();
+  // The synthesized row the crop path reads: `comment` is the same
+  // rootName-prefixed path the video slides carry, so _vpCropResolveAbsPath
+  // resolves it against the SAME cached disk root.
+  const row = {
+    _directImageFile: true,
+    VidTitle: slide.name,
+    comment: slide.path,
+    link: slide.url
+  };
+  const ok = window._vpImageCropOpen(st.overlay, img, row);
+  if (!ok) window._slideshowImageCropDone();
+  return ok;
+};
+
+// Called by vp.js when the crop session ends, however it ended.
+window._slideshowImageCropDone = function () {
+  const st = _slideshowState;
+  if (!st) return;
+  const p = st._cropPrev;
+  if (p && p.el) {
+    p.el.style.transition = p.transition || '';
+    p.el.style.transform  = p.transform  || '';
+  }
+  st._cropPrev = null;
+  if (st._cropPausedByUs) { st._cropPausedByUs = false; _slideshowResume(); }
+};
+
 // (dev0281) Called by vpClose (vp.js) just before it tears down _vpState, so
 // the user's mute / speed / A-B choices survive into the next video this
 // session. Keyed per-URL for A-B; mute + speed are session-global.
@@ -1669,6 +1726,10 @@ function _slideshowShowReviewVideoPlaceholder(slide) {
 
 function _slideshowKey(e) {
   if (!_slideshowState) return;
+  // (dev0744) An open image crop owns the keyboard — including Esc, which
+  // closes the CROP there and not the show. vp.js's own capture handler is
+  // registered after ours, so standing down here is what lets it through.
+  if (typeof window._vpImageCropActive === 'function' && window._vpImageCropActive()) return;
   // (dev0344) Esc closes the slideshow from ANY source, including while a video
   // is playing. Must run before the `_videoActive` early-return below (which
   // otherwise hands the keyboard to the V player, whose Esc was disabled) so a
@@ -1716,6 +1777,22 @@ function _slideshowKey(e) {
       e.preventDefault();
       e.stopImmediatePropagation();
       slideshowOpenSourceFolder(false, _slideshowState.mode || 'slideshow');
+      return;
+    }
+  }
+  // (dev0744) c = crop THIS picture, the twin of C inside the video player.
+  // Above the _videoActive stand-down only in the sense that it never competes:
+  // on a video slide V owns c already, and this returns false for anything
+  // that isn't a still.
+  if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.altKey && !e.metaKey &&
+      !_slideshowState._videoActive) {
+    const _cae = document.activeElement;
+    const _ctag = _cae && _cae.tagName;
+    const _cInText = !!(_cae && (_ctag === 'INPUT' || _ctag === 'TEXTAREA' || _cae.isContentEditable));
+    if (!_cInText) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window._slideshowImageCropOpen();
       return;
     }
   }

@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1785952907977,
+    "_salPushTime": 1785978412394,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -510,7 +510,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1785952907977
+    "_salSavedAt": 1785978412394
   },
   {
     "UID": "1",
@@ -40718,7 +40718,7 @@
     "VidRange": "text",
     "ftext": "<details open=\"\"><summary><h1 style=\"margin: 0px; display: inline;\">Show some navigation keys</h1></summary><h1>Up arrow: this text window gets big</h1><h1>Down arrow: this text window returns to cell</h1><h1>Right arrow (keyboard or screen): next slide</h1><h1>Left arrow (keyboard or screen): previous slide</h1></details><p></p><hr><p></p><p>Page 2</p><p></p><hr><p></p><p>Page 3</p>",
     "DateAdded": "2026-08-04 22:00:51",
-    "DateModified": "2026-08-05 05:02:13",
+    "DateModified": "2026-08-06 01:06:52",
     "ftextSize": "386",
     "FtextJunk": "10"
   }

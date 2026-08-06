@@ -3935,8 +3935,16 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
   return { texts: out, pauses: pauses.map(p => ({ at: p.at, hold: p.hold })) };
 }
 
-function _vpMountCropOverlay(host, vid, row) {
-  if (!row || !row._directVideoFile) return;
+// (dev0744) `opts.image` mounts the SAME overlay over a slideshow still. Only
+// three things differ, and none of them are geometry: the source of the pixel
+// dimensions (an adapter over the <img> — see _vpImgAdapter), the controls that
+// have nothing to say about a still (CRF, Slow, audio, zoom, text), and what
+// the Crop button spawns. Everything else — the rect, the aspect lock, the
+// tilt, the thirds grid, the enlargement warning — is shared code, because a
+// crop rect over a picture is a crop rect over a picture.
+function _vpMountCropOverlay(host, vid, row, opts) {
+  const imageMode = !!(opts && opts.image);
+  if (!row || !(imageMode ? row._directImageFile : row._directVideoFile)) return;
 
   // Container — pointer-events:none so the native <video controls> at the
   // bottom stay clickable in any area NOT covered by the rect or its bar.
@@ -3975,7 +3983,7 @@ function _vpMountCropOverlay(host, vid, row) {
     'border-radius:4px;pointer-events:auto;z-index:2;';
   bar.innerHTML =
     '<span id="vp-crop-aspect" style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
-    '<span style="opacity:0.7;">CRF</span>' +
+    '<span id="vp-crop-crf-lbl" style="opacity:0.7;">CRF</span>' +
     '<input id="vp-crop-crf" type="range" min="0" max="28" value="18" style="width:90px;vertical-align:middle;">' +
     '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">18</span>' +
     '<select id="vp-crop-res" title="Output short side. The W×H label turns amber when the crop rect is smaller than this — ffmpeg would enlarge pixels rather than add detail." ' +
@@ -3994,13 +4002,42 @@ function _vpMountCropOverlay(host, vid, row) {
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">🔇 no audio</span>' +
     '<span id="vp-crop-rot" title="Drag ↕ to straighten · wheel ±0.1° · double-click reset" ' +
       'style="cursor:ns-resize;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">⟲ 0.0°</span>' +
-    '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
+    '<label id="vp-crop-slow-lbl" style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
       '<input id="vp-crop-slow" type="checkbox" style="margin:0;vertical-align:middle;">Slow</label>' +
+    // (dev0744) Image mode only: which of the two engines this save will use.
+    // Hidden for video, where there is only ever one.
+    '<span id="vp-crop-engine" title="Lossless = jpegtran copies the JPEG blocks across untouched. ' +
+      'A tilt or a resolution change cannot be done that way, so those switch it to a re-encode." ' +
+      'style="display:none;padding:2px 6px;border-radius:3px;background:#234;">–</span>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
     '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
       'padding:3px 8px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;">✕</button>';
   c.appendChild(bar);   // (dev0318) bar lives on the container, not the (tiltable) rect
+
+  // (dev0744) A still has no bitrate, no encoder preset and no soundtrack, so
+  // those controls come off the bar rather than sit there meaning nothing. The
+  // engine chip takes their place.
+  if (imageMode) {
+    ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
+     'vp-crop-audio', 'vp-crop-slow-lbl'].forEach(id => {
+      const el = bar.querySelector('#' + id);
+      if (el) el.style.display = 'none';
+    });
+    const eng = bar.querySelector('#vp-crop-engine');
+    if (eng) eng.style.display = '';
+    // The container is click-through for video so the native <video> controls
+    // underneath stay reachable. A still has no controls to protect, and it
+    // does have a slideshow underneath whose swipe / pinch / wheel / hold-zoom
+    // handlers would otherwise move the picture out from under the rect. So
+    // here the container takes the pointer and keeps it: its own children
+    // (rect, handles, bar) still work, and nothing reaches the show.
+    c.style.pointerEvents = 'auto';
+    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel',
+     'wheel', 'click', 'dblclick', 'contextmenu'].forEach(ev => {
+      c.addEventListener(ev, e => e.stopPropagation());
+    });
+  }
 
   const handles = {};
   const HSZ = 14;
@@ -4086,6 +4123,7 @@ function _vpMountCropOverlay(host, vid, row) {
   rect.appendChild(textLayer);
 
   const state = {
+    imageMode,                        // (dev0744) still, not clip
     aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
     texts: [],                        // (dev0724) burned-in captions, see addText
@@ -4155,8 +4193,23 @@ function _vpMountCropOverlay(host, vid, row) {
         (upTxt || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
     }
     updateAngleUI();
+    paintEngine();     // (dev0744) tilt or res may have just cost us lossless
     paintKen();
     paintTexts();
+  }
+
+  // (dev0744) Say which engine the next save will use, and why. Repainted from
+  // paint(), so tilting the rect or changing the resolution flips it live —
+  // the point being that the cost of losing lossless is visible BEFORE the
+  // render, not discovered in the filename afterwards.
+  function paintEngine() {
+    if (!imageMode) return;
+    const chip = bar.querySelector('#vp-crop-engine');
+    if (!chip) return;
+    const v = _vpImgLossless(state, row);
+    chip.textContent = v.ok ? '⧉ lossless' : ('↻ re-encode · ' + v.why);
+    chip.style.background = v.ok ? '#1d5c3a' : '#5c4a1d';
+    chip.style.color = '#eaf3ea';
   }
 
   // (dev0720) Place + label the Ken Burns box. Geometry is in % of `rect`, so
@@ -5019,6 +5072,11 @@ function _vpCropHelpShow() {
     '<tr><td colspan="2" style="padding:9px 0 3px;color:#6af;font-weight:bold;' +
     'border-bottom:1px solid rgba(102,170,255,0.28);">' + t + '</td></tr>';
 
+  // (dev0744) A still gets its own sheet. Half the video one is about time —
+  // A/B, frame-stepping, pauses, the zoom's landing frame — and listing keys
+  // that do nothing here would be worse than listing nothing.
+  const imageMode = !!(_vpState && _vpState.imageMode);
+
   el = document.createElement('div');
   el.id = 'vp-crop-help';
   // (dev0720) Width comes from _vpCropHelpApplyWidth below (narrow by default,
@@ -5034,7 +5092,8 @@ function _vpCropHelpShow() {
     '<div id="vp-crop-help-bar" style="display:flex;align-items:center;gap:6px;cursor:move;' +
       'padding:6px 8px;background:rgba(40,70,110,0.55);border-radius:8px 8px 0 0;' +
       'border-bottom:1px solid rgba(102,170,255,0.35);">' +
-      '<span style="flex:1;font-weight:bold;color:#8ef;">✂ Crop &amp; trim</span>' +
+      '<span style="flex:1;font-weight:bold;color:#8ef;">' +
+        (imageMode ? '✂ Crop this picture' : '✂ Crop &amp; trim') + '</span>' +
       '<span id="vp-crop-help-wide" title="Full width / narrow (W)" ' +
         'style="cursor:pointer;padding:0 4px;color:#ccc;">⇔</span>' +
       '<span id="vp-crop-help-close" title="Close crop (same as C)" ' +
@@ -5042,9 +5101,12 @@ function _vpCropHelpShow() {
     '</div>' +
     '<div style="padding:8px 10px 11px;">' +
       '<div style="color:#8ef;opacity:0.85;margin-bottom:2px;">' +
-        'Slideshow is held — it will not advance off this video until ' + K('C') + ' closes crop.' +
+        'Slideshow is held — it will not advance off this ' +
+        (imageMode ? 'picture' : 'video') + ' until ' + K('C') + ' closes crop.' +
       '</div>' +
       '<table style="border-collapse:collapse;width:100%;">' +
+        (imageMode ? _vpCropHelpImageRows(K, row, head) : '') +
+        (imageMode ? '' :
         head('The frame') +
         // (dev0724) One line each for the two mouse gestures, and 1/2 took the
         // tilt over from Z/X so Z could become the zoom below.
@@ -5113,7 +5175,7 @@ function _vpCropHelpShow() {
         row(K('W'),   'this panel: full width / narrow') +
         row(K('C'),   'close crop, hand the show back to the slideshow') +
         row(K('R'),   'toggle the disk-info caption') +
-        row(K('Esc'), 'close the video entirely') +
+        row(K('Esc'), 'close the video entirely')) +
       '</table>' +
     '</div>';
   document.body.appendChild(el);
@@ -5164,6 +5226,36 @@ function _vpCropHelpShow() {
   });
 }
 
+// (dev0744) The cheat-sheet for a still. Same table helpers the video sheet
+// uses (passed in rather than re-derived), so the two panels stay one look.
+function _vpCropHelpImageRows(K, row, head) {
+  return head('The frame') +
+    row('drag inside / a corner', 'move the crop box / resize it (aspect stays locked)') +
+    row(K('T'),          'swap 16:9 ↔ 9:16') +
+    row(K('⇧F'),         'the WHOLE picture — no crop, its own shape ' +
+                         '(' + K('T') + ' goes back to a locked rect)') +
+    row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
+    row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
+    head('The output') +
+    row('⧉ lossless',    'jpegtran copies the JPEG’s blocks straight across — the ' +
+                         'pixels that survive the crop are the ORIGINAL pixels, not ' +
+                         're-compressed ones. The box is snapped to the 16px block ' +
+                         'grid so the cut lands exactly where you drew it.') +
+    row('↻ re-encode',   'a tilt, a resolution other than <i>Same</i>, a non-JPEG, or ' +
+                         'an EXIF-rotated original — none can be done by copying ' +
+                         'blocks, so ffmpeg redraws the picture at high quality. The ' +
+                         'chip on the bar says which one is armed before you commit.') +
+    row('res',           '2160p (4K) · 1440p (2K) · 1080p · 720p · Same ' +
+                         '(<i>Same</i> is what keeps it lossless)') +
+    row('⚠',             'amber size label = the output is BIGGER than the box: pixels ' +
+                         'would be enlarged for nothing. Grow the box or drop the res.') +
+    head('Finish') +
+    row(K('G'),          'save (or the Crop button) — writes into a ' +
+                         '<i>YYYYMMDD_edited</i> folder beside the picture') +
+    row(K('W'),          'this panel: full width / narrow') +
+    row(K('C') + K('Esc'), 'close crop, hand the show back to the slideshow');
+}
+
 // Keep the panel on screen — a saved position can outlive the window size that
 // produced it, and a drag can park the title bar past an edge (unreachable).
 function _vpCropHelpClamp(el) {
@@ -5210,6 +5302,10 @@ function _vpCropToggle() {
       sc.style.pointerEvents = s._savedSCPE || '';
       sc.style.cursor = s._savedSCCursor || '';
     }
+    // (dev0744) On a still there is nothing left underneath to keep the state
+    // alive for — closing the crop IS ending the session, whether it came from
+    // C, the bar's ✕ or the cheat-sheet's. _vpImageCropClose guards re-entry.
+    if (_vpState.imageMode) window._vpImageCropClose();
   }
 }
 
@@ -5323,6 +5419,18 @@ function _vpCropAnswerToRoot(answer, rest) {
   return out;
 }
 
+// (dev0744) The same resolution WITHOUT the prompt — returns null instead of
+// asking. For work that is nice to have (the engine chip's EXIF check) rather
+// than work the user asked for.
+function _vpCropResolveAbsPathCached(relPath) {
+  if (!relPath) return null;
+  if (/^[A-Za-z]:[\\/]/.test(relPath) || /^\//.test(relPath)) return relPath;
+  const slashIdx = relPath.indexOf('/');
+  const rootName = (slashIdx >= 0) ? relPath.slice(0, slashIdx) : relPath;
+  if (!localStorage.getItem('vpDiskRoot:' + rootName)) return null;
+  return _vpCropResolveAbsPath(relPath);
+}
+
 function _vpCropResolveAbsPath(relPath) {
   if (!relPath) return null;
   // Already absolute (Windows drive letter or POSIX root) → pass through.
@@ -5415,6 +5523,334 @@ function _vpMakeProgressPill(prefix) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// (dev0744) IMAGE CROP — the crop overlay, over a slideshow still
+//
+// `c` on an image slide opens the same tool the video crop uses. That was the
+// whole point of doing it this way: the rect, the 16:9 / 9:16 lock, the tilt
+// knob, the thirds grid and the enlargement warning are one implementation,
+// and a still is just a source with no clock. What is NOT shared is the
+// render, because a JPEG has a lossless answer a video never has.
+//
+// TWO ENGINES, and the bar always says which one is armed:
+//   ⧉ lossless — jpegtran. Copies whole DCT blocks; the surviving pixels are
+//     bit-for-bit the original. Available only when nothing else is asked for:
+//     a JPEG source, no tilt, resolution "Same", and no EXIF rotation to bake
+//     in. The rect is snapped to 16px first (see _vpImgSnapMcu).
+//   ↻ re-encode — ffmpeg at -q:v 2. Handles tilt, rescaling and EXIF-rotated
+//     originals. Visually indistinguishable, but it is a re-encode and the
+//     filename says so.
+// ══════════════════════════════════════════════════════════════════════════
+
+// The largest iMCU any JPEG subsampling produces. Snapping the rect to this
+// makes the lossless crop EXACT — otherwise jpegtran silently grows the region
+// out to the next boundary and hands back something bigger than the box drawn.
+const VP_IMG_MCU = 16;
+
+// A duck-typed stand-in for the <video> the overlay was written against. Only
+// two properties are ever read (the source pixel dimensions), and an <img>
+// spells them differently; the event methods are no-ops because a still never
+// fires timeupdate or seeked. Getters, not a snapshot: an <img> that swaps
+// src under us reports the new size on the next paint.
+function _vpImgAdapter(img) {
+  return {
+    _img: img,
+    get videoWidth()  { return img.naturalWidth  || 0; },
+    get videoHeight() { return img.naturalHeight || 0; },
+    addEventListener()    {},
+    removeEventListener() {}
+  };
+}
+
+// Is the next save lossless, and if not, what cost it? Drives the bar chip and
+// the save itself, so the two can never disagree. `_exif` / `_hasJpegtran` are
+// filled in by the async probes at open; until they land the answer leans
+// optimistic, and the chip corrects itself a moment later.
+function _vpImgLossless(state, row) {
+  const name = String((row && (row.comment || row.VidTitle)) || '');
+  const ext  = name.split('.').pop().toLowerCase();
+  if (ext !== 'jpg' && ext !== 'jpeg') return { ok: false, why: 'not a JPEG' };
+  if (state._hasJpegtran === false)    return { ok: false, why: 'no jpegtran' };
+  if (state.angle)                     return { ok: false, why: 'tilted' };
+  if (state.resHeight !== 'source')    return { ok: false, why: 'resized' };
+  if (state._exif > 1)                 return { ok: false, why: 'EXIF rotation' };
+  return { ok: true };
+}
+
+// Snap a source-pixel rect onto the iMCU grid, keeping it inside the frame.
+// Origin rounds DOWN and size rounds down to a multiple too — except at the
+// right/bottom edge, where the last MCU is partial anyway and the crop is
+// allowed to run right to it.
+function _vpImgSnapMcu(x, y, w, h, VW, VH) {
+  const sx = Math.max(0, Math.floor(x / VP_IMG_MCU) * VP_IMG_MCU);
+  const sy = Math.max(0, Math.floor(y / VP_IMG_MCU) * VP_IMG_MCU);
+  let sw = Math.floor((x + w - sx) / VP_IMG_MCU) * VP_IMG_MCU;
+  let sh = Math.floor((y + h - sy) / VP_IMG_MCU) * VP_IMG_MCU;
+  if (sx + sw + VP_IMG_MCU > VW) sw = VW - sx;   // runs to the right edge
+  if (sy + sh + VP_IMG_MCU > VH) sh = VH - sy;   // …or the bottom one
+  return { x: sx, y: sy, w: Math.max(VP_IMG_MCU, sw), h: Math.max(VP_IMG_MCU, sh) };
+}
+
+// EXIF orientation of a disk image, as the 1-8 tag value (1 = as stored).
+// This matters more than it looks: an <img> applies the tag and ffmpeg and
+// jpegtran do not, so on a rotated phone photo the rect the user dragged and
+// the rect the encoder would cut are two different rectangles. Returns 1 when
+// the probe fails — the overwhelmingly common case is an image with no tag at
+// all, and a failed probe should not block a crop the user can see is upright.
+async function _vpProbeExifOrientation(absPath) {
+  try {
+    const r = await fetch(PROXY_BASE + '/exec/exiftool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: absPath, probe: 'image' })
+    });
+    if (!r.ok) return 1;
+    const j = await r.json();
+    const rec = j && j.result && (Array.isArray(j.result) ? j.result[0] : j.result);
+    const o = rec && +rec.Orientation;
+    return (Number.isInteger(o) && o >= 1 && o <= 8) ? o : 1;
+  } catch (_) { return 1; }
+}
+
+// Open the crop overlay on a slideshow still. Called from slideshow.js's `c`,
+// which owns the decision that this slide IS an image and has already frozen
+// the picture (the show's own zoom/pan is a CSS transform on the <img>, and
+// the overlay's screen→source mapping assumes an untransformed contain-fit).
+window._vpImageCropOpen = function (host, img, row) {
+  if (_vpState) return false;                 // V is up — its own crop owns C
+  if (!host || !img || !img.naturalWidth) return false;
+  const vidLike = _vpImgAdapter(img);
+  _vpState = { imageMode: true, row, player: { el: vidLike }, crop: null, _img: img };
+  window._vpCurrentRow = row;
+  _vpMountCropOverlay(host, vidLike, row, { image: true });
+  const s = _vpState.crop;
+  if (!s) { _vpState = null; window._vpCurrentRow = null; return false; }
+  _vpCropToggle();                            // mounts hidden; this reveals it
+  document.addEventListener('keydown', _vpImgKey, true);
+  // The two facts the engine chip needs, neither of which is knowable
+  // synchronously. Both repaint it when they land.
+  _vpProxyHasFeature('jpegtran').then(has => {
+    if (_vpState && _vpState.crop === s) { s._hasJpegtran = has; s.paint(); }
+  });
+  // The orientation probe needs an ABSOLUTE path, and asking for one is a
+  // prompt — too rude to fire just for opening the tool. So it runs now only
+  // when the folder's disk root is already cached (the usual case after one
+  // crop from that folder); otherwise the save does it, before it matters.
+  const abs = _vpCropResolveAbsPathCached(row.comment || row.VidTitle || '');
+  if (abs) {
+    _vpProbeExifOrientation(abs).then(o => {
+      if (_vpState && _vpState.crop === s) { s._exif = o; s.paint(); }
+    });
+  }
+  if (typeof toast === 'function') {
+    toast('✂ crop this picture — drag the box · ' +
+          'T 16:9↔9:16 · ⇧F whole frame · 1/2 tilt · G save · C close', 4200);
+  }
+  return true;
+};
+
+window._vpImageCropClose = function () {
+  if (!_vpState || !_vpState.imageMode || _vpState._closing) return;
+  _vpState._closing = true;   // _vpCropToggle calls back here — see below
+  document.removeEventListener('keydown', _vpImgKey, true);
+  const s = _vpState.crop;
+  if (s) {
+    // Toggling it shut is what hands the slideshow back its chrome and its
+    // autopilot (_slideshowCropHold), so it has to happen before disposal.
+    if (s.el.container.style.display !== 'none') _vpCropToggle();
+    if (typeof s.dispose === 'function') { try { s.dispose(); } catch (_) {} }
+    try { s.el.container.remove(); } catch (_) {}
+  }
+  _vpState = null;
+  window._vpCurrentRow = null;
+  // Hand the picture and the clock back to the show.
+  if (typeof window._slideshowImageCropDone === 'function') {
+    try { window._slideshowImageCropDone(); } catch (_) {}
+  }
+};
+
+// True while a still is being cropped. The slideshow asks before acting on any
+// key, since its own handler is registered first and would otherwise advance
+// the show out from under the session.
+window._vpImageCropActive = function () {
+  return !!(_vpState && _vpState.imageMode && _vpState.crop);
+};
+
+// Image-mode keys. A deliberate subset of the video crop's: everything about
+// the FRAME is here, everything about time is not. Capture phase + stop, so
+// the slideshow underneath doesn't also act on them.
+function _vpImgKey(e) {
+  if (!_vpState || !_vpState.imageMode || !_vpState.crop) return;
+  const ae = document.activeElement, tag = ae && ae.tagName;
+  if (ae && (tag === 'INPUT' || tag === 'TEXTAREA' || ae.isContentEditable)) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const take = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+  if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') { take(); window._vpImageCropClose(); return; }
+  if (e.key === 't' || e.key === 'T') { take(); _vpCropSwapAspect(); return; }
+  if (e.key === 'F')                  { take(); _vpCropFullFrame();  return; }
+  if (e.key === '1' || e.key === '2') {
+    take();
+    const s = _vpState.crop;
+    if (s.setAngle) s.setAngle(s.angle + (e.key === '1' ? -0.5 : 0.5));
+    return;
+  }
+  if (e.key === 'w' || e.key === 'W') { take(); _vpCropHelpToggleWidth(); return; }
+  if (e.key === 'g' || e.key === 'G') { take(); _vpGoSave({ fromButton: true }); return; }
+}
+
+// Render the crop. Filename mirrors the video template so a folder of output
+// reads the same way, with `img` where the clip's duration goes and the engine
+// spelled out: `Base~id~SIZE~L|P~crop~[rNdeg~]img~lossless|q2~.jpg`.
+async function _vpImageSave(opts) {
+  opts = opts || {};
+  const s = _vpState && _vpState.crop;
+  const img = _vpState && _vpState._img;
+  const row = _vpState && _vpState.row;
+  if (!s || !img || !row) return;
+  const relPath = row.comment || row.VidTitle || '';
+  if (!relPath) { if (typeof toast === 'function') toast('save: no file path on this slide', 2400); return; }
+  const absInput = _vpCropResolveAbsPath(relPath);
+  if (!absInput) { if (typeof toast === 'function') toast('save cancelled (need folder path)', 2200); return; }
+  const parts = _vpSplitPath(absInput);
+  if (!parts) { if (typeof toast === 'function') toast('save: cannot parse path', 2400); return; }
+
+  // The orientation probe may have been skipped at open (relative path, so the
+  // absolute one wasn't known yet without prompting). Do it now — a wrong
+  // answer here means cutting the wrong part of the picture.
+  if (s._exif == null) { s._exif = await _vpProbeExifOrientation(absInput); s.paint(); }
+  if (s._hasJpegtran == null) { s._hasJpegtran = await _vpProxyHasFeature('jpegtran'); s.paint(); }
+  if (!(await _vpProxyHasFeature('imagecrop'))) {
+    if (typeof toast === 'function') {
+      toast('Image crop needs an updated proxy — restart "node proxy.js" and retry', 4200);
+    }
+    return;
+  }
+
+  const VW = img.naturalWidth, VH = img.naturalHeight;
+  if (!VW || !VH) { if (typeof toast === 'function') toast('save: image not measured yet', 2200); return; }
+  const id = prompt('Save name/ID for this crop:', '');
+  if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
+  const safeId = id.replace(/[<>:"/\\|?*~]/g, '_').trim() || 'unnamed';
+
+  const even = n => Math.max(2, Math.floor(n / 2) * 2);
+  const verdict = _vpImgLossless(s, row);
+  const outExt = verdict.ok ? parts.ext : (/^(png|webp)$/i.test(parts.ext) ? parts.ext : 'jpg');
+  const outDir = parts.dir + parts.sep + _vpOutDirStamp();
+  let payload, route, sizeStr, engTok;
+
+  if (verdict.ok) {
+    // Lossless: no tilt and no scale by definition, so the rect maps straight
+    // onto the stored pixels — snapped to the block grid so jpegtran cuts
+    // exactly here rather than rounding outward on its own.
+    const box = _vpImgSnapMcu(
+      Math.round(s.frac.x * VW), Math.round(s.frac.y * VH),
+      Math.round(s.frac.w * VW), Math.round(s.frac.h * VH), VW, VH);
+    sizeStr = Math.min(box.w, box.h) + 'p';
+    engTok  = 'lossless';
+    route   = 'jpegtran';
+    payload = { input: absInput, crop: box, overwrite: false };
+  } else {
+    // Re-encode. Tilt is handled exactly as the video path handles it: rotate
+    // the whole frame onto an expanded square so the tilted rect is
+    // axis-aligned, and express the crop in THAT canvas.
+    const sw = even(s.frac.w * VW), sh = even(s.frac.h * VH);
+    sizeStr = (s.resHeight === 'source') ? (Math.min(sw, sh) + 'p') : (s.resHeight + 'p');
+    engTok  = 'q2';
+    route   = 'ffmpeg';
+    const angle = s.angle || 0;
+    let cropBox, rotate = null;
+    if (!angle) {
+      cropBox = { w: sw, h: sh, x: even(s.frac.x * VW), y: even(s.frac.y * VH) };
+    } else {
+      const a = -angle * Math.PI / 180;
+      const D = even(Math.ceil(Math.hypot(VW, VH)));
+      const cx = (s.frac.x + s.frac.w / 2) * VW, cy = (s.frac.y + s.frac.h / 2) * VH;
+      const u = cx - VW / 2, v = cy - VH / 2;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const ccx = D / 2 + (ca * u - sa * v), ccy = D / 2 + (sa * u + ca * v);
+      cropBox = {
+        w: sw, h: sh,
+        x: Math.max(0, Math.min(D - sw, even(Math.round(ccx - sw / 2)))),
+        y: Math.max(0, Math.min(D - sh, even(Math.round(ccy - sh / 2))))
+      };
+      rotate = { rad: a, ow: D, oh: D };
+    }
+    payload = {
+      image: true, input: absInput, crop: cropBox,
+      aspect: s.aspect, resHeight: s.resHeight, quality: 2, overwrite: false
+    };
+    if (rotate) payload.rotate = rotate;
+    // An EXIF-rotated original is baked upright first, so the rect means what
+    // it looked like it meant on screen.
+    if (s._exif > 1) payload.exif = s._exif;
+  }
+
+  const angTok = s.angle ? ('r' + s.angle.toFixed(1).replace('.', '_') + 'deg') : '';
+  const nameParts = [parts.base, safeId, sizeStr, s.aspect, 'crop'];
+  if (angTok) nameParts.push(angTok);
+  nameParts.push('img', engTok);
+  const outName = nameParts.join('~') + '~.' + outExt;
+  payload.output = outDir + parts.sep + outName;
+
+  const btn = s.el.bar.querySelector('#vp-crop-do');
+  const origLabel = btn ? btn.textContent : null;
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = origLabel; } };
+  const run = async () => {
+    try {
+      return await _vpCropRun(payload, btn, 0, route);
+    } catch (err) {
+      // jpegtran has no -n, so the proxy refuses an existing output with a 400
+      // rather than a non-zero exit. Same situation, different shape — fold it
+      // back into one so the overwrite prompt below covers both engines.
+      const msg = (err && err.message) || String(err);
+      if (/already exists/i.test(msg)) return { exitCode: 1, stderr: [msg], lastProgress: null };
+      throw err;
+    }
+  };
+  try {
+    let result = await run();
+    // Exit code plays no part — see the note on the video path: an ffmpeg that
+    // refuses -n still exits 0. (jpegtran's refusal arrives as a 400, folded
+    // into the same shape by run() above.)
+    if (_vpCropStderrSaysExists(result.stderr)) {
+      restore();
+      if (!confirm('"' + outName + '" already exists. Overwrite?')) {
+        if (typeof toast === 'function') toast('save cancelled', 1600);
+        return;
+      }
+      payload.overwrite = true;
+      result = await run();
+    }
+    if (result.exitCode !== 0 && _vpCropStderrSaysNotFound(result.stderr)) {
+      restore();
+      const slashIdx = relPath.indexOf('/');
+      const rootName = (slashIdx >= 0) ? relPath.slice(0, slashIdx) : relPath;
+      if (confirm('Could not find:\n  ' + absInput +
+                  '\n\nClear cached disk path for folder "' + rootName + '" and retry?')) {
+        localStorage.removeItem('vpDiskRoot:' + rootName);
+        return _vpImageSave(opts);
+      }
+      if (typeof toast === 'function') toast('save failed: file not found', 2600);
+      return;
+    }
+    restore();
+    if (result.exitCode === 0) {
+      if (typeof toast === 'function') {
+        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName, 3400);
+      }
+    } else {
+      const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
+      if (typeof toast === 'function') toast('save failed: ' + tail, 4200);
+      console.error('[image save failed]', { route, exitCode: result.exitCode, payload, stderr: result.stderr });
+    }
+  } catch (err) {
+    restore();
+    const msg = (err && err.message) || String(err);
+    if (typeof toast === 'function') toast('save error: ' + msg, 3600);
+    console.error('[image save error]', err);
+  }
+}
+
 // (dev0293) G hotkey handler — save the A→B segment of the current disk
 // video. Crop overlay visible → crop+scale re-encode. Hidden/absent →
 // lossless stream copy (-c copy).
@@ -5433,6 +5869,9 @@ function _vpMakeProgressPill(prefix) {
 // asdf/etc. stay free outside the AB context.
 async function _vpGoSave(opts) {
   opts = opts || {};
+  // (dev0744) The same button, one screen over: on a still there is no A→B to
+  // check and no ffmpeg clip to build, so the image path takes it from here.
+  if (_vpState && _vpState.imageMode) return _vpImageSave(opts);
   if (!_vpState || _vpState.aPoint == null || _vpState.bPoint == null) {
     if (opts.fromButton && typeof toast === 'function') toast('Set A and B first', 1800);
     return;
@@ -5669,7 +6108,11 @@ async function _vpGoSave(opts) {
   }
   try {
     let result = await _vpCropRun(payload, target, totalMs);
-    if (result.exitCode !== 0 && _vpCropStderrSaysExists(result.stderr)) {
+    // (dev0744) NOT gated on a non-zero exit: ffmpeg refuses -n by printing
+    // "already exists" and then exiting 0 (verified on the current build), so
+    // requiring a failure code here meant the overwrite prompt never appeared
+    // and the toast said "saved" for a render that never happened.
+    if (_vpCropStderrSaysExists(result.stderr)) {
       restoreUI();
       if (confirm('"' + outName + '" already exists. Overwrite?')) {
         // Re-mount pill if we tore it down above (overwrite path re-runs).
@@ -5771,12 +6214,15 @@ async function _vpProbeFps(absPath) {
 // (dev0293) `btn` is now duck-typed: may be a real <button>, a plain <div>,
 // or any object with a writable `textContent`. The `disabled` property is
 // set only if present — divs don't have it, so they're spared the noise.
-async function _vpCropRun(payload, btn, totalMs) {
+// (dev0744) `route` names the /exec binary — 'ffmpeg' unless the image crop
+// sends this down the lossless 'jpegtran' path, which streams the same NDJSON
+// (no progress lines; the exit code carries the verdict).
+async function _vpCropRun(payload, btn, totalMs, route) {
   const setLabel = s => { if (btn) btn.textContent = s; };
   const setDisabled = b => { if (btn && 'disabled' in btn) btn.disabled = b; };
   setDisabled(true);
   setLabel('0%');
-  const res = await fetch(PROXY_BASE + '/exec/ffmpeg', {
+  const res = await fetch(PROXY_BASE + '/exec/' + (route || 'ffmpeg'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)

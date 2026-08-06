@@ -664,6 +664,11 @@ function buildFfmpegArgs(p, tmpSink) {
     ];
   }
 
+  // (dev0744) ── IMAGE path (one frame in, one frame out) ──────────────────
+  // Above the crop path because an image render shares its `crop` shape but
+  // none of the video machinery (no trim, no audio, no x264 settings).
+  if (p.image) return buildImageFfmpegArgs(p, common, overwrite);
+
   if (p.crop) {
     // ── CROP path (re-encode) ────────────────────────────────────────────
     must(typeof p.crop === 'object', 'crop must be an object');
@@ -807,6 +812,143 @@ function buildFfmpegArgs(p, tmpSink) {
   ];
 }
 
+// (dev0744) ── IMAGE path — the V crop overlay on a slideshow still ──────────
+// Reached from buildFfmpegArgs when p.image is true. Same rect the video path
+// gets (even-pixel ints in SOURCE pixels), no trim, one frame out.
+//
+// Filter order is the whole correctness story, and it mirrors what the browser
+// showed the user when they dragged the box:
+//   exif  → the EXIF orientation baked in. An <img> applies it (image-orientation
+//           defaults to from-image), ffmpeg does NOT, so a rect dragged over a
+//           rotated phone photo would land somewhere else entirely without this.
+//           The client sends the tag value 1-8; 1 (or absent) adds nothing.
+//   rotate→ the tilt knob, exactly as the video path does it (client has already
+//           expressed crop.x/y in the rotated ow×oh canvas).
+//   crop  → the rect.
+//   scale → the resolution dropdown; 'source'/absent scales nothing.
+//
+// Codec follows the OUTPUT extension: .jpg re-encodes at -q:v (2 by default —
+// visually indistinguishable, but it IS a re-encode; jpegtran is the lossless
+// route and the client picks it when it can). .png/.webp are written lossless.
+const EXIF_XPOSE = {
+  2: 'hflip', 3: 'hflip,vflip', 4: 'vflip',
+  5: 'transpose=0', 6: 'transpose=1', 7: 'transpose=3', 8: 'transpose=2'
+};
+function buildImageFfmpegArgs(p, common, overwrite) {
+  must(p.crop && typeof p.crop === 'object', 'image render requires crop');
+  for (const k of ['w', 'h', 'x', 'y']) {
+    must(Number.isInteger(p.crop[k]) && p.crop[k] >= 0,
+         `crop.${k} must be a non-negative integer`);
+  }
+  must(p.crop.w > 0 && p.crop.h > 0, 'crop.w/h must be > 0');
+
+  const chain = [];
+  if (p.exif != null) {
+    const o = +p.exif;
+    must(Number.isInteger(o) && o >= 1 && o <= 8, 'exif must be an integer 1..8');
+    if (EXIF_XPOSE[o]) chain.push(EXIF_XPOSE[o]);
+  }
+  if (p.rotate) {
+    must(typeof p.rotate === 'object', 'rotate must be an object');
+    const rad = +p.rotate.rad, ow = p.rotate.ow, oh = p.rotate.oh;
+    must(Number.isFinite(rad) && Math.abs(rad) < Math.PI, 'rotate.rad out of range');
+    must(Number.isInteger(ow) && ow > 0 && Number.isInteger(oh) && oh > 0,
+         'rotate.ow/oh must be positive integers');
+    must(p.crop.x + p.crop.w <= ow && p.crop.y + p.crop.h <= oh,
+         'crop exceeds rotated canvas');
+    chain.push(`rotate=${rad.toFixed(6)}:${ow}:${oh}:c=black`);
+  }
+  chain.push(`crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
+
+  const resH = p.resHeight;
+  if (resH !== 'source' && resH != null) {
+    must(Number.isInteger(+resH) && +resH > 0, 'resHeight must be a positive integer or "source"');
+    chain.push(p.aspect === 'P' ? `scale=${+resH}:-2` : `scale=-2:${+resH}`);
+  }
+
+  const ext = String(p.output).split('.').pop().toLowerCase();
+  let codec;
+  if (ext === 'png')                    codec = ['-c:v', 'png'];
+  else if (ext === 'webp')              codec = ['-c:v', 'libwebp', '-lossless', '1'];
+  else {
+    const q = (p.quality == null) ? 2 : +p.quality;
+    must(Number.isFinite(q) && q >= 1 && q <= 31, 'quality must be 1..31 (ffmpeg -q:v)');
+    codec = ['-q:v', String(q)];
+  }
+  // `-update 1` tells the image2 muxer that one filename means one image and
+  // not a numbered sequence. Without it ffmpeg still writes the file but warns
+  // about the missing %03d pattern, and newer builds threaten to make that an
+  // error — noise on a path where stderr is how failures are reported.
+  return [
+    ...common,
+    '-i', p.input,
+    '-vf', chain.join(','),
+    '-frames:v', '1',
+    '-update', '1',
+    ...codec,
+    overwrite ? '-y' : '-n',
+    p.output
+  ];
+}
+
+// (dev0744) ── jpegtran — the LOSSLESS JPEG crop ────────────────────────────
+// Route /exec/jpegtran. No decode/re-encode happens: whole DCT blocks are
+// copied across, so the pixels that survive the crop are bit-for-bit the
+// originals. Two things it cannot do, which is why the client only picks this
+// path when neither is asked for: it cannot scale, and it cannot tilt.
+//
+// The rect must sit on an iMCU boundary or jpegtran quietly EXPANDS it to one.
+// The client snaps to 16px (the largest iMCU any subsampling produces) before
+// sending, so what it asked for is what it gets; a rect that runs to the right
+// or bottom edge is allowed to end short of a boundary, since the edge MCU is
+// partial anyway.
+//
+// jpegtran overwrites -outfile without asking, so the "already exists" guard
+// that ffmpeg's -n gives us for free has to be done here.
+function buildJpegtranArgs(p) {
+  must(p.input  && typeof p.input  === 'string', 'input (string) required');
+  must(p.output && typeof p.output === 'string', 'output (string) required');
+  must(/\.jpe?g$/i.test(p.input),  'jpegtran reads JPEG only');
+  must(/\.jpe?g$/i.test(p.output), 'jpegtran writes JPEG only');
+  const c = p.crop;
+  must(c && typeof c === 'object', 'crop (object) required');
+  for (const k of ['w', 'h', 'x', 'y']) {
+    must(Number.isInteger(c[k]) && c[k] >= 0, `crop.${k} must be a non-negative integer`);
+  }
+  must(c.w > 0 && c.h > 0, 'crop.w/h must be > 0');
+  if (!p.overwrite) {
+    must(!fs.existsSync(p.output), 'output already exists: ' + p.output);
+  }
+  return ['-copy', 'all',
+          '-crop', `${c.w}x${c.h}+${c.x}+${c.y}`,
+          '-outfile', p.output,
+          p.input];
+}
+
+// Where jpegtran lives. An explicit JPEGTRAN_PATH wins; then the libjpeg-turbo
+// install next to the app's other tools; otherwise the bare name, which spawn
+// resolves on PATH (and which simply fails loudly if it isn't there).
+const JPEGTRAN_BIN = (() => {
+  const cands = [process.env.JPEGTRAN_PATH,
+                 'C:/Special/libjpeg-turbo/bin/jpegtran.exe',
+                 path.join(__dirname, 'libjpeg-turbo', 'bin', 'jpegtran.exe')];
+  for (const c of cands) { try { if (c && fs.existsSync(c)) return c; } catch (_) {} }
+  return 'jpegtran';
+})();
+// Only advertise the lossless feature when the binary is actually findable —
+// the client falls back to the ffmpeg re-encode when it isn't, rather than
+// offering a "lossless" button that spawns nothing.
+const HAS_JPEGTRAN = (() => {
+  if (JPEGTRAN_BIN !== 'jpegtran') return true;
+  const exts = (process.platform === 'win32') ? ['.exe', '.cmd', ''] : [''];
+  for (const dir of String(process.env.PATH || '').split(path.delimiter)) {
+    for (const e of exts) {
+      try { if (dir && fs.existsSync(path.join(dir, 'jpegtran' + e))) return true; } catch (_) {}
+    }
+  }
+  return false;
+})();
+
 // Scaffold — fill in when the feature lands. Throwing here returns a clean
 // 400 to the client with the message below.
 // (dev0391) Read the five container tags the Q screen edits. JSON to stdout;
@@ -886,6 +1028,15 @@ function buildExiftoolArgs(p) {
     must(n > 0, 'metadata object has no allowed keys');
     args.push(p.input);
     return args;
+  }
+  // (dev0744) ── IMAGE PROBE (JSON to stdout) ─────────────────────────────
+  // What the image crop needs before it can render: the EXIF orientation (as a
+  // NUMBER — `#` suppresses exiftool's "Rotate 90 CW" prose) and the stored
+  // pixel dimensions, which for a rotated photo are the pre-rotation ones and
+  // so disagree with what the browser reported. Fixed tokens, no caller input.
+  if (p.probe === 'image') {
+    return ['-json', '-charset', 'UTF8',
+            '-Orientation#', '-ImageWidth', '-ImageHeight', p.input];
   }
   // ── READ mode (JSON to stdout) ──────────────────────────────────────────
   return ['-json', '-charset', 'UTF8',
@@ -1984,12 +2135,13 @@ const EXEC_ALLOW = {
   ffmpeg:   buildFfmpegArgs,
   ffprobe:  buildFfprobeArgs,
   exiftool: buildExiftoolArgs,
-  ytdlp:    buildYtdlpArgs
+  ytdlp:    buildYtdlpArgs,
+  jpegtran: buildJpegtranArgs   // (dev0744) lossless JPEG crop
 };
 // (dev0425) Route name → actual binary, when they differ. /exec/ytdlp spawns
 // 'yt-dlp' (hyphenated binary; JS-friendly route key). Anything not listed here
 // spawns under its own route name (ffmpeg/ffprobe/exiftool).
-const EXEC_BIN = { ytdlp: 'yt-dlp' };
+const EXEC_BIN = { ytdlp: 'yt-dlp', jpegtran: JPEGTRAN_BIN };
 
 // (dev0289) Read a JSON body with a hard size cap. Refuses bodies > maxBytes
 // (returns reject) so a misbehaving caller can't OOM the proxy.
@@ -4493,7 +4645,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix'] }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
     return;
   }
 
@@ -4704,7 +4856,9 @@ http.createServer((req, res) => {
       // source folder (<dir>/YYYYMMDD/). ffmpeg does not create directories — it
       // just fails — so make the output's folder here, after the builder has
       // validated the payload.
-      if (bin === 'ffmpeg' && payload && typeof payload.output === 'string') {
+      // (dev0744) …and jpegtran, whose image crops land in the same folder.
+      if ((bin === 'ffmpeg' || bin === 'jpegtran') &&
+          payload && typeof payload.output === 'string') {
         try { fs.mkdirSync(path.dirname(payload.output), { recursive: true }); } catch (_) {}
       }
       // (dev0391) ffprobe returns JSON on stdout — collect it whole rather than
