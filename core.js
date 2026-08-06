@@ -247,6 +247,17 @@ window.addEventListener('keydown', function(e) {
   // dispatcher doesn't swallow `f` (and the other letter hotkeys) before the
   // menu sees them.
   if (document.getElementById('shareableMenu')) return;
+  // (dev0747) An OPEN crop overlay owns the keyboard the same way, and for the
+  // same reason: nearly every letter it uses is also a screen here. `c` closes
+  // crop / opens Config, `t` swaps the aspect / opens the Table, `g` renders /
+  // opens the Grid, `a s d f` walk the playhead / open Annotate, Staging,
+  // Dictionary, Filter. Bail whole rather than list them.
+  //
+  // This USED to be covered by accident: the only way to reach a crop was
+  // through the slideshow, and the bail above drops the handler while a show is
+  // up. dev0746 opens V straight from a file manager with no show underneath,
+  // where pressing C to start cropping opened the Config screen instead.
+  if (typeof _vpCropHolding === 'function' && _vpCropHolding()) return;
 
   const k = e.key.toLowerCase();
 
@@ -258,20 +269,11 @@ window.addEventListener('keydown', function(e) {
   // import) already no-ops while V is open, and in user mode it's blocked.
   if (k === 'l' && document.getElementById('gridFullscreen')?.style.display === 'flex') return;
 
-  // (dev0724) …and V's crop overlay owns `e` (new text box) and `w` (widen the
-  // cheat-sheet). Same shape as the `l` bail above and for the same reason —
-  // this window-capture handler beats vp.js's document-capture one and both
-  // letters are in the forwarding list at the bottom, so without this they
-  // never arrive. Narrowed to an OPEN crop overlay, so `e` is still the global
-  // "open the editor for this row" everywhere else.
+  // (dev0724 / dev0747) The crop overlay's own letters — `e`, `w` and the rest
+  // — are handled by the whole-handler bail above now that it covers every open
+  // crop, not just the ones the slideshow bail happened to cover.
   //
-  // A crop started from the slideshow already worked, but only by accident: the
-  // slideshowOverlay bail above drops this whole handler while a show is up.
-  // Standalone V (from T or the grid) had no such luck.
-  if ((k === 'e' || k === 'w')
-      && typeof _vpCropHolding === 'function' && _vpCropHolding()) return;
-
-  // (dev0727) …and `e` again with the overlay CLOSED but a disk video up, where
+  // (dev0727) `e` again, with the overlay CLOSED but a disk video up, where
   // it loads a saved .edit instead of opening the row editor. `_vpState` is a
   // top-level `let` in vp.js — a global LEXICAL binding, reachable by name from
   // here but never as a window property, so it can't be tested with `window.`.

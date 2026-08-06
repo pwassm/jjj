@@ -6652,6 +6652,21 @@ function vpMountDirectVideo(host, link, seg, muted) {
   host.appendChild(vid);
   _vpMountDiskInfoOverlay(host, vid, window._vpCurrentRow);
   _vpMountCropOverlay(host, vid, window._vpCurrentRow);
+  // (dev0747) Opened from the file manager → start cropping straight away. The
+  // rect is sized from the video's dimensions, which are not known until
+  // metadata arrives, so wait for it (or fire now if it already has).
+  // Consumed here, not by the caller: this mount runs on a timeout, so by the
+  // time it happens the caller's own line has long since executed.
+  const autoCrop = window._vectAutoCrop;
+  window._vectAutoCrop = false;
+  if (autoCrop && _vpState && _vpState.crop) {
+    const open = () => {
+      if (_vpState && _vpState.crop &&
+          _vpState.crop.el.container.style.display === 'none') _vpCropToggle();
+    };
+    if (vid.videoWidth) open();
+    else vid.addEventListener('loadedmetadata', open, { once: true });
+  }
   // (dev0253 / fix) Native <video controls> need pointer events on the
   // bottom strip of the video. Instead of disabling the swipeCatcher
   // entirely (which killed R→L swipe-close AND hold-zoom), shrink it so
@@ -7393,10 +7408,16 @@ function _vectOpenVideo(absPath) {
     gOvl.style.display = 'flex';
     window._vpForcedGridFromT = true;
   }
+  // (dev0747) Opening a file in VECT IS asking to crop it — the overlay comes
+  // up with the video rather than waiting to be asked. The mount happens inside
+  // gridOpenFullscreen, so the flag is read there; it is one-shot, so V opened
+  // any other way still starts clean with the picture unobstructed.
+  window._vectAutoCrop = true;
   gridOpenFullscreen(_vectRowFor(absPath, true));
-  if (typeof toast === 'function') {
-    toast('▶ ' + (absPath.split(/[\\/]/).pop()) + ' — C opens crop · ⇧A / ⇧B mark the clip · G saves', 4200);
-  }
+  // The mount is on a 50ms timeout inside there, so the flag can't be cleared
+  // here — vpMountDirectVideo consumes it. This is the safety net for a row
+  // that somehow never reaches that mount, so the next V open isn't surprised.
+  setTimeout(() => { window._vectAutoCrop = false; }, 3000);
   return true;
 }
 
