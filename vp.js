@@ -4208,6 +4208,80 @@ function _vpOutputDims(state, sw, sh) {
     : { oh: resH, ow: even(sw * resH / sh) };
 }
 
+// (dev0751) ── Making the preview and the burned-in text agree vertically ─────
+//
+// Two separate disagreements, both measured against ffmpeg before this changed.
+//
+// LINE SPACING. The boxes used a fixed line-height of 1.15. drawtext advances by
+// the FONT'S OWN line height, read from its hhea table — 1.33em for every Segoe
+// face, 1.41 for Arial Black, 1.22 for Impact and Verdana. Only Arial, Times and
+// Georgia happen to sit near 1.15, which is why this hid for so long. CSS
+// `normal` is that same hhea figure (Chrome takes ascent/descent/lineGap from
+// DirectWrite, which reports the hhea values), so the two now advance together
+// with no number for either side to get wrong.
+const VP_TEXT_LINE_H = 'normal';
+
+// ANCHOR. The textarea puts the top of the first LINE BOX at the top of the box,
+// leaving the glyph sitting some way below it — half the line gap, plus the gap
+// between the font's ascender and the actual top of the letter. drawtext has no
+// such notion: it shrink-wraps, putting the top of the INK exactly at `y`.
+// Verified across all ten faces and several strings — 'P', 'x' and 'Hg' at y=200
+// every one of them starts its ink at row 200 — so the render always rode high
+// by that gap, and at watermark sizes (a letter 30% of the frame tall) it was a
+// tenth of the picture out.
+//
+// So: measure where the ink actually starts inside the box, and hand the proxy a
+// `y` already shifted down by it. Nothing on the proxy side has to know — its
+// shrink-wrap then lands the ink exactly where the overlay drew it.
+//
+//   baseline  — straight out of layout: an empty inline-block sits ON the
+//               baseline, so its top edge IS the baseline. Measured rather than
+//               derived from half-leading, so Chrome's own metric choices are
+//               already in the answer.
+//   ink       — canvas actualBoundingBoxAscent: baseline to the top of the ink,
+//               for THIS string. Same outlines FreeType rasterises, so the two
+//               engines agree about where a 'P' begins.
+//
+// The lowest ink on the block wins, because that is what drawtext wraps to; a
+// blank first line has no ink and must not be allowed to claim the anchor.
+// Returns 0 (= the old behaviour) on anything it cannot measure.
+function _vpTextInkTop(lines, fontPx, cssFont) {
+  const css = cssFont || VP_TEXT_FONT;
+  const size = Math.max(4, fontPx);
+  const probe = document.createElement('div');
+  probe.style.cssText =
+    'position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
+    'margin:0;padding:0;border:0;white-space:pre-wrap;' +
+    'line-height:' + VP_TEXT_LINE_H + ';font-family:' + css + ';font-size:' + size + 'px;';
+  probe.textContent = 'Hg';
+  const anchor = document.createElement('span');
+  anchor.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline;';
+  probe.appendChild(anchor);
+  document.body.appendChild(probe);
+  let baseline, lineH;
+  try {
+    const r = probe.getBoundingClientRect();
+    baseline = anchor.getBoundingClientRect().top - r.top;
+    lineH = r.height;
+  } finally { probe.remove(); }
+  if (!(lineH > 0)) return 0;
+
+  const cv = _vpTextInkTop._cv || (_vpTextInkTop._cv = document.createElement('canvas'));
+  const ctx = cv.getContext('2d');
+  if (!ctx) return 0;
+  ctx.font = size + 'px ' + css;
+  let best = null;
+  (lines || []).forEach((ln, i) => {
+    if (!ln || !ln.trim()) return;
+    let asc;
+    try { asc = ctx.measureText(ln).actualBoundingBoxAscent; } catch (_) { return; }
+    if (!Number.isFinite(asc)) return;            // pre-Chrome-77 → leave it alone
+    const top = i * lineH + baseline - asc;
+    if (best === null || top < best) best = top;
+  });
+  return (best === null || !Number.isFinite(best)) ? 0 : best;
+}
+
 // Wrap `text` the way the browser would in a box `widthPx` wide at `fontPx`,
 // and return the visual lines. Done with a real hidden element and per-character
 // rects rather than a canvas measureText loop, so it reproduces the browser's
@@ -4221,7 +4295,7 @@ function _vpTextWrapLines(text, widthPx, fontPx, cssFont) {
   mirror.style.cssText =
     'position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
     'margin:0;padding:0;border:0;white-space:pre-wrap;overflow-wrap:break-word;' +
-    'line-height:1.15;font-family:' + (cssFont || VP_TEXT_FONT) + ';' +
+    'line-height:' + VP_TEXT_LINE_H + ';font-family:' + (cssFont || VP_TEXT_FONT) + ';' +
     'width:' + Math.max(8, widthPx) + 'px;font-size:' + Math.max(4, fontPx) + 'px;';
   document.body.appendChild(mirror);
   const out = [];
@@ -4292,9 +4366,17 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
     const raw = (t.ta ? t.ta.value : t.text) || '';
     if (!raw.trim()) return;
     const face = _vpTextFont(t.font);
-    const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, t.size * oh, face.css);
+    // The size ffmpeg will actually draw at — buildDrawtextChain rounds the same
+    // way, so the wrap, the ink measurement and the burned-in glyphs are all one
+    // number rather than three that nearly agree.
+    const fontPx = Math.max(6, Math.round(t.size * oh));
+    const lines = _vpTextWrapLines(raw, t.w * ow * VP_TEXT_WRAP_SAFETY, fontPx, face.css);
     if (!lines.some(l => l.trim())) return;
-    const box = { x: t.x, y: t.y, w: t.w, size: t.size, lines: lines.slice(0, 40) };
+    // (dev0751) drawtext anchors the top of the ink; the overlay anchors the top
+    // of the line box. Send the y where the ink IS, not where the box starts.
+    const inkY = t.y + _vpTextInkTop(lines, fontPx, face.css) / oh;
+    const box = { x: t.x, y: Math.max(0, Math.min(1, inkY)),
+                  w: t.w, size: t.size, lines: lines.slice(0, 40) };
     // (dev0745) Only sent when it isn't 1 — an older proxy then behaves exactly
     // as it always did for every ordinary caption.
     if (t.alpha != null && t.alpha < 1) box.alpha = +(+t.alpha).toFixed(3);
@@ -4776,7 +4858,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     ta.style.cssText =
       'display:block;box-sizing:border-box;width:100%;margin:0;padding:0;border:0;outline:0;' +
       'background:transparent;resize:none;overflow:hidden;pointer-events:none;' +
-      'color:#fff;caret-color:#9f9;font-family:' + _vpTextFont(t.font).css + ';line-height:1.15;' +
+      'color:#fff;caret-color:#9f9;font-family:' + _vpTextFont(t.font).css +
+      ';line-height:' + VP_TEXT_LINE_H + ';' +
       'white-space:pre-wrap;overflow-wrap:break-word;' +
       'text-shadow:0 0 2px #000,0 0 3px #000,1px 1px 0 #000,-1px -1px 0 #000;';
     ta.addEventListener('input', () => { t.text = ta.value; growText(t); });
@@ -6338,6 +6421,18 @@ async function _vpImageSave(opts) {
       !(await _vpProxyHasFeature('textfont'))) {
     if (typeof toast === 'function') {
       toast('Choosing the font needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  // (dev0751) A caption on a picture whose format can hold an alpha channel: an
+  // old proxy lets drawtext punch letter-shaped holes in it, and what comes back
+  // is a dark smudge where a faint stamp should be. The file is written and the
+  // exit code is 0, so nothing else would tell them.
+  if (wantsText && !wantsMotion && /^(png|webp)$/i.test(parts.ext) &&
+      !(await _vpProxyHasFeature('textalphakeep'))) {
+    if (typeof toast === 'function') {
+      toast('Text on a ' + parts.ext.toLowerCase() +
+            ' needs an updated proxy — restart "node proxy.js" and retry', 4600);
     }
     return;
   }

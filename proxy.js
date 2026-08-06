@@ -154,6 +154,10 @@ const PORT = 8081;
 // (dev0750) 'textfont' = a text box may carry `font`, a DT_FONTS id, and each
 //   one is drawn in its own face. Without this flag the client refuses to send
 //   a non-default face rather than let it come back silently in the old one.
+// (dev0751) 'textalphakeep' = a still with an alpha channel keeps it through the
+//   caption pass instead of letting drawtext punch letter-shaped holes in it.
+//   Flagged because the old build's failure is silent AND plausible-looking: the
+//   file is written, exit 0, and the watermark is simply the wrong colour.
 // (dev0723) 'screenrec2' = /rec/start also takes {dest:'downloads', stem, maxWidth,
 //   crf, drawMouse}. screenrec.js probes for it and falls back to the browser's own
 //   getDisplayMedia capture when this proxy is old or not running at all.
@@ -295,7 +299,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0750';
+const PROXY_BUILD = 'dev0751';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -538,6 +542,46 @@ function buildPauseChain(pauses) {
   for (let i = 0; i <= n; i++) g += `[pa${i}]`;
   g += `concat=n=${n + 1}:v=1`;
   return g;
+}
+
+// (dev0751) ── drawtext vs. an alpha channel ──────────────────────────────────
+// drawtext blends through libavfilter's drawutils, which composites the COLOUR
+// planes and then writes the text's own opacity straight into the alpha plane
+// instead of compositing that too. On a source with no alpha (video, JPEG) there
+// is nothing to damage. On an RGBA still it punches a letter-shaped hole:
+// measured on an opaque white PNG, a watermark at alpha=0.1 came back with
+// A=216 where the glyph is, so a viewer composites the near-white text against
+// whatever is BEHIND the picture and the faint stamp reads as a dark grey blob.
+// That is the "transparency is off" bug, and it is why a JPEG never showed it.
+//
+// The fix keeps drawtext away from the alpha plane entirely: hold the picture's
+// own alpha aside, let drawtext have the colour planes, then put the alpha back.
+//
+//   [0:v]…crop,scale,format=rgba,split=2[c][a];
+//   [a]alphaextract[am];            ← the picture's alpha, before any text
+//   [c]drawtext=…,drawtext=…[ct];   ← colours blend correctly on their own
+//   [ct][am]alphamerge              ← …and the original alpha goes back on
+//
+// format=rgba first because alphaextract fails outright ("Requested planes not
+// available") on rgb24, and a pal8 PNG carries its transparency in the palette.
+// Only reached when the source HAS alpha, so an ordinary rgb24/JPEG render is
+// byte-for-byte what it was before.
+//
+// KNOWN LIMIT: where the picture is genuinely transparent the alpha stays 0, so
+// a caption over a see-through region does not appear. Correct for a stamp on a
+// photograph, arguably wrong for one on a cut-out; making it show there needs
+// the text composited as its own layer (overlay), which is a bigger change than
+// this bug warrants.
+const PIXFMT_ALPHA =
+  /^(pal8|ya\d+(be|le)?|(rgba|bgra|argb|abgr)(64(be|le))?|gbrap\d*(be|le)?|yuva)/;
+
+function pixFmtHasAlpha(file) {
+  try {
+    const raw = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=pix_fmt', '-of', 'csv=p=0', file],
+      { encoding: 'utf8', timeout: 15000 }).trim();
+    return PIXFMT_ALPHA.test(raw);
+  } catch (_) { return false; }   // unreadable → the old chain, which is no worse
 }
 
 function buildDrawtextChain(texts, ow, oh, tmpSink) {
@@ -937,14 +981,19 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
 
   if (scaling) chain.push(aspect === 'P' ? `scale=${+resH}:-2` : `scale=-2:${+resH}`);
   // (dev0745) Captions last, on the finished frame — same order as the clip.
+  // buildDrawtextChain speaks the video path's dialect — a leading comma, ready
+  // to append to a filter STRING. Here the chain is an array, and an all-empty
+  // text list returns '' (which would join into a `,,` and break the graph), so
+  // both are normalised away.
+  let dt = '';
   if (p.texts && p.texts.length) {
-    // buildDrawtextChain speaks the video path's dialect — a leading comma,
-    // ready to append to a filter STRING. Here the chain is an array, and an
-    // all-empty text list returns '' (which would join into a `,,` and break
-    // the graph), so both are normalised away.
-    const dt = buildDrawtextChain(p.texts, ow, oh, tmpSink).replace(/^,/, '');
-    if (dt) chain.push(dt);
+    dt = buildDrawtextChain(p.texts, ow, oh, tmpSink).replace(/^,/, '');
   }
+  // (dev0751) An RGBA source needs its alpha held aside while the text is drawn
+  // — see the note on PIXFMT_ALPHA. Everything else keeps the plain -vf chain it
+  // has always had.
+  const keepAlpha = !!dt && pixFmtHasAlpha(p.input);
+  if (dt && !keepAlpha) chain.push(dt);
 
   const ext = String(p.output).split('.').pop().toLowerCase();
   let codec;
@@ -959,10 +1008,17 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   // not a numbered sequence. Without it ffmpeg still writes the file but warns
   // about the missing %03d pattern, and newer builds threaten to make that an
   // error — noise on a path where stderr is how failures are reported.
+  const filter = keepAlpha
+    ? ['-filter_complex',
+       '[0:v]' + chain.concat('format=rgba').join(',') + ',split=2[c][a];' +
+       '[a]alphaextract[am];' +
+       '[c]' + dt + '[ct];' +
+       '[ct][am]alphamerge']
+    : ['-vf', chain.join(',')];
   return [
     ...common,
     '-i', p.input,
-    '-vf', chain.join(','),
+    ...filter,
     '-frames:v', '1',
     '-update', '1',
     ...codec,
@@ -4882,7 +4938,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
     return;
   }
 
