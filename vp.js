@@ -5377,12 +5377,15 @@ function _vpDurStr(sec) {
 // (dev0293) Split an absolute path into {dir, base, ext}. Handles both
 // Windows and POSIX separators. Returns null if it doesn't look like a
 // path with an extension.
-// (dev0742) Renders land in a dated subfolder of the source folder — YYYYMMDD —
-// so a day's crops/trims stay together instead of silting up the video folder.
+// (dev0742) Renders land in a dated subfolder of the source folder —
+// YYYYMMDD_edited — so a day's crops/trims stay together instead of silting up
+// the video folder, and the `_edited` suffix makes them one Everything search.
 // The proxy creates the folder before spawning ffmpeg (it won't make it itself).
+// (dev0743) `.edit` recipe files stay BESIDE the original — they belong to the
+// source clip, not to a day's output.
 function _vpOutDirStamp() {
   const d = new Date(), p = n => String(n).padStart(2, '0');
-  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_edited';
 }
 
 function _vpSplitPath(p) {
