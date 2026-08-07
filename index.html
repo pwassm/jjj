@@ -819,6 +819,12 @@ thead th.rn              { color: #fff !important; }
     style="padding:2px 7px;font-size:12px;font-family:monospace;background:#0a0a1a;
            border:1px solid #345;border-radius:4px;color:#fff;outline:none;width:90px;">
   <span style="color:#333;margin:0 2px;">│</span>
+  <label style="color:#888;font-size:11px;white-space:nowrap;">UID:</label>
+  <input id="fbUid" data-field="UID" type="text" autocomplete="off" placeholder="12, 40-45…"
+    title="Exact UIDs — comma/space separated. Numeric ranges (40-45) allowed. Prefix with ! to exclude."
+    style="padding:2px 7px;font-size:12px;font-family:monospace;background:#0a0a1a;
+           border:1px solid #345;border-radius:4px;color:#fff;outline:none;width:90px;">
+  <span style="color:#333;margin:0 2px;">│</span>
   <span id="fbCount" style="color:#8ef;font-size:11px;white-space:nowrap;"></span>
   <button id="fbClear" style="padding:2px 8px;border:1px solid #fa6;background:rgba(80,40,0,0.35);
           color:#fc8;border-radius:4px;cursor:pointer;font-family:monospace;font-size:11px;white-space:nowrap;">Clear</button>
@@ -1083,7 +1089,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0759';
+  window.HELP_VERSION_STR = 'dev0760';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

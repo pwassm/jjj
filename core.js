@@ -2871,6 +2871,30 @@ const CONTENT_COLS = new Set(['ftext','t1','t2','n1','n2','n3','cname','sname','
 //   rowFilter = null                            → everything passes
 //   rowFilter = {col, val}                      → classic exact-match
 //   rowFilter = {col:'tags', val:<tagId>, hierarchical:true} → tag + descendants
+// (dev0760) UID filter query — a comma/space separated list of exact UIDs, with
+// numeric ranges ("40-45") allowed. A leading "!" on the whole query inverts it
+// (show everything EXCEPT those UIDs). Matching is exact, never substring: UIDs
+// are short numeric strings, so "1" must not drag in 1, 10, 100, 1234…
+function uidQueryMatches(q, uid) {
+  q = String(q || '').trim();
+  if (!q) return true;
+  let negate = false;
+  if (q[0] === '!') { negate = true; q = q.slice(1).trim(); if (!q) return true; }
+  const u = String(uid == null ? '' : uid).trim();
+  const un = /^\d+$/.test(u) ? parseInt(u, 10) : null;
+  let hit = false;
+  for (const tok of q.split(/[\s,]+/)) {
+    if (!tok) continue;
+    const rng = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (rng && un !== null) {
+      const a = parseInt(rng[1], 10), b = parseInt(rng[2], 10);
+      if (un >= Math.min(a, b) && un <= Math.max(a, b)) { hit = true; break; }
+    } else if (tok.toLowerCase() === u.toLowerCase()) { hit = true; break; }
+  }
+  return negate ? !hit : hit;
+}
+window.uidQueryMatches = uidQueryMatches;
+
 function rowMatchesFilter(row) {
   // (dev0538) Top-of-T kind dropdown — an independent gate AND'd with f/F below.
   if (_kindFilter && rowKindFilter(row) !== _kindFilter) return false;
@@ -2888,10 +2912,17 @@ function rowMatchesFilter(row) {
     for (const k in text) {
       const q = (text[k] || '').toLowerCase().trim();
       if (!q) continue;
+      if (k === 'UID') {
+        // (dev0760) Exact UID list / ranges — see uidQueryMatches().
+        if (!uidQueryMatches(text[k], row.UID)) return false;
+        continue;
+      }
       if (k === 'anywhere') {
         // OR across all text fields + tag labels
         const textFields = ['VidAuthor', 'VidTitle', 'link', 'linkpage', 'VidComment'];
         let found = textFields.some(f => String(row[f] || '').toLowerCase().includes(q));
+        // (dev0760) …plus an EXACT UID hit, so pasting a bare UID into Anywhere finds its row.
+        if (!found && String(row.UID == null ? '' : row.UID).trim().toLowerCase() === q) found = true;
         if (!found) found = String(row.ftext || '').replace(/<[^>]*>/g, ' ').toLowerCase().includes(q);
         if (!found && window.tagsLib && row.tags) {
           for (const tid of row.tags) {
@@ -5127,7 +5158,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   if (!bar || !tagInp) return;
 
   let chips = [];   // tag IDs currently selected (AND'd)
-  const text = { VidAuthor:'', VidTitle:'', link:'', ftext:'', anywhere:'' };
+  const text = { VidAuthor:'', VidTitle:'', link:'', ftext:'', UID:'', anywhere:'' };
   let media  = [];  // (dev0343) media-type toggles: 'image'|'video'|'other' (OR)
   let orient = [];  // (dev0343) orientation toggles: 'landscape'|'portrait' (OR)
   let source = [];  // (dev0549) source-page toggle: 'needs' = linkpage=='noLinkpageYet'
@@ -5358,8 +5389,8 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   attachTypeahead(document.getElementById('fbAuthor'), 'VidAuthor');
   attachTypeahead(document.getElementById('fbLink'),   'link');
 
-  // Plain text fields
-  ['fbTitle','fbFtext'].forEach(id => {
+  // Plain text fields (fbUid is plain too — it parses as a list, not a substring)
+  ['fbTitle','fbFtext','fbUid'].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener('input', () => { text[el.dataset.field] = el.value; applyLive(); });
     el.addEventListener('keydown', e => {
@@ -5380,7 +5411,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
   clearBtn.addEventListener('click', () => {
     chips = []; Object.keys(text).forEach(k => text[k] = '');
     media.length = 0; orient.length = 0; source.length = 0; ltype.length = 0;   // mutate in place — toggle handlers hold these refs
-    ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbAnywhere'].forEach(id => {
+    ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbUid','fbAnywhere'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
     closeDd(); renderChips(); paintToggles(); paintLtype(); applyLive();
@@ -5414,6 +5445,8 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
       document.getElementById('fbTitle').value   = text.VidTitle  || '';
       document.getElementById('fbLink').value    = text.link      || '';
       document.getElementById('fbFtext').value   = text.ftext     || '';
+      const uidEl = document.getElementById('fbUid');
+      if (uidEl) uidEl.value = text.UID || '';
       const aw = document.getElementById('fbAnywhere');
       if (aw) aw.value = text.anywhere || '';
     } else if (rowFilter && rowFilter.col === 'tags' && rowFilter.hierarchical) {
@@ -5422,7 +5455,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
       // No active filter (e.g. after Shift-F) — start completely fresh
       chips = [];
       Object.keys(text).forEach(k => text[k] = '');
-      ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbAnywhere'].forEach(id => {
+      ['fbTagInput','fbAuthor','fbTitle','fbLink','fbFtext','fbUid','fbAnywhere'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
       });
       closeDd();
