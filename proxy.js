@@ -162,6 +162,10 @@ const PORT = 8081;
 //   watermark is one tone instead of a fat dark ring round a washed-out middle.
 //   The overlay stops drawing its shadow to match, so an old proxy would put an
 //   outline on something the box promised would not have one.
+// (dev0753) 'textcolor' = a box may carry `color`, a DT_COLORS id. Without the
+//   flag the client won't send anything but white, because white is what an old
+//   build draws whatever it was asked for — and on a light picture a white
+//   watermark with no outline is a mark you cannot see.
 // (dev0723) 'screenrec2' = /rec/start also takes {dest:'downloads', stem, maxWidth,
 //   crf, drawMouse}. screenrec.js probes for it and falls back to the browser's own
 //   getDisplayMedia capture when this proxy is old or not running at all.
@@ -303,7 +307,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0752';
+const PROXY_BUILD = 'dev0753';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -483,6 +487,27 @@ const DT_FONTS = {
   times:   'times.ttf'
 };
 
+// (dev0753) The fill a box is drawn in, twin of VP_TEXT_COLORS in vp.js. `border`
+// is the outline that goes with it — it has to oppose the fill, or a black
+// caption comes back ringed in black. Only an OPAQUE box gets one at all (see
+// the note in buildDrawtextChain).
+//
+// This exists because dev0752 took the outline off faded boxes: white at 35% can
+// only lighten what it covers, which on line art over white is very nearly
+// nothing. The fill is what a watermark is now made of.
+const DT_COLORS = {
+  white: { fill: 'white', border: 'black@0.85' },
+  black: { fill: 'black', border: 'white@0.85' },
+  grey:  { fill: 'gray',  border: 'black@0.85' }
+};
+
+function dtColorFor(id) {
+  if (id == null || id === '') return DT_COLORS.white;
+  must(typeof id === 'string' && Object.prototype.hasOwnProperty.call(DT_COLORS, id),
+       'color must be one of: ' + Object.keys(DT_COLORS).join(', '));
+  return DT_COLORS[id];
+}
+
 // The file for a box's `font`, or the default face when it names none. An id
 // that isn't in the table, or one whose file isn't installed on this machine,
 // falls back rather than failing the render: a caption in the wrong face is a
@@ -645,9 +670,11 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
     // a moving picture, and nothing about it was wrong.
     // vp.js turns the preview's text-shadow off on the same condition; the two
     // rules have to stay in step or the box lies about what it will produce.
+    // (dev0753) …and the fill it is drawn in, which decides the outline colour.
+    const col = dtColorFor(t.color);
     const border = faded ? [] : [
       'borderw=' + Math.max(1, Math.round(fontPx * 0.07)),
-      'bordercolor=black@0.85'
+      'bordercolor=' + col.border
     ];
     // (dev0750) Per-box face, resolved to a file here — one drawtext per box
     // already, so nothing else has to change to let them differ.
@@ -657,7 +684,7 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
       'textfile=' + dtQuote(file),
       'expansion=none',
       'fontsize=' + fontPx,
-      'fontcolor=white',
+      'fontcolor=' + col.fill,
       ...border,
       'line_spacing=0',
       'x=' + Math.round((+t.x) * ow),
@@ -4956,7 +4983,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
     return;
   }
 

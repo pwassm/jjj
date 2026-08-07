@@ -3681,6 +3681,91 @@ function _vpTextFont(id) {
   return VP_TEXT_FONTS.find(f => f.id === id) || VP_TEXT_FONTS[0];
 }
 
+// (dev0753) ── The fill colour ────────────────────────────────────────────────
+// dev0752 took the outline off a faded box, which is what made it one tone —
+// and left white text at 35% almost invisible on a light picture, because a
+// white fill can only ever lighten what it covers. So the colour becomes a
+// choice: white for a dark picture, black for line art on white, grey for a
+// photograph that wants neither. Its twin is DT_COLORS in proxy.js.
+//
+// `shadow` is the preview's stand-in for the outline an OPAQUE caption gets, and
+// it has to oppose the fill or a black caption would be black-on-black in the
+// box and ringed in black in the file. `border` is the same decision for the
+// render; the two lists must say the same thing.
+const VP_TEXT_COLOR_DEF = 'white';
+const VP_TEXT_COLOR_KEY = 'salCropColor';
+const VP_TEXT_COLORS = [
+  { id: 'white', key: '1', name: 'white', css: '#ffffff', shadow: '#000',
+    note: 'over a dark picture' },
+  { id: 'black', key: '2', name: 'black', css: '#000000', shadow: '#fff',
+    note: 'over a light one — line art, paper' },
+  { id: 'grey',  key: '3', name: 'grey',  css: '#808080', shadow: '#000',
+    note: 'quieter than either' }
+];
+
+function _vpTextColor(id) {
+  return VP_TEXT_COLORS.find(c => c.id === id) || VP_TEXT_COLORS[0];
+}
+
+// The preview's outline. Built from a colour rather than fixed, so it can oppose
+// whichever fill the box is set in.
+function _vpTextShadow(c) {
+  return '0 0 2px ' + c + ',0 0 3px ' + c + ',1px 1px 0 ' + c + ',-1px -1px 0 ' + c;
+}
+
+// Same reasoning as the font: a credit line you stamp on every picture should
+// not need re-choosing every picture.
+function _vpTextColorDefault() {
+  try {
+    const v = localStorage.getItem(VP_TEXT_COLOR_KEY);
+    if (v && VP_TEXT_COLORS.some(c => c.id === v)) return v;
+  } catch (_) {}
+  return VP_TEXT_COLOR_DEF;
+}
+
+function _vpTextSetColor(t, id) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !t) return;
+  const c = _vpTextColor(id);
+  t.color = c.id;
+  try { localStorage.setItem(VP_TEXT_COLOR_KEY, c.id); } catch (_) {}
+  if (s.paintTexts) s.paintTexts();
+  if (typeof toast === 'function') {
+    // The one thing worth saying out loud: a faded box has no outline to fall
+    // back on, so the fill is the whole of what will be visible.
+    toast('🎨 ' + c.name + (t.alpha != null && t.alpha < 1
+      ? ' — at ' + Math.round(t.alpha * 100) + '% this is the only tone there is'
+      : ''), 2000);
+  }
+}
+
+// Fourth level of the text menu, same in-place trick as the others. Each row is
+// its own swatch, for the same reason the font rows are set in their own face.
+function _vpTextColorAsk(el, t) {
+  el._vpAsking = 'color';
+  el.innerHTML = '';
+  const head = document.createElement('div');
+  head.textContent = 'Which colour?  (1-3)';
+  head.style.cssText = 'padding:4px 8px 6px;color:#8ef;font-weight:bold;white-space:nowrap;';
+  el.appendChild(head);
+  const cur = _vpTextColor(t.color).id;
+  VP_TEXT_COLORS.forEach(c => {
+    const d = document.createElement('div');
+    d.innerHTML =
+      '<u>' + c.key + '</u> &nbsp;<span style="display:inline-block;width:13px;height:13px;' +
+      'vertical-align:-2px;border:1px solid #789;background:' + c.css + ';"></span>&nbsp; ' +
+      _vpEscHtml(c.name) +
+      (c.id === cur ? ' <span style="color:#8ef;">·  now</span>' : '') +
+      (c.note ? ' <span style="opacity:0.55;">· ' + _vpEscHtml(c.note) + '</span>' : '');
+    d.style.cssText = 'padding:4px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;';
+    d.onmouseenter = () => { d.style.background = '#12325c'; };
+    d.onmouseleave = () => { d.style.background = ''; };
+    d.onclick = () => { _vpTextMenuClose(); _vpTextSetColor(t, c.id); };
+    el.appendChild(d);
+  });
+  _vpTextMenuPlace(el);
+}
+
 // The same family list, safe to drop into a double-quoted style="" attribute.
 // Every family here is spelled with "double quotes", and an innerHTML sample row
 // carrying them raw would close the attribute on the first one and lose the rest
@@ -3788,6 +3873,15 @@ function _vpTextMenuKey(e) {
         e.preventDefault(); e.stopImmediatePropagation();
         _vpTextMenuClose();
         _vpTextSetFont(t, f.id);
+      }
+      return;
+    }
+    if (el._vpAsking === 'color') {
+      const c = VP_TEXT_COLORS.find(x => x.key === k);
+      if (c) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        _vpTextMenuClose();
+        _vpTextSetColor(t, c.id);
       }
       return;
     }
@@ -4162,6 +4256,13 @@ function _vpTextCtxMenu(ev) {
      ' &nbsp;font <span style="opacity:0.6;">· ' + _vpEscHtml(_vpTextFont(t.font).name) + '</span>',
      'Pick the typeface — every row on that list is drawn in the font it offers')
     .onclick = () => _vpTextFontAsk(el, t);
+  // (dev0753) …and the fill. It matters most on exactly the box where the
+  // outline is gone: at 35% the colour is the whole of what will be visible.
+  mk('<span style="display:inline-block;width:13px;height:13px;vertical-align:-2px;' +
+     'border:1px solid #789;background:' + _vpTextColor(t.color).css + ';"></span>' +
+     ' &nbsp;colour <span style="opacity:0.6;">· ' + _vpEscHtml(_vpTextColor(t.color).name) + '</span>',
+     'White over a dark picture, black over a light one')
+    .onclick = () => _vpTextColorAsk(el, t);
   // The rest of this menu is about WHEN the text is on screen, which a still
   // has no answer to. Nothing here is hidden to be tidy — every one of these
   // rows would be a lie on a photograph.
@@ -4220,11 +4321,6 @@ function _vpOutputDims(state, sw, sh) {
 // DirectWrite, which reports the hhea values), so the two now advance together
 // with no number for either side to get wrong.
 const VP_TEXT_LINE_H = 'normal';
-
-// (dev0752) The preview's stand-in for drawtext's outline — and, on a faded box,
-// for its absence. See the note in buildDrawtextChain: a watermark is drawn with
-// no border at all, so showing one here would be the box lying about the file.
-const VP_TEXT_SHADOW = '0 0 2px #000,0 0 3px #000,1px 1px 0 #000,-1px -1px 0 #000';
 
 // ANCHOR. The textarea puts the top of the first LINE BOX at the top of the box,
 // leaving the glyph sitting some way below it — half the line gap, plus the gap
@@ -4388,6 +4484,10 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
     // (dev0750) …and the same for the face: absent means the default one, which
     // is what every box was before this existed.
     if (face.id !== VP_TEXT_FONT_DEF) box.font = face.id;
+    // (dev0753) …and the fill. Same rule: white is what every caption was, so it
+    // travels as an absence.
+    const col = _vpTextColor(t.color);
+    if (col.id !== VP_TEXT_COLOR_DEF) box.color = col.id;
     const mine = pauses.find(p => p._t === t);
     if (mine) {
       // On for the freeze, off for its tail. map(at) is where the freeze STARTS
@@ -4764,7 +4864,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       // what the render does. Set to the literal shadow rather than '' — the
       // original came in through cssText, so clearing the property would drop it
       // for good and an opaque caption would never get it back.
-      t.ta.style.textShadow = (t.alpha != null && t.alpha < 1) ? 'none' : VP_TEXT_SHADOW;
+      // (dev0753) The fill, and an outline that opposes it.
+      const col = _vpTextColor(t.color);
+      t.ta.style.color = col.css;
+      t.ta.style.textShadow =
+        (t.alpha != null && t.alpha < 1) ? 'none' : _vpTextShadow(col.shadow);
       // (dev0750) Same for the face — it is what the box wraps at, so it has to
       // be on screen before the render, not discovered in the file afterwards.
       t.ta.style.fontFamily = _vpTextFont(t.font).css;
@@ -4849,9 +4953,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // set from the right-click menu. Null = on for the whole clip.
     // (dev0750) `font` — the face this box is set in, id from VP_TEXT_FONTS. A
     // new box opens in whichever one was picked last.
+    // (dev0753) `color` — id from VP_TEXT_COLORS, and like the font it opens in
+    // whichever one was picked last.
     const t = { x: Math.min(0.60, 0.06 + 0.03 * n), y: Math.min(0.76, 0.06 + 0.11 * n),
                 w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null, pauseSec: null,
-                font: _vpTextFontDefault() };
+                font: _vpTextFontDefault(), color: _vpTextColorDefault() };
 
     const box = document.createElement('div');
     box.className = 'vp-crop-text';
@@ -4868,10 +4974,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     ta.style.cssText =
       'display:block;box-sizing:border-box;width:100%;margin:0;padding:0;border:0;outline:0;' +
       'background:transparent;resize:none;overflow:hidden;pointer-events:none;' +
-      'color:#fff;caret-color:#9f9;font-family:' + _vpTextFont(t.font).css +
-      ';line-height:' + VP_TEXT_LINE_H + ';' +
+      'color:' + _vpTextColor(t.color).css + ';caret-color:#9f9;' +
+      'font-family:' + _vpTextFont(t.font).css + ';line-height:' + VP_TEXT_LINE_H + ';' +
       'white-space:pre-wrap;overflow-wrap:break-word;' +
-      'text-shadow:' + VP_TEXT_SHADOW + ';';
+      'text-shadow:' + _vpTextShadow(_vpTextColor(t.color).shadow) + ';';
     ta.addEventListener('input', () => { t.text = ta.value; growText(t); });
     box.appendChild(ta);
 
@@ -5401,6 +5507,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       // watermark came back at full strength; font joins it here.
       t.alpha = (Number.isFinite(+td.alpha) && +td.alpha > 0 && +td.alpha < 1) ? +td.alpha : null;
       t.font  = _vpTextFont(td.font).id;
+      t.color = _vpTextColor(td.color).id;   // (dev0753) absent → white, as it was
       paintTextMarks(t);
     });
     endEdit();                       // addText opens each box for typing; close it
@@ -5418,7 +5525,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
         x: t.x, y: t.y, w: t.w, size: t.size,
         text: (t.ta ? t.ta.value : t.text) || '',
         atStart: t.atStart, atEnd: t.atEnd, pauseSec: t.pauseSec,
-        alpha: t.alpha, font: t.font          // (dev0750) how it looks, not just where
+        // (dev0750/53) how it looks, not just where
+        alpha: t.alpha, font: t.font, color: t.color
       }))
     };
   };
@@ -6456,6 +6564,15 @@ async function _vpImageSave(opts) {
     }
     return;
   }
+  // (dev0753) …and a colour it doesn't know about comes back white, which on a
+  // light picture is the difference between a watermark and a blank.
+  if (wantsText && (s.texts || []).some(t => _vpTextColor(t.color).id !== VP_TEXT_COLOR_DEF) &&
+      !(await _vpProxyHasFeature('textcolor'))) {
+    if (typeof toast === 'function') {
+      toast('Coloured text needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   if (wantsMotion && !(await _vpProxyHasFeature('imagemotion'))) {
     if (typeof toast === 'function') {
       toast('Clips from a picture need an updated proxy — restart "node proxy.js" and retry', 4400);
@@ -6884,6 +7001,13 @@ async function _vpGoSave(opts) {
   // (dev0750) …and the same for the face. A stale proxy draws every caption in
   // Segoe UI Symbol whatever was picked, which on a headline font is the wrong
   // wrap as well as the wrong letters.
+  // (dev0753) …and the same for the fill, which an old proxy draws white.
+  if ((payload.texts || []).some(t => t.color) && !(await _vpProxyHasFeature('textcolor'))) {
+    if (typeof toast === 'function') {
+      toast('Coloured text needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   if ((payload.texts || []).some(t => t.font) && !(await _vpProxyHasFeature('textfont'))) {
     if (typeof toast === 'function') {
       toast('Choosing the font needs an updated proxy — restart "node proxy.js" and retry', 4400);
