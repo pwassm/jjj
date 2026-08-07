@@ -1174,31 +1174,101 @@
     var a = node.attrs;
     return { controls: !!a.controls, autoplay: !!a.autoplay, loop: !!a.loop, muted: !!a.muted };
   }
+
+  // ── THE MEDIA UNIT (dev0757) ────────────────────────────────────────────────
+  // A picture or clip and its caption are ONE object: clicking the picture must
+  // select both, so Ctrl+X takes the caption with it and Ctrl+V puts it back.
+  // The 🖼 modal (xe.js buildHtml) emits three shapes:
+  //   centered           <div style="text-align:center"><img>[<div>cap</div>]</div>
+  //   float + caption    <div style="float:left;width:400px"><img><div>cap</div></div>
+  //   float, no caption  <img style="float:left;width:400px">      ← no wrapper
+  // so the unit is "the styledDiv around the media, if there is one, else the
+  // media node itself".
+  //
+  // Is this styledDiv really just one piece of media (+ its caption)? Nested
+  // styledDivs are skipped, because that is exactly what a caption is. Anything
+  // with loose text of its own is PROSE that happens to contain a picture — a
+  // shape legacy ftext is full of — and must NOT be swallowed: under-selecting
+  // is a nuisance, but eating a paragraph on Ctrl+X loses work.
+  function _isMediaWrapper(node) {
+    var media = 0, stray = '';
+    node.descendants(function (n) {
+      if (n.type.name === 'styledDiv') return false;               // caption cell
+      if (n.type.name === 'image' || n.type.name === 'video') { media++; return false; }
+      if (n.isText) stray += n.text;
+      return true;
+    });
+    return media === 1 && stray.trim() === '';
+  }
+
+  // Document position to node-select for a click on this <img>/<video> element.
+  // INNERMOST qualifying styledDiv, not outermost: the 🖼×3 flex row is itself a
+  // styledDiv holding three styledDiv cells, and clicking one picture there has
+  // to select that CELL, never the whole row.
+  function _mediaUnitPos(view, dom) {
+    var pos = view.posAtDOM(dom, 0);
+    var node = view.state.doc.nodeAt(pos);
+    if (!node || (node.type.name !== 'image' && node.type.name !== 'video')) return null;
+    var $pos = view.state.doc.resolve(pos);
+    for (var d = $pos.depth; d >= 1; d--) {
+      var anc = $pos.node(d);
+      if (anc.type.name !== 'styledDiv') continue;
+      if (!_isMediaWrapper(anc)) break;   // prose container — an outer one is only bigger
+      return $pos.before(d);
+    }
+    return pos;
+  }
+
+  // Is the current selection a whole media unit (bare media OR its wrapper)?
+  function _isMediaUnitSelection(sel) {
+    var n = sel && sel.node;
+    if (!n || !n.type) return false;
+    if (n.type.name === 'image' || n.type.name === 'video') return true;
+    return n.type.name === 'styledDiv' && _isMediaWrapper(n);
+  }
+
+  // Shared by both _findImageEditContext shapes: read src/size/align/caption off
+  // a styledDiv media wrapper so the 🖼 modal can open pre-filled.
+  function _wrapperEditCtx(wrapNode, from, to) {
+    var found = null;
+    wrapNode.descendants(function (n) {
+      if (!found && (n.type.name === 'image' || n.type.name === 'video')) found = n;
+    });
+    if (!found) return null;
+    var ws = _styleProbe(wrapNode.attrs.style), is = _styleProbe(found.attrs.style);
+    var align = (ws.float === 'left' || ws.cssFloat === 'left') ? 'left'
+              : (ws.float === 'right' || ws.cssFloat === 'right') ? 'right' : 'center';
+    var width = ws.width || is.width || '';
+    var caption = '';
+    wrapNode.descendants(function (n) {
+      if (n.type.name === 'styledDiv') n.descendants(function (t) { if (t.isText) caption += t.text; });
+      return n.type.name !== 'styledDiv';
+    });
+    return {
+      from: from, to: to,
+      defaults: { src: found.attrs.src, size: _sizeBucket(width), align: align,
+                  caption: caption.trim(), video: _mediaDefaults(found) },
+    };
+  }
+
   function _findImageEditContext(editor) {
     var state = editor.state, sel = state.selection;
+    // (dev0757) The selection can now BE the wrapper (a click selects the whole
+    // unit). The ancestor walk below would never find it — $from resolves to the
+    // position BEFORE the node, and that parent chain excludes the node itself —
+    // so handle this shape first, or 🖼 would insert a new picture instead of
+    // editing the one that is visibly selected.
+    if (sel.node && sel.node.type && sel.node.type.name === 'styledDiv') {
+      var selCtx = _wrapperEditCtx(sel.node, sel.from, sel.from + sel.node.nodeSize);
+      if (selCtx) return selCtx;
+    }
     // outermost styledDiv ancestor that contains an image/video = modal wrapper
     var $from = sel.$from;
     for (var d = 1; d <= $from.depth; d++) {
-      if ($from.node(d).type.name !== 'styledDiv') continue;
-      var wrapNode = $from.node(d), found = null;
-      wrapNode.descendants(function (n) {
-        if (!found && (n.type.name === 'image' || n.type.name === 'video')) found = n;
-      });
-      if (!found) continue;
-      var ws = _styleProbe(wrapNode.attrs.style), is = _styleProbe(found.attrs.style);
-      var align = (ws.float === 'left' || ws.cssFloat === 'left') ? 'left'
-                : (ws.float === 'right' || ws.cssFloat === 'right') ? 'right' : 'center';
-      var width = ws.width || is.width || '';
-      var caption = '';
-      wrapNode.descendants(function (n) {
-        if (n.type.name === 'styledDiv') n.descendants(function (t) { if (t.isText) caption += t.text; });
-        return n.type.name !== 'styledDiv';
-      });
-      return {
-        from: $from.before(d), to: $from.before(d) + wrapNode.nodeSize,
-        defaults: { src: found.attrs.src, size: _sizeBucket(width), align: align,
-                    caption: caption.trim(), video: _mediaDefaults(found) },
-      };
+      var wrapNode = $from.node(d);
+      if (wrapNode.type.name !== 'styledDiv') continue;
+      var ctx = _wrapperEditCtx(wrapNode, $from.before(d), $from.before(d) + wrapNode.nodeSize);
+      if (ctx) return ctx;
     }
     // bare selected image/video node
     var selNode = sel.node && sel.node.type
@@ -1438,6 +1508,11 @@
       '#xe2Editor .ProseMirror::after{content:"";display:block;clear:both;}',
       // (dev0623) selected image/wrapper highlight — click an image, then 🖼 edits it
       '#xe2Editor img.ProseMirror-selectednode,#xe2Editor .ProseMirror-selectednode{outline:3px solid #4af;outline-offset:2px;border-radius:4px;}',
+      // (dev0757) A selected WRAPPER (picture + caption as one unit) also gets a
+      // tint. A centered wrapper is full-column-width, so the outline alone sits
+      // far from the picture and reads as "did I select the right thing?" — the
+      // fill makes the extent of what Ctrl+X will take unmistakable, caption and all.
+      '#xe2Editor div.ProseMirror-selectednode{background:rgba(68,170,255,0.13);}',
       // (dev0623) hidden-from-render (te-cut) blocks: global CSS hides them
       // everywhere (display:none!important in index.html); higher-specificity
       // override re-shows them faded here, with a banner (matches v1 #teEditor).
@@ -1540,9 +1615,12 @@
             // the "highlight image, press Enter, get a new line" request. Without
             // this, Enter on a NodeSelection either did nothing or replaced the
             // image.
+            // (dev0757) Now also fires when the selection is a whole media unit —
+            // a video, or the styledDiv wrapping a captioned/centered picture,
+            // both of which a single click can now select.
             if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
               var nsel = view.state.selection;
-              if (nsel.node && nsel.node.type && nsel.node.type.name === 'image') {
+              if (_isMediaUnitSelection(nsel)) {
                 event.preventDefault();
                 if (_api) {
                   _api.editor.chain()
@@ -1625,14 +1703,31 @@
               // blue outline shows (the "click doesn't highlight it" report).
               // Inline images don't auto-select on click — PM drops a text caret
               // beside them — so force a NodeSelection at the image's position.
-              var cimg = (event.target && event.target.tagName === 'IMG') ? event.target : null;
-              if (cimg) {
+              // (dev0757) VIDEO too, and the selection is the whole media UNIT
+              // (_mediaUnitPos: wrapper + caption when there is one) so Ctrl+X
+              // removes the object completely and Ctrl+V pastes it back whole.
+              var ct = event.target, ctn = ct && ct.tagName;
+              var cmedia = (ctn === 'IMG' || ctn === 'VIDEO') ? ct : null;
+              // A <video controls> reports the whole element as event.target even
+              // when the click landed on its control strip (the controls live in
+              // shadow DOM). Leave the bottom 40px to the browser, or a clip could
+              // never be played inside the editor.
+              if (cmedia && ctn === 'VIDEO' && cmedia.hasAttribute('controls')) {
+                var vr = cmedia.getBoundingClientRect();
+                if (event.clientY > vr.bottom - 40) cmedia = null;
+              }
+              if (cmedia) {
                 try {
-                  var ipos = view.posAtDOM(cimg, 0);
-                  var inode = view.state.doc.nodeAt(ipos);
-                  if (inode && inode.type.name === 'image' && _api) {
+                  var upos = _mediaUnitPos(view, cmedia);
+                  if (upos !== null && _api) {
                     event.preventDefault();
-                    _api.editor.commands.setNodeSelection(ipos);
+                    // Focus BEFORE selecting: the click is prevented, so without
+                    // this the editor can be left without DOM focus and Ctrl+X
+                    // would go to the page instead of the selected node. Use
+                    // view.focus() — TipTap's focus() command re-reads the OLD
+                    // editor.state.selection and would undo the setNodeSelection.
+                    view.focus();
+                    _api.editor.commands.setNodeSelection(upos);
                     return true;
                   }
                 } catch (e2) { /* odd geometry — ignore */ }
@@ -1759,6 +1854,10 @@
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,
     _findImageEditContext: _findImageEditContext,
+    // (dev0757) media-unit selection — exported for the headless jsdom suite
+    _isMediaWrapper: _isMediaWrapper,
+    _mediaUnitPos: _mediaUnitPos,
+    _isMediaUnitSelection: _isMediaUnitSelection,
     version: 'xe2-m10',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));
