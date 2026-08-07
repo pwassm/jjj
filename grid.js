@@ -1464,6 +1464,79 @@ function _gridAnchoredTransform(coi, Z, pan) {
   return 'translate(' + xv + ',' + yv + ') scale(' + Z + ')';
 }
 
+// ── (dev0758) Cover-crop framing via `object-position` ───────────────────────
+// An <img>/<video> that cover-fits its cell is cropped INSIDE its own box, and
+// that box IS the cell — so the translate above can never reframe it: at Z=1
+// _gridAnchorFrac's clamp is [0,0] and every offset collapses to zero (that's
+// the "at 1× there's no room to pan" note above). The crop that actually hides
+// the top of a portrait video in a landscape cell is object-fit's, and the only
+// lever on it is `object-position`, which nothing set until now — so a COI on
+// an unzoomed cell stored a value and moved nothing.
+//
+// Split of duties, by zoom:
+//   Z <= 1.05  → the transform has no room; COI + drag-pan drive object-position.
+//   Z >  1.05  → unchanged: they drive the transform, exactly as since dev0364.
+// A cell whose media matches its aspect has no cover overflow, so this is a
+// no-op there and 16:9-in-16:9 grids render byte-identically to before.
+
+// Cover-fit overflow of a media element beyond its box, in px per axis.
+// Needs natural dimensions, so it returns null until metadata has loaded.
+function _gridCoverOverflow(el) {
+  if (!el) return null;
+  const nw = el.videoWidth || el.naturalWidth || 0;
+  const nh = el.videoHeight || el.naturalHeight || 0;
+  const bw = el.clientWidth || el.offsetWidth || 0;
+  const bh = el.clientHeight || el.offsetHeight || 0;
+  if (!nw || !nh || !bw || !bh) return null;
+  const s = Math.max(bw / nw, bh / nh);   // the scale object-fit:cover picks
+  return { ox: Math.max(0, nw * s - bw), oy: Math.max(0, nh * s - bh) };
+}
+
+// Resolve the cover framing to fractions 0..1 (0 = show the left/TOP edge,
+// 0.5 = the plain centre crop, 1 = the right/bottom edge). The COI supplies the
+// base; a transient Shift+drag nudges it, its px converted through the measured
+// overflow. Dragging DOWN (+y) reveals the top, hence the subtraction.
+function _gridCoverFrac(el, coi, pan) {
+  let fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
+  if (pan && (pan.x || pan.y)) {
+    const room = _gridCoverOverflow(el);
+    if (room) {
+      if (room.ox > 0 && pan.x) fx -= pan.x / room.ox;
+      if (room.oy > 0 && pan.y) fy -= pan.y / room.oy;
+    }
+  }
+  return { fx: Math.max(0, Math.min(1, fx)), fy: Math.max(0, Math.min(1, fy)) };
+}
+
+function _gridCoverPosition(el, coi, pan) {
+  const f = _gridCoverFrac(el, coi, pan);
+  return (f.fx * 100).toFixed(2) + '% ' + (f.fy * 100).toFixed(2) + '%';
+}
+
+// The cover-fitted media element of a cell (the <video> inside a video host, or
+// a direct <img>), but only while it is actually cover-fitting — a 'contain'
+// image has no hidden content, so there is nothing to pan.
+function _gridCoverElForCell(cellEl) {
+  const t = _gridCellZoomTarget(cellEl);
+  if (!t) return null;
+  const el = (t.kind === 'vid') ? t.el.querySelector('video')
+           : (t.kind === 'img') ? t.el : null;
+  if (!el) return null;
+  try {
+    if (getComputedStyle(el).objectFit !== 'cover') return null;
+  } catch (_) { return null; }
+  return el;
+}
+
+// Is there cover-cropped content this cell could pan to? Gates the Shift+drag
+// so an unzoomed cell with nothing hidden still refuses to move (as before).
+function _gridCellHasCoverRoom(cellEl) {
+  const el = _gridCoverElForCell(cellEl);
+  if (!el) return false;
+  const r = _gridCoverOverflow(el);
+  return !!(r && (r.ox > 0.5 || r.oy > 0.5));
+}
+
 // Locate the zoomable element inside a cell, if any. A video host (YT/Vimeo/mp4),
 // a direct <img>, or an ftext-image montage box is zoomable; IG / quiz / text
 // cells return null, so they're skipped by both global and per-cell zoom.
@@ -1511,8 +1584,16 @@ function _gridApplyZoomToCell(cellEl) {
   // crop fills the cell with no letterbox — the shared anchor math assumes the
   // visible content fills the box. Plain images stay 'contain' (whole image).
   if (t.kind === 'img') t.el.style.objectFit = coi ? 'cover' : 'contain';
+  // (dev0758) Below ~1× the transform has no room, so COI + drag-pan reframe the
+  // cover crop instead; above it, the transform keeps them (dev0364 behaviour).
+  const pan = _gridCellPanForCell(cellEl);
+  const coverPan = (z <= 1.05);
+  if (t.kind === 'img') {
+    t.el.style.objectPosition = (t.el.style.objectFit === 'cover')
+      ? _gridCoverPosition(t.el, coi, coverPan ? pan : null) : '';
+  }
   t.el.style.transformOrigin = '0 0';
-  t.el.style.transform = _gridAnchoredTransform(coi, z, _gridCellPanForCell(cellEl));
+  t.el.style.transform = _gridAnchoredTransform(coi, z, coverPan ? null : pan);
 }
 
 function _gridApplyCoverFit(host, zOverride) {
@@ -1536,8 +1617,21 @@ function _gridApplyCoverFit(host, zOverride) {
       el.style.left = ''; el.style.top = '';
       el.style.width = '100%'; el.style.height = '100%';
       el.style.objectFit = 'cover';
+      // (dev0758) A portrait clip in a wider cell is cropped by object-fit, not
+      // by the transform — so at ~1× the COI/drag framing has to ride
+      // object-position. Above 1.05× the transform takes them back over.
+      const coverPan = (Z <= 1.05);
+      el.style.objectPosition = _gridCoverPosition(el, coi, coverPan ? pan : null);
       el.style.transformOrigin = '0 0';
-      el.style.transform = _gridAnchoredTransform(coi, Z, pan);
+      el.style.transform = _gridAnchoredTransform(coi, Z, coverPan ? null : pan);
+      // Natural dimensions arrive with the metadata, and the px→fraction
+      // conversion above needs them; re-fit once they do.
+      if (!el._coiMetaWired) {
+        el._coiMetaWired = true;
+        el.addEventListener('loadedmetadata', () => {
+          try { _gridApplyCoverFit(host); } catch (_) {}
+        });
+      }
       return;
     }
     // iframe: size to cover the cell (16:9 assumption) and center, then zoom via
@@ -1985,8 +2079,25 @@ function gridSetCOI(cellEl, cellStr, e) {
   if (!tgt && !isIgCell) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
   const rect = cellEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
-  const fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-  const fy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+  let fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  let fy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+  // (dev0758) COMMIT A DRAGGED FRAMING. When the cell is cover-cropping at ~1×
+  // and a transient Shift+drag pan is live, the click point is meaningless — the
+  // drag already put the subject where the user wants it, and Alt-click is how
+  // they "finish off". So store the framing the drag arrived at (and drop the
+  // transient offset, which the stored COI now reproduces) instead of the point.
+  // Zoomed cells keep the original click-to-anchor meaning.
+  let fromDrag = false;
+  if (_gridZoomForCell(cellEl) <= 1.05) {
+    const coverEl = _gridCoverElForCell(cellEl);
+    const livePan = _gridCellPanForCell(cellEl);
+    if (coverEl && livePan) {
+      const f = _gridCoverFrac(coverEl, _gridCOIForCell(cellEl), livePan);
+      fx = f.fx; fy = f.fy; fromDrag = true;
+      const ck = _gridCellKey(row);
+      if (ck) delete _gridCellPan[ck];
+    }
+  }
   // zoom: current effective cell zoom (global × per-cell), 1 decimal place.
   const zoom = _gridZoomForCell(cellEl).toFixed(1);
   // frameRef: a video records the current frame (≈ currentTime × 30 fps) so a
@@ -2009,7 +2120,8 @@ function gridSetCOI(cellEl, cellStr, e) {
     else _gridApplyZoomToCell(cellEl);
   } catch (_) {}
   if (typeof toast === 'function') {
-    toast('COI ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%  ·  ' + frameRef, 1800);
+    toast('COI ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%  ·  ' + frameRef
+          + (fromDrag ? '  ·  framing from drag' : ''), 1800);
   }
 }
 
@@ -2805,7 +2917,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
       _szPanBase = { x: b.x, y: b.y, px: e.clientX, py: e.clientY };
       interactor.style.cursor = 'grabbing';
     }
-    if (_szDragging && _gridZoomForCell(cell) > 1.05) {
+    // (dev0758) Pan when the transform has room (zoomed in) OR when the cell is
+    // cover-cropping media it could reveal — the unzoomed portrait-in-landscape
+    // case, which the old zoom-only gate silently refused.
+    if (_szDragging && (_gridZoomForCell(cell) > 1.05 || _gridCellHasCoverRoom(cell))) {
       const ck = _szKey();
       _gridCellPan[ck] = {
         x: _szPanBase.x + (e.clientX - _szPanBase.px),
@@ -2823,6 +2938,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
     // embed cell the plain double-click is gone regardless — the first click
     // arms the frame and the second belongs to the provider's own caret.
     const quick = !_szTimer && !_szDragging;
+    const dragged = _szDragging;   // (dev0758) a pan reports itself, not a zoom
     _szStop();
     const ck = _szKey();
     if (ck && _gridCellZoom[ck] > 0) {
@@ -2842,6 +2958,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
     }
     _gridApplyZoomToCell(cell);
     if (didReset) _gridToast((cell.dataset.cell || 'cell') + ' → 1:1 (cell zoom cleared)', 1100);
+    // (dev0758) A drag is a framing change, so say so — and say how to keep it,
+    // since the offset is transient until an Alt-click writes it to the COI.
+    else if (dragged && ck && _gridCellPan[ck])
+      _gridToast((cell.dataset.cell || 'cell') + ' panned — Alt-click to keep this framing', 1600);
     else if (!quick) _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
     try { interactor.releasePointerCapture(e.pointerId); } catch (_) {}
     _szActive = _szDown = _szDragging = false;
