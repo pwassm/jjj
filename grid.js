@@ -2281,6 +2281,20 @@ var _gridCleanChrome = (function () {
   try { return localStorage.getItem('slam-grid-clean') === '1'; } catch (_) { return false; }
 })();
 
+// (dev0761) The text painted in a cell's top-left label. Users see the bare cell
+// designation ("1a", "3c", "2P"); the developer also gets the occupying row's
+// UID and its orientation letter (L/P/S/X from the Mode column), space-separated
+// in the same font — enough to tie a cell on screen back to a row in T without
+// opening anything. An empty cell, or a row with no Mode set, just drops the
+// missing part rather than showing a placeholder.
+function _gridCellLabelText(cellStr, row) {
+  const userHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  if (userHere || !row) return cellStr;
+  const uid = (row.UID == null || row.UID === '') ? '' : String(row.UID);
+  const md  = (typeof rowMode === 'function') ? rowMode(row) : '';
+  return [cellStr, uid, md].filter(Boolean).join(' ');
+}
+
 function _gridApplyClean() {
   const on = _gridCleanChrome;
   document.querySelectorAll('#gridOverlay .grid-cell-label')
@@ -2476,7 +2490,7 @@ function gridShow() {
       const lbl = document.createElement('div');
       lbl.className = 'grid-cell-label';
       lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(120,180,255,0.95);font-weight:bold;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;';
-      lbl.textContent = cellStr;
+      lbl.textContent = _gridCellLabelText(cellStr, row);
       interactor.appendChild(lbl);
       
       // Info overlay
@@ -2816,7 +2830,7 @@ function gridUpdateCell(cellStr, row) {
   const lbl = document.createElement('div');
   lbl.className = 'grid-cell-label';
   lbl.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;color:rgba(120,180,255,0.95);font-weight:bold;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;';
-  lbl.textContent = cellStr;
+  lbl.textContent = _gridCellLabelText(cellStr, row);
   newInteractor.appendChild(lbl);
   
   // Info overlay

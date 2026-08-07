@@ -5004,8 +5004,59 @@ function runMarkGrid(start, rowOrient) {
 
   // Clear ALL cell assignments first, then fill in order.
   data.forEach(r => { r.cell = ''; });
-  const toAssign = eligible.slice(0, ALL.length);
-  toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
+  let toAssign, orientPlaced = 0;
+  if (layout === '19') {
+    // (dev0761) The 19 layout is the one grid whose cells are not all the same
+    // shape: the three centre cells (1P/2P/3P) are tall 1×3 slots, the 16 ring
+    // cells are square-ish and read as landscape. Filling it in flat reading
+    // order dropped landscape pictures into the tall slots (pillarboxed) and
+    // portrait ones into the ring. So match orientation to cell shape FIRST,
+    // in cell reading order, then let a second pass mop up with whatever is
+    // left — availability wins over shape, nothing is dropped, and the count
+    // assigned is identical to the flat fill.
+    // The row SET stays anchored to the top of the eligible list (the window =
+    // the first ALL.length rows, exactly what the flat fill would have taken).
+    // A cell only reaches PAST the window when the window holds nothing of its
+    // shape at all — that is what "until availability runs out" buys us, and it
+    // keeps a mostly-landscape selection from scattering across the whole table.
+    const want = cs => (/^[123]P$/.test(cs) ? 'P' : 'L');
+    const modeOf = di => (typeof rowMode === 'function' ? rowMode(data[di]) : String(data[di]['Mode'] || ''));
+    const used = new Set();
+    const placed = new Array(ALL.length).fill(-1);
+    const take = (from, to, w) => {
+      for (let j = from; j < to; j++) {
+        const di = eligible[j];
+        if (used.has(di) || modeOf(di) !== w) continue;
+        used.add(di); return di;
+      }
+      return -1;
+    };
+    const win = Math.min(ALL.length, eligible.length);
+    // Pass 1 — shape-matched, inside the window.
+    ALL.forEach((cs, i) => {
+      const di = take(0, win, want(cs));
+      if (di >= 0) { placed[i] = di; orientPlaced++; }
+    });
+    // Pass 2 — still-empty cells reach beyond the window for their shape.
+    ALL.forEach((cs, i) => {
+      if (placed[i] >= 0) return;
+      const di = take(win, eligible.length, want(cs));
+      if (di >= 0) { placed[i] = di; orientPlaced++; }
+    });
+    // Pass 3 — whatever is left over (wrong shape, or no Mode set) in order.
+    let p = 0;
+    for (let i = 0; i < ALL.length; i++) {
+      if (placed[i] >= 0) continue;
+      while (p < eligible.length && used.has(eligible[p])) p++;
+      if (p >= eligible.length) break;
+      used.add(eligible[p]); placed[i] = eligible[p];
+    }
+    toAssign = [];
+    placed.forEach((di, i) => { if (di >= 0) { data[di].cell = ALL[i]; toAssign.push(di); } });
+  } else {
+    toAssign = eligible.slice(0, ALL.length);
+    toAssign.forEach((di, i) => { data[di].cell = ALL[i]; });
+  }
   save(); render();
   markGridMenuClose();
   // (dev0502) Label by the actual layout (portrait shows "▯ R×C portrait").
@@ -5014,7 +5065,10 @@ function runMarkGrid(start, rowOrient) {
     : (gsize + '×' + gsize);
   toast('✓ Assigned ' + toAssign.length + ' rows to ' + _gridLbl + ' grid cells'
     + (eligible.length > ALL.length ? '\n(' + (eligible.length - ALL.length) + ' more eligible beyond ' + ALL.length + ' cells)' : '')
-    + (noTextDropped ? '\n(NoText skipped ' + noTextDropped + ' web-text row' + (noTextDropped === 1 ? '' : 's') + ')' : ''),
+    + (noTextDropped ? '\n(NoText skipped ' + noTextDropped + ' web-text row' + (noTextDropped === 1 ? '' : 's') + ')' : '')
+    + (layout === '19'
+        ? '\n(shape-matched ' + orientPlaced + '/' + toAssign.length
+          + ' cells — ▯ centre, ▭ ring)' : ''),
     2200);
 }
 
