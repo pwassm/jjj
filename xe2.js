@@ -404,6 +404,25 @@
   // Wix article pasted as junk that displayed as one un-deletable image).
   // <details> pastes (internal block copies) bypass the sanitizer — the schema
   // owns that structure — losing only HTML comments, same as v1.
+  // (dev0754) Chrome's clipboard serializer leaks the <details> element's OWN
+  // shadow-DOM plumbing — <slot id="details-content" pseudo="details-content"> —
+  // when a selection is copied off a RENDERED slide (Xs / the greeting page),
+  // where details is a real element. The schema has no idea what a <slot> is,
+  // so a pasted block kept that alien skeleton: media inside it couldn't be
+  // deleted or re-sized (the Greeting_working breakage). Unwrap every slot,
+  // keeping its children.
+  function _stripSlotWrappers(html) {
+    if (!/<slot[\s>]/i.test(html)) return html;
+    var d = document.createElement('div');
+    d.innerHTML = html;
+    var s;
+    while ((s = d.querySelector('slot'))) {
+      while (s.firstChild) s.parentNode.insertBefore(s.firstChild, s);
+      s.remove();
+    }
+    return d.innerHTML;
+  }
+
   function _transformPastedHTML(html) {
     if (!html) return html;
     // (dev0630) INTERNAL copy — a block cut/copied out of THIS editor. PM's own
@@ -411,6 +430,7 @@
     // nodes verbatim (details / te-slide colors preserved, already clean), so
     // pass it through untouched. This is the ONLY case that skips the sanitizer.
     if (/data-pm-slice/i.test(html)) return html;
+    html = _stripSlotWrappers(html);
     // Everything else is a FOREIGN paste (web page, v1 copy). ALWAYS sanitize.
     // The old rule bypassed sanitizing for ANY paste containing a <details>
     // anywhere — but PMC/NCBI pages carry <details> sections, so a whole article
@@ -666,6 +686,29 @@
     try {
       editor.view.dispatch(state.tr.replaceWith(det.pos, det.pos + det.node.nodeSize, _frag(state, out)));
     } catch (e) { console.warn('[xe2] undetail failed', e); }
+    editor.commands.focus();
+  }
+
+  // (dev0754) ⧉ — duplicate the collapsible at the cursor: an identical copy
+  // is inserted right below it, cloned at the ProseMirror-node level. This is
+  // the LOSSLESS way to clone a media block — selecting a rendered <details>
+  // and copy/pasting it runs through Chrome's clipboard serializer, which
+  // leaks shadow-DOM <slot> wrappers and freezes responsive %-widths to px
+  // (how Greeting_working broke). With nested blocks the innermost one at the
+  // cursor is the one duplicated.
+  function duplicateCollapsible(editor) {
+    var state = editor.state;
+    var det = _findAncestor(state, 'details');
+    if (!det) { _toast('Click inside the collapsible you want to duplicate first'); return; }
+    var pos = det.pos + det.node.nodeSize;
+    try {
+      editor.view.dispatch(state.tr.insert(pos, det.node.copy(det.node.content)));
+      editor.commands.setTextSelection(pos + 2); // caret onto the copy's title line
+      _toast('Duplicated — the caret is in the COPY’s title');
+    } catch (e) {
+      console.warn('[xe2] duplicate-collapsible failed', e);
+      _toast('Could not duplicate this collapsible');
+    }
     editor.commands.focus();
   }
 
@@ -1285,6 +1328,7 @@
       ['[&#9654;&hellip;]', 'Wrap the selected lines in a collapsible — type the summary title after', function (e) { wrapSelectionInDetails(e, false); }],
       ['[[2]]', 'Highlight a line plus the lines under it → collapsible: the FIRST highlighted line becomes the summary, the rest becomes the hidden body. Works INSIDE another collapsible — it nests, making a secondary block. Highlight only lines inside the block, never its title line.', function (e) { wrapSelectionInDetails(e, true); }],
       ['Un[&#9654;]', 'Undetail — dissolve the collapsible at the cursor: summary becomes an H3 line, body stays', function (e) { undetail(e); }],
+      ['&#10697;', 'Duplicate the collapsible at the cursor — an exact copy appears right below it. Use THIS to clone a block (browser copy/paste of a rendered collapsible mangles it).', function (e) { duplicateCollapsible(e); }],
       ['&para;&#8593;', 'Blank line ABOVE the collapsible at the cursor, outside it (Ctrl+Shift+Enter)', function (e) { lineOutsideDetails(e, -1); }],
       ['&para;&#8595;', 'Blank line BELOW the collapsible at the cursor, outside it (Ctrl+Enter)', function (e) { lineOutsideDetails(e, 1); }],
       ['&#9660; All', 'Expand all collapsibles', function (e) { setAllDetails(e, true); }],
