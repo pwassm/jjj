@@ -6,8 +6,11 @@
 // (the dev0243/0341/0587/0589 whack-a-mole class becomes non-representable).
 //
 // LOAD ORDER: xe2-bundle.js (vendored TipTap IIFE → window.XE2Lib) must load
-// BEFORE this file. This module is inert unless window.XE2Lib is present AND
-// the opt-in flag is on (localStorage 'xe2'==='1' or ?xe2=1).
+// BEFORE this file. This module is inert unless window.XE2Lib is present — that
+// is the single biggest cause of an unwanted v1 session, so the bailout below
+// is loud (see gridOpenTextEditor's _xeWarnV1Fallback in xe.js).
+// (dev0756) v2 is the only selectable editor: no localStorage flag, no v1
+// button. ?xe2=0 forces one page load of v1 and nothing more.
 //
 // ftext stays HTML. Serialization keeps the exact current shape
 // (<details><summary>..</summary>..blocks..</details>, <hr>, .te-slide wrapper)
@@ -19,7 +22,13 @@
 (function () {
   'use strict';
   var L = window.XE2Lib;
-  if (!L) { console.warn('[xe2] window.XE2Lib missing — xe2-bundle.js not loaded; Xe v2 disabled.'); return; }
+  if (!L) {
+    // (dev0756) Record WHY, so gridOpenTextEditor can name it in the on-screen
+    // warning instead of dropping into v1 with only a console line nobody reads.
+    window.XE2_LOAD_ERROR = 'xe2-bundle.js did not load (window.XE2Lib missing)';
+    console.error('[xe2] ' + window.XE2_LOAD_ERROR + ' — Xe v2 unavailable, edits will fall back to v1.');
+    return;
+  }
 
   var Editor = L.Editor, Node = L.Node, Mark = L.Mark, mergeAttributes = L.mergeAttributes;
   var StarterKit = L.StarterKit, Image = L.Image, Underline = L.Underline, Link = L.Link;
@@ -486,17 +495,29 @@
   }
 
   // ══ FLAG ════════════════════════════════════════════════════════════════════
-  // (dev0620) v2 is now the DEFAULT editor. Opt OUT via localStorage 'xe2'='0'
-  // (the header "v1" button / XE2.disable()) or ?xe2=0; ?xe2=1 forces on.
+  // (dev0620) v2 is now the DEFAULT editor.
+  // (dev0756) v2 is now the ONLY editor you can choose. The old opt-out was
+  // localStorage 'xe2'='0', written by a `v1` button that sat between ✕ Close and
+  // ✓ Save in the v2 header — one misclick disabled v2 PERMANENTLY for that
+  // browser, and nothing on screen said so. That is how dev0755's ctxt edit ended
+  // up in v1. The localStorage key is now ignored entirely (and any stale '0' left
+  // over from that button is actively cleared below); the only remaining escape
+  // hatch is a deliberate ?xe2=0 in the URL, which lasts exactly one page load.
   function isEnabled() {
     try {
-      if (/[?&]xe2=1(&|$)/.test(location.search)) return true;
       if (/[?&]xe2=0(&|$)/.test(location.search)) return false;
-      return localStorage.getItem('xe2') !== '0';
-    } catch (e) { return true; }
+    } catch (e) {}
+    return true;
   }
-  function enable() { try { localStorage.setItem('xe2', '1'); } catch (e) {} console.log('[xe2] enabled — reopen a text cell'); }
-  function disable() { try { localStorage.setItem('xe2', '0'); } catch (e) {} console.log('[xe2] disabled — v1 editor active'); }
+  // Retired — v1 is no longer selectable. Kept as no-op stubs because they were
+  // published on window.XE2 and may be muscle-memory in the console.
+  function enable() { console.log('[xe2] v2 is always on — nothing to enable'); }
+  function disable() { console.warn('[xe2] XE2.disable() is retired — v1 is not selectable. Use ?xe2=0 for a one-shot fallback.'); }
+
+  // (dev0756) Scrub the retired opt-out key. isEnabled() already ignores it, but
+  // leaving a stale 'xe2'='0' in localStorage would keep confusing anyone who
+  // inspects it looking for "why am I in v1".
+  try { if (localStorage.getItem('xe2') !== null) localStorage.removeItem('xe2'); } catch (e) {}
 
   // ══ EDITOR OVERLAY ══════════════════════════════════════════════════════════
   var _api = null;      // { editor, slide, getFtext }
@@ -549,15 +570,10 @@
     if (typeof window.render === 'function') { try { window.render(); } catch (e) {} }
   }
 
-  // Switch back to the v1 editor for the same cell/row (A/B testing).
-  function switchToV1() {
-    disable();
-    var cell = _cell, row = _row, field = _field;
-    close();
-    if (typeof window.gridOpenTextEditor === 'function') {
-      window.gridOpenTextEditor(cell, row, { field: field });
-    }
-  }
+  // (dev0756) switchToV1() removed along with its header button. It called
+  // disable(), so "let me just peek at v1 for this one cell" silently became
+  // "every text edit from now on is v1". v1 is now reachable only as an
+  // involuntary fallback, and gridOpenTextEditor announces it when that happens.
 
   // ── details commands ────────────────────────────────────────────────────────
   function insertCollapsible(editor) {
@@ -1491,7 +1507,6 @@
             '<span style="color:#ff8;font-weight:bold;">Text Slide <span style="color:#8ef;">v2</span> · ' + cellStr + mediaNote + ' <span style="color:#89a;font-weight:normal;font-size:11px;">· swipe ← to go back</span></span>' +
             '<span id="xe2Saved" style="color:#6d8;font-size:11px;font-family:monospace;"></span>' +
             '<div style="display:flex;gap:8px;">' +
-              '<button id="xe2V1" class="xe2-btn" title="Switch this cell back to the classic v1 editor">v1</button>' +
               '<button id="xe2Close" class="xe2-btn" title="Close without saving (Esc)">✕ Close</button>' +
               '<button id="xe2Save" class="xe2-btn" style="border-color:#0f0;color:#0f0;" title="Save + close (Ctrl+S)">✓ Save</button>' +
             '</div>' +
@@ -1504,7 +1519,8 @@
         // #textEditorOverlay (pure existence checks, verified). Without it, bare
         // letters typed in v2 fired G hotkeys (r = conveyor, ] = ring). This
         // hidden marker makes v2 look like Xe to all of them; v1 and v2 are
-        // never open at once (delegation/switchToV1), so the id can't collide.
+        // never open at once (v1 runs only when open() has already failed or
+        // was never reached), so the id can't collide.
         '<span id="textEditorOverlay" style="display:none;"></span>';
       document.body.appendChild(ov);
 
@@ -1684,7 +1700,6 @@
 
       ov.querySelector('#xe2Save').onclick = commitAndClose;
       ov.querySelector('#xe2Close').onclick = close;
-      ov.querySelector('#xe2V1').onclick = switchToV1;
       document.addEventListener('keydown', _onKeydown, true);
 
       // (dev0592) R→L drag on the header bar = save + return to G/T. A drag on the
@@ -1713,6 +1728,10 @@
       console.log('[xe2] opened cell', cellStr, 'field', _field);
       return true;
     } catch (e) {
+      // (dev0756) Stash the message so gridOpenTextEditor's on-screen warning can
+      // quote it — previously this was a console-only event and the user just
+      // found themselves in a differently-shaped editor with no explanation.
+      window.XE2_LAST_OPEN_ERROR = (e && e.message) ? e.message : String(e);
       console.error('[xe2] open() failed — falling back to v1', e);
       try { close(); } catch (_) {}
       return false;

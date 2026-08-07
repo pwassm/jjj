@@ -11,6 +11,26 @@ let _textEditorRow = null;
 // skip the slide-only side effects (title prompt, link binding, VidRange).
 let _textEditorField = 'ftext';
 
+// (dev0756) Why are we about to run the v1 editor? There are only three routes
+// left, and each gets named on screen — a red banner in the v1 header (below)
+// plus a toast, because v1 vs v2 is otherwise a toolbar-shape difference that is
+// easy to miss until you notice <details> blocks have been mangled.
+// Set _xeV1Reason for the header; returns nothing.
+let _xeV1Reason = '';
+function _xeWarnV1Fallback() {
+  if (!window.XE2) {
+    _xeV1Reason = window.XE2_LOAD_ERROR || 'xe2.js / xe2-bundle.js did not load';
+  } else if (!window.XE2.isEnabled()) {
+    _xeV1Reason = '?xe2=0 is in the URL — remove it to get v2 back';
+  } else {
+    _xeV1Reason = 'v2 open() threw: ' + (window.XE2_LAST_OPEN_ERROR || 'see console');
+  }
+  console.error('[xe] ⚠ FALLING BACK TO THE v1 EDITOR — ' + _xeV1Reason);
+  if (typeof window.toast === 'function') {
+    try { window.toast('⚠ v1 EDITOR (v2 unavailable) — ' + _xeV1Reason, 7000); } catch (e) {}
+  }
+}
+
 function gridOpenTextEditor(cellStr, row, opts) {
   opts = opts || {};
   // (zip0155) Defensive: if a previous text-editor overlay was left in the
@@ -43,14 +63,21 @@ function gridOpenTextEditor(cellStr, row, opts) {
   }
   _textEditorRow = row;
 
-  // (dev0590) Xe v2 (TipTap schema editor) — (dev0620) now the DEFAULT; opt out
-  // via the header "v1" button / localStorage 'xe2'='0' / ?xe2=0. Delegates to
-  // the schema editor where <details> can't be corrupted; the v1 contenteditable
-  // path below is untouched and is the fallback if v2 is off or open() fails.
+  // (dev0590) Xe v2 (TipTap schema editor) — (dev0620) now the DEFAULT.
+  // (dev0756) v2 is no longer optional: the header "v1" button and the
+  // localStorage 'xe2' opt-out are gone, so the ONLY way past this line is a
+  // deliberate ?xe2=0 or an actual v2 failure. Delegates to the schema editor
+  // where <details> can't be corrupted; the v1 contenteditable path below is
+  // untouched and remains the involuntary fallback.
   // See xe2.js / memory project_xe_editor_rebuild.
   if (window.XE2 && window.XE2.isEnabled() && window.XE2.open(cellStr, row, opts)) {
     return;
   }
+  // (dev0756) Reaching here means the next thing you type goes into the OLD
+  // contenteditable editor. That used to be silent — the two editors look
+  // similar enough that a whole session's ctxt edits went into v1 unnoticed
+  // (dev0755). Say so, on screen, every single time.
+  _xeWarnV1Fallback();
 
   // (zip0168) Linkify URL patterns in existing ftext so the editor shows
   // clickable links. On save, the linkified HTML persists — old plain-text
@@ -84,10 +111,10 @@ function gridOpenTextEditor(cellStr, row, opts) {
   _textEditorOverlay.innerHTML = `
     <div id="teBox" style="background:#1a1a2e; border:1px solid #444; border-radius:12px;
                 flex:1; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-      <div id="teHeaderBar" title="Swipe ← (drag right-to-left) to save and go back" style="display:flex; justify-content:space-between; align-items:center;
+      <div id="teHeaderBar" title="${_xeV1Reason ? 'FALLBACK EDITOR — ' + escH(_xeV1Reason) : 'Swipe ← (drag right-to-left) to save and go back'}" style="display:flex; justify-content:space-between; align-items:center;
                   padding:22px 16px; min-height:64px; touch-action:none;
-                  border-bottom:2px solid #6af; background:#3a4d75;">
-        <span style="color:#ff8; font-weight:bold;">Text Slide · ${cellStr}${mediaNote} <span style="color:#89a;font-weight:normal;font-size:11px;">· swipe ← to go back</span></span>
+                  border-bottom:2px solid #f66; background:#5c2b30;">
+        <span style="color:#ff8; font-weight:bold;"><span style="color:#f88;">⚠ v1</span> Text Slide · ${cellStr}${mediaNote} <span style="color:#e9a;font-weight:normal;font-size:11px;">· ${_xeV1Reason ? escH(_xeV1Reason) : 'fallback editor'}</span></span>
         <span id="teStats" style="color:#9ab; font-weight:normal; font-size:11px; font-family:monospace;" title="ftext size · % real text · % strippable junk (inline styles/classes/empty wrappers; image & link URLs are NOT junk)"></span>
         <span id="teSaved" style="color:#6d8; font-weight:normal; font-size:11px; font-family:monospace; white-space:nowrap;" title="Last autosave — ftext is written to the row ~1s after you stop typing"></span>
         <div style="display:flex; gap:8px;">
