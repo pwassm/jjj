@@ -158,6 +158,10 @@ const PORT = 8081;
 //   caption pass instead of letting drawtext punch letter-shaped holes in it.
 //   Flagged because the old build's failure is silent AND plausible-looking: the
 //   file is written, exit 0, and the watermark is simply the wrong colour.
+// (dev0752) 'textnoborder' = a FADED text box is drawn with no outline, so a
+//   watermark is one tone instead of a fat dark ring round a washed-out middle.
+//   The overlay stops drawing its shadow to match, so an old proxy would put an
+//   outline on something the box promised would not have one.
 // (dev0723) 'screenrec2' = /rec/start also takes {dest:'downloads', stem, maxWidth,
 //   crf, drawMouse}. screenrec.js probes for it and falls back to the browser's own
 //   getDisplayMedia capture when this proxy is old or not running at all.
@@ -299,7 +303,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0751';
+const PROXY_BUILD = 'dev0752';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -625,11 +629,26 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
     // outline, so a faint caption stays legible instead of showing a hard
     // black border around ghost-grey letters. Absent = 1 = as before.
     let alphaOpt = '';
+    let faded = false;
     if (t.alpha != null) {
       const a = +t.alpha;
       must(Number.isFinite(a) && a > 0 && a <= 1, `texts[${i}].alpha must be within 0..1`);
-      if (a < 1) alphaOpt = ':alpha=' + a.toFixed(3);
+      if (a < 1) { alphaOpt = ':alpha=' + a.toFixed(3); faded = true; }
     }
+    // (dev0752) A FADED box gets no outline. The border is 7% of the type size —
+    // 28px under a letter a third of the frame tall — against the 2-3px shadow
+    // the overlay draws, so a watermark came out as a fat dark ring around a
+    // washed-out middle: two tones where one was asked for. It also moved the
+    // stamp: drawtext anchors the GLYPH ink at y and the border grows OUTSIDE
+    // that, so the visible top sat borderw above where the overlay put it.
+    // An opaque caption keeps its outline — that is what makes it readable over
+    // a moving picture, and nothing about it was wrong.
+    // vp.js turns the preview's text-shadow off on the same condition; the two
+    // rules have to stay in step or the box lies about what it will produce.
+    const border = faded ? [] : [
+      'borderw=' + Math.max(1, Math.round(fontPx * 0.07)),
+      'bordercolor=black@0.85'
+    ];
     // (dev0750) Per-box face, resolved to a file here — one drawtext per box
     // already, so nothing else has to change to let them differ.
     const font = dtFontFileFor(t.font);
@@ -639,8 +658,7 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
       'expansion=none',
       'fontsize=' + fontPx,
       'fontcolor=white',
-      'borderw=' + Math.max(1, Math.round(fontPx * 0.07)),
-      'bordercolor=black@0.85',
+      ...border,
       'line_spacing=0',
       'x=' + Math.round((+t.x) * ow),
       'y=' + Math.round((+t.y) * oh)
@@ -4938,7 +4956,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
     return;
   }
 

@@ -4221,6 +4221,11 @@ function _vpOutputDims(state, sw, sh) {
 // with no number for either side to get wrong.
 const VP_TEXT_LINE_H = 'normal';
 
+// (dev0752) The preview's stand-in for drawtext's outline — and, on a faded box,
+// for its absence. See the note in buildDrawtextChain: a watermark is drawn with
+// no border at all, so showing one here would be the box lying about the file.
+const VP_TEXT_SHADOW = '0 0 2px #000,0 0 3px #000,1px 1px 0 #000,-1px -1px 0 #000';
+
 // ANCHOR. The textarea puts the top of the first LINE BOX at the top of the box,
 // leaving the glyph sitting some way below it — half the line gap, plus the gap
 // between the font's ascender and the actual top of the letter. drawtext has no
@@ -4755,6 +4760,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       // (dev0745) Show the opacity, don't just record it — a watermark you
       // cannot see here is a watermark you cannot place.
       t.ta.style.opacity = (t.alpha == null) ? '' : String(t.alpha);
+      // (dev0752) …and show that a faded box loses its outline, since that is
+      // what the render does. Set to the literal shadow rather than '' — the
+      // original came in through cssText, so clearing the property would drop it
+      // for good and an opaque caption would never get it back.
+      t.ta.style.textShadow = (t.alpha != null && t.alpha < 1) ? 'none' : VP_TEXT_SHADOW;
       // (dev0750) Same for the face — it is what the box wraps at, so it has to
       // be on screen before the render, not discovered in the file afterwards.
       t.ta.style.fontFamily = _vpTextFont(t.font).css;
@@ -4861,7 +4871,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       'color:#fff;caret-color:#9f9;font-family:' + _vpTextFont(t.font).css +
       ';line-height:' + VP_TEXT_LINE_H + ';' +
       'white-space:pre-wrap;overflow-wrap:break-word;' +
-      'text-shadow:0 0 2px #000,0 0 3px #000,1px 1px 0 #000,-1px -1px 0 #000;';
+      'text-shadow:' + VP_TEXT_SHADOW + ';';
     ta.addEventListener('input', () => { t.text = ta.value; growText(t); });
     box.appendChild(ta);
 
@@ -6436,6 +6446,16 @@ async function _vpImageSave(opts) {
     }
     return;
   }
+  // (dev0752) A faded box is a watermark, and a watermark is drawn without the
+  // outline an opaque caption gets — the overlay has already dropped its shadow
+  // to say so. An old proxy still rings it in black, at 7% of the type size.
+  if (wantsText && (s.texts || []).some(t => t.alpha != null && t.alpha < 1) &&
+      !(await _vpProxyHasFeature('textalpha') && await _vpProxyHasFeature('textnoborder'))) {
+    if (typeof toast === 'function') {
+      toast('Faded text needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   if (wantsMotion && !(await _vpProxyHasFeature('imagemotion'))) {
     if (typeof toast === 'function') {
       toast('Clips from a picture need an updated proxy — restart "node proxy.js" and retry', 4400);
@@ -6851,8 +6871,11 @@ async function _vpGoSave(opts) {
   }
   // (dev0745) …and a faded caption on a stale proxy comes out at full strength,
   // which is a watermark that ruins the picture it was meant to sit quietly on.
+  // (dev0752) Same trigger, second ask: a faded box is drawn with no outline and
+  // the overlay has already stopped showing one, so an old proxy rings it in
+  // black anyway and the preview turns out to have been a promise it can't keep.
   if ((payload.texts || []).some(t => t.alpha != null) &&
-      !(await _vpProxyHasFeature('textalpha'))) {
+      !(await _vpProxyHasFeature('textalpha') && await _vpProxyHasFeature('textnoborder'))) {
     if (typeof toast === 'function') {
       toast('Faded text needs an updated proxy — restart "node proxy.js" and retry', 4400);
     }
