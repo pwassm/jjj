@@ -1366,6 +1366,10 @@
       '#xe2Overlay .xe2-btn:hover{background:#33335f;border-color:#6af;}',
       '#xe2Editor{flex:1;overflow:auto;padding:22px 26px;color:#eee;font-size:18px;line-height:1.5;outline:none;}',
       '#xe2Editor .ProseMirror{outline:none;min-height:100%;}',
+      // (dev0755) Fat, bright caret — v1 parity (#teEditor). The 1px default is
+      // easy to lose among floated media; caret-shape:block is progressive
+      // enhancement (Chromium 139+) and ignored elsewhere, caret-color is not.
+      '#xe2Editor .ProseMirror{caret-color:#ffcc33;caret-shape:block;}',
       // (dev0592) Working, consistent heading ladder so H1/H2/H3 visibly change
       // size (dev0591's flatten made the buttons look like no-ops). Same em values
       // as the Xs/iframe/grid render → an H-level is the same size everywhere.

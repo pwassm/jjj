@@ -120,6 +120,7 @@ function gridOpenTextEditor(cellStr, row, opts) {
         <button class="te-btn" id="teWrap" title="Wrap current selection in a collapsible section — turns multi-line content, pictures, or tables into a hideable block">[▶…]</button>
         <button class="te-btn" id="teWrap2" title="Wrap selection as a collapsible, split into title + detail — the FIRST line becomes the click-to-expand summary, the remaining lines become the hidden body">[[2]]</button>
         <button class="te-btn" id="teUndetail" title="Undetail — turn the collapsible block at the cursor back into a heading (H3) with a bullet list of its lines underneath (inverse of [▶…])">Un[▶]</button>
+        <button class="te-btn" id="teDupDetails" style="border-color:#4a4; color:#8f8;" title="Duplicate the collapsible block at the cursor — an exact copy appears directly below it. Use THIS to clone a block: copying a rendered block with Ctrl+C/Ctrl+V mangles it (the browser adds hidden wrappers and freezes image sizes).">⧉</button>
         <button class="te-btn" id="teLineBefore" title="Blank line ABOVE the detail block at the cursor — inserted OUTSIDE the block, so new text there is not absorbed into it (same as Ctrl+Shift+Enter)">¶↑</button>
         <button class="te-btn" id="teLineAfter" title="Blank line BELOW the detail block at the cursor — inserted OUTSIDE the block, so new text there is not absorbed into it (same as Ctrl+Enter)">¶↓</button>
         <button class="te-btn" id="teExpandAll" title="Expand all collapsible blocks in this slide">▼ All</button>
@@ -205,6 +206,13 @@ function gridOpenTextEditor(cellStr, row, opts) {
     .te-btn:hover { background:#2a2a4e; color:#fff; }
     .te-btn:active { background:#3a3a5e; }
     #teEditor { user-select:text !important; -webkit-user-select:text !important; }
+    /* (dev0755) A FAT, bright caret. The default 1px caret is genuinely hard to
+       spot on the dark editor among floated media and collapsibles, and losing
+       it is half of "I can't tell what this edit will apply to". caret-color is
+       supported everywhere; caret-shape:block is progressive (Chromium 139+)
+       and simply ignored where it isn't. The em-dash-wide block caret sits on
+       the character it will overwrite, so the insertion point is unmissable. */
+    #teEditor { caret-color:#ffcc33; caret-shape:block; }
     #teEditor * { user-select:text !important; -webkit-user-select:text !important; }
     #teEditor a, #teSlideContent a { color:#5bf !important; }
     /* (dev0246) Summary text/links — explicit color so anchors-only summaries
@@ -638,6 +646,50 @@ function gridOpenTextEditor(cellStr, row, opts) {
     e.preventDefault();
     const ed = document.getElementById('teEditor');
     if (ed) ed.querySelectorAll('details').forEach(d => d.removeAttribute('open'));
+  };
+
+  // (dev0755) ⧉ Duplicate — an exact copy of the collapsible at the caret is
+  // inserted directly below it. This exists because the OBVIOUS way to clone a
+  // block (click its ⁝⁝ handle, Ctrl+C, Ctrl+V) routes through Chrome's
+  // clipboard serializer, which leaks <slot pseudo="details-content"> wrappers
+  // and freezes responsive %-widths to computed px — how Greeting_working ended
+  // up with media that could not be deleted or resized. A DOM clone has neither
+  // problem. Nested blocks: the INNERMOST one containing the caret is copied.
+  document.getElementById('teDupDetails').onmousedown = (e) => {
+    e.preventDefault();
+    const ed = document.getElementById('teEditor');
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) { ed.focus(); return; }
+    let n = sel.getRangeAt(0).startContainer;
+    if (n.nodeType === 3) n = n.parentNode;
+    const details = n.closest ? n.closest('details') : null;
+    if (!details || !ed.contains(details)) {
+      if (typeof toast === 'function') toast('Put the cursor inside the collapsible you want to duplicate', 2200);
+      return;
+    }
+    const copy = details.cloneNode(true);
+    // Drop the injected drag handles — the MutationObserver re-adds a fresh one.
+    copy.querySelectorAll('.te-dh').forEach(h => h.remove());
+    copy.setAttribute('open', '');
+    details.parentNode.insertBefore(copy, details.nextSibling);
+    // Caret onto the COPY's title so it can be renamed straight away.
+    const sum = copy.querySelector('summary');
+    if (sum) {
+      const r = document.createRange();
+      r.selectNodeContents(sum);
+      r.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    ed.focus();
+    // A DOM clone fires no 'input' event, so the type-autosave never sees it —
+    // persist explicitly, exactly as the input listener does.
+    if (typeof _textEditorDoSave === 'function' && _textEditorDoSave()) {
+      const sv = document.getElementById('teSaved');
+      if (sv) sv.textContent = '✓ autosaved ' + new Date().toTimeString().slice(0, 8);
+    }
+    if (typeof toast === 'function') toast('Duplicated — the caret is in the copy’s title', 1600);
   };
 
   // (dev0573) ¶↑ / ¶↓ — blank line ABOVE / BELOW the detail block at the caret,
@@ -1317,6 +1369,13 @@ function gridOpenTextEditor(cellStr, row, opts) {
       let frag = html.replace(/^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/gi, '');
       // Strip Office/Google clipboard junk classes but keep the structure
       frag = frag.replace(/<!--[\s\S]*?-->/g, '');
+      // (dev0755) …but Chrome's serializer leaks the <details> element's OWN
+      // shadow DOM — <slot id="details-content" pseudo="details-content"> —
+      // whenever the copy came off a RENDERED slide (Xs / the greeting page).
+      // This branch inserts verbatim, so that alien skeleton reached ftext and
+      // survived every save (c.json Greeting_working: media inside a slot could
+      // not be deleted or resized). Unwrap slots, keep their children.
+      frag = _teStripSlots(frag);
       document.execCommand('insertHTML', false, frag);
       return;
     }

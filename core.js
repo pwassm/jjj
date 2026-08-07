@@ -6689,6 +6689,32 @@ window.ftextStats = ftextStats;
 // (hyphenated framework) tags — keeping only headings, paragraphs, lists, links,
 // emphasis, images, and <details>. DOM-based (DOMParser) so nested-quote tricks
 // can't fool it the way a regex would. Used by W-paste and the Xe paste handler.
+// (dev0755) Unwrap <slot> elements, keeping their children. Chrome's clipboard
+// serializer leaks the <details> element's own shadow-DOM plumbing — <slot
+// id="details-content" pseudo="details-content"> — into the copied HTML when
+// the selection came off a RENDERED slide (Xs, the greeting page), where
+// <details> is a real element. Xe v1's paste handler inserts <details> pastes
+// VERBATIM (structure preservation), so that alien skeleton reached ftext and
+// survived every save; nothing in the editor knows how to select or delete
+// media inside it. Kept separate from _sanitizePastedHtml because that path
+// drops <video> and every inline style, which a media block cannot survive.
+function _teStripSlots(html) {
+  if (!html || !/<slot[\s>]/i.test(html)) return html || '';
+  let doc;
+  try { doc = new DOMParser().parseFromString(html, 'text/html'); }
+  catch (e) { return html; }
+  const body = doc && doc.body;
+  if (!body) return html;
+  let slot;
+  while ((slot = body.querySelector('slot'))) {
+    const parent = slot.parentNode;
+    if (!parent) { slot.remove(); continue; }
+    while (slot.firstChild) parent.insertBefore(slot.firstChild, slot);
+    parent.removeChild(slot);
+  }
+  return body.innerHTML;
+}
+
 function _sanitizePastedHtml(html) {
   if (!html) return '';
   let doc;
