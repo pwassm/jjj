@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1786124930314,
+    "_salPushTime": 1786143963704,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -511,7 +511,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1786124930314
+    "_salSavedAt": 1786143963705
   },
   {
     "UID": "1",
@@ -17853,7 +17853,7 @@
     "link": "https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
     "show": "1",
     "DateAdded": "2026-05-20 14:30:12",
-    "DateModified": "2026-08-05 05:17:22",
+    "DateModified": "2026-08-07 23:06:03",
     "tags": [
       "phyllaplysia-taylori",
       "myvideo"
@@ -17871,7 +17871,7 @@
     "COI": "",
     "segLength": "0:14",
     "ttxt": "",
-    "steps": "0.06,1007,50",
+    "steps": "0.15,824,11",
     "Mode": "L"
   },
   {
