@@ -636,7 +636,15 @@ async function _showShareableMenu() {
   // (dev0712) Same rule, now from the one shared helper in core.js, so the
   // landing page and the Xs slide preview of this very ctxt agree. The helper
   // also re-balances the tags the old string slice left orphaned.
-  if (typeof _salApplyCutBelow === 'function') greetingHtml = _salApplyCutBelow(greetingHtml);
+  // (dev0763) …and it is not only the greeting. Xe's ⊘ HideFromHere marker is
+  // honoured by every SLIDE view (renderFtext) and by the greeting, but the menu
+  // read ttxt/ctxt raw — so a cut line hid nothing on the "Other" page or in the
+  // Singles/Grids cards, while the same text obeyed it on the slide. One helper,
+  // every menu surface. (A ⊘ HideSection block was always hidden here by the
+  // global .te-cut CSS rule; only the cut LINE needed this.)
+  const _cutBelow = h => (typeof _salApplyCutBelow === 'function'
+    ? _salApplyCutBelow(String(h || '')) : String(h || ''));
+  greetingHtml = _cutBelow(greetingHtml);
   // (dev0361) Split the greeting at its FIRST <hr> (the Xe ══ divider): prose
   // BEFORE the rule is page 1 (welcome / landing), prose AFTER is the lead text
   // shown atop page 2 ("Choose a view"). No <hr> → it all stays on page 1.
@@ -662,7 +670,7 @@ async function _showShareableMenu() {
   // gname is "other", in its `ctxt` field. Re-read every open (whole function
   // re-fetches c.json), so editing that ctxt in C updates the page next visit.
   const otherCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'other');
-  const otherHtml = _linkify(_balanceHtml(otherCfg ? String(otherCfg.ctxt || '') : ''));
+  const otherHtml = _linkify(_balanceHtml(_cutBelow(otherCfg ? otherCfg.ctxt : '')));
 
   // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
   // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
@@ -833,12 +841,15 @@ async function _showShareableMenu() {
   // (was the `ss` field / gname label): every config row whose ctxt is occupied
   // and that has a gname to open by. Both carry the raw HTML + DateModified so
   // each card can show a summary line, a date, and an expandable details body.
+  // (dev0763) _cutBelow FIRST, then read the summary out of what's left, so a
+  // card's title and its body agree about where the author cut.
   const vItems = mlRows
     .filter(r => r && !r._salMeta && String(r.ttxt || '').trim() && !_isGreeting(r.ttxt) && r.UID != null)
-    .map(r => ({ kind: 'v', uid: String(r.UID), html: String(r.ttxt),
-                 summary: _smSummaryText(r.ttxt) || ('UID ' + r.UID),
+    .map(r => { const h = _cutBelow(r.ttxt); return { kind: 'v', uid: String(r.UID), html: h,
+                 summary: _smSummaryText(h) || ('UID ' + r.UID),
                  date: _smDateShort(r.DateModified), dmRaw: String(r.DateModified || ''),
-                 type: _smType(r) }));
+                 type: _smType(r) }; })
+    .filter(it => it.html.trim());
   // (dev0596) A collection is only shown on the public "Grids" tab when its
   // config row carries a number in the c.json `active` column. Draft/unlisted
   // grids stay hidden from viewers until curated in.
@@ -846,15 +857,18 @@ async function _showShareableMenu() {
   // the grid, and the list is presented in ascending `active` order (1 first).
   // Equal numbers fall back to whatever order c.json holds them in.
   const _smOrd = v => { const n = parseFloat(String(v == null ? '' : v).trim()); return n > 0 ? n : 0; };
+  // (dev0763) Unlike a single, a grid card is also the way IN to the collection,
+  // so a fully-cut ctxt does not delist it — `active` stays the curation gate.
+  // Its title falls back to the gname.
   const gItems = cRows
     .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname)
                  && String(g.gname).trim().toLowerCase() !== 'other'
                  && _smOrd(g.active) > 0)
-    .map(g => ({ kind: 'ss', gname: String(g.gname).trim(), html: String(g.ctxt),
-                 summary: _smSummaryText(g.ctxt) || String(g.gname).trim(),
+    .map(g => { const h = _cutBelow(g.ctxt); return { kind: 'ss', gname: String(g.gname).trim(), html: h,
+                 summary: _smSummaryText(h) || String(g.gname).trim(),
                  date: _smDateShort(g.DateModified), dmRaw: String(g.DateModified || ''),
                  ord: _smOrd(g.active),
-                 cells: Number(g.cells) || 0 }));
+                 cells: Number(g.cells) || 0 }; });
   const items = vItems.concat(gItems);
 
   // (dev0596) Navigation-Training choices removed with the tab (was sourced from

@@ -664,13 +664,25 @@
     return n === 'doc' || n === 'slideSection' || n === 'details' || n === 'teCut' || n === 'styledDiv';
   }
 
-  // (dev0712) ⊘▼ — drop a CUT LINE after the current line. Everything below it
-  // stops rendering in the slide (core.js _salApplyCutBelow) while staying here,
-  // tinted red, as notes. Cursor inside it + ⊘ Hide removes it again.
+  // (dev0712) ⊘ HideFromHere — drop a CUT LINE after the current line. Everything
+  // below it stops rendering in the slide (core.js _salApplyCutBelow) while
+  // staying here, tinted red, as notes.
+  // (dev0763) Now a real toggle: cursor on the marker + click = the marker goes
+  // and everything below renders again. (It used to take ⊘ Hide to undo, which
+  // nothing on screen said.)
   function insertCutLine(editor) {
     var state = editor.state;
+    var here = _findAncestor(state, 'teCut');
+    if (here && here.node.attrs.below) {
+      try {
+        editor.view.dispatch(state.tr.delete(here.pos, here.pos + here.node.nodeSize));
+        _toast('Cut removed — everything below shows in the slide again');
+      } catch (e) { console.warn('[xe2] cut-line removal failed', e); }
+      editor.commands.focus();
+      return;
+    }
     if (_findAncestor(state, 'details')) { _toast('Move the cursor outside the collapsible first'); return; }
-    if (_findAncestor(state, 'teCut')) { _toast('There is already a cut line here'); return; }
+    if (here) { _toast('Cursor is inside a HideSection block — move it out first'); return; }
     var $from = state.selection.$from, pos;
     try { pos = $from.after($from.depth); } catch (e) { pos = null; }
     if (pos == null) { _toast('Click the line the cut should follow first'); return; }
@@ -679,7 +691,7 @@
     catch (e) { return; }
     try {
       editor.view.dispatch(state.tr.insert(pos, cut));
-      _toast('Cut line added — nothing below it shows in the slide');
+      _toast('HideFromHere added — nothing below it shows in the slide');
     } catch (e) { _toast('A cut line can’t go here'); }
     editor.commands.focus();
   }
@@ -1352,12 +1364,20 @@
     ).run();
   }
 
-  // ── (dev0623) ⊘ Hide — v1 parity: wrap the selected lines in div.te-cut
+  // ── (dev0623) ⊘ HideSection — v1 parity: wrap the selected lines in div.te-cut
   // (hidden in every render, kept as notes in Xe). Cursor inside a hidden
   // block → the same button SHOWS it again (unwraps).
+  // (dev0763) A HideFromHere marker is also a teCut node, but it isn't a hidden
+  // SECTION — unwrapping it here silently deleted the author's cut without ever
+  // saying so. Send it to its own button instead.
   function toggleHide(editor) {
     var state = editor.state;
     var cut = _findAncestor(state, 'teCut');
+    if (cut && cut.node.attrs.below) {
+      _toast('That red line is a HideFromHere marker — click ⊘ HideFromHere to remove it');
+      editor.commands.focus();
+      return;
+    }
     if (cut) {
       try {
         editor.view.dispatch(state.tr.replaceWith(cut.pos, cut.pos + cut.node.nodeSize, cut.node.content));
@@ -1424,8 +1444,8 @@
       ['&#128444;', 'Insert image OR direct video file — a .mp4/.webm URL (e.g. your Cloudflare one) is detected automatically and plays inline. Or EDIT the selected image/video (click/double-click it first to change size, alignment or caption).', function (e) { insertImage(e); }],
       ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
-      ['&#8856; Hide', 'Hide the SELECTED lines from the rendered slide (kept here, faded red, as notes). Cursor inside a hidden block = show it again.', function (e) { toggleHide(e); }],
-      ['&#8856;&#9660;', 'Cut line — everything BELOW it stops showing in the slide (kept here, red-tinted, as notes). Cursor on the line it should follow, then click.', function (e) { insertCutLine(e); }],
+      ['&#8856; HideSection', 'Hide the SELECTED lines from the rendered slide — they stay here, faded red, as notes. Everything after them still shows. TOGGLE: put the cursor inside a hidden block and click again to un-hide it.', function (e) { toggleHide(e); }],
+      ['&#8856; HideFromHere', 'Hide everything BELOW this point from the rendered slide — it stays here, red-tinted, as notes. Click on the last line that should still show. TOGGLE: cursor on the red line and click again to remove it.', function (e) { insertCutLine(e); }],
       ['|'],
       ['A&#9662;', 'Text color for the SECTION the cursor is in (whole slide when there are no ══ dividers)', function (e, btn) { showColorPicker(btn, 'text'); }],
       ['&#9635;&#9662;', 'Background color for the section the cursor is in', function (e, btn) { showColorPicker(btn, 'bg'); }],
@@ -1519,13 +1539,13 @@
       // (dev0712) red tint, so "this won't render" is readable at a glance and
       // not just a faint dashed outline.
       '#xe2Editor .te-cut{display:block!important;opacity:0.6;background:rgba(200,50,50,0.16);border:1px dashed #a66;border-radius:6px;padding:4px 10px;margin:6px 0;}',
-      '#xe2Editor .te-cut::before{content:"\\2298 hidden in slide \\2014 cursor here + \\2298 Hide shows it again";display:block;font-size:10px;color:#f99;font-weight:bold;}',
+      '#xe2Editor .te-cut::before{content:"\\2298 HideSection \\2014 hidden in the slide; cursor here + \\2298 HideSection shows it again";display:block;font-size:10px;color:#f99;font-weight:bold;}',
       // (dev0712) CUT LINE (te-cut-below): a bar, not a box — and everything
       // AFTER it is red-tinted too, because none of it renders either. The
       // sibling tint is pure CSS (~ combinator over the ProseMirror children),
       // so no class-stamping fights the editor's own DOM management.
       '#xe2Editor .te-cut-below{opacity:1;background:rgba(200,50,50,0.26);border:0;border-top:3px dashed #f66;border-radius:0;padding:0 6px 2px;margin:14px 0 0;}',
-      '#xe2Editor .te-cut-below::before{content:"\\2298 CUT \\2014 nothing below this line shows in the slide";color:#fbb;}',
+      '#xe2Editor .te-cut-below::before{content:"\\2298 HideFromHere \\2014 nothing below this line shows in the slide; cursor here + \\2298 HideFromHere removes it";color:#fbb;}',
       '#xe2Editor .te-cut-below ~ *{background:rgba(200,50,50,0.13);opacity:0.7;}',
       '#xe2Editor .te-slide:has(.te-cut-below) ~ *{background:rgba(200,50,50,0.13);opacity:0.7;}',
       '#xe2Editor table{border-collapse:collapse;} #xe2Editor td,#xe2Editor th{border:1px solid #557;padding:4px 8px;}',
