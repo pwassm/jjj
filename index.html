@@ -429,6 +429,24 @@ html.grid-clean #ver-badge { display:none !important; }
 .te-cut { display: none !important; }
 #teEditor .te-cut { display: block !important; }
 
+/* (dev0763) ▼▼ / ▶▶ expand-all / collapse-all icons (core.js _salXAllToggle).
+   Two triangles overlapped by a negative letter-spacing, with the same amount
+   given back as padding so the box still ends where the ink does. Blue matches
+   the <summary> triangles these operate on. */
+.te-xall {
+  display: inline-block;
+  letter-spacing: -0.40em;
+  padding-right: 0.40em;
+  font-size: 1.15em;
+  line-height: 1;
+  vertical-align: -0.06em;
+  color: #2563eb;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.te-slide[style*="color:"] .te-xall { color: inherit; }
+
 /* (dev0249) Deep-link routing classes. Set by boot.js BEFORE first paint
    based on ?i=NNN, so the table view never flashes while we wait for
    data load + V mount. .deep-uid hides T chrome; .locked-mode adds
@@ -1089,7 +1107,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0763';
+  window.HELP_VERSION_STR = 'dev0764';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

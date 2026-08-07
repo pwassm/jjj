@@ -1005,6 +1005,11 @@ async function _showShareableMenu() {
     + '.sm-results{max-width:620px;margin:0 auto;}'
     + '.sm-cta{display:block;margin:18px auto 26px;padding:13px 26px;border-radius:9px;border:1px solid #4af;background:rgba(0,60,120,0.5);color:#cfe8ff;font-family:sans-serif;font-size:17px;font-weight:bold;cursor:pointer;max-width:320px;width:calc(100% - 48px);}'
     + '.sm-cta:hover{background:rgba(0,80,150,0.65);}'
+    // (dev0763) Second line inside the top CTA — same button, quieter voice.
+    + '.sm-cta-sub{display:block;margin-top:4px;font-size:13px;font-weight:normal;opacity:0.85;}'
+    // (dev0763) Build stamp in the Intro's top-left corner. pointer-events:none
+    // so it can never sit between a thumb and the sign-in strip beneath it.
+    + '.sm-ver{position:absolute;top:3px;left:7px;z-index:2;font:10px/1 monospace;color:#7a7a90;pointer-events:none;}'
     + '.sm-tabs{display:flex;flex:none;border-top:2px solid #223;background:#0d0d1e;}'
     + '.sm-tab{flex:1;padding:13px 4px;text-align:center;cursor:pointer;font-family:sans-serif;font-size:14px;color:#8a93a8;background:transparent;border:none;border-top:3px solid transparent;}'
     + '.sm-tab.on{color:#cfe8ff;border-top-color:#4af;background:#11132a;}'
@@ -1068,17 +1073,24 @@ async function _showShareableMenu() {
         // Purely additive; browsing never requires it. Rendered signed-out by
         // default; _wireSignIn (below) swaps in the signed-in state after
         // salAuth.me() resolves.
+        // (dev0763) Build stamp, top-left of the Intro — small and inert, so a
+        // phone that is showing a stale cached app says so without being asked.
+        + '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
         + '<div id="smAuth" class="sm-auth"></div>'
-        + '<button id="smGoViewTop" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
+        // (dev0763) The button names its destination (the tabbed screen = the
+        // home screen) instead of describing the act of choosing, and the top
+        // one adds the line that stops a first-time viewer skipping the Intro.
+        + '<button id="smGoViewTop" class="sm-cta">Go to home screen'
+          + '<span class="sm-cta-sub">But check out Introduction first</span></button>'
         + (greetTop.trim() ? '<div class="smGreeting">' + greetTop + '</div>'
                            : '<div class="smGreeting"><p>Welcome.</p></div>')
-        + '<button id="smGoView" class="sm-cta">Choose a view&nbsp;&rarr;</button>'
+        + '<button id="smGoView" class="sm-cta">Go to home screen</button>'
       + '</div>'
       // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
       // Singles | Grids on desktop, stacked on phone)
       + '<div id="smPage2" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + (greetIntro.trim() ? '<div class="smGreeting">' + greetIntro + '</div>'
-                             : '<div class="sm-sub">Choose a view</div>')
+                             : '<div class="sm-sub">Home</div>')   // (dev0763) matches the button that lands here
         // (dev0379) Table-like, sortable list. Header columns Name / Modified
         // sort on click (arrow shows direction); body re-renders via
         // _smRenderChoose after mount. Defaults to Modified, newest at top.
@@ -2724,3 +2736,47 @@ load().then(() => {
   _wireFullscreenOnFirstTap();
   _routeInitialScreen();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev0763) STALE-BUILD SELF-HEAL.
+//
+// ml.json and c.json are fetched with ?t=Date.now(), so DATA is never stale.
+// index.html is not — and it is the file that pins the build: every script tag
+// carries ?v=<HELP_VERSION_STR>, so a cached index.html serves cached scripts
+// with it, and the phone keeps running an old app long after a push. That is
+// invisible (nothing on screen disagrees with itself) and, on Android, there is
+// no hard-reload gesture to clear it — which is what this is for.
+//
+// Re-fetch index.html with cache:'no-store', read the version out of it, and if
+// the published build is not the one running, reload through a URL the HTTP
+// cache has never seen (?v=<build>), preserving every existing param. Once per
+// session per version, so a browser that refuses to let go can't loop.
+// ─────────────────────────────────────────────────────────────────────────────
+(function _salBuildFreshness() {
+  try { if (_salIsLocalHost()) return; } catch (_) { return; }
+  setTimeout(async function () {
+    try {
+      const here = String(window.HELP_VERSION_STR || '');
+      if (!here) return;
+      // Once per tab: this costs a second index.html over mobile data, and a
+      // reload inside the same tab can't have changed what the server holds.
+      try {
+        if (sessionStorage.getItem('sal-fresh-checked') === here) return;
+        sessionStorage.setItem('sal-fresh-checked', here);
+      } catch (_) {}
+      const r = await fetch('index.html?fresh=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const m = (await r.text()).match(/HELP_VERSION_STR\s*=\s*'([^']+)'/);
+      if (!m) return;
+      const live = m[1];
+      if (live === here) return;
+      let seen = null;
+      try { seen = sessionStorage.getItem('sal-reload-for'); } catch (_) {}
+      if (seen === live) return;
+      try { sessionStorage.setItem('sal-reload-for', live); } catch (_) {}
+      const p = new URLSearchParams(window.location.search);
+      p.set('v', live);
+      location.replace(window.location.pathname + '?' + p.toString() + window.location.hash);
+    } catch (_) { /* offline, blocked, whatever — never break the app over this */ }
+  }, 2000);
+})();

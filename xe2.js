@@ -338,6 +338,33 @@
     },
   });
 
+  // (dev0763) ▼▼ / ▶▶ — an expand-all / collapse-all control the author places
+  // IN the text. An inline atom: the reader taps it and every collapsible in
+  // that slide opens or shuts (core.js _salXAllToggle). The glyphs are two
+  // plain triangles overlapped by CSS, not ⏬/⏩, which Android paints as
+  // colour emoji. Without this schema node the span would not survive a save.
+  var XAll = Node.create({
+    name: 'xAll',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    selectable: true,
+    addAttributes: function () {
+      return {
+        mode: {
+          default: 'open',
+          parseHTML: function (el) { return el.getAttribute('data-xall') === 'close' ? 'close' : 'open'; },
+          renderHTML: function (attrs) { return { 'data-xall': attrs.mode === 'close' ? 'close' : 'open' }; },
+        },
+      };
+    },
+    parseHTML: function () { return [{ tag: 'span[data-xall]' }]; },
+    renderHTML: function (p) {
+      return ['span', mergeAttributes(p.HTMLAttributes, { 'class': 'te-xall' }),
+              p.node.attrs.mode === 'close' ? '▶▶' : '▼▼'];
+    },
+  });
+
   // (dev0632) text-align as a first-class attribute on paragraphs/headings —
   // the vendored bundle has no TextAlign extension, so a minimal global attr
   // serializes to style="text-align:…" (what Xs/G already render).
@@ -361,7 +388,7 @@
     return [
       StarterKit,
       TextAlignAttr,
-      DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut,
+      DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut, XAll,
       Underline,
       StyledImage.configure({ inline: true }),
       Video,
@@ -1399,6 +1426,19 @@
     } catch (e) { _toast('That selection can’t be hidden as a block — select whole lines'); }
     editor.commands.focus();
   }
+  // (dev0763) Drop an expand-all (▼▼) or collapse-all (▶▶) icon at the cursor.
+  // It is inert HERE — clicking it in the editor just puts the caret beside it
+  // (core.js skips editor clicks) — and live on the slide, where a tap opens or
+  // shuts every collapsible in the same slide.
+  function insertXAll(editor, mode) {
+    try {
+      editor.chain().focus().insertContent({ type: 'xAll', attrs: { mode: mode } }).run();
+      _toast(mode === 'close'
+        ? 'Collapse-all icon added — on the slide it shuts every collapsible'
+        : 'Expand-all icon added — on the slide it opens every collapsible');
+    } catch (e) { _toast('That icon can’t go here'); }
+  }
+
   function setLink(editor) {
     var prev = editor.getAttributes('link').href || '';
     var url = prompt('Link URL (blank to remove):', prev);
@@ -1437,8 +1477,10 @@
       ['&#10697;', 'Duplicate the collapsible at the cursor — an exact copy appears right below it. Use THIS to clone a block (browser copy/paste of a rendered collapsible mangles it).', function (e) { duplicateCollapsible(e); }],
       ['&para;&#8593;', 'Blank line ABOVE the collapsible at the cursor, outside it (Ctrl+Shift+Enter)', function (e) { lineOutsideDetails(e, -1); }],
       ['&para;&#8595;', 'Blank line BELOW the collapsible at the cursor, outside it (Ctrl+Enter)', function (e) { lineOutsideDetails(e, 1); }],
-      ['&#9660; All', 'Expand all collapsibles', function (e) { setAllDetails(e, true); }],
-      ['&#9654; All', 'Collapse all collapsibles', function (e) { setAllDetails(e, false); }],
+      ['&#9660; All', 'Expand all collapsibles — HERE, in the editor', function (e) { setAllDetails(e, true); }],
+      ['&#9654; All', 'Collapse all collapsibles — HERE, in the editor', function (e) { setAllDetails(e, false); }],
+      ['&#9660;&#9660;&#8202;+', 'Insert an EXPAND-ALL icon at the cursor — on the finished slide, a reader taps it to open every collapsible on that slide', function (e) { insertXAll(e, 'open'); }],
+      ['&#9654;&#9654;&#8202;+', 'Insert a COLLAPSE-ALL icon at the cursor — on the finished slide, a reader taps it to shut every collapsible on that slide', function (e) { insertXAll(e, 'close'); }],
       ['|'],
       ['&#9552;&#9552;', 'Divider line — separates sections/slides; inside a colored section it splits the section so both halves keep the color', function (e) { insertSectionBreak(e); }],
       ['&#128444;', 'Insert image OR direct video file — a .mp4/.webm URL (e.g. your Cloudflare one) is detected automatically and plays inline. Or EDIT the selected image/video (click/double-click it first to change size, alignment or caption).', function (e) { insertImage(e); }],
@@ -1533,6 +1575,10 @@
       // far from the picture and reads as "did I select the right thing?" — the
       // fill makes the extent of what Ctrl+X will take unmistakable, caption and all.
       '#xe2Editor div.ProseMirror-selectednode{background:rgba(68,170,255,0.13);}',
+      // (dev0763) The expand/collapse-all icons, shown here the way the slide
+      // will show them (index.html owns the shared rule) plus a dotted outline,
+      // because in the editor they are an object you can select and delete.
+      '#xe2Editor .te-xall{outline:1px dotted rgba(37,99,235,0.55);outline-offset:1px;border-radius:2px;cursor:default;}',
       // (dev0623) hidden-from-render (te-cut) blocks: global CSS hides them
       // everywhere (display:none!important in index.html); higher-specificity
       // override re-shows them faded here, with a banner (matches v1 #teEditor).

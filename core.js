@@ -6727,6 +6727,55 @@ function _salApplyCutBelow(html) {
 }
 window._salApplyCutBelow = _salApplyCutBelow;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev0763) ▼▼ / ▶▶ — expand-all / collapse-all icons the AUTHOR drops into the
+// text with Xe, so a reader can open or shut every collapsible on the slide with
+// one tap. Two triangles overlapped (CSS letter-spacing, not a font glyph —
+// ⏬/⏩ render as coloured emoji on Android and would not inherit the slide's
+// colour). The markup is a single span, which is all the Xe schema has to carry:
+//
+//     <span class="te-xall" data-xall="open">▼▼</span>   (close = ▶▶)
+//
+// SCOPE is the nearest slide-ish container, so an icon inside one menu card
+// doesn't shut the collapsibles in the card next to it. querySelectorAll only
+// sees descendants, so an icon inside a <details> can never close the block it
+// is sitting in — one tap, one direction, no surprises.
+const _XALL_SCOPES = '.te-slide,.grid-html-thumb,#teSlideContent,#gridFsContent,'
+  + '.sm-detcard,.smGreeting,body';
+function _salXAllToggle(el) {
+  if (!el) return;
+  const open  = el.getAttribute('data-xall') !== 'close';
+  const scope = (el.closest && el.closest(_XALL_SCOPES)) || el.ownerDocument.body;
+  if (!scope) return;
+  scope.querySelectorAll('details').forEach(d => {
+    if (open) d.setAttribute('open', ''); else d.removeAttribute('open');
+  });
+}
+window._salXAllToggle = _salXAllToggle;
+
+// Delegated, once per document — the same call wires the main page and the V
+// reader's iframe (srcdoc is same-origin, so vp.js hands us its document rather
+// than injecting a script into every slide it builds).
+// NOT used by grid cells: their content is pointer-events:none under the
+// interactor, so grid.js routes its own tap probe to _salXAllToggle instead.
+function _salWireXAll(doc) {
+  const d = doc || document;
+  if (!d || d._salXAllWired) return;
+  d._salXAllWired = true;
+  d.addEventListener('click', e => {
+    const t = (e.target && e.target.closest) ? e.target.closest('.te-xall') : null;
+    if (!t) return;
+    // Inside an editor the icon is CONTENT being edited, not a control — a
+    // click there is the author placing the caret next to it.
+    if (t.closest('#xe2Editor,#teEditor')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _salXAllToggle(t);
+  }, true);
+}
+window._salWireXAll = _salWireXAll;
+_salWireXAll(document);
+
 // NOTE: renderFtext is the DISPLAY path (Xs, G thumbs/cells, V fullscreen).
 // Never use it to fill an editor — the cut above would delete the author's
 // parked notes on the next save. Editors call _linkifyHtml directly.

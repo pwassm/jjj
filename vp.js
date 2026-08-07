@@ -1656,7 +1656,18 @@ function gridOpenFullscreen(row, contained) {
     };
     window.addEventListener('message', quizMsgHandler);
 
-    const loadIframe = (html) => { iframe.srcdoc = html; };
+    // (dev0763) srcdoc is same-origin, so the ▼▼/▶▶ icons get their click
+    // handler wired from here rather than by injecting a script into every
+    // slide we build. onload (assignment, not addEventListener) so paging
+    // through sections re-wires the new document without stacking listeners.
+    const loadIframe = (html) => {
+      iframe.onload = function () {
+        try {
+          if (typeof window._salWireXAll === 'function') window._salWireXAll(iframe.contentDocument);
+        } catch (_) {}
+      };
+      iframe.srcdoc = html;
+    };
 
     if (row.qfile) {
       (async () => {
@@ -1697,6 +1708,13 @@ function gridOpenFullscreen(row, contained) {
         const _ftStyles =
             'a{color:#5bf!important;}'
           + '.te-cut{display:none!important;}'
+          // (dev0763) ▼▼/▶▶ expand-all icons — this iframe has its own document,
+          // so the index.html rule doesn't reach it. Clicks are wired from the
+          // parent in loadIframe (srcdoc is same-origin).
+          + '.te-xall{display:inline-block;letter-spacing:-0.40em;padding-right:0.40em;'
+          + 'font-size:1.15em;line-height:1;vertical-align:-0.06em;color:#2563eb;'
+          + 'cursor:pointer;user-select:none;-webkit-user-select:none;}'
+          + '.te-slide[style*="color:"] .te-xall{color:inherit;}'
           + 'table{border-collapse:collapse;margin:12px 0;max-width:100%;}'
           + 'th,td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}'
           + 'th{font-weight:bold;}'

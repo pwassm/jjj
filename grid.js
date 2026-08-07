@@ -844,6 +844,9 @@ function _gridSectionRender(cell) {
 // Which <summary> sits under viewport point (x,y) in this cell? Cell content
 // is pointer-events:none BELOW the interactor, and elementFromPoint skips
 // pointer-events:none targets — so momentarily flip both, probe, restore.
+// (dev0763) A ▼▼/▶▶ expand-all icon counts as a hit too — same probe, and the
+// caller branches on what came back. Without this the icon is dead in a cell:
+// the document-level handler in core.js never sees the click.
 function _gridSectionSummaryAt(cell, x, y) {
   const s = cell._salSect;
   if (!s || !s.inner.isConnected) return null;
@@ -855,11 +858,17 @@ function _gridSectionSummaryAt(cell, x, y) {
   const el = document.elementFromPoint(x, y);
   wrap.style.pointerEvents = pw || 'none';
   if (inter) inter.style.pointerEvents = pi;
-  const sum = (el && el.closest) ? el.closest('summary') : null;
+  const sum = (el && el.closest) ? (el.closest('.te-xall') || el.closest('summary')) : null;
   return (sum && cell.contains(sum)) ? sum : null;
 }
 
 function _gridSectionToggleSummary(cell, sum) {
+  // (dev0763) An expand-all/collapse-all icon, not a summary line.
+  if (sum.classList && sum.classList.contains('te-xall')) {
+    if (typeof window._salXAllToggle === 'function') window._salXAllToggle(sum);
+    if (cell._htmlThumbFit) cell._htmlThumbFit();
+    return;
+  }
   const d = sum.closest('details');
   if (!d) return;
   if (d.hasAttribute('open')) d.removeAttribute('open');
