@@ -3326,6 +3326,15 @@ function gridWireInteractor(interactor, cell, cellStr) {
     e.preventDefault();
     e.stopPropagation();
 
+    // (dev0762) A Shift+right-click is the zoom-OUT gesture (dev0364), never a
+    // menu request. The dev0364 suppressor above already killed the NATIVE menu,
+    // but stopPropagation does not stop a second listener on the same element,
+    // so this one still ran and popped SLAM's own cell menu — which is what a
+    // Shift+right-click actually raised on Chromium. Same compound test as the
+    // suppressor: the AHK-replayed click may land after pointerup has cleared
+    // _szActive and may not carry the held Shift.
+    if (e.shiftKey || _szActive || (Date.now() - _szLastAt) < 600) return;
+
     // (dev0355) Swallow the right-click that just navigated C→G (cMakeActive
     // mounts the grid synchronously inside that same contextmenu); without this
     // the menu would pop on the cell the cursor landed on. Guard is short-lived.
