@@ -2865,6 +2865,8 @@ function gridWireInteractor(interactor, cell, cellStr) {
   let _szStart = null, _szPanBase = null, _szBtn = 0;
   let _szDelay = null, _szTimer = null, _szStep = 0;
   let _szLastQuick = 0;   // (dev0671) timestamp of the last non-ramping Shift+click
+  let _szDir = 1;         // (dev0759) +1 = zoom in, -1 = out; set at _szBegin
+  let _szLastAt = 0;      // (dev0759) last moment a Shift gesture ran — see contextmenu
   // (dev0609) Zoom/pan store key — the row's UID, or its link for a link cell.
   const _szKey = () => _gridCellKey(cell._rowData);
   function _szStop() {
@@ -2881,6 +2883,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
     const ck = _szKey();
     if (!ck) return;
     _szActive = true; _szDown = true; _szDragging = false;
+    _szLastAt = Date.now();                  // (dev0759) for the contextmenu window
     _szBtn = e.button;                       // 0=left → zoom in, 2=right → zoom out
     _szStart = { x: e.clientX, y: e.clientY };
     _szPanBase = null;
@@ -2889,7 +2892,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
     // (dev0368) Direction: right button OR Ctrl+left → OUT, plain left → IN.
     // The Ctrl+Shift+left-hold alias is the Firefox-safe way to zoom out, since
     // Firefox force-shows its native menu on Shift+right-click (no page can block it).
-    const dir = (_szBtn === 2 || e.ctrlKey) ? -1 : 1;
+    const dir = _szDir = (_szBtn === 2 || e.ctrlKey) ? -1 : 1;
     _szStep = 0.01;
     // 180ms settle so a quick Shift+click doesn't zoom.
     _szDelay = setTimeout(() => {
@@ -2941,13 +2944,30 @@ function gridWireInteractor(interactor, cell, cellStr) {
     const dragged = _szDragging;   // (dev0758) a pan reports itself, not a zoom
     _szStop();
     const ck = _szKey();
+    // (dev0759) ZOOM-OUT ALSO WORKS AS A CLICK. The hold-to-ramp above needs a
+    // sustained button-down, and the user's always-on AutoHotkey (ALL 190.ahk)
+    // makes RButton a prefix key: the physical press is swallowed and replayed
+    // by `*RButton::Send {Blind}{RButton}` as an instantaneous down+up on
+    // RELEASE, so the 180ms settle timer is cleared before it ever fires and no
+    // amount of holding zooms out. A quick zoom-OUT click therefore steps by 0.1
+    // instead of counting toward the dev0671 double-click reset — which stays on
+    // the zoom-IN button, so plain Shift+double-click still resets to 1:1.
+    let steppedOut = false;
+    if (quick && _szDir === -1 && ck) {
+      const g = _gridFillZoom();
+      const cur = _gridCellZoom[ck] > 0 ? _gridCellZoom[ck] : 1;
+      let next = cur - 0.1;
+      if (g * next < _GRID_ZOOM_MIN) next = _GRID_ZOOM_MIN / g;
+      _gridCellZoom[ck] = next;
+      steppedOut = true;
+    }
     if (ck && _gridCellZoom[ck] > 0) {
       const snapped = _gridSnapZoom(_gridCellZoom[ck]);
       if (Math.abs(snapped - 1) < 1e-9) delete _gridCellZoom[ck];
       else _gridCellZoom[ck] = snapped;
     }
     let didReset = false;
-    if (quick && ck) {
+    if (quick && !steppedOut && ck) {
       const nowQ = Date.now();
       if (nowQ - _szLastQuick < 400) {
         _szLastQuick = 0;
@@ -2962,8 +2982,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
     // since the offset is transient until an Alt-click writes it to the COI.
     else if (dragged && ck && _gridCellPan[ck])
       _gridToast((cell.dataset.cell || 'cell') + ' panned — Alt-click to keep this framing', 1600);
-    else if (!quick) _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
+    else if (!quick || steppedOut) _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
     try { interactor.releasePointerCapture(e.pointerId); } catch (_) {}
+    _szLastAt = Date.now();                  // (dev0759) for the contextmenu window
     _szActive = _szDown = _szDragging = false;
     _szStart = _szPanBase = null;
     interactor.style.cursor = '';
@@ -3155,8 +3176,13 @@ function gridWireInteractor(interactor, cell, cellStr) {
 
   // (dev0364) Suppress the right-click menu during a Shift+RMB zoom-out (and any
   // time the gesture is mid-flight) so the ramp isn't interrupted by a context menu.
+  // (dev0759) The AHK replay (see _szEnd) can deliver contextmenu AFTER pointerup
+  // has already cleared _szActive, and the synthesized click does not reliably
+  // carry the held Shift — so a short trailing window covers both. Firefox is
+  // still beyond reach: it force-shows the native menu on Shift+right-click and
+  // ignores preventDefault, which is why Ctrl+Shift+hold-LMB exists (dev0368).
   interactor.addEventListener('contextmenu', ev => {
-    if (ev.shiftKey || _szActive) ev.preventDefault();
+    if (ev.shiftKey || _szActive || (Date.now() - _szLastAt) < 600) ev.preventDefault();
   }, true);
   
   // (zip0143) TOUCH FALLBACK for browsers that don't fire pointer events
