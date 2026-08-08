@@ -2638,6 +2638,67 @@ function streamExecCollect(req, res, bin, args, onDone) {
   req.on('close', () => { try { proc.kill(); } catch (_) {} });
 }
 
+// (dev0766) ── The watermarked-video folder ────────────────────────────────
+// M:\wm\watermarked\ is the output of the M:\wm watermark tooling, and every
+// file in it was uploaded to the R2 bucket `videofiles` at the SAME relative
+// path — so a file's public URL is just video.sealifeandmore.com + that path.
+// That makes the folder a usable local stand-in for "what is in Cloudflare",
+// which is what T's Housekeeping ▸ Add Watermarked Videos diffs against
+// ml.json. Read-only, and hard-scoped to WM_DIR: the caller never supplies a
+// path, only a key that must resolve back inside WM_DIR.
+const WM_DIR = process.env.WM_DIR || 'M:\\wm\\watermarked';
+const WM_EXT = /\.(mp4|webm|mov|m4v)$/i;
+
+// Relative key ("chitonspawning/foo.mp4") → absolute path, or null if the key
+// escapes WM_DIR. Keys come from wmList, but wmProbe takes one over the wire.
+function wmResolve(key) {
+  if (typeof key !== 'string' || !key || !WM_EXT.test(key)) return null;
+  const full = path.resolve(WM_DIR, key.replace(/\//g, path.sep));
+  const root = path.resolve(WM_DIR) + path.sep;
+  return full.startsWith(root) ? full : null;
+}
+
+// Names only — no ffprobe. The common case is "nothing new", and that answer
+// should cost nothing; the client probes just the files it decides to add.
+function wmList(res, origin) {
+  if (!fs.existsSync(WM_DIR)) {
+    sendJson(res, 200, { ok: false, dir: WM_DIR, files: [], error: 'folder not found: ' + WM_DIR }, origin);
+    return;
+  }
+  const files = [];
+  const walk = (dir, rel) => {
+    let ents;
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    for (const ent of ents) {
+      const key = rel ? rel + '/' + ent.name : ent.name;
+      if (ent.isDirectory()) { walk(path.join(dir, ent.name), key); continue; }
+      if (!WM_EXT.test(ent.name)) continue;
+      let st; try { st = fs.statSync(path.join(dir, ent.name)); } catch (_) { continue; }
+      files.push({ key, size: st.size, mtime: st.mtimeMs });
+    }
+  };
+  walk(WM_DIR, '');
+  files.sort((a, b) => a.key.localeCompare(b.key));
+  sendJson(res, 200, { ok: true, dir: WM_DIR, files }, origin);
+}
+
+// One file's duration + pixel dimensions, so a new ml.json row lands with
+// vidLength and Mode already filled. Two sync ffprobe spawns, hence one file
+// per request: a housekeeping run probes only the handful it is adding, and
+// the proxy is single-threaded.
+function wmProbe(res, origin, key) {
+  const full = wmResolve(key);
+  if (!full) { sendJson(res, 400, { ok: false, error: 'bad key: ' + key }, origin); return; }
+  if (!fs.existsSync(full)) { sendJson(res, 404, { ok: false, error: 'no such file: ' + key }, origin); return; }
+  const dims = probeMediaDims(full);
+  sendJson(res, 200, {
+    ok: true, key,
+    seconds: pinProbeDuration(full),
+    w: dims ? dims.w : 0,
+    h: dims ? dims.h : 0
+  }, origin);
+}
+
 function send(res, code, msg, extraHeaders) {
   const h = Object.assign({ 'Content-Type': 'text/plain' }, extraHeaders || {});
   res.writeHead(code, h);
@@ -4969,7 +5030,7 @@ http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/') || req.url.startsWith('/edit/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/') || req.url.startsWith('/edit/') || req.url.startsWith('/wm/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -4983,7 +5044,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist']) }));
     return;
   }
 
@@ -5175,6 +5236,26 @@ http.createServer((req, res) => {
   // nothing but seeking.
   if (req.url.split('?')[0] === '/localfile') {
     serveLocalFile(req, res);
+    return;
+  }
+
+  // (dev0766) ── Watermarked-video folder (read-only) ────────────────────────
+  //   GET /wm/list             → every video under WM_DIR, as relative keys
+  //   GET /wm/probe?key=<key>  → that one file's duration + dimensions
+  // Origin-locked like /exec — it reads a folder outside the project.
+  if (req.url.startsWith('/wm/')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      console.warn(`[wm 403] origin="${origin || '(none)'}" not in allowlist`);
+      send(res, 403, 'wm: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    if (req.method !== 'GET') { send(res, 405, 'wm: GET required', corsForExec(origin)); return; }
+    const u = new URL(req.url, 'http://127.0.0.1');
+    const action = u.pathname.slice('/wm/'.length);
+    if (action === 'list')  { wmList(res, origin); return; }
+    if (action === 'probe') { wmProbe(res, origin, u.searchParams.get('key') || ''); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown wm action: ' + action }, origin);
     return;
   }
 

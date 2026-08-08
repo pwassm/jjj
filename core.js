@@ -4570,6 +4570,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingFixIgLtype();
     } else if (act === 'needsource') {
       housekeepingNeedSource();
+    } else if (act === 'addwm') {
+      housekeepingAddWatermarked();
     } else if (act === 'resetftlsaved') {
       const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
       if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
@@ -4651,6 +4653,118 @@ function housekeepingFixIgLtype() {
   hits.forEach(r => { r.ltype = 'i'; r.DateModified = now; });
   save(); render();
   toast('✓ Fixed IG ltype — ' + hits.length + ' row(s) reassigned w → i', 3500);
+}
+
+// (dev0766) ── Add Watermarked Videos ───────────────────────────────────────
+// Every video the M:\wm tooling stamps lands in M:\wm\watermarked\ and is
+// uploaded to the R2 bucket `videofiles` at the same relative path, so its
+// public URL is deterministic: R2_VIDEO_BASE + that path. Until now the last
+// step was manual — build the URL by hand, paste a row into T — which is how
+// files drift out of ml.json (5 of them had, when this was written).
+//
+// So: list the folder, diff it against the links already in ml.json, and add
+// a row for each one that is missing. Idempotent — run it after every upload.
+//
+// CAVEAT worth knowing: the folder is a stand-in for the bucket, not the
+// bucket itself. watermark_r2.ps1 asks before uploading, so a file you stamped
+// and then declined to upload IS in watermarked\ and is NOT in R2 — its row
+// would 404 until you upload it. Answering `y` keeps the two in step.
+const R2_VIDEO_BASE = 'https://video.sealifeandmore.com/';
+
+// Relative key → public URL. Each segment is encoded separately so the slashes
+// survive: "bb main.mp4" → "bb%20main.mp4", matching the rows already in
+// ml.json. encodeURIComponent leaves `~` alone, which the chiton filenames
+// rely on.
+function _wmKeyToUrl(key) {
+  return R2_VIDEO_BASE + key.split('/').map(encodeURIComponent).join('/');
+}
+
+// The comparison key for "is this already in T". Decoded (ml.json stores
+// %20 but the folder gives a space) and lowercased — R2 object keys really are
+// case-sensitive, but two rows differing only in case would be a typo far more
+// often than two genuine files, and a skipped row is cheaper than a duplicate.
+function _wmLinkKey(link) {
+  let s = String(link || '').trim();
+  if (!s.toLowerCase().startsWith(R2_VIDEO_BASE.toLowerCase())) return '';
+  s = s.slice(R2_VIDEO_BASE.length).split(/[?#]/)[0];
+  try { s = decodeURIComponent(s); } catch (_) {}
+  return s.toLowerCase();
+}
+
+function _wmFmtDur(sec) {
+  sec = Math.round(+sec || 0);
+  if (!sec) return '';
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  const p2 = n => String(n).padStart(2, '0');
+  return h ? (h + ':' + p2(m) + ':' + p2(s)) : (m + ':' + p2(s));
+}
+
+async function housekeepingAddWatermarked() {
+  const PROXY = 'http://127.0.0.1:8081';
+  let list;
+  try {
+    const r = await fetch(PROXY + '/wm/list');
+    list = await r.json();
+  } catch (_) {
+    toast('⚠ Add Watermarked: proxy not reachable on 8081 — start proxy.js', 4000);
+    return;
+  }
+  if (!list || !list.ok) {
+    toast('⚠ Add Watermarked: ' + ((list && list.error) || 'proxy returned no list')
+          + '\n(needs proxy dev0766+ — RESTART it if you just updated)', 5000);
+    return;
+  }
+  const files = Array.isArray(list.files) ? list.files : [];
+  if (!files.length) { toast('No videos found in ' + list.dir, 3000); return; }
+
+  const have = new Set();
+  data.forEach(r => { const k = r && _wmLinkKey(r.link); if (k) have.add(k); });
+  const missing = files.filter(f => !have.has(f.key.toLowerCase()));
+
+  if (!missing.length) {
+    toast('✓ All ' + files.length + ' watermarked video(s) are already in T', 3000);
+    return;
+  }
+  const names = missing.map(f => '  • ' + f.key).join('\n');
+  if (!confirm('Add ' + missing.length + ' watermarked video(s) to ml.json?\n\n' + names
+               + '\n\nEach becomes a row with link = ' + R2_VIDEO_BASE + '<name>,'
+               + '\nplus vidLength and Mode measured off the local file.'
+               + '\nTags are left empty — tag them in A.')) return;
+
+  toast('🎬 Adding ' + missing.length + ' video(s)…', 2500);
+  const now = isoNow();
+  let probed = 0;
+  for (const f of missing) {
+    // Best-effort probe: a row with no duration is still a good row, and Calc
+    // Lengths / Fill Mode can finish it later.
+    let meta = null;
+    try {
+      const pr = await fetch(PROXY + '/wm/probe?key=' + encodeURIComponent(f.key));
+      const pj = await pr.json();
+      if (pj && pj.ok) { meta = pj; probed++; }
+    } catch (_) {}
+    const row = {
+      UID: nextUID(),
+      link: _wmKeyToUrl(f.key),
+      show: '1',
+      DateAdded: now,
+      DateModified: now,
+      tags: [],
+      Mute: '0',
+      ftextSize: '0',
+      FtextJunk: '0',
+      MPix: 'V',
+      vidLength: meta ? _wmFmtDur(meta.seconds) : ''
+    };
+    if (meta && meta.w && meta.h) row.Mode = meta.w > meta.h ? 'L' : (meta.h > meta.w ? 'P' : 'S');
+    data.push(row);
+  }
+  save(); render();
+  toast('✓ Added ' + missing.length + ' watermarked video(s) to T'
+        + (probed < missing.length
+            ? '\n⚠ ' + (missing.length - probed) + ' could not be probed — run Calc Lengths / Fill Mode'
+            : '\n   vidLength + Mode filled from the local files'),
+        5000);
 }
 
 function _extractYTVideoId(url) {
