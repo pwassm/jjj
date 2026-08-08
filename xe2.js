@@ -591,12 +591,42 @@
   }
 
   // Write current editor HTML to the row + persist to disk (no close).
+  // (dev0773) TWO KINDS OF ROW, TWO FILES, and until now only one writer was
+  // ever called. window.save() writes ML.JSON from `data`; c.json is written
+  // ONLY by collection.js cSaveToFile(). So editing a CONFIG row's ctxt here
+  // updated the in-memory _cData row, stamped "✓ autosaved", toasted "✓ Saved
+  // ctxt" — and wrote nothing to c.json. The edit reached disk only if some
+  // LATER C-screen action happened to call cSaveToFile in the same session;
+  // a hard reload first (exactly what "check the live site" invites) silently
+  // discarded it. That is how the Intro's video-of-the-day marker vanished
+  // three times in a row while every editor step verified clean.
+  //
+  // A config row is one with a gname and no UID. Route it to cSaveToFile —
+  // and NOT to save(): in C-mode `data` IS _cData, so save() would try to
+  // write the 60 collection rows out as ml.json (the wipe guard is the only
+  // thing standing in the way). The identity check on _gridConfigs makes sure
+  // the row we just mutated is actually in the array cSaveToFile writes;
+  // if it is not, say so out loud instead of pretending the save happened.
   function doSave() {
     if (!_api || !_row) return false;
     _row[_field] = _api.getFtext();
     _row.DateModified = nowIso();
     if (_field === 'ftext' && !_row.link) _row.VidRange = 'text';
-    if (typeof window.save === 'function') { try { window.save(); } catch (e) { console.warn('[xe2] save() failed', e); } }
+    var isCfgRow = _row.UID === undefined && _row.gname !== undefined;
+    if (isCfgRow) {
+      var inC = Array.isArray(window._gridConfigs) && window._gridConfigs.indexOf(_row) >= 0;
+      if (inC && typeof window.cSaveToFile === 'function') {
+        try {
+          Promise.resolve(window.cSaveToFile()).then(function (ok) {
+            if (!ok) _toast('⚠ c.json disk write failed — saved to localStorage only');
+          });
+        } catch (e) { console.warn('[xe2] cSaveToFile failed', e); }
+      } else {
+        _toast('⚠ NOT saved to c.json — this row isn’t in the loaded config table. Open the C screen and retry.');
+      }
+    } else if (typeof window.save === 'function') {
+      try { window.save(); } catch (e) { console.warn('[xe2] save() failed', e); }
+    }
     stampSaved();
     return true;
   }
@@ -2054,6 +2084,10 @@
     _undetail: undetail,
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,
+    // (dev0773) exported so the in-collection link handler (core.js
+    // _salWireLinks) can SAVE-and-close the editor before following a link,
+    // instead of refusing. Same call the ✓ Save button makes.
+    _commitAndClose: commitAndClose,
     // (dev0770) link building — exported so the "label;target" parse and the
     // V./C. → deep-link mapping can be exercised without driving a prompt().
     _setLink: setLink,

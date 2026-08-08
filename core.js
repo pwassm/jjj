@@ -6947,8 +6947,17 @@ function _salWireLinks(doc) {
     // follow a link. Say so instead of opening something no one can see.
     const slideOv = document.getElementById('teSlideOverlay');
     if (slideOv) slideOv.remove();
+    // (dev0773) The EDITOR under the preview: dev0772 refused with a toast, and
+    // the author's verdict was that the link should simply work — the report
+    // "goes back to Xs" was this refusal seen from the outside. xe2 autosaves
+    // anyway, so save-and-close (the same call as ✓ Save) costs nothing, and
+    // then the item opens where it can be seen. The toast remains only for the
+    // dead v1 editor, which has no exported commit.
     if (document.getElementById('xe2Overlay')) {
-      if (typeof window.toast === 'function') {
+      if (window.XE2 && typeof window.XE2._commitAndClose === 'function') {
+        try { window.XE2._commitAndClose(); } catch (_) {}
+        setTimeout(go, 120);
+      } else if (typeof window.toast === 'function') {
         window.toast('Close the editor to follow this link — it opens under Xe', 2600);
       }
       return;
