@@ -2798,8 +2798,18 @@ function _openItemByUid(uid) {
   // giving up. Without this, the first call sees no data and silently
   // returns — leaving a blank screen on slow connections.
   const startedAt = Date.now();
+  // (dev0774) The ML rows, which are NOT always `data`: while the C screen is
+  // open, collection.js has swapped the global to c.json's 60 collections (no
+  // UID column at all) and parked the T rows in _tSave.data. A `v.709` link
+  // clicked from a slide while C was up therefore reported "No item with UID
+  // 709" — the row was never missing, this was reading the wrong table. Third
+  // caller caught by that swap; teMlRows (xe.js) is the one place that knows.
+  const _mlRows = () => (typeof window.teMlRows === 'function')
+    ? window.teMlRows()
+    : ((typeof data !== 'undefined' && Array.isArray(data)) ? data : []);
   function tryOpen() {
-    if (typeof data === 'undefined' || !Array.isArray(data) || data.length === 0) {
+    const rows = _mlRows();
+    if (!rows.length) {
       if (Date.now() - startedAt > 5000) {
         if (typeof toast === 'function') toast('Could not load data — check your connection', 3000);
         _recoverMenu();
@@ -2808,7 +2818,7 @@ function _openItemByUid(uid) {
       setTimeout(tryOpen, 100);
       return;
     }
-    const row = data.find(r => String(r.UID) === want);
+    const row = rows.find(r => String(r.UID) === want);
     if (!row) {
       if (typeof toast === 'function') toast('No item with UID ' + want, 2000);
       _recoverMenu();

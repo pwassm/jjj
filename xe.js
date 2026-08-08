@@ -1554,6 +1554,27 @@ function teUpdateStats() {
 // to the row and calls save(), but does NOT close the overlay or update the
 // grid cell. Used by the Slide button (auto-save before preview) and could
 // be called from Ctrl+S if we want a non-destructive save in the future.
+// (dev0774) Persist the row the text editor just wrote — to the RIGHT FILE.
+// dev0773 fixed this in xe2's doSave, but v1 has the identical bug and v1 is
+// still reachable (?xe2=0, or any v2 failure falling through gridOpenTextEditor).
+// save() writes ml.json from `data`; c.json is written ONLY by collection.js
+// cSaveToFile(). A config row (gname, no UID) sent to save() therefore updated
+// memory, said "Saved", and wrote nothing — and in C-mode `data` IS the config
+// table, so save() would also aim 60 collection rows at the ml.json wipe guard.
+// Shared by both v1 save paths so neither can drift from the other again.
+function _tePersistRow(row) {
+  const isCfgRow = row && row.UID === undefined && row.gname !== undefined;
+  if (!isCfgRow) { if (typeof save === 'function') save(); return; }
+  const inC = Array.isArray(window._gridConfigs) && window._gridConfigs.indexOf(row) >= 0;
+  if (inC && typeof window.cSaveToFile === 'function') {
+    Promise.resolve(window.cSaveToFile()).then(ok => {
+      if (!ok && typeof toast === 'function') toast('⚠ c.json disk write failed — saved to localStorage only', 3000);
+    }).catch(e => console.warn('[xe] cSaveToFile failed', e));
+  } else if (typeof toast === 'function') {
+    toast('⚠ NOT saved to c.json — this row isn’t in the loaded config table. Open the C screen and retry.', 5000);
+  }
+}
+
 function _textEditorDoSave() {
   const editor = document.getElementById('teEditor');
   if (!editor || !_textEditorRow) return false;
@@ -1568,7 +1589,7 @@ function _textEditorDoSave() {
     if (_liD !== null) _textEditorRow.link = _liD.value.trim();
     if (!_textEditorRow.link) _textEditorRow.VidRange = 'text';
   }
-  save();
+  _tePersistRow(_textEditorRow);
   return true;
 }
 
@@ -1602,7 +1623,7 @@ function textEditorSave() {
     }
   }
 
-  save();
+  _tePersistRow(_textEditorRow);   // (dev0774) config rows → c.json, not ml.json
   textEditorClose();
 
   // Refresh grid cell (ftext slides only — ttxt/ctxt don't drive a grid cell)
@@ -2488,6 +2509,16 @@ function teShowImageModal(onInsert, defaults) {
     const html = buildHtml(r.url, size, align, caption, r.kind, vopts);
     close();
     if (typeof onInsert === 'function') onInsert(html);
+    // (dev0774) Confirm a date-slot insert FROM HERE, the one place both editors
+    // share. dev0772 put this in xe2's insertImage — invisible if the v1
+    // fallback is what is actually running (a deliberate ?xe2=0, or any v2
+    // failure), which is precisely the case that would explain "no toast".
+    // Naming the build makes a stale cached script self-evident too: no toast at
+    // all means this xe.js predates dev0774, whatever the badge says.
+    if (r.kind === 'slot' && typeof toast === 'function') {
+      toast('📅 Video-of-the-day slot inserted (' + (window.HELP_VERSION_STR || '?')
+        + ') — Save, then open the Intro tab', 3200);
+    }
   }
   modal.querySelector('#teImgInsert').onclick = doInsert;
   // (dev0733) Touching the % dropdown selects the % radio — otherwise picking a
