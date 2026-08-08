@@ -1359,9 +1359,31 @@
     // position BEFORE the node, and that parent chain excludes the node itself —
     // so handle this shape first, or 🖼 would insert a new picture instead of
     // editing the one that is visibly selected.
+    // (dev0775) Carry the caption's HTML, not just its text. _wrapperEditCtx
+    // reads captions with `if (t.isText) caption += t.text`, which drops every
+    // MARK on the way — so a caption containing a link came back as bare words,
+    // and rebuilding from it silently destroyed the link. That is how
+    // "…eelgrass <a href=?i=709>See more</a>" became "…eelgrass See more" in
+    // c.json from nothing but a re-size. Read it off the rendered DOM (the view
+    // has it already) and hand it back so an UNEDITED caption is re-emitted
+    // verbatim instead of being reconstructed from flattened text.
+    function _withCaptionHtml(ctx) {
+      if (!ctx) return ctx;
+      try {
+        var dom = editor.view.nodeDOM(ctx.from);
+        if (dom && dom.querySelectorAll) {
+          var capEl = null;
+          dom.querySelectorAll('div').forEach(function (d2) {
+            if (!d2.querySelector('img,video')) capEl = d2;   // last non-media div = caption
+          });
+          if (capEl) ctx.defaults.captionHtml = capEl.innerHTML;
+        }
+      } catch (_) {}
+      return ctx;
+    }
     if (sel.node && sel.node.type && sel.node.type.name === 'styledDiv') {
       var selCtx = _wrapperEditCtx(sel.node, sel.from, sel.from + sel.node.nodeSize);
-      if (selCtx) return selCtx;
+      if (selCtx) return _withCaptionHtml(selCtx);
     }
     // outermost styledDiv ancestor that contains an image/video = modal wrapper
     var $from = sel.$from;
@@ -1369,7 +1391,7 @@
       var wrapNode = $from.node(d);
       if (wrapNode.type.name !== 'styledDiv') continue;
       var ctx = _wrapperEditCtx(wrapNode, $from.before(d), $from.before(d) + wrapNode.nodeSize);
-      if (ctx) return ctx;
+      if (ctx) return _withCaptionHtml(ctx);
     }
     // bare selected image/video node
     var selNode = sel.node && sel.node.type

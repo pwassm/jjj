@@ -688,6 +688,11 @@ async function _showShareableMenu() {
     return s === 'introduction' || s === 'intro';
   };
   const introCfg = cRows.find(r => r && !r._salMeta && _isIntroCfg(r.gname));
+  // (dev0775) Hand this freshly-fetched row to core.js. renderFtext is
+  // synchronous and cannot fetch c.json, so outside the menu it falls back to
+  // whatever is in memory — this is the copy that makes a slot resolve in Xs
+  // and on a grid the first time the landing page has been built.
+  if (introCfg) window._salIntroCfgCache = introCfg;
   // `let`, not `const`: the date-driven UID slot (dev0768, below _smEsc) makes a
   // second pass over this to swap the author's bare `UID` token for today's
   // clip. It runs down there because it needs _smEsc, which isn't declared yet.
@@ -761,134 +766,15 @@ async function _showShareableMenu() {
   //
   // The cell holds a UID, exactly as a grid cell does, so filling a day is
   // typing a number into C — no HTML, and the Intro prose is authored once.
-  const _SM_DAY_CELLS = [
-    '1a', '1b', '1c', '1d', '1e',   // days  1– 5   (author's a1–a5)
-    '2a', '2b', '2c', '2d', '2e',   // days  6–10   (author's b1–b5)
-    '3a', '3b', '3c', '3d', '3e',   // days 11–15   (author's c1–c5)
-    '4a', '4b', '4c', '4d', '4e',   // days 16–20   (author's d1–d5)
-    '5a', '5b', '5c', '5d', '5e',   // days 21–25   (author's e1–e5)
-    '1P', '2P', '3P',               // days 26–28
-    '1f', '1g', '1h'                // days 29–31
-  ];
-  // LOCAL date — the slot tracks the viewer's own calendar day, not UTC, so it
-  // turns over at their midnight rather than at some hour of their afternoon.
-  // `?introday=13` previews another day without touching the clock; anything
-  // out of range falls back to today.
-  const _smIntroDay = () => {
-    let d = 0;
-    try { d = parseInt(new URLSearchParams(location.search).get('introday'), 10) || 0; } catch (e) {}
-    return (d >= 1 && d <= 31) ? d : new Date().getDate();
-  };
-  const _smIntroPick = () => {
-    const day = _smIntroDay();
-    const key = _SM_DAY_CELLS[day - 1] || '';
-    const uid = (introCfg && key && introCfg[key] != null) ? String(introCfg[key]).trim() : '';
-    const row = uid ? mlRows.find(r => r && !r._salMeta && String(r.UID) === uid) : null;
-    const why = !introCfg ? 'no c.json config row named "Introduction"'
-              : !key      ? 'day ' + day + ' maps to no cell'
-              : !uid      ? 'cell ' + key + ' is empty'
-              : !row      ? 'no ml.json row with UID ' + uid
-              : !String(row.link || '').trim() ? 'UID ' + uid + ' has no link'
-              : !_SM_SLOT_VID.test(String(row.link).split(/[?#]/)[0])
-                && !_SM_SLOT_IMG.test(String(row.link).split(/[?#]/)[0])
-                          ? 'UID ' + uid + ' is not a direct media file (YouTube/Vimeo pages can\'t play here): ' + row.link
-              : '';
-    return { day, key, uid, row, why };
-  };
-  // Direct media files only, deliberately: the author is starting with the
-  // self-hosted mp4s on video.sealifeandmore.com, and a YouTube/Vimeo WATCH page
-  // is not something a <video> can play (that needs the grid/V iframe path).
-  const _SM_SLOT_VID = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
-  const _SM_SLOT_IMG = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i;
-  // No caption is synthesised here: when the marker came from the modal the
-  // author's caption is already sitting in the wrapper beside it, and a second
-  // one built from VidTitle would just double it up.
-  const _smSlotHtml = row => {
-    const link = String((row && row.link) || '').trim();
-    if (!link) return '';
-    const path = link.split(/[?#]/)[0];
-    // Anything that is not a media FILE renders NOTHING (with a console reason).
-    // This is not hypothetical tidiness: the Introduction row inherited its 25
-    // cells from the grid it was copied off, so most days currently point at
-    // news-site JPEGs and two YouTube watch pages. A watch page can't play in a
-    // <video>, and printing its raw URL on the public front door is worse than
-    // an empty slot. The developer still finds out — console.warn below, plus
-    // window._smIntroSlot().
-    if (!_SM_SLOT_VID.test(path) && !_SM_SLOT_IMG.test(path)) return '';
-    const src = _smEsc(link).replace(/"/g, '&quot;');
-    // width:100% of whatever wrapper the author's modal choice built — so the
-    // clip is 75% of the line, floated left, if that is what they picked.
-    const css = 'width:100%;border-radius:4px;';
-    return _SM_SLOT_VID.test(path)
-      // The same flags as the clips the author hand-placed in this very ctxt, so
-      // the generated one is not the odd one out on its own page.
-      ? '<video class="sm-introslot" src="' + src + '" controls autoplay loop muted'
-        + ' playsinline preload="metadata" style="' + css + '"></video>'
-      : '<img class="sm-introslot" src="' + src + '" alt="" style="' + css + '">';
-  };
-  const _smApplyIntroSlot = html => {
-    const host = document.createElement('div');
-    host.innerHTML = String(html || '');
-    // Collect the tokens first and mutate afterwards — replacing nodes during a
-    // TreeWalker walk invalidates it.
-    const _isTok = s => (typeof window.teIsSlotToken === 'function')
-      ? window.teIsSlotToken(s) : /^uidoftheday$/i.test(String(s || '').trim());
-    // (dev0770) Two markers, one meaning. `.te-slot` is what the 🖼 modal inserts
-    // — a placeholder box, replaced whole. A bare "UIDoftheday" text node is the
-    // hand-typed form (and everything dev0769 saved), kept working: climb to the
-    // tightest wrapper that holds nothing but the token.
-    const targets = Array.prototype.slice.call(host.querySelectorAll('.te-slot'));
-    const walk = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, null);
-    let n;
-    while ((n = walk.nextNode())) {
-      if (!_isTok(n.nodeValue)) continue;
-      if (n.parentNode && n.parentNode.closest && n.parentNode.closest('.te-slot')) continue; // already covered
-      // …but NEVER climb past a styled element. That styled div is the author's
-      // own size/float wrapper from the modal, and swallowing it would throw away
-      // the 75%-of-the-line, floated-left layout they just chose. Without the
-      // guard a slot with no caption (wrapper holding only the marker) lost its
-      // geometry.
-      let t = n;
-      while (t.parentNode && t.parentNode !== host && t.parentNode.nodeType === 1
-             && !t.parentNode.getAttribute('style')
-             && t.parentNode.children.length <= 1
-             && _isTok(t.parentNode.textContent)) t = t.parentNode;
-      targets.push(t);
-    }
-    if (!targets.length) return host.innerHTML;
-    const hits = targets;
-    const pick = _smIntroPick();
-    const media = pick.row ? _smSlotHtml(pick.row) : '';
-    if (!media) {
-      try { console.warn('[intro slot] day ' + pick.day + ', cell ' + (pick.key || '—')
-        + ': ' + (pick.why || 'nothing to show')); } catch (e) {}
-    }
-    hits.forEach(target => {
-      if (!target.parentNode) return;
-      // An unfillable slot removes the token rather than printing the word
-      // "UIDoftheday" at a viewer. The reason went to the console above, and to
-      // window._smIntroSlot() below, which is where the developer looks.
-      //
-      // Take the author's wrapper with it, or an empty day leaves a floated
-      // 75%-wide hole with a caption hanging under nothing. Only when that
-      // wrapper is the modal's own shape — styled, no other media inside, at
-      // most a caption left — so a slot dropped inside a larger authored
-      // section can never take the section with it.
-      if (!media) {
-        const box = target.parentNode;
-        target.parentNode.removeChild(target);
-        if (box && box !== host && box.nodeType === 1 && box.getAttribute('style')
-            && !box.querySelector('img,video,iframe') && box.children.length <= 1) {
-          if (box.parentNode) box.parentNode.removeChild(box);
-        }
-        return;
-      }
-      const box = document.createElement('div');
-      box.innerHTML = media;
-      target.parentNode.replaceChild(box.firstChild, target);
-    });
-    return host.innerHTML;
-  };
+  // (dev0775) The cell table, the date lookup and the media builder all moved
+  // to core.js (_SAL_SLOT_CELLS / _salSlotPick / _salSlotMediaHtml) when the
+  // swap became shared. A second copy here is exactly how the two would drift.
+  // (dev0775) The swap itself now lives in core.js (_salApplySlot) so every
+  // render context shares it — Xs and the grid used to leave the placeholder
+  // showing, which made a perfectly good slot look broken in preview. This
+  // wrapper just feeds it the menu's own freshly-fetched c.json / ml.json,
+  // rather than the in-memory tables core.js has to fall back on.
+  const _smApplyIntroSlot = html => _salApplySlot(html, introCfg, mlRows);
   introHtml = _smApplyIntroSlot(introHtml);
   // (dev0769) Exported so the swap can be exercised on a scrap of HTML from the
   // console without having to author a marker into c.json first.
@@ -896,7 +782,7 @@ async function _showShareableMenu() {
   // Console handle: what does today (or ?introday=N) resolve to, and if nothing,
   // why not. Re-exported on every menu build so it always reflects the live read.
   window._smIntroSlot = () => {
-    const p = _smIntroPick();
+    const p = _salSlotPick(introCfg, mlRows);
     // (dev0772) …and whether the SAVED ctxt actually carries a marker. Which day
     // maps to which UID was never the hard part; "is the slot in the file at
     // all?" was, and it took a git-level look at c.json to answer. One line now.

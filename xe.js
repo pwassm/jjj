@@ -2403,11 +2403,21 @@ function teShowImageModal(onInsert, defaults) {
     const w = teSizeToWidth(size);
     const isVid = kind === 'video';
     const isSlot = kind === 'slot';
+    // (dev0775) An UNTOUCHED caption is re-emitted as the HTML it already was,
+    // not rebuilt from its flattened text. The modal's caption box is plain
+    // text, so anything richer than words — a link, bold, italics — survived
+    // being shown here but not being written back: re-sizing a picture silently
+    // stripped the link out of its own caption. Only when the author actually
+    // edits the text do we fall back to escaping what they typed.
+    const dCapText = String(defaults.caption || '').trim();
+    const dCapHtml = String(defaults.captionHtml || '');
+    const capUnchanged = dCapHtml && String(caption || '').trim() === dCapText;
     const cap = caption ? caption.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
-    const capHtml = cap
+    const capInner = capUnchanged ? dCapHtml : cap;
+    const capHtml = capInner
       // (dev0634) no color — caption inherits the slide/section text color
       // (was #aaa gray, which stuck out and infected lines typed near it).
-      ? '<div style="font-size:0.78em;text-align:center;margin-top:3px;">' + cap + '</div>'
+      ? '<div style="font-size:0.78em;text-align:center;margin-top:3px;">' + capInner + '</div>'
       : '';
     // Autoplay only works muted in every current browser, so tie the two.
     const v = Object.assign({ controls: true, autoplay: false, loop: false, muted: false }, vopts || {});
