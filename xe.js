@@ -2151,6 +2151,33 @@ function teIsVideoUrl(u) { return TE_MEDIA_VIDEO_RE.test(teUrlPath(u)); }
 function teIsImageUrl(u) { return TE_MEDIA_IMAGE_RE.test(teUrlPath(u)); }
 window.teIsVideoUrl = teIsVideoUrl;
 
+// (dev0769) "UIDoftheday" — typed into the modal's Source box instead of a UID
+// number. It inserts a PLACEHOLDER rather than a fixed clip; the Intro tab swaps
+// it for whichever UID today's date points at (boot.js _smApplyIntroSlot). Size,
+// alignment and caption are the modal's, exactly as for a real picture, because
+// the placeholder is only the media element — the wrapper round it is the same
+// wrapper an <img> would get.
+var TE_SLOT_TOKEN = 'UIDoftheday';
+function teIsSlotToken(v) { return /^uidoftheday$/i.test(String(v || '').trim()); }
+window.TE_SLOT_TOKEN = TE_SLOT_TOKEN;
+window.teIsSlotToken = teIsSlotToken;
+
+// (dev0769) THE ROWS A UID MEANS. `data` is not always ml.json: openCScreen
+// (collection.js) swaps the global to c.json's collections for as long as the C
+// screen is up and parks the T rows in _tSave.data. Xe opened from C — which is
+// exactly how the Introduction ctxt is edited — therefore looked every UID up in
+// a 60-row table that has no UID column at all, and rejected every one of them.
+// That is the "709 is not a valid UID" report: the row was never missing, the
+// modal was reading the wrong table.
+function teMlRows() {
+  try {
+    if (typeof _cMode !== 'undefined' && _cMode
+        && typeof _tSave !== 'undefined' && _tSave && Array.isArray(_tSave.data)) return _tSave.data;
+  } catch (e) {}
+  return (typeof data !== 'undefined' && Array.isArray(data)) ? data : [];
+}
+window.teMlRows = teMlRows;
+
 // (dev0733) Media width, from the image modal's Size choice. The four named
 // buckets are FIXED PIXELS — which is why a row of media that lined up in Xe
 // (a ~1470px editing column) wrapped on the landing page (.smGreeting caps the
@@ -2227,8 +2254,9 @@ function teShowImageModal(onInsert, defaults) {
       <label style="display:block;font-size:11px;color:#8ef;margin-bottom:4px;">
         Source — UID number (looks up row.link) or full https:// URL
         <span style="color:#666;">· .mp4 / .webm plays as video</span>
+        <span style="color:#8ef;">· <b>UIDoftheday</b> = the Intro's date-driven slot</span>
       </label>
-      <input id="teImgSrc" type="text" autocomplete="off" placeholder="e.g. 27   or   https://example.com/foo.jpg   or   https://…/clip.mp4"
+      <input id="teImgSrc" type="text" autocomplete="off" placeholder="e.g. 27   or   https://…/clip.mp4   or   UIDoftheday"
         value="${dSrc.replace(/"/g, '&quot;')}"
         style="width:100%;box-sizing:border-box;padding:6px 8px;background:#0a0a1a;
                border:1px solid #555;color:#fff;border-radius:4px;font-family:monospace;
@@ -2305,12 +2333,17 @@ function teShowImageModal(onInsert, defaults) {
   function resolveSrc(raw) {
     const v = (raw || '').trim();
     if (!v) return { error: 'Source is empty.' };
+    // (dev0769) The date-driven slot. No URL to resolve — the clip is chosen at
+    // render time, so this returns a kind and nothing else.
+    if (teIsSlotToken(v)) return { url: '', kind: 'slot' };
     if (/^https?:\/\//i.test(v)) {
       // Full URL — accept as-is
       return { url: v, kind: teIsVideoUrl(v) ? 'video' : 'image' };
     }
     // Treat as UID lookup. Accept numeric or alphanumeric.
-    const rows = (typeof data !== 'undefined' && Array.isArray(data)) ? data : [];
+    // (dev0769) teMlRows(), not `data` — see its comment: from the C screen the
+    // global `data` is c.json, and every UID lookup here missed.
+    const rows = teMlRows();
     const row = rows.find(r => r && String(r.UID) === v);
     // (dev0768) …and if it misses, say what WAS loaded. A bare "No row with UID
     // 709" looks exactly the same whether the UID is a typo or the tab is
@@ -2348,6 +2381,7 @@ function teShowImageModal(onInsert, defaults) {
     // ("30%") from the "% of line" option — see teSizeToWidth.
     const w = teSizeToWidth(size);
     const isVid = kind === 'video';
+    const isSlot = kind === 'slot';
     const cap = caption ? caption.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     const capHtml = cap
       // (dev0634) no color — caption inherits the slide/section text color
@@ -2367,6 +2401,19 @@ function teShowImageModal(onInsert, defaults) {
     const tag = (css) => isVid
       ? '<video src="' + url + '" style="' + css + '"' + flags + '></video>'
       : '<img src="' + url + '" style="' + css + '" alt="">';
+
+    // (dev0769) The slot placeholder. The geometry goes on the WRAPPER, never on
+    // the marker, so the Intro renderer can swap the marker for today's <video>
+    // and inherit the author's size/float/caption untouched. A plain <p> because
+    // it has to survive the xe2 schema — no new tag, nothing to teach it.
+    if (isSlot) {
+      const marker = '<p>' + TE_SLOT_TOKEN + '</p>';
+      if (align === 'left' || align === 'right') {
+        return '<div style="' + teFloatCss(w, align) + '">' + marker + capHtml + '</div>';
+      }
+      return '<div style="margin:12px auto;text-align:center;width:' + w + ';max-width:100%;">'
+        + marker + capHtml + '</div>';
+    }
 
     if (align === 'left' || align === 'right') {
       const fl = teFloatCss(w, align);
@@ -2390,10 +2437,18 @@ function teShowImageModal(onInsert, defaults) {
   // form tells the user what it is about to insert before they commit.
   function syncKind() {
     const raw = (modal.querySelector('#teImgSrc').value || '').trim();
+    // (dev0769) The slot names no file, so there are no playback flags to offer:
+    // the Intro renderer plays it the way the author's other Intro clips play
+    // (controls, autoplay, loop, muted). Say plainly what will be inserted.
+    if (teIsSlotToken(raw)) {
+      modal.querySelector('#teImgVidOpts').style.display = 'none';
+      modal.querySelector('#teImgTitle').textContent = '📅 Video of the day';
+      modal.querySelector('#teImgInsert').textContent = isEdit ? 'Replace' : 'Insert slot';
+      return;
+    }
     let isVid = teIsVideoUrl(raw);
     if (!isVid && raw && !/^https?:\/\//i.test(raw)) {
-      const row = (typeof data !== 'undefined' && Array.isArray(data))
-        ? data.find(r => r && String(r.UID) === raw) : null;
+      const row = teMlRows().find(r => r && String(r.UID) === raw);
       if (row && row.link) isVid = teIsVideoUrl(row.link);
     }
     modal.querySelector('#teImgVidOpts').style.display = isVid ? 'block' : 'none';

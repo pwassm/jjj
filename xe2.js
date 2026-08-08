@@ -1365,7 +1365,11 @@
     v = (v || '').trim();
     if (!v) return null;
     if (/^https?:\/\//i.test(v)) return v;
-    var rows = Array.isArray(window.data) ? window.data : [];
+    // (dev0769) Same trap the 🖼 modal was in: from the C screen `window.data` is
+    // c.json's collections, not ml.json, so every UID here missed too. teMlRows
+    // (xe.js) knows which table a UID belongs to.
+    var rows = (typeof window.teMlRows === 'function') ? window.teMlRows()
+             : (Array.isArray(window.data) ? window.data : []);
     for (var i = 0; i < rows.length; i++) {
       if (rows[i] && String(rows[i].UID) === v) return rows[i].link || null;
     }

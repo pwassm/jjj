@@ -737,9 +737,18 @@ async function _showShareableMenu() {
   const _smDateShort = v => String(v || '').trim().slice(0, 10);
 
   // ── (dev0768) THE INTRO'S DATE-DRIVEN VIDEO SLOT ────────────────────────────
-  // The author writes the bare token `UID` on a line of the Introduction ctxt
-  // (Xe wraps it in a <p>; anything whose ENTIRE text is "UID" counts). At
-  // render time that becomes today's clip.
+  // The author types `UIDoftheday` into the 🖼 modal's SOURCE box, where a UID
+  // number would otherwise go, and picks size / alignment / caption as usual.
+  // That inserts a placeholder — the author's wrapper div with a bare
+  // `<p>UIDoftheday</p>` where the picture would be — and this swaps that marker
+  // for today's clip at render time. The wrapper, and so the size, float and
+  // caption, is left exactly as authored.
+  //
+  // (dev0769) The token was a bare `UID` in dev0768, typed as a line of prose.
+  // Wrong on both counts: "UID" is also the word for the number you normally put
+  // in that box, and the Source box is where the author expected to say this.
+  // Loose text still works — anything whose ENTIRE text is "UIDoftheday" counts,
+  // wherever it sits — but the modal is the route.
   //
   // WHICH clip comes from the Introduction config row's own grid cells, one per
   // day of the month. The author's shorthand numbers the rows a–e — a1–a5 are
@@ -791,6 +800,9 @@ async function _showShareableMenu() {
   // is not something a <video> can play (that needs the grid/V iframe path).
   const _SM_SLOT_VID = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
   const _SM_SLOT_IMG = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i;
+  // No caption is synthesised here: when the marker came from the modal the
+  // author's caption is already sitting in the wrapper beside it, and a second
+  // one built from VidTitle would just double it up.
   const _smSlotHtml = row => {
     const link = String((row && row.link) || '').trim();
     if (!link) return '';
@@ -804,20 +816,15 @@ async function _showShareableMenu() {
     // window._smIntroSlot().
     if (!_SM_SLOT_VID.test(path) && !_SM_SLOT_IMG.test(path)) return '';
     const src = _smEsc(link).replace(/"/g, '&quot;');
-    const cap = String((row && row.VidTitle) || '').trim();
-    const capHtml = cap
-      ? '<div style="font-size:0.78em;text-align:center;margin-top:3px;">' + _smEsc(cap) + '</div>'
-      : '';
-    let media;
-    if (_SM_SLOT_VID.test(path)) {
+    // width:100% of whatever wrapper the author's modal choice built — so the
+    // clip is 75% of the line, floated left, if that is what they picked.
+    const css = 'width:100%;border-radius:4px;';
+    return _SM_SLOT_VID.test(path)
       // The same flags as the clips the author hand-placed in this very ctxt, so
       // the generated one is not the odd one out on its own page.
-      media = '<video src="' + src + '" controls autoplay loop muted playsinline'
-            + ' preload="metadata" style="width:100%;border-radius:6px;"></video>';
-    } else {
-      media = '<img src="' + src + '" alt="" style="width:100%;border-radius:6px;">';
-    }
-    return '<div class="sm-introslot">' + media + capHtml + '</div>';
+      ? '<video class="sm-introslot" src="' + src + '" controls autoplay loop muted'
+        + ' playsinline preload="metadata" style="' + css + '"></video>'
+      : '<img class="sm-introslot" src="' + src + '" alt="" style="' + css + '">';
   };
   const _smApplyIntroSlot = html => {
     const host = document.createElement('div');
@@ -825,8 +832,10 @@ async function _showShareableMenu() {
     // Collect the tokens first and mutate afterwards — replacing nodes during a
     // TreeWalker walk invalidates it.
     const hits = [];
+    const _isTok = s => (typeof window.teIsSlotToken === 'function')
+      ? window.teIsSlotToken(s) : /^uidoftheday$/i.test(String(s || '').trim());
     const walk = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, null);
-    let n; while ((n = walk.nextNode())) if (n.nodeValue.trim() === 'UID') hits.push(n);
+    let n; while ((n = walk.nextNode())) if (_isTok(n.nodeValue)) hits.push(n);
     if (!hits.length) return host.innerHTML;
     const pick = _smIntroPick();
     const media = pick.row ? _smSlotHtml(pick.row) : '';
@@ -836,17 +845,39 @@ async function _showShareableMenu() {
     }
     hits.forEach(t => {
       // Climb to the tightest wrapper holding nothing BUT the token, so
-      // `<p>UID</p>` is replaced whole instead of leaving an empty paragraph
-      // wrapped round the video.
+      // `<p>UIDoftheday</p>` is replaced whole instead of leaving an empty
+      // paragraph wrapped round the video.
+      //
+      // …but NEVER past a styled element. That styled div is the author's own
+      // size/float wrapper from the modal, and swallowing it would throw away
+      // the 75%-of-the-line, floated-left layout they just chose — the whole
+      // point of routing this through the modal. Without the guard a slot with
+      // no caption (wrapper holding only the marker) lost its geometry.
       let target = t;
       while (target.parentNode && target.parentNode !== host
+             && target.parentNode.nodeType === 1
+             && !target.parentNode.getAttribute('style')
              && target.parentNode.children.length <= 1
-             && target.parentNode.textContent.trim() === 'UID') target = target.parentNode;
+             && _isTok(target.parentNode.textContent)) target = target.parentNode;
       if (!target.parentNode) return;
       // An unfillable slot removes the token rather than printing the word
-      // "UID" at a viewer. The reason went to the console above, and to
+      // "UIDoftheday" at a viewer. The reason went to the console above, and to
       // window._smIntroSlot() below, which is where the developer looks.
-      if (!media) { target.parentNode.removeChild(target); return; }
+      //
+      // Take the author's wrapper with it, or an empty day leaves a floated
+      // 75%-wide hole with a caption hanging under nothing. Only when that
+      // wrapper is the modal's own shape — styled, no other media inside, at
+      // most a caption left — so a slot dropped inside a larger authored
+      // section can never take the section with it.
+      if (!media) {
+        const box = target.parentNode;
+        target.parentNode.removeChild(target);
+        if (box && box !== host && box.nodeType === 1 && box.getAttribute('style')
+            && !box.querySelector('img,video,iframe') && box.children.length <= 1) {
+          if (box.parentNode) box.parentNode.removeChild(box);
+        }
+        return;
+      }
       const box = document.createElement('div');
       box.innerHTML = media;
       target.parentNode.replaceChild(box.firstChild, target);
@@ -854,6 +885,9 @@ async function _showShareableMenu() {
     return host.innerHTML;
   };
   introHtml = _smApplyIntroSlot(introHtml);
+  // (dev0769) Exported so the swap can be exercised on a scrap of HTML from the
+  // console without having to author a marker into c.json first.
+  window._smApplyIntroSlot = _smApplyIntroSlot;
   // Console handle: what does today (or ?introday=N) resolve to, and if nothing,
   // why not. Re-exported on every menu build so it always reflects the live read.
   window._smIntroSlot = () => {
@@ -1131,10 +1165,10 @@ async function _showShareableMenu() {
     // instead of shoving its neighbours onto the next line.
     + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
-    // (dev0768) The date-driven UID slot. clear:both so it starts below any
-    // floated clip the author placed above it rather than squeezing alongside.
-    + '.smGreeting .sm-introslot{margin:16px 0;clear:both;}'
-    + '.smGreeting .sm-introslot video,.smGreeting .sm-introslot img{display:block;width:100%;border-radius:6px;}'
+    // (dev0768/0769) The date-driven slot's clip. It fills the author's wrapper,
+    // so no margins or clear:both here — that geometry belongs to the wrapper
+    // the 🖼 modal built, and duplicating it would fight the float.
+    + '.smGreeting video.sm-introslot,.smGreeting img.sm-introslot{display:block;width:100%;}'
     + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#d9ebff;margin:0;}'
     + '.smGreeting hr{border:none;border-top:1px solid rgba(255,255,255,0.28);margin:20px 0;}'
     + '.te-cut{display:none;}'
