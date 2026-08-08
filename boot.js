@@ -831,34 +831,39 @@ async function _showShareableMenu() {
     host.innerHTML = String(html || '');
     // Collect the tokens first and mutate afterwards — replacing nodes during a
     // TreeWalker walk invalidates it.
-    const hits = [];
     const _isTok = s => (typeof window.teIsSlotToken === 'function')
       ? window.teIsSlotToken(s) : /^uidoftheday$/i.test(String(s || '').trim());
+    // (dev0770) Two markers, one meaning. `.te-slot` is what the 🖼 modal inserts
+    // — a placeholder box, replaced whole. A bare "UIDoftheday" text node is the
+    // hand-typed form (and everything dev0769 saved), kept working: climb to the
+    // tightest wrapper that holds nothing but the token.
+    const targets = Array.prototype.slice.call(host.querySelectorAll('.te-slot'));
     const walk = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, null);
-    let n; while ((n = walk.nextNode())) if (_isTok(n.nodeValue)) hits.push(n);
-    if (!hits.length) return host.innerHTML;
+    let n;
+    while ((n = walk.nextNode())) {
+      if (!_isTok(n.nodeValue)) continue;
+      if (n.parentNode && n.parentNode.closest && n.parentNode.closest('.te-slot')) continue; // already covered
+      // …but NEVER climb past a styled element. That styled div is the author's
+      // own size/float wrapper from the modal, and swallowing it would throw away
+      // the 75%-of-the-line, floated-left layout they just chose. Without the
+      // guard a slot with no caption (wrapper holding only the marker) lost its
+      // geometry.
+      let t = n;
+      while (t.parentNode && t.parentNode !== host && t.parentNode.nodeType === 1
+             && !t.parentNode.getAttribute('style')
+             && t.parentNode.children.length <= 1
+             && _isTok(t.parentNode.textContent)) t = t.parentNode;
+      targets.push(t);
+    }
+    if (!targets.length) return host.innerHTML;
+    const hits = targets;
     const pick = _smIntroPick();
     const media = pick.row ? _smSlotHtml(pick.row) : '';
     if (!media) {
       try { console.warn('[intro slot] day ' + pick.day + ', cell ' + (pick.key || '—')
         + ': ' + (pick.why || 'nothing to show')); } catch (e) {}
     }
-    hits.forEach(t => {
-      // Climb to the tightest wrapper holding nothing BUT the token, so
-      // `<p>UIDoftheday</p>` is replaced whole instead of leaving an empty
-      // paragraph wrapped round the video.
-      //
-      // …but NEVER past a styled element. That styled div is the author's own
-      // size/float wrapper from the modal, and swallowing it would throw away
-      // the 75%-of-the-line, floated-left layout they just chose — the whole
-      // point of routing this through the modal. Without the guard a slot with
-      // no caption (wrapper holding only the marker) lost its geometry.
-      let target = t;
-      while (target.parentNode && target.parentNode !== host
-             && target.parentNode.nodeType === 1
-             && !target.parentNode.getAttribute('style')
-             && target.parentNode.children.length <= 1
-             && _isTok(target.parentNode.textContent)) target = target.parentNode;
+    hits.forEach(target => {
       if (!target.parentNode) return;
       // An unfillable slot removes the token rather than printing the word
       // "UIDoftheday" at a viewer. The reason went to the console above, and to
@@ -2714,6 +2719,54 @@ async function _openSlideshowBySsId(ssVal, launch) {
     if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid();
   }, 350);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev0770) IN-COLLECTION LINKS. Xe's link button can now aim at the collection
+// itself — `V.709` and `C.<gname>` (xe2.js setLink), which it writes as this
+// app's own deep-link hrefs, `?i=709` and `?c=<gname>`.
+//
+// Following one as a plain URL would work, but it costs a full reload AND lands
+// the reader in locked-mode (that is what a bare ?i= means to a stranger with a
+// shared link). Inside the app neither is wanted: the author asked for the item
+// to open "in window, with usual controls and return arrow". So intercept the
+// click and stage it exactly as a menu card does — remember the page to come
+// back to, force the grid backdrop, let vpClose/Esc/the back arrow come home.
+//
+// Capture phase, and only for these two shapes: every other <a> on every screen
+// is left completely alone.
+function _salOpenUid(uid) {
+  const ov = document.getElementById('shareableMenu');
+  if (ov) { window._smReturnPage = window._smCurPage; ov.remove(); window._fromShareableMenu = true; }
+  const g = document.getElementById('gridOverlay');
+  if (g) { g.style.display = 'flex'; window._vpForcedGridFromT = true; }
+  _openItemByUid(uid);
+}
+function _salOpenConfig(name) {
+  const ov = document.getElementById('shareableMenu');
+  if (ov) { window._smReturnPage = window._smCurPage; ov.remove(); }
+  window._fromShareableMenu = false;
+  _openConfigByName(name);
+}
+window._salOpenUid = _salOpenUid;
+window._salOpenConfig = _salOpenConfig;
+document.addEventListener('click', e => {
+  const a = e.target && e.target.closest && e.target.closest('a[href]');
+  if (!a) return;
+  // getAttribute, not .href: the DOM property resolves "?i=709" to an absolute
+  // URL against the current page, which these patterns would then never match.
+  const h = a.getAttribute('href') || '';
+  const mi = h.match(/^\?i=([^&]+)/);
+  const mc = h.match(/^\?c=([^&]+)/);
+  if (!mi && !mc) return;
+  e.preventDefault();
+  e.stopPropagation();
+  let v; try { v = decodeURIComponent((mi || mc)[1]); } catch (_) { v = (mi || mc)[1]; }
+  // Strip a /unlock suffix if one ever appears in authored HTML: in-app opening
+  // is already unlocked, so the suffix would only corrupt the UID / gname.
+  v = v.replace(/\/unlock$/i, '').trim();
+  if (!v) return;
+  if (mi) _salOpenUid(v); else _salOpenConfig(v);
+}, true);
 
 // (zip0142) Resolve a UID (string or number) to a row in `data` and open
 // it in V (fullscreen). Tolerant of leading/trailing whitespace and of

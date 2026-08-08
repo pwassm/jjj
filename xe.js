@@ -2407,7 +2407,16 @@ function teShowImageModal(onInsert, defaults) {
     // and inherit the author's size/float/caption untouched. A plain <p> because
     // it has to survive the xe2 schema — no new tag, nothing to teach it.
     if (isSlot) {
-      const marker = '<p>' + TE_SLOT_TOKEN + '</p>';
+      // (dev0770) The marker is a VISIBLE PLACEHOLDER BOX, not the bare word.
+      // dev0769 emitted `<p>UIDoftheday</p>`, which round-trips through the
+      // schema perfectly well — but on screen a video simply turned into a naked
+      // word, which reads as "Xe destroyed my media box". Same slot, now it
+      // looks like one: a dashed frame the size of the media it stands in for.
+      // The `te-slot` class is what the renderer swaps (see boot.js); xe2's
+      // StyledDiv preserves that one class specifically.
+      const marker = '<div class="te-slot" style="border:2px dashed #6aa6ff;border-radius:6px;'
+        + 'padding:18px 10px;text-align:center;color:#8ec5ff;font-size:0.85em;line-height:1.5;">'
+        + '📅 Video of the day<br>fills from the Intro’s date cell' + '</div>';
       if (align === 'left' || align === 'right') {
         return '<div style="' + teFloatCss(w, align) + '">' + marker + capHtml + '</div>';
       }

@@ -290,6 +290,18 @@
           parseHTML: function (el) { return el.getAttribute('style'); },
           renderHTML: function (attrs) { return attrs.style ? { style: attrs.style } : {}; },
         },
+        // (dev0770) ONE class survives a round-trip: te-slot, the Intro's
+        // date-driven video placeholder. Deliberately not "keep whatever class
+        // is there" — dropping foreign classes is what stops a pasted web page's
+        // framework classes riding into ftext (see the paste sanitizer note), and
+        // this marker is the only one the renderer needs to find.
+        'class': {
+          default: null,
+          parseHTML: function (el) {
+            return (el.classList && el.classList.contains('te-slot')) ? 'te-slot' : null;
+          },
+          renderHTML: function (attrs) { return attrs['class'] ? { 'class': attrs['class'] } : {}; },
+        },
       };
     },
     parseHTML: function () {
@@ -297,7 +309,10 @@
         tag: 'div[style]',
         getAttrs: function (el) {
           if (el.classList && (el.classList.contains('te-slide') || el.classList.contains('te-cut'))) return false;
-          return { style: el.getAttribute('style') };
+          return {
+            style: el.getAttribute('style'),
+            'class': (el.classList && el.classList.contains('te-slot')) ? 'te-slot' : null,
+          };
         },
       }];
     },
@@ -1443,14 +1458,76 @@
     } catch (e) { _toast('That icon can’t go here'); }
   }
 
+  // (dev0770) LINK TARGETS. Besides a web address, a link can now point INTO the
+  // collection:
+  //
+  //     V.709                  → the ml.json row with UID 709, opened in V
+  //     C.Octopus Hatchlings   → the c.json grid with that gname, opened in G
+  //
+  // Both become the app's OWN deep-link URLs — `?i=709` and `?c=Octopus%20…`,
+  // which boot.js has understood since dev0253. That matters: the href is a real
+  // address, so copy-link and open-in-new-tab still work and the link survives
+  // being read outside the app. A delegated click handler (boot.js) intercepts
+  // it first and opens the item in place, with the back arrow, instead of
+  // reloading. No /unlock suffix — that is the private dev key and does not
+  // belong in public page HTML.
+  function _salLinkHref(y) {
+    y = String(y || '').trim();
+    var m = y.match(/^V\s*\.\s*(.+)$/i);
+    if (m) return '?i=' + encodeURIComponent(m[1].trim());
+    m = y.match(/^C\s*\.\s*(.+)$/i);
+    if (m) return '?c=' + encodeURIComponent(m[1].trim());
+    if (!/^[a-z]+:\/\//i.test(y) && !/^(mailto:|#|\?|\/)/i.test(y)) y = 'https://' + y;
+    return y;
+  }
+  // Show an existing href back in the shorthand it was written in, so re-opening
+  // the prompt on a `V.709` link offers `V.709` rather than `?i=709`.
+  function _salLinkShorthand(href) {
+    href = String(href || '');
+    var m = href.match(/^\?i=([^&]+)/); if (m) return 'V.' + decodeURIComponent(m[1]);
+    m = href.match(/^\?c=([^&]+)/);     if (m) return 'C.' + decodeURIComponent(m[1]);
+    return href;
+  }
+
   function setLink(editor) {
-    var prev = editor.getAttributes('link').href || '';
-    var url = prompt('Link URL (blank to remove):', prev);
-    if (url === null) return;
-    url = url.trim();
-    if (!url) { editor.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
-    if (!/^[a-z]+:\/\//i.test(url) && !/^(mailto:|#)/i.test(url)) url = 'https://' + url;
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    var prev = _salLinkShorthand(editor.getAttributes('link').href || '');
+    // (dev0770) `label;target` — the text before the first ";" is what the reader
+    // sees, in link blue; everything after it is where the link goes. No ";" and
+    // the target is its own label, which is the old behaviour.
+    var raw = prompt(
+      'Link  —  "text;target"  (text optional)\n\n'
+      + '  target can be:\n'
+      + '    https://…  or  a bare domain\n'
+      + '    V.709                  → open that ml.json row in V\n'
+      + '    C.Octopus Hatchlings   → open that c.json grid in G\n\n'
+      + '  e.g.  see the hatchlings;C.Octopus Hatchlings\n\n'
+      + 'Blank removes the link.', prev);
+    if (raw === null) return;
+    raw = raw.trim();
+    if (!raw) { editor.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
+
+    var semi = raw.indexOf(';');
+    var label = semi >= 0 ? raw.slice(0, semi).trim() : '';
+    var target = semi >= 0 ? raw.slice(semi + 1).trim() : raw;
+    if (!target) { _toast('No target after the ";"'); return; }
+    var href = _salLinkHref(target);
+
+    // With a label, the link IS the text — insert it (replacing any selection).
+    // Without one, mark the selected text; and with nothing selected either, the
+    // target doubles as its own label so the click target is never zero-width.
+    var selEmpty = editor.state.selection.empty;
+    if (label || selEmpty) {
+      editor.chain().focus().insertContent({
+        type: 'text',
+        text: label || target,
+        marks: [{ type: 'link', attrs: { href: href } }],
+      }).run();
+      // Leave the cursor OUTSIDE the mark, or everything typed next joins the
+      // link — the usual trailing-mark trap.
+      editor.chain().focus().unsetMark('link').run();
+      return;
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: href }).run();
   }
 
   // ── toolbar spec: [label, title, handler(editor)] ; '|' = divider ────────────
@@ -1923,6 +2000,11 @@
     _undetail: undetail,
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,
+    // (dev0770) link building — exported so the "label;target" parse and the
+    // V./C. → deep-link mapping can be exercised without driving a prompt().
+    _setLink: setLink,
+    _salLinkHref: _salLinkHref,
+    _salLinkShorthand: _salLinkShorthand,
     _findImageEditContext: _findImageEditContext,
     // (dev0757) media-unit selection — exported for the headless jsdom suite
     _isMediaWrapper: _isMediaWrapper,
