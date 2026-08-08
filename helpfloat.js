@@ -604,7 +604,9 @@ var HP_EXTRA = {
       { k: 'Hold LMB',     d: 'Zoom in (pauses the show); drag to pan; double-click resets', kind: 'gesture' },
       { k: 'Swipe ↑ / ↓',  d: 'On a PAUSED unzoomed slide: switch between the original set and the row’s ftext images', kind: 'gesture' }
     ] },
-  Menu: { desc: 'The shareable landing page — greeting, Search, saved views, Collections, My Loops.',
+  // (dev0767) "greeting" was the tab-less splash page 1 used to be. It is the
+  // Intro TAB now, first in the bar and where the site opens.
+  Menu: { desc: 'The shareable landing page — Intro, Search, saved views, Collections, My Loops.',
     rows: [
       { k: 'Tab',   d: 'Cycle the tabs' },
       { k: 'f',     d: 'Filter the list' },

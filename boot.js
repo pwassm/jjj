@@ -648,6 +648,10 @@ async function _showShareableMenu() {
   // (dev0361) Split the greeting at its FIRST <hr> (the Xe ══ divider): prose
   // BEFORE the rule is page 1 (welcome / landing), prose AFTER is the lead text
   // shown atop page 2 ("Choose a view"). No <hr> → it all stays on page 1.
+  // (dev0767) The AFTER half is unchanged — it still leads the Grids tab. The
+  // BEFORE half is now only the FALLBACK for page 1: the Intro tab prefers the
+  // c.json "Introduction" config (introHtml, below) and reaches back here only
+  // when that row doesn't exist yet.
   let greetTop = greetingHtml, greetIntro = '';
   {
     const _hr = greetingHtml.match(/<hr\b[^>]*>/i);
@@ -665,6 +669,28 @@ async function _showShareableMenu() {
   const _linkify = h => (typeof _linkifyHtml === 'function' ? _linkifyHtml(h) : h);
   greetTop = _linkify(_balanceHtml(greetTop));
   greetIntro = _linkify(_balanceHtml(greetIntro));
+
+  // (dev0767) INTRO tab prose. Page 1 is no longer a one-time splash carved out
+  // of the Greeting — it is the first tab, and it renders its own c.json config
+  // row: the one whose gname is "Introduction" (or "Intro"), in its `ctxt`.
+  // Authored and re-authored in Xe like any other ctxt, independent of the
+  // Greeting now that the two are not the same page.
+  //
+  // Matched EXACTLY (like "other" below, not the /^greet/ prefix test above) so
+  // a collection legitimately called "Introduction to nudibranchs" is still a
+  // grid and not swallowed by the front page.
+  //
+  // No <hr> split here: the whole ctxt is the Intro. Falls back to the old
+  // greetTop so a site whose c.json has no Introduction row yet keeps the page
+  // it had.
+  const _isIntroCfg = v => {
+    const s = String(v == null ? '' : v).trim().toLowerCase();
+    return s === 'introduction' || s === 'intro';
+  };
+  const introCfg = cRows.find(r => r && !r._salMeta && _isIntroCfg(r.gname));
+  const introHtml = introCfg
+    ? _linkify(_balanceHtml(_cutBelow(introCfg.ctxt)))
+    : greetTop;
 
   // (dev0379) "Other" page — free-form HTML from the c.json config row whose
   // gname is "other", in its `ctxt` field. Re-read every open (whole function
@@ -861,7 +887,12 @@ async function _showShareableMenu() {
   // so a fully-cut ctxt does not delist it — `active` stays the curation gate.
   // Its title falls back to the gname.
   const gItems = cRows
+    // (dev0767) …and not the Introduction row either: like Greeting and Other,
+    // it is a PAGE of this menu now, not a collection to open. Its `active` is
+    // blank today so it was already filtered out — this makes that deliberate
+    // rather than a side effect of a column the author might set later.
     .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname)
+                 && !_isIntroCfg(g.gname)
                  && String(g.gname).trim().toLowerCase() !== 'other'
                  && _smOrd(g.active) > 0)
     .map(g => { const h = _cutBelow(g.ctxt); return { kind: 'ss', gname: String(g.gname).trim(), html: h,
@@ -876,8 +907,20 @@ async function _showShareableMenu() {
 
   const ov = document.createElement('div');
   ov.id = 'shareableMenu';
-  ov.style.cssText = 'position:fixed;inset:0;z-index:999990;background:#0a0a1a;'
-    + 'display:flex;flex-direction:column;font-family:monospace;color:#eee;';
+  // (dev0767) Redesign. The landing page was near-black navy in a monospace
+  // face — a developer console that happened to be the public front door. It is
+  // now the Shutter-Encoder shape the author asked for: a charcoal tab bar over
+  // a medium-blue body, in a system sans stack.
+  //
+  // The blue is a gradient rather than a flat fill because SE's hero has that
+  // same top-lit depth. It lives on the OVERLAY, not on the pages: every .sm-pg
+  // is absolutely positioned and transparent, so the gradient stays put while a
+  // page scrolls over it (background-attachment can't do that here — the
+  // scroller is the page, not this element).
+  ov.style.cssText = 'position:fixed;inset:0;z-index:999990;'
+    + 'background:linear-gradient(180deg,#17629d 0%,#13527f 55%,#0f4570 100%);'
+    + 'display:flex;flex-direction:column;color:#eef4fa;'
+    + "font-family:'Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;";
 
   // (dev0378) Each choice is now a native <details> card: the <summary> row is
   // the clickable summary line (icon · summary text · date · type/cells tag),
@@ -914,110 +957,151 @@ async function _showShareableMenu() {
   // render inline so an Xe-resized collapsible title sits on the marker line.
   const menuStyle =
     '<style>'
+    // (dev0767) PALETTE — Shutter-Encoder's, as the author asked for:
+    //   charcoal  #26292e / #32363c   tab bars
+    //   blue      #17629d → #0f4570   page body (the gradient on `ov` above)
+    //   text      #eef4fa / #cfe0f0   near-white / muted
+    //   accent    #7cc0ff #bfe3ff     rules, focus rings, links
+    //   green     #4caf50             the primary action (▶ Open)
+    //   red       #e8413f             the destructive one (Delete)
+    // Everything below that used to be a near-black panel colour (#11131f,
+    // #15152a, #0d0d1e) is now a translucent black or white over the blue —
+    // one gradient shows through the whole menu instead of a dozen flat navies
+    // that have to be kept in step by hand.
+    //
+    // Links are #bfe3ff, not the #4aa8ff of the swatch: over #15588f that blue
+    // sits at roughly 2.5:1 against its own background and reads as grey-blue.
+    // #4aa8ff survives as the active-tab indicator, where it is a bright line on
+    // charcoal rather than text on blue.
+    //
     // (dev0734) 760px is no longer a literal here — it's --sal-prose-w, declared
     // once in index.html and shared with the Xs slide overlay. The left/right
     // gap on the landing page is NOT a margin anyone set: it's this max-width
     // being centred by `margin:0 auto`, so the leftover splits evenly.
-    + '.smGreeting{font-family:sans-serif;color:#dfe3ea;line-height:1.6;padding:22px 24px 12px;max-width:var(--sal-prose-w,760px);margin:0 auto;}'
-    + '.smGreeting h1,.smGreeting h2{color:#8ef;margin:0 0 10px;}'
-    + '.smGreeting h2{font-size:22px;}.smGreeting h1{font-size:26px;}'
-    + '.smGreeting h3{color:#9ef;font-size:18px;margin:6px 0;}'
-    + '.smGreeting p{margin:6px 0;}.smGreeting a{color:#5bf;}'
+    // (dev0767) font-family:inherit, not sans-serif — the overlay now sets a
+    // real UI stack and this rule was overriding it with the browser default.
+    + '.smGreeting{font-family:inherit;color:#eef4fa;line-height:1.65;font-size:16px;padding:24px 24px 18px;max-width:var(--sal-prose-w,760px);margin:0 auto;}'
+    + '.smGreeting h1,.smGreeting h2{color:#fff;margin:0 0 12px;font-weight:600;letter-spacing:-.01em;}'
+    + '.smGreeting h2{font-size:24px;}.smGreeting h1{font-size:30px;}'
+    + '.smGreeting h3{color:#d9ebff;font-size:19px;margin:10px 0 6px;font-weight:600;}'
+    + '.smGreeting h4{color:#cfe0f0;font-size:16px;margin:6px 0;font-weight:500;}'
+    + '.smGreeting p{margin:8px 0;}'
+    + '.smGreeting a{color:#bfe3ff;text-decoration:underline;text-underline-offset:2px;}'
+    + '.smGreeting a:hover{color:#fff;}'
     // (dev0733) clear:both;overflow:hidden — the SAME float containment every
     // other render context has had since zip0138 (#teSlideContent details in
     // index.html) and that Xe itself got in dev0732. Without it a collapsible
     // full of floated media didn't contain them here: the tinted block collapsed
     // to the height of its title and the pictures hung out below it, so the
     // landing page never matched what the editor showed.
-    + '.smGreeting details{margin:8px 0;padding:8px 12px;background:#11131f;border-left:3px solid #06f;border-radius:4px;clear:both;overflow:hidden;}'
-    + '.smGreeting summary{cursor:pointer;color:#8ef;}'
+    + '.smGreeting details{margin:10px 0;padding:10px 14px;background:rgba(0,0,0,0.22);border-left:4px solid #7cc0ff;border-radius:6px;clear:both;overflow:hidden;}'
+    + '.smGreeting summary{cursor:pointer;color:#d9ebff;}'
     // (dev0733) A float wider than this 760px column can only wrap. Percentage
     // widths (the 🖼 "% of line" size) are the fix; this is the safety net for
     // media still carrying an authored pixel width — it shrinks to the column
     // instead of shoving its neighbours onto the next line.
     + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
-    + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#8ef;margin:0;}'
-    + '.smGreeting hr{border:none;border-top:2px solid #4a5a7a;margin:16px 0;}'
+    + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#d9ebff;margin:0;}'
+    + '.smGreeting hr{border:none;border-top:1px solid rgba(255,255,255,0.28);margin:20px 0;}'
     + '.te-cut{display:none;}'
-    + '.sm-card{display:flex;align-items:center;gap:12px;padding:15px 22px;border-bottom:1px solid #1c1c30;cursor:pointer;color:#ddd;}'
-    + '.sm-card:hover{background:#15152a;}'
+    + '.sm-card{display:flex;align-items:center;gap:12px;padding:15px 22px;border-bottom:1px solid rgba(255,255,255,0.12);cursor:pointer;color:#eef4fa;}'
+    + '.sm-card:hover{background:rgba(255,255,255,0.07);}'
     // (dev0378) <details> choice cards: clickable summary row + Open button.
-    + '.sm-detcard{border-bottom:1px solid #1c1c30;}'
-    + '.sm-detsum{display:grid;grid-template-columns:30px minmax(0,1fr) 120px 92px 84px;align-items:stretch;gap:12px;padding:15px 22px;cursor:pointer;color:#ddd;list-style:none;}'
+    + '.sm-detcard{border-bottom:1px solid rgba(255,255,255,0.12);}'
+    + '.sm-detsum{display:grid;grid-template-columns:30px minmax(0,1fr) 120px 92px 84px;align-items:stretch;gap:12px;padding:15px 22px;cursor:pointer;color:#eef4fa;list-style:none;}'
     + '.sm-detsum::-webkit-details-marker{display:none;}'
     + '.sm-detsum::marker{content:"";}'
-    + '.sm-detsum:hover{background:#15152a;}'
-    + '.sm-detcard[open]>.sm-detsum{background:#15152a;}'
-    + '.sm-date{display:flex;align-items:center;font-size:12px;color:#9fb0c8;font-family:sans-serif;white-space:nowrap;border-left:1px solid #22304d;padding-left:12px;}'
-    + '.sm-open{align-self:center;justify-self:start;flex:none;font-family:sans-serif;font-size:12px;color:#cfe8ff;background:rgba(0,60,120,0.5);border:1px solid #4af;border-radius:6px;padding:5px 11px;cursor:pointer;white-space:nowrap;}'
-    + '.sm-open:hover{background:rgba(0,80,150,0.7);}'
+    + '.sm-detsum:hover{background:rgba(255,255,255,0.07);}'
+    + '.sm-detcard[open]>.sm-detsum{background:rgba(0,0,0,0.20);}'
+    + '.sm-date{display:flex;align-items:center;font-size:12px;color:#cfe0f0;white-space:nowrap;border-left:1px solid rgba(255,255,255,0.16);padding-left:12px;}'
+    // (dev0767) ▶ Open is SE's green — the one primary action on a card, and the
+    // thing a first-time viewer is looking for. Delete (below) takes SE's red.
+    + '.sm-open{align-self:center;justify-self:start;flex:none;font-size:12px;font-weight:600;color:#fff;background:#3f9e46;border:1px solid #4caf50;border-radius:6px;padding:6px 13px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-open:hover{background:#57b85e;}'
     + '.sm-detbody{padding:2px 22px 16px;}'
     // (dev0379) Sortable, table-like header for the choice list.
-    + '.sm-chhead{display:grid;grid-template-columns:30px minmax(0,1fr) 120px 92px 84px;align-items:stretch;gap:12px;padding:9px 22px;background:#0d0d1e;border-bottom:2px solid #2a3550;position:sticky;top:0;z-index:2;}'
+    + '.sm-chhead{display:grid;grid-template-columns:30px minmax(0,1fr) 120px 92px 84px;align-items:stretch;gap:12px;padding:10px 22px;background:rgba(0,0,0,0.30);border-bottom:2px solid rgba(255,255,255,0.20);position:sticky;top:0;z-index:2;}'
     + '.sm-chh-spacer{}'
-    + '.sm-chh{display:flex;align-items:center;font-family:sans-serif;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#9fb0c8;background:none;border:none;cursor:pointer;padding:0;}'
-    + '.sm-chh:hover{color:#cfe8ff;}'
-    + '.sm-chh.on{color:#cfe8ff;}'
-    + '.sm-chh-name{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
-    + '.sm-chh-date{justify-content:flex-start;text-align:left;border-left:1px solid #22304d;padding-left:12px;}'
+    + '.sm-chh{display:flex;align-items:center;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#cfe0f0;background:none;border:none;cursor:pointer;padding:0;}'
+    + '.sm-chh:hover{color:#fff;}'
+    + '.sm-chh.on{color:#fff;}'
+    + '.sm-chh-name{justify-content:flex-start;text-align:left;border-left:1px solid rgba(255,255,255,0.16);padding-left:12px;}'
+    + '.sm-chh-date{justify-content:flex-start;text-align:left;border-left:1px solid rgba(255,255,255,0.16);padding-left:12px;}'
     + '.sm-chmax{max-width:var(--sal-prose-w,760px);margin:0 auto;}'
     // (dev0381) Choices toolbar: filter box + expand/collapse-all buttons.
     + '.sm-chtools{display:flex;gap:8px;align-items:center;padding:10px 22px 8px;}'
     + '.sm-chfwrap{flex:1;min-width:0;display:flex;gap:6px;}'
-    + '.sm-chfilter{flex:4;min-width:0;padding:8px 12px;border-radius:7px;border:1px solid #2a3550;background:#11132a;color:#fff;font-family:sans-serif;font-size:14px;outline:none;}'
-    + '.sm-chfilter:focus{border-color:#4af;}'
-    + '.sm-chclear{flex:1;min-width:0;padding:8px 6px;border-radius:7px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
-    + '.sm-chclear:hover,.sm-chclear:focus{background:#1d2440;border-color:#4af;outline:none;}'
-    + '.sm-chbtn{flex:none;padding:8px 12px;border-radius:7px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:12px;cursor:pointer;white-space:nowrap;}'
-    + '.sm-chbtn:hover{background:#1d2440;}'
-    + '.sm-chnone{padding:22px;color:#aa8;font-family:sans-serif;}'
-    + '.sm-ico{font-size:13px;line-height:1;flex:none;width:30px;text-align:center;color:#6aa6ff;}'
-    + '.sm-name{flex:1;font-size:18px;}'
+    + '.sm-chfilter{flex:4;min-width:0;padding:9px 12px;border-radius:7px;border:1px solid rgba(255,255,255,0.28);background:rgba(0,0,0,0.25);color:#fff;font-family:inherit;font-size:14px;outline:none;}'
+    + '.sm-chfilter::placeholder{color:#a9c3da;}'
+    + '.sm-chfilter:focus{border-color:#7cc0ff;box-shadow:0 0 0 2px rgba(124,192,255,0.25);}'
+    + '.sm-chclear{flex:1;min-width:0;padding:9px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#eef4fa;font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'
+    + '.sm-chclear:hover,.sm-chclear:focus{background:rgba(255,255,255,0.20);border-color:#7cc0ff;outline:none;}'
+    + '.sm-chbtn{flex:none;padding:9px 13px;border-radius:7px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#eef4fa;font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-chbtn:hover{background:rgba(255,255,255,0.20);}'
+    + '.sm-chnone{padding:22px;color:#d9e6f2;}'
+    + '.sm-ico{font-size:13px;line-height:1;flex:none;width:30px;text-align:center;color:#bfe3ff;}'
+    + '.sm-name{flex:1;font-size:17px;}'
     // (dev0401) Search result rows: name on top, a muted meta line beneath it
     // carrying the dictionary tags + the row's comment.
     + '.sm-rcol{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}'
-    + '.sm-rname{font-size:18px;color:#ddd;}'
-    + '.sm-rmeta{font-size:12px;color:#9fb0c8;line-height:1.35;}'
+    + '.sm-rname{font-size:17px;color:#eef4fa;}'
+    + '.sm-rmeta{font-size:12px;color:#cfe0f0;line-height:1.35;}'
     // (dev0401) SavedSearches row buttons (Open / Delete) on the right of a card.
     + '.sm-svbtns{flex:none;display:flex;gap:8px;align-items:center;}'
-    + '.sm-svbtn{padding:7px 14px;border-radius:7px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:13px;cursor:pointer;white-space:nowrap;}'
-    + '.sm-svbtn:hover{background:#1d2440;}'
-    + '.sm-svbtn.del{color:#ff9a9a;border-color:#5a2a2a;}'
-    + '.sm-svbtn.del:hover{background:#3a1414;}'
+    + '.sm-svbtn{padding:8px 14px;border-radius:7px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#eef4fa;font-family:inherit;font-size:13px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-svbtn:hover{background:rgba(255,255,255,0.20);}'
+    + '.sm-svbtn.del{color:#ffd7d4;border-color:#e8413f;background:rgba(232,65,63,0.22);}'
+    + '.sm-svbtn.del:hover{background:#e8413f;color:#fff;}'
     // (dev0380) Choose-list cells: full-height cells with fine vertical column
     // rules, content vertically centered + left-justified within each column.
     + '.sm-detsum .sm-ico{display:flex;align-items:center;justify-content:center;width:auto;}'
-    + '.sm-detsum .sm-name{display:flex;align-items:center;min-width:0;border-left:1px solid #22304d;padding-left:12px;}'
-    + '.sm-tag{align-self:center;justify-self:start;flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#fff;border:1px solid #3a4a6a;border-radius:10px;padding:2px 9px;white-space:nowrap;}'
-    + '.sm-sub{padding:9px 24px 5px;color:#cfe8ff;font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:#0d0d1e;}'
-    + '.sm-grpdiv{height:1px;background:#223;margin:6px 0;}'
-    + '.sm-colhdr{padding:12px 22px 4px;color:#9fb0c8;font-size:12px;letter-spacing:.14em;text-transform:uppercase;}'
+    + '.sm-detsum .sm-name{display:flex;align-items:center;min-width:0;border-left:1px solid rgba(255,255,255,0.16);padding-left:12px;}'
+    + '.sm-tag{align-self:center;justify-self:start;flex:none;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#fff;border:1px solid rgba(255,255,255,0.40);border-radius:10px;padding:2px 9px;white-space:nowrap;}'
+    + '.sm-sub{padding:10px 24px 6px;color:#d9ebff;font-size:11px;letter-spacing:.12em;text-transform:uppercase;background:rgba(0,0,0,0.25);}'
+    + '.sm-grpdiv{height:1px;background:rgba(255,255,255,0.14);margin:6px 0;}'
+    + '.sm-colhdr{padding:12px 22px 4px;color:#cfe0f0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;}'
     + '.sm-cols{display:flex;gap:28px;align-items:flex-start;justify-content:center;padding:8px 0 30px;}'
     + '.sm-col{flex:1 1 0;min-width:0;max-width:520px;}'
     + '@media(min-width:760px){.sm-cols{padding:8px 120px 30px;}}'
     + '@media(max-width:759px){.sm-cols{flex-direction:column;gap:4px;padding:0 0 24px;}.sm-col{max-width:none;}}'
-    + '.sm-search{display:block;width:calc(100% - 48px);max-width:620px;margin:20px auto 10px;padding:13px 16px;border-radius:9px;border:1px solid #4af;background:#11132a;color:#fff;font-family:sans-serif;font-size:17px;outline:none;}'
+    + '.sm-search{display:block;width:calc(100% - 48px);max-width:620px;margin:20px auto 10px;padding:13px 16px;border-radius:9px;border:1px solid #7cc0ff;background:rgba(0,0,0,0.25);color:#fff;font-family:inherit;font-size:17px;outline:none;}'
     + '.sm-sugg{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:620px;margin:0 auto 6px;padding:0 24px;}'
-    + '.sm-chip{padding:5px 12px;border-radius:14px;border:1px solid #2a3550;background:#15152a;color:#cfe8ff;font-family:sans-serif;font-size:13px;cursor:pointer;}'
-    + '.sm-chip:hover{background:#1d2440;}'
-    + '.sm-count{text-align:center;color:#9fb0c8;font-family:sans-serif;font-size:13px;margin:8px 0 4px;}'
+    + '.sm-chip{padding:6px 13px;border-radius:14px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#eef4fa;font-family:inherit;font-size:13px;cursor:pointer;}'
+    + '.sm-chip:hover{background:rgba(255,255,255,0.20);}'
+    + '.sm-count{text-align:center;color:#cfe0f0;font-size:13px;margin:8px 0 4px;}'
     + '.sm-results{max-width:620px;margin:0 auto;}'
-    + '.sm-cta{display:block;margin:18px auto 26px;padding:13px 26px;border-radius:9px;border:1px solid #4af;background:rgba(0,60,120,0.5);color:#cfe8ff;font-family:sans-serif;font-size:17px;font-weight:bold;cursor:pointer;max-width:320px;width:calc(100% - 48px);}'
-    + '.sm-cta:hover{background:rgba(0,80,150,0.65);}'
-    // (dev0763) Second line inside the top CTA — same button, quieter voice.
-    + '.sm-cta-sub{display:block;margin-top:4px;font-size:13px;font-weight:normal;opacity:0.85;}'
+    // (dev0767) .sm-cta / .sm-cta-sub are GONE with the two "Go to home screen"
+    // buttons they styled. Intro is a tab now: the tab bar is on the page, so a
+    // button whose whole job was to escape a tab-less splash has nothing to do,
+    // and its sub-line ("But check out Introduction first") was telling the
+    // reader to go and find the page they were already standing on.
+    //
     // (dev0763) Build stamp in the Intro's top-left corner. pointer-events:none
     // so it can never sit between a thumb and the sign-in strip beneath it.
-    + '.sm-ver{position:absolute;top:3px;left:7px;z-index:2;font:10px/1 monospace;color:#7a7a90;pointer-events:none;}'
-    + '.sm-tabs{display:flex;flex:none;border-top:2px solid #223;background:#0d0d1e;}'
-    + '.sm-tab{flex:1;padding:13px 4px;text-align:center;cursor:pointer;font-family:sans-serif;font-size:14px;color:#8a93a8;background:transparent;border:none;border-top:3px solid transparent;}'
-    + '.sm-tab.on{color:#cfe8ff;border-top-color:#4af;background:#11132a;}'
-    + '.sm-tab:focus{outline:none;color:#fff;background:#172142;}'
+    + '.sm-ver{position:absolute;top:3px;left:7px;z-index:2;font:10px/1 monospace;color:rgba(255,255,255,0.45);pointer-events:none;}'
+    // (dev0767) Charcoal bars, SE-style: a flat dark strip that reads as chrome
+    // rather than as more page. The active tab lifts to #32363c and takes a
+    // bright #4aa8ff edge — top bar on its bottom edge, bottom bar on its top,
+    // so in both cases the indicator sits against the content.
+    + '.sm-tabs{display:flex;flex:none;background:#26292e;box-shadow:0 -1px 0 rgba(0,0,0,0.5);}'
+    // min-width:0 + ellipsis: seven tabs now share the bar instead of six, and
+    // "SavedSearches" is the widest label. Without this a flex item refuses to
+    // shrink below its text and the row overflows the bar on a narrow frame.
+    + '.sm-tab{flex:1;min-width:0;padding:14px 6px;text-align:center;cursor:pointer;font-family:inherit;font-size:14px;font-weight:500;letter-spacing:.01em;color:#c6ccd4;background:transparent;border:none;border-top:3px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .12s,color .12s;}'
+    + '@media(max-width:900px){.sm-tab{font-size:12px;padding:12px 3px;}}'
+    + '.sm-tab:hover{color:#fff;background:#2f333a;}'
+    + '.sm-tab.on{color:#fff;font-weight:600;border-top-color:#4aa8ff;background:#32363c;}'
+    + '.sm-tab:focus{outline:none;color:#fff;background:#3a3f47;}'
     // (dev0384) The tab bar now also rides at the TOP of every menu page (the
     // old "SeaLifeAndMore" header is gone). Flip the accent rule to the bottom
     // edge so the active indicator sits against the page on the top bar.
-    + '.sm-tabs-top{border-top:none;border-bottom:2px solid #223;}'
+    // (dev0767) …which it never actually did: dev0384 flipped the CONTAINER's
+    // border but left `.sm-tab.on` painting its indicator on the top edge, hard
+    // against the window edge. The two rules below are that flip, on the tab.
+    + '.sm-tabs-top{box-shadow:0 1px 0 rgba(0,0,0,0.5);}'
+    + '.sm-tabs-top .sm-tab{border-top:none;border-bottom:3px solid transparent;}'
+    + '.sm-tabs-top .sm-tab.on{border-bottom-color:#4aa8ff;}'
     // (dev0739) Phones get the BOTTOM bar only. Two identical tab rows cost
     // ~90px of a 375px-tall rotated frame to say the same thing twice, and the
     // bottom one is the reachable one. Desktop keeps both — there the height is
@@ -1026,18 +1110,22 @@ async function _showShareableMenu() {
     + 'html.is-mobile .sm-tabs-top{display:none !important;}'
     // (dev0551) Sign-in strip on Page 1. Low-key by design — a quiet link when
     // signed out, a status line when signed in. Never blocks browsing.
-    + '.sm-auth{max-width:620px;margin:6px auto 30px;padding:0 24px;font-family:sans-serif;color:#9fb0c8;font-size:14px;text-align:center;}'
-    + '.sm-auth a.sm-link{color:#5bf;cursor:pointer;text-decoration:underline;}'
-    + '.sm-auth a.sm-link:hover{color:#8cf;}'
-    + '.sm-authrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px;}'
-    + '.sm-authrow input{flex:1;min-width:0;max-width:320px;padding:10px 13px;border-radius:8px;border:1px solid #2a3550;background:#11132a;color:#fff;font-family:sans-serif;font-size:15px;outline:none;}'
-    + '.sm-authrow input:focus{border-color:#4af;}'
-    + '.sm-authrow button{flex:none;padding:10px 16px;border-radius:8px;border:1px solid #4af;background:rgba(0,60,120,0.5);color:#cfe8ff;font-family:sans-serif;font-size:14px;cursor:pointer;white-space:nowrap;}'
-    + '.sm-authrow button:hover{background:rgba(0,80,150,0.65);}'
+    // (dev0767) Now a slim right-aligned row tucked under the top tab bar, where
+    // a site's account link lives, instead of a centred band above the prose.
+    // It keeps the same #smAuth element and the same three states, so
+    // _wireSignIn is untouched.
+    + '.sm-auth{max-width:var(--sal-prose-w,760px);margin:10px auto 0;padding:0 24px;color:#cfe0f0;font-size:13px;text-align:right;}'
+    + '.sm-auth a.sm-link{color:#bfe3ff;cursor:pointer;text-decoration:underline;}'
+    + '.sm-auth a.sm-link:hover{color:#fff;}'
+    + '.sm-authrow{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;}'
+    + '.sm-authrow input{flex:1;min-width:0;max-width:320px;padding:10px 13px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:rgba(0,0,0,0.25);color:#fff;font-family:inherit;font-size:15px;outline:none;}'
+    + '.sm-authrow input:focus{border-color:#7cc0ff;}'
+    + '.sm-authrow button{flex:none;padding:10px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#eef4fa;font-family:inherit;font-size:14px;cursor:pointer;white-space:nowrap;}'
+    + '.sm-authrow button:hover{background:rgba(255,255,255,0.20);}'
     + '.sm-authrow button:disabled{opacity:.5;cursor:default;}'
-    + '.sm-authmsg{margin-top:10px;color:#8fe8b0;line-height:1.5;}'
-    + '.sm-authmsg.err{color:#ff9a9a;}'
-    + '.sm-authmsg a{color:#5bf;}'
+    + '.sm-authmsg{margin-top:10px;color:#b6f0cd;line-height:1.5;}'
+    + '.sm-authmsg.err{color:#ffc9c5;}'
+    + '.sm-authmsg a{color:#bfe3ff;}'
     + '</style>';
 
   // (dev0384) One set of tab buttons, rendered both above and below the pages.
@@ -1045,8 +1133,12 @@ async function _showShareableMenu() {
   // in lockstep automatically.
   // (dev0668) The Search pair and "Add your own" are each gated by their switch
   // at the top of this file — an off feature contributes no tab button at all.
+  // (dev0767) INTRO is now the FIRST TAB, not a splash the viewer had to escape
+  // from. It is where the site opens, and it stays one click away from every
+  // other tab instead of being reachable only via the back arrow.
   const _tabBtns =
-      '<button class="sm-tab" data-pg="2">Grids</button>'
+      '<button class="sm-tab" data-pg="1">Intro</button>'
+    + '<button class="sm-tab" data-pg="2">Grids</button>'
     + (SM_FEAT_SEARCH
         ? '<button class="sm-tab" data-pg="3">Search</button>'
           + '<button class="sm-tab" data-pg="6">SavedSearches</button>'
@@ -1064,10 +1156,10 @@ async function _showShareableMenu() {
     // (dev0384) Top tab bar — replaces the former header (there is no header now).
     + '<div class="sm-tabs sm-tabs-top">' + _tabBtns + '</div>'
     + '<div style="flex:1;position:relative;overflow:hidden;">'
-      // PAGE 1 — welcome / landing (greeting prose before the first <hr>).
-      // (dev0366) Standalone page with a "Choose a view" button at BOTH the
-      // top and the bottom so the viewer never has to scroll past the greeting
-      // to advance into the tabbed view.
+      // PAGE 1 — INTRO. (dev0767) The site's first tab and its opening screen.
+      // Its prose is the c.json "Introduction" config's ctxt (see introHtml
+      // above), authored in Xe like every other page here. Was: the Greeting's
+      // pre-<hr> half behind two "Go to home screen" buttons.
       + '<div id="smPage1" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;">'
         // (dev0552) Optional sign-in strip — now at the TOP of the welcome menu.
         // Purely additive; browsing never requires it. Rendered signed-out by
@@ -1077,14 +1169,8 @@ async function _showShareableMenu() {
         // phone that is showing a stale cached app says so without being asked.
         + '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
         + '<div id="smAuth" class="sm-auth"></div>'
-        // (dev0763) The button names its destination (the tabbed screen = the
-        // home screen) instead of describing the act of choosing, and the top
-        // one adds the line that stops a first-time viewer skipping the Intro.
-        + '<button id="smGoViewTop" class="sm-cta">Go to home screen'
-          + '<span class="sm-cta-sub">But check out Introduction first</span></button>'
-        + (greetTop.trim() ? '<div class="smGreeting">' + greetTop + '</div>'
-                           : '<div class="smGreeting"><p>Welcome.</p></div>')
-        + '<button id="smGoView" class="sm-cta">Go to home screen</button>'
+        + (introHtml.trim() ? '<div class="smGreeting">' + introHtml + '</div>'
+                            : '<div class="smGreeting"><p>Welcome.</p></div>')
       + '</div>'
       // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
       // Singles | Grids on desktop, stacked on phone)
@@ -1256,7 +1342,9 @@ async function _showShareableMenu() {
   // (dev0667) My Loops (7) follows SavedSearches (6), matching the tab bar.
   // (dev0668) Built from the feature switches so the Tab key visits exactly the
   // tabs that exist — a switched-off page is never landed on.
-  const _smTabOrder = [2]
+  // (dev0767) Intro (1) leads the order, matching its place in the tab bar, so
+  // Tab-cycling wraps back round to it like any other tab.
+  const _smTabOrder = [1, 2]
     .concat(SM_FEAT_SEARCH ? [3, 6] : [])
     .concat([7])
     .concat(SM_FEAT_ADDOWN ? [8] : [])
@@ -1266,11 +1354,15 @@ async function _showShareableMenu() {
     // gone — take it with us rather than leaving it floating over the new page.
     if (window.salKeyboardClose) window.salKeyboardClose();
     window._smCurPage = n; // (dev0367) remembered so a return from V re-opens here, not Welcome
-    if (n >= 2) window._smLastTab = n; // (dev0384) remember the last tab used
+    // (dev0767) …from 1, not 2: Intro is a tab, so "the last tab the viewer
+    // used" can now BE Intro and a return should land back on it.
+    if (n >= 1) window._smLastTab = n; // (dev0384) remember the last tab used
     [1, 2, 3, 4, 5, 6, 7, 8].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
-    ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = (n === 1) ? 'none' : 'flex');
+    // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
+    // Page 1 is the Intro TAB now, so they stay up on every page.
+    ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = 'flex');
     // (dev0741) Re-sweep on every page change — Search results and SavedSearches
     // build their bodies after the overlay was first stamped. Idempotent.
     if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
@@ -1345,7 +1437,7 @@ async function _showShareableMenu() {
       if (inField) return;
       if (ae && ae.closest && ae.closest('.sm-chtools')) return; // filter/Clear own Tab here
       const idx = _smTabOrder.indexOf(window._smCurPage);
-      if (idx < 0) return; // Welcome / unknown — leave default tabbing
+      if (idx < 0) return; // unknown page — leave default tabbing
       e.preventDefault(); e.stopPropagation();
       const next = e.shiftKey
         ? _smTabOrder[(idx - 1 + _smTabOrder.length) % _smTabOrder.length]
@@ -1357,14 +1449,11 @@ async function _showShareableMenu() {
       _smFocusTab(next);
     }
   });
-  // Welcome → Main Page (both the top and bottom "Choose a view" buttons).
+  // (dev0767) The #smGoView / #smGoViewTop wiring is gone with the buttons —
+  // the Grids tab is the way on from the Intro now.
   // (dev0708) dev0707's fullscreen request is GONE from here again — Esc is this
   // app's navigation key and API fullscreen is defined to exit on it. See the
   // note above _toggleFullscreen; the F11 row in helpfloat.js HP_ADD.G replaces it.
-  const _smGo = ov.querySelector('#smGoView');
-  if (_smGo) _smGo.addEventListener('click', () => _smShow(2));
-  const _smGoTop = ov.querySelector('#smGoViewTop');
-  if (_smGoTop) _smGoTop.addEventListener('click', () => _smShow(2));
 
   // (dev0551) Wire the optional sign-in strip (#smAuth). Fails soft: if
   // window.salAuth is missing (auth.js failed to load) or the API is down, the
@@ -1410,10 +1499,13 @@ async function _showShareableMenu() {
   let _smStartPg;
   // (dev0667) Range now runs to 7 so a return from a looped V lands back on My
   // Loops. (dev0668) …and to 8 for "Add your own".
-  if (window._smReturnPage >= 2 && window._smReturnPage <= 8) {
+  // (dev0767) …and DOWN to 1, because Intro is a tab: a viewer who opened an
+  // item from a link inside the Intro should come back to the Intro, not be
+  // bounced to Grids.
+  if (window._smReturnPage >= 1 && window._smReturnPage <= 8) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
-    _smStartPg = (window._smLastTab >= 2 && window._smLastTab <= 8) ? window._smLastTab : 2;
+    _smStartPg = (window._smLastTab >= 1 && window._smLastTab <= 8) ? window._smLastTab : 1;
   } else {
     _smStartPg = 1;
   }
@@ -1421,7 +1513,7 @@ async function _showShareableMenu() {
   // through a remembered last tab (or a return set before the switch flipped),
   // and that page no longer exists in the DOM — every tab would look inactive
   // over blank space. Fall back to Grids.
-  if (_smStartPg !== 1 && _smTabOrder.indexOf(_smStartPg) < 0) _smStartPg = 2;
+  if (_smTabOrder.indexOf(_smStartPg) < 0) _smStartPg = 1;
   window._smReturnPage = undefined;
   if (_smStartPg === 1) window._smWelcomeSeen = true;
   // (dev0403) Capture-then-clear the "returned from a Search-tab grid" flag so
@@ -1432,7 +1524,10 @@ async function _showShareableMenu() {
   // (dev0384) Open focused on the tab so Tab-cycling works immediately.
   // (dev0403) Special cases: returning to Search from a grid re-fills the box,
   // re-runs the search, and focuses ★ Save; SavedSearches focuses its first Open.
-  if (_smStartPg >= 2) setTimeout(() => {
+  // (dev0767) >= 1: opening on the Intro tab now focuses its tab button too, so
+  // Tab-cycling works from the very first screen instead of only after the
+  // viewer had clicked something.
+  if (_smStartPg >= 1) setTimeout(() => {
     if (_smStartPg === 3 && _smRestore && _smBox && window._smLastQuery) {
       _smBox.value = window._smLastQuery;
       _smRunSearch();

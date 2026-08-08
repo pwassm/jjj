@@ -7328,5 +7328,13 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "lobster",
+    "label": "Lobster",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
