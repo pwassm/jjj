@@ -1671,6 +1671,10 @@ function gridOpenFullscreen(row, contained) {
       iframe.onload = function () {
         try {
           if (typeof window._salWireXAll === 'function') window._salWireXAll(iframe.contentDocument);
+          // (dev0771) …and the same for in-collection links (v.709 / c.gname).
+          // Without this they are inert on a full-window slide: the srcdoc is a
+          // separate document, so the main page's handler never sees the click.
+          if (typeof window._salWireLinks === 'function') window._salWireLinks(iframe.contentDocument);
         } catch (_) {}
       };
       iframe.srcdoc = html;

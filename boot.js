@@ -2749,24 +2749,9 @@ function _salOpenConfig(name) {
 }
 window._salOpenUid = _salOpenUid;
 window._salOpenConfig = _salOpenConfig;
-document.addEventListener('click', e => {
-  const a = e.target && e.target.closest && e.target.closest('a[href]');
-  if (!a) return;
-  // getAttribute, not .href: the DOM property resolves "?i=709" to an absolute
-  // URL against the current page, which these patterns would then never match.
-  const h = a.getAttribute('href') || '';
-  const mi = h.match(/^\?i=([^&]+)/);
-  const mc = h.match(/^\?c=([^&]+)/);
-  if (!mi && !mc) return;
-  e.preventDefault();
-  e.stopPropagation();
-  let v; try { v = decodeURIComponent((mi || mc)[1]); } catch (_) { v = (mi || mc)[1]; }
-  // Strip a /unlock suffix if one ever appears in authored HTML: in-app opening
-  // is already unlocked, so the suffix would only corrupt the UID / gname.
-  v = v.replace(/\/unlock$/i, '').trim();
-  if (!v) return;
-  if (mi) _salOpenUid(v); else _salOpenConfig(v);
-}, true);
+// (dev0771) The click handler that calls these moved to core.js _salWireLinks —
+// it has to be wired per DOCUMENT, because the V reader's slide lives in a
+// srcdoc iframe that a listener on this document can never see.
 
 // (zip0142) Resolve a UID (string or number) to a row in `data` and open
 // it in V (fullscreen). Tolerant of leading/trailing whitespace and of

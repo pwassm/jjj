@@ -6890,6 +6890,65 @@ function _salWireXAll(doc) {
 window._salWireXAll = _salWireXAll;
 _salWireXAll(document);
 
+// (dev0771) IN-COLLECTION LINKS (`v.709` / `c.<gname>` from Xe's link button,
+// written as this app's own `?i=` / `?c=` deep-links). Wired PER DOCUMENT, the
+// same shape as _salWireXAll above and for the same reason: the V reader builds
+// its slide in a srcdoc IFRAME, so a listener on the main document never sees a
+// click in there. That is exactly why such a link read as INERT on a full-window
+// slide while the identical link worked on the landing page.
+//
+// Following the href as a plain URL would work, but it costs a reload AND lands
+// the reader in locked-mode — that is what a bare ?i= means to a stranger with a
+// shared link. In-app we want the item to open in place with the usual controls
+// and the back arrow, so intercept and hand it to boot.js's openers.
+function _salWireLinks(doc) {
+  const d = doc || document;
+  if (!d || d._salLinksWired) return;
+  d._salLinksWired = true;
+  d.addEventListener('click', e => {
+    const a = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
+    if (!a) return;
+    // Inside an EDITOR a link click means "edit this link" — xe2 owns that and
+    // opens its link prompt. Never navigate out from under someone typing.
+    //
+    // This guard is LOAD-BEARING, not belt-and-braces: this listener is on the
+    // document in the CAPTURE phase, so it sees the click before the editor's
+    // own listener on its container ever does, and the stopPropagation below
+    // would otherwise mean the editor never hears about it. Matched on what an
+    // editor IS — a contenteditable / ProseMirror mount — rather than on two
+    // hard-coded ids, so a container that gets renamed or a second editor
+    // instance can't silently start hijacking its own links.
+    if (a.closest('[contenteditable="true"],.ProseMirror,.tiptap,#xe2Editor,#teEditor')) return;
+    // getAttribute, not .href: the DOM property resolves "?i=709" against the
+    // current page into an absolute URL these patterns would never match.
+    const h = a.getAttribute('href') || '';
+    const mi = h.match(/^\?i=([^&]+)/);
+    const mc = h.match(/^\?c=([^&]+)/);
+    if (!mi && !mc) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let v; try { v = decodeURIComponent((mi || mc)[1]); } catch (_) { v = (mi || mc)[1]; }
+    // Strip a /unlock suffix if one ever reaches authored HTML: opening in-app is
+    // already unlocked, so the suffix would only corrupt the UID / gname.
+    v = v.replace(/\/unlock$/i, '').trim();
+    if (!v) return;
+    const go = () => {
+      if (mi) { if (window._salOpenUid) window._salOpenUid(v); }
+      else    { if (window._salOpenConfig) window._salOpenConfig(v); }
+    };
+    // A slide in the V reader sits ON TOP of whatever we are about to open, so
+    // close it first or the new item mounts behind the one being left.
+    if (d !== document && typeof window.vpClose === 'function') {
+      try { window.vpClose(); } catch (_) {}
+      setTimeout(go, 80);
+      return;
+    }
+    go();
+  }, true);
+}
+window._salWireLinks = _salWireLinks;
+_salWireLinks(document);
+
 // NOTE: renderFtext is the DISPLAY path (Xs, G thumbs/cells, V fullscreen).
 // Never use it to fill an editor — the cut above would delete the author's
 // parked notes on the next save. Editors call _linkifyHtml directly.

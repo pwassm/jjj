@@ -528,6 +528,23 @@
     _forceMutedVideos(element);
     editor.on('create', function () { _forceMutedVideos(element); });
     editor.on('update', function () { _forceMutedVideos(element); });
+    // (dev0771) IN THE EDITOR, a click on a link EDITS it. Link.configure sets
+    // openOnClick:false, so until now clicking one did nothing at all — which is
+    // what "inert" meant. Following a link is the reader's job (Xs, the landing
+    // page, the V slide); here the useful action is "let me change this".
+    // Selects the whole link first, so a new label replaces the old text rather
+    // than being dropped inside it.
+    element.addEventListener('click', function (e) {
+      var a = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
+      if (!a || !element.contains(a)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        var pos = editor.view.posAtDOM(a, 0);
+        editor.chain().focus().setTextSelection(pos + 1).extendMarkRange('link').run();
+      } catch (_) { editor.commands.focus(); }
+      setLink(editor);
+    }, true);
     if (opts.onUpdate) editor.on('update', opts.onUpdate);
     return {
       editor: editor,
@@ -1482,10 +1499,12 @@
   }
   // Show an existing href back in the shorthand it was written in, so re-opening
   // the prompt on a `V.709` link offers `V.709` rather than `?i=709`.
+  // (dev0771) Lower case, per the author: `v.709`, not `V.709`. Reading it back
+  // is case-insensitive either way — this is only what we OFFER.
   function _salLinkShorthand(href) {
     href = String(href || '');
-    var m = href.match(/^\?i=([^&]+)/); if (m) return 'V.' + decodeURIComponent(m[1]);
-    m = href.match(/^\?c=([^&]+)/);     if (m) return 'C.' + decodeURIComponent(m[1]);
+    var m = href.match(/^\?i=([^&]+)/); if (m) return 'v.' + decodeURIComponent(m[1]);
+    m = href.match(/^\?c=([^&]+)/);     if (m) return 'c.' + decodeURIComponent(m[1]);
     return href;
   }
 
@@ -1498,9 +1517,9 @@
       'Link  —  "text;target"  (text optional)\n\n'
       + '  target can be:\n'
       + '    https://…  or  a bare domain\n'
-      + '    V.709                  → open that ml.json row in V\n'
-      + '    C.Octopus Hatchlings   → open that c.json grid in G\n\n'
-      + '  e.g.  see the hatchlings;C.Octopus Hatchlings\n\n'
+      + '    v.709                  → open that ml.json row in V\n'
+      + '    c.Octopus Hatchlings   → open that c.json grid in G\n\n'
+      + '  e.g.  see the hatchlings;c.Octopus Hatchlings\n\n'
       + 'Blank removes the link.', prev);
     if (raw === null) return;
     raw = raw.trim();
