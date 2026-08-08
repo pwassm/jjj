@@ -688,7 +688,10 @@ async function _showShareableMenu() {
     return s === 'introduction' || s === 'intro';
   };
   const introCfg = cRows.find(r => r && !r._salMeta && _isIntroCfg(r.gname));
-  const introHtml = introCfg
+  // `let`, not `const`: the date-driven UID slot (dev0768, below _smEsc) makes a
+  // second pass over this to swap the author's bare `UID` token for today's
+  // clip. It runs down there because it needs _smEsc, which isn't declared yet.
+  let introHtml = introCfg
     ? _linkify(_balanceHtml(_cutBelow(introCfg.ctxt)))
     : greetTop;
 
@@ -732,6 +735,132 @@ async function _showShareableMenu() {
     return d.innerHTML;
   };
   const _smDateShort = v => String(v || '').trim().slice(0, 10);
+
+  // ── (dev0768) THE INTRO'S DATE-DRIVEN VIDEO SLOT ────────────────────────────
+  // The author writes the bare token `UID` on a line of the Introduction ctxt
+  // (Xe wraps it in a <p>; anything whose ENTIRE text is "UID" counts). At
+  // render time that becomes today's clip.
+  //
+  // WHICH clip comes from the Introduction config row's own grid cells, one per
+  // day of the month. The author's shorthand numbers the rows a–e — a1–a5 are
+  // days 1–5, b1–b5 days 6–10, and so on — while c.json spells the same cells
+  // the other way round (`1a`…`5e`), which is why this is a table and not
+  // arithmetic. Days 26–28 use the portrait cells 1P/2P/3P and 29–31 the extra
+  // 1f/1g/1h, those being what is left once the 25-cell grid is spent.
+  //
+  //     day 8  →  the author's b3  →  c.json cell `2c`
+  //
+  // The cell holds a UID, exactly as a grid cell does, so filling a day is
+  // typing a number into C — no HTML, and the Intro prose is authored once.
+  const _SM_DAY_CELLS = [
+    '1a', '1b', '1c', '1d', '1e',   // days  1– 5   (author's a1–a5)
+    '2a', '2b', '2c', '2d', '2e',   // days  6–10   (author's b1–b5)
+    '3a', '3b', '3c', '3d', '3e',   // days 11–15   (author's c1–c5)
+    '4a', '4b', '4c', '4d', '4e',   // days 16–20   (author's d1–d5)
+    '5a', '5b', '5c', '5d', '5e',   // days 21–25   (author's e1–e5)
+    '1P', '2P', '3P',               // days 26–28
+    '1f', '1g', '1h'                // days 29–31
+  ];
+  // LOCAL date — the slot tracks the viewer's own calendar day, not UTC, so it
+  // turns over at their midnight rather than at some hour of their afternoon.
+  // `?introday=13` previews another day without touching the clock; anything
+  // out of range falls back to today.
+  const _smIntroDay = () => {
+    let d = 0;
+    try { d = parseInt(new URLSearchParams(location.search).get('introday'), 10) || 0; } catch (e) {}
+    return (d >= 1 && d <= 31) ? d : new Date().getDate();
+  };
+  const _smIntroPick = () => {
+    const day = _smIntroDay();
+    const key = _SM_DAY_CELLS[day - 1] || '';
+    const uid = (introCfg && key && introCfg[key] != null) ? String(introCfg[key]).trim() : '';
+    const row = uid ? mlRows.find(r => r && !r._salMeta && String(r.UID) === uid) : null;
+    const why = !introCfg ? 'no c.json config row named "Introduction"'
+              : !key      ? 'day ' + day + ' maps to no cell'
+              : !uid      ? 'cell ' + key + ' is empty'
+              : !row      ? 'no ml.json row with UID ' + uid
+              : !String(row.link || '').trim() ? 'UID ' + uid + ' has no link'
+              : !_SM_SLOT_VID.test(String(row.link).split(/[?#]/)[0])
+                && !_SM_SLOT_IMG.test(String(row.link).split(/[?#]/)[0])
+                          ? 'UID ' + uid + ' is not a direct media file (YouTube/Vimeo pages can\'t play here): ' + row.link
+              : '';
+    return { day, key, uid, row, why };
+  };
+  // Direct media files only, deliberately: the author is starting with the
+  // self-hosted mp4s on video.sealifeandmore.com, and a YouTube/Vimeo WATCH page
+  // is not something a <video> can play (that needs the grid/V iframe path).
+  const _SM_SLOT_VID = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
+  const _SM_SLOT_IMG = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i;
+  const _smSlotHtml = row => {
+    const link = String((row && row.link) || '').trim();
+    if (!link) return '';
+    const path = link.split(/[?#]/)[0];
+    // Anything that is not a media FILE renders NOTHING (with a console reason).
+    // This is not hypothetical tidiness: the Introduction row inherited its 25
+    // cells from the grid it was copied off, so most days currently point at
+    // news-site JPEGs and two YouTube watch pages. A watch page can't play in a
+    // <video>, and printing its raw URL on the public front door is worse than
+    // an empty slot. The developer still finds out — console.warn below, plus
+    // window._smIntroSlot().
+    if (!_SM_SLOT_VID.test(path) && !_SM_SLOT_IMG.test(path)) return '';
+    const src = _smEsc(link).replace(/"/g, '&quot;');
+    const cap = String((row && row.VidTitle) || '').trim();
+    const capHtml = cap
+      ? '<div style="font-size:0.78em;text-align:center;margin-top:3px;">' + _smEsc(cap) + '</div>'
+      : '';
+    let media;
+    if (_SM_SLOT_VID.test(path)) {
+      // The same flags as the clips the author hand-placed in this very ctxt, so
+      // the generated one is not the odd one out on its own page.
+      media = '<video src="' + src + '" controls autoplay loop muted playsinline'
+            + ' preload="metadata" style="width:100%;border-radius:6px;"></video>';
+    } else {
+      media = '<img src="' + src + '" alt="" style="width:100%;border-radius:6px;">';
+    }
+    return '<div class="sm-introslot">' + media + capHtml + '</div>';
+  };
+  const _smApplyIntroSlot = html => {
+    const host = document.createElement('div');
+    host.innerHTML = String(html || '');
+    // Collect the tokens first and mutate afterwards — replacing nodes during a
+    // TreeWalker walk invalidates it.
+    const hits = [];
+    const walk = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, null);
+    let n; while ((n = walk.nextNode())) if (n.nodeValue.trim() === 'UID') hits.push(n);
+    if (!hits.length) return host.innerHTML;
+    const pick = _smIntroPick();
+    const media = pick.row ? _smSlotHtml(pick.row) : '';
+    if (!media) {
+      try { console.warn('[intro slot] day ' + pick.day + ', cell ' + (pick.key || '—')
+        + ': ' + (pick.why || 'nothing to show')); } catch (e) {}
+    }
+    hits.forEach(t => {
+      // Climb to the tightest wrapper holding nothing BUT the token, so
+      // `<p>UID</p>` is replaced whole instead of leaving an empty paragraph
+      // wrapped round the video.
+      let target = t;
+      while (target.parentNode && target.parentNode !== host
+             && target.parentNode.children.length <= 1
+             && target.parentNode.textContent.trim() === 'UID') target = target.parentNode;
+      if (!target.parentNode) return;
+      // An unfillable slot removes the token rather than printing the word
+      // "UID" at a viewer. The reason went to the console above, and to
+      // window._smIntroSlot() below, which is where the developer looks.
+      if (!media) { target.parentNode.removeChild(target); return; }
+      const box = document.createElement('div');
+      box.innerHTML = media;
+      target.parentNode.replaceChild(box.firstChild, target);
+    });
+    return host.innerHTML;
+  };
+  introHtml = _smApplyIntroSlot(introHtml);
+  // Console handle: what does today (or ?introday=N) resolve to, and if nothing,
+  // why not. Re-exported on every menu build so it always reflects the live read.
+  window._smIntroSlot = () => {
+    const p = _smIntroPick();
+    return { day: p.day, cell: p.key, uid: p.uid,
+             link: p.row ? String(p.row.link || '') : '', why: p.why || 'ok' };
+  };
 
   // (dev0400) Search page show-threshold. Result cards appear once the match
   // count is _smN OR FEWER (was "below n"). Fixed at 25 in code now — the old
@@ -1002,6 +1131,10 @@ async function _showShareableMenu() {
     // instead of shoving its neighbours onto the next line.
     + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
+    // (dev0768) The date-driven UID slot. clear:both so it starts below any
+    // floated clip the author placed above it rather than squeezing alongside.
+    + '.smGreeting .sm-introslot{margin:16px 0;clear:both;}'
+    + '.smGreeting .sm-introslot video,.smGreeting .sm-introslot img{display:block;width:100%;border-radius:6px;}'
     + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#d9ebff;margin:0;}'
     + '.smGreeting hr{border:none;border-top:1px solid rgba(255,255,255,0.28);margin:20px 0;}'
     + '.te-cut{display:none;}'

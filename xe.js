@@ -2310,9 +2310,24 @@ function teShowImageModal(onInsert, defaults) {
       return { url: v, kind: teIsVideoUrl(v) ? 'video' : 'image' };
     }
     // Treat as UID lookup. Accept numeric or alphanumeric.
-    const row = (typeof data !== 'undefined' && Array.isArray(data))
-      ? data.find(r => r && String(r.UID) === v) : null;
-    if (!row) return { error: 'No row with UID "' + v + '"' };
+    const rows = (typeof data !== 'undefined' && Array.isArray(data)) ? data : [];
+    const row = rows.find(r => r && String(r.UID) === v);
+    // (dev0768) …and if it misses, say what WAS loaded. A bare "No row with UID
+    // 709" looks exactly the same whether the UID is a typo or the tab is
+    // holding a stale/partial ml.json — and the second case is the one that
+    // wastes an afternoon, because the row is right there on disk. The count and
+    // range make it self-evident which one you are looking at.
+    if (!row) {
+      const nums = [];
+      for (let i = 0; i < rows.length; i++) {
+        const u = parseFloat(rows[i] && rows[i].UID);
+        if (!isNaN(u)) nums.push(u);
+      }
+      const rng = nums.length ? Math.min.apply(null, nums) + '–' + Math.max.apply(null, nums) : 'none';
+      return { error: 'No row with UID "' + v + '" — this tab has ' + rows.length
+        + ' rows loaded (UIDs ' + rng + ').'
+        + (rows.length ? '\nIf that row exists on disk, this tab is showing stale data — hard-reload (Ctrl+Shift+R).' : '') };
+    }
     if (!row.link) return { error: 'Row UID "' + v + '" has no link.' };
     if (teIsVideoUrl(row.link)) return { url: row.link, kind: 'video' };
     if (!teIsImageUrl(row.link)) {
