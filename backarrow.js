@@ -31,9 +31,15 @@
 //   The grid's `l` (cLean) toggle hides it along with the rest of the chrome.
 //
 // LOOK
-//   Copied from PM's ‹ › buttons (vp.js _addSectArrows): a 46px translucent dark
-//   circle with a hairline white border, left edge, vertically centred. Same
-//   size, same colours, same position — one back control, one appearance.
+//   A 46px dark circle with a white ring, left edge, vertically centred —
+//   the size and position PM's ‹ › buttons use (vp.js _addSectArrows).
+//   (dev0765) The COLOURS are no longer PM's. PM's arrows sit over a text
+//   reader with a known dark background; this one sits over whatever picture
+//   the grid happens to be showing. At PM's rgba(0,0,0,0.45) fill behind a
+//   0.35-alpha hairline it vanished into a dark cell — reported as "the back
+//   arrow isn't there on Gu". So: an opaque-enough fill, a near-solid ring,
+//   and a dark drop shadow that gives the white ring something to read
+//   against when the picture underneath is bright. Same 46px, same corner.
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function () {
@@ -120,8 +126,10 @@
     // viewer's own arrows, so it is reachable on top of any of them.
     b.style.cssText = 'position:fixed;left:10px;top:50%;transform:translateY(-50%);'
       + 'width:46px;height:46px;border-radius:50%;'
-      + 'border:1px solid rgba(255,255,255,0.35);background:rgba(0,0,0,0.45);'
-      + 'color:#fff;font-size:26px;line-height:1;padding:0;'
+      + 'border:2px solid rgba(255,255,255,0.9);background:rgba(0,0,0,0.72);'
+      + 'box-shadow:0 0 0 1px rgba(0,0,0,0.6),0 2px 10px rgba(0,0,0,0.7);'
+      + 'color:#fff;font-size:28px;font-weight:bold;line-height:1;padding:0;'
+      + 'text-shadow:0 1px 3px rgba(0,0,0,0.9);'
       + 'cursor:pointer;touch-action:manipulation;user-select:none;'
       + '-webkit-user-select:none;z-index:29500;display:none;';
     // Swallow the gesture start so the swipe catchers underneath never read a

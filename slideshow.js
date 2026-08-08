@@ -1350,6 +1350,21 @@ window._slideshowVideoSwipe = function (dir) {
   }
 };
 
+// (dev0765) Zoom pause — vp.js calls this when a magnify inside V passes the
+// zoom threshold (desktop hold-LMB, phone pinch-out). The show's own images
+// have paused themselves on zoom since dev0268; a slide that happens to be a
+// VIDEO plays in V instead, outside this file's gestures, so the clock kept
+// running under a reader who had just asked to look closer. Same rule, now
+// from both sides.
+//
+// A real pause, not a hold flag: the ⏸/▶ button flips, so the reader can see
+// the show stopped and has an obvious way to start it again. It survives the
+// video being closed — exactly as an image zoom's pause survives L↔R (dev0268).
+// No-op when no show is up, which is the standalone-V case.
+window._slideshowZoomPause = function () {
+  if (_slideshowState) _slideshowPause();
+};
+
 // (dev0718) Crop hold — vp.js calls this when C opens/closes the crop overlay.
 // Opening a crop is a commitment to THIS video, so the show comes off
 // autopilot: the Both-ShortVid cap timer stands down (see _slideshowPlayVideo),

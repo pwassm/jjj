@@ -511,9 +511,16 @@ function gridOpenFullscreen(row, contained) {
 
     // Shared zoom / pan state for host transform
     let _vScale = 1, _vTx = 0, _vTy = 0;
+    // (dev0765) Latch for the zoom-stops-playback rule — see _vpZoomStopPlayback.
+    // Every zoom and pan write goes through _vApply, so this is the one place
+    // both gestures (desktop hold-LMB, phone pinch-out) can be caught at once.
+    let _vZoomStopped = false;
     function _vApply() {
       host.style.transform = `translate(${_vTx}px,${_vTy}px) scale(${_vScale})`;
       swipeCatcher.style.cursor = _vScale > 1.05 ? 'grab' : 'zoom-in';
+      if (_vScale > 1.05) {
+        if (!_vZoomStopped) { _vZoomStopped = true; _vpZoomStopPlayback(); }
+      } else _vZoomStopped = false;
     }
     function _vpxy(e) {
       return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
@@ -1946,10 +1953,17 @@ function gridOpenFullscreen(row, contained) {
     let _iScale = 1, _iTx = 0, _iTy = 0;
     const MAX_SCALE = 8, MIN_SCALE = 0.9;
 
+    // (dev0765) Same latch as the video branch. There is no player to pause
+    // here, but a slideshow that is showing this picture full-window still has
+    // a clock running, and magnifying should stop it.
+    let _iZoomStopped = false;
     function _iApply() {
       img.style.transform = `translate(${_iTx}px,${_iTy}px) scale(${_iScale})`;
       // Cursor hints: zoom-in at 1×, grab when zoomed (no button held)
       ivWrap.style.cursor = _iScale > 1.05 ? 'grab' : 'zoom-in';
+      if (_iScale > 1.05) {
+        if (!_iZoomStopped) { _iZoomStopped = true; _vpZoomStopPlayback(); }
+      } else _iZoomStopped = false;
     }
     function _pxy(e) {
       return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
@@ -2675,6 +2689,25 @@ function _vpPauseNow() {
   const p = _vpState.player;
   try { if (_vpState.isYT) p.pauseVideo(); else p.pause(); } catch (_) {}
   vpUpdatePlayBtn();
+}
+
+// (dev0765) ── ZOOM MEANS "HOLD IT THERE" ──────────────────────────────────
+// Magnifying is a request to STUDY one frame, and everything that was moving
+// under it fights that: the video plays on past the very thing being looked at,
+// and if a slideshow put the video on screen its clock keeps ticking toward the
+// next slide. So the first push past the zoom threshold stops both — which is
+// the rule the show already applies to its own images (slideshow.js dev0268),
+// now extended to V, the one place a zoom did not stop anything.
+//
+// Callers own the "only once" latch (see _vApply / _iApply): after this fires
+// the reader is free to press play again and pan around a running video, and
+// each pan re-enters _vApply — re-pausing there would make a zoomed video
+// impossible to watch. Dropping back to 1× re-arms the latch.
+function _vpZoomStopPlayback() {
+  try { if (_vpIsPlaying()) _vpPauseNow(); } catch (_) {}
+  try {
+    if (typeof window._slideshowZoomPause === 'function') window._slideshowZoomPause();
+  } catch (_) {}
 }
 
 function vpTogglePlay() {
