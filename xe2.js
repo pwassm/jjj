@@ -1372,6 +1372,18 @@
         } else {
           editor.chain().focus().insertContent(html).run();
         }
+        // (dev0772) SAY SO when a date-slot goes in, and say so from the DOC,
+        // not from the fact that we asked for it — read the saved shape back out
+        // and count the markers. The slot has now twice failed to reach c.json
+        // with every individual step verified working, and the one thing nobody
+        // could see was whether the insert had actually landed in the document.
+        // Now it is on screen either way.
+        if (/te-slot/.test(String(html))) {
+          var n = (serialize(editor).match(/te-slot/g) || []).length;
+          _toast(n
+            ? '📅 Video-of-the-day slot in place (' + n + ' on this page) — Save, then open the Intro tab'
+            : '⚠ The slot did NOT go in — the editor rejected it. Tell Claude.', n ? 3200 : 6000);
+        }
       }, editCtx ? editCtx.defaults : undefined);
       return;
     }
@@ -1509,7 +1521,30 @@
   }
 
   function setLink(editor) {
-    var prev = _salLinkShorthand(editor.getAttributes('link').href || '');
+    // (dev0772) Offer the link back in the SAME "text;target" shape it is typed
+    // in, not the target alone — otherwise re-opening an existing link showed
+    // only half of it and editing the wording meant retyping it from scratch.
+    //
+    // Selecting the whole link first is what makes the label readable at all
+    // (a bare cursor inside it spans no text), and it is also what lets a new
+    // label REPLACE the old one rather than land inside it.
+    if (editor.isActive('link') && editor.state.selection.empty) {
+      editor.chain().focus().extendMarkRange('link').run();
+    }
+    var prevHref = editor.getAttributes('link').href || '';
+    var prevShort = _salLinkShorthand(prevHref);
+    var prevText = '';
+    if (prevHref) {
+      try {
+        var s = editor.state.selection;
+        prevText = editor.state.doc.textBetween(s.from, s.to, ' ').trim();
+      } catch (_) {}
+    }
+    // "text;target", unless the text IS the target (a link that never had a
+    // label of its own) — then there is nothing to put in front of the ";".
+    var prev = !prevHref ? ''
+             : (prevText && prevText !== prevShort) ? prevText + ';' + prevShort
+             : prevShort;
     // (dev0770) `label;target` — the text before the first ";" is what the reader
     // sees, in link blue; everything after it is where the link goes. No ";" and
     // the target is its own label, which is the old behaviour.

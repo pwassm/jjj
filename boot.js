@@ -897,8 +897,25 @@ async function _showShareableMenu() {
   // why not. Re-exported on every menu build so it always reflects the live read.
   window._smIntroSlot = () => {
     const p = _smIntroPick();
-    return { day: p.day, cell: p.key, uid: p.uid,
-             link: p.row ? String(p.row.link || '') : '', why: p.why || 'ok' };
+    // (dev0772) …and whether the SAVED ctxt actually carries a marker. Which day
+    // maps to which UID was never the hard part; "is the slot in the file at
+    // all?" was, and it took a git-level look at c.json to answer. One line now.
+    const raw = introCfg ? String(introCfg.ctxt || '') : '';
+    const boxes = (raw.match(/te-slot/g) || []).length;
+    const words = (raw.match(/UIDoftheday/gi) || []).length;
+    const cutAt = raw.search(/te-cut-below/);
+    const firstAt = raw.search(/te-slot|UIDoftheday/i);
+    return {
+      day: p.day, cell: p.key, uid: p.uid,
+      link: p.row ? String(p.row.link || '') : '',
+      why: p.why || 'ok',
+      markersInSavedCtxt: boxes + words,
+      markerNote: (boxes + words) === 0
+        ? 'NO marker in the saved Introduction ctxt — insert one (🖼 → source "UIDoftheday") and SAVE'
+        : (cutAt >= 0 && firstAt > cutAt)
+          ? 'marker sits BELOW the ⊘ cut line, so it is dropped before rendering — move it above'
+          : 'marker found',
+    };
   };
 
   // (dev0400) Search page show-threshold. Result cards appear once the match

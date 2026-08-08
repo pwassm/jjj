@@ -6936,6 +6936,23 @@ function _salWireLinks(doc) {
       if (mi) { if (window._salOpenUid) window._salOpenUid(v); }
       else    { if (window._salOpenConfig) window._salOpenConfig(v); }
     };
+    // (dev0772) WHAT WE ARE ABOUT TO OPEN GOES UNDERNEATH. V is #gridFullscreen
+    // at z-index 28500; the Xs preview is 36000 and the xe2 editor 35000. So a
+    // link clicked on an Xs slide DID everything it was asked to — intercepted
+    // the click, opened V — and V mounted invisibly below the slide still
+    // covering it. Reported, reasonably, as "clicking does nothing".
+    //
+    // Xs is a preview, so closing it to show the thing you asked for is right.
+    // The EDITOR is not: closing it would throw away an editing session to
+    // follow a link. Say so instead of opening something no one can see.
+    const slideOv = document.getElementById('teSlideOverlay');
+    if (slideOv) slideOv.remove();
+    if (document.getElementById('xe2Overlay')) {
+      if (typeof window.toast === 'function') {
+        window.toast('Close the editor to follow this link — it opens under Xe', 2600);
+      }
+      return;
+    }
     // A slide in the V reader sits ON TOP of whatever we are about to open, so
     // close it first or the new item mounts behind the one being left.
     if (d !== document && typeof window.vpClose === 'function') {
