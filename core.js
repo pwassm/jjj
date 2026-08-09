@@ -3371,7 +3371,10 @@ async function tDownloadRowMedia(di) {
     const r = await fetch('http://127.0.0.1:8081/media/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: row.link, title: row.VidTitle || '', author: row.VidAuthor || '' })
+      // (dev0786) linkpage rides along: it is the referer an embed-only Vimeo video
+      // is whitelisted to, and the proxy retries with it when yt-dlp asks for one.
+      body: JSON.stringify({ url: row.link, title: row.VidTitle || '', author: row.VidAuthor || '',
+                             linkpage: row.linkpage || '' })
     });
     const j = await r.json();
     if (j && j.ok) toast('✓ ' + j.localFile + (j.dims ? '  (' + j.dims[0] + '×' + j.dims[1] + ')' : ''), 6000);

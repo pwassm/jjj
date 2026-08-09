@@ -4995,14 +4995,57 @@ function mediaBuildStem(kind, title, channel, id, maxW, maxH) {
        + '~[M[' + (maxW || 0) + 'x' + (maxH || 0) + ']]'
        + '~' + idTag;
 }
+// (dev0786) ── The Vimeo detour ────────────────────────────────────────────
+// yt-dlp 2026.07.14 cannot touch ANY vimeo.com/<id> URL: its four API clients are
+// all dead ends right now — macos/ios 401 on the OAuth token fetch, web demands a
+// login, android refuses without a cached token. So the canonical URL is rewritten
+// to the EMBED PLAYER, which still serves a public config to anyone who sends a
+// vimeo.com referer:
+//
+//   https://vimeo.com/<id>  →  https://player.vimeo.com/video/<id>   + --referer https://vimeo.com/
+//
+// Verified on 6 ml.json rows: 5 downloaded, and the 6th failed with yt-dlp's own
+// "embed-only video without embedding URL" — which is exactly what mediaVimeoReferers
+// below retries, using the row's `linkpage` as the allowed embedding domain.
+// YouTube and Wikimedia are untouched; this is purely a Vimeo problem.
+function mediaVimeoFetchUrl(kind, id, url) {
+  if (kind !== 'vm' || !id) return url;
+  return 'https://player.vimeo.com/video/' + id;
+}
+// Referers to try, in order. The generic vimeo.com one covers everything public;
+// an embed-only video is whitelisted to the page that embeds it, which is precisely
+// what ml.json's `linkpage` holds, so it is worth exactly one retry.
+function mediaVimeoReferers(kind, linkpage) {
+  if (kind !== 'vm') return [null];
+  const out = ['https://vimeo.com/'];
+  const lp = String(linkpage || '').trim();
+  if (/^https?:\/\//i.test(lp) && !/vimeo\.com/i.test(lp)) out.push(lp);
+  return out;
+}
+// Vimeo is fronted by Cloudflare Turnstile on some videos — the player page answers
+// 401 with a CAPTCHA instead of the config. Nothing here can or should solve that,
+// so name it plainly rather than reporting a bare 401 the user can't act on.
+function mediaExplainErr(kind, stderr) {
+  const last = String(stderr || '').trim().split(/\r?\n/).pop() || '';
+  if (kind === 'vm' && /401|unauthorized/i.test(last)) {
+    return 'Vimeo is showing a Cloudflare bot check for this video (HTTP 401) — not a SLAM bug '
+         + 'and not fixable from here. Try again later, or download it from the Vimeo page in a browser.';
+  }
+  if (kind === 'vm' && /embed-only/i.test(last)) {
+    return 'Vimeo embed-only video: it plays only on its host page. Put that page URL in the row\'s '
+         + 'linkpage column and try again.';
+  }
+  return last;
+}
 // yt-dlp -J, parsed. Resolves null on any failure — the caller then falls back to
 // what it can read off the URL, so a metadata hiccup costs a nice name, not the file.
-function mediaProbeMeta(url) {
+function mediaProbeMeta(url, referer) {
   return new Promise(resolve => {
     let proc;
     try {
       proc = spawn(EXEC_BIN.ytdlp, ['--no-warnings', '--no-playlist', '--ignore-config',
-        '--socket-timeout', '20', '--skip-download', '-J', url], { windowsHide: true });
+        '--socket-timeout', '20', '--skip-download']
+        .concat(referer ? ['--referer', referer] : [], ['-J', url]), { windowsHide: true });
     } catch (_) { resolve(null); return; }
     let out = '';
     proc.stdout.on('data', c => { out += c; if (out.length > 12e6) proc.kill(); });
@@ -5053,47 +5096,70 @@ function mediaDownload(req, res, origin) {
     }
 
     // ── yt-dlp path (YouTube, Vimeo, Commons File: pages). ────────────────
-    const j = await mediaProbeMeta(url);
-    let maxW = 0, maxH = 0;
-    ((j && j.formats) || []).forEach(f => {
-      const w = +(f && f.width) || 0, h = +(f && f.height) || 0;
-      if (w > 0 && h > 0 && (h > maxH || (h === maxH && w > maxW))) { maxH = h; maxW = w; }
-    });
-    if (!maxH) { maxW = +(j && j.width) || 0; maxH = +(j && j.height) || 0; }
-    const title   = (j && j.title) || fbTitle || cls.id || 'untitled';
-    const channel = (j && (j.channel || j.uploader || j.uploader_id)) || fbAuthor || 'UnknownChannel';
-    const id      = (j && j.id) || cls.id || 'unknown';
-    const stem    = mediaBuildStem(cls.kind, title, channel, id, maxW, maxH);
+    // (dev0786) Vimeo goes to the embed player with a referer; everything else is
+    // fetched by its own URL with no referer at all, exactly as before.
+    const fetchUrl = mediaVimeoFetchUrl(cls.kind, cls.id, url);
+    const referers = mediaVimeoReferers(cls.kind, payload.linkpage);
 
-    const tmpDir = path.join(destDir, '.tmp_' + Date.now().toString(36));
-    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
-    const rmTmp = () => { try { (fs.rmSync || fs.rmdirSync)(tmpDir, { recursive: true, force: true }); } catch (_) {} };
-    // Same selector shape as ytdl_v26's default: best video + best audio, merged to
-    // mp4 so everything in the folder seeks the same way. No height cap — max res is
-    // the standing preference everywhere else in SLAM.
-    const args = ['--no-warnings', '--no-playlist', '--ignore-config', '--socket-timeout', '20',
-                  '--no-part', '--js-runtimes', 'node',
-                  '-f', 'bv*+ba/b', '--merge-output-format', 'mp4',
-                  '-o', path.join(tmpDir, '%(autonumber)03d.%(ext)s'), url];
-    let proc;
-    try { proc = spawn(EXEC_BIN.ytdlp, args, { windowsHide: true }); }
-    catch (e) { rmTmp(); sendJson(res, 500, { ok: false, error: 'spawn yt-dlp: ' + e.message }, origin); return; }
-    let stderr = '';
-    proc.stderr.on('data', c => { stderr += c; if (stderr.length > 20000) stderr = stderr.slice(-20000); });
-    proc.stdout.on('data', () => {});
-    proc.on('error', () => { rmTmp(); sendJson(res, 500, { ok: false, error: 'yt-dlp not runnable' }, origin); });
-    proc.on('close', () => {
-      let tmp = [];
-      try { tmp = fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) {}
-      if (!tmp.length) { rmTmp(); fail(stderr.trim().split(/\r?\n/).pop() || 'yt-dlp produced no file'); return; }
-      const src = path.join(tmpDir, tmp[0]);
-      const ext = (/\.([^.]+)$/.exec(tmp[0]) || [])[1] || 'mp4';
-      const base = pinStampName(stem, src) + '.' + ext;
-      try { fs.renameSync(src, path.join(destDir, base)); }
-      catch (e) { rmTmp(); fail('rename: ' + e.message); return; }
-      rmTmp();
-      finish(base);
+    // One yt-dlp download attempt under one referer. Resolves { file, stderr } —
+    // `file` null when nothing landed, so the caller can decide whether to retry.
+    const attempt = (referer, stem) => new Promise(resolve => {
+      const tmpDir = path.join(destDir, '.tmp_' + Date.now().toString(36));
+      try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+      const rmTmp = () => { try { (fs.rmSync || fs.rmdirSync)(tmpDir, { recursive: true, force: true }); } catch (_) {} };
+      // Same selector shape as ytdl_v26's default: best video + best audio, merged to
+      // mp4 so everything in the folder seeks the same way. No height cap — max res is
+      // the standing preference everywhere else in SLAM.
+      const args = ['--no-warnings', '--no-playlist', '--ignore-config', '--socket-timeout', '20',
+                    '--no-part', '--js-runtimes', 'node']
+        .concat(referer ? ['--referer', referer] : [],
+                ['-f', 'bv*+ba/b', '--merge-output-format', 'mp4',
+                 '-o', path.join(tmpDir, '%(autonumber)03d.%(ext)s'), fetchUrl]);
+      let proc;
+      try { proc = spawn(EXEC_BIN.ytdlp, args, { windowsHide: true }); }
+      catch (e) { rmTmp(); resolve({ file: null, stderr: 'spawn yt-dlp: ' + e.message }); return; }
+      let stderr = '';
+      proc.stderr.on('data', c => { stderr += c; if (stderr.length > 20000) stderr = stderr.slice(-20000); });
+      proc.stdout.on('data', () => {});
+      proc.on('error', () => { rmTmp(); resolve({ file: null, stderr: 'yt-dlp not runnable' }); });
+      proc.on('close', () => {
+        let tmp = [];
+        try { tmp = fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) {}
+        if (!tmp.length) { rmTmp(); resolve({ file: null, stderr }); return; }
+        const src = path.join(tmpDir, tmp[0]);
+        const ext = (/\.([^.]+)$/.exec(tmp[0]) || [])[1] || 'mp4';
+        const base = pinStampName(stem, src) + '.' + ext;
+        try { fs.renameSync(src, path.join(destDir, base)); }
+        catch (e) { rmTmp(); resolve({ file: null, stderr: 'rename: ' + e.message }); return; }
+        rmTmp();
+        resolve({ file: base, stderr });
+      });
     });
+
+    let lastErr = '';
+    for (const referer of referers) {
+      // Metadata is re-probed per referer: an embed-only video answers nothing at all
+      // under the generic one, so its title/author/max-res only arrive on the retry.
+      const j = await mediaProbeMeta(fetchUrl, referer);
+      let maxW = 0, maxH = 0;
+      ((j && j.formats) || []).forEach(f => {
+        const w = +(f && f.width) || 0, h = +(f && f.height) || 0;
+        if (w > 0 && h > 0 && (h > maxH || (h === maxH && w > maxW))) { maxH = h; maxW = w; }
+      });
+      if (!maxH) { maxW = +(j && j.width) || 0; maxH = +(j && j.height) || 0; }
+      const title   = (j && j.title) || fbTitle || cls.id || 'untitled';
+      const channel = (j && (j.channel || j.uploader || j.uploader_id)) || fbAuthor || 'UnknownChannel';
+      const id      = (j && j.id) || cls.id || 'unknown';
+      const stem    = mediaBuildStem(cls.kind, title, channel, id, maxW, maxH);
+
+      const r = await attempt(referer, stem);
+      if (r.file) { finish(r.file); return; }
+      lastErr = r.stderr;
+      // Only an embed-only refusal is worth a second referer; a 401 bot check or a
+      // dead link would just fail again more slowly.
+      if (!/embed-only/i.test(lastErr)) break;
+    }
+    fail(mediaExplainErr(cls.kind, lastErr) || 'yt-dlp produced no file');
   }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
 }
 
