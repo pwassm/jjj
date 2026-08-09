@@ -3269,6 +3269,19 @@ document.addEventListener('contextmenu', e => {
   const t = e.target;
   if (t && t.closest && t.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
   e.preventDefault();
+  // (dev0785) A right-click on any DATA cell now focuses that row and opens the
+  // same row menu the row-number cell has always given — which is where the new
+  // "⬇ Download → <folder>" item lives. Previously a cell right-click was swallowed
+  // and did nothing, so the row menu was reachable only from the 34px number column.
+  // The row-number cell and column headers never reach here (addCtxT stops them).
+  const tr = t && t.closest && t.closest('#tbody tr[data-vrow]');
+  if (!tr) return;
+  const vi = +tr.getAttribute('data-vrow');
+  if (!Number.isFinite(vi)) return;
+  const di = vr(vi);
+  if (di === undefined || di < 0 || di >= data.length) return;
+  if (!focus || focus.r !== vi) { focus = { r: vi, c: (focus ? focus.c : 0) }; pending = null; render(); }
+  showCtx(e.clientX, e.clientY, { type: 'row', di });
 });
 
 function showCtx(x, y, target) {
@@ -3295,6 +3308,11 @@ function showCtx(x, y, target) {
     const di = target.di;
     menu.innerHTML = '<div class="ctx-hdr">'+(di !== undefined ? 'ROW '+(di+1) : 'ROWS')+'</div>';
     if (di !== undefined) {
+      // (dev0785) Download this row's link to yt_media / vm_media / wiki_media.
+      // Only offered when the link is one of those three hosts — the proxy refuses
+      // anything else anyway, so a greyed-out-looking item would just be noise.
+      const _dlF = _tMediaFolderFor(data[di] && data[di].link);
+      if (_dlF) { addCI(menu, '⬇ Download → ' + _dlF, () => tDownloadRowMedia(di)); addCS(menu); }
       addCI(menu, 'Insert row above', () => insertRow(di));
       addCI(menu, 'Insert row below', () => insertRow(di+1));
       addCS(menu);
@@ -3322,6 +3340,46 @@ function deleteCol(col) { if(!confirm('Delete "'+col+'" from ALL rows?'))return;
 function insertRow(at) { const r={}; cols.forEach(k=>r[k]=''); let mx=0; data.forEach(rr=>{const n=parseInt(rr.UID||'0',10);if(n>mx)mx=n;}); r.UID=String(mx+1); const now=isoNow(); r.DateAdded=now; r.DateModified=now; data.splice(at,0,r); save();buildSort();render(); }
 function deleteRow(di) { if(!confirm('Delete row '+(di+1)+'?'))return; if(data[di])_saveToDeletedJson(data[di]); data.splice(di,1); checkedRows.delete(di); const nc=new Set(); checkedRows.forEach(i=>{if(i<di)nc.add(i);else if(i>di)nc.add(i-1);}); checkedRows=nc; save();buildSort();render(); }
 function deleteChecked() { if(!confirm('Delete '+checkedRows.size+' row(s)?'))return; const idxs=[...checkedRows].sort((a,b)=>b-a); const dead=idxs.map(di=>data[di]).filter(Boolean); if(dead.length)_saveToDeletedJson(dead); idxs.forEach(di=>data.splice(di,1)); checkedRows.clear(); save();buildSort();render(); }
+
+// (dev0785) ── T row → local media folder ─────────────────────────────────
+// Right-clicking a row in T offers "⬇ Download → <folder>", which hands the row's
+// `link` to the proxy's /media/download. The proxy does the naming (it is the only
+// side that can ffprobe the finished file), following the AHK ytdl_v26 convention
+// used by M:\YTDwork:  hh.mm.ss~WxH~Title~@Channel~[M[WxH]]~[[y[ID]]].ext
+// The three folders are gitignored local staging, exactly like ig_media/pin_media.
+// This mirror of the proxy's mediaClassify() exists ONLY to decide whether to show
+// the menu item; the proxy re-classifies and is the authority.
+function _tMediaFolderFor(link) {
+  let u; try { u = new URL(String(link || '')); } catch (_) { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const h = u.hostname.replace(/^www\./i, '').toLowerCase();
+  if (/^(youtube\.com|m\.youtube\.com|music\.youtube\.com|youtube-nocookie\.com|youtu\.be)$/.test(h)) return 'yt_media';
+  if (/(^|\.)vimeo\.com$/.test(h)) return 'vm_media';
+  if (/(^|\.)(wikimedia|wikipedia|wikisource)\.org$/.test(h)) return 'wiki_media';
+  return null;
+}
+let _tDlBusy = false;
+async function tDownloadRowMedia(di) {
+  const row = data[di];
+  if (!row) return;
+  const folder = _tMediaFolderFor(row.link);
+  if (!folder) { toast('Row ' + (di + 1) + ': link is not YouTube / Vimeo / Wikimedia', 3000); return; }
+  if (_tDlBusy) { toast('A download is already running — one at a time', 2500); return; }
+  _tDlBusy = true;
+  toast('⬇ ' + folder + ' … (' + (row.VidTitle || row.link).slice(0, 60) + ')', 3000);
+  try {
+    const r = await fetch('http://127.0.0.1:8081/media/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: row.link, title: row.VidTitle || '', author: row.VidAuthor || '' })
+    });
+    const j = await r.json();
+    if (j && j.ok) toast('✓ ' + j.localFile + (j.dims ? '  (' + j.dims[0] + '×' + j.dims[1] + ')' : ''), 6000);
+    else toast('⚠ Download failed: ' + ((j && j.error) || ('HTTP ' + r.status)), 6000);
+  } catch (_) {
+    toast('⚠ Proxy not reachable on 8081 — start proxy.js (needs the dev0785 build: RESTART it)', 5000);
+  } finally { _tDlBusy = false; }
+}
 
 // (dev0580) Shift+T in the Table screen: insert a new empty TEXT row at grid
 // cell 1a. The row currently holding 1a is the anchor — the new row takes UID

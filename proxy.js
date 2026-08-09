@@ -4934,6 +4934,169 @@ function pinterestDownload(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
 }
 
+// (dev0785) ── T-screen row downloader → yt_media / vm_media / wiki_media ──
+// POST /media/download { url } — saves a T row's `link` to disk under the folder
+// that matches its host, named by the SAME convention the AHK downloader
+// (AHK/ytdl_v26.ahk) writes into M:\YTDwork:
+//
+//   hh.mm.ss~WxH~Title~@Channel~[M[WxH]]~[[y[ID]]].ext
+//
+//   hh.mm.ss  duration, measured off the finished file (ground truth, dev0659's rule)
+//   WxH       the resolution actually downloaded, ffprobe'd off the finished file
+//   [M[WxH]]  the best resolution the SOURCE offers, from the -J dump
+//   [[y[…]]]  y = YouTube, v = Vimeo, w = Wikimedia — three closing brackets, as in v26
+//
+// A third sibling of igDownload/pinterestDownload rather than a reuse: neither the
+// IG cookie/impersonate ladder nor Pinterest's manifest hunting applies here, and
+// the naming/measuring helpers (igSanitizeName / probeMediaDims / pinProbeDuration)
+// are already generic.
+const MEDIA_DIRS = {
+  yt:   { dir: path.join(__dirname, 'yt_media'),   tag: 'y' },
+  vm:   { dir: path.join(__dirname, 'vm_media'),   tag: 'v' },
+  wiki: { dir: path.join(__dirname, 'wiki_media'), tag: 'w' }
+};
+// Host → which of the three folders, plus the id yt-dlp/the URL gives us. Returns
+// null for anything else: this endpoint deliberately refuses to become a general
+// "download whatever" hole — the T menu only offers it for hosts named here.
+function mediaClassify(url) {
+  let u; try { u = new URL(url); } catch (_) { return null; }
+  const h = u.hostname.replace(/^www\./i, '').toLowerCase();
+  let m;
+  if (/^(youtube\.com|m\.youtube\.com|music\.youtube\.com|youtube-nocookie\.com)$/.test(h)) {
+    m = /[?&]v=([A-Za-z0-9_-]+)/.exec(u.search) || /\/(?:shorts|embed|live|v)\/([A-Za-z0-9_-]+)/.exec(u.pathname);
+    return { kind: 'yt', id: m ? m[1] : '' };
+  }
+  if (h === 'youtu.be') return { kind: 'yt', id: u.pathname.slice(1).split('/')[0] };
+  if (/(^|\.)vimeo\.com$/.test(h)) {
+    m = /\/(?:video\/)?(\d+)/.exec(u.pathname);
+    return { kind: 'vm', id: m ? m[1] : '' };
+  }
+  if (/(^|\.)wikimedia\.org$/.test(h) || /(^|\.)wikipedia\.org$/.test(h) || /(^|\.)wikisource\.org$/.test(h)) {
+    // Commons has no numeric id — the file name IS the identity. Decode it so
+    // "%C3%A9" doesn't end up in the stem, then let igSanitizeName clean it.
+    let base = decodeURIComponent(u.pathname.split('/').pop() || '');
+    base = base.replace(/^File:/i, '').replace(/\.[A-Za-z0-9]{2,5}$/, '');
+    return { kind: 'wiki', id: base };
+  }
+  return null;
+}
+// A URL that IS the media file (upload.wikimedia.org/…/foo.ogv) rather than a page
+// about it. yt-dlp handles these via its generic extractor, but a plain GET is one
+// process fewer and can't silently remux.
+function mediaIsDirectFile(url) {
+  return /\.(mp4|webm|ogv|ogg|mov|mkv|m4v|jpe?g|png|gif|webp|svg|tiff?)(?:\?|#|$)/i.test(url);
+}
+// The v26 filename, with the two disk-measured fields left as placeholders for
+// pinStampName() to fill once the bytes have landed.
+function mediaBuildStem(kind, title, channel, id, maxW, maxH) {
+  const idTag = '[[' + MEDIA_DIRS[kind].tag + '[' + igSanitizeName(id).slice(0, 60) + ']]]';
+  return '00.00.00~0x0~' + igSanitizeName(title).slice(0, 110)
+       + '~@' + igSanitizeName(channel).slice(0, 60)
+       + '~[M[' + (maxW || 0) + 'x' + (maxH || 0) + ']]'
+       + '~' + idTag;
+}
+// yt-dlp -J, parsed. Resolves null on any failure — the caller then falls back to
+// what it can read off the URL, so a metadata hiccup costs a nice name, not the file.
+function mediaProbeMeta(url) {
+  return new Promise(resolve => {
+    let proc;
+    try {
+      proc = spawn(EXEC_BIN.ytdlp, ['--no-warnings', '--no-playlist', '--ignore-config',
+        '--socket-timeout', '20', '--skip-download', '-J', url], { windowsHide: true });
+    } catch (_) { resolve(null); return; }
+    let out = '';
+    proc.stdout.on('data', c => { out += c; if (out.length > 12e6) proc.kill(); });
+    proc.stderr.on('data', () => {});
+    proc.on('error', () => resolve(null));
+    proc.on('close', () => { try { resolve(JSON.parse(out)); } catch (_) { resolve(null); } });
+  });
+}
+function mediaDownload(req, res, origin) {
+  readJson(req, 64 * 1024).then(async payload => {
+    const url = String(payload.url || '');
+    if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
+    const cls = mediaClassify(url);
+    if (!cls) { sendJson(res, 400, { ok: false, error: 'not a YouTube / Vimeo / Wikimedia link' }, origin); return; }
+    const destDir = MEDIA_DIRS[cls.kind].dir;
+    const folder  = path.basename(destDir);
+    try { fs.mkdirSync(destDir, { recursive: true }); } catch (_) {}
+
+    const finish = base => {
+      const full = path.join(destDir, base);
+      const d = probeMediaDims(full);
+      sendJson(res, 200, {
+        ok: true, kind: cls.kind, folder, file: base,
+        localFile: folder + '/' + base,
+        dims: d ? [d.w, d.h] : null
+      }, origin);
+    };
+    const fail = msg => sendJson(res, 502, { ok: false, kind: cls.kind, error: msg }, origin);
+
+    // Fields the client already holds (VidTitle / VidAuthor) are the fallback when
+    // yt-dlp can't be asked — never the first choice, so the name matches YTDwork's.
+    const fbTitle  = String(payload.title  || '').trim();
+    const fbAuthor = String(payload.author || '').trim().replace(/^@/, '');
+
+    // ── Wikimedia direct file: a plain GET, no yt-dlp. ────────────────────
+    if (cls.kind === 'wiki' && mediaIsDirectFile(url)) {
+      const ext = ((/\.([a-z0-9]{2,5})(?:\?|#|$)/i.exec(url) || [])[1] || 'bin').toLowerCase();
+      const stem = mediaBuildStem('wiki', fbTitle || cls.id, fbAuthor || 'wikimedia', cls.id, 0, 0);
+      const tmpPath = path.join(destDir, '.dl_' + Date.now().toString(36) + '.' + ext);
+      const got = await igDownloadImage(url, tmpPath, 'https://commons.wikimedia.org/', 0, '*/*');
+      if (!got) { try { fs.unlinkSync(tmpPath); } catch (_) {} fail('fetch failed'); return; }
+      const d = probeMediaDims(tmpPath);
+      const base = pinStampName(stem, tmpPath).replace('[M[0x0]]', '[M[' + ((d && d.w) || 0) + 'x' + ((d && d.h) || 0) + ']]') + '.' + ext;
+      try { fs.renameSync(tmpPath, path.join(destDir, base)); }
+      catch (e) { try { fs.unlinkSync(tmpPath); } catch (_) {} fail('rename: ' + e.message); return; }
+      finish(base);
+      return;
+    }
+
+    // ── yt-dlp path (YouTube, Vimeo, Commons File: pages). ────────────────
+    const j = await mediaProbeMeta(url);
+    let maxW = 0, maxH = 0;
+    ((j && j.formats) || []).forEach(f => {
+      const w = +(f && f.width) || 0, h = +(f && f.height) || 0;
+      if (w > 0 && h > 0 && (h > maxH || (h === maxH && w > maxW))) { maxH = h; maxW = w; }
+    });
+    if (!maxH) { maxW = +(j && j.width) || 0; maxH = +(j && j.height) || 0; }
+    const title   = (j && j.title) || fbTitle || cls.id || 'untitled';
+    const channel = (j && (j.channel || j.uploader || j.uploader_id)) || fbAuthor || 'UnknownChannel';
+    const id      = (j && j.id) || cls.id || 'unknown';
+    const stem    = mediaBuildStem(cls.kind, title, channel, id, maxW, maxH);
+
+    const tmpDir = path.join(destDir, '.tmp_' + Date.now().toString(36));
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+    const rmTmp = () => { try { (fs.rmSync || fs.rmdirSync)(tmpDir, { recursive: true, force: true }); } catch (_) {} };
+    // Same selector shape as ytdl_v26's default: best video + best audio, merged to
+    // mp4 so everything in the folder seeks the same way. No height cap — max res is
+    // the standing preference everywhere else in SLAM.
+    const args = ['--no-warnings', '--no-playlist', '--ignore-config', '--socket-timeout', '20',
+                  '--no-part', '--js-runtimes', 'node',
+                  '-f', 'bv*+ba/b', '--merge-output-format', 'mp4',
+                  '-o', path.join(tmpDir, '%(autonumber)03d.%(ext)s'), url];
+    let proc;
+    try { proc = spawn(EXEC_BIN.ytdlp, args, { windowsHide: true }); }
+    catch (e) { rmTmp(); sendJson(res, 500, { ok: false, error: 'spawn yt-dlp: ' + e.message }, origin); return; }
+    let stderr = '';
+    proc.stderr.on('data', c => { stderr += c; if (stderr.length > 20000) stderr = stderr.slice(-20000); });
+    proc.stdout.on('data', () => {});
+    proc.on('error', () => { rmTmp(); sendJson(res, 500, { ok: false, error: 'yt-dlp not runnable' }, origin); });
+    proc.on('close', () => {
+      let tmp = [];
+      try { tmp = fs.readdirSync(tmpDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).sort(); } catch (_) {}
+      if (!tmp.length) { rmTmp(); fail(stderr.trim().split(/\r?\n/).pop() || 'yt-dlp produced no file'); return; }
+      const src = path.join(tmpDir, tmp[0]);
+      const ext = (/\.([^.]+)$/.exec(tmp[0]) || [])[1] || 'mp4';
+      const base = pinStampName(stem, src) + '.' + ext;
+      try { fs.renameSync(src, path.join(destDir, base)); }
+      catch (e) { rmTmp(); fail('rename: ' + e.message); return; }
+      rmTmp();
+      finish(base);
+    });
+  }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
+}
+
 // (dev0649) ── Proton VPN rotation state/bridge ───────────────────────────
 // vpn-rotate.ps1 writes the chosen server + confirmed public IP into state.json
 // under %LOCALAPPDATA%\ProtonVpnRotate; this reads it (no network call of its
@@ -5478,6 +5641,22 @@ http.createServer((req, res) => {
       return;
     }
     sendJson(res, 404, { ok: false, error: 'unknown pinterest action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0785) ── T row downloader → yt_media / vm_media / wiki_media ───────
+  // Same placement rule as Flickr/Pinterest: BEFORE the CORS proxy, or "/media/…"
+  // reads as a malformed passthrough URL. Writes to disk → origin-locked + POST.
+  if (req.url.startsWith('/media/')) {
+    const origin = req.headers.origin || '';
+    const action = req.url.slice('/media/'.length).split('?')[0];
+    if (action === 'download') {
+      if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
+      if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
+      mediaDownload(req, res, origin);
+      return;
+    }
+    sendJson(res, 404, { ok: false, error: 'unknown media action: ' + action }, origin);
     return;
   }
 
