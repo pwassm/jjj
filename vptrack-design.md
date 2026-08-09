@@ -1,16 +1,18 @@
 # V crop overlay — tracking window + pillarbox bleed
 
-**Status: built in dev0777.** This document is the design as implemented; §4.5 was
-corrected during the build (see the note there).
+**Status: built in dev0777, feature B revised in dev0778.** This document is the design as
+implemented. Two things changed during the build — §4.5 (the features are independent) and
+§4 itself (bars dropped in favour of the intersection). Both are marked.
 
 Two additions to the `vp.js` crop overlay / `proxy.js` ffmpeg builder:
 
 - **A. Tracking crop** — a crop window that moves during the clip, so a drifting subject
   stays framed. Defined by stamping the window over the subject at two (or more) points
   in time.
-- **B. Pillarbox bleed** — let the crop rect be *wider than the source frame*, so a
-  landscape crop of a portrait video can capture more vertical extent. The overhang
-  renders as symmetric black bars.
+- **B. Reach past the edge** — let the crop rect be *wider than the source frame*, so a
+  landscape crop of a portrait video can capture more vertical extent. **Only the part of
+  the rect that is actually picture is rendered** — no black is ever encoded — which makes
+  the gesture a continuous output-aspect dial rather than a bar generator.
 
 Both land on the same pipeline change and share one new prefix filter, so they are
 specified together.
@@ -208,7 +210,13 @@ default *there*. Offer `smooth` for tracks whose keys don't span the whole clip.
 
 ---
 
-## 4. Feature B — pillarbox bleed
+## 4. Feature B — reach past the edge
+
+> **dev0778 revision.** As first built (dev0777) this padded the surplus with symmetric
+> black bars. It no longer does: the render is the rect's **intersection with the frame**,
+> and the output is whatever shape that is. §4.2a records why. The `pad` payload and its
+> `vppad` flag survive in the proxy, unused by the client, for the day something genuinely
+> needs a fixed output aspect — re-enabling it is one line in `_vpGoSave`.
 
 ### 4.1 The problem
 
@@ -216,7 +224,48 @@ Source is **2160 × 3840** portrait. A 16:9 crop at full frame width is capped a
 `2160 × 1215` — to capture more of the subject vertically you need a *wider* rect than the
 frame has pixels, and the surplus has to be black.
 
-### 4.2 Symmetric by construction, not by correction
+### 4.2a Why the surplus is discarded, not filled (dev0778)
+
+Four reasons, in order of weight:
+
+1. **Bars are irreversible; aspect is not.** You can letterbox at display time, or add bars
+   later in one pass. You can never get back the pixels spent on black — for the same
+   output height, a padded file carries strictly less picture.
+2. **V and the slideshow already `contain`** (`vp.js:7769`, `vp.js:8559`,
+   `slideshow.js:1720`). They letterbox on their own, so baked bars land *inside* the
+   container's bars and the content renders smaller than it needs to.
+3. **In G, bars defeat the framing control that already exists.** G cover-fits cell media
+   (`grid.js:1134`) and dev0758 added `object-position`/COI precisely so a mismatched clip
+   can be reframed inside its cell. A bar-padded 16:9 file in a 16:9 cell has *zero* cover
+   overflow — as that code's own comment notes — so the COI has nothing to move and you are
+   stuck with the black. Shipping the real aspect keeps the cell full-bleed and the framing
+   adjustable.
+4. **It turns a binary into a dial.** With the 16:9 lock, widening the rect walks the output
+   continuously from 16:9 through square to the source's own shape. One drag answers "how
+   much height do I want".
+
+The cost, stated plainly: a non-16:9 clip in a 16:9 G cell **will be cover-cropped** back
+toward 16:9, with the COI choosing the slice. If a particular clip must show its full
+height inside a 16:9 cell, bars are the only way — which is why the proxy keeps `pad`.
+
+### 4.2b The consequence for `resHeight`
+
+`resHeight` is the **short side**: the proxy emits `scale=-2:H` for `L` and `scale=H:-2`
+for `P`. Once the output is no longer a locked 16:9, the `L`/`P` flag can no longer come
+from the rect's lock — it has to be derived from the rendered pixels. On a 2160×3840
+source the output crosses into portrait at about **1.78×**, so without this the scale would
+land on the wrong axis for the whole upper half of the dial. `_vpEffAspect(sw, sh)` does
+it, and `_vpOutputDims` and `_vpCropUpscaleFactor` both take the derived value.
+
+The same clipping has to be applied to **caption geometry**: text boxes are stored as
+fractions of the *drawn* rect, so when the rendered crop is narrower they must be
+re-expressed against the intersection before the wrap is computed, or every caption sits
+too far left and wraps too narrow. `_vpGoSave` does this on a shallow clone so the live
+boxes on screen keep their own coordinates.
+
+### 4.2 Symmetric by construction, not by correction (superseded — see 4.2a)
+
+*Retained because the arithmetic still governs the `pad` path the proxy keeps.*
 
 The brief asks for symmetric bars with "minor asymmetries corrected". A snapping heuristic
 isn't needed — the asymmetry can be designed out entirely:
@@ -238,23 +287,26 @@ crop.x = padX + x·VW = 0         the crop spans the whole canvas horizontally
 `rectW − VW` is even and `padX` is a whole pixel. **There is no rounding asymmetry left to
 correct.** Same algebra on `y` for the letterbox case (landscape source, portrait crop).
 
-### 4.3 What it costs — concrete numbers for a 2160×3840 source, 16:9 out
+### 4.3 The dial — measured, for a 2160×3840 source with a 16:9 lock
 
-| rect width | × frame | height captured | visible strip | bar each side |
+Produced by running the shipped `_vpEffFrac` / `_vpEffAspect` / `even()` math:
+
+| rect × frame | output | shape | L/P | height vs 16:9 |
 |---|---|---|---|---|
-| 2160 | 1.00× | 1215 | 100 % | 0 % |
-| 2560 | 1.19× | 1440 | 84 % | 7.8 % |
-| **2880** | **1.33×** | **1620** (+33 %) | **75 %** | **12.5 %** |
-| 3413 | 1.58× | 1920 | 63 % | 18.4 % |
-| 3840 | 1.78× | 2160 (+78 %) | 56 % | 21.9 % |
-| 6827 | 3.16× | 3840 (full height) | 32 % | 34.2 % |
+| 1.00× | 2160 × 1214 | 16:9 | L | — |
+| 1.19× | 2160 × 1444 | 3:2  | L | +19 % |
+| **1.33×** | **2160 × 1614** | **4:3** | L | **+33 %** |
+| 1.58× | 2160 × 1918 | 1.13:1 | L | +58 % |
+| 1.78× | 2160 × 2162 | 1:1 | **P** | +78 % |
+| 2.22× | 2160 × 2696 | 4:5 | P | +122 % |
+| 3.16× | 2160 × 3838 | 9:16 | P | +216 % |
 
-None of these trigger the upscale warning: at 1080p out, even the 3840-wide rect renders
-its 2160 px strip into 1080 px of width — still a downscale. ~1.33× is the sweet spot
-before the bars start dominating.
+Note the L→P flip at 1.78× — that is 4.2b in practice. Nothing here trips the upscale
+warning: the output never exceeds the source on either axis.
 
-The rect's size label should say so live:
-`2880 × 1620 · 2160 visible + 2 × 360 bars`, and a bar chip `⇔ 1.33× · 25 % bar`.
+The size label names the shape live while dragging (`2160 × 1614 · 4:3`), snapping to the
+familiar ratios within half a percent because even-pixel rounding stops 2160×1214 from
+reducing to 16:9 on its own (it lands on 1080:607).
 
 ### 4.4 Payload and filter
 
@@ -311,8 +363,8 @@ on arming both, don't block.
 |---|---|---|
 | crop | `crop` | no |
 | crop + track | `crop` w/ expressions | **no** |
-| crop + bleed | `pad,crop` | no |
-| crop + bleed + track | `pad,crop` w/ expressions (y only) | no |
+| crop + reach | `crop` of the intersection — no extra filter at all | no |
+| crop + reach + track | `crop` w/ expressions (y only) | no |
 | crop + Ken Burns | `crop,zoompan` | yes (unchanged) |
 | crop + track + Ken Burns | `crop`(expr)`,zoompan` — pan the window, zoom within it | yes |
 
@@ -372,10 +424,11 @@ both get the hard refusal treatment `rotate` / `noaudio` / `kenburns` already ha
 4. `⇧R` → ghosts gone, handles live again.
 5. `q`, then drag a corner outward past the frame edge. Confirm the rect grows past the
    edge, snaps horizontally centred, refuses to be dragged sideways, and the label reads
-   `W × H · V visible + 2 × B bars`.
-6. `G`. Check the bars are equal width and truly black, and that the extra height is there.
-7. `q` + `r` together — a bled rect tracks vertically (its x has nowhere to go), and the
-   bars stay equal for the whole move.
+   the output size and shape (`2160 × 1614 · 4:3`), changing as you widen.
+6. `G`. Check there is **no black anywhere**, the extra height is there, and the file is
+   the shape the label promised. `⇧Q` then `G` should give the whole frame.
+7. `q` + `r` together — a reaching rect tracks vertically (its x has nowhere to go).
+7b. A caption (`E`) on a reaching crop must land where it was drawn, at the drawn width.
 8. Regression: a plain crop, a Ken Burns crop, a crop with captions, and a crop with a
    pause must all still render. Ken Burns especially — it shares the `crop` token.
 9. `K` an `.edit` with a track + bleed, `E` it back, confirm both restore.

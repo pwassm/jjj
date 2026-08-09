@@ -3635,7 +3635,52 @@ function _vpCropTiltOOB(state, VW, VH) {
 // is the only position with equal bars, so it pins there — and while the rect
 // still fits, the clamp is exactly the one that was always there. Nothing about
 // bleed changes behaviour until the rect actually outgrows the picture.
+// (dev0778) …and the surplus is DISCARDED, not filled. The rect is a REACH, not
+// a frame: what renders is the part of it that is actually picture, so growing a
+// locked 16:9 box past the edge of a portrait clip walks the OUTPUT ASPECT
+// continuously from 16:9, through square, to the source's own shape — it is an
+// aspect dial, not a bar generator. Nothing black is ever encoded.
+//
+// Why not pillarbox (dev0777 did, for one commit): baked bars are irreversible
+// and cost real resolution, V and the slideshow letterbox on their own so bars
+// there land inside bars, and in G a bar-padded 16:9 file has NO cover overflow,
+// which leaves dev0758's object-position/COI nothing to move. Display-time
+// fitting is strictly better than a decision burned into the pixels. The proxy
+// keeps its `pad` support for the day something genuinely needs a fixed aspect.
 const VP_BLEED_MAX = 4;      // rect may reach 4× the frame on either axis
+
+// What actually renders: the rect clipped to the frame. Identity for any rect
+// that fits, so every non-bled path is unchanged.
+function _vpEffFrac(state) {
+  const f = state.frac;
+  if (!state.bleed) return { x: f.x, y: f.y, w: f.w, h: f.h };
+  const x0 = Math.max(0, f.x), y0 = Math.max(0, f.y);
+  const x1 = Math.min(1, f.x + f.w), y1 = Math.min(1, f.y + f.h);
+  return { x: x0, y: y0, w: Math.max(0.01, x1 - x0), h: Math.max(0.01, y1 - y0) };
+}
+
+// resHeight is the SHORT side — the proxy scales height for 'L' and width for
+// 'P' — so once the output is no longer a locked 16:9 the flag has to come from
+// the pixels rather than from what the rect was nominally locked to. Past ~1.78×
+// on a portrait source the output goes portrait, and without this it would be
+// scaled on the wrong axis.
+function _vpEffAspect(sw, sh) { return (sw >= sh) ? 'L' : 'P'; }
+
+// The output's shape, named the way people say it. Even-pixel rounding stops
+// 2160×1214 from reducing to 16:9 on its own (it lands on 1080:607), so snap to
+// the familiar ratios within half a percent and fall back to cinema notation
+// for anything genuinely in between.
+const VP_AR_NAMES = [
+  [16/9, '16:9'], [9/16, '9:16'], [4/3, '4:3'],  [3/4, '3:4'],
+  [3/2,  '3:2'],  [2/3,  '2:3'],  [5/4, '5:4'],  [4/5, '4:5'],
+  [1,    '1:1'],  [21/9, '21:9'], [2/1, '2:1'],  [1/2, '1:2']
+];
+function _vpAspectLabel(sw, sh) {
+  if (!sw || !sh) return '';
+  const r = sw / sh;
+  for (const [v, name] of VP_AR_NAMES) if (Math.abs(r / v - 1) < 0.005) return name;
+  return (r >= 1) ? (r.toFixed(2) + ':1') : ('1:' + (1 / r).toFixed(2));
+}
 
 function _vpFitAxis(v, size, bleed) {
   if (bleed && size > 1) return (1 - size) / 2;
@@ -3720,14 +3765,10 @@ function _vpCropHolding() {
 function _vpCropUpscaleFactor(state, sw, sh) {
   const resH = state.resHeight;
   if (!Number.isFinite(resH) || resH <= 0) return 1;
-  // (dev0777) Judge by the part of the rect that is actually PICTURE. A bled
-  // rect is partly black, and those pixels carry no detail to enlarge — without
-  // this the warning goes quiet exactly when the content is being blown up
-  // hardest. frac ≤ 1 on an axis means no bleed there, so this is a no-op for
-  // every rect that fits the frame.
-  const visW = sw / Math.max(1, state.frac.w);
-  const visH = sh / Math.max(1, state.frac.h);
-  let srcShort = (state.aspect === 'P') ? visW : visH;
+  // (dev0778) sw/sh are the OUTPUT crop — the rect already clipped to the frame
+  // — and the aspect flag is derived from them, so this is the genuine short
+  // side whatever shape the bleed dial has landed on.
+  let srcShort = (_vpEffAspect(sw, sh) === 'P') ? sw : sh;
   // (dev0720) A Ken Burns move ENDS on the inner box, so that — not the whole
   // crop — is the framing that has to carry the output resolution. Judge the
   // enlargement by the tightest moment of the shot.
@@ -4471,11 +4512,13 @@ function _vpTextCtxMenu(ev) {
 // The OUTPUT frame, in pixels, for a crop of sw × sh source pixels. Twin of the
 // hoisted ow/oh in the proxy's buildFfmpegArgs — text px are derived from this,
 // so the two must agree.
-function _vpOutputDims(state, sw, sh) {
+// (dev0778) `aspect` is optional and overrides state.aspect — a bled rect's
+// output shape comes from its pixels, not from the lock it was drawn with.
+function _vpOutputDims(state, sw, sh, aspect) {
   const even = n => Math.max(2, Math.round(n / 2) * 2);
   const resH = +state.resHeight;
   if (!Number.isFinite(resH) || resH <= 0) return { ow: sw, oh: sh };
-  return (state.aspect === 'P')
+  return ((aspect || state.aspect) === 'P')
     ? { ow: resH, oh: even(sh * resH / sw) }
     : { oh: resH, ow: even(sw * resH / sh) };
 }
@@ -4981,28 +5024,25 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // corner leaves the source frame (ffmpeg will black-fill that wedge on save).
     if (r.VW > 0 && r.VH > 0) {
       const even = n => Math.max(2, Math.floor(n / 2) * 2);
-      const sw = even(state.frac.w * r.VW);
-      const sh = even(state.frac.h * r.VH);
+      // (dev0778) Measure what will RENDER — the rect clipped to the frame —
+      // so a rect reaching past the edge reads out its true output size and
+      // shape rather than the size of the box being dragged.
+      const ef = _vpEffFrac(state);
+      const sw = even(ef.w * r.VW);
+      const sh = even(ef.h * r.VH);
       // (dev0717) Second amber trigger: the rect is smaller than the chosen
       // output resolution, so the proxy's scale filter would ENLARGE it — no
       // new detail, just bigger pixels and a fatter file. Live while dragging
       // so the rect can be grown before committing to an encode.
       const up = _vpCropUpscaleFactor(state, sw, sh);
       const upTxt = (up > 1.005) ? ('  ·  ⚠ ' + up.toFixed(2) + '× enlarged') : '';
-      // (dev0777) When the rect has outgrown the frame, say how much of the
-      // output is going to be black — that is the whole cost of the trade, and
-      // it should be visible while the corner is being dragged, not after.
-      let barTxt = '';
-      if (state.bleed) {
-        const bx = Math.round((sw - Math.min(sw, r.VW)) / 2);
-        const by = Math.round((sh - Math.min(sh, r.VH)) / 2);
-        if (bx > 0) barTxt += '  ·  ' + Math.min(sw, r.VW) + ' vis + 2×' + bx +
-                              ' bars (' + Math.round(200 * bx / sw) + '%)';
-        if (by > 0) barTxt += '  ·  ' + Math.min(sh, r.VH) + ' vis + 2×' + by +
-                              ' bars (' + Math.round(200 * by / sh) + '%)';
-      }
+      // (dev0778) While the rect is reaching past the edge, the shape of the
+      // output is the thing being chosen — so name it. The dial runs from the
+      // locked ratio at frame width to the source's own shape at full reach.
+      const arTxt = (state.bleed && (state.frac.w > 1.001 || state.frac.h > 1.001))
+        ? ('  ·  ' + _vpAspectLabel(sw, sh)) : '';
       dimLbl.textContent = sw + ' × ' + sh +
-        (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '') + upTxt + barTxt;
+        (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '') + upTxt + arTxt;
       dimLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
       dimLbl.style.color =
         (upTxt || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
@@ -6198,15 +6238,21 @@ function _vpCropHelpShow() {
         row('size is locked', 'while a track is armed — the window has to keep one ' +
                              'size for the whole move, so the corners, ' + K('T') +
                              ' and ' + K('⇧F') + ' stand down until ' + K('⇧R') + '.') +
-        head('Bars (crop wider than the picture)') +
-        row(K('Q'),          'let the box grow PAST the edge of the video. A 16:9 crop ' +
-                             'of a portrait clip is otherwise capped at the frame’s ' +
-                             'width — this takes in more height, at the cost of black ' +
-                             'bars down the sides.') +
-        row(K('⇧Q'),         'grow it until the FULL height of the source is inside') +
-        row('always centred', 'an axis that has outgrown the picture pins to the middle, ' +
-                             'so the two bars are always exactly equal. The size label ' +
-                             'says how much of the output is bar.') +
+        head('Reach past the edge (taller crops)') +
+        row(K('Q'),          'let the box grow PAST the edge of the video. A 16:9 crop of ' +
+                             'a portrait clip is otherwise capped at the frame’s width, ' +
+                             'and so at 9/16 of it in height — this keeps taking in more ' +
+                             'height as you widen it.') +
+        row('no black',      'only the part of the box that is actually picture gets ' +
+                             'rendered. So widening it is really an ASPECT DIAL: 16:9 at ' +
+                             'frame width, 4:3 around 1.3×, square at 1.8×, and the ' +
+                             'source’s own shape at full reach. The size label names the ' +
+                             'ratio as you drag.') +
+        row(K('⇧Q'),         'all the way — the full height of the source') +
+        row('why not bars',  'black bars can never be taken out again, and they cost real ' +
+                             'resolution. V and the slideshow letterbox on their own, and ' +
+                             'in G a bar-padded clip leaves the cell framing (COI) nothing ' +
+                             'to move. Better to ship the picture and let the screen fit it.') +
         head('Zoom into') +
         row(K('Z'),          'amber box on / off — where the zoom ENDS') +
         row('drag it',       'move / resize it inside the crop box (always the same ' +
@@ -6551,10 +6597,11 @@ function _vpCropBleedToggle() {
   if (s.paint) s.paint();
   if (typeof toast === 'function') {
     toast(s.bleed
-      ? '⬛ bars on — drag a corner PAST the edge of the picture to take in more ' +
-        'than the frame is wide. It centres itself, so the bars stay equal. ⇧Q = full height.'
-      : '⬛ bars off — the crop is back inside the picture',
-      s.bleed ? 5200 : 1800);
+      ? '⇱ reach on — drag a corner PAST the edge of the picture and the crop keeps ' +
+        'taking in more height. Only what is inside the picture is rendered (no black), ' +
+        'so the output shape walks from 16:9 towards the source’s own. ⇧Q = full height.'
+      : '⇱ reach off — the crop is back inside the picture',
+      s.bleed ? 5600 : 1800);
   }
 }
 
@@ -6582,8 +6629,11 @@ function _vpCropBleedFit() {
   s.frac.y = _vpFitAxis((1 - h) / 2, h, true);
   if (s.paint) s.paint();
   if (typeof toast === 'function') {
-    const sw = Math.round(w * vid.videoWidth), sh = Math.round(h * vid.videoHeight);
-    toast('⬛ ' + sw + ' × ' + sh + ' — the full height of the source, pillarboxed', 3000);
+    // What renders is the intersection, which at full reach IS the whole frame.
+    const e = _vpEffFrac(s);
+    const ow = Math.round(e.w * vid.videoWidth), oh = Math.round(e.h * vid.videoHeight);
+    toast('⇱ ' + ow + ' × ' + oh + ' (' + _vpAspectLabel(ow, oh) + ') — the full height ' +
+          'of the source. Drag a corner back in for anything between this and 16:9.', 4200);
   }
 }
 
@@ -7333,7 +7383,13 @@ async function _vpGoSave(opts) {
     const s = _vpState.crop;
     const VW = vid.videoWidth, VH = vid.videoHeight;
     const even = n => Math.max(2, Math.floor(n / 2) * 2);
-    const sw = even(s.frac.w * VW), sh = even(s.frac.h * VH);
+    // (dev0778) What renders is the rect CLIPPED to the frame, so every
+    // dimension below is the intersection's. Identity for a rect that fits.
+    const ef = _vpEffFrac(s);
+    const sw = even(ef.w * VW), sh = even(ef.h * VH);
+    // …and the output's shape, not the lock it was drawn with, decides which
+    // side resHeight scales.
+    const effAspect = _vpEffAspect(sw, sh);
     // (dev0297) When the resolution dropdown is "Same" (no scale), the actual
     // output dims are the crop dims, so report THAT in the filename rather
     // than the literal word 'source' (which was uninformative).
@@ -7345,30 +7401,23 @@ async function _vpGoSave(opts) {
     // tilted rect becomes axis-aligned, then crop there. Geometry verified:
     // ffmpeg +rad = clockwise (matches CSS), so a = -angle; the crop center is
     // the source-px center remapped by R(a) about the frame center.
-    // (dev0777) Bleed. The rect may be bigger than the frame on either axis; the
-    // surplus becomes a symmetric black margin the crop then sits inside. sw/VW
-    // are both even, so padX is a whole pixel, the canvas comes out exactly the
-    // rect's width and crop.x is 0 — the bars are equal by arithmetic, with no
-    // rounding left to correct. An unbled axis pads by 0 and behaves as before.
-    const padX = Math.max(0, Math.ceil((sw - VW) / 2));
-    const padY = Math.max(0, Math.ceil((sh - VH) / 2));
-    const CW = VW + 2 * padX, CH = VH + 2 * padY;
-    const pad = (padX || padY) ? { ow: CW, oh: CH, x: padX, y: padY } : null;
-    // Rect position in canvas pixels, used for the static crop and as the frame
-    // every track keyframe is measured in.
+    // (dev0778) Bleed renders the INTERSECTION — sw/sh above already came from
+    // _vpEffFrac, so the surplus was discarded rather than filled and there is
+    // no pad, no canvas and nothing black. `off` is how far the clipped rect
+    // sits inside the drawn one, which is what the caption remap needs.
     const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
     const toCanvas = (fx, fy) => ({
-      x: (sw > VW) ? Math.round((CW - sw) / 2) : clampI(padX + fx * VW, 0, CW - sw),
-      y: (sh > VH) ? Math.round((CH - sh) / 2) : clampI(padY + fy * VH, 0, CH - sh)
+      x: clampI(Math.max(0, fx) * VW, 0, Math.max(0, VW - sw)),
+      y: clampI(Math.max(0, fy) * VH, 0, Math.max(0, VH - sh))
     });
     const angle = s.angle || 0;
     // (dev0777) mapPt turns a rect position in source fractions into the crop's
-    // top-left in whatever canvas the chain ends up cropping — padded, rotated,
-    // or the bare frame. The static rect and every track keyframe both go
-    // through it, so a track works under tilt without a second bit of geometry.
+    // top-left in whatever canvas the chain ends up cropping — rotated or the
+    // bare frame. The static rect and every track keyframe both go through it,
+    // so a track works under tilt without a second bit of geometry.
     let cropBox, rotate = null, angTok = '', mapPt, canvasW, canvasH;
     if (!angle) {
-      mapPt = toCanvas; canvasW = CW; canvasH = CH;
+      mapPt = toCanvas; canvasW = VW; canvasH = VH;
     } else {
       const a = -angle * Math.PI / 180;
       // The rotate canvas already black-fills, so a bled rect just needs it big
@@ -7376,7 +7425,7 @@ async function _vpGoSave(opts) {
       const D = even(Math.ceil(Math.max(Math.hypot(VW, VH), sw + 2, sh + 2)));
       const ca = Math.cos(a), sa = Math.sin(a);
       mapPt = (fx, fy) => {
-        const cx = (fx + s.frac.w / 2) * VW, cy = (fy + s.frac.h / 2) * VH;
+        const cx = (Math.max(0, fx) + ef.w / 2) * VW, cy = (Math.max(0, fy) + ef.h / 2) * VH;
         const u = cx - VW / 2, v = cy - VH / 2;
         const ccx = D / 2 + (ca * u - sa * v), ccy = D / 2 + (sa * u + ca * v);
         // Clamp into the canvas so a heavily off-frame tilt black-fills instead
@@ -7390,14 +7439,15 @@ async function _vpGoSave(opts) {
       rotate = { rad: a, ow: D, oh: D };
       angTok = 'r' + angle.toFixed(1).replace('.', '_') + 'deg';
     }
-    const p0 = mapPt(s.frac.x, s.frac.y);
+    const p0 = mapPt(ef.x, ef.y);
     cropBox = { w: sw, h: sh, x: p0.x, y: p0.y };
-    const nameParts = [parts.base, safeId, sizeStr, s.aspect, 'crop'];
+    const nameParts = [parts.base, safeId, sizeStr, effAspect, 'crop'];
     if (angTok) nameParts.push(angTok);
-    // (dev0777) How far the rect outgrew the frame — a pillarboxed render should
-    // say so on disk, since the bars are not something you can undo later.
-    const bleedF = Math.max(sw / VW, sh / VH);
-    if (bleedF > 1.005) nameParts.push('pb' + bleedF.toFixed(2).replace('.', '_') + 'x');
+    // (dev0778) A bled render is no longer 16:9, so the name has to carry the
+    // shape — 'L'/'P' alone stops being enough the moment the dial is used.
+    if (s.bleed && (s.frac.w > 1.001 || s.frac.h > 1.001)) {
+      nameParts.push('ar' + _vpAspectLabel(sw, sh).replace(':', '_'));
+    }
     // (dev0720) Ken Burns: the amber box is where the zoom ENDS, reached at the
     // frame it was placed on and held from there to B. Sent as fractions of the
     // crop window plus that landing time relative to A; the proxy turns them
@@ -7439,8 +7489,24 @@ async function _vpGoSave(opts) {
     }
     // (dev0724) Burned-in captions. Wrapped HERE, at the size ffmpeg will draw
     // them (drawtext can't wrap), and dropped entirely when every box is empty.
-    const dims  = _vpOutputDims(s, sw, sh);
-    const tr    = _vpTextRenderList(s, dims.ow, dims.oh, startSec, endSec);
+    // (dev0778) Text boxes are fractions of the DRAWN rect, and a bled rect is
+    // wider than what renders — so re-express them against the intersection
+    // before the wrap, or every caption sits too far left and wraps too narrow.
+    // Identity when nothing is clipped, and done on a shallow clone so the live
+    // boxes on screen keep their own coordinates.
+    let tsrc = s;
+    if (s.bleed && (ef.x !== s.frac.x || ef.y !== s.frac.y ||
+                    ef.w !== s.frac.w || ef.h !== s.frac.h)) {
+      tsrc = Object.create(s);
+      tsrc.texts = s.texts.map(t => Object.assign(Object.create(t), {
+        x:    (s.frac.x + t.x * s.frac.w - ef.x) / ef.w,
+        y:    (s.frac.y + t.y * s.frac.h - ef.y) / ef.h,
+        w:    t.w * s.frac.w / ef.w,
+        size: t.size * s.frac.h / ef.h
+      }));
+    }
+    const dims  = _vpOutputDims(s, sw, sh, effAspect);
+    const tr    = _vpTextRenderList(tsrc, dims.ow, dims.oh, startSec, endSec);
     const texts = tr.texts, pauses = tr.pauses;
     if (texts.length)  nameParts.push('tx' + texts.length);
     if (pauses.length) nameParts.push('pz' + pauses.length);
@@ -7452,16 +7518,16 @@ async function _vpGoSave(opts) {
       crop: cropBox,
       crf: s.crf,
       preset: s.slow ? 'slow' : 'medium',
-      aspect: s.aspect, resHeight: s.resHeight,
+      aspect: effAspect, resHeight: s.resHeight,   // (dev0778) derived, see above
       audio: !!s.audio,               // (dev0719) bar's 🔇/🔊 switch → -an / -c:a copy
       trim: { startSec, endSec },
       overwrite: false
     };
     if (rotate) payload.rotate = rotate;
-    // (dev0777) pad and rotate are mutually exclusive at the proxy — a tilt
-    // already black-fills a canvas of its own, and the bleed was folded into its
-    // size above, so there is nothing left for pad to do.
-    if (pad && !rotate) payload.pad = pad;
+    // (dev0778) No `pad` — a bled rect renders its intersection with the frame,
+    // so nothing black is ever encoded. The proxy keeps the capability for the
+    // day something genuinely needs a fixed output aspect; sending it is a
+    // one-line change here.
     if (trackPayload) payload.track = trackPayload;   // (dev0777)
     if (kenPayload) payload.ken = kenPayload;   // (dev0720)
     if (texts.length) payload.texts = texts;    // (dev0724)
@@ -7511,21 +7577,15 @@ async function _vpGoSave(opts) {
     }
     return;
   }
-  // (dev0777) …and the two new ones, which fail in the two worst ways there are.
-  // A stale proxy drops payload.track and renders a STATIC crop — a clean file
-  // that looks like a success until you watch the subject wander out of it. It
-  // drops payload.pad and then applies canvas-space coordinates to the raw
-  // frame, which grabs the WRONG REGION. Both are silent wrong answers at the
-  // end of a long encode, so both get refused up front.
+  // (dev0777) …and the track, which fails in the worst way there is: a stale
+  // proxy drops payload.track and renders a STATIC crop — a clean file that
+  // looks like a success until you watch the subject wander out of it. That is
+  // a silent wrong answer at the end of a long encode, so refuse it up front.
+  // (dev0778) The reach needs no gate of its own: it renders as an ordinary
+  // crop rect, which every build back to dev0293 understands.
   if (payload.track && !(await _vpProxyHasFeature('vptrack'))) {
     if (typeof toast === 'function') {
       toast('A tracking crop needs an updated proxy — restart "node proxy.js" and retry', 4400);
-    }
-    return;
-  }
-  if (payload.pad && !(await _vpProxyHasFeature('vppad'))) {
-    if (typeof toast === 'function') {
-      toast('Pillarbox bars need an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }
