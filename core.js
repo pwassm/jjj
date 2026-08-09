@@ -684,7 +684,7 @@ function isVideoRow(row) {
   // Library /mp4/ asset) — window.isDirectVideoLink owns both; keep the inline
   // extension test as a fallback in case video.js hasn't defined it yet.
   if (link && ((window.isDirectVideoLink && window.isDirectVideoLink(link))
-      || /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(link))) return true;
+      || /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)(\?|#|$)/i.test(link))) return true;
   if (vrn && vrn !== 'i' && window.parseVideoAsset && window.parseVideoAsset(vrn) !== null) {
     if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)(\?|#|$)/i.test(link)) return false;
     return true;
@@ -6266,7 +6266,7 @@ function _looksLikeMediaUrl(s) {
   // a clipboard of pure pin links failed Rule 1's "all-links, no text" test.
   if (window.isPinterestLink && window.isPinterestLink(t)) return true;
   const path = t.split(/[?#]/)[0];
-  if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return true;
+  if (/\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)$/i.test(path)) return true;
   if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return true;
   return false;
 }
@@ -6293,8 +6293,13 @@ function _classifyUrl(s) {
   // VidRange='i' the moment it comes back "image". The one thing it must NOT be is
   // 'web' — that was the original bug (ltype='w', article row, no media).
   if (window.isPinterestLink && window.isPinterestLink(t)) return 'video';
+  // (dev0783) `ogv` joined this list — and the four other copies of it in
+  // core.js/vp.js. video.js's isDirectVideoLink has always known the extension,
+  // but these lists did not, so a Wikimedia Commons .ogv classified as 'web',
+  // imported as an article row (ltype='w'), and was then skipped by the grid's
+  // NoText filter and read as text by V. Nothing was wrong with the row.
   const path = t.split(/[?#]/)[0];
-  if (/\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)) return 'video';
+  if (/\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)$/i.test(path)) return 'video';
   if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return 'image';
   return 'web';
 }
@@ -6333,7 +6338,7 @@ async function _fetchMetaForNewRows(rows) {
     const isYT    = /youtu\.be|youtube\.com/i.test(link);
     const isVimeo = /vimeo\.com/i.test(link);
     const isImg   = row.VidRange === 'i';
-    const isDirVid = /\.(mp4|mov|webm|ogg|avi|mkv|m4v)$/i.test(path)
+    const isDirVid = /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)$/i.test(path)
       || (window.isMacaulayVideoLink && window.isMacaulayVideoLink(link));
     try {
       if (isYT) {

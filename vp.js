@@ -1525,7 +1525,7 @@ function gridOpenFullscreen(row, contained) {
         vpMountYouTube(host, row.link, seg, muted);
       } else if (window.isVimeoLink && window.isVimeoLink(row.link)) {
         vpMountVimeo(host, row.link, seg, muted);
-      } else if (row._directVideoFile || /\.(mp4|mov|webm|ogg|avi|mkv|m4v)(\?|#|$)/i.test(row.link)) {
+      } else if (row._directVideoFile || /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)(\?|#|$)/i.test(row.link)) {
         // (dev0285) `_directVideoFile` = slideshow disk video (blob: URL, no ext).
         vpMountDirectVideo(host, row.link, seg, muted);
       } else if (window.isInstagramLink && window.isInstagramLink(row.link)) {
@@ -6694,7 +6694,7 @@ const PROXY_BASE = 'http://127.0.0.1:8081';
 // "M:\clips.new" is never mistaken for a filename.
 //   M:\Candidates\20260803_…use.mp4  →  M:\Candidates
 // Explorer wraps its copied path in quotes; those and trailing separators go too.
-const _VP_MEDIA_EXT_RE = /\.(mp4|mov|webm|ogg|avi|mkv|m4v|jpe?g|png|gif|webp|avif|bmp)$/i;
+const _VP_MEDIA_EXT_RE = /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v|jpe?g|png|gif|webp|avif|bmp)$/i;
 function _vpCropAnswerToRoot(answer, rest) {
   const s = String(answer || '').trim().replace(/^"+|"+$/g, '').trim();
   if (!s) return '';
