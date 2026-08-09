@@ -307,7 +307,7 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0753';
+const PROXY_BUILD = 'dev0777';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -545,6 +545,76 @@ function dtQuote(s) {
 //
 // Caller has already put these in ascending order and expressed `at` in seconds
 // from the start of the (already trimmed) clip.
+// (dev0777) ── track: a crop window that MOVES during the clip ────────────────
+//
+// The crop filter's w/h are configure-time constants, but its x and y are
+// re-evaluated for every frame, so a constant-size window can be panned with a
+// plain expression in `t`. That is strictly better than the zoompan the Ken
+// Burns move has to use: zoompan's fps option IS the output frame rate (so the
+// source rate must be probed and the stream is re-timed), and it rescales the
+// window to the output size on every single frame. An expression crop re-times
+// nothing and copies pixels — one scale at the end of the chain, as usual.
+//
+// Verified against ffmpeg before this was written: a moving crop matches static
+// crops at the matching offsets to 49-60 dB, frame count and rate come out
+// identical to the source, and `-ss` before `-i` rebases `t` to 0 — so these
+// times are clip-relative, exactly like drawtext's from/to.
+//
+// The shape is a fold of nested if()s: hold the first key's value before it,
+// interpolate inside each span, hold the last key's value after it. Both
+// interpolations are convex combinations of two in-range endpoints, so a value
+// validated at the keys can never leave the frame in between — which is why
+// there is no min/max clamp wrapper here.
+//
+// `keys` are [{t, v}] ascending; the caller splits x and y into separate calls.
+function buildTrackExpr(keys, ease) {
+  const f = n => (+n).toFixed(4);
+  if (keys.length === 1) return f(keys[0].v);
+  let out = f(keys[keys.length - 1].v);            // past the last key: hold it
+  for (let i = keys.length - 2; i >= 0; i--) {
+    const t0 = f(keys[i].t), t1 = f(keys[i + 1].t);
+    const v0 = f(keys[i].v), v1 = f(keys[i + 1].v);
+    const p  = `((t-${t0})/(${t1}-${t0}))`;
+    // Linear by default: a subject drifting through frame moves at a roughly
+    // constant speed, and smoothstepping that would decelerate the camera while
+    // the subject kept going. `smooth` is there for a track whose keys do not
+    // span the whole clip, where the start and stop are visible.
+    const e  = (ease === 'smooth') ? `(${p})*(${p})*(3-2*(${p}))` : p;
+    out = `if(lt(t,${t1}),${v0}+(${v1}-${v0})*${e},${out})`;
+  }
+  return `if(lt(t,${f(keys[0].t)}),${f(keys[0].v)},${out})`;
+}
+
+// Validate a track payload and turn it into the crop filter's x/y arguments.
+// canvasW/H are the dimensions crop actually sees (after any pad/rotate), so
+// the bounds check below is the same one a static crop.x/y gets.
+function buildTrackCrop(track, cw, ch, canvasW, canvasH) {
+  must(track && typeof track === 'object', 'track must be an object');
+  const keys = track.keys;
+  must(Array.isArray(keys) && keys.length >= 1, 'track.keys must be a non-empty array');
+  must(keys.length <= 8, 'at most 8 track keyframes');
+  const ease = (track.ease === 'smooth') ? 'smooth' : 'linear';
+  let prev = -Infinity;
+  keys.forEach((k, i) => {
+    must(k && typeof k === 'object', `track.keys[${i}] must be an object`);
+    const t = +k.t;
+    must(Number.isFinite(t) && t >= 0, `track.keys[${i}].t must be a number ≥ 0`);
+    // A zero-length span would divide by zero inside the expression.
+    must(t >= prev + 0.05 || i === 0,
+         `track.keys[${i}].t must be at least 0.05s after the one before it`);
+    must(Number.isInteger(k.x) && k.x >= 0 && k.x + cw <= canvasW,
+         `track.keys[${i}].x must be an integer within 0..${canvasW - cw}`);
+    must(Number.isInteger(k.y) && k.y >= 0 && k.y + ch <= canvasH,
+         `track.keys[${i}].y must be an integer within 0..${canvasH - ch}`);
+    prev = t;
+  });
+  // Single-quoted, for the same reason the zoompan expressions are: the commas
+  // inside if() would otherwise read as filter separators in the graph string.
+  const ex = buildTrackExpr(keys.map(k => ({ t: k.t, v: k.x })), ease);
+  const ey = buildTrackExpr(keys.map(k => ({ t: k.t, v: k.y })), ease);
+  return `crop=${cw}:${ch}:x='${ex}':y='${ey}'`;
+}
+
 function buildPauseChain(pauses) {
   must(Array.isArray(pauses) && pauses.length, 'pauses must be a non-empty array');
   must(pauses.length <= 6, 'at most 6 pauses');
@@ -738,6 +808,30 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 //                                 (silent output), true/absent → '-c:a copy' as
 //                                 before. Absent defaults to KEEPING audio so an
 //                                 older client's payload behaves unchanged.
+//   track     {keys:[{t,x,y}],ease,canvas:{w,h}}
+//                              — OPTIONAL (dev0777); CROP path only. A crop
+//                                 window that MOVES: x/y become per-frame
+//                                 expressions interpolating the keyframes, so a
+//                                 drifting subject stays framed. t is seconds
+//                                 from the clip's own start (as drawtext's
+//                                 from/to are), x/y are the window's top-left in
+//                                 CANVAS pixels — the same space crop.x/y use,
+//                                 so pad/rotate apply first. Size never changes
+//                                 (crop's w/h are configure-time constants); for
+//                                 a move that also zooms, that is `ken`.
+//                                 ease 'linear' (default) | 'smooth'. canvas is
+//                                 the source frame size, needed only when
+//                                 neither pad nor rotate has set one. When
+//                                 present, crop.x/y are ignored.
+//   pad       {ow,oh,x,y}      — OPTIONAL (dev0777); CROP path only. Widen the
+//                                 canvas with black before cropping, so the rect
+//                                 may be LARGER than the source frame — a 16:9
+//                                 crop of a portrait clip can then take in more
+//                                 height than the frame is wide, at the cost of
+//                                 symmetric pillarbox bars. Prepends
+//                                 'pad=ow:oh:x:y:black,'; crop.x/y are already
+//                                 in that canvas. Mutually exclusive with
+//                                 rotate, which black-fills a canvas of its own.
 //   rotate    {rad,ow,oh}      — OPTIONAL (dev0318); horizon-straighten. Prepends
 //                                 'rotate=rad:ow:oh:c=black,' before crop. rad is
 //                                 radians (ffmpeg +=clockwise); the caller has
@@ -824,6 +918,27 @@ function buildFfmpegArgs(p, tmpSink) {
     // axis-aligned, then crop it. crop.x/y already live in the rotated canvas.
     // All values validated as numbers here → argv stays literal/non-injectable.
     let prefix = '';
+    // (dev0777) Optional pillarbox/letterbox bleed: the caller's rect is LARGER
+    // than the source frame, so widen the canvas with symmetric black margins
+    // and crop that. Same contract as rotate below — crop.x/y are already
+    // expressed in the padded canvas — and mutually exclusive with it, because
+    // rotate already black-fills a canvas of its own and the client folds the
+    // bleed into that one's size instead.
+    let canvasW = 0, canvasH = 0;
+    if (p.pad) {
+      must(!p.rotate, 'pad and rotate are mutually exclusive');
+      must(typeof p.pad === 'object', 'pad must be an object');
+      for (const k of ['ow', 'oh', 'x', 'y']) {
+        must(Number.isInteger(p.pad[k]) && p.pad[k] >= 0,
+             `pad.${k} must be a non-negative integer`);
+      }
+      must(p.pad.ow > 0 && p.pad.oh > 0, 'pad.ow/oh must be positive');
+      must(p.pad.ow <= 16384 && p.pad.oh <= 16384, 'pad.ow/oh must be ≤ 16384');
+      must(p.crop.x + p.crop.w <= p.pad.ow && p.crop.y + p.crop.h <= p.pad.oh,
+           'crop exceeds padded canvas');
+      prefix = `pad=${p.pad.ow}:${p.pad.oh}:${p.pad.x}:${p.pad.y}:black,`;
+      canvasW = p.pad.ow; canvasH = p.pad.oh;
+    }
     if (p.rotate) {
       must(typeof p.rotate === 'object', 'rotate must be an object');
       const rad = +p.rotate.rad;
@@ -836,8 +951,26 @@ function buildFfmpegArgs(p, tmpSink) {
       must(p.crop.x + p.crop.w <= p.rotate.ow && p.crop.y + p.crop.h <= p.rotate.oh,
            'crop exceeds rotated canvas');
       prefix = `rotate=${rad}:ow=${p.rotate.ow}:oh=${p.rotate.oh}:c=black,`;
+      canvasW = p.rotate.ow; canvasH = p.rotate.oh;
     }
-    let vf = prefix + `crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`;
+    // (dev0777) With no pad and no rotate the canvas IS the source frame, and
+    // the proxy never probes its size — so a track has to say what it is. It
+    // cannot be inferred from crop.x + crop.w, because with a track crop.x is
+    // the static fallback and says nothing about how far the window may travel.
+    if (p.track) {
+      must(p.track && typeof p.track === 'object', 'track must be an object');
+      if (!canvasW) {
+        const cv = p.track.canvas;
+        must(cv && Number.isInteger(cv.w) && Number.isInteger(cv.h) &&
+             cv.w > 0 && cv.h > 0 && cv.w <= 16384 && cv.h <= 16384,
+             'track.canvas {w,h} (the source frame size) is required without pad/rotate');
+        canvasW = cv.w; canvasH = cv.h;
+      }
+      must(p.crop.w <= canvasW && p.crop.h <= canvasH, 'crop is larger than the track canvas');
+    }
+    let vf = prefix + (p.track
+      ? buildTrackCrop(p.track, p.crop.w, p.crop.h, canvasW, canvasH)
+      : `crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
     const resH = p.resHeight;
     const scaling = Number.isFinite(resH) && resH > 0;
     const aspect = (p.aspect === 'P') ? 'P' : 'L';
@@ -5044,7 +5177,8 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist']) }));
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile',
+      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist']) }));
     return;
   }
 

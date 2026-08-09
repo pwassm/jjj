@@ -2550,6 +2550,37 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0777) R = stamp a track keyframe · ⇧R = clear the track. R has been free
+  // since dev0749 retired the disk-info toggle, and neither case is claimed
+  // elsewhere, so no core.js bail is needed the way `e` and `w` needed one.
+  if (e.key === 'r') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpTrackStamp();
+    return;
+  }
+  if (e.key === 'R') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpTrackClear();
+    return;
+  }
+
+  // (dev0777) Q = let the rect grow past the edge of the picture · ⇧Q = grow it
+  // until the source's short axis is fully inside.
+  if (e.key === 'q') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpCropBleedToggle();
+    return;
+  }
+  if (e.key === 'Q') {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpCropBleedFit();
+    return;
+  }
+
   // (dev0318/dev0724) 1 / 2 = rotate the crop frame −/+ 0.5° (straighten) —
   // they took this over from Z / X so Z could become the zoom. Gated to a
   // visible crop overlay like T, so they pass through in any other context
@@ -3593,6 +3624,84 @@ function _vpCropTiltOOB(state, VW, VH) {
   return false;
 }
 
+// (dev0777) ── Bleed: a crop rect allowed to outgrow the source frame ─────────
+// A 16:9 crop of a portrait clip is capped at the frame's width, and therefore
+// at 9/16 of it in height. To take in MORE of a tall subject the rect has to be
+// wider than the picture has pixels, and the surplus renders as black bars.
+//
+// The bars are symmetric by construction rather than by correction: bleed is
+// only ever produced by making the rect LARGER than the frame, never by dragging
+// a smaller one off the edge. Once an axis is bigger than the frame, dead centre
+// is the only position with equal bars, so it pins there — and while the rect
+// still fits, the clamp is exactly the one that was always there. Nothing about
+// bleed changes behaviour until the rect actually outgrows the picture.
+const VP_BLEED_MAX = 4;      // rect may reach 4× the frame on either axis
+
+function _vpFitAxis(v, size, bleed) {
+  if (bleed && size > 1) return (1 - size) / 2;
+  return Math.max(0, Math.min(Math.max(0, 1 - size), v));
+}
+
+// Largest frac.w the rect may take: 4× the frame, and never a canvas x264 would
+// refuse. ratio is frac.w / frac.h, so the height cap converts through it.
+function _vpBleedCap(state, VW, VH) {
+  const ratio = state.frac.ratio || (state.frac.w / (state.frac.h || 1)) || 1;
+  const capW = Math.min(VP_BLEED_MAX, 16384 / Math.max(1, VW));
+  const capH = Math.min(VP_BLEED_MAX, 16384 / Math.max(1, VH));
+  return Math.max(0.05, Math.min(capW, capH * ratio));
+}
+
+// (dev0777) ── Track: where the crop window sits at time t ────────────────────
+// MUST stay the same formula the proxy's buildTrackExpr emits, or the on-screen
+// preview is a promise the render does not keep. Hold before the first key,
+// interpolate between, hold after the last.
+function _vpTrackAt(track, t) {
+  const keys = (track && track.keys) || [];
+  if (!keys.length) return null;
+  const first = keys[0], last = keys[keys.length - 1];
+  if (t <= first.t) return { x: first.x, y: first.y };
+  if (t >= last.t)  return { x: last.x,  y: last.y  };
+  for (let i = 0; i < keys.length - 1; i++) {
+    const a = keys[i], b = keys[i + 1];
+    if (t < b.t) {
+      let p = (b.t - a.t) > 0 ? (t - a.t) / (b.t - a.t) : 0;
+      if (track.ease === 'smooth') p = p * p * (3 - 2 * p);
+      return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
+    }
+  }
+  return { x: last.x, y: last.y };
+}
+
+// Resample the track onto the clip A→B. Keys the user stamped outside the marks
+// are not simply dropped — the position they imply AT the mark is what the
+// render must start and end on, so the ends are evaluated rather than taken.
+// Times come back clip-relative, which is what the crop expression reads (`-ss`
+// before `-i` rebases the filter clock to 0, same as drawtext's from/to).
+function _vpTrackClipKeys(track, startSec, endSec) {
+  const dur = endSec - startSec;
+  if (!(dur > 0) || !track || !track.keys.length) return [];
+  const a = _vpTrackAt(track, startSec), b = _vpTrackAt(track, endSec);
+  const out = [{ t: 0, x: a.x, y: a.y }];
+  track.keys.forEach(k => {
+    if (k.t > startSec + 1e-3 && k.t < endSec - 1e-3) {
+      out.push({ t: k.t - startSec, x: k.x, y: k.y });
+    }
+  });
+  out.push({ t: dur, x: b.x, y: b.y });
+  // The proxy rejects spans shorter than 0.05s (they divide by zero in the
+  // expression), so thin them here rather than fail the render.
+  const kept = [out[0]];
+  for (let i = 1; i < out.length; i++) {
+    if (out[i].t >= kept[kept.length - 1].t + 0.05) kept.push(out[i]);
+  }
+  // The clip's own end matters more than an interior key that crowded it out.
+  const tail = out[out.length - 1];
+  if (kept.length > 1 && kept[kept.length - 1].t < tail.t) kept[kept.length - 1] = tail;
+  // 8 is the proxy's cap; drop interior keys evenly rather than the ends.
+  while (kept.length > 8) kept.splice(Math.floor(kept.length / 2), 1);
+  return kept;
+}
+
 // (dev0717) How much the chosen output resolution would ENLARGE the crop rect.
 // resHeight is the SHORT side either way — the proxy scales height for L
 // (`scale=-2:H`) and width for P (`scale=H:-2`) — so it is compared against
@@ -3611,7 +3720,14 @@ function _vpCropHolding() {
 function _vpCropUpscaleFactor(state, sw, sh) {
   const resH = state.resHeight;
   if (!Number.isFinite(resH) || resH <= 0) return 1;
-  let srcShort = (state.aspect === 'P') ? sw : sh;
+  // (dev0777) Judge by the part of the rect that is actually PICTURE. A bled
+  // rect is partly black, and those pixels carry no detail to enlarge — without
+  // this the warning goes quiet exactly when the content is being blown up
+  // hardest. frac ≤ 1 on an axis means no bleed there, so this is a no-op for
+  // every rect that fits the frame.
+  const visW = sw / Math.max(1, state.frac.w);
+  const visH = sh / Math.max(1, state.frac.h);
+  let srcShort = (state.aspect === 'P') ? visW : visH;
   // (dev0720) A Ken Burns move ENDS on the inner box, so that — not the whole
   // crop — is the framing that has to carry the output resolution. Judge the
   // enlargement by the tightest moment of the shot.
@@ -4771,6 +4887,30 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   textLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
   rect.appendChild(textLayer);
 
+  // (dev0777) ── Track ghosts ─────────────────────────────────────────────────
+  // Where the window sits at each stamped keyframe, plus the path its centre
+  // takes. A child of the CONTAINER, not of `rect` — these are positions in the
+  // frame, so they must not move when the live rect does. Inserted before the
+  // rect so the thing being dragged stays on top of its own history.
+  const trackLayer = document.createElement('div');
+  trackLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none;display:none;';
+  const trackSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  trackSvg.setAttribute('width', '100%');
+  trackSvg.setAttribute('height', '100%');
+  trackSvg.style.cssText = 'position:absolute;inset:0;overflow:visible;pointer-events:none;';
+  const trackPath = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  trackPath.setAttribute('fill', 'none');
+  trackPath.setAttribute('stroke', '#7fffa8');
+  trackPath.setAttribute('stroke-width', '2');
+  trackPath.setAttribute('stroke-dasharray', '5 4');
+  trackSvg.appendChild(trackPath);
+  trackLayer.appendChild(trackSvg);
+  c.insertBefore(trackLayer, rect);
+  // Declared with the layer rather than beside paintTrack: paint() is hoisted
+  // and calls paintTrack, so a const further down the file would be in its
+  // temporal dead zone if anything ever paints earlier than it does today.
+  const trackGhosts = [];
+
   const state = {
     imageMode,                        // (dev0744) still, not clip
     // (dev0745) Image mode only: 'still' | 'mp4' | 'gif'. Anything but 'still'
@@ -4784,8 +4924,18 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // same-aspect box inside a box has equal fractions on both axes); atSec is
     // the playhead when the box was last placed — where the zoom finishes.
     ken: { on: false, frac: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }, atSec: 0 },
+    // (dev0777) The rect may outgrow the source frame; the surplus renders as
+    // symmetric black bars. Off by default — every existing gesture is unchanged
+    // until the rect is actually bigger than the picture.
+    bleed: false,
+    // (dev0777) A crop window that moves. `keys` are [{t, x, y}] with t in
+    // ABSOLUTE video seconds (clip-relative conversion happens at save, so the
+    // track survives moving A and B) and x/y as source-frame fractions, the same
+    // units frac.x/y use. Size is fixed for the whole track — crop's w/h are
+    // configure-time constants in ffmpeg — so the handles lock once armed.
+    track: { on: false, keys: [], ease: 'linear' },
     frac: _vpCropFracForAspect('L', vid),
-    el: { container: c, rect, bar, handles, knob, grid, kenBox, textLayer }
+    el: { container: c, rect, bar, handles, knob, grid, kenBox, textLayer, trackLayer }
   };
 
   // (dev0318) Rotation helpers. Declared before paint() (which calls
@@ -4839,8 +4989,20 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       // so the rect can be grown before committing to an encode.
       const up = _vpCropUpscaleFactor(state, sw, sh);
       const upTxt = (up > 1.005) ? ('  ·  ⚠ ' + up.toFixed(2) + '× enlarged') : '';
+      // (dev0777) When the rect has outgrown the frame, say how much of the
+      // output is going to be black — that is the whole cost of the trade, and
+      // it should be visible while the corner is being dragged, not after.
+      let barTxt = '';
+      if (state.bleed) {
+        const bx = Math.round((sw - Math.min(sw, r.VW)) / 2);
+        const by = Math.round((sh - Math.min(sh, r.VH)) / 2);
+        if (bx > 0) barTxt += '  ·  ' + Math.min(sw, r.VW) + ' vis + 2×' + bx +
+                              ' bars (' + Math.round(200 * bx / sw) + '%)';
+        if (by > 0) barTxt += '  ·  ' + Math.min(sh, r.VH) + ' vis + 2×' + by +
+                              ' bars (' + Math.round(200 * by / sh) + '%)';
+      }
       dimLbl.textContent = sw + ' × ' + sh +
-        (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '') + upTxt;
+        (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '') + upTxt + barTxt;
       dimLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
       dimLbl.style.color =
         (upTxt || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
@@ -4848,6 +5010,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     updateAngleUI();
     paintEngine();     // (dev0744) tilt or res may have just cost us lossless
     paintKen();
+    paintTrack();      // (dev0777) ghosts sit in frame coords — repaint on resize
     paintTexts();
   }
 
@@ -4895,6 +5058,81 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       ? ('🎬 ' + (1 / k.frac.w).toFixed(2) + '× · the move ends here')
       : ('🎬 ' + (1 / k.frac.w).toFixed(2) + '× · lands ' + k.atSec.toFixed(1) + 's');
     kenLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
+  }
+
+  // (dev0777) Draw the stamped keyframes and the path between their centres.
+  // Ghosts are rebuilt wholesale — there are at most a handful and they change
+  // only when a key is stamped or the host resizes, so nothing is gained by
+  // diffing them. Green is where the move starts, red where it ends.
+  function paintTrack() {
+    const tr = state.track;
+    const keys = tr.keys;
+    trackLayer.style.display = (tr.on && keys.length) ? '' : 'none';
+    // Handles lock while a track is armed: the window's SIZE has to hold still
+    // for the whole move, because ffmpeg's crop takes constant w/h. Say so in
+    // the cursor as well as in the toast the attempted drag produces.
+    const locked = !!(tr.on && keys.length);
+    Object.entries(handles).forEach(([pos, h]) => {
+      h.style.opacity = locked ? '0.35' : '';
+      h.style.cursor  = locked ? 'not-allowed' : (pos + '-resize');
+    });
+    if (!tr.on || !keys.length) return;
+    const r = _vpCropRenderRect(host, vid);
+    while (trackGhosts.length > keys.length) trackLayer.removeChild(trackGhosts.pop());
+    while (trackGhosts.length < keys.length) {
+      const g = document.createElement('div');
+      g.style.cssText = 'position:absolute;box-sizing:border-box;border:2px dashed;' +
+                        'pointer-events:none;border-radius:2px;';
+      const lb = document.createElement('div');
+      lb.style.cssText =
+        'position:absolute;left:0;top:-17px;padding:0 5px;border-radius:3px;' +
+        'background:rgba(0,0,0,0.66);font:11px ui-monospace,Consolas,monospace;' +
+        'white-space:nowrap;';
+      g.appendChild(lb);
+      trackLayer.appendChild(g);
+      trackGhosts.push(g);
+    }
+    const pts = [];
+    keys.forEach((k, i) => {
+      const g = trackGhosts[i], lb = g.firstChild;
+      const gx = r.rx + k.x * r.rw, gy = r.ry + k.y * r.rh;
+      const gw = state.frac.w * r.rw, gh = state.frac.h * r.rh;
+      g.style.left = gx + 'px';  g.style.top    = gy + 'px';
+      g.style.width = gw + 'px'; g.style.height = gh + 'px';
+      // First key green, last red, anything between amber — so the direction of
+      // travel reads off the picture without counting labels.
+      const col = (i === 0) ? '#7fffa8' : (i === keys.length - 1 ? '#ff8a8a' : '#ffd24a');
+      g.style.borderColor = col;
+      lb.style.color = col;
+      lb.textContent = (i + 1) + ' · ' + k.t.toFixed(1) + 's';
+      pts.push((gx + gw / 2).toFixed(1) + ',' + (gy + gh / 2).toFixed(1));
+    });
+    trackPath.setAttribute('points', pts.join(' '));
+  }
+
+  // Follow the track during playback so the framing can be judged before the
+  // encode. Same interpolator the payload is built from, so what plays here is
+  // what renders. Suspended while dragging — the pointer wins over the clock.
+  let trackRaf = null;
+  function trackTick() {
+    trackRaf = state.track.on ? requestAnimationFrame(trackTick) : null;
+    if (!state.track.on || state.track.keys.length < 2 || drag) return;
+    if (!vid || vid.paused || vid.seeking) return;
+    const p = _vpTrackAt(state.track, vid.currentTime);
+    if (!p) return;
+    if (Math.abs(p.x - state.frac.x) < 1e-5 && Math.abs(p.y - state.frac.y) < 1e-5) return;
+    state.frac.x = p.x; state.frac.y = p.y;
+    paint();
+  }
+  function trackStartRaf() { if (!trackRaf && state.track.on) trackRaf = requestAnimationFrame(trackTick); }
+  // Scrubbing and frame-stepping move the playhead without playing, so the
+  // preview has to be nudged from the seek as well as from the rAF loop.
+  function trackSeekSync() {
+    if (!state.track.on || state.track.keys.length < 2 || drag) return;
+    const p = _vpTrackAt(state.track, vid.currentTime);
+    if (!p) return;
+    state.frac.x = p.x; state.frac.y = p.y;
+    paint();
   }
 
   // (dev0724) ── Text boxes ──────────────────────────────────────────────────
@@ -5205,6 +5443,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   const onTimeTick = () => syncTextWindow();
   vid.addEventListener('timeupdate', onTimeTick);
   vid.addEventListener('seeked',     onTimeTick);
+  // (dev0777) …and the track preview, which has to follow a scrub or a frame
+  // step as well as playback.
+  const onTrackSeek = () => trackSeekSync();
+  vid.addEventListener('seeked', onTrackSeek);
 
   // ── Drag-to-move (rect body) and corner resize (handles) ────────────────
   let drag = null;
@@ -5218,6 +5460,15 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   Object.entries(handles).forEach(([pos, h]) => {
     h.addEventListener('pointerdown', e => {
       e.preventDefault(); e.stopPropagation();
+      // (dev0777) A track pins the window's SIZE: ffmpeg's crop takes constant
+      // w/h and only its position can move per frame. Refuse the drag rather
+      // than let a resize silently invalidate every keyframe already stamped.
+      if (state.track.on && state.track.keys.length) {
+        if (typeof toast === 'function') {
+          toast('◈ size is locked while a track is armed — ⇧R clears it', 2600);
+        }
+        return;
+      }
       drag = { kind: 'resize', pos, el: h, sx: e.clientX, sy: e.clientY,
                of: { ...state.frac }, r: _vpCropRenderRect(host, vid) };
       h.setPointerCapture(e.pointerId);
@@ -5258,10 +5509,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const dxF = (e.clientX - drag.sx) / drag.r.rw;
     const dyF = (e.clientY - drag.sy) / drag.r.rh;
     if (drag.kind === 'move') {
-      let nx = drag.ox + dxF, ny = drag.oy + dyF;
-      nx = Math.max(0, Math.min(1 - state.frac.w, nx));
-      ny = Math.max(0, Math.min(1 - state.frac.h, ny));
-      state.frac.x = nx; state.frac.y = ny;
+      // (dev0777) _vpFitAxis is the old clamp for any axis that still fits the
+      // frame, and pins a bled axis to dead centre so its bars stay equal.
+      state.frac.x = _vpFitAxis(drag.ox + dxF, state.frac.w, state.bleed);
+      state.frac.y = _vpFitAxis(drag.oy + dyF, state.frac.h, state.bleed);
       paint();
     } else if (drag.kind === 'resize') {
       const of = drag.of, ratio = state.frac.ratio;
@@ -5278,10 +5529,20 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       nw = Math.max(0.05, nw); nh = Math.max(0.05, nh);
       let nx = (px >= ax) ? ax : ax - nw;
       let ny = (py >= ay) ? ay : ay - nh;
-      if (nx < 0)        { nw += nx; nh = nw / ratio; nx = 0; }
-      if (ny < 0)        { nh += ny; nw = nh * ratio; ny = 0; }
-      if (nx + nw > 1)   { nw = 1 - nx; nh = nw / ratio; }
-      if (ny + nh > 1)   { nh = 1 - ny; nw = nh * ratio; }
+      if (!state.bleed) {
+        if (nx < 0)        { nw += nx; nh = nw / ratio; nx = 0; }
+        if (ny < 0)        { nh += ny; nw = nh * ratio; ny = 0; }
+        if (nx + nw > 1)   { nw = 1 - nx; nh = nw / ratio; }
+        if (ny + nh > 1)   { nh = 1 - ny; nw = nh * ratio; }
+      } else {
+        // (dev0777) Bleed: no frame clamp, just a ceiling that keeps the padded
+        // canvas inside what x264 will encode. Whichever axis has outgrown the
+        // picture then centres itself, which is what makes the bars equal.
+        const cap = _vpBleedCap(state, drag.r.VW, drag.r.VH);
+        if (nw > cap) { nw = cap; nh = nw / ratio; }
+        nx = _vpFitAxis(nx, nw, true);
+        ny = _vpFitAxis(ny, nh, true);
+      }
       state.frac.x = nx; state.frac.y = ny; state.frac.w = nw; state.frac.h = nh;
       paint();
     } else if (drag.kind === 'kmove') {
@@ -5497,7 +5758,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     try {
       vid.removeEventListener('timeupdate', onTimeTick);
       vid.removeEventListener('seeked',     onTimeTick);
+      vid.removeEventListener('seeked',     onTrackSeek);
     } catch (_) {}
+    // (dev0777) Stop the track preview's rAF, or it survives the player.
+    state.track.on = false;
+    if (trackRaf) { cancelAnimationFrame(trackRaf); trackRaf = null; }
     if (_gridTimer) clearTimeout(_gridTimer);
     document.removeEventListener('pointermove', onMove, true);
     document.removeEventListener('pointerup',   onUp,   true);
@@ -5507,6 +5772,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   state.setAngle = setAngle;
   state.paintAudio = paintAudio;   // (dev0719) M repaints the audio chip
   state.paintKen = paintKen;       // (dev0720) Z arms/disarms the zoom box
+  // (dev0777) R stamps a keyframe, ⇧R clears the track, Q toggles the bars.
+  state.paintTrack    = paintTrack;
+  state.trackStartRaf = trackStartRaf;
   // (dev0724) E adds a text box; the key handler resizes and ends the entry.
   state.addText = addText;
   state.paintTexts = paintTexts;
@@ -5545,6 +5813,17 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       state.ken.frac = { x: +k0.frac.x || 0, y: +k0.frac.y || 0, w: +k0.frac.w, h: +k0.frac.h };
     }
     state.ken.atSec = +k0.atSec || 0;
+    // (dev0777) Bleed and the track. Both default OFF, so an .edit written
+    // before this existed loads exactly as it always did.
+    state.bleed = !!doc.bleed;
+    const tk = doc.track || {};
+    state.track.keys = (Array.isArray(tk.keys) ? tk.keys : [])
+      .filter(k => k && Number.isFinite(+k.t) && Number.isFinite(+k.x) && Number.isFinite(+k.y))
+      .map(k => ({ t: +k.t, x: +k.x, y: +k.y }))
+      .sort((a, b) => a.t - b.t);
+    state.track.ease = (tk.ease === 'smooth') ? 'smooth' : 'linear';
+    state.track.on   = !!tk.on && state.track.keys.length > 0;
+    if (state.track.on && state.trackStartRaf) state.trackStartRaf();
     (Array.isArray(doc.texts) ? doc.texts : []).forEach(td => {
       const t = addText({ silent: true });
       if (!t) return;
@@ -5576,6 +5855,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
               resHeight: state.resHeight, crf: state.crf, slow: !!state.slow,
               audio: !!state.audio },
       ken: { on: !!state.ken.on, frac: { ...state.ken.frac }, atSec: state.ken.atSec },
+      // (dev0777) The moving window and the bars, so a session that took real
+      // eyeballing to line up survives the page.
+      bleed: !!state.bleed,
+      track: { on: !!state.track.on, ease: state.track.ease,
+               keys: state.track.keys.map(k => ({ t: k.t, x: k.x, y: k.y })) },
       texts: state.texts.map(t => ({
         x: t.x, y: t.y, w: t.w, size: t.size,
         text: (t.ta ? t.ta.value : t.text) || '',
@@ -5900,6 +6184,29 @@ function _vpCropHelpShow() {
                              '(' + K('T') + ' goes back to a locked rect)') +
         row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
         row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
+        head('Follow a subject') +
+        row(K('R'),          'stamp the box where it is NOW. Put the subject in the ' +
+                             'box at the start and press ' + K('R') + ', scrub to the ' +
+                             'end, drag the box back onto it, press ' + K('R') + ' ' +
+                             'again — the render pans between them so a drifting ' +
+                             'subject stays framed. More stamps bend the path; ' +
+                             'stamping the same frame twice moves that one.') +
+        row('the ghosts',    'green = first, red = last, dashed line = the path the ' +
+                             'centre takes. Play it back and the box follows the ' +
+                             'path, so you can see the framing before the encode.') +
+        row(K('⇧R'),         'clear the track') +
+        row('size is locked', 'while a track is armed — the window has to keep one ' +
+                             'size for the whole move, so the corners, ' + K('T') +
+                             ' and ' + K('⇧F') + ' stand down until ' + K('⇧R') + '.') +
+        head('Bars (crop wider than the picture)') +
+        row(K('Q'),          'let the box grow PAST the edge of the video. A 16:9 crop ' +
+                             'of a portrait clip is otherwise capped at the frame’s ' +
+                             'width — this takes in more height, at the cost of black ' +
+                             'bars down the sides.') +
+        row(K('⇧Q'),         'grow it until the FULL height of the source is inside') +
+        row('always centred', 'an axis that has outgrown the picture pins to the middle, ' +
+                             'so the two bars are always exactly equal. The size label ' +
+                             'says how much of the output is bar.') +
         head('Zoom into') +
         row(K('Z'),          'amber box on / off — where the zoom ENDS') +
         row('drag it',       'move / resize it inside the crop box (always the same ' +
@@ -6149,6 +6456,10 @@ function _vpCropFullFrame() {
   const vid = _vpState.player && _vpState.player.el;
   if (!vid) return;
   const VW = vid.videoWidth || 16, VH = vid.videoHeight || 9;
+  if (s.track.on && s.track.keys.length) {
+    if (typeof toast === 'function') toast('◈ size is locked while a track is armed — ⇧R clears it', 2600);
+    return;
+  }
   s.aspect = (VW >= VH) ? 'L' : 'P';
   s.frac = { x: 0, y: 0, w: 1, h: 1, ratio: 1 };   // ratio 1 in FRACTION space = the source aspect
   const label = s.el.bar.querySelector('#vp-crop-aspect');
@@ -6159,12 +6470,134 @@ function _vpCropFullFrame() {
   }
 }
 
+// (dev0777) ── R / ⇧R — the tracking window ───────────────────────────────────
+// Stamp where the window is NOW, at the frame you are parked on. Two stamps is
+// the whole feature: put the subject in the box at the start, scrub to the end,
+// drag the box back onto it, stamp again. More stamps bend the path.
+//
+// Times are absolute video seconds, not clip-relative, so moving A or B later
+// re-cuts the same track instead of invalidating it (_vpTrackClipKeys does the
+// conversion at save, evaluating the path AT the marks rather than dropping the
+// keys outside them).
+function _vpTrackStamp() {
+  if (!_vpState || !_vpState.crop || _vpState.imageMode) return;
+  const s = _vpState.crop;
+  const t = _vpNowSec();
+  const keys = s.track.keys;
+  // Re-stamping the same frame moves that key rather than stacking a second one
+  // on top of it — and 0.05s is the proxy's minimum span, so anything closer
+  // than that could not be rendered as two keys anyway.
+  const hit = keys.findIndex(k => Math.abs(k.t - t) < 0.05);
+  if (hit >= 0) {
+    keys[hit].x = s.frac.x; keys[hit].y = s.frac.y;
+  } else {
+    keys.push({ t, x: s.frac.x, y: s.frac.y });
+    keys.sort((a, b) => a.t - b.t);
+  }
+  const first = !s.track.on;
+  s.track.on = true;
+  if (s.trackStartRaf) s.trackStartRaf();
+  if (s.paint) s.paint();
+  if (typeof toast === 'function') {
+    const n = keys.length;
+    toast(first
+      ? '◈ track armed — keyframe 1 at ' + t.toFixed(1) + 's. Scrub on, drag the box ' +
+        'back onto the subject and press R again. Size is locked from here (⇧R clears).'
+      : (hit >= 0 ? '◈ keyframe ' + (hit + 1) + ' moved (' + t.toFixed(1) + 's)'
+                  : '◈ keyframe ' + n + ' at ' + t.toFixed(1) + 's — ' +
+                    (n >= 2 ? 'play it back to see the framing follow' : '')),
+      first ? 5200 : 2600);
+  }
+}
+
+function _vpTrackClear() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  if (!s.track.keys.length && !s.track.on) return;
+  s.track.keys.length = 0;
+  s.track.on = false;
+  if (s.paint) s.paint();
+  if (typeof toast === 'function') toast('◈ track cleared — the crop is static again', 2000);
+}
+
+// True when a track would be rendered, i.e. it actually moves. One keyframe (or
+// several in the same place) is a static crop with extra steps.
+function _vpTrackMoves(s) {
+  const k = s && s.track && s.track.keys;
+  if (!k || !s.track.on || k.length < 2) return false;
+  return k.some(p => Math.abs(p.x - k[0].x) > 1e-6 || Math.abs(p.y - k[0].y) > 1e-6);
+}
+
+// (dev0777) ── Q — let the rect outgrow the frame ─────────────────────────────
+// Turning it off has to put the rect back inside the picture, or the next save
+// would still be padding a rect nothing on screen says is oversized.
+function _vpCropBleedToggle() {
+  if (!_vpState || !_vpState.crop) return;
+  // Stills are deliberately out: the proxy's image path takes no `pad`, so a
+  // bled rect there would either error or come back quietly mis-cropped. Better
+  // no control than one that lies.
+  if (_vpState.imageMode) return;
+  const s = _vpState.crop;
+  s.bleed = !s.bleed;
+  if (!s.bleed && (s.frac.w > 1 || s.frac.h > 1)) {
+    const ratio = s.frac.ratio || (s.frac.w / (s.frac.h || 1)) || 1;
+    let w = s.frac.w, h = s.frac.h;
+    if (w > 1) { w = 1; h = w / ratio; }
+    if (h > 1) { h = 1; w = h * ratio; }
+    s.frac.w = w; s.frac.h = h;
+    s.frac.x = _vpFitAxis((1 - w) / 2, w, false);
+    s.frac.y = _vpFitAxis((1 - h) / 2, h, false);
+  }
+  if (s.paint) s.paint();
+  if (typeof toast === 'function') {
+    toast(s.bleed
+      ? '⬛ bars on — drag a corner PAST the edge of the picture to take in more ' +
+        'than the frame is wide. It centres itself, so the bars stay equal. ⇧Q = full height.'
+      : '⬛ bars off — the crop is back inside the picture',
+      s.bleed ? 5200 : 1800);
+  }
+}
+
+// ⇧Q — the reason bleed exists: grow the rect until the SHORT axis of the
+// source is fully inside it. On a portrait clip with a 16:9 rect that is the
+// full height of the video, which is the most of a tall subject a landscape
+// crop can hold.
+function _vpCropBleedFit() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  const vid = _vpState.player && _vpState.player.el;
+  if (!vid || !vid.videoWidth) return;
+  if (s.track.on && s.track.keys.length) {
+    if (typeof toast === 'function') toast('◈ size is locked while a track is armed — ⇧R clears it', 2600);
+    return;
+  }
+  s.bleed = true;   // set directly — the toggle would toast over this one
+  const ratio = s.frac.ratio || (s.frac.w / (s.frac.h || 1)) || 1;
+  const cap = _vpBleedCap(s, vid.videoWidth, vid.videoHeight);
+  // Full height = frac.h 1; the locked aspect then decides the width.
+  let h = 1, w = Math.min(cap, h * ratio);
+  h = w / ratio;
+  s.frac.w = w; s.frac.h = h;
+  s.frac.x = _vpFitAxis((1 - w) / 2, w, true);
+  s.frac.y = _vpFitAxis((1 - h) / 2, h, true);
+  if (s.paint) s.paint();
+  if (typeof toast === 'function') {
+    const sw = Math.round(w * vid.videoWidth), sh = Math.round(h * vid.videoHeight);
+    toast('⬛ ' + sw + ' × ' + sh + ' — the full height of the source, pillarboxed', 3000);
+  }
+}
+
 // (dev0288) Swap L↔P aspect, re-center on previous center, redraw.
 function _vpCropSwapAspect() {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
   const vid = _vpState.player && _vpState.player.el;
   if (!vid) return;
+  // (dev0777) Both of these resize the rect, which a track forbids.
+  if (s.track.on && s.track.keys.length) {
+    if (typeof toast === 'function') toast('◈ size is locked while a track is armed — ⇧R clears it', 2600);
+    return;
+  }
   s.aspect = (s.aspect === 'L') ? 'P' : 'L';
   const prevCx = s.frac.x + s.frac.w / 2;
   const prevCy = s.frac.y + s.frac.h / 2;
@@ -6894,7 +7327,8 @@ async function _vpGoSave(opts) {
   const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
   const endSec   = Math.max(_vpState.aPoint, _vpState.bPoint);
   const durStr = _vpDurStr(endSec - startSec);
-  let outName, payload, kenPayload = null;   // (dev0720) kenPayload: zoom ramp
+  // (dev0720) kenPayload: zoom ramp · (dev0777) trackPayload: moving window
+  let outName, payload, kenPayload = null, trackPayload = null;
   if (cropOn) {
     const s = _vpState.crop;
     const VW = vid.videoWidth, VH = vid.videoHeight;
@@ -6911,27 +7345,59 @@ async function _vpGoSave(opts) {
     // tilted rect becomes axis-aligned, then crop there. Geometry verified:
     // ffmpeg +rad = clockwise (matches CSS), so a = -angle; the crop center is
     // the source-px center remapped by R(a) about the frame center.
+    // (dev0777) Bleed. The rect may be bigger than the frame on either axis; the
+    // surplus becomes a symmetric black margin the crop then sits inside. sw/VW
+    // are both even, so padX is a whole pixel, the canvas comes out exactly the
+    // rect's width and crop.x is 0 — the bars are equal by arithmetic, with no
+    // rounding left to correct. An unbled axis pads by 0 and behaves as before.
+    const padX = Math.max(0, Math.ceil((sw - VW) / 2));
+    const padY = Math.max(0, Math.ceil((sh - VH) / 2));
+    const CW = VW + 2 * padX, CH = VH + 2 * padY;
+    const pad = (padX || padY) ? { ow: CW, oh: CH, x: padX, y: padY } : null;
+    // Rect position in canvas pixels, used for the static crop and as the frame
+    // every track keyframe is measured in.
+    const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+    const toCanvas = (fx, fy) => ({
+      x: (sw > VW) ? Math.round((CW - sw) / 2) : clampI(padX + fx * VW, 0, CW - sw),
+      y: (sh > VH) ? Math.round((CH - sh) / 2) : clampI(padY + fy * VH, 0, CH - sh)
+    });
     const angle = s.angle || 0;
-    let cropBox, rotate = null, angTok = '';
+    // (dev0777) mapPt turns a rect position in source fractions into the crop's
+    // top-left in whatever canvas the chain ends up cropping — padded, rotated,
+    // or the bare frame. The static rect and every track keyframe both go
+    // through it, so a track works under tilt without a second bit of geometry.
+    let cropBox, rotate = null, angTok = '', mapPt, canvasW, canvasH;
     if (!angle) {
-      cropBox = { w: sw, h: sh, x: even(s.frac.x * VW), y: even(s.frac.y * VH) };
+      mapPt = toCanvas; canvasW = CW; canvasH = CH;
     } else {
       const a = -angle * Math.PI / 180;
-      const D = even(Math.ceil(Math.hypot(VW, VH)));
-      const cx = (s.frac.x + s.frac.w / 2) * VW, cy = (s.frac.y + s.frac.h / 2) * VH;
-      const u = cx - VW / 2, v = cy - VH / 2;
+      // The rotate canvas already black-fills, so a bled rect just needs it big
+      // enough to contain the rect — which hypot() usually already is.
+      const D = even(Math.ceil(Math.max(Math.hypot(VW, VH), sw + 2, sh + 2)));
       const ca = Math.cos(a), sa = Math.sin(a);
-      const ccx = D / 2 + (ca * u - sa * v), ccy = D / 2 + (sa * u + ca * v);
-      // Clamp into the canvas so a heavily off-frame tilt black-fills instead of
-      // failing the proxy's bounds check (the amber label already warned).
-      const cx0 = Math.max(0, Math.min(D - sw, even(Math.round(ccx - sw / 2))));
-      const cy0 = Math.max(0, Math.min(D - sh, even(Math.round(ccy - sh / 2))));
-      cropBox = { w: sw, h: sh, x: cx0, y: cy0 };
+      mapPt = (fx, fy) => {
+        const cx = (fx + s.frac.w / 2) * VW, cy = (fy + s.frac.h / 2) * VH;
+        const u = cx - VW / 2, v = cy - VH / 2;
+        const ccx = D / 2 + (ca * u - sa * v), ccy = D / 2 + (sa * u + ca * v);
+        // Clamp into the canvas so a heavily off-frame tilt black-fills instead
+        // of failing the proxy's bounds check (the amber label already warned).
+        return {
+          x: Math.max(0, Math.min(D - sw, even(Math.round(ccx - sw / 2)))),
+          y: Math.max(0, Math.min(D - sh, even(Math.round(ccy - sh / 2))))
+        };
+      };
+      canvasW = canvasH = D;
       rotate = { rad: a, ow: D, oh: D };
       angTok = 'r' + angle.toFixed(1).replace('.', '_') + 'deg';
     }
+    const p0 = mapPt(s.frac.x, s.frac.y);
+    cropBox = { w: sw, h: sh, x: p0.x, y: p0.y };
     const nameParts = [parts.base, safeId, sizeStr, s.aspect, 'crop'];
     if (angTok) nameParts.push(angTok);
+    // (dev0777) How far the rect outgrew the frame — a pillarboxed render should
+    // say so on disk, since the bars are not something you can undo later.
+    const bleedF = Math.max(sw / VW, sh / VH);
+    if (bleedF > 1.005) nameParts.push('pb' + bleedF.toFixed(2).replace('.', '_') + 'x');
     // (dev0720) Ken Burns: the amber box is where the zoom ENDS, reached at the
     // frame it was placed on and held from there to B. Sent as fractions of the
     // crop window plus that landing time relative to A; the proxy turns them
@@ -6956,6 +7422,21 @@ async function _vpGoSave(opts) {
       kenTok = 'kb' + (1 / k.frac.w).toFixed(1).replace('.', '_') + 'x';
       nameParts.push(kenTok);
     }
+    // (dev0777) The tracking window. Keys are held in ABSOLUTE video seconds, so
+    // they are re-cut onto the current A→B here — including evaluating the path
+    // AT each mark, which is what makes a track survive moving the marks after
+    // it was stamped. A track that does not actually move is dropped: it would
+    // render an expression whose answer never changes.
+    if (_vpTrackMoves(s)) {
+      const keys = _vpTrackClipKeys(s.track, startSec, endSec).map(k => {
+        const p = mapPt(k.x, k.y);
+        return { t: +k.t.toFixed(3), x: p.x, y: p.y };
+      });
+      if (keys.length >= 2) {
+        trackPayload = { keys, ease: s.track.ease, canvas: { w: canvasW, h: canvasH } };
+        nameParts.push('trk' + keys.length);
+      }
+    }
     // (dev0724) Burned-in captions. Wrapped HERE, at the size ffmpeg will draw
     // them (drawtext can't wrap), and dropped entirely when every box is empty.
     const dims  = _vpOutputDims(s, sw, sh);
@@ -6977,6 +7458,11 @@ async function _vpGoSave(opts) {
       overwrite: false
     };
     if (rotate) payload.rotate = rotate;
+    // (dev0777) pad and rotate are mutually exclusive at the proxy — a tilt
+    // already black-fills a canvas of its own, and the bleed was folded into its
+    // size above, so there is nothing left for pad to do.
+    if (pad && !rotate) payload.pad = pad;
+    if (trackPayload) payload.track = trackPayload;   // (dev0777)
     if (kenPayload) payload.ken = kenPayload;   // (dev0720)
     if (texts.length) payload.texts = texts;    // (dev0724)
     // (dev0727) Freeze frames. They make the video longer than its soundtrack,
@@ -7022,6 +7508,24 @@ async function _vpGoSave(opts) {
     if (typeof toast === 'function') {
       toast('Silent output needs an updated proxy — restart "node proxy.js", ' +
             'or press M for 🔊 audio and retry', 4600);
+    }
+    return;
+  }
+  // (dev0777) …and the two new ones, which fail in the two worst ways there are.
+  // A stale proxy drops payload.track and renders a STATIC crop — a clean file
+  // that looks like a success until you watch the subject wander out of it. It
+  // drops payload.pad and then applies canvas-space coordinates to the raw
+  // frame, which grabs the WRONG REGION. Both are silent wrong answers at the
+  // end of a long encode, so both get refused up front.
+  if (payload.track && !(await _vpProxyHasFeature('vptrack'))) {
+    if (typeof toast === 'function') {
+      toast('A tracking crop needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
+  if (payload.pad && !(await _vpProxyHasFeature('vppad'))) {
+    if (typeof toast === 'function') {
+      toast('Pillarbox bars need an updated proxy — restart "node proxy.js" and retry', 4400);
     }
     return;
   }
