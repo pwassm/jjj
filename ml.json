@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1786246972486,
+    "_salPushTime": 1786250526839,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -83,7 +83,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
     "_salGsize": 4,
@@ -510,7 +510,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1786246972486
+    "_salSavedAt": 1786250526839
   },
   {
     "UID": "1",
@@ -17872,6 +17872,33 @@
     "ttxt": "",
     "steps": "0.15,824,11",
     "Mode": "L"
+  },
+  {
+    "UID": "3009",
+    "link": "https://media.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
+    "show": "1",
+    "DateAdded": "2026-08-09 04:39:55",
+    "DateModified": "2026-08-09 04:42:06",
+    "tags": [
+      "phyllaplysia-taylori",
+      "myvideo"
+    ],
+    "Mute": "0",
+    "MPix": "V",
+    "vidLength": "0:42",
+    "cell": "",
+    "VidRange": "0 4.1",
+    "VidComment": "Starting Quest, ",
+    "ftextSize": "131",
+    "FtextJunk": "0",
+    "VQ": "",
+    "BQ": "8",
+    "COI": "",
+    "segLength": "0:14",
+    "ttxt": "",
+    "steps": "0.15,824,11",
+    "Mode": "L",
+    "ftext": "<p>This is the caption!  <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://somelink:v.404\">somelink:v.404</a></p>"
   },
   {
     "UID": "727",

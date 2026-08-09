@@ -680,25 +680,27 @@ async function _showShareableMenu() {
   // a collection legitimately called "Introduction to nudibranchs" is still a
   // grid and not swallowed by the front page.
   //
-  // No <hr> split here: the whole ctxt is the Intro. Falls back to the old
-  // greetTop so a site whose c.json has no Introduction row yet keeps the page
-  // it had.
+  // (dev0779) The ctxt is now read as TWO SECTIONS, split at its first
+  // top-level <hr> (the Xe ══ divider) — the same rule the Greeting has used
+  // since dev0361. The image of the day is composed BETWEEN them by the page
+  // itself; see _smDayItemHtml below. Falls back to greetTop when there is no
+  // Introduction row, and a ctxt with no <hr> is simply all section 1.
   const _isIntroCfg = v => {
     const s = String(v == null ? '' : v).trim().toLowerCase();
     return s === 'introduction' || s === 'intro';
   };
   const introCfg = cRows.find(r => r && !r._salMeta && _isIntroCfg(r.gname));
-  // (dev0775) Hand this freshly-fetched row to core.js. renderFtext is
-  // synchronous and cannot fetch c.json, so outside the menu it falls back to
-  // whatever is in memory — this is the copy that makes a slot resolve in Xs
-  // and on a grid the first time the landing page has been built.
-  if (introCfg) window._salIntroCfgCache = introCfg;
-  // `let`, not `const`: the date-driven UID slot (dev0768, below _smEsc) makes a
-  // second pass over this to swap the author's bare `UID` token for today's
-  // clip. It runs down there because it needs _smEsc, which isn't declared yet.
-  let introHtml = introCfg
-    ? _linkify(_balanceHtml(_cutBelow(introCfg.ctxt)))
-    : greetTop;
+  const introFull = introCfg ? _cutBelow(introCfg.ctxt) : greetTop;
+  let introTop = introFull, introBottom = '';
+  {
+    const _ihr = introFull.match(/<hr\b[^>]*>/i);
+    if (_ihr) {
+      introTop    = introFull.slice(0, _ihr.index);
+      introBottom = introFull.slice(_ihr.index + _ihr[0].length);
+    }
+  }
+  introTop    = _linkify(_balanceHtml(introTop));
+  introBottom = _linkify(_balanceHtml(introBottom));
 
   // (dev0379) "Other" page — free-form HTML from the c.json config row whose
   // gname is "other", in its `ctxt` field. Re-read every open (whole function
@@ -741,67 +743,71 @@ async function _showShareableMenu() {
   };
   const _smDateShort = v => String(v || '').trim().slice(0, 10);
 
-  // ── (dev0768) THE INTRO'S DATE-DRIVEN VIDEO SLOT ────────────────────────────
-  // The author types `UIDoftheday` into the 🖼 modal's SOURCE box, where a UID
-  // number would otherwise go, and picks size / alignment / caption as usual.
-  // That inserts a placeholder — the author's wrapper div with a bare
-  // `<p>UIDoftheday</p>` where the picture would be — and this swaps that marker
-  // for today's clip at render time. The wrapper, and so the size, float and
-  // caption, is left exactly as authored.
+  // ── (dev0779) THE IMAGE OF THE DAY ──────────────────────────────────────────
+  // A property of the INTRO PAGE, not of the author's prose. The page composes
+  // it between the ctxt's two sections; nothing about it appears in the HTML the
+  // author edits, so Xe stays an HTML editor and the ctxt stays plain HTML.
   //
-  // (dev0769) The token was a bare `UID` in dev0768, typed as a line of prose.
-  // Wrong on both counts: "UID" is also the word for the number you normally put
-  // in that box, and the Source box is where the author expected to say this.
-  // Loose text still works — anything whose ENTIRE text is "UIDoftheday" counts,
-  // wherever it sits — but the modal is the route.
+  // WHICH row: the ml.json row whose `DateUse` column holds today's day of the
+  // month, 1–31. That column already exists on every row and is empty for now,
+  // so until it is filled in this falls back to one fixed row — SM_DAY_UID. The
+  // scheme for assigning DateUse is the author's next design step; when a row
+  // gets a number, it takes over on that day with no code change.
   //
-  // WHICH clip comes from the Introduction config row's own grid cells, one per
-  // day of the month. The author's shorthand numbers the rows a–e — a1–a5 are
-  // days 1–5, b1–b5 days 6–10, and so on — while c.json spells the same cells
-  // the other way round (`1a`…`5e`), which is why this is a table and not
-  // arithmetic. Days 26–28 use the portrait cells 1P/2P/3P and 29–31 the extra
-  // 1f/1g/1h, those being what is left once the 25-cell grid is spent.
-  //
-  //     day 8  →  the author's b3  →  c.json cell `2c`
-  //
-  // The cell holds a UID, exactly as a grid cell does, so filling a day is
-  // typing a number into C — no HTML, and the Intro prose is authored once.
-  // (dev0775) The cell table, the date lookup and the media builder all moved
-  // to core.js (_SAL_SLOT_CELLS / _salSlotPick / _salSlotMediaHtml) when the
-  // swap became shared. A second copy here is exactly how the two would drift.
-  // (dev0775) The swap itself now lives in core.js (_salApplySlot) so every
-  // render context shares it — Xs and the grid used to leave the placeholder
-  // showing, which made a perfectly good slot look broken in preview. This
-  // wrapper just feeds it the menu's own freshly-fetched c.json / ml.json,
-  // rather than the in-memory tables core.js has to fall back on.
-  const _smApplyIntroSlot = html => _salApplySlot(html, introCfg, mlRows);
-  introHtml = _smApplyIntroSlot(introHtml);
-  // (dev0769) Exported so the swap can be exercised on a scrap of HTML from the
-  // console without having to author a marker into c.json first.
-  window._smApplyIntroSlot = _smApplyIntroSlot;
-  // Console handle: what does today (or ?introday=N) resolve to, and if nothing,
-  // why not. Re-exported on every menu build so it always reflects the live read.
-  window._smIntroSlot = () => {
-    const p = _salSlotPick(introCfg, mlRows);
-    // (dev0772) …and whether the SAVED ctxt actually carries a marker. Which day
-    // maps to which UID was never the hard part; "is the slot in the file at
-    // all?" was, and it took a git-level look at c.json to answer. One line now.
-    const raw = introCfg ? String(introCfg.ctxt || '') : '';
-    const boxes = (raw.match(/te-slot/g) || []).length;
-    const words = (raw.match(/UIDoftheday/gi) || []).length;
-    const cutAt = raw.search(/te-cut-below/);
-    const firstAt = raw.search(/te-slot|UIDoftheday/i);
-    return {
-      day: p.day, cell: p.key, uid: p.uid,
-      link: p.row ? String(p.row.link || '') : '',
-      why: p.why || 'ok',
-      markersInSavedCtxt: boxes + words,
-      markerNote: (boxes + words) === 0
-        ? 'NO marker in the saved Introduction ctxt — insert one (🖼 → source "UIDoftheday") and SAVE'
-        : (cutAt >= 0 && firstAt > cutAt)
-          ? 'marker sits BELOW the ⊘ cut line, so it is dropped before rendering — move it above'
-          : 'marker found',
-    };
+  // The row supplies BOTH parts: `link` is the media, `ftext` is the caption.
+  const SM_DAY_UID = '3009';
+  const _smDayNum = () => {
+    // ?introday=N previews another day without touching the clock. LOCAL date,
+    // so the day turns over at the viewer's midnight, not UTC's.
+    let d = 0;
+    try { d = parseInt(new URLSearchParams(location.search).get('introday'), 10) || 0; } catch (e) {}
+    return (d >= 1 && d <= 31) ? d : new Date().getDate();
+  };
+  const _smDayRow = () => {
+    const want = String(_smDayNum());
+    const byDate = mlRows.find(r => r && !r._salMeta && String(r.DateUse == null ? '' : r.DateUse).trim() === want);
+    return byDate || mlRows.find(r => r && !r._salMeta && String(r.UID) === SM_DAY_UID) || null;
+  };
+  // Direct media files only — the author is starting with the self-hosted mp4s.
+  // A YouTube/Vimeo watch page is not something a <video> can play, and a raw
+  // URL printed on the public front door is worse than an empty space, so
+  // anything else renders nothing and says why in the console.
+  const _SM_DAY_VID = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
+  const _SM_DAY_IMG = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i;
+  const _smDayItemHtml = () => {
+    const row = _smDayRow();
+    const link = row ? String(row.link || '').trim() : '';
+    const path = link.split(/[?#]/)[0];
+    const bad = !row ? 'no row for day ' + _smDayNum() + ' and no fallback UID ' + SM_DAY_UID
+              : !link ? 'UID ' + row.UID + ' has no link'
+              : (!_SM_DAY_VID.test(path) && !_SM_DAY_IMG.test(path))
+                ? 'UID ' + row.UID + ' is not a direct media file: ' + link
+              : '';
+    if (bad) {
+      try { console.warn('[image of the day] ' + bad); } catch (e) {}
+      return '';
+    }
+    const src = _smEsc(link).replace(/"/g, '&quot;');
+    const media = _SM_DAY_VID.test(path)
+      ? '<video src="' + src + '" controls autoplay loop muted playsinline'
+        + ' preload="metadata"></video>'
+      : '<img src="' + src + '" alt="">';
+    // The caption is the row's ftext, through the same renderer every other
+    // slide uses — so a ⊘ cut, a collapsible and a v.NNN link all behave here
+    // exactly as they do on a slide.
+    const capRaw = String(row.ftext || '').trim();
+    const cap = capRaw
+      ? '<div class="sm-daycap">'
+        + ((typeof renderFtext === 'function') ? renderFtext(capRaw) : capRaw) + '</div>'
+      : '';
+    return '<div class="sm-dayitem">' + media + cap + '</div>';
+  };
+  // Console handle: which row is today's, and why nothing showed if nothing did.
+  window._smDayItem = () => {
+    const r = _smDayRow();
+    return { day: _smDayNum(), uid: r ? r.UID : null,
+             pickedBy: (r && String(r.DateUse || '').trim() === String(_smDayNum())) ? 'DateUse' : 'fallback SM_DAY_UID',
+             link: r ? String(r.link || '') : '', ftext: r ? String(r.ftext || '').slice(0, 80) : '' };
   };
 
   // (dev0400) Search page show-threshold. Result cards appear once the match
@@ -1073,10 +1079,17 @@ async function _showShareableMenu() {
     // instead of shoving its neighbours onto the next line.
     + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
-    // (dev0768/0769) The date-driven slot's clip. It fills the author's wrapper,
-    // so no margins or clear:both here — that geometry belongs to the wrapper
-    // the 🖼 modal built, and duplicating it would fight the float.
-    + '.smGreeting video.sm-introslot,.smGreeting img.sm-introslot{display:block;width:100%;}'
+    // (dev0779) The image of the day — a block of the Intro PAGE, sitting in the
+    // same prose column as the two ctxt sections it separates, so the three read
+    // as one page rather than as prose with something bolted between it.
+    + '.sm-dayitem{max-width:var(--sal-prose-w,760px);margin:4px auto 6px;padding:0 24px;}'
+    + '.sm-dayitem video,.sm-dayitem img{display:block;width:100%;border-radius:6px;}'
+    // The caption is the row's ftext, so it gets the prose colours at a quieter
+    // size — same relationship a modal caption has to its picture.
+    + '.sm-dayitem .sm-daycap{font-family:inherit;color:#cfe0f0;font-size:0.85em;line-height:1.5;text-align:center;margin-top:6px;}'
+    + '.sm-dayitem .sm-daycap p{margin:4px 0;}'
+    + '.sm-dayitem .sm-daycap a{color:#bfe3ff;text-decoration:underline;text-underline-offset:2px;}'
+    + '.sm-dayitem .sm-daycap a:hover{color:#fff;}'
     + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#d9ebff;margin:0;}'
     + '.smGreeting hr{border:none;border-top:1px solid rgba(255,255,255,0.28);margin:20px 0;}'
     + '.te-cut{display:none;}'
@@ -1244,8 +1257,14 @@ async function _showShareableMenu() {
         // phone that is showing a stale cached app says so without being asked.
         + '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
         + '<div id="smAuth" class="sm-auth"></div>'
-        + (introHtml.trim() ? '<div class="smGreeting">' + introHtml + '</div>'
-                            : '<div class="smGreeting"><p>Welcome.</p></div>')
+        // (dev0779) SECTION 1 · IMAGE OF THE DAY · SECTION 2. The two sections
+        // are the author's ctxt either side of its first <hr>; the item between
+        // them is composed here from an ml.json row (see _smDayItemHtml). An
+        // empty section renders nothing rather than an empty prose block.
+        + (introTop.trim() ? '<div class="smGreeting">' + introTop + '</div>'
+                           : (introBottom.trim() ? '' : '<div class="smGreeting"><p>Welcome.</p></div>'))
+        + _smDayItemHtml()
+        + (introBottom.trim() ? '<div class="smGreeting">' + introBottom + '</div>' : '')
       + '</div>'
       // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
       // Singles | Grids on desktop, stacked on phone)

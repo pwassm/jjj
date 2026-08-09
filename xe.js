@@ -2172,16 +2172,13 @@ function teIsVideoUrl(u) { return TE_MEDIA_VIDEO_RE.test(teUrlPath(u)); }
 function teIsImageUrl(u) { return TE_MEDIA_IMAGE_RE.test(teUrlPath(u)); }
 window.teIsVideoUrl = teIsVideoUrl;
 
-// (dev0769) "UIDoftheday" — typed into the modal's Source box instead of a UID
-// number. It inserts a PLACEHOLDER rather than a fixed clip; the Intro tab swaps
-// it for whichever UID today's date points at (boot.js _smApplyIntroSlot). Size,
-// alignment and caption are the modal's, exactly as for a real picture, because
-// the placeholder is only the media element — the wrapper round it is the same
-// wrapper an <img> would get.
-var TE_SLOT_TOKEN = 'UIDoftheday';
-function teIsSlotToken(v) { return /^uidoftheday$/i.test(String(v || '').trim()); }
-window.TE_SLOT_TOKEN = TE_SLOT_TOKEN;
-window.teIsSlotToken = teIsSlotToken;
+// (dev0779) The "UIDoftheday" source token is GONE, and with it the placeholder
+// box, the schema class that carried it and the render-time swap. It put a
+// program instruction inside the author's prose — the editor had to learn a
+// marker, the schema had to preserve it, and every render context had to know
+// to replace it. The image of the day is a property of the INTRO PAGE, not of
+// the text, so boot.js now composes it between the ctxt's two sections and the
+// HTML stays plain HTML.
 
 // (dev0769) THE ROWS A UID MEANS. `data` is not always ml.json: openCScreen
 // (collection.js) swaps the global to c.json's collections for as long as the C
@@ -2275,9 +2272,8 @@ function teShowImageModal(onInsert, defaults) {
       <label style="display:block;font-size:11px;color:#8ef;margin-bottom:4px;">
         Source — UID number (looks up row.link) or full https:// URL
         <span style="color:#666;">· .mp4 / .webm plays as video</span>
-        <span style="color:#8ef;">· <b>UIDoftheday</b> = the Intro's date-driven slot</span>
       </label>
-      <input id="teImgSrc" type="text" autocomplete="off" placeholder="e.g. 27   or   https://…/clip.mp4   or   UIDoftheday"
+      <input id="teImgSrc" type="text" autocomplete="off" placeholder="e.g. 27   or   https://example.com/foo.jpg   or   https://…/clip.mp4"
         value="${dSrc.replace(/"/g, '&quot;')}"
         style="width:100%;box-sizing:border-box;padding:6px 8px;background:#0a0a1a;
                border:1px solid #555;color:#fff;border-radius:4px;font-family:monospace;
@@ -2354,9 +2350,6 @@ function teShowImageModal(onInsert, defaults) {
   function resolveSrc(raw) {
     const v = (raw || '').trim();
     if (!v) return { error: 'Source is empty.' };
-    // (dev0769) The date-driven slot. No URL to resolve — the clip is chosen at
-    // render time, so this returns a kind and nothing else.
-    if (teIsSlotToken(v)) return { url: '', kind: 'slot' };
     if (/^https?:\/\//i.test(v)) {
       // Full URL — accept as-is
       return { url: v, kind: teIsVideoUrl(v) ? 'video' : 'image' };
@@ -2402,7 +2395,6 @@ function teShowImageModal(onInsert, defaults) {
     // ("30%") from the "% of line" option — see teSizeToWidth.
     const w = teSizeToWidth(size);
     const isVid = kind === 'video';
-    const isSlot = kind === 'slot';
     // (dev0775) An UNTOUCHED caption is re-emitted as the HTML it already was,
     // not rebuilt from its flattened text. The modal's caption box is plain
     // text, so anything richer than words — a link, bold, italics — survived
@@ -2433,28 +2425,6 @@ function teShowImageModal(onInsert, defaults) {
       ? '<video src="' + url + '" style="' + css + '"' + flags + '></video>'
       : '<img src="' + url + '" style="' + css + '" alt="">';
 
-    // (dev0769) The slot placeholder. The geometry goes on the WRAPPER, never on
-    // the marker, so the Intro renderer can swap the marker for today's <video>
-    // and inherit the author's size/float/caption untouched. A plain <p> because
-    // it has to survive the xe2 schema — no new tag, nothing to teach it.
-    if (isSlot) {
-      // (dev0770) The marker is a VISIBLE PLACEHOLDER BOX, not the bare word.
-      // dev0769 emitted `<p>UIDoftheday</p>`, which round-trips through the
-      // schema perfectly well — but on screen a video simply turned into a naked
-      // word, which reads as "Xe destroyed my media box". Same slot, now it
-      // looks like one: a dashed frame the size of the media it stands in for.
-      // The `te-slot` class is what the renderer swaps (see boot.js); xe2's
-      // StyledDiv preserves that one class specifically.
-      const marker = '<div class="te-slot" style="border:2px dashed #6aa6ff;border-radius:6px;'
-        + 'padding:18px 10px;text-align:center;color:#8ec5ff;font-size:0.85em;line-height:1.5;">'
-        + '📅 Video of the day<br>fills from the Intro’s date cell' + '</div>';
-      if (align === 'left' || align === 'right') {
-        return '<div style="' + teFloatCss(w, align) + '">' + marker + capHtml + '</div>';
-      }
-      return '<div style="margin:12px auto;text-align:center;width:' + w + ';max-width:100%;">'
-        + marker + capHtml + '</div>';
-    }
-
     if (align === 'left' || align === 'right') {
       const fl = teFloatCss(w, align);
       if (cap) return '<div style="' + fl + '">'
@@ -2477,15 +2447,6 @@ function teShowImageModal(onInsert, defaults) {
   // form tells the user what it is about to insert before they commit.
   function syncKind() {
     const raw = (modal.querySelector('#teImgSrc').value || '').trim();
-    // (dev0769) The slot names no file, so there are no playback flags to offer:
-    // the Intro renderer plays it the way the author's other Intro clips play
-    // (controls, autoplay, loop, muted). Say plainly what will be inserted.
-    if (teIsSlotToken(raw)) {
-      modal.querySelector('#teImgVidOpts').style.display = 'none';
-      modal.querySelector('#teImgTitle').textContent = '📅 Video of the day';
-      modal.querySelector('#teImgInsert').textContent = isEdit ? 'Replace' : 'Insert slot';
-      return;
-    }
     let isVid = teIsVideoUrl(raw);
     if (!isVid && raw && !/^https?:\/\//i.test(raw)) {
       const row = teMlRows().find(r => r && String(r.UID) === raw);
@@ -2519,16 +2480,6 @@ function teShowImageModal(onInsert, defaults) {
     const html = buildHtml(r.url, size, align, caption, r.kind, vopts);
     close();
     if (typeof onInsert === 'function') onInsert(html);
-    // (dev0774) Confirm a date-slot insert FROM HERE, the one place both editors
-    // share. dev0772 put this in xe2's insertImage — invisible if the v1
-    // fallback is what is actually running (a deliberate ?xe2=0, or any v2
-    // failure), which is precisely the case that would explain "no toast".
-    // Naming the build makes a stale cached script self-evident too: no toast at
-    // all means this xe.js predates dev0774, whatever the badge says.
-    if (r.kind === 'slot' && typeof toast === 'function') {
-      toast('📅 Video-of-the-day slot inserted (' + (window.HELP_VERSION_STR || '?')
-        + ') — Save, then open the Intro tab', 3200);
-    }
   }
   modal.querySelector('#teImgInsert').onclick = doInsert;
   // (dev0733) Touching the % dropdown selects the % radio — otherwise picking a

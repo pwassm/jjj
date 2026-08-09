@@ -290,18 +290,9 @@
           parseHTML: function (el) { return el.getAttribute('style'); },
           renderHTML: function (attrs) { return attrs.style ? { style: attrs.style } : {}; },
         },
-        // (dev0770) ONE class survives a round-trip: te-slot, the Intro's
-        // date-driven video placeholder. Deliberately not "keep whatever class
-        // is there" — dropping foreign classes is what stops a pasted web page's
-        // framework classes riding into ftext (see the paste sanitizer note), and
-        // this marker is the only one the renderer needs to find.
-        'class': {
-          default: null,
-          parseHTML: function (el) {
-            return (el.classList && el.classList.contains('te-slot')) ? 'te-slot' : null;
-          },
-          renderHTML: function (attrs) { return attrs['class'] ? { 'class': attrs['class'] } : {}; },
-        },
+        // (dev0779) The te-slot class preservation added in dev0770 is gone with
+        // the placeholder it existed for. No class survives here again, which is
+        // what keeps a pasted web page's framework classes out of ftext.
       };
     },
     parseHTML: function () {
@@ -309,10 +300,7 @@
         tag: 'div[style]',
         getAttrs: function (el) {
           if (el.classList && (el.classList.contains('te-slide') || el.classList.contains('te-cut'))) return false;
-          return {
-            style: el.getAttribute('style'),
-            'class': (el.classList && el.classList.contains('te-slot')) ? 'te-slot' : null,
-          };
+          return { style: el.getAttribute('style') };
         },
       }];
     },
@@ -1423,18 +1411,6 @@
             .insertContentAt(editCtx.from, html).run();
         } else {
           editor.chain().focus().insertContent(html).run();
-        }
-        // (dev0772) SAY SO when a date-slot goes in, and say so from the DOC,
-        // not from the fact that we asked for it — read the saved shape back out
-        // and count the markers. The slot has now twice failed to reach c.json
-        // with every individual step verified working, and the one thing nobody
-        // could see was whether the insert had actually landed in the document.
-        // Now it is on screen either way.
-        if (/te-slot/.test(String(html))) {
-          var n = (serialize(editor).match(/te-slot/g) || []).length;
-          _toast(n
-            ? '📅 Video-of-the-day slot in place (' + n + ' on this page) — Save, then open the Intro tab'
-            : '⚠ The slot did NOT go in — the editor rejected it. Tell Claude.', n ? 3200 : 6000);
         }
       }, editCtx ? editCtx.defaults : undefined);
       return;
