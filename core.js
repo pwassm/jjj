@@ -6324,8 +6324,33 @@ function _normalizeLink(link) {
   if (/vimeo\.com\/\d+/i.test(link) && window.sanitizeVimeoUrl) {
     return window.sanitizeVimeoUrl(link);
   }
-  return link;
+  // (dev0784) Drop campaign-tracking params. Wikimedia Commons is the reason
+  // this exists: its own download/API links carry `?utm_source=…&utm_campaign=
+  // …&utm_content=original`, so a Commons file lands in ml.json wearing three
+  // params that mean nothing to the server and only make the stored link harder
+  // to read and to dedup against the same file pasted from elsewhere.
+  //
+  // Deliberately a NAMED list, not "strip the query": plenty of media URLs
+  // carry a query that IS the address (signed CDN links, IG's _nc_* params,
+  // Flickr sizes). Only keys that are purely analytics come off.
+  return _stripTrackingParams(link);
 }
+const _TRACK_PARAMS = /^(utm_[a-z_]+|fbclid|gclid|dclid|msclkid|igshid|mc_cid|mc_eid|ref_src|ref_url|spm)$/i;
+function _stripTrackingParams(link) {
+  const s = String(link || '');
+  if (s.indexOf('?') < 0) return s;
+  try {
+    const u = new URL(s);
+    let hit = false;
+    for (const k of [...u.searchParams.keys()]) {
+      if (_TRACK_PARAMS.test(k)) { u.searchParams.delete(k); hit = true; }
+    }
+    if (!hit) return s;
+    // Don't leave a bare "?" behind when every param was tracking.
+    return u.search ? u.toString() : (u.origin + u.pathname + u.hash);
+  } catch (e) { return s; }   // not a parseable URL — leave it exactly as pasted
+}
+window._stripTrackingParams = _stripTrackingParams;
 
 // Fetch metadata (title, author, P/S, Mpix) for rows just added via W.
 // Runs async after save/render so the import isn't blocked.
