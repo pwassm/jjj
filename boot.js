@@ -708,6 +708,13 @@ async function _showShareableMenu() {
   const otherCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'other');
   const otherHtml = _linkify(_balanceHtml(_cutBelow(otherCfg ? otherCfg.ctxt : '')));
 
+  // (dev0782) "Contact" page — same deal as "Other": free-form HTML from the
+  // c.json config row whose gname is "contact", in its `ctxt`. Authored in Xe,
+  // so the address / who-we-are copy above the sign-in strip is the author's,
+  // not code. Absent config → the page is just the sign-in strip.
+  const contactCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'contact');
+  const contactHtml = _linkify(_balanceHtml(_cutBelow(contactCfg ? contactCfg.ctxt : '')));
+
   // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
   // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
   // video → image). `slide` = HTML ftext with no link; `quiz` = JSON-ish
@@ -850,8 +857,17 @@ async function _showShareableMenu() {
     const head = split.head || _smEsc(isVid ? 'Video of the day' : 'Image of the day');
     const rest = split.rest.trim()
       ? '<div class="sm-daycap">' + split.rest + '</div>' : '';
+    // (dev0782) A tenth-size copy of the SAME media, playing in the summary
+    // line itself — so the closed block still moves and shows what is behind it
+    // rather than being a line of text. Muted like every video on this page,
+    // no controls, and pointer-transparent so a click on it toggles the block.
+    const thumb = '<span class="sm-daythumb">'
+      + (isVid
+          ? '<video src="' + src + '" autoplay loop muted playsinline preload="metadata"></video>'
+          : '<img src="' + src + '" alt="">')
+      + '</span>';
     return '<div class="sm-dayitem">'
-      + '<details class="sm-dayfold"><summary>' + head + '</summary>'
+      + '<details class="sm-dayfold"><summary>' + thumb + head + '</summary>'
       + media + rest
       + '</details></div>';
   };
@@ -1146,6 +1162,13 @@ async function _showShareableMenu() {
       + 'border-left:4px solid #7cc0ff;border-radius:6px;overflow:hidden;}'
     + '.sm-dayitem summary{cursor:pointer;color:#d9ebff;}'
     + '.sm-dayitem summary a{color:#bfe3ff;}'
+    // (dev0782) The tenth-size preview riding in the summary line. 10% of the
+    // prose column, floored at 44px so it survives a phone, and inert to the
+    // pointer so the whole line stays one toggle target.
+    + '.sm-dayitem .sm-daythumb{display:inline-block;vertical-align:middle;width:10%;'
+      + 'max-width:76px;min-width:44px;margin-right:9px;border-radius:4px;overflow:hidden;'
+      + 'line-height:0;pointer-events:none;}'
+    + '.sm-dayitem .sm-daythumb video,.sm-dayitem .sm-daythumb img{border-radius:4px;}'
     + '.sm-dayitem details > video,.sm-dayitem details > img{margin-top:10px;}'
     + '.sm-dayitem video,.sm-dayitem img{display:block;width:100%;border-radius:6px;}'
     // The caption is the row's ftext, so it gets the prose colours at a quieter
@@ -1275,6 +1298,11 @@ async function _showShareableMenu() {
     + '.sm-authrow button{flex:none;padding:10px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#eef4fa;font-family:inherit;font-size:14px;cursor:pointer;white-space:nowrap;}'
     + '.sm-authrow button:hover{background:rgba(255,255,255,0.20);}'
     + '.sm-authrow button:disabled{opacity:.5;cursor:default;}'
+    // (dev0782) On its own Contact page the strip is the page's content, not a
+    // corner note — so it reads left-to-right like everything else in the prose
+    // column instead of hugging the right edge the way it did on the Intro.
+    + '.sm-contact .sm-auth{text-align:left;font-size:15px;margin-top:18px;}'
+    + '.sm-contact .sm-authrow{justify-content:flex-start;}'
     + '.sm-authmsg{margin-top:10px;color:#b6f0cd;line-height:1.5;}'
     + '.sm-authmsg.err{color:#ffc9c5;}'
     + '.sm-authmsg a{color:#bfe3ff;}'
@@ -1302,7 +1330,12 @@ async function _showShareableMenu() {
     // (dev0668) "Add your own" — a URL the viewer pastes themselves. Follows
     // My Loops because that's where its loops end up.
     + (SM_FEAT_ADDOWN ? '<button class="sm-tab" data-pg="8">Add your own</button>' : '')
-    + '<button class="sm-tab" data-pg="4">Other</button>';
+    + '<button class="sm-tab" data-pg="4">Other</button>'
+    // (dev0782) "Contact" — the home of the sign-in strip, which until now sat at
+    // the top of the Intro. Signing in is a thing the viewer goes looking for,
+    // not something the front door should ask for, so it gets its own tab and
+    // the Intro opens on prose alone. Last, because it is the least-used tab.
+    + '<button class="sm-tab" data-pg="9">Contact</button>';
 
   ov.innerHTML = menuStyle
     // (dev0384) Top tab bar — replaces the former header (there is no header now).
@@ -1313,14 +1346,11 @@ async function _showShareableMenu() {
       // above), authored in Xe like every other page here. Was: the Greeting's
       // pre-<hr> half behind two "Go to home screen" buttons.
       + '<div id="smPage1" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;">'
-        // (dev0552) Optional sign-in strip — now at the TOP of the welcome menu.
-        // Purely additive; browsing never requires it. Rendered signed-out by
-        // default; _wireSignIn (below) swaps in the signed-in state after
-        // salAuth.me() resolves.
         // (dev0763) Build stamp, top-left of the Intro — small and inert, so a
         // phone that is showing a stale cached app says so without being asked.
         + '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
-        + '<div id="smAuth" class="sm-auth"></div>'
+        // (dev0782) The sign-in strip that used to sit here is gone — it lives on
+        // the Contact tab (page 9) now. Nothing else changed on this page.
         // (dev0779) SECTION 1 · IMAGE OF THE DAY · SECTION 2. The two sections
         // are the author's ctxt either side of its first <hr>; the item between
         // them is composed here from an ml.json row (see _smDayItemHtml). An
@@ -1455,6 +1485,14 @@ async function _showShareableMenu() {
           + '</div>'
         + '</div>'
         : '')
+      // (dev0782) PAGE 9 — "Contact". The author's own copy (c.json "contact"
+      // config's ctxt) followed by the sign-in strip that used to live at the
+      // top of the Intro. #smAuth just moved house: _wireSignIn queries the
+      // whole overlay, so it finds it here with no change.
+      + '<div id="smPage9" class="sm-pg sm-contact" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + (contactHtml.trim() ? '<div class="smGreeting">' + contactHtml + '</div>' : '')
+        + '<div id="smAuth" class="sm-auth"></div>'
+      + '</div>'
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.
     + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>';
@@ -1502,11 +1540,12 @@ async function _showShareableMenu() {
   // tabs that exist — a switched-off page is never landed on.
   // (dev0767) Intro (1) leads the order, matching its place in the tab bar, so
   // Tab-cycling wraps back round to it like any other tab.
+  // (dev0782) …and Contact (9) closes the order, matching its place in the bar.
   const _smTabOrder = [1, 2]
     .concat(SM_FEAT_SEARCH ? [3, 6] : [])
     .concat([7])
     .concat(SM_FEAT_ADDOWN ? [8] : [])
-    .concat([4]);
+    .concat([4, 9]);
   const _smShow = n => {
     // (dev0739) A page change means the box our keyboard was typing into is
     // gone — take it with us rather than leaving it floating over the new page.
@@ -1515,7 +1554,7 @@ async function _showShareableMenu() {
     // (dev0767) …from 1, not 2: Intro is a tab, so "the last tab the viewer
     // used" can now BE Intro and a return should land back on it.
     if (n >= 1) window._smLastTab = n; // (dev0384) remember the last tab used
-    [1, 2, 3, 4, 5, 6, 7, 8].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
+    [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
@@ -1623,7 +1662,10 @@ async function _showShareableMenu() {
   // sound-less loop rather than leaving it running behind the summary line.
   ov.querySelectorAll('.sm-dayfold').forEach(det => {
     det.addEventListener('toggle', () => {
-      const v = det.querySelector('video');
+      // (dev0782) `:scope >` — the summary now carries a tenth-size video of its
+      // own, and a bare querySelector('video') would find THAT one (it comes
+      // first) and leave the real one paused. The thumb plays regardless.
+      const v = det.querySelector(':scope > video');
       if (!v) return;
       if (det.open) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
       else v.pause();
@@ -1672,10 +1714,11 @@ async function _showShareableMenu() {
   // (dev0767) …and DOWN to 1, because Intro is a tab: a viewer who opened an
   // item from a link inside the Intro should come back to the Intro, not be
   // bounced to Grids.
-  if (window._smReturnPage >= 1 && window._smReturnPage <= 8) {
+  // (dev0782) …and to 9 for Contact.
+  if (window._smReturnPage >= 1 && window._smReturnPage <= 9) {
     _smStartPg = window._smReturnPage;
   } else if (window._smWelcomeSeen) {
-    _smStartPg = (window._smLastTab >= 1 && window._smLastTab <= 8) ? window._smLastTab : 1;
+    _smStartPg = (window._smLastTab >= 1 && window._smLastTab <= 9) ? window._smLastTab : 1;
   } else {
     _smStartPg = 1;
   }
