@@ -2640,8 +2640,8 @@ function streamExecCollect(req, res, bin, args, onDone) {
 
 // (dev0766) ── The watermarked-video folder ────────────────────────────────
 // M:\wm\watermarked\ is the output of the M:\wm watermark tooling, and every
-// file in it was uploaded to the R2 bucket `videofiles` at the SAME relative
-// path — so a file's public URL is just video.sealifeandmore.com + that path.
+// file in it was uploaded to the R2 bucket `media` at the SAME relative
+// path — so a file's public URL is just media.sealifeandmore.com + that path.
 // That makes the folder a usable local stand-in for "what is in Cloudflare",
 // which is what T's Housekeeping ▸ Add Watermarked Videos diffs against
 // ml.json. Read-only, and hard-scoped to WM_DIR: the caller never supplies a

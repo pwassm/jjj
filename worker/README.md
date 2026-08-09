@@ -59,7 +59,7 @@ curl.exe -s -X POST "$api/admin/set-role" -H "Authorization: Bearer XXXX" `
 - **Bot check**: create a Turnstile site in the CF dashboard, put the widget
   on the login form, `wrangler secret put TURNSTILE_SECRET`, redeploy.
 - **Clean URL**: move sealifeandmore.com DNS to Cloudflare (the zone likely
-  already exists — video.sealifeandmore.com R2 needs it), then uncomment the
+  already exists — media.sealifeandmore.com R2 needs it), then uncomment the
   `routes` line in wrangler.toml for api.sealifeandmore.com.
 - **Frontend**: site JS reads `location.hash` for `#session=…`, stores it in
   localStorage, sends it as `Authorization: Bearer …` — not built yet.

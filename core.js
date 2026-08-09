@@ -4657,7 +4657,7 @@ function housekeepingFixIgLtype() {
 
 // (dev0766) ── Add Watermarked Videos ───────────────────────────────────────
 // Every video the M:\wm tooling stamps lands in M:\wm\watermarked\ and is
-// uploaded to the R2 bucket `videofiles` at the same relative path, so its
+// uploaded to the R2 bucket `media` at the same relative path, so its
 // public URL is deterministic: R2_VIDEO_BASE + that path. Until now the last
 // step was manual — build the URL by hand, paste a row into T — which is how
 // files drift out of ml.json (5 of them had, when this was written).
@@ -4669,7 +4669,7 @@ function housekeepingFixIgLtype() {
 // bucket itself. watermark_r2.ps1 asks before uploading, so a file you stamped
 // and then declined to upload IS in watermarked\ and is NOT in R2 — its row
 // would 404 until you upload it. Answering `y` keeps the two in step.
-const R2_VIDEO_BASE = 'https://video.sealifeandmore.com/';
+const R2_VIDEO_BASE = 'https://media.sealifeandmore.com/';
 
 // Relative key → public URL. Each segment is encoded separately so the slashes
 // survive: "bb main.mp4" → "bb%20main.mp4", matching the rows already in

@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1786234522132,
+    "_salPushTime": 1786236478752,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -83,10 +83,10 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
-    "_salGsize": 5,
+    "_salGsize": 4,
     "_salLayout": "19",
     "_salViews": {
       "view1": {
@@ -511,7 +511,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1786234522133
+    "_salSavedAt": 1786236478752
   },
   {
     "UID": "1",
@@ -1722,7 +1722,7 @@
     "UID": "29",
     "show": "1",
     "VidRange": "",
-    "cell": "5b",
+    "cell": "4c",
     "fit": "ei",
     "link": "https://www.youtube.com/watch?v=MW97VsO_GWk",
     "linkpage": "",
@@ -2437,7 +2437,7 @@
     "UID": "50",
     "show": "1",
     "VidRange": "",
-    "cell": "5a",
+    "cell": "4b",
     "fit": "ei",
     "link": "https://sealifeandmore.org/wp-content/uploads/2025/07/codblackface_20250720.gif",
     "linkpage": "noLinkpageYet",
@@ -17850,7 +17850,7 @@
   },
   {
     "UID": "709",
-    "link": "https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
+    "link": "https://media.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
     "show": "1",
     "DateAdded": "2026-05-20 14:30:12",
     "DateModified": "2026-08-07 23:06:03",
@@ -17861,7 +17861,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:42",
-    "cell": "4e",
+    "cell": "4a",
     "VidRange": "0 4.1, 26.7 10.1",
     "VidComment": "Starting Quest, ",
     "ftextSize": "0",
@@ -17876,7 +17876,7 @@
   },
   {
     "UID": "727",
-    "link": "https://video.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
+    "link": "https://media.sealifeandmore.com/20260511_TaylorSeaHare2_1080p_s_C.mp4",
     "show": "1",
     "DateAdded": "2026-05-22 00:06:36",
     "DateModified": "2026-06-07 14:00:04",
@@ -17887,7 +17887,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:42",
-    "cell": "4a",
+    "cell": "3d",
     "VidRange": "0 4.1, 26.7 10.1",
     "VidComment": "Starting Quest, ",
     "ftextSize": "0",
@@ -18088,7 +18088,7 @@
   },
   {
     "UID": "720",
-    "link": "https://video.sealifeandmore.com/UsingVideoPlayTaylorSeaHare.mp4",
+    "link": "https://media.sealifeandmore.com/UsingVideoPlayTaylorSeaHare.mp4",
     "show": "1",
     "DateAdded": "2026-05-21 16:14:11",
     "DateModified": "2026-06-07 14:00:04",
@@ -18582,7 +18582,7 @@
   },
   {
     "UID": "755",
-    "link": "https://video.sealifeandmore.com/RedCtenophore2.mp4",
+    "link": "https://media.sealifeandmore.com/RedCtenophore2.mp4",
     "show": "1",
     "DateAdded": "2026-05-26 02:19:33",
     "DateModified": "2026-06-08 15:03:06",
@@ -18593,7 +18593,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:35",
-    "cell": "3a",
+    "cell": "3b",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "9",
@@ -18605,7 +18605,7 @@
   },
   {
     "UID": "755_d",
-    "link": "https://video.sealifeandmore.com/RedCtenophore2.mp4",
+    "link": "https://media.sealifeandmore.com/RedCtenophore2.mp4",
     "show": "1",
     "DateAdded": "2026-06-05 21:31:33",
     "DateModified": "2026-08-04 22:03:34",
@@ -18616,7 +18616,7 @@
     "Mute": "0",
     "MPix": "V",
     "vidLength": "0:35",
-    "cell": "3e",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "9",
@@ -18628,7 +18628,7 @@
   },
   {
     "UID": "756",
-    "link": "https://video.sealifeandmore.com/SkeletonShrimpCleanEat.mp4",
+    "link": "https://media.sealifeandmore.com/SkeletonShrimpCleanEat.mp4",
     "show": "1",
     "DateAdded": "2026-05-26 15:16:22",
     "DateModified": "2026-06-07 16:15:07",
@@ -18638,7 +18638,7 @@
     ],
     "Mute": "0",
     "MPix": "V",
-    "cell": "2P",
+    "cell": "3a",
     "ftextSize": "0",
     "FtextJunk": "0",
     "vidLength": "0:53",
@@ -21279,7 +21279,7 @@
   },
   {
     "UID": "891",
-    "link": "https://video.sealifeandmore.com/ChitonFemaleSpawningMBAQ~20260601_092640~___.mp4",
+    "link": "https://media.sealifeandmore.com/ChitonFemaleSpawningMBAQ~20260601_092640~___.mp4",
     "show": "1",
     "DateAdded": "2026-06-04 05:04:50",
     "DateModified": "2026-06-07 14:00:04",
@@ -21301,7 +21301,7 @@
   },
   {
     "UID": "892",
-    "link": "https://video.sealifeandmore.com/ChitonMaleSpawningMBAQlowqual~20260601_092640~00min15sec~___.mp4",
+    "link": "https://media.sealifeandmore.com/ChitonMaleSpawningMBAQlowqual~20260601_092640~00min15sec~___.mp4",
     "show": "1",
     "DateAdded": "2026-06-04 05:05:05",
     "DateModified": "2026-06-07 14:00:04",
@@ -21925,7 +21925,7 @@
   },
   {
     "UID": "922",
-    "link": "https://video.sealifeandmore.com/chitonspawning/ChitonFemaleSpawningMBAQ~20260601_092640~Portrait__.mp4",
+    "link": "https://media.sealifeandmore.com/chitonspawning/ChitonFemaleSpawningMBAQ~20260601_092640~Portrait__.mp4",
     "show": "1",
     "DateAdded": "2026-06-05 04:54:59",
     "DateModified": "2026-06-07 14:00:04",
@@ -21946,7 +21946,7 @@
   },
   {
     "UID": "923",
-    "link": "https://video.sealifeandmore.com/chitonspawning/ChitonMaleMBAQlowqual~20260601_092640~00min15sec~___.mp4",
+    "link": "https://media.sealifeandmore.com/chitonspawning/ChitonMaleMBAQlowqual~20260601_092640~00min15sec~___.mp4",
     "show": "1",
     "DateAdded": "2026-06-05 04:54:59",
     "DateModified": "2026-06-07 14:00:04",
@@ -21967,7 +21967,7 @@
   },
   {
     "UID": "924",
-    "link": "https://video.sealifeandmore.com/chitonspawning/ChitonMaleSpawningMBAQlowqual~20260601_092640~6sec~______.mp4",
+    "link": "https://media.sealifeandmore.com/chitonspawning/ChitonMaleSpawningMBAQlowqual~20260601_092640~6sec~______.mp4",
     "show": "1",
     "DateAdded": "2026-06-05 04:54:59",
     "DateModified": "2026-06-07 14:00:04",
@@ -21987,7 +21987,7 @@
   },
   {
     "UID": "925",
-    "link": "https://video.sealifeandmore.com/chitonspawning/FemaleLow~20260601_092827~1080p~L~crop~00min03sec~___.mp4",
+    "link": "https://media.sealifeandmore.com/chitonspawning/FemaleLow~20260601_092827~1080p~L~crop~00min03sec~___.mp4",
     "show": "1",
     "DateAdded": "2026-06-05 04:54:59",
     "DateModified": "2026-06-07 14:00:04",
@@ -22007,7 +22007,7 @@
   },
   {
     "UID": "926",
-    "link": "https://video.sealifeandmore.com/chitonspawning/FemaleLowClose~20260601_092827~1080p~L~crop~00min02sec~___.mp4",
+    "link": "https://media.sealifeandmore.com/chitonspawning/FemaleLowClose~20260601_092827~1080p~L~crop~00min02sec~___.mp4",
     "show": "1",
     "DateAdded": "2026-06-05 04:54:59",
     "DateModified": "2026-06-07 14:00:04",
@@ -23811,7 +23811,7 @@
   },
   {
     "UID": "1029",
-    "link": "https://video.sealifeandmore.com/bb%20main.mp4",
+    "link": "https://media.sealifeandmore.com/bb%20main.mp4",
     "show": "1",
     "DateAdded": "2026-06-08 00:08:40",
     "DateModified": "2026-08-04 21:03:49",
@@ -23824,7 +23824,7 @@
     "ftextSize": "7",
     "FtextJunk": "0",
     "MPix": "V",
-    "cell": "1P",
+    "cell": "2d",
     "ttxt": "",
     "Mode": "P",
     "ftext": "<p></p>",
@@ -24030,7 +24030,7 @@
   },
   {
     "UID": "1033",
-    "link": "https://video.sealifeandmore.com/BryobrunchPortrait.mp4",
+    "link": "https://media.sealifeandmore.com/BryobrunchPortrait.mp4",
     "show": "1",
     "DateAdded": "2026-06-08 07:20:10",
     "DateModified": "2026-06-13 05:14:33",
@@ -24046,7 +24046,7 @@
   },
   {
     "UID": "1034",
-    "link": "https://video.sealifeandmore.com/BryobrunchLandscape.mp4",
+    "link": "https://media.sealifeandmore.com/BryobrunchLandscape.mp4",
     "show": "1",
     "DateAdded": "2026-06-08 07:20:26",
     "DateModified": "2026-06-08 07:23:54",
@@ -25718,7 +25718,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "1:11",
     "comment": "Poly singing his own song, in your face!",
-    "cell": "2e",
+    "cell": "2c",
     "Mode": "L"
   },
   {
@@ -25738,7 +25738,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "0:25",
     "comment": "Cockatiel training, run up the ladder for seeds.  Triple speed.",
-    "cell": "2a",
+    "cell": "2b",
     "Mode": "L",
     "ftext": "<p></p>"
   },
@@ -25847,7 +25847,7 @@
     "VidAuthor": "@bird211",
     "vidLength": "1:01",
     "comment": "1st 8 seconds is my (poor) model Stars and Stripes, then Poly does his version!",
-    "cell": "1e",
+    "cell": "2a",
     "Mode": "L"
   },
   {
@@ -25926,7 +25926,7 @@
     "VidTitle": "HummingbirdComesToNest1.AVI",
     "VidAuthor": "@bird211",
     "vidLength": "0:15",
-    "cell": "1a",
+    "cell": "4d",
     "Mode": "L"
   },
   {
@@ -40714,7 +40714,7 @@
   },
   {
     "UID": "1960",
-    "cell": "",
+    "cell": "1a",
     "show": "1",
     "VidRange": "text",
     "ftext": "<details open=\"\"><summary><h1 style=\"margin: 0px; display: inline;\">Show some navigation keys</h1></summary><h1>Up arrow: this text window gets big</h1><h1>Down arrow: this text window returns to cell</h1><h1>Right arrow (keyboard or screen): next slide</h1><h1>Left arrow (keyboard or screen): previous slide</h1></details><p></p><hr><p></p><p>Page 2</p><p></p><hr><p></p><p>Page 3</p>",
@@ -41210,7 +41210,7 @@
   },
   {
     "UID": "1989",
-    "link": "https://video.sealifeandmore.com/SkeletonshrimpLowRes.mp4",
+    "link": "https://media.sealifeandmore.com/SkeletonshrimpLowRes.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:17:49",
     "DateModified": "2026-08-08 05:20:30",
@@ -41226,7 +41226,7 @@
   },
   {
     "UID": "1990",
-    "link": "https://video.sealifeandmore.com/SkeletonshrimpHighres.mp4",
+    "link": "https://media.sealifeandmore.com/SkeletonshrimpHighres.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:21:05",
     "DateModified": "2026-08-08 05:21:13",
@@ -41242,7 +41242,7 @@
   },
   {
     "UID": "1991",
-    "link": "https://video.sealifeandmore.com/JuvenileLobsterHighRes38secP.mp4",
+    "link": "https://media.sealifeandmore.com/JuvenileLobsterHighRes38secP.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:36:21",
     "DateModified": "2026-08-08 05:40:42",
@@ -41260,7 +41260,7 @@
   },
   {
     "UID": "1992",
-    "link": "https://video.sealifeandmore.com/JuvenileLobsterLowRes38secP.mp4",
+    "link": "https://media.sealifeandmore.com/JuvenileLobsterLowRes38secP.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:36:21",
     "DateModified": "2026-08-08 05:40:52",
@@ -41278,7 +41278,7 @@
   },
   {
     "UID": "1993",
-    "link": "https://video.sealifeandmore.com/RedCtenophore3.mp4",
+    "link": "https://media.sealifeandmore.com/RedCtenophore3.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:36:21",
     "DateModified": "2026-08-08 05:40:05",
@@ -41294,7 +41294,7 @@
   },
   {
     "UID": "1994",
-    "link": "https://video.sealifeandmore.com/Skeleton%20shrimp%20rave_37seconds_m.mp4",
+    "link": "https://media.sealifeandmore.com/Skeleton%20shrimp%20rave_37seconds_m.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:36:21",
     "DateModified": "2026-08-08 05:40:06",
@@ -41310,7 +41310,7 @@
   },
   {
     "UID": "1995",
-    "link": "https://video.sealifeandmore.com/Skeleton%20shrimp%20rave_37seconds.mp4",
+    "link": "https://media.sealifeandmore.com/Skeleton%20shrimp%20rave_37seconds.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:36:21",
     "DateModified": "2026-08-08 05:40:07",

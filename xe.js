@@ -2159,7 +2159,7 @@ function teSyncEditorBgFromWrapper() {
 //
 // (dev0716) DIRECT VIDEO FILES. The same modal now recognises a media-file
 // extension on the source and switches to <video> — a self-hosted .mp4/.webm
-// (e.g. video.sealifeandmore.com off R2) plays inline in the slide with native
+// (e.g. media.sealifeandmore.com off R2) plays inline in the slide with native
 // controls, at the same size/alignment/caption settings an image gets. This is
 // deliberately ONE button rather than a second "insert video" icon: the user
 // pastes a URL and the modal works out what it is. NOT for YouTube/Vimeo — a

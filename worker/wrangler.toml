@@ -25,5 +25,5 @@ SITE_ORIGIN = "https://sealifeandmore.com"
 #   TURNSTILE_SECRET — enables Cloudflare Turnstile bot-check on request-link
 
 # Later, once the sealifeandmore.com DNS zone is on Cloudflare (it already
-# hosts the video.sealifeandmore.com R2 domain), uncomment for a clean URL:
+# hosts the media.sealifeandmore.com R2 domain), uncomment for a clean URL:
 # routes = [{ pattern = "api.sealifeandmore.com", custom_domain = true }]
