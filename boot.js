@@ -793,6 +793,26 @@ async function _showShareableMenu() {
   // anything else renders nothing and says why in the console.
   const _SM_DAY_VID = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
   const _SM_DAY_IMG = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i;
+  // (dev0781) Split RENDERED ftext into its first line and everything after it.
+  // "First line" = the first top-level block that actually carries text (an
+  // opening <p>, heading, or bare text node); leading whitespace and empty
+  // wrappers are skipped rather than becoming a blank summary. The head keeps
+  // its inline markup (links, <b>) but loses its block tag, because it is going
+  // into a <summary>; the rest is returned as the untouched remaining HTML.
+  const _smSplitFirstLine = html => {
+    const d = document.createElement('div');
+    d.innerHTML = String(html || '');
+    let head = '';
+    while (d.firstChild) {
+      const n = d.firstChild;
+      const txt = (n.textContent || '').trim();
+      if (!txt) { d.removeChild(n); continue; }   // whitespace / empty wrapper
+      head = (n.nodeType === 1) ? n.innerHTML : _smEsc(txt);
+      d.removeChild(n);
+      break;
+    }
+    return { head: head, rest: d.innerHTML };
+  };
   const _smDayItemHtml = () => {
     const row = _smDayRow();
     const link = row ? String(row.link || '').trim() : '';
@@ -807,19 +827,33 @@ async function _showShareableMenu() {
       return '';
     }
     const src = _smEsc(link).replace(/"/g, '&quot;');
-    const media = _SM_DAY_VID.test(path)
-      ? '<video src="' + src + '" controls autoplay loop muted playsinline'
+    const isVid = _SM_DAY_VID.test(path);
+    // (dev0781) The media starts CLOSED, so it must not autoplay on its own —
+    // the toggle wiring below starts it when the block is actually opened.
+    const media = isVid
+      ? '<video src="' + src + '" controls loop muted playsinline'
         + ' preload="metadata"></video>'
       : '<img src="' + src + '" alt="">';
     // The caption is the row's ftext, through the same renderer every other
     // slide uses — so a ⊘ cut, a collapsible and a v.NNN link all behave here
     // exactly as they do on a slide.
     const capRaw = String(row.ftext || '').trim();
-    const cap = capRaw
-      ? '<div class="sm-daycap">'
-        + ((typeof renderFtext === 'function') ? renderFtext(capRaw) : capRaw) + '</div>'
+    const capHtml = capRaw
+      ? ((typeof renderFtext === 'function') ? renderFtext(capRaw) : capRaw)
       : '';
-    return '<div class="sm-dayitem">' + media + cap + '</div>';
+    // (dev0781) The whole item is a collapsible: the ftext's FIRST line is the
+    // summary the page shows, and the media plus the REST of the ftext are the
+    // hidden body. So the front door reads as one teaser line until the visitor
+    // asks for it — nothing about that split is authored, it is taken from the
+    // ftext the row already has.
+    const split = _smSplitFirstLine(capHtml);
+    const head = split.head || _smEsc(isVid ? 'Video of the day' : 'Image of the day');
+    const rest = split.rest.trim()
+      ? '<div class="sm-daycap">' + split.rest + '</div>' : '';
+    return '<div class="sm-dayitem">'
+      + '<details class="sm-dayfold"><summary>' + head + '</summary>'
+      + media + rest
+      + '</details></div>';
   };
   // Console handle: which row is today's, and why nothing showed if nothing did.
   window._smDayItem = () => {
@@ -1105,6 +1139,14 @@ async function _showShareableMenu() {
     // same prose column as the two ctxt sections it separates, so the three read
     // as one page rather than as prose with something bolted between it.
     + '.sm-dayitem{max-width:var(--sal-prose-w,760px);margin:4px auto 6px;padding:0 24px;}'
+    // (dev0781) …and it is a COLLAPSIBLE now: closed, the page shows only the
+    // ftext's first line. Same skin as the author's own <details> in the prose
+    // above and below it, so the three blocks read as one page.
+    + '.sm-dayitem details{margin:10px 0;padding:10px 14px;background:rgba(0,0,0,0.22);'
+      + 'border-left:4px solid #7cc0ff;border-radius:6px;overflow:hidden;}'
+    + '.sm-dayitem summary{cursor:pointer;color:#d9ebff;}'
+    + '.sm-dayitem summary a{color:#bfe3ff;}'
+    + '.sm-dayitem details > video,.sm-dayitem details > img{margin-top:10px;}'
     + '.sm-dayitem video,.sm-dayitem img{display:block;width:100%;border-radius:6px;}'
     // The caption is the row's ftext, so it gets the prose colours at a quieter
     // size — same relationship a modal caption has to its picture.
@@ -1575,6 +1617,18 @@ async function _showShareableMenu() {
   // window.salAuth is missing (auth.js failed to load) or the API is down, the
   // strip stays empty and browsing is entirely unaffected.
   _wireSignIn(ov);
+  // (dev0781) The image of the day is collapsed until asked for, so its video
+  // carries no `autoplay` — it would be a hidden element racing the open. Start
+  // it on open and stop it on close, so closing the block really does stop the
+  // sound-less loop rather than leaving it running behind the summary line.
+  ov.querySelectorAll('.sm-dayfold').forEach(det => {
+    det.addEventListener('toggle', () => {
+      const v = det.querySelector('video');
+      if (!v) return;
+      if (det.open) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+      else v.pause();
+    });
+  });
   // (dev0369) On the Search page, a right-to-left swipe returns to the Main
   // "Choose a view" page (the main menu) — the same swipe-back feel as the grid.
   // Pointer-based so it works with both touch and a mouse-drag (and is therefore
