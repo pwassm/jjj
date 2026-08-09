@@ -748,14 +748,19 @@ async function _showShareableMenu() {
   // it between the ctxt's two sections; nothing about it appears in the HTML the
   // author edits, so Xe stays an HTML editor and the ctxt stays plain HTML.
   //
-  // WHICH row: the ml.json row whose `DateUse` column holds today's day of the
-  // month, 1–31. That column already exists on every row and is empty for now,
-  // so until it is filled in this falls back to one fixed row — SM_DAY_UID. The
-  // scheme for assigning DateUse is the author's next design step; when a row
-  // gets a number, it takes over on that day with no code change.
+  // WHICH row: the ml.json row whose `UOD` column holds today's day of the
+  // month, 1–31. (dev0780) dev0779 shipped reading `DateUse` — a column that
+  // does not exist on any row — so the match never fired and the fallback UID
+  // it fell through to, 3009, is not in ml.json either: the block rendered
+  // nothing, every day. `UOD` is the column the author actually added.
   //
   // The row supplies BOTH parts: `link` is the media, `ftext` is the caption.
-  const SM_DAY_UID = '3009';
+  //
+  // NOT every day is assigned yet (two rows carry a UOD today), so an exact
+  // miss walks BACKWARDS to the nearest assigned day and wraps past the 1st to
+  // the highest one. That way the front door always shows something once any
+  // row is stamped, and stamping a new day still takes it over with no code
+  // change. Nothing is picked at all when no row carries a UOD.
   const _smDayNum = () => {
     // ?introday=N previews another day without touching the clock. LOCAL date,
     // so the day turns over at the viewer's midnight, not UTC's.
@@ -763,11 +768,25 @@ async function _showShareableMenu() {
     try { d = parseInt(new URLSearchParams(location.search).get('introday'), 10) || 0; } catch (e) {}
     return (d >= 1 && d <= 31) ? d : new Date().getDate();
   };
-  const _smDayRow = () => {
-    const want = String(_smDayNum());
-    const byDate = mlRows.find(r => r && !r._salMeta && String(r.DateUse == null ? '' : r.DateUse).trim() === want);
-    return byDate || mlRows.find(r => r && !r._salMeta && String(r.UID) === SM_DAY_UID) || null;
+  // Every row with a usable UOD (1–31), as {n, row}. A blank cell is not a 0.
+  const _smDayPool = () => mlRows.reduce((out, r) => {
+    if (!r || r._salMeta) return out;
+    const n = parseInt(String(r.UOD == null ? '' : r.UOD).trim(), 10);
+    if (n >= 1 && n <= 31) out.push({ n: n, row: r });
+    return out;
+  }, []);
+  const _smDayPick = () => {
+    const want = _smDayNum();
+    const pool = _smDayPool();
+    if (!pool.length) return null;
+    const exact = pool.find(p => p.n === want);
+    if (exact) return { row: exact.row, n: exact.n, exact: true };
+    // Nearest assigned day at or below today, else wrap to the highest.
+    const below = pool.filter(p => p.n < want);
+    const best = (below.length ? below : pool).reduce((a, b) => (b.n > a.n ? b : a));
+    return { row: best.row, n: best.n, exact: false };
   };
+  const _smDayRow = () => { const p = _smDayPick(); return p ? p.row : null; };
   // Direct media files only — the author is starting with the self-hosted mp4s.
   // A YouTube/Vimeo watch page is not something a <video> can play, and a raw
   // URL printed on the public front door is worse than an empty space, so
@@ -778,7 +797,7 @@ async function _showShareableMenu() {
     const row = _smDayRow();
     const link = row ? String(row.link || '').trim() : '';
     const path = link.split(/[?#]/)[0];
-    const bad = !row ? 'no row for day ' + _smDayNum() + ' and no fallback UID ' + SM_DAY_UID
+    const bad = !row ? 'no ml.json row carries a UOD (1-31); nothing to show for day ' + _smDayNum()
               : !link ? 'UID ' + row.UID + ' has no link'
               : (!_SM_DAY_VID.test(path) && !_SM_DAY_IMG.test(path))
                 ? 'UID ' + row.UID + ' is not a direct media file: ' + link
@@ -804,9 +823,12 @@ async function _showShareableMenu() {
   };
   // Console handle: which row is today's, and why nothing showed if nothing did.
   window._smDayItem = () => {
-    const r = _smDayRow();
-    return { day: _smDayNum(), uid: r ? r.UID : null,
-             pickedBy: (r && String(r.DateUse || '').trim() === String(_smDayNum())) ? 'DateUse' : 'fallback SM_DAY_UID',
+    const p = _smDayPick();
+    const r = p ? p.row : null;
+    return { day: _smDayNum(), uid: r ? r.UID : null, uod: p ? p.n : null,
+             pickedBy: !p ? 'nothing — no row carries a UOD'
+                          : (p.exact ? 'UOD == today' : 'nearest earlier UOD (' + p.n + ')'),
+             assigned: _smDayPool().map(x => x.n + '→' + x.row.UID).sort(),
              link: r ? String(r.link || '') : '', ftext: r ? String(r.ftext || '').slice(0, 80) : '' };
   };
 
