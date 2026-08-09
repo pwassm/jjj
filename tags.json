@@ -7322,16 +7322,39 @@
     "def": ""
   },
   {
-    "id": "haeckel",
-    "label": "Haeckel",
+    "id": "lobster",
+    "label": "Lobster",
     "kind": "topic",
     "parents": [],
     "aliases": [],
     "def": ""
   },
   {
-    "id": "lobster",
-    "label": "Lobster",
+    "id": "haeckel",
+    "label": "Haeckel",
+    "kind": "person",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "zoantharia",
+    "label": "Zoantharia",
+    "kind": "taxon",
+    "parents": [
+      "anthozoa"
+    ],
+    "aliases": [
+      "Hexacoralia"
+    ],
+    "def": "",
+    "rank": "order",
+    "common": "Colonial Anemones",
+    "extinct": false
+  },
+  {
+    "id": "corals",
+    "label": "Corals",
     "kind": "topic",
     "parents": [],
     "aliases": [],

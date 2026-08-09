@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1786167664886,
+    "_salPushTime": 1786234522132,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -83,7 +83,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -511,7 +511,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1786167664886
+    "_salSavedAt": 1786234522133
   },
   {
     "UID": "1",
@@ -41096,18 +41096,18 @@
     "link": "https://upload.wikimedia.org/wikipedia/commons/0/0c/Haeckel_Spumellaria.jpg?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=thumbnail_unscaled",
     "show": "1",
     "DateAdded": "2026-08-07 03:34:23",
-    "DateModified": "2026-08-07 03:58:51",
+    "DateModified": "2026-08-09 00:08:35",
     "tags": [
       "polycystine",
       "haeckel"
     ],
     "VidRange": "i",
-    "ftextSize": "672",
+    "ftextSize": "679",
     "FtextJunk": "0",
     "MPix": "7.8",
     "Mode": "P",
     "comment": "Haeckel Spumellaria.jpg",
-    "ftext": "The polycystines are a group of radiolarians. They include the vast majority of the fossil radiolaria, as their skeletons are abundant in marine sediments, making them one of the most common groups of microfossils. These skeletons are composed of opaline silica. In some it takes the form of relatively simple spicules, but in others it forms more elaborate lattices, such as concentric spheres with radial spines or sequences of conical chambers. Two of the orders belonging to this group are the radially-symmetrical Spumellaria, dating back to the late Cambrian period, and the bilaterally-symmetrical Nasselaria, whose origin is placed within the lower Devonian.[2][3]",
+    "ftext": "<p>The polycystines are a group of radiolarians. They include the vast majority of the fossil radiolaria, as their skeletons are abundant in marine sediments, making them one of the most common groups of microfossils. These skeletons are composed of opaline silica. In some it takes the form of relatively simple spicules, but in others it forms more elaborate lattices, such as concentric spheres with radial spines or sequences of conical chambers. Two of the orders belonging to this group are the radially-symmetrical Spumellaria, dating back to the late Cambrian period, and the bilaterally-symmetrical Nasselaria, whose origin is placed within the lower Devonian.[2][3]</p>",
     "cell": ""
   },
   {
@@ -41323,5 +41323,83 @@
     "MPix": "V",
     "vidLength": "0:42",
     "Mode": "L"
+  },
+  {
+    "UID": "1996",
+    "link": "https://upload.wikimedia.org/wikipedia/commons/e/e9/Haeckel_Diatomea.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail_unscaled",
+    "show": "1",
+    "DateAdded": "2026-08-08 23:34:04",
+    "DateModified": "2026-08-08 23:34:28",
+    "tags": [
+      "diaatom",
+      "haeckel"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "7.6",
+    "Mode": "P"
+  },
+  {
+    "UID": "1997",
+    "link": "https://images.fineartamerica.com/images-medium-large-5/diatoms-ernst-haeckel-scott-camazine.jpg",
+    "show": "1",
+    "DateAdded": "2026-08-08 23:36:06",
+    "DateModified": "2026-08-08 23:36:44",
+    "tags": [
+      "diaatom"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "0.6",
+    "Mode": "L",
+    "comment": "Diatoms-Ernst Haeckel is a photograph by Scott Camazine which was uploaded on June 25th, 2014"
+  },
+  {
+    "UID": "1998",
+    "link": "https://manhattanrarebooks.cdn.bibliopolis.com/pictures/2076.jpg?auto=webp&v=1524663363",
+    "show": "1",
+    "DateAdded": "2026-08-08 23:37:36",
+    "DateModified": "2026-08-08 23:37:45",
+    "tags": [
+      "haeckel"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "1.2",
+    "Mode": "P"
+  },
+  {
+    "UID": "2000",
+    "link": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Haeckel_Hexacoralla.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail_unscaled",
+    "show": "1",
+    "DateAdded": "2026-08-08 23:43:26",
+    "DateModified": "2026-08-09 00:07:33",
+    "tags": [
+      "haeckel",
+      "zoantharia"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "7.6",
+    "Mode": "P"
+  },
+  {
+    "UID": "2001",
+    "link": "https://www.coralsoftheworld.org/page/classification/",
+    "show": "1",
+    "DateAdded": "2026-08-09 00:11:41",
+    "DateModified": "2026-08-09 00:15:22",
+    "tags": [
+      "corals"
+    ],
+    "ltype": "w",
+    "ftextSize": "16218",
+    "FtextJunk": "0",
+    "ftext": "<h1>Classification</h1><p><img src=\"https://www.coralsoftheworld.org/image/SP_Gen_CRRLineTxtDivider\" alt=\"Line divider\"></p><p>The term 'coral' is commonly used for both 'soft' and 'hard' corals and sometimes includes other colonial animals in the phylum Cnidaria (also called Coelenterata). With a sometimes striking resemblance to plants and fungi, corals were initially mistaken for the former. Today the term 'coral' when used without a qualifying term, most commonly refers to hard or skeletonised corals and it is used this way here. The taxonomic relationship between these taxa is indicated in the taxonomic classification scheme below. This classification does not include many extinct orders of skeletonised Cnidaria with uncertain affinities (also see '<a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/evolution/\">Evolution</a>').</p><h3>Phylum Cnidaria</h3><ul><li><p>Class Hydrozoa</p><ul><li><p></p></li></ul><ul><li><p>Order Hydroidea (hydroids)</p></li><li><p>Order <strong>Milleporina*</strong> (including Genus <em>Millepora</em>)</p></li><li><p>Order <strong>Stylasterina*</strong> (including Genura <em>Distichopora</em> and <em>Stylaster</em>)</p></li></ul></li><li><p>Class Scyphozoa (jellyfishes)</p></li><li><p>Class Cubozoa (sea wasps)</p></li><li><p>Class Anthozoa</p><ul><li><p>Subclass Octocorallia</p><ul><li><p>Order <strong>Helioporacea*</strong> (<em>Heliopora coerulea</em>)</p></li><li><p>Order <strong>Alconacea*</strong> (soft corals, <em>Tubipora</em>, sea fans and relatives)</p></li><li><p>Order Pennatulacea (sea pens)</p></li></ul></li><li><p>Subclass Hexacorallia</p><ul><li><p>Order Actinaria (simple sea anemones)</p></li><li><p>Order Zoanthidia (colonial anemones)</p></li><li><p>Order Corallimorpharia (corallimorpharians)</p></li><li><p>Order <strong>Scleractinia*</strong> (true stony corals)</p></li><li><p>Order <strong>Rugosa*</strong> (Palaeozoic corals)</p></li><li><p>Order <strong>Tabulata*</strong> (Palaeozoic corals)</p></li></ul></li><li><p>Subclass Ceriantipatheria</p><ul><li><p>Order Antipatharia (black corals)</p></li><li><p>Order Ceriantharia (tube anemones)</p></li></ul></li></ul></li></ul><p> *Groups having some or all species with stony skeletons are indicated in bold.</p><p>Of the orders listed above, the three orders of Hexacorallia (shown in bold) are or were, dominant faunas of coral reefs as well as non-reef habitats. Scleractinia occur in the Mesozoic and Coenozoic; Rugosa and Tabulata occurred in the Palaeozoic (see also <a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/reefs/\">Reefs</a> and <a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/evolution/\">Evolution</a>). The four octocoral and hydrozoan orders (shown in bold) are all primarily or entirely Coenozoic.</p><p>Of the four extant orders, all except the Stylasterina are partly or wholly zooxanthellate (corals which have symbiotic blue-green algae called zooxanthellae in their tissues, see below) and are therefore restricted to sun-lit depths and warm water. Whether or not Rugosa and Tabulata were also zooxanthellate has long been debated without definite outcome.</p><p><img src=\"https://www.coralsoftheworld.org/image/SP_Gen_3CRRTxtDivider\" alt=\"Text divider\"></p><h2>Palaeozoic corals</h2><p>Many Cambrian fossils have at times been called 'corals'. The most coral-like of these are small, cup-shaped, mostly solitary organisms with septa. Some have an operculum over the calice opening. In total, seven orders of Palaeozoic corals may be recognised, of which the Tabulata and Rugosa are by far the most important. These two groups have left good fossil records as their skeletons are of the calcitic form of calcium carbonate (limestone) and thus more stable than the aragonite skeletons of Scleractinia. This fossil record has enabled the study and comparison of their morphological structure, diversity and long evolutionary history.</p><h3>Order Tabulata (Early Ordovician – Permian)</h3><p>The Tabulata were much less variable than rugose or scleractinian corals. They were all colonial and consisted of slender tube-like corallites 1-3 mm diameter, crossed internally by transverse partitions, the tabulae. Colonies were typically encrusting, flat or massive, but may have also been branching. Individual corallites were in contact, sharing walls, or widely separated. Each corallite had a theca (enveloping sheath) and groups of corallites were enclosed in a sheath-like epitheca. The corallites of some species were connected by fine tubules forming a three-dimensional structure. Where corallites were in close contact, tabulae were usually formed. Where corallites were separated, external horizontal plates (dissepiments) also occurred. Radially-arranged spine-like septa, sometimes forming vertical structures, were present in some species.</p><p>The morphology of the Tabulata does not indicate whether they were zooxanthellate. However, as they were colonial, had small corallites, and had growth rates comparable to those of zooxanthellate Scleractinia (up to 18mm per year) it seems probable that they were.</p><p>The Tabulata first appear in the fossil record as a distinct group in the Early Ordovician, some 480 million years ago (mya) and thus pre-date the Rugosa. There is no evidence of common ancestry. By Middle Ordovician there was a radiation in Tabulata diversity with six families recognised. These were mostly associated with soft substrates rather than carbonate platforms of high energy environments. Tabulata survived the Ordovician - Silurian mass extinction event 443.8 mya and became significant frame builders during the Silurian but were relatively unimportant during intervals of maximum reef development in the Devonian, some 400 mya. They appear to have not regained diversity during the Carboniferous or Permian, although they were periodically abundant, with a long history across several major extinction events.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig01\" alt=\"A tabulate coral\"></a></p><p>A tabulate coral with gross structures superficially resembling modern <em>Tubipora musica</em>. Photograph: Charlie Veron. <small>Figure 1.</small></p><h3>Order Rugosa (Mid Ordovician – Permian)</h3><p>Rugosa had a much greater resemblance to Scleractinia than to the Tabulata. Mature colonies had an array of growth forms comparable to Scleractinia although the majority of taxa were solitary or formed colonies where individual corallites were large and dominant. Rugosa had basic structural components at least superficially similar to Scleractinia, the main difference being in the arrangement of the septa. Tabulae analogous to those of Tabulata were usually very abundant and so was a complex array of dissepiments which appear analogous to those of Scleractinia.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig02\" alt=\"The basic septal pattern\"></a></p><p>The basic septal pattern of Rugosa corallites. This pattern is usually unrecognisable in mature corallites. C = cardinal septum, K = counter septum, A = alar septa, KL = counter-lateral septa. After Oliver (1980). <small>Figure 2.</small></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig03\" alt=\"A colonial rugose coral\"></a></p><p>A colonial rugose coral <em>Hexagonaria</em> showing close resemblance to a modern scleractinian. Photograph: Jarek Stolarski. <small>Figure 3.</small></p><p>The earliest Rugosa were solitary and of simple construction. Complex colonies had evolved by Late Ordovician and thereafter the few evolutionary trends that are seen are mostly in skeletal detail and most have reversed one or more times. Differences in the pattern of insertion of septa make it unlikely that the Scleractinia arose from the Rugosa although this view is still disputed.</p><p><img src=\"https://www.coralsoftheworld.org/image/SP_Gen_3CRRTxtDivider\" alt=\"Text divider\"></p><h2>Mesozoic and Coenozoic corals</h2><h3>Order Scleractinia (Middle Triassic to present)</h3><p>The Scleractinia first gained prominence some 220 mya, well after the end-Permian mass extinction event, and hence like the Tabulata and Rugosa before them, have a long history (see '<a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/evolution/\">Evolution</a>'). Extant Scleractinia have similar numbers of zooxanthellate and azooxanthellate genera and species. These two groups are not taxonomically separate although they are almost all sharply eco-physiologically distinct. Zooxanthellate Scleractinia (sometimes called 'reef-building corals') are mostly colonial, live in shallow sunlit waters and are responsible for the construction of most Mesozoic to present coral reefs. Azooxanthellate Scleractinia are mostly solitary and usually occupy deep water, although there are some deep water colonial species that can form large bioherms tens to hundreds of metres across such as <em>Desmophyllum pertusum</em> (previously <em>Lophelia pertusa</em>) among others, and several common shallow water exceptions. One of the latter is the widespread colonial Indo-Pacific genus <em>Tubastrea</em> - a recent unintentional introduction to the Atlantic, now becoming a widespread 'invasive species' on oil rigs there.</p><p>Reef-building corals, of which more than 830 species are detailed on this website, exhibit a diverse range of growth forms and life history strategies. Some species, like many of their deep-water counterparts, are solitary. Others form small to large colonies, the largest of which are many metres across and many hundreds of years in age.</p><p>Colonies may simply grow as an encrusting sheet across the underlying substrate, or may develop into a remarkable array of intricate shapes - plates, tables, vases, columns, 'brains', boulders and foliaceous beds to name a few. The range of shapes is both genetically and environmentally determined, the degree of variation differing among species. As with the Tabulata and Rugosa, the fine-scale structure and skeletal elements of the individual corallites that build the colony are important in identification and classification, and are described in detail elsewhere (see, for example, '<a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/structure-and-growth/\">Coral structure and growth</a>').</p><h3>Order Milleporina</h3><p>This order of hydrozoans is represented by several extinct genera and one common extant genus, <em>Millepora</em>, with approximately 50 species. All are zooxanthellate, and the long evolutionary separation of Milleporina from Scleractinia is consistent with the early and/or perhaps repeated evolution of coral - algal symbiosis.</p><p><em>Millepora</em> have growth forms ranging from branching to submassive and encrusting. Tiny polyps are mostly embedded in the skeleton where they are linked by a network of minute canals, the cyclosystem. All that can be seen on the smooth surface are the pores of two types of polyps, gastropores and dactylopores. Reproductive ampullae, which produce medusae, can also be seen on the colony surface. Generations of sexual medusae alternate with generations of asexual polyps. Almost all records are Coenozoic, but as polyps are very small they are seldom distinct in fossils.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig04\" alt=\"A large colony\"></a></p><p>A large colony of <em>Millepora</em> Ryukyu Islands, Japan. Photograph: Charlie Veron. <small>Figure 4.</small></p><h3>Order Stylasterina</h3><p>The second group of hydrozoans are mostly found only in deep water. All are azooxanthellate. Two genera, <em>Distichopora</em> and <em>Stylaster</em> are commonly found in caves and under overhangs in shallow reef environments.</p><p><em>Distichopora</em> are ornate corals that branch in one plane. They have no cyclosystem; instead, gastropores are aligned along the edge of branches and these are flanked on each side by a row of dactylopores. Reproductive ampullae are clustered towards the ends of side branches.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig05\" alt=\"Distichopora\"></a></p><p><em>Distichopora</em> in a cavern. Great Barrier Reef. Photograph: Valerie Taylor. <small>Figure 5.</small></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig06\" alt=\"Stylaster\"></a></p><p><em>Stylaster</em> in a cavern. Great Barrier Reef. Photograph: Valerie Taylor. <small>Figure 6.</small></p><p><em>Stylaster</em> also branches in one plane but branches are fine, tapered and delicate. Gastropores are linked by individual cyclosystems and surrounded by dactylopores. These alternate on the sides of branches, giving the latter a zig-zag pattern. Wart-like reproductive ampullae occur on the sides of older branches. Almost all records are Coenozoic.</p><h3>Order Helioporacea</h3><p><em>Heliopora coerulea</em> or ‘blue coral’ is the sole member of Order Helioporacea. <em>Heliopora</em> is zooxanthellate and blue or greenish underwater, but the skeleton, composed of fibrocrystalline aragonite, is always permanently blue. Polyps are small and superficial and are interconnected by minute solenial tubes. Under optimal conditions it can form very large colonies, particularly in reef lagoons.</p><p><em>Heliopora</em> is easily recognised in fossil outcrops by its colour and can be traced back to the Cretaceous giving it the greatest geological longevity of any extant coral. Throughout this time, it was previously thought to have remained a single species, albeit with significant morphological variation. However, one particular form of this variation, a finely branched colony morph, has now been described as another species, <em>Heliopora hiberniana</em>, based on integrated morphological, genomic and reproductive evidence (Richards, Yasuda, Kikuchi et al. (2018)). It may be that other more or less 'cryptic species' of <em>Heliopora</em> are also extant.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig07\" alt=\"Heliopora\"></a></p><p><em>Heliopora coerulea.</em> Scott Reef, Western Australia. Photograph: Charlie Veron. <small>Figure 7.</small></p><h3>Order Alcyonacea</h3><p>The second group of octocorals (corals which have eight tentacles) to form skeletons is part of the very large Order Alcyonacea. Of this Order, one genus, <em>Tubipora</em> the ‘organ-pipe’ coral, has a skeleton. Only one species, <em>T. musica</em>, is currently named. It has an isolated taxonomic position.</p><p><em>Tubipora</em> are zooxanthellate. The skeleton is permanently coloured dark red. Polyps are long and tubular and are interconnected by horizontal tabulae or stolons which form transverse platforms. Corallites grow from the platforms, not from the branching of corallites. Living colonies have brown pinnate tentacles. Other octocorals also produce skeletal elements, termed sclerites, which in some species of <em>Sinularia</em> are cemented together to form 'spiculites'. These make a small but noteworthy contribution to reef-building.</p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.coralsoftheworld.org/page/classification/#\"><img src=\"https://www.coralsoftheworld.org/image/SP_CCRClassFig08\" alt=\"Tubipora\"></a></p><p><em>Tubipora musica</em> with pinnate tentacles extended. Great Barrier Reef. Photograph: Charlie Veron. <small>Figure 8.</small></p><p><img src=\"https://www.coralsoftheworld.org/image/SP_Gen_CRRLineTxtDivider\" alt=\"Line divider\"></p>",
+    "VQ": "8"
   }
 ]
