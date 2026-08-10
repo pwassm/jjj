@@ -1160,6 +1160,21 @@ async function _showShareableMenu() {
     // instead of shoving its neighbours onto the next line.
     + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
+    // (dev0788) The Welcome page's forward arrow. TRANSPARENT, as asked: no
+    // circle, no fill, no border — just the glyph, so it lies over the picture
+    // instead of punching a hole in it. It carries a drop shadow rather than a
+    // background because the thing behind it is whatever photo the day supplies,
+    // and a shadow is what keeps a white glyph legible over a bright one (the
+    // lesson backarrow.js learned at dev0765). Brightens on hover/focus.
+    // A wide hit area around a 40px glyph, for a thumb.
+    + '.sm-fwd{position:absolute;right:4px;top:50%;transform:translateY(-50%);z-index:6;'
+      + 'display:none;align-items:center;justify-content:center;width:56px;height:76px;padding:0;'
+      + 'background:transparent;border:none;color:rgba(255,255,255,0.55);'
+      + 'font-family:inherit;font-size:40px;line-height:1;cursor:pointer;'
+      + 'text-shadow:0 1px 5px rgba(0,0,0,0.75);touch-action:manipulation;'
+      + 'user-select:none;-webkit-user-select:none;transition:color .12s;}'
+    + '.sm-fwd:hover,.sm-fwd:focus{color:rgba(255,255,255,0.95);outline:none;}'
+    + '@media(max-width:900px){.sm-fwd{font-size:34px;width:46px;}}'
     // (dev0787) Section 1 of the Introduction ctxt is the Welcome page's first
     // LINE, with the day's picture immediately under it — so it gives back the
     // deep top/bottom padding the prose pages want. Section 2, below the
@@ -1537,7 +1552,18 @@ async function _showShareableMenu() {
       + '</div>'
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.
-    + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>';
+    + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>'
+    // (dev0788) The Welcome page's FORWARD arrow. A see-through glyph on the
+    // right edge, vertically centred — the mirror of backarrow.js's ← , and the
+    // same idea: draw the navigation that already exists so a phone viewer can
+    // see it. It goes exactly where the next tab button goes.
+    //
+    // A child of the overlay, not of #smPage1: page 1 is the scroller, so an
+    // absolutely positioned child of it would slide away up the page. Here it
+    // is pinned to the overlay box, which is inset:0 inside #rotateWrap and so
+    // means the VISUAL right edge in both orientations (backarrow.js dev0738).
+    // _smShow shows it on page 1 and hides it everywhere else.
+    + '<button type="button" id="smFwdArrow" class="sm-fwd" aria-label="Next page">&#8594;</button>';
 
   // (dev0737) Mount INSIDE #rotateWrap, not on <body>. The menu used to be a
   // body-level sibling of the wrap, so on a portrait phone it painted in the
@@ -1603,6 +1629,11 @@ async function _showShareableMenu() {
     // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
     // Page 1 is the Intro TAB now, so they stay up on every page.
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = 'flex');
+    // (dev0788) The forward arrow belongs to Welcome alone. On every other tab
+    // the way on is the tab bar and the way back is backarrow.js's ←; a third
+    // control there would just be one more thing over the content.
+    const _fwdBtn = ov.querySelector('#smFwdArrow');
+    if (_fwdBtn) _fwdBtn.style.display = (n === 1) ? 'flex' : 'none';
     // (dev0741) Re-sweep on every page change — Search results and SavedSearches
     // build their bodies after the overlay was first stamped. Idempotent.
     if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
@@ -1664,6 +1695,22 @@ async function _showShareableMenu() {
       else if (pg === 8) { setTimeout(() => { if (!_smFocusAdd()) t.focus(); }, 30); }
       else t.focus();
     }));
+  // (dev0788) The Welcome page's → arrow goes wherever the NEXT TAB goes — the
+  // order's next entry, not a hard-coded 5, so re-ordering the tab bar re-points
+  // the arrow with it. Same landing and same focus as clicking that tab.
+  const _smFwd = ov.querySelector('#smFwdArrow');
+  if (_smFwd) {
+    // Swallow the gesture start so the overlay's swipe catcher never reads a tap
+    // on the arrow as a swipe (the guard backarrow.js and PM's arrows both use).
+    _smFwd.addEventListener('pointerdown', e => e.stopPropagation());
+    _smFwd.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const idx = _smTabOrder.indexOf(window._smCurPage);
+      const next = _smTabOrder[((idx < 0 ? 0 : idx) + 1) % _smTabOrder.length];
+      _smShow(next);
+      _smFocusTab(next);
+    });
+  }
   // (dev0384) Keyboard: Tab hops to the next tab (Shift+Tab the previous),
   // wrapping after the last, and opens that page immediately. `f` jumps focus to
   // the live filter on Choices.
