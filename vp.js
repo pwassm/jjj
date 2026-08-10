@@ -2472,11 +2472,14 @@ function vpKeyHandler(e) {
     _vpCropToggle();
     return;
   }
+  // (dev0790) ⇧T = let go of the ratio lock (or take the current shape as the
+  // new lock). Bare t still swaps the two locked ratios, and is the one press
+  // back from free — see _vpCropSwapAspect.
   if (e.key === 't' || e.key === 'T') {
     if (!_vpState || !_vpState.crop) return;
     if (_vpState.crop.el.container.style.display === 'none') return;
     e.preventDefault(); e.stopPropagation();
-    _vpCropSwapAspect();
+    if (e.shiftKey) _vpCropToggleFree(); else _vpCropSwapAspect();
     return;
   }
 
@@ -2615,6 +2618,22 @@ function vpKeyHandler(e) {
   // cheat-sheet listing them is on screen. Outside it the letters stay free,
   // and they must: review mode rates with a/s/d/f and a plain slideshow uses d
   // for the folder picker.
+  // (dev0790) ⇧A — the whole video as the clip: A on the first frame, B on the
+  // last. Most of what comes through here is "take this file and re-encode /
+  // crop it", and hunting for both ends with a and f to say so was silly.
+  //
+  // NOT gated on the crop overlay, unlike a / f below: a plain lossless trim of
+  // a whole file is exactly the case this saves the most work on. core.js has a
+  // matching bail so ⇧A doesn't open the Annotate screen when crop is closed.
+  if (e.key === 'A') {
+    const pel = _vpState && _vpState.player && _vpState.player.el;
+    if (!pel) return;                                     // YT/embed — leave it alone
+    if (!document.getElementById('vp-a') || !document.getElementById('vp-b')) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpMarkWholeVideo();
+    return;
+  }
+
   if (e.key === 'a' || e.key === 'f') {
     if (!_vpCropHolding()) return;
     // The buttons themselves must be mounted — vpUpdateABStyle writes straight
@@ -3163,6 +3182,28 @@ function vpToggleB() {
   vpSetBPoint();
 }
 
+// (dev0790) ⇧A — mark the WHOLE video: A on the first frame, B on the last.
+// Reads the media element's own duration rather than the player wrapper, which
+// is why it stands down on YT/Vimeo embeds (there is no `el` there and no ffmpeg
+// job at the end of it either).
+//
+// B lands on `duration` exactly, which is what every other path here means by
+// "the end": the trim passes it to ffmpeg as -to, and ffmpeg reads to EOF.
+function _vpMarkWholeVideo() {
+  const el = _vpState && _vpState.player && _vpState.player.el;
+  const dur = (el && Number.isFinite(el.duration) && el.duration > 0) ? el.duration : 0;
+  if (!dur) {
+    if (typeof toast === 'function') toast('⇧A: no duration yet — give the video a moment to load', 2400);
+    return;
+  }
+  _vpState.aPoint = 0;
+  _vpState.bPoint = dur;
+  vpUpdateABStyle();
+  if (typeof toast === 'function') {
+    toast('⇧A whole video — A 0.0s → B ' + dur.toFixed(1) + 's (' + _vpDurStr(dur) + ')', 2200);
+  }
+}
+
 // Adjust A or B by delta
 function vpAdjustAB(which, delta) {
   if (!_vpState) return;
@@ -3696,13 +3737,79 @@ function _vpFitAxis(v, size, bleed) {
   return Math.max(0, Math.min(Math.max(0, 1 - size), v));
 }
 
+// (dev0790) Per-axis ceiling: 4× the frame, and never a canvas x264 would
+// refuse. The free-shape resize uses these directly, since with no locked ratio
+// there is nothing to convert one axis's cap through.
+function _vpBleedCapAxes(VW, VH) {
+  return { w: Math.min(VP_BLEED_MAX, 16384 / Math.max(1, VW)),
+           h: Math.min(VP_BLEED_MAX, 16384 / Math.max(1, VH)) };
+}
+
 // Largest frac.w the rect may take: 4× the frame, and never a canvas x264 would
 // refuse. ratio is frac.w / frac.h, so the height cap converts through it.
 function _vpBleedCap(state, VW, VH) {
   const ratio = state.frac.ratio || (state.frac.w / (state.frac.h || 1)) || 1;
-  const capW = Math.min(VP_BLEED_MAX, 16384 / Math.max(1, VW));
-  const capH = Math.min(VP_BLEED_MAX, 16384 / Math.max(1, VH));
-  return Math.max(0.05, Math.min(capW, capH * ratio));
+  const cap = _vpBleedCapAxes(VW, VH);
+  return Math.max(0.05, Math.min(cap.w, cap.h * ratio));
+}
+
+// (dev0790) ── The ratio lock ─────────────────────────────────────────────────
+// Freeing it costs nothing downstream, which is why this is a UI switch and not
+// a new render path: the save already derives L/P from the OUTPUT pixels
+// (_vpEffAspect), names whatever shape it lands on (_vpAspectLabel) and puts it
+// in the filename. ⇧F's whole-frame crop and Q's reach dial have been producing
+// non-16:9 files since dev0725 / dev0778 — this just lets you draw one directly.
+//
+// What IS lost is the guarantee that the clip drops into a 16:9 / 9:16 grid cell
+// without letterboxing, so the lock stays the default and one key brings it back.
+function _vpCropSetFree(state, on) {
+  if (!state) return;
+  state.freeRatio = !!on;
+  if (state.freeRatio) state.frac.ratio = state.frac.w / (state.frac.h || 1);
+  _vpCropPaintAspectChip(state);
+}
+
+// The bar chip is the one place that says what the box is locked to, so it has
+// to name a free shape as precisely as a locked one — and it reads the EFFECTIVE
+// rect, so under bleed it quotes the shape that will actually be encoded.
+function _vpCropPaintAspectChip(state) {
+  const lbl = state && state.el && state.el.bar &&
+              state.el.bar.querySelector('#vp-crop-aspect');
+  if (!lbl) return;
+  if (state.freeRatio) {
+    const vid = _vpState && _vpState.player && _vpState.player.el;
+    const img = _vpState && _vpState._img;
+    const VW = (vid && vid.videoWidth)  || (img && img.naturalWidth)  || 16;
+    const VH = (vid && vid.videoHeight) || (img && img.naturalHeight) || 9;
+    const ef = _vpEffFrac(state);
+    lbl.textContent = '⇕ ' + (_vpAspectLabel(ef.w * VW, ef.h * VH) || 'free');
+    lbl.style.background = '#3d2a5c';
+    lbl.title = 'Any shape — every side and corner drags on its own. ' +
+                '⇧T locks this ratio · click for 16:9 / 9:16.';
+    return;
+  }
+  const full = (state.frac.w >= 0.999 && state.frac.h >= 0.999);
+  lbl.textContent = full ? 'full' : (state.aspect === 'L' ? '16:9' : '9:16');
+  lbl.style.background = '#234';
+  lbl.title = 'Locked ratio — the corners scale it. Drag a SIDE (or ⇧T) for any shape.';
+}
+
+// ⇧T — lock the shape the box is in now, or let go of the lock it has. Locking
+// keeps the current rect exactly; it only changes what the corners do next.
+function _vpCropToggleFree() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  if (s.track.on && s.track.keys.length) {
+    if (typeof toast === 'function') toast('◈ size is locked while a track is armed — ⇧R clears it', 2600);
+    return;
+  }
+  _vpCropSetFree(s, !s.freeRatio);
+  if (typeof toast === 'function') {
+    toast(s.freeRatio
+      ? '⇕ any shape — drag any side or corner on its own. ⇧T locks whatever you land on.'
+      : '▭ ratio locked at ' + (s.el.bar.querySelector('#vp-crop-aspect') || {}).textContent +
+        ' — the corners scale it', s.freeRatio ? 3400 : 2000);
+  }
 }
 
 // (dev0777) ── Track: where the crop window sits at time t ────────────────────
@@ -4777,10 +4884,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     'background:rgba(0,0,0,0.7);color:#dfe6f0;font:12px ui-monospace,Consolas,monospace;' +
     'border-radius:4px;pointer-events:auto;z-index:2;';
   bar.innerHTML =
-    '<span id="vp-crop-aspect" style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
+    '<span id="vp-crop-aspect" title="Locked ratio — the corners scale it. Drag a SIDE (or ⇧T) for any shape." ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
     '<span id="vp-crop-crf-lbl" style="opacity:0.7;">CRF</span>' +
-    '<input id="vp-crop-crf" type="range" min="0" max="28" value="18" style="width:90px;vertical-align:middle;">' +
-    '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">18</span>' +
+    '<input id="vp-crop-crf" type="range" min="0" max="28" value="26" style="width:90px;vertical-align:middle;">' +
+    '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">26</span>' +
     '<select id="vp-crop-res" title="Output short side. The W×H label turns amber when the crop rect is smaller than this — ffmpeg would enlarge pixels rather than add detail." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
       '<option value="2160">2160p (4K)</option>' +
@@ -4874,6 +4982,39 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (pos.includes('s')) h.style.bottom = (-HSZ/2) + 'px';
     if (pos.includes('w')) h.style.left   = (-HSZ/2) + 'px';
     if (pos.includes('e')) h.style.right  = (-HSZ/2) + 'px';
+    rect.appendChild(h);
+    handles[pos] = h;
+  });
+
+  // (dev0790) ── Side grips ─────────────────────────────────────────────────
+  // One per edge, so the box can be pulled to ANY shape rather than only the two
+  // locked ones — 8k and 4k footage rarely puts the thing you want inside a 16:9
+  // or a 9:16 window. A side moves one edge, which by definition changes the
+  // ratio, so grabbing one is also how you enter free mode (see onMove).
+  //
+  // The strip runs the length of the edge but stops a corner short at each end,
+  // so the corner handles keep their own hit area; the visible pip is only the
+  // middle of it, because a fully drawn strip reads as part of the border and
+  // hides the picture along it.
+  const ESZ = 10;
+  ['n','s','w','e'].forEach(pos => {
+    const vertical = (pos === 'w' || pos === 'e');
+    const h = document.createElement('div');
+    h.style.cssText =
+      'position:absolute;pointer-events:auto;background:transparent;' +
+      'cursor:' + (vertical ? 'ew-resize' : 'ns-resize') + ';' +
+      (vertical ? ('top:' + HSZ + 'px;bottom:' + HSZ + 'px;width:' + ESZ + 'px;')
+                : ('left:' + HSZ + 'px;right:' + HSZ + 'px;height:' + ESZ + 'px;'));
+    if (pos === 'n') h.style.top    = (-ESZ/2) + 'px';
+    if (pos === 's') h.style.bottom = (-ESZ/2) + 'px';
+    if (pos === 'w') h.style.left   = (-ESZ/2) + 'px';
+    if (pos === 'e') h.style.right  = (-ESZ/2) + 'px';
+    const pip = document.createElement('div');
+    pip.style.cssText =
+      'position:absolute;background:#6af;border:1px solid #fff;pointer-events:none;' +
+      (vertical ? 'left:0;width:' + ESZ + 'px;height:26px;top:50%;margin-top:-13px;'
+                : 'top:0;height:' + ESZ + 'px;width:26px;left:50%;margin-left:-13px;');
+    h.appendChild(pip);
     rect.appendChild(h);
     handles[pos] = h;
   });
@@ -4975,7 +5116,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // turns the picture into a clip of durSec seconds — the zoom box (Z) is
     // what makes it move, and without one it is simply held.
     motion: { format: 'still', durSec: 3 },
-    aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
+    aspect: 'L', crf: 26, slow: false, resHeight: 1080, angle: 0,
+    // (dev0790) Free ratio: the sides and corners drag independently and the box
+    // keeps whatever shape it is pulled to. Off by default — the locked 16:9 /
+    // 9:16 pair is still the right answer for anything headed for a grid.
+    freeRatio: false,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
     deshake: 'off',                   // (dev0789) off | light | medium | strong
     texts: [],                        // (dev0724) burned-in captions, see addText
@@ -5570,6 +5715,41 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       state.frac.x = _vpFitAxis(drag.ox + dxF, state.frac.w, state.bleed);
       state.frac.y = _vpFitAxis(drag.oy + dyF, state.frac.h, state.bleed);
       paint();
+    } else if (drag.kind === 'resize' && (state.freeRatio || drag.pos.length === 1)) {
+      // (dev0790) ── Free-shape resize ────────────────────────────────────────
+      // A SIDE grip moves one edge, which cannot be done at all without changing
+      // the ratio — so grabbing one frees the box rather than refusing the drag.
+      // Once free, the corners move both their edges independently too.
+      if (!state.freeRatio) _vpCropSetFree(state, true);
+      const of = drag.of, pos = drag.pos;
+      let l = of.x, t = of.y, r = of.x + of.w, b = of.y + of.h;
+      if (pos.includes('w')) l = of.x + dxF;
+      if (pos.includes('e')) r = of.x + of.w + dxF;
+      if (pos.includes('n')) t = of.y + dyF;
+      if (pos.includes('s')) b = of.y + of.h + dyF;
+      // Pulled past its opposite number, an edge flips the box rather than
+      // inverting it — same as every other crop tool.
+      if (r < l) { const m = l; l = r; r = m; }
+      if (b < t) { const m = t; t = b; b = m; }
+      if (!state.bleed) {
+        l = Math.max(0, Math.min(1, l)); r = Math.max(0, Math.min(1, r));
+        t = Math.max(0, Math.min(1, t)); b = Math.max(0, Math.min(1, b));
+      }
+      // Bleed's ceiling is per-axis here: with no locked ratio there is nothing
+      // to convert one cap through, which is what _vpBleedCap does for the
+      // locked path.
+      const cap = state.bleed ? _vpBleedCapAxes(drag.r.VW, drag.r.VH) : { w: 1, h: 1 };
+      const nw = Math.min(cap.w, Math.max(0.05, r - l));
+      const nh = Math.min(cap.h, Math.max(0.05, b - t));
+      // Whichever side was NOT dragged is the one that stays put.
+      const nx = pos.includes('w') ? (r - nw) : l;
+      const ny = pos.includes('n') ? (b - nh) : t;
+      state.frac.x = _vpFitAxis(nx, nw, state.bleed);
+      state.frac.y = _vpFitAxis(ny, nh, state.bleed);
+      state.frac.w = nw; state.frac.h = nh;
+      state.frac.ratio = nw / nh;      // keeps ⇧Q / bleed converting correctly
+      _vpCropPaintAspectChip(state);
+      paint();
     } else if (drag.kind === 'resize') {
       const of = drag.of, ratio = state.frac.ratio;
       let ax, ay, px, py;
@@ -5873,9 +6053,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (c0.resHeight != null) { state.resHeight = c0.resHeight; resSel.value = String(c0.resHeight); }
     state.slow  = !!c0.slow;  slowBox.checked = state.slow;
     state.audio = !!c0.audio; paintAudio();
-    const lbl = bar.querySelector('#vp-crop-aspect');
-    if (lbl) lbl.textContent = (state.frac.w >= 0.999 && state.frac.h >= 0.999)
-      ? 'full' : (state.aspect === 'L' ? '16:9' : '9:16');
+    // (dev0790) A recipe saved from a free-shape box has to come back free, or
+    // the first corner drag would snap it to a ratio it never had.
+    state.freeRatio = !!c0.free;
+    _vpCropPaintAspectChip(state);
     const k0 = doc.ken || {};
     state.ken.on = !!k0.on;
     if (k0.frac && Number.isFinite(+k0.frac.w)) {
@@ -5920,7 +6101,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // A snapshot of everything K writes out.
   state.snapshot = function () {
     return {
-      crop: { aspect: state.aspect, frac: { ...state.frac }, angle: state.angle,
+      crop: { aspect: state.aspect, free: !!state.freeRatio,   // (dev0790)
+              frac: { ...state.frac }, angle: state.angle,
               resHeight: state.resHeight, crf: state.crf, slow: !!state.slow,
               audio: !!state.audio },
       ken: { on: !!state.ken.on, frac: { ...state.ken.frac }, atSec: state.ken.atSec },
@@ -5958,9 +6140,39 @@ function _vpEditStamp() {
          '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
 }
 
+// (dev0790) The document itself, split out of the K handler so a render can
+// write the same recipe automatically. Sizes come from whichever medium is up —
+// a still has no videoWidth and the image path never sets one.
+function _vpEditDoc(absInput, parts) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !s.snapshot) return null;
+  const vid = _vpState.player && _vpState.player.el;
+  const img = _vpState._img;
+  return Object.assign({
+    format: 'slam.edit/1',
+    savedAt: (typeof isoNow === 'function') ? isoNow() : new Date().toISOString(),
+    app: window.HELP_VERSION_STR || '',
+    source: { path: absInput, base: parts.base, ext: parts.ext,
+              width:  (vid && vid.videoWidth)  || (img && img.naturalWidth)  || 0,
+              height: (vid && vid.videoHeight) || (img && img.naturalHeight) || 0 },
+    clip: { startSec: _vpState.aPoint, endSec: _vpState.bPoint },
+    pauseTail: VP_TEXT_PAUSE_TAIL
+  }, s.snapshot());
+}
+
+async function _vpEditWrite(outPath, doc) {
+  const r = await fetch(PROXY_BASE + '/edit/save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: outPath, doc })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j.path || outPath;
+}
+
 async function _vpCropSaveEdit() {
   if (!_vpState || !_vpState.crop || !_vpState.crop.snapshot) return;
-  const row = window._vpCurrentRow;
+  const row = window._vpCurrentRow || (_vpState && _vpState.row);
   const relPath = (row && (row.comment || row.VidTitle)) || '';
   if (!relPath) { if (typeof toast === 'function') toast('K: no source file path on this row', 2400); return; }
   const absInput = _vpCropResolveAbsPath(relPath);
@@ -5968,34 +6180,44 @@ async function _vpCropSaveEdit() {
   const parts = _vpSplitPath(absInput);
   if (!parts) { if (typeof toast === 'function') toast('K: cannot parse that path', 2400); return; }
 
-  const vid = _vpState.player && _vpState.player.el;
-  const snap = _vpState.crop.snapshot();
-  const doc = Object.assign({
-    format: 'slam.edit/1',
-    savedAt: (typeof isoNow === 'function') ? isoNow() : new Date().toISOString(),
-    app: window.HELP_VERSION_STR || '',
-    source: { path: absInput, base: parts.base, ext: parts.ext,
-              width: (vid && vid.videoWidth) || 0, height: (vid && vid.videoHeight) || 0 },
-    clip: { startSec: _vpState.aPoint, endSec: _vpState.bPoint },
-    pauseTail: VP_TEXT_PAUSE_TAIL
-  }, snap);
-
+  const doc = _vpEditDoc(absInput, parts);
+  if (!doc) return;
   const outPath = parts.dir + parts.sep + parts.base + '.' + _vpEditStamp() + VP_EDIT_EXT;
   try {
-    const r = await fetch(PROXY_BASE + '/edit/save', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: outPath, doc })
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    await _vpEditWrite(outPath, doc);
     if (typeof toast === 'function') {
+      const n = (doc.texts || []).length;
       toast('✓ kept ' + outPath.split(/[\\/]/).pop() + ' · ' +
-            snap.texts.length + ' text box' + (snap.texts.length === 1 ? '' : 'es'), 3200);
+            n + ' text box' + (n === 1 ? '' : 'es'), 3200);
     }
   } catch (err) {
     if (typeof toast === 'function') {
       toast('K failed: ' + ((err && err.message) || err) + ' — proxy restarted on 8081?', 4200);
     }
+  }
+}
+
+// (dev0790) Every render keeps its own recipe, without being asked. The .edit
+// lands NEXT TO THE OUTPUT and takes its name, so a folder of clips answers
+// "how was this one made?" file by file — and E loads any of them straight back
+// to re-cut at a different length, resolution or shape.
+//
+// Called only after a successful encode: a cancelled prompt or a failed ffmpeg
+// leaves nothing behind, and the folder it writes into is one ffmpeg has just
+// created (the proxy refuses a path whose directory doesn't exist).
+//
+// Never throws. A recipe that didn't get written must not turn a good render
+// into an error — it says so in the same toast and the render still counts.
+async function _vpAutoKeepEdit(absInput, parts, outPath) {
+  try {
+    const doc = _vpEditDoc(absInput, parts);
+    if (!doc) return '';
+    doc.rendered = outPath;          // which file this recipe actually produced
+    await _vpEditWrite(String(outPath).replace(/\.[^.\\/]+$/, '') + VP_EDIT_EXT, doc);
+    return '  ·  + .edit';
+  } catch (err) {
+    console.warn('[auto .edit failed]', err);
+    return '  ·  ⚠ no .edit (proxy?)';
   }
 }
 
@@ -6247,8 +6469,18 @@ function _vpCropHelpShow() {
         head('The frame') +
         // (dev0724) One line each for the two mouse gestures, and 1/2 took the
         // tilt over from Z/X so Z could become the zoom below.
-        row('drag inside / a corner', 'move the crop box / resize it (aspect stays locked)') +
-        row(K('T'),          'swap 16:9 ↔ 9:16') +
+        row('drag inside / a corner', 'move the crop box / resize it (the ratio stays locked)') +
+        row('drag a SIDE',   'pull one edge on its own — the box takes any shape you ' +
+                             'give it, and the bar chip names the ratio as you go. ' +
+                             'Nothing downstream cares: the size, the shape and the ' +
+                             'filename all come from the pixels that come out.') +
+        row(K('⇧T'),         'let go of the ratio lock (the corners then move both ' +
+                             'their edges) — or press it on a shape you like to LOCK ' +
+                             'that ratio and scale it from the corners') +
+        row(K('T'),          'swap 16:9 ↔ 9:16 · one press back to a lock from any shape') +
+        row('which to use',  'lock 16:9 / 9:16 for anything headed for a grid — those ' +
+                             'drop into a cell with no letterbox. Free shape for ' +
+                             'everything else, which on 4k / 8k footage is most of it.') +
         row(K('⇧F'),         'the WHOLE frame — no crop, the source’s own shape ' +
                              '(' + K('T') + ' goes back to a locked rect)') +
         row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
@@ -6265,8 +6497,9 @@ function _vpCropHelpShow() {
                              'path, so you can see the framing before the encode.') +
         row(K('⇧R'),         'clear the track') +
         row('size is locked', 'while a track is armed — the window has to keep one ' +
-                             'size for the whole move, so the corners, ' + K('T') +
-                             ' and ' + K('⇧F') + ' stand down until ' + K('⇧R') + '.') +
+                             'size for the whole move, so the corners, the sides, ' +
+                             K('T') + K('⇧T') + ' and ' + K('⇧F') +
+                             ' stand down until ' + K('⇧R') + '.') +
         head('Reach past the edge (taller crops)') +
         row(K('Q'),          'let the box grow PAST the edge of the video. A 16:9 crop of ' +
                              'a portrait clip is otherwise capped at the frame’s width, ' +
@@ -6323,6 +6556,9 @@ function _vpCropHelpShow() {
         row(K('a') + ' / ' + K('f'),
                              'set start / end of clip at the position of the current ' +
                              'frame (again to clear) — same as the A and B buttons') +
+        row(K('⇧A'),         'the WHOLE video — A on the first frame, B on the last. ' +
+                             'Works with crop closed too, which is the quick way to ' +
+                             'trim-copy or re-encode a file end to end.') +
         row(K('s') + ' or ' + K('←') + ' / ' + K('d') + ' or ' + K('→'),
                              'step one frame back or forward (pauses first)') +
         row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip') +
@@ -6332,16 +6568,19 @@ function _vpCropHelpShow() {
         row(K('M'),  'audio on / off in the SAVED clip — the bar says which, ' +
                      'and it starts off. (Muting the player is the toolbar 🔇.)') +
         row('res',   '2160p (4K) · 1440p (2K) · 1080p · 720p · Same') +
-        row('CRF',   'lower = better + bigger · Slow = smaller, slower') +
+        row('CRF',   'lower = better + bigger · starts at 26 · Slow = smaller, slower') +
         row('⚠',     'amber size label = output is BIGGER than the crop — or ' +
                      'than the zoom box, once armed, since that is the ' +
                      'tightest the shot gets. Pixels would be enlarged: grow ' +
                      'the box or drop the res.') +
         head('Finish') +
         row(K('G'),   'render (or the Crop button) — writes next to the source') +
-        row(K('K'),   'keep this whole session — framing, tilt, zoom, clip, every ' +
-                      'text box — next to the source as <i>name</i>.<i>stamp</i>.edit. ' +
-                      'Nothing is rendered; it is a recipe.') +
+        row('the .edit', 'every render now keeps its own recipe automatically, ' +
+                      'beside the output and under the same name. Framing, tilt, ' +
+                      'zoom, track, clip, every text box. That is how you re-cut a ' +
+                      'clip later at another length, resolution or shape.') +
+        row(K('K'),   'keep one by hand, mid-session, without rendering — it lands ' +
+                      'next to the SOURCE as <i>name</i>.<i>stamp</i>.edit') +
         row(K('E') + '<span style="opacity:0.6;"> (crop closed)</span>',
                       'load one back: pick the folder, then the .edit') +
         row(K('W'),   'this panel: full width / narrow') +
@@ -6401,8 +6640,12 @@ function _vpCropHelpShow() {
 // uses (passed in rather than re-derived), so the two panels stay one look.
 function _vpCropHelpImageRows(K, row, head) {
   return head('The frame') +
-    row('drag inside / a corner', 'move the crop box / resize it (aspect stays locked)') +
-    row(K('T'),          'swap 16:9 ↔ 9:16') +
+    row('drag inside / a corner', 'move the crop box / resize it (the ratio stays locked)') +
+    row('drag a SIDE',   'pull one edge on its own — any shape you like, and the bar ' +
+                         'chip names the ratio as you go') +
+    row(K('⇧T'),         'let go of the ratio lock — or press it on a shape you like ' +
+                         'to LOCK that ratio and scale it from the corners') +
+    row(K('T'),          'swap 16:9 ↔ 9:16 · one press back to a lock from any shape') +
     row(K('⇧F'),         'the WHOLE picture — no crop, its own shape ' +
                          '(' + K('T') + ' goes back to a locked rect)') +
     row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
@@ -6448,6 +6691,9 @@ function _vpCropHelpImageRows(K, row, head) {
     head('Finish') +
     row(K('G'),          'save (or the Crop button) — writes into a ' +
                          '<i>YYYYMMDD_edited</i> folder beside the picture') +
+    row('the .edit',     'each save keeps its own recipe there too, under the same ' +
+                         'name — the crop, the tilt, every caption. ' + K('E') +
+                         ' with crop closed loads one back.') +
     row(K('W'),          'this panel: full width / narrow') +
     row(K('C') + K('Esc'), 'close crop, hand the show back to the slideshow');
 }
@@ -6556,8 +6802,8 @@ function _vpCropFullFrame() {
   }
   s.aspect = (VW >= VH) ? 'L' : 'P';
   s.frac = { x: 0, y: 0, w: 1, h: 1, ratio: 1 };   // ratio 1 in FRACTION space = the source aspect
-  const label = s.el.bar.querySelector('#vp-crop-aspect');
-  if (label) label.textContent = 'full';
+  s.freeRatio = false;                             // (dev0790) back to a locked rect
+  _vpCropPaintAspectChip(s);
   if (s.paint) s.paint();
   if (typeof toast === 'function') {
     toast('⛶ whole frame — ' + VW + ' × ' + VH + ', no crop (T returns to 16:9 / 9:16)', 2400);
@@ -6696,7 +6942,14 @@ function _vpCropSwapAspect() {
     if (typeof toast === 'function') toast('◈ size is locked while a track is armed — ⇧R clears it', 2600);
     return;
   }
-  s.aspect = (s.aspect === 'L') ? 'P' : 'L';
+  // (dev0790) T is also the way BACK from a free shape: the first press simply
+  // re-locks, rather than swapping to the other lock and skipping past the one
+  // you were most likely reaching for.
+  if (s.freeRatio) {
+    s.freeRatio = false;
+  } else {
+    s.aspect = (s.aspect === 'L') ? 'P' : 'L';
+  }
   const prevCx = s.frac.x + s.frac.w / 2;
   const prevCy = s.frac.y + s.frac.h / 2;
   s.frac = _vpCropFracForAspect(s.aspect, vid);
@@ -6704,8 +6957,7 @@ function _vpCropSwapAspect() {
   nx = Math.max(0, Math.min(1 - s.frac.w, nx));
   ny = Math.max(0, Math.min(1 - s.frac.h, ny));
   s.frac.x = nx; s.frac.y = ny;
-  const label = s.el.bar.querySelector('#vp-crop-aspect');
-  if (label) label.textContent = s.aspect === 'L' ? '16:9' : '9:16';
+  _vpCropPaintAspectChip(s);
   // (dev0318) Angle is preserved across L↔P; repaint re-applies position + tilt.
   if (s.paint) s.paint();
 }
@@ -7063,6 +7315,9 @@ function _vpImgKey(e) {
   if (document.getElementById(VP_TEXT_MENU_ID) ||
       document.getElementById(VP_TEXT_PICK_ID)) return;
   if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') { take(); window._vpImageCropClose(); return; }
+  // (dev0790) ⇧T frees / re-locks the ratio here too — a photograph is if
+  // anything the likelier place to want a shape that isn't one of the two.
+  if (e.key === 'T' && e.shiftKey)    { take(); _vpCropToggleFree(); return; }
   if (e.key === 't' || e.key === 'T') { take(); _vpCropSwapAspect(); return; }
   if (e.key === 'F')                  { take(); _vpCropFullFrame();  return; }
   if (e.key === '1' || e.key === '2') {
@@ -7194,7 +7449,10 @@ async function _vpImageSave(opts) {
                : (verdict.ok ? parts.ext
                              : (/^(png|webp)$/i.test(parts.ext) ? parts.ext : 'jpg'));
   const outDir = parts.dir + parts.sep + _vpOutDirStamp();
-  let payload, route, sizeStr, engTok;
+  // (dev0790) Which way up the OUTPUT is, taken from its pixels rather than from
+  // the lock the box was drawn with — resHeight scales the short side, and with
+  // a free ratio s.aspect no longer answers which side that is.
+  let payload, route, sizeStr, engTok, effAspect = s.aspect;
 
   if (verdict.ok) {
     // Lossless: no tilt and no scale by definition, so the rect maps straight
@@ -7206,6 +7464,7 @@ async function _vpImageSave(opts) {
     sizeStr = Math.min(box.w, box.h) + 'p';
     engTok  = 'lossless';
     route   = 'jpegtran';
+    effAspect = _vpEffAspect(box.w, box.h);
     payload = { input: absInput, crop: box, overwrite: false };
   } else {
     // Re-encode. Tilt is handled exactly as the video path handles it: rotate
@@ -7215,6 +7474,7 @@ async function _vpImageSave(opts) {
     sizeStr = (s.resHeight === 'source') ? (Math.min(sw, sh) + 'p') : (s.resHeight + 'p');
     engTok  = 'q2';
     route   = 'ffmpeg';
+    effAspect = _vpEffAspect(sw, sh);
     const angle = s.angle || 0;
     let cropBox, rotate = null;
     if (!angle) {
@@ -7235,7 +7495,7 @@ async function _vpImageSave(opts) {
     }
     payload = {
       image: true, input: absInput, crop: cropBox,
-      aspect: s.aspect, resHeight: s.resHeight, quality: 2, overwrite: false
+      aspect: effAspect, resHeight: s.resHeight, quality: 2, overwrite: false
     };
     if (rotate) payload.rotate = rotate;
     // An EXIF-rotated original is baked upright first, so the rect means what
@@ -7270,8 +7530,12 @@ async function _vpImageSave(opts) {
   }
 
   const angTok = s.angle ? ('r' + s.angle.toFixed(1).replace('.', '_') + 'deg') : '';
-  const nameParts = [parts.base, safeId, sizeStr, s.aspect, 'crop'];
+  const nameParts = [parts.base, safeId, sizeStr, effAspect, 'crop'];
   if (angTok) nameParts.push(angTok);
+  // (dev0790) A free-shape crop is neither 16:9 nor 9:16, so 'L'/'P' alone stops
+  // telling you what came out — same reasoning as the video path's bled names.
+  if (s.freeRatio) nameParts.push('ar' + _vpAspectLabel(
+    s.frac.w * VW, s.frac.h * VH).replace(':', '_'));
   nameParts.push('img', engTok);
   const outName = nameParts.join('~') + '~.' + outExt;
   payload.output = outDir + parts.sep + outName;
@@ -7321,8 +7585,10 @@ async function _vpImageSave(opts) {
     }
     restore();
     if (result.exitCode === 0) {
+      // (dev0790) …and the same for a still: the crop, the tilt, every caption.
+      const kept = await _vpAutoKeepEdit(absInput, parts, payload.output);
       if (typeof toast === 'function') {
-        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName, 3400);
+        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + kept, 3400);
       }
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
@@ -7393,15 +7659,20 @@ async function _vpGoSave(opts) {
   if (cropOn && vid) {
     const s0 = _vpState.crop;
     const even0 = n => Math.max(2, Math.floor(n / 2) * 2);
-    const sw0 = even0(s0.frac.w * (vid.videoWidth  || 0));
-    const sh0 = even0(s0.frac.h * (vid.videoHeight || 0));
+    // (dev0790) The same numbers the render will use: the rect CLIPPED to the
+    // frame, and the short side taken from those pixels rather than from the
+    // lock the box was drawn with — which with a free ratio (or a bled one) is
+    // no longer a reliable guide to which way up the output is.
+    const ef0 = _vpEffFrac(s0);
+    const sw0 = even0(ef0.w * (vid.videoWidth  || 0));
+    const sh0 = even0(ef0.h * (vid.videoHeight || 0));
     const up  = _vpCropUpscaleFactor(s0, sw0, sh0);
     if (up > 1.005) {
       // (dev0720) With a Ken Burns move the tightest framing is the amber box,
       // not the crop — say so, and quote the size the zoom actually ends on.
       const kenOn = !!(s0.ken && s0.ken.on);
       const kf = kenOn ? s0.ken.frac.w : 1;
-      const srcShort = Math.round(((s0.aspect === 'P') ? sw0 : sh0) * kf);
+      const srcShort = Math.round(((_vpEffAspect(sw0, sh0) === 'P') ? sw0 : sh0) * kf);
       const what = kenOn
         ? ('Ken Burns ends on ' + Math.round(sw0 * kf) + ' × ' + Math.round(sh0 * kf) +
            ' source pixels\n(inside a ' + sw0 + ' × ' + sh0 + ' crop).')
@@ -7493,7 +7764,8 @@ async function _vpGoSave(opts) {
     if (angTok) nameParts.push(angTok);
     // (dev0778) A bled render is no longer 16:9, so the name has to carry the
     // shape — 'L'/'P' alone stops being enough the moment the dial is used.
-    if (s.bleed && (s.frac.w > 1.001 || s.frac.h > 1.001)) {
+    // (dev0790) …and a free-shape crop is in exactly the same position.
+    if (s.freeRatio || (s.bleed && (s.frac.w > 1.001 || s.frac.h > 1.001))) {
       nameParts.push('ar' + _vpAspectLabel(sw, sh).replace(':', '_'));
     }
     // (dev0720) Ken Burns: the amber box is where the zoom ENDS, reached at the
@@ -7778,7 +8050,9 @@ async function _vpGoSave(opts) {
     }
     restoreUI();
     if (result.exitCode === 0) {
-      if (typeof toast === 'function') toast('saved → ' + outName, 3200);
+      // (dev0790) The recipe rides along with the render, no keypress needed.
+      const kept = await _vpAutoKeepEdit(absInput, parts, payload.output);
+      if (typeof toast === 'function') toast('saved → ' + outName + kept, 3200);
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
       if (typeof toast === 'function') toast('save failed: ' + tail, 4200);

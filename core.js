@@ -280,6 +280,14 @@ window.addEventListener('keydown', function(e) {
   if (k === 'e' && document.getElementById('gridFullscreen')?.style.display === 'flex'
       && typeof _vpState !== 'undefined' && _vpState && _vpState.crop) return;
 
+  // (dev0790) ⇧A — mark the whole video as the clip (vp.js). Same shape as the
+  // `e` bail above, and needed for the same reason: with the crop overlay CLOSED
+  // the whole-handler bail at the top doesn't apply, and this dispatcher would
+  // lowercase ⇧A and open the Annotate screen over the player.
+  if (k === 'a' && e.shiftKey
+      && document.getElementById('gridFullscreen')?.style.display === 'flex'
+      && typeof _vpState !== 'undefined' && _vpState && _vpState.crop) return;
+
   // (dev0438) The Ig staging screen owns f / Shift+F (filter focus / clear) and
   // c (clear sel). (dev0497) It also owns d (download sel), e (enrich sel),
   // m (clear+select top 18) and — via Shift — N/D/E/A (status filter, which
