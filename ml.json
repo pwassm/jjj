@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1786374728164,
+    "_salPushTime": 1786374785420,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -511,7 +511,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1786374728164
+    "_salSavedAt": 1786374785420
   },
   {
     "UID": "1",
@@ -43968,16 +43968,17 @@
     "link": "https://media.sealifeandmore.com/RadulaAbalone.mp4",
     "show": "1",
     "DateAdded": "2026-08-10 15:10:54",
-    "DateModified": "2026-08-10 15:11:14",
+    "DateModified": "2026-08-10 15:13:05",
     "tags": [
       "radula"
     ],
     "Mute": "0",
-    "ftextSize": "0",
+    "ftextSize": "21",
     "FtextJunk": "0",
     "MPix": "V",
     "vidLength": "0:43",
     "Mode": "P",
-    "UOD": "10"
+    "UOD": "10",
+    "ftext": "Abalone Radula;v.2034"
   }
 ]
