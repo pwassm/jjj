@@ -3243,9 +3243,42 @@ load().then(() => {
 // the published build is not the one running, reload through a URL the HTTP
 // cache has never seen (?v=<build>), preserving every existing param. Once per
 // session per version, so a browser that refuses to let go can't loop.
+//
+// (dev0792) IT NOW RUNS ON LOCALHOST TOO, which is where it was needed most.
+// dev0763 excluded local dev on the grounds that a developer can hard-refresh —
+// but the two caches are not comparable:
+//
+//   GitHub Pages sends `Cache-Control: max-age=600`. Bounded: ten minutes and it
+//   heals itself whether anything checks or not.
+//   Python's http.server (the :8080 dev server) sends NO Cache-Control at all,
+//   only Last-Modified — so the browser falls back to HEURISTIC freshness, ~10%
+//   of the file's age. On a file last touched a week ago that is most of a day,
+//   and it never expires on its own.
+//
+// And hard-refresh does not reach the place it hurts: /?vect=<path> is its own
+// cache entry, one per file opened, so refreshing the app's main tab leaves
+// every one of them stale. That is how dev0790 came to be live on the server
+// and invisible in VECT.
+//
+// Two things it will not do, both deliberate:
+//   • Never reload after the viewer has touched the page. A reload is only safe
+//     while nothing is half-done — an open crop box, a half-typed caption or an
+//     unsaved table edit is worth more than being one build behind. Past that
+//     point it says so and leaves the decision alone.
+//   • Never reload a ?qaction= handoff. Q hands its selection over in
+//     sessionStorage and the receiving code CONSUMES it on DOMContentLoaded, so
+//     a reload two seconds later would land on a page with nothing to open.
 // ─────────────────────────────────────────────────────────────────────────────
 (function _salBuildFreshness() {
-  try { if (_salIsLocalHost()) return; } catch (_) { return; }
+  // Set the moment the viewer does anything at all. Registered now rather than
+  // inside the timeout so it is already watching during the two seconds before
+  // the check runs — that window is short, but it is exactly when a ?vect= crop
+  // box has just opened under the cursor.
+  let touched = false;
+  const mark = () => { touched = true; };
+  ['pointerdown', 'keydown', 'wheel'].forEach(ev =>
+    window.addEventListener(ev, mark, { capture: true, once: true, passive: true }));
+
   setTimeout(async function () {
     try {
       const here = String(window.HELP_VERSION_STR || '');
@@ -3264,7 +3297,27 @@ load().then(() => {
       if (live === here) return;
       let seen = null;
       try { seen = sessionStorage.getItem('sal-reload-for'); } catch (_) {}
-      if (seen === live) return;
+      // (dev0792) Already tried and still on the old build — the cache is
+      // winning. Looping would only cost bandwidth, so hand the key over
+      // instead of pretending it healed.
+      if (seen === live) {
+        if (typeof toast === 'function') {
+          toast('⟳ ' + live + ' is on the server but this tab keeps loading ' + here +
+                ' — press Ctrl+Shift+R', 9000);
+        }
+        return;
+      }
+      // (dev0792) A reload here would take real work with it, or strand a Q
+      // handoff whose selection has already been consumed. Say what happened
+      // and let it be picked up on the next load.
+      const qHandoff = new URLSearchParams(window.location.search).has('qaction');
+      if (touched || qHandoff) {
+        if (typeof toast === 'function') {
+          toast('⟳ build ' + live + ' is out — reload when you are at a good point ' +
+                '(this tab is running ' + here + ')', 8000);
+        }
+        return;
+      }
       try { sessionStorage.setItem('sal-reload-for', live); } catch (_) {}
       const p = new URLSearchParams(window.location.search);
       p.set('v', live);
