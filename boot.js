@@ -2717,6 +2717,16 @@ function _routeInitialScreen() {
   const deepConfig = window._deepConfig || null;
   const deepSs = window._deepSs || null;
   const isLocked = !!window._lockedUid;
+  // (dev0793) `?addwm=1` — WmUploadNew.bat opens this after it uploads, so the
+  // last manual step (T ▸ Housekeeping ▸ Add Watermarked Videos) happens on its
+  // own. Routed through the SAME in-app function, not a disk write: rows have to
+  // come from nextUID()/save() or they collide with whatever the running tab
+  // holds. Dev-mode only, and idempotent — a second run adds nothing.
+  if (params.get('addwm') === '1' && !_isUserMode()) {
+    setTimeout(() => {
+      if (typeof window.housekeepingAddWatermarked === 'function') window.housekeepingAddWatermarked();
+    }, 800);
+  }
   // (zip0141) In user mode, default to G regardless of device — the user
   // version doesn't have a meaningful T view.
   if (!target && (_isMobileDevice() || _isUserMode() || deepUid || deepConfig || deepSs)) target = 'g';
