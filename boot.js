@@ -683,7 +683,7 @@ async function _showShareableMenu() {
   // (dev0779) The ctxt is now read as TWO SECTIONS, split at its first
   // top-level <hr> (the Xe ══ divider) — the same rule the Greeting has used
   // since dev0361. The image of the day is composed BETWEEN them by the page
-  // itself; see _smDayItemHtml below. Falls back to greetTop when there is no
+  // itself; see _smDayInnerHtml below. Falls back to greetTop when there is no
   // Introduction row, and a ctxt with no <hr> is simply all section 1.
   const _isIntroCfg = v => {
     const s = String(v == null ? '' : v).trim().toLowerCase();
@@ -714,6 +714,14 @@ async function _showShareableMenu() {
   // not code. Absent config → the page is just the sign-in strip.
   const contactCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'contact');
   const contactHtml = _linkify(_balanceHtml(_cutBelow(contactCfg ? contactCfg.ctxt : '')));
+
+  // (dev0787) "Starting out" page — the tab that follows Welcome. Same deal
+  // again: free-form HTML from the c.json config row whose gname is "starting
+  // out", in its `ctxt`. No such row exists yet, so the tab is BLANK — that is
+  // the intended state for now, not a missing page. Making a config row of that
+  // name in C and writing its ctxt in Xe fills it, with no code change.
+  const startCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'starting out');
+  const startHtml = _linkify(_balanceHtml(_cutBelow(startCfg ? startCfg.ctxt : '')));
 
   // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
   // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
@@ -782,103 +790,104 @@ async function _showShareableMenu() {
     if (n >= 1 && n <= 31) out.push({ n: n, row: r });
     return out;
   }, []);
-  const _smDayPick = () => {
+  // (dev0787) The pool is kept SORTED by day, because the page's ‹ › arrows now
+  // step through it: "the previous day's picture" is the previous ASSIGNED day,
+  // not yesterday's date, so that every arrow press lands on something. One
+  // list, built once per menu open; _smDayIdx below is an index into it.
+  const _smDayList = _smDayPool().sort((a, b) => a.n - b.n);
+  // Where the page opens: today if today is assigned, else the nearest assigned
+  // day below it, else (nothing below) the highest — so the front door always
+  // shows something once any row is stamped. -1 = no row carries a UOD at all.
+  const _smDayStart = () => {
+    if (!_smDayList.length) return -1;
     const want = _smDayNum();
-    const pool = _smDayPool();
-    if (!pool.length) return null;
-    const exact = pool.find(p => p.n === want);
-    if (exact) return { row: exact.row, n: exact.n, exact: true };
-    // Nearest assigned day at or below today, else wrap to the highest.
-    const below = pool.filter(p => p.n < want);
-    const best = (below.length ? below : pool).reduce((a, b) => (b.n > a.n ? b : a));
-    return { row: best.row, n: best.n, exact: false };
+    const exact = _smDayList.findIndex(p => p.n === want);
+    if (exact >= 0) return exact;
+    let below = -1;
+    for (let k = 0; k < _smDayList.length; k++) if (_smDayList[k].n < want) below = k;
+    return below >= 0 ? below : _smDayList.length - 1;
   };
-  const _smDayRow = () => { const p = _smDayPick(); return p ? p.row : null; };
+  // The day on show. The arrows move it; nothing else does.
+  let _smDayIdx = _smDayStart();
   // Direct media files only — the author is starting with the self-hosted mp4s.
   // A YouTube/Vimeo watch page is not something a <video> can play, and a raw
   // URL printed on the public front door is worse than an empty space, so
   // anything else renders nothing and says why in the console.
   const _SM_DAY_VID = /\.(mp4|webm|ogv|ogg|mov|m4v)$/i;
   const _SM_DAY_IMG = /\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i;
-  // (dev0781) Split RENDERED ftext into its first line and everything after it.
-  // "First line" = the first top-level block that actually carries text (an
-  // opening <p>, heading, or bare text node); leading whitespace and empty
-  // wrappers are skipped rather than becoming a blank summary. The head keeps
-  // its inline markup (links, <b>) but loses its block tag, because it is going
-  // into a <summary>; the rest is returned as the untouched remaining HTML.
-  const _smSplitFirstLine = html => {
-    const d = document.createElement('div');
-    d.innerHTML = String(html || '');
-    let head = '';
-    while (d.firstChild) {
-      const n = d.firstChild;
-      const txt = (n.textContent || '').trim();
-      if (!txt) { d.removeChild(n); continue; }   // whitespace / empty wrapper
-      head = (n.nodeType === 1) ? n.innerHTML : _smEsc(txt);
-      d.removeChild(n);
-      break;
-    }
-    return { head: head, rest: d.innerHTML };
+  // (dev0787) The date line that sits above the picture. UOD is a day of the
+  // MONTH, so the month and the year come from the viewer's own clock. A day
+  // that does not exist in this month (31 in a 30-day one) gets a plain "Day N"
+  // label rather than silently rolling over into the next month, which is what
+  // `new Date(y, m, 31)` would otherwise print.
+  const _smDayLabel = n => {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth(), n);
+    if (d.getDate() !== n) return 'Day ' + n;
+    try { return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); }
+    catch (e) { return 'Day ' + n; }
   };
-  const _smDayItemHtml = () => {
-    const row = _smDayRow();
-    const link = row ? String(row.link || '').trim() : '';
+  // (dev0787) The item itself: the date between two arrows, the picture sized to
+  // what is left of the screen, the caption under it. dev0781/0782 had it folded
+  // shut behind a one-line summary with a tenth-size thumbnail; the front page
+  // shows the picture outright now, so there is nothing left to unfold.
+  //
+  // Returns the INNER html only — the .sm-dayitem box is in the page markup and
+  // stays put, so an arrow press re-fills it instead of rebuilding the menu.
+  const _smDayInnerHtml = () => {
+    const e = (_smDayIdx >= 0) ? _smDayList[_smDayIdx] : null;
+    if (!e) {
+      try { console.warn('[image of the day] no ml.json row carries a UOD (1-31); nothing to show for day ' + _smDayNum()); } catch (x) {}
+      return '';
+    }
+    const row = e.row;
+    const link = String(row.link || '').trim();
     const path = link.split(/[?#]/)[0];
-    const bad = !row ? 'no ml.json row carries a UOD (1-31); nothing to show for day ' + _smDayNum()
-              : !link ? 'UID ' + row.UID + ' has no link'
+    // Direct media files only, as before — a YouTube watch page is not something
+    // a <video> can play, and a raw URL printed on the public front door is
+    // worse than an empty space. (dev0787) But such a day keeps its date line
+    // and its arrows: dropping the whole block would strand the viewer on a day
+    // they could only leave by reloading. Only the picture is missing.
+    const bad = !link ? 'UID ' + row.UID + ' has no link'
               : (!_SM_DAY_VID.test(path) && !_SM_DAY_IMG.test(path))
                 ? 'UID ' + row.UID + ' is not a direct media file: ' + link
               : '';
-    if (bad) {
-      try { console.warn('[image of the day] ' + bad); } catch (e) {}
-      return '';
-    }
+    if (bad) { try { console.warn('[image of the day] ' + bad); } catch (x) {} }
     const src = _smEsc(link).replace(/"/g, '&quot;');
     const isVid = _SM_DAY_VID.test(path);
-    // (dev0781) The media starts CLOSED, so it must not autoplay on its own —
-    // the toggle wiring below starts it when the block is actually opened.
-    const media = isVid
-      ? '<video src="' + src + '" controls loop muted playsinline'
-        + ' preload="metadata"></video>'
-      : '<img src="' + src + '" alt="">';
-    // The caption is the row's ftext, through the same renderer every other
-    // slide uses — so a ⊘ cut, a collapsible and a v.NNN link all behave here
-    // exactly as they do on a slide.
+    // On screen from the moment the page opens, so a video autoplays — muted,
+    // like every video on this page — instead of waiting to be unfolded.
+    const media = bad ? ''
+      : (isVid
+          ? '<video src="' + src + '" controls autoplay loop muted playsinline preload="metadata"></video>'
+          : '<img src="' + src + '" alt="">');
+    // The caption is the row's ftext WHOLE (dev0781 showed only its first line,
+    // as the summary of the fold that is now gone), through the same renderer
+    // every other slide uses — so a ⊘ cut, a collapsible and a v.NNN link all
+    // behave here exactly as they do on a slide.
     const capRaw = String(row.ftext || '').trim();
     const capHtml = capRaw
       ? ((typeof renderFtext === 'function') ? renderFtext(capRaw) : capRaw)
       : '';
-    // (dev0781) The whole item is a collapsible: the ftext's FIRST line is the
-    // summary the page shows, and the media plus the REST of the ftext are the
-    // hidden body. So the front door reads as one teaser line until the visitor
-    // asks for it — nothing about that split is authored, it is taken from the
-    // ftext the row already has.
-    const split = _smSplitFirstLine(capHtml);
-    const head = split.head || _smEsc(isVid ? 'Video of the day' : 'Image of the day');
-    const rest = split.rest.trim()
-      ? '<div class="sm-daycap">' + split.rest + '</div>' : '';
-    // (dev0782) A tenth-size copy of the SAME media, playing in the summary
-    // line itself — so the closed block still moves and shows what is behind it
-    // rather than being a line of text. Muted like every video on this page,
-    // no controls, and pointer-transparent so a click on it toggles the block.
-    const thumb = '<span class="sm-daythumb">'
-      + (isVid
-          ? '<video src="' + src + '" autoplay loop muted playsinline preload="metadata"></video>'
-          : '<img src="' + src + '" alt="">')
-      + '</span>';
-    return '<div class="sm-dayitem">'
-      + '<details class="sm-dayfold"><summary>' + thumb + head + '</summary>'
-      + media + rest
-      + '</details></div>';
+    // One assigned day means the arrows have nowhere to go; they stay visible
+    // (so the line doesn't reflow once a second day is stamped) but disabled.
+    const many = _smDayList.length > 1;
+    return '<div class="sm-daynav">'
+        + '<button type="button" class="sm-dayarrow" data-dir="-1" aria-label="Previous day"' + (many ? '' : ' disabled') + '>&#8249;</button>'
+        + '<span class="sm-daydate">' + _smEsc(_smDayLabel(e.n)) + '</span>'
+        + '<button type="button" class="sm-dayarrow" data-dir="1" aria-label="Next day"' + (many ? '' : ' disabled') + '>&#8250;</button>'
+      + '</div>'
+      + (media ? '<div class="sm-daymedia">' + media + '</div>' : '')
+      + (capHtml.trim() ? '<div class="sm-daycap">' + capHtml + '</div>' : '');
   };
-  // Console handle: which row is today's, and why nothing showed if nothing did.
+  // Console handle: which row is on show, and why nothing showed if nothing did.
   window._smDayItem = () => {
-    const p = _smDayPick();
-    const r = p ? p.row : null;
-    return { day: _smDayNum(), uid: r ? r.UID : null, uod: p ? p.n : null,
-             pickedBy: !p ? 'nothing — no row carries a UOD'
-                          : (p.exact ? 'UOD == today' : 'nearest earlier UOD (' + p.n + ')'),
-             assigned: _smDayPool().map(x => x.n + '→' + x.row.UID).sort(),
+    const e = (_smDayIdx >= 0) ? _smDayList[_smDayIdx] : null;
+    const r = e ? e.row : null;
+    return { day: _smDayNum(), uid: r ? r.UID : null, uod: e ? e.n : null,
+             pickedBy: !e ? 'nothing — no row carries a UOD'
+                          : (e.n === _smDayNum() ? 'UOD == today' : 'nearest earlier UOD (' + e.n + ')'),
+             assigned: _smDayList.map(x => x.n + '→' + x.row.UID),
              link: r ? String(r.link || '') : '', ftext: r ? String(r.ftext || '').slice(0, 80) : '' };
   };
 
@@ -1151,30 +1160,44 @@ async function _showShareableMenu() {
     // instead of shoving its neighbours onto the next line.
     + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
-    // (dev0779) The image of the day — a block of the Intro PAGE, sitting in the
-    // same prose column as the two ctxt sections it separates, so the three read
-    // as one page rather than as prose with something bolted between it.
-    + '.sm-dayitem{max-width:var(--sal-prose-w,760px);margin:4px auto 6px;padding:0 24px;}'
-    // (dev0781) …and it is a COLLAPSIBLE now: closed, the page shows only the
-    // ftext's first line. Same skin as the author's own <details> in the prose
-    // above and below it, so the three blocks read as one page.
-    + '.sm-dayitem details{margin:10px 0;padding:10px 14px;background:rgba(0,0,0,0.22);'
-      + 'border-left:4px solid #7cc0ff;border-radius:6px;overflow:hidden;}'
-    + '.sm-dayitem summary{cursor:pointer;color:#d9ebff;}'
-    + '.sm-dayitem summary a{color:#bfe3ff;}'
-    // (dev0782) The tenth-size preview riding in the summary line. 10% of the
-    // prose column, floored at 44px so it survives a phone, and inert to the
-    // pointer so the whole line stays one toggle target.
-    + '.sm-dayitem .sm-daythumb{display:inline-block;vertical-align:middle;width:10%;'
-      + 'max-width:76px;min-width:44px;margin-right:9px;border-radius:4px;overflow:hidden;'
-      + 'line-height:0;pointer-events:none;}'
-    + '.sm-dayitem .sm-daythumb video,.sm-dayitem .sm-daythumb img{border-radius:4px;}'
-    + '.sm-dayitem details > video,.sm-dayitem details > img{margin-top:10px;}'
-    + '.sm-dayitem video,.sm-dayitem img{display:block;width:100%;border-radius:6px;}'
+    // (dev0787) Section 1 of the Introduction ctxt is the Welcome page's first
+    // LINE, with the day's picture immediately under it — so it gives back the
+    // deep top/bottom padding the prose pages want. Section 2, below the
+    // caption, keeps the normal spacing.
+    + '.sm-introtop{padding:14px 24px 4px;}'
+    // (dev0779/0787) THE IMAGE OF THE DAY — the Welcome page's centrepiece now,
+    // not a note between two blocks of prose. It sits OUTSIDE the 760px prose
+    // column: a picture asked to "fit the screen" cannot be capped at the width
+    // of a paragraph. The date line is above it, the caption — still at prose
+    // width, so it stays readable — below.
+    + '.sm-dayitem{max-width:none;margin:2px auto 10px;padding:0 18px;text-align:center;}'
+    // The date, between its two arrows. "Not too large" — a notch under the
+    // prose, so it labels the picture instead of competing with the line above.
+    + '.sm-daynav{display:flex;align-items:center;justify-content:center;gap:14px;margin:2px 0 8px;}'
+    + '.sm-daydate{font-family:inherit;font-size:15px;letter-spacing:.02em;color:#dce9f7;white-space:nowrap;}'
+    + '.sm-dayarrow{font-family:inherit;font-size:18px;line-height:1;width:34px;height:30px;padding:0;cursor:pointer;'
+      + 'color:#eef4fa;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.22);border-radius:6px;}'
+    + '.sm-dayarrow:hover:not(:disabled){background:rgba(255,255,255,0.20);}'
+    + '.sm-dayarrow:disabled{opacity:.35;cursor:default;}'
+    // The media FITS the page rather than filling its width: the height is
+    // capped so the whole picture is on screen with its date and its caption.
+    // The real cap is a px value set from the page box after mount (_smDayFit) —
+    // vh is wrong inside the rotated wrap on a portrait phone — and this vh is
+    // only the fallback until that first measurement lands.
+    + '.sm-daymedia{line-height:0;}'
+    + '.sm-daymedia img,.sm-daymedia video{display:inline-block;width:auto;height:auto;'
+      + 'max-width:100%;max-height:62vh;border-radius:6px;}'
     // The caption is the row's ftext, so it gets the prose colours at a quieter
     // size — same relationship a modal caption has to its picture.
-    + '.sm-dayitem .sm-daycap{font-family:inherit;color:#cfe0f0;font-size:0.85em;line-height:1.5;text-align:center;margin-top:6px;}'
+    + '.sm-dayitem .sm-daycap{font-family:inherit;color:#cfe0f0;font-size:0.85em;line-height:1.5;text-align:center;'
+      + 'max-width:var(--sal-prose-w,760px);margin:8px auto 0;}'
     + '.sm-dayitem .sm-daycap p{margin:4px 0;}'
+    // Media INSIDE the caption (an ftext can carry its own) is prose-column
+    // furniture, not the picture of the day — hold it to the column width.
+    + '.sm-dayitem .sm-daycap img,.sm-dayitem .sm-daycap video{max-width:100%;height:auto;}'
+    + '.sm-dayitem .sm-daycap details{margin:8px 0;padding:8px 12px;background:rgba(0,0,0,0.22);'
+      + 'border-left:4px solid #7cc0ff;border-radius:6px;text-align:left;overflow:hidden;}'
+    + '.sm-dayitem .sm-daycap summary{cursor:pointer;color:#d9ebff;}'
     + '.sm-dayitem .sm-daycap a{color:#bfe3ff;text-decoration:underline;text-underline-offset:2px;}'
     + '.sm-dayitem .sm-daycap a:hover{color:#fff;}'
     + '.smGreeting summary h1,.smGreeting summary h2,.smGreeting summary h3,.smGreeting summary h4,.smGreeting summary h5,.smGreeting summary h6{display:inline;color:#d9ebff;margin:0;}'
@@ -1316,8 +1339,13 @@ async function _showShareableMenu() {
   // (dev0767) INTRO is now the FIRST TAB, not a splash the viewer had to escape
   // from. It is where the site opens, and it stays one click away from every
   // other tab instead of being reachable only via the back arrow.
+  // (dev0787) …and it is called WELCOME, not Intro. The page is a greeting line
+  // and the day's picture now; "Intro" named a wall of introductory prose that
+  // moved off it. Page 5, the number the removed "Navigation Training" tab used
+  // to hold, is reused for "Starting out" — the empty tab that follows it.
   const _tabBtns =
-      '<button class="sm-tab" data-pg="1">Intro</button>'
+      '<button class="sm-tab" data-pg="1">Welcome</button>'
+    + '<button class="sm-tab" data-pg="5">Starting out</button>'
     + '<button class="sm-tab" data-pg="2">Grids</button>'
     + (SM_FEAT_SEARCH
         ? '<button class="sm-tab" data-pg="3">Search</button>'
@@ -1353,12 +1381,26 @@ async function _showShareableMenu() {
         // the Contact tab (page 9) now. Nothing else changed on this page.
         // (dev0779) SECTION 1 · IMAGE OF THE DAY · SECTION 2. The two sections
         // are the author's ctxt either side of its first <hr>; the item between
-        // them is composed here from an ml.json row (see _smDayItemHtml). An
+        // them is composed here from an ml.json row (see _smDayInnerHtml). An
         // empty section renders nothing rather than an empty prose block.
-        + (introTop.trim() ? '<div class="smGreeting">' + introTop + '</div>'
-                           : (introBottom.trim() ? '' : '<div class="smGreeting"><p>Welcome.</p></div>'))
-        + _smDayItemHtml()
+        // (dev0787) Section 1 is the page's FIRST LINE and the day's picture is
+        // right under it — so the greeting block loses the deep top padding it
+        // inherited from the prose pages (.sm-introtop), and the picture is
+        // sized to the screen rather than to the prose column. Section 2 still
+        // renders below the caption; it is simply below the fold now.
+        + (introTop.trim() ? '<div class="smGreeting sm-introtop">' + introTop + '</div>'
+                           : (introBottom.trim() ? '' : '<div class="smGreeting sm-introtop"><p>Welcome.</p></div>'))
+        // Filled by _smDayRender after mount, and re-filled in place by the ‹ ›
+        // arrows — the box itself never moves.
+        + '<div class="sm-dayitem" id="smDayItem"></div>'
         + (introBottom.trim() ? '<div class="smGreeting">' + introBottom + '</div>' : '')
+      + '</div>'
+      // (dev0787) PAGE 5 — "Starting out". Blank on purpose for now: like Other
+      // and Contact, its copy is the ctxt of a c.json config row (gname
+      // "starting out"), so the author fills it in Xe rather than here. Until
+      // that row exists the page is empty — no placeholder, as asked.
+      + '<div id="smPage5" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
+        + (startHtml.trim() ? '<div class="smGreeting">' + startHtml + '</div>' : '')
       + '</div>'
       // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
       // Singles | Grids on desktop, stacked on phone)
@@ -1541,7 +1583,8 @@ async function _showShareableMenu() {
   // (dev0767) Intro (1) leads the order, matching its place in the tab bar, so
   // Tab-cycling wraps back round to it like any other tab.
   // (dev0782) …and Contact (9) closes the order, matching its place in the bar.
-  const _smTabOrder = [1, 2]
+  // (dev0787) …and "Starting out" (5) sits between them, matching the bar.
+  const _smTabOrder = [1, 5, 2]
     .concat(SM_FEAT_SEARCH ? [3, 6] : [])
     .concat([7])
     .concat(SM_FEAT_ADDOWN ? [8] : [])
@@ -1563,6 +1606,9 @@ async function _showShareableMenu() {
     // (dev0741) Re-sweep on every page change — Search results and SavedSearches
     // build their bodies after the overlay was first stamped. Idempotent.
     if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
+    // (dev0787) Re-fit the day's picture on arrival at Welcome: it measures 0
+    // while the page is display:none, so a fit taken on another tab is junk.
+    if (n === 1 && window._smDayFitNow) requestAnimationFrame(window._smDayFitNow);
     // (dev0739) Let the floating back arrow re-evaluate now rather than on its
     // next 300ms poll — leaving Welcome should light it immediately.
     if (window._salBackArrowSync) window._salBackArrowSync();
@@ -1656,21 +1702,69 @@ async function _showShareableMenu() {
   // window.salAuth is missing (auth.js failed to load) or the API is down, the
   // strip stays empty and browsing is entirely unaffected.
   _wireSignIn(ov);
-  // (dev0781) The image of the day is collapsed until asked for, so its video
-  // carries no `autoplay` — it would be a hidden element racing the open. Start
-  // it on open and stop it on close, so closing the block really does stop the
-  // sound-less loop rather than leaving it running behind the summary line.
-  ov.querySelectorAll('.sm-dayfold').forEach(det => {
-    det.addEventListener('toggle', () => {
-      // (dev0782) `:scope >` — the summary now carries a tenth-size video of its
-      // own, and a bare querySelector('video') would find THAT one (it comes
-      // first) and leave the real one paused. The thumb plays regardless.
-      const v = det.querySelector(':scope > video');
-      if (!v) return;
-      if (det.open) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
-      else v.pause();
+  // ── (dev0787) THE IMAGE OF THE DAY: arrows + fit-to-screen ─────────────────
+  // dev0781's fold-open/close wiring is gone with the fold. Two jobs now: the
+  // ‹ › arrows step _smDayIdx through the assigned days and re-fill the box in
+  // place, and the picture is sized to what is left of the page.
+  const _smDayBox = ov.querySelector('#smDayItem');
+  // WHY a measurement and not `max-height:62vh`: on a portrait phone this menu
+  // lives inside the CSS-rotated #rotateWrap, where 100vh is the PHYSICAL
+  // height while the visual frame is 90° to it — so vh would size the picture
+  // against the wrong axis. #smPage1's own box is inset:0 in the rotated frame,
+  // which makes its clientHeight the honest "height of the screen" in both
+  // orientations. The CSS vh stands as the fallback until this first runs.
+  const _smDayFit = () => {
+    if (!ov.isConnected) { window.removeEventListener('resize', _smDayFit); return; }
+    const pg = ov.querySelector('#smPage1');
+    if (!pg || !_smDayBox || pg.style.display === 'none') return;
+    const med = _smDayBox.querySelector('.sm-daymedia');
+    const el = med && med.querySelector('img,video');
+    if (!el) return;
+    el.style.maxHeight = 'none';                       // measure everything else uncapped
+    // Only what shares the FOLD with the picture counts: where the box starts
+    // (greeting line above it) plus the box's own non-media height (date line +
+    // caption). Section 2 of the ctxt is below all this and must not shrink it.
+    const boxTop = _smDayBox.getBoundingClientRect().top - pg.getBoundingClientRect().top + pg.scrollTop;
+    const extra  = _smDayBox.offsetHeight - med.offsetHeight;
+    el.style.maxHeight = Math.max(200, pg.clientHeight - boxTop - extra - 10) + 'px';
+  };
+  // _smShow calls this when it lands on page 1 (the box measures 0 while the
+  // page is display:none, so the mount-time pass has to be repeatable).
+  window._smDayFitNow = _smDayFit;
+  const _smDayWireMedia = () => {
+    const el = _smDayBox && _smDayBox.querySelector('.sm-daymedia img,.sm-daymedia video');
+    if (!el) return;
+    // Nothing is measurable until the file has its dimensions.
+    el.addEventListener('load', _smDayFit);
+    el.addEventListener('loadedmetadata', _smDayFit);
+  };
+  const _smDayRender = () => {
+    if (!_smDayBox) return;
+    _smDayBox.innerHTML = _smDayInnerHtml();
+    // (dev0741) Same long-press lockdown the rest of the overlay gets — this
+    // markup is built after the sweep above ran.
+    if (window.salLockDownVideosIn) window.salLockDownVideosIn(_smDayBox);
+    _smDayWireMedia();
+    requestAnimationFrame(_smDayFit);
+  };
+  if (_smDayBox) {
+    _smDayBox.addEventListener('click', e => {
+      const b = e.target && e.target.closest && e.target.closest('.sm-dayarrow');
+      if (!b || b.disabled || !_smDayList.length) return;
+      e.preventDefault(); e.stopPropagation();
+      const dir = parseInt(b.dataset.dir, 10) || 1;
+      // Wraps both ways: past the last assigned day is the first one again.
+      _smDayIdx = (_smDayIdx + dir + _smDayList.length) % _smDayList.length;
+      const which = b.dataset.dir;
+      _smDayRender();
+      // The button the viewer just pressed was replaced by the re-render — put
+      // focus back on its successor so a run of clicks (or Enter) keeps working.
+      const nb = _smDayBox.querySelector('.sm-dayarrow[data-dir="' + which + '"]');
+      if (nb) nb.focus();
     });
-  });
+    _smDayRender();
+    window.addEventListener('resize', _smDayFit);
+  }
   // (dev0369) On the Search page, a right-to-left swipe returns to the Main
   // "Choose a view" page (the main menu) — the same swipe-back feel as the grid.
   // Pointer-based so it works with both touch and a mouse-drag (and is therefore

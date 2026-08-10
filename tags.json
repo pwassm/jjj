@@ -7367,5 +7367,62 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "beroe-abyssicola",
+    "label": "Beroe abyssicola",
+    "kind": "taxon",
+    "parents": [
+      "beroe"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Abyssal Comb Jelly",
+    "extinct": false
+  },
+  {
+    "id": "nuda",
+    "label": "Nuda",
+    "kind": "taxon",
+    "parents": [
+      "ctenophora"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
+  },
+  {
+    "id": "beroida",
+    "label": "Beroida",
+    "kind": "taxon",
+    "parents": [
+      "nuda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "beroidae",
+    "label": "Beroidae",
+    "kind": "taxon",
+    "parents": [
+      "beroida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "beroe",
+    "label": "Beroe",
+    "kind": "taxon",
+    "parents": [
+      "beroidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]
