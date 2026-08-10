@@ -849,7 +849,77 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 // ffmpeg has exited; they must outlive the spawn, so they cannot be cleaned up
 // here. Absent → nothing is collected (and a texts[] payload leaks a temp dir,
 // which is why /exec always passes one).
+// (dev0789) ── DESHAKE (vidstab, two passes) ────────────────────────────────
+// vidstab has to measure the camera path before it can smooth it, so a deshake
+// render is two ffmpeg runs: `detect` writes a .trf, `transform` reads it. The
+// client fires them in order, tying the pair together with an id.
+//
+// The .trf path is deliberately RELATIVE. vidstab's result=/input= value lives
+// inside a filtergraph, where ':' separates options — a Windows absolute path
+// survives neither backslash-escaping nor quoting there (verified: both fail
+// with "No option name near"). A relative path has no colon, and since both
+// passes name it identically it resolves to the same file whatever cwd the
+// proxy was started from.
+const VIDSTAB_DIR = '.vidstab';
+const DESHAKE_PRESETS = {
+  light:  { detect: 'shakiness=6:accuracy=12:stepsize=6',  smoothing: 8  },
+  medium: { detect: 'shakiness=8:accuracy=15:stepsize=6',  smoothing: 16 },
+  strong: { detect: 'shakiness=10:accuracy=15:stepsize=4', smoothing: 32 }
+};
+
+function deshakeCommon(d) {
+  must(d && typeof d === 'object', 'deshake must be an object');
+  must(typeof d.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(d.id),
+       'deshake.id must be 1-64 chars of [A-Za-z0-9_-]');
+  const preset = DESHAKE_PRESETS[d.preset] ? d.preset : 'medium';
+  return { preset, trf: VIDSTAB_DIR + '/' + d.id + '.trf' };
+}
+
+// The filter that actually steadies the picture. optzoom=1 picks the smallest
+// static zoom that keeps the warped frame full — without it the edges swing
+// black wherever the correction is largest.
+function buildDeshakeTransform(d, p) {
+  const { preset, trf } = deshakeCommon(d);
+  must(d.pass === 'transform', "deshake.pass must be 'transform' on a render");
+  // A moving crop already re-frames every frame; stabilising underneath it
+  // fights the path the user drew, so refuse rather than produce a mess.
+  must(!p.track, 'deshake cannot be combined with a moving crop (track)');
+  const sm = (Number.isInteger(d.smoothing) && d.smoothing >= 1 && d.smoothing <= 240)
+    ? d.smoothing : DESHAKE_PRESETS[preset].smoothing;
+  return `vidstabtransform=input=${trf}:smoothing=${sm}` +
+         ':optzoom=1:zoom=0:maxangle=-1:crop=black:interpol=bicubic';
+}
+
+// Pass 1. Same input geometry as the render, but decoding only — no output
+// file, no encoder. Deliberately does NOT accept scale/Ken Burns/text: the
+// measurement only has to match the crop the transform will run on.
+function buildDeshakeDetectArgs(p) {
+  must(p.input && typeof p.input === 'string', 'input (string) required');
+  const { preset, trf } = deshakeCommon(p.deshake);
+  const pre = [];
+  if (p.trim) {
+    const s = +p.trim.startSec, e = +p.trim.endSec;
+    must(Number.isFinite(s) && s >= 0, 'trim.startSec must be a number ≥ 0');
+    must(Number.isFinite(e) && e > s,  'trim.endSec must be > startSec');
+    pre.push('-ss', s.toFixed(3), '-to', e.toFixed(3));
+  }
+  const chain = [];
+  if (p.crop) {
+    for (const k of ['w', 'h', 'x', 'y']) {
+      must(Number.isInteger(p.crop[k]) && p.crop[k] >= 0,
+           `crop.${k} must be a non-negative integer`);
+    }
+    must(p.crop.w >= 16 && p.crop.h >= 16, 'crop is too small to stabilise');
+    chain.push(`crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
+  }
+  chain.push(`vidstabdetect=${DESHAKE_PRESETS[preset].detect}:result=${trf}`);
+  return ['-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '0.5',
+          ...pre, '-i', p.input, '-an', '-vf', chain.join(','), '-f', 'null', '-'];
+}
+
 function buildFfmpegArgs(p, tmpSink) {
+  // Pass 1 of a deshake writes no file, so it runs before the output check.
+  if (p.deshake && p.deshake.pass === 'detect') return buildDeshakeDetectArgs(p);
   must(p.input  && typeof p.input  === 'string', 'input (string) required');
   must(p.output && typeof p.output === 'string', 'output (string) required');
   const overwrite = !!p.overwrite;
@@ -903,6 +973,11 @@ function buildFfmpegArgs(p, tmpSink) {
   // Above the crop path because an image render shares its `crop` shape but
   // none of the video machinery (no trim, no audio, no x264 settings).
   if (p.image) return buildImageFfmpegArgs(p, common, overwrite, tmpSink);
+
+  // (dev0789) Without a crop rect the builder takes the lossless stream-copy
+  // path, which cannot run a filter at all — so a deshake there would be
+  // silently dropped. Say so instead of handing back an unstabilised file.
+  must(!(p.deshake && !p.crop), 'deshake needs a crop rect — the lossless copy path cannot filter');
 
   if (p.crop) {
     // ── CROP path (re-encode) ────────────────────────────────────────────
@@ -971,6 +1046,10 @@ function buildFfmpegArgs(p, tmpSink) {
     let vf = prefix + (p.track
       ? buildTrackCrop(p.track, p.crop.w, p.crop.h, canvasW, canvasH)
       : `crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
+    // (dev0789) Deshake sits immediately after the crop, so it warps exactly the
+    // frames the detect pass measured, and everything downstream (scale, Ken
+    // Burns, drawtext) works on an already-steady picture.
+    if (p.deshake) vf += ',' + buildDeshakeTransform(p.deshake, p);
     const resH = p.resHeight;
     const scaling = Number.isFinite(resH) && resH > 0;
     const aspect = (p.aspect === 'P') ? 'P' : 'L';
@@ -5406,7 +5485,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist']) }));
     return;
   }
@@ -5661,6 +5740,20 @@ http.createServer((req, res) => {
       if ((bin === 'ffmpeg' || bin === 'jpegtran') &&
           payload && typeof payload.output === 'string') {
         try { fs.mkdirSync(path.dirname(payload.output), { recursive: true }); } catch (_) {}
+      }
+      // (dev0789) Deshake's motion file lands in a relative folder ffmpeg will
+      // not create. Sweep anything older than a day while we are here — a .trf
+      // is dead the moment its transform pass has run, and an abandoned detect
+      // (browser closed mid-render) would otherwise leave one behind forever.
+      if (bin === 'ffmpeg' && payload && payload.deshake) {
+        try {
+          fs.mkdirSync(VIDSTAB_DIR, { recursive: true });
+          const cutoff = Date.now() - 24 * 3600 * 1000;
+          for (const f of fs.readdirSync(VIDSTAB_DIR)) {
+            const fp = path.join(VIDSTAB_DIR, f);
+            try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch (_) {}
+          }
+        } catch (_) {}
       }
       // (dev0391) ffprobe returns JSON on stdout — collect it whole rather than
       // streaming it through the ffmpeg progress parser. (dev0394) exiftool in

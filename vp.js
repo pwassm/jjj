@@ -2451,6 +2451,15 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0789) V = deshake strength, but only while the crop overlay is open —
+  // that is the only place the setting means anything, and it is where the bar
+  // chip showing it lives. Left-hand key, next to C.
+  if ((e.key === 'v' || e.key === 'V') && _vpCropHolding()) {
+    e.preventDefault();
+    _vpCropCycleDeshake();
+    return;
+  }
+
   // (dev0287→0749) R used to toggle the disk-info caption. It is now simply
   // always on — it is the answer to "what am I looking at", which is not a
   // question that comes and goes — so the key is gone and R is free again.
@@ -4809,6 +4818,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-engine" title="Lossless = jpegtran copies the JPEG blocks across untouched. ' +
       'A tilt, a caption, a resolution change or a clip cannot be done that way — those switch it to a re-encode." ' +
       'style="display:none;padding:2px 6px;border-radius:3px;background:#234;">–</span>' +
+    // (dev0789) Deshake. Video only — a still has no camera path to smooth.
+    // vidstab zooms in slightly to hide the correction, so the strength is a
+    // choice rather than a switch: click to cycle off → light → medium → strong.
+    '<span id="vp-crop-deshake" title="Steady handheld wobble (V). Costs a small zoom — ' +
+      'medium is usually the sweet spot; strong zooms ~2.5x further for little extra." ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">〰 shake off</span>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
     '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
@@ -4820,7 +4835,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // engine chip takes their place.
   if (imageMode) {
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
-     'vp-crop-audio', 'vp-crop-slow-lbl'].forEach(id => {
+     'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake'].forEach(id => {
       const el = bar.querySelector('#' + id);
       if (el) el.style.display = 'none';
     });
@@ -4962,6 +4977,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     motion: { format: 'still', durSec: 3 },
     aspect: 'L', crf: 18, slow: false, resHeight: 1080, angle: 0,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
+    deshake: 'off',                   // (dev0789) off | light | medium | strong
     texts: [],                        // (dev0724) burned-in captions, see addText
     // (dev0720) `on` = armed; frac is inside the CROP rect (fw === fh, since a
     // same-aspect box inside a box has equal fractions on both axes); atSec is
@@ -5682,6 +5698,19 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   }
   paintAudio();
   if (audioChip) audioChip.addEventListener('click', _vpCropToggleAudio);
+
+  // (dev0789) ── Deshake ────────────────────────────────────────────────────
+  const dsChip = bar.querySelector('#vp-crop-deshake');
+  function paintDeshake() {
+    if (!dsChip) return;
+    const on = state.deshake && state.deshake !== 'off';
+    dsChip.textContent = on ? ('〰 shake ' + state.deshake) : '〰 shake off';
+    dsChip.style.background = on ? '#2a5d9a' : '#234';
+    dsChip.style.color      = on ? '#fff' : '#dfe6f0';
+  }
+  paintDeshake();
+  state.paintDeshake = paintDeshake;   // so the hotkey can repaint the chip
+  if (dsChip) dsChip.addEventListener('click', _vpCropCycleDeshake);
 
   // (dev0745) ── Saved text ─────────────────────────────────────────────────
   // The chip counts what is banked; the list itself is built fresh each time it
@@ -6488,6 +6517,25 @@ function _vpCropToggleAudio() {
   if (s.paintAudio) s.paintAudio();
   if (typeof toast === 'function') {
     toast(s.audio ? '🔊 saved clip keeps its audio' : '🔇 saved clip will be silent', 1400);
+  }
+}
+
+// (dev0789) V — cycle the deshake strength. Every step costs field of view
+// (vidstab zooms to hide the correction), so this is a dial rather than a
+// switch. Measured on a 4K handheld clip: medium cut the residual wobble 2.1x
+// for ~3% zoom, strong only reached 2.3x and took ~7% — hence the hint.
+const _VP_DESHAKE_STEPS = ['off', 'light', 'medium', 'strong'];
+function _vpCropCycleDeshake() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  if (s.imageMode) return;             // a still has no camera path
+  const i = _VP_DESHAKE_STEPS.indexOf(s.deshake || 'off');
+  s.deshake = _VP_DESHAKE_STEPS[(i + 1) % _VP_DESHAKE_STEPS.length];
+  if (s.paintDeshake) s.paintDeshake();
+  if (typeof toast === 'function') {
+    toast(s.deshake === 'off'
+      ? '〰 deshake off'
+      : '〰 deshake ' + s.deshake + ' — adds an analysis pass before the render', 1600);
   }
 }
 
@@ -7510,6 +7558,7 @@ async function _vpGoSave(opts) {
     const texts = tr.texts, pauses = tr.pauses;
     if (texts.length)  nameParts.push('tx' + texts.length);
     if (pauses.length) nameParts.push('pz' + pauses.length);
+    if (s.deshake && s.deshake !== 'off') nameParts.push('ds-' + s.deshake);  // (dev0789)
     nameParts.push(durStr);
     outName = nameParts.join('~') + '~.mp4';
     payload = {
@@ -7645,6 +7694,24 @@ async function _vpGoSave(opts) {
   // too or it reads 100% while ffmpeg is still writing.
   const holdMs = (payload.pauses || []).reduce((n, p) => n + p.hold * 1000, 0);
   const totalMs = Math.max(0, (endSec - startSec) * 1000 + holdMs);
+
+  // (dev0789) ── Deshake preflight ──────────────────────────────────────────
+  // vidstab needs to measure the camera path before it can smooth it, so an
+  // armed deshake turns this into two runs. Everything that could make the
+  // render disagree with the measurement is refused here, where the message can
+  // say what to turn off, rather than 400-ing out of the builder.
+  const deshakeOn = !!(payload.crop && _vpState.crop && _vpState.crop.deshake &&
+                       _vpState.crop.deshake !== 'off');
+  if (deshakeOn) {
+    if (!(await _vpProxyHasFeature('deshake'))) {
+      if (typeof toast === 'function') toast('Deshake needs an updated proxy — restart "node proxy.js" and retry', 4400);
+      return;
+    }
+    if (payload.track) {
+      if (typeof toast === 'function') toast('Deshake and a moving crop fight each other — turn one off', 4000);
+      return;
+    }
+  }
   const useBtn = cropOn ? _vpState.crop.el.bar.querySelector('#vp-crop-do') : null;
   const origLabel = useBtn ? useBtn.textContent : null;
   const pill = useBtn ? null : _vpMakeProgressPill(cropOn ? '' : 'Saving ');
@@ -7654,6 +7721,25 @@ async function _vpGoSave(opts) {
     if (pill) pill.dispose();
   }
   try {
+    // (dev0789) Pass 1 of a deshake: measure only, no file written. Its id ties
+    // the .trf to the render that follows. Bail on failure rather than let the
+    // transform run against a missing/stale motion file.
+    if (deshakeOn) {
+      const dsId = 'ds' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const preset = _vpState.crop.deshake;
+      const detect = await _vpCropRun(
+        { input: payload.input, crop: payload.crop, trim: payload.trim,
+          deshake: { pass: 'detect', id: dsId, preset } },
+        target, totalMs);
+      if (detect.exitCode !== 0) {
+        restoreUI();
+        const tail = detect.stderr.slice(-1)[0] || ('exit ' + detect.exitCode);
+        if (typeof toast === 'function') toast('deshake analysis failed: ' + tail, 4200);
+        console.error('[deshake detect failed]', detect);
+        return;
+      }
+      payload.deshake = { pass: 'transform', id: dsId, preset };
+    }
     let result = await _vpCropRun(payload, target, totalMs);
     // (dev0744) NOT gated on a non-zero exit: ffmpeg refuses -n by printing
     // "already exists" and then exiting 0 (verified on the current build), so

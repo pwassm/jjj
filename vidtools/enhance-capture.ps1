@@ -135,27 +135,47 @@ if (-not $Crop) {
             else { "${srcW}:${srcH}:0:0" }
 }
 $cw, $ch, $cx, $cy = ($Crop -split ':') | ForEach-Object { [int]$_ }
-Write-Host "crop       $Crop" -ForegroundColor Cyan
+# 4:2:0 chroma cannot land on an odd edge, and ffmpeg's crop filter silently
+# rounds down to suit. Do it here instead so the geometry printed and the
+# geometry rendered are the same number.
+$cwOdd, $chOdd = $cw, $ch
+$cw -= $cw % 2
+$ch -= $ch % 2
+Write-Host "crop       ${cw}:${ch}:${cx}:${cy}$(if ($cw -ne $cwOdd -or $ch -ne $chOdd) { "   (from ${cwOdd}x${chOdd} — rounded to even for 4:2:0)" })" -ForegroundColor Cyan
 
 # Width the active area should have once pixels are square.
 $displayW = $cw * $sarN / $sarD
-$activeW = Get-EvenInt ($Height * $displayW / $ch)
-$boxW = Get-EvenInt ($Height * 16 / 9)
+$noScale = ($Height -le 0)          # -Height 0 = keep the crop's own pixels
 
-switch ($Framing) {
-    'native' { $stage1W = $activeW; $stage1H = $Height; $padTo = $null }
-    'pad'    { $stage1W = $activeW; $stage1H = $Height
-               $padTo = if ($boxW -gt $activeW) { @($boxW, $Height) } else { $null } }
-    'fill'   { $stage1W = $boxW; $stage1H = Get-EvenInt ($boxW * $ch / $displayW); $padTo = $null }
+if ($noScale) {
+    # Native mode: no resampling at all beyond what the stabiliser's warp does.
+    # Square-pixel sources pass through untouched; a non-square SAR still has to
+    # be corrected, or the output would come out geometrically wrong.
+    $stage1W = if ($sarN -eq $sarD) { $cw } else { Get-EvenInt $displayW }
+    $stage1H = $ch
+    $padTo = $null
+    $Framing = 'native'
+    $finalW = $stage1W
+    Write-Host "output     ${stage1W}x${stage1H}  (native — no downscale)" -ForegroundColor Cyan
 }
-$finalW = if ($padTo) { $padTo[0] } elseif ($Framing -eq 'fill') { $boxW } else { $stage1W }
-Write-Host "output     ${finalW}x${Height}  ($Framing)" -ForegroundColor Cyan
+else {
+    $activeW = Get-EvenInt ($Height * $displayW / $ch)
+    $boxW = Get-EvenInt ($Height * 16 / 9)
+    switch ($Framing) {
+        'native' { $stage1W = $activeW; $stage1H = $Height; $padTo = $null }
+        'pad'    { $stage1W = $activeW; $stage1H = $Height
+                   $padTo = if ($boxW -gt $activeW) { @($boxW, $Height) } else { $null } }
+        'fill'   { $stage1W = $boxW; $stage1H = Get-EvenInt ($boxW * $ch / $displayW); $padTo = $null }
+    }
+    $finalW = if ($padTo) { $padTo[0] } elseif ($Framing -eq 'fill') { $boxW } else { $stage1W }
+    Write-Host "output     ${finalW}x${Height}  ($Framing)" -ForegroundColor Cyan
+}
 
 # ------------------------------------------------------------------ filenames
 if (-not $OutputFile) {
     $dir = Split-Path -Parent $InputFile
     $base = [IO.Path]::GetFileNameWithoutExtension($InputFile)
-    $tag = "${Height}p ds-$Descreen st-$Stabilize"
+    $tag = "$(if ($noScale) { 'native' } else { "${Height}p" }) ds-$Descreen st-$Stabilize"
     if ($Duration -gt 0) { $tag = "preview $tag" }
     $OutputFile = Join-Path $dir "$base [$tag].mp4"
 }
@@ -165,7 +185,8 @@ if (-not $outDir) { $outDir = (Get-Location).Path; $OutputFile = Join-Path $outD
 # when the same source is re-rendered to a different file.
 $work = Join-Path (Split-Path -Parent $InputFile) '.enhance-work'
 if (-not (Test-Path $work)) { New-Item -ItemType Directory -Path $work | Out-Null }
-$stamp = '{0}_{1}_{2}_{3}' -f ([IO.Path]::GetFileNameWithoutExtension($InputFile) -replace '\W', ''), $Descreen, $Height, $Framing
+$stamp = '{0}_{1}_{2}_{3}' -f ([IO.Path]::GetFileNameWithoutExtension($InputFile) -replace '\W', ''), $Descreen,
+         $(if ($noScale) { 'native' } else { $Height }), $Framing
 if ($Duration -gt 0) { $stamp += "_s$(Fmt $Start)_d$(Fmt $Duration)" }
 $interFile = Join-Path $work "$stamp.mp4"
 # vidstab's result=/input= value sits inside a filtergraph, where ':' separates
@@ -180,18 +201,34 @@ $totalFrames = [int][math]::Round($srcDur * $fps)
 $wantFrames = if ($Duration -gt 0) { [int][math]::Round($Duration * $fps) } else { $totalFrames - $startFrame }
 $wantFrames = [math]::Max(1, [math]::Min($wantFrames, $totalFrames - $startFrame))
 
-if ($Reuse -and (Test-Path $interFile)) {
+if ($Descreen -ne 'off' -and $PitchAt0 -le 0) {
+    throw "-Descreen $Descreen needs -PitchAt0 (and usually -PitchPerSec). Run measure-grid.py first, or pass -Descreen off."
+}
+
+# Everything stage 1 does to a frame, split so the de-screen can be inserted
+# between the crop and the scale. In native mode stage1W/H equal the crop, so no
+# scale filter is emitted at all (a non-square SAR still forces one, or the
+# output would come out geometrically wrong).
+$cropFilter = "crop=${cw}:${ch}:${cx}:${cy}"
+$tail = @()
+if ($stage1W -ne $cw -or $stage1H -ne $ch) { $tail += "scale=${stage1W}:${stage1H}:flags=lanczos" }
+if ($Framing -eq 'fill') { $tail += "crop=${boxW}:${Height}" }
+$tail += 'setsar=1'
+$preChain = @($cropFilter) + $tail
+
+# The intermediate exists only so the SLOW de-screen pass isn't repeated. With
+# -Descreen off stage 1 is just a crop, so stages 2 and 3 read the source
+# directly instead: faster, and one encode generation cleaner. -Reuse and
+# -KeepIntermediate force the cached path for quick stabiliser re-tries.
+$useIntermediate = ($Descreen -ne 'off') -or $Reuse -or $KeepIntermediate
+
+if (-not $useIntermediate) {
+    Write-Host "stage 1    skipped — no de-screen, rendering straight from the source" -ForegroundColor DarkGray
+}
+elseif ($Reuse -and (Test-Path $interFile)) {
     Write-Host "stage 1    reusing $([IO.Path]::GetFileName($interFile))" -ForegroundColor Yellow
 }
 else {
-    if ($Descreen -ne 'off' -and $PitchAt0 -le 0) {
-        throw "-Descreen $Descreen needs -PitchAt0 (and usually -PitchPerSec). Run measure-grid.py first, or pass -Descreen off."
-    }
-
-    $tail = @("scale=${stage1W}:${stage1H}:flags=lanczos")
-    if ($Framing -eq 'fill') { $tail += "crop=${boxW}:${Height}" }
-    $tail += 'setsar=1'
-
     # Split into chunks short enough that the pitch barely moves inside one.
     # Solving P(end) <= (1+d)*P(mid) for the chunk length gives the bound below.
     $chunks = @()
@@ -225,7 +262,7 @@ else {
         $chunkPath = Join-Path $work ("{0}_c{1:d3}.mp4" -f $stamp, $ci)
         $chunkFiles += $chunkPath
 
-        $chain = @("crop=${cw}:${ch}:${cx}:${cy}")
+        $chain = @($cropFilter)
         if ($Descreen -ne 'off') {
             $a, $b = $descreenBands[$Descreen]
             $span = Fmt ($b - $a)
@@ -264,14 +301,22 @@ else {
 }
 
 # ------------------------------------------------------- stages 2/3: stabilise
+# Reading the intermediate means the crop/scale is already baked in; reading the
+# source means every pass has to re-apply it first.
+$seek = @()
+if ($Start -gt 0) { $seek += @('-ss', (Fmt $Start)) }
+if ($Duration -gt 0) { $seek += @('-t', (Fmt $Duration)) }
+$videoIn = if ($useIntermediate) { @('-i', $interFile) } else { $seek + @('-i', $InputFile) }
+$lead = if ($useIntermediate) { @() } else { $preChain }
+
 $post = @()
 if ($Stabilize -ne 'off') {
     $sp = $stabPresets[$Stabilize]
-    Push-Location $work
+    Push-Location $work        # vidstab can only take a bare .trf filename
     try {
-        Invoke-FFmpeg @('-hide_banner', '-v', 'warning', '-stats', '-y', '-i', $interFile,
-            '-vf', "vidstabdetect=$($sp.detect):result=$trfName", '-f', 'null', '-') `
-            "stage 2    analysing motion ($Stabilize)"
+        Invoke-FFmpeg (@('-hide_banner', '-v', 'warning', '-stats', '-y') + $videoIn +
+            @('-vf', ((@($lead) + "vidstabdetect=$($sp.detect):result=$trfName") -join ','),
+              '-f', 'null', '-')) "stage 2    analysing motion ($Stabilize)"
     }
     finally { Pop-Location }
     $post += "vidstabtransform=input=$trfName" +
@@ -281,17 +326,16 @@ if ($Sharpen -ne 'off') { $post += $sharpenFilters[$Sharpen] }
 if ($padTo) { $post += "pad=$($padTo[0]):$($padTo[1]):(ow-iw)/2:(oh-ih)/2:black" }
 $post += 'setsar=1'
 
-# Video comes from the intermediate; audio is copied straight from the source.
-$audioIn = @()
-if ($Start -gt 0) { $audioIn += @('-ss', (Fmt $Start)) }
-if ($Duration -gt 0) { $audioIn += @('-t', (Fmt $Duration)) }
-$audioIn += @('-i', $InputFile)
-
+# Audio is always copied from the source. When the video also comes from the
+# source that is one input and one map; otherwise the source joins as input 1.
 $encoder = if ($Codec -eq 'hevc') { @('-c:v', 'libx265', '-tag:v', 'hvc1') } else { @('-c:v', 'libx264') }
-Push-Location $work        # so vidstabtransform can find the .trf by bare name
+$inputs = if ($useIntermediate) { $videoIn + $seek + @('-i', $InputFile) } else { $videoIn }
+$maps = if ($useIntermediate) { @('-map', '0:v:0', '-map', '1:a:0?') } else { @('-map', '0:v:0', '-map', '0:a:0?') }
+
+Push-Location $work
 try {
-    Invoke-FFmpeg (@('-hide_banner', '-v', 'warning', '-stats', '-y', '-i', $interFile) + $audioIn +
-        @('-map', '0:v:0', '-map', '1:a:0?', '-vf', ($post -join ',')) + $encoder +
+    Invoke-FFmpeg (@('-hide_banner', '-v', 'warning', '-stats', '-y') + $inputs + $maps +
+        @('-vf', ((@($lead) + $post) -join ','))  + $encoder +
         @('-crf', "$Crf", '-preset', $Preset, '-pix_fmt', 'yuv420p',
           '-c:a', 'copy', '-shortest', '-movflags', '+faststart', $OutputFile)) `
         'stage 3    stabilise + sharpen + encode'
