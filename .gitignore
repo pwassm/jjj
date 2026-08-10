@@ -271,3 +271,7 @@ dist
 .pnp.*
 
 logo/
+
+# vidtools/ measurement outputs — one per analysed clip, regenerated in ~1 min
+# by measure-grid.py. The scripts themselves ARE tracked.
+vidtools/*.json
