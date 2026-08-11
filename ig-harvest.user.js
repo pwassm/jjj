@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.1
+// @version      2.2
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Harvest an Instagram profile's reel/post URLs into ig.json via the local SLAM proxy. "🆕 New only" asks the proxy which shortcodes ig.json already holds and stops scrolling as soon as it recognises the grid — a re-harvest costs ~3 scroll steps instead of 500. "🔁 Sweep all" runs that across every harvested author unattended, rotating the Proton VPN between authors the way Download+rotate does. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.1';
+  const VER = '2.2';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -333,7 +333,12 @@
       ? '🔒 VPN up (' + ((vs.server || vs.ip || '?') + '') + ') — the sweep will rotate to a fresh exit between authors, and will STOP if the tunnel drops.'
       : '🏠 No VPN tunnel — the sweep runs on your home IP and does not rotate. (Best for a logged-in session: IG trusts a stable residential IP more than a rotating datacenter one.)';
     const list = document.createElement('div');
-    list.style.cssText = 'overflow:auto;padding:6px 8px;flex:1';
+    // The opaque background is NOT decoration. A scrollable div gets promoted to
+    // its own compositing layer, and text drawn on a layer with no opaque backdrop
+    // falls back from subpixel to greyscale antialiasing — which is why some author
+    // names rendered thin and washed out while others looked normal. Painting the
+    // panel colour onto this element too keeps every row on an opaque surface.
+    list.style.cssText = 'overflow:auto;padding:6px 8px;flex:1;background:#15171c';
     authors.forEach(a => {
       const id = 'slam-sw-' + a.author.replace(/[^A-Za-z0-9_.]/g, '');
       const row = document.createElement('label');
@@ -348,7 +353,11 @@
       cb.checked = (a.harvested || 0) > 0;
       const txt = document.createElement('span');
       txt.style.cssText = 'flex:1;display:flex;justify-content:space-between;gap:10px';
-      txt.innerHTML = '<span>@' + a.author + (a.harvested ? '' : ' <span style="color:#8a6">(singles only)</span>') + '</span>' +
+      // Colour stated on the name itself rather than inherited: this panel lives
+      // inside Instagram's document, so nothing here relies on what IG's own CSS
+      // does or doesn't do to an unstyled <span>.
+      txt.innerHTML = '<span style="color:#f2f4f8;font-weight:600">@' + a.author +
+        (a.harvested ? '' : ' <span style="color:#9ac06a;font-weight:400">(singles only)</span>') + '</span>' +
         '<span style="color:#8b919b;font-size:11px">' + (a.harvested || 0) + ' rows · ' + ((a.last || '').slice(0, 10) || '—') + '</span>';
       row.appendChild(cb); row.appendChild(txt);
       list.appendChild(row);
