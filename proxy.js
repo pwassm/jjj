@@ -307,7 +307,15 @@ const PORT = 8081;
 // (dev0684) START now reports the V8 heap cap and flags a previous run that ended
 //   without an exit line (killed hard / aborted). restart-proxy.ps1 appends stderr
 //   to proxy.err.log so a fatal message outlives the console window.
-const PROXY_BUILD = 'dev0777';
+// (dev0794) INCREMENTAL HARVEST. /ig/known hands the Tampermonkey harvester every
+//   shortcode ig.json already holds, so a re-harvest early-stops the moment it
+//   recognises the grid (IG profiles are newest-first) instead of scrolling to the
+//   bottom; /ig/authors is the sweep queue (per-author row counts + staleness);
+//   /ig/vpn-status + /ig/vpn-switch let the sweep rotate exits between authors the
+//   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
+//   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
+//   ffdown/ folder itself is untouched, nothing reads it now).
+const PROXY_BUILD = 'dev0794';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -3354,38 +3362,59 @@ function igAdd(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
-// (dev0462) /ig/ffdown — read the project-local ffdown/*.txt saved IG pages so the
-// I-screen can BULK-import them (parse → ig.json) instead of pasting one by one.
-// Each file is a Firefox "Save Page As ▸ Text" dump named "Instagram <label>.txt",
-// where <label> is the user's curated note (e.g. a scientific name). We only LIST +
-// READ here; the client reuses the same core.js parser as the manual paste path.
-const FFDOWN_DIR = path.join(__dirname, 'ffdown');
-function igFfdown(req, res, origin) {
+// (dev0794) /ig/known — every shortcode ig.json already holds, so the harvester can
+// stop scrolling the moment it recognises the grid. THE WHOLE POINT: an IG profile
+// grid is strictly newest-first, so once the harvester has seen a run of ids we
+// already have, everything below is older and already harvested. A re-harvest then
+// costs ~3 scroll steps instead of the 500-step walk to the bottom.
+//
+// We return EVERY id, not just this author's: a post can already be in ig.json
+// under a different author label (a 'w'-added single, an old ffdown import, a
+// mislabelled harvest), and it is still not new. ~23.6k ids ≈ 300KB over loopback.
+// `authorCount` is informational — what the panel shows for this profile.
+function igKnown(req, res, origin) {
+  readJson(req, 64 * 1024).then(payload => {
+    const author = String(payload.author || '').trim().toLowerCase();
+    const rows = igStoreLoad();
+    const ids = [];
+    let authorCount = 0;
+    for (const r of rows) {
+      if (!r || !r.id) continue;
+      ids.push(r.id);
+      if (author && String(r.author || '').trim().toLowerCase() === author) authorCount++;
+    }
+    console.log('[ig/known] @' + (author || '?') + ' → ' + authorCount + ' of ' + ids.length + ' known ids');
+    sendJson(res, 200, { ok: true, author, ids, authorCount, total: ids.length }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
+// (dev0794) /ig/authors — the sweep queue: who has been harvested, how much, and
+// how stale they are. `harvested` deliberately excludes staged:false rows (ffdown
+// imports and 'w'-added clipboard singles): an author we only ever grabbed ONE
+// post from is not a profile we want to auto-sweep, so the client leaves those
+// unchecked. Sorted stalest-first so a partial run does the most good.
+function igAuthors(req, res, origin) {
   try {
-    if (!fs.existsSync(FFDOWN_DIR)) { sendJson(res, 200, { ok: true, files: [] }, origin); return; }
-    const names = fs.readdirSync(FFDOWN_DIR).filter(n => /\.txt$/i.test(n));
-    const files = names.map(name => {
-      let text = '', ctime = '';
-      try {
-        const fp = path.join(FFDOWN_DIR, name);
-        text = fs.readFileSync(fp, 'utf8');
-        // (dev0474) Surface the .txt file's CREATION time so the I-screen can stamp
-        // it as the row's Harvested date (sort to the most-recently-saved text).
-        // birthtime = NTFS creation time on Windows; fall back to ctime/mtime.
-        const st = fs.statSync(fp);
-        const ms = st.birthtimeMs || st.ctimeMs || st.mtimeMs || Date.now();
-        // (dev0476) Emit LOCAL wall-clock time, not UTC. toISOString() returned UTC,
-        // so a .txt saved at 07:23 local surfaced as "13:23" in the Harvested column
-        // (the user's "I don't see where those times come from"). Format the local
-        // YYYY-MM-DD HH:MM:SS by hand so it matches what the file explorer shows.
-        const d = new Date(ms), pad = n => String(n).padStart(2, '0');
-        ctime = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' '
-              + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-      } catch (_) {}
-      return { name, text, ctime };
-    });
-    console.log('[ig/ffdown] read ' + files.length + ' .txt file(s) from ffdown/');
-    sendJson(res, 200, { ok: true, files }, origin);
+    req.resume();                                   // POST with no body — drain it
+    const rows = igStoreLoad();
+    const by = new Map();
+    for (const r of rows) {
+      if (!r) continue;
+      const name = String(r.author || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      let e = by.get(key);
+      if (!e) { e = { author: name, rows: 0, harvested: 0, last: '', newest: '' }; by.set(key, e); }
+      e.rows++;
+      if (r.staged !== false) e.harvested++;
+      const added = String(r.DateAdded || '');
+      if (added > e.last) e.last = added;
+      const posted = String(r.DatePosted || '');
+      if (posted > e.newest) e.newest = posted;
+    }
+    const authors = [...by.values()].sort((a, b) => (a.last || '').localeCompare(b.last || ''));
+    console.log('[ig/authors] ' + authors.length + ' authors from ' + rows.length + ' rows');
+    sendJson(res, 200, { ok: true, authors, total: rows.length }, origin);
   } catch (err) { sendJson(res, 500, { ok: false, error: err.message }, origin); }
 }
 
@@ -5486,7 +5515,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake',
-      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igffdown', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist']) }));
+      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist']) }));
     return;
   }
 
@@ -5581,7 +5610,16 @@ http.createServer((req, res) => {
     if (action === 'add')      { igAdd(req, res, origin);      return; }
     if (action === 'save')     { igSave(req, res, origin);     return; }
     if (action === 'save-delta') { igSaveDelta(req, res, origin); return; }  // (dev0697) per-batch upsert
-    if (action === 'ffdown')   { igFfdown(req, res, origin);   return; }
+    if (action === 'known')    { igKnown(req, res, origin);    return; }   // (dev0794) early-stop harvest
+    if (action === 'authors')  { igAuthors(req, res, origin);  return; }   // (dev0794) sweep queue
+    // (dev0794) VPN passthrough for the Tampermonkey harvester. /vpn/switch is
+    // locked to LOCAL_ORIGINS (the :8080/:8082 app), and the sweep runs on
+    // instagram.com — so it reaches the SAME switcher through the /ig/ namespace,
+    // which is already open to the userscript's privileged GM_xmlhttpRequest.
+    // Nothing is widened: a normal page still can't POST here (the JSON preflight
+    // gets no Allow-Origin back), and these two just delegate to the /vpn/ handlers.
+    if (action === 'vpn-status') { req.resume(); vpnStatus(res, origin); return; }
+    if (action === 'vpn-switch') { req.resume(); vpnSwitch(res, origin); return; }
     if (action === 'download') { igDownload(req, res, origin); return; }
     if (action === 'probe-res') { igProbeRes(req, res, origin); return; }  // (dev0698) metadata-only res probe
     if (action === 'meta')     { igMeta(req, res, origin);     return; }   // (dev0671) local ig.json read

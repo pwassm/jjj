@@ -73,9 +73,10 @@ wiki_media/
 # (dev0693) Pinterest pin media downloaded by proxy /pinterest/download, foldered by
 # pinner exactly like ig_media/ (dev0689). Local only — never committed, never served.
 pin_media/
-# (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts, bulk-imported into
-# ig.json via the I-screen "📁 Import ffdown" button. Local source data — keep out
-# of the public site (handles/comments + clutter).
+# (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts. (dev0794) The importer
+# that read these — the I-screen "📁 Import ffdown" button and the /ig/ffdown route —
+# has been removed, so nothing reads the folder now; it stays ignored because the
+# files are still on disk and are local source data (handles/comments + clutter).
 ffdown/
 
 # (dev0447) Bulk staging store — Flickr jpgs / YT / Vimeo / direct video links,

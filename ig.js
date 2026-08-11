@@ -1150,14 +1150,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option><option value="__retired__">🪦 retired (dead posts)</option></select>
-        <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links or ffdown imports)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
+        <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links, plus the legacy ffdown imports from before that button was retired)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
         <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
         <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option><option value="stuck">⤓ gave up (3 tries)</option></select>
         <select id="igRes" title="(dev0690) Real resolution OF THE FILES ON DISK, measured at download time — not the enrich metadata, which for a carousel video is IG’s logged-out page figure and is capped at 720 wide. ‘below 1080’ = the narrowest item of the post is under 1080px wide (the backfill queue). ‘not measured’ = downloaded before dev0690, so nothing knows what it is without re-downloading. ‘at best’ = a re-download was tried and IG had nothing better, so stop offering it. (dev0698) The 🔬 options are the video probe’s verdicts — see the 🔬 Probe video res button."><option value="all">all res</option><option value="low">📐 below 1080 wide</option><option value="ok">1080+ wide</option><option value="unmeasured">not measured yet</option><option value="best">already at IG’s best</option><option value="pup">🔬⬆ probe: bigger available</option><option value="pmax">🔬✔ probe: at IG’s max</option><option value="punprobed">🔬 video, not probed yet</option></select>
         <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
-        <button id="igFfdown" title="Bulk-import every ffdown/*.txt saved IG page → ig.json (author caption only, marked Unharvested, DevComment from the filename)">📁 Import ffdown</button>
         <button id="igEnrichSel" title="Enrich selected (hotkey E)">✨ Enrich sel</button>
         <button id="igAutoEnrich" title="Auto-enrich (hotkey A) — grinds the not-yet-enriched backlog 38 at a time, cookielessly, and AUTO-ROTATES the Proton VPN to a fresh US exit whenever an exit walls (same switcher as Download+rotate). No manual city picking.">🤖 Auto-enrich</button>
         <button id="igDownloadSel" title="Download selected (hotkey D)">⬇ Download sel</button>
@@ -1226,7 +1225,6 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igDrawerClose').addEventListener('click', () => closeDrawer());
     $('igPaste').addEventListener('click', () => openPasteModal(null));
     $('igAddSingle').addEventListener('click', () => addUnharvestedFromClipboard());
-    $('igFfdown').addEventListener('click', () => importFfdown());
     $('igModalCancel').addEventListener('click', () => closePasteModal());
     $('igModalApply').addEventListener('click', () => applyPaste());
     o.querySelector('#igTable thead').addEventListener('click', onHeadClick);
@@ -3464,7 +3462,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   }
 
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igProbeRes', 'igPromoteSel', 'igCreateGrid', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste', 'igFfdown'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igProbeRes', 'igPromoteSel', 'igCreateGrid', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the
@@ -3532,88 +3530,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igToast('✓ saved-text → ' + row.id + ' [' + parts.join(', ') + ']\n@' + (p.handle || '?') + ' · ' + p.comments.length + ' comments · ' + sib + ' sibling reels in ttxt', 5000);
   }
 
-  // ── Bulk import: ffdown/*.txt → ig.json (dev0471) ───────────────────────────
-  // Reuses the SAME core.js parser as the paste path (so ttxt is identical), but:
-  //   • author CAPTION only — others' comments dropped (user folds useful ones into
-  //     the .txt filename label by hand, e.g. a scientific name);
-  //   • filename "Instagram <label>.txt" → <label> → DevComment;
-  //   • rows marked staged:false / source:'ffdown' → group under "NonStaged" in the
-  //     author facet, kept out of the harvested full-reel authors;
-  //   • status:'enriched' (text already has title/author/caption) so bulk Enrich
-  //     skips them → zero yt-dlp call → zero IG wall/throttle exposure.
-  function ffdownLabel(name) {
-    return String(name || '').replace(/\.txt$/i, '').replace(/^Instagram\d*\s*/i, '').trim();
-  }
-  async function importFfdown() {
-    if (typeof _parseIgSavedText !== 'function') { igToast('IG parser not loaded — open the T screen once first', 3500); return; }
-    let files;
-    try {
-      const res = await fetch(PROXY + '/ig/ffdown', { method: 'POST' });
-      const j = await res.json();
-      if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
-      files = j.files || [];
-    } catch (e) { igToast('✗ couldn\'t read ffdown/: ' + (e && e.message) + '\n(Is proxy.js running & dev0462+?)', 4500); return; }
-    if (!files.length) { igToast('No .txt files found in ffdown/', 2800); return; }
-    if (typeof _ensureCommonWords === 'function') await _ensureCommonWords();
-
-    const byId = new Map(rows.map(r => [r.id, r]));
-    const now = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0, 19).replace('T', ' ');
-    let created = 0, updated = 0, dup = 0, skipped = 0, redated = 0;
-    for (const f of files) {
-      let p;
-      try { p = _parseIgSavedText(f.text || ''); } catch (_) { skipped++; continue; }
-      if (!p.currentId) { skipped++; continue; }
-      const label = ffdownLabel(f.name);
-      // (dev0474) The .txt file's CREATION time becomes the row's Harvested date so a
-      // Harvested sort surfaces the most-recently-saved text. Falls back to now if the
-      // proxy is pre-dev0474 (no ctime field).
-      const fileDate = f.ctime || now;
-      // (dev0473) Ignore duplicates: a re-added .txt whose post is ALREADY imported
-      // from ffdown with the SAME filename label (and has ttxt) is skipped untouched.
-      // A changed label (or a still-bare harvested row) falls through and re-applies.
-      const existing = byId.get(p.currentId);
-      if (existing && existing.source === 'ffdown' && (existing.DevComment || '') === label && existing.ttxt) {
-        // (dev0474) Retrospective: even an unchanged dup gets its Harvested date
-        // re-stamped to the .txt creation time (so old imports sort correctly too).
-        if (fileDate && existing.DateAdded !== fileDate) { existing.DateAdded = fileDate; redated++; }
-        dup++; continue;
-      }
-      const noComments = Object.assign({}, p, { comments: [] });   // author only, per request
-      const ttxt = (typeof _igTtxtHtml === 'function') ? _igTtxtHtml(noComments) : '';
-      let r = existing;
-      if (!r) {
-        const reel = p.reels.find(x => x.id === p.currentId);
-        const url = (reel && reel.url) || ('https://www.instagram.com/' + (p.handle || 'p') + '/p/' + p.currentId + '/');
-        r = { id: p.currentId, url, author: p.handle || '', status: 'enriched', DateAdded: fileDate, source: 'ffdown' };
-        rows.push(r); byId.set(r.id, r);
-        created++;
-      } else { r.DateAdded = fileDate; updated++; }   // (dev0474) re-stamp Harvested from .txt creation time
-      if (!r.author && p.handle) r.author = p.handle;
-      // (dev0476) Title = the curated filename label ("Instagram Sweetlips fish.txt"
-      // → "Sweetlips fish"), NOT _smartIgTitle(caption). The saved-text caption starts
-      // with IG UI chrome ("Verified", "More options"…), so smart-title produced the
-      // bogus "Verified" for almost every ffdown row. Smart-title is the no-label fallback.
-      if (label) r.VidTitle = label;
-      else if (!r.VidTitle && p.caption && typeof _smartIgTitle === 'function') r.VidTitle = _smartIgTitle(p.caption);
-      if (!r.VidAuthor && p.handle) r.VidAuthor = '@' + p.handle;
-      const isStub = /^<p><a [^>]*>https?:\/\/[^<]+<\/a><\/p>$/.test((r.ftext || '').trim());
-      if ((!r.ftext || isStub) && p.caption && typeof _igCaptionFtext === 'function') r.ftext = _igCaptionFtext(p.caption);
-      if (ttxt) r.ttxt = ttxt;                 // author caption + bio + sibling reel URLs (no comments)
-      if (label) r.DevComment = label;         // the curated filename note
-      r.staged = false;                        // → "NonStaged" author group
-      if (!r.source) r.source = 'ffdown';
-      if (r.status === 'new' || !r.status) r.status = 'enriched';
-    }
-    markDirty();          // (dev0697) a bulk import creates rows too — save the whole store
-    refreshAuthorOptions();
-    applyAndRender();
-    await persist(false);
-    igToast('📁 ffdown → ig.json: ' + created + ' new, ' + updated + ' updated'
-      + (dup ? ', ' + dup + ' already-imported (skipped)' : '')
-      + (redated ? ', ' + redated + ' re-dated' : '')
-      + (skipped ? ', ' + skipped + ' skipped (no reel id)' : '')
-      + '\nUnharvested · author caption only · DevComment from filename · Harvested = .txt creation time', 6500);
-  }
+  // (dev0794) REMOVED: the ffdown/*.txt bulk importer (the 📁 Import ffdown button)
+  // — no longer used. Rows already carrying source:'ffdown' stay exactly as they are
+  // and still group under "Unharvested (singles)"; the ffdown/ folder is left on disk,
+  // simply unread. The proxy route /ig/ffdown went with it.
 
   // ── Persist back to ig.json (proxy /ig/save) ────────────────────────────────
   async function persist(announce) {
