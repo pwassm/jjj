@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.0
+// @version      2.1
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Harvest an Instagram profile's reel/post URLs into ig.json via the local SLAM proxy. "🆕 New only" asks the proxy which shortcodes ig.json already holds and stops scrolling as soon as it recognises the grid — a re-harvest costs ~3 scroll steps instead of 500. "🔁 Sweep all" runs that across every harvested author unattended, rotating the Proton VPN between authors the way Download+rotate does. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.0';
+  const VER = '2.1';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -171,6 +171,23 @@
     return false;
   }
 
+  // A profile with no tiles is one of several very different things, and an
+  // unattended sweep must not treat them alike: a handle that was deleted or
+  // renamed since the last harvest is ONE author to skip, while a rate limit is a
+  // reason to stop touching Instagram entirely. Read the page and say which.
+  function classifyBlock() {
+    const t = ((document.body && document.body.innerText) || '').slice(0, 4000);
+    if (/wait a few minutes|try again later/i.test(t))
+      return { kind: 'wall', msg: 'Instagram is rate-limiting ("please wait a few minutes")' };
+    if (/isn'?t available|page not found|removed this content/i.test(t))
+      return { kind: 'gone', msg: 'profile not available — deleted, renamed, or blocked' };
+    if (/account is private/i.test(t))
+      return { kind: 'private', msg: 'account is private' };
+    if (/log in to instagram|sign up|create new account/i.test(t))
+      return { kind: 'login', msg: 'logged out — Instagram is showing a login wall' };
+    return { kind: 'empty', msg: 'no posts rendered' };
+  }
+
   // newOnly=false → the original walk to the bottom (jump-scroll, fastest).
   // newOnly=true  → gentle scroll from the top, stopping at a run of known posts.
   // Returns { author, found, added, dup, stop } or throws.
@@ -194,7 +211,12 @@
       }
     }
 
-    if (!await waitForTiles(20000)) throw new Error('no posts rendered on @' + author + ' — login wall, rate limit, or a private/empty profile');
+    if (!await waitForTiles(20000)) {
+      const b = classifyBlock();
+      const err = new Error('@' + author + ': ' + b.msg);
+      err.kind = b.kind;      // the sweep skips 'gone'/'private'/'empty', stops on 'wall'/'login'
+      throw err;
+    }
 
     const found = new Map(), pinned = new Set();
     let iter = 0, stale = 0, lastCount = -1, lastH = -1, stop = 'bottom';
@@ -379,22 +401,25 @@
 
     running = true; setBusy(true);
     try {
-      let res;
+      let res, fatal = null;
       try {
         res = await harvestProfile(null, true);
       } catch (e) {
-        res = { author: want, found: 0, added: 0, dup: 0, stop: 'error', error: (e && e.message) || String(e) };
-        // A profile that renders nothing is the signature of a wall — pressing on
-        // through 20 more authors would only deepen it.
-        if (/no posts|login wall|rate limit/i.test(res.error)) {
-          s.done.push(res); s.i++; sweepWrite(s);
-          sweepStop('@' + want + ': ' + res.error);
-          return;
-        }
+        const kind = (e && e.kind) || 'error';
+        res = { author: want, found: 0, added: 0, dup: 0, stop: kind, error: (e && e.message) || String(e) };
+        // A rate limit or a login wall is SYSTEMIC — every remaining author would
+        // hit the same thing, and grinding through 26 more only deepens it.
+        // Everything else (deleted/renamed handle, gone private, a network blip)
+        // is about this one author: skip it and carry on.
+        if (kind === 'wall' || kind === 'login') fatal = res.error;
       }
       if (abortFlag) { sweepStop('stopped by you'); return; }
       s = sweepRead(); if (!s) return;                 // Stop pressed mid-harvest
+      s.fails = res.error ? (s.fails || 0) + 1 : 0;
       s.done.push(res); s.i++; sweepWrite(s);
+      if (fatal) { sweepStop(fatal); return; }
+      // Three misses in a row is systemic after all, whatever each one claimed.
+      if (s.fails >= 3) { sweepStop('3 authors in a row failed — last was ' + res.error); return; }
 
       if (s.i >= s.queue.length) { localStorage.removeItem(SWEEP_KEY); setMsg('✓ sweep finished\n' + sweepSummary(s)); return; }
       const next = s.queue[s.i];
