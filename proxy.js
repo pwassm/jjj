@@ -3967,6 +3967,7 @@ function coverWebpToJpg(tmpDir) {
   });
 }
 function igDownload(req, res, origin) {
+  const dlT0 = Date.now();   // (dev0799) wall clock for the per-exit speed ledger
   readJson(req, 64 * 1024).then(payload => {
     const url = String(payload.url || '');
     const id = String(payload.id || '').replace(/[^A-Za-z0-9_-]/g, '');
@@ -4134,6 +4135,11 @@ function igDownload(req, res, origin) {
     // read it" must not be recorded as "this post has one item".
     let postItemsHint = null;
     function sendDl(body) {
+      // (dev0799) Time + bytes for the exit that served this row. Here for the same
+      // reason as everything else in this function: it is the one place all seven
+      // success paths pass through. `kept` downloads landed nothing new, so they are
+      // not a throughput sample and are skipped.
+      if (!body.kept) vpnSpeedRecord(body.files, (Date.now() - dlT0) / 1000, true);
       // (dev0690) Attach the measured facts publish() just produced. Doing it here rather
       // than at each of the seven call sites means no success path can forget to.
       if (body.postItems == null && postItemsHint != null) body.postItems = postItemsHint;
@@ -4198,6 +4204,7 @@ function igDownload(req, res, origin) {
     if (!photoPost) postItemsHint = 1;   // (dev0690) a /reel/ or /tv/ post is one item
     function fail502(err) {
       rmTmp();
+      vpnSpeedRecord(null, 0, false);   // (dev0799) counts against this exit in the ranking
       console.warn('[ig/download] ' + id + ' failed: ' + (err || 'yt-dlp failed'));
       // (dev0683) black-box note — every path this row tried is already in the
       // error text; keep the tail of it so proxy.log alone shows WHY it failed.
@@ -5290,6 +5297,195 @@ function vpnReadState() {
   catch (_) { return null; }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// (dev0799) PER-EXIT DOWNLOAD-SPEED LEDGER — measure the 18 exits, then bias
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// The exits are NOT equally fast, and the difference is large enough to see by
+// eye across a grind (the observation that prompted this). Picking uniformly at
+// random therefore spends about half the night on exits that are known-slow.
+//
+// WHAT IS MEASURED. Bytes landed ÷ wall-clock seconds of the /ig/download request,
+// attributed to whichever config was installed at the time. Bytes/sec — not
+// seconds/post — because post sizes vary by an order of magnitude (a 6-item video
+// carousel vs one photo), and rotation hands each exit a random mix, so a
+// throughput figure is the only one comparable between them. It is a THROUGHPUT
+// figure, not a pure line-speed one: it includes yt-dlp's metadata round-trips, so
+// an exit that IG is being slow to answer scores low too — which is exactly the
+// behaviour that matters here.
+//
+// HOW IT IS USED (vpnPickServer). Recency first: never an exit used in the last
+// half-rotation, same rule the .ps1 uses on its own. Then:
+//   • any eligible exit with < VPN_SPEED_MIN_N samples wins outright, so every
+//     server gets measured before any bias applies;
+//   • VPN_SPEED_EXPLORE of switches ignore the ranking entirely, so an exit that
+//     had one bad night can climb back out (and a fast one that has since gone
+//     bad gets caught);
+//   • otherwise the slow outliers are dropped (below VPN_SPEED_FLOOR × the median)
+//     and the survivors are drawn weighted by rate², which favours the fast ones
+//     without ever pinning the grind to a single exit.
+// Stats age: once an exit has VPN_SPEED_AGE_SECS of measured time its totals are
+// halved, so the average tracks how a server behaves NOW rather than in June.
+//
+// The ledger lives in ig_media/ (gitignored) — it is measurement data about this
+// machine's connection, has no place in the repo, and is disposable: delete it and
+// the picker simply re-measures.
+const VPN_CONF_DIR    = path.join(__dirname, 'vpn-configs');
+const VPN_SPEED_FILE  = path.join(IG_MEDIA_DIR, 'vpn-speed.json');
+const VPN_NEXT_FILE   = path.join(path.dirname(VPN_STATE), 'next.json');
+const VPN_SPEED_MIN_N = 4;       // samples before an exit is rated at all
+const VPN_SPEED_AGE   = 5400;    // measured seconds per exit before its totals halve
+const VPN_SPEED_EXPLORE = 0.15;  // share of switches that ignore the ranking
+const VPN_SPEED_FLOOR = 0.6;     // drop exits slower than this × the median
+
+let _vpnSpeed = null, _vpnSpeedTimer = null;
+function vpnSpeed() {
+  if (_vpnSpeed) return _vpnSpeed;
+  try { _vpnSpeed = JSON.parse(fs.readFileSync(VPN_SPEED_FILE, 'utf8')); } catch (_) { _vpnSpeed = null; }
+  if (!_vpnSpeed || typeof _vpnSpeed !== 'object' || !_vpnSpeed.servers) _vpnSpeed = { updated: '', servers: {} };
+  return _vpnSpeed;
+}
+function vpnSpeedWrite() {
+  _vpnSpeedTimer = null;
+  const sp = vpnSpeed();
+  sp.updated = new Date().toISOString();
+  // The point of the file is to be READ. `servers` is the raw ledger the picker uses;
+  // `ranking` is the same data already divided out and sorted, so opening it answers
+  // "which exits are fast?" without arithmetic. Rebuilt on every write, never read back.
+  sp.ranking = vpnSpeedRank().map((r, i) => ({
+    pos: r.rate == null ? null : i + 1, server: r.server,
+    mbps: +(r.bps / 1048576).toFixed(2), samples: r.n,
+    fails: r.fails, switchFails: r.switchFails,
+    rated: r.rate != null, lastAt: r.lastAt
+  }));
+  sp.note = 'bytes/sec per Proton exit, measured on /ig/download. Rated after '
+    + VPN_SPEED_MIN_N + ' samples; totals halve past ' + VPN_SPEED_AGE + 's of measured time '
+    + 'so the average tracks recent behaviour. Delete this file to re-measure from scratch.';
+  try {
+    fs.mkdirSync(IG_MEDIA_DIR, { recursive: true });
+    fs.writeFileSync(VPN_SPEED_FILE, JSON.stringify(sp, null, 2));
+  } catch (e) { plog('vpn/speed: write failed: ' + ((e && e.message) || e)); }
+}
+// Coalesced write — a batch lands ~18 samples in a few minutes and this file is
+// ~2KB, but there is no reason to write it 18 times.
+function vpnSpeedDirty() {
+  if (_vpnSpeedTimer) return;
+  _vpnSpeedTimer = setTimeout(vpnSpeedWrite, 4000);
+  if (_vpnSpeedTimer.unref) _vpnSpeedTimer.unref();
+}
+function vpnSpeedEntry(name) {
+  const sp = vpnSpeed();
+  return sp.servers[name] || (sp.servers[name] = { n: 0, bytes: 0, secs: 0, fails: 0, switchFails: 0, lastBps: 0, lastAt: '' });
+}
+// One /ig/download's verdict. `files` are ig_media-relative paths (publish()'s
+// output); a download that landed nothing is recorded as a failure, which counts
+// against the exit in the ranking without polluting the throughput average.
+function vpnSpeedRecord(files, secs, ok) {
+  try {
+    if (!vpnTunnelUp()) return;                      // home IP says nothing about any exit
+    const st = vpnReadState();
+    const name = st && st.lastFile; if (!name) return;
+    const s = vpnSpeedEntry(name);
+    if (ok) {
+      let bytes = 0;
+      for (const f of files || []) { try { bytes += fs.statSync(path.join(IG_MEDIA_DIR, f)).size; } catch (_) {} }
+      if (!(bytes > 0) || !(secs > 0)) return;       // nothing measurable — not a sample
+      s.n++; s.bytes += bytes; s.secs += secs; s.lastBps = Math.round(bytes / secs);
+    } else {
+      s.fails++;
+    }
+    s.lastAt = new Date().toISOString();
+    if (s.secs > VPN_SPEED_AGE) {                    // age out, keeping the ratio
+      s.n = Math.max(1, Math.round(s.n / 2)); s.bytes = Math.round(s.bytes / 2);
+      s.secs = Math.round(s.secs / 2); s.fails = Math.round(s.fails / 2);
+    }
+    vpnSpeedDirty();
+  } catch (_) {}
+}
+// A config that wouldn't come up at all (vpn-rotate.ps1 wrote ok:false). Not a
+// speed fact, but the picker should stop reaching for it just the same.
+function vpnSpeedNoteSwitchFail(name) {
+  if (!name) return;
+  try { const s = vpnSpeedEntry(name); s.switchFails = (s.switchFails || 0) + 1; s.lastAt = new Date().toISOString(); vpnSpeedDirty(); }
+  catch (_) {}
+}
+function vpnConfigs() {
+  try { return fs.readdirSync(VPN_CONF_DIR).filter(f => /\.conf$/i.test(f)).sort(); }
+  catch (_) { return []; }
+}
+// bytes/sec, discounted by this exit's failure rate so an exit that is fast when
+// it works but fails half the time doesn't outrank a steady one. null = unrated.
+function vpnSpeedRate(name) {
+  const s = vpnSpeed().servers[name];
+  if (!s || s.n < VPN_SPEED_MIN_N || !(s.secs > 0)) return null;
+  const tries = s.n + (s.fails || 0) + (s.switchFails || 0);
+  return (s.bytes / s.secs) * (tries ? s.n / tries : 1);
+}
+function vpnSpeedRank() {
+  return vpnConfigs().map(name => {
+    const s = vpnSpeed().servers[name] || {};
+    return { server: name.replace(/\.conf$/i, ''), file: name, rate: vpnSpeedRate(name),
+             bps: s.secs > 0 ? Math.round(s.bytes / s.secs) : 0,
+             n: s.n || 0, fails: s.fails || 0, switchFails: s.switchFails || 0, lastAt: s.lastAt || '' };
+  }).sort((a, b) => (b.rate || -1) - (a.rate || -1));
+}
+const _mb = bps => (bps / 1048576).toFixed(2) + ' MB/s';
+// THE pick. Returns a .conf filename, or null to let vpn-rotate.ps1 choose on its
+// own (which it still does, recency-aware, whenever no request is waiting).
+function vpnPickServer() {
+  const configs = vpnConfigs();
+  if (configs.length < 2) return null;
+  const st = vpnReadState();
+  let recent = (st && Array.isArray(st.recent)) ? st.recent : (st && st.lastFile ? [st.lastFile] : []);
+  // Same window the .ps1 applies: rest half the folder between reuses.
+  const win = Math.min(recent.length, Math.min(configs.length - 1, Math.floor(configs.length / 2)));
+  const avoid = recent.slice(0, win);
+  let pool = configs.filter(c => avoid.indexOf(c) < 0);
+  if (!pool.length) pool = configs.filter(c => c !== (st && st.lastFile));
+  if (!pool.length) pool = configs;
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  // 1. Measure everything before biasing anything.
+  const unrated = pool.filter(c => vpnSpeedRate(c) === null);
+  if (unrated.length) { const c = pick(unrated); plog(`vpn/pick ${c} (unrated — sampling it)`); return c; }
+  // 2. Keep exploring a little, forever: yesterday's ranking is not today's.
+  if (Math.random() < VPN_SPEED_EXPLORE) { const c = pick(pool); plog(`vpn/pick ${c} (exploration ${Math.round(VPN_SPEED_EXPLORE * 100)}%)`); return c; }
+  // 3. Drop the slow tail, then draw weighted by rate².
+  const rates = pool.map(vpnSpeedRate).sort((a, b) => a - b);
+  const med = rates.length % 2 ? rates[(rates.length - 1) / 2]
+            : (rates[rates.length / 2 - 1] + rates[rates.length / 2]) / 2;
+  const keep = pool.filter(c => vpnSpeedRate(c) >= med * VPN_SPEED_FLOOR);
+  const from = keep.length ? keep : pool;
+  const w = from.map(c => Math.pow(vpnSpeedRate(c), 2));
+  const total = w.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total, chosen = from[from.length - 1];
+  for (let i = 0; i < from.length; i++) { r -= w[i]; if (r <= 0) { chosen = from[i]; break; } }
+  plog(`vpn/pick ${chosen} (${_mb(vpnSpeedRate(chosen))} rated; ${from.length} of ${pool.length} eligible kept, `
+     + `${pool.length - from.length} below ${_mb(med * VPN_SPEED_FLOOR)} floor)`);
+  return chosen;
+}
+// Hand the pick to vpn-rotate.ps1. It goes through a FILE, not an argument,
+// because the switch is fired via `schtasks /run` (whose args are fixed at
+// registration) — that is what keeps rotation UAC-free for overnight grinds.
+// One-shot: the .ps1 deletes it as it reads it.
+function vpnRequestServer(name) {
+  if (!name) return null;
+  try {
+    fs.mkdirSync(path.dirname(VPN_NEXT_FILE), { recursive: true });
+    fs.writeFileSync(VPN_NEXT_FILE, JSON.stringify({ server: name, at: new Date().toISOString(), by: 'proxy speed-rank' }));
+    return name;
+  } catch (e) { plog('vpn/next: write failed: ' + ((e && e.message) || e)); return null; }
+}
+// What /vpn/switch reports back about the exit it landed on, so the I screen can
+// show whether this is a fast one without opening the ledger.
+function vpnSpeedFor(file) {
+  if (!file) return null;
+  const rank = vpnSpeedRank(), i = rank.findIndex(r => r.file === file);
+  if (i < 0) return null;
+  const r = rank[i];
+  return { bps: r.bps, mbps: +(r.bps / 1048576).toFixed(2), n: r.n, fails: r.fails,
+           rank: r.rate == null ? null : i + 1, of: rank.length };
+}
+
 // Tunnel-up test that doesn't depend on the adapter's friendly name: Proton's
 // WireGuard configs hand the client a 10.2.x.x address, so any local IPv4 in
 // 10.2.0.0/16 means a Proton tunnel is live. The 'proton_active' adapter name
@@ -5327,6 +5523,10 @@ function vpnStatus(res, origin) {
 function vpnSwitch(res, origin) {
   const before = vpnReadState();
   const beforeAt = (before && before.at) || '';
+  // (dev0799) Name the exit BEFORE firing, biased by the measured ledger. A null
+  // pick (no configs, or the file couldn't be written) is not an error — the .ps1
+  // falls back to its own recency-aware random exactly as before.
+  const wanted = vpnRequestServer(vpnPickServer());
 
   // Fire the rotation. Prefer the no-UAC scheduled task; if it isn't registered
   // (schtasks /run exits non-zero), fall back to launching the script, which
@@ -5351,8 +5551,12 @@ function vpnSwitch(res, origin) {
     const cur = vpnReadState();
     const changed = cur && cur.at && cur.at !== beforeAt;
     if (changed || Date.now() - t0 > 40000) {
+      // (dev0799) An exit that wouldn't come up is a fact about that config — record it
+      // so the picker stops reaching for a dead server every few rotations.
+      if (changed && cur && cur.ok === false) vpnSpeedNoteSwitchFail(cur.lastFile);
       sendJson(res, 200, Object.assign(
-        { ok: true, via, switched: !!changed }, vpnStateOut(cur || before)), origin);
+        { ok: true, via, switched: !!changed, wanted: wanted || null,
+          speed: vpnSpeedFor((cur || before || {}).lastFile) }, vpnStateOut(cur || before)), origin);
       return;
     }
     setTimeout(poll, 1200);
@@ -5556,11 +5760,25 @@ http.createServer((req, res) => {
   // vpn-rotate.ps1 (+ the ProtonVpnRotate scheduled task); this just reports
   // the state vpn-rotate.ps1 writes and kicks a switch.
   //   GET  /vpn/status → { tunnelUp, server, ip, city, country, at }
+  //   GET  /vpn/speed  → (dev0799) the per-exit speed ledger, ranked fastest first
   //   POST /vpn/switch → runs the rotation, waits for the new exit, returns it
   if (req.url.startsWith('/vpn/')) {
     const origin = req.headers.origin || '';
     const action = req.url.slice('/vpn/'.length).split('?')[0];
     if (action === 'status') { vpnStatus(res, origin); return; }
+    // (dev0799) The measured ledger, fastest first — the "comparisons" readout.
+    // Same data as ig_media/vpn-speed.json, ranked and in MB/s.
+    if (action === 'speed') {
+      const rank = vpnSpeedRank().map((r, i) => ({
+        pos: r.rate == null ? null : i + 1, server: r.server, mbps: +(r.bps / 1048576).toFixed(2),
+        samples: r.n, fails: r.fails, switchFails: r.switchFails,
+        rated: r.rate != null, lastAt: r.lastAt
+      }));
+      sendJson(res, 200, { ok: true, file: VPN_SPEED_FILE, minSamples: VPN_SPEED_MIN_N,
+        explore: VPN_SPEED_EXPLORE, floor: VPN_SPEED_FLOOR, current: vpnSpeedFor((vpnReadState() || {}).lastFile),
+        servers: rank }, origin);
+      return;
+    }
     if (action === 'switch' || action === 'stop') {
       if (!LOCAL_ORIGINS.has(origin)) {
         console.warn(`[vpn 403] origin="${origin || '(none)'}" not in allowlist`);

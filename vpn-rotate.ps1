@@ -99,6 +99,19 @@ if (Test-Path $StateFile) {
     try { $prevState = Get-Content $StateFile -Raw | ConvertFrom-Json } catch {}
 }
 $lastName = if ($prevState) { $prevState.lastFile } else { $null }
+# (dev0799) An exit REQUESTED by the app (proxy.js writes next.json, biased by the
+# measured per-exit speed ledger in ig_media\vpn-speed.json). It comes through a file
+# rather than a parameter because the switch is fired with `schtasks /run`, whose
+# arguments are fixed when the task is registered — that is what keeps rotation
+# UAC-free. One-shot: consumed and deleted here, so a stale request can never pin the
+# grind to one exit, and this script's own recency-aware random still runs whenever
+# no request is waiting.
+$NextFile  = Join-Path $WorkDir 'next.json'
+$requested = $null
+if (Test-Path $NextFile) {
+    try { $requested = (Get-Content $NextFile -Raw | ConvertFrom-Json).server } catch {}
+    Remove-Item $NextFile -Force -ErrorAction SilentlyContinue
+}
 $recent   = @()
 if ($prevState -and $prevState.recent) { $recent = @($prevState.recent | Where-Object { $_ }) }
 # Older state.json files predate `recent` — seed it from lastFile so the very first
@@ -127,7 +140,13 @@ if ($configs.Count -eq 0) {
 
 # --- choose the next config -----------------------------------------------------
 $skipped = 0
-if ($Mode -eq 'cycle') {
+$askedFor = $null
+if ($requested) { $askedFor = @($configs | Where-Object { $_.Name -eq $requested }) | Select-Object -First 1 }
+if ($askedFor) {
+    $chosen = $askedFor
+    Log ("app requested -> {0}   (speed-ranked pick; {1} US servers available)" -f $chosen.Name, $configs.Count)
+}
+elseif ($Mode -eq 'cycle') {
     $idx = 0
     if ($lastName) {
         $prev = [Array]::IndexOf(($configs.Name), $lastName)
@@ -152,8 +171,10 @@ else {
     $chosen = $pool | Get-Random
 }
 
-Log ("switching -> {0}   (mode={1}, {2} US servers available{3})" -f $chosen.Name, $Mode, $configs.Count,
-     $(if ($skipped) { ", {0} recently-used excluded, {1} eligible" -f $skipped, $pool.Count } else { '' }))
+if (-not $askedFor) {
+    Log ("switching -> {0}   (mode={1}, {2} US servers available{3})" -f $chosen.Name, $Mode, $configs.Count,
+         $(if ($skipped) { ", {0} recently-used excluded, {1} eligible" -f $skipped, $pool.Count } else { '' }))
+}
 
 # Always write state.json at the end of EVERY run (success or fail) with a fresh
 # `at` and an `ok` flag, so the proxy/I-screen see the result immediately instead

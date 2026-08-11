@@ -90,8 +90,14 @@
     const left = grind.remain();
     const all = rows.reduce((n, r) => n + (isReady(r) ? 1 : 0), 0);
     const n = x => x.toLocaleString();   // 4,187 — four-figure backlogs are the normal case
+    // (dev0799) The second number is the one that confused: "2,002 still to download ·
+    // 2,524 undownloaded overall" doesn't say WHY they differ. They differ because the
+    // current filters hide grindable rows — so say exactly that, and show the DIFFERENCE
+    // (the hidden ones) rather than a second total the reader has to subtract.
     return `\n⬇ ${n(grind.files)} file(s) / ${n(grind.posts)} post(s)  ·  ⏱ ${fmtDur(secs)} elapsed`
-      + `\n📥 ${n(left)} still to download` + (all !== left ? `  ·  ${n(all)} undownloaded overall` : '')
+      + (all !== left
+          ? `\n📥 ${n(left)} left in this view  ·  ${n(all - left)} more hidden by filters`
+          : `\n📥 ${n(left)} still to download`)
       + (per && left ? `\n⏳ ~${fmtDur(per * left)} left at this rate (${per < 60 ? per.toFixed(1) + 's' : fmtDur(per)}/post)` : '');
   }
   let embedStamped = 0, embedNoVerdict = 0;   // (dev0675) download-time embed verdicts this run
@@ -967,6 +973,17 @@
     }
     return (sw && sw.tunnelUp) ? sw : null;
   }
+
+  // (dev0799) The proxy's measured verdict on the exit we just landed on — bytes/sec
+  // averaged over that exit's downloads, and where it sits among the 18. Absent on an
+  // exit with too few samples yet (or an older proxy), in which case nothing is shown
+  // rather than a made-up number. The ledger itself is ig_media/vpn-speed.json; the
+  // whole ranking is at http://127.0.0.1:8081/vpn/speed.
+  const vpnSpeedNote = sw => {
+    const s = sw && sw.speed;
+    if (!s || !s.mbps) return '';
+    return `  (${s.mbps} MB/s${s.rank ? `, #${s.rank} of ${s.of}` : ' — still sampling'})`;
+  };
 
   // ── CSS (scoped under #igOverlay, injected once) ────────────────────────────
   function injectCss() {
@@ -2437,7 +2454,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     autoSwitches++;
     enrichFailed.clear();
     await vpnRefresh(false);
-    igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}`, 3000);
+    igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}${vpnSpeedNote(sw)}`, 3000);
     renderAuto();
     return true;
   }
@@ -3201,7 +3218,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (!(vpnStatus && vpnStatus.tunnelUp)) {
       igBatchShow('🔀 bringing up a Proton VPN exit before batch 1…');
       const sw0 = await vpnEnsureUp('bringing up the first exit');
-      if (sw0) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}`, 3000); }
+      if (sw0) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}${vpnSpeedNote(sw0)}`, 3000); }
       else {
         busy = false; setBatchUi(false); igBatchHide();
         igStickyShow('⏹ Stopped before downloading — no VPN exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.');
@@ -3218,7 +3235,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const swB = await vpnEnsureUp('rotating off the last-walled exit');
       if (swB) {
         switches++; noteWalledExit('');
-        igToast(`🟢 rotated off ${burned} (it walled the last run)\n→ ${swB.server || swB.ip || '?'}`, 3600);
+        igToast(`🟢 rotated off ${burned} (it walled the last run)\n→ ${swB.server || swB.ip || '?'}${vpnSpeedNote(swB)}`, 3600);
       } else {
         busy = false; setBatchUi(false); igBatchHide();
         igStickyShow(`⏹ Stopped before downloading — the last run walled on ${burned} and no fresh exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.`);
@@ -3321,7 +3338,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       busy = true; setBatchUi(true);
       igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…`);
       const sw = await vpnEnsureUp(`switching after batch ${batches}`);
-      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}\n${scoreboard()}`, 3600); }
+      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}${vpnSpeedNote(sw)}\n${scoreboard()}`, 3600); }
       else {
         // Never download on the home IP — the user wants everything through a VPN.
         endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
@@ -3354,7 +3371,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + (totalOk ? `  (${fmtRate(perPost)} per post)` : '')
       + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
       // (dev0797) …and what is LEFT, with the projection this run's own rate implies.
-      + `\n📥 ${leftHere} still to download in this view` + (leftAll !== leftHere ? `  ·  ${leftAll} undownloaded in ig.json overall` : '')
+      + `\n📥 ${leftHere.toLocaleString()} still to download in this view`
+      + (leftAll !== leftHere ? `  ·  ${(leftAll - leftHere).toLocaleString()} more hidden by the current filters` : '')
       + (totalOk && leftHere ? `\n⏳ ~${fmtDur(perPost * leftHere)} more if this run's rate holds` : '')
       // (dev0688) Two new facts the old report couldn't state, both of which used to
       // masquerade as "batch downloaded 0 — check the VPN".
