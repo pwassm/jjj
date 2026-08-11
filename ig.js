@@ -58,7 +58,10 @@
   // "⬆ 0 bigger" from the start. dev0691 only drew the line once a row had actually won,
   // which made "nothing has come back bigger yet" look identical to "the feature isn't
   // there" — the whole point is to watch the number, including while it is still 0.
-  // Stays true between batches so the rotate loop's "batch N" panel keeps it too.
+  // (dev0797) …but ONLY for a RE-FETCH run. "⬆ 0 bigger this batch" on a plain new-download
+  // grind was answering a question nobody asked: a post being downloaded for the first time
+  // has no earlier file to beat, so the number is 0 by construction and never moves. runBatch
+  // now arms this only when the batch actually contains needsFullRes rows.
   let resGainActive = false;
   // "this batch", not "this run": runBatch clears these tallies on every call, and a
   // Download+rotate grind calls it once per 18-row batch. The TOTAL is the cross-batch
@@ -2048,7 +2051,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const cookieSoFar = () => cookieUsed
       ? `🍪 Firefox cookies used on ${cookieUsed} so far`
       : `🍪 cookieless so far — your IG login is not used`;
-    if (isDl) resGainActive = true;   // (dev0692) scoreboard on, from 0, for the whole run
+    // (dev0692) scoreboard on, from 0 — (dev0797) but only when this batch is re-fetching
+    // rows that ALREADY have a file on disk. A batch of first-time downloads can't win a
+    // resolution it never had, so the line is noise there.
+    resGainActive = isDl && ids.some(id => { const r = rowById(id); return r && r.needsFullRes; });
     igBatchShow(`${label}…\n${posture}\n0/${total}\n${cookieSoFar()}`);
     // (dev0683) What this batch was handed, and what state those rows were in. If a
     // grind stops at "batch downloaded 0", this line says whether the batch was 18
@@ -3145,6 +3151,25 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0664) elapsed clock for the grind — every toast reports time since start.
     const t0 = Date.now();
     const elapsed = () => fmtDur((Date.now() - t0) / 1000);
+    // (dev0797) THE scoreboard every grind toast/panel now carries, per request: what this
+    // run has downloaded, how long it has been going, how much is left, and — at the rate
+    // this run is actually achieving — how long the rest would take.
+    //   `remainHere` is what the grind will actually work through: isReady over the CURRENT
+    // VIEW, which is exactly what readyIds() keeps handing the loop, so the projection ends
+    // when the run ends. `remainAll()` is every undownloaded row in ig.json; it differs only
+    // when a filter is on, and is shown alongside so a filtered run can't read as "4,000 left
+    // in the whole store" when it will stop at 40.
+    //   The rate is per POST (not per file) because the remaining counts are rows.
+    const remainAll = () => rows.reduce((n, r) => n + (isReady(r) ? 1 : 0), 0);
+    const perPostSecs = () => (totalOk ? ((Date.now() - t0) / 1000) / totalOk : 0);
+    const fmtRate = s => (s < 60 ? s.toFixed(1) + 's' : fmtDur(s));
+    function scoreboard(remainHere) {
+      const all = remainAll(), pp = perPostSecs();
+      const out = [`⬇ ${totalItems} file(s) / ${totalOk} post(s) this run  ·  ⏱ ${elapsed()} elapsed`,
+        `📥 ${remainHere} still to download` + (all !== remainHere ? `  ·  ${all} undownloaded in ig.json overall` : '')];
+      if (pp && remainHere) out.push(`⏳ ~${fmtDur(pp * remainHere)} left at this rate (${fmtRate(pp)}/post)`);
+      return out.join('\n');
+    }
     // (dev0653) A prior Stop left batchAbort=true; clear it here or the outer
     // `while (!batchAbort)` loop (and vpnEnsureUp's own !batchAbort guard) would
     // be skipped on the very first check → an instant "0 downloaded, 0 switches".
@@ -3244,7 +3269,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
             exit: curExitName() || '?' });
           igToast(`⚠ Batch ${batches} downloaded 0 — this exit looks walled.\n🔀 rotating to a fresh exit and retrying (walled exit ${zeroBatches} of ${WALL_ROTATE_CAP} tolerated)…`, 4600);
           busy = true; setBatchUi(true);
-          igBatchShow(`🔀 exit walled — switching Proton VPN, then retrying…\n${totalOk} downloaded so far  ·  ${elapsed()} elapsed`);
+          igBatchShow(`🔀 exit walled — switching Proton VPN, then retrying…\n${scoreboard(readyIds().length)}`);
           const swW = await vpnEnsureUp(`wall-rotate after batch ${batches}`);
           if (swW) { switches++; await sleep(1500); continue; }
           endMsg = `⏹ Stopped — batch ${batches} downloaded 0 and no fresh VPN exit would come up (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
@@ -3257,19 +3282,20 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // burned-exit note, since the exit we're on demonstrably works.
       zeroBatches = 0; noteWalledExit('');
       const remain = readyIds().length;
-      // auto-dismissing success toast: cumulative + most recent (the user's ask)
-      igToast(`✓ Batch ${batches}: ${okThis} post(s), ${batchItems} file(s)  ·  ${totalOk} posts / ${totalItems} files total  ·  ${elapsed()} elapsed`
+      // auto-dismissing success toast: this batch, then the run scoreboard (dev0797)
+      igToast(`✓ Batch ${batches}: ${okThis} post(s), ${batchItems} file(s)\n`
+        + scoreboard(remain)
         // (dev0688) Retirements are progress, so they belong in the running readout —
         // otherwise a batch that retired 3 dead posts and downloaded 2 just looks slow.
         + (lastBatchDead ? `\n🪦 ${lastBatchDead} retired (gone / restricted) — won't be offered again` : '')
         + (lastDlName ? `\nlast: ${lastDlName}` : '')
-        + (remain ? `\n${remain} still to go — 🔀 switching VPN…` : ''), 4200);
+        + (remain ? `\n🔀 switching VPN…` : ''), 5200);
       if (!remain) { endMsg = `✓ Done — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}; nothing left to download.`; break; }
       // switch exits before the next batch
       busy = true; setBatchUi(true);
-      igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${totalOk} downloaded so far  ·  ${elapsed()} elapsed`);
+      igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…\n${scoreboard(remain)}`);
       const sw = await vpnEnsureUp(`switching after batch ${batches}`);
-      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}\n${totalOk} downloaded  ·  ${elapsed()} elapsed`, 3000); }
+      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}\n${scoreboard(remain)}`, 3600); }
       else {
         // Never download on the home IP — the user wants everything through a VPN.
         endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
@@ -3290,11 +3316,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       proxy: await diagProxyAlive(),
       msg: (endMsg || '').replace(/\s+/g, ' ').slice(0, 200)
     });
+    const leftHere = view.filter(isReady).length, leftAll = remainAll();
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
       + `\n\nTOTAL: ${totalOk} post(s) — ${totalItems} file(s) — in ${elapsed()}`
-      + (totalOk ? `  (${fmtDur(((Date.now() - t0) / 1000) / totalOk)} per post)` : '')
+      + (totalOk ? `  (${fmtRate(perPostSecs())} per post)` : '')
       + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
+      // (dev0797) …and what is LEFT, with the projection this run's own rate implies.
+      + `\n📥 ${leftHere} still to download in this view` + (leftAll !== leftHere ? `  ·  ${leftAll} undownloaded in ig.json overall` : '')
+      + (totalOk && leftHere ? `\n⏳ ~${fmtDur(perPostSecs() * leftHere)} more if this run's rate holds` : '')
       // (dev0688) Two new facts the old report couldn't state, both of which used to
       // masquerade as "batch downloaded 0 — check the VPN".
       + (deadThisRun.size ? `\n🪦 ${deadThisRun.size} retired as permanently unavailable (gone / audience-restricted) — never offered again  ·  Status ▸ 🪦 retired to see them` : '')

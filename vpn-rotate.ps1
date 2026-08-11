@@ -7,8 +7,16 @@
 # current tunnel and brings up a different one, giving the downloader a fresh IP.
 #
 # Modes:
-#   -Mode random   pick a random config, never the same one twice in a row (default)
+#   -Mode random   pick a random config, never one that was used RECENTLY (default)
 #   -Mode cycle    walk the folder in sorted order, one server per run
+#
+# (dev0797) "random" used to exclude only the config used LAST, so with 18 servers a
+# grind could land back on the exit it had just left after a single rotation — which is
+# exactly the exit IG most recently saw traffic from (and, when a batch walls, the one
+# that walled). It now keeps a recency list in state.json and excludes the last
+# COUNT/2 servers used, so an exit gets ~9 rotations of rest before it can come round
+# again. If the folder shrinks (or so many are excluded that nothing is left) the
+# window narrows automatically rather than failing to pick.
 #
 # The .conf files hold PRIVATE KEYS -> vpn-configs\ is gitignored, never committed.
 
@@ -83,10 +91,25 @@ if (-not $wg) {
     Start-Sleep 4; exit 1
 }
 
+# --- read the previous state ONCE (last choice + recency list) -------------------
+# Read before -Stop so a Drop-VPN doesn't erase the recency list: the servers used in
+# the last hour are still the recently-used ones when the next rotation happens.
+$prevState = $null
+if (Test-Path $StateFile) {
+    try { $prevState = Get-Content $StateFile -Raw | ConvertFrom-Json } catch {}
+}
+$lastName = if ($prevState) { $prevState.lastFile } else { $null }
+$recent   = @()
+if ($prevState -and $prevState.recent) { $recent = @($prevState.recent | Where-Object { $_ }) }
+# Older state.json files predate `recent` — seed it from lastFile so the very first
+# run after this upgrade still refuses the exit it is sitting on.
+if ($recent.Count -eq 0 -and $lastName) { $recent = @($lastName) }
+$RECENT_KEEP = 40   # how much history state.json carries (the window is a slice of it)
+
 # --- -Stop: tear down the tunnel and hand control back to the Proton tray --------
 if ($Stop) {
     $r = Wg @('/uninstalltunnelservice', $TunName)
-    @{ lastFile = ''; at = (Get-Date -Format o); ip = $null; city = ''; country = ''; ok = $false; stopped = $true } |
+    @{ lastFile = ''; at = (Get-Date -Format o); ip = $null; city = ''; country = ''; ok = $false; stopped = $true; recent = $recent } |
         ConvertTo-Json | Set-Content -Path $StateFile
     Log ("STOPPED  proton_active removed (exit {0}). The Proton tray app now controls the VPN." -f $r.code)
     exit 0
@@ -102,13 +125,8 @@ if ($configs.Count -eq 0) {
     Start-Sleep 5; exit 1
 }
 
-# --- read last choice -----------------------------------------------------------
-$lastName = $null
-if (Test-Path $StateFile) {
-    try { $lastName = (Get-Content $StateFile -Raw | ConvertFrom-Json).lastFile } catch {}
-}
-
 # --- choose the next config -----------------------------------------------------
+$skipped = 0
 if ($Mode -eq 'cycle') {
     $idx = 0
     if ($lastName) {
@@ -117,21 +135,36 @@ if ($Mode -eq 'cycle') {
     }
     $chosen = $configs[$idx]
 }
-else {  # random, avoid an immediate repeat
-    $pool = if ($configs.Count -gt 1 -and $lastName) {
-        @($configs | Where-Object { $_.Name -ne $lastName })
-    } else { $configs }
+else {
+    # random, refusing anything used recently. Start with half the folder excluded and
+    # narrow the window until something survives, so a shrunken/renamed config folder
+    # degrades to "avoid the last one" and finally to "anything" instead of crashing.
+    $window = [math]::Min($recent.Count, [math]::Min($configs.Count - 1, [math]::Floor($configs.Count / 2)))
+    $pool = @()
+    while ($window -gt 0) {
+        $avoid = @($recent | Select-Object -First $window)
+        $pool  = @($configs | Where-Object { $avoid -notcontains $_.Name })
+        if ($pool.Count -gt 0) { break }
+        $window--
+    }
+    if ($pool.Count -eq 0) { $pool = $configs; $window = 0 }
+    $skipped = $window
     $chosen = $pool | Get-Random
 }
 
-Log ("switching -> {0}   (mode={1}, {2} US servers available)" -f $chosen.Name, $Mode, $configs.Count)
+Log ("switching -> {0}   (mode={1}, {2} US servers available{3})" -f $chosen.Name, $Mode, $configs.Count,
+     $(if ($skipped) { ", {0} recently-used excluded, {1} eligible" -f $skipped, $pool.Count } else { '' }))
 
 # Always write state.json at the end of EVERY run (success or fail) with a fresh
 # `at` and an `ok` flag, so the proxy/I-screen see the result immediately instead
 # of waiting out the switch timeout. `ok:$false` leaves no proton_active adapter,
 # so the UI reads it as VPN OFF and the downloader retries/stops.
+# `recent` is written on FAILURE too: a server that wouldn't hand shake is the last
+# thing we want offered again on the very next rotation.
 function WriteState([bool]$ok, $ip, $city, $country) {
-    @{ lastFile = $chosen.Name; at = (Get-Date -Format o); ip = $ip; city = $city; country = $country; ok = $ok } |
+    $hist = @($chosen.Name) + @($recent | Where-Object { $_ -ne $chosen.Name })
+    $hist = @($hist | Select-Object -First $RECENT_KEEP)
+    @{ lastFile = $chosen.Name; at = (Get-Date -Format o); ip = $ip; city = $city; country = $country; ok = $ok; recent = $hist } |
         ConvertTo-Json | Set-Content -Path $StateFile
 }
 
