@@ -15,6 +15,12 @@
 //                 video than the file on disk — from yt-dlp's format ladder, with no
 //                 media downloaded. Verdicts land on the row (Res ▸ 🔬 filters, ⬆ in
 //                 W×H); queueing the winners for a re-fetch is a separate confirm.
+//   • Finished  → (dev0802) ✅ Finish queue ENDS the ⤓ re-fetch backlog: one last
+//                 full-res pass over the whole queue (VPN-rotating), then every row
+//                 still queued is stamped "already at IG's best" and leaves the queue
+//                 for good — whatever that pass managed. Alt-click closes it without
+//                 downloading. Ongoing downloads are untouched by this: they always
+//                 take IG's maximum and still re-queue themselves if they land short.
 // All edits persist back to ig.json via the proxy /ig/save endpoint.
 //
 // Hotkey: I (dev-only, blocked in user mode like T). Esc closes the detail drawer,
@@ -1210,6 +1216,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igRotate" title="Grind the downloadable backlog in this view: downloads the top 18 not-yet-downloaded rows (new OR enriched — 'new' rows enrich inline first, no quality lost), then switches the Proton VPN to a fresh US exit and repeats with the next 18. Cookieless. Success toasts report the running total + most recent; stops when none remain, a batch downloads nothing, or you press Stop. Filter the view first (e.g. Status → new/enriched) to control what it grinds.">⬇⟳ Download + rotate VPN</button>
         <button id="igProbeRes" title="(dev0698) Ask Instagram, for EVERY downloaded video row in this view, whether it still has a bigger version than the file on disk. Metadata only — yt-dlp reads the format ladder (-J, --skip-download) without downloading a byte, and the top rung is exactly what a re-download would land. Nothing is fetched, overwritten or re-downloaded by this button. Verdicts are stamped on the rows (Res ▸ 🔬 filters, ⬆ marker in W×H); at the end you are ASKED whether to queue the upgradeable ones for a re-fetch. Already-probed rows are skipped — Alt-click to re-probe them.">🔬 Probe video res</button>
         <button id="igProbePhoto" title="(dev0801) Empty the ⤓ re-fetch queue of rows that were never upgradeable. For every row in this view marked ⤓ needs full-res, reads Instagram's own logged-out page and compares the ORIGINAL size IG declares against the pixels already on disk. Declared ≤ held → the row is concluded 'already at IG's best' and drops out of the queue for good. Declared bigger → left queued, nothing changed. METADATA ONLY: one page read per post, cookieless, no media fetched and nothing on disk touched. Video rows can't be settled this way (IG's logged-out page caps video at 720) — they are counted and handed to 🔬 Probe video res at the end. Already-audited rows are skipped — Alt-click to re-ask.">🔎 Probe re-fetch</button>
+        <button id="igFinishQueue" title="(dev0802) FINISH the ⤓ re-fetch queue and be done with it, in one click. STEP 1 — one last full-res download pass over EVERY queued row in ig.json (not just this view), in batches, rotating the Proton VPN between them; nothing is ever overwritten with something worse. STEP 2 — whatever step 1 managed, every row still queued is stamped 'already at IG's best' and drops out of the queue for good, so the ⤓ queue ends EMPTY. Alt-click SKIPS step 1 and just closes the queue. Future downloads are unaffected: every new download still takes IG's maximum, and a NEW row that lands short still re-queues itself.">✅ Finish queue</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
@@ -1263,6 +1270,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igProbeRes').addEventListener('click', e => probeVideoRes(!!e.altKey));
     // (dev0801) Same Alt convention: plain click asks only about rows with no verdict.
     $('igProbePhoto').addEventListener('click', e => probeRefetchQueue(!!e.altKey));
+    // (dev0802) Alt means something different here from the two buttons above:
+    // plain click = try the download THEN close the queue, Alt = close without trying.
+    $('igFinishQueue').addEventListener('click', e => finishRefetchQueue(!!e.altKey));
     $('igPromoteSel').addEventListener('click', () => batchPromote());
     $('igCreateGrid').addEventListener('click', () => createGridFromView());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
@@ -1752,7 +1762,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           // Saying "came back worse" for all of them was wrong the moment igMeasure.js
           // started inferring it for reels.
           // (dev0698) …and a fourth: 'probe', the strongest of the lot for video.
-          r.resBestVia === 'probe'
+          // (dev0802) …and a fifth, which is the only one that is NOT a verdict: the
+          // user ended the backlog with ✅ Finish queue. Say that plainly rather than
+          // letting it read as evidence.
+          r.resBestVia === 'closeout'
+            ? 'NOT a measurement — you closed the ⤓ re-fetch queue (✅ Finish queue), accepting the files on disk as final. A later download that lands 1080+ clears this by itself.'
+            : r.resBestVia === 'probe'
             ? 'Proven from yt-dlp’s format ladder (🔬 Probe video res): the biggest rung Instagram will serve is no bigger than the video already on disk. No media was downloaded to establish this.'
             : r.resBestVia === 'audit'
             ? `Proven from IG’s own metadata (🔎 Probe re-fetch / igResAudit.js${r.resBestDecl ? ' — the post declares ' + esc(r.resBestDecl).replace('w/', 'px over ').replace('i', ' item(s)') : ''}): the originals IG holds are no bigger than the files on disk. No media was re-downloaded to establish this.`
@@ -3450,12 +3465,21 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     return false;
   }
 
-  async function batchDownloadRotating() {
+  // (dev0802) `queueOnly` re-points the grind at the ⤓ re-fetch queue — the WHOLE
+  // queue in ig.json, not the current view — instead of the not-yet-downloaded
+  // backlog. Everything else (batching, VPN rotation, the wall/proxy handling, the
+  // report) is identical, which is the point: ✅ Finish queue gets the grind that
+  // already works rather than a second, thinner copy of it.
+  async function batchDownloadRotating(queueOnly) {
     if (busy) return;
-    const readyIds = () => view.filter(isReady).map(r => r.id);   // top-of-view first
+    const isSrc = queueOnly ? (r => r && r.needsFullRes && !r.dead) : isReady;
+    const srcRows = () => (queueOnly ? rows : view);
+    const readyIds = () => srcRows().filter(isSrc).map(r => r.id);   // top-of-view first
     let todo = readyIds();
     if (!todo.length) {
-      igToast('No downloadable rows in this view.\nNeed rows that are new or enriched (not yet downloaded).\nClear filters, or set Status → new / enriched, then run this.', 4600);
+      igToast(queueOnly
+        ? '⤓ The re-fetch queue is already empty — nothing to re-fetch.'
+        : 'No downloadable rows in this view.\nNeed rows that are new or enriched (not yet downloaded).\nClear filters, or set Status → new / enriched, then run this.', 4600);
       return;
     }
 
@@ -3466,7 +3490,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const nNew = todo.filter(id => (rowById(id) || {}).status === 'new').length;
     const auths = [...new Set(todo.map(id => rowById(id)?.author).filter(Boolean))];
     const authLine = auths.length <= 4 ? auths.map(a => '@' + a).join(', ') : (auths.length + ' authors');
-    if (!confirm(
+    // (dev0802) ✅ Finish queue does its own asking (it has a step 2 to explain), so
+    // this second confirm is suppressed there.
+    if (!queueOnly && !confirm(
         `Download ${todo.length} item(s) from ${authLine}`
       + (nNew ? `  (${nNew} not-yet-enriched — they enrich inline first)` : '') + `\n`
       + `in batches of ${ROTATE_CHUNK} downloaded FILES (max ${ROTATE_ROW_CAP} posts), switching the Proton VPN to a fresh US exit between batches.\n`
@@ -3544,7 +3570,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     });
     while (!batchAbort) {
       todo = readyIds();
-      if (!todo.length) { endMsg = `✓ Done — no more downloadable rows in this view.`; break; }
+      if (!todo.length) { endMsg = queueOnly
+        ? `✓ Done — the ⤓ re-fetch queue is empty.`
+        : `✓ Done — no more downloadable rows in this view.`; break; }
       // (dev0690) Rows are the CAP, items are the budget: the batch ends at whichever
       // comes first. For single-item reels the two coincide (18 rows = 18 files, exactly
       // the old cadence); for carousels it now switches exits every ~18 files instead of
@@ -3633,7 +3661,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0798) Read the scoreboard's closing numbers, THEN retire it — the final report
     // below is the one place that needs them after the run has ended.
     const leftHere = readyIds().length;
-    const leftAll = rows.reduce((n, r) => n + (isReady(r) ? 1 : 0), 0);
+    const leftAll = rows.reduce((n, r) => n + (isSrc(r) ? 1 : 0), 0);
     const perPost = totalOk ? ((Date.now() - t0) / 1000) / totalOk : 0;
     grind = null;
     busy = false; setBatchUi(false); igBatchHide();
@@ -3642,19 +3670,23 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0683) The end of the story, next to the proxy's verdict at the same moment.
     // Whatever the report says, `proxy` here is the ground truth about the proxy.
     diag('GRIND-END', {
-      totalOk, batches, switches, elapsed: elapsed(), exit,
-      leftInView: view.filter(isReady).length,
+      totalOk, batches, switches, elapsed: elapsed(), exit, queueOnly: queueOnly ? 1 : 0,
+      leftInView: srcRows().filter(isSrc).length,
       dead: deadThisRun.size, proxyPauses: _proxyPauses, unsaved: dirty ? 1 : 0,
       proxy: await diagProxyAlive(),
       msg: (endMsg || '').replace(/\s+/g, ' ').slice(0, 200)
     });
+    // (dev0802) In queue mode the caller (✅ Finish queue) still has a step 2 to run and
+    // reports both halves together, so it takes these numbers rather than this sticky.
+    if (queueOnly) return { totalOk, totalItems, batches, switches, elapsed: elapsed(), endMsg, left: leftHere };
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
       + `\n\nTOTAL: ${totalOk} post(s) — ${totalItems} file(s) — in ${elapsed()}`
       + (totalOk ? `  (${fmtRate(perPost)} per post)` : '')
       + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
       // (dev0797) …and what is LEFT, with the projection this run's own rate implies.
-      + `\n📥 ${leftHere.toLocaleString()} still to download in this view`
+      + (queueOnly ? `\n⤓ ${leftHere.toLocaleString()} still in the re-fetch queue`
+                   : `\n📥 ${leftHere.toLocaleString()} still to download in this view`)
       + (leftAll !== leftHere ? `  ·  ${(leftAll - leftHere).toLocaleString()} more hidden by the current filters` : '')
       + (totalOk && leftHere ? `\n⏳ ~${fmtDur(perPost * leftHere)} more if this run's rate holds` : '')
       // (dev0688) Two new facts the old report couldn't state, both of which used to
@@ -3664,6 +3696,114 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + (dirty ? `\n⚠ ig.json has UNSAVED changes — press 💾 Save` : '')
       // (dev0683) Point at the evidence while the run is still fresh.
       + `\n\n🩺 Every step of this run was recorded — 🛠 Fix ▸ 🩺 Diagnostics (and proxy.log).`);
+  }
+
+  // ══ (dev0802) ✅ FINISH THE ⤓ RE-FETCH QUEUE ═══════════════════════════════
+  // The backlog's END, in one click. Everything else in this file asks a careful
+  // question about the past; this answers the only one that is left — "are we done
+  // with it?" — with yes.
+  //
+  // STEP 1 tries once more, using the grind that already works (batchDownloadRotating
+  // in queueOnly mode). STEP 2 then closes the queue REGARDLESS of what step 1
+  // managed, including if it managed nothing: every row still queued is stamped
+  // resBest so it drops out of the ⤓ queue, the 📐 below-1080 filter and every
+  // re-offer for good.
+  //
+  // What this deliberately does NOT touch is ongoing work — which is the thing that
+  // actually matters. A NEW download still takes IG's maximum, still re-queues itself
+  // if it lands via the embed thumbnail or misses carousel items, and dev0690's guard
+  // still refuses to overwrite anything with something worse. Retiring the backlog
+  // costs none of that. And a later download that does land ≥ RES_TARGET_W clears the
+  // stamp by itself (see downloadRow: dlMinW >= RES_TARGET_W → delete resBest), so
+  // this is a floor, not a ceiling.
+  function closeoutQueue() {
+    const now = (typeof isoNow === 'function') ? isoNow()
+              : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // refetchStuck rows gave up after REFETCH_TRIES and are queue residue too — they
+    // are why the ⤓ counts and the "stuck" filter never quite reached zero.
+    const hit = rows.filter(r => (r.needsFullRes || r.refetchStuck) && !r.dead);
+    const byA = {};
+    let proven = 0;
+    for (const r of hit) {
+      if (r.probeUp || r.auditUp) proven++;      // let go with the evidence acknowledged
+      r.resBest = 1;
+      r.resBestVia = 'closeout';                 // NOT a measurement — see the drawer text
+      r.resBestAt = now;
+      delete r.needsFullRes; delete r.fullResTries; delete r.refetchStuck;
+      delete r.probeUp; delete r.auditUp;        // drop the ⬆ nag markers with the queue
+      byA[r.author || '?'] = (byA[r.author || '?'] || 0) + 1;
+      markDirty(r.id);
+    }
+    return { n: hit.length, proven, byA };
+  }
+
+  async function finishRefetchQueue(closeOnly) {
+    if (busy) return;
+    const queued = rows.filter(r => r.needsFullRes && !r.dead).length;
+    const stuck = rows.filter(r => r.refetchStuck && !r.needsFullRes && !r.dead).length;
+    const total = queued + stuck;
+    if (!total) {
+      igToast('✅ Nothing to finish — the ⤓ re-fetch queue is already empty.\nNew downloads still take IG’s maximum and still re-queue themselves if they land short.', 4600);
+      return;
+    }
+    const upNow = rows.filter(r => (r.probeUp || r.auditUp) && !r.dead).length;
+    const head = `✅ ${closeOnly ? 'CLOSE' : 'Finish'} the ⤓ re-fetch queue — ${total} row(s)`
+      + (stuck ? `  (${queued} queued + ${stuck} that gave up after ${REFETCH_TRIES} tries)` : '');
+    if (!confirm(closeOnly
+      ? head + `\n\n`
+        + `Alt-click = STEP 2 ONLY. No download is attempted, nothing on disk changes.\n\n`
+        + `Every one of these rows is stamped “already at IG’s best” and leaves the ⤓\n`
+        + `queue for good — it also empties Res ▸ 📐 below 1080.\n`
+        + (upNow ? `\n⚠ ${upNow} of them are PROVEN to have a bigger copy on Instagram.\n   They are being let go too. Answer Cancel and plain-click instead if you\n   want the download attempt first.\n` : '')
+        + `\nFuture downloads are NOT affected: they always take IG’s maximum, and a new\n`
+        + `row that lands short still re-queues itself. This retires the backlog only.`
+      : head + `\n\n`
+        + `STEP 1 — one last full-res pass over all ${total}, in batches, rotating the\n`
+        + `   Proton VPN between them. Cookieless. Nothing is ever overwritten with\n`
+        + `   something worse. Takes a while; press ⏹ Stop whenever you like.\n`
+        + (upNow ? `   ${upNow} row(s) are proven to have a bigger copy — those are the real targets.\n` : '')
+        + `\nSTEP 2 — then, whatever step 1 managed (including nothing at all, or you\n`
+        + `   stopping it), every row still queued is stamped “already at IG’s best”\n`
+        + `   and leaves the ⤓ queue for good. The queue ends EMPTY either way.\n\n`
+        + `Future downloads are NOT affected: they always take IG’s maximum, and a new\n`
+        + `row that lands short still re-queues itself. This retires the backlog only.\n\n`
+        + `(Alt-click this button to skip step 1 and just close the queue.)`)) return;
+
+    let dl = null;
+    if (!closeOnly) dl = await batchDownloadRotating(true);
+
+    const c = closeoutQueue();
+    if (dirty) await persist(false);
+    applyAndRender();
+    diag('QUEUE-CLOSEOUT', { before: total, refetched: dl ? dl.totalOk : 0,
+      files: dl ? dl.totalItems : 0, closed: c.n, proven: c.proven, closeOnly: closeOnly ? 1 : 0 });
+
+    const byAuthor = Object.entries(c.byA).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(e => '@' + e[0] + '=' + e[1]).join('  ');
+    const lines = ['✅ Re-fetch queue finished', '', 'STEP 1 — one last full-res pass'];
+    if (closeOnly) lines.push('   skipped (you Alt-clicked) — nothing was downloaded');
+    else if (!dl) lines.push('   did not run — no VPN exit came up, or there was nothing to fetch',
+      '   Nothing was downloaded on your home IP.');
+    else {
+      lines.push(`   ${dl.totalOk} post(s) · ${dl.totalItems} file(s) re-fetched in ${dl.elapsed}`
+        + `  (${dl.batches} batch${dl.batches === 1 ? '' : 'es'}, ${dl.switches} VPN switch${dl.switches === 1 ? '' : 'es'})`);
+      if (dl.endMsg) lines.push('   ' + dl.endMsg.split('\n')[0]);
+    }
+    lines.push('', 'STEP 2 — queue closed',
+      `   ✔ ${c.n} row(s) stamped “already at IG’s best” — out of the ⤓ queue for good`);
+    if (byAuthor) lines.push('   ' + byAuthor);
+    if (c.proven) lines.push(`   (${c.proven} of them still had a bigger copy on IG — let go deliberately)`);
+    lines.push('',
+      '⤓ The re-fetch queue is now EMPTY, and so is Res ▸ 📐 below 1080.',
+      '',
+      'ONGOING DOWNLOADS ARE UNCHANGED — every new download still takes Instagram’s',
+      'maximum, still refuses to overwrite anything with something worse, and still',
+      're-queues itself if it lands short. This retired the backlog, nothing else.',
+      '',
+      'Each row records resBestVia=“closeout”, so this stays distinguishable from a',
+      'proven verdict — the drawer says so on the row.');
+    if (dirty) lines.push('', '⚠ ig.json has UNSAVED changes — press 💾 Save');
+    igStickyShow(lines.join('\n'));
   }
 
   // ── Promote → ml.json ───────────────────────────────────────────────────────
