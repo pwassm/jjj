@@ -18,9 +18,10 @@
 //   • Finished  → (dev0802) ✅ Finish queue ENDS the ⤓ re-fetch backlog: one last
 //                 full-res pass over the whole queue (VPN-rotating), then every row
 //                 still queued is stamped "already at IG's best" and leaves the queue
-//                 for good — whatever that pass managed. Alt-click closes it without
-//                 downloading. Ongoing downloads are untouched by this: they always
-//                 take IG's maximum and still re-queue themselves if they land short.
+//                 for good. Alt-click closes it without downloading; a run you ⏹ Stop
+//                 is a PAUSE and asks first (dev0803); igCloseoutUndo.js reverses a
+//                 closeout. Ongoing downloads are untouched by this: they always take
+//                 IG's maximum and still re-queue themselves if they land short.
 // All edits persist back to ig.json via the proxy /ig/save endpoint.
 //
 // Hotkey: I (dev-only, blocked in user mode like T). Esc closes the detail drawer,
@@ -1216,7 +1217,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igRotate" title="Grind the downloadable backlog in this view: downloads the top 18 not-yet-downloaded rows (new OR enriched — 'new' rows enrich inline first, no quality lost), then switches the Proton VPN to a fresh US exit and repeats with the next 18. Cookieless. Success toasts report the running total + most recent; stops when none remain, a batch downloads nothing, or you press Stop. Filter the view first (e.g. Status → new/enriched) to control what it grinds.">⬇⟳ Download + rotate VPN</button>
         <button id="igProbeRes" title="(dev0698) Ask Instagram, for EVERY downloaded video row in this view, whether it still has a bigger version than the file on disk. Metadata only — yt-dlp reads the format ladder (-J, --skip-download) without downloading a byte, and the top rung is exactly what a re-download would land. Nothing is fetched, overwritten or re-downloaded by this button. Verdicts are stamped on the rows (Res ▸ 🔬 filters, ⬆ marker in W×H); at the end you are ASKED whether to queue the upgradeable ones for a re-fetch. Already-probed rows are skipped — Alt-click to re-probe them.">🔬 Probe video res</button>
         <button id="igProbePhoto" title="(dev0801) Empty the ⤓ re-fetch queue of rows that were never upgradeable. For every row in this view marked ⤓ needs full-res, reads Instagram's own logged-out page and compares the ORIGINAL size IG declares against the pixels already on disk. Declared ≤ held → the row is concluded 'already at IG's best' and drops out of the queue for good. Declared bigger → left queued, nothing changed. METADATA ONLY: one page read per post, cookieless, no media fetched and nothing on disk touched. Video rows can't be settled this way (IG's logged-out page caps video at 720) — they are counted and handed to 🔬 Probe video res at the end. Already-audited rows are skipped — Alt-click to re-ask.">🔎 Probe re-fetch</button>
-        <button id="igFinishQueue" title="(dev0802) FINISH the ⤓ re-fetch queue and be done with it, in one click. STEP 1 — one last full-res download pass over EVERY queued row in ig.json (not just this view), in batches, rotating the Proton VPN between them; nothing is ever overwritten with something worse. STEP 2 — whatever step 1 managed, every row still queued is stamped 'already at IG's best' and drops out of the queue for good, so the ⤓ queue ends EMPTY. Alt-click SKIPS step 1 and just closes the queue. Future downloads are unaffected: every new download still takes IG's maximum, and a NEW row that lands short still re-queues itself.">✅ Finish queue</button>
+        <button id="igFinishQueue" title="(dev0802) FINISH the ⤓ re-fetch queue and be done with it, in one click. STEP 1 — one last full-res download pass over EVERY queued row in ig.json (not just this view), in batches, rotating the Proton VPN between them; nothing is ever overwritten with something worse. STEP 2 — every row still queued is then stamped 'already at IG's best' and drops out of the queue for good, so the ⤓ queue ends EMPTY. (dev0803) If you ⏹ Stop step 1, or it ends early, that is treated as a PAUSE: it asks before retiring anything, and Cancel leaves the queue intact so a later run carries on from there. Alt-click SKIPS step 1 and just closes the queue. A closeout is undoable — node igCloseoutUndo.js --apply. Future downloads are unaffected: every new download still takes IG's maximum, and a NEW row that lands short still re-queues itself.">✅ Finish queue</button>
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
@@ -1766,7 +1767,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           // user ended the backlog with ✅ Finish queue. Say that plainly rather than
           // letting it read as evidence.
           r.resBestVia === 'closeout'
-            ? 'NOT a measurement — you closed the ⤓ re-fetch queue (✅ Finish queue), accepting the files on disk as final. A later download that lands 1080+ clears this by itself.'
+            ? 'NOT a measurement — you closed the ⤓ re-fetch queue (✅ Finish queue), accepting the files on disk as final. A later download that lands 1080+ clears this by itself, and <code>node igCloseoutUndo.js --apply</code> puts every closed-out row back in the queue.'
             : r.resBestVia === 'probe'
             ? 'Proven from yt-dlp’s format ladder (🔬 Probe video res): the biggest rung Instagram will serve is no bigger than the video already on disk. No media was downloaded to establish this.'
             : r.resBestVia === 'audit'
@@ -3678,7 +3679,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     });
     // (dev0802) In queue mode the caller (✅ Finish queue) still has a step 2 to run and
     // reports both halves together, so it takes these numbers rather than this sticky.
-    if (queueOnly) return { totalOk, totalItems, batches, switches, elapsed: elapsed(), endMsg, left: leftHere };
+    // (dev0803) `stopped` is the fact the caller's step 2 hinges on: a run the USER
+    // ended is a pause, not a verdict, and must not retire what it never reached.
+    if (queueOnly) return { totalOk, totalItems, batches, switches, elapsed: elapsed(),
+      endMsg, left: leftHere, stopped: batchAbort, clean: /^✓/.test(endMsg || '') };
     igStickyShow((endMsg || `Finished — ${totalOk} downloaded.`)
       // (dev0664) final report always states the run total + wall-clock time since start.
       + `\n\nTOTAL: ${totalOk} post(s) — ${totalItems} file(s) — in ${elapsed()}`
@@ -3772,6 +3776,35 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let dl = null;
     if (!closeOnly) dl = await batchDownloadRotating(true);
 
+    // (dev0803) THE STOP IS A PAUSE. dev0802 closed the queue after ANY step 1,
+    // including one the user had deliberately interrupted 10 downloads in — which
+    // retired 157 rows that were still working their way through the grind. An early
+    // end now asks, and the safe answer keeps the queue so another pass can carry on.
+    // A run that finished on its own still closes without a question, as designed.
+    if (dl && dl.left && (dl.stopped || !dl.clean)) {
+      const why = dl.stopped ? 'You stopped the run' : 'The run ended early';
+      if (!confirm(`⏹ ${why} with ${dl.left} row(s) still in the ⤓ queue.\n\n`
+        + `${dl.totalOk} post(s) · ${dl.totalItems} file(s) were re-fetched before that — those are\n`
+        + `saved and out of the queue either way.\n\n`
+        + `Close the queue on the remaining ${dl.left} anyway?\n\n`
+        + `• OK — retire them now. They stop being offered, for good.\n`
+        + `• Cancel — LEAVE the queue alone (recommended if you meant to pause).\n`
+        + `  Press ✅ Finish queue again whenever you like; it carries on from here,\n`
+        + `  and rows already re-fetched are not repeated.`)) {
+        if (dirty) await persist(false);
+        applyAndRender();
+        diag('QUEUE-CLOSEOUT-DECLINED', { left: dl.left, refetched: dl.totalOk, stopped: dl.stopped ? 1 : 0 });
+        igStickyShow([`⏸ Paused — the ⤓ queue is untouched`, '',
+          `${dl.totalOk} post(s) · ${dl.totalItems} file(s) re-fetched in ${dl.elapsed}`
+            + `  (${dl.batches} batch${dl.batches === 1 ? '' : 'es'}, ${dl.switches} VPN switch${dl.switches === 1 ? '' : 'es'})`,
+          dl.endMsg ? dl.endMsg.split('\n')[0] : '',
+          '', `⤓ ${dl.left} row(s) are still queued and nothing was retired.`,
+          `Press ✅ Finish queue again to carry on — it resumes from here.`,
+          dirty ? '\n⚠ ig.json has UNSAVED changes — press 💾 Save' : ''].filter(Boolean).join('\n'));
+        return;
+      }
+    }
+
     const c = closeoutQueue();
     if (dirty) await persist(false);
     applyAndRender();
@@ -3801,7 +3834,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       're-queues itself if it lands short. This retired the backlog, nothing else.',
       '',
       'Each row records resBestVia=“closeout”, so this stays distinguishable from a',
-      'proven verdict — the drawer says so on the row.');
+      'proven verdict — the drawer says so on the row, and it is UNDOABLE:',
+      '   node igCloseoutUndo.js --apply     (puts exactly these rows back in the queue)');
     if (dirty) lines.push('', '⚠ ig.json has UNSAVED changes — press 💾 Save');
     igStickyShow(lines.join('\n'));
   }
