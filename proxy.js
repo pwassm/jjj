@@ -173,6 +173,11 @@ const PORT = 8081;
 // metadata via yt-dlp (r.jina.ai now login-walls Instagram et al.).
 // (dev0428) Bumped + added 'igharvest' feature: /ig/add stages harvested IG reel
 // URLs (from the Tampermonkey harvester) into ig.json, deduped by shortcode id.
+// (dev0801) /ig/probe-photo-res — the PHOTO twin of /ig/probe-res: one logged-out
+//   page read per post returns every item's DECLARED original_width/height, which for
+//   a photo IS the ceiling (igResAudit.js's finding). The I screen's 🔎 Probe re-fetch
+//   button uses it to empty the needsFullRes queue of rows that were never upgradeable.
+//   Metadata only; video items are flagged, never concluded from (dev0690 720-cap).
 // (dev0698) /ig/probe-res — the CHEAP answer to "is there a better video than the one
 //   on disk?". `yt-dlp -J --skip-download` returns the format ladder without fetching a
 //   byte; the top rung is exactly what a re-download would land, so a whole view can be
@@ -4531,6 +4536,121 @@ function igProbeRes(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// (dev0801) /ig/probe-photo-res — WHAT DOES INSTAGRAM SAY THIS POST'S ORIGINALS
+// ARE?  The PHOTO twin of /ig/probe-res, and the server half of the I screen's
+// 🔎 Probe re-fetch button. Metadata only: one page read per post, no media.
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// This is igResAudit.js's page reading, lifted behind an endpoint so the I screen
+// can run it with toasts instead of the user having to close the screen and run a
+// CLI (the script must not run with the screen open — it would be clobbered by the
+// next persist()). The reasoning it encodes is igResAudit's, unchanged:
+//
+//   A logged-out /p page declares each item's `original_width`/`original_height`.
+//   For a PHOTO that is the ceiling — verified on mimmofotosub/p/CotWRZFqxQT, where
+//   every item on disk equalled the declared original pixel for pixel, candidate[0]
+//   re-downloaded byte-identical, and forging a bigger `stp=` tier is a signed-URL
+//   403. So "IG declares no more than we hold" settles the row without a re-fetch.
+//
+//   For VIDEO it is meaningless: dev0690 established the logged-out page's
+//   video_versions are the 720-capped entries. Video items are therefore FLAGGED
+//   here and the client routes those rows to /ig/probe-res (yt-dlp's real ladder)
+//   instead of concluding anything from this reading.
+//
+// This endpoint deliberately returns only what the page DECLARED — the verdict is
+// computed client-side against the row's measured dlW/dlH/dlMinW, so the policy
+// ("what counts as at-max") lives in one readable place in ig.js rather than being
+// split across two files that could drift apart.
+//
+// Cookieless: the same Node-first / curl_cffi-if-walled surface enrich uses. The IG
+// login is never touched. A walled exit answers thin for every post, so the client
+// counts consecutive walls and stops rather than recording a false verdict for the
+// whole backlog.
+
+// One page → every item's DECLARED original size + whether that item is a video.
+// Same brace walker pickIgCarouselMedia uses, so this parses the identical array
+// the downloader walks. Returns { items:[{w,h,video}], via } or null.
+function igDeclaredItems(html) {
+  // ── carousel: `"carousel_media":[` also appears as a bare field reference, so
+  // scan every match and keep the longest array (pickIgCarouselMedia's rule).
+  const re = /"carousel_media"\s*:\s*\[/g;
+  let m, best = [];
+  while ((m = re.exec(html))) {
+    const s = matchBracketedJson(html, m.index + m[0].length - 1);
+    if (!s) continue;
+    let arr = null;
+    try { arr = JSON.parse(s); } catch (_) { continue; }
+    if (Array.isArray(arr) && arr.length > best.length) best = arr;
+  }
+  if (best.length) {
+    const items = [];
+    for (const it of best) {
+      if (!it || typeof it !== 'object') continue;
+      items.push({
+        w: +it.original_width || 0,
+        h: +it.original_height || 0,
+        video: !!(Array.isArray(it.video_versions) && it.video_versions.length)
+      });
+    }
+    if (items.length) return { items, via: 'carousel' };
+  }
+  // ── single item: one original_width/original_height pair, emitted in EITHER
+  // order (a single photo /p really does serve height-first), so match both.
+  const a = html.match(/"original_width"\s*:\s*(\d+)\s*,\s*"original_height"\s*:\s*(\d+)/);
+  const b = html.match(/"original_height"\s*:\s*(\d+)\s*,\s*"original_width"\s*:\s*(\d+)/);
+  const w = a ? +a[1] : (b ? +b[2] : 0);
+  const h = a ? +a[2] : (b ? +b[1] : 0);
+  if (w > 0 && h > 0) {
+    return { items: [{ w, h, video: /"video_versions"\s*:\s*\[\s*\{/.test(html) }], via: 'single' };
+  }
+  return null;
+}
+
+async function igProbePhotoOne(it) {
+  const id = String((it && it.id) || '').replace(/[^A-Za-z0-9_-]/g, '');
+  const url = String((it && it.url) || '');
+  if (!id) return { id: '', ok: false, error: 'id required' };
+  if (!/^https?:\/\/(www\.)?instagram\.com\//i.test(url) || url.length > 2048) {
+    return { id, ok: false, error: 'instagram.com url required' };
+  }
+  let html = '';
+  try { html = await igGetPageHtml(url, 8e6, null, igPageHasMedia); } catch (_) { html = ''; }
+  // Three distinguishable no-answers. `walled` is the one that means THE EXIT, not
+  // the post — the client's wall-cap watches it, and none of the three is cached or
+  // stamped on the row, so all of them are simply retried on a later run.
+  if (!html) return { id, ok: false, walled: 1, error: 'no page returned (walled exit, 404, or timeout)' };
+  if (!igPageHasMedia(html)) return { id, ok: false, walled: 1, error: 'thin page — logged-out media JSON missing (walled exit)' };
+  const d = igDeclaredItems(html);
+  if (!d) return { id, ok: false, error: 'page carried media but declared no original size' };
+  return { id, ok: true, items: d.items, via: d.via };
+}
+
+// POST /ig/probe-photo-res  { items:[{id,url}], jobs? } → { ok, results:[…] }
+// The CLIENT chunks, paces and decides; this runs one chunk with a small pool.
+function igProbePhotoRes(req, res, origin) {
+  readJson(req, 2 * 1024 * 1024).then(async payload => {
+    const items = Array.isArray(payload.items) ? payload.items.slice(0, 40) : [];
+    if (!items.length) { sendJson(res, 400, { ok: false, error: 'items[] required' }, origin); return; }
+    const jobs = Math.max(1, Math.min(6, +payload.jobs || 4));
+    const results = new Array(items.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(jobs, items.length) }, async () => {
+      for (;;) {
+        const k = next++;
+        if (k >= items.length) return;
+        try { results[k] = await igProbePhotoOne(items[k]); }
+        catch (e) { results[k] = { id: String((items[k] && items[k].id) || ''), ok: false, error: (e && e.message) || 'probe failed' }; }
+        await new Promise(r => setTimeout(r, 120 + Math.floor(Math.random() * 260)));
+      }
+    }));
+    const walled = results.filter(r => r && r.walled).length;
+    console.log('[ig/probe-photo-res] ' + items.length + ' page(s) read · '
+      + results.filter(r => r && r.ok).length + ' declared sizes · ' + walled + ' walled/unreadable');
+    sendJson(res, 200, { ok: true, results }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 // (dev0599) ── Flickr single-photo resolver ────────────────────────────────────
 // GET /flickr/resolve?url=<flickr photo-page OR staticflickr CDN url> (or ?id=<n>).
 // Two light, unsigned read calls — flickr.photos.getSizes (best-res URL) and
@@ -5840,6 +5960,7 @@ http.createServer((req, res) => {
     if (action === 'vpn-switch') { req.resume(); vpnSwitch(res, origin); return; }
     if (action === 'download') { igDownload(req, res, origin); return; }
     if (action === 'probe-res') { igProbeRes(req, res, origin); return; }  // (dev0698) metadata-only res probe
+    if (action === 'probe-photo-res') { igProbePhotoRes(req, res, origin); return; }  // (dev0801) page-declared originals
     if (action === 'meta')     { igMeta(req, res, origin);     return; }   // (dev0671) local ig.json read
     sendJson(res, 404, { ok: false, error: 'unknown ig action: ' + action }, origin);
     return;
