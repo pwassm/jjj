@@ -47,7 +47,9 @@
 // KEEPS LIVE VIDEO ALIVE: like movingcells.js / flycells.js it NEVER reparents or
 // rebuilds a cell — it only reassigns CSS grid-area and FLIP-animates with a
 // transform (plus opacity for the fades, scaleY for the bounce), so YT/Vimeo/mp4
-// keep playing. DESKTOP-ONLY (16 live videos + transforms is too heavy for phones).
+// keep playing. DESKTOP-FIRST (16 live videos + transforms is too heavy for phones)
+// — (dev0800) the check is now advisory: a device it turns away is offered "run it
+// anyway". See collection.js _gmHeavyGate.
 //
 // ──────────────────────────────────────────────────────────────────────────────
 // CUT-OUT INSTRUCTIONS — to remove the feature entirely, with zero grid impact:
@@ -137,7 +139,16 @@
     for (i = 0; i < RLEN; i++) if (i < n - 1 || i > SLOT_LAND) FILL_SLOTS.push(i);
   }
 
-  var DESKTOP = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  // (dev0800) The desktop check moved to collection.js's _gmHeavyGate — LIVE (not a
+  // parse-time flag), asking `any-pointer: fine` instead of the primary pointer, and
+  // offering "run it anyway" instead of just refusing. See the gate for why. This
+  // local copy is the fallback for the (impossible) case of collection.js missing.
+  function heavyOK() {
+    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('The waterfall', start);
+    var ok = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+    if (!ok) toast('Fall cells is desktop-only (too heavy for phones)', 2200);
+    return ok;
+  }
 
   // ── State ─────────────────────────────────────────────────────────────────────
   var active = false;
@@ -796,7 +807,7 @@
   function start() {
     if (active) return false;
     if (!gridOpen()) return false;
-    if (!DESKTOP) { toast('Fall cells is desktop-only (too heavy for phones)', 2200); return false; }
+    if (!heavyOK()) return false;
     var n = ringSize();
     if (!n) { toast('Fall cells needs a square 3×3-5×5, 17 or 19 grid', 2200); return false; }
     buildGeom(n);

@@ -2696,6 +2696,7 @@ window._returnToMenuFromGrid = function () {
   // path is the user-mode way out and has to as well.
   if (typeof window._gridBufPanelClose === 'function') window._gridBufPanelClose();
   if (typeof window._gmFunPanelClose === 'function') window._gmFunPanelClose();
+  if (typeof window._gmHeavyCardClose === 'function') window._gmHeavyCardClose();  // (dev0800)
   const g = document.getElementById('gridOverlay');
   if (g) g.style.display = 'none';
   const fs = document.getElementById('gridFullscreen');

@@ -26,7 +26,8 @@
 // YouTube/Vimeo/mp4 keep playing and just glide. (Inner-media zoom/COI transforms
 // live on the media element, not the cell, so they're untouched.)
 //
-// DESKTOP-ONLY by design (16 live videos + transforms is too much for phones).
+// DESKTOP-FIRST by design (16 live videos + transforms is too much for phones).
+// (dev0800) Advisory, not absolute — see collection.js _gmHeavyGate.
 //
 // ──────────────────────────────────────────────────────────────────────────────
 // CUT-OUT INSTRUCTIONS — to remove the feature entirely, with zero grid impact:
@@ -66,7 +67,14 @@
     for (i = n - 1; i >= 2; i--) add(i, 1);   // left column ↑
   }
 
-  var DESKTOP = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  // (dev0800) Shared desktop gate — live detection + a "run it anyway" card.
+  // See collection.js _gmHeavyGate. Local fallback if that file ever goes missing.
+  function heavyOK() {
+    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('The conveyor', start);
+    var ok = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+    if (!ok) toast('Moving cells is desktop-only (too heavy for phones)', 2200);
+    return ok;
+  }
 
   // ── State ────────────────────────────────────────────────────────────────────
   var running = false;
@@ -180,7 +188,7 @@
   function start() {
     if (running) return;
     if (!gridOpen()) return;
-    if (!DESKTOP) { toast('Moving cells is desktop-only (too heavy for phones)', 2200); return; }
+    if (!heavyOK()) return;
     var n = ringSize();
     if (!n) { toast('Moving cells needs a square 3×3-5×5, 17 or 19 grid', 2200); return; }
     buildGeom(n);

@@ -266,6 +266,141 @@ window._gmToggleFall = _gmToggleFall;
 window._gmStopAll = _gmStopAll;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (dev0800) THE "HEAVY MODE" GATE — desktop detection, and the viewer's override.
+//
+// All four engines used to refuse to start unless
+//     matchMedia('(hover: hover) and (pointer: fine)')
+// matched — a flag each file computed ONCE, at parse time. Two things are wrong
+// with that, and a viewer on a real desktop with a real GPU hit both:
+//
+//   1. `pointer` / `hover` describe the PRIMARY pointer only. On a Windows
+//      touchscreen desktop, an all-in-one, a 2-in-1, or any machine with a touch
+//      monitor, the browser can call TOUCH primary — so `pointer: fine` is false
+//      and a workstation reports itself as a phone. The right questions are
+//      `any-pointer: fine` / `any-hover: hover` ("is a mouse present AT ALL"),
+//      which stay true whenever a mouse or trackpad exists next to the touchscreen.
+//   2. Computed once at load, so nothing could ever change it: plug a mouse in,
+//      dock a tablet, leave DevTools device-emulation — still "phone" until reload.
+//
+// So detection is now a live function, asks the `any-*` questions, and keeps a
+// window-size fallback. And because no heuristic gets every machine right, a
+// refusal is no longer final: it raises a card offering "Run it anyway", which
+// can be remembered for this browser. The gate is a floor, not a verdict.
+// ─────────────────────────────────────────────────────────────────────────────
+var _GM_ANYWAY_KEY = 'funHeavyAnyway';
+
+function _gmPointerInfo() {
+  var mq = function (q) {
+    try { return !!(window.matchMedia && window.matchMedia(q).matches); } catch (_) { return false; }
+  };
+  var ua = navigator.userAgent || '';
+  var w = window.innerWidth || 0, h = window.innerHeight || 0;
+  return {
+    // Phones only. iPad / "Tablet" are deliberately NOT here: a modern tablet in
+    // landscape runs this fine, and the size + pointer tests below judge it.
+    uaPhone:      /Android.*Mobile|iPhone|iPod|Windows Phone/i.test(ua),
+    anyFine:      mq('(any-pointer: fine)'),     // a mouse / trackpad / stylus EXISTS
+    anyHover:     mq('(any-hover: hover)'),      // something can hover
+    anyCoarse:    mq('(any-pointer: coarse)'),   // a touchscreen exists (may be alongside a mouse)
+    primaryFine:  mq('(pointer: fine)'),         // kept for the readout — this is what used to decide
+    primaryHover: mq('(hover: hover)'),
+    w: w, h: h,
+    big: Math.max(w, h) >= 1100 && Math.min(w, h) >= 600,
+    cores: navigator.hardwareConcurrency || 0
+  };
+}
+
+// Live "can this machine be expected to carry 16 moving live videos" test.
+function _gmDesktopish() {
+  var p = _gmPointerInfo();
+  if (p.uaPhone) return false;              // a phone is a phone, whatever it claims
+  if (p.anyFine || p.anyHover) return true; // a mouse/trackpad/pen is attached → desktop
+  return p.big && !p.anyCoarse;             // touch-free and a big window → desktop that hides its pointer
+}
+
+// Session-only "yes" (the ▶ Run it anyway button). Not persisted — reloading the
+// page asks again, which is what you want for a one-off "let me see it".
+var _gmHeavySession = false;
+
+function _gmHeavyAnyway() {
+  return (typeof window.getSetting === 'function') && window.getSetting(_GM_ANYWAY_KEY) === true;
+}
+function _gmHeavyAllowed() { return _gmDesktopish() || _gmHeavySession || _gmHeavyAnyway(); }
+
+// The gate every engine calls. Returns true → start. Returns false → the card is
+// up and `run` (the engine's own start) will be called again if the viewer says yes.
+function _gmHeavyGate(label, run) {
+  if (_gmHeavyAllowed()) return true;
+  _gmHeavyCardShow(label, run);
+  return false;
+}
+
+function _gmHeavyCardClose() {
+  var el = document.getElementById('gmHeavyGate');
+  if (el) el.remove();
+  return !!el;
+}
+
+function _gmHeavyCardShow(label, run) {
+  _gmHeavyCardClose();
+  _gmFunPanelClose();                        // the card answers the panel's question — one at a time
+  var p = _gmPointerInfo();
+  var btn = 'font:inherit;padding:7px 14px;border-radius:7px;cursor:pointer;';
+  var el = document.createElement('div');
+  el.id = 'gmHeavyGate';
+  el.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);'
+    + 'z-index:100002;background:rgba(16,16,18,0.97);color:#eee;'
+    + 'border:1px solid rgba(255,255,255,0.18);border-radius:12px;padding:15px 18px;'
+    + 'min-width:400px;max-width:min(92vw,540px);'
+    + 'font:13px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;'
+    + 'box-shadow:0 8px 34px rgba(0,0,0,0.65);pointer-events:auto;';
+  el.innerHTML =
+      '<div style="font-weight:600;letter-spacing:.3px;margin-bottom:7px;">⚠ ' + label + ' is tuned for a desktop</div>'
+    + '<div style="opacity:.8;margin-bottom:11px;">It keeps up to 16 videos playing while they move, '
+    + 'which is more than a phone can carry. This browser doesn’t report a mouse, so it looks like one — '
+    + 'but that test is wrong often enough (touchscreen desktops especially) that it’s your call.</div>'
+    + '<div style="display:flex;gap:9px;flex-wrap:wrap;">'
+    + '<button id="gmHeavyGo" style="' + btn + 'background:#10402a;border:1px solid #7ddba0;color:#bff0d0;">▶ Run it anyway</button>'
+    + '<button id="gmHeavyAlways" style="' + btn + 'background:#12283f;border:1px solid #5aa9e6;color:#bfe2ff;">▶ Always on this device</button>'
+    + '<button id="gmHeavyNo" style="' + btn + 'background:transparent;border:1px solid #555;color:#bbb;">Not now</button>'
+    + '</div>'
+    + '<div style="opacity:.42;font-size:11px;margin-top:10px;">Detected — '
+    + 'mouse present: ' + (p.anyFine ? 'yes' : 'no')
+    + ' · can hover: ' + (p.anyHover ? 'yes' : 'no')
+    + ' · touchscreen: ' + (p.anyCoarse ? 'yes' : 'no')
+    + ' · primary pointer: ' + (p.primaryFine ? 'fine' : 'coarse')
+    + ' · window ' + p.w + '×' + p.h
+    + (p.cores ? ' · ' + p.cores + ' cores' : '') + '</div>';
+  document.body.appendChild(el);
+
+  function go(remember) {
+    if (remember && typeof window.setSetting === 'function') window.setSetting(_GM_ANYWAY_KEY, true);
+    _gmHeavyCardClose();
+    _gmHeavySession = true;                  // this visit, even without the setting
+    if (typeof run === 'function') run();
+    if (!_gmAnyMoving()) _gmFunPanelShow();  // it still refused for some other reason — put the menu back
+  }
+  el.querySelector('#gmHeavyGo').onclick     = function () { go(false); };
+  el.querySelector('#gmHeavyAlways').onclick = function () { go(true); };
+  el.querySelector('#gmHeavyNo').onclick     = function () { _gmHeavyCardClose(); _gmFunPanelShow(); };
+}
+
+// Undo the override (the FUN card's "forced on" note links here).
+function _gmHeavyForget() {
+  if (typeof window.setSetting === 'function') window.setSetting(_GM_ANYWAY_KEY, false);
+  _gmHeavySession = false;
+  _gmFunPanelRefresh();
+  if (typeof toast === 'function') toast('Heavy-mode override cleared — the desktop check is back on', 1800);
+}
+
+window._gmDesktopish   = _gmDesktopish;
+window._gmHeavyAllowed = _gmHeavyAllowed;
+window._gmHeavyGate    = _gmHeavyGate;
+window._gmHeavyCardClose = _gmHeavyCardClose;
+window._gmPointerInfo  = _gmPointerInfo;
+window._gmHeavyForget  = _gmHeavyForget;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (dev0705) THE FUN WINDOW — F is now "Fun", not "Fall".
 //
 // There are two fun modes and they were reachable only by knowing that F meant
@@ -319,7 +454,15 @@ function _gmFunPanelHtml() {
     + '<div style="height:1px;background:rgba(255,255,255,.12);margin:8px 0 7px;"></div>'
     + row('1 / 2', 'variant', 'while a mode runs: 1 = cascade · 2 = swap (same number again = plain conveyor)', false)
     + row('Click', 'a cell', clickTxt, !!live)
-    + row('{ / }', 'speed', 'slower / faster', false);
+    + row('{ / }', 'speed', 'slower / faster', false)
+    // (dev0800) Only shown once the desktop check has been overridden — it is the
+    // one place the viewer can put it back. pointer-events is re-enabled just on
+    // the link (the card itself is click-through by design).
+    + (_gmHeavyAllowed() && !_gmDesktopish()
+        ? '<div style="margin-top:9px;font-size:11px;opacity:.55;">This device didn’t pass the desktop check — '
+          + 'heavy modes forced on. <span id="gmAnywayReset" style="pointer-events:auto;cursor:pointer;'
+          + 'text-decoration:underline;">undo</span></div>'
+        : '');
 }
 
 function _gmFunPanelRefresh() {
@@ -340,6 +483,11 @@ function _gmFunPanelShow() {
       + 'min-width:430px;max-width:min(92vw,560px);'
       + 'font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;'
       + 'box-shadow:0 8px 34px rgba(0,0,0,0.6);pointer-events:none;';
+    // (dev0800) Delegated so it survives every innerHTML refresh. The card stays
+    // click-through; only the undo link opts back into pointer events.
+    el.addEventListener('click', function (ev) {
+      if (ev.target && ev.target.id === 'gmAnywayReset') { ev.stopPropagation(); _gmHeavyForget(); }
+    });
     document.body.appendChild(el);
   }
   _gmFunPanelRefresh();
@@ -363,6 +511,11 @@ function _gmFunPanelClose() {
 // can't depend on it: while ANY mode is running F is the waterfall toggle, exactly
 // as it was when the card was still there.
 function _gmFunKey() {
+  // (dev0800) While the "run it anyway?" card is up it owns F: pressing it again
+  // is the answer "yes, this once" — so the old F,F muscle memory still starts the
+  // waterfall on a device the desktop check turned away. Esc is still "not now".
+  var gate = document.getElementById('gmHeavyGate');
+  if (gate) { gate.querySelector('#gmHeavyGo')?.click(); return; }
   if (_gmAnyMoving() || _gmFunPanelOpen()) {
     _gmToggleFall();
     if (_gmAnyMoving()) _gmFunPanelClose(); else _gmFunPanelRefresh();
@@ -574,6 +727,9 @@ document.addEventListener('keydown', e => {
     // (dev0674) The clean-playback panel is sticky by design, so Esc dismisses it
     // FIRST and leaves the grid alone — same step-back convention as the cut
     // marker below it.
+    // (dev0800) The heavy-mode "run it anyway?" card is a question, so it answers
+    // Esc first (= Not now) and puts the FUN card back, leaving the grid alone.
+    if (_gmHeavyCardClose()) { _gmFunPanelShow(); return; }
     if (typeof window._gridBufPanelClose === 'function' && window._gridBufPanelClose()) return;
     // (dev0705) …and the FUN MODES card the same way. Dropping the card does not
     // stop a running mode: it is a readout, and F / R are still the off switches.

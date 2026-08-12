@@ -44,7 +44,14 @@
   var REFIRE   = 3.3;   // y: seconds between a mover's successive moves
   var EASE     = 'cubic-bezier(.4,0,.2,1)';
 
-  var DESKTOP = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  // (dev0800) Shared desktop gate — live detection + a "run it anyway" card.
+  // See collection.js _gmHeavyGate. Local fallback if that file ever goes missing.
+  function heavyOK() {
+    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('Variant 2 (swap)', start);
+    var ok = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+    if (!ok) toast('Variant 2 is desktop-only (too heavy for phones)', 2200);
+    return ok;
+  }
 
   // ── State ──────────────────────────────────────────────────────────────────
   var active = false;
@@ -271,7 +278,7 @@
 
   function start() {
     if (!gridOpen()) return false;
-    if (!DESKTOP) { toast('Variant 2 is desktop-only (too heavy for phones)', 2200); return false; }
+    if (!heavyOK()) return false;
     if (!build()) { toast('Grid still drawing — try again in a moment', 1600); return false; }
     ensureWired();
     active = true;

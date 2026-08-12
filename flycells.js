@@ -32,8 +32,8 @@
 // YouTube/Vimeo/mp4 keep playing as they glide. Clicks are caught in capture phase
 // before the cell's .grid-interactor, so tap-to-play never fires while flying.
 //
-// DESKTOP-ONLY by design (many live videos + concurrent FLIPs is too heavy for
-// phones — same gate as the conveyor).
+// DESKTOP-FIRST by design (many live videos + concurrent FLIPs is too heavy for
+// phones — same gate as the conveyor; (dev0800) advisory, see _gmHeavyGate).
 //
 // ──────────────────────────────────────────────────────────────────────────────
 // CUT-OUT INSTRUCTIONS — to remove the feature entirely, with zero grid impact:
@@ -53,7 +53,14 @@
   var REFIRE   = 3.3;   // y: seconds between a mover's successive moves
   var EASE     = 'cubic-bezier(.4,0,.2,1)';
 
-  var DESKTOP = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  // (dev0800) Shared desktop gate — live detection + a "run it anyway" card.
+  // See collection.js _gmHeavyGate. Local fallback if that file ever goes missing.
+  function heavyOK() {
+    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('Variant 1 (cascade)', start);
+    var ok = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+    if (!ok) toast('Variant 1 is desktop-only (too heavy for phones)', 2200);
+    return ok;
+  }
 
   // ── State ──────────────────────────────────────────────────────────────────
   var active  = false;
@@ -221,7 +228,7 @@
 
   function start() {
     if (!gridOpen()) return false;
-    if (!DESKTOP) { toast('Variant 1 is desktop-only (too heavy for phones)', 2200); return false; }
+    if (!heavyOK()) return false;
     if (!buildGroups()) { toast('Grid still drawing — try again in a moment', 1600); return false; }
     ensureWired();
     active = true;
