@@ -5289,8 +5289,51 @@ function mediaProbeMeta(url, referer) {
     proc.on('close', () => { try { resolve(JSON.parse(out)); } catch (_) { resolve(null); } });
   });
 }
+// (dev0804) ── Download progress, so the T menu can toast while it runs ────
+// A 4K YouTube merge is minutes of silence otherwise: the client's only signal
+// used to be the single fetch() that resolves when the whole thing is finished.
+// The client mints a job id, sends it with the POST, and polls GET
+// /media/progress?job=<id>; yt-dlp's own `[download] …%` lines (enabled with
+// --newline) are the source of truth. Purely advisory — a lost/absent job id
+// costs progress toasts, never the download.
+const MEDIA_JOBS = new Map();
+function mediaJobSet(id, patch) {
+  if (!id) return;
+  const j = MEDIA_JOBS.get(id) || { id: id, stage: 'starting', pct: 0, part: 0, speed: '', eta: '', size: '', file: '', error: '' };
+  Object.assign(j, patch, { ts: Date.now() });
+  MEDIA_JOBS.set(id, j);
+  // Reap anything untouched for 20 min so a long-running proxy doesn't hoard them.
+  if (MEDIA_JOBS.size > 30) {
+    const cut = Date.now() - 20 * 60000;
+    for (const [k, v] of MEDIA_JOBS) if (v.ts < cut) MEDIA_JOBS.delete(k);
+  }
+}
+// One chunk of yt-dlp stdout → job state. `--newline` makes each progress update
+// its own line instead of a \r-rewritten one, so a plain regex is enough:
+//   [download]   4.2% of ~ 338.00MiB at    4.50MiB/s ETA 01:12
+// With `-f bv*+ba` the percentage runs 0→100 twice (video, then audio); each
+// "Destination:" line bumps `part` so the toast can say which stream is running.
+function mediaJobParse(id, chunk) {
+  if (!id) return;
+  String(chunk).split(/\r?\n/).forEach(line => {
+    if (/^\[download\]\s+Destination:/.test(line)) {
+      const j = MEDIA_JOBS.get(id);
+      mediaJobSet(id, { stage: 'downloading', part: ((j && j.part) || 0) + 1, pct: 0 });
+      return;
+    }
+    if (/^\[Merger\]/.test(line))    { mediaJobSet(id, { stage: 'merging', pct: 100 }); return; }
+    if (/^\[FixupM|^\[VideoRemuxer/.test(line)) { mediaJobSet(id, { stage: 'finalising' }); return; }
+    const m = /^\[download\]\s+([\d.]+)%\s+of\s+~?\s*([\d.]+\s*[KMGT]?i?B)(?:\s+at\s+(\S+))?(?:\s+ETA\s+(\S+))?/.exec(line);
+    if (m) mediaJobSet(id, { stage: 'downloading', pct: parseFloat(m[1]) || 0, size: m[2] || '', speed: m[3] || '', eta: m[4] || '' });
+  });
+}
+function mediaProgress(res, jobId, origin) {
+  const j = MEDIA_JOBS.get(jobId);
+  sendJson(res, 200, j ? { ok: true, job: j } : { ok: false, error: 'unknown job' }, origin);
+}
 function mediaDownload(req, res, origin) {
   readJson(req, 64 * 1024).then(async payload => {
+    const jobId = String(payload.job || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
     const url = String(payload.url || '');
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     const cls = mediaClassify(url);
@@ -5299,16 +5342,22 @@ function mediaDownload(req, res, origin) {
     const folder  = path.basename(destDir);
     try { fs.mkdirSync(destDir, { recursive: true }); } catch (_) {}
 
+    mediaJobSet(jobId, { stage: 'starting', folder: folder });
+
     const finish = base => {
       const full = path.join(destDir, base);
       const d = probeMediaDims(full);
+      mediaJobSet(jobId, { stage: 'done', pct: 100, file: folder + '/' + base });
       sendJson(res, 200, {
         ok: true, kind: cls.kind, folder, file: base,
         localFile: folder + '/' + base,
         dims: d ? [d.w, d.h] : null
       }, origin);
     };
-    const fail = msg => sendJson(res, 502, { ok: false, kind: cls.kind, error: msg }, origin);
+    const fail = msg => {
+      mediaJobSet(jobId, { stage: 'error', error: String(msg || '').slice(0, 300) });
+      sendJson(res, 502, { ok: false, kind: cls.kind, error: msg }, origin);
+    };
 
     // Fields the client already holds (VidTitle / VidAuthor) are the fallback when
     // yt-dlp can't be asked — never the first choice, so the name matches YTDwork's.
@@ -5320,6 +5369,8 @@ function mediaDownload(req, res, origin) {
       const ext = ((/\.([a-z0-9]{2,5})(?:\?|#|$)/i.exec(url) || [])[1] || 'bin').toLowerCase();
       const stem = mediaBuildStem('wiki', fbTitle || cls.id, fbAuthor || 'wikimedia', cls.id, 0, 0);
       const tmpPath = path.join(destDir, '.dl_' + Date.now().toString(36) + '.' + ext);
+      // A plain GET has no incremental reporting — one honest "fetching" stage.
+      mediaJobSet(jobId, { stage: 'downloading', part: 1 });
       const got = await igDownloadImage(url, tmpPath, 'https://commons.wikimedia.org/', 0, '*/*');
       if (!got) { try { fs.unlinkSync(tmpPath); } catch (_) {} fail('fetch failed'); return; }
       const d = probeMediaDims(tmpPath);
@@ -5345,8 +5396,10 @@ function mediaDownload(req, res, origin) {
       // Same selector shape as ytdl_v26's default: best video + best audio, merged to
       // mp4 so everything in the folder seeks the same way. No height cap — max res is
       // the standing preference everywhere else in SLAM.
+      // (dev0804) --newline: one progress line per update instead of a \r-rewritten
+      // one, which is what makes mediaJobParse's regex viable.
       const args = ['--no-warnings', '--no-playlist', '--ignore-config', '--socket-timeout', '20',
-                    '--no-part', '--js-runtimes', 'node']
+                    '--no-part', '--newline', '--js-runtimes', 'node']
         .concat(referer ? ['--referer', referer] : [],
                 ['-f', 'bv*+ba/b', '--merge-output-format', 'mp4',
                  '-o', path.join(tmpDir, '%(autonumber)03d.%(ext)s'), fetchUrl]);
@@ -5355,7 +5408,7 @@ function mediaDownload(req, res, origin) {
       catch (e) { rmTmp(); resolve({ file: null, stderr: 'spawn yt-dlp: ' + e.message }); return; }
       let stderr = '';
       proc.stderr.on('data', c => { stderr += c; if (stderr.length > 20000) stderr = stderr.slice(-20000); });
-      proc.stdout.on('data', () => {});
+      proc.stdout.on('data', c => mediaJobParse(jobId, c));
       proc.on('error', () => { rmTmp(); resolve({ file: null, stderr: 'yt-dlp not runnable' }); });
       proc.on('close', () => {
         let tmp = [];
@@ -5375,6 +5428,7 @@ function mediaDownload(req, res, origin) {
     for (const referer of referers) {
       // Metadata is re-probed per referer: an embed-only video answers nothing at all
       // under the generic one, so its title/author/max-res only arrive on the retry.
+      mediaJobSet(jobId, { stage: 'metadata' });
       const j = await mediaProbeMeta(fetchUrl, referer);
       let maxW = 0, maxH = 0;
       ((j && j.formats) || []).forEach(f => {
@@ -6190,6 +6244,14 @@ http.createServer((req, res) => {
       if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
       if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
       mediaDownload(req, res, origin);
+      return;
+    }
+    // (dev0804) Progress poll for the toast. Read-only, so no origin lock —
+    // it exposes nothing but a percentage for a job id the caller minted.
+    if (action === 'progress') {
+      const q = (req.url.split('?')[1] || '');
+      const jm = /(?:^|&)job=([^&]*)/.exec(q);
+      mediaProgress(res, decodeURIComponent(jm ? jm[1] : '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40), origin);
       return;
     }
     sendJson(res, 404, { ok: false, error: 'unknown media action: ' + action }, origin);

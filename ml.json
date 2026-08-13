@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1786463673602,
+    "_salPushTime": 1786596284582,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -511,7 +511,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1786463673602
+    "_salSavedAt": 1786596284582
   },
   {
     "UID": "1",
@@ -19360,10 +19360,10 @@
     "link": "https://media.sealifeandmore.com/RedCtenophore2.mp4",
     "show": "1",
     "DateAdded": "2026-05-26 02:19:33",
-    "DateModified": "2026-08-10 00:27:44",
+    "DateModified": "2026-08-13 04:39:24",
     "tags": [
       "myvideo",
-      "beroe-abyssicola"
+      "aulacoctena-acuminata"
     ],
     "Mute": "0",
     "MPix": "V",
@@ -19384,10 +19384,10 @@
     "link": "https://media.sealifeandmore.com/RedCtenophore2.mp4",
     "show": "1",
     "DateAdded": "2026-06-05 21:31:33",
-    "DateModified": "2026-08-10 00:27:31",
+    "DateModified": "2026-08-13 04:38:57",
     "tags": [
       "myvideo",
-      "beroe-abyssicola"
+      "aulacoctena-acuminata"
     ],
     "Mute": "0",
     "MPix": "V",
@@ -20969,7 +20969,8 @@
     "segLength": "",
     "ttxt": "",
     "Mode": "L",
-    "UOD": ""
+    "UOD": "",
+    "vidLength": "1:27"
   },
   {
     "UID": "836",
@@ -43294,10 +43295,10 @@
     "link": "https://media.sealifeandmore.com/RedCtenophore3.mp4",
     "show": "1",
     "DateAdded": "2026-08-08 05:36:21",
-    "DateModified": "2026-08-10 00:26:06",
+    "DateModified": "2026-08-13 04:38:28",
     "tags": [
       "myvideo",
-      "beroe-abyssicola"
+      "aulacoctena-acuminata"
     ],
     "Mute": "0",
     "ftextSize": "0",
@@ -44045,5 +44046,60 @@
     "Mode": "L",
     "ftext": "<p>These seahares also have a somewhat unusual development. Most marine herterobranchs (snails and slugs) have a pelagic stage when larvae swim freely as plankton. This allows for species dispersal. But the Taylor’s seahare eggs hatch directly onto the eelgrass as miniature adults without any chance for dispersal. Also unlike other marine heterobranchs, adults of this species have no swimming mechanism. For these reasons, populations can become very isolated from one another even in as close proximity as across a bay. Once removed from an isolated eelgrass bed, the Taylor’s seahare has no way of recolonizing it, unless it is swept off its home eelgrass and coincidentally dropped on another.&nbsp;</p>",
     "comment": "Taylor’s seahare eggs hatch directly onto the eelgrass as miniature adults"
+  },
+  {
+    "UID": "2040",
+    "link": "https://www.instagram.com/reels/DVZERWOjjS2/",
+    "show": "1",
+    "DateAdded": "2026-08-13 04:35:15",
+    "DateModified": "2026-08-13 04:35:54",
+    "tags": [
+      "aulacoctena-acuminata"
+    ],
+    "ltype": "i",
+    "ftextSize": "1429",
+    "FtextJunk": "5",
+    "ftext": "<h2>An Aulacoctena -- filmed at 1202 meters</h2>\n<p>An Aulacoctena — filmed at 1202 meters</p>\n<p>Scientists observed this bottle comb jelly during the #OBVI #LivingBioreactors expedition in the Southwest Atlantic Ocean. Working from R/V Falkor (too), the science team studied animals that live in the edgeless realm of the ocean’s midwater, between 200 and 1000 meters, and the critical role they play, transporting carbon from the surface down to the depths.</p>\n<p>In Poet and Nobel Laureate ​​Gabriela Mistral’s “Weaving the Round” (translated by Ursula K. Le Guin), she explores ideas of interconnectedness and the wonder of being a part of something larger than oneself, much like the tiny animals that play an essential role in our global Ocean:</p>\n<p>“Where shall we go to weave the round?</p>\n<p>Shall we go down to the ocean beach?</p>\n<p>The sea'll dance in a thousand waves</p>\n<p>to make us an orange-blossom wreath.</p>\n<p>Shall we go where the hills come down?</p>\n<p>The mountains are going to answer,</p>\n<p>as if every stone in the world</p>\n<p>started singing and dancing…”</p>\n<p>Credit: ROV SuBastian / Schmidt Ocean Institute</p>\n<p style=\"color:#888;font-size:.9em;\">By @schmidtocean · 2026-03-02 · 2,045 likes</p>\n<p>Source: <a href=\"https://www.instagram.com/reels/DVZERWOjjS2/\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://www.instagram.com/reels/DVZERWOjjS2/</a></p>",
+    "VidAuthor": "@schmidtocean",
+    "VidTitle": "An Aulacoctena -- filmed at 1202 meters"
+  },
+  {
+    "UID": "2041",
+    "link": "https://youtu.be/G6krlmxdWRQ",
+    "show": "1",
+    "DateAdded": "2026-08-13 04:41:26",
+    "DateModified": "2026-08-13 04:43:55",
+    "tags": [
+      "cornucopia-of-underwater-life"
+    ],
+    "Mute": "0",
+    "ftextSize": "1178",
+    "FtextJunk": "6",
+    "VidTitle": "Deep Wonders of Trinidad and Tobago | 4K ROV Highlights",
+    "VidAuthor": "@SchmidtOcean",
+    "Mode": "L",
+    "ftext": "<h2>Trinidad and Tobago's location -- where tectonic plates collide and sediment piles up -- creates rare deep-sea</h2>\n<p>Trinidad and Tobago's location — where tectonic plates collide and sediment piles up — creates rare deep-sea environments. This tectonic activity forces hydrocarbons like methane to the surface through seafloor fissures, providing the chemical energy needed to fuel entire ecosystems without sunlight. The region is a hotspot for twilight-zone mesophotic coral and sponge reefs, mud volcanoes, and cold seeps (also known as methane seeps).</p>\n<p>The #DeepWonders science team, led by Dr. Diva Amon of SpeSeas, conducted the first systematic scientific exploration, seeing new habitats, ecosystems, and biodiversity. This highlight reel includes footage collected by the ROV and science team and is sure to instill a bit of wonder for the animals inhabiting the deep waters of Trinidad and Tobago and beyond.</p>\n<p style=\"color:#888;font-size:.9em;\">By @SchmidtOcean · 2026-08-03 · 547 likes</p>\n<p>Source: <a href=\"https://youtu.be/G6krlmxdWRQ\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/G6krlmxdWRQ</a></p>"
+  },
+  {
+    "UID": "2041_d",
+    "link": "https://youtu.be/G6krlmxdWRQ",
+    "show": "1",
+    "DateAdded": "2026-08-13 04:41:55",
+    "DateModified": "2026-08-13 04:44:42",
+    "tags": [
+      "cornucopia-of-underwater-life",
+      "spawning"
+    ],
+    "Mute": "0",
+    "ftextSize": "1178",
+    "FtextJunk": "6",
+    "VidTitle": "Deep Wonders of Trinidad and Tobago | 4K ROV Highlights",
+    "VidAuthor": "@SchmidtOcean",
+    "Mode": "L",
+    "ftext": "<h2>Trinidad and Tobago's location -- where tectonic plates collide and sediment piles up -- creates rare deep-sea</h2>\n<p>Trinidad and Tobago's location — where tectonic plates collide and sediment piles up — creates rare deep-sea environments. This tectonic activity forces hydrocarbons like methane to the surface through seafloor fissures, providing the chemical energy needed to fuel entire ecosystems without sunlight. The region is a hotspot for twilight-zone mesophotic coral and sponge reefs, mud volcanoes, and cold seeps (also known as methane seeps).</p>\n<p>The #DeepWonders science team, led by Dr. Diva Amon of SpeSeas, conducted the first systematic scientific exploration, seeing new habitats, ecosystems, and biodiversity. This highlight reel includes footage collected by the ROV and science team and is sure to instill a bit of wonder for the animals inhabiting the deep waters of Trinidad and Tobago and beyond.</p>\n<p style=\"color:#888;font-size:.9em;\">By @SchmidtOcean · 2026-08-03 · 547 likes</p>\n<p>Source: <a href=\"https://youtu.be/G6krlmxdWRQ\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/G6krlmxdWRQ</a></p>",
+    "cell": "",
+    "vidLength": "3:58",
+    "VidRange": "62.5 5.7",
+    "VidComment": ""
   }
 ]

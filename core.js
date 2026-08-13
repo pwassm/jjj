@@ -3367,6 +3367,24 @@ function _tMediaFolderFor(link) {
   return null;
 }
 let _tDlBusy = false;
+// (dev0804) One line of toast text from a /media/progress job record. A 4K merge
+// runs for minutes, so the toast has to say which phase it is in AND that it is
+// still moving — a frozen percentage with no speed is how a stall looks.
+function _tDlProgressLine(folder, title, j) {
+  const head = '⬇ ' + folder + ' · ' + title;
+  if (!j) return head + ' …';
+  if (j.stage === 'metadata')   return head + ' · reading metadata…';
+  if (j.stage === 'merging')    return head + ' · merging video+audio…';
+  if (j.stage === 'finalising') return head + ' · finalising…';
+  if (j.stage === 'downloading') {
+    // part 1 = video stream, part 2 = audio (yt-dlp's -f bv*+ba order).
+    const part = j.part > 1 ? ' audio' : ' video';
+    return head + ' ·' + part + ' ' + (j.pct || 0).toFixed(1) + '%'
+         + (j.size ? ' of ' + j.size : '') + (j.speed ? ' at ' + j.speed : '')
+         + (j.eta ? ' ETA ' + j.eta : '');
+  }
+  return head + ' · starting…';
+}
 async function tDownloadRowMedia(di) {
   const row = data[di];
   if (!row) return;
@@ -3374,7 +3392,22 @@ async function tDownloadRowMedia(di) {
   if (!folder) { toast('Row ' + (di + 1) + ': link is not YouTube / Vimeo / Wikimedia', 3000); return; }
   if (_tDlBusy) { toast('A download is already running — one at a time', 2500); return; }
   _tDlBusy = true;
-  toast('⬇ ' + folder + ' … (' + (row.VidTitle || row.link).slice(0, 60) + ')', 3000);
+  const title = String(row.VidTitle || row.link).slice(0, 50);
+  const job = 'dl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  // The poll re-issues the toast every second: toast() auto-hides after its ms,
+  // so re-calling it is what keeps a long download continuously visible.
+  toast(_tDlProgressLine(folder, title, null), 2500);
+  const poll = setInterval(async () => {
+    try {
+      const pr = await fetch('http://127.0.0.1:8081/media/progress?job=' + job);
+      const pj = await pr.json();
+      if (pj && pj.ok && pj.job && pj.job.stage !== 'done' && pj.job.stage !== 'error') {
+        toast(_tDlProgressLine(folder, title, pj.job), 2500);
+      }
+    } catch (_) { /* a missed poll is cosmetic — the POST below is the real result */ }
+  }, 1000);
+
   try {
     const r = await fetch('http://127.0.0.1:8081/media/download', {
       method: 'POST',
@@ -3382,14 +3415,16 @@ async function tDownloadRowMedia(di) {
       // (dev0786) linkpage rides along: it is the referer an embed-only Vimeo video
       // is whitelisted to, and the proxy retries with it when yt-dlp asks for one.
       body: JSON.stringify({ url: row.link, title: row.VidTitle || '', author: row.VidAuthor || '',
-                             linkpage: row.linkpage || '' })
+                             linkpage: row.linkpage || '', job: job })
     });
     const j = await r.json();
-    if (j && j.ok) toast('✓ ' + j.localFile + (j.dims ? '  (' + j.dims[0] + '×' + j.dims[1] + ')' : ''), 6000);
-    else toast('⚠ Download failed: ' + ((j && j.error) || ('HTTP ' + r.status)), 6000);
+    clearInterval(poll);
+    if (j && j.ok) toast('✓ ' + j.localFile + (j.dims ? '  (' + j.dims[0] + '×' + j.dims[1] + ')' : ''), 8000);
+    else toast('⚠ Download failed: ' + ((j && j.error) || ('HTTP ' + r.status)), 9000);
   } catch (_) {
-    toast('⚠ Proxy not reachable on 8081 — start proxy.js (needs the dev0785 build: RESTART it)', 5000);
-  } finally { _tDlBusy = false; }
+    clearInterval(poll);
+    toast('⚠ Proxy not reachable on 8081 — start proxy.js (needs the dev0804 build: RESTART it)', 5000);
+  } finally { clearInterval(poll); _tDlBusy = false; }
 }
 
 // (dev0580) Shift+T in the Table screen: insert a new empty TEXT row at grid
