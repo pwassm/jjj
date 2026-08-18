@@ -4886,18 +4886,79 @@ async function housekeepingFillYTMeta() {
   // (dev0504) YouTube rows missing title, author OR ftext. ftext is included so this
   // can backfill the cookieless oEmbed ftext on videos added while YouTube bot-walls
   // yt-dlp (which is why new YT rows currently come in with an author but no ftext).
+  // (dev0807) A row whose ftext is ONLY the oEmbed stub is now a candidate too:
+  // it was left that way by a yt-dlp timeout/bot-wall, so it looks "done" and every
+  // pass since has skipped it (that's how the last two YouTube adds ended up with
+  // no real description).
   const rows = data.filter(r => {
     if (!r || !r.link) return false;
     if (!_extractYTVideoId(r.link)) return false;
-    return !r.VidTitle || !r.VidAuthor || !r.ftext;
+    return !r.VidTitle || !r.VidAuthor || !r.ftext || _isOembedStubFtext(r.ftext);
   });
   if (!rows.length) { toast('No YouTube rows with missing title / author / ftext', 2500); return; }
-  toast('📺 Fetching YouTube metadata for ' + rows.length + ' row(s)…', 3000);
-  let done = 0, skipped = 0;
+  // (dev0807) Newest first — the rows the user just added are the ones they are
+  // asking about, and a long run can be aborted with Esc part-way.
+  rows.sort((a, b) => String(b.DateAdded || '').localeCompare(String(a.DateAdded || '')));
+  const needFtext = rows.filter(r => !r.ftext || _isOembedStubFtext(r.ftext)).length;
+  // (dev0807) RICH mode asks yt-dlp for the real description first (proxy, cookieless)
+  // and only falls back to oEmbed per row. It is far slower than the oEmbed-only pass,
+  // so it is opt-in per run.
+  const rich = needFtext > 0 && confirm(
+    '📺 YT Meta — ' + rows.length + ' row(s) need title / author / ftext'
+    + ' (' + needFtext + ' need real ftext).\n\n'
+    + 'OK  = RICH pass: yt-dlp fetches the full description for each row that needs\n'
+    + '      ftext (newest first). Slower — allow roughly '
+    + Math.max(1, Math.round(needFtext * 6 / 60)) + '–' + Math.max(2, Math.round(needFtext * 20 / 60))
+    + ' min for ' + needFtext + ' row(s).\n'
+    + '      Press Esc to stop; everything fetched so far is kept.\n\n'
+    + 'Cancel = FAST pass: oEmbed only (title + @author stub ftext), no descriptions.'
+  );
+  toast('📺 Fetching YouTube metadata for ' + rows.length + ' row(s)…'
+    + (rich ? '\n   (rich yt-dlp pass — Esc to stop)' : ''), 3000);
+  let done = 0, skipped = 0, richDone = 0;
   const failed = [];
+  // (dev0807) Esc aborts a rich run mid-flight (capture phase, same idea as the
+  // orientation pass), and the handler is removed in the finally below.
+  let ytMetaAbort = false;
+  const onYtMetaEsc = e => {
+    if (e.key === 'Escape') { ytMetaAbort = true; e.stopPropagation(); e.preventDefault(); }
+  };
+  if (rich) window.addEventListener('keydown', onYtMetaEsc, true);
+  try {
+  let idx = 0;
   for (const row of rows) {
+    if (ytMetaAbort) break;
+    idx++;
     try {
       const vid = _extractYTVideoId(row.link);
+      // (dev0807) RICH: real description via the yt-dlp proxy bridge. Only for rows
+      // that actually need ftext — a row here only for a missing title/author costs
+      // nothing extra. On any failure we fall straight through to oEmbed below.
+      if (rich && (!row.ftext || _isOembedStubFtext(row.ftext)) && typeof _ytdlpFetchMeta === 'function') {
+        toast('📺 yt-dlp ' + idx + '/' + rows.length + ' — ' + (row.VidTitle || row.link).slice(0, 48)
+          + '\n   ✓ ' + richDone + ' rich  ·  (Esc to stop)', 120000);
+        try {
+          const ymeta = await _ytdlpFetchMeta(row.link);
+          const ydesc = String((ymeta && ymeta.description) || '').trim();
+          if (ydesc) {
+            row.ftext = _ytdlpBuildFtext(ymeta, row.link);
+            const yh = _ytdlpAuthorHandle(ymeta);
+            if (!row.VidAuthor && yh) row.VidAuthor = yh;
+            if (!row.VidTitle && ymeta.title) row.VidTitle = _normalizeText(ymeta.title).replace(/\s+/g, ' ').trim();
+            const ud = String((ymeta && ymeta.upload_date) || '');
+            if (!row.VidDate && /^\d{8}$/.test(ud)) {
+              row.VidDate = ud.slice(0, 4) + '-' + ud.slice(4, 6) + '-' + ud.slice(6, 8);
+            }
+            row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+            done++; richDone++;
+            save(); if (typeof render === 'function') render();
+            continue;                       // rich ftext landed — no oEmbed needed
+          }
+        } catch (err) {
+          console.warn('[ytMeta] yt-dlp failed, falling back to oEmbed:', row.link, err && err.message);
+        }
+        if (ytMetaAbort) break;
+      }
       // Always use canonical watch URL for oEmbed — avoids Shorts/embed quirks
       const canonUrl = 'https://www.youtube.com/watch?v=' + vid;
       const res = await fetch('https://www.youtube.com/oembed?url=' + encodeURIComponent(canonUrl) + '&format=json');
@@ -4923,8 +4984,13 @@ async function housekeepingFillYTMeta() {
       } else { skipped++; }
     } catch(e) { failed.push(row.link.slice(0, 60) + ' (network err)'); }
   }
+  } finally {
+    if (rich) window.removeEventListener('keydown', onYtMetaEsc, true);
+  }
   if (done) { save(); render(); }
   let msg = '📺 YT Meta: ' + done + ' updated';
+  if (richDone) msg += ' (' + richDone + ' with a full yt-dlp description)';
+  if (ytMetaAbort) msg += ' — stopped with Esc';
   if (skipped) msg += ', ' + skipped + ' already complete';
   if (failed.length) {
     msg += '\n⚠ ' + failed.length + ' unavailable (age-restricted / private / deleted):\n';
@@ -8157,7 +8223,10 @@ function _ytdlpSupports(url) {
 // POST the URL to the proxy's yt-dlp bridge; resolve the parsed metadata object
 // ({id,title,description,uploader,uploader_id,channel,…}) or throw.
 async function _ytdlpFetchMeta(url) {
-  const res = await fetchWithTimeout(_YTDLP_PROXY + '/exec/ytdlp', 45000, {
+  // (dev0807) 45s was too tight: a live YouTube -J can take 80s+ when YouTube is
+  // slow/throttling, and the abort silently demoted the row to the minimal oEmbed
+  // stub (or to no ftext at all). 180s costs nothing on the fast path.
+  const res = await fetchWithTimeout(_YTDLP_PROXY + '/exec/ytdlp', 180000, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url })
@@ -8373,6 +8442,25 @@ async function _ytVimOEmbed(url) {
 // (dev0504) Build a minimal ftext from oEmbed data (no description — that needs
 // yt-dlp/cookies): clean <h2> title, a grey "By @author" line, and the source link.
 // Same skeleton as _ytdlpBuildFtext so a later yt-dlp pass / Xe edit feels consistent.
+// (dev0807) Is this ftext only the oEmbed STUB (title + "By @author" + source link,
+// no description)? Rows land here when the yt-dlp fetch timed out or was bot-walled,
+// so they look "done" (ftext non-empty) and every later backfill skips them. The shape
+// test mirrors _oembedBuildFtext exactly: at most an <h2>, one grey By-line, and the
+// Source <p>. Anything carrying real body paragraphs is NOT a stub. (No regex literals
+// here on purpose: [^] + new RegExp keeps the pattern escape-free.)
+function _isOembedStubFtext(ft) {
+  const s = String(ft || '').trim();
+  if (!s) return false;
+  if (!/<p>Source: <a /.test(s)) return false;
+  const paras = s.match(/<p[ >]/g) || [];
+  if (paras.length > 2) return false;                       // has a description body
+  const stripped = s.replace(new RegExp("<h2>[^]*?</h2>"), '')
+                    .replace(new RegExp('<p style="color:#888[^>]*>By [^]*?</p>'), '')
+                    .replace(new RegExp("<p>Source: <a [^]*?</p>"), '')
+                    .trim();
+  return stripped === '';
+}
+
 function _oembedBuildFtext(title, author, url) {
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
     c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));

@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1787026353261,
+    "_salPushTime": 1787062761097,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -512,7 +512,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1787026353261
+    "_salSavedAt": 1787062761097
   },
   {
     "UID": "1",
@@ -44349,5 +44349,37 @@
     "Mode": "L",
     "ftext": "<h2>What's your Health %-ile? Take the assessment and discover exactly where you rank: https://www.skool.com/top1health (not what you think)</h2>\n<p>What's your Health %-ile? Take the assessment and discover exactly where you rank: https://www.skool.com/top1health</p>\n<p>Timestamps:</p>\n<p>00:00 Intro</p>\n<p>00:54 Why sitting is bad (not what you think)</p>\n<p>02:21 What the soleus muscle does</p>\n<p>03:35 How the soleus lowers blood sugar</p>\n<p>05:01 How to do the soleus pushup</p>\n<p>06:25 Walking vs soleus pushup</p>\n<p>07:43 Final takeaway</p>\n<p>Video on my bloodwork that ranked me #1 at the Longevity World Cup https://youtu.be/2xrxXOVnLzE</p>\n<p>P.S. This is not professional medical advice and should not be taken as such. The creator of this video is not held accountable for your health. Consult your doctor first.</p>\n<p style=\"color:#888;font-size:.9em;\">By @SiimLand · 2026-07-29 · 5,604 likes</p>\n<p>Source: <a href=\"https://youtu.be/HaYH46itE9g\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/HaYH46itE9g</a></p>",
     "VQ": "9"
+  },
+  {
+    "UID": "2054",
+    "link": "https://youtu.be/kNR7ZqkU6Qo",
+    "show": "1",
+    "DateAdded": "2026-08-18 14:01:06",
+    "DateModified": "2026-08-18 14:01:21",
+    "tags": [
+      "swimming"
+    ],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "VidTitle": "Fix Your Freestyle Rotation (Swim Smoother Instantly)",
+    "VidAuthor": "@frehlingswim",
+    "Mode": "L",
+    "vidLength": "9:56"
+  },
+  {
+    "UID": "2055",
+    "link": "https://youtu.be/HuOEflMcIVA",
+    "show": "1",
+    "DateAdded": "2026-08-18 14:18:34",
+    "DateModified": "2026-08-18 14:19:21",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "303",
+    "FtextJunk": "25",
+    "VidTitle": "Dr. Dean Ornish: 71% of Alzheimer's Patients Improved Without Drugs",
+    "VidAuthor": "@FoodRevolutionNetwork",
+    "Mode": "L",
+    "ftext": "<h2>Dr. Dean Ornish: 71% of Alzheimer's Patients Improved Without Drugs</h2>\n<p style=\"color:#888;font-size:.9em;\">By @FoodRevolutionNetwork</p>\n<p>Source: <a href=\"https://youtu.be/HuOEflMcIVA\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/HuOEflMcIVA</a></p>"
   }
 ]
