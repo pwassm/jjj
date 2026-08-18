@@ -948,14 +948,24 @@
       const j = await r.json();
       if (j && j.ok) { out = j; vpnStatus = j; _how = j.tunnelUp ? 'up' : 'answered-but-down'; }
       else _how = 'not-ok';
+      // (dev0805) The proxy ended a WEDGED rotation task before firing this switch.
+      // That jam is what produced "no VPN exit would come up" on 2026-08-17, and it was
+      // invisible from here: every switch simply timed out. Now it says so, and heals.
+      if (j && j.unstuck) igToast('🧹 a previous VPN rotation was stuck — ended it, retrying the switch.', 3400);
     } catch (e) { _how = 'THREW:' + ((e && e.message) || 'fetch failed'); }
     diag(out && out.tunnelUp ? 'vpn-switch-ok' : 'VPN-SWITCH-FAIL', {
-      how: _how, ms: Date.now() - _t0,
+      how: _how, ms: Date.now() - _t0, unstuck: (out && out.unstuck) ? 1 : 0,
       exit: (out && (out.server || out.ip)) || '', note: (note || '').slice(0, 60)
     });
     vpnBusy = false; vpnRenderPill();
     return out;
   }
+
+  // (dev0805) Appended to every "no exit would come up" report. The exits are usually
+  // fine — see the self-heal in proxy.js vpnSwitch — so name the thing that actually
+  // blocks them and the one click that fixes it for good.
+  const VPN_FIX_HINT = '\n↳ If it repeats: 🛠 Fix ▸ 🛡 Harden VPN tasks'
+    + ' (a rotation task stuck in "Running" refuses every switch).';
 
   // (dev0651) Switch until we land on a WORKING exit (proxy confirms tunnelUp).
   // Each attempt stages a fresh server, and the .ps1 only reports success once the
@@ -3531,7 +3541,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (sw0) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}${vpnSpeedNote(sw0)}`, 3000); }
       else {
         busy = false; setBatchUi(false); igBatchHide();
-        igStickyShow('⏹ Stopped before downloading — no VPN exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.');
+        igStickyShow('⏹ Stopped before downloading — no VPN exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.' + VPN_FIX_HINT);
         return;
       }
     }
@@ -3548,7 +3558,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         igToast(`🟢 rotated off ${burned} (it walled the last run)\n→ ${swB.server || swB.ip || '?'}${vpnSpeedNote(swB)}`, 3600);
       } else {
         busy = false; setBatchUi(false); igBatchHide();
-        igStickyShow(`⏹ Stopped before downloading — the last run walled on ${burned} and no fresh exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.`);
+        igStickyShow(`⏹ Stopped before downloading — the last run walled on ${burned} and no fresh exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.` + VPN_FIX_HINT);
         return;
       }
     }
@@ -3627,7 +3637,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           igBatchShow('🔀 exit walled — switching Proton VPN, then retrying…');
           const swW = await vpnEnsureUp(`wall-rotate after batch ${batches}`);
           if (swW) { switches++; await sleep(1500); continue; }
-          endMsg = `⏹ Stopped — batch ${batches} downloaded 0 and no fresh VPN exit would come up (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
+          endMsg = `⏹ Stopped — batch ${batches} downloaded 0 and no fresh VPN exit would come up (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.` + VPN_FIX_HINT;
           break;
         }
         endMsg = `⏹ ${WALL_ROTATE_CAP} exits in a row walled (each batch downloaded 0) — stopped.\n${totalOk} downloaded before this. IG is likely blocking broadly right now — try again later.`;
@@ -3653,7 +3663,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}${vpnSpeedNote(sw)}\n${scoreboard()}`, 3600); }
       else {
         // Never download on the home IP — the user wants everything through a VPN.
-        endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.`;
+        endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.` + VPN_FIX_HINT;
         break;
       }
       await sleep(1500);

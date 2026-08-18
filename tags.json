@@ -7447,5 +7447,36 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "pbs-eons",
+    "label": "Pbs eons",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "nautilida",
+    "label": "Nautilida",
+    "kind": "taxon",
+    "parents": [
+      "cephalopoda"
+    ],
+    "aliases": [
+      "Nautilus"
+    ],
+    "def": "",
+    "rank": "order",
+    "common": "Nautiluses",
+    "extinct": false
+  },
+  {
+    "id": "soleus",
+    "label": "Soleus",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

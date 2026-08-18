@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0794';
+const PROXY_BUILD = 'dev0805';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -5694,6 +5694,10 @@ function vpnStatus(res, origin) {
   sendJson(res, 200, out, origin);
 }
 
+// (dev0805) Did the last /vpn/switch fail to produce a fresh state.json? See the
+// self-heal in vpnSwitch — this is the only thing that arms it.
+let _vpnSwitchIncomplete = false;
+
 function vpnSwitch(res, origin) {
   const before = vpnReadState();
   const beforeAt = (before && before.at) || '';
@@ -5714,9 +5718,35 @@ function vpnSwitch(res, origin) {
     } catch (_) {}
   };
   let via = 'task';
-  const t = spawn('schtasks', ['/run', '/tn', VPN_TASK], { windowsHide: true });
-  t.on('error', () => { via = 'script'; runScript(); });
-  t.on('close', code => { if (code !== 0) { via = 'script'; runScript(); } });
+  const fireTask = () => {
+    const t = spawn('schtasks', ['/run', '/tn', VPN_TASK], { windowsHide: true });
+    t.on('error', () => { via = 'script'; runScript(); });
+    t.on('close', code => { if (code !== 0) { via = 'script'; runScript(); } });
+  };
+
+  // (dev0805) SELF-HEAL A WEDGED ROTATION before firing this one.
+  // wireguard.exe /installtunnelservice talks to the Windows service manager, and
+  // when that wedges (2026-08-17: one call simply never returned) vpn-rotate.ps1 sits
+  // inside it forever. The task then stays in 'Running', and Windows REFUSES every
+  // later `schtasks /run` with 0x800710E0 — silently: no new line in vpn-rotate.log,
+  // no new state.json, so /vpn/switch times out over and over and the I screen reports
+  // "no VPN exit would come up (tried a few)". That reads as a Proton fault when it is
+  // one stuck task; on the night it happened the zombie had blocked rotation for 12
+  // minutes and would have kept doing so for the task's 72h limit.
+  // `schtasks /end` clears it with NO elevation (the same call Fix ▸ Un-stick makes),
+  // so do it automatically whenever the LAST switch never produced a fresh state.json.
+  // A no-op when nothing is stuck, and it only ever runs on a path that already failed.
+  // The permanent fix is still Fix ▸ 🛡 Harden VPN tasks (StopExisting + PT5M).
+  let unstuck = false;
+  if (_vpnSwitchIncomplete) {
+    unstuck = true;
+    plog('vpn/switch: previous switch never completed — ending any stuck ' + VPN_TASK + ' instance first');
+    let fired = false;
+    const once = () => { if (!fired) { fired = true; fireTask(); } };
+    const e = spawn('schtasks', ['/end', '/tn', VPN_TASK], { windowsHide: true });
+    e.on('error', once);
+    e.on('close', () => setTimeout(once, 300));
+  } else fireTask();
 
   // Wait (up to ~40s) for vpn-rotate.ps1 to write a NEW state.json — its `at`
   // only changes once the new tunnel is up and the fresh public IP was read.
@@ -5728,8 +5758,12 @@ function vpnSwitch(res, origin) {
       // (dev0799) An exit that wouldn't come up is a fact about that config — record it
       // so the picker stops reaching for a dead server every few rotations.
       if (changed && cur && cur.ok === false) vpnSpeedNoteSwitchFail(cur.lastFile);
+      // (dev0805) Remember whether this switch actually landed. A switch that never
+      // wrote a fresh state.json is the signature of the wedged-task case above, so
+      // the NEXT one clears the zombie first instead of being refused too.
+      _vpnSwitchIncomplete = !changed;
       sendJson(res, 200, Object.assign(
-        { ok: true, via, switched: !!changed, wanted: wanted || null,
+        { ok: true, via, switched: !!changed, wanted: wanted || null, unstuck,
           speed: vpnSpeedFor((cur || before || {}).lastFile) }, vpnStateOut(cur || before)), origin);
       return;
     }
