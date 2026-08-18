@@ -4903,7 +4903,7 @@ async function housekeepingFillYTMeta() {
   // (dev0807) RICH mode asks yt-dlp for the real description first (proxy, cookieless)
   // and only falls back to oEmbed per row. It is far slower than the oEmbed-only pass,
   // so it is opt-in per run.
-  const rich = needFtext > 0 && confirm(
+  let rich = needFtext > 0 && confirm(
     '📺 YT Meta — ' + rows.length + ' row(s) need title / author / ftext'
     + ' (' + needFtext + ' need real ftext).\n\n'
     + 'OK  = RICH pass: yt-dlp fetches the full description for each row that needs\n'
@@ -4916,6 +4916,15 @@ async function housekeepingFillYTMeta() {
   toast('📺 Fetching YouTube metadata for ' + rows.length + ' row(s)…'
     + (rich ? '\n   (rich yt-dlp pass — Esc to stop)' : ''), 3000);
   let done = 0, skipped = 0, richDone = 0;
+  // (dev0808) Bot-wall detection. A VPN/datacenter exit IP gets "Sign in to confirm
+  // you're not a bot" from YouTube in ~2s, so a rich run over hundreds of rows races
+  // through producing NOTHING and looks like the feature is broken (it isn't — it's
+  // the exit IP). Count consecutive walled rows and give up on rich after a few,
+  // saying WHY, then finish with the fast oEmbed pass. See the dev0508/0509 pass,
+  // which bails the same way.
+  const BOTWALL_LIMIT = 3;
+  const isBotWall = m => /not a bot|Sign in to confirm|cookies-from-browser/i.test(String(m || ''));
+  let botWallRun = 0, botWalled = false, richErr = '';
   const failed = [];
   // (dev0807) Esc aborts a rich run mid-flight (capture phase, same idea as the
   // orientation pass), and the handler is removed in the finally below.
@@ -4936,10 +4945,13 @@ async function housekeepingFillYTMeta() {
       // nothing extra. On any failure we fall straight through to oEmbed below.
       if (rich && (!row.ftext || _isOembedStubFtext(row.ftext)) && typeof _ytdlpFetchMeta === 'function') {
         toast('📺 yt-dlp ' + idx + '/' + rows.length + ' — ' + (row.VidTitle || row.link).slice(0, 48)
-          + '\n   ✓ ' + richDone + ' rich  ·  (Esc to stop)', 120000);
+          + '\n   ✓ ' + richDone + ' rich'
+          + (botWallRun ? '  ·  🚫 ' + botWallRun + ' bot-walled' : '')
+          + '  ·  (Esc to stop)', 120000);
         try {
           const ymeta = await _ytdlpFetchMeta(row.link);
           const ydesc = String((ymeta && ymeta.description) || '').trim();
+          botWallRun = 0;                     // a clean answer clears the wall streak
           if (ydesc) {
             row.ftext = _ytdlpBuildFtext(ymeta, row.link);
             const yh = _ytdlpAuthorHandle(ymeta);
@@ -4955,7 +4967,23 @@ async function housekeepingFillYTMeta() {
             continue;                       // rich ftext landed — no oEmbed needed
           }
         } catch (err) {
-          console.warn('[ytMeta] yt-dlp failed, falling back to oEmbed:', row.link, err && err.message);
+          const em = (err && err.message) || 'error';
+          console.warn('[ytMeta] yt-dlp failed, falling back to oEmbed:', row.link, em);
+          if (isBotWall(em)) {
+            botWallRun++;
+            if (!richErr) richErr = em.slice(0, 160);
+            if (!richDone && botWallRun >= BOTWALL_LIMIT) {
+              // Every rich attempt so far was walled → the IP is the problem, not the
+              // rows. Stop asking yt-dlp and let the fast oEmbed pass finish the run.
+              rich = false; botWalled = true;
+              toast('🚫 YouTube is bot-walling this IP — every yt-dlp call returned\n'
+                + '   "Sign in to confirm you\'re not a bot".\n\n'
+                + '   That is the VPN, not the videos: a datacenter exit gets walled,\n'
+                + '   a home IP does not. Turn the VPN off (or rotate the exit) and\n'
+                + '   re-run for full descriptions.\n\n'
+                + '   Continuing with the fast oEmbed pass (title + author only).', 9000);
+            }
+          } else { botWallRun = 0; }
         }
         if (ytMetaAbort) break;
       }
@@ -4991,6 +5019,11 @@ async function housekeepingFillYTMeta() {
   let msg = '📺 YT Meta: ' + done + ' updated';
   if (richDone) msg += ' (' + richDone + ' with a full yt-dlp description)';
   if (ytMetaAbort) msg += ' — stopped with Esc';
+  if (botWalled) {
+    msg += '\n🚫 No descriptions: YouTube bot-walled every yt-dlp call.'
+         + '\n   Almost always the VPN — turn it off / rotate the exit, then re-run.'
+         + (richErr ? '\n   ' + richErr : '');
+  }
   if (skipped) msg += ', ' + skipped + ' already complete';
   if (failed.length) {
     msg += '\n⚠ ' + failed.length + ' unavailable (age-restricted / private / deleted):\n';
@@ -8454,8 +8487,13 @@ function _isOembedStubFtext(ft) {
   if (!/<p>Source: <a /.test(s)) return false;
   const paras = s.match(/<p[ >]/g) || [];
   if (paras.length > 2) return false;                       // has a description body
+  // (dev0808) The By-line pattern must NOT require the inline style: viewing a row
+  // in Xe re-serialises ftext through the DOM and drops style attributes (and
+  // reorders <a> attributes), so a stub the app has since touched reads as
+  // "<p>By @handle</p>". Requiring the style made those rows invisible to this
+  // check — exactly the rows most in need of a real description.
   const stripped = s.replace(new RegExp("<h2>[^]*?</h2>"), '')
-                    .replace(new RegExp('<p style="color:#888[^>]*>By [^]*?</p>'), '')
+                    .replace(new RegExp("<p[^>]*>By [^]*?</p>"), '')
                     .replace(new RegExp("<p>Source: <a [^]*?</p>"), '')
                     .trim();
   return stripped === '';
