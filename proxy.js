@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0805';
+const PROXY_BUILD = 'dev0806';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -5694,9 +5694,12 @@ function vpnStatus(res, origin) {
   sendJson(res, 200, out, origin);
 }
 
-// (dev0805) Did the last /vpn/switch fail to produce a fresh state.json? See the
-// self-heal in vpnSwitch — this is the only thing that arms it.
-let _vpnSwitchIncomplete = false;
+// (dev0805) How many /vpn/switch calls in a row failed to produce a fresh state.json?
+// Arms the self-heal in vpnSwitch. (dev0806) A COUNT, not a flag: a healthy rotation's
+// worst case (~90s of handshake retries) outlives this endpoint's 40s answer, so ONE
+// miss can mean "still working", and ending the task then would kill a live switch.
+// Two in a row cannot — the second call is already past the first one's worst case.
+let _vpnSwitchMisses = 0;
 
 function vpnSwitch(res, origin) {
   const before = vpnReadState();
@@ -5734,13 +5737,14 @@ function vpnSwitch(res, origin) {
   // one stuck task; on the night it happened the zombie had blocked rotation for 12
   // minutes and would have kept doing so for the task's 72h limit.
   // `schtasks /end` clears it with NO elevation (the same call Fix ▸ Un-stick makes),
-  // so do it automatically whenever the LAST switch never produced a fresh state.json.
+  // so do it automatically once two switches in a row produce no fresh state.json.
   // A no-op when nothing is stuck, and it only ever runs on a path that already failed.
   // The permanent fix is still Fix ▸ 🛡 Harden VPN tasks (StopExisting + PT5M).
   let unstuck = false;
-  if (_vpnSwitchIncomplete) {
+  if (_vpnSwitchMisses >= 2) {
     unstuck = true;
-    plog('vpn/switch: previous switch never completed — ending any stuck ' + VPN_TASK + ' instance first');
+    plog('vpn/switch: ' + _vpnSwitchMisses + ' switches in a row never completed — ending any stuck '
+         + VPN_TASK + ' instance first');
     let fired = false;
     const once = () => { if (!fired) { fired = true; fireTask(); } };
     const e = spawn('schtasks', ['/end', '/tn', VPN_TASK], { windowsHide: true });
@@ -5758,10 +5762,10 @@ function vpnSwitch(res, origin) {
       // (dev0799) An exit that wouldn't come up is a fact about that config — record it
       // so the picker stops reaching for a dead server every few rotations.
       if (changed && cur && cur.ok === false) vpnSpeedNoteSwitchFail(cur.lastFile);
-      // (dev0805) Remember whether this switch actually landed. A switch that never
-      // wrote a fresh state.json is the signature of the wedged-task case above, so
-      // the NEXT one clears the zombie first instead of being refused too.
-      _vpnSwitchIncomplete = !changed;
+      // (dev0805) Remember whether this switch actually landed. Switches that never
+      // write a fresh state.json are the signature of the wedged-task case above, so
+      // once they stack up the next one clears the zombie instead of being refused too.
+      if (changed) _vpnSwitchMisses = 0; else _vpnSwitchMisses++;
       sendJson(res, 200, Object.assign(
         { ok: true, via, switched: !!changed, wanted: wanted || null, unstuck,
           speed: vpnSpeedFor((cur || before || {}).lastFile) }, vpnStateOut(cur || before)), origin);
