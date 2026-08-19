@@ -7093,8 +7093,11 @@ window._salApplyCutBelow = _salApplyCutBelow;
 // left alone. Styles are INLINE because the display path spans several CSS
 // contexts (#teSlideContent, #gridFsContent, .grid-html-thumb, the V reader's
 // srcdoc iframe, the greeting) that do not share a stylesheet.
-const _SAL_CAP_STYLE = 'display:block;font-size:0.72em;opacity:0.78;'
-  + 'line-height:1.35;margin-top:0.35em;';
+// (dev0811) Same white as the surrounding prose, and only a shade smaller --
+// the caption should read as part of the text, not as fine print. No opacity
+// dimming; color:inherit so a .te-slide colour wrapper still wins.
+const _SAL_CAP_STYLE = 'display:block;font-size:0.92em;color:inherit;'
+  + 'line-height:1.4;margin-top:0.35em;';
 // The picture at the head of the paragraph is usually a bare <img>, but article
 // pastes often wrap it in a link to the full-size file. Either counts, as long
 // as the wrapper carries no words of its own.
