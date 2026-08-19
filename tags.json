@@ -7478,5 +7478,85 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "etymology",
+    "label": "Etymology",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "melosirales",
+    "label": "Melosirales",
+    "kind": "taxon",
+    "parents": [
+      "bacillariophyceae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "stephanopyxidaceae",
+    "label": "Stephanopyxidaceae",
+    "kind": "taxon",
+    "parents": [
+      "melosirales"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "eupyxidicula",
+    "label": "Eupyxidicula",
+    "kind": "taxon",
+    "parents": [
+      "stephanopyxidaceae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "eupyxidicula-grunowii",
+    "label": "Eupyxidicula grunowii",
+    "kind": "taxon",
+    "parents": [
+      "eupyxidicula"
+    ],
+    "aliases": [
+      "Stephanopyxis grunowii"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "foraminifera",
+    "label": "Foraminifera",
+    "kind": "taxon",
+    "parents": [
+      "sarcodina"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "sarcodina",
+    "label": "Sarcodina",
+    "kind": "taxon",
+    "parents": [
+      "protozoa"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "class"
   }
 ]

@@ -7075,6 +7075,73 @@ function _salApplyCutBelow(html) {
 window._salApplyCutBelow = _salApplyCutBelow;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (dev0810) Image captions BELOW the image, not wrapped around its corner.
+//
+// Article pastes (euronews, Guardian, …) come over as one paragraph holding the
+// picture and its credit line together:
+//
+//     <p><img src="…" alt="…"> A toad swims across a woodland pond. Paul Hobson</p>
+//
+// An <img> is inline, so the caption text starts on the image's LAST line and
+// runs off its bottom-right corner — the "jammed into the corner" look. This is
+// a RENDER-TIME fix, not a data fix: ml.json keeps the paragraph exactly as
+// pasted, and every existing row (plus anything pasted tomorrow) displays right
+// without being touched.
+//
+// Only fires on the ambiguous shape — a leading <img> in a <p> that has trailing
+// content. An image alone in its own <p>, or an inline icon mid-sentence, is
+// left alone. Styles are INLINE because the display path spans several CSS
+// contexts (#teSlideContent, #gridFsContent, .grid-html-thumb, the V reader's
+// srcdoc iframe, the greeting) that do not share a stylesheet.
+const _SAL_CAP_STYLE = 'display:block;font-size:0.72em;opacity:0.78;'
+  + 'line-height:1.35;margin-top:0.35em;';
+// The picture at the head of the paragraph is usually a bare <img>, but article
+// pastes often wrap it in a link to the full-size file. Either counts, as long
+// as the wrapper carries no words of its own.
+function _salLeadPicture(p) {
+  const el = p.firstElementChild;
+  if (!el) return null;
+  if (el.tagName === 'IMG') return el;
+  if ((el.tagName === 'A' || el.tagName === 'FIGURE')
+      && el.querySelector('img') && !(el.textContent || '').trim()) return el;
+  return null;
+}
+function _salFigureCaptions(html) {
+  if (!html || html.indexOf('<img') < 0) return html || '';
+  const host = document.createElement('div');
+  host.innerHTML = html;
+  let touched = false;
+  host.querySelectorAll('p').forEach(p => {
+    // The picture must LEAD the paragraph — nothing but whitespace ahead of it.
+    const pic = _salLeadPicture(p);
+    if (!pic) return;
+    for (let n = p.firstChild; n && n !== pic; n = n.nextSibling) {
+      if (n.nodeType === 3 && (n.nodeValue || '').trim()) return;
+    }
+    // …and there must be real caption content after it.
+    let hasTail = false;
+    for (let n = pic.nextSibling; n; n = n.nextSibling) {
+      if (n.nodeType === 1) { hasTail = true; break; }
+      if (n.nodeType === 3 && (n.nodeValue || '').trim()) { hasTail = true; break; }
+    }
+    if (!hasTail) return;
+    // Break the line under the picture, then collect the tail into one span so
+    // the credit reads as a caption instead of as body prose.
+    const st = (pic.getAttribute('style') || '').trim().replace(/;+$/, '');
+    pic.setAttribute('style', (st ? st + ';' : '')
+      + 'display:block;max-width:100%;height:auto;');
+    const cap = document.createElement('span');
+    cap.className = 'te-imgcap';
+    cap.setAttribute('style', _SAL_CAP_STYLE);
+    while (pic.nextSibling) cap.appendChild(pic.nextSibling);
+    p.appendChild(cap);
+    touched = true;
+  });
+  return touched ? host.innerHTML : html;
+}
+window._salFigureCaptions = _salFigureCaptions;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (dev0763) ▼▼ / ▶▶ — expand-all / collapse-all icons the AUTHOR drops into the
 // text with Xe, so a reader can open or shut every collapsible on the slide with
 // one tap. Two triangles overlapped (CSS letter-spacing, not a font glyph —
@@ -7214,7 +7281,7 @@ _salWireLinks(document);
 // parked notes on the next save. Editors call _linkifyHtml directly.
 function renderFtext(ftext) {
   if (!ftext) return '';
-  return _linkifyHtml(_salApplyCutBelow(ftext));
+  return _linkifyHtml(_salFigureCaptions(_salApplyCutBelow(ftext)));
 }
 
 // (dev0278) ftext size / junk readout. "Junk" = bytes a cleanup would strip
