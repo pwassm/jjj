@@ -1027,11 +1027,20 @@
 #igBar button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
 #igBar button:disabled{opacity:.5;cursor:default}
 #igBar .spacer{flex:1}
-/* (dev0496) Action buttons live in their own right-anchored group so a changing
-   record-count / selection width never reflows them. margin-left:auto pins the
-   whole group to the right; it wraps as a unit on narrow windows. */
+/* (dev0809) The toolbar is three FIXED lines, not one reflowing run: line 1 is the
+   title/count/VPN block, line 2 is search + the filter dropdowns, line 3+ is the
+   action buttons. Each group takes flex-basis:100% so it always starts its own
+   line — previously a longer VPN label or record count could pull the search box
+   up onto line 1 (or push it down), and every control moved under the cursor.
+   Line 2 is the one right-justified row (per the user); the rest stay left. */
+#igBar .igFilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  flex:1 0 100%;justify-content:flex-end}
+/* (dev0496) Action buttons live in their own group so a changing record-count /
+   selection width never reflows them.
+   (dev0809) Was right-anchored via margin-left:auto; now left-justified on its
+   own line, so only line 2 is right-justified. */
 #igBar .igActs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  justify-content:flex-end;margin-left:auto}
+  flex:1 0 100%;justify-content:flex-start}
 #igBar #igClose{font-size:18px;padding:2px 10px;line-height:1}
 #igWrap{flex:1;overflow:auto;position:relative}
 #igTable{border-collapse:collapse;width:100%;table-layout:fixed}
@@ -1209,6 +1218,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <span id="igVpn" title="Current Proton VPN exit — click to refresh"><span class="dot"></span><span class="txt">VPN …</span></span>
         <button id="igVpnStop" title="Stop the rotating WireGuard tunnel (proton_active) and hand VPN control back to the Proton tray app — where you can pick a server or turn the VPN off entirely.">⏏ Drop VPN</button>
         <button id="igFix" title="Recovery tools — one click each: restart the proxy, permanently harden the VPN tasks, unstick a jammed rotation, or force a working VPN exit up. Use this whenever downloads/VPN stop working.">🛠 Fix</button>
+        <div class="igFilters">
         <input type="text" id="igSearch" placeholder="search author / id / title / caption…">
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
@@ -1217,6 +1227,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
         <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option><option value="stuck">⤓ gave up (3 tries)</option></select>
         <select id="igRes" title="(dev0690) Real resolution OF THE FILES ON DISK, measured at download time — not the enrich metadata, which for a carousel video is IG’s logged-out page figure and is capped at 720 wide. ‘below 1080’ = the narrowest item of the post is under 1080px wide (the backfill queue). ‘not measured’ = downloaded before dev0690, so nothing knows what it is without re-downloading. ‘at best’ = a re-download was tried and IG had nothing better, so stop offering it. (dev0698) The 🔬 options are the video probe’s verdicts — see the 🔬 Probe video res button."><option value="all">all res</option><option value="low">📐 below 1080 wide</option><option value="ok">1080+ wide</option><option value="unmeasured">not measured yet</option><option value="best">already at IG’s best</option><option value="pup">🔬⬆ probe: bigger available</option><option value="pmax">🔬✔ probe: at IG’s max</option><option value="punprobed">🔬 video, not probed yet</option></select>
+        </div>
         <div class="igActs">
         <button id="igPaste" title="Paste a Firefox 'Save Page As Text' of a reel → fills that row's ttxt/caption">📋 Paste saved-text</button>
         <button id="igAddSingle" title="Add the single Instagram post/reel URL on the clipboard as a new Unharvested row (hotkey w) — status 'new', ready to Enrich/Download. For grabbing individual posts from authors you don't want to fully harvest.">➕ Add single (w)</button>
