@@ -326,6 +326,10 @@
   // Below target = the NARROWEST item on disk is under 1080 wide. Uses the per-post
   // minimum so a carousel where five items are 1080 and one is 720 still shows up.
   const belowTarget = r => r.dlMinW > 0 && r.dlMinW < RES_TARGET_W;
+  // (dev0813) Floor for the dev0812 live "already at IG's best" inference. Above it,
+  // a sub-1080 result is IG's era ceiling; below it, the likelier explanation is a bad
+  // read — so those stay UNSETTLED and go to the 🔬 probe instead of being concluded.
+  const INFER_MIN_W = 720;
   // (dev0472) Always link the BARE /p/<id>/ permalink, NOT r.url (which may be the
   // username-scoped /author/reel/<id>/ form). The bare /p/ permalink is the one that
   // opens IG's grid modal WITH the ◀▶ arrows so the user can keep arrowing the feed;
@@ -2817,8 +2821,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
                        && !j.viaMainCarousel && !j.viaGalleryDl;
       const _loneVideo = _items === 1 && r.localFiles.length === 1
                       && PROBE_VIDEO_EXT.test((r.localFiles[0] || '').split('/').pop());
+      // (dev0813) …and only from INFER_MIN_W up. dev0812 concluded any sub-1080 clean
+      // download, which on the first morning stamped 162 rows at 360x640 as "already at
+      // IG's best" — permanently, from one read. A 640-wide 2016-era post really is at
+      // its ceiling, but a 360x640 off a throttled exit is not, and nothing in the reply
+      // tells them apart. This is dev0690's rule again: a throttled read is a throttle,
+      // not IG's final word, and must never be recorded as a verdict. Below the floor the
+      // row keeps its ⚠ — which now means "not settled yet", so that is the honest state.
       if (!coverOnly && !_partial && !r.resBest && _cleanYtdlp && _loneVideo
-          && r.dlMinW > 0 && r.dlMinW < RES_TARGET_W) {
+          && r.dlMinW >= INFER_MIN_W && r.dlMinW < RES_TARGET_W) {
         r.resBest = 1;
         r.resBestVia = 'infer';
         r.resBestAt = (typeof isoNow === 'function') ? isoNow()
