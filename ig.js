@@ -1553,6 +1553,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // number, so the cell used to advertise a resolution the file didn't have. A
     // measured value below 1080 wide gets a persistent ⚠ (same "flag it so it can't
     // pile up unseen" rule as ⚠ partial), which is also what the Res filter selects on.
+    // (dev0812) …UNLESS the row is concluded (resBest): 720x1280 that IG has no
+    // bigger copy of is a fact about the upload, not a defect in our file, and a ⚠
+    // on it is noise the user can do nothing about. Marker, filter and header count
+    // now all read the same test — they had drifted apart, so a concluded row kept
+    // its ⚠ while being excluded from the count that ⚠ was supposed to explain.
     const _d = dlDims(r);
     // (dev0698) …plus what the VIDEO PROBE found, which is a different question from ⚠
     // (that one is "is this under 1080?"; this one is "does IG still have better?"). A
@@ -1574,7 +1579,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           ? `<span${_d.measured ? '' : ' class="no"'} title="${_d.measured
               ? 'Measured from the file(s) on disk' + (r.dlMinW && r.dlMinW !== _d.w ? ' — narrowest item ' + r.dlMinW + 'px wide' : '')
               : 'From enrich metadata — NOT measured. For a carousel video this is IG’s logged-out page figure, which is capped at 720 wide.'}">${_d.w}×${_d.h}</span>`
-            + (belowTarget(r) ? `<span class="walled" title="Below ${RES_TARGET_W}px wide — queued by Res ▸ below ${RES_TARGET_W}"> ⚠</span>` : '')
+            + (belowTarget(r) && !r.resBest
+                ? `<span class="walled" title="Below ${RES_TARGET_W}px wide AND not yet established as IG's own ceiling — queued by Res ▸ below ${RES_TARGET_W}"> ⚠</span>`
+                : '')
           : '<span class="no">—</span>')) + probeMark;
     // (dev0690) 0 = not a carousel · n = an n-item carousel · ≥n = at least that many
     // (inferred from the files that landed) · — = never established.
@@ -1750,7 +1757,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           (r.width && kindOf(r) === 'p' && Number.isFinite(r.nItems) && r.nItems > 1)
             ? ' <span style="color:#8a8f98">· IG’s logged-out figure for a carousel video is capped at 720 wide</span>' : ''}</span>
         <b>W×H (on disk)</b><span>${r.dlW ? `${r.dlW} × ${r.dlH}${r.dlMinW && r.dlMinW !== r.dlW ? ` · narrowest item ${r.dlMinW}px` : ''}${
-          belowTarget(r) ? ` <span style="color:#d59a3a">⚠ below ${RES_TARGET_W}</span>` : ''}`
+          (belowTarget(r) && !r.resBest) ? ` <span style="color:#d59a3a">⚠ below ${RES_TARGET_W}</span>` : ''}`
           : '<span style="color:#8a8f98">not measured — downloaded before dev0690, or not downloaded</span>'}</span>
         <b>Carousel</b><span>${(() => {
           const c = carouselCount(r);
@@ -1794,7 +1801,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
             : r.resBestVia === 'audit'
             ? `Proven from IG’s own metadata (🔎 Probe re-fetch / igResAudit.js${r.resBestDecl ? ' — the post declares ' + esc(r.resBestDecl).replace('w/', 'px over ').replace('i', ' item(s)') : ''}): the originals IG holds are no bigger than the files on disk. No media was re-downloaded to establish this.`
             : r.resBestVia === 'infer'
-              ? 'Inferred from the download path (igMeasure.js): reels come through yt-dlp with no format filter, so IG’s best was already taken. Not a per-post measurement — reversible with <code>igMeasure.js --unmark</code>.'
+              ? 'Inferred from the download path: a single-video post comes through yt-dlp with no format filter, so IG’s best rung was already taken — 720×1280 is that upload’s stored ceiling, and a logged-in session offers no more (verified 2026-07-30). Stamped by igMeasure.js on the back catalogue, and at download time since dev0812. Not a per-post measurement — reversible with <code>igMeasure.js --unmark</code>, and the 🔬 probe overrules it.'
               : 'Proven by re-download: it came back no better than what is on disk and was discarded.'
         }</span></span>` : ''}
         <b>Harvested</b><span>${esc(r.DateAdded || '—')}</span>
@@ -2787,6 +2794,36 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         if (r.refetchStuck) delete r.refetchStuck;
       }
       if (_partial) r.partialDl = 1; else if (r.partialDl) delete r.partialDl;
+      // (dev0812) CONCLUDE a clean single-video download on the spot, instead of
+      // letting it wear a ⚠ from the moment it arrives. A reel that lands at
+      // 720x1280 is at IG's stored ceiling for that upload — the no-`-f` yt-dlp
+      // path already took the top rung of the ladder, and both the 2026-07-28
+      // ladder check (29/29) and the 2026-07-30 logged-in control (identical
+      // ladder with --cookies-from-browser firefox) say there is nothing above it.
+      // Marking it ⚠ said "something is wrong with this file" when nothing was,
+      // and no download — cookies or not — could ever clear it.
+      //
+      // This is igMeasure.js --mark's reel/tv inference, run live and narrowed to
+      // what this particular reply proves:
+      //   • CLEAN yt-dlp only. Every via* path is a rescue off the logged-out /p
+      //     page, whose video_versions dev0690 measured as capped at 720 wide —
+      //     stamping those would launder a real cap into a verdict.
+      //   • ONE item, ONE video file. A photo under 1080 may be a cropped 640
+      //     cover rather than IG's original, and only igResAudit.js's page read
+      //     can tell those apart; a carousel's missing items are unknown.
+      // Recorded as resBestVia:'infer' — the 🔬 probe revokes it on sight of a
+      // bigger rung, and igMeasure.js --unmark reverses it in bulk.
+      const _cleanYtdlp = !j.viaEmbed && !j.viaCover && !j.viaMainVideo
+                       && !j.viaMainCarousel && !j.viaGalleryDl;
+      const _loneVideo = _items === 1 && r.localFiles.length === 1
+                      && PROBE_VIDEO_EXT.test((r.localFiles[0] || '').split('/').pop());
+      if (!coverOnly && !_partial && !r.resBest && _cleanYtdlp && _loneVideo
+          && r.dlMinW > 0 && r.dlMinW < RES_TARGET_W) {
+        r.resBest = 1;
+        r.resBestVia = 'infer';
+        r.resBestAt = (typeof isoNow === 'function') ? isoNow()
+          : new Date().toISOString().slice(0, 19).replace('T', ' ');
+      }
       // (dev0675) Adopt the download-time embed verdict. Only a CONCLUSIVE probe writes
       // the field; a walled/inconclusive one leaves the row unstamped so igEmbedProbe.js
       // can still resolve it later — the flag must never be a guess, the grids gate
