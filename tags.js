@@ -65,6 +65,7 @@
     renderChipsForRecord,
     recordTagIds,
     search: searchTags,
+    resolveTaxon: (name, opts) => resolveTaxon(name, opts),
     closeMenu: closeChipContextMenu,
   };
 
@@ -1154,7 +1155,7 @@
     // user asked for. The Dictionary edit panel will render the same button.
     items.push({
       key: 'g',
-      labelHtml: isTaxon ? 'Check <u>G</u>BIF' : 'Check <u>G</u>BIF (verify as taxon)',
+      labelHtml: isTaxon ? 'Check taxonomy (<u>g</u>)' : 'Check taxonomy (<u>g</u>) — verify as taxon',
       action: () => {
         openDictForTag(tagId);
         requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -1928,7 +1929,7 @@
         + (linPaths.length
             ? linPaths.map(pp => '<div style="font-size:11px;line-height:2;">' + linCrumb(pp) + '</div>').join('')
             : '<div style="color:#c96;font-size:11px;line-height:1.6;">⚠ No parent — nothing broader finds this tag.'
-              + '<br>Set a Parent below, or run 🔎 Check GBIF → 🚀 Apply All to import the whole chain.</div>')
+              + '<br>Set a Parent below, or run 🔎 Check taxonomy → 🚀 Apply All to import the whole chain.</div>')
         + '</div>';
 
       editEl.innerHTML = `
@@ -1981,7 +1982,7 @@
           <button id="de-save" style="padding:6px 18px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;font-weight:bold;">✓ Save</button>
           <button id="de-merge" style="padding:6px 14px;border:1px solid #fc8;background:rgba(80,50,0,0.35);color:#fc8;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;" title="Merge this tag into another — moves records, adds aliases, deletes this tag">↗ Merge into…</button>
           <button id="de-del" style="padding:6px 14px;border:1px solid #f66;background:rgba(80,0,0,0.3);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🗑 Delete</button>
-          <button id="de-gbif" style="padding:6px 12px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;" title="${t.kind === 'taxon' ? 'Verify this name against GBIF (Global Biodiversity Information Facility)' : 'Look up this name on GBIF — applying a chain will mark this tag as a taxon'}">🔎 Check GBIF${t.kind === 'taxon' ? '' : ' (verify as taxon)'}</button>
+          <button id="de-gbif" style="padding:6px 12px;border:1px solid #4af;background:rgba(0,40,100,0.35);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;" title="${t.kind === 'taxon' ? 'Look this name up in WoRMS (World Register of Marine Species), falling back to GBIF for anything not marine' : 'Look this name up in WoRMS, then GBIF — applying a chain will mark this tag as a taxon'}">🔎 Check taxonomy${t.kind === 'taxon' ? '' : ' (verify as taxon)'}</button>
           <span style="flex:1;"></span>
           <button id="de-viewrecs" style="padding:6px 12px;border:1px solid #4af;background:rgba(0,60,140,0.4);color:#8ef;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;">Show ${effUse} videos</button>
         </div>
@@ -2055,8 +2056,13 @@
           resultEl.innerHTML = '<div style="padding:10px;color:#888;font-size:11px;">🔎 Querying GBIF…</div>';
           gbifBtn.disabled = true;
           try {
-            const res = await queryGbif(queryName);
-            renderGbifResult(resultEl, id, queryName, res);
+            const resolution = await resolveTaxon(queryName, {
+              rankHint: editEl.querySelector('#de-rank').value || t.rank || null,
+              compare: true,
+              vernacular: true
+            });
+            const res = resolution.primary || { matchType: 'NONE', _source: 'worms' };
+            renderTaxonResult(resultEl, id, queryName, res, resolution);
           } catch (e) {
             resultEl.innerHTML = '<div style="padding:10px 12px;background:rgba(255,80,80,0.1);border:1px solid #533;border-radius:5px;color:#f88;font-size:11px;">'
               + 'GBIF request failed: ' + escapeHtml(String(e && e.message || e))
@@ -2932,7 +2938,7 @@
       + 'overflow-y:auto;font-family:monospace;color:#ddd;padding:16px 20px;';
     const HEAD = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
       + '<span style="color:#6c9;font-size:14px;font-weight:bold;">🌳 Normalize top of tree</span>'
-      + '<span style="color:#777;font-size:11px;flex:1;">Every kingdom, phylum and unplaced taxon, checked against GBIF. Nothing is written until you press Apply.</span>'
+      + '<span style="color:#777;font-size:11px;flex:1;">Every kingdom, phylum and unplaced taxon, checked against WoRMS and then GBIF. Nothing is written until you press Apply.</span>'
       + '<button id="nzClose" style="padding:3px 10px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:4px;cursor:pointer;font-size:11px;">✕ Close</button>'
       + '</div>';
 
@@ -2988,8 +2994,8 @@
       let done = 0;
       const showProgress = () => {
         const el = modal.querySelector('#nzProgress');
-        if (el) el.textContent = 'Asking GBIF about ' + cands.length
-          + ' tags at the top of the tree…  ' + done + ' / ' + cands.length;
+        if (el) el.textContent = 'Checking ' + cands.length
+          + ' tags at the top of the tree against WoRMS, then GBIF…  ' + done + ' / ' + cands.length;
       };
       showProgress();
 
@@ -2999,8 +3005,15 @@
         while (queue.length && !cancelled) {
           const t = queue.shift();
           let res;
-          try { res = await queryGbif(t.label); }
-          catch (e) { res = { matchType: 'ERROR', _err: String(e && e.message || e) }; }
+          try {
+            // The recorded rank is passed as a hint so a name held by more than
+            // one organism resolves to the right one: Ctenophora is a comb-jelly
+            // phylum here and two chromist genera in WoRMS.
+            const r = await resolveTaxon(t.label, { rankHint: t.rank });
+            if (r.primary) { res = r.primary; }
+            else if (r.errors.length) { res = { matchType: 'ERROR', _err: r.errors.join(' / ') }; }
+            else { res = { matchType: 'NONE' }; }
+          } catch (e) { res = { matchType: 'ERROR', _err: String(e && e.message || e) }; }
           answers.set(t.id, res);
           done++; showProgress();
         }
@@ -3009,28 +3022,49 @@
       await Promise.all([worker(), worker(), worker(), worker()]);
       if (cancelled) return null;
 
-      const reparent = [], setRank = [], conflicts = [], unknown = [], noanchor = [], errored = [];
+      const reparent = [], setRank = [], conflicts = [], unknown = [], noanchor = [],
+            errored = [], renames = [];
       cands.forEach(t => {
         const res = answers.get(t.id);
         const mt  = res && res.matchType;
+        const via = res && res._source === 'worms' ? 'WoRMS' : 'GBIF';
         // A request that never landed says nothing about the taxon. Reporting a
-        // dead connection as "GBIF has never heard of Chordata" would be a lie,
-        // and the sort of lie you would act on.
+        // dead connection as "never heard of Chordata" would be a lie, and the
+        // sort of lie you would act on.
         if (mt === 'ERROR' || !mt) {
-          errored.push({ t: t, why: (res && res._err) || 'no response from GBIF' });
+          errored.push({ t: t, why: (res && res._err) || 'no response' });
           return;
         }
         if (mt === 'NONE') {
-          unknown.push({ t: t, why: 'GBIF has no match for this name' });
+          unknown.push({ t: t, why: 'neither WoRMS nor GBIF has a match for this name' });
           return;
         }
-        const gRank = String(res.rank  || '').toLowerCase();
+        const sRank = String(res.rank  || '').toLowerCase();
         const dRank = String(t.rank    || '').toLowerCase();
-        if (dRank && gRank && dRank !== gRank) {
-          conflicts.push({ t: t, why: 'you have it as a ' + dRank + ', GBIF matched a ' + gRank
+        // Compare by tier, not by string: the registers disagree about modifier
+        // prefixes without disagreeing about the organism. WoRMS calls
+        // Actinopterygii a gigaclass and Endomyxa a subphylum where this
+        // dictionary says class and phylum — same taxon, finer label. A tier
+        // mismatch (phylum here, genus there) is the homonym that must be refused.
+        if (dRank && sRank && rankTier(dRank) !== rankTier(sRank)) {
+          conflicts.push({ t: t, via: via,
+            why: 'you have it as a ' + dRank + ', ' + via + ' matched a ' + sRank
             + ' of the same name'
             + (res.kingdom ? ' in ' + res.kingdom + (res.phylum ? ' › ' + res.phylum : '') : '') });
           return;
+        }
+        // WoRMS says the name itself is out of date, and gives the accepted one.
+        if (res._supersededFrom && res.canonicalName
+            && res.canonicalName.toLowerCase() !== String(t.label || '').toLowerCase()) {
+          const existing = resolveInput(res.canonicalName);
+          if (existing && existing !== t.id && !tagDescendants(t.id).has(existing)) {
+            renames.push({ t: t, to: res.canonicalName, mergeInto: existing,
+              was: res._supersededFrom, via: via });
+            return;   // it is going away; where it sits meanwhile does not matter
+          } else if (!existing) {
+            renames.push({ t: t, to: res.canonicalName, mergeInto: null,
+              was: res._supersededFrom, via: via });
+          }
         }
         const selfLc  = String(t.label || '').toLowerCase();
         const canonLc = String(res.canonicalName || '').toLowerCase();
@@ -3047,14 +3081,21 @@
           const pid = resolveInput(chain[i]);
           if (pid && pid !== t.id && !desc.has(pid)) anchor = pid;
         }
-        if (!dRank && gRank) setRank.push({ t: t, rank: gRank });
-        if (!anchor) { noanchor.push({ t: t, chain: chain }); return; }
+        // Only ever write back a rank this dictionary can store — WoRMS is
+        // finer-grained than the rank dropdown (gigaclass, infraclass, parvorder).
+        if (!dRank && sRank && DICT_RANKS.has(sRank)) setRank.push({ t: t, rank: sRank, via: via });
+        if (!anchor) {
+          if (!hierParentOf(t)) noanchor.push({ t: t, chain: chain, via: via });
+          return;
+        }
         const cur = hierParentOf(t);
         if (cur === anchor) return;
-        reparent.push({ t: t, from: cur, to: anchor, chain: chain, gRank: gRank });
+        reparent.push({ t: t, from: cur, to: anchor, chain: chain, sRank: sRank, via: via });
       });
 
-      // Second pass: every name match could not place, asked again as a synonym.
+      // Second pass: the names neither register placed, asked again as GBIF
+      // synonyms. WoRMS answers this in the first pass via status/valid_name,
+      // so only the leftovers reach here.
       let synDone = 0;
       const synQueue = unknown.slice();
       const synWorker = async () => {
@@ -3109,6 +3150,12 @@
         unknown:   unknown.filter(u => !merged.has(u.t.id)),
         noanchor:  noanchor,
         errored:   errored,
+        renames:   renames,
+        sources:   (() => {
+          let w = 0, g = 0;
+          answers.forEach(r => { if (r && r._source === 'worms') w++; else if (r && r._source === 'gbif') g++; });
+          return { worms: w, gbif: g };
+        })(),
         scanned:   cands.length
       };
     }
@@ -3118,6 +3165,12 @@
       const actions = [];
       const box = (i) => '<input type="checkbox" data-nz="' + i + '" checked '
         + 'style="margin-right:9px;vertical-align:middle;cursor:pointer;">';
+      const viaTag = (via) => via
+        ? ' <span style="padding:0 4px;border-radius:3px;font-size:9px;'
+          + (via === 'WoRMS' ? 'background:rgba(80,200,180,0.16);color:#7dd;'
+                             : 'background:rgba(100,140,255,0.16);color:#9bf;')
+          + '">' + via + '</span>'
+        : '';
       const nameOf = (t) => '<span style="color:' + kindColor(t) + ';font-weight:bold;">'
         + escapeHtml(t.label || t.id) + '</span>'
         + (t.rank ? ' <span style="color:#667;font-size:10px;">' + escapeHtml(t.rank) + '</span>' : '');
@@ -3136,7 +3189,7 @@
         html += '<div style="margin:4px 0 8px;padding:9px 12px;background:rgba(255,80,80,0.10);'
           + 'border:1px solid #733;border-radius:5px;font-size:11px;line-height:1.7;">'
           + '<b style="color:#f99;">⚠ ' + errs + ' of ' + plan.scanned
-          + ' lookups did not reach GBIF.</b> <span style="color:#c99;">'
+          + ' lookups did not reach WoRMS or GBIF.</b> <span style="color:#c99;">'
           + escapeHtml(plan.errored[0].why) + '</span>'
           + '<div style="color:#a88;margin-top:3px;">These are unanswered, not unrecognised — '
           + 'they are left out of the plan entirely. If you are on the VPN, drop it and scan again.</div>'
@@ -3176,18 +3229,38 @@
         });
       }
 
+      if ((plan.renames || []).length) {
+        html += heading('Out-of-date names', '#9dd',
+          'WoRMS holds the name you have as superseded, and names the accepted one');
+        plan.renames.forEach(r => {
+          const i = actions.push(r.mergeInto
+            ? { kind: 'merge', id: r.t.id, into: r.mergeInto, label: r.t.label,
+                intoLabel: labelFor(r.mergeInto) }
+            : { kind: 'rename', id: r.t.id, to: r.to, label: r.t.label }) - 1;
+          html += '<div style="' + ROW + '">' + box(i) + nameOf(r.t) + viaTag(r.via)
+            + ' <span style="color:#556;">' + (r.mergeInto ? 'merge into' : 'rename to') + '</span> '
+            + '<b style="color:#9dd;">' + escapeHtml(r.mergeInto ? labelFor(r.mergeInto) : r.to) + '</b>'
+            + '<div style="color:#889;font-size:10px;padding-left:26px;">'
+            + escapeHtml(r.t.label) + ' is <b>' + escapeHtml(r.was) + '</b> in WoRMS. '
+            + (r.mergeInto
+                ? 'You already have the accepted name, so the records move across and the old name survives as an alias.'
+                : 'The old name is kept as an alias, so searching it still works.')
+            + '</div></div>';
+        });
+      }
+
       if (plan.reparent.length) {
         html += heading('Re-parent', '#8cf',
-          'moved to the deepest ancestor GBIF names that already exists here');
+          'moved to the deepest ancestor the register names that already exists here');
         plan.reparent.forEach(r => {
           const i = actions.push({ kind: 'reparent', id: r.t.id, to: r.to,
             label: r.t.label, toLabel: labelFor(r.to) }) - 1;
           html += '<div style="' + ROW + '">' + box(i)
-            + nameOf(r.t)
+            + nameOf(r.t) + viaTag(r.via)
             + ' <span style="color:#889;">' + escapeHtml(r.from ? labelFor(r.from) : '(nothing)') + '</span>'
             + ' <span style="color:#556;">→</span> '
             + '<b style="color:#8cf;">' + escapeHtml(labelFor(r.to)) + '</b>'
-            + '<div style="color:#667;font-size:10px;padding-left:26px;">GBIF: '
+            + '<div style="color:#667;font-size:10px;padding-left:26px;">' + escapeHtml(r.via || 'GBIF') + ': '
             + escapeHtml(r.chain.join(' › ')) + '</div>'
             + '</div>';
         });
@@ -3197,7 +3270,7 @@
         html += heading('Fill in a missing rank', '#cae', 'these have no rank recorded');
         plan.setRank.forEach(r => {
           const i = actions.push({ kind: 'rank', id: r.t.id, rank: r.rank, label: r.t.label }) - 1;
-          html += '<div style="' + ROW + '">' + box(i) + nameOf(r.t)
+          html += '<div style="' + ROW + '">' + box(i) + nameOf(r.t) + viaTag(r.via)
             + ' <span style="color:#556;">rank →</span> <b style="color:#cae;">' + escapeHtml(r.rank) + '</b>'
             + '</div>';
         });
@@ -3205,17 +3278,18 @@
 
       // ── read-only: everything deliberately left alone ─────────────────────
       if (plan.conflicts.length) {
-        html += heading('Left alone — GBIF disagrees about the rank', '#f99',
-          'same spelling, different organism. Following GBIF here would file a phylum under a genus');
+        html += heading('Left alone — the register disagrees about the rank', '#f99',
+          'same spelling, different organism. Following it here would file a phylum under a genus');
         plan.conflicts.forEach(c => {
           html += '<div style="' + DEAD + '"><span style="color:#fbb;">' + escapeHtml(c.t.label)
-            + '</span> <span style="color:#977;">— ' + escapeHtml(c.why) + '</span>'
+            + '</span>' + viaTag(c.via)
+            + ' <span style="color:#977;">— ' + escapeHtml(c.why) + '</span>'
             + ' <span data-nzopen="' + escapeAttr(c.t.id) + '" style="color:#6af;cursor:pointer;text-decoration:underline dotted;">open</span></div>';
         });
       }
 
       if (plan.unknown.length) {
-        html += heading('Left alone — GBIF answered, with no match', '#a96',
+        html += heading('Left alone — both registers answered, neither had a match', '#a96',
           'extinct, disputed, or not a scientific name. Staying put is the safe answer');
         html += '<div style="' + DEAD + 'line-height:2;">'
           + plan.unknown.map(u => '<span data-nzopen="' + escapeAttr(u.t.id) + '" title="'
@@ -3225,8 +3299,8 @@
       }
 
       if (plan.noanchor.length) {
-        html += heading('Left alone — no ancestor of theirs exists here yet', '#899',
-          'run 🔎 Check GBIF → 🚀 Apply All on one of these to create its chain');
+        html += heading('Unplaced, and no ancestor of theirs exists here yet', '#899',
+          'run 🔎 Check taxonomy → 🚀 Apply All on one of these to create its chain');
         html += '<div style="' + DEAD + 'line-height:2;">'
           + plan.noanchor.map(u => '<span data-nzopen="' + escapeAttr(u.t.id) + '" title="'
               + escapeAttr('GBIF: ' + u.chain.join(' > ')) + '" style="color:#9aa;cursor:pointer;margin-right:10px;'
@@ -3252,7 +3326,9 @@
               + 'color:#99a;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;">untick all</button>'
             : '<span style="color:#8ec;font-size:12px;">✓ Nothing to change — the top of the tree agrees with GBIF.</span>')
         + '<span style="flex:1;"></span>'
-        + '<span style="color:#667;font-size:11px;">' + plan.scanned + ' tags checked</span>'
+        + '<span style="color:#667;font-size:11px;">' + plan.scanned + ' tags checked · '
+        + ((plan.sources && plan.sources.worms) || 0) + ' answered by WoRMS, '
+        + ((plan.sources && plan.sources.gbif) || 0) + ' by GBIF</span>'
         + '</div>';
 
       paint(html + bar);
@@ -3317,6 +3393,14 @@
         } else if (a.kind === 'rank') {
           r = updateTag(a.id, { rank: a.rank });
           if (r.ok) log.push(['✓', a.label, 'rank set to ' + a.rank]);
+        } else if (a.kind === 'rename') {
+          // Keep the superseded name searchable — it is what the sources, the
+          // captions and half the internet still call it.
+          const aliases = (t.aliases || []).slice();
+          const lc = String(a.label || '').toLowerCase();
+          if (a.label && !aliases.some(x => String(x).toLowerCase() === lc)) aliases.push(a.label);
+          r = updateTag(a.id, { label: a.to, aliases: aliases });
+          if (r.ok) log.push(['✓', a.label, 'renamed to ' + a.to + ' (old name kept as an alias)']);
         } else if (a.kind === 'merge') {
           r = mergeTag(a.id, a.into);
           if (r.ok) log.push(['✓', a.label, 'merged into ' + a.intoLabel]);
@@ -3466,6 +3550,170 @@
     return await r.json();
   }
 
+  // ── WoRMS ────────────────────────────────────────────────────────────────
+  // The World Register of Marine Species. Primary source; GBIF is the fallback.
+  //
+  // Measured over the 539 ranked taxa in this dictionary, WoRMS resolves 87.9%
+  // and agrees with the recorded rank on 85.9%, against GBIF's 86.6% / 82.9%.
+  // The totals are close; the failures are not. GBIF's species/match endpoint
+  // answers HIGHERRANK when it cannot find a name — it hands back the KINGDOM,
+  // which reads exactly like a successful match. Bathynomus, Lithopoma,
+  // Caprella, Clionidae, Polychaeta, Parachela and Chaetognatha all came back as
+  // a bare "Animalia". It resolves Tunicata to a genus of BACTERIA, Retaria to
+  // an animal genus in Brachiopoda, Endomyxa to a protozoan genus. It also
+  // misses core marine groups outright: Ctenophora, Actinopterygii, Teleostei,
+  // Amphibia, Metazoa, Chelicerata, Paguroidea, Thoracica.
+  //
+  // GBIF keeps the fallback slot for what WoRMS has no remit for: land animals
+  // (Loxodonta, Bradypodion, Bothrops, the birds) and viruses.
+  const WORMS_REST = 'https://www.marinespecies.org/rest';
+
+  async function wormsFetch(path) {
+    const r = await fetch(WORMS_REST + path);
+    if (r.status === 204) return null;         // WoRMS signals "no rows" with 204
+    if (!r.ok) throw new Error('WoRMS returned ' + r.status);
+    return await r.json();
+  }
+
+  // Ranks this dictionary can actually store — the de-rank dropdown's options.
+  // WoRMS is finer-grained than that (gigaclass, infraclass, parvorder), so a
+  // rank is only ever written back when it is one of these.
+  const DICT_RANKS = new Set(['domain','kingdom','phylum','subphylum','class','subclass',
+    'order','suborder','superfamily','family','subfamily','genus','species']);
+
+  // Compare ranks across sources by tier, ignoring the modifier prefixes the two
+  // registries disagree about: WoRMS calls Actinopterygii a gigaclass and
+  // Thoracica an infraclass where this dictionary says class.
+  function rankTier(r) {
+    return String(r || '').toLowerCase().trim()
+      .replace(/^(giga|mega|super|sub|infra|parv)/, '');
+  }
+
+  // Fold a WoRMS record into the shape the GBIF code already speaks, so every
+  // consumer downstream works unchanged whichever source answered.
+  function wormsRowToResult(row, queried, followedFrom) {
+    const rank = String(row.rank || '');
+    return {
+      matchType: String(row.match_type || 'exact').toLowerCase() === 'exact' ? 'EXACT' : 'FUZZY',
+      canonicalName:  row.scientificname || '',
+      scientificName: row.authority ? (row.scientificname + ' ' + row.authority) : (row.scientificname || ''),
+      authorship: row.authority || '',
+      rank: rank.toUpperCase(),
+      confidence: 100,
+      kingdom: row.kingdom || '', phylum: row.phylum || '', class: row.class || '',
+      order:   row.order   || '', family: row.family || '', genus:  row.genus  || '',
+      species: rank.toLowerCase() === 'species' ? (row.scientificname || '') : '',
+      vernacularNames: [],
+      _source: 'worms',
+      _aphiaId: row.AphiaID,
+      _url: row.url || '',
+      _status: row.status || '',
+      _extinct: row.isExtinct === 1,
+      _marine: !!row.isMarine, _terrestrial: !!row.isTerrestrial,
+      _freshwater: !!row.isFreshwater, _brackish: !!row.isBrackish,
+      // Set when the name asked about is not the accepted one. This is the field
+      // that would have told us "Sepia latimanus" is now "Ascarosepion latimanus".
+      _supersededFrom: followedFrom || null,
+      _queried: queried
+    };
+  }
+
+  // rankHint: when the dictionary already records a rank, prefer the WoRMS record
+  // at that tier. Without it a name like Ctenophora — a comb-jelly phylum AND two
+  // chromist genera, four accepted records — resolves by luck of row order.
+  async function wormsMatch(name, rankHint) {
+    const rows = await wormsFetch('/AphiaRecordsByName/' + encodeURIComponent(name)
+      + '?like=false&marine_only=false&offset=1');
+    if (!rows || !rows.length) return { matchType: 'NONE', _source: 'worms' };
+
+    const accepted = rows.filter(r => r.status === 'accepted');
+    const pool = accepted.length ? accepted : rows;
+    let row = null;
+    if (rankHint) {
+      const want = rankTier(rankHint);
+      row = pool.find(r => rankTier(r.rank) === want) || null;
+    }
+    if (!row) row = pool[0];
+
+    let res;
+    if (row.status !== 'accepted' && row.valid_AphiaID && row.valid_AphiaID !== row.AphiaID) {
+      // A synonym row carries the OLD placement — Sepia latimanus lists genus
+      // Sepia. Follow it so the chain we return is the valid one.
+      const valid = await wormsFetch('/AphiaRecordByAphiaID/' + row.valid_AphiaID);
+      res = valid ? wormsRowToResult(valid, name, row.status) : wormsRowToResult(row, name, null);
+    } else {
+      res = wormsRowToResult(row, name, null);
+    }
+    // Other records under this spelling, for the candidate picker.
+    res._alternatives = rows
+      .filter(r => r.AphiaID !== row.AphiaID)
+      .map(r => ({ name: r.scientificname, rank: r.rank, kingdom: r.kingdom,
+                   phylum: r.phylum, status: r.status, aphiaId: r.AphiaID }));
+    return res;
+  }
+
+  // Common-name search. Catches the ones typed as vernaculars — "mantis shrimp",
+  // "moray eel" — that species/match and AphiaRecordsByName both answer NONE for.
+  async function wormsByVernacular(term) {
+    const rows = await wormsFetch('/AphiaRecordsByVernacular/' + encodeURIComponent(term)
+      + '?like=false&offset=1');
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  async function wormsVernaculars(aphiaId) {
+    try {
+      const rows = await wormsFetch('/AphiaVernacularsByAphiaID/' + aphiaId);
+      return Array.isArray(rows) ? rows : [];
+    } catch (e) { return []; }
+  }
+
+  // ── the resolver ─────────────────────────────────────────────────────────
+  // WoRMS first, GBIF only if WoRMS has no record. Returns both halves so the
+  // UI can show a disagreement rather than silently picking a winner.
+  //
+  //   opts.rankHint  — prefer a WoRMS record at this rank tier
+  //   opts.compare   — also query GBIF even when WoRMS answered, for the strip
+  //   opts.vernacular— fetch WoRMS common names for the winning record
+  async function resolveTaxon(name, opts) {
+    opts = opts || {};
+    const out = { query: name, worms: null, gbif: null, primary: null, source: null, errors: [] };
+
+    try { out.worms = await wormsMatch(name, opts.rankHint); }
+    catch (e) { out.errors.push('WoRMS: ' + String(e && e.message || e)); }
+
+    const wormsHit = out.worms && out.worms.matchType !== 'NONE';
+    if (wormsHit) { out.primary = out.worms; out.source = 'worms'; }
+
+    if (!wormsHit || opts.compare) {
+      try { out.gbif = await queryGbif(name); }
+      catch (e) { out.errors.push('GBIF: ' + String(e && e.message || e)); }
+      if (!wormsHit && out.gbif && out.gbif.matchType && out.gbif.matchType !== 'NONE') {
+        out.gbif._source = 'gbif';
+        out.primary = out.gbif;
+        out.source = 'gbif';
+      } else if (out.gbif) {
+        out.gbif._source = 'gbif';
+      }
+    }
+
+    if (opts.vernacular && out.primary && out.primary._source === 'worms' && out.primary._aphiaId) {
+      const vs = await wormsVernaculars(out.primary._aphiaId);
+      out.primary.vernacularNames = vs.map(v => ({
+        vernacularName: v.vernacular, language: v.language_code || v.language || ''
+      }));
+    }
+
+    // Both answered and they disagree about what this name is.
+    if (out.worms && out.gbif && wormsHit && out.gbif.matchType && out.gbif.matchType !== 'NONE') {
+      const wr = rankTier(out.worms.rank), gr = rankTier(out.gbif.rank);
+      const wk = String(out.worms.kingdom || '').toLowerCase();
+      const gk = String(out.gbif.kingdom || '').toLowerCase();
+      if (wr !== gr || (wk && gk && wk !== gk)) out.disagree = { wormsRank: out.worms.rank,
+        gbifRank: out.gbif.rank, wormsKingdom: out.worms.kingdom, gbifKingdom: out.gbif.kingdom };
+    }
+    return out;
+  }
+
   // species/match answers NONE for a name GBIF holds only as a synonym — it is
   // a matcher, not a lookup. species/search does hold the synonym rows, with the
   // accepted taxon attached. That is the difference between "GBIF has never
@@ -3502,7 +3750,7 @@
     return null;
   }
 
-  function renderGbifResult(container, tagId, query, res) {
+  function renderTaxonResult(container, tagId, query, res, resolution) {
     const t = byId.get(tagId);
     if (!t) { container.innerHTML = ''; return; }
 
@@ -3510,6 +3758,12 @@
     const canonical = res.canonicalName || res.scientificName || '';
     const rank = (res.rank || '').toLowerCase();
     const conf = res.confidence || 0;
+    const src = res._source === 'worms' ? 'WoRMS' : 'GBIF';
+    const srcBadge = '<span style="padding:1px 6px;border-radius:3px;font-size:10px;'
+      + (res._source === 'worms'
+          ? 'background:rgba(80,200,180,0.18);color:#7dd;border:1px solid #497;'
+          : 'background:rgba(100,140,255,0.18);color:#9bf;border:1px solid #558;')
+      + '">' + src + '</span>';
 
     // Build a taxonomic chain display
     const chainRanks = ['kingdom','phylum','class','order','family','genus','species'];
@@ -3523,25 +3777,35 @@
     let headerHtml, bgColor, borderColor;
 
     if (matchType === 'EXACT') {
-      headerHtml = '<span style="color:#afa;font-weight:bold;">✓ Exact match on GBIF</span>'
-        + ' <span style="color:#666;font-size:10px;">(confidence ' + conf + '%)</span>';
+      headerHtml = '<span style="color:#afa;font-weight:bold;">✓ Exact match</span> ' + srcBadge
+        + (res._source === 'gbif' && resolution && resolution.worms
+            ? ' <span style="color:#888;font-size:10px;">(WoRMS has no record — not a marine taxon)</span>'
+            : '')
+        + (res._source === 'worms' ? '' : ' <span style="color:#666;font-size:10px;">(confidence ' + conf + '%)</span>');
       bgColor = 'rgba(80,200,80,0.08)';
       borderColor = '#484';
     } else if (matchType === 'FUZZY') {
-      headerHtml = '<span style="color:#fc8;font-weight:bold;">⚠ Fuzzy match on GBIF</span>'
+      headerHtml = '<span style="color:#fc8;font-weight:bold;">⚠ Fuzzy match</span> ' + srcBadge
         + ' <span style="color:#666;font-size:10px;">(confidence ' + conf + '%)</span>'
         + '<div style="color:#fc8;margin-top:4px;font-size:11px;">Did you mean <b>' + escapeHtml(canonical) + '</b>?</div>';
       bgColor = 'rgba(255,200,100,0.08)';
       borderColor = '#764';
     } else if (matchType === 'HIGHERRANK') {
-      headerHtml = '<span style="color:#88f;font-weight:bold;">↑ Matched at higher rank</span>'
-        + '<div style="color:#aaf;margin-top:4px;font-size:11px;">GBIF matched <b>' + escapeHtml(canonical) + '</b> (' + escapeHtml(rank) + ') but not your exact name. If you typed a common name like "mimic octopus", pick the right species from the candidate list ↓</div>';
+      // GBIF answers HIGHERRANK by handing back the kingdom, which is not a
+      // match at all. Say so plainly rather than dressing it up as one.
+      headerHtml = '<span style="color:#88f;font-weight:bold;">↑ No match — ' + src
+        + ' fell back to a broader rank</span>'
+        + '<div style="color:#aaf;margin-top:4px;font-size:11px;">It returned <b>' + escapeHtml(canonical)
+        + '</b> (' + escapeHtml(rank) + '), which is an ancestor, not this name. '
+        + 'Do not apply this as-is — pick the right taxon from the candidate list ↓</div>';
       bgColor = 'rgba(100,100,255,0.08)';
       borderColor = '#446';
     } else {
       // NONE — likely a common name or misspelling
-      headerHtml = '<span style="color:#f88;font-weight:bold;">✗ No exact scientific match</span>'
-        + '<div style="color:#f99;margin-top:4px;font-size:11px;">"<b>' + escapeHtml(query) + '</b>" did not match any canonical scientific name. Common names work too — see the candidate list below, GBIF searches vernacular names alongside scientific names.</div>';
+      headerHtml = '<span style="color:#f88;font-weight:bold;">✗ Not found in WoRMS or GBIF</span>'
+        + '<div style="color:#f99;margin-top:4px;font-size:11px;">"<b>' + escapeHtml(query) + '</b>" is not a '
+        + 'scientific name either register holds. Common names work too — both are searched for vernaculars '
+        + 'in the candidate list below.</div>';
       bgColor = 'rgba(255,100,100,0.08)';
       borderColor = '#633';
     }
@@ -3600,14 +3864,41 @@
     // Common-name candidate list (always shown if we have results)
     const candidatesContainerHtml = '<div id="gbif-candidates" style="margin-top:10px;"></div>';
 
-    const gbifUrl = res.usageKey ? ('https://www.gbif.org/species/' + res.usageKey) : null;
-    const linkHtml = gbifUrl
-      ? '<div style="margin-top:4px;"><a href="' + gbifUrl + '" target="_blank" rel="noopener" style="color:#6af;font-size:10px;">View on gbif.org ↗</a></div>'
+    // The name you asked about is no longer the accepted one. This is the single
+    // most useful thing WoRMS says and GBIF's matcher never does: it is what
+    // renames Sepia latimanus to Ascarosepion latimanus.
+    const supersededHtml = res._supersededFrom
+      ? '<div style="margin-top:6px;padding:6px 9px;background:rgba(255,200,100,0.10);border:1px solid #764;'
+        + 'border-radius:4px;color:#fc8;font-size:11px;">↳ <b>' + escapeHtml(query) + '</b> is '
+        + escapeHtml(res._supersededFrom) + ' in WoRMS. The accepted name is <b>'
+        + escapeHtml(canonical) + '</b>, and the chain below is the accepted one.</div>'
+      : '';
+
+    // Both registers answered and they disagree about what this name IS. Show it
+    // rather than quietly preferring one.
+    const disagreeHtml = (resolution && resolution.disagree)
+      ? '<div style="margin-top:6px;padding:6px 9px;background:rgba(255,120,120,0.10);border:1px solid #744;'
+        + 'border-radius:4px;font-size:11px;line-height:1.6;">'
+        + '<b style="color:#f99;">The two registers disagree about this name.</b>'
+        + '<div style="color:#9dd;">WoRMS: ' + escapeHtml(String(resolution.disagree.wormsRank).toLowerCase())
+        + ' in ' + escapeHtml(resolution.disagree.wormsKingdom || '?') + '</div>'
+        + '<div style="color:#9bf;">GBIF: ' + escapeHtml(String(resolution.disagree.gbifRank).toLowerCase())
+        + ' in ' + escapeHtml(resolution.disagree.gbifKingdom || '?') + '</div>'
+        + '<div style="color:#a88;margin-top:2px;">Same spelling, different organism. WoRMS is used above; '
+        + 'it is the marine authority.</div></div>'
+      : '';
+
+    const srcUrl = res._source === 'worms'
+      ? (res._url || (res._aphiaId ? 'https://www.marinespecies.org/aphia.php?p=taxdetails&id=' + res._aphiaId : null))
+      : (res.usageKey ? ('https://www.gbif.org/species/' + res.usageKey) : null);
+    const linkHtml = srcUrl
+      ? '<div style="margin-top:4px;"><a href="' + srcUrl + '" target="_blank" rel="noopener" style="color:#6af;font-size:10px;">View on '
+        + (res._source === 'worms' ? 'marinespecies.org' : 'gbif.org') + ' ↗</a></div>'
       : '';
 
     container.innerHTML =
       '<div style="padding:10px 12px;background:' + bgColor + ';border:1px solid ' + borderColor + ';border-radius:5px;font-size:11px;line-height:1.5;">'
-      + headerHtml + chainHtml + linkHtml + actionsHtml
+      + headerHtml + supersededHtml + chainHtml + linkHtml + disagreeHtml + actionsHtml
       + '</div>'
       + candidatesContainerHtml;
 
@@ -3651,14 +3942,51 @@
     if (!container) return;
     container.innerHTML = '<div style="padding:8px;color:#666;font-size:11px;">Searching common names too…</div>';
     try {
+      // WoRMS candidates first. Its vernacular index carries the common names
+      // that neither scientific matcher resolves — "mantis shrimp" and "moray
+      // eel" are both sitting unplaced in this dictionary for exactly that
+      // reason. Homonym rows for the queried spelling come along too, so a name
+      // held by several organisms offers the choice instead of picking for you.
+      let wormsRows = [];
+      try {
+        const vern = await wormsByVernacular(query);
+        const byName = await wormsFetch('/AphiaRecordsByName/' + encodeURIComponent(query)
+          + '?like=false&marine_only=false&offset=1').catch(() => null);
+        wormsRows = [].concat(vern || [], byName || []);
+      } catch (e) { /* WoRMS silent — GBIF candidates still render below */ }
+      const seenW = new Set();
+      const wormsCands = wormsRows.filter(r => {
+        if (!r || !r.scientificname || !r.rank) return false;
+        const k = r.scientificname.toLowerCase() + '|' + String(r.rank).toLowerCase();
+        if (seenW.has(k)) return false;
+        seenW.add(k);
+        return true;
+      }).slice(0, 8).map(r => ({
+        _source: 'worms',
+        _aphiaId: r.AphiaID,
+        scientificName: r.authority ? (r.scientificname + ' ' + r.authority) : r.scientificname,
+        canonicalName: r.scientificname,
+        authorship: r.authority || '',
+        rank: r.rank,
+        status: r.status,
+        validName: r.valid_name || '',
+        kingdom: r.kingdom || '', phylum: r.phylum || '', class: r.class || '',
+        order: r.order || '', family: r.family || '', genus: r.genus || ''
+      }));
+
       const candidates = await searchGbif(query, 8);
       // Filter out anything without a usable scientificName
-      const usable = candidates.filter(c => c.scientificName && c.rank);
+      const gbifUsable = candidates.filter(c => c.scientificName && c.rank)
+        .map(c => Object.assign({ _source: 'gbif' }, c));
+      // Drop GBIF rows WoRMS already offered under the same name+rank.
+      const usable = wormsCands.concat(
+        gbifUsable.filter(c => !seenW.has(String(c.canonicalName || c.scientificName).toLowerCase()
+          + '|' + String(c.rank).toLowerCase())));
       if (!usable.length) {
-        container.innerHTML = '<div style="padding:6px;color:#777;font-size:10px;">No additional candidates from GBIF common-name search.</div>';
+        container.innerHTML = '<div style="padding:6px;color:#777;font-size:10px;">No candidates from the WoRMS or GBIF common-name search.</div>';
         return;
       }
-      let html = '<div style="font-size:10px;color:#888;margin-bottom:5px;">CANDIDATES — scientific AND common-name search <span style="color:#666;">(deduped; click to preview, double-click to Apply All)</span>:</div>';
+      let html = '<div style="font-size:10px;color:#888;margin-bottom:5px;">CANDIDATES — WoRMS then GBIF, scientific AND common names <span style="color:#666;">(deduped; click to preview, double-click to Apply All)</span>:</div>';
       html += usable.map((c, i) => {
         const v = pickVernacular(c);
         const vennHtml = v
@@ -3671,8 +3999,17 @@
           .map(r => c[r]).filter(Boolean);
         const chain = chainParts.slice(-3).join(' → ');
         const author = c.authorship ? ' <span style="color:#666;font-size:10px;">' + escapeHtml(c.authorship) + '</span>' : '';
+        const badge = ' <span style="padding:0 4px;border-radius:3px;font-size:9px;'
+          + (c._source === 'worms' ? 'background:rgba(80,200,180,0.16);color:#7dd;'
+                                   : 'background:rgba(100,140,255,0.16);color:#9bf;')
+          + '">' + (c._source === 'worms' ? 'WoRMS' : 'GBIF') + '</span>';
+        const superseded = (c._source === 'worms' && c.status && c.status !== 'accepted' && c.validName)
+          ? '<div style="color:#fc8;font-size:9px;margin-top:2px;">' + escapeHtml(c.status)
+            + ' — accepted name is <b>' + escapeHtml(c.validName) + '</b></div>'
+          : '';
         return '<div data-cand-idx="' + i + '" style="padding:6px 9px;margin-bottom:3px;background:rgba(255,255,255,0.03);border:1px solid #333;border-radius:4px;cursor:pointer;font-size:11px;">'
           + '<span style="color:#8ef;font-weight:bold;font-style:italic;">' + escapeHtml(c.canonicalName || c.scientificName) + '</span>'
+          + badge + superseded
           + author
           + ' <span style="color:#888;font-size:10px;">' + escapeHtml((c.rank || '').toLowerCase()) + '</span>'
           + vennHtml
@@ -3692,6 +4029,21 @@
           // kingdom/phylum/.../order/family blank or include only a fragment of
           // the hierarchy. We fetch /species/{key} so the chain in applyChainImport
           // always reaches the species rank instead of bottoming out at order.
+          // A WoRMS candidate resolves through WoRMS — by its own name, with its
+          // own rank as the hint — so the chain and any superseded-name notice
+          // come from the register that offered it.
+          if (c._source === 'worms') {
+            const nm = c.canonicalName || c.scientificName;
+            const rr = await resolveTaxon(nm, { rankHint: c.rank, vernacular: true, compare: true });
+            const pick2 = rr.primary;
+            if (pick2) {
+              const scope2 = el.closest('#dictEdit') || document.getElementById('dictEdit');
+              const out2 = scope2 ? scope2.querySelector('#de-gbif-result') : null;
+              if (out2) renderTaxonResult(out2, tagId, nm, pick2, rr);
+              if (alsoApplyAll) requestAnimationFrame(() => applyChainImport(tagId, pick2, { withAliasAndCommon: true }));
+            }
+            return;
+          }
           let detail = null;
           if (c.key) {
             try { detail = await getGbifSpecies(c.key); } catch (e) { /* fall back to row */ }
@@ -3718,7 +4070,7 @@
           }
           const editElScope = el.closest('#dictEdit') || document.getElementById('dictEdit');
           const resultEl = editElScope ? editElScope.querySelector('#de-gbif-result') : null;
-          if (resultEl) renderGbifResult(resultEl, tagId, c.scientificName, synth);
+          if (resultEl) renderTaxonResult(resultEl, tagId, c.scientificName, synth);
           if (alsoApplyAll) {
             requestAnimationFrame(() => {
               applyChainImport(tagId, synth, { withAliasAndCommon: true });
@@ -3726,7 +4078,7 @@
           }
         };
         // Disambiguate single vs double click with a short timer. A single
-        // click (handlePick(false)) calls renderGbifResult → fetchAndRenderCandidates,
+        // click (handlePick(false)) calls renderTaxonResult → fetchAndRenderCandidates,
         // which tears down and rebuilds this whole candidate list. If we ran that
         // on the FIRST click of a double-click, `el` would be detached before the
         // browser could fire `dblclick` — so Apply All never ran. Delaying the
