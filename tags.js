@@ -581,7 +581,7 @@
   function chipHtml(id, opts) {
     opts = opts || {};
     const t = byId.get(id);
-    const label = t ? t.label : id;
+    const label = labelFor(id);
     const color = kindColor(t);
     // Hovering a chip is the cheapest place to answer "what is this filed
     // under?", so the tooltip carries the whole path, not just the rank.
@@ -679,7 +679,7 @@
         span.className = 'tag-chip';
         span.dataset.tagId = id;
         const t = byId.get(id);
-        const label = t ? t.label : id;
+        const label = labelFor(id);
         const color = kindColor(t);
         const missing = !t;
         span.title = t
@@ -840,7 +840,7 @@
           .slice(0, 2)
           .join(', ');
         const parentHtml = parentLbl ? '<span style="color:#555;font-size:10px;"> → ' + escapeHtml(parentLbl) + '</span>' : '';
-        item.innerHTML = '<span style="color:' + kindColor(t) + ';">' + escapeHtml(t.label) + '</span>'
+        item.innerHTML = '<span style="color:' + kindColor(t) + ';">' + escapeHtml(labelFor(t.id)) + '</span>'
           + rankBadge + parentHtml + via;
         item.style.cssText = 'padding:5px 10px;cursor:pointer;border-bottom:1px solid #1a1a2e;';
         item.addEventListener('mouseenter', () => setDdIdx(i));
@@ -1314,7 +1314,7 @@
         const ka = (a.kind === 'taxon' ? '0' : a.kind === 'root' ? '0' : '1');
         const kb = (b.kind === 'taxon' ? '0' : b.kind === 'root' ? '0' : '1');
         if (ka !== kb) return ka < kb ? -1 : 1;
-        return a.label.localeCompare(b.label);
+        return labelFor(a.id).localeCompare(labelFor(b.id));
       });
       countEl.textContent = filtered.length + ' / ' + tagsArr.length + ' tags'
         + (orphanTags.length ? ' · ⚠ ' + orphanTags.length + ' orphan' : '');
@@ -1362,7 +1362,7 @@
           + bg + outline;
         row.innerHTML =
           '<div style="display:flex;align-items:center;gap:8px;">'
-          + '<span style="color:' + color + ';font-weight:bold;">' + escapeHtml(t.label) + '</span>'
+          + '<span style="color:' + color + ';font-weight:bold;">' + escapeHtml(labelFor(t.id)) + '</span>'
           + '<span style="color:#666;font-size:10px;">' + escapeHtml(t.kind + rank) + '</span>'
           + '<span style="flex:1;"></span>'
           + '<span style="color:#4af;font-size:10px;">' + use + ' vid</span>'
@@ -1433,7 +1433,7 @@
         });
       });
       // Sort children alphabetically by label
-      childrenByParent.forEach(arr => arr.sort((a, b) => a.label.localeCompare(b.label)));
+      childrenByParent.forEach(arr => arr.sort((a, b) => labelFor(a.id).localeCompare(labelFor(b.id))));
 
       // 1) Unsorted section (rootless non-root tags) — most recently created first
       const unsorted = tagsArr
@@ -1473,7 +1473,7 @@
       const hasKids = (id) => (childrenByParent.get(id) || []).length > 0;
       const roots = tagsArr.filter(t => t.kind === 'root'
         || ((!t.parents || !t.parents.length) && hasKids(t.id)));
-      roots.sort((a, b) => a.label.localeCompare(b.label));
+      roots.sort((a, b) => labelFor(a.id).localeCompare(labelFor(b.id)));
       roots.forEach(root => {
         // When searching, only render a root's tree if it contains a match
         if (q) {
@@ -1592,7 +1592,7 @@
         : '';
 
       row.innerHTML = chevron
-        + '<span class="tree-label" style="color:' + color + ';font-weight:' + (t.kind === 'root' ? 'bold' : 'normal') + ';">' + escapeHtml(t.label) + '</span>'
+        + '<span class="tree-label" style="color:' + color + ';font-weight:' + (t.kind === 'root' ? 'bold' : 'normal') + ';">' + escapeHtml(labelFor(t.id)) + '</span>'
         + commonHint + rankBadge + extinct + multiParent + cutBadge + kidsCount + useHint + aliasHint;
 
       // Chevron click → toggle expand
@@ -1643,7 +1643,7 @@
         + 'background:rgba(255,255,255,0.05);border:1px ' + (isCutSource ? 'dashed #fc6' : 'solid ' + kindColor(t)) + ';border-radius:12px;'
         + 'font-size:11px;color:' + kindColor(t) + ';cursor:pointer;'
         + (isCutSource ? 'opacity:0.55;' : '');
-      chip.innerHTML = escapeHtml(t.label)
+      chip.innerHTML = escapeHtml(labelFor(t.id))
         + (t.common ? ' <span style="color:#678;font-size:10px;margin-left:4px;">(' + escapeHtml(t.common) + ')</span>' : '')
         + (isCutSource ? ' <span style="color:#fc6;font-size:9px;margin-left:3px;">✂</span>' : '');
       chip.addEventListener('click', () => setKbFocus(t.id, false));
@@ -1916,10 +1916,10 @@
         return '<span data-lin="' + escapeAttr(pid) + '" title="' + escapeAttr(ttl)
           + '" style="color:' + kindColor(pt) + ';cursor:pointer;'
           + 'text-decoration:underline dotted;text-underline-offset:3px;">'
-          + escapeHtml(pt ? pt.label : pid) + '</span>';
+          + escapeHtml(labelFor(pid)) + '</span>';
       }).join('<span style="color:#556;padding:0 4px;">&rsaquo;</span>')
         + '<span style="color:#556;padding:0 4px;">&rsaquo;</span>'
-        + '<span style="color:' + kindColor(t) + ';font-weight:bold;">' + escapeHtml(t.label) + '</span>';
+        + '<span style="color:' + kindColor(t) + ';font-weight:bold;">' + escapeHtml(labelFor(t.id)) + '</span>';
       const dictLineageHtml =
         '<div style="margin-bottom:12px;padding:7px 10px;background:rgba(70,110,180,0.10);'
         + 'border:1px solid #345;border-radius:5px;">'
@@ -1933,7 +1933,7 @@
 
       editEl.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          <span style="font-size:17px;color:${kindColor(t)};font-weight:bold;">${escapeHtml(t.label)}</span>
+          <span style="font-size:17px;color:${kindColor(t)};font-weight:bold;">${escapeHtml(labelFor(t.id))}</span>
           <span style="color:#555;font-size:11px;">id=${escapeHtml(t.id)}</span>
         </div>
         <div style="font-size:11px;color:#666;margin-bottom:10px;">
@@ -2569,7 +2569,7 @@
       if (newId) {
         const t = byId.get(newId);
         const preview = t
-          ? ('→ <span style="color:' + kindColor(t) + ';">' + escapeHtml(t.label) + '</span>'
+          ? ('→ <span style="color:' + kindColor(t) + ';">' + escapeHtml(labelFor(t.id)) + '</span>'
              + (t.kind === 'taxon' && t.rank ? ' <span style="color:#555;font-size:10px;">(' + t.rank + ')</span>' : '')
              + (t.common ? ' <span style="color:#777;">common: ' + escapeHtml(t.common) + '</span>' : ''))
           : '';
@@ -2756,7 +2756,7 @@
               ? data.reduce((n, r) => n + (recordMatchesTagQuery(r.tags, t.id) ? 1 : 0), 0)
               : 0;
             return '<div style="padding:4px 8px;margin-bottom:4px;background:rgba(255,255,255,0.02);border:1px solid #2a2a3a;border-radius:4px;font-size:11px;color:#ccd;">'
-              + '<span style="color:#fc8;">' + escapeHtml(t.label) + '</span>'
+              + '<span style="color:#fc8;">' + escapeHtml(labelFor(t.id)) + '</span>'
               + (t.common ? ' <span style="color:#888;">('+escapeHtml(t.common)+')</span>' : '')
               + ' <span style="color:#666;">· ' + childCount + ' children · ' + useCount + ' rows match</span>'
               + '</div>';
