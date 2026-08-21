@@ -6536,8 +6536,34 @@ function _normalizeLink(link) {
   // Deliberately a NAMED list, not "strip the query": plenty of media URLs
   // carry a query that IS the address (signed CDN links, IG's _nc_* params,
   // Flickr sizes). Only keys that are purely analytics come off.
+  // (dev0814) Next.js image proxy: the real file lives in the QUERY
+  // (`/_next/image?url=<encoded>&w=1920&q=75`), so the path has no extension and
+  // every extension test — _classifyUrl included — called it 'web' and imported
+  // an article row. Unwrap to the inner URL: it classifies as an image AND it is
+  // the full-resolution original rather than the `w`-capped, `q`-recompressed
+  // proxy render.
+  link = _unwrapImageProxy(link);
   return _stripTrackingParams(link);
 }
+// (dev0814) Unwrap a Next.js image-optimizer URL to the file it wraps.
+// Inner `url` may be absolute (another host's CDN) or site-relative — a relative
+// one resolves against the proxy's own origin. Anything that isn't this exact
+// shape, or that doesn't decode to an http(s)/relative path, comes back
+// UNCHANGED: a no-op fallback, never a guess.
+function _unwrapImageProxy(link) {
+  const s = String(link || '');
+  if (!/\/_next\/image\?/i.test(s)) return s;
+  try {
+    const u = new URL(s);
+    const inner = u.searchParams.get('url');
+    if (!inner) return s;
+    if (/^https?:\/\//i.test(inner)) return inner;
+    if (inner.charAt(0) === '/') return u.origin + inner;
+    return s;
+  } catch (e) { return s; }   // not parseable — leave exactly as pasted
+}
+window._unwrapImageProxy = _unwrapImageProxy;
+
 const _TRACK_PARAMS = /^(utm_[a-z_]+|fbclid|gclid|dclid|msclkid|igshid|mc_cid|mc_eid|ref_src|ref_url|spm)$/i;
 function _stripTrackingParams(link) {
   const s = String(link || '');

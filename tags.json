@@ -7632,5 +7632,85 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "synalpheus-regalis",
+    "label": "Synalpheus regalis",
+    "kind": "taxon",
+    "parents": [
+      "synalpheus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "alpheidae",
+    "label": "Alpheidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "synalpheus",
+    "label": "Synalpheus",
+    "kind": "taxon",
+    "parents": [
+      "alpheidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "tetronarce-californica",
+    "label": "Tetronarce californica",
+    "kind": "taxon",
+    "parents": [
+      "tetronarce"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Pacific Torpedo"
+  },
+  {
+    "id": "torpediniformes",
+    "label": "Torpediniformes",
+    "kind": "taxon",
+    "parents": [
+      "elasmobranchii"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "torpedinidae",
+    "label": "Torpedinidae",
+    "kind": "taxon",
+    "parents": [
+      "torpediniformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "tetronarce",
+    "label": "Tetronarce",
+    "kind": "taxon",
+    "parents": [
+      "torpedinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]
