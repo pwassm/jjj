@@ -2719,7 +2719,7 @@ function _routeInitialScreen() {
   const deepSs = window._deepSs || null;
   const isLocked = !!window._lockedUid;
   // (dev0793) `?addwm=1` — WmUploadNew.bat opens this after it uploads, so the
-  // last manual step (T ▸ Housekeeping ▸ Add Watermarked Videos) happens on its
+  // last manual step (T ▸ Housekeeping ▸ Add Watermarked Media) happens on its
   // own. Routed through the SAME in-app function, not a disk write: rows have to
   // come from nextUID()/save() or they collide with whatever the running tab
   // holds. Dev-mode only, and idempotent — a second run adds nothing.

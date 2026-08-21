@@ -4759,8 +4759,12 @@ function housekeepingFixIgLtype() {
   toast('✓ Fixed IG ltype — ' + hits.length + ' row(s) reassigned w → i', 3500);
 }
 
-// (dev0766) ── Add Watermarked Videos ───────────────────────────────────────
-// Every video the M:\wm tooling stamps lands in M:\wm\watermarked\ and is
+// (dev0766) ── Add Watermarked Media ───────────────────────────────────────
+// (dev0819) Photos too: M:\wm now stamps .jpg/.png in the same run as video,
+// so this adds whichever it finds. An image row differs in two fields —
+// MPix carries megapixels instead of the literal 'V', and there is no
+// vidLength — and that is the whole difference.
+// Every file the M:\wm tooling stamps lands in M:\wm\watermarked\ and is
 // uploaded to the R2 bucket `media` at the same relative path, so its
 // public URL is deterministic: R2_VIDEO_BASE + that path. Until now the last
 // step was manual — build the URL by hand, paste a row into T — which is how
@@ -4819,23 +4823,24 @@ async function housekeepingAddWatermarked() {
     return;
   }
   const files = Array.isArray(list.files) ? list.files : [];
-  if (!files.length) { toast('No videos found in ' + list.dir, 3000); return; }
+  if (!files.length) { toast('No media found in ' + list.dir, 3000); return; }
 
   const have = new Set();
   data.forEach(r => { const k = r && _wmLinkKey(r.link); if (k) have.add(k); });
   const missing = files.filter(f => !have.has(f.key.toLowerCase()));
 
   if (!missing.length) {
-    toast('✓ All ' + files.length + ' watermarked video(s) are already in T', 3000);
+    toast('✓ All ' + files.length + ' watermarked file(s) are already in T', 3000);
     return;
   }
   const names = missing.map(f => '  • ' + f.key).join('\n');
-  if (!confirm('Add ' + missing.length + ' watermarked video(s) to ml.json?\n\n' + names
+  if (!confirm('Add ' + missing.length + ' watermarked file(s) to ml.json?\n\n' + names
                + '\n\nEach becomes a row with link = ' + R2_VIDEO_BASE + '<name>,'
-               + '\nplus vidLength and Mode measured off the local file.'
+               + '\nplus Mode and (video) vidLength / (photo) MPix'
+               + '\nmeasured off the local file.'
                + '\nTags are left empty — tag them in A.')) return;
 
-  toast('🎬 Adding ' + missing.length + ' video(s)…', 2500);
+  toast('🎬 Adding ' + missing.length + ' file(s)…', 2500);
   const now = isoNow();
   let probed = 0;
   for (const f of missing) {
@@ -4847,6 +4852,9 @@ async function housekeepingAddWatermarked() {
       const pj = await pr.json();
       if (pj && pj.ok) { meta = pj; probed++; }
     } catch (_) {}
+    // (dev0819) The proxy says which it is; the extension is the fallback for
+    // an older proxy that predates the `image` flag.
+    const isImg = meta ? !!meta.image : /\.(jpg|jpeg|png)$/i.test(f.key);
     const row = {
       UID: nextUID(),
       link: _wmKeyToUrl(f.key),
@@ -4860,14 +4868,29 @@ async function housekeepingAddWatermarked() {
       MPix: 'V',
       vidLength: meta ? _wmFmtDur(meta.seconds) : ''
     };
-    if (meta && meta.w && meta.h) row.Mode = meta.w > meta.h ? 'L' : (meta.h > meta.w ? 'P' : 'S');
+    if (isImg) {
+      // Same shape the ftext/link image paths use: megapixels to 1 dp (2 below
+      // 0.1), and no vidLength at all rather than an empty one.
+      delete row.vidLength;
+      row.MPix = '';
+      if (meta && meta.w && meta.h) {
+        const mp = (meta.w * meta.h) / 1000000;
+        row.MPix = mp >= 0.1 ? mp.toFixed(1) : mp.toFixed(2);
+      }
+    }
+    if (meta && meta.w && meta.h) row.Mode = orientFromDims(meta.w, meta.h);
     data.push(row);
   }
   save(); render();
-  toast('✓ Added ' + missing.length + ' watermarked video(s) to T'
+  const nImg = missing.filter(f => /\.(jpg|jpeg|png)$/i.test(f.key)).length;
+  const nVid = missing.length - nImg;
+  const what = !nImg ? missing.length + ' watermarked video(s)'
+             : !nVid ? missing.length + ' watermarked photo(s)'
+             : nVid + ' video(s) + ' + nImg + ' photo(s)';
+  toast('✓ Added ' + what + ' to T'
         + (probed < missing.length
             ? '\n⚠ ' + (missing.length - probed) + ' could not be probed — run Calc Lengths / Fill Mode'
-            : '\n   vidLength + Mode filled from the local files'),
+            : '\n   Mode + length/MPix filled from the local files'),
         5000);
 }
 

@@ -2868,11 +2868,14 @@ function streamExecCollect(req, res, bin, args, onDone) {
 // file in it was uploaded to the R2 bucket `media` at the SAME relative
 // path — so a file's public URL is just media.sealifeandmore.com + that path.
 // That makes the folder a usable local stand-in for "what is in Cloudflare",
-// which is what T's Housekeeping ▸ Add Watermarked Videos diffs against
+// which is what T's Housekeeping ▸ Add Watermarked Media diffs against
 // ml.json. Read-only, and hard-scoped to WM_DIR: the caller never supplies a
 // path, only a key that must resolve back inside WM_DIR.
+// (dev0819) …and photos: the M:\wm tooling now stamps .jpg/.png in the same
+// run as video, into the same folder, so the two travel together from here on.
 const WM_DIR = process.env.WM_DIR || 'M:\\wm\\watermarked';
-const WM_EXT = /\.(mp4|webm|mov|m4v)$/i;
+const WM_EXT = /\.(mp4|webm|mov|m4v|jpg|jpeg|png)$/i;
+const WM_IMG = /\.(jpg|jpeg|png)$/i;
 
 // Relative key ("chitonspawning/foo.mp4") → absolute path, or null if the key
 // escapes WM_DIR. Keys come from wmList, but wmProbe takes one over the wire.
@@ -2916,9 +2919,14 @@ function wmProbe(res, origin, key) {
   if (!full) { sendJson(res, 400, { ok: false, error: 'bad key: ' + key }, origin); return; }
   if (!fs.existsSync(full)) { sendJson(res, 404, { ok: false, error: 'no such file: ' + key }, origin); return; }
   const dims = probeMediaDims(full);
+  // (dev0819) A still has no duration to measure, and ffprobe answers for a
+  // jpeg anyway (one "frame" at whatever rate it guesses) — a number the row
+  // must not carry. probeMediaDims already reads image headers directly, so
+  // the image path costs one ffprobe spawn less, not more.
+  const image = WM_IMG.test(full);
   sendJson(res, 200, {
-    ok: true, key,
-    seconds: pinProbeDuration(full),
+    ok: true, key, image,
+    seconds: image ? 0 : pinProbeDuration(full),
     w: dims ? dims.w : 0,
     h: dims ? dims.h : 0
   }, origin);
