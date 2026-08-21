@@ -264,7 +264,7 @@
     "label": "Mollusca",
     "kind": "taxon",
     "parents": [
-      "metazoa"
+      "animalia"
     ],
     "rank": "phylum",
     "aliases": [],
@@ -7791,6 +7791,60 @@
   {
     "id": "llm-id",
     "label": "Llm id",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "vertigo-antivertigo",
+    "label": "Vertigo antivertigo",
+    "kind": "taxon",
+    "parents": [
+      "vertigo"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "Marsh Whorl Snail",
+    "extinct": false
+  },
+  {
+    "id": "stylommatophora",
+    "label": "Stylommatophora",
+    "kind": "taxon",
+    "parents": [
+      "gastropoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "vertiginidae",
+    "label": "Vertiginidae",
+    "kind": "taxon",
+    "parents": [
+      "stylommatophora"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "vertigo",
+    "label": "Vertigo",
+    "kind": "taxon",
+    "parents": [
+      "vertiginidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "ai-rot",
+    "label": "Ai rot",
     "kind": "topic",
     "parents": [],
     "aliases": [],

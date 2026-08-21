@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1787284401758,
+    "_salPushTime": 1787286939639,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -84,7 +84,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -512,7 +512,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1787284401758
+    "_salSavedAt": 1787286939639
   },
   {
     "UID": "1",
@@ -44821,8 +44821,10 @@
     "link": "https://i.pinimg.com/1200x/e3/b1/f8/e3b1f8aad80379d9a9b34d9f6c9529ee.jpg",
     "show": "1",
     "DateAdded": "2026-08-20 23:45:25",
-    "DateModified": "2026-08-20 23:45:47",
-    "tags": [],
+    "DateModified": "2026-08-21 04:35:28",
+    "tags": [
+      "ai-rot"
+    ],
     "VidRange": "i",
     "ftextSize": "298",
     "FtextJunk": "0",
@@ -44845,7 +44847,8 @@
     "VidTitle": "Pacific Electric Ray Dazzles From a Distance  | Nautilus Live",
     "VidAuthor": "@EVNautilus",
     "Mode": "L",
-    "ftext": "<h2>Pacific Electric Ray Dazzles From a Distance  | Nautilus Live</h2>\n<p style=\"color:#888;font-size:.9em;\">By @EVNautilus</p>\n<p>Source: <a href=\"https://youtu.be/95Msd00aMAY\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/95Msd00aMAY</a></p>"
+    "ftext": "<h2>Pacific Electric Ray Dazzles From a Distance  | Nautilus Live</h2>\n<p style=\"color:#888;font-size:.9em;\">By @EVNautilus</p>\n<p>Source: <a href=\"https://youtu.be/95Msd00aMAY\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/95Msd00aMAY</a></p>",
+    "vidLength": "2:14"
   },
   {
     "UID": "2084",
@@ -44985,5 +44988,20 @@
     "ftextSize": "2699",
     "FtextJunk": "0",
     "ftext": "<h2>Creature Feature – Flower Urchin</h2><p><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-11.png\" alt=\"\"></p><h2>Creature Feature – Flower Urchin</h2><p><strong>This week features the letter ‘U’, and today’s spotlight is the Flower Urchin.</strong>&nbsp;</p><p>Flower Urchins are a type of sea urchin, named for their numerous and distinctively flower-like pedicellariae, which range in colour from pinkish-white to yellowish-white, each with a central purple dot. Even though these urchins are beautiful to look at, they are one of the more toxic species of sea urchin. Their scientific name, <em>Toxopneustes</em>, means “poison breath.”&nbsp;</p><p>Beneath the flower-like pedicellariae lies a forest of short, blunt spines. While most sea urchins deploy venom through their spines, the Flower Urchin uses its pedicellariae to deliver venom.&nbsp;</p><p>Due to their toxicity, Flower Urchins have very few predators, as few creatures can safely eat them.&nbsp;</p><p><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-11.png\" alt=\"\"></p><p>Taxonomy</p><p>Scientific Name: <em>Toxopneustes </em>pileolus&nbsp;</p><p>Kingdom: Animalia</p><p>Phylum: Echinodermata&nbsp;</p><p>Order: Camarodonta&nbsp;</p><p>Family: Toxopneustidae&nbsp;</p><p>Genus:<em>Toxopneustes</em>&nbsp;</p><h2>Flower Urchin Fact File</h2><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Size</strong>: 15–20 cm (6–8 inches)&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Distribution</strong>: Widespread in the Indo-Pacific, specifically inhabiting coral reefs, seagrass beds, rocky areas, and sandy habitats up to 90 meters deep&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Diet</strong>: Algae, bryozoans, and organic detritus&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Behaviour</strong>: Flower urchins are among several species known as “collector urchins”. They are named this because they cover the upper surfaces of their bodies with debris from their surroundings&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>IUCN Status</strong>: Not listed</p><p><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-11-1.png\" alt=\"\"><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-12.png\" alt=\"\"></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://wiseoceans.com/category/creature-feature/\">All Creature Feature Blogs</a></p>"
+  },
+  {
+    "UID": "2090",
+    "link": "https://upload.wikimedia.org/wikipedia/commons/c/c0/Vertigo_antivertigo_001.jpg",
+    "show": "1",
+    "DateAdded": "2026-08-21 04:32:40",
+    "DateModified": "2026-08-21 04:32:53",
+    "tags": [
+      "vertigo-antivertigo"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "0.2",
+    "Mode": "P"
   }
 ]

@@ -121,7 +121,22 @@
     buildIndex();
   }
 
+  // Bulk operations call updateTag once per row and every updateTag saves, so
+  // one Apply of 27 changes fired 27 overlapping writes of the same file —
+  // writeFileToDisk is async and no caller awaits it, so they raced. Wrap a bulk
+  // operation in withBatchedSave and it writes once, at the end.
+  let _saveDepth = 0, _savePending = false;
+  function withBatchedSave(fn) {
+    _saveDepth++;
+    try { return fn(); }
+    finally {
+      _saveDepth--;
+      if (!_saveDepth && _savePending) { _savePending = false; saveTags(); }
+    }
+  }
+
   async function saveTags() {
+    if (_saveDepth) { _savePending = true; return; }
     const payload = [tagsMeta || { _salMeta: true, _tagsVersion: 1 }].concat(tagsArr);
     try { localStorage.setItem('sal-tags', JSON.stringify(payload)); } catch (e) {}
     if (typeof writeFileToDisk === 'function') {
@@ -1224,6 +1239,8 @@
         <button id="dictAdd" style="padding:5px 12px;border:1px solid #5f5;background:rgba(0,80,0,0.4);color:#afa;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">+ New</button>
         <button id="dictEcology" title="Ecology groups — fish, bird, mammal, etc. — review which class taxa are wired under group tags so hierarchical filtering works"
           style="padding:5px 12px;border:1px solid #fc8;background:rgba(80,50,0,0.4);color:#fc8;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🐟 Ecology Groups</button>
+        <button id="dictNormalize" title="Check every kingdom, phylum and unplaced taxon against GBIF and propose a tidier top of the tree. Shows a plan first — nothing is written until you approve it."
+          style="padding:5px 12px;border:1px solid #6c9;background:rgba(0,80,55,0.45);color:#8ec;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🌳 Normalize tree</button>
         <button id="dictClose" style="padding:5px 12px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">✕ Close (Esc)</button>
       </div>
       <div style="flex:1;overflow:hidden;display:flex;min-height:0;">
@@ -2068,6 +2085,7 @@
     });
     dictOverlay.querySelector('#dictClose').addEventListener('click', () => window.closeDictionary());
     dictOverlay.querySelector('#dictEcology').addEventListener('click', () => openEcologyPanel());
+    dictOverlay.querySelector('#dictNormalize').addEventListener('click', () => openNormalizePanel());
 
     // ── Keyboard navigation: ↓/↑ move focus, Enter selects, Tab → edit panel ───
     //
@@ -2444,6 +2462,9 @@
       window.closeDictionary();
     };
     document.addEventListener('keydown', dictOverlay._escHandler, true);
+    // Panels that rewrite the graph from outside this closure (Normalize,
+    // Ecology) need a way to redraw the list they just invalidated.
+    dictOverlay._renderView = renderView;
     renderView();
     // Restore scroll position
     if (_dictState.scrollTop && listEl) {
@@ -2646,7 +2667,7 @@
     // ── Auto-create-and-wire ALL standard groups in one shot ──────────────
     function autoWireAll() {
       let created = 0, wired = 0;
-      Object.keys(groupToClasses).forEach(grp => {
+      withBatchedSave(() => Object.keys(groupToClasses).forEach(grp => {
         let gid = resolveInput(grp);
         if (!gid) {
           const r = createTag({ label: grp, kind: 'group' });
@@ -2662,7 +2683,7 @@
             wired++;
           }
         });
-      });
+      }));
       toast('✓ Standard groups: ' + created + ' created, ' + wired + ' classes wired', 2200);
       build();
     }
@@ -2810,10 +2831,10 @@
         const gid  = e.target.dataset.grpId;
         const cids = (e.target.dataset.clsIds||'').split(',').filter(Boolean);
         let n = 0;
-        cids.forEach(cid => {
+        withBatchedSave(() => cids.forEach(cid => {
           const tag = byId.get(cid);
           if (tag && !((tag.parents||[]).includes(gid))) { updateTag(cid, { parents: [...(tag.parents||[]), gid] }); n++; }
-        });
+        }));
         toast('✓ Wired ' + n + ' → ' + (byId.get(gid)?.label||gid), 1500);
         build();
       } else if (act === 'create-and-wire') {
@@ -2822,14 +2843,514 @@
         const gid  = r.id;
         const cids = (e.target.dataset.clsIds||'').split(',').filter(Boolean);
         let n = 0;
-        cids.forEach(cid => {
+        withBatchedSave(() => cids.forEach(cid => {
           const tag = byId.get(cid);
           if (tag && !((tag.parents||[]).includes(gid))) { updateTag(cid, { parents: [...(tag.parents||[]), gid] }); n++; }
-        });
+        }));
         toast('✓ Created "' + e.target.dataset.grp + '" + wired ' + n, 1800);
         build();
       }
     });
+  }
+
+  // ── Normalize top of tree ────────────────────────────────────────────────
+  // One pass over the roof of the taxonomy, checked against GBIF, shown as a
+  // plan before anything is written.
+  //
+  // What goes wrong up there is invisible from inside a species record. Mollusca
+  // sat under a kingdom called Metazoa while Chordata and Echinodermata sat under
+  // one called Animalia — so filtering by Animalia missed every mollusc, and no
+  // screen said so. Another 33 phyla hung straight off the root, and seven genera
+  // and species were parked at the root beside them.
+  //
+  // The scan asks GBIF about every kingdom, phylum, subphylum and every parentless
+  // taxon, then proposes the DEEPEST GBIF ancestor that ALREADY EXISTS here as the
+  // new parent. It creates no tags, deletes none (bar a duplicate kingdom you tick),
+  // and never re-tags a record. Re-running it is a no-op.
+  //
+  // The two refusals matter more than the moves:
+  //   - Rank disagreement. GBIF's match endpoint resolves "Retaria" to an animal
+  //     genus in Brachiopoda and "Endomyxa" to a protozoan genus; both are
+  //     rhizarian phyla here. Same spelling, different organism. When the
+  //     dictionary's rank and GBIF's rank disagree the row is reported and never
+  //     applied — following GBIF there would file a phylum under a genus.
+  //   - No match. The Ediacaran and problematic phyla (Petalonamae, Proarticulata,
+  //     Trilobozoa, Vetulicolia, Agmata, Saccorhytida, Monoblastozoa) are not in
+  //     GBIF's backbone at all. They stay exactly where they are.
+  const NORMALIZE_RANKS   = new Set(['kingdom', 'phylum', 'subphylum']);
+  const GBIF_CHAIN_FIELDS = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'];
+
+  // The root of the taxonomy: parentless, and parent to more tags than any other
+  // parentless tag. Derived rather than hardcoded to 'life'.
+  function taxonomyRootId() {
+    const kids = new Map();
+    tagsArr.forEach(t => (t.parents || []).forEach(p => kids.set(p, (kids.get(p) || 0) + 1)));
+    let best = null, bestN = 0;
+    tagsArr.forEach(t => {
+      if ((t.parents || []).length) return;
+      const n = kids.get(t.id) || 0;
+      if (n > bestN) { best = t.id; bestN = n; }
+    });
+    return best;
+  }
+
+  // The one parent that places a taxon in the tree. enforceParentRule keeps it
+  // first; anything after it is a cross-cutting ecology group.
+  function hierParentOf(t) {
+    const first = (t.parents || [])[0];
+    if (!first) return null;
+    const p = byId.get(first);
+    if (p && p.kind !== 'taxon' && p.kind !== 'root') return null;
+    return first;
+  }
+
+  function childCountOf(id) {
+    let n = 0;
+    tagsArr.forEach(x => { if ((x.parents || []).includes(id)) n++; });
+    return n;
+  }
+
+  // Also reachable without the Dictionary open, for a future hotkey.
+  window.openNormalizeTree = () => openNormalizePanel();
+
+  function openNormalizePanel() {
+    let modal = document.getElementById('normalizePanel');
+    if (modal) { modal.remove(); return; }
+    modal = document.createElement('div');
+    modal.id = 'normalizePanel';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:31600;background:rgba(5,5,14,0.84);'
+      + 'display:flex;align-items:flex-start;justify-content:center;padding-top:40px;';
+    document.body.appendChild(modal);
+
+    let cancelled = false;
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) { cancelled = true; modal.remove(); }
+    });
+
+    const CARD = 'background:#0d0d1e;border:2px solid #6c9;border-radius:8px;'
+      + 'box-shadow:0 8px 32px rgba(0,0,0,0.85);width:940px;max-width:96vw;max-height:88vh;'
+      + 'overflow-y:auto;font-family:monospace;color:#ddd;padding:16px 20px;';
+    const HEAD = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+      + '<span style="color:#6c9;font-size:14px;font-weight:bold;">🌳 Normalize top of tree</span>'
+      + '<span style="color:#777;font-size:11px;flex:1;">Every kingdom, phylum and unplaced taxon, checked against GBIF. Nothing is written until you press Apply.</span>'
+      + '<button id="nzClose" style="padding:3px 10px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:4px;cursor:pointer;font-size:11px;">✕ Close</button>'
+      + '</div>';
+
+    function paint(bodyHtml) {
+      modal.innerHTML = '<div style="' + CARD + '">' + HEAD + bodyHtml + '</div>';
+      const c = modal.querySelector('#nzClose');
+      if (c) c.onclick = () => { cancelled = true; modal.remove(); };
+    }
+
+    paint('<div id="nzProgress" style="padding:24px 4px;color:#8ec;font-size:12px;">Scanning the dictionary…</div>');
+
+    scanTree()
+      .then(plan => { if (!cancelled && plan) renderPlan(plan); })
+      .catch(e => {
+        if (cancelled) return;
+        paint('<div style="padding:14px;color:#f88;font-size:12px;">Scan failed: '
+          + escapeHtml(String(e && e.message || e))
+          + '<br><span style="color:#777;">GBIF may be unreachable, or you may be on the VPN.</span></div>');
+      });
+
+    // ── scan ───────────────────────────────────────────────────────────────
+    async function scanTree() {
+      const rootId  = taxonomyRootId();
+      const rootTag = rootId ? byId.get(rootId) : null;
+
+      // Root repairs need no network.
+      const rootFixes = [];
+      tagsArr.forEach(t => {
+        if ((t.parents || []).length) return;
+        const kids = childCountOf(t.id);
+        if (!kids || String(t.label || '').trim()) return;
+        const label = formatTagLabel(String(t.id).replace(/-/g, ' '));
+        rootFixes.push({
+          id: t.id, patch: { label: label },
+          desc: 'blank label on a tag with ' + kids + ' children — nothing to read or click in the tree',
+          to: label
+        });
+      });
+      if (rootTag && String(rootTag.common || '').trim()) {
+        rootFixes.push({
+          id: rootTag.id, patch: { common: '' },
+          desc: 'the root of the tree carries a common name ("' + rootTag.common + '") — a root has no vernacular',
+          to: '(cleared)'
+        });
+      }
+
+      // The roof of the tree, plus anything left unplaced.
+      const cands = tagsArr.filter(t => t.kind === 'taxon'
+        && t.id !== rootId
+        && String(t.label || '').trim()
+        && (NORMALIZE_RANKS.has(String(t.rank || '').toLowerCase()) || !(t.parents || []).length));
+
+      let done = 0;
+      const showProgress = () => {
+        const el = modal.querySelector('#nzProgress');
+        if (el) el.textContent = 'Asking GBIF about ' + cands.length
+          + ' tags at the top of the tree…  ' + done + ' / ' + cands.length;
+      };
+      showProgress();
+
+      const answers = new Map();
+      const queue = cands.slice();
+      const worker = async () => {
+        while (queue.length && !cancelled) {
+          const t = queue.shift();
+          let res;
+          try { res = await queryGbif(t.label); }
+          catch (e) { res = { matchType: 'ERROR', _err: String(e && e.message || e) }; }
+          answers.set(t.id, res);
+          done++; showProgress();
+        }
+      };
+      // Four at a time: fast enough to feel instant, gentle enough on a free API.
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      if (cancelled) return null;
+
+      const reparent = [], setRank = [], conflicts = [], unknown = [], noanchor = [], errored = [];
+      cands.forEach(t => {
+        const res = answers.get(t.id);
+        const mt  = res && res.matchType;
+        // A request that never landed says nothing about the taxon. Reporting a
+        // dead connection as "GBIF has never heard of Chordata" would be a lie,
+        // and the sort of lie you would act on.
+        if (mt === 'ERROR' || !mt) {
+          errored.push({ t: t, why: (res && res._err) || 'no response from GBIF' });
+          return;
+        }
+        if (mt === 'NONE') {
+          unknown.push({ t: t, why: 'GBIF has no match for this name' });
+          return;
+        }
+        const gRank = String(res.rank  || '').toLowerCase();
+        const dRank = String(t.rank    || '').toLowerCase();
+        if (dRank && gRank && dRank !== gRank) {
+          conflicts.push({ t: t, why: 'you have it as a ' + dRank + ', GBIF matched a ' + gRank
+            + ' of the same name'
+            + (res.kingdom ? ' in ' + res.kingdom + (res.phylum ? ' › ' + res.phylum : '') : '') });
+          return;
+        }
+        const selfLc  = String(t.label || '').toLowerCase();
+        const canonLc = String(res.canonicalName || '').toLowerCase();
+        const chain = GBIF_CHAIN_FIELDS.map(f => res[f]).filter(Boolean)
+          .filter(n => {
+            const lc = String(n).toLowerCase();
+            return lc !== selfLc && lc !== canonLc;
+          });
+        // Deepest ancestor GBIF names that this dictionary already has. Nothing
+        // is created, so a taxon only ever moves to somewhere you can already see.
+        const desc = tagDescendants(t.id);
+        let anchor = null;
+        for (let i = chain.length - 1; i >= 0 && !anchor; i--) {
+          const pid = resolveInput(chain[i]);
+          if (pid && pid !== t.id && !desc.has(pid)) anchor = pid;
+        }
+        if (!dRank && gRank) setRank.push({ t: t, rank: gRank });
+        if (!anchor) { noanchor.push({ t: t, chain: chain }); return; }
+        const cur = hierParentOf(t);
+        if (cur === anchor) return;
+        reparent.push({ t: t, from: cur, to: anchor, chain: chain, gRank: gRank });
+      });
+
+      // Second pass: every name match could not place, asked again as a synonym.
+      let synDone = 0;
+      const synQueue = unknown.slice();
+      const synWorker = async () => {
+        while (synQueue.length && !cancelled) {
+          const u = synQueue.shift();
+          try { u.syn = await gbifSynonymTarget(u.t.label, u.t.rank); }
+          catch (e) { u.syn = null; }
+          synDone++;
+          const el = modal.querySelector('#nzProgress');
+          if (el) el.textContent = 'Checking ' + unknown.length
+            + ' unmatched names for synonyms…  ' + synDone + ' / ' + unknown.length;
+        }
+      };
+      await Promise.all([synWorker(), synWorker(), synWorker()]);
+      if (cancelled) return null;
+
+      const merges = [];
+      unknown.forEach(u => {
+        let intoName = null, because = null;
+        if (u.syn && u.syn.name) {
+          intoName = u.syn.name;
+          because = 'GBIF holds "' + u.t.label + '" as a synonym of ' + u.syn.name
+            + (u.syn.rank ? ' (' + u.syn.rank + ')' : '');
+        } else if (String(u.t.rank || '').toLowerCase() === 'kingdom') {
+          // Fallback for a duplicate GBIF has no row for at all: if every child
+          // resolves to one kingdom that does exist here, this is that kingdom.
+          const kids = tagsArr.filter(x => (x.parents || []).includes(u.t.id));
+          const kingdoms = new Set();
+          kids.forEach(k => { const r = answers.get(k.id); if (r && r.kingdom) kingdoms.add(r.kingdom); });
+          if (kids.length && kingdoms.size === 1) {
+            intoName = [...kingdoms][0];
+            because = 'its ' + kids.length + ' child' + (kids.length === 1 ? '' : 'ren')
+              + ' all resolve to ' + intoName;
+          }
+        }
+        if (!intoName) return;
+        // Fourth constraint: only ever merge into something already here, so the
+        // records have somewhere real to land.
+        const target = resolveInput(intoName);
+        if (!target || target === u.t.id) return;
+        if (tagDescendants(u.t.id).has(target)) return;
+        merges.push({ t: u.t, into: target, because: because });
+      });
+      const merged = new Set(merges.map(m => m.t.id));
+
+      return {
+        rootFixes: rootFixes,
+        reparent:  reparent,
+        setRank:   setRank,
+        merges:    merges,
+        conflicts: conflicts,
+        unknown:   unknown.filter(u => !merged.has(u.t.id)),
+        noanchor:  noanchor,
+        errored:   errored,
+        scanned:   cands.length
+      };
+    }
+
+    // ── plan ───────────────────────────────────────────────────────────────
+    function renderPlan(plan) {
+      const actions = [];
+      const box = (i) => '<input type="checkbox" data-nz="' + i + '" checked '
+        + 'style="margin-right:9px;vertical-align:middle;cursor:pointer;">';
+      const nameOf = (t) => '<span style="color:' + kindColor(t) + ';font-weight:bold;">'
+        + escapeHtml(t.label || t.id) + '</span>'
+        + (t.rank ? ' <span style="color:#667;font-size:10px;">' + escapeHtml(t.rank) + '</span>' : '');
+      const ROW = 'padding:5px 10px;margin-bottom:3px;background:rgba(255,255,255,0.03);'
+        + 'border:1px solid #2a3a34;border-radius:4px;font-size:11px;line-height:1.7;';
+      const DEAD = 'padding:4px 10px;margin-bottom:3px;background:rgba(255,255,255,0.02);'
+        + 'border:1px solid #333;border-radius:4px;font-size:11px;';
+
+      let html = '';
+
+      // Lead with the failures. A half-answered scan that quietly proposes
+      // moves is worse than one that admits it could not see.
+      const errs  = (plan.errored || []).length;
+      const badly = errs > 0 && errs >= plan.scanned / 4;
+      if (errs) {
+        html += '<div style="margin:4px 0 8px;padding:9px 12px;background:rgba(255,80,80,0.10);'
+          + 'border:1px solid #733;border-radius:5px;font-size:11px;line-height:1.7;">'
+          + '<b style="color:#f99;">⚠ ' + errs + ' of ' + plan.scanned
+          + ' lookups did not reach GBIF.</b> <span style="color:#c99;">'
+          + escapeHtml(plan.errored[0].why) + '</span>'
+          + '<div style="color:#a88;margin-top:3px;">These are unanswered, not unrecognised — '
+          + 'they are left out of the plan entirely. If you are on the VPN, drop it and scan again.</div>'
+          + '<div style="color:#977;margin-top:4px;">'
+          + plan.errored.slice(0, 40).map(u => escapeHtml(u.t.label)).join(', ')
+          + (errs > 40 ? ', …' : '') + '</div>'
+          + '</div>';
+      }
+
+      if (plan.rootFixes.length) {
+        html += heading('Root repairs', '#8ec', 'the tag everything else hangs from');
+        plan.rootFixes.forEach(f => {
+          const i = actions.push({ kind: 'patch', id: f.id, patch: f.patch, label: labelFor(f.id), desc: f.desc }) - 1;
+          html += '<div style="' + ROW + '">' + box(i)
+            + '<span style="color:#8ec;font-weight:bold;">' + escapeHtml(f.id) + '</span>'
+            + ' <span style="color:#999;">' + escapeHtml(f.desc) + '</span>'
+            + ' <span style="color:#556;">→</span> <b style="color:#afa;">' + escapeHtml(f.to) + '</b>'
+            + '</div>';
+        });
+      }
+
+      if (plan.merges.length) {
+        html += heading('Duplicate names', '#fc8',
+          'a second name for a tag you already have');
+        plan.merges.forEach(m => {
+          const i = actions.push({ kind: 'merge', id: m.t.id, into: m.into,
+            label: m.t.label, intoLabel: labelFor(m.into) }) - 1;
+          const recs = (typeof data !== 'undefined' && Array.isArray(data))
+            ? data.filter(r => Array.isArray(r.tags) && r.tags.includes(m.t.id)).length : 0;
+          html += '<div style="' + ROW + '">' + box(i)
+            + nameOf(m.t) + ' <span style="color:#556;">merge into</span> '
+            + '<b style="color:#fc8;">' + escapeHtml(labelFor(m.into)) + '</b>'
+            + '<div style="color:#889;font-size:10px;padding-left:26px;">' + escapeHtml(m.because)
+            + '. ' + (recs ? recs + ' record' + (recs === 1 ? '' : 's') + ' move across; ' : '')
+            + 'the name survives as an alias, so searching it still works.</div>'
+            + '</div>';
+        });
+      }
+
+      if (plan.reparent.length) {
+        html += heading('Re-parent', '#8cf',
+          'moved to the deepest ancestor GBIF names that already exists here');
+        plan.reparent.forEach(r => {
+          const i = actions.push({ kind: 'reparent', id: r.t.id, to: r.to,
+            label: r.t.label, toLabel: labelFor(r.to) }) - 1;
+          html += '<div style="' + ROW + '">' + box(i)
+            + nameOf(r.t)
+            + ' <span style="color:#889;">' + escapeHtml(r.from ? labelFor(r.from) : '(nothing)') + '</span>'
+            + ' <span style="color:#556;">→</span> '
+            + '<b style="color:#8cf;">' + escapeHtml(labelFor(r.to)) + '</b>'
+            + '<div style="color:#667;font-size:10px;padding-left:26px;">GBIF: '
+            + escapeHtml(r.chain.join(' › ')) + '</div>'
+            + '</div>';
+        });
+      }
+
+      if (plan.setRank.length) {
+        html += heading('Fill in a missing rank', '#cae', 'these have no rank recorded');
+        plan.setRank.forEach(r => {
+          const i = actions.push({ kind: 'rank', id: r.t.id, rank: r.rank, label: r.t.label }) - 1;
+          html += '<div style="' + ROW + '">' + box(i) + nameOf(r.t)
+            + ' <span style="color:#556;">rank →</span> <b style="color:#cae;">' + escapeHtml(r.rank) + '</b>'
+            + '</div>';
+        });
+      }
+
+      // ── read-only: everything deliberately left alone ─────────────────────
+      if (plan.conflicts.length) {
+        html += heading('Left alone — GBIF disagrees about the rank', '#f99',
+          'same spelling, different organism. Following GBIF here would file a phylum under a genus');
+        plan.conflicts.forEach(c => {
+          html += '<div style="' + DEAD + '"><span style="color:#fbb;">' + escapeHtml(c.t.label)
+            + '</span> <span style="color:#977;">— ' + escapeHtml(c.why) + '</span>'
+            + ' <span data-nzopen="' + escapeAttr(c.t.id) + '" style="color:#6af;cursor:pointer;text-decoration:underline dotted;">open</span></div>';
+        });
+      }
+
+      if (plan.unknown.length) {
+        html += heading('Left alone — GBIF answered, with no match', '#a96',
+          'extinct, disputed, or not a scientific name. Staying put is the safe answer');
+        html += '<div style="' + DEAD + 'line-height:2;">'
+          + plan.unknown.map(u => '<span data-nzopen="' + escapeAttr(u.t.id) + '" title="'
+              + escapeAttr(u.why) + '" style="color:#cb9;cursor:pointer;margin-right:10px;'
+              + 'text-decoration:underline dotted;">' + escapeHtml(u.t.label) + '</span>').join('')
+          + '</div>';
+      }
+
+      if (plan.noanchor.length) {
+        html += heading('Left alone — no ancestor of theirs exists here yet', '#899',
+          'run 🔎 Check GBIF → 🚀 Apply All on one of these to create its chain');
+        html += '<div style="' + DEAD + 'line-height:2;">'
+          + plan.noanchor.map(u => '<span data-nzopen="' + escapeAttr(u.t.id) + '" title="'
+              + escapeAttr('GBIF: ' + u.chain.join(' > ')) + '" style="color:#9aa;cursor:pointer;margin-right:10px;'
+              + 'text-decoration:underline dotted;">' + escapeHtml(u.t.label) + '</span>').join('')
+          + '</div>';
+      }
+
+      const changes = actions.length;
+      const bar = '<div style="position:sticky;bottom:0;margin-top:14px;padding:10px 0 2px;'
+        + 'background:#0d0d1e;border-top:1px solid #2a3a34;display:flex;align-items:center;gap:10px;">'
+        + (badly
+            ? '<button id="nzRescan2" style="padding:7px 16px;border:1px solid #6c9;background:rgba(0,90,60,0.5);'
+              + 'color:#bfd;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">↻ Scan again</button>'
+              + '<span style="color:#f99;font-size:11px;">Too much of that scan failed to act on. '
+              + (changes ? 'The ' + changes + ' offline repair' + (changes === 1 ? '' : 's') + ' below can still be applied.' : '')
+              + '</span>'
+            : '')
+        + (changes
+            ? '<button id="nzApply" style="padding:7px 18px;border:1px solid #6c9;background:rgba(0,90,60,0.55);'
+              + 'color:#bfd;font-weight:bold;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">'
+              + '✓ Apply ' + changes + ' change' + (changes === 1 ? '' : 's') + '</button>'
+              + '<button id="nzNone" style="padding:7px 12px;border:1px solid #667;background:rgba(40,40,60,0.5);'
+              + 'color:#99a;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;">untick all</button>'
+            : '<span style="color:#8ec;font-size:12px;">✓ Nothing to change — the top of the tree agrees with GBIF.</span>')
+        + '<span style="flex:1;"></span>'
+        + '<span style="color:#667;font-size:11px;">' + plan.scanned + ' tags checked</span>'
+        + '</div>';
+
+      paint(html + bar);
+
+      modal.querySelectorAll('[data-nzopen]').forEach(el => {
+        el.addEventListener('click', () => {
+          cancelled = true;
+          modal.remove();
+          selectTagFromOutside(el.dataset.nzopen);
+        });
+      });
+      const none = modal.querySelector('#nzNone');
+      if (none) none.onclick = () => {
+        modal.querySelectorAll('[data-nz]').forEach(b => { b.checked = false; });
+      };
+      const apply = modal.querySelector('#nzApply');
+      if (apply) apply.onclick = () => applyPlan(actions);
+      const rescan2 = modal.querySelector('#nzRescan2');
+      if (rescan2) rescan2.onclick = () => {
+        paint('<div id="nzProgress" style="padding:24px 4px;color:#8ec;font-size:12px;">Scanning the dictionary…</div>');
+        scanTree().then(pl => { if (!cancelled && pl) renderPlan(pl); });
+      };
+
+      function heading(text, colour, note) {
+        return '<div style="margin:14px 0 6px;color:' + colour + ';font-size:12px;font-weight:bold;">'
+          + escapeHtml(text)
+          + (note ? ' <span style="color:#777;font-weight:normal;font-size:11px;">— ' + note + '</span>' : '')
+          + '</div>';
+      }
+    }
+
+    // ── apply ──────────────────────────────────────────────────────────────
+    function applyPlan(actions) {
+      const chosen = [...modal.querySelectorAll('[data-nz]')]
+        .filter(b => b.checked)
+        .map(b => actions[parseInt(b.dataset.nz, 10)])
+        .filter(Boolean);
+
+      // Repairs first so labels read correctly in the log, re-parents next,
+      // merges last so a kingdom is emptied before it is folded away.
+      const order = { patch: 0, reparent: 1, rank: 2, merge: 3 };
+      chosen.sort((a, b) => order[a.kind] - order[b.kind]);
+
+      const log = [];
+      let ok = 0, failed = 0;
+      withBatchedSave(() => chosen.forEach(a => {
+        const t = byId.get(a.id);
+        if (!t) { log.push(['✗', a.label || a.id, 'no longer exists']); failed++; return; }
+        let r;
+        if (a.kind === 'patch') {
+          r = updateTag(a.id, a.patch);
+          if (r.ok) log.push(['✓', a.label || a.id, a.desc]);
+        } else if (a.kind === 'reparent') {
+          // Keep cross-cutting group parents; the new clade goes first so
+          // enforceParentRule hands it the single hierarchical slot.
+          const keep = (t.parents || []).filter(p => {
+            const pt = byId.get(p);
+            return pt && pt.kind !== 'taxon' && pt.kind !== 'root';
+          });
+          r = updateTag(a.id, { parents: [a.to].concat(keep) });
+          if (r.ok) log.push(['✓', a.label, 'now under ' + a.toLabel]);
+        } else if (a.kind === 'rank') {
+          r = updateTag(a.id, { rank: a.rank });
+          if (r.ok) log.push(['✓', a.label, 'rank set to ' + a.rank]);
+        } else if (a.kind === 'merge') {
+          r = mergeTag(a.id, a.into);
+          if (r.ok) log.push(['✓', a.label, 'merged into ' + a.intoLabel]);
+        }
+        if (r && r.ok) ok++; else { failed++; log.push(['✗', a.label || a.id, (r && r.err) || 'failed']); }
+      }));
+
+      if (typeof render === 'function') render();
+      if (dictOverlay && dictOverlay._renderView) dictOverlay._renderView();
+      if (typeof toast === 'function') {
+        toast('🌳 Normalized: ' + ok + ' change' + (ok === 1 ? '' : 's') + ' applied'
+          + (failed ? ', ' + failed + ' failed' : ''), 2600);
+      }
+
+      paint('<div style="margin:8px 0 10px;color:#8ec;font-size:12px;font-weight:bold;">'
+        + '✓ Applied ' + ok + ' change' + (ok === 1 ? '' : 's')
+        + (failed ? ' · <span style="color:#f88;">' + failed + ' failed</span>' : '') + '</div>'
+        + '<div style="font-size:11px;line-height:1.9;">'
+        + log.map(l => '<div><span style="color:' + (l[0] === '✓' ? '#8f8' : '#f88') + ';">' + l[0] + '</span> '
+            + '<b style="color:#ccd;">' + escapeHtml(String(l[1])) + '</b> '
+            + '<span style="color:#889;">' + escapeHtml(String(l[2])) + '</span></div>').join('')
+        + '</div>'
+        + '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #2a3a34;display:flex;gap:10px;">'
+        + '<button id="nzRescan" style="padding:6px 14px;border:1px solid #6c9;background:rgba(0,90,60,0.5);'
+        + 'color:#bfd;border-radius:5px;cursor:pointer;font-family:monospace;font-size:11px;">↻ Scan again</button>'
+        + '<span style="color:#667;font-size:11px;align-self:center;">Re-running is safe — a normalized tree proposes nothing.</span>'
+        + '</div>');
+
+      const again = modal.querySelector('#nzRescan');
+      if (again) again.onclick = () => {
+        paint('<div id="nzProgress" style="padding:24px 4px;color:#8ec;font-size:12px;">Scanning the dictionary…</div>');
+        scanTree().then(p => { if (!cancelled && p) renderPlan(p); });
+      };
+    }
   }
 
   // Maps GBIF class names → ecology group tag labels. Used by applyChainImport
@@ -2943,6 +3464,42 @@
     const r = await fetch('https://api.gbif.org/v1/species/' + usageKey);
     if (!r.ok) throw new Error('GBIF returned ' + r.status);
     return await r.json();
+  }
+
+  // species/match answers NONE for a name GBIF holds only as a synonym — it is
+  // a matcher, not a lookup. species/search does hold the synonym rows, with the
+  // accepted taxon attached. That is the difference between "GBIF has never
+  // heard of Metazoa" (what match says) and "Metazoa is a synonym of Animalia"
+  // (what is true).
+  //
+  // Three constraints keep this from doing damage, because the raw results are
+  // dangerous. A bare search for Ctenophora offers Ctenophora Meigen, a
+  // crane-fly genus; Onychophora offers Amphichorda, a fungus:
+  //   1. rank — the search is restricted to the rank you already recorded, so a
+  //      phylum can never be answered by a genus.
+  //   2. exact canonical — the synonym row's own name must equal this label.
+  //   3. a different accepted name — the same name under another author is a
+  //      homonym, not a synonym, and is rejected.
+  // The caller adds a fourth: the accepted taxon must already exist here.
+  async function gbifSynonymTarget(label, rank) {
+    const want = String(label || '').trim().toLowerCase();
+    if (!want) return null;
+    const url = 'https://api.gbif.org/v1/species/search?q=' + encodeURIComponent(label)
+      + '&limit=20&status=SYNONYM'
+      + (rank ? '&rank=' + encodeURIComponent(String(rank).toUpperCase()) : '');
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('GBIF returned ' + r.status);
+    const j = await r.json();
+    for (const row of (j.results || [])) {
+      if (String(row.canonicalName || '').trim().toLowerCase() !== want) continue;
+      if (!row.acceptedKey) continue;
+      let acc;
+      try { acc = await getGbifSpecies(row.acceptedKey); } catch (e) { continue; }
+      const canon = String(acc && acc.canonicalName || '').trim();
+      if (!canon || canon.toLowerCase() === want) continue;
+      return { name: canon, rank: String(acc.rank || '').toLowerCase() };
+    }
+    return null;
   }
 
   function renderGbifResult(container, tagId, query, res) {
