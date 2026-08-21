@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1787281681991,
+    "_salPushTime": 1787284401758,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -84,7 +84,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -512,7 +512,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1787281681991
+    "_salSavedAt": 1787284401758
   },
   {
     "UID": "1",
@@ -44852,27 +44852,138 @@
     "link": "https://youtu.be/GMG0wt-zd4Y",
     "show": "1",
     "DateAdded": "2026-08-21 02:59:45",
-    "DateModified": "2026-08-21 03:05:17",
-    "tags": [],
+    "DateModified": "2026-08-21 03:46:26",
+    "tags": [
+      "cornucopia-of-underwater-life"
+    ],
     "Mute": "0",
-    "ftextSize": "1942",
+    "ftextSize": "4554",
     "FtextJunk": "0",
     "VidTitle": "When Day Turns to Night",
     "VidAuthor": "@atlantisdiveresorts",
     "Mode": "L",
-    "ftext": "<h2>Night diving is, in our opinion, an awesome experience: It offers a different perspective and a familiar dive site will</h2><p>Night diving is, in our opinion, an awesome experience: It offers a different perspective and a familiar dive site will feel very different at night, as critters behaviour change, familiar faces go into hiding and new ones emerge.</p><p>So be sure to join our night dives next time you are staying with us.</p><p>Reel by @ocean_reality</p><p>Music by Hanna Lindgren -ES_Dissolving</p><p>reservations@atlantishotel.com</p><p>Phone/Whatsapp: +63 (0)917-562-0293</p><p>https://www.atlantishotel.com</p><p>https://www.infinitiliveaboard.com</p><p>By @atlantisdiveresorts · 2026-08-21</p><p>Source: <a target=\"_blank\" rel=\"noopener\" href=\"https://youtu.be/GMG0wt-zd4Y\">https://youtu.be/GMG0wt-zd4Y</a></p><p>What is this to LLMs</p><p>It’s a <strong>hermit crab</strong> living in an empty sea-snail shell—likely a whelk-like shell. The long antennae, stalked eyes, and visible legs/claws show that the animal is a crab rather than the original snail that made the shell.</p><p>Hermit crabs use vacant gastropod shells to protect their soft, curled abdomens and switch shells as they grow. [wildlifetrusts](<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.wildlifetrusts.org/wildlife-explorer/marine/crustaceans/hermit-crab\">https://www.wildlifetrusts.org/wildlife-explorer/marine/crustaceans/hermit-crab</a>)</p><p>...</p><p>That's a cuttlefish — most likely a broadclub cuttlefish (Sepia latimanus) or similar Sepia species, photographed at night over sand (typical Lembeh/Anilao-style muck diving shot).</p><p>Giveaways: the W-shaped pupil, the eight short arms bunched at the front with two longer feeding tentacles tucked between them, the fringed lateral fin running the length of the mantle, and the mottled pink/cream chromatophore pattern it's using to blend with the sand.</p><p></p>",
-    "vidLength": "0:37"
+    "ftext": "<h2>Night diving is, in our opinion, an awesome experience: It offers a different perspective and a familiar dive site will</h2><p>Night diving is, in our opinion, an awesome experience: It offers a different perspective and a familiar dive site will feel very different at night, as critters behaviour change, familiar faces go into hiding and new ones emerge.</p><p>So be sure to join our night dives next time you are staying with us.</p><p>Reel by @ocean_reality</p><p>Music by Hanna Lindgren -ES_Dissolving</p><p>reservations@atlantishotel.com</p><p>Phone/Whatsapp: +63 (0)917-562-0293</p><p>https://www.atlantishotel.com</p><p>https://www.infinitiliveaboard.com</p><p>By @atlantisdiveresorts · 2026-08-21</p><p>Source: <a target=\"_blank\" rel=\"noopener\" href=\"https://youtu.be/GMG0wt-zd4Y\">https://youtu.be/GMG0wt-zd4Y</a></p><p>What is this to LLMs</p><p>Perplexity \"Best\"</p><p>...</p><p>Claude Code, Opus 5 low</p><p>That's a cuttlefish — most likely a broadclub cuttlefish (Sepia latimanus) or similar Sepia species, photographed at night over sand (typical Lembeh/Anilao-style muck diving shot).</p><p>Giveaways: the W-shaped pupil, the eight short arms bunched at the front with two longer feeding tentacles tucked between them, the fringed lateral fin running the length of the mantle, and the mottled pink/cream chromatophore pattern it's using to blend with the sand.</p><p>...</p><p>Perplexity \"Best\"</p><p>It’s a <strong>hermit crab</strong> living in an empty sea-snail shell—likely a whelk-like shell. The long antennae, stalked eyes, and visible legs/claws show that the animal is a crab rather than the original snail that made the shell.</p><p>Hermit crabs use vacant gastropod shells to protect their soft, curled abdomens and switch shells as they grow. [wildlifetrusts](<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.wildlifetrusts.org/wildlife-explorer/marine/crustaceans/hermit-crab\">https://www.wildlifetrusts.org/wildlife-explorer/marine/crustaceans/hermit-crab</a>)</p><p>...</p><p>GPT 5.6 Terra</p><p>It’s a <strong>cuttlefish</strong>—a cephalopod related to squid and octopuses. The large eye, mottled color-changing skin, skirt-like mantle fin, and eight short arms around the mouth are characteristic. [wildlifetrusts](<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish\">https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish</a>)</p><p>It appears to be partly buried in sand, a common camouflage/defensive behavior; cuttlefish can alter both their skin pattern and texture to blend into the seafloor. The two longer feeding tentacles are usually retracted and therefore aren’t obvious in this image. [wildlifetrusts]</p><p>(<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish\">https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish</a>)</p><p>...</p><p>Gemini 3.7 Flash:</p><p>This is a <strong>true conch</strong> (family <strong>Strombidae</strong>), a large marine gastropod mollusk . </p><p>## Distinctive Features Visible</p><p>- <strong>Camera-Type Eyes</strong>: Unlike most gastropods, which have rudimentary pigment cups or simple eye spots at the base of their tentacles, true conchs possess sophisticated, highly developed eyes with distinct lenses, dark pupils, and colored irises .</p><p>- <strong>Eyestalks and Sensory Tentacles</strong>: Their eyes sit at the tips of long, mobile stalks (ommatophores) . Small, sensitive sensory tentacles branch off just below each eye to touch and chemically sample their surroundings .</p><p>- <strong>Stromboid Notch</strong>: The shell features a specialized indentation near the anterior edge (the \"stromboid notch\") that allows the conch to extend its eyestalks and survey the seafloor while remaining largely protected within its shell .</p><p>## Behavior and Biology</p><p>- <strong>Locomotion</strong>: Conchs do not glide smoothly like typical snails; they use a modified, claw-like operculum on their foot to lever and \"hop\" across sandy substrates to flee predators .</p><p>- <strong>Eye Regeneration</strong>: If an eyestalk is nipped off by a predator like a crab or fish, true conchs have the remarkable ability to fully regenerate a complete, functioning eye within a few weeks .</p><p></p><p></p>",
+    "vidLength": "0:37",
+    "VidRange": "14.7 4.4",
+    "VidComment": ""
+  },
+  {
+    "UID": "2084_d2",
+    "link": "https://youtu.be/GMG0wt-zd4Y",
+    "show": "1",
+    "DateAdded": "2026-08-21 03:39:25",
+    "DateModified": "2026-08-21 03:53:21",
+    "tags": [
+      "toxopneustes-pileolus",
+      "llm-id"
+    ],
+    "Mute": "0",
+    "ftextSize": "2693",
+    "FtextJunk": "0",
+    "VidTitle": "When Day Turns to Night",
+    "VidAuthor": "@atlantisdiveresorts",
+    "Mode": "L",
+    "ftext": "<p>What is this to LLMs</p><p>Claude code, Opus low:</p><p>That's a flower urchin (Toxopneustes pileolus).</p><p>The giveaway is the surface: those white trumpet/cup shapes with dark centres aren't spines — they're globiferous pedicellariae, tiny stalked pincers that open like flowers. The actual spines are the short green-white ones peeking between them. The lumps of algae, rubble and coral fragments on top are typical camouflage debris the urchin holds over itself with its tube feet.</p><p>Notes:</p><p>Indo-Pacific, common on sand/rubble at 10–30 m — matches the night-dive look.</p><p>Considered one of the most venomous sea urchins. The pedicellariae, not the spines, deliver the sting; envenomation causes severe pain and, in rare reports, respiratory difficulty. Not a touch-it species.</p><p>...</p><p>Gemini 3.7 Flash:</p><p>This organism is a <strong>flower urchin</strong> (*Toxopneustes pileolus*), widely considered the most venomous sea urchin in the world .</p><p>***</p><p>### Anatomy and Flower-Like Structures</p><p>Unlike most sea urchins that rely on long, sharp spines for defense, <em>Toxopneustes pileolus</em> possesses short, blunt spines that are almost entirely hidden underneath hundreds of specialized pincer-like appendages called <strong>globiferous pedicellariae</strong> :</p><p>- <strong>Circular vs. triangular shapes:</strong> The saucer-like circular structures with purple central centers are globiferous pedicellariae in their fully open state . When their sensory hairs are touched or stimulated, their three valves snap shut into the triangular shapes visible across the surface .</p><p>- <strong>Venom delivery:</strong> Each pedicellaria is tipped with small calcareous fangs connected to venom glands . They can detach from the urchin's body and remain embedded in skin, continuously pumping toxins .</p><p>### Venom Potency</p><p>The flower urchin holds the Guinness World Record for the most dangerous sea urchin . Its venom contains potent bioactive compounds, including <strong>Contractin A</strong> (a phospholipase-like protein), <strong>Peditoxin</strong>, and toxic lectins (SUL-I, II, and III) . Envenomation causes severe local pain, smooth and skeletal muscle spasms, paresthesia, respiratory distress, and potential drowning if encountered by divers .</p><p>### Covering Behavior</p><p>The dark, rocky objects and greenish piece of coral rubble resting on top of the specimen illustrate the urchin's active <strong>covering behavior</strong> . Using its tube feet and pedicellariae, it lifts debris, shells, and pebbles onto its aboral surface to camouflage itself from predators and provide shielding from UV radiation .</p><p></p>",
+    "vidLength": "0:37",
+    "VidRange": "14.7 4.4",
+    "VidComment": "",
+    "cell": ""
+  },
+  {
+    "UID": "2084_d",
+    "link": "https://youtu.be/GMG0wt-zd4Y",
+    "show": "1",
+    "DateAdded": "2026-08-21 03:35:21",
+    "DateModified": "2026-08-21 03:53:14",
+    "tags": [
+      "strombidae",
+      "llm-id"
+    ],
+    "Mute": "0",
+    "ftextSize": "3722",
+    "FtextJunk": "0",
+    "VidTitle": "When Day Turns to Night",
+    "VidAuthor": "@atlantisdiveresorts",
+    "Mode": "L",
+    "ftext": "<p>What is this to LLMs</p><p>Perplexity \"Best\"</p><p>...</p><p>Claude Code, Opus 5 low</p><p>That's a cuttlefish — most likely a broadclub cuttlefish (Sepia latimanus) or similar Sepia species, photographed at night over sand (typical Lembeh/Anilao-style muck diving shot).</p><p>Giveaways: the W-shaped pupil, the eight short arms bunched at the front with two longer feeding tentacles tucked between them, the fringed lateral fin running the length of the mantle, and the mottled pink/cream chromatophore pattern it's using to blend with the sand.</p><p>...</p><p>Perplexity \"Best\"</p><p>It’s a <strong>hermit crab</strong> living in an empty sea-snail shell—likely a whelk-like shell. The long antennae, stalked eyes, and visible legs/claws show that the animal is a crab rather than the original snail that made the shell.</p><p>Hermit crabs use vacant gastropod shells to protect their soft, curled abdomens and switch shells as they grow. [wildlifetrusts](<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.wildlifetrusts.org/wildlife-explorer/marine/crustaceans/hermit-crab\">https://www.wildlifetrusts.org/wildlife-explorer/marine/crustaceans/hermit-crab</a>)</p><p>...</p><p>GPT 5.6 Terra</p><p>It’s a <strong>cuttlefish</strong>—a cephalopod related to squid and octopuses. The large eye, mottled color-changing skin, skirt-like mantle fin, and eight short arms around the mouth are characteristic. [wildlifetrusts](<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish\">https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish</a>)</p><p>It appears to be partly buried in sand, a common camouflage/defensive behavior; cuttlefish can alter both their skin pattern and texture to blend into the seafloor. The two longer feeding tentacles are usually retracted and therefore aren’t obvious in this image. [wildlifetrusts]</p><p>(<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish\">https://www.wildlifetrusts.org/wildlife-explorer/marine/squids-octopuses-and-cuttlefish/common-cuttlefish</a>)</p><p>...</p><p>Gemini 3.7 Flash:</p><p>This is a <strong>true conch</strong> (family <strong>Strombidae</strong>), a large marine gastropod mollusk .</p><p>## Distinctive Features Visible</p><p>- <strong>Camera-Type Eyes</strong>: Unlike most gastropods, which have rudimentary pigment cups or simple eye spots at the base of their tentacles, true conchs possess sophisticated, highly developed eyes with distinct lenses, dark pupils, and colored irises .</p><p>- <strong>Eyestalks and Sensory Tentacles</strong>: Their eyes sit at the tips of long, mobile stalks (ommatophores) . Small, sensitive sensory tentacles branch off just below each eye to touch and chemically sample their surroundings .</p><p>- <strong>Stromboid Notch</strong>: The shell features a specialized indentation near the anterior edge (the \"stromboid notch\") that allows the conch to extend its eyestalks and survey the seafloor while remaining largely protected within its shell .</p><p>## Behavior and Biology</p><p>- <strong>Locomotion</strong>: Conchs do not glide smoothly like typical snails; they use a modified, claw-like operculum on their foot to lever and \"hop\" across sandy substrates to flee predators .</p><p>- <strong>Eye Regeneration</strong>: If an eyestalk is nipped off by a predator like a crab or fish, true conchs have the remarkable ability to fully regenerate a complete, functioning eye within a few weeks .</p><p></p><p></p>",
+    "vidLength": "0:37",
+    "cell": "",
+    "VidRange": "2.3 11",
+    "VidComment": ""
   },
   {
     "UID": "2085",
-    "link": "https://www.lembehresort.com/_next/image?url=https%3A%2F%2Fwww.lembehresort.com%2Fapi%2Fcritters-media%2Ffile%2Fbroadclub-cuttlefish-1620x1080.webp&w=1920&q=75",
+    "link": "https://www.lembehresort.com/api/critters-media/file/broadclub-cuttlefish-1620x1080.webp",
     "show": "1",
-    "DateAdded": "2026-08-21 03:07:22",
-    "DateModified": "2026-08-21 03:08:01",
-    "tags": [],
-    "ltype": "w",
-    "ftextSize": "83",
+    "DateAdded": "2026-08-21 03:10:36",
+    "DateModified": "2026-08-21 03:11:20",
+    "tags": [
+      "ascarosepion-latimanus"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
     "FtextJunk": "0",
-    "ftext": "<h2>broadclub-cuttlefish-1620x1080.webp</h2><p>Monkeyfish swimming in the ocean</p>"
+    "MPix": "1.7",
+    "Mode": "L"
+  },
+  {
+    "UID": "2086",
+    "link": "https://www.lembehresort.com/api/critters-media/file/broadclub-cuttlefish-1-1620x1080.webp",
+    "show": "1",
+    "DateAdded": "2026-08-21 03:15:54",
+    "DateModified": "2026-08-21 03:15:59",
+    "tags": [
+      "ascarosepion-latimanus"
+    ],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "MPix": "1.7",
+    "Mode": "L"
+  },
+  {
+    "UID": "2087",
+    "link": "https://youtu.be/lvONxnvlNN8",
+    "show": "1",
+    "DateAdded": "2026-08-21 03:16:29",
+    "DateModified": "2026-08-21 03:16:35",
+    "tags": [
+      "ascarosepion-latimanus"
+    ],
+    "Mute": "0",
+    "ftextSize": "3025",
+    "FtextJunk": "3",
+    "VidTitle": "Facts: The Broadclub Cuttlefish",
+    "VidAuthor": "@DeepMarineScenes",
+    "Mode": "L",
+    "ftext": "<h2>Quick facts about the second largest cuttlefish species! The broadclub cuttlefish (Sepia latimanus, Ascarosepion</h2>\n<p>Quick facts about the second largest cuttlefish species! The broadclub cuttlefish (Sepia latimanus, Ascarosepion latimanus). Broadclub cuttlefish facts!</p>\n<p>Support the channel on Kofi 😊 https://ko-fi.com/deepmarinescenes</p>\n<p>Facebook: https://www.facebook.com/deepmarinescenesofficial</p>\n<p>Podcast: https://open.spotify.com/show/6vnQgRYeXgkxk153aM68tR</p>\n<p>#cephalopods #cuttlefish #mollusks #weird #pacific #marineanimals #coralreefs #ocean #amazing #tentacles #science #learn #educational #underwater #intelligent #fishing</p>\n<p>-------------------------------------</p>\n<p>References and Helpful Links</p>\n<p>https://www.iucnredlist.org/species/162505/904969#habitat-ecology</p>\n<p>https://www.int-res.com/abstracts/ab/v17/n2/p181-195/</p>\n<p>https://www.montereybayaquarium.org/animals/animals-a-to-z/broadclub-cuttlefish</p>\n<p>Reid, Amanda. Cephalopods of Australia and Sub-Antarctic Territories. Australia, CSIRO PUBLISHING, 2016.</p>\n<p>Norman, Mark, and Reid, Amanda. Guide to Squid, Cuttlefish and Octopuses of Australasia. Australia, CSIRO PUBLISHING, 2000.</p>\n<p>Hanlon, Roger, et al. Octopus, Squid &amp; Cuttlefish: A Visual, Scientific Guide to the Oceans' Most Advanced Invertebrates. United States, University of Chicago Press, 2018.</p>\n<p>Publishing, DK. Animal Life: Secrets of the Animal World Revealed. United Kingdom, DK Publishing, 2011.</p>\n<p>Cephalopods of the World: Chambered nautiluses and sepioids (Nautilidae, Sepiidae, Sepiolidae, Sepiadariidae, Idiosepiidae, and Spirulidae). Italy, Food and Agriculture Organization of the United Nations, 2005.</p>\n<p>Super Shark Encyclopedia: And Other Creatures of the Deep. United States, DK, 2015.</p>\n<p>----------------------</p>\n<p>Music: Bittersweet</p>\n<p>----------------------</p>\n<p>Images/Video Licensed Under Creative Commons</p>\n<p>Dan Schofield http://creativecommons.org/licenses/by/4.0/</p>\n<p>Paul Asman and Jill Lenoble http://creativecommons.org/licenses/by/4.0/</p>\n<p>By prilfish from Vienna, Austria - Broadclub Cuttlefish - Sepia latimanus, CC BY 2.0, https://commons.wikimedia.org/w/index.php?curid=55222017</p>\n<p>By Nhobgood Nick Hobgood - Own work, CC BY-SA 3.0, https://commons.wikimedia.org/w/index.php?curid=6261651-/</p>\n<p>Notdunroamin</p>\n<p>https://www.youtube.com/watch?v=8HxnYxgr0yU</p>\n<p>のんびりじっくりダイビング　～海水魚・生態～https://www.youtube.com/watch?v=yrR7QB1foyk</p>\n<p>https://www.youtube.com/watch?v=LjZBCTU6LsM</p>\n<p>https://www.youtube.com/watch?v=y7OVl_QHmYo</p>\n<p>Ben Hollis</p>\n<p>https://www.youtube.com/watch?v=aV5nKyltJnw</p>\n<p>Okinawa Institute of Science and Technology (OIST) https://www.youtube.com/watch?v=45G34lJgRvo</p>\n<p style=\"color:#888;font-size:.9em;\">By @DeepMarineScenes · 2025-01-18 · 119 likes</p>\n<p>Source: <a href=\"https://youtu.be/lvONxnvlNN8\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/lvONxnvlNN8</a></p>"
+  },
+  {
+    "UID": "2088",
+    "link": "https://wiseoceans.com/creature-feature-friday-broadclub-cuttlefish/",
+    "show": "1",
+    "DateAdded": "2026-08-21 03:17:20",
+    "DateModified": "2026-08-21 03:17:25",
+    "tags": [
+      "ascarosepion-latimanus"
+    ],
+    "ltype": "w",
+    "ftextSize": "2957",
+    "FtextJunk": "0",
+    "ftext": "<h2>Broadclub Cuttlefish</h2>\n<img src=\"https://wiseoceans.com/wp-content/uploads/2023/03/Marine-Game-8-600x450.png\" alt=\"Image 1\" style=\"max-width:100%;height:auto;\">\n<h2>Creature Feature – Broadclub Cuttlefish</h2>\n<p>This week is the letter ‘B’, and today’s featured creature is the Broadclub Cuttelfish.</p>\n\n<figure><img src=\"https://wiseoceans.com/wp-content/uploads/2023/03/Sea-Turtle-Nesting-KSR-16.png\" alt=\"Image 2: Broadclub cuttlefish\" style=\"max-width:100%;height:auto;\"><figcaption>Cuttlefish are marine molluscs belonging to the order Cephalopoda, like octopus. The broadclub cuttlefish gets its common name from the wide pads on the ends of its feeding tentacles that it uses to capture prey.</figcaption></figure>\n\n\n\n\n\n\n<h2>Broadclub Cuttlefish Fact File</h2>\n<img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"Image 3: ?\" style=\"max-width:100%;height:auto;\"><strong>Size</strong>: This is the second largest cuttlefish species and can grow up to 50 cm in mantle length and weigh up to 10 kg\n<img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"Image 4: ?\" style=\"max-width:100%;height:auto;\"><strong>Distribution</strong>: They can be found across Southeast Asia and northern Australia\n<img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"Image 5: ?\" style=\"max-width:100%;height:auto;\"><strong>Diet</strong>: Their diet comprises of small shrimps, fish and crabs\n<img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"Image 6: ?\" style=\"max-width:100%;height:auto;\"><strong>Behaviour</strong>: Cuttlefishes are masters of camouflage and can change both their color and the texture of their skin to match their surroundings. This cunning species hypnotizes prey with flashing coloured bands that ripple along its skin. They then strike with their feeding tentacles and pull the prey toward their beaked mouths. When threatened by predators, broadclub cuttlefish produce ink that confuses the potential predators and allows the cuttlefish to escape. Any individuals that do not immediately escape can perfectly mimic the colour and texture of the ink, in an attempt to hide in plain sight\n<img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"Image 7: ?\" style=\"max-width:100%;height:auto;\"><strong>IUCN Status</strong>: <a href=\"https://www.iucnredlist.org/species/162505/904969\" target=\"_blank\" rel=\"noopener\">Data Deficient</a>. The combination of climate change and ocean acidification is thought to be a potential threat to this species, as is overfishing and bycatch\n<img src=\"https://wiseoceans.com/wp-content/uploads/2023/03/Marine-Game-6-700x700.png\" alt=\"Image 8: Broadclub cuttlefish\" style=\"max-width:100%;height:auto;\"><img src=\"https://wiseoceans.com/wp-content/uploads/2023/03/Marine-Game-7-700x700.png\" alt=\"Image 9: Broadclub cuttlefish\" style=\"max-width:100%;height:auto;\">"
+  },
+  {
+    "UID": "2089",
+    "link": "https://wiseoceans.com/creature-feature-friday-flower-urchin/",
+    "show": "1",
+    "DateAdded": "2026-08-21 03:18:56",
+    "DateModified": "2026-08-21 03:20:43",
+    "tags": [
+      "toxopneustes-pileolus"
+    ],
+    "ltype": "w",
+    "ftextSize": "2699",
+    "FtextJunk": "0",
+    "ftext": "<h2>Creature Feature – Flower Urchin</h2><p><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-11.png\" alt=\"\"></p><h2>Creature Feature – Flower Urchin</h2><p><strong>This week features the letter ‘U’, and today’s spotlight is the Flower Urchin.</strong>&nbsp;</p><p>Flower Urchins are a type of sea urchin, named for their numerous and distinctively flower-like pedicellariae, which range in colour from pinkish-white to yellowish-white, each with a central purple dot. Even though these urchins are beautiful to look at, they are one of the more toxic species of sea urchin. Their scientific name, <em>Toxopneustes</em>, means “poison breath.”&nbsp;</p><p>Beneath the flower-like pedicellariae lies a forest of short, blunt spines. While most sea urchins deploy venom through their spines, the Flower Urchin uses its pedicellariae to deliver venom.&nbsp;</p><p>Due to their toxicity, Flower Urchins have very few predators, as few creatures can safely eat them.&nbsp;</p><p><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-11.png\" alt=\"\"></p><p>Taxonomy</p><p>Scientific Name: <em>Toxopneustes </em>pileolus&nbsp;</p><p>Kingdom: Animalia</p><p>Phylum: Echinodermata&nbsp;</p><p>Order: Camarodonta&nbsp;</p><p>Family: Toxopneustidae&nbsp;</p><p>Genus:<em>Toxopneustes</em>&nbsp;</p><h2>Flower Urchin Fact File</h2><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Size</strong>: 15–20 cm (6–8 inches)&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Distribution</strong>: Widespread in the Indo-Pacific, specifically inhabiting coral reefs, seagrass beds, rocky areas, and sandy habitats up to 90 meters deep&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Diet</strong>: Algae, bryozoans, and organic detritus&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>Behaviour</strong>: Flower urchins are among several species known as “collector urchins”. They are named this because they cover the upper surfaces of their bodies with debris from their surroundings&nbsp;</p><p><img src=\"https://static.xx.fbcdn.net/images/emoji.php/v9/t92/2/16/1f539.png\" alt=\"?\"> <strong>IUCN Status</strong>: Not listed</p><p><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-11-1.png\" alt=\"\"><img src=\"https://wiseoceans.com/wp-content/uploads/2025/06/Untitled-design-12.png\" alt=\"\"></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://wiseoceans.com/category/creature-feature/\">All Creature Feature Blogs</a></p>"
   }
 ]

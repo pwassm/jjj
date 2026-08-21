@@ -7678,7 +7678,8 @@
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "Pacific Torpedo"
+    "common": "pacific electric ray",
+    "extinct": false
   },
   {
     "id": "torpediniformes",
@@ -7712,5 +7713,87 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "sepia",
+    "label": "Sepia",
+    "kind": "taxon",
+    "parents": [
+      "sepiidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "ascarosepion-latimanus",
+    "label": "Ascarosepion latimanus",
+    "kind": "taxon",
+    "parents": [
+      "ascarosepion"
+    ],
+    "aliases": [
+      "Sepia latimanus"
+    ],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "toxopneustes-pileolus",
+    "label": "Toxopneustes pileolus",
+    "kind": "taxon",
+    "parents": [
+      "toxopneustes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "flower urchin",
+    "extinct": false
+  },
+  {
+    "id": "toxopneustidae",
+    "label": "Toxopneustidae",
+    "kind": "taxon",
+    "parents": [
+      "camarodonta"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "toxopneustes",
+    "label": "Toxopneustes",
+    "kind": "taxon",
+    "parents": [
+      "toxopneustidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "strombidae",
+    "label": "Strombidae",
+    "kind": "taxon",
+    "parents": [
+      "littorinimorpha"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "true conch",
+    "extinct": false
+  },
+  {
+    "id": "llm-id",
+    "label": "Llm id",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

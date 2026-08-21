@@ -21,7 +21,9 @@
  *     { id, label, kind, rank?, parents:[], aliases?:[], def?:"", common?:"", extinct?:false }
  *   Rules:
  *     - id is a slug (lowercase, a-z 0-9 and hyphens)
- *     - kind === "taxon" → parents.length <= 1
+ *     - kind === "taxon" → at most ONE parent of kind taxon/root (its single
+ *       place in the tree of life) PLUS any number of kind:"group" parents
+ *       (ecology groups like "fish" that cut across clades)
  *     - others can have multiple parents
  *     - a tag may have no parents (root-level concept)
  * ========================================================================= */
@@ -47,6 +49,8 @@
     has: (id) => byId.has(id),
     resolve: resolveInput,
     ancestors: tagAncestors,
+    lineagePaths: tagLineagePaths,
+    lineageString: tagLineageString,
     descendants: tagDescendants,
     expand: expandWithAncestors,
     matchesQuery: recordMatchesTagQuery,
@@ -224,6 +228,39 @@
     return out;
   }
 
+  // tagAncestors answers "is X above me?" but throws the route away, which is
+  // fine for filtering and useless for display. tagLineagePaths keeps the route:
+  // an array of paths, each ordered rootmost → immediate parent. A taxon wired
+  // to an ecology group has two parents and so yields two paths — that is the
+  // point, since filtering can travel either one.
+  function tagLineagePaths(id, maxPaths) {
+    maxPaths = maxPaths || 6;
+    const out = [];
+    (function walk(cur, trail, onTrail) {
+      if (out.length >= maxPaths) return;
+      const t = byId.get(cur);
+      const parents = (t && t.parents || []).filter(x => byId.has(x) && !onTrail.has(x));
+      if (!parents.length) {
+        if (trail.length) out.push(trail.slice().reverse());
+        return;
+      }
+      for (const x of parents) {
+        if (out.length >= maxPaths) return;
+        onTrail.add(x);
+        walk(x, trail.concat(x), onTrail);
+        onTrail.delete(x);
+      }
+    })(id, [], new Set([id]));
+    return out;
+  }
+
+  // Flat "Life › Animalia › Mollusca …" string, for tooltips and toasts.
+  function tagLineageString(id, sep) {
+    const paths = tagLineagePaths(id, 2);
+    if (!paths.length) return '';
+    return paths.map(pp => pp.map(labelFor).join(sep || ' › ')).join('   |   ');
+  }
+
   function tagDescendants(id) {
     // Returns Set of all descendant IDs (NOT including self)
     // Build parent→children index lazily (on demand; cheap at dict sizes)
@@ -306,6 +343,31 @@
   }
 
   // ── CRUD on dictionary ───────────────────────────────────────────────────
+  // A taxon has exactly one place in the tree of life, so it keeps at most ONE
+  // parent of kind taxon/root. Ecology groups ("fish", "crustacean") are a
+  // different axis — they cut across clades — so they are additional and
+  // unlimited.
+  //
+  // The old rule was blunter: taxon ⇒ parents.length <= 1, enforced by
+  // truncating to parents[0]. Every group-wiring call built its patch as
+  // [...existingParents, groupId], so the truncation threw the group away and
+  // kept whatever was already there. The Ecology panel toasted "✓ wired N",
+  // saved nothing, and re-rendered every class as still unwired — which is why
+  // all eight group tags sat at zero children. Same for the class → group
+  // auto-wire inside applyChainImport.
+  function enforceParentRule(rec) {
+    if (!rec || rec.kind !== 'taxon') return;
+    const hier = [], cross = [];
+    (rec.parents || []).filter(Boolean).forEach(x => {
+      const pt = byId.get(x);
+      // An unknown parent counts as hierarchical: it is nearly always a taxon
+      // that hasn't been created yet, and dropping it would lose data.
+      if (!pt || pt.kind === 'taxon' || pt.kind === 'root') hier.push(x);
+      else cross.push(x);
+    });
+    rec.parents = (hier.length ? [hier[0]] : []).concat(cross);
+  }
+
   function createTag(partial) {
     const label = formatTagLabel(partial.label || '');
     if (!label) return { ok: false, err: 'label required' };
@@ -339,10 +401,7 @@
     if (rank) rec.rank = rank;
     if (partial.common) rec.common = formatTagLabel(partial.common);
     if (partial.extinct) rec.extinct = true;
-    // Taxon rule: single parent
-    if (rec.kind === 'taxon' && rec.parents.length > 1) {
-      rec.parents = [rec.parents[0]];
-    }
+    enforceParentRule(rec);
     tagsArr.push(rec);
     buildIndex();
     saveTags();
@@ -356,14 +415,14 @@
       if (k === 'id') return;              // immutable
       if (k === 'parents' && Array.isArray(patch.parents)) {
         t.parents = patch.parents.filter(Boolean);
-        if (t.kind === 'taxon' && t.parents.length > 1) t.parents = [t.parents[0]];
       } else if (k === 'aliases' && Array.isArray(patch.aliases)) {
         t.aliases = cleanAliasList(patch.aliases);
       } else {
         t[k] = patch[k];
       }
     });
-    if (t.kind === 'taxon' && (t.parents || []).length > 1) t.parents = [t.parents[0]];
+    // Run after every key is applied — `kind` may have changed in this patch.
+    enforceParentRule(t);
     buildIndex();
     saveTags();
     return { ok: true };
@@ -478,7 +537,10 @@
   // ── rendering helpers ────────────────────────────────────────────────────
   function labelFor(id) {
     const t = byId.get(id);
-    return t ? t.label : id;
+    // A blank label renders as an invisible chip / an empty crumb. The 'life'
+    // root has one, which is how the whole tree of life came to be represented
+    // on screen by a chip with nothing written on it. Fall back to the id.
+    return (t && t.label) ? t.label : id;
   }
 
   function kindColor(t) {
@@ -497,6 +559,7 @@
     if (t.kind === 'technique') return '#fc8';
     if (t.kind === 'place')     return '#fca';
     if (t.kind === 'root')      return '#8ef';
+    if (t.kind === 'group')     return '#fc8';
     return '#ccc';
   }
 
@@ -505,9 +568,17 @@
     const t = byId.get(id);
     const label = t ? t.label : id;
     const color = kindColor(t);
-    const title = t
-      ? (t.kind === 'taxon' && t.rank ? t.rank + ' · ' + label : (t.kind + ' · ' + label)) + (t.common ? ' (' + t.common + ')' : '')
-      : '⚠ orphan: ' + id;
+    // Hovering a chip is the cheapest place to answer "what is this filed
+    // under?", so the tooltip carries the whole path, not just the rank.
+    let title;
+    if (!t) {
+      title = '⚠ orphan: ' + id;
+    } else {
+      title = (t.kind === 'taxon' && t.rank ? t.rank + ' · ' + label : (t.kind + ' · ' + label))
+        + (t.common ? ' (' + t.common + ')' : '');
+      const lin = tagLineageString(id);
+      if (lin) title += '\n↑ ' + lin;
+    }
     const missing = !t;
     const bg = missing ? 'rgba(255,80,80,0.15)' : 'rgba(255,255,255,0.05)';
     const bd = missing ? '#f66' : color;
@@ -1256,7 +1327,10 @@
         const color = kindColor(t);
         const use = useCountFor(t.id);
         const rank = t.rank ? ' · ' + t.rank : '';
-        const parents = (t.parents || []).map(p => labelFor(p)).filter(Boolean).join(', ');
+        // The row used to print only the immediate parent, which is exactly the
+        // one fact you already know. What you want to see is that a cuttlefish
+        // is a mollusc — so print the whole path.
+        const linPaths = tagLineagePaths(t.id, 3);
         const isSelected = t.id === selectedId;
         const isKbFocused = t.id === keyboardFocusedId;
         let bg = '';
@@ -1276,7 +1350,17 @@
           + '<span style="flex:1;"></span>'
           + '<span style="color:#4af;font-size:10px;">' + use + ' vid</span>'
           + '</div>'
-          + (parents ? '<div style="color:#555;font-size:10px;margin-top:2px;">↑ ' + escapeHtml(parents) + '</div>' : '')
+          + (linPaths.length
+              ? '<div style="color:#5d6f80;font-size:10px;margin-top:2px;">↑ '
+                + escapeHtml(linPaths[0].map(labelFor).join(' › '))
+                + (linPaths.length > 1
+                    ? ' <span style="color:#8a7a4a;">+' + (linPaths.length - 1) + ' more path'
+                      + (linPaths.length > 2 ? 's' : '') + '</span>'
+                    : '')
+                + '</div>'
+              : (t.kind === 'taxon'
+                  ? '<div style="color:#b87;font-size:10px;margin-top:2px;">⚠ unplaced — no parent, so no broader group finds it</div>'
+                  : ''))
           + ((t.aliases || []).length ? '<div style="color:#777;font-size:10px;margin-top:2px;">also: ' + escapeHtml((t.aliases || []).join(', ')) + '</div>' : '');
         row.addEventListener('click', () => selectTag(t.id));
         listEl.appendChild(row);
@@ -1337,7 +1421,10 @@
       // 1) Unsorted section (rootless non-root tags) — most recently created first
       const unsorted = tagsArr
         .map((t, i) => ({ t, i }))
-        .filter(x => x.t.kind !== 'root' && (!x.t.parents || !x.t.parents.length))
+        // Unsorted is for tags with nowhere to be, so exclude anything that is
+        // itself the top of a tree — those render as roots above.
+        .filter(x => x.t.kind !== 'root' && (!x.t.parents || !x.t.parents.length)
+          && !(childrenByParent.get(x.t.id) || []).length)
         .sort((a, b) => b.i - a.i)
         .map(x => x.t);
 
@@ -1360,8 +1447,15 @@
         listEl.appendChild(unsortedBody);
       }
 
-      // 2) The roots (kind==='root'): render each as its own tree
-      const roots = tagsArr.filter(t => t.kind === 'root');
+      // 2) The roots. Anything with no parent but with children is a root of
+      //    some tree, whatever its `kind` says. This used to test kind==='root'
+      //    alone, which meant only Health / Activity / Other ever rendered:
+      //    'life' is stored as kind:'taxon', so it fell through to Unsorted and
+      //    took all 544 taxa with it. Every classification the dictionary knows
+      //    about was one blank-labelled chip.
+      const hasKids = (id) => (childrenByParent.get(id) || []).length > 0;
+      const roots = tagsArr.filter(t => t.kind === 'root'
+        || ((!t.parents || !t.parents.length) && hasKids(t.id)));
       roots.sort((a, b) => a.label.localeCompare(b.label));
       roots.forEach(root => {
         // When searching, only render a root's tree if it contains a match
@@ -1472,10 +1566,17 @@
       const useHint = use ? ' <span style="color:#4af;font-size:10px;">· ' + use + 'v</span>' : '';
       const kidsCount = kids.length ? ' <span style="color:#555;font-size:10px;">· ' + kids.length + '▾</span>' : '';
       const cutBadge = isCutSource ? ' <span style="color:#fc6;font-size:9px;">✂ cut</span>' : '';
+      // A tag with two parents is drawn twice in this tree. Say so, rather than
+      // letting it read as a duplicate.
+      const alsoUnder = (t.parents || []).filter(x => byId.get(x));
+      const multiParent = alsoUnder.length > 1
+        ? ' <span title="Filed under ' + escapeAttr(alsoUnder.map(labelFor).join(' + '))
+          + ' — shown once under each" style="color:#8a9;font-size:9px;">⧉' + alsoUnder.length + '</span>'
+        : '';
 
       row.innerHTML = chevron
         + '<span class="tree-label" style="color:' + color + ';font-weight:' + (t.kind === 'root' ? 'bold' : 'normal') + ';">' + escapeHtml(t.label) + '</span>'
-        + commonHint + rankBadge + extinct + cutBadge + kidsCount + useHint + aliasHint;
+        + commonHint + rankBadge + extinct + multiParent + cutBadge + kidsCount + useHint + aliasHint;
 
       // Chevron click → toggle expand
       const chevEl = row.querySelector('.tree-chev');
@@ -1784,6 +1885,35 @@
         });
         return n;
       })();
+
+      // -- CLASSIFIED UNDER ------------------------------------------------
+      // Filtering by any ancestor finds this tag — that is what
+      // recordMatchesTagQuery does — but the panel only ever showed the
+      // immediate parent chip, so "why did Mollusca find this cuttlefish?" had
+      // no answer anywhere on screen. Print every path a filter can travel,
+      // each node clickable.
+      const linPaths = tagLineagePaths(id);
+      const linCrumb = (path) => path.map(pid => {
+        const pt = byId.get(pid);
+        const ttl = pt ? ((pt.rank || pt.kind || '') + ' · ' + pt.label) : pid;
+        return '<span data-lin="' + escapeAttr(pid) + '" title="' + escapeAttr(ttl)
+          + '" style="color:' + kindColor(pt) + ';cursor:pointer;'
+          + 'text-decoration:underline dotted;text-underline-offset:3px;">'
+          + escapeHtml(pt ? pt.label : pid) + '</span>';
+      }).join('<span style="color:#556;padding:0 4px;">&rsaquo;</span>')
+        + '<span style="color:#556;padding:0 4px;">&rsaquo;</span>'
+        + '<span style="color:' + kindColor(t) + ';font-weight:bold;">' + escapeHtml(t.label) + '</span>';
+      const dictLineageHtml =
+        '<div style="margin-bottom:12px;padding:7px 10px;background:rgba(70,110,180,0.10);'
+        + 'border:1px solid #345;border-radius:5px;">'
+        + '<div style="color:#78899a;font-size:10px;margin-bottom:4px;letter-spacing:0.5px;">CLASSIFIED UNDER'
+        + ' <span style="color:#566;letter-spacing:0;">— filtering by any name here also finds this tag</span></div>'
+        + (linPaths.length
+            ? linPaths.map(pp => '<div style="font-size:11px;line-height:2;">' + linCrumb(pp) + '</div>').join('')
+            : '<div style="color:#c96;font-size:11px;line-height:1.6;">⚠ No parent — nothing broader finds this tag.'
+              + '<br>Set a Parent below, or run 🔎 Check GBIF → 🚀 Apply All to import the whole chain.</div>')
+        + '</div>';
+
       editEl.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
           <span style="font-size:17px;color:${kindColor(t)};font-weight:bold;">${escapeHtml(t.label)}</span>
@@ -1792,6 +1922,8 @@
         <div style="font-size:11px;color:#666;margin-bottom:10px;">
           Directly tagged on <b style="color:#4af;">${use}</b> videos · total (with descendants): <b style="color:#4af;">${effUse}</b> · descendants: <b style="color:#4af;">${descCount}</b>
         </div>
+
+        ${dictLineageHtml}
 
         <div style="display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:start;font-size:12px;">
           <label style="color:#6af;padding-top:5px;">Label</label>
@@ -1840,6 +1972,11 @@
 
         ${children.length ? `<div style="margin-top:18px;border-top:1px solid #333;padding-top:10px;"><div style="color:#666;font-size:11px;margin-bottom:6px;">CHILDREN (${children.length})</div><div style="display:flex;flex-wrap:wrap;gap:4px;">${children.map(c => chipHtml(c.id)).join('')}</div></div>` : ''}
       `;
+
+      // Any node in the CLASSIFIED UNDER path jumps the panel to that tag.
+      editEl.querySelectorAll('[data-lin]').forEach(el => {
+        el.addEventListener('click', () => selectTag(el.dataset.lin));
+      });
 
       // Mount parent chip input
       const parentMount = editEl.querySelector('#de-parents');
@@ -3111,7 +3248,13 @@
       const currentParents = child.parents || [];
       if (!currentParents.includes(parentId)) {
         const nonChainParents = currentParents.filter(p => !chainIdSet.has(p));
-        updateTag(childId, { parents: [...nonChainParents, parentId] });
+        // Chain parent FIRST: enforceParentRule keeps the first taxon/root
+        // parent it sees and files the rest as cross-cutting group parents. Put
+        // GBIF's answer first and a stale hand-placed clade gets replaced, while
+        // a wired ecology group survives. Listing it last, as this did, meant a
+        // taxon already sitting under a different clade (Mollusca under Metazoa,
+        // say) never moved to the one GBIF returned.
+        updateTag(childId, { parents: [parentId, ...nonChainParents] });
         parentChainEdits++;
       }
     }
@@ -3261,8 +3404,16 @@
       }
     }
 
+    // The tag we ended up on. Computed before the toast so the toast can name
+    // the chain it just wired instead of only counting it.
+    const finalId = originalRehomed
+      ? idsByRank[chain[chain.length - 1].rank]
+      : tagId;
+
     if (typeof toast === 'function') {
       const lines = [options.withAliasAndCommon ? '✓ Applied All from GBIF' : '✓ Imported GBIF chain'];
+      const wiredPath = finalId ? tagLineageString(finalId) : '';
+      if (wiredPath) lines.push('↑ ' + wiredPath);
       lines.push(createdCount + ' new taxa created · ' + reusedCount + ' reused');
       if (parentChainEdits) lines.push(parentChainEdits + ' parent links set');
       if (aliasAdded) lines.push('scientific name + author added as alias');
@@ -3277,10 +3428,8 @@
     }
     if (typeof render === 'function') render();
 
-    // Refresh dictionary view, jump selection to the species we ended up with
-    const finalId = originalRehomed
-      ? idsByRank[chain[chain.length - 1].rank]
-      : tagId;
+    // Refresh dictionary view, jump selection to the species we ended up with.
+    // Its CLASSIFIED UNDER block is the persistent record of what Apply All did.
     if (dictOverlay && dictOverlay._selectTag && finalId) {
       dictOverlay._selectTag(finalId);
     } else {
