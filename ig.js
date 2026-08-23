@@ -218,6 +218,19 @@
   // (which land no items and so never spend the budget) can't grind on one exit forever.
   const ROTATE_CHUNK = 18;
   const ROTATE_ROW_CAP = 18;
+  // (dev0832) The MINIMUM seconds an exit is used before the grind rotates off it.
+  // ROTATE_CHUNK budgets a batch in ITEMS, and items are not a proxy for time: 18
+  // single-item reels are 18 separate yt-dlp calls (~200s), but 18 CAROUSEL items can
+  // arrive in two calls (~30s) because one call yields ten files. So on a carousel-heavy
+  // queue the same budget was spent 5-7x faster, and since a switch fires at every batch
+  // end the rotation rate went with it: 2026-08-22 22:39 ran 51 batches and 50 switches
+  // in 56:40 — one switch every ~68s, against ~240s on the runs that finished. Proton
+  // progressively refused that cadence (the answered-but-down cascades grew from 3 tries
+  // to 5) until one exhausted its budget and killed the run. Healthy runs on this same
+  // build sat at 233-242s per exit, so hold that floor: when a batch ends early, run the
+  // NEXT batch on the same exit rather than rotating. It is a floor, never a ceiling — a
+  // slow batch still rotates the moment it ends, exactly as before.
+  const MIN_EXIT_SECS = 150;
   let batchItems = 0;                  // (dev0690) files landed in the current runBatch
   // (dev0444) Account-safety guard: auto-stop a batch once this many items have had
   // to fall back to Firefox cookies (i.e. login-walled posts fetched AS your logged-in
@@ -939,7 +952,14 @@
 
   // Fire a switch and wait for the proxy to confirm the new exit. Returns the new
   // status (or null on failure). Shows progress in the shared batch panel.
-  async function vpnSwitchNow(note) {
+  // (dev0832) Did a switch actually LAND on a fresh exit? `tunnelUp` alone does not say
+  // so: when the proxy's 40s wait expires with no new state.json it answers with the
+  // state from BEFORE, so `tunnelUp` is the OLD tunnel still being up and `server` is the
+  // exit we were already on. `switched:false` is the proxy naming that case, and reading
+  // it is what stops a run from counting a 40s no-op as a successful rotation.
+  const vpnLanded = sw => !!(sw && sw.tunnelUp && sw.switched !== false);
+
+  async function vpnSwitchNow(note, avoid) {
     vpnBusy = true; vpnRenderPill();
     igBatchUpdate((note ? note + '\n' : '') + '🔀 switching Proton VPN to a fresh US exit…');
     let out = null;
@@ -948,18 +968,32 @@
     // that THREW (proxy gone) looks identical to one that came back tunnelUp:false.
     const _t0 = Date.now(); let _how = '';
     try {
-      const r = await fetch(PROXY + '/vpn/switch', { method: 'POST' });
+      // (dev0832) Name the exits this cascade already burned, so the proxy's picker
+      // cannot hand one of them straight back (see vpnPickServer in proxy.js).
+      const qs = (avoid && avoid.length) ? '?avoid=' + encodeURIComponent(avoid.join(',')) : '';
+      const r = await fetch(PROXY + '/vpn/switch' + qs, { method: 'POST' });
       const j = await r.json();
-      if (j && j.ok) { out = j; vpnStatus = j; _how = j.tunnelUp ? 'up' : 'answered-but-down'; }
+      if (j && j.ok) {
+        out = j; vpnStatus = j;
+        // (dev0832) Three outcomes, not two. 'timed-out-same-exit' is the 40s no-op:
+        // the proxy gave up waiting and handed back the pre-switch state, which used to
+        // be logged as vpn-switch-ok purely because the old tunnel was still up.
+        _how = j.switched === false ? 'timed-out-same-exit'
+             : j.tunnelUp ? 'up' : 'answered-but-down';
+      }
       else _how = 'not-ok';
       // (dev0805) The proxy ended a WEDGED rotation task before firing this switch.
       // That jam is what produced "no VPN exit would come up" on 2026-08-17, and it was
       // invisible from here: every switch simply timed out. Now it says so, and heals.
       if (j && j.unstuck) igToast('🧹 a previous VPN rotation was stuck — ended it, retrying the switch.', 3400);
     } catch (e) { _how = 'THREW:' + ((e && e.message) || 'fetch failed'); }
-    diag(out && out.tunnelUp ? 'vpn-switch-ok' : 'VPN-SWITCH-FAIL', {
+    diag(vpnLanded(out) ? 'vpn-switch-ok' : 'VPN-SWITCH-FAIL', {
       how: _how, ms: Date.now() - _t0, unstuck: (out && out.unstuck) ? 1 : 0,
-      exit: (out && (out.server || out.ip)) || '', note: (note || '').slice(0, 60)
+      exit: (out && (out.server || out.ip)) || '',
+      // (dev0832) The config that was STAGED, which is the thing worth avoiding on a
+      // retry — `exit` on a timed-out switch is the old one we never left.
+      wanted: (out && out.wanted) || '',
+      note: (note || '').slice(0, 60)
     });
     vpnBusy = false; vpnRenderPill();
     return out;
@@ -983,16 +1017,28 @@
   // working VPN exit"). Two more attempts costs nothing when exits come up first
   // try, which is the normal case. It does not FIX the timeout race, it just
   // outlasts it.
+  // (dev0832) …and it no longer re-tries the exit that just failed. Each attempt reports
+  // the config it staged (`wanted`); collecting those and passing them back as `avoid`
+  // means the five tries are five DIFFERENT servers. Before this, a cascade could ask
+  // for the same dead config twice in a row and burn its 40s timeout doing it — on
+  // 2026-08-22 that pattern (22s, 41s, 22s, 41s, 22s) used up the whole budget and ended
+  // the run with "couldn't get a working VPN exit" at 56:40.
   async function vpnEnsureUp(note, tries) {
     tries = tries || 5;
-    let sw = await vpnSwitchNow(note);
+    const burned = [];
+    const burn = sw => {
+      const w = sw && sw.wanted;
+      if (w && burned.indexOf(w) < 0) burned.push(w);
+    };
+    let sw = await vpnSwitchNow(note, burned);
     let n = 1;
-    while ((!sw || !sw.tunnelUp) && n < tries && !batchAbort) {
+    while (!vpnLanded(sw) && n < tries && !batchAbort) {
+      burn(sw);
       igToast(`⚠ that exit didn't route — trying another Proton server (${n + 1}/${tries})…`, 2800);
-      sw = await vpnSwitchNow(note + ' (retry ' + (n + 1) + ')');
+      sw = await vpnSwitchNow(note + ' (retry ' + (n + 1) + ')', burned);
       n++;
     }
-    return (sw && sw.tunnelUp) ? sw : null;
+    return vpnLanded(sw) ? sw : null;
   }
 
   // (dev0799) The proxy's measured verdict on the exit we just landed on — bytes/sec
@@ -3574,6 +3620,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
     let totalOk = 0, totalItems = 0, batches = 0, switches = 0, endMsg = '';
     let zeroBatches = 0;   // (dev0694) consecutive walled zero-batches — see WALL_ROTATE_CAP
+    // (dev0832) When did the run land on the exit it is using now, and how many switches
+    // has the dwell floor spared? See MIN_EXIT_SECS. `exitT0` is re-stamped at every
+    // landing, so it measures time ON THIS EXIT, not time since the run began.
+    let exitT0 = Date.now(), heldSwitches = 0;
     // (dev0688) Per-RUN tallies. Cleared here (not in runBatch) so a grind's report
     // covers every batch it ran, and so a fresh grind forgives rows the last one
     // quarantined for killing the proxy — one strike is per-run, two is permanent.
@@ -3597,7 +3647,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (!(vpnStatus && vpnStatus.tunnelUp)) {
       igBatchShow('🔀 bringing up a Proton VPN exit before batch 1…');
       const sw0 = await vpnEnsureUp('bringing up the first exit');
-      if (sw0) { switches++; igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}${vpnSpeedNote(sw0)}`, 3000); }
+      if (sw0) { switches++; exitT0 = Date.now(); igToast(`🟢 VPN → ${sw0.server || sw0.ip || '?'}${sw0.ip ? '  ' + sw0.ip : ''}${vpnSpeedNote(sw0)}`, 3000); }
       else {
         busy = false; setBatchUi(false); igBatchHide();
         igStickyShow('⏹ Stopped before downloading — no VPN exit would come up (tried a few).\nNothing was downloaded on your home IP. Check the VPN, then retry.' + VPN_FIX_HINT);
@@ -3613,7 +3663,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       igBatchShow(`🔀 last run walled on ${burned} — switching before batch 1…`);
       const swB = await vpnEnsureUp('rotating off the last-walled exit');
       if (swB) {
-        switches++; noteWalledExit('');
+        switches++; exitT0 = Date.now(); noteWalledExit('');
         igToast(`🟢 rotated off ${burned} (it walled the last run)\n→ ${swB.server || swB.ip || '?'}${vpnSpeedNote(swB)}`, 3600);
       } else {
         busy = false; setBatchUi(false); igBatchHide();
@@ -3695,7 +3745,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           busy = true; setBatchUi(true);
           igBatchShow('🔀 exit walled — switching Proton VPN, then retrying…');
           const swW = await vpnEnsureUp(`wall-rotate after batch ${batches}`);
-          if (swW) { switches++; await sleep(1500); continue; }
+          if (swW) { switches++; exitT0 = Date.now(); await sleep(1500); continue; }
           endMsg = `⏹ Stopped — batch ${batches} downloaded 0 and no fresh VPN exit would come up (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.` + VPN_FIX_HINT;
           break;
         }
@@ -3706,6 +3756,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // burned-exit note, since the exit we're on demonstrably works.
       zeroBatches = 0; noteWalledExit('');
       const remain = readyIds().length;
+      // (dev0832) Has this exit been used long enough to be worth rotating off? A batch
+      // that ended on the ITEM budget after 30 seconds has barely touched it — see
+      // MIN_EXIT_SECS for the run this protects against.
+      const onExitFor = Math.round((Date.now() - exitT0) / 1000);
+      const holdExit = remain > 0 && onExitFor < MIN_EXIT_SECS;
       // auto-dismissing success toast: this batch, then the run scoreboard (dev0797)
       igToast(`✓ Batch ${batches}: ${okThis} post(s), ${batchItems} file(s)\n`
         + scoreboard()
@@ -3713,13 +3768,23 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // otherwise a batch that retired 3 dead posts and downloaded 2 just looks slow.
         + (lastBatchDead ? `\n🪦 ${lastBatchDead} retired (gone / restricted) — won't be offered again` : '')
         + (lastDlName ? `\nlast: ${lastDlName}` : '')
-        + (remain ? `\n🔀 switching VPN…` : ''), 5200);
+        + (remain ? (holdExit ? `\n⏱ staying on this exit (${onExitFor}s of ${MIN_EXIT_SECS}s)` : `\n🔀 switching VPN…`) : ''), 5200);
       if (!remain) { endMsg = `✓ Done — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}; nothing left to download.`; break; }
+      // (dev0832) The dwell floor: this exit is barely used, so spend another batch on it
+      // instead of asking Proton for a fresh one. Skipping the switch is the whole point —
+      // the switches themselves were what Proton started refusing.
+      if (holdExit) {
+        diag('exit-dwell-hold', { batch: batches, onExitSecs: onExitFor, min: MIN_EXIT_SECS,
+          exit: curExitName() || '?', items: batchItems, held: heldSwitches + 1 });
+        heldSwitches++;
+        await sleep(1500);
+        continue;
+      }
       // switch exits before the next batch
       busy = true; setBatchUi(true);
       igBatchShow(`🔀 switching Proton VPN before batch ${batches + 1}…`);
       const sw = await vpnEnsureUp(`switching after batch ${batches}`);
-      if (sw) { switches++; igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}${vpnSpeedNote(sw)}\n${scoreboard()}`, 3600); }
+      if (sw) { switches++; exitT0 = Date.now(); igToast(`🟢 VPN → ${sw.server || sw.ip || '?'}${sw.ip ? '  ' + sw.ip : ''}${vpnSpeedNote(sw)}\n${scoreboard()}`, 3600); }
       else {
         // Never download on the home IP — the user wants everything through a VPN.
         endMsg = `⏹ Stopped — couldn't get a working VPN exit after batch ${batches} (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.` + VPN_FIX_HINT;
@@ -3740,7 +3805,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0683) The end of the story, next to the proxy's verdict at the same moment.
     // Whatever the report says, `proxy` here is the ground truth about the proxy.
     diag('GRIND-END', {
-      totalOk, batches, switches, elapsed: elapsed(), exit, queueOnly: queueOnly ? 1 : 0,
+      totalOk, batches, switches, heldSwitches, elapsed: elapsed(), exit, queueOnly: queueOnly ? 1 : 0,
       leftInView: srcRows().filter(isSrc).length,
       dead: deadThisRun.size, proxyPauses: _proxyPauses, unsaved: dirty ? 1 : 0,
       proxy: await diagProxyAlive(),
@@ -3757,6 +3822,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `\n\nTOTAL: ${totalOk} post(s) — ${totalItems} file(s) — in ${elapsed()}`
       + (totalOk ? `  (${fmtRate(perPost)} per post)` : '')
       + `\n${batches} batch${batches === 1 ? '' : 'es'}  ·  ${switches} VPN switch${switches === 1 ? '' : 'es'}  ·  current exit: ${exit}`
+      // (dev0832) Name the switches the dwell floor SPARED — otherwise the cadence
+      // guard is invisible, and a run showing 12 switches where it used to show 50
+      // just looks like the VPN stopped rotating.
+      + (heldSwitches ? `  ·  ⏱ ${heldSwitches} switch${heldSwitches === 1 ? '' : 'es'} skipped (exit not yet used ${MIN_EXIT_SECS}s)` : '')
       // (dev0797) …and what is LEFT, with the projection this run's own rate implies.
       + (queueOnly ? `\n⤓ ${leftHere.toLocaleString()} still in the re-fetch queue`
                    : `\n📥 ${leftHere.toLocaleString()} still to download in this view`)

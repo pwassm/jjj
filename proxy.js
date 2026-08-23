@@ -5614,9 +5614,23 @@ function vpnSpeedRank() {
 const _mb = bps => (bps / 1048576).toFixed(2) + ' MB/s';
 // THE pick. Returns a .conf filename, or null to let vpn-rotate.ps1 choose on its
 // own (which it still does, recency-aware, whenever no request is waiting).
-function vpnPickServer() {
-  const configs = vpnConfigs();
+function vpnPickServer(avoidList) {
+  let configs = vpnConfigs();
   if (configs.length < 2) return null;
+  // (dev0832) Exits the CLIENT already burned inside this retry cascade. A switch that
+  // times out never writes state.json, so the `recent` window below cannot see it and
+  // the next pick can hand back the very config that just failed. That is how the fatal
+  // cascade on 2026-08-22 23:34 spent ~40s of every other retry re-staging a dead exit
+  // (NY-817 then AZ-124, each asked for twice) and exhausted all five tries. Drop them
+  // before any other rule looks at the pool — but never strand the picker with nothing.
+  if (avoidList && avoidList.length) {
+    const bad = new Set(avoidList.map(s => String(s).replace(/\.conf$/i, '').toLowerCase()));
+    const kept = configs.filter(c => !bad.has(c.replace(/\.conf$/i, '').toLowerCase()));
+    if (kept.length && kept.length < configs.length) {
+      plog(`vpn/pick avoiding ${configs.length - kept.length} just-failed exit(s): ${avoidList.join(',')}`);
+      configs = kept;
+    }
+  }
   const st = vpnReadState();
   let recent = (st && Array.isArray(st.recent)) ? st.recent : (st && st.lastFile ? [st.lastFile] : []);
   // Same window the .ps1 applies: rest half the folder between reuses.
@@ -5709,13 +5723,14 @@ function vpnStatus(res, origin) {
 // Two in a row cannot — the second call is already past the first one's worst case.
 let _vpnSwitchMisses = 0;
 
-function vpnSwitch(res, origin) {
+function vpnSwitch(res, origin, avoid) {
   const before = vpnReadState();
   const beforeAt = (before && before.at) || '';
   // (dev0799) Name the exit BEFORE firing, biased by the measured ledger. A null
   // pick (no configs, or the file couldn't be written) is not an error — the .ps1
   // falls back to its own recency-aware random exactly as before.
-  const wanted = vpnRequestServer(vpnPickServer());
+  // (dev0832) `avoid` carries the configs the caller already burned this cascade.
+  const wanted = vpnRequestServer(vpnPickServer(avoid));
 
   // Fire the rotation. Prefer the no-UAC scheduled task; if it isn't registered
   // (schtasks /run exits non-zero), fall back to launching the script, which
@@ -6006,7 +6021,14 @@ http.createServer((req, res) => {
         return;
       }
       if (req.method !== 'POST') { send(res, 405, 'vpn: POST required', corsForExec(origin)); return; }
-      if (action === 'switch') vpnSwitch(res, origin);
+      // (dev0832) POST /vpn/switch?avoid=a,b — comma-separated configs the caller has
+      // already burned in this retry cascade (see vpnPickServer). Carried in the QUERY,
+      // not a body, so the endpoint keeps its "no body to read" shape.
+      if (action === 'switch') {
+        const _q = req.url.indexOf('?');
+        const _av = _q < 0 ? '' : (new URLSearchParams(req.url.slice(_q + 1)).get('avoid') || '');
+        vpnSwitch(res, origin, _av ? _av.split(',').map(s => s.trim()).filter(Boolean) : []);
+      }
       else                     vpnStop(res, origin);
       return;
     }
