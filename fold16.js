@@ -1,5 +1,6 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // 16F — THE FOLD GRID  (dev0820, animation rebuilt dev0822, dev0824, dev0825)
+// Fold speed is adjustable at runtime — see the pill / _fold16Slow (dev0826).
 // ══════════════════════════════════════════════════════════════════════════════
 //
 // A paper-fortune-teller grid. Ten cells sit on a 4×4 footprint in a staircase
@@ -203,6 +204,77 @@ var _fold16 = { A: false, B: false, C: false };
 
 const _F16_MS = 620;      // the crease sweep, 0° → 180°
 const _F16_TUCK_MS = 240; // (dev0824) folded into the single sweep above
+
+// ── (dev0826) Fold speed ─────────────────────────────────────────────────────
+// Multiplies the fold's duration so the intermediate shapes can be watched or
+// screenshotted. ONLY the clock changes — every angle, offset and easing curve is
+// untouched, so what you see at 1/5 is exactly what happens at full speed, which
+// is the whole point of being able to slow it down and point at a frame.
+//
+// Driven by the ⏱ pill at the bottom-left of the grid (dev only) or from the
+// console with _fold16Slow(n). Persisted, so a reload keeps whatever it is set
+// to. NOTE the stored value wins over this default, so bumping the default alone
+// will not speed up a browser that has already been slowed.
+const _F16_SLOW_STEPS = [1, 1.5, 2, 3, 5, 8, 12];
+const _F16_SLOW_KEY = 'slam-fold16-slow';
+var _F16_SLOW = 5;
+try {
+  const _sv = parseFloat(localStorage.getItem(_F16_SLOW_KEY));
+  if (_sv > 0) _F16_SLOW = _sv;
+} catch (_) {}
+
+function _fold16Slow(n) {
+  n = parseFloat(n);
+  if (!(n > 0)) return _F16_SLOW;
+  _F16_SLOW = n;
+  try { localStorage.setItem(_F16_SLOW_KEY, String(n)); } catch (_) {}
+  _f16PaintSpeed();
+  return _F16_SLOW;
+}
+// Step through the ladder; dir +1 = slower, -1 = faster.
+function _f16SlowStep(dir) {
+  let i = _F16_SLOW_STEPS.indexOf(_F16_SLOW);
+  if (i < 0) {  // a console-set value that is not on the ladder — find its place
+    i = 0;
+    for (let k = 0; k < _F16_SLOW_STEPS.length; k++) if (_F16_SLOW_STEPS[k] <= _F16_SLOW) i = k;
+  }
+  const j = Math.max(0, Math.min(_F16_SLOW_STEPS.length - 1, i + dir));
+  _fold16Slow(_F16_SLOW_STEPS[j]);
+}
+function _f16SlowLabel() {
+  return _F16_SLOW === 1 ? 'full speed' : '1/' + _F16_SLOW;
+}
+function _f16Dur() { return (_F16_MS + _F16_TUCK_MS) * _F16_SLOW; }
+
+// The pill itself. Lives on the OVERLAY, not the grid container — the container
+// is a CSS grid and any child of it gets placed into a track.
+function _f16PaintSpeed() {
+  const el = document.getElementById('fold16Speed');
+  if (el) el.querySelector('.f16-speed-val').textContent = _f16SlowLabel();
+}
+function _f16SpeedPill() {
+  const overlay = document.getElementById('gridOverlay');
+  if (!overlay) return;
+  const old = document.getElementById('fold16Speed');
+  if (old) old.remove();
+  // Dev tuning aid — a viewer has no reason to be shown a fold-speed control.
+  if (typeof _isUserMode === 'function' && _isUserMode()) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'fold16Speed';
+  wrap.className = 'fold16-speed';
+  wrap.innerHTML = '<span class="f16-speed-btn" data-dir="-1" title="Faster">−</span>'
+    + '<span class="f16-speed-val">' + _f16SlowLabel() + '</span>'
+    + '<span class="f16-speed-btn" data-dir="1" title="Slower">+</span>';
+  wrap.querySelectorAll('.f16-speed-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      _f16SlowStep(parseInt(btn.dataset.dir, 10));
+    }, true);
+  });
+  ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'contextmenu']
+    .forEach(t => wrap.addEventListener(t, e => e.stopPropagation(), true));
+  overlay.appendChild(wrap);
+}
 var _fold16Busy = false;  // one fold at a time; clicks are swallowed mid-fold
 
 function _fold16Block(id) { return FOLD16_BLOCKS.find(b => b.id === id) || null; }
@@ -316,6 +388,7 @@ function _fold16Render(container) {
     }
   }
   _f16PlaceCircles(container);
+  _f16SpeedPill();
   _f16WireContainer(container);
 }
 
@@ -672,10 +745,10 @@ function _fold16Run(container, b, folding) {
   // across the grid after the fold had visually finished.
   if (folding) {
     sweep(0);
-    _f16Animate(_F16_MS + _F16_TUCK_MS, sweep, finish, _f16EaseFold);
+    _f16Animate(_f16Dur(), sweep, finish, _f16EaseFold);
   } else {
     sweep(1);
-    _f16Animate(_F16_MS + _F16_TUCK_MS, t => sweep(1 - t), finish, _f16EaseFold);
+    _f16Animate(_f16Dur(), t => sweep(1 - t), finish, _f16EaseFold);
   }
 }
 
@@ -704,6 +777,21 @@ function _f16InjectCSS() {
     '.fold16-circle:hover { transform:scale(1.16); border-color:#fff; }',
     '.fold16-circle.f16-folded { border-color:rgba(255,190,90,0.95);',
     '  background:radial-gradient(circle at 38% 34%, rgba(255,214,140,0.5), rgba(60,30,0,0.62)); }',
+    // (dev0826) Fold-speed pill, bottom-left of the grid. Bottom-RIGHT is taken
+    // by the source buttons and the version badge; top-left by the info bar.
+    '.fold16-speed {',
+    '  position:absolute; left:10px; bottom:10px; z-index:95;',
+    '  display:flex; align-items:center; gap:2px;',
+    '  font:11px/1 monospace; color:#fc9; user-select:none;',
+    '  background:rgba(0,0,0,0.62); border:1px solid rgba(255,180,80,0.42);',
+    '  border-radius:5px; padding:3px 4px;',
+    '}',
+    '.fold16-speed .f16-speed-val { min-width:56px; text-align:center; padding:0 3px; }',
+    '.fold16-speed .f16-speed-btn {',
+    '  cursor:pointer; padding:2px 7px; border-radius:3px; color:#ffd;',
+    '  background:rgba(255,160,0,0.16);',
+    '}',
+    '.fold16-speed .f16-speed-btn:hover { background:rgba(255,160,0,0.38); }',
     '.fold16-mover { pointer-events:none; }',
     // (dev0824) The reverse of a folding half — the same picture, darkened, so
     // the flap keeps showing content past edge-on instead of turning into a
@@ -725,4 +813,5 @@ window._fold16Render = _fold16Render;
 window._fold16Reset = _fold16Reset;
 window._fold16Toggle = _fold16Toggle;
 window._fold16ClaimDoubleTap = _fold16ClaimDoubleTap;
+window._fold16Slow = _fold16Slow;
 window._fold16ApplyTemplate = _fold16ApplyTemplate;
