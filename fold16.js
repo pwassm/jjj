@@ -62,9 +62,13 @@
 //   • no blank paper. Nothing on screen is ever a flat sheet of paper colour —
 //     a manila stand-in for the reverse of a flap put yellow-orange triangles
 //     across the grid.
-//   • no holes. A lifting flap leaves bare grid background behind it, which reads
-//     as a hard-edged navy triangle; instead the source cells stay WHOLE
-//     underneath and dissolve, so no cut edge is ever visible.
+//   • no second copy. The source cells are hidden the instant the fold starts.
+//     They used to stay put and fade, to stop a lifting flap opening a hole onto
+//     the background, but that left a flat duplicate of every folding cell
+//     sitting under the fold. The triangles start exactly on their own cell, so
+//     there is nothing to cover — they move off and reveal the grid, like paper.
+//   • no black rectangles. A folding cell carries a STILL of what it was showing
+//     (see _f16Freeze), so a playing video does not blink out as it lifts.
 //
 // This only works if the cells are SQUARE. A 180° turn about a rectangle's
 // corner-to-corner diagonal does NOT land the diagonal cell on the landing cell
@@ -505,6 +509,53 @@ function _f16Animate(dur, onFrame, onDone, ease) {
 }
 
 
+// (dev0829) A folding cell must carry a STILL of what it was showing. Clones used
+// to have their iframes and videos stripped out, which is fine for a picture cell
+// — the img clones — but turns a playing YouTube or video cell into a black
+// rectangle the moment it lifts. Same sources fallcells.js settled on:
+//   • <video> → drawImage the CURRENT frame into a canvas. Drawing a cross-origin
+//     video is allowed; only reading the canvas back is blocked, and we never read.
+//   • YouTube iframe → the player's pixels are off limits at any price, but the
+//     video's own still is not: i.ytimg.com/vi/<id>/mqdefault.jpg.
+//   • anything else cross-origin (Vimeo, IG, TikTok) has no readable pixels and no
+//     cheap still, so it still goes — the one case that stays flat.
+// Cloned and source nodes are paired by index, which holds because the clone is a
+// structural copy taken moments earlier.
+const _F16_YT = /(?:youtube(?:-nocookie)?\.com\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/;
+
+function _f16Freeze(clone, src) {
+  const cv = clone.querySelectorAll('video'), sv = src.querySelectorAll('video');
+  for (let i = 0; i < cv.length; i++) {
+    const s = sv[i], c = cv[i];
+    let node = null;
+    const w = s ? Math.round(s.clientWidth) : 0, h = s ? Math.round(s.clientHeight) : 0;
+    if (s && s.videoWidth && w > 0 && h > 0) {
+      try {
+        const cvs = document.createElement('canvas');
+        cvs.width = w; cvs.height = h;
+        const sc = Math.min(w / s.videoWidth, h / s.videoHeight);
+        const dw = s.videoWidth * sc, dh = s.videoHeight * sc;
+        cvs.getContext('2d').drawImage(s, (w - dw) / 2, (h - dh) / 2, dw, dh);
+        cvs.style.cssText = s.style.cssText;
+        cvs.style.objectFit = '';
+        node = cvs;
+      } catch (_) { node = null; }
+    }
+    if (node) c.replaceWith(node); else c.remove();
+  }
+  const ci = clone.querySelectorAll('iframe'), si = src.querySelectorAll('iframe');
+  for (let i = 0; i < ci.length; i++) {
+    const s = si[i], c = ci[i];
+    const m = (s && s.src) ? _F16_YT.exec(s.src) : null;
+    if (!m) { c.remove(); continue; }
+    const im = document.createElement('img');
+    im.src = 'https://i.ytimg.com/vi/' + m[1] + '/mqdefault.jpg';
+    im.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+      + 'object-fit:cover;border:0;background:#000;';
+    c.replaceWith(im);
+  }
+}
+
 // A live copy of a cell clipped to one half. Iframes and videos are stripped —
 // a cloned iframe would reload the provider, and the poster underneath is all we
 // need for half a second of motion.
@@ -514,7 +565,7 @@ function _f16Mover(srcEl, clip, origin) {
   delete m.dataset.cell;          // never let _f16Cell find the clone
   delete m.dataset.fold16Back;
   m.removeAttribute('data-cell');
-  m.querySelectorAll('iframe, video').forEach(n => n.remove());
+  _f16Freeze(m, srcEl);
   m.style.pointerEvents = 'none';
   m.style.display = '';
   m.style.clipPath = clip;
@@ -639,6 +690,21 @@ function _f16Tris(slots) {
   ];
 }
 
+// (dev0829) The face currently ON a cell. Once another block has folded onto a
+// square, the square's own cell is display:none and what you actually see there
+// is that block's BACK cell — so the centre fold, which lands on a square already
+// carrying 1aB and swallows one already carrying 4dB, has to clone the visible
+// faces, not the hidden originals underneath them.
+function _f16FaceCell(container, cs) {
+  for (const bk of FOLD16_BLOCKS) {
+    if (_fold16[bk.id] && bk.land === cs) {
+      const el = _f16Cell(container, bk.back);
+      if (el) return el;
+    }
+  }
+  return _f16Cell(container, cs);
+}
+
 function _fold16Run(container, b, folding) {
   _fold16Busy = true;
 
@@ -648,7 +714,7 @@ function _fold16Run(container, b, folding) {
   if (!folding) { _fold16[b.id] = false; _fold16Render(container); }
 
   const geo = _f16Geom(container);
-  const land = _f16Cell(container, b.land);
+  const land = _f16FaceCell(container, b.land);
   const back = _f16Cell(container, b.back);
   if (!geo || !land) {   // nothing measurable — snap, do not animate into a mess
     _fold16[b.id] = folding;
@@ -669,9 +735,9 @@ function _fold16Run(container, b, folding) {
   // Build one clipped clone per triangle. The clone is positioned by the grid on
   // its source cell, so its own pixel frame starts at that cell's top-left.
   const parts = [];
-  const ghosts = [];
+  const hidden = [];
   for (const spec of _f16Tris(slots)) {
-    const src = _f16Cell(container, spec.cell);
+    const src = _f16FaceCell(container, spec.cell);
     if (!src) continue;
     const srect = src.getBoundingClientRect();
     const ex = srect.left - crect.left, ey = srect.top - crect.top;
@@ -712,12 +778,15 @@ function _fold16Run(container, b, folding) {
     parts.push(part);
   }
 
-  // Nothing is cut away from the grid itself: the source cells stay put and
-  // dissolve, so a lifting flap never opens a hard-edged hole onto the
-  // background. The landing square keeps its picture until the fold covers it.
+  // (dev0829) The source cells go straight out. They used to stay put and fade,
+  // to keep a lifting flap from opening a hard-edged hole onto the background —
+  // but the triangles now start exactly on top of their own cell, so there is
+  // nothing to cover: the fold covers it, then moves off and reveals the grid
+  // behind, which is what paper does. Fading them left a second, flat copy of
+  // every folding cell sitting under the fold for half its length.
   for (const cs of [slots.R, slots.B, slots.D]) {
-    const el = _f16Cell(container, cs);
-    if (el) { el.style.display = ''; el.style.clipPath = ''; el.style.transform = ''; el.style.zIndex = '55'; ghosts.push(el); }
+    const el = _f16FaceCell(container, cs);
+    if (el) { el.style.display = 'none'; hidden.push(el); }
   }
   if (back) back.style.display = 'none';
   land.style.display = '';
@@ -744,13 +813,11 @@ function _fold16Run(container, b, folding) {
         if (bm && showBack) p.backEl.style.transform = bm;
       }
     }
-    const fade = Math.max(0, 1 - t / 0.55);
-    ghosts.forEach(el => { el.style.opacity = String(fade); });
   };
 
   const finish = () => {
     parts.forEach(p => { p.el.remove(); if (p.backEl) p.backEl.remove(); });
-    ghosts.forEach(el => { el.style.opacity = ''; el.style.zIndex = ''; });
+    hidden.forEach(el => { el.style.display = ''; });
     land.style.zIndex = '';
     _fold16[b.id] = folding;
     _fold16Render(container);
