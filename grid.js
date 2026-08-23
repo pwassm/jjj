@@ -24,12 +24,18 @@ function _gridApplyContainerCSS() {
   // gsize footprint) so the 9:16 cells tile the 16:9 screen edge to edge.
   const _lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
   // (dev0820) 16F is a 4×4 footprint with only ten of the sixteen slots filled —
-  // the fold grid. See fold16.js.
-  if (_lay === '16F') {
-    c.style.gridTemplateRows    = 'repeat(4,1fr)';
-    c.style.gridTemplateColumns = 'repeat(4,1fr)';
+  // the fold grid. (dev0822) It owns its own template: a CENTRED SQUARE with no
+  // gaps. Square because the diagonal crease only lands true on square cells, and
+  // gapless because the ten cells have to read as one sheet of paper. See
+  // _fold16ApplyTemplate in fold16.js.
+  if (_lay === '16F' && typeof _fold16ApplyTemplate === 'function') {
+    _fold16ApplyTemplate(c);
     return;
   }
+  // Every other layout: undo whatever 16F left behind.
+  c.style.gap = '2px';
+  c.style.justifyContent = '';
+  c.style.alignContent = '';
   const pd = _gridPortraitDims(_lay);
   if (pd) {
     c.style.gridTemplateRows    = 'repeat(' + pd.rows + ',1fr)';

@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// 16F — THE FOLD GRID  (dev0820)
+// 16F — THE FOLD GRID  (dev0820, animation rebuilt dev0822)
 // ══════════════════════════════════════════════════════════════════════════════
 //
 // A paper-fortune-teller grid. Ten cells sit on a 4×4 footprint in a staircase
@@ -13,30 +13,50 @@
 //   4    ·    ·  [4c] [4d]
 //
 // Three overlapping 2×2 BLOCKS run down that diagonal, sharing the cells 2b and
-// 3c. Each block has a CIRCLE at its centre — the interior corner where its four
-// cells meet. Double-click a circle and the block folds: its four squares
-// collapse onto ONE, three squares vanish, and the face left showing is the BACK
-// of the cell diagonally opposite the landing cell.
+// 3c. Each has a CIRCLE at the interior corner where its four cells meet.
+// Double-click it and the block folds four squares into one:
 //
-//   circle A (25%,25%)  1a 1b 2a 2b  →  lands on 2b, shows 1a's back  (key 1aB)
-//   circle B (50%,50%)  2b 2c 3b 3c  →  lands on 2b, shows 3c's back  (key 3cB)
-//   circle C (75%,75%)  3c 3d 4c 4d  →  lands on 3c, shows 4d's back  (key 4dB)
+//   circle A (1a/1b/2a/2b) → lands on 2b, shows 1a's back  (c.json key 1aB)
+//   circle B (2b/2c/3b/3c) → lands on 2b, shows 3c's back  (key 3cB)
+//   circle C (3c/3d/4c/4d) → lands on 3c, shows 4d's back  (key 4dB)
 //
 // The cascade is 10 → 7 → 4 → 1: fold A and C and you are left with a clean 2×2
 // (1a-back, 2c, 3b, 4d-back) with circle B still dead centre, which is what makes
-// the last fold possible. B is therefore the OUTER fold — while it is down, A and
-// C are inside its stack and their circles are hidden.
+// the last fold possible. B is the OUTER fold — while it is down, A and C are
+// inside its stack and their circles are hidden.
 //
-// Why the diagonal cell's back? Because it folds LAST. Each of the three moving
-// squares rotates 180° about the crease it shares with the landing square — the
-// two edge-neighbours about their shared edge, the diagonal one about the block's
-// 45° crease — so all three land face-DOWN on the landing cell, and the diagonal
-// one, released last, ends up on top. Same rule for all three blocks.
+// ── THE FOLD ────────────────────────────────────────────────────────────────
+// One crease, not three. The block turns about its own 45° diagonal — the line
+// running corner to corner through the circle — exactly as the paper does:
+//
+//        1a │ 1b            the crease is the / through the circle;
+//       ────●────           everything on the 1a side of it turns over
+//        2a │ 2b            onto the 2b side.
+//
+//   • the DIAGONAL cell (1a) has the crease along its far edges, so it turns as
+//     a whole and comes down flat on the landing square — face DOWN, which is
+//     why what you end up looking at is 1a's BACK;
+//   • the two SIDE cells (1b, 2a) are cut in half by the crease, so each folds
+//     in half along its own / diagonal — half stays put, half turns over and
+//     shows blank paper;
+//   • that leaves two triangles poking out past the landing square, which then
+//     TUCK under it (the short second beat) to leave a clean single square.
+//
+// The whole first beat is one shared angle θ sweeping 0°→180°, driven from a
+// rAF loop rather than CSS transitions so every piece stays on the same crease
+// frame by frame. The back face rides the same sweep from the other side: it is
+// backface-hidden, so it appears at 90° edge-on and flattens out to face-up at
+// 180° — the new picture opening rather than popping in.
+//
+// This only works if the cells are SQUARE. A 180° turn about a rectangle's
+// corner-to-corner diagonal does NOT land the diagonal cell on the landing cell
+// (on a 16:9 screen a 4×4 of full-width cells misses by hundreds of pixels), so
+// 16F lays itself out as a centred square — see _fold16ApplyTemplate.
 //
 // Everything here is additive: the three back faces are ordinary grid cells with
-// their own c.json keys (1aB / 3cB / 4dB), built by gridShow's normal cell path,
-// so they inherit tap-to-play, swipe→view, zoom, COI, cut/paste and the rest for
-// free. They are simply hidden until their block folds.
+// their own c.json keys, built by gridShow's normal cell path, so they inherit
+// tap-to-play, swipe→view, zoom, COI, cut/paste and the rest for free. They are
+// simply hidden until their block folds.
 // ══════════════════════════════════════════════════════════════════════════════
 
 const FOLD16_LAYOUT = '16F';
@@ -49,49 +69,63 @@ const FOLD16_CELLS = [
   { cs: '4c', r: 4, c: 3 }, { cs: '4d', r: 4, c: 4 }
 ];
 
-// ── Fold moves ───────────────────────────────────────────────────────────────
-// Each is a crease: where the transform pivots, and the rotation that carries the
-// square 180° over that crease onto its neighbour. `t(deg)` is parameterised so
-// the same crease drives both halves of the flip — the real cell runs 0°→180°
-// (and vanishes at 90° via backface-visibility), while a paper-coloured stand-in
-// runs 180°→360° and so appears exactly as the cell disappears. That pair is what
-// reads as a sheet of paper turning over rather than a picture blinking out.
-const _F16_MV = {
-  // fold DOWN onto the cell below (pivot = own bottom edge)
-  down:   { o: '50% 100%',  t: d => 'rotateX(' + d + 'deg)' },
-  // fold UP onto the cell above (pivot = own top edge)
-  up:     { o: '50% 0%',    t: d => 'rotateX(' + (-d) + 'deg)' },
-  // fold RIGHT onto the cell to the right (pivot = own right edge)
-  right:  { o: '100% 50%',  t: d => 'rotateY(' + (-d) + 'deg)' },
-  // fold LEFT onto the cell to the left (pivot = own left edge)
-  left:   { o: '0% 50%',    t: d => 'rotateY(' + d + 'deg)' },
-  // fold DIAGONALLY down-right (pivot = own bottom-right corner, 45° axis).
-  // Reflects the square across the block's anti-diagonal onto the cell below-right.
-  diagBR: { o: '100% 100%', t: d => 'rotate3d(1,-1,0,' + d + 'deg)' },
-  // fold DIAGONALLY up-left (pivot = own top-left corner, same 45° axis)
-  diagTL: { o: '0% 0%',     t: d => 'rotate3d(1,-1,0,' + d + 'deg)' }
+// ── Crease geometry ──────────────────────────────────────────────────────────
+// Two mirror-image cases: a block either collapses onto its BOTTOM-RIGHT cell
+// (block A, where the outer corner 1a is top-left) or onto its TOP-LEFT cell
+// (blocks B and C). Everything else follows from that.
+//
+//   sign        which way the flap lifts. The crease axis is (1,-1,0); a point
+//               offset down-right of it rises toward the viewer at +θ, so the
+//               half that moves picks the sign that lifts rather than sinks.
+//   *Origin     a point ON the crease, expressed in that element's own box —
+//               for the diagonal and landing cells that is the block's centre
+//               corner; for a side cell it is its own centre, since the crease
+//               runs corner to corner through it.
+//   movingClip  the half of a side cell that turns over; staticClip the half
+//               that stays. Together they tile the square.
+//   tuckTR/BL   how each leftover triangle folds under the landing square: the
+//               edge it shares with that square.
+const _F16_ORIENT = {
+  BR: {
+    sign: -1,
+    diagOrigin: '100% 100%', backOrigin: '0% 0%',
+    movingClip: 'polygon(0 0, 100% 0, 0 100%)',
+    staticClip: 'polygon(100% 0, 100% 100%, 0 100%)',
+    tuckTR: { o: '50% 100%', t: d => 'rotateX(' + (-d) + 'deg)' },  // via its bottom edge
+    tuckBL: { o: '100% 50%', t: d => 'rotateY(' + d + 'deg)' }      // via its right edge
+  },
+  TL: {
+    sign: 1,
+    diagOrigin: '0% 0%', backOrigin: '100% 100%',
+    movingClip: 'polygon(100% 0, 100% 100%, 0 100%)',
+    staticClip: 'polygon(0 0, 100% 0, 0 100%)',
+    tuckTR: { o: '0% 50%',  t: d => 'rotateY(' + (-d) + 'deg)' },   // via its left edge
+    tuckBL: { o: '50% 0%',  t: d => 'rotateX(' + d + 'deg)' }       // via its top edge
+  }
 };
 
-// The three blocks. `land` is the square everything collapses onto, `back` is the
-// c.json key whose picture is revealed there, `x`/`y` place the circle as a % of
-// the container (the interior corners of a 4×4 sit at 25/50/75%). `moves` maps
-// each departing cell to its crease; the DIAGONAL one is listed last and is
-// delayed so it settles on top.
+// The crease axis. Cells are square (see _fold16ApplyTemplate), so the corner-to-
+// corner diagonal is exactly 45° and this constant vector is the real crease.
+function _f16Rot(deg) { return 'rotate3d(1,-1,0,' + deg + 'deg)'; }
+
+// The three blocks, named by their 2×2 corners. `land` is the square everything
+// collapses onto, `diag` the one opposite it whose back ends up showing, `back`
+// the c.json key holding that back face.
 const FOLD16_BLOCKS = [
   {
-    id: 'A', cells: ['1a', '1b', '2a', '2b'], land: '2b', diag: '1a', back: '1aB',
-    x: 25, y: 25, label: 'Fold 1a·1b·2a·2b onto 2b',
-    moves: [['1b', 'down'], ['2a', 'right'], ['1a', 'diagBR']]
+    id: 'A', orient: 'BR', tl: '1a', tr: '1b', bl: '2a', br: '2b',
+    cells: ['1a', '1b', '2a', '2b'], land: '2b', diag: '1a', back: '1aB',
+    label: 'Fold 1a·1b·2a·2b onto 2b'
   },
   {
-    id: 'B', cells: ['2b', '2c', '3b', '3c'], land: '2b', diag: '3c', back: '3cB',
-    x: 50, y: 50, label: 'Fold the centre four onto 2b',
-    moves: [['2c', 'left'], ['3b', 'up'], ['3c', 'diagTL']]
+    id: 'B', orient: 'TL', tl: '2b', tr: '2c', bl: '3b', br: '3c',
+    cells: ['2b', '2c', '3b', '3c'], land: '2b', diag: '3c', back: '3cB',
+    label: 'Fold the centre four onto 2b'
   },
   {
-    id: 'C', cells: ['3c', '3d', '4c', '4d'], land: '3c', diag: '4d', back: '4dB',
-    x: 75, y: 75, label: 'Fold 3c·3d·4c·4d onto 3c',
-    moves: [['3d', 'left'], ['4c', 'up'], ['4d', 'diagTL']]
+    id: 'C', orient: 'TL', tl: '3c', tr: '3d', bl: '4c', br: '4d',
+    cells: ['3c', '3d', '4c', '4d'], land: '3c', diag: '4d', back: '4dB',
+    label: 'Fold 3c·3d·4c·4d onto 3c'
   }
 ];
 
@@ -102,9 +136,9 @@ const FOLD16_BACK_KEYS = FOLD16_BLOCKS.map(b => b.back);
 // haunt the next grid.
 var _fold16 = { A: false, B: false, C: false };
 
-const _F16_MS = 360;      // one crease's travel time
-const _F16_DIAG_DELAY = 190;  // the diagonal square is released this much later
-var _fold16Busy = false;  // one fold at a time; ignore clicks mid-animation
+const _F16_MS = 620;      // the crease sweep, 0° → 180°
+const _F16_TUCK_MS = 240; // the two leftover triangles folding under
+var _fold16Busy = false;  // one fold at a time; clicks are swallowed mid-fold
 
 function _fold16Block(id) { return FOLD16_BLOCKS.find(b => b.id === id) || null; }
 
@@ -127,6 +161,33 @@ function _fold16CellList() {
 }
 
 function _fold16Reset() { _fold16 = { A: false, B: false, C: false }; _fold16Busy = false; }
+
+// ── Layout ───────────────────────────────────────────────────────────────────
+// A centred SQUARE 4×4 with no gaps — square because the diagonal crease only
+// lands true on square cells, gapless because the ten cells are meant to read as
+// one sheet of paper. Called from _gridApplyContainerCSS. The track size is
+// stashed on the element so the circles can be placed from grid geometry rather
+// than from cells that may currently be folded away (and therefore zero-sized).
+function _fold16ApplyTemplate(c) {
+  if (!c) return;
+  const r = c.getBoundingClientRect();
+  const side = Math.min(r.width, r.height);
+  const cell = side > 8 ? Math.floor((side - 4) / 4) : 0;
+  if (cell > 0) {
+    c.style.gridTemplateRows    = 'repeat(4,' + cell + 'px)';
+    c.style.gridTemplateColumns = 'repeat(4,' + cell + 'px)';
+  } else {
+    // Before first layout there is nothing to measure — fall back to fractions
+    // and let the next gridShow (which runs after the overlay is displayed) fix it.
+    c.style.gridTemplateRows    = 'repeat(4,1fr)';
+    c.style.gridTemplateColumns = 'repeat(4,1fr)';
+  }
+  c.style.gap = '0px';
+  c.style.justifyContent = 'center';
+  c.style.alignContent = 'center';
+  c._f16Cell = cell;
+  c._f16Rect = r;
+}
 
 // ── Visibility ───────────────────────────────────────────────────────────────
 // Which of the 13 cells are on screen for the current fold state. A folded block
@@ -161,59 +222,112 @@ function _f16Cell(container, cs) {
 // there is nothing to animate FROM).
 function _fold16Render(container) {
   if (!container) return;
-  // (dev0821) Do NOT touch container.style.position. #gridContainer is
-  // position:absolute + inset:0, and that is the ONLY thing giving it size —
-  // #gridOverlay is a flexbox, so the moment this goes position:relative the
-  // container stops stretching and shrinks to its content, which for a grid of
-  // empty cells is about ten pixels wide. Absolute already makes it a positioned
-  // ancestor, which is all the circles need.
-  container.style.perspective = '1600px';
+  // Do NOT touch container.style.position. #gridContainer is position:absolute +
+  // inset:0 and that is the ONLY thing giving it size — #gridOverlay is a
+  // flexbox, so switching to relative collapses it to about ten pixels wide
+  // (dev0821). Absolute already makes it a positioned ancestor, which is all the
+  // circles need.
+  container.style.perspective = '1400px';
   _f16InjectCSS();
-  container.querySelectorAll('.fold16-circle, .fold16-paper').forEach(el => el.remove());
+  _fold16ApplyTemplate(container);
+  container.querySelectorAll('.fold16-circle, .fold16-paper, .fold16-mover').forEach(el => el.remove());
 
   const vis = _fold16Visible();
   for (const spec of _fold16CellList()) {
     const el = _f16Cell(container, spec.cs);
     if (!el) continue;
-    el.style.transform = '';
-    el.style.transition = '';
+    _f16ClearFx(el);
     if (spec.foldBack) {
       // Back faces carry a marker so the shared double-tap handler in grid.js
-      // can route a double-click here to "unfold" instead of the text editor.
+      // routes a double-click here to "unfold" instead of the text editor.
       el.dataset.fold16Back = spec.foldBack;
       _f16SetShown(el, vis.shown.has(spec.cs), spec.cs);
     } else {
       _f16SetShown(el, !vis.hidden.has(spec.cs), spec.cs);
     }
   }
+  _f16PlaceCircles(container);
+  _f16WireContainer(container);
+}
 
-  for (const b of FOLD16_BLOCKS) {
-    const folded = !!_fold16[b.id];
-    if (!_fold16Enabled(b.id)) continue;      // hidden while B is down
-    const dot = document.createElement('div');
-    dot.className = 'fold16-circle' + (folded ? ' f16-folded' : '');
-    dot.style.left = b.x + '%';
-    dot.style.top = b.y + '%';
-    dot.title = (folded ? 'Double-click to unfold' : b.label) + ' (double-click)';
-    dot.addEventListener('dblclick', e => {
-      e.preventDefault(); e.stopPropagation();
-      _fold16Toggle(b.id);
-    }, true);
-    // Swallow the press so the grid's hold-to-cut / swipe gestures never see it.
-    ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'contextmenu']
-      .forEach(t => dot.addEventListener(t, e => e.stopPropagation(), true));
-    container.appendChild(dot);
-  }
+// Reset every transform-ish property this module ever sets on a real grid cell.
+function _f16ClearFx(el) {
+  el.style.transform = '';
+  el.style.transition = '';
+  el.style.transformOrigin = '';
+  el.style.clipPath = '';
+  el.style.webkitClipPath = '';
+  el.style.backfaceVisibility = '';
+  el.style.webkitBackfaceVisibility = '';
+  el.style.zIndex = '';
+  el.style.opacity = '';
 }
 
 // Show or hide a cell. Hiding pauses any player inside it — a folded square is
 // out of sight, and a video that keeps talking from under the fold is a bug.
 function _f16SetShown(el, on, cs) {
   el.style.display = on ? '' : 'none';
-  el.style.opacity = '';
   if (!on && typeof gridTogglePauseCell === 'function') {
     try { gridTogglePauseCell(cs); } catch (_) {}
   }
+}
+
+// Circles sit on grid geometry, not on cell rects — a folded block's cells are
+// display:none and measure zero, but its circle still has to be there to unfold it.
+function _f16PlaceCircles(container) {
+  const cell = container._f16Cell || 0;
+  const r = container._f16Rect || container.getBoundingClientRect();
+  if (!cell) return;
+  const ox = (r.width  - cell * 4) / 2;
+  const oy = (r.height - cell * 4) / 2;
+  for (const b of FOLD16_BLOCKS) {
+    if (!_fold16Enabled(b.id)) continue;      // hidden while B is down
+    const tl = FOLD16_CELLS.find(o => o.cs === b.tl);
+    const folded = !!_fold16[b.id];
+    const dot = document.createElement('div');
+    dot.className = 'fold16-circle' + (folded ? ' f16-folded' : '');
+    dot.dataset.f16 = b.id;
+    // The shared corner of the block's four cells = the bottom-right corner of
+    // its top-left cell.
+    dot.style.left = (ox + tl.c * cell) + 'px';
+    dot.style.top  = (oy + tl.r * cell) + 'px';
+    dot.title = (folded ? 'Double-click to unfold' : b.label) + ' (double-click)';
+    dot.addEventListener('dblclick', e => {
+      e.preventDefault(); e.stopPropagation();
+      _fold16Toggle(b.id);
+    }, true);
+    ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'contextmenu']
+      .forEach(t => dot.addEventListener(t, e => e.stopPropagation(), true));
+    container.appendChild(dot);
+  }
+}
+
+// (dev0822) A 40px circle is a small target, and a double-click that lands a few
+// pixels off it used to fall through to the cell underneath — which in dev mode
+// opens the text editor. Catch near-misses on the container in CAPTURE, before
+// any cell sees them, and swallow every double-click outright while a fold is
+// running.
+function _f16WireContainer(container) {
+  if (container._f16Wired) return;
+  container._f16Wired = true;
+  container.addEventListener('dblclick', e => {
+    if (_fold16Busy) { e.preventDefault(); e.stopPropagation(); return; }
+    const hit = _f16CircleAt(container, e.clientX, e.clientY);
+    if (!hit) return;
+    e.preventDefault(); e.stopPropagation();
+    _fold16Toggle(hit);
+  }, true);
+}
+
+// Block id whose circle is within a forgiving radius of this point, else null.
+function _f16CircleAt(container, cx, cy) {
+  let best = null, bestD = 46;   // px — generous, the circles are 100px+ apart
+  container.querySelectorAll('.fold16-circle').forEach(dot => {
+    const r = dot.getBoundingClientRect();
+    const d = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
+    if (d < bestD) { bestD = d; best = dot.dataset.f16; }
+  });
+  return best;
 }
 
 // ── The fold ─────────────────────────────────────────────────────────────────
@@ -224,97 +338,143 @@ function _fold16Toggle(id) {
   if (!container) return;
   const b = _fold16Block(id);
   if (!b) return;
-  if (_fold16[id]) _fold16Unfold(container, b);
-  else _fold16Fold(container, b);
+  if (_fold16[id]) _fold16Run(container, b, false);
+  else _fold16Run(container, b, true);
 }
 
-function _fold16Fold(container, b) {
-  _fold16Busy = true;
-  // The landing square keeps its own face until the fold lands on it, so make
-  // sure it is visible even if an inner block already folded onto it.
-  const papers = [];
-  b.moves.forEach(([cs, mvName], i) => {
-    const el = _f16Cell(container, cs);
-    if (!el) return;
-    const mv = _F16_MV[mvName];
-    const delay = (i === b.moves.length - 1) ? _F16_DIAG_DELAY : 0;
-    const top = (i === b.moves.length - 1);
-    // The real cell: flat → 180°, disappearing as it passes edge-on.
-    el.style.zIndex = top ? '73' : '71';
-    el.style.backfaceVisibility = 'hidden';
-    el.style.webkitBackfaceVisibility = 'hidden';
-    el.style.transformOrigin = mv.o;
-    el.style.transition = 'transform ' + _F16_MS + 'ms cubic-bezier(.45,.05,.3,1) ' + delay + 'ms';
-    // The paper stand-in: 180° → 360°, so it takes over at the halfway point and
-    // ends face-up on the landing square.
-    const paper = _f16MakePaper(el, mv, top);
-    papers.push(paper);
-    container.appendChild(paper);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      el.style.transform = mv.t(180);
-      paper.style.transition = 'transform ' + _F16_MS + 'ms cubic-bezier(.45,.05,.3,1) ' + delay + 'ms';
-      paper.style.transform = mv.t(360);
-    }));
-  });
+function _f16Ease(p) { return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2; }
 
-  setTimeout(() => {
-    _fold16[b.id] = true;
-    papers.forEach(p => p.remove());
-    _fold16Render(container);
-    _fold16Busy = false;
-    if (typeof _gridToast === 'function') _gridToast(b.diag + ' back', 1100);
-  }, _F16_MS + _F16_DIAG_DELAY + 40);
+function _f16Animate(dur, onFrame, onDone) {
+  const t0 = performance.now();
+  (function step(now) {
+    const p = Math.min(1, (now - t0) / dur);
+    onFrame(_f16Ease(p));
+    if (p < 1) requestAnimationFrame(step);
+    else if (onDone) onDone();
+  })(performance.now());
 }
 
-function _fold16Unfold(container, b) {
-  _fold16Busy = true;
-  // Drop the state first and re-render so the four cells are back in the DOM,
-  // then start them from their folded pose and let them swing open.
-  _fold16[b.id] = false;
-  _fold16Render(container);
-  const papers = [];
-  b.moves.forEach(([cs, mvName], i) => {
-    const el = _f16Cell(container, cs);
-    if (!el) return;
-    const mv = _F16_MV[mvName];
-    // Unfolding reverses the order: the square that landed on top lifts first.
-    const delay = (i === b.moves.length - 1) ? 0 : _F16_DIAG_DELAY;
-    const top = (i === b.moves.length - 1);
-    el.style.zIndex = top ? '73' : '71';
-    el.style.backfaceVisibility = 'hidden';
-    el.style.webkitBackfaceVisibility = 'hidden';
-    el.style.transformOrigin = mv.o;
-    el.style.transition = 'none';
-    el.style.transform = mv.t(180);
-    const paper = _f16MakePaper(el, mv, top);
-    paper.style.transform = mv.t(360);
-    papers.push(paper);
-    container.appendChild(paper);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      el.style.transition = 'transform ' + _F16_MS + 'ms cubic-bezier(.45,.05,.3,1) ' + delay + 'ms';
-      el.style.transform = '';
-      paper.style.transition = 'transform ' + _F16_MS + 'ms cubic-bezier(.45,.05,.3,1) ' + delay + 'ms';
-      paper.style.transform = mv.t(180);
-    }));
-  });
-  setTimeout(() => {
-    papers.forEach(p => p.remove());
-    _fold16Render(container);
-    _fold16Busy = false;
-  }, _F16_MS + _F16_DIAG_DELAY + 40);
-}
-
-// A blank manila panel occupying the same grid area as `el`, standing in for the
-// reverse of that square while it turns.
-function _f16MakePaper(el, mv, top) {
+// A blank manila triangle standing in for the reverse of a half-square, so the
+// side flaps show paper once they pass edge-on instead of blinking out.
+function _f16Paper(srcEl, clip, origin, deg) {
   const p = document.createElement('div');
   p.className = 'fold16-paper';
-  p.style.gridRow = el.style.gridRow;
-  p.style.gridColumn = el.style.gridColumn;
-  p.style.zIndex = top ? '72' : '70';
-  p.style.transformOrigin = mv.o;
-  p.style.transform = mv.t(180);
+  p.style.gridRow = srcEl.style.gridRow;
+  p.style.gridColumn = srcEl.style.gridColumn;
+  p.style.clipPath = clip;
+  p.style.webkitClipPath = clip;
+  p.style.transformOrigin = origin;
+  p.style.transform = _f16Rot(deg);
   return p;
+}
+
+// A live copy of a cell clipped to one half. Iframes and videos are stripped —
+// a cloned iframe would reload the provider, and the poster underneath is all we
+// need for half a second of motion.
+function _f16Mover(srcEl, clip, origin, deg) {
+  const m = srcEl.cloneNode(true);
+  m.className = (srcEl.className || '') + ' fold16-mover';
+  delete m.dataset.cell;          // never let _f16Cell find the clone
+  delete m.dataset.fold16Back;
+  m.removeAttribute('data-cell');
+  m.querySelectorAll('iframe, video').forEach(n => n.remove());
+  m.style.pointerEvents = 'none';
+  m.style.display = '';
+  m.style.clipPath = clip;
+  m.style.webkitClipPath = clip;
+  m.style.transformOrigin = origin;
+  m.style.backfaceVisibility = 'hidden';
+  m.style.webkitBackfaceVisibility = 'hidden';
+  m.style.transform = _f16Rot(deg);
+  return m;
+}
+
+// folding === true  → 0° to 180°, then tuck the leftovers under
+// folding === false → untuck, then 180° back to 0°
+function _fold16Run(container, b, folding) {
+  _fold16Busy = true;
+  const g = _F16_ORIENT[b.orient];
+  const sgn = g.sign;
+
+  // Both beats need the block's four cells present, so drop the state and
+  // re-render first: on a fold that is a no-op, on an unfold it puts the cells
+  // back so they have something to swing open from.
+  if (!folding) { _fold16[b.id] = false; _fold16Render(container); }
+
+  const diag = _f16Cell(container, b.diag);
+  const back = _f16Cell(container, b.back);
+  const land = _f16Cell(container, b.land);
+  const sides = [
+    { el: _f16Cell(container, b.tr), tuck: g.tuckTR },
+    { el: _f16Cell(container, b.bl), tuck: g.tuckBL }
+  ].filter(s => s.el);
+
+  // The diagonal cell turns as a whole about the block crease…
+  if (diag) {
+    diag.style.display = '';
+    diag.style.transformOrigin = g.diagOrigin;
+    diag.style.backfaceVisibility = 'hidden';
+    diag.style.webkitBackfaceVisibility = 'hidden';
+    diag.style.zIndex = '73';
+  }
+  // …and the back face rides the same crease from the other side: hidden while
+  // it faces away, edge-on at 90°, flat and face-up at 180°.
+  if (back) {
+    back.style.display = '';
+    back.style.transformOrigin = g.backOrigin;
+    back.style.backfaceVisibility = 'hidden';
+    back.style.webkitBackfaceVisibility = 'hidden';
+    back.style.zIndex = '74';
+  }
+  if (land) land.style.display = '';
+
+  // Each side cell is cut in half by the crease: the static half stays on the
+  // real cell, the moving half is a clipped clone (plus its paper reverse).
+  const movers = [], papers = [];
+  for (const s of sides) {
+    s.el.style.display = '';
+    s.el.style.clipPath = g.staticClip;
+    s.el.style.webkitClipPath = g.staticClip;
+    s.el.style.transformOrigin = s.tuck.o;
+    s.el.style.zIndex = '60';           // under the landing square, ready to tuck
+    const m = _f16Mover(s.el, g.movingClip, '50% 50%', folding ? 0 : sgn * 180);
+    const p = _f16Paper(s.el, g.movingClip, '50% 50%', folding ? sgn * 180 : sgn * 360);
+    m.style.zIndex = '71'; p.style.zIndex = '70';
+    container.appendChild(m); container.appendChild(p);
+    movers.push(m); papers.push(p);
+  }
+
+  const sweep = t => {                   // t = 0 (flat) … 1 (folded)
+    const th = 180 * t;
+    if (diag) diag.style.transform = _f16Rot(sgn * th);
+    if (back) back.style.transform = _f16Rot(sgn * (th - 180));
+    movers.forEach(m => m.style.transform = _f16Rot(sgn * th));
+    papers.forEach(p => p.style.transform = _f16Rot(sgn * (th + 180)));
+  };
+  const tuck = t => {                    // t = 0 (flat) … 1 (tucked under)
+    sides.forEach(s => { s.el.style.transform = s.tuck.t(180 * t); });
+  };
+
+  const finish = () => {
+    movers.forEach(m => m.remove());
+    papers.forEach(p => p.remove());
+    _fold16[b.id] = folding;
+    _fold16Render(container);
+    _fold16Busy = false;
+    if (folding && typeof _gridToast === 'function') _gridToast(b.diag + ' back', 1100);
+  };
+
+  if (folding) {
+    sweep(0); tuck(0);
+    _f16Animate(_F16_MS, sweep, () => {
+      _f16Animate(_F16_TUCK_MS, tuck, finish);
+    });
+  } else {
+    sweep(1); tuck(1);
+    _f16Animate(_F16_TUCK_MS, t => tuck(1 - t), () => {
+      _f16Animate(_F16_MS, t => sweep(1 - t), finish);
+    });
+  }
 }
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
@@ -328,19 +488,25 @@ function _f16InjectCSS() {
   s.id = 'fold16-css';
   s.textContent = [
     '.fold16-circle {',
-    '  position:absolute; width:34px; height:34px; margin:-17px 0 0 -17px;',
-    '  border-radius:50%; border:2px solid rgba(255,238,200,0.9);',
-    '  background:radial-gradient(circle at 38% 34%, rgba(255,255,255,0.34), rgba(0,0,0,0.5));',
-    '  box-shadow:0 0 0 2px rgba(0,0,0,0.45), 0 2px 7px rgba(0,0,0,0.6);',
+    '  position:absolute; width:40px; height:40px; margin:-20px 0 0 -20px;',
+    '  border-radius:50%; border:2px solid rgba(255,238,200,0.92);',
+    '  background:radial-gradient(circle at 38% 34%, rgba(255,255,255,0.34), rgba(0,0,0,0.52));',
+    '  box-shadow:0 0 0 2px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.65);',
     '  cursor:pointer; z-index:90; transition:transform .14s ease, border-color .14s ease;',
+    '}',
+    // A transparent collar so a double-click that misses the ring still counts.
+    '.fold16-circle::after {',
+    '  content:""; position:absolute; left:-14px; top:-14px; right:-14px; bottom:-14px;',
+    '  border-radius:50%;',
     '}',
     '.fold16-circle:hover { transform:scale(1.16); border-color:#fff; }',
     '.fold16-circle.f16-folded { border-color:rgba(255,190,90,0.95);',
-    '  background:radial-gradient(circle at 38% 34%, rgba(255,214,140,0.5), rgba(60,30,0,0.6)); }',
+    '  background:radial-gradient(circle at 38% 34%, rgba(255,214,140,0.5), rgba(60,30,0,0.62)); }',
+    '.fold16-paper, .fold16-mover { pointer-events:none; }',
     '.fold16-paper {',
-    '  position:relative; border-radius:2px; pointer-events:none;',
+    '  position:relative;',
     '  background:linear-gradient(140deg,#f2c25c 0%,#e0a63c 52%,#c8892a 100%);',
-    '  box-shadow:inset 0 0 0 1px rgba(90,55,0,0.35), 0 3px 12px rgba(0,0,0,0.5);',
+    '  box-shadow:inset 0 0 0 1px rgba(90,55,0,0.35);',
     '  backface-visibility:hidden; -webkit-backface-visibility:hidden;',
     '}'
   ].join('\n');
@@ -356,3 +522,4 @@ window._fold16BackBlock = _fold16BackBlock;
 window._fold16Render = _fold16Render;
 window._fold16Reset = _fold16Reset;
 window._fold16Toggle = _fold16Toggle;
+window._fold16ApplyTemplate = _fold16ApplyTemplate;

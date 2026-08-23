@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1787500450539,
+    "_salPushTime": 1787502804779,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -84,10 +84,11 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
     "_salGsize": 4,
+    "_salLayout": "16F",
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -511,13 +512,13 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1787500450539
+    "_salSavedAt": 1787502804779
   },
   {
     "UID": "1",
     "show": "1",
     "VidRange": "text",
-    "cell": "1b",
+    "cell": "",
     "fit": "ei",
     "link": "",
     "linkpage": "",
@@ -23034,7 +23035,7 @@
     "FtextJunk": "0",
     "MPix": "1.7",
     "COI": "",
-    "cell": "4d",
+    "cell": "",
     "ttxt": "",
     "Mode": "L",
     "linkpage": "noLinkpageYet",
@@ -23191,7 +23192,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "4.2",
-    "cell": "3d",
+    "cell": "",
     "ttxt": "",
     "Mode": "S",
     "linkpage": "https://commons.wikimedia.org/wiki/File:Ascarosepion_pfefferi_%2827610091791%29.jpg",
@@ -23271,7 +23272,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "3.4",
-    "cell": "3b",
+    "cell": "",
     "ttxt": "",
     "Mode": "L",
     "linkpage": "https://commons.wikimedia.org/wiki/File:Acanthosepion_pharaonis.jpg",
@@ -23421,7 +23422,7 @@
     "FtextJunk": "0",
     "MPix": "0.9",
     "comment": "Shed cuticle of female tardigrade, containing eggs, each 50μm across",
-    "cell": "2c",
+    "cell": "",
     "ttxt": "",
     "Mode": "S",
     "linkpage": "https://commons.wikimedia.org/wiki/File:TardigradeEggsInShedCuticle.jpg",
@@ -23441,7 +23442,7 @@
     "FtextJunk": "0",
     "MPix": "1.4",
     "comment": "Richtersius coronifer in active and 'tun' states. A↔P = anterior-posterior; mg = midgut; go = gonad; pb = pharyngeal bulb; mo = mouth; st = stylet Scale bars = 100 μm",
-    "cell": "2b",
+    "cell": "",
     "ttxt": "",
     "Mode": "L",
     "linkpage": "https://commons.wikimedia.org/wiki/File:Richtersius_coronifer_in_active_and_tun_states.png",
@@ -23461,7 +23462,7 @@
     "FtextJunk": "0",
     "MPix": "1.1",
     "comment": "The first drawing of a tardigrade, by Johann August Ephraim Goeze, 1773",
-    "cell": "2a",
+    "cell": "",
     "ttxt": "",
     "Mode": "L",
     "linkpage": "https://commons.wikimedia.org/wiki/File:First_Recorded_Image_of_Tardigrade.jpg",
@@ -24859,7 +24860,7 @@
     "ftextSize": "7",
     "FtextJunk": "0",
     "MPix": "V",
-    "cell": "1a",
+    "cell": "",
     "ttxt": "",
     "Mode": "P",
     "vidLength": "0:35",
@@ -44623,7 +44624,7 @@
     "link": "https://www.euronews.com/2026/03/10/rarely-seen-moments-winners-of-the-british-wildlife-photography-awards-revealed",
     "show": "1",
     "DateAdded": "2026-08-19 17:23:10",
-    "DateModified": "2026-08-19 17:35:12",
+    "DateModified": "2026-08-23 16:31:58",
     "tags": [],
     "ltype": "w",
     "ftextSize": "9180",
@@ -45271,7 +45272,8 @@
     "tags": [],
     "ftextSize": "0",
     "FtextJunk": "0",
-    "VidRange": "text"
+    "VidRange": "text",
+    "cell": ""
   },
   {
     "UID": "2106",
@@ -45285,7 +45287,8 @@
     "FtextJunk": "0",
     "ftext": "<h2>Goliath season in Jupiter never seems to last long enough</h2><p>Goliath season in Jupiter never seems to last long enough…</p><p>In case you missed the action this year, be sure to check out the newest post up on our blog about diving with these gentle giants. Access it through the link in bio🔝 or here: https://bit.ly/486LIoU</p><p>📸 @grace_underwater</p><p>#goliathgrouper #diveflorida #jupiterscubadiving #kyalami</p><p>By @grace_underwater · 2024-10-15</p><p>Source: <a target=\"_blank\" rel=\"noopener\" href=\"https://www.instagram.com/p/DBJE14PROwW/\">https://www.instagram.com/p/DBJE14PROwW/</a></p><p></p><p>The fish in the image is an <strong>Atlantic goliath grouper</strong> (<em>Epinephelus itajara</em>). It is shown surrounded by a school of small baitfish on a reef habitat.[<a target=\"_blank\" rel=\"noopener\" href=\"https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/images/75197770/1e787026-9bd4-4060-8936-de6dfa2b2933/2026-08-22_203838.jpg?AWSAccessKeyId=ASIA2F3EMEYE5QXISMVF&amp;Signature=Q%2BQsVzFo5W9r7PQkwlLovt4Ne3g%3D&amp;x-amz-security-token=IQoJb3JpZ2luX2VjEAMaCXVzLWVhc3QtMSJIMEYCIQC64fQow1a999hXYdBqvaKheH6Rh08quvMOuSv76OiZJgIhAJ2wR2tHk19Kp8FhOP8gnmh22cZp6Rsv7k9sbI8B%2FyCIKvwECMz%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQARoMNjk5NzUzMzA5NzA1Igw0RBZpWeAjTfLeMuUq0AQI7YvWXQAUm7oGgvXNk6YldlDPVgrHFXGaeWJCLsrbVjMGbou2sjUE9JAFpBNDIGqmHJQ3JfZGw1TTAAcoMgYbrWUYf8PcJ7DputWkEyZHbroW1%2BdBqusvMTFxVOJ%2Ftd1%2BH0ANZ3lISU54sIJAFJd40slMnevKHPRkHR2S8SqcEy4tNGcx4VKSMiQ1AlHvdnzZY2qNOPrOem7onRKVZUAefZ9KcSd2kc99xl6pCHRuB%2B71YvUPf2EKLC1zfdwpfSAyLy1l6WdEPFP%2FM6mBXcTrwTFg0ZyX8jqo6h9%2BykCiXzyd%2B9incJjYw%2BRRcm7cJOIBvKu7bXkLcu%2F8mqrA7aBr%2Fak8Pp%2Bycx2%2BGAsratbOM6EguZ6w%2FZxpky7cQemYLHuaHPbm9DDaw7wMO377smQvv1UrVKKNwa6RRqVmahngSCIM0xZRRVKN2REtcpnD06VCxMFsNobbb4sH3%2Fhg9S7%2BrMyExy8MPoagINIP%2B28c6AdHue7jTkmUrSt6XG280uGN8rxmF3vm8f62hodxNooiaUinmtO1UXRtneBJwFpl26BRaridTbYiwHxYZHiMTe36zy%2FhwBoZO0%2BzGDk7c0i3S2cgGAgwnvdNdYA0HFzIKI9z6aG0Mq%2FW26Cy0bS9Y45vnCvqwa00OFzmoheeIhs7l6WjctPBxY%2Fgv%2FlYOE4PpB2d51z8umW%2FXSgtWPXbzQhpdHJkWQ1z7tSj53EjVg%2F0gfkIb%2FCRvMss07TgkSB6%2Bp7b4B%2BsU0Zv3RJAWa6Zm2MTlg2%2FkvCr3AlOykpoTF21MM%2FCqdQGOpcBBCk8T2NqmjNS1O%2FxUEjvyKw%2FVgiavY2ssuPMa9NAvbJ4HmwyRp8pvsgkdBZXqIe%2FKrU8LbxgNaD%2Bhb81NDWiI5OcksYK6m0fdxyq1x%2BOjsphBvWq4Dw30eqJ0%2BywO8Lk0MLGUKijSdeOK2N0dom37v5EOcp464fOjktd1LmwDRBc31%2F1EalLIRqeZF0ldSHz9kx6yiMZWg%3D%3D&amp;Expires=1787457314\">ppl-ai-file-upload.s3.amazonaws</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.fisheries.noaa.gov/species/atlantic-goliath-grouper\">fisheries.noaa</a>]</p><h2>Physical Characteristics and Scale</h2><p>The Atlantic goliath grouper is the largest species of grouper in the western Atlantic Ocean. Adults can reach lengths of up to 2.5 meters (over 8 feet) and weigh as much as 360–455 kg (800 pounds). They feature a broad, flattened head, small eyes, and a mottled brownish-yellow, olive, or gray coloration with dark spots that provide camouflage against reefs and wrecks.[<a target=\"_blank\" rel=\"noopener\" href=\"https://myfwc.com/fishing/saltwater/recreational/goliath/\">myfwc</a>]</p><h2>Habitat and Ecology</h2><ul><li><p><strong>Range &amp; Habitat</strong>: Found in shallow tropical and subtropical waters of the Atlantic, ranging from Florida and the Gulf of Mexico through the Caribbean to southern Brazil. Juveniles rely on mangrove estuaries and brackish waterways as nursery grounds before migrating to coral reefs, ledges, and artificial structures.[<a target=\"_blank\" rel=\"noopener\" href=\"https://myfwc.com/fishing/saltwater/recreational/goliath/\">myfwc</a>]</p></li><li><p><strong>Feeding Strategy</strong>: Goliath groupers are ambush predators that feed primarily on slow-moving invertebrates like calico crabs, spiny lobsters, and bottom-dwelling fishes. They rapidly expand their large oral cavity to generate negative pressure, engulfing prey whole rather than chewing.[<a target=\"_blank\" rel=\"noopener\" href=\"https://myfwc.com/fishing/saltwater/recreational/goliath/\">myfwc</a>]</p></li><li><p><strong>Behavior</strong>: Adults are largely solitary and territorial around designated refuge areas like caves and shipwrecks, though they gather in large aggregations during late-summer spawning periods.[<a target=\"_blank\" rel=\"noopener\" href=\"https://myfwc.com/fishing/saltwater/recreational/goliath/\">myfwc</a>]</p></li><li><p></p></li></ul>",
     "VidAuthor": "@grace_underwater",
-    "VidTitle": "Post by grace_underwater"
+    "VidTitle": "Post by grace_underwater",
+    "cell": ""
   },
   {
     "UID": "2107",
@@ -45301,7 +45304,8 @@
     "VidAuthor": "@scubahanknyc",
     "Mode": "L",
     "ftext": "<h2>Gold-crowned Sea Goddess (Felimare acriba)</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/deJPrVA1i9A\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/deJPrVA1i9A</a></p>",
-    "vidLength": "0:41"
+    "vidLength": "0:41",
+    "cell": ""
   },
   {
     "UID": "2108",
@@ -45315,7 +45319,8 @@
     "FtextJunk": "0",
     "ftext": "<h2>The variety of subjects found at the bridge can leave your head spinning</h2><p>The variety of subjects found at the bridge can leave your head spinning…</p><p>Beautiful gold crowned sea goddess emerging from the muck, as seen through a reflective light tube. They are stunning!</p><p>#blueheronbridge #felimareacriba #nudibranch #sagamagictube #underwatermacro #creativemacro #underwaterart #sonyalpha #sony90mmmacro</p><p>By @grace_underwater · 2024-02-27</p><p>Source: <a target=\"_blank\" rel=\"noopener\" href=\"https://www.instagram.com/p/C336daDOMY_/\">https://www.instagram.com/p/C336daDOMY_/</a></p>",
     "VidAuthor": "@grace_underwater",
-    "VidTitle": "Post by grace_underwater"
+    "VidTitle": "Post by grace_underwater",
+    "cell": "4dB"
   },
   {
     "UID": "2109",
@@ -45330,7 +45335,8 @@
     "VidTitle": "Flamboyant Cuttlefish - Lembeh Strait",
     "VidAuthor": "@scubahanknyc",
     "Mode": "L",
-    "ftext": "<h2>Flamboyant Cuttlefish - Lembeh Strait</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/TdBJjZM4Qvk\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/TdBJjZM4Qvk</a></p>"
+    "ftext": "<h2>Flamboyant Cuttlefish - Lembeh Strait</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/TdBJjZM4Qvk\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/TdBJjZM4Qvk</a></p>",
+    "cell": "3cB"
   },
   {
     "UID": "2110",
@@ -45345,7 +45351,8 @@
     "FtextJunk": "24",
     "VidTitle": "Nembrotha Kubaryana - Thia neon orange, green and black is one of my favorites #nidibranch",
     "VidAuthor": "@scubahanknyc",
-    "ftext": "<h2>Nembrotha Kubaryana - Thia neon orange, green and black is one of my favorites #nidibranch</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/8FXvA5n9izE\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/8FXvA5n9izE</a></p>"
+    "ftext": "<h2>Nembrotha Kubaryana - Thia neon orange, green and black is one of my favorites #nidibranch</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/8FXvA5n9izE\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/8FXvA5n9izE</a></p>",
+    "cell": "1aB"
   },
   {
     "UID": "2111",
@@ -45360,7 +45367,8 @@
     "FtextJunk": "24",
     "VidTitle": "Harlequin Sweetlips (Plectorhinchus chaetodonoides) is a species of marine ray-finned fish.",
     "VidAuthor": "@scubahanknyc",
-    "ftext": "<h2>Harlequin Sweetlips (Plectorhinchus chaetodonoides) is a species of marine ray-finned fish.</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/GpSm11BaO3o\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/GpSm11BaO3o</a></p>"
+    "ftext": "<h2>Harlequin Sweetlips (Plectorhinchus chaetodonoides) is a species of marine ray-finned fish.</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/GpSm11BaO3o\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/GpSm11BaO3o</a></p>",
+    "cell": "4d"
   },
   {
     "UID": "2112",
@@ -45375,7 +45383,8 @@
     "VidTitle": "Phyllodesmium Nudibranch | Puerto Galera (Philippines)",
     "VidAuthor": "@scubahanknyc",
     "Mode": "L",
-    "ftext": "<h2>Phyllodesmium Nudibranch | Puerto Galera (Philippines)</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/XsPIwuVgE68\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/XsPIwuVgE68</a></p>"
+    "ftext": "<h2>Phyllodesmium Nudibranch | Puerto Galera (Philippines)</h2>\n<p style=\"color:#888;font-size:.9em;\">By @scubahanknyc</p>\n<p>Source: <a href=\"https://youtu.be/XsPIwuVgE68\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/XsPIwuVgE68</a></p>",
+    "cell": "4c"
   },
   {
     "UID": "2113",
@@ -45391,7 +45400,8 @@
     "VidAuthor": "@benretirementwellness",
     "Mode": "L",
     "ftext": "<h2>It's Boring, But This Got People Over 60 To 0% Visceral Fat Fast!</h2>\n<p style=\"color:#888;font-size:.9em;\">By @benretirementwellness</p>\n<p>Source: <a href=\"https://youtu.be/qDwJ71OzV3c\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/qDwJ71OzV3c</a></p>",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": "3d"
   },
   {
     "UID": "2114",
@@ -45407,7 +45417,8 @@
     "VidAuthor": "@benretirementwellness",
     "Mode": "L",
     "ftext": "<h2>How Beans Burn Visceral Fat Fast Over 60 Without Fasting (Backed by Science)</h2>\n<p style=\"color:#888;font-size:.9em;\">By @benretirementwellness</p>\n<p>Source: <a href=\"https://youtu.be/8L9hXlB7Hs4\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/8L9hXlB7Hs4</a></p>",
-    "VQ": "9"
+    "VQ": "9",
+    "cell": "3c"
   },
   {
     "UID": "2115",
@@ -45418,7 +45429,8 @@
     "tags": [],
     "Mute": "0",
     "ftextSize": "0",
-    "FtextJunk": "0"
+    "FtextJunk": "0",
+    "cell": "3b"
   },
   {
     "UID": "2116",
@@ -45433,7 +45445,8 @@
     "VidTitle": "Over 70? THIS 1 Bed Exercise Is All You Need — Better Than Walking |  Senior Health Tips",
     "VidAuthor": "@SeniorLane",
     "Mode": "L",
-    "ftext": "<h2>Over 70? THIS 1 Bed Exercise Is All You Need — Better Than Walking |  Senior Health Tips</h2>\n<p style=\"color:#888;font-size:.9em;\">By @SeniorLane</p>\n<p>Source: <a href=\"https://youtu.be/HlKUwyuqSXo\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/HlKUwyuqSXo</a></p>"
+    "ftext": "<h2>Over 70? THIS 1 Bed Exercise Is All You Need — Better Than Walking |  Senior Health Tips</h2>\n<p style=\"color:#888;font-size:.9em;\">By @SeniorLane</p>\n<p>Source: <a href=\"https://youtu.be/HlKUwyuqSXo\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/HlKUwyuqSXo</a></p>",
+    "cell": "2c"
   },
   {
     "UID": "2117",
@@ -45448,7 +45461,8 @@
     "VidTitle": "Give Me Just 10 Minutes a Day and I'll Erase Your Visceral Fat Fast (Backed by Science)",
     "VidAuthor": "@benretirementwellness",
     "Mode": "L",
-    "ftext": "<h2>Give Me Just 10 Minutes a Day and I'll Erase Your Visceral Fat Fast (Backed by Science)</h2>\n<p style=\"color:#888;font-size:.9em;\">By @benretirementwellness</p>\n<p>Source: <a href=\"https://youtu.be/8JhPhWH4yEk\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/8JhPhWH4yEk</a></p>"
+    "ftext": "<h2>Give Me Just 10 Minutes a Day and I'll Erase Your Visceral Fat Fast (Backed by Science)</h2>\n<p style=\"color:#888;font-size:.9em;\">By @benretirementwellness</p>\n<p>Source: <a href=\"https://youtu.be/8JhPhWH4yEk\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/8JhPhWH4yEk</a></p>",
+    "cell": "2b"
   },
   {
     "UID": "2118",
@@ -45461,6 +45475,29 @@
       "lembeh"
     ],
     "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "cell": "2a"
+  },
+  {
+    "UID": "2119",
+    "cell": "1b",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "",
+    "DateAdded": "2026-08-23 16:05:34",
+    "DateModified": "2026-08-23 16:05:34",
+    "ftextSize": "0",
+    "FtextJunk": "0"
+  },
+  {
+    "UID": "2120",
+    "cell": "1a",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "",
+    "DateAdded": "2026-08-23 16:05:34",
+    "DateModified": "2026-08-23 16:05:34",
     "ftextSize": "0",
     "FtextJunk": "0"
   }
