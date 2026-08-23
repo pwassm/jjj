@@ -177,10 +177,14 @@ function _fold16ApplyTemplate(c) {
     c.style.gridTemplateRows    = 'repeat(4,' + cell + 'px)';
     c.style.gridTemplateColumns = 'repeat(4,' + cell + 'px)';
   } else {
-    // Before first layout there is nothing to measure — fall back to fractions
-    // and let the next gridShow (which runs after the overlay is displayed) fix it.
-    c.style.gridTemplateRows    = 'repeat(4,1fr)';
-    c.style.gridTemplateColumns = 'repeat(4,1fr)';
+    // (dev0823) Nothing to measure yet — gridShow builds the whole grid while the
+    // overlay is still display:none, so the FIRST call here always lands on this
+    // branch and getBoundingClientRect returns zeros. Fall back to vmin, which
+    // needs no measurement and already means "the smaller side of the viewport":
+    // 4 × 25vmin is exactly the centred square we want. _fold16Render runs again
+    // once the overlay is up and replaces this with the measured version.
+    c.style.gridTemplateRows    = 'repeat(4,25vmin)';
+    c.style.gridTemplateColumns = 'repeat(4,25vmin)';
   }
   c.style.gap = '0px';
   c.style.justifyContent = 'center';
@@ -272,14 +276,35 @@ function _f16SetShown(el, on, cs) {
   }
 }
 
-// Circles sit on grid geometry, not on cell rects — a folded block's cells are
-// display:none and measure zero, but its circle still has to be there to unfold it.
+// (dev0823) Where the grid actually IS, read back off a real cell rather than
+// recomputed from the template. Whatever the tracks ended up being — measured px,
+// the vmin fallback, even plain fractions — one visible cell plus its known row
+// and column gives the true origin and track size. A folded block's own cells are
+// display:none and measure zero, so walk the list until one answers; with every
+// block folded that is the surviving back face, which is a real element sitting
+// on a real landing square. Returns null only if the grid is not laid out at all.
+function _f16Geom(container) {
+  const cr = container.getBoundingClientRect();
+  for (const spec of _fold16CellList()) {
+    const el = _f16Cell(container, spec.cs);
+    if (!el || !el.offsetWidth) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    return {
+      cw: r.width, ch: r.height,
+      ox: r.left - cr.left - (spec.c - 1) * r.width,
+      oy: r.top  - cr.top  - (spec.r - 1) * r.height
+    };
+  }
+  return null;
+}
+
+// Circles sit on grid geometry, not on the block's own cells — a folded block's
+// cells are gone, but its circle still has to be there to unfold it.
 function _f16PlaceCircles(container) {
-  const cell = container._f16Cell || 0;
-  const r = container._f16Rect || container.getBoundingClientRect();
-  if (!cell) return;
-  const ox = (r.width  - cell * 4) / 2;
-  const oy = (r.height - cell * 4) / 2;
+  const g = _f16Geom(container);
+  if (!g) return;
+  const ox = g.ox, oy = g.oy, cell = g.cw;
   for (const b of FOLD16_BLOCKS) {
     if (!_fold16Enabled(b.id)) continue;      // hidden while B is down
     const tl = FOLD16_CELLS.find(o => o.cs === b.tl);
@@ -290,7 +315,7 @@ function _f16PlaceCircles(container) {
     // The shared corner of the block's four cells = the bottom-right corner of
     // its top-left cell.
     dot.style.left = (ox + tl.c * cell) + 'px';
-    dot.style.top  = (oy + tl.r * cell) + 'px';
+    dot.style.top  = (oy + tl.r * g.ch) + 'px';
     dot.title = (folded ? 'Double-click to unfold' : b.label) + ' (double-click)';
     dot.addEventListener('dblclick', e => {
       e.preventDefault(); e.stopPropagation();
@@ -317,6 +342,15 @@ function _f16WireContainer(container) {
     e.preventDefault(); e.stopPropagation();
     _fold16Toggle(hit);
   }, true);
+  // (dev0823) The square footprint and the circle positions are both measured, so
+  // re-measure when the window changes shape. Guarded on the layout still being
+  // 16F — _fold16Render on anything else would paint circles onto a normal grid.
+  window.addEventListener('resize', () => {
+    if (_fold16Busy) return;
+    if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== FOLD16_LAYOUT) return;
+    const c = document.getElementById('gridContainer');
+    if (c && c.offsetWidth) _fold16Render(c);
+  });
 }
 
 // Block id whose circle is within a forgiving radius of this point, else null.

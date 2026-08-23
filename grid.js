@@ -2622,6 +2622,11 @@ function gridShow() {
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';
+  // (dev0823) NOW the container has a size. Everything above ran while the overlay
+  // was still display:none, so a 16F measured its square footprint and its circle
+  // positions off a zero-sized box and got neither. Re-render here, once there is
+  // something real to measure.
+  if (_layout === '16F' && typeof _fold16Render === 'function') _fold16Render(container);
   // (dev0347) Track the cell under the mouse so Ctrl+[ / Ctrl+] can zoom it.
   // Bound once — the overlay element persists across re-renders (gridShow only
   // rebuilds the container's children), so a guard flag avoids duplicate binds.
