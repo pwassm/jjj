@@ -161,7 +161,12 @@ function _f16Cell(container, cs) {
 // there is nothing to animate FROM).
 function _fold16Render(container) {
   if (!container) return;
-  container.style.position = 'relative';
+  // (dev0821) Do NOT touch container.style.position. #gridContainer is
+  // position:absolute + inset:0, and that is the ONLY thing giving it size —
+  // #gridOverlay is a flexbox, so the moment this goes position:relative the
+  // container stops stretching and shrinks to its content, which for a grid of
+  // empty cells is about ten pixels wide. Absolute already makes it a positioned
+  // ancestor, which is all the circles need.
   container.style.perspective = '1600px';
   _f16InjectCSS();
   container.querySelectorAll('.fold16-circle, .fold16-paper').forEach(el => el.remove());
