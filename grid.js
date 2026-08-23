@@ -3447,15 +3447,20 @@ function gridWireInteractor(interactor, cell, cellStr) {
     // (dev0820) On a 16F back face a double-click means UNFOLD — in BOTH modes,
     // since the fold is the whole point of the grid for a viewer too. Checked
     // ahead of the user-mode return and ahead of every editor route below.
+    // (dev0824) A double-tap near a fold CIRCLE, asked for first. This path is the
+    // manual pointerup detector, which never fires a dblclick event, so fold16's
+    // own container listener cannot see it — without asking here, a near-miss on a
+    // circle opens the editor instead of folding.
+    // (dev0831) The circle has to be tested BEFORE the back-face branch below.
+    // Once a corner is folded, its back face (1aB / 4dB) covers the very square
+    // the centre circle sits on, so with the old order a double-click on the
+    // centre circle was read as "unfold that back face" — which is why the centre
+    // button kept re-opening whichever corner had been folded last.
+    if (typeof _fold16ClaimDoubleTap === 'function' && _fold16ClaimDoubleTap()) return;
     if (cellEl && cellEl.dataset && cellEl.dataset.fold16Back) {
       if (typeof _fold16Toggle === 'function') _fold16Toggle(cellEl.dataset.fold16Back);
       return;
     }
-    // (dev0824) …and a double-tap that landed NEAR a fold circle rather than on
-    // it. This path is the manual pointerup detector, which never fires a dblclick
-    // event, so fold16's own container listener cannot see it — ask directly, or
-    // a near-miss on a circle opens the editor instead of folding.
-    if (typeof _fold16ClaimDoubleTap === 'function' && _fold16ClaimDoubleTap()) return;
     if (userMode) return; // dev-only path; user mode never edits from G
     const row = cellEl._rowData;
     if (row) {

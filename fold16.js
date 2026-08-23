@@ -395,8 +395,20 @@ function _f16Geom(container) {
 // Circles sit on grid geometry, not on the block's own cells — a folded block's
 // cells are gone, but its circle still has to be there to unfold it.
 function _f16PlaceCircles(container) {
-  const g = _f16Geom(container);
-  if (!g) return;
+  let g = _f16Geom(container);
+  if (!g) {
+    // (dev0831) Never let a failed measurement take all three circles off the
+    // grid — without a circle the fold is unreachable, and a double-click at the
+    // right spot lands on whatever cell is underneath instead. _f16Geom needs a
+    // laid-out cell to read; this needs only the container, and repeats
+    // _fold16ApplyTemplate's own centred-square arithmetic so it agrees with the
+    // track sizes actually in force.
+    const r = container.getBoundingClientRect();
+    const side = Math.min(r.width, r.height);
+    const cell = side > 8 ? Math.floor((side - 4) / 4) : 0;
+    if (!cell) return;
+    g = { cw: cell, ch: cell, ox: (r.width - cell * 4) / 2, oy: (r.height - cell * 4) / 2 };
+  }
   const ox = g.ox, oy = g.oy, cell = g.cw;
   for (const b of FOLD16_BLOCKS) {
     const on = _fold16Enabled(b.id);
