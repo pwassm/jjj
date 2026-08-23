@@ -222,6 +222,7 @@ function _f16SpeedPill() {
   _f16PaintSpeed();
 }
 var _fold16Busy = false;  // one fold at a time; clicks are swallowed mid-fold
+var _f16BusySince = 0;   // when the current run started, for the stuck-fold guard
 
 function _fold16Block(id) { return FOLD16_BLOCKS.find(b => b.id === id) || null; }
 
@@ -297,7 +298,15 @@ function _fold16Visible() {
 
 // A block can only be worked while its four cells are actually on the table —
 // so A and C are locked away while the outer fold B is down.
-function _fold16Enabled(id) { return (id === 'B') ? true : !_fold16.B; }
+// (dev0830) A block can only be worked while its four squares are on the table.
+// The corner folds are locked away while the centre fold is down — their cells are
+// inside its stack. And the CENTRE fold is only available once BOTH corners are
+// folded: it is the last move of the sequence, collapsing what those two folds
+// left behind onto the 1aB square. Folding it early just buries live cells.
+function _fold16Enabled(id) {
+  if (id === 'B') return _fold16.B || (_fold16.A && _fold16.C);
+  return !_fold16.B;
+}
 
 function _f16Cell(container, cs) {
   return container.querySelector('.grid-cell[data-cell="' + cs + '"]');
@@ -390,17 +399,23 @@ function _f16PlaceCircles(container) {
   if (!g) return;
   const ox = g.ox, oy = g.oy, cell = g.cw;
   for (const b of FOLD16_BLOCKS) {
-    if (!_fold16Enabled(b.id)) continue;      // hidden while B is down
+    const on = _fold16Enabled(b.id);
+    // (dev0830) A and C genuinely vanish while the centre fold is down — their
+    // cells are inside its stack. The centre circle instead stays put and goes
+    // DIM until both corners are folded, so it reads as "not yet" rather than as
+    // a control that mysteriously comes and goes.
+    if (!on && b.id !== 'B') continue;
     const tl = FOLD16_CELLS.find(o => o.cs === b.tl);
     const folded = !!_fold16[b.id];
     const dot = document.createElement('div');
-    dot.className = 'fold16-circle' + (folded ? ' f16-folded' : '');
+    dot.className = 'fold16-circle' + (folded ? ' f16-folded' : '') + (on ? '' : ' f16-off');
     dot.dataset.f16 = b.id;
     // The shared corner of the block's four cells = the bottom-right corner of
     // its top-left cell.
     dot.style.left = (ox + tl.c * cell) + 'px';
     dot.style.top  = (oy + tl.r * g.ch) + 'px';
-    dot.title = (folded ? 'Double-click to unfold' : b.label) + ' (double-click)';
+    dot.title = !on ? 'Fold the two corners first'
+      : (folded ? 'Double-click to unfold' : b.label) + ' (double-click)';
     dot.addEventListener('dblclick', e => {
       e.preventDefault(); e.stopPropagation();
       _fold16Toggle(b.id);
@@ -478,10 +493,23 @@ function _f16CircleAt(container, cx, cy) {
 
 // ── The fold ─────────────────────────────────────────────────────────────────
 function _fold16Toggle(id) {
-  if (_fold16Busy) return;
-  if (!_fold16Enabled(id)) return;
   const container = document.getElementById('gridContainer');
   if (!container) return;
+  // (dev0830) A fold that never finished must not lock the grid for good. If the
+  // busy flag has outlived the longest a run could possibly take, something went
+  // wrong mid-sweep: scrub the leftovers and carry on rather than sitting there
+  // refusing every double-click. Normal overlap still returns quietly.
+  if (_fold16Busy) {
+    if (Date.now() - _f16BusySince < _f16Dur() + 2000) return;
+    console.warn('[16F] a fold did not finish — clearing it');
+    _fold16Busy = false;
+    _fold16Render(container);
+  }
+  if (!_fold16Enabled(id)) {
+    if (id === 'B' && typeof _gridToast === 'function')
+      _gridToast('Fold the two corners first', 1600);
+    return;
+  }
   const b = _fold16Block(id);
   if (!b) return;
   if (_fold16[id]) _fold16Run(container, b, false);
@@ -497,13 +525,18 @@ function _f16Ease(p) { return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) 
 // 1 + a·cos(2πp): 1.75 at each end, 0.25 at the halfway point.
 function _f16EaseFold(p) { return p + 0.75 * Math.sin(2 * Math.PI * p) / (2 * Math.PI); }
 
+// (dev0830) onDone ALWAYS runs, even if a frame throws. An exception inside a rAF
+// callback kills the loop silently: the fold's clones stay in the DOM as frozen
+// skewed shapes and _fold16Busy stays true, which locks out every later fold. That
+// is one bug presenting as two, so a bad frame now ends the run instead.
 function _f16Animate(dur, onFrame, onDone, ease) {
   const fn = ease || _f16Ease;
   const t0 = performance.now();
   (function step(now) {
     const p = Math.min(1, (now - t0) / dur);
-    onFrame(fn(p));
-    if (p < 1) requestAnimationFrame(step);
+    let ok = true;
+    try { onFrame(fn(p)); } catch (e) { ok = false; console.error('[16F] fold frame failed', e); }
+    if (ok && p < 1) requestAnimationFrame(step);
     else if (onDone) onDone();
   })(performance.now());
 }
@@ -707,6 +740,7 @@ function _f16FaceCell(container, cs) {
 
 function _fold16Run(container, b, folding) {
   _fold16Busy = true;
+  _f16BusySince = Date.now();
 
   // Both directions need the block's four cells in the DOM, so drop the state
   // and re-render first: a no-op on a fold, and on an unfold it puts the cells
@@ -815,13 +849,18 @@ function _fold16Run(container, b, folding) {
     }
   };
 
+  // (dev0830) Whatever happens in here, the busy flag comes down. A throw during
+  // cleanup used to leave it raised for the rest of the session, which locks out
+  // every later fold on the grid.
   const finish = () => {
+    try { _finish(); } finally { _fold16Busy = false; }
+  };
+  const _finish = () => {
     parts.forEach(p => { p.el.remove(); if (p.backEl) p.backEl.remove(); });
     hidden.forEach(el => { el.style.display = ''; });
     land.style.zIndex = '';
     _fold16[b.id] = folding;
     _fold16Render(container);
-    _fold16Busy = false;
     if (folding && typeof _gridToast === 'function') _gridToast(b.diag + ' back', 1100);
   };
 
@@ -857,6 +896,8 @@ function _f16InjectCSS() {
     '  border-radius:50%;',
     '}',
     '.fold16-circle:hover { transform:scale(1.16); border-color:#fff; }',
+    '.fold16-circle.f16-off { opacity:0.34; cursor:default; }',
+    '.fold16-circle.f16-off:hover { transform:none; }',
     '.fold16-circle.f16-folded { border-color:rgba(255,190,90,0.95);',
     '  background:radial-gradient(circle at 38% 34%, rgba(255,214,140,0.5), rgba(60,30,0,0.62)); }',
     // (dev0826) Fold-speed pill, bottom-left of the grid. Bottom-RIGHT is taken
