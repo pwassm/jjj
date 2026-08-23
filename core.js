@@ -4527,7 +4527,7 @@ document.getElementById('dupRowBtn')?.addEventListener('click', () => {
 //              what runs the assignment) — from top / from focused, crossed with
 //              landscape-only / portrait-only / either.
 let _markGridSize  = 25;     // (dev0581) default 25 (5×5 landscape) — was 12 P
-let _markGridShape = 'L';    // 'P' | 'L' | '17' | '19' — geometry of the grid
+let _markGridShape = 'L';    // 'P' | 'L' | '17' | '19' | '16F' — geometry of the grid
 let _markGridMedia = 'all';  // 'all' | 'image' | 'video' — candidate media filter
 // (dev0581) NoText: when ON (default) grid fills skip web-article text rows
 // (ltype='w') — they have no visual media to show in a cell. IG image rows are
@@ -4549,7 +4549,7 @@ function markGridMenuClose() {
 // or '17'/'19' for the special layouts.
 function markGridSetSize(size, shape) {
   _markGridSize = size;
-  if (shape === 'P' || shape === 'L' || shape === '17' || shape === '19') _markGridShape = shape;
+  if (shape === 'P' || shape === 'L' || shape === '17' || shape === '19' || shape === '16F') _markGridShape = shape;
   document.querySelectorAll('.mgsize').forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.size, 10) === size);
   });
@@ -4575,7 +4575,7 @@ function markGridToggleNoText() {
 // cycles 12P→16L→17→19 and 2 cycles 25L→27P on repeated presses (a current
 // size outside the digit's sequence starts at its first entry).
 const _MG_DIGIT_SIZES = {
-  '1': [[12, 'P'], [16, 'L'], [17, '17'], [19, '19']],
+  '1': [[12, 'P'], [13, '16F'], [16, 'L'], [17, '17'], [19, '19']],
   '2': [[25, 'L'], [27, 'P']],
   '3': [[3, 'P']],
   '4': [[4, 'L']],
@@ -5252,6 +5252,18 @@ function runMarkGrid(start, rowOrient) {
     layout = 'P' + sz;
     gsize = (typeof _gridGsize === 'number') ? _gridGsize : 5;
     for (let r = 1; r <= pd.rows; r++) for (let c = 1; c <= pd.cols; c++) ALL.push(mkGridCell(r, c));
+  } else if (_markGridShape === '16F') {
+    // (dev0820) The fold grid — a 4×4 footprint carrying ten cells in a diagonal
+    // staircase. _gridCellList hands back those ten PLUS the three back faces
+    // (1aB/3cB/4dB), so a Mark-Grid run fills what each fold reveals as well.
+    layout = '16F';
+    gsize = 4;
+    if (gsize !== _gridGsize) {
+      _gridGsize = gsize;
+      if (typeof _gridApplyContainerCSS === 'function') _gridApplyContainerCSS();
+    }
+    metaRow._salGsize = gsize;
+    for (const spec of _gridCellList(gsize, layout)) ALL.push(spec.cs);
   } else if (_markGridShape === '17' || _markGridShape === '19') {
     // (dev0504) Special non-square: a 5×5 footprint with the 16-cell outer ring and a
     // merged center — 17 = one big landscape cell (1L); 19 = three portrait cells

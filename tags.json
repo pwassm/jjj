@@ -6620,11 +6620,13 @@
   },
   {
     "id": "portrait",
-    "label": "Portrait",
+    "label": "Portrait candidate",
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": ""
+    "def": "",
+    "common": "",
+    "extinct": false
   },
   {
     "id": "tendon",
@@ -7844,6 +7846,14 @@
   {
     "id": "ai-rot",
     "label": "Ai rot",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
+  },
+  {
+    "id": "lembeh",
+    "label": "Lembeh",
     "kind": "topic",
     "parents": [],
     "aliases": [],

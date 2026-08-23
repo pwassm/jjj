@@ -22,7 +22,15 @@ function _gridApplyContainerCSS() {
   if (!c) return;
   // (dev0502) Portrait layouts use a true rows×cols rectangle (not the square
   // gsize footprint) so the 9:16 cells tile the 16:9 screen edge to edge.
-  const pd = (typeof _gridCurrentLayout === 'function') ? _gridPortraitDims(_gridCurrentLayout()) : null;
+  const _lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  // (dev0820) 16F is a 4×4 footprint with only ten of the sixteen slots filled —
+  // the fold grid. See fold16.js.
+  if (_lay === '16F') {
+    c.style.gridTemplateRows    = 'repeat(4,1fr)';
+    c.style.gridTemplateColumns = 'repeat(4,1fr)';
+    return;
+  }
+  const pd = _gridPortraitDims(_lay);
   if (pd) {
     c.style.gridTemplateRows    = 'repeat(' + pd.rows + ',1fr)';
     c.style.gridTemplateColumns = 'repeat(' + pd.cols + ',1fr)';
@@ -103,13 +111,23 @@ function _gridPortraitDims(layout) {
 function _gridLayoutCount(layout, gsize) {
   if (layout === '17') return 17;
   if (layout === '19') return 19;
+  // (dev0820) 16F = ten staircase cells + the three back faces they fold to.
+  if (layout === '16F') return 13;
   const pd = _gridPortraitDims(layout);
   if (pd) return pd.rows * pd.cols;
   return gsize * gsize;
 }
+// (dev0820) What goes in a saved config's `cells` field. Everywhere else a count
+// is a number, but 16F has to be a STRING — a bare 16 already means "square 4×4",
+// so _gridConfigLayout could never tell the two apart.
+function _gridLayoutCellsVal(layout, gsize) {
+  if (layout === '16F') return '16F';
+  return _gridLayoutCount(layout, gsize);
+}
 // Short human label for the grid-info bar / C status line.
 function _gridLayoutLabel(layout, gsize) {
   if (layout === 'square') return gsize + '×' + gsize;
+  if (layout === '16F') return '⧉ 16F fold';
   const pd = _gridPortraitDims(layout);
   if (pd) return '▯ ' + pd.rows + '×' + pd.cols + ' portrait';
   return 'layout ' + layout;
@@ -118,6 +136,9 @@ function _gridLayoutLabel(layout, gsize) {
 // (dev0502) Derive a saved config's {layout, gsize} from its `cells` value. The
 // gsize is the square footprint (5 for the specials/portrait, which ignore it).
 function _gridConfigLayout(cfg) {
+  // (dev0820) The fold grid's `cells` is the string '16F' — test it BEFORE the
+  // parseInt below, which would read it as a plain 16 and hand back a 4×4 square.
+  if (cfg && String(cfg.cells) === '16F') return { layout: '16F', gsize: 4 };
   const cn = parseInt(cfg && cfg.cells, 10);
   if (cn === 17) return { layout: '17', gsize: 5 };
   if (cn === 19) return { layout: '19', gsize: 5 };
@@ -144,6 +165,8 @@ function _gridApplyConfigToRows(cfg, rows) {
 
 function _gridCurrentLayout() {
   if (_gridSource === 'C' && _gridActiveConfig) {
+    // (dev0820) String token — must beat the parseInt (see _gridConfigLayout).
+    if (String(_gridActiveConfig.cells) === '16F') return '16F';
     const cn = parseInt(_gridActiveConfig.cells, 10);
     if (cn === 17) return '17';
     if (cn === 19) return '19';
@@ -164,7 +187,9 @@ function _gridCurrentLayout() {
 // stored on the big/portrait cells ("UID/zoom") restore like every other cell.
 function _isGridConfigCellKey(k) {
   // (dev0502) Columns now run a..i so portrait cells (1f..3i) count as cell keys.
-  return /^[1-9][a-i]$/.test(k) || k === '1L' || /^[123]P$/.test(k);
+  // (dev0820) …plus 16F's three back faces (1aB / 3cB / 4dB).
+  return /^[1-9][a-i]$/.test(k) || k === '1L' || /^[123]P$/.test(k)
+    || (typeof _fold16IsBackKey === 'function' && _fold16IsBackKey(k));
 }
 
 // Ordered list of the cells a layout renders, each with its CSS grid placement
@@ -176,6 +201,9 @@ function _isGridConfigCellKey(k) {
 // so all three agree on which cells exist and in what order.
 function _gridCellList(gsize, layout) {
   const out = [];
+  // (dev0820) The fold grid owns its own cell table (fold16.js) — ten staircase
+  // cells plus three back faces parked on their landing squares.
+  if (layout === '16F' && typeof _fold16CellList === 'function') return _fold16CellList();
   // (dev0502) Portrait grids: a plain rows×cols block (cols can exceed 5), each
   // cell explicitly placed so gridShow lines them up against the rect template.
   const pd = _gridPortraitDims(layout);
@@ -2370,6 +2398,13 @@ function gridShow() {
         cell.style.gridRow    = _spec.r + ' / span ' + _spec.rs;
         cell.style.gridColumn = _spec.c + ' / span ' + _spec.cls;
       }
+      // (dev0820) 16F back faces are built like any other cell — same media, same
+      // gestures — but sit hidden on top of their landing square until the block
+      // folds. _fold16Render (below) takes over their visibility from here.
+      if (_spec.foldBack) {
+        cell.dataset.fold16Back = _spec.foldBack;
+        cell.style.display = 'none';
+      }
       
       if (row) {
         const isVid = isVideoRow(row);
@@ -2515,6 +2550,15 @@ function gridShow() {
       container.appendChild(cell);
   }
   
+  // (dev0820) The fold grid: paint the three circles and snap every cell to the
+  // current fold state. Any OTHER layout flattens that state first, so a fold can
+  // never carry over into the next grid.
+  if (_layout === '16F') {
+    if (typeof _fold16Render === 'function') _fold16Render(container);
+  } else if (typeof _fold16Reset === 'function') {
+    _fold16Reset();
+  }
+
   // Update info bar
   const srcLabel = _gridSource === 'C' ? 'C:'+(_gridActiveConfig?.gname||'?') : 'T';
   const occupied = (() => {
@@ -3389,6 +3433,13 @@ function gridWireInteractor(interactor, cell, cellStr) {
   //   - text/HTML ftext rows  → open the text editor
   //   - empty cell            → open the text editor with a fresh row
   function _runDoubleTapAction(cellEl, cellS) {
+    // (dev0820) On a 16F back face a double-click means UNFOLD — in BOTH modes,
+    // since the fold is the whole point of the grid for a viewer too. Checked
+    // ahead of the user-mode return and ahead of every editor route below.
+    if (cellEl && cellEl.dataset && cellEl.dataset.fold16Back) {
+      if (typeof _fold16Toggle === 'function') _fold16Toggle(cellEl.dataset.fold16Back);
+      return;
+    }
     if (userMode) return; // dev-only path; user mode never edits from G
     const row = cellEl._rowData;
     if (row) {
