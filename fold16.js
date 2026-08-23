@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// 16F — THE FOLD GRID  (dev0820, animation rebuilt dev0822, dev0824, dev0825)
+// 16F — THE FOLD GRID  (dev0820; animation rebuilt dev0822, dev0824, dev0825, dev0828)
 // Fold speed is adjustable at runtime — see the pill / _fold16Slow (dev0826).
 // ══════════════════════════════════════════════════════════════════════════════
 //
@@ -27,44 +27,44 @@
 // inside its stack and their circles are hidden.
 //
 // ── THE FOLD ────────────────────────────────────────────────────────────────
-// One crease, not three. The block turns about its own 45° diagonal — the line
-// running corner to corner through the circle — exactly as the paper does:
+// (dev0828) Driven by CORNER PATHS, not by rotations. Every corner of the block
+// sits at a fixed distance from the circle — the three OUTER corners a cell-
+// diagonal away, the edge corners one cell — so the collapse is a spherical
+// motion about the circle and each corner simply travels its own arc.
 //
-//        1a │ 1b            the crease is the / through the circle;
-//       ────●────           everything on the 1a side of it turns over
-//        2a │ 2b            onto the 2b side.
+// The three outer corners (of the two side cells and of the corner cell) all
+// rise to a single APEX one cell-diagonal directly above the circle, meet there,
+// then come down together onto the far corner of the landing square:
 //
-//   • the DIAGONAL cell (1a) has the crease along its far edges, so it turns as
-//     a whole and comes down flat on the landing square — face DOWN, which is
-//     why what you end up looking at is 1a's BACK;
-//   • the two SIDE cells (1b, 2a) are cut in half by the crease, so each folds
-//     in half along its own / diagonal — half stays put, half turns over.
+//        1a │ 1b                    ●  apex, all three corners
+//       ────●────      →           /|\      meet here
+//        2a │ 2b                  1 2 3
 //
-// One shared angle θ sweeps 0°→180°, driven from a rAF loop rather than CSS
-// transitions so every piece stays on the same crease frame by frame. The back
-// face rides that sweep from the other side: it is backface-hidden, so it appears
-// at 90° edge-on and flattens out to face-up at 180° — the new picture opening
-// rather than popping in. The easing is deliberately SLOWEST in the middle, where
-// the crease stands up and the raised paper is seen at an angle.
+// That is the shape of the paper: the middle lifts to a point, everything
+// gathers to it, and it drops flat. No fixed hinge produces that path, which is
+// why the earlier rotate3d versions could only ever look like sliding. Corners
+// shared with the landing square never move, and the circle never moves.
 //
-// (dev0825) And the block RISES while it does. θ alone is a flat motion — pieces
-// pivoting in the plane of the screen, which reads as sliding, not folding. The
-// whole block also tilts up about the 45° line through its OUTER corner (see
-// _f16Lift / _f16Frames), so the circle — the point furthest from that axis —
-// lifts off the plane, peaks at the halfway mark and comes back down folded
-// inside. Unfolding runs it backwards: the stack opens, the centre rises, and the
-// two creased side cells drop through a pair of shallow ridges that flatten to
-// nothing at the end.
+// Each moving cell is cut along the crease through the circle into two TRIANGLES,
+// and each triangle is drawn by solving the 2D affine matrix that maps its flat
+// corners onto its projected ones — three points determine an affine map exactly,
+// so a triangle can be sent wherever three corners go, with no rigid-body
+// constraint and no origami CSS refuses to express. Depth comes from a
+// perspective divide about the middle of the grid.
 //
-// (dev0824) Two things this must never show, both learned the hard way:
-//   • no blank paper. The reverse of a folding half is the cell's own picture,
-//     dimmed — not a manila panel, which put yellow-orange triangles on screen.
+// The corner cell is TWO-SIDED: its own picture until it turns past edge-on
+// (detected from the projected triangle's signed area flipping), the back face's
+// after. The back's own flat corners are where the front's corners LAND, so when
+// the fold completes its matrix is the identity and the new picture sits square
+// on the landing cell rather than mirrored.
+//
+// Two things this must never show, both learned the hard way (dev0824):
+//   • no blank paper. Nothing on screen is ever a flat sheet of paper colour —
+//     a manila stand-in for the reverse of a flap put yellow-orange triangles
+//     across the grid.
 //   • no holes. A lifting flap leaves bare grid background behind it, which reads
-//     as a hard-edged navy triangle; instead the cell stays whole underneath and
-//     DISSOLVES, so no cut edge is ever visible.
-// There is also no second "tuck" beat any more: the resting state already hides
-// all four cells and shows only the back face, so tucking the leftover triangles
-// under was half a second of large shapes moving after the fold had finished.
+//     as a hard-edged navy triangle; instead the source cells stay WHOLE
+//     underneath and dissolve, so no cut edge is ever visible.
 //
 // This only works if the cells are SQUARE. A 180° turn about a rectangle's
 // corner-to-corner diagonal does NOT land the diagonal cell on the landing cell
@@ -87,92 +87,6 @@ const FOLD16_CELLS = [
   { cs: '4c', r: 4, c: 3 }, { cs: '4d', r: 4, c: 4 }
 ];
 
-// ── Crease geometry ──────────────────────────────────────────────────────────
-// Two mirror-image cases: a block either collapses onto its BOTTOM-RIGHT cell
-// (block A, where the outer corner 1a is top-left) or onto its TOP-LEFT cell
-// (blocks B and C). Everything else follows from that.
-//
-//   sign        which way the flap lifts. The crease axis is (1,-1,0); a point
-//               offset down-right of it rises toward the viewer at +θ, so the
-//               half that moves picks the sign that lifts rather than sinks.
-//   *Origin     a point ON the crease, expressed in that element's own box —
-//               for the diagonal and landing cells that is the block's centre
-//               corner; for a side cell it is its own centre, since the crease
-//               runs corner to corner through it.
-//   movingClip  the half of a side cell that turns over; staticClip the half
-//               that stays. Together they tile the square.
-//   tuckTR/BL   how each leftover triangle folds under the landing square: the
-//               edge it shares with that square.
-const _F16_ORIENT = {
-  BR: {
-    sign: -1,
-    diagOrigin: '100% 100%', backOrigin: '0% 0%',
-    movingClip: 'polygon(0 0, 100% 0, 0 100%)',
-    staticClip: 'polygon(100% 0, 100% 100%, 0 100%)',
-    tuckTR: { o: '50% 100%', t: d => 'rotateX(' + (-d) + 'deg)' },  // via its bottom edge
-    tuckBL: { o: '100% 50%', t: d => 'rotateY(' + d + 'deg)' }      // via its right edge
-  },
-  TL: {
-    sign: 1,
-    diagOrigin: '0% 0%', backOrigin: '100% 100%',
-    movingClip: 'polygon(100% 0, 100% 100%, 0 100%)',
-    staticClip: 'polygon(0 0, 100% 0, 0 100%)',
-    tuckTR: { o: '0% 50%',  t: d => 'rotateY(' + (-d) + 'deg)' },   // via its left edge
-    tuckBL: { o: '50% 0%',  t: d => 'rotateX(' + d + 'deg)' }       // via its top edge
-  }
-};
-
-// The crease axis. Cells are square (see _fold16ApplyTemplate), so the corner-to-
-// corner diagonal is exactly 45° and this constant vector is the real crease.
-function _f16Rot(deg) { return 'rotate3d(1,-1,0,' + deg + 'deg)'; }
-
-// ── (dev0825) The rise ───────────────────────────────────────────────────────
-// The centre of the block lifts OFF the plane during the fold and ends tucked
-// inside — the whole block tilts up about the 45° line through its OUTER corner,
-// the corner of the landing square furthest from the circle. The circle itself is
-// the point furthest from that axis, so it rises highest; the outer corner is
-// pinned and never moves. Peaks at the halfway point and is back to zero at both
-// ends, so the start and finish are untouched.
-//
-// This tilt and each piece's own crease turn about PARALLEL axes — both run at
-// 45°, one through the block's outer corner and one through the circle — which is
-// what makes it composable on a single element instead of needing a wrapper per
-// piece. transform-origin is put on the block's outer corner (often outside the
-// element's own box, which is legal), and the crease is expressed relative to it:
-// translate out to the crease, turn, translate back, then apply the tilt. Read
-// right to left, CSS applies the innermost first.
-const _F16_LIFT_DEG = 30;
-function _f16Lift(t) { return _F16_LIFT_DEG * Math.sin(Math.PI * t); }
-
-function _f16Compose(lam, d, th) {
-  return _f16Rot(lam)
-    + ' translate(' + d[0] + 'px,' + d[1] + 'px) '
-    + _f16Rot(th)
-    + ' translate(' + (-d[0]) + 'px,' + (-d[1]) + 'px)';
-}
-
-// Per-piece geometry for one block at cell size c: `o` is the block's outer
-// corner in that element's own coordinates (the shared tilt origin), `d` the
-// vector from it to that piece's own crease axis. The two orientations are
-// mirror images — for TL the outer corner is the landing cell's top-left and the
-// rest of the block lies down-right of it; for BR it is the bottom-right corner
-// and the block lies up-left.
-function _f16Frames(orient, c) {
-  if (orient === 'TL') return {
-    land: { o: '0px 0px',                    d: [0, 0] },
-    tr:   { o: (-c) + 'px 0px',              d: [1.5 * c, 0.5 * c] },
-    bl:   { o: '0px ' + (-c) + 'px',         d: [0.5 * c, 1.5 * c] },
-    diag: { o: (-c) + 'px ' + (-c) + 'px',   d: [c, c] },
-    back: { o: '0px 0px',                    d: [c, c] }
-  };
-  return {
-    land: { o: c + 'px ' + c + 'px',             d: [0, 0] },
-    tr:   { o: c + 'px ' + (2 * c) + 'px',       d: [-0.5 * c, -1.5 * c] },
-    bl:   { o: (2 * c) + 'px ' + c + 'px',       d: [-1.5 * c, -0.5 * c] },
-    diag: { o: (2 * c) + 'px ' + (2 * c) + 'px', d: [-c, -c] },
-    back: { o: c + 'px ' + c + 'px',             d: [-c, -c] }
-  };
-}
 
 // The three blocks, named by their 2×2 corners. `land` is the square everything
 // collapses onto, `diag` the one opposite it whose back ends up showing, `back`
@@ -590,36 +504,11 @@ function _f16Animate(dur, onFrame, onDone, ease) {
   })(performance.now());
 }
 
-// (dev0824) The REVERSE of a folding half. This used to be a blank manila panel,
-// which is what put yellow-orange triangles across the grid — nothing on this
-// screen should be a flat sheet of paper colour. It is now the cell's own picture
-// again, dimmed: past 90° you see the same image darkened, the way paper reads
-// when the light is behind it. Rides 180° ahead of the front half, so it takes
-// over exactly as the front turns edge-on.
-function _f16Back(srcEl, clip, origin, deg) {
-  const p = _f16Mover(srcEl, clip, origin, deg);
-  p.classList.add('fold16-reverse');
-  return p;
-}
-
-// (dev0824) A still copy left behind where a folding piece used to be, fading out
-// as the fold proceeds. Paper lifting off a table really does leave a hole, but a
-// hard-edged hole here is a navy triangle of grid background — the blue the fold
-// was showing. Dissolving the picture instead reads as the paper coming away and
-// leaves no cut edge anywhere.
-function _f16Ghost(srcEl) {
-  const gh = _f16Mover(srcEl, '', '50% 50%', 0);
-  gh.classList.add('fold16-ghost');
-  gh.style.transform = '';
-  gh.style.backfaceVisibility = '';
-  gh.style.zIndex = '55';
-  return gh;
-}
 
 // A live copy of a cell clipped to one half. Iframes and videos are stripped —
 // a cloned iframe would reload the provider, and the poster underneath is all we
 // need for half a second of motion.
-function _f16Mover(srcEl, clip, origin, deg) {
+function _f16Mover(srcEl, clip, origin) {
   const m = srcEl.cloneNode(true);
   m.className = (srcEl.className || '') + ' fold16-mover';
   delete m.dataset.cell;          // never let _f16Cell find the clone
@@ -631,146 +520,244 @@ function _f16Mover(srcEl, clip, origin, deg) {
   m.style.clipPath = clip;
   m.style.webkitClipPath = clip;
   m.style.transformOrigin = origin;
-  m.style.backfaceVisibility = 'hidden';
-  m.style.webkitBackfaceVisibility = 'hidden';
-  m.style.transform = _f16Rot(deg);
+  m.style.transform = '';
   return m;
 }
 
-// folding === true  → 0° to 180°, then tuck the leftovers under
-// folding === false → untuck, then 180° back to 0°
+// ── (dev0828) The collapse ───────────────────────────────────────────────────
+// Rewritten from rotations to CORNER PATHS. Every corner of the block sits at a
+// fixed distance from the circle — the three outer corners a cell-diagonal away,
+// the edge corners one cell — so the whole fold is a spherical motion about the
+// circle and each corner just travels its own arc on that sphere.
+//
+// The three OUTER corners (of the two side cells and of the corner cell — 1, 2
+// and 3) all rise to a single APEX one cell-diagonal directly above the circle,
+// meet there, then come down together onto the far corner of the landing square.
+// That is the shape of the paper fold: the middle lifts into a point, everything
+// gathers to it, and it drops flat. No fixed hinge can produce that path, which
+// is why rotate3d could only ever slide.
+//
+// Corners shared with the landing square never move; the circle never moves.
+//
+// Rendering: each moving cell is cut along the crease through the circle into two
+// TRIANGLES, and each triangle is drawn by solving the 2D affine matrix that maps
+// its flat corners onto its projected ones. Three points determine an affine map
+// exactly, so a triangle can be sent anywhere three corners go — no rigid-body
+// constraint, no origami that CSS refuses to express.
+const _F16_CAM = 1700;   // perspective distance in px; larger = flatter
+
+function _f16Norm(v) {
+  const m = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / m, v[1] / m, v[2] / m];
+}
+function _f16Slerp(a, b, u) {
+  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  d = Math.max(-1, Math.min(1, d));
+  const w = Math.acos(d);
+  if (w < 1e-6) return a.slice();
+  const s = Math.sin(w), k1 = Math.sin((1 - u) * w) / s, k2 = Math.sin(u * w) / s;
+  return [a[0] * k1 + b[0] * k2, a[1] * k1 + b[1] * k2, a[2] * k1 + b[2] * k2];
+}
+
+// One corner's arc, in block-local units (landing square = 0..1, circle = (1,1)).
+// Corners that do not move, and the circle itself, return a constant.
+function _f16Path(S, E) {
+  const P = [1, 1];
+  const r = Math.hypot(S[0] - P[0], S[1] - P[1]);
+  if (r < 1e-9) return () => [P[0], P[1], 0];
+  if (Math.abs(S[0] - E[0]) < 1e-9 && Math.abs(S[1] - E[1]) < 1e-9)
+    return () => [S[0], S[1], 0];
+  const dS = _f16Norm([S[0] - P[0], S[1] - P[1], 0]);
+  const dE = _f16Norm([E[0] - P[0], E[1] - P[1], 0]);
+  // The outer corners (a cell-diagonal out) go straight up to the shared apex.
+  // The edge corners lift over a waypoint between where they start and land, so
+  // the paper billows instead of sliding round the circle in-plane.
+  const dW = (r > 1.2) ? [0, 0, 1] : _f16Norm([dS[0] + dE[0], dS[1] + dE[1], 1.7]);
+  return t => {
+    const d = (t <= 0.5) ? _f16Slerp(dS, dW, t * 2) : _f16Slerp(dW, dE, t * 2 - 1);
+    return [P[0] + r * d[0], P[1] + r * d[1], r * d[2]];
+  };
+}
+
+// Block-local → container pixels. A BR block (block A) is the same geometry
+// mirrored through the landing square, so one flag covers both orientations.
+function _f16Place(o, p) {
+  const bx = o.flip ? (1 - p[0]) : p[0];
+  const by = o.flip ? (1 - p[1]) : p[1];
+  return { X: o.landX + bx * o.cell, Y: o.landY + by * o.cell, Z: p[2] * o.cell };
+}
+// Perspective about the middle of the grid: rising toward the viewer grows.
+function _f16Project(o, q) {
+  const s = _F16_CAM / (_F16_CAM - q.Z);
+  return [o.cx + (q.X - o.cx) * s, o.cy + (q.Y - o.cy) * s];
+}
+
+// The affine matrix taking a triangle's flat corners v[] to its live corners w[],
+// both in the element's own pixel frame. Returns null for a degenerate triangle
+// (the two halves of a side cell collapse onto each other at the end of a fold).
+function _f16Affine(v, w) {
+  const Ax = v[1][0] - v[0][0], Ay = v[1][1] - v[0][1];
+  const Bx = v[2][0] - v[0][0], By = v[2][1] - v[0][1];
+  const det = Ax * By - Ay * Bx;
+  if (Math.abs(det) < 1e-6) return null;
+  const ax = w[1][0] - w[0][0], ay = w[1][1] - w[0][1];
+  const bx = w[2][0] - w[0][0], by = w[2][1] - w[0][1];
+  const a = (ax * By - bx * Ay) / det;
+  const c = (bx * Ax - ax * Bx) / det;
+  const b = (ay * By - by * Ay) / det;
+  const d = (by * Ax - ay * Bx) / det;
+  const e = w[0][0] - (a * v[0][0] + c * v[0][1]);
+  const f = w[0][1] - (b * v[0][0] + d * v[0][1]);
+  return 'matrix(' + a + ',' + b + ',' + c + ',' + d + ',' + e + ',' + f + ')';
+}
+
+// Which cell sits in each block-local slot. Block-local always puts the landing
+// square at 0..1 and the corner square at 1..2; for a BR block that is a mirror,
+// so its "right" slot is the cell to the LEFT of the landing square.
+function _f16Slots(b) {
+  return (b.orient === 'BR')
+    ? { R: b.bl, B: b.tr, D: b.diag }
+    : { R: b.tr, B: b.bl, D: b.diag };
+}
+
+// Every triangle drawn during a fold: which cell it is cut from, its three flat
+// block-local corners, and where each of those corners ends up. The crease in
+// each cell runs through the circle, so the two triangles of a side cell fold
+// onto each other and the cell finishes as a single triangle inside the landing
+// square. The corner square keeps its shape and lands on the landing square
+// mirrored, which is exactly why its BACK is what you end up looking at.
+function _f16Tris(slots) {
+  const P = [1, 1], O = [0, 0];
+  const mk = (cell, tri, back) => ({ cell: cell, tri: tri, back: !!back });
+  return [
+    mk(slots.R, [[[1, 0], [1, 0]], [[2, 0], O], [P, P]]),
+    mk(slots.R, [[[2, 0], O], [[2, 1], [1, 0]], [P, P]]),
+    mk(slots.B, [[[0, 1], [0, 1]], [P, P], [[0, 2], O]]),
+    mk(slots.B, [[P, P], [[1, 2], [0, 1]], [[0, 2], O]]),
+    mk(slots.D, [[P, P], [[2, 1], [1, 0]], [[2, 2], O]], true),
+    mk(slots.D, [[P, P], [[2, 2], O], [[1, 2], [0, 1]]], true)
+  ];
+}
+
 function _fold16Run(container, b, folding) {
   _fold16Busy = true;
-  const g = _F16_ORIENT[b.orient];
-  const sgn = g.sign;
 
-  // Both beats need the block's four cells present, so drop the state and
-  // re-render first: on a fold that is a no-op, on an unfold it puts the cells
-  // back so they have something to swing open from.
+  // Both directions need the block's four cells in the DOM, so drop the state
+  // and re-render first: a no-op on a fold, and on an unfold it puts the cells
+  // back so there is something to open.
   if (!folding) { _fold16[b.id] = false; _fold16Render(container); }
 
-  // (dev0825) Cell size drives the crease offsets, so the whole block has to be
-  // measured before anything moves. Without it fall back to the flat fold.
   const geo = _f16Geom(container);
-  const cellPx = geo ? geo.cw : 0;
-  const F = _f16Frames(b.orient, cellPx);
-  // No measurement, no rise: fall back to each piece turning about its own crease
-  // with the block flat. Correct endpoints either way, just without the lift.
-  const liftOn = cellPx > 0;
-  if (!liftOn) {
-    F.diag = { o: g.diagOrigin, d: [0, 0] };
-    F.back = { o: g.backOrigin, d: [0, 0] };
-    F.land = { o: '50% 50%', d: [0, 0] };
-    F.tr   = { o: '50% 50%', d: [0, 0] };
-    F.bl   = { o: '50% 50%', d: [0, 0] };
-  }
-
-  const diag = _f16Cell(container, b.diag);
-  const back = _f16Cell(container, b.back);
   const land = _f16Cell(container, b.land);
-  const sides = [
-    { el: _f16Cell(container, b.tr), fr: F.tr },
-    { el: _f16Cell(container, b.bl), fr: F.bl }
-  ].filter(s => s.el);
-
-  // The diagonal cell turns as a whole about the block crease…
-  if (diag) {
-    diag.style.display = '';
-    diag.style.transformOrigin = F.diag.o;
-    diag.style.backfaceVisibility = 'hidden';
-    diag.style.webkitBackfaceVisibility = 'hidden';
-    diag.style.zIndex = '73';
-  }
-  // …and the back face rides the same crease from the other side: hidden while
-  // it faces away, edge-on at 90°, flat and face-up at 180°.
-  if (back) {
-    back.style.display = '';
-    back.style.transformOrigin = F.back.o;
-    back.style.backfaceVisibility = 'hidden';
-    back.style.webkitBackfaceVisibility = 'hidden';
-    back.style.zIndex = '74';
-  }
-  // The landing square tilts with the rest of the block — it has no crease of its
-  // own, but it owns the corner the whole block pivots on, and leaving it flat is
-  // what made the old fold look like pieces sliding rather than paper lifting.
-  if (land) {
-    land.style.display = '';
-    land.style.transformOrigin = F.land.o;
-    land.style.zIndex = '58';
+  const back = _f16Cell(container, b.back);
+  if (!geo || !land) {   // nothing measurable — snap, do not animate into a mess
+    _fold16[b.id] = folding;
+    _fold16Render(container);
+    _fold16Busy = false;
+    return;
   }
 
-  // (dev0824) Each side cell is creased corner to corner. The half beyond the
-  // crease lifts — a clipped clone, with its dimmed reverse riding behind it —
-  // while the cell itself stays WHOLE underneath as a ghost that fades out. The
-  // old version clipped the real cell down to its static half, so the moment the
-  // flap rose you were looking at bare grid background through a triangular hole:
-  // that is where the blue came from. Nothing is cut away now; it dissolves.
-  const movers = [], backs = [], ghosts = [];
-  for (const s of sides) {
-    s.el.style.display = '';
-    s.el.style.clipPath = '';
-    s.el.style.webkitClipPath = '';
-    s.el.style.transform = '';
-    s.el.style.zIndex = '55';
-    const m = _f16Mover(s.el, g.movingClip, s.fr.o, 0);
-    const p = _f16Back(s.el, g.movingClip, s.fr.o, 0);
-    m.style.zIndex = '71'; p.style.zIndex = '70';
-    container.appendChild(m); container.appendChild(p);
-    movers.push({ el: m, fr: s.fr }); backs.push({ el: p, fr: s.fr });
-    ghosts.push(s.el);
-    // (dev0825) The static half is a clone too now, so it can ride the block tilt
-    // while the real cell stays put underneath and dissolves. Without it the half
-    // that does NOT turn stayed flat on the plane while everything around it rose,
-    // and the crease tore open down the middle of the square.
-    const st = _f16Mover(s.el, g.staticClip, s.fr.o, 0);
-    st.style.zIndex = '69';
-    container.appendChild(st);
-    movers.push({ el: st, fr: s.fr, still: true });
-  }
-  // The corner square turns away bodily, so its footprint needs a ghost of its
-  // own — otherwise the one square that travels furthest leaves the largest hole.
-  if (diag) {
-    const gh = _f16Ghost(diag);
-    container.appendChild(gh);
-    ghosts.push(gh);
-  }
+  const crect = container.getBoundingClientRect();
+  const lrect = land.getBoundingClientRect();
+  const o = {
+    cell: geo.cw, flip: (b.orient === 'BR'),
+    landX: lrect.left - crect.left, landY: lrect.top - crect.top,
+    cx: crect.width / 2, cy: crect.height / 2
+  };
+  const slots = _f16Slots(b);
 
-  const sweep = t => {                   // t = 0 (flat) … 1 (folded)
-    const th = 180 * t;
-    const lam = liftOn ? sgn * _f16Lift(t) : 0;   // the block tilting up off the plane
-    if (diag) diag.style.transform = _f16Compose(lam, F.diag.d, sgn * th);
-    if (back) back.style.transform = _f16Compose(lam, F.back.d, sgn * (th - 180));
-    if (land) land.style.transform = _f16Compose(lam, F.land.d, 0);
-    movers.forEach(m => {
-      m.el.style.transform = _f16Compose(lam, m.fr.d, m.still ? 0 : sgn * th);
+  // Build one clipped clone per triangle. The clone is positioned by the grid on
+  // its source cell, so its own pixel frame starts at that cell's top-left.
+  const parts = [];
+  const ghosts = [];
+  for (const spec of _f16Tris(slots)) {
+    const src = _f16Cell(container, spec.cell);
+    if (!src) continue;
+    const srect = src.getBoundingClientRect();
+    const ex = srect.left - crect.left, ey = srect.top - crect.top;
+    const flat = spec.tri.map(pair => {
+      const q = _f16Place(o, [pair[0][0], pair[0][1], 0]);
+      return [q.X - ex, q.Y - ey];
     });
-    backs.forEach(p => {
-      p.el.style.transform = _f16Compose(lam, p.fr.d, sgn * (th + 180));
-    });
-    // Everything left behind dissolves over the first two thirds, so the picture
-    // is gone before the corner square lands on top of where it used to be.
-    const fade = Math.max(0, 1 - t / 0.66);
+    const clip = 'polygon(' + flat.map(p =>
+      (p[0] / o.cell * 100).toFixed(3) + '% ' + (p[1] / o.cell * 100).toFixed(3) + '%').join(', ') + ')';
+    const el = _f16Mover(src, clip, '0 0', 0);
+    el.style.transformOrigin = '0 0';
+    el.style.backfaceVisibility = '';
+    el.style.zIndex = spec.back ? '76' : '72';
+    container.appendChild(el);
+    const part = { el: el, flat: flat, ex: ex, ey: ey, paths: spec.tri.map(pr => _f16Path(pr[0], pr[1])) };
+    // The corner square is two-sided: its own picture while the front faces us,
+    // the BACK cell's once it has turned past edge-on. Both are clipped to the
+    // same triangle and driven by the same corners; only one is ever shown. The
+    // back's own flat corners are where the front's corners LAND, so when the
+    // fold completes its matrix is the identity and the new picture sits square
+    // on the landing cell rather than mirrored.
+    if (spec.back && back) {
+      const brect = back.getBoundingClientRect();
+      const bx = brect.left - crect.left, by = brect.top - crect.top;
+      const bflat = spec.tri.map(pair => {
+        const q = _f16Place(o, [pair[1][0], pair[1][1], 0]);
+        return [q.X - bx, q.Y - by];
+      });
+      const bclip = 'polygon(' + bflat.map(p =>
+        (p[0] / o.cell * 100).toFixed(3) + '% ' + (p[1] / o.cell * 100).toFixed(3) + '%').join(', ') + ')';
+      const bel = _f16Mover(back, bclip, '0 0', 0);
+      bel.style.transformOrigin = '0 0';
+      bel.style.backfaceVisibility = '';
+      bel.style.zIndex = '77';
+      container.appendChild(bel);
+      part.backEl = bel; part.bflat = bflat; part.bex = bx; part.bey = by;
+    }
+    parts.push(part);
+  }
+
+  // Nothing is cut away from the grid itself: the source cells stay put and
+  // dissolve, so a lifting flap never opens a hard-edged hole onto the
+  // background. The landing square keeps its picture until the fold covers it.
+  for (const cs of [slots.R, slots.B, slots.D]) {
+    const el = _f16Cell(container, cs);
+    if (el) { el.style.display = ''; el.style.clipPath = ''; el.style.transform = ''; el.style.zIndex = '55'; ghosts.push(el); }
+  }
+  if (back) back.style.display = 'none';
+  land.style.display = '';
+  land.style.zIndex = '58';
+
+  const sweep = t => {
+    for (const p of parts) {
+      const w3 = p.paths.map(fn => fn(t));
+      const wpx = w3.map(q => _f16Project(o, _f16Place(o, q)));
+      const front = wpx.map(q => [q[0] - p.ex, q[1] - p.ey]);
+      // Signed area flips exactly when the paper turns past edge-on.
+      const area = (front[1][0] - front[0][0]) * (front[2][1] - front[0][1])
+                 - (front[2][0] - front[0][0]) * (front[1][1] - front[0][1]);
+      const flatArea = (p.flat[1][0] - p.flat[0][0]) * (p.flat[2][1] - p.flat[0][1])
+                     - (p.flat[2][0] - p.flat[0][0]) * (p.flat[1][1] - p.flat[0][1]);
+      const showBack = !!p.backEl && (area * flatArea < 0);
+      const m = _f16Affine(p.flat, front);
+      p.el.style.display = (m && !showBack) ? '' : 'none';
+      if (m && !showBack) p.el.style.transform = m;
+      if (p.backEl) {
+        const bw = wpx.map(q => [q[0] - p.bex, q[1] - p.bey]);
+        const bm = _f16Affine(p.bflat, bw);
+        p.backEl.style.display = (bm && showBack) ? '' : 'none';
+        if (bm && showBack) p.backEl.style.transform = bm;
+      }
+    }
+    const fade = Math.max(0, 1 - t / 0.55);
     ghosts.forEach(el => { el.style.opacity = String(fade); });
   };
 
   const finish = () => {
-    movers.forEach(m => m.el.remove());
-    backs.forEach(p => p.el.remove());
-    if (land) { land.style.transform = ''; land.style.transformOrigin = ''; land.style.zIndex = ''; }
-    ghosts.forEach(el => { el.style.opacity = ''; });
-    if (diag) { const gh = container.querySelector('.fold16-ghost'); if (gh) gh.remove(); }
-    container.querySelectorAll('.fold16-ghost').forEach(el => el.remove());
+    parts.forEach(p => { p.el.remove(); if (p.backEl) p.backEl.remove(); });
+    ghosts.forEach(el => { el.style.opacity = ''; el.style.zIndex = ''; });
+    land.style.zIndex = '';
     _fold16[b.id] = folding;
     _fold16Render(container);
     _fold16Busy = false;
     if (folding && typeof _gridToast === 'function') _gridToast(b.diag + ' back', 1100);
   };
 
-  // (dev0824) One continuous turn, no second beat. The old tuck-the-ears stage
-  // existed to make the folded footprint exactly one square, but the resting
-  // state already does that — _fold16Visible hides all four cells and shows only
-  // the back face — so all the tuck ever did was rotate two big half-squares
-  // across the grid after the fold had visually finished.
   if (folding) {
     sweep(0);
     _f16Animate(_f16Dur(), sweep, finish, _f16EaseFold);
