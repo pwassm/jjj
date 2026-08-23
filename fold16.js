@@ -250,7 +250,22 @@ function _f16Dur() { return (_F16_MS + _F16_TUCK_MS) * _F16_SLOW; }
 // is a CSS grid and any child of it gets placed into a track.
 function _f16PaintSpeed() {
   const el = document.getElementById('fold16Speed');
-  if (el) el.querySelector('.f16-speed-val').textContent = _f16SlowLabel();
+  if (!el) return;
+  el.querySelector('.f16-speed-num').textContent =
+    (_F16_SLOW % 1 === 0) ? String(_F16_SLOW) : _F16_SLOW.toFixed(1);
+  el.querySelector('.f16-speed-ms').textContent = Math.round(_f16Dur()) + ' ms';
+  el.querySelector('.f16-speed-cap').textContent =
+    _F16_SLOW === 1 ? 'FULL SPEED' : _f16SlowLabel() + ' SPEED';
+}
+
+// (dev0826) Wheel stepping. Finer than the −/+ ladder so a specific frame can be
+// dialled in: half a step per notch, clamped to a sane range.
+const _F16_SLOW_MIN = 0.5, _F16_SLOW_MAX = 30;
+function _f16SlowWheel(dy) {
+  const step = _F16_SLOW < 3 ? 0.5 : 1;
+  let n = _F16_SLOW + (dy < 0 ? step : -step);
+  n = Math.round(n * 2) / 2;
+  _fold16Slow(Math.max(_F16_SLOW_MIN, Math.min(_F16_SLOW_MAX, n)));
 }
 function _f16SpeedPill() {
   const overlay = document.getElementById('gridOverlay');
@@ -262,18 +277,31 @@ function _f16SpeedPill() {
   const wrap = document.createElement('div');
   wrap.id = 'fold16Speed';
   wrap.className = 'fold16-speed';
-  wrap.innerHTML = '<span class="f16-speed-btn" data-dir="-1" title="Faster">−</span>'
-    + '<span class="f16-speed-val">' + _f16SlowLabel() + '</span>'
-    + '<span class="f16-speed-btn" data-dir="1" title="Slower">+</span>';
+  wrap.title = 'Fold speed — roll the wheel over this box';
+  wrap.innerHTML =
+      '<div class="f16-speed-cap">' + (_F16_SLOW === 1 ? 'FULL SPEED' : _f16SlowLabel() + ' SPEED') + '</div>'
+    + '<div class="f16-speed-row">'
+    +   '<span class="f16-speed-btn" data-dir="-1" title="Faster">−</span>'
+    +   '<span class="f16-speed-num"></span>'
+    +   '<span class="f16-speed-btn" data-dir="1" title="Slower">+</span>'
+    + '</div>'
+    + '<div class="f16-speed-ms"></div>';
   wrap.querySelectorAll('.f16-speed-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation();
       _f16SlowStep(parseInt(btn.dataset.dir, 10));
     }, true);
   });
+  // The wheel is the main control. passive:false so preventDefault sticks, and in
+  // CAPTURE so the grid's own Ctrl+wheel per-cell zoom never sees it.
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault(); e.stopPropagation();
+    _f16SlowWheel(e.deltaY);
+  }, { capture: true, passive: false });
   ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'contextmenu']
     .forEach(t => wrap.addEventListener(t, e => e.stopPropagation(), true));
   overlay.appendChild(wrap);
+  _f16PaintSpeed();
 }
 var _fold16Busy = false;  // one fold at a time; clicks are swallowed mid-fold
 
@@ -780,15 +808,22 @@ function _f16InjectCSS() {
     // (dev0826) Fold-speed pill, bottom-left of the grid. Bottom-RIGHT is taken
     // by the source buttons and the version badge; top-left by the info bar.
     '.fold16-speed {',
-    '  position:absolute; left:10px; bottom:10px; z-index:95;',
-    '  display:flex; align-items:center; gap:2px;',
-    '  font:11px/1 monospace; color:#fc9; user-select:none;',
-    '  background:rgba(0,0,0,0.62); border:1px solid rgba(255,180,80,0.42);',
-    '  border-radius:5px; padding:3px 4px;',
+    '  position:absolute; left:14px; bottom:14px; z-index:95;',
+    '  font-family:monospace; color:#fc9; user-select:none; text-align:center;',
+    '  background:rgba(0,0,0,0.72); border:1px solid rgba(255,180,80,0.45);',
+    '  border-radius:7px; padding:6px 10px 5px; min-width:104px;',
+    '  box-shadow:0 3px 12px rgba(0,0,0,0.6);',
     '}',
-    '.fold16-speed .f16-speed-val { min-width:56px; text-align:center; padding:0 3px; }',
+    '.fold16-speed .f16-speed-cap { font-size:9px; letter-spacing:0.09em; color:#c98; }',
+    '.fold16-speed .f16-speed-row {',
+    '  display:flex; align-items:center; justify-content:center; gap:6px; margin:1px 0 0;',
+    '}',
+    '.fold16-speed .f16-speed-num {',
+    '  font-size:23px; line-height:1.15; color:#ffe; min-width:40px; font-weight:bold;',
+    '}',
+    '.fold16-speed .f16-speed-ms { font-size:9px; color:#a87; }',
     '.fold16-speed .f16-speed-btn {',
-    '  cursor:pointer; padding:2px 7px; border-radius:3px; color:#ffd;',
+    '  cursor:pointer; padding:1px 7px; border-radius:3px; color:#ffd; font-size:14px;',
     '  background:rgba(255,160,0,0.16);',
     '}',
     '.fold16-speed .f16-speed-btn:hover { background:rgba(255,160,0,0.38); }',
