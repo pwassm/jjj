@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// 16F — THE FOLD GRID  (dev0820, animation rebuilt dev0822)
+// 16F — THE FOLD GRID  (dev0820, animation rebuilt dev0822, dev0824)
 // ══════════════════════════════════════════════════════════════════════════════
 //
 // A paper-fortune-teller grid. Ten cells sit on a 4×4 footprint in a staircase
@@ -37,16 +37,24 @@
 //     a whole and comes down flat on the landing square — face DOWN, which is
 //     why what you end up looking at is 1a's BACK;
 //   • the two SIDE cells (1b, 2a) are cut in half by the crease, so each folds
-//     in half along its own / diagonal — half stays put, half turns over and
-//     shows blank paper;
-//   • that leaves two triangles poking out past the landing square, which then
-//     TUCK under it (the short second beat) to leave a clean single square.
+//     in half along its own / diagonal — half stays put, half turns over.
 //
-// The whole first beat is one shared angle θ sweeping 0°→180°, driven from a
-// rAF loop rather than CSS transitions so every piece stays on the same crease
-// frame by frame. The back face rides the same sweep from the other side: it is
-// backface-hidden, so it appears at 90° edge-on and flattens out to face-up at
-// 180° — the new picture opening rather than popping in.
+// One shared angle θ sweeps 0°→180°, driven from a rAF loop rather than CSS
+// transitions so every piece stays on the same crease frame by frame. The back
+// face rides that sweep from the other side: it is backface-hidden, so it appears
+// at 90° edge-on and flattens out to face-up at 180° — the new picture opening
+// rather than popping in. The easing is deliberately SLOWEST in the middle, where
+// the crease stands up and the raised paper is seen at an angle.
+//
+// (dev0824) Two things this must never show, both learned the hard way:
+//   • no blank paper. The reverse of a folding half is the cell's own picture,
+//     dimmed — not a manila panel, which put yellow-orange triangles on screen.
+//   • no holes. A lifting flap leaves bare grid background behind it, which reads
+//     as a hard-edged navy triangle; instead the cell stays whole underneath and
+//     DISSOLVES, so no cut edge is ever visible.
+// There is also no second "tuck" beat any more: the resting state already hides
+// all four cells and shows only the back face, so tucking the leftover triangles
+// under was half a second of large shapes moving after the fold had finished.
 //
 // This only works if the cells are SQUARE. A 180° turn about a rectangle's
 // corner-to-corner diagonal does NOT land the diagonal cell on the landing cell
@@ -137,7 +145,7 @@ const FOLD16_BACK_KEYS = FOLD16_BLOCKS.map(b => b.back);
 var _fold16 = { A: false, B: false, C: false };
 
 const _F16_MS = 620;      // the crease sweep, 0° → 180°
-const _F16_TUCK_MS = 240; // the two leftover triangles folding under
+const _F16_TUCK_MS = 240; // (dev0824) folded into the single sweep above
 var _fold16Busy = false;  // one fold at a time; clicks are swallowed mid-fold
 
 function _fold16Block(id) { return FOLD16_BLOCKS.find(b => b.id === id) || null; }
@@ -234,7 +242,7 @@ function _fold16Render(container) {
   container.style.perspective = '1400px';
   _f16InjectCSS();
   _fold16ApplyTemplate(container);
-  container.querySelectorAll('.fold16-circle, .fold16-paper, .fold16-mover').forEach(el => el.remove());
+  container.querySelectorAll('.fold16-circle, .fold16-mover, .fold16-ghost').forEach(el => el.remove());
 
   const vis = _fold16Visible();
   for (const spec of _fold16CellList()) {
@@ -342,6 +350,16 @@ function _f16WireContainer(container) {
     e.preventDefault(); e.stopPropagation();
     _fold16Toggle(hit);
   }, true);
+  // (dev0824) …and the OTHER double-tap path. grid.js cannot rely on dblclick —
+  // its cells preventDefault on pointerdown, which suppresses the browser's
+  // synthesized dblclick — so it detects double-taps itself from two pointerups
+  // inside 400ms. That never produces a dblclick event, so the handler above
+  // cannot see it, and a near-miss on a circle was still reaching the cell and
+  // opening the text editor. Record where the last release landed; _runDoubleTapAction
+  // asks _fold16ClaimDoubleTap() about it before doing anything else.
+  container.addEventListener('pointerup', e => {
+    _f16LastPt = { x: e.clientX, y: e.clientY };
+  }, true);
   // (dev0823) The square footprint and the circle positions are both measured, so
   // re-measure when the window changes shape. Guarded on the layout still being
   // 16F — _fold16Render on anything else would paint circles onto a normal grid.
@@ -351,6 +369,24 @@ function _f16WireContainer(container) {
     const c = document.getElementById('gridContainer');
     if (c && c.offsetWidth) _fold16Render(c);
   });
+}
+
+// (dev0824) Where the last pointer release landed inside the grid, for the
+// pointerup-based double-tap path above.
+var _f16LastPt = null;
+
+// Does the fold grid want this double-tap? Called first thing in grid.js's shared
+// _runDoubleTapAction. Returns true when the tap has been handled (or should be
+// thrown away) and the caller must not fall through to the editor routes.
+function _fold16ClaimDoubleTap() {
+  if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== FOLD16_LAYOUT) return false;
+  if (_fold16Busy) return true;              // mid-fold: swallow, never edit
+  const container = document.getElementById('gridContainer');
+  if (!container || !_f16LastPt) return false;
+  const hit = _f16CircleAt(container, _f16LastPt.x, _f16LastPt.y);
+  if (!hit) return false;
+  _fold16Toggle(hit);
+  return true;
 }
 
 // Block id whose circle is within a forgiving radius of this point, else null.
@@ -378,28 +414,48 @@ function _fold16Toggle(id) {
 
 function _f16Ease(p) { return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2; }
 
-function _f16Animate(dur, onFrame, onDone) {
+// (dev0824) The fold's own easing: quick off the flat, SLOW through the middle,
+// quick down onto the landing square. The middle is where the crease stands up
+// and the raised paper is seen edge-on at an angle — the part worth watching —
+// and an ordinary ease-in-out is at its fastest exactly there. Derivative is
+// 1 + a·cos(2πp): 1.75 at each end, 0.25 at the halfway point.
+function _f16EaseFold(p) { return p + 0.75 * Math.sin(2 * Math.PI * p) / (2 * Math.PI); }
+
+function _f16Animate(dur, onFrame, onDone, ease) {
+  const fn = ease || _f16Ease;
   const t0 = performance.now();
   (function step(now) {
     const p = Math.min(1, (now - t0) / dur);
-    onFrame(_f16Ease(p));
+    onFrame(fn(p));
     if (p < 1) requestAnimationFrame(step);
     else if (onDone) onDone();
   })(performance.now());
 }
 
-// A blank manila triangle standing in for the reverse of a half-square, so the
-// side flaps show paper once they pass edge-on instead of blinking out.
-function _f16Paper(srcEl, clip, origin, deg) {
-  const p = document.createElement('div');
-  p.className = 'fold16-paper';
-  p.style.gridRow = srcEl.style.gridRow;
-  p.style.gridColumn = srcEl.style.gridColumn;
-  p.style.clipPath = clip;
-  p.style.webkitClipPath = clip;
-  p.style.transformOrigin = origin;
-  p.style.transform = _f16Rot(deg);
+// (dev0824) The REVERSE of a folding half. This used to be a blank manila panel,
+// which is what put yellow-orange triangles across the grid — nothing on this
+// screen should be a flat sheet of paper colour. It is now the cell's own picture
+// again, dimmed: past 90° you see the same image darkened, the way paper reads
+// when the light is behind it. Rides 180° ahead of the front half, so it takes
+// over exactly as the front turns edge-on.
+function _f16Back(srcEl, clip, origin, deg) {
+  const p = _f16Mover(srcEl, clip, origin, deg);
+  p.classList.add('fold16-reverse');
   return p;
+}
+
+// (dev0824) A still copy left behind where a folding piece used to be, fading out
+// as the fold proceeds. Paper lifting off a table really does leave a hole, but a
+// hard-edged hole here is a navy triangle of grid background — the blue the fold
+// was showing. Dissolving the picture instead reads as the paper coming away and
+// leaves no cut edge anywhere.
+function _f16Ghost(srcEl) {
+  const gh = _f16Mover(srcEl, '', '50% 50%', 0);
+  gh.classList.add('fold16-ghost');
+  gh.style.transform = '';
+  gh.style.backfaceVisibility = '';
+  gh.style.zIndex = '55';
+  return gh;
 }
 
 // A live copy of a cell clipped to one half. Iframes and videos are stripped —
@@ -462,20 +518,32 @@ function _fold16Run(container, b, folding) {
   }
   if (land) land.style.display = '';
 
-  // Each side cell is cut in half by the crease: the static half stays on the
-  // real cell, the moving half is a clipped clone (plus its paper reverse).
-  const movers = [], papers = [];
+  // (dev0824) Each side cell is creased corner to corner. The half beyond the
+  // crease lifts — a clipped clone, with its dimmed reverse riding behind it —
+  // while the cell itself stays WHOLE underneath as a ghost that fades out. The
+  // old version clipped the real cell down to its static half, so the moment the
+  // flap rose you were looking at bare grid background through a triangular hole:
+  // that is where the blue came from. Nothing is cut away now; it dissolves.
+  const movers = [], backs = [], ghosts = [];
   for (const s of sides) {
     s.el.style.display = '';
-    s.el.style.clipPath = g.staticClip;
-    s.el.style.webkitClipPath = g.staticClip;
-    s.el.style.transformOrigin = s.tuck.o;
-    s.el.style.zIndex = '60';           // under the landing square, ready to tuck
+    s.el.style.clipPath = '';
+    s.el.style.webkitClipPath = '';
+    s.el.style.transform = '';
+    s.el.style.zIndex = '55';
     const m = _f16Mover(s.el, g.movingClip, '50% 50%', folding ? 0 : sgn * 180);
-    const p = _f16Paper(s.el, g.movingClip, '50% 50%', folding ? sgn * 180 : sgn * 360);
+    const p = _f16Back(s.el, g.movingClip, '50% 50%', folding ? sgn * 180 : sgn * 360);
     m.style.zIndex = '71'; p.style.zIndex = '70';
     container.appendChild(m); container.appendChild(p);
-    movers.push(m); papers.push(p);
+    movers.push(m); backs.push(p);
+    ghosts.push(s.el);
+  }
+  // The corner square turns away bodily, so its footprint needs a ghost of its
+  // own — otherwise the one square that travels furthest leaves the largest hole.
+  if (diag) {
+    const gh = _f16Ghost(diag);
+    container.appendChild(gh);
+    ghosts.push(gh);
   }
 
   const sweep = t => {                   // t = 0 (flat) … 1 (folded)
@@ -483,31 +551,36 @@ function _fold16Run(container, b, folding) {
     if (diag) diag.style.transform = _f16Rot(sgn * th);
     if (back) back.style.transform = _f16Rot(sgn * (th - 180));
     movers.forEach(m => m.style.transform = _f16Rot(sgn * th));
-    papers.forEach(p => p.style.transform = _f16Rot(sgn * (th + 180)));
-  };
-  const tuck = t => {                    // t = 0 (flat) … 1 (tucked under)
-    sides.forEach(s => { s.el.style.transform = s.tuck.t(180 * t); });
+    backs.forEach(p => p.style.transform = _f16Rot(sgn * (th + 180)));
+    // Everything left behind dissolves over the first two thirds, so the picture
+    // is gone before the corner square lands on top of where it used to be.
+    const fade = Math.max(0, 1 - t / 0.66);
+    ghosts.forEach(el => { el.style.opacity = String(fade); });
   };
 
   const finish = () => {
     movers.forEach(m => m.remove());
-    papers.forEach(p => p.remove());
+    backs.forEach(p => p.remove());
+    ghosts.forEach(el => { el.style.opacity = ''; });
+    if (diag) { const gh = container.querySelector('.fold16-ghost'); if (gh) gh.remove(); }
+    container.querySelectorAll('.fold16-ghost').forEach(el => el.remove());
     _fold16[b.id] = folding;
     _fold16Render(container);
     _fold16Busy = false;
     if (folding && typeof _gridToast === 'function') _gridToast(b.diag + ' back', 1100);
   };
 
+  // (dev0824) One continuous turn, no second beat. The old tuck-the-ears stage
+  // existed to make the folded footprint exactly one square, but the resting
+  // state already does that — _fold16Visible hides all four cells and shows only
+  // the back face — so all the tuck ever did was rotate two big half-squares
+  // across the grid after the fold had visually finished.
   if (folding) {
-    sweep(0); tuck(0);
-    _f16Animate(_F16_MS, sweep, () => {
-      _f16Animate(_F16_TUCK_MS, tuck, finish);
-    });
+    sweep(0);
+    _f16Animate(_F16_MS + _F16_TUCK_MS, sweep, finish, _f16EaseFold);
   } else {
-    sweep(1); tuck(1);
-    _f16Animate(_F16_TUCK_MS, t => tuck(1 - t), () => {
-      _f16Animate(_F16_MS, t => sweep(1 - t), finish);
-    });
+    sweep(1);
+    _f16Animate(_F16_MS + _F16_TUCK_MS, t => sweep(1 - t), finish, _f16EaseFold);
   }
 }
 
@@ -536,13 +609,13 @@ function _f16InjectCSS() {
     '.fold16-circle:hover { transform:scale(1.16); border-color:#fff; }',
     '.fold16-circle.f16-folded { border-color:rgba(255,190,90,0.95);',
     '  background:radial-gradient(circle at 38% 34%, rgba(255,214,140,0.5), rgba(60,30,0,0.62)); }',
-    '.fold16-paper, .fold16-mover { pointer-events:none; }',
-    '.fold16-paper {',
-    '  position:relative;',
-    '  background:linear-gradient(140deg,#f2c25c 0%,#e0a63c 52%,#c8892a 100%);',
-    '  box-shadow:inset 0 0 0 1px rgba(90,55,0,0.35);',
-    '  backface-visibility:hidden; -webkit-backface-visibility:hidden;',
-    '}'
+    '.fold16-mover { pointer-events:none; }',
+    // (dev0824) The reverse of a folding half — the same picture, darkened, so
+    // the flap keeps showing content past edge-on instead of turning into a
+    // sheet of blank colour. brightness alone, no tint: a colour cast here is
+    // how the manila crept back in.
+    '.fold16-reverse { filter:brightness(0.42); }',
+    '.fold16-ghost { pointer-events:none; }'
   ].join('\n');
   document.head.appendChild(s);
 }
@@ -556,4 +629,5 @@ window._fold16BackBlock = _fold16BackBlock;
 window._fold16Render = _fold16Render;
 window._fold16Reset = _fold16Reset;
 window._fold16Toggle = _fold16Toggle;
+window._fold16ClaimDoubleTap = _fold16ClaimDoubleTap;
 window._fold16ApplyTemplate = _fold16ApplyTemplate;

@@ -3451,6 +3451,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
       if (typeof _fold16Toggle === 'function') _fold16Toggle(cellEl.dataset.fold16Back);
       return;
     }
+    // (dev0824) …and a double-tap that landed NEAR a fold circle rather than on
+    // it. This path is the manual pointerup detector, which never fires a dblclick
+    // event, so fold16's own container listener cannot see it — ask directly, or
+    // a near-miss on a circle opens the editor instead of folding.
+    if (typeof _fold16ClaimDoubleTap === 'function' && _fold16ClaimDoubleTap()) return;
     if (userMode) return; // dev-only path; user mode never edits from G
     const row = cellEl._rowData;
     if (row) {
