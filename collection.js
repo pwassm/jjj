@@ -109,9 +109,11 @@ async function gridSaveToFile(gname) {
   // (dev0502) Portrait grids (P3/P12/P27) save with their real cell count (3/12/27)
   // so C reload restores the rectangle, not a square footprint.
   const layout = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
-  // (dev0820) …and 16F saves the STRING '16F', not a count — a bare 16 is already
-  // "square 4×4" on the way back in. _gridLayoutCellsVal is the one place that
-  // decides; everything else still reads a plain number.
+  // (dev0846) Always a plain count. (dev0820) 16F used to save the STRING '16F'
+  // here rather than a number, because a bare 16 is already "square 4×4" on the
+  // way back in — retired with the layout itself, since the fold is a mode now
+  // and a save during one saves the grid it is wearing. _gridLayoutCellsVal is
+  // still the one place that decides; everything reads a plain number.
   const cellsVal = (typeof _gridLayoutCellsVal === 'function') ? _gridLayoutCellsVal(layout, gsize)
     : (typeof _gridLayoutCount === 'function') ? _gridLayoutCount(layout, gsize)
     : (layout === '17' ? 17 : layout === '19' ? 19 : gsize * gsize);

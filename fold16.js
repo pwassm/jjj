@@ -119,9 +119,15 @@ const FOLD16_BACK_KEYS = FOLD16_BLOCKS.map(b => b.back);
 // ══════════════════════════════════════════════════════════════════════════════
 // (dev0844) FOLD MODE — the fold worn by an ORDINARY grid
 // ══════════════════════════════════════════════════════════════════════════════
-// Everything above is 16F the saved LAYOUT: a c.json config whose `cells` is the
-// string '16F', built as a fold from the start. Fold MODE lends the same
-// machinery to a grid that was never saved that way — Modes menu → D on any
+// Everything above WAS 16F the saved LAYOUT: a c.json config whose `cells` was
+// the string '16F', built as a fold from the start. (dev0846) THAT IS RETIRED —
+// the fold is a mode, so it is no longer also a shape you can build a grid AS.
+// T's Mark-Grid chooser has lost its "13 ⧉" chip, C can no longer resolve the
+// token, and _gridConfigLayout reads a leftover one as the plain square the
+// config actually is. Every line of geometry above is still live; it is simply
+// only ever reached through the MODE now.
+//
+// Fold MODE lends the same machinery to any ordinary grid — Modes menu → D on any
 // square 4×4 or larger, and the cells already on screen re-lay themselves into
 // the staircase and fold exactly as a real 16F does — click a circle and four
 // squares collapse into one. D again (or R, or the ✕) puts the grid back the
@@ -159,8 +165,9 @@ function _fold16ModeOn() { return _f16Mode; }
 // middle into one big cell and the portrait grids are rectangles, so 2b-4d are
 // not there to be folded. 3×3 and smaller simply have too few cells.
 function _fold16ModeEligible() {
-  if (_gridSource === 'C' && typeof _gridCurrentLayout === 'function'
-      && _gridCurrentLayout() === FOLD16_LAYOUT) return false;   // already a real 16F
+  // (dev0846) The "is this already a saved 16F?" test that used to sit here went
+  // with the layout itself — no config resolves to '16F' any more, so the fold is
+  // only ever the mode.
   const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
   if (lay !== 'square') return false;
   return (typeof _gridGsize === 'number') && _gridGsize >= 4;
@@ -168,8 +175,6 @@ function _fold16ModeEligible() {
 
 // Why this grid can't fold — said in the reader's terms, not the layout's.
 function _fold16ModeRefusal() {
-  if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() === FOLD16_LAYOUT)
-    return 'This grid IS the fold grid — double-click a circle';
   const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
   if (lay !== 'square')
     return 'Fold needs a plain square grid — the 17 / 19 and portrait layouts have no 4×4 to fold';
@@ -739,7 +744,31 @@ function _f16Animate(dur, onFrame, onDone, ease) {
 // structural copy taken moments earlier.
 const _F16_YT = /(?:youtube(?:-nocookie)?\.com\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/;
 
+// (dev0846) THE APP'S OWN CHROME DOES NOT GO INTO THE FOLD.
+//
+// Reported as "an occasional purple cast as it unfolds", and it is these:
+//
+//   .grid-ftext-label   the headline a link cell paints over its montage. Its
+//                       colour is hsl(random, 100%, 70%) — a fresh hue per cell
+//                       (grid.js _buildFtextImgCell) — so roughly one cell in
+//                       twelve draws it in bright violet, three lines deep and
+//                       nearly the full width of the cell.
+//   .grid-embed-armed   the "▶ play" lamp, which on an Instagram cell is that
+//                       provider's own purple gradient (#833ab4 → #fd1d1d).
+//   .grid-embed-new     the ↻ chip beside it.
+//
+// Flat, they are legible things. Clipped to a triangle and pushed through an
+// affine matrix they stop being text and become a smear of one saturated
+// colour across the paper — which is what "a cast" is. Nothing is lost by
+// dropping them: they are the app talking about the cell, not the picture, and
+// they are back the instant the fold lands.
+//
+// Same reasoning as the iframes and videos below, one step further: the mover
+// carries what the cell SHOWS, not what the app draws on top of it.
+const _F16_CHROME = '.grid-ftext-label, .grid-embed-armed, .grid-embed-new';
+
 function _f16Freeze(clone, src) {
+  clone.querySelectorAll(_F16_CHROME).forEach(el => el.remove());
   const cv = clone.querySelectorAll('video'), sv = src.querySelectorAll('video');
   for (let i = 0; i < cv.length; i++) {
     const s = sv[i], c = cv[i];
@@ -1105,13 +1134,18 @@ function _f16InjectCSS() {
     '  background:rgba(255,160,0,0.16);',
     '}',
     '.fold16-speed .f16-speed-btn:hover { background:rgba(255,160,0,0.38); }',
-    '.fold16-mover { pointer-events:none; }',
+    // (dev0846) Greyscale antialiasing on anything that moves. Subpixel AA is
+    // computed for an untransformed glyph; skew it and the R/G/B samples come
+    // apart into colour fringes — magenta on one edge, green on the other — which
+    // is the other way a fold can pick up a tint it was never given.
+    '.fold16-mover { pointer-events:none; -webkit-font-smoothing:antialiased;',
+    '  -moz-osx-font-smoothing:grayscale; isolation:isolate; }',
     // (dev0824) The reverse of a folding half — the same picture, darkened, so
     // the flap keeps showing content past edge-on instead of turning into a
     // sheet of blank colour. brightness alone, no tint: a colour cast here is
     // how the manila crept back in.
     '.fold16-reverse { filter:brightness(0.42); }',
-    '.fold16-ghost { pointer-events:none; }'
+    '.fold16-ghost { pointer-events:none; -webkit-font-smoothing:antialiased; }'
   ].join('\n');
   document.head.appendChild(s);
 }

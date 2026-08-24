@@ -124,22 +124,26 @@ function _gridLayoutCount(layout, gsize) {
   if (layout === '17') return 17;
   if (layout === '19') return 19;
   // (dev0820) 16F = ten staircase cells + the three back faces they fold to.
+  // (dev0846) Reached only through _gridRenderLayout now — i.e. only while fold
+  // MODE is on — since no saved config resolves to '16F' any more.
   if (layout === '16F') return 13;
   const pd = _gridPortraitDims(layout);
   if (pd) return pd.rows * pd.cols;
   return gsize * gsize;
 }
-// (dev0820) What goes in a saved config's `cells` field. Everywhere else a count
-// is a number, but 16F has to be a STRING — a bare 16 already means "square 4×4",
-// so _gridConfigLayout could never tell the two apart.
+// What goes in a saved config's `cells` field — always a plain count.
+// (dev0820) 16F used to save the STRING '16F' here, because a bare 16 already
+// means "square 4×4" and _gridConfigLayout could not tell the two apart.
+// (dev0846) THAT IS RETIRED: the fold is a MODE now, worn by an ordinary grid
+// and never written down. A save during a fold saves the grid it is WEARING,
+// which is why gridSaveToFile asks _gridCurrentLayout, not _gridRenderLayout.
 function _gridLayoutCellsVal(layout, gsize) {
-  if (layout === '16F') return '16F';
   return _gridLayoutCount(layout, gsize);
 }
 // Short human label for the grid-info bar / C status line.
 function _gridLayoutLabel(layout, gsize) {
   if (layout === 'square') return gsize + '×' + gsize;
-  if (layout === '16F') return '⧉ 16F fold';
+  if (layout === '16F') return '⧉ folded';   // (dev0846) a mode, not a saved layout
   const pd = _gridPortraitDims(layout);
   if (pd) return '▯ ' + pd.rows + '×' + pd.cols + ' portrait';
   return 'layout ' + layout;
@@ -148,9 +152,14 @@ function _gridLayoutLabel(layout, gsize) {
 // (dev0502) Derive a saved config's {layout, gsize} from its `cells` value. The
 // gsize is the square footprint (5 for the specials/portrait, which ignore it).
 function _gridConfigLayout(cfg) {
-  // (dev0820) The fold grid's `cells` is the string '16F' — test it BEFORE the
-  // parseInt below, which would read it as a plain 16 and hand back a 4×4 square.
-  if (cfg && String(cfg.cells) === '16F') return { layout: '16F', gsize: 4 };
+  // (dev0846) A LEGACY `cells: '16F'` IS NOT A LAYOUT ANY MORE. The fold became a
+  // MODE that any square 4×4-or-bigger can wear (Modes → D), so no config
+  // describes itself as a fold. The two that already did — HermitCrabAndPix_d and
+  // BoxerCrabsVideos25_d — are full 5×5 configs (1a-5e, and no 1aB/3cB/4dB back
+  // faces at all), so reading the token as "a 5×5" is not a downgrade: it is what
+  // they actually are. Press D on either and it folds, taking its backs from
+  // 1c / 1d / 2d like every other grid. c.json is left alone, nothing rewritten.
+  if (cfg && String(cfg.cells) === '16F') return { layout: 'square', gsize: 5 };
   const cn = parseInt(cfg && cfg.cells, 10);
   if (cn === 17) return { layout: '17', gsize: 5 };
   if (cn === 19) return { layout: '19', gsize: 5 };
@@ -177,8 +186,10 @@ function _gridApplyConfigToRows(cfg, rows) {
 
 function _gridCurrentLayout() {
   if (_gridSource === 'C' && _gridActiveConfig) {
-    // (dev0820) String token — must beat the parseInt (see _gridConfigLayout).
-    if (String(_gridActiveConfig.cells) === '16F') return '16F';
+    // (dev0846) A leftover '16F' token now falls through to the parseInt below,
+    // which reads it as 16 and matches nothing — so the layout is 'square', which
+    // is right. _gridConfigLayout has already given those two configs their gsize
+    // of 5 on the way in. See the note there.
     const cn = parseInt(_gridActiveConfig.cells, 10);
     if (cn === 17) return '17';
     if (cn === 19) return '19';
@@ -2299,6 +2310,11 @@ function _buildFtextImgCell(cell, row) {
     _gridApplyZoomToCell(cell);   // (dev0347) apply saved zoom (montage builds async)
     if (firstLine) {
       const lbl = document.createElement('div');
+      // (dev0846) Named so the fold can leave it behind — see _f16Freeze. Its
+      // colour is a fresh random hue per cell (above), and a big block of one
+      // saturated colour is exactly what turns into a wash when a folding
+      // triangle skews it. Purple was the hue that got noticed.
+      lbl.className = 'grid-ftext-label';
       lbl.style.cssText = 'position:absolute;top:10%;left:5%;right:5%;'
         + 'color:' + overlayColor + ';font-size:15px;font-weight:900;'
         + 'text-align:center;pointer-events:none;z-index:2;'

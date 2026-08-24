@@ -192,7 +192,7 @@ function hpState() {
     // (dev0705 → dev0844) M raises the MODES card, which answers the mode questions
     // itself — H over it is a reader asking about the card, not about the grid.
     funPanel:  probe(function () { return !!(window._gmModesOpen && window._gmModesOpen()); }, false),
-    // (dev0844) Fold mode — a plain square grid wearing the 16F fold.
+    // (dev0844) Fold mode — a plain square grid wearing the fold.
     fold:      probe(function () { return !!(window._gmFoldOn && window._gmFoldOn()); }, false),
     conveyor:  probe(function () {
       return !!((window.MovingCells && window.MovingCells.running)
