@@ -1208,11 +1208,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 #igModal button.primary{background:#0a84ff;border-color:#0a84ff;color:#fff}
 /* (dev0500) Moveable PORTRAIT media-preview window — plays the focused row's
    downloaded ig_media asset. Same idea/size as the T-screen row-preview pane
-   (core.js) but portrait (IG = 9:16). Drag it by its title bar. z above the
-   table/drawer, below the toasts (40000+). */
-#igPreview{position:fixed;width:320px;z-index:100;background:#000;border:1px solid #4df;
+   (core.js) but portrait (IG = 9:16). Drag it by its title bar, resize it by the
+   bottom-right grip; both are remembered. z above the table/drawer, below the
+   toasts (40000+). */
+#igPreview{position:fixed;width:320px;height:504px;z-index:100;background:#000;border:1px solid #4df;
   border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.78);overflow:hidden;
-  display:flex;flex-direction:column}
+  display:flex;flex-direction:column;
+  /* (dev0834) Native corner grip. CSS resize needs a non-visible overflow, which the
+     rounded shell already has. Size + position are remembered in localStorage. */
+  resize:both;min-width:200px;min-height:180px;max-width:98vw;max-height:98vh}
 #igPvBar{display:flex;align-items:center;gap:6px;padding:4px 6px;background:#0a1426;
   border-bottom:1px solid #1a2a4a;cursor:move;user-select:none;flex:0 0 auto;touch-action:none}
 #igPvNav{display:flex;align-items:center;gap:2px}
@@ -1223,9 +1227,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 #igPvTitle{flex:1;font:12px system-ui;color:#bcd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #igPvClose{background:none;border:0;color:#9aa;font-size:18px;line-height:1;cursor:pointer;padding:0 4px}
 #igPvClose:hover{color:#fff}
-#igPvBody{position:relative;width:320px;height:470px;background:#000;flex:0 0 auto;
+/* (dev0834) Fills whatever is left after the title bar, so dragging the grip
+   resizes the MEDIA and not just the frame around it. */
+#igPvBody{position:relative;flex:1 1 auto;min-height:0;background:#000;
   display:flex;align-items:center;justify-content:center;overflow:hidden}
-#igPvBody video,#igPvBody img{display:block;width:100%;height:100%;object-fit:contain;background:#000}
+/* Absolute rather than height:100% — a percentage height inside a flex item is
+   the one thing that quietly collapses when the parent's height becomes derived. */
+#igPvBody video,#igPvBody img{display:block;position:absolute;inset:0;width:100%;height:100%;
+  object-fit:contain;background:#000}
 #igPvBody .igPvPlace{color:#8a96a3;font:13px/1.5 system-ui;text-align:center;padding:24px}
 #igPvBody .igPvPlace span{color:#5a6573;font-size:11px}
 /* (dev0517) Auto-enrich panel — floating, top-right under the toolbar. */
@@ -1980,6 +1989,38 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // ?img_index=N is remembered (r.imgIndex) and surfaced; for index-1 the 📸 Cover-only
   // download mode grabs just that image. A URL already in ig.json isn't duplicated —
   // its existing row is selected instead.
+  // (dev0834) 'w' ALWAYS ends in a download — grabbing the post is the whole point
+  // of the key, and "press E to enrich, D to download" was two extra keypresses and
+  // a confirm dialog standing in front of the only thing anyone ever does next.
+  //
+  // downloadRow(r, false) is the BATCH-mode call: silent by construction (every
+  // igToast inside it is gated on the `single` argument) and it enriches first by
+  // itself whenever the filename metadata is missing. So there is nothing to add
+  // here but the bookkeeping a batch would otherwise have done — the .proc row
+  // highlight while it works, and the render + persist afterwards.
+  //
+  // Flip to false to go back to add-only.
+  const W_AUTO_DOWNLOAD = true;
+
+  async function wAutoDownload(r) {
+    if (!W_AUTO_DOWNLOAD || !r) return;
+    // A batch owns the proxy and the pacing while it runs; an unpaced download
+    // beside it is exactly what Instagram's rate limiter is watching for.
+    if (busy) { igToast('➕ ' + r.id + ' added — a batch is running, so it was not downloaded yet.\nPress d when the batch finishes.', 4200); return; }
+    busy = true; processingId = r.id; renderBody();
+    let ok = false;
+    try { ok = await downloadRow(r, false); }
+    catch (e) { ok = false; lastOpError = (e && e.message) || String(e); }
+    processingId = null; busy = false;
+    applyAndRender();
+    try { await persist(false); } catch (_) {}
+    // Silent on success, deliberately: the row is right there, its status cell now
+    // reads 'downloaded', and Ctrl+I plays it. A FAILURE still speaks, because it is
+    // the one outcome you cannot read off the row at a glance.
+    if (!ok) igToast('✗ ' + r.id + ' was added, but the download failed:\n'
+      + (lastOpError || 'unknown error') + '\nThe row is still checked — press d to retry it.', 5200);
+  }
+
   async function addUnharvestedFromClipboard() {
     let text = '';
     try { text = ((await navigator.clipboard.readText()) || '').trim(); }
@@ -2006,8 +2047,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       refreshAuthorOptions(); applyAndRender();
       focusId = existing.id; sel.clear(); sel.add(existing.id);
       applyAndRender(); applyFocusHighlight(existing.id);
+      // (dev0834) Already here, but not yet on disk → that is still a download you
+      // wanted, so do it rather than report a no-op you would only have to act on.
+      if (!isDownloadDone(existing)) { await wAutoDownload(existing); return; }
       igToast('• ' + id + ' is already in ig.json (@' + (existing.author || '?')
-        + ' · ' + (existing.status || 'new') + ') — selected it, not duplicated', 4600);
+        + ' · ' + (existing.status || 'new') + ') and already downloaded — selected it, not duplicated', 4600);
       return;
     }
     const author = _igAuthorFromUrl(url);
@@ -2024,10 +2068,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     focusId = id; sel.clear(); sel.add(id);
     applyAndRender(); applyFocusHighlight(id);
     await persist(false);
-    igToast('➕ Unharvested single added → ' + id
-      + (author ? ' · @' + author : ' · author fills on Enrich')
-      + (imgIndex ? ' · img_index ' + imgIndex + (imgIndex === 1 ? ' (📸 Cover-only grabs just it)' : '') : '')
-      + '\nstatus new — press E to enrich, D to download', 6000);
+    await wAutoDownload(r);
   }
   // Silent variants of the status/source filters (no toast) for the 'w' add path.
   function setStatusFilterSilent(val) {
@@ -4405,8 +4446,39 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   let pvOpen = false;        // preview window mounted
   let pvRowId = null;        // row id currently shown
   let pvIdx = 0;             // carousel index into the row's localFiles
-  let pvPos = null;          // {left,top} remembered across toggles + moves
   let pvDrag = null;         // active drag offset
+  // (dev0834) Position AND size, remembered across reloads rather than only across
+  // toggles. Kept as one box because restoring them separately can't be clamped
+  // coherently — a remembered size decides whether a remembered corner is on-screen.
+  const PV_BOX_KEY = 'slam-ig-preview';
+  const PV_MIN_W = 200, PV_MIN_H = 180;
+  const PV_DEF_BOX = { left: 24, top: 84, w: 320, h: 504 };
+  let pvBox = null;          // {left,top,w,h}
+  let pvSaveT = null;        // debounce for the resize observer
+  let pvRO = null;           // ResizeObserver watching the grip
+
+  function pvBoxLoad() {
+    if (pvBox) return pvBox;
+    try {
+      const j = JSON.parse(localStorage.getItem(PV_BOX_KEY) || 'null');
+      if (j && Number.isFinite(j.left) && Number.isFinite(j.top)) pvBox = j;
+    } catch (_) {}
+    return pvBox;
+  }
+  function pvBoxSave() {
+    if (!pvBox) return;
+    try { localStorage.setItem(PV_BOX_KEY, JSON.stringify(pvBox)); } catch (_) {}
+  }
+  // A remembered box must survive the screen changing under it: a window sized and
+  // placed on a big monitor has to reopen somewhere reachable on a laptop panel,
+  // not two thirds off the right edge.
+  function pvBoxClamp(b) {
+    const w = Math.max(PV_MIN_W, Math.min(b.w || PV_DEF_BOX.w, window.innerWidth - 4));
+    const h = Math.max(PV_MIN_H, Math.min(b.h || PV_DEF_BOX.h, window.innerHeight - 4));
+    return { w, h,
+      left: Math.max(2, Math.min(window.innerWidth - w - 2, b.left)),
+      top:  Math.max(2, Math.min(window.innerHeight - h - 2, b.top)) };
+  }
 
   function igPreviewBuild() {
     if (document.getElementById('igPreview')) return;
@@ -4419,10 +4491,22 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + '<button id="igPvClose" title="Close (Ctrl+I or Esc)">×</button>'
       + '</div>'
       + '<div id="igPvBody"></div>';
-    const pos = pvPos || { left: 24, top: 84 };
-    el.style.left = pos.left + 'px';
-    el.style.top = pos.top + 'px';
+    pvBox = pvBoxClamp(pvBoxLoad() || PV_DEF_BOX);
+    el.style.left = pvBox.left + 'px';
+    el.style.top = pvBox.top + 'px';
+    el.style.width = pvBox.w + 'px';
+    el.style.height = pvBox.h + 'px';
     (document.getElementById('igOverlay') || document.body).appendChild(el);
+    // The native grip fires no event of its own, so watch the box. Debounced:
+    // dragging a corner would otherwise be sixty localStorage writes a second.
+    try {
+      pvRO = new ResizeObserver(() => {
+        if (!pvBox) return;
+        pvBox.w = el.offsetWidth; pvBox.h = el.offsetHeight;
+        clearTimeout(pvSaveT); pvSaveT = setTimeout(pvBoxSave, 250);
+      });
+      pvRO.observe(el);
+    } catch (_) {}
     el.querySelector('#igPvClose').addEventListener('click', igPreviewClose);
     el.querySelector('#igPvNav').addEventListener('click', e => {
       const d = e.target.closest('button')?.dataset.d;
@@ -4519,6 +4603,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
   function igPreviewClose() {
     const el = document.getElementById('igPreview');
+    if (pvRO) { try { pvRO.disconnect(); } catch (_) {} pvRO = null; }
+    clearTimeout(pvSaveT); pvSaveT = null; pvBoxSave();   // don't lose a resize made a moment ago
     if (el) {
       const v = el.querySelector('video');
       if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (_) {} }
@@ -4528,7 +4614,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   }
 
   // Drag by the title bar (pointer events → preview-verifiable, mirrors the rest
-  // of the app). Position is clamped on-screen and remembered in pvPos so a
+  // of the app). Position is clamped on-screen and remembered in pvBox so a
   // re-opened window stays where you left it.
   function pvDragStart(e) {
     if (e.target.closest('button')) return;       // don't drag when hitting ×/‹/›
@@ -4547,10 +4633,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let left = Math.max(2, Math.min(window.innerWidth - w - 2, e.clientX - pvDrag.dx));
     let top = Math.max(2, Math.min(window.innerHeight - h - 2, e.clientY - pvDrag.dy));
     el.style.left = left + 'px'; el.style.top = top + 'px';
-    pvPos = { left, top };
+    pvBox = { left, top, w, h };
   }
   function pvDragEnd(e) {
     pvDrag = null;
+    pvBoxSave();
     const el = document.getElementById('igPreview'); if (!el) return;
     try { el.releasePointerCapture(e.pointerId); } catch (_) {}
     el.removeEventListener('pointermove', pvDragMove);
