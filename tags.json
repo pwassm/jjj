@@ -7882,5 +7882,86 @@
     "aliases": [],
     "def": "",
     "rank": "order"
+  },
+  {
+    "id": "rhinopristiformes",
+    "label": "Rhinopristiformes",
+    "kind": "taxon",
+    "parents": [
+      "elasmobranchii"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "rhinidae",
+    "label": "Rhinidae",
+    "kind": "taxon",
+    "parents": [
+      "rhinopristiformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "rhina",
+    "label": "Rhina",
+    "kind": "taxon",
+    "parents": [
+      "rhinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "rhina-ancylostomus",
+    "label": "Rhina ancylostomus",
+    "kind": "taxon",
+    "parents": [
+      "rhina"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "bowmouth guitarfish, shark ray",
+    "extinct": false
+  },
+  {
+    "id": "melibe-leonina",
+    "label": "Melibe leonina",
+    "kind": "taxon",
+    "parents": [
+      "melibe"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "lion nudibranch",
+    "extinct": false
+  },
+  {
+    "id": "tethydidae",
+    "label": "Tethydidae",
+    "kind": "taxon",
+    "parents": [
+      "nudibranchs"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "melibe",
+    "label": "Melibe",
+    "kind": "taxon",
+    "parents": [
+      "tethydidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

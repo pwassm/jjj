@@ -27,10 +27,12 @@
 //   So the turn is done in two halves on the CELL ITSELF:
 //       0deg -> 90deg    the front rotates away and goes edge-on (invisible)
 //       -90deg -> 0deg   ...continuing the same way round, back panel now shown
-//   (dev0840) The first half is eased so the cell's APPARENT HEIGHT falls at a
-//   constant rate, and nothing is painted over the picture at any point. See the
-//   EASE_OUT note - easing the ANGLE instead is what made the turn look like a
-//   fade, four reports running.
+//   (dev0841) Both halves run the SAME easing on their own progress - commit to
+//   the turn at once, ease into the end - and the handoff between them is driven
+//   by the Web Animations API so there is no hole at the midpoint. Nothing is ever
+//   painted over the picture. See the EASE_OUT and spin() notes: making the two
+//   halves time-reverses of each other, and arming the swap with a setTimeout, are
+//   what made the turn look like a fade across four reports.
 //   The jump from +90 to -90 happens while the cell is edge-on, so it is not
 //   visible, and finishing at 0 means the back panel is never mirrored. Nothing
 //   is ever re-parented: the front children are only  visibility:hidden , and the
@@ -60,41 +62,28 @@
   var SPEED_KEY = 'salTurnSpeed';
   var SPEED_MIN = 1, SPEED_MAX = 20, SPEED_DEF = 5;
   var FTEXT_LINES = 5;                            // "first 5 lines of ftext"
-  // (dev0840) THE OUTGOING HALF EASES ON APPARENT SIZE, NOT ON ANGLE — and THIS is
-  // the "partial move, then it fades out" bug, reported four times. Every previous
-  // answer (softer curves, a later veil, no veil, a slower turn) was aimed at the
-  // wrong quantity. The arithmetic nobody did until now:
+  // (dev0841) ONE CURVE, BOTH HALVES — and NOT a time-reverse of each other.
   //
-  //   A cell rotating about its midline shows a height of COS(angle), not angle.
-  //   At a constant angular rate — dev0839's `linear` — that gives:
-  //       25% of the time -> 22.5deg -> still 92% tall   (looks like nothing)
-  //       50% of the time -> 45deg   -> still 71% tall   (the "partial move")
-  //       75% of the time -> 67.5deg -> 38% tall
-  //      100% of the time -> 90deg   -> gone
-  //   HALF THE VISIBLE COLLAPSE HAPPENS IN THE LAST QUARTER OF THE TIME. On a dark
-  //   backdrop a picture shrinking to a line in the final 50ms does not read as a
-  //   turn — it reads as the picture fading out. Exactly the report, and no veil
-  //   was needed to produce it: the geometry did it alone, which is why removing
-  //   the veil changed nothing.
+  // Measured, at last, instead of reasoned about. Frame-by-frame cell heights
+  // through a whole turn at the default speed (a 278x158 landscape cell):
+  //   outgoing  158 133 106  79  53  27   0            <- even steps, dev0840
+  //   incoming    0  45  80 106 125 138 147 152 155 157 158
+  // The incoming half spends MOST of its frames near full height: it opens
+  // decisively and then settles, which is why it has been called flawless every
+  // time. The outgoing half spent its frames evenly across every height, so half
+  // of them were unreadable slivers — brief squash, then gone.
   //
-  // So the angle now follows  acos(1 - t) , the curve whose COSINE is linear: the
-  // apparent height falls at a constant rate from full to nothing, and the eye sees
-  // one steady turn all the way to edge-on. The points below are that function
-  // sampled every 10%; the cubic-bezier fallback fits it to 0.0006 average error
-  // for engines without CSS linear() (Chrome <113 / Firefox <112 / Safari <17.2).
+  // The trap I fell into three times: making the outgoing half the exact time-
+  // reverse of the incoming one. dev0837/0838 did precisely that (reverse
+  // (.25,.6,.65,1) and you get (.35,0,.75,.4)), and it is the WORST option, because
+  // reversing a decisive-then-settling motion gives a dormant-then-vanishing one —
+  // "a very low amplitude attempt at rotation, then it fades out", verbatim.
   //
-  // The INCOMING half keeps its own curve, untouched: it has been called good
-  // throughout, and it is the one half of this that was never the problem.
-  var EASE_OUT_PTS = 'linear(0, 0.287 10%, 0.410 20%, 0.506 30%, 0.590 40%, '
-                   + '0.667 50%, 0.738 60%, 0.806 70%, 0.872 80%, 0.936 90%, 1)';
-  var EASE_OUT = (function () {
-    try {
-      if (window.CSS && CSS.supports && CSS.supports('transition-timing-function', EASE_OUT_PTS))
-        return EASE_OUT_PTS;
-    } catch (_) {}
-    return 'cubic-bezier(0,.32,.36,.6)';
-  })();
-  var EASE_IN  = 'cubic-bezier(.25,.6,.65,1)';    // back arriving — untouched, it works
+  // What was asked for was the same EFFECT, not the same motion backwards. So both
+  // halves now run the same curve on their own progress: commit to the turn at
+  // once, ease into the end. Out of flat, or out of edge-on, it reads the same way.
+  var EASE_OUT = 'cubic-bezier(.25,.6,.65,1)';
+  var EASE_IN  = 'cubic-bezier(.25,.6,.65,1)';
   var PANEL_BG    = '#14161c';   // the back face
   var BACKDROP_BG = '#0e0f12';   // the black-grey the turn happens against
   // ── State ───────────────────────────────────────────────────────────────────
@@ -321,8 +310,12 @@
     var r = cell.getBoundingClientRect();
     return Math.max(600, Math.round(Math.max(r.width, r.height) * 2));
   }
-  function tf(cell, axis, deg) {
-    return 'perspective(' + persp(cell) + 'px) rotate' + axis + '(' + deg + 'deg)';
+  // (dev0841) The perspective is fixed for a whole turn, taken from the cell's
+  // RESTING size. It used to be recomputed inside every tf() call from a live
+  // getBoundingClientRect — which, once the cell is part-rotated, reports the
+  // foreshortened box, so the depth could shift under the animation mid-turn.
+  function tf(cell, axis, deg, p) {
+    return 'perspective(' + (p || persp(cell)) + 'px) rotate' + axis + '(' + deg + 'deg)';
   }
 
   // ── The black-grey the turn is seen against ─────────────────────────────────
@@ -376,11 +369,90 @@
     cell.style.transition = '';
     cell.style.zIndex     = '';
     if (st && st.flipped) {
-      cell.style.transform = tf(cell, st.axis, 0);
+      cell.style.transform = tf(cell, st.axis, 0, st.p);
     } else {
       cell.style.transform = '';
-      cell.style.willChange = '';
     }
+    // will-change is NOT cleared here: the mode is still on, and dropping the
+    // promotion between turns is exactly the bug promoteAll() exists to prevent.
+    // stop() clears it for every cell when the mode ends.
+    cell.style.willChange = active ? 'transform' : '';
+  }
+
+  // ── Compositing: promote every cell ONCE, when the mode starts ──────────────
+  // (dev0841) THIS IS THE FIX for four rounds of "a partial move, then it fades
+  // out" — and the answer was sitting in the symptom all along: the return trip
+  // was flawless while the outward one was not, which no timing curve could
+  // explain, because both use the same durations and mirrored easings.
+  //
+  // The difference was never the animation. It was the LAYER.
+  //   • settle() leaves a flipped cell holding both  will-change: transform  and
+  //     a real  perspective(...) rotateX(0deg) . It is already on its own
+  //     compositing layer, so the turn BACK animates cleanly from frame one.
+  //   • A cell on the front has neither. Its very first 3D transform is what
+  //     promotes it, so the promotion happens WHILE the transition is already
+  //     running: the compositor rasterises a new layer mid-animation, drops the
+  //     opening frames, and the cell twitches and then is simply gone. That is a
+  //     dropped-frame artefact, not a fade — which is why it never cared whether
+  //     the cell held a YouTube iframe or a plain <img>, and why softer curves, a
+  //     removed veil, a doubled duration and an acos() ease all changed nothing.
+  //
+  // So every cell is promoted up front, when the mode starts, and stays promoted
+  // until it ends. spin() below adds the second half of the guarantee: the start
+  // pose gets a committed frame of its own before the rotation begins.
+  function promoteAll() {
+    var cont = container(); if (!cont) return;
+    cont.querySelectorAll('.grid-cell').forEach(function (c) {
+      c.style.willChange = 'transform';
+    });
+  }
+  function unpromoteAll() {
+    var cont = container(); if (!cont) return;
+    cont.querySelectorAll('.grid-cell').forEach(function (c) {
+      c.style.willChange = '';
+    });
+  }
+
+  // One half-turn, driven by the Web Animations API rather than a CSS transition
+  // plus a setTimeout guess at when it lands.
+  //
+  // (dev0841) THE 50ms HOLE. Measured across the midpoint at the default speed:
+  //     199ms height 0 · 234ms height 0 · 249ms height 45
+  // The cell sat at nothing for 50ms — an eighth of the whole 400ms turn — exactly
+  // at the moment the picture vanished. The old scheme earned that hole twice over:
+  // a setTimeout armed for  duration + 20ms  (so the swap always ran late), and a
+  // requestAnimationFrame before each half started (so the next one always began
+  // late too). A picture that disappears and leaves a hole before anything replaces
+  // it does not read as turning into the text. It reads as the picture going away.
+  //
+  // animate() removes both guesses: the animation starts on its own next frame with
+  // no help, and `onfinish` fires exactly when it lands, so the swap and the second
+  // half happen in that same task. The hole shrinks to a single frame.
+  function spin(cell, st, axis, from, to, dur, ease, done) {
+    cell.style.willChange = 'transform';
+    cell.style.transition = 'none';
+    cell.style.transform  = tf(cell, axis, to, st.p);     // rest here when it ends
+    var anim;
+    try {
+      anim = cell.animate(
+        [{ transform: tf(cell, axis, from, st.p) },
+         { transform: tf(cell, axis, to,   st.p) }],
+        { duration: Math.max(1, dur * 1000), easing: ease, fill: 'backwards' }
+      );
+    } catch (_) {                                        // no WAAPI — old behaviour
+      cell.style.transform = tf(cell, axis, from, st.p);
+      void cell.offsetWidth;
+      cell.style.transition = 'transform ' + dur + 's ' + ease;
+      cell.style.transform  = tf(cell, axis, to, st.p);
+      st.timer = setTimeout(done, dur * 1000 + 16);
+      return;
+    }
+    st.anim = anim;
+    anim.onfinish = function () {
+      st.anim = null;
+      if (!cell.isConnected) { restore(cell, st); turned.delete(cell); return; }
+      done();
+    };
   }
 
   // Front -> back. Half one takes the picture edge-on; half two brings the card in.
@@ -389,21 +461,15 @@
     var axis = axisFor(cell);
     var half = halfDur();
     var box = homeBox(cell);                                // measure BEFORE rotating
-    var st = { axis: axis, box: box, back: null, backdrop: null,
+    var st = { axis: axis, box: box, back: null, backdrop: null, anim: null,
+               p: persp(cell),                          // fixed for the whole turn
                hidden: null, timer: null, busy: true, flipped: false };
     turned.set(cell, st);
 
     st.backdrop = addBackdrop(cell, box);
-
-    cell.style.willChange = 'transform';
     cell.style.zIndex = '300';
-    cell.style.transition = 'none';
-    cell.style.transform = tf(cell, axis, 0);
-    void cell.offsetWidth;                                  // commit the start pose
-    cell.style.transition = 'transform ' + half + 's ' + EASE_OUT;
-    cell.style.transform = tf(cell, axis, 90);
-    st.timer = setTimeout(function () {
-      if (!cell.isConnected) { restore(cell, st); turned.delete(cell); return; }
+
+    spin(cell, st, axis, 0, 90, half, EASE_OUT, function () {
       setPlaying(cell, false);                              // hold the frame
       var back = buildBack(cell, row);
       cell.appendChild(back);
@@ -413,17 +479,12 @@
       st.flipped = true;
       // Edge-on at +90 and at -90 look identical, so this jump is invisible — and
       // landing on 0 (rather than 180) means the back is never mirrored.
-      cell.style.transition = 'none';
-      cell.style.transform = tf(cell, axis, -90);
-      void cell.offsetWidth;
-      cell.style.transition = 'transform ' + half + 's ' + EASE_IN;
-      cell.style.transform = tf(cell, axis, 0);
-      st.timer = setTimeout(function () {
+      spin(cell, st, axis, -90, 0, half, EASE_IN, function () {
         st.busy = false; st.timer = null;
         dropEl(st.backdrop); st.backdrop = null;   // resting flat — nothing to hide
         if (cell.isConnected) settle(cell, st);
-      }, half * 1000 + 30);
-    }, half * 1000 + 10);
+      });
+    });
   }
 
   // Back -> front, the same way round in reverse, so it visibly unwinds.
@@ -436,34 +497,21 @@
     // The box was measured on the way out; re-measure only if the grid has since
     // been resized under us.
     if (!st.box) st.box = homeBox(cell);
+    if (!st.p) st.p = persp(cell);
     st.backdrop = addBackdrop(cell, st.box);
-
-    cell.style.willChange = 'transform';
     cell.style.zIndex = '300';
-    cell.style.transition = 'none';
-    cell.style.transform = tf(cell, axis, 0);
-    void cell.offsetWidth;
-    cell.style.transition = 'transform ' + half + 's ' + EASE_OUT;
-    cell.style.transform = tf(cell, axis, -90);
 
-    st.timer = setTimeout(function () {
-      if (!cell.isConnected) { restore(cell, st); turned.delete(cell); return; }
+    spin(cell, st, axis, 0, -90, half, EASE_OUT, function () {
       dropEl(st.back);
       showFront(st.hidden);
       st.back = null; st.hidden = null; st.flipped = false;
       setPlaying(cell, true);                               // carry on from the held frame
-      // brightness as it flattens is the half that already read correctly.
-      cell.style.transition = 'none';
-      cell.style.transform = tf(cell, axis, 90);
-      void cell.offsetWidth;
-      cell.style.transition = 'transform ' + half + 's ' + EASE_IN;
-      cell.style.transform = tf(cell, axis, 0);
-      st.timer = setTimeout(function () {
+      spin(cell, st, axis, 90, 0, half, EASE_IN, function () {
         dropEl(st.backdrop); st.backdrop = null;
         turned.delete(cell);
         if (cell.isConnected) settle(cell, null);
-      }, half * 1000 + 30);
-    }, half * 1000 + 10);
+      });
+    });
   }
 
   function toggleCell(cell) {
@@ -476,6 +524,7 @@
   // Snap a cell back to its front with no animation (mode off / grid closing).
   function restore(cell, st) {
     if (st && st.timer) clearTimeout(st.timer);
+    if (st && st.anim) { try { st.anim.cancel(); } catch (_) {} st.anim = null; }
     if (st) {
       dropEl(st.back);     st.back = null;
       dropEl(st.backdrop); st.backdrop = null;
@@ -604,6 +653,7 @@
     speed = loadSpeed();
     ensureWired();
     active = true;
+    promoteAll();          // (dev0841) layers ready BEFORE the first click, not during it
     boxShow();
     say('↻ Turnaround ON — click a cell to turn it over (tags + text on the back); '
       + 'click again to turn it back. ( t stops it · f leaves fun mode )', 4200);
@@ -612,6 +662,7 @@
 
   function stop() {
     restoreAll();
+    unpromoteAll();
     // Belt and braces: a grid re-render mid-turn (a caption toggle, a resize) can
     // leave a backdrop behind whose cell is no longer the one we tracked.
     var cont = container();
