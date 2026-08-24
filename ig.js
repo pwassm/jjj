@@ -148,6 +148,9 @@
   let rotatingActive = false;          // (dev0658) a VPN-committed Download+rotate grind is running
   let vpnDownStreak = 0;               // (dev0661) consecutive tunnel-down poll reads (kill-switch debounce)
   let proxyDown = false;               // (dev0688) the proxy stopped answering mid-run → pause, don't abandon
+  // (dev0835) The proxy's disk-low reply that ended a batch. Kept whole (free/floor
+  // bytes) so the stop message can say how much room is actually left.
+  let diskFull = null;
   let lastBatchDead = 0;               // (dev0688) rows runBatch retired as permanently dead (grind reads it)
   let lastOpError = '';                // last enrich/download error (for throttle detection)
   let lastOpInfo = '';                 // (dev0437) cookie posture of the last op ('cookieless'/'Firefox cookies')
@@ -1237,6 +1240,18 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   object-fit:contain;background:#000}
 #igPvBody .igPvPlace{color:#8a96a3;font:13px/1.5 system-ui;text-align:center;padding:24px}
 #igPvBody .igPvPlace span{color:#5a6573;font-size:11px}
+/* (dev0835) Always-visible progress bar under the media. The native <video>
+   controls already have one, but they auto-hide — and the whole point during a
+   grind is to see how far through the clip is without touching the mouse.
+   Click anywhere on it to seek. Hidden for stills, which have no time. */
+#igPvTime{position:relative;flex:0 0 auto;height:16px;background:#0a1426;
+  border-top:1px solid #1a2a4a;cursor:pointer;user-select:none;display:none}
+#igPvTime.on{display:block}
+#igPvTime .pvFill{position:absolute;left:0;top:0;bottom:0;width:0;background:#0a84ff;
+  transition:width .08s linear;pointer-events:none}
+#igPvTime .pvLbl{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;
+  justify-content:center;font:10px/1 ui-monospace,Consolas,monospace;color:#dff;
+  text-shadow:0 1px 2px #000;pointer-events:none}
 /* (dev0517) Auto-enrich panel — floating, top-right under the toolbar. */
 #igAuto{position:fixed;top:64px;right:14px;width:300px;max-height:calc(100vh - 90px);z-index:120;
   background:#0e1219;border:1px solid #2c3645;border-radius:9px;box-shadow:0 12px 44px rgba(0,0,0,.7);
@@ -2218,6 +2233,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // downloaded, not rows. Only Download+rotate passes it; every other caller runs the
   // whole id list exactly as before.
   async function runBatch(label, ids, gap, doOne, skipIf, posture, itemBudget) {
+    // (dev0835) Pre-flight the volume BEFORE anything is claimed or drawn, so a disk
+    // already under the floor costs zero downloads instead of one.
+    if (/download/i.test(label)) {
+      const d = await diskCheck();
+      if (d && d.low) { diskFull = d; igDiskStop('pre-flight'); return 0; }
+    }
+    diskFull = null;
     // (dev0688) proxyDown is cleared HERE, for every caller. It's a per-batch verdict,
     // and a stale true left over from an earlier run would make the next enrich or
     // download batch break on its very first row for no visible reason.
@@ -2301,7 +2323,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // if the failure is a hard rate-limit (429) — retrying that just hammers IG.
       // (dev0688) …and skipped when the post is permanently dead: retrying an
       // audience-restricted or deleted post just spends 19s to get the same sentence.
-      if (!good && isDl && !batchAbort && !isThrottle(lastOpError) && !isPermanent(lastOpError) && !proxyDown) {
+      if (!good && isDl && !batchAbort && !isThrottle(lastOpError) && !isPermanent(lastOpError) && !proxyDown && !diskFull) {
         diag('row-retry', { id: r.id, after: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 140) });
         const rg = rnd(DOWNLOAD_RETRY_MS[0], DOWNLOAD_RETRY_MS[1]);
         igBatchUpdate(`${label} ${r.id} — retrying in ${(rg / 1000).toFixed(0)}s (transient block?)\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}`);
@@ -2336,7 +2358,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // (dev0688) The proxy vanishing is not Instagram's verdict on this row. Don't
         // let it count toward the consecutive-failure stop and don't let it retire the
         // row — end the batch so the grind can pause and resume (awaitProxyReturn).
-        if (proxyDown) { /* no verdict from IG at all — see the break below */ }
+        // (dev0835) Same shape as proxyDown: our disk, not Instagram's answer.
+        if (diskFull) { /* no verdict from IG at all — see the break below */ }
+        else if (proxyDown) { /* no verdict from IG at all — see the break below */ }
         else if (isThrottle(lastOpError)) throttled = true;
         // (dev0688) Permanently dead → retire it and DON'T touch consecFail. Note this
         // sits ahead of the isDl branch below deliberately: that branch counts every
@@ -2356,7 +2380,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
       }
       applyAndRender();
-      if (throttled || cookieStopped || walledStopped || proxyDown) break;
+      if (throttled || cookieStopped || walledStopped || proxyDown || diskFull) break;
       // (dev0690) Item budget spent → hand back to the caller so it can rotate the exit.
       // Checked AFTER the row completes, so a carousel is never cut in half.
       if (itemBudget && batchItems >= itemBudget) {
@@ -2373,7 +2397,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // different causes and the end report collapses them; this does not.
     diag('BATCH-END', {
       label, ok, fail, done, total, secs: Math.round((Date.now() - t0) / 1000),
-      stop: proxyDown ? 'PROXY-DIED' : throttled ? 'THROTTLE' : cookieStopped ? 'COOKIE-CAP'
+      stop: diskFull ? 'DISK-LOW' : proxyDown ? 'PROXY-DIED' : throttled ? 'THROTTLE' : cookieStopped ? 'COOKIE-CAP'
           : walledStopped ? (isDl ? `WALL-${DOWNLOAD_WALL_CAP}-IN-A-ROW` : 'FIRST-WALL')
           : vpnDropAbort ? 'VPN-DROP' : batchAbort ? 'USER-STOP'
           : done < total ? 'INCOMPLETE' : 'ran-out',
@@ -2472,8 +2496,42 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
                                            ? `Re-run later, or download from a logged-in Firefox.`
                                            : `Use 📋 Saved-text, or check Firefox is logged into Instagram.`);
     if (throttled && lastOpError) lines.push((lastOpError || '').slice(0, 80));
+    // (dev0835) A disk stop REPLACES the normal report rather than being buried in
+    // it — everything else in that summary is about Instagram, and this is not.
+    if (diskFull) { igDiskStop('batch'); return ok; }
     igStickyShow(lines.join('\n'));
     return ok;
+  }
+
+  // (dev0835) ── DISK FLOOR ────────────────────────────────────────────────────
+  // The proxy refuses a download once free space drops under its floor, and the
+  // floor is set so there is still ample room to WRITE ig.json afterwards — a save
+  // is atomic (tmp + rename) and therefore needs a whole second copy of the store
+  // beside the original. Stopping the downloads early is what keeps that true.
+  //
+  // Two places ask: once before a download batch starts (so an already-full disk
+  // costs zero downloads), and again on every reply — the disk can cross the floor
+  // mid-run, it is filling, after all.
+  async function diskCheck() {
+    try {
+      const res = await fetch(PROXY + '/ig/disk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      });
+      const j = await res.json();
+      return (j && j.ok) ? j : null;
+    } catch (_) { return null; }   // a dead proxy is a DIFFERENT failure, handled elsewhere
+  }
+  const fmtGB = b => (b == null ? '?' : (b / 1073741824).toFixed(2) + ' GB');
+  function igDiskStop(where) {
+    const j = diskFull || {};
+    diag('DISK-STOP', { where, free: j.freeBytes, floor: j.floorBytes });
+    igStickyShow('🛑 DISK LOW — downloads stopped.' + "\n\n"
+      + 'Free: ' + (j.human || fmtGB(j.freeBytes)) + '     Floor: ' + fmtGB(j.floorBytes) + "\n\n"
+      + 'Stopped WITH room to spare, on purpose: ig.json is written atomically, so a' + "\n"
+      + 'save needs space for a whole second copy of the store beside the original.' + "\n"
+      + 'Downloads halt first so that write always fits.' + "\n\n"
+      + 'Everything downloaded so far is on disk and saved. Free some space, then' + "\n"
+      + 're-run — only rows that still need work are retried.');
   }
 
   // A row counts as already enriched once a successful enrich stamped its status
@@ -2752,6 +2810,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         up: j && j.videoItems ? j.upgraded + '/' + j.videoItems : '',
         kept: j && j.kept ? j.kept.reason : '',
         err: (j && j.error || '').replace(/\s+/g, ' ').slice(0, 200) });
+      // (dev0835) The proxy refused because the volume is near full. That is not a
+      // verdict on this post: no retry, no retirement, no consecutive-failure tally —
+      // the batch simply ends. Flagged rather than pattern-matched on the message so
+      // it can never be mistaken for a wall (the mistake dev0645 was written about).
+      if (j && j.diskFull) {
+        diskFull = j;
+        diag('DISK-LOW', { id: r.id, free: j.freeBytes, floor: j.floorBytes });
+        throw new Error(j.error || 'disk low');
+      }
       if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
       // (dev0690) The post's item count is worth recording even on a refusal — it comes
       // from reading the post, not from downloading it.
@@ -2952,6 +3019,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       lastOpInfo = j.usedCookies ? 'Firefox cookies used' : 'No firefox cookies used';
       sel.delete(r.id);            // (dev0438) uncheck on every successful download
       markDirty(r.id);
+      igPreviewAutoShow(r);        // (dev0835) watch what just landed (Ctrl+Y toggles)
       if (single) {
         applyAndRender(); persist(false);
         const n = r.localFiles.length;
@@ -3766,6 +3834,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // tests below, both of which would otherwise mis-report it (a dead proxy makes
       // every row fail, which reads exactly like a login wall — that misreading is what
       // sent three sessions chasing the VPN).
+      // (dev0835) A full disk is not something to wait out or rotate past — tested
+      // before every other stop reason, or the zero-batch rule below would blame the
+      // exit and rotate the VPN forever against a disk that is never going to empty.
+      if (diskFull) {
+        diag('DISK-STOP', { where: 'grind', free: diskFull.freeBytes, floor: diskFull.floorBytes });
+        endMsg = "🛑 DISK LOW — stopped with room to spare.\nFree: " + (diskFull.human || fmtGB(diskFull.freeBytes))
+          + '  ·  floor ' + fmtGB(diskFull.floorBytes)
+          + "\nDownloads halt before the volume fills so ig.json — written atomically, i.e. needing a whole second copy of itself — can always still be saved.\nEverything downloaded so far is on disk and saved. Free some space, then re-run.";
+        break;
+      }
       if (proxyDown) {
         _proxyPauses++;
         if (await awaitProxyReturn(totalOk)) continue;
@@ -4455,6 +4533,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   const PV_DEF_BOX = { left: 24, top: 84, w: 320, h: 504 };
   let pvBox = null;          // {left,top,w,h}
   let pvSaveT = null;        // debounce for the resize observer
+  // (dev0835) Auto-show every completed download in the preview window. ON by
+  // default — watching what just landed IS the review step — and toggled with
+  // Ctrl+Y. Persisted, because a preference you have to re-set every reload is
+  // not a preference.
+  const PV_AUTO_KEY = 'slam-ig-preview-auto';
+  let pvAuto = (() => { try { return localStorage.getItem(PV_AUTO_KEY) !== '0'; } catch (_) { return true; } })();
   let pvRO = null;           // ResizeObserver watching the grip
 
   function pvBoxLoad() {
@@ -4490,7 +4574,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + '<span id="igPvTitle"></span>'
       + '<button id="igPvClose" title="Close (Ctrl+I or Esc)">×</button>'
       + '</div>'
-      + '<div id="igPvBody"></div>';
+      + '<div id="igPvBody"></div>'
+      + '<div id="igPvTime"><div class="pvFill"></div><div class="pvLbl"></div></div>';
     pvBox = pvBoxClamp(pvBoxLoad() || PV_DEF_BOX);
     el.style.left = pvBox.left + 'px';
     el.style.top = pvBox.top + 'px';
@@ -4514,6 +4599,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       else if (d === 'next') igPreviewStep(1);
     });
     el.querySelector('#igPvBar').addEventListener('pointerdown', pvDragStart);
+    el.querySelector('#igPvTime').addEventListener('click', ev => {
+      const v = el.querySelector('video'); if (!v || !(v.duration > 0)) return;
+      const b = ev.currentTarget.getBoundingClientRect();
+      v.currentTime = Math.max(0, Math.min(1, (ev.clientX - b.left) / b.width)) * v.duration;
+    });
   }
 
   function igPreviewToggle() {
@@ -4526,9 +4616,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       return;
     }
     if (pvOpen && pvRowId === r.id) { igPreviewClose(); return; }   // re-press = close
-    pvOpen = true; pvRowId = r.id; pvIdx = 0;
-    igPreviewBuild();
-    igPreviewFill();
+    igPreviewOpenRow(r);
   }
 
   // (dev0500) Follow ↑/↓ row focus while the window is open. A non-downloaded row
@@ -4569,6 +4657,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       : '';
 
     body.innerHTML = '';
+    pvTimeSet(null);                       // stills and placeholders carry no clock
     if (!n) {
       const ph = document.createElement('div');
       ph.className = 'igPvPlace';
@@ -4584,6 +4673,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       v.src = mediaUrl(f);
       v.controls = true; v.loop = true; v.autoplay = true; v.playsInline = true;
       v.addEventListener('click', () => { if (v.paused) v.play().catch(() => {}); else v.pause(); });
+      // timeupdate fires ~4×/s, which the bar's CSS transition smooths out; the
+      // metadata event is what first gives the bar a duration to divide by.
+      v.addEventListener('loadedmetadata', () => pvTimeSet(v));
+      v.addEventListener('timeupdate', () => pvTimeSet(v));
       body.appendChild(v);
       // Best-effort autoplay with sound; if the browser blocks it, retry muted
       // (the native controls let the user unmute).
@@ -4599,6 +4692,51 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       d.innerHTML = 'Unsupported file<br><span>' + esc(f) + '</span>';
       body.appendChild(d);
     }
+  }
+
+  // (dev0835) Paint the bar. `v` null (a still, a placeholder, a torn-down window)
+  // hides it rather than leaving a stale fill from the previous clip.
+  function pvTimeSet(v) {
+    const el = document.getElementById('igPreview'); if (!el) return;
+    const bar = el.querySelector('#igPvTime'); if (!bar) return;
+    if (!v || !(v.duration > 0)) { bar.classList.remove('on'); bar.querySelector('.pvFill').style.width = '0'; return; }
+    bar.classList.add('on');
+    const f = Math.max(0, Math.min(1, v.currentTime / v.duration));
+    bar.querySelector('.pvFill').style.width = (f * 100).toFixed(2) + '%';
+    bar.querySelector('.pvLbl').textContent = pvClock(v.currentTime) + ' / ' + pvClock(v.duration);
+  }
+  const pvClock = t => {
+    const s2 = Math.max(0, Math.floor(t || 0));
+    return Math.floor(s2 / 60) + ':' + pad2(s2 % 60);
+  };
+
+  // Open the window on a specific row, wherever the caller got it from. The
+  // shared half of Ctrl+I and the post-download auto-show.
+  function igPreviewOpenRow(r) {
+    if (!r) return;
+    pvOpen = true; pvRowId = r.id; pvIdx = 0;
+    igPreviewBuild();
+    igPreviewFill();
+  }
+
+  // (dev0835) Called by downloadRow the moment files land. Deliberately silent and
+  // deliberately unconditional on how the download was started: a batch row and a
+  // 'w' single are both "a download just completed", which is the thing worth
+  // looking at. A row that somehow landed nothing is skipped — the placeholder
+  // would only replace the previous clip with a shrug.
+  function igPreviewAutoShow(r) {
+    if (!pvAuto || !r || !(r.localFiles || []).length) return;
+    if (!isIgScreenOpen()) return;             // never mount over another screen
+    igPreviewOpenRow(r);
+  }
+
+  function igPreviewAutoToggle() {
+    pvAuto = !pvAuto;
+    try { localStorage.setItem(PV_AUTO_KEY, pvAuto ? '1' : '0'); } catch (_) {}
+    igToast(pvAuto
+      ? '👁 Auto-preview ON — every completed download opens in the preview window, looping.\nCtrl+Y to turn it off.'
+      : '👁 Auto-preview OFF — downloads run without opening the window.\nCtrl+Y to turn it back on. (Ctrl+I still opens the focused row.)', 3200);
+    if (!pvAuto && pvOpen) igPreviewClose();
   }
 
   function igPreviewClose() {
@@ -4704,6 +4842,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // asset (or open the post on Instagram if it isn't downloaded). Handled here on
     // window-capture, BEFORE core.js's document-capture Ctrl+I, and stopped hard so
     // core.js doesn't ALSO mount its T-screen row-preview behind this overlay.
+    // (dev0835) Ctrl+Y → auto-preview on/off. Next to Ctrl+I on purpose: same
+    // window, and this decides whether it opens by itself.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'y' || e.key === 'Y')) {
+      if (typing) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      igPreviewAutoToggle();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'i' || e.key === 'I')) {
       if (typing) return;   // leave Ctrl+I (italic) alone inside the paste textarea
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();

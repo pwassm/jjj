@@ -3264,6 +3264,31 @@ async function frameGrab(req, res, origin) {
 // shortcode id — to ig.json, a store parallel to ml.json that deliberately stays
 // OUT of the grid/table (IG doesn't fit the G scheme; could grow to 1000s of rows).
 const IG_STORE = path.join(__dirname, 'ig.json');
+
+// (dev0835) ── FREE-SPACE FLOOR ──────────────────────────────────────────────
+// Nothing in this pipeline looked at the disk. A full volume surfaced as a yt-dlp
+// failure, which the client reads as INSTAGRAM's verdict on the post: it retries
+// once, counts two failures in a row, and stops the batch blaming a login wall.
+// The run does halt — but for the wrong reason, after two wasted downloads, and
+// with every ig.json save from that point on failing too.
+//
+// The floor is deliberately NOT "enough for this one download". It is enough that
+// the STORE can always still be written: igStoreWriteRows is atomic (tmp file +
+// rename), so a save needs room for a whole second copy of ig.json beside the
+// original — 143 MB today and growing — and that write must never be the one that
+// runs out. 2 GB is that copy several times over plus the largest plausible
+// carousel, so downloads stop while there is still ample room to save.
+const IG_DISK_FLOOR = 2 * 1024 * 1024 * 1024;
+
+// Free bytes on the volume holding `dir`. statfsSync is Node 18.15+; on anything
+// older, or a path that cannot be stat'd, this answers null and EVERY caller
+// treats null as "don't know" and proceeds. A check that cannot run must never
+// become a new way for downloads to fail.
+function diskFree(dir) {
+  try { const st = fs.statfsSync(dir); return st.bavail * st.bsize; }
+  catch (_) { return null; }
+}
+const fmtGB = b => (b / 1073741824).toFixed(2) + ' GB';
 function igShortcode(url) {
   const m = String(url || '').match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(?:reels?|p|tv)\/([A-Za-z0-9_-]+)/i);
   return m ? m[1] : '';
@@ -3342,6 +3367,14 @@ function igStoreWriteRows(rows) {
     // the client treats a failed save as unsaved and keeps its ⚠ flag.
     if (fd !== null) { try { fs.closeSync(fd); } catch (_) {} }
     try { fs.unlinkSync(tmp); } catch (_) {}
+    // (dev0835) ENOSPC here is the one failure the user cannot diagnose from the
+    // message alone. The store itself is fine — tmp+rename means it is wholly old
+    // — but say WHY, and say how much room is left, because the fix is off-screen.
+    if (e && (e.code === 'ENOSPC' || /no space/i.test(e.message || ''))) {
+      const f = diskFree(__dirname);
+      e.message = 'DISK FULL — ig.json was NOT written (the file on disk is unchanged and intact). '
+        + (f === null ? '' : 'Free: ' + fmtGB(f) + '. ') + 'Free some space, then save again.';
+    }
     throw e;
   }
   try { const st = fs.statSync(IG_STORE); _igStore = { mtimeMs: st.mtimeMs, size: st.size, rows }; }
@@ -3406,6 +3439,17 @@ function igKnown(req, res, origin) {
 // imports and 'w'-added clipboard singles): an author we only ever grabbed ONE
 // post from is not a profile we want to auto-sweep, so the client leaves those
 // unchecked. Sorted stalest-first so a partial run does the most good.
+// (dev0835) /ig/disk — free space on the project volume, so a batch can refuse to
+// START on a disk that is already below the floor instead of discovering it one
+// wasted download in. Pure stat: reads nothing, writes nothing.
+function igDisk(req, res, origin) {
+  req.resume();
+  const free = diskFree(__dirname);
+  sendJson(res, 200, { ok: true, freeBytes: free, floorBytes: IG_DISK_FLOOR,
+    low: free !== null && free < IG_DISK_FLOOR,
+    human: free === null ? 'unknown' : fmtGB(free) }, origin);
+}
+
 function igAuthors(req, res, origin) {
   try {
     req.resume();                                   // POST with no body — drain it
@@ -3996,6 +4040,17 @@ function igDownload(req, res, origin) {
     const keepMinW   = coverOnly ? 0 : Math.max(0, +payload.keepMinW   || 0);
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     if (!id) { sendJson(res, 400, { ok: false, error: 'id required' }, origin); return; }
+    // (dev0835) Refuse BEFORE spending a download. `diskFull` is a distinct flag,
+    // not just an error string, so the client can end the batch on the FIRST one
+    // rather than reading it as a wall and burning a retry plus a second row.
+    const _free = diskFree(__dirname);
+    if (_free !== null && _free < IG_DISK_FLOOR) {
+      console.warn('[ig/download] REFUSED ' + id + ' — ' + fmtGB(_free) + ' free, floor ' + fmtGB(IG_DISK_FLOOR));
+      sendJson(res, 200, { ok: false, diskFull: true, freeBytes: _free, floorBytes: IG_DISK_FLOOR,
+        error: 'DISK LOW — ' + fmtGB(_free) + ' free, floor ' + fmtGB(IG_DISK_FLOOR)
+             + '. Downloads stopped while there is still room to write ig.json.' }, origin);
+      return;
+    }
     try { fs.mkdirSync(IG_MEDIA_DIR, { recursive: true }); } catch (_) {}
     // Filename stem: the client passes the AHK-convention `name` (already built from
     // the enriched row); fall back to the bare id. Sanitized + length-capped here as
@@ -6072,6 +6127,7 @@ http.createServer((req, res) => {
     if (action === 'save-delta') { igSaveDelta(req, res, origin); return; }  // (dev0697) per-batch upsert
     if (action === 'known')    { igKnown(req, res, origin);    return; }   // (dev0794) early-stop harvest
     if (action === 'authors')  { igAuthors(req, res, origin);  return; }   // (dev0794) sweep queue
+    if (action === 'disk')     { igDisk(req, res, origin);     return; }   // (dev0835) free-space floor
     // (dev0794) VPN passthrough for the Tampermonkey harvester. /vpn/switch is
     // locked to LOCAL_ORIGINS (the :8080/:8082 app), and the sweep runs on
     // instagram.com — so it reaches the SAME switcher through the /ig/ namespace,
