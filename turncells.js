@@ -50,7 +50,7 @@
 //   1. delete this file
 //   2. delete  'turncells.js'  from the files[] array in index.html
 //   3. in collection.js, drop the TurnCells line from _gmStopAll, the T row from
-//      _gmFunPanelHtml, the 't' branch of _gmChoiceKey, and _gmTurnOn
+//      _gmModesHtml, the 't' branch of _gmChoiceKey, and _gmTurnOn
 //   4. in core.js, drop 't' from the  k === 'w' || k === 't'  grid block in the
 //      window-capture keydown handler (leaving w = waterfall)
 // Nothing else references it.
@@ -655,8 +655,10 @@
     // fold the paper — two owners of one transform, and it already has its own
     // idea of a back face. Refuse rather than fight it.
     try {
-      if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() === '16F') {
-        say('Turnaround does not run on the 16F fold grid — that one folds instead', 2600);
+      // (dev0844) RENDER layout, so this also refuses while FOLD MODE has a plain
+      // square dressed as a fold — same two owners of one transform, same answer.
+      if (typeof _gridRenderLayout === 'function' && _gridRenderLayout() === '16F') {
+        say('Turn does not run on a fold grid — that one folds instead', 2600);
         return false;
       }
     } catch (_) {}

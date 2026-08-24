@@ -468,69 +468,63 @@ window.addEventListener('keydown', function(e) {
   // letter shortcuts (T/Q/D/V/W). Don't let the global dispatcher swallow them
   // (e.g. 'w' = clipboard import) — bail so the menu's capture handler runs.
   if (document.getElementById('gridContextMenu')) return;
-  // (dev0460) F → the "fall cells" perimeter-drain waterfall while G is open.
-  // (dev0705) F now stands for FUN, not Fall: the first press raises the FUN MODES
-  // card (collection.js _gmFunKey) listing the modes, the variant numbers and what
-  // a click on a cell does in each — none of which was discoverable from a key that
-  // silently started one of them.
-  // (dev0837) F IS NOW PURELY THE DOOR: regular → fun raises the card of choices,
-  // fun → regular stops everything and drops the card, silently. It no longer
-  // doubles as the waterfall toggle (that is w now), so the modes each have one
-  // letter and f means one thing in each direction.
-  // Bare key only — Shift+F (clear filters) is handled above, and F is otherwise
-  // forwarded to _executeHotkey('f') (the filter modal, a no-op in G). Own it here
-  // in window-capture, alongside the digit variant keys.
-  if (k === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
-    const gOpenF = document.getElementById('gridOverlay')?.style.display === 'flex';
-    const vpOpenF = document.getElementById('gridFullscreen')?.style.display === 'flex';
-    // (dev0571) The fun modes are dev screensaver toys — normally not part of Gu's
-    // viewing subset. (dev0598) But the guFunKeys switch (default ON) lets viewers
-    // on the public site play with them too; window.guFunKeys(false) restores lockdown.
-    const _uModeF = (typeof _isUserMode === 'function') && _isUserMode();
-    const _guFunF = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
-    if (gOpenF && !vpOpenF && (!_uModeF || _guFunF)) {
+  // ───────────────────────────────────────────────────────────────────────────
+  // (dev0460 → dev0844) THE GRID'S MODES: M raises the menu, one letter each.
+  //
+  // The history in one line, because every letter here has moved at least once:
+  // dev0460 gave the waterfall bare F; dev0705 made F raise a CARD of choices
+  // instead of silently starting one; dev0837 made F purely the door and gave the
+  // modes w / r / t; dev0844 renames the whole thing MODES, moves the door to M,
+  // and puts REGULAR on the list as a mode of its own.
+  //
+  //   m   the MENU key — raises the list, hides it again. It stops nothing.
+  //   r   Regular · t Turn · q Quiz · f Fall · w Wander · d Fold
+  //
+  // THE CHOICE LETTERS ARE CLAIMED ONLY WHILE THE MENU HAS THE KEYBOARD — the
+  // card is up, or a mode is running (collection.js _gmModesOn). That is the whole
+  // reason this can be done with plain letters: outside it, t still means "back to
+  // the Table" and q still means "new embed", both used constantly here, and d
+  // still opens the Dictionary. Inside it they are the choices on the card.
+  //
+  // r is the exception and is handled in collection.js, not here: it works cold,
+  // because "put this grid back to normal" must not require finding a menu first.
+  //
+  // (dev0838/0844) BARE f AND w ON THE GRID ARE OTHERWISE INERT — swallowed, not
+  // forwarded. Their global meanings (the filter modal, the clipboard import)
+  // belong to the Table and the staging screens, where there is a row to act on;
+  // on a grid they only ever fired by accident while reaching for a mode.
+  //
+  // User-mode gate: dev always, viewers only while the guFunKeys switch is on
+  // (default ON; window.guFunKeys(false) restores lockdown).
+  // ───────────────────────────────────────────────────────────────────────────
+  if (k === 'm' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const gOpenM  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenM = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    const _uModeM = (typeof _isUserMode === 'function') && _isUserMode();
+    const _guFunM = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
+    if (gOpenM && !vpOpenM && (!_uModeM || _guFunM)) {
       e.preventDefault();
       e.stopPropagation();
-      if (typeof window._gmFunKey === 'function') window._gmFunKey();
-      else if (typeof window._gmToggleFall === 'function') window._gmToggleFall();
+      if (typeof window._gmModesKey === 'function') window._gmModesKey();
       return false;
     }
   }
-  // (dev0836 → dev0837) THE FUN-MODE CHOICE KEYS: w = waterfall, t = turn.
-  //
-  // dev0836 put turnaround on bare t over the grid and moved "back to the Table"
-  // to ⇧T. Wrong trade — t→Table from the grid is a key used constantly. So the
-  // choice letters are now claimed ONLY WHILE FUN MODE IS ON (the card is up, or
-  // an engine is running), which is exactly when they read as choices:
-  //   f  enters fun mode (the card lists the choices) and leaves it again
-  //   w  waterfall  ·  r  ring conveyor  ·  t  turn
-  // Outside fun mode t keeps the meaning it always had — back to the Table, the
-  // key used constantly here. r is the one letter that also works cold: it has
-  // started the ring on the grid since dev0374, and starting it IS entering fun
-  // mode.
-  //
-  // (dev0838) BARE w ON THE GRID IS OTHERWISE INERT — swallowed, not forwarded.
-  // The clipboard import it used to reach belongs to the Table and the Ig screen,
-  // where there is a row to import INTO; on a grid it only ever fired by accident
-  // while reaching for the waterfall.
-  //
-  // Rides the same user-mode gate as f below: dev always, viewers only while the
-  // guFunKeys switch is on (it is by default).
-  if ((k === 'w' || k === 't') && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+  if ((k === 'w' || k === 't' || k === 'q' || k === 'f' || k === 'd')
+      && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
     const gOpenW  = document.getElementById('gridOverlay')?.style.display === 'flex';
     const vpOpenW = document.getElementById('gridFullscreen')?.style.display === 'flex';
     const _uModeW = (typeof _isUserMode === 'function') && _isUserMode();
     const _guFunW = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
     if (gOpenW && !vpOpenW) {
-      const funOnW = (!_uModeW || _guFunW)
-        && typeof window._gmFunOn === 'function' && window._gmFunOn();
-      if (funOnW) {
+      const modesOnW = (!_uModeW || _guFunW)
+        && typeof window._gmModesOn === 'function' && window._gmModesOn();
+      if (modesOnW) {
         e.preventDefault();
         e.stopPropagation();
         if (typeof window._gmChoiceKey === 'function') window._gmChoiceKey(k);
         return false;
       }
-      if (k === 'w') {                      // (dev0838) dead key on the grid
+      if (k === 'w' || k === 'f') {          // (dev0838/0844) dead keys on the grid
         e.preventDefault();
         e.stopPropagation();
         return false;

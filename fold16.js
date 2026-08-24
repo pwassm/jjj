@@ -115,6 +115,116 @@ const FOLD16_BLOCKS = [
 
 const FOLD16_BACK_KEYS = FOLD16_BLOCKS.map(b => b.back);
 
+// ══════════════════════════════════════════════════════════════════════════════
+// (dev0844) FOLD MODE — the fold worn by an ORDINARY grid
+// ══════════════════════════════════════════════════════════════════════════════
+// Everything above is 16F the saved LAYOUT: a c.json config whose `cells` is the
+// string '16F', built as a fold from the start. Fold MODE lends the same
+// machinery to a grid that was never saved that way — Modes menu → D on any
+// square 4×4 or larger, and the cells already on screen re-lay themselves into
+// the staircase and fold exactly as a real 16F does. D again (or R, or the ✕)
+// puts the grid back the way it was.
+//
+// Two things differ from a saved 16F, and only two:
+//
+//   • THE FOOTPRINT is borrowed from the grid you are already looking at. The
+//     fold only ever occupies 1a-4d, so a 5×5 simply uses its top-left 4×4 and
+//     leaves row 5 and column e out of it.
+//
+//   • THE BACK FACES have no 1aB / 3cB / 4dB keys to read — an ordinary config
+//     has never heard of them. They come instead from three of the cells the
+//     staircase does not use, in reading order:
+//
+//         1c → block A's back  (the corner fold onto 2b)
+//         1d → block B's back  (the centre fold)
+//         2d → block C's back  (the corner fold onto 3c)
+//
+//     which is why the mode wants THIRTEEN cells: ten for the paper and three
+//     for what is written on the other side. 3a, 4a and 4b sit the fold out.
+//
+// NOTHING HERE WRITES. _gridCurrentLayout keeps reporting the grid's real
+// layout, so a Ctrl+Alt+G save during a fold saves the GRID, not the fold — only
+// _gridRenderLayout (grid.js) sees '16F', and only while the mode is on.
+// ══════════════════════════════════════════════════════════════════════════════
+const FOLD16_MODE_SRC = { '1aB': '1c', '3cB': '1d', '4dB': '2d' };
+
+var _f16Mode = false;
+
+function _fold16ModeOn() { return _f16Mode; }
+
+// A grid can wear the fold if it is a plain square with a 4×4 to spare. The
+// special layouts are out by construction, not by policy: 17 / 19 merge their
+// middle into one big cell and the portrait grids are rectangles, so 2b-4d are
+// not there to be folded. 3×3 and smaller simply have too few cells.
+function _fold16ModeEligible() {
+  if (_gridSource === 'C' && typeof _gridCurrentLayout === 'function'
+      && _gridCurrentLayout() === FOLD16_LAYOUT) return false;   // already a real 16F
+  const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  if (lay !== 'square') return false;
+  return (typeof _gridGsize === 'number') && _gridGsize >= 4;
+}
+
+// Why this grid can't fold — said in the reader's terms, not the layout's.
+function _fold16ModeRefusal() {
+  if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() === FOLD16_LAYOUT)
+    return 'This grid IS the fold grid — double-click a circle';
+  const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  if (lay !== 'square')
+    return 'Fold needs a plain square grid — the 17 / 19 and portrait layouts have no 4×4 to fold';
+  return 'Fold needs a 4×4 grid or bigger — 13 cells: ten to fold, three for the backs';
+}
+
+function _fold16ModeStart() {
+  if (_f16Mode) return true;
+  if (!_fold16ModeEligible()) {
+    if (typeof toast === 'function') toast('⧉ ' + _fold16ModeRefusal(), 2600);
+    return false;
+  }
+  // One mode at a time — the fold owns every cell's inline transform, exactly as
+  // the travelling and turning engines do.
+  if (typeof window._gmStopAll === 'function') window._gmStopAll();
+  _fold16Reset();
+  _f16Mode = true;
+  if (typeof gridShow === 'function') gridShow();
+  // Say it only when something is actually missing: an empty back face folds to a
+  // black square, which looks like a bug rather than an empty cell.
+  const gaps = Object.keys(FOLD16_MODE_SRC)
+    .map(k => FOLD16_MODE_SRC[k])
+    .filter(cs => typeof getRowByCellForGrid === 'function' && !getRowByCellForGrid(cs));
+  if (gaps.length && typeof toast === 'function')
+    toast('⧉ Fold — ' + gaps.join(', ') + ' ' + (gaps.length === 1 ? 'is' : 'are')
+          + ' empty, so that many folds land on a blank back', 3000);
+  return true;
+}
+
+// Clear WITHOUT redrawing. The shared teardown (_gmStopAll) runs on the way OUT
+// of the grid, where a rebuild would only be a rebuild of something about to be
+// hidden. Returns true if it actually changed, so a caller that is staying can
+// redraw for itself.
+function _fold16ModeClear() {
+  if (!_f16Mode) return false;
+  _f16Mode = false;
+  _fold16Reset();
+  return true;
+}
+
+function _fold16ModeStop() {
+  if (!_fold16ModeClear()) return false;
+  if (typeof gridShow === 'function') gridShow();
+  return true;
+}
+
+function _fold16ModeToggle() {
+  return _f16Mode ? (_fold16ModeStop(), false) : _fold16ModeStart();
+}
+
+window._fold16ModeOn       = _fold16ModeOn;
+window._fold16ModeEligible = _fold16ModeEligible;
+window._fold16ModeStart    = _fold16ModeStart;
+window._fold16ModeStop     = _fold16ModeStop;
+window._fold16ModeClear    = _fold16ModeClear;
+window._fold16ModeToggle   = _fold16ModeToggle;
+
 // Live fold state — session-lived, always starts flat. Reset whenever the grid
 // renders something that is not a 16F (see gridShow), so a stale fold can never
 // haunt the next grid.
@@ -239,7 +349,13 @@ function _fold16CellList() {
   const out = FOLD16_CELLS.map(o => ({ cs: o.cs, r: o.r, c: o.c, rs: 1, cls: 1 }));
   for (const b of FOLD16_BLOCKS) {
     const land = FOLD16_CELLS.find(o => o.cs === b.land);
-    out.push({ cs: b.back, r: land.r, c: land.c, rs: 1, cls: 1, foldBack: b.id });
+    const spec = { cs: b.back, r: land.r, c: land.c, rs: 1, cls: 1, foldBack: b.id };
+    // (dev0844) In fold MODE there is no 1aB / 3cB / 4dB key to read — the backs
+    // come from the borrowed grid's own spare cells. `src` says where the media
+    // is fetched FROM; `cs` stays the fold's own name, so every fold-state lookup
+    // below (visibility, the circles, the crease) is untouched by the borrowing.
+    if (_f16Mode) spec.src = FOLD16_MODE_SRC[b.back];
+    out.push(spec);
   }
   return out;
 }
@@ -468,7 +584,9 @@ function _f16WireContainer(container) {
   // 16F — _fold16Render on anything else would paint circles onto a normal grid.
   window.addEventListener('resize', () => {
     if (_fold16Busy) return;
-    if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== FOLD16_LAYOUT) return;
+    // (dev0844) _gridRenderLayout, not _gridCurrentLayout: fold MODE is a 16F on
+    // screen while the grid's saved layout still says 4x4 or 5x5.
+    if (typeof _gridRenderLayout === 'function' && _gridRenderLayout() !== FOLD16_LAYOUT) return;
     const c = document.getElementById('gridContainer');
     if (c && c.offsetWidth) _fold16Render(c);
   });
@@ -482,7 +600,8 @@ var _f16LastPt = null;
 // _runDoubleTapAction. Returns true when the tap has been handled (or should be
 // thrown away) and the caller must not fall through to the editor routes.
 function _fold16ClaimDoubleTap() {
-  if (typeof _gridCurrentLayout === 'function' && _gridCurrentLayout() !== FOLD16_LAYOUT) return false;
+  // (dev0844) Render layout — a double-tap on a circle folds in fold MODE too.
+  if (typeof _gridRenderLayout === 'function' && _gridRenderLayout() !== FOLD16_LAYOUT) return false;
   if (_fold16Busy) return true;              // mid-fold: swallow, never edit
   const container = document.getElementById('gridContainer');
   if (!container || !_f16LastPt) return false;

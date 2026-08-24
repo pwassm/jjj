@@ -2940,7 +2940,7 @@ function gridClose() {
   gridClearCut();
   gridHideContextMenu();
   window._gridBufPanelClose?.();    // (dev0674) sticky clean-playback card
-  window._gmFunPanelClose?.();      // (dev0705) FUN MODES card
+  window._gmModesClose?.();      // (dev0705/0844) MODES card
   window._gmHeavyCardClose?.();     // (dev0800) "run it anyway?" card
   textEditorClose();
   document.getElementById('gridOverlay').style.display = 'none';

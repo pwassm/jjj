@@ -22,7 +22,8 @@ function _gridApplyContainerCSS() {
   if (!c) return;
   // (dev0502) Portrait layouts use a true rows×cols rectangle (not the square
   // gsize footprint) so the 9:16 cells tile the 16:9 screen edge to edge.
-  const _lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  // (dev0844) RENDER layout — fold mode dresses a plain square as a 16F.
+  const _lay = (typeof _gridRenderLayout === 'function') ? _gridRenderLayout() : 'square';
   // (dev0820) 16F is a 4×4 footprint with only ten of the sixteen slots filled —
   // the fold grid. (dev0822) It owns its own template: a CENTRED SQUARE with no
   // gaps. Square because the diagonal crease only lands true on square cells, and
@@ -51,6 +52,11 @@ function _gridApplyContainerCSS() {
 function _setGridGsize(n, opts) {
   n = parseInt(n, 10);
   if (!(n >= 2 && n <= 5)) return;
+  // (dev0844) Resizing is a request for a PLAIN grid of that size, so it leaves
+  // fold mode. Cleared without a redraw — the redraw below is the one that lands,
+  // and `force` makes sure it happens even when the size has not changed.
+  const wasFold = (typeof _fold16ModeClear === 'function') && _fold16ModeClear();
+  if (wasFold) opts = Object.assign({}, opts, { force: true });
   // (dev0502) Choosing a square size always exits a T-source portrait layout
   // (P3/P12/P27). Detect it first so we still force a full re-render even when
   // the target size equals the current gsize (otherwise the early-out below
@@ -186,6 +192,22 @@ function _gridCurrentLayout() {
     return metaRow._salLayout;
   }
   return 'square';
+}
+
+// (dev0844) WHAT THE GRID IS DRAWN AS, which is not always what it IS.
+//
+// _gridCurrentLayout above answers "what layout did this grid come from?" and is
+// the answer every PERSISTING path wants — gridSaveToFile writes its `cells` from
+// it, so it must never be talked into saying '16F' about a 4×4.
+//
+// This one answers "what is on screen right now?", and the only thing that can
+// separate the two is FOLD MODE (fold16.js): a plain square grid wearing the fold
+// for as long as the mode is on. Renderers ask this — the container template, the
+// cell list, the fold's own guards — so the fold can be borrowed without a single
+// byte changing anywhere.
+function _gridRenderLayout() {
+  if (typeof _fold16ModeOn === 'function' && _fold16ModeOn()) return '16F';
+  return _gridCurrentLayout();
 }
 
 // True for any c.json key that addresses a grid cell — the standard 1a..5e plus
@@ -2389,10 +2411,14 @@ function gridShow() {
   
   // (dev0370) Build from the active layout's cell list. Square layouts give the
   // gsize×gsize block (auto-flowed); 17/19 give the 16-cell ring + merged center.
-  const _layout = _gridCurrentLayout();
+  // (dev0844) RENDER layout, so fold mode lays a plain 4x4/5x5 out as the fold.
+  const _layout = _gridRenderLayout();
   for (const _spec of _gridCellList(_gridGsize, _layout)) {
       const cellStr = _spec.cs;
-      const row = getRowByCellForGrid(cellStr);
+      // (dev0844) `src` = fetch the media from a DIFFERENT cell than the one this
+      // slot is called. Only fold mode sets it, for the three back faces it takes
+      // from the borrowed grid's spare cells (1c / 1d / 2d) — see fold16.js.
+      const row = getRowByCellForGrid(_spec.src || cellStr);
       
       const cell = document.createElement('div');
       cell.className = 'grid-cell';
@@ -2570,7 +2596,7 @@ function gridShow() {
   const occupied = (() => {
     let n = 0;
     for (const _s of _gridCellList(_gridGsize, _layout))
-      if (getRowByCellForGrid(_s.cs)) n++;
+      if (getRowByCellForGrid(_s.src || _s.cs)) n++;   // (dev0844) fold mode's borrowed backs
     return n;
   })();
   // (zip0141) Tailor the help hint string by mode. Dev shows the full

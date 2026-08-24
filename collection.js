@@ -206,18 +206,21 @@ async function gridSaveToFile(gname) {
 // in WINDOW-CAPTURE (before this file's document-capture), so core owns the number
 // keys; it delegates the variant choice back here.
 //
-// (dev0837) THE KEY MODEL, after two passes of it drifting:
-//   f          the DOOR — enters fun mode (raises the card of choices) and leaves
-//              it again, stopping everything. Silent on the way out.
-//   w  r  t    the three modes, one letter each — waterfall, ring, turn. Pressed
-//              again, each stops its own mode and the chooser reappears. Claimed
-//              in core.js ONLY while fun mode is on (r excepted: it has started
-//              the ring cold since dev0374), so outside fun mode t still means
-//              "back to the Table" and w still means the clipboard import.
-//   1  2       ring variants: FlyCells cascade-fill · FlyCells2 smooth swap
-//              (3-9 reserved). The active variant's own number returns to the
-//              plain ring.
-//   ✕          the mouse/touch equivalent of f — see _gmExitBtnShow.
+// (dev0837 → dev0844) THE KEY MODEL, after three passes of it drifting:
+//   m          the MENU key — raises the MODES card, hides it again. Nothing
+//              more: it starts nothing and stops nothing.
+//   r          REGULAR, the first row on the card — stops every engine, unfolds
+//              a fold, drops the card. The one mode letter that works cold, since
+//              "put this grid back to normal" must not need a menu first.
+//   t q f w d  the other modes, one letter each — Turn, Quiz (a stub), Fall,
+//              Wander, Fold. Pressed again, each stops its own mode and the
+//              chooser reappears. Claimed in core.js ONLY while the menu has the
+//              keyboard, so outside it t still means "back to the Table", q still
+//              means "new embed" and d still opens the Dictionary.
+//   1  2       WANDER variants: FlyCells cascade-fill · FlyCells2 smooth swap
+//              (3-9 reserved). The active variant's own number returns to plain
+//              wander.
+//   ✕          the mouse/touch equivalent of r — see _gmExitBtnShow.
 function _gmAnyMoving() {
   return (window.MovingCells && window.MovingCells.running) ||
          (window.FlyCells  && window.FlyCells.active) ||
@@ -235,14 +238,20 @@ function _gmStopAll() {
   // It therefore belongs in the shared teardown: starting any other fun mode, and
   // every exit path out of the grid, must turn the cards face-up again.
   window.TurnCells   && window.TurnCells.stop   && window.TurnCells.stop();
-  // (dev0837) The floating exit button follows fun mode, and this is the one place
+  // (dev0844) Fold mode belongs to the same teardown, for the same reason: it owns
+  // every cell's inline transform and it rearranges the grid. CLEARED, not stopped
+  // — no repaint from here. This runs on the way OUT of the grid too (gridClose,
+  // _returnToMenuFromGrid), where a rebuild would be a rebuild of something about
+  // to be hidden. Callers that are STAYING (_gmRegular, _gmChoiceKey) repaint.
+  if (typeof _fold16ModeClear === 'function') _fold16ModeClear();
+  // (dev0837) The floating exit button follows the modes, and this is the one place
   // every teardown passes through — gridClose() and _returnToMenuFromGrid included.
-  if (typeof _gmFunSync === 'function') _gmFunSync();
+  if (typeof _gmModesSync === 'function') _gmModesSync();
 }
 function _gmMasterToggle() {
   if (_gmAnyMoving()) {
     _gmStopAll();
-    if (typeof toast === 'function') toast('■ Moving cells OFF', 1300);
+    if (typeof toast === 'function') toast('■ Wander off', 1300);
   } else if (window.MovingCells) {
     // (dev0836) Turnaround does not count as "moving", so _gmAnyMoving() above is
     // false while it runs — clear it here or R would start the belt underneath a
@@ -261,22 +270,22 @@ function _gmSelectDigit(k) {
     else if (want === 'fly1') { if (window.FlyCells)    window.FlyCells.start(); }
     else                      { if (window.FlyCells2)   window.FlyCells2.start(); }
   } else if (typeof toast === 'function') {
-    toast('Variant ' + k + ' not built yet — 1 = cascade · 2 = swap · f exits fun mode', 2200);
+    toast('Variant ' + k + ' not built yet — 1 = cascade · 2 = swap · r = regular grid', 2200);
   }
-  // (dev0705) The FUN MODES card names the live variant and what a click now does,
+  // (dev0705) The MODES card names the live variant and what a click now does,
   // so it has to follow a variant change wherever the digit came from. (dev0736)
   // And a chosen variant IS a chosen mode — the card leaves rather than narrating.
-  if (_gmAnyMoving()) _gmFunPanelClose(); else _gmFunPanelRefresh();
+  if (_gmAnyMoving()) _gmModesClose(); else _gmModesRefresh();
 }
-// (dev0460) F → the FallCells "perimeter waterfall" variant. Unlike 1 / 2 (which
-// only pick a variant WHILE a mode is already running), F has its own key and can
-// start the family cold: starting it stops any other moving mode first; pressing F
-// again (or r) turns the whole system off. Routed from core.js's window-capture
-// handler (which owns bare 'f' over the grid).
+// (dev0460 → dev0844) FALL — the FallCells "perimeter" variant, on F. Unlike 1 / 2
+// (which only pick a variant WHILE a mode is already running) Fall has its own
+// letter: starting it stops any other mode first, and pressing F again (or R)
+// turns it off. Routed from core.js's window-capture handler, which claims bare f
+// over the grid only while the Modes menu has the keyboard.
 function _gmToggleFall() {
   if (window.FallCells && window.FallCells.active) {
     _gmStopAll();
-    if (typeof toast === 'function') toast('■ Fall cells OFF', 1300);
+    if (typeof toast === 'function') toast('■ Fall off', 1300);
   } else {
     _gmStopAll();                                   // leave any other moving mode
     if (window.FallCells) window.FallCells.start();
@@ -370,7 +379,7 @@ function _gmHeavyCardClose() {
 
 function _gmHeavyCardShow(label, run) {
   _gmHeavyCardClose();
-  _gmFunPanelClose();                        // the card answers the panel's question — one at a time
+  _gmModesClose();                        // the card answers the panel's question — one at a time
   var p = _gmPointerInfo();
   var btn = 'font:inherit;padding:7px 14px;border-radius:7px;cursor:pointer;';
   var el = document.createElement('div');
@@ -405,18 +414,18 @@ function _gmHeavyCardShow(label, run) {
     _gmHeavyCardClose();
     _gmHeavySession = true;                  // this visit, even without the setting
     if (typeof run === 'function') run();
-    if (!_gmAnyMoving()) _gmFunPanelShow();  // it still refused for some other reason — put the menu back
+    if (!_gmAnyMoving()) _gmModesShow();  // it still refused for some other reason — put the menu back
   }
   el.querySelector('#gmHeavyGo').onclick     = function () { go(false); };
   el.querySelector('#gmHeavyAlways').onclick = function () { go(true); };
-  el.querySelector('#gmHeavyNo').onclick     = function () { _gmHeavyCardClose(); _gmFunPanelShow(); };
+  el.querySelector('#gmHeavyNo').onclick     = function () { _gmHeavyCardClose(); _gmModesShow(); };
 }
 
-// Undo the override (the FUN card's "forced on" note links here).
+// Undo the override (the MODES card's "forced on" note links here).
 function _gmHeavyForget() {
   if (typeof window.setSetting === 'function') window.setSetting(_GM_ANYWAY_KEY, false);
   _gmHeavySession = false;
-  _gmFunPanelRefresh();
+  _gmModesRefresh();
   if (typeof toast === 'function') toast('Heavy-mode override cleared — the desktop check is back on', 1800);
 }
 
@@ -428,20 +437,37 @@ window._gmPointerInfo  = _gmPointerInfo;
 window._gmHeavyForget  = _gmHeavyForget;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// (dev0705) THE FUN WINDOW — F is now "Fun", not "Fall".
+// (dev0705 → dev0844) THE MODES WINDOW — M raises it, and the grid has ONE list
+// of things it can be doing.
 //
-// There are two fun modes and they were reachable only by knowing that F meant
-// one of them and R the other, with the numbers and the click behaviour living
-// nowhere but a 4-second toast. So bare F over the grid now raises this card:
-// both modes, what the numbers do, and what a CLICK does in each one — which is
-// the part that differs most (feature-big vs fly vs swap vs plain play/pause).
+// dev0705 built this because the modes were reachable only by knowing that F
+// meant one of them and R another, with the variant numbers and the click
+// behaviour living nowhere but a 4-second toast. dev0844 finishes the job:
 //
-// It is a live control panel, not a modal: it stays up while you play so it can
-// keep saying what each key will do NEXT (the F row flips to "stop" while the
-// waterfall runs). Every key still reaches its normal handler underneath — the
-// card only reads state and refreshes. Esc drops it; the modes keep running.
+//   • it is called MODES, not "fun modes". Turn teaches, Quiz will test, Fold
+//     is a way of reading a grid — "fun" undersold half of them.
+//   • M is the key, and M is a MENU key: it raises the list and hides it again.
+//     It is not the off switch, because the off switch is now a mode of its own.
+//   • REGULAR IS ON THE LIST. The plain grid is the first row, on R, rather than
+//     an exit hidden behind the same letter that got you in. Every letter on the
+//     card switches TO something, including back to normal.
+//
+// The list, top to bottom — this order is the whole point, so read it as one:
+//
+//     R  Regular   the grid as it always was
+//     T  Turn      click a cell and it turns over: tags + text on the back
+//     Q  Quiz      (not built yet)
+//     F  Fall      cells come off the cliff, bounce and re-enter
+//     W  Wander    the cells travel round the grid; 1 / 2 vary how they move
+//     D  Fold      the grid folds like paper (fol-D — F was already taken)
+//
+// It is a live control panel, not a modal: while it is up it keeps saying what
+// each key will do NEXT, and what a CLICK on a cell means in whatever is running
+// — the part that differs most between them. Every key still reaches its normal
+// handler underneath; the card only reads state and refreshes. Esc hides it and
+// leaves what is running alone; R is the one that stops things.
 // ─────────────────────────────────────────────────────────────────────────────
-function _gmFunPanelOpen() { return !!document.getElementById('gridFunPanel'); }
+function _gmModesOpen() { return !!document.getElementById('gridModesPanel'); }
 
 function _gmLiveMode() {
   if (window.FallCells && window.FallCells.active) return 'fall';
@@ -453,32 +479,45 @@ function _gmLiveMode() {
 
 function _gmTurnOn() { return !!(window.TurnCells && window.TurnCells.active); }
 
-// (dev0837) "FUN MODE IS ON" — the card is up, or one of the engines is running.
-// This is what f toggles, and what gates the choice letters w / t in core.js:
-// outside fun mode those keep their normal meanings (clipboard import, back to
-// the Table), inside it they are the choices the card is offering.
-function _gmFunOn() { return _gmAnyMoving() || _gmTurnOn() || _gmFunPanelOpen(); }
+// (dev0844) Fold mode — fold16.js owns the flag; this is the local reader so the
+// card and the gate below don't each have to remember the window hop.
+function _gmFoldOn() { return !!(window._fold16ModeOn && window._fold16ModeOn()); }
 
-// Leave fun mode: stop every engine, drop the card. Silent by design — the user
-// pressed f to get back to the plain grid, not to read about it.
-function _gmExitFun() {
+// (dev0837 → dev0844) "THE MODES MENU HAS THE KEYBOARD" — the card is up, or one
+// of the engines is running. This is what gates the choice letters in core.js:
+// outside it t / q / d keep the meanings they have everywhere else (back to the
+// Table, new embed, the Dictionary screen), inside it they are the choices the
+// card is offering. f and w are inert on the grid either way.
+function _gmModesOn() { return _gmAnyMoving() || _gmTurnOn() || _gmFoldOn() || _gmModesOpen(); }
+
+// (dev0844) R = REGULAR, the first row of the card: stop every engine, leave fold
+// mode, drop the card. Silent by design — you asked for the plain grid, not for a
+// paragraph about it. The floating ✕ is the same thing for anyone without a
+// keyboard. Cold R (nothing running) is a no-op, which is the honest answer to
+// "make this normal" when it already is.
+function _gmRegular() {
+  const wasFold = (typeof _fold16ModeClear === 'function') && _fold16ModeClear();
   _gmStopAll();
-  _gmFunPanelClose();
+  _gmModesClose();
+  // The fold rearranged the DOM, so leaving it needs a repaint — but only if the
+  // grid is still on screen (_gmStopAll also runs on the way OUT of the grid).
+  if (wasFold && document.getElementById('gridOverlay')?.style.display === 'flex'
+      && typeof gridShow === 'function') gridShow();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // (dev0837) THE FLOATING ✕ — the way out that is not a keyboard key.
 //
-// f is the exit, but a fun mode can be running on a touchscreen with no keyboard
-// at all, and the FUN MODES card is deliberately click-through (pointer-events:
-// none) so it cannot carry a button. So the ✕ is its own small floating control,
-// anchored to the bottom of cell 5c. The turnaround spin box lives in the same
+// (dev0844) r is the exit, but a mode can be running on a touchscreen with no
+// keyboard at all, and the MODES card is deliberately click-through (pointer-
+// events: none) so it cannot carry a button. So the ✕ is its own small floating
+// control, anchored to the bottom of cell 5c. The Turn spin box lives in the same
 // spot, so it sits one row HIGHER (turncells.js offsets by BOX_LIFT): stacking
 // them keeps both centred and clear of each other at every grid size, which
 // side-by-side did not — on a narrow window a 5x5 cell is barely wider than the
 // spin box itself.
 //
-// Shown by _gmFunSync() whenever fun mode is on, which every fun-mode entry point
+// Shown by _gmModesSync() whenever a mode is on, which every mode entry point
 // calls — including _gmStopAll, so every exit from the grid takes it with it.
 // ─────────────────────────────────────────────────────────────────────────────
 function _gmExitBtnPosition(btn) {
@@ -491,11 +530,11 @@ function _gmExitBtnPosition(btn) {
 }
 
 function _gmExitBtnShow() {
-  var btn = document.getElementById('gridFunExit');
+  var btn = document.getElementById('gridModesExit');
   if (!btn) {
     btn = document.createElement('div');
-    btn.id = 'gridFunExit';
-    btn.title = 'Leave fun mode (or press f)';
+    btn.id = 'gridModesExit';
+    btn.title = 'Back to the regular grid (or press R)';
     btn.textContent = '✕';
     btn.style.cssText = 'position:fixed;z-index:100002;transform:translate(-50%,-100%);'
       + 'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
@@ -508,11 +547,11 @@ function _gmExitBtnShow() {
     // a click on whatever cell is underneath.
     btn.addEventListener('pointerdown', function (ev) {
       ev.preventDefault(); ev.stopPropagation();
-      _gmExitFun();
+      _gmRegular();
     }, true);
     document.body.appendChild(btn);
     window.addEventListener('resize', function () {
-      _gmExitBtnPosition(document.getElementById('gridFunExit'));
+      _gmExitBtnPosition(document.getElementById('gridModesExit'));
     });
   }
   _gmExitBtnPosition(btn);
@@ -520,40 +559,70 @@ function _gmExitBtnShow() {
 }
 
 function _gmExitBtnClose() {
-  var btn = document.getElementById('gridFunExit');
+  var btn = document.getElementById('gridModesExit');
   if (btn) btn.remove();
   return !!btn;
 }
 
-// One call after any fun-mode state change: the ✕ is up exactly while fun mode is.
-function _gmFunSync() {
-  if (_gmFunOn()) _gmExitBtnShow(); else _gmExitBtnClose();
+// One call after any state change: the ✕ is up exactly while a mode is.
+function _gmModesSync() {
+  if (_gmModesOn()) _gmExitBtnShow(); else _gmExitBtnClose();
 }
 
-// (dev0836) T = TURNAROUND, one of the fun-mode choices (dev0837: reachable only
-// while fun mode is on — see the core.js note). Kept out of _gmAnyMoving
-// deliberately, so the digits still resize the grid — see _gmStopAll.
-// (dev0837) ONE ROUTE FOR ALL THREE CHOICE KEYS — w / r / t. Each toggles its own
-// engine, and then the card follows the same rule it always had: a mode that is
-// RUNNING is a mode you chose, so the chooser gets out of the way; nothing running
-// means you are back at the choice, so the card comes back.
+// ─────────────────────────────────────────────────────────────────────────────
+// (dev0836 → dev0844) ONE ROUTE FOR EVERY CHOICE LETTER — r / t / q / f / w / d.
 //
-// That last half is what keeps fun mode closed as a loop. w and t are only claimed
-// over the grid WHILE fun mode is on (core.js) — if turning a mode off left no card
-// behind, fun mode would silently end and the next w would fire the clipboard
-// import instead of the waterfall.
+// Each toggles its own mode, and then the card follows the rule it has always
+// had: a mode that is RUNNING is a mode you chose, so the chooser gets out of the
+// way; nothing running means you are back at the choice, so the card comes back.
+// That second half is what keeps the menu closed as a loop — the letters are only
+// claimed over the grid WHILE the menu has the keyboard (core.js), so if turning
+// a mode off left no card behind, the next t would go back to the Table instead
+// of turning the cells over.
+//
+// dev0844 renamed the modes and moved the letters with them, which is worth
+// spelling out because every one of them changed hands:
+//
+//   was            now
+//   f  door        M  door (menu up / menu down) — and f is inert on the grid
+//   w  waterfall   F  Fall
+//   r  ring        W  Wander
+//   t  turn        T  Turn      (unmoved)
+//   —              Q  Quiz      (stub)
+//   —              D  Fold      (fol-D; F belongs to Fall)
+//   f  exit        R  Regular
+//
+// Turn and Fold are deliberately outside _gmAnyMoving: neither re-slots a cell,
+// so the digits keep their normal jobs while they run. Both still belong to the
+// shared teardown in _gmStopAll, because both own a cell's inline transform.
+// ─────────────────────────────────────────────────────────────────────────────
 function _gmChoiceKey(k) {
-  if (k === 'w')      _gmToggleFall();
-  else if (k === 'r') _gmMasterToggle();
+  // Any choice other than Fold leaves fold mode first, and has to REPAINT before
+  // it starts: the fold rearranged the grid into a staircase, and an engine
+  // started on top of that would travel a shape the grid no longer has.
+  if (k !== 'd' && typeof _fold16ModeClear === 'function' && _fold16ModeClear()
+      && typeof gridShow === 'function') gridShow();
+
+  if (k === 'r')      { _gmRegular(); return; }             // Regular — the plain grid
+  else if (k === 'f') _gmToggleFall();                      // Fall
+  else if (k === 'w') _gmMasterToggle();                    // Wander
   else if (k === 't') { if (window.TurnCells) window.TurnCells.toggle(); }
-  if (_gmAnyMoving() || _gmTurnOn()) _gmFunPanelClose(); else _gmFunPanelShow();
+  else if (k === 'd') { if (window._fold16ModeToggle) window._fold16ModeToggle(); }
+  else if (k === 'q') {
+    // (dev0844) QUIZ — a stub with a name, on purpose. The row is on the card so
+    // the letter is spoken for and the shape of the menu is final; what it will
+    // do (a cell asks, you answer, the grid keeps score) is not built yet.
+    if (typeof toast === 'function') toast('❓ Quiz mode — not built yet', 1800);
+  }
+  if (_gmAnyMoving() || _gmTurnOn() || _gmFoldOn()) _gmModesClose(); else _gmModesShow();
 }
 window._gmTurnOn    = _gmTurnOn;
 window._gmChoiceKey = _gmChoiceKey;
-window._gmFunOn     = _gmFunOn;
-window._gmExitFun   = _gmExitFun;
+window._gmModesOn   = _gmModesOn;
+window._gmFoldOn    = _gmFoldOn;
+window._gmRegular   = _gmRegular;
 
-function _gmFunPanelHtml() {
+function _gmModesHtml() {
   const live = _gmLiveMode();
   const on = (yes) => yes ? 'color:#7ddba0;' : 'opacity:.85;';
   const row = (key, name, desc, active) =>
@@ -572,29 +641,59 @@ function _gmFunPanelHtml() {
       ? 'plays / pauses that cell — the belt keeps moving'
     : _gmTurnOn()
       ? 'turns that cell over — tags on top, the first 5 lines of its text below; click again to turn back'
+    : _gmFoldOn()
+      ? 'plays it as usual — it is the DOUBLE-click on a circle that folds four cells into one'
       : 'each mode gives the click its own trick — turn one on to see';
+  const wander = !!live && live !== 'fall';
+  const fold   = _gmFoldOn();
+  const regular = !live && !_gmTurnOn() && !fold;
+  // (dev0844) The Wander sub-rows: indented, dimmer, and only ever under W —
+  // they are what a CLICK does in each of its three ways of travelling, which is
+  // the one thing the variant numbers never said out loud.
+  const sub = (key, desc, active) =>
+    '<div style="display:flex;gap:12px;align-items:baseline;margin:2px 0;'
+    + (active ? 'color:#7ddba0;' : 'opacity:.55;') + '">'
+    + '<span style="flex:none;width:52px;text-align:right;font-size:11px;">' + key + '</span>'
+    + '<span style="flex:none;width:104px;font-size:11px;">' + (active ? '▸ running' : '') + '</span>'
+    + '<span style="flex:1;font-size:11px;">' + desc + '</span></div>';
   return '<div style="font-weight:600;letter-spacing:.5px;margin-bottom:8px;'
       + 'display:flex;justify-content:space-between;gap:20px;">'
-      + '<span>✨ FUN MODES</span><span style="opacity:.5;font-weight:400;">f exits · Esc hides</span></div>'
-    // (dev0837) One letter per mode: w / r / t. f is the door in and out, so it is
-    // no longer also the waterfall — which is what made the old card have to say
-    // "press F again to stop" about a key that was simultaneously the way out.
-    + row('W', '🌊 Waterfall', live === 'fall'
-        ? '<b>running</b> — press W again to stop'
-        : 'cells drop off the cliff, bounce and re-enter', live === 'fall')
-    + row('R', '↻ Ring', live && live !== 'fall'
-        ? '<b>running</b> — press R again to stop'
-        : 'the cells travel round the grid', !!live && live !== 'fall')
-    // (dev0836) The instructive one. Listed with the toys because it is reached
-    // the same way, but a click here TEACHES rather than rearranges.
+      + '<span>✨ MODES</span><span style="opacity:.5;font-weight:400;">M hides · Esc hides</span></div>'
+    // (dev0844) One letter per mode, and REGULAR IS ONE OF THEM — first, because
+    // it is the one you always want to be able to find. M is only the menu key.
+    + row('R', '▦ Regular', regular
+        ? '<b>this is it</b> — the plain grid'
+        : 'back to the plain grid — stops whatever is running', regular)
+    // The instructive one. Listed with the toys because it is reached the same
+    // way, but a click here TEACHES rather than rearranges.
     + row('T', '🔄 Turn', _gmTurnOn()
-        ? '<b>running</b> — press T again to stop'
+        ? '<b>running</b> — click a cell to turn it over'
         : 'click a cell to turn it over: its tags and text on the back', _gmTurnOn())
+    + row('Q', '❓ Quiz', 'not built yet', false)
+    + row('F', '🌊 Fall', live === 'fall'
+        ? '<b>running</b> — press F again to stop'
+        : 'the cells come off the cliff, bounce and re-enter', live === 'fall')
+    + row('W', '↻ Wander', wander
+        ? '<b>running</b> — press W again to stop'
+        : 'the cells travel round the grid', wander)
+    // (dev0844) Wander's options live UNDER Wander, because that is the only
+    // place they mean anything — each is a different answer to "what happens
+    // when I click a cell while they are travelling?".
+    + sub('click', 'plays / pauses that cell — the belt keeps moving',
+          live === 'conveyor')
+    + sub('1', 'cascade — a click flies that cell to a free slot, the others close the gap',
+          live === 'fly1')
+    + sub('2', 'swap — a click glides that cell into another’s place, both in one path',
+          live === 'fly2')
+    + sub('1 / 2', 'the number of the one that is running puts it back to plain wander', false)
+    + row('D', '⧉ Fold', fold
+        ? '<b>folded</b> — double-click a circle; D again unfolds the grid'
+        : 'the grid folds like paper — double-click a circle to fold four cells into one',
+        fold)
     + '<div style="height:1px;background:rgba(255,255,255,.12);margin:8px 0 7px;"></div>'
-    + row('1 / 2', 'variant', 'while the ring runs: 1 = cascade · 2 = swap (same number again = plain ring)', false)
-    + row('Click', 'a cell', clickTxt, !!live || _gmTurnOn())
+    + row('Click', 'a cell', clickTxt, !!live || _gmTurnOn() || fold)
     + row('{ / }', 'speed', 'slower / faster', false)
-    + row('F', 'exit', 'back to the plain grid — stops whatever is running', false)
+    + row('M', 'this menu', 'hides it again — R is the off switch, not M', false)
     // (dev0800) Only shown once the desktop check has been overridden — it is the
     // one place the viewer can put it back. pointer-events is re-enabled just on
     // the link (the card itself is click-through by design).
@@ -605,19 +704,22 @@ function _gmFunPanelHtml() {
         : '');
 }
 
-function _gmFunPanelRefresh() {
-  const el = document.getElementById('gridFunPanel');
-  if (el) el.innerHTML = _gmFunPanelHtml();
+function _gmModesRefresh() {
+  const el = document.getElementById('gridModesPanel');
+  if (el) el.innerHTML = _gmModesHtml();
 }
 
-function _gmFunPanelShow() {
-  let el = document.getElementById('gridFunPanel');
+function _gmModesShow() {
+  let el = document.getElementById('gridModesPanel');
   if (!el) {
     el = document.createElement('div');
-    el.id = 'gridFunPanel';
+    el.id = 'gridModesPanel';
     // Centred, biased up: it is a chooser you read once and dismiss, and the
     // bottom-left corner already belongs to the CLEAN PLAYBACK card.
-    el.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);'
+    // (dev0844) 46%, not the old 38%: six modes plus Wander's sub-rows made the
+    // card half again as tall, and biased that far up it ran off the top of a
+    // short window. Still above centre, still clear of the ✕ under cell 5c.
+    el.style.cssText = 'position:fixed;left:50%;top:46%;transform:translate(-50%,-50%);'
       + 'z-index:100001;background:rgba(16,16,18,0.95);color:#eee;'
       + 'border:1px solid rgba(255,255,255,0.16);border-radius:12px;padding:13px 17px;'
       + 'min-width:430px;max-width:min(92vw,560px);'
@@ -630,46 +732,46 @@ function _gmFunPanelShow() {
     });
     document.body.appendChild(el);
   }
-  _gmFunPanelRefresh();
-  _gmFunSync();          // (dev0837) raising the card IS entering fun mode
+  _gmModesRefresh();
+  _gmModesSync();          // raising the card hands it the keyboard
   return el;
 }
 
-function _gmFunPanelClose() {
-  const el = document.getElementById('gridFunPanel');
+function _gmModesClose() {
+  const el = document.getElementById('gridModesPanel');
   if (el) el.remove();
-  _gmFunSync();          // (dev0837) card gone + nothing running = out of fun mode
+  _gmModesSync();          // card gone + nothing running = the plain grid again
   return !!el;
 }
 
-// Bare F over the grid. First press = raise the card; while it is up F is the
-// waterfall toggle, so the old F,F muscle memory still lands on the waterfall
-// and still turns it off again.
+// (dev0844) Bare M over the grid — A MENU KEY, and only that: it raises the list
+// and it puts it away again. It never stops anything.
 //
-// (dev0736) The card is a CHOOSER, so it gets out of the way the moment a mode is
-// running — you asked for the waterfall, you want to watch the waterfall, not read
-// about it. It stays up only when nothing started (a mode that refused, e.g. a 2×2
-// grid, leaves the card + its toast on screen). Because it no longer stays up, F
-// can't depend on it: while ANY mode is running F is the waterfall toggle, exactly
-// as it was when the card was still there.
-function _gmFunKey() {
-  // (dev0800) While the "run it anyway?" card is up it owns F: pressing it again
-  // is the answer "yes, this once", so a device the desktop check turned away can
-  // still be talked into it from the keyboard. Esc is still "not now".
+// This is the dev0837 model turned the right way up. Back then f was the door in
+// AND the way out, so "close this window" and "stop what I started" were the same
+// keystroke and you could not do one without the other. Now M shows and hides the
+// list, and R (Regular) — the first row on it — is the off switch. Hiding the
+// menu mid-waterfall no longer stops the waterfall, and stopping the waterfall no
+// longer means losing the menu.
+//
+// The card still gets out of the way on its own the moment a mode STARTS (see
+// _gmChoiceKey) — you asked for the waterfall, you want to watch the waterfall,
+// not read about it. M brings it back whenever you want to switch.
+function _gmModesKey() {
+  // (dev0800) While the "run it anyway?" card is up it owns the key: pressing it
+  // again is the answer "yes, this once", so a device the desktop check turned
+  // away can still be talked into it from the keyboard. Esc is still "not now".
   var gate = document.getElementById('gmHeavyGate');
   if (gate) { gate.querySelector('#gmHeavyGo')?.click(); return; }
-  // (dev0837) A DOOR, NOT A MODE. In fun mode, f leaves — silently. Out of it, f
-  // enters and the card says what w / r / t do. f used to be the waterfall toggle
-  // as well (the old F,F), which is now w's job.
-  if (_gmFunOn()) { _gmExitFun(); return; }
-  _gmFunPanelShow();
+  if (_gmModesOpen()) { _gmModesClose(); return; }
+  _gmModesShow();
 }
 
-window._gmFunPanelOpen    = _gmFunPanelOpen;
-window._gmFunPanelShow    = _gmFunPanelShow;
-window._gmFunPanelClose   = _gmFunPanelClose;
-window._gmFunPanelRefresh = _gmFunPanelRefresh;
-window._gmFunKey          = _gmFunKey;
+window._gmModesOpen    = _gmModesOpen;
+window._gmModesShow    = _gmModesShow;
+window._gmModesClose   = _gmModesClose;
+window._gmModesRefresh = _gmModesRefresh;
+window._gmModesKey          = _gmModesKey;
 
 // Grid keyboard handler - only Escape (Alt keys handled globally)
 document.addEventListener('keydown', e => {
@@ -715,14 +817,16 @@ document.addEventListener('keydown', e => {
   // (dev0598) "Fun keys" allowlist. When the guFunKeys switch is ON (default), the
   // user-mode gate below lets a harmless extra set of grid keys through to their
   // normal handlers on the public site (Gu): [ ] whole-grid zoom, Ctrl+[ ] per-cell
-  // zoom (hovered cell), and r / z / Shift+Z (moving-cells conveyor + zoom reset).
-  // FallCells (f) is enabled in the matching core.js gate. None of these write
-  // c.json — they only tweak this browser's live view. Shift+[ / ] ({ } conveyor
-  // speed) and the data-editing keys (Ctrl+V, Ctrl+B, -/+) stay dev-only.
+  // zoom (hovered cell), and r / z / Shift+Z. (dev0844) r is REGULAR now rather
+  // than the ring, which is if anything a better key to leave a viewer: it is the
+  // way back to a plain grid. The MODES menu itself (m) and its other letters ride
+  // the matching core.js gate. None of these write c.json — they only tweak this
+  // browser's live view. Shift+[ / ] ({ } speed) and the data-editing keys
+  // (Ctrl+V, Ctrl+B, -/+) stay dev-only.
   const _guFun = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn()
     && !e.altKey && !e.metaKey
     && ( (e.key === '[' || e.key === ']')                                    // bare or Ctrl [ ] zoom
-         || (!e.ctrlKey && (e.key === 'r' || e.key === 'R'                   // conveyor toggle
+         || (!e.ctrlKey && (e.key === 'r' || e.key === 'R'                   // Regular (dev0844)
                             || e.key === 'z' || e.key === 'Z')) );           // zoom reset / restore
 
   // (dev0571) USER-MODE GATE: Gu is a curated VIEWING surface — a strict subset of
@@ -749,12 +853,15 @@ document.addEventListener('keydown', e => {
   // Checked before the [ ] zoom keys so the Shift variants don't fall through.
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
     e.preventDefault(); e.stopPropagation();
-    // (dev0705) live readout → (dev0736) the card drops away once a mode is
-    // actually running; it only stays to explain a mode that didn't start.
-    // (dev0837) Routed through the shared choice handler so r behaves exactly like
-    // its two siblings w and t — including putting the chooser back when it stops.
-    // r keeps its own unconditional key (it has started the ring since dev0374 and
-    // is a documented Gu key), so unlike w and t it also works cold.
+    // (dev0844) r IS NO LONGER THE RING — it is REGULAR, the first row of the Modes
+    // card: stop whatever is running, unfold if folded, put the plain grid back.
+    // The ring (now WANDER) moved to w, which core.js claims only while the menu
+    // has the keyboard.
+    //
+    // This is the one mode letter that keeps its own unconditional key, and it is
+    // the right one to keep: "make this normal again" has to work from a grid that
+    // is misbehaving, without first finding the menu. Cold, with nothing running,
+    // it is simply a no-op — see _gmRegular.
     _gmChoiceKey('r');
     return;
   }
@@ -884,12 +991,12 @@ document.addEventListener('keydown', e => {
     // FIRST and leaves the grid alone — same step-back convention as the cut
     // marker below it.
     // (dev0800) The heavy-mode "run it anyway?" card is a question, so it answers
-    // Esc first (= Not now) and puts the FUN card back, leaving the grid alone.
-    if (_gmHeavyCardClose()) { _gmFunPanelShow(); return; }
+    // Esc first (= Not now) and puts the MODES card back, leaving the grid alone.
+    if (_gmHeavyCardClose()) { _gmModesShow(); return; }
     if (typeof window._gridBufPanelClose === 'function' && window._gridBufPanelClose()) return;
-    // (dev0705) …and the FUN MODES card the same way. Dropping the card does not
-    // stop a running mode: it is a readout, and F / R are still the off switches.
-    if (_gmFunPanelClose()) return;
+    // (dev0705/0844) …and the MODES card the same way. Dropping the card does not
+    // stop a running mode: it is a readout, and R is the off switch.
+    if (_gmModesClose()) return;
     if (_gridCutCell) {
       gridClearCut();
       toast('Cut cancelled', 800);

@@ -144,7 +144,7 @@
   // offering "run it anyway" instead of just refusing. See the gate for why. This
   // local copy is the fallback for the (impossible) case of collection.js missing.
   function heavyOK() {
-    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('The waterfall', start);
+    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('Fall', start);
     var ok = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
     if (!ok) toast('Fall cells is desktop-only (too heavy for phones)', 2200);
     return ok;

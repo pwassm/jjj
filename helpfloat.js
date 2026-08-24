@@ -186,12 +186,14 @@ function hpState() {
     // Pinterest embed in it — those are the cells that spend their one inline
     // play. On any other grid the key is inert, so the row is not offered.
     hasEmbed:  probe(function () { return !!document.querySelector('#gridContainer .grid-embed-wrap'); }, false),
-    // (dev0704) The two "fun" modes get their own tiny help screen, so the panel
-    // has to tell them apart rather than just knowing something is moving.
+    // (dev0704) The modes each get their own tiny help screen, so the panel has to
+    // tell them apart rather than just knowing something is moving.
     fall:      probe(function () { return !!(window.FallCells && window.FallCells.active); }, false),
-    // (dev0705) F raises the FUN MODES card, which answers the fun-mode questions
+    // (dev0705 → dev0844) M raises the MODES card, which answers the mode questions
     // itself — H over it is a reader asking about the card, not about the grid.
-    funPanel:  probe(function () { return !!(window._gmFunPanelOpen && window._gmFunPanelOpen()); }, false),
+    funPanel:  probe(function () { return !!(window._gmModesOpen && window._gmModesOpen()); }, false),
+    // (dev0844) Fold mode — a plain square grid wearing the 16F fold.
+    fold:      probe(function () { return !!(window._gmFoldOn && window._gmFoldOn()); }, false),
     conveyor:  probe(function () {
       return !!((window.MovingCells && window.MovingCells.running)
              || (window.FlyCells  && window.FlyCells.active)
@@ -347,7 +349,7 @@ var HP_CTX = [
 
   // ── G: digits. (dev0704) DEV ONLY — in Gu resizing is locked (dev0571) and the
   // one thing the digits DO reach, the moving-cells variant, is documented on the
-  // fun-mode screen that is up while they work.
+  // mode screen that is up while they work.
   { screens: ['G'], k: '1 – 9', kind: 'key', dev: true,
     hide: ['2 / 3 / 4 / 5', '1–9'],
     d: 'Depends on what the grid is running:',
@@ -387,7 +389,7 @@ var HP_CTX = [
     hide: ['F'],
     d: 'Same key, two jobs:',
     variants: [
-      { d: 'Grid: FUN — raises the FUN MODES window (w = waterfall, r = ring, t = turn, the variant numbers, what a click does). F again LEAVES fun mode and stops whatever is running.',
+      { d: 'Grid: MODES — raises the MODES window (r = regular, t = turn, q = quiz, f = fall, w = wander, d = fold, the variant numbers, what a click does). M again hides it; R is what stops things.',
         on: function (s) { return s.code === 'G'; } },
       { d: 'Table: toggle the filter — tags ∧ text (⇧F clears every filter)',
         dev: true, on: function (s) { return s.code === 'T'; } }
@@ -456,20 +458,20 @@ var HP_ADD = {
     // there is nothing for a developer to confuse it with.
     { k: 'L',
       d: 'Clean view — hides the ← back arrow, the cell letters (1a, 1b …) and the line of text along the top. Press L again to bring them back.' },
-    // (dev0705) F is FUN, not Fall: it raises the card that offers the modes.
-    // (dev0837) …and now ONLY that: in fun mode F is the way out, not the waterfall.
-    { k: 'F',
-      d: 'FUN — raises the FUN MODES window: the three modes (w = waterfall, r = ring, t = turn), the variant numbers, and what a click on a cell does in each. Press F again to leave fun mode — or tap the ✕ under the middle of the bottom row.' },
-    // (dev0708) DEV ONLY now. R still works in Gu — it is the same key it always
-    // was — but it stopped being a CHOICE the moment dev0705 made F raise the FUN
-    // MODES card, which offers the conveyor as one of its options. Listing it
-    // again at the top level presented one menu as two.
-    { k: 'R', dev: true,
-      d: 'FUN MODE — ring: the cells travel round the grid. Press R again to leave it.' }
-    // (dev0836 → dev0837) TURNAROUND IS NOT LISTED HERE. It is a fun-mode CHOICE,
-    // reached with t only once f has opened the door — and on the plain grid bare t
-    // means "back to the Table", which is the meaning a top-level row would have to
-    // contradict. The FUN MODES card and the ◆ turnaround card below carry it.
+    // (dev0705 → dev0844) M raises the MODES card. It is the only mode key listed
+    // at this level, because it is the only one that works from a plain grid: the
+    // rest are claimed while the card has the keyboard, and outside it they mean
+    // what they mean everywhere else (t → Table, q → new embed, d → Dictionary).
+    { k: 'M',
+      d: 'MODES — raises the window listing what this grid can do: R regular · T turn · Q quiz · F fall · W wander · D fold. It also says what a click on a cell does in each one. Press M again to hide the window; R is what puts the grid back to normal — or tap the ✕ under the middle of the bottom row.' },
+    // (dev0844) R stays listed: it is the one mode letter that works cold, and it
+    // is the one a reader most needs to find — the way back to a plain grid.
+    { k: 'R',
+      d: 'REGULAR — the plain grid: stops whatever mode is running and unfolds a folded grid. Does nothing if the grid is already normal.' }
+    // (dev0836 → dev0844) THE OTHER MODES ARE NOT LISTED HERE. Each is a CHOICE on
+    // the Modes card, reached only once M has opened it — and on the plain grid
+    // those same letters mean something else, which is the meaning a top-level row
+    // would have to contradict. The MODES card and the ◆ cards below carry them.
   ]
 };
 
@@ -489,52 +491,71 @@ var HP_MODES = [
       { k: '[  /  ]',  d: 'Less / more warm-up (∓0.5 s) — the panel shows the new value' },
       { k: 'Esc',      d: 'Close this window. [ and ] go back to zooming the grid.' }
     ] },
-  // (dev0705) The FUN MODES card is itself the answer, so H over it just says how
+  // (dev0705) The MODES card is itself the answer, so H over it just says how
   // to work the card. Listed FIRST: it can be up while a mode runs, and then it,
   // not the mode, is what the reader is looking at.
   { screens: ['G'], on: function (s) { return s.funPanel; },
-    title: '✨ FUN MODES window',
-    desc: 'The window in the middle offers the three modes — it stays up while they run and keeps saying what each key does now:',
+    title: '✨ MODES window',
+    desc: 'The window in the middle lists what this grid can be doing — it stays up while you choose and keeps saying what each key does now:',
     rows: [
-      { k: 'W',       d: 'Start the waterfall — cells drop off the cliff, bounce and re-enter. W again stops it.' },
-      { k: 'R',       d: 'Start the ring — the cells travel round the grid. R again stops it.' },
-      { k: 'T',       d: 'Start turnaround — click a cell to turn it over and read its tags and text. T again stops it.' },
-      { k: '1  /  2', d: 'While the ring runs: 1 = cascade · 2 = swap (the same number again gives the plain ring)' },
+      { k: 'R',       d: 'REGULAR — the plain grid. Stops whatever is running, and unfolds a folded grid.' },
+      { k: 'T',       d: 'TURN — click a cell to turn it over and read its tags and text. T again stops it.' },
+      { k: 'Q',       d: 'QUIZ — named, but not built yet.' },
+      { k: 'F',       d: 'FALL — the cells come off the cliff, bounce and re-enter. F again stops it.' },
+      { k: 'W',       d: 'WANDER — the cells travel round the grid. W again stops it.' },
+      { k: '1  /  2', d: 'While they wander: 1 = cascade · 2 = swap (the same number again gives plain wander)' },
+      { k: 'D',       d: 'FOLD — the grid folds like paper. Needs a plain 4×4 grid or bigger.' },
       { k: 'Click a cell', d: 'Does something different in each mode — the window says which' },
       { k: '{  /  }', d: 'Slower / faster' },
-      { k: 'F',       d: 'LEAVE fun mode — stops whatever is running and closes this window. So does the ✕ under the middle of the bottom row.' },
-      { k: 'Esc',     d: 'Just hide this window. Anything running keeps running — F is the off switch.' }
+      { k: 'M',       d: 'Hide this window again. M is only the menu key — it stops nothing.' },
+      { k: 'Esc',     d: 'Also just hides the window. Anything running keeps running — R is the off switch.' }
     ] },
   { screens: ['G'], on: function (s) { return s.fall; },
     title: '🌊 FALL mode',
-    desc: 'A fun mode — the cells fall around the edge of the grid.',
+    desc: 'The cells come off the cliff at the edge of the grid.',
     rows: [
-      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain ring)' },
+      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for plain wander)' },
       { k: 'Click a cell', d: 'Features that cell BIG for about 10 seconds, then it fades back into the flow' },
       { k: '{  /  }', d: 'Slower / faster' },
-      { k: 'W',       d: 'STOP the waterfall — the chooser comes back' },
-      { k: 'F',       d: 'LEAVE fun mode altogether — or tap the ✕ under the middle of the bottom row' }
+      { k: 'F',       d: 'STOP the fall — the chooser comes back' },
+      { k: 'R',       d: 'REGULAR — back to the plain grid, or tap the ✕ under the middle of the bottom row' },
+      { k: 'M',       d: 'The list of modes, to switch to another one' }
     ] },
-  // (dev0836) Turnaround. Listed before conveyor only for tidiness — the two can
-  // never be on together (_gmStopAll clears one when the other starts).
+  // (dev0836) Turn. Listed before wander only for tidiness — the two can never be
+  // on together (_gmStopAll clears one when the other starts).
   { screens: ['G'], on: function (s) { return s.turn; },
-    title: '🔄 TURNAROUND mode',
-    desc: 'A fun mode — the cells turn over to show what they are about.',
+    title: '🔄 TURN mode',
+    desc: 'The cells turn over to show what they are about.',
     rows: [
       { k: 'Click a cell', d: 'Turns it over: its tags across the top half, the first few lines of its text below. Click it again and it turns back — a video carries on from where it stopped.' },
       { k: 'The spin box', d: 'Under the middle of the bottom row: 1 to 20. A turn takes 2 ÷ that many seconds — 8 (the default) gives a quarter of a second, 1 is the slowest at two. It is remembered for next time.' },
-      { k: 'T',       d: 'STOP turnaround — every cell goes face-up and the chooser comes back' },
-      { k: 'F',       d: 'LEAVE fun mode altogether — or tap the ✕ just below the spin box' }
+      { k: 'T',       d: 'STOP turning — every cell goes face-up and the chooser comes back' },
+      { k: 'R',       d: 'REGULAR — back to the plain grid, or tap the ✕ just below the spin box' },
+      { k: 'M',       d: 'The list of modes, to switch to another one' }
+    ] },
+  // (dev0844) Fold mode — before wander for the same tidiness reason, one at a time.
+  { screens: ['G'], on: function (s) { return s.fold; },
+    title: '⧉ FOLD mode',
+    desc: 'The grid is folded like a paper fortune teller — ten cells in a staircase down the diagonal, with three circles where four of them meet.',
+    rows: [
+      { k: 'Double-click a circle', d: 'Folds those four cells into one, and the back of the corner cell comes up. The two outer folds first, then the middle one: 10 cells → 7 → 4 → 1.' },
+      { k: 'Double-click it again', d: 'Unfolds that block' },
+      { k: 'Click a cell',          d: 'Plays it, as on any grid — it is the DOUBLE-click, on a circle, that folds' },
+      { k: 'What is on the backs',  d: 'The three cells the staircase does not use: 1c, 1d and 2d. A 5×5 folds its top-left 4×4 and leaves row 5 and column e out of it.' },
+      { k: 'D',       d: 'STOP folding — the grid goes back to a plain square and the chooser comes back' },
+      { k: 'R',       d: 'REGULAR — the same thing, or tap the ✕ under the middle of the bottom row' },
+      { k: 'M',       d: 'The list of modes, to switch to another one' }
     ] },
   { screens: ['G'], on: function (s) { return s.conveyor; },
-    title: '↻ RING mode',
-    desc: 'A fun mode — the cells travel round the grid.',
+    title: '↻ WANDER mode',
+    desc: 'The cells travel round the grid.',
     rows: [
-      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain ring)' },
-      { k: 'Click a cell', d: 'Plain ring: play / pause it · cascade: flies it to a free slot · swap: glides it into another cell’s place' },
+      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for plain wander)' },
+      { k: 'Click a cell', d: 'Plain wander: play / pause it · cascade: flies it to a free slot · swap: glides it into another cell’s place' },
       { k: '{  /  }', d: 'Slower / faster' },
-      { k: 'R',       d: 'STOP the ring — the chooser comes back' },
-      { k: 'F',       d: 'LEAVE fun mode altogether — or tap the ✕ under the middle of the bottom row' }
+      { k: 'W',       d: 'STOP them wandering — the chooser comes back' },
+      { k: 'R',       d: 'REGULAR — back to the plain grid, or tap the ✕ under the middle of the bottom row' },
+      { k: 'M',       d: 'The list of modes, to switch to another one' }
     ] }
 ];
 
@@ -1123,7 +1144,7 @@ function hpTick() {
   if (!hpIsOpen()) return;
   var s = hpState();
   if (s.code !== _hpScreenAt) { hpRender(); return; }
-  // (dev0704) Raising / dropping the clean-playback panel or a fun mode swaps the
+  // (dev0704) Raising / dropping the clean-playback panel or a mode swaps the
   // whole card in Gu — that is a redraw, not a marker move.
   var mNow = s.userMode ? hpMode(s) : null;
   if ((mNow ? mNow.title : null) !== _hpModeAt) { hpRender(); return; }

@@ -2684,7 +2684,7 @@ window._showShareableMenu = _showShareableMenu;
 // playing behind the menu.
 window._returnToMenuFromGrid = function () {
   // (dev0706) Halt the moving-cells family FIRST. This path only HIDES the grid,
-  // so a fun mode left running kept animating cells nobody could see — and it is
+  // so a mode left running kept animating cells nobody could see — and it is
   // the one viewers actually use (Esc, or the swipe across a cell border). Shared
   // with gridClose() via collection.js's _gmStopAll so the two can't drift.
   if (typeof window._gmStopAll === 'function') window._gmStopAll();
@@ -2695,7 +2695,7 @@ window._returnToMenuFromGrid = function () {
   // alone leaves them floating over the menu. gridClose() already drops them; this
   // path is the user-mode way out and has to as well.
   if (typeof window._gridBufPanelClose === 'function') window._gridBufPanelClose();
-  if (typeof window._gmFunPanelClose === 'function') window._gmFunPanelClose();
+  if (typeof window._gmModesClose === 'function') window._gmModesClose();
   if (typeof window._gmHeavyCardClose === 'function') window._gmHeavyCardClose();  // (dev0800)
   const g = document.getElementById('gridOverlay');
   if (g) g.style.display = 'none';

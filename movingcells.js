@@ -70,7 +70,7 @@
   // (dev0800) Shared desktop gate — live detection + a "run it anyway" card.
   // See collection.js _gmHeavyGate. Local fallback if that file ever goes missing.
   function heavyOK() {
-    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('The conveyor', start);
+    if (typeof window._gmHeavyGate === 'function') return window._gmHeavyGate('Wander', start);
     var ok = !!(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
     if (!ok) toast('Moving cells is desktop-only (too heavy for phones)', 2200);
     return ok;

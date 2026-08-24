@@ -15,7 +15,7 @@
 //   through it means the button can never drift away from the keyboard — a
 //   screen that changes what Esc does changes what the arrow does, for free.
 //   The grid is the one exception: it has a dedicated helper that also stops the
-//   players and the fun modes, so the arrow calls that directly.
+//   players and the grid modes, so the arrow calls that directly.
 //
 // WHERE IT SHOWS
 //   USER MODE ONLY, on every screen EXCEPT:
