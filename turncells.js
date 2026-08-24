@@ -38,11 +38,12 @@
 //   is ever re-parented: the front children are only  visibility:hidden , and the
 //   back panel is a sibling appended to the same cell.
 //
-// SPEED: the box that floats under cell 5c holds a number 1-20 (default 5) and the
+// SPEED: the box that floats under cell 5c holds a number 1-20 (default 8) and the
 // turn takes  2 / n  seconds — so 1 is the slowest at two full seconds, the default
-// 5 gives 0.4s, and 20 whips round in 100ms. (dev0838 doubled this from 1/n: at
+// 8 gives 0.25s, and 20 whips round in 100ms. (dev0838 doubled this from 1/n: at
 // 1/n the default was a 200ms turn, too quick to read as a rotation at all.)
-// Remembered in localStorage for the next visit.
+// Remembered in localStorage for the next visit, so a stored value wins over the
+// default — type 8 in the box to pick up a changed default.
 //
 // ──────────────────────────────────────────────────────────────────────────────
 // CUT-OUT INSTRUCTIONS — to remove the feature entirely, with zero grid impact:
@@ -60,7 +61,7 @@
 
   // ── Tunables ────────────────────────────────────────────────────────────────
   var SPEED_KEY = 'salTurnSpeed';
-  var SPEED_MIN = 1, SPEED_MAX = 20, SPEED_DEF = 5;
+  var SPEED_MIN = 1, SPEED_MAX = 20, SPEED_DEF = 8;   // 2/8 = 0.25s per turn
   var FTEXT_LINES = 5;                            // "first 5 lines of ftext"
   // (dev0841) ONE CURVE, BOTH HALVES — and NOT a time-reverse of each other.
   //
@@ -487,7 +488,14 @@
     });
   }
 
-  // Back -> front, the same way round in reverse, so it visibly unwinds.
+  // Back -> front. (dev0842) THE SAME WAY ROUND AS THE OUTWARD TURN, not its
+  // mirror. It used to unwind — 0 -> -90 -> ... -> 0 — which sounds tidier and is
+  // wrong to watch: on a landscape cell the top went BACK on the way out and then
+  // came FORWARD on the way home, and on a portrait cell the right edge did the
+  // same. A card you keep turning the same way is one object being turned over and
+  // back over; a card that unwinds is the film running backwards. So this half now
+  // uses exactly the angles turnToBack uses, and the top (or the right edge) goes
+  // away from you every time, in both directions.
   function turnToFront(cell) {
     var st = turned.get(cell);
     if (!st) return;
@@ -501,12 +509,12 @@
     st.backdrop = addBackdrop(cell, st.box);
     cell.style.zIndex = '300';
 
-    spin(cell, st, axis, 0, -90, half, EASE_OUT, function () {
+    spin(cell, st, axis, 0, 90, half, EASE_OUT, function () {
       dropEl(st.back);
       showFront(st.hidden);
       st.back = null; st.hidden = null; st.flipped = false;
       setPlaying(cell, true);                               // carry on from the held frame
-      spin(cell, st, axis, 90, 0, half, EASE_IN, function () {
+      spin(cell, st, axis, -90, 0, half, EASE_IN, function () {
         dropEl(st.backdrop); st.backdrop = null;
         turned.delete(cell);
         if (cell.isConnected) settle(cell, null);
