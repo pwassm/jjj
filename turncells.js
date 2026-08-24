@@ -174,28 +174,33 @@
   // which on a grid cell is either lost or comical depending on the layout — and it
   // wraps chips inline, so a long binomial and a three-letter tag shared a row.
   //
-  // So each chip is re-dressed as its own line whose metrics are all in em, and the
-  // ONE font size for the whole card is solved from two constraints:
-  //   width   the widest chip should just reach both edges of the card
-  //   height  all of them have to fit, stacked, inside the top half
-  // and the smaller of the two wins. Same size on every chip of a card, by
-  // construction — it is set once, on their parent, and they inherit it.
+  // So each chip is re-dressed as its own line whose metrics are all in em, and they
+  // all share ONE size, set once on their parent and inherited.
+  //
+  // (dev0843) THAT SIZE IS A FIXED MEDIUM, AND IT ONLY EVER SHRINKS. dev0838 solved
+  // it from the card width — "make the longest chip span the card" — which is what
+  // was asked for and looked wrong in practice: a card carrying one short tag blew
+  // that tag up to fill the width, so chip size swung wildly from card to card and
+  // some came out huge. Type size is not the place to express how long a tag is.
+  // So CHIP_MED is the size every chip wants, and the fitting is one-directional —
+  // reduce just enough that the longest chip fits the width and the whole stack
+  // fits the top half, never enlarge to fill space that happens to be free.
   //
   // Called AFTER the panel is in the DOM. Measurement uses scrollWidth /
   // clientWidth, which are layout values: the cell is edge-on under a rotate at
   // that moment, and a getBoundingClientRect would come back foreshortened to
   // nothing, but layout metrics do not care about transforms.
-  var CHIP_BASE = 11;                  // the size chipHtml bakes in — our yardstick
-  var CHIP_MIN = 6, CHIP_MAX = 46;
+  var CHIP_MED = 13;                   // the one medium size chips are drawn at
+  var CHIP_MIN = 6;                    // …unless they must shrink to fit
 
-  function fitTagChips(top) {
-    if (!top) return;
-    var chips = top.querySelectorAll('.tag-chip');
+  function fitTagChips(box) {
+    if (!box) return;
+    var chips = box.querySelectorAll('.tag-chip');
     if (!chips.length) return;
     // Re-dress first: em metrics, own line, and no inline size to fight the parent.
-    top.style.fontSize = CHIP_BASE + 'px';
+    box.style.fontSize = CHIP_MED + 'px';
     chips.forEach(function (c) {
-      c.style.fontSize = '';                    // inherit the one size from `top`
+      c.style.fontSize = '';                    // inherit the one size from `box`
       c.style.display = 'flex';                 // a flex-column item = its own line
       c.style.padding = '0.1em 0.5em';
       c.style.borderRadius = '1em';
@@ -203,18 +208,19 @@
       c.style.maxWidth = '100%';
       c.style.borderWidth = '1px';
     });
-    var avail = top.clientWidth;
-    if (!avail) return;                         // not laid out — leave the base size
+    var avail = box.clientWidth;
+    if (!avail) return;                         // not laid out — leave the medium
     var widest = 0;
     chips.forEach(function (c) { if (c.scrollWidth > widest) widest = c.scrollWidth; });
     if (!widest) return;
     // Chip width is very nearly linear in font size (text + em padding), so one
     // pass gets there; no need to iterate.
-    var byWidth  = CHIP_BASE * (avail / widest);
+    var byWidth  = CHIP_MED * (avail / widest);
     // 1.45 line-height + 0.2em padding + 0.18em margin ≈ 1.83em per stacked line.
-    var byHeight = top.clientHeight / (chips.length * 1.83);
-    var size = Math.max(CHIP_MIN, Math.min(CHIP_MAX, Math.min(byWidth, byHeight)));
-    top.style.fontSize = size.toFixed(2) + 'px';
+    var byHeight = box.clientHeight / (chips.length * 1.83);
+    // Math.min against CHIP_MED is the whole rule: shrink to fit, never grow.
+    var size = Math.max(CHIP_MIN, Math.min(CHIP_MED, byWidth, byHeight));
+    box.style.fontSize = size.toFixed(2) + 'px';
   }
 
   function buildBack(cell, row) {
