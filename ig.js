@@ -47,7 +47,7 @@
   let view = [];                       // filtered + sorted slice of `rows`
   let sortCol = 'DateAdded', sortDir = -1;
   let query = '', kindFilter = 'all', statusFilter = 'all', authorFilter = 'all';
-  let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested)
+  let stagedFilter = 'all';            // (dev0472) all | non (NonFullReels/ffdown) | full (harvested) | w (dev0807: 'w'-added)
   let embedFilter = 'all';             // (dev0665) all | 1 (embeddable) | 0 (not) | un (unprobed)
   let refetchFilter = 'all';           // (dev0677) all | need (needsFullRes) | done (was marked, now re-fetched)
   let resFilter = 'all';               // (dev0690) all | low (<1080 wide) | ok | unmeasured | best
@@ -1273,7 +1273,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igAuthor" title="Filter by author"><option value="all">all authors</option></select>
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option><option value="__retired__">🪦 retired (dead posts)</option></select>
-        <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links, plus the legacy ffdown imports from before that button was retired)"><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option></select>
+        <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links, plus the legacy ffdown imports from before that button was retired).&#10;&#10;'Added with w' is the exact set: rows this screen created from a clipboard URL (source=manual). A later harvest of the same author never overwrites them — /ig/add skips ids ig.json already holds — so the mark survives."><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option><option value="w">⌨ Added with w</option></select>
         <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
         <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option><option value="stuck">⤓ gave up (3 tries)</option></select>
         <select id="igRes" title="(dev0690) Real resolution OF THE FILES ON DISK, measured at download time — not the enrich metadata, which for a carousel video is IG’s logged-out page figure and is capped at 720 wide. ‘below 1080’ = the narrowest item of the post is under 1080px wide (the backfill queue). ‘not measured’ = downloaded before dev0690, so nothing knows what it is without re-downloading. ‘at best’ = a re-download was tried and IG had nothing better, so stop offering it. (dev0698) The 🔬 options are the video probe’s verdicts — see the 🔬 Probe video res button."><option value="all">all res</option><option value="low">📐 below 1080 wide</option><option value="ok">1080+ wide</option><option value="unmeasured">not measured yet</option><option value="best">already at IG’s best</option><option value="pup">🔬⬆ probe: bigger available</option><option value="pmax">🔬✔ probe: at IG’s max</option><option value="punprobed">🔬 video, not probed yet</option></select>
@@ -1484,6 +1484,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (dev0472) NonFullReels = ffdown imports (staged===false); Full reels = harvested (everything else)
       if (stagedFilter === 'non' && r.staged !== false) return false;
       if (stagedFilter === 'full' && r.staged === false) return false;
+      // (dev0807) The rows YOU picked by hand with 'w' — posts interesting enough to
+      // grab one at a time, so worth being able to find again. source==='manual' is
+      // written only by addUnharvestedFromClipboard and is never rewritten later:
+      // /ig/add skips ids already present, so re-harvesting the author leaves the
+      // original 'w' row (and its mark) exactly as it was. NOT the same as
+      // "Unharvested" — that also holds a legacy ffdown import and some old
+      // staged:false harvest rows.
+      if (stagedFilter === 'w' && r.source !== 'manual') return false;
       // (dev0665) Official-embed verdict from igEmbedProbe.js: 1 / 0 / absent (unprobed)
       if (embedFilter === '1' && r.embed !== 1) return false;
       if (embedFilter === '0' && r.embed !== 0) return false;
