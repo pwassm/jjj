@@ -33,8 +33,10 @@
 //   back panel is a sibling appended to the same cell.
 //
 // SPEED: the box that floats under cell 5c holds a number 1-20 (default 5) and the
-// turn takes  1 / n  seconds — so 1 is the slowest at a full second and 20 whips
-// round in 50ms. Remembered in localStorage for the next visit.
+// turn takes  2 / n  seconds — so 1 is the slowest at two full seconds, the default
+// 5 gives 0.4s, and 20 whips round in 100ms. (dev0838 doubled this from 1/n: at
+// 1/n the default was a 200ms turn, too quick to read as a rotation at all.)
+// Remembered in localStorage for the next visit.
 //
 // ──────────────────────────────────────────────────────────────────────────────
 // CUT-OUT INSTRUCTIONS — to remove the feature entirely, with zero grid impact:
@@ -61,7 +63,17 @@
   var EASE_IN  = 'cubic-bezier(.25,.6,.65,1)';    // back arriving  — mild decelerate
   var PANEL_BG    = '#14161c';   // the back face
   var BACKDROP_BG = '#0e0f12';   // the black-grey the turn happens against
-  var VEIL_MAX    = 0.9;         // how dark the picture gets by the time it is edge-on
+  // (dev0838) THE VEIL IS SHADING, NOT A FADE-OUT. dev0837 ran it at 0.9 over the
+  // whole outgoing half with the same curve as the rotation, and the result read as
+  // "the picture fades out" — not "the picture turns": opacity is far more
+  // noticeable than a shallow foreshortening, so by the time the cell had visibly
+  // rotated at all the photo was already half gone.
+  // So it now behaves like a face turning away from a light — nothing for the first
+  // third, then shading in steeply as the card actually goes edge-on, and never all
+  // the way to black. VEIL_HOLD is the fraction of the half it waits.
+  var VEIL_MAX  = 0.72;
+  var VEIL_HOLD = 0.38;
+  var VEIL_EASE = 'cubic-bezier(.65,0,.9,.45)';   // flat, then steep
 
   // ── State ───────────────────────────────────────────────────────────────────
   var active = false;
@@ -100,8 +112,12 @@
     try { localStorage.setItem(SPEED_KEY, String(speed)); } catch (_) {}
     return speed;
   }
-  // Half a turn, in seconds. The two halves together make the 1/speed the box says.
-  function halfDur() { return 0.5 / speed; }
+  // (dev0838) A WHOLE TURN IS 2/speed SECONDS, not 1/speed. At the default 5 the
+  // old rule gave a 200ms turn — 100ms per half — which is below the threshold at
+  // which a rotation reads as a rotation at all, and was the other half of the
+  // "it just fades" complaint. Doubled: 5 → 0.4s, 1 → a full 2s, 20 → 0.1s.
+  function turnDur() { return 2 / speed; }
+  function halfDur() { return turnDur() / 2; }
 
   // ── The back face ───────────────────────────────────────────────────────────
   // First N "lines" of ftext = the text of its first N leaf block elements, which
@@ -140,6 +156,55 @@
     return '';
   }
 
+  // ── Chip sizing ─────────────────────────────────────────────────────────────
+  // (dev0838) ONE CHIP PER LINE, AND THE LONGEST ONE SPANS THE CARD. tagsLib's
+  // chipHtml bakes a fixed 11px and pixel padding into every chip's inline style,
+  // which on a grid cell is either lost or comical depending on the layout — and it
+  // wraps chips inline, so a long binomial and a three-letter tag shared a row.
+  //
+  // So each chip is re-dressed as its own line whose metrics are all in em, and the
+  // ONE font size for the whole card is solved from two constraints:
+  //   width   the widest chip should just reach both edges of the card
+  //   height  all of them have to fit, stacked, inside the top half
+  // and the smaller of the two wins. Same size on every chip of a card, by
+  // construction — it is set once, on their parent, and they inherit it.
+  //
+  // Called AFTER the panel is in the DOM. Measurement uses scrollWidth /
+  // clientWidth, which are layout values: the cell is edge-on under a rotate at
+  // that moment, and a getBoundingClientRect would come back foreshortened to
+  // nothing, but layout metrics do not care about transforms.
+  var CHIP_BASE = 11;                  // the size chipHtml bakes in — our yardstick
+  var CHIP_MIN = 6, CHIP_MAX = 46;
+
+  function fitTagChips(top) {
+    if (!top) return;
+    var chips = top.querySelectorAll('.tag-chip');
+    if (!chips.length) return;
+    // Re-dress first: em metrics, own line, and no inline size to fight the parent.
+    top.style.fontSize = CHIP_BASE + 'px';
+    chips.forEach(function (c) {
+      c.style.fontSize = '';                    // inherit the one size from `top`
+      c.style.display = 'flex';                 // a flex-column item = its own line
+      c.style.padding = '0.1em 0.5em';
+      c.style.borderRadius = '1em';
+      c.style.margin = '0.09em 0';
+      c.style.maxWidth = '100%';
+      c.style.borderWidth = '1px';
+    });
+    var avail = top.clientWidth;
+    if (!avail) return;                         // not laid out — leave the base size
+    var widest = 0;
+    chips.forEach(function (c) { if (c.scrollWidth > widest) widest = c.scrollWidth; });
+    if (!widest) return;
+    // Chip width is very nearly linear in font size (text + em padding), so one
+    // pass gets there; no need to iterate.
+    var byWidth  = CHIP_BASE * (avail / widest);
+    // 1.45 line-height + 0.2em padding + 0.18em margin ≈ 1.83em per stacked line.
+    var byHeight = top.clientHeight / (chips.length * 1.83);
+    var size = Math.max(CHIP_MIN, Math.min(CHIP_MAX, Math.min(byWidth, byHeight)));
+    top.style.fontSize = size.toFixed(2) + 'px';
+  }
+
   function buildBack(cell, row) {
     var r = cell.getBoundingClientRect();
     // Scale the type to the cell — a 27-cell portrait grid is a third the height
@@ -169,11 +234,12 @@
       return back;
     }
 
-    // TOP HALF — the tag chips.
+    // TOP HALF — the tag chips, ONE PER LINE. Sized by fitTagChips() once the panel
+    // is in the DOM and can be measured; see the note there.
     var top = document.createElement('div');
     top.className = 'turn-back-tags';
     top.style.cssText = 'flex:0 0 50%;min-height:0;overflow:hidden;'
-      + 'display:flex;flex-wrap:wrap;align-content:flex-start;'
+      + 'display:flex;flex-direction:column;align-items:flex-start;'
       + 'border-bottom:1px solid rgba(255,255,255,.14);'
       + 'padding-bottom:' + Math.round(pad / 2) + 'px;margin-bottom:' + Math.round(pad / 2) + 'px;';
     top.innerHTML = chips || '<span style="opacity:.35;font-style:italic;">no tags yet</span>';
@@ -339,8 +405,10 @@
     void cell.offsetWidth;                                  // commit the start pose
     cell.style.transition = 'transform ' + half + 's ' + EASE_OUT;
     cell.style.transform = tf(cell, axis, 90);
-    // Same duration and curve as the rotation, so darkness and angle move together.
-    st.veil.style.transition = 'opacity ' + half + 's ' + EASE_OUT;
+    // Held flat for the first VEIL_HOLD of the half — the stretch where the turn
+    // itself has to be legible — then shaded in over what is left of it.
+    st.veil.style.transition = 'opacity ' + (half * (1 - VEIL_HOLD)).toFixed(3) + 's '
+      + VEIL_EASE + ' ' + (half * VEIL_HOLD).toFixed(3) + 's';
     st.veil.style.opacity = String(VEIL_MAX);
 
     st.timer = setTimeout(function () {
@@ -351,6 +419,7 @@
       dropEl(st.veil); st.veil = null;
       var back = buildBack(cell, row);
       cell.appendChild(back);
+      fitTagChips(back.querySelector('.turn-back-tags'));   // needs to be in the DOM
       st.back = back;
       st.hidden = hideFront(cell, back);
       st.flipped = true;
@@ -482,7 +551,7 @@
 
   function boxRead() {
     var el = document.getElementById('turnSpeedRead');
-    if (el) el.textContent = '= ' + (1 / speed).toFixed(2) + 's per turn';
+    if (el) el.textContent = '= ' + turnDur().toFixed(2) + 's per turn';
   }
 
   function boxShow() {

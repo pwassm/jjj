@@ -522,7 +522,7 @@ var HP_MODES = [
     desc: 'A fun mode — the cells turn over to show what they are about.',
     rows: [
       { k: 'Click a cell', d: 'Turns it over: its tags across the top half, the first few lines of its text below. Click it again and it turns back — a video carries on from where it stopped.' },
-      { k: 'The spin box', d: 'Under the middle of the bottom row: 1 to 20. A turn takes 1 ÷ that many seconds, so 1 is the slowest. It is remembered for next time.' },
+      { k: 'The spin box', d: 'Under the middle of the bottom row: 1 to 20. A turn takes 2 ÷ that many seconds — 5 gives about half a second, 1 is the slowest at two. It is remembered for next time.' },
       { k: 'T',       d: 'STOP turnaround — every cell goes face-up and the chooser comes back' },
       { k: 'F',       d: 'LEAVE fun mode altogether — or tap the ✕ just below the spin box' }
     ] },

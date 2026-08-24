@@ -504,10 +504,15 @@ window.addEventListener('keydown', function(e) {
   // an engine is running), which is exactly when they read as choices:
   //   f  enters fun mode (the card lists the choices) and leaves it again
   //   w  waterfall  ·  r  ring conveyor  ·  t  turn
-  // Outside fun mode every one of these letters keeps the meaning it always had:
-  // bare t goes back to the Table, bare w is the clipboard import. r is the one
-  // exception — it has started the conveyor on the grid since dev0374 and still
-  // does cold, since starting it IS entering fun mode.
+  // Outside fun mode t keeps the meaning it always had — back to the Table, the
+  // key used constantly here. r is the one letter that also works cold: it has
+  // started the ring on the grid since dev0374, and starting it IS entering fun
+  // mode.
+  //
+  // (dev0838) BARE w ON THE GRID IS OTHERWISE INERT — swallowed, not forwarded.
+  // The clipboard import it used to reach belongs to the Table and the Ig screen,
+  // where there is a row to import INTO; on a grid it only ever fired by accident
+  // while reaching for the waterfall.
   //
   // Rides the same user-mode gate as f below: dev always, viewers only while the
   // guFunKeys switch is on (it is by default).
@@ -516,12 +521,20 @@ window.addEventListener('keydown', function(e) {
     const vpOpenW = document.getElementById('gridFullscreen')?.style.display === 'flex';
     const _uModeW = (typeof _isUserMode === 'function') && _isUserMode();
     const _guFunW = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
-    if (gOpenW && !vpOpenW && (!_uModeW || _guFunW)
-        && typeof window._gmFunOn === 'function' && window._gmFunOn()) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (typeof window._gmChoiceKey === 'function') window._gmChoiceKey(k);
-      return false;
+    if (gOpenW && !vpOpenW) {
+      const funOnW = (!_uModeW || _guFunW)
+        && typeof window._gmFunOn === 'function' && window._gmFunOn();
+      if (funOnW) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window._gmChoiceKey === 'function') window._gmChoiceKey(k);
+        return false;
+      }
+      if (k === 'w') {                      // (dev0838) dead key on the grid
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
     }
   }
   // (dev0638) b while G is open (no V on top) cycles the buffered-playback SCOPE
