@@ -201,7 +201,7 @@
 
     running = true;
     pinAll();
-    toast('▶ Moving cells ON — move ' + moveDur + 's · pause ' + PAUSE + 's   ( { slower · } faster · r stop )', 3200);
+    toast('▶ Moving cells ON — move ' + moveDur + 's · pause ' + PAUSE + 's   ( { slower · } faster · r stops · f exits )', 3200);
     timer = setTimeout(loop, 500);
   }
 

@@ -1,8 +1,12 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// TURN CELLS  (dev0836)  —  Grid fun mode: T for TURNAROUND
+// TURN CELLS  (dev0836 / rewired dev0837)  —  Grid fun mode: T for TURNAROUND
 // ══════════════════════════════════════════════════════════════════════════════
 //
-// Filed under "fun" with the waterfall / conveyor / fly family, but it is really
+// REACHED AS A FUN-MODE CHOICE, NOT ON ITS OWN KEY: f opens fun mode, then t.
+// dev0836 gave it bare t over the grid, which cost the constantly-used t→Table;
+// dev0837 hands that back and claims t only while fun mode is on.
+//
+// Filed under "fun" with the waterfall / ring / fly family, but it is really
 // the INSTRUCTIVE one: a cell you click turns over on its long midline and shows
 // what the picture is ABOUT — the row's tag chips in the top half, the first five
 // lines of its ftext below. Click again and it turns back to the front, resuming
@@ -36,10 +40,10 @@
 // CUT-OUT INSTRUCTIONS — to remove the feature entirely, with zero grid impact:
 //   1. delete this file
 //   2. delete  'turncells.js'  from the files[] array in index.html
-//   3. in collection.js, drop the TurnCells line from _gmStopAll and the T row
-//      from _gmFunPanelHtml  (search "TurnCells")
-//   4. in core.js, delete the  k === 't'  grid block in the window-capture
-//      keydown handler (search "TurnCells")
+//   3. in collection.js, drop the TurnCells line from _gmStopAll, the T row from
+//      _gmFunPanelHtml, the 't' branch of _gmChoiceKey, and _gmTurnOn
+//   4. in core.js, drop 't' from the  k === 'w' || k === 't'  grid block in the
+//      window-capture keydown handler (leaving w = waterfall)
 // Nothing else references it.
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -50,8 +54,14 @@
   var SPEED_KEY = 'salTurnSpeed';
   var SPEED_MIN = 1, SPEED_MAX = 20, SPEED_DEF = 5;
   var FTEXT_LINES = 5;                            // "first 5 lines of ftext"
-  var EASE_OUT = 'cubic-bezier(.45,.05,.9,.6)';   // front leaving  — accelerating
-  var EASE_IN  = 'cubic-bezier(.1,.4,.55,.95)';   // back arriving  — decelerating
+  // (dev0837) Gentler than the first cut. The turn should read as ONE continuous
+  // rotation over its whole duration — more and more edge-on — so each half only
+  // mildly accelerates / decelerates instead of sitting still and then whipping.
+  var EASE_OUT = 'cubic-bezier(.35,0,.75,.4)';    // front leaving  — mild accelerate
+  var EASE_IN  = 'cubic-bezier(.25,.6,.65,1)';    // back arriving  — mild decelerate
+  var PANEL_BG    = '#14161c';   // the back face
+  var BACKDROP_BG = '#0e0f12';   // the black-grey the turn happens against
+  var VEIL_MAX    = 0.9;         // how dark the picture gets by the time it is edge-on
 
   // ── State ───────────────────────────────────────────────────────────────────
   var active = false;
@@ -144,7 +154,7 @@
     var back = document.createElement('div');
     back.className = 'turn-back';
     back.style.cssText = 'position:absolute;inset:0;z-index:140;overflow:hidden;'
-      + 'background:#14161c;color:#e9e9f0;box-sizing:border-box;padding:' + pad + 'px;'
+      + 'background:' + PANEL_BG + ';color:#e9e9f0;box-sizing:border-box;padding:' + pad + 'px;'
       + 'display:flex;flex-direction:column;'
       + 'font:' + fs + 'px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;';
 
@@ -227,6 +237,62 @@
     return 'perspective(' + persp(cell) + 'px) rotate' + axis + '(' + deg + 'deg)';
   }
 
+  // ── The black-grey the turn is seen against ─────────────────────────────────
+  // (dev0837) A cell rotating about its midline foreshortens INSIDE its own slot,
+  // uncovering whatever sits behind it — which is #gridContainer's own colour
+  // (#1a1a2e, a blue-grey) and, at the moment it goes edge-on, effectively the
+  // page. Laying a dark panel over exactly that footprint for the duration of the
+  // turn means the card is always seen going edge-on against black-grey instead.
+  //
+  // Absolutely positioned INSIDE the container, not on <body>: the container is
+  // position:absolute, so an out-of-flow child is not a grid item and is placed
+  // against its padding box — and it stays in the container's stacking context,
+  // where the z-index it shares with the turning cell actually means something.
+  function addBackdrop(cell, box) {
+    var cont = container(); if (!cont || !box) return null;
+    var bd = document.createElement('div');
+    bd.className = 'turn-backdrop';
+    bd.style.cssText = 'position:absolute;pointer-events:none;z-index:299;'
+      + 'background:' + BACKDROP_BG + ';'
+      + 'left:' + box.x + 'px;top:' + box.y + 'px;'
+      + 'width:' + box.w + 'px;height:' + box.h + 'px;';
+    cont.appendChild(bd);
+    return bd;
+  }
+  // The cell's resting box, in container coordinates. Measured while the cell has
+  // no transform — a rotated rect is the foreshortened one, which is useless here.
+  function homeBox(cell) {
+    var cont = container(); if (!cont) return null;
+    var cr = cont.getBoundingClientRect();
+    var br = cell.getBoundingClientRect();
+    return { x: br.left - cr.left, y: br.top - cr.top, w: br.width, h: br.height };
+  }
+  function dropEl(el) { if (el && el.parentNode) el.remove(); }
+
+  // ── The veil that takes the picture down to black-grey as it turns away ──────
+  // (dev0837) THE ASYMMETRY THE VEIL FIXES: turning text→picture, the face that
+  // rotates away is ALREADY a dark grey panel, so it reads as a card turning in
+  // dark space and the picture then arrives out of that dark. Turning
+  // picture→text, the face that rotates away is a bright photo or a playing
+  // video, so it did not read as the same movement at all — it stayed bright to
+  // the last degree and the text simply appeared.
+  //
+  // So on the outgoing half only, a panel of exactly the back face's colour fades
+  // in over the media in step with the rotation: the picture is seen more and more
+  // edge-on AND darker, and by the time it is edge-on it already IS the colour the
+  // text arrives on. The incoming half is deliberately left alone — a picture
+  // coming back to full brightness as it flattens is the half that already worked.
+  function addVeil(cell) {
+    var v = document.createElement('div');
+    v.className = 'turn-veil';
+    // Above the media (z:1) and above .grid-interactor (z:100) so the cell label
+    // and info line dim with the picture; below the back face (z:140).
+    v.style.cssText = 'position:absolute;inset:0;z-index:130;pointer-events:none;'
+      + 'background:' + PANEL_BG + ';opacity:0;';
+    cell.appendChild(v);
+    return v;
+  }
+
   function hideFront(cell, back) {
     var hidden = [];
     Array.prototype.slice.call(cell.children).forEach(function (ch) {
@@ -258,8 +324,13 @@
     var row = cell._rowData;
     var axis = axisFor(cell);
     var half = halfDur();
-    var st = { axis: axis, back: null, hidden: null, timer: null, busy: true, flipped: false };
+    var box = homeBox(cell);                                // measure BEFORE rotating
+    var st = { axis: axis, box: box, back: null, veil: null, backdrop: null,
+               hidden: null, timer: null, busy: true, flipped: false };
     turned.set(cell, st);
+
+    st.backdrop = addBackdrop(cell, box);
+    st.veil = addVeil(cell);
 
     cell.style.willChange = 'transform';
     cell.style.zIndex = '300';
@@ -268,10 +339,16 @@
     void cell.offsetWidth;                                  // commit the start pose
     cell.style.transition = 'transform ' + half + 's ' + EASE_OUT;
     cell.style.transform = tf(cell, axis, 90);
+    // Same duration and curve as the rotation, so darkness and angle move together.
+    st.veil.style.transition = 'opacity ' + half + 's ' + EASE_OUT;
+    st.veil.style.opacity = String(VEIL_MAX);
 
     st.timer = setTimeout(function () {
-      if (!cell.isConnected) { turned.delete(cell); return; }
+      if (!cell.isConnected) { restore(cell, st); turned.delete(cell); return; }
       setPlaying(cell, false);                              // hold the frame
+      // The veil has done its job — the media is about to be hidden anyway, and
+      // leaving it would only sit under the back face costing a composite.
+      dropEl(st.veil); st.veil = null;
       var back = buildBack(cell, row);
       cell.appendChild(back);
       st.back = back;
@@ -286,6 +363,7 @@
       cell.style.transform = tf(cell, axis, 0);
       st.timer = setTimeout(function () {
         st.busy = false; st.timer = null;
+        dropEl(st.backdrop); st.backdrop = null;   // resting flat — nothing to hide
         if (cell.isConnected) settle(cell, st);
       }, half * 1000 + 30);
     }, half * 1000 + 10);
@@ -298,6 +376,11 @@
     var axis = st.axis, half = halfDur();
     st.busy = true;
 
+    // The box was measured on the way out; re-measure only if the grid has since
+    // been resized under us.
+    if (!st.box) st.box = homeBox(cell);
+    st.backdrop = addBackdrop(cell, st.box);
+
     cell.style.willChange = 'transform';
     cell.style.zIndex = '300';
     cell.style.transition = 'none';
@@ -307,17 +390,20 @@
     cell.style.transform = tf(cell, axis, -90);
 
     st.timer = setTimeout(function () {
-      if (!cell.isConnected) { turned.delete(cell); return; }
-      if (st.back && st.back.parentNode) st.back.remove();
+      if (!cell.isConnected) { restore(cell, st); turned.delete(cell); return; }
+      dropEl(st.back);
       showFront(st.hidden);
       st.back = null; st.hidden = null; st.flipped = false;
       setPlaying(cell, true);                               // carry on from the held frame
+      // No veil on this half, deliberately: the picture coming back to full
+      // brightness as it flattens is the half that already read correctly.
       cell.style.transition = 'none';
       cell.style.transform = tf(cell, axis, 90);
       void cell.offsetWidth;
       cell.style.transition = 'transform ' + half + 's ' + EASE_IN;
       cell.style.transform = tf(cell, axis, 0);
       st.timer = setTimeout(function () {
+        dropEl(st.backdrop); st.backdrop = null;
         turned.delete(cell);
         if (cell.isConnected) settle(cell, null);
       }, half * 1000 + 30);
@@ -334,9 +420,14 @@
   // Snap a cell back to its front with no animation (mode off / grid closing).
   function restore(cell, st) {
     if (st && st.timer) clearTimeout(st.timer);
-    if (st && st.back && st.back.parentNode) st.back.remove();
-    if (st) showFront(st.hidden);
-    if (st && st.flipped) setPlaying(cell, true);
+    if (st) {
+      dropEl(st.back);     st.back = null;
+      dropEl(st.veil);     st.veil = null;
+      dropEl(st.backdrop); st.backdrop = null;
+      showFront(st.hidden);
+      if (st.flipped) setPlaying(cell, true);
+      st.flipped = false;
+    }
     cell.style.transition = 'none';
     cell.style.transform = '';
     cell.style.zIndex = '';
@@ -374,12 +465,18 @@
   // ── The speed box, floating under cell 5c ───────────────────────────────────
   // Fixed-positioned on <body> rather than appended to #gridContainer: the
   // container IS the CSS grid, so a child of it would be auto-placed as a cell.
+  // (dev0837) BOX_LIFT clears the fun-mode ✕ button, which is centred on the same
+  // spot (collection.js _gmExitBtnPosition). Stacked rather than side by side: on a
+  // narrow window a 5x5 cell is barely wider than this box, so there is no room
+  // beside it — but always room above.
+  var BOX_LIFT = 38;
+
   function positionBox(box) {
     var cont = container(); if (!cont || !box) return;
     var anchor = cont.querySelector('.grid-cell[data-cell="5c"]') || cont;
     var r = anchor.getBoundingClientRect();
     box.style.left = Math.round(r.left + r.width / 2) + 'px';
-    box.style.top  = Math.round(r.bottom - 8) + 'px';
+    box.style.top  = Math.round(r.bottom - 8 - BOX_LIFT) + 'px';
   }
   function boxReposition() { positionBox(document.getElementById('turnSpeedBox')); }
 
@@ -454,12 +551,16 @@
     active = true;
     boxShow();
     say('↻ Turnaround ON — click a cell to turn it over (tags + text on the back); '
-      + 'click again to turn it back. ( t exits )', 4200);
+      + 'click again to turn it back. ( t stops it · f leaves fun mode )', 4200);
     return true;
   }
 
   function stop() {
     restoreAll();
+    // Belt and braces: a grid re-render mid-turn (a caption toggle, a resize) can
+    // leave a backdrop or veil behind whose cell is no longer the one we tracked.
+    var cont = container();
+    if (cont) cont.querySelectorAll('.turn-backdrop,.turn-veil,.turn-back').forEach(dropEl);
     boxClose();
     active = false;
   }

@@ -283,7 +283,7 @@
     ensureWired();
     active = true;
     zc = 200;
-    toast('✦ Variant 2 — click cells: each glides in one smooth path, swapping places. Big 1L / portrait cells push the small cells aside & stay. ( r exits )', 4800);
+    toast('✦ Variant 2 — click cells: each glides in one smooth path, swapping places. Big 1L / portrait cells push the small cells aside & stay. ( f exits )', 4800);
     return true;
   }
 

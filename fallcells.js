@@ -816,7 +816,7 @@
     active = true;
     zc = 300; zipperEl = null; zoomEl = null;
     container().addEventListener('click', onCellClick, true);
-    toast('▼ Fall cells ON — cells drop off the cliff & bounce; the belt creeps along; hidden cells re-enter constantly. Click a cell to feature it big for 10 s.   ( { slower · } faster · F / r stop )', 4600);
+    toast('▼ Fall cells ON — cells drop off the cliff & bounce; the belt creeps along; hidden cells re-enter constantly. Click a cell to feature it big for 10 s.   ( { slower · } faster · w stops · f exits )', 4600);
     runIntro();
     return true;
   }

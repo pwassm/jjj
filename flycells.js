@@ -232,7 +232,7 @@
     if (!buildGroups()) { toast('Grid still drawing — try again in a moment', 1600); return false; }
     ensureWired();
     active = true;
-    toast('✈ Variant 1 — click cells to fly them to random slots; others fill the gap. Click more for several at once. ( r exits )', 4500);
+    toast('✈ Variant 1 — click cells to fly them to random slots; others fill the gap. Click more for several at once. ( f exits )', 4500);
     return true;
   }
 

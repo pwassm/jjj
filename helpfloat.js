@@ -387,22 +387,9 @@ var HP_CTX = [
     hide: ['F'],
     d: 'Same key, two jobs:',
     variants: [
-      { d: 'Grid: FUN — raises the FUN MODES window (waterfall / conveyor, the variant numbers, what a click does). F again there is the waterfall toggle.',
+      { d: 'Grid: FUN — raises the FUN MODES window (w = waterfall, r = ring, t = turn, the variant numbers, what a click does). F again LEAVES fun mode and stops whatever is running.',
         on: function (s) { return s.code === 'G'; } },
       { d: 'Table: toggle the filter — tags ∧ text (⇧F clears every filter)',
-        dev: true, on: function (s) { return s.code === 'T'; } }
-    ] },
-
-  // (dev0836) t used to mean "back to the Table" on BOTH screens; on the grid it
-  // is now Turnaround, and ⇧T is the way back. Same shape as the F rule above so
-  // the one T row on the grid says the grid's meaning, not the Table's.
-  { screens: ['T', 'G'], k: 'T', kind: 'key',
-    hide: ['T'],
-    d: 'Same key, two jobs:',
-    variants: [
-      { d: 'Grid: TURNAROUND — click a cell to turn it over and read its tags and text; click again to turn it back. ⇧T leaves the grid for the Table.',
-        on: function (s) { return s.code === 'G'; } },
-      { d: 'Table: nothing — you are already here (from any other screen, t comes back to the Table)',
         dev: true, on: function (s) { return s.code === 'T'; } }
     ] },
 
@@ -469,20 +456,20 @@ var HP_ADD = {
     // there is nothing for a developer to confuse it with.
     { k: 'L',
       d: 'Clean view — hides the ← back arrow, the cell letters (1a, 1b …) and the line of text along the top. Press L again to bring them back.' },
-    // (dev0705) F is FUN, not Fall: it raises the card that offers both modes.
+    // (dev0705) F is FUN, not Fall: it raises the card that offers the modes.
+    // (dev0837) …and now ONLY that: in fun mode F is the way out, not the waterfall.
     { k: 'F',
-      d: 'FUN — raises the FUN MODES window: both moving modes, the variant numbers, and what a click on a cell does in each. Press F again there for the waterfall.' },
+      d: 'FUN — raises the FUN MODES window: the three modes (w = waterfall, r = ring, t = turn), the variant numbers, and what a click on a cell does in each. Press F again to leave fun mode — or tap the ✕ under the middle of the bottom row.' },
     // (dev0708) DEV ONLY now. R still works in Gu — it is the same key it always
     // was — but it stopped being a CHOICE the moment dev0705 made F raise the FUN
     // MODES card, which offers the conveyor as one of its options. Listing it
     // again at the top level presented one menu as two.
     { k: 'R', dev: true,
-      d: 'FUN MODE — conveyor: the cells travel round the grid. Press R again to leave it.' },
-    // (dev0836) Listed at the top level in BOTH modes, unlike R: it is not one of
-    // several ways into the same menu, it is a mode of its own with its own key,
-    // and it is the one a viewer gets something to read out of.
-    { k: 'T',
-      d: 'TURNAROUND — click any cell and it turns over to show what it is about: its tags on top, the first few lines of its text below. Click it again to turn it back (a video carries on where it stopped). The box under the middle of the bottom row sets how fast they spin. Press T again to leave.' }
+      d: 'FUN MODE — ring: the cells travel round the grid. Press R again to leave it.' }
+    // (dev0836 → dev0837) TURNAROUND IS NOT LISTED HERE. It is a fun-mode CHOICE,
+    // reached with t only once f has opened the door — and on the plain grid bare t
+    // means "back to the Table", which is the meaning a top-level row would have to
+    // contradict. The FUN MODES card and the ◆ turnaround card below carry it.
   ]
 };
 
@@ -507,24 +494,26 @@ var HP_MODES = [
   // not the mode, is what the reader is looking at.
   { screens: ['G'], on: function (s) { return s.funPanel; },
     title: '✨ FUN MODES window',
-    desc: 'The window in the middle offers both moving modes — it stays up while they run and keeps saying what each key does now:',
+    desc: 'The window in the middle offers the three modes — it stays up while they run and keeps saying what each key does now:',
     rows: [
-      { k: 'F',       d: 'Start the waterfall — cells drop off the cliff, bounce and re-enter. F again stops it.' },
-      { k: 'R',       d: 'Start the conveyor — the cells travel round the grid. R again stops it.' },
+      { k: 'W',       d: 'Start the waterfall — cells drop off the cliff, bounce and re-enter. W again stops it.' },
+      { k: 'R',       d: 'Start the ring — the cells travel round the grid. R again stops it.' },
       { k: 'T',       d: 'Start turnaround — click a cell to turn it over and read its tags and text. T again stops it.' },
-      { k: '1  /  2', d: 'While a mode runs: 1 = cascade · 2 = swap (the same number again gives the plain conveyor)' },
+      { k: '1  /  2', d: 'While the ring runs: 1 = cascade · 2 = swap (the same number again gives the plain ring)' },
       { k: 'Click a cell', d: 'Does something different in each mode — the window says which' },
       { k: '{  /  }', d: 'Slower / faster' },
-      { k: 'Esc',     d: 'Close this window. Anything running keeps running — F and R are the off switches.' }
+      { k: 'F',       d: 'LEAVE fun mode — stops whatever is running and closes this window. So does the ✕ under the middle of the bottom row.' },
+      { k: 'Esc',     d: 'Just hide this window. Anything running keeps running — F is the off switch.' }
     ] },
   { screens: ['G'], on: function (s) { return s.fall; },
     title: '🌊 FALL mode',
     desc: 'A fun mode — the cells fall around the edge of the grid.',
     rows: [
-      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain conveyor)' },
+      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain ring)' },
       { k: 'Click a cell', d: 'Features that cell BIG for about 10 seconds, then it fades back into the flow' },
       { k: '{  /  }', d: 'Slower / faster' },
-      { k: 'F',       d: 'Opens the FUN MODES window; F again there LEAVES fall mode' }
+      { k: 'W',       d: 'STOP the waterfall — the chooser comes back' },
+      { k: 'F',       d: 'LEAVE fun mode altogether — or tap the ✕ under the middle of the bottom row' }
     ] },
   // (dev0836) Turnaround. Listed before conveyor only for tidiness — the two can
   // never be on together (_gmStopAll clears one when the other starts).
@@ -534,16 +523,18 @@ var HP_MODES = [
     rows: [
       { k: 'Click a cell', d: 'Turns it over: its tags across the top half, the first few lines of its text below. Click it again and it turns back — a video carries on from where it stopped.' },
       { k: 'The spin box', d: 'Under the middle of the bottom row: 1 to 20. A turn takes 1 ÷ that many seconds, so 1 is the slowest. It is remembered for next time.' },
-      { k: 'T',       d: 'LEAVE turnaround — every cell goes face-up again' }
+      { k: 'T',       d: 'STOP turnaround — every cell goes face-up and the chooser comes back' },
+      { k: 'F',       d: 'LEAVE fun mode altogether — or tap the ✕ just below the spin box' }
     ] },
   { screens: ['G'], on: function (s) { return s.conveyor; },
-    title: '↻ CONVEYOR mode',
+    title: '↻ RING mode',
     desc: 'A fun mode — the cells travel round the grid.',
     rows: [
-      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain conveyor)' },
-      { k: 'Click a cell', d: 'Plain conveyor: play / pause it · cascade: flies it to a free slot · swap: glides it into another cell’s place' },
+      { k: '1  /  2', d: '1 = cascade · 2 = swap (press the same number again for the plain ring)' },
+      { k: 'Click a cell', d: 'Plain ring: play / pause it · cascade: flies it to a free slot · swap: glides it into another cell’s place' },
       { k: '{  /  }', d: 'Slower / faster' },
-      { k: 'R',       d: 'LEAVE conveyor mode — the grid goes back to normal' }
+      { k: 'R',       d: 'STOP the ring — the chooser comes back' },
+      { k: 'F',       d: 'LEAVE fun mode altogether — or tap the ✕ under the middle of the bottom row' }
     ] }
 ];
 

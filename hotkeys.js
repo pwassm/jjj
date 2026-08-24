@@ -97,7 +97,12 @@ const HK_STAGING = [
   { key: 'i', isOpen: () => (typeof window.isIgScreenOpen === 'function') && window.isIgScreenOpen(),
     open: () => { if (window.openIgScreen) window.openIgScreen(); },
     close: () => { if (window.closeIgScreen) window.closeIgScreen(); } },
-  { key: 's', isOpen: () => (typeof window.isStScreenOpen === 'function') && window.isStScreenOpen(),
+  // (dev0837) St moved to SHIFT+S. `shift: true` keeps it out of the bare-letter
+  // toggle below — the dispatcher only ever sees a lowercased key, so a bare s can
+  // no longer open it — while leaving it in this list so every OTHER nav key still
+  // closes it on the way past. ⇧S reaches it through window._hkStagingToggle,
+  // claimed in core.js's window-capture handler (bare s stays the grid slideshow).
+  { key: 's', shift: true, isOpen: () => (typeof window.isStScreenOpen === 'function') && window.isStScreenOpen(),
     open: () => { if (window.openStScreen) window.openStScreen(); },
     close: () => { if (window.closeStScreen) window.closeStScreen(); } },
   { key: 'o', isOpen: () => (typeof window.isOScreenOpen === 'function') && window.isOScreenOpen(),
@@ -116,9 +121,9 @@ window.HOTKEYS = [
     desc: 'Toggle the I (Instagram staging) screen — ig.json review/enrich/promote',
     fn(ctx) { /* handled via HK_STAGING in the dispatcher */ } },
 
-  { key: 's', label: 'S', group: 'Screens', scope: 'global',
-    desc: 'Toggle the St (bulk staging) screen — s.json links (from the Table; from the Grid, S plays the slideshow)',
-    fn(ctx) { /* handled via HK_STAGING in the dispatcher */ } },
+  { key: 's', label: 'Shift+S', group: 'Screens', scope: 'global',
+    desc: '(dev0837) Toggle the St (bulk staging) screen — the s.json link catalogue. Moved off bare s, which now means only the slideshow (on the Grid) and nothing at all elsewhere.',
+    fn(ctx) { /* handled via window._hkStagingToggle, claimed in core.js */ } },
 
   { key: 'o', label: 'O', group: 'Screens', scope: 'global',
     desc: 'Toggle the O (org-review) screen — Orgzly notes in o.json',
@@ -129,7 +134,7 @@ window.HOTKEYS = [
     fn(ctx) { /* handled via HK_STAGING in the dispatcher */ } },
 
   { key: 't', label: 'T', group: 'Screens', scope: 'global',
-    desc: 'Return to the Table (saves an open E screen first). (dev0836) EXCEPT on the grid, where bare t is now the Turnaround fun mode — use ⇧T (or the T button / Esc) to leave the grid for the Table.',
+    desc: 'Return to the Table (saves an open E screen first). On the grid this is the constantly-used way back; only while FUN MODE is on does t mean turnaround instead (dev0837).',
     fn(ctx) {
       if (ctx.tgOpen) { closeGridList(); return; }
       if (ctx.vpOpen) vpClose();
@@ -537,15 +542,11 @@ window.HOTKEYS = [
 
   { label: 'F', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0460/0705) → collection.js _gmFunKey',
-    desc: 'F is FUN. The first press raises the FUN MODES window: the moving modes (F = waterfall, R = conveyor), (dev0836) T = turnaround, the variant numbers (1 = cascade, 2 = swap), the { } speed keys and — the part that was documented nowhere — what a CLICK on a cell does in each mode. The window stays up while a mode runs and keeps saying what each key does next; Esc drops it without stopping anything. While it is up, F is the waterfall toggle, so F,F still starts the waterfall and F,F again stops it.' },
+    desc: 'F is FUN, and (dev0837) nothing but the DOOR. Out of fun mode it raises the FUN MODES window: the three modes on one letter each (W = waterfall, R = ring, T = turnaround), the ring’s variant numbers (1 = cascade, 2 = swap), the { } speed keys and — the part that was documented nowhere — what a CLICK on a cell does in each mode. In fun mode it LEAVES, silently: every engine stops and the card goes. It is no longer also the waterfall toggle (the old F,F), which made one key mean two things at once — w owns the waterfall now. A floating ✕ under cell 5c does the same job for anyone without a keyboard. Esc only hides the card and leaves whatever is running alone.' },
 
-  { label: 'T', group: 'Grid (window-capture)', scope: 'G', dev: false,
-    impl: 'core.js window-capture (dev0836) → collection.js _gmTurnKey → turncells.js',
-    desc: 'T is TURNAROUND — the instructive member of the fun family. Click any cell and it turns over on its LONG midline (a landscape cell about its horizontal one, a portrait cell about its vertical one) to show the back: the row’s tag chips in the top half, the first five lines of its ftext below. Click it again and it turns back to the picture, a video resuming from exactly the frame it stopped on. A box floats under cell 5c with the spin number (1-20, default 5) — a turn lasts 1/n seconds, so 1 is the slowest at a full second; the value is remembered for next time. T again turns the mode off and every card face-up. NOTE: on the grid this REPLACES bare t = back to the Table — ⇧T does that now (the T button in the bottom-right strip and Esc are unchanged).' },
-
-  { label: 'Shift+T', group: 'Grid (window-capture)', scope: 'G', dev: true,
-    impl: 'core.js window-capture (dev0836) → _executeHotkey(\'t\')',
-    desc: 'Leave the grid and go back to the Table — what bare t did here before dev0836 gave t to Turnaround.' },
+  { label: 'W  /  R  /  T  (in fun mode)', group: 'Grid (window-capture)', scope: 'G', dev: false,
+    impl: 'core.js window-capture (dev0837) → collection.js _gmChoiceKey',
+    desc: 'The three fun modes, one letter each, claimed ONLY while fun mode is on — f has raised the card, or something is already running. W = waterfall, R = ring, T = turnaround; each pressed again stops its own mode and puts the chooser back. OUTSIDE fun mode these letters keep the meanings they always had: t goes back to the Table, w is the clipboard import. (dev0836 briefly gave bare t to turnaround; dev0837 reverts that — t→Table from the grid is used constantly.) R is the exception — it has started the ring cold since dev0374 and still does. TURNAROUND itself: click any cell and it turns over on its LONG midline (a landscape cell about its horizontal one, a portrait cell about its vertical one) to show the back — the row’s tag chips in the top half, the first five lines of its ftext below. Click again and it turns back, a video resuming from exactly the frame it stopped on. As the picture turns away it darkens to the back face’s own grey against a black-grey backdrop, so the text arrives out of that dark instead of simply appearing. A box floats under cell 5c with the spin number (1-20, default 5): a turn lasts 1/n seconds, so 1 is the slowest at a full second, and the value is remembered for next time.' },
 
   { label: 'S', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0516)',
@@ -715,7 +716,7 @@ window._executeHotkey = function(key) {
   // Staging screens (I/St/O/X): own key toggles; any other key closes them
   // first, then falls through. Same order + semantics as the old chain.
   for (const s of HK_STAGING) {
-    if (key === s.key) {
+    if (key === s.key && !s.shift) {
       if (s.isOpen()) { s.close(); return; }
       _hkTeardownForStaging(ctx);
       s.open();
@@ -727,6 +728,20 @@ window._executeHotkey = function(key) {
   // Registry lookup for everything else.
   const entry = window.HOTKEYS.find(h => h.key === key && typeof h.fn === 'function');
   if (entry) entry.fn(ctx);
+};
+
+// (dev0837) Toggle a SHIFT-keyed staging screen. Same three steps the bare-letter
+// branch above runs — user-mode gate, tear down whatever is showing, open — so ⇧S
+// behaves exactly as bare s did, rather than a second half-copy of the logic.
+window._hkStagingToggle = function(key) {
+  const userMode = (typeof _isUserMode === 'function') ? _isUserMode() : false;
+  if (userMode && HK_USER_BLOCKED.includes(key)) return;
+  const item = HK_STAGING.find(s => s.key === key);
+  if (!item) return;
+  if (item.isOpen()) { item.close(); return; }
+  const ctx = _hkCtx();
+  _hkTeardownForStaging(ctx);
+  item.open();
 };
 
 // ── HELP INTEGRATION ─────────────────────────────────────────────────────────

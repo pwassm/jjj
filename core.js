@@ -470,10 +470,13 @@ window.addEventListener('keydown', function(e) {
   if (document.getElementById('gridContextMenu')) return;
   // (dev0460) F → the "fall cells" perimeter-drain waterfall while G is open.
   // (dev0705) F now stands for FUN, not Fall: the first press raises the FUN MODES
-  // card (collection.js _gmFunKey) listing BOTH modes, the variant numbers and what
+  // card (collection.js _gmFunKey) listing the modes, the variant numbers and what
   // a click on a cell does in each — none of which was discoverable from a key that
-  // silently started one of them. While the card is up F is still the waterfall
-  // toggle, so F,F lands where F used to and F,F again turns it off.
+  // silently started one of them.
+  // (dev0837) F IS NOW PURELY THE DOOR: regular → fun raises the card of choices,
+  // fun → regular stops everything and drops the card, silently. It no longer
+  // doubles as the waterfall toggle (that is w now), so the modes each have one
+  // letter and f means one thing in each direction.
   // Bare key only — Shift+F (clear filters) is handled above, and F is otherwise
   // forwarded to _executeHotkey('f') (the filter modal, a no-op in G). Own it here
   // in window-capture, alongside the digit variant keys.
@@ -493,38 +496,32 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
-  // (dev0836) T over the grid = TURNAROUND, the new fun mode (turncells.js): click
-  // a cell and it turns over on its long midline to show its tags and the first
-  // five lines of its text; click again and it turns back, the video carrying on
-  // from the frame it stopped on. Bare t only, and only over the grid.
+  // (dev0836 → dev0837) THE FUN-MODE CHOICE KEYS: w = waterfall, t = turn.
   //
-  // THIS TAKES BARE t AWAY FROM "back to the Table" ON THE GRID — that hotkey was
-  // dev-only to begin with (t is in HK_USER_BLOCKED, so a viewer never had it),
-  // and the two ways back are untouched: the T button in the bottom-right strip,
-  // and Esc. Shift+T is added just below as the keyboard equivalent, since the
-  // Table screen's own Shift+T (insert a text row at 1a) is gated on
-  // _tScreenActive(), which is false whenever the grid is open.
+  // dev0836 put turnaround on bare t over the grid and moved "back to the Table"
+  // to ⇧T. Wrong trade — t→Table from the grid is a key used constantly. So the
+  // choice letters are now claimed ONLY WHILE FUN MODE IS ON (the card is up, or
+  // an engine is running), which is exactly when they read as choices:
+  //   f  enters fun mode (the card lists the choices) and leaves it again
+  //   w  waterfall  ·  r  ring conveyor  ·  t  turn
+  // Outside fun mode every one of these letters keeps the meaning it always had:
+  // bare t goes back to the Table, bare w is the clipboard import. r is the one
+  // exception — it has started the conveyor on the grid since dev0374 and still
+  // does cold, since starting it IS entering fun mode.
   //
-  // Rides the same user-mode gate as F: dev always, viewers only while the
+  // Rides the same user-mode gate as f below: dev always, viewers only while the
   // guFunKeys switch is on (it is by default).
-  if (k === 't' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    const gOpenT  = document.getElementById('gridOverlay')?.style.display === 'flex';
-    const vpOpenT = document.getElementById('gridFullscreen')?.style.display === 'flex';
-    if (gOpenT && !vpOpenT) {
-      if (e.shiftKey) {                       // ⇧T — the old bare-t: leave for the Table
-        e.preventDefault(); e.stopPropagation();
-        window._pendingHotkey = 't';          // same shape as the dispatcher below
-        setTimeout(function () { if (window._executeHotkey) window._executeHotkey('t'); }, 0);
-        return false;
-      }
-      const _uModeT = (typeof _isUserMode === 'function') && _isUserMode();
-      const _guFunT = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
-      if (!_uModeT || _guFunT) {
-        e.preventDefault(); e.stopPropagation();
-        if (typeof window._gmTurnKey === 'function') window._gmTurnKey();
-        else if (window.TurnCells) window.TurnCells.toggle();
-        return false;
-      }
+  if ((k === 'w' || k === 't') && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const gOpenW  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenW = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    const _uModeW = (typeof _isUserMode === 'function') && _isUserMode();
+    const _guFunW = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
+    if (gOpenW && !vpOpenW && (!_uModeW || _guFunW)
+        && typeof window._gmFunOn === 'function' && window._gmFunOn()) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof window._gmChoiceKey === 'function') window._gmChoiceKey(k);
+      return false;
     }
   }
   // (dev0638) b while G is open (no V on top) cycles the buffered-playback SCOPE
@@ -601,6 +598,18 @@ window.addEventListener('keydown', function(e) {
       if (typeof window.slideshowOpenGrid === 'function') window.slideshowOpenGrid();
       return false;
     }
+  }
+  // (dev0837) ⇧S — the St bulk-staging screen (the s.json link catalogue). It used
+  // to open on bare s from the Table; that letter is now free, and St is the screen
+  // least often reached, so it moved up a modifier rather than keeping a bare
+  // letter. Claimed here in window-capture because the dispatcher below lowercases
+  // the key and loses the Shift — the same reason ⇧C and ⇧F are owned here.
+  // Works from every screen, the grid included, where bare s stays the slideshow.
+  if (k === 's' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window._hkStagingToggle === 'function') window._hkStagingToggle('s');
+    return false;
   }
   // (dev0588) Arrow keys while G is open (and no V-fullscreen, Xe, or Xs on
   // top — the slideshow/dictionary/video-editor overlays already bailed above)
