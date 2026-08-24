@@ -27,6 +27,9 @@
 //   So the turn is done in two halves on the CELL ITSELF:
 //       0deg -> 90deg    the front rotates away and goes edge-on (invisible)
 //       -90deg -> 0deg   ...continuing the same way round, back panel now shown
+//   (dev0839) The first half runs LINEAR and at full brightness: a steady, plainly
+//   visible turn. See the EASE_OUT and VEIL_MAX notes - getting this wrong is what
+//   made the picture look like it faded rather than turned, three times over.
 //   The jump from +90 to -90 happens while the cell is edge-on, so it is not
 //   visible, and finishing at 0 means the back panel is never mirrored. Nothing
 //   is ever re-parented: the front children are only  visibility:hidden , and the
@@ -56,29 +59,48 @@
   var SPEED_KEY = 'salTurnSpeed';
   var SPEED_MIN = 1, SPEED_MAX = 20, SPEED_DEF = 5;
   var FTEXT_LINES = 5;                            // "first 5 lines of ftext"
-  // (dev0837) Gentler than the first cut. The turn should read as ONE continuous
-  // rotation over its whole duration — more and more edge-on — so each half only
-  // mildly accelerates / decelerates instead of sitting still and then whipping.
-  var EASE_OUT = 'cubic-bezier(.35,0,.75,.4)';    // front leaving  — mild accelerate
+  // (dev0839) THE OUTGOING HALF IS LINEAR, and this is the actual fix for "it
+  // fades before it turns" — reported three times, and twice I answered it by
+  // softening constants instead of doing the arithmetic.
+  //
+  // The two halves were exact time-reverses of each other (reverse a
+  // cubic-bezier(x1,y1,x2,y2) and you get (1-x2,1-y2,1-x1,1-y1) — which mapped
+  // EASE_IN onto EASE_OUT precisely). That felt principled and was the whole
+  // problem, because PERCEPTION IS NOT TIME-SYMMETRIC. Work the old outgoing
+  // curve out and it spent 54% of its time reaching 27% of the angle — 25° on a
+  // landscape cell, a foreshortening of 9%, invisible — and then whipped the last
+  // 37° in the final fifth. Run that same curve backwards, as the incoming half
+  // does, and it reads beautifully: the picture swings in at once and settles. Run
+  // it forwards and it reads as "a very low amplitude attempt at rotation, then it
+  // fades out", which is exactly what was reported.
+  //
+  // Constant angular velocity is also the literal request — "a turn over time
+  // during which it is seen more and more edge on". At the default speed that is a
+  // steady 90° over 200ms: 45° at the halfway point, not 25° at 54%. The incoming
+  // half keeps its curve; it has been the good half throughout.
+  var EASE_OUT = 'linear';                        // front leaving  — steady turn
   var EASE_IN  = 'cubic-bezier(.25,.6,.65,1)';    // back arriving  — mild decelerate
   var PANEL_BG    = '#14161c';   // the back face
   var BACKDROP_BG = '#0e0f12';   // the black-grey the turn happens against
-  // (dev0838) THE VEIL IS SHADING, NOT A FADE-OUT. dev0837 ran it at 0.9 over the
-  // whole outgoing half with the same curve as the rotation, and the result read as
-  // "the picture fades out" — not "the picture turns": opacity is far more
-  // noticeable than a shallow foreshortening, so by the time the cell had visibly
-  // rotated at all the photo was already half gone.
-  // So it now behaves like a face turning away from a light — nothing for the first
-  // third, then shading in steeply as the card actually goes edge-on, and never all
-  // the way to black. VEIL_HOLD is the fraction of the half it waits.
-  var VEIL_MAX  = 0.72;
-  var VEIL_HOLD = 0.38;
+  // (dev0839) THE VEIL IS OFF. It was my inference, not the request: what was
+  // actually asked for was that the picture be seen going edge-on AGAINST a
+  // black-grey background, and BACKDROP_BG already does that. The veil was an
+  // extra — a shading pass over the media — and every version of it read as the
+  // picture fading out, because opacity is something the eye reads instantly while
+  // a shallow foreshortening is not. Three reports of "it fades before it turns"
+  // is enough: the picture now stays at full brightness all the way to edge-on.
+  //
+  // The code path is intact and guarded on VEIL_MAX, so raising this above 0 brings
+  // the shading back with no other change. VEIL_HOLD is the fraction of the
+  // outgoing half it stays clear before shading begins.
+  var VEIL_MAX  = 0;
+  var VEIL_HOLD = 0.55;
   var VEIL_EASE = 'cubic-bezier(.65,0,.9,.45)';   // flat, then steep
 
   // ── State ───────────────────────────────────────────────────────────────────
   var active = false;
   var wired  = false;              // capture pointerdown listener attached once
-  var speed  = SPEED_DEF;          // 1-20; a turn lasts 1/speed seconds
+  var speed  = SPEED_DEF;          // 1-20; a turn lasts 2/speed seconds
   var turned = new Map();          // cell el -> { axis, back, hidden[], timer, busy }
 
   // ── Small helpers ───────────────────────────────────────────────────────────
@@ -396,7 +418,7 @@
     turned.set(cell, st);
 
     st.backdrop = addBackdrop(cell, box);
-    st.veil = addVeil(cell);
+    st.veil = VEIL_MAX > 0 ? addVeil(cell) : null;
 
     cell.style.willChange = 'transform';
     cell.style.zIndex = '300';
@@ -405,11 +427,14 @@
     void cell.offsetWidth;                                  // commit the start pose
     cell.style.transition = 'transform ' + half + 's ' + EASE_OUT;
     cell.style.transform = tf(cell, axis, 90);
-    // Held flat for the first VEIL_HOLD of the half — the stretch where the turn
-    // itself has to be legible — then shaded in over what is left of it.
-    st.veil.style.transition = 'opacity ' + (half * (1 - VEIL_HOLD)).toFixed(3) + 's '
-      + VEIL_EASE + ' ' + (half * VEIL_HOLD).toFixed(3) + 's';
-    st.veil.style.opacity = String(VEIL_MAX);
+    // Held clear for the first VEIL_HOLD of the half - the stretch where the turn
+    // itself has to be legible - then shaded in over what is left of it. Off by
+    // default since dev0839; see VEIL_MAX.
+    if (st.veil) {
+      st.veil.style.transition = 'opacity ' + (half * (1 - VEIL_HOLD)).toFixed(3) + 's '
+        + VEIL_EASE + ' ' + (half * VEIL_HOLD).toFixed(3) + 's';
+      st.veil.style.opacity = String(VEIL_MAX);
+    }
 
     st.timer = setTimeout(function () {
       if (!cell.isConnected) { restore(cell, st); turned.delete(cell); return; }
