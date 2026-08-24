@@ -27,9 +27,10 @@
 //   So the turn is done in two halves on the CELL ITSELF:
 //       0deg -> 90deg    the front rotates away and goes edge-on (invisible)
 //       -90deg -> 0deg   ...continuing the same way round, back panel now shown
-//   (dev0839) The first half runs LINEAR and at full brightness: a steady, plainly
-//   visible turn. See the EASE_OUT and VEIL_MAX notes - getting this wrong is what
-//   made the picture look like it faded rather than turned, three times over.
+//   (dev0840) The first half is eased so the cell's APPARENT HEIGHT falls at a
+//   constant rate, and nothing is painted over the picture at any point. See the
+//   EASE_OUT note - easing the ANGLE instead is what made the turn look like a
+//   fade, four reports running.
 //   The jump from +90 to -90 happens while the cell is edge-on, so it is not
 //   visible, and finishing at 0 means the back panel is never mirrored. Nothing
 //   is ever re-parented: the front children are only  visibility:hidden , and the
@@ -59,44 +60,43 @@
   var SPEED_KEY = 'salTurnSpeed';
   var SPEED_MIN = 1, SPEED_MAX = 20, SPEED_DEF = 5;
   var FTEXT_LINES = 5;                            // "first 5 lines of ftext"
-  // (dev0839) THE OUTGOING HALF IS LINEAR, and this is the actual fix for "it
-  // fades before it turns" — reported three times, and twice I answered it by
-  // softening constants instead of doing the arithmetic.
+  // (dev0840) THE OUTGOING HALF EASES ON APPARENT SIZE, NOT ON ANGLE — and THIS is
+  // the "partial move, then it fades out" bug, reported four times. Every previous
+  // answer (softer curves, a later veil, no veil, a slower turn) was aimed at the
+  // wrong quantity. The arithmetic nobody did until now:
   //
-  // The two halves were exact time-reverses of each other (reverse a
-  // cubic-bezier(x1,y1,x2,y2) and you get (1-x2,1-y2,1-x1,1-y1) — which mapped
-  // EASE_IN onto EASE_OUT precisely). That felt principled and was the whole
-  // problem, because PERCEPTION IS NOT TIME-SYMMETRIC. Work the old outgoing
-  // curve out and it spent 54% of its time reaching 27% of the angle — 25° on a
-  // landscape cell, a foreshortening of 9%, invisible — and then whipped the last
-  // 37° in the final fifth. Run that same curve backwards, as the incoming half
-  // does, and it reads beautifully: the picture swings in at once and settles. Run
-  // it forwards and it reads as "a very low amplitude attempt at rotation, then it
-  // fades out", which is exactly what was reported.
+  //   A cell rotating about its midline shows a height of COS(angle), not angle.
+  //   At a constant angular rate — dev0839's `linear` — that gives:
+  //       25% of the time -> 22.5deg -> still 92% tall   (looks like nothing)
+  //       50% of the time -> 45deg   -> still 71% tall   (the "partial move")
+  //       75% of the time -> 67.5deg -> 38% tall
+  //      100% of the time -> 90deg   -> gone
+  //   HALF THE VISIBLE COLLAPSE HAPPENS IN THE LAST QUARTER OF THE TIME. On a dark
+  //   backdrop a picture shrinking to a line in the final 50ms does not read as a
+  //   turn — it reads as the picture fading out. Exactly the report, and no veil
+  //   was needed to produce it: the geometry did it alone, which is why removing
+  //   the veil changed nothing.
   //
-  // Constant angular velocity is also the literal request — "a turn over time
-  // during which it is seen more and more edge on". At the default speed that is a
-  // steady 90° over 200ms: 45° at the halfway point, not 25° at 54%. The incoming
-  // half keeps its curve; it has been the good half throughout.
-  var EASE_OUT = 'linear';                        // front leaving  — steady turn
-  var EASE_IN  = 'cubic-bezier(.25,.6,.65,1)';    // back arriving  — mild decelerate
+  // So the angle now follows  acos(1 - t) , the curve whose COSINE is linear: the
+  // apparent height falls at a constant rate from full to nothing, and the eye sees
+  // one steady turn all the way to edge-on. The points below are that function
+  // sampled every 10%; the cubic-bezier fallback fits it to 0.0006 average error
+  // for engines without CSS linear() (Chrome <113 / Firefox <112 / Safari <17.2).
+  //
+  // The INCOMING half keeps its own curve, untouched: it has been called good
+  // throughout, and it is the one half of this that was never the problem.
+  var EASE_OUT_PTS = 'linear(0, 0.287 10%, 0.410 20%, 0.506 30%, 0.590 40%, '
+                   + '0.667 50%, 0.738 60%, 0.806 70%, 0.872 80%, 0.936 90%, 1)';
+  var EASE_OUT = (function () {
+    try {
+      if (window.CSS && CSS.supports && CSS.supports('transition-timing-function', EASE_OUT_PTS))
+        return EASE_OUT_PTS;
+    } catch (_) {}
+    return 'cubic-bezier(0,.32,.36,.6)';
+  })();
+  var EASE_IN  = 'cubic-bezier(.25,.6,.65,1)';    // back arriving — untouched, it works
   var PANEL_BG    = '#14161c';   // the back face
   var BACKDROP_BG = '#0e0f12';   // the black-grey the turn happens against
-  // (dev0839) THE VEIL IS OFF. It was my inference, not the request: what was
-  // actually asked for was that the picture be seen going edge-on AGAINST a
-  // black-grey background, and BACKDROP_BG already does that. The veil was an
-  // extra — a shading pass over the media — and every version of it read as the
-  // picture fading out, because opacity is something the eye reads instantly while
-  // a shallow foreshortening is not. Three reports of "it fades before it turns"
-  // is enough: the picture now stays at full brightness all the way to edge-on.
-  //
-  // The code path is intact and guarded on VEIL_MAX, so raising this above 0 brings
-  // the shading back with no other change. VEIL_HOLD is the fraction of the
-  // outgoing half it stays clear before shading begins.
-  var VEIL_MAX  = 0;
-  var VEIL_HOLD = 0.55;
-  var VEIL_EASE = 'cubic-bezier(.65,0,.9,.45)';   // flat, then steep
-
   // ── State ───────────────────────────────────────────────────────────────────
   var active = false;
   var wired  = false;              // capture pointerdown listener attached once
@@ -357,30 +357,6 @@
   }
   function dropEl(el) { if (el && el.parentNode) el.remove(); }
 
-  // ── The veil that takes the picture down to black-grey as it turns away ──────
-  // (dev0837) THE ASYMMETRY THE VEIL FIXES: turning text→picture, the face that
-  // rotates away is ALREADY a dark grey panel, so it reads as a card turning in
-  // dark space and the picture then arrives out of that dark. Turning
-  // picture→text, the face that rotates away is a bright photo or a playing
-  // video, so it did not read as the same movement at all — it stayed bright to
-  // the last degree and the text simply appeared.
-  //
-  // So on the outgoing half only, a panel of exactly the back face's colour fades
-  // in over the media in step with the rotation: the picture is seen more and more
-  // edge-on AND darker, and by the time it is edge-on it already IS the colour the
-  // text arrives on. The incoming half is deliberately left alone — a picture
-  // coming back to full brightness as it flattens is the half that already worked.
-  function addVeil(cell) {
-    var v = document.createElement('div');
-    v.className = 'turn-veil';
-    // Above the media (z:1) and above .grid-interactor (z:100) so the cell label
-    // and info line dim with the picture; below the back face (z:140).
-    v.style.cssText = 'position:absolute;inset:0;z-index:130;pointer-events:none;'
-      + 'background:' + PANEL_BG + ';opacity:0;';
-    cell.appendChild(v);
-    return v;
-  }
-
   function hideFront(cell, back) {
     var hidden = [];
     Array.prototype.slice.call(cell.children).forEach(function (ch) {
@@ -413,12 +389,11 @@
     var axis = axisFor(cell);
     var half = halfDur();
     var box = homeBox(cell);                                // measure BEFORE rotating
-    var st = { axis: axis, box: box, back: null, veil: null, backdrop: null,
+    var st = { axis: axis, box: box, back: null, backdrop: null,
                hidden: null, timer: null, busy: true, flipped: false };
     turned.set(cell, st);
 
     st.backdrop = addBackdrop(cell, box);
-    st.veil = VEIL_MAX > 0 ? addVeil(cell) : null;
 
     cell.style.willChange = 'transform';
     cell.style.zIndex = '300';
@@ -427,21 +402,9 @@
     void cell.offsetWidth;                                  // commit the start pose
     cell.style.transition = 'transform ' + half + 's ' + EASE_OUT;
     cell.style.transform = tf(cell, axis, 90);
-    // Held clear for the first VEIL_HOLD of the half - the stretch where the turn
-    // itself has to be legible - then shaded in over what is left of it. Off by
-    // default since dev0839; see VEIL_MAX.
-    if (st.veil) {
-      st.veil.style.transition = 'opacity ' + (half * (1 - VEIL_HOLD)).toFixed(3) + 's '
-        + VEIL_EASE + ' ' + (half * VEIL_HOLD).toFixed(3) + 's';
-      st.veil.style.opacity = String(VEIL_MAX);
-    }
-
     st.timer = setTimeout(function () {
       if (!cell.isConnected) { restore(cell, st); turned.delete(cell); return; }
       setPlaying(cell, false);                              // hold the frame
-      // The veil has done its job — the media is about to be hidden anyway, and
-      // leaving it would only sit under the back face costing a composite.
-      dropEl(st.veil); st.veil = null;
       var back = buildBack(cell, row);
       cell.appendChild(back);
       fitTagChips(back.querySelector('.turn-back-tags'));   // needs to be in the DOM
@@ -489,7 +452,6 @@
       showFront(st.hidden);
       st.back = null; st.hidden = null; st.flipped = false;
       setPlaying(cell, true);                               // carry on from the held frame
-      // No veil on this half, deliberately: the picture coming back to full
       // brightness as it flattens is the half that already read correctly.
       cell.style.transition = 'none';
       cell.style.transform = tf(cell, axis, 90);
@@ -516,7 +478,6 @@
     if (st && st.timer) clearTimeout(st.timer);
     if (st) {
       dropEl(st.back);     st.back = null;
-      dropEl(st.veil);     st.veil = null;
       dropEl(st.backdrop); st.backdrop = null;
       showFront(st.hidden);
       if (st.flipped) setPlaying(cell, true);
@@ -652,9 +613,9 @@
   function stop() {
     restoreAll();
     // Belt and braces: a grid re-render mid-turn (a caption toggle, a resize) can
-    // leave a backdrop or veil behind whose cell is no longer the one we tracked.
+    // leave a backdrop behind whose cell is no longer the one we tracked.
     var cont = container();
-    if (cont) cont.querySelectorAll('.turn-backdrop,.turn-veil,.turn-back').forEach(dropEl);
+    if (cont) cont.querySelectorAll('.turn-backdrop,.turn-back').forEach(dropEl);
     boxClose();
     active = false;
   }
