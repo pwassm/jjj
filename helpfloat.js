@@ -538,9 +538,9 @@ var HP_MODES = [
     title: '⧉ FOLD mode',
     desc: 'The grid is folded like a paper fortune teller — ten cells in a staircase down the diagonal, with three circles where four of them meet.',
     rows: [
-      { k: 'Double-click a circle', d: 'Folds those four cells into one, and the back of the corner cell comes up. The two outer folds first, then the middle one: 10 cells → 7 → 4 → 1.' },
-      { k: 'Double-click it again', d: 'Unfolds that block' },
-      { k: 'Click a cell',          d: 'Plays it, as on any grid — it is the DOUBLE-click, on a circle, that folds' },
+      { k: 'Click a circle',  d: 'Folds those four cells into one, and the back of the corner cell comes up. The two outer folds first, then the middle one: 10 cells → 7 → 4 → 1.' },
+      { k: 'Click it again',  d: 'Unfolds that block' },
+      { k: 'Click a cell',    d: 'Plays it, as on any grid — only the circles fold' },
       { k: 'What is on the backs',  d: 'The three cells the staircase does not use: 1c, 1d and 2d. A 5×5 folds its top-left 4×4 and leaves row 5 and column e out of it.' },
       { k: 'D',       d: 'STOP folding — the grid goes back to a plain square and the chooser comes back' },
       { k: 'R',       d: 'REGULAR — the same thing, or tap the ✕ under the middle of the bottom row' },

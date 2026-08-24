@@ -15,7 +15,8 @@
 //
 // Three overlapping 2×2 BLOCKS run down that diagonal, sharing the cells 2b and
 // 3c. Each has a CIRCLE at the interior corner where its four cells meet.
-// Double-click it and the block folds four squares into one:
+// Click it (dev0845 — it wanted a double-click before) and the block folds four
+// squares into one:
 //
 //   circle A (1a/1b/2a/2b) → lands on 2b, shows 1a's back  (c.json key 1aB)
 //   circle B (2b/2c/3b/3c) → lands on 2b, shows 3c's back  (key 3cB)
@@ -122,8 +123,9 @@ const FOLD16_BACK_KEYS = FOLD16_BLOCKS.map(b => b.back);
 // string '16F', built as a fold from the start. Fold MODE lends the same
 // machinery to a grid that was never saved that way — Modes menu → D on any
 // square 4×4 or larger, and the cells already on screen re-lay themselves into
-// the staircase and fold exactly as a real 16F does. D again (or R, or the ✕)
-// puts the grid back the way it was.
+// the staircase and fold exactly as a real 16F does — click a circle and four
+// squares collapse into one. D again (or R, or the ✕) puts the grid back the
+// way it was.
 //
 // Two things differ from a saved 16F, and only two:
 //
@@ -543,12 +545,40 @@ function _f16PlaceCircles(container) {
     dot.style.left = (ox + tl.c * cell) + 'px';
     dot.style.top  = (oy + tl.r * g.ch) + 'px';
     dot.title = !on ? 'Fold the two corners first'
-      : (folded ? 'Double-click to unfold' : b.label) + ' (double-click)';
+      : (folded ? 'Click to unfold' : b.label) + ' (click)';
+    // ─────────────────────────────────────────────────────────────────────────
+    // (dev0845) THE CIRCLES TAKE A SINGLE TAP, AND THEY TAKE IT ON pointerup.
+    //
+    // They used to answer only to dblclick, which is the one event this grid
+    // cannot rely on — see the note in _f16WireContainer: the cells call
+    // preventDefault() on pointerdown, and that suppresses every compatibility
+    // mouse event the browser would otherwise synthesise, click and dblclick
+    // included. On a saved 16F the circles happened to escape that; under FOLD
+    // MODE, laid over an ordinary grid, they did not, and the circles were
+    // simply dead — no fold, no toast, nothing.
+    //
+    // pointerup is immune: it is the real event, not a synthesised one, so no
+    // amount of preventDefault upstream can stop it. Handling the tap there
+    // fixes both halves of the bug at once — the swallowed dblclick, and the
+    // fact that a single click on a control that looks exactly like a button
+    // should have worked in the first place.
+    //
+    // Every route now goes through _f16CircleHit, which ignores a second tap
+    // within 400ms. That is what stops a genuine double-click reading as fold
+    // followed immediately by unfold.
+    // ─────────────────────────────────────────────────────────────────────────
+    dot.addEventListener('pointerup', e => {
+      if (e.button !== undefined && e.button !== 0) return;   // primary only
+      e.preventDefault(); e.stopPropagation();
+      _f16CircleHit(b.id);
+    }, true);
+    // Kept for the browsers that do still deliver it, and harmless now: the
+    // de-bounce in _f16CircleHit swallows it as the second tap of the pair.
     dot.addEventListener('dblclick', e => {
       e.preventDefault(); e.stopPropagation();
-      _fold16Toggle(b.id);
+      _f16CircleHit(b.id);
     }, true);
-    ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'contextmenu']
+    ['pointerdown', 'mousedown', 'mouseup', 'click', 'contextmenu']
       .forEach(t => dot.addEventListener(t, e => e.stopPropagation(), true));
     container.appendChild(dot);
   }
@@ -564,10 +594,17 @@ function _f16WireContainer(container) {
   container._f16Wired = true;
   container.addEventListener('dblclick', e => {
     if (_fold16Busy) { e.preventDefault(); e.stopPropagation(); return; }
+    // (dev0845) This is the NEAR-MISS catcher only. A double-click that landed on
+    // the dot itself has already been answered by its own pointerup — and this
+    // runs in CAPTURE, so the dot's stopPropagation cannot keep it away from here.
+    if (e.target && e.target.closest && e.target.closest('.fold16-circle')) {
+      e.preventDefault(); e.stopPropagation();
+      return;
+    }
     const hit = _f16CircleAt(container, e.clientX, e.clientY);
     if (!hit) return;
     e.preventDefault(); e.stopPropagation();
-    _fold16Toggle(hit);
+    _f16CircleHit(hit);
   }, true);
   // (dev0824) …and the OTHER double-tap path. grid.js cannot rely on dblclick —
   // its cells preventDefault on pointerdown, which suppresses the browser's
@@ -596,6 +633,21 @@ function _f16WireContainer(container) {
 // pointerup-based double-tap path above.
 var _f16LastPt = null;
 
+// (dev0845) ONE DOOR FOR EVERY WAY OF HITTING A CIRCLE — the dot's own pointerup,
+// its dblclick, the container's near-miss dblclick, and grid.js's manual
+// double-tap detector. They can fire in pairs (a real double-click is a pointerup
+// AND a dblclick; a double-tap is two pointerups), and a fold that immediately
+// unfolds itself is worse than one that never starts. So a second hit inside
+// 400ms is dropped, which is short enough that two deliberate folds in a row
+// still both land.
+var _f16LastHitAt = 0;
+function _f16CircleHit(id) {
+  const now = Date.now();
+  if (now - _f16LastHitAt < 400) return;
+  _f16LastHitAt = now;
+  _fold16Toggle(id);
+}
+
 // Does the fold grid want this double-tap? Called first thing in grid.js's shared
 // _runDoubleTapAction. Returns true when the tap has been handled (or should be
 // thrown away) and the caller must not fall through to the editor routes.
@@ -607,7 +659,7 @@ function _fold16ClaimDoubleTap() {
   if (!container || !_f16LastPt) return false;
   const hit = _f16CircleAt(container, _f16LastPt.x, _f16LastPt.y);
   if (!hit) return false;
-  _fold16Toggle(hit);
+  _f16CircleHit(hit);        // (dev0845) shared de-bounce — the dot may have fired
   return true;
 }
 

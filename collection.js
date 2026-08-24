@@ -523,7 +523,14 @@ function _gmRegular() {
 function _gmExitBtnPosition(btn) {
   var cont = document.getElementById('gridContainer');
   if (!cont || !btn) return;
-  var anchor = cont.querySelector('.grid-cell[data-cell="5c"]') || cont;
+  // (dev0845) 5c does not exist on every grid — the fold's footprint is a 4×4, so
+  // the anchor fell all the way back to #gridContainer, which is inset:0 and
+  // therefore the WHOLE overlay: the ✕ jumped to the bottom of the screen. Walk
+  // down through the bottom-middle cell of each footprint instead.
+  var anchor = cont.querySelector('.grid-cell[data-cell="5c"]')
+            || cont.querySelector('.grid-cell[data-cell="4c"]')
+            || cont.querySelector('.grid-cell[data-cell="3b"]')
+            || cont;
   var r = anchor.getBoundingClientRect();
   btn.style.left = Math.round(r.left + r.width / 2) + 'px';
   btn.style.top  = Math.round(r.bottom - 8) + 'px';
@@ -642,7 +649,7 @@ function _gmModesHtml() {
     : _gmTurnOn()
       ? 'turns that cell over — tags on top, the first 5 lines of its text below; click again to turn back'
     : _gmFoldOn()
-      ? 'plays it as usual — it is the DOUBLE-click on a circle that folds four cells into one'
+      ? 'plays a cell as usual — and a click on a CIRCLE folds four cells into one'
       : 'each mode gives the click its own trick — turn one on to see';
   const wander = !!live && live !== 'fall';
   const fold   = _gmFoldOn();
@@ -687,8 +694,8 @@ function _gmModesHtml() {
           live === 'fly2')
     + sub('1 / 2', 'the number of the one that is running puts it back to plain wander', false)
     + row('D', '⧉ Fold', fold
-        ? '<b>folded</b> — double-click a circle; D again unfolds the grid'
-        : 'the grid folds like paper — double-click a circle to fold four cells into one',
+        ? '<b>folded</b> — click a circle to fold; D again unfolds the grid'
+        : 'the grid folds like paper — click a circle to fold four cells into one',
         fold)
     + '<div style="height:1px;background:rgba(255,255,255,.12);margin:8px 0 7px;"></div>'
     + row('Click', 'a cell', clickTxt, !!live || _gmTurnOn() || fold)
