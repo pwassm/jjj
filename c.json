@@ -2033,10 +2033,12 @@
     "gname": "Seattle1",
     "cells": 3,
     "Zoom": 1,
-    "DateModified": "2026-08-22 17:04:30",
+    "DateModified": "2026-08-24 14:58:33",
     "1a": "2103",
     "1b": "2102",
     "1c": "2101",
-    "DateAdded": "2026-08-22 17:04:30"
+    "DateAdded": "2026-08-22 17:04:30",
+    "ctxt": "Seattle",
+    "active": "10"
   }
 ]
