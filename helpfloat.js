@@ -197,6 +197,9 @@ function hpState() {
              || (window.FlyCells  && window.FlyCells.active)
              || (window.FlyCells2 && window.FlyCells2.active));
     }, false),
+    // (dev0836) Turnaround — its own card, like fall and conveyor, because the
+    // question it raises ("what is on the back, and how do I get out?") is its own.
+    turn:      probe(function () { return !!(window.TurnCells && window.TurnCells.active); }, false),
     bufPanel:  probe(function () { return !!(window._gridBufPanelOpen && window._gridBufPanelOpen()); }, false),
     gCut:      probe(function () { return !!_gridCutCell; }, false),
     fromMenu:  probe(function () { return window._smReturnPage >= 2 && window._smReturnPage <= 6; }, false),
@@ -390,6 +393,19 @@ var HP_CTX = [
         dev: true, on: function (s) { return s.code === 'T'; } }
     ] },
 
+  // (dev0836) t used to mean "back to the Table" on BOTH screens; on the grid it
+  // is now Turnaround, and ⇧T is the way back. Same shape as the F rule above so
+  // the one T row on the grid says the grid's meaning, not the Table's.
+  { screens: ['T', 'G'], k: 'T', kind: 'key',
+    hide: ['T'],
+    d: 'Same key, two jobs:',
+    variants: [
+      { d: 'Grid: TURNAROUND — click a cell to turn it over and read its tags and text; click again to turn it back. ⇧T leaves the grid for the Table.',
+        on: function (s) { return s.code === 'G'; } },
+      { d: 'Table: nothing — you are already here (from any other screen, t comes back to the Table)',
+        dev: true, on: function (s) { return s.code === 'T'; } }
+    ] },
+
   { screens: ['T', 'G'], k: 'G', kind: 'key',
     hide: ['G'],
     d: 'Same key, two jobs:',
@@ -461,7 +477,12 @@ var HP_ADD = {
     // MODES card, which offers the conveyor as one of its options. Listing it
     // again at the top level presented one menu as two.
     { k: 'R', dev: true,
-      d: 'FUN MODE — conveyor: the cells travel round the grid. Press R again to leave it.' }
+      d: 'FUN MODE — conveyor: the cells travel round the grid. Press R again to leave it.' },
+    // (dev0836) Listed at the top level in BOTH modes, unlike R: it is not one of
+    // several ways into the same menu, it is a mode of its own with its own key,
+    // and it is the one a viewer gets something to read out of.
+    { k: 'T',
+      d: 'TURNAROUND — click any cell and it turns over to show what it is about: its tags on top, the first few lines of its text below. Click it again to turn it back (a video carries on where it stopped). The box under the middle of the bottom row sets how fast they spin. Press T again to leave.' }
   ]
 };
 
@@ -490,6 +511,7 @@ var HP_MODES = [
     rows: [
       { k: 'F',       d: 'Start the waterfall — cells drop off the cliff, bounce and re-enter. F again stops it.' },
       { k: 'R',       d: 'Start the conveyor — the cells travel round the grid. R again stops it.' },
+      { k: 'T',       d: 'Start turnaround — click a cell to turn it over and read its tags and text. T again stops it.' },
       { k: '1  /  2', d: 'While a mode runs: 1 = cascade · 2 = swap (the same number again gives the plain conveyor)' },
       { k: 'Click a cell', d: 'Does something different in each mode — the window says which' },
       { k: '{  /  }', d: 'Slower / faster' },
@@ -503,6 +525,16 @@ var HP_MODES = [
       { k: 'Click a cell', d: 'Features that cell BIG for about 10 seconds, then it fades back into the flow' },
       { k: '{  /  }', d: 'Slower / faster' },
       { k: 'F',       d: 'Opens the FUN MODES window; F again there LEAVES fall mode' }
+    ] },
+  // (dev0836) Turnaround. Listed before conveyor only for tidiness — the two can
+  // never be on together (_gmStopAll clears one when the other starts).
+  { screens: ['G'], on: function (s) { return s.turn; },
+    title: '🔄 TURNAROUND mode',
+    desc: 'A fun mode — the cells turn over to show what they are about.',
+    rows: [
+      { k: 'Click a cell', d: 'Turns it over: its tags across the top half, the first few lines of its text below. Click it again and it turns back — a video carries on from where it stopped.' },
+      { k: 'The spin box', d: 'Under the middle of the bottom row: 1 to 20. A turn takes 1 ÷ that many seconds, so 1 is the slowest. It is remembered for next time.' },
+      { k: 'T',       d: 'LEAVE turnaround — every cell goes face-up again' }
     ] },
   { screens: ['G'], on: function (s) { return s.conveyor; },
     title: '↻ CONVEYOR mode',

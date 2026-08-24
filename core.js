@@ -493,6 +493,40 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
+  // (dev0836) T over the grid = TURNAROUND, the new fun mode (turncells.js): click
+  // a cell and it turns over on its long midline to show its tags and the first
+  // five lines of its text; click again and it turns back, the video carrying on
+  // from the frame it stopped on. Bare t only, and only over the grid.
+  //
+  // THIS TAKES BARE t AWAY FROM "back to the Table" ON THE GRID — that hotkey was
+  // dev-only to begin with (t is in HK_USER_BLOCKED, so a viewer never had it),
+  // and the two ways back are untouched: the T button in the bottom-right strip,
+  // and Esc. Shift+T is added just below as the keyboard equivalent, since the
+  // Table screen's own Shift+T (insert a text row at 1a) is gated on
+  // _tScreenActive(), which is false whenever the grid is open.
+  //
+  // Rides the same user-mode gate as F: dev always, viewers only while the
+  // guFunKeys switch is on (it is by default).
+  if (k === 't' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const gOpenT  = document.getElementById('gridOverlay')?.style.display === 'flex';
+    const vpOpenT = document.getElementById('gridFullscreen')?.style.display === 'flex';
+    if (gOpenT && !vpOpenT) {
+      if (e.shiftKey) {                       // ⇧T — the old bare-t: leave for the Table
+        e.preventDefault(); e.stopPropagation();
+        window._pendingHotkey = 't';          // same shape as the dispatcher below
+        setTimeout(function () { if (window._executeHotkey) window._executeHotkey('t'); }, 0);
+        return false;
+      }
+      const _uModeT = (typeof _isUserMode === 'function') && _isUserMode();
+      const _guFunT = (typeof window._guFunKeysOn === 'function') && window._guFunKeysOn();
+      if (!_uModeT || _guFunT) {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof window._gmTurnKey === 'function') window._gmTurnKey();
+        else if (window.TurnCells) window.TurnCells.toggle();
+        return false;
+      }
+    }
+  }
   // (dev0638) b while G is open (no V on top) cycles the buffered-playback SCOPE
   // — how far clean playback reaches (dev0673: normal → wide → all → none; was a
   // plain "buffer everywhere" on/off). ⇧B toggles adaptive per-segment pre-roll,

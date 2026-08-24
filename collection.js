@@ -219,12 +219,22 @@ function _gmStopAll() {
   window.FlyCells    && window.FlyCells.stop    && window.FlyCells.stop();
   window.FlyCells2   && window.FlyCells2.stop   && window.FlyCells2.stop();
   window.FallCells   && window.FallCells.stop   && window.FallCells.stop(true);
+  // (dev0836) TurnCells is not a MOVING mode (it never re-slots a cell, so it is
+  // deliberately absent from _gmAnyMoving — the digits keep resizing the grid
+  // while it runs), but it does own the cell's inline transform and the click.
+  // It therefore belongs in the shared teardown: starting any other fun mode, and
+  // every exit path out of the grid, must turn the cards face-up again.
+  window.TurnCells   && window.TurnCells.stop   && window.TurnCells.stop();
 }
 function _gmMasterToggle() {
   if (_gmAnyMoving()) {
     _gmStopAll();
     if (typeof toast === 'function') toast('■ Moving cells OFF', 1300);
   } else if (window.MovingCells) {
+    // (dev0836) Turnaround does not count as "moving", so _gmAnyMoving() above is
+    // false while it runs — clear it here or R would start the belt underneath a
+    // grid of face-down cards, both fighting over the same inline transform.
+    _gmStopAll();
     window.MovingCells.start();
   }
 }
@@ -428,6 +438,22 @@ function _gmLiveMode() {
   return '';
 }
 
+function _gmTurnOn() { return !!(window.TurnCells && window.TurnCells.active); }
+
+// (dev0836) T = TURNAROUND. Its own key, like F, so it can start cold; the card
+// is not required to reach it. Kept out of _gmAnyMoving deliberately — see the
+// note in _gmStopAll.
+function _gmTurnKey() {
+  if (window.TurnCells) window.TurnCells.toggle();
+  if (_gmFunPanelOpen()) {
+    // Same rule as the moving modes: a started mode is a chosen mode, so the
+    // chooser gets out of the way; a mode that refused leaves the card up.
+    if (_gmTurnOn()) _gmFunPanelClose(); else _gmFunPanelRefresh();
+  }
+}
+window._gmTurnOn  = _gmTurnOn;
+window._gmTurnKey = _gmTurnKey;
+
 function _gmFunPanelHtml() {
   const live = _gmLiveMode();
   const on = (yes) => yes ? 'color:#7ddba0;' : 'opacity:.85;';
@@ -445,6 +471,8 @@ function _gmFunPanelHtml() {
       ? 'glides that cell into another’s place — they swap in one smooth path'
     : live === 'conveyor'
       ? 'plays / pauses that cell — the belt keeps moving'
+    : _gmTurnOn()
+      ? 'turns that cell over — tags on top, the first 5 lines of its text below; click again to turn back'
       : 'each mode gives the click its own trick — turn one on to see';
   return '<div style="font-weight:600;letter-spacing:.5px;margin-bottom:8px;'
       + 'display:flex;justify-content:space-between;gap:20px;">'
@@ -455,9 +483,14 @@ function _gmFunPanelHtml() {
     + row('R', '↻ Conveyor', live && live !== 'fall'
         ? '<b>running</b> — press R again to stop'
         : 'the cells travel round the grid', !!live && live !== 'fall')
+    // (dev0836) The instructive one. Listed with the toys because it is reached
+    // the same way, but a click here TEACHES rather than rearranges.
+    + row('T', '🔄 Turnaround', _gmTurnOn()
+        ? '<b>running</b> — press T again to stop'
+        : 'click a cell to turn it over: its tags and text on the back', _gmTurnOn())
     + '<div style="height:1px;background:rgba(255,255,255,.12);margin:8px 0 7px;"></div>'
     + row('1 / 2', 'variant', 'while a mode runs: 1 = cascade · 2 = swap (same number again = plain conveyor)', false)
-    + row('Click', 'a cell', clickTxt, !!live)
+    + row('Click', 'a cell', clickTxt, !!live || _gmTurnOn())
     + row('{ / }', 'speed', 'slower / faster', false)
     // (dev0800) Only shown once the desktop check has been overridden — it is the
     // one place the viewer can put it back. pointer-events is re-enabled just on
@@ -562,6 +595,18 @@ document.addEventListener('keydown', e => {
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); document.getElementById('gridSaveCancel')?.click(); }
     return;
   }
+
+  // (dev0836) A FIELD ON THE GRID OWNS ITS OWN KEYS. core.js's window-capture
+  // dispatcher has always bailed on an editable target, but this handler never
+  // did — it only had the Xe bail above, because until now the grid carried no
+  // plain <input>. The turnaround spin box is one: without this, Escape in it
+  // closed the whole grid and r / z / [ / ] typed into it drove the moving modes
+  // instead of reaching the field. Mirrors the core.js test — and sits BELOW the
+  // gridSaveModal branch on purpose, since that dialog's Enter / Escape are
+  // pressed with its own name field focused and must still be routed.
+  const _kTag = e.target && e.target.tagName;
+  if (_kTag === 'INPUT' || _kTag === 'TEXTAREA' || _kTag === 'SELECT'
+      || (e.target && e.target.isContentEditable)) return;
 
   // (dev0598) "Fun keys" allowlist. When the guFunKeys switch is ON (default), the
   // user-mode gate below lets a harmless extra set of grid keys through to their

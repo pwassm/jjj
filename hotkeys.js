@@ -129,7 +129,7 @@ window.HOTKEYS = [
     fn(ctx) { /* handled via HK_STAGING in the dispatcher */ } },
 
   { key: 't', label: 'T', group: 'Screens', scope: 'global',
-    desc: 'Return to the Table (saves an open E screen first)',
+    desc: 'Return to the Table (saves an open E screen first). (dev0836) EXCEPT on the grid, where bare t is now the Turnaround fun mode — use ⇧T (or the T button / Esc) to leave the grid for the Table.',
     fn(ctx) {
       if (ctx.tgOpen) { closeGridList(); return; }
       if (ctx.vpOpen) vpClose();
@@ -537,7 +537,15 @@ window.HOTKEYS = [
 
   { label: 'F', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0460/0705) → collection.js _gmFunKey',
-    desc: 'F is FUN. The first press raises the FUN MODES window: both moving modes (F = waterfall, R = conveyor), the variant numbers (1 = cascade, 2 = swap), the { } speed keys and — the part that was documented nowhere — what a CLICK on a cell does in each mode. The window stays up while a mode runs and keeps saying what each key does next; Esc drops it without stopping anything. While it is up, F is the waterfall toggle, so F,F still starts the waterfall and F,F again stops it.' },
+    desc: 'F is FUN. The first press raises the FUN MODES window: the moving modes (F = waterfall, R = conveyor), (dev0836) T = turnaround, the variant numbers (1 = cascade, 2 = swap), the { } speed keys and — the part that was documented nowhere — what a CLICK on a cell does in each mode. The window stays up while a mode runs and keeps saying what each key does next; Esc drops it without stopping anything. While it is up, F is the waterfall toggle, so F,F still starts the waterfall and F,F again stops it.' },
+
+  { label: 'T', group: 'Grid (window-capture)', scope: 'G', dev: false,
+    impl: 'core.js window-capture (dev0836) → collection.js _gmTurnKey → turncells.js',
+    desc: 'T is TURNAROUND — the instructive member of the fun family. Click any cell and it turns over on its LONG midline (a landscape cell about its horizontal one, a portrait cell about its vertical one) to show the back: the row’s tag chips in the top half, the first five lines of its ftext below. Click it again and it turns back to the picture, a video resuming from exactly the frame it stopped on. A box floats under cell 5c with the spin number (1-20, default 5) — a turn lasts 1/n seconds, so 1 is the slowest at a full second; the value is remembered for next time. T again turns the mode off and every card face-up. NOTE: on the grid this REPLACES bare t = back to the Table — ⇧T does that now (the T button in the bottom-right strip and Esc are unchanged).' },
+
+  { label: 'Shift+T', group: 'Grid (window-capture)', scope: 'G', dev: true,
+    impl: 'core.js window-capture (dev0836) → _executeHotkey(\'t\')',
+    desc: 'Leave the grid and go back to the Table — what bare t did here before dev0836 gave t to Turnaround.' },
 
   { label: 'S', group: 'Grid (window-capture)', scope: 'G', dev: false,
     impl: 'core.js window-capture (dev0516)',
