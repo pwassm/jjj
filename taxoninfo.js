@@ -740,9 +740,76 @@
     });
   }
 
+  // ── what a row's card back should say ───────────────────────────────────────
+  //
+  // ONE resolver, used by BOTH the Turn card back and the DictSize column, so the
+  // number you sort on in T is exactly the text the card would show. If these ever
+  // drifted apart, sorting by DictSize would stop predicting which cards are thin,
+  // which is the entire reason the column exists.
+  //
+  // Order of preference:
+  //   1. the row's tags, IN ARRAY ORDER — so the primary tag wins, and long-pressing
+  //      a chip in T (dev0847) directly chooses which animal the card talks about
+  //   2. for each tag, itself first, then UP its lineage nearest-first: a species
+  //      with no article of its own falls back to its genus, then family, then
+  //      order. That is the "species or family or order" behaviour asked for, and
+  //      it is why an obscure binomial like Careproctus rastrinus still gets a card
+  //      back — Liparidae, the snailfishes, has plenty to say.
+  //
+  // Only taxon tags are consulted; a topic or technique tag has no taxoninfo record
+  // and is skipped rather than blocking the walk.
+
+  function bestForTag(id, depth) {
+    // Breadth-first up the parents, so the NEAREST usable ancestor wins. tagsLib's
+    // ancestors() returns an unordered Set, which would pick an arbitrary rank.
+    if (!window.tagsLib) return null;
+    var seen = {}, queue = [{ id: id, up: 0 }];
+    while (queue.length) {
+      var cur = queue.shift();
+      if (seen[cur.id]) continue;
+      seen[cur.id] = 1;
+      if (cur.up > (depth == null ? 6 : depth)) continue;
+      var tag = window.tagsLib.get(cur.id);
+      if (!tag) continue;
+      if (tag.kind === 'taxon') {
+        var rec = get(cur.id);
+        if (rec && rec.status === 'ok' && rec.note) {
+          return {
+            id: cur.id, label: tag.label || cur.id, rank: tag.rank || '',
+            note: rec.note, descr: rec.descr || '', wiki: rec.wiki || '',
+            iucn: rec.iucn || '', thumb: rec.thumb || '',
+            viaGenus: rec.viaGenus || '', viaSpecies: rec.viaSpecies || '',
+            up: cur.up
+          };
+        }
+      }
+      (tag.parents || []).forEach(function (p) { queue.push({ id: p, up: cur.up + 1 }); });
+    }
+    return null;
+  }
+
+  function noteForRow(row) {
+    if (!row || !Array.isArray(row.tags) || !row.tags.length) return null;
+    for (var i = 0; i < row.tags.length; i++) {
+      var hit = bestForTag(row.tags[i]);
+      if (hit) { hit.fromTag = row.tags[i]; return hit; }
+    }
+    return null;
+  }
+
+  // Character count of the note a row's card back would show. Mirrors ftextSize,
+  // which is a raw String(length) of the row's ftext — same units, so the two
+  // columns sit side by side in T and compare directly.
+  function charsForRow(row) {
+    var hit = noteForRow(row);
+    return hit ? String(hit.note.length) : '0';
+  }
+
   window.taxonInfo = {
     load: load, get: get, has: has, stats: stats,
     enrich: enrich, enrichOne: enrichOne, stop: stop, resolveTo: resolveTo,
-    taxonList: taxonList, openPanel: openPanel, close: close, persist: persist
+    taxonList: taxonList, openPanel: openPanel, close: close, persist: persist,
+    noteForRow: noteForRow, charsForRow: charsForRow, bestForTag: bestForTag,
+    loaded: function () { return !!store; }
   };
 })();

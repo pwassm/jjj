@@ -1,7 +1,7 @@
 {
   "_salMeta": true,
   "_taxonInfoVersion": 1,
-  "_updated": "2026-08-25T01:10:33.104Z",
+  "_updated": "2026-08-25T03:00:42.260Z",
   "items": {
     "hypsypops-rubicundus": {
       "label": "Hypsypops rubicundus",
@@ -4886,20 +4886,14 @@
     "morus": {
       "label": "Morus",
       "rank": "genus",
-      "status": "ambiguous",
-      "fetched": "2026-08-25T01:10:18.111Z",
-      "candidates": [
-        {
-          "qid": "Q44789",
-          "page": "Morus (plant)",
-          "descr": "genus of plants"
-        },
-        {
-          "qid": "Q1651414",
-          "page": "Gannet",
-          "descr": "genus of birds, the gannets"
-        }
-      ]
+      "status": "ok",
+      "fetched": "2026-08-25T03:00:41.818Z",
+      "note": "Gannets are seabirds comprising the genus Morus in the family Sulidae, closely related to boobies. They are known as 'solan' or 'solan goose' in Scotland. A common misconception is that the Scottish name is 'guga' but this is the Gaelic name referring to the chicks only.\nGannets are large white birds with yellowish heads, black-tipped wings and long bills. Northern gannets are the largest seabirds in the North Atlantic, having a wingspan of up to two metres (6+1⁄2 feet). The other two species occur in the temperate seas around southern Africa, southern Australia, and New Zealand.",
+      "descr": "Genus of diving seabirds",
+      "wiki": "https://en.wikipedia.org/wiki/Gannet",
+      "wikiTitle": "Gannet",
+      "qid": "Q1651414",
+      "thumb": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Morus_bassanus_9.jpg/330px-Morus_bassanus_9.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail"
     },
     "coscinodiscales": {
       "label": "Coscinodiscales",

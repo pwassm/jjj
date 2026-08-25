@@ -234,6 +234,14 @@
     var lines = ftextLines(row && row.ftext, FTEXT_LINES);
     var title = row ? [row.t1, row.n1].filter(Boolean).join(' · ') : '';
 
+    // (dev0848) When the row has no ftext, fall back to the DICTIONARY: the note
+    // taxoninfo.js holds for this row's primary taxon tag, or for the nearest
+    // ancestor that has one (species -> genus -> family -> order). ftext still wins
+    // when it exists — this fills blank backs, it does not overrule what has been
+    // written by hand. Roughly two thirds of tagged rows had nothing here before.
+    var tinfo = (!lines.length && window.taxonInfo && window.taxonInfo.noteForRow)
+      ? window.taxonInfo.noteForRow(row) : null;
+
     var back = document.createElement('div');
     back.className = 'turn-back';
     back.style.cssText = 'position:absolute;inset:0;z-index:140;overflow:hidden;'
@@ -242,7 +250,7 @@
       + 'font:' + fs + 'px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;';
 
     // Nothing to teach with — say so rather than showing an empty card.
-    if (!chips && !lines.length) {
+    if (!chips && !lines.length && !tinfo) {
       back.style.alignItems = 'center';
       back.style.justifyContent = 'center';
       back.style.textAlign = 'center';
@@ -271,10 +279,44 @@
       + 'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:' + FTEXT_LINES + ';';
     bot.innerHTML = lines.length
       ? lines.map(function (l) { return esc(l); }).join('<br>')
-      : '<span style="opacity:.35;font-style:italic;">' + esc(title || 'no text yet') + '</span>';
+      : (tinfo ? dictHtml(tinfo, fs)
+               : '<span style="opacity:.35;font-style:italic;">' + esc(title || 'no text yet') + '</span>');
     back.appendChild(bot);
 
+    // The store loads lazily, so the very first card flipped in a session can be
+    // built before taxoninfo.json has arrived. Rather than block the flip, patch
+    // the text in once it lands — the panel is already on screen and this only
+    // touches the bottom half.
+    if (!lines.length && !tinfo && window.taxonInfo && !window.taxonInfo.loaded()) {
+      window.taxonInfo.load().then(function () {
+        if (!bot.isConnected) return;
+        var late = window.taxonInfo.noteForRow(row);
+        if (late) bot.innerHTML = dictHtml(late, fs);
+      }).catch(function () {});
+    }
+
     return back;
+  }
+
+  // A dictionary note, dressed so it never reads as the row's own writing. The
+  // heading names the taxon the text is ABOUT, which matters when the note came
+  // from an ancestor: a Careproctus rastrinus card says "Liparidae · family", so
+  // nobody mistakes a family description for a species one. Wikipedia's one-line
+  // description ("Order of flying mammals") is used as that heading when the note
+  // is for the tag itself, since it is tighter than the rank alone.
+  function dictHtml(t, fs) {
+    var small = Math.max(8, fs - 3);
+    var head;
+    if (t.up > 0) {
+      head = esc(t.label) + (t.rank ? ' \u00b7 ' + esc(t.rank) : '');
+    } else {
+      head = esc(t.descr || t.label);
+    }
+    if (t.viaGenus)   head += ' \u00b7 genus';
+    if (t.viaSpecies) head += ' \u00b7 ' + esc(t.viaSpecies);
+    return '<div style="opacity:.55;font-size:' + small + 'px;margin-bottom:.25em;">'
+         + head + (t.iucn ? ' \u00b7 ' + esc(t.iucn) : '') + '</div>'
+         + '<div>' + esc(t.note) + '</div>';
   }
 
   // ── Media: hold the frame, then carry on from it ────────────────────────────
@@ -667,6 +709,13 @@
     // still false at this point, so it cannot cancel the start that follows.)
     if (typeof window._gmStopAll === 'function') window._gmStopAll();
     speed = loadSpeed();
+    // (dev0848) Warm the dictionary now, while the "Turnaround ON" toast is still
+    // being read, so the first card flipped already has its note. The back builder
+    // patches itself if this has not landed yet, so this is a head start, not a
+    // dependency.
+    if (window.taxonInfo && !window.taxonInfo.loaded()) {
+      try { window.taxonInfo.load(); } catch (_) {}
+    }
     ensureWired();
     active = true;
     promoteAll();          // (dev0841) layers ready BEFORE the first click, not during it
