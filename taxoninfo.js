@@ -812,4 +812,18 @@
     noteForRow: noteForRow, charsForRow: charsForRow, bestForTag: bestForTag,
     loaded: function () { return !!store; }
   };
+
+  // Warm the store in the background once the app has settled. Both consumers read
+  // it synchronously and both degrade quietly without it — the Turn card back falls
+  // back to ftext, and updateDictSizes() leaves the column untouched — so this is
+  // not required for correctness. It just makes "not loaded yet" the rare case
+  // rather than the normal one, which is what keeps DictSize current.
+  if (typeof window !== 'undefined') {
+    var warmStore = function () { try { load(); } catch (_) {} };
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(warmStore, { timeout: 4000 });
+    } else {
+      setTimeout(warmStore, 2500);
+    }
+  }
 })();

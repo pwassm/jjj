@@ -1326,9 +1326,46 @@ function updateFtextSizes() {
   }
 }
 
+// (dev0849) DictSize — characters in the dictionary note this row's card back
+// would show, so it sorts alongside FtextSize in T.
+//
+// MAINTAINED HERE, not by a backfill script, because a disk-only backfill does not
+// survive. dev0848 wrote 686 values straight into ml.json; the app was open with a
+// copy loaded BEFORE that write, and its next save put all 2116 rows back with the
+// column empty. Anything the app does not compute itself gets overwritten by the
+// app sooner or later, so the app has to compute it.
+//
+// THE GUARD IS THE IMPORTANT PART. taxoninfo.json loads lazily, so a save can land
+// before it arrives. Recomputing against an empty dictionary would write '0' across
+// every row — the same column-wipe in a different disguise — so when the store is
+// not in yet the existing values are LEFT ALONE rather than recalculated.
+function updateDictSizes() {
+  if (!Array.isArray(data)) return;
+  if (!window.taxonInfo || typeof window.taxonInfo.loaded !== 'function') return;
+  if (!window.taxonInfo.loaded()) return;          // never zero a column we cannot compute
+
+  const rx = /^dictsize$/i;
+  let key = (Array.isArray(cols) ? cols.find(c => rx.test(c)) : null) || null;
+  if (!key) {
+    for (const r of data) {
+      if (r && !r._salMeta) { const k = Object.keys(r).find(k => rx.test(k)); if (k) { key = k; break; } }
+    }
+  }
+  key = key || 'DictSize';
+
+  for (const r of data) {
+    if (!r || r._salMeta) continue;
+    // Drop other-cased variants so we don't leave empty duplicate columns.
+    for (const k of Object.keys(r)) if (k !== key && rx.test(k)) delete r[k];
+    // String, like every other ml.json field; buildSort parseFloat-sorts it.
+    try { r[key] = window.taxonInfo.charsForRow(r); } catch (_) {}
+  }
+}
+
 // Master save: localStorage + disk (non-blocking)
 function save() {
   updateFtextSizes();
+  updateDictSizes();
   // _salIg rows live in instagram.json and are merged in at load(); strip
   // them out of every ml.json write path so the sandbox stays excisable.
   const mlRows = data.filter(r => !(r && r._salIg));
