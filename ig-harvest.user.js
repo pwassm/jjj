@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.3
+// @version      2.4
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Harvest an Instagram profile's reel/post URLs into ig.json via the local SLAM proxy. "🆕 New only" asks the proxy which shortcodes ig.json already holds and stops scrolling as soon as it recognises the grid — a re-harvest costs ~3 scroll steps instead of 500. "🔁 Sweep all" runs that across every harvested author unattended, rotating the Proton VPN between authors the way Download+rotate does. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.3';
+  const VER = '2.4';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -185,16 +185,29 @@
     return m;
   }
 
+  // (dev0850) Grey follows `harvested` ONLY - never `rows`. /ig/authors counts a
+  // 'w'-added single (staged:false) in `rows` but deliberately NOT in `harvested`,
+  // so the old `harvested || rows` fallback greyed a profile that had never been
+  // walked at all, purely because one post from it had been grabbed by hand. That
+  // is exactly the author most worth a full harvest, and grey said "done". A
+  // singles-only author now paints blue with an amber outline that says why it is known.
   function paintAll(hit) {
     const h = document.getElementById('slam-ig-harvest');
     if (!h) return;
-    h.dataset.known = hit ? String(hit.harvested || hit.rows || 0) : '';
-    h.style.background = hit ? '#3a3f4a' : '#0a84ff';
-    h.style.color      = hit ? '#9aa0aa' : '#fff';
-    h.title = hit
-      ? 'Already harvested — ' + (hit.harvested || hit.rows) + ' rows in ig.json, last ' +
+    const done    = hit ? (hit.harvested || 0) : 0;      // rows a PROFILE walk staged
+    const singles = hit ? Math.max(0, (hit.rows || 0) - done) : 0;   // 'w' hand-adds
+    h.dataset.known = done ? String(done) : '';          // only a REAL harvest asks "are you sure"
+    h.style.background = done ? '#3a3f4a' : '#0a84ff';
+    h.style.color      = done ? '#9aa0aa' : '#fff';
+    h.style.outline    = (!done && singles) ? '2px solid #ffd60a' : '';
+    h.style.outlineOffset = '1px';
+    h.title = done
+      ? 'Already harvested — ' + done + ' rows in ig.json, last ' +
         ((hit.last || '').slice(0, 10) || '—') + '.\nUse 🆕 New only. Click anyway for a full deep re-check.'
-      : ALL_TITLE;
+      : singles
+        ? 'NEVER profile-harvested — ig.json holds only ' + singles + ' hand-added single'
+          + (singles === 1 ? '' : 's') + ' from this author.' + '\n' + ALL_TITLE
+        : ALL_TITLE;
   }
 
   // Repaint when the PROFILE changes, not just when the bar is built: Instagram
@@ -210,7 +223,7 @@
       const m = await authorsMap();
       if (authorFromPath() !== a) return;             // navigated away mid-flight
       const hit = m.get(a);
-      paintAll(hit && (hit.harvested || hit.rows) ? hit : null);
+      paintAll(hit || null);   // paintAll decides: harvested / singles-only / unknown
     } catch (_) { /* proxy down → leave it blue; never block a harvest over this */ }
   }
 

@@ -40,3 +40,5 @@
 2026-08-09T15:49:17.720Z	bare-links paste	1000	https://youtu.be/vtSotA90QQ0	This One Muscle Is Destroying Your Leg Circulation (And You Don't Even Know It)
 2026-08-18T00:34:20.818Z	bare-links paste	850	https://youtu.be/6luG9mDaGgw	Weird and Wonderful: The bloody-belly comb jelly, a deep-sea fireball
 2026-08-21T04:34:34.158Z	bare-links paste	2083	https://youtu.be/95Msd00aMAY	Pacific Electric Ray Dazzles From a Distance  | Nautilus Live
+2026-08-25T03:22:47.607Z	bare-links paste	2125	https://fishesofaustralia.net.au/js/lib/fancybox/blank.gif	
+2026-08-25T03:58:51.116Z	bare-links paste	2141	https://upload.wikimedia.org/wikipedia/commons/d/d8/Eurypegasus_draconis_SI.jpg	

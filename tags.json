@@ -2775,9 +2775,13 @@
     "parents": [
       "aplysiida"
     ],
-    "aliases": [],
+    "aliases": [
+      "Aplisiidae"
+    ],
     "def": "",
-    "rank": "family"
+    "rank": "family",
+    "common": "sea hares",
+    "extinct": false
   },
   {
     "id": "phyllaplysia",
@@ -7902,5 +7906,131 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "eurypegasus-draconis",
+    "label": "Eurypegasus draconis",
+    "kind": "taxon",
+    "parents": [
+      "eurypegasus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "short dragonfish, sea moth",
+    "extinct": false
+  },
+  {
+    "id": "dactylopteriformes",
+    "label": "Dactylopteriformes",
+    "kind": "taxon",
+    "parents": [
+      "teleostei"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "pegasidae",
+    "label": "Pegasidae",
+    "kind": "taxon",
+    "parents": [
+      "dactylopteriformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "eurypegasus",
+    "label": "Eurypegasus",
+    "kind": "taxon",
+    "parents": [
+      "pegasidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "pegasus-volitans",
+    "label": "Pegasus volitans",
+    "kind": "taxon",
+    "parents": [
+      "pegasus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "longtail seamouth",
+    "extinct": false
+  },
+  {
+    "id": "pegasus",
+    "label": "Pegasus",
+    "kind": "taxon",
+    "parents": [
+      "pegasidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "cyclopteridae",
+    "label": "Cyclopteridae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "lumpfishes, lumpsuckers",
+    "extinct": false
+  },
+  {
+    "id": "phyllodesmium",
+    "label": "Phyllodesmium",
+    "kind": "taxon",
+    "parents": [
+      "myrrhinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "myrrhinidae",
+    "label": "Myrrhinidae",
+    "kind": "taxon",
+    "parents": [
+      "nudibranchs"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "vitamin-k",
+    "label": "Vitamin k",
+    "kind": "taxon",
+    "parents": [
+      "supplements"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "ezetimibe",
+    "label": "Ezetimibe",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]

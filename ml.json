@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1787630321274,
+    "_salPushTime": 1787631237989,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -85,7 +85,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "DictSize",
       "dir": "desc"
     },
     "_salGsize": 5,
@@ -512,7 +512,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1787630321274
+    "_salSavedAt": 1787631237989
   },
   {
     "UID": "1",
@@ -555,7 +555,7 @@
     "UID": "2",
     "show": "1",
     "VidRange": "",
-    "cell": "2c",
+    "cell": "",
     "fit": "ei",
     "link": "https://i.natgeofe.com/n/523d689d-7f47-4229-81e0-fd482ff5b6d5/00000165-67e1-df80-affd-f7e5b67f0000_3x2.jpg",
     "linkpage": "noLinkpageYet",
@@ -629,7 +629,7 @@
     "UID": "4",
     "show": "1",
     "VidRange": "",
-    "cell": "4d",
+    "cell": "",
     "fit": "ei",
     "link": "https://www.bas.ac.uk/wp-content/uploads/2018/05/modern-crinoid_credit-BAS.jpg",
     "linkpage": "noLinkpageYet",
@@ -1569,7 +1569,7 @@
     "UID": "23",
     "show": "1",
     "VidRange": "",
-    "cell": "1e",
+    "cell": "",
     "fit": "ei",
     "link": "https://us1.discourse-cdn.com/flex025/uploads/formlabs/original/2X/5/5b3b2f3213767e29a1f8cb48c4d7bc80e20ab7e7.jpg",
     "linkpage": "noLinkpageYet",
@@ -1606,7 +1606,7 @@
     "UID": "24",
     "show": "1",
     "VidRange": "",
-    "cell": "5b",
+    "cell": "",
     "fit": "ei",
     "link": "https://live.staticflickr.com/65535/51669005180_c0b73428c3_k.jpg",
     "linkpage": "https://www.photomacrography.net/forum/viewtopic.php?t=44252",
@@ -2227,7 +2227,7 @@
     "UID": "41",
     "show": "1",
     "VidRange": "",
-    "cell": "2e",
+    "cell": "",
     "fit": "ei",
     "link": "https://img.washingtonpost.com/wp-apps/imrs.php?src=https://arc-anglerfish-washpost-prod-washpost.s3.amazonaws.com/public/2NARGVC6POLCUOXM4FAWI4VX6E.jpg&high_res=true&w=2048",
     "linkpage": "",
@@ -2404,7 +2404,7 @@
     "UID": "46",
     "show": "1",
     "VidRange": "",
-    "cell": "4c",
+    "cell": "",
     "fit": "ei",
     "link": "https://media.gettyimages.com/id/1349420009/photo/red-snapper-or-red-sea-bass-fish-in-the-tank.jpg?s=2048x2048&w=gi&k=20&c=mbBMkZ4OX3zpIb_UIJFrMsNgDmHooH8_zT9gvPwK0Zg=",
     "linkpage": "noLinkpageYet",
@@ -2513,7 +2513,7 @@
     "UID": "49",
     "show": "1",
     "VidRange": "",
-    "cell": "5d",
+    "cell": "",
     "fit": "ei",
     "link": "https://media.gettyimages.com/id/2160004705/photo/yellowtail-rockfish.jpg?s=2048x2048&w=gi&k=20&c=AsQz3l7PucZGsbRppRpA5ab3aX7oviBGpZ0MFA7nrJ0=",
     "linkpage": "noLinkpageYet",
@@ -2920,7 +2920,7 @@
     "UID": "52",
     "show": "1",
     "VidRange": "",
-    "cell": "5e",
+    "cell": "",
     "fit": "ei",
     "link": "https://media.gettyimages.com/id/1391217720/photo/giant-anemone.webp?s=2048x2048&w=gi&k=20&c=jNfAom9W5lJi6VI_EfrmDbw55u3P0ajRLMQMvDE7ZZs=",
     "linkpage": "noLinkpageYet",
@@ -11739,7 +11739,7 @@
     "VidRange": "i",
     "MPix": "3.0",
     "FTLsaved": "",
-    "cell": "4e",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -11914,7 +11914,7 @@
     "VidTitle": "Meet Opal the sea otter! | Monterey Bay Aquarium",
     "VidAuthor": "@MontereyBayAquarium",
     "FTLsaved": "",
-    "cell": "",
+    "cell": "2a",
     "MPix": "V",
     "segLength": "",
     "ftextSize": "0",
@@ -11941,7 +11941,7 @@
     "VidTitle": "Meet Ivy The Sea Otter! | Monterey Bay Aquarium's Pawesome Ladies",
     "VidAuthor": "@MontereyBayAquarium",
     "FTLsaved": "",
-    "cell": "",
+    "cell": "2b",
     "MPix": "V",
     "segLength": "",
     "ftextSize": "0",
@@ -14911,7 +14911,7 @@
     "VidTitle": "Why Evolution Gave the Ocean's Smartest Animal No Time to Use It",
     "VidAuthor": "@DeepBlueMarble",
     "MPix": "V",
-    "cell": "",
+    "cell": "2c",
     "segLength": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -14964,7 +14964,7 @@
     "VidAuthor": "@Otmonsu",
     "MPix": "V",
     "vidLength": "9:11",
-    "cell": "",
+    "cell": "4b",
     "segLength": "",
     "ftextSize": "0",
     "FtextJunk": "0",
@@ -15030,7 +15030,7 @@
     "VidRange": "i",
     "MPix": "37.7",
     "comment": "One-celled algae called diatoms are unique because their cell walls are made of transparent silica, like glass, allowing their internal patterns to be visible. Diatoms are key producers of atmospheric oxygen and uphold the aquatic food chain. © Jan Rosenboom, Evident Image of the Year 2026",
-    "cell": "1b",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15052,7 +15052,7 @@
     "VidRange": "i",
     "MPix": "58.9",
     "comment": "Fairyfly. Captured by Hanyang Xue (China).",
-    "cell": "1a",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15096,7 +15096,7 @@
     "VidRange": "i",
     "MPix": "3.4",
     "comment": "Crab zoea. Captured by Tong Zhang (Canada).",
-    "cell": "3d",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15118,7 +15118,7 @@
     "VidRange": "i",
     "MPix": "25.9",
     "comment": "Two anterior median eyes of a jumping spider. Captured by Walter Ferrari (Argentina).",
-    "cell": "1c",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15162,7 +15162,7 @@
     "VidRange": "i",
     "MPix": "12.2",
     "comment": "GFP-positive Thy1 neuron in a tissue-cleared mouse brain. Captured by Marko Pende (Austria).",
-    "cell": "2b",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15184,7 +15184,7 @@
     "VidRange": "i",
     "MPix": "16.6",
     "comment": "Mouse embryonic fibroblast. Captured by Joe McKellar (France).",
-    "cell": "1d",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15206,7 +15206,7 @@
     "VidRange": "i",
     "MPix": "15.5",
     "comment": "Pollen grains on a jumping spider. Captured by Javier Rupérez (Spain).",
-    "cell": "2a",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15228,7 +15228,7 @@
     "VidRange": "i",
     "MPix": "3.2",
     "comment": "Induced pluripotent stem cell-derived neurospheres. Captured by Katie Holden of the United Kingdom.",
-    "cell": "4a",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15406,7 +15406,7 @@
     "VidRange": "i",
     "MPix": "4.0",
     "comment": "Evident Image of the Year Asia-Pacific winner: Arranged micromanipulated diatom frustules. Captured by Daniel Han of Australia. ",
-    "cell": "3a",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15472,7 +15472,7 @@
     "VidRange": "i",
     "MPix": "4.0",
     "comment": "The global winning image was taken by Laurent Formery (USA).  Nervous system of a juvenile sea star (Patiria miniata) about 1 cm wide. Labeled with an antibody against acetylated tubulin after optical clearing, and captured using a color-coded Z-projection.",
-    "cell": "3b",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15560,7 +15560,7 @@
     "VidRange": "i",
     "MPix": "3.7",
     "comment": "Evident Global Winner. Arabidopsis thaliana flower with pollen tubes growing through the pistil. The flower tissues were chemically cleared to become transparent, while the pollen tubes were stained with aniline blue (yellow fluorescence) in order to be seen.",
-    "cell": "3c",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15585,7 +15585,7 @@
     "VidRange": "i",
     "MPix": "5.0",
     "comment": "Igor Siwanowicz (USA)  Rasping tongue, or radula, of an Astraea conehead snail, Astraea tecta. Stained with Congo red. Imaged using a 10X (0.45 NA) objective. Depth color-coded projection.",
-    "cell": "2d",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -15609,7 +15609,7 @@
     "VidRange": "i",
     "MPix": "3.4",
     "comment": "Laurent Formery (France)  Whole-mount immunofluorescence showing the muscles (cyan, F-actin) and the nervous system (yellows, acetylated tubulin) counterstained by the nuclei (blue, DNA) of a clarified and decalcified post-metamorphic sea urchin juvenile (Paracentrotus lividus).",
-    "cell": "3e",
+    "cell": "",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -17850,7 +17850,7 @@
       "physeter-macrocephalus"
     ],
     "segLength": "",
-    "cell": "",
+    "cell": "1a",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -18289,7 +18289,7 @@
       "physeter-macrocephalus"
     ],
     "segLength": "",
-    "cell": "",
+    "cell": "1b",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19114,7 +19114,7 @@
     "Mute": "0",
     "VidTitle": "The Blue Whale: What The Biggest Whale Is Capable Of",
     "VidAuthor": "@TheDeepCurrentOfficial",
-    "cell": "",
+    "cell": "4c",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19140,7 +19140,7 @@
     "Mute": "0",
     "VidTitle": "Nothing About Sperm Whales Click is Normal...Here's Why",
     "VidAuthor": "@BeyondBlackwater",
-    "cell": "",
+    "cell": "1c",
     "ftextSize": "0",
     "FtextJunk": "0",
     "VQ": "",
@@ -19165,7 +19165,7 @@
     "Mute": "0",
     "VidTitle": "Nothing About the Sperm Whale's 230dB Click is Survivable for Giant Squids",
     "VidAuthor": "@ScienceRevealed-d8x",
-    "cell": "",
+    "cell": "1d",
     "vidLength": "21:26",
     "VidRange": "804.4 31",
     "VidComment": "",
@@ -20383,7 +20383,7 @@
     "Mute": "0",
     "VidTitle": "Why Deep-Sea Octopuses Get Smarter the Deeper You Go",
     "VidAuthor": "@ScienceRevealed-d8x",
-    "cell": "",
+    "cell": "2d",
     "ftextSize": "17420",
     "FtextJunk": "0",
     "VQ": "8v",
@@ -21385,7 +21385,7 @@
     "FtextJunk": "0",
     "VidTitle": "Tardigrades - Some of the Smallest Animals On Earth!",
     "VidAuthor": "@mymicroscopicworld",
-    "cell": "",
+    "cell": "5c",
     "VQ": "",
     "BQ": "",
     "COI": "",
@@ -24067,7 +24067,7 @@
     "VidAuthor": "@Oneminmicro",
     "vidLength": "3:16",
     "COI": "",
-    "cell": "",
+    "cell": "5d",
     "VidRange": "29.7 142",
     "VidComment": "",
     "segLength": "2:22",
@@ -24331,7 +24331,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "2.0",
-    "cell": "",
+    "cell": "5e",
     "ttxt": "",
     "Mode": "L",
     "linkpage": "https://commons.wikimedia.org/wiki/File:Tardigrade_anatomy.svg",
@@ -26559,7 +26559,7 @@
     "VidTitle": "Echinopluteus larvae. Pluteus larvae occur in the life cycles of sea urchins and brittle stars",
     "VidAuthor": "@NaturePictureLibrary",
     "vidLength": "0:16",
-    "cell": "",
+    "cell": "3d",
     "ttxt": "",
     "Mode": "L",
     "UOD": "",
@@ -26850,7 +26850,7 @@
     "VidTitle": "ウニの口（アリストテレスの提灯）　Sea urchin mouth,  Aristotle's lantern",
     "VidAuthor": "@sawagani550",
     "vidLength": "0:40",
-    "cell": "",
+    "cell": "3e",
     "ttxt": "",
     "Mode": "L",
     "UOD": "",
@@ -26889,7 +26889,7 @@
     "ftextSize": "3763",
     "FtextJunk": "3",
     "VidRange": "text",
-    "cell": "",
+    "cell": "4a",
     "ttxt": "",
     "Mode": "X",
     "UOD": "",
@@ -28077,7 +28077,7 @@
     "FtextJunk": "0",
     "VidTitle": "Alien-like blanket octopus puts on a show for divers",
     "VidAuthor": "@DeepBlueDiscovery",
-    "cell": "",
+    "cell": "2e",
     "vidLength": "8:37",
     "Mode": "L",
     "UOD": "",
@@ -28096,7 +28096,7 @@
     "ftextSize": "6504",
     "FtextJunk": "0",
     "VidRange": "text",
-    "cell": "",
+    "cell": "3a",
     "Mode": "X",
     "UOD": "",
     "ftext": "<div>Many families within the <strong>Order <em>Octopoda</em></strong> do not belong to the <strong>Family <em><u>Octopodidae</u></em></strong>. While <em>Octopodidae</em> comprises standard bottom-dwelling octopuses, other families encompass specialized deep-sea dwellers, open-ocean drifters, and species with radically different biology. [<a href=\"https://www.sciencedirect.com/topics/agricultural-and-biological-sciences/octopodidae\" target=\"_blank\" rel=\"noopener\">1</a>, <a href=\"https://mexican-marine-life.org/octopodidae-family-of-octopuses/\" target=\"_blank\" rel=\"noopener\">2</a>, <a href=\"https://egypt-liveaboard.com/marine-life/red-sea-octopus\" target=\"_blank\" rel=\"noopener\">3</a>, <a href=\"https://en.wikipedia.org/wiki/Octopus_minor\" target=\"_blank\" rel=\"noopener\">4</a>, <a href=\"https://science.howstuffworks.com/science-vs-myth/strange-creatures/pacific-northwest-tree-octopus.htm\" target=\"_blank\" rel=\"noopener\">5</a>]</div><div>The non-<em>Octopodidae</em> groups break down clearly by suborder:</div><div>1. Finned Deep-Sea Octopuses (Suborder <em><u>Cirrata</u></em>) [<a href=\"https://octonation.com/incirrate-vs-cirrate-octopuses/\" target=\"_blank\" rel=\"noopener\">1</a>, <a href=\"https://www.britannica.com/animal/cephalopod/Classification\" target=\"_blank\" rel=\"noopener\">2</a>]</div><div>These deep-sea octopuses look distinct because they have <strong>paddle-like fins</strong> on their heads and small, hair-like structures called \"cirri\" on their arms. [<a href=\"https://www.thecephalopodpage.org/octopoda.php\" target=\"_blank\" rel=\"noopener\">1</a>]</div><ul><li><strong><u>Opisthoteuthidae</u> (Dumbo Octopuses):</strong> Flattened, umbrella-shaped octopuses famous for their ear-like fins.</li><li><strong>Grimpoteuthididae:</strong> Another family of deep-sea dumbo octopuses.</li><li><strong><u>Cirroteuthidae</u>:</strong> Deep-sea octopuses with large, fragile, gelatinous bodies and extensive webbing between their arms.</li><li><strong><u>Stauroteuthidae</u>:</strong> Deep-sea species known for bioluminescence. [<a href=\"https://science.howstuffworks.com/science-vs-myth/strange-creatures/pacific-northwest-tree-octopus.htm\" target=\"_blank\" rel=\"noopener\">1</a>, <a href=\"https://octonation.com/flap-jack-octopus-facts/\" target=\"_blank\" rel=\"noopener\">2</a>, <a href=\"https://theanimalrescuesite.com/blogs/news/discovering-opisthoteuthis-carnarvonensis-the-deepsea-flapjack-octopus\" target=\"_blank\" rel=\"noopener\">3</a>, <a href=\"https://www.citrusreef.com/blogs/news/types-of-octopus-species?srsltid=AfmBOooshOuW7dn5Nln79mlXeFDXjRgWrDDZluJ_fIEdkyI5vXka0Alj\" target=\"_blank\" rel=\"noopener\">4</a>, <a href=\"https://science.howstuffworks.com/science-vs-myth/strange-creatures/pacific-northwest-tree-octopus.htm\" target=\"_blank\" rel=\"noopener\">5</a>]</li></ul><div>2. Pelagic Open-Ocean Octopuses (Suborder <em>Incirrata</em>) [<a href=\"https://marinescience.ie/basic-info/\" target=\"_blank\" rel=\"noopener\">1</a>]</div><div>These octopuses lack fins but live in the open ocean water column rather than on the sea floor. [<a href=\"https://www.fao.org/4/ac479e/ac479e32.pdf\" target=\"_blank\" rel=\"noopener\">1</a>, <a href=\"https://www.thecephalopodpage.org/octopoda.php\" target=\"_blank\" rel=\"noopener\">2</a>]</div><ul><li><strong><u>Argonautidae</u> (<u>Paper Nautiluses</u>):</strong> Female argonauts secrete a unique, paper-thin shell to protect their eggs.</li><li><strong><u>Tremoctopodidae</u> (Blanket Octopuses):</strong> Famous for extreme size differences between genders; females feature a massive, billowing blanket-like web.</li><li><strong><u>Ocythoidae</u> (Football Octopuses):</strong> Possess a rare, swim-bladder-like organ to manage buoyancy in open water.</li><li><strong>Alloposidae (Seven-arm Octopuses):</strong> Large, jelly-like octopuses where males keep one arm tucked inside a sac near the eye. [<a href=\"https://www.sciencedirect.com/topics/agricultural-and-biological-sciences/octopoda\" target=\"_blank\" rel=\"noopener\">1</a>, <a href=\"https://www.curiousspecies.com/my-species/blog-post-title-one-yemxk-m29ek-dhngg-w852d-pr2mn-rx3pm-gm2rj-acerw-wca8h-j9yl6-3hf5w-wypyl-8jlcn-8y34a-we9ft-9mgen-9a7hw-yg4t5-4n388-xy7k3-p7ksp\" target=\"_blank\" rel=\"noopener\">2</a>, <a href=\"https://www.tandfonline.com/doi/full/10.1080/24750263.2021.1970260\" target=\"_blank\" rel=\"noopener\">3</a>, <a href=\"https://www.sciencealert.com/scientists-think-theyve-cracked-the-mystery-of-the-argonaut-octopus-and-its-shell\" target=\"_blank\" rel=\"noopener\">4</a>, <a href=\"https://science.howstuffworks.com/science-vs-myth/strange-creatures/pacific-northwest-tree-octopus.htm\" target=\"_blank\" rel=\"noopener\">5</a>]</li></ul><div>3. Glass &amp; Deep-Sea Crawling Octopuses (Suborder <em>Incirrata</em>)</div><div>These species belong to the same superfamily (<em>Octopodoidea</em>) as <em>Octopodidae</em> but are split into separate families due to unique structural adaptations: [<a href=\"https://en.wikipedia.org/wiki/Octopodoidea\" target=\"_blank\" rel=\"noopener\">1</a>]</div><ul><li><strong>Amphitretidae (Glass Octopuses):</strong> Features completely transparent bodies and linear eyes.</li><li><strong>Vitreledonellidae:</strong> Another family of transparent, glass-like deep-sea octopuses.</li><li><strong>Enteroctopodidae:</strong> Includes giant, cold-water species like the <u>Giant Pacific Octopus</u> (recently split away from <em>Octopodidae</em> by taxonomists).</li><li><strong>Eledonidae:</strong> Horned octopuses that only have a single row of suckers on each arm, unlike the double rows found on typical octopuses.</li><li><strong>Bathypolypodidae:</strong> Small, deep-sea, slow-moving octopuses lacking an ink sac. [<a href=\"https://science.howstuffworks.com/science-vs-myth/strange-creatures/pacific-northwest-tree-octopus.htm\" target=\"_blank\" rel=\"noopener\">1</a>, <a href=\"https://en.wikipedia.org/wiki/Glass_octopus\" target=\"_blank\" rel=\"noopener\">2</a>, <a href=\"https://www.instagram.com/reel/DXJ9XZzDaLF/\" target=\"_blank\" rel=\"noopener\">3</a>, <a href=\"https://lostcoastoutpost.com/nature/5238/\" target=\"_blank\" rel=\"noopener\">4</a>, <a href=\"https://octonation.com/does-an-octopus-have-arms-or-tentacles/\" target=\"_blank\" rel=\"noopener\">5</a>]</li></ul><div><div>Would you like to learn more about the unique survival strategies of the <strong>open-ocean pelagic families</strong>, or explore how <strong>dumbo octopuses</strong> navigate the deep sea?</div></div><div><div><div>AI can make mistakes, so double-check responses </div></div></div>",
@@ -28474,7 +28474,7 @@
     "FtextJunk": "13",
     "VidTitle": "Fighting octopuses may be using shells as weapons",
     "VidAuthor": "@NewScientist",
-    "cell": "",
+    "cell": "3b",
     "vidLength": "0:31",
     "Mode": "L",
     "UOD": "",
@@ -30012,7 +30012,7 @@
     "ftextSize": "0",
     "FtextJunk": "0",
     "MPix": "1.0",
-    "cell": "",
+    "cell": "5b",
     "Mode": "S",
     "linkpage": "noLinkpageYet",
     "UOD": "",
@@ -31365,7 +31365,7 @@
     "FtextJunk": "14",
     "VidTitle": "You've Never Seen Whales from This Close",
     "VidAuthor": "@MediaStorm_en",
-    "cell": "",
+    "cell": "1e",
     "vidLength": "13:58",
     "Mode": "L",
     "UOD": "",
@@ -39398,7 +39398,7 @@
     "VidTitle": "The majestic Blue Whale swimming and diving",
     "VidAuthor": "@2pkdk2",
     "Mode": "L",
-    "cell": "",
+    "cell": "4d",
     "UOD": "",
     "ftext": "<h2>Balaenoptera musculus</h2>\n<p>Balaenoptera musculus</p>\n<p style=\"color:#888;font-size:.9em;\">By @2pkdk2 · 2024-04-06 · 33 likes</p>\n<p>Source: <a href=\"https://youtu.be/pbi-U09S5Tg\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/pbi-U09S5Tg</a></p>",
     "DictSize": "1859"
@@ -43426,7 +43426,7 @@
     "VidTitle": "We Were Wrong About the Blue Whale's Actual Size",
     "VidAuthor": "@OctoLabYT",
     "Mode": "L",
-    "cell": "",
+    "cell": "4e",
     "UOD": "",
     "ftext": "<h2>We Were Wrong About the Blue Whale's Actual Size takes a closer look at the largest animal ever to exist on Earth--and</h2>\n<p>We Were Wrong About the Blue Whale's Actual Size takes a closer look at the largest animal ever to exist on Earth—and the surprising biology behind its incredible size.</p>\n<p>From newborn calves weighing several tons to adults stretching nearly 30 meters long and approaching 200 tons, blue whales redefine the physical limits of life. But just how large can they truly become?</p>\n<p>In We Were Wrong About the Blue Whale's Actual Size, we'll compare verified scientific records, uncover how these gentle giants sustain such enormous bodies, and explore why evolution has never produced a larger animal.</p>\n<p>The deeper you dive into We Were Wrong About the Blue Whale's Actual Size, the more astonishing it becomes that the biggest creature in Earth's history survives not by hunting giants—but by feeding on some of the smallest animals in the ocean.</p>\n<p>#bluewhale #deepsea #animaldocumentary</p>\n<p>_______________________</p>\n<p>Copyright Disclaimer: In accordance with Section 107 of the Copyright Act 1976, the materials used in this video are intended for educational and documentary purposes. We believe this constitutes &quot;fair use&quot; as we provide original commentary and scientific insight. Personal, non-profit, and educational use is protected under these guidelines.</p>\n<p style=\"color:#888;font-size:.9em;\">By @OctoLabYT · 2026-07-15 · 1,490 likes</p>\n<p>Source: <a href=\"https://youtu.be/JUqaIDiRd8s\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/JUqaIDiRd8s</a></p>",
     "DictSize": "1859"
@@ -44355,7 +44355,7 @@
     "VidTitle": "Why The Entire Ocean Is Terrified of Blue Whales",
     "VidAuthor": "@OfficialBeyondTheBlue",
     "Mode": "L",
-    "cell": "",
+    "cell": "5a",
     "UOD": "",
     "ftext": "<h2>the ocean is scared of something big. blue whales make it feel small</h2>\n<p>the ocean is scared of something big. blue whales make it feel small.</p>\n<p>Face reveal at 1M subs...🤔</p>\n<p>🍿 WATCH THESE NEXT</p>\n<p>The Origins of Worms - https://www.youtube.com/watch?v=l0tw428A-B8</p>\n<p>We Were Wrong About Swordfish - https://www.youtube.com/watch?v=8ReyfUpnJIA</p>\n<p>Why Are Prehistoric Cephalopods So Much More Terrifying Than Modern Ones? - https://www.youtube.com/watch?v=TUZ2X318K-A</p>\n<p>Why We Can't Kill The Giant Isopod - https://www.youtube.com/watch?v=A1HjZRS2M-s</p>\n<p>Subscribe to BeyondTheBlue ►https://www.youtube.com/@OfficialBeyondTheBlue?sub_confirmation=1#VDUHAECR</p>\n<p>Check out my Other Channel! https://www.youtube.com/@OfficialBeyondTheGreen/videos</p>\n<p>Business inquiries: beyondtheblue.biz@gmail.com</p>\n<p>Custom animations and motion graphics are crafted in After Effects exclusively for the BeyondTheBlue YouTube channel.</p>\n<p>If I have used any clips that belongs to you but have neglected to credit you please contact me so I can credit you.</p>\n<p style=\"color:#888;font-size:.9em;\">By @OfficialBeyondTheBlue · 2026-07-30 · 3,166 likes</p>\n<p>Source: <a href=\"https://youtu.be/OFX_V5F9n1Y\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/OFX_V5F9n1Y</a></p>",
     "DictSize": "1859"
@@ -46872,7 +46872,7 @@
     "VidAuthor": "@BizarreBeasts",
     "Mode": "L",
     "ftext": "<p>The octopus is a pretty odd animal under even the most ordinary circumstances – or ordinary by octopus standards, at least. So when folks start calling out one type of octopus as the strangest, there’s probably something special about it. And the argonaut, also known as the paper nautilus, lives up to the hype.</p><p>Do you need your own Argonaut? https://complexly.store/products/bb-february-25-argonaut</p><p>Subscribe to the pin club here: https://complexly.store/products/bizarre-beasts-pin-subscription</p><p>This month's pin is designed by Riley Samels. You can find out more about them and their work here: https://www.instagram.com/rileyalwayssmiley/</p><p>You can cancel any time by emailing hello@dftba.com</p><p>Correction:</p><p>1:21 Argonauts are not the only pelagic octopuses! There are others, including Japetella diaphana and the blanket octopus.</p><p>Follow us on socials:</p><p>Twitter: https://twitter.com/bizarrebeasts</p><p>Instagram: https://www.instagram.com/bizarrebeastsshow/</p><p>Facebook: https://www.facebook.com/BizarreBeastsShow/</p><p>#BizarreBeasts #octopus</p><p>-----</p><p>Sources:</p><p>https://www.discovermagazine.com/planet-earth/inside-the-brain-of-an-octopus</p><p>https://ocean.si.edu/ocean-life/invertebrates/how-octopuses-and-squids-change-color</p><p>https://blog.nature.org/2021/05/24/meet-the-argonaut-the-worlds-weirdest-octopus/</p><p>http://tolweb.org/Argonauta</p><p>https://daily.jstor.org/paper-nautilus-octopus-of-the-open-sea/</p><p>https://www.sciencealert.com/scientists-think-theyve-cracked-the-mystery-of-the-argonaut-octopus-and-its-shell</p><p>https://royalsocietypublishing.org/doi/full/10.1098/rspb.2016.2818</p><p>https://academic.oup.com/gbe/article/14/11/evac140/6730389</p><p>https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9635632/</p><p>https://archive.org/details/hallofshells00hard/page/84/mode/2up</p><p>https://www.mdpi.com/2073-4352/10/9/839</p><p>https://classics.mit.edu/Aristotle/history_anim.9.ix.html</p><p>https://www.jstor.org/stable/4095022</p><p>https://link.springer.com/article/10.1134/S0001437018010101</p><p>https://museumsvictoria.com.au/media/7994/063-104_mmv77_finn_4_web.pdf</p><p>https://onlinelibrary.wiley.com/doi/full/10.1002/bies.201100001</p><p>https://octonation.com/how-an-argonaut-shell-is-spun-out-of-their-arms/</p><p>https://animaldiversity.org/accounts/Argonauta_nodosa/</p><p>https://www.jstor.org/stable/27862405</p><p>https://doi.org/10.1016%2Fj.cub.2009.10.052</p><p>https://www.sciencefriday.com/articles/the-seamstress-and-the-secrets-of-the-argonaut-shell/</p><p>https://octonation.com/how-male-argonauts-taught-scientists-about-octopus-sex/</p><p>https://www.nationalgeographic.com/animals/invertebrates/facts/argonaut</p><p>https://octonation.com/should-you-pick-up-an-octopus-hitchhiker/</p><p>https://www.instagram.com/p/CiAuIPlhVrQ/</p><p>https://play.google.com/store/books/details/Mermaids_and_Monsters?id=-LzZDgAAQBAJ&amp;hl=en_CA&amp;pli=1</p><p>https://oceanrep.geomar.de/id/eprint/37578/7/2071.pdf</p><p>https://www.instagram.com/p/C5QJY12uXHi/</p><p>https://lindaiphotography.com/ngg_tag/pelagic-octopus/</p><p>https://www.nature.com/scitable/topicpage/cephalopod-camouflage-cells-and-organs-of-the-144048968/</p><p>https://pmc.ncbi.nlm.nih.gov/articles/PMC9635632/</p><p>https://pmc.ncbi.nlm.nih.gov/articles/PMC9635652/</p><p>https://academic.oup.com/icesjms/article/67/7/1494/661868?login=false</p><p>------</p><p>Thumbnail image by Frank Krasovec</p><p>https://www.inaturalist.org/observations/220706860</p><p>Images:</p><p>https://docs.google.com/document/d/1j6BNAE0lflK4P6xxFYBjzvso2Kz2577GeCtu-OdvMps/edit?usp=sharing</p><p>By @BizarreBeasts · 2025-02-03 · 32,453 likes</p><p>Source: <a target=\"_blank\" rel=\"noopener\" href=\"https://youtu.be/TEGpg3DTDZw\">https://youtu.be/TEGpg3DTDZw</a></p>",
-    "cell": "",
+    "cell": "3c",
     "DictSize": "1978"
   },
   {
@@ -47674,7 +47674,8 @@
     "ftextSize": "13030",
     "FtextJunk": "0",
     "ftext": "<h2>Pegasidae</h2><p>From Wikipedia, the free encyclopedia</p><p>This article is about a scientific family of fishes. For the mythological Greek nymphs, see <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasides &quot;Pegasides&quot;\">Pegasides</a>.</p><p>| Seamoth | | --- | | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/File:Eurypegasus_draconis.jpg\">PLACE0</a> | | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Little_dragonfish &quot;Little dragonfish&quot;\">Little dragonfish</a>, <em>Eurypegasus draconis</em> | | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Taxonomy_(biology\">Scientific classification</a> \"Taxonomy (biology)\")<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Template:Taxonomy/Pegasidae &quot;Edit this classification&quot;\">PLACE1</a> | | Kingdom: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Animal &quot;Animal&quot;\">Animalia</a> | | Phylum: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Chordate &quot;Chordate&quot;\">Chordata</a> | | Class: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Actinopterygii &quot;Actinopterygii&quot;\">Actinopterygii</a> | | Division: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Teleost &quot;Teleost&quot;\">Teleostei</a> | | <em>Clade</em>: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Percomorpha &quot;Percomorpha&quot;\">Percomorpha</a> | | Order: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Syngnathiformes &quot;Syngnathiformes&quot;\">Syngnathiformes</a> | | Suborder: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Dactylopteroidei &quot;Dactylopteroidei&quot;\">Dactylopteroidei</a> | | Family: | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae\">Pegasidae</a> <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Charles_Lucien_Bonaparte &quot;Charles Lucien Bonaparte&quot;\">Bonaparte</a>, 1831[[1]](https://en.wikipedia.org/wiki/Pegasidae#cite_note-1) | | Genera | | <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Eurypegasus &quot;Eurypegasus&quot;\"><em>Eurypegasus</em></a> <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasus\\_(fish\"><em>Pegasus</em></a><em> \"Pegasus (fish)\")</em> |</p><p>The <strong>seamoths</strong> make up a family of <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Ray-finned_fish &quot;Ray-finned fish&quot;\">ray-finned fishes</a>, the <strong>Pegasidae</strong>, within the order <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Syngnathiformes &quot;Syngnathiformes&quot;\">Syngnathiformes</a>. They are named after <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasus &quot;Pegasus&quot;\">Pegasus</a>, a creature from Greek mythology. Seamoths are notable for their unusual appearance, including flattened bodies, the presence of large, wing-like, <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pectoral_fin &quot;Pectoral fin&quot;\">pectoral fins</a>, a long <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Snout &quot;Snout&quot;\">snout</a>, and a body encased in thick, bony plates. They are found primarily in <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Coastal &quot;Coastal&quot;\">coastal</a><a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Tropical &quot;Tropical&quot;\">tropical</a> waters of the <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Indo-Pacific &quot;Indo-Pacific&quot;\">Indo-Pacific</a>.[[2]](https://en.wikipedia.org/wiki/Pegasidae#cite_note-FishBase-2)</p><p>Seamoths have modified <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pelvic_fin &quot;Pelvic fin&quot;\">pelvic fins</a> that allow them to \"walk\" across the sea bottom where they live. Their jaws are ventral, located behind their long rostrum, and are toothless. Their mouth is highly specialized, and can form a tube-like mouth used to suck worms and other small invertebrates from their <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Burrow &quot;Burrow&quot;\">burrows</a>.[[3]](https://en.wikipedia.org/wiki/Pegasidae#cite<em>note-EoF-3) They periodically </em><a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Molt &quot;Molt&quot;\"><em>molt</em></a><em> their skin, perhaps as often as every five days.[[4]](https://en.wikipedia.org/wiki/Pegasidae#cite</em>note-Herold-4)</p><p><em>Pegasus lancifer</em> and the two <em>Eurypegasus</em> species are listed as <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Least_Concern &quot;Least Concern&quot;\">Least Concern</a> by the IUCN, while the remaining species of seamoth remain <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Data_Deficient &quot;Data Deficient&quot;\">Data Deficient</a>. Threats to seamoths come from various sources, including fisheries where they are caught as bycatch or on purpose for use in traditional Chinese medicines. They are also collected for sale in the aquarium trade. Bottom trawls and coastal development may detrimentally alter habitat used by benthic seamoths. Life history characteristics such as low population sizes and monogamy with long-term pair bonding put them at risk of exploitation.[[5]](https://en.wikipedia.org/wiki/Pegasidae#cite<em>note-5)[[6]](https://en.wikipedia.org/wiki/Pegasidae#cite</em>note-6)[[7]](https://en.wikipedia.org/wiki/Pegasidae#cite<em>note-7)[[8]](https://en.wikipedia.org/wiki/Pegasidae#cite</em>note-8)[[9]](https://en.wikipedia.org/wiki/Pegasidae#cite<em>note-9)[[10]](https://en.wikipedia.org/wiki/Pegasidae#cite</em>note-10)</p><p>1. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-1 &quot;Jump up&quot;\">↑</a><a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Charles_Lucien_Bonaparte &quot;Charles Lucien Bonaparte&quot;\">Bonaparte, Charles Lucian</a> (1831). <a target=\"_blank\" rel=\"noopener\" href=\"https://www.google.co.uk/books/edition/Saggio_di_una_distribuzione_metodica_deg/as1A_8JMsLgC\"><em>Saggio di una distribuzione metodica degli animali vertebrati</em></a> (in Italian). Presso Antonio Boulzaler. pp.61, 119. 2. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-FishBase_2-0 &quot;Jump up&quot;\">↑</a><a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Rainer_Froese &quot;Rainer Froese&quot;\">Froese, Rainer</a>; <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Daniel_Pauly &quot;Daniel Pauly&quot;\">Pauly, Daniel</a> (eds.). <a target=\"_blank\" rel=\"noopener\" href=\"https://www.fishbase.org/summary/FamilySummary.php?family=Pegasidae\">\"Family Pegasidae\"</a>. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/FishBase &quot;FishBase&quot;\"><em>FishBase</em></a>. September 2012 version. 3. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-EoF_3-0 &quot;Jump up&quot;\">↑</a>Orr, J.W. &amp; Pietsch, T.W. (1998). Paxton, J.R. &amp; Eschmeyer, W.N. (eds.). <em>Encyclopedia of Fishes</em>. San Diego: Academic Press. p.171. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/ISBN_(identifier\">ISBN</a> \"ISBN (identifier)\")<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Special:BookSources/0-12-547665-5 &quot;Special:BookSources/0-12-547665-5&quot;\">0-12-547665-5</a>. 4. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-Herold_4-0 &quot;Jump up&quot;\">↑</a>Herold D; Clark E. (1993). \"Monogamy, spawning, and skin-shedding of the seamoth, <em>Eurypegasus draconis</em> (Pisces: Pegasidae)\". <em>Environmental Biology of Fishes</em>. <strong>37</strong> (3): 219–236. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Doi_(identifier\">doi</a> \"Doi (identifier)\"):<a target=\"_blank\" rel=\"noopener\" href=\"https://doi.org/10.1007%2FBF00004630\">10.1007/BF00004630</a>. 5. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-5 &quot;Jump up&quot;\">↑</a>Pollom, R. (2017). <a target=\"_blank\" rel=\"noopener\" href=\"https://www.iucnredlist.org/species/8407/67625953\">\"<em>Eurypegasus draconis</em>\"</a>. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/IUCN\\_Red\\_List &quot;IUCN Red List&quot;\"><em>IUCN Red List of Threatened Species</em></a>. <strong>2017</strong> e.T8407A67625953. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Doi_(identifier\">doi</a> \"Doi (identifier)\"):<a target=\"_blank\" rel=\"noopener\" href=\"https://doi.org/10.2305%2FIUCN.UK.2017-3.RLTS.T8407A67625953.en\">10.2305/IUCN.UK.2017-3.RLTS.T8407A67625953.en</a>. Retrieved 20 November 2021. 6. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-6 &quot;Jump up&quot;\">↑</a>Pollom, R. (2017). <a target=\"_blank\" rel=\"noopener\" href=\"https://www.iucnredlist.org/species/16475/1073433\">\"<em>Pegasus laternarius</em>\"</a>. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/IUCN\\_Red\\_List &quot;IUCN Red List&quot;\"><em>IUCN Red List of Threatened Species</em></a>. <strong>2017</strong> e.T16475A1073433. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Doi_(identifier\">doi</a> \"Doi (identifier)\"):<a target=\"_blank\" rel=\"noopener\" href=\"https://doi.org/10.2305%2FIUCN.UK.2017-3.RLTS.T16475A1073433.en\">10.2305/IUCN.UK.2017-3.RLTS.T16475A1073433.en</a>. Retrieved 20 November 2021. 7. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-7 &quot;Jump up&quot;\">↑</a>Pollom, R. (2017) [errata version of 2016 assessment]. <a target=\"_blank\" rel=\"noopener\" href=\"https://www.iucnredlist.org/species/16474/115133751\">\"<em>Pegasus lancifer</em>\"</a>. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/IUCN\\_Red\\_List &quot;IUCN Red List&quot;\"><em>IUCN Red List of Threatened Species</em></a>. <strong>2016</strong> e.T16474A115133751. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Doi_(identifier\">doi</a> \"Doi (identifier)\"):<a target=\"_blank\" rel=\"noopener\" href=\"https://doi.org/10.2305%2FIUCN.UK.2016-3.RLTS.T16474A1072936.en\">10.2305/IUCN.UK.2016-3.RLTS.T16474A1072936.en</a>. Retrieved 17 January 2025. 8. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-8 &quot;Jump up&quot;\">↑</a>Pollom, R. (2017) [errata version of 2016 assessment]. <a target=\"_blank\" rel=\"noopener\" href=\"https://www.iucnredlist.org/species/16476/115133968\">\"<em>Pegasus volitans</em>\"</a>. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/IUCN\\_Red\\_List &quot;IUCN Red List&quot;\"><em>IUCN Red List of Threatened Species</em></a>. <strong>2016</strong> e.T16476A115133968. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Doi_(identifier\">doi</a> \"Doi (identifier)\"):<a target=\"_blank\" rel=\"noopener\" href=\"https://doi.org/10.2305%2FIUCN.UK.2016-3.RLTS.T16476A46624265.en\">10.2305/IUCN.UK.2016-3.RLTS.T16476A46624265.en</a>. Retrieved 17 January 2025. 9. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-9 &quot;Jump up&quot;\">↑</a>Pollom, R. (2017) [errata version of 2016 assessment]. <a target=\"_blank\" rel=\"noopener\" href=\"https://www.iucnredlist.org/species/8408/115087526\">\"<em>Eurypegasus papilio</em>\"</a>. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/IUCN\\_Red\\_List &quot;IUCN Red List&quot;\"><em>IUCN Red List of Threatened Species</em></a>. <strong>2016</strong> e.T8408A115087526. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Doi_(identifier\">doi</a> \"Doi (identifier)\"):<a target=\"_blank\" rel=\"noopener\" href=\"https://doi.org/10.2305%2FIUCN.UK.2016-3.RLTS.T8408A67626237.en\">10.2305/IUCN.UK.2016-3.RLTS.T8408A67626237.en</a>. Retrieved 17 January 2025. 10. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Pegasidae#cite_ref-10 &quot;Jump up&quot;\">↑</a>Pollom, R. (2017). <a target=\"_blank\" rel=\"noopener\" href=\"https://www.iucnredlist.org/species/101730582/103209434\">\"<em>Pegasus tetrabelos</em>\"</a>. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/IUCN\\_Red\\_List &quot;IUCN Red List&quot;\"><em>IUCN Red List of Threatened Species</em></a>. <strong>2017</strong> e.T101730582A103209434. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Doi_(identifier\">doi</a> \"Doi (identifier)\"):<a target=\"_blank\" rel=\"noopener\" href=\"https://doi.org/10.2305%2FIUCN.UK.2017-3.RLTS.T101730582A103209434.en\">10.2305/IUCN.UK.2017-3.RLTS.T101730582A103209434.en</a>. Retrieved 18 January 2025.</p>",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2124",
@@ -47690,7 +47691,8 @@
     "FtextJunk": "0",
     "MPix": "0.3",
     "Mode": "L",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   },
   {
     "UID": "2126",
@@ -47706,7 +47708,8 @@
     "FtextJunk": "0",
     "MPix": "0.5",
     "Mode": "L",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   },
   {
     "UID": "2127",
@@ -47722,7 +47725,8 @@
     "FtextJunk": "0",
     "MPix": "0.3",
     "Mode": "L",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   },
   {
     "UID": "2128",
@@ -47738,7 +47742,8 @@
     "FtextJunk": "0",
     "MPix": "0.3",
     "Mode": "L",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   },
   {
     "UID": "2130",
@@ -47754,7 +47759,8 @@
     "FtextJunk": "0",
     "MPix": "0.5",
     "Mode": "L",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   },
   {
     "UID": "2131",
@@ -47773,7 +47779,8 @@
     "Mode": "L",
     "ftext": "<h2>The Slender Sea Moth, Pegasus volitans, was a fish that had eluded us</h2>\n<p>The Slender Sea Moth, Pegasus volitans, was a fish that had eluded us for years. We were finally able to add it to our life lists during a dive in Dumaguete, Philippines. Read about it at: http://blennywatcher.com/2012/01/22/life-list-slender-sea-moth/</p>\n<p style=\"color:#888;font-size:.9em;\">By @blennywatcher · 2012-01-23 · 16 likes</p>\n<p>Source: <a href=\"https://youtu.be/hifcTzyoeoI\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/hifcTzyoeoI</a></p>",
     "comment": "Pegasus volitans",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   },
   {
     "UID": "2132",
@@ -47791,7 +47798,8 @@
     "VidAuthor": "@blennywatcher",
     "Mode": "L",
     "ftext": "<h2>Boxer crabs carry tiny sea anemones in their pincers. In a behavior called kleptoparasitism, they steal the food capture</h2>\n<p>Boxer crabs carry tiny sea anemones in their pincers. In a behavior called kleptoparasitism, they steal the food capture by the anemone. This video accompanied our 2014 article in Scuba Diving magazine. The updated story is at: https://www.blennywatcher.com/2020/10/10/kidnapped-boxer-crabs-wielding-anemones-andnudibranchs/</p>\n<p style=\"color:#888;font-size:.9em;\">By @blennywatcher · 2020-10-10 · 20 likes</p>\n<p>Source: <a href=\"https://youtu.be/yMIQrnP7Yjk\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/yMIQrnP7Yjk</a></p>",
-    "DictSize": "481"
+    "DictSize": "481",
+    "cell": ""
   },
   {
     "UID": "2133",
@@ -47809,7 +47817,8 @@
     "VidAuthor": "@blennywatcher",
     "Mode": "L",
     "ftext": "<h2>Mantis vs. Crab</h2>\n<p>Mantis vs. Crab</p>\n<p>Science: Peacock Mantis has the most powerful punch in the animal kingdom.</p>\n<p>Crab: I got this.</p>\n<p>Vintage footage from our archives.</p>\n<p>(The crab got away).</p>\n<p>Anna DeLoach video, www.blennywatcher.com</p>\n<p>#mantisshrimp #boxcrab #PeacockMantisShrimp #LifeOnTheReef #MarineLifeBehavior #Underwatervideo #underwatervideography #blennywatcher #CoralTriangle</p>\n<p style=\"color:#888;font-size:.9em;\">By @blennywatcher · 2022-09-09 · 20 likes</p>\n<p>Source: <a href=\"https://youtu.be/4eEqOUaARAU\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/4eEqOUaARAU</a></p>",
-    "DictSize": "724"
+    "DictSize": "724",
+    "cell": ""
   },
   {
     "UID": "2134",
@@ -47827,7 +47836,8 @@
     "VidAuthor": "@OutofPlaceZoologist",
     "Mode": "L",
     "ftext": "<h2>Flamboyant cuttlefish is well known for their flamboyant display. For decades, people know them as the cuttlefish</h2><p>Flamboyant cuttlefish is well known for their flamboyant display. For decades, people know them as the cuttlefish that disregard camouflage and would rather show their striking colour and posture. People also know them as a highly toxic species, rivalling the deadly blue-ringed octopus. However, those claims might not even be true.</p><p>*Timestamps*</p><p>0:00 Opening Thought</p><p>1:48 Taxonomy &amp; General Information</p><p>3:46 Morphology</p><p>6:15 Ecology</p><p>*Footage*</p><p>necidiver - https://www.youtube.com/watch?v=h72UXY2PHD0</p><p>Rendra Hertiadhi - https://www.youtube.com/watch?v=ffbNUrgeOHA</p><p>*References*</p><p>Lupše, N., Reid, A., Taite, M. et al. (2023). Cuttlefishes (Cephalopoda, Sepiidae): the bare bones—an hypothesis of relationships. Mar Biol 170, 93. https://doi.org/10.1007/s00227-023-04195-3</p><p>Thomas, A., &amp; MacDonald, C. (2016). Investigating body patterning in aquarium-raised flamboyant cuttlefish (Metasepia pfefferi). PeerJ, 4, e2035. https://doi.org/10.7717/peerj.2035</p><p>Hanlon, R. T. &amp; McManus, G. (2020). Flamboyant cuttlefish behavior: Camouflage tactics and complex colorful reproductive behavior assessed during field studies at Lembeh Strait, Indonesia. Journal of Experimental Marine Biology and Ecology, 529: 151397. https://doi.org/10.1016/j.jembe.2020.151397</p><p>Leibach, J. (2016). Sci Candy Cephalopod Week: This Cuttlefish Dazzles. https://www.sciencefriday.com/articles/this-cuttlefish-dazzles/</p><p>*Outro*</p><p>Bubbles Drifting in the Morning Breeze - Artificial.Music &amp; Akosmo</p><p>https://www.youtube.com/watch?v=wS4hkYXuasE</p><p>Join the channel's membership:</p><p>https://www.youtube.com/channel/UC6eT6uO4hgkRZPXOSMJw-dQ/join</p><p>By @OutofPlaceZoologist · 2026-08-21 · 249 likes</p><p>Source: <a target=\"_blank\" rel=\"noopener\" href=\"https://youtu.be/QcQPCBl8zN0\">https://youtu.be/QcQPCBl8zN0</a></p>",
-    "DictSize": "250"
+    "DictSize": "250",
+    "cell": ""
   },
   {
     "UID": "2135",
@@ -47845,7 +47855,8 @@
     "VidAuthor": "@OutofPlaceZoologist",
     "Mode": "L",
     "ftext": "<h2>Lumpsuckers got their name because their pelvic fins are modified into adhesive disc. They use it to stick to surfaces</h2>\n<p>Lumpsuckers got their name because their pelvic fins are modified into adhesive disc. They use it to stick to surfaces, anchoring them on the spot. Although people think they are benthic fishes, some of them are actually pelagic.</p>\n<p>*Timestamps*</p>\n<p>0:00 Opening Thought</p>\n<p>1:05 Taxonomy &amp; General Information</p>\n<p>4:39 Morphology</p>\n<p>10:26 Ecology</p>\n<p>*References*</p>\n<p>Oku, K., Imamura, H., &amp; Yabe, M. (2017). Phylogenetic relationships and a new classification of the family Cyclopteridae (Perciformes: Cottoidei). Zootaxa, 4221(1), 1–59. https://doi.org/10.11646/zootaxa.4221.1.1</p>\n<p>Voskoboinikova, O.S., Kudryavtseva, O.Y., Orlov, A.M. et al. (2020). Relationships and Evolution of Lumpsuckers of the Family Cyclopteridae (Cottoidei). J. Ichthyol. 60, 154–181. https://doi.org/10.1134/S0032945220020204</p>\n<p>Voskoboinikova, O.S. &amp; Orlov, A.M. (2020). Proeumicrotremus gen. nov.—a New Genus for Eumicrotremus soldatovi (Cyclopteridae). J. Ichthyol. 60, 943–946. https://doi.org/10.1134/S0032945220060119</p>\n<p>Lee, S. J., Kim, J.-K., Kai, Y., Ikeguchi, S., &amp; Nakabo, T. (2017). Taxonomic review of dwarf species of Eumicrotremus (Actinopterygii: Cottoidei: Cyclopteridae) with descriptions of two new species from the western North Pacific. Zootaxa, 4282(2), 337–349. https://doi.org/10.11646/zootaxa.4282.2.7</p>\n<p>Saveliev, P.A., Tuponogov, V.N., &amp; Boiko, M.I. (2021). New Data on Morphology, Distribution, and Ecology of the Tentacled Lumpsucker Cyclopsis tentacularis (Cyclopteridae) in the Sea of Okhotsk. J. Ichthyol. 61, 482–486. https://doi.org/10.1134/S0032945221030103</p>\n<p>Matsuzaki, K., Mori, T., &amp; Kai, Y. (2025). Reproductive behaviour, developmental morphology and sexual dimorphism in Taranetz's lumpsucker, Eumicrotremus taranetzi (Cottoidei: Cyclopteridae) - A long-term aquarium study. Journal of fish biology, 107(2), 335–349. https://doi.org/10.1111/jfb.70034</p>\n<p>*Thumbnail Image*</p>\n<p>Tiit Hunt</p>\n<p>*Outro*</p>\n<p>Bubbles Drifting in the Morning Breeze - Artificial.Music &amp; Akosmo</p>\n<p>https://www.youtube.com/watch?v=wS4hkYXuasE</p>\n<p>Join the channel's membership:</p>\n<p>https://www.youtube.com/channel/UC6eT6uO4hgkRZPXOSMJw-dQ/join</p>\n<p style=\"color:#888;font-size:.9em;\">By @OutofPlaceZoologist · 2026-08-14 · 301 likes</p>\n<p>Source: <a href=\"https://youtu.be/N4BL3ue8GhQ\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/N4BL3ue8GhQ</a></p>",
-    "DictSize": "437"
+    "DictSize": "437",
+    "cell": ""
   },
   {
     "UID": "2136",
@@ -47863,7 +47874,8 @@
     "VidAuthor": "@OutofPlaceZoologist",
     "Mode": "L",
     "ftext": "<h2>Aplysia is one of the most interesting sea slugs. They are called sea hare because they look like a hare sitting on</h2>\n<p>Aplysia is one of the most interesting sea slugs. They are called sea hare because they look like a hare sitting on the bottom of the sea. Their rhinophores give them the rabbit ear look. Although they might look helpless, Aplysia can release a toxic ink cloud and a slimy substance called opaline to deter predator. They are also often used as a model animal by neurobiologists, even leading Dr. Eric Kandel to his nobel prize in the year 2000.</p>\n<p>*Footage*</p>\n<p>Swimming: https://www.youtube.com/watch?v=uyf_jjPxZIA</p>\n<p>*Timestamps*</p>\n<p>0:00 Opening Thought</p>\n<p>1:23 Taxonomy and General Information</p>\n<p>4:56 Morphology</p>\n<p>7:36 Ecology</p>\n<p>*References*</p>\n<p>MolluscaBase eds. (2026). MolluscaBase. Aplysiidae Lamarck, 1809. Accessed through: World Register of Marine Species at: https://www.marinespecies.org/aphia.php?p=taxdetails&amp;id=172</p>\n<p>MolluscaBase eds. (2026). MolluscaBase. Aplysia Linnaeus, 1767. Accessed through: World Register of Marine Species at: https://www.marinespecies.org/aphia.php?p=taxdetails&amp;id=137654</p>\n<p>Golestani, H., Crocetta, F., Padula, V., et al. (2019). The little Aplysia coming of age: from one species to a complex of species complexes in Aplysia parvula (Mollusca: Gastropoda: Heterobranchia). Zoological Journal of the Linnean Society, 187(2): 279-330. https://doi.org/10.1093/zoolinnean/zlz028</p>\n<p>Kicklighter, C. E., Shabani, S., Johnson, P. M., &amp; Derby, C. D. (2005). Sea Hares Use Novel Antipredatory Chemical Defenses. Current Biology, 15(6): p549-554. https://doi.org/10.1016/j.cub.2005.01.057</p>\n<p>Sheybani, A., Nusnbaum, M., Caprio, J., &amp; Derby, C. D. (2009). Responses of the sea catfish Ariopsis felis to chemical defenses from the sea hare Aplysia californica. Journal of Experimental Marine Biology and Ecology, 368(2): 153-160. https://doi.org/10.1016/j.jembe.2008.09.024</p>\n<p>Hawkins, R. D., Clark, G. A., &amp; Kandel, E. R. (2006). Operant conditioning of gill withdrawal in Aplysia. The Journal of neuroscience : the official journal of the Society for Neuroscience, 26(9), 2443–2448. https://doi.org/10.1523/JNEUROSCI.3294-05.2006</p>\n<p>Angeloni, L. &amp; Bradbury, J. (1999). Body size influences mating strategies in a simultaneously hermaphroditic sea slug, Aplysia vaccaria. Ethology Ecology &amp; Evolution, 11(2): 187-195. https://doi.org/10.1080/08927014.1999.9522836</p>\n<p>Cummins, S. F., Nichols, A. E., Schein, C. H., &amp; Nagle, G. T. (2006). Newly identified water-borne protein pheromones interact with attractin to stimulate mate attraction in Aplysia. Peptides, 27(3): 597-606. https://doi.org/10.1016/j.peptides.2005.08.026</p>\n<p>Ludwig, A. N. &amp; Walsh, P. J. (2008). Multiple Mating, Sperm Storage, and Mating Preference in Aplysia californica. The Biological Bulletin, 215(3). https://doi.org/10.2307/25470710</p>\n<p>Lee, C-H., Kaang, B-K., &amp; Lee, Y-D. (2014). Spawning Behavior and Egg Development of Aplysia kurodai Inhabiting the Coastal Waters of Jeju Island, Korea. Development &amp; Reproduction, 18(1): 25-31. https://doi.org/10.12717/DR.2014.18.1.025</p>\n<p>Heyland, A. &amp; Moroz, L. (2006). Signaling mechanisms underlying metamorphic transitions in animals. Integrative and Comparative Biology, 46(6): 743-59. https://doi.org/10.1093/icb/icl023</p>\n<p>*Thumbnail Image*</p>\n<p>Aplysia californica - Genny Anderson</p>\n<p>*Outro*</p>\n<p>Bubbles Drifting in the Morning Breeze - Artificial.Music &amp; Akosmo</p>\n<p>https://www.youtube.com/watch?v=wS4hkYXuasE</p>\n<p>Join the channel's membership:</p>\n<p>https://www.youtube.com/channel/UC6eT6uO4hgkRZPXOSMJw-dQ/join</p>\n<p style=\"color:#888;font-size:.9em;\">By @OutofPlaceZoologist · 2026-05-29 · 444 likes</p>\n<p>Source: <a href=\"https://youtu.be/fBYb0hWZWz8\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/fBYb0hWZWz8</a></p>",
-    "DictSize": "659"
+    "DictSize": "659",
+    "cell": ""
   },
   {
     "UID": "2137",
@@ -47881,7 +47893,8 @@
     "VidAuthor": "@NutritionMadeSimple",
     "Mode": "L",
     "ftext": "<h2>New Study Reignites Controversy about Vitamin K2 and Clogged Arteries</h2>\n<p>New Study Reignites Controversy about Vitamin K2 and Clogged Arteries</p>\n<p>Subscribe for more free nutrition and health tips: https://bit.ly/2toMJ9u</p>\n<p>Connect with me:</p>\n<p>Facebook: https://www.facebook.com/DrGilCarvalho/</p>\n<p>Twitter: https://twitter.com/NutritionMadeS3</p>\n<p>IG:@gilcarvalho.md</p>\n<p>TT:@nutrition.made.simple</p>\n<p>Animations: Even Topland @toplandmedia</p>\n<p>References:</p>\n<p>https://jamanetwork.com/journals/jamacardiology/article-abstract/2850256</p>\n<p>https://www.sciencedirect.com/science/article/pii/S1936878X2200170X</p>\n<p>https://www.ahajournals.org/doi/pdf/10.1161/circulationaha.121.057008</p>\n<p>https://www.jacc.org/doi/10.1016/j.jacadv.2023.100643</p>\n<p>Disclaimer: The contents of this video are for informational purposes only and are not intended to be medical advice, diagnosis, or treatment, nor to replace medical care. The information presented herein is accurate and conforms to the available scientific evidence to the best of the author's knowledge as of the time of posting. Always seek the advice of your physician or other qualified health provider with any questions regarding any medical condition. Never disregard professional medical advice or delay seeking it because of information contained in Nutrition Made Simple!.</p>\n<p>#NutritionMadeSimple #GilCarvalho</p>\n<p>0:00 Vitamin K2: New Trial</p>\n<p>3:00 Surprise</p>\n<p>6:25 Beyond Calcium</p>\n<p>11:21 Bone Health</p>\n<p>12:00 K2 Foods</p>\n<p style=\"color:#888;font-size:.9em;\">By @NutritionMadeSimple · 2026-08-20 · 2,695 likes</p>\n<p>Source: <a href=\"https://youtu.be/gabe22beirQ\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/gabe22beirQ</a></p>",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2138",
@@ -47897,7 +47910,8 @@
     "VidAuthor": "@NutritionMadeSimple",
     "Mode": "L",
     "ftext": "<h2>The Science-backed 4-Step System to Slash Visceral Fat FAST</h2>\n<p>The Science-backed 4-Step System to Slash Visceral Fat FAST</p>\n<p>Download the Infographic on Twitter/X:</p>\n<p>https://x.com/NutritionMadeS3/status/2083590026625958043</p>\n<p>Or On Instagram:</p>\n<p>https://www.instagram.com/p/DbjKUYzFch1/?hl=en</p>\n<p>Or On Facebook:</p>\n<p>https://www.facebook.com/DrGilCarvalho/posts/</p>\n<p>Or On Substack:</p>\n<p>pfbid0HN5p2X2fK1VL7eTrmjPQAyasxN22fDSbSXmWdh4LV875hyFk6kd8z5sXGA1MLTd6l</p>\n<p>https://substack.com/profile/1113520-gil-carvalho-md-phd/note/c-306832152</p>\n<p>Online Calculator</p>\n<p>https://www.lih.lu/en/visceral-fat-calculator/</p>\n<p>RS2</p>\n<p>The product used in the trial is High-Amylose Maize Starch (Hi-Maize® 260 from Ingredion), a clinical-grade Resistant Starch Type 2 (RS2). It´s usually sold in bulk (50lb bags) for industrial food processing but a convenient alternative source of RS2 is unmodified Raw Potato Starch (such as Bob's Red Mill). It is widely available in grocery stores.</p>\n<p>https://pt.iherb.com/pr/bob-s-red-mill-potato-starch-unmodified-gluten-free-22-oz-623-g/89493</p>\n<p>In fact, potato starch is more concentrated in RS2 than corn starch. You can get 40g of RS2 (the dose used in the trial) from ~53g of potato starch (4.5 to 5 level tablespoons or just under 1/3 cup).</p>\n<p>Important: Keep it cold/uncooked or cook at low temp (below 140°F (60°C)). Heat destroys the RS2 structure, converting it into fast-digesting glucose. Mix it into cold water, milk, or a smoothie.</p>\n<p>Start Slow: Begin with 1 tablespoon daily (~8g of active RS2) and gradually scale up over 3 to 4 weeks to allow your gut microbiome time to adapt without causing temporary bloating or gas.</p>\n<p>Matcha brands:</p>\n<p>https://matchatherapy.com/en-eu/products/matchatherapy90</p>\n<p>https://www.gotmatcha.com/pages/current-matcha-analysis</p>\n<p>Peak Heart Rate Info</p>\n<p>In High-Intensity Interval Training (HIIT), Peak Heart Rate is the highest number of beats per minute (bpm) your heart reaches during an intense burst of exercise.</p>\n<p>The simplest formula is:</p>\n<p>Peak Heart Rate = 220 - Your Age</p>\n<p>Example for a 50-year-old: 220 - 50 = 170 bpm</p>\n<p>The trial covered in the video reports that over 90% peak HR was less effective than under 90%. For a 50 year old this would mean staying under 153bpm rather than over 153bpm.</p>\n<p>Sleep/Insomnia App (Free):</p>\n<p>https://mobile.va.gov/app/cbt-i-coach</p>\n<p>Connect with me:</p>\n<p>Facebook: https://www.facebook.com/DrGilCarvalho/</p>\n<p>Twitter: https://twitter.com/NutritionMadeS3</p>\n<p>IG:@gilcarvalho.md</p>\n<p>TT:@nutrition.made.simple</p>\n<p>Animations: Even Topland @toplandmedia</p>\n<p>References:</p>\n<p>Measuring Visceral Fat</p>\n<p>https://onlinelibrary.wiley.com/doi/full/10.1002/oby.20033</p>\n<p>Cocktail &amp; other drinks</p>\n<p>https://gut.bmj.com/content/70/11/2085</p>\n<p>https://pubmed.ncbi.nlm.nih.gov/22205311</p>\n<p>https://www.jci.org/articles/view/37385</p>\n<p>Resistant Starch</p>\n<p>https://www.cell.com/cell-metabolism/fulltext/S1550-4131(23)00297-8https://pmc.ncbi.nlm.nih.gov/articles/PMC6426958/</p>\n<p>Good carbs vs bad carbs</p>\n<p>https://www.clinicalnutritionjournal.com/article/S0261-5614(22)00322-3/fulltext</p>\n<p>Protein</p>\n<p>https://onlinelibrary.wiley.com/doi/10.1111/liv.14596</p>\n<p>Fats</p>\n<p>https://www.nature.com/articles/s41430-020-00778-1https://www.cambridge.org/core/journals/british-journal-of-nutrition/article/effects-of-replacing-ghee-with-rapeseed-oil-on-liver-steatosis-and-enzymes-lipid-profile-insulin-resistance-and-anthropometric-measurements-in-patients-with-nonalcoholic-fatty-liver-disease-a-randomized-controlled-clinical-trial/9EE45F2B72761228E6DD2BE5FCB8B50A</p>\n<p>Workout</p>\n<p>https://diabetesjournals.org/care/article-abstract/20/3/385/22179/Mobilization-of-Visceral-Adipose-Tissue-Related-to</p>\n<p>https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1467-789X.2011.00931.x</p>\n<p>https://link.springer.com/article/10.1007/s40279-017-0807-y</p>\n<p>Rest</p>\n<p>https://www.jacc.org/doi/10.1016/j.jacc.2022.01.038</p>\n<p>Disclaimer: The contents of this video are for informational purposes only and are not intended to be medical advice, diagnosis, or treatment, nor to replace medical care. The information presented herein is accurate and conforms to the available scientific evidence to the best of the author's knowledge as of the time of posting. Always seek the advice of your physician or other qualified health provider with any questions regarding any medical condition. Never disregard professional medical advice or delay seeking it because of information contained in Nutrition Made Simple!.</p>\n<p>#NutritionMadeSimple #GilCarvalho</p>\n<p>0:00 Simple System to Cut Visceral Fat</p>\n<p>1:52 What gets measured gets done</p>\n<p>4:00 Speeding up Results</p>\n<p>9:22 Best &amp; worst carbs</p>\n<p>13:14 Best &amp; worst proteins</p>\n<p>14:14 Best &amp; worst fats</p>\n<p>17:23 Best &amp; worst workouts</p>\n<p>21:16 Best &amp; worst rest habits</p>\n<p style=\"color:#888;font-size:.9em;\">By @NutritionMadeSimple · 2026-08-02 · 8,128 likes</p>\n<p>Source: <a href=\"https://youtu.be/C0PWUoDCaeg\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/C0PWUoDCaeg</a></p>",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2139",
@@ -47915,7 +47929,8 @@
     "VidAuthor": "@NutritionMadeSimple",
     "Mode": "L",
     "ftext": "<h2>Subscribe for more free nutrition and health tips: https://bit.ly/2toMJ9u</h2>\n<p>Subscribe for more free nutrition and health tips: https://bit.ly/2toMJ9u</p>\n<p>Connect with me:</p>\n<p>Facebook: https://www.facebook.com/DrGilCarvalho/</p>\n<p>Twitter: https://twitter.com/NutritionMadeS3</p>\n<p>IG:@gilcarvalho.md</p>\n<p>TT:@nutrition.made.simple</p>\n<p>Animations: Even Topland @toplandmedia</p>\n<p>References:</p>\n<p>Statins lower heart attacks, strokes, death:</p>\n<p>https://www.thelancet.com/journals/lancet/article/PIIS0140-6736(12)60367-5/fulltext</p>\n<p>benefits vs risk of diabetes:</p>\n<p>https://pmc.ncbi.nlm.nih.gov/articles/PMC3774022/</p>\n<p>Pitavastatin</p>\n<p>https://www.tandfonline.com/doi/abs/10.1080/17512433.2024.2433603</p>\n<p>Disclaimer: The contents of this video are for informational purposes only and are not intended to be medical advice, diagnosis, or treatment, nor to replace medical care. The information presented herein is accurate and conforms to the available scientific evidence to the best of the author's knowledge as of the time of posting. Always seek the advice of your physician or other qualified health provider with any questions regarding any medical condition. Never disregard professional medical advice or delay seeking it because of information contained in Nutrition Made Simple!.</p>\n<p>#NutritionMadeSimple #GilCarvalho</p>\n<p>0:00 Why I started a Statin</p>\n<p>1:18 Trial and Error</p>\n<p>2:54 Something goes Wrong</p>\n<p>5:01 A Surprise</p>\n<p>6:33 #1 Mistake</p>\n<p>7:59 New Experiment</p>\n<p>9:03 Natural Supplements</p>\n<p>10:13 Results</p>\n<p>11:29 #1 Takeaway</p>\n<p style=\"color:#888;font-size:.9em;\">By @NutritionMadeSimple · 2026-06-04 · 2,757 likes</p>\n<p>Source: <a href=\"https://youtu.be/VLc1_vLZUSk\" target=\"_blank\" rel=\"noopener\" style=\"color:#5bf;word-break:break-all;\">https://youtu.be/VLc1_vLZUSk</a></p>",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2140",
@@ -47931,7 +47946,8 @@
     "FtextJunk": "0",
     "MPix": "2.4",
     "Mode": "L",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   },
   {
     "UID": "2141",
@@ -47947,6 +47963,7 @@
     "FtextJunk": "0",
     "MPix": "2.8",
     "Mode": "L",
-    "DictSize": "2716"
+    "DictSize": "2716",
+    "cell": ""
   }
 ]
