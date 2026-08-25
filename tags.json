@@ -1031,11 +1031,10 @@
   {
     "id": "comb-jelly",
     "label": "Comb jelly",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [
       "ctenophora"
     ],
-    "rank": "class",
     "aliases": [
       "comb jelly",
       "comb jellies",
@@ -1086,11 +1085,10 @@
   {
     "id": "scale-worm",
     "label": "Scale worm",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [
       "polychaeta"
     ],
-    "rank": "order",
     "aliases": [
       "scale worm",
       "scale worms",
@@ -1387,7 +1385,7 @@
   },
   {
     "id": "torquigener-albomaculosus",
-    "label": "torquigener albomaculosus",
+    "label": "Torquigener albomaculosus",
     "kind": "taxon",
     "parents": [
       "torquigener"
@@ -1467,20 +1465,18 @@
   {
     "id": "backhand-topspin",
     "label": "Backhand topspin",
-    "kind": "taxon",
+    "kind": "technique",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "animal-adventures",
     "label": "Animal adventures",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "orca",
@@ -2387,7 +2383,7 @@
   },
   {
     "id": "costasiella-kuroshimae-species",
-    "label": "Costasiella kuroshimae species",
+    "label": "Costasiella kuroshimae",
     "kind": "taxon",
     "parents": [
       "costasiella"
@@ -2514,11 +2510,10 @@
   {
     "id": "bobtail-squid",
     "label": "Bobtail squid",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "carnivora",
@@ -2662,11 +2657,10 @@
   {
     "id": "colony-animals",
     "label": "Colony animals",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "megaptera-novaeangliae",
@@ -2799,11 +2793,10 @@
   {
     "id": "human-anatomy",
     "label": "Human anatomy",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "acupuncture",
@@ -2816,11 +2809,10 @@
   {
     "id": "solitary-hydroid",
     "label": "Solitary hydroid",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "endomyxa",
@@ -2845,22 +2837,9 @@
     "rank": "order"
   },
   {
-    "id": "vampyrella-spec",
-    "label": "Vampyrella spec.",
-    "kind": "taxon",
-    "parents": [
-      "vampyrella"
-    ],
-    "aliases": [
-      "Vampyrella sp."
-    ],
-    "def": "",
-    "rank": "species"
-  },
-  {
     "id": "copepod",
     "label": "Copepod",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
     "def": "",
@@ -2941,7 +2920,7 @@
   {
     "id": "synapsids",
     "label": "Synapsids",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [
       "animalia"
     ],
@@ -3056,11 +3035,10 @@
   {
     "id": "ambush-predator",
     "label": "Ambush predator",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "physeter-macrocephalus",
@@ -3136,7 +3114,7 @@
   {
     "id": "shark-metagenome",
     "label": "Shark metagenome",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [
       "life"
     ],
@@ -3144,17 +3122,15 @@
       "shark metagenome"
     ],
     "def": "",
-    "rank": "species",
     "common": "shark"
   },
   {
     "id": "good-story",
     "label": "Good story",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "livyatan",
@@ -3215,7 +3191,7 @@
   {
     "id": "diaatom",
     "label": "Diatom",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
     "def": "",
@@ -3334,7 +3310,8 @@
     "aliases": [],
     "def": "",
     "common": "bats",
-    "extinct": false
+    "extinct": false,
+    "rank": "order"
   },
   {
     "id": "notworking",
@@ -3362,7 +3339,8 @@
     "aliases": [],
     "def": "",
     "common": "sea slug",
-    "extinct": false
+    "extinct": false,
+    "rank": "order"
   },
   {
     "id": "odontomachus",
@@ -3374,16 +3352,16 @@
     "aliases": [],
     "def": "",
     "common": "trap jaw ant",
-    "extinct": false
+    "extinct": false,
+    "rank": "species"
   },
   {
     "id": "nerve-glide",
     "label": "Nerve glide",
-    "kind": "taxon",
+    "kind": "technique",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "octopodidae",
@@ -3462,29 +3440,26 @@
   {
     "id": "whale-language",
     "label": "Whale language",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "australia-vacation",
     "label": "Australia vacation",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "jims-talk",
     "label": "Jims talk",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "riftia",
@@ -3495,7 +3470,7 @@
     ],
     "aliases": [],
     "def": "",
-    "rank": "species"
+    "rank": "genus"
   },
   {
     "id": "sabellida",
@@ -3761,20 +3736,18 @@
   {
     "id": "nerve-flossing",
     "label": "Nerve flossing",
-    "kind": "taxon",
+    "kind": "technique",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "sciatic-nerve",
     "label": "Sciatic nerve",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "graneledone-boropacifica",
@@ -4029,11 +4002,10 @@
   {
     "id": "hydrothermal-vents",
     "label": "Hydrothermal vents",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "adameyko",
@@ -4104,13 +4076,12 @@
   {
     "id": "hermit-crab",
     "label": "Hermit crab",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [
       "paguroidea"
     ],
     "aliases": [],
     "def": "",
-    "rank": "species",
     "common": "",
     "extinct": false
   },
@@ -4196,7 +4167,7 @@
     ],
     "aliases": [],
     "def": "",
-    "rank": "species"
+    "rank": "genus"
   },
   {
     "id": "echeneidae",
@@ -4225,11 +4196,10 @@
   {
     "id": "snipe-eel",
     "label": "Snipe eel",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
     "def": "",
-    "rank": "species",
     "common": "",
     "extinct": false
   },
@@ -4496,11 +4466,10 @@
   {
     "id": "moray-eel",
     "label": "Moray eel",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "teleostei",
@@ -4779,11 +4748,10 @@
   {
     "id": "mantis-shrimp",
     "label": "Mantis shrimp",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "stomatopoda",
@@ -4989,11 +4957,10 @@
   {
     "id": "slime-mold",
     "label": "Slime mold",
-    "kind": "taxon",
+    "kind": "group",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "chromista",
@@ -5251,11 +5218,10 @@
   {
     "id": "resistant-starch",
     "label": "Resistant starch",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "moviewithmargy",
@@ -5468,11 +5434,10 @@
   {
     "id": "uncertain-species",
     "label": "Uncertain species",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "hymenocera-picta",
@@ -5943,14 +5908,6 @@
     "id": "privacy",
     "label": "Privacy",
     "kind": "topic",
-    "parents": [],
-    "aliases": [],
-    "def": ""
-  },
-  {
-    "id": "liriope-minisculus",
-    "label": "Liriope minisculus",
-    "kind": "taxon",
     "parents": [],
     "aliases": [],
     "def": ""
@@ -6536,15 +6493,6 @@
     "def": ""
   },
   {
-    "id": "hypsopops-rubundicum",
-    "label": "Hypsopops rubundicum",
-    "kind": "taxon",
-    "parents": [],
-    "aliases": [],
-    "def": "",
-    "rank": "species"
-  },
-  {
     "id": "pomacentridae",
     "label": "Pomacentridae",
     "kind": "taxon",
@@ -6896,29 +6844,26 @@
   {
     "id": "photo-contest",
     "label": "Photo contest",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "photo-collections",
     "label": "Photo collections",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "collection-photos",
     "label": "Collection photos",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "bothrops-bilineatus",
@@ -7001,7 +6946,7 @@
   {
     "id": "rhodolith",
     "label": "Rhodolith",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
     "def": "",
@@ -7095,33 +7040,30 @@
   {
     "id": "strength-training",
     "label": "Strength training",
-    "kind": "taxon",
+    "kind": "technique",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "backhand-return",
     "label": "Backhand return",
-    "kind": "taxon",
+    "kind": "technique",
     "parents": [
       "ttennis"
     ],
     "aliases": [],
     "def": "",
-    "rank": "species",
     "common": "",
     "extinct": false
   },
   {
     "id": "cooperative-hunting",
     "label": "Cooperative hunting",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "jorunna-parva",
@@ -7173,13 +7115,12 @@
   {
     "id": "technique-tt",
     "label": "Technique tt",
-    "kind": "taxon",
+    "kind": "technique",
     "parents": [
       "pp"
     ],
     "aliases": [],
     "def": "",
-    "rank": "species",
     "common": "",
     "extinct": false
   },
@@ -7209,11 +7150,10 @@
   {
     "id": "eggs-cooking",
     "label": "Eggs cooking",
-    "kind": "taxon",
+    "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "cooking",
@@ -7250,11 +7190,10 @@
   {
     "id": "klaus-kemp",
     "label": "Klaus kemp",
-    "kind": "taxon",
+    "kind": "person",
     "parents": [],
     "aliases": [],
-    "def": "",
-    "rank": "species"
+    "def": ""
   },
   {
     "id": "labyrinthulea",

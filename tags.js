@@ -1242,6 +1242,8 @@
           style="padding:5px 12px;border:1px solid #fc8;background:rgba(80,50,0,0.4);color:#fc8;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🐟 Ecology Groups</button>
         <button id="dictNormalize" title="Check every kingdom, phylum and unplaced taxon against GBIF and propose a tidier top of the tree. Shows a plan first — nothing is written until you approve it."
           style="padding:5px 12px;border:1px solid #6c9;background:rgba(0,80,55,0.45);color:#8ec;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">🌳 Normalize tree</button>
+        <button id="dictTaxonInfo" title="Taxon info (dev0847) — short Wikipedia notes, common names and IUCN status per taxon, kept in taxoninfo.json. Opens the review panel: see what has been fetched, fetch what is missing, and resolve names that several kingdoms share."
+          style="padding:5px 12px;border:1px solid #9bd;background:rgba(20,45,90,0.5);color:#9bd;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">📖 Taxon info</button>
         <button id="dictClose" style="padding:5px 12px;border:1px solid #f66;background:rgba(80,0,0,0.4);color:#f88;border-radius:5px;cursor:pointer;font-family:monospace;font-size:12px;">✕ Close (Esc)</button>
       </div>
       <div style="flex:1;overflow:hidden;display:flex;min-height:0;">
@@ -2089,6 +2091,23 @@
       keyboardFocusedId = null;
       renderView();
     });
+    // (dev0847) Taxon info panel — the Tier 1 note/wiki/IUCN store. Lives in
+    // taxoninfo.js and its own taxoninfo.json, deliberately NOT in tags.json:
+    // saveTags() rewrites this whole array on every edit, so prose does not
+    // belong on that path. Wired HERE, with the other one-time overlay buttons,
+    // and NOT in the edit-panel render — that re-runs per selected tag and would
+    // stack a fresh listener each time, so one click would toggle the panel open,
+    // shut, open again, once per tag ever selected.
+    const tiBtn = dictOverlay.querySelector('#dictTaxonInfo');
+    if (tiBtn) {
+      tiBtn.addEventListener('click', () => {
+        if (window.taxonInfo && typeof window.taxonInfo.openPanel === 'function') {
+          window.taxonInfo.openPanel();
+        } else if (typeof toast === 'function') {
+          toast('taxoninfo.js not loaded', 2000);
+        }
+      });
+    }
     dictOverlay.querySelector('#dictClose').addEventListener('click', () => window.closeDictionary());
     dictOverlay.querySelector('#dictEcology').addEventListener('click', () => openEcologyPanel());
     dictOverlay.querySelector('#dictNormalize').addEventListener('click', () => openNormalizePanel());

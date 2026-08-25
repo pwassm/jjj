@@ -334,6 +334,10 @@ td.tags-expanded { white-space:normal !important; overflow:visible !important; h
 td.tags-expanded .tag-chip { display:block !important; margin:2px 0 !important; }
 /* (dev0575) Brief flash when a tag chip is R-click-copied (silent, no toast). */
 .tag-chip.tag-chip-copied { background:rgba(95,250,170,0.45) !important; box-shadow:0 0 0 2px #5fa; transition:none; }
+/* (dev0847) A long-press has been held long enough to PROMOTE this chip to primary.
+   It lights while the button is still down, so releasing is a deliberate commit and
+   dragging off is a visible cancel. */
+.tag-chip.tag-chip-armed { background:rgba(120,180,255,0.35) !important; box-shadow:0 0 0 2px #6af; transition:none; }
 
 /* Inline cell editor */
 td.editing { padding:0 !important; overflow:visible !important; }
@@ -1108,13 +1112,13 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0846';
+  window.HELP_VERSION_STR = 'dev0847';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
     // keydown listener that claims `h`, and listeners on the same node fire in
     // registration order — it has to beat core.js's dispatcher to the key.
-    var files = ['helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','ig.js','s.js','o.js','x.js','slideshow.js','screenrec.js','auth.js','backarrow.js','keyboard.js','boot.js'];
+    var files = ['helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','taxoninfo.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','ig.js','s.js','o.js','x.js','slideshow.js','screenrec.js','auth.js','backarrow.js','keyboard.js','boot.js'];
     files.forEach(function(f) {
       document.write('<script src="' + f + '?v=' + v + '"><\/script>');
     });

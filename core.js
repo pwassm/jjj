@@ -2650,8 +2650,58 @@ function _tBuildRow(vi, di) {
           // another row's tags cell). (dev0578) Ctrl+right-click → DELETE that tag
           // from this row. No menu — those were the only two actions worth keeping.
           [...td.querySelectorAll('.tag-chip')].forEach(chip => {
+            // (dev0847) LONG-PRESS THE LEFT BUTTON ON A CHIP -> make it the row's
+            // PRIMARY tag, i.e. move that id to row.tags[0]. Chips are rendered
+            // straight from the array (tagsLib.renderChipsForRecord just maps it),
+            // so one promote here also reorders the Turn/Fold card backs in G and
+            // the A screen -- same array, one source of truth, nothing to sync.
+            //
+            // The hold only ARMS the promote; the commit happens ON RELEASE, which
+            // is what was asked for ("after press ends"). Arming lights the chip, so
+            // a press that has gone long enough is visible before you let go, and
+            // dragging off the chip cancels it without writing anything.
+            //
+            // A fired long-press must swallow the click that follows, or the row
+            // would ALSO get filtered to that tag on the way out -- the promote
+            // would vanish behind a filtered table.
+            let lpTimer = null, lpArmed = false;
+            const lpCancel = () => {
+              if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+              chip.classList.remove('tag-chip-armed');
+              lpArmed = false;
+            };
+            chip.addEventListener('pointerdown', e => {
+              if (e.button !== 0) return;
+              lpCancel();
+              lpTimer = setTimeout(() => {
+                lpTimer = null; lpArmed = true;
+                chip.classList.add('tag-chip-armed');
+              }, 400);
+            });
+            chip.addEventListener('pointerleave',  lpCancel);
+            chip.addEventListener('pointercancel', lpCancel);
+            chip.addEventListener('pointerup', e => {
+              if (e.button !== 0) return;
+              if (!lpArmed) { lpCancel(); return; }
+              lpCancel();
+              chip._lpFired = true;                 // swallow the click that follows
+              const tid = chip.getAttribute('data-tag-id');
+              if (!tid || !Array.isArray(row.tags)) return;
+              const i = row.tags.indexOf(tid);
+              if (i < 0) return;
+              const lbl = (window.tagsLib && window.tagsLib.labelFor) ? window.tagsLib.labelFor(tid) : tid;
+              if (i === 0) { toast('"' + lbl + '" is already primary', 1200); return; }
+              const ids = row.tags.slice();
+              ids.splice(i, 1); ids.unshift(tid);
+              row.tags = ids;
+              row.DateModified = isoNow();
+              save();
+              toast('"' + lbl + '" is now the primary tag', 1400);
+              setTimeout(() => render(), 0);
+            });
             chip.addEventListener('click', e => {
               e.stopPropagation();
+              if (chip._lpFired) { chip._lpFired = false; return; }   // long-press already acted
               const tid = chip.getAttribute('data-tag-id');
               if (!tid) return;
               window.setRowFilter({ col: 'tags', val: tid, hierarchical: true });
