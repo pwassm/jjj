@@ -8090,5 +8090,25 @@
     "def": "",
     "common": "",
     "extinct": false
+  },
+  {
+    "id": "wcs",
+    "label": "Wcs",
+    "kind": "topic",
+    "parents": [
+      "music"
+    ],
+    "aliases": [],
+    "def": "",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "synopses-of-books",
+    "label": "Synopses of books",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
