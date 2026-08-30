@@ -8110,5 +8110,64 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "astropecten-armatus",
+    "label": "Astropecten armatus",
+    "kind": "taxon",
+    "parents": [
+      "astropecten"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "sand sifting sea star",
+    "extinct": false
+  },
+  {
+    "id": "paxillosida",
+    "label": "Paxillosida",
+    "kind": "taxon",
+    "parents": [
+      "asteroidea"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "astropectinidae",
+    "label": "Astropectinidae",
+    "kind": "taxon",
+    "parents": [
+      "paxillosida"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "astropecten",
+    "label": "Astropecten",
+    "kind": "taxon",
+    "parents": [
+      "astropectinidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "astropecten-duplicatus",
+    "label": "Astropecten duplicatus",
+    "kind": "taxon",
+    "parents": [
+      "astropecten"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
   }
 ]

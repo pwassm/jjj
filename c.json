@@ -2040,5 +2040,18 @@
     "DateAdded": "2026-08-22 17:04:30",
     "ctxt": "Seattle",
     "active": "10"
+  },
+  {
+    "gname": "Astropecten1",
+    "cells": 4,
+    "Zoom": 1,
+    "DateModified": "2026-08-30 23:49:20",
+    "1a": "2160",
+    "1b": "2159_d",
+    "2a": "2159",
+    "2b": "2158",
+    "DateAdded": "2026-08-30 23:48:53",
+    "ctxt": "sand sifting stars",
+    "active": "11"
   }
 ]
