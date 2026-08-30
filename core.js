@@ -121,6 +121,7 @@ function _tScreenActive() {
   if (document.getElementById('dictOverlay'))          return false;
   if (document.getElementById('slideshowOverlay'))     return false;
   if (document.getElementById('mergeModal'))           return false;
+  if (document.getElementById('mcCardOverlay'))        return false;   // (dev0851) MakeCard
   const flexOpen = id => { const el = document.getElementById(id); return !!el && el.style.display === 'flex'; };
   if (flexOpen('gridOverlay'))    return false;
   if (flexOpen('gridFullscreen')) return false;
@@ -3458,6 +3459,11 @@ function showCtx(x, y, target) {
       // anything else anyway, so a greyed-out-looking item would just be noise.
       const _dlF = _tMediaFolderFor(data[di] && data[di].link);
       if (_dlF) { addCI(menu, '⬇ Download → ' + _dlF, () => tDownloadRowMedia(di)); addCS(menu); }
+      // (dev0851) A MakeCard row (image + <hr> + text) can be exported back to
+      // the standalone .html the .ahk used to write, image re-inlined as base64.
+      if (typeof makeCardRowIsCard === 'function' && makeCardRowIsCard(data[di])) {
+        addCI(menu, '🃏 Card .html (image inlined)', () => makeCardExportRow(di)); addCS(menu);
+      }
       addCI(menu, 'Insert row above', () => insertRow(di));
       addCI(menu, 'Insert row below', () => insertRow(di+1));
       addCS(menu);

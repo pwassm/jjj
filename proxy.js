@@ -16,7 +16,7 @@ const https = require('https');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
-const { spawn, execFileSync } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 const { probeEmbed } = require('./igEmbedProbeCore');   // (dev0675) download-time embed verdict
 
 // (dev0658) Every in-flight IG media downloader (yt-dlp / gallery-dl / the
@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0806';
+const PROXY_BUILD = 'dev0851';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2930,6 +2930,156 @@ function wmProbe(res, origin, key) {
     w: dims ? dims.w : 0,
     h: dims ? dims.h : 0
   }, origin);
+}
+
+// (dev0851) ── Flash-card images → M:\wm\flashimages\ + R2 ─────────────────
+// T's MakeCard button hands over a clipboard image; this writes it to a local
+// staging folder and pushes it to the SAME R2 bucket the watermark tooling
+// uses (`media`, served at media.sealifeandmore.com) under a `flashimages/`
+// prefix. Deliberately NOT watermarked — a study card is not published
+// photography — which is the whole reason for the separate prefix: pull mode
+// in M:\wm\watermark_r2.ps1 excludes it, so a future bulk re-stamp of the
+// bucket cannot reach in and brand these.
+//
+// Credentials are never stored here. They are read out of the one local file
+// that already holds them (`M:\wm\Watermark R2.bat`, deliberately outside the
+// repo), exactly the way copy_r2_media.ps1 does — read, used, never echoed.
+const CARD_DIR      = process.env.CARD_DIR || 'M:\\wm\\flashimages';
+const CARD_PREFIX   = 'flashimages';
+const CARD_URL_BASE = 'https://media.sealifeandmore.com';
+const CARD_CRED_BAT = process.env.CARD_CRED_BAT || 'M:\\wm\\Watermark R2.bat';
+const CARD_MIME_EXT = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+
+// R2 creds + bucket, env first then the .bat. R2_PATH rides along because the
+// bucket has already moved once (videofiles -> media, 2026-08-08) and the .bat
+// is where that move was recorded.
+function cardR2Config() {
+  const out = {
+    id:   process.env.R2_ACCESS_KEY_ID     || '',
+    key:  process.env.R2_SECRET_ACCESS_KEY || '',
+    acct: process.env.R2_ACCOUNT_ID        || '',
+    path: process.env.R2_PATH              || ''
+  };
+  if (out.id && out.key && out.acct && out.path) return out;
+  let txt = '';
+  try { txt = fs.readFileSync(CARD_CRED_BAT, 'utf8'); } catch (_) { txt = ''; }
+  const grab = name => {
+    const m = new RegExp('^\\s*set\\s+"' + name + '=([^"]*)"', 'im').exec(txt);
+    return m ? m[1].trim() : '';
+  };
+  if (!out.id)   out.id   = grab('R2_ACCESS_KEY_ID');
+  if (!out.key)  out.key  = grab('R2_SECRET_ACCESS_KEY');
+  if (!out.acct) out.acct = grab('R2_ACCOUNT_ID');
+  if (!out.path) out.path = grab('R2_PATH') || 'r2:media';
+  return out;
+}
+
+// winget installed rclone without refreshing PATH (Developer Mode off -> the
+// shim symlink failed), which is why the M:\wm scripts self-locate it too.
+let _cardRclone;
+function cardRclone() {
+  if (_cardRclone !== undefined) return _cardRclone;
+  _cardRclone = '';
+  try {
+    const hit = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['rclone'],
+                             { encoding: 'utf8', windowsHide: true })
+      .split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0];
+    if (hit && fs.existsSync(hit)) { _cardRclone = hit; return _cardRclone; }
+  } catch (_) { /* not on PATH — fall through to the winget package folder */ }
+  const root = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Packages');
+  const walk = (dir, depth) => {
+    if (_cardRclone || depth > 4) return;
+    let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    for (const e of ents) {
+      if (_cardRclone) return;
+      if (e.isDirectory()) walk(path.join(dir, e.name), depth + 1);
+      else if (e.name.toLowerCase() === 'rclone.exe') _cardRclone = path.join(dir, e.name);
+    }
+  };
+  if (process.env.LOCALAPPDATA) walk(root, 0);
+  return _cardRclone;
+}
+
+// One object, one upload. `copyto` (not `copy`) so the destination is the exact
+// key rather than a folder — the public URL has to be predictable, because that
+// is the string that ends up in ml.json.
+function cardUploadToR2(localPath, key, cb) {
+  const rc = cardRclone();
+  if (!rc) { cb(new Error('rclone.exe not found — winget install Rclone.Rclone')); return; }
+  const cfg = cardR2Config();
+  if (!cfg.id || !cfg.key || !cfg.acct) {
+    cb(new Error('R2 credentials not found (env, or "set" lines in ' + CARD_CRED_BAT + ')'));
+    return;
+  }
+  const env = Object.assign({}, process.env, {
+    RCLONE_CONFIG_R2_TYPE:              's3',
+    RCLONE_CONFIG_R2_PROVIDER:          'Cloudflare',
+    RCLONE_CONFIG_R2_ACCESS_KEY_ID:     cfg.id,
+    RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: cfg.key,
+    RCLONE_CONFIG_R2_ENDPOINT:          'https://' + cfg.acct + '.r2.cloudflarestorage.com',
+    RCLONE_CONFIG_R2_REGION:            'auto'
+  });
+  const dest = cfg.path.replace(/\/+$/, '') + '/' + CARD_PREFIX + '/' + key;
+  execFile(rc, ['copyto', localPath, dest, '--s3-no-check-bucket'],
+    { env, timeout: 180000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+    err => {
+      if (err) {
+        // stderr can echo the endpoint but never the key; still, trim hard.
+        cb(new Error('rclone copyto failed: ' + String(err.message || err).split('\n')[0].slice(0, 300)));
+        return;
+      }
+      cb(null);
+    });
+}
+
+// POST /card/save
+//   { b64, mime, stem }  — bytes straight off the clipboard, or
+//   { path, stem }       — an image file on disk (clipboard held a path)
+// -> { ok, url, file, bytes }
+function cardSave(req, res, origin) {
+  readJson(req, 64 * 1024 * 1024).then(p => {
+    const stem = String(p && p.stem || 'card')
+      .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'card';
+
+    let buf, ext;
+    if (p && typeof p.path === 'string' && p.path) {
+      // Disk path — the browser can't read one, but this process can.
+      const src = path.resolve(p.path);
+      if (!/\.(jpe?g|png|webp)$/i.test(src)) { sendJson(res, 400, { ok: false, error: 'not an image path: ' + src }, origin); return; }
+      try { buf = fs.readFileSync(src); } catch (e) { sendJson(res, 400, { ok: false, error: 'cannot read ' + src + ': ' + e.message }, origin); return; }
+      ext = path.extname(src).toLowerCase().replace('.jpeg', '.jpg');
+    } else {
+      const b64 = String(p && p.b64 || '').replace(/^data:[^,]*,/, '');
+      if (!b64) { sendJson(res, 400, { ok: false, error: 'no image bytes (b64) and no path' }, origin); return; }
+      try { buf = Buffer.from(b64, 'base64'); } catch (e) { buf = null; }
+      if (!buf || !buf.length) { sendJson(res, 400, { ok: false, error: 'b64 did not decode to any bytes' }, origin); return; }
+      ext = CARD_MIME_EXT[String(p && p.mime || '').toLowerCase()] || '.jpg';
+    }
+
+    try { fs.mkdirSync(CARD_DIR, { recursive: true }); }
+    catch (e) { sendJson(res, 500, { ok: false, error: 'cannot create ' + CARD_DIR + ': ' + e.message }, origin); return; }
+
+    // Never silently overwrite a card that is already live in the bucket.
+    let name = stem + ext, n = 2;
+    while (fs.existsSync(path.join(CARD_DIR, name))) { name = stem + '-' + (n++) + ext; }
+    const full = path.join(CARD_DIR, name);
+    try { fs.writeFileSync(full, buf); }
+    catch (e) { sendJson(res, 500, { ok: false, error: 'write failed: ' + e.message }, origin); return; }
+    plog('[card] saved ' + full + ' (' + buf.length + ' bytes) — uploading…');
+
+    cardUploadToR2(full, name, err => {
+      if (err) {
+        // The local file stays put on purpose: the bytes are safe, and a later
+        // WmUploadNew-style retry (or a manual rclone) can still push them.
+        plog('[card] upload FAILED for ' + name + ': ' + err.message);
+        sendJson(res, 502, { ok: false, file: full, error: err.message }, origin);
+        return;
+      }
+      const url = CARD_URL_BASE + '/' + CARD_PREFIX + '/' + encodeURIComponent(name);
+      plog('[card] uploaded → ' + url);
+      sendJson(res, 200, { ok: true, url, file: full, name, bytes: buf.length }, origin);
+    });
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
 function send(res, code, msg, extraHeaders) {
@@ -5994,7 +6144,7 @@ http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/') || req.url.startsWith('/edit/') || req.url.startsWith('/wm/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/') || req.url.startsWith('/edit/') || req.url.startsWith('/wm/') || req.url.startsWith('/card/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -6009,7 +6159,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake',
-      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist']) }));
+      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave']) }));
     return;
   }
 
@@ -6253,6 +6403,23 @@ http.createServer((req, res) => {
     if (action === 'list')  { wmList(res, origin); return; }
     if (action === 'probe') { wmProbe(res, origin, u.searchParams.get('key') || ''); return; }
     sendJson(res, 404, { ok: false, error: 'unknown wm action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0851) ── Flash-card image staging + R2 upload ───────────────────────
+  // Writes to disk and talks to Cloudflare with the user's own key, so it is
+  // origin-locked + POST like /exec and /ig.
+  if (req.url.startsWith('/card/')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      console.warn(`[card 403] ${req.method} ${req.url} origin="${origin || '(none)'}" not in allowlist`);
+      send(res, 403, 'card: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    if (req.method !== 'POST') { send(res, 405, 'card: POST required', corsForExec(origin)); return; }
+    const action = req.url.slice('/card/'.length).split('?')[0];
+    if (action === 'save') { cardSave(req, res, origin); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown card action: ' + action }, origin);
     return;
   }
 

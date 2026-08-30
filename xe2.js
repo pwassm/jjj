@@ -393,7 +393,14 @@
       TextAlignAttr,
       DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut, XAll,
       Underline,
-      StyledImage.configure({ inline: true }),
+      // (dev0851) allowBase64: TipTap's Image parses with
+      // `img[src]:not([src^="data:"])` by default, so a data: image was
+      // invisible to the schema — dropped on the way IN and on the way OUT,
+      // i.e. opening any slide holding one and letting autosave fire DELETED
+      // it. Same class of bug as the missing <video>/<iframe> nodes above.
+      // Cards themselves link to R2, but an exported card .html pasted back in
+      // carries base64, and this makes that survivable rather than destructive.
+      StyledImage.configure({ inline: true, allowBase64: true }),
       Video,
       Iframe,
       Link.configure({ openOnClick: false, autolink: false }),
