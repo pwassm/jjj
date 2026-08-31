@@ -278,8 +278,6 @@
     'a { color: #2563eb; text-decoration: none; word-break: break-all; }\n' +
     'a:hover { text-decoration: underline; color: #1d4ed8; }';
 
-  // ftext → { imgUrl, bodyHtml }. The fold is the first TOP-LEVEL <hr>, which
-  // is the same rule G and Xs use to split a slide into pages.
   // (dev0858) Returns { imgUrl, body, orig }:
   //   body  section 2 -- the display copy, what the card back shows
   //   orig  section 3 -- the untouched original, '' on a pre-dev0858 card
@@ -422,6 +420,7 @@
       '#mcCardBox .mc-t b{color:#dfe;}',
       '#mcCardBox img.mc-prev{max-width:100%;max-height:170px;border-radius:6px;margin-top:8px;display:block;}',
       '#mcCardBox textarea{width:100%;box-sizing:border-box;height:96px;margin-top:8px;background:#0b0d14;color:#cde;border:1px solid #445;border-radius:5px;padding:7px;font-family:monospace;font-size:11px;resize:vertical;}',
+      '#mcCardBox input.mc-path{width:100%;box-sizing:border-box;margin-top:8px;background:#0b0d14;color:#cde;border:1px solid #445;border-radius:5px;padding:7px;font-family:monospace;font-size:11px;}',
       '#mcCardBox .mc-row{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap;}',
       '#mcCardBox button{background:#1a1a24;color:#cde;border:1px solid #68a;border-radius:5px;padding:6px 13px;font-family:monospace;font-size:12px;cursor:pointer;}',
       '#mcCardBox button:hover{background:#243049;}',
@@ -438,6 +437,10 @@
     var box = document.getElementById('mcCardBox');
     if (!box) return;
     var imgDone = !!s.imgUrl;
+    // (dev0859) innerHTML below throws the path box away, and the focus poll
+    // re-renders every time the window comes back — so a half-typed path would
+    // vanish at exactly the moment you alt-tabbed to go and copy it.
+    var hadPathFocus = !!(document.activeElement && document.activeElement.id === 'mcCardPath');
     box.innerHTML =
       '<h2>🃏 MakeCard</h2>' +
       '<p class="mc-sub">image → R2, then text → a new ml.json slide. Copy each, then click back on this window.</p>' +
@@ -445,11 +448,21 @@
       '<div class="mc-step ' + (imgDone ? 'done' : 'on') + '">' +
         '<div class="mc-h">' + (imgDone ? '✓ 1 · Image' : '1 · Image') + '</div>' +
         '<div class="mc-t">' + (imgDone
-          ? 'Uploaded → <b>' + _mcEsc(s.imgName || '') + '</b><br>' + _mcEsc(s.imgUrl)
+          ? (s.imgReused ? 'Reusing <b>' + _mcEsc(s.imgName || '') + '</b> — already on R2, nothing uploaded'
+                         : 'Uploaded → <b>' + _mcEsc(s.imgName || '') + '</b>')
+            + '<br>' + _mcEsc(s.imgUrl)
           : s.busy === 'image'
-            ? 'Uploading…'
-            : 'Copy the picture (right-click ▸ <b>Copy image</b>), then return here. Ctrl+V also works.') +
+            ? 'Working…'
+            : 'Copy the picture (right-click ▸ <b>Copy image</b>), then return here. Ctrl+V also works.'
+              + '<br>Or name one that is <b>already on R2</b> — paste or type its path, e.g. '
+              + '<b>M:\\wm\\flashimages\\card-….jpg</b>. A file from that folder is reused as it '
+              + 'stands; a file from anywhere else is uploaded.') +
         '</div>' +
+        (!imgDone && s.busy !== 'image'
+          ? '<input id="mcCardPath" class="mc-path" spellcheck="false"'
+            + ' value="' + _mcAttr(s.pathDraft || '') + '"'
+            + ' placeholder="…or the path / URL of an image already on R2 (Enter)">'
+          : '') +
         (s.imgPreview ? '<img class="mc-prev" src="' + _mcAttr(s.imgPreview) + '" alt="">' : '') +
       '</div>' +
 
@@ -466,11 +479,32 @@
       '<div class="mc-row">' +
         '<button class="mc-x" id="mcCardCancel">Cancel</button>' +
         '<button id="mcCardRead">Read clipboard now</button>' +
+        (s.pendingPath ? '<button id="mcCardUpload">Upload this file instead</button>' : '') +
         (imgDone ? '<button class="mc-go" id="mcCardMake">Make card</button>' : '') +
       '</div>';
 
     box.querySelector('#mcCardCancel').onclick = makeCardClose;
     box.querySelector('#mcCardRead').onclick = function () { _mcPoll(true); };
+    // (dev0859) Enter in the path box is the whole gesture — no second button to hit.
+    var pathInp = box.querySelector('#mcCardPath');
+    if (pathInp) {
+      pathInp.oninput = function () { if (_mcState) _mcState.pathDraft = pathInp.value; };
+      pathInp.onkeydown = function (ev) {
+        if (ev.key !== 'Enter') return;
+        ev.preventDefault(); ev.stopPropagation();
+        _mcUsePath(pathInp.value);
+      };
+      if (hadPathFocus) {
+        pathInp.focus();
+        pathInp.selectionStart = pathInp.selectionEnd = pathInp.value.length;
+      }
+    }
+    var upBtn = box.querySelector('#mcCardUpload');
+    if (upBtn) upBtn.onclick = function () {
+      var q = _mcState && _mcState.pendingPath;
+      if (!q) return;
+      _mcAcceptImageRef({ kind: 'disk', path: q, name: q.split(/[\\/]+/).pop() });
+    };
     var mk = box.querySelector('#mcCardMake');
     if (mk) mk.onclick = function () {
       var ta = document.getElementById('mcCardText');
@@ -492,14 +526,16 @@
       s.busy = 'image'; _mcSetErr('');
       try {
         var got = await _mcReadClipboardImage();
-        if (!got) {
-          s.busy = null;
-          if (manual) _mcSetErr('No image on the clipboard yet.');
-          else _mcRender();
-          return;
-        }
-        _mcRender();
-        await _mcAcceptImage(got.blob);
+        if (got) { _mcRender(); await _mcAcceptImage(got.blob); return; }
+        // (dev0859) No bitmap. The clipboard may instead NAME a picture — a
+        // path copied out of Explorer, or a URL — and if that name is one the
+        // bucket already holds, the card can point straight at it.
+        var ref = null;
+        try { ref = _mcParseImageRef((await _mcReadClipboardText()).plain); } catch (_) {}
+        if (ref) { _mcRender(); await _mcAcceptImageRef(ref); return; }
+        s.busy = null;
+        if (manual) _mcSetErr('No image on the clipboard, and no image path either.');
+        else _mcRender();
       } catch (e) {
         s.busy = null;
         _mcSetErr(_mcClipErr(e));
@@ -527,6 +563,99 @@
       return 'Chrome blocked the clipboard read. Click inside this box and press Ctrl+V instead.';
     }
     return m;
+  }
+
+  // (dev0859) REUSING A PICTURE THAT IS ALREADY IN THE BUCKET
+  //
+  // The first build only took a bitmap off the clipboard, so every card meant a
+  // fresh object in R2 even when the picture wanted was one already sitting in
+  // M:\wm\flashimages\ from an earlier card. That folder IS the local mirror of
+  // the bucket's flashimages/ prefix, so a file in it is already published under
+  // its own name -- the URL can simply be spelled out, with nothing uploaded.
+  //
+  // A path from anywhere else cannot already be in the bucket, so that one is
+  // handed to the proxy's /card/save {path} route, which reads the file and
+  // uploads it. The proxy has taken that shape since dev0851; nothing called it.
+  var CARD_DIR_NAME = 'flashimages';
+  var CARD_URL_BASE = 'https://media.sealifeandmore.com/flashimages/';
+  var IMG_EXT_RE    = /\.(jpe?g|png|webp)$/i;
+
+  // A string that NAMES an image -> { kind:'link', url } (use it as it stands)
+  // or { kind:'disk', path } (upload it). null for anything else, which is what
+  // keeps the pasted answer text from being mistaken for a filename.
+  function _mcParseImageRef(text) {
+    var t = String(text || '').trim().replace(/^["']+|["']+$/g, '').trim();
+    if (!t || t.length > 400 || /[\r\n]/.test(t)) return null;   // an answer, not a path
+    if (/^file:\/\//i.test(t)) {
+      try { t = decodeURIComponent(t.replace(/^file:\/{2,}/i, '')); } catch (_) {}
+    }
+    if (/^https?:\/\//i.test(t)) {
+      var bare = t.split(/[?#]/)[0];
+      if (!IMG_EXT_RE.test(bare)) return null;
+      return { kind: 'link', url: t, name: decodeURIComponent(bare.split('/').pop()) };
+    }
+    if (!/[\\/]/.test(t) || !IMG_EXT_RE.test(t)) return null;
+    var parts = t.split(/[\\/]+/);
+    var name  = parts.pop();
+    var dir   = parts.pop() || '';
+    if (dir.toLowerCase() === CARD_DIR_NAME) {
+      return { kind: 'link', url: CARD_URL_BASE + encodeURIComponent(name), name: name, path: t };
+    }
+    return { kind: 'disk', path: t, name: name };
+  }
+
+  // Does that URL actually answer? R2's custom domain sends no CORS header, so
+  // fetch() cannot check it -- but an <img> load is not CORS-gated, and it
+  // doubles as the preview. Without this a typo would make a card whose picture
+  // is a broken box, and nothing would say so until it was looked at.
+  function _mcImageLoads(url) {
+    return new Promise(function (resolve) {
+      var im = new Image();
+      im.onload  = function () { resolve(true); };
+      im.onerror = function () { resolve(false); };
+      im.src = url;
+    });
+  }
+
+  async function _mcAcceptImageRef(ref) {
+    var s = _mcState;
+    if (!s || !ref) return;
+    s.busy = 'image'; s.err = ''; s.pendingPath = ''; _mcRender();
+    try {
+      if (ref.kind === 'disk') {
+        var res = await _mcUpload({ path: ref.path, stem: 'card-' + _mcStamp() });
+        s.imgUrl = res.url; s.imgName = res.name; s.imgBytes = res.bytes;
+        s.imgPreview = res.url; s.imgReused = false;
+        s.busy = null; _mcRender();
+        _mcToast('✓ Uploaded ' + ref.name + ' (' + Math.round((res.bytes || 0) / 1024)
+                 + ' KB) — now copy the text', 5000);
+        return;
+      }
+      var ok = await _mcImageLoads(ref.url);
+      if (!ok) {
+        s.busy = null;
+        s.pendingPath = ref.path || '';
+        _mcSetErr('Nothing answers at ' + ref.url
+                  + (ref.path ? ' — that name is not in the bucket yet.' : ''));
+        return;
+      }
+      s.imgUrl = ref.url; s.imgName = ref.name; s.imgBytes = 0;
+      s.imgPreview = ref.url; s.imgReused = true;
+      s.busy = null; _mcRender();
+      _mcToast('✓ Reusing ' + ref.name + ' — already on R2, nothing uploaded. Now copy the text', 5000);
+    } catch (e) {
+      s.busy = null;
+      _mcSetErr(String((e && e.message) || e));
+    }
+  }
+
+  function _mcUsePath(txt) {
+    var ref = _mcParseImageRef(txt);
+    if (!ref) {
+      _mcSetErr('Not an image path or URL — expected one line ending .jpg, .png or .webp.');
+      return;
+    }
+    _mcAcceptImageRef(ref);
   }
 
   async function _mcAcceptImage(blob) {
@@ -595,6 +724,8 @@
     var dt = e.clipboardData;
     if (_mcState.busy) return;
     if (!_mcState.imgUrl) {
+      // (dev0859) A paste INTO the path box is just a paste — leave it alone.
+      if (e.target && e.target.id === 'mcCardPath') return;
       for (var i = 0; i < dt.items.length; i++) {
         if (dt.items[i].kind === 'file' && /^image\//.test(dt.items[i].type)) {
           e.preventDefault();
@@ -602,6 +733,9 @@
           return;
         }
       }
+      // (dev0859) …otherwise the text may name a picture already in the bucket.
+      var ref = _mcParseImageRef(dt.getData('text/plain') || '');
+      if (ref) { e.preventDefault(); _mcAcceptImageRef(ref); return; }
       return;   // no image yet — let a stray text paste fall through harmlessly
     }
     // Stage 2: let the textarea take a plain paste; anything else we handle.
@@ -624,7 +758,8 @@
       return;
     }
     _mcStyle();
-    _mcState = { imgUrl: '', imgName: '', imgPreview: '', busy: null, err: '' };
+    _mcState = { imgUrl: '', imgName: '', imgPreview: '', busy: null, err: '',
+                 imgReused: false, pendingPath: '', pathDraft: '' };   // (dev0859)
 
     var ov = document.createElement('div');
     ov.id = 'mcCardOverlay';
