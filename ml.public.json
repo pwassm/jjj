@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788183091372,
+    "_salPushTime": 1788185612019,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -85,10 +85,10 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
-    "_salGsize": 5,
+    "_salGsize": 2,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -512,7 +512,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788183091372
+    "_salSavedAt": 1788185612019
   },
   {
     "UID": "1",
@@ -2367,7 +2367,7 @@
     "UID": "45",
     "show": "1",
     "VidRange": "",
-    "cell": "5e",
+    "cell": "",
     "fit": "ei",
     "link": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Giant_Sea_Bass%2C_CAS.jpg/1920px-Giant_Sea_Bass%2C_CAS.jpg",
     "linkpage": "https://commons.wikimedia.org/wiki/File:Giant_Sea_Bass%2C_CAS.jpg",
@@ -3209,7 +3209,7 @@
   },
   {
     "UID": "60",
-    "cell": "5d",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "DateAdded": "2026-04-08 04:25:04",
@@ -3265,7 +3265,7 @@
   },
   {
     "UID": "61",
-    "cell": "5c",
+    "cell": "",
     "show": "1",
     "VidRange": "text",
     "DateAdded": "2026-04-09 03:18:28",
@@ -3297,7 +3297,7 @@
     "tags": [
       "fake-serve"
     ],
-    "cell": "5b",
+    "cell": "",
     "vidLength": "0:14",
     "VidRange": "0.2 150",
     "VidComment": "",
@@ -3329,7 +3329,7 @@
       "cannibalism",
       "hymenopus-coronatus"
     ],
-    "cell": "5a",
+    "cell": "",
     "MPix": "V",
     "BA": "",
     "Mute": "0",
@@ -3359,7 +3359,7 @@
       "torquigener-albomaculosus"
     ],
     "vidLength": "3:13",
-    "cell": "4e",
+    "cell": "",
     "MPix": "V",
     "BA": "",
     "VidRange": "0.9 202.4",
@@ -3390,7 +3390,7 @@
       "torquigener-albomaculosus",
       "cornucopia-of-underwater-life"
     ],
-    "cell": "2d",
+    "cell": "",
     "MPix": "V",
     "vidLength": "54:06",
     "VidRange": "631 344",
@@ -3421,7 +3421,7 @@
     "tags": [
       "torquigener-albomaculosus"
     ],
-    "cell": "4c",
+    "cell": "",
     "MPix": "V",
     "BA": "",
     "Mute": "0",
@@ -3455,7 +3455,7 @@
     "VidComment": "",
     "Mute": "0",
     "MPix": "V",
-    "cell": "4b",
+    "cell": "",
     "BA": "",
     "ltype": "",
     "VidTitle": "Sarcastic Fringehead Fights For Territory | Life | BBC Earth",
@@ -3483,7 +3483,7 @@
       "core"
     ],
     "MPix": "V",
-    "cell": "4a",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3512,7 +3512,7 @@
       "swimming"
     ],
     "MPix": "V",
-    "cell": "3e",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3542,7 +3542,7 @@
       "attenborough"
     ],
     "MPix": "V",
-    "cell": "3d",
+    "cell": "",
     "BA": "",
     "vidLength": "2:51",
     "Mute": "0",
@@ -3571,7 +3571,7 @@
       "rally"
     ],
     "MPix": "V",
-    "cell": "3c",
+    "cell": "",
     "BA": "",
     "vidLength": "0:46",
     "VidRange": "21.4 23.7",
@@ -3603,7 +3603,7 @@
       "backhand-topspin"
     ],
     "MPix": "V",
-    "cell": "3b",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3633,7 +3633,7 @@
       "seal"
     ],
     "MPix": "V",
-    "cell": "3a",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3662,7 +3662,7 @@
     ],
     "MPix": "V",
     "vidLength": "0:49",
-    "cell": "2e",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3691,7 +3691,7 @@
     ],
     "vidLength": "0:56",
     "MPix": "V",
-    "cell": "4d",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3720,7 +3720,7 @@
     ],
     "vidLength": "3:05",
     "MPix": "V",
-    "cell": "2c",
+    "cell": "",
     "VidRange": "0.7 167.1",
     "VidComment": "",
     "BA": "",
@@ -3754,7 +3754,7 @@
     ],
     "ftext": "",
     "MPix": "V",
-    "cell": "2b",
+    "cell": "",
     "BA": "",
     "VidComment": "HMB (beta-hydroxy-beta-methylbutyrate) supplements, often taken at 3g/day, are effective at reducing muscle breakdown and increasing lean mass, particularly in untrained individuals, older adults with sarcopenia, or during intense training. Studies show it improves strength and body composition, with some evidence suggesting HMB-free acid (HMB-FA) offers faster, superior results.  Key Findings from HMB Research      Older Adults & Sarcopenia: HMB is highly effective in preventing age-related muscle loss. Research indicates 3g/day can increase limb circumference, strength, and mobility, especially when combined with vitamin     .     Athletes & Muscle Growth: While effective, benefits in trained athletes are often more subtle than in untrained individuals, acting largely to support recovery from high-intensity training.     Forms of HMB: Calcium-HMB (HMB-Ca) is the common form, but HMB-free acid (HMB-FA) appears to raise plasma levels faster.     Timing: For athletes, consuming HMB 30–60 minutes before training can maximize its acute effect on muscle damage.     Recovery: HMB has been shown to reduce muscle damage (lower creatine kinase levels) during strenuous exercise.",
     "Mute": "0",
@@ -3785,7 +3785,7 @@
       "kick"
     ],
     "MPix": "V",
-    "cell": "2a",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3815,7 +3815,7 @@
       "kick"
     ],
     "MPix": "V",
-    "cell": "1e",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3844,7 +3844,7 @@
       "flip-turn"
     ],
     "MPix": "V",
-    "cell": "1d",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3876,7 +3876,7 @@
     "vidLength": "14:18",
     "VidRange": "149.2 116",
     "VidComment": "",
-    "cell": "1c",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "ltype": "",
@@ -3905,7 +3905,7 @@
     ],
     "linkpage": "https://seaunseen.com/white-spotted-pufferfish-facts/",
     "MPix": "X",
-    "cell": "1b",
+    "cell": "",
     "BA": "",
     "Mute": "",
     "ltype": "",
@@ -3932,7 +3932,7 @@
     "vidLength": "0:12",
     "VidRange": "1.1 20",
     "VidComment": "",
-    "cell": "1a",
+    "cell": "",
     "BA": "",
     "Mute": "0",
     "MPix": "V",
@@ -48089,7 +48089,7 @@
     "vidLength": "2:24",
     "VidRange": "91.8 50",
     "VidComment": "",
-    "cell": ""
+    "cell": "2b"
   },
   {
     "UID": "2159_d",
@@ -48109,32 +48109,14 @@
     "Mode": "L",
     "ftext": "",
     "vidLength": "2:24",
-    "cell": ""
-  },
-  {
-    "UID": "2160",
-    "link": "",
-    "show": "1",
-    "DateAdded": "2026-08-30 23:40:48",
-    "DateModified": "2026-08-31 02:55:34",
-    "ltype": "f",
-    "ftext": "<div style=\"text-align: center; margin: 12px 0px;\"><p><img src=\"https://media.sealifeandmore.com/flashimages/card-20260830-163814.jpg\" alt=\"\" style=\"max-width: 100%; width: 100%; display: inline-block; border-radius: 4px;\"></p></div><hr><h2>Sand-Sifting Sea Stars (Astropecten)</h2><p>Astropecten is a genus of sea stars in the family Astropectinidae, order Paxillosida, adapted specifically for life on sandy or muddy sea floors. They're often called \"sand sifting stars\" because they burrow into loose sediment and actively hunt buried prey rather than passively grazing surfaces like many other sea stars. <a target=\"_blank\" rel=\"noopener\" href=\"https://www.vliz.be/imisdocs/publications/ocrd/263024.pdf\">vliz</a></p><h3>Most Common Species</h3><p>The most widespread and commonly encountered species worldwide is <strong>Astropecten polyacanthus</strong>, known as the sand sifting starfish or comb sea star, found throughout the Indo-Pacific and frequently sold in the aquarium trade. In the Atlantic, <strong>Astropecten articulatus</strong> (the royal starfish) is the most commonly seen species along Florida and southeastern U.S. beaches, easily recognized by its striking purple arms with orange-tipped margins. <a target=\"_blank\" rel=\"noopener\" href=\"https://www.inaturalist.org/taxa/195876-Astropecten-polyacanthus\">inaturalist</a></p><p>| Species | Region | Distinguishing Features |<br>|---|---|---|<br>| A. polyacanthus | Indo-Pacific | Up to 20 cm armspread; dark purplish upper surface, orange underside; cream/grey/brown paxillae often in chevron pattern; long marginal spines with brown bases, pale tips <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Astropecten_polyacanthus\">en.wikipedia</a> |<br>| A. articulatus | Western Atlantic (US East Coast, Gulf) | Deep blue/purple arms with orange to pale tips; granulated purple central disk <a target=\"_blank\" rel=\"noopener\" href=\"https://marinewestecology.wordpress.com/2014/10/01/seeingstars/\">marinewestecology.wordpress</a> |<br>| A. irregularis | Northeast Atlantic/Mediterranean | Buries between feeding bouts; feeds mainly at twilight <a target=\"_blank\" rel=\"noopener\" href=\"https://www.vliz.be/imisdocs/publications/ocrd/263024.pdf\">vliz</a> |<br>| A. indicus | Indo-Pacific mudflats | Generalist mollusk feeder, favors the Asian date mussel <a target=\"_blank\" rel=\"noopener\" href=\"https://www.semanticscholar.org/paper/DIET-AND-FEEDING-IN-THE-SEA-STAR-ASTROPECTEN-1888\">semanticscholar</a>-Loh-Todd/be9abadaa1abcb71e35ef7e9decf8b35e4ae26b0) |</p><p>Note that in and around Monterey Bay, Astropecten itself is not among the commonly reported local sea stars—those tend to be bat stars, giant spined stars, and sunflower stars—so Astropecten sightings there are less typical compared to warmer Indo-Pacific or Atlantic sandy habitats. <a target=\"_blank\" rel=\"noopener\" href=\"https://montereyscubaboard.com/aquatic-life/sea-stars/\">montereyscubaboard</a></p><h3>Key Physical and Behavioral Characteristics</h3><p>Astropecten species share several traits that set them apart from surface-dwelling sea stars like the more familiar Pisaster:</p><ul><li><p><strong>Pointed, sucker-less tube feet</strong> built for digging rather than gripping surfaces, letting them push through sand. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Astropecten_polyacanthus\">en.wikipedia</a></p></li><li><p><strong>Paxillae</strong> covering the upper surface — small pillar-like structures with flattened tops that help keep sediment off the body while buried. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Astropecten_polyacanthus\">en.wikipedia</a></p></li><li><p><strong>Fringed marginal spines</strong> along arm edges, often distinctly colored, giving many species a \"combed\" look. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Astropecten_polyacanthus\">en.wikipedia</a></p></li><li><p><strong>Nocturnal/crepuscular activity</strong>, with foraging peaks at dawn and dusk, and burrowing into substrate to rest between feeding bouts. <a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Astropecten_articulatus\">en.wikipedia</a></p></li><li><p><strong>Whole-prey swallowing</strong>, ingesting small mollusks (especially bivalves and gastropods) intact and digesting them internally, since they lack the ability to evert their stomachs onto prey like many other sea stars. <a target=\"_blank\" rel=\"noopener\" href=\"http://www.scielo.sa.cr/scielo.php?script=sci_arttext&amp;pid=S0034-77442014000200006\">scielo.sa</a></p></li></ul><h3>Feeding Strategy</h3><p>Astropecten are selective, generalist molluscan predators that locate buried prey through chemoreception and preferentially target smaller, easier-to-handle individuals to maximize energy intake per unit foraging time. Studies on species like A. articulatus and A. indicus show they favor prey with low resistance to anaerobic stress and often target juvenile mollusks, allowing for quick digestion. Because they can't dig very deep, deep-burrowing bivalves like Mya species largely escape predation. <a target=\"_blank\" rel=\"noopener\" href=\"https://www.semanticscholar.org/paper/DIET-AND-FEEDING-IN-THE-SEA-STAR-ASTROPECTEN-1888\">semanticscholar</a>-Loh-Todd/be9abadaa1abcb71e35ef7e9decf8b35e4ae26b0)</p>",
-    "tags": [
-      "astropecten"
-    ],
-    "VidTitle": "Sand-Sifting Sea Stars (Astropecten)",
-    "ftextSize": "5326",
-    "FtextJunk": "1",
-    "DictSize": "2286",
-    "VidRange": "text",
-    "cell": ""
+    "cell": "2a"
   },
   {
     "UID": "2161",
     "link": "https://media.sealifeandmore.com/flashimages/card-20260830-163814.jpg",
     "show": "1",
     "DateAdded": "2026-08-31 00:00:49",
-    "DateModified": "2026-08-31 00:01:01",
+    "DateModified": "2026-08-31 14:09:40",
     "tags": [
       "astropecten"
     ],
@@ -48144,6 +48126,23 @@
     "DictSize": "2286",
     "MPix": "0.3",
     "Mode": "L",
-    "cell": ""
+    "cell": "1b",
+    "ftext": ""
+  },
+  {
+    "UID": "2162",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-08-31 14:11:39",
+    "DateModified": "2026-08-31 14:13:31",
+    "ltype": "f",
+    "ftext": "",
+    "tags": [],
+    "VidTitle": "Sand-Sifting Sea Stars (Astropecten)",
+    "ftextSize": "5293",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "cell": "1a",
+    "VidRange": "text"
   }
 ]

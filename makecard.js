@@ -164,11 +164,24 @@
   }
 
   // ── the card's ftext ─────────────────────────────────────────────────────
+  // (dev0858) THREE sections, two breaks:
+  //
+  //   1  the image          the card FRONT
+  //   2  the text           Phil hand-edits this one; it is what TurnCard shows
+  //   3  the same text      left as generated; swipe right on the cell shows it
+  //
+  // Both text sections start out identical. The second is meant to be cut down
+  // in Xe until it reads well on a turned card, while the third keeps the full
+  // original so nothing is lost by editing.
+  //
+  // The separator is a plain <hr>, the same break every render context in the
+  // app splits a slide on. That means a break added INSIDE section 2 starts a
+  // new section, so keep the edit break-free.
   function _mcBuildFtext(imgUrl, bodyHtml) {
     return '<p style="text-align:center;margin:0 0 10px 0;">'
          + '<img src="' + _mcAttr(imgUrl) + '" alt="" '
          + 'style="max-width:100%;max-height:82vh;height:auto;border-radius:8px;">'
-         + '</p>\n<hr>\n' + bodyHtml;
+         + '</p>\n<hr>\n' + bodyHtml + '\n<hr>\n' + bodyHtml;
   }
 
   // ── clipboard ────────────────────────────────────────────────────────────
@@ -267,16 +280,28 @@
 
   // ftext → { imgUrl, bodyHtml }. The fold is the first TOP-LEVEL <hr>, which
   // is the same rule G and Xs use to split a slide into pages.
+  // (dev0858) Returns { imgUrl, body, orig }:
+  //   body  section 2 -- the display copy, what the card back shows
+  //   orig  section 3 -- the untouched original, '' on a pre-dev0858 card
+  // A card written before dev0858 has only ONE break and therefore no section 3;
+  // it keeps working, it just has nothing to swipe to.
   function _mcSplitCard(ftext) {
     var s = String(ftext || '');
     var m = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/i.exec(s);
     var imgUrl = m ? m[1] : '';
-    var cut = s.search(/<hr\b[^>]*>/i);
-    var body = cut >= 0 ? s.slice(cut).replace(/^<hr\b[^>]*>/i, '') : s;
-    // Drop the leading image paragraph when there was no <hr> to cut at.
-    if (cut < 0 && m) body = s.replace(m[0], '');
-    return { imgUrl: imgUrl, body: body.trim() };
+    var parts = s.split(/<hr\b[^>]*>/i);
+    if (parts.length < 2) {
+      // No break at all: drop the leading image paragraph so body is just text.
+      var only = m ? s.replace(m[0], '') : s;
+      return { imgUrl: imgUrl, body: only.trim(), orig: '' };
+    }
+    // Anything past section 3 belongs to the original -- rejoining keeps a break
+    // the user added down there from silently eating the rest of it.
+    return { imgUrl: imgUrl,
+             body: parts[1].trim(),
+             orig: parts.slice(2).join('<hr>').trim() };
   }
+  window.makeCardSplit = _mcSplitCard;   // (dev0858) G needs the same fold
 
   function _mcFileStamp() {
     var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
