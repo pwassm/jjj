@@ -53,6 +53,10 @@
 //      _gmModesHtml, the 't' branch of _gmChoiceKey, and _gmTurnOn
 //   4. in core.js, drop 't' from the  k === 'w' || k === 't'  grid block in the
 //      window-capture keydown handler (leaving w = waterfall)
+//   5. (dev0860) in grid.js, _gridCardTurn calls TurnCells.turnPanel — it already
+//      returns false when the API is absent, so a flash card would simply stop
+//      turning. THAT IS A FEATURE LOSS, not just a fun mode going away: read the
+//      FLASH CARDS IN G note there before deleting this file.
 // Nothing else references it.
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -399,10 +403,13 @@
   }
   function dropEl(el) { if (el && el.parentNode) el.remove(); }
 
-  function hideFront(cell, back) {
+  // `keep` is the one child that stays visible behind the panel — the grid
+  // interactor on a flash card, which has to go on receiving the taps. See the
+  // FLASH CARD TURNS note at the bottom of the file.
+  function hideFront(cell, back, keep) {
     var hidden = [];
     Array.prototype.slice.call(cell.children).forEach(function (ch) {
-      if (ch === back) return;
+      if (ch === back || ch === keep) return;
       hidden.push([ch, ch.style.visibility]);
       ch.style.visibility = 'hidden';
     });
@@ -425,7 +432,9 @@
     // will-change is NOT cleared here: the mode is still on, and dropping the
     // promotion between turns is exactly the bug promoteAll() exists to prevent.
     // stop() clears it for every cell when the mode ends.
-    cell.style.willChange = active ? 'transform' : '';
+    // (dev0860) A flash card cell keeps its layer whether the mode is on or not —
+    // it can be turned again at any time, with no mode to promote it first.
+    cell.style.willChange = (active || cell._turnCard) ? 'transform' : '';
   }
 
   // ── Compositing: promote every cell ONCE, when the mode starts ──────────────
@@ -458,6 +467,7 @@
   function unpromoteAll() {
     var cont = container(); if (!cont) return;
     cont.querySelectorAll('.grid-cell').forEach(function (c) {
+      if (c._turnCard) return;      // (dev0860) still turnable with the mode off
       c.style.willChange = '';
     });
   }
@@ -505,13 +515,18 @@
   }
 
   // Front -> back. Half one takes the picture edge-on; half two brings the card in.
-  function turnToBack(cell) {
+  // (dev0860) `opts` is how a flash card turns: { card:true, tag, make } supplies
+  // the panel instead of buildBack and leaves the interactor live. Fun mode calls
+  // this with no opts and behaves exactly as before.
+  function turnToBack(cell, opts) {
     var row = cell._rowData;
     var axis = axisFor(cell);
     var half = halfDur();
     var box = homeBox(cell);                                // measure BEFORE rotating
     var st = { axis: axis, box: box, back: null, backdrop: null, anim: null,
                p: persp(cell),                          // fixed for the whole turn
+               card: !!(opts && opts.card), tag: (opts && opts.tag) || '',
+               make: (opts && opts.make) || null,
                hidden: null, timer: null, busy: true, flipped: false };
     turned.set(cell, st);
 
@@ -520,11 +535,15 @@
 
     spin(cell, st, axis, 0, 90, half, EASE_OUT, function () {
       setPlaying(cell, false);                              // hold the frame
-      var back = buildBack(cell, row);
+      var back = st.make ? dressPanel(st.make(cell, row)) : buildBack(cell, row);
       cell.appendChild(back);
       fitTagChips(back.querySelector('.turn-back-tags'));   // needs to be in the DOM
+      // A caller-built panel measures itself the same way and at the same moment:
+      // in the DOM, still edge-on, before the second half starts. Layout metrics
+      // do not care about the rotation — see the fitTagChips note.
+      if (typeof back._salFit === 'function') { try { back._salFit(); } catch (_) {} }
       st.back = back;
-      st.hidden = hideFront(cell, back);
+      st.hidden = hideFront(cell, back, st.card ? cell.querySelector('.grid-interactor') : null);
       st.flipped = true;
       // Edge-on at +90 and at -90 look identical, so this jump is invisible — and
       // landing on 0 (rather than 180) means the back is never mirrored.
@@ -577,6 +596,65 @@
     else if (!st) turnToBack(cell);
   }
 
+  // ── (dev0860) FLASH CARD TURNS ──────────────────────────────────────────────
+  // The same machinery, driven from the GRID rather than from fun mode: an
+  // ltype 'f' cell turns on a plain click and shows the card's own text (see
+  // grid.js _gridCardBackPanel) instead of the tag/ftext back this mode builds.
+  // Axis, backdrop, the two halves, the held frame, the speed setting — all
+  // shared, so a card turns exactly the way a turnaround cell does.
+  //
+  // TWO THINGS DIFFER, both because a card must stay clickable while it is
+  // turned over. Fun mode owns the whole container in capture phase, so it can
+  // hide the interactor along with the rest of the front; a card is driven BY
+  // the interactor's own gestures (tap = turn, swipe right = the original text),
+  // and a  visibility:hidden  element is not hit-testable. So the interactor is
+  // left visible — the panel covers it, so no part of the front shows through —
+  // and the panel is  pointer-events:none  so the tap reaches the interactor
+  // underneath it.
+  //
+  // `tag` names the face that is showing. The same tag again turns the card back
+  // to the front; a different one swaps the panel where it stands, so a swipe on
+  // a card that is already turned reads as turning a page rather than as a
+  // second flip.
+  function dressPanel(el) {
+    if (!el) return el;
+    el.classList.add('turn-back');        // stop()'s sweep finds it by this class
+    el.style.pointerEvents = 'none';
+    return el;
+  }
+  // A grid re-render (gridUpdateCell, a paste, a swap) empties the cell without
+  // telling us, which would leave this Map insisting the cell is still turned.
+  // Cheaper than a callback from G: notice it here, and let the cell start again.
+  function healed(cell) {
+    var st = turned.get(cell);
+    if (!st || st.busy) return st;
+    if (st.flipped && (!st.back || st.back.parentNode !== cell)) {
+      turned.delete(cell);
+      cell.style.transform = ''; cell.style.zIndex = '';
+      return null;
+    }
+    return st;
+  }
+  function turnPanel(cell, tag, make) {
+    if (!cell || !cell.isConnected || typeof make !== 'function') return false;
+    turned.forEach(function (s2, c2) { if (!c2.isConnected) turned.delete(c2); });
+    var st = healed(cell);
+    if (st && st.busy) return true;             // mid-turn — the tap is spent
+    cell._turnCard = true;
+    if (!st || !st.flipped) { turnToBack(cell, { card: true, tag: tag, make: make }); return true; }
+    if (st.tag === tag) { turnToFront(cell); return true; }
+    var back = dressPanel(make(cell, cell._rowData));
+    if (!back) return true;
+    cell.replaceChild(back, st.back);
+    if (typeof back._salFit === 'function') { try { back._salFit(); } catch (_) {} }
+    st.back = back; st.tag = tag; st.make = make;
+    return true;
+  }
+  function faceOn(cell) {
+    var st = cell ? healed(cell) : null;
+    return (st && st.flipped) ? (st.tag || 'back') : '';
+  }
+
   // Snap a cell back to its front with no animation (mode off / grid closing).
   function restore(cell, st) {
     if (st && st.timer) clearTimeout(st.timer);
@@ -591,7 +669,7 @@
     cell.style.transition = 'none';
     cell.style.transform = '';
     cell.style.zIndex = '';
-    cell.style.willChange = '';
+    cell.style.willChange = cell._turnCard ? 'transform' : '';   // (dev0860)
     requestAnimationFrame(function () { if (cell.isConnected) cell.style.transition = ''; });
   }
   function restoreAll() {
@@ -745,6 +823,8 @@
     start: start,
     stop: stop,
     toggle: toggle,
+    turnPanel: turnPanel,          // (dev0860) flash cards — see the note above
+    faceOn: faceOn,
     get active() { return active; },
     get speed() { return speed; },
     setSpeed: function (v) { saveSpeed(v); if (active) boxShow(); return speed; }

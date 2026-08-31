@@ -1645,6 +1645,144 @@ function _gridIsTextRow(row) {
   return row.ltype === 't' || row.VidRange === 'text' || !!(row.ftext && String(row.ftext).trim());
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// (dev0860) FLASH CARDS IN G
+// ══════════════════════════════════════════════════════════════════════════════
+// An ltype 'f' row is a flash card. makecard.js writes its ftext as THREE
+// sections split on <hr> (dev0858): the picture, the display copy Phil cuts down
+// by hand in Xe, and the untouched original. In a grid cell that becomes a card
+// you can actually use:
+//
+//   the cell shows   THE PICTURE ALONE — not a thumbnail of the whole slide. A
+//                    card row is link-less ftext, so without this it renders down
+//                    the isText branch, which prints the answer on the front of
+//                    the card in 6pt type.
+//   a plain tap      turns it over to section 2, the display copy
+//   tap again        turns it back
+//   swipe right      turns it to section 3, the original — and a swipe on a card
+//                    that is already turned swaps the face where it stands
+//   an F badge       bottom-right of the front, so a card is recognisable as one
+//                    before it is touched. Built into the interactor, which
+//                    exists in BOTH modes, so slam.com gets it too.
+//
+// The turn is turncells.js's, through TurnCells.turnPanel — see the FLASH CARD
+// TURNS note there for why the panel is pointer-events:none and the interactor
+// stays visible underneath it. While fun-mode turnaround is ON it owns every
+// cell in capture phase and a card turns to the tag/ftext back like anything
+// else: one mode at a time, and the mode wins.
+//
+// THE GATE IS THE ltype, not the shape of the ftext. makeCardRowIsCard (an image
+// plus a break) would also catch hand-built slides that merely look like cards;
+// 'f' is what MakeCard writes and what the ltype filter selects on.
+function _gridCardParts(row) {
+  if (!row || !row.ftext) return null;
+  if (String(row.ltype || '') !== 'f') return null;
+  if (typeof window.makeCardSplit !== 'function') return null;   // makecard.js gone
+  let p = null;
+  try { p = window.makeCardSplit(row.ftext); } catch (_) { return null; }
+  return (p && p.imgUrl) ? p : null;               // no picture — nothing to turn
+}
+
+// The F badge. It sits INSIDE .grid-interactor with the cell label and the info
+// line, which buys three things for nothing: it is built in dev and user mode
+// alike, it is cleared and rebuilt with the interactor on a cell swap, and it
+// vanishes when the card is turned over (the panel covers the interactor)
+// without a line of code to hide it.
+function _gridCardBadge() {
+  const b = document.createElement('div');
+  b.className = 'grid-card-badge';
+  b.textContent = 'F';
+  b.style.cssText = 'position:absolute;bottom:3px;right:4px;'
+    + 'font:bold 10px/1 system-ui,-apple-system,Segoe UI,sans-serif;'
+    + 'color:#0b0d13;background:rgba(150,205,255,0.92);border-radius:3px;'
+    + 'padding:2px 4px 3px;letter-spacing:0.5px;pointer-events:none;'
+    + 'box-shadow:0 1px 3px rgba(0,0,0,0.55);';
+  return b;
+}
+
+// ── The back of the card ────────────────────────────────────────────────────
+// SHRINK TO FIT, NEVER GROW TO FILL — the dev0843 rule the tag chips already
+// follow. The type starts at a size that reads on THIS cell and comes down only
+// as far as the text needs, so a card cut down to three lines stays big while a
+// full Perplexity answer packs itself in. Deliberately NOT the 600px virtual
+// canvas the text thumbnails use: that one divides by a fixed width, so it
+// shrinks three lines exactly as hard as thirty.
+//
+// Measured with clientHeight / scrollHeight rather than getBoundingClientRect:
+// the panel is built while the cell is edge-on under a rotate, and a bounding
+// rect at that moment is foreshortened to nothing. Layout metrics ignore
+// transforms.
+const _GRID_CARD_FS_MIN = 7;
+
+function _gridCardBackPanel(cell, which) {
+  const parts = _gridCardParts(cell._rowData);
+  const orig  = parts ? parts.orig : '';
+  const html  = parts ? (which === 'orig' ? (orig || parts.body) : parts.body) : '';
+  const ch    = cell.clientHeight || cell.offsetHeight || 260;
+  const fs0   = Math.max(10, Math.min(22, Math.round(ch / 14)));
+  const pad   = Math.max(6, Math.round(fs0 * 0.7));
+
+  const panel = document.createElement('div');
+  panel.className = 'grid-card-back';
+  panel.dataset.face = which;
+  panel.style.cssText = 'position:absolute;inset:0;z-index:140;overflow:hidden;'
+    + 'background:#14161c;color:#e9e9f0;box-sizing:border-box;padding:' + pad + 'px;'
+    + 'display:flex;flex-direction:column;pointer-events:none;'
+    + 'font:' + fs0 + 'px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;';
+
+  const text = document.createElement('div');
+  text.className = 'grid-card-back-text';
+  text.style.cssText = 'flex:1 1 auto;min-height:0;overflow:hidden;';
+  text.innerHTML = html
+    ? (typeof renderFtext === 'function' ? renderFtext(html) : html)
+    : '<span style="opacity:.4;font-style:italic;">nothing written on the back of this one yet</span>';
+  panel.appendChild(text);
+
+  // The two faces are the same words at different lengths, so say which one is
+  // showing. A pre-dev0858 card has no section 3 at all — it says so, rather
+  // than silently showing the display copy a second time.
+  if (which === 'orig') {
+    const tag = document.createElement('div');
+    tag.textContent = orig ? 'original' : 'no original kept on this card';
+    tag.style.cssText = 'position:absolute;top:2px;right:6px;font-size:0.62em;'
+      + 'opacity:0.45;letter-spacing:0.04em;';
+    panel.appendChild(tag);
+  }
+
+  // Still too long at the floor: fade the last line out instead of guillotining
+  // it, so it reads as "there is more" rather than as a rendering fault.
+  const fade = document.createElement('div');
+  fade.style.cssText = 'position:absolute;left:0;right:0;bottom:0;height:1.7em;display:none;'
+    + 'background:linear-gradient(to bottom,rgba(20,22,28,0),#14161c);';
+  panel.appendChild(fade);
+
+  // Called by turncells once the panel is in the DOM (see turnToBack). The size
+  // is set on the PANEL and inherited: headings and margins are em-based, so the
+  // whole card scales together.
+  panel._salFit = function () {
+    let size = fs0;
+    for (let i = 0; i < 5 && size > _GRID_CARD_FS_MIN; i++) {
+      if (!text.clientHeight || text.scrollHeight - text.clientHeight <= 1) break;
+      const ratio = Math.sqrt(text.clientHeight / text.scrollHeight);
+      size = Math.max(_GRID_CARD_FS_MIN, size * (ratio < 0.97 ? ratio : 0.93));
+      panel.style.fontSize = size.toFixed(2) + 'px';
+    }
+    fade.style.display = (text.scrollHeight - text.clientHeight > 1) ? '' : 'none';
+  };
+  return panel;
+}
+
+// The entry point every gesture goes through. Returns TRUE when it took the
+// gesture, so each caller reads as one line: if this was a card, we are done.
+function _gridCardTurn(cell, which) {
+  if (!cell || !_gridCardParts(cell._rowData)) return false;
+  if (!window.TurnCells || typeof window.TurnCells.turnPanel !== 'function') return false;
+  if (window.TurnCells.active) return false;      // fun mode owns the cell
+  return window.TurnCells.turnPanel(cell, which, function (c) {
+    return _gridCardBackPanel(c, which);
+  });
+}
+
 // Apply the current effective zoom to a single cell's content (no remount).
 // img / montage box are cell-sized, so a translate-% + scale (origin 0 0)
 // anchors them to the COI without needing the cell's pixel size — works even
@@ -2454,6 +2592,10 @@ function gridShow() {
         cell.style.display = 'none';
       }
       
+      // (dev0860) This row's flash-card sections, or null if it is not one. Read
+      // out HERE rather than inside the branch chain below, because the F badge
+      // goes on the interactor, which is built outside it.
+      const cardParts = row ? _gridCardParts(row) : null;
       if (row) {
         const isVid = isVideoRow(row);
         const isText = row.VidRange === 'text' || (row.ftext && !row.link);
@@ -2484,6 +2626,21 @@ function gridShow() {
           igWrap.appendChild(igFrame);
           cell.appendChild(igWrap);
           fitGridIgFrame(cell, igFrame);
+        } else if (cardParts) {
+          // (dev0860) FLASH CARD FRONT — the picture on its own. See the FLASH
+          // CARDS IN G note. Without this branch a card falls to isText and
+          // renders as a thumbnail of the whole slide, answer included.
+          const cimg = document.createElement('img');
+          cimg.className = 'grid-zoom-img';   // (dev0346) wheel-zoom target
+          cimg.src = cardParts.imgUrl;
+          const _cardFit = _gridPortraitDims(_layout) ? 'cover' : 'contain';
+          cimg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:' + _cardFit + ';pointer-events:none;z-index:1;transform-origin:center center;';
+          cell.appendChild(cimg);
+          // (dev0841) Promote the cell NOW, not on the first tap: a cell whose
+          // very first 3D transform is the one being animated rasterises its
+          // layer mid-turn and drops the opening frames. Fun mode does this for
+          // every cell when it starts; a card has no mode to do it.
+          cell.style.willChange = 'transform';
         } else if (isQuiz) {
           // Quiz/HTML cell — show a styled badge
           cell.style.background = '#0a1a0a';
@@ -2588,10 +2745,15 @@ function gridShow() {
       // Info overlay
       if (row && (row.n1 || row.t1)) {
         const info = document.createElement('div');
-        info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:6px;font-size:10px;color:#fff;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        // (dev0860) The info line runs the full width of the cell; on a card it
+        // stops short of the F badge rather than sliding under it.
+        info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:' + (cardParts ? 22 : 6) + 'px;font-size:10px;color:#fff;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
         info.textContent = [row.t1, row.n1].filter(Boolean).join(' · ');
         interactor.appendChild(info);
       }
+
+      // (dev0860) The F badge — a flash card, in both modes.
+      if (cardParts) interactor.appendChild(_gridCardBadge());
       
       gridWireInteractor(interactor, cell, cellStr);
       cell.appendChild(interactor);
@@ -2623,6 +2785,9 @@ function gridShow() {
     : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · b=buffer panel · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
   // (dev0669) Only advertise the embed reset on grids that actually have one.
   if (container.querySelector('.grid-embed-wrap')) hint += ' · q=new embed (⇧Q=all)';
+  // (dev0860) …and the flash cards only on a grid that is holding some. Both
+  // modes: a viewer meeting an F badge for the first time needs this most.
+  if (container.querySelector('.grid-card-badge')) hint += ' · F=card: tap turns it, swipe→ = the original';
   // (dev0671) One batched duration lookup for every IG cell on the grid, so the
   // auto-prime timer knows how long each clip runs. Fire-and-forget: the answer
   // only has to be in the cache before a cell's play ENDS, and nothing here
@@ -2831,6 +2996,9 @@ function gridUpdateCell(cellStr, row) {
   cellEl.innerHTML = '';
   cellEl._salSect = null;   // (dev0588) drop stale section state on content swap
   
+  // (dev0860) See gridShow's matching block — a flash card renders as its
+  // picture, and the badge below needs this outside the branch chain.
+  const cardParts = row ? _gridCardParts(row) : null;
   if (row) {
     cellEl._rowData = row;
     cellEl.style.background = '#000';
@@ -2858,6 +3026,16 @@ function gridUpdateCell(cellStr, row) {
       igWrap.appendChild(igFrame);
       cellEl.appendChild(igWrap);
       fitGridIgFrame(cellEl, igFrame);
+    } else if (cardParts) {
+      // (dev0860) FLASH CARD FRONT — the picture alone. Mirror of gridShow's
+      // branch; see the FLASH CARDS IN G note for why the whole slide must not
+      // be thumbnailed here.
+      const cimg = document.createElement('img');
+      cimg.className = 'grid-zoom-img';
+      cimg.src = cardParts.imgUrl;
+      cimg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:1;transform-origin:center center;';
+      cellEl.appendChild(cimg);
+      cellEl.style.willChange = 'transform';   // (dev0841) layer up before the first turn
     } else if (isQuiz) {
       cellEl.style.background = '#0a1a0a';
       const badge = document.createElement('div');
@@ -2942,10 +3120,13 @@ function gridUpdateCell(cellStr, row) {
   // Info overlay
   if (row && (row.n1 || row.t1)) {
     const info = document.createElement('div');
-    info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:6px;font-size:10px;color:#fff;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    info.style.cssText = 'position:absolute;bottom:4px;left:6px;right:' + (cardParts ? 22 : 6) + 'px;font-size:10px;color:#fff;pointer-events:none;text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 2px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     info.textContent = [row.t1, row.n1].filter(Boolean).join(' · ');
     newInteractor.appendChild(info);
   }
+
+  // (dev0860) The F badge — a flash card, in both modes.
+  if (cardParts) newInteractor.appendChild(_gridCardBadge());
   
   // Re-wire pointer interactions
   gridWireInteractor(newInteractor, cellEl, cellStr);
@@ -3192,6 +3373,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
     if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
+        // (dev0860) A FLASH CARD turns to its ORIGINAL text (section 3) on a
+        // forward swipe — the tap already gives the display copy. Fullscreen is
+        // not the useful thing to do with a card: the slide it would open is the
+        // picture AND both texts, i.e. the answer.
+        if (_gridCardTurn(cell, 'orig')) return;
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
         else {
           // (dev0617) Sectioned 1a text cell → fullscreen viewer opens on the
@@ -3247,6 +3433,12 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       
       if (cell._rowData) _lastGridRow = cell._rowData;
+
+      // (dev0860) FLASH CARD: a plain tap turns it over to the display copy,
+      // and the next one turns it back. The double-tap clock is reset so
+      // tap-tap reads as turn-and-turn-back instead of opening Xe on the second
+      // one; Ctrl+click is still the way into the editor.
+      if (_gridCardTurn(cell, 'body')) { _lastShortTapT = 0; return; }
 
       // (dev0604 IG · dev0606 TikTok) Embed cell + plain left-click: arm it so
       // the NEXT click reaches the play caret (nothing else can start a
@@ -3365,6 +3557,8 @@ function gridWireInteractor(interactor, cell, cellStr) {
     if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
+        // (dev0860) Card → the original text. Touch mirror of the pointer path.
+        if (_gridCardTurn(cell, 'orig')) return;
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
         else {
           // (dev0617) mirror of the pointer path — open on the cell's current section
@@ -3409,6 +3603,8 @@ function gridWireInteractor(interactor, cell, cellStr) {
         return;
       }
       if (cell._rowData) _lastGridRow = cell._rowData;
+      // (dev0860) Card → turn it over. Touch mirror of the pointer path.
+      if (_gridCardTurn(cell, 'body')) { _lastShortTapT = 0; return; }
       // (dev0588) Summary tap on the sectioned 1a text slide — touch mirror of
       // the pointer path above.
       if (cell._salSect && endX != null) {
