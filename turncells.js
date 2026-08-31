@@ -228,10 +228,16 @@
   }
 
   function buildBack(cell, row) {
-    var r = cell.getBoundingClientRect();
     // Scale the type to the cell — a 27-cell portrait grid is a third the height
     // of a 2x2 tile, and a fixed 13px would fill it with two words.
-    var fs = Math.max(9, Math.min(16, Math.round(r.height / 26)));
+    // (dev0861) clientHeight, NOT getBoundingClientRect: this runs at the
+    // midpoint of the turn, with the cell edge-on under a rotate, so the rect
+    // came back foreshortened to nothing and the clamp below ALWAYS landed on
+    // its 9px minimum — every back, every layout, since dev0836. Layout metrics
+    // ignore transforms, which is the same reason fitTagChips measures
+    // scrollWidth rather than a rect.
+    var h = cell.clientHeight || cell.offsetHeight || 0;
+    var fs = Math.max(9, Math.min(16, Math.round(h / 26)));
     var pad = Math.max(5, Math.round(fs * 0.6));
 
     var chips = chipsFor(row);
