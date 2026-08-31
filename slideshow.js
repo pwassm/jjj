@@ -661,6 +661,7 @@ function _slideshowStart(allOrdered, opts) {
   // momentum from skipping several slides per notch.
   overlay.addEventListener('wheel', e => {
     const st = _slideshowState;
+    if (_ssCropOwnsPointer()) return;   // (dev0863)
     if (!st || !st.paused || st._videoActive) return;
     e.preventDefault();
     e.stopPropagation();
@@ -732,6 +733,7 @@ function _slideshowStart(allOrdered, opts) {
 
     overlay.addEventListener('mousedown', e => {
       if (!_slideshowState) return;
+      if (_ssCropOwnsPointer()) return;   // (dev0863)
       if (e.button !== 0) return;
       if (e.target.closest('#slideshowMenu')) return;
       if (e.target.closest('#slideshowCloseBtn')) return;
@@ -747,6 +749,9 @@ function _slideshowStart(allOrdered, opts) {
     });
     overlay.addEventListener('mousemove', e => {
       if (!down) return;
+      // (dev0863) A press that was in flight when the crop opened is abandoned,
+      // not resumed — half of it belongs to a screen that no longer exists.
+      if (_ssCropOwnsPointer()) { _stopZoom(); down = null; return; }
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
       if (!down.dragging && Math.hypot(dx, dy) > 8) {
         // Movement → cancel any pending/running zoom, enter drag mode
@@ -768,6 +773,7 @@ function _slideshowStart(allOrdered, opts) {
     overlay.addEventListener('mouseup', e => {
       if (!down) return;
       _stopZoom();
+      if (_ssCropOwnsPointer()) { down = null; return; }   // (dev0863)
       const wasDragging = down.dragging;
       const dx = e.clientX - down.x0, dy = e.clientY - down.y0;
       const ms = Date.now() - down.t0;
@@ -805,6 +811,7 @@ function _slideshowStart(allOrdered, opts) {
     // Double-click → reset zoom & pan to 1× / center, restore auto Ken Burns.
     overlay.addEventListener('dblclick', e => {
       if (!_slideshowState) return;
+      if (_ssCropOwnsPointer()) return;   // (dev0863)
       if (e.target.closest('#slideshowMenu')) return;
       if (e.target.closest('#slideshowCloseBtn')) return;
       // (dev0301) V2 video element handles its own double-click (fullscreen).
@@ -874,6 +881,7 @@ function _slideshowStart(allOrdered, opts) {
 
     overlay.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse') return;
+      if (_ssCropOwnsPointer()) return;   // (dev0863)
       if (e.target.closest('#slideshowMenu')) return;
       if (e.target.closest('#slideshowCloseBtn')) return;
       // (dev0301) Let V2's inline video receive touch on its native controls.
@@ -912,6 +920,14 @@ function _slideshowStart(allOrdered, opts) {
     overlay.addEventListener('pointermove', e => {
       if (e.pointerType === 'mouse' || !_ptrs.has(e.pointerId)) return;
       const st = _slideshowState; if (!st) return;
+      // (dev0863) See the mousemove twin: a touch in flight when the crop
+      // opened is dropped rather than carried into the crop session.
+      if (_ssCropOwnsPointer()) {
+        _ptrs.delete(e.pointerId);
+        _swipe = null; _pinch = null;
+        _stopLongPressZoom(); _longPressZoomStarted = false;
+        return;
+      }
       _ptrs.set(e.pointerId, _xy(e));
       // (dev0268) Single-finger motion beyond ~8px cancels the pending
       // long-press hold-zoom — the user is swiping, not holding.
@@ -941,6 +957,11 @@ function _slideshowStart(allOrdered, opts) {
       const st = _slideshowState; if (!st) return;
       const p = _xy(e);
       _ptrs.delete(e.pointerId);
+      if (_ssCropOwnsPointer()) {         // (dev0863)
+        _swipe = null; _pinch = null;
+        _stopLongPressZoom(); _longPressZoomStarted = false;
+        return;
+      }
 
       if (_ptrs.size === 0) {
         // Clear the touch-active flag on a short delay so the synthesized
@@ -1372,6 +1393,49 @@ window._slideshowZoomPause = function () {
 // chrome hides too, so the crop rect gets a clear frame — the settings menu,
 // its collapsed "+" stub, and review mode's tally card + bottom file strip.
 // Everything is restored, in place, when C toggles back.
+// (dev0863) ── THE CROP OWNS THE POINTER ────────────────────────────────────
+// The crop overlay is mounted INSIDE #slideshowOverlay, so every gesture aimed
+// at the crop rect passes through the show's own listeners first — and those
+// listeners were reading them as navigation. Dragging a crop handle sideways is
+// a >50px horizontal drag, which is the swipe gesture exactly; releasing on a
+// paused slide is the "resume" tap; and the wheel only navigates WHILE paused,
+// which is the state a crop always puts the show in. Any one of them advanced
+// the show underneath a live crop session: the picture changed, the session's
+// row did not, and G then rendered a crop of the PREVIOUS file while the new
+// one sat on screen. (That is the "cropped 2 in a row, got the first one" bug.)
+//
+// The keyboard already stood down for this (see _slideshowKey). This is the
+// same stand-down for mouse, touch and wheel.
+function _ssCropOwnsPointer() {
+  return typeof window._vpImageCropActive === 'function' && window._vpImageCropActive();
+}
+
+// (dev0863) The <img> that is ACTUALLY showing this slide. `st.front` is not it:
+// the crossfade sets the incoming layer's opacity to 1 immediately and only
+// swaps the front pointer transitionSec later, so for the whole length of a
+// fade `#slideshowImg{front}` names the picture on its way OUT. Cropping
+// measured that one's dimensions while the user aimed at the other.
+function _slideshowLiveImg(slide) {
+  const st = _slideshowState;
+  if (!st || !slide || !slide.url) return null;
+  for (const letter of ['A', 'B']) {
+    const el = st.overlay.querySelector('#slideshowImg' + letter);
+    if (el && el.naturalWidth && (el.currentSrc === slide.url || el.src === slide.url)) return el;
+  }
+  return null;
+}
+
+// (dev0863) Is the show still parked on the picture a crop session opened over?
+// vp.js asks this immediately before it renders. Belt to the braces above: if
+// anything ever moves the show under a live session again, the save refuses
+// instead of quietly cutting up the wrong file.
+window._slideshowCropStillCurrent = function (url) {
+  const st = _slideshowState;
+  if (!st) return true;                      // not a show — nothing can drift
+  const slide = st.slides[st.idx];
+  return !!(slide && slide.url === url);
+};
+
 window._slideshowCropHold = function (on) {
   const st = _slideshowState;
   if (!st) return;
@@ -1413,7 +1477,10 @@ window._slideshowImageCropOpen = function () {
     if (typeof toast === 'function') toast('crop: this slide has no disk path', 2400);
     return false;
   }
-  const img = st.overlay.querySelector('#slideshowImg' + st.front);
+  // (dev0863) The layer showing THIS slide, matched by src — not st.front,
+  // which lags the crossfade. No match means the picture on screen is still
+  // the last one, and cropping it under the next one's name is the whole bug.
+  const img = _slideshowLiveImg(slide);
   if (!img || !img.naturalWidth) {
     if (typeof toast === 'function') toast('crop: picture not loaded yet', 1800);
     return false;
@@ -1429,6 +1496,7 @@ window._slideshowImageCropOpen = function () {
   // resolves it against the SAME cached disk root.
   const row = {
     _directImageFile: true,
+    _ssSlide: true,           // (dev0863) this session belongs to a running show
     VidTitle: slide.name,
     comment: slide.path,
     link: slide.url
@@ -1857,6 +1925,13 @@ function _slideshowKey(e) {
 // layer and crossfades.
 function _slideshowShow(i, opts) {
   if (!_slideshowState) return;
+  // (dev0863) One place that can never be reached while a crop is open, whoever
+  // asked. The gesture handlers above already stand down; this is the backstop
+  // for any path that doesn't (a timer that slipped through, a future caller).
+  if (_ssCropOwnsPointer()) {
+    if (typeof toast === 'function') toast('✂ crop is open — C closes it before the show moves on', 2400);
+    return;
+  }
   const st = _slideshowState;
   opts = opts || {};
   st.idx = i;

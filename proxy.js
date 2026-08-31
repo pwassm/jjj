@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0851';
+const PROXY_BUILD = 'dev0863';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -6202,7 +6202,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
@@ -6392,18 +6392,68 @@ http.createServer((req, res) => {
     if (req.method !== 'POST') { send(res, 405, 'edit: POST required', corsForExec(origin)); return; }
     readJson(req, 4 * 1024 * 1024).then(p => {
       const out = String(p.path || '');
+      // (dev0863) Two bodies now. `doc` is the original .edit recipe (JSON);
+      // `text` is a verbatim string, which is what an XMP sidecar has to be —
+      // an RDF packet, not an object. The extension decides which is legal, so
+      // a .edit can never arrive as raw text and a sidecar can never be JSON.
+      const isXmp = /\.xmp$/i.test(out);
       try {
         must(/^([A-Za-z]:[\\/]|\/)/.test(out), 'path must be absolute');
-        must(/\.edit$/i.test(out), 'path must end in .edit');
+        must(/\.(edit|xmp)$/i.test(out), 'path must end in .edit or .xmp');
         must(!/(^|[\\/])\.\.([\\/]|$)/.test(out), 'path may not contain ".."');
-        must(p.doc && typeof p.doc === 'object' && !Array.isArray(p.doc), 'doc (object) required');
+        if (isXmp) must(typeof p.text === 'string' && p.text.length, 'text (string) required for .xmp');
+        else       must(p.doc && typeof p.doc === 'object' && !Array.isArray(p.doc), 'doc (object) required');
         const dir = path.dirname(out);
         must(fs.existsSync(dir), 'folder does not exist: ' + dir);
       } catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
       try {
-        fs.writeFileSync(out, JSON.stringify(p.doc, null, 2), 'utf8');
-        plog(`edit/save ${out} (${(JSON.stringify(p.doc).length / 1024).toFixed(1)} KB)`);
+        const body = isXmp ? p.text : JSON.stringify(p.doc, null, 2);
+        fs.writeFileSync(out, body, 'utf8');
+        plog(`edit/save ${out} (${(body.length / 1024).toFixed(1)} KB)`);
         sendJson(res, 200, { ok: true, path: out }, origin);
+      } catch (e) {
+        sendJson(res, 500, { ok: false, error: e.message }, origin);
+      }
+    }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+    return;
+  }
+
+  // (dev0863) ── /edit/freename — the first unused variant of a path ─────────
+  // The crop tool no longer buries its output in a dated folder, so two crops
+  // of the same picture with the same name now collide in the photo folder
+  // itself. Rather than ask the user to overwrite or rename, it asks here for a
+  // name that is free and uses it: Base_crop_id.jpg → Base_crop_id_2.jpg → _3…
+  //
+  // Read-only (fs.existsSync and nothing else), origin-locked like its
+  // neighbour, and the answer is advisory: the render still goes out with
+  // `overwrite:false`, so a file that appeared in between is still refused
+  // rather than clobbered.
+  if (req.url.split('?')[0] === '/edit/freename') {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      send(res, 403, 'edit: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    if (req.method !== 'POST') { send(res, 405, 'edit: POST required', corsForExec(origin)); return; }
+    readJson(req, 64 * 1024).then(p => {
+      const want = String(p.path || '');
+      try {
+        must(/^([A-Za-z]:[\\/]|\/)/.test(want), 'path must be absolute');
+        must(!/(^|[\\/])\.\.([\\/]|$)/.test(want), 'path may not contain ".."');
+      } catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
+      const dir  = path.dirname(want);
+      const ext  = path.extname(want);              // '' is fine — a name with no dot
+      const stem = path.basename(want, ext);
+      try {
+        for (let n = 1; n <= 999; n++) {
+          const name = (n === 1) ? (stem + ext) : (stem + '_' + n + ext);
+          const full = path.join(dir, name);
+          if (!fs.existsSync(full)) {
+            sendJson(res, 200, { ok: true, path: full, name, n }, origin);
+            return;
+          }
+        }
+        sendJson(res, 409, { ok: false, error: '999 variants of that name already exist' }, origin);
       } catch (e) {
         sendJson(res, 500, { ok: false, error: e.message }, origin);
       }

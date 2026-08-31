@@ -4966,8 +4966,19 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // handlers would otherwise move the picture out from under the rect. So
     // here the container takes the pointer and keeps it: its own children
     // (rect, handles, bar) still work, and nothing reaches the show.
+    // (dev0863) This list used to stop only the POINTER events, which left the
+    // hole this whole build is about: the slideshow's desktop navigation is
+    // wired on mousedown/mousemove/mouseup, and a pointer event's
+    // stopPropagation does nothing to the compatibility mouse event that
+    // follows it. A drag on a crop handle was therefore also a >50px horizontal
+    // swipe, and the show advanced under the live session. (Its pointerup /
+    // pointercancel listeners are CAPTURE-phase too, so they ran before this
+    // handler could stop them.) The real fix is _ssCropOwnsPointer() in
+    // slideshow.js, which makes every one of those handlers stand down; this
+    // stays as the second line, and now covers the mouse trio as well.
     c.style.pointerEvents = 'auto';
     ['pointerdown', 'pointermove', 'pointerup', 'pointercancel',
+     'mousedown', 'mousemove', 'mouseup',
      'wheel', 'click', 'dblclick'].forEach(ev => {
       c.addEventListener(ev, e => e.stopPropagation());
     });
@@ -7091,21 +7102,142 @@ function _vpDurStr(sec) {
 // (dev0293) Split an absolute path into {dir, base, ext}. Handles both
 // Windows and POSIX separators. Returns null if it doesn't look like a
 // path with an extension.
-// (dev0742) Renders land in a dated subfolder of the source folder —
-// YYYYMMDD_edited — so a day's crops/trims stay together instead of silting up
-// the video folder, and the `_edited` suffix makes them one Everything search.
-// The proxy creates the folder before spawning ffmpeg (it won't make it itself).
-// (dev0743) `.edit` recipe files stay BESIDE the original — they belong to the
-// source clip, not to a day's output.
-function _vpOutDirStamp() {
-  const d = new Date(), p = n => String(n).padStart(2, '0');
-  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_edited';
-}
-
 function _vpSplitPath(p) {
   const m = p.match(/^(.*)([\\/])([^\\/]+)\.([^.\\/]+)$/);
   if (!m) return null;
   return { dir: m[1], sep: m[2], base: m[3], ext: m[4] };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// (dev0863) WHERE A CROP LANDS, AND WHAT IT IS CALLED
+//
+//   <source folder>/<original base>_crop_<the name you typed>.<ext>
+//
+// Beside the original, not under it. dev0742 put renders in a dated
+// `YYYYMMDD_edited` subfolder to keep them out of the source folder; that
+// separated every crop from the picture it came from, which is the one
+// relationship a photo library cares about. The dated folder is gone.
+//
+// The name is deliberately plain. The old template spelled out size, aspect,
+// engine, tilt and duration between `~` separators — accurate, unreadable, and
+// nothing a photo manager could group on. Everything it said is still readable
+// off the file itself; what a filename is FOR is telling you which original
+// this came from and which crop of it this is.
+//
+// Collisions are resolved by counting, not by asking: _crop_head.jpg, then
+// _crop_head_2.jpg. The proxy picks the number (it is the side that can see the
+// folder), and the render still goes out with overwrite:false, so a file that
+// appears in between is refused rather than clobbered.
+// ══════════════════════════════════════════════════════════════════════════
+const VP_CROP_TOKEN = '_crop_';
+
+// The name the user typed, made safe for a filename. `~` goes too — it is no
+// longer a separator here, but a folder of old-template output is full of them
+// and a name that mixes the two schemes reads as neither.
+function _vpCropSafeId(id) {
+  return String(id || '').replace(/[<>:"/\\|?*~]/g, '_').replace(/^\.+|\.+$/g, '').trim() || 'unnamed';
+}
+
+// Ask the proxy for the first unused variant of `wantPath`. Returns the path
+// unchanged when the proxy is too old to answer — the caller then falls back to
+// the overwrite prompt, which is what protected this before numbering existed.
+async function _vpCropFreePath(wantPath) {
+  if (!(await _vpProxyHasFeature('freename'))) return { path: wantPath, numbered: false, asked: false };
+  try {
+    const r = await fetch(PROXY_BASE + '/edit/freename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: wantPath })
+    });
+    const j = await r.json();
+    if (j && j.ok && j.path) return { path: j.path, numbered: (j.n > 1), asked: true };
+  } catch (_) {}
+  return { path: wantPath, numbered: false, asked: false };
+}
+
+// A stable id for a file, derived from its absolute path so every crop of the
+// same original quotes the SAME originalDocumentID and a library can group
+// them. FNV-1a over four seeds → 32 hex digits, laid out like a UUID because
+// that is the shape xmpMM ids are read as.
+function _vpXmpId(str) {
+  const s = String(str).toLowerCase();
+  let out = '';
+  for (const seed of [0x811c9dc5, 0x01000193, 0x7fffffff, 0x9e3779b9]) {
+    let h = seed >>> 0;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    out += h.toString(16).padStart(8, '0');
+  }
+  return out.slice(0, 8) + '-' + out.slice(8, 12) + '-' + out.slice(12, 16) + '-' +
+         out.slice(16, 20) + '-' + out.slice(20, 32);
+}
+
+function _vpXmlEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// The XMP packet that says "this file came from that one", in the standard
+// xmpMM vocabulary rather than anything of ours: DerivedFrom names the
+// original, OriginalDocumentID is the same for every crop of it, and
+// PreservedFileName is the original's name for a human reading the sidecar.
+// digiKam reads these from a sidecar when "use sidecar files" is switched on.
+function _vpXmpSidecarText(originalPath, outPath, detail) {
+  const origName = String(originalPath).split(/[\\/]/).pop() || originalPath;
+  const outName  = String(outPath).split(/[\\/]/).pop() || outPath;
+  const how      = detail ? ('  [' + detail + ']') : '';
+  const origId   = 'xmp.did:' + _vpXmpId(originalPath);
+  const outHash  = _vpXmpId(outPath);
+  const ver      = (window.HELP_VERSION_STR || 'SLAM');
+  const when     = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  return '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n' +
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="SLAM ' + _vpXmlEsc(ver) + ' crop">\n' +
+    ' <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n' +
+    '  <rdf:Description rdf:about=""\n' +
+    '    xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"\n' +
+    '    xmlns:stRef="http://ns.adobe.com/xap/1.0/sType/ResourceRef#"\n' +
+    '    xmlns:xmp="http://ns.adobe.com/xap/1.0/"\n' +
+    '    xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"\n' +
+    '    xmlns:dc="http://purl.org/dc/elements/1.1/"\n' +
+    '   xmpMM:DocumentID="xmp.did:' + outHash + '"\n' +
+    '   xmpMM:InstanceID="xmp.iid:' + outHash + '"\n' +
+    '   xmpMM:OriginalDocumentID="' + origId + '"\n' +
+    '   xmpMM:PreservedFileName="' + _vpXmlEsc(origName) + '"\n' +
+    '   xmp:CreatorTool="SLAM ' + _vpXmlEsc(ver) + ' crop tool"\n' +
+    '   xmp:MetadataDate="' + when + '"\n' +
+    '   photoshop:Instructions="' + _vpXmlEsc(outName) + ' is a crop of ' +
+        _vpXmlEsc(origName) + _vpXmlEsc(how) + '">\n' +
+    '   <xmpMM:DerivedFrom rdf:parseType="Resource">\n' +
+    '    <stRef:filePath>' + _vpXmlEsc(originalPath) + '</stRef:filePath>\n' +
+    '    <stRef:documentID>' + origId + '</stRef:documentID>\n' +
+    '    <stRef:originalDocumentID>' + origId + '</stRef:originalDocumentID>\n' +
+    '   </xmpMM:DerivedFrom>\n' +
+    '   <dc:source>' + _vpXmlEsc(origName) + '</dc:source>\n' +
+    '  </rdf:Description>\n' +
+    ' </rdf:RDF>\n' +
+    '</x:xmpmeta>\n' +
+    '<?xpacket end="w"?>\n';
+}
+
+// Drop the sidecar next to the render. digiKam's own convention is
+// `<full filename>.xmp` — IMG_1234_crop_head.jpg.xmp — which keeps it distinct
+// from a sidecar belonging to a file of another extension with the same stem.
+// Never fatal: a crop that rendered is a success whether or not the note about
+// where it came from could be written.
+async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
+  try {
+    if (!(await _vpProxyHasFeature('xmpsidecar'))) return '';
+    const r = await fetch(PROXY_BASE + '/edit/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: outPath + '.xmp',
+                             text: _vpXmpSidecarText(originalPath, outPath, detail) })
+    });
+    const j = await r.json();
+    return (j && j.ok) ? '  ·  + .xmp' : '';
+  } catch (err) {
+    console.warn('[xmp sidecar failed]', err);
+    return '';
+  }
 }
 
 // (dev0293) A floating progress pill at the top of the V fullscreen.
@@ -7242,6 +7374,11 @@ window._vpImageCropOpen = function (host, img, row, onClose) {
   _vpMountCropOverlay(host, vidLike, row, { image: true });
   const s = _vpState.crop;
   if (!s) { _vpState = null; window._vpCurrentRow = null; return false; }
+  // (dev0863) Which picture this session is about, as the browser sees it. The
+  // save compares against this before it renders — see _vpImageSourceDrifted.
+  s._srcUrl  = img.currentSrc || img.src || '';
+  s._srcPath = row.comment || row.VidTitle || '';
+  s._fromShow = !!row._ssSlide;   // ?vect= has no show to drift against
   _vpCropToggle();                            // mounts hidden; this reveals it
   document.addEventListener('keydown', _vpImgKey, true);
   // The two facts the engine chip needs, neither of which is knowable
@@ -7345,15 +7482,41 @@ function _vpImgKey(e) {
   if (e.key === 'g' || e.key === 'G') { take(); _vpGoSave({ fromButton: true }); return; }
 }
 
-// Render the crop. Filename mirrors the video template so a folder of output
-// reads the same way, with `img` where the clip's duration goes and the engine
-// spelled out: `Base~id~SIZE~L|P~crop~[rNdeg~]img~lossless|q2~.jpg`.
+// (dev0863) Has the picture moved under us since the session opened? Two ways
+// it could: the <img> we mounted over swapped its own src, or the slideshow
+// advanced to a different slide while our element kept the old one (the crop
+// overlay is mounted on the show's container, not on the picture, so an advance
+// leaves it standing over the wrong one). Both are now prevented upstream —
+// this is the assertion that turns a regression into a refusal rather than a
+// crop of the wrong file, which is what it silently was before.
+function _vpImageSourceDrifted(s, img) {
+  if (!s || !img) return '';
+  const live = img.currentSrc || img.src || '';
+  if (s._srcUrl && live && live !== s._srcUrl) return 'this picture was replaced';
+  if (s._fromShow && s._srcUrl && typeof window._slideshowCropStillCurrent === 'function' &&
+      !window._slideshowCropStillCurrent(s._srcUrl)) return 'the show moved to another picture';
+  return '';
+}
+
+// Render the crop. The output is <original>_crop_<name>.<ext>, beside the
+// original — see the note above _vpCropFreePath.
 async function _vpImageSave(opts) {
   opts = opts || {};
   const s = _vpState && _vpState.crop;
   const img = _vpState && _vpState._img;
   const row = _vpState && _vpState.row;
   if (!s || !img || !row) return;
+  // (dev0863) Refuse before anything else if the source drifted — every check
+  // below reads `row`, and a stale row is a correct-looking crop of the wrong
+  // picture, which is the one failure this tool must never produce.
+  const drift = _vpImageSourceDrifted(s, img);
+  if (drift) {
+    if (typeof toast === 'function') {
+      toast('✂ not saved — ' + drift + ' since this crop opened. Close (C) and crop it again.', 5000);
+    }
+    console.warn('[image save refused: source drift]', { drift, opened: s._srcUrl, path: s._srcPath });
+    return;
+  }
   const relPath = row.comment || row.VidTitle || '';
   if (!relPath) { if (typeof toast === 'function') toast('save: no file path on this slide', 2400); return; }
   const absInput = _vpCropResolveAbsPath(relPath);
@@ -7446,9 +7609,9 @@ async function _vpImageSave(opts) {
       if (!ok) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
     }
   }
-  const id = prompt('Save name/ID for this crop:', '');
+  const id = prompt('Name this crop of "' + parts.base + '":', '');
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
-  const safeId = id.replace(/[<>:"/\\|?*~]/g, '_').trim() || 'unnamed';
+  const safeId = _vpCropSafeId(id);
 
   const verdict = _vpImgLossless(s, row);
   const moving  = !!(s.motion && s.motion.format !== 'still');
@@ -7457,7 +7620,7 @@ async function _vpImageSave(opts) {
   const outExt = moving ? s.motion.format
                : (verdict.ok ? parts.ext
                              : (/^(png|webp)$/i.test(parts.ext) ? parts.ext : 'jpg'));
-  const outDir = parts.dir + parts.sep + _vpOutDirStamp();
+  const outDir = parts.dir;   // (dev0863) beside the original
   // (dev0790) Which way up the OUTPUT is, taken from its pixels rather than from
   // the lock the box was drawn with — resHeight scales the short side, and with
   // a free ratio s.aspect no longer answers which side that is.
@@ -7538,16 +7701,18 @@ async function _vpImageSave(opts) {
     if (toks.length) engTok = toks.join('~');
   }
 
+  // (dev0863) The name is <original>_crop_<what you called it>; everything the
+  // old `~`-separated template spelled out — size, shape, tilt, engine, captions
+  // — moves into the sidecar's description, where it is readable prose rather
+  // than a filename nobody can scan.
   const angTok = s.angle ? ('r' + s.angle.toFixed(1).replace('.', '_') + 'deg') : '';
-  const nameParts = [parts.base, safeId, sizeStr, effAspect, 'crop'];
-  if (angTok) nameParts.push(angTok);
-  // (dev0790) A free-shape crop is neither 16:9 nor 9:16, so 'L'/'P' alone stops
-  // telling you what came out — same reasoning as the video path's bled names.
-  if (s.freeRatio) nameParts.push('ar' + _vpAspectLabel(
-    s.frac.w * VW, s.frac.h * VH).replace(':', '_'));
-  nameParts.push('img', engTok);
-  const outName = nameParts.join('~') + '~.' + outExt;
-  payload.output = outDir + parts.sep + outName;
+  const detail = [sizeStr, effAspect, angTok,
+                  s.freeRatio ? ('ar' + _vpAspectLabel(s.frac.w * VW, s.frac.h * VH)) : '',
+                  'img', engTok].filter(Boolean).join(' · ');
+  const want = outDir + parts.sep + parts.base + VP_CROP_TOKEN + safeId + '.' + outExt;
+  const free = await _vpCropFreePath(want);
+  payload.output = free.path;
+  const outName = String(free.path).split(/[\\/]/).pop();
 
   const btn = s.el.bar.querySelector('#vp-crop-do');
   const origLabel = btn ? btn.textContent : null;
@@ -7571,9 +7736,13 @@ async function _vpImageSave(opts) {
     // Exit code plays no part — see the note on the video path: an ffmpeg that
     // refuses -n still exits 0. (jpegtran's refusal arrives as a 400, folded
     // into the same shape by run() above.)
+    // (dev0863) With numbering on, this can only be a race (or a proxy too old
+    // to have numbered the name) — either way the old prompt is still the right
+    // question, since the alternative is losing a file that is already there.
     if (_vpCropStderrSaysExists(result.stderr)) {
       restore();
-      if (!confirm('"' + outName + '" already exists. Overwrite?')) {
+      if (!confirm('"' + outName + '" already exists. Overwrite?' +
+                   (free.asked ? '' : '\n\n(Restart "node proxy.js" and the next one gets numbered instead.)'))) {
         if (typeof toast === 'function') toast('save cancelled', 1600);
         return;
       }
@@ -7596,8 +7765,10 @@ async function _vpImageSave(opts) {
     if (result.exitCode === 0) {
       // (dev0790) …and the same for a still: the crop, the tilt, every caption.
       const kept = await _vpAutoKeepEdit(absInput, parts, payload.output);
+      // (dev0863) …and the note that says which picture this came out of.
+      const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
       if (typeof toast === 'function') {
-        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + kept, 3400);
+        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + kept + xmp, 3400);
       }
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
@@ -7657,8 +7828,9 @@ async function _vpGoSave(opts) {
     if (typeof toast === 'function') toast('save: cannot parse path', 2400);
     return;
   }
-  // (dev0742) Both paths below write into <source folder>/YYYYMMDD/.
-  const outDir = parts.dir + parts.sep + _vpOutDirStamp();
+  // (dev0863) Both paths below write BESIDE the source, as
+  // <original base>_crop_<name>.mp4 — see the note above _vpCropFreePath.
+  const outDir = parts.dir;
   // Crop overlay visible → crop+scale. Else → lossless trim.
   const cropOn = !!(_vpState.crop && _vpState.crop.el.container.style.display !== 'none');
   const vid = _vpState.player && _vpState.player.el;
@@ -7699,14 +7871,16 @@ async function _vpGoSave(opts) {
       }
     }
   }
-  const id = prompt('Save name/ID for this clip:', '');
+  const id = prompt('Name this clip from "' + parts.base + '":', '');
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
-  const safeId = id.replace(/[<>:"/\\|?*~]/g, '_').trim() || 'unnamed';
+  const safeId = _vpCropSafeId(id);
   const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
   const endSec   = Math.max(_vpState.aPoint, _vpState.bPoint);
   const durStr = _vpDurStr(endSec - startSec);
   // (dev0720) kenPayload: zoom ramp · (dev0777) trackPayload: moving window
-  let outName, payload, kenPayload = null, trackPayload = null;
+  // (dev0863) detailParts is what the filename used to spell out — size, shape,
+  // tilt, zoom, track, captions, duration. It goes in the sidecar now.
+  let outName, payload, kenPayload = null, trackPayload = null, detailParts = [];
   if (cropOn) {
     const s = _vpState.crop;
     const VW = vid.videoWidth, VH = vid.videoHeight;
@@ -7769,13 +7943,13 @@ async function _vpGoSave(opts) {
     }
     const p0 = mapPt(ef.x, ef.y);
     cropBox = { w: sw, h: sh, x: p0.x, y: p0.y };
-    const nameParts = [parts.base, safeId, sizeStr, effAspect, 'crop'];
-    if (angTok) nameParts.push(angTok);
+    detailParts = [sizeStr, effAspect, 'crop'];
+    if (angTok) detailParts.push(angTok);
     // (dev0778) A bled render is no longer 16:9, so the name has to carry the
     // shape — 'L'/'P' alone stops being enough the moment the dial is used.
     // (dev0790) …and a free-shape crop is in exactly the same position.
     if (s.freeRatio || (s.bleed && (s.frac.w > 1.001 || s.frac.h > 1.001))) {
-      nameParts.push('ar' + _vpAspectLabel(sw, sh).replace(':', '_'));
+      detailParts.push('ar' + _vpAspectLabel(sw, sh).replace(':', '_'));
     }
     // (dev0720) Ken Burns: the amber box is where the zoom ENDS, reached at the
     // frame it was placed on and held from there to B. Sent as fractions of the
@@ -7799,7 +7973,7 @@ async function _vpGoSave(opts) {
         fps: fps
       };
       kenTok = 'kb' + (1 / k.frac.w).toFixed(1).replace('.', '_') + 'x';
-      nameParts.push(kenTok);
+      detailParts.push(kenTok);
     }
     // (dev0777) The tracking window. Keys are held in ABSOLUTE video seconds, so
     // they are re-cut onto the current A→B here — including evaluating the path
@@ -7813,7 +7987,7 @@ async function _vpGoSave(opts) {
       });
       if (keys.length >= 2) {
         trackPayload = { keys, ease: s.track.ease, canvas: { w: canvasW, h: canvasH } };
-        nameParts.push('trk' + keys.length);
+        detailParts.push('trk' + keys.length);
       }
     }
     // (dev0724) Burned-in captions. Wrapped HERE, at the size ffmpeg will draw
@@ -7837,14 +8011,13 @@ async function _vpGoSave(opts) {
     const dims  = _vpOutputDims(s, sw, sh, effAspect);
     const tr    = _vpTextRenderList(tsrc, dims.ow, dims.oh, startSec, endSec);
     const texts = tr.texts, pauses = tr.pauses;
-    if (texts.length)  nameParts.push('tx' + texts.length);
-    if (pauses.length) nameParts.push('pz' + pauses.length);
-    if (s.deshake && s.deshake !== 'off') nameParts.push('ds-' + s.deshake);  // (dev0789)
-    nameParts.push(durStr);
-    outName = nameParts.join('~') + '~.mp4';
+    if (texts.length)  detailParts.push('tx' + texts.length);
+    if (pauses.length) detailParts.push('pz' + pauses.length);
+    if (s.deshake && s.deshake !== 'off') detailParts.push('ds-' + s.deshake);  // (dev0789)
+    detailParts.push(durStr);
     payload = {
       input: absInput,
-      output: outDir + parts.sep + outName,
+      output: '',                       // (dev0863) filled in after the branch
       crop: cropBox,
       crf: s.crf,
       preset: s.slow ? 'slow' : 'medium',
@@ -7881,15 +8054,22 @@ async function _vpGoSave(opts) {
     const sourceShort = (VW && VH) ? Math.min(VW, VH) : 0;
     const sourceSizeStr = sourceShort ? (sourceShort + 'p') : 'source';
     const sourceAspect  = (VW && VH) ? ((VW >= VH) ? 'L' : 'P') : 'L';
-    outName = [parts.base, safeId, sourceSizeStr, sourceAspect, 'full', durStr].join('~') + '~.mp4';
+    detailParts = [sourceSizeStr, sourceAspect, 'full', durStr];
     payload = {
       input: absInput,
-      output: outDir + parts.sep + outName,
+      output: '',                       // (dev0863) filled in after the branch
       trim: { startSec, endSec },
       overwrite: false
       // No `crop` → builder takes the lossless -c copy path.
     };
   }
+  // (dev0863) One name for both paths: beside the original, called after it,
+  // numbered by the proxy if that name is taken.
+  const detail = detailParts.filter(Boolean).join(' · ');
+  const free = await _vpCropFreePath(
+    outDir + parts.sep + parts.base + VP_CROP_TOKEN + safeId + '.mp4');
+  payload.output = free.path;
+  outName = String(free.path).split(/[\\/]/).pop();
   // (dev0319) Deskew preflight — a stale proxy silently ignores payload.rotate
   // and applies the rotated-canvas crop coords to the raw frame (grabs the wrong
   // region, no deskew). Refuse loudly instead of writing a mis-cropped file.
@@ -8028,7 +8208,8 @@ async function _vpGoSave(opts) {
     // and the toast said "saved" for a render that never happened.
     if (_vpCropStderrSaysExists(result.stderr)) {
       restoreUI();
-      if (confirm('"' + outName + '" already exists. Overwrite?')) {
+      if (confirm('"' + outName + '" already exists. Overwrite?' +
+                  (free.asked ? '' : '\n\n(Restart "node proxy.js" and the next one gets numbered instead.)'))) {
         // Re-mount pill if we tore it down above (overwrite path re-runs).
         const pill2 = useBtn ? null : _vpMakeProgressPill('Saving ');
         const target2 = useBtn || pill2;
@@ -8061,7 +8242,9 @@ async function _vpGoSave(opts) {
     if (result.exitCode === 0) {
       // (dev0790) The recipe rides along with the render, no keypress needed.
       const kept = await _vpAutoKeepEdit(absInput, parts, payload.output);
-      if (typeof toast === 'function') toast('saved → ' + outName + kept, 3200);
+      // (dev0863) …and the note that says which clip this came out of.
+      const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
+      if (typeof toast === 'function') toast('saved → ' + outName + kept + xmp, 3200);
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
       if (typeof toast === 'function') toast('save failed: ' + tail, 4200);
