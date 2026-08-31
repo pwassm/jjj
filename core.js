@@ -1770,7 +1770,10 @@ function buildSort() {
   const dir  = sortDir === 'desc' ? -1 : 1;
   const isDate = sortCol === 'DateAdded' || sortCol === 'DateModified';
   filtered.sort((a,b) => {
-    const va = String(data[a][sortCol]||''), vb = String(data[b][sortCol]||'');
+    // (dev0857) `||''` turned a numeric 0 into a blank, so `ltype: 0` rows sorted
+    // in among the empty ones instead of grouping. Only null/undefined is blank.
+    const sv = v => (v === null || v === undefined) ? '' : String(v);
+    const va = sv(data[a][sortCol]), vb = sv(data[b][sortCol]);
     if (!isDate) {
       const na = parseFloat(va), nb = parseFloat(vb);
       if (!isNaN(na) && !isNaN(nb)) return (na-nb)*dir;
@@ -3166,6 +3169,19 @@ function uidQueryMatches(q, uid) {
 }
 window.uidQueryMatches = uidQueryMatches;
 
+// (dev0857) One place that decides which LTYPE bucket a row falls into, used by
+// both the filter test and the pill builder so they can never disagree.
+// The old inline `String(row.ltype || '')` swallowed the NUMBER 0 (falsy), so
+// the 14 legacy `ltype: 0` rows were indistinguishable from rows with no ltype
+// at all and there was no pill that could isolate them. Only null/undefined is
+// blank now; 0 buckets as "0" and gets its own pill.
+function ltypeBucket(row) {
+  const v = row ? row.ltype : null;
+  if (v === null || v === undefined) return 'none';
+  return String(v).trim() || 'none';
+}
+window.ltypeBucket = ltypeBucket;
+
 function rowMatchesFilter(row) {
   // (dev0538) Top-of-T kind dropdown — an independent gate AND'd with f/F below.
   if (_kindFilter && rowKindFilter(row) !== _kindFilter) return false;
@@ -3239,8 +3255,7 @@ function rowMatchesFilter(row) {
     // with a blank/absent ltype.
     const lts = rowFilter.ltype || [];
     if (lts.length) {
-      const v = String(row.ltype || '').trim() || 'none';
-      if (!lts.includes(v)) return false;
+      if (!lts.includes(ltypeBucket(row))) return false;
     }
     return true;
   }
@@ -5913,7 +5928,7 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
     const counts = new Map();
     for (const r of data) {
       if (!r || r._salMeta) continue;
-      const v = String(r.ltype || '').trim() || 'none';
+      const v = ltypeBucket(r);
       counts.set(v, (counts.get(v) || 0) + 1);
     }
     const vals = [...counts.keys()].sort((a, b) =>
