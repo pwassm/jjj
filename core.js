@@ -4966,6 +4966,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingFixIgLtype();
     } else if (act === 'needsource') {
       housekeepingNeedSource();
+    } else if (act === 'wmnew') {
+      housekeepingWatermarkNew();
     } else if (act === 'addwm') {
       housekeepingAddWatermarked();
     } else if (act === 'resetftlsaved') {
@@ -5049,6 +5051,122 @@ function housekeepingFixIgLtype() {
   hits.forEach(r => { r.ltype = 'i'; r.DateModified = now; });
   save(); render();
   toast('✓ Fixed IG ltype — ' + hits.length + ' row(s) reassigned w → i', 3500);
+}
+
+// (dev0862) ── Watermark & Upload New Media ────────────────────────────────
+// The everyday M:\wm run, started from the menu instead of from a .bat whose
+// name nobody remembers. It used to be three separate things: find
+// WmUploadNew.bat, double-click it, come back here and run Add Watermarked
+// Media. Now it is one item, and the third step happens by itself.
+//
+// THE RUN STAYS IN ITS OWN CONSOLE WINDOW and stays interactive — it asks
+// before uploading to R2, and ffmpeg's progress is the only sign a long stamp
+// is still alive. See proxy wmRun for why that is not worth swallowing.
+//
+// WHAT IS AUTOMATED IS THE WAITING. watermark_r2.ps1 writes .wm_uploaded.txt
+// only AFTER the upload loop, and the proxy reports its timestamp as
+// /wm/list's `uploadedAt`, so "the files are live now" is a fact rather than a
+// guess. When it moves, Add Watermarked Media runs — and that already confirms
+// with the file list before writing a row, which is the safety net either way.
+//
+// FALLBACK for an M:\wm that predates the marker (that folder is outside the
+// repo, so a restore from .bak can quietly take it away — see the memory note):
+// if uploadedAt never moves but the folder has GROWN and then held still for a
+// full minute, offer anyway and say the upload is unconfirmed.
+const _WM_POLL_MS    = 5000;
+const _WM_POLL_MAX   = 45 * 60 * 1000;   // a big photo batch runs a long time
+const _WM_STABLE_N   = 12;               // 12 × 5s = 60s unchanged, fallback only
+let _wmWatch = null;
+
+async function _wmSnapshot(PROXY) {
+  try {
+    const r = await fetch(PROXY + '/wm/list');
+    const j = await r.json();
+    if (!j || !j.ok || !Array.isArray(j.files)) return null;
+    return { keys: new Set(j.files.map(f => f.key)), uploadedAt: +j.uploadedAt || 0 };
+  } catch (_) { return null; }
+}
+
+async function housekeepingWatermarkNew() {
+  const PROXY = 'http://127.0.0.1:8081';
+  if (_wmWatch) {
+    if (!confirm('A watermark run is already being watched.\n\n'
+      + 'Stop watching? (the console window keeps going either way — you would\n'
+      + 'just add the files with Housekeeping > Add Watermarked Media yourself)')) return;
+    clearTimeout(_wmWatch.timer);
+    _wmWatch = null;
+    toast('Stopped watching — use Add Watermarked Media when the run finishes', 3500);
+    return;
+  }
+
+  const before = await _wmSnapshot(PROXY);
+  if (!before) {
+    toast('\u26a0 Watermark run: proxy not reachable on 8081 — start proxy.js', 4000);
+    return;
+  }
+  if (!confirm('Watermark and upload everything new in M:\\wm\\originals\\ ?\n\n'
+    + '\u2022 A console window opens and runs WmUploadNew.bat. Only files with no\n'
+    + '  watermarked\\ twin are stamped, so nothing already published is redone.\n'
+    + '\u2022 Answer y when it asks to upload to R2.\n'
+    + '\u2022 T watches the folder and offers to add the new rows itself —\n'
+    + '  it will NOT open a second tab.\n\n'
+    + 'Check the byline first: files loose in originals\\ get the default\n'
+    + '("at Monterey Bay Aquarium"), and only a "from <Place>" subfolder\n'
+    + 'changes it. That folder is part of the public URL, so moving one\n'
+    + 'afterwards means a new link and a second row.')) return;
+
+  let j = null;
+  try {
+    const r = await fetch(PROXY + '/wm/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    j = await r.json();
+  } catch (_) {}
+  if (!j || !j.ok) {
+    toast('\u26a0 Could not start the run: ' + ((j && j.error) || 'no answer from the proxy')
+      + '\n(needs proxy dev0862+ — RESTART proxy.js if you just updated it)', 6000);
+    return;
+  }
+
+  toast('\ud83c\udfac Watermark run started — answer the console window.\n'
+    + 'T is watching, and will offer to add the files once they are uploaded.', 6500);
+  _wmWatch = { before: before.keys, wasUploadedAt: before.uploadedAt,
+               deadline: Date.now() + _WM_POLL_MAX, lastN: before.keys.size,
+               stable: 0, timer: null };
+  _wmWatchPoll(PROXY);
+}
+
+async function _wmWatchPoll(PROXY) {
+  const w = _wmWatch;
+  if (!w) return;
+  if (Date.now() > w.deadline) {
+    _wmWatch = null;
+    toast('Stopped watching the watermark folder after 45 minutes.\n'
+      + 'Run Housekeeping \u25b8 Add Watermarked Media when the console is done.', 6000);
+    return;
+  }
+  const now = await _wmSnapshot(PROXY);
+  if (now) {
+    const added = Array.from(now.keys).filter(k => !w.before.has(k));
+    // The real signal: the script says it has uploaded since we started.
+    const uploaded = now.uploadedAt > w.wasUploadedAt;
+    // The fallback: new files, and the folder has not changed for a minute.
+    if (now.keys.size === w.lastN) w.stable++; else w.stable = 0;
+    w.lastN = now.keys.size;
+    const settled = added.length && w.stable >= _WM_STABLE_N;
+    if (uploaded || settled) {
+      _wmWatch = null;
+      if (uploaded) {
+        toast('\u2713 Upload finished — ' + added.length + ' new file(s). Adding them to T\u2026', 5000);
+      } else {
+        toast('\u26a0 ' + added.length + ' file(s) stamped, but the run never confirmed an upload.\n'
+          + 'Only add them if the console said the upload was done.', 7000);
+      }
+      housekeepingAddWatermarked();
+      return;
+    }
+  }
+  w.timer = setTimeout(() => _wmWatchPoll(PROXY), _WM_POLL_MS);
 }
 
 // (dev0766) ── Add Watermarked Media ───────────────────────────────────────

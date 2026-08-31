@@ -2874,6 +2874,11 @@ function streamExecCollect(req, res, bin, args, onDone) {
 // (dev0819) …and photos: the M:\wm tooling now stamps .jpg/.png in the same
 // run as video, into the same folder, so the two travel together from here on.
 const WM_DIR = process.env.WM_DIR || 'M:\\wm\\watermarked';
+// (dev0862) The everyday watermark run, and the marker it drops once the files
+// have actually reached R2. Both live one level up from watermarked\.
+const WM_ROOT       = path.dirname(WM_DIR);
+const WM_UPLOAD_BAT = process.env.WM_UPLOAD_BAT || path.join(WM_ROOT, 'WmUploadNew.bat');
+const WM_DONE_FILE  = path.join(WM_ROOT, '.wm_uploaded.txt');
 const WM_EXT = /\.(mp4|webm|mov|m4v|jpg|jpeg|png)$/i;
 const WM_IMG = /\.(jpg|jpeg|png)$/i;
 
@@ -2907,7 +2912,46 @@ function wmList(res, origin) {
   };
   walk(WM_DIR, '');
   files.sort((a, b) => a.key.localeCompare(b.key));
-  sendJson(res, 200, { ok: true, dir: WM_DIR, files }, origin);
+  // (dev0862) When the last run finished UPLOADING, as watermark_r2.ps1 records
+  // it. A file sitting in watermarked\ only proves it was STAMPED — the script
+  // asks before uploading, and a declined upload leaves the folder looking
+  // exactly the same. This is the only honest "it is live now" signal, and it is
+  // what Housekeeping's watcher waits for. 0 = no marker (an older ps1).
+  let uploadedAt = 0;
+  try { uploadedAt = fs.statSync(WM_DONE_FILE).mtimeMs; } catch (_) {}
+  sendJson(res, 200, { ok: true, dir: WM_DIR, files, uploadedAt }, origin);
+}
+
+// (dev0862) ── Start the watermark-and-upload run ─────────────────────────────
+// Launches M:\wm\WmUploadNew.bat in its OWN console window and returns at once.
+//
+// NOT run headless, deliberately: in uploadnew mode the script asks before it
+// uploads anything to R2, and ffmpeg's progress lines are the only sign a long
+// stamp is still alive. A window the user answers is the honest shape for that —
+// capturing the output and re-inventing both prompts in the browser would buy
+// nothing. What the browser end automates is the step AFTER: it polls
+// /wm/list's uploadedAt and runs Add Watermarked Media itself.
+//
+// WM_FROM_APP=1 tells watermark_r2.ps1 to skip its closing "open a NEW T tab?"
+// question: T is already open — it is what called this — and a second tab that
+// saves would overwrite whatever is unsaved in the first.
+function wmRun(res, origin) {
+  if (!fs.existsSync(WM_UPLOAD_BAT)) {
+    sendJson(res, 404, { ok: false, error: 'not found: ' + WM_UPLOAD_BAT }, origin);
+    return;
+  }
+  try {
+    const p = spawn(process.env.COMSPEC || 'cmd.exe', ['/c', WM_UPLOAD_BAT], {
+      cwd: WM_ROOT, detached: true, stdio: 'ignore', windowsHide: false,
+      env: Object.assign({}, process.env, { WM_FROM_APP: '1' })
+    });
+    p.on('error', () => {});
+    p.unref();
+    console.log('[wm] launched ' + WM_UPLOAD_BAT);
+    sendJson(res, 200, { ok: true, bat: WM_UPLOAD_BAT }, origin);
+  } catch (e) {
+    sendJson(res, 500, { ok: false, error: e.message }, origin);
+  }
 }
 
 // One file's duration + pixel dimensions, so a new ml.json row lands with
@@ -6159,7 +6203,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake',
-      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave']) }));
+      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
 
@@ -6397,9 +6441,16 @@ http.createServer((req, res) => {
       send(res, 403, 'wm: origin not allowed: ' + (origin || '(none)'));
       return;
     }
-    if (req.method !== 'GET') { send(res, 405, 'wm: GET required', corsForExec(origin)); return; }
     const u = new URL(req.url, 'http://127.0.0.1');
     const action = u.pathname.slice('/wm/'.length);
+    // (dev0862) `run` starts a process, so it is POST like /exec. Everything
+    // else under /wm/ only reads a folder and stays GET.
+    if (action === 'run') {
+      if (req.method !== 'POST') { send(res, 405, 'wm: POST required for run', corsForExec(origin)); return; }
+      wmRun(res, origin);
+      return;
+    }
+    if (req.method !== 'GET') { send(res, 405, 'wm: GET required', corsForExec(origin)); return; }
     if (action === 'list')  { wmList(res, origin); return; }
     if (action === 'probe') { wmProbe(res, origin, u.searchParams.get('key') || ''); return; }
     sendJson(res, 404, { ok: false, error: 'unknown wm action: ' + action }, origin);
