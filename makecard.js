@@ -543,7 +543,11 @@
     var row = {
       UID: (typeof nextUID === 'function') ? nextUID() : String(Date.now()),
       link: '', show: '1', DateAdded: now, DateModified: now,
-      ltype: 0, ftext: ftext, tags: []
+      // (dev0856) 'f' = flashcard. Was the NUMBER 0, which is falsy, so
+      // String(row.ltype || '') collapsed it to '' — every card was
+      // indistinguishable from a row with no ltype at all and fell into the
+      // filter's 'none' bucket (core.js ~3242). A string value is filterable.
+      ltype: 'f', ftext: ftext, tags: []
     };
     if (title) row.VidTitle = title;
     data.push(row);
