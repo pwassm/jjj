@@ -51,13 +51,43 @@
   // A port of the .ahk's RegExReplace pipeline, restricted to tags that are
   // BOTH in _sanitizePastedHtml's KEEP set and in the xe2.js schema — so the
   // card survives an Xe open + autosave round trip untouched.
+  // [label](url) → anchor. NOT a regex: a naive /\(([^\s)]+)\)/ ends the URL at
+  // the FIRST ")", and real citation URLs contain parentheses —
+  //   …/DIET-AND-FEEDING-IN-THE-SEA-STAR-ASTROPECTEN-(1888)-Loh-Todd/be9a…
+  // truncated to "…-ASTROPECTEN-(1888" with "-Loh-Todd/be9a…)" stranded as text
+  // beside a dead link (observed on UID 2160, dev0851).
+  // A URL cannot contain whitespace, so the token is unambiguous: take
+  // everything up to the next space, and treat the LAST ")" in it as markdown's
+  // closing delimiter. Anything after that ")" is real trailing text and is
+  // re-emitted — which also fixes "[a](url)." losing its full stop.
+  function _mcMdLinks(t) {
+    var out = '', i = 0;
+    while (true) {
+      var open = t.indexOf('](', i);
+      if (open < 0) { out += t.slice(i); return out; }
+      // Walk back to the matching '[' — labels never contain '[' or a newline.
+      var lb = t.lastIndexOf('[', open);
+      if (lb < 0 || /[\n\]]/.test(t.slice(lb + 1, open))) { out += t.slice(i, open + 2); i = open + 2; continue; }
+
+      var urlStart = open + 2;
+      var sp = t.slice(urlStart).search(/\s/);
+      var tok = sp < 0 ? t.slice(urlStart) : t.slice(urlStart, urlStart + sp);
+      var close = tok.lastIndexOf(')');
+      var url = close < 0 ? '' : tok.slice(0, close);
+
+      if (!/^https?:\/\//i.test(url)) { out += t.slice(i, open + 2); i = open + 2; continue; }
+
+      out += t.slice(i, lb)
+           + '<a href="' + url.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">'
+           + t.slice(lb + 1, open) + '</a>'
+           + tok.slice(close + 1);          // trailing text that followed the ")"
+      i = urlStart + tok.length;
+    }
+  }
+
   function _mcInline(s) {
-    var t = _mcEsc(s);
-    // [label](url) first: emphasis must never get a chance to chew a URL that
-    // contains * or _ .
-    t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, function (m, label, url) {
-      return '<a href="' + url.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + label + '</a>';
-    });
+    // Links first: emphasis must never get a chance to chew a URL holding * or _.
+    var t = _mcMdLinks(_mcEsc(s));
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
     return t;
@@ -248,6 +278,12 @@
     return { imgUrl: imgUrl, body: body.trim() };
   }
 
+  function _mcFileStamp() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_'
+         + p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds());
+  }
+
   async function _mcFetchAsDataUri(url) {
     // R2's custom domain sends no CORS header, so the local proxy is the normal
     // path; a direct fetch is the fallback for same-origin / already-CORS URLs.
@@ -265,34 +301,77 @@
     return 'data:' + mime + ';base64,' + await _mcBlobToB64(blob);
   }
 
-  async function makeCardExportRow(di) {
-    var row = (typeof data !== 'undefined' && data) ? data[di] : null;
-    if (!row || !row.ftext) { _mcToast('Row ' + (di + 1) + ' has no ftext to export.', 3000); return; }
-    var parts = _mcSplitCard(row.ftext);
-    if (!parts.imgUrl) { _mcToast('Row ' + (di + 1) + ': no <img> found in ftext.', 3000); return; }
+  // Build the standalone document for ANY ftext row, with every http(s) image
+  // pulled in as base64 so the file opens with no network and no app.
+  // Card-shaped ftext (image, then a top-level <hr>) keeps the two-page
+  // image/text layout; anything else renders as one text page.
+  async function makeCardBuildHtml(row) {
+    var ftext = String((row && row.ftext) || '');
+    if (!ftext.trim()) throw new Error('this slide has no ftext');
+    var parts = _mcSplitCard(ftext);
+    var isCard = !!parts.imgUrl && /<hr\b/i.test(ftext);
 
-    _mcToast('Inlining image…', 4000);
-    var dataUri;
-    try { dataUri = await _mcFetchAsDataUri(parts.imgUrl); }
-    catch (e) { _mcToast('⚠ ' + e.message, 6000); return; }
+    // Inline every remote image (a card has one; a general slide may have more).
+    var body = isCard ? parts.body : ftext;
+    var head = isCard ? parts.imgUrl : '';
+    var urls = [];
+    body.replace(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi, function (m, u) { urls.push(u); return m; });
+    if (head) urls.unshift(head);
 
-    var title = String(row.VidTitle || ('Card ' + (row.UID || di + 1)));
-    var html =
-      '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
-      '<title>' + _mcEsc(title) + '</title>\n<style>\n' + CARD_CSS + '\n</style>\n</head>\n<body>\n' +
-      '  <div class="image-page">\n    <img class="specimen" src="' + dataUri + '" alt="Specimen Image">\n  </div>\n' +
-      '  <div class="text-page">\n    <div class="card">\n      <div class="content">\n' +
-      parts.body + '\n      </div>\n    </div>\n  </div>\n</body>\n</html>\n';
+    var map = {};
+    for (var i = 0; i < urls.length; i++) {
+      if (map[urls[i]] || /^data:/i.test(urls[i])) continue;
+      map[urls[i]] = await _mcFetchAsDataUri(urls[i]);
+    }
+    var swap = function (s) {
+      return s.replace(/(<img\b[^>]*\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
+                       function (m, a, u, b) { return a + (map[u] || u) + b; });
+    };
+    body = swap(body);
+    var headUri = head ? (map[head] || head) : '';
 
-    var stem = (title.replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '_').slice(0, 60)) || ('card-' + (row.UID || di));
+    var title = String((row && row.VidTitle) || (row && row.UID ? 'Card ' + row.UID : 'Card'));
+    return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
+      + '<title>' + _mcEsc(title) + '</title>\n<style>\n' + CARD_CSS + '\n</style>\n</head>\n<body>\n'
+      + (headUri
+          ? '  <div class="image-page">\n    <img class="specimen" src="' + headUri + '" alt="Specimen Image">\n  </div>\n'
+          : '')
+      + '  <div class="text-page">\n    <div class="card">\n      <div class="content">\n'
+      + body + '\n      </div>\n    </div>\n  </div>\n</body>\n</html>\n';
+  }
+
+  function _mcDownload(html, filename) {
     var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = stem + '.html';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
-    _mcToast('✓ ' + a.download + '  (' + Math.round(html.length / 1024) + ' KB)', 5000);
+    _mcToast('✓ ' + filename + '  (' + Math.round(html.length / 1024) + ' KB)', 5000);
+  }
+
+  // The Xs / row-menu entry point. Offers a datestamped name the user can edit
+  // — the .ahk named its files by timestamp and that ordering is worth keeping,
+  // but a deck of "2026-08-30_16-38-14.html" is unreadable a week later.
+  async function makeCardExport(row, label) {
+    if (!row || !row.ftext) { _mcToast((label || 'This row') + ' has no ftext to export.', 3000); return; }
+    _mcToast('Inlining image…', 4000);
+    var html;
+    try { html = await makeCardBuildHtml(row); }
+    catch (e) { _mcToast('⚠ ' + ((e && e.message) || e), 6000); return; }
+
+    var stamp = _mcFileStamp();
+    var name = window.prompt('Save flash card as:', stamp + '.html');
+    if (name === null) return;                       // cancelled
+    name = String(name).trim().replace(/[\\/:*?"<>|]+/g, '-') || (stamp + '.html');
+    if (!/\.html?$/i.test(name)) name += '.html';
+    _mcDownload(html, name);
+  }
+
+  function makeCardExportRow(di) {
+    var row = (typeof data !== 'undefined' && data) ? data[di] : null;
+    return makeCardExport(row, 'Row ' + (di + 1));
   }
 
   // Offered on the T row menu only for rows that actually are cards.
@@ -550,6 +629,8 @@
   // ── wiring ───────────────────────────────────────────────────────────────
   window.makeCardOpen       = makeCardOpen;
   window.makeCardClose      = makeCardClose;
+  window.makeCardExport     = makeCardExport;      // (dev0852) Xs ⬇ Download
+  window.makeCardBuildHtml  = makeCardBuildHtml;
   window.makeCardExportRow  = makeCardExportRow;
   window.makeCardRowIsCard  = makeCardRowIsCard;
   window.makeCardIsOpen     = function () { return !!_mcState; };

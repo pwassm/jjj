@@ -1590,8 +1590,41 @@ function gridOpenFullscreen(row, contained) {
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:absolute;top:48px;left:0;right:0;bottom:0;'
       + 'width:100%;height:calc(100% - 48px);border:none;background:#fff;';
-    iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-modals allow-downloads');
+    // (dev0852) allow-popups + allow-popups-to-escape-sandbox. EVERY anchor in
+    // ftext carries target="_blank" (both _linkifyTextSegment and the Xe link
+    // tool write it), and a sandboxed frame WITHOUT allow-popups silently
+    // refuses to open one - so no link in ANY text slide worked on slam.com,
+    // while the same slide's links worked in Xe's Xs preview, which is a plain
+    // div in this document rather than a sandboxed frame. Same "works on
+    // localhost via Xs, never on slam.com" shape as dev0636.
+    // -to-escape-sandbox matters too: without it the opened tab INHERITS this
+    // sandbox (opaque origin, no storage) and most sites break on arrival.
+    iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-modals allow-downloads allow-popups allow-popups-to-escape-sandbox');
     content.appendChild(iframe);
+
+    // (dev0852) Bottom-right "Download" on a TEXT slide - saves this slide as
+    // a standalone .html with every image re-embedded as base64, so it opens
+    // with no network, no R2 and no app. Lives in THIS document rather than
+    // inside the srcdoc frame: that frame is sandboxed, and the builder it
+    // calls (makecard.js) is a parent-window global. Skipped for quizzes,
+    // which carry their own chrome.
+    if (!row.qfile && typeof window.makeCardExport === 'function') {
+      const dlBtn = document.createElement('button');
+      dlBtn.id = 'vp-html-download';
+      dlBtn.textContent = '⬇ Download';
+      dlBtn.title = 'Save this slide as a standalone .html (images embedded)';
+      dlBtn.style.cssText = 'position:absolute;right:14px;bottom:14px;z-index:70;'
+        + 'background:#1a1a2e;border:1px solid #6af;color:#cde;padding:7px 14px;'
+        + 'border-radius:6px;cursor:pointer;font-family:monospace;font-size:13px;'
+        + 'box-shadow:0 3px 12px rgba(0,0,0,0.5);opacity:0.88;';
+      dlBtn.addEventListener('mouseenter', () => { dlBtn.style.opacity = '1'; });
+      dlBtn.addEventListener('mouseleave', () => { dlBtn.style.opacity = '0.88'; });
+      dlBtn.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        window.makeCardExport(row, 'This slide');
+      });
+      content.appendChild(dlBtn);
+    }
     // (dev0350) The srcdoc HTML grabs keyboard focus, so a top-level Esc never
     // reaches vpKeyHandler and Xs (the slide an X-cell swipe opens from G) felt
     // stuck. Forward Esc from inside the same-origin iframe to vpClose so Escape
