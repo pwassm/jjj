@@ -41,6 +41,38 @@
   const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
   // ── public API ───────────────────────────────────────────────────────────
+  // ── salFold (dev0855) ───────────────────────────────────────────
+  // ONE fold used by EVERY search path in the app: this file (searchTags, the
+  // chip suggestions), boot.js (the shareable-menu Search blobs + query) and
+  // core.js (the T 'anywhere' filter). It is shared rather than copied because
+  // the whole safety of diacritic folding rests on both sides of a comparison
+  // being folded IDENTICALLY:
+  //   • Fold both sides and the change is monotone — it can only ADD matches,
+  //     never lose one that works today.
+  //   • Fold ONE side and it silently breaks. NFD decomposes Japanese dakuten
+  //     (バ → ハ + U+3099) and Korean Hangul into jamo; folded on both sides
+  //     those still match perfectly, folded on one side CJK search dies.
+  // Two stages, because NFD alone only gets you halfway:
+  //   1. NFD + strip U+0300-036F handles the combining-mark letters (é ñ ü å).
+  //   2. The map handles the atomic ones NFD cannot touch — ø æ ł đ ß ð þ have
+  //      no decomposition at all, so "klippelæbefisk" would stay unreachable
+  //      from an ASCII keyboard without it. Expansions follow lodash.deburr
+  //      (æ→ae, ø→o, œ→oe, ß→ss) rather than being invented here.
+  // Known and accepted: Cyrillic й→и and ё→е merge two real letters, so "мои"
+  // matches "мой". Over-matching only; the collection has 5 Cyrillic rows.
+  const _foldMap = { 'ø': 'o', 'æ': 'ae', 'œ': 'oe', 'ß': 'ss',
+                     'ð': 'd', 'þ': 'th', 'đ': 'd', 'ł': 'l',
+                     'ŧ': 't', 'ħ': 'h', 'ŋ': 'n', 'ı': 'i' };
+  function salFold(s) {
+    return String(s == null ? '' : s)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[\u00f8\u00e6\u0153\u00df\u00f0\u00fe\u0111\u0142\u0167\u0127\u014b\u0131]/g,
+               ch => _foldMap[ch] || ch);
+  }
+  window.salFold = salFold;
+
   const api = {
     load: loadTags,
     save: saveTags,
@@ -65,6 +97,7 @@
     renderChipsForRecord,
     recordTagIds,
     search: searchTags,
+    fold: salFold,
     resolveTaxon: (name, opts) => resolveTaxon(name, opts),
     closeMenu: closeChipContextMenu,
   };
@@ -75,12 +108,15 @@
   function searchTags(q, limit) {
     if (!q) return [];
     limit = limit || 20;
-    const lq = q.toLowerCase();
+    // (dev0855) Folded on BOTH sides — see salFold. Without it the chips fall
+    // out of step with the results: typing 'senorita' would find the rows but
+    // show no Oxyjulis chip — the same class of confusion as the old chip bug.
+    const lq = salFold(q);
     const scored = [];
     tagsArr.forEach(t => {
-      const lbl = (t.label || '').toLowerCase();
-      const com = (t.common || '').toLowerCase();
-      const ali = (t.aliases || []).map(a => String(a).toLowerCase());
+      const lbl = salFold(t.label || '');
+      const com = salFold(t.common || '');
+      const ali = (t.aliases || []).map(a => salFold(a));
       const inLabel   = lbl.includes(lq);
       const inCommon  = com.includes(lq);
       const inAlias   = ali.some(a => a.includes(lq));

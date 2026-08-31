@@ -3190,15 +3190,21 @@ function rowMatchesFilter(row) {
       }
       if (k === 'anywhere') {
         // OR across all text fields + tag labels
+        // (dev0855) Diacritic-folded on BOTH sides via window.salFold (tags.js),
+        // the same fold the shareable-menu Search uses, so Anywhere here and
+        // Search there agree on what "senorita" finds. Fold NEVER loses a match
+        // that worked before — it only adds the unaccented spelling.
+        const fq = window.salFold ? window.salFold(q) : q;
         const textFields = ['VidAuthor', 'VidTitle', 'link', 'linkpage', 'VidComment'];
-        let found = textFields.some(f => String(row[f] || '').toLowerCase().includes(q));
+        const fold = v => (window.salFold ? window.salFold(v) : String(v == null ? '' : v).toLowerCase());
+        let found = textFields.some(f => fold(row[f] || '').includes(fq));
         // (dev0760) …plus an EXACT UID hit, so pasting a bare UID into Anywhere finds its row.
         if (!found && String(row.UID == null ? '' : row.UID).trim().toLowerCase() === q) found = true;
-        if (!found) found = String(row.ftext || '').replace(/<[^>]*>/g, ' ').toLowerCase().includes(q);
+        if (!found) found = fold(String(row.ftext || '').replace(/<[^>]*>/g, ' ')).includes(fq);
         if (!found && window.tagsLib && row.tags) {
           for (const tid of row.tags) {
             const t = window.tagsLib.get(tid);
-            if (t && ((t.label||'').toLowerCase().includes(q) || (t.common||'').toLowerCase().includes(q))) {
+            if (t && (fold(t.label||'').includes(fq) || fold(t.common||'').includes(fq))) {
               found = true; break;
             }
           }

@@ -945,8 +945,15 @@ async function _showShareableMenu() {
   const _tBlobs = mlRows
     .filter(r => r && !r._salMeta && r.UID != null && !_isGreeting(r.ttxt))
     .map(r => {
-      const staticBlob = (['VidAuthor', 'VidTitle', 'link', 'VidComment'].map(f => String(r[f] || '')).join(' ')
-        + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' ')).toLowerCase();
+      // (dev0854) 'link' is NOT in the blob. A YouTube/Vimeo id is a random
+      // alphanumeric string, so short queries hit it by accident: 'oxy' matched
+      // youtu.be/pIHcatOXyf4 (a gumboot chiton) and youtu.be/CKoXY1Y0kGk (table
+      // tennis) alongside the eight real Oxyjulis rows. No viewer searches by
+      // URL, so the field is pure noise here.
+      // (dev0855) salFold, not toLowerCase: the blob and the query are folded
+      // with the SAME function so a viewer can type 'senorita' for 'señorita'.
+      const staticBlob = window.salFold(['VidAuthor', 'VidTitle', 'VidComment'].map(f => String(r[f] || '')).join(' ')
+        + ' ' + String(r.ftext || '').replace(/<[^>]*>/g, ' '));
       const kind = window.rowMediaKind ? window.rowMediaKind(r) : 'other';
       const playable = _smPlayable(r);
       // (dev0400) Tag text is resolved LAZILY (see _smResolveTags) rather than
@@ -989,7 +996,7 @@ async function _showShareableMenu() {
           + ' ' + (t.def || '');
       if (t.kind === 'taxon') taxon = true;
     });
-    e.tagBlob = tb.toLowerCase();
+    e.tagBlob = window.salFold(tb);   // (dev0855) same fold as the query
     e.hasTaxon = taxon;
   };
   // Result label per the user's rule: ftext-bearing rows (Xe — incl. quiz, and
@@ -1267,7 +1274,10 @@ async function _showShareableMenu() {
     // carrying the dictionary tags + the row's comment.
     + '.sm-rcol{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}'
     + '.sm-rname{font-size:17px;color:#eef4fa;}'
-    + '.sm-rmeta{font-size:12px;color:#cfe0f0;line-height:1.35;}'
+    // (dev0854) Clamped to 3 lines. VidComment is unbounded — one row carried an
+    // 1188-char comment that filled the whole results list with a single card.
+    + '.sm-rmeta{font-size:12px;color:#cfe0f0;line-height:1.35;'
+      + 'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;}'
     // (dev0401) SavedSearches row buttons (Open / Delete) on the right of a card.
     + '.sm-svbtns{flex:none;display:flex;gap:8px;align-items:center;}'
     + '.sm-svbtn{padding:8px 14px;border-radius:7px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#eef4fa;font-family:inherit;font-size:13px;cursor:pointer;white-space:nowrap;}'
@@ -2068,10 +2078,16 @@ async function _showShareableMenu() {
   let _smGridable = [];
   const _smRunSearch = () => {
     const q = (_smBox.value || '').trim();
-    const lq = q.toLowerCase();
+    const lq = window.salFold(q);   // (dev0855) matches the folded blobs
     if (_smSuggEl) {
       const sug = (q && window.tagsLib && window.tagsLib.search) ? window.tagsLib.search(q, 8) : [];
-      _smSuggEl.innerHTML = sug.map(t => '<span class="sm-chip" data-q="' + _smEsc(t.common || t.label) + '">' + _smEsc(t.label) + '</span>').join('');
+      // (dev0854) data-q is the LABEL, i.e. the text on the chip. It used to be
+      // (common || label): clicking a chip reading 'Oxyjulis californica' silently
+      // typed 'senorita' and returned 9 rows where the label returns 8 — the extra
+      // one a rock wrasse (Halichoeres semicinctus) that merely shares the common
+      // name in its title. A tagged row's tagBlob holds label+common+aliases+def,
+      // so the label still finds every row carrying the tag, and only that.
+      _smSuggEl.innerHTML = sug.map(t => '<span class="sm-chip" data-q="' + _smEsc(t.label) + '">' + _smEsc(t.label) + '</span>').join('');
       _smSuggEl.querySelectorAll('.sm-chip').forEach(c =>
         c.addEventListener('click', () => { _smBox.value = c.dataset.q; _smRunSearch(); }));
     }
@@ -2177,7 +2193,7 @@ async function _showShareableMenu() {
   // Rows a query resolves to right now (same blob + COI filtering the Search tab
   // uses). Shared by the SavedSearches live count and its Open-the-grid action.
   const _smRowsForQuery = q => {
-    const lq = String(q || '').toLowerCase();
+    const lq = window.salFold(q);   // (dev0855) same fold as _smRunSearch
     let hits = _tBlobs.filter(x => {
       if (!x.playable) return false;   // (dev0668) same rule as _smRunSearch
       _smResolveTags(x);
