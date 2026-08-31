@@ -599,7 +599,15 @@ async function _showShareableMenu() {
       try { const fh = await dir.getFileHandle('ml.json'); ml = JSON.parse(await (await fh.getFile()).text()); } catch (e) {}
       try { const fh = await dir.getFileHandle('c.json');  cj = JSON.parse(await (await fh.getFile()).text()); } catch (e) {}
     }
-    if (!ml) { try { const r = await fetch('ml.json?t=' + Date.now()); if (r.ok) ml = await r.json(); } catch (e) {} }
+    // (dev0853) HTTP fallback tries ml.json then the published copy. On this
+  // machine ml.json is on disk (and gitignored); on GitHub Pages only
+  // ml.public.json is committed, so that is what the site gets. See the
+  // ML_PUBLIC block in core.js for why the file is split at all.
+  if (!ml) {
+    for (const _mlF of ['ml.json', 'ml.public.json']) {
+      try { const r = await fetch(_mlF + '?t=' + Date.now()); if (r.ok) { ml = await r.json(); break; } } catch (e) {}
+    }
+  }
     if (!cj) { try { const r = await fetch('c.json?t='  + Date.now()); if (r.ok) cj = await r.json(); } catch (e) {} }
   } catch (e) {}
 

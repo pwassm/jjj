@@ -920,7 +920,120 @@ function _rehydrateFtextFromPrev(rows, prevRows) {
 }
 if (typeof module !== 'undefined' && module.exports) module.exports._rehydrateFtextFromPrev = _rehydrateFtextFromPrev;
 
+// (dev0853) ── ml.public.json: the copy the world gets ─────────────────────
+// The repo is public and GitHub Pages serves whatever is committed, so every
+// byte of ml.json was readable at https://sealifeandmore.com/ml.json — 6.2 MB
+// including 4.8 MB of ftext, among it packaged copies of other people's web
+// pages (stripped of their formatting, links and ads) and a personal travel
+// itinerary. No client-side filter can help: `show`, user-mode and the search
+// exclusion all run AFTER the browser has downloaded the whole file.
+//
+// So save() now writes TWO files:
+//   ml.json         full, on disk, GITIGNORED  → localhost serves it to the dev
+//   ml.public.json  filtered, COMMITTED        → Pages serves it to everyone
+// load() fetches ml.json first and falls back to ml.public.json, which needs no
+// environment sniffing: locally ml.json exists, on Pages it does not.
+//
+// A row's ftext is published ONLY if a viewer can actually reach it. Every
+// other row keeps its metadata and loses its ftext (rows are never dropped, so
+// no grid cell or Direct link can break). Takes 6.2 MB to ~1.2 MB.
+const ML_PUBLIC = 'ml.public.json';
+let _mlLoadedFile = 'ml.json';
+
+// c.json cell values address a row by UID, sometimes with a suffix:
+// "19@0.685,0.335" (framing) or "1029/0.9" (zoom).
+function _mlGridUids(cfgRows) {
+  const CELL = /^\d+[a-zA-Z]$|^\d+[LP]$/;
+  const out = new Set();
+  if (!Array.isArray(cfgRows)) return out;
+  for (const g of cfgRows) {
+    if (!g || g._salMeta) continue;
+    for (const k of Object.keys(g)) {
+      if (!CELL.test(k)) continue;
+      const v = String(g[k] || '').trim();
+      if (v) out.add(v.split('@')[0].split('/')[0].trim());
+    }
+  }
+  return out;
+}
+
+// Returns the ROUTE by which a viewer reaches this row's ftext, or '' if none.
+// Keep this list in step with boot.js: every one of these is a real render path.
+function _mlFtextRoute(row, gridUids) {
+  if (!row || row._salMeta) return '';
+  const ft = typeof row.ftext === 'string' ? row.ftext : '';
+  if (!ft) return '';
+  const nz = v => !!(v && String(v).trim());
+  const t = ft.trim();
+  if (t.startsWith('[') || t.startsWith('{')) return 'quiz';       // ftext IS the quiz
+  if (String(row.Direct || '') === 'Greeting') return 'greeting';  // boot.js greeting block
+  if (nz(row.ttxt)) return 'single';                               // menu Singles
+  if (nz(row.UOD))  return 'uod';                                  // image of the day caption
+  if (nz(row.Direct)) return 'direct';                             // menu opens V on this UID
+  // A grid cell renders ftext only when the row is TEXT — a video/image cell
+  // uses `link`, and its ftext is just a harvested description.
+  const rendersAsText = String(row.VidRange || '') === 'text' || !nz(row.link);
+  if (rendersAsText && gridUids.has(String(row.UID))) return 'grid';
+  return '';
+}
+
+function _mlPublicRows(rows, gridUids) {
+  return rows.map(r => {
+    if (!r || r._salMeta) return r;
+    if (typeof r.ftext !== 'string' || !r.ftext) return r;
+    if (_mlFtextRoute(r, gridUids)) return r;
+    const c = Object.assign({}, r);
+    c.ftext = '';
+    return c;
+  });
+}
+
+// Fire-and-forget alongside the ml.json write. Every failure path REFUSES to
+// write rather than publishing something wrong — a stale ml.public.json is
+// harmless, an over-stripped or empty one silently breaks the site.
+async function writePublicMl(allRows) {
+  try {
+    if (!Array.isArray(allRows)) return false;
+    const real = allRows.filter(r => r && !r._salMeta);
+    // Loaded-guard: never let an empty/half-initialised `data` publish itself.
+    if (real.length < 20) {
+      console.warn('writePublicMl: only ' + real.length + ' rows in memory — refusing to publish.');
+      return false;
+    }
+    // Never republish from a copy that was itself the stripped file.
+    if (_mlLoadedFile === ML_PUBLIC) {
+      console.warn('writePublicMl: this session loaded ' + ML_PUBLIC + ' — refusing to publish.');
+      return false;
+    }
+    const dir = await _getDir();
+    if (!dir) return false;
+    // c.json is the only source for "which rows are placed in a grid". Read it
+    // from disk each time so a config saved seconds ago is already reflected.
+    let cfg = null;
+    try {
+      const fh = await dir.getFileHandle('c.json');
+      cfg = JSON.parse(await (await fh.getFile()).text());
+    } catch (e) { cfg = null; }
+    if (!Array.isArray(cfg) || !cfg.length) {
+      console.warn('writePublicMl: could not read c.json — refusing to publish (grid-placed slides would be stripped).');
+      return false;
+    }
+    return await writeFileToDisk(ML_PUBLIC, _mlPublicRows(allRows, _mlGridUids(cfg)));
+  } catch (e) {
+    console.warn('writePublicMl failed: ' + (e && e.message ? e.message : e));
+    return false;
+  }
+}
+window.writePublicMl = writePublicMl;
+
 async function writeFileToDisk(name, jsonData) {
+  // (dev0853) Guard against the worst case: a session that loaded the STRIPPED
+  // public file must never write it back over the full ml.json. Same class of
+  // accident as the "sss" ftext wipe the guard below exists for.
+  if (name === 'ml.json' && _mlLoadedFile === ML_PUBLIC) {
+    console.warn('writeFileToDisk: refusing to overwrite ml.json — this session loaded ' + ML_PUBLIC + '.');
+    return false;
+  }
   const dir = await _getDir();
   if (!dir) {
     // (zip0165) Was silently returning false. That's how text-slide edits
@@ -1404,6 +1517,10 @@ function save() {
     localStorage.setItem('ml-col-hidden',     JSON.stringify([...hidden]));
   } catch(e) {}
   // 2. Disk (async, fire-and-forget — updates m:\jj\ml.json on every change)
+  // (dev0853) ...and the filtered copy the public site serves. Deliberately a
+  // SEPARATE file: writeFileToDisk's ftext-loss guard only protects ml.json, so
+  // a stripped row here can never be mistaken for a row that lost its ftext.
+  writePublicMl([meta].concat(mlRows));
   writeFileToDisk('ml.json', [meta].concat(mlRows)).then(ok => {
     if (ok) setFsaStatus('📂 ' + (_fsaDir ? _fsaDir.name : '') + ' — saved ' + new Date().toTimeString().slice(0,8));
   });
@@ -1414,7 +1531,15 @@ async function load() {
   let raw = null;
   let rawSource = null; // 'fetch' or 'localStorage' — for diagnostic toast
   // Try ml.json from server first
-  try { const r = await fetch('ml.json?t='+Date.now()); if (r.ok) { raw = await r.json(); rawSource = 'fetch'; } } catch(e) {}
+  // (dev0853) ml.json first, then the published copy. No environment sniffing:
+  // locally ml.json is on disk and served by localhost; on GitHub Pages it is
+  // not committed, so the fetch 404s and ml.public.json answers instead.
+  for (const _mlF of ['ml.json', ML_PUBLIC]) {
+    try {
+      const r = await fetch(_mlF + '?t=' + Date.now());
+      if (r.ok) { raw = await r.json(); rawSource = 'fetch'; _mlLoadedFile = _mlF; break; }
+    } catch(e) {}
+  }
 
   // (zip0165) Prefer localStorage if it's NEWER than the fetched ml.json.
   // This rescues edits when the disk write silently failed (FSA permission

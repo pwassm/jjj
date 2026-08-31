@@ -276,3 +276,10 @@ logo/
 # vidtools/ measurement outputs — one per analysed clip, regenerated in ~1 min
 # by measure-grid.py. The scripts themselves ARE tracked.
 vidtools/*.json
+
+# (dev0853) ml.json is the FULL file and stays LOCAL. The repo is public and
+# GitHub Pages serves whatever is committed, so the full ftext - packaged web
+# pages, personal notes - must never be in it. save() writes the filtered
+# ml.public.json alongside; that one is committed and is what the site fetches.
+# Backup for this file is backup-root.ps1, NOT git.
+ml.json
