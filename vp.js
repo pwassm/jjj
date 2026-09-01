@@ -6324,6 +6324,18 @@ function _vpCropHelpShow() {
         row('presets',       'save a grade under a name and drop it on the next clip — ' +
                              'one dive shares one cast, so this is the point. ' +
                              'Right-click an entry in the list to delete it.') +
+        row('HDR footage',   'a phone that shoots HLG or HDR10 (most recent flagships, ' +
+                             'by default) is tone-mapped to SDR before the grade, so the ' +
+                             'render matches what you graded rather than the violet ' +
+                             'ffmpeg sees in raw HDR. The saved clip is then plain ' +
+                             'BT.709 that plays anywhere. An UNGRADED crop is untouched ' +
+                             'and stays HDR. Preview and file agree to about 2 levels on ' +
+                             'ordinary footage, ~15 on HDR — the browser and ffmpeg ' +
+                             'disagree slightly about out-of-gamut colour.') +
+        row('one light',     'no white balance can invent a colour the camera never ' +
+                             'recorded. Under a single-colour lamp — a blue aquarium ' +
+                             'LED, say — the red channel is empty, and pulling it up ' +
+                             'only amplifies noise. ⚖ says so when it sees it.') +
         row('🎨 graded',     'the bar chip turns amber whenever a grade is loaded. The ' +
                              'grade STAYS as you move between clips and across a ' +
                              'reload, which is what the chip is there to tell you — ' +
@@ -6443,6 +6455,8 @@ function _vpCropHelpImageRows(K, row, head) {
     row('◧ before',      'hold to see it ungraded') +
     row('presets',       'save a grade under a name and drop it on the next picture; ' +
                          'right-click an entry in the list to delete it') +
+    row('HDR stills',    'an HLG/HDR photograph is tone-mapped to SDR before the ' +
+                         'grade, so what is written matches what you graded') +
     row('🎨 graded',     'the amber bar chip means a grade is loaded — it stays as you ' +
                          'move between pictures, and ↺ in the panel clears it. A graded ' +
                          'save can never be lossless: it is new pixels by definition.') +

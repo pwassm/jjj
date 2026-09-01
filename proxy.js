@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0867';
+const PROXY_BUILD = 'dev0868';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -955,6 +955,69 @@ function buildDeshakeDetectArgs(p) {
 //
 // Every number is range-checked and re-emitted through toFixed(6), so what
 // reaches argv is a literal and nothing the client sends can be injected.
+// (dev0868) ── HDR SOURCES ────────────────────────────────────────────────
+// A phone that records HLG or PQ (every recent Samsung/iPhone flagship does by
+// default) hands us BT.2020 pixels on a log-ish transfer curve. The BROWSER
+// tone-maps those to SDR before it paints them, so that is what the crop tool's
+// preview shows. ffmpeg does not: left alone, swscale reads the HLG values as
+// if they were plain sRGB and the picture comes out violet — verified on
+// 20260831_102846.mp4, where the same frame is blue in Chrome and violet out of
+// ffmpeg. Grading then happened on two different pictures, which is exactly the
+// "way different" the sliders were reported for.
+//
+// So when a graded render meets an HDR source, tone-map FIRST and grade in the
+// SDR space the preview is already showing. Verified against Chrome by feeding
+// it the same pixels tagged two ways: with BT.709 tags it renders the violet,
+// with HLG/BT.2020 tags it renders the blue.
+//
+// Only on a GRADED render. A plain crop of an HDR file never converts to RGB,
+// carries its tags through untouched and still plays as HDR — so nothing that
+// worked before dev0867 changes shape here.
+const HDR_TRC = /^(arib-std-b67|smpte2084)$/;   // HLG · PQ
+
+function probeHdr(file) {
+  try {
+    const raw = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=color_transfer,color_primaries', '-of', 'csv=p=0', file],
+      { encoding: 'utf8', timeout: 15000 }).trim();
+    const [trc, prim] = raw.split(',').map(x => (x || '').trim());
+    return HDR_TRC.test(trc) ? { trc, prim } : null;
+  } catch (_) { return null; }   // unreadable → no tone map, i.e. the old chain
+}
+
+// zimg converts the transfer and the primaries; tonemap does the range squeeze.
+// npl=100 is the SDR reference white the HLG curve is mapped against.
+//
+// These three settings were CALIBRATED against Chrome, not guessed: the same
+// HLG frame was drawn to a canvas in the browser and compared with 14 ffmpeg
+// variants over its mean and four sample points.
+//
+//   hable/linear desat=0   avg 14-15 levels of 255   ← the pair that won
+//   reinhard, mobius, clip  19-22
+//   libplacebo (default)    49
+//   any desat > 0           79-134   (it greys out saturated footage entirely)
+//   no gamut conversion     17-29
+//   transfer only, no map   87
+//
+// hable over linear for its highlight shoulder, which matters on footage that
+// has any. The residual sits almost entirely in RED, because Chrome SOFT-maps
+// out-of-gamut BT.2020 colours where zscale hard-clips them: on a saturated
+// blue frame Chrome reads R=32 and zscale R=7, with no conversion at all
+// reading R=67. Closing that would mean implementing a gamut compressor, and
+// 15/255 on a channel that is nearly empty is not worth it. SDR sources are
+// unaffected and still agree to ~2/255.
+const TONEMAP_CHAIN =
+  'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,' +
+  'tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv';
+
+// The tags and the pixel format a graded render goes out with. Without these
+// the output inherits the source's BT.2020/HLG tags while carrying SDR pixels,
+// so every player that honours tags tone-maps it a SECOND time — and ffmpeg's
+// RGB round trip leaves 10-bit sources as yuv444p10le, which is H.264 4:4:4
+// Predictive and will not play in half the things that open an mp4.
+const SDR_OUT_TAGS = ['-color_primaries', 'bt709', '-color_trc', 'bt709',
+                      '-colorspace', 'bt709'];
+
 function buildColorChain(c) {
   must(c && typeof c === 'object', 'color must be an object');
   const num = (v, lo, hi, name) => {
@@ -968,9 +1031,11 @@ function buildColorChain(c) {
     must(typeof c.lut === 'object', 'color.lut must be an object');
     const gx = num(c.lut.gx, 0.2, 5, 'lut.gx');      // exponent, = 1/gamma
     const k  = num(c.lut.k, -1, 1, 'lut.k');         // lift, same on all three
-    const sr = num(c.lut.sr, 0.05, 8, 'lut.sr');     // per-channel slope…
-    const sg = num(c.lut.sg, 0.05, 8, 'lut.sg');     // …which is where white
-    const sb = num(c.lut.sb, 0.05, 8, 'lut.sb');     // …balance lives
+    // (dev0868) The ceiling was 8 and a strongly cast tank hit it: warmth now
+    // reaches x8 gain, and contrast can double that again.
+    const sr = num(c.lut.sr, 0.01, 32, 'lut.sr');     // per-channel slope…
+    const sg = num(c.lut.sg, 0.01, 32, 'lut.sg');     // …which is where white
+    const sb = num(c.lut.sb, 0.01, 32, 'lut.sb');     // …balance lives
     const e = sl => `'clip(${sl}*pow(val/maxval,${gx})*maxval+${k}*maxval,0,maxval)'`;
     parts.push(`lutrgb=r=${e(sr)}:g=${e(sg)}:b=${e(sb)}`);
   }
@@ -1062,6 +1127,7 @@ function buildFfmpegArgs(p, tmpSink) {
     }
     const crf = (Number.isFinite(p.crf) && p.crf >= 0 && p.crf <= 51) ? p.crf : 18;
     const preset = (p.preset === 'slow' || p.preset === 'fast') ? p.preset : 'medium';
+    let sdrOut = false;   // (dev0868) set when an HDR source is tone-mapped below
     // (dev0318) Optional horizon-straighten: rotate the whole frame onto an
     // expanded ow×oh square (black fill) so the user's tilted rect becomes
     // axis-aligned, then crop it. crop.x/y already live in the rotated canvas.
@@ -1189,7 +1255,16 @@ function buildFfmpegArgs(p, tmpSink) {
     // corrected, not the captions, and a watermark must not be graded with it.
     // After the scale rather than before, so it works on output pixels — same
     // result, fewer of them.
-    if (p.color) vf += ',' + buildColorChain(p.color);
+    // (dev0868) …and after the tone map, so the grade lands in the same SDR
+    // space the browser previewed it in. Probed here rather than passed in by
+    // the client, because this is a fact about the FILE, not about the session.
+    if (p.color) {
+      if (probeHdr(p.input)) { vf += ',' + TONEMAP_CHAIN; sdrOut = true; }
+      vf += ',' + buildColorChain(p.color);
+      // Force a deliverable pixel format. The RGB round trip a grade needs
+      // otherwise leaves a 10-bit source as yuv444p10le — see SDR_OUT_TAGS.
+      vf += ',format=yuv420p';
+    }
     // (dev0727) Freezes go in before the captions and after the framing, so the
     // hold is of the finished picture and the caption times below are read
     // against the lengthened timeline the client already mapped them onto.
@@ -1211,6 +1286,8 @@ function buildFfmpegArgs(p, tmpSink) {
       '-i', p.input,
       '-filter:v', vf,
       '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
+      // (dev0868) An SDR picture must not go out wearing the source's HDR tags.
+      ...(sdrOut ? SDR_OUT_TAGS : []),
       ...(audio ? ['-c:a', 'copy'] : ['-an']),
       // (dev0297) Same flag the lossless path already uses. Video is re-encoded
       // from PTS 0, but audio is stream-copied — its first packets can carry a
@@ -1328,7 +1405,14 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   // (dev0867) The grade goes in here rather than beside the video path's, so
   // that the motion branch below — which returns before the scale — carries it
   // too: a still turned into a Ken Burns clip is graded like any other render.
-  if (p.color) chain.push(buildColorChain(p.color));
+  // (dev0868) A 10-bit HLG/PQ still is rare but not impossible, and it would go
+  // wrong in exactly the way the clips did — so it gets the same tone map. The
+  // still codecs pick their own pixel format and the motion branch already pins
+  // yuv420p, so there is nothing to force here.
+  if (p.color) {
+    if (probeHdr(p.input)) chain.push(TONEMAP_CHAIN);
+    chain.push(buildColorChain(p.color));
+  }
 
   // The OUTPUT frame in pixels. Hoisted because three things need it: the
   // scale filter, zoompan's own `s=`, and drawtext turning fractions into
@@ -3572,7 +3656,7 @@ async function frameAverage(req, res, origin) {
   let p;
   try { p = await readJson(req, 64 * 1024); }
   catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
-  let args;
+  let args, hdr = null;
   try {
     const input = String(p.input || '');
     must(/^([A-Za-z]:[\\/]|\/)/.test(input), 'input must be an absolute path');
@@ -3588,6 +3672,11 @@ async function frameAverage(req, res, origin) {
       must(p.crop.w > 0 && p.crop.h > 0, 'crop.w/h must be > 0');
       chain.push(`crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
     }
+    // (dev0868) Tone-map an HDR source before measuring it. Without this the
+    // auto button reads the violet that only ffmpeg ever sees, and balances
+    // against a picture the user was never shown.
+    hdr = probeHdr(input);
+    if (hdr) chain.push(TONEMAP_CHAIN);
     // flags=area is the whole point — it averages every source pixel into the
     // one output pixel. A default (bicubic) resample to 1x1 would sample rather
     // than average, and read the middle of the frame as if it were all of it.
@@ -3626,7 +3715,9 @@ async function frameAverage(req, res, origin) {
         (err.length ? ': ' + Buffer.concat(err).toString().slice(-300) : '') });
       return;
     }
-    finish(code, 200, { ok: true, r: buf[0], g: buf[1], b: buf[2] });
+    // `hdr` lets the button say so — on footage like this that is the
+    // difference between a number the user can trust and one they cannot.
+    finish(code, 200, { ok: true, r: buf[0], g: buf[1], b: buf[2], hdr: !!hdr });
   });
 }
 

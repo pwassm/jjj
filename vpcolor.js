@@ -45,6 +45,15 @@
 // gains multiply to 1 at every setting. A linear ±0.35 ramp was the first cut
 // and could not reach far enough to fix the footage this was built for.
 //
+// HDR SOURCES ARE THE ONE PLACE THIS GOT AWAY FROM US
+//
+// A phone shooting HLG or HDR10 hands ffmpeg BT.2020 pixels on a log curve.
+// Chrome tone-maps those to SDR before painting them — so the preview was
+// honest — while ffmpeg read them as sRGB and graded a violet picture nobody
+// had seen. dev0868 tone-maps in the proxy first (see TONEMAP_CHAIN there, and
+// the calibration against Chrome recorded beside it). Nothing in THIS file
+// changes for HDR: the browser was already doing the right thing.
+//
 // The grade is STICKY: it survives moving to the next clip and reloading the
 // page, because a batch of dives shares one cast. That is only safe because the
 // crop bar carries an amber "graded" chip whenever one is loaded — a sticky
@@ -76,6 +85,12 @@
   // ±1 warmth = a 4:1 red:blue ratio; ±1 tint = 1.62x green. See the header.
   const WARM_A = 1.0;
   const TINT_A = 0.7;
+  // (dev0868) …and the sliders run to ±3, not ±1. A blue-lit aquarium measured
+  // out at a needed warmth of 2.64 — the ceiling was the thing stopping the
+  // correction, not the model. The COEFFICIENT is unchanged, so the first third
+  // of the travel behaves exactly as it did; the rest is headroom that was not
+  // there before. At ±3 the gain is x8 one way and ÷8 the other.
+  const WB_RANGE = 3;
 
   // colorchannelmixer clamps its coefficients to ±2. At saturation 1.8 the
   // largest fused coefficient is 1.74, so this is the ceiling that keeps ffmpeg
@@ -85,9 +100,9 @@
   const NEUTRAL = { warmth: 0, tint: 0, bright: 0, contrast: 1, sat: 1, gamma: 1 };
 
   const SLIDERS = [
-    { key: 'warmth',   label: 'Warmth',   min: -100, max: 100, signed: true,
-      hint: 'blue/cyan cast → warm. The underwater knob.' },
-    { key: 'tint',     label: 'Tint',     min: -100, max: 100, signed: true,
+    { key: 'warmth',   label: 'Warmth',   min: -300, max: 300, signed: true,
+      hint: 'blue/cyan cast → warm. The underwater knob. Past ±1 it is pulling hard.' },
+    { key: 'tint',     label: 'Tint',     min: -300, max: 300, signed: true,
       hint: 'green water ↔ magenta' },
     { key: 'bright',   label: 'Bright',   min:  -25, max:  25, signed: true,
       hint: 'lifts or drops the whole picture' },
@@ -110,8 +125,8 @@
 
   function sane(g) {
     const o = Object.assign({}, NEUTRAL, g || {});
-    o.warmth   = clamp(num(o.warmth,   0), -1, 1);
-    o.tint     = clamp(num(o.tint,     0), -1, 1);
+    o.warmth   = clamp(num(o.warmth,   0), -WB_RANGE, WB_RANGE);
+    o.tint     = clamp(num(o.tint,     0), -WB_RANGE, WB_RANGE);
     o.bright   = clamp(num(o.bright,   0), -0.25, 0.25);
     o.contrast = clamp(num(o.contrast, 1), 0.5, 2);
     o.sat      = clamp(num(o.sat,      1), 0, SAT_MAX);
@@ -578,13 +593,22 @@
       const r1 = Math.max(1, R), g1 = Math.max(1, G), b1 = Math.max(1, B);
       const w = Math.log2(b1 / r1) / (2 * WARM_A);
       const t = Math.log2(Math.sqrt(r1 * b1) / g1) / TINT_A;
-      const pinned = (Math.abs(w) > 1) || (Math.abs(t) > 1);
-      grade.warmth = clamp(w, -1, 1);
-      grade.tint   = clamp(t, -1, 1);
+      const pinned = (Math.abs(w) > WB_RANGE) || (Math.abs(t) > WB_RANGE);
+      grade.warmth = clamp(w, -WB_RANGE, WB_RANGE);
+      grade.tint   = clamp(t, -WB_RANGE, WB_RANGE);
       commit();
+      // (dev0868) A channel this dark carries almost nothing to amplify. Say so
+      // — the alternative is the user dragging a slider that can only ever turn
+      // the noise in an empty channel into confetti.
+      const floor = Math.min(R, G, B);
+      const note = pinned ? ' — cast is past the slider, pinned at full'
+                 : (floor < 12 ? ' — but one channel is nearly empty (' + floor +
+                                 '/255): this light is close to a single colour, ' +
+                                 'and balancing cannot invent what was not recorded'
+                              : '');
       if (typeof toast === 'function') {
         toast('⚖ balanced from rgb(' + R + ',' + G + ',' + B + ')' +
-              (pinned ? ' — cast is past the slider, pinned at full' : ''), 3200);
+              (j.hdr ? ' · HDR→SDR' : '') + note, floor < 12 || pinned ? 6000 : 3200);
       }
     } catch (err) {
       if (typeof toast === 'function') {
