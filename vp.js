@@ -6295,7 +6295,7 @@ function _vpCropHelpShow() {
                      'the box or drop the res.') +
         head('Finish') +
         row(K('G'),   'render (or the Crop button) — lands beside the source as ' +
-                      '<i>name</i>_crop_<i>what you call it</i>.mp4') +
+                      '<i>what you call it</i>_<i>name</i>_crop.mp4') +
         row('the .xmp', 'each render gets a sidecar of the same name, carrying the ' +
                       'original’s date, place and camera plus a note saying which ' +
                       'file it was cut from — that is what digiKam reads') +
@@ -6406,7 +6406,7 @@ function _vpCropHelpImageRows(K, row, head) {
                          'would be enlarged for nothing. Grow the box or drop the res.') +
     head('Finish') +
     row(K('G'),          'save (or the Crop button) — lands beside the picture as ' +
-                         '<i>name</i>_crop_<i>what you call it</i>, numbered if that ' +
+                         '<i>what you call it</i>_<i>name</i>_crop, numbered if that ' +
                          'name is taken') +
     row('the .xmp',      'each save gets a sidecar of the same name, carrying the ' +
                          'original’s date, place and camera plus a note saying which ' +
@@ -6806,27 +6806,37 @@ function _vpSplitPath(p) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// (dev0863) WHERE A CROP LANDS, AND WHAT IT IS CALLED
+// (dev0863/0865) WHERE A CROP LANDS, AND WHAT IT IS CALLED
 //
-//   <source folder>/<original base>_crop_<the name you typed>.<ext>
+//   <source folder>/<what you called it>_<original base>_crop.<ext>
+//
+//   20260831_150548.jpg  +  "Eel2"  →  Eel2_20260831_150548_crop.jpg
 //
 // Beside the original, not under it. dev0742 put renders in a dated
 // `YYYYMMDD_edited` subfolder to keep them out of the source folder; that
 // separated every crop from the picture it came from, which is the one
 // relationship a photo library cares about. The dated folder is gone.
 //
+// (dev0865) YOUR name comes first. These originals are camera datestamps, so
+// leading with the original base sorted every crop into the middle of the
+// timeline and the folder read as a wall of dates. Leading with the word you
+// chose means a folder sorts by SUBJECT, and the datestamp is still right there
+// naming the parent — which is what makes the pair findable by eye. `_crop` is
+// the suffix, so the shape is: what it is, what it came from, what was done.
+//
 // The name is deliberately plain. The old template spelled out size, aspect,
 // engine, tilt and duration between `~` separators — accurate, unreadable, and
-// nothing a photo manager could group on. Everything it said is still readable
-// off the file itself; what a filename is FOR is telling you which original
-// this came from and which crop of it this is.
+// nothing a photo manager could group on. All of it now lives in the sidecar.
 //
-// Collisions are resolved by counting, not by asking: _crop_head.jpg, then
-// _crop_head_2.jpg. The proxy picks the number (it is the side that can see the
+// Collisions are resolved by counting, not by asking: …_crop.jpg, then
+// …_crop_2.jpg. The proxy picks the number (it is the side that can see the
 // folder), and the render still goes out with overwrite:false, so a file that
 // appears in between is refused rather than clobbered.
 // ══════════════════════════════════════════════════════════════════════════
-const VP_CROP_TOKEN = '_crop_';
+// The output's name, without directory or extension.
+function _vpCropOutStem(base, safeId) {
+  return safeId + '_' + base + '_crop';
+}
 
 // The name the user typed, made safe for a filename. `~` goes too — it is no
 // longer a separator here, but a folder of old-template output is full of them
@@ -6915,8 +6925,11 @@ async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
     const r = await fetch(PROXY_BASE + '/exec/exiftool', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // (dev0865) `digikam` asks the proxy to add its version history too —
+      // xmpMM:DerivedFrom says "came from", digiKam:ImageHistory is what makes
+      // it stack the two as versions of one picture.
       body: JSON.stringify({ input: originalPath, output: outPath + '.xmp',
-                             sidecar, overwrite: true })
+                             sidecar, digikam: true, overwrite: true })
     });
     if (!r.ok) {
       console.warn('[xmp sidecar refused]', r.status, await r.text().catch(() => ''));
@@ -7302,7 +7315,8 @@ async function _vpImageSave(opts) {
       if (!ok) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
     }
   }
-  const id = prompt('Name this crop of "' + parts.base + '":', '');
+  const id = prompt('Name this crop — it becomes\n\n    <name>_' +
+                    parts.base + '_crop.' + parts.ext + '\n', '');
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
   const safeId = _vpCropSafeId(id);
 
@@ -7402,7 +7416,7 @@ async function _vpImageSave(opts) {
   const detail = [sizeStr, effAspect, angTok,
                   s.freeRatio ? ('ar' + _vpAspectLabel(s.frac.w * VW, s.frac.h * VH)) : '',
                   'img', engTok].filter(Boolean).join(' · ');
-  const want = outDir + parts.sep + parts.base + VP_CROP_TOKEN + safeId + '.' + outExt;
+  const want = outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.' + outExt;
   const free = await _vpCropFreePath(want);
   payload.output = free.path;
   const outName = String(free.path).split(/[\\/]/).pop();
@@ -7562,7 +7576,8 @@ async function _vpGoSave(opts) {
       }
     }
   }
-  const id = prompt('Name this clip from "' + parts.base + '":', '');
+  const id = prompt('Name this clip — it becomes\n\n    <name>_' +
+                    parts.base + '_crop.mp4\n', '');
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
   const safeId = _vpCropSafeId(id);
   const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
@@ -7758,7 +7773,7 @@ async function _vpGoSave(opts) {
   // numbered by the proxy if that name is taken.
   const detail = detailParts.filter(Boolean).join(' · ');
   const free = await _vpCropFreePath(
-    outDir + parts.sep + parts.base + VP_CROP_TOKEN + safeId + '.mp4');
+    outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.mp4');
   payload.output = free.path;
   outName = String(free.path).split(/[\\/]/).pop();
   // (dev0319) Deskew preflight — a stale proxy silently ignores payload.rotate

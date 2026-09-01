@@ -16,7 +16,7 @@ const https = require('https');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
-const { spawn, execFile, execFileSync } = require('child_process');
+const { spawn, spawnSync, execFile, execFileSync } = require('child_process');
 const { probeEmbed } = require('./igEmbedProbeCore');   // (dev0675) download-time embed verdict
 
 // (dev0658) Every in-flight IG media downloader (yt-dlp / gallery-dl / the
@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0864';
+const PROXY_BUILD = 'dev0865';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1562,6 +1562,13 @@ function buildExiftoolArgs(p, tmpSink) {
       n++;
     }
     must(n > 0, 'sidecar object has no allowed keys');
+    // (dev0865) digiKam's own version history, composed here because it needs
+    // facts only this side has: the original's size on disk and its capture
+    // date. See buildDigikamHistory.
+    if (p.digikam) {
+      const hist = buildDigikamHistory(p.input);
+      if (hist) lines.push('-XMP-digiKam:ImageHistory=' + hist);
+    }
     // `-o` will not write over an existing file, so an overwrite clears the way.
     if (p.overwrite) { try { fs.unlinkSync(out); } catch (_) {} }
     lines.push('-o', out);
@@ -1582,6 +1589,65 @@ function buildExiftoolArgs(p, tmpSink) {
   return ['-json', '-charset', 'UTF8',
           ...Object.values(EXIF_TAG_MAP).map(t => '-' + t),
           p.input];
+}
+
+// (dev0865) ── digiKam's version history, written for it ────────────────────
+// `Xmp.digiKam.ImageHistory` is what makes digiKam treat one file as a VERSION
+// of another rather than two unrelated pictures — the thing xmpMM:DerivedFrom
+// alone does not do. Schema from digiKam's own DImageHistory::toXml():
+//
+//   <history version="1">
+//     <file type="original">
+//       <fileParams fileName= filePath= fileSize= creationDate=/>
+//     </file>
+//     <filter filterName= filterDisplayName= filterVersion= filterCategory=/>
+//   </history>
+//
+// The important find: digiKam resolves a referred file by UUID, THEN by
+// hash+size, THEN by **fileName + creationDate**, THEN by filePath + fileName.
+// The last two are reachable without digiKam's private UUID or its unique-hash
+// algorithm, which is what makes writing this from outside possible at all.
+//
+// `documentedHistory` is the filterCategory for an edit digiKam did not perform
+// itself and cannot replay — exactly what a crop from this tool is.
+//
+// One line, no pretty-printing: the value travels in a LINE-DELIMITED argfile.
+// Returns '' if the facts can't be gathered — a sidecar without the history is
+// still a good sidecar, and a history naming the wrong file would be worse.
+function buildDigikamHistory(input) {
+  try {
+    const st = fs.statSync(input);
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                              .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+                              .replace(/[\r\n\t]/g, ' ');
+    // Capture date, in the ISO shape digiKam parses. EXIF first (that is what
+    // digiKam files under creationDate); the file's own mtime is the fallback.
+    let created = '';
+    try {
+      const r = spawnSync(EXEC_BIN.exiftool || 'exiftool',
+        ['-json', '-charset', 'UTF8', '-DateTimeOriginal', '-CreateDate', input],
+        { encoding: 'utf8', timeout: 10000, windowsHide: true });
+      const rec = (r.status === 0) && JSON.parse(r.stdout || '[]')[0];
+      const raw = rec && (rec.DateTimeOriginal || rec.CreateDate);
+      // exiftool: "2026:08:31 15:05:48" → "2026-08-31T15:05:48"
+      const m = String(raw || '').match(/^(\d{4}):(\d\d):(\d\d) (\d\d:\d\d:\d\d)/);
+      if (m) created = `${m[1]}-${m[2]}-${m[3]}T${m[4]}`;
+    } catch (_) {}
+    if (!created) created = new Date(st.mtimeMs).toISOString().replace(/\.\d+Z$/, '');
+    return '<history version="1">' +
+             '<file type="original">' +
+               '<fileParams fileName="' + esc(path.basename(input)) + '"' +
+                         ' filePath="' + esc(path.dirname(input)) + '"' +
+                         ' fileSize="' + st.size + '"' +
+                         ' creationDate="' + esc(created) + '"/>' +
+             '</file>' +
+             '<filter filterName="digikam:SlamCrop" filterDisplayName="Crop"' +
+                   ' filterVersion="1" filterCategory="documentedHistory"/>' +
+           '</history>';
+  } catch (e) {
+    plog('digikam history skipped: ' + e.message);
+    return '';
+  }
 }
 
 // (dev0864) The tags the crop tool may set on a sidecar. Names only — values are
