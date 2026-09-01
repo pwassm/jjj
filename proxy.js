@@ -6693,7 +6693,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
@@ -7076,6 +7076,54 @@ http.createServer((req, res) => {
       return;
     }
     sendJson(res, 404, { ok: false, error: 'unknown pinterest action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0872) ── Carry the source's timestamps onto a render ────────────────
+  // A crop is a new view of an old moment, and a file manager sorting by date
+  // should file it beside its original rather than at "now". So after a render
+  // lands, its modified AND created times are set to the source's.
+  //
+  // Node can only set mtime/atime (fs.utimes) — birth time is not writable from
+  // it at all — so the CREATED date goes through exiftool's FileCreateDate,
+  // which is a Windows filesystem write and does not touch the file's contents.
+  // exiftool runs first: it rewrites FileModifyDate as a side effect, and the
+  // utimes call after it is what puts that back.
+  if (req.url.startsWith('/vp/copytimes')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
+    if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
+    readJson(req).then(body => {
+      const okPath = t => /^([A-Za-z]:[\/]|\/)/.test(t) && !/(^|[\/])\.\.([\/]|$)/.test(t);
+      const src = String((body && body.source) || '');
+      const dst = String((body && body.target) || '');
+      if (!okPath(src) || !okPath(dst)) {
+        sendJson(res, 400, { ok: false, error: 'source and target must be absolute paths' }, origin); return;
+      }
+      let ss, ds;
+      try { ss = fs.statSync(src); ds = fs.statSync(dst); }
+      catch (e) { sendJson(res, 400, { ok: false, error: 'stat failed: ' + e.message }, origin); return; }
+      if (!ss.isFile() || !ds.isFile()) { sendJson(res, 400, { ok: false, error: 'not a file' }, origin); return; }
+      // birthtime is unreliable on some filesystems (it comes back as 0 or as
+      // mtime); mtime is the honest fallback and is what "when was this shot"
+      // means for camera footage anyway.
+      const birth = (ss.birthtimeMs && ss.birthtimeMs > 0) ? ss.birthtime : ss.mtime;
+      let created = false;
+      try {
+        const pad = n => String(n).padStart(2, '0');
+        const d = birth;
+        const stamp = d.getFullYear() + ':' + pad(d.getMonth() + 1) + ':' + pad(d.getDate())
+                    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        const r = spawnSync(EXEC_BIN.exiftool || 'exiftool',
+          ['-overwrite_original', '-FileCreateDate=' + stamp, dst],
+          { windowsHide: true, timeout: 20000 });
+        created = !!r && r.status === 0;
+      } catch (_) {}
+      try { fs.utimesSync(dst, ss.atime, ss.mtime); }
+      catch (e) { sendJson(res, 500, { ok: false, error: 'utimes failed: ' + e.message }, origin); return; }
+      sendJson(res, 200, { ok: true, modified: true, created,
+                           mtime: ss.mtime.toISOString(), ctime: birth.toISOString() }, origin);
+    }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
     return;
   }
 

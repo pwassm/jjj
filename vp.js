@@ -6620,9 +6620,7 @@ function _vpCropHelpHide() {
 // (dev0870) H, while a crop overlay is open, is the crop's OWN help — the
 // floating context panel would otherwise answer with the video player's keys,
 // which are not the ones on screen. helpfloat.js calls this first and stands
-// down when it returns true. Once per page load the crop says the key exists,
-// since the sheet no longer shows itself uninvited.
-let _vpCropHelpHinted = false;
+// down when it returns true.
 function _vpCropHelpToggle() {
   if (!_vpCropHolding()) return false;
   if (document.getElementById('vp-crop-help')) _vpCropHelpHide();
@@ -6703,11 +6701,9 @@ function _vpCropToggle() {
   // especially the automatic one a ?vect= file manager hand-off opens — used to
   // land with a panel over the picture that had to be dismissed every time. H
   // toggles it (see _vpCropHelpToggle), and closing the crop takes it down.
+  // (dev0872) …and it says nothing about itself when it opens. H is the help
+  // key on every screen in the app, so a crop announcing its own is noise.
   if (!isOpening) _vpCropHelpHide();
-  else if (!_vpCropHelpHinted) {
-    _vpCropHelpHinted = true;
-    if (typeof toast === 'function') toast('Press H for the crop keys', 2000);
-  }
   const sc = document.getElementById('vp-swipe-catcher');
   const host = s.el.container.parentElement;
   if (isOpening) {
@@ -7797,6 +7793,7 @@ async function _vpImageSave(opts) {
     if (result.exitCode === 0) {
       // (dev0863) The sidecar that says which picture this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
+      await _vpCopySourceTimes(absInput, payload.output);   // (dev0872)
       if (typeof toast === 'function') {
         toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + xmp, 3400);
       }
@@ -7811,6 +7808,27 @@ async function _vpImageSave(opts) {
     if (typeof toast === 'function') toast('save error: ' + msg, 3600);
     console.error('[image save error]', err);
   }
+}
+
+// (dev0872) Give the render the ORIGINAL's dates. A crop is a new view of an
+// old moment, so a folder sorted by date should file it next to the footage it
+// came from rather than at "now". Modified always; created too, where exiftool
+// can write the Windows filesystem field. Best-effort — a file with the wrong
+// date is a nuisance, a failed save is not, and the clip is already on disk.
+async function _vpCopySourceTimes(sourcePath, outPath) {
+  try {
+    if (!(await _vpProxyHasFeature('vptimes'))) return false;
+    const r = await fetch(PROXY_BASE + '/vp/copytimes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: sourcePath, target: outPath })
+    });
+    const j = await r.json().catch(() => null);
+    if (r.ok && j && j.ok) return true;
+    console.warn('[copy times failed]', r.status, j);
+  } catch (err) {
+    console.warn('[copy times failed]', err);
+  }
+  return false;
 }
 
 // (dev0871) Write <clip>.html beside a rendered clip — a page that plays it on
@@ -8339,6 +8357,9 @@ async function _vpGoSave(opts) {
     if (result.exitCode === 0) {
       // (dev0863) The sidecar that says which clip this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
+      // (dev0872) The original's dates, so the clip files beside its source.
+      // After the sidecar, which writes the mp4's own modify time as it goes.
+      await _vpCopySourceTimes(absInput, payload.output);
       // (dev0871) …and, when a loop was asked for, the page that plays it on
       // repeat. A failure here is worth a word but not an alarm: the clip
       // itself is already written and good.

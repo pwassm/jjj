@@ -5167,7 +5167,7 @@ async function _wmWatchPoll(PROXY) {
         toast('\u26a0 ' + added.length + ' file(s) stamped, but the run never confirmed an upload.\n'
           + 'Only add them if the console said the upload was done.', 7000);
       }
-      housekeepingAddWatermarked();
+      housekeepingAddWatermarked({ auto: true });
       return;
     }
   }
@@ -5222,7 +5222,14 @@ function _wmFmtDur(sec) {
   return h ? (h + ':' + p2(m) + ':' + p2(s)) : (m + ':' + p2(s));
 }
 
-async function housekeepingAddWatermarked() {
+// (dev0872) opts.auto — this run was not asked for by a human. The two
+// automatic callers (the ?addwm=1 boot hook and the folder watcher) pass it,
+// and it silences the two "nothing to do" toasts: a T that loads with every
+// watermarked file already in it is the NORMAL case, and it was announcing
+// itself on every reload. A run from the Housekeeping menu still reports, since
+// there a silent no-op looks like a broken button.
+async function housekeepingAddWatermarked(opts) {
+  const auto = !!(opts && opts.auto === true);
   const PROXY = 'http://127.0.0.1:8081';
   let list;
   try {
@@ -5238,14 +5245,14 @@ async function housekeepingAddWatermarked() {
     return;
   }
   const files = Array.isArray(list.files) ? list.files : [];
-  if (!files.length) { toast('No media found in ' + list.dir, 3000); return; }
+  if (!files.length) { if (!auto) toast('No media found in ' + list.dir, 3000); return; }
 
   const have = new Set();
   data.forEach(r => { const k = r && _wmLinkKey(r.link); if (k) have.add(k); });
   const missing = files.filter(f => !have.has(f.key.toLowerCase()));
 
   if (!missing.length) {
-    toast('✓ All ' + files.length + ' watermarked file(s) are already in T', 3000);
+    if (!auto) toast('✓ All ' + files.length + ' watermarked file(s) are already in T', 3000);
     return;
   }
   const names = missing.map(f => '  • ' + f.key).join('\n');

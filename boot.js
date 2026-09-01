@@ -2748,8 +2748,19 @@ function _routeInitialScreen() {
   // come from nextUID()/save() or they collide with whatever the running tab
   // holds. Dev-mode only, and idempotent — a second run adds nothing.
   if (params.get('addwm') === '1' && !_isUserMode()) {
+    // (dev0872) Consume the parameter first. It used to survive in the address
+    // bar, so every later reload of that tab re-ran the check and announced its
+    // own no-op — which is what made this look like a T-load toast rather than
+    // an upload one. The run is silent when there is nothing to add, too.
+    try {
+      params.delete('addwm');
+      const q = params.toString();
+      history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    } catch (_) {}
     setTimeout(() => {
-      if (typeof window.housekeepingAddWatermarked === 'function') window.housekeepingAddWatermarked();
+      if (typeof window.housekeepingAddWatermarked === 'function') {
+        window.housekeepingAddWatermarked({ auto: true });
+      }
     }, 800);
   }
   // (zip0141) In user mode, default to G regardless of device — the user
