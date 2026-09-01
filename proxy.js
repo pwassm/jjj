@@ -514,6 +514,30 @@ const DT_COLORS = {
   grey:  { fill: 'gray',  border: 'black@0.85' }
 };
 
+// (dev0873) ── The stopwatch box ───────────────────────────────────────
+// A box with `clock` set draws the elapsed time instead of typed words. The
+// text is an ffmpeg EXPRESSION, so it needs expansion=normal — which is why
+// this is per box: `expansion=none` (see the note above) is the thing that
+// stops a stray % in a caption from silently blanking it, and only a box the
+// client marked as a clock gives that protection up.
+//
+// It goes in the TEXTFILE like any other box's words. That keeps every colon
+// and comma away from the filtergraph parser, so the expression needs no
+// escaping at all — verified with a real ffmpeg run before this shipped.
+//
+// Fixed width, always two digits, because a clock that narrows from 10:00 to
+// 9:59 jitters on the frame. Minutes are floor(t/60), NOT mod 60: past an hour
+// it widens to 60:00 rather than silently starting again at 00:00.
+//
+// WHY THERE IS NO SPEED MATH HERE, which is the whole point of the feature:
+// drawtext is appended BEFORE the retime (see the `spd` block in
+// buildFfmpegArgs), so `t` is the time on the clip's OWN timeline, before
+// setpts touches it. The digits are therefore real elapsed seconds of the
+// source footage, and the retime then carries them along — a 4x clip counts
+// four times as fast on screen, a half-speed one crawls. That is exactly what
+// a stopwatch over sped-up footage is for.
+const DT_CLOCK_EXPR = '%{eif:floor(t/60):d:2}:%{eif:mod(floor(t),60):d:2}';
+
 function dtColorFor(id) {
   if (id == null || id === '') return DT_COLORS.white;
   must(typeof id === 'string' && Object.prototype.hasOwnProperty.call(DT_COLORS, id),
@@ -717,8 +741,13 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
     const lines = t.lines.map(l => String(l == null ? '' : l)
       .replace(/[\r\n]/g, ' ').replace(/[︎️]/g, '').slice(0, 400));
     if (!lines.some(l => l.trim())) return;          // an empty box draws nothing
+    // (dev0873) A stopwatch box ignores whatever `lines` holds — the client
+    // sends the digits it was previewing so the wrap and the ink maths still
+    // have something the right SHAPE to measure, but what gets burned in is
+    // the expression. See DT_CLOCK_EXPR.
+    const clock = !!t.clock;
     const file = path.join(dir, 'txt' + i + '.txt');
-    fs.writeFileSync(file, lines.join('\n'), 'utf8');
+    fs.writeFileSync(file, clock ? DT_CLOCK_EXPR : lines.join('\n'), 'utf8');
     const fontPx = Math.max(6, Math.round(size * oh));
     // (dev0725) Optional window this caption is on screen for, in seconds from
     // the START OF THE CLIP — with `-ss` before `-i`, drawtext's `t` counts from
@@ -765,7 +794,7 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
     chain += ',drawtext=' + [
       'fontfile=' + dtQuote(font),
       'textfile=' + dtQuote(file),
-      'expansion=none',
+      'expansion=' + (clock ? 'normal' : 'none'),
       'fontsize=' + fontPx,
       'fontcolor=' + col.fill,
       ...border,
@@ -811,6 +840,8 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 //                                 alpha (dev0745, 0..1) fades letters+outline;
 //                                 font (dev0750) is a DT_FONTS id, absent =
 //                                 the default face.
+//                                 clock (dev0873) 1 = draw the running elapsed
+//                                 time instead of `lines` — see DT_CLOCK_EXPR.
 //                                 Appended after crop/scale/zoompan → see
 //                                 buildDrawtextChain.
 //   pauses    [{at,hold}]      — OPTIONAL (dev0727); CROP path only. Freeze the
@@ -6693,7 +6724,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }

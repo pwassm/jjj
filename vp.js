@@ -4170,6 +4170,50 @@ function _vpTextFontAsk(el, t) {
   _vpTextMenuPlace(el);
 }
 
+// (dev0873) ── The stopwatch box ───────────────────────────────────────
+// A text box turned into a running clock: same box, same drag, resize, font,
+// colour, strength and on/off marks — only what it says is different. It is a
+// mode on the existing box rather than a new kind of object because everything
+// a caption knows how to do is something a stopwatch also needs.
+//
+// The digits are elapsed seconds of the SOURCE footage, counted from the A
+// point. On a sped-up render they therefore race and on a slowed one they
+// crawl, which is the point of the thing; the proxy gets that for free by
+// drawing before the retime (see DT_CLOCK_EXPR in proxy.js).
+//
+// Always two digits a side. A clock that shrinks from 10:00 to 9:59 twitches
+// on the frame, and a watermark that moves is a watermark you keep noticing.
+const VP_CLOCK_SAMPLE = '00:00';   // what the box shows before the playhead is in the clip
+
+function _vpClockStr(sec) {
+  const v = Math.max(0, Math.floor(+sec || 0));
+  const mm = Math.floor(v / 60), ss = v % 60;   // minutes, NOT mod 60 — an hour reads 60:00
+  return String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+}
+
+// The clip's own zero. Both marks down = A (the render trims there); anything
+// else = the start of the file, which is what the preview is showing anyway.
+function _vpClipStartSec() {
+  const st = _vpState;
+  if (!st || st.aPoint == null || st.bPoint == null) return 0;
+  return Math.min(st.aPoint, st.bPoint);
+}
+
+function _vpTextToggleClock(t) {
+  const s = _vpState && _vpState.crop;
+  if (!s || !t) return;
+  if (s.imageMode) {                       // a still has no elapsed time to show
+    if (typeof toast === 'function') toast('⏱ a stopwatch needs a clip, not a picture', 1800);
+    return;
+  }
+  t.clock = !t.clock;
+  if (s.textSetClock) s.textSetClock(t);
+  if (typeof toast === 'function') {
+    toast(t.clock ? '⏱ stopwatch — counts from A, in real seconds of the footage'
+                  : '⏱ back to ordinary text — the digits are yours to edit now', 2000);
+  }
+}
+
 function _vpTextAdd()            { const s = _vpState && _vpState.crop; if (s && s.addText)        s.addText(); }
 function _vpTextEndEdit()        { _vpTextMenuClose();
                                   const s = _vpState && _vpState.crop; if (s && s.endTextEdit) s.endTextEdit(); }
@@ -4236,11 +4280,12 @@ function _vpTextMenuKey(e) {
   // (dev0745) On a still, s / e / a have no meaning — those rows aren't on the
   // menu — so the keys stay free rather than silently marking an invisible clip.
   const imgMode = !!(_vpState && _vpState.crop && _vpState.crop.imageMode);
-  if (k === 'escape' || (!imgMode && (k === 's' || k === 'e' || k === 'a'))) {
+  if (k === 'escape' || (!imgMode && (k === 's' || k === 'e' || k === 'a' || k === 'w'))) {
     e.preventDefault(); e.stopImmediatePropagation();
     if (k === 'a') { _vpTextPauseAsk(el, t); return; }   // stays open, asks seconds
     _vpTextMenuClose();
     if (k === 's' || k === 'e') _vpTextSetMark(t, k === 's' ? 'start' : 'end');
+    else if (k === 'w') _vpTextToggleClock(t);           // (dev0873)
   }
 }
 
@@ -4609,6 +4654,15 @@ function _vpTextCtxMenu(ev) {
   // rows would be a lie on a photograph.
   if (!s.imageMode) {
     sep();
+    // (dev0873) The stopwatch. On this menu rather than a handle on the outline:
+    // the outline's grips set the wrap width, a fourth small thing to grab there
+    // would be fiddly and undiscoverable, and every other property of a box is
+    // already chosen from here.
+    mk('⏱ &nbsp;stop<u>w</u>atch' +
+       (t.clock ? ' <span style="opacity:0.6;">· on</span>' : ''),
+       t.clock ? 'Back to ordinary text — the digits stay, and become editable'
+               : 'Show elapsed time instead of words — real seconds of the footage, so it runs fast on a sped-up clip')
+      .onclick = () => { _vpTextMenuClose(); _vpTextToggleClock(t); };
     mk('<u>s</u>tarts here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
        'This text appears from the playhead onward')
       .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'start'); };
@@ -4791,7 +4845,7 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
   const pauses = [];
   state.texts.forEach(t => {
     if (!t.pauseSec) return;
-    const raw = (t.ta ? t.ta.value : t.text) || '';
+    const raw = t.clock ? VP_CLOCK_SAMPLE : ((t.ta ? t.ta.value : t.text) || '');
     if (!raw.trim()) return;                       // an empty box renders nothing to hold for
     const at = Math.max(EDGE, Math.min(Math.max(EDGE, dur - EDGE),
                         rel(t.atStart == null ? startSec : t.atStart)));
@@ -4807,7 +4861,11 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
 
   const out = [];
   state.texts.forEach(t => {
-    const raw = (t.ta ? t.ta.value : t.text) || '';
+    // (dev0873) A stopwatch box sends the digits it is CURRENTLY showing. They
+    // are not what gets burned in — the proxy swaps in the expression — but
+    // they are the right shape, so the wrap width and the ink-top measurement
+    // below are the ones the real clock will need.
+    const raw = t.clock ? VP_CLOCK_SAMPLE : ((t.ta ? t.ta.value : t.text) || '');
     if (!raw.trim()) return;
     const face = _vpTextFont(t.font);
     // The size ffmpeg will actually draw at — buildDrawtextChain rounds the same
@@ -4821,6 +4879,10 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
     const inkY = t.y + _vpTextInkTop(lines, fontPx, face.css) / oh;
     const box = { x: t.x, y: Math.max(0, Math.min(1, inkY)),
                   w: t.w, size: t.size, lines: lines.slice(0, 40) };
+    // (dev0873) …and the one flag that turns those digits into a running clock.
+    // Sent only when true, so an older proxy draws a caption reading 00:00
+    // rather than failing the render.
+    if (t.clock) box.clock = 1;
     // (dev0745) Only sent when it isn't 1 — an older proxy then behaves exactly
     // as it always did for every ordinary caption.
     if (t.alpha != null && t.alpha < 1) box.alpha = +(+t.alpha).toFixed(3);
@@ -5443,6 +5505,42 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // while it has focus without a single extra guard.
   let editing = null;              // the box currently taking keystrokes
 
+  // (dev0873) The dashes round a box. Amber for a stopwatch, green for words,
+  // brighter while it is the box being worked on — one function so the three
+  // places that paint an outline cannot disagree about which box is which.
+  function textBorderCss(t, live) {
+    if (t.clock) return live ? 'rgba(255,210,74,1)' : 'rgba(255,210,74,0.85)';
+    return live ? 'rgba(150,255,200,1)' : 'rgba(120,230,170,0.85)';
+  }
+
+  // Point a box at the clock, or take it off it. The digits it shows are
+  // written by syncTextWindow from the playhead; the <textarea> stays read-only
+  // for as long as it is a clock, because there is nothing in it to type.
+  function textSetClock(t) {
+    if (t.clock) {
+      if (editing === t) endEdit();     // t.clock is already true — endEdit leaves it alone
+      t.ta.value = _vpClockStr(_vpNowSec() - _vpClipStartSec());
+      t.text = t.ta.value;
+      t.ta.readOnly = true;
+      t.ta.style.pointerEvents = 'none';
+    } else if (editing === t) {
+      // Coming OFF the clock while the box is still the live one: hand the
+      // caret straight back, so the digits can be typed over without having to
+      // click away and click in again. They stay as the starting text — they
+      // are almost certainly the shape the user wanted.
+      t.ta.readOnly = false;
+      t.ta.style.pointerEvents = 'auto';
+      try { t.ta.focus({ preventScroll: true }); } catch (_) {}
+      const n = t.ta.value.length;
+      try { t.ta.setSelectionRange(n, n); } catch (_) {}
+    }
+    t.el.style.borderColor = textBorderCss(t, editing === t);
+    t.el.title = t.clock ? 'Stopwatch — right-click · w to make it text again' : '';
+    growText(t);
+    paintTexts();
+    paintEngine();                      // a clock is burned-in pixels like any caption
+  }
+
   function paintTexts() {
     const r = _vpCropRenderRect(host, vid);
     const rectH = Math.max(1, state.frac.h * r.rh);
@@ -5508,6 +5606,16 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // can't edit what isn't on screen, and the playhead doesn't move while typing.
   function syncTextWindow(now) {
     const t0 = (now == null) ? _vpNowSec() : now;
+    // (dev0873) The stopwatch boxes read the playhead here — this already runs
+    // on timeupdate and after every scrub and frame-step, which is exactly when
+    // a clock has something new to say. Counted from A, so what is on screen is
+    // what the render will burn in at that moment of the clip.
+    const clipT0 = _vpClipStartSec();
+    state.texts.forEach(t => {
+      if (!t.clock) return;
+      const v = _vpClockStr(t0 - clipT0);
+      if (t.ta.value !== v) { t.ta.value = v; t.text = v; growText(t); }
+    });
     state.texts.forEach(t => {
       const on = (editing === t)
               || ((t.atStart == null || t0 >= t.atStart - 0.001)
@@ -5551,6 +5659,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // whichever one was picked last.
     const t = { x: Math.min(0.60, 0.06 + 0.03 * n), y: Math.min(0.76, 0.06 + 0.11 * n),
                 w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null, pauseSec: null,
+                clock: false,           // (dev0873) true = a stopwatch, not typed words
                 font: _vpTextFontDefault(), color: _vpTextColorDefault() };
 
     const box = document.createElement('div');
@@ -5659,17 +5768,26 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (editing === t) return;      // (dev0725) right-click re-entry — already live
     if (editing) endEdit();
     editing = t;
-    t.el.style.borderColor = 'rgba(150,255,200,1)';
+    t.el.style.borderColor = textBorderCss(t, true);
     t.el.style.background  = 'rgba(0,0,0,0.30)';
-    t.ta.readOnly = false;
-    t.ta.style.pointerEvents = 'auto';
     t.chip.style.display = '';
     updateChip(t);
+    document.addEventListener('pointerdown', onDocDown, true);
+    syncTextWindow();               // (dev0726) the box being typed in is always shown
+    // (dev0873) A stopwatch is selected, never typed in: it keeps the caret out
+    // so the digits can't be edited into something the render won't draw. The
+    // arrows still resize it and the right-click menu still owns it.
+    if (t.clock) {
+      if (typeof toast === 'function') {
+        toast('⏱ stopwatch · ↑ ↓ resize · drag to place · right-click for the menu', 2200);
+      }
+      return;
+    }
+    t.ta.readOnly = false;
+    t.ta.style.pointerEvents = 'auto';
     try { t.ta.focus({ preventScroll: true }); } catch (_) { try { t.ta.focus(); } catch (__) {} }
     const n = t.ta.value.length;
     try { t.ta.setSelectionRange(n, n); } catch (_) {}
-    document.addEventListener('pointerdown', onDocDown, true);
-    syncTextWindow();               // (dev0726) the box being typed in is always shown
     if (typeof toast === 'function') {
       toast('✎ typing — ↑ ↓ resize the type · click outside when done', 2200);
     }
@@ -5682,11 +5800,15 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     document.removeEventListener('pointerdown', onDocDown, true);
     t.ta.readOnly = true;
     t.ta.style.pointerEvents = 'none';
-    t.el.style.borderColor = 'rgba(120,230,170,0.85)';
+    t.el.style.borderColor = textBorderCss(t, false);
     t.el.style.background  = 'rgba(0,0,0,0.10)';
     t.chip.style.display = 'none';
     try { t.ta.blur(); } catch (_) {}
     t.text = t.ta.value;
+    // (dev0873) A stopwatch was never typed in, so there is nothing to bank on
+    // the saved-text list — and its digits are not "text the user abandoned",
+    // so the empty-box rule below must not reach it either.
+    if (t.clock) { syncTextWindow(); paintEngine(); return; }
     if (!t.text.trim()) removeText(t);   // an empty box is an abandoned one
     else {
       syncTextWindow();                  // (dev0726) …and it hides again if off-window
@@ -6172,6 +6294,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   state.trackStartRaf = trackStartRaf;
   // (dev0724) E adds a text box; the key handler resizes and ends the entry.
   state.addText = addText;
+  state.textSetClock = textSetClock;   // (dev0873)
   state.paintTexts = paintTexts;
   state.endTextEdit = endEdit;
   state.nudgeTextSize = nudgeSize;
