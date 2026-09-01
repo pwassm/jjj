@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0866';
+const PROXY_BUILD = 'dev0867';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -930,6 +930,63 @@ function buildDeshakeDetectArgs(p) {
           ...pre, '-i', p.input, '-an', '-vf', chain.join(','), '-f', 'null', '-'];
 }
 
+// (dev0867) ── COLOUR GRADE ────────────────────────────────────────────────
+// The one design decision this whole feature rests on: pick a colour model that
+// the BROWSER and ffmpeg can each express exactly, so the sliders the user
+// dragged are the picture that comes out. That model is
+//
+//   per-channel gamma → gain → lift        (browser feComponentTransfer  ·  here lutrgb)
+//   one fused 3x3 saturation matrix        (browser feColorMatrix        ·  here colorchannelmixer)
+//
+// both in sRGB. The client computes the matrix itself with the same Rec.709
+// luma coefficients CSS uses and sends the nine numbers, so nothing here has to
+// agree with a filter's private idea of what "saturation" means.
+//
+// Deliberately NOT ffmpeg's own `eq`, which is the obvious choice and the wrong
+// one: its brightness and contrast act on LUMA ONLY in YUV, and no CSS or SVG
+// filter can reproduce that — the preview and the file would diverge exactly
+// where the user was looking. The RGB route costs one yuv→rgb→yuv round trip
+// (invisible at the CRF this path encodes at) and buys a preview that is true.
+//
+// `maxval` rather than a literal 255 keeps the expressions right whatever depth
+// swscale hands us. The expressions are single-quoted because they contain
+// commas, which the filtergraph parser would otherwise read as separators —
+// the same guard the Ken Burns zoompan uses.
+//
+// Every number is range-checked and re-emitted through toFixed(6), so what
+// reaches argv is a literal and nothing the client sends can be injected.
+function buildColorChain(c) {
+  must(c && typeof c === 'object', 'color must be an object');
+  const num = (v, lo, hi, name) => {
+    const n = +v;
+    must(Number.isFinite(n) && n >= lo && n <= hi,
+         `color.${name} must be a number ${lo}..${hi}`);
+    return n.toFixed(6);
+  };
+  const parts = [];
+  if (c.lut) {
+    must(typeof c.lut === 'object', 'color.lut must be an object');
+    const gx = num(c.lut.gx, 0.2, 5, 'lut.gx');      // exponent, = 1/gamma
+    const k  = num(c.lut.k, -1, 1, 'lut.k');         // lift, same on all three
+    const sr = num(c.lut.sr, 0.05, 8, 'lut.sr');     // per-channel slope…
+    const sg = num(c.lut.sg, 0.05, 8, 'lut.sg');     // …which is where white
+    const sb = num(c.lut.sb, 0.05, 8, 'lut.sb');     // …balance lives
+    const e = sl => `'clip(${sl}*pow(val/maxval,${gx})*maxval+${k}*maxval,0,maxval)'`;
+    parts.push(`lutrgb=r=${e(sr)}:g=${e(sg)}:b=${e(sb)}`);
+  }
+  if (c.mix) {
+    must(typeof c.mix === 'object', 'color.mix must be an object');
+    // ±2 is colorchannelmixer's own limit; the client clamps saturation so the
+    // fused matrix stays inside it, and this refuses rather than let ffmpeg
+    // silently truncate a coefficient into a colour nobody asked for.
+    parts.push('colorchannelmixer=' +
+      ['rr','rg','rb','gr','gg','gb','br','bg','bb']
+        .map(k => k + '=' + num(c.mix[k], -2, 2, 'mix.' + k)).join(':'));
+  }
+  must(parts.length > 0, 'color has neither lut nor mix — send no color at all instead');
+  return parts.join(',');
+}
+
 function buildFfmpegArgs(p, tmpSink) {
   // Pass 1 of a deshake writes no file, so it runs before the output check.
   if (p.deshake && p.deshake.pass === 'detect') return buildDeshakeDetectArgs(p);
@@ -991,6 +1048,10 @@ function buildFfmpegArgs(p, tmpSink) {
   // path, which cannot run a filter at all — so a deshake there would be
   // silently dropped. Say so instead of handing back an unstabilised file.
   must(!(p.deshake && !p.crop), 'deshake needs a crop rect — the lossless copy path cannot filter');
+  // (dev0867) Same story for the colour grade, and for the same reason: the
+  // stream-copy path runs no filters at all, so a grade there would be dropped
+  // and the file would come back looking exactly as wrong as it went in.
+  must(!(p.color && !p.crop), 'a colour grade needs a crop rect — the lossless copy path cannot filter');
 
   if (p.crop) {
     // ── CROP path (re-encode) ────────────────────────────────────────────
@@ -1123,6 +1184,12 @@ function buildFfmpegArgs(p, tmpSink) {
     } else if (scaling) {
       vf += (aspect === 'P') ? `,scale=${resH}:-2` : `,scale=-2:${resH}`;
     }
+    // (dev0867) The colour grade sits on the finished FRAMING and under
+    // everything that gets drawn on top: it is the picture that is being
+    // corrected, not the captions, and a watermark must not be graded with it.
+    // After the scale rather than before, so it works on output pixels — same
+    // result, fewer of them.
+    if (p.color) vf += ',' + buildColorChain(p.color);
     // (dev0727) Freezes go in before the captions and after the framing, so the
     // hold is of the finished picture and the caption times below are read
     // against the lengthened timeline the client already mapped them onto.
@@ -1258,6 +1325,10 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
     chain.push(`rotate=${rad.toFixed(6)}:${ow}:${oh}:c=black`);
   }
   chain.push(`crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
+  // (dev0867) The grade goes in here rather than beside the video path's, so
+  // that the motion branch below — which returns before the scale — carries it
+  // too: a still turned into a Ken Burns clip is graded like any other render.
+  if (p.color) chain.push(buildColorChain(p.color));
 
   // The OUTPUT frame in pixels. Hoisted because three things need it: the
   // scale filter, zoompan's own `s=`, and drawtext turning fractions into
@@ -3481,6 +3552,81 @@ function frameRunCollect(bin, args, timeoutMs) {
     const killT = setTimeout(() => { try { proc.kill(); } catch (_) {} }, timeoutMs);
     proc.on('error', e => { clearTimeout(killT); resolve({ code: -1, out, err: err || e.message }); });
     proc.on('close', code => { clearTimeout(killT); resolve({ code, out, err }); });
+  });
+}
+
+// (dev0867) ── /frame/average — the mean colour of one frame ────────────────
+// What the ⚖ auto-white-balance button asks. ffmpeg crops to the rect the user
+// has drawn, area-averages it down to a SINGLE pixel and writes those three
+// bytes to stdout — the true mean of the region for the cost of decoding one
+// frame.
+//
+// Measured here rather than in a canvas on purpose. The page is on :8080 and
+// disk media comes off this proxy on :8081, so a drawImage/getImageData read
+// would taint the canvas and throw; and even where it didn't, it would be
+// measuring the BROWSER's yuv→rgb conversion rather than the pixels ffmpeg is
+// about to grade. This answer comes from the same decoder that does the work.
+//
+// Read-only: no output file, no writes, nothing cached.
+async function frameAverage(req, res, origin) {
+  let p;
+  try { p = await readJson(req, 64 * 1024); }
+  catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
+  let args;
+  try {
+    const input = String(p.input || '');
+    must(/^([A-Za-z]:[\\/]|\/)/.test(input), 'input must be an absolute path');
+    must(!/(^|[\\/])\.\.([\\/]|$)/.test(input), 'input may not contain ".."');
+    must(fs.existsSync(input), 'input does not exist: ' + input);
+    const chain = [];
+    if (p.crop) {
+      must(typeof p.crop === 'object', 'crop must be an object');
+      for (const k of ['w', 'h', 'x', 'y']) {
+        must(Number.isInteger(p.crop[k]) && p.crop[k] >= 0,
+             `crop.${k} must be a non-negative integer`);
+      }
+      must(p.crop.w > 0 && p.crop.h > 0, 'crop.w/h must be > 0');
+      chain.push(`crop=${p.crop.w}:${p.crop.h}:${p.crop.x}:${p.crop.y}`);
+    }
+    // flags=area is the whole point — it averages every source pixel into the
+    // one output pixel. A default (bicubic) resample to 1x1 would sample rather
+    // than average, and read the middle of the frame as if it were all of it.
+    chain.push('scale=1:1:flags=area', 'format=rgb24');
+    const pre = [];
+    const at = +p.atSec;
+    if (Number.isFinite(at) && at > 0) {
+      must(at <= 86400, 'atSec must be ≤ 86400');
+      pre.push('-ss', at.toFixed(3));      // a still sends 0 and gets no seek
+    }
+    args = ['-hide_banner', '-loglevel', 'error', ...pre, '-i', input,
+            '-vf', chain.join(','), '-frames:v', '1',
+            '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'];
+  } catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
+
+  let proc;
+  try { proc = spawn('ffmpeg', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
+  catch (e) { sendJson(res, 500, { ok: false, error: 'ffmpeg failed to start: ' + e.message }, origin); return; }
+  const out = [], err = [];
+  let done = false;
+  const finish = (code, status, body) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    try { proc.kill(); } catch (_) {}
+    sendJson(res, status, body, origin);
+  };
+  const timer = setTimeout(() => finish(0, 504, { ok: false, error: 'ffmpeg timed out' }), 25000);
+  proc.stdout.on('data', d => out.push(d));
+  proc.stderr.on('data', d => err.push(d));
+  proc.on('error', e => finish(0, 500, { ok: false, error: e.message }));
+  proc.on('close', code => {
+    const buf = Buffer.concat(out);
+    if (buf.length < 3) {
+      finish(code, 502, { ok: false, error: 'ffmpeg returned no pixel' +
+        (err.length ? ': ' + Buffer.concat(err).toString().slice(-300) : '') });
+      return;
+    }
+    finish(code, 200, { ok: true, r: buf[0], g: buf[1], b: buf[2] });
   });
 }
 
@@ -6368,7 +6514,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
@@ -6400,6 +6546,7 @@ http.createServer((req, res) => {
     if (req.method !== 'POST') { send(res, 405, 'frame: POST required', corsForExec(origin)); return; }
     const action = req.url.slice('/frame/'.length).split('?')[0];
     if (action === 'grab') { frameGrab(req, res, origin); return; }
+    if (action === 'average') { frameAverage(req, res, origin); return; }   // (dev0867)
     sendJson(res, 404, { ok: false, error: 'unknown frame action: ' + action }, origin);
     return;
   }

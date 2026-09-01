@@ -544,6 +544,11 @@ window.addEventListener('keydown', function(e) {
   // ⇧B is free: `b` is not in the letter-dispatch list below, so nothing else
   // claims either case of it.
   if (k === 'b' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // (dev0867) …unless a still is being cropped. The image crop tool runs OVER
+    // the slideshow with the grid still open, so it matches gOpenB && !vpOpenB
+    // exactly — and b is its colour panel. Its own handler is on document, which
+    // this window-capture one beats, so the standing down has to happen here.
+    if (typeof window._vpImageCropActive === 'function' && window._vpImageCropActive()) return;
     const gOpenB  = document.getElementById('gridOverlay')?.style.display === 'flex';
     const vpOpenB = document.getElementById('gridFullscreen')?.style.display === 'flex';
     const _uModeB = (typeof _isUserMode === 'function') && _isUserMode();

@@ -2313,6 +2313,13 @@ function vpKeyHandler(e) {
   if (document.getElementById(VP_TEXT_MENU_ID) ||
       document.getElementById(VP_TEXT_PICK_ID)) return;
 
+  // (dev0867) The colour panel owns the keyboard while one of its controls has
+  // focus: ← / → nudge a slider and must not also frame-step the video, and Esc
+  // must shut the panel rather than the whole player. This handler is on
+  // document-capture, so it is the one that has to stand down — the panel's own
+  // listener then gets the key.
+  if (e.target && e.target.closest && e.target.closest('#vp-color-panel')) return;
+
   // (dev0344) Esc closes V / Ie back to T (re-enabled — was removed in zip0186).
   // vpClose() handles teardown and silently refuses in locked-share mode, so no
   // separate guard is needed here.
@@ -2466,6 +2473,17 @@ function vpKeyHandler(e) {
   if ((e.key === 'v' || e.key === 'V') && _vpCropHolding()) {
     e.preventDefault();
     _vpCropCycleDeshake();
+    return;
+  }
+
+  // (dev0867) B = the colour panel, while the crop overlay is open. B is the one
+  // free left-hand letter here: core.js claims it only when the GRID is open and
+  // V is not, and it is deliberately absent from that file's letter-dispatch
+  // list, so nothing upstream eats it. (x looks free and is not — it forwards to
+  // the X screen.)
+  if ((e.key === 'b' || e.key === 'B') && _vpCropHolding()) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof window.vpColorToggle === 'function') window.vpColorToggle();
     return;
   }
 
@@ -4921,6 +4939,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-engine" title="Lossless = jpegtran copies the JPEG blocks across untouched. ' +
       'A tilt, a caption, a resolution change or a clip cannot be done that way — those switch it to a re-encode." ' +
       'style="display:none;padding:2px 6px;border-radius:3px;background:#234;">–</span>' +
+    // (dev0867) Colour grade. On BOTH bars — a photograph goes green underwater
+    // exactly like the clip shot beside it — and it doubles as the warning light
+    // for a grade still loaded from the last clip: the chip turns amber and
+    // reads "graded". vpcolor.js paints it and wires the click.
+    '<span id="vp-crop-colour" title="Colour grade (B) — warmth, tint, brightness, contrast, saturation, gamma, previewed live on the frame" ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">🎨 colour</span>' +
     // (dev0789) Deshake. Video only — a still has no camera path to smooth.
     // vidstab zooms in slightly to hide the correction, so the strength is a
     // choice rather than a switch: click to cycle off → light → medium → strong.
@@ -6006,6 +6030,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // its autopilot, and take the cheat-sheet down with the player.
     endEdit();   // (dev0724) …and drop the text box's document listener
     _vpCropHelpHide();
+    // (dev0867) Closing V mid-grade strips the preview off the media element
+    // too — same reason as _vpCropToggle's.
+    if (typeof window.vpColorUnmount === 'function') window.vpColorUnmount();
     if (typeof window._slideshowCropHold === 'function') {
       try { window._slideshowCropHold(false); } catch (_) {}
     }
@@ -6284,6 +6311,23 @@ function _vpCropHelpShow() {
         row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
         row(K('Space'),      'play / pause') +
+        head('Colour') +
+        row(K('B'),          'the colour panel — warmth, tint, brightness, contrast, ' +
+                             'saturation and gamma, live ON THE FRAME as you drag. ' +
+                             'What you see is what gets encoded: the preview and the ' +
+                             'render do the same arithmetic in the same colour space.') +
+        row('⚖ auto',        'white balance from the picture itself — ffmpeg averages ' +
+                             'what is inside the crop box and neutralises the cast. A ' +
+                             'starting point for a blue or green dive, not the last ' +
+                             'word; tune on from there.') +
+        row('◧ before',      'hold to see the picture ungraded') +
+        row('presets',       'save a grade under a name and drop it on the next clip — ' +
+                             'one dive shares one cast, so this is the point. ' +
+                             'Right-click an entry in the list to delete it.') +
+        row('🎨 graded',     'the bar chip turns amber whenever a grade is loaded. The ' +
+                             'grade STAYS as you move between clips and across a ' +
+                             'reload, which is what the chip is there to tell you — ' +
+                             '↺ in the panel puts it back to neutral.') +
         head('The output') +
         row(K('M'),  'audio on / off in the SAVED clip — the bar says which, ' +
                      'and it starts off. (Muting the player is the toolbar 🔇.)') +
@@ -6390,6 +6434,18 @@ function _vpCropHelpImageRows(K, row, head) {
                          'is simply held for that long.') +
     row('gif vs mp4',    'gif is 15fps and carries its own palette — keep it short ' +
                          'and small. mp4 is 30fps, h264, silent.') +
+    head('Colour') +
+    row(K('B'),          'the colour panel — warmth, tint, brightness, contrast, ' +
+                         'saturation and gamma, live ON THE PICTURE as you drag. What ' +
+                         'you see is what gets written.') +
+    row('⚖ auto',        'white balance from the picture itself — ffmpeg averages what ' +
+                         'is inside the crop box and neutralises the cast.') +
+    row('◧ before',      'hold to see it ungraded') +
+    row('presets',       'save a grade under a name and drop it on the next picture; ' +
+                         'right-click an entry in the list to delete it') +
+    row('🎨 graded',     'the amber bar chip means a grade is loaded — it stays as you ' +
+                         'move between pictures, and ↺ in the panel clears it. A graded ' +
+                         'save can never be lossless: it is new pixels by definition.') +
     head('The output') +
     row('⧉ lossless',    'jpegtran copies the JPEG’s blocks straight across — the ' +
                          'pixels that survive the crop are the ORIGINAL pixels, not ' +
@@ -6430,6 +6486,59 @@ function _vpCropHelpHide() {
   if (el) el.remove();
 }
 
+// (dev0867) The node the colour preview goes on. In video mode that is the
+// <video>; on a still, player.el is _vpImgAdapter's plain object (getters that
+// pretend to be a video), so the real element has to come from _img.
+function _vpColorMediaEl() {
+  if (!_vpState) return null;
+  const el = _vpState.imageMode
+    ? _vpState._img
+    : (_vpState.player && _vpState.player.el);
+  // An embed's `player` is the provider's own object and its `el` is not a
+  // node — grade nothing there rather than throw.
+  return (el && el.nodeType === 1) ? el : null;
+}
+
+// (dev0867) What ⚖ auto measures: the source file, the rect on screen, and the
+// frame being looked at. Returns null when there is nothing on disk to measure
+// — an embed or a row with no path — and the button says so rather than
+// guessing.
+//
+// The rect is clamped into the frame because ffmpeg refuses a crop that runs
+// past the edge, and a bled rect (Q) deliberately does. An EXIF-rotated still
+// sends NO rect at all: the stored pixels are not the ones on screen, so the
+// honest answer there is the average of the whole picture.
+window._vpColorAutoContext = function () {
+  const s = _vpState && _vpState.crop;
+  if (!s) return null;
+  const row = window._vpCurrentRow || (_vpState && _vpState.row);
+  const rel = String((row && (row.comment || row.VidTitle)) || '');
+  if (!rel) return null;
+  const abs = _vpCropResolveAbsPath(rel);
+  if (!abs) return null;
+  const vid = _vpState.player && _vpState.player.el;
+  const VW = (vid && vid.videoWidth)  || 0;
+  const VH = (vid && vid.videoHeight) || 0;
+  const out = { input: abs, atSec: 0 };
+  if (!_vpState.imageMode && vid && Number.isFinite(vid.currentTime)) {
+    out.atSec = Math.max(0, vid.currentTime);
+  }
+  if (VW && VH && !(s._exif > 1)) {
+    const even = n => Math.max(2, Math.round(n / 2) * 2);
+    const x = Math.max(0, Math.min(VW - 2, Math.round(s.frac.x * VW)));
+    const y = Math.max(0, Math.min(VH - 2, Math.round(s.frac.y * VH)));
+    out.crop = { x, y,
+                 w: Math.min(even(s.frac.w * VW), VW - x),
+                 h: Math.min(even(s.frac.h * VH), VH - y) };
+  }
+  return out;
+};
+
+// (dev0867) The grade's token for the sidecar description, or ''.
+function _vpColorToken() {
+  return (typeof window.vpColorDetailToken === 'function') ? window.vpColorDetailToken() : '';
+}
+
 function _vpCropToggle() {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
@@ -6456,7 +6565,14 @@ function _vpCropToggle() {
     }
     if (host) host.style.transform = '';
     if (s.paint) s.paint();   // (dev0320) reposition bar now it's visible (offsetWidth valid)
+    // (dev0867) Hand the colour tool the element it grades — the <video>, or on
+    // a still the <img> itself (player.el there is the adapter object, not a
+    // node). A sticky grade from the last clip comes back on at this moment.
+    if (typeof window.vpColorMount === 'function') window.vpColorMount(_vpColorMediaEl());
   } else {
+    // (dev0867) …and take the preview filter off again. Not tidiness: the
+    // slideshow REUSES its <img>, so a filter left behind would tint the show.
+    if (typeof window.vpColorUnmount === 'function') window.vpColorUnmount();
     if (sc) {
       sc.style.pointerEvents = s._savedSCPE || '';
       sc.style.cursor = s._savedSCCursor || '';
@@ -7026,6 +7142,10 @@ function _vpImgLossless(state, row) {
                                        return { ok: false, why: 'a clip' };
   if (state.texts && state.texts.some(t => ((t.ta ? t.ta.value : t.text) || '').trim()))
                                        return { ok: false, why: 'text on it' };
+  // (dev0867) A colour grade is new pixels by the same argument — jpegtran
+  // copies JPEG blocks across untouched and cannot change one of them.
+  if (typeof window.vpColorActive === 'function' && window.vpColorActive())
+                                       return { ok: false, why: 'graded' };
   if (ext !== 'jpg' && ext !== 'jpeg') return { ok: false, why: 'not a JPEG' };
   if (state._hasJpegtran === false)    return { ok: false, why: 'no jpegtran' };
   if (state.angle)                     return { ok: false, why: 'tilted' };
@@ -7172,6 +7292,14 @@ function _vpImgKey(e) {
   // first. Escape especially: it should shut the menu, not the whole session.
   if (document.getElementById(VP_TEXT_MENU_ID) ||
       document.getElementById(VP_TEXT_PICK_ID)) return;
+  // (dev0867) The colour panel owns the keyboard while it has focus — see the
+  // matching guard in vpKeyHandler.
+  if (e.target && e.target.closest && e.target.closest('#vp-color-panel')) return;
+  if (e.key === 'b' || e.key === 'B') {
+    take();
+    if (typeof window.vpColorToggle === 'function') window.vpColorToggle();
+    return;
+  }
   if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') { take(); window._vpImageCropClose(); return; }
   // (dev0790) ⇧T frees / re-locks the ratio here too — a photograph is if
   // anything the likelier place to want a shape that isn't one of the two.
@@ -7386,6 +7514,10 @@ async function _vpImageSave(opts) {
     // An EXIF-rotated original is baked upright first, so the rect means what
     // it looked like it meant on screen.
     if (s._exif > 1) payload.exif = s._exif;
+    // (dev0867) The colour grade, if one is dialled in. Null when neutral, so an
+    // ungraded save sends nothing and takes exactly the path it always has.
+    const _colImg = (typeof window.vpColorPayload === 'function') ? window.vpColorPayload() : null;
+    if (_colImg) payload.color = _colImg;
     // (dev0745) Captions. Wrapped here at the size ffmpeg will draw them, in
     // the OUTPUT frame's pixels — and always for the whole picture, since a
     // still has no clock to window them against.
@@ -7421,11 +7553,21 @@ async function _vpImageSave(opts) {
   const angTok = s.angle ? ('r' + s.angle.toFixed(1).replace('.', '_') + 'deg') : '';
   const detail = [sizeStr, effAspect, angTok,
                   s.freeRatio ? ('ar' + _vpAspectLabel(s.frac.w * VW, s.frac.h * VH)) : '',
-                  'img', engTok].filter(Boolean).join(' · ');
+                  'img', engTok, _vpColorToken()].filter(Boolean).join(' · ');
   const want = outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.' + outExt;
   const free = await _vpCropFreePath(want);
   payload.output = free.path;
   const outName = String(free.path).split(/[\\/]/).pop();
+
+  // (dev0867) A stale proxy drops payload.color and writes the picture
+  // ungraded — a clean file that reads as success until you look at it.
+  // Refuse up front, the way the deskew and caption gates on the video path do.
+  if (payload.color && !(await _vpProxyHasFeature('color'))) {
+    if (typeof toast === 'function') {
+      toast('A colour grade needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
 
   const btn = s.el.bar.querySelector('#vp-crop-do');
   const origLabel = btn ? btn.textContent : null;
@@ -7726,6 +7868,7 @@ async function _vpGoSave(opts) {
     if (texts.length)  detailParts.push('tx' + texts.length);
     if (pauses.length) detailParts.push('pz' + pauses.length);
     if (s.deshake && s.deshake !== 'off') detailParts.push('ds-' + s.deshake);  // (dev0789)
+    if (_vpColorToken()) detailParts.push(_vpColorToken());                     // (dev0867)
     detailParts.push(durStr);
     payload = {
       input: absInput,
@@ -7739,6 +7882,9 @@ async function _vpGoSave(opts) {
       overwrite: false
     };
     if (rotate) payload.rotate = rotate;
+    // (dev0867) The colour grade — see the note on the image path.
+    const _colVid = (typeof window.vpColorPayload === 'function') ? window.vpColorPayload() : null;
+    if (_colVid) payload.color = _colVid;
     // (dev0778) No `pad` — a bled rect renders its intersection with the frame,
     // so nothing black is ever encoded. The proxy keeps the capability for the
     // day something genuinely needs a fixed output aspect; sending it is a
@@ -7782,6 +7928,14 @@ async function _vpGoSave(opts) {
     outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.mp4');
   payload.output = free.path;
   outName = String(free.path).split(/[\\/]/).pop();
+  // (dev0867) A stale proxy drops payload.color and renders the clip ungraded,
+  // which looks like a success at the end of a long encode and is not one.
+  if (payload.color && !(await _vpProxyHasFeature('color'))) {
+    if (typeof toast === 'function') {
+      toast('A colour grade needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   // (dev0319) Deskew preflight — a stale proxy silently ignores payload.rotate
   // and applies the rotated-canvas crop coords to the raw frame (grabs the wrong
   // region, no deskew). Refuse loudly instead of writing a mis-cropped file.

@@ -1116,13 +1116,13 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0866';
+  window.HELP_VERSION_STR = 'dev0867';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
     // keydown listener that claims `h`, and listeners on the same node fire in
     // registration order — it has to beat core.js's dispatcher to the key.
-    var files = ['helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','taxoninfo.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','ig.js','s.js','o.js','x.js','slideshow.js','screenrec.js','makecard.js','auth.js','backarrow.js','keyboard.js','boot.js'];
+    var files = ['helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','taxoninfo.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','vpcolor.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','ig.js','s.js','o.js','x.js','slideshow.js','screenrec.js','makecard.js','auth.js','backarrow.js','keyboard.js','boot.js'];
     files.forEach(function(f) {
       document.write('<script src="' + f + '?v=' + v + '"><\/script>');
     });
