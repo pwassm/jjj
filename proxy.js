@@ -1079,6 +1079,37 @@ function atempoChain(mag) {
   return out.map(f => 'atempo=' + f.toFixed(6)).join(',');
 }
 
+// (dev0871) ── Video codec ───────────────────────────────────────────────────
+// The crop path has always encoded H.264 (libx264). payload.vcodec now chooses:
+// 'h264' (default, unchanged) or 'h265' (libx265, tagged hvc1 so QuickTime and
+// Apple devices will open the file — without that tag they refuse an hev1 mp4).
+// CRF means something different per encoder: for the same look x265 wants a
+// NUMBER a few points higher than x264, so the client offsets what it sends
+// rather than handing you a needlessly heavy file for the same picture.
+function vpCodecArgs(p, crf, preset) {
+  const c = (p.vcodec === undefined || p.vcodec === null) ? 'h264' : String(p.vcodec);
+  must(c === 'h264' || c === 'h265', "vcodec must be 'h264' or 'h265'");
+  if (c === 'h265') {
+    return ['-c:v', 'libx265', '-crf', String(crf), '-preset', preset, '-tag:v', 'hvc1'];
+  }
+  return ['-c:v', 'libx264', '-crf', String(crf), '-preset', preset];
+}
+
+// (dev0871) ── Loop / boomerang ────────────────────────────────────────────
+// 'off'   — nothing.
+// 'fwd'   — the clip is unchanged; the LOOP is a property of how it is played,
+//           so this only tells the client to write the HTML5 loop page.
+// 'boom'  — forward then backward, baked in: the clip is split, one copy is
+//           reversed, and the two are concatenated. That is what makes a short
+//           loop join itself invisibly, since the last frame IS the first.
+// The graph is appended to -filter:v, which accepts a labelled filtergraph as
+// long as it has one input and one output — the same trick the pause chain uses.
+function vpLoopMode(p) {
+  const m = (p.loop === undefined || p.loop === null) ? 'off' : String(p.loop);
+  must(m === 'off' || m === 'fwd' || m === 'boom', "loop must be 'off', 'fwd' or 'boom'");
+  return m;
+}
+
 function buildFfmpegArgs(p, tmpSink) {
   // Pass 1 of a deshake writes no file, so it runs before the output check.
   if (p.deshake && p.deshake.pass === 'detect') return buildDeshakeDetectArgs(p);
@@ -1315,6 +1346,7 @@ function buildFfmpegArgs(p, tmpSink) {
     // behind on the old timeline. Reverse must precede setpts: it hands the
     // frames back in reverse order, and setpts then re-stamps them from zero.
     const spd = vpSpeedFactor(p);
+    const loopMode = vpLoopMode(p);
     let afilter = null;
     if (spd && spd !== 1) {
       const mag = Math.abs(spd);
@@ -1322,19 +1354,29 @@ function buildFfmpegArgs(p, tmpSink) {
       vf += ',setpts=' + (1 / mag).toFixed(6) + '*PTS';
       if (audio) afilter = (spd < 0 ? 'areverse,' : '') + atempoChain(mag);
     }
+    // (dev0871) Boomerang goes on after the retime, so what plays backwards is
+    // the finished clip at its final speed. `reverse` buffers the whole segment
+    // in RAM — an A→B clip, which is what this path renders.
+    let boomSilent = false;
+    if (loopMode === 'boom') {
+      vf += ',split[bA][bB];[bB]reverse[bR];[bA][bR]concat=n=2:v=1';
+      boomSilent = true;   // a ping-ponged soundtrack is noise, and areverse would double the length
+    }
     return [
       ...common,
       ...pre,
       '-i', p.input,
       '-filter:v', vf,
-      '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
+      ...vpCodecArgs(p, crf, preset),
       // (dev0868) An SDR picture must not go out wearing the source's HDR tags.
       ...(sdrOut ? SDR_OUT_TAGS : []),
       // (dev0869) A retimed soundtrack cannot be stream-copied — it is resampled
       // by atempo (and re-ordered by areverse), so it re-encodes to AAC.
-      ...(audio ? (afilter ? ['-filter:a', afilter, '-c:a', 'aac', '-b:a', '192k']
-                           : ['-c:a', 'copy'])
-                : ['-an']),
+      // (dev0871) A boomerang is always silent — see boomSilent above.
+      ...((audio && !boomSilent)
+            ? (afilter ? ['-filter:a', afilter, '-c:a', 'aac', '-b:a', '192k']
+                       : ['-c:a', 'copy'])
+            : ['-an']),
       // (dev0297) Same flag the lossless path already uses. Video is re-encoded
       // from PTS 0, but audio is stream-copied — its first packets can carry a
       // small leading offset that downstream editors (e.g. LosslessCut) render
@@ -6651,7 +6693,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
@@ -7034,6 +7076,50 @@ http.createServer((req, res) => {
       return;
     }
     sendJson(res, 404, { ok: false, error: 'unknown pinterest action: ' + action }, origin);
+    return;
+  }
+
+  // (dev0871) ── HTML5 loop page beside a rendered clip ────────────────────
+  // The crop bar's Loop setting writes <clip>.html here: a bare page holding
+  // the mp4 in a looping, muted, autoplaying <video>. Open it and the clip runs
+  // forever — which is the point of a boomerang, and is not something the mp4
+  // can say about itself. Writes to disk → origin-locked + POST, and the path
+  // is pinned to the clip the render just produced.
+  if (req.url.startsWith('/vp/loophtml')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
+    if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
+    readJson(req).then(body => {
+      const mp4 = String((body && body.video) || '');
+      if (!/^([A-Za-z]:[\/]|\/)/.test(mp4) || /(^|[\/])\.\.([\/]|$)/.test(mp4)
+          || !/\.(mp4|webm|mov)$/i.test(mp4)) {
+        sendJson(res, 400, { ok: false, error: 'video must be an absolute mp4/webm/mov path' }, origin); return;
+      }
+      if (!fs.existsSync(mp4)) { sendJson(res, 400, { ok: false, error: 'no such video: ' + mp4 }, origin); return; }
+      const mode = (body && body.mode === 'boom') ? 'boom' : 'fwd';
+      const base = path.basename(mp4);
+      const out  = mp4.replace(/\.[^.\/]+$/, '') + '.html';
+      // base is a name this proxy just wrote, but it still gets escaped — an
+      // apostrophe or an ampersand in a clip name would otherwise break the
+      // page, and the page is the deliverable.
+      const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const html = [
+        '<!doctype html>',
+        '<meta charset="utf-8">',
+        '<title>' + esc(base) + '</title>',
+        '<style>html,body{margin:0;height:100%;background:#000;display:flex;' +
+          'align-items:center;justify-content:center}video{max-width:100%;max-height:100%}</style>',
+        '<video src="' + esc(encodeURI(base)) + '" autoplay loop muted playsinline controls></video>',
+        '<!-- ' + (mode === 'boom'
+          ? 'boomerang: the clip already runs forward then backward'
+          : 'forward-only loop') + ' -->',
+        ''
+      ].join('\n');
+      try { fs.writeFileSync(out, html, 'utf8'); }
+      catch (e) { sendJson(res, 500, { ok: false, error: 'write failed: ' + e.message }, origin); return; }
+      sendJson(res, 200, { ok: true, path: out }, origin);
+    }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
     return;
   }
 

@@ -4893,14 +4893,21 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // a two-line bar. paint() reads the real height back when placing it.
   bar.style.cssText =
     'position:absolute;transform:translateX(-50%);min-height:30px;' +
-    'display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:2px 8px;max-width:96%;white-space:nowrap;' +
+    // (dev0871) ONE line, always. The wrap dev0719 added kept every control
+    // reachable but cost a second row over the picture, and the bar sits on the
+    // thing being cropped. It scrolls sideways instead — the controls that fall
+    // off the end are still there, one flick away, and the crop window keeps
+    // the height it had.
+    'display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;' +
+    'align-items:center;gap:6px;padding:2px 8px;max-width:96%;white-space:nowrap;' +
+    'scrollbar-width:thin;' +
     'background:rgba(0,0,0,0.7);color:#dfe6f0;font:12px ui-monospace,Consolas,monospace;' +
     'border-radius:4px;pointer-events:auto;z-index:2;';
   bar.innerHTML =
     '<span id="vp-crop-aspect" title="Locked ratio — the corners scale it. Drag a SIDE (or ⇧T) for any shape." ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
     '<span id="vp-crop-crf-lbl" style="opacity:0.7;">CRF</span>' +
-    '<input id="vp-crop-crf" type="range" min="0" max="28" value="26" style="width:90px;vertical-align:middle;">' +
+    '<input id="vp-crop-crf" type="range" min="0" max="28" value="26" style="width:64px;vertical-align:middle;flex:0 0 auto;">' +
     '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">26</span>' +
     '<select id="vp-crop-res" title="Output short side. The W×H label turns amber when the crop rect is smaller than this — ffmpeg would enlarge pixels rather than add detail." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
@@ -4954,7 +4961,6 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (dev0869) Speed. A signed multiplier baked into the RENDER, not the
     // player: -20x .. +20x, where a negative value plays the clip backwards at
     // that rate. Video only — a still has no timeline to stretch.
-    '<span id="vp-crop-spd-lbl" style="opacity:0.7;">Spd</span>' +
     '<select id="vp-crop-speed" title="Speed of the saved clip: 1x = as shot, 2x = twice as fast, 0.5x = slow motion, a negative value plays it backwards. Anything but 1x re-encodes the soundtrack." '
       + 'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
       '<option value="-20">-20x rev</option>' +
@@ -4993,6 +4999,24 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       '<option value="15">15x</option>' +
       '<option value="20">20x</option>' +
       '</select>' +
+    // (dev0871) Encoder. H.264 is what every build before this one wrote, and it
+    // stays the default — it plays everywhere. H.265 is roughly half the size
+    // for the same picture, and is refused by older players and some editors.
+    '<select id="vp-crop-enc" title="Video codec of the saved clip. H.264 plays everywhere. H.265 (HEVC) is about half the file for the same picture, but older players and some editors will not open it." ' +
+      'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
+      '<option value="h264" selected>H.264</option>' +
+      '<option value="h265">H.265</option>' +
+    '</select>' +
+    // (dev0871) Loop. Both settings write <clip>.html beside the mp4 — a page
+    // that plays it on repeat, which is the only place "looping" can actually
+    // live. Boomerang additionally BAKES the ping-pong into the clip, so the
+    // join is invisible: the last frame is the first one again.
+    '<select id="vp-crop-loop" title="Looping. ▸ loop writes an HTML5 page beside the clip that plays it on repeat. ⇄ boomerang also renders it forward-then-backward, so the loop joins itself seamlessly (silent — a reversed soundtrack is noise)." ' +
+      'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
+      '<option value="off" selected>no loop</option>' +
+      '<option value="fwd">▸ loop</option>' +
+      '<option value="boom">⇄ boomerang</option>' +
+    '</select>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
     '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
@@ -5005,7 +5029,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   if (imageMode) {
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
      'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake',
-     'vp-crop-spd-lbl', 'vp-crop-speed'].forEach(id => {
+     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop'].forEach(id => {
       const el = bar.querySelector('#' + id);
       if (el) el.style.display = 'none';
     });
@@ -5197,6 +5221,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     audio: false,                     // (dev0719) rendered clip is silent unless asked
     deshake: 'off',                   // (dev0789) off | light | medium | strong
     speed: 1,                         // (dev0869) signed render speed, -20..20 (negative = reverse)
+    vcodec: 'h264',                   // (dev0871) h264 | h265
+    loop: 'off',                      // (dev0871) off | fwd | boom
     texts: [],                        // (dev0724) burned-in captions, see addText
     // (dev0720) `on` = armed; frac is inside the CROP rect (fw === fh, since a
     // same-aspect box inside a box has equal fractions on both axes); atSec is
@@ -5978,6 +6004,33 @@ function _vpMountCropOverlay(host, vid, row, opts) {
           ? 'Speed 1x — the clip renders as shot'
           : ('Speed ' + state.speed + 'x' + (state.speed < 0 ? ' (backwards)' : '') +
              ' — applies to the SAVED clip, not this player'), 2200);
+      }
+    });
+  }
+
+  // (dev0871) ── Encoder · Loop ─────────────────────────────────────────────
+  const encSel = bar.querySelector('#vp-crop-enc');
+  if (encSel) {
+    encSel.value = state.vcodec;
+    encSel.addEventListener('change', () => {
+      state.vcodec = (encSel.value === 'h265') ? 'h265' : 'h264';
+      if (typeof toast === 'function') {
+        toast(state.vcodec === 'h265'
+          ? 'H.265 — about half the size, slower to encode, and older players will refuse it'
+          : 'H.264 — plays everywhere', 2600);
+      }
+    });
+  }
+  const loopSel = bar.querySelector('#vp-crop-loop');
+  if (loopSel) {
+    loopSel.value = state.loop;
+    loopSel.addEventListener('change', () => {
+      const v = loopSel.value;
+      state.loop = (v === 'fwd' || v === 'boom') ? v : 'off';
+      if (typeof toast === 'function' && state.loop !== 'off') {
+        toast(state.loop === 'boom'
+          ? '⇄ boomerang — rendered forward then backward, silent, with a looping .html beside it'
+          : '▸ loop — a looping .html page is written beside the clip', 3000);
       }
     });
   }
@@ -7663,6 +7716,21 @@ async function _vpImageSave(opts) {
   // (dev0867) A stale proxy drops payload.color and writes the picture
   // ungraded — a clean file that reads as success until you look at it.
   // Refuse up front, the way the deskew and caption gates on the video path do.
+  // (dev0871) A stale proxy drops payload.vcodec and writes H.264 under an
+  // H.265 filename, and drops payload.loop and writes a one-way clip. Both are
+  // quiet wrong answers at the end of a long encode, so refuse them up front.
+  if (payload.vcodec === 'h265' && !(await _vpProxyHasFeature('vpcodec'))) {
+    if (typeof toast === 'function') {
+      toast('H.265 needs an updated proxy — restart "node proxy.js", or pick H.264', 4400);
+    }
+    return;
+  }
+  if (payload.loop === 'boom' && !(await _vpProxyHasFeature('vploop'))) {
+    if (typeof toast === 'function') {
+      toast('A boomerang needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   // (dev0869) A stale proxy drops payload.speed and renders the clip at 1x —
   // the same silent wrong answer at the end of a long encode as a dropped grade.
   if (payload.speed && !(await _vpProxyHasFeature('vpspeed'))) {
@@ -7743,6 +7811,30 @@ async function _vpImageSave(opts) {
     if (typeof toast === 'function') toast('save error: ' + msg, 3600);
     console.error('[image save error]', err);
   }
+}
+
+// (dev0871) Write <clip>.html beside a rendered clip — a page that plays it on
+// repeat. The mp4 cannot carry "loop" itself; a page can, and it is the thing
+// you hand to someone or drop on a browser. Returns true when it lands.
+async function _vpWriteLoopHtml(videoPath, mode) {
+  try {
+    if (!(await _vpProxyHasFeature('vploop'))) {
+      if (typeof toast === 'function') {
+        toast('the loop page needs an updated proxy — restart "node proxy.js"', 3600);
+      }
+      return false;
+    }
+    const r = await fetch(PROXY_BASE + '/vp/loophtml', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video: videoPath, mode })
+    });
+    const j = await r.json().catch(() => null);
+    if (r.ok && j && j.ok) return true;
+    console.warn('[loop html failed]', r.status, j);
+  } catch (err) {
+    console.warn('[loop html failed]', err);
+  }
+  return false;
 }
 
 // (dev0293) G hotkey handler — save the A→B segment of the current disk
@@ -7984,12 +8076,21 @@ async function _vpGoSave(opts) {
       detailParts.push((s.speed < 0 ? 'rev' : 'spd') +
                        Math.abs(s.speed).toString().replace('.', '_') + 'x');
     }
+    // (dev0871) …and the encoder and the loop, for the same reason.
+    if (s.vcodec === 'h265') detailParts.push('h265');
+    if (s.loop === 'boom') detailParts.push('boomerang');
+    else if (s.loop === 'fwd') detailParts.push('loop');
     detailParts.push(durStr);
     payload = {
       input: absInput,
       output: '',                       // (dev0863) filled in after the branch
       crop: cropBox,
-      crf: s.crf,
+      // (dev0871) CRF is per-encoder: x265 reaches the same picture at a NUMBER
+      // a few points above x264's, so sending the slider's value verbatim would
+      // hand back a needlessly heavy file. +5 is the usual equivalence, clamped
+      // to the scale's own ceiling.
+      crf: (s.vcodec === 'h265') ? Math.min(51, s.crf + 5) : s.crf,
+      vcodec: s.vcodec || 'h264',
       preset: s.slow ? 'slow' : 'medium',
       aspect: effAspect, resHeight: s.resHeight,   // (dev0778) derived, see above
       audio: !!s.audio,               // (dev0719) bar's 🔇/🔊 switch → -an / -c:a copy
@@ -8003,6 +8104,9 @@ async function _vpGoSave(opts) {
     // (dev0869) Speed / reverse. Only sent when it is actually something —
     // 1x means "as shot", and the proxy should take its untouched path.
     if (s.speed && s.speed !== 1) payload.speed = s.speed;
+    // (dev0871) Only 'boom' changes the pixels; 'fwd' is purely the .html page
+    // written after the render, so the proxy is not told about it at all.
+    if (s.loop === 'boom') payload.loop = 'boom';
     // (dev0778) No `pad` — a bled rect renders its intersection with the frame,
     // so nothing black is ever encoded. The proxy keeps the capability for the
     // day something genuinely needs a fixed output aspect; sending it is a
@@ -8010,6 +8114,15 @@ async function _vpGoSave(opts) {
     if (trackPayload) payload.track = trackPayload;   // (dev0777)
     if (kenPayload) payload.ken = kenPayload;   // (dev0720)
     if (texts.length) payload.texts = texts;    // (dev0724)
+    // (dev0871) A boomerang plays its own soundtrack backwards halfway through,
+    // which is never what is wanted — the render is silent, and saying so here
+    // beats discovering it at the end of an encode.
+    if (payload.loop === 'boom' && payload.audio) {
+      payload.audio = false;
+      if (typeof toast === 'function') {
+        toast('⇄ a boomerang renders silent — a reversed soundtrack is noise', 3200);
+      }
+    }
     // (dev0727) Freeze frames. They make the video longer than its soundtrack,
     // so the render goes silent whatever the M switch says — say so rather than
     // hand back a clip that drifts further out of sync the longer it runs.
@@ -8226,7 +8339,15 @@ async function _vpGoSave(opts) {
     if (result.exitCode === 0) {
       // (dev0863) The sidecar that says which clip this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
-      if (typeof toast === 'function') toast('saved → ' + outName + xmp, 3200);
+      // (dev0871) …and, when a loop was asked for, the page that plays it on
+      // repeat. A failure here is worth a word but not an alarm: the clip
+      // itself is already written and good.
+      const loopMode = (cropOn && _vpState.crop) ? _vpState.crop.loop : 'off';
+      let loopNote = '';
+      if (loopMode === 'fwd' || loopMode === 'boom') {
+        loopNote = (await _vpWriteLoopHtml(payload.output, loopMode)) ? ' + .html' : '';
+      }
+      if (typeof toast === 'function') toast('saved → ' + outName + xmp + loopNote, 3200);
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
       if (typeof toast === 'function') toast('save failed: ' + tail, 4200);
