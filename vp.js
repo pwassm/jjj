@@ -4951,6 +4951,48 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-deshake" title="Steady handheld wobble (V). Costs a small zoom — ' +
       'medium is usually the sweet spot; strong zooms ~2.5x further for little extra." ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">〰 shake off</span>' +
+    // (dev0869) Speed. A signed multiplier baked into the RENDER, not the
+    // player: -20x .. +20x, where a negative value plays the clip backwards at
+    // that rate. Video only — a still has no timeline to stretch.
+    '<span id="vp-crop-spd-lbl" style="opacity:0.7;">Spd</span>' +
+    '<select id="vp-crop-speed" title="Speed of the saved clip: 1x = as shot, 2x = twice as fast, 0.5x = slow motion, a negative value plays it backwards. Anything but 1x re-encodes the soundtrack." '
+      + 'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
+      '<option value="-20">-20x rev</option>' +
+      '<option value="-15">-15x rev</option>' +
+      '<option value="-10">-10x rev</option>' +
+      '<option value="-8">-8x rev</option>' +
+      '<option value="-5">-5x rev</option>' +
+      '<option value="-4">-4x rev</option>' +
+      '<option value="-3">-3x rev</option>' +
+      '<option value="-2">-2x rev</option>' +
+      '<option value="-1.5">-1.5x rev</option>' +
+      '<option value="-1.25">-1.25x rev</option>' +
+      '<option value="-0.75">-0.75x rev</option>' +
+      '<option value="-0.5">-0.5x rev</option>' +
+      '<option value="-0.33">-0.33x rev</option>' +
+      '<option value="-0.25">-0.25x rev</option>' +
+      '<option value="-0.2">-0.2x rev</option>' +
+      '<option value="-0.15">-0.15x rev</option>' +
+      '<option value="-0.1">-0.1x rev</option>' +
+      '<option value="1" selected>1x</option>' +
+      '<option value="0.1">0.1x</option>' +
+      '<option value="0.15">0.15x</option>' +
+      '<option value="0.2">0.2x</option>' +
+      '<option value="0.25">0.25x</option>' +
+      '<option value="0.33">0.33x</option>' +
+      '<option value="0.5">0.5x</option>' +
+      '<option value="0.75">0.75x</option>' +
+      '<option value="1.25">1.25x</option>' +
+      '<option value="1.5">1.5x</option>' +
+      '<option value="2">2x</option>' +
+      '<option value="3">3x</option>' +
+      '<option value="4">4x</option>' +
+      '<option value="5">5x</option>' +
+      '<option value="8">8x</option>' +
+      '<option value="10">10x</option>' +
+      '<option value="15">15x</option>' +
+      '<option value="20">20x</option>' +
+      '</select>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
     '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
@@ -4962,7 +5004,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // engine chip takes their place.
   if (imageMode) {
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
-     'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake'].forEach(id => {
+     'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake',
+     'vp-crop-spd-lbl', 'vp-crop-speed'].forEach(id => {
       const el = bar.querySelector('#' + id);
       if (el) el.style.display = 'none';
     });
@@ -5153,6 +5196,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     freeRatio: false,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
     deshake: 'off',                   // (dev0789) off | light | medium | strong
+    speed: 1,                         // (dev0869) signed render speed, -20..20 (negative = reverse)
     texts: [],                        // (dev0724) burned-in captions, see addText
     // (dev0720) `on` = armed; frac is inside the CROP rect (fw === fh, since a
     // same-aspect box inside a box has equal fractions on both axes); atSec is
@@ -5921,6 +5965,22 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   paintDeshake();
   state.paintDeshake = paintDeshake;   // so the hotkey can repaint the chip
   if (dsChip) dsChip.addEventListener('click', _vpCropCycleDeshake);
+
+  // (dev0869) ── Speed ──────────────────────────────────────────────────────
+  const spdSel = bar.querySelector('#vp-crop-speed');
+  if (spdSel) {
+    spdSel.value = String(state.speed);
+    spdSel.addEventListener('change', () => {
+      const v = parseFloat(spdSel.value);
+      state.speed = (Number.isFinite(v) && v !== 0) ? v : 1;
+      if (typeof toast === 'function') {
+        toast(state.speed === 1
+          ? 'Speed 1x — the clip renders as shot'
+          : ('Speed ' + state.speed + 'x' + (state.speed < 0 ? ' (backwards)' : '') +
+             ' — applies to the SAVED clip, not this player'), 2200);
+      }
+    });
+  }
 
   // (dev0745) ── Saved text ─────────────────────────────────────────────────
   // The chip counts what is banked; the list itself is built fresh each time it
@@ -7576,6 +7636,14 @@ async function _vpImageSave(opts) {
   // (dev0867) A stale proxy drops payload.color and writes the picture
   // ungraded — a clean file that reads as success until you look at it.
   // Refuse up front, the way the deskew and caption gates on the video path do.
+  // (dev0869) A stale proxy drops payload.speed and renders the clip at 1x —
+  // the same silent wrong answer at the end of a long encode as a dropped grade.
+  if (payload.speed && !(await _vpProxyHasFeature('vpspeed'))) {
+    if (typeof toast === 'function') {
+      toast('A speed change needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    }
+    return;
+  }
   if (payload.color && !(await _vpProxyHasFeature('color'))) {
     if (typeof toast === 'function') {
       toast('A colour grade needs an updated proxy — restart "node proxy.js" and retry', 4400);
@@ -7883,6 +7951,12 @@ async function _vpGoSave(opts) {
     if (pauses.length) detailParts.push('pz' + pauses.length);
     if (s.deshake && s.deshake !== 'off') detailParts.push('ds-' + s.deshake);  // (dev0789)
     if (_vpColorToken()) detailParts.push(_vpColorToken());                     // (dev0867)
+    // (dev0869) Speed goes in the sidecar detail too — a 4x clip is otherwise
+    // indistinguishable from a short one at a glance.
+    if (s.speed && s.speed !== 1) {
+      detailParts.push((s.speed < 0 ? 'rev' : 'spd') +
+                       Math.abs(s.speed).toString().replace('.', '_') + 'x');
+    }
     detailParts.push(durStr);
     payload = {
       input: absInput,
@@ -7899,6 +7973,9 @@ async function _vpGoSave(opts) {
     // (dev0867) The colour grade — see the note on the image path.
     const _colVid = (typeof window.vpColorPayload === 'function') ? window.vpColorPayload() : null;
     if (_colVid) payload.color = _colVid;
+    // (dev0869) Speed / reverse. Only sent when it is actually something —
+    // 1x means "as shot", and the proxy should take its untouched path.
+    if (s.speed && s.speed !== 1) payload.speed = s.speed;
     // (dev0778) No `pad` — a bled rect renders its intersection with the frame,
     // so nothing black is ever encoded. The proxy keeps the capability for the
     // day something genuinely needs a fixed output aspect; sending it is a

@@ -1052,6 +1052,33 @@ function buildColorChain(c) {
   return parts.join(',');
 }
 
+// (dev0869) ── Speed / reverse ─────────────────────────────────────────────
+// payload.speed is a signed multiplier: +2 = twice as fast, 0.5 = half speed,
+// and a NEGATIVE value plays the clip backwards at |speed|. Range ±0.05..±20,
+// which is what the crop bar's dropdown offers.
+//
+// Video: `reverse` (negative only) then setpts=PTS/|k|. `reverse` buffers the
+// whole segment in RAM — fine for an A→B clip, which is what this path renders.
+// Audio: areverse (negative only) then a chain of atempo, whose per-instance
+// range is 0.5..2.0, so anything outside that is decomposed into several.
+function vpSpeedFactor(p) {
+  if (p.speed === undefined || p.speed === null) return 0;
+  const k = +p.speed;
+  must(Number.isFinite(k), 'speed must be a number');
+  must(Math.abs(k) >= 0.05 && Math.abs(k) <= 20,
+       'speed must be between 0.05 and 20 in magnitude (negative = reverse)');
+  return k;
+}
+function atempoChain(mag) {
+  // Decompose into factors each within atempo's 0.5..2.0 window.
+  const out = [];
+  let r = mag;
+  while (r > 2.0)  { out.push(2.0); r /= 2.0; }
+  while (r < 0.5)  { out.push(0.5); r /= 0.5; }
+  out.push(r);
+  return out.map(f => 'atempo=' + f.toFixed(6)).join(',');
+}
+
 function buildFfmpegArgs(p, tmpSink) {
   // Pass 1 of a deshake writes no file, so it runs before the output check.
   if (p.deshake && p.deshake.pass === 'detect') return buildDeshakeDetectArgs(p);
@@ -1117,6 +1144,9 @@ function buildFfmpegArgs(p, tmpSink) {
   // stream-copy path runs no filters at all, so a grade there would be dropped
   // and the file would come back looking exactly as wrong as it went in.
   must(!(p.color && !p.crop), 'a colour grade needs a crop rect — the lossless copy path cannot filter');
+  // (dev0869) …and the speed change, which is a re-encode by definition.
+  must(!((p.speed !== undefined && p.speed !== null && +p.speed !== 1) && !p.crop),
+       'a speed change needs a crop rect — the lossless copy path cannot filter');
 
   if (p.crop) {
     // ── CROP path (re-encode) ────────────────────────────────────────────
@@ -1280,6 +1310,18 @@ function buildFfmpegArgs(p, tmpSink) {
     const audio = (p.pauses && p.pauses.length)
       ? false
       : ((p.audio === undefined || p.audio === null) ? true : !!p.audio);
+    // (dev0869) Speed goes on LAST — after the captions — so a caption that was
+    // timed against the clip is carried along by the retime rather than left
+    // behind on the old timeline. Reverse must precede setpts: it hands the
+    // frames back in reverse order, and setpts then re-stamps them from zero.
+    const spd = vpSpeedFactor(p);
+    let afilter = null;
+    if (spd && spd !== 1) {
+      const mag = Math.abs(spd);
+      if (spd < 0) vf += ',reverse';
+      vf += ',setpts=' + (1 / mag).toFixed(6) + '*PTS';
+      if (audio) afilter = (spd < 0 ? 'areverse,' : '') + atempoChain(mag);
+    }
     return [
       ...common,
       ...pre,
@@ -1288,7 +1330,11 @@ function buildFfmpegArgs(p, tmpSink) {
       '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
       // (dev0868) An SDR picture must not go out wearing the source's HDR tags.
       ...(sdrOut ? SDR_OUT_TAGS : []),
-      ...(audio ? ['-c:a', 'copy'] : ['-an']),
+      // (dev0869) A retimed soundtrack cannot be stream-copied — it is resampled
+      // by atempo (and re-ordered by areverse), so it re-encodes to AAC.
+      ...(audio ? (afilter ? ['-filter:a', afilter, '-c:a', 'aac', '-b:a', '192k']
+                           : ['-c:a', 'copy'])
+                : ['-an']),
       // (dev0297) Same flag the lossless path already uses. Video is re-encoded
       // from PTS 0, but audio is stream-copied — its first packets can carry a
       // small leading offset that downstream editors (e.g. LosslessCut) render
@@ -6605,7 +6651,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
