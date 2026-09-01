@@ -6261,7 +6261,7 @@ function _vpCropHelpShow() {
         (imageMode ? '✂ Crop this picture' : '✂ Crop &amp; trim') + '</span>' +
       '<span id="vp-crop-help-wide" title="Full width / narrow (W)" ' +
         'style="cursor:pointer;padding:0 4px;color:#ccc;">⇔</span>' +
-      '<span id="vp-crop-help-close" title="Close crop (same as C)" ' +
+      '<span id="vp-crop-help-close" title="Close this help (H) — the crop stays open (C closes that)" ' +
         'style="cursor:pointer;padding:0 4px;color:#ccc;">✕</span>' +
     '</div>' +
     '<div style="padding:8px 10px 11px;">' +
@@ -6432,9 +6432,13 @@ function _vpCropHelpShow() {
 
   // Clicks must not reach #gridFullscreen's handler (which would close V).
   el.addEventListener('click', e => e.stopPropagation());
+  // (dev0870) ✕ takes the CHEAT-SHEET down, nothing else. It used to call
+  // _vpCropToggle, so dismissing the help closed the crop session with it —
+  // which is not what a ✕ on a help panel means anywhere else in the app.
+  // C still closes the crop; H brings this back.
   el.querySelector('#vp-crop-help-close').addEventListener('click', e => {
     e.stopPropagation();
-    _vpCropToggle();
+    _vpCropHelpHide();
   });
   el.querySelector('#vp-crop-help-wide').addEventListener('click', e => {
     e.stopPropagation();
@@ -6560,6 +6564,21 @@ function _vpCropHelpHide() {
   if (el) el.remove();
 }
 
+// (dev0870) H, while a crop overlay is open, is the crop's OWN help — the
+// floating context panel would otherwise answer with the video player's keys,
+// which are not the ones on screen. helpfloat.js calls this first and stands
+// down when it returns true. Once per page load the crop says the key exists,
+// since the sheet no longer shows itself uninvited.
+let _vpCropHelpHinted = false;
+function _vpCropHelpToggle() {
+  if (!_vpCropHolding()) return false;
+  if (document.getElementById('vp-crop-help')) _vpCropHelpHide();
+  else _vpCropHelpShow();
+  return true;
+}
+window._vpCropHelpToggle = _vpCropHelpToggle;
+window._vpCropHolding    = _vpCropHolding;
+
 // (dev0867) The node the colour preview goes on. In video mode that is the
 // <video>; on a still, player.el is _vpImgAdapter's plain object (getters that
 // pretend to be a video), so the real element has to come from _img.
@@ -6627,7 +6646,15 @@ function _vpCropToggle() {
   if (typeof window._slideshowCropHold === 'function') {
     try { window._slideshowCropHold(isOpening); } catch (_) {}
   }
-  if (isOpening) _vpCropHelpShow(); else _vpCropHelpHide();
+  // (dev0870) The cheat-sheet is now ASKED for, not assumed: opening a crop —
+  // especially the automatic one a ?vect= file manager hand-off opens — used to
+  // land with a panel over the picture that had to be dismissed every time. H
+  // toggles it (see _vpCropHelpToggle), and closing the crop takes it down.
+  if (!isOpening) _vpCropHelpHide();
+  else if (!_vpCropHelpHinted) {
+    _vpCropHelpHinted = true;
+    if (typeof toast === 'function') toast('Press H for the crop keys', 2000);
+  }
   const sc = document.getElementById('vp-swipe-catcher');
   const host = s.el.container.parentElement;
   if (isOpening) {

@@ -1333,7 +1333,14 @@ window.addEventListener('keydown', function (e) {
         isHelpOpen() ? closeHelp() : openHelp();
       }
     } else {
-      hpToggle();
+      // (dev0870) A live crop/trim session answers H itself — its cheat-sheet
+      // lists the keys that are actually on screen, where this panel would show
+      // the video player's. Returns false when no crop is open, and then the
+      // context panel takes it as before.
+      var cropTook = probe(function () {
+        return !!(window._vpCropHelpToggle && window._vpCropHelpToggle());
+      }, false);
+      if (!cropTook) hpToggle();
     }
     return false;
   }
