@@ -6916,7 +6916,13 @@ async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
       outName + ' is a crop of ' + origName + (detail ? ('  [' + detail + ']') : ''),
     // Cleared, not copied — see the note above.
     'XMP-tiff:ImageWidth': '', 'XMP-tiff:ImageHeight': '',
-    'XMP-exif:ExifImageWidth': '', 'XMP-exif:ExifImageHeight': ''
+    'XMP-exif:ExifImageWidth': '', 'XMP-exif:ExifImageHeight': '',
+    // (dev0866) …and the ORIENTATION, for the same reason and with sharper
+    // teeth. The render comes out of ffmpeg already upright (the tag has been
+    // applied by then), so copying the original's "Rotate 90 CW" across tells
+    // every reader to turn an upright picture on its side. A sidecar may only
+    // describe the file it sits next to.
+    'XMP-tiff:Orientation': ''
   };
   try {
     if (!(await _vpProxyHasFeature('xmpsidecar'))) {

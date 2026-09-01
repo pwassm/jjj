@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0865';
+const PROXY_BUILD = 'dev0866';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1200,6 +1200,21 @@ const EXIF_XPOSE = {
   2: 'hflip', 3: 'hflip,vflip', 4: 'vflip',
   5: 'transpose=0', 6: 'transpose=1', 7: 'transpose=3', 8: 'transpose=2'
 };
+
+// (dev0866) The stored orientation tag, 1..8, read here rather than taken on
+// trust. 1 on any failure — which with `-noautorotate` means "leave it alone",
+// the right answer for the overwhelmingly common untagged file, and the same
+// thing the browser would have done with nothing to apply.
+function exifOrientationSync(input) {
+  try {
+    const r = spawnSync(EXEC_BIN.exiftool || 'exiftool',
+      ['-json', '-charset', 'UTF8', '-Orientation#', input],
+      { encoding: 'utf8', timeout: 10000, windowsHide: true });
+    if (r.status !== 0) return 1;
+    const o = +(JSON.parse(r.stdout || '[]')[0] || {}).Orientation;
+    return (Number.isInteger(o) && o >= 1 && o <= 8) ? o : 1;
+  } catch (_) { return 1; }
+}
 function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   must(p.crop && typeof p.crop === 'object', 'image render requires crop');
   for (const k of ['w', 'h', 'x', 'y']) {
@@ -1210,10 +1225,28 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
 
   const chain = [];
   if (p.exif != null) {
-    const o = +p.exif;
-    must(Number.isInteger(o) && o >= 1 && o <= 8, 'exif must be an integer 1..8');
-    if (EXIF_XPOSE[o]) chain.push(EXIF_XPOSE[o]);
+    must(Number.isInteger(+p.exif) && +p.exif >= 1 && +p.exif <= 8,
+         'exif must be an integer 1..8');
   }
+  // (dev0866) The client tells us the orientation it drew against, but it is
+  // not the only source any more: with `-noautorotate` below, a MISSING answer
+  // is no longer harmless. It used to be — ffmpeg's own autorotate covered a
+  // failed probe by accident — and now it would render the picture on its side.
+  // So the proxy reads the tag itself whenever the client didn't say, off the
+  // same file, which cannot disagree with what the browser applied.
+  const o = (p.exif != null) ? +p.exif : exifOrientationSync(p.input);
+  if (EXIF_XPOSE[o]) chain.push(EXIF_XPOSE[o]);
+  // (dev0866) THE DOUBLE ROTATION. dev0744 built the EXIF_XPOSE prefix on the
+  // belief that "ffmpeg does not apply the orientation tag". This ffmpeg does:
+  // measured on a 4000x3000 JPEG tagged Orientation 6, a bare `-i` + scale
+  // comes out PORTRAIT (autorotate is on by default), so the transpose above
+  // was a SECOND 90 degrees. The crop rect — which the browser gave us in
+  // upright 3000x4000 space — was then applied to a frame lying on its side:
+  // wrong region AND wrong way up. `-noautorotate` is an INPUT option, so it
+  // has to ride with `-i` rather than in the filter chain, and it makes the
+  // correction ours and explicit rather than the build's and implicit.
+  // Do NOT "simplify" this by dropping the transpose and trusting autorotate:
+  // that hands the geometry to whichever ffmpeg happens to be installed.
   if (p.rotate) {
     must(typeof p.rotate === 'object', 'rotate must be an object');
     const rad = +p.rotate.rad, ow = p.rotate.ow, oh = p.rotate.oh;
@@ -1287,7 +1320,7 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
     : ['-vf', chain.join(',')];
   return [
     ...common,
-    '-i', p.input,
+    '-noautorotate', '-i', p.input,      // (dev0866) see the note by EXIF_XPOSE
     ...filter,
     '-frames:v', '1',
     '-update', '1',
@@ -1355,7 +1388,10 @@ function buildImageMotionArgs(p, common, overwrite, tmpSink, chain, ow, oh) {
     if (dt) chain.push(dt);
   }
 
-  const input = ['-loop', '1', '-framerate', String(fps), '-t', dur.toFixed(3), '-i', p.input];
+  // (dev0866) `-noautorotate` here too — a still turned into a clip reads the
+  // same rect from the same overlay, so it needs the same upright frame.
+  const input = ['-loop', '1', '-framerate', String(fps), '-t', dur.toFixed(3),
+                 '-noautorotate', '-i', p.input];
   if (format === 'gif') {
     const g = '[0:v]' + chain.join(',') + ',split[gsa][gsb];' +
               '[gsa]palettegen=stats_mode=diff[gp];' +
@@ -1660,7 +1696,8 @@ const XMP_SIDECAR_TAGS = new Set([
   'XMP-xmp:CreatorTool', 'XMP-xmp:MetadataDate',
   'XMP-photoshop:Instructions', 'XMP-dc:source',
   'XMP-tiff:ImageWidth', 'XMP-tiff:ImageHeight',
-  'XMP-exif:ExifImageWidth', 'XMP-exif:ExifImageHeight'
+  'XMP-exif:ExifImageWidth', 'XMP-exif:ExifImageHeight',
+  'XMP-tiff:Orientation'   // (dev0866) cleared, never copied — see the client
 ]);
 
 // (dev0425) yt-dlp bridge — pulls caption/description + author metadata for a
