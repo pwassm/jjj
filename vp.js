@@ -2506,27 +2506,13 @@ function vpKeyHandler(e) {
     return;
   }
 
-  // (dev0724/dev0727) E does one of two things, and which one is never in
-  // doubt: with the crop overlay OPEN it drops a text box on the frame; with it
-  // CLOSED, on a disk video, it opens a saved .edit — the counterpart of K.
-  // (Loading one opens the overlay, so the two never compete for the key.)
+  // (dev0724) E drops a text box on the frame. (dev0864) With the overlay CLOSED
+  // it used to open a saved `.edit`; that whole feature is gone, so E outside a
+  // crop session is nobody's key again.
   if (e.key === 'e' || e.key === 'E') {
-    if (_vpCropHolding()) {
-      e.preventDefault(); e.stopPropagation();
-      _vpTextAdd();
-      return;
-    }
-    if (!_vpState || !_vpState.crop) return;      // not a disk video — leave E alone
-    e.preventDefault(); e.stopPropagation();
-    _vpCropLoadEditPick();
-    return;
-  }
-
-  // (dev0727) K = keep: write the whole session next to the source as an .edit.
-  if (e.key === 'k' || e.key === 'K') {
     if (!_vpCropHolding()) return;
     e.preventDefault(); e.stopPropagation();
-    _vpCropSaveEdit();
+    _vpTextAdd();
     return;
   }
 
@@ -6056,293 +6042,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   state.textBeginEdit = beginEdit;
   state.paintTextMarks = paintTextMarks;
 
-  // (dev0727) Restore a whole session from a saved .edit document. Everything
-  // the bar owns has to be pushed back into the WIDGETS as well as the state,
-  // or the next click on a control snaps the value back to what it shows.
-  state.applyEdit = function (doc) {
-    endEdit();
-    state.texts.slice().forEach(removeText);
-    const c0 = doc.crop || {};
-    if (c0.aspect === 'L' || c0.aspect === 'P') state.aspect = c0.aspect;
-    if (c0.frac && Number.isFinite(+c0.frac.w)) {
-      state.frac = { x: +c0.frac.x || 0, y: +c0.frac.y || 0,
-                     w: +c0.frac.w, h: +c0.frac.h,
-                     ratio: +c0.frac.ratio || (+c0.frac.w / (+c0.frac.h || 1)) };
-    }
-    if (Number.isFinite(+c0.crf)) { state.crf = +c0.crf; crfSlider.value = state.crf; crfVal.textContent = state.crf; }
-    if (c0.resHeight != null) { state.resHeight = c0.resHeight; resSel.value = String(c0.resHeight); }
-    state.slow  = !!c0.slow;  slowBox.checked = state.slow;
-    state.audio = !!c0.audio; paintAudio();
-    // (dev0790) A recipe saved from a free-shape box has to come back free, or
-    // the first corner drag would snap it to a ratio it never had.
-    state.freeRatio = !!c0.free;
-    _vpCropPaintAspectChip(state);
-    const k0 = doc.ken || {};
-    state.ken.on = !!k0.on;
-    if (k0.frac && Number.isFinite(+k0.frac.w)) {
-      state.ken.frac = { x: +k0.frac.x || 0, y: +k0.frac.y || 0, w: +k0.frac.w, h: +k0.frac.h };
-    }
-    state.ken.atSec = +k0.atSec || 0;
-    // (dev0777) Bleed and the track. Both default OFF, so an .edit written
-    // before this existed loads exactly as it always did.
-    state.bleed = !!doc.bleed;
-    const tk = doc.track || {};
-    state.track.keys = (Array.isArray(tk.keys) ? tk.keys : [])
-      .filter(k => k && Number.isFinite(+k.t) && Number.isFinite(+k.x) && Number.isFinite(+k.y))
-      .map(k => ({ t: +k.t, x: +k.x, y: +k.y }))
-      .sort((a, b) => a.t - b.t);
-    state.track.ease = (tk.ease === 'smooth') ? 'smooth' : 'linear';
-    state.track.on   = !!tk.on && state.track.keys.length > 0;
-    if (state.track.on && state.trackStartRaf) state.trackStartRaf();
-    (Array.isArray(doc.texts) ? doc.texts : []).forEach(td => {
-      const t = addText({ silent: true });
-      if (!t) return;
-      if (Number.isFinite(+td.x))    t.x = +td.x;
-      if (Number.isFinite(+td.y))    t.y = +td.y;
-      if (Number.isFinite(+td.w))    t.w = +td.w;
-      if (Number.isFinite(+td.size)) t.size = +td.size;
-      t.text = String(td.text == null ? '' : td.text);
-      t.ta.value = t.text;
-      t.atStart = Number.isFinite(+td.atStart) ? +td.atStart : null;
-      t.atEnd   = Number.isFinite(+td.atEnd)   ? +td.atEnd   : null;
-      t.pauseSec = Number.isFinite(+td.pauseSec) ? +td.pauseSec : null;
-      // (dev0750) The look of the caption, not just its geometry and its clock.
-      // alpha was written out by dev0745 and never read back, so a reloaded
-      // watermark came back at full strength; font joins it here.
-      t.alpha = (Number.isFinite(+td.alpha) && +td.alpha > 0 && +td.alpha < 1) ? +td.alpha : null;
-      t.font  = _vpTextFont(td.font).id;
-      t.color = _vpTextColor(td.color).id;   // (dev0753) absent → white, as it was
-      paintTextMarks(t);
-    });
-    endEdit();                       // addText opens each box for typing; close it
-    setAngle(Number.isFinite(+c0.angle) ? +c0.angle : 0);   // setAngle repaints everything
-  };
-
-  // A snapshot of everything K writes out.
-  state.snapshot = function () {
-    return {
-      crop: { aspect: state.aspect, free: !!state.freeRatio,   // (dev0790)
-              frac: { ...state.frac }, angle: state.angle,
-              resHeight: state.resHeight, crf: state.crf, slow: !!state.slow,
-              audio: !!state.audio },
-      ken: { on: !!state.ken.on, frac: { ...state.ken.frac }, atSec: state.ken.atSec },
-      // (dev0777) The moving window and the bars, so a session that took real
-      // eyeballing to line up survives the page.
-      bleed: !!state.bleed,
-      track: { on: !!state.track.on, ease: state.track.ease,
-               keys: state.track.keys.map(k => ({ t: k.t, x: k.x, y: k.y })) },
-      texts: state.texts.map(t => ({
-        x: t.x, y: t.y, w: t.w, size: t.size,
-        text: (t.ta ? t.ta.value : t.text) || '',
-        atStart: t.atStart, atEnd: t.atEnd, pauseSec: t.pauseSec,
-        // (dev0750/53) how it looks, not just where
-        alpha: t.alpha, font: t.font, color: t.color
-      }))
-    };
-  };
   if (_vpState) _vpState.crop = state;
-}
-
-// (dev0727) ── K / E: keep an edit, and pick one up again ────────────────────
-// An .edit is the whole crop session as JSON — framing, tilt, output settings,
-// the zoom, the clip's A→B, and every text box with its window and pause. It
-// sits next to the source as `<base>.<YYYYMMDD-HHMMSS>.edit`, so the edits of
-// one video sort together and nothing is ever overwritten.
-//
-// It is a RECIPE, not a render: nothing in it touches the source file, and
-// loading one costs nothing until G. That's the point — the expensive thing
-// about this tool was that a session died with the page.
-const VP_EDIT_EXT = '.edit';
-
-function _vpEditStamp() {
-  const d = new Date(), p = n => String(n).padStart(2, '0');
-  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
-         '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
-}
-
-// (dev0790) The document itself, split out of the K handler so a render can
-// write the same recipe automatically. Sizes come from whichever medium is up —
-// a still has no videoWidth and the image path never sets one.
-function _vpEditDoc(absInput, parts) {
-  const s = _vpState && _vpState.crop;
-  if (!s || !s.snapshot) return null;
-  const vid = _vpState.player && _vpState.player.el;
-  const img = _vpState._img;
-  return Object.assign({
-    format: 'slam.edit/1',
-    savedAt: (typeof isoNow === 'function') ? isoNow() : new Date().toISOString(),
-    app: window.HELP_VERSION_STR || '',
-    source: { path: absInput, base: parts.base, ext: parts.ext,
-              width:  (vid && vid.videoWidth)  || (img && img.naturalWidth)  || 0,
-              height: (vid && vid.videoHeight) || (img && img.naturalHeight) || 0 },
-    clip: { startSec: _vpState.aPoint, endSec: _vpState.bPoint },
-    pauseTail: VP_TEXT_PAUSE_TAIL
-  }, s.snapshot());
-}
-
-async function _vpEditWrite(outPath, doc) {
-  const r = await fetch(PROXY_BASE + '/edit/save', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: outPath, doc })
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
-  return j.path || outPath;
-}
-
-async function _vpCropSaveEdit() {
-  if (!_vpState || !_vpState.crop || !_vpState.crop.snapshot) return;
-  const row = window._vpCurrentRow || (_vpState && _vpState.row);
-  const relPath = (row && (row.comment || row.VidTitle)) || '';
-  if (!relPath) { if (typeof toast === 'function') toast('K: no source file path on this row', 2400); return; }
-  const absInput = _vpCropResolveAbsPath(relPath);
-  if (!absInput) { if (typeof toast === 'function') toast('K cancelled (need the folder path)', 2200); return; }
-  const parts = _vpSplitPath(absInput);
-  if (!parts) { if (typeof toast === 'function') toast('K: cannot parse that path', 2400); return; }
-
-  const doc = _vpEditDoc(absInput, parts);
-  if (!doc) return;
-  const outPath = parts.dir + parts.sep + parts.base + '.' + _vpEditStamp() + VP_EDIT_EXT;
-  try {
-    await _vpEditWrite(outPath, doc);
-    if (typeof toast === 'function') {
-      const n = (doc.texts || []).length;
-      toast('✓ kept ' + outPath.split(/[\\/]/).pop() + ' · ' +
-            n + ' text box' + (n === 1 ? '' : 'es'), 3200);
-    }
-  } catch (err) {
-    if (typeof toast === 'function') {
-      toast('K failed: ' + ((err && err.message) || err) + ' — proxy restarted on 8081?', 4200);
-    }
-  }
-}
-
-// (dev0790) Every render keeps its own recipe, without being asked. The .edit
-// lands NEXT TO THE OUTPUT and takes its name, so a folder of clips answers
-// "how was this one made?" file by file — and E loads any of them straight back
-// to re-cut at a different length, resolution or shape.
-//
-// Called only after a successful encode: a cancelled prompt or a failed ffmpeg
-// leaves nothing behind, and the folder it writes into is one ffmpeg has just
-// created (the proxy refuses a path whose directory doesn't exist).
-//
-// Never throws. A recipe that didn't get written must not turn a good render
-// into an error — it says so in the same toast and the render still counts.
-async function _vpAutoKeepEdit(absInput, parts, outPath) {
-  try {
-    const doc = _vpEditDoc(absInput, parts);
-    if (!doc) return '';
-    doc.rendered = outPath;          // which file this recipe actually produced
-    await _vpEditWrite(String(outPath).replace(/\.[^.\\/]+$/, '') + VP_EDIT_EXT, doc);
-    return '  ·  + .edit';
-  } catch (err) {
-    console.warn('[auto .edit failed]', err);
-    return '  ·  ⚠ no .edit (proxy?)';
-  }
-}
-
-// E (crop overlay CLOSED) — pick a folder, then one of the .edit files in it.
-// The folder picker is the "disk info/permission" step: the browser hands out a
-// directory handle, we read the names ourselves, and only .edit is offered.
-async function _vpCropLoadEditPick() {
-  if (!_vpState || !_vpState.crop) { if (typeof toast === 'function') toast('E: open a disk video first', 2200); return; }
-  if (!window.showDirectoryPicker) {
-    if (typeof toast === 'function') toast('E: this browser has no folder picker (needs Chrome)', 3000);
-    return;
-  }
-  let dir;
-  try { dir = await window.showDirectoryPicker({ id: 'salEditDir', mode: 'read' }); }
-  catch (_) { return; }                                   // user cancelled
-  const files = [];
-  try {
-    for await (const [name, h] of dir.entries()) {
-      if (h.kind !== 'file' || !/\.edit$/i.test(name)) continue;
-      files.push({ name, handle: h });
-      if (files.length >= 200) break;
-    }
-  } catch (err) {
-    if (typeof toast === 'function') toast('E: could not read that folder — ' + ((err && err.message) || err), 3600);
-    return;
-  }
-  if (!files.length) {
-    if (typeof toast === 'function') toast('No .edit files in “' + dir.name + '” — K keeps one next to the video', 3600);
-    return;
-  }
-  files.sort((a, b) => b.name.localeCompare(a.name));      // newest stamp first
-  _vpEditChooser(files);
-}
-
-function _vpEditChooser(files) {
-  const old = document.getElementById('vp-edit-pick');
-  if (old) old.remove();
-  const el = document.createElement('div');
-  el.id = 'vp-edit-pick';
-  el.style.cssText =
-    'position:fixed;left:50%;top:12vh;transform:translateX(-50%);z-index:42700;' +
-    'max-height:74vh;overflow-y:auto;min-width:340px;max-width:92vw;background:rgba(10,10,22,0.97);' +
-    'border:2px solid #4af;border-radius:9px;padding:8px;color:#dfe6f0;' +
-    'font:12px ui-monospace,Consolas,monospace;box-shadow:0 8px 32px rgba(0,0,0,0.9);';
-  const hd = document.createElement('div');
-  hd.innerHTML = '<b style="color:#8ef;">Load an edit</b> ' +
-                 '<span style="opacity:0.6;">· newest first · Esc to cancel</span>';
-  hd.style.cssText = 'padding:4px 6px 8px;border-bottom:1px solid rgba(102,170,255,0.3);margin-bottom:5px;';
-  el.appendChild(hd);
-  const close = () => { el.remove(); document.removeEventListener('keydown', onKey, true); };
-  const onKey = e => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
-  };
-  files.forEach(f => {
-    const d = document.createElement('div');
-    d.textContent = f.name;
-    d.style.cssText = 'padding:5px 7px;border-radius:5px;cursor:pointer;white-space:nowrap;';
-    d.onmouseenter = () => { d.style.background = '#12325c'; };
-    d.onmouseleave = () => { d.style.background = ''; };
-    d.onclick = async () => {
-      close();
-      try {
-        const file = await f.handle.getFile();
-        _vpCropApplyEdit(JSON.parse(await file.text()), f.name);
-      } catch (err) {
-        if (typeof toast === 'function') toast('Could not read ' + f.name + ' — ' + ((err && err.message) || err), 3600);
-      }
-    };
-    el.appendChild(d);
-  });
-  document.body.appendChild(el);
-  el.addEventListener('click', e => e.stopPropagation());
-  document.addEventListener('keydown', onKey, true);
-}
-
-function _vpCropApplyEdit(doc, name) {
-  if (!doc || typeof doc !== 'object' || !/^slam\.edit\//.test(String(doc.format || ''))) {
-    if (typeof toast === 'function') toast(name + ' is not a SLAM edit file', 3000);
-    return;
-  }
-  const s = _vpState && _vpState.crop;
-  if (!s || !s.applyEdit) return;
-  if (!_vpCropHolding()) _vpCropToggle();          // an edit is a crop session
-
-  // Made for a different video? Load it anyway — the geometry is in fractions,
-  // so it transfers — but say so, because the clip times are in SECONDS and a
-  // shorter video will clamp them.
-  const row = window._vpCurrentRow;
-  const here = String((row && (row.comment || row.VidTitle)) || '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-  const there = String((doc.source && doc.source.base) || '');
-  s.applyEdit(doc);
-
-  const clip = doc.clip || {};
-  if (Number.isFinite(+clip.startSec)) _vpState.aPoint = +clip.startSec;
-  if (Number.isFinite(+clip.endSec))   _vpState.bPoint = +clip.endSec;
-  if (typeof vpUpdateABStyle === 'function') vpUpdateABStyle();
-  if (Number.isFinite(+clip.startSec)) _vpSeekAbsolute(+clip.startSec);
-
-  const n = (doc.texts || []).length;
-  if (typeof toast === 'function') {
-    toast('✓ loaded ' + name + ' — ' + n + ' text box' + (n === 1 ? '' : 'es') +
-          (doc.ken && doc.ken.on ? ' · zoom' : '') +
-          (there && here && there !== here ? '  ⚠ saved from “' + there + '”, not this video' : ''),
-          (there && here && there !== here) ? 5200 : 3200);
-  }
 }
 
 // (dev0288) Toggle crop overlay visibility (C hotkey + ✕ button).
@@ -6594,15 +6294,11 @@ function _vpCropHelpShow() {
                      'tightest the shot gets. Pixels would be enlarged: grow ' +
                      'the box or drop the res.') +
         head('Finish') +
-        row(K('G'),   'render (or the Crop button) — writes next to the source') +
-        row('the .edit', 'every render now keeps its own recipe automatically, ' +
-                      'beside the output and under the same name. Framing, tilt, ' +
-                      'zoom, track, clip, every text box. That is how you re-cut a ' +
-                      'clip later at another length, resolution or shape.') +
-        row(K('K'),   'keep one by hand, mid-session, without rendering — it lands ' +
-                      'next to the SOURCE as <i>name</i>.<i>stamp</i>.edit') +
-        row(K('E') + '<span style="opacity:0.6;"> (crop closed)</span>',
-                      'load one back: pick the folder, then the .edit') +
+        row(K('G'),   'render (or the Crop button) — lands beside the source as ' +
+                      '<i>name</i>_crop_<i>what you call it</i>.mp4') +
+        row('the .xmp', 'each render gets a sidecar of the same name, carrying the ' +
+                      'original’s date, place and camera plus a note saying which ' +
+                      'file it was cut from — that is what digiKam reads') +
         row(K('W'),   'this panel: full width / narrow') +
         row(K('C'),   'close crop, hand the show back to the slideshow') +
         row(K('Esc'), 'close the video entirely')) +
@@ -6709,11 +6405,12 @@ function _vpCropHelpImageRows(K, row, head) {
     row('⚠',             'amber size label = the output is BIGGER than the box: pixels ' +
                          'would be enlarged for nothing. Grow the box or drop the res.') +
     head('Finish') +
-    row(K('G'),          'save (or the Crop button) — writes into a ' +
-                         '<i>YYYYMMDD_edited</i> folder beside the picture') +
-    row('the .edit',     'each save keeps its own recipe there too, under the same ' +
-                         'name — the crop, the tilt, every caption. ' + K('E') +
-                         ' with crop closed loads one back.') +
+    row(K('G'),          'save (or the Crop button) — lands beside the picture as ' +
+                         '<i>name</i>_crop_<i>what you call it</i>, numbered if that ' +
+                         'name is taken') +
+    row('the .xmp',      'each save gets a sidecar of the same name, carrying the ' +
+                         'original’s date, place and camera plus a note saying which ' +
+                         'picture it was cut from — that is what digiKam reads') +
     row(K('W'),          'this panel: full width / narrow') +
     row(K('C') + K('Esc'), 'close crop, hand the show back to the slideshow');
 }
@@ -7171,72 +6868,68 @@ function _vpXmpId(str) {
          out.slice(16, 20) + '-' + out.slice(20, 32);
 }
 
-function _vpXmlEsc(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-// The XMP packet that says "this file came from that one", in the standard
-// xmpMM vocabulary rather than anything of ours: DerivedFrom names the
-// original, OriginalDocumentID is the same for every crop of it, and
-// PreservedFileName is the original's name for a human reading the sidecar.
-// digiKam reads these from a sidecar when "use sidecar files" is switched on.
-function _vpXmpSidecarText(originalPath, outPath, detail) {
-  const origName = String(originalPath).split(/[\\/]/).pop() || originalPath;
-  const outName  = String(outPath).split(/[\\/]/).pop() || outPath;
-  const how      = detail ? ('  [' + detail + ']') : '';
+// ── The sidecar ────────────────────────────────────────────────────────────
+// (dev0864) EXIFTOOL writes it, not us. The first cut of this hand-rolled an
+// XMP packet holding only the provenance, which was half a sidecar: an ffmpeg
+// re-encode (any tilt, resize, caption or clip) writes a file with NO date, NO
+// place and NO camera, so that crop landed in the library as an orphan with a
+// note about its parent. What digiKam actually wants — and writes itself — is
+// the ORIGINAL's metadata converted to XMP, which is what `-all>xmp:all` does,
+// with our xmpMM tags added on top.
+//
+// Name: `<full output filename>.xmp` — IMG_1234_crop_head.jpg.xmp — digiKam's
+// own convention, which keeps it distinct from a sidecar belonging to a file of
+// another extension with the same stem.
+//
+// The one thing NOT carried over is the size: `-all>xmp:all` would copy the
+// original's width and height, which are a lie about a crop. Those four tags
+// are cleared (an empty value after the copy wins — verified), so a reader
+// takes the dimensions off the file itself. Everything else — date, GPS,
+// camera, rating, keywords — carries over, which is what you want on a crop.
+async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
+  const origName = String(originalPath).split(/[\/]/).pop() || originalPath;
+  const outName  = String(outPath).split(/[\/]/).pop() || outPath;
   const origId   = 'xmp.did:' + _vpXmpId(originalPath);
   const outHash  = _vpXmpId(outPath);
   const ver      = (window.HELP_VERSION_STR || 'SLAM');
-  const when     = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-  return '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n' +
-    '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="SLAM ' + _vpXmlEsc(ver) + ' crop">\n' +
-    ' <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n' +
-    '  <rdf:Description rdf:about=""\n' +
-    '    xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"\n' +
-    '    xmlns:stRef="http://ns.adobe.com/xap/1.0/sType/ResourceRef#"\n' +
-    '    xmlns:xmp="http://ns.adobe.com/xap/1.0/"\n' +
-    '    xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"\n' +
-    '    xmlns:dc="http://purl.org/dc/elements/1.1/"\n' +
-    '   xmpMM:DocumentID="xmp.did:' + outHash + '"\n' +
-    '   xmpMM:InstanceID="xmp.iid:' + outHash + '"\n' +
-    '   xmpMM:OriginalDocumentID="' + origId + '"\n' +
-    '   xmpMM:PreservedFileName="' + _vpXmlEsc(origName) + '"\n' +
-    '   xmp:CreatorTool="SLAM ' + _vpXmlEsc(ver) + ' crop tool"\n' +
-    '   xmp:MetadataDate="' + when + '"\n' +
-    '   photoshop:Instructions="' + _vpXmlEsc(outName) + ' is a crop of ' +
-        _vpXmlEsc(origName) + _vpXmlEsc(how) + '">\n' +
-    '   <xmpMM:DerivedFrom rdf:parseType="Resource">\n' +
-    '    <stRef:filePath>' + _vpXmlEsc(originalPath) + '</stRef:filePath>\n' +
-    '    <stRef:documentID>' + origId + '</stRef:documentID>\n' +
-    '    <stRef:originalDocumentID>' + origId + '</stRef:originalDocumentID>\n' +
-    '   </xmpMM:DerivedFrom>\n' +
-    '   <dc:source>' + _vpXmlEsc(origName) + '</dc:source>\n' +
-    '  </rdf:Description>\n' +
-    ' </rdf:RDF>\n' +
-    '</x:xmpmeta>\n' +
-    '<?xpacket end="w"?>\n';
-}
-
-// Drop the sidecar next to the render. digiKam's own convention is
-// `<full filename>.xmp` — IMG_1234_crop_head.jpg.xmp — which keeps it distinct
-// from a sidecar belonging to a file of another extension with the same stem.
-// Never fatal: a crop that rendered is a success whether or not the note about
-// where it came from could be written.
-async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
+  const sidecar = {
+    'XMP-xmpMM:DerivedFromFilePath': originalPath,
+    'XMP-xmpMM:DerivedFromDocumentID': origId,
+    'XMP-xmpMM:DerivedFromOriginalDocumentID': origId,
+    'XMP-xmpMM:OriginalDocumentID': origId,
+    'XMP-xmpMM:PreservedFileName': origName,
+    'XMP-xmpMM:DocumentID': 'xmp.did:' + outHash,
+    'XMP-xmpMM:InstanceID': 'xmp.iid:' + outHash,
+    'XMP-xmp:CreatorTool': 'SLAM ' + ver + ' crop tool',
+    'XMP-dc:source': origName,
+    'XMP-photoshop:Instructions':
+      outName + ' is a crop of ' + origName + (detail ? ('  [' + detail + ']') : ''),
+    // Cleared, not copied — see the note above.
+    'XMP-tiff:ImageWidth': '', 'XMP-tiff:ImageHeight': '',
+    'XMP-exif:ExifImageWidth': '', 'XMP-exif:ExifImageHeight': ''
+  };
   try {
-    if (!(await _vpProxyHasFeature('xmpsidecar'))) return '';
-    const r = await fetch(PROXY_BASE + '/edit/save', {
+    if (!(await _vpProxyHasFeature('xmpsidecar'))) {
+      return '  ·  ⚠ no .xmp — restart "node proxy.js"';
+    }
+    const r = await fetch(PROXY_BASE + '/exec/exiftool', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: outPath + '.xmp',
-                             text: _vpXmpSidecarText(originalPath, outPath, detail) })
+      body: JSON.stringify({ input: originalPath, output: outPath + '.xmp',
+                             sidecar, overwrite: true })
     });
+    if (!r.ok) {
+      console.warn('[xmp sidecar refused]', r.status, await r.text().catch(() => ''));
+      return '  ·  ⚠ no .xmp';
+    }
     const j = await r.json();
-    return (j && j.ok) ? '  ·  + .xmp' : '';
+    // exiftool's exit code carries the verdict — sidecar mode prints nothing.
+    if (j && j.exitCode === 0) return '  ·  + .xmp';
+    console.warn('[xmp sidecar failed]', j);
+    return '  ·  ⚠ no .xmp';
   } catch (err) {
     console.warn('[xmp sidecar failed]', err);
-    return '';
+    return '  ·  ⚠ no .xmp';
   }
 }
 
@@ -7763,12 +7456,10 @@ async function _vpImageSave(opts) {
     }
     restore();
     if (result.exitCode === 0) {
-      // (dev0790) …and the same for a still: the crop, the tilt, every caption.
-      const kept = await _vpAutoKeepEdit(absInput, parts, payload.output);
-      // (dev0863) …and the note that says which picture this came out of.
+      // (dev0863) The sidecar that says which picture this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
       if (typeof toast === 'function') {
-        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + kept + xmp, 3400);
+        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + xmp, 3400);
       }
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
@@ -8240,11 +7931,9 @@ async function _vpGoSave(opts) {
     }
     restoreUI();
     if (result.exitCode === 0) {
-      // (dev0790) The recipe rides along with the render, no keypress needed.
-      const kept = await _vpAutoKeepEdit(absInput, parts, payload.output);
-      // (dev0863) …and the note that says which clip this came out of.
+      // (dev0863) The sidecar that says which clip this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
-      if (typeof toast === 'function') toast('saved → ' + outName + kept + xmp, 3200);
+      if (typeof toast === 'function') toast('saved → ' + outName + xmp, 3200);
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
       if (typeof toast === 'function') toast('save failed: ' + tail, 4200);

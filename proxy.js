@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0863';
+const PROXY_BUILD = 'dev0864';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1494,7 +1494,7 @@ const EXIF_TAG_MAP = {
   genre:   'ItemList:Genre',
   comment: 'ItemList:Comment'
 };
-function buildExiftoolArgs(p) {
+function buildExiftoolArgs(p, tmpSink) {
   must(p.input && typeof p.input === 'string', 'input (string) required');
   // ── WRITE mode (in-place) ───────────────────────────────────────────────
   if (p.metadata && typeof p.metadata === 'object') {
@@ -1528,11 +1528,74 @@ function buildExiftoolArgs(p) {
     return ['-json', '-charset', 'UTF8',
             '-Orientation#', '-ImageWidth', '-ImageHeight', p.input];
   }
+  // (dev0864) ── SIDECAR mode — build <output>.xmp for a crop ───────────────
+  // The crop tool's provenance note, written the way digiKam writes its own
+  // sidecars: everything the ORIGINAL knows, converted to its XMP equivalent
+  // (`-all>xmp:all` — date, place, camera, rating, keywords), plus the xmpMM
+  // tags that say which file this was cut from.
+  //
+  // Copying the original's metadata is the point, not a nicety. A jpegtran crop
+  // inherits the source's EXIF, but an ffmpeg re-encode (tilt, resize, caption,
+  // any clip) writes a file with NO date, NO place and NO camera — in a photo
+  // library that crop is an orphan. The sidecar is where it gets its history
+  // back. Dimensions are the exception: those are overridden with the crop's
+  // own, because the original's would be a lie about this file.
+  //
+  // Every caller-supplied value goes in as a `-TAG=value` token under
+  // spawn(shell:false), and the tag NAMES come from a fixed allowlist below, so
+  // nothing here can turn into an exiftool option.
+  if (p.sidecar && typeof p.sidecar === 'object') {
+    const out = String(p.output || '');
+    must(/\.xmp$/i.test(out), 'sidecar output must end in .xmp');
+    must(/^([A-Za-z]:[\\/]|\/)/.test(out), 'sidecar output must be absolute');
+    must(!/(^|[\\/])\.\.([\\/]|$)/.test(out), 'sidecar output may not contain ".."');
+    const lines = ['-charset', 'filename=UTF8', '-charset', 'UTF8', '-q',
+                   '-tagsfromfile', p.input, '-all>xmp:all'];
+    let n = 0;
+    for (const k of Object.keys(p.sidecar)) {
+      must(XMP_SIDECAR_TAGS.has(k), 'sidecar key not allowed: ' + k);
+      let v = p.sidecar[k];
+      v = (v == null) ? '' : String(v);
+      must(v.length <= 1024, 'sidecar.' + k + ' too long (max 1024 chars)');
+      v = v.replace(/[\x00-\x1f\x7f]/g, ' ');   // an argfile is LINE-delimited
+      lines.push('-' + k + '=' + v);            // empty value CLEARS the tag
+      n++;
+    }
+    must(n > 0, 'sidecar object has no allowed keys');
+    // `-o` will not write over an existing file, so an overwrite clears the way.
+    if (p.overwrite) { try { fs.unlinkSync(out); } catch (_) {} }
+    lines.push('-o', out);
+    // Everything goes through an ARGFILE rather than argv. Measured: a spawn
+    // argument containing non-ASCII reaches exiftool mangled on Windows (a
+    // folder called "café" came back "caf?" and the run died with "does not
+    // exist"), because argv is handed over in the system codepage. `-@` is read
+    // as a file, and with `-charset UTF8` above it is read as UTF-8 — so an
+    // accented folder, filename or crop name survives. The argfile is
+    // line-delimited, which is why control characters are stripped above.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slam-xmp-'));
+    if (tmpSink) tmpSink.push(dir);
+    const argFile = path.join(dir, 'args.txt');
+    fs.writeFileSync(argFile, lines.join('\n') + '\n', 'utf8');
+    return ['-@', argFile];
+  }
   // ── READ mode (JSON to stdout) ──────────────────────────────────────────
   return ['-json', '-charset', 'UTF8',
           ...Object.values(EXIF_TAG_MAP).map(t => '-' + t),
           p.input];
 }
+
+// (dev0864) The tags the crop tool may set on a sidecar. Names only — values are
+// the caller's, and are passed as literal tokens. Anything not here is refused,
+// so a payload can never smuggle in an exiftool option or a shell-shaped tag.
+const XMP_SIDECAR_TAGS = new Set([
+  'XMP-xmpMM:DerivedFromFilePath', 'XMP-xmpMM:DerivedFromDocumentID',
+  'XMP-xmpMM:DerivedFromOriginalDocumentID', 'XMP-xmpMM:OriginalDocumentID',
+  'XMP-xmpMM:PreservedFileName', 'XMP-xmpMM:DocumentID', 'XMP-xmpMM:InstanceID',
+  'XMP-xmp:CreatorTool', 'XMP-xmp:MetadataDate',
+  'XMP-photoshop:Instructions', 'XMP-dc:source',
+  'XMP-tiff:ImageWidth', 'XMP-tiff:ImageHeight',
+  'XMP-exif:ExifImageWidth', 'XMP-exif:ExifImageHeight'
+]);
 
 // (dev0425) yt-dlp bridge — pulls caption/description + author metadata for a
 // video URL (Instagram/YouTube/Vimeo/TikTok/…) so the client can populate
@@ -6202,7 +6265,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'editfile', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
@@ -6377,47 +6440,6 @@ http.createServer((req, res) => {
     return;
   }
 
-  // (dev0727) ── /edit/save — keep a V crop session as JSON ─────────────────
-  // The one write this proxy does outside its own folders, so it is narrow on
-  // purpose: an ABSOLUTE path ending in .edit, no traversal segments, and a
-  // body that must already be an object. It writes a recipe next to the video
-  // it describes — never the video itself, and never over anything that isn't
-  // an .edit. Origin-locked like /exec/.
-  if (req.url.split('?')[0] === '/edit/save') {
-    const origin = req.headers.origin || '';
-    if (!LOCAL_ORIGINS.has(origin)) {
-      send(res, 403, 'edit: origin not allowed: ' + (origin || '(none)'));
-      return;
-    }
-    if (req.method !== 'POST') { send(res, 405, 'edit: POST required', corsForExec(origin)); return; }
-    readJson(req, 4 * 1024 * 1024).then(p => {
-      const out = String(p.path || '');
-      // (dev0863) Two bodies now. `doc` is the original .edit recipe (JSON);
-      // `text` is a verbatim string, which is what an XMP sidecar has to be —
-      // an RDF packet, not an object. The extension decides which is legal, so
-      // a .edit can never arrive as raw text and a sidecar can never be JSON.
-      const isXmp = /\.xmp$/i.test(out);
-      try {
-        must(/^([A-Za-z]:[\\/]|\/)/.test(out), 'path must be absolute');
-        must(/\.(edit|xmp)$/i.test(out), 'path must end in .edit or .xmp');
-        must(!/(^|[\\/])\.\.([\\/]|$)/.test(out), 'path may not contain ".."');
-        if (isXmp) must(typeof p.text === 'string' && p.text.length, 'text (string) required for .xmp');
-        else       must(p.doc && typeof p.doc === 'object' && !Array.isArray(p.doc), 'doc (object) required');
-        const dir = path.dirname(out);
-        must(fs.existsSync(dir), 'folder does not exist: ' + dir);
-      } catch (e) { sendJson(res, 400, { ok: false, error: e.message }, origin); return; }
-      try {
-        const body = isXmp ? p.text : JSON.stringify(p.doc, null, 2);
-        fs.writeFileSync(out, body, 'utf8');
-        plog(`edit/save ${out} (${(body.length / 1024).toFixed(1)} KB)`);
-        sendJson(res, 200, { ok: true, path: out }, origin);
-      } catch (e) {
-        sendJson(res, 500, { ok: false, error: e.message }, origin);
-      }
-    }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
-    return;
-  }
-
   // (dev0863) ── /edit/freename — the first unused variant of a path ─────────
   // The crop tool no longer buries its output in a dated folder, so two crops
   // of the same picture with the same name now collide in the photo folder
@@ -6587,8 +6609,10 @@ http.createServer((req, res) => {
       // (dev0433) ytdlp now returns a `-J` document → its own collector flattens
       // playlist (carousel) + entries into the compact metadata object.
       if (bin === 'ytdlp') { streamYtdlpMeta(req, res, realBin, args); return; }
+      // (dev0864) …and sidecar mode joins WRITE mode on the streaming side: it
+      // emits no JSON, so collecting it would hand the caller an empty parse.
       const wantsCollect = bin === 'ffprobe'
-                        || (bin === 'exiftool' && !payload.metadata);
+                        || (bin === 'exiftool' && !payload.metadata && !payload.sidecar);
       if (wantsCollect) streamExecCollect(req, res, realBin, args, dropTmp);
       else              streamExec(req, res, realBin, args, dropTmp);
     }).catch(err => send(res, 400, 'exec: ' + err.message, corsForExec(origin)));
