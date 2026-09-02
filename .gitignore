@@ -283,3 +283,7 @@ vidtools/*.json
 # ml.public.json alongside; that one is committed and is what the site fetches.
 # Backup for this file is backup-root.ps1, NOT git.
 ml.json
+
+# (dev0878) Scratch ftext payloads written into the project root so :8080 can
+# serve them to a one-line console apply. Throwaway, never committed.
+_uid*.html
