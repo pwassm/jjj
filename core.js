@@ -4986,6 +4986,10 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingAddWatermarked();
     } else if (act === 'flashsweep') {
       housekeepingSweepFlashCandidates();
+    } else if (act === 'samplecard') {
+      housekeepingSampleFlashCard();
+    } else if (act === 'rmsamplecards') {
+      housekeepingRemoveSampleCards();
     } else if (act === 'resetftlsaved') {
       const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
       if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
@@ -5472,6 +5476,76 @@ function _flashCardFtext(imgUrl) {
        + '<img src="' + u + '" alt="" '
        + 'style="max-width:100%;max-height:82vh;height:auto;border-radius:8px;">'
        + '</p>';
+}
+
+// (dev0876) ── Sample flash card → a real, throwaway row ────────────────────
+// Reviewing a card type by reading its rendered HTML in a console, or by
+// staring at the source in Xe, tells you almost nothing about the thing that
+// actually matters: whether the turn face reads at grid-cell size. The only
+// honest preview is a row going through the real pipeline — Xs, G, the turn,
+// the F badge — so this makes one.
+//
+// The row is marked `sampleCard:'1'`, which is what Remove Sample Cards finds.
+// A marker beats matching on the title: a title is editable, and a review row
+// is exactly the kind of thing you scribble on before deleting it.
+function housekeepingSampleFlashCard() {
+  if (typeof _cMode !== 'undefined' && _cMode) { toast('⚠ Not on the C screen — go back to T first', 3000); return; }
+  if (!window.CardTypes) { toast('⚠ cardtypes.js not loaded — hard-refresh (Ctrl+Shift+R)', 4000); return; }
+  const typeId = window.CardTypes.DEFAULT;
+  const t = window.CardTypes.get(typeId);
+  if (!t) { toast('⚠ unknown cardType: ' + typeId, 3000); return; }
+
+  const cardData = t.sample();
+  const now = isoNow();
+  const row = {
+    UID: nextUID(),
+    link: '',
+    show: '1',
+    DateAdded: now,
+    DateModified: now,
+    tags: [],
+    // f1 = identified. The whole point is to see a card WITH a back, which is
+    // the state the identify pass will leave rows in.
+    ltype: 'f1',
+    cardType: typeId,
+    // The answer as data, kept beside the HTML it rendered to. This is the row
+    // shape the identify pass will write, so exercising it now means the
+    // renderer and the storage are proven before any API call exists.
+    cardData: JSON.stringify(cardData),
+    // A real image already on R2, so the card has a genuine picture front
+    // rather than a broken-image box.
+    ftext: window.CardTypes.sampleFtext(typeId),
+    VidTitle: 'SAMPLE CARD — ' + typeId,
+    sampleCard: '1'
+  };
+  data.push(row);
+  save();
+  try { sortCol = 'DateAdded'; sortDir = 'desc'; buildSort(); } catch (_) {}
+  render();
+  toast('🧪 Sample ' + typeId + ' card added — UID ' + row.UID + ', ltype f1'
+        + '\n   It is at the top of T. Open it in Xs to see the card,'
+        + '\n   or put it in a grid to check the turn face at cell size.'
+        + '\n   Housekeeping ▸ Remove Sample Cards clears it.', 8000);
+}
+
+// The other half — because a review row you cannot get rid of in one action is
+// a review row you stop making.
+function housekeepingRemoveSampleCards() {
+  if (typeof _cMode !== 'undefined' && _cMode) { toast('⚠ Not on the C screen — go back to T first', 3000); return; }
+  const hits = data.filter(r => r && String(r.sampleCard || '') === '1');
+  if (!hits.length) { toast('No sample cards in the table — nothing to remove', 2500); return; }
+  if (!confirm('Delete ' + hits.length + ' sample flash-card row(s)?\n\n'
+               + hits.slice(0, 10).map(r => '  • UID ' + r.UID + ' — ' + (r.VidTitle || '')).join('\n')
+               + (hits.length > 10 ? '\n  … and ' + (hits.length - 10) + ' more' : '')
+               + '\n\nThey are archived to deleted.json like any other delete.')) return;
+  // Archived, not vaporised — the same courtesy deleteChecked gives every other
+  // row. _saveToDeletedJson takes an array or a single row.
+  const uids = new Set(hits.map(r => r.UID));
+  try { _saveToDeletedJson(hits); } catch (_) {}
+  for (let i = data.length - 1; i >= 0; i--) if (uids.has(data[i].UID)) data.splice(i, 1);
+  checkedRows.clear();
+  save(); buildSort(); render();
+  toast('✓ Removed ' + hits.length + ' sample card row(s)', 3000);
 }
 
 function _extractYTVideoId(url) {
