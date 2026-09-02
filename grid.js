@@ -1648,19 +1648,25 @@ function _gridIsTextRow(row) {
 // ══════════════════════════════════════════════════════════════════════════════
 // (dev0860) FLASH CARDS IN G
 // ══════════════════════════════════════════════════════════════════════════════
-// An ltype 'f' row is a flash card. makecard.js writes its ftext as THREE
-// sections split on <hr> (dev0858): the picture, the display copy Phil cuts down
-// by hand in Xe, and the untouched original. In a grid cell that becomes a card
-// you can actually use:
+// An ltype 'f' row is a flash card. Its ftext is a picture followed by one or
+// more sections split on top-level <hr> (dev0858), and each of those sections is
+// a FACE of the card. In a grid cell that becomes a card you can actually use:
 //
 //   the cell shows   THE PICTURE ALONE — not a thumbnail of the whole slide. A
 //                    card row is link-less ftext, so without this it renders down
 //                    the isText branch, which prints the answer on the front of
 //                    the card in 6pt type.
-//   a plain tap      turns it over to section 2, the display copy
-//   tap again        turns it back
-//   swipe right      turns it to section 3, the original — and a swipe on a card
-//                    that is already turned swaps the face where it stands
+//   a plain tap      turns it over to the FIRST face (section 2), the short
+//                    answer; tapping again turns it back
+//   swipe right      STEPS to the next face, and the last one returns to the
+//                    picture — so a card reads front → 2 → 3 → 4 → front
+//
+// (dev0881) THE FACE COUNT IS THE SECTION COUNT, not a fixed two. dev0858's
+// three-section card is the two-face case of this and behaves identically; the
+// four-section layout (image · short ID · distinctions · raw lines) is the same
+// code with one more <hr>. Faces are addressed by index everywhere — the panel,
+// the turncells tag ('s0', 's1', …), and the reader's section number — so there
+// is no table of face names left to fall out of step.
 //   an F badge       bottom-right of the front, so a card is recognisable as one
 //                    before it is touched. Built into the interactor, which
 //                    exists in BOTH modes, so slam.com gets it too.
@@ -1724,17 +1730,24 @@ function _gridCardBadge() {
 // transforms.
 const _GRID_CARD_FS_MIN = 7;
 
-function _gridCardBackPanel(cell, which) {
+// (dev0881) `idx` is a zero-based index into parts.sections -- 0 is section 2
+// (the tap face), 1 is section 3, and so on. It used to be one of two fixed
+// tags, which capped a card at two faces.
+function _gridCardBackPanel(cell, idx) {
   const parts = _gridCardParts(cell._rowData);
-  const orig  = parts ? parts.orig : '';
-  const html  = parts ? (which === 'orig' ? (orig || parts.body) : parts.body) : '';
+  const secs  = (parts && parts.sections) ? parts.sections : [];
+  const n     = secs.length;
+  // A card asked for a face it does not have (a swipe on a picture-only f0)
+  // falls back to the first one, which is what the old orig||body did.
+  const i     = n ? Math.max(0, Math.min(idx | 0, n - 1)) : 0;
+  const html  = secs[i] || '';
   const ch    = cell.clientHeight || cell.offsetHeight || 260;
   const fs0   = Math.max(10, Math.min(22, Math.round(ch / 14)));
   const pad   = Math.max(6, Math.round(fs0 * 0.7));
 
   const panel = document.createElement('div');
   panel.className = 'grid-card-back';
-  panel.dataset.face = which;
+  panel.dataset.face = 's' + i;
   panel.style.cssText = 'position:absolute;inset:0;z-index:140;overflow:hidden;'
     + 'background:#14161c;color:#e9e9f0;box-sizing:border-box;padding:' + pad + 'px;'
     + 'display:flex;flex-direction:column;pointer-events:none;'
@@ -1748,12 +1761,12 @@ function _gridCardBackPanel(cell, which) {
     : '<span style="opacity:.4;font-style:italic;">nothing written on the back of this one yet</span>';
   panel.appendChild(text);
 
-  // The two faces are the same words at different lengths, so say which one is
-  // showing. A pre-dev0858 card has no section 3 at all — it says so, rather
-  // than silently showing the display copy a second time.
-  if (which === 'orig') {
+  // (dev0881) Say which face is showing and how many there are. The old label
+  // could only name one of two ('original'), which stops meaning anything once
+  // a card has three. A one-face card says nothing: there is nowhere to go.
+  if (n > 1) {
     const tag = document.createElement('div');
-    tag.textContent = orig ? 'original' : 'no original kept on this card';
+    tag.textContent = (i + 1) + ' / ' + n;
     tag.style.cssText = 'position:absolute;top:2px;right:6px;font-size:0.62em;'
       + 'opacity:0.45;letter-spacing:0.04em;';
     panel.appendChild(tag);
@@ -1784,13 +1797,42 @@ function _gridCardBackPanel(cell, which) {
 
 // The entry point every gesture goes through. Returns TRUE when it took the
 // gesture, so each caller reads as one line: if this was a card, we are done.
-function _gridCardTurn(cell, which) {
+//
+// (dev0881) `idx` is the face index. The tag handed to turncells is 's<idx>',
+// and turncells treats "the same tag again" as turn-it-back-to-the-front, so
+// the index IS the identity of the face -- nothing else needs to change for a
+// card to grow a third or fourth one.
+function _gridCardTurn(cell, idx) {
   if (!cell || !_gridCardParts(cell._rowData)) return false;
   if (!window.TurnCells || typeof window.TurnCells.turnPanel !== 'function') return false;
   if (window.TurnCells.active) return false;      // fun mode owns the cell
-  return window.TurnCells.turnPanel(cell, which, function (c) {
-    return _gridCardBackPanel(c, which);
+  const i = Math.max(0, idx | 0);
+  return window.TurnCells.turnPanel(cell, 's' + i, function (c) {
+    return _gridCardBackPanel(c, i);
   });
+}
+
+// (dev0881) Which face is a cell showing? -1 means the front (the picture).
+function _gridCardFaceIdx(cell) {
+  if (!window.TurnCells || typeof window.TurnCells.faceOn !== 'function') return -1;
+  const f = String(window.TurnCells.faceOn(cell) || '');   // '' on the front
+  if (!f) return -1;
+  const m = /^s([0-9]+)$/.exec(f);
+  return m ? +m[1] : 0;
+}
+
+// (dev0881) A forward swipe STEPS through the faces, and the last one returns
+// to the picture. At two faces this is byte-for-byte the dev0860 behaviour --
+// front goes straight to section 3, the tap face goes on to section 3, and
+// section 3 goes home -- so widening the card costs the old gesture nothing.
+function _gridCardSwipeFace(cell) {
+  const parts = _gridCardParts(cell && cell._rowData);
+  if (!parts) return false;
+  const last = Math.max(0, (parts.sections || []).length - 1);
+  const cur  = _gridCardFaceIdx(cell);
+  // On the last face, turning to the SAME index is what sends it home.
+  if (cur >= last) return _gridCardTurn(cell, cur < 0 ? last : cur);
+  return _gridCardTurn(cell, Math.min(last, Math.max(1, cur + 1)));
 }
 
 // (dev0879) Which ftext section is this cell actually showing? The fullscreen
@@ -1807,11 +1849,12 @@ function _gridCardTurn(cell, which) {
 function _gridCardSectionIdx(cell) {
   if (!cell) return 0;
   if (cell._salSect) return cell._salSect.idx;
-  if (_gridCardParts(cell._rowData) && window.TurnCells
-      && typeof window.TurnCells.faceOn === 'function') {
-    const face = window.TurnCells.faceOn(cell);   // '' on the front
-    if (face === 'body') return 1;
-    if (face === 'orig') return 2;
+  // (dev0881) Face i is ftext section i+1: section 0 is the picture, so the
+  // tap face (0) is section 1 in the reader's numbering. Was a hand-written
+  // map of two tags, which could not name a third face.
+  if (_gridCardParts(cell._rowData)) {
+    const f = _gridCardFaceIdx(cell);
+    if (f >= 0) return f + 1;
   }
   return 0;
 }
@@ -3410,7 +3453,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
         // forward swipe — the tap already gives the display copy. Fullscreen is
         // not the useful thing to do with a card: the slide it would open is the
         // picture AND both texts, i.e. the answer.
-        if (_gridCardTurn(cell, 'orig')) return;
+        if (_gridCardSwipeFace(cell)) return;
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
         else {
           // (dev0617) Sectioned 1a text cell → fullscreen viewer opens on the
@@ -3471,7 +3514,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
       // and the next one turns it back. The double-tap clock is reset so
       // tap-tap reads as turn-and-turn-back instead of opening Xe on the second
       // one; Ctrl+click is still the way into the editor.
-      if (_gridCardTurn(cell, 'body')) { _lastShortTapT = 0; return; }
+      if (_gridCardTurn(cell, 0)) { _lastShortTapT = 0; return; }
 
       // (dev0604 IG · dev0606 TikTok) Embed cell + plain left-click: arm it so
       // the NEXT click reaches the play caret (nothing else can start a
@@ -3591,7 +3634,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
         // (dev0860) Card → the original text. Touch mirror of the pointer path.
-        if (_gridCardTurn(cell, 'orig')) return;
+        if (_gridCardSwipeFace(cell)) return;
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
         else {
           // (dev0617) mirror of the pointer path — open on the cell's current section
@@ -3637,7 +3680,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       if (cell._rowData) _lastGridRow = cell._rowData;
       // (dev0860) Card → turn it over. Touch mirror of the pointer path.
-      if (_gridCardTurn(cell, 'body')) { _lastShortTapT = 0; return; }
+      if (_gridCardTurn(cell, 0)) { _lastShortTapT = 0; return; }
       // (dev0588) Summary tap on the sectioned 1a text slide — touch mirror of
       // the pointer path above.
       if (cell._salSect && endX != null) {

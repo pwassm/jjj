@@ -278,11 +278,18 @@
     'a { color: #2563eb; text-decoration: none; word-break: break-all; }\n' +
     'a:hover { text-decoration: underline; color: #1d4ed8; }';
 
-  // (dev0858) Returns { imgUrl, body, orig }:
-  //   body  section 2 -- the display copy, what the card back shows
-  //   orig  section 3 -- the untouched original, '' on a pre-dev0858 card
+  // (dev0858) Returns { imgUrl, sections, body, orig }:
+  //   sections  EVERY section after the picture, in order -- the card's faces
+  //   body      sections[0], section 2, the display copy the tap face shows
+  //   orig      sections[1], section 3, '' on a pre-dev0858 card
   // A card written before dev0858 has only ONE break and therefore no section 3;
   // it keeps working, it just has nothing to swipe to.
+  //
+  // (dev0881) SECTIONS ARE A LIST NOW, not a fixed three. The old code joined
+  // everything past section 3 back onto orig, so a four-section card silently
+  // glued its last two faces together -- which is exactly the shape the target
+  // layout needs (image / short ID / distinctions / raw lines). body and orig
+  // stay as the first two entries, so every existing caller is unchanged.
   function _mcSplitCard(ftext) {
     var s = String(ftext || '');
     var m = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/i.exec(s);
@@ -291,13 +298,18 @@
     if (parts.length < 2) {
       // No break at all: drop the leading image paragraph so body is just text.
       var only = m ? s.replace(m[0], '') : s;
-      return { imgUrl: imgUrl, body: only.trim(), orig: '' };
+      var lone = only.trim();
+      return { imgUrl: imgUrl, sections: lone ? [lone] : [], body: lone, orig: '' };
     }
-    // Anything past section 3 belongs to the original -- rejoining keeps a break
-    // the user added down there from silently eating the rest of it.
+    // A trailing empty section is what an editor leaves behind after a stray
+    // break at the very end, and it would otherwise become a blank face you can
+    // swipe to. Empties in the MIDDLE are kept -- they hold the numbering.
+    var sections = parts.slice(1).map(function (p) { return p.trim(); });
+    while (sections.length && !sections[sections.length - 1]) sections.pop();
     return { imgUrl: imgUrl,
-             body: parts[1].trim(),
-             orig: parts.slice(2).join('<hr>').trim() };
+             sections: sections,
+             body: sections[0] || '',
+             orig: sections[1] || '' };
   }
   window.makeCardSplit = _mcSplitCard;   // (dev0858) G needs the same fold
 

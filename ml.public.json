@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788366931991,
+    "_salPushTime": 1788370717462,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -92,7 +92,7 @@
       "col": "UID",
       "dir": "desc"
     },
-    "_salGsize": 2,
+    "_salGsize": 4,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -516,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788366931991
+    "_salSavedAt": 1788370717462
   },
   {
     "UID": "1",
@@ -48322,7 +48322,7 @@
     "DateModified": "2026-09-02 03:14:02",
     "tags": [],
     "ltype": "f0",
-    "ftext": "",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260901_200256_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p>",
     "VidTitle": "20260901_200256_nameAssignment",
     "Mode": "S",
     "MPix": "0.08",
@@ -48330,7 +48330,7 @@
     "FtextJunk": "13",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": ""
+    "cell": "4d"
   },
   {
     "UID": "2174",
@@ -48340,14 +48340,14 @@
     "DateModified": "2026-09-02 03:10:47",
     "tags": [],
     "ltype": "f0",
-    "ftext": "",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260901_200547_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
     "VidTitle": "20260901_200547_nameAssignment",
     "Mode": "L",
     "MPix": "0.07",
     "ftextSize": "220",
     "FtextJunk": "20",
     "DictSize": "0",
-    "cell": ""
+    "cell": "4c"
   },
   {
     "UID": "2175",
@@ -48357,7 +48357,7 @@
     "DateModified": "2026-09-02 03:11:35",
     "tags": [],
     "ltype": "f0",
-    "ftext": "",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260901_200716_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p>",
     "VidTitle": "20260901_200716_nameAssignment",
     "Mode": "L",
     "MPix": "0.2",
@@ -48365,7 +48365,7 @@
     "FtextJunk": "13",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": ""
+    "cell": "4b"
   },
   {
     "UID": "2176",
@@ -48375,14 +48375,14 @@
     "DateModified": "2026-09-02 03:10:47",
     "tags": [],
     "ltype": "f0",
-    "ftext": "",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260901_200828_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
     "VidTitle": "20260901_200828_nameAssignment",
     "Mode": "L",
     "MPix": "0.2",
     "ftextSize": "220",
     "FtextJunk": "20",
     "DictSize": "0",
-    "cell": ""
+    "cell": "4a"
   },
   {
     "UID": "2177",
@@ -48392,24 +48392,24 @@
     "DateModified": "2026-09-02 03:10:47",
     "tags": [],
     "ltype": "f0",
-    "ftext": "",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260901_200904_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
     "VidTitle": "20260901_200904_nameAssignment",
     "Mode": "L",
     "MPix": "0.2",
     "ftextSize": "220",
     "FtextJunk": "20",
     "DictSize": "0",
-    "cell": ""
+    "cell": "3d"
   },
   {
     "UID": "2178",
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 03:10:47",
-    "DateModified": "2026-09-02 03:13:50",
+    "DateModified": "2026-09-02 17:29:34",
     "tags": [],
     "ltype": "f0",
-    "ftext": "",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260901_200949_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p>",
     "VidTitle": "20260901_200949_nameAssignment",
     "Mode": "L",
     "MPix": "0.07",
@@ -48417,16 +48417,34 @@
     "FtextJunk": "13",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": ""
+    "cell": "3c"
   },
   {
     "UID": "2179",
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 03:13:41",
-    "DateModified": "2026-09-02 16:35:31",
+    "DateModified": "2026-09-02 17:31:01",
     "tags": [],
     "ltype": "f0",
+    "ftext": "<div style=\"text-align: center; margin: 12px 0px;\"><p><img src=\"https://media.sealifeandmore.com/flashimages/20260901_201330_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; width: 400px; display: inline-block; border-radius: 4px;\"></p></div>",
+    "VidTitle": "20260901_201330_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.2",
+    "ftextSize": "244",
+    "FtextJunk": "19",
+    "DictSize": "0",
+    "VidRange": "text",
+    "cell": "3b"
+  },
+  {
+    "UID": "2179_d",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:25:46",
+    "DateModified": "2026-09-02 17:30:39",
+    "tags": [],
+    "ltype": "fx",
     "ftext": "",
     "VidTitle": "20260901_201330_nameAssignment",
     "Mode": "L",
@@ -48454,7 +48472,7 @@
     "FtextJunk": "1",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": "2b"
+    "cell": ""
   },
   {
     "UID": "2181",
@@ -48473,7 +48491,7 @@
     "FtextJunk": "1",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": "2a"
+    "cell": ""
   },
   {
     "UID": "2181_d",
@@ -48492,7 +48510,7 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": "1b"
+    "cell": ""
   },
   {
     "UID": "2181_d2",
@@ -48509,6 +48527,161 @@
     "sampleCard": "1",
     "ftextSize": "5660",
     "FtextJunk": "0",
+    "DictSize": "0",
+    "VidRange": "text",
+    "cell": ""
+  },
+  {
+    "UID": "2182",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:53",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101252_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p>",
+    "VidTitle": "20260902_101252_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.09",
+    "ftextSize": "210",
+    "FtextJunk": "13",
+    "DictSize": "0",
+    "VidRange": "text",
+    "cell": "3a"
+  },
+  {
+    "UID": "2183",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:27",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101332_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "VidTitle": "20260902_101332_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.1",
+    "ftextSize": "220",
+    "FtextJunk": "20",
+    "DictSize": "0",
+    "cell": "2d"
+  },
+  {
+    "UID": "2184",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:27",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101409_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "VidTitle": "20260902_101409_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.3",
+    "ftextSize": "220",
+    "FtextJunk": "20",
+    "DictSize": "0",
+    "cell": "2c"
+  },
+  {
+    "UID": "2185",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:27",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101431_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "VidTitle": "20260902_101431_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.2",
+    "ftextSize": "220",
+    "FtextJunk": "20",
+    "DictSize": "0",
+    "cell": "2b"
+  },
+  {
+    "UID": "2186",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:27",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101611_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "VidTitle": "20260902_101611_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.5",
+    "ftextSize": "220",
+    "FtextJunk": "20",
+    "DictSize": "0",
+    "cell": "2a"
+  },
+  {
+    "UID": "2187",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:27",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101802_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "VidTitle": "20260902_101802_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.5",
+    "ftextSize": "220",
+    "FtextJunk": "20",
+    "DictSize": "0",
+    "cell": "1d"
+  },
+  {
+    "UID": "2188",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:27",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101902_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "VidTitle": "20260902_101902_nameAssignment",
+    "Mode": "S",
+    "MPix": "0.2",
+    "ftextSize": "220",
+    "FtextJunk": "20",
+    "DictSize": "0",
+    "cell": "1c"
+  },
+  {
+    "UID": "2189",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:26:27",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_102012_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "VidTitle": "20260902_102012_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.6",
+    "ftextSize": "220",
+    "FtextJunk": "20",
+    "DictSize": "0",
+    "cell": "1b"
+  },
+  {
+    "UID": "2190",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 17:27:00",
+    "tags": [],
+    "ltype": "f0",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_102341_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p>",
+    "VidTitle": "20260902_102341_nameAssignment",
+    "Mode": "L",
+    "MPix": "0.7",
+    "ftextSize": "210",
+    "FtextJunk": "13",
     "DictSize": "0",
     "VidRange": "text",
     "cell": "1a"
