@@ -5459,7 +5459,14 @@ async function housekeepingSweepFlashCandidates() {
 // card are the same shape. No <hr> yet: the sections after the first break are
 // the answer, and an f0 has none. makeCardSplit's "no break at all" branch
 // already handles that.
+// (dev0875) cardtypes.js owns the canonical definition, because the identify
+// pass rebuilds the whole ftext — picture and both answer sections — from one
+// place. The inline copy is the fallback for a load order where cardtypes.js
+// has not run yet, and must stay byte-identical to it.
 function _flashCardFtext(imgUrl) {
+  if (window.CardTypes && typeof window.CardTypes.pictureSection === 'function') {
+    return window.CardTypes.pictureSection(imgUrl);
+  }
   const u = String(imgUrl).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   return '<p style="text-align:center;margin:0 0 10px 0;">'
        + '<img src="' + u + '" alt="" '
