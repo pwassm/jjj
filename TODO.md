@@ -81,7 +81,7 @@ Do **not** put the point outside the `<details>` as a statement with a lead-in
 inside — that was the first attempt and it reads backwards.
 
 Content style: short phrases, one idea per line, more lines, almost no
-punctuation. UID 2179 holds a worked example.
+punctuation. UID 2184 holds a worked example.
 
 ## Turn vs expand — Phil's rule (unimplemented)
 
