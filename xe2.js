@@ -1157,6 +1157,38 @@
   function setSummaryLevel(editor, level) {
     editor.chain().focus().updateAttributes('detailsSummary', { level: level }).run();
   }
+
+  // (dev0880) The position of the <summary> belonging to the <details> the
+  // cursor is inside — when the cursor is in a BODY line, not in the summary
+  // itself. updateAttributes('detailsSummary') cannot reach it from there: it
+  // acts on the node at the selection, and from a body paragraph that is not
+  // the summary. Details content is 'detailsSummary block+', so the summary is
+  // always the first child. Returns null when the cursor is not in a details,
+  // or is in the summary already (setSummaryLevel handles that case).
+  function summaryPosForBody(editor) {
+    var $f = editor.state.selection.$from;
+    for (var d = $f.depth; d > 0; d--) {
+      var name = $f.node(d).type.name;
+      if (name === 'detailsSummary') return null;      // in the title, not the body
+      if (name === 'details') {
+        var pos = $f.before(d) + 1;
+        var n = editor.state.doc.nodeAt(pos);
+        return (n && n.type.name === 'detailsSummary') ? pos : null;
+      }
+    }
+    return null;
+  }
+  function setSummaryLevelAt(editor, pos, level) {
+    var n = editor.state.doc.nodeAt(pos);
+    if (!n || n.attrs.level === level) return;
+    var tr = editor.state.tr;
+    tr.setNodeMarkup(pos, undefined, Object.assign({}, n.attrs, { level: level }));
+    editor.view.dispatch(tr);
+  }
+  // A ladder slot → the level a summary needs to render at that same size.
+  function summaryLevelForSlot(slot) {
+    return slot[0] === 'paragraph' ? 0 : slot[1];
+  }
   // H1/H2/H3 button: the block for a body line, the title size for a summary.
   // Re-clicking the level a title already has clears it, matching toggleHeading.
   function headingOrSummary(editor, level) {
@@ -1194,8 +1226,22 @@
     var ni = cur + dir;
     if (ni < 0 || ni >= SIZE_LADDER.length) return;
     var n = SIZE_LADDER[ni];
+    // (dev0880) Take the summary's position BEFORE the block changes. Retyping a
+    // paragraph to a heading does not move anything, so the position stays good
+    // either way — but reading it first keeps that assumption in one place.
+    var sumPos = summaryPosForBody(editor);
     if (n[0] === 'paragraph') editor.chain().focus().setParagraph().run();
     else editor.chain().focus().setHeading({ level: n[1] }).run();
+    // (dev0880) A SUMMARY IS THE TITLE OF ITS OWN BODY AND MUST NOT END UP
+    // SMALLER THAN IT. A summary at level 0 sits at the paragraph rung, so the
+    // moment a body line was stepped up to h3 the collapsible read upside down:
+    // the heading of the thing set two rungs below the thing. Sizing a body line
+    // now carries the title with it, so the two stay level.
+    //
+    // Stepping the SUMMARY itself is left alone (the branch above returns early)
+    // — that is an explicit, deliberate change to the title, and the body should
+    // not be dragged along behind it.
+    if (sumPos !== null) setSummaryLevelAt(editor, sumPos, summaryLevelForSlot(n));
   }
 
   // Color swatch popup (same palette as v1's teShowColorPicker).
@@ -2099,6 +2145,10 @@
     _salLinkHref: _salLinkHref,
     _salLinkShorthand: _salLinkShorthand,
     _findImageEditContext: _findImageEditContext,
+    // (dev0880) size stepping — exported for the headless jsdom suite, which is
+    // the only way to prove a summary tracks its body without driving a toolbar.
+    _stepBlockSize: stepBlockSize,
+    _summaryPosForBody: summaryPosForBody,
     // (dev0757) media-unit selection — exported for the headless jsdom suite
     _isMediaWrapper: _isMediaWrapper,
     _mediaUnitPos: _mediaUnitPos,
