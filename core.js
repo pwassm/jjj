@@ -3187,6 +3187,12 @@ function ltypeBucket(row) {
 }
 window.ltypeBucket = ltypeBucket;
 
+// (dev0874) Every rung of the flash-card ladder — 'f' (what MakeCard has always
+// written), plus the f0/f1/f2/f3 the batch sweep introduced. One regex so the
+// filter pill and grid.js's card gate cannot drift apart.
+const FLASH_LTYPE_RE = /^f\d*$/;
+window.FLASH_LTYPE_RE = FLASH_LTYPE_RE;
+
 function rowMatchesFilter(row) {
   // (dev0538) Top-of-T kind dropdown — an independent gate AND'd with f/F below.
   if (_kindFilter && rowKindFilter(row) !== _kindFilter) return false;
@@ -3260,7 +3266,10 @@ function rowMatchesFilter(row) {
     // with a blank/absent ltype.
     const lts = rowFilter.ltype || [];
     if (lts.length) {
-      if (!lts.includes(ltypeBucket(row))) return false;
+      const b = ltypeBucket(row);
+      // (dev0874) '*flash' is a pattern pill, not an ltype value — it stands for
+      // the whole f0/f1/f2/f3 ladder (and legacy 'f'). Still an OR, like the rest.
+      if (!lts.includes(b) && !(lts.includes('*flash') && FLASH_LTYPE_RE.test(b))) return false;
     }
     return true;
   }
@@ -4975,6 +4984,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingWatermarkNew();
     } else if (act === 'addwm') {
       housekeepingAddWatermarked();
+    } else if (act === 'flashsweep') {
+      housekeepingSweepFlashCandidates();
     } else if (act === 'resetftlsaved') {
       const n = data.filter(r => r.FTLsaved !== undefined && r.FTLsaved !== '').length;
       if (!confirm('Clear FTLsaved on all ' + n + ' rows that have it set?\n(Rows will be re-processed next time Save Imgs runs.)')) return;
@@ -5314,6 +5325,146 @@ async function housekeepingAddWatermarked(opts) {
             ? '\n⚠ ' + (missing.length - probed) + ' could not be probed — run Calc Lengths / Fill Mode'
             : '\n   Mode + length/MPix filled from the local files'),
         5000);
+}
+
+// (dev0874) ── Sweep Flash Candidates ─────────────────────────────────────────
+// The batch end of MakeCard. Drop a pile of screenshots in
+// M:\wm\flashcandidates\ and this walks them: JPEG → M:\wm\flashimages\ → R2 →
+// one ml.json row each, ltype 'f0'.
+//
+// THE ltype LADDER (dev0874). A flash card's ltype records how far along it is,
+// so the LTYPE filter pills double as the worklist:
+//   f0  picture only — swept in, nothing identified yet
+//   f1  identified — title, confidence, alternatives, sources filled in
+//   f2  Phil has reviewed it and agrees — production
+//   f3  reviewed by an expert
+// The grid renders f1+ as turnable cards; f0 shows its picture with an empty
+// back, because there is nothing to turn to yet. See _gridCardParts in grid.js.
+//
+// One request per candidate, not one for the folder: 200 screenshots is 200 R2
+// uploads, and a single request that runs for minutes shows no progress and
+// cannot be stopped. Esc aborts between files; every file already uploaded
+// keeps its row, because the proxy has already moved the source to _done\.
+let _flashSweepRunning = false;
+let _flashSweepAbort = false;
+
+async function housekeepingSweepFlashCandidates() {
+  if (_flashSweepRunning) { toast('Flash sweep already running… (Esc to abort)', 2000); return; }
+  // On the C screen `data` IS c.json and save() writes ml.json — pushing rows
+  // here would drop flash cards into the grid config. Same guard as MakeCard.
+  if (typeof _cMode !== 'undefined' && _cMode) { toast('⚠ Not on the C screen — go back to T first', 3000); return; }
+  const PROXY = 'http://127.0.0.1:8081';
+
+  let list;
+  try {
+    const r = await fetch(PROXY + '/card/candidates', { method: 'POST', body: '{}' });
+    list = await r.json();
+  } catch (_) {
+    toast('⚠ Sweep Flash: proxy not reachable on 8081 — start proxy.js', 4000);
+    return;
+  }
+  if (!list || !list.ok) {
+    toast('⚠ Sweep Flash: ' + ((list && list.error) || 'proxy returned no list')
+          + '\n(needs proxy dev0874+ — RESTART it if you just updated)', 5000);
+    return;
+  }
+  const files = Array.isArray(list.files) ? list.files : [];
+  if (!files.length) { toast('No candidates in ' + list.dir + ' — drop some screenshots in there first', 4000); return; }
+
+  const preview = files.slice(0, 12).map(f => '  • ' + f.name).join('\n')
+                + (files.length > 12 ? '\n  … and ' + (files.length - 12) + ' more' : '');
+  if (!confirm('Sweep ' + files.length + ' flash-card candidate(s) into T?\n\n' + preview
+               + '\n\nEach one is converted to JPEG, uploaded to R2, and added as an'
+               + '\nltype "f0" row — the picture only, no answer yet.'
+               + '\nThe original moves to _done\\ once R2 confirms, so a re-run'
+               + '\nnever duplicates. Esc aborts.')) return;
+
+  _flashSweepRunning = true;
+  _flashSweepAbort = false;
+  // Capture phase, so it pre-empts T's own Escape handling during the run.
+  const onEsc = e => {
+    if (e.key === 'Escape') { _flashSweepAbort = true; e.stopPropagation(); e.preventDefault(); }
+  };
+  window.addEventListener('keydown', onEsc, true);
+
+  const TOTAL = files.length;
+  let done = 0, failed = 0, i = 0;
+  const failSamples = [];
+  const now = isoNow();
+  try {
+    for (const f of files) {
+      if (_flashSweepAbort) break;
+      i++;
+      toast('🃏 Sweeping flash candidates…  ' + i + '/' + TOTAL + '\n   ' + f.name + '\n   (Esc to abort)', 120000);
+      let j = null;
+      try {
+        const r = await fetch(PROXY + '/card/sweep', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: f.name })
+        });
+        j = await r.json();
+      } catch (e) {
+        j = { ok: false, error: String((e && e.message) || e) };
+      }
+      if (!j || !j.ok || !j.url) {
+        failed++;
+        if (failSamples.length < 4) failSamples.push(f.name + ' — ' + ((j && j.error) || 'no url returned'));
+        continue;
+      }
+      const row = {
+        UID: nextUID(),
+        link: '',
+        show: '1',
+        DateAdded: now,
+        DateModified: now,
+        tags: [],
+        // 'f0' = swept, not yet identified. A STRING, not a number: dev0856
+        // learned that `ltype: 0` is falsy and collapses into the "none" bucket.
+        ltype: 'f0',
+        ftext: _flashCardFtext(j.url),
+        // The source filename, so the row is recognisable in T before anything
+        // has identified it. The identify pass overwrites this with the real name.
+        VidTitle: String(f.name).replace(/\.[^.]+$/, '')
+      };
+      if (j.w && j.h) {
+        row.Mode = orientFromDims(j.w, j.h);
+        const mp = (j.w * j.h) / 1000000;
+        row.MPix = mp >= 0.1 ? mp.toFixed(1) : mp.toFixed(2);
+      }
+      data.push(row);
+      done++;
+      // Save in batches: the bytes are already live on R2 and the source is
+      // already in _done\, so an interrupted run must not lose the rows that
+      // point at them.
+      if (done % 10 === 0) save();
+    }
+  } finally {
+    window.removeEventListener('keydown', onEsc, true);
+    _flashSweepRunning = false;
+  }
+
+  if (done) {
+    save();
+    try { sortCol = 'DateAdded'; sortDir = 'desc'; buildSort(); } catch (_) {}
+  }
+  render();
+  toast('✓ Flash sweep' + (_flashSweepAbort ? ' (aborted)' : '') + ' — ' + done + '/' + TOTAL + ' added as ltype f0'
+        + (failed ? '\n⚠ ' + failed + ' failed:\n   ' + failSamples.join('\n   ') : '')
+        + (done ? '\n   Filter LTYPE ▸ f0 to see them' : ''),
+        failed ? 9000 : 5000);
+}
+
+// The picture half of a flash card's ftext — byte-identical to the first
+// section makecard.js's _mcBuildFtext writes, so a swept card and a MakeCard
+// card are the same shape. No <hr> yet: the sections after the first break are
+// the answer, and an f0 has none. makeCardSplit's "no break at all" branch
+// already handles that.
+function _flashCardFtext(imgUrl) {
+  const u = String(imgUrl).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return '<p style="text-align:center;margin:0 0 10px 0;">'
+       + '<img src="' + u + '" alt="" '
+       + 'style="max-width:100%;max-height:82vh;height:auto;border-radius:8px;">'
+       + '</p>';
 }
 
 function _extractYTVideoId(url) {
@@ -6063,7 +6214,19 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
     }
     const vals = [...counts.keys()].sort((a, b) =>
       (a === 'none') - (b === 'none') || counts.get(b) - counts.get(a));
-    ltypeBar.innerHTML = vals.map(v =>
+    // (dev0874) One pill for the whole flash-card ladder. A card's ltype records
+    // how far along it is (f0 swept → f1 identified → f2 reviewed → f3 expert),
+    // so the individual pills are the worklist — but building a GRID of cards
+    // wants all of them at once, and clicking four pills for that is silly.
+    // '*flash' is a pseudo-value: rowMatchesFilter tests it as a pattern, not as
+    // an ltype, so it ORs with the ordinary pills like everything else here.
+    let flashN = 0;
+    for (const [v, n] of counts) if (FLASH_LTYPE_RE.test(v)) flashN += n;
+    const flashPill = flashN
+      ? '<button type="button" class="fb-toggle" data-ltype="*flash" title="'
+        + flashN + ' flash-card row(s) — every f0/f1/f2/f3 at once">🃏 flash</button>'
+      : '';
+    ltypeBar.innerHTML = flashPill + vals.map(v =>
       '<button type="button" class="fb-toggle" data-ltype="' + esc(v) + '" title="'
       + counts.get(v) + ' row(s)">' + esc(v) + '</button>').join('');
     paintLtype();

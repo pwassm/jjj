@@ -3434,6 +3434,20 @@ const CARD_URL_BASE = 'https://media.sealifeandmore.com';
 const CARD_CRED_BAT = process.env.CARD_CRED_BAT || 'M:\\wm\\Watermark R2.bat';
 const CARD_MIME_EXT = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 
+// (dev0874) The BATCH end of the same pipe. MakeCard is one card at a time off
+// the clipboard; this is a drop-folder — put a pile of screenshots in
+// flashcandidates\ and Housekeeping sweeps the lot into flashimages\ + R2 + T
+// as ltype 'f0' rows (picture only, no answer yet).
+//
+// A swept file is MOVED to flashcandidates\_done\ rather than deleted: the
+// bytes in flashimages\ are a re-encoded JPEG, and the original screenshot is
+// the only copy of the source resolution. _done\ lives INSIDE the drop folder
+// so it travels with it, and is skipped by the listing because that walk is
+// files-only and one level deep.
+const FLASH_DIR  = process.env.FLASH_DIR || 'M:\\wm\\flashcandidates';
+const FLASH_DONE = path.join(FLASH_DIR, '_done');
+const FLASH_EXT  = /\.(jpe?g|png|webp)$/i;
+
 // R2 creds + bucket, env first then the .bat. R2_PATH rides along because the
 // bucket has already moved once (videofiles -> media, 2026-08-08) and the .bat
 // is where that move was recorded.
@@ -3516,6 +3530,18 @@ function cardUploadToR2(localPath, key, cb) {
     });
 }
 
+// (dev0874) A free filename in CARD_DIR. Never silently overwrite a card that
+// is already live in the bucket — flashimages\ is the local mirror of the
+// bucket prefix, so a reused name would replace a published image.
+// Throws (rather than returning null) so both callers report one clear error.
+function cardUniquePath(stem, ext) {
+  try { fs.mkdirSync(CARD_DIR, { recursive: true }); }
+  catch (e) { throw new Error('cannot create ' + CARD_DIR + ': ' + e.message); }
+  let name = stem + ext, n = 2;
+  while (fs.existsSync(path.join(CARD_DIR, name))) { name = stem + '-' + (n++) + ext; }
+  return { name, full: path.join(CARD_DIR, name) };
+}
+
 // POST /card/save
 //   { b64, mime, stem }  — bytes straight off the clipboard, or
 //   { path, stem }       — an image file on disk (clipboard held a path)
@@ -3540,13 +3566,10 @@ function cardSave(req, res, origin) {
       ext = CARD_MIME_EXT[String(p && p.mime || '').toLowerCase()] || '.jpg';
     }
 
-    try { fs.mkdirSync(CARD_DIR, { recursive: true }); }
-    catch (e) { sendJson(res, 500, { ok: false, error: 'cannot create ' + CARD_DIR + ': ' + e.message }, origin); return; }
+    let name, full;
+    try { ({ name, full } = cardUniquePath(stem, ext)); }
+    catch (e) { sendJson(res, 500, { ok: false, error: e.message }, origin); return; }
 
-    // Never silently overwrite a card that is already live in the bucket.
-    let name = stem + ext, n = 2;
-    while (fs.existsSync(path.join(CARD_DIR, name))) { name = stem + '-' + (n++) + ext; }
-    const full = path.join(CARD_DIR, name);
     try { fs.writeFileSync(full, buf); }
     catch (e) { sendJson(res, 500, { ok: false, error: 'write failed: ' + e.message }, origin); return; }
     plog('[card] saved ' + full + ' (' + buf.length + ' bytes) — uploading…');
@@ -3562,6 +3585,118 @@ function cardSave(req, res, origin) {
       const url = CARD_URL_BASE + '/' + CARD_PREFIX + '/' + encodeURIComponent(name);
       plog('[card] uploaded → ' + url);
       sendJson(res, 200, { ok: true, url, file: full, name, bytes: buf.length }, origin);
+    });
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
+// (dev0874) POST /card/candidates -> { ok, dir, files:[{name,size,mtime}] }
+// Names only, no work: the common case is "nothing new", and that answer should
+// cost nothing (same reasoning as wmList). One level deep and files-only, which
+// is also what keeps _done\ out of the listing.
+function cardCandidates(res, origin) {
+  if (!fs.existsSync(FLASH_DIR)) {
+    sendJson(res, 200, { ok: false, dir: FLASH_DIR, files: [],
+                         error: 'folder not found: ' + FLASH_DIR }, origin);
+    return;
+  }
+  const files = [];
+  let ents;
+  try { ents = fs.readdirSync(FLASH_DIR, { withFileTypes: true }); }
+  catch (e) { sendJson(res, 500, { ok: false, dir: FLASH_DIR, files: [], error: e.message }, origin); return; }
+  for (const ent of ents) {
+    if (!ent.isFile() || !FLASH_EXT.test(ent.name)) continue;
+    let st; try { st = fs.statSync(path.join(FLASH_DIR, ent.name)); } catch (_) { continue; }
+    files.push({ name: ent.name, size: st.size, mtime: st.mtimeMs });
+  }
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  sendJson(res, 200, { ok: true, dir: FLASH_DIR, files }, origin);
+}
+
+// (dev0874) POST /card/sweep { name } -> { ok, name, url, file, bytes, w, h, moved }
+// ONE candidate per request. Deliberately not a whole-folder call: a sweep of
+// 200 screenshots is 200 R2 uploads, and a single request that runs for minutes
+// gives the browser nothing to show and nothing to abort. Per-file is the same
+// shape /wm/probe uses, and lets T report progress and stop on Esc.
+//
+// PNG/WEBP are transcoded to JPEG (a 4 MB screenshot PNG is a bad thing to put
+// on a phone in a grid); a .jpg is copied byte-for-byte. ffmpeg missing or
+// failing is NOT fatal — the original is copied instead, because a slightly fat
+// card beats no card. The source is moved to _done\ only after R2 confirms.
+function cardSweep(req, res, origin) {
+  readJson(req, 64 * 1024).then(p => {
+    const name = String((p && p.name) || '');
+    // The caller supplies a bare filename and nothing else — no separators, no
+    // "..", and it must still resolve back inside FLASH_DIR.
+    if (!name || !FLASH_EXT.test(name) || /[\\/]/.test(name) || name === '.' || name === '..') {
+      sendJson(res, 400, { ok: false, error: 'bad candidate name: ' + name }, origin); return;
+    }
+    const src = path.resolve(FLASH_DIR, name);
+    if (!src.startsWith(path.resolve(FLASH_DIR) + path.sep)) {
+      sendJson(res, 400, { ok: false, error: 'name escapes ' + FLASH_DIR }, origin); return;
+    }
+    if (!fs.existsSync(src)) { sendJson(res, 404, { ok: false, error: 'no such candidate: ' + name }, origin); return; }
+
+    const srcExt = path.extname(name).toLowerCase();
+    const stem = path.basename(name, path.extname(name))
+      .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'flash';
+
+    let dest;
+    try { dest = cardUniquePath(stem, '.jpg'); }
+    catch (e) { sendJson(res, 500, { ok: false, error: e.message }, origin); return; }
+
+    let wrote = false;
+    if (srcExt === '.jpg' || srcExt === '.jpeg') {
+      try { fs.copyFileSync(src, dest.full); wrote = true; }
+      catch (e) { sendJson(res, 500, { ok: false, error: 'copy failed: ' + e.message }, origin); return; }
+    } else {
+      // -q:v 2 is mjpeg's near-top quality, the same ballpark as MakeCard's
+      // canvas 0.92. Sync: one screenshot encodes in well under a second, and
+      // the proxy handles one candidate per request anyway.
+      try {
+        execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-q:v', '2', dest.full],
+                     { timeout: 60000, stdio: 'ignore' });
+        wrote = fs.existsSync(dest.full) && fs.statSync(dest.full).size > 0;
+      } catch (_) { wrote = false; }
+      if (!wrote) {
+        // ffmpeg absent or unhappy — publish the original bytes under its own
+        // extension rather than losing the card.
+        try { fs.unlinkSync(dest.full); } catch (_) {}
+        try { dest = cardUniquePath(stem, srcExt); fs.copyFileSync(src, dest.full); wrote = true; }
+        catch (e) { sendJson(res, 500, { ok: false, error: 'convert and copy both failed: ' + e.message }, origin); return; }
+        plog('[card] sweep: ffmpeg could not convert ' + name + ' — uploading the original');
+      }
+    }
+
+    const dims = probeMediaDims(dest.full) || { w: 0, h: 0 };
+    let bytes = 0; try { bytes = fs.statSync(dest.full).size; } catch (_) {}
+    plog('[card] sweep ' + name + ' → ' + dest.name + ' (' + bytes + ' bytes) — uploading…');
+
+    cardUploadToR2(dest.full, dest.name, err => {
+      if (err) {
+        // Staged file and source both stay put: nothing is live, so a re-run
+        // must be able to try this candidate again.
+        plog('[card] sweep upload FAILED for ' + dest.name + ': ' + err.message);
+        sendJson(res, 502, { ok: false, name, file: dest.full, error: err.message }, origin);
+        return;
+      }
+      let moved = false;
+      try {
+        fs.mkdirSync(FLASH_DONE, { recursive: true });
+        let away = path.join(FLASH_DONE, name), n = 2;
+        while (fs.existsSync(away)) {
+          away = path.join(FLASH_DONE, path.basename(name, path.extname(name)) + '-' + (n++) + path.extname(name));
+        }
+        fs.renameSync(src, away);
+        moved = true;
+      } catch (e) {
+        // The card IS live; the only casualty is idempotence, so say so loudly
+        // rather than failing a request that actually succeeded.
+        plog('[card] sweep: could not move ' + name + ' to _done\\: ' + e.message);
+      }
+      const url = CARD_URL_BASE + '/' + CARD_PREFIX + '/' + encodeURIComponent(dest.name);
+      plog('[card] sweep uploaded → ' + url);
+      sendJson(res, 200, { ok: true, src: name, name: dest.name, url, file: dest.full,
+                           bytes, w: dims.w, h: dims.h, moved }, origin);
     });
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
@@ -7002,6 +7137,11 @@ http.createServer((req, res) => {
     if (req.method !== 'POST') { send(res, 405, 'card: POST required', corsForExec(origin)); return; }
     const action = req.url.slice('/card/'.length).split('?')[0];
     if (action === 'save') { cardSave(req, res, origin); return; }
+    // (dev0874) The flashcandidates\ drop folder. POST like the rest of /card/
+    // even though `candidates` only reads — the guard above is one rule for the
+    // whole prefix, and a second method branch would earn nothing.
+    if (action === 'candidates') { cardCandidates(res, origin); return; }
+    if (action === 'sweep')      { cardSweep(req, res, origin); return; }
     sendJson(res, 404, { ok: false, error: 'unknown card action: ' + action }, origin);
     return;
   }

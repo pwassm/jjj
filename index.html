@@ -747,6 +747,7 @@ thead th.rn              { color: #fff !important; }
       <div class="hkitem" data-act="needsource" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Rows whose linkpage is still the TODO marker &quot;noLinkpageYet&quot; — the image/video is in, but the page it came from was never recorded. Filters T down to them; run it again with the filter on to clear it.">🔗 <span id="hkNeedSourceLbl">Need Source — rows with no source page</span></div>
       <div class="hkitem" data-act="wmnew" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Runs M:&#92;wm&#92;WmUploadNew.bat in its own console window: everything in originals&#92; with no watermarked&#92; twin gets stamped and uploaded to R2. Answer y when it asks to upload. T then watches the folder and runs Add Watermarked Media itself once the upload is done, so you never need the second tab. Files loose in originals&#92; get the default byline &mdash; a &quot;from &lt;Place&gt;&quot; subfolder sets its own, and becomes part of the URL. Needs proxy.js on 8081 (dev0862+).">⬆ Watermark &amp; Upload New Media — originals&#92; → R2 → T</div>
       <div class="hkitem" data-act="addwm" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Lists M:\wm\watermarked\ (the videos AND photos the watermark tooling uploaded to Cloudflare R2), diffs it against ml.json, and adds a row for any that are missing. link is built from the file's path under the bucket; Mode plus vidLength (video) or MPix (photo) are measured off the local file. Idempotent — run it after every upload. Needs proxy.js on 8081.">🎬 Add Watermarked Media — new R2 uploads → T</div>
+      <div class="hkitem" data-act="flashsweep" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Batch flash-card import. Everything you have dropped in M:\wm\flashcandidates\ (.jpg/.png/.webp) is converted to JPEG, staged in M:\wm\flashimages\, uploaded to Cloudflare R2, and added to ml.json as an ltype 'f0' row — the picture only, no answer yet. The original screenshot is moved to flashcandidates\_done\ once R2 confirms, so a re-run never duplicates. Mode and MPix are measured off the file. Esc aborts. Needs proxy.js on 8081 (dev0874+).">🃏 Sweep Flash Candidates — flashcandidates\ → R2 → T as f0</div>
       <div class="hkitem" data-act="resetftlsaved" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔄 Reset FTLsaved — re-download all images</div>
     </div>
   </div>
@@ -1116,7 +1117,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0873';
+  window.HELP_VERSION_STR = 'dev0874';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

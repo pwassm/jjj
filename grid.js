@@ -1673,10 +1673,20 @@ function _gridIsTextRow(row) {
 //
 // THE GATE IS THE ltype, not the shape of the ftext. makeCardRowIsCard (an image
 // plus a break) would also catch hand-built slides that merely look like cards;
-// 'f' is what MakeCard writes and what the ltype filter selects on.
+// an f-ltype is what MakeCard and the sweep write, and what the ltype filter
+// selects on.
+//
+// (dev0874) The gate is now the whole ladder, not the single value 'f':
+// f0 swept → f1 identified → f2 reviewed → f3 expert, with bare 'f' the legacy
+// MakeCard value. An f0 has no answer yet, so it renders as its picture with an
+// empty back — still far better than the isText branch, which would print the
+// card down to a 6pt thumbnail. FLASH_LTYPE_RE is core.js's, shared with the
+// filter pill so the two cannot drift; the inline fallback covers a load order
+// where core.js has not defined it yet.
 function _gridCardParts(row) {
   if (!row || !row.ftext) return null;
-  if (String(row.ltype || '') !== 'f') return null;
+  const _re = window.FLASH_LTYPE_RE || /^f\d*$/;
+  if (!_re.test(String(row.ltype == null ? '' : row.ltype).trim())) return null;
   if (typeof window.makeCardSplit !== 'function') return null;   // makecard.js gone
   let p = null;
   try { p = window.makeCardSplit(row.ftext); } catch (_) { return null; }
