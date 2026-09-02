@@ -5,7 +5,7 @@ number) or when it is decided against (with the reason).
 
 ---
 
-# HANDOFF — flash cards, as of dev0881 (2026-09-02)
+# HANDOFF — flash cards, as of dev0885 (2026-09-02)
 
 Written to close a long thread. Everything below is what a fresh thread needs
 to pick the work up cold.
@@ -34,6 +34,10 @@ A flash card is an ml.json row with no `link` and an `ftext` split on top-level
 | 0877 | Housekeeping ▸ Sample RAW Flash Card — the research dump before anything formats it. |
 | 0879 | ↑ on a flash card opens the reader on the face you were reading (`_gridCardSectionIdx`), not always the picture. |
 | 0880 | Xe: stepping a body line's size inside a `<details>` carries the `<summary>` with it, so a title can no longer end up smaller than its own body. |
+| 0885 | American spelling throughout. Reviewer-facing blocks (what the picture could not settle, where the identification came from, the confidence readout) are wrapped in a teCut: kept in the row, hidden from every render. `id1.systemPrompt` now says which fields are for the reader and which for the reviewer, and `renderSections` hides the latter. |
+| 0884 | UID 2175 rebuilt — the pale sheephead is a female mid sex-change, not a depth artefact. The same trap guarded in `id1.systemPrompt`: reach for the biology before the lighting. |
+| 0883 | A collapsible ships CLOSED. Every way of opening one in Xe wrote the schema `open` attribute and that attribute was serialised, so reading a card in the editor shipped every answer showing. `open` is now read from HTML and never written back. UIDs 2175 (sheephead) and 2174 (garibaldi) populated. |
+| 0882 | Xe ⊘ HideLine + Alt+X (and the empty-teCut footgun that silently cut a slide from that point down). The fullscreen reader's column and type size follow the viewport. A reader page holding collapsibles gets an auto Show all / Hide all. |
 | 0881 | **A card has as many faces as it has sections.** `makeCardSplit` returns a `sections` list (`body`/`orig` kept as the first two, so no caller moved); G addresses faces by INDEX — turncells tag `s<i>`, an indexed back panel, and a forward swipe that STEPS to the next face with the last one returning to the picture. At three sections that is byte-for-byte the dev0860 gesture. UID **2184** is the first card written in the 4-section layout. |
 
 ## The 4-section layout — SHAPE DONE (dev0881), CONTENT AND BEHAVIOUR OPEN
@@ -93,6 +97,60 @@ by tapping. His answer:
   clicked anywhere in the slide.
 - Once clicked, a **transparent arrow, upper right** returns to side 1.
 - Picking another cell on the grid also reverts it.
+
+## NEXT: one species, many pictures
+
+Raised 2026-09-02. Nothing built. The problem arrives the moment the sweep
+brings in a second garibaldi: sections 3 and 4 are ~2.5 KB of species text that
+is identical on every card of that species, duplicated per row and — worse —
+re-authored and re-corrected per row.
+
+**The 4-section layout already draws the line in the right place.** Sections 1
+and 2 are about THIS PHOTOGRAPH (the picture, and the least that says how this
+image was read). Sections 3 and 4 are about THE SPECIES. So the split is not a
+refactor, it is a storage decision about the back half.
+
+**`taxoninfo.json` is already the right store and already exists** — 515
+entries keyed kebab-case on the scientific name (`hypsypops-rubicundus`,
+`bodianus-pulcher` are both in it today; `sebastes-caurinus` is not yet).
+Built in the taxon-info work for card backs and DictSize, which is the same
+shape of data.
+
+The shape to build:
+
+- a card row gains a `taxon` key (`hypsypops-rubicundus`)
+- its ftext holds ONLY sections 1 and 2
+- sections 3 and 4 render from the taxon record at display time — in
+  `_gridCardParts` / the reader, appended after the row's own sections
+- correcting a species fact is then one edit that fixes every card of it
+
+Two things to decide before building. **Where the species text lives inside
+taxoninfo** — its records are Wikipedia-shaped (`note`, `descr`, `wiki`), so
+the card sections want their own key rather than being squeezed into `note`.
+And **what Xe edits** — opening a card in Xe must not silently detach it from
+the shared record. Simplest answer: Xe edits sections 1-2 only, and the shared
+half is edited through its own screen.
+
+A cheaper interim, if this is too big: keep the text per-row but write it ONCE
+and copy it to siblings, with `taxon` recorded so the copies can be found and
+re-synced later. That gets the correcting-in-one-place benefit without a
+render-time join.
+
+## NEXT: promotion to f2 puts a species chip in tags
+
+Raised 2026-09-02, and it needs a step that does not exist: **there is no f1 → f2
+action at all.** The ladder is only ever a value someone types. So this is two
+pieces:
+
+1. A promote action (Housekeeping, or a T hotkey on the focused rows): f1 → f2,
+   with whatever review gate Phil wants.
+2. On promotion, add the species as a tag chip, so the card joins the tag
+   system and can be found by species like everything else.
+
+The tag text is a settled question already: `tags.json` `common` is lowercase
+unless proper-noun derived, and the alias hygiene rules (comma-free,
+`stripAuthorship()`) apply. The chip should carry the same key as the taxon
+record above, so tags and `taxoninfo.json` cannot drift.
 
 ## Still open
 

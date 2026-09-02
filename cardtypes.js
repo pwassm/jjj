@@ -269,7 +269,17 @@
       '',
       'FIELD TEXT IS PLAIN TEXT. No HTML, no markdown, no bullet characters, no',
       'bracketed citation markers. Write in short, flat, factual sentences — this',
-      'is read off a card the size of a playing card, not off a page.'
+      'is read off a card the size of a playing card, not off a page.',
+      '',
+      'AMERICAN SPELLING throughout: color, behavior, gray, recognize, meter.',
+      '',
+      'WHO EACH FIELD IS FOR. `scientificName`, `commonName`, `keyedOn`,',
+      '`sexDifferences` and `maturityChanges` are for the READER. `confidence`,',
+      '`notVisible`, `agreement` and `alternatives` are for the REVIEWER — they',
+      'are how someone later judges whether to trust the card, and the renderer',
+      'hides them from the finished slide. Write them for that reader: candid',
+      'about what defeated you. Do not soften them because they might be seen, and',
+      'do not smuggle their content into the reader-facing fields either.'
     ].join('\n'),
 
     // The per-image turn. `locationHint` is optional and, when it exists, is
@@ -314,10 +324,12 @@
         ? '<p><small>' + esc(rank) + '-level — the picture will not carry it further</small></p>' : '';
 
       // ── section 2 ──
+      // (dev0885) The confidence readout is a reviewer's line, not a reader's —
+      // same rule as notVisible above.
       var body = '<h4>' + heading + '</h4>'
         + (common ? '<p>' + esc(common) + '</p>' : '')
         + rankBit
-        + '<p><strong>' + esc(conf) + '</strong>' + agreeBit + '</p>';
+        + '<div class="te-cut"><p><strong>' + esc(conf) + '</strong>' + agreeBit + '</p></div>';
       // FEATURE NAMES ONLY on the turn face. The first draft put the full
       // observations here and the card back became a paragraph — which the
       // shrink-to-fit panel then rendered at 7pt in a grid cell, i.e. unread.
@@ -337,8 +349,12 @@
       });
       if (keyed.length) orig += '<h5>Keyed on</h5>' + ul(keyed);
 
+      // (dev0885) BETWEEN US, NOT ON THE SLIDE. What the picture could not
+      // settle is how a reviewer judges the card; to a reader it is a list of
+      // things they were not told. Kept in the row, wrapped in the teCut every
+      // render context hides.
       var nv = arr(d.notVisible).map(esc);
-      if (nv.length) orig += '<h5>Not visible in this shot</h5>' + ul(nv);
+      if (nv.length) orig += '<div class="te-cut"><h5>Not visible in this shot</h5>' + ul(nv) + '</div>';
 
       var alts = arr(d.alternatives).map(function (x) {
         return sci(x.name) + ' — ' + esc(txt(x.howToTell));
