@@ -3,19 +3,142 @@
 Deferred work, newest first. An item leaves here when it ships (with the dev
 number) or when it is decided against (with the reason).
 
-## Xe / Xs — a `<summary>` must not end up smaller than its own `<details>` body
-Raised 2026-09-02, while formatting the first flash cards.
+---
 
-In the flash-card layout the collapsible lead-in line renders SMALLER than the
-detail lines it opens, and bumping the format size makes the gap worse rather
-than better. It reads backwards: the summary is the heading of the thing, and
-it is set in the smallest type on the card.
+# HANDOFF — flash cards, as of dev0880 (2026-09-02)
 
-**For now: leave summary and detail the same size.** The real fix — whatever
-relationship they should have when the size is bumped — can wait until the card
-format has settled, because the format is what decides it.
+Written to close a long thread. Everything below is what a fresh thread needs
+to pick the work up cold.
 
-Where to look: the Xs slide CSS and the Xe editor CSS diverge (see memory
-`reference_xe_render_contexts` — the same ftext is styled by two different
-context stylesheets), so this has to be fixed in both or it will look right in
-one place and wrong in the other.
+## The shape of the thing
+
+A flash card is an ml.json row with no `link` and an `ftext` split on top-level
+`<hr>`. Two independent axes, and keeping them apart is the whole design:
+
+- **`ltype` = how far along it is.** `f0` swept in, picture only · `f1`
+  identified · `f2` Phil has reviewed and agrees · `f3` an expert has reviewed.
+  Bare `f` is the legacy MakeCard value and still renders. One regex,
+  `FLASH_LTYPE_RE` in core.js, backs both the filter pill and grid.js's card
+  gate so they cannot drift.
+- **`cardType` = what the card is about.** `id1` is identification-and-lifecycle.
+  Later types (behaviour, habitat, …) are entries in the cardtypes.js table, not
+  code changes.
+
+## What shipped
+
+| dev | what |
+|---|---|
+| 0874 | `M:\wm\flashcandidates\` drop folder → Housekeeping ▸ Sweep Flash Candidates → JPEG → R2 → `f0` rows. Proxy `/card/candidates` + `/card/sweep` (one file per request so a 200-shot run reports progress and stops on Esc). The `🃏 flash` filter pill. Grid card gate widened off the bare `'f'`. |
+| 0875 | `cardtypes.js` — the `id1` type: `outputSchema`, `systemPrompt`, `renderSections`. |
+| 0876 | Housekeeping ▸ Sample Flash Card / Remove Sample Cards — review a card type as a real row, not as source. |
+| 0877 | Housekeeping ▸ Sample RAW Flash Card — the research dump before anything formats it. |
+| 0879 | ↑ on a flash card opens the reader on the face you were reading (`_gridCardSectionIdx`), not always the picture. |
+| 0880 | Xe: stepping a body line's size inside a `<details>` carries the `<summary>` with it, so a title can no longer end up smaller than its own body. |
+
+## NEXT: the 4-section layout
+
+Phil's target, replacing the current 3:
+
+1. image
+2. **very short ID** — name, plus the minimum of how *this image* was identified
+3. **distinction slide** — the collapsible format below
+4. **raw search info in lines** — ID, distribution, sizes, interesting facts
+
+A flash card should be a **flash**. Section 2 is a short answer, not a book.
+
+**Two things this breaks.** `makeCardSplit` (makecard.js) understands exactly
+three sections and *joins* everything past the third back onto `orig` — a
+fourth section is silently glued to the third. It needs widening to a list, and
+`_gridCardSectionIdx` (grid.js) needs the same treatment, since it maps card
+faces to section indices 0/1/2 by hand.
+
+## The markup Phil wants for section 3
+
+Every top-level item is collapsible. The `<summary>` **carries the point** — it
+is the only thing visible collapsed, so the whole card reads as a list of
+claims you can open. Inside: an optional `<h3>` sub-heading, then short lines.
+
+```html
+<h1>California sheephead</h1>
+<details><summary>Every sheephead starts as a female</summary>
+<h3>Protogynous hermaphrodite</h3>
+<p>All begin female</p>
+<p>Some later become male</p>
+</details>
+```
+
+Do **not** put the point outside the `<details>` as a statement with a lead-in
+inside — that was the first attempt and it reads backwards.
+
+Content style: short phrases, one idea per line, more lines, almost no
+punctuation. UID 2179 holds a worked example.
+
+## Turn vs expand — Phil's rule (unimplemented)
+
+The conflict: on a card a tap turns the card, so a `<details>` cannot be opened
+by tapping. His answer:
+
+- Taps execute **turn-card only on side 1**.
+- Side 2 displays for **3 seconds** then reverts to side 1 by itself, unless
+  clicked anywhere in the slide.
+- Once clicked, a **transparent arrow, upper right** returns to side 1.
+- Picking another cell on the grid also reverts it.
+
+## Still open
+
+- **The renderer still emits the old 3-section shape.** `id1.renderSections`
+  needs rebuilding around the markup above once the section count is settled.
+- **No API wiring, deliberately.** Phil: "too early to do API." The schema and
+  prompt exist to be argued with first.
+- **`locationHint` is the highest-value input in the pipeline** and nothing
+  fills it. The Astropecten pass settled this: genus is reachable from a photo
+  (marginal plates visible from above separate *Astropecten* from *Luidia*), but
+  every character that separates the species has to be judged against a known
+  locality. The same photograph resolves differently in different oceans, so
+  locality is the gate — not resolution, and not model choice.
+- **Two-pass agreement.** Run each image twice and record whether the passes
+  agree; `id1.outputSchema` already has the `agreement` field. A model's own
+  confidence is a self-report, agreement between passes is an observation.
+  Through the API that means Opus 5 + Sonnet 5 — note Perplexity Pro cannot
+  reach Opus 5 at all, only Max can, so the API is the *cheaper* route to it.
+
+## Things already settled — do not re-litigate
+
+- **Xe does NOT destroy `<details>` content.** Claimed once, then disproved: a
+  headless jsdom round trip of seven shapes — links inside `<details>` included
+  — came back byte-identical, and the paste path routes through
+  `_sanitizePastedHtml`, which keeps `A[href]` and `details`/`summary`. The
+  empty Sources and gutted section 3 on UID 2179 came from hand editing.
+- **`id1.sample()` is a layout fixture, not model output.** Hand-written to give
+  the renderer awkward shapes to survive; the biology is not vouched for and the
+  `example.org` URLs are placeholders. `id1.sampleRaw()` is the real one.
+- **Source hierarchy.** WoRMS is nomenclature only — it will tell you
+  *Bodianus pulcher* is now the accepted name for the California sheephead, but
+  not how to recognise one. FishBase is fish-only (SeaLifeBase is its
+  invertebrate sibling). Descriptive material came from Wikipedia species
+  accounts, ADW, aquarium and sanctuary pages, and Plazi treatments for real keys.
+
+## Headless Xe test recipe
+
+Worth rebuilding when Xe needs proving; it is the only way to test the editor
+without driving a toolbar.
+
+1. jsdom is already in `node_modules`.
+2. Make a JSDOM window, copy its globals onto `global`, set `localStorage.xe2 = '1'`.
+3. `window.eval` **`xe2-bundle.js` first, then `xe2.js`** (xe2.js reads
+   `window.XE2Lib` from the bundle and bails without it).
+4. `XE2.createEditor(host, ftext, {editable:true})` returns a **wrapper**, not
+   the editor — read the result with `.getFtext()`, and reach the real editor at
+   `.editor`.
+5. `XE2._stepBlockSize` and `_summaryPosForBody` are exported for exactly this.
+
+---
+
+## Xe / Xs — summary vs detail size across render contexts
+Raised 2026-09-02. **Partly fixed in dev0880.**
+
+The A+/A− case is done: stepping a body line inside a `<details>` now carries
+its `<summary>` with it. What remains is the render-context half — the Xs slide
+CSS and the Xe editor CSS style the same ftext differently (see memory
+`reference_xe_render_contexts`), so a size relationship that looks right in one
+can still look wrong in the other. Fix in both or not at all.
