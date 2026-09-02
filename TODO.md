@@ -5,7 +5,7 @@ number) or when it is decided against (with the reason).
 
 ---
 
-# HANDOFF — flash cards, as of dev0880 (2026-09-02)
+# HANDOFF — flash cards, as of dev0881 (2026-09-02)
 
 Written to close a long thread. Everything below is what a fresh thread needs
 to pick the work up cold.
@@ -34,10 +34,11 @@ A flash card is an ml.json row with no `link` and an `ftext` split on top-level
 | 0877 | Housekeeping ▸ Sample RAW Flash Card — the research dump before anything formats it. |
 | 0879 | ↑ on a flash card opens the reader on the face you were reading (`_gridCardSectionIdx`), not always the picture. |
 | 0880 | Xe: stepping a body line's size inside a `<details>` carries the `<summary>` with it, so a title can no longer end up smaller than its own body. |
+| 0881 | **A card has as many faces as it has sections.** `makeCardSplit` returns a `sections` list (`body`/`orig` kept as the first two, so no caller moved); G addresses faces by INDEX — turncells tag `s<i>`, an indexed back panel, and a forward swipe that STEPS to the next face with the last one returning to the picture. At three sections that is byte-for-byte the dev0860 gesture. UID **2184** is the first card written in the 4-section layout. |
 
-## NEXT: the 4-section layout
+## The 4-section layout — SHAPE DONE (dev0881), CONTENT AND BEHAVIOUR OPEN
 
-Phil's target, replacing the current 3:
+Phil's target, replacing the old 3:
 
 1. image
 2. **very short ID** — name, plus the minimum of how *this image* was identified
@@ -46,11 +47,20 @@ Phil's target, replacing the current 3:
 
 A flash card should be a **flash**. Section 2 is a short answer, not a book.
 
-**Two things this breaks.** `makeCardSplit` (makecard.js) understands exactly
-three sections and *joins* everything past the third back onto `orig` — a
-fourth section is silently glued to the third. It needs widening to a list, and
-`_gridCardSectionIdx` (grid.js) needs the same treatment, since it maps card
-faces to section indices 0/1/2 by hand.
+The plumbing that blocked it is done. `makeCardSplit` returns a `sections`
+list, `_gridCardBackPanel`/`_gridCardTurn`/`_gridCardSectionIdx` all take a
+face INDEX, and `_gridCardSwipeFace` steps through them. Section 4 is no longer
+glued to section 3 and there is no table of face names left to fall out of step.
+
+**UID 2184 is the worked example** — a copper rockfish, written by hand in the
+target markup. Read it in G (it is cell 2c of the FlashTry1 config) before
+touching the renderer: it is the thing the renderer has to reproduce.
+
+**A known gap this opened.** `makeCardBuildHtml` (makecard.js), the standalone
+.html export, still emits only the picture and `parts.body`. It dropped
+section 3 before dev0881 and now drops 3 and 4. One line — `parts.sections` —
+but it changes what an exported card contains, so it wants a decision, not a
+drive-by fix.
 
 ## The markup Phil wants for section 3
 
@@ -87,7 +97,16 @@ by tapping. His answer:
 ## Still open
 
 - **The renderer still emits the old 3-section shape.** `id1.renderSections`
-  needs rebuilding around the markup above once the section count is settled.
+  returns `{body, orig}` and `renderFtext` joins picture + 2 + 3. The section
+  count is settled now, so this is unblocked: it wants to return a LIST of
+  sections, with UID 2184 as the target output.
+- **cardtypes.js's header comment now contradicts the design.** It says
+  `<details>` is "technically in the schema, and still wrong here", which was
+  true when a card back was one grid-cell face. Section 3 IS a details list.
+  The comment needs rewriting when the renderer is rebuilt, or the next person
+  will read it as a prohibition.
+- **UID 2179 is no longer a worked example.** It was re-swept back to a
+  picture-only f0 on 2026-09-02. 2184 replaces it as the reference card.
 - **No API wiring, deliberately.** Phil: "too early to do API." The schema and
   prompt exist to be argued with first.
 - **`locationHint` is the highest-value input in the pipeline** and nothing
