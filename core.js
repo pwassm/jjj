@@ -7926,6 +7926,13 @@ function _salXAllToggle(el) {
   scope.querySelectorAll('details').forEach(d => {
     if (open) d.setAttribute('open', ''); else d.removeAttribute('open');
   });
+  // (dev0882) A control the READER injected flips to its opposite, so one
+  // button both opens and shuts. Author-placed icons (dev0763) carry no
+  // data-xall-toggle and are left alone: they say one thing and keep saying it.
+  if (el.hasAttribute('data-xall-toggle')) {
+    el.setAttribute('data-xall', open ? 'close' : 'open');
+    el.textContent = open ? '\u25B6\u25B6 Hide all' : '\u25BC\u25BC Show all';
+  }
 }
 window._salXAllToggle = _salXAllToggle;
 

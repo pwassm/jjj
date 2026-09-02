@@ -1760,13 +1760,30 @@ function gridOpenFullscreen(row, contained) {
           + 'summary::before{content:"\\25B6";display:inline-block;font-size:1.6em;'
           + 'line-height:0;vertical-align:-0.16em;margin-right:0.32em;color:#2563eb;'
           + 'text-shadow:0 0 3px rgba(255,255,255,0.95);transition:transform 0.15s ease;}'
-          + 'details[open]>summary::before{transform:rotate(90deg);}';
+          + 'details[open]>summary::before{transform:rotate(90deg);}'
+          // (dev0882) The auto Show all / Hide all control. It is a .te-xall,
+          // so core.js's existing delegated handler drives it and there is no
+          // new wiring; these rules only undo the icon styling (the triangles
+          // are overlapped by a negative letter-spacing) and make it read as a
+          // button. currentColor for the border so it survives a slide that
+          // sets its own text colour.
+          + '.sal-xall-bar{margin:0 0 18px;}'
+          + '.sal-xall-bar .te-xall{letter-spacing:normal;padding:5px 13px 6px;'
+          + 'border:1px solid currentColor;border-radius:999px;font-size:0.78em;'
+          + 'font-weight:bold;opacity:0.85;}';
         const _aStyle = '<style>' + _ftStyles + '</style>';
-        // (dev0249) Body scaffold for fragment-style ftext: cap content at
-        // ~880px and auto-center so desktop has reasonable side margins
-        // (~25% of a 1920px screen) without forcing tight margins on mobile.
-        const _bodyCss = 'body{font-family:Arial,sans-serif;line-height:1.5;'
-          + 'max-width:880px;margin:0 auto;padding:24px;'
+        // (dev0249) Body scaffold for fragment-style ftext: cap content and
+        // auto-center so desktop has reasonable side margins without forcing
+        // tight margins on mobile.
+        // (dev0882) BOTH the column and the base size now follow the viewport.
+        // The reader ran at the iframe's default 16px inside a fixed 880px
+        // column, which on a 1900px screen is a thin ribbon of small type in a
+        // sea of white — "in full screen, the text is too small". clamp()
+        // floors leave phones exactly where they were: 1.15vw at 375px is 4px,
+        // so the 16px floor wins there and only desktop grows.
+        const _bodyCss = 'body{font-family:Arial,sans-serif;line-height:1.55;'
+          + 'font-size:clamp(16px, 1.15vw + 9px, 25px);'
+          + 'max-width:min(1180px, 94vw);margin:0 auto;padding:24px;'
           + 'box-sizing:border-box;}';
         if (ftLink.includes('<html')) {
           // Full-document ftext can't be sectioned (splitting would strip its
@@ -1888,9 +1905,19 @@ function gridOpenFullscreen(row, contained) {
             } else {
               fs.style.background = '#000';
               iframe.style.visibility = '';
+              // (dev0882) A page whose points are collapsed is the whole idea
+              // — you try to remember before you open one — but it needs a way
+              // to open them all at once, and expecting the AUTHOR to place an
+              // icon means most pages never get one. Injected only when there
+              // is something to open, and it is a real toggle (see
+              // _salXAllToggle's data-xall-toggle branch).
+              const _xbar = /<details[\s>]/i.test(sects[sIdx])
+                ? '<div class="sal-xall-bar"><span class="te-xall" data-xall="open"'
+                  + ' data-xall-toggle="1">&#9660;&#9660; Show all</span></div>'
+                : '';
               loadIframe('<!DOCTYPE html><html><head><meta charset="UTF-8">'
                 + '<style>' + _bodyCss + _ftStyles + '</style></head>'
-                + '<body>' + sects[sIdx] + '</body></html>');
+                + '<body>' + _xbar + sects[sIdx] + '</body></html>');
             }
             if (hintEl && sects.length > 1) {
               hintEl.textContent = 'Page ' + (sIdx + 1) + '/' + sects.length

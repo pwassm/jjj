@@ -1549,10 +1549,70 @@
     var nodes = [];
     for (var i = range.startIndex; i < range.endIndex; i++) nodes.push(parent.child(i));
     if (!nodes.length) return;
+    if (!_cutHasText(nodes)) { _toastEmptyCut(editor); return; }
     try {
       var cutNode = editor.schema.nodes.teCut.create(null, nodes);
       editor.view.dispatch(state.tr.replaceWith(range.start, range.end, cutNode));
     } catch (e) { _toast('That selection can’t be hidden as a block — select whole lines'); }
+    editor.commands.focus();
+  }
+
+  // (dev0882) THE EMPTY-CUT FOOTGUN. A teCut with no text parses back as
+  // `below:true` — a HideFromHere marker — because before dev0712 an empty
+  // hidden block could not have meant anything else. So hiding a BLANK line
+  // silently stopped the slide rendering from that point down, which is the
+  // "I hid one line and the text after the second part didn't show" report.
+  // Reproduced in jsdom against the real _salApplyCutBelow: an empty te-cut
+  // anywhere in section 2 of a 4-section card leaves TWO sections.
+  //
+  // The read side has to stay as it is — old rows depend on it — so this is
+  // refused at the point of creation instead, which is the only place that
+  // still knows the author meant "hide", not "cut".
+  function _cutHasText(nodes) {
+    for (var i = 0; i < nodes.length; i++) {
+      if ((nodes[i].textContent || '').trim()) return true;
+    }
+    return false;
+  }
+  function _toastEmptyCut(editor) {
+    _toast('That line is empty — an empty hidden block reads as HideFromHere and would stop the slide rendering from there down');
+    editor.commands.focus();
+  }
+
+  // (dev0882) ⊘ HideLine — hide the ONE line the cursor is on, with no
+  // selection to make first. HideSection is the same idea over a block range;
+  // a single note line (a confidence readout, a source, a reminder to
+  // yourself) is what it is actually used for, and selecting the line first
+  // was the whole of the cost. Same teCut node, so every render context
+  // already hides it and nothing new had to learn about it.
+  function hideLine(editor) {
+    var state = editor.state;
+    var cut = _findAncestor(state, 'teCut');
+    if (cut && cut.node.attrs.below) {
+      _toast('That red line is a HideFromHere marker — click ⊘ HideFromHere to remove it');
+      editor.commands.focus();
+      return;
+    }
+    if (cut) {
+      try {
+        editor.view.dispatch(state.tr.replaceWith(cut.pos, cut.pos + cut.node.nodeSize, cut.node.content));
+        _toast('Shown again — renders in the slide now');
+      } catch (e) { console.warn('[xe2] unhide failed', e); }
+      editor.commands.focus();
+      return;
+    }
+    var $from = state.selection.$from;
+    var range = $from.blockRange($from);
+    if (!range) { _toast('Put the cursor on the line you want hidden'); return; }
+    var parent = range.parent, nodes = [];
+    for (var i = range.startIndex; i < range.endIndex; i++) nodes.push(parent.child(i));
+    if (!nodes.length) return;
+    if (!_cutHasText(nodes)) { _toastEmptyCut(editor); return; }
+    try {
+      var cutNode = editor.schema.nodes.teCut.create(null, nodes);
+      editor.view.dispatch(state.tr.replaceWith(range.start, range.end, cutNode));
+      _toast('Line hidden — kept here as a note, shows in no render');
+    } catch (e) { _toast('That line can’t be hidden here'); }
     editor.commands.focus();
   }
   // (dev0763) Drop an expand-all (▼▼) or collapse-all (▶▶) icon at the cursor.
@@ -1702,6 +1762,7 @@
       ['&#128444;', 'Insert image OR direct video file — a .mp4/.webm URL (e.g. your Cloudflare one) is detected automatically and plays inline. Or EDIT the selected image/video (click/double-click it first to change size, alignment or caption).', function (e) { insertImage(e); }],
       ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
+      ['&#8856; HideLine', 'Hide just the line the cursor is on — no selection needed. It stays here, faded red, as a note; everything after it still shows. TOGGLE: cursor on a hidden line and click again. Alt+X does the same.', function (e) { hideLine(e); }],
       ['&#8856; HideSection', 'Hide the SELECTED lines from the rendered slide — they stay here, faded red, as notes. Everything after them still shows. TOGGLE: put the cursor inside a hidden block and click again to un-hide it.', function (e) { toggleHide(e); }],
       ['&#8856; HideFromHere', 'Hide everything BELOW this point from the rendered slide — it stays here, red-tinted, as notes. Click on the last line that should still show. TOGGLE: cursor on the red line and click again to remove it.', function (e) { insertCutLine(e); }],
       ['|'],
@@ -1801,7 +1862,7 @@
       // (dev0712) red tint, so "this won't render" is readable at a glance and
       // not just a faint dashed outline.
       '#xe2Editor .te-cut{display:block!important;opacity:0.6;background:rgba(200,50,50,0.16);border:1px dashed #a66;border-radius:6px;padding:4px 10px;margin:6px 0;}',
-      '#xe2Editor .te-cut::before{content:"\\2298 HideSection \\2014 hidden in the slide; cursor here + \\2298 HideSection shows it again";display:block;font-size:10px;color:#f99;font-weight:bold;}',
+      '#xe2Editor .te-cut::before{content:"\\2298 HideSection \\2014 hidden in the slide; cursor here + \\2298 HideLine shows it again";display:block;font-size:10px;color:#f99;font-weight:bold;}',
       // (dev0712) CUT LINE (te-cut-below): a bar, not a box — and everything
       // AFTER it is red-tinted too, because none of it renders either. The
       // sibling tint is pure CSS (~ combinator over the ProseMirror children),
@@ -1829,6 +1890,15 @@
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyS') {
       e.preventDefault(); e.stopPropagation();
       if (_api && typeof window.textEditorPreviewSlide === 'function') window.textEditorPreviewSlide(_api.getFtext());
+      return;
+    }
+    // (dev0882) Alt+X = ⊘ HideLine, same as the toolbar button. A left-hand
+    // key, and hiding one note line is frequent enough that reaching for the
+    // toolbar was the reason it went unused. e.code so an Alt-composition
+    // layout cannot hide the X.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyX') {
+      e.preventDefault(); e.stopPropagation();
+      if (_api && _api.editor) hideLine(_api.editor);
       return;
     }
     if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
