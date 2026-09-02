@@ -88,10 +88,22 @@
     isolating: true,
     addAttributes: function () {
       return {
+        // (dev0883) READ from the HTML, never WRITTEN back to it. Open/closed
+        // is an EDITOR state, not a property of the slide: expanding a block to
+        // read or edit it is the only way anyone ever opens one here, and the
+        // ▼ All / ▶ All buttons promise in their tooltips that they act "HERE,
+        // in the editor". Serialising it broke that promise — a card whose
+        // whole point is that you try to remember before you look shipped with
+        // every answer already showing.
+        //
+        // Nothing is lost by never writing it: the reader has a Show all
+        // button (dev0882), and an author-placed ▼▼ icon (dev0763) opens
+        // everything on a tap. Rows that already carry 'open' keep it until
+        // they are next saved from Xe, at which point they close.
         open: {
           default: false,
           parseHTML: function (el) { return el.hasAttribute('open'); },
-          renderHTML: function (attrs) { return attrs.open ? { open: '' } : {}; },
+          renderHTML: function () { return {}; },
         },
       };
     },

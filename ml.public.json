@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788373079806,
+    "_salPushTime": 1788374839424,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -516,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788373079806
+    "_salSavedAt": 1788374839424
   },
   {
     "UID": "1",
@@ -48460,7 +48460,7 @@
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 14:20:27",
-    "DateModified": "2026-09-02 14:47:45",
+    "DateModified": "2026-09-02 18:46:32",
     "tags": [],
     "ltype": "f1",
     "cardType": "id1",
@@ -48571,14 +48571,14 @@
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 17:26:27",
-    "DateModified": "2026-09-02 18:17:59",
+    "DateModified": "2026-09-02 18:31:23",
     "tags": [],
     "ltype": "f1",
-    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101409_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p><hr><h1>Copper rockfish</h1><p><em>Sebastes caurinus</em></p><p>Pale stripe along the back two thirds of the lateral line</p><p>Two dark bars running back from the eye</p><p><small>moderate confidence — pale colour phase, locality assumed</small></p><hr><details open=\"\"><summary>The pale lateral line is the whole identification</summary><h3>Light band, back two thirds</h3><p>Runs from mid body to the tail</p><p>Paler than the mottling above and below it</p><p>No other kelp bed rockfish here carries it</p></details><details open=\"\"><summary>Two dark bars run back from the eye</summary><h3>Cheek bars</h3><p>One back and down across the cheek</p><p>One along the lower edge of the gill cover</p><p>They hold even when the body colour washes out</p></details><details open=\"\"><summary>A copper rockfish is often not copper</summary><h3>Colour is the weakest character</h3><p>Southern fish coppery brown</p><p>Northern fish pale pink and white</p><p>This one is a pale fish</p><p>Read the stripe not the colour</p></details><details open=\"\"><summary>Brown rockfish is the one it gets confused with</summary><h3><em>Sebastes auriculatus</em></h3><p>Dark blotch on the gill cover</p><p>No pale lateral line</p><p>Same kelp and rock habitat</p></details><details open=\"\"><summary>Quillback shares the pale line but carries a sail</summary><h3><em>Sebastes maliger</em></h3><p>Spiny dorsal tall and deeply notched</p><p>Orange and brown mottling</p><p>This fish has a low even dorsal</p></details><details open=\"\"><summary>What the picture cannot settle</summary><h3>Not visible here</h3><p>Fin ray and spine counts</p><p>Head spines under the skin</p><p>Where the fish was caught</p><p>Locality is the gate on every rockfish call</p></details><hr><h2>Copper rockfish</h2><h3>Names</h3><p><em>Sebastes caurinus</em> Richardson 1844</p><p>Family Sebastidae, the rockfishes</p><p>Also called copper seaperch on old menus</p><h3>Where</h3><p>Gulf of Alaska to central Baja California</p><p>Kelp beds and rocky reef</p><p>Shallow water down to about 180 m</p><p>Most are found above 50 m</p><p>An adult holds one small patch of reef for years</p><h3>Size and age</h3><p>To about 66 cm</p><p>Commonly 30 to 45 cm</p><p>Lives 50 years and more</p><h3>Life history</h3><p>Live bearing, the eggs hatch inside the female</p><p>Larvae released in their thousands</p><p>Larvae drift then settle into kelp</p><p>Young fish shelter in drifting kelp</p><h3>Worth knowing</h3><p>The dorsal spines are venomous</p><p>A jab hurts and is not dangerous</p><p>Colour varies enormously across the range</p><p>Sitting still on one reef makes them easy to fish out</p><h3>Provenance</h3><p>Identified from this photograph alone</p><p>No locality recorded, the kelp says north east Pacific</p><p>Not yet reviewed — ltype f1</p>",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101409_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p><hr><h1>Copper rockfish</h1><p><em>Sebastes caurinus</em></p><p>Pale stripe along the back two thirds of the lateral line</p><p>Two dark bars running back from the eye</p><div class=\"te-cut\"><p><small>moderate confidence — pale colour phase, locality assumed</small></p></div><hr><details open=\"\"><summary>The pale lateral line is the whole identification</summary><h3>Light band, back two thirds</h3><p>Runs from mid body to the tail</p><p>Paler than the mottling above and below it</p><p>No other kelp bed rockfish here carries it</p></details><details open=\"\"><summary>Two dark bars run back from the eye</summary><h3>Cheek bars</h3><p>One back and down across the cheek</p><p>One along the lower edge of the gill cover</p><p>They hold even when the body colour washes out</p></details><details open=\"\"><summary>A copper rockfish is often not copper</summary><h3>Colour is the weakest character</h3><p>Southern fish coppery brown</p><p>Northern fish pale pink and white</p><p>This one is a pale fish</p><p>Read the stripe not the colour</p></details><details open=\"\"><summary>Brown rockfish is the one it gets confused with</summary><h3><em>Sebastes auriculatus</em></h3><p>Dark blotch on the gill cover</p><p>No pale lateral line</p><p>Same kelp and rock habitat</p></details><details open=\"\"><summary>Quillback shares the pale line but carries a sail</summary><h3><em>Sebastes maliger</em></h3><p>Spiny dorsal tall and deeply notched</p><p>Orange and brown mottling</p><p>This fish has a low even dorsal</p></details><details open=\"\"><summary>What the picture cannot settle</summary><h3>Not visible here</h3><p>Fin ray and spine counts</p><p>Head spines under the skin</p><p>Where the fish was caught</p><p>Locality is the gate on every rockfish call</p></details><hr><h2>Copper rockfish</h2><details><summary>What it is called</summary><p><em>Sebastes caurinus</em> Richardson 1844</p><p>Family Sebastidae, the rockfishes</p><p>Also sold as copper seaperch on old menus</p></details><details><summary>Where it lives</summary><p>Gulf of Alaska to central Baja California</p><p>Kelp beds and rocky reef</p><p>Shallow water down to about 180 m</p><p>Most are found above 50 m</p><p>An adult holds one small patch of reef for years</p></details><details><summary>How big and how old</summary><p>To about 66 cm</p><p>Commonly 30 to 45 cm</p><p>Lives 50 years and more</p></details><details><summary>How it breeds</summary><p>Live bearing, the eggs hatch inside the female</p><p>Larvae released in their thousands</p><p>Larvae drift then settle into kelp</p><p>Young fish shelter in drifting kelp</p></details><details><summary>Worth knowing</summary><p>The dorsal spines are venomous</p><p>A jab hurts and is not dangerous</p><p>Colour varies enormously across the range</p><p>Sitting still on one reef makes them easy to fish out</p></details><details><summary>Where this identification came from</summary><p>Identified from this photograph alone</p><p>No locality recorded, the kelp says north east Pacific</p><p>Not yet reviewed</p></details>",
     "VidTitle": "Copper rockfish — Sebastes caurinus",
     "Mode": "L",
     "MPix": "0.3",
-    "ftextSize": "3012",
+    "ftextSize": "3256",
     "FtextJunk": "1",
     "DictSize": "0",
     "cell": "2c",
@@ -48590,34 +48590,36 @@
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 17:26:27",
-    "DateModified": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 18:47:14",
     "tags": [],
     "ltype": "f0",
-    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101431_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101431_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p>",
     "VidTitle": "20260902_101431_nameAssignment",
     "Mode": "L",
     "MPix": "0.2",
-    "ftextSize": "220",
-    "FtextJunk": "20",
+    "ftextSize": "210",
+    "FtextJunk": "13",
     "DictSize": "0",
-    "cell": "2b"
+    "cell": "2b",
+    "VidRange": "text"
   },
   {
     "UID": "2186",
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 17:26:27",
-    "DateModified": "2026-09-02 17:26:27",
+    "DateModified": "2026-09-02 18:47:19",
     "tags": [],
     "ltype": "f0",
-    "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101611_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p>",
+    "ftext": "<p style=\"text-align: center;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_101611_nameAssignment.jpg\" alt=\"\" style=\"max-width: 100%; max-height: 82vh; height: auto; border-radius: 8px;\"></p>",
     "VidTitle": "20260902_101611_nameAssignment",
     "Mode": "L",
     "MPix": "0.5",
-    "ftextSize": "220",
-    "FtextJunk": "20",
+    "ftextSize": "210",
+    "FtextJunk": "13",
     "DictSize": "0",
-    "cell": "2a"
+    "cell": "2a",
+    "VidRange": "text"
   },
   {
     "UID": "2187",
