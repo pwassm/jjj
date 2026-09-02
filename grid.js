@@ -962,7 +962,7 @@ window._gridSectionKey = function (key) {
     if (!tc) return false;
     _lastGridRow = tc._rowData;
     // Open the reader on the SAME section the cell is showing (dev0617 hint).
-    window._vpSectStart = tc._salSect ? tc._salSect.idx : 0;
+    window._vpSectStart = _gridCardSectionIdx(tc);
     gridOpenFullscreen(tc._rowData);
     return true;
   }
@@ -1791,6 +1791,29 @@ function _gridCardTurn(cell, which) {
   return window.TurnCells.turnPanel(cell, which, function (c) {
     return _gridCardBackPanel(c, which);
   });
+}
+
+// (dev0879) Which ftext section is this cell actually showing? The fullscreen
+// reader splits on top-level <hr> and opens on window._vpSectStart, so this is
+// the number that decides what ↑ lands on.
+//
+// An ordinary sectioned text cell tracks its page in _salSect.idx. A FLASH CARD
+// does not have a _salSect at all — it tracks which FACE is showing through
+// TurnCells — so the old inline `cell._salSect ? cell._salSect.idx : 0` scored
+// every card as 0 and ↑ always opened the picture, whichever face you were
+// reading. The card's faces ARE the sections, in the order makeCardSplit
+// established: front = the picture, the tap face = section 2, the swipe face =
+// section 3.
+function _gridCardSectionIdx(cell) {
+  if (!cell) return 0;
+  if (cell._salSect) return cell._salSect.idx;
+  if (_gridCardParts(cell._rowData) && window.TurnCells
+      && typeof window.TurnCells.faceOn === 'function') {
+    const face = window.TurnCells.faceOn(cell);   // '' on the front
+    if (face === 'body') return 1;
+    if (face === 'orig') return 2;
+  }
+  return 0;
 }
 
 // Apply the current effective zoom to a single cell's content (no remount).
@@ -3392,7 +3415,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
         else {
           // (dev0617) Sectioned 1a text cell → fullscreen viewer opens on the
           // SAME section the cell was showing (vp.js reads + clears the hint).
-          window._vpSectStart = cell._salSect ? cell._salSect.idx : 0;
+          window._vpSectStart = _gridCardSectionIdx(cell);
           gridOpenFullscreen(cell._rowData);
         }
       }
@@ -3572,7 +3595,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
         else {
           // (dev0617) mirror of the pointer path — open on the cell's current section
-          window._vpSectStart = cell._salSect ? cell._salSect.idx : 0;
+          window._vpSectStart = _gridCardSectionIdx(cell);
           gridOpenFullscreen(cell._rowData);
         }
       }

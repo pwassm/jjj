@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788362621746,
+    "_salPushTime": 1788366931991,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -84,11 +84,12 @@
       "active",
       "cardType",
       "cardData",
-      "sampleCard"
+      "sampleCard",
+      "cardRaw"
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
     "_salGsize": 2,
@@ -515,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788362621746
+    "_salSavedAt": 1788366931991
   },
   {
     "UID": "1",
@@ -48423,15 +48424,15 @@
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 03:13:41",
-    "DateModified": "2026-09-02 15:21:30",
+    "DateModified": "2026-09-02 16:35:31",
     "tags": [],
     "ltype": "f0",
     "ftext": "",
     "VidTitle": "20260901_201330_nameAssignment",
     "Mode": "L",
     "MPix": "0.2",
-    "ftextSize": "210",
-    "FtextJunk": "13",
+    "ftextSize": "3054",
+    "FtextJunk": "1",
     "DictSize": "0",
     "VidRange": "text",
     "cell": ""
@@ -48479,7 +48480,7 @@
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 15:01:41",
-    "DateModified": "2026-09-02 15:23:41",
+    "DateModified": "2026-09-02 15:35:47",
     "tags": [],
     "ltype": "f1",
     "cardType": "id1",
