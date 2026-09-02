@@ -66,6 +66,11 @@
     return n ? '<em>' + esc(n) + '</em>' : '';
   }
 
+  // The Astropecten already in the bucket — a real picture, so a sample card
+  // has a real front rather than a broken-image box, and so the RAW dump below
+  // is about something you can actually look at.
+  var SAMPLE_IMG = 'https://media.sealifeandmore.com/flashimages/card-20260831-071121.jpg';
+
   // ── the registry ─────────────────────────────────────────────────────────
   var TYPES = {};
   function register(t) { TYPES[t.id] = t; return t; }
@@ -341,9 +346,13 @@
       return { body: body, orig: orig };
     },
 
-    // A realistic answer, so the renderer can be eyeballed before a single API
-    // call is made. Deliberately a card with a caveat on it rather than a clean
-    // one — the awkward shapes are what the layout has to survive.
+    // A LAYOUT FIXTURE, NOT A REAL IDENTIFICATION. Every word of this was
+    // written by hand to give the renderer realistic shapes to survive — a
+    // hermaphrodite so the sex field has to handle "the question does not
+    // apply", a microscope caveat, a genus-level fallback. Nothing here was
+    // searched and the biology is not vouched for; the example.org URLs are
+    // placeholders and say so. Do not calibrate anything on it. sampleRaw()
+    // below is the real research output.
     sample: function () {
       return {
         scientificName: 'Flabellina verrucosa',
@@ -377,8 +386,92 @@
           { title: 'Marine Species Identification Portal', url: 'https://example.org/msip/flabellina' }
         ]
       };
-    }
+    },
+
+    // The RAW research dump for this type — what comes back before anything
+    // formats it. Unlike sample() above, this one is real. See ID1_RAW.
+    sampleRaw: function () { return ID1_RAW; }
   });
+
+  // ── the RAW stage ────────────────────────────────────────────────────────
+  // What the research step produces BEFORE anything formats it. Phil is the
+  // intermediary for the early cards: he wants to see the dump, cut it down by
+  // hand, and let the shape he arrives at drive what the schema and the
+  // renderer should be. So this is deliberately unstructured — paragraphs and
+  // nothing else. Any heading or styling here would be the formatting decision
+  // being made for him, which is the one thing this stage must not do.
+  //
+  // The two-section convention is MakeCard's, unchanged and exactly on point:
+  // section 2 is the copy you cut down, section 3 is the untouched original.
+  //
+  // THE TEXT BELOW IS A REAL RESEARCH PASS on the sea-star image already in the
+  // bucket, run 2026-09-02 with the single hint "this is a sea star" and no
+  // locality. It is not invented — unlike the id1 sample(), which is a layout
+  // fixture and was never searched.
+  var ID1_RAW = [
+    'SUBJECT: sea star (hint supplied by user). Aboral view, lying on open sand.',
+
+    'BEST GUESS: Astropecten sp. Genus is secure. Species is NOT determinable '
+    + 'from this image, and the reason is worth stating rather than hiding behind '
+    + 'a low confidence score.',
+
+    'WHY THE GENUS. The marginal plates are large and plainly visible from above, '
+    + 'running as a paired fringe down each arm edge, the upper (superomarginal) '
+    + 'series carrying upward-pointing spines and the lower (inferomarginal) series '
+    + 'downward-pointing ones. This is the character that separates Astropecten from '
+    + 'Luidia, the other genus of pale five-armed sand stars: in Luidia the upper '
+    + 'marginal plates are replaced by paxillae and are not visible from the top at '
+    + 'all. It is a character a photograph can settle, which is rare and useful. '
+    + 'Supporting it: the arms show the fine reticulate mosaic of paxillae — short '
+    + 'pillar-like ossicles crowned with spinelets, which keep sediment off the '
+    + 'papulae in a burrowing star — and the overall form is right, a small disc with '
+    + 'five long tapering arms. Tube feet in this group are pointed and lack suckers; '
+    + 'not resolvable in this frame, but consistent with everything else.',
+
+    'WHY NOT THE SPECIES. Astropecten is a large genus and the characters that '
+    + 'separate its species are: whether the superomarginal plates carry spines at '
+    + 'all or are merely covered in granules; if spined, whether each plate bears one '
+    + 'strong spine and how those spines change in size along the arm; whether the '
+    + 'inferomarginal plates are densely covered in overlapping squamules or nearly '
+    + 'bare; the number and relative length of the inferomarginal fringe spines; and '
+    + 'the disc-to-arm proportion together with aboral colour. Several of those need '
+    + 'a closer or oblique view than this frame gives. All of them need to be judged '
+    + 'against the species list for a known locality.',
+
+    'WHAT A LOCALITY WOULD BUY. This is the whole gate. Eastern Pacific, San Pedro '
+    + 'Bay south to Ecuador: A. armatus is the common large sand star — five slender '
+    + 'pointed arms turned up slightly at the tips, to about 17 cm across, small disc, '
+    + 'madreporite sitting very close to the disc edge, upper surface yellowish brown, '
+    + 'dull pink or grey, underside pale yellow to ivory, on sand or soft gravel from '
+    + '5 to 115 m and often half-buried. Western Atlantic and Caribbean: A. duplicatus '
+    + 'and several congeners. Mediterranean: a well-worked fauna with published keys. '
+    + 'The same photograph resolves to different answers in different oceans, and '
+    + 'nothing in the picture tells you which ocean it is.',
+
+    'NOTE ON THIS INDIVIDUAL. The left side looks like it carries a doubled or '
+    + 'regenerating arm. Worth a second look — arm anomalies and regeneration are '
+    + 'common in this group and are not a species character, so it should not be read '
+    + 'as one.',
+
+    'SOURCES. '
+    + 'https://en.wikipedia.org/wiki/Astropecten_armatus ; '
+    + 'https://en.wikipedia.org/wiki/Luidia ; '
+    + 'https://en.wikipedia.org/wiki/Paxillosida ; '
+    + 'https://en.wikipedia.org/wiki/Astropecten_irregularis ; '
+    + 'https://tb.plazi.org/GgServer/html/FF6987EEFFA3FFC5FF5443937EC4FD38/1 ; '
+    + 'https://www.marinespecies.org/aphia.php?p=taxdetails&id=123059'
+  ].join('\n\n');
+
+  // Blank line = paragraph. Nothing else — no headings, no emphasis, no lists.
+  // A bare URL is left as text rather than linked: Xs auto-links scheme'd URLs
+  // on its own, and a link here would be one more formatting decision taken out
+  // of Phil's hands at exactly the stage where he wants them all.
+  function rawToHtml(text) {
+    return String(text || '').split(/\n{2,}/)
+      .map(function (p) { return p.trim(); }).filter(Boolean)
+      .map(function (p) { return '<p>' + esc(p).replace(/\n/g, '<br>') + '</p>'; })
+      .join('\n');
+  }
 
   // Status → the leading sentence. This is where "we looked and there is
   // nothing" stops reading like "we did not look".
@@ -435,14 +528,25 @@
     },
     pictureSection: pictureSection,
     renderFtext: renderFtext,
+    rawToHtml: rawToHtml,
+    // The unformatted twin of renderFtext. Both back sections get the same raw
+    // text, which is MakeCard's convention working exactly as intended: cut
+    // section 2 down by hand, keep section 3 as the untouched original.
+    rawFtext: function (typeId, imgUrl) {
+      var id = typeId || 'id1';
+      var t = TYPES[id];
+      if (!t) throw new Error('unknown cardType: ' + id);
+      if (typeof t.sampleRaw !== 'function') throw new Error('cardType ' + id + ' has no raw sample');
+      var html = rawToHtml(t.sampleRaw());
+      return pictureSection(imgUrl || SAMPLE_IMG) + '\n<hr>\n' + html + '\n<hr>\n' + html;
+    },
     // Eyeball the layout with no API and no network:
     //   copy(CardTypes.sampleFtext())   → paste into a scratch row's ftext in Xe
     sampleFtext: function (typeId, imgUrl) {
       var id = typeId || 'id1';
       var t = TYPES[id];
       if (!t) throw new Error('unknown cardType: ' + id);
-      return renderFtext(imgUrl || 'https://media.sealifeandmore.com/flashimages/card-20260831-071121.jpg',
-                         id, t.sample());
+      return renderFtext(imgUrl || SAMPLE_IMG, id, t.sample());
     }
   };
 })();

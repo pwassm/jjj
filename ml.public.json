@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788357845454,
+    "_salPushTime": 1788359346510,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -85,7 +85,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
     "_salGsize": 2,
@@ -512,7 +512,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788357845454
+    "_salSavedAt": 1788359346510
   },
   {
     "UID": "1",
@@ -48248,7 +48248,7 @@
     "DictSize": "0",
     "MPix": "2.1",
     "Mode": "L",
-    "cell": "2b"
+    "cell": ""
   },
   {
     "UID": "2169",
@@ -48264,7 +48264,7 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "ftext": "",
-    "cell": "2a"
+    "cell": ""
   },
   {
     "UID": "2170",
@@ -48280,7 +48280,7 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "ftext": "",
-    "cell": "1b"
+    "cell": ""
   },
   {
     "UID": "2171",
@@ -48294,7 +48294,7 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "ftext": "",
-    "cell": "1a"
+    "cell": ""
   },
   {
     "UID": "2172",
@@ -48307,7 +48307,8 @@
     "ftextSize": "360853",
     "FtextJunk": "0",
     "DictSize": "0",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2173",
@@ -48324,7 +48325,8 @@
     "ftextSize": "210",
     "FtextJunk": "13",
     "DictSize": "0",
-    "VidRange": "text"
+    "VidRange": "text",
+    "cell": "2b"
   },
   {
     "UID": "2174",
@@ -48340,7 +48342,8 @@
     "MPix": "0.07",
     "ftextSize": "220",
     "FtextJunk": "20",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2175",
@@ -48357,7 +48360,8 @@
     "ftextSize": "210",
     "FtextJunk": "13",
     "DictSize": "0",
-    "VidRange": "text"
+    "VidRange": "text",
+    "cell": ""
   },
   {
     "UID": "2176",
@@ -48373,7 +48377,8 @@
     "MPix": "0.2",
     "ftextSize": "220",
     "FtextJunk": "20",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2177",
@@ -48389,7 +48394,8 @@
     "MPix": "0.2",
     "ftextSize": "220",
     "FtextJunk": "20",
-    "DictSize": "0"
+    "DictSize": "0",
+    "cell": ""
   },
   {
     "UID": "2178",
@@ -48406,7 +48412,8 @@
     "ftextSize": "210",
     "FtextJunk": "13",
     "DictSize": "0",
-    "VidRange": "text"
+    "VidRange": "text",
+    "cell": ""
   },
   {
     "UID": "2179",
@@ -48423,14 +48430,15 @@
     "ftextSize": "210",
     "FtextJunk": "13",
     "DictSize": "0",
-    "VidRange": "text"
+    "VidRange": "text",
+    "cell": "2a"
   },
   {
     "UID": "2179_d",
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 13:27:24",
-    "DateModified": "2026-09-02 14:04:05",
+    "DateModified": "2026-09-02 14:29:06",
     "tags": [],
     "ltype": "f0",
     "ftext": "",
@@ -48441,6 +48449,25 @@
     "FtextJunk": "4",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": ""
+    "cell": "1b"
+  },
+  {
+    "UID": "2180",
+    "link": "",
+    "show": "1",
+    "DateAdded": "2026-09-02 14:20:27",
+    "DateModified": "2026-09-02 14:22:23",
+    "tags": [],
+    "ltype": "f1",
+    "cardType": "id1",
+    "cardData": "{\"scientificName\":\"Flabellina verrucosa\",\"commonName\":\"red-gilled nudibranch\",\"rank\":\"species\",\"confidence\":\"moderate\",\"agreement\":{\"passes\":2,\"agreed\":true,\"others\":[]},\"keyedOn\":[{\"feature\":\"cerata\",\"observation\":\"in 6 distinct clusters along each side, each ceras opaque white at the tip over a red-brown digestive gland\"},{\"feature\":\"rhinophores\",\"observation\":\"distinctly annulate — ringed, not smooth or papillate\"},{\"feature\":\"oral tentacles\",\"observation\":\"long and slender, roughly as long as the rhinophores\"}],\"notVisible\":[\"the foot corners, which are angled rather than rounded in this genus\",\"the radula, which separates the harder Flabellina pairs and needs a microscope regardless\"],\"alternatives\":[{\"name\":\"Coryphella nobilis\",\"howToTell\":\"cerata evenly spaced rather than in discrete clusters, and rhinophores smooth\"},{\"name\":\"Flabellina pedata\",\"howToTell\":\"body distinctly violet rather than translucent white; a colour difference a photograph settles at once\"}],\"sexDifferences\":{\"status\":\"hermaphrodite\",\"text\":\"Simultaneous hermaphrodite, like all nudibranchs — every adult carries both sets of organs and there is nothing external to sex. Pairs align right side to right side to mate, and both may lay.\"},\"maturityChanges\":{\"status\":\"changes\",\"text\":\"Juveniles under about 8 mm carry far fewer ceratal clusters — often only two or three — and the white ceratal tips have not yet developed, so a young animal reads as a plain translucent slug. Adults reach roughly 35 mm.\"},\"sources\":[{\"title\":\"Sea Slug Forum — Flabellina verrucosa\",\"url\":\"https://example.org/seaslugforum/flabellina-verrucosa\"},{\"title\":\"Marine Species Identification Portal\",\"url\":\"https://example.org/msip/flabellina\"}]}",
+    "ftext": "",
+    "VidTitle": "SAMPLE CARD — id1",
+    "sampleCard": "1",
+    "ftextSize": "2260",
+    "FtextJunk": "1",
+    "DictSize": "0",
+    "VidRange": "text",
+    "cell": "1a"
   }
 ]

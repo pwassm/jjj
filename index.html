@@ -749,6 +749,7 @@ thead th.rn              { color: #fff !important; }
       <div class="hkitem" data-act="addwm" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Lists M:\wm\watermarked\ (the videos AND photos the watermark tooling uploaded to Cloudflare R2), diffs it against ml.json, and adds a row for any that are missing. link is built from the file's path under the bucket; Mode plus vidLength (video) or MPix (photo) are measured off the local file. Idempotent — run it after every upload. Needs proxy.js on 8081.">🎬 Add Watermarked Media — new R2 uploads → T</div>
       <div class="hkitem" data-act="flashsweep" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Batch flash-card import. Everything you have dropped in M:\wm\flashcandidates\ (.jpg/.png/.webp) is converted to JPEG, staged in M:\wm\flashimages\, uploaded to Cloudflare R2, and added to ml.json as an ltype 'f0' row — the picture only, no answer yet. The original screenshot is moved to flashcandidates\_done\ once R2 confirms, so a re-run never duplicates. Mode and MPix are measured off the file. Esc aborts. Needs proxy.js on 8081 (dev0874+).">🃏 Sweep Flash Candidates — flashcandidates\ → R2 → T as f0</div>
       <div class="hkitem" data-act="samplecard" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Adds ONE throwaway flash-card row built from the current card type's worked example — ltype f1, so it has both back sections. The only honest way to review a card type: open it in Xs, or drop it in a grid and check the turn face reads at cell size. Marked as a sample so Remove Sample Cards can clear it.">🧪 Sample Flash Card — add a review row</div>
+      <div class="hkitem" data-act="samplerawcard" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="The stage BEFORE formatting. Same picture, but both back sections hold the research dump verbatim — no headings, no lists, no emphasis. Cut section 2 down by hand in Xe until it says what a card should say; section 3 stays as the untouched original. The shape you arrive at is what the schema and the renderer should then be built to produce.">🧪 Sample RAW Flash Card — unformatted research dump</div>
       <div class="hkitem" data-act="rmsamplecards" style="padding:8px 14px;color:#ccc;cursor:pointer;border-bottom:1px solid #333;" title="Deletes every row added by Sample Flash Card, archiving them to deleted.json like any other delete.">🧹 Remove Sample Cards</div>
       <div class="hkitem" data-act="resetftlsaved" style="padding:8px 14px;color:#ccc;cursor:pointer;">🔄 Reset FTLsaved — re-download all images</div>
     </div>
@@ -1119,7 +1120,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0876';
+  window.HELP_VERSION_STR = 'dev0877';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

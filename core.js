@@ -4988,6 +4988,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingSweepFlashCandidates();
     } else if (act === 'samplecard') {
       housekeepingSampleFlashCard();
+    } else if (act === 'samplerawcard') {
+      housekeepingSampleRawFlashCard();
     } else if (act === 'rmsamplecards') {
       housekeepingRemoveSampleCards();
     } else if (act === 'resetftlsaved') {
@@ -5526,6 +5528,48 @@ function housekeepingSampleFlashCard() {
         + '\n   It is at the top of T. Open it in Xs to see the card,'
         + '\n   or put it in a grid to check the turn face at cell size.'
         + '\n   Housekeeping ▸ Remove Sample Cards clears it.', 8000);
+}
+
+// (dev0877) The stage BEFORE formatting. Same picture, but both back sections
+// carry the research dump verbatim — no headings, no lists, no emphasis. The
+// point is to decide the formatting by doing it: cut section 2 down by hand in
+// Xe until it says what a card should say, leave section 3 as the untouched
+// original, and let the shape you arrive at drive what the schema and the
+// renderer ought to be. Formatting it here first would be answering the
+// question the card is being made to ask.
+function housekeepingSampleRawFlashCard() {
+  if (typeof _cMode !== 'undefined' && _cMode) { toast('⚠ Not on the C screen — go back to T first', 3000); return; }
+  if (!window.CardTypes || typeof window.CardTypes.rawFtext !== 'function') {
+    toast('⚠ cardtypes.js not loaded (or pre-dev0877) — hard-refresh (Ctrl+Shift+R)', 4500); return;
+  }
+  const typeId = window.CardTypes.DEFAULT;
+  const t = window.CardTypes.get(typeId);
+  if (!t || typeof t.sampleRaw !== 'function') { toast('⚠ cardType ' + typeId + ' has no raw sample', 3000); return; }
+
+  const now = isoNow();
+  const row = {
+    UID: nextUID(),
+    link: '',
+    show: '1',
+    DateAdded: now,
+    DateModified: now,
+    tags: [],
+    ltype: 'f1',
+    cardType: typeId,
+    // The dump as text, beside the HTML it was wrapped in — so a reformat can
+    // start from the source rather than from unpicked markup.
+    cardRaw: t.sampleRaw(),
+    ftext: window.CardTypes.rawFtext(typeId),
+    VidTitle: 'SAMPLE RAW CARD — ' + typeId,
+    sampleCard: '1'
+  };
+  data.push(row);
+  save();
+  try { sortCol = 'DateAdded'; sortDir = 'desc'; buildSort(); } catch (_) {}
+  render();
+  toast('🧪 RAW ' + typeId + ' card added — UID ' + row.UID
+        + '\n   Both back sections hold the research dump verbatim.'
+        + '\n   Cut section 2 down in Xe; section 3 is the untouched original.', 8000);
 }
 
 // The other half — because a review row you cannot get rid of in one action is
