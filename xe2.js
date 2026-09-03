@@ -1640,6 +1640,66 @@
     } catch (e) { _toast('That icon can’t go here'); }
   }
 
+  // (dev0894) PASTE AS PLAIN TEXT. A browser copy of a web page brings avatars,
+  // icons and pictures along with the words; the sanitizer keeps images because
+  // most pastes want them. This button is the other choice: TEXT ONLY. The
+  // clipboard's text/plain flavour is read directly, so no markup ever reaches
+  // ProseMirror — blank-line groups become paragraphs, single newlines become
+  // hard breaks. A clipboard read can be refused (no permission, or the document
+  // isn't focused), so there is a textarea fallback the user pastes into.
+  function _insertPlainText(editor, text) {
+    if (!text || !text.trim()) { _toast('Clipboard has no text'); return; }
+    var blocks = text.replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/);
+    var nodes = [];
+    blocks.forEach(function (blk) {
+      var lines = blk.split('\n').map(function (l) { return l.replace(/[ \t]+$/, ''); });
+      if (!lines.join('').trim()) return;
+      var content = [];
+      lines.forEach(function (line, i) {
+        if (i) content.push({ type: 'hardBreak' });
+        if (line) content.push({ type: 'text', text: line });
+      });
+      nodes.push({ type: 'paragraph', content: content });
+    });
+    if (!nodes.length) { _toast('Clipboard has no text'); return; }
+    editor.chain().focus().insertContent(nodes).run();
+    _toast('Pasted ' + nodes.length + ' paragraph' + (nodes.length === 1 ? '' : 's') + ' as plain text');
+  }
+
+  function _plainTextFallback(editor) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:100060;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#1b1b32;border:1px solid #456;border-radius:8px;padding:14px;width:min(680px,90vw);color:#cde;font-size:14px;';
+    box.innerHTML = '<div style="margin-bottom:8px;">Press Ctrl+V here, then click Insert — the text goes in without pictures or styling.</div>';
+    var ta = document.createElement('textarea');
+    ta.style.cssText = 'width:100%;height:220px;background:#0f0f1e;color:#eee;border:1px solid #456;border-radius:5px;padding:8px;font-size:14px;';
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-top:10px;display:flex;gap:8px;justify-content:flex-end;';
+    var ok = document.createElement('button'); ok.className = 'xe2-btn'; ok.textContent = 'Insert';
+    var no = document.createElement('button'); no.className = 'xe2-btn'; no.textContent = 'Cancel';
+    row.appendChild(no); row.appendChild(ok);
+    box.appendChild(ta); box.appendChild(row); wrap.appendChild(box);
+    document.body.appendChild(wrap);
+    function close() { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }
+    no.onclick = close;
+    ok.onclick = function () { var t = ta.value; close(); _insertPlainText(editor, t); };
+    wrap.addEventListener('keydown', function (ev) {
+      ev.stopPropagation();
+      if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+    }, true);
+    setTimeout(function () { ta.focus(); }, 0);
+  }
+
+  function pastePlainText(editor) {
+    var read = (navigator.clipboard && navigator.clipboard.readText)
+      ? navigator.clipboard.readText() : Promise.reject(new Error('no clipboard API'));
+    read.then(function (txt) {
+      if (txt && txt.trim()) _insertPlainText(editor, txt);
+      else _plainTextFallback(editor);
+    }).catch(function () { _plainTextFallback(editor); });
+  }
+
   // (dev0770) LINK TARGETS. Besides a web address, a link can now point INTO the
   // collection:
   //
@@ -1774,6 +1834,7 @@
       ['&#128444;', 'Insert image OR direct video file — a .mp4/.webm URL (e.g. your Cloudflare one) is detected automatically and plays inline. Or EDIT the selected image/video (click/double-click it first to change size, alignment or caption).', function (e) { insertImage(e); }],
       ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
+      ['&#128203;T', 'Paste as PLAIN TEXT - the words only, no avatars, pictures, colours or web-page styling', function (e) { pastePlainText(e); }],
       ['&#8856; HideLine', 'Hide just the line the cursor is on — no selection needed. It stays here, faded red, as a note; everything after it still shows. TOGGLE: cursor on a hidden line and click again. Alt+X does the same.', function (e) { hideLine(e); }],
       ['&#8856; HideSection', 'Hide the SELECTED lines from the rendered slide — they stay here, faded red, as notes. Everything after them still shows. TOGGLE: put the cursor inside a hidden block and click again to un-hide it.', function (e) { toggleHide(e); }],
       ['&#8856; HideFromHere', 'Hide everything BELOW this point from the rendered slide — it stays here, red-tinted, as notes. Click on the last line that should still show. TOGGLE: cursor on the red line and click again to remove it.', function (e) { insertCutLine(e); }],
