@@ -7974,8 +7974,8 @@ const _XALL_SCOPES = '.te-slide,.grid-html-thumb,#teSlideContent,#gridFsContent,
 // advertises the double-click because a button is discoverable and a gesture is
 // not — the gesture is the one people will actually use.
 const _SAL_XALL_LABELS = {
-  open:  '\u25BC\u25BC Show all  ·  or double click anywhere',
-  close: '\u25B6\u25B6 Hide all  ·  or double click anywhere'
+  open:  '\u25BC\u25BC Show all  ·  or double click off details line',
+  close: '\u25B6\u25B6 Hide all  ·  or double click off details line'
 };
 window._SAL_XALL_LABELS = _SAL_XALL_LABELS;
 

@@ -365,6 +365,13 @@ td.editing input {
 html.grid-clean #gridControls,
 html.grid-clean #uid-badge,
 html.grid-clean #ver-badge { display:none !important; }
+/* (dev0889) In G the badges lie on top of the pictures. The UID chip is a dev
+   readout with nothing to say about the grid, so it goes; the version chip
+   stays (it is how you tell a stale cache) but lifts clear of the bottom edge,
+   where transparent overlays and the back arrow live. Both are keyed off
+   html.grid-open, toggled by grid.js from an observer on the overlay. */
+html.grid-open #uid-badge { display:none !important; }
+html.grid-open #ver-badge { bottom:110px; }
 
 /* ── Views panel ── */
 #viewsPanel { display:none; position:fixed; z-index:29999; background:rgba(12,12,24,0.99); border:2px solid #fc8; border-radius:10px; box-shadow:0 6px 32px rgba(0,0,0,0.95); min-width:310px; max-width:420px; font-family:monospace; overflow:hidden; }
@@ -1120,7 +1127,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0888';
+  window.HELP_VERSION_STR = 'dev0889';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

@@ -1829,6 +1829,27 @@ function _gridCardFrontOthers(exceptCell) {
 }
 window._gridCardFrontAll = function () { return _gridCardFrontOthers(null); };
 
+// (dev0889) html.grid-open — "the G overlay is up". Driven by an observer on
+// the overlay's own style attribute rather than by a line in each show/hide
+// path: that display value is written from eight places across five files, and
+// a ninth added later would silently miss the class. Cheap: one attribute
+// filter on one element.
+(function _gridWireOpenClass() {
+  const wire = function () {
+    const ov = document.getElementById('gridOverlay');
+    if (!ov) return false;
+    const sync = function () {
+      document.documentElement.classList.toggle('grid-open', ov.style.display === 'flex');
+    };
+    try {
+      new MutationObserver(sync).observe(ov, { attributes: true, attributeFilter: ['style'] });
+    } catch (_) { return false; }
+    sync();
+    return true;
+  };
+  if (!wire()) document.addEventListener('DOMContentLoaded', wire, { once: true });
+})();
+
 // (dev0881) Which face is a cell showing? -1 means the front (the picture).
 function _gridCardFaceIdx(cell) {
   if (!window.TurnCells || typeof window.TurnCells.faceOn !== 'function') return -1;
