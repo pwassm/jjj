@@ -592,6 +592,18 @@ window.addEventListener('keydown', function(e) {
     if (gOpenQ && !vpOpenQ) {
       e.preventDefault();
       e.stopPropagation();
+      // (dev0901) A grid holding flash cards answers bare q with the QUIZ, and
+      // q again leaves it. Asked of quizcells.js rather than decided here, so
+      // "is this grid quizzable" has one owner; it is false on every grid
+      // without cards, which is where the embed reset below carries on as
+      // before. Shift+Q is left alone: resetting every embed at once still
+      // needs a key, and a flash grid can hold embeds too.
+      if (!e.shiftKey && window.QuizCells
+          && typeof window.QuizCells.available === 'function'
+          && window.QuizCells.available()) {
+        window.QuizCells.toggle();
+        return false;
+      }
       if (typeof window.gridNewEmbed === 'function') window.gridNewEmbed(e.shiftKey);
       return false;
     }

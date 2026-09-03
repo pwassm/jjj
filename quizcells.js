@@ -63,9 +63,15 @@
 // congratulations. Dismissed by a click anywhere. The poll ending a quiz because
 // the grid was closed is NOT one of those endings and stays silent.
 //
+// (dev0901) q IS THE KEY, on any grid holding flash cards. core.js's bare-q in
+// G (reset an embed) asks QuizCells.available() first and yields to it; Shift+Q
+// still resets every embed, so nothing is lost on a grid that has both.
+//
 // ── CUT-OUT INSTRUCTIONS — to remove the feature entirely, zero grid impact:
 //   1. delete this file
 //   2. delete 'quizcells.js' from the files[] array in index.html
+//   2b. in core.js, drop the QuizCells.available() branch from the bare-q
+//       grid block, which hands q back to gridNewEmbed
 //   3. in grid.js, the dev0896 window._gridCardParts / window._gridCardTurn
 //      exports become unused (harmless — leave them, other callers may want them)
 // Nothing else references it.
@@ -82,6 +88,8 @@
   var cur       = null;   // { sci, common }
   var right     = 0, wrong = 0;
   var hits      = [];     // (dev0899) names answered correctly, in the order asked
+  var askedIds  = null;   // (dev0901) Set of card ids already put as a question
+  var total     = 0;      // (dev0901) questions in this run, top-ups included
   var misses    = [];     // (dev0899) { chose, want } -- one entry per wrong click
   var startedAt = 0;
   var awaiting  = false;  // a click on a cell is meaningful right now
@@ -154,6 +162,47 @@
 
   function hasCards() { return cardCells().length > 0; }
 
+  // (dev0901) SPREAD THE REPEATS. Two cards of one animal are two questions
+  // (there really are two Blacksmiths on the grid), but drawn back to back the
+  // second one reads as the quiz stuttering rather than as a second picture.
+  // Each member of a group of m gets a slot at (i + a random fraction) / m, so a
+  // pair lands around a quarter and three quarters of the way through and a lone
+  // card lands anywhere; sorting on that slot gives an order that is random but
+  // never clumps a name. Cheaper and steadier than shuffling and re-shuffling
+  // until no two neighbours match, which can fail to terminate.
+  function spread(items, keyFn) {
+    var groups = {};
+    items.forEach(function (it) {
+      var k = keyFn(it);
+      (groups[k] || (groups[k] = [])).push(it);
+    });
+    var out = [];
+    Object.keys(groups).forEach(function (k) {
+      var g = shuffle(groups[k].slice());
+      g.forEach(function (it, i) {
+        out.push({ slot: (i + Math.random()) / g.length, it: it });
+      });
+    });
+    out.sort(function (a, b) { return a.slot - b.slot; });
+    var seq = out.map(function (x) { return x.it; });
+    // The slots BIAS a pair apart, they do not guarantee it -- over twenty
+    // thousand replays of the real 13-question grid the two Blacksmiths still
+    // came out back to back one run in forty. So walk the order once and, where
+    // two neighbours share a key, swap the second one with the nearest later
+    // entry that does not. One pass, no retries, and it can only fail when the
+    // repeats genuinely outnumber the gaps between them.
+    for (var i = 1; i < seq.length; i++) {
+      if (keyFn(seq[i]) !== keyFn(seq[i - 1])) continue;
+      for (var j = i + 1; j < seq.length; j++) {
+        if (keyFn(seq[j]) === keyFn(seq[i - 1])) continue;
+        if (j + 1 < seq.length && keyFn(seq[j + 1]) === keyFn(seq[i])) continue;
+        var t = seq[i]; seq[i] = seq[j]; seq[j] = t;
+        break;
+      }
+    }
+    return seq;
+  }
+
   function shuffle(a) {
     for (var i = a.length - 1; i > 0; i--) {
       var j = Math.floor(Math.random() * (i + 1));
@@ -215,11 +264,17 @@
     btn.style.border      = '2px solid ' + (active ? '#fa8' : '#9cf');
     tal.style.display = active ? 'block' : 'none';
     if (active) {
+      // (dev0901) The card count is in here on purpose: how many questions this
+      // run actually built is the one number that says whether the quiz is
+      // covering the grid, and it was invisible when a run ended short.
+      var n = total ? (Math.min(total, total - queue.length) + '/' + total) : '';
       tal.innerHTML = '<span style="color:#7e7;">&#10003; ' + right + '</span>'
         + '<span style="opacity:.35;padding:0 6px;">|</span>'
         + '<span style="color:#f88;">&#10007; ' + wrong + '</span>'
         + '<span style="opacity:.35;padding:0 6px;">|</span>'
-        + '<span style="opacity:.75;">' + elapsed() + '</span>';
+        + '<span style="opacity:.75;">' + elapsed() + '</span>'
+        + (n ? '<span style="opacity:.35;padding:0 6px;">|</span>'
+             + '<span style="opacity:.6;">' + n + '</span>' : '');
     }
   }
 
@@ -358,19 +413,52 @@
   // cards of one species are two questions, because they are two cards, and
   // going through all of them is the point. Cards with no name yet (f0) are not
   // questions.
+  // (dev0901) A card's identity for "have I asked about this one yet". uid when
+  // the row has one, the cell it is sitting in when it does not, so a row with
+  // no UID still counts as one card rather than colliding with every other.
+  function idOf(cell) {
+    return uidOf(cell._rowData) || ('cell:' + (cell.dataset ? cell.dataset.cell : ''));
+  }
+
+  function questionFor(cell) {
+    var sp = speciesOf(cell._rowData);
+    if (!sp || !sp.sci) return null;
+    return {
+      id:     idOf(cell),
+      uid:    uidOf(cell._rowData),
+      sci:    sp.sci,
+      common: sp.common || '',
+      key:    keyOf(sp)
+    };
+  }
+
   function buildQueue() {
     var out = [];
     cardCells().forEach(function (c) {
-      var sp = speciesOf(c._rowData);
-      if (!sp || !sp.sci) return;
-      out.push({
-        uid:    uidOf(c._rowData),
-        sci:    sp.sci,
-        common: sp.common || '',
-        key:    keyOf(sp)
-      });
+      var q = questionFor(c);
+      if (q) out.push(q);
     });
-    return shuffle(out);
+    return spread(out, function (q) { return q.key; });
+  }
+
+  // (dev0901) EVERY CARD GETS ASKED, and that is now checked rather than assumed.
+  // The queue is a snapshot taken when the quiz started; if it ever runs dry the
+  // grid is read again, and any named card that has not been asked about is
+  // added. Only when a fresh look at the grid finds nothing left does the run
+  // end. A quiz that stopped early used to be invisible -- the button simply
+  // went back to saying Quiz -- and this makes finishing a fact about the grid
+  // instead of a fact about a list built minutes ago.
+  function topUp() {
+    var add = [];
+    cardCells().forEach(function (c) {
+      var q = questionFor(c);
+      if (!q || askedIds[q.id]) return;
+      add.push(q);
+    });
+    if (!add.length) return 0;
+    queue = queue.concat(spread(add, function (q) { return q.key; }));
+    total += add.length;
+    return add.length;
   }
 
   // The cell a question is about: its own row first, then any card showing the
@@ -388,9 +476,11 @@
   function nextQuestion() {
     if (!active) return;
     drop('quizPrompt'); drop('quizHint'); drop('quizAsk'); drop('quizBalloon');
-    if (!queue.length) { report(); return; }
+    if (!queue.length && !topUp()) { report(); return; }
     cur = queue.shift();
+    askedIds[cur.id] = 1;
     awaiting = true;
+    paintHud();
     showQuestion();
   }
 
@@ -543,7 +633,7 @@
       return;
     }
     active = true; right = 0; wrong = 0; cur = null; reading = false;
-    hits = []; misses = [];
+    hits = []; misses = []; askedIds = {}; total = queue.length;
     drop('quizSummary'); drop('quizSummaryCatch');
     startedAt = Date.now();
     if (typeof window._gridCardFrontAll === 'function') {
@@ -663,12 +753,20 @@
   // quiz when the grid is closed by any of the several paths that write
   // gridOverlay.style.display directly.
   setInterval(function () {
-    if (!gridOpen() || !hasCards()) {
+    // (dev0901) THE GRID BEING CLOSED IS THE ONLY THING THAT ENDS A RUNNING QUIZ
+    // from out here. It used to also stop on an empty card scan, which is a
+    // transient any time the grid re-renders (a buffer-mode change, a paste, a
+    // size key all rebuild every cell): for the tick where #gridContainer is
+    // empty the quiz would be torn down silently, mid-run, with no summary and
+    // no explanation. Questions are held as DATA -- uid, name, key -- and cells
+    // are looked up again on every click, so a re-render costs a running quiz
+    // nothing and there is no reason to end it.
+    if (!gridOpen()) {
       if (active) stop(false);            // not an ending they chose -- no summary
-      drop('quizHud');
-      if (!gridOpen()) { drop('quizSummary'); drop('quizSummaryCatch'); }
+      drop('quizHud'); drop('quizSummary'); drop('quizSummaryCatch');
       return;
     }
+    if (!active && !hasCards()) { drop('quizHud'); return; }
     paintHud();
   }, 500);
 
@@ -676,6 +774,11 @@
     start: start,
     stop: stop,
     toggle: toggle,
+    // (dev0901) core.js's bare-q handler asks this before spending the key.
+    // A RUNNING quiz always answers yes, so q can always leave one -- otherwise
+    // a re-render emptying the cell scan for a tick would hand q back to the
+    // embed reset while the quiz was still on screen.
+    available: function () { return active || (gridOpen() && hasCards()); },
     get active() { return active; },
     get score() { return { right: right, wrong: wrong, left: queue.length }; }
   };
