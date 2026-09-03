@@ -789,6 +789,7 @@ thead th.rn              { color: #fff !important; }
   <input id="cFilterGnameInput" type="text" placeholder="type to filter gname…" autocomplete="off"
     style="display:none;padding:4px 8px;font-size:12px;font-family:monospace;background:#0a1422;
            border:1px solid #adf;border-radius:5px;color:#eef;outline:none;width:160px;">
+  <button class="tbtn" id="cReloadBtn" style="border-color:#8ef;color:#8ef;background:rgba(0,50,70,0.3);" title="Drop the localStorage copy and re-read c.json from the project folder / server">↻ Reload from disk</button>
   <button class="tbtn" id="cDateFillBtn" style="border-color:#fc8;color:#fc8;background:rgba(60,40,0,0.3);" title="Fill blank DateAdded and DateModified with current time">📅 DateFill</button>
   <span style="width:1px;height:22px;background:#334;flex-shrink:0;"></span>
   <button class="tbtn" id="cGridBtn" style="border-color:#f8f;color:#f8f;background:rgba(80,0,80,0.3);">▦ Grid (G)</button>
@@ -1135,7 +1136,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0904';
+  window.HELP_VERSION_STR = 'dev0905';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

@@ -1112,8 +1112,15 @@ const _C_LS_KEY = 'sal-c-json';
 // Prune on every read and before every write so they can't survive a reload no
 // matter which store they came from. A nameless config with real cells is kept
 // (it's a usable, just-unnamed grid).
+// (dev0905) …and a row carrying PROSE is never junk, whether or not it has grid
+// cells. c.json holds text-only pages as well as grids — Introduction, Greeting,
+// Other, Sources — and those only survived this prune by accident, because each
+// happened to have leftover cell assignments too. A page authored purely as ctxt
+// (no cells at all) was silently deleted on the next read, so it could never be
+// added by hand to the file: it vanished the first time C was opened.
 function _cIsEmptyConfig(r) {
   if (!r || r._salMeta) return false;
+  if (String(r.ctxt || '').trim()) return false;
   for (const k in r) {
     // (dev0370) A filled special-layout cell (1L / 1P-3P) counts as real content
     // too, so a 17/19 grid built only on its big/portrait cells isn't pruned.
@@ -1343,6 +1350,28 @@ function cUpdateStatus() {
     if (e.key === 'Enter')  { input.blur(); }
   });
 })();
+
+// (dev0905) RELOAD FROM DISK. openCScreen reads the localStorage backup FIRST
+// (see _C_LS_KEY) so in-app deletions survive a reload with no project folder
+// set. The cost is that c.json edited on disk — by hand, by a script, or by a
+// git pull — is invisible: the browser keeps serving its own older copy for as
+// long as that key exists, with nothing on screen to say so. This drops the
+// backup and re-reads through the normal path (project folder, then HTTP).
+//
+// It DISCARDS whatever is only in localStorage, so it confirms first.
+async function cReloadFromDisk() {
+  if (!_cMode) return;
+  if (!confirm('Reload c.json from disk?\n\n'
+             + 'Any C-screen change that never made it to the file '
+             + '(no project folder set) will be lost.')) return;
+  try { localStorage.removeItem(_C_LS_KEY); } catch (_) {}
+  _cLoaded = false;
+  closeCScreen();
+  await openCScreen();
+  toast('↻ Reloaded c.json from disk — ' + _cData.length + ' configs', 2200);
+}
+
+document.getElementById('cReloadBtn').addEventListener('click', cReloadFromDisk);
 
 // DateFill — fill blank DateAdded and DateModified in C-screen
 document.getElementById('cDateFillBtn').addEventListener('click', () => {
