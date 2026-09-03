@@ -94,6 +94,12 @@
     mergeTag,
     labelFor,
     chipHtml,
+    // (dev0891) applyChainImport was D-screen-only until now: the T promote
+    // action (core.js _tEnrichSpeciesTag) reuses the exact same function the
+    // Dictionary’s own Apply All button calls, so a right-click promotion and
+    // a manual D lookup wire a species into the tree the identical way —
+    // dedup, ecology-group linking, alias hygiene and all.
+    applyChainImport,
     renderChipsForRecord,
     recordTagIds,
     search: searchTags,

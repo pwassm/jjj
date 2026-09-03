@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788408151880,
+    "_salPushTime": 1788445265584,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -516,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788408151880
+    "_salSavedAt": 1788445265584
   },
   {
     "UID": "1",
@@ -39583,7 +39583,7 @@
     "comment": "",
     "link": "",
     "linkpage": "",
-    "DateModified": "2026-08-02 23:29:20",
+    "DateModified": "2026-09-03 13:53:49",
     "DateAdded": "2026-07-13 04:25:41",
     "VidTitle": "",
     "VidAuthor": "",
@@ -48377,7 +48377,7 @@
     "DateAdded": "2026-09-02 03:10:47",
     "DateModified": "2026-09-03 01:43:03",
     "tags": [],
-    "ltype": "f1",
+    "ltype": "fx",
     "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260901_200828_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p><hr><h1>Soupfin shark</h1><p><em>Galeorhinus galeus</em></p><p>Plain gray, long pointed snout, slim body</p><p>A huge terminal lobe on the tail, almost a second tail</p><div class=\"te-cut\"><p><small>moderate to good confidence, resting on the terminal caudal lobe. Leopard shark excluded by the plain body. Locality assumed.</small></p></div><hr><details><summary>The tail tip is the identification</summary><h3>Terminal lobe</h3><p>The upper tail lobe has a deep notch near its end</p><p>The piece beyond the notch is very large</p><p>It reads almost as a second tail</p><p>No other shark on this coast carries one that big</p></details><details><summary>Plain gray rules out the obvious one</summary><h3>Not a leopard shark</h3><p>Leopard sharks share this ground and these tanks</p><p>They carry bold dark saddles and spots</p><p>This body is plain from nose to tail</p></details><details><summary>Second dorsal about the size of the anal fin</summary><h3>Houndshark family</h3><p>Family Triakidae, the houndsharks</p><p>Small second dorsal set well back</p><p>Smoothhounds are blunter nosed and smaller</p></details><details><summary>It is named for what was done to it</summary><h3>Soupfin</h3><p>Fished hard for the fin trade</p><p>Also fished for liver oil, for vitamin A</p><p>The California fishery collapsed in the 1940s</p></details><details><summary>It travels much further than it looks like it would</summary><h3>Range</h3><p>Individuals cross whole ocean basins</p><p>Tagged fish have moved thousands of kilometers</p><p>A shark this ordinary looking is a long distance migrant</p></details><div class=\"te-cut\"><details><summary>What the picture cannot settle</summary><h3>Not visible here</h3><p>Tooth shape, which would confirm the family</p><p>The size of the animal</p><p>Sex, which claspers would show</p><p>Where it was taken</p></details></div><hr><h2>Soupfin shark</h2><details><summary>What it is called</summary><p><em>Galeorhinus galeus</em> (Linnaeus 1758)</p><p>Family Triakidae, the houndsharks</p><p>Also called tope, or school shark</p></details><details><summary>Where it lives</summary><p>Temperate seas worldwide, but not the tropics</p><p>On this coast from British Columbia to Baja California</p><p>Inshore to about 500 m</p></details><details><summary>How big and how old</summary><p>To about 2 m</p><p>Lives past fifty years</p><p>Females mature at around ten years</p></details><details><summary>How it breeds</summary><p>Live bearing, without a placenta</p><p>Around thirty pups in a litter</p><p>Pupping happens in shallow bays</p><p>Only breeds every second or third year</p></details><details><summary>Worth knowing</summary><p>The 1940s liver oil boom nearly emptied the California coast</p><p>Synthetic vitamin A ended the fishery, not regulation</p><p>Slow breeding makes recovery a matter of decades</p></details><div class=\"te-cut\"><details><summary>Where this identification came from</summary><p>Identified from this photograph alone</p><p>The terminal caudal lobe carried the call</p><p>No locality recorded</p><p>Not yet reviewed</p></details></div>",
     "VidTitle": "Soupfin shark — Galeorhinus galeus",
     "Mode": "L",
@@ -48422,7 +48422,7 @@
     "FtextJunk": "13",
     "DictSize": "0",
     "VidRange": "text",
-    "cell": ""
+    "cell": "3c"
   },
   {
     "UID": "2179",
@@ -48609,7 +48609,7 @@
     "ftextSize": "210",
     "FtextJunk": "13",
     "DictSize": "0",
-    "cell": "",
+    "cell": "2a",
     "VidRange": "text"
   },
   {
@@ -48671,9 +48671,11 @@
     "link": "",
     "show": "1",
     "DateAdded": "2026-09-02 17:26:27",
-    "DateModified": "2026-09-03 01:43:03",
-    "tags": [],
-    "ltype": "f1",
+    "DateModified": "2026-09-03 14:15:01",
+    "tags": [
+      "balanidae"
+    ],
+    "ltype": "f2",
     "ftext": "<p style=\"text-align:center;margin:0 0 10px 0;\"><img src=\"https://media.sealifeandmore.com/flashimages/20260902_102341_nameAssignment.jpg\" alt=\"\" style=\"max-width:100%;max-height:82vh;height:auto;border-radius:8px;\"></p><hr><h1>Acorn barnacle</h1><p>Family <em>Balanidae</em></p><p>A white plated cone cemented to the rock</p><p>The dark feathery fan is its legs, out feeding</p><div class=\"te-cut\"><p><small>family confidence good, species not reachable from this shot. Possibly <em>Balanus nubilus</em> on size and the orange mantle. Locality assumed.</small></p></div><hr><details><summary>That fan is a set of legs, not tentacles</summary><h3>Cirri</h3><p>Six pairs of jointed feathery legs</p><p>They sweep the water and pass food to the mouth</p><p>They retract into the shell in a blink</p><p>A tentacle would not be jointed or paired</p></details><details><summary>A barnacle is a crustacean, not a mollusk</summary><h3>What it actually is</h3><p>A relative of crabs and shrimp</p><p>The shell is a house it secretes, not a body part</p><p>A snail or clam shell is part of the animal</p><p>The larva swims and looks like a shrimp</p></details><details><summary>It is glued down by its head</summary><h3>Cemented for life</h3><p>The larva picks a spot and cements its forehead to it</p><p>It never moves again</p><p>The cement is one of the strongest known in nature</p><p>So it kicks food into its mouth lying on its back</p></details><details><summary>The orange is the animal, the white is the house</summary><h3>Reading this picture</h3><p>White overlapping plates make the cone</p><p>The orange rim is living mantle at the opening</p><p>Two more plates close the top like double doors</p></details><details><summary>Acorn or goose is the first split</summary><h3>Telling the two apart</h3><p>An acorn barnacle sits flat on the rock</p><p>A goose barnacle stands on a fleshy stalk</p><p>This one has no stalk</p></details><div class=\"te-cut\"><details><summary>What the picture cannot settle</summary><h3>Not visible here</h3><p>Plate counts and suture detail</p><p>The size of the animal</p><p>Where it was taken</p></details></div><hr><h2>Acorn barnacle</h2><details><summary>What it is called</summary><p>Family <em>Balanidae</em>, the acorn barnacles</p><p>Class Cirripedia within the crustaceans</p><p>Cirripedia means fringe footed</p></details><details><summary>Where it lives</summary><p>Rock, pilings, hulls and whales, worldwide</p><p>Mostly the intertidal and shallow subtidal</p><p>The higher on the shore, the longer it waits between meals</p></details><details><summary>How it lives</summary><p>Filter feeds by sweeping the water</p><p>Feeds only when covered by the tide</p><p>Clamps shut and holds water when the tide is out</p></details><details><summary>How it breeds</summary><p>Cemented down, so it cannot go looking for a mate</p><p>It reaches instead, with a very long extensible penis</p><p>Longest for its body size of any animal</p><p>Larvae swim away, then cement themselves down in turn</p></details><details><summary>Worth knowing</summary><p>Barnacle cement is studied for surgical glue</p><p>Fouling on ship hulls costs fuel worldwide</p><p>Darwin spent eight years on barnacles before publishing on evolution</p></details><div class=\"te-cut\"><details><summary>Where this identification came from</summary><p>Identified from this photograph alone</p><p>Family is secure, species is not</p><p>No locality recorded</p><p>Not yet reviewed</p></details></div>",
     "VidTitle": "Acorn barnacle — Balanidae",
     "Mode": "L",

@@ -3198,6 +3198,16 @@ window.ltypeBucket = ltypeBucket;
 const FLASH_LTYPE_RE = /^f\d*$/;
 window.FLASH_LTYPE_RE = FLASH_LTYPE_RE;
 
+// (dev0891) The rung number for a flash bucket, or null off the ladder. Bare
+// 'f' (the legacy MakeCard value) counts as f1 -- it already carries an
+// answer, the same rule _tPromoteFlashLtype uses to decide where it joins.
+function _flashRung(bucket) {
+  if (!FLASH_LTYPE_RE.test(bucket)) return null;
+  const digits = bucket.slice(1);
+  return digits === '' ? 1 : +digits;
+}
+window._flashRung = _flashRung;
+
 function rowMatchesFilter(row) {
   // (dev0538) Top-of-T kind dropdown — an independent gate AND'd with f/F below.
   if (_kindFilter && rowKindFilter(row) !== _kindFilter) return false;
@@ -3274,7 +3284,15 @@ function rowMatchesFilter(row) {
       const b = ltypeBucket(row);
       // (dev0874) '*flash' is a pattern pill, not an ltype value — it stands for
       // the whole f0/f1/f2/f3 ladder (and legacy 'f'). Still an OR, like the rest.
-      if (!lts.includes(b) && !(lts.includes('*flash') && FLASH_LTYPE_RE.test(b))) return false;
+      // (dev0891) '*flash>=N' is its dropdown successor: this rung or higher.
+      // The dropdown only ever holds one selection at a time (see
+      // renderLtypePills), so in practice at most one such token is present.
+      const rungTok = lts.find(x => /^\*flash>=\d$/.test(x));
+      const rungOk = !!rungTok && (function () {
+        const r = _flashRung(b);
+        return r !== null && r >= +rungTok.slice(7);
+      })();
+      if (!lts.includes(b) && !(lts.includes('*flash') && FLASH_LTYPE_RE.test(b)) && !rungOk) return false;
     }
     return true;
   }
@@ -3660,36 +3678,86 @@ function _tFindTaxonTag(sci) {
       || null;
 }
 
-// Returns a short phrase for the toast, or '' when there was nothing to do.
+// (dev0891) Attaches the species tag and returns the tag record (or null) —
+// no toast text any more. THE CHIP THAT APPEARS IN T'S TAGS COLUMN IS THE
+// success indicator; a toast on top of a chip that is already visible said
+// the same thing twice.
 //
 // CREATING the tag is what makes this useful: only four of the first dozen card
 // species already had one, so a lookup-only version would do nothing eleven
-// times out of twelve. It creates the SCIENTIFIC NAME ONLY. `common` is left
-// empty on purpose — whether a common name is capitalised is a curated
-// judgement (lowercase unless proper-noun derived), not something to infer from
-// a card, and D is where that gets decided. createTag guesses kind and rank
-// from the label shape, which is why a genus, a family and a species all land
-// correctly without being told apart here.
-function _tPromoteSpeciesChip(row) {
+// times out of twelve. createTag guesses kind and rank from the label shape,
+// which is why a genus, a family and a species all land correctly without
+// being told apart here. `common` is still never set HERE — that is
+// _tEnrichSpeciesTag's job below, and it runs after this returns.
+function _tPromoteSpeciesChip(row, sp) {
   const L = window.tagsLib;
-  if (!L) return '';
-  const sp = _tCardSpecies(row);
-  if (!sp) return '';
+  if (!L || !sp) return null;
   let tag = _tFindTaxonTag(sp.sci);
-  let made = false;
   if (!tag) {
     let res = null;
     try { res = L.createTag({ label: sp.sci }); } catch (_) {}
-    if (!res || !res.ok) return '⚠ could not make a tag for ' + sp.sci;
+    if (!res || !res.ok) return null;
     tag = L.get(res.id);
-    made = true;
   }
-  if (!tag) return '';
+  if (!tag) return null;
   if (!Array.isArray(row.tags)) row.tags = [];
-  if (row.tags.includes(tag.id)) return 'already tagged ' + tag.label;
-  row.tags = [...row.tags, tag.id];
-  return (made ? '＋ NEW tag ' : '🏷 ') + tag.label
-       + (made ? ' — set its common name in D' : '');
+  if (!row.tags.includes(tag.id)) row.tags = [...row.tags, tag.id];
+  return tag;
+}
+
+// (dev0891) ── THE ANCESTOR CHAIN AND THE COMMON NAME ──────────────────────
+// Runs AFTER the tag is already attached and the row already saved, so a slow
+// or failed network call never delays the click that promoted the card —
+// the ltype cell and the new chip are already on screen by the time this
+// starts. Nothing here needs to be seen succeeding: the chip already said so.
+//
+// TWO THINGS, in order, and each is a no-op if there is nothing to do:
+//
+//   1. THE CHAIN. resolveTaxon + applyChainImport is exactly what the
+//      Dictionary's own 🚀 Apply All button runs — same WoRMS-then-GBIF
+//      lookup, same dedup against existing tags, same ecology-group and
+//      kingdom-root wiring, same alias hygiene. Reusing it (rather than a
+//      thinner copy) is what makes a right-click promotion put a species
+//      under its family and order in D exactly the way a manual lookup would.
+//      Only fires on an EXACT or FUZZY match — a HIGHERRANK or failed lookup
+//      wires nothing rather than filing the tag under a guess.
+//
+//   2. THE COMMON NAME, the one Phil asked for by name (UID 2190, "acorn
+//      barnacle"). applyChainImport already sets a common name from a WoRMS/
+//      GBIF vernacular when the chain lookup found one and the tag still
+//      lacks one — that runs first because it is a curated register. Only if
+//      the tag STILL has no common name after that does the card's own <h1>
+//      get used. Just the FIRST character is de-capitalised: it is capital
+//      only because an <h1> heading is always capitalised, not because the
+//      name is a proper noun, and lowercasing more than that would wreck
+//      "Anna's hummingbird" or "California sheephead". A card-derived common
+//      name is a starting point, not a final curatorial judgement — nothing
+//      stops it being corrected in D later, same as a GBIF vernacular would be.
+async function _tEnrichSpeciesTag(tagId, cardCommon) {
+  const L = window.tagsLib;
+  if (!L || typeof L.get !== 'function') return;
+  const tag = L.get(tagId);
+  // Only a real taxon gets a taxonomic chain. createTag falls back to
+  // kind:'topic' when guessTaxonShape doesn't recognise the label shape, and
+  // filing a topic tag under a kingdom would be wrong, not just unhelpful.
+  if (!tag || tag.kind !== 'taxon') return;
+  try {
+    if (typeof L.resolveTaxon === 'function' && typeof L.applyChainImport === 'function') {
+      const rr = await L.resolveTaxon(tag.label, { vernacular: true });
+      const res = rr && rr.primary;
+      if (res && (res.matchType === 'EXACT' || res.matchType === 'FUZZY')) {
+        await L.applyChainImport(tagId, res, { withAliasAndCommon: true });
+      }
+    }
+  } catch (_) {}
+  try {
+    const now = L.get(tagId);
+    if (now && !now.common && cardCommon) {
+      const c = cardCommon.charAt(0).toLowerCase() + cardCommon.slice(1);
+      if (typeof L.updateTag === 'function') L.updateTag(tagId, { common: c });
+    }
+  } catch (_) {}
+  render();
 }
 
 function _tPromoteFlashLtype(di) {
@@ -3707,17 +3775,19 @@ function _tPromoteFlashLtype(di) {
     return true;                       // ours either way: no row menu
   }
   const next = 'f' + (n + 1);
-  const WHAT = { f1: 'identified', f2: 'reviewed by you', f3: 'expert reviewed' };
   row.ltype = next;
-  // (dev0890) f2 and above carry the species as a tag. Done BEFORE save() so
-  // the row and the dictionary land in one write, not two.
-  const chip = (n + 1 >= 2) ? _tPromoteSpeciesChip(row) : '';
+  // (dev0891) f2 and above carry the species as a tag, attached synchronously
+  // so it lands in the SAME write as the ltype flip. The chain + common-name
+  // enrichment is network-bound and runs after, in the background — see
+  // _tEnrichSpeciesTag. No toast: the ltype cell changing and the chip
+  // appearing in the tags column are both already on screen, and saying so a
+  // third time in a popup was the thing Phil asked to remove.
+  const sp  = (n + 1 >= 2) ? _tCardSpecies(row) : null;
+  const tag = sp ? _tPromoteSpeciesChip(row, sp) : null;
   row.DateModified = isoNow();
   save();
   render();
-  toast('🃏 ' + (row.VidTitle || ('UID ' + row.UID))
-      + '\n   ' + cur + ' → ' + next + '   (' + WHAT[next] + ')'
-      + (chip ? '\n   ' + chip : ''), chip ? 4000 : 2500);
+  if (tag) _tEnrichSpeciesTag(tag.id, sp.common);
   return true;
 }
 
@@ -6468,30 +6538,64 @@ document.getElementById('clearFilterBtn').addEventListener('click', () => {
       const v = ltypeBucket(r);
       counts.set(v, (counts.get(v) || 0) + 1);
     }
-    const vals = [...counts.keys()].sort((a, b) =>
-      (a === 'none') - (b === 'none') || counts.get(b) - counts.get(a));
-    // (dev0874) One pill for the whole flash-card ladder. A card's ltype records
-    // how far along it is (f0 swept → f1 identified → f2 reviewed → f3 expert),
-    // so the individual pills are the worklist — but building a GRID of cards
-    // wants all of them at once, and clicking four pills for that is silly.
-    // '*flash' is a pseudo-value: rowMatchesFilter tests it as a pattern, not as
-    // an ltype, so it ORs with the ordinary pills like everything else here.
-    let flashN = 0;
-    for (const [v, n] of counts) if (FLASH_LTYPE_RE.test(v)) flashN += n;
-    const flashPill = flashN
-      ? '<button type="button" class="fb-toggle" data-ltype="*flash" title="'
-        + flashN + ' flash-card row(s) — every f0/f1/f2/f3 at once">🃏 flash</button>'
-      : '';
-    ltypeBar.innerHTML = flashPill + vals.map(v =>
-      '<button type="button" class="fb-toggle" data-ltype="' + esc(v) + '" title="'
-      + counts.get(v) + ' row(s)">' + esc(v) + '</button>').join('');
+    // (dev0891) The individual flash rungs (f0/f1/f2/f3/f4, and legacy bare
+    // 'f') no longer get their own pill — the dropdown below is now the only
+    // way to pick a rung, exact or "and above". Left in `vals` they would
+    // have been a second, redundant control for the same thing.
+    const vals = [...counts.keys()]
+      .filter(v => !FLASH_LTYPE_RE.test(v))
+      .sort((a, b) => (a === 'none') - (b === 'none') || counts.get(b) - counts.get(a));
+    ltypeBar.innerHTML = '<select class="fb-toggle fb-flash-select" id="fbFlashSelect"></select>'
+      + vals.map(v =>
+        '<button type="button" class="fb-toggle" data-ltype="' + esc(v) + '" title="'
+        + counts.get(v) + ' row(s)">' + esc(v) + '</button>').join('');
+    // (dev0891) f0..f4 offered ALWAYS, not just for rungs present in the data
+    // -- f4 has no rows yet (the rung itself is still just a plan), and a
+    // control that only appears once the first row reaches it is not there
+    // when you need to build toward it.
+    const sel = document.getElementById('fbFlashSelect');
+    if (sel) {
+      const rungCount = (n) => {
+        let c = 0;
+        for (const [v, ct] of counts) if (_flashRung(v) === n) c += ct;
+        return c;
+      };
+      const exactOpts = [0, 1, 2, 3, 4].map(n =>
+        '<option value="f' + n + '">f' + n + ' only (' + rungCount(n) + ')</option>').join('');
+      const geOpts = [0, 1, 2, 3].map(n => {
+        let c = 0;
+        for (const [v] of counts) { const r = _flashRung(v); if (r !== null && r >= n) c += counts.get(v); }
+        return '<option value="*flash>=' + n + '">'
+          + (n === 0 ? '≥f0 · all flash cards' : '≥f' + n) + ' (' + c + ')</option>';
+      }).join('');
+      sel.innerHTML = '<option value="">🃏 flash…</option>' + exactOpts
+        + '<option disabled>──────────</option>' + geOpts;
+    }
     paintLtype();
   }
   function paintLtype() {
     if (!ltypeBar) return;
     ltypeBar.querySelectorAll('[data-ltype]').forEach(b =>
       b.classList.toggle('on', ltype.includes(b.dataset.ltype)));
+    // (dev0891) Reflect whatever flash token is currently in the filter back
+    // onto the dropdown -- it can arrive via _lastRowFilter restore same as
+    // any other pill, and the select has to show it, not just silently hold
+    // whatever it last displayed.
+    const sel = document.getElementById('fbFlashSelect');
+    if (sel) sel.value = ltype.find(v => /^f[0-4]$/.test(v) || /^\*flash>=\d$/.test(v)) || '';
   }
+  if (ltypeBar) ltypeBar.addEventListener('change', e => {
+    // (dev0891) A <select> replaces its own previous choice -- remove ANY
+    // prior flash token (exact or >=) before adding the new one, so picking a
+    // new rung doesn't OR onto the last one the way the button pills do.
+    const sel = e.target.closest('#fbFlashSelect');
+    if (!sel) return;
+    for (let i = ltype.length - 1; i >= 0; i--) {
+      if (/^f[0-4]$/.test(ltype[i]) || ltype[i] === '*flash' || /^\*flash>=\d$/.test(ltype[i])) ltype.splice(i, 1);
+    }
+    if (sel.value) ltype.push(sel.value);
+    paintLtype(); applyLive();
+  });
   if (ltypeBar) ltypeBar.addEventListener('click', e => {
     const b = e.target.closest('[data-ltype]');
     if (!b) return;

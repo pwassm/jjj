@@ -8169,5 +8169,14 @@
     "rank": "species",
     "common": "",
     "extinct": false
+  },
+  {
+    "id": "balanidae",
+    "label": "Balanidae",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
   }
 ]

@@ -174,6 +174,8 @@ html.user-mode body { background: #0a0a14; }
 .fb-toggle { padding:2px 9px; border-radius:11px; cursor:pointer; font-size:11px; font-family:monospace; white-space:nowrap; border:1px solid #456; background:#0a0a1a; color:#9ab; outline:none; }
 .fb-toggle:hover { border-color:#8ad; color:#cde; }
 .fb-toggle.on { background:rgba(120,200,140,0.22); border-color:#6c8; color:#cfd; font-weight:bold; }
+.fb-flash-select { appearance:none; -webkit-appearance:none; padding-right:18px; }
+.fb-flash-select option { background:#0a0a1a; color:#cde; }
 .vp-btn { border:1px solid #06f; background:#113; color:#8cf; padding:6px 10px; font-size:14px; cursor:pointer; border-radius:4px; font-family:monospace; min-width:32px; text-align:center; }
 .vp-btn:hover { background:#224; }
 
@@ -365,7 +367,7 @@ td.editing input {
 html.grid-clean #gridControls,
 html.grid-clean #uid-badge,
 html.grid-clean #ver-badge { display:none !important; }
-/* (dev0889) In G the badges lie on top of the pictures. The UID chip is a dev
+/* (dev0891) In G the badges lie on top of the pictures. The UID chip is a dev
    readout with nothing to say about the grid, so it goes; the version chip
    stays (it is how you tell a stale cache) but lifts clear of the bottom edge,
    where transparent overlays and the back arrow live. Both are keyed off
@@ -1127,7 +1129,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0890';
+  window.HELP_VERSION_STR = 'dev0891';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
