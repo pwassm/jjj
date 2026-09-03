@@ -460,6 +460,12 @@ html.grid-open #ver-badge { bottom:110px; }
 }
 .te-slide[style*="color:"] .te-xall { color: inherit; }
 
+/* (dev0902) Tick boxes (.te-cb) are deliberately NOT here. core.js owns
+   _SAL_CB_CSS and injects it, so the main document and the V reader's srcdoc
+   iframe share one copy of the rules — rather than the hand-kept duplicate the
+   .te-xall block above needs (index.html here, vp.js _ftStyles there), which
+   has already drifted once. */
+
 /* (dev0249) Deep-link routing classes. Set by boot.js BEFORE first paint
    based on ?i=NNN, so the table view never flashes while we wait for
    data load + V mount. .deep-uid hides T chrome; .locked-mode adds
@@ -1129,7 +1135,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0901';
+  window.HELP_VERSION_STR = 'dev0902';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

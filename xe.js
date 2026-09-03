@@ -2649,6 +2649,15 @@ function textEditorPreviewSlide(htmlOverride) {
         ← Swipe on this bar to go back · Esc to go back
       </span>
       <div style="display:flex;gap:8px;align-items:center;">
+        <!-- (dev0902) Tick-box view control. Hidden unless this slide
+             actually carries boxes, so it never clutters an ordinary
+             preview. Cycles off → shown → ticked-only; core.js owns both
+             the labels and the CSS classes that do the work. -->
+        <button id="teSlideCbMode" style="display:none;background:rgba(0,40,80,0.45);border:1px solid #6af;color:#9cf;
+                padding:4px 12px;border-radius:4px;cursor:pointer;font-family:monospace;font-size:12px;"
+                title="Show or hide the quiz/review tick boxes on this slide. Third press leaves only the lines you have ticked. Clicking a box here ticks it in the editor behind, so it is saved with the slide.">
+          &#9744; Boxes
+        </button>
         <button id="teSlideshowFromSlide" style="background:rgba(80,40,0,0.45);border:1px solid #fc8;color:#fc8;
                 padding:4px 12px;border-radius:4px;cursor:pointer;font-family:monospace;font-size:12px;"
                 title="Play embedded images as a full-window slideshow (5s/slide, click or Esc to exit).">
@@ -2788,6 +2797,8 @@ function textEditorPreviewSlide(htmlOverride) {
     // (dev0638) drop the floating page/exit buttons (body-level, not in ov)
     const _nb = document.getElementById('teSlideNavBtns');
     if (_nb) _nb.remove();
+    // (dev0902) hand the tick write-back back to whoever had it
+    window._salCbApply = _cbPrevApply;
     ov.remove();
   }
   function onKey(e) {
@@ -2852,6 +2863,41 @@ function textEditorPreviewSlide(htmlOverride) {
       .addEventListener('click', e => { e.stopPropagation(); close(); });
     document.body.appendChild(_navHolder);
   })();
+  // (dev0902) TICK BOXES in the preview.
+  //
+  // Clicks are already handled — core.js's delegated .te-cb listener is on the
+  // document and this preview is a plain div in it (unlike the V reader, which
+  // is a srcdoc iframe and has to be wired separately). What this adds is the
+  // WRITE-BACK: the preview renders _api.getFtext(), so the Nth box on screen
+  // is the Nth checkBox node in the live document, and a tick made here goes
+  // straight into the editor — where autosave persists it like any other edit.
+  // Without this the tick would look right and be gone on Esc.
+  const _cbBtn = ov.querySelector('#teSlideCbMode');
+  let _cbMode = 'off';
+  if (_cbBtn && typeof window._salCbHasBoxes === 'function' && window._salCbHasBoxes(html)) {
+    _cbBtn.style.display = '';
+    const paintCb = () => {
+      const L = window._SAL_CB_LABELS || {};
+      _cbBtn.textContent = L[_cbMode] || '\u2610 Boxes';
+      if (typeof window._salCbSetMode === 'function') window._salCbSetMode(_content, _cbMode);
+    };
+    _cbBtn.onclick = () => {
+      _cbMode = (typeof window._salCbNextMode === 'function')
+        ? window._salCbNextMode(_cbMode) : 'on';
+      paintCb();
+    };
+    paintCb();
+  }
+  // Owner hook: set while this preview is up, restored on close so a later
+  // V reader is not left writing into a closed editor.
+  const _cbPrevApply = window._salCbApply;
+  window._salCbApply = function (idx, checked) {
+    if (window.XE2 && typeof window.XE2.setCheckboxByIndex === 'function') {
+      return window.XE2.setCheckboxByIndex(idx, checked);
+    }
+    return false;
+  };
+
   ov.querySelector('#teSlideClose').onclick = close;
   // (zip0228) Slideshow button on the Xs top bar — plays images from the
   // ftext currently being previewed. stopPropagation so the overlay's

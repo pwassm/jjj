@@ -8219,6 +8219,184 @@ function _salWireXAll(doc) {
 window._salWireXAll = _salWireXAll;
 _salWireXAll(document);
 
+// ═════════════════════════════════════════════════════════════════════════════
+// (dev0902) TICK BOXES — .te-cb
+//
+// Two-colour check boxes an author drops at the START of a line in Xe:
+//
+//   kind 'q'  BLUE  ☐/☑  — Phil's flag: use this line in a quiz.
+//   kind 'r'  RED   ☐/☒  — a reviewer's flag: I question this line.
+//
+// In ftext each box is one `<span class="te-cb" data-cb="q" data-checked="1">`,
+// and in the xe2 schema one inline atom (checkBox) — same shape as the ▼▼
+// expand-all icon (te-xall, dev0763), and for the same reason: without a schema
+// node the span is dropped on the way IN and on the way OUT, so opening a slide
+// and letting autosave fire would DELETE every box on it.
+//
+// The glyph lives in the span's TEXT, not in CSS content, so a context that
+// never received the stylesheet — a grid thumbnail, a copy-paste out of the
+// page — still shows a box rather than a blank. Every toggle therefore rewrites
+// data-checked AND textContent, the same pairing _salXAllToggle uses.
+//
+// WHERE A TICK GOES (dev0902 scope, deliberately small):
+//   Xe            → the editor document → autosave → ml.json.        persists
+//   Xs preview    → pushed back into the live Xe document (XE2).     persists
+//   V reader, dev → row.ftext + save().                              persists
+//   public site   → the DOM only; gone on reload.
+// The public half is a visual affordance, not a data channel. Anything that
+// has to reach Phil from a stranger's browser needs a backend, which this is
+// explicitly not.
+const _SAL_CB_GLYPH = { q: ['☐', '☑'], r: ['☐', '☒'] };
+
+function _salCbKind(k) { return k === 'r' ? 'r' : 'q'; }
+function _salCbGlyph(kind, checked) { return _SAL_CB_GLYPH[_salCbKind(kind)][checked ? 1 : 0]; }
+window._salCbGlyph = _salCbGlyph;
+
+// The rules, in one place, because FOUR documents need them and the te-xall
+// precedent (index.html plus a hand-copied duplicate inside vp.js's srcdoc) has
+// already drifted once. core.js injects them here for the main document and
+// vp.js pastes this same string into its iframe.
+//
+// Boxes are HIDDEN by default everywhere. A reader on sealifeandmore.com must
+// see clean prose — two glyphs in front of every line is exactly the "wouldn't
+// have good appearance" problem — so visibility is opt-in per render:
+//   .sal-cb-on    boxes shown
+//   .sal-cb-only  boxes shown, and every BOXED line that is not ticked is
+//                 hidden. Lines carrying no box at all stay put, so headings
+//                 and intro text still frame what is left.
+// The editor is the exception: in Xe a box is content being edited, always
+// visible. Colours are !important because a coloured .te-slide section forces
+// color:inherit onto every span inside it (dev0619) — which for these would
+// destroy the one thing that tells the two kinds apart.
+const _SAL_CB_CSS = [
+  '.te-cb{display:none;font-size:1.15em;line-height:1;vertical-align:-0.08em;',
+  'margin-right:0.22em;cursor:pointer;user-select:none;-webkit-user-select:none;}',
+  '.sal-cb-on .te-cb,.sal-cb-only .te-cb{display:inline-block;}',
+  '.te-cb[data-cb="q"]{color:#2563eb!important;}',
+  '.te-cb[data-cb="r"]{color:#d92626!important;}',
+  '.sal-cb-only :is(p,li,div,blockquote,h1,h2,h3,h4,h5,h6):has(> .te-cb):not(:has(> .te-cb[data-checked="1"])){display:none;}',
+  '#xe2Editor .te-cb,#teEditor .te-cb{display:inline-block;}',
+  '#xe2Editor .te-cb[data-cb="q"]{color:#6ab6ff!important;}',
+  '#xe2Editor .te-cb[data-cb="r"]{color:#ff7b7b!important;}'
+].join('');
+window._SAL_CB_CSS = _SAL_CB_CSS;
+
+(function _salInjectCbCss() {
+  if (document.getElementById('salCbStyles')) return;
+  const s = document.createElement('style');
+  s.id = 'salCbStyles';
+  s.textContent = _SAL_CB_CSS;
+  (document.head || document.documentElement).appendChild(s);
+})();
+
+// Number every box in a row's ftext so a tick made in a RENDER can be written
+// back to the right box in the SOURCE. Stamped in renderFtext, i.e. before
+// _salSplitSections cuts the slide into pages, so the index stays global to the
+// row even though the reader only ever holds one section on screen.
+//
+// The index survives the two transforms renderFtext applies ahead of it:
+// _salApplyCutBelow only deletes TRAILING content (everything it removes sorts
+// after every box that is still on screen), and _salFigureCaptions re-parents
+// nodes without reordering them.
+function _salStampCheckboxes(html) {
+  if (!html || html.indexOf('te-cb') < 0) return html || '';
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  const list = d.querySelectorAll('.te-cb');
+  if (!list.length) return html;
+  list.forEach((el, i) => el.setAttribute('data-cbi', String(i)));
+  return d.innerHTML;
+}
+window._salStampCheckboxes = _salStampCheckboxes;
+
+// Set the idx-th box in RAW ftext. Returns the new ftext, or null when the
+// index does not resolve — a null must be reported, never saved, because
+// writing a row's ftext back on a miss would be a silent data change.
+function _salSetCbInFtext(ftext, idx, checked) {
+  if (!ftext) return null;
+  const d = document.createElement('div');
+  d.innerHTML = ftext;
+  const el = d.querySelectorAll('.te-cb')[idx];
+  if (!el) return null;
+  if (checked) el.setAttribute('data-checked', '1'); else el.removeAttribute('data-checked');
+  el.textContent = _salCbGlyph(el.getAttribute('data-cb'), checked);
+  return d.innerHTML;
+}
+window._salSetCbInFtext = _salSetCbInFtext;
+
+// Flip one box in whatever document it is living in, then hand the change to
+// whoever owns this render. window._salCbApply is set by that owner (xe.js's Xs
+// preview, vp.js's reader) and cleared when it closes; unset means the tick is
+// visual only, which is what the public site gets.
+function _salCbToggle(el) {
+  if (!el) return;
+  const on = el.getAttribute('data-checked') !== '1';
+  if (on) el.setAttribute('data-checked', '1'); else el.removeAttribute('data-checked');
+  el.textContent = _salCbGlyph(el.getAttribute('data-cb'), on);
+  const i = parseInt(el.getAttribute('data-cbi'), 10);
+  if (Number.isFinite(i) && typeof window._salCbApply === 'function') {
+    try { window._salCbApply(i, on); } catch (e) { console.warn('[cb] write-back failed', e); }
+  }
+}
+window._salCbToggle = _salCbToggle;
+
+// Delegated, once per document — the same call wires the main page and the V
+// reader's iframe, exactly as _salWireXAll does above.
+function _salWireCheckboxes(doc) {
+  const d = doc || document;
+  if (!d || d._salCbWired) return;
+  d._salCbWired = true;
+  d.addEventListener('click', e => {
+    const t = (e.target && e.target.closest) ? e.target.closest('.te-cb') : null;
+    if (!t) return;
+    // Inside an editor a box is CONTENT, and xe2's own node view owns that
+    // click (it ticks the schema node, which is what actually gets saved).
+    if (t.closest('#xe2Editor,#teEditor')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _salCbToggle(t);
+  }, true);
+}
+window._salWireCheckboxes = _salWireCheckboxes;
+_salWireCheckboxes(document);
+
+// The three-way view control the Xs preview and the V reader both put in their
+// top bar. Cycling, not three buttons: it is a dev/reviewer affordance and the
+// bar is already crowded.
+const _SAL_CB_MODES = ['off', 'on', 'only'];
+const _SAL_CB_LABELS = {
+  off:  '☐ Boxes',
+  on:   '☑ Boxes shown',
+  only: '☑ Ticked only'
+};
+window._SAL_CB_MODES = _SAL_CB_MODES;
+window._SAL_CB_LABELS = _SAL_CB_LABELS;
+
+function _salCbNextMode(mode) {
+  const i = _SAL_CB_MODES.indexOf(mode);
+  return _SAL_CB_MODES[(i < 0 ? 0 : i + 1) % _SAL_CB_MODES.length];
+}
+window._salCbNextMode = _salCbNextMode;
+
+function _salCbSetMode(el, mode) {
+  if (!el || !el.classList) return;
+  _SAL_CB_MODES.forEach(m => el.classList.remove('sal-cb-' + m));
+  el.classList.add('sal-cb-' + (_SAL_CB_MODES.indexOf(mode) < 0 ? 'off' : mode));
+}
+window._salCbSetMode = _salCbSetMode;
+
+// Who gets the control at all: dev always, plus anyone handed a ?boxes=1 link.
+// That URL flag is how a reviewer works without a dev build — it reveals the
+// boxes, nothing else.
+function _salCbAllowed() {
+  try { if (/[?&]boxes=1(&|$)/.test(location.search)) return true; } catch (e) {}
+  return (typeof _isUserMode === 'function') ? !_isUserMode() : true;
+}
+window._salCbAllowed = _salCbAllowed;
+
+function _salCbHasBoxes(html) { return !!html && html.indexOf('te-cb') >= 0; }
+window._salCbHasBoxes = _salCbHasBoxes;
+
 // (dev0771) IN-COLLECTION LINKS (`v.709` / `c.<gname>` from Xe's link button,
 // written as this app's own `?i=` / `?c=` deep-links). Wired PER DOCUMENT, the
 // same shape as _salWireXAll above and for the same reason: the V reader builds
@@ -8310,7 +8488,10 @@ _salWireLinks(document);
 // parked notes on the next save. Editors call _linkifyHtml directly.
 function renderFtext(ftext) {
   if (!ftext) return '';
-  return _linkifyHtml(_salFigureCaptions(_salApplyCutBelow(ftext)));
+  // (dev0902) …then number every tick box, so a tick made in ANY render can be
+  // written back to the right box in the source. Last, because the two
+  // transforms above are the ones that could otherwise shift the count.
+  return _salStampCheckboxes(_linkifyHtml(_salFigureCaptions(_salApplyCutBelow(ftext))));
 }
 
 // (dev0278) ftext size / junk readout. "Junk" = bytes a cleanup would strip

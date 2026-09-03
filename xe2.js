@@ -380,6 +380,87 @@
     },
   });
 
+  // (dev0902) TICK BOX — the blue quiz flag and the red review flag an author
+  // drops at the START of a line. An inline atom, exactly like XAll above and
+  // for the same reason: without a schema node the span is invisible to
+  // ProseMirror, dropped on the way IN and on the way OUT, so opening a slide
+  // that already had boxes and letting autosave fire would delete every one.
+  //
+  // The glyph is the node's rendered TEXT rather than CSS content, so a render
+  // context that never got the stylesheet still shows a box (core.js's
+  // .te-cb block explains the whole contract). An atom has no content, so the
+  // parser ignores what is inside the span and never doubles it.
+  var CB_GLYPH = { q: ['☐', '☑'], r: ['☐', '☒'] };
+  function _cbGlyph(kind, checked) { return CB_GLYPH[kind === 'r' ? 'r' : 'q'][checked ? 1 : 0]; }
+
+  var CheckBox = Node.create({
+    name: 'checkBox',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    selectable: true,
+    addAttributes: function () {
+      return {
+        kind: {
+          default: 'q',
+          parseHTML: function (el) { return el.getAttribute('data-cb') === 'r' ? 'r' : 'q'; },
+          renderHTML: function (attrs) { return { 'data-cb': attrs.kind === 'r' ? 'r' : 'q' }; },
+        },
+        checked: {
+          default: false,
+          parseHTML: function (el) { return el.getAttribute('data-checked') === '1'; },
+          renderHTML: function (attrs) { return attrs.checked ? { 'data-checked': '1' } : {}; },
+        },
+      };
+    },
+    parseHTML: function () { return [{ tag: 'span[data-cb]' }]; },
+    renderHTML: function (p) {
+      return ['span', mergeAttributes(p.HTMLAttributes, { 'class': 'te-cb' }),
+              _cbGlyph(p.node.attrs.kind, p.node.attrs.checked)];
+    },
+    // Unlike the ▼▼ icon, a box is not inert in the editor: clicking it TICKS
+    // it. Ticking is the entire job of the thing, and doing it here (rather than
+    // only on the rendered slide) is what lets a pass through a card's notes be
+    // one screen of work. mousedown, not click, so the caret never lands inside
+    // the atom first; removing a box is the same toolbar button that made it.
+    addNodeView: function () {
+      return function (props) {
+        var cur = props.node;
+        var dom = document.createElement('span');
+        function paint() {
+          dom.className = 'te-cb';
+          dom.setAttribute('data-cb', cur.attrs.kind === 'r' ? 'r' : 'q');
+          if (cur.attrs.checked) dom.setAttribute('data-checked', '1');
+          else dom.removeAttribute('data-checked');
+          dom.textContent = _cbGlyph(cur.attrs.kind, cur.attrs.checked);
+          dom.title = (cur.attrs.kind === 'r' ? 'Review flag' : 'Quiz flag')
+                    + ' — click to ' + (cur.attrs.checked ? 'untick' : 'tick');
+        }
+        paint();
+        dom.addEventListener('mousedown', function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var pos = (typeof props.getPos === 'function') ? props.getPos() : null;
+          if (typeof pos !== 'number') return;
+          var ed = props.editor;
+          try {
+            ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, null,
+              { kind: cur.attrs.kind, checked: !cur.attrs.checked }));
+          } catch (e) { console.warn('[xe2] tick failed', e); }
+        });
+        return {
+          dom: dom,
+          update: function (node) {
+            if (node.type.name !== 'checkBox') return false;
+            cur = node; paint(); return true;
+          },
+          // Our own attribute/text writes above are not DOM drift.
+          ignoreMutation: function () { return true; },
+        };
+      };
+    },
+  });
+
   // (dev0632) text-align as a first-class attribute on paragraphs/headings —
   // the vendored bundle has no TextAlign extension, so a minimal global attr
   // serializes to style="text-align:…" (what Xs/G already render).
@@ -404,6 +485,7 @@
       StarterKit,
       TextAlignAttr,
       DetailsSummary, Details, Small, SlideSection, StyledDiv, TeCut, XAll,
+      CheckBox,
       Underline,
       // (dev0851) allowBase64: TipTap's Image parses with
       // `img[src]:not([src^="data:"])` by default, so a data: image was
@@ -1640,6 +1722,100 @@
     } catch (e) { _toast('That icon can’t go here'); }
   }
 
+  // (dev0902) ─ TICK BOXES ────────────────────────────────────────────────────
+  // Every text line the current selection touches. A bare cursor means the one
+  // line it sits on — no aiming, no selecting, which is the point: the box goes
+  // at the START of the line wherever in it the caret happens to be.
+  function _cbTargetBlocks(state) {
+    var sel = state.selection, out = [];
+    if (sel.empty) {
+      var $f = sel.$from, d = $f.depth;
+      while (d > 0 && !$f.node(d).isTextblock) d--;
+      var n = $f.node(d);
+      if (n && n.isTextblock) out.push({ node: n, start: $f.start(d) });
+      return out;
+    }
+    state.doc.nodesBetween(sel.from, sel.to, function (node, pos) {
+      if (node.isTextblock) out.push({ node: node, start: pos + 1 });
+    });
+    return out;
+  }
+
+  // Add or remove one colour of box on every target line.
+  //
+  // ONE BUTTON, BOTH DIRECTIONS: if even one target line is missing this colour
+  // the whole pass ADDS, so dragging down ten lines and clicking once boxes all
+  // ten; click again on a fully-boxed run and it strips them. That is the shape
+  // a bulk pass over a card's notes actually needs.
+  //
+  // Order is fixed q-then-r no matter which button is pressed first, so two
+  // boxes always line up in the same columns down the page — the blue one is
+  // always yours, the red one is always the reviewer's, at a glance.
+  function insertCheckBox(editor, kind) {
+    kind = kind === 'r' ? 'r' : 'q';
+    var state = editor.state;
+    var type = state.schema.nodes.checkBox;
+    if (!type) return;
+    var blocks = _cbTargetBlocks(state);
+    if (!blocks.length) { _toast('Put the cursor on a text line first'); return; }
+
+    // Read every line before changing any of them: `adding` has to be decided
+    // across the whole run, not per line.
+    var info = blocks.map(function (b) {
+      var off = 0, hit = null;
+      for (var i = 0; i < b.node.childCount; i++) {
+        var ch = b.node.child(i);
+        if (ch.type.name !== 'checkBox') break;   // leading run only
+        if (ch.attrs.kind === kind) hit = { node: ch, pos: b.start + off };
+        off += ch.nodeSize;
+      }
+      return { start: b.start, end: b.start + off, hit: hit };
+    });
+    var adding = info.some(function (x) { return !x.hit; });
+
+    // Descending document order, so an edit never shifts a position still to
+    // come. One transaction, so one undo step takes the whole pass back.
+    var tr = state.tr, n = 0;
+    info.slice().sort(function (a, b) { return b.start - a.start; }).forEach(function (x) {
+      try {
+        if (adding) {
+          if (x.hit) return;
+          // q owns the first slot; r goes after whatever leading boxes exist.
+          tr.insert(kind === 'q' ? x.start : x.end, type.create({ kind: kind, checked: false }));
+        } else {
+          tr.delete(x.hit.pos, x.hit.pos + x.hit.node.nodeSize);
+        }
+        n++;
+      } catch (e) { /* a line that can't take one is skipped, not fatal */ }
+    });
+    if (!n) { editor.commands.focus(); return; }
+    try { editor.view.dispatch(tr); }
+    catch (e) { _toast('A box can’t go on those lines'); return; }
+    var what = kind === 'r' ? 'Review' : 'Quiz';
+    _toast(what + ' box ' + (adding ? 'added to ' : 'removed from ')
+           + n + ' line' + (n === 1 ? '' : 's'));
+    editor.commands.focus();
+  }
+
+  // Push a tick made in the Xs PREVIEW back into the live document. The preview
+  // renders _api.getFtext(), so the Nth .te-cb on screen is the Nth checkBox
+  // node here — no id plumbing, and no way for the two to disagree.
+  function setCheckboxByIndex(idx, checked) {
+    if (!_api || !_api.editor) return false;
+    var ed = _api.editor, hit = null, n = 0;
+    ed.state.doc.descendants(function (node, pos) {
+      if (node.type.name !== 'checkBox') return;
+      if (n === idx) hit = { node: node, pos: pos };
+      n++;
+    });
+    if (!hit) return false;
+    try {
+      ed.view.dispatch(ed.state.tr.setNodeMarkup(hit.pos, null,
+        { kind: hit.node.attrs.kind, checked: !!checked }));
+    } catch (e) { return false; }
+    return true;
+  }
+
   // (dev0894) PASTE AS PLAIN TEXT. A browser copy of a web page brings avatars,
   // icons and pictures along with the words; the sanitizer keeps images because
   // most pastes want them. This button is the other choice: TEXT ONLY. The
@@ -1814,6 +1990,16 @@
       ['&bull;', 'Bullet list', function (e) { e.chain().focus().toggleBulletList().run(); }],
       ['1.', 'Numbered list', function (e) { e.chain().focus().toggleOrderedList().run(); }],
       ['|'],
+      // (dev0902) The two tick boxes. Blue is yours (quiz candidate), red is a
+      // reviewer's (questionable). Both sit at the START of the line and both
+      // buttons are add-and-remove, so a pass down a card is one click per line.
+      ['<span style="color:#6ab6ff;">&#9744;</span>&#8202;Q',
+       'BLUE quiz box at the start of the line the cursor is on \u2014 your flag for “this line could be a quiz question”. No selection needed. Click again on the same line to take it off. Highlight several lines to box them all at once. Alt+Q. Click a box to tick it; on a slide the boxes stay hidden until the reader turns them on.',
+       function (e) { insertCheckBox(e, 'q'); }],
+      ['<span style="color:#ff7b7b;">&#9744;</span>&#8202;R',
+       'RED review box at the start of the line the cursor is on \u2014 a reviewer’s flag for “I question this”. No selection needed. Click again on the same line to take it off. Highlight several lines to box them all at once. Alt+R. A line can carry both colours; blue always sits first.',
+       function (e) { insertCheckBox(e, 'r'); }],
+      ['|'],
       ['&#8676;', 'Align LEFT — selected text lines, or a selected (clicked) image floats left with text wrapping', function (e) { applyAlign(e, 'left'); }],
       ['&#8596;', 'Align CENTER — selected text lines, or a selected image on its own centered line', function (e) { applyAlign(e, 'center'); }],
       ['&#8677;', 'Align RIGHT — selected text lines, or a selected image floats right with text wrapping', function (e) { applyAlign(e, 'right'); }],
@@ -1945,6 +2131,13 @@
       '#xe2Editor .te-cut-below ~ *{background:rgba(200,50,50,0.13);opacity:0.7;}',
       '#xe2Editor .te-slide:has(.te-cut-below) ~ *{background:rgba(200,50,50,0.13);opacity:0.7;}',
       '#xe2Editor table{border-collapse:collapse;} #xe2Editor td,#xe2Editor th{border:1px solid #557;padding:4px 8px;}',
+      // (dev0902) Tick boxes. core.js owns the shared .te-cb rules — including
+      // the #xe2Editor override that keeps them visible here when every other
+      // context hides them, and the lighter blue/red that reads on this dark
+      // ground. These are the editor-only extras: a hover cue saying the glyph
+      // is a control rather than a character, and a glow on a ticked one.
+      '#xe2Editor .te-cb:hover{filter:brightness(1.4);}',
+      '#xe2Editor .te-cb[data-checked="1"]{text-shadow:0 0 6px currentColor;}',
       '#xe2Editor a{color:#7cf;}',
     ].join('\n');
     document.head.appendChild(s);
@@ -1972,6 +2165,15 @@
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyX') {
       e.preventDefault(); e.stopPropagation();
       if (_api && _api.editor) hideLine(_api.editor);
+      return;
+    }
+    // (dev0902) Alt+Q / Alt+R = the two tick boxes, same as their toolbar
+    // buttons. Both left-hand keys, and boxing a line is the most repeated
+    // action there is in a review pass — reaching for the toolbar each time is
+    // exactly what would stop it being used.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyQ' || e.code === 'KeyR')) {
+      e.preventDefault(); e.stopPropagation();
+      if (_api && _api.editor) insertCheckBox(_api.editor, e.code === 'KeyR' ? 'r' : 'q');
       return;
     }
     if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
@@ -2278,6 +2480,11 @@
     _undetail: undetail,
     _lineOutsideDetails: lineOutsideDetails,
     _toggleHide: toggleHide,
+    // (dev0902) tick boxes — _insertCheckBox for the headless suite, and
+    // setCheckboxByIndex so a tick made in the Xs PREVIEW lands in the live
+    // document (xe.js textEditorPreviewSlide wires it to window._salCbApply).
+    _insertCheckBox: insertCheckBox,
+    setCheckboxByIndex: setCheckboxByIndex,
     // (dev0773) exported so the in-collection link handler (core.js
     // _salWireLinks) can SAVE-and-close the editor before following a link,
     // instead of refusing. Same call the ✓ Save button makes.

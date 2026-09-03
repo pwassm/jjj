@@ -1582,10 +1582,18 @@ function gridOpenFullscreen(row, contained) {
       + 'touch-action:none;user-select:none;';
     topBar.innerHTML = '<span id="vp-html-hint" style="font-family:monospace;font-size:13px;color:#cde;'
       + 'pointer-events:none;">← Swipe right-to-left on this bar to return · Esc</span>'
+      + '<span style="display:flex;gap:8px;align-items:center;">'
+      + '<button id="vp-html-cbmode" style="display:none;background:#1a2e4a;'
+      + 'border:1px solid #6af;color:#9cf;padding:4px 12px;border-radius:4px;'
+      + 'cursor:pointer;font-family:monospace;font-size:13px;">\u2610 Boxes</button>'
       + '<button id="vp-html-close" style="background:#1a1a2e;border:1px solid #888;'
       + 'color:#ccc;padding:4px 12px;border-radius:4px;cursor:pointer;'
-      + 'font-family:monospace;font-size:13px;">✕ Close</button>';
+      + 'font-family:monospace;font-size:13px;">✕ Close</button></span>';
     content.appendChild(topBar);
+    // (dev0902) Which of off / on / only this reader is in. Read by the iframe
+    // onload below, because every section page builds a brand-new document and
+    // the class has to be re-stamped on each one.
+    let _vpCbMode = 'off';
 
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:absolute;top:48px;left:0;right:0;bottom:0;'
@@ -1740,6 +1748,14 @@ function gridOpenFullscreen(row, contained) {
           _vpWireReaderGestures(iframe.contentDocument);
         } catch (_) {}
         try {
+          // (dev0902) …and the tick boxes, for the same reason: this srcdoc is a
+          // separate document, so core.js's document-level .te-cb listener never
+          // sees a click in here. Re-stamp the view mode too — showSect rebuilds
+          // the whole document for every page.
+          if (typeof window._salWireCheckboxes === 'function') window._salWireCheckboxes(iframe.contentDocument);
+          if (typeof window._salCbSetMode === 'function') {
+            window._salCbSetMode(iframe.contentDocument.body, _vpCbMode);
+          }
           if (typeof window._salWireXAll === 'function') window._salWireXAll(iframe.contentDocument);
           // (dev0771) …and the same for in-collection links (v.709 / c.gname).
           // Without this they are inert on a full-window slide: the srcdoc is a
@@ -1777,6 +1793,51 @@ function gridOpenFullscreen(row, contained) {
         // (zip0168) Linkify URL patterns at render time so old ftext also
         // gets clickable links, not just freshly-pasted articles.
         const ftLink = (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
+        // (dev0902) TICK BOXES in the reader.
+        //
+        // The control appears only when this slide has boxes and this viewer is
+        // allowed to see them. A tick is written back to row.ftext and saved — but
+        // only in dev: on the public site window._salCbApply stays null, and
+        // core.js's toggle then leaves the change in the DOM, where it dies on
+        // reload. That is the whole dev0902 bargain — a reviewer's flag reaching
+        // Phil from a stranger's browser is a backend job, and this is not it.
+        //
+        // renderFtext stamped every box with data-cbi BEFORE the slide was split
+        // into pages, so the index a click carries addresses the right box in the
+        // full row even though only one section is ever on screen.
+        const _cbBtn = topBar.querySelector('#vp-html-cbmode');
+        const _cbOk = !!_cbBtn && typeof window._salCbAllowed === 'function'
+                   && window._salCbAllowed()
+                   && typeof window._salCbHasBoxes === 'function'
+                   && window._salCbHasBoxes(ftLink);
+        if (_cbOk) {
+          _cbBtn.style.display = '';
+          _cbBtn.title = 'Show or hide the quiz/review tick boxes on this page.'
+            + ' Third press leaves only the lines that are ticked.';
+          _cbBtn.onclick = () => {
+            _vpCbMode = (typeof window._salCbNextMode === 'function')
+              ? window._salCbNextMode(_vpCbMode) : 'on';
+            const L = window._SAL_CB_LABELS || {};
+            _cbBtn.textContent = L[_vpCbMode] || '\u2610 Boxes';
+            try { window._salCbSetMode(iframe.contentDocument.body, _vpCbMode); } catch (_) {}
+          };
+        }
+        const _cbDev = _cbOk && row && row.UID != null
+                    && (typeof _isUserMode !== 'function' || !_isUserMode());
+        window._salCbApply = _cbDev ? function (idx, checked) {
+          const next = window._salSetCbInFtext(row.ftext, idx, checked);
+          // A miss means the on-screen index did not resolve in the source. Say
+          // so and write NOTHING — silently saving the wrong box would be a data
+          // change nobody asked for.
+          if (next == null) {
+            if (typeof toast === 'function') toast('\u26A0 Tick not saved — box not found in this row', 1600);
+            return false;
+          }
+          row.ftext = next;
+          row.DateModified = (typeof isoNow === 'function') ? isoNow() : new Date().toISOString();
+          if (typeof save === 'function') { try { save(); } catch (e) { console.warn('[cb] save failed', e); } }
+          return true;
+        } : null;
         // (dev0249) Iframe gets its own document — global CSS from index.html
         // does NOT reach it. Inject the cross-context rules explicitly:
         //   • .te-cut → hidden (matches the AHK-style "/*" cut behavior)
@@ -1796,6 +1857,10 @@ function gridOpenFullscreen(row, contained) {
           + 'font-size:1.15em;line-height:1;vertical-align:-0.06em;color:#2563eb;'
           + 'cursor:pointer;user-select:none;-webkit-user-select:none;}'
           + '.te-slide[style*="color:"] .te-xall{color:inherit;}'
+          // (dev0902) Tick boxes. core.js is the single source for these rules —
+          // the te-xall block above is hand-copied from index.html and the two have
+          // already drifted once, which is the mistake not repeated here.
+          + (window._SAL_CB_CSS || '')
           + 'table{border-collapse:collapse;margin:12px 0;max-width:100%;}'
           + 'th,td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}'
           + 'th{font-weight:bold;}'
@@ -2269,6 +2334,12 @@ function gridOpenFullscreen(row, contained) {
 }
 
 function vpClose() {
+  // (dev0902) The reader owned the tick write-back while it was up; anything
+  // opened after it must not inherit a closure over this row. UNLESS Xs is on
+  // top: a designation page tears this viewer down mid-preview, and Xs owns the
+  // hook then (it pushes ticks into the live editor, and restores whatever it
+  // displaced on its own close).
+  if (!document.getElementById('teSlideOverlay')) window._salCbApply = null;
   // (dev0249) Locked-link mode: V was opened via ?i=NNN without /unlock.
   // Refuse to close — viewer can only see the one shared item; no path to
   // T/G/C.
