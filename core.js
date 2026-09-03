@@ -3711,9 +3711,24 @@ function _tPromoteSpeciesChip(row, sp) {
 // the ltype cell and the new chip are already on screen by the time this
 // starts. Nothing here needs to be seen succeeding: the chip already said so.
 //
-// TWO THINGS, in order, and each is a no-op if there is nothing to do:
+// TWO THINGS, and each is a no-op if there is nothing to do:
 //
-//   1. THE CHAIN. resolveTaxon + applyChainImport is exactly what the
+//   1. THE COMMON NAME, the one Phil asked for by name (UID 2190, "acorn
+//      barnacle") — set FIRST, from the card's own <h1>, before any network
+//      call. (dev0892) THE CARD WINS, not WoRMS/GBIF: Phil writes the name
+//      that appears on the card, so it is the one that belongs on the tag.
+//      Setting it here means applyChainImport's own "only if the tag still
+//      lacks one" guard (below) sees a filled field and leaves it alone — a
+//      vernacular can still fill a genuine gap (an ANCESTOR tag the chain
+//      creates, e.g. a family, that no card names directly) but can never
+//      overwrite what a card already said. Just the FIRST character is
+//      de-capitalised: it is capital only because an <h1> heading is always
+//      capitalised, not because the name is a proper noun, and lowercasing
+//      more than that would wreck "Anna's hummingbird" or "California
+//      sheephead". A card-derived common name is a starting point, not a
+//      final curatorial judgement — nothing stops it being corrected in D.
+//
+//   2. THE CHAIN. resolveTaxon + applyChainImport is exactly what the
 //      Dictionary's own 🚀 Apply All button runs — same WoRMS-then-GBIF
 //      lookup, same dedup against existing tags, same ecology-group and
 //      kingdom-root wiring, same alias hygiene. Reusing it (rather than a
@@ -3721,18 +3736,6 @@ function _tPromoteSpeciesChip(row, sp) {
 //      under its family and order in D exactly the way a manual lookup would.
 //      Only fires on an EXACT or FUZZY match — a HIGHERRANK or failed lookup
 //      wires nothing rather than filing the tag under a guess.
-//
-//   2. THE COMMON NAME, the one Phil asked for by name (UID 2190, "acorn
-//      barnacle"). applyChainImport already sets a common name from a WoRMS/
-//      GBIF vernacular when the chain lookup found one and the tag still
-//      lacks one — that runs first because it is a curated register. Only if
-//      the tag STILL has no common name after that does the card's own <h1>
-//      get used. Just the FIRST character is de-capitalised: it is capital
-//      only because an <h1> heading is always capitalised, not because the
-//      name is a proper noun, and lowercasing more than that would wreck
-//      "Anna's hummingbird" or "California sheephead". A card-derived common
-//      name is a starting point, not a final curatorial judgement — nothing
-//      stops it being corrected in D later, same as a GBIF vernacular would be.
 async function _tEnrichSpeciesTag(tagId, cardCommon) {
   const L = window.tagsLib;
   if (!L || typeof L.get !== 'function') return;
@@ -3742,19 +3745,18 @@ async function _tEnrichSpeciesTag(tagId, cardCommon) {
   // filing a topic tag under a kingdom would be wrong, not just unhelpful.
   if (!tag || tag.kind !== 'taxon') return;
   try {
+    if (!tag.common && cardCommon) {
+      const c = cardCommon.charAt(0).toLowerCase() + cardCommon.slice(1);
+      if (typeof L.updateTag === 'function') L.updateTag(tagId, { common: c });
+    }
+  } catch (_) {}
+  try {
     if (typeof L.resolveTaxon === 'function' && typeof L.applyChainImport === 'function') {
       const rr = await L.resolveTaxon(tag.label, { vernacular: true });
       const res = rr && rr.primary;
       if (res && (res.matchType === 'EXACT' || res.matchType === 'FUZZY')) {
         await L.applyChainImport(tagId, res, { withAliasAndCommon: true });
       }
-    }
-  } catch (_) {}
-  try {
-    const now = L.get(tagId);
-    if (now && !now.common && cardCommon) {
-      const c = cardCommon.charAt(0).toLowerCase() + cardCommon.slice(1);
-      if (typeof L.updateTag === 'function') L.updateTag(tagId, { common: c });
     }
   } catch (_) {}
   render();
