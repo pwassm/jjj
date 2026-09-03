@@ -1620,7 +1620,10 @@ function gridOpenFullscreen(row, contained) {
         // (dev0643) Swipe left / right inside the reader pages sections too —
         // swipe left = next, swipe right = previous. A small drag (a tap on the
         // triangle or a link) stays under the threshold, so those still work.
-        if (idoc && window._vpSectNav) {
+        // (dev0895) A RAPID downward swipe closes the reader and hands back the
+        // grid — the gesture twin of ↓. Rapid (<400ms) so an ordinary slow drag
+        // to scroll the text is never mistaken for "get me out of here".
+        if (idoc) {
           let _ss = null;
           idoc.addEventListener('pointerdown', function (ev) {
             _ss = { x: ev.clientX, y: ev.clientY, t: Date.now() };
@@ -1629,6 +1632,11 @@ function gridOpenFullscreen(row, contained) {
             if (!_ss) return;
             var dx = ev.clientX - _ss.x, dy = ev.clientY - _ss.y, ms = Date.now() - _ss.t;
             _ss = null;
+            if (dy > 60 && Math.abs(dx) < Math.abs(dy) && ms < 400) {
+              ev.preventDefault();
+              vpClose();
+              return;
+            }
             if (Math.abs(dx) > 55 && Math.abs(dy) < Math.abs(dx) && ms < 800 && window._vpSectNav) {
               ev.preventDefault();
               window._vpSectNav(dx < 0 ? 1 : -1);

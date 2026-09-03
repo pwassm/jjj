@@ -950,6 +950,17 @@ function _gridSectionToggleSummary(cell, sum) {
 // reader returns to G — see vpKeyHandler); the old ↓/↑ = expand/collapse-all
 // collapsibles is gone. Target cell: the hovered t cell (desktop mouse),
 // else 1a, else the first t cell in the grid.
+// (dev0895) Swipe UP on a cell = the ↑ hotkey: expand THIS cell to the full
+// window. Text/card cells open the reader on the section the cell is showing;
+// anything else goes to the ordinary fullscreen view.
+function _gridExpandCell(cell) {
+  if (!cell || !cell._rowData) return false;
+  _lastGridRow = cell._rowData;
+  window._vpSectStart = _gridCardSectionIdx(cell);
+  gridOpenFullscreen(cell._rowData);
+  return true;
+}
+
 window._gridSectionKey = function (key) {
   if (key === 'ArrowUp') {
     let tc = (_gridHoverCell && _gridHoverCell._rowData
@@ -3524,6 +3535,11 @@ function gridWireInteractor(interactor, cell, cellStr) {
       return;
     }
 
+    // (dev0895) Swipe UP → full window, the gesture twin of the ↑ hotkey.
+    if (dy < -40 && Math.abs(dx) < Math.abs(dy)) {
+      if (_gridExpandCell(cell)) return;
+    }
+
     // Swipe LEFT → (dev0643) on the sectioned 1a text slide, advance to the
     // NEXT section (there is no video to pause on a text cell); swipe RIGHT
     // above still opens the fullscreen reader. Every other cell pauses/plays.
@@ -3704,6 +3720,10 @@ function gridWireInteractor(interactor, cell, cellStr) {
         }
       }
       return;
+    }
+    // (dev0895) Swipe UP → full window (touch mirror of the pointer path).
+    if (dy < -40 && Math.abs(dx) < Math.abs(dy)) {
+      if (_gridExpandCell(cell)) return;
     }
     // Swipe LEFT → (dev0369; dev0699 USER MODE ONLY) a swipe that crosses into
     // another cell returns to the Main Page; one that stays inside the cell
