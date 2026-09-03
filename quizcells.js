@@ -18,10 +18,28 @@
 // backarrow.js's poll), and a ninth or tenth new path would silently miss a
 // hand-placed call.
 //
-// WHAT COUNTS AS THE RIGHT CELL: the SCIENTIFIC NAME, not the cell. Two cells
-// holding the same species — a common enough thing on a themed grid — are both
-// correct answers to that name, because the question asked was "which animal is
-// this", and both pictures are that animal.
+// (dev0900) EVERY CARD IS A QUESTION, AND THE SCIENTIFIC NAME IS NOT ITS
+// IDENTITY. The first build asked one question per scientific name, which was
+// wrong twice over on a real grid:
+//
+//   1b Decorator crab  and  1c Spider crab   are BOTH Majoidea — the cards stop
+//      at superfamily on purpose, because that is as far as the pictures carry.
+//      So clicking the spider crab scored as a correct answer for the decorator
+//      crab, and only one of the two was ever asked about.
+//   4b and 3b are both Bodianus pulcher, deliberately: a California sheephead
+//      part way through turning male, and a finished male. Two cards, one name,
+//      and the second was never asked.
+//
+// So the QUEUE IS ONE QUESTION PER CELL — every flash card on the grid gets
+// asked — and the answer is matched on the whole question as the player sees
+// it: the scientific name AND the common name off the card's <h1>. That tells
+// the two Majoidea apart (Spider crab / Decorator crab), which is exactly what
+// the player was asked to do.
+//
+// Cards that show the SAME question (the two sheephead) are indistinguishable
+// by construction — nothing on screen could tell the player which of them is
+// meant — so either one answers either question. They are still asked twice, so
+// both cards get turned over and read.
 //
 // A CARD WITH NO NAME IS NOT A QUESTION. f0 cards (swept in, never identified)
 // have a picture and an empty back, so they are skipped when the queue is built.
@@ -103,6 +121,25 @@
   function speciesOf(row) {
     try { if (typeof _tCardSpecies === 'function') return _tCardSpecies(row); } catch (_) {}
     return null;
+  }
+
+  // (dev0900) The row's own identity, and the question as the player sees it.
+  // uid distinguishes two cards that read alike; key is what a click is judged
+  // against, because the key IS the question — matching on anything the player
+  // was not shown would be scoring them on information they never had.
+  function uidOf(row) {
+    var u = row && (row.UID != null ? row.UID : row.uid);
+    return u == null ? '' : String(u);
+  }
+  function keyOf(sp) {
+    if (!sp || !sp.sci) return '';
+    return (sp.sci + '|' + (sp.common || '')).toLowerCase();
+  }
+  // What to call a card in the summary. The common name off the <h1> is the
+  // half that tells two Majoidea apart, so it leads.
+  function labelOf(sp) {
+    if (!sp || !sp.sci) return 'an unidentified card';
+    return sp.common ? (sp.common + ' (' + sp.sci + ')') : sp.sci;
   }
 
   // Every visible flash-card cell on the grid right now. Read fresh each time
@@ -295,7 +332,7 @@
   // renderFtext when it is there, so links and lists come out the way they do
   // on the card back itself.
   function showHint() {
-    var target = cur ? findCellsFor(cur.sci)[0] : null;
+    var target = targetCell(cur);
     var parts  = target ? cardParts(target) : null;
     var body   = (parts && parts.sections && parts.sections[0]) || '';
     var html   = body
@@ -317,27 +354,35 @@
   }
 
   // ── the questions ─────────────────────────────────────────────────────────
-  // One question per NAME, not per cell: two cells of one species ask once and
-  // accept either. Cards with no name yet (f0) are not questions.
+  // (dev0900) ONE QUESTION PER CELL — see the header. Nothing is deduped: two
+  // cards of one species are two questions, because they are two cards, and
+  // going through all of them is the point. Cards with no name yet (f0) are not
+  // questions.
   function buildQueue() {
-    var seen = {}, out = [];
+    var out = [];
     cardCells().forEach(function (c) {
       var sp = speciesOf(c._rowData);
       if (!sp || !sp.sci) return;
-      var k = sp.sci.toLowerCase();
-      if (seen[k]) return;
-      seen[k] = 1;
-      out.push({ sci: sp.sci, common: sp.common || '' });
+      out.push({
+        uid:    uidOf(c._rowData),
+        sci:    sp.sci,
+        common: sp.common || '',
+        key:    keyOf(sp)
+      });
     });
     return shuffle(out);
   }
 
-  function findCellsFor(sci) {
-    var want = String(sci || '').toLowerCase();
-    return cardCells().filter(function (c) {
-      var sp = speciesOf(c._rowData);
-      return !!(sp && sp.sci && sp.sci.toLowerCase() === want);
-    });
+  // The cell a question is about: its own row first, then any card showing the
+  // same question (the sheephead case). Used by the hint, which needs a card to
+  // read the back of.
+  function targetCell(q) {
+    if (!q) return null;
+    var cells = cardCells();
+    var byUid = cells.filter(function (c) { return uidOf(c._rowData) === q.uid; });
+    if (byUid.length) return byUid[0];
+    var byKey = cells.filter(function (c) { return keyOf(speciesOf(c._rowData)) === q.key; });
+    return byKey[0] || null;
   }
 
   function nextQuestion() {
@@ -415,8 +460,8 @@
     wrong++;
     var sp = cell ? speciesOf(cell._rowData) : null;
     misses.push({
-      chose: (sp && sp.sci) || 'an unidentified card',
-      want:  (cur && cur.sci) || ''
+      chose: labelOf(sp),
+      want:  labelOf(cur)
     });
     paintHud();
     drop('quizPrompt');
@@ -450,8 +495,14 @@
     if (!cell || !cont || !cont.contains(cell)) return;
     e.preventDefault();
     e.stopPropagation();
+    // (dev0900) The card itself, or one the player could not have told apart
+    // from it. NOT a bare scientific-name match: two different cards can share
+    // one — see the Majoidea note in the header.
     var sp = speciesOf(cell._rowData);
-    var ok = !!(cur && sp && sp.sci && sp.sci.toLowerCase() === cur.sci.toLowerCase());
+    // A row with no UID must never match another row with no UID, so the uid
+    // arm only counts when there is one; the key arm still judges those.
+    var u  = uidOf(cell._rowData);
+    var ok = !!(cur && ((u && u === cur.uid) || keyOf(sp) === cur.key));
     if (ok) onCorrect(cell, e); else onWrong(cell);
   }
 
