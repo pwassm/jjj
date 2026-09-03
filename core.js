@@ -1800,12 +1800,17 @@ function visCols() { return cols.filter(c => !hidden.has(c)); }
 // (e.g. 'ftext') or null when the pointer is outside the table's columns.
 let _lastPointerX = -1, _lastPointerY = -1;
 document.addEventListener('mousemove', e => { _lastPointerX = e.clientX; _lastPointerY = e.clientY; }, { passive: true });
-function _colUnderMouse() {
-  if (_lastPointerX < 0) return null;
+function _colUnderMouse(x) {
+  // (dev0886) An explicit x when the caller has one — a contextmenu event
+  // carries its own clientX, and resolving off the last mousemove instead is
+  // one frame of drift away from naming the wrong column. Callers that pass
+  // nothing keep the old behaviour exactly.
+  const px = (typeof x === 'number') ? x : _lastPointerX;
+  if (px < 0) return null;
   const ths = document.querySelectorAll('#thead th[data-col]');
   for (const th of ths) {
     const r = th.getBoundingClientRect();
-    if (r.width > 0 && _lastPointerX >= r.left && _lastPointerX < r.right) return th.getAttribute('data-col');
+    if (r.width > 0 && px >= r.left && px < r.right) return th.getAttribute('data-col');
   }
   return null;
 }
@@ -3587,8 +3592,53 @@ document.addEventListener('contextmenu', e => {
   const di = vr(vi);
   if (di === undefined || di < 0 || di >= data.length) return;
   if (!focus || focus.r !== vi) { focus = { r: vi, c: (focus ? focus.c : 0) }; pending = null; render(); }
+  // (dev0886) The ltype column answers a right-click by stepping the ladder
+  // instead of opening the menu. Checked AFTER the focus move so the row you
+  // just promoted is the one highlighted.
+  if (_colUnderMouse(e.clientX) === 'ltype' && _tPromoteFlashLtype(di)) return;
   showCtx(e.clientX, e.clientY, { type: 'row', di });
 });
+
+// (dev0886) ── PROMOTE THE FLASH-CARD LADDER FROM T ────────────────────────
+// f0 swept in → f1 identified → f2 Phil has reviewed and agrees → f3 an expert
+// has. Until now the ladder was only ever a value someone typed into the cell,
+// which is why nothing downstream could hang off "has this been reviewed".
+//
+// A RIGHT-CLICK ON THE LTYPE CELL is the whole gesture: it steps the row one
+// rung and opens no menu. Reviewing a batch is then one click per card with the
+// picture still on screen, which is the only way a review actually gets done.
+// The row menu is a right-click away in every other column, so nothing is lost.
+//
+// Deliberately ONE ROW, not the selection: promoting is a judgement about a
+// particular card, and a gesture that silently blessed twenty of them would be
+// the wrong kind of convenient.
+//
+// Returns TRUE when it took the gesture. The column also holds L/P/S/X, so
+// anything that is not an f-ltype falls through to the normal row menu.
+function _tPromoteFlashLtype(di) {
+  const row = data[di];
+  if (!row) return false;
+  const cur = String(row.ltype == null ? '' : row.ltype).trim();
+  // Bare 'f' is the legacy MakeCard value. It already carries an answer, so it
+  // joins the ladder at f1 rather than at the bottom of it.
+  const m = /^f([0-3])?$/.exec(cur);
+  if (!m) return false;
+  const n = (m[1] === undefined) ? 0 : +m[1];
+  if (n >= 3) {
+    toast('ltype f3 — the top of the ladder (expert reviewed).'
+        + '\n   Type in the cell to move it back down.', 3500);
+    return true;                       // ours either way: no row menu
+  }
+  const next = 'f' + (n + 1);
+  const WHAT = { f1: 'identified', f2: 'reviewed by you', f3: 'expert reviewed' };
+  row.ltype = next;
+  row.DateModified = isoNow();
+  save();
+  render();
+  toast('🃏 ' + (row.VidTitle || ('UID ' + row.UID))
+      + '\n   ' + cur + ' → ' + next + '   (' + WHAT[next] + ')', 2500);
+  return true;
+}
 
 function showCtx(x, y, target) {
   const menu = document.getElementById('ctxmenu'); menu.innerHTML = '';
