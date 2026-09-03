@@ -362,8 +362,20 @@
   // ── The turn itself ─────────────────────────────────────────────────────────
   function axisFor(cell) {
     var r = cell.getBoundingClientRect();
+    // (dev0890) MEASURE IN THE FRAME THE VIEWER IS IN. On a portrait phone the
+    // whole UI is drawn inside #rotateWrap, which carries rotate(90deg), so
+    // getBoundingClientRect reports a PHYSICAL screen box with width and height
+    // swapped against what the viewer actually sees. A landscape cell measured
+    // that way reads as portrait, so it turned about the vertical axis — the
+    // wrong one, and the bug Phil hit on the phone.
+    //
+    // Only the MEASUREMENT needs correcting. rotateX/rotateY are applied in the
+    // element own space, which is already the wrap frame the viewer is reading,
+    // so the axis letter chosen here is visually true once the aspect is right.
+    var w = r.width, h = r.height;
+    if (window._salRotated) { var t = w; w = h; h = t; }
     // Long midline: landscape -> horizontal axis (X); portrait -> vertical (Y).
-    return (r.width >= r.height) ? 'X' : 'Y';
+    return (w >= h) ? 'X' : 'Y';
   }
   function persp(cell) {
     var r = cell.getBoundingClientRect();

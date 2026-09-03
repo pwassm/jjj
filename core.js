@@ -3615,6 +3615,83 @@ document.addEventListener('contextmenu', e => {
 //
 // Returns TRUE when it took the gesture. The column also holds L/P/S/X, so
 // anything that is not an f-ltype falls through to the normal row menu.
+// (dev0890) ── THE SPECIES CHIP A PROMOTION EARNS ─────────────────────────────
+// Reaching f2 means Phil has looked at the card and agrees with the name on it.
+// That is the moment the name is worth committing to the tag dictionary — an f1
+// name is a model's guess, and tagging on guesses would fill tags.json with
+// things nobody checked. So the chip goes on at f2 and above, never before.
+//
+// Where the name comes from, in order:
+//   cardData.scientificName  — structured; what the API pass will write
+//   section 2's first <em>   — the 4-section layout puts the scientific name
+//                              there and nowhere else
+// A card reading "<em>Sebastes</em> sp." yields Sebastes, and a barnacle card
+// reading "Family <em>Balanidae</em>" yields Balanidae. That is correct, not a
+// near miss: the tag should be the rank the card actually claims, and three of
+// the first dozen cards deliberately stop above species.
+function _tCardSpecies(row) {
+  const strip = (x) => String(x == null ? '' : x)
+    .replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  if (row && row.cardData) {
+    try {
+      const d = JSON.parse(row.cardData);
+      const sci = strip(d.scientificName);
+      if (sci) return { sci: sci, common: strip(d.commonName) };
+    } catch (_) {}
+  }
+  const secs = String((row && row.ftext) || '').split(/<hr[^>]*>/i);
+  const s2 = secs[1] || '';
+  const em = /<em[^>]*>([\s\S]*?)<\/em>/i.exec(s2);
+  const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(s2);
+  const sci = strip(em && em[1]);
+  return sci ? { sci: sci, common: strip(h1 && h1[1]) } : null;
+}
+
+// An existing tag always wins — label first, then aliases, then common name, so
+// a card naming Semicossyphus finds the tag even after the genus moved.
+function _tFindTaxonTag(sci) {
+  const L = window.tagsLib;
+  if (!L || typeof L.all !== 'function' || !sci) return null;
+  const want = String(sci).toLowerCase();
+  const all = L.all();
+  return all.find(t => String(t.label || '').toLowerCase() === want)
+      || all.find(t => (t.aliases || []).some(a => String(a).toLowerCase() === want))
+      || all.find(t => String(t.common || '').toLowerCase() === want)
+      || null;
+}
+
+// Returns a short phrase for the toast, or '' when there was nothing to do.
+//
+// CREATING the tag is what makes this useful: only four of the first dozen card
+// species already had one, so a lookup-only version would do nothing eleven
+// times out of twelve. It creates the SCIENTIFIC NAME ONLY. `common` is left
+// empty on purpose — whether a common name is capitalised is a curated
+// judgement (lowercase unless proper-noun derived), not something to infer from
+// a card, and D is where that gets decided. createTag guesses kind and rank
+// from the label shape, which is why a genus, a family and a species all land
+// correctly without being told apart here.
+function _tPromoteSpeciesChip(row) {
+  const L = window.tagsLib;
+  if (!L) return '';
+  const sp = _tCardSpecies(row);
+  if (!sp) return '';
+  let tag = _tFindTaxonTag(sp.sci);
+  let made = false;
+  if (!tag) {
+    let res = null;
+    try { res = L.createTag({ label: sp.sci }); } catch (_) {}
+    if (!res || !res.ok) return '⚠ could not make a tag for ' + sp.sci;
+    tag = L.get(res.id);
+    made = true;
+  }
+  if (!tag) return '';
+  if (!Array.isArray(row.tags)) row.tags = [];
+  if (row.tags.includes(tag.id)) return 'already tagged ' + tag.label;
+  row.tags = [...row.tags, tag.id];
+  return (made ? '＋ NEW tag ' : '🏷 ') + tag.label
+       + (made ? ' — set its common name in D' : '');
+}
+
 function _tPromoteFlashLtype(di) {
   const row = data[di];
   if (!row) return false;
@@ -3632,11 +3709,15 @@ function _tPromoteFlashLtype(di) {
   const next = 'f' + (n + 1);
   const WHAT = { f1: 'identified', f2: 'reviewed by you', f3: 'expert reviewed' };
   row.ltype = next;
+  // (dev0890) f2 and above carry the species as a tag. Done BEFORE save() so
+  // the row and the dictionary land in one write, not two.
+  const chip = (n + 1 >= 2) ? _tPromoteSpeciesChip(row) : '';
   row.DateModified = isoNow();
   save();
   render();
   toast('🃏 ' + (row.VidTitle || ('UID ' + row.UID))
-      + '\n   ' + cur + ' → ' + next + '   (' + WHAT[next] + ')', 2500);
+      + '\n   ' + cur + ' → ' + next + '   (' + WHAT[next] + ')'
+      + (chip ? '\n   ' + chip : ''), chip ? 4000 : 2500);
   return true;
 }
 
