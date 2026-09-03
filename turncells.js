@@ -825,12 +825,32 @@
     return start();
   }
 
+  // (dev0888) Send every turned FLASH CARD back to its picture, optionally
+  // sparing one. Only cards (`_turnCard`): fun-mode turnaround owns its own
+  // cells and must not be swept up by a card gesture.
+  //
+  // Animated rather than snapped — the card came out with a turn, so it goes
+  // back with one, and a cell mid-turn is left alone to land.
+  function frontAll(except) {
+    var list = [];
+    turned.forEach(function (st, cell) {
+      if (cell === except) return;
+      if (!cell._turnCard) return;                 // not a card — not ours
+      if (!cell.isConnected) { turned.delete(cell); return; }
+      if (st.busy || !st.flipped) return;
+      list.push(cell);
+    });
+    list.forEach(function (c) { try { turnToFront(c); } catch (_) {} });
+    return list.length;
+  }
+
   window.TurnCells = {
     start: start,
     stop: stop,
     toggle: toggle,
     turnPanel: turnPanel,          // (dev0860) flash cards — see the note above
     faceOn: faceOn,
+    frontAll: frontAll,            // (dev0888) send turned cards back to the picture
     get active() { return active; },
     get speed() { return speed; },
     setSpeed: function (v) { saveSpeed(v); if (active) boxShow(); return speed; }

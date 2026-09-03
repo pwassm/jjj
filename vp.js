@@ -1676,8 +1676,61 @@ function gridOpenFullscreen(row, contained) {
     // handler wired from here rather than by injecting a script into every
     // slide we build. onload (assignment, not addEventListener) so paging
     // through sections re-wires the new document without stacking listeners.
+    // (dev0888) READER GESTURES, wired into the srcdoc document (same origin,
+    // so the parent can listen on it directly rather than injecting a script).
+    //
+    // DOUBLE CLICK ANYWHERE opens or shuts every collapsible on the page. The
+    // Show all button does the same thing and says so in its own label, but a
+    // button is a thing you have to find and aim at, and on a card you are
+    // flicking through you want the whole page open in one gesture wherever the
+    // pointer happens to be.
+    //
+    // WHEEL DOWN closes the reader — the counterpart of the wheel up in G that
+    // opened it. Only at the bottom of the page, or on a page too short to
+    // scroll: a wheel that dismissed a half-read page would make a long card
+    // unreadable. The ↓ key still closes unconditionally, because a key press
+    // is deliberate in a way a wheel is not.
+    function _vpWireReaderGestures(doc) {
+      if (!doc || doc._vpGesturesWired) return;
+      doc._vpGesturesWired = true;
+
+      doc.addEventListener('dblclick', function (ev) {
+        const t = ev.target;
+        // Controls that own the gesture themselves: the button (its own click
+        // already toggled twice, so leave it alone), a summary (the reader is
+        // opening that one block on purpose), and links.
+        if (t && t.closest && t.closest('.te-xall, summary, a')) return;
+        const all = [...doc.querySelectorAll('details')];
+        if (!all.length) return;
+        ev.preventDefault();
+        const anyClosed = all.some(d => !d.hasAttribute('open'));
+        all.forEach(d => { if (anyClosed) d.setAttribute('open', ''); else d.removeAttribute('open'); });
+        // Keep the button honest about what it will do next.
+        const btn = doc.querySelector('.te-xall[data-xall-toggle]');
+        const L = window._SAL_XALL_LABELS;
+        if (btn && L) {
+          btn.setAttribute('data-xall', anyClosed ? 'close' : 'open');
+          btn.textContent = anyClosed ? L.close : L.open;
+        }
+      }, true);
+
+      doc.addEventListener('wheel', function (ev) {
+        if (ev.ctrlKey || ev.shiftKey || ev.altKey || ev.metaKey) return;
+        if (ev.deltaY <= 0) return;                       // up: let it scroll
+        if (!window._vpTextReader) return;
+        const el = doc.scrollingElement || doc.documentElement;
+        const room = el.scrollHeight - el.clientHeight - el.scrollTop;
+        if (room > 2) return;                             // still page left to read
+        ev.preventDefault();
+        vpClose();
+      }, { passive: false });
+    }
+
     const loadIframe = (html) => {
       iframe.onload = function () {
+        try {
+          _vpWireReaderGestures(iframe.contentDocument);
+        } catch (_) {}
         try {
           if (typeof window._salWireXAll === 'function') window._salWireXAll(iframe.contentDocument);
           // (dev0771) …and the same for in-collection links (v.709 / c.gname).
@@ -1911,9 +1964,14 @@ function gridOpenFullscreen(row, contained) {
               // icon means most pages never get one. Injected only when there
               // is something to open, and it is a real toggle (see
               // _salXAllToggle's data-xall-toggle branch).
+              // (dev0888) Wording comes from core.js's _SAL_XALL_LABELS, the
+              // same constant _salXAllToggle rewrites the button with — two
+              // copies of the string would drift on the first edit.
+              const _xLbl = (window._SAL_XALL_LABELS && window._SAL_XALL_LABELS.open)
+                          || '\u25BC\u25BC Show all';
               const _xbar = /<details[\s>]/i.test(sects[sIdx])
                 ? '<div class="sal-xall-bar"><span class="te-xall" data-xall="open"'
-                  + ' data-xall-toggle="1">&#9660;&#9660; Show all</span></div>'
+                  + ' data-xall-toggle="1">' + escH(_xLbl) + '</span></div>'
                 : '';
               loadIframe('<!DOCTYPE html><html><head><meta charset="UTF-8">'
                 + '<style>' + _bodyCss + _ftStyles + '</style></head>'

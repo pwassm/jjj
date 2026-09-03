@@ -7968,6 +7968,17 @@ window._salFigureCaptions = _salFigureCaptions;
 // is sitting in — one tap, one direction, no surprises.
 const _XALL_SCOPES = '.te-slide,.grid-html-thumb,#teSlideContent,#gridFsContent,'
   + '.sm-detcard,.smGreeting,body';
+// (dev0888) The reader's auto Show all / Hide all wording, in ONE place. vp.js
+// writes it into the injected control and the toggle below rewrites it on every
+// press, so two copies of the string would drift on the first edit. The label
+// advertises the double-click because a button is discoverable and a gesture is
+// not — the gesture is the one people will actually use.
+const _SAL_XALL_LABELS = {
+  open:  '\u25BC\u25BC Show all  ·  or double click anywhere',
+  close: '\u25B6\u25B6 Hide all  ·  or double click anywhere'
+};
+window._SAL_XALL_LABELS = _SAL_XALL_LABELS;
+
 function _salXAllToggle(el) {
   if (!el) return;
   const open  = el.getAttribute('data-xall') !== 'close';
@@ -7981,7 +7992,7 @@ function _salXAllToggle(el) {
   // data-xall-toggle and are left alone: they say one thing and keep saying it.
   if (el.hasAttribute('data-xall-toggle')) {
     el.setAttribute('data-xall', open ? 'close' : 'open');
-    el.textContent = open ? '\u25B6\u25B6 Hide all' : '\u25BC\u25BC Show all';
+    el.textContent = open ? _SAL_XALL_LABELS.close : _SAL_XALL_LABELS.open;
   }
 }
 window._salXAllToggle = _salXAllToggle;

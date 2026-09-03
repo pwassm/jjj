@@ -990,6 +990,10 @@ window._gridSectionKey = function (key) {
 // _salSectIdxByUid) moved on — so the t cell is "back in frame" on the page
 // the reader left off. Called from vpClose.
 window._gridSectionSyncAll = function () {
+  // (dev0888) Leaving the full-window reader also turns every card back to its
+  // picture. You expanded a card to read it; coming back should hand you the
+  // grid you left, not a board of exposed answers.
+  _gridCardFrontOthers(null);
   document.querySelectorAll('#gridContainer .grid-cell').forEach(cell => {
     const s = cell._salSect;
     if (!s || s.uid == null || !s.inner.isConnected) return;
@@ -1811,6 +1815,19 @@ function _gridCardTurn(cell, idx) {
     return _gridCardBackPanel(c, i);
   });
 }
+
+// (dev0888) Send turned cards back to their picture. Two rules Phil asked for,
+// and they are the same rule: a turned card is a card you are READING, and you
+// can only read one at a time.
+//   • touching any other cell sends the others home
+//   • coming back from the full-window reader sends them all home
+// Without this a grid slowly fills up with cards left face-up behind you, and
+// the next glance at the grid shows answers instead of pictures.
+function _gridCardFrontOthers(exceptCell) {
+  if (!window.TurnCells || typeof window.TurnCells.frontAll !== 'function') return 0;
+  try { return window.TurnCells.frontAll(exceptCell || null); } catch (_) { return 0; }
+}
+window._gridCardFrontAll = function () { return _gridCardFrontOthers(null); };
 
 // (dev0881) Which face is a cell showing? -1 means the front (the picture).
 function _gridCardFaceIdx(cell) {
@@ -2919,6 +2936,26 @@ function gridShow() {
       _gridHoverCell = (e.target && e.target.closest) ? e.target.closest('.grid-cell') : null;
     }, true);
     overlay.addEventListener('mouseleave', () => { _gridHoverCell = null; }, true);
+    // (dev0888) WHEEL UP = the ↑ key: expand the cell under the pointer to the
+    // whole window. On a wall of flash cards the pointer is already on the card
+    // you mean, so a wheel is a shorter gesture than moving focus and pressing
+    // a key. Wheel DOWN is ↓, which is inert in G by design (it closes the
+    // reader instead — see vpKeyHandler), so nothing is bound for it here.
+    //
+    // Requires a HOVERED text/card cell rather than borrowing _gridSectionKey's
+    // "else 1a, else the first text cell" fallback: a stray wheel must not
+    // expand a cell the pointer was nowhere near. Modified wheels are left
+    // alone — Ctrl+wheel is the per-cell zoom.
+    overlay.addEventListener('wheel', e => {
+      if (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+      if (e.deltaY >= 0) return;                         // down: nothing in G
+      const fsEl = document.getElementById('gridFullscreen');
+      if (fsEl && fsEl.style.display === 'flex') return; // the reader is up
+      const c = _gridHoverCell;
+      if (!c || !c._rowData || !_gridIsTextRow(c._rowData)) return;
+      e.preventDefault();
+      if (typeof window._gridSectionKey === 'function') window._gridSectionKey('ArrowUp');
+    }, { passive: false });
   }
   // (dev0721) The "N need source" backlog pill is GONE from the grid — a
   // table-wide TODO count is not about the pictures in front of you, so it was
@@ -3449,6 +3486,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
     if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
+        _gridCardFrontOthers(cell);        // (dev0888) one card face-up at a time
         // (dev0860) A FLASH CARD turns to its ORIGINAL text (section 3) on a
         // forward swipe — the tap already gives the display copy. Fullscreen is
         // not the useful thing to do with a card: the slide it would open is the
@@ -3509,6 +3547,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
       }
       
       if (cell._rowData) _lastGridRow = cell._rowData;
+      _gridCardFrontOthers(cell);          // (dev0888) one card face-up at a time
 
       // (dev0860) FLASH CARD: a plain tap turns it over to the display copy,
       // and the next one turns it back. The double-tap clock is reset so
@@ -3633,6 +3672,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
     if (dx > 40 && Math.abs(dy) < Math.abs(dx)) {
       if (cell._rowData) {
         _lastGridRow = cell._rowData;
+        _gridCardFrontOthers(cell);        // (dev0888) one card face-up at a time
         // (dev0860) Card → the original text. Touch mirror of the pointer path.
         if (_gridCardSwipeFace(cell)) return;
         if (!userMode && _gridIsTextRow(cell._rowData)) _runDoubleTapAction(cell, cellStr);
@@ -3679,6 +3719,7 @@ function gridWireInteractor(interactor, cell, cellStr) {
         return;
       }
       if (cell._rowData) _lastGridRow = cell._rowData;
+      _gridCardFrontOthers(cell);          // (dev0888) one card face-up at a time
       // (dev0860) Card → turn it over. Touch mirror of the pointer path.
       if (_gridCardTurn(cell, 0)) { _lastShortTapT = 0; return; }
       // (dev0588) Summary tap on the sectioned 1a text slide — touch mirror of
