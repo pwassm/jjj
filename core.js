@@ -8289,6 +8289,37 @@ window._SAL_CB_CSS = _SAL_CB_CSS;
   (document.head || document.documentElement).appendChild(s);
 })();
 
+// (dev0907) @@@ citation markers (xe2.js insertCite). Same one-place rule as the
+// tick boxes above, for the same reason: the main document and the V reader's
+// srcdoc iframe both need them.
+//
+// The marker has to be readable as a link and ignorable as prose — a fact line
+// carrying one should still scan as a sentence. So it is raised, shrunk to about
+// half size, tightened (three @ at full tracking is a wide blot), and painted a
+// muted slate that only goes link-blue under the cursor.
+//
+// !important throughout because both render contexts fight it: a coloured
+// .te-slide section forces color:inherit onto everything inside it (dev0619),
+// and the V iframe opens with a blanket a{color:#5bf!important}.
+const _SAL_CITE_CSS = [
+  'a.te-cite{font-size:0.58em;line-height:1;vertical-align:0.5em;letter-spacing:-0.12em;',
+  'padding-right:0.12em;margin-left:0.32em;white-space:nowrap;cursor:pointer;',
+  'text-decoration:none!important;color:#8fa4bf!important;}',
+  'a.te-cite:hover{color:#2563eb!important;text-decoration:underline!important;}',
+  // In the editor it is content being worked on, so it sits brighter — the same
+  // exception the tick boxes make.
+  '#xe2Editor a.te-cite,#teEditor a.te-cite{color:#6ab6ff!important;}'
+].join('');
+window._SAL_CITE_CSS = _SAL_CITE_CSS;
+
+(function _salInjectCiteCss() {
+  if (document.getElementById('salCiteStyles')) return;
+  const s = document.createElement('style');
+  s.id = 'salCiteStyles';
+  s.textContent = _SAL_CITE_CSS;
+  (document.head || document.documentElement).appendChild(s);
+})();
+
 // Number every box in a row's ftext so a tick made in a RENDER can be written
 // back to the right box in the SOURCE. Stamped in renderFtext, i.e. before
 // _salSplitSections cuts the slide into pages, so the index stays global to the

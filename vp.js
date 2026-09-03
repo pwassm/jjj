@@ -1861,6 +1861,9 @@ function gridOpenFullscreen(row, contained) {
           // the te-xall block above is hand-copied from index.html and the two have
           // already drifted once, which is the mistake not repeated here.
           + (window._SAL_CB_CSS || '')
+          // (dev0907) @@@ citation markers — same single-source rule, and this
+          // iframe is the one place a reader is most likely to click one.
+          + (window._SAL_CITE_CSS || '')
           + 'table{border-collapse:collapse;margin:12px 0;max-width:100%;}'
           + 'th,td{border:1px solid #999;padding:6px 10px;text-align:left;vertical-align:top;}'
           + 'th{font-weight:bold;}'

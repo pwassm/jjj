@@ -1973,6 +1973,99 @@
     editor.chain().focus().extendMarkRange('link').setLink({ href: href }).run();
   }
 
+  // ── (dev0907) @@@ — a citation at the end of a fact line ────────────────────
+  //
+  // The ask, with hallucination in mind: every FACT on a page should carry its
+  // own source, as specific as the page can make it, and the marker has to be
+  // cheap enough — in space and in typing — that it can go on EVERY line rather
+  // than being saved for the claims that felt shaky. So: three characters at the
+  // end of the line, rendered small and dim, linking straight to the document
+  // that backs that one sentence.
+  //
+  // Deliberately NOT a new ftext tag. An @@@ is an ordinary <a> whose visible
+  // text happens to be "@@@", carrying class="te-cite". The link mark and its
+  // class attribute are both already in the schema, so the marker round-trips an
+  // autosave untouched. A new node type would have been dropped on the way in
+  // AND on the way out — the trap dev0620 and dev0851 both hit — and none of
+  // that risk would have bought anything here.
+  //
+  // The target goes through _salLinkHref like every other link, so a citation
+  // can point at a URL, at another ml.json row (v.709), or at a grid (c.Name):
+  // often enough the source is already in the collection.
+  function _citeMarkOf(state, href) {
+    return state.schema.marks.link.create({ href: href, class: 'te-cite' });
+  }
+
+  // The run of te-cite text sitting at the very END of a block, if there is one.
+  // Cites are appended, so re-citing a line REPLACES its marker instead of
+  // growing a row of them.
+  function _citeTrailing(block) {
+    var n = block.node;
+    if (!n.childCount) return null;
+    var last = n.child(n.childCount - 1);
+    if (!last.isText) return null;
+    var isCite = last.marks.some(function (m) {
+      return m.type.name === 'link' && m.attrs && m.attrs.class === 'te-cite';
+    });
+    if (!isCite) return null;
+    var end = block.start + n.content.size;
+    return { from: end - last.nodeSize, to: end };
+  }
+
+  function insertCite(editor) {
+    // The source is nearly always the page just read, i.e. already on the
+    // clipboard. Pre-fill from it rather than pasting it silently: one Enter to
+    // accept is as fast as a blind paste, and it cannot cite the wrong thing.
+    var go = function (clip) { _citeApply(editor, clip); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(
+          function (t) { go(String(t || '').trim()); },
+          function () { go(''); });
+        return;
+      }
+    } catch (_) {}
+    go('');
+  }
+
+  function _citeApply(editor, clip) {
+    var state = editor.state;
+    var blocks = _cbTargetBlocks(state);
+    if (!blocks.length) { _toast('Put the cursor on a fact line first'); return; }
+    // Only offer the clipboard when it actually looks like somewhere to go.
+    if (!/^(https?:\/\/|www\.|[a-z0-9-]+\.[a-z]{2,}(\/|$)|v\.\d|c\..)/i.test(clip)) clip = '';
+
+    var many = blocks.length > 1;
+    var raw = prompt(
+      'Cite  —  @@@ at the end of ' + (many ? ('these ' + blocks.length + ' lines') : 'this line')
+      + '\n\n  where it points:\n'
+      + '    https://…  or  a bare domain\n'
+      + '    v.709                  → that ml.json row in V\n'
+      + '    c.Octopus Hatchlings   → that c.json grid in G\n\n'
+      + 'Blank removes the @@@ from ' + (many ? 'those lines' : 'the line') + '.', clip);
+    if (raw === null) return;
+    raw = raw.trim();
+    var href = raw ? _salLinkHref(raw) : '';
+
+    // Descending document order, so an edit never shifts a position still to
+    // come. One transaction, so one undo takes the whole pass back.
+    var tr = state.tr, added = 0, removed = 0;
+    blocks.slice().sort(function (a, b) { return b.start - a.start; }).forEach(function (b) {
+      try {
+        var old = _citeTrailing(b);
+        var end = b.start + b.node.content.size;
+        if (old) { tr.delete(old.from, old.to); end = old.from; removed++; }
+        if (href) { tr.insert(end, state.schema.text('@@@', [_citeMarkOf(state, href)])); added++; }
+      } catch (e) { /* a line that can't take one is skipped, not fatal */ }
+    });
+    if (!added && !removed) { editor.commands.focus(); return; }
+    try { editor.view.dispatch(tr); }
+    catch (e) { _toast('A citation can’t go on those lines'); return; }
+    _toast(href ? ('@@@ on ' + added + ' line' + (added === 1 ? '' : 's'))
+                : ('@@@ removed from ' + removed + ' line' + (removed === 1 ? '' : 's')));
+    editor.commands.focus();
+  }
+
   // ── toolbar spec: [label, title, handler(editor)] ; '|' = divider ────────────
   function toolbarSpec() {
     return [
@@ -2020,6 +2113,11 @@
       ['&#128444;', 'Insert image OR direct video file — a .mp4/.webm URL (e.g. your Cloudflare one) is detected automatically and plays inline. Or EDIT the selected image/video (click/double-click it first to change size, alignment or caption).', function (e) { insertImage(e); }],
       ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
+      // (dev0907) The citation marker. Small and dim on the page, so a fact line
+      // can carry one without the prose turning into a bibliography.
+      ['@@@',
+       'Cite — put a small @@@ at the END of the line the cursor is on, linking to the source for that one fact. No selection needed. Pre-filled from the clipboard, so copy the URL then click. Highlight several lines to cite them all at once. Blank removes it. Alt+C.',
+       function (e) { insertCite(e); }],
       ['&#128203;T', 'Paste as PLAIN TEXT - the words only, no avatars, pictures, colours or web-page styling', function (e) { pastePlainText(e); }],
       ['&#8856; HideLine', 'Hide just the line the cursor is on — no selection needed. It stays here, faded red, as a note; everything after it still shows. TOGGLE: cursor on a hidden line and click again. Alt+X does the same.', function (e) { hideLine(e); }],
       ['&#8856; HideSection', 'Hide the SELECTED lines from the rendered slide — they stay here, faded red, as notes. Everything after them still shows. TOGGLE: put the cursor inside a hidden block and click again to un-hide it.', function (e) { toggleHide(e); }],
@@ -2174,6 +2272,14 @@
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyQ' || e.code === 'KeyR')) {
       e.preventDefault(); e.stopPropagation();
       if (_api && _api.editor) insertCheckBox(_api.editor, e.code === 'KeyR' ? 'r' : 'q');
+      return;
+    }
+    // (dev0907) Alt+C = @@@ cite, same as the toolbar button. Left-hand, and
+    // citing is meant to happen on every fact line — if it costs a trip to the
+    // toolbar each time it will not get done, which is the whole point of it.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyC') {
+      e.preventDefault(); e.stopPropagation();
+      if (_api && _api.editor) insertCite(_api.editor);
       return;
     }
     if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
@@ -2492,6 +2598,7 @@
     // (dev0770) link building — exported so the "label;target" parse and the
     // V./C. → deep-link mapping can be exercised without driving a prompt().
     _setLink: setLink,
+    _insertCite: insertCite,
     _salLinkHref: _salLinkHref,
     _salLinkShorthand: _salLinkShorthand,
     _findImageEditContext: _findImageEditContext,
