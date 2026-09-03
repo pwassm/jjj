@@ -2785,6 +2785,17 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0908) − / + / 0 — the MAGNIFIER, and only while the crop overlay is up.
+  // Not letters: 1 and 2 are the tilt here, and every free left-hand letter in
+  // this handler is already spoken for. These three are what every other viewer
+  // in the world uses for the same thing, and nothing else in V wants them.
+  if (_vpCropHolding() &&
+      (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_' || e.key === '0')) {
+    e.preventDefault(); e.stopPropagation();
+    _vpCropStepZoom(e.key === '0' ? 0 : ((e.key === '+' || e.key === '=') ? 1 : -1));
+    return;
+  }
+
   // (dev0749) a / f — the clip's start / end at the frame you are on (again to
   // clear), the keyboard twins of the A and B buttons. They took this over from
   // ⇧A / ⇧B, which no longer mark anything: one row of left-hand keys now does
@@ -5246,6 +5257,21 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       '<option value="fwd">▸ loop</option>' +
       '<option value="boom">⇄ boomerang</option>' +
     '</select>' +
+    // (dev0908) Magnifier. NOT part of the render — it blows the picture up on
+    // screen so the detail inside the box can be judged for focus BEFORE the
+    // encode. Drag anywhere outside the box to pan, - / + / 0 on the keyboard,
+    // wheel over the picture. The crop box tracks the same source pixels
+    // throughout: everything downstream still measures in source fractions.
+    '<span id="vp-crop-zoom-lbl" style="opacity:0.7;">🔍</span>' +
+    '<select id="vp-crop-zoom" title="Magnify the PICTURE to check focus — this never changes what gets rendered. Drag outside the crop box to pan · wheel over the picture · − + 0 on the keyboard." ' +
+      'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;flex:0 0 auto;">' +
+      '<option value="1" selected>1x</option>' +
+      '<option value="2">2x</option>' +
+      '<option value="3">3x</option>' +
+      '<option value="4">4x</option>' +
+      '<option value="6">6x</option>' +
+      '<option value="8">8x</option>' +
+    '</select>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
     '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
@@ -5256,9 +5282,13 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // those controls come off the bar rather than sit there meaning nothing. The
   // engine chip takes their place.
   if (imageMode) {
+    // (dev0908) …and the magnifier comes off too: a still already has the
+    // slideshow's own hold-zoom under it, and that transform is on the very
+    // <img> this overlay maps its screen→source arithmetic through.
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
      'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake',
-     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop'].forEach(id => {
+     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop',
+     'vp-crop-zoom-lbl', 'vp-crop-zoom'].forEach(id => {
       const el = bar.querySelector('#' + id);
       if (el) el.style.display = 'none';
     });
@@ -5436,6 +5466,21 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // temporal dead zone if anything ever paints earlier than it does today.
   const trackGhosts = [];
 
+  // (dev0908) ── Pan surface for the magnifier ────────────────────────────────
+  // Only in the way once the picture is actually magnified (display:none at 1x,
+  // so every gesture that worked before still lands where it did). It is the
+  // BOTTOM child of the container, so the crop box, its handles and the toolbar
+  // all sit above it and keep their own drags. It can safely run to the bottom
+  // edge because the native <video> controls are taken off while magnified —
+  // they are part of the element being scaled, so at 4x they would be a giant
+  // control bar sliding off the screen. The V toolbar underneath still has the
+  // timeline, the transport and the A/B marks.
+  const panCatch = document.createElement('div');
+  panCatch.style.cssText =
+    'position:absolute;inset:0;display:none;' +
+    'pointer-events:auto;cursor:grab;touch-action:none;';
+  c.insertBefore(panCatch, c.firstChild);
+
   const state = {
     imageMode,                        // (dev0744) still, not clip
     // (dev0745) Image mode only: 'still' | 'mp4' | 'gif'. Anything but 'still'
@@ -5467,9 +5512,162 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // units frac.x/y use. Size is fixed for the whole track — crop's w/h are
     // configure-time constants in ffmpeg — so the handles lock once armed.
     track: { on: false, keys: [], ease: 'linear' },
+    // (dev0908) How the picture is being LOOKED at — magnification and the pan
+    // that goes with it. Purely a viewing transform: nothing here reaches the
+    // render, and every crop number stays in source fractions, so a box drawn
+    // at 4x cuts exactly the pixels it did at 1x. z is the scale, tx/ty the
+    // screen-pixel offset of the magnified frame from the host's centre.
+    view: { z: 1, tx: 0, ty: 0 },
     frac: _vpCropFracForAspect('L', vid),
-    el: { container: c, rect, bar, handles, knob, grid, kenBox, textLayer, trackLayer }
+    el: { container: c, rect, bar, handles, knob, grid, kenBox, textLayer, trackLayer, panCatch }
   };
+
+  // (dev0908) ── The magnifier ───────────────────────────────────────────────
+  // A crop is a decision about detail, and until now it had to be made on a
+  // picture shrunk to fit the screen — a 4k frame in a 1200px window is a third
+  // of its own size, which is far too small to tell a sharp subject from a soft
+  // one. The magnifier scales the <video> itself and pans it; the overlay's
+  // screen↔source arithmetic all runs through viewRect(), so the crop box, the
+  // zoom box, the track ghosts and the captions ride along with the picture and
+  // keep meaning exactly the same source pixels.
+  //
+  // Why on `vid` and not on `host` (which is where V's own hold-zoom puts it):
+  // a transform on host makes it a stacking context, and this overlay's z:55
+  // then falls BEHIND the swipe-catcher's z:50 in the layer above.
+  const zoomSel = bar.querySelector('#vp-crop-zoom');
+  const VP_VIEW_STEPS = [1, 2, 3, 4, 6, 8];
+
+  // The on-screen rect of the video frame WITH the magnifier applied. Same
+  // shape as _vpCropRenderRect's return (which stays the plain contain-fit —
+  // the screen recorder's region maths reads that one and wants it unzoomed).
+  function viewRect() {
+    const r = _vpCropRenderRect(host, vid);
+    const v = state.view;
+    if (v.z === 1 && !v.tx && !v.ty) return r;
+    const rw = r.rw * v.z, rh = r.rh * v.z;
+    return { rx: (host.clientWidth  - rw) / 2 + v.tx,
+             ry: (host.clientHeight - rh) / 2 + v.ty,
+             rw, rh, VW: r.VW, VH: r.VH };
+  }
+
+  // Pan can never open a gap: the clamp is exactly the overhang the magnified
+  // frame has on each axis, so at 1x (and on an axis that still fits) it pins
+  // to 0 and the picture stays centred where it has always been.
+  function clampPan() {
+    const r = _vpCropRenderRect(host, vid);
+    const v = state.view;
+    const mx = Math.max(0, (r.rw * v.z - host.clientWidth)  / 2);
+    const my = Math.max(0, (r.rh * v.z - host.clientHeight) / 2);
+    v.tx = Math.max(-mx, Math.min(mx, v.tx));
+    v.ty = Math.max(-my, Math.min(my, v.ty));
+  }
+
+  function applyView() {
+    const v = state.view;
+    clampPan();
+    if (!imageMode && vid && vid.style) {
+      vid.style.transformOrigin = 'center center';
+      vid.style.transform = (v.z === 1 && !v.tx && !v.ty)
+        ? '' : ('translate(' + v.tx + 'px,' + v.ty + 'px) scale(' + v.z + ')');
+      // The native controls are part of the element being scaled — at 4x they
+      // become a huge bar half off the screen. Off while magnified; the V
+      // toolbar below the host keeps the timeline and the transport.
+      if (state._ctrls0 === undefined) state._ctrls0 = !!vid.controls;
+      vid.controls = (v.z === 1) ? state._ctrls0 : false;
+    }
+    panCatch.style.display = (v.z > 1) ? '' : 'none';
+    if (zoomSel && zoomSel.value !== String(v.z)) zoomSel.value = String(v.z);
+    paint();
+  }
+
+  // Magnify about the CROP BOX's centre, not the screen's: the box is the thing
+  // being judged, so it has to stay where the eye already is. Everything past
+  // that is the clamp's problem.
+  function setZoom(z) {
+    if (imageMode) return;
+    const nz = Math.max(1, Math.min(8, +z || 1));
+    const v = state.view;
+    if (nz === v.z) return;
+    const before = viewRect();
+    const px = state.frac.x + state.frac.w / 2;
+    const py = state.frac.y + state.frac.h / 2;
+    const sx = before.rx + px * before.rw;
+    const sy = before.ry + py * before.rh;
+    const r = _vpCropRenderRect(host, vid);
+    v.z = nz;
+    v.tx = sx - (host.clientWidth  - r.rw * nz) / 2 - px * r.rw * nz;
+    v.ty = sy - (host.clientHeight - r.rh * nz) / 2 - py * r.rh * nz;
+    applyView();
+    if (typeof toast === 'function') {
+      toast(nz === 1
+        ? '🔍 1x — whole frame'
+        : '🔍 ' + nz + 'x — drag off the box to pan · 0 back to 1x', 1500);
+    }
+  }
+
+  // dir > 0 in, dir < 0 out, dir === 0 straight back to 1x.
+  function stepZoom(dir) {
+    if (imageMode) return;
+    if (!dir) { setZoom(1); return; }
+    const i = VP_VIEW_STEPS.indexOf(state.view.z);
+    const j = (i < 0) ? 0 : Math.max(0, Math.min(VP_VIEW_STEPS.length - 1, i + (dir > 0 ? 1 : -1)));
+    setZoom(VP_VIEW_STEPS[j]);
+  }
+
+  // Put the picture back the way it was found. Called when the overlay closes
+  // and when the player is torn down — a transform left on a <video> the
+  // slideshow reuses would magnify the next clip too.
+  function resetView() {
+    state.view.z = 1; state.view.tx = 0; state.view.ty = 0;
+    if (!imageMode && vid && vid.style) {
+      vid.style.transform = '';
+      if (state._ctrls0 !== undefined) vid.controls = state._ctrls0;
+    }
+    panCatch.style.display = 'none';
+    if (zoomSel) zoomSel.value = '1';
+  }
+
+  if (zoomSel) {
+    zoomSel.addEventListener('change', () => setZoom(+zoomSel.value || 1));
+    zoomSel.addEventListener('wheel', e => {
+      e.preventDefault(); e.stopPropagation();
+      stepZoom(e.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
+  }
+
+  // Drag the picture under the box; wheel steps the magnification; a
+  // double-click anywhere out there goes back to the whole frame.
+  let panDrag = null;
+  panCatch.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    panDrag = { sx: e.clientX, sy: e.clientY, tx: state.view.tx, ty: state.view.ty };
+    try { panCatch.setPointerCapture(e.pointerId); } catch (_) {}
+    panCatch.style.cursor = 'grabbing';
+  });
+  panCatch.addEventListener('pointermove', e => {
+    if (!panDrag) return;
+    e.preventDefault(); e.stopPropagation();
+    state.view.tx = panDrag.tx + (e.clientX - panDrag.sx);
+    state.view.ty = panDrag.ty + (e.clientY - panDrag.sy);
+    applyView();
+  });
+  const panEnd = e => {
+    if (!panDrag) return;
+    try { panCatch.releasePointerCapture(e.pointerId); } catch (_) {}
+    panDrag = null; panCatch.style.cursor = 'grab';
+  };
+  panCatch.addEventListener('pointerup', panEnd);
+  panCatch.addEventListener('pointercancel', panEnd);
+  panCatch.addEventListener('wheel', e => {
+    e.preventDefault(); e.stopPropagation();
+    stepZoom(e.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
+  panCatch.addEventListener('dblclick', e => {
+    e.preventDefault(); e.stopPropagation();
+    setZoom(1);
+  });
+  panCatch.addEventListener('contextmenu', e => e.stopPropagation());
 
   // (dev0318) Rotation helpers. Declared before paint() (which calls
   // updateAngleUI) and before the drag handlers below. setAngle is the single
@@ -5488,7 +5686,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   }
 
   function paint() {
-    const r = _vpCropRenderRect(host, vid);
+    const r = viewRect();
     const rl = r.rx + state.frac.x * r.rw;
     const rt = r.ry + state.frac.y * r.rh;
     const rw = state.frac.w * r.rw;
@@ -5498,8 +5696,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     rect.style.height = (state.frac.h * r.rh) + 'px';
     // (dev0318) Tilt the rect; its mask, handles, knob and grid rotate with it.
     rect.style.transform = state.angle ? ('rotate(' + state.angle + 'deg)') : '';
-    // (dev0320) Control bar hugs the top of the crop window, centered on it, and
-    // flips to just inside the top edge when the window nears the host top. It's
+    // (dev0320) Control bar hugs the top of the crop window, centered on it. It's
     // a container child so it stays LEVEL under tilt; clamp horizontally so the
     // Crop button can't run off-screen.
     const bwHalf = (bar.offsetWidth || 0) / 2;
@@ -5508,7 +5705,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (dev0719) Measured height, so a wrapped two-line bar clears the rect's top
     // edge instead of sitting on it.
     const bh = bar.offsetHeight || 30;
-    bar.style.top  = (rt < bh + 10 ? (rt + 4) : (rt - bh - 4)) + 'px';
+    // (dev0908) ALWAYS above the box — pinned to the top of the frame when there
+    // isn't room, never dropped inside it. dev0320 flipped it to just inside the
+    // rect near the screen top, which laid the toolbar over the one strip of
+    // picture the top edge is about — and a box pushed up there is usually up
+    // there BECAUSE of what is along that edge.
+    bar.style.top  = Math.max(2, rt - bh - 4) + 'px';
     // (dev0293/dev0318) W×H label in source px (what ffmpeg crops) plus the tilt
     // angle. Counter-rotate so the text stays upright; turn amber when a tilted
     // corner leaves the source frame (ffmpeg will black-fill that wedge on save).
@@ -5607,7 +5809,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       h.style.cursor  = locked ? 'not-allowed' : (pos + '-resize');
     });
     if (!tr.on || !keys.length) return;
-    const r = _vpCropRenderRect(host, vid);
+    const r = viewRect();
     while (trackGhosts.length > keys.length) trackLayer.removeChild(trackGhosts.pop());
     while (trackGhosts.length < keys.length) {
       const g = document.createElement('div');
@@ -5709,7 +5911,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   }
 
   function paintTexts() {
-    const r = _vpCropRenderRect(host, vid);
+    const r = viewRect();
     const rectH = Math.max(1, state.frac.h * r.rh);
     state.texts.forEach(t => {
       t.el.style.left  = (t.x * 100) + '%';
@@ -6013,7 +6215,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   function textStart(kind, pos, e, capEl, t) {
     e.preventDefault(); e.stopPropagation();
     if (editing && editing !== t) endEdit();
-    const r = _vpCropRenderRect(host, vid);
+    const r = viewRect();
     drag = { kind, pos, el: capEl, t, moved: false,
              sx: e.clientX, sy: e.clientY, of: { x: t.x, y: t.y, w: t.w },
              kw: Math.max(1, state.frac.w * r.rw),
@@ -6025,7 +6227,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   if (vid.videoWidth) ensureMeta();
   else vid.addEventListener('loadedmetadata', ensureMeta, { once: true });
 
-  const ro = new ResizeObserver(paint);
+  const ro = new ResizeObserver(() => applyView());   // (dev0908) re-clamps the pan too
   ro.observe(host);
 
   // (dev0726) Keep the windowed captions honest as the playhead moves — during
@@ -6044,7 +6246,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (e.target !== rect) return;
     e.preventDefault(); e.stopPropagation();
     drag = { kind: 'move', el: rect, sx: e.clientX, sy: e.clientY,
-             ox: state.frac.x, oy: state.frac.y, r: _vpCropRenderRect(host, vid) };
+             ox: state.frac.x, oy: state.frac.y, r: viewRect() };
     rect.setPointerCapture(e.pointerId);
   });
   Object.entries(handles).forEach(([pos, h]) => {
@@ -6060,7 +6262,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
         return;
       }
       drag = { kind: 'resize', pos, el: h, sx: e.clientX, sy: e.clientY,
-               of: { ...state.frac }, r: _vpCropRenderRect(host, vid) };
+               of: { ...state.frac }, r: viewRect() };
       h.setPointerCapture(e.pointerId);
     });
   });
@@ -6071,7 +6273,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // (dragging a tilted box by screen-x must slide it along the box's x).
   function kenStart(kind, pos, e, capEl) {
     e.preventDefault(); e.stopPropagation();
-    const r = _vpCropRenderRect(host, vid);
+    const r = viewRect();
     drag = { kind, pos, el: capEl, sx: e.clientX, sy: e.clientY,
              of: { ...state.ken.frac },
              kw: Math.max(1, state.frac.w * r.rw),
@@ -6432,6 +6634,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // its autopilot, and take the cheat-sheet down with the player.
     endEdit();   // (dev0724) …and drop the text box's document listener
     _vpCropHelpHide();
+    resetView();  // (dev0908) never leave a magnifying transform on the <video>
     // (dev0867) Closing V mid-grade strips the preview off the media element
     // too — same reason as _vpCropToggle's.
     if (typeof window.vpColorUnmount === 'function') window.vpColorUnmount();
@@ -6454,6 +6657,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // (dev0318) Exposed for the Z/X keyboard nudges and aspect-swap repaint.
   state.paint = paint;
   state.setAngle = setAngle;
+  // (dev0908) − / + / 0 drive the magnifier; _vpCropToggle puts the picture
+  // back to 1x at both ends of a session.
+  state.setZoom   = setZoom;
+  state.stepZoom  = stepZoom;
+  state.resetView = resetView;
   state.paintAudio = paintAudio;   // (dev0719) M repaints the audio chip
   state.paintKen = paintKen;       // (dev0720) Z arms/disarms the zoom box
   // (dev0777) R stamps a keyframe, ⇧R clears the track, Q toggles the bars.
@@ -6665,6 +6873,20 @@ function _vpCropHelpShow() {
                              'resolution. V and the slideshow letterbox on their own, and ' +
                              'in G a bar-padded clip leaves the cell framing (COI) nothing ' +
                              'to move. Better to ship the picture and let the screen fit it.') +
+        head('See it bigger (before you cut)') +
+        row('🔍 on the bar',  '1x · 2x · 3x · 4x · 6x · 8x — magnifies the PICTURE so ' +
+                             'you can tell a sharp subject from a soft one before ' +
+                             'spending an encode on it. It changes nothing about the ' +
+                             'render: the box goes on cutting exactly the source pixels ' +
+                             'it was drawn around.') +
+        row('drag off the box', 'pan the magnified picture — grab anywhere outside the ' +
+                             'crop box. Inside it still moves the box, as always.') +
+        row(K('−') + K('+') + ' / wheel', 'step the magnification (wheel anywhere on the ' +
+                             'picture once it is above 1x)') +
+        row(K('0') + ' / double-click', 'back to the whole frame') +
+        row('why 4k needs it', 'a 3840-wide frame in a 1200-wide window is a third of its ' +
+                             'own size — far too small to judge focus. At 3x you are ' +
+                             'looking at close to real pixels.') +
         head('Zoom into') +
         row(K('Z'),          'amber box on / off — where the zoom ENDS') +
         row('drag it',       'move / resize it inside the crop box (always the same ' +
@@ -7004,6 +7226,10 @@ function _vpCropToggle() {
       sc.style.cursor = 'default';
     }
     if (host) host.style.transform = '';
+    // (dev0908) Every crop session starts on the whole frame. The magnifier is
+    // a way of LOOKING at this clip, not a setting that should follow you to
+    // the next one.
+    if (s.resetView) s.resetView();
     if (s.paint) s.paint();   // (dev0320) reposition bar now it's visible (offsetWidth valid)
     // (dev0867) Hand the colour tool the element it grades — the <video>, or on
     // a still the <img> itself (player.el there is the adapter object, not a
@@ -7017,6 +7243,7 @@ function _vpCropToggle() {
       sc.style.pointerEvents = s._savedSCPE || '';
       sc.style.cursor = s._savedSCCursor || '';
     }
+    if (s.resetView) s.resetView();   // (dev0908) hand the picture back at 1x
     // (dev0744) On a still there is nothing left underneath to keep the state
     // alive for — closing the crop IS ending the session, whether it came from
     // C, the bar's ✕ or the cheat-sheet's. _vpImageCropClose guards re-entry.
@@ -7044,6 +7271,14 @@ function _vpCropToggleAudio() {
 // switch. Measured on a 4K handheld clip: medium cut the residual wobble 2.1x
 // for ~3% zoom, strong only reached 2.3x and took ~7% — hence the hint.
 const _VP_DESHAKE_STEPS = ['off', 'light', 'medium', 'strong'];
+// (dev0908) The keyboard's way into the magnifier — see setZoom/stepZoom in
+// _vpMountCropOverlay. dir > 0 in, dir < 0 out, 0 = straight back to 1x.
+function _vpCropStepZoom(dir) {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  if (s.stepZoom) s.stepZoom(dir);
+}
+
 function _vpCropCycleDeshake() {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
