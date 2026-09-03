@@ -44,7 +44,6 @@
 (function () {
   'use strict';
 
-  var PROMPT_MS = 1000;   // how long the name is on screen
   var RESULT_MS = 3000;   // how long a correct card stays turned over
   var HINT_MS   = 3000;   // how long the hint itself shows
   var ASK_MS    = 3000;   // how long the "want a hint?" offer waits
@@ -177,14 +176,20 @@
   // pointer-events:none throughout: the name is shown OVER the grid the player
   // is about to click into, and a panel that ate the first click would make the
   // middle of every question board unanswerable.
-  function centrePanel(id, html) {
+  //
+  // (dev0897) `opacity` is the panel's own, applied to the whole box rather than
+  // to its background colour. Half-transparent means the PICTURE UNDER IT stays
+  // readable -- the name sits on a 5x5 grid whose middle cell is one of the
+  // answers, so a solid panel would hide a card the question might be about.
+  function centrePanel(id, html, opacity) {
     drop(id);
     var ov = overlay(); if (!ov) return null;
     var el = document.createElement('div');
     el.id = id;
     el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);'
       + 'z-index:28040;pointer-events:none;max-width:min(560px,86vw);max-height:70vh;'
-      + 'overflow:hidden;background:rgba(12,14,20,0.95);color:#eef;'
+      + 'overflow:hidden;opacity:' + (opacity == null ? 0.95 : opacity) + ';'
+      + 'background:#0c0e14;color:#eef;'
       + 'border:1px solid rgba(255,255,255,0.22);border-radius:12px;'
       + 'padding:16px 24px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.7);'
       + 'font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;';
@@ -193,9 +198,12 @@
     return el;
   }
 
-  // Binomial above common name, one second, gone. Deliberately short: this is a
-  // recall test, and a name left on screen would turn it into a matching
-  // exercise instead. It comes back for its second after every wrong answer.
+  // (dev0897) THE NAME STAYS UP UNTIL A CELL IS PICKED. The first draft flashed
+  // it for a second, which made the quiz a memory test on top of an
+  // identification test -- two things at once, and the wrong one was the hard
+  // one. Now it is a half-transparent window that hangs there while the player
+  // looks, takes no clicks (pointer-events:none, see centrePanel), and is
+  // dropped the moment a cell is chosen, by onCorrect / onWrong.
   function showQuestion() {
     if (!cur) return;
     var common = cur.common
@@ -203,8 +211,7 @@
       : '<div style="font-size:0.8em;opacity:0.4;font-style:italic;">no common name</div>';
     centrePanel('quizPrompt',
       '<div style="font-size:1.35em;font-style:italic;letter-spacing:0.01em;">'
-      + esc(cur.sci) + '</div>' + common);
-    later(function () { drop('quizPrompt'); }, PROMPT_MS);
+      + esc(cur.sci) + '</div>' + common, 0.5);
   }
 
   // ── the hint offer: a button that counts itself down and leaves ───────────
@@ -282,10 +289,8 @@
     later(function () { drop('quizHint'); resume(); }, HINT_MS);
   }
 
-  // Back to the grid with the question still open. The name is re-shown for its
-  // second: by now it has been off screen through a wrong click and a hint
-  // offer, and this is a quiz about the picture, not about holding a Latin name
-  // in your head for twenty seconds.
+  // Back to the grid with the question still open, and the name back on screen
+  // to stay -- it was dropped by the wrong click that got us here.
   function resume() {
     if (!active) return;
     awaiting = true;
