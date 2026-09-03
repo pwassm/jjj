@@ -28,6 +28,11 @@
 // They still sit on the grid and can still be clicked — clicking one is simply
 // wrong, like any other miss.
 //
+// (dev0898) A CORRECT CARD IS READ AT THE PLAYERS OWN PACE. It turns over and
+// stays turned until the next click, anywhere. The first two corrects get a
+// small "click to continue" balloon beside the mouse; after that the gesture is
+// known, and a nudge that never stops appearing is a nudge you stop reading.
+//
 // THE THREE-SECOND HINT OFFER. A wrong click asks whether they want a hint, and
 // that offer counts itself down from 3 and disappears. Not answering is a real
 // answer here — it means "no, I'm still looking" — so the offer must not sit
@@ -44,7 +49,7 @@
 (function () {
   'use strict';
 
-  var RESULT_MS = 3000;   // how long a correct card stays turned over
+  var BALLOON_N = 2;      // corrects that still get the "click to continue" nudge
   var HINT_MS   = 3000;   // how long the hint itself shows
   var ASK_MS    = 3000;   // how long the "want a hint?" offer waits
 
@@ -54,6 +59,7 @@
   var right     = 0, wrong = 0;
   var startedAt = 0;
   var awaiting  = false;  // a click on a cell is meaningful right now
+  var reading   = false;  // (dev0898) a card is turned over, waiting to be clicked past
   var timers    = [];     // every pending timer, cleared as one on stop()
   var wired     = false;
 
@@ -188,7 +194,7 @@
     el.id = id;
     el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);'
       + 'z-index:28040;pointer-events:none;max-width:min(560px,86vw);max-height:70vh;'
-      + 'overflow:hidden;opacity:' + (opacity == null ? 0.95 : opacity) + ';'
+      + 'overflow:hidden;opacity:' + (opacity == null ? 1 : opacity) + ';'
       + 'background:#0c0e14;color:#eef;'
       + 'border:1px solid rgba(255,255,255,0.22);border-radius:12px;'
       + 'padding:16px 24px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.7);'
@@ -201,9 +207,14 @@
   // (dev0897) THE NAME STAYS UP UNTIL A CELL IS PICKED. The first draft flashed
   // it for a second, which made the quiz a memory test on top of an
   // identification test -- two things at once, and the wrong one was the hard
-  // one. Now it is a half-transparent window that hangs there while the player
-  // looks, takes no clicks (pointer-events:none, see centrePanel), and is
-  // dropped the moment a cell is chosen, by onCorrect / onWrong.
+  // one. Now it hangs there while the player looks, takes no clicks
+  // (pointer-events:none, see centrePanel), and is dropped the moment a cell is
+  // chosen, by onCorrect / onWrong.
+  //
+  // (dev0898) OPAQUE. It was tried at half transparency so the cell underneath
+  // stayed visible, and the name became the hard thing on screen to read --
+  // which is the one thing that must stay easy. The panel is small and the grid
+  // has two dozen other cells; covering one costs less than a dim question.
   function showQuestion() {
     if (!cur) return;
     var common = cur.common
@@ -211,7 +222,7 @@
       : '<div style="font-size:0.8em;opacity:0.4;font-style:italic;">no common name</div>';
     centrePanel('quizPrompt',
       '<div style="font-size:1.35em;font-style:italic;letter-spacing:0.01em;">'
-      + esc(cur.sci) + '</div>' + common, 0.5);
+      + esc(cur.sci) + '</div>' + common);
   }
 
   // ── the hint offer: a button that counts itself down and leaves ───────────
@@ -323,14 +334,19 @@
 
   function nextQuestion() {
     if (!active) return;
-    drop('quizPrompt'); drop('quizHint'); drop('quizAsk');
+    drop('quizPrompt'); drop('quizHint'); drop('quizAsk'); drop('quizBalloon');
     if (!queue.length) { report(); return; }
     cur = queue.shift();
     awaiting = true;
     showQuestion();
   }
 
-  function onCorrect(cell) {
+  // (dev0898) THE READ LASTS AS LONG AS THEY WANT. A correct card turns over and
+  // STAYS turned; the next click anywhere moves on. A three-second timer was
+  // either too short to read the card back or too long to sit through, and it
+  // could never be both -- how long an answer is worth looking at is a
+  // judgement the player makes, not a constant.
+  function onCorrect(cell, e) {
     awaiting = false;
     right++;
     paintHud();
@@ -340,12 +356,44 @@
     if (typeof window._gridCardTurn === 'function') {
       try { window._gridCardTurn(cell, 0); } catch (_) {}
     }
-    later(function () {
-      if (typeof window._gridCardFrontAll === 'function') {
-        try { window._gridCardFrontAll(); } catch (_) {}   // back to the picture
-      }
-      nextQuestion();
-    }, RESULT_MS);
+    reading = true;
+    // The nudge, for the first two only: by the third correct answer the
+    // gesture has been learned, and a balloon that never stops appearing is a
+    // balloon you stop reading. It comes up where the hand already is -- beside
+    // the click that earned it -- rather than somewhere they would have to find.
+    if (right <= BALLOON_N) showBalloon(e);
+  }
+
+  // (dev0898) "click to continue", at the mouse. Clamped into the viewport so a
+  // correct cell in the bottom-right corner does not push it off screen, and
+  // pointer-events:none so the very click it is asking for passes through it.
+  function showBalloon(e) {
+    drop('quizBalloon');
+    var ov = overlay(); if (!ov) return;
+    var b = document.createElement('div');
+    b.id = 'quizBalloon';
+    b.textContent = 'click to continue';
+    b.style.cssText = 'position:fixed;z-index:28045;pointer-events:none;'
+      + 'background:rgba(250,250,255,0.95);color:#14161c;'
+      + 'border-radius:9px;padding:5px 10px;white-space:nowrap;'
+      + 'box-shadow:0 4px 16px rgba(0,0,0,0.6);'
+      + 'font:12px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;';
+    ov.appendChild(b);
+    var x = (e && e.clientX != null) ? e.clientX + 16 : window.innerWidth / 2;
+    var y = (e && e.clientY != null) ? e.clientY + 16 : window.innerHeight / 2;
+    var r = b.getBoundingClientRect();
+    b.style.left = Math.round(Math.max(6, Math.min(x, window.innerWidth  - r.width  - 6))) + 'px';
+    b.style.top  = Math.round(Math.max(6, Math.min(y, window.innerHeight - r.height - 6))) + 'px';
+  }
+
+  // The click that ends a read: card home, next question.
+  function continueOn() {
+    reading = false;
+    drop('quizBalloon');
+    if (typeof window._gridCardFrontAll === 'function') {
+      try { window._gridCardFrontAll(); } catch (_) {}   // back to the picture
+    }
+    nextQuestion();
   }
 
   function onWrong() {
@@ -365,9 +413,19 @@
   // Plain left button / touch only, so Shift-zoom, Alt-COI, Ctrl+click and the
   // right-click menu still work on a grid that happens to be in a quiz.
   function onPointerDown(e) {
-    if (!active || !awaiting) return;
+    if (!active) return;
     if (e.button !== undefined && e.button !== 0) return;
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    // The HUD and the hint offer are real buttons and keep their own clicks --
+    // Exit has to work while a card is being read.
+    if (e.target && e.target.closest
+        && e.target.closest('#quizHud, #quizAsk')) return;
+
+    // (dev0898) Reading a turned-over card: ANY click moves on, not only one on
+    // a cell, so there is nothing to aim at.
+    if (reading) { e.preventDefault(); e.stopPropagation(); continueOn(); return; }
+
+    if (!awaiting) return;
     var cont = container();
     var cell = e.target && e.target.closest ? e.target.closest('.grid-cell') : null;
     if (!cell || !cont || !cont.contains(cell)) return;
@@ -375,7 +433,7 @@
     e.stopPropagation();
     var sp = speciesOf(cell._rowData);
     var ok = !!(cur && sp && sp.sci && sp.sci.toLowerCase() === cur.sci.toLowerCase());
-    if (ok) onCorrect(cell); else onWrong();
+    if (ok) onCorrect(cell, e); else onWrong();
   }
 
   // Esc leaves the QUIZ before it reaches G's own Esc, which would otherwise
@@ -387,16 +445,20 @@
     stop();
   }
 
+  // (dev0898) Listened for on the OVERLAY rather than on #gridContainer: the
+  // click that ends a read may land anywhere, including the gap around the
+  // grid, where the container hears nothing. Cell answers still check
+  // containment themselves, so nothing outside the grid can answer a question.
   function wire() {
     if (wired) return;
-    var cont = container(); if (!cont) return;
-    cont.addEventListener('pointerdown', onPointerDown, true);
+    var ov = overlay(); if (!ov) return;
+    ov.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('keydown', onKeyDown, true);
     wired = true;
   }
   function unwire() {
-    var cont = container();
-    if (cont) cont.removeEventListener('pointerdown', onPointerDown, true);
+    var ov = overlay();
+    if (ov) ov.removeEventListener('pointerdown', onPointerDown, true);
     window.removeEventListener('keydown', onKeyDown, true);
     wired = false;
   }
@@ -410,7 +472,7 @@
         toast('No named flash cards on this grid to quiz on', 2200);
       return;
     }
-    active = true; right = 0; wrong = 0; cur = null;
+    active = true; right = 0; wrong = 0; cur = null; reading = false;
     startedAt = Date.now();
     if (typeof window._gridCardFrontAll === 'function') {
       try { window._gridCardFrontAll(); } catch (_) {}   // start from pictures
@@ -422,10 +484,10 @@
 
   function stop() {
     if (!active) return;
-    active = false; awaiting = false; cur = null; queue = [];
+    active = false; awaiting = false; reading = false; cur = null; queue = [];
     clearTimers();
     unwire();
-    drop('quizPrompt'); drop('quizHint'); drop('quizAsk');
+    drop('quizPrompt'); drop('quizHint'); drop('quizAsk'); drop('quizBalloon');
     if (typeof window._gridCardFrontAll === 'function') {
       try { window._gridCardFrontAll(); } catch (_) {}
     }
