@@ -1840,6 +1840,15 @@ function _gridCardFrontOthers(exceptCell) {
 }
 window._gridCardFrontAll = function () { return _gridCardFrontOthers(null); };
 
+// (dev0896) The quiz (quizcells.js) drives the same two card operations the tap
+// gesture does — "is this cell a flash card?" and "turn it to face i" — from
+// outside grid.js. Exported rather than reimplemented so a card can never be
+// recognised or turned two different ways: quizcells is a CALLER of the card
+// machinery, not a second copy of it. Both are no-ops without makecard.js /
+// turncells.js, exactly as the internal callers already are.
+window._gridCardParts = _gridCardParts;
+window._gridCardTurn  = _gridCardTurn;
+
 // (dev0889) html.grid-open — "the G overlay is up". Driven by an observer on
 // the overlay's own style attribute rather than by a line in each show/hide
 // path: that display value is written from eight places across five files, and
