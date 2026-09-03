@@ -34,37 +34,73 @@ A flash card is an ml.json row with no `link` and an `ftext` split on top-level
 | 0877 | Housekeeping ▸ Sample RAW Flash Card — the research dump before anything formats it. |
 | 0879 | ↑ on a flash card opens the reader on the face you were reading (`_gridCardSectionIdx`), not always the picture. |
 | 0880 | Xe: stepping a body line's size inside a `<details>` carries the `<summary>` with it, so a title can no longer end up smaller than its own body. |
+| 0903 | **Nine sections.** `id1` rewritten: `renderSections` returns a LIST, empty sections dropped, and the ladder is picture / ID / telling it apart / worth knowing / stories / names / life / in the field / sources. Schema gains `idLines`, `facts`, `stories`, `names`, `life`, `fieldNotes`, `conservation`; `keyedOn` and `alternatives` become collapsible-shaped (`point` + `heading` + `lines`). Units rule (metric AND US, rounded) and the one-line-is-one-fact rule in the prompt. Sources restored as their own face. |
 | 0885 | American spelling throughout. Reviewer-facing blocks (what the picture could not settle, where the identification came from, the confidence readout) are wrapped in a teCut: kept in the row, hidden from every render. `id1.systemPrompt` now says which fields are for the reader and which for the reviewer, and `renderSections` hides the latter. |
 | 0884 | UID 2175 rebuilt — the pale sheephead is a female mid sex-change, not a depth artefact. The same trap guarded in `id1.systemPrompt`: reach for the biology before the lighting. |
 | 0883 | A collapsible ships CLOSED. Every way of opening one in Xe wrote the schema `open` attribute and that attribute was serialised, so reading a card in the editor shipped every answer showing. `open` is now read from HTML and never written back. UIDs 2175 (sheephead) and 2174 (garibaldi) populated. |
 | 0882 | Xe ⊘ HideLine + Alt+X (and the empty-teCut footgun that silently cut a slide from that point down). The fullscreen reader's column and type size follow the viewport. A reader page holding collapsibles gets an auto Show all / Hide all. |
 | 0881 | **A card has as many faces as it has sections.** `makeCardSplit` returns a `sections` list (`body`/`orig` kept as the first two, so no caller moved); G addresses faces by INDEX — turncells tag `s<i>`, an indexed back panel, and a forward swipe that STEPS to the next face with the last one returning to the picture. At three sections that is byte-for-byte the dev0860 gesture. UID **2184** is the first card written in the 4-section layout. |
 
-## The 4-section layout — SHAPE DONE (dev0881), CONTENT AND BEHAVIOUR OPEN
+## The section ladder — SHIPPED dev0903
 
-Phil's target, replacing the old 3:
+Phil's target, and what the renderer now emits. A card is ftext split on
+top-level `<hr>`; every section is a FACE in G (swipe steps forward, the last
+returns to the picture) and a PAGE in the reader. **An empty section is
+dropped**, so a card has exactly as many faces as it has content.
 
-1. image
-2. **very short ID** — name, plus the minimum of how *this image* was identified
-3. **distinction slide** — the collapsible format below
-4. **raw search info in lines** — ID, distribution, sizes, interesting facts
+| # | face | what goes on it |
+|---|---|---|
+| 1 | picture | the front |
+| 2 | ID | name, plus the one or two lines that name what you look at |
+| 3 | telling it apart | what the call rests on, and what it is confused with |
+| 4 | worth knowing | the interesting half — description and oddity |
+| 5 | stories | NARRATIVE. long lines, **each story its own source** |
+| 6 | names | etymology of the common name AND of the binomial |
+| 7 | life | distribution habitat size lifespan breeding diet predators |
+| 8 | in the field | what helps you place it, and its conservation status |
+| 9 | sources | one collapsible, every link inside it |
 
-A flash card should be a **flash**. Section 2 is a short answer, not a book.
+**The card has two halves and they are written differently.** Sections 2-4 are
+the FLASH: read in a grid cell the size of a stamp, short flat lines, one idea
+each. Sections 5-9 are the REFERENCE half: read full screen, one page at a
+time, and deliberately long — that is why they were split off. A thin
+reference half is the commonest way to get a card wrong.
 
-The plumbing that blocked it is done. `makeCardSplit` returns a `sections`
-list, `_gridCardBackPanel`/`_gridCardTurn`/`_gridCardSectionIdx` all take a
-face INDEX, and `_gridCardSwipeFace` steps through them. Section 4 is no longer
-glued to section 3 and there is no table of face names left to fall out of step.
+**Section 5 is the one place prose is written.** A small true story with a
+beginning and a point — "How bat rays were mistakenly considered threats to
+oyster beds", "How did sea otters help eelgrass". Longer sentences, narrative
+voice, and every story carries its own source. **A story that cannot be
+sourced does not go in**, and padding the list with a restated fact is worse
+than returning none.
 
-**UID 2184 is the worked example** — a copper rockfish, written by hand in the
-target markup. Read it in G (it is cell 2c of the FlashTry1 config) before
-touching the renderer: it is the thing the renderer has to reproduce.
+**ONE LINE IS ONE FACT.** Lines get pulled OUT of these cards to build the
+language quiz, so each `<p>` has to survive being shown on its own, out of
+order, with nothing around it. No line may open with "it" / "this" / "they"
+reaching back to the line above.
+
+**UNITS: BOTH, ALWAYS, ROUNDED.** Metric first, US customary in parentheses,
+both rounded to what is actually known — "to about 66 cm (26 in)", "down to
+180 m (600 ft)". Never a bare metric figure and never a bare imperial one.
+This applies everywhere on the card, not just to section 7.
+
+**UID 2184 is still the worked example** for sections 1-4 (a copper rockfish,
+hand-written, cell 2c of the FlashTry1 config). Nothing has been written by
+hand in the full nine yet — `CardTypes.sampleFtext()` renders the layout with
+the `sample()` fixture, which is a LAYOUT FIXTURE and not vouched-for biology.
 
 **A known gap this opened.** `makeCardBuildHtml` (makecard.js), the standalone
 .html export, still emits only the picture and `parts.body`. It dropped
-section 3 before dev0881 and now drops 3 and 4. One line — `parts.sections` —
-but it changes what an exported card contains, so it wants a decision, not a
-drive-by fix.
+section 3 before dev0881 and now drops 3 through 9. One line —
+`parts.sections` — but it changes what an exported card contains, so it wants
+a decision, not a drive-by fix.
+
+**Still to argue about in the ladder.** Sections 6, 7 and 8 were specified as
+"specific facts that might help in identification", with etymology named for 6
+and distribution / habitat / lifespan / reproduction / diet / predators /
+conservation named as the general list. The split above puts etymology alone
+on 6, the dossier on 7, and placing-an-animal plus conservation on 8. That
+division is the renderer's guess, not Phil's instruction, and moving a field
+between 6, 7 and 8 is a two-line change in `renderSections`.
 
 ## The markup Phil wants for section 3
 
@@ -154,15 +190,12 @@ record above, so tags and `taxoninfo.json` cannot drift.
 
 ## Still open
 
-- **The renderer still emits the old 3-section shape.** `id1.renderSections`
-  returns `{body, orig}` and `renderFtext` joins picture + 2 + 3. The section
-  count is settled now, so this is unblocked: it wants to return a LIST of
-  sections, with UID 2184 as the target output.
-- **cardtypes.js's header comment now contradicts the design.** It says
-  `<details>` is "technically in the schema, and still wrong here", which was
-  true when a card back was one grid-cell face. Section 3 IS a details list.
-  The comment needs rewriting when the renderer is rebuilt, or the next person
-  will read it as a prohibition.
+- ~~The renderer still emits the old 3-section shape.~~ DONE dev0903 —
+  `renderSections` returns a list, `renderFtext` joins picture + all of it,
+  and a non-array return is still accepted so an older card type would not
+  break.
+- ~~cardtypes.js's header comment contradicts the design.~~ DONE dev0903 —
+  the header now says `<details>` IS the format and carries the section ladder.
 - **UID 2179 is no longer a worked example.** It was re-swept back to a
   picture-only f0 on 2026-09-02. 2184 replaces it as the reference card.
 - **No API wiring, deliberately.** Phil: "too early to do API." The schema and
