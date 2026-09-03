@@ -39,6 +39,12 @@
 // there waiting and must not need to be dismissed before play continues. It can
 // be dismissed early, which is the same outcome arriving sooner.
 //
+// (dev0899) THE SUMMARY ON THE WAY OUT. Exit, Esc and running out of questions
+// all end the quiz the same way and put up one panel: every wrong answer as
+// "chose X for Y", then the names that were got right, then the time, then the
+// congratulations. Dismissed by a click anywhere. The poll ending a quiz because
+// the grid was closed is NOT one of those endings and stays silent.
+//
 // ── CUT-OUT INSTRUCTIONS — to remove the feature entirely, zero grid impact:
 //   1. delete this file
 //   2. delete 'quizcells.js' from the files[] array in index.html
@@ -57,6 +63,8 @@
   var queue     = [];     // questions still to ask, already shuffled
   var cur       = null;   // { sci, common }
   var right     = 0, wrong = 0;
+  var hits      = [];     // (dev0899) names answered correctly, in the order asked
+  var misses    = [];     // (dev0899) { chose, want } -- one entry per wrong click
   var startedAt = 0;
   var awaiting  = false;  // a click on a cell is meaningful right now
   var reading   = false;  // (dev0898) a card is turned over, waiting to be clicked past
@@ -349,6 +357,7 @@
   function onCorrect(cell, e) {
     awaiting = false;
     right++;
+    if (cur) hits.push(cur);
     paintHud();
     drop('quizPrompt');
     // The card's own turn IS the result: it shows the answer it was holding,
@@ -396,9 +405,19 @@
     nextQuestion();
   }
 
-  function onWrong() {
+  // (dev0899) `cell` is what they actually clicked, and it is recorded by NAME:
+  // "chose X for Y" is the only line of a quiz summary anyone learns from, and
+  // it cannot be reconstructed afterwards -- the cell will have been re-rendered
+  // and the question moved on. A card with no identification yet (f0) has no
+  // name to give, so it is recorded as the picture it is.
+  function onWrong(cell) {
     awaiting = false;
     wrong++;
+    var sp = cell ? speciesOf(cell._rowData) : null;
+    misses.push({
+      chose: (sp && sp.sci) || 'an unidentified card',
+      want:  (cur && cur.sci) || ''
+    });
     paintHud();
     drop('quizPrompt');
     offerHint();
@@ -433,7 +452,7 @@
     e.stopPropagation();
     var sp = speciesOf(cell._rowData);
     var ok = !!(cur && sp && sp.sci && sp.sci.toLowerCase() === cur.sci.toLowerCase());
-    if (ok) onCorrect(cell, e); else onWrong();
+    if (ok) onCorrect(cell, e); else onWrong(cell);
   }
 
   // Esc leaves the QUIZ before it reaches G's own Esc, which would otherwise
@@ -442,7 +461,7 @@
     if (!active || e.key !== 'Escape') return;
     e.preventDefault();
     e.stopPropagation();
-    stop();
+    stop(true);
   }
 
   // (dev0898) Listened for on the OVERLAY rather than on #gridContainer: the
@@ -473,6 +492,8 @@
       return;
     }
     active = true; right = 0; wrong = 0; cur = null; reading = false;
+    hits = []; misses = [];
+    drop('quizSummary'); drop('quizSummaryCatch');
     startedAt = Date.now();
     if (typeof window._gridCardFrontAll === 'function') {
       try { window._gridCardFrontAll(); } catch (_) {}   // start from pictures
@@ -482,8 +503,16 @@
     nextQuestion();
   }
 
-  function stop() {
+  // (dev0899) `summarise` separates the two reasons a quiz ends. Exit, Esc and
+  // running out of questions are all the player FINISHING, and they get the
+  // summary. The poll calling stop() because the grid was closed or re-rendered
+  // out from under the quiz is not an ending anyone asked for, and putting a
+  // congratulations panel on top of whatever they navigated to instead would be
+  // the app talking over them.
+  function stop(summarise) {
     if (!active) return;
+    var final = summarise ? { right: right, wrong: wrong, time: elapsed(),
+                              hits: hits.slice(), misses: misses.slice() } : null;
     active = false; awaiting = false; reading = false; cur = null; queue = [];
     clearTimers();
     unwire();
@@ -492,21 +521,90 @@
       try { window._gridCardFrontAll(); } catch (_) {}
     }
     paintHud();
+    // Built AFTER the teardown, which clears every other panel -- and only when
+    // something was actually answered. A quiz opened and shut again has nothing
+    // to report, and a congratulations for it would be hollow.
+    if (final && (final.right || final.wrong)) showSummary(final);
   }
 
-  // Queue exhausted. The score is worth a moment on screen before the button
-  // goes back to saying Quiz, so a run ends with a result rather than with the
-  // HUD quietly resetting. Built AFTER stop(), which clears the panels.
-  function report() {
-    var line = right + ' right, ' + wrong + ' wrong, in ' + elapsed();
-    stop();
-    centrePanel('quizHint',
-      '<div style="font-size:1.15em;margin-bottom:6px;">Quiz complete</div>'
-      + '<div style="opacity:0.8;">' + esc(line) + '</div>');
-    setTimeout(function () { drop('quizHint'); }, 3200);
+  // Queue exhausted -- the same ending as pressing Exit, so it takes the same
+  // route out and gets the same summary.
+  function report() { stop(true); }
+
+  // (dev0899) THE SUMMARY. Read in the order it is useful: what went wrong
+  // first (that is the part worth reading, and the part that disappears if it
+  // is not written down), then what went right, then the time, then the
+  // congratulations. The dismissal line is last and small because it is
+  // housekeeping, not content.
+  //
+  // Dismissed by a click ANYWHERE: a full-screen catcher sits under the panel
+  // and takes the click, so there is no button to find and no way to be stuck
+  // with it. The panel itself takes clicks too (it must, so a long list can be
+  // scrolled with the wheel without the first stray click closing it) and
+  // dismisses on the same gesture.
+  function showSummary(f) {
+    drop('quizSummary'); drop('quizSummaryCatch');
+    var ov = overlay(); if (!ov) return;
+
+    var body = '';
+    if (f.misses.length) {
+      body += '<div style="font-size:0.72em;letter-spacing:0.08em;opacity:0.5;'
+        + 'text-transform:uppercase;margin:0 0 6px;">'
+        + f.misses.length + (f.misses.length === 1 ? ' wrong answer' : ' wrong answers')
+        + '</div><div style="text-align:left;margin-bottom:14px;">'
+        + f.misses.map(function (m) {
+            return '<div style="margin:3px 0;color:#f9a;">chose <em>' + esc(m.chose)
+              + '</em> for <em>' + esc(m.want) + '</em></div>';
+          }).join('')
+        + '</div>';
+    }
+    body += '<div style="font-size:0.72em;letter-spacing:0.08em;opacity:0.5;'
+      + 'text-transform:uppercase;margin:0 0 6px;">'
+      + f.hits.length + (f.hits.length === 1 ? ' correct answer' : ' correct answers')
+      + '</div>';
+    body += f.hits.length
+      ? '<div style="text-align:left;margin-bottom:14px;">'
+        + f.hits.map(function (h) {
+            return '<div style="margin:3px 0;color:#9e9;"><em>' + esc(h.sci) + '</em>'
+              + (h.common ? '<span style="opacity:0.6;"> - ' + esc(h.common) + '</span>' : '')
+              + '</div>';
+          }).join('')
+        + '</div>'
+      : '<div style="opacity:0.45;font-style:italic;margin-bottom:14px;">none this time</div>';
+
+    body += '<div style="opacity:0.75;margin-bottom:16px;">Time on quiz '
+      + esc(f.time) + '</div>';
+    body += '<div style="font-size:1.15em;color:#cfe;">'
+      + 'Congratulations on completing this quiz!</div>';
+    body += '<div style="font-size:0.78em;opacity:0.45;margin-top:10px;">'
+      + 'click anywhere on screen to dismiss</div>';
+
+    var catcher = document.createElement('div');
+    catcher.id = 'quizSummaryCatch';
+    catcher.style.cssText = 'position:fixed;inset:0;z-index:28060;background:rgba(0,0,0,0.35);';
+
+    var box = document.createElement('div');
+    box.id = 'quizSummary';
+    box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);'
+      + 'z-index:28061;max-width:min(560px,88vw);max-height:76vh;overflow-y:auto;'
+      + 'background:#0c0e14;color:#eef;border:1px solid rgba(255,255,255,0.22);'
+      + 'border-radius:12px;padding:20px 26px;text-align:center;cursor:pointer;'
+      + 'box-shadow:0 12px 48px rgba(0,0,0,0.75);'
+      + 'font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;';
+    box.innerHTML = body;
+
+    function dismiss(e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      drop('quizSummary'); drop('quizSummaryCatch');
+    }
+    catcher.addEventListener('pointerdown', dismiss, true);
+    box.addEventListener('pointerdown', dismiss, true);
+
+    ov.appendChild(catcher);
+    ov.appendChild(box);
   }
 
-  function toggle() { if (active) stop(); else start(); }
+  function toggle() { if (active) stop(true); else start(); }
 
   // ── presence ──────────────────────────────────────────────────────────────
   // Slow poll — see the header note on why this is not a call from gridShow.
@@ -515,8 +613,9 @@
   // gridOverlay.style.display directly.
   setInterval(function () {
     if (!gridOpen() || !hasCards()) {
-      if (active) stop();
+      if (active) stop(false);            // not an ending they chose -- no summary
       drop('quizHud');
+      if (!gridOpen()) { drop('quizSummary'); drop('quizSummaryCatch'); }
       return;
     }
     paintHud();
