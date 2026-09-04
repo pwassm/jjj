@@ -8178,5 +8178,14 @@
     "aliases": [],
     "def": "",
     "rank": "family"
+  },
+  {
+    "id": "homer-simpson",
+    "label": "Homer simpson",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species"
   }
 ]

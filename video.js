@@ -447,6 +447,39 @@ window.mountPinterestEmbed = function(hostEl, url) {
   };
 };
 
+// ── Reddit (NO embed — resolved to a direct v.redd.it MP4 instead) ────────
+// (dev0911) Reddit is the one provider in this file with no mount function, and
+// that is the good outcome, not a gap. reddit.com sends X-Frame-Options, so a
+// post can never be iframed the way IG / TikTok / Pinterest are. It does not need
+// to be: v.redd.it serves a progressive, Range-capable, `Access-Control-Allow-
+// Origin: *` MP4 ladder (CMAF_<height>.mp4), so the W import runs the post
+// through proxy /reddit/resolve and the row rides the plain isDirectVideoLink
+// path with full seek, VidRange segments, crop/trim and steps.
+//
+// So these predicates answer only "is this a post page that still needs
+// resolving?" — a RESOLVED row holds a v.redd.it MP4 and is deliberately NOT a
+// Reddit link by this test, because nothing downstream should treat it specially.
+// The dev0611 rule: a provider predicate lives in video.js only. Must stay in
+// step with RD_PATH_RE / RD_SHORT_RE / redditPostId() in proxy.js.
+var _RD_PATH_RE  = /reddit\.com\/(?:r\/([A-Za-z0-9_]{2,24})\/)?comments\/([a-z0-9]{4,12})/i;
+var _RD_SHORT_RE = /(?:^|\/\/|\.)redd\.it\/([a-z0-9]{4,12})(?:[/?#]|$)/i;
+window.getRedditPostId = function(url) {
+  var s = String(url || '');
+  var m = s.match(_RD_PATH_RE);
+  if (m) return m[2];
+  // v.redd.it/<hash> is the MEDIA host — a resolved row's link. Never a post id.
+  if (/(?:^|\/\/|\.)v\.redd\.it\//i.test(s)) return null;
+  var sh = s.match(_RD_SHORT_RE);
+  return sh ? sh[1] : null;
+};
+window.isRedditLink = function(url) {
+  return !!window.getRedditPostId(url);
+};
+window.getRedditSubreddit = function(url) {
+  var m = String(url || '').match(_RD_PATH_RE);
+  return (m && m[1]) || null;
+};
+
 // ─── API loaders ──────────────────────────────────────────────────────────────
 window.loadYouTubeApiOnce = function() {
   if (window.YT && window.YT.Player) { window.seeLearnYTReady = true; return Promise.resolve(); }

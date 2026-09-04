@@ -6191,6 +6191,155 @@ function pinterestDownload(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
 }
 
+// (dev0911) ── Reddit resolver ────────────────────────────────────────────────
+// A reddit.com/r/<sub>/comments/<id>/<slug>/ URL carries no file extension, so
+// before this build it imported as an ltype='w' ARTICLE row — the same trap IG
+// (dev0581), TikTok (dev0605), Macaulay (dev0600) and Pinterest (dev0693) each
+// needed a resolver for.
+//
+// Reddit is the EASIEST of that family, and the reason is worth writing down.
+// Measured 2026-09-03 against v.redd.it/junhjbvijcpg1/CMAF_480.mp4:
+//
+//   HTTP/1.1 206 Partial Content
+//   Content-Type: video/mp4
+//   Accept-Ranges: bytes
+//   Access-Control-Allow-Origin: *
+//
+// v.redd.it serves a PROGRESSIVE, Range-capable, CORS-open mp4 ladder
+// (CMAF_220/270/360/480/720/1080.mp4) alongside its HLS/DASH manifests. So a
+// resolved Reddit row is a plain direct-video row with full seek, VidRange
+// segments, crop/trim, colour grading and steps — everything an embed cannot do.
+// There is NO embed fallback and none is possible: reddit.com sends
+// X-Frame-Options and cannot be iframed at all. An unresolved Reddit row is
+// therefore just a link, which is why the import stamps `linkpage` immediately.
+//
+// yt-dlp is the ONLY metadata source here, deliberately. Reddit's own endpoints
+// are bot-walled from this machine (measured the same day: www.reddit.com/….json
+// and api.reddit.com both 403 with the 190KB interstitial, and even the plain HTML
+// page answers a JS bot-check shell with no OG tags). yt-dlp's Reddit extractor
+// walks past all of that and hands over title / uploader / subreddit / timestamp /
+// duration / like_count / thumbnails in one call, so this resolver never touches
+// the .json API and cannot be broken by that wall moving.
+//
+// ── The audio trap ────────────────────────────────────────────────────────
+// v.redd.it splits audio into its OWN DASH stream (DASH_AUDIO_128.mp4); the
+// CMAF_<h>.mp4 video rungs carry `acodec: none`. Two genuinely different cases,
+// and conflating them would be a silent loss:
+//
+//   • the post has no audio stream at all  → the direct mp4 IS the whole post.
+//     Nothing is lost. (The starfish post this was built against is one of
+//     these — 35s, 480x854, no audio track anywhere in the ladder.)
+//   • the post HAS a separate audio stream → the direct mp4 plays the picture
+//     but no sound.
+//
+// The second case still links the mp4 (a silent picture beats no media at all,
+// and reddit cannot be embedded), but `hasAudio` says so plainly, the ftext badge
+// says so in words, and the import toast counts them — because the fix is real
+// and one click away: ⬇ Download in the T row menu runs `-f bv*+ba/b` and lands a
+// properly muxed file in reddit_media/.
+const RD_PATH_RE = /(?:^|\/\/|\.)reddit\.com\/(?:r\/([A-Za-z0-9_]{2,24})\/)?comments\/([a-z0-9]{4,12})/i;
+// The short share form: redd.it/<id> — same post, no subreddit in the URL.
+const RD_SHORT_RE = /(?:^|\/\/|\.)redd\.it\/([a-z0-9]{4,12})(?:[/?#]|$)/i;
+function redditPostId(url) {
+  const s = String(url || '');
+  const m = RD_PATH_RE.exec(s);
+  if (m) return m[2];
+  // v.redd.it/<hash> is the MEDIA host, not a post id — never read one out of it.
+  if (/(?:^|\/\/|\.)v\.redd\.it\//i.test(s)) return '';
+  const sh = RD_SHORT_RE.exec(s);
+  return sh ? sh[1] : '';
+}
+function redditSubreddit(url) {
+  const m = RD_PATH_RE.exec(String(url || ''));
+  return (m && m[1]) || '';
+}
+// Canonical post page. Without the subreddit reddit still resolves /comments/<id>
+// by redirect, so the short form degrades to a working URL rather than a guess.
+function redditPageUrl(id, sub) {
+  return sub ? 'https://www.reddit.com/r/' + sub + '/comments/' + id + '/'
+             : 'https://www.reddit.com/comments/' + id + '/';
+}
+// Does this post carry a SEPARATE audio stream? (vcodec none + a real acodec)
+// See the audio-trap note above — this is the whole reason `hasAudio` exists.
+function redditHasAudioStream(meta) {
+  return ((meta && meta.formats) || []).some(f =>
+    f && f.vcodec === 'none' && f.acodec && f.acodec !== 'none');
+}
+
+// GET /reddit/resolve?url=…  — read-only, same open-origin stance as
+// /flickr/resolve and /pinterest/resolve (public reads, and sendJson echoes the
+// local origin). Reuses pinYtdlpMeta + pinPickProgressive rather than cloning
+// them: "best progressive non-HEVC mp4" is provider-agnostic, and the dev0611
+// rule cuts both ways — one answer, one place.
+async function redditResolve(req, res, origin) {
+  let q;
+  try { q = new URL(req.url, 'http://x').searchParams; } catch (_) { q = new URLSearchParams(); }
+  const raw = (q.get('url') || q.get('id') || '').trim();
+  if (!raw) { sendJson(res, 400, { ok: false, error: 'url required' }, origin); return; }
+  try {
+    const id = redditPostId(raw);
+    if (!id) { sendJson(res, 400, { ok: false, error: 'no reddit post id in: ' + raw }, origin); return; }
+    const sub = redditSubreddit(raw);
+    // yt-dlp is asked for the URL AS PASTED: its Reddit extractor follows the short
+    // form and the slug-less form on its own, and the pasted URL is the one already
+    // known to work. The canonical page is only what gets STORED.
+    const yt = await pinYtdlpMeta(raw);
+    if (!yt) {
+      sendJson(res, 502, { ok: false, error: 'yt-dlp could not read reddit post ' + id
+        + ' — image, gallery and text posts carry no video and are not supported yet' }, origin);
+      return;
+    }
+    const canonical = redditPageUrl(id, sub || yt.channel_id || '');
+    const out = { ok: true, post_id: id, linkpage: canonical, kind: 'video' };
+
+    const title = String(yt.title || yt.alt_title || '').trim();
+    if (title) out.VidTitle = title;
+    const uploader = String(yt.uploader || '').trim().replace(/^u\//i, '');
+    if (uploader) {
+      out.VidAuthor = 'u/' + uploader;
+      out.authorUrl = 'https://www.reddit.com/user/' + uploader + '/';
+    }
+    const subName = sub || String(yt.channel_id || '').trim();
+    if (subName) { out.subreddit = 'r/' + subName; out.subredditUrl = 'https://www.reddit.com/r/' + subName + '/'; }
+    // Reddit gives a unix timestamp; upload_date is the fallback. Both → YYYY-MM-DD.
+    if (yt.timestamp) out.VidDate = new Date(+yt.timestamp * 1000).toISOString().slice(0, 10);
+    else if (/^\d{8}$/.test(yt.upload_date || '')) {
+      out.VidDate = yt.upload_date.slice(0, 4) + '-' + yt.upload_date.slice(4, 6) + '-' + yt.upload_date.slice(6, 8);
+    }
+    // A Reddit post title IS its caption — `description` is usually empty or a
+    // repeat of the title, so it is only carried when it adds something.
+    const desc = String(yt.description || '').trim();
+    if (desc && desc !== title) out.comment = desc;
+    if (yt.like_count != null)    out.score = +yt.like_count || 0;
+    if (yt.comment_count != null) out.comments = +yt.comment_count || 0;
+    if (yt.duration) out.duration = Math.round(+yt.duration);
+    if (yt.thumbnail) out.poster = yt.thumbnail;
+
+    out.hasAudio = redditHasAudioStream(yt);
+    const prog = pinPickProgressive(yt);
+    if (!prog || !prog.url) {
+      // No progressive rung at all — manifests only. Nothing here can play that,
+      // and there is no iframe to fall back to, so say so instead of storing an
+      // m3u8 that silently produces a dead player.
+      sendJson(res, 502, { ok: false, post_id: id,
+        error: 'reddit post ' + id + ' offers no progressive MP4 (HLS/DASH only) — '
+             + 'use the T row ⬇ Download instead, which muxes it into reddit_media/' }, origin);
+      return;
+    }
+    out.direct = true;
+    out.link   = prog.url;
+    out.width  = +prog.width  || +yt.width  || 0;
+    out.height = +prog.height || +yt.height || 0;
+    if (out.width && out.height) {
+      out.MPix = (out.width * out.height / 1e6).toFixed(1);
+      out.Mode = out.width > out.height ? 'L' : (out.width < out.height ? 'P' : 'S');
+    }
+    sendJson(res, 200, out, origin);
+  } catch (e) {
+    sendJson(res, 502, { ok: false, error: String((e && e.message) || e) }, origin);
+  }
+}
+
 // (dev0785) ── T-screen row downloader → yt_media / vm_media / wiki_media ──
 // POST /media/download { url } — saves a T row's `link` to disk under the folder
 // that matches its host, named by the SAME convention the AHK downloader
@@ -6210,7 +6359,10 @@ function pinterestDownload(req, res, origin) {
 const MEDIA_DIRS = {
   yt:   { dir: path.join(__dirname, 'yt_media'),   tag: 'y' },
   vm:   { dir: path.join(__dirname, 'vm_media'),   tag: 'v' },
-  wiki: { dir: path.join(__dirname, 'wiki_media'), tag: 'w' }
+  wiki: { dir: path.join(__dirname, 'wiki_media'), tag: 'w' },
+  // (dev0911) Reddit. Tag 'r' continues the ytdl_v26 single-letter convention
+  // (y = YouTube, v = Vimeo, w = Wikimedia); 'r' was free.
+  rd:   { dir: path.join(__dirname, 'reddit_media'), tag: 'r' }
 };
 // Host → which of the three folders, plus the id yt-dlp/the URL gives us. Returns
 // null for anything else: this endpoint deliberately refuses to become a general
@@ -6227,6 +6379,15 @@ function mediaClassify(url) {
   if (/(^|\.)vimeo\.com$/.test(h)) {
     m = /\/(?:video\/)?(\d+)/.exec(u.pathname);
     return { kind: 'vm', id: m ? m[1] : '' };
+  }
+  // (dev0911) Reddit. Unlike the three above, the DOWNLOAD is the point rather
+  // than a convenience: the resolver can only link a video-only CMAF rung, so a
+  // post carrying a separate audio stream stays silent until yt-dlp's
+  // `-f bv*+ba/b` merges the two here. redditPostId() also refuses v.redd.it
+  // media hosts, which keeps a resolved row's `link` from re-entering this
+  // endpoint as though it were a post page.
+  if (/(^|\.)reddit\.com$/.test(h) || h === 'redd.it') {
+    return { kind: 'rd', id: redditPostId(url) };
   }
   if (/(^|\.)wikimedia\.org$/.test(h) || /(^|\.)wikipedia\.org$/.test(h) || /(^|\.)wikisource\.org$/.test(h)) {
     // Commons has no numeric id — the file name IS the identity. Decode it so
@@ -6359,7 +6520,7 @@ function mediaDownload(req, res, origin) {
     const url = String(payload.url || '');
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     const cls = mediaClassify(url);
-    if (!cls) { sendJson(res, 400, { ok: false, error: 'not a YouTube / Vimeo / Wikimedia link' }, origin); return; }
+    if (!cls) { sendJson(res, 400, { ok: false, error: 'not a YouTube / Vimeo / Wikimedia / Reddit link' }, origin); return; }
     const destDir = MEDIA_DIRS[cls.kind].dir;
     const folder  = path.basename(destDir);
     try { fs.mkdirSync(destDir, { recursive: true }); } catch (_) {}
@@ -6908,7 +7069,7 @@ http.createServer((req, res) => {
   // changes, once a minute otherwise, or whenever it takes >1s (a slow status
   // read IS the early symptom of a proxy stall), so the poll can't drown the log.
   const _lp = req.url.split('?')[0];
-  if (/^\/(ig|vpn|fix|exec|rec|frame|x|s|diag|pinterest)\//.test(_lp) || _lp === '/version') {
+  if (/^\/(ig|vpn|fix|exec|rec|frame|x|s|diag|pinterest|reddit)\//.test(_lp) || _lp === '/version') {
     LOG_REQS++;
     const _t0 = Date.now();
     const _isPoll = (req.method === 'GET' && _lp === '/vpn/status');
@@ -7358,6 +7519,20 @@ http.createServer((req, res) => {
     return;
   }
 
+  // (dev0911) ── Reddit resolver ──────────────────────
+  // Same placement rule as Flickr/Pinterest: BEFORE the CORS proxy, or "/reddit/…"
+  // would be read as a malformed passthrough URL. Resolve-only and read-only —
+  // there is no /reddit/download, because a Reddit row downloads through the
+  // shared T-row endpoint (/media/download → reddit_media/) exactly as YouTube
+  // and Vimeo do. Nothing here writes to disk, so it needs no origin lock.
+  if (req.url.startsWith('/reddit/')) {
+    const origin = req.headers.origin || '';
+    const action = req.url.slice('/reddit/'.length).split('?')[0];
+    if (action === 'resolve') { redditResolve(req, res, origin); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown reddit action: ' + action }, origin);
+    return;
+  }
+
   // (dev0872) ── Carry the source's timestamps onto a render ────────────────
   // A crop is a new view of an old moment, and a file manager sorting by date
   // should file it beside its original rather than at "now". So after a render
@@ -7539,6 +7714,7 @@ http.createServer((req, res) => {
   console.log(`Search store:      POST /x/{save,deleted,undelete,import,search} → x.json in ${__dirname}`);
   console.log(`  /x/search spawns ${X_PYTHON} linkfinders/{image,video}finder.py --search … (origin-locked)`);
   console.log(`Flickr resolver:   GET  /flickr/resolve?url=<flickr photo/CDN url> → best-res + author/date/title/caption`);
+  console.log(`Reddit resolver:   GET  /reddit/resolve?url=<reddit post url> → direct v.redd.it MP4 + title/author/sub/date`);
   console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
   // (dev0683) black box: first line of this process's life, plus a 60s pulse. The
   // pulse is what dates a silent death (last heartbeat = last moment it was alive)

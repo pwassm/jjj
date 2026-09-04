@@ -3882,6 +3882,10 @@ function _tMediaFolderFor(link) {
   if (/^(youtube\.com|m\.youtube\.com|music\.youtube\.com|youtube-nocookie\.com|youtu\.be)$/.test(h)) return 'yt_media';
   if (/(^|\.)vimeo\.com$/.test(h)) return 'vm_media';
   if (/(^|\.)(wikimedia|wikipedia|wikisource)\.org$/.test(h)) return 'wiki_media';
+  // (dev0911) Reddit. Offered for the POST page only: a row already resolved to a
+  // v.redd.it MP4 is handled by the proxy's direct-file path, and downloading the
+  // post is precisely what merges the separate DASH audio stream back in.
+  if (/(^|\.)reddit\.com$/.test(h) || h === 'redd.it') return 'reddit_media';
   return null;
 }
 let _tDlBusy = false;
@@ -3907,7 +3911,7 @@ async function tDownloadRowMedia(di) {
   const row = data[di];
   if (!row) return;
   const folder = _tMediaFolderFor(row.link);
-  if (!folder) { toast('Row ' + (di + 1) + ': link is not YouTube / Vimeo / Wikimedia', 3000); return; }
+  if (!folder) { toast('Row ' + (di + 1) + ': link is not YouTube / Vimeo / Wikimedia / Reddit', 3000); return; }
   if (_tDlBusy) { toast('A download is already running — one at a time', 2500); return; }
   _tDlBusy = true;
   const title = String(row.VidTitle || row.link).slice(0, 50);
@@ -7450,6 +7454,10 @@ function _looksLikeMediaUrl(s) {
   // (dev0693) A pin URL has no extension but always points at media — without this
   // a clipboard of pure pin links failed Rule 1's "all-links, no text" test.
   if (window.isPinterestLink && window.isPinterestLink(t)) return true;
+  // (dev0911) Same shape as a pin: a reddit post URL has no extension but a video
+  // post always points at media, so a clipboard of pure reddit links has to pass
+  // Rule 1's "all-links, no text" test.
+  if (window.isRedditLink && window.isRedditLink(t)) return true;
   const path = t.split(/[?#]/)[0];
   if (/\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)$/i.test(path)) return true;
   if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|avif)$/i.test(path)) return true;
@@ -7478,6 +7486,12 @@ function _classifyUrl(s) {
   // VidRange='i' the moment it comes back "image". The one thing it must NOT be is
   // 'web' — that was the original bug (ltype='w', article row, no media).
   if (window.isPinterestLink && window.isPinterestLink(t)) return 'video';
+  // (dev0911) Reddit, same reasoning, with one fewer unknown than Pinterest: if
+  // /reddit/resolve answers at all it is a VIDEO post (yt-dlp has nothing to say
+  // about an image, gallery or text post, and the resolver fails loudly there).
+  // So this is the verdict, not a placeholder. The one thing it must NOT be is
+  // 'web' - that was the bug: ltype='w', article row, no media.
+  if (window.isRedditLink && window.isRedditLink(t)) return 'video';
   // (dev0783) `ogv` joined this list — and the four other copies of it in
   // core.js/vp.js. video.js's isDirectVideoLink has always known the extension,
   // but these lists did not, so a Wikimedia Commons .ogv classified as 'web',
@@ -9064,6 +9078,18 @@ async function _importBareLinks(lines) {
       if (!row.linkpage) row.linkpage = link;
       return row;
     }
+    // (dev0911) Reddit post -> the resolver below rewrites link to the direct
+    // v.redd.it MP4. Stamped before _classifyUrl for the same extensionless reason
+    // as Flickr/Pinterest. linkpage is set NOW and matters more here than anywhere
+    // else: once link becomes a v.redd.it URL the post it came from is otherwise
+    // unrecoverable, because v.redd.it carries no back-reference to its post. That
+    // makes linkpage the only path back for review, `g`, and dedup.
+    if (window.isRedditLink && window.isRedditLink(link)) {
+      row.ltype = 'v';
+      row.Mute = '0';
+      if (!row.linkpage) row.linkpage = link;
+      return row;
+    }
     const cls = _classifyUrl(link);
     if (cls === 'video') {
       row.Mute = '0';
@@ -9191,15 +9217,22 @@ async function _importBareLinks(lines) {
   // image probe would fight the resolver over link/MPix, and _fetchYtdlpMetaForNewRows
   // would write an IG-shaped ftext over the Pinterest one.
   const _isPin = r => !!(r && r.link && window.isPinterestLink && window.isPinterestLink(r.link));
-  _fetchMetaForNewRows(newRows.filter(r => !_flickrPhotoId(r.link) && !_isPin(r)));
+  // (dev0911) Reddit owns its whole enrichment too, for the same reason: one
+  // resolver call returns media + metadata + ftext, and both generic passes would
+  // fight it - the image probe over link/MPix, _fetchYtdlpMetaForNewRows by
+  // writing an IG-shaped ftext over the Reddit one.
+  const _isReddit = r => !!(r && r.link && window.isRedditLink && window.isRedditLink(r.link));
+  _fetchMetaForNewRows(newRows.filter(r => !_flickrPhotoId(r.link) && !_isPin(r) && !_isReddit(r)));
   const flickrRows = newRows.filter(r => r && _flickrPhotoId(r.link));
   if (flickrRows.length) _fetchFlickrForNewRows(flickrRows);
   const pinRows = newRows.filter(_isPin);
   if (pinRows.length) _fetchPinterestForNewRows(pinRows);
+  const redditRows = newRows.filter(_isReddit);
+  if (redditRows.length) _fetchRedditForNewRows(redditRows);
   // (dev0425) Route yt-dlp-supported providers (IG/YouTube/Vimeo/TikTok) through
   // the proxy yt-dlp bridge for caption (ftext) + @author; the rest still use the
   // r.jina.ai reader path. (Instagram now login-walls jina, so yt-dlp owns it.)
-  const ytRows = newRows.filter(r => r && r.link && _ytdlpSupports(r.link) && !_isPin(r));
+  const ytRows = newRows.filter(r => r && r.link && _ytdlpSupports(r.link) && !_isPin(r) && !_isReddit(r));
   if (ytRows.length) _fetchYtdlpMetaForNewRows(ytRows);
   const webRows = data.filter(r => r && r.ltype === 'w' && !r.ftext && r.DateAdded === now && !_ytdlpSupports(r.link));
   if (webRows.length) _fetchWebTextForRows(webRows);
@@ -9211,11 +9244,12 @@ async function _importBareLinks(lines) {
   const ytNote   = ytRows.length ? '\n   ' + ytRows.length + ' video link(s) — yt-dlp caption/author…' : '';
   const flickrNote = flickrRows.length ? '\n   ' + flickrRows.length + ' Flickr link(s) — resolving best-res + metadata…' : '';
   const pinNote  = pinRows.length ? '\n   ' + pinRows.length + ' Pinterest pin(s) — resolving direct media + metadata…' : '';
+  const rdNote   = redditRows.length ? '\n   ' + redditRows.length + ' Reddit post(s): resolving direct MP4 + metadata...' : '';
   const webNote  = webRows.length ? '\n   ' + webRows.length + ' web URL(s) — fetching text…' : '';
   const metaNote = newRows.some(r => !r.ltype && !_flickrPhotoId(r.link)) ? '\n   fetching metadata…' : '';
   toast(
     '✓ Added ' + added + ' bare link' + (added === 1 ? '' : 's')
-    + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + pinNote + webNote + metaNote,
+    + dupNote + dupAddedNote + pasteDupNote + ytNote + flickrNote + pinNote + rdNote + webNote + metaNote,
     3500
   );
 }
@@ -9457,6 +9491,171 @@ async function _pinterestHousekeeping() {
   toast('✓ Pinterest housekeeping done: ' + done + ' updated, ' + failed + ' failed', 4500);
 }
 window.pinterestHousekeeping = _pinterestHousekeeping;
+
+// (dev0911) ── Reddit enrichment (post page → direct v.redd.it MP4) ──────────
+// A reddit post page carries no file extension, so before this build every
+// reddit.com link imported as an ltype='w' ARTICLE row: no picture, no player,
+// nothing to play — the same bug Pinterest had in dev0693.
+//
+// One proxy call (/reddit/resolve → yt-dlp's Reddit extractor) answers everything,
+// and the row is rewritten into the SAME field split Flickr / Pinterest /
+// imagefinder4 produce, so nothing downstream needs to know a row is from Reddit:
+//   link      = https://v.redd.it/<hash>/CMAF_<height>.mp4   (direct, seekable)
+//   linkpage  = the reddit post page
+//   plus VidTitle / VidAuthor (u/…) / VidDate / comment / MPix / Mode and an
+//   ftext built by _redditBuildFtext.
+//
+// Reddit is the BEST case of the extensionless family and it is worth knowing why:
+// v.redd.it serves progressive, Range-capable, CORS-open MP4s (verified 2026-09-03:
+// 206 Partial Content, Accept-Ranges: bytes, Access-Control-Allow-Origin: *). So
+// unlike an IG / TikTok / HLS-Pinterest row there is no embed and no view-only
+// compromise — a resolved Reddit row seeks, takes VidRange segments, crops, grades
+// and makes steps like any local file.
+//
+// The flip side: there is no embed FALLBACK either, and there cannot be one —
+// reddit.com sends X-Frame-Options, so a post can never be iframed. With the proxy
+// down the row keeps the pasted post URL and simply does not play, rather than
+// degrading to an iframe the way a pin does. That is the one place Reddit is worse
+// than Pinterest, and it is why the import stamps linkpage before this ever runs.
+//
+// Local-dev only (needs the 127.0.0.1:8081 proxy), like Flickr and Pinterest.
+async function _fetchRedditForNewRows(rows) {
+  let direct = 0, silent = 0, failed = 0;
+  const errs = [];
+  for (const row of rows) {
+    const src = (row.linkpage && window.getRedditPostId && window.getRedditPostId(row.linkpage))
+      ? row.linkpage : row.link;
+    try {
+      const resp = await fetch(_YTDLP_PROXY + '/reddit/resolve?url=' + encodeURIComponent(src));
+      const j = await resp.json().catch(() => null);
+      if (!resp.ok || !j || !j.ok) {
+        failed++;
+        if (j && j.error && errs.length < 2) errs.push(String(j.error));
+        continue;
+      }
+      _redditApplyResolved(row, j);
+      direct++;
+      // A post whose audio is a SEPARATE stream plays silent from the direct MP4.
+      // Counted separately because it is the one outcome with an action attached:
+      // the T row menu's ⬇ Download muxes the two streams into reddit_media/.
+      if (j.hasAudio) silent++;
+    } catch (e) { failed++; }
+  }
+  if (direct) { save(); if (typeof render === 'function') render(); }
+  let msg = '✓ Reddit: ' + direct + ' resolved to direct MP4';
+  if (silent) msg += ' — ' + silent + ' has separate audio (plays silent; ⬇ Download for sound)';
+  if (failed) {
+    msg += (direct ? ', ' : '') + failed + ' failed';
+    // Reddit fails for a REASON worth reading (image/gallery/text post, or the
+    // proxy being down), so the first one is quoted rather than swallowed.
+    msg += errs.length ? ' — ' + errs[0].slice(0, 160) : ' (is the proxy running?)';
+  }
+  toast(msg, failed ? 7000 : 4500);
+}
+
+// Write one /reddit/resolve answer onto a row. Shared by the import pass and the
+// housekeeping re-run so both produce byte-identical rows. `fresh` (import) fills
+// blanks freely; housekeeping passes fresh=false to protect curated text.
+// Mirrors _pinterestApplyResolved exactly, minus the image branch — /reddit/resolve
+// only ever answers about video posts.
+function _redditApplyResolved(row, j, fresh) {
+  if (fresh === undefined) fresh = true;
+  if (j.link)     row.link = j.link;
+  if (j.linkpage) row.linkpage = j.linkpage;
+  if (j.VidTitle && (fresh || !row.VidTitle)) row.VidTitle = j.VidTitle;
+  if (j.VidAuthor && (fresh || !row.VidAuthor)) row.VidAuthor = j.VidAuthor;
+  if (j.VidDate && (fresh || !row.VidDate))   row.VidDate = j.VidDate;
+  if (j.comment && (fresh || !row.comment))   row.comment = j.comment;
+  if (j.MPix) row.MPix = j.MPix;
+  if (j.Mode) row[(typeof getModeCol === 'function') ? getModeCol() : 'Mode'] = j.Mode;
+  row.ltype = 'v';
+  if (row.VidRange === 'i') row.VidRange = '';   // was mis-typed as an image
+  // A post with no audio stream at all is genuinely silent — Mute stays as the
+  // import set it. A post WITH a separate audio stream is silent only because the
+  // direct MP4 is the video-only rung, which is not the same thing and must not be
+  // recorded as if the row were deliberately muted.
+  const ft = _redditBuildFtext(j);
+  if (ft && (fresh || !row.ftext)) row.ftext = ft;
+  row.DateModified = isoNow();
+}
+
+// ftext for a resolved Reddit post. Same skeleton as _pinterestBuildFtext (h2
+// title, body, grey meta line, source link) so a Reddit row reads like every other
+// enriched row in Xe/Xs, plus the one badge that matters here: whether the linked
+// MP4 carries the post's sound.
+// Kept deliberately COMPACT — see the ftext-bloat rule: this is a caption, not a
+// scrape of the page, and emphatically not the comment thread.
+function _redditBuildFtext(j) {
+  const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
+    c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  let html = '';
+  if (j.VidTitle) html += '<h2>' + esc(j.VidTitle) + '</h2>\n';
+  const desc = String(j.comment || '').trim();
+  if (desc) {
+    html += desc.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+      .map(l => '<p>' + esc(l) + '</p>').join('\n') + '\n';
+  }
+  // Media badge — the direct-MP4 / audio answer, surviving in the row itself so it
+  // is still readable after a reload without re-running the resolver.
+  const size = (j.width && j.height) ? ' · ' + j.width + '×' + j.height : '';
+  const dur  = j.duration ? ' · ' + j.duration + 's' : '';
+  const badge = j.hasAudio
+    ? '▶ direct MP4' + size + dur + ' · video only — Reddit serves this post’s audio as a '
+      + 'separate stream, so it plays SILENT. Use the T row ⬇ Download for a muxed copy.'
+    : '▶ direct MP4' + size + dur + ' · no audio track in this post (silent as posted)';
+  html += '<p style="color:#888;font-size:.9em;">' + esc(badge) + '</p>\n';
+
+  const bits = [];
+  if (j.VidAuthor) bits.push('By ' + esc(j.VidAuthor));
+  if (j.subreddit) bits.push(esc(j.subreddit));
+  if (j.VidDate)   bits.push(esc(j.VidDate));
+  if (j.score)     bits.push(Number(j.score).toLocaleString() + ' upvotes');
+  if (j.comments)  bits.push(Number(j.comments).toLocaleString() + ' comments');
+  if (bits.length) html += '<p style="color:#888;font-size:.9em;">' + bits.join(' · ') + '</p>\n';
+
+  const page = j.linkpage || '';
+  if (page) {
+    html += '<p>Post: <a href="' + esc(page) + '" target="_blank" rel="noopener" '
+          + 'style="color:#5bf;word-break:break-all;">' + esc(page) + '</a></p>';
+  }
+  return html;
+}
+
+// (dev0911) ── Manual Reddit housekeeping ────────────────────────────────────
+// window.redditHousekeeping() from the console. Re-resolves every Reddit row
+// (matched on link OR linkpage, so already-resolved rows are found by their post
+// page): always refreshes link/MPix/Mode, but only BACKFILLS empty title/author/
+// date/comment/ftext so curated text survives. Mirrors _pinterestHousekeeping.
+//
+// Worth running occasionally for a reason Pinterest does not have: v.redd.it URLs
+// are plain and unsigned, but Reddit does re-encode and add rungs to popular posts,
+// so a row resolved when only CMAF_480 existed can be upgraded in place later.
+async function _redditHousekeeping() {
+  const rows = data.filter(r => r && window.getRedditPostId
+    && (window.getRedditPostId(r.link) || window.getRedditPostId(r.linkpage)));
+  if (!rows.length) { toast('No Reddit rows found.', 2000); return; }
+  if (!confirm('Reddit housekeeping — re-resolve ' + rows.length + ' row(s):\n\n'
+    + '• link → best direct v.redd.it MP4 (always)\n'
+    + '• MPix + Mode (always)\n'
+    + '• title / author / date / comment / ftext — only if EMPTY\n\nProceed?')) return;
+  let done = 0, failed = 0, i = 0;
+  for (const row of rows) {
+    const src = (window.getRedditPostId(row.linkpage) ? row.linkpage : row.link);
+    try {
+      const resp = await fetch(_YTDLP_PROXY + '/reddit/resolve?url=' + encodeURIComponent(src));
+      if (!resp.ok) { failed++; continue; }
+      const j = await resp.json();
+      if (!j || !j.ok) { failed++; continue; }
+      _redditApplyResolved(row, j, false);
+      done++;
+    } catch (e) { failed++; }
+    if ((++i % 15) === 0) { save(); toast('Reddit housekeeping… ' + i + '/' + rows.length, 1200); }
+  }
+  save(); if (typeof render === 'function') render();
+  toast('✓ Reddit housekeeping done: ' + done + ' updated, ' + failed + ' failed', 4500);
+}
+window.redditHousekeeping = _redditHousekeeping;
+
 
 // (dev0693) ── Download pins to pin_media/ ────────────────────────────────────
 // window.pinterestDownload()          → every Pinterest row

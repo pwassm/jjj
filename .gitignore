@@ -73,6 +73,14 @@ wiki_media/
 # (dev0693) Pinterest pin media downloaded by proxy /pinterest/download, foldered by
 # pinner exactly like ig_media/ (dev0689). Local only — never committed, never served.
 pin_media/
+
+# (dev0911) Reddit post media downloaded by the shared T-row endpoint
+# (proxy /media/download -> reddit_media/). Local staging exactly like yt_media/
+# and pin_media/ - never committed, never served. Downloading a Reddit post is
+# the ONLY way to get its sound: v.redd.it keeps audio in a separate DASH stream,
+# so the direct MP4 the resolver links is video-only.
+reddit_media/
+
 # (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts. (dev0794) The importer
 # that read these — the I-screen "📁 Import ffdown" button and the /ig/ffdown route —
 # has been removed, so nothing reads the folder now; it stays ignored because the
