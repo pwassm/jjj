@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0909';
+const PROXY_BUILD = 'dev0910';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1141,6 +1141,24 @@ function vpLoopMode(p) {
   return m;
 }
 
+// (dev0910) ── Carry the source's container metadata onto a render ──────────
+// `-map_metadata 0` alone is not enough on an mp4: the mov MUXER only writes
+// the handful of keys it recognises, and drops everything else on the floor.
+// `use_metadata_tags` tells it to write the rest as well, which is what brings
+// the capture date, the GPS and the Android/Samsung keys across. (It is also
+// exactly what LosslessCut passes, which is why its output keeps them and ours
+// did not.) Measured on a 4k Galaxy clip: CreateDate, ModifyDate, Location,
+// com.android.version / capture.fps / utc_offset all survive a crop.
+//
+// faststart only where the file was re-encoded anyway — it costs a second pass
+// over the output, which is nothing on a crop and is not worth paying on a
+// stream-copied trim that can be several GB.
+function mp4MetaFlags(output, faststart) {
+  if (!/\.(mp4|m4v|mov)$/i.test(String(output || ''))) return ['-map_metadata', '0'];
+  return ['-map_metadata', '0',
+          '-movflags', (faststart ? '+faststart+use_metadata_tags' : '+use_metadata_tags')];
+}
+
 function buildFfmpegArgs(p, tmpSink) {
   // Pass 1 of a deshake writes no file, so it runs before the output check.
   if (p.deshake && p.deshake.pass === 'detect') return buildDeshakeDetectArgs(p);
@@ -1414,6 +1432,8 @@ function buildFfmpegArgs(p, tmpSink) {
       // as a blank video frame at the start. `make_zero` rebases the muxer's
       // timestamps so both streams begin at 0. Harmless with -an.
       '-avoid_negative_ts', 'make_zero',
+      // (dev0910) The camera's own tags — see mp4MetaFlags.
+      ...mp4MetaFlags(p.output, true),
       overwrite ? '-y' : '-n',
       p.output
     ];
@@ -1436,6 +1456,9 @@ function buildFfmpegArgs(p, tmpSink) {
     '-i', p.input,
     '-c', 'copy',
     '-avoid_negative_ts', 'make_zero',
+    // (dev0910) No faststart here: a lossless trim can be several GB and the
+    // extra pass would be felt. See mp4MetaFlags.
+    ...mp4MetaFlags(p.output, false),
     overwrite ? '-y' : '-n',
     p.output
   ];
@@ -1860,7 +1883,27 @@ function buildExiftoolArgs(p, tmpSink) {
     must(/^([A-Za-z]:[\\/]|\/)/.test(out), 'sidecar output must be absolute');
     must(!/(^|[\\/])\.\.([\\/]|$)/.test(out), 'sidecar output may not contain ".."');
     const lines = ['-charset', 'filename=UTF8', '-charset', 'UTF8', '-q',
-                   '-tagsfromfile', p.input, '-all>xmp:all'];
+                   '-tagsfromfile', p.input, '-all>xmp:all',
+                   // (dev0910) …and the camera, which `-all>xmp:all` cannot
+                   // reach on its own. A phone's video keeps its model in a
+                   // Samsung-private atom and its marketing name in the
+                   // QuickTime Author field — neither has an XMP equivalent to
+                   // be converted TO, so each is named here and copied by hand.
+                   // Weakest source first: exiftool applies these in order and
+                   // a later one that exists overwrites, so a file with a real
+                   // EXIF Make/Model (any photo) wins over the fallbacks.
+                   // Measured: an mp4 lands "SM-S938U", a jpg "Galaxy S25 Ultra".
+                   '-XMP-tiff:Model<UserData:Author',
+                   '-XMP-tiff:Model<Samsung:SamsungModel',
+                   '-XMP-tiff:Make<Make',
+                   '-XMP-tiff:Model<Model',
+                   // The date under the two names digiKam actually looks for.
+                   // xmp:CreateDate comes across with -all>xmp:all already;
+                   // these are the ones a photo library sorts and filters on.
+                   '-XMP-exif:DateTimeOriginal<QuickTime:CreateDate',
+                   '-XMP-exif:DateTimeOriginal<DateTimeOriginal',
+                   '-XMP-photoshop:DateCreated<QuickTime:CreateDate',
+                   '-XMP-photoshop:DateCreated<DateTimeOriginal'];
     let n = 0;
     for (const k of Object.keys(p.sidecar)) {
       must(XMP_SIDECAR_TAGS.has(k), 'sidecar key not allowed: ' + k);
@@ -1895,6 +1938,71 @@ function buildExiftoolArgs(p, tmpSink) {
     fs.writeFileSync(argFile, lines.join('\n') + '\n', 'utf8');
     return ['-@', argFile];
   }
+
+  // (dev0910) ── CARRY mode — the original's tags INTO the rendered file ─────
+  // The sidecar above describes the render from the outside; this puts what it
+  // can on the inside, where a file that gets moved, mailed or re-imported
+  // still carries it.
+  //
+  // Two shapes, because the two media have different ceilings:
+  //
+  //   kind:'image'  a rendered JPEG/PNG/WebP starts with NOTHING — ffmpeg
+  //                 writes no EXIF at all (measured: a cropped jpg came out
+  //                 with only its width and height). So the whole block is
+  //                 copied, minus the three things that would then be lies
+  //                 about this file: the source's pixel dimensions, its
+  //                 embedded thumbnail (which shows the UNCROPPED picture),
+  //                 and — where the render came out upright — its orientation.
+  //                 The jpegtran path already inherits EXIF via `-copy all`;
+  //                 it comes through here too, for those same corrections.
+  //
+  //   kind:'video'  ffmpeg's own flags carry the dates, the GPS and the Android
+  //                 keys (see mp4MetaFlags), and that is as far as they go: its
+  //                 mov demuxer never surfaces the QuickTime Author field or
+  //                 the Samsung model atom, so neither can be mapped through.
+  //                 LosslessCut loses both for exactly this reason. exiftool
+  //                 can write them, and does it by patching the udta box rather
+  //                 than rewriting the file — measured at 0.46s on 99MB.
+  //
+  // Every token is fixed. Nothing the caller sends becomes a tag name.
+  if (p.carry && typeof p.carry === 'object') {
+    const out = String(p.output || '');
+    must(/^([A-Za-z]:[\\/]|\/)/.test(out), 'carry output must be absolute');
+    must(!/(^|[\\/])\.\.([\\/]|$)/.test(out), 'carry output may not contain ".."');
+    const kind = String(p.carry.kind || '');
+    must(kind === 'image' || kind === 'video', "carry.kind must be 'image' or 'video'");
+    const lines = ['-charset', 'filename=UTF8', '-charset', 'UTF8', '-q',
+                   '-overwrite_original', '-tagsfromfile', p.input];
+    if (kind === 'image') {
+      must(/\.(jpe?g|png|webp|tiff?)$/i.test(out), 'carry image output must be an image file');
+      lines.push('-all:all',
+                 '-ThumbnailImage=', '-PreviewImage=',
+                 '-ExifImageWidth=', '-ExifImageHeight=',
+                 '-XMP-tiff:ImageWidth=', '-XMP-tiff:ImageHeight=',
+                 '-XMP-exif:ExifImageWidth=', '-XMP-exif:ExifImageHeight=');
+      // A re-encode comes out of ffmpeg already upright (the tag has been
+      // applied by then), so copying "Rotate 90 CW" across would tell every
+      // reader to turn an upright picture on its side — the same trap the
+      // sidecar's Orientation clear is there for. jpegtran does not touch a
+      // pixel, so its output keeps the tag it was born with.
+      if (p.carry.orient === 'reset') lines.push('-Orientation#=1');
+    } else {
+      must(/\.(mp4|m4v|mov)$/i.test(out), 'carry video output must be an mp4/mov');
+      // Weakest source first — see the sidecar's note on the same ladder.
+      lines.push('-UserData:Author',
+                 '-Keys:Model<Samsung:SamsungModel',
+                 '-XMP-tiff:Model<Samsung:SamsungModel',
+                 '-Keys:Make<Make', '-XMP-tiff:Make<Make',
+                 '-Keys:Model<Model', '-XMP-tiff:Model<Model');
+    }
+    lines.push(out);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slam-carry-'));
+    if (tmpSink) tmpSink.push(dir);
+    const argFile = path.join(dir, 'args.txt');
+    fs.writeFileSync(argFile, lines.join('\n') + '\n', 'utf8');
+    return ['-@', argFile];
+  }
+
   // ── READ mode (JSON to stdout) ──────────────────────────────────────────
   return ['-json', '-charset', 'UTF8',
           ...Object.values(EXIF_TAG_MAP).map(t => '-' + t),
@@ -6859,7 +6967,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }

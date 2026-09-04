@@ -6980,6 +6980,14 @@ function _vpCropHelpShow() {
         row('the .xmp', 'each render gets a sidecar of the same name, carrying the ' +
                       'original’s date, place and camera plus a note saying which ' +
                       'file it was cut from — that is what digiKam reads') +
+        row('inside the file', 'the clip itself keeps the capture date, the GPS fix and ' +
+                      'the phone’s own keys, and is re-stamped with the camera name and ' +
+                      'model afterwards. A cropped picture keeps its whole EXIF block. ' +
+                      'So a render that gets separated from its sidecar still knows ' +
+                      'when and where it was shot.') +
+        row('the dates',  'the file’s modified and created dates are set back to the ' +
+                      'original’s, on the render and its sidecar both, so a folder ' +
+                      'sorted by date files them beside the footage') +
         row(K('W'),   'this panel: full width / narrow') +
         row(K('C'),   'close crop, hand the show back to the slideshow') +
         row(K('Esc'), 'close the video entirely')) +
@@ -7743,6 +7751,56 @@ async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
   }
 }
 
+// (dev0910) ── Put the original's tags INSIDE the render ────────────────────
+// The .xmp says all this from the outside, and a sidecar is the right answer
+// for a video — but a sidecar can be left behind by a copy, a mail attachment
+// or an import, and a cropped JPEG that arrives somewhere with no date and no
+// camera is an orphan. So the file carries what it can itself.
+//
+// Which half runs is decided by the OUTPUT's extension, not by which screen
+// asked: a still cropped to a jpg wants its whole EXIF block, and the same
+// still turned into a Ken Burns mp4 wants the mp4 treatment.
+//
+// `orient` is the one thing the caller has to know: an ffmpeg re-encode comes
+// out upright and must be re-stamped Orientation 1, while a jpegtran crop has
+// not touched a pixel and keeps the tag it was born with. Getting this wrong
+// lays a picture on its side in every viewer, which is why it is a parameter
+// and not a guess.
+//
+// Best-effort, like the sidecar: a render already on disk is not failed over
+// its tags. Returns a toast fragment, '' when it worked.
+async function _vpCarryMetadata(sourcePath, outPath, opts) {
+  const isVideo = /\.(mp4|m4v|mov)$/i.test(String(outPath));
+  const isImage = /\.(jpe?g|png|webp|tiff?)$/i.test(String(outPath));
+  if (!isVideo && !isImage) return '';        // gif and friends: nothing to write
+  try {
+    if (!(await _vpProxyHasFeature('metacarry'))) {
+      return '  ·  ⚠ no camera tags — restart "node proxy.js"';
+    }
+    const carry = isVideo
+      ? { kind: 'video' }
+      : { kind: 'image', orient: (opts && opts.lossless) ? 'keep' : 'reset' };
+    const r = await fetch(PROXY_BASE + '/exec/exiftool', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: sourcePath, output: outPath, carry })
+    });
+    if (!r.ok) {
+      console.warn('[carry metadata refused]', r.status, await r.text().catch(() => ''));
+      return '  ·  ⚠ no camera tags';
+    }
+    const j = await r.json();
+    // exiftool exits non-zero when it had nothing to write, which on a source
+    // with no camera block at all is the honest answer and not a failure worth
+    // a warning triangle over.
+    if (j && j.exitCode === 0) return '';
+    console.warn('[carry metadata: nothing written]', j);
+    return '';
+  } catch (err) {
+    console.warn('[carry metadata failed]', err);
+    return '  ·  ⚠ no camera tags';
+  }
+}
+
 // (dev0293) A floating progress pill at the top of the V fullscreen.
 // Used by G save (no crop) where there's no Crop button to label with %.
 function _vpMakeProgressPill(prefix) {
@@ -8316,6 +8374,11 @@ async function _vpImageSave(opts) {
     }
     restore();
     if (result.exitCode === 0) {
+      // (dev0910) The camera's own block, INSIDE the picture. First, because
+      // everything after it is either a different file or a timestamp this
+      // write would bump. `verdict.ok` is the lossless engine: jpegtran has not
+      // touched a pixel, so its orientation tag still describes the file.
+      const meta = await _vpCarryMetadata(absInput, payload.output, { lossless: verdict.ok });
       // (dev0863) The sidecar that says which picture this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
       // (dev0872 / dev0909) …and the original's dates, on the picture and its
@@ -8323,7 +8386,7 @@ async function _vpImageSave(opts) {
       const dates = (await _vpCopySourceTimes(absInput, payload.output))
         ? '' : '  ·  ⚠ dates not copied';
       if (typeof toast === 'function') {
-        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + xmp + dates, 3400);
+        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + xmp + meta + dates, 3400);
       }
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
@@ -8883,6 +8946,11 @@ async function _vpGoSave(opts) {
     }
     restoreUI();
     if (result.exitCode === 0) {
+      // (dev0910) The camera name and model, which ffmpeg's own flags cannot
+      // reach. First — everything after it is a different file or a timestamp
+      // this write would bump. A clip is always a re-encode, so there is no
+      // orientation question to answer here.
+      const meta = await _vpCarryMetadata(absInput, payload.output, {});
       // (dev0863) The sidecar that says which clip this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
       // (dev0872) The original's dates, so the clip files beside its source.
@@ -8902,7 +8970,7 @@ async function _vpGoSave(opts) {
       if (loopMode === 'fwd' || loopMode === 'boom') {
         loopNote = (await _vpWriteLoopHtml(payload.output, loopMode)) ? ' + .html' : '';
       }
-      if (typeof toast === 'function') toast('saved → ' + outName + xmp + loopNote + dates, 3200);
+      if (typeof toast === 'function') toast('saved → ' + outName + xmp + meta + loopNote + dates, 3200);
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
       if (typeof toast === 'function') toast('save failed: ' + tail, 4200);
