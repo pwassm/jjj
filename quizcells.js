@@ -63,6 +63,25 @@
 // congratulations. Dismissed by a click anywhere. The poll ending a quiz because
 // the grid was closed is NOT one of those endings and stays silent.
 //
+// (dev0913) A BIGGER LOOK, AND A HINT THAT STAYS. Four changes, all of them the
+// same complaint from a phone -- the board is small and the quiz was hurrying:
+//
+//   SWIPE RIGHT on any cell opens it FULL WINDOW, and a swipe left in there
+//     comes back to the board with the question still in the middle. Not an
+//     answer, not scored. A card opens as its PICTURE ALONE (see openBig) --
+//     opening the row itself would print the answer. Because a press on a cell
+//     can now be either a swipe or a choice, the choice is read on POINTER-UP.
+//   THE HINT OFFER waits 5 seconds instead of 3: three is about how long it
+//     takes to read the offer and reach the button, so wanting a hint was a race.
+//   A HINT TAKEN STAYS UP, under the name in the same panel, until a cell is
+//     picked -- it used to flash for three seconds and remove itself, so the two
+//     things needed together were never on screen together.
+//   THE NAME IS SIZED AS A SHARE OF THE SCREEN (panelFont) and the "click to
+//     continue" balloon is pinned to the CORNER OF THE CARD rather than to the
+//     pointer -- on a phone there is no pointer to put it beside, and the
+//     coordinates it used were in the unrotated frame, so it landed nowhere near
+//     the card it was about.
+//
 // (dev0901) q IS THE KEY, on any grid holding flash cards. core.js's bare-q in
 // G (reset an embed) asks QuizCells.available() first and yields to it; Shift+Q
 // still resets every embed, so nothing is lost on a grid that has both.
@@ -80,8 +99,8 @@
   'use strict';
 
   var BALLOON_N = 2;      // corrects that still get the "click to continue" nudge
-  var HINT_MS   = 3000;   // how long the hint itself shows
-  var ASK_MS    = 3000;   // how long the "want a hint?" offer waits
+  var ASK_MS    = 5000;   // how long the "want a hint?" offer waits
+  var SWIPE_PX  = 45;     // (dev0913) a drag this far across is a swipe, not an answer
 
   var active    = false;
   var queue     = [];     // questions still to ask, already shuffled
@@ -92,6 +111,8 @@
   var total     = 0;      // (dev0901) questions in this run, top-ups included
   var misses    = [];     // (dev0899) { chose, want } -- one entry per wrong click
   var startedAt = 0;
+  var hintHtml  = null;   // (dev0913) the hint for THIS question, once asked for
+  var gStart    = null;   // (dev0913) where the current press started, for swipe vs tap
   var awaiting  = false;  // a click on a cell is meaningful right now
   var reading   = false;  // (dev0898) a card is turned over, waiting to be clicked past
   var timers    = [];     // every pending timer, cleared as one on stop()
@@ -109,6 +130,56 @@
     timers = [];
   }
   function drop(id) { var el = document.getElementById(id); if (el) el.remove(); }
+
+  // (dev0913) The VISUAL frame, not the device one: on a portrait phone the whole
+  // UI is drawn inside #rotateWrap under a rotate(90deg), so window.innerWidth is
+  // the short side of a screen the player is reading long-ways. salViewport() is
+  // the app's own answer to that (grid.js's _gridClampContextMenu uses it for the
+  // same reason) and this falls back to the raw window where it is missing.
+  function vpFrame() {
+    try {
+      if (typeof window.salViewport === 'function') {
+        var v = window.salViewport();
+        if (v && v.w) return v;
+      }
+    } catch (_) {}
+    return { w: window.innerWidth, h: window.innerHeight };
+  }
+
+  function isPhone() {
+    try { return !!(typeof _isMobileDevice === 'function' && _isMobileDevice()); }
+    catch (_) { return false; }
+  }
+
+  // (dev0913) THE PANEL IS SIZED AS A SHARE OF THE SCREEN, NOT IN PIXELS. 15px on
+  // a 1140px desktop window is a caption; the same 15px on a phone whose visual
+  // frame is 700px across is a headline, and the name in the middle of the board
+  // was covering the cells it was asking about. So the type is the SAME FRACTION
+  // of the frame it is drawn on -- w/76, which is exactly 15 at 1140 -- floored at
+  // 9px, below which a scientific name stops being readable at all.
+  //
+  // Desktop keeps the flat 15: a big monitor would otherwise scale the name UP,
+  // and it was never too small there.
+  function panelFont() {
+    if (!isPhone()) return 15;
+    var w = Math.max(240, vpFrame().w || 320);
+    return Math.max(9, Math.min(15, Math.round(w / 76)));
+  }
+
+  // V (the full-window view) sits on #gridFullscreen at z 28500, ABOVE the grid
+  // and every panel of ours. While it is up the quiz is a spectator: its Esc
+  // belongs to V's close, and its overlay hears no clicks anyway.
+  function fsOpen() {
+    var f = document.getElementById('gridFullscreen');
+    return !!(f && f.style.display && f.style.display !== 'none');
+  }
+
+  // Wrap-local coordinates -- the same mapping grid.js's own swipe handlers use,
+  // so "right" means right as the player sees it on a rotated portrait phone.
+  function xy(e) {
+    try { if (window.rotateXY) return window.rotateXY(e); } catch (_) {}
+    return { x: e.clientX, y: e.clientY };
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -287,18 +358,25 @@
   // to its background colour. Half-transparent means the PICTURE UNDER IT stays
   // readable -- the name sits on a 5x5 grid whose middle cell is one of the
   // answers, so a solid panel would hide a card the question might be about.
+  //
+  // (dev0913) Everything about the box is derived from panelFont() -- the padding
+  // and the corner radius as well as the type -- so a phone gets a SMALLER PANEL
+  // rather than desktop chrome wrapped around smaller words.
   function centrePanel(id, html, opacity) {
     drop(id);
     var ov = overlay(); if (!ov) return null;
+    var fs  = panelFont();
+    var padY = Math.round(fs * 1.05), padX = Math.round(fs * 1.6);
     var el = document.createElement('div');
     el.id = id;
     el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);'
       + 'z-index:28040;pointer-events:none;max-width:min(560px,86vw);max-height:70vh;'
       + 'overflow:hidden;opacity:' + (opacity == null ? 1 : opacity) + ';'
       + 'background:#0c0e14;color:#eef;'
-      + 'border:1px solid rgba(255,255,255,0.22);border-radius:12px;'
-      + 'padding:16px 24px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.7);'
-      + 'font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;';
+      + 'border:1px solid rgba(255,255,255,0.22);border-radius:' + Math.round(fs * 0.8) + 'px;'
+      + 'padding:' + padY + 'px ' + padX + 'px;text-align:center;'
+      + 'box-shadow:0 10px 40px rgba(0,0,0,0.7);'
+      + 'font:' + fs + 'px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;';
     el.innerHTML = html;
     ov.appendChild(el);
     return el;
@@ -315,14 +393,28 @@
   // stayed visible, and the name became the hard thing on screen to read --
   // which is the one thing that must stay easy. The panel is small and the grid
   // has two dozen other cells; covering one costs less than a dim question.
+  //
+  // (dev0913) THE HINT IS PART OF THE QUESTION, not a panel of its own. It used to
+  // be a second centred box that replaced the name for three seconds and then took
+  // itself away -- so the two things you need at once, WHAT you are looking for and
+  // WHAT NARROWS IT DOWN, were never on screen together, and the hint was gone by
+  // the time it had been read. Now it hangs under the name in the same box and
+  // lives exactly as long: until a cell is picked.
   function showQuestion() {
     if (!cur) return;
     var common = cur.common
       ? '<div style="font-size:0.95em;opacity:0.8;">' + esc(cur.common) + '</div>'
       : '<div style="font-size:0.8em;opacity:0.4;font-style:italic;">no common name</div>';
+    var hint = hintHtml
+      ? '<div style="margin-top:11px;padding-top:9px;'
+        + 'border-top:1px solid rgba(255,255,255,0.16);">'
+        + '<div style="font-size:0.72em;letter-spacing:0.08em;opacity:0.5;'
+        + 'text-transform:uppercase;margin-bottom:6px;">hint</div>'
+        + '<div style="text-align:left;font-size:0.92em;">' + hintHtml + '</div></div>'
+      : '';
     centrePanel('quizPrompt',
       '<div style="font-size:1.35em;font-style:italic;letter-spacing:0.01em;">'
-      + esc(cur.sci) + '</div>' + common);
+      + esc(cur.sci) + '</div>' + common + hint);
   }
 
   // ── the hint offer: a button that counts itself down and leaves ───────────
@@ -330,6 +422,12 @@
   // this never blocks and never has to be dismissed before play continues. The
   // countdown sits on the button so the player can see how long they have
   // rather than being surprised by it vanishing.
+  //
+  // (dev0913) FIVE seconds, not three. Three is about as long as it takes to
+  // read the offer and find the button, which made taking a hint a race; the
+  // player who wanted one and was still moving their hand got a refusal they
+  // never gave. The starting number on the button is read off ASK_MS so the
+  // two cannot drift.
   function offerHint() {
     drop('quizAsk');
     var ov = overlay(); if (!ov) return;
@@ -346,7 +444,8 @@
       + '<button id="quizHintYes" style="cursor:pointer;padding:7px 16px;border-radius:8px;'
       + 'border:2px solid #9cf;color:#9cf;background:rgba(0,40,90,0.8);'
       + 'font:600 13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;">'
-      + 'Hint <span id="quizHintCount" style="opacity:.65;font-weight:400;">3</span></button>'
+      + 'Hint <span id="quizHintCount" style="opacity:.65;font-weight:400;">'
+      + Math.ceil(ASK_MS / 1000) + '</span></button>'
       + '<button id="quizHintNo" style="cursor:pointer;padding:7px 16px;border-radius:8px;'
       + 'border:2px solid #777;color:#bbb;background:rgba(30,30,34,0.8);'
       + 'font:600 13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;">No thanks</button>'
@@ -386,18 +485,19 @@
   // information that narrows a grid down to one picture. Rendered through
   // renderFtext when it is there, so links and lists come out the way they do
   // on the card back itself.
+  //
+  // (dev0913) It is STORED, not shown: showQuestion draws it under the name, and
+  // it stays there for the rest of this question. There is no timer -- how long a
+  // hint is worth looking at is the same judgement as how long a card back is
+  // (see dev0898 at onCorrect), and it belongs to the player.
   function showHint() {
     var target = targetCell(cur);
     var parts  = target ? cardParts(target) : null;
     var body   = (parts && parts.sections && parts.sections[0]) || '';
-    var html   = body
+    hintHtml = body
       ? (typeof renderFtext === 'function' ? renderFtext(body) : body)
       : '<em style="opacity:.6;">this card has nothing written on its back</em>';
-    centrePanel('quizHint',
-      '<div style="font-size:0.72em;letter-spacing:0.08em;opacity:0.5;'
-      + 'text-transform:uppercase;margin-bottom:8px;">hint</div>'
-      + '<div style="text-align:left;font-size:0.92em;">' + html + '</div>');
-    later(function () { drop('quizHint'); resume(); }, HINT_MS);
+    resume();
   }
 
   // Back to the grid with the question still open, and the name back on screen
@@ -475,7 +575,8 @@
 
   function nextQuestion() {
     if (!active) return;
-    drop('quizPrompt'); drop('quizHint'); drop('quizAsk'); drop('quizBalloon');
+    drop('quizPrompt'); drop('quizAsk'); drop('quizBalloon');
+    hintHtml = null;                    // (dev0913) the hint belongs to one question
     if (!queue.length && !topUp()) { report(); return; }
     cur = queue.shift();
     askedIds[cur.id] = 1;
@@ -489,7 +590,7 @@
   // either too short to read the card back or too long to sit through, and it
   // could never be both -- how long an answer is worth looking at is a
   // judgement the player makes, not a constant.
-  function onCorrect(cell, e) {
+  function onCorrect(cell) {
     awaiting = false;
     right++;
     if (cur) hits.push(cur);
@@ -505,29 +606,35 @@
     // gesture has been learned, and a balloon that never stops appearing is a
     // balloon you stop reading. It comes up where the hand already is -- beside
     // the click that earned it -- rather than somewhere they would have to find.
-    if (right <= BALLOON_N) showBalloon(e);
+    if (right <= BALLOON_N) showBalloon(cell);
   }
 
-  // (dev0898) "click to continue", at the mouse. Clamped into the viewport so a
-  // correct cell in the bottom-right corner does not push it off screen, and
-  // pointer-events:none so the very click it is asking for passes through it.
-  function showBalloon(e) {
+  // (dev0898) "click to continue", for the first two corrects only.
+  //
+  // (dev0913) IN THE CORNER OF THE CARD, NOT AT THE POINTER. The first build put
+  // it beside the mouse and clamped it into the viewport, which has no meaning on
+  // a phone: a tap leaves no pointer behind, the coordinates it was placed from
+  // are the PHYSICAL ones while the balloon is drawn inside the rotated wrap, and
+  // it landed nowhere near the card it was talking about. A corner of the cell
+  // that was just turned over is a place that exists on every device.
+  //
+  // Appended to the CELL, so it needs no coordinates at all and cannot land in
+  // the wrong frame. z-index clears the card back's own panel (140).
+  // pointer-events:none so the very tap it is asking for passes through it.
+  function showBalloon(cell) {
     drop('quizBalloon');
-    var ov = overlay(); if (!ov) return;
+    if (!cell) return;
+    var fs = Math.max(9, Math.round(panelFont() * 0.8));
     var b = document.createElement('div');
     b.id = 'quizBalloon';
-    b.textContent = 'click to continue';
-    b.style.cssText = 'position:fixed;z-index:28045;pointer-events:none;'
+    b.textContent = (isPhone() ? 'tap' : 'click') + ' to continue';
+    b.style.cssText = 'position:absolute;right:6px;bottom:6px;z-index:200;'
+      + 'pointer-events:none;max-width:92%;overflow:hidden;'
       + 'background:rgba(250,250,255,0.95);color:#14161c;'
-      + 'border-radius:9px;padding:5px 10px;white-space:nowrap;'
+      + 'border-radius:9px;padding:4px 9px;white-space:nowrap;'
       + 'box-shadow:0 4px 16px rgba(0,0,0,0.6);'
-      + 'font:12px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;';
-    ov.appendChild(b);
-    var x = (e && e.clientX != null) ? e.clientX + 16 : window.innerWidth / 2;
-    var y = (e && e.clientY != null) ? e.clientY + 16 : window.innerHeight / 2;
-    var r = b.getBoundingClientRect();
-    b.style.left = Math.round(Math.max(6, Math.min(x, window.innerWidth  - r.width  - 6))) + 'px';
-    b.style.top  = Math.round(Math.max(6, Math.min(y, window.innerHeight - r.height - 6))) + 'px';
+      + 'font:' + fs + 'px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;';
+    cell.appendChild(b);
   }
 
   // The click that ends a read: card home, next question.
@@ -555,7 +662,13 @@
     });
     paintHud();
     drop('quizPrompt');
-    offerHint();
+    // (dev0913) A hint already on this question is not offered a second time --
+    // it never went away, so there is nothing to accept. The tally and a one-line
+    // toast carry the "no" instead, and the board comes straight back.
+    if (hintHtml) {
+      if (typeof toast === 'function') toast('Not correct', 900);
+      resume();
+    } else offerHint();
   }
 
   // ── clicks ────────────────────────────────────────────────────────────────
@@ -566,8 +679,16 @@
   //
   // Plain left button / touch only, so Shift-zoom, Alt-COI, Ctrl+click and the
   // right-click menu still work on a grid that happens to be in a quiz.
+  //
+  // (dev0913) THE ANSWER IS DECIDED ON POINTER-UP, NOT POINTER-DOWN, because a
+  // press on a cell is now two different things and only its END says which: let
+  // go where you started and it is an answer; drag right and it is a request for
+  // a bigger look at that cell (openBig). The press is still swallowed here in
+  // capture phase -- the grid's own tap/hold/swipe must not also run -- so
+  // nothing else can claim the gesture in between.
   function onPointerDown(e) {
-    if (!active) return;
+    gStart = null;
+    if (!active || fsOpen()) return;
     if (e.button !== undefined && e.button !== 0) return;
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     // The HUD and the hint offer are real buttons and keep their own clicks --
@@ -585,6 +706,40 @@
     if (!cell || !cont || !cont.contains(cell)) return;
     e.preventDefault();
     e.stopPropagation();
+    var p = xy(e);
+    gStart = { x: p.x, y: p.y, cell: cell };
+  }
+
+  function onPointerUp(e) {
+    var s = gStart; gStart = null;
+    if (!active || !s || !awaiting || fsOpen()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var p  = xy(e);
+    var dx = p.x - s.x, dy = p.y - s.y;
+
+    // SWIPE RIGHT -- a bigger look at this cell. Not an answer, and not scored.
+    // The way back is a swipe LEFT inside the full-window view, which is V's own
+    // close gesture on both the picture and the video branch and needs nothing
+    // from us.
+    if (dx > SWIPE_PX && Math.abs(dy) < Math.abs(dx)) { openBig(s.cell); return; }
+    // SWIPE LEFT on the board itself: the gesture that means "back", and back
+    // from the grid is where we already are. Deliberately inert -- G's own
+    // left-swipe pauses the cell or leaves for the menu, and neither of those
+    // belongs in the middle of a question.
+    if (dx < -SWIPE_PX && Math.abs(dy) < Math.abs(dx)) return;
+    // A drag that went somewhere without becoming a swipe answers nothing: an
+    // aimed tap does not travel 20px, and scoring a wandering one as a choice
+    // would record a miss the player never made.
+    if (Math.abs(dx) > 20 || Math.abs(dy) > 20) return;
+
+    judge(s.cell);
+  }
+
+  function onPointerCancel() { gStart = null; }
+
+  function judge(cell) {
+    if (!cell || !cell._rowData) return;
     // (dev0900) The card itself, or one the player could not have told apart
     // from it. NOT a bare scientific-name match: two different cards can share
     // one — see the Majoidea note in the header.
@@ -593,13 +748,48 @@
     // arm only counts when there is one; the key arm still judges those.
     var u  = uidOf(cell._rowData);
     var ok = !!(cur && ((u && u === cur.uid) || keyOf(sp) === cur.key));
-    if (ok) onCorrect(cell, e); else onWrong(cell);
+    if (ok) onCorrect(cell); else onWrong(cell);
+  }
+
+  // ── a bigger look (dev0913) ───────────────────────
+  // A grid cell is a fifth of a phone screen, and plenty of these questions turn
+  // on a detail -- a spine, a fin ray, the shape of an eye -- that is simply not
+  // resolvable at that size. Swipe right and the cell opens full window; swipe
+  // left in there and you are back on the board with the question still up,
+  // because the quiz's panels live on #gridOverlay and V is a separate overlay
+  // laid over the top of it. Nothing is scored either way.
+  //
+  // A FLASH CARD OPENS AS ITS PICTURE ALONE. The real row is link-less ftext, so
+  // gridOpenFullscreen would send it down the TEXT branch and render the card --
+  // the picture and every section under it, i.e. the answer to the question that
+  // is still on screen (the same trap dev0860 avoided on the grid's own forward
+  // swipe). So a card is handed a synthetic picture-only row instead, which
+  // falls to the image branch: the same photograph, bigger, and nothing else.
+  // Any other cell sharing the board opens as itself -- there is no answer
+  // written on a plain photo to give away.
+  function openBig(cell) {
+    if (!cell || !cell._rowData) return;
+    if (typeof gridOpenFullscreen !== 'function') return;
+    var row   = cell._rowData;
+    var parts = cardParts(cell);
+    var open  = row;
+    if (parts && parts.imgUrl) {
+      open = { UID: row.UID, cell: row.cell, link: parts.imgUrl,
+               VidTitle: '', VidRange: '', _quizPeek: true };
+    }
+    // (dev0913) One-shot: open with V's control bar already collapsed. What the
+    // quiz wants is a picture, not a transport -- see vp.js's vpCollapseControls.
+    window._vpHideControls = true;
+    try { gridOpenFullscreen(open); } catch (_) { window._vpHideControls = false; }
   }
 
   // Esc leaves the QUIZ before it reaches G's own Esc, which would otherwise
   // close the grid out from under a quiz that is still running.
+  //
+  // (dev0913) Not while the full-window view is up: there Esc is V's close and
+  // the way back to the board. Taking it would end the quiz from inside a peek.
   function onKeyDown(e) {
-    if (!active || e.key !== 'Escape') return;
+    if (!active || e.key !== 'Escape' || fsOpen()) return;
     e.preventDefault();
     e.stopPropagation();
     stop(true);
@@ -613,12 +803,20 @@
     if (wired) return;
     var ov = overlay(); if (!ov) return;
     ov.addEventListener('pointerdown', onPointerDown, true);
+    // (dev0913) The up half of the gesture is heard on the WINDOW rather than on
+    // the overlay: a swipe that starts on a cell and finishes past the edge of
+    // the grid is exactly the swipe most likely to be a deliberate one, and the
+    // overlay would never hear its end.
+    window.addEventListener('pointerup', onPointerUp, true);
+    window.addEventListener('pointercancel', onPointerCancel, true);
     window.addEventListener('keydown', onKeyDown, true);
     wired = true;
   }
   function unwire() {
     var ov = overlay();
     if (ov) ov.removeEventListener('pointerdown', onPointerDown, true);
+    window.removeEventListener('pointerup', onPointerUp, true);
+    window.removeEventListener('pointercancel', onPointerCancel, true);
     window.removeEventListener('keydown', onKeyDown, true);
     wired = false;
   }
@@ -634,6 +832,7 @@
     }
     active = true; right = 0; wrong = 0; cur = null; reading = false;
     hits = []; misses = []; askedIds = {}; total = queue.length;
+    hintHtml = null; gStart = null;     // (dev0913) per-question scraps
     drop('quizSummary'); drop('quizSummaryCatch');
     startedAt = Date.now();
     if (typeof window._gridCardFrontAll === 'function') {
@@ -657,7 +856,8 @@
     active = false; awaiting = false; reading = false; cur = null; queue = [];
     clearTimers();
     unwire();
-    drop('quizPrompt'); drop('quizHint'); drop('quizAsk'); drop('quizBalloon');
+    drop('quizPrompt'); drop('quizAsk'); drop('quizBalloon');
+    hintHtml = null;                    // (dev0913) the hint belongs to one question
     if (typeof window._gridCardFrontAll === 'function') {
       try { window._gridCardFrontAll(); } catch (_) {}
     }

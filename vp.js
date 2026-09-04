@@ -364,6 +364,10 @@ function _vpSyncToolbarHeight(host, toolbar) {
   if (!host || !toolbar) return;
   const apply = () => {
     if (!host.isConnected || !toolbar.isConnected) return;
+    // (dev0913) COLLAPSED: the bar is display:none and measures 0, so the `|| 70`
+    // fallback below would put a 70px black band back where it used to be. The
+    // whole point of collapsing it is that the picture takes the space.
+    if (toolbar.style.display === 'none') { host.style.bottom = '0'; return; }
     const h = toolbar.offsetHeight || 70;
     host.style.bottom = (h + 10) + 'px';
   };
@@ -379,6 +383,45 @@ function _vpSyncToolbarHeight(host, toolbar) {
     setTimeout(apply, 400);
   }
 }
+
+// (dev0913) HIDE THE CONTROLS, KEEP THE PLAYER. The V control bar is 70-140px
+// of a phone's short side (it wraps to two rows on a narrow frame -- see
+// _vpSyncToolbarHeight), and there are times when the transport is not what you
+// came for: a quiz peek at a picture, a frame worth looking at properly, a
+// screenshot. This hides the bar and leaves one small tab in the corner to bring
+// it back. NOTHING about playback changes -- the player keeps running, the keys
+// all still work, and the swipe-to-close gesture is extended over the strip the
+// bar used to occupy so it stays reachable down there.
+//
+// Written against the LIVE DOM by id rather than over captured references, so it
+// can be called from outside vp.js (quizcells.js's openBig) and from a later
+// GUI button without either of them holding a piece of the player.
+function vpCollapseControls(hide) {
+  const bar     = document.getElementById('vp-toolbar');
+  const content = document.getElementById('gridFsContent');
+  if (!bar || !content) return;
+  bar.style.display = hide ? 'none' : 'flex';
+
+  const host    = document.getElementById('grid-fs-video');
+  const catcher = document.getElementById('vp-swipe-catcher');
+  if (host)    host.style.bottom    = hide ? '0' : ((bar.offsetHeight || 70) + 10) + 'px';
+  if (catcher) catcher.style.bottom = hide ? '0' : '80px';
+
+  let tab = document.getElementById('vp-collapse-tab');
+  if (!hide) { if (tab) tab.remove(); return; }
+  if (tab) return;
+  tab = document.createElement('button');
+  tab.id = 'vp-collapse-tab';
+  tab.className = 'vp-btn';
+  tab.innerHTML = '⌃';
+  tab.title = 'Bring the controls back';
+  tab.style.cssText = 'position:absolute;bottom:8px;right:12px;z-index:70;'
+    + 'background:rgba(0,20,45,0.72);border-color:#69c;color:#9cf;'
+    + 'padding:5px 14px;font-size:15px;line-height:1;touch-action:manipulation;';
+  tab.addEventListener('click', e => { e.stopPropagation(); vpCollapseControls(false); });
+  content.appendChild(tab);
+}
+window.vpCollapseControls = vpCollapseControls;
 
 function gridOpenFullscreen(row, contained) {
   // (dev0709) V gets the speakers to itself. The grid is still mounted behind
@@ -429,6 +472,13 @@ function gridOpenFullscreen(row, contained) {
   // matching row or not — so an arming that misses can't leak into the next V.
   const _pendLoop = window._vpPendingLoop || null;
   window._vpPendingLoop = null;
+
+  // (dev0913) OPEN WITH THE CONTROLS ALREADY COLLAPSED -- one shot, set by a
+  // caller that wants the picture and not the transport (quizcells.js's
+  // swipe-right peek). Read-and-CLEARED on EVERY open, the way the loop arming
+  // above is, so an arming that misses its branch cannot leak into the next V.
+  const _hideCtl = !!window._vpHideControls;
+  window._vpHideControls = false;
   const _armLoop = (_pendLoop && window.salLoops
                     && window.salLoops.matchRow(_pendLoop, row)) ? _pendLoop : null;
 
@@ -1472,13 +1522,26 @@ function gridOpenFullscreen(row, contained) {
     abWrap.appendChild(bBtn);
     abWrap.appendChild(bPlusBtn);
     
+    // (dev0913) Collapse button -- next to Close, and the margin-left:auto that
+    // pushes the pair to the right end of the row moves here with it.
+    const hideBtn = document.createElement('button');
+    hideBtn.id = 'vp-collapse';
+    hideBtn.className = 'vp-btn';
+    hideBtn.innerHTML = '⌄';
+    hideBtn.title = 'Hide these controls for more picture (the ⌃ tab brings them back)';
+    hideBtn.style.cssText += 'background:#123;border-color:#69c;color:#9cf;margin-left:auto;';
+    hideBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      vpCollapseControls(true);
+    });
+
     // Close button
     const closeBtn = document.createElement('button');
     closeBtn.id = 'vp-close';
     closeBtn.className = 'vp-btn';
     closeBtn.innerHTML = '✕';
     closeBtn.title = 'Close (Esc)';
-    closeBtn.style.cssText += 'background:#500;border-color:#f00;color:#f44;margin-left:auto;';
+    closeBtn.style.cssText += 'background:#500;border-color:#f00;color:#f44;';
     
     ctrlRow.appendChild(btnPrev);
     ctrlRow.appendChild(btnPlay);
@@ -1490,6 +1553,7 @@ function gridOpenFullscreen(row, contained) {
     ctrlRow.appendChild(toggleBtn);
     ctrlRow.appendChild(ccBtn);
     ctrlRow.appendChild(abWrap);
+    ctrlRow.appendChild(hideBtn);
     ctrlRow.appendChild(closeBtn);
     
     toolbar.appendChild(ctrlRow);
@@ -1502,6 +1566,11 @@ function gridOpenFullscreen(row, contained) {
     // two-line bar covers the bottom of the video. A ResizeObserver catches every
     // cause at once: wrap, orientation flip, URL bar, late-inserted rows.
     _vpSyncToolbarHeight(host, toolbar);
+
+    // (dev0913) After the bar is built and measured, not before: collapsing it
+    // sets the host's inset, and _vpSyncToolbarHeight would overwrite that on
+    // the way past.
+    if (_hideCtl) vpCollapseControls(true);
 
     // (zip0144) No info bar for video — video extends to the top edge.
     // The cell label / title was removed because it took meaningful
