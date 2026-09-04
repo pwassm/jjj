@@ -7688,8 +7688,8 @@ function _vpXmpId(str) {
 // takes the dimensions off the file itself. Everything else — date, GPS,
 // camera, rating, keywords — carries over, which is what you want on a crop.
 async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
-  const origName = String(originalPath).split(/[\/]/).pop() || originalPath;
-  const outName  = String(outPath).split(/[\/]/).pop() || outPath;
+  const origName = String(originalPath).split(/[\\/]/).pop() || originalPath;
+  const outName  = String(outPath).split(/[\\/]/).pop() || outPath;
   const origId   = 'xmp.did:' + _vpXmpId(originalPath);
   const outHash  = _vpXmpId(outPath);
   const ver      = (window.HELP_VERSION_STR || 'SLAM');
@@ -8318,9 +8318,12 @@ async function _vpImageSave(opts) {
     if (result.exitCode === 0) {
       // (dev0863) The sidecar that says which picture this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
-      await _vpCopySourceTimes(absInput, payload.output);   // (dev0872)
+      // (dev0872 / dev0909) …and the original's dates, on the picture and its
+      // sidecar. Reported now, rather than warned about in a console.
+      const dates = (await _vpCopySourceTimes(absInput, payload.output))
+        ? '' : '  ·  ⚠ dates not copied';
       if (typeof toast === 'function') {
-        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + xmp, 3400);
+        toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + xmp + dates, 3400);
       }
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
@@ -8883,8 +8886,14 @@ async function _vpGoSave(opts) {
       // (dev0863) The sidecar that says which clip this came out of.
       const xmp = await _vpWriteXmpSidecar(absInput, payload.output, detail);
       // (dev0872) The original's dates, so the clip files beside its source.
-      // After the sidecar, which writes the mp4's own modify time as it goes.
-      await _vpCopySourceTimes(absInput, payload.output);
+      // After the sidecar, which writes the mp4's own modify time as it goes
+      // — and which the proxy now stamps too.
+      // (dev0909) SAY when this fails. It had been failing on every render
+      // since dev0872 (the proxy's path check rejected backslashes, so every
+      // Windows path came back 400) and nothing on screen said so, because the
+      // only report was a console.warn nobody had reason to open.
+      const dates = (await _vpCopySourceTimes(absInput, payload.output))
+        ? '' : '  ·  ⚠ dates not copied';
       // (dev0871) …and, when a loop was asked for, the page that plays it on
       // repeat. A failure here is worth a word but not an alarm: the clip
       // itself is already written and good.
@@ -8893,7 +8902,7 @@ async function _vpGoSave(opts) {
       if (loopMode === 'fwd' || loopMode === 'boom') {
         loopNote = (await _vpWriteLoopHtml(payload.output, loopMode)) ? ' + .html' : '';
       }
-      if (typeof toast === 'function') toast('saved → ' + outName + xmp + loopNote, 3200);
+      if (typeof toast === 'function') toast('saved → ' + outName + xmp + loopNote + dates, 3200);
     } else {
       const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
       if (typeof toast === 'function') toast('save failed: ' + tail, 4200);

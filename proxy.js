@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0868';
+const PROXY_BUILD = 'dev0909';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -7265,7 +7265,7 @@ http.createServer((req, res) => {
     if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
     if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
     readJson(req).then(body => {
-      const okPath = t => /^([A-Za-z]:[\/]|\/)/.test(t) && !/(^|[\/])\.\.([\/]|$)/.test(t);
+      const okPath = t => /^([A-Za-z]:[\\/]|\/)/.test(t) && !/(^|[\\/])\.\.([\\/]|$)/.test(t);
       const src = String((body && body.source) || '');
       const dst = String((body && body.target) || '');
       if (!okPath(src) || !okPath(dst)) {
@@ -7279,20 +7279,33 @@ http.createServer((req, res) => {
       // mtime); mtime is the honest fallback and is what "when was this shot"
       // means for camera footage anyway.
       const birth = (ss.birthtimeMs && ss.birthtimeMs > 0) ? ss.birthtime : ss.mtime;
-      let created = false;
-      try {
-        const pad = n => String(n).padStart(2, '0');
-        const d = birth;
-        const stamp = d.getFullYear() + ':' + pad(d.getMonth() + 1) + ':' + pad(d.getDate())
-                    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-        const r = spawnSync(EXEC_BIN.exiftool || 'exiftool',
-          ['-overwrite_original', '-FileCreateDate=' + stamp, dst],
-          { windowsHide: true, timeout: 20000 });
-        created = !!r && r.status === 0;
-      } catch (_) {}
-      try { fs.utimesSync(dst, ss.atime, ss.mtime); }
+      const pad = n => String(n).padStart(2, '0');
+      const stamp = birth.getFullYear() + ':' + pad(birth.getMonth() + 1) + ':' + pad(birth.getDate())
+                  + ' ' + pad(birth.getHours()) + ':' + pad(birth.getMinutes()) + ':' + pad(birth.getSeconds());
+      const stampOne = target => {
+        let created = false;
+        try {
+          const r = spawnSync(EXEC_BIN.exiftool || 'exiftool',
+            ['-overwrite_original', '-FileCreateDate=' + stamp, target],
+            { windowsHide: true, timeout: 20000 });
+          created = !!r && r.status === 0;
+        } catch (_) {}
+        fs.utimesSync(target, ss.atime, ss.mtime);
+        return created;
+      };
+      let created;
+      try { created = stampOne(dst); }
       catch (e) { sendJson(res, 500, { ok: false, error: 'utimes failed: ' + e.message }, origin); return; }
-      sendJson(res, 200, { ok: true, modified: true, created,
+      // (dev0909) …and the sidecar with it. A .xmp stamped at "now" sorts away
+      // from the clip it describes, and digiKam reads the pair as one item.
+      // Silent when there is no sidecar — most renders that call this have one,
+      // and a missing one is not a failure of the clip's own dates.
+      let sidecar = false;
+      try {
+        const sc = dst + '.xmp';
+        if (fs.existsSync(sc) && fs.statSync(sc).isFile()) { stampOne(sc); sidecar = true; }
+      } catch (_) {}
+      sendJson(res, 200, { ok: true, modified: true, created, sidecar,
                            mtime: ss.mtime.toISOString(), ctime: birth.toISOString() }, origin);
     }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
     return;
