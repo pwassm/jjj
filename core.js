@@ -3829,9 +3829,10 @@ function showCtx(x, y, target) {
     const di = target.di;
     menu.innerHTML = '<div class="ctx-hdr">'+(di !== undefined ? 'ROW '+(di+1) : 'ROWS')+'</div>';
     if (di !== undefined) {
-      // (dev0785) Download this row's link to yt_media / vm_media / wiki_media.
-      // Only offered when the link is one of those three hosts — the proxy refuses
-      // anything else anyway, so a greyed-out-looking item would just be noise.
+      // (dev0785) Download this row's link to yt_media / vm_media / wiki_media,
+      // (dev0911) reddit_media, or (dev0912) dl_media for a direct media file on
+      // any host. Only offered when _tMediaFolderFor names a folder — the proxy
+      // refuses anything else anyway, so a greyed-out-looking item would be noise.
       const _dlF = _tMediaFolderFor(data[di] && data[di].link);
       if (_dlF) { addCI(menu, '⬇ Download → ' + _dlF, () => tDownloadRowMedia(di)); addCS(menu); }
       // (dev0851) A MakeCard row (image + <hr> + text) can be exported back to
@@ -3886,6 +3887,20 @@ function _tMediaFolderFor(link) {
   // v.redd.it MP4 is handled by the proxy's direct-file path, and downloading the
   // post is precisely what merges the separate DASH audio stream back in.
   if (/(^|\.)reddit\.com$/.test(h) || h === 'redd.it') return 'reddit_media';
+  // (dev0912) The reddit MEDIA hosts. A row dev0911's resolver already rewrote holds
+  // v.redd.it/<hash>/CMAF_<h>.mp4, NOT a post URL, so the test above never matched it
+  // and the menu offered no download for exactly the rows most worth downloading.
+  // The proxy sends the row's linkpage back to the POST page, which is what merges
+  // the separate DASH audio stream in.
+  if (h === 'v.redd.it' || h === 'i.redd.it') return 'reddit_media';
+  // (dev0912) Anything that IS a media file, on any host → dl_media. See the proxy's
+  // mediaClassify for why this stopped being a host allowlist: a URL ending in
+  // .webm/.mp4/.jpg is already the file the row renders, so a plain GET of it is not
+  // the open-ended hole dev0785 was guarding against. The Shutterstock preview .webm
+  // rows are what prompted it — they had no ⬇ Download while a YouTube page did.
+  // Query strings are stripped first: the extension lives in the PATH.
+  if (/\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v|jpe?g|png|gif|webp|svg|avif|tiff?)$/i
+      .test(u.pathname)) return 'dl_media';
   return null;
 }
 let _tDlBusy = false;
@@ -3911,7 +3926,7 @@ async function tDownloadRowMedia(di) {
   const row = data[di];
   if (!row) return;
   const folder = _tMediaFolderFor(row.link);
-  if (!folder) { toast('Row ' + (di + 1) + ': link is not YouTube / Vimeo / Wikimedia / Reddit', 3000); return; }
+  if (!folder) { toast('Row ' + (di + 1) + ': link is not a downloadable media file or page', 3000); return; }
   if (_tDlBusy) { toast('A download is already running — one at a time', 2500); return; }
   _tDlBusy = true;
   const title = String(row.VidTitle || row.link).slice(0, 50);

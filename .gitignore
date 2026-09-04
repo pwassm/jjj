@@ -81,6 +81,11 @@ pin_media/
 # so the direct MP4 the resolver links is video-only.
 reddit_media/
 
+# (dev0912) Direct media files downloaded from any host by that same endpoint
+# (a URL that IS a .webm/.mp4/.jpg rather than a page about one). Local staging,
+# never committed, never served.
+dl_media/
+
 # (dev0471) Firefox "Save Page As ▸ Text" dumps of IG posts. (dev0794) The importer
 # that read these — the I-screen "📁 Import ffdown" button and the /ig/ffdown route —
 # has been removed, so nothing reads the folder now; it stays ignored because the

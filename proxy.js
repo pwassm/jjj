@@ -6362,13 +6362,22 @@ const MEDIA_DIRS = {
   wiki: { dir: path.join(__dirname, 'wiki_media'), tag: 'w' },
   // (dev0911) Reddit. Tag 'r' continues the ytdl_v26 single-letter convention
   // (y = YouTube, v = Vimeo, w = Wikimedia); 'r' was free.
-  rd:   { dir: path.join(__dirname, 'reddit_media'), tag: 'r' }
+  rd:   { dir: path.join(__dirname, 'reddit_media'), tag: 'r' },
+  // (dev0912) Everything else that IS a media file. See mediaClassify's last
+  // branch for why this stopped being a host allowlist. Tag 'd' = direct.
+  dl:   { dir: path.join(__dirname, 'dl_media'), tag: 'd' }
 };
 // Host → which of the three folders, plus the id yt-dlp/the URL gives us. Returns
 // null for anything else: this endpoint deliberately refuses to become a general
 // "download whatever" hole — the T menu only offers it for hosts named here.
 function mediaClassify(url) {
   let u; try { u = new URL(url); } catch (_) { return null; }
+  // (dev0912) Protocol guard. mediaDownload already refuses a non-http(s) URL before
+  // it gets here, but the generic direct-file branch below is a pure extension test,
+  // so without this `ftp://host/x.mp4` classified as downloadable — and the CLIENT's
+  // mirror of this function does check the protocol. The two must agree or the menu
+  // and the endpoint disagree about what a row is.
+  if (!/^https?:$/.test(u.protocol)) return null;
   const h = u.hostname.replace(/^www\./i, '').toLowerCase();
   let m;
   if (/^(youtube\.com|m\.youtube\.com|music\.youtube\.com|youtube-nocookie\.com)$/.test(h)) {
@@ -6389,12 +6398,41 @@ function mediaClassify(url) {
   if (/(^|\.)reddit\.com$/.test(h) || h === 'redd.it') {
     return { kind: 'rd', id: redditPostId(url) };
   }
+  // (dev0912) The reddit MEDIA hosts. A row the resolver already rewrote holds
+  // `https://v.redd.it/<hash>/CMAF_480.mp4`, not a post URL, so the branch above
+  // never matched it and the T menu offered no download at all for exactly the
+  // rows most worth downloading. The hash is the id; the POST page comes from the
+  // row's linkpage (see mediaRedditFetchUrl), and downloading THAT is what merges
+  // the separate DASH audio stream back in.
+  if (h === 'v.redd.it' || h === 'i.redd.it') {
+    const seg = u.pathname.split('/').filter(Boolean)[0] || '';
+    return { kind: 'rd', id: seg };
+  }
   if (/(^|\.)wikimedia\.org$/.test(h) || /(^|\.)wikipedia\.org$/.test(h) || /(^|\.)wikisource\.org$/.test(h)) {
     // Commons has no numeric id — the file name IS the identity. Decode it so
     // "%C3%A9" doesn't end up in the stem, then let igSanitizeName clean it.
     let base = decodeURIComponent(u.pathname.split('/').pop() || '');
     base = base.replace(/^File:/i, '').replace(/\.[A-Za-z0-9]{2,5}$/, '');
     return { kind: 'wiki', id: base };
+  }
+  // (dev0912) Last resort: a URL that IS a media file, on ANY host.
+  //
+  // This deliberately relaxes dev0785's "never become a general download-whatever
+  // hole" stance, and the reason is worth stating. That rule was written when the
+  // endpoint's job was to resolve PAGES — and resolving an arbitrary page really is
+  // an open-ended hole. A URL ending in .webm/.mp4/.jpg is a different thing: it is
+  // already the file, the row already holds it, the browser already fetches it on
+  // every render, and the "download" is a plain GET of bytes the user is looking at.
+  // Refusing that bought no safety, it just meant Shutterstock preview .webm rows
+  // (and every other direct link) had no ⬇ Download while a YouTube page did.
+  //
+  // Still bounded: the extension test below is the gate, so a page URL on an
+  // unknown host is refused exactly as before, and the endpoint stays origin-locked
+  // and POST-only.
+  if (mediaIsDirectFile(url)) {
+    let base = decodeURIComponent((u.pathname.split('/').pop() || '').replace(/\.[A-Za-z0-9]{2,5}$/, ''));
+    if (!base) base = h.replace(/^www\./, '');
+    return { kind: 'dl', id: base, host: h.replace(/^www\./, '') };
   }
   return null;
 }
@@ -6426,6 +6464,21 @@ function mediaBuildStem(kind, title, channel, id, maxW, maxH) {
 // "embed-only video without embedding URL" — which is exactly what mediaVimeoReferers
 // below retries, using the row's `linkpage` as the allowed embedding domain.
 // YouTube and Wikimedia are untouched; this is purely a Vimeo problem.
+// (dev0912) ── The Reddit detour ────────────────────────────────────────────
+// v.redd.it keeps audio in its OWN DASH stream, so the CMAF_<h>.mp4 rung a
+// resolved row holds is VIDEO ONLY. Downloading that URL would faithfully
+// reproduce the silence. The post page is the thing yt-dlp can mux, and the row
+// already carries it in `linkpage` — which is precisely what dev0911 stamped it
+// for. So a resolved Reddit row downloads its POST, not its link.
+//
+// Falls back to the URL as given when there is no usable linkpage: a video-only
+// file still beats a refusal, and the caller's toast reports what landed.
+function mediaRedditFetchUrl(kind, url, linkpage) {
+  if (kind !== 'rd') return url;
+  const lp = String(linkpage || '').trim();
+  if (/^https?:\/\//i.test(lp) && redditPostId(lp)) return lp;
+  return url;
+}
 function mediaVimeoFetchUrl(kind, id, url) {
   if (kind !== 'vm' || !id) return url;
   return 'https://player.vimeo.com/video/' + id;
@@ -6520,7 +6573,7 @@ function mediaDownload(req, res, origin) {
     const url = String(payload.url || '');
     if (!/^https?:\/\//i.test(url) || url.length > 2048) { sendJson(res, 400, { ok: false, error: 'valid http(s) url required' }, origin); return; }
     const cls = mediaClassify(url);
-    if (!cls) { sendJson(res, 400, { ok: false, error: 'not a YouTube / Vimeo / Wikimedia / Reddit link' }, origin); return; }
+    if (!cls) { sendJson(res, 400, { ok: false, error: 'not a downloadable link: needs a YouTube / Vimeo / Wikimedia / Reddit page, or a URL that IS a media file' }, origin); return; }
     const destDir = MEDIA_DIRS[cls.kind].dir;
     const folder  = path.basename(destDir);
     try { fs.mkdirSync(destDir, { recursive: true }); } catch (_) {}
@@ -6547,14 +6600,24 @@ function mediaDownload(req, res, origin) {
     const fbTitle  = String(payload.title  || '').trim();
     const fbAuthor = String(payload.author || '').trim().replace(/^@/, '');
 
-    // ── Wikimedia direct file: a plain GET, no yt-dlp. ────────────────────
-    if (cls.kind === 'wiki' && mediaIsDirectFile(url)) {
+    // ── Direct file: a plain GET, no yt-dlp. ──────────────────────────────
+    // (dev0912) Was Wikimedia-only; now also every 'dl' row (a media URL on any
+    // host — the Shutterstock preview .webm rows are what prompted it). Same code
+    // either way: the bytes ARE the file, so yt-dlp would only add a process and a
+    // chance of a silent remux. The referer is the file's own origin for a generic
+    // host — some CDNs check it, and the row's own site is the honest answer.
+    if ((cls.kind === 'wiki' || cls.kind === 'dl') && mediaIsDirectFile(url)) {
       const ext = ((/\.([a-z0-9]{2,5})(?:\?|#|$)/i.exec(url) || [])[1] || 'bin').toLowerCase();
-      const stem = mediaBuildStem('wiki', fbTitle || cls.id, fbAuthor || 'wikimedia', cls.id, 0, 0);
+      const dlHost = cls.host || 'download';
+      const stem = cls.kind === 'wiki'
+        ? mediaBuildStem('wiki', fbTitle || cls.id, fbAuthor || 'wikimedia', cls.id, 0, 0)
+        : mediaBuildStem('dl', fbTitle || cls.id, fbAuthor || dlHost, cls.id, 0, 0);
       const tmpPath = path.join(destDir, '.dl_' + Date.now().toString(36) + '.' + ext);
       // A plain GET has no incremental reporting — one honest "fetching" stage.
       mediaJobSet(jobId, { stage: 'downloading', part: 1 });
-      const got = await igDownloadImage(url, tmpPath, 'https://commons.wikimedia.org/', 0, '*/*');
+      let ref = 'https://commons.wikimedia.org/';
+      if (cls.kind === 'dl') { try { ref = new URL(url).origin + '/'; } catch (_) { ref = ''; } }
+      const got = await igDownloadImage(url, tmpPath, ref, 0, '*/*');
       if (!got) { try { fs.unlinkSync(tmpPath); } catch (_) {} fail('fetch failed'); return; }
       const d = probeMediaDims(tmpPath);
       const base = pinStampName(stem, tmpPath).replace('[M[0x0]]', '[M[' + ((d && d.w) || 0) + 'x' + ((d && d.h) || 0) + ']]') + '.' + ext;
@@ -6564,10 +6627,11 @@ function mediaDownload(req, res, origin) {
       return;
     }
 
-    // ── yt-dlp path (YouTube, Vimeo, Commons File: pages). ────────────────
-    // (dev0786) Vimeo goes to the embed player with a referer; everything else is
-    // fetched by its own URL with no referer at all, exactly as before.
-    const fetchUrl = mediaVimeoFetchUrl(cls.kind, cls.id, url);
+    // ── yt-dlp path (YouTube, Vimeo, Reddit, Commons File: pages). ────────
+    // (dev0786) Vimeo goes to the embed player with a referer; (dev0912) Reddit
+    // goes to its POST page so the separate DASH audio stream is merged in;
+    // everything else is fetched by its own URL with no referer at all.
+    const fetchUrl = mediaRedditFetchUrl(cls.kind, mediaVimeoFetchUrl(cls.kind, cls.id, url), payload.linkpage);
     const referers = mediaVimeoReferers(cls.kind, payload.linkpage);
 
     // One yt-dlp download attempt under one referer. Resolves { file, stderr } —

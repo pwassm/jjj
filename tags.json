@@ -8187,5 +8187,18 @@
     "aliases": [],
     "def": "",
     "rank": "species"
+  },
+  {
+    "id": "astropecten-polyacanthus",
+    "label": "Astropecten polyacanthus",
+    "kind": "taxon",
+    "parents": [
+      "astropecten"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
   }
 ]
