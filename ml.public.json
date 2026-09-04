@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788498363111,
+    "_salPushTime": 1788557947225,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -516,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788498363111
+    "_salSavedAt": 1788557947225
   },
   {
     "UID": "1",
@@ -49490,5 +49490,117 @@
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "V"
+  },
+  {
+    "UID": "2242",
+    "link": "https://news.ucr.edu/sites/default/files/2019-01/chiton%20tooth.jpeg",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:06:56",
+    "DateModified": "2026-09-04 21:07:45",
+    "tags": [],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "4.9",
+    "Mode": "L",
+    "comment": "Chiton tooth with magnetite cusp. Credit: Kisailus Biomimetics & Nanomaterials Lab"
+  },
+  {
+    "UID": "2243",
+    "link": "https://news.ucr.edu/articles/2019/01/31/magnetic-teeth-hold-promise-materials-and-energy",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:08:26",
+    "DateModified": "2026-09-04 21:08:36",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "4372",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2244",
+    "link": "https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41598-018-37839-2/MediaObjects/41598_2018_37839_Fig1_HTML.png?as=webp",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:09:44",
+    "DateModified": "2026-09-04 21:09:51",
+    "tags": [],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "0.8",
+    "Mode": "L"
+  },
+  {
+    "UID": "2245",
+    "link": "http://www.microscopy-uk.org.uk/mag/indexmag.html?http://www.microscopy-uk.org.uk/mag/artjun17/rh-chiton-teeth.html",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:27:54",
+    "DateModified": "2026-09-04 21:28:52",
+    "tags": [
+      "radula"
+    ],
+    "ltype": "w",
+    "ftextSize": "8574",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
+  },
+  {
+    "UID": "2246",
+    "link": "https://scx2.b-cdn.net/gfx/news/hires/2019/1-magneticteet.jpg",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:34:11",
+    "DateModified": "2026-09-04 21:34:11",
+    "tags": [],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "3.2",
+    "Mode": "L"
+  },
+  {
+    "UID": "2247",
+    "link": "https://vichighmarine.ca/wp-content/uploads/2017/02/GumbootChitonRadula2.jpg",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:37:23",
+    "DateModified": "2026-09-04 21:37:24",
+    "tags": [],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "0.3",
+    "Mode": "L"
+  },
+  {
+    "UID": "2248",
+    "link": "https://vichighmarine.ca/wp-content/uploads/2017/02/GumbootChitonRadulaClose.jpg",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:37:31",
+    "DateModified": "2026-09-04 21:37:32",
+    "tags": [],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "0.3",
+    "Mode": "L"
+  },
+  {
+    "UID": "2249",
+    "link": "https://www.iflscience.com/meet-the-wandering-meatloaf-the-first-living-creature-with-iron-in-its-teeth-59892",
+    "show": "1",
+    "DateAdded": "2026-09-04 21:38:28",
+    "DateModified": "2026-09-04 21:39:07",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "7085",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": ""
   }
 ]

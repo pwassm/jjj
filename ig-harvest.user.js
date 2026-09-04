@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.4
+// @version      2.5
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Harvest an Instagram profile's reel/post URLs into ig.json via the local SLAM proxy. "🆕 New only" asks the proxy which shortcodes ig.json already holds and stops scrolling as soon as it recognises the grid — a re-harvest costs ~3 scroll steps instead of 500. "🔁 Sweep all" runs that across every harvested author unattended, rotating the Proton VPN between authors the way Download+rotate does. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.4';
+  const VER = '2.5';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -93,8 +93,20 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
 
   // ── proxy plumbing (GM_xhr is privileged → bypasses browser CORS) ───────────
+  // (dev0914) GM_xhr hands every transport failure to one `onerror` with nothing in
+  // it, and this used to answer all of them with the same sentence: "proxy down (is
+  // proxy.js running on 8081?)". That sentence is a lie in the case that matters —
+  // a socket killed UNDER a live request, which is what a VPN switch does to every
+  // connection in the browser, loopback included. The two are easy to tell apart by
+  // the clock: nothing listening on a port refuses in milliseconds, while a request
+  // that got as far as the wire and then lost it dies seconds in. Say which one
+  // happened, and mark the second `dropped` so a caller can go and look at the real
+  // outcome instead of taking the lost answer as a verdict.
+  const DEAD_PORT_MS = 1500;
   function post(pathname, body) {
     return new Promise((resolve, reject) => {
+      const t0 = Date.now();
+      const fail = (msg, dropped) => { const e = new Error(msg); e.dropped = !!dropped; reject(e); };
       GM_xmlhttpRequest({
         method: 'POST', url: PROXY + pathname,
         headers: { 'Content-Type': 'application/json' },
@@ -105,8 +117,13 @@
           if (j && j.ok) resolve(j);
           else reject(new Error((j && j.error) || ('HTTP ' + r.status)));
         },
-        onerror: () => reject(new Error('proxy down (is proxy.js running on 8081?)')),
-        ontimeout: () => reject(new Error('proxy timeout'))
+        onerror: () => {
+          const ms = Date.now() - t0;
+          if (ms < DEAD_PORT_MS) fail('proxy did not answer (is proxy.js running on 8081?)');
+          else fail('the connection was cut ' + (ms / 1000).toFixed(1) + 's in — the proxy may still be'
+                    + ' working on it (a VPN switch drops every open socket)', true);
+        },
+        ontimeout: () => fail('proxy timeout')
       });
     });
   }
@@ -369,6 +386,28 @@
   async function vpnState() {
     try { return await post('/ig/vpn-status', {}); } catch (_) { return null; }
   }
+  // (dev0914) Watch the TUNNEL for a rotation to land, for when the POST that asked
+  // for it never came back. Landed = up, and on a different exit than `before`. The
+  // first few polls can fail too — they are being made across the same adapter flip
+  // that killed the switch — so a null is only fatal after DEAD_POLLS of them in a
+  // row, which is well past the flip and means the proxy really is gone. Returns the
+  // new state, or null if it never arrived (caller stops the sweep on that).
+  const DEAD_POLLS = 8;
+  async function vpnAwaitSwitch(before, budgetMs) {
+    const until = Date.now() + (budgetMs || 60000);
+    let dead = 0;
+    while (Date.now() < until) {
+      if (abortFlag) return null;
+      setMsg('🔀 the switch request was cut off — watching the tunnel instead'
+             + '\n⏳ ' + Math.ceil((until - Date.now()) / 1000) + 's');
+      await sleep(2000);
+      const st = await vpnState();
+      if (!st) { if (++dead >= DEAD_POLLS) return null; continue; }
+      dead = 0;
+      if (st.tunnelUp && st.server && st.server !== before) return st;
+    }
+    return null;
+  }
   // Pause with a live countdown that the Stop button can interrupt.
   async function pause(ms, label) {
     const until = Date.now() + ms;
@@ -509,10 +548,27 @@
         const st = await vpnState();
         // Standing rule: a dropped tunnel STOPS IG activity. Nothing here restarts it.
         if (!st || !st.tunnelUp) { sweepStop('VPN tunnel is down — nothing was auto-restarted'); return; }
+        const before = st.server || '';
         setMsg('🔀 rotating VPN before @' + next + ' (' + (s.i + 1) + '/' + s.queue.length + ')…');
-        let sw;
-        try { sw = await post('/ig/vpn-switch', {}); } catch (e) { sweepStop('VPN switch failed: ' + e.message); return; }
-        const st2 = await vpnState();
+        let sw = null, cut = '';
+        try { sw = await post('/ig/vpn-switch', {}); } catch (e) { cut = e.message; }
+        // (dev0914) The switch is the thing that kills the request asking for it: ~10s
+        // in, the WireGuard adapter flips and the browser tears down every open socket,
+        // this loopback POST included. On 2026-09-04 that ended two sweeps at author 1
+        // of 57 — both reported as "proxy down" — while the proxy log shows BOTH
+        // rotations landing seconds later (wg-US-CA-31, then wg-US-NC-6). So a lost
+        // answer is a question, not a verdict: watch the tunnel, and stop only if the
+        // rotation genuinely never arrives.
+        let landed = null;
+        if (cut) {
+          landed = await vpnAwaitSwitch(before, 60000);
+          if (abortFlag) { sweepStop('stopped by you'); return; }
+          if (!landed) { sweepStop('VPN switch failed: ' + cut); return; }
+          sw = { switched: true };
+        }
+        // Reuse what the watcher already proved. Re-asking would only add one more
+        // chance for a transient null to end a sweep that is in fact fine.
+        const st2 = landed || await vpnState();
         if (!st2 || !st2.tunnelUp) { sweepStop('VPN did not come back up after the switch'); return; }
         // switched:false = the rotation didn't land inside the proxy's 40s window.
         // The tunnel is still up, so carry on rather than abandon the sweep — but
