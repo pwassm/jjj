@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0927';
+const PROXY_BUILD = 'dev0928';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1889,6 +1889,19 @@ const HAS_JPEGTRAN = (() => {
 // doesn't shred the JSON.
 function buildFfprobeArgs(p) {
   must(p.input && typeof p.input === 'string', 'input (string) required');
+  // (dev0928) verify mode — is the file that was just written a real file?
+  // LLC asks this after every cut, because the user deletes the original once
+  // the clips are made: a cut that came out short, silent or missing a track
+  // has to be caught while the source still exists. Duration and the stream
+  // list are exactly what answers that.
+  if (p.verify) {
+    return [
+      '-v', 'error',
+      '-print_format', 'json',
+      '-show_entries', 'format=duration,size,format_name:stream=index,codec_type,codec_name,channels',
+      p.input
+    ];
+  }
   // (dev0927) keyframes mode — where a lossless cut is ALLOWED to start.
   // A stream copy cannot begin mid-GOP, so ffmpeg silently moves the cut back
   // to the keyframe before the mark; LLC shows the user where that is instead
@@ -7385,7 +7398,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
-      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llcnlc', 'llckeyframes', 'llcallstreams']) }));
+      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify']) }));
     return;
   }
 
@@ -7914,68 +7927,171 @@ http.createServer((req, res) => {
     return;
   }
 
-  // (dev0926) ── /llc/nlc — the cut log beside a losslessly-cut video ──────
-  // LLC (llc.js) writes one .nlc — "new lossless cut" — next to every source
-  // it takes a clip out of: <video minus its extension>.nlc, holding the times
-  // of every cut ever made from that file. It is the answer to "what have I
-  // already lifted out of this?", which the mp4s themselves cannot give — their
-  // names carry the numbers but nothing gathers them, and a clip that was later
-  // moved or deleted takes its own record with it.
+  // (dev0928) ── /llc/smartcut — a frame-exact start without re-encoding the clip
   //
-  // Two shapes, dispatched on the body:
-  //   {video, read:true}          → the current log ({} when there is none yet)
-  //   {video, durationSec, cut}   → append one cut, write, return the new log
+  // The problem this solves: a stream copy cannot begin mid-GOP, so a cut asked
+  // for at 12.4s actually starts at the keyframe before it — sometimes seconds
+  // earlier, with footage the user did not ask for on the front.
   //
-  // Append rather than replace: the client sends the one cut it just made, so
-  // two browser tabs on the same video cannot wipe each other's history, and a
-  // client with a stale idea of the log cannot shorten it. Writes to disk →
-  // origin-locked + POST, like its /vp neighbours above.
-  if (req.url.startsWith('/llc/nlc')) {
+  // The trick (LosslessCut calls it "smart cut", and labels it experimental for
+  // the reasons below): re-encode ONLY the fragment from the mark to the next
+  // keyframe, stream-copy everything from that keyframe on, and join them.
+  // Typically that is under two seconds of re-encoding for a clip of any length,
+  // and every frame after the join is bit-identical to the source.
+  //
+  // Why MPEG-TS in the middle rather than the concat demuxer on two mp4s: an
+  // mp4 carries ONE set of codec extradata (SPS/PPS) for the whole track, and
+  // x264's will not match the camera's. Copying two mp4s together therefore
+  // decodes correctly only by luck. MPEG-TS carries the parameter sets inline
+  // with the stream, which is exactly what lets two differently-encoded pieces
+  // sit in one file — hence the annexb bitstream filter on the copied half.
+  //
+  // Three spawns, run here rather than from the browser: the intermediates are
+  // this process's to make and to delete, and a client that navigated away
+  // mid-job would otherwise leave two .ts files behind.
+  //
+  // Deliberately narrow. H.264 or HEVC video, AAC audio or none, an mp4-family
+  // output. Anything else is REFUSED rather than attempted — the caller falls
+  // back to a plain lossless cut, which is always correct and merely starts
+  // early. Writes to disk and spawns processes, so it is origin-locked + POST.
+  if (req.url.startsWith('/llc/smartcut')) {
     const origin = req.headers.origin || '';
     if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
     if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
-    readJson(req, 256 * 1024).then(body => {
-      const vid = String((body && body.video) || '');
-      if (!/^([A-Za-z]:[\\/]|\/)/.test(vid) || /(^|[\\/])\.\.([\\/]|$)/.test(vid)
-          || !/\.(mp4|m4v|mov|webm|mkv|avi)$/i.test(vid)) {
-        sendJson(res, 400, { ok: false, error: 'video must be an absolute mp4/mov/mkv/… path' }, origin); return;
+    readJson(req, 64 * 1024).then(body => {
+      const okPath = t => /^([A-Za-z]:[\\/]|\/)/.test(t) && !/(^|[\\/])\.\.([\\/]|$)/.test(t);
+      const input  = String((body && body.input) || '');
+      const output = String((body && body.output) || '');
+      const a = +(body && body.startSec);
+      const b = +(body && body.endSec);
+      const k = +(body && body.keyframeSec);
+      if (!okPath(input) || !okPath(output)) {
+        sendJson(res, 400, { ok: false, error: 'input and output must be absolute paths' }, origin); return;
       }
-      const out = vid.replace(/\.[^.\\/]+$/, '') + '.nlc';
-      let doc = null;
-      try { if (fs.existsSync(out)) doc = JSON.parse(fs.readFileSync(out, 'utf8')); }
-      catch (_) { doc = null; }   // a corrupt log is replaced, not obeyed
-      if (!doc || typeof doc !== 'object') doc = {};
-      if (!Array.isArray(doc.cuts)) doc.cuts = [];
-      doc.nlc = 1;
-      doc.source = vid;
+      if (!/\.(mp4|m4v|mov)$/i.test(output)) {
+        sendJson(res, 400, { ok: false, error: 'smartcut writes mp4/m4v/mov only' }, origin); return;
+      }
+      if (!(Number.isFinite(a) && a >= 0 && Number.isFinite(b) && b > a &&
+            Number.isFinite(k) && k > a && k < b)) {
+        sendJson(res, 400, {
+          ok: false,
+          error: 'need startSec < keyframeSec < endSec (a mark already on a keyframe needs no smart cut)'
+        }, origin); return;
+      }
 
-      if (body && body.read) { sendJson(res, 200, { ok: true, path: out, nlc: doc }, origin); return; }
+      // ── What is in the file? The answer decides whether this can run at all.
+      let probe;
+      try {
+        const r = spawnSync(EXEC_BIN.ffprobe || 'ffprobe',
+          ['-v', 'error', '-print_format', 'json',
+           '-show_entries', 'stream=index,codec_type,codec_name,sample_rate,channels',
+           input],
+          { windowsHide: true, timeout: 30000, maxBuffer: 4 * 1024 * 1024 });
+        probe = JSON.parse((r.stdout || '').toString('utf8') || '{}');
+      } catch (e) {
+        sendJson(res, 500, { ok: false, error: 'ffprobe failed: ' + e.message }, origin); return;
+      }
+      const streams = Array.isArray(probe.streams) ? probe.streams : [];
+      const v  = streams.find(st => st.codec_type === 'video');
+      const au = streams.find(st => st.codec_type === 'audio');
+      if (!v) { sendJson(res, 400, { ok: false, error: 'no video stream' }, origin); return; }
+      const VBSF = { h264: 'h264_mp4toannexb', hevc: 'hevc_mp4toannexb' };
+      const ENC  = { h264: 'libx264', hevc: 'libx265' };
+      if (!VBSF[v.codec_name]) {
+        sendJson(res, 422, { ok: false, unsupported: true,
+          error: 'smart cut handles H.264 and HEVC; this is ' + v.codec_name }, origin); return;
+      }
+      if (au && au.codec_name !== 'aac') {
+        sendJson(res, 422, { ok: false, unsupported: true,
+          error: 'smart cut needs AAC audio; this is ' + au.codec_name }, origin); return;
+      }
 
-      const c = body && body.cut;
-      if (!c || typeof c !== 'object') {
-        sendJson(res, 400, { ok: false, error: 'cut (object) required, or read:true' }, origin); return;
-      }
-      const num = v => (Number.isFinite(+v) ? +v : null);
-      if (num(c.startSec) === null || num(c.endSec) === null) {
-        sendJson(res, 400, { ok: false, error: 'cut.startSec / cut.endSec must be numbers' }, origin); return;
-      }
-      // Copy field by field: this file is written from an HTTP body, and the
-      // only things that belong in it are the ones LLC puts there.
-      doc.cuts.push({
-        label:    String(c.label || '').slice(0, 120),
-        startSec: num(c.startSec),
-        endSec:   num(c.endSec),
-        durSec:   num(c.durSec),
-        start:    String(c.start || '').slice(0, 32),
-        end:      String(c.end || '').slice(0, 32),
-        output:   path.basename(String(c.output || '')).slice(0, 260),
-        at:       String(c.at || new Date().toISOString()).slice(0, 40)
+      const tmp  = fs.mkdtempSync(path.join(os.tmpdir(), 'slam-smartcut-'));
+      const head = path.join(tmp, 'head.ts');
+      const tail = path.join(tmp, 'tail.ts');
+      const cleanup = () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {} };
+
+      // The re-encoded head. CRF 16 over a fragment of a second or two is
+      // visually transparent and costs a few hundred KB; the preset is fast
+      // because the user is waiting and there is almost nothing to encode.
+      // -ss/-to before -i is input seeking, the same as every other trim here.
+      const aud = au
+        ? ['-c:a', 'aac', '-b:a', '192k',
+           ...(au.sample_rate ? ['-ar', String(au.sample_rate)] : []),
+           ...(au.channels    ? ['-ac', String(au.channels)]    : [])]
+        : ['-an'];
+      const headArgs = [
+        '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '0.5',
+        '-ss', a.toFixed(3), '-to', k.toFixed(3), '-i', input,
+        '-map', '0:v:0', ...(au ? ['-map', '0:a:0'] : []),
+        '-c:v', ENC[v.codec_name], '-crf', '16', '-preset', 'veryfast',
+        '-pix_fmt', 'yuv420p',
+        ...aud,
+        '-avoid_negative_ts', 'make_zero', '-f', 'mpegts', '-y', head
+      ];
+      // The copied tail — every frame of it bit-identical to the source.
+      const tailArgs = [
+        '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '0.5',
+        '-ss', k.toFixed(3), '-to', b.toFixed(3), '-fflags', '+genpts', '-i', input,
+        '-map', '0:v:0', ...(au ? ['-map', '0:a:0'] : []),
+        '-c', 'copy', '-bsf:v', VBSF[v.codec_name],
+        '-avoid_negative_ts', 'make_zero', '-f', 'mpegts', '-y', tail
+      ];
+      // The join — the concat DEMUXER, not the `concat:` protocol. Measured on
+      // a 3.0→11.0 cut of an 8.9s-keyframe clip:
+      //   protocol  "Packet corrupt", "DTS out of order", duration 7.933
+      //   demuxer   silent, full decode clean, duration exactly 8.000
+      // The protocol glues the bytes and leaves both files' timestamps starting
+      // at zero; the demuxer opens each one and offsets the second, which is
+      // the difference between a seam and a splice. -safe 0 because the list
+      // names absolute paths.
+      const list = path.join(tmp, 'list.txt');
+      fs.writeFileSync(list, "file '" + head + "'\nfile '" + tail + "'\n", 'utf8');
+      const joinArgs = [
+        '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '0.5',
+        '-f', 'concat', '-safe', '0', '-i', list,
+        '-c', 'copy', '-movflags', '+faststart',
+        ...mp4MetaFlags(output, false),
+        '-y', output
+      ];
+
+      // One NDJSON stream across all three passes, so the client's progress
+      // behaves exactly as it does for a plain cut. `stage` says which pass.
+      const headers = Object.assign({}, corsForExec(origin), {
+        'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store'
       });
-      if (num(body.durationSec) !== null) doc.durationSec = num(body.durationSec);
-      doc.updated = new Date().toISOString();
-      try { fs.writeFileSync(out, JSON.stringify(doc, null, 2), 'utf8'); }
-      catch (e) { sendJson(res, 500, { ok: false, error: 'write failed: ' + e.message }, origin); return; }
-      sendJson(res, 200, { ok: true, path: out, nlc: doc }, origin);
+      res.writeHead(200, headers);
+      const emit = obj => { try { res.write(JSON.stringify(obj) + '\n'); } catch (_) {} };
+      const bin = EXEC_BIN.ffmpeg || 'ffmpeg';
+      let killed = false;
+      let current = null;
+      req.on('close', () => { killed = true; try { if (current) current.kill(); } catch (_) {} });
+
+      const runPass = (stage, args) => new Promise(resolve => {
+        emit({ type: 'stage', stage: stage });
+        let proc;
+        try { proc = spawn(bin, args, { windowsHide: true }); }
+        catch (e) { emit({ type: 'stderr', line: stage + ': ' + e.message }); resolve(-1); return; }
+        current = proc;
+        proc.stdout.on('data', makeProgressParser(ev => emit(Object.assign({ stage: stage }, ev))));
+        proc.stderr.on('data', makeLineSplitter(line => emit({ type: 'stderr', line: stage + ': ' + line })));
+        proc.on('error', e => { emit({ type: 'stderr', line: stage + ': ' + e.message }); resolve(-1); });
+        proc.on('close', code => { current = null; resolve(code); });
+      });
+
+      (async () => {
+        let code = await runPass('head', headArgs);
+        if (code === 0 && !killed) code = await runPass('tail', tailArgs);
+        if (code === 0 && !killed) code = await runPass('join', joinArgs);
+        cleanup();
+        // Same rule as /exec: a dead render leaves a 0-byte husk that would
+        // otherwise read as a finished file and eat its own name.
+        if (code !== 0) {
+          try { if (fs.statSync(output).size === 0) fs.unlinkSync(output); } catch (_) {}
+        }
+        emit({ type: 'done', exitCode: killed ? -1 : code });
+        try { res.end(); } catch (_) {}
+      })();
     }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
     return;
   }

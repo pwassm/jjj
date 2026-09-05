@@ -15,9 +15,10 @@
 // part that is genuinely the same job: the black full-window screen, the
 // timeline bar under it, and a s d f under the left hand. t does the trim.
 //
-// The cut itself needs NO new proxy code: buildFfmpegArgs already takes the
-// lossless stream-copy path when a payload has `trim` and no `crop`. The one
-// new route is /llc/nlc, which reads and appends the .nlc cut log.
+// The plain cut needs NO new proxy code: buildFfmpegArgs already takes the
+// lossless stream-copy path when a payload has `trim` and no `crop`. The clip's
+// own name carries the only record worth keeping — which video, which word,
+// which second, how long — so there is no log file beside it.
 //
 // Dev-only by construction — it needs `node proxy.js`, and it refuses to run
 // anywhere but localhost so a shared link can never carry someone's disk
@@ -72,9 +73,11 @@ function fmtTime(t) {
 
 // ── The name a cut is saved under ─────────────────────────────────────────
 //   <original stem>_ncrop_<label>_<start>_<duration>.mp4
-// Both numbers are WHOLE SECONDS of the source, which is what makes two cuts
-// of the same clip under the same label different files rather than a
-// collision — the label identifies the subject, the numbers identify the cut.
+// START to a TENTH of a second, LENGTH to the nearest second. The tenth is
+// what separates two cuts taken a moment apart — whole seconds collided often
+// enough to matter, and once the original has been deleted the name is the
+// only surviving record of where in it this clip came from. The length is
+// there to read, not to index by, so a second is plenty.
 function sanitizeLabel(s) {
   return String(s || '')
     .replace(/[\\/:*?"<>|]/g, '')   // illegal in a Windows filename
@@ -85,7 +88,7 @@ function sanitizeLabel(s) {
 
 function cutFileName(stem, label, startSec, durSec) {
   return stem + '_ncrop_' + label + '_' +
-         Math.round(startSec) + '_' + Math.max(1, Math.round(durSec)) + '.mp4';
+         startSec.toFixed(1) + '_' + Math.max(1, Math.round(durSec)) + '.mp4';
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -190,6 +193,7 @@ function buildScreen(absPath) {
   row.appendChild(mk('llc-b',     'F',  'Mark the end here (f)'));
   row.appendChild(mk('llc-clear', '⌫',  'Drop both marks (z)'));
   row.appendChild(mk('llc-zoom',  '↔',  'eXpand the bar onto the cut (x)'));
+  row.appendChild(mk('llc-smart', 'exp', 'Experimental cut — start on the marked frame (e)'));
   var lab = el('div', 'llc-label', null, '');
   lab.title = 'What this clip is about — it goes in the filename (c to change)';
   row.appendChild(lab);
@@ -217,19 +221,21 @@ function buildHelp() {
     r('S / D',   'one second back / forward') +
     r('<b>t</b>', '<b>Trim</b> — write the cut out  (w and g do the same)') +
     r('q',       'pull A back onto its keyframe, so the cut starts exactly there') +
+    r('e',       '<b>e</b>xperimental cut — start on the marked frame instead, by re-encoding just the fragment up to the next keyframe') +
     r('z',       'drop both marks') +
     r('x',       'eXpand — blow the bar up onto the cut') +
     r('c',       'change the word that goes in the filename') +
     r('Esc',     'close') +
     '</table>' +
     '<div class="llc-note">Saved as <b>&lt;original&gt;_ncrop_&lt;word&gt;_&lt;start&gt;_&lt;length&gt;.mp4</b> ' +
-    'beside the original, keeping its dates, its camera tags and every audio track. ' +
-    'Two cuts of one video share the word — the seconds tell them apart, so the word ' +
-    'is only asked for once per file.<br>' +
-    'A copy cannot start mid-GOP, so the cut falls back to the keyframe before A: ' +
-    'the <span style="color:#0cf">cyan line and hatching</span> are the footage that ' +
-    'comes with it, and <b>q</b> moves A there so what you see is what you get. ' +
-    'The end is exact either way.</div>';
+    'beside the original — start to a tenth of a second, length to the nearest second — ' +
+    'keeping its dates, its camera tags and every audio track. The word is asked for once ' +
+    'per video and then reused.<br>' +
+    'A plain copy cannot start mid-GOP, so it falls back to the keyframe before A: the ' +
+    '<span style="color:#0cf">cyan line and hatching</span> are the footage that comes with ' +
+    'it, and <b>q</b> moves A there. <b>e</b> instead re-encodes just that fragment so the ' +
+    'clip starts on the frame you marked. The end is exact either way, and every cut is ' +
+    'measured after it is written.</div>';
   return h;
 }
 
@@ -240,13 +246,36 @@ function buildHelp() {
 // The window the bar spans. Normally the whole video; after `x` with both
 // marks set, just the cut (with a tenth of its length as breathing room each
 // side) so a nudge of a tenth of a second is a visible distance.
+// (dev0928) x used to insist on BOTH marks, which is backwards: the moment you
+// most want a bigger ruler is while placing the SECOND one. Now it always has
+// something to span —
+//   both marks  the cut, plus a tenth of its length each side
+//   A only      15s either side of A
+//   neither     15s either side of the playhead
+// The window is computed once and PARKED in S.winCache: deriving it live from
+// the playhead would make the ruler slide while you nudge against it, which is
+// the one thing zooming in must not do.
+var LLC_LOOSE_WIN = 15;
+
+function computeWin() {
+  var dur = Math.max(0.05, S.dur || 0.05);
+  var t0, t1, pad;
+  if (S.a != null && S.b != null) {
+    pad = Math.max(0.25, (S.b - S.a) * 0.1);
+    t0 = S.a - pad; t1 = S.b + pad;
+  } else {
+    var c = (S.a != null) ? S.a : ((S.vid && S.vid.currentTime) || 0);
+    t0 = c - LLC_LOOSE_WIN; t1 = c + LLC_LOOSE_WIN;
+  }
+  t0 = Math.max(0, t0); t1 = Math.min(dur, t1);
+  if (t1 - t0 < 0.05) return null;             // nothing left to span
+  if (t1 - t0 >= dur - 0.01) return null;      // already the whole video
+  return { t0: t0, t1: t1 };
+}
+
 function win() {
   if (!S) return { t0: 0, t1: 1 };
-  if (S.expand && S.a != null && S.b != null && S.dur > 0) {
-    var pad = Math.max(0.25, (S.b - S.a) * 0.1);
-    var t0 = Math.max(0, S.a - pad), t1 = Math.min(S.dur, S.b + pad);
-    if (t1 - t0 > 0.05) return { t0: t0, t1: t1 };
-  }
+  if (S.expand && S.winCache) return S.winCache;
   return { t0: 0, t1: Math.max(0.05, S.dur || 0.05) };
 }
 
@@ -265,10 +294,15 @@ function paint() {
   var sel  = document.getElementById('llc-sel');
   var clock = document.getElementById('llc-clock');
   var t = S.vid ? (S.vid.currentTime || 0) : 0;
-  if (head) head.style.left = Math.max(0, Math.min(100, pctOf(t))) + '%';
+  var p = pctOf(t);
+  // Outside a zoomed window the playhead is HIDDEN, not clamped: a marker
+  // parked against the edge while the video plays reads as a frozen bar.
+  var off = (p < -0.5 || p > 100.5);
+  if (head) { head.hidden = off; if (!off) head.style.left = p + '%'; }
   if (clock) {
+    var w = win();
     clock.textContent = fmtTime(t) + ' / ' + fmtTime(S.dur) +
-      (S.expand ? '  ↔' : '');
+      (S.expand ? ('   ↔ ' + fmtTime(w.t0) + '–' + fmtTime(w.t1) + (off ? ' ⟂' : '')) : '');
   }
   if (sel) {
     if (S.a != null && S.b != null && S.b > S.a) {
@@ -284,24 +318,12 @@ function paint() {
   paintButtons();
 }
 
-// A and F as lines, plus a faint band for every cut already taken from this
-// file — read out of the .nlc, so a video reopened tomorrow still shows what
-// has been lifted from it.
+// A and F as lines, the keyframes under them, and the snap point between.
 function paintMarks() {
   var bands = document.getElementById('llc-bands');
   if (!bands) return;
   var html = '';
-  var i, c, l, r;
-  for (i = 0; i < S.cuts.length; i++) {
-    c = S.cuts[i];
-    if (!(c && isFinite(c.startSec) && isFinite(c.endSec))) continue;
-    l = pctOf(c.startSec); r = pctOf(c.endSec);
-    if (r < 0 || l > 100) continue;
-    l = Math.max(0, Math.min(100, l)); r = Math.max(0, Math.min(100, r));
-    html += '<div style="position:absolute;top:0;bottom:0;left:' + l + '%;width:' +
-            Math.max(0.4, r - l) + '%;background:rgba(255,160,0,0.22);' +
-            'border-left:1px solid rgba(255,160,0,0.7);"></div>';
-  }
+  var i, l, r;
   // Keyframe ticks — faint, low, and only across the stretch actually probed,
   // so an empty patch of bar reads as "not looked at" rather than "none here".
   if (S.kf && S.kf.length) {
@@ -370,6 +392,16 @@ function paintButtons() {
       ? ('✂ Save ' + Math.max(1, Math.round(S.b - S.a)) + 's')
       : '✂ Save cut';
   }
+  var sm = document.getElementById('llc-smart');
+  if (sm) {
+    // Lit means the next cut re-encodes its first fragment. That is a real
+    // change to what lands on disk, so it says so on the bar rather than
+    // hiding in a menu.
+    sm.textContent = S.smart ? 'exp ON' : 'exp';
+    sm.style.background  = S.smart ? '#402' : '#123';
+    sm.style.borderColor = S.smart ? '#f4a' : '#06f';
+    sm.style.color       = S.smart ? '#fbd' : '#cde';
+  }
   if (lab) {
     lab.textContent = S.label ? ('“' + S.label + '”') : '(name this clip)';
     lab.style.opacity = S.label ? '1' : '0.7';
@@ -411,6 +443,7 @@ function markA() {
   if (!S || !S.vid) return;
   S.a = S.vid.currentTime || 0;
   if (S.b != null && S.b <= S.a) { S.b = null; toastMsg('F was before A — dropped it', 1800); }
+  refitWin();
   paint();
   // Where this cut can really start. Only A needs it: the END of a stream copy
   // is packet-accurate, it is only the beginning that has to land on a keyframe.
@@ -421,6 +454,7 @@ function markB() {
   if (!S || !S.vid) return;
   S.b = S.vid.currentTime || 0;
   if (S.a != null && S.a >= S.b) { S.a = null; toastMsg('A was after F — dropped it', 1800); }
+  refitWin();
   paint();
 }
 
@@ -428,16 +462,38 @@ function clearMarks() {
   if (!S) return;
   S.a = S.b = null;
   S.expand = false;   // nothing left for a zoomed bar to span
+  S.winCache = null;
   paint();
 }
 
 function toggleExpand() {
   if (!S) return;
-  if (S.a == null || S.b == null) { toastMsg('Mark A and F first (a and f)', 1800); return; }
-  S.expand = !S.expand;
+  if (S.expand) {
+    S.expand = false; S.winCache = null;
+    paint();
+    toastMsg('↔ bar back to the whole video', 1400);
+    return;
+  }
+  var w = computeWin();
+  if (!w) { toastMsg('Nothing to zoom into — the bar already spans it', 1800); return; }
+  S.expand = true;
+  S.winCache = w;
+  // Land inside the window rather than leaving the playhead pinned to an edge,
+  // which is what made a zoomed bar look frozen.
+  var t = (S.vid && S.vid.currentTime) || 0;
+  if (t < w.t0 || t > w.t1) seekTo(S.a != null ? S.a : w.t0);
   paint();
-  toastMsg(S.expand ? ('↔ bar zoomed to the cut — ' + (S.b - S.a).toFixed(1) + 's across')
-                    : '↔ bar back to the whole video', 1500);
+  toastMsg('↔ ' + (w.t1 - w.t0).toFixed(1) + 's across the bar  (' +
+           fmtTime(w.t0) + ' – ' + fmtTime(w.t1) + ')', 2000);
+}
+
+// A mark moved while zoomed re-fits the window to it — the marks ARE what the
+// ruler is for, so a new one it cannot show would be worse than a re-fit.
+function refitWin() {
+  if (S && S.expand) {
+    var w = computeWin();
+    if (w) S.winCache = w; else { S.expand = false; S.winCache = null; }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -455,7 +511,9 @@ function toggleExpand() {
 // are the answer. -show_packets means nothing is decoded.
 // ══════════════════════════════════════════════════════════════════════════
 var LLC_KF_BACK = 20;   // seconds of history to look through for the snap
-var LLC_KF_FWD  = 6;    // …and a little ahead, so the ticks around A are drawn
+var LLC_KF_FWD  = 15;   // …and ahead far enough to hold the NEXT keyframe too,
+                        // which is where the experimental cut splices (GOPs run
+                        // to about ten seconds on phone footage).
 
 function probeKeyframes(around) {
   if (!S) return;
@@ -547,68 +605,41 @@ function askLabel(force) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// The .nlc cut log
-// ══════════════════════════════════════════════════════════════════════════
-function nlcLoad() {
-  if (!S) return Promise.resolve();
-  return fetch(LLC_PROXY + '/llc/nlc', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ video: S.src, read: true })
-  }).then(function (r) { return r.json(); }).then(function (j) {
-    if (!j || !j.ok || !j.nlc) return;
-    var cuts = j.nlc.cuts;
-    if (Array.isArray(cuts)) S.cuts = cuts;
-    // A .nlc that already names a label is a better answer than localStorage:
-    // it travels with the file, and localStorage holds one source at a time.
-    if (!S.label && cuts && cuts.length) {
-      var last = cuts[cuts.length - 1];
-      if (last && last.label) { S.label = last.label; storeLabel(S.src, last.label); }
-    }
-    paint();
-  }).catch(function () { /* no log yet is the normal case */ });
-}
-
-function nlcAppend(cut) {
-  if (!S) return Promise.resolve();
-  return fetch(LLC_PROXY + '/llc/nlc', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ video: S.src, durationSec: S.dur, cut: cut })
-  }).then(function (r) { return r.json(); }).then(function (j) {
-    if (j && j.ok && j.nlc && Array.isArray(j.nlc.cuts)) S.cuts = j.nlc.cuts;
-    paint();
-    return j;
-  }).catch(function (e) {
-    // The mp4 is already on disk — a log that did not get written is worth
-    // saying out loud, but it is not a failed cut.
-    console.warn('[llc] .nlc write failed', e);
-    return null;
-  });
-}
-
-// ══════════════════════════════════════════════════════════════════════════
 // The cut
 // ══════════════════════════════════════════════════════════════════════════
 
 // One request/response cycle to /exec/ffmpeg, NDJSON progress into the button.
 // Same shape as vp.js's _vpCropRun; kept here so this file stands alone.
-function runFfmpeg(payload, btn, totalMs) {
-  var setLabel = function (s) { if (btn) btn.textContent = s; };
+// One NDJSON request cycle, driving the button label from the progress lines.
+// Shared by /exec/ffmpeg and /llc/smartcut, which speak the same stream — the
+// only difference is smartcut's `stage` field and its ability to answer with a
+// plain JSON refusal instead (a codec it will not attempt).
+//
+// Same shape as vp.js's _vpCropRun; kept here so this file stands alone.
+function streamNdjson(url, payload, btn, totalMs) {
+  var setLabel = function (t) { if (btn) btn.textContent = t; };
   setLabel('0%');
-  return fetch(LLC_PROXY + '/exec/ffmpeg', {
+  return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).then(function (res) {
-    if (!res.ok) {
+    // A refusal comes back as JSON, not as a stream. 422 means "not this file"
+    // — the caller falls back rather than treating it as a failure.
+    var ct = res.headers.get('content-type') || '';
+    if (!res.ok || ct.indexOf('ndjson') < 0) {
       return res.text().catch(function () { return ''; }).then(function (txt) {
+        var j = null;
+        try { j = JSON.parse(txt); } catch (_) {}
+        if (res.status === 422 && j && j.unsupported) {
+          return { exitCode: -1, stderr: [], unsupported: true, error: j.error || 'unsupported' };
+        }
         throw new Error('HTTP ' + res.status + (txt ? ': ' + txt.slice(0, 200) : ''));
       });
     }
     var reader = res.body.getReader();
     var dec = new TextDecoder();
-    var buf = '', stderr = [], exitCode = -1;
+    var buf = '', stderr = [], exitCode = -1, stage = '';
     var pump = function () {
       return reader.read().then(function (r) {
         if (r.done) return { exitCode: exitCode, stderr: stderr };
@@ -619,10 +650,14 @@ function runFfmpeg(payload, btn, totalMs) {
           if (!line) continue;
           var ev;
           try { ev = JSON.parse(line); } catch (_) { continue; }
-          if (ev.type === 'progress') {
+          if (ev.type === 'stage') {
+            // The experimental cut is three passes; name the one running so a
+            // bar that restarts at 0% twice does not read as a stall.
+            stage = { head: 're-encode ', tail: 'copy ', join: 'join ' }[ev.stage] || '';
+          } else if (ev.type === 'progress') {
             var pct = (totalMs > 0 && ev.timeMs != null)
               ? Math.min(100, Math.max(0, Math.round(ev.timeMs / totalMs * 100))) : null;
-            setLabel((pct === 100 ? 'finalizing' : (pct != null ? pct + '%' : '…')) +
+            setLabel(stage + (pct === 100 ? 'finalizing' : (pct != null ? pct + '%' : '…')) +
                      (ev.speed ? ' · ' + ev.speed : ''));
           } else if (ev.type === 'stderr') {
             stderr.push(ev.line);
@@ -638,6 +673,10 @@ function runFfmpeg(payload, btn, totalMs) {
   });
 }
 
+function runFfmpeg(payload, btn, totalMs) {
+  return streamNdjson(LLC_PROXY + '/exec/ffmpeg', payload, btn, totalMs);
+}
+
 // A stream copy prints things a successful run also prints — see the dev0919
 // note in vp.js. Take the last line that ISN'T one of those.
 var LLC_BENIGN = /(index entry|edit list|unhandled|poorly interleaved|deprecated|non-monotonous|timestamps)/i;
@@ -646,6 +685,110 @@ function failLine(stderr) {
     if (!LLC_BENIGN.test(stderr[i])) return stderr[i];
   }
   return stderr.length ? stderr[stderr.length - 1] : '';
+}
+
+// (dev0928) ── The experimental cut ──────────────────────────────────────────
+// e toggles it. Off (the default), a cut is a pure stream copy that starts at
+// the keyframe before A. On, the fragment from A to the next keyframe is
+// re-encoded and spliced onto a copy of the rest — so the clip starts on the
+// frame asked for, and every frame after the splice is still bit-identical to
+// the source. Experimental is LosslessCut's word for it and it is the right
+// one: the join is where a player is most likely to hiccup, and roughly a
+// second of the picture is no longer the original bytes.
+var LLC_SMART_KEY = 'slam-llc-smart';
+
+function smartOn() {
+  try { return localStorage.getItem(LLC_SMART_KEY) === '1'; } catch (_) { return false; }
+}
+
+function toggleSmart() {
+  if (!S) return;
+  S.smart = !S.smart;
+  try { localStorage.setItem(LLC_SMART_KEY, S.smart ? '1' : '0'); } catch (_) {}
+  paintButtons();
+  toastMsg(S.smart
+    ? 'Experimental cut ON — starts on the frame you marked; the first second or so is re-encoded'
+    : 'Experimental cut OFF — pure copy, starting at the keyframe before A', 3200);
+}
+
+// The first keyframe strictly after A: where the copied half can begin. null
+// when there isn't one in what was probed, or it lands past F — in which case
+// there is nothing to splice onto and a plain cut is the honest answer.
+function spliceKeyframe() {
+  if (!S || S.a == null || S.b == null || !S.kf || !S.kf.length) return null;
+  for (var i = 0; i < S.kf.length; i++) {
+    if (S.kf[i] > S.a + 0.004) return (S.kf[i] < S.b - 0.05) ? S.kf[i] : null;
+  }
+  return null;
+}
+
+// ── The cut ────────────────────────────────────────────────────────────────
+
+// The plain path: one stream copy, starting wherever the keyframe falls.
+function runPlainCut(out, a, b, btn) {
+  var base = { input: S.src, output: out, trim: { startSec: a, endSec: b }, overwrite: false };
+  // allStreams keeps every audio/subtitle track. The mp4 muxer can refuse a
+  // stream it will not take, so a failure retries once without it: a clip with
+  // one audio track beats no clip at all.
+  return runFfmpeg(Object.assign({ allStreams: true }, base), btn, (b - a) * 1000)
+    .then(function (res) {
+      if (res.exitCode === 0) return out;
+      console.warn('[llc] -map 0 failed, retrying with ffmpeg\'s own stream pick',
+                   failLine(res.stderr));
+      status('retrying without extra tracks…');
+      return runFfmpeg(base, btn, (b - a) * 1000).then(function (res2) {
+        if (res2.exitCode !== 0) {
+          throw new Error(failLine(res2.stderr) || ('ffmpeg exited ' + res2.exitCode));
+        }
+        return out;
+      });
+    });
+}
+
+// The experimental path: re-encode A→K, copy K→B, splice. Falls back to the
+// plain cut on anything the proxy will not attempt (a codec outside H.264 /
+// HEVC + AAC), because a clip that starts early beats no clip.
+function runSmartCut(out, a, b, k, btn) {
+  status('experimental cut — re-encoding the first ' + (k - a).toFixed(1) + 's…');
+  return streamNdjson(LLC_PROXY + '/llc/smartcut', {
+    input: S.src, output: out, startSec: a, endSec: b, keyframeSec: k
+  }, btn, (b - a) * 1000).then(function (res) {
+    if (res.unsupported) {
+      toastMsg('Experimental cut can\'t handle this file (' + res.error + ') — plain cut instead', 4200);
+      return runPlainCut(out, a, b, btn);
+    }
+    if (res.exitCode !== 0) {
+      throw new Error(failLine(res.stderr) || ('smart cut exited ' + res.exitCode));
+    }
+    return out;
+  });
+}
+
+// ── Did the file that landed match what was asked for? ──────────────────────
+// This exists because the originals get deleted. A cut that came out short, or
+// lost its soundtrack, has to be visible NOW — while the source is still there.
+function verifyCut(out, expectSec) {
+  return fetch(LLC_PROXY + '/exec/ffprobe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: out, verify: true })
+  }).then(function (r) { return r.json(); }).then(function (j) {
+    var f = j && j.result && j.result.format;
+    var st = (j && j.result && j.result.streams) || [];
+    if (!f) return { note: '  ·  ⚠ could not read the result back' };
+    var got = parseFloat(f.duration);
+    var size = parseFloat(f.size);
+    if (!isFinite(got) || got <= 0) return { note: '  ·  ⚠ the file has no duration — CHECK IT' };
+    if (!isFinite(size) || size < 1024) return { note: '  ·  ⚠ the file is empty — CHECK IT' };
+    var kinds = st.map(function (x) { return x.codec_type; });
+    var out2 = { sec: got, streams: st.length, audio: kinds.indexOf('audio') >= 0, note: '' };
+    // Half a second of slack: the end lands on a frame boundary, not a
+    // stopwatch. Anything wider means the cut is not the cut that was asked for.
+    if (Math.abs(got - expectSec) > 0.5) {
+      out2.note = '  ·  ⚠ ' + got.toFixed(1) + 's, expected ' + expectSec.toFixed(1) + 's — CHECK IT';
+    }
+    return out2;
+  }).catch(function () { return { note: '  ·  ⚠ could not read the result back' }; });
 }
 
 function saveCut() {
@@ -658,38 +801,31 @@ function saveCut() {
   if (!label) return;                       // backed out of the prompt
 
   var a = S.a, b = S.b, dur = b - a;
+  var snap = snapPoint();
+  var k = S.smart ? spliceKeyframe() : null;
+  // Nothing to gain from the experimental path when A already sits on a
+  // keyframe — the plain copy starts exactly there anyway.
+  var smart = !!(k != null && snap != null && a - snap > 0.04);
+  // What the finished file should be: the experimental cut honours A, the
+  // plain one begins at the keyframe before it.
+  var expectSec = smart ? dur : (b - (snap != null ? snap : a));
+
   var want = dirName(S.src) + '\\' + cutFileName(S.stem, label, a, dur);
   var btn = document.getElementById('llc-save');
   S.busy = true;
   if (btn) btn.disabled = true;
   if (S.vid && !S.vid.paused) S.vid.pause();
-  status('cutting…');
+  status(smart ? 'experimental cut…' : 'cutting…');
 
-  // Ask for a name that is free rather than overwriting: two cuts CAN land on
-  // the same name when their starts round to the same second.
+  // Ask for a name that is free rather than overwriting: two cuts a tenth of a
+  // second apart are different files, but the same tenth twice is not.
   fetch(LLC_PROXY + '/edit/freename', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path: want })
   }).then(function (r) { return r.json(); }).then(function (j) {
     var out = (j && j.ok && j.path) ? j.path : want;
-    var base = { input: S.src, output: out, trim: { startSec: a, endSec: b }, overwrite: false };
-    // allStreams keeps every audio/subtitle track. It can be refused by the mp4
-    // muxer on a file carrying a stream it will not take, so a failure retries
-    // once without it: a clip with one audio track beats no clip at all.
-    return runFfmpeg(Object.assign({ allStreams: true }, base), btn, dur * 1000)
-      .then(function (res) {
-        if (res.exitCode === 0) return out;
-        console.warn('[llc] -map 0 failed, retrying with ffmpeg\'s own stream pick',
-                     failLine(res.stderr));
-        status('retrying without extra tracks…');
-        return runFfmpeg(base, btn, dur * 1000).then(function (res2) {
-          if (res2.exitCode !== 0) {
-            throw new Error(failLine(res2.stderr) || ('ffmpeg exited ' + res2.exitCode));
-          }
-          return out;
-        });
-      });
+    return smart ? runSmartCut(out, a, b, k, btn) : runPlainCut(out, a, b, btn);
   }).then(function (out) {
     // (dev0927) The camera block. ffmpeg's own flags carry the dates, the GPS
     // and the Android keys; what they never surface is the QuickTime Author
@@ -705,8 +841,7 @@ function saveCut() {
     }).catch(function () {}).then(function () { return out; });
   }).then(function (out) {
     // A cut is a piece of an old moment, not a new one — it files beside its
-    // original rather than at "now". Best-effort: a clip with the wrong date
-    // is still a good clip.
+    // original rather than at "now".
     // AFTER the carry, never before: exiftool rewrites FileModifyDate as a
     // side effect of writing anything, so the dates have to be the last word.
     status('stamping dates…');
@@ -716,23 +851,21 @@ function saveCut() {
       body: JSON.stringify({ source: S.src, target: out })
     }).catch(function () {}).then(function () { return out; });
   }).then(function (out) {
-    var cut = {
-      label: label,
-      startSec: +a.toFixed(3),
-      endSec: +b.toFixed(3),
-      durSec: +dur.toFixed(3),
-      start: fmtTime(a),
-      end: fmtTime(b),
-      output: baseName(out),
-      at: new Date().toISOString()
-    };
-    return nlcAppend(cut).then(function () { return out; });
-  }).then(function (out) {
+    status('checking the file…');
+    return verifyCut(out, expectSec).then(function (v) { return { out: out, v: v }; });
+  }).then(function (r) {
     S.busy = false;
     status('');
-    if (btn) { btn.disabled = false; }
+    if (btn) btn.disabled = false;
     paint();
-    toastMsg('✂ ' + baseName(out) + '  (' + Math.round(dur) + 's, no re-encode)', 4200);
+    var real = smart ? a : (snap != null ? snap : a);
+    var how = smart ? 'first ' + (k - a).toFixed(1) + 's re-encoded' : 'no re-encode';
+    var early = (!smart && snap != null && a - snap > 0.04)
+      ? ('  ·  starts ' + (a - snap).toFixed(1) + 's early, at ' + fmtTime(real)) : '';
+    toastMsg('✂ ' + baseName(r.out) + '\n' +
+             (r.v.sec ? r.v.sec.toFixed(1) + 's' : '?') + '  ·  ' + how + early +
+             (r.v.streams ? '  ·  ' + r.v.streams + ' track' + (r.v.streams > 1 ? 's' : '') : '') +
+             (r.v.note || ''), r.v.note ? 8000 : 4600);
   }).catch(function (e) {
     S.busy = false;
     if (btn) btn.disabled = false;
@@ -774,6 +907,7 @@ function onKey(e) {
     eat(); saveCut(); return;
   }
   if (k === 'q' || k === 'Q')    { eat(); snapAToKeyframe(); return; }
+  if (k === 'e' || k === 'E')    { eat(); toggleSmart(); return; }
   if (k === 'z' || k === 'Z')    { eat(); clearMarks(); return; }
   if (k === 'x' || k === 'X')    { eat(); toggleExpand(); return; }
   if (k === 'c' || k === 'C')    { eat(); askLabel(true); return; }
@@ -803,6 +937,7 @@ function wire(ov) {
   byId('llc-b').onclick     = markB;
   byId('llc-clear').onclick = clearMarks;
   byId('llc-zoom').onclick  = toggleExpand;
+  byId('llc-smart').onclick = toggleSmart;
   byId('llc-save').onclick  = saveCut;
   byId('llc-label').onclick = function () { askLabel(true); };
   byId('llc-qm').onclick    = toggleHelp;
@@ -893,9 +1028,9 @@ window.llcOpenLocalFile = function (absPath) {
     fps: 30,
     a: null, b: null,
     label: rememberedLabel(absPath),
-    cuts: [],
     kf: null, kfFrom: 0, kfTo: 0,
-    expand: false,
+    smart: smartOn(),
+    expand: false, winCache: null,
     busy: false,
     scrubbing: false,
     raf: 0
@@ -911,7 +1046,6 @@ window.llcOpenLocalFile = function (absPath) {
     S.dur = vid.duration || 0;
     paint();
     probeFps();
-    nlcLoad();
   };
   vid.onplay = paintButtons;
   vid.onpause = paintButtons;
