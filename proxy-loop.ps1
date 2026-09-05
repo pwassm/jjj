@@ -32,6 +32,13 @@
 Set-Location 'M:\jjj'
 $Host.UI.RawUI.WindowTitle = 'SLAM proxy :8081'
 
+# (dev0929) restart-proxy.ps1 HIDES this window once the build check passes, so the
+# two places below that stop the loop have to put it back on screen - a crash storm
+# or a deliberate stop is exactly when you need to read it, and the Read-Host at the
+# bottom would otherwise wait forever on a window nobody can see.
+. 'M:\jjj\slam-windows.ps1'
+function Reveal-Self { [void](Show-SlamWindow -Title 'SLAM proxy :8081' -Foreground) }
+
 # node flags, and why each one is here.
 #   FIRST, what these are NOT for. It is tempting to read "abort" as "node ran out
 #   of JS heap", and it was not. Measured on this machine:
@@ -87,6 +94,7 @@ while ($true) {
     Add-Content -LiteralPath 'proxy.log' -Value "$stamp  node exited EXITCODE=$code  (ran $secs`s)"
 
     if ($deliberate.ContainsKey($code)) {
+        Reveal-Self
         Write-Host ''
         Write-Host "  proxy stopped: $($deliberate[$code])  EXITCODE=$code, ran $secs`s" -ForegroundColor Cyan
         break
@@ -97,6 +105,7 @@ while ($true) {
     # a missing binary) and spinning on it would bury the real message.
     if ($secs -lt 60) { $shortRuns++ } else { $shortRuns = 0 }
     if ($shortRuns -ge 3) {
+        Reveal-Self
         Write-Host ''
         Write-Host '  STOPPING: the proxy crashed 3 times in a row without staying up 60s.' -ForegroundColor Red
         Write-Host "  Last EXITCODE=$code. Read the lines above, proxy.err.log, and any" -ForegroundColor Yellow
