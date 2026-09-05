@@ -300,3 +300,8 @@ ml.json
 # (dev0878) Scratch ftext payloads written into the project root so :8080 can
 # serve them to a one-line console apply. Throwaway, never committed.
 _uid*.html
+
+# (dev0918) Per-author "last checked" stamps written by proxy.js on every
+# completed harvest. A local record of what we did, not harvested data.
+ig-checked.json
+ig-checked.json.tmp-*

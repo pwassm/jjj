@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.8
+// @version      2.9
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Keeps your list of favourite Instagram contributors up to date. Adds a small button bar to the bottom-right of any profile page. 🆕 New only — collect just the posts you don't already have (a few seconds; the everyday button). ⬇ All — collect every post on the profile, newest to oldest (slow; for a first-time author). 🔁 Sweep — do "New only" on one author after another, unattended, from a list you tick. ▶ Resume — go back to reading where you left off: paste a post's link and it opens that post with the ◀ ▶ arrows working. Reads only the page your browser has already drawn in your normal logged-in session. Install or update: open http://localhost:8080/ig-harvest.user.js
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.8';
+  const VER = '2.9';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -98,6 +98,21 @@
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const rnd = (a, b) => a + Math.random() * (b - a);
+  // (dev0918) "checked 3h ago" lands at a glance; a bare date has to be worked out
+  // against today every time you read it. Stamps arrive from the proxy in its own
+  // LOCAL time as "YYYY-MM-DD HH:MM:SS", so they are parsed as local here to match —
+  // reading them as UTC would shift every one of them by the timezone offset.
+  function ago(stamp) {
+    const t = Date.parse(String(stamp || '').replace(' ', 'T'));
+    if (!t) return String(stamp || '').slice(0, 10);
+    const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (mins < 2)  return 'just now';
+    if (mins < 60) return mins + ' min ago';
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24)  return hrs + 'h ago';
+    const days = Math.round(hrs / 24);
+    return days === 1 ? 'yesterday' : days + ' days ago';
+  }
 
   // ── proxy plumbing (GM_xhr is privileged → bypasses browser CORS) ───────────
   // (dev0914) GM_xhr hands every transport failure to one `onerror` with nothing in
@@ -412,7 +427,13 @@
     const added = done.reduce((a, d) => a + (d.added || 0), 0);
     const hits = done.filter(d => d.added).map(d => '@' + d.author + ' +' + d.added);
     const failed = done.filter(d => d.error).map(d => '@' + d.author + ' ⚠');
-    return done.length + '/' + s.queue.length + ' authors · +' + added + ' new post(s)'
+    // (dev0918) "+0 new post(s)" on its own reads as a failure, and it is not — a list
+    // of favourite accounts is mostly quiet on any given day, and confirming that IS
+    // the work. Say how many were checked and how many had nothing, so a run of zeroes
+    // looks like what it is.
+    const quiet = done.filter(d => !d.error && !d.added).length;
+    return done.length + '/' + s.queue.length + ' authors checked · +' + added + ' new post(s)'
+      + (quiet ? ' · ' + quiet + ' already up to date' : '')
       + (hits.length ? '\n' + hits.join(', ') : '')
       + (failed.length ? '\n' + failed.join(', ') : '');
   }
@@ -521,9 +542,15 @@
       // Colour stated on the name itself rather than inherited: this panel lives
       // inside Instagram's document, so nothing here relies on what IG's own CSS
       // does or doesn't do to an unstyled <span>.
+      // (dev0918) The right-hand column used to show a.last — the date a post last
+      // ARRIVED — which reads as "last checked" and is not. An author checked this
+      // morning who has not posted since March showed a March date, so a sweep doing
+      // its job perfectly looked like a sweep that had skipped them. Show when we
+      // last LOOKED, which is the question this panel exists to answer.
       txt.innerHTML = '<span style="color:#f2f4f8;font-weight:600">@' + a.author +
         (a.harvested ? '' : ' <span style="color:#9ac06a;font-weight:400">(singles only)</span>') + '</span>' +
-        '<span style="color:#8b919b;font-size:11px">' + (a.harvested || 0) + ' rows · ' + ((a.last || '').slice(0, 10) || '—') + '</span>';
+        '<span style="color:#8b919b;font-size:11px">' + (a.harvested || 0) + ' rows · ' +
+        (a.checked ? 'checked ' + ago(a.checked) : '<span style="color:#e0a33a">never checked</span>') + '</span>';
       row.appendChild(cb); row.appendChild(txt);
       list.appendChild(row);
     });

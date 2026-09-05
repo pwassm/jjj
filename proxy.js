@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0910';
+const PROXY_BUILD = 'dev0918';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -4340,6 +4340,47 @@ function igStoreWriteRows(rows) {
   catch (_) { _igStore = { mtimeMs: 0, size: -1, rows: null }; }
 }
 
+// (dev0918) ── When was this author last LOOKED AT? ───────────────────────────
+// ig.json can only answer "when did a post last arrive for this author", because
+// DateAdded is stamped on rows and a sweep that finds nothing writes no rows. The
+// two readings are indistinguishable in that number: an author checked an hour ago
+// who has not posted since March looks exactly like one nobody has opened since
+// March. That ambiguity is what made a working sweep look broken — four accounts
+// were reported as overdue when in fact they had simply stopped posting.
+//
+// So the fact gets recorded where it actually belongs: a stamp per author, written
+// every time a harvest completes, whether or not it found anything. Its own small
+// file — this is a log of what WE did, not part of the harvested data, and keeping
+// it out of ig.json means it costs nothing on the 160MB read/write path.
+const IG_CHECKED = path.join(__dirname, 'ig-checked.json');
+let _igChecked = { mtimeMs: 0, size: -1, map: null };
+function igCheckedLoad() {
+  let st = null;
+  try { st = fs.statSync(IG_CHECKED); } catch (_) { return {}; }
+  if (_igChecked.map && _igChecked.mtimeMs === st.mtimeMs && _igChecked.size === st.size) return _igChecked.map;
+  let map = {};
+  try { map = JSON.parse(fs.readFileSync(IG_CHECKED, 'utf8')) || {}; } catch (_) { map = {}; }
+  if (!map || typeof map !== 'object' || Array.isArray(map)) map = {};
+  _igChecked = { mtimeMs: st.mtimeMs, size: st.size, map };
+  return map;
+}
+// Stamped through a tmp+rename so an interrupted write cannot leave a half file
+// where the whole history lives. Best-effort by design: failing to record that we
+// looked must never fail the harvest that did the looking — but it does say so in
+// the log, because a silent best-effort step is how a fault hides for a year.
+function igCheckedStamp(author) {
+  const name = String(author || '').trim().toLowerCase();
+  if (!name) return;
+  try {
+    const map = Object.assign({}, igCheckedLoad());
+    map[name] = igIsoNow();
+    const tmp = IG_CHECKED + '.tmp-' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(map, null, 2));
+    fs.renameSync(tmp, IG_CHECKED);
+    try { const st = fs.statSync(IG_CHECKED); _igChecked = { mtimeMs: st.mtimeMs, size: st.size, map }; } catch (_) {}
+  } catch (err) { plog('⚠ ig/checked could not record @' + name + ': ' + err.message); }
+}
+
 function igAdd(req, res, origin) {
   readJson(req, 4 * 1024 * 1024).then(payload => {
     const urls = Array.isArray(payload.urls) ? payload.urls : [];
@@ -4362,6 +4403,11 @@ function igAdd(req, res, origin) {
       added++;
     }
     if (added) igStoreWriteRows(store);
+    // (dev0918) The harvest reached its end, so this author has now been checked —
+    // stamped on EVERY completed harvest, especially the ones that found nothing.
+    // A run of zeroes is the normal, healthy state of a list of favourite accounts,
+    // and it is exactly the case that previously left no trace at all.
+    igCheckedStamp(author);
     console.log('[ig/add] +' + added + ' new, ' + dup + ' dup, ' + bad + ' bad · total ' + store.length + ' · @' + (author || '?'));
     sendJson(res, 200, { ok: true, added, dup, bad, total: store.length }, origin);
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
@@ -4413,6 +4459,7 @@ function igAuthors(req, res, origin) {
   try {
     req.resume();                                   // POST with no body — drain it
     const rows = igStoreLoad();
+    const checked = igCheckedLoad();
     const by = new Map();
     for (const r of rows) {
       if (!r) continue;
@@ -4420,7 +4467,10 @@ function igAuthors(req, res, origin) {
       if (!name) continue;
       const key = name.toLowerCase();
       let e = by.get(key);
-      if (!e) { e = { author: name, rows: 0, harvested: 0, last: '', newest: '' }; by.set(key, e); }
+      // `checked` is when we last LOOKED; `last` is when a post last ARRIVED. They
+      // are different questions and the panel needs the first one to answer "am I
+      // up to date?" — see igCheckedStamp.
+      if (!e) { e = { author: name, rows: 0, harvested: 0, last: '', newest: '', checked: checked[key] || '' }; by.set(key, e); }
       e.rows++;
       if (r.staged !== false) e.harvested++;
       const added = String(r.DateAdded || '');
@@ -4428,7 +4478,12 @@ function igAuthors(req, res, origin) {
       const posted = String(r.DatePosted || '');
       if (posted > e.newest) e.newest = posted;
     }
-    const authors = [...by.values()].sort((a, b) => (a.last || '').localeCompare(b.last || ''));
+    // Longest-unchecked first, so a run that gets interrupted has done the most good.
+    // Never-checked sorts to the very top on the empty string, which is right: an
+    // author nobody has opened since this stamp existed is the most overdue of all.
+    // (Before dev0918 this sorted on `last`, which put authors who simply post rarely
+    // at the top of the queue for ever, however recently they had been checked.)
+    const authors = [...by.values()].sort((a, b) => (a.checked || '').localeCompare(b.checked || ''));
     console.log('[ig/authors] ' + authors.length + ' authors from ' + rows.length + ' rows');
     sendJson(res, 200, { ok: true, authors, total: rows.length }, origin);
   } catch (err) { sendJson(res, 500, { ok: false, error: err.message }, origin); }
