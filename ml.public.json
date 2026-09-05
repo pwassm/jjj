@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788557947225,
+    "_salPushTime": 1788647242474,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -89,7 +89,7 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
     "_salGsize": 4,
@@ -516,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788557947225
+    "_salSavedAt": 1788647242474
   },
   {
     "UID": "1",
@@ -49553,14 +49553,18 @@
     "link": "https://scx2.b-cdn.net/gfx/news/hires/2019/1-magneticteet.jpg",
     "show": "1",
     "DateAdded": "2026-09-04 21:34:11",
-    "DateModified": "2026-09-04 21:34:11",
-    "tags": [],
+    "DateModified": "2026-09-05 22:27:22",
+    "tags": [
+      "radula"
+    ],
     "VidRange": "i",
-    "ftextSize": "0",
+    "ftextSize": "8070",
     "FtextJunk": "0",
     "DictSize": "0",
     "MPix": "3.2",
-    "Mode": "L"
+    "Mode": "L",
+    "comment": "A mollusk with teeth that can grind down rock may hold the key to making next generation abrasion-resistant materials and nanoscale materials for energy.",
+    "ftext": ""
   },
   {
     "UID": "2247",

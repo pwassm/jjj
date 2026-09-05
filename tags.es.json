@@ -1,0 +1,4440 @@
+{
+ "_salMeta": true,
+ "_lang": "es",
+ "_updated": "2026-09-05T22:26:40.653Z",
+ "_notes": "labels = hand-translated non-taxon tag names. common = Spanish vernacular per taxon: MACHINE SEED from GBIF + Wikidata P1843, pending review — edit freely, a re-run never overwrites an existing entry. candidates = everything found, with sources, for that review. Built by tags-es-harvest.js.",
+ "labels": {
+  "health": "Salud",
+  "activity": "Actividad",
+  "other": "Otros",
+  "comb-jelly": "Ctenóforo",
+  "scale-worm": "Gusano escamoso",
+  "predation": "Depredación",
+  "symbiosis": "Simbiosis",
+  "mating": "Apareamiento y reproducción",
+  "locomotion": "Locomoción",
+  "camouflage": "Camuflaje",
+  "larval-stage": "Fase larvaria",
+  "deep-sea": "Mar profundo",
+  "tide-pool": "Poza de marea",
+  "bioluminescence": "Bioluminiscencia",
+  "macro-photo": "Macrofotografía",
+  "underwater-video": "Vídeo submarino",
+  "microscopy": "Microscopía",
+  "diet-nutrition": "Dieta y nutrición",
+  "exercise-body": "Ejercicio y cuerpo",
+  "mental-health": "Salud mental",
+  "sleep": "Sueño",
+  "tennis": "Tenis",
+  "swimming": "Natación",
+  "cycling": "Ciclismo",
+  "humor": "Humor",
+  "science": "Ciencia",
+  "reference": "",
+  "cannibalism": "Canibalismo",
+  "hymenopus-coronatus": "",
+  "core": "Zona media",
+  "spider": "Araña",
+  "attenborough": "",
+  "pp": "Tenis de mesa",
+  "rally": "Peloteo",
+  "backhand-topspin": "Revés liftado",
+  "animal-adventures": "Aventuras animales",
+  "orca": "Orca",
+  "seal": "Foca",
+  "supplements": "Suplementos",
+  "creatine": "Creatina",
+  "hmb": "",
+  "kick": "Patada",
+  "flip-turn": "Viraje de voltereta",
+  "freestyle": "Estilo libre",
+  "cornucopia-of-underwater-life": "Cornucopia de vida marina",
+  "fake-serve": "Saque engañoso",
+  "serve": "Saque",
+  "2id-skeleton-shrimp": "",
+  "snowflake": "",
+  "wolfie": "",
+  "topspin-hook-serve": "Saque liftado con efecto lateral",
+  "catch": "",
+  "flexibility": "Flexibilidad",
+  "shoulder": "Hombro",
+  "targeted-exercise": "Ejercicio dirigido",
+  "forehand-loop": "Drive liftado",
+  "hip-pain": "Cadera",
+  "spy-in-the-ocean": "",
+  "fish": "Pez",
+  "bird": "Ave",
+  "mammal": "Mamífero",
+  "amphibian": "Anfibio",
+  "reptile": "Reptil",
+  "insect": "Insecto",
+  "arachnid": "Arácnido",
+  "crustacean": "Crustáceo",
+  "bobtail-squid": "Sepiola",
+  "mbaq": "",
+  "dog": "Perro",
+  "colony-animals": "Animales coloniales",
+  "pair": "Pareja",
+  "human-anatomy": "Anatomía humana",
+  "acupuncture": "Acupuntura",
+  "solitary-hydroid": "Hidroide solitario",
+  "copepod": "Copépodo",
+  "synapsids": "Sinápsidos",
+  "ambush-predator": "Depredador de emboscada",
+  "gigantism": "Gigantismo",
+  "aikido": "Aikido",
+  "jan-ove-waldner": "",
+  "shark-metagenome": "Metagenoma de tiburón",
+  "good-story": "Buena historia",
+  "livyatan": "",
+  "extinct": "Extinto",
+  "intelligence": "Inteligencia",
+  "vocalization": "Vocalización",
+  "diaatom": "Diatomea",
+  "radula": "Rádula",
+  "notworking": "",
+  "incomplete": "",
+  "nerve-glide": "Movilización nerviosa",
+  "mimicry": "Mimetismo",
+  "todo": "",
+  "whale-language": "Lenguaje de las ballenas",
+  "australia-vacation": "Vacaciones en Australia",
+  "jims-talk": "",
+  "shopping": "Compras",
+  "plyometrics": "Pliometría",
+  "myvideo": "",
+  "santabarbarite": "",
+  "cholorplasts": "Cloroplastos",
+  "nerve-flossing": "Deslizamiento nervioso",
+  "sciatic-nerve": "Nervio ciático",
+  "spawning": "Desove",
+  "microcosmos": "Microcosmos",
+  "hydrothermal-vents": "Fuentes hidrotermales",
+  "adameyko": "",
+  "veliger": "Velígera",
+  "evolution": "Evolución",
+  "ttennis": "Tenis de mesa",
+  "vivo-x300-ultra": "",
+  "short-returns": "Devoluciones cortas",
+  "samsung-s25-ultra": "",
+  "hermit-crab": "Cangrejo ermitaño",
+  "longevity": "Longevidad",
+  "brooding": "Incubación",
+  "snipe-eel": "Anguila becuda",
+  "entothryeos": "",
+  "moray-eel": "Morena",
+  "glossidoris": "",
+  "music": "Música",
+  "panspermia": "Panspermia",
+  "omega3": "Omega 3",
+  "mantis-shrimp": "Camarón mantis",
+  "mouth": "Boca",
+  "eating": "Alimentación",
+  "shapeoflife": "",
+  "slime-mold": "Moho mucilaginoso",
+  "taurine": "Taurina",
+  "ishk": "",
+  "fake": "",
+  "voracious": "Voraz",
+  "resistant-starch": "Almidón resistente",
+  "moviewithmargy": "",
+  "hummingbird": "Colibrí",
+  "diabetes": "Diabetes",
+  "hamstring": "Isquiotibiales",
+  "my": "",
+  "anza-borrego": "",
+  "uncertain-species": "Especie incierta",
+  "sardines": "Sardinas",
+  "disabled": "Discapacidad",
+  "pareidolia": "Pareidolia",
+  "mozart": "",
+  "bobrove": "",
+  "privacy": "Privacidad",
+  "mbari": "",
+  "zinc": "Zinc",
+  "fungi": "Hongos",
+  "wrasse": "Lábrido",
+  "microbiome": "Microbioma",
+  "juv": "Juvenil",
+  "portrait": "",
+  "tendon": "Tendón",
+  "hatchling": "Cría recién nacida",
+  "stage": "Etapa vital",
+  "photo-contest": "Concurso de fotografía",
+  "photo-collections": "Colecciones de fotos",
+  "collection-photos": "Fotos de la colección",
+  "jazz": "Jazz",
+  "rhodolith": "Rodolito",
+  "dup": "",
+  "keto": "Keto",
+  "psoas": "Psoas",
+  "isometrics": "Isométricos",
+  "strength-training": "Entrenamiento de fuerza",
+  "backhand-return": "Devolución de revés",
+  "cooperative-hunting": "Caza cooperativa",
+  "autophagy": "Autofagia",
+  "technique-tt": "Técnica de tenis de mesa",
+  "sulforafane": "Sulforafano",
+  "eggs-cooking": "Huevos (cocina)",
+  "cooking": "Cocina",
+  "glycine": "Glicina",
+  "neuropathy": "Neuropatía",
+  "claims": "",
+  "klaus-kemp": "",
+  "polycystine": "",
+  "lobster": "Langosta",
+  "haeckel": "",
+  "corals": "Corales",
+  "spanishlanguage": "Español",
+  "pbs-eons": "",
+  "soleus": "Sóleo",
+  "etymology": "Etimología",
+  "bigif": "",
+  "nocturia": "Nocturia",
+  "llm-id": "",
+  "ai-rot": "",
+  "lembeh": "",
+  "ezetimibe": "",
+  "psyllium": "Psilio",
+  "wcs": "",
+  "synopses-of-books": "Sinopsis de libros"
+ },
+ "common": {
+  "arthropoda": "artrópodos",
+  "brachiopoda": "braquiópodos",
+  "chordata": "cordados",
+  "ctenophora": "tenóforos",
+  "kinorhyncha": "cinorrincos",
+  "mollusca": "moluscos",
+  "orthonectida": "ortonéctidos",
+  "phoronida": "foronídeos",
+  "placozoa": "placozoo",
+  "platyhelminthes": "platelminto",
+  "porifera": "esponjas",
+  "chelicerata": "quelicerados",
+  "channichthyidae": "peces hielo",
+  "polyprionidae": "náufragos",
+  "stereolepis": "mero pescada",
+  "stereolepis-gigas": "pescara",
+  "labridae": "doncellas",
+  "semicossyphus-pulcher": "vieja de California",
+  "holothuroidea": "pepinos de mar",
+  "asteroidea": "estrella de mar",
+  "actiniaria": "actinaria",
+  "sarcastic-fringehead": "tubícola chusco",
+  "animalia": "animales",
+  "bathynomus-giganteus": "isópodo gigante",
+  "sagittarius": "secretario",
+  "sagittarius-serpentarius": "secretario",
+  "chaenopsidae": "trombollos tubícolas",
+  "tetraodontidae": "botetes",
+  "actiniidae": "anémonas marinas",
+  "anatidae": "patos chapoteadores",
+  "branta": "gansos",
+  "branta-leucopsis": "barnacla cariblanca",
+  "cetacea": "cetáceos",
+  "balaenidae": "ballenas francas",
+  "balaena-mysticetus": "ballena de Groenlandia",
+  "gobiidae": "gobios",
+  "mola-mola": "mola",
+  "molidae": "molas",
+  "mola": "peces luna",
+  "elephantidae": "elefante",
+  "loxodonta-africana": "elefante Africano",
+  "arothron-hispidus": "botete panza rayada",
+  "arothron": "botetes",
+  "squamata": "escamosos",
+  "chamaeleonidae": "camaleones",
+  "eunice-aphroditois": "bobbit",
+  "mustelidae": "mustélidos",
+  "enhydra-lutris": "nutria marina",
+  "megaptera-novaeangliae": "ballena jorobada",
+  "balaenopteridae": "rorcuales y yubartas",
+  "megaptera": "ballena jorobada",
+  "orcinus-orca": "espadarte",
+  "delphinidae": "delfines",
+  "orcinus": "orcas",
+  "aplysiidae": "liebres de Mar",
+  "porpitidae": "medusas botón y velero",
+  "velella-velella": "velero",
+  "clione-limacina": "ángel del mar",
+  "antennariidae": "ranisapos",
+  "physeter-macrocephalus": "ballena esperma",
+  "physeteridae": "cachalotes",
+  "globicephala": "ballenas piloto",
+  "balaenoptera-musculus": "ballena azul",
+  "balaenoptera": "rorcual",
+  "paracentrotus-lividus": "boga marina",
+  "turbinidae": "caracoles de turbante",
+  "thaumoctopus-mimicus": "pulpo mimico",
+  "macrotritopus-defilippi": "pulpo patilargo",
+  "serpulidae": "gusanos tubícolas",
+  "chiton": "quitones",
+  "elysia": "babosas lechuga de mar",
+  "tentaculata": "tentaculados",
+  "mertensia-ovum": "medusa peine ártica",
+  "acanthochitonidae": "quitones",
+  "myliobatidae": "rayas águila",
+  "echeneidae": "rémoras",
+  "remora-remora": "rémora tiburonera",
+  "nemichthyidae": "anguilas tijera",
+  "sepiidae": "chocos",
+  "ascarosepion-pfefferi": "sepia llamativa",
+  "acanthosepion-pharaonis": "sepia faraón",
+  "muraenidae": "morenas",
+  "diogenidae": "cangrejos ermitaños zurdos",
+  "ctenoides-mitis": "almeja de lima",
+  "antennarius-striatus": "ranisapo estriado",
+  "pseudocerotidae": "gusanos planos marinos",
+  "odontodactylus-scyllarus": "camarón mantis arlequín",
+  "strongylocentrotus-purpuratus": "erizo de mar morado",
+  "mesocentrotus-franciscanus": "erizo rojo de mar",
+  "mesocentrotus": "erizos",
+  "bodianus-pulcher": "vieja californiana",
+  "rhinoderma-darwinii": "rana narigona",
+  "amphibia": "anfibios",
+  "cacatua-galerita": "cacatúa galerita",
+  "psittaciformes": "psitaciformes",
+  "psittacidae": "loros",
+  "cacatua": "cacatúas",
+  "nymphicus": "ninfa",
+  "trochilidae": "colibríes",
+  "monodontidae": "narval y beluga",
+  "delphinapterus": "beluga",
+  "delphinapterus-leucas": "ballena blanca",
+  "ambystomatidae": "ajolotes",
+  "ambystoma": "ajolotes",
+  "ambystoma-mexicanum": "ajolote",
+  "caprella-mutica": "camarón esqueleto japonés",
+  "hymenocera-picta": "camarón arlequín",
+  "palaemonidae": "camaroncitos de río",
+  "morus-capensis": "alcatraz de El Cabo",
+  "sulidae": "bobos",
+  "rhinopias-frondosa": "pez escorpión ojón",
+  "scorpaenidae": "peces escorpión",
+  "orectolobiformes": "gatas nodrizas",
+  "orectolobidae": "tiburones wobbegong",
+  "orectolobus-maculatus": "tapicero manchado",
+  "periophthalmus-argentilineatus": "saltarín del fango de líneas plateadas",
+  "aurelia-aurita": "medusa luna",
+  "scyphozoa": "medusas",
+  "physalia-physalis": "botella azul",
+  "lybia-tessellata": "cangrejo boxeador picasso",
+  "haemulidae": "roncadores",
+  "anisotremus": "burros",
+  "anisotremus-davidsonii": "Sargo rayado",
+  "anisotremus-virginicus": "burro payaso",
+  "rhacochilus-vacca": "mojarra muellera",
+  "embiotocidae": "mojarras vivíparas",
+  "rhacochilus-toxotes": "mojarra labios de hule",
+  "pisaster-giganteus": "estrella de azúcar",
+  "asteriidae": "estrellas de mar",
+  "pisaster": "estrellas de mar",
+  "syngnathidae": "caballitos de mar y peces pipa",
+  "hippocampus-bargibanti": "caballito de Mar Pigmeo de Bargibant",
+  "hippocampus-ingens": "caballito de mar",
+  "hippocampus-hippocampus": "cabalo de mar",
+  "liparidae": "peces babosos",
+  "aeolidia-papillosa": "eólido papiloso",
+  "alloposidae": "pulpo gigante de siete brazos",
+  "halichoeres-semicinctus": "señorita piedrera",
+  "novaculichthys-taeniourus": "vieja dragón",
+  "thalassoma-lunare": "doncella verde",
+  "thalassoma": "señoritas",
+  "epibulus-insidiator": "vieja guramí",
+  "pomacentridae": "castañetas y jaquetas",
+  "hypsypops": "garibaldis",
+  "hypsypops-rubicundus": "jaqueta garibaldi",
+  "oxyjulis-californica": "señorita",
+  "macrocystis-pyrifera": "cachiyuyo",
+  "enteroctopus-dofleini": "pulpo gigante del Pacífico",
+  "enteroctopus": "pulpos gigantes",
+  "octopus-pallidus": "pulpo pálido",
+  "phoebastria": "albatros del Pacífico",
+  "phoebastria-immutabilis": "albatros de Laysan",
+  "phalaropus": "falaropos",
+  "bothrops-bilineatus": "víbora arborícola verde",
+  "viperidae": "talla x",
+  "bothrops": "mapanás",
+  "phalaropus-lobatus": "falaropo picofino",
+  "mobula-munkiana": "tortilla",
+  "chaunacidae": "gómitas",
+  "lophius": "rapes",
+  "zoantharia": "zoantharios",
+  "nyctibiidae": "urutaúes",
+  "nyctibius": "urutaúes",
+  "nyctibius-grandis": "nictibio grande",
+  "alpheidae": "camarones chasqueadores",
+  "tetronarce-californica": "torpedo del Pacifico",
+  "torpedinidae": "torpedos",
+  "sepia": "sepia",
+  "ascarosepion-latimanus": "sepia de manos largas",
+  "eurypegasus-draconis": "pez pegaso",
+  "cyclopteridae": "peces grumo",
+  "praya-dubia": "sifonóforo gigante",
+  "astropectinidae": "estrellas espinosas de mar",
+  "astropecten-polyacanthus": "estrella de mar arenera"
+ },
+ "_seeded": [
+  "acanthochitonidae",
+  "acanthosepion-pharaonis",
+  "actiniaria",
+  "actiniidae",
+  "aeolidia-papillosa",
+  "alloposidae",
+  "alpheidae",
+  "ambystoma",
+  "ambystoma-mexicanum",
+  "ambystomatidae",
+  "amphibia",
+  "anatidae",
+  "animalia",
+  "anisotremus",
+  "anisotremus-davidsonii",
+  "anisotremus-virginicus",
+  "antennariidae",
+  "antennarius-striatus",
+  "aplysiidae",
+  "arothron",
+  "arothron-hispidus",
+  "arthropoda",
+  "ascarosepion-latimanus",
+  "ascarosepion-pfefferi",
+  "asteriidae",
+  "asteroidea",
+  "astropecten-polyacanthus",
+  "astropectinidae",
+  "aurelia-aurita",
+  "balaena-mysticetus",
+  "balaenidae",
+  "balaenoptera",
+  "balaenoptera-musculus",
+  "balaenopteridae",
+  "bathynomus-giganteus",
+  "bodianus-pulcher",
+  "bothrops",
+  "bothrops-bilineatus",
+  "brachiopoda",
+  "branta",
+  "branta-leucopsis",
+  "cacatua",
+  "cacatua-galerita",
+  "caprella-mutica",
+  "cetacea",
+  "chaenopsidae",
+  "chamaeleonidae",
+  "channichthyidae",
+  "chaunacidae",
+  "chelicerata",
+  "chiton",
+  "chordata",
+  "clione-limacina",
+  "ctenoides-mitis",
+  "ctenophora",
+  "cyclopteridae",
+  "delphinapterus",
+  "delphinapterus-leucas",
+  "delphinidae",
+  "diogenidae",
+  "echeneidae",
+  "elephantidae",
+  "elysia",
+  "embiotocidae",
+  "enhydra-lutris",
+  "enteroctopus",
+  "enteroctopus-dofleini",
+  "epibulus-insidiator",
+  "eunice-aphroditois",
+  "eurypegasus-draconis",
+  "globicephala",
+  "gobiidae",
+  "haemulidae",
+  "halichoeres-semicinctus",
+  "hippocampus-bargibanti",
+  "hippocampus-hippocampus",
+  "hippocampus-ingens",
+  "holothuroidea",
+  "hymenocera-picta",
+  "hypsypops",
+  "hypsypops-rubicundus",
+  "kinorhyncha",
+  "labridae",
+  "liparidae",
+  "lophius",
+  "loxodonta-africana",
+  "lybia-tessellata",
+  "macrocystis-pyrifera",
+  "macrotritopus-defilippi",
+  "megaptera",
+  "megaptera-novaeangliae",
+  "mertensia-ovum",
+  "mesocentrotus",
+  "mesocentrotus-franciscanus",
+  "mobula-munkiana",
+  "mola",
+  "mola-mola",
+  "molidae",
+  "mollusca",
+  "monodontidae",
+  "morus-capensis",
+  "muraenidae",
+  "mustelidae",
+  "myliobatidae",
+  "nemichthyidae",
+  "novaculichthys-taeniourus",
+  "nyctibiidae",
+  "nyctibius",
+  "nyctibius-grandis",
+  "nymphicus",
+  "octopus-pallidus",
+  "odontodactylus-scyllarus",
+  "orcinus",
+  "orcinus-orca",
+  "orectolobidae",
+  "orectolobiformes",
+  "orectolobus-maculatus",
+  "orthonectida",
+  "oxyjulis-californica",
+  "palaemonidae",
+  "paracentrotus-lividus",
+  "periophthalmus-argentilineatus",
+  "phalaropus",
+  "phalaropus-lobatus",
+  "phoebastria",
+  "phoebastria-immutabilis",
+  "phoronida",
+  "physalia-physalis",
+  "physeter-macrocephalus",
+  "physeteridae",
+  "pisaster",
+  "pisaster-giganteus",
+  "placozoa",
+  "platyhelminthes",
+  "polyprionidae",
+  "pomacentridae",
+  "porifera",
+  "porpitidae",
+  "praya-dubia",
+  "pseudocerotidae",
+  "psittacidae",
+  "psittaciformes",
+  "remora-remora",
+  "rhacochilus-toxotes",
+  "rhacochilus-vacca",
+  "rhinoderma-darwinii",
+  "rhinopias-frondosa",
+  "sagittarius",
+  "sagittarius-serpentarius",
+  "sarcastic-fringehead",
+  "scorpaenidae",
+  "scyphozoa",
+  "semicossyphus-pulcher",
+  "sepia",
+  "sepiidae",
+  "serpulidae",
+  "squamata",
+  "stereolepis",
+  "stereolepis-gigas",
+  "strongylocentrotus-purpuratus",
+  "sulidae",
+  "syngnathidae",
+  "tentaculata",
+  "tetraodontidae",
+  "tetronarce-californica",
+  "thalassoma",
+  "thalassoma-lunare",
+  "thaumoctopus-mimicus",
+  "torpedinidae",
+  "trochilidae",
+  "turbinidae",
+  "velella-velella",
+  "viperidae",
+  "zoantharia"
+ ],
+ "candidates": {
+  "life": {
+   "label": "Life",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "annelida": {
+   "label": "Annelida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "arthropoda": {
+   "label": "Arthropoda",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Artrópodos"
+   ]
+  },
+  "brachiopoda": {
+   "label": "Brachiopoda",
+   "en": "",
+   "gbif": [
+    "braquiópodos"
+   ],
+   "p1843": []
+  },
+  "bryozoa": {
+   "label": "Bryozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chaetognatha": {
+   "label": "Chaetognatha",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chordata": {
+   "label": "Chordata",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Cordados"
+   ]
+  },
+  "cnidaria": {
+   "label": "Cnidaria",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ctenophora": {
+   "label": "Ctenophora",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Tenóforos"
+   ]
+  },
+  "cycliophora": {
+   "label": "Cycliophora",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "dicyemida": {
+   "label": "Dicyemida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "echinodermata": {
+   "label": "Echinodermata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "entoprocta": {
+   "label": "Entoprocta",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "gastrotricha": {
+   "label": "Gastrotricha",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "gnathostomulida": {
+   "label": "Gnathostomulida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "hemichordata": {
+   "label": "Hemichordata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "kinorhyncha": {
+   "label": "Kinorhyncha",
+   "en": "",
+   "gbif": [
+    "Cinorrincos",
+    "Kinorrincos",
+    "Quinorrinchos",
+    "Quinorrincos"
+   ],
+   "p1843": []
+  },
+  "loricifera": {
+   "label": "Loricifera",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "micrognathozoa": {
+   "label": "Micrognathozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mollusca": {
+   "label": "Mollusca",
+   "en": "",
+   "gbif": [
+    "moluscos"
+   ],
+   "p1843": []
+  },
+  "monoblastozoa": {
+   "label": "Monoblastozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "nematoda": {
+   "label": "Nematoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "nematomorpha": {
+   "label": "Nematomorpha",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "nemertea": {
+   "label": "Nemertea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "onychophora": {
+   "label": "Onychophora",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "orthonectida": {
+   "label": "Orthonectida",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Ortonéctidos"
+   ]
+  },
+  "phoronida": {
+   "label": "Phoronida",
+   "en": "",
+   "gbif": [
+    "foronídeos"
+   ],
+   "p1843": []
+  },
+  "placozoa": {
+   "label": "Placozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Placozoo"
+   ]
+  },
+  "platyhelminthes": {
+   "label": "Platyhelminthes",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Platelminto"
+   ]
+  },
+  "porifera": {
+   "label": "Porifera",
+   "en": "",
+   "gbif": [
+    "esponjas"
+   ],
+   "p1843": []
+  },
+  "priapulida": {
+   "label": "Priapulida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rotifera": {
+   "label": "Rotifera",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "tardigrada": {
+   "label": "Tardigrada",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "xenacoelomorpha": {
+   "label": "Xenacoelomorpha",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "agmata": {
+   "label": "Agmata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "petalonamae": {
+   "label": "Petalonamae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "proarticulata": {
+   "label": "Proarticulata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "saccorhytida": {
+   "label": "Saccorhytida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "trilobozoa": {
+   "label": "Trilobozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vetulicolia": {
+   "label": "Vetulicolia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "crustacea": {
+   "label": "Crustacea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chelicerata": {
+   "label": "Chelicerata",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Quelicerados"
+   ]
+  },
+  "malacostraca": {
+   "label": "Malacostraca",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "amphipoda": {
+   "label": "Amphipoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "isopoda": {
+   "label": "Isopoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "caprellidae": {
+   "label": "Caprellidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "phtisica": {
+   "label": "Phtisica",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "phtisica-marina": {
+   "label": "Phtisica marina",
+   "en": "skeleton shrimp",
+   "gbif": [],
+   "p1843": []
+  },
+  "liropus": {
+   "label": "Liropus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "liropus-minusculus": {
+   "label": "Liropus minusculus",
+   "en": "skeleton shrimp",
+   "gbif": [],
+   "p1843": []
+  },
+  "actinopterygii": {
+   "label": "Actinopterygii",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "notothenioidei": {
+   "label": "Notothenioidei",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "channichthyidae": {
+   "label": "Channichthyidae",
+   "en": "",
+   "gbif": [
+    "Peces hielo"
+   ],
+   "p1843": []
+  },
+  "chaenocephalus": {
+   "label": "Chaenocephalus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chaenocephalus-aceratus": {
+   "label": "Chaenocephalus aceratus",
+   "en": "blackfin icefish",
+   "gbif": [],
+   "p1843": []
+  },
+  "polyprionidae": {
+   "label": "Polyprionidae",
+   "en": "",
+   "gbif": [
+    "náufragos"
+   ],
+   "p1843": []
+  },
+  "stereolepis": {
+   "label": "Stereolepis",
+   "en": "",
+   "gbif": [
+    "Mero Pescada"
+   ],
+   "p1843": []
+  },
+  "stereolepis-gigas": {
+   "label": "Stereolepis gigas",
+   "en": "giant sea bass",
+   "gbif": [
+    "Lubina Gigante",
+    "Lubina gigante",
+    "Pescara",
+    "Mero gigante",
+    "pescara"
+   ],
+   "p1843": []
+  },
+  "sebastidae": {
+   "label": "Sebastidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sebastes": {
+   "label": "Sebastes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sebastes-flavidus": {
+   "label": "Sebastes flavidus",
+   "en": "yellowfin rockfish",
+   "gbif": [],
+   "p1843": []
+  },
+  "labridae": {
+   "label": "Labridae",
+   "en": "",
+   "gbif": [
+    "Doncellas",
+    "Peces loro",
+    "doncellas y señoritas"
+   ],
+   "p1843": []
+  },
+  "semicossyphus-pulcher": {
+   "label": "Semicossyphus pulcher",
+   "en": "California sheephead",
+   "gbif": [
+    "vieja californiana",
+    "Vieja De California"
+   ],
+   "p1843": [
+    "Vieja De California"
+   ]
+  },
+  "echinoidea": {
+   "label": "Echinoidea",
+   "en": "sea urchin",
+   "gbif": [],
+   "p1843": []
+  },
+  "astropyga": {
+   "label": "Astropyga",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "astropyga-radiata": {
+   "label": "Astropyga radiata",
+   "en": "blue-spotted sea urchin",
+   "gbif": [],
+   "p1843": []
+  },
+  "crinoidea": {
+   "label": "Crinoidea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "holothuroidea": {
+   "label": "Holothuroidea",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Pepinos de mar"
+   ]
+  },
+  "enypniastes": {
+   "label": "Enypniastes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "enypniastes-eximia": {
+   "label": "Enypniastes eximia",
+   "en": "swimming sea cucumber",
+   "gbif": [],
+   "p1843": []
+  },
+  "asteroidea": {
+   "label": "Asteroidea",
+   "en": "",
+   "gbif": [
+    "estrella de mar"
+   ],
+   "p1843": []
+  },
+  "ophiuroidea": {
+   "label": "Ophiuroidea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "gorgonocephalus": {
+   "label": "Gorgonocephalus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "anthozoa": {
+   "label": "Anthozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "actiniaria": {
+   "label": "Actiniaria",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Actinaria"
+   ]
+  },
+  "urticina": {
+   "label": "Urticina",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "urticina-grebelnyi": {
+   "label": "Urticina grebelnyi",
+   "en": "painted anemone",
+   "gbif": [],
+   "p1843": []
+  },
+  "condylactis": {
+   "label": "Condylactis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "condylactis-gigantea": {
+   "label": "Condylactis gigantea",
+   "en": "purple-tipped anemone",
+   "gbif": [],
+   "p1843": []
+  },
+  "stomphia": {
+   "label": "Stomphia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "stomphia-coccinea": {
+   "label": "Stomphia coccinea",
+   "en": "swimming anemone",
+   "gbif": [],
+   "p1843": []
+  },
+  "cephalopoda": {
+   "label": "Cephalopoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "octopoda": {
+   "label": "Octopoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "polychaeta": {
+   "label": "Polychaeta",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "tunicata": {
+   "label": "Tunicata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "megalodicopia": {
+   "label": "Megalodicopia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "megalodicopia-hians": {
+   "label": "Megalodicopia hians",
+   "en": "predatory tunicate",
+   "gbif": [],
+   "p1843": []
+  },
+  "megachelicerax": {
+   "label": "Megachelicerax",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "megachelicerax-cousteaui": {
+   "label": "Megachelicerax cousteaui",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "torquigener-albomaculosus": {
+   "label": "Torquigener albomaculosus",
+   "en": "white-spotted pufferfish",
+   "gbif": [],
+   "p1843": []
+  },
+  "sarcastic-fringehead": {
+   "label": "Neoclinus blanchardi",
+   "en": "sarcastic fringehead",
+   "gbif": [
+    "Blenia",
+    "tubícola chusco",
+    "Tubícola Chusco"
+   ],
+   "p1843": [
+    "Blenia",
+    "Tubícola Chusco"
+   ]
+  },
+  "animalia": {
+   "label": "Animalia",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "animales"
+   ]
+  },
+  "cirolanidae": {
+   "label": "Cirolanidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "bathynomus": {
+   "label": "Bathynomus",
+   "en": "giant isopods",
+   "gbif": [],
+   "p1843": []
+  },
+  "bathynomus-giganteus": {
+   "label": "Bathynomus giganteus",
+   "en": "giant isopod",
+   "gbif": [
+    "Isópodo Gigante"
+   ],
+   "p1843": []
+  },
+  "aves": {
+   "label": "Aves",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "accipitriformes": {
+   "label": "Accipitriformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sagittariidae": {
+   "label": "Sagittariidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sagittarius": {
+   "label": "Sagittarius",
+   "en": "",
+   "gbif": [
+    "Secretario"
+   ],
+   "p1843": []
+  },
+  "sagittarius-serpentarius": {
+   "label": "Sagittarius serpentarius",
+   "en": "secretarybird",
+   "gbif": [
+    "Secretario"
+   ],
+   "p1843": [
+    "Secretario"
+   ]
+  },
+  "perciformes": {
+   "label": "Perciformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chaenopsidae": {
+   "label": "Chaenopsidae",
+   "en": "",
+   "gbif": [
+    "Trombollos tubícolas",
+    "trambollos tubícolas"
+   ],
+   "p1843": []
+  },
+  "neoclinus": {
+   "label": "Neoclinus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "tetraodontiformes": {
+   "label": "Tetraodontiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "tetraodontidae": {
+   "label": "Tetraodontidae",
+   "en": "",
+   "gbif": [
+    "Peces globo",
+    "botetes"
+   ],
+   "p1843": []
+  },
+  "torquigener": {
+   "label": "Torquigener",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "comatulida": {
+   "label": "Comatulida",
+   "en": "feather star",
+   "gbif": [],
+   "p1843": []
+  },
+  "actiniidae": {
+   "label": "Actiniidae",
+   "en": "",
+   "gbif": [
+    "Anémonas marinas",
+    "Anéonas marinas típicas"
+   ],
+   "p1843": []
+  },
+  "anseriformes": {
+   "label": "Anseriformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "anatidae": {
+   "label": "Anatidae",
+   "en": "",
+   "gbif": [
+    "Patos chapoteadores"
+   ],
+   "p1843": []
+  },
+  "branta": {
+   "label": "Branta",
+   "en": "",
+   "gbif": [
+    "Barnacla",
+    "Gansos",
+    "barnaclas"
+   ],
+   "p1843": []
+  },
+  "branta-leucopsis": {
+   "label": "Branta leucopsis",
+   "en": "barnacle goose",
+   "gbif": [
+    "Barnacla Cariblanca",
+    "Barnacla cariblanca",
+    "barnacla cariblanca"
+   ],
+   "p1843": [
+    "Barnacla cariblanca"
+   ]
+  },
+  "pelagonemertes-rollestoni": {
+   "label": "Pelagonemertes rollestoni",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "hoplonemertea": {
+   "label": "Hoplonemertea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "polystilifera": {
+   "label": "Polystilifera",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "pelagonemertidae": {
+   "label": "Pelagonemertidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "pelagonemertes": {
+   "label": "Pelagonemertes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chionodraco-hamatus": {
+   "label": "Chionodraco hamatus",
+   "en": "crocodile icefish",
+   "gbif": [],
+   "p1843": []
+  },
+  "chionodraco": {
+   "label": "Chionodraco",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "bamfordvirae": {
+   "label": "Bamfordvirae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "preplasmiviricota": {
+   "label": "Preplasmiviricota",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "tectiliviricetes": {
+   "label": "Tectiliviricetes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rowavirales": {
+   "label": "Rowavirales",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "adenoviridae": {
+   "label": "Adenoviridae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mammalia": {
+   "label": "Mammalia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cetacea": {
+   "label": "Cetacea",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Cetáceos"
+   ]
+  },
+  "balaenidae": {
+   "label": "Balaenidae",
+   "en": "",
+   "gbif": [
+    "Ballenas francas"
+   ],
+   "p1843": []
+  },
+  "balaena": {
+   "label": "Balaena",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "balaena-mysticetus": {
+   "label": "Balaena mysticetus",
+   "en": "bowhead whale",
+   "gbif": [
+    "ballena boreal",
+    "ballena de Groenlandia",
+    "ballena de cabeza arqueada",
+    "Ballena de Groenlandia"
+   ],
+   "p1843": [
+    "Ballena Boreal",
+    "Ballena de Groenlandia"
+   ]
+  },
+  "gobiidae": {
+   "label": "Gobiidae",
+   "en": "",
+   "gbif": [
+    "gobios"
+   ],
+   "p1843": []
+  },
+  "lubricogobius": {
+   "label": "Lubricogobius",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lubricogobius-exiguus": {
+   "label": "Lubricogobius exiguus",
+   "en": "yellow pygmy-goby",
+   "gbif": [],
+   "p1843": []
+  },
+  "mola-mola": {
+   "label": "Mola mola",
+   "en": "ocean sunfish, sunfish",
+   "gbif": [
+    "Mola",
+    "Peixe lua",
+    "Pez Cabeza",
+    "Pez Luna Oceánico",
+    "Pez Sol",
+    "Pez luna",
+    "mola",
+    "pez luna"
+   ],
+   "p1843": [
+    "Mola",
+    "Peixe Lua",
+    "Pez Cabeza",
+    "Pez Luna",
+    "Pez Sol"
+   ]
+  },
+  "molidae": {
+   "label": "Molidae",
+   "en": "",
+   "gbif": [
+    "Molas y Peces Luna",
+    "molas"
+   ],
+   "p1843": []
+  },
+  "mola": {
+   "label": "Mola",
+   "en": "",
+   "gbif": [
+    "Peces Luna"
+   ],
+   "p1843": []
+  },
+  "proboscidea": {
+   "label": "Proboscidea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "elephantidae": {
+   "label": "Elephantidae",
+   "en": "",
+   "gbif": [
+    "Elefante",
+    "Elefantes",
+    "Paquidermos"
+   ],
+   "p1843": []
+  },
+  "loxodonta": {
+   "label": "Loxodonta",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "loxodonta-africana": {
+   "label": "Loxodonta africana",
+   "en": "African elephant",
+   "gbif": [
+    "Elefante Africano",
+    "Elefante Africano de Sabana",
+    "Elefante de Sabana"
+   ],
+   "p1843": [
+    "Elefante Africano"
+   ]
+  },
+  "arothron-hispidus": {
+   "label": "Arothron hispidus",
+   "en": "white spotted pufferfish",
+   "gbif": [
+    "Botete Pintado",
+    "Tamboril Verde De Puntos Blancos",
+    "botete panza rayada",
+    "Botete Panza Rayada"
+   ],
+   "p1843": [
+    "Botete Panza Rayada",
+    "Botete Pintado",
+    "Tamboril Verde De Puntos Blancos"
+   ]
+  },
+  "arothron": {
+   "label": "Arothron",
+   "en": "",
+   "gbif": [
+    "Botetes"
+   ],
+   "p1843": []
+  },
+  "bradypodion-thamnobates": {
+   "label": "Bradypodion thamnobates",
+   "en": "Natal Midlands dwarf chameleon",
+   "gbif": [],
+   "p1843": []
+  },
+  "squamata": {
+   "label": "Squamata",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Escamosos"
+   ]
+  },
+  "chamaeleonidae": {
+   "label": "Chamaeleonidae",
+   "en": "",
+   "gbif": [
+    "Camaleones",
+    "Camaleones y parientes"
+   ],
+   "p1843": []
+  },
+  "bradypodion": {
+   "label": "Bradypodion",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "strigiformes": {
+   "label": "Strigiformes",
+   "en": "owls",
+   "gbif": [],
+   "p1843": []
+  },
+  "gastropoda": {
+   "label": "Gastropoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "costasiellidae": {
+   "label": "Costasiellidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "costasiella": {
+   "label": "Costasiella",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "costasiella-kuroshimae-species": {
+   "label": "Costasiella kuroshimae",
+   "en": "leaf sheep",
+   "gbif": [],
+   "p1843": []
+  },
+  "eunice-aphroditois": {
+   "label": "Eunice aphroditois",
+   "en": "bobbit-worm",
+   "gbif": [
+    "Bobbit"
+   ],
+   "p1843": []
+  },
+  "eunicida": {
+   "label": "Eunicida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "eunicidae": {
+   "label": "Eunicidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "eunice": {
+   "label": "Eunice",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "carnivora": {
+   "label": "Carnivora",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mustelidae": {
+   "label": "Mustelidae",
+   "en": "",
+   "gbif": [
+    "Comadrejas y parientes",
+    "Mustélidos"
+   ],
+   "p1843": []
+  },
+  "enhydra": {
+   "label": "Enhydra",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "enhydra-lutris": {
+   "label": "Enhydra lutris",
+   "en": "southern sea otter",
+   "gbif": [
+    "Nutria Marina",
+    "Nutria del Kamtchatka"
+   ],
+   "p1843": [
+    "Nutria del Kamtchatka",
+    "Nutria Marina"
+   ]
+  },
+  "protozoa": {
+   "label": "Protozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "filosia": {
+   "label": "Filosia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aconchulinida": {
+   "label": "Aconchulinida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vampyrellidae": {
+   "label": "Vampyrellidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vampyrella": {
+   "label": "Vampyrella",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vampyrella-lateritia": {
+   "label": "Vampyrella lateritia",
+   "en": "vampire amoeba",
+   "gbif": [],
+   "p1843": []
+  },
+  "megaptera-novaeangliae": {
+   "label": "Megaptera novaeangliae",
+   "en": "humpback whale",
+   "gbif": [
+    "Ballena jorobada",
+    "yubarta",
+    "Gubarte",
+    "Rorcual Jorobado",
+    "ambaqui",
+    "ballena cantora",
+    "ballena de aletas grandes",
+    "guabarte",
+    "gubarta",
+    "jibarte",
+    "jorobada",
+    "rorqual jorobado",
+    "Ballena Jorobada",
+    "Yubarta"
+   ],
+   "p1843": [
+    "Ballena Jorobada",
+    "Gubarte",
+    "Jorobada",
+    "Rorcual Jorobado"
+   ]
+  },
+  "balaenopteridae": {
+   "label": "Balaenopteridae",
+   "en": "",
+   "gbif": [
+    "Rorcuales y yubartas"
+   ],
+   "p1843": []
+  },
+  "megaptera": {
+   "label": "Megaptera",
+   "en": "",
+   "gbif": [
+    "Ballena Jorobada"
+   ],
+   "p1843": [
+    "Ballena Jorobada",
+    "Gubarte",
+    "Jorobada",
+    "Rorcual Jorobado"
+   ]
+  },
+  "orcinus-orca": {
+   "label": "Orcinus orca",
+   "en": "killer whale",
+   "gbif": [
+    "Orca común",
+    "Orca gigante",
+    "orca",
+    "ballena asesina",
+    "ballena pinta",
+    "ballena quila",
+    "bufeo de mascarilla",
+    "cahuel-huaique",
+    "delfin gigante",
+    "espadarte",
+    "machete",
+    "moscote",
+    "orca verdadera",
+    "Espadarte"
+   ],
+   "p1843": [
+    "Espadarte",
+    "Orca"
+   ]
+  },
+  "delphinidae": {
+   "label": "Delphinidae",
+   "en": "",
+   "gbif": [
+    "Delfines",
+    "Delfines de océano"
+   ],
+   "p1843": []
+  },
+  "orcinus": {
+   "label": "Orcinus",
+   "en": "",
+   "gbif": [
+    "Orcas"
+   ],
+   "p1843": []
+  },
+  "phyllaplysia-taylori": {
+   "label": "Phyllaplysia taylori",
+   "en": "Taylor's sea hare, eelgrass sea hare, zebra leafslug",
+   "gbif": [],
+   "p1843": []
+  },
+  "aplysiida": {
+   "label": "Aplysiida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aplysiidae": {
+   "label": "Aplysiidae",
+   "en": "sea hares",
+   "gbif": [
+    "Liebres de Mar"
+   ],
+   "p1843": []
+  },
+  "phyllaplysia": {
+   "label": "Phyllaplysia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "endomyxa": {
+   "label": "Endomyxa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vampyrellida": {
+   "label": "Vampyrellida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "hydrozoa": {
+   "label": "Hydrozoa",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "anthoathecata": {
+   "label": "Anthoathecata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "porpitidae": {
+   "label": "Porpitidae",
+   "en": "",
+   "gbif": [
+    "Medusas botón y velero"
+   ],
+   "p1843": []
+  },
+  "velella": {
+   "label": "Velella",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "velella-velella": {
+   "label": "Velella velella",
+   "en": "by-the-wind-sailor",
+   "gbif": [
+    "Medusa velero",
+    "Veleta Azul",
+    "velero"
+   ],
+   "p1843": []
+  },
+  "clione-limacina": {
+   "label": "Clione limacina",
+   "en": "sea angel",
+   "gbif": [
+    "Ángel del mar"
+   ],
+   "p1843": []
+  },
+  "pteropoda": {
+   "label": "Pteropoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "clionidae": {
+   "label": "Clionidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "clione": {
+   "label": "Clione",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ptilosarcus-gurneyi": {
+   "label": "Ptilosarcus gurneyi",
+   "en": "Gurney's sea pen, orange sea pen, fleshy sea pen",
+   "gbif": [],
+   "p1843": []
+  },
+  "scleralcyonacea": {
+   "label": "Scleralcyonacea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "pennatulidae": {
+   "label": "Pennatulidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ptilosarcus": {
+   "label": "Ptilosarcus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "antennariidae": {
+   "label": "Antennariidae",
+   "en": "anglerfishes",
+   "gbif": [
+    "Peces sapo",
+    "ranisapos"
+   ],
+   "p1843": []
+  },
+  "lophiiformes": {
+   "label": "Lophiiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "physeter-macrocephalus": {
+   "label": "Physeter macrocephalus",
+   "en": "sperm whale",
+   "gbif": [
+    "Ballena de esperma",
+    "Cachalote gigante",
+    "ballena esperma",
+    "cachalote común",
+    "chacalote",
+    "fiseter",
+    "guapo",
+    "Ballena Esperma",
+    "Cachalote"
+   ],
+   "p1843": [
+    "Ballena Esperma",
+    "Cachalote"
+   ]
+  },
+  "physeteridae": {
+   "label": "Physeteridae",
+   "en": "",
+   "gbif": [
+    "Cachalotes"
+   ],
+   "p1843": []
+  },
+  "physeter": {
+   "label": "Physeter",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "globicephala": {
+   "label": "Globicephala",
+   "en": "Globicephalus",
+   "gbif": [
+    "Ballenas piloto"
+   ],
+   "p1843": []
+  },
+  "balaenoptera-musculus": {
+   "label": "Balaenoptera musculus",
+   "en": "blue whale",
+   "gbif": [
+    "Ballena azul",
+    "alfaguara",
+    "alfaware",
+    "gran rorcal",
+    "kila",
+    "rorcual azul",
+    "rorcual gigante",
+    "Ballena Azul",
+    "ballena azul"
+   ],
+   "p1843": [
+    "Ballena Azul"
+   ]
+  },
+  "balaenoptera": {
+   "label": "Balaenoptera",
+   "en": "",
+   "gbif": [
+    "Ballena azul y parientes",
+    "Rorcual"
+   ],
+   "p1843": [
+    "Rorcual"
+   ]
+  },
+  "paracentrotus-lividus": {
+   "label": "Paracentrotus lividus",
+   "en": "rock urchin",
+   "gbif": [
+    "boga marina",
+    "castaña de mar",
+    "erizo de mar común"
+   ],
+   "p1843": []
+  },
+  "camarodonta": {
+   "label": "Camarodonta",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "parechinidae": {
+   "label": "Parechinidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "paracentrotus": {
+   "label": "Paracentrotus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "trochida": {
+   "label": "Trochida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "turbinidae": {
+   "label": "Turbinidae",
+   "en": "",
+   "gbif": [
+    "Caracoles de turbante"
+   ],
+   "p1843": []
+  },
+  "lithopoma": {
+   "label": "Lithopoma",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lithopoma-tectum": {
+   "label": "Lithopoma tectum",
+   "en": "Astraea conehead snail",
+   "gbif": [],
+   "p1843": []
+  },
+  "chiroptera": {
+   "label": "Chiroptera",
+   "en": "bats",
+   "gbif": [],
+   "p1843": []
+  },
+  "nudibranchs": {
+   "label": "Nudibranchia",
+   "en": "sea slug",
+   "gbif": [],
+   "p1843": []
+  },
+  "odontomachus": {
+   "label": "Odontomachus chelifer",
+   "en": "trap jaw ant",
+   "gbif": [],
+   "p1843": []
+  },
+  "octopodidae": {
+   "label": "Octopodidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "thaumoctopus": {
+   "label": "Thaumoctopus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "thaumoctopus-mimicus": {
+   "label": "Thaumoctopus mimicus",
+   "en": "mimic octopus",
+   "gbif": [
+    "Pulpo mimico",
+    "Pulpo mímico"
+   ],
+   "p1843": []
+  },
+  "macrotritopus-defilippi": {
+   "label": "Macrotritopus defilippi",
+   "en": "longarm octopus",
+   "gbif": [
+    "Pulpo patilargo"
+   ],
+   "p1843": []
+  },
+  "macrotritopus": {
+   "label": "Macrotritopus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "riftia": {
+   "label": "Riftia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sabellida": {
+   "label": "Sabellida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "siboglinidae": {
+   "label": "Siboglinidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "riftia-pachyptila": {
+   "label": "Riftia pachyptila",
+   "en": "giant tubeworm",
+   "gbif": [],
+   "p1843": []
+  },
+  "thermarces-cerberus": {
+   "label": "Thermarces cerberus",
+   "en": "pink vent fish",
+   "gbif": [],
+   "p1843": []
+  },
+  "laminatubus-alvini": {
+   "label": "Laminatubus alvini",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "serpulidae": {
+   "label": "Serpulidae",
+   "en": "",
+   "gbif": [
+    "Gusanos tubícolas"
+   ],
+   "p1843": []
+  },
+  "laminatubus": {
+   "label": "Laminatubus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "paraescarpia": {
+   "label": "Paraescarpia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "paraescarpia-echinospica": {
+   "label": "Paraescarpia echinospica",
+   "en": "P. echinospica",
+   "gbif": [],
+   "p1843": []
+  },
+  "microeledone-galapagensis": {
+   "label": "Microeledone galapagensis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "trachyphyllia": {
+   "label": "Trachyphyllia",
+   "en": "rose coral",
+   "gbif": [],
+   "p1843": []
+  },
+  "scleractinia": {
+   "label": "Scleractinia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "merulinidae": {
+   "label": "Merulinidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chiton": {
+   "label": "Chiton",
+   "en": "",
+   "gbif": [
+    "Quitones"
+   ],
+   "p1843": []
+  },
+  "elysia-marginata": {
+   "label": "Elysia marginata",
+   "en": "tri-banded taco slug",
+   "gbif": [],
+   "p1843": []
+  },
+  "plakobranchidae": {
+   "label": "Plakobranchidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "elysia": {
+   "label": "Elysia",
+   "en": "",
+   "gbif": [
+    "Babosas lechuga de mar"
+   ],
+   "p1843": []
+  },
+  "graneledone-boropacifica": {
+   "label": "Graneledone boreopacifica",
+   "en": "deep-sea octopus",
+   "gbif": [],
+   "p1843": []
+  },
+  "megaleledonidae": {
+   "label": "Megaleledonidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "graneledone": {
+   "label": "Graneledone",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aulacoctena-acuminata": {
+   "label": "Aulacoctena acuminata",
+   "en": "bottle comb jelly",
+   "gbif": [],
+   "p1843": []
+  },
+  "tentaculata": {
+   "label": "Tentaculata",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Tentaculados"
+   ]
+  },
+  "cydippida": {
+   "label": "Cydippida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aulacoctenidae": {
+   "label": "Aulacoctenidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aulacoctena": {
+   "label": "Aulacoctena",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mertensia-ovum": {
+   "label": "Mertensia ovum",
+   "en": "Arctic comb jelly",
+   "gbif": [
+    "Grosella espinosa de mar plana",
+    "medusa peine ártica"
+   ],
+   "p1843": [
+    "medusa peine ártica"
+   ]
+  },
+  "mertensiidae": {
+   "label": "Mertensiidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mertensia": {
+   "label": "Mertensia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lampocteis-cruentiventer": {
+   "label": "Lampocteis cruentiventer",
+   "en": "bloodbelly comb jelly",
+   "gbif": [],
+   "p1843": []
+  },
+  "lobata": {
+   "label": "Lobata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lampoctenidae": {
+   "label": "Lampoctenidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lampocteis": {
+   "label": "Lampocteis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "polyplacophora": {
+   "label": "Polyplacophora",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chitonida": {
+   "label": "Chitonida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "acanthochitonidae": {
+   "label": "Acanthochitonidae",
+   "en": "",
+   "gbif": [
+    "Quitones"
+   ],
+   "p1843": []
+  },
+  "cryptochiton": {
+   "label": "Cryptochiton",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cryptochiton-stelleri": {
+   "label": "Cryptochiton stelleri",
+   "en": "gumboot chiton",
+   "gbif": [],
+   "p1843": []
+  },
+  "paguroidea": {
+   "label": "Paguroidea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mobula": {
+   "label": "Mobula",
+   "en": "manta ray",
+   "gbif": [],
+   "p1843": []
+  },
+  "elasmobranchii": {
+   "label": "Elasmobranchii",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "myliobatiformes": {
+   "label": "Myliobatiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "myliobatidae": {
+   "label": "Myliobatidae",
+   "en": "",
+   "gbif": [
+    "Rayas águila",
+    "águilas marinas"
+   ],
+   "p1843": []
+  },
+  "remora": {
+   "label": "Remora",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "echeneidae": {
+   "label": "Echeneidae",
+   "en": "",
+   "gbif": [
+    "rémoras"
+   ],
+   "p1843": []
+  },
+  "remora-remora": {
+   "label": "Remora remora",
+   "en": "common remora",
+   "gbif": [
+    "Rémora",
+    "Sapito",
+    "Sapito Común",
+    "rémora tiburonera",
+    "Pega",
+    "Remora",
+    "Rémora Tiburonera"
+   ],
+   "p1843": [
+    "Pega",
+    "Remora",
+    "Rémora",
+    "Rémora Tiburonera",
+    "Sapito",
+    "Sapito Común"
+   ]
+  },
+  "anguilliformes": {
+   "label": "Anguilliformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "nemichthyidae": {
+   "label": "Nemichthyidae",
+   "en": "snipe-eels",
+   "gbif": [
+    "anguilas tijera"
+   ],
+   "p1843": []
+  },
+  "sepiida": {
+   "label": "Sepiida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sepiidae": {
+   "label": "Sepiidae",
+   "en": "",
+   "gbif": [
+    "Chocos",
+    "Choquitos",
+    "Jíbias",
+    "Sepias"
+   ],
+   "p1843": []
+  },
+  "ascarosepion": {
+   "label": "Ascarosepion",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ascarosepion-pfefferi": {
+   "label": "Ascarosepion pfefferi",
+   "en": "flamboyant cuttlefish",
+   "gbif": [
+    "Sepia llamativa"
+   ],
+   "p1843": []
+  },
+  "acanthosepion": {
+   "label": "Acanthosepion",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "acanthosepion-pharaonis": {
+   "label": "Acanthosepion pharaonis",
+   "en": "pharoh cuttlefish",
+   "gbif": [
+    "Sepia faraón"
+   ],
+   "p1843": []
+  },
+  "hypsibius-exemplaris": {
+   "label": "Hypsibius exemplaris",
+   "en": "water bear",
+   "gbif": [],
+   "p1843": []
+  },
+  "eutardigrada": {
+   "label": "Eutardigrada",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "parachela": {
+   "label": "Parachela",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "hypsibiidae": {
+   "label": "Hypsibiidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "hypsibius": {
+   "label": "Hypsibius",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "richtersius-coronifer": {
+   "label": "Richtersius coronifer",
+   "en": "water bear",
+   "gbif": [],
+   "p1843": []
+  },
+  "richtersiusidae": {
+   "label": "Richtersiusidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "richtersius": {
+   "label": "Richtersius",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "echiniscus-testudo": {
+   "label": "Echiniscus testudo",
+   "en": "water bear",
+   "gbif": [],
+   "p1843": []
+  },
+  "heterotardigrada": {
+   "label": "Heterotardigrada",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "echiniscoidea": {
+   "label": "Echiniscoidea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "echiniscidae": {
+   "label": "Echiniscidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "echiniscus": {
+   "label": "Echiniscus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "teleostei": {
+   "label": "Teleostei",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "muraenidae": {
+   "label": "Muraenidae",
+   "en": "moray eels",
+   "gbif": [
+    "Murénidos",
+    "morenas"
+   ],
+   "p1843": []
+  },
+  "calcinus-elegans": {
+   "label": "Calcinus elegans",
+   "en": "electric blue hermit crab",
+   "gbif": [],
+   "p1843": []
+  },
+  "decapoda": {
+   "label": "Decapoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "diogenidae": {
+   "label": "Diogenidae",
+   "en": "",
+   "gbif": [
+    "Cangrejos ermitaños zurdos"
+   ],
+   "p1843": []
+  },
+  "calcinus": {
+   "label": "Calcinus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ctenoides-mitis": {
+   "label": "Ctenoides mitis",
+   "en": "smooth flame scallop",
+   "gbif": [
+    "Almeja de lima"
+   ],
+   "p1843": []
+  },
+  "bivalvia": {
+   "label": "Bivalvia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "limida": {
+   "label": "Limida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "limidae": {
+   "label": "Limidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ctenoides": {
+   "label": "Ctenoides",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cassis-tuberosa": {
+   "label": "Cassis tuberosa",
+   "en": "Caribbean helmet",
+   "gbif": [],
+   "p1843": []
+  },
+  "littorinimorpha": {
+   "label": "Littorinimorpha",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cassidae": {
+   "label": "Cassidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cassis": {
+   "label": "Cassis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "antennarius-striatus": {
+   "label": "Antennarius striatus",
+   "en": "striated frogfish",
+   "gbif": [
+    "pescador",
+    "ranisapo estriado",
+    "Ranisapo Estriado"
+   ],
+   "p1843": [
+    "Ranisapo Estriado"
+   ]
+  },
+  "antennarius": {
+   "label": "Antennarius",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "pseudobiceros-bedfordi": {
+   "label": "Pseudobiceros bedfordi",
+   "en": "Persian carpet flatworm",
+   "gbif": [],
+   "p1843": []
+  },
+  "turbellaria": {
+   "label": "Turbellaria",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "pseudocerotidae": {
+   "label": "Pseudocerotidae",
+   "en": "",
+   "gbif": [
+    "Gusanos planos marinos"
+   ],
+   "p1843": []
+  },
+  "pseudobiceros": {
+   "label": "Pseudobiceros",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "stomatopoda": {
+   "label": "Stomatopoda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "odontodactylidae": {
+   "label": "Odontodactylidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "odontodactylus": {
+   "label": "Odontodactylus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "odontodactylus-scyllarus": {
+   "label": "Odontodactylus scyllarus",
+   "en": "peacock mantis shrimp",
+   "gbif": [
+    "Camarón Mantis Arlequín"
+   ],
+   "p1843": []
+  },
+  "strongylocentrotus-purpuratus": {
+   "label": "Strongylocentrotus purpuratus",
+   "en": "purple sea urchin",
+   "gbif": [
+    "Erizo de mar morado"
+   ],
+   "p1843": []
+  },
+  "strongylocentrotidae": {
+   "label": "Strongylocentrotidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "strongylocentrotus": {
+   "label": "Strongylocentrotus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mesocentrotus-franciscanus": {
+   "label": "Mesocentrotus franciscanus",
+   "en": "red sea urchin",
+   "gbif": [
+    "Erizo rojo de mar"
+   ],
+   "p1843": []
+  },
+  "mesocentrotus": {
+   "label": "Mesocentrotus",
+   "en": "",
+   "gbif": [
+    "Erizos"
+   ],
+   "p1843": []
+  },
+  "bodianus-pulcher": {
+   "label": "Bodianus pulcher",
+   "en": "California sheephead",
+   "gbif": [
+    "Doncella Californiana",
+    "vieja californiana"
+   ],
+   "p1843": []
+  },
+  "bodianus": {
+   "label": "Bodianus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chondrocladia": {
+   "label": "Chondrocladia",
+   "en": "sponge",
+   "gbif": [],
+   "p1843": []
+  },
+  "demospongiae": {
+   "label": "Demospongiae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "poecilosclerida": {
+   "label": "Poecilosclerida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cladorhizidae": {
+   "label": "Cladorhizidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "chromista": {
+   "label": "Chromista",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ochrophyta": {
+   "label": "Ochrophyta",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "bacillariophyceae": {
+   "label": "Bacillariophyceae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vibrio": {
+   "label": "Vibrio",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vibrio-paxillifer": {
+   "label": "Vibrio paxillifer",
+   "en": "Bacillaria paxiliver",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhinoderma-darwinii": {
+   "label": "Rhinoderma darwinii",
+   "en": "Darwin's frog",
+   "gbif": [
+    "Rana Narigona",
+    "Ranita de Darwin",
+    "Sapito Partero",
+    "Sapito Vaquero"
+   ],
+   "p1843": [
+    "Rana Narigona",
+    "Ranita De Darwin",
+    "Sapito Partero",
+    "Sapito Vaquero"
+   ]
+  },
+  "amphibia": {
+   "label": "Amphibia",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Anfibios"
+   ]
+  },
+  "anura": {
+   "label": "Anura",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhinodermatidae": {
+   "label": "Rhinodermatidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhinoderma": {
+   "label": "Rhinoderma",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "bonellia-viridis": {
+   "label": "Bonellia viridis",
+   "en": "green spoonworm",
+   "gbif": [],
+   "p1843": []
+  },
+  "echiuroidea": {
+   "label": "Echiuroidea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "bonelliidae": {
+   "label": "Bonelliidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "bonellia": {
+   "label": "Bonellia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cacatua-galerita": {
+   "label": "Cacatua galerita",
+   "en": "sulphur-crested cockatoo",
+   "gbif": [
+    "Cacatúa australiana",
+    "Cacatúa de moño amarillo",
+    "Cacatúa galerita"
+   ],
+   "p1843": [
+    "Cacatúa galerita"
+   ]
+  },
+  "psittaciformes": {
+   "label": "Psittaciformes",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "psitaciformes"
+   ]
+  },
+  "psittacidae": {
+   "label": "Psittacidae",
+   "en": "",
+   "gbif": [
+    "Loros",
+    "loros del Nuevo Mundo y África",
+    "pericos del Nuevo Mundo y África"
+   ],
+   "p1843": []
+  },
+  "cacatua": {
+   "label": "Cacatua",
+   "en": "",
+   "gbif": [
+    "Cacatúas"
+   ],
+   "p1843": []
+  },
+  "nymphicus": {
+   "label": "Nymphicus",
+   "en": "cockatiels",
+   "gbif": [
+    "Ninfa"
+   ],
+   "p1843": [
+    "Cacatúa ninfa"
+   ]
+  },
+  "trochilidae": {
+   "label": "Trochilidae",
+   "en": "hummingbirds",
+   "gbif": [
+    "Colibríes",
+    "Picaflores",
+    "Zumbadores"
+   ],
+   "p1843": []
+  },
+  "apodiformes": {
+   "label": "Apodiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "monodontidae": {
+   "label": "Monodontidae",
+   "en": "",
+   "gbif": [
+    "Narval y beluga"
+   ],
+   "p1843": []
+  },
+  "delphinapterus": {
+   "label": "Delphinapterus",
+   "en": "",
+   "gbif": [],
+   "p1843": [
+    "Beluga",
+    "Ballena Blanca"
+   ]
+  },
+  "delphinapterus-leucas": {
+   "label": "Delphinapterus leucas",
+   "en": "beluga whale",
+   "gbif": [
+    "Ballena beluga",
+    "ballena blanca",
+    "Ballena Blanca"
+   ],
+   "p1843": [
+    "Beluga",
+    "Ballena Blanca"
+   ]
+  },
+  "caudata": {
+   "label": "Caudata",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ambystomatidae": {
+   "label": "Ambystomatidae",
+   "en": "",
+   "gbif": [
+    "Ajolotes"
+   ],
+   "p1843": []
+  },
+  "ambystoma": {
+   "label": "Ambystoma",
+   "en": "",
+   "gbif": [
+    "Ajolotes",
+    "achoques"
+   ],
+   "p1843": []
+  },
+  "ambystoma-mexicanum": {
+   "label": "Ambystoma mexicanum",
+   "en": "axolotl",
+   "gbif": [
+    "Ajolote",
+    "Ajolote de Xochimilco",
+    "Ajolote mexicano",
+    "Salamandra ajolote"
+   ],
+   "p1843": [
+    "Ajolote"
+   ]
+  },
+  "caprella-mutica": {
+   "label": "Caprella mutica",
+   "en": "Japanese skeleton shrimp",
+   "gbif": [
+    "Camarón esqueleto japonés"
+   ],
+   "p1843": []
+  },
+  "caprella": {
+   "label": "Caprella",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "hymenocera-picta": {
+   "label": "Hymenocera picta",
+   "en": "harlequin shrimp",
+   "gbif": [
+    "Camarón arlequín"
+   ],
+   "p1843": []
+  },
+  "palaemonidae": {
+   "label": "Palaemonidae",
+   "en": "",
+   "gbif": [
+    "Camaroncitos de río",
+    "Langostinos y camaroncitos transparentes"
+   ],
+   "p1843": []
+  },
+  "hymenocera": {
+   "label": "Hymenocera",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "morus-capensis": {
+   "label": "Morus capensis",
+   "en": "Cape gannet, South African gannet",
+   "gbif": [
+    "Alcatraz de El Cabo",
+    "Piquero de El Cabo"
+   ],
+   "p1843": [
+    "Alcatraz de El Cabo"
+   ]
+  },
+  "suliformes": {
+   "label": "Suliformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sulidae": {
+   "label": "Sulidae",
+   "en": "",
+   "gbif": [
+    "Alcatraces",
+    "Alcatraces y piqueros",
+    "Bobos",
+    "Piqueros"
+   ],
+   "p1843": []
+  },
+  "morus": {
+   "label": "Morus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "actinoptychus-splendens": {
+   "label": "Actinoptychus splendens",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "coscinodiscales": {
+   "label": "Coscinodiscales",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "heliopeltaceae": {
+   "label": "Heliopeltaceae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "actinoptychus": {
+   "label": "Actinoptychus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhinopias-frondosa": {
+   "label": "Rhinopias frondosa",
+   "en": "weedy scorpionfish",
+   "gbif": [
+    "Pez Escorpión Ojón"
+   ],
+   "p1843": []
+  },
+  "scorpaeniformes": {
+   "label": "Scorpaeniformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "scorpaenidae": {
+   "label": "Scorpaenidae",
+   "en": "",
+   "gbif": [
+    "Peces escorpión",
+    "escorpiones y rocotes"
+   ],
+   "p1843": []
+  },
+  "rhinopias": {
+   "label": "Rhinopias",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhinopias-aphanes": {
+   "label": "Rhinopias aphanes",
+   "en": "lacy scorpionfish",
+   "gbif": [],
+   "p1843": []
+  },
+  "orectolobiformes": {
+   "label": "Orectolobiformes",
+   "en": "",
+   "gbif": [
+    "gatas nodrizas",
+    "tiburones tapiceros"
+   ],
+   "p1843": []
+  },
+  "orectolobidae": {
+   "label": "Orectolobidae",
+   "en": "",
+   "gbif": [
+    "Tiburones wobbegong",
+    "tiburones tapiceros"
+   ],
+   "p1843": []
+  },
+  "orectolobus": {
+   "label": "Orectolobus",
+   "en": "typical wobbegongs",
+   "gbif": [],
+   "p1843": []
+  },
+  "orectolobus-maculatus": {
+   "label": "Orectolobus maculatus",
+   "en": "spotted wobbegong",
+   "gbif": [
+    "Wobbegong manchado",
+    "tapicero manchado"
+   ],
+   "p1843": []
+  },
+  "periophthalmus": {
+   "label": "Periophthalmus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "periophthalmus-argentilineatus": {
+   "label": "Periophthalmus argentilineatus",
+   "en": "barred mudskipper",
+   "gbif": [
+    "Saltarín del fango de líneas plateadas"
+   ],
+   "p1843": []
+  },
+  "aurelia-aurita": {
+   "label": "Aurelia aurita",
+   "en": "moon jelly, common jellyfish",
+   "gbif": [
+    "Medusa boca de bandera",
+    "medusa común",
+    "medusa luna",
+    "medusa platillo",
+    "medusa sombrilla"
+   ],
+   "p1843": []
+  },
+  "scyphozoa": {
+   "label": "Scyphozoa",
+   "en": "",
+   "gbif": [
+    "medusas"
+   ],
+   "p1843": []
+  },
+  "semaeostomeae": {
+   "label": "Semaeostomeae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "ulmaridae": {
+   "label": "Ulmaridae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aurelia": {
+   "label": "Aurelia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "phidiana-lynceus": {
+   "label": "Phidiana lynceus",
+   "en": "lynx nudibranch",
+   "gbif": [],
+   "p1843": []
+  },
+  "facelinidae": {
+   "label": "Facelinidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "phidiana": {
+   "label": "Phidiana",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "myrionema-amboinense": {
+   "label": "Myrionema amboinense",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "eudendriidae": {
+   "label": "Eudendriidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "myrionema": {
+   "label": "Myrionema",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "physalia-physalis": {
+   "label": "Physalia physalis",
+   "en": "Portuguese man-o'-war, bluebottle",
+   "gbif": [
+    "botella azul",
+    "carabela portuguesa"
+   ],
+   "p1843": []
+  },
+  "xanthidae": {
+   "label": "Xanthidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lybia": {
+   "label": "Lybia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lybia-tessellata": {
+   "label": "Lybia tessellata",
+   "en": "common boxing crab",
+   "gbif": [
+    "Cangrejo Boxeador Picasso"
+   ],
+   "p1843": []
+  },
+  "haemulidae": {
+   "label": "Haemulidae",
+   "en": "",
+   "gbif": [
+    "Roncadores",
+    "burros y roncos"
+   ],
+   "p1843": []
+  },
+  "anisotremus": {
+   "label": "Anisotremus",
+   "en": "",
+   "gbif": [
+    "Burros"
+   ],
+   "p1843": []
+  },
+  "anisotremus-davidsonii": {
+   "label": "Anisotremus davidsonii",
+   "en": "Xantic Sargo",
+   "gbif": [
+    "sargo rayado",
+    "Burro Piedrero",
+    "Sargo Rayado"
+   ],
+   "p1843": [
+    "Burro Piedrero",
+    "Sargo Rayado"
+   ]
+  },
+  "anisotremus-virginicus": {
+   "label": "Anisotremus virginicus",
+   "en": "porkfish",
+   "gbif": [
+    "Bandera",
+    "Catalina",
+    "Chopa bocayate",
+    "burro payaso",
+    "catalineta"
+   ],
+   "p1843": [
+    "burro payaso"
+   ]
+  },
+  "rhacochilus-vacca": {
+   "label": "Rhacochilus vacca",
+   "en": "Pile Perch",
+   "gbif": [
+    "mojarra muellera",
+    "Mojarra Muellera",
+    "Perca"
+   ],
+   "p1843": []
+  },
+  "embiotocidae": {
+   "label": "Embiotocidae",
+   "en": "",
+   "gbif": [
+    "mojarras vivíparas"
+   ],
+   "p1843": []
+  },
+  "rhacochilus": {
+   "label": "Rhacochilus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhacochilus-toxotes": {
+   "label": "Rhacochilus toxotes",
+   "en": "rubberlip seaperch",
+   "gbif": [
+    "mojarra labios de hule"
+   ],
+   "p1843": []
+  },
+  "pisaster-giganteus": {
+   "label": "Pisaster giganteus",
+   "en": "Knobby Sea Star",
+   "gbif": [
+    "Estrella de azúcar",
+    "Estrella espinosa gigante"
+   ],
+   "p1843": []
+  },
+  "forcipulatida": {
+   "label": "Forcipulatida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "asteriidae": {
+   "label": "Asteriidae",
+   "en": "",
+   "gbif": [
+    "Estrellas de mar"
+   ],
+   "p1843": []
+  },
+  "pisaster": {
+   "label": "Pisaster",
+   "en": "",
+   "gbif": [
+    "Estrellas de mar"
+   ],
+   "p1843": []
+  },
+  "hippocampus": {
+   "label": "Hippocampus",
+   "en": "seahorse",
+   "gbif": [],
+   "p1843": []
+  },
+  "gasterosteiformes": {
+   "label": "Gasterosteiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "syngnathidae": {
+   "label": "Syngnathidae",
+   "en": "",
+   "gbif": [
+    "Caballitos de mar y peces pipa",
+    "peces pipa y caballitos de mar"
+   ],
+   "p1843": []
+  },
+  "hippocampus-bargibanti": {
+   "label": "Hippocampus bargibanti",
+   "en": "Bargibant's Seahorse pygmy seahorse",
+   "gbif": [
+    "Caballito de Mar Pigmeo de Bargibant"
+   ],
+   "p1843": []
+  },
+  "syngnathiformes": {
+   "label": "Syngnathiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "hippocampus-ingens": {
+   "label": "Hippocampus ingens",
+   "en": "Giant Seahorse",
+   "gbif": [
+    "Caballito De Mar",
+    "Caballito Del Pacifico",
+    "caballito del Pacífico"
+   ],
+   "p1843": [
+    "Caballito Del Pacifico",
+    "Caballito De Mar"
+   ]
+  },
+  "hippocampus-hippocampus": {
+   "label": "Hippocampus hippocampus",
+   "en": "short-snouted seahorse",
+   "gbif": [
+    "Caballito de Mar",
+    "Caballito de Mar del Hocico Corto",
+    "Caballito de mar",
+    "Caballo Marino",
+    "Caballo marino",
+    "Cabalo de Mar",
+    "Cabalo de mar",
+    "caballito de mar común"
+   ],
+   "p1843": [
+    "Caballito de Mar",
+    "Caballo Marino",
+    "Cabalo de Mar"
+   ]
+  },
+  "liparidae": {
+   "label": "Liparidae",
+   "en": "snailfish",
+   "gbif": [
+    "peces babosos"
+   ],
+   "p1843": []
+  },
+  "careproctus-rastrinus": {
+   "label": "Careproctus rastrinus",
+   "en": "salmon snailfish",
+   "gbif": [],
+   "p1843": []
+  },
+  "careproctus": {
+   "label": "Careproctus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aeolidiidae": {
+   "label": "Aeolidiidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aeolidia": {
+   "label": "Aeolidia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "aeolidia-papillosa": {
+   "label": "Aeolidia papillosa",
+   "en": "shag-rug nudibranch",
+   "gbif": [
+    "Eólido papiloso"
+   ],
+   "p1843": []
+  },
+  "strongylocentrotus-droebachiensis": {
+   "label": "Strongylocentrotus droebachiensis",
+   "en": "green sea urchin",
+   "gbif": [],
+   "p1843": []
+  },
+  "haliphron-atlanticus": {
+   "label": "Haliphron atlanticus",
+   "en": "Seven-arm Octopus",
+   "gbif": [],
+   "p1843": []
+  },
+  "alloposidae": {
+   "label": "Alloposidae",
+   "en": "",
+   "gbif": [
+    "Pulpo gigante de siete brazos"
+   ],
+   "p1843": []
+  },
+  "haliphron": {
+   "label": "Haliphron",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "caristius-macropus": {
+   "label": "Caristius macropus",
+   "en": "manefish",
+   "gbif": [],
+   "p1843": []
+  },
+  "caristiidae": {
+   "label": "Caristiidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "caristius": {
+   "label": "Caristius",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "halichoeres-semicinctus": {
+   "label": "Halichoeres semicinctus",
+   "en": "Rock wrasse",
+   "gbif": [
+    "señorita piedrera",
+    "Señorita Piedrera"
+   ],
+   "p1843": []
+  },
+  "halichoeres": {
+   "label": "Halichoeres",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "halichoeres-nebulosus": {
+   "label": "Halichoeres nebulosus",
+   "en": "Nebulous wrasse",
+   "gbif": [],
+   "p1843": []
+  },
+  "epibulus": {
+   "label": "Epibulus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "epibulus-brevis": {
+   "label": "Epibulus brevis",
+   "en": "slingjaw wrasse",
+   "gbif": [],
+   "p1843": []
+  },
+  "novaculichthys-taeniourus": {
+   "label": "Novaculichthys taeniourus",
+   "en": "Rockmover wrasse",
+   "gbif": [
+    "Doncella alguera",
+    "Señorita alguera",
+    "Vieja dragón",
+    "cuchillo dragón",
+    "Cuchillo Dragón",
+    "Doncella Alguera",
+    "Señorita Alguera",
+    "Vieja Dragón"
+   ],
+   "p1843": []
+  },
+  "novaculichthys": {
+   "label": "Novaculichthys",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "thalassoma-lunare": {
+   "label": "Thalassoma lunare",
+   "en": "Moon wrasse",
+   "gbif": [
+    "Doncella verde"
+   ],
+   "p1843": [
+    "Doncella verde"
+   ]
+  },
+  "thalassoma": {
+   "label": "Thalassoma",
+   "en": "",
+   "gbif": [
+    "Señoritas"
+   ],
+   "p1843": []
+  },
+  "epibulus-insidiator": {
+   "label": "Epibulus insidiator",
+   "en": "slingjaw wrasse",
+   "gbif": [
+    "Napoleón Bocón",
+    "Vieja guramí",
+    "Vieja Guramí"
+   ],
+   "p1843": [
+    "Vieja guramí"
+   ]
+  },
+  "pomacentridae": {
+   "label": "Pomacentridae",
+   "en": "",
+   "gbif": [
+    "castañetas y jaquetas"
+   ],
+   "p1843": []
+  },
+  "hypsypops": {
+   "label": "Hypsypops",
+   "en": "",
+   "gbif": [
+    "Garibaldis"
+   ],
+   "p1843": [
+    "Jaqueta garibaldi",
+    "Jaqueta vistosa"
+   ]
+  },
+  "hypsypops-rubicundus": {
+   "label": "Hypsypops rubicundus",
+   "en": "garibaldi",
+   "gbif": [
+    "Jaqueta vistosa",
+    "jaqueta garibaldi",
+    "Jaqueta garibaldi"
+   ],
+   "p1843": [
+    "Jaqueta garibaldi",
+    "Jaqueta vistosa"
+   ]
+  },
+  "oxyjulis": {
+   "label": "Oxyjulis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "oxyjulis-californica": {
+   "label": "Oxyjulis californica",
+   "en": "señorita",
+   "gbif": [
+    "señorita",
+    "señorita californiana",
+    "Señorita",
+    "Señorita Californiana"
+   ],
+   "p1843": []
+  },
+  "phaeophyceae": {
+   "label": "Phaeophyceae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "laminariales": {
+   "label": "Laminariales",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "laminariaceae": {
+   "label": "Laminariaceae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "macrocystis": {
+   "label": "Macrocystis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "macrocystis-pyrifera": {
+   "label": "Macrocystis pyrifera",
+   "en": "giant kelp",
+   "gbif": [
+    "Cachiyuyo",
+    "Calabacillo",
+    "Huiro Canutillo",
+    "Huiro Pato",
+    "Huiro flotador",
+    "Kelp gigante"
+   ],
+   "p1843": []
+  },
+  "enteroctopus-dofleini": {
+   "label": "Enteroctopus dofleini",
+   "en": "giant Pacific octopus",
+   "gbif": [
+    "Pulpo gigante del Pacífico"
+   ],
+   "p1843": []
+  },
+  "enteroctopodidae": {
+   "label": "Enteroctopodidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "enteroctopus": {
+   "label": "Enteroctopus",
+   "en": "",
+   "gbif": [
+    "Pulpos gigantes"
+   ],
+   "p1843": []
+  },
+  "octopus-pallidus": {
+   "label": "Octopus pallidus",
+   "en": "pale octopus",
+   "gbif": [
+    "Pulpo pálido"
+   ],
+   "p1843": []
+  },
+  "thoracica": {
+   "label": "Thoracica",
+   "en": "barnacle",
+   "gbif": [],
+   "p1843": []
+  },
+  "pollicipes": {
+   "label": "Pollicipes",
+   "en": "acorn barnacle",
+   "gbif": [],
+   "p1843": []
+  },
+  "octopus-wolfi": {
+   "label": "Octopus wolfi",
+   "en": "Wolf's Pygmy Octopus",
+   "gbif": [],
+   "p1843": []
+  },
+  "goniodorididae": {
+   "label": "Goniodorididae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "trapania": {
+   "label": "Trapania",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "trapania-euryeia": {
+   "label": "Trapania euryeia",
+   "en": "Dappled Pump Dorid",
+   "gbif": [],
+   "p1843": []
+  },
+  "procellariiformes": {
+   "label": "Procellariiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "diomedeidae": {
+   "label": "Diomedeidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "phoebastria": {
+   "label": "Phoebastria",
+   "en": "",
+   "gbif": [
+    "Albatros del Pacífico"
+   ],
+   "p1843": []
+  },
+  "phoebastria-immutabilis": {
+   "label": "Phoebastria immutabilis",
+   "en": "Albatross",
+   "gbif": [
+    "Albatros de Laysan"
+   ],
+   "p1843": [
+    "Albatros de Laysan"
+   ]
+  },
+  "phalaropus": {
+   "label": "Phalaropus",
+   "en": "Phalalarope",
+   "gbif": [
+    "Falaropos",
+    "Faláropos"
+   ],
+   "p1843": []
+  },
+  "bothrops-bilineatus": {
+   "label": "Bothrops bilineatus",
+   "en": "green jacaranda",
+   "gbif": [
+    "Víbora arborícola verde"
+   ],
+   "p1843": []
+  },
+  "viperidae": {
+   "label": "Viperidae",
+   "en": "",
+   "gbif": [
+    "Surucucu",
+    "Talla x",
+    "Víboras y parientes"
+   ],
+   "p1843": []
+  },
+  "bothrops": {
+   "label": "Bothrops",
+   "en": "",
+   "gbif": [
+    "Mapanares",
+    "Mapanás",
+    "Nauyacas",
+    "Yararás"
+   ],
+   "p1843": []
+  },
+  "phalaropus-lobatus": {
+   "label": "Phalaropus lobatus",
+   "en": "red-necked phalarope",
+   "gbif": [
+    "\"Falaropo Picofino",
+    "Falaropo Norteño\"",
+    "Falaropo Cuellinegro",
+    "Falaropo Picofino",
+    "Falaropo cuello rojo",
+    "Falaropo de Cuello Rojo",
+    "Falaropo picofino",
+    "Faláropo de Pico Fino",
+    "Pollito de mar boreal"
+   ],
+   "p1843": [
+    "Falaropo picofino",
+    "Falaropo pico fino"
+   ]
+  },
+  "charadriiformes": {
+   "label": "Charadriiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "scolopacidae": {
+   "label": "Scolopacidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "mobula-munkiana": {
+   "label": "Mobula munkiana",
+   "en": "Munk's Pygmy Devil Ray",
+   "gbif": [
+    "Diabolo Manta",
+    "Manta Raya",
+    "Manta Violácea",
+    "Manta diablo",
+    "Tortilla",
+    "manta chica"
+   ],
+   "p1843": [
+    "Diabolo Manta",
+    "Manta Raya",
+    "Manta Violácea",
+    "Tortilla"
+   ]
+  },
+  "chaunacops": {
+   "label": "Chaunacops",
+   "en": "coffinfish",
+   "gbif": [],
+   "p1843": []
+  },
+  "chaunacidae": {
+   "label": "Chaunacidae",
+   "en": "",
+   "gbif": [
+    "gómitas"
+   ],
+   "p1843": []
+  },
+  "amblyglyphidodon": {
+   "label": "Amblyglyphidodon",
+   "en": "Damselfish",
+   "gbif": [],
+   "p1843": []
+  },
+  "jorunna-parva": {
+   "label": "Jorunna parva",
+   "en": "sea bunny",
+   "gbif": [],
+   "p1843": []
+  },
+  "discodorididae": {
+   "label": "Discodorididae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "jorunna": {
+   "label": "Jorunna",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "lophius": {
+   "label": "Lophius",
+   "en": "Monkfish",
+   "gbif": [
+    "rapes"
+   ],
+   "p1843": []
+  },
+  "labyrinthulea": {
+   "label": "Labyrinthulea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "radiolaria": {
+   "label": "Radiolaria",
+   "en": "Radiolarian",
+   "gbif": [],
+   "p1843": []
+  },
+  "retaria": {
+   "label": "Retaria",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "polycystinea": {
+   "label": "Polycystinea",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "collodaria": {
+   "label": "Collodaria",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "zoantharia": {
+   "label": "Zoantharia",
+   "en": "Colonial Anemones",
+   "gbif": [],
+   "p1843": [
+    "zoantharios"
+   ]
+  },
+  "beroe-abyssicola": {
+   "label": "Beroe abyssicola",
+   "en": "Abyssal Comb Jelly",
+   "gbif": [],
+   "p1843": []
+  },
+  "nuda": {
+   "label": "Nuda",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "beroida": {
+   "label": "Beroida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "beroidae": {
+   "label": "Beroidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "beroe": {
+   "label": "Beroe",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "tiburonia-granrojo": {
+   "label": "Tiburonia granrojo",
+   "en": "Big red jelly",
+   "gbif": [],
+   "p1843": []
+  },
+  "tiburonia": {
+   "label": "Tiburonia",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "nautilida": {
+   "label": "Nautilida",
+   "en": "Nautiluses",
+   "gbif": [],
+   "p1843": []
+  },
+  "melosirales": {
+   "label": "Melosirales",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "stephanopyxidaceae": {
+   "label": "Stephanopyxidaceae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "eupyxidicula": {
+   "label": "Eupyxidicula",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "eupyxidicula-grunowii": {
+   "label": "Eupyxidicula grunowii",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "foraminifera": {
+   "label": "Foraminifera",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sarcodina": {
+   "label": "Sarcodina",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "caprimulgiformes": {
+   "label": "Caprimulgiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "nyctibiidae": {
+   "label": "Nyctibiidae",
+   "en": "",
+   "gbif": [
+    "Nictibios",
+    "Pájaros estaca",
+    "Urutaúes"
+   ],
+   "p1843": []
+  },
+  "nyctibius": {
+   "label": "Nyctibius",
+   "en": "Potoo",
+   "gbif": [
+    "Nictibios Típicos",
+    "Pájaros estaca",
+    "Urutaúes"
+   ],
+   "p1843": []
+  },
+  "nyctibiiformes": {
+   "label": "Nyctibiiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "nyctibius-grandis": {
+   "label": "Nyctibius grandis",
+   "en": "Great Potoo",
+   "gbif": [
+    "Bienparado grande",
+    "Bienparado mayor",
+    "Nictibio Grande",
+    "Nictibio grande",
+    "Pájaro Estaca",
+    "Pájaro Estaca Mayor",
+    "Urutaú grande"
+   ],
+   "p1843": [
+    "Nictibio grande"
+   ]
+  },
+  "synalpheus-regalis": {
+   "label": "Synalpheus regalis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "alpheidae": {
+   "label": "Alpheidae",
+   "en": "",
+   "gbif": [
+    "Camarones chasqueadores"
+   ],
+   "p1843": []
+  },
+  "synalpheus": {
+   "label": "Synalpheus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "tetronarce-californica": {
+   "label": "Tetronarce californica",
+   "en": "pacific electric ray",
+   "gbif": [
+    "Torpedo del Pacifico",
+    "torpedo del Pacífico"
+   ],
+   "p1843": []
+  },
+  "torpediniformes": {
+   "label": "Torpediniformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "torpedinidae": {
+   "label": "Torpedinidae",
+   "en": "",
+   "gbif": [
+    "torpedos"
+   ],
+   "p1843": []
+  },
+  "tetronarce": {
+   "label": "Tetronarce",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "sepia": {
+   "label": "Sepia",
+   "en": "",
+   "gbif": [
+    "Sepia",
+    "Sepias"
+   ],
+   "p1843": []
+  },
+  "ascarosepion-latimanus": {
+   "label": "Ascarosepion latimanus",
+   "en": "",
+   "gbif": [
+    "Sepia de manos largas"
+   ],
+   "p1843": []
+  },
+  "toxopneustes-pileolus": {
+   "label": "Toxopneustes pileolus",
+   "en": "flower urchin",
+   "gbif": [],
+   "p1843": []
+  },
+  "toxopneustidae": {
+   "label": "Toxopneustidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "toxopneustes": {
+   "label": "Toxopneustes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "strombidae": {
+   "label": "Strombidae",
+   "en": "true conch",
+   "gbif": [],
+   "p1843": []
+  },
+  "vertigo-antivertigo": {
+   "label": "Vertigo antivertigo",
+   "en": "Marsh Whorl Snail",
+   "gbif": [],
+   "p1843": []
+  },
+  "stylommatophora": {
+   "label": "Stylommatophora",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vertiginidae": {
+   "label": "Vertiginidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vertigo": {
+   "label": "Vertigo",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "bodianus-reticulatus": {
+   "label": "Bodianus reticulatus",
+   "en": "Asian sheephead wrass, kobudai",
+   "gbif": [],
+   "p1843": []
+  },
+  "eupercaria-incertae-sedis": {
+   "label": "Eupercaria incertae sedis",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhinopristiformes": {
+   "label": "Rhinopristiformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhinidae": {
+   "label": "Rhinidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhina": {
+   "label": "Rhina",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "rhina-ancylostomus": {
+   "label": "Rhina ancylostomus",
+   "en": "bowmouth guitarfish, shark ray",
+   "gbif": [],
+   "p1843": []
+  },
+  "melibe-leonina": {
+   "label": "Melibe leonina",
+   "en": "lion nudibranch",
+   "gbif": [],
+   "p1843": []
+  },
+  "tethydidae": {
+   "label": "Tethydidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "melibe": {
+   "label": "Melibe",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "eurypegasus-draconis": {
+   "label": "Eurypegasus draconis",
+   "en": "short dragonfish, sea moth",
+   "gbif": [
+    "Pez pegaso"
+   ],
+   "p1843": []
+  },
+  "dactylopteriformes": {
+   "label": "Dactylopteriformes",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "pegasidae": {
+   "label": "Pegasidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "eurypegasus": {
+   "label": "Eurypegasus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "pegasus-volitans": {
+   "label": "Pegasus volitans",
+   "en": "longtail seamouth",
+   "gbif": [],
+   "p1843": []
+  },
+  "pegasus": {
+   "label": "Pegasus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "cyclopteridae": {
+   "label": "Cyclopteridae",
+   "en": "lumpfishes, lumpsuckers",
+   "gbif": [
+    "peces grumo"
+   ],
+   "p1843": []
+  },
+  "phyllodesmium": {
+   "label": "Phyllodesmium",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "myrrhinidae": {
+   "label": "Myrrhinidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "vitamin-k": {
+   "label": "Vitamin k",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "siphonophorae": {
+   "label": "Siphonophorae",
+   "en": "siphonophore",
+   "gbif": [],
+   "p1843": []
+  },
+  "praya-dubia": {
+   "label": "Praya dubia",
+   "en": "",
+   "gbif": [
+    "Sifonóforo gigante"
+   ],
+   "p1843": []
+  },
+  "prayidae": {
+   "label": "Prayidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "praya": {
+   "label": "Praya",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "astropecten-armatus": {
+   "label": "Astropecten armatus",
+   "en": "sand sifting sea star",
+   "gbif": [],
+   "p1843": []
+  },
+  "paxillosida": {
+   "label": "Paxillosida",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "astropectinidae": {
+   "label": "Astropectinidae",
+   "en": "",
+   "gbif": [
+    "Estrellas espinosas de mar"
+   ],
+   "p1843": []
+  },
+  "astropecten": {
+   "label": "Astropecten",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "astropecten-duplicatus": {
+   "label": "Astropecten duplicatus",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "balanidae": {
+   "label": "Balanidae",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "homer-simpson": {
+   "label": "Homer simpson",
+   "en": "",
+   "gbif": [],
+   "p1843": []
+  },
+  "astropecten-polyacanthus": {
+   "label": "Astropecten polyacanthus",
+   "en": "",
+   "gbif": [
+    "Estrella de mar arenera"
+   ],
+   "p1843": []
+  }
+ }
+}

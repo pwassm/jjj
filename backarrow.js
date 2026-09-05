@@ -120,8 +120,10 @@
     b.id = BTN_ID;
     b.type = 'button';
     b.textContent = '←';
-    b.title = 'Back (Esc)';
-    b.setAttribute('aria-label', 'Back');
+    // (dev0930) The glyph itself is language-neutral; only its labels translate.
+    var _t = window.T || function (s) { return s; };
+    b.title = _t('Back (Esc)');
+    b.setAttribute('aria-label', _t('Back'));
     // z-index clears the grid overlay's chrome (28010) and the fullscreen
     // viewer's own arrows, so it is reachable on top of any of them.
     b.style.cssText = 'position:fixed;left:10px;top:50%;transform:translateY(-50%);'

@@ -573,6 +573,14 @@ const SM_FEAT_ADDOWN = true;
 // returns to this menu (see vpClose return-to-menu hook). Direct URLs
 // (/tshare, /ss4) still bypass the menu and run locked, one-shot.
 async function _showShareableMenu() {
+  // (dev0930) The menu is the one surface that must not paint English and then
+  // correct itself, so it waits for lang.es.json here. Everywhere else T() is
+  // synchronous with an English fallback and the dictionary has long since
+  // landed by the time a grid or a viewer mounts. Fails soft: a missing or
+  // broken lang file resolves to an empty dictionary, and every T() call
+  // returns its English argument.
+  if (window.salLang) { try { await window.salLang.ready(); } catch (e) {} }
+
   // Clear any prior locked-mode state — re-entering the menu means the
   // viewer is back at "home" and free to pick another item.
   window._lockedUid = undefined;
@@ -1311,6 +1319,26 @@ async function _showShareableMenu() {
     // (dev0763) Build stamp in the Intro's top-left corner. pointer-events:none
     // so it can never sit between a thumb and the sign-in strip beneath it.
     + '.sm-ver{position:absolute;top:3px;left:7px;z-index:2;font:10px/1 monospace;color:rgba(255,255,255,0.45);pointer-events:none;}'
+    // (dev0930) LANGUAGE TOGGLE — the mirror of the build stamp, top-RIGHT of
+    // the Welcome page. It belongs here rather than in the tab bar or a settings
+    // panel because a viewer who needs Spanish needs it on arrival, before they
+    // have learned anything about the site's furniture; the first screen is the
+    // only place that is guaranteed to be seen. Quiet, like the version stamp,
+    // but a real button — it has a job to do, so it takes a hit area and a hover.
+    // It names the language it SWITCHES TO ("Español" while you are reading
+    // English), which is the convention every multilingual site uses and the one
+    // that stays legible to someone who cannot read the current language.
+    + '.sm-lang{position:absolute;top:5px;right:9px;z-index:6;padding:4px 11px;'
+      + 'font-family:inherit;font-size:12px;line-height:1.4;cursor:pointer;'
+      + 'color:#cfe0f0;background:rgba(0,0,0,0.28);border:1px solid rgba(255,255,255,0.22);'
+      + 'border-radius:999px;white-space:nowrap;touch-action:manipulation;'
+      + 'transition:background .12s,color .12s,border-color .12s;}'
+    + '.sm-lang:hover,.sm-lang:focus{color:#fff;background:rgba(74,168,255,0.30);border-color:#7cc0ff;outline:none;}'
+    // Spanish runs 15-25% longer than English and the tab bar is the tightest
+    // row on the site — eight tabs sharing one flex line. Half a point smaller
+    // buys back roughly that much without touching the English layout at all.
+    + 'html.lang-es .sm-tab{font-size:13px;letter-spacing:0;}'
+    + '@media(max-width:900px){html.lang-es .sm-tab{font-size:11px;}}'
     // (dev0767) Charcoal bars, SE-style: a flat dark strip that reads as chrome
     // rather than as more page. The active tab lifts to #32363c and takes a
     // bright #4aa8ff edge — top bar on its bottom edge, bottom bar on its top,
@@ -1376,27 +1404,32 @@ async function _showShareableMenu() {
   // and the day's picture now; "Intro" named a wall of introductory prose that
   // moved off it. Page 5, the number the removed "Navigation Training" tab used
   // to hold, is reused for "Starting out" — the empty tab that follows it.
+  // (dev0930) T() wraps the label text only — never the data-pg value, which is
+  // the page's identity and is matched on elsewhere. Translating an attribute
+  // that doubles as a key is the classic i18n regression; keep it in mind for
+  // every future tab added here.
+  const _T = window.T || (s => s);
   const _tabBtns =
-      '<button class="sm-tab" data-pg="1">Welcome</button>'
-    + '<button class="sm-tab" data-pg="5">Starting out</button>'
-    + '<button class="sm-tab" data-pg="2">Grids</button>'
+      '<button class="sm-tab" data-pg="1">' + _T('Welcome') + '</button>'
+    + '<button class="sm-tab" data-pg="5">' + _T('Starting out') + '</button>'
+    + '<button class="sm-tab" data-pg="2">' + _T('Grids') + '</button>'
     + (SM_FEAT_SEARCH
-        ? '<button class="sm-tab" data-pg="3">Search</button>'
-          + '<button class="sm-tab" data-pg="6">SavedSearches</button>'
+        ? '<button class="sm-tab" data-pg="3">' + _T('Search') + '</button>'
+          + '<button class="sm-tab" data-pg="6">' + _T('SavedSearches') + '</button>'
         : '')
     // (dev0667) "My Loops" — the viewer's own A→B segments. Sits after
     // SavedSearches because they're siblings: a saved search is a QUERY, a loop
     // is a UID + start/stop. Different entities, separate lists, one tab each.
-    + '<button class="sm-tab" data-pg="7">My Loops</button>'
+    + '<button class="sm-tab" data-pg="7">' + _T('My Loops') + '</button>'
     // (dev0668) "Add your own" — a URL the viewer pastes themselves. Follows
     // My Loops because that's where its loops end up.
-    + (SM_FEAT_ADDOWN ? '<button class="sm-tab" data-pg="8">Add your own</button>' : '')
-    + '<button class="sm-tab" data-pg="4">Other</button>'
+    + (SM_FEAT_ADDOWN ? '<button class="sm-tab" data-pg="8">' + _T('Add your own') + '</button>' : '')
+    + '<button class="sm-tab" data-pg="4">' + _T('Other') + '</button>'
     // (dev0782) "Contact" — the home of the sign-in strip, which until now sat at
     // the top of the Intro. Signing in is a thing the viewer goes looking for,
     // not something the front door should ask for, so it gets its own tab and
     // the Intro opens on prose alone. Last, because it is the least-used tab.
-    + '<button class="sm-tab" data-pg="9">Contact</button>';
+    + '<button class="sm-tab" data-pg="9">' + _T('Contact') + '</button>';
 
   ov.innerHTML = menuStyle
     // (dev0384) Top tab bar — replaces the former header (there is no header now).
@@ -1410,6 +1443,13 @@ async function _showShareableMenu() {
         // (dev0763) Build stamp, top-left of the Intro — small and inert, so a
         // phone that is showing a stale cached app says so without being asked.
         + '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
+        // (dev0930) Language toggle. Rendered only when lang.js is present, so
+        // the menu is unchanged if the feature is cut out.
+        + (window.salLang
+            ? '<button id="smLangBtn" class="sm-lang" type="button" title="'
+              + _smEsc(window.salLang.is('es') ? 'Read this site in English' : 'Leer este sitio en español')
+              + '">' + _smEsc(window.salLang.is('es') ? 'English' : 'Español') + '</button>'
+            : '')
         // (dev0782) The sign-in strip that used to sit here is gone — it lives on
         // the Contact tab (page 9) now. Nothing else changed on this page.
         // (dev0779) SECTION 1 · IMAGE OF THE DAY · SECTION 2. The two sections
@@ -1439,7 +1479,7 @@ async function _showShareableMenu() {
       // Singles | Grids on desktop, stacked on phone)
       + '<div id="smPage2" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + (greetIntro.trim() ? '<div class="smGreeting">' + greetIntro + '</div>'
-                             : '<div class="sm-sub">Home</div>')   // (dev0763) matches the button that lands here
+                             : '<div class="sm-sub">' + _T('Home') + '</div>')   // (dev0763) matches the button that lands here
         // (dev0379) Table-like, sortable list. Header columns Name / Modified
         // sort on click (arrow shows direction); body re-renders via
         // _smRenderChoose after mount. Defaults to Modified, newest at top.
@@ -1453,16 +1493,17 @@ async function _showShareableMenu() {
                   // button clears on click/Enter/Space then refocuses the (now
                   // blank) filter.
                   + '<div class="sm-chfwrap">'
-                    + '<input id="smChFilter" class="sm-chfilter" type="text" placeholder="Filter choices…" autocomplete="off">'
-                    + '<button id="smChClear" class="sm-chclear" type="button">Clear filter</button>'
+                    + '<input id="smChFilter" class="sm-chfilter" type="text" placeholder="' + _T('Filter choices…') + '" autocomplete="off">'
+                    + '<button id="smChClear" class="sm-chclear" type="button">' + _T('Clear filter') + '</button>'
                   + '</div>'
-                  + '<button id="smExpandAll" class="sm-chbtn">▼ Expand all</button>'
-                  + '<button id="smCollapseAll" class="sm-chbtn">▶ Collapse all</button>'
+                  + '<button id="smExpandAll" class="sm-chbtn">▼ ' + _T('Expand all') + '</button>'
+                  + '<button id="smCollapseAll" class="sm-chbtn">▶ ' + _T('Collapse all') + '</button>'
                 + '</div>'
                 + '<div class="sm-chhead">'
                   + '<span class="sm-chh-spacer"></span>'
-                  + '<button class="sm-chh sm-chh-name" data-sort="name">Name<span class="sm-arrow"></span></button>'
-                  + '<button class="sm-chh sm-chh-date" data-sort="date">Modified<span class="sm-arrow"></span></button>'
+                  // data-sort is a key, not text — see the note on data-pg above.
+                  + '<button class="sm-chh sm-chh-name" data-sort="name">' + _T('Name') + '<span class="sm-arrow"></span></button>'
+                  + '<button class="sm-chh sm-chh-date" data-sort="date">' + _T('Modified') + '<span class="sm-arrow"></span></button>'
                 + '</div>'
                 + '<div id="smChooseBody"></div>'
               + '</div>'
@@ -1471,7 +1512,7 @@ async function _showShareableMenu() {
       // PAGE 4 — "Other": free-form HTML from the c.json "other" config's ctxt.
       + '<div id="smPage4" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + (otherHtml.trim() ? '<div class="smGreeting">' + otherHtml + '</div>'
-                            : '<div class="sm-sub">Nothing here yet</div>')
+                            : '<div class="sm-sub">' + _T('Nothing here yet') + '</div>')
       + '</div>'
       // PAGE 3 — search anywhere across all of T; result cards appear once the
       // match count drops below n (the Greeting row's MPix).
@@ -1767,6 +1808,18 @@ async function _showShareableMenu() {
   // window.salAuth is missing (auth.js failed to load) or the API is down, the
   // strip stays empty and browsing is entirely unaffected.
   _wireSignIn(ov);
+
+  // (dev0930) Language toggle. Switching reloads the page — see the note at the
+  // top of lang.js for why that is the right answer rather than a re-render:
+  // the menu, the grid and the viewers each build their text once at mount from
+  // dozens of call sites, and re-running all of them in place would buy a whole
+  // class of half-translated bugs for no benefit a repaint does not already give.
+  const _smLangBtn = ov.querySelector('#smLangBtn');
+  if (_smLangBtn && window.salLang) {
+    _smLangBtn.addEventListener('click', () => {
+      window.salLang.set(window.salLang.is('es') ? 'en' : 'es');
+    });
+  }
   // ── (dev0787) THE IMAGE OF THE DAY: arrows + fit-to-screen ─────────────────
   // dev0781's fold-open/close wiring is gone with the fold. Two jobs now: the
   // ‹ › arrows step _smDayIdx through the assigned days and re-fill the box in
@@ -3229,8 +3282,10 @@ function _wireMobileToCBtn() {
     // below) and the static index.html title only described the dev one. Keep
     // the label honest per mode — helpfloat.js's balloons read this title, so a
     // wrong one here becomes a wrong balloon.
+    // (dev0930) Only the user-mode half is translated — the dev wording is for
+    // an audience of one and stays English.
     btn.title = _isUserMode()
-      ? 'Back to the Main Page — pick another grid, a saved view or a search'
+      ? (window.T || (s => s))('Back to the Main Page — pick another grid, a saved view or a search')
       : 'Switch to Configurations (choose a different grid)';
     // (dev0316) The user-mode top-left hamburger follows the same gate so
     // the slideshow launcher is only available while a grid is mounted.

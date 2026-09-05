@@ -549,8 +549,12 @@ function _f16PlaceCircles(container) {
     // its top-left cell.
     dot.style.left = (ox + tl.c * cell) + 'px';
     dot.style.top  = (oy + tl.r * g.ch) + 'px';
-    dot.title = !on ? 'Fold the two corners first'
-      : (folded ? 'Click to unfold' : b.label) + ' (click)';
+    // (dev0930) b.label is a fold DESCRIPTION built from cell coordinates
+    // ("Fold 1a·1b·2a·2b onto 2b") — those coordinates are the grid's own
+    // notation and are not translated, so the label passes through as-is.
+    var _t = window.T || function (s) { return s; };
+    dot.title = !on ? _t('Fold the two corners first')
+      : (folded ? _t('Click to unfold') : b.label) + ' (' + _t('click') + ')';
     // ─────────────────────────────────────────────────────────────────────────
     // (dev0845) THE CIRCLES TAKE A SINGLE TAP, AND THEY TAKE IT ON pointerup.
     //

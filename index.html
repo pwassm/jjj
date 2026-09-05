@@ -799,11 +799,15 @@ thead th.rn              { color: #fff !important; }
 <div id="hmPanel">
   <div id="fsa-status">No project folder set</div>
   <div class="hm-item active" id="hm-setfolder"><u>F</u>older — Set project folder</div>
-  <div class="hm-item active" id="hm-changesel">🏠 <u>W</u>elcome Menu — Back to the menu</div>
-  <div class="hm-item active" id="hm-webmaster" style="display:none;">✉ <u>M</u>essage to Webmaster</div>
+  <!-- (dev0930) data-t marks the three items a USER-mode viewer can see (the
+       rest are CSS-hidden in user mode) so lang.js can translate them after
+       load. The attribute value is the English text, which is the dictionary
+       key. See the static-HTML pass in lang.js. -->
+  <div class="hm-item active" id="hm-changesel" data-t="🏠 &lt;u&gt;W&lt;/u&gt;elcome Menu — Back to the menu">🏠 <u>W</u>elcome Menu — Back to the menu</div>
+  <div class="hm-item active" id="hm-webmaster" style="display:none;" data-t="✉ &lt;u&gt;M&lt;/u&gt;essage to Webmaster">✉ <u>M</u>essage to Webmaster</div>
   <div class="hm-divider"></div>
   <div class="hm-item active" id="hm-settings"><u>S</u>ettings</div>
-  <div class="hm-item active" id="hm-help"><u>H</u>elp</div>
+  <div class="hm-item active" id="hm-help" data-t="&lt;u&gt;H&lt;/u&gt;elp"><u>H</u>elp</div>
   <div style="padding:8px 18px; color:#444; font-size:10px; border-top:1px solid #222;">Press letter or Esc to close</div>
 </div>
 
@@ -1116,7 +1120,7 @@ thead th.rn              { color: #fff !important; }
 <!-- (dev0316) Top-left hamburger, user-mode only. Opens the same hmPanel
      as #hmBtn, but CSS hides everything except Slideshow + Help in user
      mode so it acts as a slideshow launcher. -->
-<button id="userHmBtn" type="button" title="Menu"><span></span><span></span><span></span></button>
+<button id="userHmBtn" type="button" title="Menu" data-t-title="Menu"><span></span><span></span><span></span></button>
 <div id="uid-badge" title="Last record (cleared on reload)"></div>
 
 <!-- (zip0143) Mobile portrait warning removed; auto-fullscreen-landscape
@@ -1124,7 +1128,9 @@ thead th.rn              { color: #fff !important; }
      orientation lock just stay in whatever orientation the user has. -->
 
 <!-- (zip0139) Floating "switch to C" button — only visible while G is open. -->
-<button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)">⚙ Configs</button>
+<!-- (dev0930) The label is translated via data-t; the TITLE is set at runtime
+     per mode by _wireMobileToCBtn in boot.js, which does its own T(). -->
+<button id="mobileToCBtn" title="Switch to Configurations (choose a different grid)" data-t="⚙ Configs">⚙ Configs</button>
 
 
 
@@ -1136,13 +1142,18 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0929';
+  window.HELP_VERSION_STR = 'dev0930';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
     // keydown listener that claims `h`, and listeners on the same node fire in
     // registration order — it has to beat core.js's dispatcher to the key.
-    var files = ['helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','taxoninfo.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','vpcolor.js','llc.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','quizcells.js','ig.js','s.js','o.js','x.js','slideshow.js','screenrec.js','cardtypes.js','makecard.js','auth.js','backarrow.js','keyboard.js','boot.js'];
+    // (dev0930) lang.js is FIRST so window.T exists before any other file's
+    // top-level code can call it. It registers no key listener, so it does not
+    // disturb the helpfloat-before-core keydown ordering the note above
+    // protects — that constraint is about listener registration order, and
+    // lang.js adds none.
+    var files = ['lang.js','helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','taxoninfo.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','vpcolor.js','llc.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','quizcells.js','ig.js','s.js','o.js','x.js','slideshow.js','screenrec.js','cardtypes.js','makecard.js','auth.js','backarrow.js','keyboard.js','boot.js'];
     files.forEach(function(f) {
       document.write('<script src="' + f + '?v=' + v + '"><\/script>');
     });

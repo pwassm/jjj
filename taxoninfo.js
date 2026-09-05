@@ -98,6 +98,19 @@
 
   var FILE   = 'taxoninfo.json';
   var LS_KEY = 'sal-taxoninfo';
+
+  // (dev0930) SPANISH OVERLAY. taxoninfo.es.json holds es.wikipedia intros for
+  // the taxa that have a Spanish article — 348 of the 468 verified ones. It is
+  // an OVERLAY, never a replacement: the English file stays the source of truth
+  // for status, qid, iucn, thumb and the whole verification story, and Spanish
+  // only ever swaps the PROSE (note / descr / wiki). A taxon with no Spanish
+  // article therefore keeps its English note rather than going blank, which is
+  // the right failure — an English card back beats an empty one.
+  //
+  // Loaded only when Spanish is actually on, so an English viewer never pays for
+  // the file. See lang.js and taxoninfo-es.js.
+  var ES_FILE = 'taxoninfo.es.json';
+  var esStore = null;
   var UA_HDR = { 'Api-User-Agent': 'SLAM-taxoninfo/1.0 (sealifeandmore.com)' };
 
   // BATCH is TITLES PER REQUEST, not requests in flight. One wave = one Wikipedia
@@ -141,9 +154,38 @@
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) raw = blank();
       if (!raw.items || typeof raw.items !== 'object') raw.items = {};
       store = raw;
+      // (dev0930) Spanish overlay, fetched alongside. Deliberately NOT awaited
+      // into the failure path of the English load: if taxoninfo.es.json is
+      // missing or malformed the cards must still show their English notes, so
+      // every outcome here ends with esStore either populated or left null.
+      if (window.salLang && window.salLang.esActive()) {
+        try {
+          var re = await fetch(ES_FILE + '?t=' + Date.now());
+          if (re.ok) {
+            var es = await re.json();
+            if (es && es.items && typeof es.items === 'object') esStore = es.items;
+          }
+        } catch (e) {}
+      }
       return store;
     })();
     return loading;
+  }
+
+  // The one place that decides English-or-Spanish for a taxon's prose. Returns a
+  // {note, descr, wiki} triple, preferring Spanish and falling back per-FIELD —
+  // a Spanish record with an empty descr should still show the English one
+  // rather than a gap, since descr is a caption and a missing caption reads as
+  // a bug.
+  function esProse(id, rec) {
+    var e = esStore && esStore[id];
+    if (!e || !e.note) return { note: rec.note, descr: rec.descr || '', wiki: rec.wiki || '', es: false };
+    return {
+      note:  e.note,
+      descr: e.descr || rec.descr || '',
+      wiki:  e.wiki  || rec.wiki  || '',
+      es: true
+    };
   }
 
   async function persist() {
@@ -773,10 +815,18 @@
       if (!tag) continue;
       if (tag.kind === 'taxon') {
         var rec = get(cur.id);
+        // The status/note gate stays on the ENGLISH record: that is the one that
+        // was verified against P225, and a Spanish overlay never earns a taxon a
+        // card back the English pass rejected.
         if (rec && rec.status === 'ok' && rec.note) {
+          var prose = esProse(cur.id, rec);
           return {
             id: cur.id, label: tag.label || cur.id, rank: tag.rank || '',
-            note: rec.note, descr: rec.descr || '', wiki: rec.wiki || '',
+            note: prose.note, descr: prose.descr, wiki: prose.wiki, isEs: prose.es,
+            // (dev0930) The Spanish common name, when tags.es.json has one. The
+            // card decides whether to show it; this just makes it reachable
+            // without the card having to know tags.es.json exists.
+            commonEs: (window.salTagsEs && window.salTagsEs.common(cur.id)) || '',
             iucn: rec.iucn || '', thumb: rec.thumb || '',
             viaGenus: rec.viaGenus || '', viaSpecies: rec.viaSpecies || '',
             up: cur.up

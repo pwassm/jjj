@@ -648,12 +648,24 @@
     //   "Orchid mantis · Hymenopus coronatus"
     // Common name in normal weight, scientific italicized in muted color.
     // Sorting is unaffected — the underlying tag id stays canonical.
+    // (dev0930) SPANISH. Both helpers return '' unless the viewer has actually
+    // switched to Spanish AND tags.es.json has an entry, so in English — and on
+    // every dev screen — this block is a no-op and the chips are byte-identical
+    // to before.
+    //
+    // The SCIENTIFIC name is never touched. A binomial is the same in every
+    // language; "translating" one would be a straight error, and it is the half
+    // of the chip a Spanish reader can already use.
+    const _esCommon = (window.salTagsEs && window.salTagsEs.common(id)) || '';
+    const _esLabel  = (window.salTagsEs && window.salTagsEs.label(id))  || '';
+
     let inner;
-    if (!missing && t.kind === 'taxon' && t.common && t.common !== t.label) {
-      inner = escapeHtml(t.common)
+    const _common = _esCommon || t && t.common;
+    if (!missing && t.kind === 'taxon' && _common && _common !== t.label) {
+      inner = escapeHtml(_common)
         + ' <span style="color:#fff;font-style:italic;font-weight:normal;margin-left:3px;">' + escapeHtml(t.label) + '</span>';
     } else {
-      inner = escapeHtml(label);
+      inner = escapeHtml(_esLabel || label);
     }
 
     return '<span class="tag-chip" data-tag-id="' + id + '" title="' + escapeAttr(title) + '" style="'

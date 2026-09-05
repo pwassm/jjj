@@ -1,0 +1,79 @@
+{
+ "_meta": {
+  "lang": "es",
+  "step": "dev0930 — step 1: menu chrome, viewer chrome, card backs",
+  "how": "The KEY is the English string exactly as it appears in the code. T('Grids') looks up 'Grids' here. A missing key, or an EMPTY value, falls back to English — so a blank line below is a to-do, never a bug, and deleting an entry is a safe no-op.",
+  "sections": "Section names are for humans only. lang.js flattens them into one map at load, so a string can be moved between sections without breaking anything. Keys starting with _ are ignored.",
+  "markup": "A value may carry HTML where the English did (the hamburger items). Keep any markup the English key has, or drop it deliberately — the <u>X</u> hotkey underlines are dropped here on purpose: the letters are English mnemonics, they are dev-facing, and underlining a letter that is not in the Spanish word is worse than no underline.",
+  "notreached": "NOT translated in step 1: the H help panel (HELP_DATA in core.js + the hotkeys.js registry), the dev screens (T/A/E/D/Xe/I/St/O/X/LLC), and ml.json content (VidTitle, ftext, comment). Those are the next steps."
+ },
+
+ "menu_tabs": {
+  "Welcome": "Bienvenida",
+  "Starting out": "Primeros pasos",
+  "Grids": "Cuadrículas",
+  "Search": "Buscar",
+  "SavedSearches": "Búsquedas guardadas",
+  "My Loops": "Mis bucles",
+  "Add your own": "Añade el tuyo",
+  "Other": "Otros",
+  "Contact": "Contacto"
+ },
+
+ "menu_chrome": {
+  "Filter choices…": "Filtrar opciones…",
+  "Clear filter": "Borrar filtro",
+  "Expand all": "Expandir todo",
+  "Collapse all": "Contraer todo",
+  "Name": "Nombre",
+  "Modified": "Modificado",
+  "Home": "Inicio",
+  "Nothing here yet": "Aún no hay nada aquí"
+ },
+
+ "hamburger": {
+  "🏠 <u>W</u>elcome Menu — Back to the menu": "🏠 Menú de bienvenida — Volver al menú",
+  "✉ <u>M</u>essage to Webmaster": "✉ Mensaje al administrador",
+  "<u>H</u>elp": "Ayuda",
+  "Menu": "Menú"
+ },
+
+ "viewer": {
+  "⚙ Configs": "⚙ Menú",
+  "Back to the Main Page — pick another grid, a saved view or a search": "Volver a la página principal: elige otra cuadrícula, una vista guardada o una búsqueda",
+  "Back (Esc)": "Atrás (Esc)",
+  "Back": "Atrás"
+ },
+
+ "grid": {
+  "Fold the two corners first": "Dobla primero las dos esquinas",
+  "Click to unfold": "Haz clic para desplegar",
+  "click": "clic"
+ },
+
+ "_cardbacks": "The note and the one-line description on a card back come from taxoninfo.es.json and are already Spanish. What follows is the FURNITURE printed around them — the rank word and the IUCN status — which are vocabularies, not prose, and are matched here as whole lowercase strings exactly as tags.json and taxoninfo.json store them.",
+
+ "taxon_rank": {
+  "kingdom": "reino",
+  "phylum": "filo",
+  "subphylum": "subfilo",
+  "class": "clase",
+  "order": "orden",
+  "suborder": "suborden",
+  "superfamily": "superfamilia",
+  "family": "familia",
+  "genus": "género",
+  "species": "especie"
+ },
+
+ "iucn_status": {
+  "least concern": "preocupación menor",
+  "near threatened": "casi amenazado",
+  "vulnerable": "vulnerable",
+  "endangered": "en peligro",
+  "critically endangered": "en peligro crítico",
+  "extinct in the wild": "extinto en estado silvestre",
+  "extinct": "extinto",
+  "data deficient": "datos insuficientes"
+ }
+}

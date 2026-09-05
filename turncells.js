@@ -316,16 +316,26 @@
   // is for the tag itself, since it is tighter than the rank alone.
   function dictHtml(t, fs) {
     var small = Math.max(8, fs - 3);
+    // (dev0930) The note and descr arrive already Spanish when taxoninfo.es.json
+    // has this taxon (see esProse in taxoninfo.js). What is left English here is
+    // the FURNITURE around them \u2014 the rank word, the IUCN status, the "genus"
+    // marker \u2014 so those go through T(). t.label stays untranslated: it is the
+    // scientific name.
+    var _t = window.T || function (s) { return s; };
     var head;
     if (t.up > 0) {
-      head = esc(t.label) + (t.rank ? ' \u00b7 ' + esc(t.rank) : '');
+      // An ANCESTOR supplied this note, so the card names it. The Spanish common
+      // name, where we have one, is the more useful half of that for a Spanish
+      // reader \u2014 show it ahead of the binomial, same shape as the tag chips.
+      var who = t.commonEs ? (esc(t.commonEs) + ' \u00b7 ' + esc(t.label)) : esc(t.label);
+      head = who + (t.rank ? ' \u00b7 ' + esc(_t(t.rank)) : '');
     } else {
       head = esc(t.descr || t.label);
     }
-    if (t.viaGenus)   head += ' \u00b7 genus';
+    if (t.viaGenus)   head += ' \u00b7 ' + esc(_t('genus'));
     if (t.viaSpecies) head += ' \u00b7 ' + esc(t.viaSpecies);
     return '<div style="opacity:.55;font-size:' + small + 'px;margin-bottom:.25em;">'
-         + head + (t.iucn ? ' \u00b7 ' + esc(t.iucn) : '') + '</div>'
+         + head + (t.iucn ? ' \u00b7 ' + esc(_t(t.iucn)) : '') + '</div>'
          + '<div>' + esc(t.note) + '</div>';
   }
 
