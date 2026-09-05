@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.5
+// @version      2.6
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Harvest an Instagram profile's reel/post URLs into ig.json via the local SLAM proxy. "🆕 New only" asks the proxy which shortcodes ig.json already holds and stops scrolling as soon as it recognises the grid — a re-harvest costs ~3 scroll steps instead of 500. "🔁 Sweep all" runs that across every harvested author unattended, rotating the Proton VPN between authors the way Download+rotate does. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.5';
+  const VER = '2.6';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -45,7 +45,14 @@
   // Deliberately NOT `disabled`: a periodic deep re-check of a known author is a
   // real thing to want, so grey means "are you sure", not "no".
   const STATUS_TTL = 60000;   // re-ask the proxy at most once a minute
-  const ALL_TITLE  = 'FULL harvest: scroll this profile to the very bottom and stage every reel URL to ig.json. Use for a first-time author or a periodic deep re-check.';
+  // (dev0915) Every one of these balloons used to describe the MACHINERY — shortcodes,
+  // staging, tunnels, grid modals. Read cold, none of them told you what the button
+  // does for you or when to press it. They now say that, in the order you need it:
+  // what it collects, how long it takes, when to reach for it instead of its neighbour.
+  const ALL_TITLE  = 'Collect EVERY post on this profile, from the newest all the way'
+    + ' back to the oldest.\n\nSlow — a big author can take several minutes. Use it the'
+    + ' first time you add someone, or now and then to be sure nothing was missed.'
+    + '\n\nDay to day, use 🆕 New only instead.';
 
   function authorFromPath() {
     const seg = (location.pathname.split('/').filter(Boolean)[0] || '').toLowerCase();
@@ -163,14 +170,29 @@
           ' rows in ig.json.\n\n"🆕 New only" is normally what you want here.\n\nRun the FULL bottom-of-profile walk anyway?')) return;
       run(() => harvestProfile(h, false));
     };
-    const n = mkBtn('slam-ig-new', '🆕 New only', 'Harvest just what is NEW: asks the proxy which shortcodes ig.json already holds and stops as soon as ' + STOP_RUN + ' known posts in a row appear. Normally 2-4 scroll steps.', '#5e5ce6');
+    const n = mkBtn('slam-ig-new', '🆕 New only', 'Collect just the posts you do not already have.'
+      + '\n\nStarts at the top and stops as soon as it recognises ' + STOP_RUN + ' posts in a row it'
+      + ' already holds — usually 2-4 scrolls, a few seconds.'
+      + '\n\nThis is the everyday button: it is what to press to catch up with an author.', '#5e5ce6');
     n.onclick = () => run(() => harvestProfile(n, true));
-    const s = mkBtn('slam-ig-sweep', '🔁 Sweep…', 'Run "New only" across every harvested author unattended, rotating the Proton VPN between authors (when a tunnel is up). Pick the authors in the panel.', '#ff9f0a');
+    const s = mkBtn('slam-ig-sweep', '🔁 Sweep…', 'Catch up with ALL your authors in one go.'
+      + '\n\nDoes the same job as 🆕 New only, on one author after another, without you'
+      + ' watching. Opens a list first so you can tick who to include.'
+      + '\n\nLeave it running — it waits half a minute or so between authors on purpose,'
+      + ' so a full list takes a while.', '#ff9f0a');
     s.onclick = () => openSweepPanel();
-    const r = mkBtn('slam-ig-resume', '▶ Resume…', 'Scroll to a post by URL/shortcode and click it → reopens the grid modal WITH the ◀▶ arrows', '#34c759');
+    const r = mkBtn('slam-ig-resume', '▶ Resume…', 'Go back to reading where you left off.'
+      + '\n\nPaste the link of a post and it finds that post on this profile and opens it'
+      + ' for you — with the ◀ ▶ arrows working, so you can carry on through the author'
+      + ' post by post. (Opening a link straight from the address bar gives you no arrows,'
+      + ' and there is no other way to get them back.)'
+      + '\n\nNothing is collected or saved — this one is purely for looking.', '#34c759');
     r.onclick = () => { r.disabled = true; resumeAt(r).catch(e => r.textContent = '⚠ ' + e.message)
       .finally(() => setTimeout(() => { r.disabled = false; }, 1500)); };
-    const stop = mkBtn('slam-ig-stop', '■ Stop', 'Stop the current harvest/sweep', '#ff453a');
+    const stop = mkBtn('slam-ig-stop', '■ Stop', 'Stop whatever is running now.'
+      + '\n\nAnything already collected is kept. A sweep forgets its place, so the next'
+      + ' one starts at the top of the list again — which is cheap, because authors that'
+      + ' are already up to date are recognised and skipped in a few seconds each.', '#ff453a');
     stop.style.display = 'none';
     stop.onclick = () => { abortFlag = true; sweepStop('stopped by you'); setMsg('■ stopping…'); };
     row.appendChild(h); row.appendChild(n); row.appendChild(s); row.appendChild(r); row.appendChild(stop);
