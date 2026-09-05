@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0919';
+const PROXY_BUILD = 'dev0920';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1008,12 +1008,56 @@ const HDR_TRC = /^(arib-std-b67|smpte2084)$/;   // HLG · PQ
 
 function probeHdr(file) {
   try {
+    // (dev0920) NAMED, not positional. `-of csv=p=0` prints the fields in
+    // ffprobe's OWN order, not the order they were asked for: this file answers
+    // range,space,transfer,primaries whatever the request says, so the
+    // four-value destructure this replaced read "tv" as the transfer curve and
+    // called every HDR clip SDR. (Two fields happened to survive that, which is
+    // why it went unnoticed until a third was wanted.)
     const raw = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
-      '-show_entries', 'stream=color_transfer,color_primaries', '-of', 'csv=p=0', file],
-      { encoding: 'utf8', timeout: 15000 }).trim();
-    const [trc, prim] = raw.split(',').map(x => (x || '').trim());
-    return HDR_TRC.test(trc) ? { trc, prim } : null;
+      '-show_entries', 'stream=color_transfer,color_primaries,color_space,color_range',
+      '-of', 'default=noprint_wrappers=1', file],
+      { encoding: 'utf8', timeout: 15000 });
+    const f = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const i = line.indexOf('=');
+      if (i > 0) f[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    }
+    const trc = f.color_transfer, prim = f.color_primaries,
+          mat = f.color_space,    range = f.color_range;
+    return HDR_TRC.test(trc) ? { trc, prim, mat, range } : null;
   } catch (_) { return null; }   // unreadable → no tone map, i.e. the old chain
+}
+
+// (dev0920) Say again what the picture IS. zoompan hands its frames on with no
+// transfer and no primaries — measured with showinfo: an HLG/BT.2020 frame goes
+// in and an "unknown/unknown" one comes out (it also forces 8-bit yuv420p; the
+// filter supports nothing else) — and that costs two different ways:
+//
+//   graded   the tone map's first `zscale=t=linear` has no input curve to work
+//            from, fails "code 3074: no path between colorspaces" on EVERY
+//            frame, and the render dies with "Nothing was written into output
+//            file, because at least one of its streams received no packets".
+//            That is the crash reported on 2026-09-05. Handled by tone-mapping
+//            BEFORE the zoompan instead — see the crop path.
+//   ungraded the render SUCCEEDS and writes HLG pixels tagged unknown, which
+//            every player then paints as BT.709. Silent since dev0720. This is
+//            what fixes that one: zoompan resized the picture, it did not
+//            convert it, so the source's own tags are still the truth.
+//
+// Values come from ffprobe on the user's file, not from a payload, but they are
+// interpolated into a filtergraph string all the same — so anything that is not
+// a plain token, or is ffprobe's way of saying "no idea", is left out.
+const CS_TOKEN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const CS_UNKNOWN = /^(unknown|unspecified|reserved|n\/a)$/i;
+function hdrSetParams(hdr) {
+  const ok = v => v && CS_TOKEN.test(v) && !CS_UNKNOWN.test(v);
+  const parts = [];
+  if (ok(hdr.trc))   parts.push('color_trc=' + hdr.trc);
+  if (ok(hdr.prim))  parts.push('color_primaries=' + hdr.prim);
+  if (ok(hdr.mat))   parts.push('colorspace=' + hdr.mat);
+  if (ok(hdr.range)) parts.push('range=' + hdr.range);
+  return parts.length ? 'setparams=' + parts.join(':') : '';
 }
 
 // zimg converts the transfer and the primaries; tonemap does the range squeeze.
@@ -1300,6 +1344,20 @@ function buildFfmpegArgs(p, tmpSink) {
     // frames the detect pass measured, and everything downstream (scale, Ken
     // Burns, drawtext) works on an already-steady picture.
     if (p.deshake) vf += ',' + buildDeshakeTransform(p.deshake, p);
+    // (dev0920) Is this an HDR source, and does anything downstream care?
+    // Probed ONCE here rather than at the two places that ask: the answer is a
+    // fact about the file, and the probe is a process spawn.
+    const hdr = (p.ken || p.color) ? probeHdr(p.input) : null;
+    // A graded Ken Burns tone-maps HERE, above the zoompan, instead of below it
+    // with the rest of the colour work. Two reasons, and the first one is fatal:
+    // zoompan strips the transfer and the primaries, so a tone map underneath
+    // has nothing to convert FROM and errors out on every frame (see
+    // hdrSetParams). The second is quality — up here the curve is read off the
+    // 10-bit source, where zoompan would have handed it 8. Measured on a
+    // 4-second 2678x1506 → 1080p clip: 4.5s against 4.0s, a 12% bill for a
+    // conversion that stops guessing. The grade itself stays BELOW the resize,
+    // where there are fewer pixels to grade.
+    if (p.ken && p.color && hdr) { vf += ',' + TONEMAP_CHAIN; sdrOut = true; }
     const resH = p.resHeight;
     const scaling = Number.isFinite(resH) && resH > 0;
     const aspect = (p.aspect === 'P') ? 'P' : 'L';
@@ -1375,6 +1433,25 @@ function buildFfmpegArgs(p, tmpSink) {
       vf += `,zoompan=z='1/(1-(${S})*(1-${KW}))'` +
             `:x='(${S})*${KX}*iw':y='(${S})*${KY}*ih'` +
             `:d=1:s=${ow}x${oh}:fps=${fpsStr}`;
+      // (dev0920) …and put the colour description back on, because zoompan
+      // dropped it — whatever the picture now is:
+      //   tone-mapped above  it is BT.709 SDR, and saying so here is what makes
+      //                      it stick. SDR_OUT_TAGS on the encoder is NOT
+      //                      enough on its own: the filtered frame's own
+      //                      properties win, so the flags set the matrix and
+      //                      the output still came out transfer=unknown,
+      //                      primaries=unknown. Measured, not assumed.
+      //   otherwise          still the source's HLG/BT.2020 pixels — zoompan
+      //                      resized the picture, it did not convert it. An
+      //                      ungraded zoom wrote those tagged "unknown", which
+      //                      every player paints as BT.709. Silent since
+      //                      dev0720.
+      // An SDR source is left alone: unknown reads as BT.709, which is what it
+      // is, so there is nothing to correct.
+      const sp = sdrOut
+        ? 'setparams=color_trc=bt709:color_primaries=bt709:colorspace=bt709:range=tv'
+        : (hdr ? hdrSetParams(hdr) : '');
+      if (sp) vf += ',' + sp;
     } else if (scaling) {
       vf += (aspect === 'P') ? `,scale=${resH}:-2` : `,scale=-2:${resH}`;
     }
@@ -1386,8 +1463,11 @@ function buildFfmpegArgs(p, tmpSink) {
     // (dev0868) …and after the tone map, so the grade lands in the same SDR
     // space the browser previewed it in. Probed here rather than passed in by
     // the client, because this is a fact about the FILE, not about the session.
+    // (dev0920) `hdr` is the same probe, taken once above; `sdrOut` says whether
+    // a Ken Burns already tone-mapped up there, which is the one case where the
+    // picture reaching this line is SDR already.
     if (p.color) {
-      if (probeHdr(p.input)) { vf += ',' + TONEMAP_CHAIN; sdrOut = true; }
+      if (hdr && !sdrOut) { vf += ',' + TONEMAP_CHAIN; sdrOut = true; }
       vf += ',' + buildColorChain(p.color);
       // Force a deliverable pixel format. The RGB round trip a grade needs
       // otherwise leaves a 10-bit source as yuv444p10le — see SDR_OUT_TAGS.
