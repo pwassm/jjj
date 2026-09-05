@@ -13,7 +13,7 @@
 // none of that machinery has anything to say — carrying it along would only be
 // a list of buttons that must be kept switched off. What DID carry over is the
 // part that is genuinely the same job: the black full-window screen, the
-// timeline bar under it, and a s d f under the left hand.
+// timeline bar under it, and a s d f under the left hand. t does the trim.
 //
 // The cut itself needs NO new proxy code: buildFfmpegArgs already takes the
 // lossless stream-copy path when a payload has `trim` and no `crop`. The one
@@ -193,7 +193,7 @@ function buildScreen(absPath) {
   var lab = el('div', 'llc-label', null, '');
   lab.title = 'What this clip is about — it goes in the filename (c to change)';
   row.appendChild(lab);
-  row.appendChild(mk('llc-save', '✂ Save cut', 'Write the A→F stretch out losslessly (w)'));
+  row.appendChild(mk('llc-save', '✂ Save cut', 'Trim — write the A→F stretch out losslessly (t)'));
   row.appendChild(el('div', 'llc-status'));
   row.appendChild(mk('llc-qm', '?', 'Keys'));
   row.appendChild(mk('llc-close', '✕', 'Close (Esc)'));
@@ -215,17 +215,21 @@ function buildHelp() {
     r('f',       'mark the END of the cut, here') +
     r('s / d',   'one frame back / forward (← / → do the same)') +
     r('S / D',   'one second back / forward') +
-    r('w',       'save the cut  (g does the same)') +
+    r('<b>t</b>', '<b>Trim</b> — write the cut out  (w and g do the same)') +
+    r('q',       'pull A back onto its keyframe, so the cut starts exactly there') +
     r('z',       'drop both marks') +
     r('x',       'eXpand — blow the bar up onto the cut') +
     r('c',       'change the word that goes in the filename') +
     r('Esc',     'close') +
     '</table>' +
     '<div class="llc-note">Saved as <b>&lt;original&gt;_ncrop_&lt;word&gt;_&lt;start&gt;_&lt;length&gt;.mp4</b> ' +
-    'beside the original, keeping its dates. Two cuts of one video share the word — ' +
-    'the seconds tell them apart, so the word is only asked for once per file.<br>' +
-    'Nothing is re-encoded, so the start snaps back to the nearest keyframe: the clip ' +
-    'can begin a moment earlier than the mark. That is the price of losing no quality.</div>';
+    'beside the original, keeping its dates, its camera tags and every audio track. ' +
+    'Two cuts of one video share the word — the seconds tell them apart, so the word ' +
+    'is only asked for once per file.<br>' +
+    'A copy cannot start mid-GOP, so the cut falls back to the keyframe before A: ' +
+    'the <span style="color:#0cf">cyan line and hatching</span> are the footage that ' +
+    'comes with it, and <b>q</b> moves A there so what you see is what you get. ' +
+    'The end is exact either way.</div>';
   return h;
 }
 
@@ -298,6 +302,28 @@ function paintMarks() {
             Math.max(0.4, r - l) + '%;background:rgba(255,160,0,0.22);' +
             'border-left:1px solid rgba(255,160,0,0.7);"></div>';
   }
+  // Keyframe ticks — faint, low, and only across the stretch actually probed,
+  // so an empty patch of bar reads as "not looked at" rather than "none here".
+  if (S.kf && S.kf.length) {
+    for (i = 0; i < S.kf.length; i++) {
+      l = pctOf(S.kf[i]);
+      if (l < 0 || l > 100) continue;
+      html += '<div style="position:absolute;bottom:0;height:5px;width:1px;left:' + l +
+              '%;background:rgba(120,220,255,0.55);"></div>';
+    }
+  }
+  // The one the cut will snap back to — solid cyan, and the stretch between it
+  // and A shaded, because that shading IS the footage you did not ask for.
+  var sp = snapPoint();
+  if (sp != null && S.a != null && S.a - sp > 0.004) {
+    l = pctOf(sp); r = pctOf(S.a);
+    html += '<div style="position:absolute;top:0;bottom:0;left:' + Math.max(0, Math.min(100, l)) +
+            '%;width:' + Math.max(0.3, Math.min(100, r) - Math.max(0, l)) +
+            '%;background:repeating-linear-gradient(45deg,rgba(0,200,255,0.25) 0 4px,' +
+            'transparent 4px 8px);"></div>';
+    html += '<div style="position:absolute;top:-2px;bottom:-2px;width:2px;background:#0cf;left:' +
+            Math.max(0, Math.min(100, l)) + '%;"></div>';
+  }
   if (S.a != null) {
     html += '<div style="position:absolute;top:-2px;bottom:-2px;width:2px;background:#0f0;left:' +
             Math.max(0, Math.min(100, pctOf(S.a))) + '%;"></div>';
@@ -316,9 +342,21 @@ function paintButtons() {
   var lab = document.getElementById('llc-label');
   var play = document.getElementById('llc-play');
   if (a) {
-    a.textContent = (S.a != null) ? ('A ' + fmtTime(S.a)) : 'A';
+    // The A button says where the cut will BEGIN, not only where the mark is:
+    // "A 12.4 ⟵0.9s" means nine tenths of the previous shot come with it, and
+    // q takes that away. On a mark that already sits on a keyframe it says ✓.
+    var sp = snapPoint();
+    var tail = '';
+    if (S.a != null && sp != null) {
+      tail = (S.a - sp > 0.04) ? ('  ⟵' + (S.a - sp).toFixed(1) + 's') : '  ✓';
+    }
+    a.textContent = (S.a != null) ? ('A ' + fmtTime(S.a) + tail) : 'A';
     a.style.background = (S.a != null) ? '#062' : '#123';
     a.style.borderColor = (S.a != null) ? '#0c6' : '#06f';
+    a.title = (S.a != null && sp != null && S.a - sp > 0.04)
+      ? ('The copy has to start on a keyframe, so it will begin at ' + fmtTime(sp) +
+         ' — press q to move A there.')
+      : 'Mark the start here (a)';
   }
   if (b) {
     b.textContent = (S.b != null) ? ('F ' + fmtTime(S.b)) : 'F';
@@ -374,6 +412,9 @@ function markA() {
   S.a = S.vid.currentTime || 0;
   if (S.b != null && S.b <= S.a) { S.b = null; toastMsg('F was before A — dropped it', 1800); }
   paint();
+  // Where this cut can really start. Only A needs it: the END of a stream copy
+  // is packet-accurate, it is only the beginning that has to land on a keyframe.
+  probeKeyframes(S.a);
 }
 
 function markB() {
@@ -397,6 +438,76 @@ function toggleExpand() {
   paint();
   toastMsg(S.expand ? ('↔ bar zoomed to the cut — ' + (S.b - S.a).toFixed(1) + 's across')
                     : '↔ bar back to the whole video', 1500);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Keyframes — where a lossless cut is actually allowed to start
+//
+// A stream copy cannot begin in the middle of a GOP, so ffmpeg moves the start
+// back to the keyframe before the mark. It does this silently, which is how a
+// "12.4s" cut comes out 14 frames longer than asked for with a second of the
+// previous shot on the front. The honest thing is to show where the cut will
+// really land BEFORE it is taken, so LLC probes the keyframes around A and
+// draws the one it will snap to.
+//
+// Probed around the mark rather than for the whole file: a two-hour clip has
+// thousands, ffprobe would read all of it, and only the ones next to the mark
+// are the answer. -show_packets means nothing is decoded.
+// ══════════════════════════════════════════════════════════════════════════
+var LLC_KF_BACK = 20;   // seconds of history to look through for the snap
+var LLC_KF_FWD  = 6;    // …and a little ahead, so the ticks around A are drawn
+
+function probeKeyframes(around) {
+  if (!S) return;
+  var from = Math.max(0, around - LLC_KF_BACK);
+  var span = Math.min(600, (around - from) + LLC_KF_FWD);
+  var src = S.src;
+  fetch(LLC_PROXY + '/exec/ffprobe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: src, keyframes: { fromSec: from, spanSec: span } })
+  }).then(function (r) { return r.json(); }).then(function (j) {
+    if (!S || S.src !== src) return;              // closed, or a different file
+    var pk = j && j.result && j.result.packets;
+    if (!Array.isArray(pk)) return;
+    var ks = [];
+    for (var i = 0; i < pk.length; i++) {
+      // 'K' is the keyframe flag; ffprobe writes it as "K_" or "K__".
+      if (pk[i] && /K/.test(String(pk[i].flags || ''))) {
+        var t = parseFloat(pk[i].pts_time);
+        if (isFinite(t)) ks.push(t);
+      }
+    }
+    ks.sort(function (a, b) { return a - b; });
+    S.kf = ks;
+    S.kfFrom = from;
+    S.kfTo = from + span;
+    paint();
+  }).catch(function () { /* no keyframes read = no snap line, and that is honest */ });
+}
+
+// The keyframe the cut will actually start on: the last one at or before A.
+// null when it is not known — no probe yet, or A sits outside the probed
+// stretch, and guessing there would be worse than saying nothing.
+function snapPoint() {
+  if (!S || S.a == null || !S.kf || !S.kf.length) return null;
+  if (S.a < S.kfFrom || S.a > S.kfTo) return null;
+  var best = null;
+  for (var i = 0; i < S.kf.length; i++) {
+    if (S.kf[i] <= S.a + 0.001) best = S.kf[i]; else break;
+  }
+  return best;
+}
+
+function snapAToKeyframe() {
+  var k = snapPoint();
+  if (k == null) {
+    toastMsg(S && S.a == null ? 'Mark A first (a)' : 'Keyframes not read yet — a moment', 2000);
+    return;
+  }
+  S.a = k;
+  seekTo(k);
+  toastMsg('A snapped back to its keyframe — the cut starts exactly here now', 2600);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -562,21 +673,42 @@ function saveCut() {
     body: JSON.stringify({ path: want })
   }).then(function (r) { return r.json(); }).then(function (j) {
     var out = (j && j.ok && j.path) ? j.path : want;
-    return runFfmpeg({
-      input: S.src,
-      output: out,
-      trim: { startSec: a, endSec: b },
-      overwrite: false
-    }, btn, dur * 1000).then(function (res) {
-      if (res.exitCode !== 0) {
-        throw new Error(failLine(res.stderr) || ('ffmpeg exited ' + res.exitCode));
-      }
-      return out;
-    });
+    var base = { input: S.src, output: out, trim: { startSec: a, endSec: b }, overwrite: false };
+    // allStreams keeps every audio/subtitle track. It can be refused by the mp4
+    // muxer on a file carrying a stream it will not take, so a failure retries
+    // once without it: a clip with one audio track beats no clip at all.
+    return runFfmpeg(Object.assign({ allStreams: true }, base), btn, dur * 1000)
+      .then(function (res) {
+        if (res.exitCode === 0) return out;
+        console.warn('[llc] -map 0 failed, retrying with ffmpeg\'s own stream pick',
+                     failLine(res.stderr));
+        status('retrying without extra tracks…');
+        return runFfmpeg(base, btn, dur * 1000).then(function (res2) {
+          if (res2.exitCode !== 0) {
+            throw new Error(failLine(res2.stderr) || ('ffmpeg exited ' + res2.exitCode));
+          }
+          return out;
+        });
+      });
+  }).then(function (out) {
+    // (dev0927) The camera block. ffmpeg's own flags carry the dates, the GPS
+    // and the Android keys; what they never surface is the QuickTime Author
+    // field and the Samsung model atom, because its mov demuxer does not read
+    // them — this is precisely what LosslessCut drops. exiftool patches them
+    // into the udta box without rewriting the file. Best-effort: a clip on disk
+    // is not a failed clip because a tag did not take.
+    status('camera tags…');
+    return fetch(LLC_PROXY + '/exec/exiftool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: S.src, output: out, carry: { kind: 'video' } })
+    }).catch(function () {}).then(function () { return out; });
   }).then(function (out) {
     // A cut is a piece of an old moment, not a new one — it files beside its
     // original rather than at "now". Best-effort: a clip with the wrong date
     // is still a good clip.
+    // AFTER the carry, never before: exiftool rewrites FileModifyDate as a
+    // side effect of writing anything, so the dates have to be the last word.
     status('stamping dates…');
     return fetch(LLC_PROXY + '/vp/copytimes', {
       method: 'POST',
@@ -636,7 +768,12 @@ function onKey(e) {
   if (k === 'D')                 { eat(); step(S.fps || 30);   return; }
   if (k === 'ArrowLeft')         { eat(); step(e.shiftKey ? -(S.fps || 30) : -1); return; }
   if (k === 'ArrowRight')        { eat(); step(e.shiftKey ?  (S.fps || 30) :  1); return; }
-  if (k === 'w' || k === 'W' || k === 'g' || k === 'G') { eat(); saveCut(); return; }
+  // t = Trim, the key that does the thing this screen exists for. w and g are
+  // kept as aliases — w for the left hand, g because that is V's save key.
+  if (k === 't' || k === 'T' || k === 'w' || k === 'W' || k === 'g' || k === 'G') {
+    eat(); saveCut(); return;
+  }
+  if (k === 'q' || k === 'Q')    { eat(); snapAToKeyframe(); return; }
   if (k === 'z' || k === 'Z')    { eat(); clearMarks(); return; }
   if (k === 'x' || k === 'X')    { eat(); toggleExpand(); return; }
   if (k === 'c' || k === 'C')    { eat(); askLabel(true); return; }
@@ -757,6 +894,7 @@ window.llcOpenLocalFile = function (absPath) {
     a: null, b: null,
     label: rememberedLabel(absPath),
     cuts: [],
+    kf: null, kfFrom: 0, kfTo: 0,
     expand: false,
     busy: false,
     scrubbing: false,

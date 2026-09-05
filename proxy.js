@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0926';
+const PROXY_BUILD = 'dev0927';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1547,11 +1547,23 @@ function buildFfmpegArgs(p, tmpSink) {
   //     you want for trimmed clips.
   //   -fflags +genpts — generate presentation timestamps when the input is
   //     missing or has unreliable ones. Harmless when input is well-formed.
+  // (dev0927) `allStreams` — keep EVERY track, not just one of each kind.
+  // Without -map, ffmpeg picks its idea of the best video and the best audio
+  // and throws the rest away: a second language, a commentary track, embedded
+  // subtitles. A lossless cut that quietly halves the audio tracks is not what
+  // the name promises, so LLC asks for -map 0.
+  //
+  // Opt-in rather than the default, because it is not free: -map 0 also drags
+  // in data and timecode streams the mp4 muxer may refuse. -ignore_unknown
+  // drops the ones it cannot type, and LLC retries once WITHOUT the flag if a
+  // render still fails — a clip with one audio track is better than none.
+  const mapAll = p.allStreams ? ['-map', '0', '-ignore_unknown'] : [];
   return [
     ...common,
     ...pre,
     '-fflags', '+genpts',
     '-i', p.input,
+    ...mapAll,
     '-c', 'copy',
     '-avoid_negative_ts', 'make_zero',
     // (dev0910) No faststart here: a lossless trim can be several GB and the
@@ -1877,6 +1889,30 @@ const HAS_JPEGTRAN = (() => {
 // doesn't shred the JSON.
 function buildFfprobeArgs(p) {
   must(p.input && typeof p.input === 'string', 'input (string) required');
+  // (dev0927) keyframes mode — where a lossless cut is ALLOWED to start.
+  // A stream copy cannot begin mid-GOP, so ffmpeg silently moves the cut back
+  // to the keyframe before the mark; LLC shows the user where that is instead
+  // of letting them find out in the file.
+  //
+  // -show_packets, not -show_frames: packets come off the demuxer without
+  // decoding anything, which is the difference between instant and a minute.
+  // -read_intervals bounds it to the stretch being looked at — a two-hour clip
+  // has thousands of keyframes and only the ones near the mark are the answer.
+  if (p.keyframes) {
+    const from = +p.keyframes.fromSec, span = +p.keyframes.spanSec;
+    must(Number.isFinite(from) && from >= 0, 'keyframes.fromSec must be a number ≥ 0');
+    must(Number.isFinite(span) && span > 0 && span <= 600,
+         'keyframes.spanSec must be a number in 0..600');
+    return [
+      '-v', 'error',
+      '-print_format', 'json',
+      '-select_streams', 'v:0',
+      '-show_packets',
+      '-show_entries', 'packet=pts_time,flags',
+      '-read_intervals', from.toFixed(3) + '%+' + span.toFixed(3),
+      p.input
+    ];
+  }
   // (dev0720) streams mode — first video stream's geometry + frame rate. The V
   // crop overlay needs the real rate before a Ken Burns render, because zoompan
   // sets the OUTPUT frame rate and would otherwise resample the clip to 25.
@@ -7349,7 +7385,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
-      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llcnlc']) }));
+      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llcnlc', 'llckeyframes', 'llcallstreams']) }));
     return;
   }
 
