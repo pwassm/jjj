@@ -5312,17 +5312,30 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     'background:rgba(0,0,0,0.7);color:#dfe6f0;font:12px ui-monospace,Consolas,monospace;' +
     'border-radius:4px;pointer-events:auto;z-index:2;';
   bar.innerHTML =
+    // (dev0921) The enlargement warning, FAR LEFT and always in the same place.
+    // It used to live in the W×H label over the picture, which is where the
+    // eye is least likely to be at the moment the resolution is chosen — and it
+    // said only that something was wrong, in amber, without the number. This
+    // says how much: "⚠ 1.50× enlarged" means two output pixels out of every
+    // three are invented. Hidden entirely when the crop carries the resolution.
+    '<span id="vp-crop-warn" title="The crop — or the zoom box inside it, which is the tightest the shot gets — is SMALLER than the chosen output resolution, so ffmpeg would blow it up. No new detail, just a bigger file. Grow the box or drop the res." ' +
+      'style="display:none;cursor:default;user-select:none;padding:2px 6px;background:#5a3a12;' +
+      'border:1px solid #fb3;color:#fb3;border-radius:3px;flex:0 0 auto;">⚠</span>' +
     '<span id="vp-crop-aspect" title="Locked ratio — the corners scale it. Drag a SIDE (or ⇧T) for any shape." ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
     '<span id="vp-crop-crf-lbl" style="opacity:0.7;">CRF</span>' +
     '<input id="vp-crop-crf" type="range" min="0" max="28" value="26" style="width:64px;vertical-align:middle;flex:0 0 auto;">' +
     '<span id="vp-crop-crf-val" style="min-width:18px;text-align:right;">26</span>' +
-    '<select id="vp-crop-res" title="Output short side. The W×H label turns amber when the crop rect is smaller than this — ffmpeg would enlarge pixels rather than add detail." ' +
+    '<select id="vp-crop-res" title="Output short side. The ⚠ chip at the far left of this bar lights up when the crop — or the zoom box inside it — is smaller than this, because ffmpeg would then enlarge pixels rather than add detail." ' +
       'style="background:#1a1a2e;color:#dfe6f0;border:1px solid #456;border-radius:3px;padding:2px 4px;font:12px ui-monospace,Consolas,monospace;">' +
       '<option value="2160">2160p (4K)</option>' +
       '<option value="1440">1440p (2K)</option>' +
       '<option value="1080">1080p</option>' +
       '<option value="720">720p</option>' +
+      // (dev0921) 480p. The ladder stopped at 720, which left nothing to drop
+      // to when a tight crop out of a 4K frame still enlarged at 720 — and a
+      // clip headed for a grid cell has no use for more.
+      '<option value="480">480p</option>' +
       '<option value="source">Same</option>' +
     '</select>' +
     // (dev0719) Output-audio switch. This is about the RENDERED clip, not the
@@ -5899,17 +5912,32 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       // new detail, just bigger pixels and a fatter file. Live while dragging
       // so the rect can be grown before committing to an encode.
       const up = _vpCropUpscaleFactor(state, sw, sh);
-      const upTxt = (up > 1.005) ? ('  ·  ⚠ ' + up.toFixed(2) + '× enlarged') : '';
+      // (dev0921) …and the text of that warning now goes to the far-left bar
+      // chip rather than into the middle of the picture. The label keeps the
+      // amber — its numbers are still the ones being called too small — but
+      // the sentence, and the factor, are up on the toolbar.
+      const upBad = (up > 1.005);
+      const warnChip = bar.querySelector('#vp-crop-warn');
+      if (warnChip) {
+        warnChip.style.display = upBad ? '' : 'none';
+        // (dev0921) Name the zoom when the zoom is what set the factor: with a
+        // Ken Burns move armed the crop rect can be plenty big and the warning
+        // still stand, because the move ENDS inside it.
+        if (upBad) {
+          warnChip.textContent = '⚠ ' + up.toFixed(2) + '× enlarged' +
+            ((state.ken && state.ken.on) ? ' (zoom)' : '');
+        }
+      }
       // (dev0778) While the rect is reaching past the edge, the shape of the
       // output is the thing being chosen — so name it. The dial runs from the
       // locked ratio at frame width to the source's own shape at full reach.
       const arTxt = (state.bleed && (state.frac.w > 1.001 || state.frac.h > 1.001))
         ? ('  ·  ' + _vpAspectLabel(sw, sh)) : '';
       dimLbl.textContent = sw + ' × ' + sh +
-        (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '') + upTxt + arTxt;
+        (state.angle ? ('  ·  ' + state.angle.toFixed(1) + '°') : '') + arTxt;
       dimLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
       dimLbl.style.color =
-        (upTxt || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
+        (upBad || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
     }
     updateAngleUI();
     paintEngine();     // (dev0744) tilt or res may have just cost us lossless
@@ -7155,12 +7183,13 @@ function _vpCropHelpShow() {
         head('The output') +
         row(K('M'),  'audio on / off in the SAVED clip — the bar says which, ' +
                      'and it starts off. (Muting the player is the toolbar 🔇.)') +
-        row('res',   '2160p (4K) · 1440p (2K) · 1080p · 720p · Same') +
+        row('res',   '2160p (4K) · 1440p (2K) · 1080p · 720p · 480p · Same') +
         row('CRF',   'lower = better + bigger · starts at 26 · Slow = smaller, slower') +
-        row('⚠',     'amber size label = output is BIGGER than the crop — or ' +
+        row('⚠',     'the chip at the FAR LEFT of the bar, carrying the factor ' +
+                     '(“1.50× enlarged”): the output is bigger than the crop — or ' +
                      'than the zoom box, once armed, since that is the ' +
                      'tightest the shot gets. Pixels would be enlarged: grow ' +
-                     'the box or drop the res.') +
+                     'the box or drop the res. It warns, it does not block.') +
         head('Finish') +
         row(K('G'),   'render (or the Crop button) — lands beside the source as ' +
                       '<i>what you call it</i>_<i>name</i>_crop.mp4') +
@@ -7294,10 +7323,11 @@ function _vpCropHelpImageRows(K, row, head) {
                          'can be done by copying blocks, so ffmpeg redraws the picture ' +
                          'at high quality. The chip on the bar says which one is armed ' +
                          'before you commit.') +
-    row('res',           '2160p (4K) · 1440p (2K) · 1080p · 720p · Same ' +
+    row('res',           '2160p (4K) · 1440p (2K) · 1080p · 720p · 480p · Same ' +
                          '(<i>Same</i> is what keeps it lossless)') +
-    row('⚠',             'amber size label = the output is BIGGER than the box: pixels ' +
-                         'would be enlarged for nothing. Grow the box or drop the res.') +
+    row('⚠',             'the FAR-LEFT bar chip, carrying the factor: the output is ' +
+                         'BIGGER than the box, so pixels would be enlarged for ' +
+                         'nothing. Grow the box or drop the res.') +
     head('Finish') +
     row(K('G'),          'save (or the Crop button) — lands beside the picture as ' +
                          '<i>what you call it</i>_<i>name</i>_crop, numbered if that ' +
@@ -7868,6 +7898,27 @@ function _vpCropOutStem(base, safeId) {
 // The name the user typed, made safe for a filename. `~` goes too — it is no
 // longer a separator here, but a folder of old-template output is full of them
 // and a name that mixes the two schemes reads as neither.
+// (dev0921) The last name typed into the save prompt, remembered against the
+// source it was typed for. Cropping one picture into a set of variants is the
+// normal case — the same base, a name that differs by a word — so the prompt
+// now opens with that last name already in it, ready to be edited rather than
+// retyped. A DIFFERENT source offers nothing: the old name would be a wrong
+// answer sitting in the box, which is worse than an empty one. Kept in
+// localStorage so it survives a reload, and best-effort: a browser that
+// refuses storage just gets the old empty prompt.
+const _VP_LASTNAME_KEY = 'slam-vp-lastcropname';
+function _vpLastCropName(base) {
+  try {
+    const j = JSON.parse(localStorage.getItem(_VP_LASTNAME_KEY) || '{}');
+    return (j && j.base === base && typeof j.id === 'string') ? j.id : '';
+  } catch (e) { return ''; }
+}
+function _vpRememberCropName(base, id) {
+  try {
+    localStorage.setItem(_VP_LASTNAME_KEY, JSON.stringify({ base: base, id: id }));
+  } catch (e) { /* private mode / storage off: the prompt just opens empty next time */ }
+}
+
 function _vpCropSafeId(id) {
   return String(id || '').replace(/[<>:"/\\|?*~]/g, '_').replace(/^\.+|\.+$/g, '').trim() || 'unnamed';
 }
@@ -8411,8 +8462,10 @@ async function _vpImageSave(opts) {
     }
   }
   const id = prompt('Name this crop — it becomes\n\n    <name>_' +
-                    parts.base + '_crop.' + parts.ext + '\n', '');
+                    parts.base + '_crop.' + parts.ext + '\n',
+                    _vpLastCropName(parts.base));   // (dev0921)
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
+  _vpRememberCropName(parts.base, id);   // (dev0921)
   const safeId = _vpCropSafeId(id);
 
   const verdict = _vpImgLossless(s, row);
@@ -8728,46 +8781,16 @@ async function _vpGoSave(opts) {
   // Crop overlay visible → crop+scale. Else → lossless trim.
   const cropOn = !!(_vpState.crop && _vpState.crop.el.container.style.display !== 'none');
   const vid = _vpState.player && _vpState.player.el;
-  // (dev0717) Enlargement preflight, deliberately BEFORE the name prompt — the
-  // fix is to resize the rect or drop the output res, not to rename. Only the
-  // crop path scales; the lossless trim is exempt.
-  if (cropOn && vid) {
-    const s0 = _vpState.crop;
-    const even0 = n => Math.max(2, Math.floor(n / 2) * 2);
-    // (dev0790) The same numbers the render will use: the rect CLIPPED to the
-    // frame, and the short side taken from those pixels rather than from the
-    // lock the box was drawn with — which with a free ratio (or a bled one) is
-    // no longer a reliable guide to which way up the output is.
-    const ef0 = _vpEffFrac(s0);
-    const sw0 = even0(ef0.w * (vid.videoWidth  || 0));
-    const sh0 = even0(ef0.h * (vid.videoHeight || 0));
-    const up  = _vpCropUpscaleFactor(s0, sw0, sh0);
-    if (up > 1.005) {
-      // (dev0720) With a Ken Burns move the tightest framing is the amber box,
-      // not the crop — say so, and quote the size the zoom actually ends on.
-      const kenOn = !!(s0.ken && s0.ken.on);
-      const kf = kenOn ? s0.ken.frac.w : 1;
-      const srcShort = Math.round(((_vpEffAspect(sw0, sh0) === 'P') ? sw0 : sh0) * kf);
-      const what = kenOn
-        ? ('Ken Burns ends on ' + Math.round(sw0 * kf) + ' × ' + Math.round(sh0 * kf) +
-           ' source pixels\n(inside a ' + sw0 + ' × ' + sh0 + ' crop).')
-        : ('Crop rect is ' + sw0 + ' × ' + sh0 + ' source pixels.');
-      const ok = confirm(
-        '⚠ Pixel enlargement\n\n' +
-        what + ' Its short side (' +
-        srcShort + 'px)\nis under the ' + s0.resHeight + 'p output, so ffmpeg would upscale it ' +
-        up.toFixed(2) + '×.\n\nThat adds no detail — only encode time and file size.\n\n' +
-        'Enlarge the ' + (kenOn ? 'Ken Burns box' : 'crop rect') +
-        ', or pick a lower output resolution.\n\nEncode anyway?');
-      if (!ok) {
-        if (typeof toast === 'function') toast('save cancelled — would enlarge pixels', 2400);
-        return;
-      }
-    }
-  }
+  // (dev0717/dev0921) The enlargement preflight used to stop here and ask.
+  // It no longer does: the factor is on the toolbar the whole time the box
+  // is being drawn (far-left ⚠ chip), so a confirm at save could only
+  // repeat what has already been on screen for a minute — one more OK
+  // between deciding and rendering. The warning is a reading, not a gate.
   const id = prompt('Name this clip — it becomes\n\n    <name>_' +
-                    parts.base + '_crop.mp4\n', '');
+                    parts.base + '_crop.mp4\n',
+                    _vpLastCropName(parts.base));   // (dev0921)
   if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
+  _vpRememberCropName(parts.base, id);   // (dev0921)
   const safeId = _vpCropSafeId(id);
   const startSec = Math.min(_vpState.aPoint, _vpState.bPoint);
   const endSec   = Math.max(_vpState.aPoint, _vpState.bPoint);
