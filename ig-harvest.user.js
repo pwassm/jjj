@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.7
+// @version      2.8
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Keeps your list of favourite Instagram contributors up to date. Adds a small button bar to the bottom-right of any profile page. 🆕 New only — collect just the posts you don't already have (a few seconds; the everyday button). ⬇ All — collect every post on the profile, newest to oldest (slow; for a first-time author). 🔁 Sweep — do "New only" on one author after another, unattended, from a list you tick. ▶ Resume — go back to reading where you left off: paste a post's link and it opens that post with the ◀ ▶ arrows working. Reads only the page your browser has already drawn in your normal logged-in session. Install or update: open http://localhost:8080/ig-harvest.user.js
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.7';
+  const VER = '2.8';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -474,9 +474,29 @@
     head.textContent = '🔁 Sweep — new posts since last harvest';
     const sub = document.createElement('div');
     sub.style.cssText = 'padding:8px 14px;color:#9aa0aa;border-bottom:1px solid #2a2d34;font-size:12px';
-    sub.innerHTML = tunnelUp
-      ? '🔒 VPN up (' + ((vs.server || vs.ip || '?') + '') + ') — the sweep will rotate to a fresh exit between authors, and will STOP if the tunnel drops.'
-      : '🏠 No VPN tunnel — the sweep runs on your home IP and does not rotate. (Best for a logged-in session: IG trusts a stable residential IP more than a rotating datacenter one.)';
+    // (dev0917) Changing VPN exit between authors is now OFF unless you ask for it. It
+    // used to switch itself on whenever a tunnel happened to be up, and it costs about
+    // 40 seconds per author — 38 minutes across a 57-author list — to do the very thing
+    // the no-tunnel line below says is worse: keep moving the IP of an account
+    // Instagram associates with one stable home connection. It stays one tick away for
+    // the case it was built for, an exit that has started refusing pages.
+    let rotCb = null;
+    if (tunnelUp) {
+      const lab = document.createElement('label');
+      lab.style.cssText = 'display:flex;gap:8px;align-items:flex-start;cursor:pointer';
+      rotCb = document.createElement('input');
+      rotCb.type = 'checkbox'; rotCb.checked = false; rotCb.style.cssText = 'margin-top:2px';
+      const t = document.createElement('span');
+      t.innerHTML = '🔒 VPN is up (' + (vs.server || vs.ip || '?') + '). Change to a different '
+        + 'exit between each author — about <b>40 seconds slower per author</b>, and rarely '
+        + 'worth it while you are logged in. Leave this unticked unless Instagram starts '
+        + 'refusing to show you pages.';
+      lab.appendChild(rotCb); lab.appendChild(t);
+      sub.appendChild(lab);
+    } else {
+      sub.textContent = '🏠 No VPN tunnel — the sweep runs on your home connection, which is'
+        + ' what a logged-in session works best on.';
+    }
     const list = document.createElement('div');
     // The opaque background is NOT decoration. A scrollable div gets promoted to
     // its own compositing layer, and text drawn on a layer with no opaque backdrop
@@ -517,21 +537,31 @@
     p.appendChild(head); p.appendChild(sub); p.appendChild(list); p.appendChild(foot);
     document.body.appendChild(p);
 
-    const picked = () => [...list.querySelectorAll('input:checked')].map(c => c.dataset.author);
-    const perAuthor = tunnelUp ? 105 : 65;    // harvest + (rotate) + gap, seconds
+    const picked = () => [...list.querySelectorAll('input[data-author]:checked')].map(c => c.dataset.author);
+    const rotating = () => !!(rotCb && rotCb.checked);
+    const perAuthor = () => rotating() ? 105 : 65;    // harvest + (rotate) + gap, seconds
     const refresh = () => {
       const n = picked().length;
-      est.textContent = n + ' selected · ~' + Math.max(1, Math.round(n * perAuthor / 60)) + ' min';
+      est.textContent = n + ' selected · ~' + Math.max(1, Math.round(n * perAuthor() / 60)) + ' min';
       start.disabled = !n;
     };
-    list.addEventListener('change', refresh); refresh();
+    list.addEventListener('change', refresh);
+    if (rotCb) rotCb.addEventListener('change', refresh);
+    refresh();
     cancel.onclick = () => p.remove();
     start.onclick = () => {
       const queue = picked();
       p.remove();
-      sweepWrite({ v: 1, startedAt: Date.now(), rotate: tunnelUp, queue, i: 0, done: [] });
+      sweepWrite({ v: 1, startedAt: Date.now(), rotate: rotating(), queue, i: 0, done: [] });
       abortFlag = false;
-      resumeSweep();
+      // (dev0917) Start used to hand straight to resumeSweep() from whatever page you
+      // opened the panel on. resumeSweep only acts on the profile the sweep points at,
+      // so starting from Messages, a reel, or any author other than the first produced
+      // an immediate "sweep paused — click ▶ to continue" before a single author had
+      // been looked at. An unattended run must not open by asking for a click: go to
+      // the first author ourselves, and the sweep picks itself up when that page loads.
+      if (authorFromPath() === queue[0]) resumeSweep();
+      else location.href = 'https://www.instagram.com/' + queue[0] + '/';
     };
   }
 
@@ -547,8 +577,11 @@
     // visible rather than yanking the tab out from under you.
     if (authorFromPath() !== want) {
       setBusy(false);
+      // (dev0917) "Click ▶ below" named no button, and there are two of them down there
+      // starting with ▶ — Resume…, which does something else entirely, and the orange
+      // Continue sweep. Name the one you mean.
       setMsg('⏸ sweep paused at @' + want + ' (' + (s.i + 1) + '/' + s.queue.length + ')\n' +
-             'Click ▶ below to continue, or ■ Stop to end it.');
+             'Click the orange "▶ Continue sweep" to carry on, or "■ Stop" to end it.');
       showResumeControls(want);
       return;
     }
