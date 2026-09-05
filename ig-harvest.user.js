@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.6
+// @version      2.7
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
-// @description  Harvest an Instagram profile's reel/post URLs into ig.json via the local SLAM proxy. "🆕 New only" asks the proxy which shortcodes ig.json already holds and stops scrolling as soon as it recognises the grid — a re-harvest costs ~3 scroll steps instead of 500. "🔁 Sweep all" runs that across every harvested author unattended, rotating the Proton VPN between authors the way Download+rotate does. Also "▶ Resume…": scroll-hunt to a post by URL/shortcode and click its grid thumbnail → reopens the post in IG's grid modal WITH the ◀▶ arrows (the only way to get them back — they're SPA state from clicking the grid, not the URL). Reads only the rendered page from your normal logged-in session — no API/cookie replay IG could flag. Install: Tampermonkey → create new script → paste. Or open http://localhost:8080/ig-harvest.user.js to install/update.
+// @description  Keeps your list of favourite Instagram contributors up to date. Adds a small button bar to the bottom-right of any profile page. 🆕 New only — collect just the posts you don't already have (a few seconds; the everyday button). ⬇ All — collect every post on the profile, newest to oldest (slow; for a first-time author). 🔁 Sweep — do "New only" on one author after another, unattended, from a list you tick. ▶ Resume — go back to reading where you left off: paste a post's link and it opens that post with the ◀ ▶ arrows working. Reads only the page your browser has already drawn in your normal logged-in session. Install or update: open http://localhost:8080/ig-harvest.user.js
 // @author       SLAM
 // @match        https://www.instagram.com/*
 // @grant        GM_xmlhttpRequest
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.6';
+  const VER = '2.7';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -195,8 +195,20 @@
       + ' are already up to date are recognised and skipped in a few seconds each.', '#ff453a');
     stop.style.display = 'none';
     stop.onclick = () => { abortFlag = true; sweepStop('stopped by you'); setMsg('■ stopping…'); };
+    // (dev0916) The version used to live ONLY in a title on the bar — which nobody can
+    // reach, because the buttons cover the bar and each carries a tooltip of its own
+    // that wins the hover. It is the one thing you want to know right after updating
+    // ("did the new one actually load?"), so it belongs on screen: small, quiet, and
+    // directly above the buttons where the eye already is.
+    const ver = document.createElement('div');
+    ver.id = 'slam-ig-ver';
+    ver.textContent = 'SLAM harvester v' + VER;
+    ver.title = 'Which version of the harvester this tab is running.'
+      + '\n\nAfter updating in Tampermonkey, reload the page and check this number changed.';
+    ver.style.cssText = 'padding:2px 8px;border-radius:6px;background:#111c;color:#cfd3da;' +
+      'font:600 10px/1.5 system-ui;box-shadow:0 1px 4px rgba(0,0,0,.35);backdrop-filter:blur(3px)';
     row.appendChild(h); row.appendChild(n); row.appendChild(s); row.appendChild(r); row.appendChild(stop);
-    wrap.appendChild(msg); wrap.appendChild(row);
+    wrap.appendChild(msg); wrap.appendChild(ver); wrap.appendChild(row);
     wrap.title = 'SLAM IG Harvester v' + VER;
     document.body.appendChild(wrap);
     refreshAuthorStatus(true);
