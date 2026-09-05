@@ -510,11 +510,15 @@ function gridOpenFullscreen(row, contained) {
       aPoint: _armLoop ? _armLoop.a : null,
       bPoint: _armLoop ? _armLoop.b : null,
       abSuspended: false,   // (dev0701) set by a manual scrub outside A→B
-      // (dev0922) x = eXpand. true — play the WHOLE video and let the A→B
-      // loop stand down, so the cut can be judged against what surrounds it.
-      // Honoured only while the crop overlay is open (the chip that says so
-      // lives on its bar), and it never touches what gets SAVED.
+      // (dev0923) x = eXpand. true — the timeline bar spans the A→B cut (plus
+      // a margin) instead of the whole video, so a short trim gets the full width
+      // of the bar to be adjusted in. Playback and the render are untouched.
+      // Honoured only while the crop overlay is open — the chip that says the
+      // bar is lying about its scale lives there.
       abExpand: false,
+      // (dev0923) The frozen {t0,t1} the zoomed bar spans. Set when x arms the
+      // zoom, null otherwise — see _vpTlFitWindow.
+      tlWin: null,
 
       duration: 0,
       currentTime: 0
@@ -2724,10 +2728,10 @@ function vpKeyHandler(e) {
   // the X screen. It IS in core.js's letter-dispatch list, but that whole
   // handler bails on an open crop since dev0747, so `x` reaches us too — it
   // is eXpand as of dev0922.)
-  // (dev0922) x = eXpand, while the crop overlay is open: play the whole video
-  // instead of looping A→B. core.js's window-capture dispatcher normally
-  // routes `x` to the X screen, but dev0747 made it bail WHOLE on an open crop,
-  // so the letter arrives here untouched — no per-letter bail is needed.
+  // (dev0923) x = eXpand, while the crop overlay is open: zoom the TIMELINE onto
+  // the A→B cut. core.js's window-capture dispatcher normally routes `x` to
+  // the X screen, but dev0747 made it bail WHOLE on an open crop, so the letter
+  // arrives here untouched — no per-letter bail is needed.
   if ((e.key === 'x' || e.key === 'X') && _vpCropHolding()) {
     e.preventDefault(); e.stopPropagation();
     _vpCropToggleExpand();
@@ -3017,6 +3021,72 @@ function _vpIsPlaying() {
 // cached _vpState.duration first (one tick old at worst), then the media
 // element for a direct/disk video, then YT's sync getDuration(). Vimeo's is a
 // promise, so it only ever answers through the cache.
+// (dev0923) How much room to leave outside A→B when the timeline is zoomed
+// onto it, as a fraction of the cut's own length at each end. Both marks then
+// sit inboard of the ends with bar to spare, so either can still be dragged
+// OUTWARD — which a window pinned exactly to A and B could never allow.
+const VP_TL_PAD = 0.15;
+
+// (dev0923) The stretch of video the timeline bar currently SPANS. Normally the
+// whole thing; with eXpand armed (x, crop overlay) it is the A→B cut plus a
+// margin. Every time–to–pixel conversion on the bar goes through this and its
+// two helpers, so there is one definition of the scale rather than four:
+//   _tlTimeAt      Alt / Ctrl click → a time
+//   _vpScrubTo     a plain drag → a seek
+//   place()        A, B and the two zoom marks → a position
+//   vpUpdateTimeline  the playhead and the progress fill
+//
+// Segments have their own concatenated mapping and their own coloured bands
+// laid out against the full duration, so a row carrying any falls back to the
+// whole video rather than showing bands at a scale they were not drawn for.
+function _vpTlWindow() {
+  const dur = _vpDurNow() || 0;
+  const full = { t0: 0, t1: dur, span: dur, zoomed: false };
+  if (!dur || !_vpState || !_vpState.abExpand) return full;
+  if (!_vpCropHolding()) return full;
+  if (_vpState.segs && _vpState.segs.length) return full;
+  if (_vpState.aPoint == null || _vpState.bPoint == null) return full;
+  const wz = _vpState.tlWin;
+  if (!wz) return full;
+  const t0 = Math.max(0, wz.t0), t1 = Math.min(dur, wz.t1);
+  if (t1 - t0 < 0.05) return full;
+  return { t0: t0, t1: t1, span: t1 - t0, zoomed: true };
+}
+
+// (dev0923) The window x FREEZES onto: the cut, plus VP_TL_PAD of its length at
+// each end. Computed once, when the zoom is armed, and then left alone — a
+// magnifier that re-fitted itself on every nudge would slide the picture out
+// from under the hand doing the nudging, which is the one thing a magnifier
+// must not do. The marks then MOVE across a fixed ruler, and the shaded ends
+// grow and shrink to show how much of the frozen window the cut still fills.
+// Push a mark clean out of the window and its line hides itself; x twice
+// re-fits onto wherever the cut has got to.
+function _vpTlFitWindow() {
+  const dur = _vpDurNow() || 0;
+  if (!dur || !_vpState) return null;
+  const ap = _vpState.aPoint, bp = _vpState.bPoint;
+  if (ap == null || bp == null) return null;
+  const a = Math.min(ap, bp), b = Math.max(ap, bp);
+  if (b - a < 0.05) return null;
+  const pad = (b - a) * VP_TL_PAD;
+  const t0 = Math.max(0, a - pad), t1 = Math.min(dur, b + pad);
+  if (t1 - t0 < 0.05) return null;
+  return { t0: t0, t1: t1 };
+}
+
+// Time → percent across the bar. May land outside 0–100 when zoomed (a zoom
+// mark parked outside the cut, say) — callers decide whether to clamp or hide.
+function _vpTlPctOf(t) {
+  const w = _vpTlWindow();
+  return (w.span > 0) ? ((t - w.t0) / w.span) * 100 : 0;
+}
+
+// Fraction across the bar (0–1) → time.
+function _vpTlTimeAtFrac(f) {
+  const w = _vpTlWindow();
+  return w.t0 + Math.max(0, Math.min(1, f)) * w.span;
+}
+
 function _vpDurNow() {
   if (!_vpState || !_vpState.player) return 0;
   if (_vpState.duration > 0) return _vpState.duration;
@@ -3255,11 +3325,19 @@ function vpUpdateABStyle() {
   // (dev0701) Setting/clearing/nudging A or B is a fresh arming — drop any
   // scrub-suspension so the new window loops immediately.
   if (_vpState) _vpState.abSuspended = false;
-  // (dev0922) …and a fresh arming is also a fresh cut to look at, so eXpand
-  // stands down: whatever whole-video view was wanted was wanted for the OLD
-  // window. Repaint the chip either way — it greys out with no A/B set.
+  // (dev0923) A/B moved, so the zoomed timeline's window moved with it — it is
+  // derived from the marks, not stored. Only the chip needs telling (it greys
+  // out with no A/B set). The zoom deliberately STAYS on: nudging a mark is
+  // exactly what the magnified bar is for, and popping back out to the whole
+  // video on the first nudge would undo the reason for being there.
+  // (dev0923) Losing a mark takes the zoom with it — there is nothing left to
+  // span. Moving one does NOT re-fit: a ruler that slides while you nudge
+  // against it is the thing this feature exists to avoid. x twice re-fits.
   if (_vpState) {
-    _vpState.abExpand = false;
+    if (_vpState.aPoint == null || _vpState.bPoint == null) {
+      _vpState.abExpand = false;
+      _vpState.tlWin = null;
+    }
     if (_vpState.crop && _vpState.crop.paintExpand) _vpState.crop.paintExpand();
   }
   if (_vpState.aPoint !== null) {
@@ -3323,12 +3401,46 @@ function _vpUpdateABLines() {
   kLand.style.opacity = '0.5';
   function place(el, point) {
     if (point == null || dur <= 0) { el.style.display = 'none'; return; }
-    const pct = Math.max(0, Math.min(100, (point / dur) * 100));
-    el.style.left = 'calc(' + pct + '% - 1px)';
+    // (dev0923) A zoomed bar shows a slice of the video, so a mark can fall off
+    // the end of it — a zoom that lands outside the cut, most obviously. Hide it
+    // rather than clamping: a line pinned to the edge claims a time it is not at.
+    const pct = _vpTlPctOf(point);
+    if (pct < -0.5 || pct > 100.5) { el.style.display = 'none'; return; }
+    el.style.left = 'calc(' + Math.max(0, Math.min(100, pct)) + '% - 1px)';
     el.style.display = '';
   }
   place(aEl, _vpState.aPoint);
   place(bEl, _vpState.bPoint);
+  // (dev0923) The margins either side of the cut, dimmed, whenever the bar is
+  // zoomed onto it. Without them a magnified bar is indistinguishable from a
+  // full one and the A and B lines look like they are simply near the ends;
+  // with them the bar reads as "the cut, and a little of what it sits in".
+  const w = _vpTlWindow();
+  function ensurePad(id) {
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.style.cssText = 'position:absolute;top:0;bottom:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:3;';
+      tl.appendChild(el);
+    }
+    return el;
+  }
+  const padL = ensurePad('vp-tl-pad-l');
+  const padR = ensurePad('vp-tl-pad-r');
+  if (w.zoomed && _vpState.aPoint != null && _vpState.bPoint != null) {
+    const aPct = Math.max(0, Math.min(100, _vpTlPctOf(Math.min(_vpState.aPoint, _vpState.bPoint))));
+    const bPct = Math.max(0, Math.min(100, _vpTlPctOf(Math.max(_vpState.aPoint, _vpState.bPoint))));
+    padL.style.left = '0';
+    padL.style.width = aPct + '%';
+    padL.style.display = aPct > 0.2 ? '' : 'none';
+    padR.style.left = bPct + '%';
+    padR.style.width = (100 - bPct) + '%';
+    padR.style.display = (100 - bPct) > 0.2 ? '' : 'none';
+  } else {
+    padL.style.display = 'none';
+    padR.style.display = 'none';
+  }
   const ken = (_vpCropHolding() && !_vpState.crop.imageMode) ? _vpState.crop.ken : null;
   place(kFrom, (ken && ken.on) ? ken.fromSec : null);
   place(kLand, (ken && ken.on) ? ken.atSec   : null);
@@ -3409,7 +3521,7 @@ function vpWireControls() {
         cumul += segs[i].dur;
       }
     } else {
-      const t = pct * dur;
+      const t = _vpTlTimeAtFrac(pct);   // (dev0923) zoomed bar = finer scrub
       // (dev0701) A manual scrub OUTSIDE an armed A→B window used to be undone
       // within one poller tick: the A-B branch in vpUpdateTimeline sees ct past
       // B and yanks the playhead back to A, so on any row with a loop armed
@@ -3430,7 +3542,10 @@ function vpWireControls() {
     const p = (typeof window.rotateXY === 'function')
       ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
     const r = _vpWrapLocalRect(timeline);
-    return Math.max(0, Math.min(1, (p.x - r.left) / r.width)) * _vpDurNow();
+    // (dev0923) through the window, so a Ctrl-click on a zoomed bar lands on the
+    // second it is pointing at rather than on the same second it would have hit
+    // unzoomed. Identity while the bar spans the whole video.
+    return _vpTlTimeAtFrac((p.x - r.left) / r.width);
   };
   timeline.addEventListener('pointerdown', e => {
     // (dev0919) Alt+click sets where an armed zoom BEGINS — Alt because Ctrl
@@ -3674,7 +3789,7 @@ function vpUpdateTimeline() {
       const pos   = _vpSelectedPos(ct);
       pct = (pos !== null && total > 0) ? (pos / total) * 100 : 0;
     } else {
-      pct = (ct / dur) * 100;
+      pct = _vpTlPctOf(ct);   // (dev0923) identity unless the bar is zoomed
     }
     pct = Math.max(0, Math.min(100, pct));
     progress.style.width = pct + '%';
@@ -3752,12 +3867,7 @@ function vpUpdateTimeline() {
         && ct >= _vpState.aPoint && ct < _vpState.bPoint) {
       _vpState.abSuspended = false;
     }
-    // (dev0922) …and stands down entirely while eXpand is on and the crop
-    // overlay is up: that is the user asking to see the whole video, and unlike
-    // abSuspended it must NOT re-arm the moment playback crosses back into the
-    // window. Tied to the open overlay so the mode always has a chip saying so.
     if (!window._vpFSB && !_vpState.abSuspended
-        && !(_vpState.abExpand && _vpCropHolding())
         && _vpState.aPoint !== null && _vpState.bPoint !== null
         && _vpState.bPoint > _vpState.aPoint) {
       if (ct >= _vpState.bPoint) {
@@ -5350,12 +5460,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-warn" title="The crop — or the zoom box inside it, which is the tightest the shot gets — is SMALLER than the chosen output resolution, so ffmpeg would blow it up. No new detail, just a bigger file. Grow the box or drop the res." ' +
       'style="display:none;cursor:default;user-select:none;padding:2px 6px;background:#5a3a12;' +
       'border:1px solid #fb3;color:#fb3;border-radius:3px;flex:0 0 auto;">⚠</span>' +
-    // (dev0922) eXpand (x). Which stretch of video the PLAYER runs while the
-    // crop is being set up: the A→B cut on a loop (default), or the whole clip.
-    // A crop is judged against what comes before and after it as often as
-    // against itself. Nothing here changes the render — save still cuts A→B.
-    '<span id="vp-crop-expand" title="What the PLAYER runs (x): the A–B cut on a loop, or the whole video. The saved clip is A–B either way." ' +
-      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;flex:0 0 auto;">↔ A–B</span>' +
+    // (dev0923) eXpand (x). What the TIMELINE BAR spans: the whole video, or
+    // just the A→B cut. A 3-second trim out of a 2-minute clip is twenty pixels
+    // of bar; zoomed onto it, those seconds get the whole width and the marks can
+    // be placed properly. Playback and the render are untouched either way.
+    '<span id="vp-crop-expand" title="What the TIMELINE spans (x): the whole video, or just the A–B cut blown up to the full width of the bar for fine adjustment. It does not change playback, and the saved clip is A–B either way." ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;flex:0 0 auto;">↔ whole</span>' +
     '<span id="vp-crop-aspect" title="Locked ratio — the corners scale it. Drag a SIDE (or ⇧T) for any shape." ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
     '<span id="vp-crop-crf-lbl" style="opacity:0.7;">CRF</span>' +
@@ -6713,16 +6823,26 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   paintAudio();
   if (audioChip) audioChip.addEventListener('click', _vpCropToggleAudio);
 
-  // (dev0922) eXpand chip — click, or x. Lit blue on FULL, because full is
-  // the state that needs saying: A–B is what the marks on the timeline already
-  // imply, and a player ignoring them should not do so quietly. Greyed out
-  // with no A/B set, where there is nothing to expand from.
+  // (dev0923) eXpand chip — click, or x. Lit blue while the bar is zoomed,
+  // because that is the state worth saying out loud: a timeline showing eight
+  // seconds looks exactly like a timeline showing eight minutes, and every
+  // instinct about where the middle of the video is becomes wrong. The
+  // magnification goes on the chip for the same reason — it is the answer to
+  // "how much finer am I working now". Greyed out with no A/B to zoom onto.
   const expChip = bar.querySelector('#vp-crop-expand');
   function paintExpand() {
     if (!expChip) return;
     const armed = !!(_vpState && _vpState.aPoint != null && _vpState.bPoint != null);
-    const on = armed && !!(_vpState && _vpState.abExpand);
-    expChip.textContent      = on ? '↔ full' : '↔ A–B';
+    const w = _vpTlWindow();
+    const on = armed && w.zoomed;
+    let mag = 0;
+    if (on) {
+      const dur = _vpDurNow() || 0;
+      if (dur > 0 && w.span > 0) mag = dur / w.span;
+    }
+    expChip.textContent      = on
+      ? ('↔ A–B' + (mag >= 1.05 ? ('  ' + (mag >= 10 ? Math.round(mag) : mag.toFixed(1)) + '×') : ''))
+      : '↔ whole';
     expChip.style.background = on ? '#2a5d9a' : '#234';
     expChip.style.color      = on ? '#fff' : '#dfe6f0';
     expChip.style.opacity    = armed ? '1' : '0.45';
@@ -7204,12 +7324,19 @@ function _vpCropHelpShow() {
         row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
         row(K('Space'),      'play / pause') +
-        row(K('x'),          'e<u>X</u>pand — play the WHOLE video instead of looping ' +
-                             'the cut, so you can see what the clip lands in. ' +
-                             'Press it again for the cut back. The bar chip says ' +
-                             'which (↔ A–B / ↔ full), and the SAVE is A–B either ' +
-                             'way — this only changes what the player runs. ' +
-                             'Setting A or B again puts it back on the cut.') +
+        row(K('x'),          'e<u>X</u>pand — blow the timeline up onto the cut. The ' +
+                             'bar then spans A–B (plus a margin either side, so ' +
+                             'both marks can still be dragged outward) instead of ' +
+                             'the whole video. A three-second trim out of a two-' +
+                             'minute clip is twenty pixels of bar; zoomed, it is ' +
+                             'the whole width, and Ctrl-click lands where it looks ' +
+                             'like it lands. The dimmed ends are what falls outside ' +
+                             'the cut, and the chip says the magnification (↔ A–B 12×). ' +
+                             'Nothing about playback or the render changes — A–B still ' +
+                             'loops, and the save is still A–B. The window is ' +
+                             'FIXED once set — nudging a mark moves it across a ' +
+                             'ruler that stays put, which is the point. Press ' + K('x') + ' ' +
+                             'twice to re-fit onto wherever the cut has got to.') +
         head('Colour') +
         row(K('B'),          'the colour panel — warmth, tint, brightness, contrast, ' +
                              'saturation and gamma, live ON THE FRAME as you drag. ' +
@@ -7548,48 +7675,59 @@ function _vpCropToggleAudio() {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
   s.audio = !s.audio;
+  if (s.paintExpand) s.paintExpand();   // (dev0923) the bar's scale changed with it
   if (s.paintAudio) s.paintAudio();
   if (typeof toast === 'function') {
     toast(s.audio ? '🔊 saved clip keeps its audio' : '🔇 saved clip will be silent', 1400);
   }
 }
 
-// (dev0922) x — eXpand. Swap the PLAYER between the A→B cut on a loop and
-// the whole video. A cut is judged as much by what it lands in as by itself,
-// and scrubbing out of the window only bought a few seconds before dev0701's
-// re-arm yanked the playhead back to A. This is that suspension made
-// deliberate and visible instead of accidental and temporary.
+// (dev0922/0923) x — eXpand. Zoom the TIMELINE onto the A→B cut, so the
+// whole width of the bar is the few seconds being trimmed instead of the whole
+// video. On a 2-minute clip a 3-second cut is 2.5% of the bar — about twenty
+// pixels, in which no mark can be placed to better than a tenth of a second.
+// Zoomed, those same seconds get the full width and a Ctrl-click lands where it
+// looks like it lands.
 //
-// It changes NOTHING about the render: _vpGoSave still cuts A→B. And it is
-// honoured only while the crop overlay is open, so the mode can never be on
-// with nothing on screen saying so — closing the crop restores the loop.
+// dev0922 first built this as a PLAYBACK toggle (whole video vs the cut on a
+// loop). That was the wrong reading: the ask was to see the cut BIGGER, not to
+// see more of the video. The player is untouched — A→B still loops as it
+// always has, and the render still cuts A→B.
+//
+// The window carries a margin either side (VP_TL_PAD) so both marks stay ON the
+// bar with room outside them. Pinned exactly to A and B they would sit on the
+// two end pixels, and there would be no way left to drag either one OUTWARD —
+// a magnifier you cannot widen from is a trap.
 function _vpCropToggleExpand() {
   if (!_vpState || !_vpState.crop) return;
   if (_vpState.aPoint == null || _vpState.bPoint == null) {
-    if (typeof toast === 'function') toast('set A and B first — nothing to expand from', 2000);
+    if (typeof toast === 'function') toast('set A and B first — nothing to zoom into', 2000);
     return;
   }
   _vpState.abExpand = !_vpState.abExpand;
-  // Coming BACK to the cut, land in it: the playhead is usually somewhere out
-  // in the surrounding video by then, and waiting for it to wander into the
-  // window on its own is not an answer. Clearing abSuspended stops dev0701's
-  // manual-scrub stand-down from swallowing the first lap.
-  if (!_vpState.abExpand) {
-    const a = Math.min(_vpState.aPoint, _vpState.bPoint);
-    const b = Math.max(_vpState.aPoint, _vpState.bPoint);
-    const ct = _vpNowSec();
-    _vpState.abSuspended = false;
-    if (ct < a || ct >= b) {
-      if (_vpState.isYT) _vpState.player.seekTo(a, true);
-      else if (_vpState.player && _vpState.player.setCurrentTime) _vpState.player.setCurrentTime(a);
+  if (_vpState.abExpand) {
+    _vpState.tlWin = _vpTlFitWindow();
+    if (!_vpState.tlWin) {
+      // A and B on top of each other: there is no span to magnify, and a bar
+      // spanning nothing is worse than one spanning too much.
+      _vpState.abExpand = false;
+      if (typeof toast === 'function') toast('A and B are too close together to zoom into', 2000);
+      return;
     }
+  } else {
+    _vpState.tlWin = null;
   }
   const s = _vpState.crop;
   if (s.paintExpand) s.paintExpand();
+  // The marks, the zoom lines and the shaded margins all live off the window,
+  // so they have to be re-placed now rather than on the next 250ms tick — the
+  // bar would otherwise show the old scale for a quarter of a second.
+  _vpUpdateABLines();
   if (typeof toast === 'function') {
+    const w = _vpTlWindow();
     toast(_vpState.abExpand
-      ? '↔ playing the whole video — the save is still A→B'
-      : '↔ back to the A→B cut', 1600);
+      ? '↔ timeline zoomed to the cut — ' + w.span.toFixed(1) + 's across the bar'
+      : '↔ timeline back to the whole video', 1600);
   }
 }
 
