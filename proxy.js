@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0920';
+const PROXY_BUILD = 'dev0926';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -7334,7 +7334,7 @@ http.createServer((req, res) => {
   // (dev0289) Preflight: route by URL prefix so /exec/* gets the tighter
   // origin-locked headers; the rest keeps the public-wildcard CORS proxy.
   if (req.method === 'OPTIONS') {
-    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/') || req.url.startsWith('/edit/') || req.url.startsWith('/wm/') || req.url.startsWith('/card/')) {
+    if (req.url.startsWith('/exec/') || req.url.startsWith('/rec/') || req.url.startsWith('/ig/') || req.url.startsWith('/frame/') || req.url.startsWith('/vpn/') || req.url.startsWith('/fix/') || req.url.startsWith('/diag/') || req.url.startsWith('/edit/') || req.url.startsWith('/wm/') || req.url.startsWith('/card/') || req.url.startsWith('/llc/')) {
       res.writeHead(204, corsForExec(req.headers.origin || ''));
       res.end();
       return;
@@ -7349,7 +7349,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
-      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
+      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llcnlc']) }));
     return;
   }
 
@@ -7874,6 +7874,72 @@ http.createServer((req, res) => {
       try { fs.writeFileSync(out, html, 'utf8'); }
       catch (e) { sendJson(res, 500, { ok: false, error: 'write failed: ' + e.message }, origin); return; }
       sendJson(res, 200, { ok: true, path: out }, origin);
+    }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
+    return;
+  }
+
+  // (dev0926) ── /llc/nlc — the cut log beside a losslessly-cut video ──────
+  // LLC (llc.js) writes one .nlc — "new lossless cut" — next to every source
+  // it takes a clip out of: <video minus its extension>.nlc, holding the times
+  // of every cut ever made from that file. It is the answer to "what have I
+  // already lifted out of this?", which the mp4s themselves cannot give — their
+  // names carry the numbers but nothing gathers them, and a clip that was later
+  // moved or deleted takes its own record with it.
+  //
+  // Two shapes, dispatched on the body:
+  //   {video, read:true}          → the current log ({} when there is none yet)
+  //   {video, durationSec, cut}   → append one cut, write, return the new log
+  //
+  // Append rather than replace: the client sends the one cut it just made, so
+  // two browser tabs on the same video cannot wipe each other's history, and a
+  // client with a stale idea of the log cannot shorten it. Writes to disk →
+  // origin-locked + POST, like its /vp neighbours above.
+  if (req.url.startsWith('/llc/nlc')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
+    if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
+    readJson(req, 256 * 1024).then(body => {
+      const vid = String((body && body.video) || '');
+      if (!/^([A-Za-z]:[\\/]|\/)/.test(vid) || /(^|[\\/])\.\.([\\/]|$)/.test(vid)
+          || !/\.(mp4|m4v|mov|webm|mkv|avi)$/i.test(vid)) {
+        sendJson(res, 400, { ok: false, error: 'video must be an absolute mp4/mov/mkv/… path' }, origin); return;
+      }
+      const out = vid.replace(/\.[^.\\/]+$/, '') + '.nlc';
+      let doc = null;
+      try { if (fs.existsSync(out)) doc = JSON.parse(fs.readFileSync(out, 'utf8')); }
+      catch (_) { doc = null; }   // a corrupt log is replaced, not obeyed
+      if (!doc || typeof doc !== 'object') doc = {};
+      if (!Array.isArray(doc.cuts)) doc.cuts = [];
+      doc.nlc = 1;
+      doc.source = vid;
+
+      if (body && body.read) { sendJson(res, 200, { ok: true, path: out, nlc: doc }, origin); return; }
+
+      const c = body && body.cut;
+      if (!c || typeof c !== 'object') {
+        sendJson(res, 400, { ok: false, error: 'cut (object) required, or read:true' }, origin); return;
+      }
+      const num = v => (Number.isFinite(+v) ? +v : null);
+      if (num(c.startSec) === null || num(c.endSec) === null) {
+        sendJson(res, 400, { ok: false, error: 'cut.startSec / cut.endSec must be numbers' }, origin); return;
+      }
+      // Copy field by field: this file is written from an HTTP body, and the
+      // only things that belong in it are the ones LLC puts there.
+      doc.cuts.push({
+        label:    String(c.label || '').slice(0, 120),
+        startSec: num(c.startSec),
+        endSec:   num(c.endSec),
+        durSec:   num(c.durSec),
+        start:    String(c.start || '').slice(0, 32),
+        end:      String(c.end || '').slice(0, 32),
+        output:   path.basename(String(c.output || '')).slice(0, 260),
+        at:       String(c.at || new Date().toISOString()).slice(0, 40)
+      });
+      if (num(body.durationSec) !== null) doc.durationSec = num(body.durationSec);
+      doc.updated = new Date().toISOString();
+      try { fs.writeFileSync(out, JSON.stringify(doc, null, 2), 'utf8'); }
+      catch (e) { sendJson(res, 500, { ok: false, error: 'write failed: ' + e.message }, origin); return; }
+      sendJson(res, 200, { ok: true, path: out, nlc: doc }, origin);
     }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
     return;
   }

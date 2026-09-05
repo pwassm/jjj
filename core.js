@@ -259,6 +259,12 @@ window.addEventListener('keydown', function(e) {
   // up. dev0746 opens V straight from a file manager with no show underneath,
   // where pressing C to start cropping opened the Config screen instead.
   if (typeof _vpCropHolding === 'function' && _vpCropHolding()) return;
+  // (dev0926) LLC, the lossless cutter, owns the keyboard for exactly the same
+  // reason: a and f mark the cut, s and d walk the playhead, and every one of
+  // those is a screen here. It has its own capture-phase handler on DOCUMENT;
+  // this one is on WINDOW and fires first, so without this bail the Annotate
+  // screen opens behind a cutter that is still on top of it.
+  if (typeof _llcHolding === 'function' && _llcHolding()) return;
 
   const k = e.key.toLowerCase();
 

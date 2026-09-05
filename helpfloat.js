@@ -1340,6 +1340,13 @@ window.addEventListener('keydown', function (e) {
       var cropTook = probe(function () {
         return !!(window._vpCropHelpToggle && window._vpCropHelpToggle());
       }, false);
+      // (dev0926) …and so does LLC, the lossless cutter, for the same reason:
+      // its keys are its own, and this panel would list the video player's.
+      if (!cropTook) {
+        cropTook = probe(function () {
+          return !!(window._llcHelpToggle && window._llcHelpToggle());
+        }, false);
+      }
       if (!cropTook) hpToggle();
     }
     return false;
