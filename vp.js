@@ -2804,6 +2804,15 @@ function vpKeyHandler(e) {
   // the embed-zoom block above, which returns outright when its toolbar button
   // exists — and it never does here, since the crop overlay only mounts on disk
   // videos while ⤢ only exists on a cross-origin embed. Nothing is shadowed.
+  // (dev0919) ⇧Z = where the move STARTS, stamped at the playhead (press it
+  // again to take it away). It has to come first: `e.key` is the capital 'Z'
+  // when shift is down, and the arm/disarm below accepts either case.
+  if (e.key === 'Z' && e.shiftKey) {
+    if (!_vpCropHolding()) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpKenStampFrom();
+    return;
+  }
   if (e.key === 'z' || e.key === 'Z') {
     if (!_vpCropHolding()) return;
     e.preventDefault(); e.stopPropagation();
@@ -3257,7 +3266,9 @@ function vpUpdateABStyle() {
 
 function _vpUpdateABLines() {
   const tl = document.getElementById('vp-timeline');
-  if (!tl) return;
+  // (dev0919) …and no player state: this is called from the crop overlay now
+  // (paintKen, and the close in _vpCropToggle), not only from vpUpdateABStyle.
+  if (!tl || !_vpState) return;
   let dur = 0;
   const p = _vpState && _vpState.player;
   if (p && p.el && Number.isFinite(p.el.duration)) dur = p.el.duration;
@@ -3279,6 +3290,13 @@ function _vpUpdateABLines() {
   }
   const aEl = ensureLine('vp-ab-line-a', '#0f0');
   const bEl = ensureLine('vp-ab-line-b', '#f44');
+  // (dev0919) The zoom's two moments, in the amber the zoom box already uses:
+  // solid where the move starts, half-lit where it lands. Both hide themselves
+  // when no zoom is armed, so an ordinary trim sees exactly the two lines it
+  // always did.
+  const kFrom = ensureLine('vp-ken-line-from', '#fb0');
+  const kLand = ensureLine('vp-ken-line-land', '#fb0');
+  kLand.style.opacity = '0.5';
   function place(el, point) {
     if (point == null || dur <= 0) { el.style.display = 'none'; return; }
     const pct = Math.max(0, Math.min(100, (point / dur) * 100));
@@ -3287,6 +3305,9 @@ function _vpUpdateABLines() {
   }
   place(aEl, _vpState.aPoint);
   place(bEl, _vpState.bPoint);
+  const ken = (_vpCropHolding() && !_vpState.crop.imageMode) ? _vpState.crop.ken : null;
+  place(kFrom, (ken && ken.on) ? ken.fromSec : null);
+  place(kLand, (ken && ken.on) ? ken.atSec   : null);
 }
 
 function vpWireControls() {
@@ -3378,17 +3399,33 @@ function vpWireControls() {
       else _vpState.player.setCurrentTime(t);
     }
   };
+  // (dev0919) Time under the pointer, in seconds. Both modifier gestures below
+  // read the CLICK position rather than the playhead, which is the whole point
+  // of putting a mark on the bar instead of parking on the frame first.
+  const _tlTimeAt = e => {
+    const p = (typeof window.rotateXY === 'function')
+      ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
+    const r = _vpWrapLocalRect(timeline);
+    return Math.max(0, Math.min(1, (p.x - r.left) / r.width)) * _vpDurNow();
+  };
   timeline.addEventListener('pointerdown', e => {
+    // (dev0919) Alt+click sets where an armed zoom BEGINS — Alt because Ctrl
+    // has meant A/B on this bar since dev0293 and a moving crop needs its marks
+    // more than it needs this one. Alt-clicking with no zoom armed falls
+    // through to an ordinary scrub, so the gesture costs nothing when unused.
+    if (e.altKey && !e.ctrlKey && _vpState && _vpDurNow() &&
+        _vpCropHolding() && _vpState.crop.ken && _vpState.crop.ken.on &&
+        !_vpState.crop.imageMode) {
+      e.preventDefault(); e.stopPropagation();
+      _vpKenSetFrom(_tlTimeAt(e));
+      return;
+    }
     // (dev0293) Ctrl+click on timeline sets A/B alternating: first Ctrl-click
     // sets A, second sets B, third resets both and starts a new pair. Plain
     // click still scrubs. Computes time from click position (not playhead).
     if (e.ctrlKey && _vpState && _vpDurNow()) {
       e.preventDefault(); e.stopPropagation();
-      const p = (typeof window.rotateXY === 'function')
-        ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
-      const r = _vpWrapLocalRect(timeline);
-      const pct = Math.max(0, Math.min(1, (p.x - r.left) / r.width));
-      const t = pct * _vpDurNow();
+      const t = _tlTimeAt(e);   // (dev0919) same math, hoisted into _tlTimeAt
       if (_vpState.aPoint == null) {
         _vpState.aPoint = t;
       } else if (_vpState.bPoint == null) {
@@ -4168,7 +4205,10 @@ function _vpKenToggle() {
   const s = _vpState.crop;
   if (!s.ken) return;
   s.ken.on = !s.ken.on;
-  if (s.ken.on) s.ken.atSec = _vpNowSec();
+  // (dev0919) Arming afresh clears any wait: the marker belonged to the move
+  // that was just switched off, and a stale one would hold the picture still
+  // for a stretch of the NEXT zoom with nothing on screen explaining why.
+  if (s.ken.on) { s.ken.atSec = _vpNowSec(); s.ken.fromSec = null; }
   // (dev0745) On a still, arming the zoom is ASKING for a clip — a picture with
   // a move on it and no format to move in is a box that does nothing at save.
   let armed = false;
@@ -4187,10 +4227,69 @@ function _vpKenToggle() {
     } else {
       toast(s.ken.on
         ? '🎬 Ken Burns armed — drag the amber box to where the zoom should end, ' +
-          'parked on the frame it should get there (' + s.ken.atSec.toFixed(1) + 's)'
-        : '🎬 Ken Burns off — the crop renders static', s.ken.on ? 3400 : 1600);
+          'parked on the frame it should get there (' + s.ken.atSec.toFixed(1) + 's). ' +
+          '⇧Z (or Alt-click the timeline) = hold still first, and start the move there.'
+        : '🎬 Ken Burns off — the crop renders static', s.ken.on ? 4200 : 1600);
     }
   }
+}
+
+// (dev0919) ── When the move BEGINS ──────────────────────────────────────────
+// Until now a Ken Burns started on the first frame of the cut, every time: the
+// only time you could choose was where it LANDED. A zoom that means "watch
+// this" usually wants a beat of the whole scene first, so the eye has somewhere
+// to be moved FROM — this is that beat.
+//
+// Held in absolute video seconds (the same units atSec and the track keys use)
+// so moving A or B re-cuts it at save rather than invalidating it. Clamped into
+// [A, landing]: a marker before the cut starts is just "no wait", and one after
+// the landing would be a move that runs backwards.
+//
+// tSec == null clears it. Returns the value that was actually stored.
+function _vpKenSetFrom(tSec) {
+  if (!_vpState || !_vpState.crop || !_vpState.crop.ken) return null;
+  const k = _vpState.crop.ken;
+  if (!k.on) {
+    if (typeof toast === 'function') toast('🎬 arm the zoom first (Z) — there is no move to delay', 2400);
+    return null;
+  }
+  if (tSec == null) {
+    k.fromSec = null;
+    if (_vpState.crop.paintKen) _vpState.crop.paintKen();
+    if (typeof toast === 'function') {
+      toast('🎬 zoom start cleared — the move begins on the first frame of the cut again', 2600);
+    }
+    return null;
+  }
+  const aPt = (_vpState.aPoint != null) ? _vpState.aPoint : 0;
+  const land = k.atSec;
+  if (!(land > aPt)) {
+    if (typeof toast === 'function') {
+      toast('🎬 the zoom lands at ' + land.toFixed(1) + 's, at or before the start of the cut — ' +
+            'place the box again on a later frame, then set the start', 4200);
+    }
+    return null;
+  }
+  const clamped = Math.max(aPt, Math.min(land, +tSec));
+  k.fromSec = clamped;
+  if (_vpState.crop.paintKen) _vpState.crop.paintKen();
+  if (typeof toast === 'function') {
+    const holdFor = clamped - aPt;
+    const moveFor = land - clamped;
+    const note = (Math.abs(clamped - +tSec) > 0.05)
+      ? ' (pulled back inside the cut)' : '';
+    toast('🎬 zoom starts ' + clamped.toFixed(1) + 's' + note + ' — holds the full crop for ' +
+          holdFor.toFixed(1) + 's, then moves in over ' + moveFor.toFixed(1) + 's', 4000);
+  }
+  return clamped;
+}
+
+// ⇧Z — stamp the start of the move at the playhead, or take it away again.
+function _vpKenStampFrom() {
+  if (!_vpState || !_vpState.crop || !_vpState.crop.ken) return;
+  const k = _vpState.crop.ken;
+  if (k.on && k.fromSec != null) _vpKenSetFrom(null);
+  else                           _vpKenSetFrom(_vpNowSec());
 }
 
 // (dev0724) ── Text boxes ────────────────────────────────────────────────────
@@ -5570,7 +5669,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (dev0720) `on` = armed; frac is inside the CROP rect (fw === fh, since a
     // same-aspect box inside a box has equal fractions on both axes); atSec is
     // the playhead when the box was last placed — where the zoom finishes.
-    ken: { on: false, frac: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }, atSec: 0 },
+    // (dev0919) fromSec is where the move BEGINS: absolute video seconds like
+    // atSec (and like the track's keys), rebased onto A→B at save so moving a
+    // mark re-cuts the move instead of invalidating it. null = begin at A,
+    // which is what every Ken Burns did before this.
+    ken: { on: false, frac: { x: 0.2, y: 0.2, w: 0.6, h: 0.6 }, atSec: 0, fromSec: null },
     // (dev0777) The rect may outgrow the source frame; the surplus renders as
     // symmetric black bars. Off by default — every existing gesture is unchanged
     // until the rect is actually bigger than the picture.
@@ -5855,10 +5958,18 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     kenBox.style.height = (k.frac.h * 100) + '%';
     // (dev0745) A still has no playhead for the move to land on — it lands at
     // the end of the clip, so the label says the zoom and leaves time out of it.
+    // (dev0919) …and when it STARTS, once a marker has been set: the wait is
+    // invisible on the picture (nothing moves during it), so the label is the
+    // only place it can be seen without pressing play.
     kenLbl.textContent = imageMode
       ? ('🎬 ' + (1 / k.frac.w).toFixed(2) + '× · the move ends here')
-      : ('🎬 ' + (1 / k.frac.w).toFixed(2) + '× · lands ' + k.atSec.toFixed(1) + 's');
+      : ('🎬 ' + (1 / k.frac.w).toFixed(2) + '× · ' +
+         (k.fromSec == null ? '' : 'starts ' + k.fromSec.toFixed(1) + 's → ') +
+         'lands ' + k.atSec.toFixed(1) + 's');
     kenLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
+    // The same two times as lines on the player's timeline — see
+    // _vpUpdateABLines, which draws them beside A and B.
+    if (!imageMode) _vpUpdateABLines();
   }
 
   // (dev0777) Draw the stamped keyframes and the path between their centres.
@@ -6963,6 +7074,13 @@ function _vpCropHelpShow() {
                              'the frame you are parked on when you place it: the ' +
                              'render glides from the full crop at the start mark ' +
                              'to the box by then, and holds it to the end mark.') +
+        row(K('⇧Z'),         'hold the whole shot STILL first, then start the move at ' +
+                             'the playhead — press it again to clear the mark and go ' +
+                             'back to moving from the first frame. Alt-click the ' +
+                             'timeline does the same thing at the point you click ' +
+                             '(Ctrl-click there is still A / B).') +
+        row('amber lines',   'on the timeline: solid = the move starts, faint = it ' +
+                             'lands. The box label says both times as well.') +
         head('Text on the picture') +
         row(K('E'),          'new text box — burned in at render, for the whole clip') +
         row('click inside',  'type. No hotkeys while you do — ' + K('↑') + K('↓') +
@@ -7326,6 +7444,10 @@ function _vpCropToggle() {
     // C, the bar's ✕ or the cheat-sheet's. _vpImageCropClose guards re-entry.
     if (_vpState.imageMode) window._vpImageCropClose();
   }
+  // (dev0919) The zoom's timeline markers belong to an OPEN crop — take them
+  // down with it, or a closed overlay leaves two amber lines on the bar with
+  // nothing on screen to explain them.
+  _vpUpdateABLines();
 }
 
 // (dev0719) Toggle whether the RENDERED clip keeps its soundtrack (chip + M).
@@ -7643,8 +7765,45 @@ function _vpCropResolveAbsPath(relPath) {
 // (dev0291) Match ffmpeg's "no such file" / ENOENT family on stderr. Used
 // to detect the case where the user cached a wrong absRoot for a folder —
 // we offer to clear the cache and re-prompt.
+// (dev0919) ffmpeg says plenty on stderr that is not an error, and one of those
+// lines used to be read as "the file is missing". A Samsung phone clip carries
+// an edit list, so the mov demuxer prints
+//     st: 0 edit list 1 Cannot find an index entry before timestamp: 9819.
+// on EVERY trimmed render — as a warning, about a file it has already opened
+// and is reading. The old test was "any line containing 'cannot find'", so on
+// footage like that a render that failed for any reason at all came back as
+// "ffmpeg could not find <input>", offering to clear a disk root that was never
+// wrong, while the real reason went to console.error and nowhere else.
+// Measured on 20260831_101741.mp4 (Galaxy S25 Ultra): those three lines are
+// printed by a run that exits 0 and writes a perfect file.
+const VP_STDERR_BENIGN =
+  /index entry|edit list|skipping unhandled metadata|poorly interleaved|max_interleave_delta|deprecated|estimating duration/i;
+
+// The stderr lines that actually say something went wrong.
+function _vpCropStderrBad(lines) {
+  return (lines || []).filter(l => l && !VP_STDERR_BENIGN.test(l));
+}
+
+// A genuinely missing input, in ffmpeg's own words (and node's, when the spawn
+// itself is what failed). Benign chatter is filtered out first.
 function _vpCropStderrSaysNotFound(lines) {
-  return lines.some(l => /no such file|cannot find|enoent|failed to open/i.test(l));
+  return _vpCropStderrBad(lines).some(l =>
+    /no such file or directory|error opening input|could not open file|failed to open|enoent|cannot find the (file|path) specified/i.test(l));
+}
+
+// (dev0919) The one line worth putting in front of the user when a render
+// fails. ffmpeg's real complaint is often NOT the last thing it printed — the
+// benign warnings above frequently are — so take the last line that means
+// something, and when there is nothing at all, say what the silence itself
+// means rather than showing "exit -1".
+function _vpCropFailLine(result) {
+  const bad = _vpCropStderrBad(result && result.stderr);
+  if (bad.length) return bad[bad.length - 1];
+  if (!result || result.exitCode === -1) {
+    return 'the render ended without a result — the proxy stopped answering. ' +
+           'Check the "SLAM proxy :8081" window and restart "node proxy.js".';
+  }
+  return 'ffmpeg exited ' + result.exitCode + ' and printed no error';
 }
 
 // (dev0293) Local-time YYYYMMDD-HHMMSS for filename timestamps.
@@ -8434,6 +8593,7 @@ async function _vpImageSave(opts) {
       const slashIdx = relPath.indexOf('/');
       const rootName = (slashIdx >= 0) ? relPath.slice(0, slashIdx) : relPath;
       if (confirm('Could not find:\n  ' + absInput +
+                  '\n\n' + _vpCropFailLine(result) +
                   '\n\nClear cached disk path for folder "' + rootName + '" and retry?')) {
         localStorage.removeItem('vpDiskRoot:' + rootName);
         return _vpImageSave(opts);
@@ -8458,8 +8618,10 @@ async function _vpImageSave(opts) {
         toast((verdict.ok ? '⧉ saved lossless → ' : '↻ saved → ') + outName + xmp + meta + dates, 3400);
       }
     } else {
-      const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
-      if (typeof toast === 'function') toast('save failed: ' + tail, 4200);
+      // (dev0919) Same treatment as the video path: the real complaint, not
+      // whatever ffmpeg happened to print last.
+      const tail = _vpCropFailLine(result);
+      if (typeof toast === 'function') toast('save failed: ' + tail, 6000);
       console.error('[image save failed]', { route, exitCode: result.exitCode, payload, stderr: result.stderr });
     }
   } catch (err) {
@@ -8700,12 +8862,21 @@ async function _vpGoSave(opts) {
         return;
       }
       const k = s.ken;
+      const landSec = Math.max(0, Math.min(endSec - startSec, k.atSec - startSec));
+      // (dev0919) …and when it BEGINS. Rebased onto the cut exactly as the
+      // landing is, then clamped inside it: a marker left behind by an A that
+      // moved past it means "no wait", never a move that runs backwards.
+      const waitSec = (k.fromSec == null)
+        ? 0
+        : Math.max(0, Math.min(landSec, k.fromSec - startSec));
       kenPayload = {
         x: k.frac.x, y: k.frac.y, w: k.frac.w, h: k.frac.h,
-        holdSec: Math.max(0, Math.min(endSec - startSec, k.atSec - startSec)),
+        holdSec: landSec,
         fps: fps
       };
+      if (waitSec > 0.01) kenPayload.fromSec = +waitSec.toFixed(3);
       kenTok = 'kb' + (1 / k.frac.w).toFixed(1).replace('.', '_') + 'x';
+      if (kenPayload.fromSec) kenTok += 'from' + waitSec.toFixed(1).replace('.', '_') + 's';
       detailParts.push(kenTok);
     }
     // (dev0777) The tracking window. Keys are held in ABSOLUTE video seconds, so
@@ -8882,6 +9053,18 @@ async function _vpGoSave(opts) {
     }
     return;
   }
+  // (dev0919) …and the wait before that zoom starts. An old proxy validates the
+  // fields it knows and ignores ken.fromSec, so the render would come back
+  // looking finished with the move starting at the wrong moment — the failure
+  // mode this whole family of checks exists to prevent. Only asked for when
+  // there IS a wait, so an ordinary zoom still renders on an older proxy.
+  if (payload.ken && payload.ken.fromSec > 0 && !(await _vpProxyHasFeature('kenwait'))) {
+    if (typeof toast === 'function') {
+      toast('A zoom that starts partway in needs an updated proxy — restart ' +
+            '"node proxy.js" and retry (or ⇧Z to clear the start mark)', 5200);
+    }
+    return;
+  }
   // (dev0724) …and the captions: an old proxy ignores payload.texts and writes a
   // clean clip with no text in it, which reads as success until you play it.
   if (payload.texts && !(await _vpProxyHasFeature('drawtext'))) {
@@ -9004,6 +9187,7 @@ async function _vpGoSave(opts) {
       const slashIdx = relPath.indexOf('/');
       const rootName = (slashIdx >= 0) ? relPath.slice(0, slashIdx) : relPath;
       if (confirm('ffmpeg could not find:\n  ' + absInput +
+                  '\n\n' + _vpCropFailLine(result) +
                   '\n\nClear cached disk path for folder "' + rootName + '" and retry?')) {
         localStorage.removeItem('vpDiskRoot:' + rootName);
         return _vpGoSave(opts);
@@ -9041,8 +9225,10 @@ async function _vpGoSave(opts) {
       }
       if (typeof toast === 'function') toast('saved → ' + outName + xmp + meta + loopNote + dates, 3200);
     } else {
-      const tail = result.stderr.slice(-1)[0] || ('exit ' + result.exitCode);
-      if (typeof toast === 'function') toast('save failed: ' + tail, 4200);
+      // (dev0919) The REASON, not just the last thing printed — see
+      // _vpCropFailLine. Long enough on screen to be read and acted on.
+      const tail = _vpCropFailLine(result);
+      if (typeof toast === 'function') toast('save failed: ' + tail, 6000);
       console.error('[save failed]', { exitCode: result.exitCode, payload,
         stderr: result.stderr, lastProgress: result.lastProgress });
     }

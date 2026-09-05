@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0918';
+const PROXY_BUILD = 'dev0919';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1338,6 +1338,15 @@ function buildFfmpegArgs(p, tmpSink) {
       must(+k.x + +k.w <= 1.001 && +k.y + +k.h <= 1.001, 'ken box must sit inside the crop');
       const hold = +k.holdSec;
       must(Number.isFinite(hold) && hold >= 0, 'ken.holdSec must be a number ≥ 0');
+      // (dev0919) Optional wait BEFORE the move — clip-relative seconds, like
+      // holdSec (which names the landing, not a duration). Absent or 0 = the
+      // move starts on the first frame, which is what every render did until
+      // now. It cannot sit past the landing: that would be a ramp running
+      // backwards, and the client already clamps it, so a payload that says
+      // otherwise is a bug worth refusing rather than rendering.
+      const wait = (k.fromSec === undefined || k.fromSec === null) ? 0 : +k.fromSec;
+      must(Number.isFinite(wait) && wait >= 0, 'ken.fromSec must be a number ≥ 0');
+      must(wait <= hold + 0.001, 'ken.fromSec must not be later than ken.holdSec (where the zoom lands)');
       // fps: "num/den" or a plain number. Kept verbatim for zoompan (exact
       // 30000/1001), and evaluated here only to count the ramp's frames.
       const fpsStr = String(k.fps == null ? '' : k.fps).trim();
@@ -1346,8 +1355,17 @@ function buildFfmpegArgs(p, tmpSink) {
       must(Number.isFinite(fpsNum) && fpsNum > 0 && fpsNum <= 1000,
            'ken.fps must be a positive rate ("30000/1001" or a number)');
       const KW = (+k.w).toFixed(6), KX = (+k.x).toFixed(6), KY = (+k.y).toFixed(6);
-      const N = Math.max(1, Math.round(fpsNum * hold));   // ramp length in frames
-      const P = `min(on/${N},1)`;
+      const N = Math.max(1, Math.round(fpsNum * hold));   // the landing, in frames
+      // (dev0919) The frame the move STARTS on. Kept at least one frame short
+      // of the landing so the ramp always has a length to divide by — a zoom
+      // asked to start and land on the same frame is a cut, and one frame of
+      // ramp is the closest honest thing to it.
+      const N0 = Math.min(N - 1, Math.max(0, Math.round(fpsNum * wait)));
+      // Progress along the ramp. With no wait this is the expression every
+      // render since dev0720 has used, character for character — max(x,0) is a
+      // no-op for on ≥ 0, but leaving the shorter form alone keeps the verified
+      // path verified.
+      const P = (N0 > 0) ? `min(max((on-${N0})/${N - N0},0),1)` : `min(on/${N},1)`;
       const S = `(${P})*(${P})*(3-2*(${P}))`;             // smoothstep ease
       // Output size (ow/oh above). zoompan scales the window straight to it, so
       // when a resolution is chosen we render it here and skip the trailing
@@ -3328,9 +3346,12 @@ function makeLineSplitter(emit) {
 // (dev0724) onDone — optional cleanup the caller needs run once the child has
 // exited (drawtext's temp text files). Fires on every exit path, including the
 // spawn failure below.
+// (dev0919) onDone is handed the EXIT CODE now (undefined where there wasn't
+// one). The caller uses it to sweep the 0-byte husk a failed render leaves —
+// see the /exec route.
 function streamExec(req, res, bin, args, onDone) {
   const origin = req.headers.origin || '';
-  const done = () => { if (onDone) { try { onDone(); } catch (_) {} } };
+  const done = code => { if (onDone) { try { onDone(code); } catch (_) {} } };
   const headers = Object.assign({}, corsForExec(origin), {
     'Content-Type': 'application/x-ndjson',
     'Cache-Control': 'no-store'
@@ -3345,7 +3366,7 @@ function streamExec(req, res, bin, args, onDone) {
   } catch (err) {
     emit({ type: 'done', error: err.message, exitCode: -1 });
     res.end();
-    done();
+    done(-1);
     return;
   }
   const t0 = Date.now();
@@ -3356,12 +3377,12 @@ function streamExec(req, res, bin, args, onDone) {
   proc.on('error', err => {
     emit({ type: 'done', error: err.message, exitCode: -1, durationMs: Date.now() - t0 });
     res.end();
-    done();
+    done(-1);
   });
   proc.on('close', code => {
     emit({ type: 'done', exitCode: code, durationMs: Date.now() - t0 });
     res.end();
-    done();
+    done(code);
   });
   // If the client disconnects mid-job, kill the child to avoid orphans.
   req.on('close', () => { try { proc.kill(); } catch (_) {} });
@@ -7247,7 +7268,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun']) }));
     return;
   }
@@ -7563,6 +7584,26 @@ http.createServer((req, res) => {
       const dropTmp = () => tmpDirs.splice(0).forEach(d => {
         try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) {}
       });
+      // (dev0919) …and the husk of a render that died. ffmpeg CREATES the
+      // output file when it opens the muxer, well before it writes a header, so
+      // a failure after that point leaves a 0-byte .mp4 sitting in the user's
+      // photo folder — which then eats its own name (freename numbers the next
+      // attempt _2, _3) and reads as a finished file to everything that scans
+      // the folder. Five of them turned up beside one clip on 2026-09-04.
+      // Nothing but a dead render can produce a 0-byte output, so this only
+      // ever removes what this run just made.
+      const afterExec = code => {
+        dropTmp();
+        if (bin !== 'ffmpeg' || !Number.isInteger(code) || code === 0) return;
+        const out = payload && payload.output;
+        if (typeof out !== 'string' || !out) return;
+        try {
+          if (fs.statSync(out).size === 0) {
+            fs.unlinkSync(out);
+            console.log('[exec ffmpeg] removed 0-byte output of a failed render: ' + out);
+          }
+        } catch (_) {}
+      };
       try { args = builder(payload, tmpDirs); }
       catch (e) { dropTmp(); send(res, 400, 'exec: ' + e.message, corsForExec(origin)); return; }
       // (dev0742) The V crop/trim save now writes into a dated subfolder of the
@@ -7602,7 +7643,7 @@ http.createServer((req, res) => {
       const wantsCollect = bin === 'ffprobe'
                         || (bin === 'exiftool' && !payload.metadata && !payload.sidecar);
       if (wantsCollect) streamExecCollect(req, res, realBin, args, dropTmp);
-      else              streamExec(req, res, realBin, args, dropTmp);
+      else              streamExec(req, res, realBin, args, afterExec);
     }).catch(err => send(res, 400, 'exec: ' + err.message, corsForExec(origin)));
     return;
   }
