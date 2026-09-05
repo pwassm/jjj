@@ -510,6 +510,11 @@ function gridOpenFullscreen(row, contained) {
       aPoint: _armLoop ? _armLoop.a : null,
       bPoint: _armLoop ? _armLoop.b : null,
       abSuspended: false,   // (dev0701) set by a manual scrub outside A→B
+      // (dev0922) x = eXpand. true — play the WHOLE video and let the A→B
+      // loop stand down, so the cut can be judged against what surrounds it.
+      // Honoured only while the crop overlay is open (the chip that says so
+      // lives on its bar), and it never touches what gets SAVED.
+      abExpand: false,
 
       duration: 0,
       currentTime: 0
@@ -2715,8 +2720,20 @@ function vpKeyHandler(e) {
   // (dev0867) B = the colour panel, while the crop overlay is open. B is the one
   // free left-hand letter here: core.js claims it only when the GRID is open and
   // V is not, and it is deliberately absent from that file's letter-dispatch
-  // list, so nothing upstream eats it. (x looks free and is not — it forwards to
-  // the X screen.)
+  // list, so nothing upstream eats it. (This note used to say `x` was taken by
+  // the X screen. It IS in core.js's letter-dispatch list, but that whole
+  // handler bails on an open crop since dev0747, so `x` reaches us too — it
+  // is eXpand as of dev0922.)
+  // (dev0922) x = eXpand, while the crop overlay is open: play the whole video
+  // instead of looping A→B. core.js's window-capture dispatcher normally
+  // routes `x` to the X screen, but dev0747 made it bail WHOLE on an open crop,
+  // so the letter arrives here untouched — no per-letter bail is needed.
+  if ((e.key === 'x' || e.key === 'X') && _vpCropHolding()) {
+    e.preventDefault(); e.stopPropagation();
+    _vpCropToggleExpand();
+    return;
+  }
+
   if ((e.key === 'b' || e.key === 'B') && _vpCropHolding()) {
     e.preventDefault(); e.stopPropagation();
     if (typeof window.vpColorToggle === 'function') window.vpColorToggle();
@@ -3238,6 +3255,13 @@ function vpUpdateABStyle() {
   // (dev0701) Setting/clearing/nudging A or B is a fresh arming — drop any
   // scrub-suspension so the new window loops immediately.
   if (_vpState) _vpState.abSuspended = false;
+  // (dev0922) …and a fresh arming is also a fresh cut to look at, so eXpand
+  // stands down: whatever whole-video view was wanted was wanted for the OLD
+  // window. Repaint the chip either way — it greys out with no A/B set.
+  if (_vpState) {
+    _vpState.abExpand = false;
+    if (_vpState.crop && _vpState.crop.paintExpand) _vpState.crop.paintExpand();
+  }
   if (_vpState.aPoint !== null) {
     aBtn.style.background = '#080';
     aBtn.style.borderColor = '#0f0';
@@ -3728,7 +3752,12 @@ function vpUpdateTimeline() {
         && ct >= _vpState.aPoint && ct < _vpState.bPoint) {
       _vpState.abSuspended = false;
     }
+    // (dev0922) …and stands down entirely while eXpand is on and the crop
+    // overlay is up: that is the user asking to see the whole video, and unlike
+    // abSuspended it must NOT re-arm the moment playback crosses back into the
+    // window. Tied to the open overlay so the mode always has a chip saying so.
     if (!window._vpFSB && !_vpState.abSuspended
+        && !(_vpState.abExpand && _vpCropHolding())
         && _vpState.aPoint !== null && _vpState.bPoint !== null
         && _vpState.bPoint > _vpState.aPoint) {
       if (ct >= _vpState.bPoint) {
@@ -5321,6 +5350,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-warn" title="The crop — or the zoom box inside it, which is the tightest the shot gets — is SMALLER than the chosen output resolution, so ffmpeg would blow it up. No new detail, just a bigger file. Grow the box or drop the res." ' +
       'style="display:none;cursor:default;user-select:none;padding:2px 6px;background:#5a3a12;' +
       'border:1px solid #fb3;color:#fb3;border-radius:3px;flex:0 0 auto;">⚠</span>' +
+    // (dev0922) eXpand (x). Which stretch of video the PLAYER runs while the
+    // crop is being set up: the A→B cut on a loop (default), or the whole clip.
+    // A crop is judged against what comes before and after it as often as
+    // against itself. Nothing here changes the render — save still cuts A→B.
+    '<span id="vp-crop-expand" title="What the PLAYER runs (x): the A–B cut on a loop, or the whole video. The saved clip is A–B either way." ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;flex:0 0 auto;">↔ A–B</span>' +
     '<span id="vp-crop-aspect" title="Locked ratio — the corners scale it. Drag a SIDE (or ⇧T) for any shape." ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">16:9</span>' +
     '<span id="vp-crop-crf-lbl" style="opacity:0.7;">CRF</span>' +
@@ -5467,7 +5502,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // slideshow's own hold-zoom under it, and that transform is on the very
     // <img> this overlay maps its screen→source arithmetic through.
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
-     'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake',
+     'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake', 'vp-crop-expand',
      'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop',
      'vp-crop-zoom-lbl', 'vp-crop-zoom'].forEach(id => {
       const el = bar.querySelector('#' + id);
@@ -6678,6 +6713,23 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   paintAudio();
   if (audioChip) audioChip.addEventListener('click', _vpCropToggleAudio);
 
+  // (dev0922) eXpand chip — click, or x. Lit blue on FULL, because full is
+  // the state that needs saying: A–B is what the marks on the timeline already
+  // imply, and a player ignoring them should not do so quietly. Greyed out
+  // with no A/B set, where there is nothing to expand from.
+  const expChip = bar.querySelector('#vp-crop-expand');
+  function paintExpand() {
+    if (!expChip) return;
+    const armed = !!(_vpState && _vpState.aPoint != null && _vpState.bPoint != null);
+    const on = armed && !!(_vpState && _vpState.abExpand);
+    expChip.textContent      = on ? '↔ full' : '↔ A–B';
+    expChip.style.background = on ? '#2a5d9a' : '#234';
+    expChip.style.color      = on ? '#fff' : '#dfe6f0';
+    expChip.style.opacity    = armed ? '1' : '0.45';
+  }
+  paintExpand();   // (dev0922) reads the LIVE A/B, not a default
+  if (expChip) expChip.addEventListener('click', _vpCropToggleExpand);
+
   // (dev0789) ── Deshake ────────────────────────────────────────────────────
   const dsChip = bar.querySelector('#vp-crop-deshake');
   function paintDeshake() {
@@ -6871,6 +6923,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   state.stepZoom  = stepZoom;
   state.resetView = resetView;
   state.paintAudio = paintAudio;   // (dev0719) M repaints the audio chip
+  state.paintExpand = paintExpand; // (dev0922) x repaints the eXpand chip
   state.paintKen = paintKen;       // (dev0720) Z arms/disarms the zoom box
   // (dev0777) R stamps a keyframe, ⇧R clears the track, Q toggles the bars.
   state.paintTrack    = paintTrack;
@@ -7151,6 +7204,12 @@ function _vpCropHelpShow() {
         row(K('⇧←') + K('⇧→'), 'jump to the start / end of the clip') +
         row('Ctrl+click',    'set start / end straight off the timeline') +
         row(K('Space'),      'play / pause') +
+        row(K('x'),          'e<u>X</u>pand — play the WHOLE video instead of looping ' +
+                             'the cut, so you can see what the clip lands in. ' +
+                             'Press it again for the cut back. The bar chip says ' +
+                             'which (↔ A–B / ↔ full), and the SAVE is A–B either ' +
+                             'way — this only changes what the player runs. ' +
+                             'Setting A or B again puts it back on the cut.') +
         head('Colour') +
         row(K('B'),          'the colour panel — warmth, tint, brightness, contrast, ' +
                              'saturation and gamma, live ON THE FRAME as you drag. ' +
@@ -7492,6 +7551,45 @@ function _vpCropToggleAudio() {
   if (s.paintAudio) s.paintAudio();
   if (typeof toast === 'function') {
     toast(s.audio ? '🔊 saved clip keeps its audio' : '🔇 saved clip will be silent', 1400);
+  }
+}
+
+// (dev0922) x — eXpand. Swap the PLAYER between the A→B cut on a loop and
+// the whole video. A cut is judged as much by what it lands in as by itself,
+// and scrubbing out of the window only bought a few seconds before dev0701's
+// re-arm yanked the playhead back to A. This is that suspension made
+// deliberate and visible instead of accidental and temporary.
+//
+// It changes NOTHING about the render: _vpGoSave still cuts A→B. And it is
+// honoured only while the crop overlay is open, so the mode can never be on
+// with nothing on screen saying so — closing the crop restores the loop.
+function _vpCropToggleExpand() {
+  if (!_vpState || !_vpState.crop) return;
+  if (_vpState.aPoint == null || _vpState.bPoint == null) {
+    if (typeof toast === 'function') toast('set A and B first — nothing to expand from', 2000);
+    return;
+  }
+  _vpState.abExpand = !_vpState.abExpand;
+  // Coming BACK to the cut, land in it: the playhead is usually somewhere out
+  // in the surrounding video by then, and waiting for it to wander into the
+  // window on its own is not an answer. Clearing abSuspended stops dev0701's
+  // manual-scrub stand-down from swallowing the first lap.
+  if (!_vpState.abExpand) {
+    const a = Math.min(_vpState.aPoint, _vpState.bPoint);
+    const b = Math.max(_vpState.aPoint, _vpState.bPoint);
+    const ct = _vpNowSec();
+    _vpState.abSuspended = false;
+    if (ct < a || ct >= b) {
+      if (_vpState.isYT) _vpState.player.seekTo(a, true);
+      else if (_vpState.player && _vpState.player.setCurrentTime) _vpState.player.setCurrentTime(a);
+    }
+  }
+  const s = _vpState.crop;
+  if (s.paintExpand) s.paintExpand();
+  if (typeof toast === 'function') {
+    toast(_vpState.abExpand
+      ? '↔ playing the whole video — the save is still A→B'
+      : '↔ back to the A→B cut', 1600);
   }
 }
 
