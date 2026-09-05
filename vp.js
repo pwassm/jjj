@@ -3044,7 +3044,7 @@ function _vpTlWindow() {
   const full = { t0: 0, t1: dur, span: dur, zoomed: false };
   if (!dur || !_vpState || !_vpState.abExpand) return full;
   if (!_vpCropHolding()) return full;
-  if (_vpState.segs && _vpState.segs.length) return full;
+  if (_vpState.isSelected && _vpState.segs && _vpState.segs.length) return full;
   if (_vpState.aPoint == null || _vpState.bPoint == null) return full;
   const wz = _vpState.tlWin;
   if (!wz) return full;
@@ -3421,13 +3421,18 @@ function _vpUpdateABLines() {
     if (!el) {
       el = document.createElement('div');
       el.id = id;
-      el.style.cssText = 'position:absolute;top:0;bottom:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:3;';
+      el.style.cssText = 'position:absolute;top:0;bottom:0;background:rgba(0,0,0,0.82);pointer-events:none;z-index:3;';
       tl.appendChild(el);
     }
     return el;
   }
   const padL = ensurePad('vp-tl-pad-l');
   const padR = ensurePad('vp-tl-pad-r');
+  const cutBand = ensurePad('vp-tl-cut');
+  // The cut itself, floor-lit. Under everything else the bar draws (z-index 0)
+  // so the progress fill, the playhead and the A/B lines all still read.
+  cutBand.style.background = 'rgba(255,179,51,0.30)';
+  cutBand.style.zIndex = '0';
   if (w.zoomed && _vpState.aPoint != null && _vpState.bPoint != null) {
     const aPct = Math.max(0, Math.min(100, _vpTlPctOf(Math.min(_vpState.aPoint, _vpState.bPoint))));
     const bPct = Math.max(0, Math.min(100, _vpTlPctOf(Math.max(_vpState.aPoint, _vpState.bPoint))));
@@ -3437,9 +3442,17 @@ function _vpUpdateABLines() {
     padR.style.left = bPct + '%';
     padR.style.width = (100 - bPct) + '%';
     padR.style.display = (100 - bPct) > 0.2 ? '' : 'none';
+    cutBand.style.left = aPct + '%';
+    cutBand.style.width = Math.max(0, bPct - aPct) + '%';
+    cutBand.style.display = '';
+    // The bar is no longer measuring the video, so it should not go on looking
+    // like the bar that does.
+    tl.style.borderColor = '#fb3';
   } else {
     padL.style.display = 'none';
     padR.style.display = 'none';
+    cutBand.style.display = 'none';
+    tl.style.borderColor = '#06f';
   }
   const ken = (_vpCropHolding() && !_vpState.crop.imageMode) ? _vpState.crop.ken : null;
   place(kFrom, (ken && ken.on) ? ken.fromSec : null);
@@ -3796,8 +3809,13 @@ function vpUpdateTimeline() {
     playhead.style.left  = 'calc(' + pct + '% - 1px)';
 
     // ── Markers: redraw whenever mode/seg-count/duration changes ──
+    // (dev0923a) The window is part of the layout, so it has to be part of the
+    // token — otherwise the bands cache at the scale they were first drawn at
+    // and never move again.
+    const _tw = _vpTlWindow();
     const renderToken = (isSel ? 'sel:' : 'full:') + dur.toFixed(1)
-      + ':' + (hasSegs ? _vpState.segs.length : 0);
+      + ':' + (hasSegs ? _vpState.segs.length : 0)
+      + ':' + _tw.t0.toFixed(2) + '-' + _tw.t1.toFixed(2);
     if (_vpState.markersToken !== renderToken) {
       _vpState.markersToken = renderToken;
       markers.innerHTML = '';
@@ -3834,9 +3852,16 @@ function vpUpdateTimeline() {
       } else if (hasSegs) {
         // Full layout — segments at their actual video-time positions,
         // overlaid on the full-video timeline. Same color scheme + labels.
+        // (dev0923a) Against the WINDOW, not the duration — on a zoomed bar
+        // these are the only things left that still knew the old scale, and a
+        // band in the wrong place is worse than no band. A band entirely
+        // outside the window is skipped; one straddling an edge is clipped.
         _vpState.segs.forEach((seg, i) => {
-          const startPct = (seg.start / dur) * 100;
-          const widthPct = (seg.dur / dur) * 100;
+          const rawL = _vpTlPctOf(seg.start);
+          const rawR = _vpTlPctOf(seg.start + seg.dur);
+          if (rawR <= 0 || rawL >= 100) return;
+          const startPct = Math.max(0, rawL);
+          const widthPct = Math.min(100, rawR) - startPct;
           const colour   = VP_COLOURS[i % VP_COLOURS.length];
           const m = document.createElement('div');
           m.style.cssText = 'position:absolute;top:2px;bottom:2px;'
@@ -7723,11 +7748,25 @@ function _vpCropToggleExpand() {
   // so they have to be re-placed now rather than on the next 250ms tick — the
   // bar would otherwise show the old scale for a quarter of a second.
   _vpUpdateABLines();
+  // (dev0923a) Report what the BAR is doing, not what the flag says. These two
+  // disagreed for a whole build: the flag went on, the window refused it, and
+  // the toast announced a zoom that never happened.
+  const w = _vpTlWindow();
   if (typeof toast === 'function') {
-    const w = _vpTlWindow();
-    toast(_vpState.abExpand
-      ? '↔ timeline zoomed to the cut — ' + w.span.toFixed(1) + 's across the bar'
-      : '↔ timeline back to the whole video', 1600);
+    if (!_vpState.abExpand) {
+      toast('↔ timeline back to the whole video', 1600);
+    } else if (w.zoomed) {
+      const dur = _vpDurNow() || 0;
+      const mag = (dur > 0 && w.span > 0) ? (dur / w.span) : 1;
+      toast('↔ timeline zoomed to the cut — ' + w.span.toFixed(1) + 's across the bar ('
+        + (mag >= 10 ? Math.round(mag) : mag.toFixed(1)) + '×)', 1900);
+    } else {
+      // The only thing left that can refuse it.
+      _vpState.abExpand = false;
+      _vpState.tlWin = null;
+      if (s.paintExpand) s.paintExpand();
+      toast('the timeline is showing SELECTED segments — press the Full/Selected button to zoom into the cut', 3000);
+    }
   }
 }
 
