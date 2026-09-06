@@ -1078,6 +1078,15 @@ var _cFocus     = null;
 var _cPending   = null;
 var _cChecked   = new Set();
 var _cGnameFilter = '';  // live substring filter on gname column in C-screen
+// (dev0931) One-letter ctype filter: '' (off) or g/f/q/t/o. `g` is the GRIDS
+// bucket and deliberately includes the blank ctype — blank is the default and
+// most rows carry it, so a `g` that excluded blanks would show almost nothing.
+var _cCtypeFilter = '';
+function _cCtypeMatches(r) {
+  if (!_cCtypeFilter) return true;
+  const v = String((r && r.ctype) || '').trim().toLowerCase();
+  return _cCtypeFilter === 'g' ? (v === '' || v === 'g') : v === _cCtypeFilter;
+}
 var _cMeta      = { _salMeta:true, _salColWidths:{}, _salColOrder:null, _salHidden:[],
                     _salViews:{}, _salActiveView:null };
 
@@ -1121,6 +1130,13 @@ const _C_LS_KEY = 'sal-c-json';
 function _cIsEmptyConfig(r) {
   if (!r || r._salMeta) return false;
   if (String(r.ctxt || '').trim()) return false;
+  // (dev0931) A CLASSIFIED row is never junk. `ctype` says what a row is for —
+  // t (menu tab), f (flashcard deck), q (quiz), o (the author's own material) —
+  // and a locked tab row legitimately has NO ctxt and NO cells: its body is
+  // code (the Grids list, the Search box) and the row exists only to carry the
+  // tab's order and label. Without this guard every such row was deleted on the
+  // next read of C, exactly as dev0905's prose pages were.
+  if (String(r.ctype || '').trim()) return false;
   for (const k in r) {
     // (dev0370) A filled special-layout cell (1L / 1P-3P) counts as real content
     // too, so a 17/19 grid built only on its big/portrait cells isn't pruned.
@@ -1290,6 +1306,7 @@ function closeCScreen() {
   _gridConfigs = _cData;
   _cMode = false;
   _cGnameFilter = '';  // clear gname filter on exit
+  _cCtypeFilter = '';  // (dev0931) …and the ctype filter with it
   if (_tSave) {
     data=_tSave.data; cols=_tSave.cols; hidden=_tSave.hidden; colWidths=_tSave.colWidths;
     sortCol=_tSave.sortCol; sortDir=_tSave.sortDir; sortedIdx=_tSave.sortedIdx;
@@ -1309,8 +1326,36 @@ function cUpdateStatus() {
     +(hidden.size?' ('+hidden.size+' hidden)':'')
     +(rowFilter?' 🔍 '+vis+'/'+total:'')
     +(_cGnameFilter?' 🔍 gname:"'+_cGnameFilter+'"':'')
+    +(_cCtypeFilter?' 🔍 ctype:'+_cCtypeFilter:'')
     +(checkedRows.size?' · '+checkedRows.size+' ✓':'');
 }
+
+// (dev0931) ctype filter buttons — g f q t o. Five toggles, one active at a
+// time: clicking the lit one turns it off. They filter the C table to a single
+// KIND of row, which is what makes ctype worth having as a column at all.
+(function wireCCtypeFilter() {
+  const LETTERS = ['g', 'f', 'q', 't', 'o'];
+  const btns = {};
+  LETTERS.forEach(L => { btns[L] = document.getElementById('cType' + L.toUpperCase() + 'Btn'); });
+  if (!btns.g) return;
+  function paint() {
+    LETTERS.forEach(L => {
+      const b = btns[L]; if (!b) return;
+      const on = (_cCtypeFilter === L);
+      b.style.borderColor = on ? '#fd6' : '#8a9';
+      b.style.color       = on ? '#fd6' : '#8a9';
+      b.style.background  = on ? 'rgba(80,60,0,0.45)' : 'rgba(20,30,25,0.3)';
+    });
+  }
+  LETTERS.forEach(L => {
+    const b = btns[L]; if (!b) return;
+    b.addEventListener('click', () => {
+      _cCtypeFilter = (_cCtypeFilter === L) ? '' : L;
+      paint(); buildSort(); render(); cUpdateStatus();
+    });
+  });
+  paint();
+})();
 
 // Filter Gname — live substring filter on gname column
 (function wireCFilterGname() {

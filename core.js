@@ -1786,9 +1786,13 @@ function buildCols() {
 function buildSort() {
   const idxs = data.map((_,i) => i);
   // Apply gname substring filter when in C-mode
-  const filtered = (_cMode && _cGnameFilter)
+  // (dev0931) …and the ctype letter filter (g/f/q/t/o), which stacks with it.
+  let filtered = (_cMode && _cGnameFilter)
     ? idxs.filter(i => String(data[i].gname||'').toLowerCase().includes(_cGnameFilter))
     : idxs;
+  if (_cMode && typeof _cCtypeFilter !== 'undefined' && _cCtypeFilter) {
+    filtered = filtered.filter(i => _cCtypeMatches(data[i]));
+  }
   if (!sortCol) { sortedIdx = filtered.length < data.length ? filtered : null; return; }
   const dir  = sortDir === 'desc' ? -1 : 1;
   const isDate = sortCol === 'DateAdded' || sortCol === 'DateModified';

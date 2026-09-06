@@ -729,7 +729,22 @@ async function _showShareableMenu() {
   // so the address / who-we-are copy above the sign-in strip is the author's,
   // not code. Absent config → the page is just the sign-in strip.
   const contactCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'contact');
-  const contactHtml = _linkify(_balanceHtml(_cutBelow(contactCfg ? contactCfg.ctxt : '')));
+  const contactFull = _cutBelow(contactCfg ? contactCfg.ctxt : '');
+  // (dev0931) Contact is a HYBRID tab, on the same rule as Welcome: the ctxt is
+  // split at the first <hr>, section 1 renders, then the element that is NOT in
+  // the text (here the sign-in strip), then section 2 below it if present. The
+  // <hr>'s POSITION is the whole mechanism — there is no marker in the prose to
+  // preserve, which is why this tab stays editable in Xe with nothing at risk.
+  let contactTop = contactFull, contactBottom = '';
+  {
+    const _chr = contactFull.match(/<hr[^>]*>/i);
+    if (_chr) {
+      contactTop    = contactFull.slice(0, _chr.index);
+      contactBottom = contactFull.slice(_chr.index + _chr[0].length);
+    }
+  }
+  const contactHtml       = _linkify(_balanceHtml(contactTop));
+  const contactHtmlBelow  = _linkify(_balanceHtml(contactBottom));
 
   // (dev0787) "Starting out" page — the tab that follows Welcome. Same deal
   // again: free-form HTML from the c.json config row whose gname is "starting
@@ -1075,6 +1090,14 @@ async function _showShareableMenu() {
     .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname)
                  && !_isIntroCfg(g.gname)
                  && String(g.gname).trim().toLowerCase() !== 'other'
+                 // (dev0931) `active` is now an ORDER for TABS as well as for
+                 // grids, so "has a number" no longer means "is a grid". ctype
+                 // is what separates them: t = a menu tab, o = the author's own
+                 // parked material. Neither belongs in this list. The name
+                 // exclusions above become redundant once every tab row carries
+                 // ctype t — they are left in place only until that is true of
+                 // Greeting and Introduction's duplicates.
+                 && !/^[to]$/.test(String(g.ctype || '').trim().toLowerCase())
                  && _smOrd(g.active) > 0)
     .map(g => { const h = _cutBelow(g.ctxt); return { kind: 'ss', gname: String(g.gname).trim(), html: h,
                  summary: _smSummaryText(h) || String(g.gname).trim(),
@@ -1608,6 +1631,8 @@ async function _showShareableMenu() {
       + '<div id="smPage9" class="sm-pg sm-contact" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
         + (contactHtml.trim() ? '<div class="smGreeting">' + contactHtml + '</div>' : '')
         + '<div id="smAuth" class="sm-auth"></div>'
+        // (dev0931) Section 2 — whatever the author put below the first <hr>.
+        + (contactHtmlBelow.trim() ? '<div class="smGreeting">' + contactHtmlBelow + '</div>' : '')
       + '</div>'
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.

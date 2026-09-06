@@ -215,6 +215,16 @@ window.HOTKEYS = [
           const _tdi = vr(focus.r);
           const _trow = (_tdi >= 0 && _tdi < data.length) ? data[_tdi] : null;
           if (!_trow) { toast('No row focused', 1500); return; }
+          // (dev0931) The `Lock` column. ANY value in it means this row's ctxt
+          // is not editable — non-empty is the whole test, so 1 / x / "No Edit"
+          // all lock it. It guards the tab rows whose body is code rather than
+          // prose: their ctxt is empty on purpose and an accidental edit (or an
+          // autosave of an empty editor) would be a silent write to c.json.
+          // Order and label stay editable; only the text is frozen.
+          if (_fcol === 'ctxt' && String(_trow.Lock || '').trim()) {
+            toast('🔒 Locked row — clear the Lock column to edit its ctxt', 2200);
+            return;
+          }
           if (typeof gridOpenTextEditor === 'function') {
             gridOpenTextEditor(_trow.cell || '', _trow, { field: _fcol });
           } else {
