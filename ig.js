@@ -1298,7 +1298,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <select id="igKind"><option value="all">all kinds</option><option value="reel">reels</option><option value="p">posts /p</option><option value="tv">tv</option></select>
         <select id="igStatus"><option value="all">all status (A)</option><option value="new">new (N)</option><option value="enriched">enriched (E)</option><option value="downloaded">downloaded (D)</option><option value="promoted">promoted</option><option value="__retired__">🪦 retired (dead posts)</option></select>
         <select id="igStaged" title="Harvested (full reels) vs Unharvested (single posts — 'w'-added clipboard links, plus the legacy ffdown imports from before that button was retired).&#10;&#10;'Added with w' is the exact set: rows this screen created from a clipboard URL (source=manual). A later harvest of the same author never overwrites them — /ig/add skips ids ig.json already holds — so the mark survives."><option value="all">all sources</option><option value="non">Unharvested (singles)</option><option value="full">Harvested (full reels)</option><option value="w">⌨ Added with w</option></select>
-        <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
+        <select id="igEmbed" title="Official-embed playability (igEmbedProbe.js verdict): ✓ = IG's /embed/ page serves the video, so a public iframe single-plays it · ✗ = embed shows caption/poster only (photos always; some accounts refuse) · unprobed = no verdict yet: a bare — means nobody has asked, ∅ means we asked at download time and IG answered with nothing usable (hover the cell for which)"><option value="all">all embed</option><option value="1">embeddable ✓</option><option value="0">not embeddable ✗</option><option value="un">unprobed</option></select>
         <select id="igRefetch" title="(dev0677) Re-fetch queue: rows whose photo was downloaded through the broken cover picker — a CROPPED 640² thumbnail instead of IG's uncropped original. They have been reset to 'enriched' with their file record cleared, so Download sel / Download+rotate will fetch them again at full resolution. The flag clears itself as each row succeeds."><option value="all">all rows</option><option value="need">⤓ needs full-res re-fetch</option><option value="done">re-fetched already</option><option value="stuck">⤓ gave up (3 tries)</option></select>
         <select id="igRes" title="(dev0690) Real resolution OF THE FILES ON DISK, measured at download time — not the enrich metadata, which for a carousel video is IG’s logged-out page figure and is capped at 720 wide. ‘below 1080’ = the narrowest item of the post is under 1080px wide (the backfill queue). ‘not measured’ = downloaded before dev0690, so nothing knows what it is without re-downloading. ‘at best’ = a re-download was tried and IG had nothing better, so stop offering it. (dev0698) The 🔬 options are the video probe’s verdicts — see the 🔬 Probe video res button."><option value="all">all res</option><option value="low">📐 below 1080 wide</option><option value="ok">1080+ wide</option><option value="unmeasured">not measured yet</option><option value="best">already at IG’s best</option><option value="pup">🔬⬆ probe: bigger available</option><option value="pmax">🔬✔ probe: at IG’s max</option><option value="punprobed">🔬 video, not probed yet</option></select>
         </div>
@@ -1619,8 +1619,34 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // (dev0655) rowHtml builds ONE row; renderWindow paints only the slice around the
   // viewport (see the state block up top). renderBody is the full entry point callers
   // use — it repaints the window + header + count.
+  // (dev0936) The Embed column has THREE states, not two-and-a-blank. `embed` stays a
+  // verdict and ONLY a verdict (1/0, never a guess) — but "no verdict" covers two very
+  // different facts, and both used to render as a bare —, which reads as "the probe
+  // never ran":
+  //   —  never asked: no download-time probe has been over this row yet
+  //   ∅  asked, no answer: IG served a dataless React shell (or walled us). Cookielessly
+  //      un-classifiable, which in practice means the account refuses embeds. Read it
+  //      as ✗ — the grids gate on embed === 1, so both states are equally inert there.
+  // Fed by downloadRow from the proxy's `embedProbe` kind, which /ig/download has
+  // returned since dev0675 and which nothing kept.
+  function embedCell(r) {
+    if (r.embed === 1) return { g: '<span class="yes">✓</span>',
+      tip: 'Embeddable — IG’s official /embed/ page serves the video; a public iframe single-plays it' };
+    if (r.embed === 0) return { g: '<span class="no">✗</span>',
+      tip: 'Not embeddable — the embed page shows caption/poster only (photos always; some accounts refuse)' };
+    if (r.embedProbe) return { g: '<span class="no" style="opacity:.75">∅</span>',
+      tip: 'Probed ' + (r.embedProbeAt || '') + ' → ' + r.embedProbe + ' — IG answered with nothing usable ('
+         + (r.embedProbe === 'shell' ? 'a dataless React shell: this account/post refuses embeds'
+            : r.embedProbe === 'wall' ? 'rate-walled or timed out — a later download re-asks'
+            : 'no classifiable markers')
+         + '). Left unstamped deliberately: the flag must never be a guess. Read it as ✗.' };
+    return { g: '<span class="no">—</span>',
+      tip: 'Unprobed — downloads stamp this automatically (dev0675); older rows: node igEmbedProbe.js' };
+  }
+
   function rowHtml(r) {
     const k = kindOf(r);
+    const _emb = embedCell(r);
     const st = r.status || 'new';
     const cap = r.ftext ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
     const tt = r.ttxt ? '<span class="yes">✓</span>' : '<span class="no">—</span>';
@@ -1692,12 +1718,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           : (r.metaPartial
               ? '<span class="walled" title="caption-only embed fallback — no date/dims were available; re-download on a healthy VPN to fill it">⚠ partial</span>'
               : '<span class="no">—</span>')}</td>
-        <td style="text-align:center" title="${r.embed === 1
-          ? 'Embeddable — IG’s official /embed/ page serves the video; a public iframe single-plays it'
-          : (r.embed === 0
-              ? 'Not embeddable — the embed page shows caption/poster only (photos always; some accounts refuse)'
-              : 'Unprobed — downloads stamp this automatically (dev0675); older rows: node igEmbedProbe.js')}">${r.embed === 1
-          ? '<span class="yes">✓</span>' : (r.embed === 0 ? '<span class="no">✗</span>' : '<span class="no">—</span>')}</td>
+        <td style="text-align:center" title="${esc(_emb.tip)}">${_emb.g}</td>
         <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
         <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
         <td><span class="s-${st}">${st}</span>${(st === 'new' && enrichFailed.has(r.id)) ? '<span class="walled" title="Cookieless enrich failed this session — login-walled. Try 📋 Saved-text, or grab it from a logged-in Firefox; ↻ Reload to retry bulk enrich."> ⚠</span>' : ''}${
@@ -1833,7 +1854,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <b>VidAuthor</b><span>${esc(r.VidAuthor || '—')}</span>
         <b>Posted</b><span>${esc(r.DatePosted || '—')}</span>
         <b>Embed</b><span>${r.embed === 1 ? '✓ embeddable (official iframe single-plays)'
-          : (r.embed === 0 ? '✗ not embeddable (embed page has no video)' : '— unprobed')}</span>
+          : (r.embed === 0 ? '✗ not embeddable (embed page has no video)'
+             : (r.embedProbe
+                 ? '∅ probed ' + esc(r.embedProbeAt || '') + ' → ' + esc(r.embedProbe)
+                   + ' — no verdict (IG served no usable data); read as ✗'
+                 : '— unprobed'))}</span>
         <b>Duration</b><span>${r.durSecs ? esc(fmtDur(r.durSecs)) : '—'}</span>
         <b>W×H (enrich)</b><span>${(r.width && r.height) ? (r.width + ' × ' + r.height) : '—'}${
           (r.width && kindOf(r) === 'p' && Number.isFinite(r.nItems) && r.nItems > 1)
@@ -2477,7 +2502,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0675) Embed verdicts stamped as part of this run. A "no verdict" row is not a
     // failure — it stays unstamped for igEmbedProbe.js to resolve later.
     if (isDl && (embedStamped || embedNoVerdict)) {
-      lines.push(`▶ embed verdict stamped on ${embedStamped}${embedNoVerdict ? ` · ${embedNoVerdict} inconclusive (still unprobed, backfill later)` : ''}`);
+      lines.push(`▶ embed verdict stamped on ${embedStamped}${embedNoVerdict ? ` · ${embedNoVerdict} inconclusive → ∅ (asked, IG gave no data)` : ''}`);
     }
     lines.push(`⏱ total time ${fmtClock(Date.now() - t0)}${ok ? '   ·   ' + fmtSpeed() : ''}`);
     if (throttled)          lines.push('', 'Wait a few minutes, then re-run — only un-done rows are retried.');
@@ -3001,8 +3026,22 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // the field; a walled/inconclusive one leaves the row unstamped so igEmbedProbe.js
       // can still resolve it later — the flag must never be a guess, the grids gate
       // official-iframe playback on it.
-      if (j.embed === 0 || j.embed === 1) { r.embed = j.embed; embedStamped++; }
-      else if (j.embedProbe) embedNoVerdict++;
+      if (j.embed === 0 || j.embed === 1) {
+        r.embed = j.embed; embedStamped++;
+        // A real verdict retires the "we asked and got nothing" note.
+        if (r.embedProbe) delete r.embedProbe;
+        if (r.embedProbeAt) delete r.embedProbeAt;
+      } else if (j.embedProbe) {
+        // (dev0936) KEEP the miss. dev0675 counted it for the run report and threw it
+        // away, so a row IG refuses to classify was indistinguishable from one nobody
+        // had probed — the 'w' path, which downloads silently, made that gap visible
+        // ("the embed column always says —"). This is not a verdict and never becomes
+        // one; it is the record that the question was asked and IG did not answer.
+        embedNoVerdict++;
+        r.embedProbe = j.embedProbe;
+        r.embedProbeAt = (typeof isoNow === 'function') ? isoNow()
+          : new Date().toISOString().slice(0, 19).replace('T', ' ');
+      }
       if (r.status !== 'promoted') r.status = 'downloaded';
       // (dev0663) Close the last date-loss hole: if the inline enrich failed (or came
       // via the caption-only embed) the download still succeeds, but the row would be

@@ -52,6 +52,9 @@ function log(msg) {
   try { fs.appendFileSync(LOG, line + '\n'); } catch (_) {}
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Same shape AND same clock as the client's isoNow() (core.js:863) — UTC, so the
+// two writers of embedProbeAt can never disagree about what "15:12" meant.
+const nowStamp = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 // ── probe (igEmbedProbeCore.js) ───────────────────────────────────────────────
 const probeOne = (id, saveHtmlTo) => probeEmbed(id, { scratch: SCRATCH, saveHtmlTo, log });
@@ -98,10 +101,16 @@ const probeOne = (id, saveHtmlTo) => probeEmbed(id, { scratch: SCRATCH, saveHtml
   for (const row of todo) {
     const p = await probeOne(row.id, null);
     n++;
-    if (p.v === 1) { row.embed = 1; c1++; consecWalls = 0; sleeps = 0; }
-    else if (p.v === 0) { row.embed = 0; c0++; if (p.kind === 'dead') dead++; consecWalls = 0; sleeps = 0; }
-    else if (p.kind === 'shell') { shells++; consecWalls = 0; }   // per-post, IP is fine
-    else { walls++; consecWalls++; }
+    // (dev0936) A conclusive verdict clears the "asked, no answer" note; an
+    // inconclusive probe RECORDS it (kind + when) so the I screen can show ∅ for
+    // "we asked and IG gave us nothing" instead of — "nobody has ever asked".
+    // Still never a guessed 0: `embed` is left absent either way, so the next run
+    // (targets are chosen on embed === undefined) picks these up again.
+    const stampMiss = kind => { row.embedProbe = kind; row.embedProbeAt = nowStamp(); };
+    if (p.v === 1) { row.embed = 1; c1++; consecWalls = 0; sleeps = 0; delete row.embedProbe; delete row.embedProbeAt; }
+    else if (p.v === 0) { row.embed = 0; c0++; if (p.kind === 'dead') dead++; consecWalls = 0; sleeps = 0; delete row.embedProbe; delete row.embedProbeAt; }
+    else if (p.kind === 'shell') { shells++; consecWalls = 0; stampMiss('shell'); }   // per-post, IP is fine
+    else { walls++; consecWalls++; stampMiss('wall'); }
     if (n % 100 === 0) save();
     if (n % 25 === 0 || n === todo.length) {
       const el = (Date.now() - t0) / 1000, rate = n / el;
