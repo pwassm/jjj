@@ -475,9 +475,51 @@
         + 'text-transform:uppercase;margin-bottom:6px;">' + T('hint') + '</div>'
         + '<div style="text-align:left;font-size:0.92em;">' + hintHtml + '</div></div>'
       : '';
-    centrePanel('quizPrompt',
+    var el = centrePanel('quizPrompt',
       '<div style="font-size:1.35em;font-style:italic;letter-spacing:0.01em;">'
       + esc(cur.sci) + '</div>' + common + hint);
+    if (el && hintHtml) addHintClose(el);
+  }
+
+  // ── (dev0935) CLOSING THE HINT ────────────────────────────────────────────
+  // A hint is the card's whole section 2 — several lines, sometimes a list —
+  // and dev0913 made it stay up for the rest of the question on purpose: it is
+  // there to be read next to the name, not to flash past. But "stays until the
+  // question is answered" and "cannot be got rid of" are the same thing when
+  // the panel is centred over the very cells being judged, and on a phone the
+  // hint can cover most of the board it is a hint about. So: an × in the top
+  // right, which drops the hint and leaves the name.
+  //
+  // It closes the HINT, not the question. The name has to stay — losing it
+  // would turn the quiz back into a memory test (the dev0897 note above) — and
+  // there is no other way back to it. So this clears hintHtml and redraws the
+  // same question, which is also what makes the next wrong answer offer a hint
+  // again rather than falling into the already-hinted branch of onWrong.
+  //
+  // THE PANEL IS pointer-events:none AND MUST STAY THAT WAY — it sits over the
+  // answer cells, and a panel that ate the first click would make the middle of
+  // every board unanswerable. Only the button itself takes pointer events, and
+  // onPointerDown exempts it by id the way it already exempts the HUD, so the
+  // click that closes the hint is not also read as an answer.
+  function addHintClose(panel) {
+    var fs = panelFont();
+    var b  = document.createElement('button');
+    b.id = 'quizHintClose';
+    b.type = 'button';
+    b.textContent = '×';
+    b.title = T('Close the hint');
+    b.setAttribute('aria-label', T('Close the hint'));
+    b.style.cssText = 'position:absolute;top:2px;right:4px;pointer-events:auto;'
+      + 'cursor:pointer;border:none;background:transparent;color:#eef;opacity:0.55;'
+      + 'padding:0 ' + Math.round(fs * 0.35) + 'px;line-height:1;'
+      + 'font:' + Math.round(fs * 1.5) + 'px/1 system-ui,-apple-system,Segoe UI,sans-serif;';
+    b.addEventListener('pointerdown', function (e) { e.stopPropagation(); }, true);
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      hintHtml = null;
+      showQuestion();
+    });
+    panel.appendChild(b);
   }
 
   // ── the hint offer: a button that counts itself down and leaves ───────────
@@ -762,8 +804,11 @@
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     // The HUD and the hint offer are real buttons and keep their own clicks --
     // Exit has to work while a card is being read.
+    // (dev0935) …and so is the hint's × (see addHintClose). Without it here the
+    // capture-phase handler below would swallow the press before the button saw
+    // it, and while `reading` it would be spent moving to the next question.
     if (e.target && e.target.closest
-        && e.target.closest('#quizHud, #quizAsk')) return;
+        && e.target.closest('#quizHud, #quizAsk, #quizHintClose')) return;
 
     // (dev0898) Reading a turned-over card: ANY click moves on, not only one on
     // a cell, so there is nothing to aim at.

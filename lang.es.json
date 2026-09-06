@@ -10,7 +10,6 @@
 
  "menu_tabs": {
   "Welcome": "Bienvenidos",
-   "Swipe left to return": "Desliza a la izquierda para volver",
   "Starting out": "Primeros pasos",
   "Grids": "Cuadrículas",
   "Search": "Buscar",
@@ -55,16 +54,17 @@
  "_quiz": "(dev0934) The quiz that runs on a flash-card grid (quizcells.js). The Quiz/Exit button, the hint offer, and the whole end-of-run summary. The species names inside the summary are NOT here: a scientific name is the same in every language, and a card's common name comes from ftext.es.json through the card's own prose.",
 
  "quiz": {
-  "Quiz": "Cuestionario",
+  "Quiz": "Concurso",
   "Exit": "Salir",
-  "Leave the quiz (Esc)": "Salir del cuestionario (Esc)",
+  "Leave the quiz (Esc)": "Salir del concurso (Esc)",
   "Name the animal — click the card it belongs to": "Nombra el animal: haz clic en la tarjeta a la que pertenece",
-  "No named flash cards on this grid to quiz on": "No hay tarjetas con nombre en esta cuadrícula para hacer un cuestionario",
+  "No named flash cards on this grid to quiz on": "No hay tarjetas con nombre en esta cuadrícula para hacer un concurso",
   "no common name": "sin nombre común",
   "an unidentified card": "una tarjeta sin identificar",
   "hint": "pista",
   "Hint": "Pista",
   "No thanks": "No, gracias",
+  "Close the hint": "Cerrar la pista",
   "Not correct. Want a hint?": "Incorrecto. ¿Quieres una pista?",
   "Not correct": "Incorrecto",
   "this card has nothing written on its back": "esta tarjeta no tiene nada escrito en el reverso",
@@ -76,8 +76,8 @@
   "correct answers": "respuestas correctas",
   "chose {chose} for {want}": "elegiste {chose} para {want}",
   "none this time": "ninguna esta vez",
-  "Time on quiz": "Tiempo en el cuestionario",
-  "Congratulations on completing this quiz!": "¡Enhorabuena por completar este cuestionario!",
+  "Time on quiz": "Tiempo en el concurso",
+  "Congratulations on completing this quiz!": "¡Enhorabuena por completar este concurso!",
   "click anywhere on screen to dismiss": "haz clic en cualquier parte de la pantalla para cerrar"
  },
 
