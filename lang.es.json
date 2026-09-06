@@ -5,7 +5,7 @@
   "how": "The KEY is the English string exactly as it appears in the code. T('Grids') looks up 'Grids' here. A missing key, or an EMPTY value, falls back to English — so a blank line below is a to-do, never a bug, and deleting an entry is a safe no-op.",
   "sections": "Section names are for humans only. lang.js flattens them into one map at load, so a string can be moved between sections without breaking anything. Keys starting with _ are ignored.",
   "markup": "A value may carry HTML where the English did (the hamburger items). Keep any markup the English key has, or drop it deliberately — the <u>X</u> hotkey underlines are dropped here on purpose: the letters are English mnemonics, they are dev-facing, and underlining a letter that is not in the Spanish word is worse than no underline.",
-  "notreached": "NOT translated in step 1: the H help panel (HELP_DATA in core.js + the hotkeys.js registry), the dev screens (T/A/E/D/Xe/I/St/O/X/LLC), and ml.json content (VidTitle, ftext, comment). Those are the next steps."
+  "notreached": "NOT translated: the H help panel (HELP_DATA in core.js + the hotkeys.js registry), the dev screens (T/A/E/D/Xe/I/St/O/X/LLC), and ml.json VidTitle and comment. ftext IS now translatable — dev0933 added ftext.es.json, a per-UID sidecar covering the FlashTry1 cards, and every viewer-facing render reads it through salFtext(row). This dictionary stays the place for CHROME; a row’s own prose belongs in that file."
  },
 
  "menu_tabs": {
@@ -50,6 +50,17 @@
   "Fold the two corners first": "Dobla primero las dos esquinas",
   "Click to unfold": "Haz clic para desplegar",
   "click": "clic"
+ },
+
+ "_reader": "(dev0933) The chrome the V reader prints AROUND a text slide. The card prose itself is not here — it lives in ftext.es.json, keyed by ml.json UID. These four keys are the frame that used to stay stubbornly English while the slide inside it turned Spanish.",
+
+ "reader": {
+  "▼▼ Show all  ·  or double click off details line": "▼▼ Mostrar todo  ·  o doble clic fuera de una línea desplegable",
+  "▶▶ Hide all  ·  or double click off details line": "▶▶ Ocultar todo  ·  o doble clic fuera de una línea desplegable",
+  "Page": "Página",
+  "next": "siguiente",
+  "prev": "anterior",
+  "Esc / swipe ← on this bar to return": "Esc / desliza ← en esta barra para volver"
  },
 
  "_cardbacks": "The note and the one-line description on a card back come from taxoninfo.es.json and are already Spanish. What follows is the FURNITURE printed around them — the rank word and the IUCN status — which are vocabularies, not prose, and are matched here as whole lowercase strings exactly as tags.json and taxoninfo.json store them.",

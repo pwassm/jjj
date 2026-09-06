@@ -8230,7 +8230,12 @@ function _salXAllToggle(el) {
   // data-xall-toggle and are left alone: they say one thing and keep saying it.
   if (el.hasAttribute('data-xall-toggle')) {
     el.setAttribute('data-xall', open ? 'close' : 'open');
-    el.textContent = open ? _SAL_XALL_LABELS.close : _SAL_XALL_LABELS.open;
+    // (dev0933) Translated at the REWRITE, not at the constant above: that
+    // object is built at parse time, before lang.es.json has landed, so a T()
+    // up there would bake the English in for the whole session. vp.js
+    // translates the label it injects for the same reason.
+    const _lab = open ? _SAL_XALL_LABELS.close : _SAL_XALL_LABELS.open;
+    el.textContent = (typeof window.T === 'function') ? window.T(_lab) : _lab;
   }
 }
 window._salXAllToggle = _salXAllToggle;

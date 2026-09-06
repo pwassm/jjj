@@ -876,8 +876,23 @@ window._salSectCellSpec = function (sectHtml) {
   return null;
 };
 
+// (dev0933) A row's PROSE is read through this, never through row.ftext, on any
+// path whose output a viewer sees. In Spanish it hands back the ftext.es.json
+// copy for that UID; in English, on a row with no translation, or with lang.js
+// removed entirely, it hands back exactly the string the call site used before.
+//
+// The line that decides whether to wrap a read: does this value end up on the
+// SCREEN, or does it end up in a decision, a measurement, or a save? Existence
+// gates (`row.ftext && !row.link`), the ftext-size columns, the image-source
+// scan and every write stay on row.ftext — a translation must never change what
+// kind of row this is, how big the app thinks it is, or what lands on disk.
+const _rowFtext = (row) => (typeof window.salFtext === 'function')
+  ? window.salFtext(row)
+  : ((row && row.ftext) || '');
+
 function _gridSectionSetup(cell, wrap, inner, row) {
-  const html = (typeof renderFtext === 'function') ? renderFtext(row.ftext) : (row.ftext || '');
+  const _src = _rowFtext(row);
+  const html = (typeof renderFtext === 'function') ? renderFtext(_src) : _src;
   const sections = window._salSplitSections(html);
   // (dev0643) Resume on the section the viewer last left — leaving the 1a cell
   // for ANY reason (into V, out to the menu, a config switch, a grid rebuild)
@@ -1710,7 +1725,7 @@ function _gridCardParts(row) {
   if (!_re.test(String(row.ltype == null ? '' : row.ltype).trim())) return null;
   if (typeof window.makeCardSplit !== 'function') return null;   // makecard.js gone
   let p = null;
-  try { p = window.makeCardSplit(row.ftext); } catch (_) { return null; }
+  try { p = window.makeCardSplit(_rowFtext(row)); } catch (_) { return null; }
   return (p && p.imgUrl) ? p : null;               // no picture — nothing to turn
 }
 
@@ -2548,7 +2563,7 @@ function _buildFtextImgCell(cell, row) {
   const hue = Math.random() * 360 | 0;
   const overlayColor = 'hsl(' + hue + ',100%,70%)';
 
-  let firstLine = _ftextFirstLine(row.ftext) || row.t1 || row.n1 || '';
+  let firstLine = _ftextFirstLine(_rowFtext(row)) || row.t1 || row.n1 || '';
   if (!firstLine && row.link) {
     try { firstLine = new URL(row.link).hostname.replace(/^www\./, ''); } catch (e) {}
   }
@@ -2801,7 +2816,7 @@ function gridShow() {
           // (dev0588) Cell 1a renders SECTIONED (split at <hr>, details
           // collapsed, arrow/tap nav); every other cell keeps the full thumb.
           if (cellStr === '1a') _gridSectionSetup(cell, wrap, inner, row);
-          else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
+          else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(_rowFtext(row)) : _rowFtext(row));
           _ensureGridThumbTableCss();
           _gridThumbApplySlideColors(wrap, inner);
           wrap.appendChild(inner);
@@ -3211,7 +3226,7 @@ function gridUpdateCell(cellStr, row) {
         + 'color:#222;padding:16px;box-sizing:border-box;';
       // (dev0588) Cell 1a renders SECTIONED — same as gridShow's branch.
       if (cellStr === '1a') _gridSectionSetup(cellEl, wrap, inner, row);
-      else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(row.ftext) : row.ftext);
+      else inner.innerHTML = (typeof renderFtext === "function" ? renderFtext(_rowFtext(row)) : _rowFtext(row));
       _ensureGridThumbTableCss();
       _gridThumbApplySlideColors(wrap, inner);
       wrap.appendChild(inner);

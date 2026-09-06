@@ -1855,7 +1855,10 @@ function gridOpenFullscreen(row, contained) {
         const L = window._SAL_XALL_LABELS;
         if (btn && L) {
           btn.setAttribute('data-xall', anyClosed ? 'close' : 'open');
-          btn.textContent = anyClosed ? L.close : L.open;
+          // (dev0933) Same reason as the injected label above: translate the
+          // rewrite, not the constant.
+          const _lab = anyClosed ? L.close : L.open;
+          btn.textContent = (typeof window.T === 'function') ? window.T(_lab) : _lab;
         }
       }, true);
 
@@ -1908,7 +1911,12 @@ function gridOpenFullscreen(row, contained) {
         }
       })();
     } else {
-      const ft = (row.ftext || '').trim();
+      // (dev0933) The reader shows the Spanish copy of this row's prose when
+      // the viewer is in Spanish and ftext.es.json has one for this UID —
+      // salFtext falls back to row.ftext for everything else, so this is the
+      // same string it always was on every other path. READ ONLY: the tick-box
+      // write-back below deliberately keeps using row.ftext.
+      const ft = ((typeof window.salFtext === 'function' ? window.salFtext(row) : row.ftext) || '').trim();
       if (ft.startsWith('[') || ft.startsWith('{')) {
         try {
           const parsed = JSON.parse(ft);
@@ -1951,7 +1959,16 @@ function gridOpenFullscreen(row, contained) {
             try { window._salCbSetMode(iframe.contentDocument.body, _vpCbMode); } catch (_) {}
           };
         }
-        const _cbDev = _cbOk && row && row.UID != null
+        // (dev0933) ...and not while the slide on screen is the Spanish copy.
+        // A tick carries the INDEX of its box in the rendered HTML, and that
+        // index addresses ftext.es.json's markup, not ml.json's. The two agree
+        // today only by luck of the translation keeping every box in place, and
+        // saving the wrong box is exactly the silent data change that
+        // _salSetCbInFtext's own miss-check exists to refuse. Switch to English
+        // to tick.
+        const _cbEs = !!(window.salLang && window.salLang.esActive()
+                         && window.salFtextEs && window.salFtextEs.has(row && row.UID));
+        const _cbDev = _cbOk && row && row.UID != null && !_cbEs
                     && (typeof _isUserMode !== 'function' || !_isUserMode());
         window._salCbApply = _cbDev ? function (idx, checked) {
           const next = window._salSetCbInFtext(row.ftext, idx, checked);
@@ -2172,8 +2189,13 @@ function gridOpenFullscreen(row, contained) {
               // (dev0888) Wording comes from core.js's _SAL_XALL_LABELS, the
               // same constant _salXAllToggle rewrites the button with — two
               // copies of the string would drift on the first edit.
-              const _xLbl = (window._SAL_XALL_LABELS && window._SAL_XALL_LABELS.open)
+              let _xLbl = (window._SAL_XALL_LABELS && window._SAL_XALL_LABELS.open)
                           || '\u25BC\u25BC Show all';
+              // (dev0933) Translated HERE, not at the constant: core.js builds
+              // _SAL_XALL_LABELS at parse time, while the dictionary is still in
+              // flight, so a T() up there would freeze the English in.
+              // _salXAllToggle translates its own rewrite for the same reason.
+              if (typeof window.T === 'function') _xLbl = window.T(_xLbl);
               const _xbar = /<details[\s>]/i.test(sects[sIdx])
                 ? '<div class="sal-xall-bar"><span class="te-xall" data-xall="open"'
                   + ' data-xall-toggle="1">' + escH(_xLbl) + '</span></div>'
@@ -2183,8 +2205,14 @@ function gridOpenFullscreen(row, contained) {
                 + '<body>' + _xbar + sects[sIdx] + '</body></html>');
             }
             if (hintEl && sects.length > 1) {
-              hintEl.textContent = 'Page ' + (sIdx + 1) + '/' + sects.length
-                + ' · → next · ← prev · Esc / swipe ← on this bar to return';
+              // (dev0933) Three separate keys, not one sentence: the arrows and
+              // the page numbers are the same in both languages, and a single
+              // long key would have to be retranslated whenever the counter or
+              // the gesture list changed.
+              const _Tp = (typeof window.T === 'function') ? window.T : (x => x);
+              hintEl.textContent = _Tp('Page') + ' ' + (sIdx + 1) + '/' + sects.length
+                + ' · → ' + _Tp('next') + ' · ← ' + _Tp('prev')
+                + ' · ' + _Tp('Esc / swipe ← on this bar to return');
             }
           };
           if (sects.length > 1) {

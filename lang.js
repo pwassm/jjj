@@ -41,11 +41,14 @@
 // it costs a repaint rather than a download.
 //
 // ── CUT-OUT INSTRUCTIONS ─────────────────────────────────────────────────────
-//   1. delete this file, lang.es.json, taxoninfo.es.json, tags.es.json
+//   1. delete this file, lang.es.json, taxoninfo.es.json, tags.es.json,
+//      ftext.es.json
 //   2. delete 'lang.js' from the files[] array in index.html
 //   3. drop the #smLangBtn block from boot.js (menu page 1) and its CSS
 //   4. in taxoninfo.js, delete the _esStore block and the two _pick() calls
-//   5. the T() wrappers can stay — with no window.T they are inert, but the
+//   5. in vp.js and grid.js, change salFtext(row) back to row.ftext (the
+//      helper is null-safe but undefined without this file)
+//   6. the T() wrappers can stay — with no window.T they are inert, but the
 //      shim below is what defines T, so remove them or keep this file.
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -226,12 +229,99 @@
     }
   };
 
+  // ── ftext.es.json ───────────────────────────────────────────────────────────
+  // STEP 2 of the Spanish plan: the CONTENT, not just the chrome. A card's own
+  // prose lives in ml.json's `ftext`, and ml.json is a dev file that the app
+  // rewrites on every save — so the Spanish copy is a READ-ONLY SIDECAR keyed by
+  // UID, exactly like taxoninfo.es.json. Nothing here is ever written back.
+  //
+  // That separation is not tidiness, it is the whole safety argument:
+  //   • ml.json is gitignored and FSA-clobbered by the running app. A second
+  //     language column in it would be overwritten by the next save.
+  //   • ftext is ~90% of ml.json and irreplaceable. The one historic mass-wipe
+  //     came from a read path that fed a write path. salFtext() is read-only and
+  //     row.ftext in memory is NEVER reassigned, so the Spanish string cannot
+  //     reach disk however the app is driven.
+  //   • A viewer in Spanish and a dev in English are looking at the same row.
+  //
+  // The value is the WHOLE ftext, `<hr>` sections and all, because every reader
+  // (the V slide pager, makeCardSplit's card faces, the G thumbnail) splits it
+  // itself and a per-section store would have to reproduce that splitter three
+  // times. The picture URL in section 1 is therefore duplicated, which is the
+  // one real cost: change a card's image and its Spanish copy still points at
+  // the old one. `enLen` is recorded per entry so a stale copy can be FOUND —
+  // salFtextEs.stale(rows) lists the cards whose English has moved since.
+  //
+  // An entry may be a bare string instead of { enLen, ftext } — a translation
+  // added by hand should not have to carry bookkeeping to work.
+  var ftEs  = null;
+  var ftEsP = null;
+  function loadFtextEs() {
+    if (ftEsP) return ftEsP;
+    if (current === 'en') { ftEs = {}; ftEsP = Promise.resolve(ftEs); return ftEsP; }
+    ftEsP = fetch('ftext.es.json?v=' + (window.HELP_VERSION_STR || ''))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { ftEs = (d && d.cards) || {}; return ftEs; })
+      .catch(function () { ftEs = {}; return ftEs; });
+    return ftEsP;
+  }
+  loadFtextEs();
+
+  function esEntry(uid) {
+    if (current !== 'es' || !ftEs || uid == null) return null;
+    var e = ftEs[String(uid)];
+    if (typeof e === 'string') return e ? { ftext: e, enLen: null } : null;
+    if (e && typeof e.ftext === 'string' && e.ftext) return e;
+    return null;
+  }
+
+  window.salFtextEs = {
+    ready: loadFtextEs,
+    has:   function (uid) { return !!esEntry(uid); },
+    // Which cards have drifted? Pass the ml.json rows; get back the UIDs whose
+    // English ftext is no longer the length the translation was made from. A
+    // null enLen (hand-added entry) is never stale — it never claimed a source.
+    stale: function (rows) {
+      var out = [];
+      if (!ftEs || !rows) return out;
+      rows.forEach(function (r) {
+        if (!r || r.UID == null) return;
+        var e = ftEs[String(r.UID)];
+        if (!e || typeof e === 'string' || e.enLen == null) return;
+        if ((r.ftext || '').length !== e.enLen) out.push(String(r.UID));
+      });
+      return out;
+    }
+  };
+
+  // ── salFtext(row) ───────────────────────────────────────────────────────────
+  // THE ONE ACCESSOR every viewer-facing render path reads ftext through. Total:
+  // English mode, a sidecar that has not landed, a row with no translation, a
+  // row with no ftext at all — every one of them returns the English string the
+  // caller would have used anyway, so wrapping a read site cannot break it.
+  //
+  // The rule for a call site is simply: READS go through salFtext(row), WRITES
+  // stay on row.ftext. Anything that edits, saves, measures for a save, or
+  // computes a stored column must keep using row.ftext directly.
+  window.salFtext = function (row) {
+    if (!row) return '';
+    var en = row.ftext || '';
+    var e  = esEntry(row.UID);
+    return e ? e.ftext : en;
+  };
+
   window.salLang = {
     get:   function () { return current; },
     is:    function (c) { return current === c; },
     set:   set,
     t:     t,
-    ready: load,
+    // ready() settles when EVERY Spanish file this shim owns has landed —
+    // the dictionary, the tag names and the ftext sidecar. boot.js awaits it
+    // before it builds the menu, and a caller that waited for the chrome and
+    // then found the content still in English would be a bug that only ever
+    // showed up on a cold load. Each of the three swallows its own failure, so
+    // the whole is as total as the parts: it never rejects.
+    ready: function () { return Promise.all([load(), loadTagsEs(), loadFtextEs()]); },
     langs: SUPPORTED,
     // For the generators and the taxoninfo/tags sidecar lookups: "should the
     // Spanish data files be consulted at all?"
