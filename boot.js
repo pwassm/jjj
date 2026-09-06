@@ -1929,6 +1929,42 @@ async function _showShareableMenu() {
     const dx = p.x - x0, dy = p.y - y0;
     if (dx < -60 && Math.abs(dx) > Math.abs(dy)) _smShow(2);
   }, true);
+  // ── (dev0932) RIGHT SWIPE ON THE PICTURE OF THE DAY → FULL WINDOW ─────────
+  // The Welcome page shows the day's picture sized to what is left of the
+  // screen, under a date line and over a caption. A right swipe on it hands the
+  // whole window to the media: V, opened with its controls already collapsed
+  // and no ⌃ tab to bring them back, the video looping, and one line at the
+  // bottom saying how to leave. The way out is a LEFT swipe, which is V's own
+  // close gesture — so the caption describes a gesture that already worked
+  // rather than adding a second one.
+  //
+  // Scoped to the day box rather than the page: a swipe anywhere else on
+  // Welcome must stay free for whatever the tab bar wants to do with it later.
+  // Its own pointer pair, NOT the capture-phase one above, for the same reason.
+  if (_smDayBox) {
+    let _dX = null, _dY = null;
+    _smDayBox.addEventListener('pointerdown', e => {
+      const p = _smXY(e); _dX = p.x; _dY = p.y;
+    });
+    _smDayBox.addEventListener('pointerup', e => {
+      const x0 = _dX, y0 = _dY; _dX = _dY = null;
+      if (x0 == null) return;
+      // The ‹ › arrows live inside this box and are pressed, not swiped — a tap
+      // on one lands here as a zero-distance "swipe" and must fall through.
+      if (e.target && e.target.closest && e.target.closest('.sm-dayarrow')) return;
+      const p = _smXY(e);
+      const dx = p.x - x0, dy = p.y - y0;
+      if (!(dx > 60 && Math.abs(dx) > Math.abs(dy))) return;
+      const en = (_smDayIdx >= 0) ? _smDayList[_smDayIdx] : null;
+      if (!en || !en.row || !en.row.UID) return;   // a day with no picture has nothing to open
+      window._vpHideControls  = true;   // (dev0913) open with the transport already shut
+      window._vpNoExpand      = true;   // …and no way to reopen it
+      window._vpLoopWhole     = true;   // a video runs round rather than stopping on a dead frame
+      window._vpBottomCaption = (window.T ? window.T('Swipe left to return')
+                                          : 'Swipe left to return');
+      _smOpenV(en.row.UID);
+    });
+  }
   // Populate the search-filter note from the COI-declared filters.
   const _smFiltNote = ov.querySelector('#smFilterNote');
   if (_smFiltNote) {

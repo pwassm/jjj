@@ -9,7 +9,8 @@
  },
 
  "menu_tabs": {
-  "Welcome": "Bienvenida",
+  "Welcome": "Bienvenidos",
+   "Swipe left to return": "Desliza a la izquierda para volver",
   "Starting out": "Primeros pasos",
   "Grids": "Cuadrículas",
   "Search": "Buscar",

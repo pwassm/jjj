@@ -396,6 +396,47 @@ function _vpSyncToolbarHeight(host, toolbar) {
 // Written against the LIVE DOM by id rather than over captured references, so it
 // can be called from outside vp.js (quizcells.js's openBig) and from a later
 // GUI button without either of them holding a piece of the player.
+// (dev0932) FULL-WINDOW PEEK — the Welcome page's picture of the day opens V on
+// a right swipe, and it wants the picture and nothing else: controls collapsed,
+// NO way to bring them back, video looping, and one line at the bottom saying
+// how to get out. `_vpNoExpandActive` is module state rather than an argument
+// because vpCollapseControls is also called by the ⌄ button and by the open
+// path, and every one of them must agree about whether the ⌃ tab may exist.
+let _vpNoExpandActive = false;
+
+// The bottom caption: a plain strip over the media, pointer-events:none so it
+// can never sit between a thumb and the swipe it is describing.
+function _vpSetPeekCaption(text) {
+  const content = document.getElementById('gridFsContent');
+  let cap = document.getElementById('vp-peek-cap');
+  if (!text) { if (cap) cap.remove(); return; }
+  if (!content) return;
+  if (!cap) {
+    cap = document.createElement('div');
+    cap.id = 'vp-peek-cap';
+    cap.style.cssText = 'position:absolute;left:0;right:0;bottom:0;z-index:72;'
+      + 'padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));'
+      + 'text-align:center;font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;'
+      + 'color:#dfe9f4;background:linear-gradient(to top,rgba(0,0,0,0.62),rgba(0,0,0,0));'
+      + 'pointer-events:none;';
+    content.appendChild(cap);
+  }
+  cap.textContent = text;
+}
+
+// Applied a frame after the open, once V has built whatever it is going to
+// build — this runs for images and video alike, so it cannot live in either
+// branch of gridOpenFullscreen.
+function _vpApplyPeek(loopWhole, capText) {
+  const fs = document.getElementById('gridFullscreen');
+  if (!fs || fs.style.display !== 'flex') return;   // open failed; nothing to dress
+  if (loopWhole) {
+    const v = fs.querySelector('video');
+    if (v) v.loop = true;
+  }
+  _vpSetPeekCaption(capText);
+}
+
 function vpCollapseControls(hide) {
   const bar     = document.getElementById('vp-toolbar');
   const content = document.getElementById('gridFsContent');
@@ -409,6 +450,10 @@ function vpCollapseControls(hide) {
 
   let tab = document.getElementById('vp-collapse-tab');
   if (!hide) { if (tab) tab.remove(); return; }
+  // (dev0932) Peek mode: collapsed with no way back. Without this the ⌃ tab is
+  // the one control still on screen, which is exactly the control this mode is
+  // meant not to offer.
+  if (_vpNoExpandActive) { if (tab) tab.remove(); return; }
   if (tab) return;
   tab = document.createElement('button');
   tab.id = 'vp-collapse-tab';
@@ -479,6 +524,17 @@ function gridOpenFullscreen(row, contained) {
   // above is, so an arming that misses its branch cannot leak into the next V.
   const _hideCtl = !!window._vpHideControls;
   window._vpHideControls = false;
+  // (dev0932) Peek mode's companions to _hideCtl, read-and-CLEARED on every
+  // open for the same reason: a flag that misses its branch must not leak into
+  // the next, ordinary V.
+  const _noExpand  = !!window._vpNoExpand;
+  const _loopWhole = !!window._vpLoopWhole;
+  const _peekCap   = String(window._vpBottomCaption || '');
+  window._vpNoExpand = false; window._vpLoopWhole = false; window._vpBottomCaption = '';
+  _vpNoExpandActive = _noExpand;
+  if (_noExpand || _loopWhole || _peekCap) {
+    requestAnimationFrame(() => _vpApplyPeek(_loopWhole, _peekCap));
+  }
   const _armLoop = (_pendLoop && window.salLoops
                     && window.salLoops.matchRow(_pendLoop, row)) ? _pendLoop : null;
 
@@ -2410,6 +2466,10 @@ function gridOpenFullscreen(row, contained) {
 }
 
 function vpClose() {
+  // (dev0932) Peek mode ends with the viewer it dressed. Left set, the next V
+  // opened from anywhere would silently lose its ⌃ tab.
+  _vpNoExpandActive = false;
+  _vpSetPeekCaption('');
   // (dev0902) The reader owned the tick write-back while it was up; anything
   // opened after it must not inherit a closure over this row. UNLESS Xs is on
   // top: a designation page tears this viewer down mid-preview, and Xs owns the
