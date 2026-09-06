@@ -55,7 +55,9 @@
       "3f",
       "3g",
       "3h",
-      "3i"
+      "3i",
+      "Label",
+      "Lock"
     ],
     "_salHidden": [],
     "_salGsize": 5,
@@ -2251,12 +2253,12 @@
   },
   {
     "gname": "Contact",
-    "ctxt": "",
+    "ctxt": "<p>This is the contact information page.</p><p></p>",
     "cells": 0,
     "ss": "",
     "Zoom": "",
     "DateAdded": "2026-09-05 18:08:55",
-    "DateModified": "2026-09-05 18:08:55",
+    "DateModified": "2026-09-06 04:54:19",
     "ctype": "t",
     "active": "9",
     "Label": "Contact",
