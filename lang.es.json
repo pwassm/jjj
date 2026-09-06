@@ -1,11 +1,11 @@
 {
  "_meta": {
   "lang": "es",
-  "step": "dev0930 — step 1: menu chrome, viewer chrome, card backs",
+  "step": "dev0934 — step 3: the menu pages, the quiz, the sign-in strip",
   "how": "The KEY is the English string exactly as it appears in the code. T('Grids') looks up 'Grids' here. A missing key, or an EMPTY value, falls back to English — so a blank line below is a to-do, never a bug, and deleting an entry is a safe no-op.",
   "sections": "Section names are for humans only. lang.js flattens them into one map at load, so a string can be moved between sections without breaking anything. Keys starting with _ are ignored.",
   "markup": "A value may carry HTML where the English did (the hamburger items). Keep any markup the English key has, or drop it deliberately — the <u>X</u> hotkey underlines are dropped here on purpose: the letters are English mnemonics, they are dev-facing, and underlining a letter that is not in the Spanish word is worse than no underline.",
-  "notreached": "NOT translated: the H help panel (HELP_DATA in core.js + the hotkeys.js registry), the dev screens (T/A/E/D/Xe/I/St/O/X/LLC), and ml.json VidTitle and comment. ftext IS now translatable — dev0933 added ftext.es.json, a per-UID sidecar covering the FlashTry1 cards, and every viewer-facing render reads it through salFtext(row). This dictionary stays the place for CHROME; a row’s own prose belongs in that file."
+  "notreached": "NOT translated: the H help panel (HELP_DATA in core.js + the hotkeys.js registry), the dev screens (T/A/E/D/Xe/I/St/O/X/LLC), and ml.json VidTitle and comment. ftext IS now translatable — dev0933 added ftext.es.json, a per-UID sidecar covering the FlashTry1 cards, and every viewer-facing render reads it through salFtext(row). This dictionary stays the place for CHROME; a row’s own prose belongs in that file, and a MENU PAGE’s prose (a c.json ctxt) belongs in ctxt.es.json, added in dev0934 on the same read-only-sidecar pattern."
  },
 
  "menu_tabs": {
@@ -50,6 +50,51 @@
   "Fold the two corners first": "Dobla primero las dos esquinas",
   "Click to unfold": "Haz clic para desplegar",
   "click": "clic"
+ },
+
+ "_quiz": "(dev0934) The quiz that runs on a flash-card grid (quizcells.js). The Quiz/Exit button, the hint offer, and the whole end-of-run summary. The species names inside the summary are NOT here: a scientific name is the same in every language, and a card's common name comes from ftext.es.json through the card's own prose.",
+
+ "quiz": {
+  "Quiz": "Cuestionario",
+  "Exit": "Salir",
+  "Leave the quiz (Esc)": "Salir del cuestionario (Esc)",
+  "Name the animal — click the card it belongs to": "Nombra el animal: haz clic en la tarjeta a la que pertenece",
+  "No named flash cards on this grid to quiz on": "No hay tarjetas con nombre en esta cuadrícula para hacer un cuestionario",
+  "no common name": "sin nombre común",
+  "an unidentified card": "una tarjeta sin identificar",
+  "hint": "pista",
+  "Hint": "Pista",
+  "No thanks": "No, gracias",
+  "Not correct. Want a hint?": "Incorrecto. ¿Quieres una pista?",
+  "Not correct": "Incorrecto",
+  "this card has nothing written on its back": "esta tarjeta no tiene nada escrito en el reverso",
+  "click to continue": "haz clic para continuar",
+  "tap to continue": "toca para continuar",
+  "wrong answer": "respuesta incorrecta",
+  "wrong answers": "respuestas incorrectas",
+  "correct answer": "respuesta correcta",
+  "correct answers": "respuestas correctas",
+  "chose {chose} for {want}": "elegiste {chose} para {want}",
+  "none this time": "ninguna esta vez",
+  "Time on quiz": "Tiempo en el cuestionario",
+  "Congratulations on completing this quiz!": "¡Enhorabuena por completar este cuestionario!",
+  "click anywhere on screen to dismiss": "haz clic en cualquier parte de la pantalla para cerrar"
+ },
+
+ "_auth": "(dev0934) The sign-in strip, which is the visible body of the Contact tab. 'Signed in as {who}' keeps its placeholder — the name is substituted after lookup, so the translation chooses where it goes. The dev-mode message is not here: it never reaches a viewer.",
+
+ "auth": {
+  "Sign in": "Iniciar sesión",
+  "(optional — to comment or send a note)": "(opcional: para comentar o enviar una nota)",
+  "Sign out": "Cerrar sesión",
+  "Signed in as {who}": "Sesión iniciada como {who}",
+  "you can comment on items": "puedes comentar los elementos",
+  "Send me a sign-in link": "Envíame un enlace de acceso",
+  "Please enter a valid email address.": "Introduce una dirección de correo electrónico válida.",
+  "Sending…": "Enviando…",
+  "Check your email ✉ — the sign-in link works once and expires in 15 minutes.": "Revisa tu correo ✉: el enlace de acceso sirve una sola vez y caduca en 15 minutos.",
+  "Check your email ✉": "Revisa tu correo ✉",
+  "Could not reach the server. Please try again.": "No se pudo contactar con el servidor. Inténtalo de nuevo."
  },
 
  "_reader": "(dev0933) The chrome the V reader prints AROUND a text slide. The card prose itself is not here — it lives in ftext.es.json, keyed by ml.json UID. These four keys are the frame that used to stay stubbornly English while the slide inside it turned Spanish.",

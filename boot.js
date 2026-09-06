@@ -480,14 +480,23 @@ function _wireSignIn(ov) {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+  // (dev0934) The sign-in strip is the whole visible body of the Contact tab
+  // below the author's prose, and it was the last block of hard-coded English
+  // left on a Spanish page. Every string here goes through T(). The one that
+  // interpolates a value is a WHOLE-SENTENCE key with a {who} placeholder
+  // rather than two concatenated fragments, so the translator controls the word
+  // order instead of inheriting English's.
+  const _T = window.T || (x => x);
+  const _fill = (str, map) => String(str).replace(/\{(\w+)\}/g, (m, k) => (k in map ? map[k] : m));
+
   // Signed-in view: who you are + a sign-out link. Experts/admins get a hint
   // that they can contribute comments on items.
   function renderIn(u) {
     const who = esc(u.name || u.email);
     const canComment = (u.role === 'expert' || u.role === 'admin');
-    box.innerHTML = 'Signed in as <b>' + who + '</b>'
-      + (canComment ? ' <span style="color:#8fe8b0;">· you can comment on items</span>' : '')
-      + ' · <a class="sm-link" id="smSignOut">Sign out</a>';
+    box.innerHTML = _fill(_T('Signed in as {who}'), { who: '<b>' + who + '</b>' })
+      + (canComment ? ' <span style="color:#8fe8b0;">· ' + _T('you can comment on items') + '</span>' : '')
+      + ' · <a class="sm-link" id="smSignOut">' + _T('Sign out') + '</a>';
     box.querySelector('#smSignOut').addEventListener('click', () => {
       A.logout().then(() => renderOut());
     });
@@ -497,8 +506,8 @@ function _wireSignIn(ov) {
   // asks the API to email a one-time sign-in link (or, in the worker's dev
   // mode, hands the link straight back so it can be tested without email).
   function renderOut() {
-    box.innerHTML = '<a class="sm-link" id="smSignInLink">Sign in</a>'
-      + ' <span style="color:#66788f;">(optional — to comment or send a note)</span>';
+    box.innerHTML = '<a class="sm-link" id="smSignInLink">' + _T('Sign in') + '</a>'
+      + ' <span style="color:#66788f;">' + _T('(optional — to comment or send a note)') + '</span>';
     box.querySelector('#smSignInLink').addEventListener('click', showForm);
   }
 
@@ -506,7 +515,7 @@ function _wireSignIn(ov) {
     box.innerHTML =
         '<div class="sm-authrow">'
       +   '<input id="smEmail" type="email" placeholder="you@example.com" autocomplete="email">'
-      +   '<button id="smSend">Send me a sign-in link</button>'
+      +   '<button id="smSend">' + _T('Send me a sign-in link') + '</button>'
       + '</div>'
       + '<div class="sm-authmsg" id="smAuthMsg" style="display:none;"></div>';
     const inp = box.querySelector('#smEmail');
@@ -520,19 +529,19 @@ function _wireSignIn(ov) {
     };
     const submit = () => {
       const email = inp.value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMsg('Please enter a valid email address.', true); return; }
-      btn.disabled = true; setMsg('Sending…', false);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMsg(_T('Please enter a valid email address.'), true); return; }
+      btn.disabled = true; setMsg(_T('Sending…'), false);
       A.requestLink(email).then(d => {
         btn.disabled = false;
         if (d && d.devLink) {
           // Worker in dev mode: no email is sent, the link comes back inline.
-          setMsg('Dev mode — <a href="' + esc(d.devLink) + '">open your sign-in link</a>.', false);
+          setMsg('Dev mode — <a href="' + esc(d.devLink) + '">open your sign-in link</a>.', false);   // dev-only, never seen by a viewer
         } else if (d && d.sent) {
-          setMsg('Check your email ✉ — the sign-in link works once and expires in 15 minutes.', false);
+          setMsg(_T('Check your email ✉ — the sign-in link works once and expires in 15 minutes.'), false);
         } else if (d && d.error) {
-          setMsg(esc(d.error === 'network' ? 'Could not reach the server. Please try again.' : d.error), true);
+          setMsg(esc(d.error === 'network' ? _T('Could not reach the server. Please try again.') : d.error), true);
         } else {
-          setMsg('Check your email ✉', false);
+          setMsg(_T('Check your email ✉'), false);
         }
       });
     };
@@ -635,11 +644,18 @@ async function _showShareableMenu() {
   // by its label value (now read from ttxt); its MPix/COI still drive the search
   // threshold + filters below.
   const greetRow = mlRows.find(r => r && !r._salMeta && _isGreeting(r.ttxt));
+  // (dev0934) THE ONE READ PATH for a menu page's prose. In Spanish it returns
+  // the ctxt.es.json copy for that config row; in every other case — English,
+  // no translation, no lang.js at all — the row's own ctxt, which is what this
+  // was before. READS go through here; the C screen and Xe keep writing
+  // cfg.ctxt directly, so a translation can never reach c.json.
+  const _ctxtOf = cfg => (typeof window.salCtxt === 'function'
+    ? window.salCtxt(cfg) : String((cfg && cfg.ctxt) || ''));
   // (dev0378) Greeting prose now lives in c.json: the config row whose gname is
   // "Greeting", in its `ctxt` field. Fall back to the legacy ml.json ttxt-row
   // ftext, then to a greeting.html file on disk.
   const greetCfg = cRows.find(r => r && !r._salMeta && _isGreeting(r.gname));
-  let greetingHtml = greetCfg ? String(greetCfg.ctxt || '') : '';
+  let greetingHtml = greetCfg ? String(_ctxtOf(greetCfg) || '') : '';
   if (!greetingHtml && greetRow) greetingHtml = String(greetRow.ftext || '');
   if (!greetingHtml) {
     try { const r = await fetch('greeting.html?t=' + Date.now()); if (r.ok) greetingHtml = await r.text(); } catch (e) {}
@@ -706,7 +722,7 @@ async function _showShareableMenu() {
     return s === 'introduction' || s === 'intro';
   };
   const introCfg = cRows.find(r => r && !r._salMeta && _isIntroCfg(r.gname));
-  const introFull = introCfg ? _cutBelow(introCfg.ctxt) : greetTop;
+  const introFull = introCfg ? _cutBelow(_ctxtOf(introCfg)) : greetTop;
   let introTop = introFull, introBottom = '';
   {
     const _ihr = introFull.match(/<hr\b[^>]*>/i);
@@ -722,14 +738,14 @@ async function _showShareableMenu() {
   // gname is "other", in its `ctxt` field. Re-read every open (whole function
   // re-fetches c.json), so editing that ctxt in C updates the page next visit.
   const otherCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'other');
-  const otherHtml = _linkify(_balanceHtml(_cutBelow(otherCfg ? otherCfg.ctxt : '')));
+  const otherHtml = _linkify(_balanceHtml(_cutBelow(otherCfg ? _ctxtOf(otherCfg) : '')));
 
   // (dev0782) "Contact" page — same deal as "Other": free-form HTML from the
   // c.json config row whose gname is "contact", in its `ctxt`. Authored in Xe,
   // so the address / who-we-are copy above the sign-in strip is the author's,
   // not code. Absent config → the page is just the sign-in strip.
   const contactCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'contact');
-  const contactFull = _cutBelow(contactCfg ? contactCfg.ctxt : '');
+  const contactFull = _cutBelow(contactCfg ? _ctxtOf(contactCfg) : '');
   // (dev0931) Contact is a HYBRID tab, on the same rule as Welcome: the ctxt is
   // split at the first <hr>, section 1 renders, then the element that is NOT in
   // the text (here the sign-in strip), then section 2 below it if present. The
@@ -752,7 +768,7 @@ async function _showShareableMenu() {
   // the intended state for now, not a missing page. Making a config row of that
   // name in C and writing its ctxt in Xe fills it, with no code change.
   const startCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'starting out');
-  const startHtml = _linkify(_balanceHtml(_cutBelow(startCfg ? startCfg.ctxt : '')));
+  const startHtml = _linkify(_balanceHtml(_cutBelow(startCfg ? _ctxtOf(startCfg) : '')));
 
   // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
   // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
@@ -1432,27 +1448,52 @@ async function _showShareableMenu() {
   // that doubles as a key is the classic i18n regression; keep it in mind for
   // every future tab added here.
   const _T = window.T || (s => s);
+  // (dev0934) THE LABEL COMES FROM c.json, THE BAR STILL COMES FROM HERE.
+  // dev0931 gave every tab a config row carrying ctype "t" and a `Label`; this
+  // reads that Label as the tab's English text, falling back to the literal
+  // below when the row is missing. What is deliberately NOT taken from c.json
+  // is the bar itself — which tabs exist, their order, their data-pg, and the
+  // SM_FEAT_* gating — because those are code, and a mis-typed row must not be
+  // able to take a page off the site.
+  //
+  // The Label is matched by gname, not by `active` (which is the tab's POSITION
+  // in the bar, and is a different number from its data-pg for six of the nine).
+  //
+  // Renaming a tab in c.json therefore renames it on the site — and the Spanish
+  // follows the rename by itself, because T() keys on the ENGLISH STRING: the
+  // new Label is looked up in lang.es.json, and until an entry is written for it
+  // the tab degrades to its new English name rather than to the old Spanish one.
+  // That is the whole reason the label is translated here rather than carried as
+  // a second column on the row: a stale translation cannot outlive its source.
+  const _tabRow = gname => cRows.find(r => r && !r._salMeta
+    && String(r.ctype || '').trim().toLowerCase() === 't'
+    && String(r.gname || '').trim().toLowerCase() === String(gname).toLowerCase());
+  const _tabLabel = (gname, fallback) => {
+    const row = _tabRow(gname);
+    const lab = row ? String(row.Label || '').trim() : '';
+    return _smEsc(_T(lab || fallback));
+  };
   const _tabBtns =
-      '<button class="sm-tab" data-pg="1">' + _T('Welcome') + '</button>'
-    + '<button class="sm-tab" data-pg="5">' + _T('Starting out') + '</button>'
-    + '<button class="sm-tab" data-pg="2">' + _T('Grids') + '</button>'
+      '<button class="sm-tab" data-pg="1">' + _tabLabel('Introduction', 'Welcome') + '</button>'
+    + '<button class="sm-tab" data-pg="5">' + _tabLabel('Starting out', 'Starting out') + '</button>'
+    + '<button class="sm-tab" data-pg="2">' + _tabLabel('Grids', 'Grids') + '</button>'
     + (SM_FEAT_SEARCH
-        ? '<button class="sm-tab" data-pg="3">' + _T('Search') + '</button>'
-          + '<button class="sm-tab" data-pg="6">' + _T('SavedSearches') + '</button>'
+        ? '<button class="sm-tab" data-pg="3">' + _tabLabel('Search', 'Search') + '</button>'
+          + '<button class="sm-tab" data-pg="6">' + _tabLabel('SavedSearches', 'SavedSearches') + '</button>'
         : '')
     // (dev0667) "My Loops" — the viewer's own A→B segments. Sits after
     // SavedSearches because they're siblings: a saved search is a QUERY, a loop
     // is a UID + start/stop. Different entities, separate lists, one tab each.
-    + '<button class="sm-tab" data-pg="7">' + _T('My Loops') + '</button>'
+    + '<button class="sm-tab" data-pg="7">' + _tabLabel('My Loops', 'My Loops') + '</button>'
     // (dev0668) "Add your own" — a URL the viewer pastes themselves. Follows
     // My Loops because that's where its loops end up.
-    + (SM_FEAT_ADDOWN ? '<button class="sm-tab" data-pg="8">' + _T('Add your own') + '</button>' : '')
-    + '<button class="sm-tab" data-pg="4">' + _T('Other') + '</button>'
+    + (SM_FEAT_ADDOWN ? '<button class="sm-tab" data-pg="8">' + _tabLabel('Add your own', 'Add your own') + '</button>' : '')
+    + '<button class="sm-tab" data-pg="4">' + _tabLabel('Other', 'Other') + '</button>'
     // (dev0782) "Contact" — the home of the sign-in strip, which until now sat at
     // the top of the Intro. Signing in is a thing the viewer goes looking for,
     // not something the front door should ask for, so it gets its own tab and
     // the Intro opens on prose alone. Last, because it is the least-used tab.
-    + '<button class="sm-tab" data-pg="9">' + _T('Contact') + '</button>';
+    + '<button class="sm-tab" data-pg="9">' + _tabLabel('Contact', 'Contact') + '</button>';
 
   ov.innerHTML = menuStyle
     // (dev0384) Top tab bar — replaces the former header (there is no header now).

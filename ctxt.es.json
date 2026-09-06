@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "lang": "es",
+    "step": "dev0934 — step 3: the menu pages themselves",
+    "what": "Spanish for the `ctxt` of a c.json config row — the prose of a menu tab. Read-only sidecar, exactly like ftext.es.json is for a card's ftext. Nothing here is ever written back into c.json; salCtxt(cfg) in lang.js is the only accessor, and boot.js reads every menu page through it.",
+    "key": "The row's `gname`, lowercased and trimmed. Not the row index (moves when a row is added) and not `active` (that is the tab's POSITION in the bar). gname is what boot.js already matches these pages on.",
+    "structure": "The value is the WHOLE ctxt, because the page splits it itself: Welcome cuts at its ⊘ marker and then splits at the first <hr> to put the image of the day between the halves, and Contact does the same to place the sign-in strip. KEEP THE <hr>s IN THE SAME PLACES — that is the one thing a translation can get structurally wrong. Functional markup (data-xall spans, href, target) must be copied verbatim; only text is translated.",
+    "cut": "Material below the English ⊘ cut marker (div.te-cut.te-cut-below) is parked prose no viewer of either language sees, so a Spanish copy simply ends where the cut is instead of duplicating it.",
+    "enLen": "Length of the WHOLE English ctxt, hidden tail included, when this was written. salCtxtEs.stale(cRows) lists the pages whose English has moved since. Editing parked material below the cut does flag the page stale — a false positive that costs a glance, where missing a real edit costs a wrong page. An entry may also be a bare string, which never claims a source and is never stale."
+  },
+
+  "pages": {
+    "introduction": {
+      "enLen": 7474,
+      "ctxt": "<h2>Temas sobre todo marinos. Desliza a la derecha sobre una imagen para verla a pantalla completa.</h2><hr><hr><p></p><h3>Haz clic o toca las líneas que empiezan con triángulos para mostrar u ocultar el contenido de abajo.</h3><p><span data-xall=\"open\" class=\"te-xall\">▼▼</span> muestra todo el contenido de la página, <span data-xall=\"close\" class=\"te-xall\">▶▶</span> oculta todo el contenido que se pueda ocultar.</p><hr><p></p><p>¡Y esto irá debajo de la Imagen del Día!</p><p></p>"
+    },
+
+    "other": {
+      "enLen": 440,
+      "ctxt": "<h2>Mis otros sitios web:&nbsp;</h2><p><a target=\"_blank\" rel=\"noopener\" href=\"https://www.sealifeandmore.org\">https://www.sealifeandmore.org</a></p><p>Un sitio WordPress, todavía el mejor lugar para ver los vídeos de Instagram</p><p><br></p><p><a target=\"_blank\" rel=\"noopener\" href=\"https://pwassm.github.io/braintrain\">https://pwassm.github.io/braintrain</a></p><p>Mi primer sitio, donde exploro el paradigma de la doble decisión.</p><p><br></p><p><br></p><p><br></p>"
+    },
+
+    "contact": {
+      "enLen": 51,
+      "ctxt": "<p>Esta es la página de información de contacto.</p><p></p>"
+    }
+  }
+}

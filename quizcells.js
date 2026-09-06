@@ -186,6 +186,59 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // ── (dev0934) the quiz in Spanish ─────────────────────────────────────────
+  // The quiz was the last viewer-facing screen still entirely in English: the
+  // Quiz/Exit button, the hint offer, the balloon, and the whole end-of-run
+  // summary. Every one of those strings now goes through T(), read at the point
+  // of use rather than captured in a constant — the dictionary is fetched async
+  // and this file's top-level code runs before it lands, so a module-level
+  // `var EXIT = T('Exit')` would freeze the English in permanently.
+  //
+  // T is looked up on window each call rather than aliased once, for the same
+  // reason: quizcells.js loads after lang.js today, but nothing enforces that,
+  // and an alias taken at load time in a future ordering would be the identity
+  // function forever. The fallback IS the English argument, so with lang.js
+  // removed every line below reads exactly as it did before.
+  function T(s) { return (typeof window.T === 'function') ? window.T(s) : s; }
+
+  // Sentences that carry a value are ONE key with {placeholders}, not fragments
+  // glued around an interpolation: "chose X for Y" and "elegiste X por Y" put
+  // their pieces in different orders, and only a whole-sentence key lets the
+  // translation say so.
+  function fill(str, map) {
+    return String(str).replace(/\{(\w+)\}/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : m;
+    });
+  }
+
+  // (dev0934) THE COMMON NAME THE PLAYER IS SHOWN, in the language they are
+  // reading. speciesOf() deliberately parses row.ftext — the ENGLISH prose —
+  // because the answer key is built from it and a key that changed with the
+  // language would score two viewers differently on the same click. But the
+  // name printed in the question panel and in the summary is text, not a key,
+  // and printing "Juvenile rockfish" under a Spanish tab bar is exactly the
+  // half-translated seam this pass is closing.
+  //
+  // So: the key stays English, and the DISPLAY name is re-read from the same
+  // place the card itself is rendered from — salFtext(row), which is the
+  // ftext.es.json copy in Spanish and row.ftext in every other case. Section 2's
+  // <h1> is the common name, by the same rule _tCardSpecies uses. A row with no
+  // translation yields nothing and the English name stands.
+  //
+  // The SCIENTIFIC name is never touched: a binomial is the same in every
+  // language, and "translating" one would be a straight error.
+  function commonEs(row) {
+    if (!row || typeof window.salFtext !== 'function') return '';
+    try {
+      if (!(window.salLang && window.salLang.esActive())) return '';
+      var secs = String(window.salFtext(row) || '').split(/<hr[^>]*>/i);
+      var h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(secs[1] || '');
+      if (!h1) return '';
+      return String(h1[1]).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ').trim();
+    } catch (_) { return ''; }
+  }
+
   // grid.js owns what a flash card is (dev0896 exports). No second definition
   // here: a card the grid does not render as a card must not be quizzed on.
   function cardParts(cell) {
@@ -214,10 +267,20 @@
     if (!sp || !sp.sci) return '';
     return (sp.sci + '|' + (sp.common || '')).toLowerCase();
   }
+  // (dev0934) The same species, named for the READER rather than for the key —
+  // Spanish common name where the card has one, English everywhere else. Used
+  // wherever a name is printed; never where one is compared.
+  function displayOf(row) {
+    var sp = speciesOf(row);
+    if (!sp || !sp.sci) return sp;
+    var es = commonEs(row);
+    return es ? { sci: sp.sci, common: es } : sp;
+  }
+
   // What to call a card in the summary. The common name off the <h1> is the
   // half that tells two Majoidea apart, so it leads.
   function labelOf(sp) {
-    if (!sp || !sp.sci) return 'an unidentified card';
+    if (!sp || !sp.sci) return T('an unidentified card');
     return sp.common ? (sp.common + ' (' + sp.sci + ')') : sp.sci;
   }
 
@@ -326,9 +389,9 @@
     var hud = hudEl(); if (!hud) return;
     var btn = hud.querySelector('#quizBtn');
     var tal = hud.querySelector('#quizTally');
-    btn.textContent = active ? 'Exit' : 'Quiz';
-    btn.title = active ? 'Leave the quiz (Esc)'
-                       : 'Name the animal — click the card it belongs to';
+    btn.textContent = active ? T('Exit') : T('Quiz');
+    btn.title = active ? T('Leave the quiz (Esc)')
+                       : T('Name the animal — click the card it belongs to');
     btn.style.borderColor = active ? '#fa8' : '#9cf';
     btn.style.color       = active ? '#fa8' : '#9cf';
     btn.style.background  = active ? 'rgba(90,40,0,0.75)' : 'rgba(0,40,90,0.75)';
@@ -404,12 +467,12 @@
     if (!cur) return;
     var common = cur.common
       ? '<div style="font-size:0.95em;opacity:0.8;">' + esc(cur.common) + '</div>'
-      : '<div style="font-size:0.8em;opacity:0.4;font-style:italic;">no common name</div>';
+      : '<div style="font-size:0.8em;opacity:0.4;font-style:italic;">' + T('no common name') + '</div>';
     var hint = hintHtml
       ? '<div style="margin-top:11px;padding-top:9px;'
         + 'border-top:1px solid rgba(255,255,255,0.16);">'
         + '<div style="font-size:0.72em;letter-spacing:0.08em;opacity:0.5;'
-        + 'text-transform:uppercase;margin-bottom:6px;">hint</div>'
+        + 'text-transform:uppercase;margin-bottom:6px;">' + T('hint') + '</div>'
         + '<div style="text-align:left;font-size:0.92em;">' + hintHtml + '</div></div>'
       : '';
     centrePanel('quizPrompt',
@@ -439,16 +502,16 @@
       + 'text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.75);'
       + 'font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;';
     box.innerHTML =
-      '<div style="font-size:1.05em;margin-bottom:12px;">Not correct. Want a hint?</div>'
+      '<div style="font-size:1.05em;margin-bottom:12px;">' + T('Not correct. Want a hint?') + '</div>'
       + '<div style="display:flex;gap:10px;justify-content:center;">'
       + '<button id="quizHintYes" style="cursor:pointer;padding:7px 16px;border-radius:8px;'
       + 'border:2px solid #9cf;color:#9cf;background:rgba(0,40,90,0.8);'
       + 'font:600 13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;">'
-      + 'Hint <span id="quizHintCount" style="opacity:.65;font-weight:400;">'
+      + T('Hint') + ' <span id="quizHintCount" style="opacity:.65;font-weight:400;">'
       + Math.ceil(ASK_MS / 1000) + '</span></button>'
       + '<button id="quizHintNo" style="cursor:pointer;padding:7px 16px;border-radius:8px;'
       + 'border:2px solid #777;color:#bbb;background:rgba(30,30,34,0.8);'
-      + 'font:600 13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;">No thanks</button>'
+      + 'font:600 13px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;">' + T('No thanks') + '</button>'
       + '</div>';
     ov.appendChild(box);
 
@@ -496,7 +559,7 @@
     var body   = (parts && parts.sections && parts.sections[0]) || '';
     hintHtml = body
       ? (typeof renderFtext === 'function' ? renderFtext(body) : body)
-      : '<em style="opacity:.6;">this card has nothing written on its back</em>';
+      : '<em style="opacity:.6;">' + T('this card has nothing written on its back') + '</em>';
     resume();
   }
 
@@ -527,7 +590,10 @@
       id:     idOf(cell),
       uid:    uidOf(cell._rowData),
       sci:    sp.sci,
-      common: sp.common || '',
+      // (dev0934) SHOWN in the reader's language, MATCHED in English — `key` is
+      // built from the English `sp` a line below, so the answer a click is
+      // judged against does not move when the viewer switches language.
+      common: commonEs(cell._rowData) || sp.common || '',
       key:    keyOf(sp)
     };
   }
@@ -627,7 +693,10 @@
     var fs = Math.max(9, Math.round(panelFont() * 0.8));
     var b = document.createElement('div');
     b.id = 'quizBalloon';
-    b.textContent = (isPhone() ? 'tap' : 'click') + ' to continue';
+    // (dev0934) Two WHOLE phrases, not a verb glued to " to continue": Spanish
+    // wants "toca para continuar" / "haz clic para continuar", and only the
+    // complete sentence gives the translation somewhere to put the difference.
+    b.textContent = isPhone() ? T('tap to continue') : T('click to continue');
     b.style.cssText = 'position:absolute;right:6px;bottom:6px;z-index:200;'
       + 'pointer-events:none;max-width:92%;overflow:hidden;'
       + 'background:rgba(250,250,255,0.95);color:#14161c;'
@@ -655,7 +724,7 @@
   function onWrong(cell) {
     awaiting = false;
     wrong++;
-    var sp = cell ? speciesOf(cell._rowData) : null;
+    var sp = cell ? displayOf(cell._rowData) : null;
     misses.push({
       chose: labelOf(sp),
       want:  labelOf(cur)
@@ -666,7 +735,7 @@
     // it never went away, so there is nothing to accept. The tally and a one-line
     // toast carry the "no" instead, and the board comes straight back.
     if (hintHtml) {
-      if (typeof toast === 'function') toast('Not correct', 900);
+      if (typeof toast === 'function') toast(T('Not correct'), 900);
       resume();
     } else offerHint();
   }
@@ -827,7 +896,7 @@
     queue = buildQueue();
     if (!queue.length) {
       if (typeof toast === 'function')
-        toast('No named flash cards on this grid to quiz on', 2200);
+        toast(T('No named flash cards on this grid to quiz on'), 2200);
       return;
     }
     active = true; right = 0; wrong = 0; cur = null; reading = false;
@@ -887,21 +956,30 @@
     drop('quizSummary'); drop('quizSummaryCatch');
     var ov = overlay(); if (!ov) return;
 
+    // (dev0934) The counts are built as `n + ' ' + T('correct answers')` rather
+    // than by translating ' correct answers' with its leading space — a key
+    // whose first character is a space is a key someone will eventually trim.
+    // Singular and plural stay two separate keys, because a language that
+    // pluralises differently needs two strings, not a rule.
     var body = '';
     if (f.misses.length) {
       body += '<div style="font-size:0.72em;letter-spacing:0.08em;opacity:0.5;'
         + 'text-transform:uppercase;margin:0 0 6px;">'
-        + f.misses.length + (f.misses.length === 1 ? ' wrong answer' : ' wrong answers')
+        + f.misses.length + ' ' + T(f.misses.length === 1 ? 'wrong answer' : 'wrong answers')
         + '</div><div style="text-align:left;margin-bottom:14px;">'
         + f.misses.map(function (m) {
-            return '<div style="margin:3px 0;color:#f9a;">chose <em>' + esc(m.chose)
-              + '</em> for <em>' + esc(m.want) + '</em></div>';
+            return '<div style="margin:3px 0;color:#f9a;">'
+              + fill(T('chose {chose} for {want}'), {
+                  chose: '<em>' + esc(m.chose) + '</em>',
+                  want:  '<em>' + esc(m.want)  + '</em>'
+                })
+              + '</div>';
           }).join('')
         + '</div>';
     }
     body += '<div style="font-size:0.72em;letter-spacing:0.08em;opacity:0.5;'
       + 'text-transform:uppercase;margin:0 0 6px;">'
-      + f.hits.length + (f.hits.length === 1 ? ' correct answer' : ' correct answers')
+      + f.hits.length + ' ' + T(f.hits.length === 1 ? 'correct answer' : 'correct answers')
       + '</div>';
     body += f.hits.length
       ? '<div style="text-align:left;margin-bottom:14px;">'
@@ -911,14 +989,14 @@
               + '</div>';
           }).join('')
         + '</div>'
-      : '<div style="opacity:0.45;font-style:italic;margin-bottom:14px;">none this time</div>';
+      : '<div style="opacity:0.45;font-style:italic;margin-bottom:14px;">' + T('none this time') + '</div>';
 
-    body += '<div style="opacity:0.75;margin-bottom:16px;">Time on quiz '
+    body += '<div style="opacity:0.75;margin-bottom:16px;">' + T('Time on quiz') + ' '
       + esc(f.time) + '</div>';
     body += '<div style="font-size:1.15em;color:#cfe;">'
-      + 'Congratulations on completing this quiz!</div>';
+      + T('Congratulations on completing this quiz!') + '</div>';
     body += '<div style="font-size:0.78em;opacity:0.45;margin-top:10px;">'
-      + 'click anywhere on screen to dismiss</div>';
+      + T('click anywhere on screen to dismiss') + '</div>';
 
     var catcher = document.createElement('div');
     catcher.id = 'quizSummaryCatch';

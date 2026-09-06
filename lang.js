@@ -42,12 +42,15 @@
 //
 // ── CUT-OUT INSTRUCTIONS ─────────────────────────────────────────────────────
 //   1. delete this file, lang.es.json, taxoninfo.es.json, tags.es.json,
-//      ftext.es.json
+//      ftext.es.json, ctxt.es.json
 //   2. delete 'lang.js' from the files[] array in index.html
 //   3. drop the #smLangBtn block from boot.js (menu page 1) and its CSS
 //   4. in taxoninfo.js, delete the _esStore block and the two _pick() calls
 //   5. in vp.js and grid.js, change salFtext(row) back to row.ftext (the
 //      helper is null-safe but undefined without this file)
+//   5b. in boot.js, change salCtxt(cfg) back to cfg.ctxt at the five menu-page
+//      reads (Greeting, Introduction, Other, Contact, Starting out), and drop
+//      the _tabLabel() lookup in favour of the literal tab names
 //   6. the T() wrappers can stay — with no window.T they are inert, but the
 //      shim below is what defines T, so remove them or keep this file.
 // ══════════════════════════════════════════════════════════════════════════════
@@ -310,6 +313,97 @@
     return e ? e.ftext : en;
   };
 
+
+  // ── ctxt.es.json ────────────────────────────────────────────────────────────
+  // (dev0934) STEP 3: the MENU PAGES. A tab's prose is the `ctxt` of its c.json
+  // config row — the Welcome page, Other, Contact, Starting out — authored in Xe
+  // exactly like a card's ftext, and until now the one big surface that stayed
+  // stubbornly English behind a Spanish tab bar.
+  //
+  // Same shape and same argument as ftext.es.json: a READ-ONLY SIDECAR, never
+  // written back. c.json is rewritten wholesale by the C screen and by every Xe
+  // save of a tab page, so a second language column in it would last exactly
+  // until the next save. Keeping the Spanish outside that file means a viewer in
+  // Spanish and an author in English are editing and reading the same row.
+  //
+  // KEYED BY gname, lowercased and trimmed — not by row index and not by the
+  // `active` number. Index moves whenever a row is added; `active` is the tab's
+  // POSITION in the bar and changes when the bar is reordered. gname is the
+  // row's name, is what boot.js already matches these pages on, and is the only
+  // one of the three that means the same thing tomorrow.
+  //
+  // THE VALUE IS THE WHOLE ctxt, because every reader splits it itself: the
+  // Welcome page cuts at its ⊘ marker and then splits at the first <hr> to put
+  // the image of the day between the halves, and Contact does the same to place
+  // the sign-in strip. A Spanish copy must therefore carry the same <hr>s in the
+  // same places or the page composes wrongly — which is the one real thing to
+  // check when writing an entry.
+  //
+  // Material BELOW the ⊘ cut marker may be dropped from the Spanish copy rather
+  // than translated: it is parked prose that no viewer of either language sees,
+  // and duplicating it would be pure staleness. `enLen` is the length of the
+  // WHOLE English ctxt including that hidden tail, so editing parked material
+  // does flag the translation stale — a false positive that costs a glance,
+  // where the reverse (a real edit going unnoticed) costs a wrong page.
+  var ctEs  = null;
+  var ctEsP = null;
+  function loadCtxtEs() {
+    if (ctEsP) return ctEsP;
+    if (current === 'en') { ctEs = {}; ctEsP = Promise.resolve(ctEs); return ctEsP; }
+    ctEsP = fetch('ctxt.es.json?v=' + (window.HELP_VERSION_STR || ''))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { ctEs = (d && d.pages) || {}; return ctEs; })
+      .catch(function () { ctEs = {}; return ctEs; });
+    return ctEsP;
+  }
+  loadCtxtEs();
+
+  function ctxtKey(gname) {
+    return String(gname == null ? '' : gname).trim().toLowerCase();
+  }
+
+  function ctxtEntry(gname) {
+    if (current !== 'es' || !ctEs) return null;
+    var k = ctxtKey(gname);
+    if (!k) return null;
+    var e = ctEs[k];
+    if (typeof e === 'string') return e ? { ctxt: e, enLen: null } : null;
+    if (e && typeof e.ctxt === 'string' && e.ctxt) return e;
+    return null;
+  }
+
+  window.salCtxtEs = {
+    ready: loadCtxtEs,
+    has:   function (gname) { return !!ctxtEntry(gname); },
+    // Which menu pages have drifted? Pass the c.json rows; get back the gnames
+    // whose English ctxt is no longer the length the translation was made from.
+    // A bare-string entry (added by hand) never claimed a source and is never
+    // stale — the same rule salFtextEs.stale uses.
+    stale: function (rows) {
+      var out = [];
+      if (!ctEs || !rows) return out;
+      rows.forEach(function (r) {
+        if (!r || r._salMeta || !r.gname) return;
+        var e = ctEs[ctxtKey(r.gname)];
+        if (!e || typeof e === 'string' || e.enLen == null) return;
+        if (String(r.ctxt || '').length !== e.enLen) out.push(String(r.gname));
+      });
+      return out;
+    }
+  };
+
+  // ── salCtxt(cfgRow) ─────────────────────────────────────────────────────────
+  // The ctxt twin of salFtext(row), and it obeys the same one-line rule: READS
+  // go through salCtxt(cfg), WRITES stay on cfg.ctxt. Total — English mode, a
+  // sidecar that has not landed, a page with no translation, a row with no ctxt,
+  // no row at all — every one returns the English the caller would have used.
+  window.salCtxt = function (cfg) {
+    if (!cfg) return '';
+    var en = cfg.ctxt || '';
+    var e  = ctxtEntry(cfg.gname);
+    return e ? e.ctxt : en;
+  };
+
   window.salLang = {
     get:   function () { return current; },
     is:    function (c) { return current === c; },
@@ -321,7 +415,7 @@
     // then found the content still in English would be a bug that only ever
     // showed up on a cold load. Each of the three swallows its own failure, so
     // the whole is as total as the parts: it never rejects.
-    ready: function () { return Promise.all([load(), loadTagsEs(), loadFtextEs()]); },
+    ready: function () { return Promise.all([load(), loadTagsEs(), loadFtextEs(), loadCtxtEs()]); },
     langs: SUPPORTED,
     // For the generators and the taxoninfo/tags sidecar lookups: "should the
     // Spanish data files be consulted at all?"
