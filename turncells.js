@@ -1,12 +1,14 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// TURN CELLS  (dev0836 / rewired dev0837)  —  Grid fun mode: T for TURNAROUND
+// TURN CELLS  (dev0836 / rewired dev0837)  —  A grid MODE: T for TURNAROUND
 // ══════════════════════════════════════════════════════════════════════════════
 //
-// REACHED AS A FUN-MODE CHOICE, NOT ON ITS OWN KEY: f opens fun mode, then t.
+// REACHED AS A MODES CHOICE, NOT ON ITS OWN KEY: m opens the MODES menu, then t.
 // dev0836 gave it bare t over the grid, which cost the constantly-used t→Table;
-// dev0837 hands that back and claims t only while fun mode is on.
+// dev0837 hands that back and claims t only while the menu has the keyboard.
+// (The door was f from dev0837 to dev0843; dev0844 moved it to m and renamed the
+// whole family MODES.)
 //
-// Filed under "fun" with the waterfall / ring / fly family, but it is really
+// Filed with the waterfall / ring / fly family, but it is really
 // the INSTRUCTIVE one: a cell you click turns over on its long midline and shows
 // what the picture is ABOUT — the row's tag chips in the top half, the first five
 // lines of its ftext below. Click again and it turns back to the front, resuming
@@ -731,7 +733,7 @@
   // ── The speed box, floating under cell 5c ───────────────────────────────────
   // Fixed-positioned on <body> rather than appended to #gridContainer: the
   // container IS the CSS grid, so a child of it would be auto-placed as a cell.
-  // (dev0837) BOX_LIFT clears the fun-mode ✕ button, which is centred on the same
+  // (dev0837) BOX_LIFT clears the MODES ✕ button, which is centred on the same
   // spot (collection.js _gmExitBtnPosition). Stacked rather than side by side: on a
   // narrow window a 5x5 cell is barely wider than this box, so there is no room
   // beside it — but always room above.
@@ -811,7 +813,7 @@
       }
     } catch (_) {}
     // A turning cell and a travelling cell fight over the same inline transform —
-    // one fun mode at a time. (_gmStopAll also calls stop() here, but `active` is
+    // one mode at a time. (_gmStopAll also calls stop() here, but `active` is
     // still false at this point, so it cannot cancel the start that follows.)
     if (typeof window._gmStopAll === 'function') window._gmStopAll();
     speed = loadSpeed();
@@ -827,7 +829,7 @@
     promoteAll();          // (dev0841) layers ready BEFORE the first click, not during it
     boxShow();
     say('↻ Turnaround ON — click a cell to turn it over (tags + text on the back); '
-      + 'click again to turn it back. ( t stops it · f leaves fun mode )', 4200);
+      + 'click again to turn it back. ( t stops it · r is the regular grid · m is the MODES menu )', 4200);
     return true;
   }
 

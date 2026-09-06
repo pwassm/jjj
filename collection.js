@@ -214,11 +214,15 @@ async function gridSaveToFile(gname) {
 //   r          REGULAR, the first row on the card — stops every engine, unfolds
 //              a fold, drops the card. The one mode letter that works cold, since
 //              "put this grid back to normal" must not need a menu first.
-//   t q f w d  the other modes, one letter each — Turn, Quiz (a stub), Fall,
-//              Wander, Fold. Pressed again, each stops its own mode and the
-//              chooser reappears. Claimed in core.js ONLY while the menu has the
-//              keyboard, so outside it t still means "back to the Table", q still
-//              means "new embed" and d still opens the Dictionary.
+//   t f w d    the other modes, one letter each — Turn, Fall, Wander, Fold.
+//              Pressed again, each stops its own mode. Claimed in core.js ONLY
+//              while the menu has the keyboard, so outside it t still means
+//              "back to the Table" and d still opens the Dictionary.
+//              (dev0937) q IS NOT ONE OF THEM ANY MORE. It was a named stub on
+//              the card while the real quiz — the flash-card one, dev0901 — was
+//              already answering bare q on any grid holding cards; the stub sat
+//              in front of it whenever the menu had the keyboard. The row is gone
+//              and the letter is back with quizcells.js.
 //   1  2       WANDER variants: FlyCells cascade-fill · FlyCells2 smooth swap
 //              (3-9 reserved). The active variant's own number returns to plain
 //              wander.
@@ -274,10 +278,10 @@ function _gmSelectDigit(k) {
   } else if (typeof toast === 'function') {
     toast('Variant ' + k + ' not built yet — 1 = cascade · 2 = swap · r = regular grid', 2200);
   }
-  // (dev0705) The MODES card names the live variant and what a click now does,
-  // so it has to follow a variant change wherever the digit came from. (dev0736)
-  // And a chosen variant IS a chosen mode — the card leaves rather than narrating.
-  if (_gmAnyMoving()) _gmModesClose(); else _gmModesRefresh();
+  // (dev0736/0937) A chosen variant IS a chosen mode, so the card leaves rather
+  // than narrating — the same rule _gmChoiceKey follows, and now with no exception
+  // for a choice that failed to start anything.
+  _gmModesClose();
 }
 // (dev0460 → dev0844) FALL — the FallCells "perimeter" variant, on F. Unlike 1 / 2
 // (which only pick a variant WHILE a mode is already running) Fall has its own
@@ -446,8 +450,8 @@ window._gmHeavyForget  = _gmHeavyForget;
 // meant one of them and R another, with the variant numbers and the click
 // behaviour living nowhere but a 4-second toast. dev0844 finishes the job:
 //
-//   • it is called MODES, not "fun modes". Turn teaches, Quiz will test, Fold
-//     is a way of reading a grid — "fun" undersold half of them.
+//   • it is called MODES, not "fun modes". Turn teaches and Fold is a way of
+//     reading a grid — "fun" undersold half of them.
 //   • M is the key, and M is a MENU key: it raises the list and hides it again.
 //     It is not the off switch, because the off switch is now a mode of its own.
 //   • REGULAR IS ON THE LIST. The plain grid is the first row, on R, rather than
@@ -458,16 +462,19 @@ window._gmHeavyForget  = _gmHeavyForget;
 //
 //     R  Regular   the grid as it always was
 //     T  Turn      click a cell and it turns over: tags + text on the back
-//     Q  Quiz      (not built yet)
 //     F  Fall      cells come off the cliff, bounce and re-enter
 //     W  Wander    the cells travel round the grid; 1 / 2 vary how they move
-//     D  Fold      the grid folds like paper (fol-D — F was already taken)
+//     D  Fold      the grid folds and unfolds itself like paper (fol-D — F was
+//                  already taken)
 //
 // It is a live control panel, not a modal: while it is up it keeps saying what
 // each key will do NEXT, and what a CLICK on a cell means in whatever is running
 // — the part that differs most between them. Every key still reaches its normal
 // handler underneath; the card only reads state and refreshes. Esc hides it and
 // leaves what is running alone; R is the one that stops things.
+//
+// (dev0937) AND IT LEAVES THE MOMENT A CHOICE IS MADE — any choice, not just one
+// that started something. See the note in _gmChoiceKey.
 // ─────────────────────────────────────────────────────────────────────────────
 function _gmModesOpen() { return !!document.getElementById('gridModesPanel'); }
 
@@ -484,6 +491,15 @@ function _gmTurnOn() { return !!(window.TurnCells && window.TurnCells.active); }
 // (dev0844) Fold mode — fold16.js owns the flag; this is the local reader so the
 // card and the gate below don't each have to remember the window hop.
 function _gmFoldOn() { return !!(window._fold16ModeOn && window._fold16ModeOn()); }
+
+// (dev0937) { / } while the fold is running. dir +1 = slower, -1 = faster — the
+// same ladder the dev-only ⏱ pill walks, said out loud because the pill is not
+// there in user mode and the fold is the one mode with nothing else to watch.
+function _gmFoldSpeed(dir) {
+  window._fold16SlowStep(dir);
+  if (typeof toast === 'function' && window._fold16SlowLabel)
+    toast('⧉ Fold speed — ' + window._fold16SlowLabel(), 1100);
+}
 
 // (dev0837 → dev0844) "THE MODES MENU HAS THE KEYBOARD" — the card is up, or one
 // of the engines is running. This is what gates the choice letters in core.js:
@@ -579,15 +595,15 @@ function _gmModesSync() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// (dev0836 → dev0844) ONE ROUTE FOR EVERY CHOICE LETTER — r / t / q / f / w / d.
+// (dev0836 → dev0937) ONE ROUTE FOR EVERY CHOICE LETTER — r / t / f / w / d.
 //
-// Each toggles its own mode, and then the card follows the rule it has always
-// had: a mode that is RUNNING is a mode you chose, so the chooser gets out of the
-// way; nothing running means you are back at the choice, so the card comes back.
-// That second half is what keeps the menu closed as a loop — the letters are only
-// claimed over the grid WHILE the menu has the keyboard (core.js), so if turning
-// a mode off left no card behind, the next t would go back to the Table instead
-// of turning the cells over.
+// Each toggles its own mode, and then the card gets out of the way — a choice is
+// a choice, and a chooser that answers one by staying up has to be dismissed
+// twice. (dev0937; until then it came back whenever nothing was left running,
+// which kept the choice letters claimed for a second press. The cost was the
+// menu reappearing under your hand every time you turned something off, and the
+// keys it kept claimed are ones the grid wants back — t → Table above all. M
+// re-opens the card, which is what M is for.)
 //
 // dev0844 renamed the modes and moved the letters with them, which is worth
 // spelling out because every one of them changed hands:
@@ -597,9 +613,11 @@ function _gmModesSync() {
 //   w  waterfall   F  Fall
 //   r  ring        W  Wander
 //   t  turn        T  Turn      (unmoved)
-//   —              Q  Quiz      (stub)
 //   —              D  Fold      (fol-D; F belongs to Fall)
 //   f  exit        R  Regular
+//
+// (dev0937) Q was here too, as a stub — it is gone, and bare q on the grid is
+// once again the flash-card quiz all the way through.
 //
 // Turn and Fold are deliberately outside _gmAnyMoving: neither re-slots a cell,
 // so the digits keep their normal jobs while they run. Both still belong to the
@@ -617,13 +635,13 @@ function _gmChoiceKey(k) {
   else if (k === 'w') _gmMasterToggle();                    // Wander
   else if (k === 't') { if (window.TurnCells) window.TurnCells.toggle(); }
   else if (k === 'd') { if (window._fold16ModeToggle) window._fold16ModeToggle(); }
-  else if (k === 'q') {
-    // (dev0844) QUIZ — a stub with a name, on purpose. The row is on the card so
-    // the letter is spoken for and the shape of the menu is final; what it will
-    // do (a cell asks, you answer, the grid keeps score) is not built yet.
-    if (typeof toast === 'function') toast('❓ Quiz mode — not built yet', 1800);
-  }
-  if (_gmAnyMoving() || _gmTurnOn() || _gmFoldOn()) _gmModesClose(); else _gmModesShow();
+  // (dev0937) THE CARD LEAVES ON ANY CHOICE, not only on one that started
+  // something. It used to come back whenever nothing was running, to keep the
+  // choice letters claimed (core.js only gives them to the menu while it has the
+  // keyboard) — but that made the menu something you had to dismiss twice, and a
+  // chooser that answers a choice by reappearing reads as a key that did nothing.
+  // The loop closes on M instead: it is the door in, and it always was.
+  _gmModesClose();
 }
 window._gmTurnOn    = _gmTurnOn;
 window._gmChoiceKey = _gmChoiceKey;
@@ -651,7 +669,7 @@ function _gmModesHtml() {
     : _gmTurnOn()
       ? 'turns that cell over — tags on top, the first 5 lines of its text below; click again to turn back'
     : _gmFoldOn()
-      ? 'plays a cell as usual — and a click on a CIRCLE folds four cells into one'
+      ? 'plays a cell as usual — the folding needs no help, it runs on its own'
       : 'each mode gives the click its own trick — turn one on to see';
   const wander = !!live && live !== 'fall';
   const fold   = _gmFoldOn();
@@ -667,7 +685,7 @@ function _gmModesHtml() {
     + '<span style="flex:1;font-size:11px;">' + desc + '</span></div>';
   return '<div style="font-weight:600;letter-spacing:.5px;margin-bottom:8px;'
       + 'display:flex;justify-content:space-between;gap:20px;">'
-      + '<span>✨ MODES</span><span style="opacity:.5;font-weight:400;">M hides · Esc hides</span></div>'
+      + '<span>✨ MODES</span><span style="opacity:.5;font-weight:400;">M toggles · Esc hides</span></div>'
     // (dev0844) One letter per mode, and REGULAR IS ONE OF THEM — first, because
     // it is the one you always want to be able to find. M is only the menu key.
     + row('R', '▦ Regular', regular
@@ -678,7 +696,6 @@ function _gmModesHtml() {
     + row('T', '🔄 Turn', _gmTurnOn()
         ? '<b>running</b> — click a cell to turn it over'
         : 'click a cell to turn it over: its tags and text on the back', _gmTurnOn())
-    + row('Q', '❓ Quiz', 'not built yet', false)
     + row('F', '🌊 Fall', live === 'fall'
         ? '<b>running</b> — press F again to stop'
         : 'the cells come off the cliff, bounce and re-enter', live === 'fall')
@@ -696,13 +713,15 @@ function _gmModesHtml() {
           live === 'fly2')
     + sub('1 / 2', 'the number of the one that is running puts it back to plain wander', false)
     + row('D', '⧉ Fold', fold
-        ? '<b>folded</b> — click a circle to fold; D again unfolds the grid'
-        : 'the grid folds like paper — click a circle to fold four cells into one',
+        ? '<b>running</b> — it folds and unfolds itself; D again stops it'
+        : 'the grid folds like paper, and keeps folding and unfolding on its own',
         fold)
     + '<div style="height:1px;background:rgba(255,255,255,.12);margin:8px 0 7px;"></div>'
     + row('Click', 'a cell', clickTxt, !!live || _gmTurnOn() || fold)
-    + row('{ / }', 'speed', 'slower / faster', false)
-    + row('M', 'this menu', 'hides it again — R is the off switch, not M', false)
+    + row('{ / }', 'speed', fold
+        ? '<b>slower / faster folding</b> — ' + (window._fold16SlowLabel ? window._fold16SlowLabel() : '')
+        : 'slower / faster', fold)
+    + row('M', 'this menu', 'toggles this menu — R is the off switch, not M', false)
     // (dev0800) Only shown once the desktop check has been overridden — it is the
     // one place the viewer can put it back. pointer-events is re-enabled just on
     // the link (the card itself is click-through by design).
@@ -878,12 +897,16 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); e.stopPropagation();
     // (dev0463) Route to whichever speed-adjustable mode is active (FallCells has
     // its own moveDur knob); fall back to the conveyor.
+    // (dev0937) Fold first: it runs itself now, so its speed is the one thing a
+    // watcher wants a hand on, and no travelling engine can be running under it.
+    if (_gmFoldOn() && window._fold16SlowStep) { _gmFoldSpeed(1); return; }
     if (window.FallCells && window.FallCells.active) window.FallCells.slower();
     else if (window.MovingCells) window.MovingCells.slower();
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '}' || (e.shiftKey && e.code === 'BracketRight'))) {
     e.preventDefault(); e.stopPropagation();
+    if (_gmFoldOn() && window._fold16SlowStep) { _gmFoldSpeed(-1); return; }
     if (window.FallCells && window.FallCells.active) window.FallCells.faster();
     else if (window.MovingCells) window.MovingCells.faster();
     return;

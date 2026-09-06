@@ -14,9 +14,10 @@
 //   4    ·    ·  [4c] [4d]
 //
 // Three overlapping 2×2 BLOCKS run down that diagonal, sharing the cells 2b and
-// 3c. Each has a CIRCLE at the interior corner where its four cells meet.
-// Click it (dev0845 — it wanted a double-click before) and the block folds four
-// squares into one:
+// 3c. Each has a CIRCLE at the interior corner where its four cells meet, and
+// folds four squares into one. (dev0937) THE CIRCLES ARE NO LONGER OPERATED —
+// the fold runs its own cycle (see _f16AutoRun) and they are drawn invisible;
+// they still answer a click, which is all that is left of the manual route.
 //
 //   circle A (1a/1b/2a/2b) → lands on 2b, shows 1a's back  (c.json key 1aB)
 //   circle B (2b/2c/3b/3c) → lands on 2b, shows 3c's back  (key 3cB)
@@ -93,6 +94,10 @@ const FOLD16_CELLS = [
 ];
 
 
+// (dev0937) Are the fold circles drawn? They are always PRESENT and always
+// answer a click — this only decides whether they are painted. See _f16PlaceCircles.
+const _F16_CIRCLES_VISIBLE = false;
+
 // The three blocks, named by their 2×2 corners. `land` is the square everything
 // collapses onto, `diag` the one opposite it whose back ends up showing, `back`
 // the c.json key holding that back face.
@@ -128,16 +133,17 @@ const FOLD16_BACK_KEYS = FOLD16_BLOCKS.map(b => b.back);
 // only ever reached through the MODE now.
 //
 // Fold MODE lends the same machinery to any ordinary grid — Modes menu → D on any
-// square 4×4 or larger, and the cells already on screen re-lay themselves into
-// the staircase and fold exactly as a real 16F does — click a circle and four
-// squares collapse into one. D again (or R, or the ✕) puts the grid back the
+// grid of sixteen cells or more (dev0937; it was plain squares only) — and the
+// cells already on screen re-lay themselves into the staircase and fold exactly
+// as a real 16F does. (dev0937) It then folds and unfolds ITSELF, on a loop, with
+// half a second between folds; D again (or R, or the ✕) puts the grid back the
 // way it was.
 //
 // Two things differ from a saved 16F, and only two:
 //
 //   • THE FOOTPRINT is borrowed from the grid you are already looking at. The
-//     fold only ever occupies 1a-4d, so a 5×5 simply uses its top-left 4×4 and
-//     leaves row 5 and column e out of it.
+//     fold only ever occupies its own 4×4, so a 5×5 simply uses its top-left one
+//     and leaves row 5 and column e out of it.
 //
 //   • THE BACK FACES have no 1aB / 3cB / 4dB keys to read — an ordinary config
 //     has never heard of them. They come instead from three of the cells the
@@ -149,6 +155,10 @@ const FOLD16_BACK_KEYS = FOLD16_BLOCKS.map(b => b.back);
 //
 //     which is why the mode wants THIRTEEN cells: ten for the paper and three
 //     for what is written on the other side. 3a, 4a and 4b sit the fold out.
+//     (dev0937) That mapping is the SQUARE case, and it is now only the starting
+//     point — _fold16ModeBuildSrc fills any slot whose cell is empty from
+//     elsewhere on the grid, and a non-square layout (17 / 19, portrait) borrows
+//     all thirteen from its own cell list.
 //
 // NOTHING HERE WRITES. _gridCurrentLayout keeps reporting the grid's real
 // layout, so a Ctrl+Alt+G save during a fold saves the GRID, not the fold — only
@@ -160,25 +170,94 @@ var _f16Mode = false;
 
 function _fold16ModeOn() { return _f16Mode; }
 
-// A grid can wear the fold if it is a plain square with a 4×4 to spare. The
-// special layouts are out by construction, not by policy: 17 / 19 merge their
-// middle into one big cell and the portrait grids are rectangles, so 2b-4d are
-// not there to be folded. 3×3 and smaller simply have too few cells.
+// ── (dev0937) ANY GRID OF SIXTEEN CELLS OR MORE CAN WEAR THE FOLD ─────────────
+// It used to be plain squares only, on the reasoning that 17 / 19 merge their
+// middle into one big cell and the portrait grids are rectangles — so 2b-4d were
+// not THERE to be folded. That was a confusion between the grid's own cells and
+// the fold's: the fold has always drawn its own 4×4 footprint (_fold16ApplyTemplate)
+// and its own thirteen slots, and gridShow's `src` hop already lets a slot take
+// its media from a differently-named cell. So the only real question is whether
+// the grid has enough pictures to fill the fold, and the answer is sixteen —
+// thirteen used, and the count that makes a grid feel like a grid.
+//
+// _fold16ModeSrcMap below is what fills them: every layout is asked for its own
+// cell list and the fold borrows down it in reading order.
+function _fold16ModeCellCount() {
+  const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
+  const gs  = (typeof _gridGsize === 'number') ? _gridGsize : 0;
+  if (typeof _gridLayoutCount === 'function') return _gridLayoutCount(lay, gs);
+  return lay === 'square' ? gs * gs : 0;
+}
+
 function _fold16ModeEligible() {
   // (dev0846) The "is this already a saved 16F?" test that used to sit here went
   // with the layout itself — no config resolves to '16F' any more, so the fold is
   // only ever the mode.
-  const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
-  if (lay !== 'square') return false;
-  return (typeof _gridGsize === 'number') && _gridGsize >= 4;
+  return _fold16ModeCellCount() >= 16;
 }
 
 // Why this grid can't fold — said in the reader's terms, not the layout's.
 function _fold16ModeRefusal() {
+  return 'Fold needs a grid of 16 cells or more — this one has '
+    + _fold16ModeCellCount() + ' (the fold uses 13: ten to fold, three for the backs)';
+}
+
+// ── (dev0937) WHERE THE THIRTEEN SLOTS GET THEIR PICTURES ──────────────────
+// slot cell-string → the underlying grid's cell it shows. Built once when the mode
+// starts, because it has to be read while _gridRenderLayout is already saying
+// '16F' — asking the live layout at that point would only get the fold's own.
+//
+// A SQUARE grid keeps the arrangement it always had: 1a-4d are really there, so
+// the ten staircase slots are the identity and only the three backs borrow (1c,
+// 1d, 2d — the spare cells inside the footprint, in reading order). What is new
+// is the fallback: a spare that is EMPTY hands the back face on to the next filled
+// cell anywhere on the grid, so a 5×5 with a gap at 1d folds onto a picture
+// instead of onto a black square.
+//
+// ANY OTHER layout borrows all thirteen, walking its own cell list in its own
+// reading order and taking the filled cells first. A 17 / 19 grid's merged middle
+// (1L / 1P-3P) is just another source: it is the media that is borrowed, not the
+// shape.
+var _f16ModeSrc = null;
+
+function _fold16ModeBuildSrc() {
+  _f16ModeSrc = null;
   const lay = (typeof _gridCurrentLayout === 'function') ? _gridCurrentLayout() : 'square';
-  if (lay !== 'square')
-    return 'Fold needs a plain square grid — the 17 / 19 and portrait layouts have no 4×4 to fold';
-  return 'Fold needs a 4×4 grid or bigger — 13 cells: ten to fold, three for the backs';
+  const gs  = (typeof _gridGsize === 'number') ? _gridGsize : 0;
+  if (typeof _gridCellList !== 'function') return;
+  const list = _gridCellList(gs, lay).map(s => s.cs);
+  const resolve = (typeof getRowByCellForGrid === 'function') ? getRowByCellForGrid : null;
+  const filled = cs => !resolve || !!resolve(cs);
+
+  const stair = FOLD16_CELLS.map(o => o.cs);
+  const map = {};
+  const taken = [];
+  const claim = (slot, cs) => { map[slot] = cs; taken.push(cs); };
+
+  if (lay === 'square') {
+    // The staircase is where it looks: cell 2c shows 2c. Only the backs borrow.
+    stair.forEach(cs => claim(cs, cs));
+    FOLD16_BACK_KEYS.forEach(k => {
+      const pref = FOLD16_MODE_SRC[k];
+      if (taken.indexOf(pref) < 0 && filled(pref)) { claim(k, pref); return; }
+      const alt = list.find(cs => taken.indexOf(cs) < 0 && filled(cs));
+      claim(k, alt || pref);
+    });
+  } else {
+    // Everything borrows — filled cells first, then whatever is left, so a grid
+    // with a few gaps still fills all thirteen rather than folding onto black.
+    const pool = list.filter(filled).concat(list.filter(cs => !filled(cs)));
+    const slots = stair.concat(FOLD16_BACK_KEYS);
+    for (let i = 0; i < slots.length; i++) if (pool[i]) claim(slots[i], pool[i]);
+  }
+  _f16ModeSrc = map;
+}
+
+// The cell a slot draws from, or null when it draws from itself.
+function _fold16ModeSrcFor(cs) {
+  if (!_f16Mode) return null;
+  const src = _f16ModeSrc ? _f16ModeSrc[cs] : FOLD16_MODE_SRC[cs];
+  return (src && src !== cs) ? src : null;
 }
 
 function _fold16ModeStart() {
@@ -191,16 +270,21 @@ function _fold16ModeStart() {
   // the travelling and turning engines do.
   if (typeof window._gmStopAll === 'function') window._gmStopAll();
   _fold16Reset();
+  // (dev0937) Read the borrowing plan off the grid BEFORE the flag goes up: from
+  // here on _gridRenderLayout says '16F' and the underlying layout is hidden.
+  _fold16ModeBuildSrc();
   _f16Mode = true;
   if (typeof gridShow === 'function') gridShow();
   // Say it only when something is actually missing: an empty back face folds to a
   // black square, which looks like a bug rather than an empty cell.
-  const gaps = Object.keys(FOLD16_MODE_SRC)
-    .map(k => FOLD16_MODE_SRC[k])
+  const gaps = FOLD16_BACK_KEYS
+    .map(k => (_f16ModeSrc && _f16ModeSrc[k]) || FOLD16_MODE_SRC[k])
     .filter(cs => typeof getRowByCellForGrid === 'function' && !getRowByCellForGrid(cs));
   if (gaps.length && typeof toast === 'function')
     toast('⧉ Fold — ' + gaps.join(', ') + ' ' + (gaps.length === 1 ? 'is' : 'are')
           + ' empty, so that many folds land on a blank back', 3000);
+  // (dev0937) …and it folds itself. See _f16AutoRun.
+  _f16AutoStart();
   return true;
 }
 
@@ -210,7 +294,9 @@ function _fold16ModeStart() {
 // redraw for itself.
 function _fold16ModeClear() {
   if (!_f16Mode) return false;
+  _f16AutoCancel();          // (dev0937) the cycle dies with the mode
   _f16Mode = false;
+  _f16ModeSrc = null;
   _fold16Reset();
   return true;
 }
@@ -223,6 +309,88 @@ function _fold16ModeStop() {
 
 function _fold16ModeToggle() {
   return _f16Mode ? (_fold16ModeStop(), false) : _fold16ModeStart();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// (dev0937) THE FOLD RUNS ITSELF
+// ══════════════════════════════════════════════════════════════════════════════
+// Fold mode is now a thing you WATCH, not a thing you operate. It folds and
+// unfolds on its own from the moment D starts it, in the one order the geometry
+// allows:
+//
+//     fold   C (lower right) → A (upper left) → B (the centre)
+//     unfold B → A → C, and round again
+//
+// That order is not a preference — _fold16Enabled enforces it. The centre block
+// contains 2b and 3c, so it can only close once the two corners are inside it,
+// and it must open first for the same reason.
+//
+// Half a second between folds (_F16_AUTO_PAUSE), measured from the moment one
+// lands to the moment the next starts, so the finished shape is legible before
+// the paper moves again. The FOLD's own speed is separate and live on { / } —
+// see _f16SlowStep — so the pause stays half a second whatever the folds are
+// doing.
+//
+// The loop is state-driven, not a script: each step asks whether the block is
+// already where the sequence wants it and does nothing if it is. So a manual
+// fold (the circles still answer a click — see _F16_CIRCLES_VISIBLE) cannot
+// desynchronise it; the cycle absorbs it and carries on.
+// ══════════════════════════════════════════════════════════════════════════════
+const _F16_AUTO_SEQ = ['C', 'A', 'B'];   // folding order; unfolding is its reverse
+const _F16_AUTO_PAUSE = 500;             // ms between one fold landing and the next
+
+var _f16AutoTimer = null;
+var _f16AutoOff = true;
+
+function _f16AutoCancel() {
+  _f16AutoOff = true;
+  if (_f16AutoTimer) { clearTimeout(_f16AutoTimer); _f16AutoTimer = null; }
+}
+
+// One timer, always the same one — a cancel can never leave a stray step behind.
+function _f16AutoLater(ms, fn) {
+  if (_f16AutoTimer) clearTimeout(_f16AutoTimer);
+  _f16AutoTimer = setTimeout(function () {
+    _f16AutoTimer = null;
+    if (!_f16AutoOff && _f16Mode) fn();
+  }, ms);
+}
+
+function _f16AutoRun(i, tries) {
+  if (_f16AutoOff || !_f16Mode) return;
+  // The grid went away without anyone telling the mode. Every ordinary exit runs
+  // _gmStopAll → _fold16ModeClear, which cancels this; the guard is for the ones
+  // that don't, so a hidden grid can never leave a timer folding it forever.
+  const overlay = document.getElementById('gridOverlay');
+  if (!overlay || overlay.style.display !== 'flex') { _f16AutoCancel(); return; }
+  const container = document.getElementById('gridContainer');
+  // Nothing to fold yet: gridShow builds the grid before the overlay is up, so
+  // the first step can arrive before there is a laid-out cell to measure. Give it
+  // five seconds and then give up rather than polling for the life of the page.
+  if (!container || !container.offsetWidth) {
+    const t = (tries || 0) + 1;
+    if (t > 40) { _f16AutoCancel(); return; }
+    _f16AutoLater(120, function () { _f16AutoRun(i, t); });
+    return;
+  }
+  if (_fold16Busy) { _f16AutoLater(60, function () { _f16AutoRun(i); }); return; }
+
+  const n = _F16_AUTO_SEQ.length;
+  const folding = i < n;
+  const id = folding ? _F16_AUTO_SEQ[i] : _F16_AUTO_SEQ[2 * n - 1 - i];
+  if (!!_fold16[id] !== folding && _fold16Enabled(id)) _fold16Toggle(id);
+
+  const next = (i + 1) % (2 * n);
+  const wait = function () {
+    if (_fold16Busy) { _f16AutoLater(60, wait); return; }   // let this fold land first
+    _f16AutoLater(_F16_AUTO_PAUSE, function () { _f16AutoRun(next); });
+  };
+  wait();
+}
+
+function _f16AutoStart() {
+  _f16AutoOff = false;
+  _f16AutoRun(0);                 // immediately — the first fold is the greeting
 }
 
 window._fold16ModeOn       = _fold16ModeOn;
@@ -252,7 +420,12 @@ const _F16_TUCK_MS = 240; // (dev0824) folded into the single sweep above
 // will not speed up a browser that has already been slowed.
 const _F16_SLOW_STEPS = [1, 1.5, 2, 3, 5, 8, 12];
 const _F16_SLOW_KEY = 'slam-fold16-slow';
-var _F16_SLOW = 5;
+// (dev0937) Was 5 — a tuning value, chosen when the only reason to slow the fold
+// down was to screenshot a frame of it. Now that the fold runs itself unattended
+// this is the pace a viewer watches it at, and 1/5 (over four seconds a fold)
+// reads as stuck. NOTE the stored value still wins over this default, so a
+// browser that has already been slowed keeps its own — { and } move it.
+var _F16_SLOW = 2;
 try {
   const _sv = parseFloat(localStorage.getItem(_F16_SLOW_KEY));
   if (_sv > 0) _F16_SLOW = _sv;
@@ -353,15 +526,21 @@ function _fold16IsBackKey(k) { return FOLD16_BACK_KEYS.indexOf(k) !== -1; }
 // The 13 specs gridShow renders: the ten staircase cells, then the three back
 // faces parked on top of their landing cell (hidden until their block folds).
 function _fold16CellList() {
-  const out = FOLD16_CELLS.map(o => ({ cs: o.cs, r: o.r, c: o.c, rs: 1, cls: 1 }));
+  // (dev0844/0937) `src` says where a slot's media is fetched FROM; `cs` stays the
+  // fold's own name, so every fold-state lookup below (visibility, the circles,
+  // the crease) is untouched by the borrowing. In fold MODE there is no 1aB / 3cB
+  // / 4dB key to read — those come from the grid's spare cells — and on a
+  // borrowed non-square layout the ten staircase slots borrow as well.
+  const out = FOLD16_CELLS.map(o => {
+    const spec = { cs: o.cs, r: o.r, c: o.c, rs: 1, cls: 1 };
+    const src = _fold16ModeSrcFor(o.cs);
+    if (src) spec.src = src;
+    return spec;
+  });
   for (const b of FOLD16_BLOCKS) {
     const land = FOLD16_CELLS.find(o => o.cs === b.land);
     const spec = { cs: b.back, r: land.r, c: land.c, rs: 1, cls: 1, foldBack: b.id };
-    // (dev0844) In fold MODE there is no 1aB / 3cB / 4dB key to read — the backs
-    // come from the borrowed grid's own spare cells. `src` says where the media
-    // is fetched FROM; `cs` stays the fold's own name, so every fold-state lookup
-    // below (visibility, the circles, the crease) is untouched by the borrowing.
-    if (_f16Mode) spec.src = FOLD16_MODE_SRC[b.back];
+    if (_f16Mode) spec.src = _fold16ModeSrcFor(b.back) || FOLD16_MODE_SRC[b.back];
     out.push(spec);
   }
   return out;
@@ -543,7 +722,14 @@ function _f16PlaceCircles(container) {
     const tl = FOLD16_CELLS.find(o => o.cs === b.tl);
     const folded = !!_fold16[b.id];
     const dot = document.createElement('div');
-    dot.className = 'fold16-circle' + (folded ? ' f16-folded' : '') + (on ? '' : ' f16-off');
+    // (dev0937) HIDDEN, NOT GONE. The fold drives itself now, so the circles are
+    // no longer controls anyone needs to see — but they are still the hit target
+    // for the click / double-click routes below, and a display:none element has
+    // no box for _f16CircleAt to measure. So they go invisible and stay in place.
+    // To remove them outright later: flip this to a deleted branch, and drop the
+    // pointerup / dblclick wiring with it.
+    dot.className = 'fold16-circle' + (folded ? ' f16-folded' : '') + (on ? '' : ' f16-off')
+      + (_F16_CIRCLES_VISIBLE ? '' : ' f16-unseen');
     dot.dataset.f16 = b.id;
     // The shared corner of the block's four cells = the bottom-right corner of
     // its top-left cell.
@@ -1077,7 +1263,9 @@ function _fold16Run(container, b, folding) {
     land.style.zIndex = '';
     _fold16[b.id] = folding;
     _fold16Render(container);
-    if (folding && typeof _gridToast === 'function') _gridToast(b.diag + ' back', 1100);
+    // (dev0937) …but not while the cycle is driving: a toast every couple of
+    // seconds, for as long as the mode is on, is not a message, it is a flicker.
+    if (folding && _f16AutoOff && typeof _gridToast === 'function') _gridToast(b.diag + ' back', 1100);
   };
 
   if (folding) {
@@ -1116,6 +1304,10 @@ function _f16InjectCSS() {
     '.fold16-circle.f16-off:hover { transform:none; }',
     '.fold16-circle.f16-folded { border-color:rgba(255,190,90,0.95);',
     '  background:radial-gradient(circle at 38% 34%, rgba(255,214,140,0.5), rgba(60,30,0,0.62)); }',
+    // (dev0937) Invisible, still hittable — opacity, never display:none, so the
+    // near-miss catcher still has a box to measure.
+    '.fold16-circle.f16-unseen, .fold16-circle.f16-unseen:hover {',
+    '  opacity:0; transform:none; cursor:default; }',
     // (dev0826) Fold-speed pill, bottom-left of the grid. Bottom-RIGHT is taken
     // by the source buttons and the version badge; top-left by the info bar.
     '.fold16-speed {',
@@ -1165,4 +1357,8 @@ window._fold16Reset = _fold16Reset;
 window._fold16Toggle = _fold16Toggle;
 window._fold16ClaimDoubleTap = _fold16ClaimDoubleTap;
 window._fold16Slow = _fold16Slow;
+// (dev0937) { / } on the grid step the FOLD's speed while fold mode is on —
+// dir +1 = slower, -1 = faster. Same ladder the ⏱ pill walks.
+window._fold16SlowStep = _f16SlowStep;
+window._fold16SlowLabel = _f16SlowLabel;
 window._fold16ApplyTemplate = _fold16ApplyTemplate;

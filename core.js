@@ -485,13 +485,19 @@ window.addEventListener('keydown', function(e) {
   // and puts REGULAR on the list as a mode of its own.
   //
   //   m   the MENU key — raises the list, hides it again. It stops nothing.
-  //   r   Regular · t Turn · q Quiz · f Fall · w Wander · d Fold
+  //   r   Regular · t Turn · f Fall · w Wander · d Fold
+  //
+  // (dev0937) q IS NOT ON THAT LIST ANY MORE. It was a named stub on the card,
+  // and while the menu had the keyboard it stood in front of the REAL quiz — the
+  // flash-card one below, which has answered bare q on any grid holding cards
+  // since dev0901. Dropping it here is the whole of the fix: q now reaches that
+  // handler in every state of the grid.
   //
   // THE CHOICE LETTERS ARE CLAIMED ONLY WHILE THE MENU HAS THE KEYBOARD — the
   // card is up, or a mode is running (collection.js _gmModesOn). That is the whole
   // reason this can be done with plain letters: outside it, t still means "back to
-  // the Table" and q still means "new embed", both used constantly here, and d
-  // still opens the Dictionary. Inside it they are the choices on the card.
+  // the Table", used constantly here, and d still opens the Dictionary. Inside it
+  // they are the choices on the card.
   //
   // r is the exception and is handled in collection.js, not here: it works cold,
   // because "put this grid back to normal" must not require finding a menu first.
@@ -516,7 +522,7 @@ window.addEventListener('keydown', function(e) {
       return false;
     }
   }
-  if ((k === 'w' || k === 't' || k === 'q' || k === 'f' || k === 'd')
+  if ((k === 'w' || k === 't' || k === 'f' || k === 'd')
       && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
     const gOpenW  = document.getElementById('gridOverlay')?.style.display === 'flex';
     const vpOpenW = document.getElementById('gridFullscreen')?.style.display === 'flex';

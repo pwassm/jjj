@@ -389,7 +389,7 @@ var HP_CTX = [
     hide: ['F'],
     d: 'Same key, two jobs:',
     variants: [
-      { d: 'Grid: MODES — raises the MODES window (r = regular, t = turn, q = quiz, f = fall, w = wander, d = fold, the variant numbers, what a click does). M again hides it; R is what stops things.',
+      { d: 'Grid: FALL — the cells come off the cliff, bounce and re-enter. It is one of the MODES, so it only answers f while the MODES window has the keyboard: press M first (M raises the window: R regular · T turn · F fall · W wander · D fold). R is what stops things.',
         on: function (s) { return s.code === 'G'; } },
       { d: 'Table: toggle the filter — tags ∧ text (⇧F clears every filter)',
         dev: true, on: function (s) { return s.code === 'T'; } }
@@ -461,9 +461,9 @@ var HP_ADD = {
     // (dev0705 → dev0844) M raises the MODES card. It is the only mode key listed
     // at this level, because it is the only one that works from a plain grid: the
     // rest are claimed while the card has the keyboard, and outside it they mean
-    // what they mean everywhere else (t → Table, q → new embed, d → Dictionary).
+    // what they mean everywhere else (t → Table, d → Dictionary).
     { k: 'M',
-      d: 'MODES — raises the window listing what this grid can do: R regular · T turn · Q quiz · F fall · W wander · D fold. It also says what a click on a cell does in each one. Press M again to hide the window; R is what puts the grid back to normal — or tap the ✕ under the middle of the bottom row.' },
+      d: 'MODES — raises the window listing what this grid can do: R regular · T turn · F fall · W wander · D fold. It also says what a click on a cell does in each one. M toggles the window: press it again and it goes away, and so does choosing anything from it. R is what puts the grid back to normal — or tap the ✕ under the middle of the bottom row.' },
     // (dev0844) R stays listed: it is the one mode letter that works cold, and it
     // is the one a reader most needs to find — the way back to a plain grid.
     { k: 'R',
@@ -496,18 +496,17 @@ var HP_MODES = [
   // not the mode, is what the reader is looking at.
   { screens: ['G'], on: function (s) { return s.funPanel; },
     title: '✨ MODES window',
-    desc: 'The window in the middle lists what this grid can be doing — it stays up while you choose and keeps saying what each key does now:',
+    desc: 'The window in the middle lists what this grid can be doing. Choose one and the window goes away:',
     rows: [
       { k: 'R',       d: 'REGULAR — the plain grid. Stops whatever is running, and unfolds a folded grid.' },
       { k: 'T',       d: 'TURN — click a cell to turn it over and read its tags and text. T again stops it.' },
-      { k: 'Q',       d: 'QUIZ — named, but not built yet.' },
       { k: 'F',       d: 'FALL — the cells come off the cliff, bounce and re-enter. F again stops it.' },
       { k: 'W',       d: 'WANDER — the cells travel round the grid. W again stops it.' },
       { k: '1  /  2', d: 'While they wander: 1 = cascade · 2 = swap (the same number again gives plain wander)' },
-      { k: 'D',       d: 'FOLD — the grid folds like paper. Needs a plain 4×4 grid or bigger.' },
+      { k: 'D',       d: 'FOLD — the grid folds and unfolds itself like paper. Any grid of 16 cells or more.' },
       { k: 'Click a cell', d: 'Does something different in each mode — the window says which' },
       { k: '{  /  }', d: 'Slower / faster' },
-      { k: 'M',       d: 'Hide this window again. M is only the menu key — it stops nothing.' },
+      { k: 'M',       d: 'Toggles this window — press it again and the window goes away. It stops nothing.' },
       { k: 'Esc',     d: 'Also just hides the window. Anything running keeps running — R is the off switch.' }
     ] },
   { screens: ['G'], on: function (s) { return s.fall; },
@@ -536,13 +535,13 @@ var HP_MODES = [
   // (dev0844) Fold mode — before wander for the same tidiness reason, one at a time.
   { screens: ['G'], on: function (s) { return s.fold; },
     title: '⧉ FOLD mode',
-    desc: 'The grid is folded like a paper fortune teller — ten cells in a staircase down the diagonal, with three circles where four of them meet.',
+    desc: 'The grid is folded like a paper fortune teller — ten cells in a staircase down the diagonal. It folds and unfolds itself; there is nothing to press.',
     rows: [
-      { k: 'Click a circle',  d: 'Folds those four cells into one, and the back of the corner cell comes up. The two outer folds first, then the middle one: 10 cells → 7 → 4 → 1.' },
-      { k: 'Click it again',  d: 'Unfolds that block' },
-      { k: 'Click a cell',    d: 'Plays it, as on any grid — only the circles fold' },
-      { k: 'What is on the backs',  d: 'The three cells the staircase does not use: 1c, 1d and 2d. A 5×5 folds its top-left 4×4 and leaves row 5 and column e out of it.' },
-      { k: 'D',       d: 'STOP folding — the grid goes back to a plain square and the chooser comes back' },
+      { k: 'What it does',    d: 'Four cells at a time collapse into one and the back of the corner cell comes up: the lower-right corner first, then the upper-left, then the middle — 10 cells → 7 → 4 → 1. Then it opens back out in the same order reversed, and starts again. Half a second between folds.' },
+      { k: '{  /  }', d: 'Slower / faster folding' },
+      { k: 'Click a cell',    d: 'Plays it, as on any grid' },
+      { k: 'Which cells',     d: 'Any grid of 16 cells or more can fold. Thirteen of them are used — ten for the paper, three for what is written on the backs — taken in reading order from the grid you were looking at.' },
+      { k: 'D',       d: 'STOP folding — the grid goes back to the way it was' },
       { k: 'R',       d: 'REGULAR — the same thing, or tap the ✕ under the middle of the bottom row' },
       { k: 'M',       d: 'The list of modes, to switch to another one' }
     ] },
