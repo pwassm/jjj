@@ -227,13 +227,16 @@
 // loops on collection rows AND on the viewer's own links, and salLoops.resolve
 // simply misses on the latter — the menu then falls back to salLinks.
 //
-// WHAT IS ACCEPTED: YouTube, Vimeo, a direct video file, or a direct image —
-// the same four kinds the Search tab surfaces, and for the same reason. An
-// A→B loop needs a player we can SEEK: YouTube (IFrame API), Vimeo (Player
-// API) and a native <video> all seek; Instagram and TikTok embeds are
-// sandboxed cross-origin iframes with no seek API at all, so a loop on one is
-// impossible. Images have no time dimension — they're accepted as plain
-// bookmarks, and V just shows them.
+// WHAT IS ACCEPTED: YouTube, Vimeo or a direct video file. An A→B loop needs a
+// player we can SEEK: YouTube (IFrame API), Vimeo (Player API) and a native
+// <video> all seek; Instagram and TikTok embeds are sandboxed cross-origin
+// iframes with no seek API at all, so a loop on one is impossible.
+// (dev0940) IMAGES ARE NO LONGER ACCEPTED. They used to be taken as plain
+// bookmarks that V would simply show — but with "Add your own" merged into
+// Saved Loops, this store exists to back an A→B range on a VIDEO, and an image
+// has no time dimension to mark. _clean still understands kind 'image' so an
+// entry saved by an older build keeps its identity rather than being rewritten
+// into a video that won't play; only new ones are turned away.
 (function () {
   'use strict';
 
@@ -302,7 +305,7 @@
     return s;
   }
 
-  // → 'video' | 'image' | null (null = we can't play it, see WHAT IS ACCEPTED).
+  // → 'video' | null (null = we can't loop it, see WHAT IS ACCEPTED).
   function _classify(link) {
     var s = String(link || '');
     if (!/^https?:\/\//i.test(s)) return null;
@@ -310,7 +313,6 @@
     if (window.isVimeoLink && window.isVimeoLink(s)) return 'video';
     if (window.isDirectVideoLink && window.isDirectVideoLink(s)) return 'video';
     if (/\.(mp4|m4v|mov|webm|ogv|ogg|mkv)(\?|#|$)/i.test(s)) return 'video';
-    if (window.isImageLink && window.isImageLink(s)) return 'image';
     return null;
   }
 

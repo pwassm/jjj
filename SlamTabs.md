@@ -1,12 +1,33 @@
 # slam.com menu tabs — how they work, and where they should go
 
-**Status:** design note, not a plan of record. Written 2026-09-05 against dev0930,
-revised same day as the author answered the open questions and set `ctype` on the
-first rows in c.json. No code has been written.
+**Status: BUILT in dev0940.** Written 2026-09-05 against dev0930 as a design note;
+the bar became data on 2026-09-06. Sections 1–3 are the reasoning and still read
+true. **Sections 4 and 5 describe the code as it was BEFORE the switch** and are
+kept only as the record of what was replaced — do not follow them.
 
-The point of this file is the *intent* in section 1. Section 4 is a snapshot that
-will rot — when it disagrees with the source, the source wins. Re-derive it with
-`grep -n "_tabBtns\|_smTabOrder" boot.js`.
+Three things shipped differently from this note:
+
+- **`Kind`, not the magic gnames.** A tab row's identity is a `Kind` column
+  (`prose` / `intro` / `signin` / `grids` / `flash` / `search` / `saved` /
+  `loops`), never its name. `gname` is free text now; renaming a tab is a `Label`
+  edit. That is what makes trap T2 — the Introduction → Welcome rename — go away
+  rather than merely be documented.
+- **No `Slot` column.** The proposed "which element gets injected" column proved
+  unnecessary: the injected element IS the tab's body, and `Kind` already names
+  it. So the two-section rule (dev0939) generalised from a special case for
+  Introduction and Contact into the rule for EVERY tab — section 1 · body ·
+  section 2 — and every behaviour tab gained optional prose above and below for
+  free. T2b is handled by a fallback: a Grids tab with no section 1 still borrows
+  the parked Greeting row's post-`<hr>` half as its header.
+- **`data-pg` is a position, assigned at build time** (trap T4 dissolved), and
+  the Tab-key order and page-hiding list are derived from the same rows (trap T3).
+  Nothing persists a page number across sessions, so nothing had to be migrated.
+
+Also in dev0940, unrelated to the bar: "My Loops" and "Add your own" merged into
+one **Saved Loops** tab, each card tagged FromThisSite or FromPastedURL, and
+`salLinks` stopped accepting image links — that store now backs A→B on video only.
+
+To re-derive the current shape: `grep -n "TAB_KINDS\|_smTabs\|_pgOf" boot.js`.
 
 ---
 

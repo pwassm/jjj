@@ -733,63 +733,11 @@ async function _showShareableMenu() {
     };
   };
 
-  // (dev0767) INTRO tab prose. Page 1 is no longer a one-time splash carved out
-  // of the Greeting — it is the first tab, and it renders its own c.json config
-  // row: the one whose gname is "Introduction" (or "Intro"), in its `ctxt`.
-  // Authored and re-authored in Xe like any other ctxt, independent of the
-  // Greeting now that the two are not the same page.
-  //
-  // Matched EXACTLY (like "other" below, not the /^greet/ prefix test above) so
-  // a collection legitimately called "Introduction to nudibranchs" is still a
-  // grid and not swallowed by the front page.
-  //
-  // (dev0779) The ctxt is now read as TWO SECTIONS, split at its first
-  // top-level <hr> (the Xe ══ divider) — the same rule the Greeting has used
-  // since dev0361. The image of the day is composed BETWEEN them by the page
-  // itself; see _smDayInnerHtml below. Falls back to greetTop when there is no
-  // Introduction row, and a ctxt with no <hr> is simply all section 1.
-  const _isIntroCfg = v => {
-    const s = String(v == null ? '' : v).trim().toLowerCase();
-    return s === 'introduction' || s === 'intro';
-  };
-  const introCfg = cRows.find(r => r && !r._salMeta && _isIntroCfg(r.gname));
-  const introFull = introCfg ? _cutBelow(_ctxtOf(introCfg)) : greetTop;
-  const _intro2     = _twoSections(introFull);
-  const introTop    = _linkify(_balanceHtml(_intro2.top));
-  const introBottom = _linkify(_balanceHtml(_intro2.bottom));
-
-  // (dev0379) "Other" page — free-form HTML from the c.json config row whose
-  // gname is "other", in its `ctxt` field. Re-read every open (whole function
-  // re-fetches c.json), so editing that ctxt in C updates the page next visit.
-  const otherCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'other');
-  const otherHtml = _linkify(_balanceHtml(_cutBelow(otherCfg ? _ctxtOf(otherCfg) : '')));
-
-  // (dev0782) "Contact" page — same deal as "Other": free-form HTML from the
-  // c.json config row whose gname is "contact", in its `ctxt`. Authored in Xe,
-  // so the address / who-we-are copy above the sign-in strip is the author's,
-  // not code. Absent config → the page is just the sign-in strip.
-  const contactCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'contact');
-  const contactFull = _cutBelow(contactCfg ? _ctxtOf(contactCfg) : '');
-  // (dev0931) Contact is a HYBRID tab, on the same rule as Welcome: the ctxt is
-  // split at the first <hr>, section 1 renders, then the element that is NOT in
-  // the text (here the sign-in strip), then section 2 below it if present. The
-  // <hr>'s POSITION is the whole mechanism — there is no marker in the prose to
-  // preserve, which is why this tab stays editable in Xe with nothing at risk.
-  // (dev0939) …and it never actually worked. The regex shipped with a literal
-  // 0x08 byte where a `` was meant — a backslash a heredoc ate on the way in —
-  // so it looked right in every editor and matched nothing, and the strip always
-  // sat at the very bottom. Gone now with the block itself.
-  const _contact2         = _twoSections(contactFull);
-  const contactHtml       = _linkify(_balanceHtml(_contact2.top));
-  const contactHtmlBelow  = _linkify(_balanceHtml(_contact2.bottom));
-
-  // (dev0787) "Starting out" page — the tab that follows Welcome. Same deal
-  // again: free-form HTML from the c.json config row whose gname is "starting
-  // out", in its `ctxt`. No such row exists yet, so the tab is BLANK — that is
-  // the intended state for now, not a missing page. Making a config row of that
-  // name in C and writing its ctxt in Xe fills it, with no code change.
-  const startCfg = cRows.find(r => r && !r._salMeta && String(r.gname || '').trim().toLowerCase() === 'starting out');
-  const startHtml = _linkify(_balanceHtml(_cutBelow(startCfg ? _ctxtOf(startCfg) : '')));
+  // (dev0940) The Introduction / other / contact / "starting out" lookups that
+  // stood here are GONE. Each one found its row by matching a magic gname, which
+  // is what made renaming a tab a code-breaking act (SlamTabs.md trap T2). Every
+  // tab's prose now arrives through the tab registry below, selected by `Kind`.
+  // greetTop / greetIntro survive as the two compatibility fallbacks it uses.
 
   // (dev0361) Classify an ml.json row so page 2 can badge it image / video /
   // slide / quiz. Order mirrors the V & grid fill branches (quiz → slide →
@@ -1119,29 +1067,36 @@ async function _showShareableMenu() {
   // (dev0763) Unlike a single, a grid card is also the way IN to the collection,
   // so a fully-cut ctxt does not delist it — `active` stays the curation gate.
   // Its title falls back to the gname.
-  const gItems = cRows
-    // (dev0767) …and not the Introduction row either: like Greeting and Other,
-    // it is a PAGE of this menu now, not a collection to open. Its `active` is
-    // blank today so it was already filtered out — this makes that deliberate
-    // rather than a side effect of a column the author might set later.
-    .filter(g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname && !_isGreeting(g.gname)
-                 && !_isIntroCfg(g.gname)
-                 && String(g.gname).trim().toLowerCase() !== 'other'
-                 // (dev0931) `active` is now an ORDER for TABS as well as for
-                 // grids, so "has a number" no longer means "is a grid". ctype
-                 // is what separates them: t = a menu tab, o = the author's own
-                 // parked material. Neither belongs in this list. The name
-                 // exclusions above become redundant once every tab row carries
-                 // ctype t — they are left in place only until that is true of
-                 // Greeting and Introduction's duplicates.
-                 && !/^[to]$/.test(String(g.ctype || '').trim().toLowerCase())
-                 && _smOrd(g.active) > 0)
-    .map(g => { const h = _cutBelow(g.ctxt); return { kind: 'ss', gname: String(g.gname).trim(), html: h,
+  // (dev0940) ONE card-builder, TWO lists. A collection row and a flashcard deck
+  // differ only by ctype, so they are mapped identically and split at the end —
+  // the Flashcards tab is a filter over these rows, not a second implementation.
+  //
+  // The name exclusions that used to sit in this filter (Greeting, Introduction,
+  // "other") are gone: all of those rows carry ctype "t" now, so the ctype gate
+  // alone catches them. Two gates that could disagree was trap T1, and this was
+  // the half that had to go.
+  const _cCard = g => { const h = _cutBelow(g.ctxt); return { kind: 'ss', gname: String(g.gname).trim(), html: h,
                  summary: _smSummaryText(h) || String(g.gname).trim(),
                  date: _smDateShort(g.DateModified), dmRaw: String(g.DateModified || ''),
                  ord: _smOrd(g.active),
-                 cells: Number(g.cells) || 0 }; });
-  const items = vItems.concat(gItems);
+                 cells: Number(g.cells) || 0 }; };
+  // `active` is the curation gate for a collection exactly as it is the order
+  // for a tab — a grid with no number stays unlisted (dev0596/dev0700). A fully
+  // cut ctxt does NOT delist a grid: unlike a single, the card is also the way
+  // in to the collection.
+  const _cListed = g => g && !g._salMeta && String(g.ctxt || '').trim() && g.gname
+                     && _smOrd(g.active) > 0;
+  const _cType = g => String(g.ctype || '').trim().toLowerCase();
+  // t = a menu tab, o = the author's own parked material, f = a flashcard deck
+  // (which has a tab of its own now). None of the three belongs in Grids.
+  const gItems = cRows.filter(g => _cListed(g) && !/^[tof]$/.test(_cType(g))).map(_cCard);
+  const fItems = cRows.filter(g => _cListed(g) && _cType(g) === 'f').map(_cCard);
+  // The Grids tab's list, the Flashcards tab's list, and the index space the two
+  // share — a card's Open button carries its position in `items` (_smDetCard's
+  // data-i), so the arrays must be concatenated in this order and not re-sorted.
+  const gridItems = vItems.concat(gItems);
+  const flashItems = fItems;
+  const items = gridItems.concat(flashItems);
 
   // (dev0596) Navigation-Training choices removed with the tab (was sourced from
   // each config row's `ss` field).
@@ -1189,8 +1144,8 @@ async function _showShareableMenu() {
         + '<div class="sm-detbody smGreeting">' + _smDetailBody(it.html) + '</div>'
       + '</details>';
   };
-  // (dev0379) Cards are rendered (and sorted) into #smChooseBody by
-  // _smRenderChoose after mount, so no pre-joined column HTML is needed here.
+  // (dev0379) Cards are rendered (and sorted) into the list body after mount by
+  // _smMakeList, so no pre-joined column HTML is needed here.
   const _smNoItems = '<div style="padding:24px;color:#aa8;">No shareable items yet.</div>';
 
   // (dev0359/0361) Readable sans-serif greeting prose (now a CLASS so both
@@ -1494,208 +1449,273 @@ async function _showShareableMenu() {
     const lab = row ? String(row.Label || '').trim() : '';
     return _smEsc(_T(lab || fallback));
   };
-  const _tabBtns =
-      '<button class="sm-tab" data-pg="1">' + _tabLabel('Introduction', 'Welcome') + '</button>'
-    + '<button class="sm-tab" data-pg="5">' + _tabLabel('Starting out', 'Starting out') + '</button>'
-    + '<button class="sm-tab" data-pg="2">' + _tabLabel('Grids', 'Grids') + '</button>'
-    + (SM_FEAT_SEARCH
-        ? '<button class="sm-tab" data-pg="3">' + _tabLabel('Search', 'Search') + '</button>'
-          + '<button class="sm-tab" data-pg="6">' + _tabLabel('SavedSearches', 'SavedSearches') + '</button>'
-        : '')
-    // (dev0667) "My Loops" — the viewer's own A→B segments. Sits after
-    // SavedSearches because they're siblings: a saved search is a QUERY, a loop
-    // is a UID + start/stop. Different entities, separate lists, one tab each.
-    + '<button class="sm-tab" data-pg="7">' + _tabLabel('My Loops', 'My Loops') + '</button>'
-    // (dev0668) "Add your own" — a URL the viewer pastes themselves. Follows
-    // My Loops because that's where its loops end up.
-    + (SM_FEAT_ADDOWN ? '<button class="sm-tab" data-pg="8">' + _tabLabel('Add your own', 'Add your own') + '</button>' : '')
-    + '<button class="sm-tab" data-pg="4">' + _tabLabel('Other', 'Other') + '</button>'
-    // (dev0782) "Contact" — the home of the sign-in strip, which until now sat at
-    // the top of the Intro. Signing in is a thing the viewer goes looking for,
-    // not something the front door should ask for, so it gets its own tab and
-    // the Intro opens on prose alone. Last, because it is the least-used tab.
-    + '<button class="sm-tab" data-pg="9">' + _tabLabel('Contact', 'Contact') + '</button>';
+  // ── THE TAB BAR IS DATA ───────────────────────────────────────────────────
+  // (dev0940) Which tabs exist, what they are called, what order they sit in,
+  // and whether they appear at all now come from c.json: every row with
+  // ctype "t" and a positive `active` is a tab, ordered by `active`. Adding,
+  // renaming, reordering and retiring a tab are edits in the C screen — no code
+  // change and no version bump.
+  //
+  // Three different facts about a tab used to wear one name, which is exactly
+  // what made renaming Introduction dangerous:
+  //
+  //   IDENTITY — what the code hooks onto → the `Kind` column, never the name
+  //   LABEL    — what the viewer reads    → the `Label` column
+  //   POSITION — where it sits in the bar → the `active` column
+  //
+  // `gname` is now only a name. Rename it freely; nothing matches on it. That
+  // retires the four magic-gname lookups (Introduction / other / contact /
+  // starting out) and SlamTabs.md trap T2 along with them.
+  //
+  // `Kind` says what a tab's BODY is, and the body is the ONLY thing that
+  // differs between tabs. Every tab renders:
+  //
+  //     section 1  ·  THE BODY  ·  section 2
+  //
+  // — the author's ctxt either side of its first <hr> (dev0939), with the body
+  // composed between the halves. A `prose` tab has no body, so its two sections
+  // simply meet. Sections 3+ are dropped. This generalises what dev0779 and
+  // dev0931 built as special cases for Introduction and Contact: every
+  // behaviour tab now takes optional prose above and below it for free.
+  //
+  // WHAT REMAINS CODE, deliberately: the behaviours below. Data can place, name,
+  // order and hide a tab; it cannot invent one. A new prose tab is free — a new
+  // BEHAVIOUR is a new entry in this table.
+  const TAB_KINDS = {
+    prose:  { def: 'Page' },
+    intro:  { def: 'Welcome', topCls: ' sm-introtop' },
+    signin: { def: 'Contact', cls: ' sm-contact' },
+    grids:  { def: 'Grids' },
+    flash:  { def: 'Flashcards' },
+    search: { def: 'Search',        off: !SM_FEAT_SEARCH },
+    saved:  { def: 'SavedSearches', off: !SM_FEAT_SEARCH },
+    loops:  { def: 'Saved Loops' }
+  };
+  // Compatibility shim: a row with no `Kind` yet is classified by its name, so
+  // the site works whether or not the c.json carrying the new column has landed.
+  // Delete this once every ctype-t row has a Kind. "Add your own" maps onto
+  // `loops` because dev0940 merged those two tabs — see the Saved Loops body.
+  const _KIND_BY_GNAME = {
+    'introduction': 'intro', 'intro': 'intro', 'welcome': 'intro',
+    'contact': 'signin',
+    'grids': 'grids', 'flashcards': 'flash',
+    'search': 'search', 'savedsearches': 'saved', 'saved searches': 'saved',
+    'my loops': 'loops', 'your loops': 'loops', 'saved loops': 'loops',
+    'add your own': 'loops'
+  };
+  const _kindOf = row => {
+    const k = String(row.Kind || '').trim().toLowerCase();
+    if (TAB_KINDS[k]) return k;
+    return _KIND_BY_GNAME[String(row.gname || '').trim().toLowerCase()] || 'prose';
+  };
+  // One tab per behaviour: a second `grids` row — or the retired "Add your own"
+  // sitting beside "Saved Loops" in a c.json that predates the merge — is
+  // skipped rather than rendered twice. `prose` is the exception, being the kind
+  // you are meant to have many of.
+  const _smTabs = [];
+  {
+    const seen = {};
+    cRows.filter(r => r && !r._salMeta
+          && String(r.ctype || '').trim().toLowerCase() === 't'
+          && _smOrd(r.active) > 0)
+      .sort((a, b) => _smOrd(a.active) - _smOrd(b.active))
+      .forEach(row => {
+        const kind = _kindOf(row);
+        const spec = TAB_KINDS[kind];
+        if (!spec || spec.off) return;            // feature switch off → no tab
+        if (kind !== 'prose') { if (seen[kind]) return; seen[kind] = 1; }
+        const sec = _twoSections(_cutBelow(_ctxtOf(row)));
+        _smTabs.push({
+          kind: kind, spec: spec,
+          label: _smEsc(_T(String(row.Label || '').trim()
+                        || String(row.gname || '').trim() || spec.def)),
+          top:    _linkify(_balanceHtml(sec.top)),
+          bottom: _linkify(_balanceHtml(sec.bottom))
+        });
+      });
+    // THE FLOOR. A data-driven bar can be emptied by one bad cell, so it is not
+    // the only thing standing between the site and a blank front door: with no
+    // usable rows at all we fall back to the built-in bar, and a bar that has
+    // somehow lost its Introduction gets one prepended. Everything milder — a
+    // missing Grids tab, a mistyped label — is the author's to see and fix.
+    if (!_smTabs.length) {
+      ['intro', 'grids', 'flash', 'search', 'saved', 'loops', 'signin'].forEach(kind => {
+        const spec = TAB_KINDS[kind];
+        if (spec && !spec.off) _smTabs.push({ kind: kind, spec: spec, label: _smEsc(_T(spec.def)), top: '', bottom: '' });
+      });
+    } else if (!_smTabs.some(t => t.kind === 'intro')) {
+      _smTabs.unshift({ kind: 'intro', spec: TAB_KINDS.intro, label: _smEsc(_T(TAB_KINDS.intro.def)), top: '', bottom: '' });
+    }
+  }
+  // data-pg is a POSITION now, assigned here, and it lives only in memory —
+  // nothing persists a page number across sessions (see _smStartPg). That
+  // retires trap T4's recycled slot 5: the numbers mean what they look like.
+  _smTabs.forEach((t, i) => { t.pg = i + 1; });
+  const _smPages = _smTabs.map(t => t.pg);
+  // Code that needs to reach a particular tab asks for it BY KIND, never by
+  // number. That is the whole point of the exercise: renumbering the bar in
+  // c.json must not be able to send the keyboard, the swipe or a return-from-V
+  // to the wrong page. Returns 0 for a tab that isn't in the bar, which every
+  // caller reads as "no such page" because pages are numbered from 1.
+  const _pgOf = kind => { const t = _smTabs.filter(x => x.kind === kind)[0]; return t ? t.pg : 0; };
+  // Two content fallbacks, both for compatibility rather than for their own
+  // sake:
+  //  • an Introduction with an empty ctxt still shows the Greeting's pre-<hr>
+  //    half, as it has since dev0767;
+  //  • a Grids tab with no section 1 still takes the Greeting's post-<hr> half
+  //    as its header (SlamTabs.md trap T2b). Write the Grids row's own ctxt and
+  //    it takes over — at which point the parked Greeting row finally stops
+  //    being load-bearing for a live page.
+  _smTabs.forEach(t => {
+    if (t.kind === 'intro' && !t.top.trim() && !t.bottom.trim()) t.top = _linkify(_balanceHtml(greetTop));
+    if (t.kind === 'grids' && !t.top.trim()) t.top = greetIntro;
+  });
+  // (dev0930) _T() wraps the label text only — never data-pg, which is a key.
+  const _tabBtns = _smTabs.map(t =>
+    '<button class="sm-tab" data-pg="' + t.pg + '">' + t.label + '</button>').join('');
+
+  // ── TAB BODIES ────────────────────────────────────────────────────────────
+  // One per Kind: the parts data cannot supply. Two of them are a single
+  // injected element (the day's picture, the sign-in strip); the rest are lists.
+  //
+  // Grids and Flashcards are the SAME list, over different rows, so they share
+  // one toolbar shape and one renderer keyed by prefix — dev0940's Flashcards
+  // tab is a filter, not a second implementation.
+  const _listHtml = pfx =>
+      '<div class="sm-chmax">'
+        + '<div class="sm-chtools">'
+          + '<div class="sm-chfwrap">'
+            + '<input id="' + pfx + 'Filter" class="sm-chfilter" type="text" placeholder="' + _T('Filter choices…') + '" autocomplete="off">'
+            + '<button id="' + pfx + 'Clear" class="sm-chclear" type="button">' + _T('Clear filter') + '</button>'
+          + '</div>'
+          + '<button id="' + pfx + 'ExpA" class="sm-chbtn">▼ ' + _T('Expand all') + '</button>'
+          + '<button id="' + pfx + 'ColA" class="sm-chbtn">▶ ' + _T('Collapse all') + '</button>'
+        + '</div>'
+        + '<div class="sm-chhead" id="' + pfx + 'Head">'
+          + '<span class="sm-chh-spacer"></span>'
+          // data-sort is a key, not text — see the note on data-pg above.
+          + '<button class="sm-chh sm-chh-name" data-sort="name">' + _T('Name') + '<span class="sm-arrow"></span></button>'
+          + '<button class="sm-chh sm-chh-date" data-sort="date">' + _T('Modified') + '<span class="sm-arrow"></span></button>'
+        + '</div>'
+        + '<div id="' + pfx + 'Body"></div>'
+      + '</div>';
+  const _tabBody = t => {
+    switch (t.kind) {
+      // Filled by _smDayRender after mount, and re-filled in place by the ‹ ›
+      // arrows — the box itself never moves.
+      case 'intro':  return '<div class="sm-dayitem" id="smDayItem"></div>';
+      // (dev0782) #smAuth just moved house from the Intro: _wireSignIn queries
+      // the whole overlay, so it finds it wherever the Contact tab renders it.
+      case 'signin': return '<div id="smAuth" class="sm-auth"></div>';
+      case 'grids':  return gridItems.length ? _listHtml('smG') : _smNoItems;
+      // (dev0940) Flashcard decks (c.json ctype "f") get their own tab and leave
+      // the Grids list, which is what "separate them into a separate tab" means.
+      case 'flash':  return flashItems.length ? _listHtml('smF')
+        : '<div class="sm-chmax"><div class="sm-chnone">No flashcard decks yet.</div></div>';
+      // (dev0400) Search uses the same toolbar shape as the Grids filter: text
+      // box + Clear to its right, plus Make grid. Enter in the box (or Make
+      // grid) turns the current ≤25 results into a grid.
+      // (dev0596) Was stubbed to "Pending"; (dev0668) restored, now behind
+      // SM_FEAT_SEARCH — though with the switch off this tab no longer exists at
+      // all, so the wiring below simply finds nothing.
+      case 'search': return '<div class="sm-chmax">'
+          + '<div class="sm-chtools">'
+            + '<div class="sm-chfwrap">'
+              + '<input id="smSearchBox" class="sm-chfilter" type="text" placeholder="Search everything…" autocomplete="off">'
+              + '<button id="smSearchClear" class="sm-chclear" type="button">Clear</button>'
+            + '</div>'
+            + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make + Show grid</button>'
+            + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
+          + '</div>'
+          // (dev0739/0740) Condensed from three-plus lines to one. The old copy
+          // spent a paragraph naming the playable formats — reference material
+          // parked permanently above the results, which on a phone pushed them
+          // off-screen.
+          + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When ' + _smN + ' or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
+          // (dev0366) Active COI filters, shown so a narrowed result set doesn't
+          // look broken. Populated from _filtTaxon / _filtMedia after mount.
+          + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
+          + '<div id="smSugg" class="sm-sugg"></div>'
+          + '<div id="smCount" class="sm-count"></div>'
+          + '<div id="smResults" class="sm-results"></div>'
+        + '</div>';
+      // (dev0401) Searches the viewer kept via the Search tab's ★ Save button,
+      // persisted in localStorage. Empty notice until the first save.
+      case 'saved':  return '<div class="sm-chmax"><div id="smSavedBody"></div></div>';
+      // (dev0940) SAVED LOOPS — the merge of "My Loops" and "Add your own".
+      // Both lists did the same job: an A→B stretch of a video the viewer wants
+      // to come back to. The only difference was where the video came from, and
+      // that is now a tag on the card (FromThisSite / FromPastedURL) rather than
+      // a second tab. The paste controls move in here because pasting a URL is
+      // no longer an end in itself — it is how you get a video to loop.
+      //
+      // The manual box below the button is the fallback for every browser that
+      // won't hand a page the clipboard (Safari, Firefox, any denied prompt) —
+      // it is revealed, not hidden, when the read fails.
+      case 'loops':  return '<div class="sm-chmax">'
+          + (SM_FEAT_ADDOWN
+            ? '<div class="sm-chtools">'
+                + '<button id="smPasteUrl" class="sm-chbtn" type="button" style="font-size:14px;padding:10px 16px;">📋 Paste a video URL</button>'
+                + '<button id="smTypeUrl" class="sm-chbtn" type="button">⌨ Type / paste it myself</button>'
+              + '</div>'
+              + '<div id="smAddManual" style="display:none;padding:0 22px 4px;">'
+                + '<div class="sm-chfwrap" style="margin:0;">'
+                  + '<input id="smAddBox" class="sm-chfilter" type="text" placeholder="Paste a video link here (Ctrl+V), then press Enter" autocomplete="off" spellcheck="false">'
+                  + '<button id="smAddGo" class="sm-chclear" type="button">Add</button>'
+                + '</div>'
+              + '</div>'
+              // (dev0940) Video only. Images used to be accepted here as plain
+              // bookmarks; this tab is for A→B on a video, and an image has no
+              // time dimension to loop — see loops.js WHAT IS ACCEPTED.
+              + '<div class="sm-count" style="color:#8a93a8;margin:6px 0 2px;">'
+                + 'Works with <b>YouTube</b>, <b>Vimeo</b> or a <b>video file</b> link (.mp4 / .webm / .mov). '
+                + 'Instagram and TikTok can\'t be looped — their players don\'t allow it.'
+              + '</div>'
+              + '<div class="sm-count" style="color:#8a93a8;margin:0 0 6px;">'
+                + 'Your loops and links stay in this browser only — they aren\'t uploaded, shared, or added to the collection.'
+              + '</div>'
+            : '')
+          + '<div id="smLoopsBody"></div>'
+        + '</div>';
+      default:       return '';
+    }
+  };
+  // The Intro carries two pieces of furniture no other tab has: the build stamp
+  // (dev0763 — so a phone showing a stale cached app says so without being
+  // asked) and the language toggle (dev0930 — rendered only when lang.js is
+  // present, so the menu is unchanged if the feature is cut out).
+  const _introChrome =
+      '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
+    + (window.salLang
+        ? '<button id="smLangBtn" class="sm-lang" type="button" title="'
+          + _smEsc(window.salLang.is('es') ? 'Read this site in English' : 'Leer este sitio en español')
+          + '">' + _smEsc(window.salLang.is('es') ? 'English' : 'Español') + '</button>'
+        : '');
+  // (dev0787) On the Intro, section 1 is the page's FIRST LINE and the day's
+  // picture sits right under it, so its prose block loses the deep top padding
+  // the other pages inherit (.sm-introtop) and the picture is sized to the
+  // screen rather than to the prose column.
+  const _pageHtml = t =>
+      '<div id="smPage' + t.pg + '" class="sm-pg' + (t.spec.cls || '') + '"'
+        + ' style="position:absolute;inset:0;overflow-y:auto;' + (t.pg === 1 ? '' : 'display:none;') + '">'
+      + (t.kind === 'intro' ? _introChrome : '')
+      + (t.top.trim()
+          ? '<div class="smGreeting' + (t.spec.topCls || '') + '">' + t.top + '</div>'
+          : (t.kind === 'intro' && !t.bottom.trim()
+              ? '<div class="smGreeting sm-introtop"><p>Welcome.</p></div>' : ''))
+      + _tabBody(t)
+      + (t.bottom.trim() ? '<div class="smGreeting">' + t.bottom + '</div>' : '')
+      // A prose tab with nothing in it says so rather than rendering a blank
+      // page — the state "this tab exists but hasn't been written yet".
+      + (t.kind === 'prose' && !t.top.trim() && !t.bottom.trim()
+          ? '<div class="sm-sub">' + _T('Nothing here yet') + '</div>' : '')
+    + '</div>';
 
   ov.innerHTML = menuStyle
     // (dev0384) Top tab bar — replaces the former header (there is no header now).
     + '<div class="sm-tabs sm-tabs-top">' + _tabBtns + '</div>'
     + '<div style="flex:1;position:relative;overflow:hidden;">'
-      // PAGE 1 — INTRO. (dev0767) The site's first tab and its opening screen.
-      // Its prose is the c.json "Introduction" config's ctxt (see introHtml
-      // above), authored in Xe like every other page here. Was: the Greeting's
-      // pre-<hr> half behind two "Go to home screen" buttons.
-      + '<div id="smPage1" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;">'
-        // (dev0763) Build stamp, top-left of the Intro — small and inert, so a
-        // phone that is showing a stale cached app says so without being asked.
-        + '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
-        // (dev0930) Language toggle. Rendered only when lang.js is present, so
-        // the menu is unchanged if the feature is cut out.
-        + (window.salLang
-            ? '<button id="smLangBtn" class="sm-lang" type="button" title="'
-              + _smEsc(window.salLang.is('es') ? 'Read this site in English' : 'Leer este sitio en español')
-              + '">' + _smEsc(window.salLang.is('es') ? 'English' : 'Español') + '</button>'
-            : '')
-        // (dev0782) The sign-in strip that used to sit here is gone — it lives on
-        // the Contact tab (page 9) now. Nothing else changed on this page.
-        // (dev0779) SECTION 1 · IMAGE OF THE DAY · SECTION 2. The two sections
-        // are the author's ctxt either side of its first <hr>; the item between
-        // them is composed here from an ml.json row (see _smDayInnerHtml). An
-        // empty section renders nothing rather than an empty prose block.
-        // (dev0787) Section 1 is the page's FIRST LINE and the day's picture is
-        // right under it — so the greeting block loses the deep top padding it
-        // inherited from the prose pages (.sm-introtop), and the picture is
-        // sized to the screen rather than to the prose column. Section 2 still
-        // renders below the caption; it is simply below the fold now.
-        + (introTop.trim() ? '<div class="smGreeting sm-introtop">' + introTop + '</div>'
-                           : (introBottom.trim() ? '' : '<div class="smGreeting sm-introtop"><p>Welcome.</p></div>'))
-        // Filled by _smDayRender after mount, and re-filled in place by the ‹ ›
-        // arrows — the box itself never moves.
-        + '<div class="sm-dayitem" id="smDayItem"></div>'
-        + (introBottom.trim() ? '<div class="smGreeting">' + introBottom + '</div>' : '')
-      + '</div>'
-      // (dev0787) PAGE 5 — "Starting out". Blank on purpose for now: like Other
-      // and Contact, its copy is the ctxt of a c.json config row (gname
-      // "starting out"), so the author fills it in Xe rather than here. Until
-      // that row exists the page is empty — no placeholder, as asked.
-      + '<div id="smPage5" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + (startHtml.trim() ? '<div class="smGreeting">' + startHtml + '</div>' : '')
-      + '</div>'
-      // PAGE 2 — choose a view (greeting prose after the <hr>, then 2 columns:
-      // Singles | Grids on desktop, stacked on phone)
-      + '<div id="smPage2" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + (greetIntro.trim() ? '<div class="smGreeting">' + greetIntro + '</div>'
-                             : '<div class="sm-sub">' + _T('Home') + '</div>')   // (dev0763) matches the button that lands here
-        // (dev0379) Table-like, sortable list. Header columns Name / Modified
-        // sort on click (arrow shows direction); body re-renders via
-        // _smRenderChoose after mount. Defaults to Modified, newest at top.
-        + (items.length
-            ? '<div class="sm-chmax">'
-                // (dev0381) Expand/Collapse-all + a live text filter (matches
-                // the summary AND the raw ttxt/ctxt body of each choice).
-                + '<div class="sm-chtools">'
-                  // (dev0382) Filter + an inline "Clear filter" button sitting in
-                  // the right ~1/5 of the box. Tab cycles filter ↔ Clear; the
-                  // button clears on click/Enter/Space then refocuses the (now
-                  // blank) filter.
-                  + '<div class="sm-chfwrap">'
-                    + '<input id="smChFilter" class="sm-chfilter" type="text" placeholder="' + _T('Filter choices…') + '" autocomplete="off">'
-                    + '<button id="smChClear" class="sm-chclear" type="button">' + _T('Clear filter') + '</button>'
-                  + '</div>'
-                  + '<button id="smExpandAll" class="sm-chbtn">▼ ' + _T('Expand all') + '</button>'
-                  + '<button id="smCollapseAll" class="sm-chbtn">▶ ' + _T('Collapse all') + '</button>'
-                + '</div>'
-                + '<div class="sm-chhead">'
-                  + '<span class="sm-chh-spacer"></span>'
-                  // data-sort is a key, not text — see the note on data-pg above.
-                  + '<button class="sm-chh sm-chh-name" data-sort="name">' + _T('Name') + '<span class="sm-arrow"></span></button>'
-                  + '<button class="sm-chh sm-chh-date" data-sort="date">' + _T('Modified') + '<span class="sm-arrow"></span></button>'
-                + '</div>'
-                + '<div id="smChooseBody"></div>'
-              + '</div>'
-            : _smNoItems)
-      + '</div>'
-      // PAGE 4 — "Other": free-form HTML from the c.json "other" config's ctxt.
-      + '<div id="smPage4" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + (otherHtml.trim() ? '<div class="smGreeting">' + otherHtml + '</div>'
-                            : '<div class="sm-sub">' + _T('Nothing here yet') + '</div>')
-      + '</div>'
-      // PAGE 3 — search anywhere across all of T; result cards appear once the
-      // match count drops below n (the Greeting row's MPix).
-      + '<div id="smPage3" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        // (dev0596) Search was stubbed to "Pending"; (dev0668) restored, now
-        // behind SM_FEAT_SEARCH. The post-mount wiring below is all null-guarded,
-        // so with the switch off these elements are simply absent and every
-        // handler no-ops — no separate "disabled" code path to keep in step.
-        // (dev0400) Search uses the same toolbar shape as the Grids filter:
-        // text box + Clear to its right (Tab cycles box ↔ Clear ↔ Make grid ↔
-        // Save), plus Make grid. Enter in the box (or Make grid) turns the
-        // current ≤25 results into a grid (size scales with the count).
-        + (SM_FEAT_SEARCH
-          ? '<div class="sm-chmax">'
-            + '<div class="sm-chtools">'
-              + '<div class="sm-chfwrap">'
-                + '<input id="smSearchBox" class="sm-chfilter" type="text" placeholder="Search everything…" autocomplete="off">'
-                + '<button id="smSearchClear" class="sm-chclear" type="button">Clear</button>'
-              + '</div>'
-              + '<button id="smMakeGrid" class="sm-chbtn" type="button">▦ Make + Show grid</button>'
-              + '<button id="smSaveSearch" class="sm-chbtn" type="button">★ Save</button>'
-            + '</div>'
-            // (dev0739/0740) Condensed from three-plus lines to one. The old copy
-            // spent a paragraph naming the playable formats and explaining that
-            // one term matches any field — reference material parked permanently
-            // above the results, which on a phone pushed them off-screen.
-            // dev0739 kept the "Searches N playable items" count on the end of
-            // this line; dev0740 drops that too. Same on desktop — it was no more
-            // useful there, just less costly.
-            + '<div id="smSearchHint" class="sm-count" style="margin:2px 0 4px;">Type to search. When ' + _smN + ' or fewer match, press <b>Enter</b> in the box (or click <b>▦ Make + Show grid</b>) to view them all as a grid. <b>★ Save</b> keeps a search on the SavedSearches tab.</div>'
-            // (dev0366) Active COI filters, shown so a narrowed result set doesn't
-            // look broken. Populated from _filtTaxon / _filtMedia after mount.
-            + '<div id="smFilterNote" class="sm-count" style="color:#7fd8a0;margin-top:0;"></div>'
-            + '<div id="smSugg" class="sm-sugg"></div>'
-            + '<div id="smCount" class="sm-count"></div>'
-            + '<div id="smResults" class="sm-results"></div>'
-          + '</div>'
-          : '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>')
-      + '</div>'
-      // (dev0596) PAGE 5 ("Navigation Training") removed — the tab is gone.
-      // (dev0401) PAGE 6 — "SavedSearches": searches the viewer kept via the
-      // Search tab's ★ Save button, persisted in localStorage. Empty notice
-      // until the first save; otherwise a Grids-style list with Open / Delete.
-      // (dev0596) SavedSearches was stubbed to "Pending"; (dev0668) restored on
-      // the same SM_FEAT_SEARCH switch as the Search tab that feeds it. The
-      // render/wiring below null-guards on #smSavedBody, so with the switch off
-      // the body is absent and _smRenderSaved no-ops.
-      + '<div id="smPage6" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + (SM_FEAT_SEARCH
-          ? '<div class="sm-chmax"><div id="smSavedBody"></div></div>'
-          : '<div class="sm-chmax"><div class="sm-chnone" style="text-align:center;font-size:16px;padding:40px 22px;">Pending</div></div>')
-      + '</div>'
-      // (dev0667) PAGE 7 — "My Loops": A→B segments the viewer marked on V and
-      // kept with the toolbar's AB💾 button. Stored in THEIR browser (loops.js
-      // → localStorage), never in ml.json. Same list shape as SavedSearches.
-      + '<div id="smPage7" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + '<div class="sm-chmax"><div id="smLoopsBody"></div></div>'
-      + '</div>'
-      // (dev0668) PAGE 8 — "Add your own": a URL the viewer pastes themselves,
-      // opened in V and loopable exactly like a collection row. The links live
-      // in the viewer's browser (loops.js → salLinks), never in ml.json.
-      // The manual paste box below the button is the fallback for every browser
-      // that won't hand a page the clipboard (Safari, Firefox, any denied
-      // permission prompt) — it is revealed, not hidden, when the read fails.
-      + (SM_FEAT_ADDOWN
-        ? '<div id="smPage8" class="sm-pg" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-          + '<div class="sm-chmax">'
-            + '<div class="sm-chtools">'
-              + '<button id="smPasteUrl" class="sm-chbtn" type="button" style="font-size:14px;padding:10px 16px;">📋 Paste new URL</button>'
-              + '<button id="smTypeUrl" class="sm-chbtn" type="button">⌨ Type / paste it myself</button>'
-            + '</div>'
-            + '<div id="smAddManual" style="display:none;padding:0 22px 4px;">'
-              + '<div class="sm-chfwrap" style="margin:0;">'
-                + '<input id="smAddBox" class="sm-chfilter" type="text" placeholder="Paste a link here (Ctrl+V), then press Enter" autocomplete="off" spellcheck="false">'
-                + '<button id="smAddGo" class="sm-chclear" type="button">Add</button>'
-              + '</div>'
-            + '</div>'
-            + '<div class="sm-count" style="color:#8a93a8;margin:6px 0 2px;">'
-              + 'Works with <b>YouTube</b>, <b>Vimeo</b>, a <b>video file</b> link (.mp4 / .webm / .mov) or an <b>image</b> link. '
-              + 'Instagram and TikTok can\'t be looped — their players don\'t allow it.'
-            + '</div>'
-            + '<div class="sm-count" style="color:#8a93a8;margin:0 0 6px;">'
-              + 'Your links stay in this browser only — they aren\'t uploaded, shared, or added to the collection.'
-            + '</div>'
-            + '<div id="smAddBody"></div>'
-          + '</div>'
-        + '</div>'
-        : '')
-      // (dev0782) PAGE 9 — "Contact". The author's own copy (c.json "contact"
-      // config's ctxt) followed by the sign-in strip that used to live at the
-      // top of the Intro. #smAuth just moved house: _wireSignIn queries the
-      // whole overlay, so it finds it here with no change.
-      + '<div id="smPage9" class="sm-pg sm-contact" style="position:absolute;inset:0;overflow-y:auto;display:none;">'
-        + (contactHtml.trim() ? '<div class="smGreeting">' + contactHtml + '</div>' : '')
-        + '<div id="smAuth" class="sm-auth"></div>'
-        // (dev0931) Section 2 — whatever the author put below the first <hr>.
-        + (contactHtmlBelow.trim() ? '<div class="smGreeting">' + contactHtmlBelow + '</div>' : '')
-      + '</div>'
+      + _smTabs.map(_pageHtml).join('')
     + '</div>'
     // (dev0384) Bottom tab bar — same buttons as the top one.
     + '<div class="sm-tabs sm-tabs-bottom">' + _tabBtns + '</div>'
@@ -1742,25 +1762,14 @@ async function _showShareableMenu() {
   // public. This is UI tidying, not protection.
   if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
 
-  // (dev0361/0362/0366/0368) Nav. Welcome (page 1) is a one-time splash shown
-  // only on first entry; both tab bars are hidden there. Pages 2–5 each carry
-  // the tab bar at top AND bottom and are where all returns land.
   // (dev0384) `.on` is synced across BOTH bars; the last tab the viewer used is
   // remembered in window._smLastTab so a reopen lands back on it.
-  // (dev0401) SavedSearches (6) sits between Search (3) and Other (4) in the
-  // tab bar, so the Tab-key order reflects that left-to-right placement.
-  // (dev0667) My Loops (7) follows SavedSearches (6), matching the tab bar.
-  // (dev0668) Built from the feature switches so the Tab key visits exactly the
-  // tabs that exist — a switched-off page is never landed on.
-  // (dev0767) Intro (1) leads the order, matching its place in the tab bar, so
-  // Tab-cycling wraps back round to it like any other tab.
-  // (dev0782) …and Contact (9) closes the order, matching its place in the bar.
-  // (dev0787) …and "Starting out" (5) sits between them, matching the bar.
-  const _smTabOrder = [1, 5, 2]
-    .concat(SM_FEAT_SEARCH ? [3, 6] : [])
-    .concat([7])
-    .concat(SM_FEAT_ADDOWN ? [8] : [])
-    .concat([4, 9]);
+  // (dev0940) The Tab-key order IS the bar order, because both are the same
+  // c.json rows in the same `active` sequence. It used to be a hand-kept literal
+  // that had to be re-edited in step with the bar by eye — SlamTabs.md trap T3,
+  // one of the three edits every new tab needed. There is one edit now, and it
+  // is a row in c.json.
+  const _smTabOrder = _smPages.slice();
   const _smShow = n => {
     // (dev0739) A page change means the box our keyboard was typing into is
     // gone — take it with us rather than leaving it floating over the new page.
@@ -1769,7 +1778,7 @@ async function _showShareableMenu() {
     // (dev0767) …from 1, not 2: Intro is a tab, so "the last tab the viewer
     // used" can now BE Intro and a return should land back on it.
     if (n >= 1) window._smLastTab = n; // (dev0384) remember the last tab used
-    [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
+    _smPages.forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
     // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
@@ -1779,13 +1788,13 @@ async function _showShareableMenu() {
     // the way on is the tab bar and the way back is backarrow.js's ←; a third
     // control there would just be one more thing over the content.
     const _fwdBtn = ov.querySelector('#smFwdArrow');
-    if (_fwdBtn) _fwdBtn.style.display = (n === 1) ? 'flex' : 'none';
+    if (_fwdBtn) _fwdBtn.style.display = (n === _pgOf('intro')) ? 'flex' : 'none';
     // (dev0741) Re-sweep on every page change — Search results and SavedSearches
     // build their bodies after the overlay was first stamped. Idempotent.
     if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
     // (dev0787) Re-fit the day's picture on arrival at Welcome: it measures 0
     // while the page is display:none, so a fit taken on another tab is junk.
-    if (n === 1 && window._smDayFitNow) requestAnimationFrame(window._smDayFitNow);
+    if (n === _pgOf('intro') && window._smDayFitNow) requestAnimationFrame(window._smDayFitNow);
     // (dev0739) Let the floating back arrow re-evaluate now rather than on its
     // next 300ms poll — leaving Welcome should light it immediately.
     if (window._salBackArrowSync) window._salBackArrowSync();
@@ -1821,8 +1830,10 @@ async function _showShareableMenu() {
     if (b) { b.focus(); return true; }
     return false;
   };
-  // (dev0668) "Add your own" lands on its Paste button — the one thing that tab
-  // is for. Falls back to the tab button if the feature is switched off.
+  // (dev0668) Saved Loops lands on its Paste button when there are no loops to
+  // land on. Falls back to the tab button if the feature is switched off.
+  // (dev0940) The button moved onto the Saved Loops page with the merge; the
+  // query is by id, so it found it there with no change.
   const _smFocusAdd = () => {
     const b = ov.querySelector('#smPasteUrl');
     if (b) { b.focus(); return true; }
@@ -1833,12 +1844,13 @@ async function _showShareableMenu() {
   // keeps focus on the tab for keyboard cycling.
   ov.querySelectorAll('.sm-tab').forEach(t =>
     t.addEventListener('click', () => {
-      const pg = parseInt(t.dataset.pg, 10) || 2;
+      const pg = parseInt(t.dataset.pg, 10) || _pgOf('grids') || 1;
       _smShow(pg);
-      if (pg === 3) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
-      else if (pg === 6) { setTimeout(() => { if (!_smFocusFirstSaved()) t.focus(); }, 30); }
-      else if (pg === 7) { setTimeout(() => { if (!_smFocusFirstLoop()) t.focus(); }, 30); }
-      else if (pg === 8) { setTimeout(() => { if (!_smFocusAdd()) t.focus(); }, 30); }
+      // (dev0940) BY KIND, not by number — the numbers are positions now and
+      // move whenever the author reorders the bar in c.json.
+      if (pg === _pgOf('search')) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
+      else if (pg === _pgOf('saved')) { setTimeout(() => { if (!_smFocusFirstSaved()) t.focus(); }, 30); }
+      else if (pg === _pgOf('loops')) { setTimeout(() => { if (!_smFocusFirstLoop() && !_smFocusAdd()) t.focus(); }, 30); }
       else t.focus();
     }));
   // (dev0788) The Welcome page's → arrow goes wherever the NEXT TAB goes — the
@@ -1866,8 +1878,8 @@ async function _showShareableMenu() {
     const ae = document.activeElement;
     const inField = !!(ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable));
     if (!inField && (e.key === 'f' || e.key === 'F')) {
-      const fid = window._smCurPage === 2 ? '#smChFilter' : null;
-      if (fid) { const fi = ov.querySelector(fid); if (fi) { e.preventDefault(); e.stopPropagation(); fi.focus(); return; } }
+      const fi = _smListFilterFor(window._smCurPage);
+      if (fi) { e.preventDefault(); e.stopPropagation(); fi.focus(); return; }
     }
     if (e.key === 'Tab') {
       if (inField) return;
@@ -1879,9 +1891,8 @@ async function _showShareableMenu() {
         ? _smTabOrder[(idx - 1 + _smTabOrder.length) % _smTabOrder.length]
         : _smTabOrder[(idx + 1) % _smTabOrder.length];
       _smShow(next);
-      if (next === 6 && _smFocusFirstSaved()) return; // (dev0403) land on first Open
-      if (next === 7 && _smFocusFirstLoop()) return;  // (dev0667) same for My Loops
-      if (next === 8 && _smFocusAdd()) return;        // (dev0668) Add your own → Paste
+      if (next === _pgOf('saved') && _smFocusFirstSaved()) return; // (dev0403) land on first Open
+      if (next === _pgOf('loops') && (_smFocusFirstLoop() || _smFocusAdd())) return;
       _smFocusTab(next);
     }
   });
@@ -1989,7 +2000,7 @@ async function _showShareableMenu() {
     if (x0 == null || window._smCurPage !== 3) return;
     const p = _smXY(e);
     const dx = p.x - x0, dy = p.y - y0;
-    if (dx < -60 && Math.abs(dx) > Math.abs(dy)) _smShow(2);
+    if (dx < -60 && Math.abs(dx) > Math.abs(dy)) _smShow(_pgOf('grids') || 1);
   }, true);
   // (dev0935) THE RIGHT SWIPE ON THE PICTURE OF THE DAY IS GONE. dev0932 made a
   // right swipe on the Welcome page's day picture open it in V with the
@@ -2019,26 +2030,21 @@ async function _showShareableMenu() {
   //    the first hop after Welcome always lands on Choices.
   //  • else (very first entry) — show the Welcome splash and mark it seen.
   let _smStartPg;
-  // (dev0667) Range now runs to 7 so a return from a looped V lands back on My
-  // Loops. (dev0668) …and to 8 for "Add your own".
-  // (dev0767) …and DOWN to 1, because Intro is a tab: a viewer who opened an
-  // item from a link inside the Intro should come back to the Intro, not be
-  // bounced to Grids.
-  // (dev0782) …and to 9 for Contact.
-  if (window._smReturnPage >= 1 && window._smReturnPage <= 9) {
+  // (dev0940) The valid range is the pages that ACTUALLY EXIST in this build of
+  // the bar, not a literal 1–9. A remembered tab whose row has since been
+  // retired (or whose feature switch flipped) is no longer in _smPages, so it
+  // falls through to the Introduction instead of leaving every tab looking
+  // inactive over blank space.
+  if (_smPages.indexOf(window._smReturnPage) >= 0) {
     _smStartPg = window._smReturnPage;
-  } else if (window._smWelcomeSeen) {
-    _smStartPg = (window._smLastTab >= 1 && window._smLastTab <= 9) ? window._smLastTab : 1;
+  } else if (window._smWelcomeSeen && _smPages.indexOf(window._smLastTab) >= 0) {
+    _smStartPg = window._smLastTab;
   } else {
     _smStartPg = 1;
   }
-  // (dev0668) A page belonging to a switched-off feature can still be reached
-  // through a remembered last tab (or a return set before the switch flipped),
-  // and that page no longer exists in the DOM — every tab would look inactive
-  // over blank space. Fall back to Grids.
   if (_smTabOrder.indexOf(_smStartPg) < 0) _smStartPg = 1;
   window._smReturnPage = undefined;
-  if (_smStartPg === 1) window._smWelcomeSeen = true;
+  if (_smStartPg === _pgOf('intro')) window._smWelcomeSeen = true;
   // (dev0403) Capture-then-clear the "returned from a Search-tab grid" flag so
   // the focus callback (which fires after the whole body runs) can still see it.
   const _smRestore = window._smRestoreSearchOnReturn;
@@ -2135,82 +2141,94 @@ async function _showShareableMenu() {
   // (dev0700) Default order is the curated one: c.json `active` ascending, with
   // un-numbered entries (the ml.json singles) after them. Clicking a header
   // still switches to Name/Modified. sort() is stable, so ties keep c.json order.
-  let _smSortKey = 'ord', _smSortDir = 1, _smFilter = '';
-  const _smRenderChoose = () => {
-    const body = ov.querySelector('#smChooseBody');
-    if (!body) return;
-    let arr = items.slice().sort((a, b) => {
-      let av, bv;
-      if (_smSortKey === 'ord') { av = a.ord || Infinity; bv = b.ord || Infinity; }
-      else if (_smSortKey === 'name') { av = (a.summary || '').toLowerCase(); bv = (b.summary || '').toLowerCase(); }
-      else { av = a.dmRaw || ''; bv = b.dmRaw || ''; }
-      if (av < bv) return -1 * _smSortDir;
-      if (av > bv) return  1 * _smSortDir;
-      return 0;
-    });
-    // (dev0381) Live filter — matches the visible summary AND the raw ttxt/ctxt
-    // body so a search hits text that's hidden inside a collapsed card.
-    if (_smFilter) arr = arr.filter(it =>
-      ((it.summary || '') + ' ' + (it.html || '')).toLowerCase().includes(_smFilter));
-    if (!arr.length) { body.innerHTML = '<div class="sm-chnone">No matches.</div>'; return; }
-    body.innerHTML = arr.map(it => _smDetCard(it, items.indexOf(it))).join('');
-    ov.querySelectorAll('#smPage2 .sm-chh').forEach(h => {
-      const on = h.dataset.sort === _smSortKey;
-      h.classList.toggle('on', on);
-      const ar = h.querySelector('.sm-arrow');
-      if (ar) ar.textContent = on ? (_smSortDir < 0 ? ' ▾' : ' ▴') : '';
-    });
-    body.querySelectorAll('.sm-open').forEach(el => {
-      el.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        _smLaunch(items[parseInt(el.dataset.i, 10)]);
+  // (dev0940) ONE list implementation, instantiated once per list tab. Grids and
+  // Flashcards are the same list over different rows, so the sort state, the
+  // live filter, expand/collapse-all and the header arrows are built here by id
+  // PREFIX rather than existing twice. Each instance keeps its own sort and
+  // filter — narrowing the decks should not disturb where you were among the
+  // collections.
+  const _smMakeList = (pfx, arr) => {
+    const body = ov.querySelector('#' + pfx + 'Body');
+    if (!body) return null;                  // that tab isn't in the bar
+    const st = { key: 'ord', dir: 1, filt: '' };
+    const head = ov.querySelector('#' + pfx + 'Head');
+    const render = () => {
+      let a2 = arr.slice().sort((x, y) => {
+        let av, bv;
+        if (st.key === 'ord') { av = x.ord || Infinity; bv = y.ord || Infinity; }
+        else if (st.key === 'name') { av = (x.summary || '').toLowerCase(); bv = (y.summary || '').toLowerCase(); }
+        else { av = x.dmRaw || ''; bv = y.dmRaw || ''; }
+        if (av < bv) return -1 * st.dir;
+        if (av > bv) return  1 * st.dir;
+        return 0;
+      });
+      // (dev0381) Live filter — matches the visible summary AND the raw
+      // ttxt/ctxt body, so a search hits text hidden inside a collapsed card.
+      if (st.filt) a2 = a2.filter(it =>
+        ((it.summary || '') + ' ' + (it.html || '')).toLowerCase().includes(st.filt));
+      if (!a2.length) { body.innerHTML = '<div class="sm-chnone">No matches.</div>'; return; }
+      // data-i is the card's index in the SHARED `items` array — both lists
+      // launch through it, which is why they are concatenated and not re-sorted.
+      body.innerHTML = a2.map(it => _smDetCard(it, items.indexOf(it))).join('');
+      if (head) head.querySelectorAll('.sm-chh').forEach(h => {
+        const on = h.dataset.sort === st.key;
+        h.classList.toggle('on', on);
+        const ar = h.querySelector('.sm-arrow');
+        if (ar) ar.textContent = on ? (st.dir < 0 ? ' ▾' : ' ▴') : '';
+      });
+      body.querySelectorAll('.sm-open').forEach(el => {
+        el.addEventListener('click', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          _smLaunch(items[parseInt(el.dataset.i, 10)]);
+        });
+      });
+    };
+    if (head) head.querySelectorAll('.sm-chh').forEach(h => {
+      h.addEventListener('click', () => {
+        const k = h.dataset.sort;
+        if (st.key === k) { st.dir *= -1; }
+        else { st.key = k; st.dir = (k === 'date') ? -1 : 1; }
+        render();
       });
     });
+    // (dev0381) Toolbar: live filter + expand/collapse-all. The expand/collapse
+    // buttons act on whatever cards are currently rendered, so they respect the
+    // active filter.
+    const filt = ov.querySelector('#' + pfx + 'Filter');
+    const clr  = ov.querySelector('#' + pfx + 'Clear');
+    if (filt) filt.addEventListener('input', () => { st.filt = filt.value.trim().toLowerCase(); render(); });
+    // (dev0739) Our own keyboard here too — same reason as the Search box. This
+    // one filters live, so Go has nothing left to do but put the keyboard away.
+    if (filt && window.salKeyboardAttach) {
+      window.salKeyboardAttach(filt, { onGo: () => window.salKeyboardClose() });
+    }
+    // (dev0382) Tab cycles filter ↔ Clear so the button is one Tab away and a
+    // second Tab returns to the filter. Clear (click / Enter / Space — native on
+    // a <button>) blanks the filter and refocuses the now-empty box.
+    if (filt && clr) {
+      filt.addEventListener('keydown', e => {
+        if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); clr.focus(); }
+      });
+      clr.addEventListener('keydown', e => {
+        if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); filt.focus(); }
+      });
+      clr.addEventListener('click', () => { filt.value = ''; st.filt = ''; render(); filt.focus(); });
+    }
+    const setAll = open => body.querySelectorAll('details.sm-detcard').forEach(d => { d.open = open; });
+    const expA = ov.querySelector('#' + pfx + 'ExpA');
+    if (expA) expA.addEventListener('click', () => setAll(true));
+    const colA = ov.querySelector('#' + pfx + 'ColA');
+    if (colA) colA.addEventListener('click', () => setAll(false));
+    render();
+    return { filter: filt, render: render };
   };
-  ov.querySelectorAll('#smPage2 .sm-chh').forEach(h => {
-    h.addEventListener('click', () => {
-      const k = h.dataset.sort;
-      if (_smSortKey === k) { _smSortDir *= -1; }
-      else { _smSortKey = k; _smSortDir = (k === 'date') ? -1 : 1; }
-      _smRenderChoose();
-    });
-  });
-  if (items.length) _smRenderChoose();
-  // (dev0381) Choices toolbar wiring: live filter + expand/collapse-all. The
-  // expand/collapse buttons act on whatever cards are currently rendered (i.e.
-  // they respect the active filter).
-  const _smChFilt = ov.querySelector('#smChFilter');
-  const _smChClear = ov.querySelector('#smChClear');
-  if (_smChFilt) _smChFilt.addEventListener('input', () => {
-    _smFilter = _smChFilt.value.trim().toLowerCase();
-    _smRenderChoose();
-  });
-  // (dev0739) Our own keyboard here too — same reason as the Search box. This
-  // one filters live, so Go has nothing left to do but put the keyboard away.
-  if (_smChFilt && window.salKeyboardAttach) {
-    window.salKeyboardAttach(_smChFilt, { onGo: () => window.salKeyboardClose() });
-  }
-  // (dev0382) Tab cycles filter ↔ Clear so the button is one Tab away and a
-  // second Tab returns to the filter. Clear (click / Enter / Space — native on a
-  // <button>) blanks the filter and refocuses the now-empty box.
-  if (_smChFilt && _smChClear) {
-    _smChFilt.addEventListener('keydown', e => {
-      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smChClear.focus(); }
-    });
-    _smChClear.addEventListener('keydown', e => {
-      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); _smChFilt.focus(); }
-    });
-    _smChClear.addEventListener('click', () => {
-      _smChFilt.value = ''; _smFilter = ''; _smRenderChoose(); _smChFilt.focus();
-    });
-  }
-  const _smSetAllOpen = open => ov.querySelectorAll('#smChooseBody details.sm-detcard')
-    .forEach(d => { d.open = open; });
-  const _smExpA = ov.querySelector('#smExpandAll');
-  if (_smExpA) _smExpA.addEventListener('click', () => _smSetAllOpen(true));
-  const _smColA = ov.querySelector('#smCollapseAll');
-  if (_smColA) _smColA.addEventListener('click', () => _smSetAllOpen(false));
+  const _smGridList  = _smMakeList('smG', gridItems);
+  const _smFlashList = _smMakeList('smF', flashItems);
+  // The `f` hotkey wants the filter box of whichever list tab is showing.
+  const _smListFilterFor = pg =>
+      (pg === _pgOf('grids') ? (_smGridList  && _smGridList.filter)
+     : pg === _pgOf('flash') ? (_smFlashList && _smFlashList.filter) : null);
 
   // (dev0596) Navigation-Training choice table + wiring removed with its tab.
 
@@ -2283,7 +2301,7 @@ async function _showShareableMenu() {
     }
     if (window.salKeyboardClose) window.salKeyboardClose();   // (dev0739)
     const rows = _smGridable.slice();
-    window._smReturnPage = 3;          // Esc / swipe-back returns here, to Search
+    window._smReturnPage = _pgOf('search');   // Esc / swipe-back returns here, to Search
     // (dev0403) Remember the query so the return-to-Search restores the box and
     // focuses ★ Save (see the landing focus block).
     window._smLastQuery = (_smBox.value || '').trim();
@@ -2390,7 +2408,7 @@ async function _showShareableMenu() {
       const rows = _smRowsForQuery(q);
       if (!rows.length) { if (typeof toast === 'function') toast('No matches for "' + q + '" now', 1800); return; }
       if (rows.length > _smN && typeof toast === 'function') toast(rows.length + ' matches — showing first 25', 1600);
-      window._smReturnPage = 6;        // Esc / swipe-back returns to SavedSearches
+      window._smReturnPage = _pgOf('saved');  // Esc / swipe-back returns to SavedSearches
       window._smLastQuery = q;
       ov.remove();
       window._fromShareableMenu = false;
@@ -2437,15 +2455,26 @@ async function _showShareableMenu() {
   };
   _smRenderSaved();
 
-  // (dev0667) ── My Loops tab ────────────────────────────────────────────────
-  // The viewer's own A→B segments, kept in their browser by loops.js. Each card
-  // shows the loop's name, the row it belongs to, its range, and Open / Rename /
-  // Delete — deliberately the same shape as a SavedSearches card, since the two
-  // lists do the same job for different things (a query vs a UID + start/stop).
+  // (dev0940) ── SAVED LOOPS ─────────────────────────────────────────────────
+  // The merge of "My Loops" and "Add your own". A loop is an A→B stretch of a
+  // video the viewer wants to come back to; the only thing that differed
+  // between the two lists was where the video came from, and that is a TAG on
+  // the card now rather than a second tab:
   //
-  // Loops are keyed by UID with the link as a fallback, so a row that gets
-  // renumbered doesn't orphan a viewer's loop; when the link rescues a lookup we
-  // silently re-stamp the entry's UID so the next open is a direct hit.
+  //   FromThisSite   — a collection row      (numeric ml.json UID)
+  //   FromPastedURL  — the viewer's own link (synthetic ul_… UID, loops.js)
+  //
+  // The discriminator is the loop's own uid, so the merge stores nothing new.
+  //
+  // A pasted link carrying NO loop is not listed. Pasting is how you get a
+  // video in front of you to mark up, not a thing to curate in its own right.
+  // The link stays in salLinks — a loop resolves its URL through it, and
+  // nothing a viewer saved is deleted behind their back — it simply isn't a
+  // card, and re-pasting the same URL finds it again with its uid, and
+  // therefore any loops already on it, intact.
+  //
+  // All of it lives in the viewer's own browser (localStorage), never in
+  // ml.json, which is dev-owned and FSA-clobbered on every save.
   const _smLoopsBody = ov.querySelector('#smLoopsBody');
   const _smRenderLoops = () => {
     if (!_smLoopsBody) return;
@@ -2458,7 +2487,10 @@ async function _showShareableMenu() {
         _smLoopsBody.innerHTML = '<div class="sm-chnone">No loops yet. '
           + 'Open a video, set <b>A</b> and <b>B</b> on the player toolbar, then press '
           + '<b>AB&#128190;</b> (or the <b>L</b> key) to keep that stretch here.'
-          + (SM_FEAT_ADDOWN ? ' That works on your own links too — see <b>Add your own</b>.' : '')
+          + (SM_FEAT_ADDOWN
+              ? '<br><br>That works on a YouTube or Vimeo link of your own just as well — '
+                + 'paste one with <b>📋 Paste a video URL</b> above, then mark A→B on it the same way.'
+              : '')
           + '<br><br>'
           + '<span style="color:#8a93a8;font-size:12px;">Loops are saved in this browser only — '
           + 'they aren\'t shared to another device or to the site.</span></div>';
@@ -2467,8 +2499,9 @@ async function _showShareableMenu() {
       // Resolve every loop to a live row up front so a card can show what it
       // points at (and grey out the ones whose row has gone).
       const rowById = {};
-      // (dev0668) Which of those rows is one of the viewer's own added links
-      // rather than a collection row — Open has to take a different route.
+      // Which of those rows is one of the viewer's own pasted links rather than
+      // a collection row — Open has to take a different route, and it is what
+      // the FromPastedURL tag reports.
       const ownById = {};
       list.forEach(e => {
         const res = window.salLoops.resolve(e, mlRows);
@@ -2478,10 +2511,10 @@ async function _showShareableMenu() {
         if (res.byLink && res.row && res.row.UID != null) {
           window.salLoops.update(e.id, { uid: String(res.row.UID) });
         }
-        // (dev0668) Not in ml.json — try the viewer's own links (uid first, then
-        // the URL, matching salLoops' own keying rule). A loop marked on a
-        // pasted URL lands here every time; one whose link was since deleted
-        // stays null and the card greys out like any other missing row.
+        // Not in ml.json — try the viewer's own links (uid first, then the URL,
+        // matching salLoops' own keying rule). A loop marked on a pasted URL
+        // lands here every time; one whose link was since deleted stays null and
+        // the card greys out like any other missing row.
         if (!rowById[e.id] && window.salLinks) {
           const own = window.salLinks.getSync(e.uid)
                    || (e.link ? window.salLinks.byLinkSync(e.link) : null);
@@ -2503,11 +2536,12 @@ async function _showShareableMenu() {
         const src = row
           ? (_smBadge[window.rowMediaKind ? window.rowMediaKind(row) : 'other'] || '🔗')
             + ' ' + _smResultLabel(row)
-            // (dev0668) Say which loops sit on a link the viewer added, since
-            // those live or die with the "Add your own" entry, not the collection.
-            + (ownById[e.id] ? '  (your link)' : '')
           : '⚠ this item is no longer available';
-        const meta = _smEsc(src) + '  ·  ' + span
+        // (dev0940) The tag the merge is built on. A FromPastedURL loop lives or
+        // dies with the viewer's own link, not with the collection — which is
+        // the one thing about it they need to be able to see.
+        const tag = ownById[e.id] ? 'FromPastedURL' : 'FromThisSite';
+        const meta = _smEsc(src) + '  ·  ' + tag + '  ·  ' + span
           + (e.ts ? '  ·  saved ' + _smDateShort(new Date(e.ts).toISOString()) : '');
         return '<div class="sm-item sm-card"' + (row ? '' : ' style="opacity:.55;"') + '>'
           + '<span class="sm-ico">&#128257;</span>'
@@ -2524,22 +2558,22 @@ async function _showShareableMenu() {
       }).join('');
       const byId = {};
       list.forEach(e => { byId[e.id] = e; });
-      // Open = arm the loop, then launch V exactly as a search result does.
-      // The A→B rides on window._vpPendingLoop (read and cleared by
+      // Open = arm the loop, then launch V exactly as a search result does. The
+      // A→B rides on window._vpPendingLoop (read and cleared by
       // gridOpenFullscreen) so nothing about the loop touches the ml.json row.
       const _smOpenLoop = e => {
         const row = rowById[e.id];
-        if (!row) { if (typeof toast === 'function') toast('That item is no longer in the collection', 2200); return; }
+        if (!row) { if (typeof toast === 'function') toast('That item is no longer available', 2200); return; }
         const pend = {
           uid: String(row.UID), link: String(row.link || ''),
           a: e.a, b: e.b, name: e.name
         };
-        // (dev0668) A loop on one of the viewer's own links can't go through
-        // _smOpenV — that resolves the UID against ml.json, where a ul_… UID
-        // will never be. _smOpenUserRow mounts the synthetic row directly.
+        // A loop on one of the viewer's own links can't go through _smOpenV —
+        // that resolves the UID against ml.json, where a ul_… UID will never be.
+        // _smOpenUserRow mounts the synthetic row directly.
         if (ownById[e.id]) { _smOpenUserRow(row, pend); return; }
         window._vpPendingLoop = pend;
-        _smOpenV(String(row.UID));                 // sets _smReturnPage = 7 (this page)
+        _smOpenV(String(row.UID));           // sets _smReturnPage to this page
       };
       _smLoopsBody.querySelectorAll('.sm-svbtn').forEach(b => {
         b.addEventListener('click', ev => {
@@ -2571,7 +2605,7 @@ async function _showShareableMenu() {
       });
       // The list load is async, so a viewer who landed on this tab before it
       // painted still has focus on the tab button — pull it onto the first Open.
-      if (window._smCurPage === 7 && document.activeElement
+      if (window._smCurPage === _pgOf('loops') && document.activeElement
           && document.activeElement.classList
           && document.activeElement.classList.contains('sm-tab')) {
         _smFocusFirstLoop();
@@ -2582,18 +2616,17 @@ async function _showShareableMenu() {
   };
   _smRenderLoops();
 
-  // (dev0668) ── "Add your own" tab ─────────────────────────────────────────
-  // Paste a URL → it opens in V → mark A and B → AB💾 keeps the loop, exactly
-  // as on a collection row. The link itself is stored by loops.js (salLinks) in
-  // the viewer's browser; nothing here ever touches ml.json.
-  const _smAddBody   = ov.querySelector('#smAddBody');
+  // ── Paste a video URL of your own ─────────────────────────────────────────
+  // Paste → it opens in V → mark A and B → AB💾 keeps the loop, exactly as on a
+  // collection row. The link itself is stored by loops.js (salLinks) in the
+  // viewer's browser; nothing here ever touches ml.json.
   const _smPasteBtn  = ov.querySelector('#smPasteUrl');
   const _smTypeBtn   = ov.querySelector('#smTypeUrl');
   const _smAddManual = ov.querySelector('#smAddManual');
   const _smAddBox    = ov.querySelector('#smAddBox');
   const _smAddGo     = ov.querySelector('#smAddGo');
 
-  if (_smAddBody) {
+  if (_smPasteBtn || _smAddBox) {
     // Reveal (and focus) the manual box. Called both by the ⌨ button and
     // whenever a clipboard read is refused or comes back with nothing usable.
     const _smShowManual = (msg, prefill) => {
@@ -2605,13 +2638,14 @@ async function _showShareableMenu() {
       if (msg && typeof toast === 'function') toast(msg, 2600);
     };
 
-    // What a rejected paste gets told. Naming the four accepted kinds is the
-    // whole message — "invalid URL" would leave the viewer guessing.
+    // What a rejected paste gets told. Naming the accepted kinds is the whole
+    // message — "invalid URL" would leave the viewer guessing.
+    // (dev0940) Three kinds, not four: an image has no time dimension to loop.
     const _smAddReject = raw => {
       const short = String(raw || '').slice(0, 60);
       if (typeof toast === 'function') {
         toast('Can\'t use that link' + (short ? ':\n' + short : '')
-          + '\nUse a YouTube, Vimeo, video-file or image link.', 3600);
+          + '\nUse a YouTube, Vimeo or video-file link.', 3600);
       }
     };
 
@@ -2623,9 +2657,9 @@ async function _showShareableMenu() {
       if (!url || !window.salLinks.classify(url)) { _smAddReject(raw); return; }
       window.salLinks.add({ link: url }).then(res => {
         if (_smAddBox) _smAddBox.value = '';
-        _smRenderAdded();
         if (typeof toast === 'function') {
-          toast(res.created ? '➕ Added — opening it now' : 'Already in your list — opening it', 1800);
+          toast(res.created ? '➕ Added — opening it now. Set A and B, then press AB💾'
+                            : 'Already one of yours — opening it', 2400);
         }
         const row = window.salLinks.rowFor(res.entry);
         setTimeout(() => _smOpenUserRow(row), 120);
@@ -2635,8 +2669,8 @@ async function _showShareableMenu() {
       });
     };
 
-    // 📋 Paste new URL. navigator.clipboard.readText() is the direct route, but
-    // it is unavailable or permission-gated in plenty of browsers (and on any
+    // 📋 Paste. navigator.clipboard.readText() is the direct route, but it is
+    // unavailable or permission-gated in plenty of browsers (and on any
     // non-secure origin), so EVERY failure path lands on the manual box rather
     // than on an error — the viewer can always finish the job with Ctrl+V.
     const _smPasteFlow = () => {
@@ -2682,16 +2716,16 @@ async function _showShareableMenu() {
     }
 
     // Tab keeps focus inside this page and wraps — the same rule SavedSearches
-    // and My Loops follow, rather than escaping to the menu's tab-switcher.
-    // One delegated listener; the control list is rebuilt on each press so it
-    // picks up the manual box the moment it's revealed and every card the list
-    // re-renders. Unhandled presses fall through to the menu's own handler.
-    const _smPage8El = ov.querySelector('#smPage8');
-    if (_smPage8El) _smPage8El.addEventListener('keydown', e => {
+    // follows, rather than escaping to the menu's tab-switcher. One delegated
+    // listener; the control list is rebuilt on each press so it picks up the
+    // manual box the moment it's revealed and every card the list re-renders.
+    // Unhandled presses fall through to the menu's own handler.
+    const _smLoopsPageEl = ov.querySelector('#smPage' + _pgOf('loops'));
+    if (_smLoopsPageEl) _smLoopsPageEl.addEventListener('keydown', e => {
       if (e.key !== 'Tab') return;
       const els = [_smPasteBtn, _smTypeBtn];
       if (_smAddManual && _smAddManual.style.display !== 'none') els.push(_smAddBox, _smAddGo);
-      _smAddBody.querySelectorAll('.sm-svbtn[data-act="open"]').forEach(b => els.push(b));
+      if (_smLoopsBody) _smLoopsBody.querySelectorAll('.sm-svbtn[data-act="open"]').forEach(b => els.push(b));
       const ring = els.filter(Boolean);
       const i = ring.indexOf(document.activeElement);
       if (i < 0) return;
@@ -2699,92 +2733,6 @@ async function _showShareableMenu() {
       const nxt = ring[(i + (e.shiftKey ? -1 : 1) + ring.length) % ring.length];
       if (nxt) nxt.focus();
     });
-
-    // The viewer's link list. Same card shape as SavedSearches / My Loops:
-    // name, what it is, and Open / Rename / Delete.
-    var _smRenderAdded = () => {
-      if (!_smAddBody) return;
-      if (!window.salLinks) {
-        _smAddBody.innerHTML = '<div class="sm-chnone">Saved links aren\'t available in this browser.</div>';
-        return;
-      }
-      window.salLinks.list().then(list => {
-        if (!list.length) {
-          _smAddBody.innerHTML = '<div class="sm-chnone">Nothing added yet. '
-            + 'Copy a link, then press <b>📋 Paste new URL</b>. It opens straight away — '
-            + 'set <b>A</b> and <b>B</b> on the player toolbar and press <b>AB&#128190;</b> '
-            + '(or <b>L</b>) to keep a loop of it in <b>My Loops</b>.</div>';
-          return;
-        }
-        // How many loops each link carries, so Delete can say what it takes
-        // with it (and the card can show the link is doing something).
-        const loopN = {};
-        const countLoops = window.salLoops
-          ? window.salLoops.list().then(ls => {
-              ls.forEach(l => {
-                const hit = list.filter(x => x.uid === String(l.uid) || x.link === String(l.link))[0];
-                if (hit) loopN[hit.uid] = (loopN[hit.uid] || 0) + 1;
-              });
-            }).catch(() => {})
-          : Promise.resolve();
-        countLoops.then(() => {
-          _smAddBody.innerHTML = list.map(e => {
-            const n = loopN[e.uid] || 0;
-            const meta = (e.kind === 'image' ? 'image' : 'video') + '  ·  ' + e.link
-              + (n ? '  ·  ' + n + ' loop' + (n === 1 ? '' : 's') : '')
-              + (e.ts ? '  ·  added ' + _smDateShort(new Date(e.ts).toISOString()) : '');
-            return '<div class="sm-item sm-card">'
-              + '<span class="sm-ico">' + (e.kind === 'image' ? '🖼' : '🎬') + '</span>'
-              + '<span class="sm-rcol">'
-                + '<span class="sm-rname">' + _smEsc(e.name) + '</span>'
-                + '<span class="sm-rmeta" style="word-break:break-all;">' + _smEsc(meta) + '</span>'
-              + '</span>'
-              + '<span class="sm-svbtns">'
-                + '<button class="sm-svbtn" data-act="open" data-uid="' + _smEsc(e.uid) + '">Open</button>'
-                + '<button class="sm-svbtn" data-act="ren" data-uid="' + _smEsc(e.uid) + '">Rename</button>'
-                + '<button class="sm-svbtn del" data-act="del" data-uid="' + _smEsc(e.uid) + '">Delete</button>'
-              + '</span>'
-            + '</div>';
-          }).join('');
-          const byUid = {};
-          list.forEach(e => { byUid[e.uid] = e; });
-          // Deleting a link takes its loops with it. Leaving them behind would
-          // put permanently dead "⚠ no longer available" cards in My Loops that
-          // the viewer has no way to revive — the source URL is gone.
-          const _smDelLink = e => {
-            const n = loopN[e.uid] || 0;
-            const msg = 'Remove "' + e.name + '" from your links?'
-              + (n ? '\n\nThis also deletes ' + n + ' loop' + (n === 1 ? '' : 's') + ' you saved on it.' : '');
-            if (!confirm(msg)) return;
-            const dropLoops = (window.salLoops && n)
-              ? window.salLoops.list().then(ls => Promise.all(ls
-                  .filter(l => String(l.uid) === e.uid || String(l.link) === e.link)
-                  .map(l => window.salLoops.remove(l.id))))
-              : Promise.resolve();
-            dropLoops.catch(() => {}).then(() => window.salLinks.remove(e.uid))
-              .then(() => { _smRenderAdded(); _smRenderLoops(); _smFocusAdd(); });
-          };
-          _smAddBody.querySelectorAll('.sm-svbtn').forEach(b => {
-            b.addEventListener('click', ev => {
-              ev.stopPropagation();
-              const e = byUid[b.dataset.uid];
-              if (!e) return;
-              if (b.dataset.act === 'del') { _smDelLink(e); return; }
-              if (b.dataset.act === 'ren') {
-                const nn = prompt('Rename this link:', e.name);
-                if (nn === null || !nn.trim() || nn.trim() === e.name) return;
-                window.salLinks.update(e.uid, { name: nn.trim() }).then(() => _smRenderAdded());
-                return;
-              }
-              _smOpenUserRow(window.salLinks.rowFor(e));   // sets _smReturnPage = 8
-            });
-          });
-        });
-      }).catch(() => {
-        _smAddBody.innerHTML = '<div class="sm-chnone">Could not read your saved links.</div>';
-      });
-    };
-    _smRenderAdded();
   }
 }
 
