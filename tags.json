@@ -2089,7 +2089,8 @@
     "label": "Mammalia",
     "kind": "taxon",
     "parents": [
-      "chordata"
+      "chordata",
+      "mammal"
     ],
     "aliases": [],
     "def": "",
@@ -8235,5 +8236,64 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "heterocephalus-glaber",
+    "label": "Heterocephalus glaber",
+    "kind": "taxon",
+    "parents": [
+      "heterocephalus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "naked mole rat",
+    "extinct": false
+  },
+  {
+    "id": "rodentia",
+    "label": "Rodentia",
+    "kind": "taxon",
+    "parents": [
+      "mammalia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "order"
+  },
+  {
+    "id": "bathyergidae",
+    "label": "Bathyergidae",
+    "kind": "taxon",
+    "parents": [
+      "rodentia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "heterocephalus",
+    "label": "Heterocephalus",
+    "kind": "taxon",
+    "parents": [
+      "bathyergidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "naticidae",
+    "label": "Naticidae",
+    "kind": "taxon",
+    "parents": [
+      "littorinimorpha"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family",
+    "common": "moon snails",
+    "extinct": false
   }
 ]
