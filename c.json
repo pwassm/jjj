@@ -61,7 +61,7 @@
       "3i"
     ],
     "_salHidden": [],
-    "_salGsize": 5,
+    "_salGsize": 3,
     "_salViews": {
       "9basic": {
         "name": "9basic",
@@ -123,7 +123,7 @@
       }
     },
     "_salActiveView": "9basic",
-    "_salLayout": "19"
+    "_salLayout": "square"
   },
   {
     "Kind": "intro",
@@ -2359,7 +2359,7 @@
     "gname": "MoonSnail2",
     "cells": 9,
     "Zoom": 1,
-    "DateModified": "2026-09-07 14:40:18",
+    "DateModified": "2026-09-07 14:44:41",
     "1a": "2255",
     "1b": "2257",
     "1c": "2254",
@@ -2371,6 +2371,7 @@
     "3c": "",
     "DateAdded": "2026-09-07 14:38:32",
     "ss": "moonsnail2",
-    "active": "1"
+    "active": "1",
+    "ctxt": "MoonSnail2"
   }
 ]
