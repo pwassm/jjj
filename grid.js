@@ -3536,7 +3536,12 @@ function gridWireInteractor(interactor, cell, cellStr) {
     // (dev0364) Shift + mouse → zoom (LMB in / RMB out) + drag-pan the zoomed cell.
     // Desktop only; only on a zoomable (image/video/montage) cell. Leaves pStart
     // null so the normal tap/hold/swipe path bails for the rest of this gesture.
-    if (e.shiftKey && e.pointerType === 'mouse' &&
+    // (dev0946) …but NOT when Alt is also down. Framing a cell means holding
+    // Shift (and Ctrl, for the Firefox-safe zoom-out) through the whole gesture,
+    // so the Alt-click that commits it usually arrives with Shift still held —
+    // and this branch used to swallow it, silently starting a zoom ramp instead
+    // of saving the COI. No toast, no save, and the ramp quietly undid the zoom.
+    if (e.shiftKey && !e.altKey && e.pointerType === 'mouse' &&
         !(typeof _isMobileDevice === 'function' && _isMobileDevice()) &&
         _gridCellZoomTarget(cell) && (e.button === 0 || e.button === 2)) {
       e.preventDefault(); e.stopPropagation();
