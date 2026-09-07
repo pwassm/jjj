@@ -492,15 +492,6 @@ function _gmTurnOn() { return !!(window.TurnCells && window.TurnCells.active); }
 // card and the gate below don't each have to remember the window hop.
 function _gmFoldOn() { return !!(window._fold16ModeOn && window._fold16ModeOn()); }
 
-// (dev0937) { / } while the fold is running. dir +1 = slower, -1 = faster — the
-// same ladder the dev-only ⏱ pill walks, said out loud because the pill is not
-// there in user mode and the fold is the one mode with nothing else to watch.
-function _gmFoldSpeed(dir) {
-  window._fold16SlowStep(dir);
-  if (typeof toast === 'function' && window._fold16SlowLabel)
-    toast('⧉ Fold speed — ' + window._fold16SlowLabel(), 1100);
-}
-
 // (dev0837 → dev0844) "THE MODES MENU HAS THE KEYBOARD" — the card is up, or one
 // of the engines is running. This is what gates the choice letters in core.js:
 // outside it t / q / d keep the meanings they have everywhere else (back to the
@@ -718,9 +709,7 @@ function _gmModesHtml() {
         fold)
     + '<div style="height:1px;background:rgba(255,255,255,.12);margin:8px 0 7px;"></div>'
     + row('Click', 'a cell', clickTxt, !!live || _gmTurnOn() || fold)
-    + row('{ / }', 'speed', fold
-        ? '<b>slower / faster folding</b> — ' + (window._fold16SlowLabel ? window._fold16SlowLabel() : '')
-        : 'slower / faster', fold)
+    + row('{ / }', 'speed', 'slower / faster', false)
     + row('M', 'this menu', 'toggles this menu — R is the off switch, not M', false)
     // (dev0800) Only shown once the desktop check has been overridden — it is the
     // one place the viewer can put it back. pointer-events is re-enabled just on
@@ -897,16 +886,12 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); e.stopPropagation();
     // (dev0463) Route to whichever speed-adjustable mode is active (FallCells has
     // its own moveDur knob); fall back to the conveyor.
-    // (dev0937) Fold first: it runs itself now, so its speed is the one thing a
-    // watcher wants a hand on, and no travelling engine can be running under it.
-    if (_gmFoldOn() && window._fold16SlowStep) { _gmFoldSpeed(1); return; }
     if (window.FallCells && window.FallCells.active) window.FallCells.slower();
     else if (window.MovingCells) window.MovingCells.slower();
     return;
   }
   if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key === '}' || (e.shiftKey && e.code === 'BracketRight'))) {
     e.preventDefault(); e.stopPropagation();
-    if (_gmFoldOn() && window._fold16SlowStep) { _gmFoldSpeed(-1); return; }
     if (window.FallCells && window.FallCells.active) window.FallCells.faster();
     else if (window.MovingCells) window.MovingCells.faster();
     return;

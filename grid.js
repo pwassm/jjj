@@ -2909,13 +2909,15 @@ function gridShow() {
       container.appendChild(cell);
   }
   
-  // (dev0820) The fold grid: paint the three circles and snap every cell to the
-  // current fold state. Any OTHER layout flattens that state first, so a fold can
-  // never carry over into the next grid.
+  // (dev0820) The fold grid: snap every cell to the current fold state. Any OTHER
+  // layout flattens that state first, so a fold can never carry over into the next
+  // grid — and (dev0938) drops the ⏱ speed pill with it, which lives on the
+  // OVERLAY rather than the container and so survives the innerHTML wipe above.
   if (_layout === '16F') {
     if (typeof _fold16Render === 'function') _fold16Render(container);
-  } else if (typeof _fold16Reset === 'function') {
-    _fold16Reset();
+  } else {
+    if (typeof _fold16Reset === 'function') _fold16Reset();
+    if (typeof _fold16SpeedPillClear === 'function') _fold16SpeedPillClear();
   }
 
   // Update info bar
@@ -3864,23 +3866,14 @@ function gridWireInteractor(interactor, cell, cellStr) {
   //   - text/HTML ftext rows  → open the text editor
   //   - empty cell            → open the text editor with a fresh row
   function _runDoubleTapAction(cellEl, cellS) {
-    // (dev0820) On a 16F back face a double-click means UNFOLD — in BOTH modes,
-    // since the fold is the whole point of the grid for a viewer too. Checked
-    // ahead of the user-mode return and ahead of every editor route below.
-    // (dev0824) A double-tap near a fold CIRCLE, asked for first. This path is the
-    // manual pointerup detector, which never fires a dblclick event, so fold16's
-    // own container listener cannot see it — without asking here, a near-miss on a
-    // circle opens the editor instead of folding.
-    // (dev0831) The circle has to be tested BEFORE the back-face branch below.
-    // Once a corner is folded, its back face (1aB / 4dB) covers the very square
-    // the centre circle sits on, so with the old order a double-click on the
-    // centre circle was read as "unfold that back face" — which is why the centre
-    // button kept re-opening whichever corner had been folded last.
-    if (typeof _fold16ClaimDoubleTap === 'function' && _fold16ClaimDoubleTap()) return;
-    if (cellEl && cellEl.dataset && cellEl.dataset.fold16Back) {
-      if (typeof _fold16Toggle === 'function') _fold16Toggle(cellEl.dataset.fold16Back);
-      return;
-    }
+    // (dev0820 → dev0938) THE FOLD NO LONGER CLAIMS A DOUBLE-CLICK. Two routes
+    // used to be tested here first: a double-tap near a fold CIRCLE
+    // (_fold16ClaimDoubleTap — this path is the manual pointerup detector, which
+    // never fires a dblclick event, so fold16's own listener could not see it),
+    // and a double-click on a folded back face, which unfolded that block. The
+    // fold runs its own cycle now (dev0937), so both are gone along with the
+    // circles themselves, and a double-click on a folding grid means what it
+    // means on any other grid.
     if (userMode) return; // dev-only path; user mode never edits from G
     const row = cellEl._rowData;
     if (row) {

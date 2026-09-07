@@ -538,7 +538,6 @@ var HP_MODES = [
     desc: 'The grid is folded like a paper fortune teller — ten cells in a staircase down the diagonal. It folds and unfolds itself; there is nothing to press.',
     rows: [
       { k: 'What it does',    d: 'Four cells at a time collapse into one and the back of the corner cell comes up: the lower-right corner first, then the upper-left, then the middle — 10 cells → 7 → 4 → 1. Then it opens back out in the same order reversed, and starts again. Half a second between folds.' },
-      { k: '{  /  }', d: 'Slower / faster folding' },
       { k: 'Click a cell',    d: 'Plays it, as on any grid' },
       { k: 'Which cells',     d: 'Any grid of 16 cells or more can fold. Thirteen of them are used — ten for the paper, three for what is written on the backs — taken in reading order from the grid you were looking at.' },
       { k: 'D',       d: 'STOP folding — the grid goes back to the way it was' },

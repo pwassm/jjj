@@ -14,10 +14,11 @@
 //   4    ·    ·  [4c] [4d]
 //
 // Three overlapping 2×2 BLOCKS run down that diagonal, sharing the cells 2b and
-// 3c. Each has a CIRCLE at the interior corner where its four cells meet, and
-// folds four squares into one. (dev0937) THE CIRCLES ARE NO LONGER OPERATED —
-// the fold runs its own cycle (see _f16AutoRun) and they are drawn invisible;
-// they still answer a click, which is all that is left of the manual route.
+// 3c. Each turns about the interior corner where its four cells meet — the
+// CIRCLE, which is now only a point in the geometry — and folds four squares
+// into one. (dev0937/0938) Nothing operates them: the fold runs its own cycle
+// (see _f16AutoRun), and the drawn dots and the double-click that went with them
+// have gone.
 //
 //   circle A (1a/1b/2a/2b) → lands on 2b, shows 1a's back  (c.json key 1aB)
 //   circle B (2b/2c/3b/3c) → lands on 2b, shows 3c's back  (key 3cB)
@@ -26,7 +27,7 @@
 // The cascade is 10 → 7 → 4 → 1: fold A and C and you are left with a clean 2×2
 // (1a-back, 2c, 3b, 4d-back) with circle B still dead centre, which is what makes
 // the last fold possible. B is the OUTER fold — while it is down, A and C are
-// inside its stack and their circles are hidden.
+// inside its stack.
 //
 // ── THE FOLD ────────────────────────────────────────────────────────────────
 // (dev0828) Driven by CORNER PATHS, not by rotations. Every corner of the block
@@ -93,10 +94,6 @@ const FOLD16_CELLS = [
   { cs: '4c', r: 4, c: 3 }, { cs: '4d', r: 4, c: 4 }
 ];
 
-
-// (dev0937) Are the fold circles drawn? They are always PRESENT and always
-// answer a click — this only decides whether they are painted. See _f16PlaceCircles.
-const _F16_CIRCLES_VISIBLE = false;
 
 // The three blocks, named by their 2×2 corners. `land` is the square everything
 // collapses onto, `diag` the one opposite it whose back ends up showing, `back`
@@ -333,8 +330,9 @@ function _fold16ModeToggle() {
 //
 // The loop is state-driven, not a script: each step asks whether the block is
 // already where the sequence wants it and does nothing if it is. So a manual
-// fold (the circles still answer a click — see _F16_CIRCLES_VISIBLE) cannot
-// desynchronise it; the cycle absorbs it and carries on.
+// fold cannot desynchronise it; the cycle absorbs it and carries on. (dev0938:
+// there is no manual fold left to absorb, but the property is worth keeping —
+// it is why a resize or a rebuild mid-cycle costs nothing.)
 // ══════════════════════════════════════════════════════════════════════════════
 const _F16_AUTO_SEQ = ['C', 'A', 'B'];   // folding order; unfolding is its reverse
 const _F16_AUTO_PAUSE = 500;             // ms between one fold landing and the next
@@ -475,11 +473,19 @@ function _f16SlowWheel(dy) {
   n = Math.round(n * 2) / 2;
   _fold16Slow(Math.max(_F16_SLOW_MIN, Math.min(_F16_SLOW_MAX, n)));
 }
+// (dev0938) The pill lives on the OVERLAY, not the container, so gridShow's
+// innerHTML wipe does not take it — leaving fold mode used to leave the ⏱ box
+// sitting on the plain grid. gridShow calls this on every non-fold layout.
+function _f16SpeedPillClear() {
+  const el = document.getElementById('fold16Speed');
+  if (el) el.remove();
+  return !!el;
+}
+
 function _f16SpeedPill() {
   const overlay = document.getElementById('gridOverlay');
   if (!overlay) return;
-  const old = document.getElementById('fold16Speed');
-  if (old) old.remove();
+  _f16SpeedPillClear();
   // Dev tuning aid — a viewer has no reason to be shown a fold-speed control.
   if (typeof _isUserMode === 'function' && _isUserMode()) return;
   const wrap = document.createElement('div');
@@ -527,8 +533,8 @@ function _fold16IsBackKey(k) { return FOLD16_BACK_KEYS.indexOf(k) !== -1; }
 // faces parked on top of their landing cell (hidden until their block folds).
 function _fold16CellList() {
   // (dev0844/0937) `src` says where a slot's media is fetched FROM; `cs` stays the
-  // fold's own name, so every fold-state lookup below (visibility, the circles,
-  // the crease) is untouched by the borrowing. In fold MODE there is no 1aB / 3cB
+  // fold's own name, so every fold-state lookup below (visibility, the crease)
+  // is untouched by the borrowing. In fold MODE there is no 1aB / 3cB
   // / 4dB key to read — those come from the grid's spare cells — and on a
   // borrowed non-square layout the ten staircase slots borrow as well.
   const out = FOLD16_CELLS.map(o => {
@@ -546,13 +552,32 @@ function _fold16CellList() {
   return out;
 }
 
-function _fold16Reset() { _fold16 = { A: false, B: false, C: false }; _fold16Busy = false; }
+// (dev0938) EVERY TEARDOWN INVALIDATES THE FOLD IN FLIGHT.
+//
+// A fold is an rAF loop plus a pile of clipped clones, and until now nothing
+// could call it off — _fold16Reset dropped the STATE but the loop ran on to its
+// own finish, which re-rendered. Manually that was a fraction of a second you had
+// to hit on purpose; since dev0937 the fold is always in flight, so R landed
+// mid-sweep almost every time and _fold16Render then re-applied the fold's
+// centred SQUARE template over the plain grid that R had just rebuilt. That is
+// the "cells stay square after leaving Fold" bug.
+//
+// The counter is the whole fix: _fold16Run captures it, and its sweep and its
+// finish both stand down the moment it moves — after tidying their clones away,
+// which they must do either way.
+var _f16Gen = 0;
+
+function _fold16Reset() {
+  _f16Gen++;
+  _fold16 = { A: false, B: false, C: false };
+  _fold16Busy = false;
+}
 
 // ── Layout ───────────────────────────────────────────────────────────────────
 // A centred SQUARE 4×4 with no gaps — square because the diagonal crease only
 // lands true on square cells, gapless because the ten cells are meant to read as
 // one sheet of paper. Called from _gridApplyContainerCSS. The track size is
-// stashed on the element so the circles can be placed from grid geometry rather
+// stashed on the element so the fold can be measured from grid geometry rather
 // than from cells that may currently be folded away (and therefore zero-sized).
 function _fold16ApplyTemplate(c) {
   if (!c) return;
@@ -615,20 +640,26 @@ function _f16Cell(container, cs) {
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────
-// Called at the end of every 16F gridShow: paints the circles and snaps every
-// cell to the current fold state (no animation — gridShow rebuilt the DOM, so
-// there is nothing to animate FROM).
+// Called at the end of every 16F gridShow: snaps every cell to the current fold
+// state (no animation — gridShow rebuilt the DOM, so there is nothing to
+// animate FROM).
 function _fold16Render(container) {
   if (!container) return;
+  // (dev0938) NOT OURS ANY MORE — bail. This is called from the tail of a fold
+  // (see _finish) and the fold now runs unattended, so R almost always lands
+  // mid-sweep: the grid is rebuilt as a plain 4x4/5x5 and a moment later this
+  // arrived and re-applied _fold16ApplyTemplate's centred SQUARE template over
+  // it, which is what left the cells square after leaving fold mode.
+  if (typeof _gridRenderLayout === 'function' && _gridRenderLayout() !== FOLD16_LAYOUT) return;
   // Do NOT touch container.style.position. #gridContainer is position:absolute +
   // inset:0 and that is the ONLY thing giving it size — #gridOverlay is a
   // flexbox, so switching to relative collapses it to about ten pixels wide
   // (dev0821). Absolute already makes it a positioned ancestor, which is all the
-  // circles need.
+  // movers need.
   container.style.perspective = '1400px';
   _f16InjectCSS();
   _fold16ApplyTemplate(container);
-  container.querySelectorAll('.fold16-circle, .fold16-mover, .fold16-ghost').forEach(el => el.remove());
+  container.querySelectorAll('.fold16-mover, .fold16-ghost').forEach(el => el.remove());
 
   const vis = _fold16Visible();
   for (const spec of _fold16CellList()) {
@@ -644,9 +675,8 @@ function _fold16Render(container) {
       _f16SetShown(el, !vis.hidden.has(spec.cs), spec.cs);
     }
   }
-  _f16PlaceCircles(container);
   _f16SpeedPill();
-  _f16WireContainer(container);
+  _f16WireResize(container);
 }
 
 // Reset every transform-ish property this module ever sets on a real grid cell.
@@ -694,126 +724,21 @@ function _f16Geom(container) {
   return null;
 }
 
-// Circles sit on grid geometry, not on the block's own cells — a folded block's
-// cells are gone, but its circle still has to be there to unfold it.
-function _f16PlaceCircles(container) {
-  let g = _f16Geom(container);
-  if (!g) {
-    // (dev0831) Never let a failed measurement take all three circles off the
-    // grid — without a circle the fold is unreachable, and a double-click at the
-    // right spot lands on whatever cell is underneath instead. _f16Geom needs a
-    // laid-out cell to read; this needs only the container, and repeats
-    // _fold16ApplyTemplate's own centred-square arithmetic so it agrees with the
-    // track sizes actually in force.
-    const r = container.getBoundingClientRect();
-    const side = Math.min(r.width, r.height);
-    const cell = side > 8 ? Math.floor((side - 4) / 4) : 0;
-    if (!cell) return;
-    g = { cw: cell, ch: cell, ox: (r.width - cell * 4) / 2, oy: (r.height - cell * 4) / 2 };
-  }
-  const ox = g.ox, oy = g.oy, cell = g.cw;
-  for (const b of FOLD16_BLOCKS) {
-    const on = _fold16Enabled(b.id);
-    // (dev0830) A and C genuinely vanish while the centre fold is down — their
-    // cells are inside its stack. The centre circle instead stays put and goes
-    // DIM until both corners are folded, so it reads as "not yet" rather than as
-    // a control that mysteriously comes and goes.
-    if (!on && b.id !== 'B') continue;
-    const tl = FOLD16_CELLS.find(o => o.cs === b.tl);
-    const folded = !!_fold16[b.id];
-    const dot = document.createElement('div');
-    // (dev0937) HIDDEN, NOT GONE. The fold drives itself now, so the circles are
-    // no longer controls anyone needs to see — but they are still the hit target
-    // for the click / double-click routes below, and a display:none element has
-    // no box for _f16CircleAt to measure. So they go invisible and stay in place.
-    // To remove them outright later: flip this to a deleted branch, and drop the
-    // pointerup / dblclick wiring with it.
-    dot.className = 'fold16-circle' + (folded ? ' f16-folded' : '') + (on ? '' : ' f16-off')
-      + (_F16_CIRCLES_VISIBLE ? '' : ' f16-unseen');
-    dot.dataset.f16 = b.id;
-    // The shared corner of the block's four cells = the bottom-right corner of
-    // its top-left cell.
-    dot.style.left = (ox + tl.c * cell) + 'px';
-    dot.style.top  = (oy + tl.r * g.ch) + 'px';
-    // (dev0930) b.label is a fold DESCRIPTION built from cell coordinates
-    // ("Fold 1a·1b·2a·2b onto 2b") — those coordinates are the grid's own
-    // notation and are not translated, so the label passes through as-is.
-    var _t = window.T || function (s) { return s; };
-    dot.title = !on ? _t('Fold the two corners first')
-      : (folded ? _t('Click to unfold') : b.label) + ' (' + _t('click') + ')';
-    // ─────────────────────────────────────────────────────────────────────────
-    // (dev0845) THE CIRCLES TAKE A SINGLE TAP, AND THEY TAKE IT ON pointerup.
-    //
-    // They used to answer only to dblclick, which is the one event this grid
-    // cannot rely on — see the note in _f16WireContainer: the cells call
-    // preventDefault() on pointerdown, and that suppresses every compatibility
-    // mouse event the browser would otherwise synthesise, click and dblclick
-    // included. On a saved 16F the circles happened to escape that; under FOLD
-    // MODE, laid over an ordinary grid, they did not, and the circles were
-    // simply dead — no fold, no toast, nothing.
-    //
-    // pointerup is immune: it is the real event, not a synthesised one, so no
-    // amount of preventDefault upstream can stop it. Handling the tap there
-    // fixes both halves of the bug at once — the swallowed dblclick, and the
-    // fact that a single click on a control that looks exactly like a button
-    // should have worked in the first place.
-    //
-    // Every route now goes through _f16CircleHit, which ignores a second tap
-    // within 400ms. That is what stops a genuine double-click reading as fold
-    // followed immediately by unfold.
-    // ─────────────────────────────────────────────────────────────────────────
-    dot.addEventListener('pointerup', e => {
-      if (e.button !== undefined && e.button !== 0) return;   // primary only
-      e.preventDefault(); e.stopPropagation();
-      _f16CircleHit(b.id);
-    }, true);
-    // Kept for the browsers that do still deliver it, and harmless now: the
-    // de-bounce in _f16CircleHit swallows it as the second tap of the pair.
-    dot.addEventListener('dblclick', e => {
-      e.preventDefault(); e.stopPropagation();
-      _f16CircleHit(b.id);
-    }, true);
-    ['pointerdown', 'mousedown', 'mouseup', 'click', 'contextmenu']
-      .forEach(t => dot.addEventListener(t, e => e.stopPropagation(), true));
-    container.appendChild(dot);
-  }
-}
-
-// (dev0822) A 40px circle is a small target, and a double-click that lands a few
-// pixels off it used to fall through to the cell underneath — which in dev mode
-// opens the text editor. Catch near-misses on the container in CAPTURE, before
-// any cell sees them, and swallow every double-click outright while a fold is
-// running.
-function _f16WireContainer(container) {
+// ── (dev0938) THE CIRCLES AND THE DOUBLE-CLICK ARE GONE ──────────────────────
+// Both were the manual route into a fold: three circles at the interior corners
+// where each block's four cells meet, answering a click (dev0845) or a
+// double-click near one (dev0822 / dev0824 / dev0831). dev0937 made the fold run
+// its own cycle and drew the circles invisible; nothing used them after that, and
+// a hidden control that still swallows clicks is worse than no control. So the
+// dots, their near-miss catcher, _f16CircleAt / _f16CircleHit and the
+// _fold16ClaimDoubleTap hook grid.js called ahead of its editor routes have all
+// gone. A double-click on the grid means what it means on any other grid again.
+//
+// What survives is the re-measure: the fold's square footprint is measured, so a
+// window that changes shape has to redraw it.
+function _f16WireResize(container) {
   if (container._f16Wired) return;
   container._f16Wired = true;
-  container.addEventListener('dblclick', e => {
-    if (_fold16Busy) { e.preventDefault(); e.stopPropagation(); return; }
-    // (dev0845) This is the NEAR-MISS catcher only. A double-click that landed on
-    // the dot itself has already been answered by its own pointerup — and this
-    // runs in CAPTURE, so the dot's stopPropagation cannot keep it away from here.
-    if (e.target && e.target.closest && e.target.closest('.fold16-circle')) {
-      e.preventDefault(); e.stopPropagation();
-      return;
-    }
-    const hit = _f16CircleAt(container, e.clientX, e.clientY);
-    if (!hit) return;
-    e.preventDefault(); e.stopPropagation();
-    _f16CircleHit(hit);
-  }, true);
-  // (dev0824) …and the OTHER double-tap path. grid.js cannot rely on dblclick —
-  // its cells preventDefault on pointerdown, which suppresses the browser's
-  // synthesized dblclick — so it detects double-taps itself from two pointerups
-  // inside 400ms. That never produces a dblclick event, so the handler above
-  // cannot see it, and a near-miss on a circle was still reaching the cell and
-  // opening the text editor. Record where the last release landed; _runDoubleTapAction
-  // asks _fold16ClaimDoubleTap() about it before doing anything else.
-  container.addEventListener('pointerup', e => {
-    _f16LastPt = { x: e.clientX, y: e.clientY };
-  }, true);
-  // (dev0823) The square footprint and the circle positions are both measured, so
-  // re-measure when the window changes shape. Guarded on the layout still being
-  // 16F — _fold16Render on anything else would paint circles onto a normal grid.
   window.addEventListener('resize', () => {
     if (_fold16Busy) return;
     // (dev0844) _gridRenderLayout, not _gridCurrentLayout: fold MODE is a 16F on
@@ -822,51 +747,6 @@ function _f16WireContainer(container) {
     const c = document.getElementById('gridContainer');
     if (c && c.offsetWidth) _fold16Render(c);
   });
-}
-
-// (dev0824) Where the last pointer release landed inside the grid, for the
-// pointerup-based double-tap path above.
-var _f16LastPt = null;
-
-// (dev0845) ONE DOOR FOR EVERY WAY OF HITTING A CIRCLE — the dot's own pointerup,
-// its dblclick, the container's near-miss dblclick, and grid.js's manual
-// double-tap detector. They can fire in pairs (a real double-click is a pointerup
-// AND a dblclick; a double-tap is two pointerups), and a fold that immediately
-// unfolds itself is worse than one that never starts. So a second hit inside
-// 400ms is dropped, which is short enough that two deliberate folds in a row
-// still both land.
-var _f16LastHitAt = 0;
-function _f16CircleHit(id) {
-  const now = Date.now();
-  if (now - _f16LastHitAt < 400) return;
-  _f16LastHitAt = now;
-  _fold16Toggle(id);
-}
-
-// Does the fold grid want this double-tap? Called first thing in grid.js's shared
-// _runDoubleTapAction. Returns true when the tap has been handled (or should be
-// thrown away) and the caller must not fall through to the editor routes.
-function _fold16ClaimDoubleTap() {
-  // (dev0844) Render layout — a double-tap on a circle folds in fold MODE too.
-  if (typeof _gridRenderLayout === 'function' && _gridRenderLayout() !== FOLD16_LAYOUT) return false;
-  if (_fold16Busy) return true;              // mid-fold: swallow, never edit
-  const container = document.getElementById('gridContainer');
-  if (!container || !_f16LastPt) return false;
-  const hit = _f16CircleAt(container, _f16LastPt.x, _f16LastPt.y);
-  if (!hit) return false;
-  _f16CircleHit(hit);        // (dev0845) shared de-bounce — the dot may have fired
-  return true;
-}
-
-// Block id whose circle is within a forgiving radius of this point, else null.
-function _f16CircleAt(container, cx, cy) {
-  let best = null, bestD = 46;   // px — generous, the circles are 100px+ apart
-  container.querySelectorAll('.fold16-circle').forEach(dot => {
-    const r = dot.getBoundingClientRect();
-    const d = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
-    if (d < bestD) { bestD = d; best = dot.dataset.f16; }
-  });
-  return best;
 }
 
 // ── The fold ─────────────────────────────────────────────────────────────────
@@ -907,10 +787,13 @@ function _f16EaseFold(p) { return p + 0.75 * Math.sin(2 * Math.PI * p) / (2 * Ma
 // callback kills the loop silently: the fold's clones stay in the DOM as frozen
 // skewed shapes and _fold16Busy stays true, which locks out every later fold. That
 // is one bug presenting as two, so a bad frame now ends the run instead.
-function _f16Animate(dur, onFrame, onDone, ease) {
+// (dev0938) `alive` is an optional predicate asked before every frame: false ends
+// the run early, straight to onDone, so a fold can be called off mid-sweep.
+function _f16Animate(dur, onFrame, onDone, ease, alive) {
   const fn = ease || _f16Ease;
   const t0 = performance.now();
   (function step(now) {
+    if (alive && !alive()) { if (onDone) onDone(); return; }
     const p = Math.min(1, (now - t0) / dur);
     let ok = true;
     try { onFrame(fn(p)); } catch (e) { ok = false; console.error('[16F] fold frame failed', e); }
@@ -1143,6 +1026,8 @@ function _f16FaceCell(container, cs) {
 function _fold16Run(container, b, folding) {
   _fold16Busy = true;
   _f16BusySince = Date.now();
+  const gen = _f16Gen;                       // (dev0938) this run's ticket
+  const alive = () => _f16Gen === gen;
 
   // Both directions need the block's four cells in the DOM, so drop the state
   // and re-render first: a no-op on a fold, and on an unfold it puts the cells
@@ -1255,12 +1140,17 @@ function _fold16Run(container, b, folding) {
   // cleanup used to leave it raised for the rest of the session, which locks out
   // every later fold on the grid.
   const finish = () => {
-    try { _finish(); } finally { _fold16Busy = false; }
+    try { _finish(); } finally { if (alive()) _fold16Busy = false; }
   };
   const _finish = () => {
+    // The clones and the hidden originals are tidied either way — an abandoned
+    // run must not leave skewed triangles or a hole in the grid behind it.
     parts.forEach(p => { p.el.remove(); if (p.backEl) p.backEl.remove(); });
     hidden.forEach(el => { el.style.display = ''; });
     land.style.zIndex = '';
+    // (dev0938) …but a run that has been called off writes NO state and paints
+    // NOTHING. Whatever cancelled it has already rebuilt the grid it wanted.
+    if (!alive()) return;
     _fold16[b.id] = folding;
     _fold16Render(container);
     // (dev0937) …but not while the cycle is driving: a toast every couple of
@@ -1270,10 +1160,10 @@ function _fold16Run(container, b, folding) {
 
   if (folding) {
     sweep(0);
-    _f16Animate(_f16Dur(), sweep, finish, _f16EaseFold);
+    _f16Animate(_f16Dur(), sweep, finish, _f16EaseFold, alive);
   } else {
     sweep(1);
-    _f16Animate(_f16Dur(), t => sweep(1 - t), finish, _f16EaseFold);
+    _f16Animate(_f16Dur(), t => sweep(1 - t), finish, _f16EaseFold, alive);
   }
 }
 
@@ -1287,27 +1177,6 @@ function _f16InjectCSS() {
   const s = document.createElement('style');
   s.id = 'fold16-css';
   s.textContent = [
-    '.fold16-circle {',
-    '  position:absolute; width:40px; height:40px; margin:-20px 0 0 -20px;',
-    '  border-radius:50%; border:2px solid rgba(255,238,200,0.92);',
-    '  background:radial-gradient(circle at 38% 34%, rgba(255,255,255,0.34), rgba(0,0,0,0.52));',
-    '  box-shadow:0 0 0 2px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.65);',
-    '  cursor:pointer; z-index:90; transition:transform .14s ease, border-color .14s ease;',
-    '}',
-    // A transparent collar so a double-click that misses the ring still counts.
-    '.fold16-circle::after {',
-    '  content:""; position:absolute; left:-14px; top:-14px; right:-14px; bottom:-14px;',
-    '  border-radius:50%;',
-    '}',
-    '.fold16-circle:hover { transform:scale(1.16); border-color:#fff; }',
-    '.fold16-circle.f16-off { opacity:0.34; cursor:default; }',
-    '.fold16-circle.f16-off:hover { transform:none; }',
-    '.fold16-circle.f16-folded { border-color:rgba(255,190,90,0.95);',
-    '  background:radial-gradient(circle at 38% 34%, rgba(255,214,140,0.5), rgba(60,30,0,0.62)); }',
-    // (dev0937) Invisible, still hittable — opacity, never display:none, so the
-    // near-miss catcher still has a box to measure.
-    '.fold16-circle.f16-unseen, .fold16-circle.f16-unseen:hover {',
-    '  opacity:0; transform:none; cursor:default; }',
     // (dev0826) Fold-speed pill, bottom-left of the grid. Bottom-RIGHT is taken
     // by the source buttons and the version badge; top-left by the info bar.
     '.fold16-speed {',
@@ -1355,10 +1224,6 @@ window._fold16BackBlock = _fold16BackBlock;
 window._fold16Render = _fold16Render;
 window._fold16Reset = _fold16Reset;
 window._fold16Toggle = _fold16Toggle;
-window._fold16ClaimDoubleTap = _fold16ClaimDoubleTap;
 window._fold16Slow = _fold16Slow;
-// (dev0937) { / } on the grid step the FOLD's speed while fold mode is on —
-// dir +1 = slower, -1 = faster. Same ladder the ⏱ pill walks.
-window._fold16SlowStep = _f16SlowStep;
-window._fold16SlowLabel = _f16SlowLabel;
 window._fold16ApplyTemplate = _fold16ApplyTemplate;
+window._fold16SpeedPillClear = _f16SpeedPillClear;
