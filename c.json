@@ -6,12 +6,12 @@
       "ctype": 64
     },
     "_salColOrder": [
-      "Kind",
       "gname",
       "ctxt",
       "ctype",
       "Lock",
       "Label",
+      "Kind",
       "active",
       "cells",
       "ss",
@@ -246,10 +246,10 @@
     "ss": "",
     "Zoom": "",
     "DateAdded": "2026-09-05 18:08:55",
-    "DateModified": "2026-09-06 21:40:13",
+    "DateModified": "2026-09-07 04:49:31",
     "ctype": "t",
     "active": "7",
-    "Label": "My Loops",
+    "Label": "Saved Loops",
     "Lock": "1"
   },
   {
