@@ -27,6 +27,22 @@ Also in dev0940, unrelated to the bar: "My Loops" and "Add your own" merged into
 one **Saved Loops** tab, each card tagged FromThisSite or FromPastedURL, and
 `salLinks` stopped accepting image links — that store now backs A→B on video only.
 
+**Finished off in dev0941–0942**, after a spell in which the code half had landed
+and the data half had not:
+
+- **The `Kind` column was written** (dev0941's c.json commit) on all fifteen
+  `ctype: t` rows, and a **Flashcards** row added — the `flash` kind and its body
+  existed from dev0940, but no row asked for it, so the tab was never on the site.
+  "Add your own" was parked at the same time: it had carried an `active` number
+  since the merge but resolves to `loops`, which "Your loops" claims first, so the
+  dedup skipped it — nine numbers, eight tabs.
+- **`_KIND_BY_GNAME` is gone** (dev0941). That shim classified a Kind-less row by
+  its name so the site worked before the column landed, and while it stood a gname
+  was still load-bearing: renaming "Grids" to anything off its list would quietly
+  have turned that tab into an empty prose page. `_kindOf` reads the `Kind` cell
+  and nothing else now, falling to `prose` for a missing or unknown value.
+- **The lock got its second guard** (dev0942) — open question 2, below, settled.
+
 To re-derive the current shape: `grep -n "TAB_KINDS\|_smTabs\|_pgOf" boot.js`.
 
 ---
@@ -61,7 +77,9 @@ particular string — non-empty is the test, so anything the author types there
 (`1`, `x`, `No Edit`) locks the row. Order and label stay editable.
 
 This is a dedicated column rather than `ss`, which is a live deep-link id —
-section 2.
+section 2. Two guards enforce it, at the Xe entry point and in the save path — see
+open question 2, which is settled, for both and for the way to write prose around
+a locked tab's injected body.
 
 ### `active` — the tab order
 
@@ -292,9 +310,33 @@ is — the code has to already know its name. `ctype` + `active` replaces all of
    are the author's own parked material (`Sources` today) and are invisible
    without an `active` number — but with no button there is no way to *list* them
    in C either. A fifth button, or `o` shows only when no filter is on?
-2. **Where is the lock enforced?** One guard at the Xe entry point
-   ([hotkeys.js:213](hotkeys.js#L213)) is the cheap version. A second guard in the
-   save path is the safe version — the entry point is not the only route in.
+2. ~~**Where is the lock enforced?**~~ **SETTLED, dev0942 — in both places, and
+   the second one was not optional.** The cheap guard shipped in dev0931 at the Xe
+   entry point ([hotkeys.js:224](hotkeys.js#L224)): E on a locked `ctxt` toasts
+   "🔒 Locked row" and refuses. The question's own suspicion was right — E is not
+   the only route in. `startEdit` ([core.js:3102](core.js#L3102)) opens **any** cell
+   of the C table in a plain text input, `ctxt` included, and knows nothing about
+   `Lock`, so typing into that cell walked straight past the guard and into the
+   file. It was never noticed because the locked rows were all empty.
+
+   The safe guard is in `cSaveToFile` ([collection.js:1200](collection.js#L1200)),
+   which is the choke point every write to c.json passes through — the Xe editor,
+   the C table, `gridSaveToFile`, and whatever is added next. Three properties
+   worth keeping if it is ever rewritten:
+
+   - **It measures against what was last WRITTEN, not against a constant.** That
+     is what makes it a lock rather than a freeze, and it is what makes the
+     two-section rule usable on a locked tab: clear `Lock`, write the prose around
+     the injected body, save — the row is unlocked at that moment, so the edit
+     lands and becomes the new baseline — then lock it again and the new text is
+     what is held. The baseline is re-taken on every load and every save.
+   - **It is keyed on the row OBJECT (a WeakMap), never on `gname`.** gname is free
+     text now; a rename must not be a way to silently unlock a row.
+   - **A blocked edit toasts and re-renders.** The C table is still showing what was
+     typed at that point, and a revert nobody can see is worse than no revert.
+
+   Deliberately NOT guarded: `Lock` itself, and `active` / `Label` / `Kind`. The
+   lock is on the row's text, not on the row.
 3. **Spanish labels — where does the key live?** Today `_T('Grids')` keys on the
    hardcoded English string. Once the label is data there is no literal to key on,
    so the Spanish column has to be keyed on something stable — `gname`, per T4.
