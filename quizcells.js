@@ -49,14 +49,22 @@
 // (dev0898) A CORRECT CARD IS READ AT THE PLAYERS OWN PACE. It turns over and
 // stays turned until the next click, anywhere.
 //
-// (dev0941) AND IT SAYS SO, EVERY TIME, ALONG THE FOOT OF THE CARD. What stood
-// here was a balloon in the card's corner shown for the first two corrects only,
-// on the reasoning that a nudge which never stops appearing is a nudge you stop
-// reading. That reasoning belonged to the balloon: a thing that POPS UP is read
-// as an event, and an event repeated becomes noise. A quiet full-width rule along
-// the bottom edge is read as part of the card — a caption, not an interruption —
-// so it can stay for every correct answer and be there for the one the player
-// hesitates on, which is never reliably the first or the second.
+// (dev0942) AND IT SAYS SO, TWICE, ACROSS THE FOOT OF THE TURNED CARD. Neither of
+// the two earlier builds of this prompt could be read: both appended it to the
+// CELL, where turncells.js's hideFront() blanks it at the midpoint of the turn, so
+// it showed for half a turn at an angle and vanished as the card landed. It lives
+// inside the back PANEL now, which is where side 2 lives, so it arrives with the
+// text and stays for exactly as long as the text does — see showContinue.
+//
+// TWICE PER RUN, AND NEVER AGAIN AFTER THE FIRST RUN. It teaches one gesture, and
+// two showings is enough to learn it; a player who has finished a run before has
+// not only been told, they have done it, so localStorage answers for them and the
+// prompt never appears at all. Not "every time": what a returning player needs
+// from a card is the card.
+//
+// AND IN A VOICE THAT IS NOT THE CARD'S — amber, monospaced, smaller than the
+// back's own type and sized off it. Three signals rather than one, because the
+// card backs vary and any single cue survives badly on some of them.
 //
 // THE THREE-SECOND HINT OFFER. A wrong click asks whether they want a hint, and
 // that offer counts itself down from 3 and disappears. Not answering is a real
@@ -121,6 +129,7 @@
   var gStart    = null;   // (dev0913) where the current press started, for swipe vs tap
   var awaiting  = false;  // a click on a cell is meaningful right now
   var reading   = false;  // (dev0898) a card is turned over, waiting to be clicked past
+  var promptsLeft = 0;    // (dev0942) "click to continue" showings left in THIS run
   var timers    = [];     // every pending timer, cleared as one on stop()
   var wired     = false;
 
@@ -136,6 +145,25 @@
     timers = [];
   }
   function drop(id) { var el = document.getElementById(id); if (el) el.remove(); }
+
+  // (dev0942) HAS THIS PLAYER EVER PLAYED BEFORE? The "click to continue" prompt
+  // teaches one gesture, once. Two showings is enough to learn it, so a run gives
+  // it twice — and a player who has already finished a run gets it NO times, since
+  // by then they have not only been told, they have done it.
+  //
+  // Per-browser, which is the same grain as every other viewer preference here,
+  // and the same grain as the knowledge: it is this person, at this device, who
+  // learned the gesture. Every accessor is wrapped — a private window, cleared
+  // site data or a browser set to block storage all throw rather than return
+  // empty, and none of those is a reason to fail to start a quiz. A read that
+  // fails means "new player", which errs towards showing the help.
+  var SEEN_KEY = 'slam-quiz-played';
+  function playedBefore() {
+    try { return localStorage.getItem(SEEN_KEY) === '1'; } catch (_) { return false; }
+  }
+  function markPlayed() {
+    try { localStorage.setItem(SEEN_KEY, '1'); } catch (_) {}
+  }
 
   // (dev0913) The VISUAL frame, not the device one: on a portrait phone the whole
   // UI is drawn inside #rotateWrap under a rotate(90deg), so window.innerWidth is
@@ -716,48 +744,76 @@
       try { window._gridCardTurn(cell, 0); } catch (_) {}
     }
     reading = true;
-    showContinue(cell);
+    if (promptsLeft > 0) { promptsLeft--; showContinue(cell); }
   }
 
-  // (dev0941) THE LINE ALONG THE FOOT OF THE CARD. Every correct answer gets it,
-  // for as long as the card stays turned — see the note at the top of the file
-  // for why the old two-corrects limit went with the balloon it was written for.
+  // (dev0942) WHY IT USED TO FLASH, WHICH IS THE WHOLE STORY OF THIS FUNCTION.
+  // Both earlier builds appended the prompt to the CELL, the moment after asking
+  // for the turn. But a turn is animated in two halves, and at the midpoint
+  // turncells.js's hideFront() walks cell.children and sets visibility:hidden on
+  // everything that is not the new back panel or the interactor (turncells.js
+  // ~line 439). The prompt was a child of the cell by then, so it was painted for
+  // the first half of the turn and then blanked exactly as the card landed — on
+  // screen for ~200ms, at an angle, over a picture. Unreadable, and gone before
+  // it could be read: precisely the "useless flash".
   //
-  // (dev0913, still true) ON THE CARD, NOT AT THE POINTER. The first build put it
-  // beside the mouse and clamped it into the viewport, which has no meaning on a
-  // phone: a tap leaves no pointer behind, and the coordinates it was placed from
-  // are the PHYSICAL ones while this is drawn inside the rotated wrap, so it
-  // landed nowhere near the card it was talking about. Appended to the CELL, it
-  // needs no coordinates at all and cannot land in the wrong frame.
+  // So it goes INSIDE the back panel instead, which fixes the timing and the
+  // lifetime together. hideFront only ever looks at direct children of the cell,
+  // so a grandchild cannot be caught by it however the animation is timed; the
+  // panel is position:absolute;inset:0 (grid.js _gridCardBackPanel), so the band
+  // anchors to the card face with no coordinates of its own; and the panel is
+  // dropped when the card turns home, which takes the prompt with it. It persists
+  // for exactly as long as side 2 is up, which is what was asked for.
   //
-  // Full width and flat to the bottom edge, so it reads as the card's own footer
-  // rather than as something that arrived. z-index clears the card back's own
-  // panel (140); pointer-events:none so the very click it asks for passes through.
-  // The back shrinks to fit rather than filling the cell (grid.js's chip rule), so
-  // there is normally slack under the last line for this to sit in.
+  // The panel does not exist until the midpoint of the turn, so this polls for it
+  // rather than guessing at a duration — the turn speed is a setting, and the
+  // no-WAAPI fallback path times differently again.
   function showContinue(cell) {
     drop('quizContinue');
     if (!cell) return;
-    // A shade bigger than the old corner pill and never below 11px: this is meant
-    // to be read at a glance from wherever the player is sitting, and it has the
-    // full width of the card to be read across.
-    var fs = Math.max(11, Math.round(panelFont() * 0.95));
+    var tries = 0;
+    (function attempt() {
+      if (!active || !reading) return;             // clicked past already
+      var panel = cell.querySelector('.turn-back');
+      if (panel) { mountContinue(panel); return; }
+      if (++tries > 40) return;                    // ~1.6s, then give up quietly
+      later(attempt, 40);
+    })();
+  }
+
+  // A BAND OVER THE FOOT OF THE CARD, IN A VOICE THAT IS NOT THE CARD'S. The back
+  // is #e9e9f0 system-ui prose on #14161c; this is amber, monospaced and smaller,
+  // so it reads as the app talking rather than as another line of the card — three
+  // separate signals, because any one of them alone survives badly on some card.
+  //
+  // Sized off the PANEL's own font rather than the viewport: the card back already
+  // scales its type to the cell (fs0 = clientHeight/14), so taking 0.72 of that
+  // keeps this smaller than the card's text on every cell size instead of only on
+  // the ones the viewport happened to predict. 10px floor — below that it stops
+  // being readable, which was the other half of the complaint.
+  //
+  // z-index 150 clears the panel's own overflow fade; pointer-events:none so the
+  // very click it is asking for passes straight through to the quiz's handler.
+  function mountContinue(panel) {
+    var base = 15;
+    try { base = parseFloat(getComputedStyle(panel).fontSize) || 15; } catch (_) {}
+    var fs = Math.max(10, Math.round(base * 0.72));
     var b = document.createElement('div');
     b.id = 'quizContinue';
     // (dev0934) Two WHOLE phrases, not a verb glued to " to continue": Spanish
     // wants "toca para continuar" / "haz clic para continuar", and only the
     // complete sentence gives the translation somewhere to put the difference.
-    // The keys stay lower-case (that is how lang.es.json holds them); the line
-    // is sentence-cased on the way out, in whatever language came back.
+    // The keys stay lower-case (that is how lang.es.json holds them); the line is
+    // sentence-cased on the way out, in whatever language came back.
     b.textContent = sentenceCase(isPhone() ? T('tap to continue') : T('click to continue'));
-    b.style.cssText = 'position:absolute;left:0;right:0;bottom:0;z-index:200;'
-      + 'pointer-events:none;text-align:center;padding:5px 8px;'
-      + 'background:rgba(14,16,22,0.86);color:#f2f4f8;'
-      + 'border-top:1px solid rgba(255,255,255,0.16);'
+    b.style.cssText = 'position:absolute;left:0;right:0;bottom:0;z-index:150;'
+      + 'pointer-events:none;text-align:center;padding:5px 8px;box-sizing:border-box;'
+      + 'background:rgba(10,11,15,0.88);color:#ffd479;'
+      + 'border-top:1px solid rgba(255,212,121,0.30);'
       + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
-      + 'letter-spacing:0.02em;'
-      + 'font:' + fs + 'px/1.25 system-ui,-apple-system,Segoe UI,sans-serif;';
-    cell.appendChild(b);
+      + 'letter-spacing:0.06em;'
+      + 'font:' + fs + 'px/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;';
+    panel.appendChild(b);
   }
 
   // Only the first character, and only if it is already lower case — so an
@@ -966,6 +1022,8 @@
     active = true; right = 0; wrong = 0; cur = null; reading = false;
     hits = []; misses = []; askedIds = {}; total = queue.length;
     hintHtml = null; gStart = null;     // (dev0913) per-question scraps
+    // (dev0942) Twice per run for a first-time player, never for a returning one.
+    promptsLeft = playedBefore() ? 0 : 2;
     drop('quizSummary'); drop('quizSummaryCatch');
     startedAt = Date.now();
     if (typeof window._gridCardFrontAll === 'function') {
@@ -986,6 +1044,11 @@
     if (!active) return;
     var final = summarise ? { right: right, wrong: wrong, time: elapsed(),
                               hits: hits.slice(), misses: misses.slice() } : null;
+    // (dev0942) "Played before" means a card was actually turned over and clicked
+    // past, not that the button was pressed — so it hangs off `right`, and it is
+    // recorded on EVERY ending, including the ones that get no summary. Quitting
+    // half way through still taught the gesture.
+    if (right > 0) markPlayed();
     active = false; awaiting = false; reading = false; cur = null; queue = [];
     clearTimers();
     unwire();

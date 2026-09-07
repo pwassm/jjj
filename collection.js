@@ -1159,6 +1159,46 @@ function _cPruneEmpty(arr) {
   return Array.isArray(arr) ? arr.filter(r => !_cIsEmptyConfig(r)) : arr;
 }
 
+// (dev0942) THE LOCK'S SECOND GUARD — the one on the way OUT.
+//
+// `Lock` (any non-empty value) means a row's `ctxt` is not to be edited. The
+// first guard is at the Xe entry point (hotkeys.js, the E hotkey), and it was
+// always only half the answer: E is not the only route in. `startEdit` in core.js
+// opens ANY cell of the C table in a plain text input, `ctxt` included, and knows
+// nothing about Lock — so typing into that cell walked straight past the lock and
+// into the file. Every write to c.json goes through cSaveToFile, so this is the
+// choke point that catches the routes nobody has thought of yet, this one and any
+// future one.
+//
+// It compares against what was last WRITTEN, not against a constant, which is what
+// makes the lock a lock rather than a freeze: clear the Lock cell, edit the ctxt,
+// save — the row is unlocked at that moment, so the edit goes through and becomes
+// the new baseline. Lock it again afterwards and the new text is what is held.
+// That is the intended way to write prose around a locked tab's injected body.
+//
+// Keyed on the ROW OBJECT (a WeakMap), never on gname: gname is free text now and
+// renaming a tab must not silently unlock it. A row created in-session has no
+// baseline and is not guarded until its first save gives it one.
+const _cLockedCtxt = new WeakMap();
+function _cLockOf(row)   { return row && !row._salMeta ? String(row.Lock || '').trim() : ''; }
+function _cSnapLocks(rows) {
+  (rows || []).forEach(r => { if (_cLockOf(r)) _cLockedCtxt.set(r, String(r.ctxt || '')); });
+}
+// Put back any locked ctxt that changed, and say so. Returns the gnames it
+// reverted, so the caller can tell the user rather than silently undoing typing
+// they watched land in the cell.
+function _cEnforceLocks(rows) {
+  const reverted = [];
+  (rows || []).forEach(r => {
+    if (!_cLockOf(r) || !_cLockedCtxt.has(r)) return;
+    const was = _cLockedCtxt.get(r);
+    if (String(r.ctxt || '') === was) return;
+    r.ctxt = was;
+    reverted.push(String(r.gname || '').trim() || '(unnamed)');
+  });
+  return reverted;
+}
+
 async function cSaveToFile() {
   // (zip0251) Only update _salColOrder if _cCols actually has columns. When
   // cSaveToFile is called from outside C-mode (gridSaveToFile / reassign
@@ -1168,8 +1208,22 @@ async function cSaveToFile() {
   _cMeta._salHidden    = [..._cHidden];
   _cMeta._salColWidths = Object.assign({}, _cColWidths);
   _cData = _cPruneEmpty(_cData);
+  // (dev0942) Before anything is serialised — see the note above.
+  const _locked = _cEnforceLocks(_cData);
+  if (_locked.length) {
+    try {
+      toast('🔒 ctxt not saved for ' + _locked.join(', ')
+          + ' — clear the Lock column to edit it', 3600);
+    } catch (_) {}
+    // The table is still showing what was typed, so redraw it against what is
+    // actually being written. A revert nobody can see is worse than no revert.
+    try { if (_cMode && typeof render === 'function') render(); } catch (_) {}
+  }
   _gridConfigs = _cData;
   const payload = [_cMeta].concat(_cData);
+  // (dev0942) What is going out is the new baseline the lock holds a row to —
+  // including a row unlocked, edited and saved on purpose.
+  _cSnapLocks(_cData);
   // Always mirror to localStorage so an FSA failure doesn't lose the edit.
   try { localStorage.setItem(_C_LS_KEY, JSON.stringify(payload)); } catch(_) {}
   const ok = await writeFileToDisk('c.json', payload);
@@ -1216,6 +1270,11 @@ async function _cEnsureLoaded() {
     _gridConfigs = _cData;
   } catch (e) { _cData = []; _gridConfigs = []; }
   cBuildCols();
+  // (dev0942) The ctxt every locked row arrived holding — the baseline the save
+  // guard measures against. Taken at LOAD, not at first save, so a lock is in
+  // force from the moment the file is read, whichever of the three sources above
+  // it came from. Both load paths do it; there is no third.
+  _cSnapLocks(_cData);
   if (_cMeta._salHidden) _cHidden = new Set(_cMeta._salHidden);
   if (_cMeta._salColWidths) _cColWidths = Object.assign({}, _cMeta._salColWidths);
   _cLoaded = true;
@@ -1270,6 +1329,7 @@ async function openCScreen() {
       _cData = _cPruneEmpty(_cData);
       _gridConfigs = _cData;
     } catch (e) { _cData = []; _gridConfigs = []; }
+    _cSnapLocks(_cData);          // (dev0942) see the note in _cEnsureLoaded
     _cLoaded = true;
   }
 
