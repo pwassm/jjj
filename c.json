@@ -10,6 +10,7 @@
       "ctxt",
       "ctype",
       "Lock",
+      "Label",
       "active",
       "cells",
       "ss",
@@ -56,8 +57,7 @@
       "3f",
       "3g",
       "3h",
-      "3i",
-      "Label"
+      "3i"
     ],
     "_salHidden": [],
     "_salGsize": 5,
@@ -175,8 +175,7 @@
     "active": "1",
     "ctype": "t",
     "Label": "Welcome",
-    "Lock": "",
-    "Kind": "intro"
+    "Lock": ""
   },
   {
     "gname": "Introduction_d2",
@@ -500,8 +499,7 @@
     "active": "8",
     "ctype": "t",
     "Label": "Other",
-    "Lock": "",
-    "Kind": "prose"
+    "Lock": ""
   },
   {
     "gname": "Quiz2Snowflakes",
@@ -2228,8 +2226,7 @@
     "ctype": "t",
     "active": "2",
     "Label": "Starting out",
-    "Lock": "",
-    "Kind": "prose"
+    "Lock": ""
   },
   {
     "gname": "Grids",
@@ -2242,22 +2239,7 @@
     "ctype": "t",
     "active": "3",
     "Label": "Grids",
-    "Lock": "1",
-    "Kind": "grids"
-  },
-  {
-    "gname": "Flashcards",
-    "ctxt": "",
-    "cells": 0,
-    "ss": "",
-    "Zoom": "",
-    "DateAdded": "2026-09-07 03:53:11",
-    "DateModified": "2026-09-07 03:53:11",
-    "ctype": "t",
-    "active": "4",
-    "Label": "Flashcards",
-    "Lock": "1",
-    "Kind": "flash"
+    "Lock": "1"
   },
   {
     "gname": "Search",
@@ -2268,10 +2250,9 @@
     "DateAdded": "2026-09-05 18:08:55",
     "DateModified": "2026-09-05 18:08:55",
     "ctype": "t",
-    "active": "5",
+    "active": "4",
     "Label": "Search",
-    "Lock": "1",
-    "Kind": "search"
+    "Lock": "1"
   },
   {
     "gname": "SavedSearches",
@@ -2282,10 +2263,9 @@
     "DateAdded": "2026-09-05 18:08:55",
     "DateModified": "2026-09-05 18:08:55",
     "ctype": "t",
-    "active": "6",
+    "active": "5",
     "Label": "SavedSearches",
-    "Lock": "1",
-    "Kind": "saved"
+    "Lock": "1"
   },
   {
     "gname": "Your loops",
@@ -2296,10 +2276,9 @@
     "DateAdded": "2026-09-05 18:08:55",
     "DateModified": "2026-09-07 01:48:55",
     "ctype": "t",
-    "active": "7",
-    "Label": "Saved Loops",
-    "Lock": "1",
-    "Kind": "loops"
+    "active": "6",
+    "Label": "My Loops",
+    "Lock": "1"
   },
   {
     "gname": "Add your own",
@@ -2310,10 +2289,9 @@
     "DateAdded": "2026-09-05 18:08:55",
     "DateModified": "2026-09-05 18:08:55",
     "ctype": "t",
-    "active": "",
+    "active": "7",
     "Label": "Add your own",
-    "Lock": "1",
-    "Kind": "loops"
+    "Lock": "1"
   },
   {
     "gname": "Contact",
@@ -2326,7 +2304,6 @@
     "ctype": "t",
     "active": "9",
     "Label": "Contact",
-    "Lock": "",
-    "Kind": "signin"
+    "Lock": ""
   }
 ]
