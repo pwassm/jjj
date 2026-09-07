@@ -476,7 +476,11 @@ html.deep-uid #wrap,
 html.deep-uid #browseOverlay { display: none !important; }
 html.deep-uid { background: #000 !important; }
 
-html.locked-mode #gridOverlay,
+/* (dev0944) :not(.deep-config) — a bare ?c=NAME is locked-mode too, and this
+   rule used to hide the grid it had just built, so a shared grid link only
+   worked with the private /unlock suffix. ?i= and ?ss= still hide G: for those
+   the grid is the thing a stranger must NOT be able to reach. */
+html.locked-mode:not(.deep-config) #gridOverlay,
 html.locked-mode #ver-badge,
 html.locked-mode #uid-badge,
 html.locked-mode #mobileToCBtn,
@@ -1148,7 +1152,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0943';
+  window.HELP_VERSION_STR = 'dev0944';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

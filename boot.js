@@ -256,6 +256,10 @@ _markUserModeClass();
           document.documentElement.classList.add('locked-mode');
           window._lockedConfig = name;
         }
+        // (dev0944) Mark the link KIND, not just the lock state. A bare ?c= is
+        // locked-mode like a bare ?i=, but its whole purpose is to show G — so
+        // the locked-mode rule that hides #gridOverlay has to spare this case.
+        document.documentElement.classList.add('deep-config');
         window._deepConfig = name;
         window._deepConfigUnlocked = hasUnlock;
       }
