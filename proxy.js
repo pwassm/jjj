@@ -7206,8 +7206,8 @@ function vpnSwitch(res, origin, avoid) {
   // self-elevates with one UAC prompt.
   const runScript = () => {
     try {
-      const p = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', VPN_PS1],
-                      { detached: true, stdio: 'ignore' });
+      const p = spawn('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', VPN_PS1],
+                      { detached: true, stdio: 'ignore', windowsHide: true });
       p.on('error', () => {});
       p.unref();
     } catch (_) {}

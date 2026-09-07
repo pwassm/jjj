@@ -20,9 +20,11 @@ if %errorlevel%==0 (
 )
 
 REM give the tunnel a moment to come up, then show the result
-timeout /t 8 /nobreak >nul
+REM (dev0947) the rotation now runs in a HIDDEN window, so this log tail is the only
+REM feedback a manual run gets - wait long enough for the verify loop to finish.
+timeout /t 25 /nobreak >nul
 if exist "%LOG%" (
     echo -----------------------------------------------------
-    powershell -NoProfile -Command "Get-Content -LiteralPath '%LOG%' -Tail 2"
+    powershell -NoProfile -Command "Get-Content -LiteralPath '%LOG%' -Tail 3"
 )
 endlocal

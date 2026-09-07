@@ -18,15 +18,19 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
+REM (dev0947) -WindowStyle Hidden: the task ran with a visible elevated console that
+REM sat on top of whatever you were doing for the whole ~30s verify loop. Everything
+REM it printed already goes to vpn-rotate.log and to the I screen VPN pill, so the
+REM window was pure interruption. Re-run this file once to re-register both tasks.
 echo Registering scheduled task "ProtonVpnRotate"...
 REM Full path to powershell.exe - a bare "powershell" makes Task Scheduler fail
 REM to launch with 0x80070002 (file not found), so the switch never runs.
 schtasks /Create /TN "ProtonVpnRotate" /F /SC ONCE /ST 00:00 /RL HIGHEST ^
-  /TR "\"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Mode random"
+  /TR "\"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Mode random"
 
 echo Registering scheduled task "ProtonVpnStop" (Drop VPN button)...
 schtasks /Create /TN "ProtonVpnStop" /F /SC ONCE /ST 00:00 /RL HIGHEST ^
-  /TR "\"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Stop"
+  /TR "\"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe\" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%~dp0vpn-rotate.ps1\" -Stop"
 
 echo Hardening both tasks (StopExisting + 5-min limit so a hung run can't block)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^

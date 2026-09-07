@@ -31,13 +31,15 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 # --- self-elevate (installing/removing a tunnel service needs admin) ------------
+# (dev0947) The relaunch is HIDDEN. The elevated console used to stay on screen for
+# the whole rotation; the log file + state.json are the real output channels.
 $admin = ([Security.Principal.WindowsPrincipal]`
           [Security.Principal.WindowsIdentity]::GetCurrent()`
          ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
-    $relaunch = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"",'-Mode',$Mode)
+    $relaunch = @('-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"",'-Mode',$Mode)
     if ($Stop) { $relaunch += '-Stop' }
-    Start-Process powershell.exe -Verb RunAs -ArgumentList $relaunch
+    Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList $relaunch
     exit
 }
 
