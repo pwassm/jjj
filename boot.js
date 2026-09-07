@@ -702,6 +702,37 @@ async function _showShareableMenu() {
   greetTop = _linkify(_balanceHtml(greetTop));
   greetIntro = _linkify(_balanceHtml(greetIntro));
 
+  // (dev0939) THE TWO-SECTION RULE, in one place. A HYBRID tab is prose, a
+  // divider, more prose — and the page composes between the halves an element
+  // that is NOT in the text: the image of the day on Introduction, the sign-in
+  // strip on Contact. Both of those are hard-coded here; what the author
+  // controls from Xe is where they sit, by where the first <hr> falls.
+  //
+  //     section 1  →  above the injected element
+  //     section 2  →  below it
+  //     section 3+ →  DROPPED
+  //
+  // There are only two slots, so anything under a SECOND <hr> is parking space,
+  // not page content — it neither renders nor drags its divider onto the page.
+  // (Before this, everything after the first <hr> was section 2, so a third
+  // section leaked out below the fold, rule and all.)
+  //
+  // The rule is keyed to the ROW, by gname — "Introduction" and "Contact" —
+  // never to a tab number. `active` (the tab's position in the bar) and data-pg
+  // (its identity in the DOM) can both be renumbered and this still follows the
+  // right two rows.
+  const _twoSections = html => {
+    const src = String(html || '');
+    const hrs = Array.from(src.matchAll(/<hr\b[^>]*>/gi));
+    if (!hrs.length) return { top: src, bottom: '' };
+    return {
+      top: src.slice(0, hrs[0].index),
+      // Stop at the second <hr> if there is one; run to the end if there isn't.
+      bottom: src.slice(hrs[0].index + hrs[0][0].length,
+                        hrs[1] ? hrs[1].index : undefined)
+    };
+  };
+
   // (dev0767) INTRO tab prose. Page 1 is no longer a one-time splash carved out
   // of the Greeting — it is the first tab, and it renders its own c.json config
   // row: the one whose gname is "Introduction" (or "Intro"), in its `ctxt`.
@@ -723,16 +754,9 @@ async function _showShareableMenu() {
   };
   const introCfg = cRows.find(r => r && !r._salMeta && _isIntroCfg(r.gname));
   const introFull = introCfg ? _cutBelow(_ctxtOf(introCfg)) : greetTop;
-  let introTop = introFull, introBottom = '';
-  {
-    const _ihr = introFull.match(/<hr\b[^>]*>/i);
-    if (_ihr) {
-      introTop    = introFull.slice(0, _ihr.index);
-      introBottom = introFull.slice(_ihr.index + _ihr[0].length);
-    }
-  }
-  introTop    = _linkify(_balanceHtml(introTop));
-  introBottom = _linkify(_balanceHtml(introBottom));
+  const _intro2     = _twoSections(introFull);
+  const introTop    = _linkify(_balanceHtml(_intro2.top));
+  const introBottom = _linkify(_balanceHtml(_intro2.bottom));
 
   // (dev0379) "Other" page — free-form HTML from the c.json config row whose
   // gname is "other", in its `ctxt` field. Re-read every open (whole function
@@ -751,16 +775,13 @@ async function _showShareableMenu() {
   // the text (here the sign-in strip), then section 2 below it if present. The
   // <hr>'s POSITION is the whole mechanism — there is no marker in the prose to
   // preserve, which is why this tab stays editable in Xe with nothing at risk.
-  let contactTop = contactFull, contactBottom = '';
-  {
-    const _chr = contactFull.match(/<hr[^>]*>/i);
-    if (_chr) {
-      contactTop    = contactFull.slice(0, _chr.index);
-      contactBottom = contactFull.slice(_chr.index + _chr[0].length);
-    }
-  }
-  const contactHtml       = _linkify(_balanceHtml(contactTop));
-  const contactHtmlBelow  = _linkify(_balanceHtml(contactBottom));
+  // (dev0939) …and it never actually worked. The regex shipped with a literal
+  // 0x08 byte where a `` was meant — a backslash a heredoc ate on the way in —
+  // so it looked right in every editor and matched nothing, and the strip always
+  // sat at the very bottom. Gone now with the block itself.
+  const _contact2         = _twoSections(contactFull);
+  const contactHtml       = _linkify(_balanceHtml(_contact2.top));
+  const contactHtmlBelow  = _linkify(_balanceHtml(_contact2.bottom));
 
   // (dev0787) "Starting out" page — the tab that follows Welcome. Same deal
   // again: free-form HTML from the c.json config row whose gname is "starting
