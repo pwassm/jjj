@@ -1570,6 +1570,65 @@ function _gridAnchoredTransform(coi, Z, pan) {
   return 'translate(' + xv + ',' + yv + ') scale(' + Z + ')';
 }
 
+// ── (dev0945) Inverting the anchor: turn a live drag-pan into a storable COI ──
+// The Shift+drag pan is a transient px offset laid on top of the anchored
+// transform (see _gridAnchoredTransform / _gridApplyCoverFit). To "finish off" a
+// drag, gridSetCOI has to store the point that REPRODUCES the framing the drag
+// arrived at — so each forward anchor gets an inverse here. Both re-clamp the
+// summed offset first, so a drag that shoved past the cover limit stores the
+// limit, which is exactly what the screen was already showing.
+function _gridUnanchorFrac(f, Z, dFrac) {
+  if (!(Z > 1)) return f;               // no room below 1× — caller uses the cover path
+  const lo = 1 - Z;
+  const t = Math.max(lo, Math.min(0, _gridAnchorFrac(f, Z) + (dFrac || 0)));
+  return Math.max(0, Math.min(1, (0.5 - t) / Z));   // inverse of 0.5 - Z*f
+}
+function _gridUnanchorPx(cellLen, basePos, baseLen, f, Z, dPx) {
+  const tMin = cellLen - basePos - Z * baseLen, tMax = -basePos;
+  if (tMin > tMax) return f;            // can't cover → nothing was pannable
+  const t = Math.max(tMin, Math.min(tMax,
+    _gridAnchorPx(cellLen, basePos, baseLen, f, Z) + (dPx || 0)));
+  return Math.max(0, Math.min(1,
+    (cellLen / 2 - basePos + Z * basePos - t) / (Z * cellLen)));
+}
+
+// Fold this cell's live drag-pan back into a COI point, using whichever anchor
+// geometry the cell actually renders with. Returns null when there is no pan to
+// fold (or the cell's framing isn't ours to invert), leaving the caller's
+// click-point behaviour untouched.
+function _gridCoiFromPan(cellEl, Z) {
+  const pan = _gridCellPanForCell(cellEl);
+  if (!pan) return null;
+  const t = _gridCellZoomTarget(cellEl);
+  if (!t || t.kind === 'ig') return null;   // IG framing is owned by fitGridIgFrame
+  const coi = _gridCOIForCell(cellEl);
+  const fx0 = coi ? coi.fx : 0.5, fy0 = coi ? coi.fy : 0.5;
+  // Cover iframe (YT/Vimeo): sized larger than its host and anchored in px, so
+  // mirror _gridApplyCoverFit's box maths exactly before inverting it.
+  const ifr = (t.kind === 'vid') ? t.el.querySelector('iframe') : null;
+  if (ifr) {
+    const w = t.el.clientWidth, h = t.el.clientHeight;
+    if (!w || !h) return null;
+    const VID = 16 / 9;
+    let iw, ih;
+    if (w / h > VID) { iw = w; ih = w / VID; } else { ih = h; iw = h * VID; }
+    iw = Math.ceil(iw); ih = Math.ceil(ih);
+    const ox = Math.round((w - iw) / 2), oy = Math.round((h - ih) / 2);
+    return { fx: _gridUnanchorPx(w, ox, iw, fx0, Z, pan.x),
+             fy: _gridUnanchorPx(h, oy, ih, fy0, Z, pan.y) };
+  }
+  // Cell-sized media (img / montage box / <video>): translate-% is relative to
+  // the element's own layout box. offsetWidth/Height, NOT getBoundingClientRect
+  // — the latter reports the already-transformed box and would feed the scale
+  // back into the division.
+  const el = (t.kind === 'vid') ? t.el.querySelector('video') : t.el;
+  if (!el) return null;
+  const bw = el.offsetWidth, bh = el.offsetHeight;
+  if (!bw || !bh) return null;
+  return { fx: _gridUnanchorFrac(fx0, Z, pan.x / bw),
+           fy: _gridUnanchorFrac(fy0, Z, pan.y / bh) };
+}
+
 // ── (dev0758) Cover-crop framing via `object-position` ───────────────────────
 // An <img>/<video> that cover-fits its cell is cropped INSIDE its own box, and
 // that box IS the cell — so the translate above can never reframe it: at Z=1
@@ -2444,25 +2503,35 @@ function gridSetCOI(cellEl, cellStr, e) {
   if (!rect.width || !rect.height) return;
   let fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   let fy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-  // (dev0758) COMMIT A DRAGGED FRAMING. When the cell is cover-cropping at ~1×
-  // and a transient Shift+drag pan is live, the click point is meaningless — the
-  // drag already put the subject where the user wants it, and Alt-click is how
-  // they "finish off". So store the framing the drag arrived at (and drop the
-  // transient offset, which the stored COI now reproduces) instead of the point.
-  // Zoomed cells keep the original click-to-anchor meaning.
+  // (dev0758) COMMIT A DRAGGED FRAMING. When a transient Shift+drag pan is live
+  // the click point is meaningless — the drag already put the subject where the
+  // user wants it, and Alt-click is how they "finish off". So store the framing
+  // the drag arrived at (and drop the transient offset, which the stored COI now
+  // reproduces) instead of the point. Which maths does that inversion depends on
+  // the zoom: at ~1× the framing rides object-position, above it the transform.
   let fromDrag = false;
-  if (_gridZoomForCell(cellEl) <= 1.05) {
+  const zNow = _gridZoomForCell(cellEl);
+  if (zNow <= 1.05) {
     const coverEl = _gridCoverElForCell(cellEl);
     const livePan = _gridCellPanForCell(cellEl);
     if (coverEl && livePan) {
       const f = _gridCoverFrac(coverEl, _gridCOIForCell(cellEl), livePan);
       fx = f.fx; fy = f.fy; fromDrag = true;
-      const ck = _gridCellKey(row);
-      if (ck) delete _gridCellPan[ck];
     }
+  } else {
+    // (dev0945) Above 1.05× the drag lives in the transform's px offset, and
+    // until now nothing folded it in: the pan stayed transient AND uncleared, so
+    // the tab that set it kept showing the dragged view while the stored COI —
+    // the click point, usually near the middle of the cell, i.e. no reframing at
+    // all — was what every other browser rendered. Hence "right on localhost,
+    // centred everywhere else". _gridCoiFromPan inverts the anchor instead.
+    const f = _gridCoiFromPan(cellEl, zNow);
+    if (f) { fx = f.fx; fy = f.fy; fromDrag = true; }
   }
+  // A committed framing supersedes the transient offset that produced it.
+  if (fromDrag) { const ck = _gridCellKey(row); if (ck) delete _gridCellPan[ck]; }
   // zoom: current effective cell zoom (global × per-cell), 1 decimal place.
-  const zoom = _gridZoomForCell(cellEl).toFixed(1);
+  const zoom = zNow.toFixed(1);
   // frameRef: a video records the current frame (≈ currentTime × 30 fps) so a
   // future autozoom can return to it; non-video cells record "image".
   let frameRef = 'image';
