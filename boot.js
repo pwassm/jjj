@@ -1491,22 +1491,18 @@ async function _showShareableMenu() {
     saved:  { def: 'SavedSearches', off: !SM_FEAT_SEARCH },
     loops:  { def: 'Saved Loops' }
   };
-  // Compatibility shim: a row with no `Kind` yet is classified by its name, so
-  // the site works whether or not the c.json carrying the new column has landed.
-  // Delete this once every ctype-t row has a Kind. "Add your own" maps onto
-  // `loops` because dev0940 merged those two tabs — see the Saved Loops body.
-  const _KIND_BY_GNAME = {
-    'introduction': 'intro', 'intro': 'intro', 'welcome': 'intro',
-    'contact': 'signin',
-    'grids': 'grids', 'flashcards': 'flash',
-    'search': 'search', 'savedsearches': 'saved', 'saved searches': 'saved',
-    'my loops': 'loops', 'your loops': 'loops', 'saved loops': 'loops',
-    'add your own': 'loops'
-  };
+  // (dev0941) A TAB'S IDENTITY IS ITS `Kind` CELL, AND NOTHING ELSE. dev0940's
+  // _KIND_BY_GNAME shim — which classified a Kind-less row by its name so the
+  // site worked before the c.json carrying the column landed — is gone now that
+  // every ctype-t row has one. It was the last thing making a gname load-bearing:
+  // while it stood, renaming "Grids" to anything off its list would have quietly
+  // turned that tab into an empty prose page. Renaming is a Label edit again.
+  //
+  // An unrecognised or missing Kind falls to `prose`, which is the right failure:
+  // a new tab row typed into C shows up as a writable page rather than as nothing.
   const _kindOf = row => {
     const k = String(row.Kind || '').trim().toLowerCase();
-    if (TAB_KINDS[k]) return k;
-    return _KIND_BY_GNAME[String(row.gname || '').trim().toLowerCase()] || 'prose';
+    return TAB_KINDS[k] ? k : 'prose';
   };
   // One tab per behaviour: a second `grids` row — or the retired "Add your own"
   // sitting beside "Saved Loops" in a c.json that predates the merge — is

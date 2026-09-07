@@ -47,9 +47,16 @@
 // wrong, like any other miss.
 //
 // (dev0898) A CORRECT CARD IS READ AT THE PLAYERS OWN PACE. It turns over and
-// stays turned until the next click, anywhere. The first two corrects get a
-// small "click to continue" balloon beside the mouse; after that the gesture is
-// known, and a nudge that never stops appearing is a nudge you stop reading.
+// stays turned until the next click, anywhere.
+//
+// (dev0941) AND IT SAYS SO, EVERY TIME, ALONG THE FOOT OF THE CARD. What stood
+// here was a balloon in the card's corner shown for the first two corrects only,
+// on the reasoning that a nudge which never stops appearing is a nudge you stop
+// reading. That reasoning belonged to the balloon: a thing that POPS UP is read
+// as an event, and an event repeated becomes noise. A quiet full-width rule along
+// the bottom edge is read as part of the card — a caption, not an interruption —
+// so it can stay for every correct answer and be there for the one the player
+// hesitates on, which is never reliably the first or the second.
 //
 // THE THREE-SECOND HINT OFFER. A wrong click asks whether they want a hint, and
 // that offer counts itself down from 3 and disappears. Not answering is a real
@@ -77,10 +84,10 @@
 //     picked -- it used to flash for three seconds and remove itself, so the two
 //     things needed together were never on screen together.
 //   THE NAME IS SIZED AS A SHARE OF THE SCREEN (panelFont) and the "click to
-//     continue" balloon is pinned to the CORNER OF THE CARD rather than to the
-//     pointer -- on a phone there is no pointer to put it beside, and the
-//     coordinates it used were in the unrotated frame, so it landed nowhere near
-//     the card it was about.
+//     continue" prompt is pinned to the CARD rather than to the pointer -- on a
+//     phone there is no pointer to put it beside, and the coordinates it used
+//     were in the unrotated frame, so it landed nowhere near the card it was
+//     about. (dev0941 moved it from that corner to the foot of the card.)
 //
 // (dev0901) q IS THE KEY, on any grid holding flash cards. core.js's bare-q in
 // G (reset an embed) asks QuizCells.available() first and yields to it; Shift+Q
@@ -98,7 +105,6 @@
 (function () {
   'use strict';
 
-  var BALLOON_N = 2;      // corrects that still get the "click to continue" nudge
   var ASK_MS    = 5000;   // how long the "want a hint?" offer waits
   var SWIPE_PX  = 45;     // (dev0913) a drag this far across is a swipe, not an answer
 
@@ -683,7 +689,7 @@
 
   function nextQuestion() {
     if (!active) return;
-    drop('quizPrompt'); drop('quizAsk'); drop('quizBalloon');
+    drop('quizPrompt'); drop('quizAsk'); drop('quizContinue');
     hintHtml = null;                    // (dev0913) the hint belongs to one question
     if (!queue.length && !topUp()) { report(); return; }
     cur = queue.shift();
@@ -710,48 +716,61 @@
       try { window._gridCardTurn(cell, 0); } catch (_) {}
     }
     reading = true;
-    // The nudge, for the first two only: by the third correct answer the
-    // gesture has been learned, and a balloon that never stops appearing is a
-    // balloon you stop reading. It comes up where the hand already is -- beside
-    // the click that earned it -- rather than somewhere they would have to find.
-    if (right <= BALLOON_N) showBalloon(cell);
+    showContinue(cell);
   }
 
-  // (dev0898) "click to continue", for the first two corrects only.
+  // (dev0941) THE LINE ALONG THE FOOT OF THE CARD. Every correct answer gets it,
+  // for as long as the card stays turned — see the note at the top of the file
+  // for why the old two-corrects limit went with the balloon it was written for.
   //
-  // (dev0913) IN THE CORNER OF THE CARD, NOT AT THE POINTER. The first build put
-  // it beside the mouse and clamped it into the viewport, which has no meaning on
-  // a phone: a tap leaves no pointer behind, the coordinates it was placed from
-  // are the PHYSICAL ones while the balloon is drawn inside the rotated wrap, and
-  // it landed nowhere near the card it was talking about. A corner of the cell
-  // that was just turned over is a place that exists on every device.
+  // (dev0913, still true) ON THE CARD, NOT AT THE POINTER. The first build put it
+  // beside the mouse and clamped it into the viewport, which has no meaning on a
+  // phone: a tap leaves no pointer behind, and the coordinates it was placed from
+  // are the PHYSICAL ones while this is drawn inside the rotated wrap, so it
+  // landed nowhere near the card it was talking about. Appended to the CELL, it
+  // needs no coordinates at all and cannot land in the wrong frame.
   //
-  // Appended to the CELL, so it needs no coordinates at all and cannot land in
-  // the wrong frame. z-index clears the card back's own panel (140).
-  // pointer-events:none so the very tap it is asking for passes through it.
-  function showBalloon(cell) {
-    drop('quizBalloon');
+  // Full width and flat to the bottom edge, so it reads as the card's own footer
+  // rather than as something that arrived. z-index clears the card back's own
+  // panel (140); pointer-events:none so the very click it asks for passes through.
+  // The back shrinks to fit rather than filling the cell (grid.js's chip rule), so
+  // there is normally slack under the last line for this to sit in.
+  function showContinue(cell) {
+    drop('quizContinue');
     if (!cell) return;
-    var fs = Math.max(9, Math.round(panelFont() * 0.8));
+    // A shade bigger than the old corner pill and never below 11px: this is meant
+    // to be read at a glance from wherever the player is sitting, and it has the
+    // full width of the card to be read across.
+    var fs = Math.max(11, Math.round(panelFont() * 0.95));
     var b = document.createElement('div');
-    b.id = 'quizBalloon';
+    b.id = 'quizContinue';
     // (dev0934) Two WHOLE phrases, not a verb glued to " to continue": Spanish
     // wants "toca para continuar" / "haz clic para continuar", and only the
     // complete sentence gives the translation somewhere to put the difference.
-    b.textContent = isPhone() ? T('tap to continue') : T('click to continue');
-    b.style.cssText = 'position:absolute;right:6px;bottom:6px;z-index:200;'
-      + 'pointer-events:none;max-width:92%;overflow:hidden;'
-      + 'background:rgba(250,250,255,0.95);color:#14161c;'
-      + 'border-radius:9px;padding:4px 9px;white-space:nowrap;'
-      + 'box-shadow:0 4px 16px rgba(0,0,0,0.6);'
-      + 'font:' + fs + 'px/1.2 system-ui,-apple-system,Segoe UI,sans-serif;';
+    // The keys stay lower-case (that is how lang.es.json holds them); the line
+    // is sentence-cased on the way out, in whatever language came back.
+    b.textContent = sentenceCase(isPhone() ? T('tap to continue') : T('click to continue'));
+    b.style.cssText = 'position:absolute;left:0;right:0;bottom:0;z-index:200;'
+      + 'pointer-events:none;text-align:center;padding:5px 8px;'
+      + 'background:rgba(14,16,22,0.86);color:#f2f4f8;'
+      + 'border-top:1px solid rgba(255,255,255,0.16);'
+      + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+      + 'letter-spacing:0.02em;'
+      + 'font:' + fs + 'px/1.25 system-ui,-apple-system,Segoe UI,sans-serif;';
     cell.appendChild(b);
+  }
+
+  // Only the first character, and only if it is already lower case — so an
+  // accented or non-Latin first letter is left exactly as the translator wrote it.
+  function sentenceCase(s) {
+    s = String(s || '');
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   }
 
   // The click that ends a read: card home, next question.
   function continueOn() {
     reading = false;
-    drop('quizBalloon');
+    drop('quizContinue');
     if (typeof window._gridCardFrontAll === 'function') {
       try { window._gridCardFrontAll(); } catch (_) {}   // back to the picture
     }
@@ -970,7 +989,7 @@
     active = false; awaiting = false; reading = false; cur = null; queue = [];
     clearTimers();
     unwire();
-    drop('quizPrompt'); drop('quizAsk'); drop('quizBalloon');
+    drop('quizPrompt'); drop('quizAsk'); drop('quizContinue');
     hintHtml = null;                    // (dev0913) the hint belongs to one question
     if (typeof window._gridCardFrontAll === 'function') {
       try { window._gridCardFrontAll(); } catch (_) {}
