@@ -2340,7 +2340,7 @@
     "gname": "MoonSnailWoes",
     "cells": 9,
     "Zoom": 1,
-    "DateModified": "2026-09-07 13:56:14",
+    "DateModified": "2026-09-07 14:40:23",
     "1a": "2255",
     "1b": "2257",
     "1c": "2254",
@@ -2352,14 +2352,14 @@
     "3c": "",
     "DateAdded": "2026-09-07 13:48:20",
     "ctxt": "MoonSnailWoes",
-    "active": "1",
+    "active": "",
     "ss": "MoonSnail"
   },
   {
     "gname": "MoonSnail2",
     "cells": 9,
     "Zoom": 1,
-    "DateModified": "2026-09-07 14:38:58",
+    "DateModified": "2026-09-07 14:40:18",
     "1a": "2255",
     "1b": "2257",
     "1c": "2254",
@@ -2370,6 +2370,7 @@
     "3b": "2253_d2/3.6",
     "3c": "",
     "DateAdded": "2026-09-07 14:38:32",
-    "ss": "moonsnail2"
+    "ss": "moonsnail2",
+    "active": "1"
   }
 ]
