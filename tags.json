@@ -8200,5 +8200,40 @@
     "rank": "species",
     "common": "",
     "extinct": false
+  },
+  {
+    "id": "dendronotus-venustus",
+    "label": "Dendronotus venustus",
+    "kind": "taxon",
+    "parents": [
+      "dendronotus"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
+  },
+  {
+    "id": "dendronotidae",
+    "label": "Dendronotidae",
+    "kind": "taxon",
+    "parents": [
+      "nudibranchs"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "dendronotus",
+    "label": "Dendronotus",
+    "kind": "taxon",
+    "parents": [
+      "dendronotidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]

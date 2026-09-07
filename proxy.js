@@ -320,7 +320,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0928';
+const PROXY_BUILD = 'dev0943';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -1619,6 +1619,22 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   }
   must(p.crop.w > 0 && p.crop.h > 0, 'crop.w/h must be > 0');
 
+  // (dev0943) A frame lifted out of a VIDEO rather than a still. `seekSec` is
+  // where on that video's own timeline, and it changes three things below:
+  //   · the seek itself, an INPUT option so ffmpeg jumps to the frame rather
+  //     than decoding the whole file to reach it;
+  //   · no EXIF transpose and no `-noautorotate`. A video carries its rotation
+  //     in the container's display matrix, which ffmpeg applies by default and
+  //     the browser applied for the user — so the rect means what it looked
+  //     like it meant. Turning autorotate off here would land the crop sideways
+  //     on every portrait phone clip: the EXIF trap one level down;
+  //   · an HDR source is tone-mapped whether or not a grade is dialled in — see
+  //     the note by the colour chain below.
+  const fromVideo = (p.seekSec != null);
+  if (fromVideo) {
+    must(Number.isFinite(+p.seekSec) && +p.seekSec >= 0, 'seekSec must be a number >= 0');
+  }
+
   const chain = [];
   if (p.exif != null) {
     must(Number.isInteger(+p.exif) && +p.exif >= 1 && +p.exif <= 8,
@@ -1630,7 +1646,8 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   // failed probe by accident — and now it would render the picture on its side.
   // So the proxy reads the tag itself whenever the client didn't say, off the
   // same file, which cannot disagree with what the browser applied.
-  const o = (p.exif != null) ? +p.exif : exifOrientationSync(p.input);
+  const o = fromVideo ? 1
+          : ((p.exif != null) ? +p.exif : exifOrientationSync(p.input));
   if (EXIF_XPOSE[o]) chain.push(EXIF_XPOSE[o]);
   // (dev0866) THE DOUBLE ROTATION. dev0744 built the EXIF_XPOSE prefix on the
   // belief that "ffmpeg does not apply the orientation tag". This ffmpeg does:
@@ -1661,10 +1678,14 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   // wrong in exactly the way the clips did — so it gets the same tone map. The
   // still codecs pick their own pixel format and the motion branch already pins
   // yuv420p, so there is nothing to force here.
-  if (p.color) {
-    if (probeHdr(p.input)) chain.push(TONEMAP_CHAIN);
-    chain.push(buildColorChain(p.color));
-  }
+  // (dev0943) …and a frame grabbed out of a video is tone-mapped whether or not
+  // a grade is dialled in. The clip path can leave an ungraded HDR source alone
+  // because an mp4 carries its HLG/BT.2020 tags and a player honours them. A
+  // JPEG has no way to say what its pixels are, so every viewer reads them as
+  // BT.709 and the picture comes back violet — the trap this chain exists for.
+  const hdr = (p.color || fromVideo) ? probeHdr(p.input) : null;
+  if (hdr) chain.push(TONEMAP_CHAIN);
+  if (p.color) chain.push(buildColorChain(p.color));
 
   // The OUTPUT frame in pixels. Hoisted because three things need it: the
   // scale filter, zoompan's own `s=`, and drawtext turning fractions into
@@ -1727,7 +1748,11 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
     : ['-vf', chain.join(',')];
   return [
     ...common,
-    '-noautorotate', '-i', p.input,      // (dev0866) see the note by EXIF_XPOSE
+    // (dev0943) A video frame seeks first and keeps ffmpeg's own autorotate; a
+    // still is read whole with the orientation left to the chain above.
+    ...(fromVideo
+          ? ['-ss', (+p.seekSec).toFixed(3), '-i', p.input]
+          : ['-noautorotate', '-i', p.input]),   // (dev0866) see the note by EXIF_XPOSE
     ...filter,
     '-frames:v', '1',
     '-update', '1',
@@ -7397,7 +7422,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify']) }));
     return;
   }

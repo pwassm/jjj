@@ -3047,6 +3047,20 @@ function vpKeyHandler(e) {
     _vpGoSave();
     return;
   }
+
+  // (dev0943) J — this frame as a JPEG (the JPG button's key). No A/B test: a
+  // photograph has no span, only a moment, so what it saves is whatever is
+  // under the playhead. It does need the crop box OPEN, since "the outlined
+  // area" is the whole instruction — _vpFrameSave says so rather than guessing
+  // when it isn't.
+  if (e.key === 'j' || e.key === 'J') {
+    if (!_vpState || !_vpState.crop) return;
+    const row = window._vpCurrentRow;
+    if (!row || !row._directVideoFile) return;
+    e.preventDefault(); e.stopPropagation();
+    _vpFrameSave({ fromButton: true });
+    return;
+  }
 }
 
 // (dev0286) Synchronous play-state probe. Both player shapes expose a sync
@@ -5704,6 +5718,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '</select>' +
     '<button id="vp-crop-do" style="margin-left:auto;background:#2a5d9a;border:1px solid #6af;color:#fff;' +
       'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:80px;">Crop</button>' +
+    // (dev0943) The same rect, as a still. Video only — on a picture the Crop
+    // button already writes one, and a second button offering the same thing
+    // one quality step down would be a trap rather than a choice.
+    '<button id="vp-crop-jpg" title="This frame as a JPEG (J) — the same crop, tilt, resolution and colour grade the clip would get, at quality 90" ' +
+      'style="background:#1a1a2e;border:1px solid #6af;color:#9cf;' +
+      'padding:3px 10px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;min-width:44px;">JPG</button>' +
     '<button id="vp-crop-close" style="background:#1a1a2e;border:1px solid #888;color:#ccc;' +
       'padding:3px 8px;border-radius:3px;cursor:pointer;font:12px ui-monospace,Consolas,monospace;">✕</button>';
   c.appendChild(bar);   // (dev0318) bar lives on the container, not the (tiltable) rect
@@ -5717,7 +5737,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // <img> this overlay maps its screen→source arithmetic through.
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
      'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake', 'vp-crop-expand',
-     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop',
+     'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop', 'vp-crop-jpg',
      'vp-crop-zoom-lbl', 'vp-crop-zoom'].forEach(id => {
       const el = bar.querySelector('#' + id);
       if (el) el.style.display = 'none';
@@ -7105,6 +7125,11 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   // from a button click).
   bar.querySelector('#vp-crop-do').addEventListener('click',
     () => _vpGoSave({ fromButton: true }));
+  // (dev0943) …and its twin: the same rect, this frame, as a JPEG.
+  if (!imageMode) {
+    bar.querySelector('#vp-crop-jpg').addEventListener('click',
+      () => _vpFrameSave({ fromButton: true }));
+  }
   bar.querySelector('#vp-crop-close').addEventListener('click', _vpCropToggle);
 
   // Disposal — called from vpClose to drop document listeners + ResizeObserver.
@@ -7476,6 +7501,12 @@ function _vpCropHelpShow() {
         head('Finish') +
         row(K('G'),   'render (or the Crop button) — lands beside the source as ' +
                       '<i>what you call it</i>_<i>name</i>_crop.mp4') +
+        row(K('J'),   'this FRAME as a JPEG (or the JPG button) — same crop, tilt, ' +
+                      'resolution, grade and captions the clip would get, at ' +
+                      'quality 90, beside the source as ' +
+                      '<i>what you call it</i>_<i>name</i>_crop.jpg. A/B plays no ' +
+                      'part: what you get is the frame under the playhead, so ' +
+                      'pause where you want it first.') +
         row('the .xmp', 'each render gets a sidecar of the same name, carrying the ' +
                       'original’s date, place and camera plus a note saying which ' +
                       'file it was cut from — that is what digiKam reads') +
@@ -9590,6 +9621,224 @@ async function _vpGoSave(opts) {
     const msg = (err && err.message) || String(err);
     if (typeof toast === 'function') toast('save error: ' + msg, 3600);
     console.error('[save error]', err);
+  }
+}
+
+// (dev0943) ── J / the JPG button: this frame, as a still ───────────────────
+//
+// The rect on screen rendered as a JPEG instead of a clip. Everything that
+// shapes the mp4 shapes this too — the crop, the bleed's clip to the frame, the
+// tilt, the resolution dropdown, the colour grade, the captions that are up at
+// this moment — because the point is a still that MATCHES the clip it was
+// pulled out of, not a second way of framing the same footage.
+//
+// What it deliberately ignores is the clock. A→B, the Ken Burns ramp, the
+// tracking window, the freezes, the speed and the loop all describe how a clip
+// moves through time, and a photograph does not move: the frame you get is the
+// one under the playhead, so pause where you want it and press J.
+//
+// QUALITY 90, as close as this encoder can be asked to come. ffmpeg's mjpeg has
+// no 0-100 dial — it takes `-q:v` on a 1..31 qscale, quantized to whole numbers
+// with a floor of 2. Measured by reading the DQT tables back out of its own
+// output and matching them against the IJG quality ladder: q:v 2 ≈ 94, 3 ≈ 91,
+// 4 ≈ 88, 5 ≈ 85. So 3 is the one, and 2 would be a bigger file than was asked
+// for rather than a better picture.
+const VP_JPG_QSCALE = 3;
+
+async function _vpFrameSave(opts) {
+  opts = opts || {};
+  const s = _vpState && _vpState.crop;
+  if (!s || s.el.container.style.display === 'none') {
+    if (typeof toast === 'function') {
+      toast('Press C for the crop box first — J saves what is inside it', 3200);
+    }
+    return;
+  }
+  const row = window._vpCurrentRow;
+  if (!row || !row._directVideoFile) {
+    if (typeof toast === 'function') toast('JPG only works for disk videos', 2200);
+    return;
+  }
+  const vid = _vpState.player && _vpState.player.el;
+  const VW = (vid && vid.videoWidth) || 0, VH = (vid && vid.videoHeight) || 0;
+  if (!VW || !VH) {
+    if (typeof toast === 'function') toast('JPG: the frame size is not known yet', 2400);
+    return;
+  }
+  const relPath = row.comment || row.VidTitle || '';
+  if (!relPath) {
+    if (typeof toast === 'function') toast('JPG: no source file path on row', 2400);
+    return;
+  }
+  const absInput = _vpCropResolveAbsPath(relPath);
+  if (!absInput) {
+    if (typeof toast === 'function') toast('save cancelled (need folder path)', 2200);
+    return;
+  }
+  const parts = _vpSplitPath(absInput);
+  if (!parts) {
+    if (typeof toast === 'function') toast('JPG: cannot parse path', 2400);
+    return;
+  }
+  // (dev0943) A proxy that has never heard of seekSec ignores it and writes
+  // FRAME ONE — a clean, correctly-cropped picture of the wrong moment, which
+  // is exactly the quiet wrong answer every gate on the clip path exists to
+  // prevent. Asked before the name prompt, so a stale proxy costs no typing.
+  if (!(await _vpProxyHasFeature('imageframe'))) {
+    if (typeof toast === 'function') {
+      toast('A frame grab needs an updated proxy — restart "node proxy.js" and retry', 4600);
+    }
+    return;
+  }
+
+  const atSec = Math.max(0, +(vid.currentTime || 0));
+  const id = prompt('Name this frame — it becomes\n\n    <name>_' +
+                    parts.base + '_crop.jpg\n',
+                    _vpLastCropName(parts.base));
+  if (!id) { if (typeof toast === 'function') toast('save cancelled', 1600); return; }
+  _vpRememberCropName(parts.base, id);
+  const safeId = _vpCropSafeId(id);
+
+  // ── Geometry, verbatim from the clip path — see the crop branch of
+  // _vpGoSave for why each step is the shape it is.
+  const even = n => Math.max(2, Math.floor(n / 2) * 2);
+  const ef = _vpEffFrac(s);
+  const sw = even(ef.w * VW), sh = even(ef.h * VH);
+  const effAspect = _vpEffAspect(sw, sh);
+  const angle = s.angle || 0;
+  let cropBox, rotate = null, angTok = '';
+  if (!angle) {
+    const clampI = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+    cropBox = { w: sw, h: sh,
+                x: clampI(Math.max(0, ef.x) * VW, 0, Math.max(0, VW - sw)),
+                y: clampI(Math.max(0, ef.y) * VH, 0, Math.max(0, VH - sh)) };
+  } else {
+    const a = -angle * Math.PI / 180;
+    const D = even(Math.ceil(Math.max(Math.hypot(VW, VH), sw + 2, sh + 2)));
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const cx = (Math.max(0, ef.x) + ef.w / 2) * VW, cy = (Math.max(0, ef.y) + ef.h / 2) * VH;
+    const u = cx - VW / 2, v = cy - VH / 2;
+    const ccx = D / 2 + (ca * u - sa * v), ccy = D / 2 + (sa * u + ca * v);
+    cropBox = { w: sw, h: sh,
+                x: Math.max(0, Math.min(D - sw, even(Math.round(ccx - sw / 2)))),
+                y: Math.max(0, Math.min(D - sh, even(Math.round(ccy - sh / 2)))) };
+    rotate = { rad: a, ow: D, oh: D };
+    angTok = 'r' + angle.toFixed(1).replace('.', '_') + 'deg';
+  }
+  const sizeStr = (s.resHeight === 'source') ? (Math.min(sw, sh) + 'p') : (s.resHeight + 'p');
+
+  const payload = {
+    image: true,
+    input: absInput,
+    output: '',                    // filled in below, once the free name is known
+    crop: cropBox,
+    seekSec: +atSec.toFixed(3),    // (dev0943) which frame
+    aspect: effAspect, resHeight: s.resHeight,
+    quality: VP_JPG_QSCALE,
+    overwrite: false
+  };
+  if (rotate) payload.rotate = rotate;
+  // (dev0867) The grade, exactly as the clip gets it.
+  const col = (typeof window.vpColorPayload === 'function') ? window.vpColorPayload() : null;
+  if (col) payload.color = col;
+
+  // (dev0943) The captions that are actually up at this instant, with their
+  // TIMING stripped: a still has no clock for a from/to to be read against, and
+  // an `enable=` window on a one-frame render is a caption that silently fails
+  // to draw. A bled rect is re-expressed against the intersection first, the
+  // same way the clip path does it, and on a shallow clone so the live boxes on
+  // screen keep their own coordinates.
+  const shown = (s.texts || []).filter(t =>
+    (t.atStart == null || t.atStart <= atSec + 0.001) &&
+    (t.atEnd   == null || t.atEnd   >= atSec - 0.001));
+  if (shown.length) {
+    const bled = !!(s.bleed && (ef.x !== s.frac.x || ef.y !== s.frac.y ||
+                                ef.w !== s.frac.w || ef.h !== s.frac.h));
+    const tsrc = Object.create(s);
+    tsrc.texts = shown.map(t => Object.assign(Object.create(t),
+      { atStart: null, atEnd: null, pauseSec: 0 },
+      bled ? {
+        x:    (s.frac.x + t.x * s.frac.w - ef.x) / ef.w,
+        y:    (s.frac.y + t.y * s.frac.h - ef.y) / ef.h,
+        w:    t.w * s.frac.w / ef.w,
+        size: t.size * s.frac.h / ef.h
+      } : {}));
+    const dims = _vpOutputDims(s, sw, sh, effAspect);
+    const tr = _vpTextRenderList(tsrc, dims.ow, dims.oh, 0, 0);
+    if (tr.texts.length) payload.texts = tr.texts;
+  }
+
+  // (dev0863) The sidecar's description — what the filename used to spell out.
+  // The timestamp is in it because that is the one fact about a frame grab that
+  // nothing else records: two stills of the same crop differ only in when.
+  const detail = [sizeStr, effAspect, 'jpg q90', angTok,
+                  (s.freeRatio ? ('ar' + _vpAspectLabel(sw, sh).replace(':', '_')) : ''),
+                  'at ' + atSec.toFixed(2) + 's',
+                  (payload.texts ? ('tx' + payload.texts.length) : ''),
+                  _vpColorToken()].filter(Boolean).join(' · ');
+
+  const free = await _vpCropFreePath(
+    parts.dir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.jpg');
+  payload.output = free.path;
+  const outName = String(free.path).split(/[\\/]/).pop();
+
+  const btn = s.el.bar.querySelector('#vp-crop-jpg');
+  const origLabel = btn ? btn.textContent : null;
+  const restore = () => { if (btn) { btn.disabled = false; btn.textContent = origLabel; } };
+  try {
+    // One frame: there is no duration to count against, so the label just spins.
+    let result = await _vpCropRun(payload, btn, 0);
+    // Not gated on the exit code — ffmpeg refuses -n by printing "already
+    // exists" and exiting 0. See the same note on the clip path.
+    if (_vpCropStderrSaysExists(result.stderr)) {
+      restore();
+      if (!confirm('"' + outName + '" already exists. Overwrite?' +
+                   (free.asked ? '' : '\n\n(Restart "node proxy.js" and the next one gets numbered instead.)'))) {
+        if (typeof toast === 'function') toast('save cancelled', 1600);
+        return;
+      }
+      payload.overwrite = true;
+      result = await _vpCropRun(payload, btn, 0);
+    }
+    if (result.exitCode !== 0 && _vpCropStderrSaysNotFound(result.stderr)) {
+      restore();
+      const slashIdx = relPath.indexOf('/');
+      const rootName = (slashIdx >= 0) ? relPath.slice(0, slashIdx) : relPath;
+      if (confirm('ffmpeg could not find:\n  ' + absInput +
+                  '\n\n' + _vpCropFailLine(result) +
+                  '\n\nClear cached disk path for folder "' + rootName + '" and retry?')) {
+        localStorage.removeItem('vpDiskRoot:' + rootName);
+        return _vpFrameSave(opts);
+      }
+      if (typeof toast === 'function') toast('JPG failed: file not found', 2600);
+      console.error('[frame save not found]', { exitCode: result.exitCode, payload, stderr: result.stderr });
+      return;
+    }
+    restore();
+    if (result.exitCode === 0) {
+      // (dev0910/0863/0872) The same three finishing passes the clip gets: the
+      // camera block inside the file, the sidecar beside it, and the original's
+      // dates on both. `orient` is left to reset — ffmpeg has already handed
+      // back an upright picture, so carrying "Rotate 90 CW" across would tell
+      // every reader to turn it on its side.
+      const meta  = await _vpCarryMetadata(absInput, payload.output, {});
+      const xmp   = await _vpWriteXmpSidecar(absInput, payload.output, detail);
+      const dates = (await _vpCopySourceTimes(absInput, payload.output))
+        ? '' : '  ·  ⚠ dates not copied';
+      if (typeof toast === 'function') {
+        toast('🖼 saved → ' + outName + xmp + meta + dates, 3200);
+      }
+    } else {
+      const tail = _vpCropFailLine(result);
+      if (typeof toast === 'function') toast('JPG failed: ' + tail, 6000);
+      console.error('[frame save failed]', { exitCode: result.exitCode, payload,
+        stderr: result.stderr, lastProgress: result.lastProgress });
+    }
+  } catch (err) {
+    restore();
+    const msg = (err && err.message) || String(err);
+    if (typeof toast === 'function') toast('JPG error: ' + msg, 3600);
+    console.error('[frame save error]', err);
   }
 }
 
