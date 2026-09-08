@@ -31,7 +31,11 @@
 // before is unaffected — _slideshowSaveSettings writes the whole settings object
 // to localStorage, so every existing key already overrides its default here.
 const SLIDESHOW_DEFAULTS = {
-  slideSec:      2,
+  // (dev0949) 0 = HOLD: an image stays until the viewer moves on, and a video
+  // runs to its end and then advances by itself. That is the Vss default — a
+  // grid played as a slideshow is something to look at, not a timer — and the
+  // whole ladder above it is reached from the [0] box (see _ssVssBuildChrome).
+  slideSec:      0,
   zoomSec:       3,
   zoom:          'off',   // 'off'|'min'|'med'|'max'
   transitionSec: 1,
@@ -53,7 +57,9 @@ const SLIDESHOW_DEFAULTS = {
   //                 (3× the image dwell) then the show advances (dev0557)
   // Only direct video files (.mp4/.webm/…) are eligible — YouTube/Vimeo links
   // are never collected as video slides.
-  showMode:      'image',
+  // (dev0949) Vss shows the whole grid, video and images together, in cell
+  // order — filtering to stills by default hid most of what a grid holds.
+  showMode:      'both',
   // (dev0284) Megapixel filter — only show images whose size falls in the band.
   //   'none'  show all
   //   'ge4'|'ge3'|'ge2'|'ge1'  ≥ N megapixels
@@ -97,10 +103,30 @@ function _slideshowLoadSettings() {
       s.commentSize = s.comment ? 'small' : 'off';
     }
     delete s.label; delete s.comment;
+    // (dev0949) The two Vss defaults, applied ONCE to anyone who has run the
+    // show before. _slideshowSaveSettings writes the whole settings object, so
+    // every stored key already overrides its default in SLIDESHOW_DEFAULTS —
+    // which means changing a default alone reaches nobody who has ever opened
+    // the slideshow. The stamp is what keeps this a one-time nudge rather than
+    // a setting the user can never change back.
+    if (!s.vssDefaults) {
+      s.vssDefaults = 1;
+      s.slideSec = 0;
+      s.showMode = 'both';
+      _slideshowSaveSettings(s);
+    }
     return Object.assign({}, SLIDESHOW_DEFAULTS, s);
   } catch (_) {
     return Object.assign({}, SLIDESHOW_DEFAULTS);
   }
+}
+
+// (dev0949) The image dwell, in ms — 0 meaning HOLD (no auto-advance at all).
+// Every site that arms the advance timer goes through this, so "0 = wait for
+// the viewer" is one rule rather than four copies of `slideSec * 1000`.
+function _ssDwellMs(st) {
+  const v = Number((st && st.settings ? st.settings.slideSec : 0));
+  return (isFinite(v) && v > 0) ? v * 1000 : 0;
 }
 
 function _slideshowSaveSettings(settings) {
@@ -153,7 +179,11 @@ function _slideshowFilterByShow(list, mode) {
 
 // Per-cell slides: link image (if image URL) OR a direct-video slide (if the
 // link is a playable video file), then every embedded ftext image.
-function _slideshowCellSlides(row) {
+// (dev0949) `frame` = {zoom, coi}: what the grid cell this row was sitting in
+// was actually showing. Carried onto every slide the cell produces so Vss can
+// open at the same magnification and on the same point — see the framing block
+// in _slideshowShow (images) and _slideshowPlayVideo (video).
+function _slideshowCellSlides(row, frame) {
   if (!row) return [];
   const out = [];
   if (_slideshowIsImageLink(row.link)) out.push({ url: row.link, row, kind: 'image' });
@@ -167,6 +197,7 @@ function _slideshowCellSlides(row) {
   if (row.ftext) {
     _slideshowExtractImgs(row.ftext).forEach(u => out.push({ url: u, row, kind: 'image' }));
   }
+  if (frame) out.forEach(sl => { sl.frame = frame; });
   return out;
 }
 
@@ -187,9 +218,28 @@ function _slideshowGridSlides() {
       ? getRowByCellForGrid(cs)
       : (typeof getRowByCell === 'function' ? getRowByCell(cs)
         : (typeof data !== 'undefined' ? data.find(d => d.cell === cs) : null));
-    _slideshowCellSlides(row).forEach(s => out.push(s));
+    // (dev0949) Off the LIVE cell element rather than recomputed from the row:
+    // _gridZoomForCell is the one place that resolves the whole precedence
+    // (global x c.json UID/zoom x COI zoom, and 1 on mobile), so asking it is
+    // the only way Vss is guaranteed to open at what is actually on screen.
+    _slideshowCellSlides(row, _ssCellFraming(cs)).forEach(s => out.push(s));
   }
   return out;
+}
+
+// (dev0949) The framing of one grid cell, or null when there is none worth
+// carrying (an unzoomed cell, or a grid that isn't up).
+function _ssCellFraming(cs) {
+  if (typeof _gridZoomForCell !== 'function') return null;
+  const el = document.querySelector('#gridContainer .grid-cell[data-cell="' + cs + '"]');
+  if (!el) return null;
+  let zoom = 1, coi = null;
+  try {
+    zoom = _gridZoomForCell(el) || 1;
+    if (typeof _gridCOIForCell === 'function') coi = _gridCOIForCell(el);
+  } catch (_) { return null; }
+  if (!(zoom > 1.02)) return null;
+  return { zoom, coi };
 }
 
 function slideshowOpen(source) {
@@ -600,6 +650,12 @@ function _slideshowStart(allOrdered, opts) {
     // (Previously set by the opener AFTER start returned — the menu had
     // already been built with it undefined, so it defaulted to "Grid".)
     sourceKind: (opts && opts.sourceKind) || null,
+    // (dev0949) Vss — the grid played as a slideshow, dressed for viewing:
+    // full-window picture, slim video chrome, transparent arrows, and the
+    // settings panel folded away behind the [0] box. Scoped to the GRID source
+    // deliberately: the folder/review shows are working screens whose panel and
+    // rating chrome are the point of them.
+    vss: !!(opts && opts.sourceKind === 'grid'),
     // (dev0284) Root directory handle for disk sources ('folder'|'jpgs') — used
     // to upgrade to readwrite permission before deleting marked files. null for
     // grid/ftext (web) sources, which can't be deleted.
@@ -662,7 +718,10 @@ function _slideshowStart(allOrdered, opts) {
   overlay.addEventListener('wheel', e => {
     const st = _slideshowState;
     if (_ssCropOwnsPointer()) return;   // (dev0863)
-    if (!st || !st.paused || st._videoActive) return;
+    // (dev0949) …or while the dwell is 0, which is the same standing-still
+    // state by another route: nothing is counting down, so the wheel is free.
+    if (!st || st._videoActive) return;
+    if (!st.paused && _ssDwellMs(st) > 0) return;
     e.preventDefault();
     e.stopPropagation();
     const now = Date.now();
@@ -1048,8 +1107,18 @@ function _slideshowStart(allOrdered, opts) {
 
   // Show first slide (no crossfade for the initial paint).
   _slideshowShow(0, { initial: true });
-  // And immediately open the settings menu over it.
-  _slideshowOpenMenu();
+  // (dev0949) Vss opens dressed for VIEWING: the settings panel is already
+  // folded away and the [N] box stands in its place, so what a viewer meets is
+  // the first picture and four faint controls. A hold on the box brings the
+  // whole panel back (_ssVssExpandPanel). Every other source still opens with
+  // the panel over the first slide — those are working screens, and the panel
+  // is how you set them up.
+  if (_slideshowState.vss) {
+    _slideshowState.menuCollapsed = true;
+    _ssVssBuildChrome();
+  } else {
+    _slideshowOpenMenu();
+  }
 }
 
 function _slideshowApplyTransitionTiming() {
@@ -1257,6 +1326,15 @@ function _slideshowPlayVideo(slide) {
     st._prevFsZ = fs.style.zIndex || '';
     // Above the slideshow overlay (image), but below the menu (which stays on top).
     fs.style.zIndex = '' + SLIDESHOW_VIDEO_Z;
+  }
+  // (dev0949) Vss dressing for this video: the control row goes, the picture
+  // takes the whole window and the seek bar becomes a thin translucent strip
+  // (vp.js _vpApplySlimChrome). Plus the framing the grid cell was showing, so
+  // a zoomed cell opens zoomed. Both are one-shot flags vp.js reads and clears
+  // inside gridOpenFullscreen — set them immediately before the call.
+  if (st.vss) {
+    window._vpSlimChrome = true;
+    if (slide.frame) window._vpCellFraming = slide.frame;
   }
   _slideshowWatchVpClose();
   gridOpenFullscreen(slide.row);
@@ -2028,6 +2106,36 @@ function _slideshowShow(i, opts) {
       if (_cmt) { _cmt.style.opacity = '0'; _cmt.textContent = ''; }
     }
 
+    // Ahead of the crossfade below, and not after it: settling the framing
+    // means killing the layer's transition for a forced reflow, and a reflow
+    // taken AFTER the opacity had been set would commit that opacity with the
+    // transition still off — the fade would simply not happen on any framed
+    // slide.
+    // (dev0949) THE CELL'S OWN FRAMING, carried over. Only when Ken Burns is
+    // off: that animation owns the same transform, and two writers on one
+    // property is how a slide ends up somewhere neither of them meant.
+    //
+    // Seeded into _mouseZoom but NOT into _manualZoom, which is the difference
+    // between "this picture happens to be magnified" and "the viewer has zoomed
+    // in": _slideshowIsZoomed reads the latter and switches every gesture from
+    // navigate to pan, so seeding it would cost the show its swipes on every
+    // zoomed cell. A hold-zoom still continues from here rather than snapping
+    // back to 1x, because that is the value _ensureMZ picks up.
+    if (st.vss && slide.frame && st.settings.zoom === 'off') {
+      const S  = slide.frame.zoom;
+      const cw = targetEl.clientWidth, ch = targetEl.clientHeight;
+      const nw = targetEl.naturalWidth, nh = targetEl.naturalHeight;
+      if (S > 1.02 && cw && ch && nw && nh && typeof window._vpFramePan === 'function') {
+        const k  = Math.min(cw / nw, ch / nh);     // object-fit:contain
+        const f  = window._vpFramePan(cw, ch, nw * k, nh * k, slide.frame.coi, S);
+        targetEl.style.transition = 'none';
+        targetEl.style.transform  = 'translate(' + f.tx + 'px,' + f.ty + 'px) scale(' + S + ')';
+        void targetEl.offsetHeight;
+        _slideshowApplyTransitionTiming();
+        st._mouseZoom = { scale: S, tx: f.tx, ty: f.ty };
+      }
+    }
+
     const blurOn = st.settings.canvasBlur !== 'off';
 
     if (opts.initial) {
@@ -2087,8 +2195,10 @@ function _slideshowShow(i, opts) {
 
     // (zip0236) Skip scheduling the auto-advance while paused. Resume button
     // re-arms the timer with a fresh slideSec dwell.
-    if (!st.paused) {
-      const dwellMs = st.settings.slideSec * 1000;
+    // (dev0949) dwell 0 = HOLD: no timer at all, the picture stays until the
+    // viewer asks for the next one (arrow, swipe, key or wheel).
+    const dwellMs = _ssDwellMs(st);
+    if (!st.paused && dwellMs > 0) {
       st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
     }
   };
@@ -2244,10 +2354,10 @@ function _slideshowApplySizeFilterChange() {
   if (curSlide && typeof curSlide.mp === 'number' && !_slideshowSizeOk(curSlide.mp, f)) {
     curSlide.status = 'filtered';
     _slideshowAdvance(+1);
-  } else if (!st.paused) {
+  } else if (!st.paused && _ssDwellMs(st) > 0) {
     // Keep the current slide on screen; refresh its dwell so the show flows.
     clearTimeout(st.timer);
-    st.timer = setTimeout(() => _slideshowAdvance(+1), st.settings.slideSec * 1000);
+    st.timer = setTimeout(() => _slideshowAdvance(+1), _ssDwellMs(st));
   }
   // (dev0304) Live-update review-mode tally so Unsorted image/video counts
   // reflect the new filter immediately rather than waiting for the next move.
@@ -2506,8 +2616,8 @@ function _slideshowResume() {
   if (!st || !st.paused) return;
   st.paused = false;
   _slideshowSyncPauseBtn();
-  const dwellMs = st.settings.slideSec * 1000;
-  st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
+  const dwellMs = _ssDwellMs(st);              // (dev0949) 0 = hold, no timer
+  if (dwellMs > 0) st.timer = setTimeout(() => _slideshowAdvance(+1), dwellMs);
 }
 
 function _slideshowSyncPauseBtn() {
@@ -2690,6 +2800,9 @@ function slideshowClose() {
   // (dev0281) Menu + stub are siblings of the overlay now — remove explicitly.
   if (_slideshowState.menu && _slideshowState.menu.parentNode) _slideshowState.menu.remove();
   if (_slideshowState.collapsedStub && _slideshowState.collapsedStub.parentNode) _slideshowState.collapsedStub.remove();
+  // (dev0949) The Vss chrome are siblings of the overlay too — same reason,
+  // same need to be removed by hand.
+  _ssVssRemoveChrome();
   // (dev0284) Drop any open delete-confirmation modal (also a sibling).
   const _delModal = document.getElementById('ssDeleteModal');
   if (_delModal && _delModal.parentNode) _delModal.remove();
@@ -2771,6 +2884,7 @@ function _slideshowToggleCollapse() {
     st.menuCollapsed = false;
     if (st.collapsedStub && st.collapsedStub.parentNode) st.collapsedStub.remove();
     st.collapsedStub = null;
+    if (st.vss) _ssVssShowDurBox(false);   // (dev0949) the box makes room
     _slideshowOpenMenu();
     return;
   }
@@ -2778,6 +2892,10 @@ function _slideshowToggleCollapse() {
   st.menuCollapsed = true;
   if (st.menu && st.menu.parentNode) st.menu.remove();
   st.menu = null;
+  // (dev0949) In Vss the [N] box IS the collapsed stub — it was never removed,
+  // only hidden while the panel stood over it. A second "+" beside it would be
+  // two ways to reopen the same panel, one of them unexplained.
+  if (st.vss) { _ssVssShowDurBox(true); return; }
   const stub = document.createElement('button');
   stub.id = 'slideshowMenuStub';
   stub.title = 'Expand settings';
@@ -2795,6 +2913,296 @@ function _slideshowToggleCollapse() {
   // "+" stays tappable over a playing video too.
   (st.overlay.parentNode || document.body).appendChild(stub);
   st.collapsedStub = stub;
+}
+
+// (dev0949) ══ Vss CHROME ═══════════════════════════════════════════════════
+// Four things floating over the picture, and nothing else:
+//
+//   ⟵  bottom left    previous cell        ⟶  bottom right   next cell
+//   ⟸  left, mid      back to the grid     [N] right, mid    the dwell
+//
+// All four are SIBLINGS of #slideshowOverlay, not children of it — the same
+// rule the settings menu has followed since dev0281. A child of the z-40000
+// overlay can never paint above the z-41000 video layer, because a stacking
+// context confines its descendants; a sibling at z-42000 can, and these have
+// to stay reachable over a playing video as much as over a still.
+//
+// Being outside the overlay also keeps them clear of its gesture handlers: the
+// swipe/tap/wheel listeners are bound to the overlay itself, so a press on the
+// chrome is simply not an event any of them ever sees.
+const SS_VSS_IDS = ['ssVssPrev', 'ssVssNext', 'ssVssBack', 'ssVssDurBox', 'ssVssDurMenu'];
+
+// The dwell ladder the [N] box walks. 0 is the bottom rung and the one that
+// means something different in kind — the "quantum change" — so it is where
+// wheeling down lands and stops, never a step short of it.
+const SS_DUR_LADDER = [0, 1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 45, 60];
+
+function _ssVssBuildChrome() {
+  const st = _slideshowState;
+  if (!st || !st.overlay) return;
+  const parent = st.overlay.parentNode || document.body;
+  const mobile = (typeof _isMobileDevice === 'function') ? _isMobileDevice() : false;
+
+  const mkArrow = function (id, glyph, place, size, weight, title, onTap) {
+    const b = document.createElement('button');
+    b.id = id;
+    b.title = title;
+    b.textContent = glyph;
+    b.style.cssText = 'position:absolute;' + place + ';'
+      + 'background:transparent;border:none;padding:8px 14px;'
+      + 'color:rgba(255,255,255,0.40);text-shadow:0 2px 12px rgba(0,0,0,0.9);'
+      + 'font-family:monospace;font-size:' + size + 'px;font-weight:' + weight + ';'
+      + 'line-height:1;cursor:pointer;touch-action:manipulation;'
+      + '-webkit-tap-highlight-color:transparent;'
+      + 'transition:color 0.15s;z-index:' + SLIDESHOW_MENU_Z + ';';
+    b.addEventListener('mouseenter', function () { b.style.color = 'rgba(255,255,255,0.95)'; });
+    b.addEventListener('mouseleave', function () { b.style.color = 'rgba(255,255,255,0.40)'; });
+    b.addEventListener('click', function (e) { e.stopPropagation(); onTap(); });
+    parent.appendChild(b);
+    return b;
+  };
+
+  const aSize = mobile ? 34 : 42;
+  mkArrow('ssVssPrev', '⟵', 'left:4px;bottom:6px', aSize, 'normal',
+          'Previous cell', function () { _ssVssStep(-1); });
+  mkArrow('ssVssNext', '⟶', 'right:4px;bottom:6px', aSize, 'normal',
+          'Next cell', function () { _ssVssStep(+1); });
+  // Thicker, and at eye level rather than in a corner: leaving is a different
+  // kind of move from stepping, and should not be a near-miss of one.
+  mkArrow('ssVssBack', '⟸', 'left:0;top:50%;transform:translateY(-50%)',
+          mobile ? 40 : 50, 'bold', 'Back to the grid (Esc)',
+          function () { slideshowClose(); });
+
+  // ── the [N] box ───────────────────────────────────────────────────────────
+  // Three gestures on one small target, which is what lets the whole settings
+  // panel fold away behind it:
+  //   wheel (desktop)  walk the ladder, down to the 0 that means hold
+  //   press            the seconds list
+  //   hold             the full settings panel, back in its old place
+  const box = document.createElement('div');
+  box.id = 'ssVssDurBox';
+  box.style.cssText = 'position:absolute;right:12px;top:50%;'
+    + 'transform:translateY(-50%);z-index:' + SLIDESHOW_MENU_Z + ';'
+    + 'background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.30);'
+    + 'border-radius:8px;padding:3px;touch-action:none;'
+    + 'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;';
+
+  const btn = document.createElement('button');
+  btn.id = 'ssVssDur';
+  btn.style.cssText = 'display:block;background:transparent;border:none;'
+    + 'color:#cfe6ff;font-family:monospace;font-size:17px;line-height:1;'
+    + 'min-width:28px;padding:6px 5px;cursor:pointer;'
+    + 'text-shadow:0 1px 6px rgba(0,0,0,0.9);touch-action:none;'
+    + '-webkit-tap-highlight-color:transparent;';
+  box.appendChild(btn);
+  parent.appendChild(box);
+
+  box.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    _ssStepDwell(e.deltaY < 0 ? +1 : -1);
+  }, { passive: false });
+
+  // A long press on a touch screen raises the OS callout / context menu unless
+  // it is refused; on desktop the same handler refuses the right-click menu.
+  box.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  let holdTimer = null, heldFired = false;
+  const clearHold = function () {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+  };
+  btn.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    heldFired = false;
+    clearHold();
+    holdTimer = setTimeout(function () {
+      holdTimer = null;
+      heldFired = true;
+      _ssVssDurMenuClose();
+      _ssVssExpandPanel();
+    }, 500);
+  });
+  btn.addEventListener('pointerup', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearHold();
+    if (!heldFired) _ssVssDurMenuToggle();
+  });
+  btn.addEventListener('pointercancel', function () { clearHold(); });
+  btn.addEventListener('pointerleave', function () { clearHold(); });
+
+  // The counter would sit under the next arrow, where it has always lived, so
+  // in Vss it moves to the middle of the bottom edge.
+  const counter = st.overlay.querySelector('#slideshowCounter');
+  if (counter) {
+    counter.style.right = 'auto';
+    counter.style.left = '50%';
+    counter.style.transform = 'translateX(-50%)';
+  }
+
+  _ssVssSyncDur();
+}
+
+// (dev0949) Step the show, from a control that may be sitting over a PLAYING
+// VIDEO. Calling _slideshowAdvance there would mount a second V under the
+// first; the established route is the one the swipe gesture already uses —
+// aim the close (_closeDir), close V, and let the close observer do the
+// advance in that direction (see _slideshowAfterVideoClose).
+function _ssVssStep(dir) {
+  const st = _slideshowState;
+  if (!st) return;
+  if (st._videoActive && typeof vpClose === 'function') {
+    st._closeDir = (dir < 0) ? -1 : 1;
+    vpClose();
+    return;
+  }
+  _slideshowAdvance(dir);
+}
+
+// The number on the box, and its explanation. One place, because three paths
+// change the dwell: the wheel, the seconds list, and the settings panel's own
+// field once it has been held open.
+function _ssVssSyncDur() {
+  const st = _slideshowState;
+  const btn = document.getElementById('ssVssDur');
+  if (!st || !btn) return;
+  const v = Number(st.settings.slideSec) || 0;
+  btn.textContent = (v > 0 && v < 1) ? String(v) : String(Math.round(v));
+  const how = '  ·  wheel to change · press for the list · hold for all settings';
+  btn.title = (v > 0)
+    ? (v + 's per picture' + how)
+    : ('Hold: each picture stays until you move on, each video plays to its end' + how);
+}
+
+function _ssVssShowDurBox(on) {
+  const box = document.getElementById('ssVssDurBox');
+  if (box) box.style.display = on ? 'block' : 'none';
+  if (!on) _ssVssDurMenuClose();
+}
+
+function _ssVssRemoveChrome() {
+  SS_VSS_IDS.forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el && el.parentNode) el.remove();
+  });
+  if (_ssVssDocCloser) {
+    document.removeEventListener('pointerdown', _ssVssDocCloser, true);
+    _ssVssDocCloser = null;
+  }
+}
+
+// ── the dwell itself ────────────────────────────────────────────────────────
+function _ssSetDwell(sec) {
+  const st = _slideshowState;
+  if (!st) return;
+  st.settings.slideSec = sec;
+  _slideshowSaveSettings(st.settings);
+  _ssVssSyncDur();
+  // The panel may be open over the box (held), so keep its field honest.
+  if (st.menu) {
+    const f = st.menu.querySelector('#ssSlideSec');
+    if (f) f.value = sec;
+  }
+  // Re-armed from NOW rather than at the next advance: the whole point of
+  // reaching for this box mid-show is to change what the picture in front of
+  // you is doing. A video slide is left alone — it owns its own timing.
+  clearTimeout(st.timer);
+  if (!st.paused && !st._videoActive && sec > 0) {
+    st.timer = setTimeout(function () { _slideshowAdvance(+1); }, sec * 1000);
+  }
+}
+
+function _ssStepDwell(dir) {
+  const st = _slideshowState;
+  if (!st) return;
+  const cur = Number(st.settings.slideSec) || 0;
+  // Nearest rung, so a value typed into the settings panel (0.5, 8, 12) joins
+  // the ladder where it belongs instead of snapping to the bottom of it.
+  let i = 0, best = Infinity;
+  SS_DUR_LADDER.forEach(function (v, n) {
+    const d = Math.abs(v - cur);
+    if (d < best) { best = d; i = n; }
+  });
+  const next = Math.max(0, Math.min(SS_DUR_LADDER.length - 1, i + dir));
+  if (SS_DUR_LADDER[next] === cur) return;
+  _ssSetDwell(SS_DUR_LADDER[next]);
+}
+
+// ── the seconds list ────────────────────────────────────────────────────────
+let _ssVssDocCloser = null;
+
+function _ssVssDurMenuClose() {
+  const m = document.getElementById('ssVssDurMenu');
+  if (m && m.parentNode) m.remove();
+  if (_ssVssDocCloser) {
+    document.removeEventListener('pointerdown', _ssVssDocCloser, true);
+    _ssVssDocCloser = null;
+  }
+}
+
+function _ssVssDurMenuToggle() {
+  if (document.getElementById('ssVssDurMenu')) { _ssVssDurMenuClose(); return; }
+  const st = _slideshowState;
+  const box = document.getElementById('ssVssDurBox');
+  if (!st || !box) return;
+  const cur = Number(st.settings.slideSec) || 0;
+
+  const m = document.createElement('div');
+  m.id = 'ssVssDurMenu';
+  m.style.cssText = 'position:absolute;right:52px;top:50%;'
+    + 'transform:translateY(-50%);z-index:' + SLIDESHOW_MENU_Z + ';'
+    + 'background:rgba(14,14,28,0.95);border:1px solid #4af;border-radius:9px;'
+    + 'padding:5px;max-height:min(78vh,420px);overflow-y:auto;'
+    + 'box-shadow:0 8px 32px rgba(0,0,0,0.9);font-family:monospace;font-size:13px;';
+
+  SS_DUR_LADDER.forEach(function (v) {
+    const o = document.createElement('button');
+    o.textContent = (v === 0) ? '0  hold' : (v + ' s');
+    o.style.cssText = 'display:block;width:100%;text-align:left;'
+      + 'background:' + (v === cur ? 'rgba(0,80,160,0.65)' : 'transparent') + ';'
+      + 'border:none;border-radius:5px;color:' + (v === cur ? '#fff' : '#cde') + ';'
+      + 'font-family:monospace;font-size:13px;padding:6px 12px;cursor:pointer;'
+      + 'white-space:nowrap;';
+    o.addEventListener('mouseenter', function () {
+      if (v !== cur) o.style.background = 'rgba(255,255,255,0.10)';
+    });
+    o.addEventListener('mouseleave', function () {
+      if (v !== cur) o.style.background = 'transparent';
+    });
+    o.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _ssSetDwell(v);
+      _ssVssDurMenuClose();
+    });
+    m.appendChild(o);
+  });
+
+  (box.parentNode || document.body).appendChild(m);
+
+  // Anywhere else dismisses it — including the picture, which is the obvious
+  // place to press when you have changed your mind. Capture phase so it lands
+  // before the overlay's own tap/swipe handling; armed on the next tick so the
+  // press that opened it doesn't close it again on the way back up.
+  _ssVssDocCloser = function (e) {
+    if (e.target.closest && (e.target.closest('#ssVssDurMenu') ||
+                             e.target.closest('#ssVssDurBox'))) return;
+    _ssVssDurMenuClose();
+  };
+  setTimeout(function () {
+    if (_ssVssDocCloser) document.addEventListener('pointerdown', _ssVssDocCloser, true);
+  }, 0);
+}
+
+// A hold on the box is the way back to everything the panel still carries —
+// order, blur, labels, the size filter, the source picker. It opens exactly
+// where it has always opened; the box steps aside for as long as it is up.
+function _ssVssExpandPanel() {
+  const st = _slideshowState;
+  if (!st || st.menu) return;
+  st.menuCollapsed = false;
+  _ssVssShowDurBox(false);
+  _slideshowOpenMenu();
 }
 
 // (dev0265) Reusable size dropdown for Title/Comment overlays.
@@ -2952,7 +3360,7 @@ function _slideshowMenuHtml(s, baseFs, bigFs) {
 
     <div class="ss-row ss-page-2" style="${rowCSS}">
       <span>Each slide</span>
-      <span><input id="ssSlideSec"  type="number" min="0.5" max="60" step="0.5"
+      <span><input id="ssSlideSec"  type="number" min="0" max="60" step="0.5"
                    inputmode="decimal" value="${s.slideSec}"
                    style="${numCSS}"> sec</span>
     </div>
@@ -3330,7 +3738,7 @@ function _slideshowWireMenu(menu) {
       if (el.value.trim() === '' || isNaN(parseFloat(el.value))) el.value = el.dataset.prev || '';
     });
   }
-  wireNum('ssSlideSec', 'slideSec',     0.5, 60);
+  wireNum('ssSlideSec', 'slideSec',     0,   60);   // (dev0949) 0 = hold
   wireNum('ssZoomSec',  'zoomSec',      0.5, 60);
   wireNum('ssTransSec', 'transitionSec', 0,  10);
   wireNum('ssDelaySec', 'delaySec',      0,  30); // (zip0239) pre-animation pause

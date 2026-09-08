@@ -355,6 +355,25 @@ ${qHtml}
 // to grow: a wrapped control row on a narrow phone, or the extra "↗ Open on …"
 // row the Instagram / TikTok / Pinterest mounts insert into it.
 //
+// (dev0949) ── SLIM CHROME: the Vss dressing of this same player ────────────
+// The grid slideshow (Vss) hands every video slide to V, and there the 70-140px
+// transport bar is the wrong object entirely: a slideshow is a picture with a
+// way to nudge the time, not an editing session. Slim chrome keeps the player
+// exactly as it is and re-dresses it — the control ROW goes, the picture takes
+// the whole window, and #vp-timeline is restyled into a thin translucent strip
+// lying over the bottom of it.
+//
+// Deliberately a RESTYLE of the real timeline rather than a second bar of our
+// own: the scrub handlers, the segment markers, the A-B lines and
+// vpUpdateTimeline's per-tick painting all address that one element by id, so a
+// parallel strip would have to duplicate every one of them — and would drift
+// the first time one of them changed. The mute button is MOVED into the strip
+// for the same reason: it keeps its vpToggleMute wiring and its icon sync.
+//
+// Set per-open from window._vpSlimChrome (read-and-cleared like every other
+// one-shot open flag) and cleared by vpClose, so an ordinary V is untouched.
+let _vpSlimActive = false;
+
 // A ResizeObserver rather than a one-shot measure, because most of the causes
 // land AFTER this runs: those mounts fire on a 50ms timeout, wrapping changes on
 // an orientation flip, and the rotated wrap's width itself moves whenever the
@@ -368,6 +387,10 @@ function _vpSyncToolbarHeight(host, toolbar) {
     // fallback below would put a 70px black band back where it used to be. The
     // whole point of collapsing it is that the picture takes the space.
     if (toolbar.style.display === 'none') { host.style.bottom = '0'; return; }
+    // (dev0949) Slim chrome: the bar is transparent and lies OVER the picture,
+    // so it reserves nothing. Without this the observer would put the 70px
+    // black band back the moment the bar measured itself.
+    if (_vpSlimActive) { host.style.bottom = '0'; return; }
     const h = toolbar.offsetHeight || 70;
     host.style.bottom = (h + 10) + 'px';
   };
@@ -468,6 +491,101 @@ function vpCollapseControls(hide) {
 }
 window.vpCollapseControls = vpCollapseControls;
 
+// (dev0949) Put the control row away and turn #vp-timeline into the thin
+// translucent strip described above. One direction only: slim is decided at
+// open time and the whole player is rebuilt on the next one, so there is no
+// "un-slim" to get wrong.
+//
+// The hit area is the problem a 7px bar always has. Rather than make the bar
+// itself fat, a transparent child stretches 11px above and below it; pointer
+// events on that child BUBBLE to the same pointerdown listener on the bar, and
+// the scrub math reads clientX, so a thumb anywhere in the 29px band scrubs
+// exactly as a hit on the visible 7px would.
+function _vpApplySlimChrome() {
+  const bar = document.getElementById('vp-toolbar');
+  const tl  = document.getElementById('vp-timeline');
+  if (!bar || !tl) return;
+  const row     = tl.parentNode;
+  const ctrl    = document.getElementById('vp-ctrlrow');
+  const host    = document.getElementById('grid-fs-video');
+  const catcher = document.getElementById('vp-swipe-catcher');
+  const mute    = document.getElementById('vp-mute');
+  const prog    = document.getElementById('vp-progress');
+  const head    = document.getElementById('vp-playhead');
+
+  if (ctrl) ctrl.style.display = 'none';
+
+  // The bar now lies OVER the picture, so it has to out-rank #vp-swipe-catcher
+  // (z 50) or the catcher would swallow every scrub. pointer-events:none makes
+  // the rest of it invisible to hit-testing, so gestures aimed at the picture
+  // still reach the catcher underneath.
+  bar.style.background   = 'transparent';
+  bar.style.borderTop    = 'none';
+  bar.style.minHeight    = '0';
+  bar.style.padding      = '0 0 calc(8px + env(safe-area-inset-bottom,0px)) 0';
+  bar.style.pointerEvents = 'none';
+  bar.style.zIndex       = '60';
+
+  if (row) {
+    row.style.height       = 'auto';
+    row.style.alignItems   = 'center';
+    row.style.padding      = '0 12px';
+    row.style.gap          = '10px';
+    row.style.pointerEvents = 'none';
+  }
+
+  tl.style.height        = '7px';
+  tl.style.background    = 'rgba(255,255,255,0.18)';
+  tl.style.border        = 'none';
+  tl.style.borderRadius  = '4px';
+  tl.style.boxShadow     = '0 1px 6px rgba(0,0,0,0.55)';
+  tl.style.pointerEvents = 'auto';
+  if (prog) prog.style.background = 'rgba(255,255,255,0.62)';
+  if (head) { head.style.background = '#fff'; head.style.width = '2px'; }
+  if (!document.getElementById('vp-tl-hit')) {
+    const hit = document.createElement('div');
+    hit.id = 'vp-tl-hit';
+    hit.style.cssText = 'position:absolute;left:0;right:0;top:-11px;bottom:-11px;'
+      + 'z-index:0;background:transparent;';
+    tl.appendChild(hit);
+  }
+
+  // Mute travels with the strip: it is the one transport control a slideshow
+  // still needs, and moving the live button keeps vpWireControls' onclick and
+  // the muteIconHTML sync intact (both address it by id).
+  if (mute && row) {
+    mute.style.cssText += ';pointer-events:auto;min-width:0;padding:2px 8px;'
+      + 'font-size:12px;line-height:1;background:rgba(0,0,0,0.42);'
+      + 'border:1px solid rgba(255,255,255,0.28);color:#fff;opacity:0.8;'
+      + 'flex:0 0 auto;';
+    row.appendChild(mute);
+  }
+
+  if (host)    host.style.bottom = '0';
+  if (catcher) catcher.style.inset = '0';
+}
+
+// (dev0949) Centre a media point at a magnification, clamped so the scaled
+// media still covers the frame — the grid's COI rule (see _gridAnchoredTransform
+// in grid.js), expressed in pixels for a centre-origin transform. cw/ch is the
+// frame, bw/bh the media's box inside it at zoom 1, coi the point in the MEDIA's
+// own frame. The clamp is what stops a near-edge point dragging a blank margin
+// into view; it is also why an edge point only reaches the centre once there is
+// magnification enough to carry it there.
+function _vpFramePan(cw, ch, bw, bh, coi, S) {
+  const fx = (coi && isFinite(coi.fx)) ? coi.fx : 0.5;
+  const fy = (coi && isFinite(coi.fy)) ? coi.fy : 0.5;
+  const dx = (fx - 0.5) * bw * S;
+  const dy = (fy - 0.5) * bh * S;
+  const mx = Math.max(0, (bw * S - cw) / 2);
+  const my = Math.max(0, (bh * S - ch) / 2);
+  return {
+    tx: Math.max(-mx, Math.min(mx, -dx)),
+    ty: Math.max(-my, Math.min(my, -dy))
+  };
+}
+window._vpFramePan = _vpFramePan;
+
 function gridOpenFullscreen(row, contained) {
   // (dev0709) V gets the speakers to itself. The grid is still mounted behind
   // this overlay, and a cross-origin IG embed on it keeps playing (and talking)
@@ -532,6 +650,15 @@ function gridOpenFullscreen(row, contained) {
   const _peekCap   = String(window._vpBottomCaption || '');
   window._vpNoExpand = false; window._vpLoopWhole = false; window._vpBottomCaption = '';
   _vpNoExpandActive = _noExpand;
+  // (dev0949) Vss's two: the slim dressing, and the framing the grid cell this
+  // slide came from was showing. Read-and-CLEARED on every open for the same
+  // reason as the peek flags above — a flag that misses its branch must not
+  // leak into the next, ordinary V.
+  const _slim = !!window._vpSlimChrome;
+  window._vpSlimChrome = false;
+  _vpSlimActive = _slim;
+  const _framing = window._vpCellFraming || null;
+  window._vpCellFraming = null;
   if (_noExpand || _loopWhole || _peekCap) {
     requestAnimationFrame(() => _vpApplyPeek(_loopWhole, _peekCap));
   }
@@ -635,6 +762,34 @@ function gridOpenFullscreen(row, contained) {
     function _vpxy(e) {
       return window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
     }
+
+    // (dev0949) Open at a framing chosen elsewhere — the grid cell the Vss
+    // slide came from. This is the SAME transform the hold-LMB zoom writes, so
+    // a later gesture continues from here rather than snapping back to 1x.
+    //
+    // _vZoomStopped is latched true first: a carried-over framing is not a zoom
+    // GESTURE, and _vApply would otherwise read it as one and pause the show
+    // (dev0765) before the first frame had played.
+    window._vpSetFraming = function (scale, coi) {
+      const S = Number(scale);
+      if (!isFinite(S) || S <= 1.02) return;
+      const r = host.getBoundingClientRect();
+      const cw = r.width, ch = r.height;
+      if (!cw || !ch) return;
+      // A <video> is object-fit:contain, so its box is the natural aspect
+      // letterboxed inside the host; an iframe mount (YT/Vimeo) has already
+      // been sized to fill the host, so there the host IS the box.
+      let bw = cw, bh = ch;
+      const v = host.querySelector('video');
+      if (v && v.videoWidth && v.videoHeight) {
+        const k = Math.min(cw / v.videoWidth, ch / v.videoHeight);
+        bw = v.videoWidth * k; bh = v.videoHeight * k;
+      }
+      const f = _vpFramePan(cw, ch, bw, bh, coi, S);
+      _vScale = S; _vTx = f.tx; _vTy = f.ty;
+      _vZoomStopped = true;
+      _vApply();
+    };
 
     // ── TOUCH (dev0262): two-finger spread/pinch = zoom, two-finger pan,
     //     double-tap = return to G. Single tap = play/pause toggle.
@@ -1631,6 +1786,10 @@ function gridOpenFullscreen(row, contained) {
     // sets the host's inset, and _vpSyncToolbarHeight would overwrite that on
     // the way past.
     if (_hideCtl) vpCollapseControls(true);
+    // (dev0949) Same reason, same place: slim chrome moves the mute button and
+    // sets the host's inset, and _vpSyncToolbarHeight would undo the inset on
+    // the way past if this ran before it.
+    if (_slim) _vpApplySlimChrome();
 
     // (zip0144) No info bar for video — video extends to the top edge.
     // The cell label / title was removed because it took meaningful
@@ -1668,6 +1827,25 @@ function gridOpenFullscreen(row, contained) {
       }
     }, 50);
     
+    // (dev0949) The framing needs the media's real dimensions, which arrive
+    // with metadata — after the mount above, which itself runs on a timeout.
+    // Fire once metadata lands, and once unconditionally for the iframe mounts
+    // that never report any (they are cover-fitted to the host already).
+    if (_framing && _framing.zoom > 1.02) {
+      setTimeout(() => {
+        if (typeof window._vpSetFraming !== 'function') return;
+        const v = host.querySelector('video');
+        if (v && !v.videoWidth) {
+          v.addEventListener('loadedmetadata', () => {
+            if (typeof window._vpSetFraming === 'function') {
+              window._vpSetFraming(_framing.zoom, _framing.coi);
+            }
+          }, { once: true });
+        }
+        window._vpSetFraming(_framing.zoom, _framing.coi);
+      }, 140);
+    }
+
     // Wire up controls
     vpWireControls();
     // (dev0667) Paint the armed loop onto the A/B buttons + timeline markers.
@@ -2497,6 +2675,11 @@ function vpClose() {
   // (dev0932) Peek mode ends with the viewer it dressed. Left set, the next V
   // opened from anywhere would silently lose its ⌃ tab.
   _vpNoExpandActive = false;
+  // (dev0949) Slim chrome and the framing setter belong to the player that was
+  // just torn down; left set, the next ordinary V would inherit a dressing it
+  // never asked for and a closure over a dead host.
+  _vpSlimActive = false;
+  window._vpSetFraming = null;
   _vpSetPeekCaption('');
   // (dev0902) The reader owned the tick write-back while it was up; anything
   // opened after it must not inherit a closure over this row. UNLESS Xs is on
@@ -9957,7 +10140,9 @@ function vpMountDirectVideo(host, link, seg, muted) {
   host.innerHTML = '';
   const vid = document.createElement('video');
   vid.src = link;
-  vid.controls = true;
+  // (dev0949) Under slim chrome the native control bar is exactly what the Vss
+  // dressing exists to remove — the thin strip replaces it.
+  vid.controls = !_vpSlimActive;
   vid.autoplay = true;
   vid.playsInline = true;
   vid.muted = !!muted;
@@ -9993,7 +10178,9 @@ function vpMountDirectVideo(host, link, seg, muted) {
   // 0 0 80px 0 — bump that to 0 0 136px 0 so native controls (which
   // float at host's bottom edge, i.e. just above the toolbar) get clicks.
   const catcher = document.getElementById('vp-swipe-catcher');
-  if (catcher) catcher.style.inset = '0 0 136px 0';
+  // (dev0949) …and with no native controls to keep clear of, the catcher goes
+  // back to covering the whole picture, so gestures work right to the bottom.
+  if (catcher) catcher.style.inset = _vpSlimActive ? '0' : '0 0 136px 0';
   // (dev0253) Wrapper exposes BOTH Vimeo-shape (play/pause/setCurrentTime,
   // promise-returning) AND YT-shape (playVideo/seekTo, sync) methods. The
   // VP toolbar branches on `_vpState.isYT` — when false it calls the
