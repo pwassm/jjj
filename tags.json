@@ -8324,10 +8324,18 @@
   },
   {
     "id": "transcribe",
-    "label": "Transcribe",
+    "label": "To transcribe",
     "kind": "topic",
     "parents": [],
     "aliases": [],
-    "def": ""
+    "def": "Queue marker: this row's video is wanted as a transcript + summary. The T row menu's \"Transcribe & summarise\" is what acts on it; the result lands in ytsummaries/ and the row also gets \"transcribed\"."
+  },
+  {
+    "id": "transcribed",
+    "label": "Transcribed",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": "Done: a transcript and summary for this row exist in ytsummaries/ (dev-only, gitignored). Press z on the row to read them. Added automatically by ytt.js on success; \"transcribe\" is deliberately left in place as the record of what was asked for."
   }
 ]

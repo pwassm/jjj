@@ -19,6 +19,14 @@ param(
     [string[]]$Targets = @('E:\_jjjRoot', 'F:\_jjjRoot', 'C:\_jjjRoot'),
     [string]  $Source  = 'M:\jjj',
     [int]     $ProbeTimeoutSec = 5,
+    # (dev0961) Gitignored SUBFOLDERS that are also worth carrying. The root sweep
+    # below is deliberately files-only, so anything here needs naming explicitly.
+    # ytsummaries\ qualifies on the same test ml.json does: it is gitignored (the
+    # repo is public), it is small, and it is LABORIOUS - each summary is minutes
+    # of local Ollama over a caption track that YouTube may later pull, so a lost
+    # one is not simply re-fetchable. Keep this list short: a big folder here
+    # would turn a per-commit backup into a long op.
+    [string[]]$Folders = @('ytsummaries'),
     [switch]  $List
 )
 
@@ -86,7 +94,7 @@ function Test-TargetReachable {
 
 $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 Write-Host "backup-root  $stamp" -ForegroundColor Cyan
-Write-Host "  source : $Source (root files only)" -ForegroundColor DarkGray
+Write-Host "  source : $Source (root files$(if ($Folders) { ' + ' + ($Folders -join ', ') + '\' }))" -ForegroundColor DarkGray
 
 $copied = 0; $skipped = 0
 foreach ($t in $Targets) {
@@ -104,6 +112,21 @@ foreach ($t in $Targets) {
                 $n = (Get-ChildItem -LiteralPath $t -File -ErrorAction SilentlyContinue).Count
                 Write-Host ("  {0,-16} OK    ({1} files)" -f $t, $n) -ForegroundColor Green
                 $copied++
+                # (dev0961) Named gitignored subfolders, /E this time. Same no-/MIR
+                # rule as the root: ADD or UPDATE only, so a file deleted here is
+                # still recoverable from the backup. A folder that does not exist
+                # yet is not an error - it just has nothing to say.
+                foreach ($f in $Folders) {
+                    $src = Join-Path $Source $f
+                    if (-not (Test-Path -LiteralPath $src)) { continue }
+                    robocopy $src (Join-Path $t $f) /E /COPY:DAT /R:0 /W:0 /NP /NFL /NDL /NJH /NJS /XJ | Out-Null
+                    if ($LASTEXITCODE -lt 8) {
+                        $fn = (Get-ChildItem -LiteralPath (Join-Path $t $f) -File -Recurse -ErrorAction SilentlyContinue).Count
+                        Write-Host ("  {0,-16}   + {1}\ ({2} files)" -f '', $f, $fn) -ForegroundColor DarkGreen
+                    } else {
+                        Write-Host ("  {0,-16}   + {1}\ robocopy exit {2}" -f '', $f, $LASTEXITCODE) -ForegroundColor Yellow
+                    }
+                }
             } else {
                 Write-Host ("  {0,-16} robocopy exit {1} - see above" -f $t, $code) -ForegroundColor Yellow
                 $skipped++

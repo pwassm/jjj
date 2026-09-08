@@ -16,6 +16,7 @@ const https = require('https');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
+const net   = require('net');   // (dev0961) /ytt/ probes :11434 before spawning ollama
 const { spawn, spawnSync, execFile, execFileSync } = require('child_process');
 const { probeEmbed } = require('./igEmbedProbeCore');   // (dev0675) download-time embed verdict
 
@@ -6968,6 +6969,261 @@ function mediaDownload(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: String((err && err.message) || err) }, origin));
 }
 
+// (dev0961) ── /ytt/ : YouTube transcript → local-Ollama summary ─────────────
+// Both engines already existed as a DESKTOP tool (M:\jjj\YTT, driven by YTT.ahk):
+// step 1 `get_yt_transcript.py` pulls YouTube's own caption track (~2s, no audio,
+// no whisper, no LLM); step 2 `Tsum<Name>.py` chunks it and makes one Ollama call
+// per chunk plus a final synthesis. Nothing here re-implements either — this route
+// drives those same two scripts from a T row, so the result lands under a name that
+// maps back to a UID instead of in M:\YTT under `@channel~id~title~words.txt`.
+//
+// Output goes to ytsummaries/ — GITIGNORED and dev-only (the repo is public and
+// GitHub Pages serves whatever is committed). Its backup is backup-root.ps1, NOT
+// git, the same rule as ml.json. Two files per row:
+//   <uid>~<videoId>~<title>.transcript.txt   the caption track — kept because it is
+//                                            the irreplaceable half (tracks get
+//                                            pulled) while the summary regenerates
+//                                            from it for free
+//   <uid>~<videoId>~<title>.summary.txt      the model's output (Tsum appends the
+//                                            full transcript under it as well)
+//
+// Progress reuses the MEDIA_JOBS idiom (dev0804): the client mints a job id, sends
+// it with the POST and polls /ytt/progress?job=<id>. It matters more here than for
+// a download — a 27k-word transcript is ~22 SEQUENTIAL Ollama calls on the 780M, so
+// the POST is many minutes of silence otherwise.
+const YTT_DIR    = path.join(__dirname, 'YTT');
+const YTSUM_DIR  = path.join(__dirname, 'ytsummaries');
+const YTT_PYTHON = process.env.YTT_PYTHON || 'python';
+// qwen3:8b @ num_ctx 12288 is the VERIFIED pair (2026-08-01). 16384 dies on the
+// 780M's Vulkan kv-cache ceiling with "failed to allocate buffer for kv cache",
+// and llama3.1 — TsumHealth.py's stale argparse default — was deleted in 2026-08,
+// so BOTH must be passed explicitly rather than left to the script's defaults.
+const YTT_MODEL   = process.env.YTT_MODEL || 'qwen3:8b';
+const YTT_NUM_CTX = parseInt(process.env.YTT_NUM_CTX || '12288', 10);
+const YTT_JOBS = new Map();
+// One at a time, and not for politeness: step 2 loads an 8B model into the iGPU's
+// UMA VRAM, and two of those at once is what "failed to allocate pinned memory"
+// looks like from the browser.
+let YTT_BUSY = false;
+
+function yttJobSet(id, patch) {
+  if (!id) return;
+  const j = YTT_JOBS.get(id) || { id: id, stage: 'starting', pct: 0, chunk: 0, total: 0, words: 0, note: '', file: '', error: '' };
+  Object.assign(j, patch, { ts: Date.now() });
+  YTT_JOBS.set(id, j);
+  if (YTT_JOBS.size > 30) {
+    const cut = Date.now() - 20 * 60000;
+    for (const [k, v] of YTT_JOBS) if (v.ts < cut) YTT_JOBS.delete(k);
+  }
+}
+
+// Filename-safe segment, matching get_yt_transcript.py's safe_segment(). `~` is the
+// field separator in these names, so it can never survive inside a field.
+function yttSafe(s, maxLen) {
+  let out = String(s == null ? '' : s);
+  out = out.replace(/[/:*?<>|\\"]/g, '');
+  out = out.split('~').join('-').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '');
+  return out.slice(0, maxLen || 80) || 'unknown';
+}
+
+function yttVideoId(url) {
+  const m = /(?:v=|youtu\.be\/|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/.exec(String(url || ''));
+  return m ? m[1] : null;
+}
+
+// Which Tsum*.py prompts exist. Dropping a new one into YTT\ is all it takes —
+// exactly as with YTT.ahk's A/S/D/F menu, which scans the same folder the same way.
+function yttSummarizers() {
+  try {
+    return fs.readdirSync(YTT_DIR)
+      .map(n => /^Tsum(.+)\.py$/i.exec(n)).filter(Boolean)
+      .map(m => m[1]).sort();
+  } catch (_) { return []; }
+}
+
+// The FOLDER is the manifest — there is no ysumm column in ml.json. A row's state is
+// "does a file whose name starts <uid>~ exist", which cannot drift from disk and
+// cannot be lost by the load→save path that has blanked columns before (dev0853).
+function yttScan() {
+  const out = {};
+  let names = [];
+  try { names = fs.readdirSync(YTSUM_DIR); } catch (_) { return out; }
+  for (const n of names) {
+    const m = /^([0-9]+(?:_[0-9A-Za-z]+)?)~([A-Za-z0-9_-]{11})~([\s\S]*)\.(transcript|summary)\.txt$/.exec(n);
+    if (!m) continue;
+    const rec = out[m[1]] || (out[m[1]] = { uid: m[1], vid: m[2], title: m[3] });
+    rec[m[4]] = n;
+    try { rec[m[4] + 'Size'] = fs.statSync(path.join(YTSUM_DIR, n)).size; } catch (_) { rec[m[4] + 'Size'] = 0; }
+  }
+  return out;
+}
+
+function yttPortAlive(port, ms) {
+  return new Promise(resolve => {
+    let sock;
+    const done = ok => { try { sock && sock.destroy(); } catch (_) {} resolve(ok); };
+    try { sock = net.connect({ host: '127.0.0.1', port: port }); }
+    catch (_) { resolve(false); return; }
+    sock.setTimeout(ms || 1200);
+    sock.on('connect', () => done(true));
+    sock.on('timeout', () => done(false));
+    sock.on('error',   () => done(false));
+  });
+}
+
+// Ollama does NOT auto-start at login any more (the Startup shortcut was removed
+// 2026-08-29), so the first run of the day finds :11434 dead. `ollama serve`
+// detached is what YTT.ahk does; the tray app is not needed for the HTTP API.
+async function yttEnsureOllama(jobId) {
+  if (await yttPortAlive(11434)) return true;
+  yttJobSet(jobId, { stage: 'ollama', note: 'starting ollama serve' });
+  const exe = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe');
+  let bin = 'ollama';
+  try { if (fs.existsSync(exe)) bin = exe; } catch (_) {}
+  try { spawn(bin, ['serve'], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); }
+  catch (_) { return false; }
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (await yttPortAlive(11434)) return true;
+  }
+  return false;
+}
+
+// Spawn one of the YTT python steps and hand every stdout LINE to `onLine`.
+// Resolves { code, out, err } — never rejects; the caller reads the code.
+function yttSpawn(script, args, onLine) {
+  return new Promise(resolve => {
+    let proc;
+    try {
+      proc = spawn(YTT_PYTHON, [path.join(YTT_DIR, script)].concat(args), {
+        cwd: YTT_DIR, windowsHide: true,
+        // (dev0961) Without this, a video title carrying an em-dash kills step 1 on
+        // Windows' cp1252 stdout before it has fetched anything.
+        env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' })
+      });
+    } catch (e) { resolve({ code: -1, out: '', err: 'spawn failed: ' + e.message }); return; }
+    let out = '', err = '', buf = '';
+    proc.stdout.on('data', c => {
+      const s = String(c); out += s; buf += s;
+      const lines = buf.split(/\r?\n/); buf = lines.pop();
+      for (const l of lines) { if (l) { try { onLine(l); } catch (_) {} } }
+    });
+    proc.stderr.on('data', c => { err += String(c); if (err.length > 20000) err = err.slice(-20000); });
+    proc.on('error', e => resolve({ code: -1, out: out, err: err + ' ' + e.message }));
+    proc.on('close', code => { if (buf) { try { onLine(buf); } catch (_) {} } resolve({ code: code, out: out, err: err }); });
+  });
+}
+
+function yttRun(req, res, origin) {
+  readJson(req, 64 * 1024).then(async payload => {
+    const jobId = String(payload.job || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+    const uid   = String(payload.uid || '').replace(/[^0-9A-Za-z_]/g, '').slice(0, 20);
+    const url   = String(payload.url || '');
+    const tsum  = String(payload.tsum || 'Health').replace(/[^A-Za-z0-9]/g, '') || 'Health';
+    const force = !!payload.force;
+    const vid   = yttVideoId(url);
+
+    if (!uid) { sendJson(res, 400, { ok: false, error: 'uid required' }, origin); return; }
+    if (!vid) { sendJson(res, 400, { ok: false, error: 'not a YouTube link — no caption track to fetch. Vimeo/IG/direct MP4 is what the whisper path (step 2 of this feature) will cover.' }, origin); return; }
+    if (!fs.existsSync(path.join(YTT_DIR, 'Tsum' + tsum + '.py'))) {
+      sendJson(res, 400, { ok: false, error: 'no summarizer Tsum' + tsum + '.py in YTT (have: ' + (yttSummarizers().join(', ') || 'none') + ')' }, origin); return;
+    }
+    if (YTT_BUSY) { sendJson(res, 409, { ok: false, error: 'a transcript/summary is already running — one at a time (the 8B model owns the iGPU)' }, origin); return; }
+
+    const already = yttScan()[uid];
+    if (already && already.summary && !force) {
+      sendJson(res, 200, { ok: true, skipped: true, uid: uid, summary: already.summary, transcript: already.transcript || '' }, origin);
+      return;
+    }
+
+    YTT_BUSY = true;
+    try { fs.mkdirSync(YTSUM_DIR, { recursive: true }); } catch (_) {}
+    const fail = (code, msg) => {
+      yttJobSet(jobId, { stage: 'error', error: String(msg || '').slice(0, 400) });
+      sendJson(res, code, { ok: false, error: msg }, origin);
+    };
+
+    try {
+      // ── step 1: the caption track ────────────────────────────────────────
+      yttJobSet(jobId, { stage: 'transcript', note: 'fetching caption track' });
+      let s1Title = String(payload.title || ''), s1Out = '', s1Words = 0, noTranscript = false;
+      const r1 = await yttSpawn('get_yt_transcript.py', [url, YTSUM_DIR], line => {
+        if (line.startsWith('TITLE:')) s1Title = line.slice(6).trim() || s1Title;
+        else if (line.startsWith('WORDS:'))   s1Words = parseInt(line.slice(6), 10) || 0;
+        else if (line.startsWith('OUTFILE:')) s1Out = line.slice(8).trim();
+        else if (line.startsWith('NO_TRANSCRIPT')) noTranscript = true;
+        else if (line.startsWith('STEP: ')) yttJobSet(jobId, { stage: 'transcript', note: line.slice(6) });
+      });
+      if (noTranscript) { fail(422, 'no English caption track on this video — nothing to summarise yet (exactly the case the whisper path will pick up)'); return; }
+      if (r1.code !== 0 || !s1Out) {
+        fail(502, 'transcript step failed (exit ' + r1.code + '): ' + (r1.err || r1.out || '').trim().split(/\r?\n/).slice(-3).join(' | ').slice(0, 300));
+        return;
+      }
+
+      // Rename step 1's own `@channel~id~title~words.txt` into the UID-led name this
+      // folder is keyed on. Step 1 knows nothing about UIDs and should not have to.
+      const stem  = uid + '~' + vid + '~' + yttSafe(s1Title, 70);
+      const tPath = path.join(YTSUM_DIR, stem + '.transcript.txt');
+      const sPath = path.join(YTSUM_DIR, stem + '.summary.txt');
+      try {
+        if (path.resolve(s1Out) !== path.resolve(tPath)) {
+          try { fs.unlinkSync(tPath); } catch (_) {}
+          fs.renameSync(s1Out, tPath);
+        }
+      } catch (e) { fail(500, 'could not name the transcript: ' + e.message); return; }
+      yttJobSet(jobId, { stage: 'transcript', words: s1Words, note: s1Words + ' words', file: path.basename(tPath) });
+
+      // ── step 2: chunked local summarisation ──────────────────────────────
+      if (!(await yttEnsureOllama(jobId))) { fail(503, 'Ollama is not listening on 11434 and could not be started'); return; }
+      yttJobSet(jobId, { stage: 'summary', pct: 0, chunk: 0, total: 0, note: 'loading ' + YTT_MODEL });
+      let sOut = '';
+      const r2 = await yttSpawn('Tsum' + tsum + '.py', [
+        tPath, '--model', YTT_MODEL, '--num-ctx', String(YTT_NUM_CTX),
+        '--output-file', sPath, '--title', s1Title
+      ], line => {
+        // The PROGRESS: contract is YTT.ahk's, unchanged — that stdout shape is what
+        // couples these .py files to any caller, and both callers now rely on it.
+        // Don't "tidy" it in the python.
+        let m;
+        if ((m = /^PROGRESS:total=(\d+)/.exec(line))) yttJobSet(jobId, { stage: 'summary', total: +m[1], note: m[1] + ' chunks' });
+        else if ((m = /^PROGRESS:chunk=(\d+)/.exec(line))) {
+          const j = YTT_JOBS.get(jobId), tot = (j && j.total) || 0;
+          yttJobSet(jobId, { stage: 'summary', chunk: +m[1], pct: tot ? Math.round(+m[1] / tot * 100) : 0 });
+        }
+        else if (/^PROGRESS:final/.test(line)) yttJobSet(jobId, { stage: 'synthesis', pct: 100, note: 'final synthesis' });
+        else if (line.startsWith('OUTFILE:')) sOut = line.slice(8).trim();
+      });
+      if (r2.code !== 0 || !sOut) {
+        fail(502, 'summary step failed (exit ' + r2.code + '): ' + (r2.err || r2.out || '').trim().split(/\r?\n/).slice(-3).join(' | ').slice(0, 300));
+        return;
+      }
+
+      yttJobSet(jobId, { stage: 'done', pct: 100, file: path.basename(sPath) });
+      sendJson(res, 200, {
+        ok: true, uid: uid, vid: vid, title: s1Title, words: s1Words,
+        transcript: path.basename(tPath), summary: path.basename(sPath),
+        model: YTT_MODEL, tsum: tsum
+      }, origin);
+    } catch (e) {
+      fail(500, 'ytt: ' + e.message);
+    } finally { YTT_BUSY = false; }
+  }).catch(e => sendJson(res, 400, { ok: false, error: 'bad request: ' + e.message }, origin));
+}
+
+// GET /ytt/text?uid=<uid>&kind=summary|transcript — the z window's source. Serves
+// only from YTSUM_DIR and only under a name yttScan() itself produced, so the query
+// cannot address anything outside the folder.
+function yttText(res, uid, kind, origin) {
+  const rec = yttScan()[String(uid || '').replace(/[^0-9A-Za-z_]/g, '')];
+  const k = kind === 'transcript' ? 'transcript' : 'summary';
+  if (!rec || !rec[k]) { sendJson(res, 404, { ok: false, error: 'no ' + k + ' for uid ' + uid }, origin); return; }
+  try {
+    const txt = fs.readFileSync(path.join(YTSUM_DIR, rec[k]), 'utf8');
+    sendJson(res, 200, { ok: true, uid: rec.uid, kind: k, file: rec[k], title: rec.title, text: txt }, origin);
+  } catch (e) { sendJson(res, 500, { ok: false, error: e.message }, origin); }
+}
+
+
 // (dev0649) ── Proton VPN rotation state/bridge ───────────────────────────
 // vpn-rotate.ps1 writes the chosen server + confirmed public IP into state.json
 // under %LOCALAPPDATA%\ProtonVpnRotate; this reads it (no network call of its
@@ -8184,6 +8440,38 @@ http.createServer((req, res) => {
     return;
   }
 
+  // (dev0961) ── YouTube transcript + local summary → ytsummaries/ ─────────
+  // Same placement rule as /media/: BEFORE the CORS proxy, or "/ytt/…" reads as
+  // a malformed passthrough URL. `run` writes to disk and spawns python, so it is
+  // origin-locked + POST; the three reads are not.
+  if (req.url.startsWith('/ytt/')) {
+    const origin = req.headers.origin || '';
+    const q = (req.url.split('?')[1] || '');
+    const action = req.url.slice('/ytt/'.length).split('?')[0];
+    const qp = name => {
+      const m = new RegExp('(?:^|&)' + name + '=([^&]*)').exec(q);
+      return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
+    };
+    if (action === 'run') {
+      if (!LOCAL_ORIGINS.has(origin)) { sendJson(res, 403, { ok: false, error: 'origin not allowed: ' + (origin || '(none)') }, origin); return; }
+      if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'POST required' }, origin); return; }
+      yttRun(req, res, origin);
+      return;
+    }
+    // Progress poll for the toast — read-only, exposes nothing but a percentage
+    // for a job id the caller minted, so no origin lock (same as /media/progress).
+    if (action === 'progress') {
+      const j = YTT_JOBS.get(qp('job').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40));
+      sendJson(res, 200, j ? { ok: true, job: j } : { ok: false, error: 'unknown job' }, origin);
+      return;
+    }
+    // The manifest the T screen colours its rows from, and the z window's text.
+    if (action === 'list') { sendJson(res, 200, { ok: true, dir: 'ytsummaries', have: yttScan(), summarizers: yttSummarizers(), model: YTT_MODEL }, origin); return; }
+    if (action === 'text') { yttText(res, qp('uid'), qp('kind'), origin); return; }
+    sendJson(res, 404, { ok: false, error: 'unknown ytt action: ' + action }, origin);
+    return;
+  }
+
   // ── CORS proxy (unchanged) ────────────────────────────────────────────
   const target = req.url.slice(1); // strip leading '/'
   if (!/^https?:\/\//i.test(target)) {
@@ -8237,6 +8525,9 @@ http.createServer((req, res) => {
   console.log(`  /x/search spawns ${X_PYTHON} linkfinders/{image,video}finder.py --search … (origin-locked)`);
   console.log(`Flickr resolver:   GET  /flickr/resolve?url=<flickr photo/CDN url> → best-res + author/date/title/caption`);
   console.log(`Reddit resolver:   GET  /reddit/resolve?url=<reddit post url> → direct v.redd.it MP4 + title/author/sub/date`);
+  console.log(`YT summaries:      POST /ytt/run {uid,url,tsum} → ytsummaries/<uid>~<vid>~<title>.{transcript,summary}.txt`);
+  console.log(`  GET /ytt/{list,text?uid=&kind=,progress?job=} — drives YTT/get_yt_transcript.py + Tsum*.py (${YTT_MODEL}, num_ctx ${YTT_NUM_CTX})`);
+  console.log(`  summarizers found: ${yttSummarizers().join(', ') || 'NONE — add a Tsum<Name>.py to YTT/'}`);
   console.log(`  build ${PROXY_BUILD} — GET /version → features: crop, trim, rotate, metadata, exiftool, screenrec, ytdlp, igharvest, igstore`);
   // (dev0683) black box: first line of this process's life, plus a 60s pulse. The
   // pulse is what dates a silent death (last heartbeat = last moment it was alive)

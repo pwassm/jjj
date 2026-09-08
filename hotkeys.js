@@ -51,7 +51,10 @@
 // (dev0711) 'l' left this list with its registry entry: nothing dispatches the
 // letter any more (core.js claims it on the grid and forwards it nowhere else),
 // so blocking it here would be guarding a door that no longer exists.
-const HK_USER_BLOCKED = ['t', 'e', 'a', 'd', 'm', 'w', 'f', 'i', 's', 'o', 'x', 'v'];
+// (dev0961) 'z' joins the list: the summaries live in ytsummaries/, which is
+// gitignored and served only by the local proxy on 8081, so on the public site the
+// key could never do anything but fail to reach a proxy that isn't there.
+const HK_USER_BLOCKED = ['t', 'e', 'a', 'd', 'm', 'w', 'f', 'i', 's', 'o', 'x', 'v', 'z'];
 // (dev0702) helpfloat.js's floating panel marks its "global" rows dev/user from
 // this same list, so its marking can't drift from the dispatcher's either.
 window.HK_USER_BLOCKED = HK_USER_BLOCKED;
@@ -497,6 +500,21 @@ window.HOTKEYS = [
       const ae = document.activeElement;
       if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
       if (typeof window.openFilterModal === 'function') window.openFilterModal();
+    } },
+
+  // (dev0961) z = read the focused row's saved YouTube summary. The engines are the
+  // desktop YTT tool's two python steps, driven by the proxy (/ytt/*); this key only
+  // READS what is already on disk in ytsummaries/. Making one is a T row right-click
+  // ▸ "Transcribe & summarise", because it runs for minutes and should be deliberate.
+  { key: 'z', label: 'Z', group: 'Import & filter', scope: 'global',
+    desc: 'Read the focused row‘s saved transcript summary in a scrollable window (z again, or Esc, closes it). Toggle Summary/Transcript in its title bar. Nothing saved yet? Right-click the row in T ▸ “Transcribe & summarise” — that fetches YouTube’s caption track and runs a local Ollama summary, which takes minutes and reports progress.',
+    fn(ctx) {
+      if (ctx.teOpen || ctx.veOpen || ctx.ebOpen) return;
+      if (document.getElementById('dictOverlay')) return;
+      if (document.getElementById('mergeModal'))  return;
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+      if (typeof window.yttHotkeyZ === 'function') window.yttHotkeyZ();
     } },
 
   // ── Doc entries — keys owned elsewhere, listed so Help shows the full map ──

@@ -695,7 +695,7 @@ window.addEventListener('keydown', function(e) {
   // forwarding it would only make `l` close whichever staging screen is open on
   // its way to nothing. The grid's cLean toggle is claimed earlier in this same
   // handler, and V keeps `l` in a full-screen cell.
-  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's' || k === 'o' || k === 'x') {
+  if (k === 'g' || k === 't' || k === 'e' || k === 'm' || k === 'c' || k === 'a' || k === 'd' || k === 'f' || k === 'w' || k === 'h' || k === 'v' || k === 'i' || k === 's' || k === 'o' || k === 'x' || k === 'z') {
     // (dev0350) On the C (collection/config) screen, 'm' = MakeActive→G and is
     // owned by the C-screen handler (boot.js). Don't also fire the global
     // hamburger-menu dispatcher here, or it pops HM right after. Let the event
@@ -3855,6 +3855,23 @@ function showCtx(x, y, target) {
       // the standalone .html the .ahk used to write, image re-inlined as base64.
       if (typeof makeCardRowIsCard === 'function' && makeCardRowIsCard(data[di])) {
         addCI(menu, '🃏 Card .html (image inlined)', () => makeCardExportRow(di)); addCS(menu);
+      }
+      // (dev0961) Fetch this row's YouTube caption track and run a local Ollama
+      // summary over it into ytsummaries/ (see ytt.js + proxy /ytt/run). Minutes,
+      // not seconds, which is why it is a deliberate menu pick and not a key: the
+      // progress toast IS the feature. Offered only for a YouTube link, because
+      // step 1 is YouTube's OWN caption API; every other host waits on the whisper
+      // path. Reading a finished one is the z key.
+      if (typeof yttVideoId === 'function' && yttVideoId(data[di] && data[di].link)) {
+        const _yUid = String((data[di] && data[di].UID) || '');
+        const _yHave = window._yttHave && window._yttHave[_yUid];
+        if (_yHave && _yHave.summary) {
+          addCI(menu, 'Read summary (z)', () => yttShowText(_yUid, 'summary'));
+          addCI(menu, 'Transcribe & summarise AGAIN', () => yttRunRow(di, true));
+        } else {
+          addCI(menu, 'Transcribe & summarise', () => yttRunRow(di, false));
+        }
+        addCS(menu);
       }
       addCI(menu, 'Insert row above', () => insertRow(di));
       addCI(menu, 'Insert row below', () => insertRow(di+1));

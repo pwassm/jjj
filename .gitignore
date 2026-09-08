@@ -305,3 +305,10 @@ _uid*.html
 # completed harvest. A local record of what we did, not harvested data.
 ig-checked.json
 ig-checked.json.tmp-*
+
+# (dev0961) YouTube transcript + local-Ollama summary output, written by proxy
+# /ytt/run from a T row: <uid>~<videoId>~<title>.{transcript,summary}.txt. DEV-ONLY
+# and deliberately not served - the repo is public and GitHub Pages serves whatever
+# is committed. Its backup is backup-root.ps1 (which now carries named subfolders),
+# NOT git, exactly like ml.json.
+ytsummaries/
