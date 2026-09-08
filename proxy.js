@@ -1649,6 +1649,21 @@ function buildImageFfmpegArgs(p, common, overwrite, tmpSink) {
   const o = fromVideo ? 1
           : ((p.exif != null) ? +p.exif : exifOrientationSync(p.input));
   if (EXIF_XPOSE[o]) chain.push(EXIF_XPOSE[o]);
+  // (dev0959) The user's quarter turn, and it goes HERE — after the EXIF
+  // correction, before the tilt and the crop. Both halves of that matter:
+  //   · after EXIF, because the two are separate rotations that genuinely both
+  //     apply. The stored tag says how the camera was held; the turn says what
+  //     the user then asked for. Folding them together is the dev0866 mistake
+  //     in the opposite direction.
+  //   · before crop, because the rect was dragged on the TURNED picture, so it
+  //     is expressed in the turned frame. Same order jpegtran uses, which is
+  //     what lets one set of coordinates serve both engines.
+  // 180 is hflip+vflip rather than two transposes: same result, half the work.
+  if (p.rotate90 != null) {
+    const r90 = +p.rotate90;
+    must(r90 === 90 || r90 === 180 || r90 === 270, 'rotate90 must be 90, 180 or 270');
+    chain.push(r90 === 90 ? 'transpose=1' : (r90 === 270 ? 'transpose=2' : 'hflip,vflip'));
+  }
   // (dev0866) THE DOUBLE ROTATION. dev0744 built the EXIF_XPOSE prefix on the
   // belief that "ffmpeg does not apply the orientation tag". This ffmpeg does:
   // measured on a 4000x3000 JPEG tagged Orientation 6, a bare `-i` + scale
@@ -1877,7 +1892,31 @@ function buildJpegtranArgs(p) {
   if (!p.overwrite) {
     must(!fs.existsSync(p.output), 'output already exists: ' + p.output);
   }
+  // (dev0959) Optional quarter turn, lossless like the crop: jpegtran moves
+  // whole DCT blocks for this too. Two measured facts decide the shape of it.
+  //
+  // ONE: jpegtran applies -rotate BEFORE -crop, and does so regardless of the
+  // order the flags appear on the command line — it has a fixed internal
+  // order. Verified on a four-quadrant test image: `-rotate 90 -crop 64x64+0+0`
+  // and `-crop 64x64+0+0 -rotate 90` both returned the rotated image's
+  // top-left corner, not the source's. So the client sends crop coordinates in
+  // rotated space, which is also the space it drew them in.
+  //
+  // TWO: -perfect is NOT optional. When the edges are not on the iMCU grid the
+  // rotation cannot be lossless there, and plain jpegtran does it anyway: a
+  // 250x122 source came back 122x250 with the content DISPLACED and exit 0 —
+  // a wrong picture, silently. `-trim` would instead drop the ragged strip,
+  // which is a different silent lie. `-perfect` refuses outright, which is the
+  // only one of the three a "lossless" button is allowed to do. The client
+  // predicts the same refusal so the bar says re-encode before you commit.
+  const rot = p.rotate90;
+  const extra = [];
+  if (rot != null) {
+    must(rot === 90 || rot === 180 || rot === 270, 'rotate90 must be 90, 180 or 270');
+    extra.push('-rotate', String(rot), '-perfect');
+  }
   return ['-copy', 'all',
+          ...extra,
           '-crop', `${c.w}x${c.h}+${c.x}+${c.y}`,
           '-outfile', p.output,
           p.input];
@@ -7422,7 +7461,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify']) }));
     return;
   }

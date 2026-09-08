@@ -5858,6 +5858,14 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">🔇 no audio</span>' +
     '<span id="vp-crop-rot" title="Drag ↕ to straighten · wheel ±0.1° · double-click reset" ' +
       'style="cursor:ns-resize;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">⟲ 0.0°</span>' +
+    // (dev0959) Quarter turns, image mode only. A separate control from the
+    // tilt chip beside it on purpose: they read alike and are nothing alike.
+    // Tilt re-encodes always — it resamples every pixel — whereas a quarter
+    // turn is a jpegtran transform that keeps the file lossless, so putting
+    // them on one dial would hide the one difference that matters.
+    '<span id="vp-crop-turn" title="Quarter turns (R clockwise · ⇧R anti-clockwise · click / ⇧click). Stays lossless on a JPEG. Remembered for this picture." ' +
+      'style="display:none;cursor:pointer;user-select:none;padding:2px 6px;' +
+      'background:#234;border-radius:3px;flex:0 0 auto;">⟳ 0°</span>' +
     '<label id="vp-crop-slow-lbl" style="display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none;opacity:0.85;">' +
       '<input id="vp-crop-slow" type="checkbox" style="margin:0;vertical-align:middle;">Slow</label>' +
     // (dev0745) Saved text — every caption you finish typing is remembered, and
@@ -5995,6 +6003,23 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (eng) eng.style.display = '';
     const mo = bar.querySelector('#vp-crop-motion');
     if (mo) mo.style.display = '';
+    // (dev0959) Quarter turns, only where we own the <img> outright — the
+    // ?vect= standalone host. Inside a slideshow that element belongs to the
+    // show, which drives its own transform for zoom and pan and restores it on
+    // every slide change; a rotation written there would be fought over and
+    // lost. The show's own picture is not turned, so the control is not offered.
+    const turnChip = bar.querySelector('#vp-crop-turn');
+    if (turnChip && _vpImgRotAllowed()) {
+      turnChip.style.display = '';
+      turnChip.addEventListener('click', e => {
+        e.preventDefault(); e.stopPropagation();
+        _vpImgRotate(e.shiftKey ? -90 : 90);
+      });
+      turnChip.addEventListener('contextmenu', e => {
+        e.preventDefault(); e.stopPropagation();
+        _vpImgRotate(-90);
+      });
+    }
     // (dev0957) Name the picture. `comment` is the absolute path on a ?vect=
     // row and on a slideshow row alike, so one line covers both openers.
     const nameChip = bar.querySelector('#vp-crop-name');
@@ -6479,6 +6504,8 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       paintResOptions(sw, sh);
     }
     updateAngleUI();
+    paintImgRot();     // (dev0959) picture and rect turn together
+    paintTurnChip();
     paintEngine();     // (dev0744) tilt or res may have just cost us lossless
     paintKen();
     paintTrack();      // (dev0777) ghosts sit in frame coords — repaint on resize
@@ -6516,6 +6543,48 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       const oh = portrait ? even(Math.round(sh / sw * R)) : R;
       o.textContent = ow + ' × ' + oh + ((R > srcShort) ? '  ↑' : '');
     }
+  }
+
+  // (dev0959) Lay the <img> out so that what is on screen matches the rotated
+  // geometry everything else is now using. The picture is drawn UNROTATED at
+  // the swapped size and then turned: a (rh × rw) box given a quarter turn has
+  // an (rw × rh) bounding box, which is precisely the rect _vpCropRenderRect
+  // just computed from the swapped dimensions. So the rect and the picture
+  // agree by construction rather than by a fudge factor.
+  //
+  // Explicit left/top/width/height with object-fit:fill, NOT the inset:0 +
+  // contain the host starts with: contain would re-letterbox inside the box
+  // and slide the picture a pixel or two out from under the crop rect. The
+  // aspect of dw × dh already equals the picture's own, so fill does not
+  // stretch anything.
+  function paintImgRot() {
+    if (!imageMode || !_vpImgRotAllowed()) return;
+    const img = vid && vid._img;
+    if (!img) return;
+    const rot = _vpImgRotNow();
+    const r = _vpCropRenderRect(host, vid);
+    const dw = _vpImgRot90(rot) ? r.rh : r.rw;
+    const dh = _vpImgRot90(rot) ? r.rw : r.rh;
+    const st = img.style;
+    st.position = 'absolute';
+    st.left   = (r.rx + r.rw / 2 - dw / 2) + 'px';
+    st.top    = (r.ry + r.rh / 2 - dh / 2) + 'px';
+    st.right  = 'auto';
+    st.bottom = 'auto';
+    st.width  = dw + 'px';
+    st.height = dh + 'px';
+    st.objectFit = 'fill';
+    st.transformOrigin = '50% 50%';
+    st.transform = rot ? ('rotate(' + rot + 'deg)') : '';
+  }
+
+  function paintTurnChip() {
+    const chip = bar.querySelector('#vp-crop-turn');
+    if (!chip || !imageMode || !_vpImgRotAllowed()) return;
+    const rot = _vpImgRotNow();
+    chip.textContent = '⟳ ' + rot + '°';
+    chip.style.background = rot ? '#2a5d9a' : '#234';
+    chip.style.color      = rot ? '#fff' : '#dfe6f0';
   }
 
   // (dev0744) Say which engine the next save will use, and why. Repainted from
@@ -7961,6 +8030,13 @@ function _vpCropHelpImageRows(K, row, head) {
     row(K('C'),          'grade OFF / ON, keeping the slider values — the quick ' +
                          '“is it actually better?”, and the switch that decides ' +
                          'whether this crop can be lossless') +
+    row(K('R'),          'turn the picture a quarter clockwise (⇧R the other way; ' +
+                         'the ⟳ chip clicks too). The crop box and the locked ' +
+                         'shape turn with it. Stays LOSSLESS on a JPEG whose ' +
+                         'edges are multiples of 16 — otherwise the chip says ' +
+                         'so and it re-encodes, because a turn off the block ' +
+                         'grid moves the picture rather than failing. Remembered ' +
+                         'per file, last 20. Pictures opened from disk only') +
     row(K('Esc'),        'close crop, hand the show back to the slideshow');
 }
 
@@ -8595,6 +8671,54 @@ function _vpCropSafeId(id) {
   return String(id || '').replace(/[<>:"/\\|?*~]/g, '_').replace(/^\.+|\.+$/g, '').trim() || 'unnamed';
 }
 
+// (dev0959) ── remembered rotations ────────────────────────────────────────
+//
+// A quarter turn is a property of the PICTURE, not of the session: a photo
+// that came off the camera sideways is sideways every time it is opened, and
+// re-dialling the same turn on the same file is the kind of small repeated
+// insult that makes a tool tiring. So the turn is remembered per absolute path
+// and offered again when that file comes back.
+//
+// Twenty of them, most-recent-first, evicting the oldest — long enough to
+// cover the folder being worked through, short enough that it never becomes a
+// second database to reason about. A file that has never been turned isn't
+// stored at all, and one turned back to 0 is dropped rather than kept as a
+// zero: absence and "no rotation" mean the same thing, so only one of them
+// should be representable.
+const _VP_ROT_KEY = 'slam-vp-imgrot';
+const _VP_ROT_MAX = 20;
+function _vpRotLoad() {
+  try {
+    const a = JSON.parse(localStorage.getItem(_VP_ROT_KEY) || '[]');
+    return Array.isArray(a) ? a.filter(e => e && typeof e.p === 'string') : [];
+  } catch (e) { return []; }
+}
+function _vpRotFor(absPath) {
+  const key = String(absPath || '').toLowerCase();
+  if (!key) return 0;
+  const hit = _vpRotLoad().find(e => e.p === key);
+  const r = hit ? +hit.r : 0;
+  return (r === 90 || r === 180 || r === 270) ? r : 0;
+}
+function _vpRotRemember(absPath, rot) {
+  const key = String(absPath || '').toLowerCase();
+  if (!key) return;
+  try {
+    const list = _vpRotLoad().filter(e => e.p !== key);
+    if (rot) list.unshift({ p: key, r: rot });
+    localStorage.setItem(_VP_ROT_KEY, JSON.stringify(list.slice(0, _VP_ROT_MAX)));
+  } catch (e) { /* storage off: the turn just isn't offered next time */ }
+}
+
+// Turn the crop box with the picture, so the selection stays on the same
+// CONTENT rather than on the same corner of the screen. Fractions are in the
+// rotated frame, so a clockwise quarter turn sends (x,y,w,h) to
+// (1−y−h, x, h, w) — the old top-left corner becomes the new top-right.
+function _vpRotFrac(f, cw) {
+  return cw ? { x: 1 - f.y - f.h, y: f.x,             w: f.h, h: f.w }
+            : { x: f.y,           y: 1 - f.x - f.w,   w: f.h, h: f.w };
+}
+
 // Ask the proxy for the first unused variant of `wantPath`. Returns the path
 // unchanged when the proxy is too old to answer — the caller then falls back to
 // the overwrite prompt, which is what protected this before numbering existed.
@@ -8803,13 +8927,60 @@ const VP_IMG_MCU = 16;
 // fires timeupdate or seeked. Getters, not a snapshot: an <img> that swaps
 // src under us reports the new size on the next paint.
 function _vpImgAdapter(img) {
+  // (dev0959) A quarter turn SWAPS what this reports, and that one fact carries
+  // the whole rotation feature. Every piece of crop geometry — the render rect,
+  // the fractions, the MCU snap, the W×H readout — is derived from these two
+  // numbers, so reporting the ROTATED size puts all of it in rotated space
+  // without a line of new arithmetic. That happens to be exactly the space both
+  // renderers want the crop rect in: jpegtran applies -crop AFTER -rotate
+  // (measured, both size and offset), and the ffmpeg chain puts the transpose
+  // ahead of the crop for the same reason.
+  const swapped = () => _vpImgRot90(_vpImgRotNow());
   return {
     _img: img,
-    get videoWidth()  { return img.naturalWidth  || 0; },
-    get videoHeight() { return img.naturalHeight || 0; },
+    get videoWidth()  { return (swapped() ? img.naturalHeight : img.naturalWidth ) || 0; },
+    get videoHeight() { return (swapped() ? img.naturalWidth  : img.naturalHeight) || 0; },
     addEventListener()    {},
     removeEventListener() {}
   };
+}
+
+// (dev0959) The rotation the image crop session is currently showing, in
+// degrees clockwise: 0 / 90 / 180 / 270. Lives on _vpState rather than on
+// state.crop because the adapter above is built BEFORE the crop overlay mounts.
+function _vpImgRotNow() {
+  return (_vpState && _vpState.imageMode) ? (_vpState._rot || 0) : 0;
+}
+function _vpImgRot90(r) { return r === 90 || r === 270; }
+
+// Only the ?vect= standalone host owns its <img>. A slideshow's element is the
+// show's: it drives that transform for zoom and pan and rewrites it on every
+// slide, so a rotation written there is fought over and lost. Marked by
+// row._ssSlide, which the drift check already relies on for the same reason.
+function _vpImgRotAllowed() {
+  return !!(_vpState && _vpState.imageMode && _vpState.row && !_vpState.row._ssSlide);
+}
+
+// Turn the picture a quarter, taking the crop box and the locked aspect with
+// it. Both have to move: leaving the box behind would put the selection on
+// different content, and leaving the lock behind would mean a 16:9 box coming
+// back 9:16 without being asked.
+function _vpImgRotate(delta) {
+  if (!_vpImgRotAllowed()) return;
+  const s = _vpState.crop;
+  if (!s) return;
+  const cw = (delta > 0);
+  _vpState._rot = (((_vpImgRotNow() + delta) % 360) + 360) % 360;
+  s.frac = _vpRotFrac(s.frac, cw);
+  if (s.aspect === 'L' || s.aspect === 'P') s.aspect = (s.aspect === 'L') ? 'P' : 'L';
+  // A tilt is measured against the frame it was dialled on, so it turns with it
+  // — but it is a small correction either way and the sign does not survive a
+  // quarter turn intact. Left alone deliberately: the number on the chip is
+  // still the number the user set, and re-dialling it is one drag.
+  _vpRotRemember(_vpState.row && (_vpState.row.comment || _vpState.row.VidTitle),
+                 _vpState._rot);
+  if (typeof s.paint === 'function') s.paint();
+  if (typeof toast === 'function') toast('⟳ ' + _vpState._rot + '°', 900);
 }
 
 // Is the next save lossless, and if not, what cost it? Drives the bar chip and
@@ -8833,6 +9004,23 @@ function _vpImgLossless(state, row) {
   if (ext !== 'jpg' && ext !== 'jpeg') return { ok: false, why: 'not a JPEG' };
   if (state._hasJpegtran === false)    return { ok: false, why: 'no jpegtran' };
   if (state.angle)                     return { ok: false, why: 'tilted' };
+  // (dev0959) A quarter turn is lossless in jpegtran — but only when both edges
+  // sit on the iMCU grid. MEASURED on a 250x122 JPEG: plain `-rotate 90` came
+  // back 122x250 with the content DISPLACED (corners blue/blue/yellow/yellow
+  // where the picture says blue/red/yellow/green), exit 0, no warning. `-trim`
+  // is correct but silently drops the ragged strip; `-perfect` refuses. So the
+  // proxy passes -perfect and this predicts the same answer up front, using 16
+  // — the largest iMCU any subsampling produces, and the same constant the crop
+  // snap uses. Conservative on a 4:4:4 file, whose true MCU is 8: it will say
+  // re-encode where jpegtran could in fact have managed it. Under-promising is
+  // the right way round for a chip that claims losslessness.
+  if (_vpImgRotNow()) {
+    const im = _vpState && _vpState._img;
+    const nw = (im && im.naturalWidth) || 0, nh = (im && im.naturalHeight) || 0;
+    if (!nw || !nh || (nw % VP_IMG_MCU) || (nh % VP_IMG_MCU)) {
+      return { ok: false, why: 'turned, edges off the block grid' };
+    }
+  }
   if (state.resHeight !== 'source')    return { ok: false, why: 'resized' };
   if (state._exif > 1)                 return { ok: false, why: 'EXIF rotation' };
   return { ok: true };
@@ -8886,6 +9074,11 @@ window._vpImageCropOpen = function (host, img, row, onClose) {
   const vidLike = _vpImgAdapter(img);
   _vpState = { imageMode: true, row, player: { el: vidLike }, crop: null,
                _img: img, _onClose: (typeof onClose === 'function') ? onClose : null };
+  // (dev0959) The remembered quarter turn for THIS picture, before the mount —
+  // the adapter and the render rect both read it, so it has to be true by the
+  // time any geometry is computed. Slideshow slides are never turned, so they
+  // never look it up either.
+  _vpState._rot = row._ssSlide ? 0 : _vpRotFor(row.comment || row.VidTitle);
   window._vpCurrentRow = row;
   _vpMountCropOverlay(host, vidLike, row, { image: true });
   const s = _vpState.crop;
@@ -9032,6 +9225,18 @@ function _vpImgKey(e) {
   if (e.key === 'z' || e.key === 'Z') { take(); _vpKenToggle(); return; }
   if (e.key === 'm' || e.key === 'M') { take(); _vpMotionCycle(); return; }
   if (e.key === 'w' || e.key === 'W') { take(); _vpCropHelpToggleWidth(); return; }
+  // (dev0959) R turns the picture a quarter, ⇧R the other way. Safe to claim:
+  // core.js bails WHOLE while a crop is open (_vpCropHolding, dev0747), so no
+  // global R can reach past this.
+  if (e.key === 'r' || e.key === 'R') {
+    take();
+    if (!_vpImgRotAllowed()) {
+      if (typeof toast === 'function') toast('quarter turns are for pictures opened from disk', 2400);
+      return;
+    }
+    _vpImgRotate(e.shiftKey ? -90 : 90);
+    return;
+  }
   if (e.key === 'g' || e.key === 'G') { take(); _vpGoSave({ fromButton: true }); return; }
 }
 
@@ -9145,8 +9350,28 @@ async function _vpImageSave(opts) {
     }
     return;
   }
+  // (dev0959) A stale proxy would DROP rotate90 and render the picture the way
+  // up it was stored — while the crop rect it is handed was measured on the
+  // turned one. That is not a failed save, it is a confident save of the wrong
+  // region, which is the worst of the three outcomes. So refuse before the
+  // name prompt rather than after the render. Same trap dev0867 hit when an old
+  // build silently dropped payload.color.
+  if (_vpImgRotNow() && !(await _vpProxyHasFeature('imagerotate'))) {
+    if (typeof toast === 'function') {
+      toast('Quarter turns need an updated proxy — restart "node proxy.js" and retry', 4800);
+    }
+    return;
+  }
 
-  const VW = img.naturalWidth, VH = img.naturalHeight;
+  // (dev0959) ROTATED dimensions, matching the fractions. s.frac was dragged
+  // against the turned picture, and both renderers crop AFTER their rotation
+  // (jpegtran by its own fixed order — measured — and the ffmpeg chain because
+  // the transpose is pushed ahead of the crop), so this is the space the rect
+  // has to be expressed in. Reading naturalWidth/Height raw here would put a
+  // portrait crop on a landscape frame the moment anything was turned.
+  const _rot90 = _vpImgRot90(_vpImgRotNow());
+  const VW = (_rot90 ? img.naturalHeight : img.naturalWidth)  || 0;
+  const VH = (_rot90 ? img.naturalWidth  : img.naturalHeight) || 0;
   if (!VW || !VH) { if (typeof toast === 'function') toast('save: image not measured yet', 2200); return; }
   const even = n => Math.max(2, Math.floor(n / 2) * 2);
   // (dev0745) A gif is uncompressed-ish frames with a 256-colour palette: a
@@ -9194,6 +9419,13 @@ async function _vpImageSave(opts) {
     route   = 'jpegtran';
     effAspect = _vpEffAspect(box.w, box.h);
     payload = { input: absInput, crop: box, overwrite: false };
+    // (dev0959) The quarter turn rides along. jpegtran rotates first and crops
+    // second whatever order the flags are given in (measured), and `box` is
+    // already in the rotated frame, so the two simply compose. The proxy adds
+    // -perfect: on a source whose edges are off the block grid the transform
+    // would otherwise displace the picture silently, and _vpImgLossless has
+    // already refused that case here.
+    if (_vpImgRotNow()) payload.rotate90 = _vpImgRotNow();
   } else {
     // Re-encode. Tilt is handled exactly as the video path handles it: rotate
     // the whole frame onto an expanded square so the tilted rect is
@@ -9226,6 +9458,15 @@ async function _vpImageSave(opts) {
       aspect: effAspect, resHeight: s.resHeight, quality: 2, overwrite: false
     };
     if (rotate) payload.rotate = rotate;
+    // (dev0959) The quarter turn, as a transpose the proxy inserts BETWEEN the
+    // EXIF correction and the crop. Order is the whole point and it is the same
+    // order jpegtran uses: bake the stored orientation so the frame is upright
+    // the way the browser showed it, THEN apply the user's turn, and only then
+    // cut — because the rect was dragged on the turned picture. Note this is
+    // additive to the EXIF transpose, not a replacement: dev0866 is the record
+    // of what a double rotation costs, and the two are separate rotations that
+    // genuinely both apply.
+    if (_vpImgRotNow()) payload.rotate90 = _vpImgRotNow();
     // An EXIF-rotated original is baked upright first, so the rect means what
     // it looked like it meant on screen.
     if (s._exif > 1) payload.exif = s._exif;
@@ -9266,7 +9507,13 @@ async function _vpImageSave(opts) {
   // — moves into the sidecar's description, where it is readable prose rather
   // than a filename nobody can scan.
   const angTok = s.angle ? ('r' + s.angle.toFixed(1).replace('.', '_') + 'deg') : '';
-  const detail = [sizeStr, effAspect, angTok,
+  // (dev0959) A quarter turn belongs in the sidecar for the same reason the
+  // grade does: the file no longer stands the way the original did, and the
+  // description is the only place that says so. Distinct spelling from angTok,
+  // which is the fine tilt in degrees — "turn90" and "r1_5deg" are different
+  // operations and reading them as one would be misleading.
+  const turnTok = _vpImgRotNow() ? ('turn' + _vpImgRotNow()) : '';
+  const detail = [sizeStr, effAspect, angTok, turnTok,
                   s.freeRatio ? ('ar' + _vpAspectLabel(s.frac.w * VW, s.frac.h * VH)) : '',
                   'img', engTok, _vpColorToken()].filter(Boolean).join(' · ');
   const want = outDir + parts.sep + _vpCropOutStem(parts.base, safeId) + '.' + outExt;
