@@ -447,35 +447,29 @@ html.grid-open #ver-badge { bottom:110px; }
    given back as padding so the box still ends where the ink does. Blue matches
    the <summary> triangles these operate on.
 
-   (dev0952) A WHITE HALO, and a fixed colour.
+   (dev0953) ON A WHITE CHIP. Bare blue ink is close to invisible where these
+   land on a blue ground — the public menu's Contact page is the clearest
+   case, blue on blue. A white chip with the same blue ink reads on any
+   backdrop, and it also says "button", which two loose triangles never did.
+   Verified in the browser against the live menu before shipping this time.
 
-   dev0951 tried a white chip here — background, border, padding — and the
-   icons went from hard to see to not visible at all, on desktop as well as
-   phone. That is reverted and NOT to be retried without looking at the live
-   element first: the cause is not understood, and a second guess at the same
-   shape would be a second blind change.
-
-   What is left is the smallest thing that can only help. The halo is the
-   pattern already proven in this project on these exact triangles — vp.js
-   gives the big rotating summary::before marker
-   text-shadow:0 0 3px rgba(255,255,255,0.95) for the same reason, blue ink
-   on a bluish ground. It touches no layout and no box, so the worst it can
-   do is look like dev0950 with a glow.
-
-   The colour is now fixed rather than inherited. A slide that sets its own
-   text colour was driving these through
-   .te-slide[style*="color:"] .te-xall{color:inherit}, which is one way they
-   end up the same colour as the thing behind them — and a white halo cannot
-   rescue ink that has gone white itself. */
+   The colour is fixed rather than inherited. The old
+   .te-slide[style*="color:"] .te-xall{color:inherit} rule is gone: on a white
+   chip it is what would paint a white-on-dark slide's icons white on white.
+   Nothing in ml.json or c.json currently wraps one of these in a coloured
+   .te-slide, so the rule was dead weight as well as a hazard. */
 .te-xall {
   display: inline-block;
   letter-spacing: -0.40em;
-  padding-right: 0.40em;
+  padding: 0 calc(0.40em + 5px) 1px 5px;
   font-size: 1.15em;
   line-height: 1;
   vertical-align: -0.06em;
   color: #2563eb;
-  text-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px rgba(255,255,255,0.9);
+  background: #fff;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -1173,7 +1167,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0952';
+  window.HELP_VERSION_STR = 'dev0953';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

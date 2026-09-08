@@ -2203,13 +2203,15 @@ function gridOpenFullscreen(row, contained) {
           // (dev0763) ▼▼/▶▶ expand-all icons — this iframe has its own document,
           // so the index.html rule doesn't reach it. Clicks are wired from the
           // parent in loadIframe (srcdoc is same-origin).
-          // (dev0952) White halo + fixed blue - see the long note on the
-          // index.html copy, including why the dev0951 white chip is reverted
-          // and must not be retried blind. The slide-colour inherit rule goes
-          // with it: a halo cannot rescue ink that has gone white itself.
-          + '.te-xall{display:inline-block;letter-spacing:-0.40em;padding-right:0.40em;'
+          // (dev0953) White chip, fixed blue ink - see the long note on the
+          // index.html copy. The slide-colour inherit rule went with it: on a
+          // white chip it is what paints a white-on-dark slide's icons white
+          // on white.
+          + '.te-xall{display:inline-block;letter-spacing:-0.40em;'
+          + 'padding:0 calc(0.40em + 5px) 1px 5px;'
           + 'font-size:1.15em;line-height:1;vertical-align:-0.06em;color:#2563eb;'
-          + 'text-shadow:0 0 2px #fff,0 0 4px #fff,0 0 6px rgba(255,255,255,0.9);'
+          + 'background:#fff;border:1px solid #2563eb;border-radius:4px;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.35);'
           + 'cursor:pointer;user-select:none;-webkit-user-select:none;}'
           // (dev0902) Tick boxes. core.js is the single source for these rules —
           // the te-xall block above is hand-copied from index.html and the two have
