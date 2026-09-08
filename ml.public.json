@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788909766866,
+    "_salPushTime": 1788910401752,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -516,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788909766866
+    "_salSavedAt": 1788910401752
   },
   {
     "UID": "1",
@@ -48836,8 +48836,10 @@
     "link": "https://youtu.be/MHURlGrbLnU",
     "show": "1",
     "DateAdded": "2026-09-03 03:39:53",
-    "DateModified": "2026-09-03 03:40:17",
-    "tags": [],
+    "DateModified": "2026-09-08 23:32:54",
+    "tags": [
+      "transcribe"
+    ],
     "Mute": "0",
     "ftextSize": "2974",
     "FtextJunk": "3",
@@ -48871,8 +48873,11 @@
     "link": "https://youtu.be/0Bc1_2NlKUA",
     "show": "1",
     "DateAdded": "2026-09-03 03:46:50",
-    "DateModified": "2026-09-03 03:47:14",
-    "tags": [],
+    "DateModified": "2026-09-08 23:31:22",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "1274",
     "FtextJunk": "6",
@@ -48882,7 +48887,8 @@
     "Mode": "L",
     "ftext": "",
     "VQ": "9",
-    "cell": ""
+    "cell": "",
+    "vidLength": "7:26"
   },
   {
     "UID": "2203",
@@ -48934,7 +48940,7 @@
     "link": "https://youtu.be/1kUc3f1_tQk",
     "show": "1",
     "DateAdded": "2026-09-03 15:37:55",
-    "DateModified": "2026-09-03 15:38:20",
+    "DateModified": "2026-09-08 23:31:27",
     "tags": [],
     "Mute": "0",
     "ftextSize": "208",

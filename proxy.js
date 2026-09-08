@@ -6994,6 +6994,31 @@ function mediaDownload(req, res, origin) {
 const YTT_DIR    = path.join(__dirname, 'YTT');
 const YTSUM_DIR  = path.join(__dirname, 'ytsummaries');
 const YTT_PYTHON = process.env.YTT_PYTHON || 'python';
+// (dev0963) …but never spawn that name directly. `python` here is a LAUNCHER SHIM
+// (C:\Users\…\AppData\Local\Microsoft\WindowsApps\python.exe or similar) which
+// re-spawns the real interpreter itself — and that inner spawn is its own call,
+// so it does not inherit our windowsHide and gets a fresh console. The result is
+// one console FLASH per python step, which is what the user sees. Asking python
+// once for sys.executable and spawning THAT skips the hop entirely: no flash, and
+// one process per step instead of two. Cached — the probe costs ~200ms, and only
+// the first run of a proxy's life pays it.
+let YTT_PY_REAL = null;
+function yttPython() {
+  if (YTT_PY_REAL) return YTT_PY_REAL;
+  // An explicit override is taken at its word: if someone points this at a venv
+  // or a pythonw.exe, re-resolving it would defeat the point of setting it.
+  if (process.env.YTT_PYTHON) { YTT_PY_REAL = process.env.YTT_PYTHON; return YTT_PY_REAL; }
+  let real = YTT_PYTHON;
+  try {
+    const r = spawnSync(YTT_PYTHON, ['-c', 'import sys; sys.stdout.write(sys.executable)'],
+                        { encoding: 'utf8', windowsHide: true, timeout: 20000 });
+    const p = String((r && r.stdout) || '').trim();
+    if (p && fs.existsSync(p)) real = p;
+  } catch (_) { /* fall back to the bare name — a flash beats not running */ }
+  YTT_PY_REAL = real;
+  if (real !== YTT_PYTHON) console.log('[ytt] python resolved past the launcher shim: ' + real);
+  return real;
+}
 // qwen3:8b @ num_ctx 12288 is the VERIFIED pair (2026-08-01). 16384 dies on the
 // 780M's Vulkan kv-cache ceiling with "failed to allocate buffer for kv cache",
 // and llama3.1 — TsumHealth.py's stale argparse default — was deleted in 2026-08,
@@ -7095,7 +7120,7 @@ function yttSpawn(script, args, onLine) {
   return new Promise(resolve => {
     let proc;
     try {
-      proc = spawn(YTT_PYTHON, [path.join(YTT_DIR, script)].concat(args), {
+      proc = spawn(yttPython(), [path.join(YTT_DIR, script)].concat(args), {
         cwd: YTT_DIR, windowsHide: true,
         // (dev0961) Without this, a video title carrying an em-dash kills step 1 on
         // Windows' cp1252 stdout before it has fetched anything.
