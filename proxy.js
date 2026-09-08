@@ -7008,7 +7008,7 @@ let YTT_BUSY = false;
 
 function yttJobSet(id, patch) {
   if (!id) return;
-  const j = YTT_JOBS.get(id) || { id: id, stage: 'starting', pct: 0, chunk: 0, total: 0, words: 0, note: '', file: '', error: '' };
+  const j = YTT_JOBS.get(id) || { id: id, stage: 'starting', pct: 0, chunk: 0, total: 0, words: 0, tok: 0, secs: 0, note: '', file: '', error: '' };
   Object.assign(j, patch, { ts: Date.now() });
   YTT_JOBS.set(id, j);
   if (YTT_JOBS.size > 30) {
@@ -7177,9 +7177,15 @@ function yttRun(req, res, origin) {
       if (!(await yttEnsureOllama(jobId))) { fail(503, 'Ollama is not listening on 11434 and could not be started'); return; }
       yttJobSet(jobId, { stage: 'summary', pct: 0, chunk: 0, total: 0, note: 'loading ' + YTT_MODEL });
       let sOut = '';
+      const t2Start = Date.now();
       const r2 = await yttSpawn('Tsum' + tsum + '.py', [
         tPath, '--model', YTT_MODEL, '--num-ctx', String(YTT_NUM_CTX),
-        '--output-file', sPath, '--title', s1Title
+        '--output-file', sPath, '--title', s1Title,
+        // (dev0961) Without this the markers below are the ONLY progress, and on a
+        // short transcript that is three events in four minutes: a 3.8k-word video
+        // is ONE chunk, so the bar sat at 0% until it finished. The flag is opt-in
+        // in the python so YTT.ahk's stdout is untouched.
+        '--stream-progress'
       ], line => {
         // The PROGRESS: contract is YTT.ahk's, unchanged — that stdout shape is what
         // couples these .py files to any caller, and both callers now rely on it.
@@ -7190,7 +7196,13 @@ function yttRun(req, res, origin) {
           const j = YTT_JOBS.get(jobId), tot = (j && j.total) || 0;
           yttJobSet(jobId, { stage: 'summary', chunk: +m[1], pct: tot ? Math.round(+m[1] / tot * 100) : 0 });
         }
-        else if (/^PROGRESS:final/.test(line)) yttJobSet(jobId, { stage: 'synthesis', pct: 100, note: 'final synthesis' });
+        else if ((m = /^PROGRESS:tok=(\d+)/.exec(line))) {
+          // Sub-chunk progress. `tok` counts REASONING tokens too — on qwen3 those
+          // are most of the wait, and a bar that only moves once the model stops
+          // thinking is the problem this marker was added to fix.
+          yttJobSet(jobId, { tok: +m[1], secs: Math.round((Date.now() - t2Start) / 1000) });
+        }
+        else if (/^PROGRESS:final/.test(line)) yttJobSet(jobId, { stage: 'synthesis', pct: 100, tok: 0, note: 'final synthesis' });
         else if (line.startsWith('OUTFILE:')) sOut = line.slice(8).trim();
       });
       if (r2.code !== 0 || !sOut) {

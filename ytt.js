@@ -45,21 +45,35 @@ window.yttRefreshHave = yttRefreshHave;
 // ── the run ──────────────────────────────────────────────────────────────────
 let _yttBusy = false;
 
-// One line of toast from a /ytt/progress record. Step 2 is ~22 sequential Ollama
-// calls, so this has to say WHICH chunk as well as that it is still moving — a
-// frozen percentage with no chunk number is what a stall looks like.
-function _yttProgressLine(title, j) {
+function _yttClock(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+// One line of toast from a /ytt/progress record.
+//
+// (dev0961) Elapsed is appended to EVERY line and is computed client-side, not from
+// the job record, because the phases that report nothing are exactly the ones that
+// take longest: loading an 8B model into the iGPU says nothing until it is done, and
+// a transcript short enough to be a single chunk emits one `chunk=1` and then goes
+// quiet for minutes. `tok` (from the python's streamed PROGRESS:tok=) is what makes
+// that quiet stretch legible — a moving token count is the difference between "slow"
+// and "hung", which is the whole reason the first run looked stuck.
+function _yttProgressLine(title, j, startedAt) {
   const head = '📝 ' + title;
-  if (!j) return head + ' · starting…';
-  if (j.stage === 'transcript') return head + ' · transcript: ' + (j.note || 'fetching…');
-  if (j.stage === 'ollama')     return head + ' · ' + (j.note || 'starting Ollama…');
+  const el = startedAt ? '  ·  ' + _yttClock(Date.now() - startedAt) : '';
+  const tok = j && j.tok ? '  ·  ' + j.tok.toLocaleString() + ' tokens' : '';
+  if (!j) return head + ' · starting…' + el;
+  if (j.stage === 'transcript') return head + ' · transcript: ' + (j.note || 'fetching…') + el;
+  if (j.stage === 'ollama')     return head + ' · ' + (j.note || 'starting Ollama…') + el;
   if (j.stage === 'summary') {
-    if (!j.total) return head + ' · ' + (j.note || 'chunking…');
-    return head + ' · summarising chunk ' + j.chunk + '/' + j.total + '  (' + (j.pct || 0) + '%)';
+    if (!j.total) return head + ' · ' + (j.note || 'chunking…') + el;
+    const which = j.total > 1 ? ' chunk ' + Math.max(1, j.chunk) + '/' + j.total : '';
+    return head + ' · summarising' + which + tok + el;
   }
-  if (j.stage === 'synthesis') return head + ' · final synthesis…';
-  if (j.stage === 'error')     return head + ' · failed';
-  return head + ' · working…';
+  if (j.stage === 'synthesis') return head + ' · final synthesis' + tok + el;
+  if (j.stage === 'error')     return head + ' · failed' + el;
+  return head + ' · working…' + el;
 }
 
 // Add `transcribed` to the row's tags. tags is a JSON ARRAY of tag ids in ml.json
@@ -84,18 +98,25 @@ async function yttRunRow(di, force) {
   const title = String(row.VidTitle || row.link).slice(0, 46);
   const job = 'ytt' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  // Re-issuing the toast every 2s is what keeps a multi-minute run continuously
-  // visible: toast() auto-hides after its ms (same idiom as tDownloadRowMedia).
-  toast(_yttProgressLine(title, null), 3000);
+  // Re-issuing the toast is what keeps a multi-minute run continuously visible:
+  // toast() auto-hides after its ms (same idiom as tDownloadRowMedia). Every 1s,
+  // not 2s, so the elapsed clock actually ticks rather than jumping in twos —
+  // a clock that moves is the cheapest possible proof it has not hung.
+  const startedAt = Date.now();
+  let lastJob = null;
+  toast(_yttProgressLine(title, null, startedAt), 2000);
   const poll = setInterval(async () => {
     try {
       const pr = await fetch(YTT_PROXY + '/ytt/progress?job=' + job);
       const pj = await pr.json();
-      if (pj && pj.ok && pj.job && pj.job.stage !== 'done' && pj.job.stage !== 'error') {
-        toast(_yttProgressLine(title, pj.job), 3000);
-      }
+      if (pj && pj.ok && pj.job) lastJob = pj.job;
     } catch (_) { /* a missed poll is cosmetic — the POST below is the real result */ }
-  }, 2000);
+    // Re-toast even on a failed poll: the elapsed clock is client-side, so the
+    // line still moves when the proxy is momentarily busy serving the run itself.
+    if (!lastJob || (lastJob.stage !== 'done' && lastJob.stage !== 'error')) {
+      toast(_yttProgressLine(title, lastJob, startedAt), 2000);
+    }
+  }, 1000);
 
   try {
     const r = await fetch(YTT_PROXY + '/ytt/run', {
@@ -119,6 +140,7 @@ async function yttRunRow(di, force) {
         try { save(); if (typeof render === 'function') render(); saved = true; } catch (_) {}
       }
       toast('✅ ' + j.summary + '  ·  ' + j.words + ' words in, ' + j.model
+            + '  ·  ' + _yttClock(Date.now() - startedAt)
             + (saved ? '  ·  tagged “transcribed”' : '') + '  —  press z to read', 10000);
     } else {
       toast('⚠ ' + ((j && j.error) || ('HTTP ' + r.status)), 11000);
