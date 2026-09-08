@@ -498,11 +498,61 @@ function _wireSignIn(ov) {
   function renderIn(u) {
     const who = esc(u.name || u.email);
     const canComment = (u.role === 'expert' || u.role === 'admin');
-    box.innerHTML = _fill(_T('Signed in as {who}'), { who: '<b>' + who + '</b>' })
+    box.innerHTML = '<div id="smWho">'
+      + _fill(_T('Signed in as {who}'), { who: '<b>' + who + '</b>' })
       + (canComment ? ' <span style="color:#8fe8b0;">· ' + _T('you can comment on items') + '</span>' : '')
-      + ' · <a class="sm-link" id="smSignOut">' + _T('Sign out') + '</a>';
+      + ' · <a class="sm-link" id="smSignOut">' + _T('Sign out') + '</a>'
+      + '</div>'
+      // (dev0955) The whole point of signing in on the Contact page is to be
+      // able to say something, and until now the signed-in state was a dead
+      // end: a name and a sign-out link, no composer. /messages and
+      // salAuth.postMessage already existed — only the box was missing.
+      + '<div id="smCompose"></div>';
     box.querySelector('#smSignOut').addEventListener('click', () => {
       A.logout().then(() => renderOut());
+    });
+    renderCompose(box.querySelector('#smCompose'));
+  }
+
+  // The message composer shown to any signed-in viewer. Sends kind 'general'
+  // through /messages, which Phil reads on /admin/messages. Failures are
+  // reported in place and leave the typed text intact so nothing is lost.
+  function renderCompose(host) {
+    if (!host) return;
+    host.innerHTML =
+        '<div class="sm-composelabel">' + _T('Send me a message') + '</div>'
+      + '<textarea id="smMsgBody" class="sm-composebox" rows="5" placeholder="'
+      +   esc(_T('Type your message…')) + '"></textarea>'
+      + '<div class="sm-authrow"><button id="smMsgSend">' + _T('Send') + '</button></div>'
+      + '<div class="sm-authmsg" id="smMsgMsg" style="display:none;"></div>';
+    const ta  = host.querySelector('#smMsgBody');
+    const btn = host.querySelector('#smMsgSend');
+    const msg = host.querySelector('#smMsgMsg');
+    const setMsg = (text, isErr) => {
+      msg.style.display = 'block';
+      msg.className = 'sm-authmsg' + (isErr ? ' err' : '');
+      msg.textContent = text;
+    };
+    btn.addEventListener('click', () => {
+      const text = ta.value.trim();
+      if (!text) { setMsg(_T('Please write a message first.'), true); return; }
+      btn.disabled = true; setMsg(_T('Sending…'), false);
+      A.postMessage(text).then(d => {
+        btn.disabled = false;
+        if (d && d.ok) {
+          ta.value = '';
+          setMsg(_T('Thank you — your message has been sent.'), false);
+        } else {
+          const e = d && d.error;
+          setMsg(e === 'network' ? _T('Could not reach the server. Please try again.')
+                                 : String(e || _T('Could not send. Please try again.')), true);
+        }
+      });
+    });
+    // Ctrl/Cmd+Enter sends, the convention for a textarea where Enter is a
+    // newline.
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); btn.click(); }
     });
   }
 
@@ -1415,6 +1465,12 @@ async function _showShareableMenu() {
     // column instead of hugging the right edge the way it did on the Intro.
     + '.sm-contact .sm-auth{text-align:left;font-size:15px;margin-top:18px;}'
     + '.sm-contact .sm-authrow{justify-content:flex-start;}'
+    // (dev0955) The signed-in message composer. Full prose width on Contact,
+    // where the strip IS the page; still usable in the narrow right-aligned
+    // strip on the Intro because the row rules above already wrap.
+    + '.sm-composelabel{margin-top:16px;color:#cfe0f0;text-align:left;}'
+    + '.sm-composebox{display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:10px 13px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:rgba(0,0,0,0.25);color:#fff;font-family:inherit;font-size:15px;line-height:1.5;outline:none;resize:vertical;}'
+    + '.sm-composebox:focus{border-color:#7cc0ff;}'
     + '.sm-authmsg{margin-top:10px;color:#b6f0cd;line-height:1.5;}'
     + '.sm-authmsg.err{color:#ffc9c5;}'
     + '.sm-authmsg a{color:#bfe3ff;}'
