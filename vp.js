@@ -5816,6 +5816,17 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-warn" title="The crop — or the zoom box inside it, which is the tightest the shot gets — is SMALLER than the chosen output resolution, so ffmpeg would blow it up. No new detail, just a bigger file. Grow the box or drop the res." ' +
       'style="display:none;cursor:default;user-select:none;padding:2px 6px;background:#5a3a12;' +
       'border:1px solid #fb3;color:#fb3;border-radius:3px;flex:0 0 auto;">⚠</span>' +
+    // (dev0957) WHICH FILE. Image mode only, filled in below. _vectOpenImage
+    // paints the absolute path across the bottom of its host and then deletes
+    // it on load — deliberately, because that caption sits where the bar can
+    // end up and would burn into a screenshot of the crop. Right intent, wrong
+    // outcome: it left you cropping an unnamed picture. The bar is chrome and
+    // is never in the render, so the name is safe HERE. Basename only, since a
+    // full path would push the whole toolbar sideways; hover has all of it.
+    '<span id="vp-crop-name" ' +
+      'style="display:none;cursor:default;user-select:none;padding:2px 6px;' +
+      'background:#234;border-radius:3px;flex:0 1 auto;max-width:22ch;' +
+      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.85;"></span>' +
     // (dev0925) eXpand (x). What the TIMELINE spans: the whole video, or the
     // A→B cut blown up across the bar for fine adjustment. Says the
     // magnification, because a bar showing two seconds looks exactly like a bar
@@ -5984,6 +5995,18 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     if (eng) eng.style.display = '';
     const mo = bar.querySelector('#vp-crop-motion');
     if (mo) mo.style.display = '';
+    // (dev0957) Name the picture. `comment` is the absolute path on a ?vect=
+    // row and on a slideshow row alike, so one line covers both openers.
+    const nameChip = bar.querySelector('#vp-crop-name');
+    if (nameChip) {
+      const full = String((row && (row.comment || row.VidTitle)) || '');
+      const base = full.split(/[\\/]/).pop() || full;
+      if (base) {
+        nameChip.textContent = base;
+        nameChip.title = full;
+        nameChip.style.display = '';
+      }
+    }
     // The container is click-through for video so the native <video> controls
     // underneath stay reachable. A still has no controls to protect, and it
     // does have a slideshow underneath whose swipe / pinch / wheel / hold-zoom
@@ -6175,7 +6198,14 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // turns the picture into a clip of durSec seconds — the zoom box (Z) is
     // what makes it move, and without one it is simply held.
     motion: { format: 'still', durSec: 3 },
-    aspect: 'L', crf: 26, slow: false, resHeight: 1080, angle: 0,
+    aspect: 'L', crf: 26, slow: false,
+    // (dev0957) A STILL defaults to its own pixels, a clip still to 1080p. The
+    // video ladder's default was doing real damage on a photograph: a 1200×674
+    // box out of a big source came up "⚠ 1.60× enlarged", i.e. ffmpeg would
+    // invent two pixels in three on the way to 1920×1080. It also blocks the
+    // lossless jpegtran route outright, which requires resHeight 'source'
+    // (_vpImgLossless) — so the tool's own headline feature was off by default.
+    resHeight: imageMode ? 'source' : 1080, angle: 0,
     // (dev0790) Free ratio: the sides and corners drag independently and the box
     // keeps whatever shape it is pulled to. Off by default — the locked 16:9 /
     // 9:16 pair is still the right answer for anything headed for a grid.
@@ -6445,12 +6475,47 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       dimLbl.style.transform = 'translateX(-50%) rotate(' + (-state.angle) + 'deg)';
       dimLbl.style.color =
         (upBad || (state.angle && _vpCropTiltOOB(state, r.VW, r.VH))) ? '#fb3' : '#dfe6f0';
+      // (dev0957) The resolution options describe THIS box, so they move with it.
+      paintResOptions(sw, sh);
     }
     updateAngleUI();
     paintEngine();     // (dev0744) tilt or res may have just cost us lossless
     paintKen();
     paintTrack();      // (dev0777) ghosts sit in frame coords — repaint on resize
     paintTexts();
+  }
+
+  // (dev0957) On a still, "1080p / 720p" is the wrong language. Those rungs
+  // describe a video delivery ladder; what a photograph is about is the pixel
+  // size it lands at, and the rung NAMES a number the crop may not contain —
+  // which is how a 1200×674 box came to be pointed at a 1920×1080 output. So
+  // in image mode each option says what it would actually produce for the box
+  // as it stands, and marks with ↑ the ones that would invent pixels.
+  //
+  // resHeight is the SHORT side (see _vpCropUpscaleFactor): the proxy scales
+  // height for landscape (`scale=-2:H`) and width for portrait (`scale=H:-2`),
+  // so which dimension the rung sets depends on the shape of the CROP, not of
+  // the source. Guarded by a signature because paint() runs on every drag frame
+  // and this is six DOM writes.
+  let _resOptSig = '';
+  function paintResOptions(sw, sh) {
+    if (!imageMode) return;
+    const sel = bar.querySelector('#vp-crop-res');
+    if (!sel || !sw || !sh) return;
+    const sig = sw + 'x' + sh;
+    if (sig === _resOptSig) return;
+    _resOptSig = sig;
+    const even = n => Math.max(2, Math.floor(n / 2) * 2);
+    const portrait = (sw < sh);
+    const srcShort = portrait ? sw : sh;
+    for (const o of sel.options) {
+      if (o.value === 'source') { o.textContent = sw + ' × ' + sh + '  (same)'; continue; }
+      const R = +o.value;
+      if (!R) continue;
+      const ow = portrait ? R : even(Math.round(sw / sh * R));
+      const oh = portrait ? even(Math.round(sh / sw * R)) : R;
+      o.textContent = ow + ' × ' + oh + ((R > srcShort) ? '  ↑' : '');
+    }
   }
 
   // (dev0744) Say which engine the next save will use, and why. Repainted from
@@ -7166,7 +7231,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   const slowBox = bar.querySelector('#vp-crop-slow');
   slowBox.addEventListener('change', () => { state.slow = !!slowBox.checked; });
   const resSel = bar.querySelector('#vp-crop-res');
-  resSel.value = String(state.resHeight); // default 1080p
+  // (dev0957) 'source' for a still, 1080 for a clip — String() gives 'source',
+  // which is the option's own value, so both select cleanly.
+  resSel.value = String(state.resHeight);
   resSel.addEventListener('change', () => {
     const v = resSel.value;
     state.resHeight = (v === 'source') ? 'source' : (+v || 1080);
@@ -7875,8 +7942,10 @@ function _vpCropHelpImageRows(K, row, head) {
                          'can be done by copying blocks, so ffmpeg redraws the picture ' +
                          'at high quality. The chip on the bar says which one is armed ' +
                          'before you commit.') +
-    row('res',           '2160p (4K) · 1440p (2K) · 1080p · 720p · 480p · Same ' +
-                         '(<i>Same</i> is what keeps it lossless)') +
+    row('res',           'output size, in PIXELS — each option says what it would ' +
+                         'produce for the box as it stands, and marks with ↑ the ' +
+                         'ones that would enlarge it. Starts on <i>same</i>, which ' +
+                         'is the one that keeps a crop lossless.') +
     row('⚠',             'the FAR-LEFT bar chip, carrying the factor: the output is ' +
                          'BIGGER than the box, so pixels would be enlarged for ' +
                          'nothing. Grow the box or drop the res.') +
