@@ -445,20 +445,35 @@ html.grid-open #ver-badge { bottom:110px; }
 /* (dev0763) ▼▼ / ▶▶ expand-all / collapse-all icons (core.js _salXAllToggle).
    Two triangles overlapped by a negative letter-spacing, with the same amount
    given back as padding so the box still ends where the ink does. Blue matches
-   the <summary> triangles these operate on. */
+   the <summary> triangles these operate on.
+
+   (dev0951) ON A WHITE CHIP. Bare blue ink is close to invisible on a phone
+   against a bluish slide, which is most of them — the icons matched the very
+   background they were sitting on. A white ground with the same blue ink reads
+   on any backdrop, light or dark, and it also says "button", which two loose
+   triangles never did.
+
+   The colour is fixed rather than inherited: the old
+   .te-slide[style*="color:"] .te-xall{color:inherit} rule let a slide's own
+   text colour drive these, which on a white chip is how a white-on-dark slide
+   would paint them white on white. That rule is deliberately gone from BOTH
+   copies of this block (see the note below about the second one). */
 .te-xall {
   display: inline-block;
   letter-spacing: -0.40em;
-  padding-right: 0.40em;
+  padding: 0 calc(0.40em + 5px) 1px 5px;
   font-size: 1.15em;
   line-height: 1;
   vertical-align: -0.06em;
   color: #2563eb;
+  background: #fff;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
 }
-.te-slide[style*="color:"] .te-xall { color: inherit; }
 
 /* (dev0902) Tick boxes (.te-cb) are deliberately NOT here. core.js owns
    _SAL_CB_CSS and injects it, so the main document and the V reader's srcdoc
@@ -1152,7 +1167,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0950';
+  window.HELP_VERSION_STR = 'dev0951';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

@@ -570,11 +570,20 @@ function _wireSignIn(ov) {
 //   SM_FEAT_ADDOWN  false → the "Add your own" tab vanishes the same way.
 //                           Existing user links/loops are untouched in storage,
 //                           just unreachable until it's switched back on.
+//   SM_FEAT_LANG    false → the Español / English toggle on the Intro page is
+//                           not rendered. (dev0951) Parked, not removed: lang.js
+//                           still loads, the Spanish files are still there, and
+//                           a viewer already switched to Spanish stays in it —
+//                           only the way IN from the menu is withheld while the
+//                           translation work is on the shelf. Flip to true and
+//                           the button, its wiring and its CSS come back
+//                           untouched.
 //
 // Flipping either one needs a HELP_VERSION_STR bump like any other JS edit, or
 // browsers will keep serving the cached boot.js.
 const SM_FEAT_SEARCH = true;
 const SM_FEAT_ADDOWN = true;
+const SM_FEAT_LANG   = false;   // (dev0951) parked — see above
 
 // (dev0316) Shareable-menu (the "I" / Initial screen). On the public site
 // (slam.com, github.io), bare-URL boot lands here instead of on G. The menu
@@ -1686,7 +1695,7 @@ async function _showShareableMenu() {
   // present, so the menu is unchanged if the feature is cut out).
   const _introChrome =
       '<div class="sm-ver">' + _smEsc(window.HELP_VERSION_STR || '') + '</div>'
-    + (window.salLang
+    + (SM_FEAT_LANG && window.salLang
         ? '<button id="smLangBtn" class="sm-lang" type="button" title="'
           + _smEsc(window.salLang.is('es') ? 'Read this site in English' : 'Leer este sitio en español')
           + '">' + _smEsc(window.salLang.is('es') ? 'English' : 'Español') + '</button>'

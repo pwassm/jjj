@@ -2203,10 +2203,16 @@ function gridOpenFullscreen(row, contained) {
           // (dev0763) ▼▼/▶▶ expand-all icons — this iframe has its own document,
           // so the index.html rule doesn't reach it. Clicks are wired from the
           // parent in loadIframe (srcdoc is same-origin).
-          + '.te-xall{display:inline-block;letter-spacing:-0.40em;padding-right:0.40em;'
+          // (dev0951) White chip, fixed blue ink — see the long note on the
+          // index.html copy. The slide-colour inherit rule went with it: on a
+          // white ground it is what would paint a white-on-dark slide's icons
+          // white on white.
+          + '.te-xall{display:inline-block;letter-spacing:-0.40em;'
+          + 'padding:0 calc(0.40em + 5px) 1px 5px;'
           + 'font-size:1.15em;line-height:1;vertical-align:-0.06em;color:#2563eb;'
+          + 'background:#fff;border:1px solid #2563eb;border-radius:4px;'
+          + 'box-shadow:0 1px 3px rgba(0,0,0,0.35);'
           + 'cursor:pointer;user-select:none;-webkit-user-select:none;}'
-          + '.te-slide[style*="color:"] .te-xall{color:inherit;}'
           // (dev0902) Tick boxes. core.js is the single source for these rules —
           // the te-xall block above is hand-copied from index.html and the two have
           // already drifted once, which is the mistake not repeated here.
