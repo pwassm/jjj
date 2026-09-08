@@ -2252,9 +2252,15 @@ function gridOpenFullscreen(row, contained) {
           // are overlapped by a negative letter-spacing) and make it read as a
           // button. currentColor for the border so it survives a slide that
           // sets its own text colour.
-          + '.sal-xall-bar{margin:0 0 18px;}'
-          + '.sal-xall-bar .te-xall{letter-spacing:normal;padding:5px 13px 6px;'
-          + 'border:1px solid currentColor;border-radius:999px;font-size:0.78em;'
+          + '.sal-xall-bar{display:flex;flex-wrap:wrap;align-items:center;'
+          + 'gap:10px;margin:0 0 18px;}'
+          // (dev0954) Scoped to the TOGGLE. It used to hit every .te-xall in the
+          // bar, which was harmless while the bar held one — but the bare pair
+          // beside it must keep the ordinary chip look, and letter-spacing:normal
+          // in particular would un-overlap the two triangles that are the whole
+          // point of the glyph.
+          + '.sal-xall-bar .te-xall[data-xall-toggle]{letter-spacing:normal;'
+          + 'padding:5px 13px 6px;border-radius:999px;font-size:0.78em;'
           + 'font-weight:bold;opacity:0.85;}';
         const _aStyle = '<style>' + _ftStyles + '</style>';
         // (dev0249) Body scaffold for fragment-style ftext: cap content and
@@ -2406,9 +2412,26 @@ function gridOpenFullscreen(row, contained) {
               // flight, so a T() up there would freeze the English in.
               // _salXAllToggle translates its own rewrite for the same reason.
               if (typeof window.T === 'function') _xLbl = window.T(_xLbl);
+              // (dev0954) The pill is followed by the bare pair, everywhere the
+              // pill appears. The pill alone is a TOGGLE — it opens everything,
+              // then relabels itself to close everything — so which of the two
+              // jobs it will do next depends on what you last did with it. The
+              // pair does not: ▼▼ always reveals and ▶▶ always hides, whatever
+              // state the page is in. They are the same two controls the
+              // Introduction and Greeting texts have carried by hand for a long
+              // time (author-placed spans in c.json ctxt), now on every reader
+              // page that earns a bar rather than only on the pages someone
+              // remembered to type them into.
+              //
+              // No new wiring: core.js's delegated _salWireXAll handler already
+              // drives any .te-xall, and a span WITHOUT data-xall-toggle takes
+              // _salXAllToggle's fixed-action branch — exactly what the hand-
+              // placed ones in ctxt have always used.
               const _xbar = /<details[\s>]/i.test(sects[sIdx])
                 ? '<div class="sal-xall-bar"><span class="te-xall" data-xall="open"'
-                  + ' data-xall-toggle="1">' + escH(_xLbl) + '</span></div>'
+                  + ' data-xall-toggle="1">' + escH(_xLbl) + '</span>'
+                  + '<span class="te-xall" data-xall="open" title="Reveal every line">\u25BC\u25BC</span>'
+                  + '<span class="te-xall" data-xall="close" title="Hide every line">\u25B6\u25B6</span></div>'
                 : '';
               loadIframe('<!DOCTYPE html><html><head><meta charset="UTF-8">'
                 + '<style>' + _bodyCss + _ftStyles + '</style></head>'
