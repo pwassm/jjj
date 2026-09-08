@@ -647,11 +647,11 @@ window.HOTKEYS = [
 
   { label: 'Shift+drag on a cell', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
     impl: 'grid.js _gridCellPan (dev0364)',
-    desc: 'Pan the zoomed cell content. Transient until you Alt-click the cell to keep it (dev0945)' },
+    desc: 'Pan the zoomed cell content to look around. Always transient (dev0948) — to KEEP a framing, Alt-click the subject instead' },
 
   { label: 'Alt+click a cell', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
-    impl: 'grid.js COI persist (dev0364)',
-    desc: 'Save the current zoom/pan framing (COI) onto that row — at any zoom since dev0945 (it used to keep only a dragged framing below 1.05x, and store the raw click point above it)' },
+    impl: 'grid.js gridSetCOI (dev0948)',
+    desc: 'Centre of interest: the point you click is stored on the ROW and centred in the cell at any zoom, together with the cell zoom it was set at — which the cell then loads at, wherever it is placed (dev0948)' },
 
   { label: 'Ctrl+click a cell', group: 'Gestures', scope: 'G', dev: true, helpSection: 'Gestures',
     impl: 'grid.js',

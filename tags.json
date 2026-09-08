@@ -8295,5 +8295,16 @@
     "rank": "family",
     "common": "moon snails",
     "extinct": false
+  },
+  {
+    "id": "neverita-lewisii",
+    "label": "Neverita lewisii",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "",
+    "extinct": false
   }
 ]

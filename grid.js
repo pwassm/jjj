@@ -428,7 +428,7 @@ function fitGridIgFrame(cellEl, iframe) {
     const panNatX = fx * Math.max(0, NAT_W - winNatW);
     // (dev0671) Transient Shift+drag pan, in screen px like every other cell
     // type — added straight to the offsets rather than through
-    // _gridAnchoredTransform, since this frame is positioned, not translated.
+    // the shared placement, since this frame is positioned, not translated.
     const _pan = (typeof _gridCellPanForCell === 'function') ? _gridCellPanForCell(cellEl) : null;
     const _px = _pan ? (_pan.x || 0) : 0, _py = _pan ? (_pan.y || 0) : 0;
     iframe.style.transform = 'scale(' + scale + ')';
@@ -1484,34 +1484,77 @@ function _gridSnapZoom(v) {
   return Math.max(_GRID_ZOOM_MIN, Math.round(Number(v) * 10) / 10);
 }
 
-// Effective zoom for one cell = global × that cell's stored per-cell factor.
+// (dev0948) The per-cell zoom a row carries inside its own COI string. Field 2
+// of "fx,fy@@zoom@@frameRef" has been WRITTEN since dev0363 and read by
+// nothing: the zoom lived only in c.json, so the same row framed at 2.4x in one
+// config rendered at 1x everywhere else. It is now the cell's default zoom,
+// which is what lets a COI reproduce its framing wherever the row is placed.
+function _gridRowCOIZoom(row) {
+  if (!row || !row.COI) return 0;
+  const p = String(row.COI).split('@@');
+  if (p.length < 2) return 0;
+  const z = parseFloat(p[1]);
+  return (isFinite(z) && z > 0) ? z : 0;
+}
+
+// The cell's OWN zoom factor — the multiplier that rides on top of the
+// whole-grid zoom. Precedence (dev0948): an explicit c.json "UID/zoom" for THIS
+// placement wins, else the row's COI zoom, else 1. A config can still override
+// one cell, but nothing has to be set there for a COI'd row to frame itself.
+function _gridIndivZoomForCell(cellEl) {
+  const row = cellEl && cellEl._rowData;
+  const ck = _gridCellKey(row);
+  if (ck && _gridCellZoom[ck] > 0) return _gridCellZoom[ck];
+  return _gridRowCOIZoom(row) || 1;
+}
+
+// Effective zoom for one cell = global x that cell's own factor.
 function _gridZoomForCell(cellEl) {
   // (dev0359) No zoom on phones/tablets — zoomed cells look bad on small
   // screens, so the grid always renders at plain cover/contain there. The
-  // stored global "Zoom" + per-cell "UID/zoom" values are kept in c.json
-  // (and still apply on desktop); they're just ignored for mobile rendering.
+  // stored global "Zoom", per-cell "UID/zoom" and COI zoom are kept (and still
+  // apply on desktop); they're just ignored for mobile rendering.
   if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return 1;
-  const g = _gridFillZoom();
-  // (dev0609) Keyed via _gridCellKey — a UID normally, the link for a link cell.
-  const ck = _gridCellKey(cellEl && cellEl._rowData);
-  const indiv = (ck && _gridCellZoom[ck] > 0) ? _gridCellZoom[ck] : 1;
-  return g * indiv;
+  return _gridFillZoom() * _gridIndivZoomForCell(cellEl);
 }
 
-// ── Center-of-interest (COI) anchoring (dev0348 → dev0363) ───────────────────
-// A COI is the point the user Alt-clicked on a cell. As of dev0363 it lives in
-// the row's "COI" *column* (the dev0349 "parentUID@fx,fy" clone-row scheme was
-// dropped — one COI per row now). The column holds three @@-separated fields:
+// ── Centre of interest (COI): one point, one meaning (dev0348 → dev0948) ─────
+// A COI is the point the user Alt-clicked on a cell. It lives on the ml.json
+// row, in the "COI" column, as three @@-separated fields:
+//
 //     "fx,fy@@zoom@@frameRef"
-//   e.g. "0.425,0.146@@1.8@@frame120"  or  "0.685,0.335@@1.0@@image"
-// where fx,fy are cell fractions 0..1, zoom is the effective cell zoom captured
-// when the COI was set, and frameRef is "frame<N>" (video, N≈currentTime×30 fps)
-// or the literal "image". Only fx,fy drives rendering today; zoom + frameRef are
-// recorded for the coming time-based autozoom. Zoom scales the cell toward the
-// point instead of its center, so an off-center subject stays in view as the
-// cell enlarges. The centering pan is CLAMPED so the scaled content never
-// exposes a gap — which is why a near-edge COI only drifts toward center as zoom
-// grows (at 1× there's no room to pan; at high zoom there's enough overflow).
+//       e.g. "0.425,0.146@@1.8@@frame120"   "0.685,0.335@@1.0@@image"
+//
+//   fx,fy     a point in the MEDIA's own frame: 0,0 its top-left corner, 1,1
+//             its bottom-right. NOT a fraction of the cell.
+//   zoom      the cell's own zoom factor when the point was set — and now the
+//             zoom the cell LOADS at (see _gridIndivZoomForCell).
+//   frameRef  "frame<N>" (video, N ~ currentTime x 30fps) or "image". Recorded
+//             for the coming time-based autozoom; nothing reads it yet.
+//
+// THE RULE, at every zoom and on every cell type: put the media point fx,fy at
+// the CENTRE of the cell, at the cell's effective zoom, clamped so the media
+// still covers the cell.
+//
+// (dev0948) What that replaced, since all three readings were live at once:
+//   • fx,fy were measured off the CELL rect at click time but consumed as a
+//     fraction of the MEDIA box — the same thing only at zoom 1, unpanned, with
+//     no cover crop. Alt-clicking an already-zoomed cell stored a point that
+//     rendered somewhere else, which is what the drag-then-alt-click "commit
+//     the framing" machinery (dev0758, dev0945) existed to work around. Gone:
+//     the click point is now inverted through the live render, so it means
+//     "this thing here" whatever the cell is sitting at, dragged or not.
+//   • fx,fy meant two different geometries either side of 1.05x zoom — an
+//     object-position slice below, a point-to-centre above — so the framing
+//     shifted as you crossed it. One meaning now; that split survives only as
+//     plumbing inside _gridFrameCover.
+//   • the iframe path read fx,fy as a cell fraction of the unzoomed cover view,
+//     a third reading again.
+//
+// The clamp is why a point near an edge only reaches the centre once there is
+// magnification enough to carry it there — centring it with none would drag a
+// blank gap into the cell. Loading at the COI's own zoom makes that a non-issue:
+// that is the zoom the framing was chosen at.
 function _gridParseCOI(s) {
   if (!s) return null;
   // Accept the full COI column string (use its first @@-field) or a bare "fx,fy".
@@ -1537,112 +1580,123 @@ function _gridCellPanForCell(cellEl) {
   return (p && (p.x || p.y)) ? p : null;
 }
 
-// Translate FRACTION (of the element's own box) along one axis so the COI point
-// `f` ends up centered, clamped to keep the scaled box covering the cell. Used
-// for cell-sized elements (img / montage box / <video>) where translate-% is
-// relative to the box = the cell, so no pixel measurement is needed.
-function _gridAnchorFrac(f, Z) {
-  const desired = 0.5 - Z * f;   // shift that puts f at cell center
-  const lo = 1 - Z;              // Z>=1 → lo<=0: clamp range [lo, 0]
-  if (lo <= 0) return Math.max(lo, Math.min(0, desired));
-  return lo / 2;                 // Z<1 (content smaller than cell): just center
-}
-
-// Pixel translate for an element whose base box (baseLen at basePos, in cell
-// coords) may differ from the cell (the oversized cover iframe). Same clamp.
-function _gridAnchorPx(cellLen, basePos, baseLen, f, Z) {
-  const desired = cellLen / 2 - basePos - Z * (f * cellLen - basePos);
-  const tMin = cellLen - basePos - Z * baseLen;   // far edge reaches cellLen
-  const tMax = -basePos;                            // near edge reaches 0
-  if (tMin <= tMax) return Math.max(tMin, Math.min(tMax, desired));
-  return (cellLen - Z * baseLen) / 2 - basePos;    // can't cover → center
-}
-
-// Build the `transform` string for a cell-sized element (img / box / video):
-// translate the COI to center (clamped) then scale. transform-origin must be 0 0.
-function _gridAnchoredTransform(coi, Z, pan) {
-  const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
-  const tx = _gridAnchorFrac(fx, Z) * 100, ty = _gridAnchorFrac(fy, Z) * 100;
-  // (dev0364) Optional transient pan in px, combined with the %-anchor via calc().
-  const px = (pan && pan.x) ? pan.x : 0, py = (pan && pan.y) ? pan.y : 0;
-  const xv = px ? 'calc(' + tx + '% + ' + px + 'px)' : tx + '%';
-  const yv = py ? 'calc(' + ty + '% + ' + py + 'px)' : ty + '%';
-  return 'translate(' + xv + ',' + yv + ') scale(' + Z + ')';
-}
-
-// ── (dev0945) Inverting the anchor: turn a live drag-pan into a storable COI ──
-// The Shift+drag pan is a transient px offset laid on top of the anchored
-// transform (see _gridAnchoredTransform / _gridApplyCoverFit). To "finish off" a
-// drag, gridSetCOI has to store the point that REPRODUCES the framing the drag
-// arrived at — so each forward anchor gets an inverse here. Both re-clamp the
-// summed offset first, so a drag that shoved past the cover limit stores the
-// limit, which is exactly what the screen was already showing.
-function _gridUnanchorFrac(f, Z, dFrac) {
-  if (!(Z > 1)) return f;               // no room below 1× — caller uses the cover path
-  const lo = 1 - Z;
-  const t = Math.max(lo, Math.min(0, _gridAnchorFrac(f, Z) + (dFrac || 0)));
-  return Math.max(0, Math.min(1, (0.5 - t) / Z));   // inverse of 0.5 - Z*f
-}
-function _gridUnanchorPx(cellLen, basePos, baseLen, f, Z, dPx) {
-  const tMin = cellLen - basePos - Z * baseLen, tMax = -basePos;
-  if (tMin > tMax) return f;            // can't cover → nothing was pannable
-  const t = Math.max(tMin, Math.min(tMax,
-    _gridAnchorPx(cellLen, basePos, baseLen, f, Z) + (dPx || 0)));
-  return Math.max(0, Math.min(1,
-    (cellLen / 2 - basePos + Z * basePos - t) / (Z * cellLen)));
-}
-
-// Fold this cell's live drag-pan back into a COI point, using whichever anchor
-// geometry the cell actually renders with. Returns null when there is no pan to
-// fold (or the cell's framing isn't ours to invert), leaving the caller's
-// click-point behaviour untouched.
-function _gridCoiFromPan(cellEl, Z) {
-  const pan = _gridCellPanForCell(cellEl);
-  if (!pan) return null;
+// ── Media geometry: one description every cell type answers ─────────────────
+// Everything the framing needs, in cell pixels, BEFORE zoom and before framing:
+//   w,h     the cell (1,1 when it has no layout yet — see below)
+//   bw,bh   the media's base box: what it covers the cell with at zoom 1
+//   ox,oy   that box's top-left; <= 0 when the media overflows (the cover crop)
+//   kind    'iframe' a positioned box (YT/Vimeo) whose element IS the media box
+//           'cover'  an <img>/<video> whose element box is the CELL, the crop
+//                    living inside it in object-position
+//           'box'    a montage div: no hidden content, box = cell
+// Natural dimensions arrive with metadata and layout arrives with the first
+// paint, so until either does the box is reported as the cell itself: fx,fy
+// then read as fractions of the cover crop (exactly the pre-dev0948 behaviour)
+// and the load/loadedmetadata re-fit corrects it a moment later. Reporting unit
+// dimensions rather than bailing keeps the transform expressible in PERCENT,
+// which is what makes it correct before the cell has been measured at all.
+function _gridMediaGeom(cellEl) {
   const t = _gridCellZoomTarget(cellEl);
-  if (!t || t.kind === 'ig') return null;   // IG framing is owned by fitGridIgFrame
-  const coi = _gridCOIForCell(cellEl);
-  const fx0 = coi ? coi.fx : 0.5, fy0 = coi ? coi.fy : 0.5;
-  // Cover iframe (YT/Vimeo): sized larger than its host and anchored in px, so
-  // mirror _gridApplyCoverFit's box maths exactly before inverting it.
-  const ifr = (t.kind === 'vid') ? t.el.querySelector('iframe') : null;
-  if (ifr) {
-    const w = t.el.clientWidth, h = t.el.clientHeight;
-    if (!w || !h) return null;
-    const VID = 16 / 9;
-    let iw, ih;
-    if (w / h > VID) { iw = w; ih = w / VID; } else { ih = h; iw = h * VID; }
-    iw = Math.ceil(iw); ih = Math.ceil(ih);
-    const ox = Math.round((w - iw) / 2), oy = Math.round((h - ih) / 2);
-    return { fx: _gridUnanchorPx(w, ox, iw, fx0, Z, pan.x),
-             fy: _gridUnanchorPx(h, oy, ih, fy0, Z, pan.y) };
+  if (!t || t.kind === 'ig') return null;   // IG framing belongs to fitGridIgFrame
+  const box = (t.kind === 'vid') ? t.el : cellEl;
+  let w = box.clientWidth || cellEl.clientWidth || 0;
+  let h = box.clientHeight || cellEl.clientHeight || 0;
+  if (!w || !h) { w = 1; h = 1; }           // unmeasured: work in fractions
+  if (t.kind === 'vid') {
+    const ifr = t.el.querySelector('iframe');
+    if (ifr) {
+      // 16:9 cover box, sized and centred exactly as _gridApplyCoverFit lays it
+      // out — the iframe element IS that box, so it carries no inner crop.
+      const VID = 16 / 9;
+      let bw, bh;
+      if (w / h > VID) { bw = w; bh = w / VID; } else { bh = h; bw = h * VID; }
+      bw = Math.ceil(bw); bh = Math.ceil(bh);
+      return { kind: 'iframe', el: ifr, w: w, h: h, bw: bw, bh: bh,
+               ox: Math.round((w - bw) / 2), oy: Math.round((h - bh) / 2) };
+    }
+    const vid = t.el.querySelector('video');
+    return vid ? _gridCoverGeom(vid, w, h) : null;
   }
-  // Cell-sized media (img / montage box / <video>): translate-% is relative to
-  // the element's own layout box. offsetWidth/Height, NOT getBoundingClientRect
-  // — the latter reports the already-transformed box and would feed the scale
-  // back into the division.
-  const el = (t.kind === 'vid') ? t.el.querySelector('video') : t.el;
-  if (!el) return null;
-  const bw = el.offsetWidth, bh = el.offsetHeight;
-  if (!bw || !bh) return null;
-  return { fx: _gridUnanchorFrac(fx0, Z, pan.x / bw),
-           fy: _gridUnanchorFrac(fy0, Z, pan.y / bh) };
+  if (t.kind === 'img') {
+    // A COI'd image cover-fits (see _gridApplyZoomToCell) and so has a crop to
+    // frame; a plain one stays 'contain' — the whole picture, nothing hidden.
+    return _gridCOIForCell(cellEl)
+      ? _gridCoverGeom(t.el, w, h)
+      : { kind: 'box', el: t.el, w: w, h: h, bw: w, bh: h, ox: 0, oy: 0 };
+  }
+  return { kind: 'box', el: t.el, w: w, h: h, bw: w, bh: h, ox: 0, oy: 0 };
 }
 
-// ── (dev0758) Cover-crop framing via `object-position` ───────────────────────
-// An <img>/<video> that cover-fits its cell is cropped INSIDE its own box, and
-// that box IS the cell — so the translate above can never reframe it: at Z=1
-// _gridAnchorFrac's clamp is [0,0] and every offset collapses to zero (that's
-// the "at 1× there's no room to pan" note above). The crop that actually hides
-// the top of a portrait video in a landscape cell is object-fit's, and the only
-// lever on it is `object-position`, which nothing set until now — so a COI on
-// an unzoomed cell stored a value and moved nothing.
-//
-// Split of duties, by zoom:
-//   Z <= 1.05  → the transform has no room; COI + drag-pan drive object-position.
-//   Z >  1.05  → unchanged: they drive the transform, exactly as since dev0364.
-// A cell whose media matches its aspect has no cover overflow, so this is a
-// no-op there and 16:9-in-16:9 grids render byte-identically to before.
+// Base cover box of an <img>/<video> whose element box is the cell.
+function _gridCoverGeom(el, w, h) {
+  const nw = el.videoWidth || el.naturalWidth || 0;
+  const nh = el.videoHeight || el.naturalHeight || 0;
+  if (!nw || !nh) return { kind: 'cover', el: el, w: w, h: h, bw: w, bh: h, ox: 0, oy: 0 };
+  const s = Math.max(w / nw, h / nh);       // the scale object-fit:cover picks
+  const bw = nw * s, bh = nh * s;
+  return { kind: 'cover', el: el, w: w, h: h, bw: bw, bh: bh,
+           ox: (w - bw) / 2, oy: (h - bh) / 2 };
+}
+
+// Where the media's leading edge lands on one axis, in cell px, so that
+// fraction f sits at the cell centre — clamped to keep the cell covered. The
+// transient drag-pan is added BEFORE the clamp, so a drag can't tear a gap open
+// either. Used by the iframe and montage paths, and by the inversion.
+function _gridPlaceAxis(cellLen, baseLen, f, Z, pan) {
+  const L = baseLen * Z;                          // rendered length of the media
+  if (L <= cellLen) return (cellLen - L) / 2;     // smaller than the cell: centre
+  return Math.max(cellLen - L, Math.min(0, cellLen / 2 - f * L + (pan || 0)));
+}
+
+// The same placement for a 'cover' element, which has TWO levers instead of
+// one: transform:translate moves its cell-sized box by at most (Z-1) x cell,
+// and object-position slides the media inside that box across its cover
+// overflow. Their ranges add up to exactly the clamp range above, so no legal
+// framing is unreachable. The translate is filled FIRST because it needs no
+// natural dimensions — an image still frames correctly while it loads.
+// Returns { t, p, pos }: t = translate (same units as cellLen), p =
+// object-position 0..1, pos = where the media edge ends up (= t - over*Z*p).
+function _gridFrameCover(cellLen, baseLen, f, Z, pan) {
+  const over = Math.max(0, baseLen - cellLen);    // cover overflow at zoom 1
+  const opRange = over * Z, tRange = Math.max(0, (Z - 1) * cellLen);
+  // Below 1x the box is smaller than the cell (deliberate letterbox, dev0346)
+  // and translate has no room: centre the box, and let object-position pick
+  // which part of the crop shows inside it.
+  const boxT = (Z < 1) ? (cellLen - Z * cellLen) / 2 : 0;
+  const want = cellLen / 2 - f * baseLen * Z + (pan || 0) - boxT;
+  const need = Math.max(0, Math.min(opRange + tRange, -want));
+  const tShift = Math.min(need, tRange);
+  const p = (opRange > 0) ? (need - tShift) / opRange : 0;
+  return { t: boxT - tShift, p: p, pos: boxT - tShift - opRange * p };
+}
+
+// The media's rendered rect in cell coordinates: {x,y,w,h}. The single source
+// of truth — every cell type renders from it and gridSetCOI inverts it.
+function _gridPlaceMedia(g, coi, Z, pan) {
+  const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
+  const px = pan ? pan.x : 0, py = pan ? pan.y : 0;
+  if (g.kind === 'cover') {
+    return { x: _gridFrameCover(g.w, g.bw, fx, Z, px).pos,
+             y: _gridFrameCover(g.h, g.bh, fy, Z, py).pos,
+             w: g.bw * Z, h: g.bh * Z };
+  }
+  return { x: _gridPlaceAxis(g.w, g.bw, fx, Z, px),
+           y: _gridPlaceAxis(g.h, g.bh, fy, Z, py),
+           w: g.bw * Z, h: g.bh * Z };
+}
+
+// Invert it: which media fraction is under the point (cx,cy), in cell px, as
+// the cell is rendering RIGHT NOW? This is what makes Alt-click mean "this
+// thing, here" whatever zoom the cell is at and however far it has been dragged.
+function _gridCoiFromPoint(cellEl, cx, cy) {
+  const g = _gridMediaGeom(cellEl);
+  if (!g) return null;
+  const r = _gridPlaceMedia(g, _gridCOIForCell(cellEl), _gridZoomForCell(cellEl),
+                            _gridCellPanForCell(cellEl));
+  if (!(r.w > 0) || !(r.h > 0)) return null;
+  return { fx: Math.max(0, Math.min(1, (cx - r.x) / r.w)),
+           fy: Math.max(0, Math.min(1, (cy - r.y) / r.h)) };
+}
 
 // Cover-fit overflow of a media element beyond its box, in px per axis.
 // Needs natural dimensions, so it returns null until metadata has loaded.
@@ -1655,27 +1709,6 @@ function _gridCoverOverflow(el) {
   if (!nw || !nh || !bw || !bh) return null;
   const s = Math.max(bw / nw, bh / nh);   // the scale object-fit:cover picks
   return { ox: Math.max(0, nw * s - bw), oy: Math.max(0, nh * s - bh) };
-}
-
-// Resolve the cover framing to fractions 0..1 (0 = show the left/TOP edge,
-// 0.5 = the plain centre crop, 1 = the right/bottom edge). The COI supplies the
-// base; a transient Shift+drag nudges it, its px converted through the measured
-// overflow. Dragging DOWN (+y) reveals the top, hence the subtraction.
-function _gridCoverFrac(el, coi, pan) {
-  let fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
-  if (pan && (pan.x || pan.y)) {
-    const room = _gridCoverOverflow(el);
-    if (room) {
-      if (room.ox > 0 && pan.x) fx -= pan.x / room.ox;
-      if (room.oy > 0 && pan.y) fy -= pan.y / room.oy;
-    }
-  }
-  return { fx: Math.max(0, Math.min(1, fx)), fy: Math.max(0, Math.min(1, fy)) };
-}
-
-function _gridCoverPosition(el, coi, pan) {
-  const f = _gridCoverFrac(el, coi, pan);
-  return (f.fx * 100).toFixed(2) + '% ' + (f.fy * 100).toFixed(2) + '%';
 }
 
 // The cover-fitted media element of a cell (the <video> inside a video host, or
@@ -1991,10 +2024,12 @@ function _gridCardSectionIdx(cell) {
   return 0;
 }
 
-// Apply the current effective zoom to a single cell's content (no remount).
-// img / montage box are cell-sized, so a translate-% + scale (origin 0 0)
-// anchors them to the COI without needing the cell's pixel size — works even
-// before layout settles. The video host defers to _gridApplyCoverFit.
+// Apply the current effective zoom + COI framing to a single cell's content
+// (no remount). (dev0948) Every cell type now renders from the ONE placement
+// _gridPlaceMedia computes, so a COI means the same thing on an image, an mp4,
+// a YouTube iframe and a montage box: that point of the media, at the centre of
+// the cell. The video host defers to _gridApplyCoverFit, which frames the same
+// way after it has sized the iframe.
 function _gridApplyZoomToCell(cellEl) {
   const t = _gridCellZoomTarget(cellEl);
   if (!t) return;
@@ -2003,19 +2038,58 @@ function _gridApplyZoomToCell(cellEl) {
   if (t.kind === 'ig')  { t.el._igFit(); return; }   // (dev0671) fit reads zoom+pan itself
   const coi = _gridCOIForCell(cellEl);
   // (dev0349) A COI'd image must COVER the cell (like <video>) so its anchored
-  // crop fills the cell with no letterbox — the shared anchor math assumes the
-  // visible content fills the box. Plain images stay 'contain' (whole image).
+  // crop fills the cell with no letterbox — the placement assumes the visible
+  // content fills the box. Plain images stay 'contain' (the whole picture).
   if (t.kind === 'img') t.el.style.objectFit = coi ? 'cover' : 'contain';
-  // (dev0758) Below ~1× the transform has no room, so COI + drag-pan reframe the
-  // cover crop instead; above it, the transform keeps them (dev0364 behaviour).
-  const pan = _gridCellPanForCell(cellEl);
-  const coverPan = (z <= 1.05);
-  if (t.kind === 'img') {
-    t.el.style.objectPosition = (t.el.style.objectFit === 'cover')
-      ? _gridCoverPosition(t.el, coi, coverPan ? pan : null) : '';
+  const g = _gridMediaGeom(cellEl);
+  if (!g) return;
+  _gridFrameElement(g, coi, z, _gridCellPanForCell(cellEl));
+  // (dev0948) An image's natural size arrives with the decode, and the cover
+  // box is measured from it — so re-frame once it lands, the way <video> has
+  // re-framed on loadedmetadata since dev0758. Without this a COI'd image
+  // framed itself against a placeholder box on first paint.
+  if (t.kind === 'img' && !t.el._coiLoadWired) {
+    t.el._coiLoadWired = true;
+    t.el.addEventListener('load', () => {
+      try { _gridApplyZoomToCell(cellEl); } catch (_) {}
+    });
   }
-  t.el.style.transformOrigin = '0 0';
-  t.el.style.transform = _gridAnchoredTransform(coi, z, coverPan ? null : pan);
+}
+
+// Render one placement onto the element that carries it. Which CSS levers do
+// the work depends on the geometry kind, but the framing they produce is the
+// same rect in all three cases (see _gridPlaceMedia).
+function _gridFrameElement(g, coi, Z, pan) {
+  const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
+  const px = pan ? pan.x : 0, py = pan ? pan.y : 0;
+  const el = g.el;
+  if (!el) return;
+  el.style.transformOrigin = '0 0';
+  if (g.kind === 'iframe') {
+    // The element IS the media box, already positioned at ox,oy: translate it
+    // by the difference between where it sits and where the framing wants it.
+    const x = _gridPlaceAxis(g.w, g.bw, fx, Z, px);
+    const y = _gridPlaceAxis(g.h, g.bh, fy, Z, py);
+    el.style.transform = 'translate(' + (x - g.ox) + 'px,' + (y - g.oy) + 'px) scale(' + Z + ')';
+    return;
+  }
+  if (g.kind === 'cover') {
+    // Two levers: object-position slides the media across its cover overflow,
+    // transform moves the (cell-sized) box. Percent keeps the translate correct
+    // even before the cell has been measured — see _gridMediaGeom.
+    const cx = _gridFrameCover(g.w, g.bw, fx, Z, px);
+    const cy = _gridFrameCover(g.h, g.bh, fy, Z, py);
+    el.style.objectPosition = (cx.p * 100).toFixed(2) + '% ' + (cy.p * 100).toFixed(2) + '%';
+    el.style.transform = 'translate(' + (cx.t / g.w * 100).toFixed(4) + '%,'
+                       + (cy.t / g.h * 100).toFixed(4) + '%) scale(' + Z + ')';
+    return;
+  }
+  // 'box': nothing hidden inside it, so the translate is the whole story.
+  const bx = _gridPlaceAxis(g.w, g.bw, fx, Z, px);
+  const by = _gridPlaceAxis(g.h, g.bh, fy, Z, py);
+  if (el.style.objectPosition) el.style.objectPosition = '';
+  el.style.transform = 'translate(' + (bx / g.w * 100).toFixed(4) + '%,'
+                     + (by / g.h * 100).toFixed(4) + '%) scale(' + Z + ')';
 }
 
 function _gridApplyCoverFit(host, zOverride) {
@@ -2033,21 +2107,15 @@ function _gridApplyCoverFit(host, zOverride) {
   const pan = _gridCellPanForCell(cellEl);   // (dev0364) transient drag-pan, may be null
   host.querySelectorAll('iframe, video').forEach(el => {
     if (el.tagName === 'VIDEO') {
-      // <video> covers the cell natively (box = cell); zoom + COI ride on a
-      // transform, same translate-% math as the image path.
+      // <video> covers the host natively (its box IS the cell), so the framing
+      // rides object-position + transform — the 'cover' geometry.
       el.style.position = 'absolute'; el.style.inset = '0';
       el.style.left = ''; el.style.top = '';
       el.style.width = '100%'; el.style.height = '100%';
       el.style.objectFit = 'cover';
-      // (dev0758) A portrait clip in a wider cell is cropped by object-fit, not
-      // by the transform — so at ~1× the COI/drag framing has to ride
-      // object-position. Above 1.05× the transform takes them back over.
-      const coverPan = (Z <= 1.05);
-      el.style.objectPosition = _gridCoverPosition(el, coi, coverPan ? pan : null);
-      el.style.transformOrigin = '0 0';
-      el.style.transform = _gridAnchoredTransform(coi, Z, coverPan ? null : pan);
-      // Natural dimensions arrive with the metadata, and the px→fraction
-      // conversion above needs them; re-fit once they do.
+      _gridFrameElement(_gridCoverGeom(el, w, h), coi, Z, pan);
+      // Natural dimensions arrive with the metadata and the cover box is
+      // measured from them; re-fit once they do.
       if (!el._coiMetaWired) {
         el._coiMetaWired = true;
         el.addEventListener('loadedmetadata', () => {
@@ -2056,10 +2124,10 @@ function _gridApplyCoverFit(host, zOverride) {
       }
       return;
     }
-    // iframe: size to cover the cell (16:9 assumption) and center, then zoom via
-    // transform:scale. Sizing stays at the plain cover so scale=1 fills the cell
-    // and scale<1 reveals letterbox (a true zoom-out). The cover box is larger
-    // than the cell, so COI pan uses the pixel clamp (origin 0 0).
+    // iframe: size to cover the cell (16:9 assumption) and centre it, then zoom
+    // + frame via the transform. Sizing stays at the plain cover so scale=1
+    // fills the cell and scale<1 reveals letterbox (a true zoom-out). The
+    // element is the media box, so its geometry is 'iframe'.
     let iw, ih;
     if (w / h > VID) { iw = w; ih = w / VID; } else { ih = h; iw = h * VID; }
     iw = Math.ceil(iw); ih = Math.ceil(ih);
@@ -2069,11 +2137,8 @@ function _gridApplyCoverFit(host, zOverride) {
     el.style.width = iw + 'px'; el.style.height = ih + 'px';
     el.style.left = ox + 'px';
     el.style.top  = oy + 'px';
-    const fx = coi ? coi.fx : 0.5, fy = coi ? coi.fy : 0.5;
-    let tx = _gridAnchorPx(w, ox, iw, fx, Z), ty = _gridAnchorPx(h, oy, ih, fy, Z);
-    if (pan) { tx += pan.x; ty += pan.y; }   // (dev0364) add transient drag-pan
-    el.style.transformOrigin = '0 0';
-    el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + Z + ')';
+    _gridFrameElement({ kind: 'iframe', el: el, w: w, h: h, bw: iw, bh: ih, ox: ox, oy: oy },
+                      coi, Z, pan);
   });
 }
 
@@ -2462,6 +2527,20 @@ function gridRestoreCellZoomFromConfig() {
 // montage cells are zoomable; stored per row UID so it can persist to c.json
 // ("UID/zoom") and restore. Snapped to 0.2; exactly 1.0 clears the per-cell entry.
 // (dev0609) A link cell stores its zoom under the link instead ("link|zoom").
+// (dev0948) Store a cell's own zoom factor, or clear the override when the
+// value is the one the cell would take anyway — 1, or the row's COI zoom.
+// Keeping an entry that merely restates the default would write a redundant
+// "UID/zoom" into c.json on the next config save and re-create exactly the
+// two-places-define-the-zoom problem the COI zoom was made to end.
+function _gridSetCellZoom(cellEl, ck, v) {
+  if (!ck) return 1;
+  const next = _gridSnapZoom(v);
+  const dflt = _gridRowCOIZoom(cellEl && cellEl._rowData) || 1;
+  if (Math.abs(next - dflt) < 1e-9) delete _gridCellZoom[ck];
+  else _gridCellZoom[ck] = next;
+  return next;
+}
+
 function gridAdjustCellZoom(cellEl, delta) {
   _gridZResetArmed = false;   // (dev0350) a per-cell zoom nudge breaks the Z double-reset chain
   if (!cellEl) { if (typeof toast === 'function') toast('Hover a cell, then Ctrl+[ or Ctrl+]', 1200); return; }
@@ -2469,10 +2548,9 @@ function gridAdjustCellZoom(cellEl, delta) {
   if (!t) { if (typeof toast === 'function') toast('No per-cell zoom for this cell', 1000); return; }
   const ck = _gridCellKey(cellEl._rowData);
   if (!ck) { if (typeof toast === 'function') toast('Cell needs a UID to store its zoom', 1200); return; }
-  const cur = _gridCellZoom[ck] > 0 ? _gridCellZoom[ck] : 1;
-  const next = _gridSnapZoom(cur + delta);
-  if (Math.abs(next - 1) < 1e-9) delete _gridCellZoom[ck];
-  else _gridCellZoom[ck] = next;
+  // (dev0948) Start from the zoom the cell is actually AT, which for a COI'd
+  // row is its COI zoom — nudging used to jump to 1±step from wherever it was.
+  const next = _gridSetCellZoom(cellEl, ck, _gridIndivZoomForCell(cellEl) + delta);
   _gridApplyZoomToCell(cellEl);
   _gridToast((cellEl.dataset.cell || 'cell') + ' zoom: ' + next.toFixed(1) + '×', 1000);
 }
@@ -2483,55 +2561,48 @@ function gridAdjustCellZoom(cellEl, delta) {
 // own scroll/page-zoom, so zoom is keyboard-driven — [ ] global, Ctrl+[ ] cell.)
 var _gridHoverCell = null;
 
-// (dev0363) Alt-click handler: set this row's center-of-interest (COI) — the
-// point zoom anchors toward. Writes straight onto the row's "COI" column as
-// "fx,fy@@zoom@@frameRef" (see _gridParseCOI's header); the dev0349 clone-row
-// scheme is gone, so one COI per row. zoom = the cell's current effective zoom;
-// frameRef = "frame<N>" (N≈video currentTime×30 fps) for a video cell, else
-// "image". Re-applies the crop live so the cell reframes immediately.
+// (dev0363) Alt-click handler: set this row's centre of interest — the point
+// the cell frames itself around. Writes the row's "COI" column as
+// "fx,fy@@zoom@@frameRef" (see the COI header above for the convention).
+//
+// (dev0948) Two changes, both of them the same simplification. The click point
+// is now inverted through the LIVE render — zoom, cover-crop and any transient
+// drag-pan — so it names the bit of media under the cursor rather than a
+// fraction of the cell that only matched at 1x. And the zoom stored beside it
+// is the cell's OWN factor, which the cell now loads at, so the framing travels
+// with the row. Together those retire dev0758/dev0945's "frame it with a drag,
+// then Alt-click to commit" machinery: one click on the subject is the whole
+// gesture, at any zoom. A drag still works as a way to look around first — the
+// inversion accounts for it — but it no longer has to be committed.
 function gridSetCOI(cellEl, cellStr, e) {
   const row = cellEl && cellEl._rowData;
   if (!row || row.UID == null) { if (typeof toast === 'function') toast('Alt-click: no row here for a COI', 1400); return; }
   const tgt = _gridCellZoomTarget(cellEl);
   // (dev0541) An IG embed isn't a zoom target (cross-origin iframe), but it can
-  // still take a COI: its fy vertically pans the clipped embed so a subject in
-  // the picture's lower half can be framed in a short cell (see fitGridIgFrame).
+  // still take a COI: its fx/fy pan the clipped embed so a subject in the
+  // picture's lower half can be framed in a short cell (see fitGridIgFrame).
   const igFrame = (!tgt && cellEl.querySelector) ? cellEl.querySelector('iframe') : null;
   const isIgCell = !!igFrame && !!(row.link && window.isInstagramLink && window.isInstagramLink(row.link));
   if (!tgt && !isIgCell) { if (typeof toast === 'function') toast('COI only applies to image/video cells', 1400); return; }
   const rect = cellEl.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
-  let fx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-  let fy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-  // (dev0758) COMMIT A DRAGGED FRAMING. When a transient Shift+drag pan is live
-  // the click point is meaningless — the drag already put the subject where the
-  // user wants it, and Alt-click is how they "finish off". So store the framing
-  // the drag arrived at (and drop the transient offset, which the stored COI now
-  // reproduces) instead of the point. Which maths does that inversion depends on
-  // the zoom: at ~1× the framing rides object-position, above it the transform.
-  let fromDrag = false;
-  const zNow = _gridZoomForCell(cellEl);
-  if (zNow <= 1.05) {
-    const coverEl = _gridCoverElForCell(cellEl);
-    const livePan = _gridCellPanForCell(cellEl);
-    if (coverEl && livePan) {
-      const f = _gridCoverFrac(coverEl, _gridCOIForCell(cellEl), livePan);
-      fx = f.fx; fy = f.fy; fromDrag = true;
-    }
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  let fx, fy;
+  if (isIgCell || (tgt && tgt.kind === 'ig')) {
+    // An IG embed is a cross-origin iframe with no measurable media inside it,
+    // and fitGridIgFrame pans it by its own convention (0 = the left/top edge
+    // of the embed's picture), so the raw cell fraction is what to store.
+    fx = Math.max(0, Math.min(1, cx / rect.width));
+    fy = Math.max(0, Math.min(1, cy / rect.height));
   } else {
-    // (dev0945) Above 1.05× the drag lives in the transform's px offset, and
-    // until now nothing folded it in: the pan stayed transient AND uncleared, so
-    // the tab that set it kept showing the dragged view while the stored COI —
-    // the click point, usually near the middle of the cell, i.e. no reframing at
-    // all — was what every other browser rendered. Hence "right on localhost,
-    // centred everywhere else". _gridCoiFromPan inverts the anchor instead.
-    const f = _gridCoiFromPan(cellEl, zNow);
-    if (f) { fx = f.fx; fy = f.fy; fromDrag = true; }
+    const f = _gridCoiFromPoint(cellEl, cx, cy);
+    if (!f) { if (typeof toast === 'function') toast('COI: no measurable media in this cell yet', 1400); return; }
+    fx = f.fx; fy = f.fy;
   }
-  // A committed framing supersedes the transient offset that produced it.
-  if (fromDrag) { const ck = _gridCellKey(row); if (ck) delete _gridCellPan[ck]; }
-  // zoom: current effective cell zoom (global × per-cell), 1 decimal place.
-  const zoom = zNow.toFixed(1);
+  // The zoom that reproduces this framing is the cell's OWN factor, not the
+  // effective one: the whole-grid zoom multiplies it again at render time, so
+  // storing the product would square it the next time the grid opens at 1.5x.
+  const zoom = _gridIndivZoomForCell(cellEl).toFixed(1);
   // frameRef: a video records the current frame (≈ currentTime × 30 fps) so a
   // future autozoom can return to it; non-video cells record "image".
   let frameRef = 'image';
@@ -2544,16 +2615,20 @@ function gridSetCOI(cellEl, cellStr, e) {
     } catch (_) {}
   }
   row.COI = fx.toFixed(3) + ',' + fy.toFixed(3) + '@@' + zoom + '@@' + frameRef;
+  // The stored point IS the framing now, so the transient drag offset — only
+  // ever a way to look around — goes, and the cell snaps to the new centre.
+  const ck = _gridCellKey(row);
+  if (ck) delete _gridCellPan[ck];
   if (typeof isoNow === 'function') row.DateModified = isoNow();
   if (typeof save === 'function') save();
-  // Reframe the clicked cell at once — it now anchors toward the new COI.
+  // Reframe the clicked cell at once — it now centres on the new COI.
   try {
     if (isIgCell && igFrame._igFit) igFrame._igFit();   // (dev0541) re-pan the IG embed
     else _gridApplyZoomToCell(cellEl);
   } catch (_) {}
   if (typeof toast === 'function') {
-    toast('COI ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%  ·  ' + frameRef
-          + (fromDrag ? '  ·  framing from drag' : ''), 1800);
+    toast('COI ' + Math.round(fx * 100) + '%, ' + Math.round(fy * 100) + '%'
+          + '  ·  centres at ' + zoom + '×  ·  ' + frameRef, 1800);
   }
 }
 
@@ -3002,7 +3077,7 @@ function gridShow() {
   const userModeHere = (typeof _isUserMode === 'function') ? _isUserMode() : false;
   let hint = userModeHere
     ? 'Tap=play · Swipe→=full screen · 2-5=size'
-    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · b=buffer panel · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=COI';
+    : 'HOLD=cut · Swipe→=view · ^L=edit · ^!G=save · 2-5=size · ^B=clean · b=buffer panel · []=zoom · ^[]=cell · ⇧drag=zoom/pan · Alt-clk=centre here';
   // (dev0669) Only advertise the embed reset on grids that actually have one.
   if (container.querySelector('.grid-embed-wrap')) hint += ' · q=new embed (⇧Q=all)';
   // (dev0860) …and the flash cards only on a grid that is holding some. Both
@@ -3439,7 +3514,9 @@ function gridWireInteractor(interactor, cell, cellStr) {
     _szDelay = setTimeout(() => {
       _szDelay = null;
       _szTimer = setInterval(() => {
-        const cur = _gridCellZoom[ck] > 0 ? _gridCellZoom[ck] : 1;
+        // (dev0948) Ramp from the zoom the cell is AT — for a COI'd row that is
+        // its COI zoom, which this used to ignore and restart from 1.
+        const cur = _gridIndivZoomForCell(cell);
         let next = cur + dir * _szStep;
         // Floor the EFFECTIVE zoom (global × per-cell) at the grid minimum.
         const g = _gridFillZoom();
@@ -3496,17 +3573,15 @@ function gridWireInteractor(interactor, cell, cellStr) {
     let steppedOut = false;
     if (quick && _szDir === -1 && ck) {
       const g = _gridFillZoom();
-      const cur = _gridCellZoom[ck] > 0 ? _gridCellZoom[ck] : 1;
+      const cur = _gridIndivZoomForCell(cell);   // (dev0948) COI zoom counts as the base
       let next = cur - 0.1;
       if (g * next < _GRID_ZOOM_MIN) next = _GRID_ZOOM_MIN / g;
       _gridCellZoom[ck] = next;
       steppedOut = true;
     }
-    if (ck && _gridCellZoom[ck] > 0) {
-      const snapped = _gridSnapZoom(_gridCellZoom[ck]);
-      if (Math.abs(snapped - 1) < 1e-9) delete _gridCellZoom[ck];
-      else _gridCellZoom[ck] = snapped;
-    }
+    // (dev0948) Snap, and drop the override only when it restates the default
+    // (the row's COI zoom, else 1) — see _gridSetCellZoom.
+    if (ck && _gridCellZoom[ck] > 0) _gridSetCellZoom(cell, ck, _gridCellZoom[ck]);
     let didReset = false;
     if (quick && !steppedOut && ck) {
       const nowQ = Date.now();
@@ -3518,11 +3593,13 @@ function gridWireInteractor(interactor, cell, cellStr) {
       } else _szLastQuick = nowQ;
     }
     _gridApplyZoomToCell(cell);
-    if (didReset) _gridToast((cell.dataset.cell || 'cell') + ' → 1:1 (cell zoom cleared)', 1100);
+    // (dev0948) The reset clears the cell's override, so a COI'd row lands back
+    // on its own COI zoom rather than on 1 — say which it got.
+    if (didReset) _gridToast((cell.dataset.cell || 'cell') + ' → ' + _gridIndivZoomForCell(cell).toFixed(1) + '× (cell zoom cleared)', 1100);
     // (dev0758) A drag is a framing change, so say so — and say how to keep it,
     // since the offset is transient until an Alt-click writes it to the COI.
     else if (dragged && ck && _gridCellPan[ck])
-      _gridToast((cell.dataset.cell || 'cell') + ' panned — Alt-click to keep this framing', 1600);
+      _gridToast((cell.dataset.cell || 'cell') + ' panned (temporary) — Alt-click the subject to keep it', 1600);
     else if (!quick || steppedOut) _gridToast((cell.dataset.cell || 'cell') + ' zoom: ' + _gridZoomForCell(cell).toFixed(1) + '×', 1000);
     try { interactor.releasePointerCapture(e.pointerId); } catch (_) {}
     _szLastAt = Date.now();                  // (dev0759) for the contextmenu window
