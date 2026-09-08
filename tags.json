@@ -8300,11 +8300,34 @@
     "id": "neverita-lewisii",
     "label": "Neverita lewisii",
     "kind": "taxon",
-    "parents": [],
+    "parents": [
+      "neverita"
+    ],
     "aliases": [],
     "def": "",
     "rank": "species",
-    "common": "",
+    "common": "Lewis' moonsnail",
     "extinct": false
+  },
+  {
+    "id": "neverita",
+    "label": "Neverita",
+    "kind": "taxon",
+    "parents": [
+      "naticidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus",
+    "common": "moon snail",
+    "extinct": false
+  },
+  {
+    "id": "transcribe",
+    "label": "Transcribe",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
