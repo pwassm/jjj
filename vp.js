@@ -4448,6 +4448,11 @@ function _vpCropFracForAspect(aspect, vid) {
   return { x: (1 - fw) / 2, y: (1 - fh) / 2, w: fw, h: fh, ratio: fracRatio };
 }
 
+// (dev0960) The whole picture, unconstrained. `ratio` is in FRACTION space, so
+// 1 here means "the source's own shape" — the same value _vpCropFullFrame has
+// always written for ⇧F.
+function _vpCropFracFull() { return { x: 0, y: 0, w: 1, h: 1, ratio: 1 }; }
+
 // (dev0318) True when the tilted crop rect has any corner outside the source
 // frame → ffmpeg black-fills that wedge on save. Drives the amber dim-label.
 // Corners = center ± half-extents rotated by the screen tilt (CW for +angle).
@@ -6223,7 +6228,16 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // turns the picture into a clip of durSec seconds — the zoom box (Z) is
     // what makes it move, and without one it is simply held.
     motion: { format: 'still', durSec: 3 },
-    aspect: 'L', crf: 26, slow: false,
+    // (dev0960) A PICTURE opens WHOLE and unconstrained; a clip keeps the 30%
+    // 16:9 box. The clip is usually headed for a grid cell, where the locked
+    // pair is the right answer — a photograph is not. It is being cut to
+    // whatever the subject is, so a ratio lock is something to fight, and a
+    // small box in the middle is never the crop you wanted either. Full frame
+    // + free ratio makes the gesture the obvious one: drag a corner to put
+    // that corner where you want it, drag the opposite one, and the two drags
+    // ARE the outline. T still locks 16:9 / 9:16 for anything headed for G.
+    aspect: imageMode ? _vpEffAspect(vid.videoWidth || 16, vid.videoHeight || 9) : 'L',
+    crf: 26, slow: false,
     // (dev0957) A STILL defaults to its own pixels, a clip still to 1080p. The
     // video ladder's default was doing real damage on a photograph: a 1200×674
     // box out of a big source came up "⚠ 1.60× enlarged", i.e. ffmpeg would
@@ -6232,9 +6246,9 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // (_vpImgLossless) — so the tool's own headline feature was off by default.
     resHeight: imageMode ? 'source' : 1080, angle: 0,
     // (dev0790) Free ratio: the sides and corners drag independently and the box
-    // keeps whatever shape it is pulled to. Off by default — the locked 16:9 /
-    // 9:16 pair is still the right answer for anything headed for a grid.
-    freeRatio: false,
+    // keeps whatever shape it is pulled to. (dev0960) On from the start for a
+    // still — see the aspect note above.
+    freeRatio: imageMode,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
     deshake: 'off',                   // (dev0789) off | light | medium | strong
     speed: 1,                         // (dev0869) signed render speed, -20..20 (negative = reverse)
@@ -6265,7 +6279,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // at 4x cuts exactly the pixels it did at 1x. z is the scale, tx/ty the
     // screen-pixel offset of the magnified frame from the host's centre.
     view: { z: 1, tx: 0, ty: 0 },
-    frac: _vpCropFracForAspect('L', vid),
+    frac: imageMode ? _vpCropFracFull() : _vpCropFracForAspect('L', vid),
     el: { container: c, rect, bar, handles, knob, grid, kenBox, textLayer, trackLayer, panCatch }
   };
 
@@ -7072,7 +7086,13 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     try { capEl.setPointerCapture(e.pointerId); } catch (_) {}
   }
 
-  const ensureMeta = () => { state.frac = _vpCropFracForAspect(state.aspect, vid); paint(); };
+  // (dev0960) The still's default is not derived from the video dimensions, so
+  // it must not be recomputed from them either — this fires once the moment the
+  // source can be measured, and on a picture that is immediately.
+  const ensureMeta = () => {
+    state.frac = imageMode ? _vpCropFracFull() : _vpCropFracForAspect(state.aspect, vid);
+    paint();
+  };
   if (vid.videoWidth) ensureMeta();
   else vid.addEventListener('loadedmetadata', ensureMeta, { once: true });
 
@@ -7882,9 +7902,11 @@ function _vpCropHelpShow() {
                       '<i>what you call it</i>_<i>name</i>_crop.jpg. A/B plays no ' +
                       'part: what you get is the frame under the playhead, so ' +
                       'pause where you want it first.') +
-        row('the .xmp', 'each render gets a sidecar of the same name, carrying the ' +
-                      'original’s date, place and camera plus a note saying which ' +
-                      'file it was cut from — that is what digiKam reads') +
+        row('the .xmp', 'each mp4 render gets a sidecar of the same name, carrying ' +
+                      'the original’s date, place and camera plus a note saying which ' +
+                      'file it was cut from — that is what digiKam reads. (dev0960) ' +
+                      'A JPEG does not: ' + K('J') + '’s frame carries all of it ' +
+                      'inside the file instead.') +
         row('inside the file', 'the clip itself keeps the capture date, the GPS fix and ' +
                       'the phone’s own keys, and is re-stamped with the camera name and ' +
                       'model afterwards. A cropped picture keeps its whole EXIF block. ' +
@@ -7954,14 +7976,19 @@ function _vpCropHelpShow() {
 // uses (passed in rather than re-derived), so the two panels stay one look.
 function _vpCropHelpImageRows(K, row, head) {
   return head('The frame') +
-    row('drag inside / a corner', 'move the crop box / resize it (the ratio stays locked)') +
-    row('drag a SIDE',   'pull one edge on its own — any shape you like, and the bar ' +
-                         'chip names the ratio as you go') +
-    row(K('⇧T'),         'let go of the ratio lock — or press it on a shape you like ' +
-                         'to LOCK that ratio and scale it from the corners') +
-    row(K('T'),          'swap 16:9 ↔ 9:16 · one press back to a lock from any shape') +
-    row(K('⇧F'),         'the WHOLE picture — no crop, its own shape ' +
-                         '(' + K('T') + ' goes back to a locked rect)') +
+    row('it opens WHOLE', 'the box IS the picture, and nothing is locked to a ratio. ' +
+                         'Drag one corner to put that corner where you want it, then ' +
+                         'the opposite one — <b>two drags and the crop is drawn</b>.') +
+    row('drag inside / a corner', 'move the whole box / pull that corner on its own') +
+    row('drag a SIDE',   'pull one edge on its own — the bar chip names the shape ' +
+                         'you are landing on as you go') +
+    row(K('⇧T'),         'LOCK the shape it is in now, and scale that from the corners ' +
+                         '— or press it again to let go') +
+    row(K('T'),          'lock 16:9 / 9:16 instead — worth it for a picture headed ' +
+                         'for a grid cell, which is the one place a free shape costs ' +
+                         'you something') +
+    row(K('⇧F'),         'back to the WHOLE picture, if you have drawn a box and want ' +
+                         'to start again') +
     row(K('1') + K('2'), 'tilt ∓0.5° to straighten a horizon') +
     row('knob / ⟲',      'drag to tilt · wheel ±0.1° · double-click = level') +
     head('Text on the picture') +
@@ -8023,9 +8050,11 @@ function _vpCropHelpImageRows(K, row, head) {
     row(K('G'),          'save (or the Crop button) — lands beside the picture as ' +
                          '<i>what you call it</i>_<i>name</i>_crop, numbered if that ' +
                          'name is taken') +
-    row('the .xmp',      'each save gets a sidecar of the same name, carrying the ' +
-                         'original’s date, place and camera plus a note saying which ' +
-                         'picture it was cut from — that is what digiKam reads') +
+    row('no .xmp',       '(dev0960) a crop gets NO sidecar. It does not need one: the ' +
+                         'original’s date, place and camera are written INSIDE the ' +
+                         'saved picture, where a copy or an upload cannot separate ' +
+                         'them from it. A clip still gets its sidecar — an mp4 ' +
+                         'genuinely comes out of ffmpeg knowing none of that.') +
     row(K('W'),          'this panel: full width / narrow') +
     row(K('C'),          'grade OFF / ON, keeping the slider values — the quick ' +
                          '“is it actually better?”, and the switch that decides ' +
@@ -8770,7 +8799,23 @@ function _vpXmpId(str) {
 // are cleared (an empty value after the copy wins — verified), so a reader
 // takes the dimensions off the file itself. Everything else — date, GPS,
 // camera, rating, keywords — carries over, which is what you want on a crop.
+// (dev0960) …but NOT beside a picture. Phil, looking at a folder of crops with
+// a .xmp against every one of them: "No sidecar, .xmp not needed." The argument
+// that built them holds for a CLIP and only for a clip — an ffmpeg re-encode
+// writes an mp4 with no date, no place and no camera, so without the sidecar it
+// really is an orphan. A cropped JPEG is not in that position: dev0910's
+// _vpCarryMetadata puts the original's whole EXIF block INSIDE the file, so the
+// sidecar was duplicating what the picture already carries, and paying for it
+// with a second file in the folder that a copy or an upload leaves behind.
+// Decided by the OUTPUT's extension, the same way _vpCarryMetadata decides
+// which half of itself to run. localStorage salXmpSidecar = '1' brings it back.
+function _vpXmpSidecarWanted(outPath) {
+  if (!/\.(jpe?g|png|webp|tiff?)$/i.test(String(outPath))) return true;
+  try { return localStorage.getItem('salXmpSidecar') === '1'; } catch (_) { return false; }
+}
+
 async function _vpWriteXmpSidecar(originalPath, outPath, detail) {
+  if (!_vpXmpSidecarWanted(outPath)) return '';
   const origName = String(originalPath).split(/[\\/]/).pop() || originalPath;
   const outName  = String(outPath).split(/[\\/]/).pop() || outPath;
   const origId   = 'xmp.did:' + _vpXmpId(originalPath);
@@ -9106,8 +9151,8 @@ window._vpImageCropOpen = function (host, img, row, onClose) {
     });
   }
   if (typeof toast === 'function') {
-    toast('✂ crop this picture — drag the box · ' +
-          'T 16:9↔9:16 · ⇧F whole frame · 1/2 tilt · G save · C close', 4200);
+    toast('✂ crop this picture — it starts WHOLE and unlocked: drag a corner, ' +
+          'then the opposite one · T locks 16:9↔9:16 · 1/2 tilt · G save · C close', 4800);
   }
   return true;
 };
