@@ -447,29 +447,35 @@ html.grid-open #ver-badge { bottom:110px; }
    given back as padding so the box still ends where the ink does. Blue matches
    the <summary> triangles these operate on.
 
-   (dev0951) ON A WHITE CHIP. Bare blue ink is close to invisible on a phone
-   against a bluish slide, which is most of them — the icons matched the very
-   background they were sitting on. A white ground with the same blue ink reads
-   on any backdrop, light or dark, and it also says "button", which two loose
-   triangles never did.
+   (dev0952) A WHITE HALO, and a fixed colour.
 
-   The colour is fixed rather than inherited: the old
-   .te-slide[style*="color:"] .te-xall{color:inherit} rule let a slide's own
-   text colour drive these, which on a white chip is how a white-on-dark slide
-   would paint them white on white. That rule is deliberately gone from BOTH
-   copies of this block (see the note below about the second one). */
+   dev0951 tried a white chip here — background, border, padding — and the
+   icons went from hard to see to not visible at all, on desktop as well as
+   phone. That is reverted and NOT to be retried without looking at the live
+   element first: the cause is not understood, and a second guess at the same
+   shape would be a second blind change.
+
+   What is left is the smallest thing that can only help. The halo is the
+   pattern already proven in this project on these exact triangles — vp.js
+   gives the big rotating summary::before marker
+   text-shadow:0 0 3px rgba(255,255,255,0.95) for the same reason, blue ink
+   on a bluish ground. It touches no layout and no box, so the worst it can
+   do is look like dev0950 with a glow.
+
+   The colour is now fixed rather than inherited. A slide that sets its own
+   text colour was driving these through
+   .te-slide[style*="color:"] .te-xall{color:inherit}, which is one way they
+   end up the same colour as the thing behind them — and a white halo cannot
+   rescue ink that has gone white itself. */
 .te-xall {
   display: inline-block;
   letter-spacing: -0.40em;
-  padding: 0 calc(0.40em + 5px) 1px 5px;
+  padding-right: 0.40em;
   font-size: 1.15em;
   line-height: 1;
   vertical-align: -0.06em;
   color: #2563eb;
-  background: #fff;
-  border: 1px solid #2563eb;
-  border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  text-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px rgba(255,255,255,0.9);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -1167,7 +1173,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev0951';
+  window.HELP_VERSION_STR = 'dev0952';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
