@@ -117,6 +117,16 @@
   let grade   = loadGrade();
   let mediaEl = null;    // the element currently wearing the preview
   let bypass  = false;   // ◧ compare, held down
+  // (dev0958) ARMED vs BYPASS — the two look alike on screen and are opposites
+  // in the file that gets written.
+  //   bypass  ◧ held: the PREVIEW only. The render is unaffected, which is the
+  //           point of a compare — you are checking the grade, not cancelling it.
+  //   armed   c toggles: the grade is switched OFF for real. Preview, render
+  //           payload, sidecar token and the bar's lossless verdict all follow,
+  //           and the slider values are kept so it toggles back on unchanged.
+  // Everything that asks "is a grade in force?" goes through gradeOff() so the
+  // two can never drift apart.
+  let armed   = true;
 
   // ── numbers ──────────────────────────────────────────────────────────────
 
@@ -168,6 +178,19 @@
   }
   function mixNeutral(g) { return near(g.sat, 1); }
   function isNeutral(g)  { return lutNeutral(g) && mixNeutral(g); }
+
+  // (dev0958) "No grade is in force" — either there is nothing to apply, or it
+  // has been switched off with c. The single question every caller asks, so
+  // that the preview, the render payload, the sidecar token and the crop bar's
+  // lossless verdict cannot disagree about it.
+  function gradeOff() { return !armed || isNeutral(grade); }
+
+  // The crop bar's engine chip is derived from the grade, so it is stale the
+  // moment the grade moves. vp.js owns that repaint; it is absent when the
+  // colour tool is driven from the video player with no crop overlay up.
+  function repaintCrop() {
+    if (typeof window._vpCropRepaint === 'function') window._vpCropRepaint();
+  }
 
   // ── persistence ──────────────────────────────────────────────────────────
 
@@ -267,7 +290,7 @@
 
   function applyPreview() {
     if (!mediaEl) return;
-    if (bypass || isNeutral(grade)) { mediaEl.style.filter = ''; return; }
+    if (bypass || gradeOff()) { mediaEl.style.filter = ''; return; }
     paintFilter();
     mediaEl.style.filter = 'url(#' + FILTER_ID + ')';
   }
@@ -279,10 +302,15 @@
   function paintChip() {
     const chip = document.getElementById(CHIP_ID);
     if (!chip) return;
-    const on = !isNeutral(grade);
-    chip.textContent = on ? '🎨 graded' : '🎨 colour';
+    const on = !gradeOff();
+    // (dev0958) Three states, not two. "held" is a grade that exists but is
+    // switched off (c) — the values are still there and one keypress brings
+    // them back, so calling it plain "colour" would lose the fact that this
+    // picture has a grade waiting for it.
+    const held = !on && !isNeutral(grade);
+    chip.textContent = on ? '🎨 graded' : (held ? '🎨 off' : '🎨 colour');
     chip.style.background = on ? '#5a4a1a' : '#234';
-    chip.style.color      = on ? '#ffd24a' : '';
+    chip.style.color      = on ? '#ffd24a' : (held ? '#8a93a0' : '');
   }
 
   // ── the panel ────────────────────────────────────────────────────────────
@@ -418,6 +446,10 @@
     paintPanel();
     applyPreview();
     paintChip();
+    // (dev0958) …and the crop bar, which was the omission: ↺ back to neutral
+    // makes a JPEG crop lossless again, and the bar went on advertising the
+    // re-encode until something unrelated happened to repaint it.
+    repaintCrop();
   }
 
   function paintPanel() {
@@ -645,16 +677,35 @@
     if (mediaEl) { try { mediaEl.style.filter = ''; } catch (_) {} }
     mediaEl = null;
     bypass = false;
+    // (dev0958) A new session starts with the sticky grade APPLIED — that is
+    // what "sticky" means, and the bar chip says so on arrival either way.
+    // Only the off-switch is per-session.
+    armed = true;
     close();
   };
 
   window.vpColorToggle = toggle;
-  window.vpColorActive = function () { return !isNeutral(grade); };
+  window.vpColorActive = function () { return !gradeOff(); };
+
+  // (dev0958) c on the image screen — switch the grade off and on for REAL,
+  // keeping the numbers. Returns the new state so the caller can say which way
+  // it went. Repaints the crop bar, because the answer to "will this save
+  // losslessly?" has just changed.
+  window.vpColorArmToggle = function () {
+    armed = !armed;
+    applyPreview();
+    paintPanel();
+    paintChip();
+    repaintCrop();
+    return armed && !isNeutral(grade);
+  };
+  window.vpColorArmed = function () { return armed; };
+  window.vpColorHasGrade = function () { return !isNeutral(grade); };
 
   // The render payload. Null when neutral, so an ungraded render sends nothing
   // and takes exactly the path it always has.
   window.vpColorPayload = function () {
-    if (isNeutral(grade)) return null;
+    if (gradeOff()) return null;
     const out = {};
     if (!lutNeutral(grade)) out.lut = lutOf(grade);
     if (!mixNeutral(grade)) out.mix = mixOf(grade);
@@ -663,7 +714,7 @@
 
   // One compact token for the sidecar description, naming only what was moved.
   window.vpColorDetailToken = function () {
-    if (isNeutral(grade)) return '';
+    if (gradeOff()) return '';
     const bits = [];
     const sgn = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
     if (!near(grade.warmth, 0))   bits.push('w' + sgn(grade.warmth));

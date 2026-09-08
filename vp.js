@@ -7628,7 +7628,8 @@ function _vpCropHelpShow() {
     '<div style="padding:8px 10px 11px;">' +
       '<div style="color:#8ef;opacity:0.85;margin-bottom:2px;">' +
         'Slideshow is held — it will not advance off this ' +
-        (imageMode ? 'picture' : 'video') + ' until ' + K('C') + ' closes crop.' +
+        (imageMode ? 'picture' : 'video') + ' until ' +
+        (imageMode ? K('Esc') : K('C')) + ' closes crop.' +
       '</div>' +
       '<table id="vp-crop-help-table" style="border-collapse:collapse;width:100%;">' +
         '<colgroup><col id="vp-crop-help-c1"><col></colgroup>' +
@@ -7957,7 +7958,10 @@ function _vpCropHelpImageRows(K, row, head) {
                          'original’s date, place and camera plus a note saying which ' +
                          'picture it was cut from — that is what digiKam reads') +
     row(K('W'),          'this panel: full width / narrow') +
-    row(K('C') + K('Esc'), 'close crop, hand the show back to the slideshow');
+    row(K('C'),          'grade OFF / ON, keeping the slider values — the quick ' +
+                         '“is it actually better?”, and the switch that decides ' +
+                         'whether this crop can be lossless') +
+    row(K('Esc'),        'close crop, hand the show back to the slideshow');
 }
 
 // Keep the panel on screen — a saved position can outlive the window size that
@@ -8945,6 +8949,19 @@ window._vpImageCropActive = function () {
   return !!(_vpState && _vpState.imageMode && _vpState.crop);
 };
 
+// (dev0958) Repaint the crop bar from outside vp.js. The engine chip is the
+// bar's claim about what the next save will DO — lossless or a re-encode, and
+// why — and it is computed in paint(). vpcolor.js can change that answer (a
+// grade forces the re-encode) without touching anything the crop overlay knows
+// to repaint on, so after ↺ the bar went on saying "graded" over a neutral
+// grade. Anything outside this file that changes a save-affecting input calls
+// this.
+window._vpCropRepaint = function () {
+  if (_vpState && _vpState.crop && typeof _vpState.crop.paint === 'function') {
+    try { _vpState.crop.paint(); } catch (_) {}
+  }
+};
+
 // Image-mode keys. A deliberate subset of the video crop's: everything about
 // the FRAME is here, everything about time is not. Capture phase + stop, so
 // the slideshow underneath doesn't also act on them.
@@ -8980,7 +8997,23 @@ function _vpImgKey(e) {
     if (typeof window.vpColorToggle === 'function') window.vpColorToggle();
     return;
   }
-  if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') { take(); window._vpImageCropClose(); return; }
+  // (dev0958) c switches the GRADE off and on, keeping the numbers — the fast
+  // "is this actually better?" check, and the one that also answers "can this
+  // save losslessly?", since a grade is what forces the re-encode. It used to
+  // be a second way to close; Escape and the ✕ button both still do that, so
+  // nothing is lost. Video mode is untouched: there, c is still close.
+  if (e.key === 'c' || e.key === 'C') {
+    take();
+    if (typeof window.vpColorArmToggle !== 'function') return;
+    if (typeof window.vpColorHasGrade === 'function' && !window.vpColorHasGrade()) {
+      if (typeof toast === 'function') toast('no grade to switch — B opens the colour tool', 2000);
+      return;
+    }
+    const on = window.vpColorArmToggle();
+    if (typeof toast === 'function') toast(on ? '🎨 grade ON' : '🎨 grade OFF', 1200);
+    return;
+  }
+  if (e.key === 'Escape') { take(); window._vpImageCropClose(); return; }
   // (dev0790) ⇧T frees / re-locks the ratio here too — a photograph is if
   // anything the likelier place to want a shape that isn't one of the two.
   if (e.key === 'T' && e.shiftKey)    { take(); _vpCropToggleFree(); return; }
