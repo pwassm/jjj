@@ -512,6 +512,57 @@ function _wireSignIn(ov) {
       A.logout().then(() => renderOut());
     });
     renderCompose(box.querySelector('#smCompose'));
+    if (u.role === 'admin') {
+      const inbox = document.createElement('div');
+      inbox.id = 'smInbox';
+      box.appendChild(inbox);
+      renderInbox(inbox);
+    }
+  }
+
+  // (dev0956) The admin inbox, shown only to a signed-in admin. Before this
+  // the only way to read what viewers had sent was to call /admin/messages by
+  // hand with a bearer token — which is exactly the kind of thing you do not
+  // want to have to remember. Same session, no token handling.
+  function renderInbox(host) {
+    host.innerHTML = '<div class="sm-composelabel">' + _T('Messages received') + '</div>'
+      + '<div class="sm-inbox" id="smInboxList">' + _T('Loading…') + '</div>';
+    const list = host.querySelector('#smInboxList');
+    const when = ms => {
+      try { return new Date(ms).toLocaleString(); } catch (_) { return ''; }
+    };
+    const draw = rows => {
+      if (!rows.length) { list.textContent = _T('No messages yet.'); return; }
+      list.innerHTML = rows.map(r =>
+          '<div class="sm-msg' + (r.status === 'new' ? ' isnew' : '') + '" data-id="' + (r.id | 0) + '">'
+        +   '<div class="sm-msghead">'
+        +     '<b>' + esc(r.email) + '</b> · ' + esc(when(r.created))
+        +     (r.kind === 'report' ? ' · <span style="color:#ffc9c5;">' + _T('report') + '</span>' : '')
+        +     (r.uid ? ' · UID ' + esc(r.uid) : '')
+        +     ' · <a class="sm-link sm-msgdone">'
+        +        (r.status === 'done' ? _T('Mark unread') : _T('Mark done')) + '</a>'
+        +   '</div>'
+        +   '<div class="sm-msgbody"></div>'
+        + '</div>').join('');
+      // Bodies are viewer-written text — set with textContent, never innerHTML.
+      const bodies = list.querySelectorAll('.sm-msgbody');
+      rows.forEach((r, i) => { if (bodies[i]) bodies[i].textContent = r.body; });
+      list.querySelectorAll('.sm-msgdone').forEach((a, i) => {
+        a.addEventListener('click', () => {
+          const r = rows[i];
+          const next = r.status === 'done' ? 'new' : 'done';
+          a.textContent = _T('Saving…');
+          A.adminMessageStatus(r.id, next).then(() => load());
+        });
+      });
+    };
+    const load = () => {
+      A.adminMessages().then(d => {
+        if (!d || d.error) { list.textContent = String((d && d.error) || _T('Could not load messages.')); return; }
+        draw(d.messages || []);
+      });
+    };
+    load();
   }
 
   // The message composer shown to any signed-in viewer. Sends kind 'general'
@@ -1471,6 +1522,12 @@ async function _showShareableMenu() {
     + '.sm-composelabel{margin-top:16px;color:#cfe0f0;text-align:left;}'
     + '.sm-composebox{display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:10px 13px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:rgba(0,0,0,0.25);color:#fff;font-family:inherit;font-size:15px;line-height:1.5;outline:none;resize:vertical;}'
     + '.sm-composebox:focus{border-color:#7cc0ff;}'
+    // (dev0956) Admin-only inbox under the composer on Contact.
+    + '.sm-inbox{margin-top:8px;text-align:left;max-height:380px;overflow:auto;}'
+    + '.sm-msg{padding:10px 12px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.16);background:rgba(0,0,0,0.22);}'
+    + '.sm-msg.isnew{border-color:rgba(124,192,255,0.55);}'
+    + '.sm-msghead{font-size:13px;color:#9fb6cd;margin-bottom:6px;}'
+    + '.sm-msgbody{color:#eef4fa;line-height:1.5;white-space:pre-wrap;}'
     + '.sm-authmsg{margin-top:10px;color:#b6f0cd;line-height:1.5;}'
     + '.sm-authmsg.err{color:#ffc9c5;}'
     + '.sm-authmsg a{color:#bfe3ff;}'

@@ -15,6 +15,8 @@
  *   getComments(uid)              — GET /comments?uid=… → [{author,body,created}]
  *   postComment(uid, body)        — POST /comments   (expert/admin)
  *   postMessage(body, opts)       — POST /messages   {uid?, kind?}  (any user)
+ *   adminMessages(status?)        — GET  /admin/messages            (admin)
+ *   adminMessageStatus(id,status) — POST /admin/message-status      (admin)
  */
 (function () {
   'use strict';
@@ -119,6 +121,16 @@
     });
   }
 
+  // (dev0956) Admin-only reads/writes on the message inbox. Any non-admin
+  // session gets {error:'admin only'} from the worker, so the caller can just
+  // render whatever comes back.
+  function adminMessages(status) {
+    return authFetch('/admin/messages' + (status ? '?status=' + encodeURIComponent(status) : ''));
+  }
+  function adminMessageStatus(id, status) {
+    return authFetch('/admin/message-status', { method: 'POST', body: { id: id, status: status } });
+  }
+
   window.salAuth = {
     API: API,
     harvestHash: harvestHash,
@@ -130,6 +142,9 @@
     getComments: getComments,
     postComment: postComment,
     postMessage: postMessage,
+    adminMessages: adminMessages,
+    adminMessageStatus: adminMessageStatus,
+    call: authFetch,          // escape hatch for any endpoint not wrapped above
   };
 
   // Harvest immediately at parse time so the token is present before boot.js

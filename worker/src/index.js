@@ -15,6 +15,7 @@
  *   GET  /comments?uid=…               → public; approved comments for a row
  *   POST /comments           {uid, body}            (expert/admin)
  *   POST /messages           {body, uid?, kind?}    (any logged-in user)
+ *                          → stored in D1 AND emailed to NOTIFY_EMAIL
  *   GET  /admin/messages?status=…      POST /admin/message-status {id, status}
  *   GET  /admin/comments?uid=…         POST /admin/comment-status {id, status}
  *   POST /admin/set-role     {email, role}
@@ -37,13 +38,16 @@ const RATE_LINKS_PER_IP_HOUR = 10;
 const RATE_POSTS_PER_USER_HOUR = 20;
 
 export default {
-  async fetch(req, env) {
+  // ctx is threaded through only so a message notification can be emailed
+  // AFTER the response goes back (ctx.waitUntil) — the viewer's Send should
+  // never wait on Resend, and an email failure must never fail the POST.
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const cors = corsHeaders(req.headers.get('Origin') || '');
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     let res;
     try {
-      res = await route(req, env, url);
+      res = await route(req, env, url, ctx);
     } catch (e) {
       res = json({ error: 'server error', detail: String(e && e.message || e) }, 500);
     }
@@ -53,7 +57,7 @@ export default {
   },
 };
 
-async function route(req, env, url) {
+async function route(req, env, url, ctx) {
   const p = url.pathname.replace(/\/+$/, '') || '/';
   const m = req.method;
 
@@ -67,7 +71,7 @@ async function route(req, env, url) {
 
   if (p === '/comments' && m === 'GET') return commentsGet(env, url);
   if (p === '/comments' && m === 'POST') return commentsPost(req, env);
-  if (p === '/messages' && m === 'POST') return messagesPost(req, env);
+  if (p === '/messages' && m === 'POST') return messagesPost(req, env, ctx);
 
   if (p.startsWith('/admin/')) return adminRoute(req, env, url, p, m);
 
@@ -197,7 +201,7 @@ async function commentsPost(req, env) {
 
 /* ---------------- messages (any user) ---------------- */
 
-async function messagesPost(req, env) {
+async function messagesPost(req, env, ctx) {
   const u = await sessionUser(req, env);
   if (!u) return json({ error: 'not logged in' }, 401);
   const body = await readJson(req);
@@ -212,6 +216,13 @@ async function messagesPost(req, env) {
   const r = await env.DB.prepare(
     'INSERT INTO messages (uid, email, kind, body, created) VALUES (?,?,?,?,?)'
   ).bind(uid, u.email, kind, text, now).run();
+  // (dev0956) D1 is the record; the email is the notification. Fire-and-forget
+  // so a Resend outage can't cost the viewer their message — it is already
+  // committed above and still readable from the Contact-page inbox.
+  const notify = sendMessageEmail(env, {
+    id: r.meta.last_row_id, from: u.email, name: u.name, kind, uid, body: text,
+  }).catch(() => {});
+  if (ctx && ctx.waitUntil) ctx.waitUntil(notify);
   return json({ ok: true, id: r.meta.last_row_id });
 }
 
@@ -340,4 +351,40 @@ async function sendLoginEmail(env, email, link) {
     }),
   });
   if (!r.ok) throw new Error(`email send failed: ${r.status} ${await r.text()}`);
+}
+
+// (dev0956) Forward a new /messages post to the site owner's own inbox, so a
+// note left on the Contact page arrives like ordinary mail instead of waiting
+// to be discovered. Reply-To is the sender, so hitting Reply in any mail
+// client answers the viewer directly. Plain text only: the body is viewer-
+// supplied and never interpolated into HTML anywhere.
+async function sendMessageEmail(env, msg) {
+  if (!env.RESEND_API_KEY) return;                    // dev / unconfigured: silently skip
+  const to = env.NOTIFY_EMAIL || 'pwassm@yahoo.com';
+  const who = msg.name ? `${msg.name} <${msg.from}>` : msg.from;
+  const lines = [
+    `From: ${who}`,
+    `Kind: ${msg.kind}${msg.uid ? `   ·   row UID: ${msg.uid}` : ''}`,
+    `Message #${msg.id} · ${new Date().toISOString()}`,
+    '',
+    msg.body,
+    '',
+    '— sent from the SeaLifeAndMore Contact page. Reply to answer the sender.',
+  ];
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM || 'SeaLifeAndMore <login@sealifeandmore.com>',
+      to: [to],
+      reply_to: msg.from,
+      subject: `SLAM ${msg.kind === 'report' ? 'report' : 'message'} from ${msg.from}`,
+      text: lines.join('
+'),
+    }),
+  });
+  if (!r.ok) throw new Error(`notify send failed: ${r.status} ${await r.text()}`);
 }

@@ -19,6 +19,10 @@ database_id = "c2244b20-9641-47bb-bacb-667e9377fbbc"
 ENVIRONMENT = "prod"
 SITE_ORIGIN = "https://sealifeandmore.com"
 
+# Where a new Contact-page message is forwarded (Reply-To = the sender), as
+# well as being stored in D1. Needs RESEND_API_KEY set, same as login mail.
+NOTIFY_EMAIL = "pwassm@yahoo.com"
+
 # Optional secrets (set with `npx wrangler secret put <NAME>`):
 #   RESEND_API_KEY   — enables real login emails via resend.com
 #   EMAIL_FROM       — e.g. "SeaLifeAndMore <login@sealifeandmore.com>"
