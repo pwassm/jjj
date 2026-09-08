@@ -230,12 +230,18 @@ function _slideshowGridSlides() {
 // (dev0949) The framing of one grid cell, or null when there is none worth
 // carrying (an unzoomed cell, or a grid that isn't up).
 function _ssCellFraming(cs) {
-  if (typeof _gridZoomForCell !== 'function') return null;
+  if (typeof _gridFillZoom !== 'function' ||
+      typeof _gridIndivZoomForCell !== 'function') return null;
   const el = document.querySelector('#gridContainer .grid-cell[data-cell="' + cs + '"]');
   if (!el) return null;
   let zoom = 1, coi = null;
   try {
-    zoom = _gridZoomForCell(el) || 1;
+    // (dev0950) The product, NOT _gridZoomForCell: that one returns 1 on a
+    // phone (dev0359), because a zoomed cell looks bad at thumbnail size. Vss
+    // is the opposite case — the media has the whole screen — so the framing
+    // the row and the config actually carry should be honoured there on every
+    // device. The grid's own rendering is untouched and still flat on mobile.
+    zoom = (_gridFillZoom() * _gridIndivZoomForCell(el)) || 1;
     if (typeof _gridCOIForCell === 'function') coi = _gridCOIForCell(el);
   } catch (_) { return null; }
   if (!(zoom > 1.02)) return null;
@@ -2962,10 +2968,15 @@ function _ssVssBuildChrome() {
     return b;
   };
 
+  // (dev0950) Off the very bottom edge. Down there they overlapped the video's
+  // seek strip — and, because the chrome sits at z-42000 and the strip at
+  // z-60 inside the player, the NEXT arrow was lying on top of the mute
+  // button: a press meant to mute stepped the show instead.
   const aSize = mobile ? 34 : 42;
-  mkArrow('ssVssPrev', '⟵', 'left:4px;bottom:6px', aSize, 'normal',
+  const aBot  = mobile ? 36 : 44;
+  mkArrow('ssVssPrev', '⟵', 'left:4px;bottom:' + aBot + 'px', aSize, 'normal',
           'Previous cell', function () { _ssVssStep(-1); });
-  mkArrow('ssVssNext', '⟶', 'right:4px;bottom:6px', aSize, 'normal',
+  mkArrow('ssVssNext', '⟶', 'right:4px;bottom:' + aBot + 'px', aSize, 'normal',
           'Next cell', function () { _ssVssStep(+1); });
   // Thicker, and at eye level rather than in a corner: leaving is a different
   // kind of move from stepping, and should not be a near-miss of one.

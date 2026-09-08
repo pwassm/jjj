@@ -550,15 +550,37 @@ function _vpApplySlimChrome() {
     tl.appendChild(hit);
   }
 
-  // Mute travels with the strip: it is the one transport control a slideshow
-  // still needs, and moving the live button keeps vpWireControls' onclick and
-  // the muteIconHTML sync intact (both address it by id).
-  if (mute && row) {
-    mute.style.cssText += ';pointer-events:auto;min-width:0;padding:2px 8px;'
-      + 'font-size:12px;line-height:1;background:rgba(0,0,0,0.42);'
-      + 'border:1px solid rgba(255,255,255,0.28);color:#fff;opacity:0.8;'
-      + 'flex:0 0 auto;';
-    row.appendChild(mute);
+  // (dev0950) Mute goes to the TOP-RIGHT of the picture, not into the strip.
+  // In the strip it sat in the bottom-right corner, which is where Vss puts
+  // its next-cell arrow — and that arrow is chrome at z-42000, outside this
+  // player's stacking context, so it covered the button completely and a
+  // press aimed at mute stepped the show. Up here nothing else is competing:
+  // the close button is top-left and the [N] box is mid-right.
+  //
+  // Still the LIVE button, only re-parented — vpWireControls' onclick and
+  // vpToggleMute's icon swap both address it by id, so the speaker/red-slash
+  // symbol keeps tracking the real player state.
+  // …unless this mount cannot actually mute. Instagram / TikTok / an
+  // unresolved Pinterest pin are cross-origin embeds whose player stub has no
+  // setMuted, so vpToggleMute's call throws into its own catch: the symbol
+  // would flip and the sound would carry on. A button that lies is worse than
+  // no button. The test mirrors the mount dispatch's own order — direct file,
+  // YouTube and Vimeo are the three that answer a mute.
+  const _mrow = window._vpCurrentRow || {};
+  const _mlnk = _mrow.link || '';
+  const _canMute = !!(_mrow._directVideoFile
+    || /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)(\?|#|$)/i.test(_mlnk)
+    || (window.isYouTubeLink && window.isYouTubeLink(_mlnk))
+    || (window.isVimeoLink   && window.isVimeoLink(_mlnk)));
+  const content = document.getElementById('gridFsContent');
+  if (mute && !_canMute) mute.style.display = 'none';
+  else if (mute && content) {
+    mute.style.cssText += ';position:absolute;top:10px;right:12px;z-index:70;'
+      + 'pointer-events:auto;min-width:0;width:auto;padding:5px 10px;'
+      + 'font-size:13px;line-height:1;background:rgba(0,0,0,0.5);'
+      + 'border:1px solid rgba(255,255,255,0.32);border-radius:6px;'
+      + 'color:#fff;opacity:0.85;touch-action:manipulation;';
+    content.appendChild(mute);
   }
 
   if (host)    host.style.bottom = '0';
@@ -773,8 +795,12 @@ function gridOpenFullscreen(row, contained) {
     window._vpSetFraming = function (scale, coi) {
       const S = Number(scale);
       if (!isFinite(S) || S <= 1.02) return;
-      const r = host.getBoundingClientRect();
-      const cw = r.width, ch = r.height;
+      // (dev0950) clientWidth/Height, not getBoundingClientRect: on a portrait
+      // phone the page is CSS-rotated 90 degrees inside #rotateWrap, and a
+      // rect reports PHYSICAL screen coords — width and height arrive swapped,
+      // so the fit and both clamps came out against the wrong axes. Layout
+      // dimensions ignore transforms, which is exactly what is wanted here.
+      const cw = host.clientWidth, ch = host.clientHeight;
       if (!cw || !ch) return;
       // A <video> is object-fit:contain, so its box is the natural aspect
       // letterboxed inside the host; an iframe mount (YT/Vimeo) has already
