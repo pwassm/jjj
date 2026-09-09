@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1788910401752,
+    "_salPushTime": 1788925114743,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -516,7 +516,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1788910401752
+    "_salSavedAt": 1788925114743
   },
   {
     "UID": "1",
@@ -44118,9 +44118,11 @@
     "link": "https://youtu.be/aWi_WGcDyto",
     "show": "1",
     "DateAdded": "2026-08-01 15:31:14",
-    "DateModified": "2026-08-01 15:46:20",
+    "DateModified": "2026-09-09 01:33:22",
     "tags": [
-      "health"
+      "health",
+      "transcribe",
+      "transcribed"
     ],
     "Mute": "0",
     "ftextSize": "1043",
@@ -45406,8 +45408,10 @@
     "link": "https://youtu.be/qkSrZdt9DUs",
     "show": "1",
     "DateAdded": "2026-08-09 13:48:31",
-    "DateModified": "2026-08-09 13:48:34",
-    "tags": [],
+    "DateModified": "2026-09-09 01:31:50",
+    "tags": [
+      "transcribe"
+    ],
     "Mute": "0",
     "ftextSize": "4780",
     "FtextJunk": "2",
@@ -47302,8 +47306,11 @@
     "link": "https://youtu.be/qDwJ71OzV3c",
     "show": "1",
     "DateAdded": "2026-08-23 04:33:14",
-    "DateModified": "2026-08-23 04:33:18",
-    "tags": [],
+    "DateModified": "2026-09-09 00:07:48",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "301",
     "FtextJunk": "25",
@@ -47313,15 +47320,19 @@
     "ftext": "",
     "VQ": "9",
     "cell": "",
-    "DictSize": "0"
+    "DictSize": "0",
+    "vidLength": "37:58"
   },
   {
     "UID": "2114",
     "link": "https://youtu.be/8L9hXlB7Hs4",
     "show": "1",
     "DateAdded": "2026-08-23 04:50:02",
-    "DateModified": "2026-08-23 04:50:06",
-    "tags": [],
+    "DateModified": "2026-09-09 00:07:35",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "312",
     "FtextJunk": "24",
@@ -47713,9 +47724,11 @@
     "link": "https://youtu.be/VLc1_vLZUSk",
     "show": "1",
     "DateAdded": "2026-08-25 03:56:52",
-    "DateModified": "2026-08-25 03:57:09",
+    "DateModified": "2026-09-09 01:33:21",
     "tags": [
-      "ezetimibe"
+      "ezetimibe",
+      "transcribe",
+      "transcribed"
     ],
     "Mute": "0",
     "ftextSize": "1881",
@@ -47970,10 +47983,12 @@
     "link": "https://youtu.be/42ljA9hv-ZE",
     "show": "1",
     "DateAdded": "2026-08-28 15:47:46",
-    "DateModified": "2026-08-28 15:48:15",
+    "DateModified": "2026-09-09 00:07:20",
     "tags": [
       "health",
-      "diabetes"
+      "diabetes",
+      "transcribe",
+      "transcribed"
     ],
     "Mute": "0",
     "ftextSize": "2740",
@@ -47990,8 +48005,11 @@
     "link": "https://youtu.be/8L9hXlB7Hs4",
     "show": "1",
     "DateAdded": "2026-08-28 15:57:29",
-    "DateModified": "2026-08-28 15:57:37",
-    "tags": [],
+    "DateModified": "2026-09-09 00:07:18",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "2994",
     "FtextJunk": "3",
@@ -48007,8 +48025,11 @@
     "link": "https://youtu.be/m9_EQAUFchU",
     "show": "1",
     "DateAdded": "2026-08-28 15:58:41",
-    "DateModified": "2026-08-28 15:58:45",
-    "tags": [],
+    "DateModified": "2026-09-09 00:07:16",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "3206",
     "FtextJunk": "2",
@@ -48024,8 +48045,11 @@
     "link": "https://youtu.be/C13aa7Vs7uY",
     "show": "1",
     "DateAdded": "2026-08-28 16:28:28",
-    "DateModified": "2026-08-28 16:30:42",
-    "tags": [],
+    "DateModified": "2026-09-09 00:07:14",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "12222",
     "FtextJunk": "0",

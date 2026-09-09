@@ -7630,10 +7630,13 @@ function vpnSwitch(res, origin, avoid) {
 // Same trigger pattern as vpnSwitch (no-UAC task, script fallback with -Stop), then
 // wait for the tunnel to actually go down (vpnTunnelUp() false).
 function vpnStop(res, origin) {
+  // (dev0965) Same hidden launch as the switch fallback — this one had been left
+  // with a visible console, so a Drop VPN that fell back to the script flashed a
+  // window and took the foreground before the UAC prompt even appeared.
   const runScript = () => {
     try {
-      const p = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', VPN_PS1, '-Stop'],
-                      { detached: true, stdio: 'ignore' });
+      const p = spawn('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', VPN_PS1, '-Stop'],
+                      { detached: true, stdio: 'ignore', windowsHide: true });
       p.on('error', () => {});
       p.unref();
     } catch (_) {}

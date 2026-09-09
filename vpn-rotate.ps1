@@ -33,6 +33,13 @@ $PSNativeCommandUseErrorActionPreference = $false
 # --- self-elevate (installing/removing a tunnel service needs admin) ------------
 # (dev0947) The relaunch is HIDDEN. The elevated console used to stay on screen for
 # the whole rotation; the log file + state.json are the real output channels.
+# (dev0965) This branch only runs when the ProtonVpnRotate scheduled task ISN'T
+# registered — and it still shows a UAC prompt, which by design takes the foreground.
+# The normal (task) path no longer appears on the desktop at all: vpn-rotate-setup.bat
+# now registers both tasks with LogonType=S4U, so PowerShell starts in a
+# non-interactive window station and no window is created to flash or steal focus.
+# If rotations start flashing again, check the task's logon type first:
+#   (Get-ScheduledTask ProtonVpnRotate).Principal.LogonType   # want S4U, not Interactive
 $admin = ([Security.Principal.WindowsPrincipal]`
           [Security.Principal.WindowsIdentity]::GetCurrent()`
          ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
