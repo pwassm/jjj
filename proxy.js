@@ -7139,6 +7139,22 @@ function yttSpawn(script, args, onLine) {
   });
 }
 
+// (dev0964) Every run leaves a trace, in TWO places, because a summary that died
+// left none at all: UID 2200's transcript was on disk with no summary beside it,
+// the python was gone, the proxy was still up, and there was nothing anywhere
+// saying why. A toast is not a record — it expires, and with a queue running
+// unattended nobody is watching it. proxy.log gets the line for a live tail;
+// ytsummaries/_runs.log keeps it across proxy restarts, which is what answers
+// "what failed while I was away".
+function yttLog(line) {
+  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  plog('[ytt] ' + line);
+  try {
+    fs.mkdirSync(YTSUM_DIR, { recursive: true });
+    fs.appendFileSync(path.join(YTSUM_DIR, '_runs.log'), stamp + '  ' + line + '\n');
+  } catch (_) { /* the proxy.log line above is still there */ }
+}
+
 function yttRun(req, res, origin) {
   readJson(req, 64 * 1024).then(async payload => {
     const jobId = String(payload.job || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
@@ -7157,14 +7173,19 @@ function yttRun(req, res, origin) {
 
     const already = yttScan()[uid];
     if (already && already.summary && !force) {
+      yttLog('uid ' + uid + ' skipped — summary already on disk');
       sendJson(res, 200, { ok: true, skipped: true, uid: uid, summary: already.summary, transcript: already.transcript || '' }, origin);
       return;
     }
 
     YTT_BUSY = true;
+    const runStart = Date.now();
+    const secs = () => Math.round((Date.now() - runStart) / 1000) + 's';
     try { fs.mkdirSync(YTSUM_DIR, { recursive: true }); } catch (_) {}
+    yttLog('uid ' + uid + ' START ' + vid + ' tsum=' + tsum + (force ? ' (force)' : ''));
     const fail = (code, msg) => {
       yttJobSet(jobId, { stage: 'error', error: String(msg || '').slice(0, 400) });
+      yttLog('uid ' + uid + ' FAIL after ' + secs() + ' — ' + String(msg || '').slice(0, 300));
       sendJson(res, code, { ok: false, error: msg }, origin);
     };
 
@@ -7197,6 +7218,9 @@ function yttRun(req, res, origin) {
         }
       } catch (e) { fail(500, 'could not name the transcript: ' + e.message); return; }
       yttJobSet(jobId, { stage: 'transcript', words: s1Words, note: s1Words + ' words', file: path.basename(tPath) });
+      // Logged as its own step so a run that dies later still says how far it got —
+      // a transcript with no summary beside it is otherwise a silent mystery.
+      yttLog('uid ' + uid + ' transcript ok (' + s1Words + ' words) in ' + secs());
 
       // ── step 2: chunked local summarisation ──────────────────────────────
       if (!(await yttEnsureOllama(jobId))) { fail(503, 'Ollama is not listening on 11434 and could not be started'); return; }
@@ -7236,6 +7260,8 @@ function yttRun(req, res, origin) {
       }
 
       yttJobSet(jobId, { stage: 'done', pct: 100, file: path.basename(sPath) });
+      yttLog('uid ' + uid + ' OK in ' + secs() + ' — ' + s1Words + ' words, ' + YTT_MODEL
+             + ', ' + path.basename(sPath));
       sendJson(res, 200, {
         ok: true, uid: uid, vid: vid, title: s1Title, words: s1Words,
         transcript: path.basename(tPath), summary: path.basename(sPath),

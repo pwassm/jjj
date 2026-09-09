@@ -507,7 +507,7 @@ window.HOTKEYS = [
   // READS what is already on disk in ytsummaries/. Making one is a T row right-click
   // ▸ "Transcribe & summarise", because it runs for minutes and should be deliberate.
   { key: 'z', label: 'Z', group: 'Import & filter', scope: 'global',
-    desc: 'Read the focused row‘s saved transcript summary in a scrollable window (z again, or Esc, closes it). Toggle Summary/Transcript in its title bar. Nothing saved yet? Right-click the row in T ▸ “Transcribe & summarise” — that fetches YouTube’s caption track and runs a local Ollama summary, which takes minutes and reports progress.',
+    desc: 'Read the focused row‘s saved transcript summary in a scrollable window (z again, or Esc, closes it). Toggle Summary/Transcript in its title bar. Nothing saved yet? Right-click the row in T ▸ “Transcribe & summarise” — that fetches YouTube’s caption track and runs a local Ollama summary, which takes minutes and reports progress. To do a batch, tag rows “To transcribe” and use the same menu’s “Transcribe all N queued…” — they run one at a time (the 8B model owns the iGPU), Esc stops after the row in flight, and reloading the page abandons the queue. Every run is logged to ytsummaries/_runs.log whether it succeeds or fails.',
     fn(ctx) {
       if (ctx.teOpen || ctx.veOpen || ctx.ebOpen) return;
       if (document.getElementById('dictOverlay')) return;

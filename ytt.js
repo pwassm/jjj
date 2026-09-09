@@ -87,15 +87,25 @@ function _yttMarkTagged(row) {
   return true;
 }
 
-async function yttRunRow(di, force) {
+// Returns { ok, skipped, error } so the queue below can drive it and keep a
+// tally. `qLabel` ("3/17") rides on the front of every toast this run makes.
+async function yttRunRow(di, force, qLabel) {
   const row = (typeof data !== 'undefined' && data[di]) || null;
-  if (!row) return;
+  if (!row) return { ok: false, error: 'no such row' };
   const vid = yttVideoId(row.link);
-  if (!vid) { toast('📝 Not a YouTube link — no caption track to fetch (whisper on the audio is the next step of this feature)', 4000); return; }
-  if (_yttBusy) { toast('📝 A transcript/summary is already running — one at a time', 2500); return; }
+  if (!vid) {
+    const e = 'not a YouTube link — no caption track to fetch (whisper on the audio is the next step of this feature)';
+    if (!qLabel) toast('📝 ' + e, 4000);
+    return { ok: false, error: e };
+  }
+  if (_yttBusy) {
+    const e = 'a transcript/summary is already running — one at a time';
+    if (!qLabel) toast('📝 ' + e, 2500);
+    return { ok: false, error: e };
+  }
   _yttBusy = true;
 
-  const title = String(row.VidTitle || row.link).slice(0, 46);
+  const title = (qLabel ? qLabel + '  ' : '') + String(row.VidTitle || row.link).slice(0, 46);
   const job = 'ytt' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   // Re-issuing the toast is what keeps a multi-minute run continuously visible:
@@ -130,8 +140,16 @@ async function yttRunRow(di, force) {
     const j = await r.json();
     clearInterval(poll);
     if (j && j.ok && j.skipped) {
-      toast('📝 Already summarised — press z to read it (' + j.summary + ')', 6000);
-    } else if (j && j.ok) {
+      // A skip still means the summary exists, so the tag should reflect that —
+      // otherwise a row summarised before the tag existed stays in the queue for
+      // ever and the queue never drains.
+      if (!window._cMode && _yttMarkTagged(row)) {
+        try { save(); if (typeof render === 'function') render(); } catch (_) {}
+      }
+      if (!qLabel) toast('📝 Already summarised — press z to read it (' + j.summary + ')', 6000);
+      return { ok: true, skipped: true };
+    }
+    if (j && j.ok) {
       // Only touch ml.json from the Table screen. In C mode the `data` global is
       // c.json while save() still writes ML.JSON — flipping a tag there would
       // write the wrong file's row (see the dev0350 C-screen note in core.js).
@@ -139,18 +157,114 @@ async function yttRunRow(di, force) {
       if (!window._cMode && _yttMarkTagged(row)) {
         try { save(); if (typeof render === 'function') render(); saved = true; } catch (_) {}
       }
-      toast('✅ ' + j.summary + '  ·  ' + j.words + ' words in, ' + j.model
+      toast('✅ ' + (qLabel ? qLabel + '  ' : '') + j.summary + '  ·  ' + j.words + ' words in, ' + j.model
             + '  ·  ' + _yttClock(Date.now() - startedAt)
-            + (saved ? '  ·  tagged “transcribed”' : '') + '  —  press z to read', 10000);
-    } else {
-      toast('⚠ ' + ((j && j.error) || ('HTTP ' + r.status)), 11000);
+            + (saved ? '  ·  tagged “transcribed”' : '') + '  —  press z to read', qLabel ? 4000 : 10000);
+      return { ok: true };
     }
-  } catch (_) {
+    const err = (j && j.error) || ('HTTP ' + r.status);
+    if (!qLabel) toast('⚠ ' + err, 11000);
+    return { ok: false, error: err };
+  } catch (e) {
     clearInterval(poll);
-    toast('⚠ Proxy not reachable on 8081 — start proxy.js (needs the dev0961 build: RESTART it)', 5000);
+    const err = 'proxy not reachable on 8081 — restart it (LButton & t)';
+    if (!qLabel) toast('⚠ ' + err, 5000);
+    return { ok: false, error: err, fatal: true };
   } finally { clearInterval(poll); _yttBusy = false; yttRefreshHave(); }
 }
 window.yttRunRow = yttRunRow;
+
+// ── the queue ────────────────────────────────────────────────────────────────
+// (dev0964) Serial, client-side, and deliberately NOT a proxy-side daemon: the
+// browser owns ml.json (save() writes it through the File System Access API), so
+// the tag flips have to happen here, and a queue that outlived the page would be
+// writing rows nobody is holding. It is also the reason a reload stops it — which
+// is honest, and matches the standing "no background daemons" rule.
+let _yttQ = { running: false, stop: false, done: 0, failed: [], total: 0 };
+
+// Rows still wanting a run: tagged `transcribe`, not yet `transcribed`, YouTube.
+// Order is the table's current order, so sorting T sorts the queue.
+function yttQueueRows() {
+  if (typeof data === 'undefined' || !Array.isArray(data)) return [];
+  const out = [];
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const t = Array.isArray(r.tags) ? r.tags : (r.tags ? [String(r.tags)] : []);
+    if (t.indexOf('transcribe') === -1 || t.indexOf('transcribed') !== -1) continue;
+    if (!yttVideoId(r.link)) continue;   // whisper's job, once that exists
+    out.push(i);
+  }
+  return out;
+}
+window.yttQueueRows = yttQueueRows;
+
+function yttQueueStop() {
+  if (!_yttQ.running) return;
+  _yttQ.stop = true;
+  toast('🛑 Queue will stop after the current row finishes', 4000);
+}
+window.yttQueueStop = yttQueueStop;
+
+// Escape while a queue runs means "stop the queue", so swallow it: letting it
+// through would ALSO fire the app's Esc navigation and change screens under you,
+// which reads as the key having done something wrong.
+function _yttQKey(e) {
+  if (e.key !== 'Escape' || !_yttQ.running) return;
+  e.preventDefault();
+  e.stopPropagation();
+  yttQueueStop();
+}
+
+async function yttRunQueue() {
+  if (_yttQ.running) { toast('📝 Queue already running — Esc stops it after the current row', 3000); return; }
+  const rows = yttQueueRows();
+  if (!rows.length) {
+    toast('📝 Nothing queued — tag rows “To transcribe” (and they must be YouTube links)', 5000);
+    return;
+  }
+  // A real confirm, not a reflex one: this is rows × minutes, it holds the iGPU
+  // the whole time, and a reload part-way through abandons it.
+  if (!window.confirm(
+        rows.length + ' row(s) tagged “To transcribe” and not yet done.\n\n'
+        + 'These run ONE AT A TIME and each takes a few minutes, so this is roughly '
+        + rows.length + '–' + (rows.length * 5) + ' minutes of local GPU.\n\n'
+        + 'Esc stops it after the row in flight. Reloading the page abandons it.\n\n'
+        + 'Start?')) return;
+
+  _yttQ = { running: true, stop: false, done: 0, failed: [], total: rows.length };
+  document.addEventListener('keydown', _yttQKey, true);
+  const t0 = Date.now();
+
+  // Re-resolve each row by UID rather than trusting the index: a save() + render()
+  // between rows can reorder `data` under us, and running the wrong row would be
+  // silent and wrong rather than merely annoying.
+  const uids = rows.map(i => String(data[i].UID || ''));
+  for (let n = 0; n < uids.length; n++) {
+    if (_yttQ.stop) break;
+    const di = data.findIndex(r => r && String(r.UID || '') === uids[n]);
+    if (di < 0) { _yttQ.failed.push(uids[n] + ' (row vanished)'); continue; }
+    const res = await yttRunRow(di, false, (n + 1) + '/' + uids.length);
+    if (res && res.ok) _yttQ.done++;
+    else {
+      _yttQ.failed.push(uids[n] + ': ' + ((res && res.error) || 'unknown'));
+      // A dead proxy fails every remaining row identically — stop rather than
+      // grind out N copies of the same error.
+      if (res && res.fatal) { _yttQ.stop = true; break; }
+    }
+  }
+
+  document.removeEventListener('keydown', _yttQKey, true);
+  _yttQ.running = false;
+  const mins = _yttClock(Date.now() - t0);
+  let msg = (_yttQ.stop ? '🛑 Queue stopped' : '✅ Queue finished') + '  ·  '
+          + _yttQ.done + '/' + _yttQ.total + ' done in ' + mins;
+  if (_yttQ.failed.length) msg += '  ·  ' + _yttQ.failed.length + ' failed (see ytsummaries/_runs.log)';
+  toast(msg, 15000);
+  if (_yttQ.failed.length) console.warn('[ytt] queue failures:\n' + _yttQ.failed.join('\n'));
+  yttRefreshHave();
+}
+window.yttRunQueue = yttRunQueue;
 
 // ── the z window ─────────────────────────────────────────────────────────────
 let _yttOvKind = 'summary';   // remembered across opens within a session

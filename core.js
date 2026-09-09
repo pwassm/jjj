@@ -3873,6 +3873,18 @@ function showCtx(x, y, target) {
         }
         addCS(menu);
       }
+      // (dev0964) The whole "To transcribe" queue, serially. Deliberately NOT gated
+      // on THIS row being YouTube: it is a screen-level action that merely lives in the
+      // row menu. Offered only when something is actually queued, so the menu does not
+      // carry a permanently dead item. yttRunQueue confirms before it starts - it is
+      // rows x minutes and it holds the iGPU throughout.
+      if (typeof yttQueueRows === 'function') {
+        const _yQ = yttQueueRows().length;
+        if (_yQ) {
+          addCI(menu, 'Transcribe all ' + _yQ + ' queued&', () => yttRunQueue());
+          addCS(menu);
+        }
+      }
       addCI(menu, 'Insert row above', () => insertRow(di));
       addCI(menu, 'Insert row below', () => insertRow(di+1));
       addCS(menu);
