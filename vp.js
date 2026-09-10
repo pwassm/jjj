@@ -460,6 +460,38 @@ function _vpApplyPeek(loopWhole, capText) {
   _vpSetPeekCaption(capText);
 }
 
+// (dev0967) The "+" annotation, full-screen: the same strip the grid cell
+// carries, but sized against the WINDOW and held clear of the transport bar so
+// it can never cover the scrubber. Mounted a frame after the open for the same
+// reason the peek caption is — it has to run for images and video alike, so it
+// cannot live in either branch of gridOpenFullscreen.
+//
+// Skipped when V was forced open from T: that path opens the grid overlay
+// underneath purely as scaffolding, so the collection showing there says nothing
+// about the row on screen.
+function _vpMountAnnot(row) {
+  const fs      = document.getElementById('gridFullscreen');
+  const content = document.getElementById('gridFsContent');
+  if (!fs || fs.style.display !== 'flex' || !content) return;
+  if (window._vpForcedGridFromT) return;
+  if (typeof window._salAnnotMount !== 'function') return;
+  const el = window._salAnnotMount(content, row, fs);
+  if (!el) return;
+  // Ride on top of the toolbar, whatever height it has wrapped to — and drop
+  // back to the floor when it collapses (a display:none bar measures 0, and the
+  // observer fires on that too).
+  const lift = () => {
+    const bar = document.getElementById('vp-toolbar');
+    const h = (bar && bar.style.display !== 'none') ? (bar.offsetHeight || 0) : 0;
+    el.style.bottom = h + 'px';
+  };
+  lift();
+  const bar = document.getElementById('vp-toolbar');
+  if (bar && typeof ResizeObserver !== 'undefined') {
+    try { el._salBarRO = new ResizeObserver(lift); el._salBarRO.observe(bar); } catch (_) {}
+  }
+}
+
 function vpCollapseControls(hide) {
   const bar     = document.getElementById('vp-toolbar');
   const content = document.getElementById('gridFsContent');
@@ -684,6 +716,9 @@ function gridOpenFullscreen(row, contained) {
   if (_noExpand || _loopWhole || _peekCap) {
     requestAnimationFrame(() => _vpApplyPeek(_loopWhole, _peekCap));
   }
+  // (dev0967) ...and the "+" annotation, on the same one-frame delay, for the
+  // same reason: it has to land after V has built whatever it is going to build.
+  requestAnimationFrame(() => _vpMountAnnot(row));
   const _armLoop = (_pendLoop && window.salLoops
                     && window.salLoops.matchRow(_pendLoop, row)) ? _pendLoop : null;
 

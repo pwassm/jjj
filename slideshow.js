@@ -1322,6 +1322,13 @@ function _slideshowPlayVideo(slide) {
     _slideshowAdvance(+1);
     return;
   }
+  // (dev0967) The still's annotation goes with the still. V paints the video's
+  // own from the row it is handed, and two of them stacked would be one too many.
+  const _sa = st.overlay.querySelector('.sal-annot');
+  if (_sa) {
+    try { if (_sa._salRO) _sa._salRO.disconnect(); } catch (_) {}
+    _sa.remove();
+  }
   st._videoActive = true;
   st._closeDir = 1; // default: closing/finishing advances to the NEXT slide
   clearTimeout(st.timer);
@@ -2257,6 +2264,21 @@ function _slideshowUpdateLabel(slide) {
   const row = slide && slide.row;
   const ls = st.settings.labelSize   || 'off';
   const cs = st.settings.commentSize || 'off';
+
+  // (dev0967) The "+" annotation: a "+"-marked c.json collection paints the
+  // row's ftext across the bottom of the window, alongside (not instead of) the
+  // label/comment overlays above. Rebuilt outright per slide rather than
+  // re-filled, because each row's ftext is its own HTML.
+  const oldAnnot = st.overlay.querySelector('.sal-annot');
+  if (oldAnnot) {
+    try { if (oldAnnot._salRO) oldAnnot._salRO.disconnect(); } catch (_) {}
+    oldAnnot.remove();
+  }
+  if (row && typeof window._salAnnotMount === 'function') {
+    const annot = window._salAnnotMount(st.overlay, row, st.overlay);
+    // Above the picture layers and the label/comment text, below the toasts.
+    if (annot) annot.style.zIndex = '40010';
+  }
 
   // (dev0284) Title/comment sources:
   //   ml.json rows → title = VidTitle, else the row's tag(s) (many rows have

@@ -2807,6 +2807,124 @@ function _gridCellLabelText(cellStr, row) {
   return [cellStr, uid, md].filter(Boolean).join(' ');
 }
 
+// ── (dev0967) "+" ANNOTATIONS ───────────────────────────────────────────────
+// A c.json collection whose Label column holds a bare "+" is an ANNOTATED one.
+// Every DIRECT-PLAY cell in it — a still, or a video FILE, never a YouTube /
+// Vimeo / IG embed, which owns the bottom of its own frame — carries that row's
+// ftext along the bottom: in the grid cell, in the full-screen cell, and in the
+// slideshow (where a video slide IS the full-screen cell, so those two share one
+// call site).
+//
+// ftext rather than the `comment` column because ftext is HTML — it is the field
+// that can be FORMATTED, and renderFtext already knows how to render it.
+//
+// Sized PROPORTIONATELY to the box it sits in: a fraction of cell height on the
+// grid, of window height full-screen, then shrunk further if the writing is long.
+// Shrink to fit, never grow to fill (the dev0843 rule the card backs follow), so
+// one wordy caption in a 3x3 doesn't set the type size for the eight terse ones
+// beside it.
+//
+// Deliberately NOT hidden by L (cLean view): L strips the chrome the app paints
+// OVER the pictures, and an annotation is the opposite of chrome — it is the
+// thing an annotated collection exists for.
+var _SAL_ANNOT_DIRECT_RE = /[.](jpe?g|png|gif|webp|bmp|tiff?|mp4|m4v|mov|webm|ogv|mkv)([?][^#]*)?$/i;
+var _SAL_ANNOT_MIN_PX    = 8;
+
+// The gate: are we showing a c.json collection marked "+"? Reads the column in
+// either case — c.json ships `Label`, and a hand-typed `label` should not be a
+// silent no-op.
+window._salAnnotOn = function () {
+  try {
+    if (typeof _gridSource === 'undefined' || _gridSource !== 'C') return false;
+    var cfg = (typeof _gridActiveConfig !== 'undefined') ? _gridActiveConfig : null;
+    if (!cfg) return false;
+    var lab = (cfg.Label != null && String(cfg.Label).trim() !== '') ? cfg.Label : cfg.label;
+    return String(lab == null ? '' : lab).trim() === '+';
+  } catch (_) { return false; }
+};
+
+// The row's annotation HTML, or '' when this row doesn't get one. Empty for an
+// embed (no direct file extension), for a row with no ftext, and for the two
+// kinds of ftext that are a PAYLOAD rather than prose: a quiz/card JSON blob,
+// and a picture montage (an ftext whose point is its <img>s — that already has
+// its own cell renderer, _buildFtextImgCell).
+window._salAnnotHtml = function (row) {
+  if (!row || !window._salAnnotOn()) return '';
+  var ft = String(row.ftext == null ? '' : row.ftext).trim();
+  if (!ft) return '';
+  var link = String(row.link == null ? '' : row.link);
+  if (!link || !_SAL_ANNOT_DIRECT_RE.test(link)) return '';
+  if (ft.charAt(0) === '[' || ft.charAt(0) === '{') return '';
+  if (/<img[ >]/i.test(ft)) return '';
+  return (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
+};
+
+function _salAnnotCss() {
+  if (document.getElementById('sal-annot-css')) return;
+  var st = document.createElement('style');
+  st.id = 'sal-annot-css';
+  st.textContent = [
+    '.sal-annot{position:absolute;left:0;right:0;bottom:0;z-index:120;pointer-events:none;',
+    '  box-sizing:border-box;overflow:hidden;text-align:center;color:#fff;',
+    '  padding:0.75em 1em calc(0.75em + env(safe-area-inset-bottom,0px));',
+    '  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.35;',
+    '  text-shadow:0 1px 3px #000,0 0 8px rgba(0,0,0,0.85);',
+    '  background:linear-gradient(to top,rgba(0,0,0,0.72),rgba(0,0,0,0.4) 60%,rgba(0,0,0,0));}',
+    '.sal-annot p{margin:0 0 0.35em;}',
+    '.sal-annot p:last-child{margin-bottom:0;}',
+    '.sal-annot h1,.sal-annot h2,.sal-annot h3,.sal-annot h4{font-size:1.2em;margin:0 0 0.3em;}',
+    '.sal-annot ul,.sal-annot ol{margin:0 0 0.35em;padding-left:1.4em;text-align:left;}',
+    '.sal-annot a{color:#9cf;}',
+    // A caption is TEXT. Anything else the ftext carries would fight the picture
+    // it is captioning for the same pixels, so it does not come along.
+    '.sal-annot img,.sal-annot video,.sal-annot iframe,.sal-annot table{display:none;}'
+  ].join('');
+  document.head.appendChild(st);
+}
+
+// Proportional base size + shrink-to-fit, measured with clientHeight /
+// scrollHeight (never a bounding rect: on the grid this runs on cells that can
+// be mid-transform, and a rect taken then is foreshortened to nothing).
+function _salAnnotFit(el, box) {
+  var bh = (box && (box.clientHeight || box.offsetHeight)) || 0;
+  if (!bh) return;                       // not laid out yet — the RO calls us back
+  var base = Math.max(9, Math.min(34, Math.round(bh * 0.052)));
+  el.style.fontSize  = base + 'px';
+  el.style.maxHeight = Math.max(24, Math.round(bh * 0.42)) + 'px';
+  var size = base;
+  for (var i = 0; i < 6 && size > _SAL_ANNOT_MIN_PX; i++) {
+    if (!el.clientHeight || el.scrollHeight - el.clientHeight <= 1) break;
+    var ratio = Math.sqrt(el.clientHeight / el.scrollHeight);
+    size = Math.max(_SAL_ANNOT_MIN_PX, size * (ratio < 0.97 ? ratio : 0.93));
+    el.style.fontSize = size.toFixed(2) + 'px';
+  }
+}
+
+// Paint the row's annotation into `parent`, sized against `measureEl` (defaults
+// to the parent). Returns the element, or null when this row gets no annotation.
+// A ResizeObserver on the measured box re-fits on every window resize, fold and
+// layout change — and does the FIRST fit too, since a grid cell has no size
+// until it is in the DOM, which is after this is called.
+window._salAnnotMount = function (parent, row, measureEl) {
+  if (!parent) return null;
+  var html = window._salAnnotHtml(row);
+  if (!html) return null;
+  _salAnnotCss();
+  var box = measureEl || parent;
+  var el  = document.createElement('div');
+  el.className = 'sal-annot';
+  el.innerHTML = html;
+  parent.appendChild(el);
+  var fit = function () { _salAnnotFit(el, box); };
+  fit();
+  if (typeof ResizeObserver !== 'undefined') {
+    // Observing the BOX and writing only to `el` (absolutely positioned, so it
+    // changes nothing about the box) — no feedback loop.
+    try { el._salRO = new ResizeObserver(fit); el._salRO.observe(box); } catch (_) {}
+  }
+  return el;
+};
+
 function _gridApplyClean() {
   const on = _gridCleanChrome;
   document.querySelectorAll('#gridOverlay .grid-cell-label')
@@ -3044,6 +3162,11 @@ function gridShow() {
         info.textContent = [row.t1, row.n1].filter(Boolean).join(' · ');
         interactor.appendChild(info);
       }
+
+      // (dev0967) A "+" collection annotates its direct-play cells with the row's
+      // ftext along the bottom. Inside the interactor so it rides above the media;
+      // pointer-events:none so it can never eat a gesture.
+      if (row) window._salAnnotMount(interactor, row, cell);
 
       // (dev0860) The F badge — a flash card, in both modes.
       if (cardParts) interactor.appendChild(_gridCardBadge());
@@ -3439,6 +3562,11 @@ function gridUpdateCell(cellStr, row) {
     info.textContent = [row.t1, row.n1].filter(Boolean).join(' · ');
     newInteractor.appendChild(info);
   }
+
+  // (dev0967) A "+" collection annotates its direct-play cells with the row's
+  // ftext along the bottom. Inside the interactor so it rides above the media;
+  // pointer-events:none so it can never eat a gesture.
+  if (row) window._salAnnotMount(newInteractor, row, cellEl);
 
   // (dev0860) The F badge — a flash card, in both modes.
   if (cardParts) newInteractor.appendChild(_gridCardBadge());
