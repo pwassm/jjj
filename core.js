@@ -632,7 +632,13 @@ window.addEventListener('keydown', function(e) {
     if (gOpenS && !vpOpenS) {
       e.preventDefault();
       e.stopPropagation();
-      if (typeof window.slideshowOpenGrid === 'function') window.slideshowOpenGrid();
+      // (dev0968) Desktop: open the show on the cell the mouse is over.
+      // _gridHoverCell is the same "which cell is under the pointer" the zoom
+      // keys and Ctrl+V paste already read, and it is null on touch (no hover)
+      // and after the pointer leaves the grid -- both of which start at 1a.
+      const _ssCell = (typeof _gridHoverCell !== 'undefined' && _gridHoverCell)
+        ? (_gridHoverCell.dataset ? _gridHoverCell.dataset.cell : '') : '';
+      if (typeof window.slideshowOpenGrid === 'function') window.slideshowOpenGrid(_ssCell);
       return false;
     }
   }

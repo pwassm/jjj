@@ -4278,7 +4278,8 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
   };
   // (dev0516) Slideshow — play the whole active grid as a full-window slideshow
   // (same as the bare-'s' hotkey from G / the hamburger Slideshow item).
-  const doSlideshow = () => { gridHideContextMenu(); if (window.slideshowOpenGrid) window.slideshowOpenGrid(); };
+  // (dev0968) ...starting on the cell this menu was opened on.
+  const doSlideshow = () => { gridHideContextMenu(); if (window.slideshowOpenGrid) window.slideshowOpenGrid(cellStr); };
 
   // (dev0669) New embed — same view-only reload the dev menu offers, on the
   // rows that need it (one inline play per IG/TikTok embed).
@@ -4410,7 +4411,7 @@ function gridShowContextMenu(x, y, cellStr, row) {
   slideBtn.onmouseleave = () => slideBtn.style.background = '';
   slideBtn.onclick = () => {
     gridHideContextMenu();
-    if (window.slideshowOpenGrid) window.slideshowOpenGrid();
+    if (window.slideshowOpenGrid) window.slideshowOpenGrid(cellStr);   // (dev0968) start here
   };
   _gridContextMenu.appendChild(slideBtn);
 
@@ -4500,7 +4501,8 @@ function gridShowContextMenu(x, y, cellStr, row) {
     } else if (e.key === 's' || e.key === 'S') {
       e.preventDefault();
       gridHideContextMenu();
-      if (window.slideshowOpenGrid) window.slideshowOpenGrid();   // (dev0516) play grid as slideshow
+      // (dev0516) play grid as slideshow, (dev0968) from this cell
+      if (window.slideshowOpenGrid) window.slideshowOpenGrid(cellStr);
     } else if (e.key === 'w' || e.key === 'W') {
       e.preventDefault();
       gridWriteToT();

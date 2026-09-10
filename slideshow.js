@@ -222,7 +222,11 @@ function _slideshowGridSlides() {
     // _gridZoomForCell is the one place that resolves the whole precedence
     // (global x c.json UID/zoom x COI zoom, and 1 on mobile), so asking it is
     // the only way Vss is guaranteed to open at what is actually on screen.
-    _slideshowCellSlides(row, _ssCellFraming(cs)).forEach(s => out.push(s));
+    // (dev0968) Tag each slide with the cell it came from: that is what lets a
+    // show START on the cell the viewer pointed at rather than at 1a. A cell can
+    // contribute several slides (its own media + its ftext images); they all
+    // carry the same tag, and the FIRST of them is where the show opens.
+    _slideshowCellSlides(row, _ssCellFraming(cs)).forEach(sl => { sl.cell = cs; out.push(sl); });
   }
   return out;
 }
@@ -264,7 +268,10 @@ function slideshowOpen(source) {
   _slideshowStart(slides, { sourceKind: 'ftext' });
 }
 
-function slideshowOpenGrid() {
+// (dev0968) `startCell` = the cell the show should OPEN on ("2b"), from the
+// cell the viewer right-clicked / long-pressed, or the one the mouse is over
+// when s is pressed. Omitted (the menu launcher) means start at the beginning.
+function slideshowOpenGrid(startCell) {
   // (dev0279) Canonical cell-order, all media kinds. The Show filter and the
   // random shuffle are applied inside _slideshowStart.
   const ordered = _slideshowGridSlides();
@@ -275,7 +282,7 @@ function slideshowOpenGrid() {
   // (dev0283) Close any current show only now that we have slides, so a live
   // source-switch from the menu never leaves a gap on the screen behind.
   slideshowClose();
-  _slideshowStart(ordered, { sourceKind: 'grid' });
+  _slideshowStart(ordered, { sourceKind: 'grid', startCell: startCell || '' });
 }
 
 // ── External / folder sources (File System Access API) ──────────────────────
@@ -566,6 +573,17 @@ function _slideshowStart(allOrdered, opts) {
   const working = (settings.order === 'random')
     ? _slideshowShuffle(filtered.map(s => Object.assign({}, s, { status: 'pending' })))
     : filtered.map(s => Object.assign({}, s, { status: 'pending' }));
+
+  // (dev0968) Where the show opens. Looked up in `working` rather than in the
+  // canonical list because that is the sequence actually being played: on a
+  // random show this starts on the pointed-at picture and shuffles on from
+  // there. An empty cell, or one the Show filter dropped, is not in the list at
+  // all -- that falls back to the beginning rather than refusing to play.
+  let startIdx = 0;
+  if (opts && opts.startCell) {
+    const si = working.findIndex(s => s.cell === opts.startCell);
+    if (si > 0) startIdx = si;
+  }
 
   const overlay = document.createElement('div');
   overlay.id = 'slideshowOverlay';
@@ -1111,8 +1129,9 @@ function _slideshowStart(allOrdered, opts) {
 
   document.addEventListener('keydown', _slideshowKey, true);
 
-  // Show first slide (no crossfade for the initial paint).
-  _slideshowShow(0, { initial: true });
+  // Show the first slide (no crossfade for the initial paint) -- "first" being
+  // the pointed-at cell when the caller named one. (dev0968)
+  _slideshowShow(startIdx, { initial: true });
   // (dev0949) Vss opens dressed for VIEWING: the settings panel is already
   // folded away and the [N] box stands in its place, so what a viewer meets is
   // the first picture and four faint controls. A hold on the box brings the
