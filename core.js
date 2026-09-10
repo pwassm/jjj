@@ -1799,6 +1799,7 @@ function buildSort() {
   if (_cMode && typeof _cCtypeFilter !== 'undefined' && _cCtypeFilter) {
     filtered = filtered.filter(i => _cCtypeMatches(data[i]));
   }
+  if (typeof _cPersistSort === 'function') _cPersistSort();   // (dev0966) sticky C sort
   if (!sortCol) { sortedIdx = filtered.length < data.length ? filtered : null; return; }
   const dir  = sortDir === 'desc' ? -1 : 1;
   const isDate = sortCol === 'DateAdded' || sortCol === 'DateModified';
@@ -3828,7 +3829,7 @@ function showCtx(x, y, target) {
     menu.innerHTML = '<div class="ctx-hdr">COLUMN: '+escH(col)+'</div>';
     addCI(menu, 'Sort A→Z',       () => { sortCol=col; sortDir='asc';  buildSort(); render(); });
     addCI(menu, 'Sort Z→A',       () => { sortCol=col; sortDir='desc'; buildSort(); render(); });
-    addCI(menu, 'Clear sort',     () => { sortCol=null; sortedIdx=null; render(); });
+    addCI(menu, 'Clear sort',     () => { sortCol=null; sortedIdx=null; if (typeof _cPersistSort === 'function') _cPersistSort(); render(); });
     addCS(menu);
     addCI(menu, 'Rename…',        () => renameCol(col));
     addCI(menu, 'Insert before…', () => insertCol(col, 'before'));

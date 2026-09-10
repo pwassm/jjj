@@ -1078,8 +1078,27 @@ var _cCols      = [];
 var _cHidden    = new Set();
 var _cColWidths = {};
 var _cLoaded    = false; // true after first successful disk read
+// (dev0966) C-screen sort is sticky ACROSS RELOADS — it lives in localStorage,
+// not in c.json (the app FSA-clobbers c.json, and a view preference has no
+// business travelling with the data). _cPersistSort() is called from buildSort()
+// and from "Clear sort"; the restore happens right here at load time.
+var _C_SORT_LS = 'slam-c-sort';
 var _cSortCol   = null;
 var _cSortDir   = 'asc';
+try {
+  var _cs = JSON.parse(localStorage.getItem(_C_SORT_LS) || 'null');
+  if (_cs && typeof _cs === 'object') {
+    _cSortCol = _cs.col || null;
+    _cSortDir = _cs.dir === 'desc' ? 'desc' : 'asc';
+  }
+} catch (_) {}
+
+function _cPersistSort() {
+  if (!_cMode) return;
+  try {
+    localStorage.setItem(_C_SORT_LS, JSON.stringify({ col: sortCol || null, dir: sortDir }));
+  } catch (_) {}
+}
 var _cSortedIdx = null;
 var _cRowFilter = null;
 var _cFocus     = null;
