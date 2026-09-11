@@ -312,3 +312,8 @@ ig-checked.json.tmp-*
 # is committed. Its backup is backup-root.ps1 (which now carries named subfolders),
 # NOT git, exactly like ml.json.
 ytsummaries/
+
+# Drive-index manifests (MediaTruth / MyMediaByCamera / not-wanted TSVs) and the
+# drivetriage tools (drivecheck.py, qformat.bat, ejectusb.bat). Personal drive
+# inventories - never committed. drivetriage/ is on the user PATH.
+mediaindex/
