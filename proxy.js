@@ -539,6 +539,13 @@ const DT_COLORS = {
 // a stopwatch over sped-up footage is for.
 const DT_CLOCK_EXPR = '%{eif:floor(t/60):d:2}:%{eif:mod(floor(t),60):d:2}';
 
+// (dev0969) The same clock to 1/100 s, for footage slowed right down — at 1/8
+// speed a whole-second stopwatch changes eight times a second's worth of frames
+// apart, which reads as a still picture with a number on it. Floored, like the
+// two fields to its left, so the digits never run ahead of the second they
+// belong to; two places, so the box keeps a fixed width here too.
+const DT_CLOCK_FRAC_EXPR = DT_CLOCK_EXPR + '.%{eif:mod(floor(t*100),100):d:2}';
+
 function dtColorFor(id) {
   if (id == null || id === '') return DT_COLORS.white;
   must(typeof id === 'string' && Object.prototype.hasOwnProperty.call(DT_COLORS, id),
@@ -747,8 +754,9 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
     // have something the right SHAPE to measure, but what gets burned in is
     // the expression. See DT_CLOCK_EXPR.
     const clock = !!t.clock;
+    const cfrac = clock && !!t.cfrac;   // (dev0969) hundredths
     const file = path.join(dir, 'txt' + i + '.txt');
-    fs.writeFileSync(file, clock ? DT_CLOCK_EXPR : lines.join('\n'), 'utf8');
+    fs.writeFileSync(file, clock ? (cfrac ? DT_CLOCK_FRAC_EXPR : DT_CLOCK_EXPR) : lines.join('\n'), 'utf8');
     const fontPx = Math.max(6, Math.round(size * oh));
     // (dev0725) Optional window this caption is on screen for, in seconds from
     // the START OF THE CLIP — with `-ss` before `-i`, drawtext's `t` counts from
@@ -843,6 +851,8 @@ function buildDrawtextChain(texts, ow, oh, tmpSink) {
 //                                 the default face.
 //                                 clock (dev0873) 1 = draw the running elapsed
 //                                 time instead of `lines` — see DT_CLOCK_EXPR.
+//                                 cfrac (dev0969) with clock: count in
+//                                 hundredths (00:00.00) rather than whole seconds.
 //                                 Appended after crop/scale/zoompan → see
 //                                 buildDrawtextChain.
 //   pauses    [{at,hold}]      — OPTIONAL (dev0727); CROP path only. Freeze the
@@ -7783,7 +7793,7 @@ http.createServer((req, res) => {
   // proxy before a deskew job. Non-sensitive, so the public CORS is fine.
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
-    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock',
+    res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock', 'textclockfrac',
       'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify']) }));
     return;
   }

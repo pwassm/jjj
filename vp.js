@@ -2905,6 +2905,17 @@ function vpKeyHandler(e) {
     return;
   }
 
+  // (dev0969) A selected STOPWATCH takes the same two arrows, from one step
+  // further out: it never holds the caret, so the block above cannot see them.
+  // Placed before the menu guard on purpose — the menu is where you turn a
+  // stopwatch on, and resizing it the moment it appears should not need the
+  // menu dismissed first.
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && _vpTextClockSelected()) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    _vpTextNudgeSize(e.key === 'ArrowUp' ? 1 : -1);
+    return;
+  }
+
   // (dev0749) A text box's own menu, or the saved-text list, owns the keyboard
   // while it is up: its letters are answers to the question on screen. Both
   // register their handlers AFTER this one, so without standing down here the
@@ -5064,12 +5075,27 @@ function _vpTextFontAsk(el, t) {
 //
 // Always two digits a side. A clock that shrinks from 10:00 to 9:59 twitches
 // on the frame, and a watermark that moves is a watermark you keep noticing.
-const VP_CLOCK_SAMPLE = '00:00';   // what the box shows before the playhead is in the clip
+// (dev0969) …and the same rule one place further right for the hundredths
+// mode: mm:ss.xx is always eight characters wide, so it never twitches either.
+const VP_CLOCK_SAMPLE      = '00:00';      // what the box shows before the playhead is in the clip
+const VP_CLOCK_SAMPLE_FRAC = '00:00.00';   // …and in hundredths mode
 
-function _vpClockStr(sec) {
-  const v = Math.max(0, Math.floor(+sec || 0));
+function _vpClockSample(t) {
+  return (t && t.cfrac) ? VP_CLOCK_SAMPLE_FRAC : VP_CLOCK_SAMPLE;
+}
+
+// (dev0969) `frac` adds hundredths — for footage slowed right down, where a
+// whole second is a long time to sit on one unchanging number. Truncated, not
+// rounded, in both modes: ffmpeg's expression floors, and the preview has to
+// show the same digit the render will burn in.
+function _vpClockStr(sec, frac) {
+  const raw = Math.max(0, +sec || 0);
+  const v = Math.floor(raw);
   const mm = Math.floor(v / 60), ss = v % 60;   // minutes, NOT mod 60 — an hour reads 60:00
-  return String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+  const base = String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+  if (!frac) return base;
+  const cs = Math.min(99, Math.floor(raw * 100) % 100);
+  return base + '.' + String(cs).padStart(2, '0');
 }
 
 // The clip's own zero. Both marks down = A (the render trims there); anything
@@ -5080,18 +5106,28 @@ function _vpClipStartSec() {
   return Math.min(st.aPoint, st.bPoint);
 }
 
-function _vpTextToggleClock(t) {
+// (dev0969) One entry point for all three states — off, whole seconds, and
+// hundredths — because they are one setting with three values, not two
+// independent flags that could disagree. `frac` says WHICH stopwatch the menu
+// row asked for; clicking the row that is already on turns the clock off, so
+// each row is its own toggle and neither can strand the box in a mode its
+// label doesn't show.
+function _vpTextToggleClock(t, frac) {
   const s = _vpState && _vpState.crop;
   if (!s || !t) return;
+  const want = !!frac;
   if (s.imageMode) {                       // a still has no elapsed time to show
     if (typeof toast === 'function') toast('⏱ a stopwatch needs a clip, not a picture', 1800);
     return;
   }
-  t.clock = !t.clock;
+  const off = t.clock && !!t.cfrac === want;   // the row that is already lit = turn it off
+  t.clock = !off;
+  t.cfrac = off ? false : want;
   if (s.textSetClock) s.textSetClock(t);
   if (typeof toast === 'function') {
-    toast(t.clock ? '⏱ stopwatch — counts from A, in real seconds of the footage'
-                  : '⏱ back to ordinary text — the digits are yours to edit now', 2000);
+    toast(!t.clock ? '⏱ back to ordinary text — the digits are yours to edit now'
+        : t.cfrac  ? '⏱ stopwatch in hundredths — counts from A, in real seconds of the footage'
+                   : '⏱ stopwatch — counts from A, in real seconds of the footage', 2000);
   }
 }
 
@@ -5099,6 +5135,17 @@ function _vpTextAdd()            { const s = _vpState && _vpState.crop; if (s &&
 function _vpTextEndEdit()        { _vpTextMenuClose();
                                   const s = _vpState && _vpState.crop; if (s && s.endTextEdit) s.endTextEdit(); }
 function _vpTextNudgeSize(dir)   { const s = _vpState && _vpState.crop; if (s && s.nudgeTextSize)  s.nudgeTextSize(dir); }
+
+// (dev0969) Is the live box a stopwatch? A clock box holds no caret — that is
+// deliberate, there is nothing in it to type — so the key handlers' "is the
+// event inside a text field?" test, which is how ↑ / ↓ reach the resize, is
+// false for it and the arrows were falling through to the row navigation
+// instead. This is the test they use in its place.
+function _vpTextClockSelected() {
+  const s = _vpState && _vpState.crop;
+  const t = s && s.selectedText ? s.selectedText() : null;
+  return !!(t && t.clock);
+}
 
 // (dev0725) ── The text box's own right-click menu ──────────────────────────
 // Right-click INSIDE a box is about the text, not about stepping frames, so the
@@ -5161,12 +5208,13 @@ function _vpTextMenuKey(e) {
   // (dev0745) On a still, s / e / a have no meaning — those rows aren't on the
   // menu — so the keys stay free rather than silently marking an invisible clip.
   const imgMode = !!(_vpState && _vpState.crop && _vpState.crop.imageMode);
-  if (k === 'escape' || (!imgMode && (k === 's' || k === 'e' || k === 'a' || k === 'w'))) {
+  if (k === 'escape' || (!imgMode && (k === 's' || k === 'e' || k === 'a' || k === 'w' || k === 'd'))) {
     e.preventDefault(); e.stopImmediatePropagation();
     if (k === 'a') { _vpTextPauseAsk(el, t); return; }   // stays open, asks seconds
     _vpTextMenuClose();
     if (k === 's' || k === 'e') _vpTextSetMark(t, k === 's' ? 'start' : 'end');
-    else if (k === 'w') _vpTextToggleClock(t);           // (dev0873)
+    else if (k === 'w') _vpTextToggleClock(t, false);    // (dev0873)
+    else if (k === 'd') _vpTextToggleClock(t, true);     // (dev0969) hundredths
   }
 }
 
@@ -5539,11 +5587,22 @@ function _vpTextCtxMenu(ev) {
     // the outline's grips set the wrap width, a fourth small thing to grab there
     // would be fiddly and undiscoverable, and every other property of a box is
     // already chosen from here.
-    mk('⏱ &nbsp;stop<u>w</u>atch' +
-       (t.clock ? ' <span style="opacity:0.6;">· on</span>' : ''),
-       t.clock ? 'Back to ordinary text — the digits stay, and become editable'
-               : 'Show elapsed time instead of words — real seconds of the footage, so it runs fast on a sped-up clip')
-      .onclick = () => { _vpTextMenuClose(); _vpTextToggleClock(t); };
+    const secOn  = !!(t.clock && !t.cfrac);
+    const fracOn = !!(t.clock && t.cfrac);
+    mk('⏱ &nbsp;stop<u>w</u>atch <span style="opacity:0.6;">· 00:00</span>' +
+       (secOn ? ' <span style="opacity:0.6;">· on</span>' : ''),
+       secOn ? 'Back to ordinary text — the digits stay, and become editable'
+             : 'Show elapsed time instead of words — real seconds of the footage, so it runs fast on a sped-up clip')
+      .onclick = () => { _vpTextMenuClose(); _vpTextToggleClock(t, false); };
+    // (dev0969) The same clock one place further right. Its own row rather than
+    // a second click inside the first: on a heavily slowed clip the hundredths
+    // ARE the reading, so asking for them should be one choice, not a mode you
+    // have to find after turning something else on.
+    mk('⏱ &nbsp;stopwatch, hun<u>d</u>redths <span style="opacity:0.6;">· 00:00.00</span>' +
+       (fracOn ? ' <span style="opacity:0.6;">· on</span>' : ''),
+       fracOn ? 'Back to ordinary text — the digits stay, and become editable'
+              : 'Elapsed time to 1/100 s — for footage slowed down, where whole seconds barely move')
+      .onclick = () => { _vpTextMenuClose(); _vpTextToggleClock(t, true); };
     mk('<u>s</u>tarts here <span style="opacity:0.6;">· ' + now.toFixed(2) + 's</span>',
        'This text appears from the playhead onward')
       .onclick = () => { _vpTextMenuClose(); _vpTextSetMark(t, 'start'); };
@@ -5726,7 +5785,7 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
   const pauses = [];
   state.texts.forEach(t => {
     if (!t.pauseSec) return;
-    const raw = t.clock ? VP_CLOCK_SAMPLE : ((t.ta ? t.ta.value : t.text) || '');
+    const raw = t.clock ? _vpClockSample(t) : ((t.ta ? t.ta.value : t.text) || '');
     if (!raw.trim()) return;                       // an empty box renders nothing to hold for
     const at = Math.max(EDGE, Math.min(Math.max(EDGE, dur - EDGE),
                         rel(t.atStart == null ? startSec : t.atStart)));
@@ -5746,7 +5805,7 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
     // are not what gets burned in — the proxy swaps in the expression — but
     // they are the right shape, so the wrap width and the ink-top measurement
     // below are the ones the real clock will need.
-    const raw = t.clock ? VP_CLOCK_SAMPLE : ((t.ta ? t.ta.value : t.text) || '');
+    const raw = t.clock ? _vpClockSample(t) : ((t.ta ? t.ta.value : t.text) || '');
     if (!raw.trim()) return;
     const face = _vpTextFont(t.font);
     // The size ffmpeg will actually draw at — buildDrawtextChain rounds the same
@@ -5764,6 +5823,10 @@ function _vpTextRenderList(state, ow, oh, startSec, endSec) {
     // Sent only when true, so an older proxy draws a caption reading 00:00
     // rather than failing the render.
     if (t.clock) box.clock = 1;
+    // (dev0969) …and which of the two clocks. Sent only for the hundredths one,
+    // so an older proxy still draws the whole-seconds stopwatch it knows about
+    // rather than failing the render.
+    if (t.clock && t.cfrac) box.cfrac = 1;
     // (dev0745) Only sent when it isn't 1 — an older proxy then behaves exactly
     // as it always did for every ordinary caption.
     if (t.alpha != null && t.alpha < 1) box.alpha = +(+t.alpha).toFixed(3);
@@ -6786,7 +6849,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   function textSetClock(t) {
     if (t.clock) {
       if (editing === t) endEdit();     // t.clock is already true — endEdit leaves it alone
-      t.ta.value = _vpClockStr(_vpNowSec() - _vpClipStartSec());
+      t.ta.value = _vpClockStr(_vpNowSec() - _vpClipStartSec(), t.cfrac);
       t.text = t.ta.value;
       t.ta.readOnly = true;
       t.ta.style.pointerEvents = 'none';
@@ -6802,9 +6865,10 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       try { t.ta.setSelectionRange(n, n); } catch (_) {}
     }
     t.el.style.borderColor = textBorderCss(t, editing === t);
-    t.el.title = t.clock ? 'Stopwatch — right-click · w to make it text again' : '';
+    t.el.title = t.clock ? 'Stopwatch — ↑ ↓ resize · right-click · w to make it text again' : '';
     growText(t);
     paintTexts();
+    if (state.clockTickStart) state.clockTickStart();   // (dev0969)
     paintEngine();                      // a clock is burned-in pixels like any caption
   }
 
@@ -6880,7 +6944,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const clipT0 = _vpClipStartSec();
     state.texts.forEach(t => {
       if (!t.clock) return;
-      const v = _vpClockStr(t0 - clipT0);
+      const v = _vpClockStr(t0 - clipT0, t.cfrac);
       if (t.ta.value !== v) { t.ta.value = v; t.text = v; growText(t); }
     });
     state.texts.forEach(t => {
@@ -6927,6 +6991,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     const t = { x: Math.min(0.60, 0.06 + 0.03 * n), y: Math.min(0.76, 0.06 + 0.11 * n),
                 w: 0.55, size: 0.07, text: '', atStart: null, atEnd: null, pauseSec: null,
                 clock: false,           // (dev0873) true = a stopwatch, not typed words
+                cfrac: false,           // (dev0969) …and that stopwatch counts in hundredths
                 font: _vpTextFontDefault(), color: _vpTextColorDefault() };
 
     const box = document.createElement('div');
@@ -7139,6 +7204,25 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   const onTimeTick = () => syncTextWindow();
   vid.addEventListener('timeupdate', onTimeTick);
   vid.addEventListener('seeked',     onTimeTick);
+  // (dev0969) A hundredths stopwatch needs more than timeupdate's ~4 a second,
+  // or the preview steps in visible jumps while the burned-in one will not. The
+  // loop runs only while a box is actually in that mode AND the video is
+  // playing; every other second of the session costs nothing.
+  let clockRaf = null;
+  const clockTick = () => {
+    clockRaf = null;
+    if (!state.texts.some(t => t.clock && t.cfrac)) return;
+    syncTextWindow();
+    if (!vid.paused && !vid.ended) clockRaf = requestAnimationFrame(clockTick);
+  };
+  const clockStart = () => {
+    if (clockRaf || vid.paused || vid.ended) return;
+    if (!state.texts.some(t => t.clock && t.cfrac)) return;
+    clockRaf = requestAnimationFrame(clockTick);
+  };
+  state.clockTickStart = clockStart;   // textSetClock kicks it when a box becomes a clock
+  vid.addEventListener('play', clockStart);
+  vid.addEventListener('playing', clockStart);
   // (dev0777) …and the track preview, which has to follow a scrub or a frame
   // step as well as playback.
   const onTrackSeek = () => trackSeekSync();
@@ -7579,7 +7663,12 @@ function _vpMountCropOverlay(host, vid, row, opts) {
       vid.removeEventListener('timeupdate', onTimeTick);
       vid.removeEventListener('seeked',     onTimeTick);
       vid.removeEventListener('seeked',     onTrackSeek);
+      vid.removeEventListener('play',       clockStart);
+      vid.removeEventListener('playing',    clockStart);
     } catch (_) {}
+    // (dev0969) …and the stopwatch's own rAF, for the same reason the track's is
+    // stopped here: it would otherwise outlive the player.
+    if (clockRaf) { cancelAnimationFrame(clockRaf); clockRaf = null; }
     // (dev0777) Stop the track preview's rAF, or it survives the player.
     state.track.on = false;
     if (trackRaf) { cancelAnimationFrame(trackRaf); trackRaf = null; }
@@ -7607,6 +7696,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   state.paintTexts = paintTexts;
   state.endTextEdit = endEdit;
   state.nudgeTextSize = nudgeSize;
+  state.selectedText  = () => editing;   // (dev0969) for the arrow keys — see _vpTextClockSelected
   // (dev0725) …and the right-click menu needs to find a box, type into it and
   // repaint its ⏱ badge.
   state.textBoxFor = textBoxFor;
