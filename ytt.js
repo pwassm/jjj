@@ -377,4 +377,11 @@ window.yttHotkeyZ = yttHotkeyZ;
 
 // Warm the manifest once so the T row menu can label its item "(done)" without a
 // round trip. Failure is silent — the proxy being down is normal on a fresh boot.
-setTimeout(yttRefreshHave, 1500);
+// (dev0973) LOCAL PAGES ONLY. A fetch to 127.0.0.1 from sealifeandmore.com makes
+// Chrome ask every visitor to "access other apps and services on this device"
+// (Local Network Access). The proxy only ever exists on the dev machine, so the
+// public site has nothing to ask it. Asked at fire time, not at parse time, so
+// boot.js's _salIsLocalHost is defined whichever script loads first.
+setTimeout(function () {
+  if (typeof window._salIsLocalHost === 'function' && window._salIsLocalHost()) yttRefreshHave();
+}, 1500);
