@@ -524,16 +524,38 @@ function vpCollapseControls(hide) {
 window.vpCollapseControls = vpCollapseControls;
 
 // (dev0949) Put the control row away and turn #vp-timeline into the thin
-// translucent strip described above. One direction only: slim is decided at
-// open time and the whole player is rebuilt on the next one, so there is no
-// "un-slim" to get wrong.
+// translucent strip described above.
+//
+// (dev0970) BOTH WAYS NOW. dev0949 made this a one-way trip decided at open
+// time, for Vss only. V now OPENS slim for any video with a real timeline, and
+// `v` or a corner button flips between the two dressings as often as you like
+// — so every change made here is recorded as a closure that puts the old value
+// back. Recording the value at the moment of change, rather than writing the
+// full bar's styles out a second time, is what stops the two dressings drifting
+// apart the next time the full bar's look changes.
 //
 // The hit area is the problem a 7px bar always has. Rather than make the bar
 // itself fat, a transparent child stretches 11px above and below it; pointer
 // events on that child BUBBLE to the same pointerdown listener on the bar, and
 // the scrub math reads clientX, so a thumb anywhere in the 29px band scrubs
 // exactly as a hit on the visible 7px would.
+let _vpSlimUndo = null;   // null = the full toolbar is showing
+
+// (dev0949→0970) Direct file, YouTube and Vimeo are the three mounts with a JS
+// API — the ones that answer a mute, and the ones with a timeline worth slimming
+// (Instagram / TikTok / an unresolved Pinterest pin hide the seek bar outright).
+// Read from the row, because slim is decided at open, before the mount exists.
+function _vpRowAnswersApi(row) {
+  row = row || {};
+  const lnk = row.link || '';
+  return !!(row._directVideoFile
+    || /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)(\?|#|$)/i.test(lnk)
+    || (window.isYouTubeLink && window.isYouTubeLink(lnk))
+    || (window.isVimeoLink   && window.isVimeoLink(lnk)));
+}
+
 function _vpApplySlimChrome() {
+  if (_vpSlimUndo) return;
   const bar = document.getElementById('vp-toolbar');
   const tl  = document.getElementById('vp-timeline');
   if (!bar || !tl) return;
@@ -544,42 +566,53 @@ function _vpApplySlimChrome() {
   const mute    = document.getElementById('vp-mute');
   const prog    = document.getElementById('vp-progress');
   const head    = document.getElementById('vp-playhead');
+  const content = document.getElementById('gridFsContent');
 
-  if (ctrl) ctrl.style.display = 'none';
+  const undo = [];
+  const set = (el, prop, val) => {
+    if (!el) return;
+    const old = el.style[prop];
+    undo.push(() => { el.style[prop] = old; });
+    el.style[prop] = val;
+  };
+
+  set(ctrl, 'display', 'none');
 
   // The bar now lies OVER the picture, so it has to out-rank #vp-swipe-catcher
   // (z 50) or the catcher would swallow every scrub. pointer-events:none makes
   // the rest of it invisible to hit-testing, so gestures aimed at the picture
   // still reach the catcher underneath.
-  bar.style.background   = 'transparent';
-  bar.style.borderTop    = 'none';
-  bar.style.minHeight    = '0';
-  bar.style.padding      = '0 0 calc(8px + env(safe-area-inset-bottom,0px)) 0';
-  bar.style.pointerEvents = 'none';
-  bar.style.zIndex       = '60';
+  set(bar, 'background',    'transparent');
+  set(bar, 'borderTop',     'none');
+  set(bar, 'minHeight',     '0');
+  set(bar, 'padding',       '0 0 calc(8px + env(safe-area-inset-bottom,0px)) 0');
+  set(bar, 'pointerEvents', 'none');
+  set(bar, 'zIndex',        '60');
 
-  if (row) {
-    row.style.height       = 'auto';
-    row.style.alignItems   = 'center';
-    row.style.padding      = '0 12px';
-    row.style.gap          = '10px';
-    row.style.pointerEvents = 'none';
-  }
+  set(row, 'height',        'auto');
+  set(row, 'alignItems',    'center');
+  set(row, 'padding',       '0 12px');
+  set(row, 'gap',           '10px');
+  set(row, 'pointerEvents', 'none');
 
-  tl.style.height        = '7px';
-  tl.style.background    = 'rgba(255,255,255,0.18)';
-  tl.style.border        = 'none';
-  tl.style.borderRadius  = '4px';
-  tl.style.boxShadow     = '0 1px 6px rgba(0,0,0,0.55)';
-  tl.style.pointerEvents = 'auto';
-  if (prog) prog.style.background = 'rgba(255,255,255,0.62)';
-  if (head) { head.style.background = '#fff'; head.style.width = '2px'; }
+  set(tl, 'height',        '7px');
+  set(tl, 'background',    'rgba(255,255,255,0.18)');
+  set(tl, 'border',        'none');
+  set(tl, 'borderRadius',  '4px');
+  set(tl, 'boxShadow',     '0 1px 6px rgba(0,0,0,0.55)');
+  set(tl, 'pointerEvents', 'auto');
+  set(prog, 'background', 'rgba(255,255,255,0.62)');
+  set(head, 'background', '#fff');
+  set(head, 'width',      '2px');
   if (!document.getElementById('vp-tl-hit')) {
     const hit = document.createElement('div');
     hit.id = 'vp-tl-hit';
     hit.style.cssText = 'position:absolute;left:0;right:0;top:-11px;bottom:-11px;'
       + 'z-index:0;background:transparent;';
     tl.appendChild(hit);
+    // Must go with the slim dressing: under the full bar it would reach 11px
+    // down over the control row and take clicks meant for its buttons.
+    undo.push(() => hit.remove());
   }
 
   // (dev0950) Mute goes to the TOP-RIGHT of the picture, not into the strip.
@@ -589,6 +622,34 @@ function _vpApplySlimChrome() {
   // press aimed at mute stepped the show. Up here nothing else is competing:
   // the close button is top-left and the [N] box is mid-right.
   //
+  // (dev0970) It shares that corner with the ☰ that brings the full toolbar
+  // back, and — in a plain V, where the toolbar's ✕ is the only close button
+  // there is — a ✕. Vss has its own close top-left, and closing V there means
+  // "next slide", so it gets no second one.
+  let corner = null;
+  if (content) {
+    corner = document.createElement('div');
+    corner.id = 'vp-slim-corner';
+    corner.style.cssText = 'position:absolute;top:10px;right:12px;z-index:70;'
+      + 'display:flex;align-items:center;gap:6px;pointer-events:none;';
+    content.appendChild(corner);
+    undo.push(() => corner.remove());
+  }
+  const cornerCss = ';pointer-events:auto;min-width:0;width:auto;padding:5px 10px;'
+    + 'font-size:13px;line-height:1;background:rgba(0,0,0,0.5);'
+    + 'border:1px solid rgba(255,255,255,0.32);border-radius:6px;'
+    + 'color:#fff;opacity:0.85;touch-action:manipulation;';
+  if (corner) {
+    const full = document.createElement('button');
+    full.id = 'vp-slim-full';
+    full.className = 'vp-btn';
+    full.textContent = '☰';
+    full.title = 'Full controls — speed, A-B, frame steps (v)';
+    full.style.cssText += cornerCss;
+    full.addEventListener('click', e => { e.stopPropagation(); vpToggleSlimChrome(false); });
+    corner.appendChild(full);
+  }
+
   // Still the LIVE button, only re-parented — vpWireControls' onclick and
   // vpToggleMute's icon swap both address it by id, so the speaker/red-slash
   // symbol keeps tracking the real player state.
@@ -596,28 +657,77 @@ function _vpApplySlimChrome() {
   // unresolved Pinterest pin are cross-origin embeds whose player stub has no
   // setMuted, so vpToggleMute's call throws into its own catch: the symbol
   // would flip and the sound would carry on. A button that lies is worse than
-  // no button. The test mirrors the mount dispatch's own order — direct file,
-  // YouTube and Vimeo are the three that answer a mute.
-  const _mrow = window._vpCurrentRow || {};
-  const _mlnk = _mrow.link || '';
-  const _canMute = !!(_mrow._directVideoFile
-    || /\.(mp4|mov|webm|ogv|ogg|avi|mkv|m4v)(\?|#|$)/i.test(_mlnk)
-    || (window.isYouTubeLink && window.isYouTubeLink(_mlnk))
-    || (window.isVimeoLink   && window.isVimeoLink(_mlnk)));
-  const content = document.getElementById('gridFsContent');
-  if (mute && !_canMute) mute.style.display = 'none';
-  else if (mute && content) {
-    mute.style.cssText += ';position:absolute;top:10px;right:12px;z-index:70;'
-      + 'pointer-events:auto;min-width:0;width:auto;padding:5px 10px;'
-      + 'font-size:13px;line-height:1;background:rgba(0,0,0,0.5);'
-      + 'border:1px solid rgba(255,255,255,0.32);border-radius:6px;'
-      + 'color:#fff;opacity:0.85;touch-action:manipulation;';
-    content.appendChild(mute);
+  // no button.
+  if (mute && !_vpRowAnswersApi(window._vpCurrentRow)) set(mute, 'display', 'none');
+  else if (mute && corner) {
+    const oldCss = mute.style.cssText, parent = mute.parentNode, next = mute.nextSibling;
+    undo.push(() => { mute.style.cssText = oldCss; if (parent) parent.insertBefore(mute, next); });
+    mute.style.cssText += cornerCss;
+    corner.appendChild(mute);
   }
 
+  if (corner && !document.getElementById('slideshowOverlay')) {
+    const close = document.createElement('button');
+    close.id = 'vp-slim-close';
+    close.className = 'vp-btn';
+    close.textContent = '✕';
+    close.title = 'Close (Esc)';
+    close.style.cssText += cornerCss;
+    close.addEventListener('click', e => { e.stopPropagation(); vpClose(); });
+    corner.appendChild(close);
+  }
+
+  _vpSlimUndo = undo;
+  _vpSlimActive = true;
   if (host)    host.style.bottom = '0';
   if (catcher) catcher.style.inset = '0';
+  // At open this runs before the mount, which reads _vpSlimActive for itself;
+  // flipped later, the direct file's native control bar has to go by hand.
+  const pv = _vpState && _vpState.player;
+  if (pv && pv.isDirectVideo && pv.el) pv.el.controls = false;
 }
+
+// (dev0970) Put back everything _vpApplySlimChrome changed, newest first.
+// The host inset and the catcher are recomputed rather than restored: at open
+// the slim dressing lands BEFORE the mount, so the values it saw then were not
+// the full player's.
+function _vpRemoveSlimChrome() {
+  if (!_vpSlimUndo) return;
+  const undo = _vpSlimUndo;
+  _vpSlimUndo = null;
+  _vpSlimActive = false;
+  for (let i = undo.length - 1; i >= 0; i--) { try { undo[i](); } catch (_) {} }
+  const bar     = document.getElementById('vp-toolbar');
+  const host    = document.getElementById('grid-fs-video');
+  const catcher = document.getElementById('vp-swipe-catcher');
+  const pv = _vpState && _vpState.player;
+  if (pv && pv.isDirectVideo && pv.el) pv.el.controls = true;
+  // Same numbers the mount and the catcher's own creation use (dev0253: the
+  // direct file leaves 136px clear for its native controls).
+  if (catcher) catcher.style.inset = (pv && pv.isDirectVideo) ? '0 0 136px 0' : '0 0 80px 0';
+  if (host && bar) host.style.bottom = ((bar.offsetHeight || 70) + 10) + 'px';
+}
+
+// (dev0970) Can this V change dressing? Not a picture, not the peek mode that
+// promises no controls at all, not a bar that is collapsed out of sight — and
+// only a player with a timeline to show (or one already dressed slim, which Vss
+// does to every video).
+function _vpSlimToggleable() {
+  const fs = document.getElementById('gridFullscreen');
+  if (!fs || fs.style.display !== 'flex') return false;
+  if (!_vpState || _vpNoExpandActive) return false;
+  const bar = document.getElementById('vp-toolbar');
+  if (!bar || bar.style.display === 'none') return false;
+  return !!_vpSlimUndo || _vpRowAnswersApi(window._vpCurrentRow);
+}
+window._vpSlimToggleable = _vpSlimToggleable;
+
+// slim: true / false, or leave it out to flip.
+function vpToggleSlimChrome(slim) {
+  if (typeof slim !== 'boolean') slim = !_vpSlimUndo;
+  if (slim) _vpApplySlimChrome(); else _vpRemoveSlimChrome();
+}
+window.vpToggleSlimChrome = vpToggleSlimChrome;
 
 // (dev0949) Centre a media point at a magnification, clamped so the scaled
 // media still covers the frame — the grid's COI rule (see _gridAnchoredTransform
@@ -708,9 +818,15 @@ function gridOpenFullscreen(row, contained) {
   // slide came from was showing. Read-and-CLEARED on every open for the same
   // reason as the peek flags above — a flag that misses its branch must not
   // leak into the next, ordinary V.
-  const _slim = !!window._vpSlimChrome;
+  // (dev0970) …and an ordinary V is slim too now, whenever the video has a
+  // timeline to slim (Vss still asks for it on every video, embeds included).
+  // Never over a peek: that mode wants no controls at all, and slim would put
+  // the mute and ☰ buttons back on the picture it promised to leave bare.
+  const _slim = !_hideCtl && !_noExpand
+    && (!!window._vpSlimChrome || _vpRowAnswersApi(row));
   window._vpSlimChrome = false;
   _vpSlimActive = _slim;
+  _vpSlimUndo = null;   // the last player's dressing died with its DOM
   const _framing = window._vpCellFraming || null;
   window._vpCellFraming = null;
   if (_noExpand || _loopWhole || _peekCap) {
@@ -1690,21 +1806,24 @@ function gridOpenFullscreen(row, contained) {
     const speedLbl = document.createElement('span');
     speedLbl.style.cssText = 'color:#888;font-size:11px;';
     speedLbl.textContent = 'Spd';
-    const speedSlider = document.createElement('input');
-    speedSlider.id = 'vp-speed';
-    speedSlider.type = 'range';
-    speedSlider.min = '0.5';
-    speedSlider.max = '2';
-    speedSlider.step = '0.25';
-    speedSlider.value = '1';
-    speedSlider.style.cssText = 'width:60px;accent-color:#06f;';
-    const speedVal = document.createElement('span');
-    speedVal.id = 'vp-speed-val';
-    speedVal.style.cssText = 'color:#8cf;font-size:11px;min-width:24px;';
-    speedVal.textContent = '1x';
+    // (dev0970) A menu, not the 0.5–2x slider: 1/16x to 16x is a range a slider
+    // can only cover in steps too coarse at the bottom or too fine at the top.
+    // Each player's real range is applied when the menu is opened — see
+    // _vpSpeedFit — since the mount that decides it hasn't happened yet.
+    const speedSel = document.createElement('select');
+    speedSel.id = 'vp-speed';
+    speedSel.title = 'Playback speed';
+    speedSel.style.cssText = 'background:#113;color:#8cf;border:1px solid #06f;'
+      + 'border-radius:3px;font-size:11px;padding:1px 2px;cursor:pointer;';
+    VP_SPEEDS.forEach(s => {
+      const o = document.createElement('option');
+      o.value = String(s);
+      o.textContent = _vpSpeedLabel(s);
+      if (s === 1) o.selected = true;
+      speedSel.appendChild(o);
+    });
     speedWrap.appendChild(speedLbl);
-    speedWrap.appendChild(speedSlider);
-    speedWrap.appendChild(speedVal);
+    speedWrap.appendChild(speedSel);
     
     // Selected/Full toggle
     const toggleBtn = document.createElement('button');
@@ -1804,11 +1923,17 @@ function gridOpenFullscreen(row, contained) {
     hideBtn.id = 'vp-collapse';
     hideBtn.className = 'vp-btn';
     hideBtn.innerHTML = '⌄';
-    hideBtn.title = 'Hide these controls for more picture (the ⌃ tab brings them back)';
+    // (dev0970) On a video with a timeline this goes to the SLIM dressing (the
+    // thin strip over the picture, ☰ to come back) rather than hiding the bar
+    // outright. Only the embeds with no timeline still collapse the old way.
+    const _hideSlims = _vpRowAnswersApi(window._vpCurrentRow);
+    hideBtn.title = _hideSlims
+      ? 'Slim controls: a thin timeline over the picture (v)'
+      : 'Hide these controls for more picture (the ⌃ tab brings them back)';
     hideBtn.style.cssText += 'background:#123;border-color:#69c;color:#9cf;margin-left:auto;';
     hideBtn.addEventListener('click', e => {
       e.stopPropagation();
-      vpCollapseControls(true);
+      if (_hideSlims) vpToggleSlimChrome(true); else vpCollapseControls(true);
     });
 
     // Close button
@@ -2769,6 +2894,7 @@ function vpClose() {
   // just torn down; left set, the next ordinary V would inherit a dressing it
   // never asked for and a closure over a dead host.
   _vpSlimActive = false;
+  _vpSlimUndo = null;   // (dev0970) its closures hold the torn-down toolbar
   window._vpSetFraming = null;
   _vpSetPeekCaption('');
   // (dev0902) The reader owned the tick write-back while it was up; anything
@@ -3085,6 +3211,18 @@ function vpKeyHandler(e) {
   if ((e.key === 'v' || e.key === 'V') && _vpCropHolding()) {
     e.preventDefault();
     _vpCropCycleDeshake();
+    return;
+  }
+
+  // (dev0970) …and everywhere else on a video, v flips between the slim strip
+  // and the full toolbar. It used to close V (the registry's V toggle), which
+  // Esc, ✕ and the swipe all still do; core.js stands down for this letter
+  // whenever _vpSlimToggleable says yes, so the two can't both fire. Pictures
+  // and the timeline-less embeds keep the old close.
+  if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey
+      && _vpSlimToggleable()) {
+    e.preventDefault(); e.stopPropagation();
+    vpToggleSlimChrome();
     return;
   }
 
@@ -3636,15 +3774,66 @@ function vpUpdatePlayBtn() {
   }
 }
 
+// (dev0970) The speed menu's steps. A plain <video> — the R2 videos, any direct
+// .mp4, a disk file — takes 1/16x to 16x (Chrome's hard limits; outside them it
+// throws). YouTube only offers 0.25x-2x and Vimeo 0.5x-2x, and the
+// Instagram / TikTok / Pinterest embeds have no speed to set at all.
+const VP_SPEEDS = [0.0625, 0.125, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 8, 16];
+function _vpSpeedLabel(s) {
+  return (s < 0.5 ? '1/' + Math.round(1 / s) : String(s)) + 'x';
+}
+// [min, max] for the mounted player; null = nothing to set; undefined = not
+// mounted yet, so nothing is known.
+function _vpSpeedRange() {
+  const p = _vpState && _vpState.player;
+  if (!p) return undefined;
+  if (p.isDirectVideo) return [0.0625, 16];
+  if (_vpState.isYT)   return [0.25, 2];
+  if (typeof p.setPlaybackRate === 'function') return [0.5, 2];   // Vimeo
+  return null;
+}
+// Hide the steps this player can't do. Run as the menu opens, which is the
+// first moment the answer is sure to be known.
+function _vpSpeedFit() {
+  const sel = document.getElementById('vp-speed');
+  const r = _vpSpeedRange();
+  if (!sel || r === undefined) return;
+  sel.disabled = !r;
+  sel.title = r ? ('Playback speed (' + _vpSpeedLabel(r[0]) + ' to ' + _vpSpeedLabel(r[1]) + ' on this player)')
+                : 'This player has no speed control';
+  for (const o of sel.options) {
+    const v = parseFloat(o.value);
+    o.hidden = o.disabled = !!r && (v < r[0] || v > r[1]);
+  }
+}
+// Point the menu at a speed, adding a step for one it doesn't list (a value a
+// slideshow carried over from the old slider, say) so it never shows blank.
+function _vpSpeedShow(spd) {
+  const sel = document.getElementById('vp-speed');
+  if (!sel) return;
+  const val = String(spd);
+  if (![...sel.options].some(o => o.value === val)) {
+    const o = document.createElement('option');
+    o.value = val;
+    o.textContent = _vpSpeedLabel(spd);
+    sel.appendChild(o);
+  }
+  sel.value = val;
+}
+
 function vpSetSpeed(spd) {
   if (!_vpState || !_vpState.player) return;
+  const r = _vpSpeedRange();
+  if (!r) return;
+  spd = Math.max(r[0], Math.min(r[1], spd));
   _vpState.speed = spd;
-  if (_vpState.isYT) {
-    _vpState.player.setPlaybackRate(spd);
-  } else {
-    _vpState.player.setPlaybackRate(spd);
-  }
-  document.getElementById('vp-speed-val').textContent = spd + 'x';
+  // Vimeo's setter returns a promise that REJECTS out of range; the clamp above
+  // should keep it from ever doing so, and the catch keeps a miss quiet.
+  try {
+    const pr = _vpState.player.setPlaybackRate(spd);
+    if (pr && typeof pr.catch === 'function') pr.catch(() => {});
+  } catch (_) {}
+  _vpSpeedShow(spd);
 }
 
 function vpToggleSelectedFull() {
@@ -3837,7 +4026,12 @@ function vpWireControls() {
   document.getElementById('vp-prev').onclick = () => vpSeekRelative(-0.1);
   document.getElementById('vp-play').onclick = vpTogglePlay;
   document.getElementById('vp-next').onclick = () => vpSeekRelative(0.1);
-  document.getElementById('vp-speed').oninput = e => vpSetSpeed(parseFloat(e.target.value));
+  // (dev0970) The speed menu. Fitted to the player as it opens; blurred once a
+  // step is picked so Space, the arrows and v go back to the player.
+  const _spd = document.getElementById('vp-speed');
+  _spd.onpointerdown = _vpSpeedFit;
+  _spd.onfocus = _vpSpeedFit;
+  _spd.onchange = e => { vpSetSpeed(parseFloat(e.target.value)); e.target.blur(); };
   document.getElementById('vp-toggle').onclick = vpToggleSelectedFull;
   document.getElementById('vp-cc').onclick = vpToggleCC;
   document.getElementById('vp-mute').onclick = vpToggleMute;
@@ -10801,11 +10995,11 @@ function vpMountDirectVideo(host, link, seg, muted) {
   // (dev0281) Apply a carried-over playback speed (e.g. a slideshow session
   // pref set on a previous video) and reflect it in the speed control.
   if (_vpState.speed && _vpState.speed !== 1) {
+    // (dev0970) Clamped: the one carried over may have been set on a YouTube
+    // slide, and a <video> throws on a rate outside 1/16x–16x.
+    _vpState.speed = Math.max(0.0625, Math.min(16, _vpState.speed));
     vid.playbackRate = _vpState.speed;
-    const _sv  = document.getElementById('vp-speed');
-    const _svv = document.getElementById('vp-speed-val');
-    if (_sv)  _sv.value = _vpState.speed;
-    if (_svv) _svv.textContent = _vpState.speed + 'x';
+    _vpSpeedShow(_vpState.speed);
   }
   // (dev0281) Reflect carried-over A-B points in the toolbar styling.
   if ((_vpState.aPoint != null || _vpState.bPoint != null) && typeof vpUpdateABStyle === 'function') {

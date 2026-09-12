@@ -275,6 +275,10 @@ window.addEventListener('keydown', function(e) {
   // capture handler receives it. Nothing is lost: the global `l` (clipboard
   // import) already no-ops while V is open, and in user mode it's blocked.
   if (k === 'l' && document.getElementById('gridFullscreen')?.style.display === 'flex') return;
+  // (dev0970) …and `v` on a video, where it flips the slim strip and the full
+  // toolbar. Same shape as `l`: without this bail the registry's V toggle would
+  // close the player before vpKeyHandler ever saw the key. vp.js decides.
+  if (k === 'v' && typeof window._vpSlimToggleable === 'function' && window._vpSlimToggleable()) return;
 
   // (dev0724 / dev0747) The crop overlay's own letters — `e`, `w` and the rest
   // — are handled by the whole-handler bail above now that it covers every open

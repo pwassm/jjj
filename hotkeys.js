@@ -377,7 +377,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'v', label: 'V', group: 'Screens', scope: 'global',
-    desc: 'View the focused T row / last grid row fullscreen (V/I/Q/Xs); toggles closed if already open',
+    desc: 'View the focused T row / last grid row fullscreen (V/I/Q/Xs); toggles closed if already open — except on a video, where v switches the slim timeline and the full toolbar',
     fn(ctx) {
       // (zip0159) Mirrors swipe-right behaviour.
       if (ctx.teOpen) return;
