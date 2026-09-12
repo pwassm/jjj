@@ -2870,10 +2870,12 @@ window._salAnnotOn = function () {
 // e.g. <p>8 /lj Susie Surfperch kibitzes:</p>. They are cut out of every
 // caption, so they never show on a cell, in V or in Vss — which is the price:
 // an ftext can no longer OPEN with a bare number. "8x faster" still reads as
-// text (a token must be followed by a space or the end of its line).
+// text: a number must be followed by a space, a /lj or /rj, or the end of its
+// line. (dev0972) A slash code needs nothing after it — "/ljFloyd, I love…"
+// strips the /lj and keeps "Floyd".
 // Timing applies in any c.json collection, "+" or not; a T grid ignores it.
 // Xe shows the directives as typed, since that is where they are edited.
-var _SAL_LEAD_TOKEN_RE = /^\s*(\d+(?:\.\d*)?|\.\d+|\/[lr]j)(?=\s|$)/i;
+var _SAL_LEAD_TOKEN_RE = /^\s*((?:\d+(?:\.\d*)?|\.\d+)(?=\s|\/[lr]j|$)|\/[lr]j)/i;
 var _SAL_LEAD_HEAD_RE  = /^(?:\s|&nbsp;|<[^>]*>)+/i;
 var _salLeadCache = new Map();
 
