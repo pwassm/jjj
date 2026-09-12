@@ -1220,10 +1220,14 @@ window.mountDirectVideoClip = function(hostEl, url, startSec, dur, isMuted, cust
 
   window.seeLearnVideoTimers[cellId] = setInterval(function() {
     try {
-      if (vid.paused && !window.autoPauseGrid) return;
+      // (dev0971) ENDED counts as the end of the segment. At a fast lead rate
+      // (8x covers 0.8s of video between ticks) the clip can run off the end
+      // of the file between two checks, and an ended <video> is paused — so
+      // the old early return froze the cell on its last frame for good.
+      if (vid.paused && !vid.ended && !window.autoPauseGrid) return;
       var t = vid.currentTime;
       var seg = segs[segIdx];
-      if (t >= seg.start + seg.dur - 0.2) {
+      if (vid.ended || t >= seg.start + seg.dur - 0.2) {
         segIdx = (segIdx + 1) % segs.length;
         vid.currentTime = segs[segIdx].start;
         if (!window.autoPauseGrid) vid.play().catch(function(){});

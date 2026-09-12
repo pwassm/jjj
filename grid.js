@@ -2307,6 +2307,12 @@ function _gridMountVideo(vidHost, row, segs, muted) {
   } else if (window.isDirectVideoLink && window.isDirectVideoLink(row.link) && window.mountDirectVideoClip) {
     window.mountDirectVideoClip(vidHost, row.link, segs[0].start, segs[0].dur, muted, undefined, segs);
     _gridCoverFitHost(vidHost);
+    // (dev0971) A collection row's lead number is its playback rate. The
+    // DEFAULT rate as well, because the load a src triggers resets playbackRate
+    // to defaultPlaybackRate, and the load may land after this line.
+    const rate = window._salRowRate ? window._salRowRate(row) : null;
+    const pl = rate && window.seeLearnVideoPlayers && window.seeLearnVideoPlayers[vidHost.id];
+    if (pl && pl.el) { pl.el.defaultPlaybackRate = rate; pl.el.playbackRate = rate; }
   } else if (window.isInstagramLink && window.isInstagramLink(row.link) && window.mountInstagramEmbed) {
     window.mountInstagramEmbed(vidHost, row.link);
   } else if (window.isTikTokLink && window.isTikTokLink(row.link) && window.mountTikTokEmbed) {
@@ -2830,17 +2836,132 @@ function _gridCellLabelText(cellStr, row) {
 var _SAL_ANNOT_DIRECT_RE = /[.](jpe?g|png|gif|webp|bmp|tiff?|mp4|m4v|mov|webm|ogv|mkv)([?][^#]*)?$/i;
 var _SAL_ANNOT_MIN_PX    = 8;
 
+// (dev0971) Is a c.json collection showing at all, "+" or not? The lead
+// directives below answer to this; the annotation answers to the "+" on top.
+window._salInCollection = function () {
+  try {
+    if (typeof _gridSource === 'undefined' || _gridSource !== 'C') return false;
+    return !!((typeof _gridActiveConfig !== 'undefined') ? _gridActiveConfig : null);
+  } catch (_) { return false; }
+};
+
 // The gate: are we showing a c.json collection marked "+"? Reads the column in
 // either case — c.json ships `Label`, and a hand-typed `label` should not be a
 // silent no-op.
 window._salAnnotOn = function () {
   try {
-    if (typeof _gridSource === 'undefined' || _gridSource !== 'C') return false;
-    var cfg = (typeof _gridActiveConfig !== 'undefined') ? _gridActiveConfig : null;
-    if (!cfg) return false;
+    if (!window._salInCollection()) return false;
+    var cfg = _gridActiveConfig;
     var lab = (cfg.Label != null && String(cfg.Label).trim() !== '') ? cfg.Label : cfg.label;
     return String(lab == null ? '' : lab).trim() === '+';
   } catch (_) { return false; }
+};
+
+// ── (dev0971) ftext LEAD DIRECTIVES ─────────────────────────────────────────
+// The first words of a collection row's ftext can steer the row instead of
+// being read. Whitespace-separated, either order, before any real text:
+//
+//   a number   8   .2   1.5   a picture: seconds on screen in the slideshow
+//                                        (0 = hold until the viewer moves on)
+//                             a video FILE: playback rate — .2 = 1/5 speed,
+//                                        8 = 8x — clamped to V's 1/16x..16x
+//   /lj   /rj                 caption left / right justified (default centre)
+//
+// e.g. <p>8 /lj Susie Surfperch kibitzes:</p>. They are cut out of every
+// caption, so they never show on a cell, in V or in Vss — which is the price:
+// an ftext can no longer OPEN with a bare number. "8x faster" still reads as
+// text (a token must be followed by a space or the end of its line).
+// Timing applies in any c.json collection, "+" or not; a T grid ignores it.
+// Xe shows the directives as typed, since that is where they are edited.
+var _SAL_LEAD_TOKEN_RE = /^\s*(\d+(?:\.\d*)?|\.\d+|\/[lr]j)(?=\s|$)/i;
+var _SAL_LEAD_HEAD_RE  = /^(?:\s|&nbsp;|<[^>]*>)+/i;
+var _salLeadCache = new Map();
+
+// The first non-blank text node of `node`, depth-first. null = a picture, a
+// video, a rule or a table comes before any words, so there is no lead;
+// undefined = nothing in this subtree either way.
+function _salFirstTextNode(node) {
+  for (var c = node.firstChild; c; c = c.nextSibling) {
+    if (c.nodeType === 3) {
+      if (c.nodeValue.replace(/\s/g, '')) return c;
+      continue;
+    }
+    if (c.nodeType !== 1) continue;
+    if (/^(img|video|iframe|audio|svg|canvas|hr|table|script|style)$/i.test(c.nodeName)) return null;
+    var r = _salFirstTextNode(c);
+    if (r !== undefined) return r;
+  }
+  return undefined;
+}
+
+// { num: Number|null, align: ''|'left'|'right', html: ftext minus the directives }
+// Cached by ftext string: the slideshow asks on every wheel notch, the grid on
+// every cell. The cheap head test keeps ordinary ftext off the DOM path entirely.
+window._salFtextLead = function (ftext) {
+  var src = String(ftext == null ? '' : ftext);
+  var hit = _salLeadCache.get(src);
+  if (hit) return hit;
+  var out = { num: null, align: '', html: src };
+  if (_SAL_LEAD_TOKEN_RE.test(src.replace(_SAL_LEAD_HEAD_RE, ' '))) {
+    var tpl = document.createElement('template');
+    tpl.innerHTML = src;
+    var root = tpl.content;
+    for (var guard = 0; guard < 6; guard++) {
+      var tn = _salFirstTextNode(root);
+      if (!tn) break;
+      var t = tn.nodeValue, m, took = false;
+      while ((m = _SAL_LEAD_TOKEN_RE.exec(t))) {
+        var tok = m[1].toLowerCase();
+        if (tok.charAt(0) === '/') {
+          if (out.align) break;                  // a second /lj is text
+          out.align = (tok === '/lj') ? 'left' : 'right';
+        } else {
+          if (out.num !== null) break;           // "8 3 fish" keeps the 3
+          out.num = parseFloat(tok);
+        }
+        t = t.slice(m[0].length);
+        took = true;
+      }
+      if (!took) break;
+      t = t.replace(/^\s+/, '');
+      if (t) { tn.nodeValue = t; break; }
+      // Nothing but directives in this node: drop it, and any <p>/<h3> it
+      // leaves with no words and no media, so no blank line is left behind.
+      var p = tn.parentNode;
+      tn.remove();
+      while (p && p !== root && p.nodeType === 1
+             && !p.textContent.replace(/\s/g, '')
+             && !p.querySelector('img,video,iframe,audio,svg,canvas,hr,table')) {
+        var up = p.parentNode;
+        p.remove();
+        p = up;
+      }
+    }
+    out.html = tpl.innerHTML;
+  }
+  if (_salLeadCache.size > 500) _salLeadCache.clear();
+  _salLeadCache.set(src, out);
+  return out;
+};
+
+// The row's lead number, or null. Collections only.
+window._salRowLeadNum = function (row) {
+  if (!row || !row.ftext || !window._salInCollection()) return null;
+  var n = window._salFtextLead(row.ftext).num;
+  return (n !== null && isFinite(n) && n >= 0) ? n : null;
+};
+
+// Playback rate for a video FILE row, or null for "leave it at 1x". Files only:
+// YouTube / Vimeo / the embeds either can't take a rate or can't take this range.
+window._salRowRate = function (row) {
+  var n = window._salRowLeadNum(row);
+  if (n === null || n <= 0) return null;
+  var link = String(row.link || '');
+  var isFile = row._directVideoFile
+    || (window.isDirectVideoLink ? window.isDirectVideoLink(link)
+                                 : /\.(mp4|m4v|mov|webm|ogv|mkv)([?#]|$)/i.test(link));
+  if (!isFile) return null;
+  return Math.max(0.0625, Math.min(16, n));
 };
 
 // The row's annotation HTML, or '' when this row doesn't get one. Empty for an
@@ -2856,6 +2977,10 @@ window._salAnnotHtml = function (row) {
   if (!link || !_SAL_ANNOT_DIRECT_RE.test(link)) return '';
   if (ft.charAt(0) === '[' || ft.charAt(0) === '{') return '';
   if (/<img[ >]/i.test(ft)) return '';
+  // (dev0971) Lead directives never show. An ftext that was ONLY directives
+  // ("8") captions nothing.
+  ft = window._salFtextLead(ft).html;
+  if (!ft.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/gi, '')) return '';
   return (typeof renderFtext === 'function') ? renderFtext(ft) : ft;
 };
 
@@ -2914,6 +3039,9 @@ window._salAnnotMount = function (parent, row, measureEl) {
   var el  = document.createElement('div');
   el.className = 'sal-annot';
   el.innerHTML = html;
+  // (dev0971) /lj or /rj at the head of the ftext; centred otherwise.
+  var align = window._salFtextLead(row.ftext).align;
+  if (align) el.style.textAlign = align;
   parent.appendChild(el);
   var fit = function () { _salAnnotFit(el, box); };
   fit();

@@ -124,7 +124,15 @@ function _slideshowLoadSettings() {
 // (dev0949) The image dwell, in ms — 0 meaning HOLD (no auto-advance at all).
 // Every site that arms the advance timer goes through this, so "0 = wait for
 // the viewer" is one rule rather than four copies of `slideSec * 1000`.
+// (dev0971) …unless the picture on screen belongs to a collection row whose
+// ftext OPENS with a number: that row's seconds win over the setting, hold (0)
+// included, so an authored collection plays at the pace it was written for.
 function _ssDwellMs(st) {
+  const cur = (st && st.slides && st.idx >= 0) ? st.slides[st.idx] : null;
+  if (cur && cur.kind === 'image' && cur.row && typeof window._salRowLeadNum === 'function') {
+    const own = window._salRowLeadNum(cur.row);
+    if (own !== null) return own > 0 ? own * 1000 : 0;
+  }
   const v = Number((st && st.settings ? st.settings.slideSec : 0));
   return (isFinite(v) && v > 0) ? v * 1000 : 0;
 }
@@ -1423,7 +1431,9 @@ function _slideshowPlayVideo(slide) {
     // timeline loop. Setting them now (before mount) is enough.
     const sess = st._vpSession || (st._vpSession = { muted: null, speed: null, ab: {} });
     if (sess.muted !== null) _vpState.muted = sess.muted;
-    if (sess.speed !== null) _vpState.speed = sess.speed;
+    // (dev0971) A row with its own lead rate keeps it; a speed carried from
+    // an earlier video only fills in for rows that don't say.
+    if (sess.speed !== null && !_vpState.rowRate) _vpState.speed = sess.speed;
     const ab = (sess.ab && slide.url) ? sess.ab[slide.url] : null;
     if (ab) { _vpState.aPoint = ab.a; _vpState.bPoint = ab.b; }
   }
@@ -1637,7 +1647,9 @@ window._slideshowCaptureVp = function (vp) {
   if (!st || !vp) return;
   const sess = st._vpSession || (st._vpSession = { muted: null, speed: null, ab: {} });
   sess.muted = !!vp.muted;
-  if (typeof vp.speed === 'number') sess.speed = vp.speed;
+  // (dev0971) Not from a row that set its own rate — 8x for one clip is that
+  // clip's pace, not a preference to carry into the next video.
+  if (typeof vp.speed === 'number' && !vp.rowRate) sess.speed = vp.speed;
   const url = (vp.row && vp.row.link) ? vp.row.link : null;
   if (url) {
     if (vp.aPoint != null && vp.bPoint != null) sess.ab[url] = { a: vp.aPoint, b: vp.bPoint };
@@ -3159,9 +3171,12 @@ function _ssSetDwell(sec) {
   // Re-armed from NOW rather than at the next advance: the whole point of
   // reaching for this box mid-show is to change what the picture in front of
   // you is doing. A video slide is left alone — it owns its own timing.
+  // (dev0971) Through _ssDwellMs, so a picture timed by its own row keeps its
+  // own seconds when the box changes the rest of the show.
   clearTimeout(st.timer);
-  if (!st.paused && !st._videoActive && sec > 0) {
-    st.timer = setTimeout(function () { _slideshowAdvance(+1); }, sec * 1000);
+  const ms = _ssDwellMs(st);
+  if (!st.paused && !st._videoActive && ms > 0) {
+    st.timer = setTimeout(function () { _slideshowAdvance(+1); }, ms);
   }
 }
 

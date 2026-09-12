@@ -860,6 +860,12 @@ function gridOpenFullscreen(row, contained) {
       // segments instead — the playhead would sit at 0 the whole way round.
       // (The A-B branch in vpUpdateTimeline already outranks the seg walk.)
       isSelected: !_armLoop, // Start in "Selected" mode (segment only)
+      // (dev0971) A collection row's ftext can open with its playback rate
+      // (grid.js _salRowRate). Not when V was forced open from T — the grid
+      // under it then is scaffolding and its collection says nothing about
+      // this row. rowRate is kept so Vss can tell an authored rate from a
+      // chosen one. The direct-file mount applies `speed`.
+      rowRate: (!window._vpForcedGridFromT && window._salRowRate) ? window._salRowRate(row) : null,
       speed: 1.0,
       muted: row.Mute !== '0',
       ccOn: false,
@@ -874,7 +880,8 @@ function gridOpenFullscreen(row, contained) {
       duration: 0,
       currentTime: 0
     };
-    
+    if (_vpState.rowRate) _vpState.speed = _vpState.rowRate;   // (dev0971)
+
     // Video host
     // (zip0144) Extends to the top edge — the old 50px info bar
     // ("cell · title") was removed in 0144 to recover screen height on

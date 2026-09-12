@@ -981,12 +981,18 @@ let _mlLoadedFile = 'ml.json';
 
 // c.json cell values address a row by UID, sometimes with a suffix:
 // "19@0.685,0.335" (framing) or "1029/0.9" (zoom).
-function _mlGridUids(cfgRows) {
+// (dev0971) plusOnly: just the collections whose Label is a bare "+" — the
+// annotated ones (grid.js _salAnnotOn), where a picture's ftext IS its caption.
+function _mlGridUids(cfgRows, plusOnly) {
   const CELL = /^\d+[a-zA-Z]$|^\d+[LP]$/;
   const out = new Set();
   if (!Array.isArray(cfgRows)) return out;
   for (const g of cfgRows) {
     if (!g || g._salMeta) continue;
+    if (plusOnly) {
+      const lab = (g.Label != null && String(g.Label).trim() !== '') ? g.Label : g.label;
+      if (String(lab == null ? '' : lab).trim() !== '+') continue;
+    }
     for (const k of Object.keys(g)) {
       if (!CELL.test(k)) continue;
       const v = String(g[k] || '').trim();
@@ -998,7 +1004,7 @@ function _mlGridUids(cfgRows) {
 
 // Returns the ROUTE by which a viewer reaches this row's ftext, or '' if none.
 // Keep this list in step with boot.js: every one of these is a real render path.
-function _mlFtextRoute(row, gridUids) {
+function _mlFtextRoute(row, gridUids, plusUids) {
   if (!row || row._salMeta) return '';
   const ft = typeof row.ftext === 'string' ? row.ftext : '';
   if (!ft) return '';
@@ -1013,16 +1019,36 @@ function _mlFtextRoute(row, gridUids) {
   // uses `link`, and its ftext is just a harvested description.
   const rendersAsText = String(row.VidRange || '') === 'text' || !nz(row.link);
   if (rendersAsText && gridUids.has(String(row.UID))) return 'grid';
+  // (dev0971) …except in a "+" collection, where a still or a video FILE wears
+  // its ftext as a caption (dev0967 shipped that render path without this
+  // route, so its captions never reached the live site). Same exclusions as
+  // grid.js _salAnnotHtml: a picture montage is not a caption.
+  if (plusUids && plusUids.has(String(row.UID))
+      && _ML_ANNOT_DIRECT_RE.test(String(row.link || '')) && !/<img[ >]/i.test(ft)) return 'annot';
   return '';
 }
+const _ML_ANNOT_DIRECT_RE = /[.](jpe?g|png|gif|webp|bmp|tiff?|mp4|m4v|mov|webm|ogv|mkv)([?][^#]*)?$/i;
 
-function _mlPublicRows(rows, gridUids) {
+// (dev0971) A grid-placed row with no route still publishes its LEAD
+// directives (grid.js _salFtextLead) — "8", ".2 /lj" — because the slideshow
+// and the cell's playback rate read them on the live site too. Only the
+// directives: the rest of that ftext is a harvested description.
+function _mlLeadOnly(row, gridUids) {
+  if (!gridUids.has(String(row.UID)) || typeof window._salFtextLead !== 'function') return '';
+  const lead = window._salFtextLead(row.ftext);
+  const parts = [];
+  if (lead.num !== null) parts.push(String(lead.num));
+  if (lead.align) parts.push(lead.align === 'left' ? '/lj' : '/rj');
+  return parts.join(' ');
+}
+
+function _mlPublicRows(rows, gridUids, plusUids) {
   return rows.map(r => {
     if (!r || r._salMeta) return r;
     if (typeof r.ftext !== 'string' || !r.ftext) return r;
-    if (_mlFtextRoute(r, gridUids)) return r;
+    if (_mlFtextRoute(r, gridUids, plusUids)) return r;
     const c = Object.assign({}, r);
-    c.ftext = '';
+    c.ftext = _mlLeadOnly(r, gridUids);
     return c;
   });
 }
@@ -1057,7 +1083,7 @@ async function writePublicMl(allRows) {
       console.warn('writePublicMl: could not read c.json — refusing to publish (grid-placed slides would be stripped).');
       return false;
     }
-    return await writeFileToDisk(ML_PUBLIC, _mlPublicRows(allRows, _mlGridUids(cfg)));
+    return await writeFileToDisk(ML_PUBLIC, _mlPublicRows(allRows, _mlGridUids(cfg), _mlGridUids(cfg, true)));
   } catch (e) {
     console.warn('writePublicMl failed: ' + (e && e.message ? e.message : e));
     return false;
