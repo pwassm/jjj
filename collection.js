@@ -78,8 +78,7 @@ function gridSavePrompt() {
       : data.filter(r => r.cell && parseGridCell(r.cell) && (r.show === undefined || r.show === '1')).length;
     document.getElementById('gridInfo').textContent =
       'gname: ' + name + ' · ' + sizeLabel
-      + ' · ' + occupied + '/' + total
-      + ' cells · HOLD=cut · Click=swap · Rclick=menu · Ctrl-click=Edit · ^!G=name';
+      + ' · ' + occupied + '/' + total + ' cells';   // (dev0974) no hotkey crib
     close();
   };
   

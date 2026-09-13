@@ -1510,11 +1510,14 @@ function _gridIndivZoomForCell(cellEl) {
 
 // Effective zoom for one cell = global x that cell's own factor.
 function _gridZoomForCell(cellEl) {
-  // (dev0359) No zoom on phones/tablets — zoomed cells look bad on small
-  // screens, so the grid always renders at plain cover/contain there. The
-  // stored global "Zoom", per-cell "UID/zoom" and COI zoom are kept (and still
-  // apply on desktop); they're just ignored for mobile rendering.
-  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return 1;
+  // (dev0359) No whole-grid zoom on phones/tablets — zoomed grids look bad on
+  // small screens. The stored global "Zoom" is kept and still applies on desktop.
+  // (dev0974) …except a cell's OWN framing. A COI zoom (or a c.json "UID/zoom")
+  // is one picture deliberately framed, not a blanket magnification, and
+  // ignoring it left a COI'd cell zoomed on the desktop and in Vss on the phone
+  // (which reads the framing itself) but plain in G on that same phone. The
+  // whole-grid Zoom is still 1 there — that is what looked bad.
+  if (typeof _isMobileDevice === 'function' && _isMobileDevice()) return _gridIndivZoomForCell(cellEl);
   return _gridFillZoom() * _gridIndivZoomForCell(cellEl);
 }
 
@@ -3371,9 +3374,13 @@ function gridShow() {
   // report their own fixed count + label via the shared helpers.
   const _total = _gridLayoutCount(_layout, _gridGsize);
   const _sizeLabel = _gridLayoutLabel(_layout, _gridGsize);
-  document.getElementById('gridInfo').textContent =
-    '['+srcLabel+'] ' + _sizeLabel + ' · '
-    + occupied + '/' + _total + ' · ' + hint + _bufTag + _zoomTag;
+  // (dev0974) No hotkey crib along the top any more — at 11px it was illegible
+  // on a desktop and noise on a phone. A viewer gets no line at all; the
+  // developer keeps the status part (source, size, cells, buffer, zoom). The
+  // `hint` built above is left in place, unused, as the one list of what the
+  // keys are.
+  document.getElementById('gridInfo').textContent = userModeHere ? ''
+    : '['+srcLabel+'] ' + _sizeLabel + ' · ' + occupied + '/' + _total + _bufTag + _zoomTag;
   
   gridUpdateSourceBtns();
   overlay.style.display = 'flex';

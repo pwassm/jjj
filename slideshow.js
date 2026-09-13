@@ -248,11 +248,10 @@ function _ssCellFraming(cs) {
   if (!el) return null;
   let zoom = 1, coi = null;
   try {
-    // (dev0950) The product, NOT _gridZoomForCell: that one returns 1 on a
-    // phone (dev0359), because a zoomed cell looks bad at thumbnail size. Vss
-    // is the opposite case — the media has the whole screen — so the framing
-    // the row and the config actually carry should be honoured there on every
-    // device. The grid's own rendering is untouched and still flat on mobile.
+    // (dev0950) The product, NOT _gridZoomForCell: on a phone that one drops
+    // the whole-grid zoom (dev0359; since dev0974 it keeps the cell's own).
+    // Vss is the opposite case — the media has the whole screen — so the full
+    // framing the row and the config carry is honoured there on every device.
     zoom = (_gridFillZoom() * _gridIndivZoomForCell(el)) || 1;
     if (typeof _gridCOIForCell === 'function') coi = _gridCOIForCell(el);
   } catch (_) { return null; }
@@ -738,6 +737,13 @@ function _slideshowStart(allOrdered, opts) {
     // (dev0300) Paint initial tally card (all zeros).
     _slideshowUpdateTally();
   }
+  // (dev0974) A "+" collection CUTS from slide to slide — no crossfade. Its
+  // captions are part of each picture, and a fade shows two captions at once.
+  // A flag rather than a settings override: every dwell change saves the whole
+  // settings object, and a 0 written there would take the fade away from every
+  // other show too. Read through _ssTransSec.
+  _slideshowState._noFade = !!(opts && opts.sourceKind === 'grid'
+    && typeof window._salAnnotOn === 'function' && window._salAnnotOn());
 
   // Apply transition duration to image layers (live, in case settings change)
   _slideshowApplyTransitionTiming();
@@ -1154,10 +1160,15 @@ function _slideshowStart(allOrdered, opts) {
   }
 }
 
+// (dev0974) The crossfade length in seconds for THIS show: 0 in a "+" collection.
+function _ssTransSec(st) {
+  return (st && st._noFade) ? 0 : Number(st && st.settings ? st.settings.transitionSec : 0) || 0;
+}
+
 function _slideshowApplyTransitionTiming() {
   if (!_slideshowState) return;
   const st = _slideshowState;
-  const t = st.settings.transitionSec;
+  const t = _ssTransSec(st);
   const z = st.settings.zoomSec;
   // (zip0237) fg img layers: opacity crossfade over transitionSec, plus a
   // transform animation over zoomSec for the zoom-in effect.
@@ -2193,7 +2204,7 @@ function _slideshowShow(i, opts) {
       const frontBg = st.overlay.querySelector('#slideshowBg' + st.front);
       if (frontBg) frontBg.style.opacity = '0';
       if (targetBg && blurOn) targetBg.style.opacity = '1';
-      const swapMs = st.settings.transitionSec * 1000;
+      const swapMs = _ssTransSec(st) * 1000;
       setTimeout(() => {
         if (!_slideshowState) return;
         st.front = backLetter;
@@ -3009,13 +3020,15 @@ function _ssVssBuildChrome() {
     b.textContent = glyph;
     b.style.cssText = 'position:absolute;' + place + ';'
       + 'background:transparent;border:none;padding:8px 14px;'
-      + 'color:rgba(255,255,255,0.40);text-shadow:0 2px 12px rgba(0,0,0,0.9);'
+      + 'color:rgba(255,255,255,0.85);text-shadow:0 2px 12px rgba(0,0,0,0.9),0 0 3px rgba(0,0,0,0.9);'
       + 'font-family:monospace;font-size:' + size + 'px;font-weight:' + weight + ';'
       + 'line-height:1;cursor:pointer;touch-action:manipulation;'
       + '-webkit-tap-highlight-color:transparent;'
       + 'transition:color 0.15s;z-index:' + SLIDESHOW_MENU_Z + ';';
-    b.addEventListener('mouseenter', function () { b.style.color = 'rgba(255,255,255,0.95)'; });
-    b.addEventListener('mouseleave', function () { b.style.color = 'rgba(255,255,255,0.40)'; });
+    // (dev0974) 0.40 → 0.85 at rest: at 40% they were hard to find on a bright
+    // picture. Hover still goes to full white.
+    b.addEventListener('mouseenter', function () { b.style.color = '#fff'; });
+    b.addEventListener('mouseleave', function () { b.style.color = 'rgba(255,255,255,0.85)'; });
     b.addEventListener('click', function (e) { e.stopPropagation(); onTap(); });
     parent.appendChild(b);
     return b;
@@ -3025,7 +3038,8 @@ function _ssVssBuildChrome() {
   // seek strip — and, because the chrome sits at z-42000 and the strip at
   // z-60 inside the player, the NEXT arrow was lying on top of the mute
   // button: a press meant to mute stepped the show instead.
-  const aSize = mobile ? 34 : 42;
+  // (dev0974) About 20% larger than dev0950's 34 / 42, and brighter (mkArrow).
+  const aSize = mobile ? 40 : 50;
   const aBot  = mobile ? 36 : 44;
   mkArrow('ssVssPrev', '⟵', 'left:4px;bottom:' + aBot + 'px', aSize, 'normal',
           'Previous cell', function () { _ssVssStep(-1); });
@@ -3034,7 +3048,7 @@ function _ssVssBuildChrome() {
   // Thicker, and at eye level rather than in a corner: leaving is a different
   // kind of move from stepping, and should not be a near-miss of one.
   mkArrow('ssVssBack', '⟸', 'left:0;top:50%;transform:translateY(-50%)',
-          mobile ? 40 : 50, 'bold', 'Back to the grid (Esc)',
+          mobile ? 48 : 60, 'bold', 'Back to the grid (Esc)',
           function () { slideshowClose(); });
 
   // ── the [N] box ───────────────────────────────────────────────────────────
