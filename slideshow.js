@@ -2328,7 +2328,10 @@ function _slideshowUpdateLabel(slide) {
   //   disk files   → title = file name; comment = file path.
   let labelText = '', commentText = '';
   if (row) {
-    labelText   = row.VidTitle ? String(row.VidTitle) : _slideshowRowTag(row);
+    // (dev0975) Not in Vss: tags are filing words ("myvideo, neverita-lewisii"),
+    // not something to print over a picture a viewer is watching. A real
+    // VidTitle still shows.
+    labelText   = row.VidTitle ? String(row.VidTitle) : (st.vss ? '' : _slideshowRowTag(row));
     commentText = row.comment  ? String(row.comment)  : '';
   } else if (slide) {
     labelText   = slide.name ? String(slide.name) : '';
