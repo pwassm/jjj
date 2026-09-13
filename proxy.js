@@ -3652,6 +3652,7 @@ const WM_DIR = process.env.WM_DIR || 'M:\\wm\\watermarked';
 const WM_ROOT       = path.dirname(WM_DIR);
 const WM_UPLOAD_BAT = process.env.WM_UPLOAD_BAT || path.join(WM_ROOT, 'WmUploadNew.bat');
 const WM_DONE_FILE  = path.join(WM_ROOT, '.wm_uploaded.txt');
+const WM_ORIG_DIR   = path.join(WM_ROOT, 'originals');
 const WM_EXT = /\.(mp4|webm|mov|m4v|jpg|jpeg|png)$/i;
 const WM_IMG = /\.(jpg|jpeg|png)$/i;
 
@@ -3671,20 +3672,30 @@ function wmList(res, origin) {
     sendJson(res, 200, { ok: false, dir: WM_DIR, files: [], error: 'folder not found: ' + WM_DIR }, origin);
     return;
   }
-  const files = [];
-  const walk = (dir, rel) => {
+  const walk = (dir, rel, out) => {
     let ents;
     try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
     for (const ent of ents) {
       const key = rel ? rel + '/' + ent.name : ent.name;
-      if (ent.isDirectory()) { walk(path.join(dir, ent.name), key); continue; }
+      if (ent.isDirectory()) { walk(path.join(dir, ent.name), key, out); continue; }
       if (!WM_EXT.test(ent.name)) continue;
       let st; try { st = fs.statSync(path.join(dir, ent.name)); } catch (_) { continue; }
-      files.push({ key, size: st.size, mtime: st.mtimeMs });
+      out.push({ key, size: st.size, mtime: st.mtimeMs });
     }
   };
-  walk(WM_DIR, '');
+  const files = [];
+  walk(WM_DIR, '', files);
   files.sort((a, b) => a.key.localeCompare(b.key));
+  // (dev0976) What the next run WOULD stamp: originals\ files with no
+  // watermarked\ twin — the same test watermark_r2.ps1's uploadnew makes, so
+  // Watermark & Upload can say how many new files there are before it starts.
+  // Case-insensitive, as Windows (and the script's Test-Path) is.
+  const have = new Set(files.map(f => f.key.toLowerCase()));
+  const origs = [];
+  walk(WM_ORIG_DIR, '', origs);
+  const pending = origs.map(f => f.key)
+    .filter(k => !/_NoWatermark\./i.test(k) && !have.has(k.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
   // (dev0862) When the last run finished UPLOADING, as watermark_r2.ps1 records
   // it. A file sitting in watermarked\ only proves it was STAMPED — the script
   // asks before uploading, and a declined upload leaves the folder looking
@@ -3692,7 +3703,7 @@ function wmList(res, origin) {
   // what Housekeeping's watcher waits for. 0 = no marker (an older ps1).
   let uploadedAt = 0;
   try { uploadedAt = fs.statSync(WM_DONE_FILE).mtimeMs; } catch (_) {}
-  sendJson(res, 200, { ok: true, dir: WM_DIR, files, uploadedAt }, origin);
+  sendJson(res, 200, { ok: true, dir: WM_DIR, files, uploadedAt, pending }, origin);
 }
 
 // (dev0862) ── Start the watermark-and-upload run ─────────────────────────────

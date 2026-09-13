@@ -5421,7 +5421,9 @@ async function _wmSnapshot(PROXY) {
     const r = await fetch(PROXY + '/wm/list');
     const j = await r.json();
     if (!j || !j.ok || !Array.isArray(j.files)) return null;
-    return { keys: new Set(j.files.map(f => f.key)), uploadedAt: +j.uploadedAt || 0 };
+    return { keys: new Set(j.files.map(f => f.key)), uploadedAt: +j.uploadedAt || 0,
+             // (dev0976) originals\ files with no watermarked\ twin; null = proxy older than dev0976
+             pending: Array.isArray(j.pending) ? j.pending : null };
   } catch (_) { return null; }
 }
 
@@ -5442,16 +5444,31 @@ async function housekeepingWatermarkNew() {
     toast('\u26a0 Watermark run: proxy not reachable on 8081 — start proxy.js', 4000);
     return;
   }
-  if (!confirm('Watermark and upload everything new in M:\\wm\\originals\\ ?\n\n'
+  // (dev0976) Say how many new files there are before anything starts.
+  const pend = before.pending;
+  if (pend && !pend.length) {
+    toast('0 new files \u2014 everything in M:\\wm\\originals\\ already has a watermarked copy', 4500);
+    return;
+  }
+  const SHOW = 8;
+  const head = pend
+    ? pend.length + ' NEW FILE' + (pend.length === 1 ? '' : 'S') + ' to watermark and upload:\n'
+      + pend.slice(0, SHOW).map(k => '   ' + k).join('\n')
+      + (pend.length > SHOW ? '\n   \u2026and ' + (pend.length - SHOW) + ' more' : '') + '\n\n'
+    : 'Watermark and upload everything new in M:\\wm\\originals\\ ?\n'
+      + '(RESTART proxy.js to see the new-file count here)\n\n';
+  if (!confirm(head
     + '\u2022 A console window opens and runs WmUploadNew.bat. Only files with no\n'
     + '  watermarked\\ twin are stamped, so nothing already published is redone.\n'
     + '\u2022 Answer y when it asks to upload to R2.\n'
     + '\u2022 T watches the folder and offers to add the new rows itself —\n'
     + '  it will NOT open a second tab.\n\n'
-    + 'Check the byline first: files loose in originals\\ get the default\n'
-    + '("at Monterey Bay Aquarium"), and only a "from <Place>" subfolder\n'
-    + 'changes it. That folder is part of the public URL, so moving one\n'
-    + 'afterwards means a new link and a second row.')) return;
+    + 'Byline: files loose in originals\\ say "at Monterey Bay Aquarium"; a\n'
+    + '"from <Place>" subfolder says "at <Place>"; any other subfolder gets\n'
+    + 'the byline alone. Every stamp ends with the date \u2014 "EXIF:" from the\n'
+    + 'photo/mp4 metadata, else "Approx:" the file date if over a year old.\n'
+    + 'The folder is part of the public URL, so moving a file afterwards\n'
+    + 'means a new link and a second row.')) return;
 
   let j = null;
   try {
