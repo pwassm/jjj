@@ -5605,12 +5605,9 @@ async function housekeepingAddWatermarked(opts) {
     if (!auto) toast('✓ All ' + files.length + ' watermarked file(s) are already in T', 3000);
     return;
   }
-  const names = missing.map(f => '  • ' + f.key).join('\n');
-  if (!confirm('Add ' + missing.length + ' watermarked file(s) to ml.json?\n\n' + names
-               + '\n\nEach becomes a row with link = ' + R2_VIDEO_BASE + '<name>,'
-               + '\nplus Mode and (video) vidLength / (photo) MPix'
-               + '\nmeasured off the local file.'
-               + '\nTags are left empty — tag them in A.')) return;
+  // (dev0977) No confirm — Phil wants the missing rows added straight away.
+  // Each becomes a row with link = R2_VIDEO_BASE + key, plus Mode and
+  // vidLength (video) / MPix (photo) measured off the local file; tags empty.
 
   toast('🎬 Adding ' + missing.length + ' file(s)…', 2500);
   const now = isoNow();
