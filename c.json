@@ -2393,7 +2393,7 @@
     "gname": "mollym1",
     "cells": 9,
     "Zoom": 1,
-    "DateModified": "2026-09-12 22:54:45",
+    "DateModified": "2026-09-13 01:34:19",
     "1a": "2255",
     "1b": "2257",
     "1c": "2270",
@@ -2406,7 +2406,8 @@
     "DateAdded": "2026-09-12 21:21:28",
     "Label": "+",
     "ss": "mollym1",
-    "ctxt": " "
+    "ctxt": " ",
+    "active": "1"
   },
   {
     "gname": "mollym2",
