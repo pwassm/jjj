@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1789317683728,
+    "_salPushTime": 1789344525236,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,10 +90,10 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "UID",
+      "col": "DateAdded",
       "dir": "desc"
     },
-    "_salGsize": 3,
+    "_salGsize": 2,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1789317683728
+    "_salSavedAt": 1789344525236
   },
   {
     "UID": "1",
@@ -45411,7 +45411,8 @@
     "DateAdded": "2026-08-09 13:48:31",
     "DateModified": "2026-09-09 01:31:50",
     "tags": [
-      "transcribe"
+      "transcribe",
+      "transcribed"
     ],
     "Mute": "0",
     "ftextSize": "4780",
@@ -49744,7 +49745,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%201%20speed%20.25x%20shortest_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-13 02:54:12",
+    "DateModified": "2026-09-13 22:01:56",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49764,7 +49765,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%202%20speed%20.25x_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-12 21:25:25",
+    "DateModified": "2026-09-13 21:24:40",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49806,7 +49807,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%202%20speed%20.25x_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 14:21:38",
-    "DateModified": "2026-09-12 21:03:59",
+    "DateModified": "2026-09-13 21:24:40",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49828,26 +49829,28 @@
     "link": "https://media.sealifeandmore.com/Flatfish%20vs%20Moonsnail%204x_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-11 22:21:53",
+    "DateModified": "2026-09-13 22:02:28",
     "tags": [
       "myvideo",
       "neverita-lewisii"
     ],
     "Mute": "0",
-    "ftextSize": "0",
+    "ftextSize": "13",
     "FtextJunk": "0",
     "MPix": "V",
     "vidLength": "0:30",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": ""
+    "cell": "1b",
+    "ftext": "",
+    "comment": "full"
   },
   {
     "UID": "2255",
     "link": "https://media.sealifeandmore.com/Moon%20snail%20comes%20to%20rock%208x_20260831_100744_crop2.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-12 22:13:06",
+    "DateModified": "2026-09-13 22:02:28",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49859,9 +49862,9 @@
     "vidLength": "0:19",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
+    "cell": "1a",
     "comment": "",
-    "ftext": "<p>4 Molly Moonsnail climbs a cliff,</p><p>\"I smell lovely bivalves up there!\"</p>"
+    "ftext": "<p>4 Molly Moonsnail climbs a cliff,</p><p>\"I sense lovely bivalves up there!\"</p>"
   },
   {
     "UID": "2255_d",
@@ -49890,27 +49893,27 @@
     "link": "https://media.sealifeandmore.com/Moonsnail%20buries%20itself%20BW%208x%20speed_20260831_102846_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-13 02:39:26",
+    "DateModified": "2026-09-13 22:02:28",
     "tags": [
       "myvideo",
       "neverita-lewisii"
     ],
     "Mute": "0",
-    "ftextSize": "76",
+    "ftextSize": "36",
     "FtextJunk": "0",
     "MPix": "V",
     "vidLength": "0:33",
     "Mode": "L",
     "DictSize": "1543",
-    "cell": "",
-    "ftext": "<h3>2/ljFour minutes at 16x speed</h3><p>(Four minutes -&gt; 15 seconds)</p>"
+    "cell": "2a",
+    "ftext": "<p>2/ljFour minutes at 16x speed</p>"
   },
   {
     "UID": "2257",
     "link": "https://media.sealifeandmore.com/How%20Embarassing_UpsideDown.jpg",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-13 02:37:56",
+    "DateModified": "2026-09-13 22:01:24",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49923,7 +49926,7 @@
     "DictSize": "1543",
     "cell": "",
     "comment": "",
-    "ftext": "<p>4 Oops, a fall, how embarrassing.</p><p>How can I get back on my foot again?</p>"
+    "ftext": "<p>8 Oops, I fell, how embarrassing.</p><p>How can I get back on my foot again?</p>"
   },
   {
     "UID": "2257_d",
@@ -50146,16 +50149,19 @@
     "link": "https://media.sealifeandmore.com/Maybe%20Floyd%20will%20help.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 20:19:00",
-    "DateModified": "2026-09-13 02:37:46",
-    "tags": [],
+    "DateModified": "2026-09-13 21:38:46",
+    "tags": [
+      "myvideo",
+      "neverita-lewisii"
+    ],
     "Mute": "0",
     "ftextSize": "99",
     "FtextJunk": "0",
     "MPix": "1.9",
     "Mode": "L",
-    "DictSize": "0",
+    "DictSize": "1543",
     "cell": "",
-    "ftext": "<p>4 It's friendly Floyd Flatfish!</p><p>I'll bet he will help me.</p><p>He has such kind eyes.</p>"
+    "ftext": "<p>8 It's friendly Floyd Flatfish!</p><p>I'll bet he will help me.</p><p>He has such kind eyes.</p>"
   },
   {
     "UID": "2270_d",
@@ -50214,16 +50220,19 @@
     "link": "https://media.sealifeandmore.com/Susie%20Surfperch_20260831_101741_crop.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 20:56:13",
-    "DateModified": "2026-09-13 02:38:25",
-    "tags": [],
+    "DateModified": "2026-09-13 22:02:22",
+    "tags": [
+      "myvideo",
+      "neverita-lewisii"
+    ],
     "Mute": "0",
-    "ftextSize": "149",
+    "ftextSize": "150",
     "FtextJunk": "0",
     "MPix": "2.1",
     "Mode": "L",
-    "DictSize": "0",
+    "DictSize": "1543",
     "cell": "",
-    "ftext": "<h3>7 Susie Surfperch gives advice.</h3><p></p><h3>Good attempt Floyd Flatfish,</h3><h3>but no joy so far...</h3><h3></h3><h3>Try another angle!</h3>"
+    "ftext": "<p>10 Susie Surfperch says:</p><p>You almost did it, Floyd Flatfish,</p><p>Almost put Molly back on her foot,</p><p>As they say: \"Try, try again!\"</p>"
   },
   {
     "UID": "2275",
@@ -50245,15 +50254,18 @@
     "link": "https://media.sealifeandmore.com/A%20Moonsnail%20last%20comment_20260831_101741_crop.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 21:17:29",
-    "DateModified": "2026-09-13 02:38:37",
-    "tags": [],
+    "DateModified": "2026-09-13 21:38:48",
+    "tags": [
+      "myvideo",
+      "neverita-lewisii"
+    ],
     "Mute": "0",
-    "ftextSize": "228",
+    "ftextSize": "193",
     "FtextJunk": "0",
     "MPix": "2.1",
     "Mode": "L",
-    "DictSize": "0",
-    "ftext": "<h2>8/ljFloyd, I do love your kind eyes,</h2><h2>but I can't abide your crude lipsmacking!</h2><h2>I'll do it myself, slow and steady!</h2><h2>I'll go deep and play with my</h2><h2>sub-sand buddy, Archie Astropecten.</h2><p></p>",
+    "DictSize": "1543",
+    "ftext": "<h2>10/ljFloyd, I do love your kind eyes,</h2><h2>but I can't abide your crude lipsmacking!</h2><h2>I'll do it myself, slow and steady!</h2><h2>I'll go deep like Archie Astropecten.</h2><p></p>",
     "cell": ""
   },
   {
@@ -50316,8 +50328,11 @@
     "link": "https://youtu.be/wjtt9AJrM-Y",
     "show": "1",
     "DateAdded": "2026-09-13 14:28:44",
-    "DateModified": "2026-09-13 14:28:48",
-    "tags": [],
+    "DateModified": "2026-09-13 18:48:24",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "5221",
     "FtextJunk": "1",
@@ -50333,8 +50348,11 @@
     "link": "https://youtu.be/n7rnR5exGeI",
     "show": "1",
     "DateAdded": "2026-09-13 14:29:29",
-    "DateModified": "2026-09-13 14:29:33",
-    "tags": [],
+    "DateModified": "2026-09-13 18:48:20",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "4919",
     "FtextJunk": "2",
@@ -50350,8 +50368,11 @@
     "link": "https://youtu.be/4_QRCPz395g",
     "show": "1",
     "DateAdded": "2026-09-13 14:30:05",
-    "DateModified": "2026-09-13 14:30:09",
-    "tags": [],
+    "DateModified": "2026-09-13 18:48:17",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "5149",
     "FtextJunk": "1",
@@ -50367,8 +50388,11 @@
     "link": "https://youtu.be/VcBZkkmNlCo",
     "show": "1",
     "DateAdded": "2026-09-13 14:35:38",
-    "DateModified": "2026-09-13 14:36:03",
-    "tags": [],
+    "DateModified": "2026-09-13 18:48:15",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "3412",
     "FtextJunk": "2",
@@ -50384,8 +50408,11 @@
     "link": "https://youtu.be/FPxyy485kms",
     "show": "1",
     "DateAdded": "2026-09-13 14:37:17",
-    "DateModified": "2026-09-13 14:37:41",
-    "tags": [],
+    "DateModified": "2026-09-13 18:48:09",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "2882",
     "FtextJunk": "3",
@@ -50401,8 +50428,11 @@
     "link": "https://youtu.be/TI7LF_THcaw",
     "show": "1",
     "DateAdded": "2026-09-13 14:39:19",
-    "DateModified": "2026-09-13 14:39:43",
-    "tags": [],
+    "DateModified": "2026-09-13 18:48:05",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "4287",
     "FtextJunk": "2",
@@ -50418,8 +50448,11 @@
     "link": "https://youtu.be/RJIdFfKgi2g",
     "show": "1",
     "DateAdded": "2026-09-13 15:29:16",
-    "DateModified": "2026-09-13 15:29:40",
-    "tags": [],
+    "DateModified": "2026-09-13 18:47:58",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "3553",
     "FtextJunk": "2",
@@ -50435,8 +50468,11 @@
     "link": "https://youtu.be/RJIdFfKgi2g",
     "show": "1",
     "DateAdded": "2026-09-13 15:31:11",
-    "DateModified": "2026-09-13 15:31:38",
-    "tags": [],
+    "DateModified": "2026-09-13 18:47:54",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "3553",
     "FtextJunk": "2",
@@ -50453,8 +50489,11 @@
     "link": "https://youtu.be/FO_sIdwztPE",
     "show": "1",
     "DateAdded": "2026-09-13 15:43:01",
-    "DateModified": "2026-09-13 15:43:25",
-    "tags": [],
+    "DateModified": "2026-09-13 18:47:48",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "3064",
     "FtextJunk": "2",
@@ -50521,8 +50560,11 @@
     "link": "https://youtu.be/qvRMG7xts4c",
     "show": "1",
     "DateAdded": "2026-09-13 15:45:55",
-    "DateModified": "2026-09-13 15:46:19",
-    "tags": [],
+    "DateModified": "2026-09-13 18:47:23",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "2554",
     "FtextJunk": "3",
@@ -50555,30 +50597,16 @@
     "link": "https://youtu.be/-xJ8gsh1yC4",
     "show": "1",
     "DateAdded": "2026-09-13 15:57:16",
-    "DateModified": "2026-09-13 15:57:40",
-    "tags": [],
+    "DateModified": "2026-09-13 18:47:05",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "2701",
     "FtextJunk": "3",
     "DictSize": "0",
     "VidTitle": "What Stanford Fasting Researchers Want People Over 60 To Know (One Thing Surprise Me)",
-    "VidAuthor": "@benretirementwellness",
-    "Mode": "L",
-    "ftext": "",
-    "cell": ""
-  },
-  {
-    "UID": "2295",
-    "link": "https://youtu.be/bJ-GAyUXZws",
-    "show": "1",
-    "DateAdded": "2026-09-13 15:58:17",
-    "DateModified": "2026-09-13 15:58:41",
-    "tags": [],
-    "Mute": "0",
-    "ftextSize": "2988",
-    "FtextJunk": "3",
-    "DictSize": "0",
-    "VidTitle": "It's Boring, But This Morning Routine Burns Visceral Fat All Day (Japanese Method)",
     "VidAuthor": "@benretirementwellness",
     "Mode": "L",
     "ftext": "",
@@ -50600,7 +50628,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3c"
+    "cell": ""
   },
   {
     "UID": "2297",
@@ -50615,7 +50643,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3b"
+    "cell": ""
   },
   {
     "UID": "2298",
@@ -50630,7 +50658,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "3a"
+    "cell": ""
   },
   {
     "UID": "2299",
@@ -50645,7 +50673,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "2c"
+    "cell": ""
   },
   {
     "UID": "2300",
@@ -50660,7 +50688,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "2b"
+    "cell": ""
   },
   {
     "UID": "2301",
@@ -50675,7 +50703,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "2a"
+    "cell": ""
   },
   {
     "UID": "2302",
@@ -50690,7 +50718,7 @@
     "MPix": "2.1",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1c"
+    "cell": ""
   },
   {
     "UID": "2303",
@@ -50705,7 +50733,7 @@
     "MPix": "0.4",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1b"
+    "cell": ""
   },
   {
     "UID": "2304",
@@ -50721,6 +50749,51 @@
     "vidLength": "0:59",
     "Mode": "L",
     "DictSize": "0",
-    "cell": "1a"
+    "cell": ""
+  },
+  {
+    "UID": "2305",
+    "link": "https://youtu.be/bJ-GAyUXZws",
+    "show": "1",
+    "DateAdded": "2026-09-13 18:30:38",
+    "DateModified": "2026-09-13 18:30:46",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "2988",
+    "FtextJunk": "3",
+    "DictSize": "0",
+    "VidTitle": "It's Boring, But This Morning Routine Burns Visceral Fat All Day (Japanese Method)",
+    "VidAuthor": "@benretirementwellness",
+    "Mode": "L",
+    "ftext": "",
+    "cell": ""
+  },
+  {
+    "UID": "2306",
+    "cell": "2b",
+    "show": "1",
+    "VidRange": "text",
+    "ftext": "<h1>Moon snail adventures <span data-xall=\"open\" class=\"te-xall\">▼▼</span> <span data-xall=\"close\" class=\"te-xall\">▶▶</span></h1><h2>1a Moon snail approaches rocks.</h2><details><summary>They are predators of bivalves, especially clams</summary><p>They alternate physical drilling and acid attack</p><p>Physical drilling with radula</p><p>Acid secretion using ABO (accessory boring organ)<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p><details><summary>Detail:</summary><p>[A] research group at the Pacific Biological Station, British Columbia on drilling of prey by moon snails <em>Neverita&nbsp;lewisii</em>&nbsp;focuses on the fine structure of the accessory boring organ (ABO). &nbsp;First, the location of the ABO in moon snails differs from its location in muricid gastropods such as whelks&nbsp;<em>Nucella&nbsp;</em>spp. &nbsp;In the latter it is positioned on the anterior/ventral part of the foot, while in moon snails it is located on the ventral distal tip of the proboscis. &nbsp;When erect (i.e., tumescent) it is mushroom-shaped and joined to the proboscis by a stalk or peduncle (Fig. 1). &nbsp;All surfaces are covered in tall, columnar epithelia cells fringed with a brush border of microvilli. &nbsp;Tumescence of the ABO is linked to extension of the proboscis, as both organs are connected via a sinus system that can be engorged with hemolymph under pressure. Numerous <em>goblet</em> cells permeate the epithelium of the ABO and are thought by the authors to secrete an acid mucopolysaccharide substance. &nbsp;Other mucus-producing cells form a ring around the central epithelium. &nbsp;The authors suggest that secretion from these cells may create a mucous seal when the ABO is applied to a prey's shell.&nbsp;</p><p>NOTE&nbsp;&nbsp;the authors provide a short but interesting&nbsp;history of investigation into the mode of drilling by gastropods, including muricid whelks and other naticids. The idea of a combined radular/chemical means of penetration dates from 1711 and an observation that a secretion from the “papilla” that “reddens litmus paper” dates from 1891. &nbsp;Even that the ABO and resultant hole diameters are identical has been known from the early part of the 1900s. &nbsp;</p></details></details><h2>1b Moonsnail nipped by flatfish.</h2><details><summary>Are there predators of moon snails?</summary><p>\"There are no studies specifically relating to predators and defenses of west-coast moon snails. &nbsp;<em>Everita&nbsp;lewisii&nbsp;</em>crawls about openly on the sand and, in intertidal locations, is sometimes exposed to air or at least is shallow enough to be visible and&nbsp;accessible to birds. The flesh is plump and seemingly would be tasty to fishes, so if fishes avoid moon snails as prey, the liklihood is that the flesh is toxic or otherwise unpalatable. The shell is strong and protected by a proteinaceous operculum (Figs. 1 -&nbsp;2), but moon snails are rarely observed to be withdrawn completely in their shells. &nbsp;Clearly, research on the subject is needed.\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>2a Moonsnail burrows into sand.</h2><details><summary>Burrowing behavior</summary><p>Adult moon snails <em>Neverita lewisii&nbsp;</em>(Fig. 1)&nbsp;are strict predators and mostly eat bivalves. &nbsp;As many of their prey live at sediment depths of 20cm or more, the snails have to burrow quite deeply to find them. &nbsp;Burrowing by moon snails is enabled by a large foot that is capable of inflating up to four times the shell volume through uptake of seawater. &nbsp;The inflation is quick, allowing fast penetration into and displacement of sand. &nbsp;The moon snail catches hold of its prey and hauls it to the sediment&nbsp;surface to begin drilling.<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>Asnailodyssey.com</h2><details><summary>Cartoon video</summary><p><video src=\"https://www.asnailsodyssey.com/views/images/198/story_video198.mp4\" preload=\"metadata\" controls=\"controls\" playsinline=\"playsinline\" style=\"float: left; width: 700px; margin: 6px 14px 6px 0px; border-radius: 4px;\"></video></p><p></p></details>",
+    "DateAdded": "2026-09-13 22:03:01",
+    "DateModified": "2026-09-14 00:06:22",
+    "ftextSize": "4347",
+    "FtextJunk": "3",
+    "DictSize": "0"
+  },
+  {
+    "UID": "2307",
+    "link": "https://www.asnailsodyssey.com/views/images/198/story_video198.mp4",
+    "show": "1",
+    "DateAdded": "2026-09-13 23:57:40",
+    "DateModified": "2026-09-13 23:57:40",
+    "tags": [],
+    "Mute": "0",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "V",
+    "vidLength": "1:07"
   }
 ]
