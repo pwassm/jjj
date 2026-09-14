@@ -3007,7 +3007,10 @@ function _salAnnotCss() {
     '.sal-annot a{color:#9cf;}',
     // A caption is TEXT. Anything else the ftext carries would fight the picture
     // it is captioning for the same pixels, so it does not come along.
-    '.sal-annot img,.sal-annot video,.sal-annot iframe,.sal-annot table{display:none;}'
+    '.sal-annot img,.sal-annot video,.sal-annot iframe,.sal-annot table{display:none;}',
+    // (dev0978) Ctrl+C / "Toggle ctext" hides every caption at once — G, Vss and
+    // the V a video slide opens — without unmounting them.
+    'html.sal-ctext-off .sal-annot{display:none!important;}'
   ].join('');
   document.head.appendChild(st);
 }
@@ -3056,6 +3059,27 @@ window._salAnnotMount = function (parent, row, measureEl) {
     try { el._salRO = new ResizeObserver(fit); el._salRO.observe(box); } catch (_) {}
   }
   return el;
+};
+
+// (dev0978) ctext = these "+" collection captions. Ctrl+C in G or Vss, or
+// "Toggle ctext" on the G right-click menu, hides / shows them all. A class on
+// <html> rather than a remount, so it is instant and the hidden captions keep
+// their fitted size. Remembered per browser, like L's clean view.
+window._salCtextHidden = function () {
+  return document.documentElement.classList.contains('sal-ctext-off');
+};
+(function () {
+  try {
+    if (localStorage.getItem('slam-ctext-off') === '1')
+      document.documentElement.classList.add('sal-ctext-off');
+  } catch (_) {}
+})();
+window._salToggleCtext = function () {
+  _salAnnotCss();
+  var off = !window._salCtextHidden();
+  document.documentElement.classList.toggle('sal-ctext-off', off);
+  try { localStorage.setItem('slam-ctext-off', off ? '1' : '0'); } catch (_) {}
+  if (typeof toast === 'function') toast(off ? 'ctext hidden' : 'ctext shown', 1200);
 };
 
 function _gridApplyClean() {
@@ -4435,6 +4459,10 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
   if (row) _gridContextMenu.appendChild(mkItem('<u>G</u>o author site', doAuthor));
   _gridContextMenu.appendChild(mkItem('<u>P</u>lay steps', doSteps));
   if (isEmbedRow) _gridContextMenu.appendChild(mkItem('↻ <u>N</u>ew embed', doNewEmbed));
+  // (dev0978) Only on a grid that has captions to hide.
+  const hasCtext = !!(window._salAnnotOn && window._salAnnotOn());
+  const doCtext = () => { gridHideContextMenu(); if (window._salToggleCtext) window._salToggleCtext(); };
+  if (hasCtext) _gridContextMenu.appendChild(mkItem('Toggle <u>c</u>text', doCtext));
 
   // (dev0738) Inside the wrap — see salOverlayRoot in index.html.
   (window.salOverlayRoot ? window.salOverlayRoot() : document.body)
@@ -4447,6 +4475,7 @@ function gridShowUserContextMenu(x, y, cellStr, row) {
     else if ((e.key === 'g' || e.key === 'G') && row) { e.preventDefault(); doAuthor(); }
     else if (e.key === 's' || e.key === 'S')     { e.preventDefault(); doSlideshow(); }
     else if (isEmbedRow && /^[nN]$/.test(e.key))   { e.preventDefault(); doNewEmbed(); }
+    else if (hasCtext && /^[cC]$/.test(e.key))     { e.preventDefault(); doCtext(); }
     else if (e.key === 'Escape')                 { gridHideContextMenu(); }
   };
   document.addEventListener('keydown', handleKey, true);
@@ -4574,6 +4603,21 @@ function gridShowContextMenu(x, y, cellStr, row) {
     _gridContextMenu.appendChild(newEmbedBtn);
   }
 
+  // (dev0978) Toggle ctext — only on a grid that has captions to hide.
+  let ctextBtn = null;
+  if (window._salAnnotOn && window._salAnnotOn()) {
+    ctextBtn = document.createElement('div');
+    ctextBtn.innerHTML = 'Toggle <u>c</u>text';
+    ctextBtn.style.cssText = 'padding:8px 16px; color:#8ef; cursor:pointer; font-size:13px;';
+    ctextBtn.onmouseenter = () => ctextBtn.style.background = '#2a2a4e';
+    ctextBtn.onmouseleave = () => ctextBtn.style.background = '';
+    ctextBtn.onclick = () => {
+      gridHideContextMenu();
+      if (window._salToggleCtext) window._salToggleCtext();
+    };
+    _gridContextMenu.appendChild(ctextBtn);
+  }
+
   // Delete option
   const deleteBtn = document.createElement('div');
   deleteBtn.innerHTML = '<u>D</u>elete cell';
@@ -4613,6 +4657,11 @@ function gridShowContextMenu(x, y, cellStr, row) {
     if (newEmbedBtn && (e.key === 'n' || e.key === 'N')) {
       e.preventDefault();
       newEmbedBtn.onclick();
+      return;
+    }
+    if (ctextBtn && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      ctextBtn.onclick();
       return;
     }
     if (e.key === 't' || e.key === 'T') {

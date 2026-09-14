@@ -1996,6 +1996,15 @@ function _slideshowKey(e) {
       return;
     }
   }
+  // (dev0978) Ctrl+C = toggle ctext, same as on G. Above the _videoActive
+  // stand-down, so it works on a video slide too.
+  if ((e.key === 'c' || e.key === 'C') && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
+      && !String(window.getSelection ? window.getSelection() : '')) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (typeof window._salToggleCtext === 'function') window._salToggleCtext();
+    return;
+  }
   // (dev0744) c = crop THIS picture, the twin of C inside the video player.
   // Above the _videoActive stand-down only in the sense that it never competes:
   // on a video slide V owns c already, and this returns false for anything

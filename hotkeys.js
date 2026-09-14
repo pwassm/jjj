@@ -564,6 +564,10 @@ window.HOTKEYS = [
     impl: 'core.js window-capture (dev0710) → grid.js _gridToggleClean',
     desc: 'cLean view — hides every piece of chrome the app paints over the pictures: the per-cell labels (1a, 1b …), the top-left info line, the floating ← back arrow and (dev0721) the bottom-right button strip (grid name / T / C / TM) plus the UID and version badges. Nothing stops working; L again restores them. Persisted in localStorage (slam-grid-clean). Grid overlay only — (dev0711) bare l means NOTHING on any other screen now (its old clipboard-import alias of w was retired), and in a full-screen cell V keeps it (save loop).' },
 
+  { label: 'Ctrl+C', group: 'Grid', scope: 'G', dev: false,
+    impl: 'collection.js / slideshow.js → grid.js _salToggleCtext (dev0978)',
+    desc: 'Toggle ctext — hide / show the captions of a “+” collection, in G and in the slideshow (Vss). Also “Toggle ctext” on the G right-click / long-press menu. Persisted in localStorage (slam-ctext-off). Ignored while text is selected, so a real copy still copies.' },
+
   { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
     impl: 'collection.js _gridPasteSource (dev0548)',
     desc: 'Over a hovered cell: paste the clipboard URL into the row’s linkpage (the source page found via g’s reverse-image search), clearing its “noLinkpageYet” marker. The bottom-left pill counts how many rows still need a source.' },

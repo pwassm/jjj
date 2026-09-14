@@ -855,6 +855,16 @@ document.addEventListener('keydown', e => {
   // NB returns WITHOUT preventDefault/stopPropagation so the Gu long-press menu's
   // own V/S/G/P key handler (a separate listener) is unaffected. (dev0738: the
   // A alias went with "Play steps All"; G was added for "Go author site".)
+  // (dev0978) Ctrl+C = toggle ctext (the "+" collection captions). A viewing
+  // key, so above the user-mode gate. Left alone while text is selected, so a
+  // real copy still copies.
+  if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && (e.key === 'c' || e.key === 'C')
+      && !String(window.getSelection ? window.getSelection() : '')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof window._salToggleCtext === 'function') window._salToggleCtext();
+    return;
+  }
+
   if ((typeof _isUserMode === 'function') && _isUserMode() && !_guFun
       && e.key !== 'Escape' && !(e.key === ' ' || e.code === 'Space')) {
     return;
