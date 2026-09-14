@@ -1845,5 +1845,5 @@ window._gridToggleCaptions = function() {
       } catch (_) {}
     }
   }
-  if (typeof _gridToast === 'function') _gridToast('Captions ' + (_gridCaptionsOn ? 'ON' : 'OFF'), 1200);
+  // (dev0982) No Captions ON / OFF toast — the captions themselves say it.
 };

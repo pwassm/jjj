@@ -279,6 +279,12 @@ window.addEventListener('keydown', function(e) {
   // toolbar. Same shape as `l`: without this bail the registry's V toggle would
   // close the player before vpKeyHandler ever saw the key. vp.js decides.
   if (k === 'v' && typeof window._vpSlimToggleable === 'function' && window._vpSlimToggleable()) return;
+  // (dev0982) …and ⇧C on a YouTube / Vimeo video in V / Vss = captions (vp.js).
+  // Without this bail the registry's C would close the player and open C.
+  if (k === 'c' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey
+      && document.getElementById('gridFullscreen')?.style.display === 'flex'
+      && typeof _vpState !== 'undefined' && _vpState && _vpState.player
+      && !_vpState.crop && !_vpState.player.isDirectVideo) return;
 
   // (dev0724 / dev0747) The crop overlay's own letters — `e`, `w` and the rest
   // — are handled by the whole-handler bail above now that it covers every open

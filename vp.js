@@ -901,7 +901,7 @@ function gridOpenFullscreen(row, contained) {
       rowRate: (!window._vpForcedGridFromT && window._salRowRate) ? window._salRowRate(row) : null,
       speed: 1.0,
       muted: row.Mute !== '0',
-      ccOn: false,
+      ccOn: _vpCcStored(),   // (dev0982) sticky, applied on player ready
       aPoint: _armLoop ? _armLoop.a : null,
       bPoint: _armLoop ? _armLoop.b : null,
       abSuspended: false,   // (dev0701) set by a manual scrub outside A→B
@@ -1881,7 +1881,8 @@ function gridOpenFullscreen(row, contained) {
     ccBtn.id = 'vp-cc';
     ccBtn.className = 'vp-btn';
     ccBtn.textContent = 'CC';
-    ccBtn.title = 'Closed Captions';
+    ccBtn.title = 'Closed Captions (Shift+C)';
+    if (_vpState && _vpState.ccOn) { ccBtn.style.background = '#050'; ccBtn.style.borderColor = '#0f0'; }
     
     // (zip0148) Mute button used to be defined here; moved earlier in
     // the toolbar where the time display used to live. See comment by
@@ -3316,6 +3317,15 @@ function vpKeyHandler(e) {
 
   // (dev0288) C = toggle crop overlay. T = swap landscape↔portrait aspect
   // (only while overlay is visible). Both no-op when no crop state exists.
+  // (dev0982) ⇧C = captions on a YouTube / Vimeo video (sticky, silent). A disk
+  // video has no such captions and keeps ⇧C as the crop toggle below.
+  if (e.key === 'C' && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey
+      && _vpState && !_vpState.crop
+      && !(_vpState.player && _vpState.player.isDirectVideo)) {
+    e.preventDefault(); e.stopPropagation();
+    vpToggleCC();
+    return;
+  }
   if (e.key === 'c' || e.key === 'C') {
     if (!_vpState || !_vpState.crop) return;
     e.preventDefault(); e.stopPropagation();
@@ -4354,21 +4364,45 @@ function _vpLoopDefaultName(row, a, b) {
   return base + '  ' + f(a) + '–' + f(b);
 }
 
-function vpToggleCC() {
-  if (!_vpState || !_vpState.player) return;
-  _vpState.ccOn = !_vpState.ccOn;
+// (dev0982) Captions are STICKY across V / Vss opens: the choice is kept in
+// localStorage and every YT / Vimeo mount applies it once its player is ready.
+// Shift+C and the CC button both flip it. Silent — no toast.
+const VP_CC_KEY = 'slam-v-cc';
+function _vpCcStored() {
+  try { return localStorage.getItem(VP_CC_KEY) === '1'; } catch (_) { return false; }
+}
+
+// Push _vpState.ccOn into whichever player is mounted, and paint the CC button.
+function _vpApplyCC() {
+  if (!_vpState) return;
+  const on = !!_vpState.ccOn;
   const btn = document.getElementById('vp-cc');
-  if (_vpState.isYT) {
-    // YouTube CC module
-    if (_vpState.ccOn) {
-      _vpState.player.loadModule('captions');
-      _vpState.player.setOption('captions', 'track', { languageCode: 'en' });
-    } else {
-      _vpState.player.unloadModule('captions');
+  if (btn) { btn.style.background = on ? '#050' : ''; btn.style.borderColor = on ? '#0f0' : ''; }
+  const p = _vpState.player;
+  if (!p || p.isDirectVideo) return;
+  try {
+    if (_vpState.isYT) {
+      if (on) { p.loadModule('captions'); p.setOption('captions', 'track', { languageCode: 'en' }); }
+      else p.unloadModule('captions');
+    } else if (typeof p.enableTextTrack === 'function') {
+      // Vimeo rejects a language the video has no track for — fall back to its
+      // first track rather than showing nothing.
+      if (on) {
+        p.enableTextTrack('en').catch(() => p.getTextTracks().then(tr => {
+          if (tr && tr[0]) return p.enableTextTrack(tr[0].language, tr[0].kind);
+        })).catch(() => {});
+      } else {
+        p.disableTextTrack().catch(() => {});
+      }
     }
-  }
-  btn.style.background = _vpState.ccOn ? '#050' : '';
-  btn.style.borderColor = _vpState.ccOn ? '#0f0' : '';
+  } catch (_) {}
+}
+
+function vpToggleCC() {
+  if (!_vpState) return;
+  _vpState.ccOn = !_vpState.ccOn;
+  try { localStorage.setItem(VP_CC_KEY, _vpState.ccOn ? '1' : '0'); } catch (_) {}
+  _vpApplyCC();
 }
 
 // (dev0258) Selected-mode helpers — the timeline in Selected mode represents
@@ -11125,6 +11159,7 @@ function vpMountYouTube(host, link, seg, muted) {
           if (muted) e.target.mute();
           e.target.seekTo(seg.start, true);
           _vpYtNudgePlay(e.target);   // (dev0642) mute-fallback if unmuted play is refused
+          if (_vpState.ccOn) _vpApplyCC();   // (dev0982) sticky captions
           // (zip0149) Belt-and-braces: re-stamp `allow` on the live iframe
           // once we have a guaranteed reference to it, in case the
           // observer missed it (some browsers fire mutations late).
@@ -11191,6 +11226,7 @@ function vpMountVimeo(host, link, seg, muted) {
       _vpState.isYT = false;
       player.setCurrentTime(seg.start);
       player.play();
+      if (_vpState.ccOn) _vpApplyCC();   // (dev0982) sticky captions
       // (zip0149) Re-stamp allow attribute on the now-mounted iframe.
       try {
         const ifr = host.querySelector('iframe');

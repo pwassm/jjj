@@ -604,6 +604,10 @@ window.HOTKEYS = [
     impl: 'vp.js vpKeyHandler (dev0981) → vpToggleSlimChrome',
     desc: 'On a video in V or Vss: switch between the thin timeline strip over the picture and the full toolbar (speed, A-B, frame steps) — the same as the small ▴ / ▾ just above the right end of the bar. V and Vss open thin; V opened from T opens full. Bare v does the same on a video. A focused text field keeps its paste.' },
 
+  { label: 'Shift+C', group: 'Viewer', scope: 'V', dev: false,
+    impl: 'vp.js vpKeyHandler (dev0982) → vpToggleCC',
+    desc: 'On a YouTube / Vimeo video in V or Vss: captions on / off, same as the CC button. Sticky — remembered for every later V / Vss video (localStorage slam-v-cc). No toast. On a disk video ⇧C stays the crop toggle.' },
+
   { label: 'Z', group: 'Viewer', scope: 'V', dev: false,
     impl: 'vp.js vpKeyHandler (dev0672) → _vpEmbedZoomArm',
     desc: 'On an IG/TikTok post in V: arm/disarm the ⤢ zoom (same as the toolbar button). Armed = hold to enlarge, drag to pan, double-click for usual size; disarm to hand the picture back to the player. Inert on any other kind of row, where Z still rotates a visible crop frame.' },
