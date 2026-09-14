@@ -2851,8 +2851,17 @@ window._salInCollection = function () {
 // The gate: are we showing a c.json collection marked "+"? Reads the column in
 // either case — c.json ships `Label`, and a hand-typed `label` should not be a
 // silent no-op.
+//
+// (dev0979) A grid loaded from T captions too, as if it were marked "+". Only
+// while G is up: _gridSource stays 'T' after the grid closes, and V forced open
+// from T bails on its own (_vpForcedGridFromT). Lead directives still don't
+// apply to a T grid — they ask _salInCollection, not this.
 window._salAnnotOn = function () {
   try {
+    if (typeof _gridSource !== 'undefined' && _gridSource === 'T') {
+      var g = document.getElementById('gridOverlay');
+      return !!(g && g.style.display === 'flex');
+    }
     if (!window._salInCollection()) return false;
     var cfg = _gridActiveConfig;
     var lab = (cfg.Label != null && String(cfg.Label).trim() !== '') ? cfg.Label : cfg.label;
@@ -3079,7 +3088,6 @@ window._salToggleCtext = function () {
   var off = !window._salCtextHidden();
   document.documentElement.classList.toggle('sal-ctext-off', off);
   try { localStorage.setItem('slam-ctext-off', off ? '1' : '0'); } catch (_) {}
-  if (typeof toast === 'function') toast(off ? 'ctext hidden' : 'ctext shown', 1200);
 };
 
 function _gridApplyClean() {

@@ -566,7 +566,7 @@ window.HOTKEYS = [
 
   { label: 'Ctrl+C', group: 'Grid', scope: 'G', dev: false,
     impl: 'collection.js / slideshow.js → grid.js _salToggleCtext (dev0978)',
-    desc: 'Toggle ctext — hide / show the captions of a “+” collection, in G and in the slideshow (Vss). Also “Toggle ctext” on the G right-click / long-press menu. Persisted in localStorage (slam-ctext-off). Ignored while text is selected, so a real copy still copies.' },
+    desc: 'Toggle ctext — hide / show the captions of a “+” collection or a grid loaded from T, in G and in the slideshow (Vss). Also “Toggle ctext” on the G right-click / long-press menu. Persisted in localStorage (slam-ctext-off). Ignored while text is selected, so a real copy still copies.' },
 
   { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
     impl: 'collection.js _gridPasteSource (dev0548)',
