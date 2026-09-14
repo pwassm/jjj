@@ -622,9 +622,8 @@ function _vpApplySlimChrome() {
   // press aimed at mute stepped the show. Up here nothing else is competing:
   // the close button is top-left and the [N] box is mid-right.
   //
-  // (dev0970) It shares that corner with the ☰ that brings the full toolbar
-  // back, and — in a plain V, where the toolbar's ✕ is the only close button
-  // there is — a ✕. Vss has its own close top-left, and closing V there means
+  // (dev0970) It shares that corner — in a plain V, where the toolbar's ✕ is
+  // the only close button there is — with a ✕. Vss has its own close top-left, and closing V there means
   // "next slide", so it gets no second one.
   let corner = null;
   if (content) {
@@ -639,16 +638,8 @@ function _vpApplySlimChrome() {
     + 'font-size:13px;line-height:1;background:rgba(0,0,0,0.5);'
     + 'border:1px solid rgba(255,255,255,0.32);border-radius:6px;'
     + 'color:#fff;opacity:0.85;touch-action:manipulation;';
-  if (corner) {
-    const full = document.createElement('button');
-    full.id = 'vp-slim-full';
-    full.className = 'vp-btn';
-    full.textContent = '☰';
-    full.title = 'Full controls — speed, A-B, frame steps (v)';
-    full.style.cssText += cornerCss;
-    full.addEventListener('click', e => { e.stopPropagation(); vpToggleSlimChrome(false); });
-    corner.appendChild(full);
-  }
+  // (dev0981) The ☰ that lived here is gone: the ▴ above the strip's end
+  // (_vpMountBarToggle) is the one switch for both directions now.
 
   // Still the LIVE button, only re-parented — vpWireControls' onclick and
   // vpToggleMute's icon swap both address it by id, so the speaker/red-slash
@@ -685,6 +676,7 @@ function _vpApplySlimChrome() {
   // flipped later, the direct file's native control bar has to go by hand.
   const pv = _vpState && _vpState.player;
   if (pv && pv.isDirectVideo && pv.el) pv.el.controls = false;
+  _vpSyncBarToggle();
 }
 
 // (dev0970) Put back everything _vpApplySlimChrome changed, newest first.
@@ -706,6 +698,42 @@ function _vpRemoveSlimChrome() {
   // direct file leaves 136px clear for its native controls).
   if (catcher) catcher.style.inset = (pv && pv.isDirectVideo) ? '0 0 136px 0' : '0 0 80px 0';
   if (host && bar) host.style.bottom = ((bar.offsetHeight || 70) + 10) + 'px';
+  _vpSyncBarToggle();
+}
+
+// (dev0981) ONE SWITCH FOR BOTH DRESSINGS: a small ▴ / ▾ just above the right
+// end of the timeline, thin or full. It is a child of #vp-toolbar anchored to
+// the bar's top edge, so it follows that edge through a wrapped control row and
+// the slim restyle alike, and a collapsed bar (display:none) takes it along —
+// nothing has to move it. It replaces the slim corner's ☰ and the full bar's ⌄,
+// which were this same switch in two different places. Ctrl+V and bare v press
+// it from the keyboard (vpKeyHandler).
+//
+// pointer-events:auto because the slim bar sets none on itself; z-index 5 puts
+// it over the timeline's 11px hit band, which reaches up underneath it.
+function _vpMountBarToggle(toolbar) {
+  if (!toolbar || document.getElementById('vp-bar-toggle')) return;
+  const b = document.createElement('button');
+  b.id = 'vp-bar-toggle';
+  b.style.cssText = 'position:absolute;right:12px;bottom:calc(100% + 6px);z-index:5;'
+    + 'pointer-events:auto;margin:0;padding:3px 9px;min-width:0;'
+    + 'font:13px/1 system-ui,-apple-system,Segoe UI,sans-serif;color:#fff;'
+    + 'background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.32);'
+    + 'border-radius:5px;opacity:0.85;cursor:pointer;touch-action:manipulation;';
+  b.addEventListener('click', e => { e.stopPropagation(); vpToggleSlimChrome(); });
+  toolbar.appendChild(b);
+  _vpSyncBarToggle();
+}
+
+// The glyph says where a press goes: ▴ brings the full controls up, ▾ puts
+// them away to the thin strip.
+function _vpSyncBarToggle() {
+  const b = document.getElementById('vp-bar-toggle');
+  if (!b) return;
+  const slim = !!_vpSlimUndo;
+  b.textContent = slim ? '▴' : '▾';
+  b.title = slim ? 'Full controls — speed, A-B, frame steps (Ctrl+V)'
+                 : 'Thin bar over the picture (Ctrl+V)';
 }
 
 // (dev0970) Can this V change dressing? Not a picture, not the peek mode that
@@ -822,8 +850,13 @@ function gridOpenFullscreen(row, contained) {
   // timeline to slim (Vss still asks for it on every video, embeds included).
   // Never over a peek: that mode wants no controls at all, and slim would put
   // the mute and ☰ buttons back on the picture it promised to leave bare.
+  // (dev0981) …except V opened from T, which starts with the FULL toolbar: the
+  // Table is where rows get edited, and speed / A-B / frame steps are what you
+  // opened it for. "From T" is the forced-grid backdrop that T's v sets up —
+  // but the Welcome menu forces that same backdrop, so it is ruled out by name.
+  const _fromT = !!window._vpForcedGridFromT && !window._fromShareableMenu;
   const _slim = !_hideCtl && !_noExpand
-    && (!!window._vpSlimChrome || _vpRowAnswersApi(row));
+    && (!!window._vpSlimChrome || (!_fromT && _vpRowAnswersApi(row)));
   window._vpSlimChrome = false;
   _vpSlimActive = _slim;
   _vpSlimUndo = null;   // the last player's dressing died with its DOM
@@ -1961,10 +1994,14 @@ function gridOpenFullscreen(row, contained) {
     ctrlRow.appendChild(toggleBtn);
     ctrlRow.appendChild(ccBtn);
     ctrlRow.appendChild(abWrap);
-    ctrlRow.appendChild(hideBtn);
+    // (dev0981) A video with a timeline gets the ▴/▾ switch above the bar's end
+    // instead (_vpMountBarToggle), so ⌄ stays only for the embeds that collapse.
+    if (_hideSlims) closeBtn.style.marginLeft = 'auto';
+    else ctrlRow.appendChild(hideBtn);
     ctrlRow.appendChild(closeBtn);
-    
+
     toolbar.appendChild(ctrlRow);
+    if (_hideSlims) _vpMountBarToggle(toolbar);
     content.appendChild(toolbar);
 
     // (dev0741) The host's bottom inset was the literal 80px that matched the
@@ -3072,6 +3109,23 @@ function vpKeyHandler(e) {
     e.preventDefault(); e.stopImmediatePropagation();
     vpClose();
     return;
+  }
+
+  // (dev0981) Ctrl+V = the ▴/▾ switch above the timeline's end: thin strip ↔
+  // full toolbar, in V and Vss alike. Nothing upstream takes it — core.js's
+  // dispatcher bails on modifiers, Vss's handler stands down while a video
+  // slide is up, and the grid's Ctrl+V paste-source bails whenever V is open.
+  // Above the no-player return, so it works before the mount lands; and a
+  // focused field keeps its paste.
+  if ((e.key === 'v' || e.key === 'V' || e.code === 'KeyV') && e.ctrlKey
+      && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const _t = e.target, _tag = _t && _t.tagName;
+    const _inField = _tag === 'INPUT' || _tag === 'TEXTAREA' || !!(_t && _t.isContentEditable);
+    if (!_inField && _vpSlimToggleable()) {
+      e.preventDefault(); e.stopPropagation();
+      vpToggleSlimChrome();
+      return;
+    }
   }
 
   // (dev0617) ←/→ page through a sectioned fullscreen text slide. Only set for

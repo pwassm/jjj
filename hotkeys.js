@@ -600,6 +600,10 @@ window.HOTKEYS = [
     impl: 'collection.js (dev0346/0674)',
     desc: 'Whole-grid zoom ±0.1 — EXCEPT while the CLEAN PLAYBACK panel is open (b), where they become buffer pre-roll ∓0.5s with the panel as the live readout. − / + always adjust the pre-roll regardless of the panel. Ctrl+[ / Ctrl+] zoom just the hovered cell either way.' },
 
+  { label: 'Ctrl+V', group: 'Viewer', scope: 'V', dev: false,
+    impl: 'vp.js vpKeyHandler (dev0981) → vpToggleSlimChrome',
+    desc: 'On a video in V or Vss: switch between the thin timeline strip over the picture and the full toolbar (speed, A-B, frame steps) — the same as the small ▴ / ▾ just above the right end of the bar. V and Vss open thin; V opened from T opens full. Bare v does the same on a video. A focused text field keeps its paste.' },
+
   { label: 'Z', group: 'Viewer', scope: 'V', dev: false,
     impl: 'vp.js vpKeyHandler (dev0672) → _vpEmbedZoomArm',
     desc: 'On an IG/TikTok post in V: arm/disarm the ⤢ zoom (same as the toolbar button). Armed = hold to enlarge, drag to pan, double-click for usual size; disarm to hand the picture back to the player. Inert on any other kind of row, where Z still rotates a visible crop frame.' },
