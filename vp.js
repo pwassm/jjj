@@ -2271,14 +2271,13 @@ function gridOpenFullscreen(row, contained) {
         }
       }, true);
 
+      // (dev0984) CTRL+wheel down closes the reader back to the grid, from any
+      // scroll position; a bare wheel only scrolls.
       doc.addEventListener('wheel', function (ev) {
-        if (ev.ctrlKey || ev.shiftKey || ev.altKey || ev.metaKey) return;
-        if (ev.deltaY <= 0) return;                       // up: let it scroll
+        if (!ev.ctrlKey || ev.shiftKey || ev.altKey || ev.metaKey) return;
         if (!window._vpTextReader) return;
-        const el = doc.scrollingElement || doc.documentElement;
-        const room = el.scrollHeight - el.clientHeight - el.scrollTop;
-        if (room > 2) return;                             // still page left to read
-        ev.preventDefault();
+        ev.preventDefault();                              // no browser zoom
+        if (ev.deltaY <= 0) return;
         vpClose();
       }, { passive: false });
     }

@@ -3440,8 +3440,10 @@ function gridShow() {
     // "else 1a, else the first text cell" fallback: a stray wheel must not
     // expand a cell the pointer was nowhere near. Modified wheels are left
     // alone — Ctrl+wheel is the per-cell zoom.
+    // (dev0984) Now CTRL+wheel up, not a bare wheel — a bare wheel was too easy
+    // to fire by accident. preventDefault also stops the browser's page zoom.
     overlay.addEventListener('wheel', e => {
-      if (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+      if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
       if (e.deltaY >= 0) return;                         // down: nothing in G
       const fsEl = document.getElementById('gridFullscreen');
       if (fsEl && fsEl.style.display === 'flex') return; // the reader is up
