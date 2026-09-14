@@ -1460,7 +1460,7 @@ window.openVideoEditor = function(it) {
     + '&nbsp; <span id="v2clipstotal" style="color:#aef;"></span>'
     + '&nbsp; <span id="v2videototal" style="color:#8a8;"></span>'
     + '&nbsp; &nbsp; <span style="color:#555;">Ctrl+click video = add segment &nbsp;|&nbsp; '
-    + 'Click timeline = scrub &nbsp;|&nbsp; '
+    + 'Click timeline = seek &nbsp;|&nbsp; Wheel on Start/Duration = &plusmn;10s &nbsp;|&nbsp; '
     + 'Ctrl+click timeline band = delete</span></div>'
     + '<div id="v2timeline" style="position:relative;height:38px;background:#222;'
     + 'border-radius:4px;cursor:crosshair;border:1px solid #444;overflow:hidden;user-select:none;"></div>'
@@ -1528,7 +1528,7 @@ window.openVideoEditor = function(it) {
     + '<div style="font-size:13px;font-weight:bold;color:#ccc;border-bottom:1px solid #444;'
     + 'padding-bottom:5px;">Fine Adjustments</div>'
     // ── Start ──
-    + '<div style="margin-bottom:6px;">'
+    + '<div id="v2startsec" style="margin-bottom:6px;" title="Mouse wheel = start &plusmn;10s">'
     + '<div style="font-size:11px;color:#888;margin-bottom:2px;">Start (sec)</div>'
     // 5-col grid: col3 holds number, carets, and 0 button
     + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;align-items:center;">'
@@ -1552,7 +1552,7 @@ window.openVideoEditor = function(it) {
     + '</div>'
     + '</div>'
     // ── Duration ──
-    + '<div style="margin-bottom:6px;">'
+    + '<div id="v2dursec" style="margin-bottom:6px;" title="Mouse wheel = duration &plusmn;10s">'
     + '<div style="font-size:11px;color:#888;margin-bottom:2px;">Duration (sec)</div>'
     + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;align-items:center;">'
     // Row 1: number in col 3
@@ -1707,19 +1707,18 @@ window.openVideoEditor = function(it) {
         + 'Seg ' + (i+1) + ': ' + seg.start.toFixed(1) + 's + ' + seg.dur.toFixed(1) + 's';
       // Use pointerdown so it fires before the timeline's own pointerdown handler
       band.addEventListener('pointerdown', function(ev) {
-        ev.stopPropagation();
-        if (ev.ctrlKey && ev.shiftKey) {
+        // (dev0980) A plain left-click is NOT handled here any more — it bubbles
+        // to the timeline's scrub handler, which seeks to the clicked point and
+        // selects this segment on release. Was: setActiveSeg(i), whose remount
+        // always jumped playback back to the segment's start.
+        if (ev.button !== 0 || ev.ctrlKey) ev.stopPropagation();
+        if (ev.button === 0 && ev.ctrlKey && ev.shiftKey) {
           // Ctrl+Shift+click band = delete segment
           // Empty-segments is a valid state (editor opens this way for videos
           // with no VidRange; ctrl+click re-adds a segment).
           ev.preventDefault();
           segs.splice(i, 1);
           setActiveSeg(Math.min(activeSegIdx, segs.length - 1));
-        } else if (!ev.ctrlKey) {
-          // Plain click band = switch to that segment and loop it
-          ev.preventDefault();
-          scrubClickedBand = true;
-          setActiveSeg(i);
         }
       });
 
@@ -1771,6 +1770,16 @@ window.openVideoEditor = function(it) {
     renderSegTabs();
     renderTimeline();
     mountLoop();    // switch loop to new active segment
+  }
+
+  // (dev0980) Make segment i active WITHOUT remounting the player (setActiveSeg
+  // remounts at seg.start). Timeline clicks use this — they do their own seek.
+  function selectSegNoMount(i) {
+    activeSegIdx = i;
+    iStart.value = segs[i].start;
+    iDur.value   = segs[i].dur;
+    renderSegTabs();
+    renderTimeline();
   }
 
   // ── Shared: persist VidComment to linksData + Tabulator + localStorage ──────
@@ -2204,6 +2213,56 @@ window.openVideoEditor = function(it) {
     });
   });
 
+  // (dev0980) Mouse wheel over the Start / Duration sections: ±10s per wheel
+  // notch, up = increase. The band redraws on every notch; the save and the
+  // replay (start preview for Start, end preview for Duration — same as the
+  // ±1/±5 buttons, and a paused player stays paused) settle 200ms after the
+  // wheel stops, so a fast spin doesn't write ml.json or seek YT every notch.
+  var WHEEL_STEP_SEC = 10;
+  var _wheelAcc = 0, _wheelSettle = null;
+  function wheelNotch(e) {
+    var dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+    // A mouse notch is one event (Chrome ~100px, Firefox 3 lines); touchpads
+    // send many small deltas, so accumulate those up to one notch.
+    if (Math.abs(dy) < 40) {
+      _wheelAcc += dy;
+      if (Math.abs(_wheelAcc) < 100) return 0;
+      dy = _wheelAcc;
+    }
+    _wheelAcc = 0;
+    return dy < 0 ? 1 : -1;
+  }
+  function wheelAdjust(type, e) {
+    e.preventDefault();
+    if (!segs.length) return;
+    var n = wheelNotch(e);
+    if (!n) return;
+    var seg = segs[activeSegIdx];
+    var delta = n * WHEEL_STEP_SEC;
+    if (type === 'start') {
+      var maxStart = totalVideoDur ? Math.max(0, totalVideoDur - 1) : Infinity;
+      seg.start = fmt(Math.min(maxStart, Math.max(0, seg.start + delta)));
+      iStart.value = seg.start;
+    } else {
+      if (delta > 0 && !totalVideoDur) return;  // same metadata gate as dur+ buttons
+      var maxDur = totalVideoDur ? Math.max(0.1, totalVideoDur - seg.start) : Infinity;
+      seg.dur = fmt(Math.min(maxDur, Math.max(0.1, seg.dur + delta)));
+      iDur.value = seg.dur;
+    }
+    vrPrev.textContent = window.serializeSegments(segs);
+    updateStats(); renderTimeline(); renderSegTabs();
+    clearTimeout(_wheelSettle);
+    _wheelSettle = setTimeout(function() {
+      _wheelSettle = null;
+      persistEditorState();
+      if (type === 'start') playStartLoop(); else playEndLoop();
+    }, 200);
+  }
+  document.getElementById('v2startsec').addEventListener('wheel',
+    function(e) { wheelAdjust('start', e); }, { passive: false });
+  document.getElementById('v2dursec').addEventListener('wheel',
+    function(e) { wheelAdjust('dur', e); }, { passive: false });
+
   // Input field changes
   iStart.addEventListener('change', function() { readInputs(); scheduleMount('start'); });
   iDur.addEventListener('change',   function() { readInputs(); scheduleMount('end');   });
@@ -2246,7 +2305,7 @@ window.openVideoEditor = function(it) {
   // Ctrl+click empty area: add segment
   // Ctrl+click band: delete segment
   var isDraggingScrub = false;
-  var scrubClickedBand = false; // true if pointerdown landed on a band
+  var scrubWasPaused = false;   // (dev0980) player paused before this click?
 
   function getEditorPlayer() {
     return window.seeLearnVideoPlayers['v2host'] || null;
@@ -2351,19 +2410,20 @@ window.openVideoEditor = function(it) {
     renderTimeline(clamped);
     tCur.textContent = clamped.toFixed(1) + 's';
     var p = getEditorPlayer();
-    if (!p) return;
+    if (!p) return clamped;
     if (typeof p.seekTo === 'function') {
       try { p.seekTo(clamped, !window.keyframeOnly); } catch(ex) {}
     } else if (p.setCurrentTime) {
       p.setCurrentTime(clamped).catch(function(){});
     }
+    return clamped;
   }
 
   var scrubResumeTimerV2 = null;
 
   timeline.addEventListener('pointerdown', function(e) {
     if (e.ctrlKey) return;
-    if (scrubClickedBand) { scrubClickedBand = false; return; }
+    if (isDraggingScrub) return;
     e.preventDefault();
     isDraggingScrub = true;
     scrubShield.style.display = 'block';
@@ -2372,6 +2432,9 @@ window.openVideoEditor = function(it) {
     suspendLoop();
     // Pause the player so the seeked frame shows (not just a moving blur)
     var _ep = getEditorPlayer();
+    // (dev0980) Remember play/pause BEFORE the scrub pauses it, so release
+    // restores the same state at the new position.
+    scrubWasPaused = !!(_ep && (_ep._salPaused || _ep._salUserPaused));
     if (_ep) {
       _ep._salPaused = true;
       if (typeof _ep.pauseVideo === 'function') { try { _ep.pauseVideo(); } catch(_ex) {} }
@@ -2390,37 +2453,33 @@ window.openVideoEditor = function(it) {
     isDraggingScrub = false;
     scrubShield.style.display = 'none';
     var releaseSec = timelineSecFromEvent(e);
-    scrubToSec(releaseSec);
 
     // Check if release point is inside any segment band
     var insideSeg = -1;
     segs.forEach(function(s, i) {
       if (releaseSec >= s.start && releaseSec < s.start + s.dur) insideSeg = i;
     });
+    // (dev0980) Select without remounting — setActiveSeg's remount is what
+    // sent every click inside a segment back to the segment's start.
+    if (insideSeg >= 0 && insideSeg !== activeSegIdx) selectSegNoMount(insideSeg);
+    releaseSec = scrubToSec(releaseSec);
 
     var p = getEditorPlayer();
     if (!p) return;
 
-    // (zip0132) If user explicitly Space-paused, just seek to the release
-    // point and stay paused. Don't auto-resume play. _salUserPaused is set
-    // by index.html's Space handler and cleared only by the next Space
-    // (or by an explicit play action). Without this guard, every click on
-    // the timeline would override the user's pause and resume play.
-    if (p._salUserPaused) {
+    // (zip0132, dev0980) Paused before the click (Space, arrow frame-step,
+    // or any other app pause) → stay paused on the new frame. Playing → keep
+    // playing from the new frame.
+    if (scrubWasPaused) {
       try {
         if (typeof p.seekTo === 'function') p.seekTo(releaseSec, true);
         else if (typeof p.setCurrentTime === 'function') p.setCurrentTime(releaseSec);
       } catch(_) {}
-      // Update active segment pointer (without auto-playing it) if click
-      // landed in one — keeps the rest of the UI consistent.
-      if (insideSeg >= 0) setActiveSeg(insideSeg);
       return;
     }
 
     if (insideSeg >= 0) {
-      // Released inside a segment → loop that segment from release point
-      setActiveSeg(insideSeg);
-      // resumeFromCurrent: plays from current position, loops at seg end
+      // Released inside a segment → play from release point, loop at seg end
       var seg = segs[insideSeg];
       resumeFromCurrent(p, seg.start, seg.dur);
     } else {
@@ -2711,6 +2770,8 @@ window.openVideoEditor = function(it) {
   function closeEditor() {
     clearInterval(scrubTimer);
     clearTimeout(mountDebounce);
+    // (dev0980) Closing within 200ms of a wheel adjust: save it now, skip replay.
+    if (_wheelSettle) { clearTimeout(_wheelSettle); _wheelSettle = null; persistEditorState(); }
     window.stopCellVideoLoop('v2host');
     if (window.menuWrap) window.menuWrap.style.display = '';  // restore HM
     overlay.remove();
