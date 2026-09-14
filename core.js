@@ -461,10 +461,9 @@ window.addEventListener('keydown', function(e) {
         if (typeof window._gmSelectDigit === 'function') window._gmSelectDigit(k);
         return false;
       }
-      // (dev0571) Grid RESIZE is a curation action — dev-only. In user mode the grid
-      // is a curated c.json layout; don't let a stray 2-5 reshape it (Gu = subset).
-      if (k >= '2' && k <= '5'
-          && !((typeof _isUserMode === 'function') && _isUserMode())) {
+      // (dev0571 → dev0983) 2-5 resize in user mode too (slam.com matches localhost).
+      // A viewer's resize is view-only: skipSave, so it never writes meta anywhere.
+      if (k >= '2' && k <= '5') {
         e.preventDefault();
         e.stopPropagation();
         // (dev0370) C-source layouts (17/19 + portrait 3/12/27) are config-only —
@@ -476,7 +475,8 @@ window.addEventListener('keydown', function(e) {
           if (typeof _gridToast === 'function') _gridToast('Layout locked — change it from the C screen', 1400);
           return false;
         }
-        if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10));
+        const _um = (typeof _isUserMode === 'function') && _isUserMode();
+        if (typeof _setGridGsize === 'function') _setGridGsize(parseInt(k, 10), _um ? { skipSave: true } : undefined);
         return false;
       }
     }
