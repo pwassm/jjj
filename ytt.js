@@ -89,7 +89,11 @@ function _yttMarkTagged(row) {
 
 // Returns { ok, skipped, error } so the queue below can drive it and keep a
 // tally. `qLabel` ("3/17") rides on the front of every toast this run makes.
-async function yttRunRow(di, force, qLabel) {
+// (dev0987) `tsum` picks the prompt: 'Brief' (TsumBrief.py — main point + 1-3
+// bullets, ~1 min) writes <stem>.brief.txt; the default Health writes .summary.txt.
+async function yttRunRow(di, force, qLabel, tsum) {
+  tsum = tsum || YTT_DEFAULT_TSUM;
+  const brief = tsum === 'Brief';
   const row = (typeof data !== 'undefined' && data[di]) || null;
   if (!row) return { ok: false, error: 'no such row' };
   const vid = yttVideoId(row.link);
@@ -105,7 +109,7 @@ async function yttRunRow(di, force, qLabel) {
   }
   _yttBusy = true;
 
-  const title = (qLabel ? qLabel + '  ' : '') + String(row.VidTitle || row.link).slice(0, 46);
+  const title = (qLabel ? qLabel + '  ' : '') + (brief ? 'Brief · ' : '') + String(row.VidTitle || row.link).slice(0, 46);
   const job = 'ytt' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   // Re-issuing the toast is what keeps a multi-minute run continuously visible:
@@ -134,7 +138,7 @@ async function yttRunRow(di, force, qLabel) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         uid: String(row.UID || ''), url: row.link, title: row.VidTitle || '',
-        tsum: YTT_DEFAULT_TSUM, job: job, force: !!force
+        tsum: tsum, job: job, force: !!force
       })
     });
     const j = await r.json();
@@ -146,7 +150,11 @@ async function yttRunRow(di, force, qLabel) {
       if (!window._cMode && _yttMarkTagged(row)) {
         try { save(); if (typeof render === 'function') render(); } catch (_) {}
       }
-      if (!qLabel) toast('📝 Already summarised — press z to read it (' + j.summary + ')', 6000);
+      // (dev0987) A single row opens what it has straight away; a batch stays quiet.
+      if (!qLabel) {
+        toast('📝 ' + (brief ? 'Brief already on disk' : 'Already summarised') + ' (' + j.summary + ')', 4000);
+        yttShowText(String(row.UID || ''), brief ? 'brief' : 'summary');
+      }
       return { ok: true, skipped: true };
     }
     if (j && j.ok) {
@@ -157,9 +165,12 @@ async function yttRunRow(di, force, qLabel) {
       if (!window._cMode && _yttMarkTagged(row)) {
         try { save(); if (typeof render === 'function') render(); saved = true; } catch (_) {}
       }
+      if (brief) _yttOvKind = 'brief';   // z opens what was just made
       toast('✅ ' + (qLabel ? qLabel + '  ' : '') + j.summary + '  ·  ' + j.words + ' words in, ' + j.model
             + '  ·  ' + _yttClock(Date.now() - startedAt)
-            + (saved ? '  ·  tagged “transcribed”' : '') + '  —  press z to read', qLabel ? 4000 : 10000);
+            + (saved ? '  ·  tagged “transcribed”' : '') + (qLabel ? '  —  press z to read' : ''), qLabel ? 4000 : 8000);
+      // (dev0987) Single row: open the result window as soon as it lands.
+      if (!qLabel) yttShowText(String(row.UID || ''), brief ? 'brief' : 'summary');
       return { ok: true };
     }
     const err = (j && j.error) || ('HTTP ' + r.status);
@@ -232,6 +243,25 @@ async function yttRunQueue() {
         + 'Esc stops it after the row in flight. Reloading the page abandons it.\n\n'
         + 'Start?')) return;
 
+  await _yttRunSerial(rows, YTT_DEFAULT_TSUM, 'Queue');
+}
+window.yttRunQueue = yttRunQueue;
+
+// (dev0987) Brief for the CHECKED rows in T (or just `di` when none are checked).
+// No confirm: the menu label already carries the count, a brief is ~1 min a row,
+// and Esc stops it after the row in flight.
+async function yttRunBriefRows(dis) {
+  if (_yttQ.running) { toast('📝 A batch is already running — Esc stops it after the current row', 3000); return; }
+  const rows = (dis || []).filter(i => data[i] && yttVideoId(data[i].link));
+  if (!rows.length) { toast('📝 None of those rows is a YouTube link', 3000); return; }
+  if (rows.length === 1) { await yttRunRow(rows[0], false, '', 'Brief'); return; }
+  toast('📝 Brief for ' + rows.length + ' rows, one at a time — Esc stops after the current row', 3500);
+  await _yttRunSerial(rows, 'Brief', 'Briefs');
+}
+window.yttRunBriefRows = yttRunBriefRows;
+
+// The serial loop shared by the queue and checked-row briefs.
+async function _yttRunSerial(rows, tsum, name) {
   _yttQ = { running: true, stop: false, done: 0, failed: [], total: rows.length };
   document.addEventListener('keydown', _yttQKey, true);
   const t0 = Date.now();
@@ -244,7 +274,7 @@ async function yttRunQueue() {
     if (_yttQ.stop) break;
     const di = data.findIndex(r => r && String(r.UID || '') === uids[n]);
     if (di < 0) { _yttQ.failed.push(uids[n] + ' (row vanished)'); continue; }
-    const res = await yttRunRow(di, false, (n + 1) + '/' + uids.length);
+    const res = await yttRunRow(di, false, (n + 1) + '/' + uids.length, tsum);
     if (res && res.ok) _yttQ.done++;
     else {
       _yttQ.failed.push(uids[n] + ': ' + ((res && res.error) || 'unknown'));
@@ -257,14 +287,13 @@ async function yttRunQueue() {
   document.removeEventListener('keydown', _yttQKey, true);
   _yttQ.running = false;
   const mins = _yttClock(Date.now() - t0);
-  let msg = (_yttQ.stop ? '🛑 Queue stopped' : '✅ Queue finished') + '  ·  '
+  let msg = (_yttQ.stop ? '🛑 ' + name + ' stopped' : '✅ ' + name + ' finished') + '  ·  '
           + _yttQ.done + '/' + _yttQ.total + ' done in ' + mins;
   if (_yttQ.failed.length) msg += '  ·  ' + _yttQ.failed.length + ' failed (see ytsummaries/_runs.log)';
   toast(msg, 15000);
-  if (_yttQ.failed.length) console.warn('[ytt] queue failures:\n' + _yttQ.failed.join('\n'));
+  if (_yttQ.failed.length) console.warn('[ytt] ' + name + ' failures:\n' + _yttQ.failed.join('\n'));
   yttRefreshHave();
 }
-window.yttRunQueue = yttRunQueue;
 
 // ── the z window ─────────────────────────────────────────────────────────────
 let _yttOvKind = 'summary';   // remembered across opens within a session
@@ -287,21 +316,29 @@ function _yttOvKey(e) {
   }
 }
 
-async function yttShowText(uid, kind) {
+// (dev0987) `anyKind` (the z key): if the remembered kind isn't on disk for this row,
+// show whichever is — brief, then summary, then transcript — without forgetting
+// the preference for the next row.
+async function yttShowText(uid, kind, anyKind) {
   const want = kind || _yttOvKind;
+  const tries = anyKind ? [want, 'brief', 'summary', 'transcript'].filter((k, i, a) => a.indexOf(k) === i) : [want];
   let j = null;
   try {
-    const r = await fetch(YTT_PROXY + '/ytt/text?uid=' + encodeURIComponent(uid) + '&kind=' + want);
-    j = await r.json();
+    for (const k of tries) {
+      const r = await fetch(YTT_PROXY + '/ytt/text?uid=' + encodeURIComponent(uid) + '&kind=' + k);
+      j = await r.json();
+      if (j && j.ok) break;
+    }
   } catch (_) {
     toast('⚠ Proxy not reachable on 8081 — the summaries live on disk, so start proxy.js', 5000);
     return;
   }
   if (!j || !j.ok) {
-    toast('📝 No ' + want + ' for UID ' + uid + ' yet — right-click the row ▸ “Transcribe & summarise”', 6000);
+    toast('📝 No ' + (anyKind ? 'summary' : want) + ' for UID ' + uid + ' yet — right-click the row ▸ “Brief summary” or “Transcribe & summarise”', 6000);
     return;
   }
-  _yttOvKind = want;
+  if (j.kind === want) _yttOvKind = want;
+  const shown = j.kind || want;
   yttCloseWindow();
 
   const ov = document.createElement('div');
@@ -326,11 +363,13 @@ async function yttShowText(uid, kind) {
     b.addEventListener('click', on);
     return b;
   };
-  const other = want === 'summary' ? 'transcript' : 'summary';
-  bar.appendChild(mkBtn(other === 'transcript' ? 'Transcript' : 'Summary', () => yttShowText(uid, other)));
+  // One button per OTHER kind on disk (an older proxy sends no `kinds`).
+  (j.kinds || ['summary', 'transcript']).filter(k => k !== shown).forEach(k => {
+    bar.appendChild(mkBtn(k.charAt(0).toUpperCase() + k.slice(1), () => yttShowText(uid, k)));
+  });
   bar.appendChild(mkBtn('Copy', () => {
     navigator.clipboard.writeText(j.text).then(
-      () => toast('📋 ' + want + ' copied', 1800),
+      () => toast('📋 ' + shown + ' copied', 1800),
       () => toast('⚠ Clipboard refused', 2000));
   }));
   bar.appendChild(mkBtn('✕', yttCloseWindow));
@@ -371,7 +410,7 @@ function yttHotkeyZ() {
   } catch (_) {}
   if (!uid && window._lastUID) uid = String(window._lastUID);
   if (!uid) { toast('📝 Click a row to focus it, then z', 2000); return; }
-  yttShowText(uid, _yttOvKind);
+  yttShowText(uid, _yttOvKind, true);
 }
 window.yttHotkeyZ = yttHotkeyZ;
 

@@ -3905,9 +3905,25 @@ function showCtx(x, y, target) {
       // progress toast IS the feature. Offered only for a YouTube link, because
       // step 1 is YouTube's OWN caption API; every other host waits on the whisper
       // path. Reading a finished one is the z key.
+      // (dev0987) BRIEF = TsumBrief.py: main point + 1-3 bullets + the transcript, no
+      // timestamps, ~1 min a row instead of ~7. Offered for the CHECKED rows when
+      // two or more YouTube rows are checked, and for this row on its own.
+      if (typeof yttRunBriefRows === 'function') {
+        const _yChk = [...checkedRows].filter(i => data[i] && yttVideoId(data[i].link));
+        if (_yChk.length >= 2) {
+          addCI(menu, 'Brief summary — ' + _yChk.length + ' checked rows', () => yttRunBriefRows(_yChk));
+          if (!yttVideoId(data[di] && data[di].link)) addCS(menu);
+        }
+      }
       if (typeof yttVideoId === 'function' && yttVideoId(data[di] && data[di].link)) {
         const _yUid = String((data[di] && data[di].UID) || '');
         const _yHave = window._yttHave && window._yttHave[_yUid];
+        if (_yHave && _yHave.brief) {
+          addCI(menu, 'Read brief (z)', () => yttShowText(_yUid, 'brief'));
+          addCI(menu, 'Brief summary AGAIN', () => yttRunRow(di, true, '', 'Brief'));
+        } else {
+          addCI(menu, 'Brief summary (fast)', () => yttRunRow(di, false, '', 'Brief'));
+        }
         if (_yHave && _yHave.summary) {
           addCI(menu, 'Read summary (z)', () => yttShowText(_yUid, 'summary'));
           addCI(menu, 'Transcribe & summarise AGAIN', () => yttRunRow(di, true));
@@ -3924,7 +3940,7 @@ function showCtx(x, y, target) {
       if (typeof yttQueueRows === 'function') {
         const _yQ = yttQueueRows().length;
         if (_yQ) {
-          addCI(menu, 'Transcribe all ' + _yQ + ' queued&', () => yttRunQueue());
+          addCI(menu, 'Transcribe all ' + _yQ + ' queued…', () => yttRunQueue());
           addCS(menu);
         }
       }

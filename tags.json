@@ -8345,5 +8345,16 @@
     "parents": [],
     "aliases": [],
     "def": ""
+  },
+  {
+    "id": "nanomia-bijuga",
+    "label": "Nanomia bijuga",
+    "kind": "taxon",
+    "parents": [],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "common siphonophore",
+    "extinct": false
   }
 ]

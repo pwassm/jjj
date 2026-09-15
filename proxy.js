@@ -7148,7 +7148,8 @@ function yttScan() {
   let names = [];
   try { names = fs.readdirSync(YTSUM_DIR); } catch (_) { return out; }
   for (const n of names) {
-    const m = /^([0-9]+(?:_[0-9A-Za-z]+)?)~([A-Za-z0-9_-]{11})~([\s\S]*)\.(transcript|summary)\.txt$/.exec(n);
+    // (dev0987) `brief` = TsumBrief.py's short version, kept beside the long summary.
+    const m = /^([0-9]+(?:_[0-9A-Za-z]+)?)~([A-Za-z0-9_-]{11})~([\s\S]*)\.(transcript|summary|brief)\.txt$/.exec(n);
     if (!m) continue;
     const rec = out[m[1]] || (out[m[1]] = { uid: m[1], vid: m[2], title: m[3] });
     rec[m[4]] = n;
@@ -7237,6 +7238,9 @@ function yttRun(req, res, origin) {
     const tsum  = String(payload.tsum || 'Health').replace(/[^A-Za-z0-9]/g, '') || 'Health';
     const force = !!payload.force;
     const vid   = yttVideoId(url);
+    // (dev0987) Brief writes <stem>.brief.txt, NOT .summary.txt, so a fast brief never
+    // overwrites a long Health summary and each has its own "already on disk" check.
+    const kind  = tsum.toLowerCase() === 'brief' ? 'brief' : 'summary';
 
     if (!uid) { sendJson(res, 400, { ok: false, error: 'uid required' }, origin); return; }
     if (!vid) { sendJson(res, 400, { ok: false, error: 'not a YouTube link — no caption track to fetch. Vimeo/IG/direct MP4 is what the whisper path (step 2 of this feature) will cover.' }, origin); return; }
@@ -7246,9 +7250,9 @@ function yttRun(req, res, origin) {
     if (YTT_BUSY) { sendJson(res, 409, { ok: false, error: 'a transcript/summary is already running — one at a time (the 8B model owns the iGPU)' }, origin); return; }
 
     const already = yttScan()[uid];
-    if (already && already.summary && !force) {
-      yttLog('uid ' + uid + ' skipped — summary already on disk');
-      sendJson(res, 200, { ok: true, skipped: true, uid: uid, summary: already.summary, transcript: already.transcript || '' }, origin);
+    if (already && already[kind] && !force) {
+      yttLog('uid ' + uid + ' skipped — ' + kind + ' already on disk');
+      sendJson(res, 200, { ok: true, skipped: true, uid: uid, kind: kind, summary: already[kind], transcript: already.transcript || '' }, origin);
       return;
     }
 
@@ -7265,8 +7269,23 @@ function yttRun(req, res, origin) {
 
     try {
       // ── step 1: the caption track ────────────────────────────────────────
+      let s1Title = String(payload.title || ''), s1Words = 0, tPath = '', sPath = '';
+      // (dev0987) A transcript already on disk is reused, not re-fetched: it is the
+      // irreplaceable half (tracks get pulled), and every row summarised so far
+      // already has one — so a Brief over those rows goes straight to the model.
+      // Same video only — a row whose link was changed gets its new track fetched.
+      if (already && already.transcript && already.vid === vid) {
+        tPath = path.join(YTSUM_DIR, already.transcript);
+        sPath = path.join(YTSUM_DIR, already.transcript.replace(/\.transcript\.txt$/, '.' + kind + '.txt'));
+        if (!s1Title) s1Title = already.title;
+        try {
+          s1Words = fs.readFileSync(tPath, 'utf8').replace(/\[\d+:\d{2}(?::\d{2})?\]/g, ' ').split(/\s+/).filter(Boolean).length;
+        } catch (_) {}
+        yttJobSet(jobId, { stage: 'transcript', words: s1Words, note: s1Words + ' words (on disk)', file: already.transcript });
+        yttLog('uid ' + uid + ' transcript reused from disk (' + s1Words + ' words)');
+      } else {
       yttJobSet(jobId, { stage: 'transcript', note: 'fetching caption track' });
-      let s1Title = String(payload.title || ''), s1Out = '', s1Words = 0, noTranscript = false;
+      let s1Out = '', noTranscript = false;
       const r1 = await yttSpawn('get_yt_transcript.py', [url, YTSUM_DIR], line => {
         if (line.startsWith('TITLE:')) s1Title = line.slice(6).trim() || s1Title;
         else if (line.startsWith('WORDS:'))   s1Words = parseInt(line.slice(6), 10) || 0;
@@ -7283,8 +7302,8 @@ function yttRun(req, res, origin) {
       // Rename step 1's own `@channel~id~title~words.txt` into the UID-led name this
       // folder is keyed on. Step 1 knows nothing about UIDs and should not have to.
       const stem  = uid + '~' + vid + '~' + yttSafe(s1Title, 70);
-      const tPath = path.join(YTSUM_DIR, stem + '.transcript.txt');
-      const sPath = path.join(YTSUM_DIR, stem + '.summary.txt');
+      tPath = path.join(YTSUM_DIR, stem + '.transcript.txt');
+      sPath = path.join(YTSUM_DIR, stem + '.' + kind + '.txt');
       try {
         if (path.resolve(s1Out) !== path.resolve(tPath)) {
           try { fs.unlinkSync(tPath); } catch (_) {}
@@ -7295,6 +7314,7 @@ function yttRun(req, res, origin) {
       // Logged as its own step so a run that dies later still says how far it got —
       // a transcript with no summary beside it is otherwise a silent mystery.
       yttLog('uid ' + uid + ' transcript ok (' + s1Words + ' words) in ' + secs());
+      }
 
       // ── step 2: chunked local summarisation ──────────────────────────────
       if (!(await yttEnsureOllama(jobId))) { fail(503, 'Ollama is not listening on 11434 and could not be started'); return; }
@@ -7339,7 +7359,7 @@ function yttRun(req, res, origin) {
       sendJson(res, 200, {
         ok: true, uid: uid, vid: vid, title: s1Title, words: s1Words,
         transcript: path.basename(tPath), summary: path.basename(sPath),
-        model: YTT_MODEL, tsum: tsum
+        model: YTT_MODEL, tsum: tsum, kind: kind
       }, origin);
     } catch (e) {
       fail(500, 'ytt: ' + e.message);
@@ -7352,11 +7372,13 @@ function yttRun(req, res, origin) {
 // cannot address anything outside the folder.
 function yttText(res, uid, kind, origin) {
   const rec = yttScan()[String(uid || '').replace(/[^0-9A-Za-z_]/g, '')];
-  const k = kind === 'transcript' ? 'transcript' : 'summary';
+  const k = (kind === 'transcript' || kind === 'brief') ? kind : 'summary';
   if (!rec || !rec[k]) { sendJson(res, 404, { ok: false, error: 'no ' + k + ' for uid ' + uid }, origin); return; }
+  // (dev0987) Which kinds exist, so the z window only offers buttons that open something.
+  const kinds = ['brief', 'summary', 'transcript'].filter(x => rec[x]);
   try {
     const txt = fs.readFileSync(path.join(YTSUM_DIR, rec[k]), 'utf8');
-    sendJson(res, 200, { ok: true, uid: rec.uid, kind: k, file: rec[k], title: rec.title, text: txt }, origin);
+    sendJson(res, 200, { ok: true, uid: rec.uid, kind: k, kinds: kinds, file: rec[k], title: rec.title, text: txt }, origin);
   } catch (e) { sendJson(res, 500, { ok: false, error: e.message }, origin); }
 }
 
