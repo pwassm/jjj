@@ -278,7 +278,10 @@ function slideshowOpen(source) {
 // (dev0968) `startCell` = the cell the show should OPEN on ("2b"), from the
 // cell the viewer right-clicked / long-pressed, or the one the mouse is over
 // when s is pressed. Omitted (the menu launcher) means start at the beginning.
-function slideshowOpenGrid(startCell) {
+// (dev0988) `opts.startPage` — the same place expressed as a page number, the
+// form a deep link carries (boot.js ?c=NAME&p=N). startCell wins when both are
+// given; nothing passes both today.
+function slideshowOpenGrid(startCell, opts) {
   // (dev0279) Canonical cell-order, all media kinds. The Show filter and the
   // random shuffle are applied inside _slideshowStart.
   const ordered = _slideshowGridSlides();
@@ -289,7 +292,11 @@ function slideshowOpenGrid(startCell) {
   // (dev0283) Close any current show only now that we have slides, so a live
   // source-switch from the menu never leaves a gap on the screen behind.
   slideshowClose();
-  _slideshowStart(ordered, { sourceKind: 'grid', startCell: startCell || '' });
+  _slideshowStart(ordered, {
+    sourceKind: 'grid',
+    startCell: startCell || '',
+    startPage: (opts && opts.startPage) || 0
+  });
 }
 
 // ── External / folder sources (File System Access API) ──────────────────────
@@ -590,6 +597,21 @@ function _slideshowStart(allOrdered, opts) {
   if (opts && opts.startCell) {
     const si = working.findIndex(s => s.cell === opts.startCell);
     if (si > 0) startIdx = si;
+  }
+  // (dev0988) `startPage` — the 1-based page a ?c=NAME&p=N link asks for, which
+  // counts the show's canonical order: left to right, then the next row down.
+  // Resolved against `inOrder` and then looked up in `working`, so a link into
+  // a shuffled show still lands on the picture it names.
+  if (opts && opts.startPage > 0) {
+    const want = inOrder[opts.startPage - 1];
+    if (!want) {
+      if (typeof toast === 'function') {
+        toast('Page ' + opts.startPage + ' — this grid only has ' + inOrder.length, 2600);
+      }
+    } else {
+      const pi = working.findIndex(s => s.url === want.url && (s.cell || '') === (want.cell || ''));
+      if (pi > 0) startIdx = pi;
+    }
   }
 
   const overlay = document.createElement('div');
@@ -1953,7 +1975,30 @@ function _slideshowKey(e) {
   // tears the V player down too (see its _videoActive branch).
   if (e.key === 'Escape') {
     e.preventDefault(); e.stopImmediatePropagation();
-    slideshowClose();
+    // (dev0988) The overview is the innermost thing open — Esc closes the map,
+    // not the show underneath it.
+    if (_slideshowState._overlayOver) _ssOverviewClose();
+    else slideshowClose();
+    return;
+  }
+  // (dev0988) Ctrl+Z = the overview, on any slide including a video one (which
+  // is why this sits above the _videoActive stand-down, like Ctrl+C). While the
+  // map is up it also swallows the keys that would move the show behind it.
+  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+    const _zae = document.activeElement;
+    const _ztag = _zae && _zae.tagName;
+    if (!(_zae && (_ztag === 'INPUT' || _ztag === 'TEXTAREA' || _zae.isContentEditable))) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window._ssOverviewToggle();
+      return;
+    }
+  }
+  if (_slideshowState._overlayOver
+      && (e.key === ' ' || e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+          || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
     return;
   }
   // (dev0302) Review mode: a/s/d/f rate-and-move keys must work even while
@@ -2859,8 +2904,213 @@ function _slideshowMaybeRestoreOriginalSet() {
   return true;
 }
 
+// ── (dev0988) OVERVIEW — Ctrl+Z ──────────────────────────────────────────────
+// Vss puts one picture over the whole window, so mid-run there is no way to see
+// where you are or to reach a particular cell without Esc'ing back to G and
+// launching the show again. The overview is that missing map: every slide of
+// the run as a numbered tile, the current one ringed, click one to jump there.
+//
+// The numbers are PAGE numbers — the slide's place in the canonical in-order
+// list, which walks the grid left to right and then down the next row, and is
+// the same number a `?c=NAME&p=N` link carries. Tile ORDER follows the run, so
+// on a shuffled show the numbers are deliberately out of sequence: they answer
+// "which cell is this" rather than "how far along am I", and the counter in the
+// header answers the second question.
+const SLIDESHOW_OVER_Z = 43000;   // over the menu (42000) and a video lift (41000)
+
+// 1-based page of a slide — its position in the in-order snapshot. Matched on
+// url+cell rather than by reference because every list in the state is a fresh
+// copy of the slide objects (see _slideshowStart). 0 = not found.
+function _ssPageOf(slide) {
+  const st = _slideshowState;
+  if (!st || !slide) return 0;
+  const list = st._inOrderSnapshot || [];
+  const i = list.findIndex(s => s.url === slide.url && (s.cell || '') === (slide.cell || ''));
+  return i + 1;
+}
+
+// The shareable link to one page of the grid being played. Always the PUBLIC
+// site: a localhost link is no use to the person you are sending it to, and
+// this button only exists in dev mode anyway.
+function _ssPageLink(page) {
+  const cfg = window._gridActiveConfig;
+  const name = (cfg && cfg.gname) || window._gridName || '';
+  if (!name || !page) return '';
+  return 'https://sealifeandmore.com/?c=' + encodeURIComponent(name) + '&p=' + page;
+}
+
+// One tile's picture. Stills show themselves; a video shows whatever poster we
+// can get without loading the video — YouTube's thumbnail endpoint, Vimeo's
+// oEmbed (async, so the tile fills in when it lands), a disk/R2 file's own
+// first frame via preload=metadata. Anything left (Instagram, TikTok) gets a
+// plain ▶ card rather than an empty hole.
+function _ssOverThumb(slide) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;inset:0;background:#111;overflow:hidden;';
+  const imgCss = 'width:100%;height:100%;object-fit:cover;display:block;';
+  const url = slide.url || '';
+  const mkImg = (src) => {
+    const im = document.createElement('img');
+    im.src = src; im.alt = ''; im.loading = 'lazy'; im.style.cssText = imgCss;
+    box.appendChild(im);
+    return im;
+  };
+  if (slide.kind !== 'video') { mkImg(url); return box; }
+
+  const ytId = (typeof window.getYouTubeId === 'function')
+    ? window.getYouTubeId(url)
+    : ((url.match(/(?:youtu\.be\/|shorts\/|[?&]v=)([A-Za-z0-9_-]{11})/) || [])[1] || '');
+  if (ytId) {
+    mkImg('https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg');
+  } else if (/vimeo\.com/i.test(url) && typeof fetchVimeoThumb === 'function') {
+    const ph = mkImg('');
+    fetchVimeoThumb(url, (src) => { if (ph.isConnected) ph.src = src; });
+  } else if (_slideshowIsDirectVideoLink(url)) {
+    const v = document.createElement('video');
+    v.src = url + '#t=0.1';
+    v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    v.style.cssText = imgCss;
+    box.appendChild(v);
+  } else {
+    box.style.background = '#1a2030';
+  }
+  const play = document.createElement('div');
+  play.textContent = '▶';
+  play.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;'
+    + 'justify-content:center;font-size:26px;color:rgba(255,255,255,0.85);'
+    + 'text-shadow:0 2px 8px #000;pointer-events:none;';
+  box.appendChild(play);
+  return box;
+}
+
+function _ssOverviewOpen() {
+  const st = _slideshowState;
+  if (!st || st._overlayOver) return;
+  // Hold the show while the map is up — an auto-advance behind the overview
+  // would leave the ring pointing at a picture that is no longer on screen.
+  st._overResume = !st.paused;
+  if (st._overResume) _slideshowPause();
+
+  const over = document.createElement('div');
+  over.id = 'ssOverview';
+  over.style.cssText = 'position:fixed;inset:0;z-index:' + SLIDESHOW_OVER_Z + ';'
+    + 'background:rgba(6,8,14,0.96);display:flex;flex-direction:column;'
+    + 'font-family:sans-serif;touch-action:pan-y;';
+
+  const head = document.createElement('div');
+  head.style.cssText = 'flex:0 0 auto;display:flex;align-items:center;gap:14px;'
+    + 'padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.15);color:#cde;'
+    + 'font-size:13px;font-family:monospace;';
+  head.innerHTML = '<span style="font-weight:bold;">Overview</span>'
+    + '<span id="ssOverCount"></span>'
+    + '<span style="opacity:0.6;">click a picture to go there · Esc or Ctrl+Z closes</span>';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.title = 'Close (Esc)';
+  closeBtn.style.cssText = 'margin-left:auto;width:32px;height:32px;border-radius:6px;'
+    + 'border:1px solid rgba(255,255,255,0.35);background:rgba(0,0,0,0.55);color:#fff;'
+    + 'font-size:16px;cursor:pointer;padding:0;';
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); _ssOverviewClose(); });
+  head.appendChild(closeBtn);
+  over.appendChild(head);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:14px;'
+    + 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;'
+    + 'align-content:start;';
+  over.appendChild(body);
+
+  const isDev = !(typeof _isUserMode === 'function' && _isUserMode());
+  let shown = 0, current = null;
+  st.slides.forEach((slide, i) => {
+    if (slide.status === 'filtered') return;
+    shown++;
+    const page = _ssPageOf(slide);
+    const tile = document.createElement('div');
+    const isCur = (i === st.idx);
+    if (isCur) current = tile;
+    tile.style.cssText = 'position:relative;aspect-ratio:4/3;border-radius:7px;'
+      + 'overflow:hidden;cursor:pointer;background:#111;'
+      + 'border:2px solid ' + (isCur ? '#6af' : 'rgba(255,255,255,0.14)') + ';'
+      + (isCur ? 'box-shadow:0 0 0 3px rgba(102,170,255,0.35);' : '');
+    tile.appendChild(_ssOverThumb(slide));
+
+    const badge = document.createElement('div');
+    badge.textContent = page ? String(page) : '·';
+    badge.style.cssText = 'position:absolute;top:0;left:0;min-width:24px;padding:2px 6px;'
+      + 'background:rgba(0,0,0,0.72);color:#fff;font-family:monospace;font-size:12px;'
+      + 'border-bottom-right-radius:6px;pointer-events:none;';
+    tile.appendChild(badge);
+
+    const cellTxt = slide.cell || '';
+    const row = slide.row;
+    const title = (row && (row.VidTitle || _slideshowRowTag(row))) || '';
+    if (cellTxt || title) {
+      const cap = document.createElement('div');
+      cap.textContent = cellTxt ? (cellTxt + (title ? ' · ' + title : '')) : title;
+      cap.style.cssText = 'position:absolute;left:0;right:0;bottom:0;padding:3px 6px;'
+        + 'background:rgba(0,0,0,0.66);color:#dde;font-size:11px;white-space:nowrap;'
+        + 'overflow:hidden;text-overflow:ellipsis;pointer-events:none;';
+      tile.appendChild(cap);
+    }
+
+    if (isDev && page) {
+      const link = document.createElement('button');
+      link.textContent = '🔗';
+      link.title = 'Copy a link to page ' + page + ' on sealifeandmore.com';
+      link.style.cssText = 'position:absolute;top:3px;right:3px;width:24px;height:24px;'
+        + 'border-radius:5px;border:1px solid rgba(255,255,255,0.3);'
+        + 'background:rgba(0,0,0,0.6);color:#fff;font-size:12px;cursor:pointer;padding:0;';
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const u = _ssPageLink(page);
+        if (!u) { if (typeof toast === 'function') toast('This show has no c.json grid to link to', 2200); return; }
+        const done = () => { if (typeof toast === 'function') toast('Copied:\n' + u, 2600); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(u).then(done, () => { if (typeof toast === 'function') toast(u, 4000); });
+        } else { if (typeof toast === 'function') toast(u, 4000); }
+      });
+      tile.appendChild(link);
+    }
+
+    tile.addEventListener('click', () => {
+      _ssOverviewClose({ keepPaused: true });
+      _slideshowShow(i);
+    });
+    body.appendChild(tile);
+  });
+
+  const cnt = head.querySelector('#ssOverCount');
+  if (cnt) cnt.textContent = (st.idx + 1) + ' / ' + shown;
+
+  const parent = document.getElementById('rotateWrap') || document.body;
+  parent.appendChild(over);
+  st._overlayOver = over;
+  if (current) { try { current.scrollIntoView({ block: 'center' }); } catch (_) {} }
+}
+
+function _ssOverviewClose(opts) {
+  const st = _slideshowState;
+  if (!st || !st._overlayOver) return;
+  try { st._overlayOver.remove(); } catch (_) {}
+  st._overlayOver = null;
+  // A jump re-arms its own dwell timer inside _slideshowShow, so resuming here
+  // as well would run two timers at once against the same show.
+  if (st._overResume && !(opts && opts.keepPaused)) _slideshowResume();
+  else if (st._overResume && opts && opts.keepPaused) st.paused = false;
+  st._overResume = false;
+}
+
+window._ssOverviewToggle = function () {
+  const st = _slideshowState;
+  if (!st) return;
+  if (st._overlayOver) _ssOverviewClose();
+  else _ssOverviewOpen();
+};
+
 function slideshowClose() {
   if (!_slideshowState) return;
+  _ssOverviewClose({ keepPaused: true });   // (dev0988) never outlive the show
   clearTimeout(_slideshowState.timer);
   clearTimeout(_slideshowState.delayTimer); // (zip0239) cancel any queued zoom
   clearTimeout(_slideshowState._videoCapTimer); // (dev0557) Both-ShortVid cap

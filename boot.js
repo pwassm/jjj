@@ -264,6 +264,19 @@ _markUserModeClass();
         window._deepConfigUnlocked = hasUnlock;
       }
     }
+    // (dev0988) Page deep-link: `?p=N` rides along with ?c= or ?ss= and says
+    // WHICH picture of that grid to open on — N counts the grid left to right
+    // and then down the next row, the same order the slideshow plays in. A
+    // ?c= link that carries one launches the show rather than just showing G,
+    // because a page number is only meaningful once something is paging.
+    // Captured here, before _restorePrettyUrl wipes the query on the public
+    // site. Out-of-range is the slideshow's problem, not this one — it says so
+    // and starts at the beginning.
+    const pgRaw = (p.get('p') || '').trim();
+    if (pgRaw) {
+      const pgN = parseInt(pgRaw, 10);
+      if (pgN > 0) window._deepPage = pgN;
+    }
     // (dev0267) Slideshow deep-link: `?ss=ID` finds the c.json row whose
     // `ss` field equals ID, activates that grid, then auto-launches the
     // slideshow over it. /unlock suffix leaves G visible after the user
@@ -3004,7 +3017,15 @@ function _routeInitialScreen() {
     } else if (deepConfig) {
       // (dev0253) ?c=NAME — activate config then open G. _openConfigByName
       // calls gridShow() once the config is loaded.
-      _openConfigByName(deepConfig);
+      // (dev0988) With ?p=N, play that grid from page N once G has painted —
+      // the same 350ms beat _openSlideshowBySsId waits for the same reason.
+      const _pg = window._deepPage || 0;
+      const _cfgDone = _openConfigByName(deepConfig);
+      if (_pg && _cfgDone && typeof _cfgDone.then === 'function') {
+        _cfgDone.then(() => setTimeout(() => {
+          if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid('', { startPage: _pg });
+        }, 350));
+      }
     } else if (target === 'g') {
       // (dev0316) User-mode bare boot lands on the shareable menu ("I"),
       // not on G. Dev mode and any explicit deep-link path keep the old
@@ -3164,8 +3185,11 @@ async function _openSlideshowBySsId(ssVal, launch) {
   await _openConfigByName(cfg.gname);
   if (!launch) return;            // (dev0360) grid-only: G is now showing, stop here
   // Wait a beat for gridShow() to paint, then launch the slideshow over it.
+  // (dev0988) ?ss=ID&p=N opens on page N, same page numbering as ?c=.
   setTimeout(() => {
-    if (typeof slideshowOpenGrid === 'function') slideshowOpenGrid();
+    if (typeof slideshowOpenGrid !== 'function') return;
+    const pg = window._deepPage || 0;
+    slideshowOpenGrid('', pg ? { startPage: pg } : undefined);
   }, 350);
 }
 

@@ -568,6 +568,10 @@ window.HOTKEYS = [
     impl: 'collection.js / slideshow.js → grid.js _salToggleCtext (dev0978)',
     desc: 'Toggle ctext — hide / show the captions of a “+” collection or a grid loaded from T, in G and in the slideshow (Vss). Also “Toggle ctext” on the G right-click / long-press menu. Persisted in localStorage (slam-ctext-off). Ignored while text is selected, so a real copy still copies.' },
 
+  { label: 'Ctrl+Z', group: 'Slideshow (Vss)', scope: 'Vss', dev: false,
+    impl: 'slideshow.js _ssOverviewToggle (dev0988)',
+    desc: 'OVERVIEW — the map of the show you are watching. Every picture of the run as a numbered tile, the one on screen ringed; click any tile to jump straight to it. The number on a tile is its PAGE number: where it falls when the grid is read left to right and then down the next row, which is also the number a link carries (?c=NAME&p=5 opens that grid and plays it from page 5; ?ss=ID&p=5 does the same through a slideshow id). So on a shuffled show the numbers come out of sequence on purpose — they say which cell you are looking at, while the counter in the header says how far along you are. The show holds while the map is up and carries on where you leave it. Esc or Ctrl+Z closes it, and Esc closes the map before it closes the show. In dev mode each tile carries a 🔗 that copies that page’s sealifeandmore.com link to the clipboard.' },
+
   { label: 'Ctrl+V', group: 'Grid', scope: 'G', dev: true,
     impl: 'collection.js _gridPasteSource (dev0548)',
     desc: 'Over a hovered cell: paste the clipboard URL into the row’s linkpage (the source page found via g’s reverse-image search), clearing its “noLinkpageYet” marker. The bottom-left pill counts how many rows still need a source.' },

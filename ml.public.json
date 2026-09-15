@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1789444000153,
+    "_salPushTime": 1789448649753,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1789444000153
+    "_salSavedAt": 1789448649753
   },
   {
     "UID": "1",
@@ -49051,8 +49051,11 @@
     "link": "https://youtu.be/IVacxL0UkNM",
     "show": "1",
     "DateAdded": "2026-09-03 15:46:49",
-    "DateModified": "2026-09-03 15:54:04",
-    "tags": [],
+    "DateModified": "2026-09-15 04:17:11",
+    "tags": [
+      "transcribe",
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "16506",
     "FtextJunk": "0",
@@ -51044,12 +51047,32 @@
     "show": "1",
     "DateAdded": "2026-09-15 03:46:16",
     "DateModified": "2026-09-15 03:46:40",
-    "tags": [],
+    "tags": [
+      "transcribed"
+    ],
     "Mute": "0",
     "ftextSize": "3409",
     "FtextJunk": "2",
     "DictSize": "0",
     "VidTitle": "This Works Better Than Walking After Meals (What Everyone Leaves Out)",
+    "VidAuthor": "@LeonidKimMD",
+    "Mode": "L",
+    "ftext": ""
+  },
+  {
+    "UID": "2311",
+    "link": "https://youtu.be/90hBL_lUtxk",
+    "show": "1",
+    "DateAdded": "2026-09-15 05:02:55",
+    "DateModified": "2026-09-15 05:03:19",
+    "tags": [
+      "transcribed"
+    ],
+    "Mute": "0",
+    "ftextSize": "4463",
+    "FtextJunk": "2",
+    "DictSize": "0",
+    "VidTitle": "Your Body Can Eat Its Own Diseases - Without Fasting",
     "VidAuthor": "@LeonidKimMD",
     "Mode": "L",
     "ftext": ""
