@@ -223,13 +223,26 @@
   #qctx .qctx-item:hover { background: rgba(0,80,180,0.5); color: #fff; }
   /* (v0.5) Ctrl+I floating preview pane — follows the focused row (video/img) */
   #qpreview {
-    position: fixed; z-index: 80; width: 460px;
+    position: fixed; z-index: 80; width: 460px; height: 346px;
     background: #0b0b1c; border: 1px solid #4af; border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.6);
     display: flex; flex-direction: column; overflow: hidden;
   }
+  /* (v1.0) resize handles: 4 edges + 4 corners, over everything else in the pane */
+  #qpreview .qpv-rz { position: absolute; z-index: 3; }
+  #qpreview .qpv-rz[data-rz="n"]  { top: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+  #qpreview .qpv-rz[data-rz="s"]  { bottom: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+  #qpreview .qpv-rz[data-rz="w"]  { left: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+  #qpreview .qpv-rz[data-rz="e"]  { right: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+  #qpreview .qpv-rz[data-rz="nw"] { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+  #qpreview .qpv-rz[data-rz="ne"] { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+  #qpreview .qpv-rz[data-rz="sw"] { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+  #qpreview .qpv-rz[data-rz="se"] {
+    bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 55%, #4af 55%, #4af 65%, transparent 65%, transparent 78%, #4af 78%, #4af 88%, transparent 88%);
+  }
   #qpreview .qpv-hdr {
-    display: flex; align-items: center; gap: 8px; cursor: move;
+    display: flex; align-items: center; gap: 8px; cursor: move; flex-shrink: 0;
     background: #15152e; padding: 5px 8px; border-bottom: 1px solid #335;
     font-size: 11px; color: #8ef; user-select: none;
   }
@@ -239,11 +252,12 @@
   #qpreview .qpv-x:hover { color: #fbb; }
   #qpreview .qpv-body {
     background: #000; display: flex; align-items: center; justify-content: center;
-    height: 300px; min-height: 300px;
+    flex: 1; min-height: 0; position: relative;
   }
-  #qpreview .qpv-body video, #qpreview .qpv-body img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  /* (v1.0) fill the body box and letterbox, so the media follows a resize */
+  #qpreview .qpv-body video, #qpreview .qpv-body img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   #qpreview .qpv-meta {
-    font-size: 10px; color: #789; padding: 4px 8px;
+    font-size: 10px; color: #789; padding: 4px 8px; flex-shrink: 0;
     background: #0d0d20; border-top: 1px solid #223;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -372,7 +386,7 @@
 </div>
 </div>
 
-<div id="qVerBtn">v0.9</div>
+<div id="qVerBtn">v1.0</div>
 
 <div id="qfooter">
   <span>
@@ -381,7 +395,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v0.9 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg) · dblclick=edit (exiftool) · 📁 folder tree=filter by folder · ✕=clear filter · right-click tag header=bulk set.
+    Q v1.0 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg; drag header, drag edges to resize) · Ctrl+Alt+C=copy full path · dblclick=edit (exiftool) · 📁 folder tree=filter by folder · ✕=clear filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1784,11 +1798,13 @@ async function _qOpenPreview(rel) {
     el.innerHTML =
       '<div class="qpv-hdr"><span class="qpv-kind"></span><span class="qpv-title"></span>' +
       '<span class="qpv-x" title="Close (Esc / Ctrl+I)">✕</span></div>' +
-      '<div class="qpv-body"></div><div class="qpv-meta"></div>';
-    el.style.right = '14px'; el.style.top = '96px';
+      '<div class="qpv-body"></div><div class="qpv-meta"></div>' +
+      ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(d => '<div class="qpv-rz" data-rz="' + d + '"></div>').join('');
     document.body.appendChild(el);
+    _qPlacePreview(el);
     el.querySelector('.qpv-x').addEventListener('click', _qClosePreview);
     _qWirePreviewDrag(el);
+    _qWirePreviewResize(el);
     pv = _qPreview = { el, url: null, video: null, rel: null };
   }
   // Mark the in-flight target so a rapid focus change can abort this stale load.
@@ -1825,17 +1841,113 @@ async function _qOpenPreview(rel) {
   const dur = f.kind === 'video' ? fmtDur(f.durationMs) : '';
   metaEl.textContent = [pathDir(rel) || '(root)', dim, dur, fmtMB(f.size) + ' MB'].filter(Boolean).join('  ·  ');
 }
+// (v1.0) The pane's position AND size are sticky across sessions: saved to
+// localStorage 'qPreviewRect' {left,top,width,height} at the end of every drag
+// or resize, and re-applied (clamped to the current window) on open. Always
+// positioned by left/top — the old right:14px default is converted on first open.
+const QPV_RECT_LS = 'qPreviewRect';
+const QPV_MIN_W = 220, QPV_MIN_H = 160;
+function _qPlacePreview(el) {
+  let r = null;
+  try { r = JSON.parse(localStorage.getItem(QPV_RECT_LS) || 'null'); } catch (_) {}
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let w = (r && r.width) || 460, h = (r && r.height) || 346;
+  w = Math.max(QPV_MIN_W, Math.min(w, vw)); h = Math.max(QPV_MIN_H, Math.min(h, vh));
+  let x = (r && Number.isFinite(r.left)) ? r.left : vw - w - 14;
+  let y = (r && Number.isFinite(r.top)) ? r.top : 96;
+  x = Math.max(0, Math.min(x, vw - w)); y = Math.max(0, Math.min(y, vh - h));
+  Object.assign(el.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', right: 'auto' });
+}
+function _qSavePreviewRect(el) {
+  const r = el.getBoundingClientRect();
+  try {
+    localStorage.setItem(QPV_RECT_LS, JSON.stringify({
+      left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }));
+  } catch (_) {}
+}
 function _qWirePreviewDrag(el) {
   el.querySelector('.qpv-hdr').addEventListener('mousedown', e => {
     if (e.target.closest('.qpv-x')) return;
     e.preventDefault();
     const r = el.getBoundingClientRect();
     const offX = e.clientX - r.left, offY = e.clientY - r.top;
-    el.style.right = 'auto';
-    const mv = ev => { el.style.left = Math.max(0, ev.clientX - offX) + 'px'; el.style.top = Math.max(0, ev.clientY - offY) + 'px'; };
-    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
+    // Keep at least the header on screen so the pane can always be dragged back.
+    const mv = ev => {
+      el.style.left = Math.max(0, Math.min(ev.clientX - offX, window.innerWidth - 60)) + 'px';
+      el.style.top  = Math.max(0, Math.min(ev.clientY - offY, window.innerHeight - 30)) + 'px';
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+      _qSavePreviewRect(el);
+    };
     document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
   });
+}
+// (v1.0) Drag any edge or corner. `data-rz` holds the edges it moves (n/s/e/w).
+// A west or north drag moves left/top and shrinks width/height together, so the
+// opposite edge stays put; the minimum size pins that edge rather than sliding.
+function _qWirePreviewResize(el) {
+  el.querySelectorAll('.qpv-rz').forEach(h => h.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const dir = h.dataset.rz;
+    const r0 = el.getBoundingClientRect();
+    const x0 = e.clientX, y0 = e.clientY;
+    const cursor = getComputedStyle(h).cursor;
+    document.body.style.cursor = cursor;
+    // The <video> would otherwise swallow mousemove while the pointer is over it.
+    const body = el.querySelector('.qpv-body'); body.style.pointerEvents = 'none';
+    const mv = ev => {
+      const dx = ev.clientX - x0, dy = ev.clientY - y0;
+      let { left, top, width, height } = r0;
+      if (dir.includes('e')) width = Math.max(QPV_MIN_W, Math.min(r0.width + dx, window.innerWidth - r0.left));
+      if (dir.includes('s')) height = Math.max(QPV_MIN_H, Math.min(r0.height + dy, window.innerHeight - r0.top));
+      if (dir.includes('w')) { width = Math.max(QPV_MIN_W, r0.width - Math.max(dx, -r0.left)); left = r0.right - width; }
+      if (dir.includes('n')) { height = Math.max(QPV_MIN_H, r0.height - Math.max(dy, -r0.top)); top = r0.bottom - height; }
+      Object.assign(el.style, { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px' });
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up);
+      document.body.style.cursor = ''; body.style.pointerEvents = '';
+      _qSavePreviewRect(el);
+    };
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+  }));
+}
+
+// ── Ctrl+Alt+C: copy the focused file's absolute disk path ────────────────
+// (v1.0) The Q twin of FreeCommander's ^2 "copy full name". The AHK chords
+// RButton & a (VECT) and RButton & f (LLC) press this when Q is the active
+// Chrome tab, then open whatever path lands on the clipboard. Every outcome
+// writes SOMETHING: the path, or a line starting "Q: " saying why not — AHK
+// recognises that prefix and stops quietly (the reason is on Q's status line)
+// instead of waiting out its ClipWait and popping a second message.
+function _qClipWrite(text) {
+  const viaExec = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    ta.remove();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).catch(viaExec);
+  viaExec();
+  return Promise.resolve();
+}
+async function _qCopyAbsPath() {
+  const say = (msg, kind) => { setStatus(msg, kind); setTimeout(() => setStatus('', null), 3000); };
+  const rel = (_focus && _focus.rel) || (_qPreview && _qPreview.rel);
+  if (!rel) { await _qClipWrite('Q: no row focused'); say('Focus a row first (click or arrow keys), then Ctrl+Alt+C.', 'info'); return; }
+  if (!_rootName) { await _qClipWrite('Q: no folder granted'); say('No folder granted — Grant / Pick folder first.', 'error'); return; }
+  if (!(localStorage.getItem('vpDiskRoot:' + _rootName) || '').trim()) {
+    // The disk path has to be asked for once per root. Answer AHK first, so it
+    // is not left waiting behind the modal prompt.
+    await _qClipWrite('Q: disk path not set');
+    if (_qResolveAbs(rel)) say('Disk path saved — press the chord (or Ctrl+Alt+C) again.', 'info');
+    return;
+  }
+  const abs = _qResolveAbs(rel);
+  await _qClipWrite(abs);
+  say('Path copied: ' + abs, 'info');
 }
 
 // ── Global key handler (document-level; ignores typing in inputs) ─────────
@@ -1843,6 +1955,11 @@ document.addEventListener('keydown', e => {
   // Ctrl/Cmd+I toggles preview from anywhere (even with a textbox focused).
   if ((e.ctrlKey || e.metaKey) && (e.key === 'i' || e.key === 'I')) {
     e.preventDefault(); _qTogglePreview(); return;
+  }
+  // (v1.0) Ctrl+Alt+C copies the focused file's absolute path — also from anywhere,
+  // since AHK sends it blind and focus may be sitting in the filter box.
+  if (e.ctrlKey && e.altKey && !e.shiftKey && e.code === 'KeyC') {
+    e.preventDefault(); _qCopyAbsPath(); return;
   }
   // Inline cell editor and toolbar inputs handle their own keys.
   if (e.target && e.target.matches && e.target.matches('input, select, textarea, .cell-edit')) return;
