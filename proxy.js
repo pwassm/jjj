@@ -321,7 +321,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0943';
+const PROXY_BUILD = 'dev0986';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -4049,6 +4049,59 @@ function send(res, code, msg, extraHeaders) {
   const h = Object.assign({ 'Content-Type': 'text/plain' }, extraHeaders || {});
   res.writeHead(code, h);
   res.end(msg);
+}
+
+// (dev0986) /q/findroot helpers. es.exe is the voidtools CLI (the GUI install
+// does not ship it). Two things it gets wrong if fed carelessly: every search
+// term must be its OWN argv entry (one quoted "a b" silently finds nothing),
+// and the catalog keeps volumes that are no longer mounted, hence !offline:.
+// A plain name goes in as wfn: (exact whole name - a bare `a_` substring-
+// matches thousands of folders). A name with spaces or search-syntax
+// characters goes in as its safe words instead, and the exact folder-name
+// match is done here either way.
+const ES_EXE = 'C:\\Special\\ES-1.1.0.37.x64\\es.exe';
+function qEsFolders(name) {
+  return new Promise(resolve => {
+    const words = (name.match(/[\p{L}\p{N}_.\-]+/gu) || []).map(w => w.replace(/^-+/, '')).filter(Boolean);
+    if (!words.length || !fs.existsSync(ES_EXE)) { resolve(null); return; }
+    const terms = (words.length === 1 && words[0] === name) ? ['wfn:' + name] : ['-n', '2000', ...words];
+    execFile(ES_EXE, ['/ad', ...terms, '!offline:'],
+      { timeout: 5000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+        if (err) { resolve(null); return; }
+        const want = name.toLowerCase();
+        resolve(String(stdout).split(/\r?\n/).map(s => s.trim())
+          .filter(p => p && path.basename(p).toLowerCase() === want));
+      });
+  });
+}
+async function qFindRoot(res, origin, sp) {
+  const name = (sp.get('name') || '').trim();
+  if (!name || /[\\/]/.test(name)) { sendJson(res, 400, { ok: false, error: 'name required (a folder name, not a path)' }, origin); return; }
+  const probes = sp.getAll('p').slice(0, 12).map(s => {
+    const bar = s.indexOf('|');
+    return { size: Number(s.slice(0, bar)), rel: s.slice(bar + 1) };
+  }).filter(p => Number.isFinite(p.size) && p.rel && !p.rel.split(/[\\/]/).includes('..'));
+  const found = await qEsFolders(name);
+  const seen = new Set();
+  const paths = [];
+  for (const p of [(sp.get('cached') || '').trim()].concat(found || [])) {
+    const k = p.replace(/[\\/]+$/, '').toLowerCase();
+    if (!p || seen.has(k)) continue;
+    seen.add(k); paths.push(p.replace(/[\\/]+$/, ''));
+  }
+  const candidates = paths.map(root => {
+    let score = 0;
+    for (const p of probes) {
+      try { const st = fs.statSync(path.join(root, p.rel)); if (st.isFile() && st.size === p.size) score++; } catch (_) {}
+    }
+    return { path: root, score };
+  }).sort((a, b) => b.score - a.score);
+  // One clear winner, holding at least half the probes. A tie (an identical
+  // copy of the folder on another drive) is left for the user to pick.
+  const top = candidates[0];
+  const best = top && top.score > 0 && top.score * 2 >= probes.length
+    && !(candidates[1] && candidates[1].score === top.score) ? top.path : null;
+  sendJson(res, 200, { ok: true, es: found !== null, probes: probes.length, candidates, best }, origin);
 }
 
 function sendJson(res, code, obj, origin) {
@@ -7805,7 +7858,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock', 'textclockfrac',
-      'vptrack', 'vppad'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify']) }));
+      'vptrack', 'vppad', 'qfindroot'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify']) }));
     return;
   }
 
@@ -8046,6 +8099,24 @@ http.createServer((req, res) => {
   //   GET /wm/list             → every video under WM_DIR, as relative keys
   //   GET /wm/probe?key=<key>  → that one file's duration + dimensions
   // Origin-locked like /exec — it reads a folder outside the project.
+  // (dev0986) ── /q/findroot — where on disk is Q's granted folder? ──────────
+  //   GET /q/findroot?name=<folder name>&p=<size>|<relPath>[&p=…][&cached=<abs>]
+  // The File System Access picker hands q.html a folder NAME and never its
+  // path, but exiftool/ffprobe and the AHK VECT/LLC chords need the path.
+  // Everything lists the folders with that name and a few of Q's indexed files
+  // (path + size) show which one Q actually has. Origin-locked: the answer is
+  // a statement about what exists on local disks.
+  if (req.url.startsWith('/q/findroot')) {
+    const origin = req.headers.origin || '';
+    if (!LOCAL_ORIGINS.has(origin)) {
+      send(res, 403, 'q: origin not allowed: ' + (origin || '(none)'));
+      return;
+    }
+    if (req.method !== 'GET') { send(res, 405, 'q: GET required', corsForExec(origin)); return; }
+    qFindRoot(res, origin, new URL(req.url, 'http://127.0.0.1').searchParams);
+    return;
+  }
+
   if (req.url.startsWith('/wm/')) {
     const origin = req.headers.origin || '';
     if (!LOCAL_ORIGINS.has(origin)) {

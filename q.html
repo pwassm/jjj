@@ -386,7 +386,7 @@
 </div>
 </div>
 
-<div id="qVerBtn">v1.0</div>
+<div id="qVerBtn">v1.1</div>
 
 <div id="qfooter">
   <span>
@@ -395,7 +395,7 @@
     &nbsp;·&nbsp; <span id="sizeSum">0 MB</span> combined size of visible rows
   </span>
   <span>
-    Q v1.0 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg; drag header, drag edges to resize) · Ctrl+Alt+C=copy full path · dblclick=edit (exiftool) · 📁 folder tree=filter by folder · ✕=clear filter · right-click tag header=bulk set.
+    Q v1.1 — IndexedDB <code>localmedia</code>. Arrows/Tab=move · Enter/type=edit tag · Space=select (or play in preview) · Ctrl+I=preview (mp4+jpg; drag header, drag edges to resize) · Ctrl+Alt+C=copy full path · dblclick=edit (exiftool) · 📁 folder tree=filter by folder · ✕=clear filter · right-click tag header=bulk set.
   </span>
 </div>
 
@@ -1197,7 +1197,7 @@ document.getElementById('grantBtn').addEventListener('click', () => {
     _qClearAbsRoot();
     document.getElementById('qroot').textContent = 'Root: ' + dir.name;
     document.getElementById('rescanBtn').disabled = false;
-    setStatus('Granted. Click Rescan to index. (disk path will be re-confirmed on next tag edit)', 'info');
+    setStatus('Granted. Click Rescan to index. (its disk path is looked up automatically after the scan)', 'info');
   }).catch(e => {
     if (e.name !== 'AbortError') setStatus('Pick failed: ' + e.message, 'error');
     // AbortError = user closed the picker — no error toast needed
@@ -1279,6 +1279,7 @@ document.getElementById('rescanBtn').addEventListener('click', () => {
       _files = merged;
       computeDups();
       render();
+      _qAutoRoot();   // (v1.1) find/confirm the folder's disk path now the index matches it
       sp.textContent = '';
       const newCount  = merged.filter(r => r.width == null).length;
       const keepCount = merged.length - newCount;
@@ -1411,13 +1412,18 @@ function _qResolveAbs(relPath) {
   const key = 'vpDiskRoot:' + _rootName;
   let absRoot = (localStorage.getItem(key) || '').trim();
   if (!absRoot) {
+    // (v1.1) Normally _qAutoRoot has already filled this in and the prompt never
+    // shows. It is reached when the lookup found no folder or two equal copies —
+    // then the best guess is typed in already and the rest are listed.
+    const cands = _qRootCandidates;
     absRoot = (prompt(
-      'Enter the FULL disk path of the folder you granted.\n\n' +
-      'It must END with the folder name shown as "Root" above — "' + _rootName + '" —\n' +
-      'and must NOT include any subfolder inside it.\n\n' +
-      'Example:  E:\\Path\\To\\' + _rootName + '\n' +
-      '(files inside it are located automatically.)',
-      '') || '').trim();
+      (cands.length > 1
+        ? 'Q found more than one folder named "' + _rootName + '" holding these files:\n  ' + cands.join('\n  ') + '\n\nOK the first, or paste the one you granted.\n\n'
+        : 'Q could not find "' + _rootName + '" on disk by itself (is the proxy running?).\n\n') +
+      'Enter the FULL disk path of the folder you granted.\n' +
+      'It must END with "' + _rootName + '" and must NOT include any subfolder inside it.\n' +
+      'Example:  E:\\Path\\To\\' + _rootName,
+      cands[0] || '') || '').trim();
     if (!absRoot) return null;
     localStorage.setItem(key, absRoot);
   }
@@ -1427,6 +1433,51 @@ function _qResolveAbs(relPath) {
   return restSep ? (absRoot + joiner + restSep) : absRoot;
 }
 function _qClearAbsRoot() { if (_rootName) localStorage.removeItem('vpDiskRoot:' + _rootName); }
+
+// (v1.1 / dev0986) Find the granted folder's disk path WITHOUT asking. The
+// proxy's /q/findroot gets every folder with this name from Everything and
+// checks up to 6 of Q's indexed files (path + size) against each. A single
+// clear winner is saved as vpDiskRoot:<name> — the same key the prompt fills —
+// and replaces a cached value that no longer holds the files. Runs after load
+// and after Rescan (it needs the index), and on demand from Ctrl+Alt+C. With
+// an old proxy (no route) it quietly does nothing and the prompt still works.
+let _qRootCandidates = [];
+let _qAutoRootBusy = null;
+function _qAutoRoot() {
+  if (!_rootName || !_files.length) return Promise.resolve(null);
+  if (_qAutoRootBusy) return _qAutoRootBusy;
+  const rootName = _rootName;
+  return _qAutoRootBusy = (async () => {
+    try {
+      const key = 'vpDiskRoot:' + rootName;
+      const cached = (localStorage.getItem(key) || '').trim();
+      const n = Math.min(6, _files.length);
+      const qs = new URLSearchParams({ name: rootName });
+      if (cached) qs.set('cached', cached);
+      for (let i = 0; i < n; i++) {
+        const f = _files[n === 1 ? 0 : Math.round(i * (_files.length - 1) / (n - 1))];
+        qs.append('p', f.size + '|' + f.relPath);
+      }
+      const r = await fetch(PROXY_BASE + '/q/findroot?' + qs, { cache: 'no-store' });
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (rootName !== _rootName) return null;   // folder switched while we waited
+      _qRootCandidates = (j.candidates || []).filter(c => c.score > 0).map(c => c.path);
+      const cachedGood = cached && (j.candidates || []).some(c => c.path.toLowerCase() === cached.replace(/[\\/]+$/, '').toLowerCase() && c.score > 0);
+      if (j.best && j.best.toLowerCase() !== cached.replace(/[\\/]+$/, '').toLowerCase()) {
+        localStorage.setItem(key, j.best);
+        setStatus('Disk path found: ' + j.best, 'info'); setTimeout(() => setStatus('', null), 3000);
+        return j.best;
+      }
+      if (cachedGood) return cached;
+      // A cached path where none of the probe files exist is wrong (a stale
+      // folder of the same name) — drop it, so the next use asks, prefilled.
+      if (cached && j.probes > 0) localStorage.removeItem(key);
+      return null;
+    } catch (_) { return null; }
+    finally { _qAutoRootBusy = null; }
+  })();
+}
 
 // Split an absolute path into {dir, sep, base, ext}. Null if no extension.
 function _qSplitAbs(p) {
@@ -1939,11 +1990,21 @@ async function _qCopyAbsPath() {
   if (!rel) { await _qClipWrite('Q: no row focused'); say('Focus a row first (click or arrow keys), then Ctrl+Alt+C.', 'info'); return; }
   if (!_rootName) { await _qClipWrite('Q: no folder granted'); say('No folder granted — Grant / Pick folder first.', 'error'); return; }
   if (!(localStorage.getItem('vpDiskRoot:' + _rootName) || '').trim()) {
-    // The disk path has to be asked for once per root. Answer AHK first, so it
-    // is not left waiting behind the modal prompt.
-    await _qClipWrite('Q: disk path not set');
-    if (_qResolveAbs(rel)) say('Disk path saved — press the chord (or Ctrl+Alt+C) again.', 'info');
-    return;
+    // (v1.1) Look the folder up first (~0.1s). AHK waits 2s for the clipboard,
+    // so give up on the lookup at 1.5s and let it carry on in the background.
+    const found = await Promise.race([_qAutoRoot(), new Promise(r => setTimeout(() => r('slow'), 1500))]);
+    if (found === 'slow') {
+      await _qClipWrite('Q: still looking for the folder');
+      say('Still looking for "' + _rootName + '" on disk — press the chord again in a moment.', 'info');
+      return;
+    }
+    if (!found) {
+      // Not found, or two equal copies. Answer AHK before the modal prompt so
+      // it is not left waiting behind it.
+      await _qClipWrite('Q: disk path not set');
+      if (_qResolveAbs(rel)) say('Disk path saved — press the chord (or Ctrl+Alt+C) again.', 'info');
+      return;
+    }
   }
   const abs = _qResolveAbs(rel);
   await _qClipWrite(abs);
@@ -2374,6 +2435,7 @@ async function initRoot() {
   }
   computeDups();   // (dev0310) build name → count map for Dups column + chip
   render();
+  _qAutoRoot();    // (v1.1) find/confirm the granted folder's disk path in the background
   if (scored || ownSet) {
     const parts = [];
     if (scored) parts.push('scored ' + scored + ' row(s)');
