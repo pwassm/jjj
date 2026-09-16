@@ -321,7 +321,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0992';
+const PROXY_BUILD = 'dev0993';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -5489,13 +5489,15 @@ function igDownload(req, res, origin) {
       // The client builds it from the ROW's enrich metadata, which for every photo /p was
       // the cropped 640² thumbnail's size (the dev0677 pickIgFullCover bug), so a corrected
       // full-res download would still have landed under a "640x640" name. Read the real
-      // pixels off the file that actually landed (index-1, mirroring the row's one-W×H
-      // convention). Best-effort: an unreadable header leaves the client's stem alone.
-      // (dev0690) Reuses the `dims` measured above rather than re-probing index-1.
-      const d0 = dims[0];
-      if (d0 && d0.w > 0 && d0.h > 0) {
-        outStem = outStem.replace(/^(\d{2}\.\d{2}\.\d{2}~)\d+x\d+~/, '$1' + d0.w + 'x' + d0.h + '~');
-      }
+      // pixels off the file that actually landed. Best-effort: an unreadable header
+      // leaves the client's stem alone.
+      // (dev0690) Reuses the `dims` measured above rather than re-probing.
+      // (dev0993) PER FILE, not index-1 for the whole post: a carousel used to stamp item
+      // 1's size on every item, so 8,992 files named e.g. ~3277x4096~ were really
+      // 1200x1500. ig.js still reads the row's W×H off localFiles[0], which is unchanged.
+      // igNameDims.js renames the back catalogue to this convention.
+      const withDims = (s, d) => (d && d.w > 0 && d.h > 0)
+        ? s.replace(/^(\d{2}\.\d{2}\.\d{2}~)\d+x\d+~/, '$1' + d.w + 'x' + d.h + '~') : s;
       // (dev0689) Land the files in the author's subfolder and record the RELATIVE
       // subpath in localFiles, so every consumer resolves correctly without having to
       // re-derive the folder from the row (which would break on an author rename, and
@@ -5504,7 +5506,7 @@ function igDownload(req, res, origin) {
       if (folder) { try { fs.mkdirSync(path.join(IG_MEDIA_DIR, folder), { recursive: true }); } catch (_) {} }
       files.forEach((f, i) => {
         const ext = path.extname(f);
-        const base = outStem + (n > 1 ? ' [' + (i + 1) + ' of ' + n + ']' : '') + ext;
+        const base = withDims(outStem, dims[i]) + (n > 1 ? ' [' + (i + 1) + ' of ' + n + ']' : '') + ext;
         const rel  = folder ? folder + '/' + base : base;
         const dest = path.join(IG_MEDIA_DIR, folder, base);   // folder '' → base dir
         try { fs.renameSync(path.join(tmpDir, f), dest); out.push(rel); }

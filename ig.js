@@ -407,8 +407,9 @@
     s = String(s || '').replace(/[<>":\/\\|?*\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '');
     return s || 'unknown';
   }
-  // hh.mm.ss~WxH~Title~@author~[[i[id]]]  (one W×H = max; the redundant [M[…]] of
-  // the old convention dropped per "only need one w×h").
+  // hh.mm.ss~WxH~Title~@author~[[i[id]]]  (one W×H; the redundant [M[…]] of the old
+  // convention dropped per "only need one w×h"). The proxy overwrites the W×H with each
+  // landed file's own measured size (dev0993: per file, so carousel items differ).
   function downloadName(r) {
     const dur = fmtHMS(r.durSecs);
     const res = (r.width && r.height) ? (r.width + 'x' + r.height) : '0x0';
