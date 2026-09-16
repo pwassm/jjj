@@ -8300,6 +8300,30 @@ function _salFigureCaptions(html) {
 window._salFigureCaptions = _salFigureCaptions;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (dev0989) A blank line in Xe is a blank line in Xs.
+//
+// Pressing Enter twice in the editor leaves an EMPTY paragraph between the two
+// blocks. ProseMirror paints one of those as a real line (it plants a trailing
+// <br> in every empty block), so Xe shows the gap the author typed — but the
+// render contexts get the serialized `<p></p>`, which has no content, hence no
+// line box, hence no height: every deliberate blank line vanished the moment
+// the text was looked at as a slide.
+//
+// The fix is one <br>, added at RENDER time. Doing it here rather than in the
+// editor's serializer means the ~80 rows already carrying empty paragraphs (423
+// of them) come right without being rewritten, and ml.json keeps the plain
+// shape every other tool reads. Regex, not a DOM pass: a <p> cannot nest, the
+// match is empty by definition, and this runs on every G cell.
+//
+// Only <p> is touched. An empty DIV is how a cut line marks itself (.te-cut,
+// display:none) and must stay dimensionless.
+function _salBlankLines(html) {
+  if (!html || html.indexOf('<p') < 0) return html || '';
+  return html.replace(/<p\b([^>]*)>\s*<\/p>/gi, '<p$1><br></p>');
+}
+window._salBlankLines = _salBlankLines;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (dev0763) ▼▼ / ▶▶ — expand-all / collapse-all icons the AUTHOR drops into the
 // text with Xe, so a reader can open or shut every collapsible on the slide with
 // one tap. Two triangles overlapped (CSS letter-spacing, not a font glyph —
@@ -8674,7 +8698,7 @@ function renderFtext(ftext) {
   // (dev0902) …then number every tick box, so a tick made in ANY render can be
   // written back to the right box in the source. Last, because the two
   // transforms above are the ones that could otherwise shift the count.
-  return _salStampCheckboxes(_linkifyHtml(_salFigureCaptions(_salApplyCutBelow(ftext))));
+  return _salStampCheckboxes(_linkifyHtml(_salFigureCaptions(_salBlankLines(_salApplyCutBelow(ftext)))));
 }
 
 // (dev0278) ftext size / junk readout. "Junk" = bytes a cleanup would strip

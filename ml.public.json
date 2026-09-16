@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1789448649753,
+    "_salPushTime": 1789519926519,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -90,10 +90,10 @@
     ],
     "_salHidden": [],
     "_salSort": {
-      "col": "DateAdded",
+      "col": "UID",
       "dir": "desc"
     },
-    "_salGsize": 3,
+    "_salGsize": 5,
     "_salViews": {
       "view1": {
         "name": "view1",
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1789448649753
+    "_salSavedAt": 1789519926519
   },
   {
     "UID": "1",
@@ -49748,7 +49748,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%201%20speed%20.25x%20shortest_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49768,7 +49768,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%202%20speed%20.25x_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49810,7 +49810,7 @@
     "link": "https://media.sealifeandmore.com/flatfish%20moon%20snail%20attack%202%20speed%20.25x_20260831_101741_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 14:21:38",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49853,7 +49853,7 @@
     "link": "https://media.sealifeandmore.com/Moon%20snail%20comes%20to%20rock%208x_20260831_100744_crop2.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-14 14:09:30",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49896,7 +49896,7 @@
     "link": "https://media.sealifeandmore.com/Moonsnail%20buries%20itself%20BW%208x%20speed_20260831_102846_crop.mp4",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49916,7 +49916,7 @@
     "link": "https://media.sealifeandmore.com/How%20Embarassing_UpsideDown.jpg",
     "show": "1",
     "DateAdded": "2026-09-07 13:38:21",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -49975,7 +49975,7 @@
     "link": "https://youtu.be/jMF5HeuQuTs",
     "show": "1",
     "DateAdded": "2026-09-08 02:57:20",
-    "DateModified": "2026-09-14 04:33:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50019,7 +50019,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50041,7 +50041,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50063,7 +50063,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50085,7 +50085,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50107,7 +50107,7 @@
     "link": "https://youtu.be/KPfO521hQrY",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:34",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50151,7 +50151,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50173,7 +50173,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50195,7 +50195,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50217,7 +50217,7 @@
     "link": "https://youtu.be/DlSxrcobO40",
     "show": "1",
     "DateAdded": "2026-09-14 04:21:23",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "neverita-lewisii"
     ],
@@ -50359,7 +50359,7 @@
     "link": "https://media.sealifeandmore.com/Maybe%20Floyd%20will%20help.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 20:19:00",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -50430,7 +50430,7 @@
     "link": "https://media.sealifeandmore.com/Susie%20Surfperch_20260831_101741_crop.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 20:56:13",
-    "DateModified": "2026-09-14 04:31:20",
+    "DateModified": "2026-09-16 00:51:19",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -50442,7 +50442,7 @@
     "Mode": "L",
     "DictSize": "1543",
     "cell": "2b",
-    "ftext": "<p>5 Susie Surfperch says:</p><p>You almost did it, Floyd Flatfish,</p><p>Almost put Molly back on her foot.</p><p>Go for it, try, try again!</p>"
+    "ftext": "<p>5 Polly P Pompano says:</p><p>You almost did it, Floyd Flatfish,</p><p>Almost put Molly back on her foot.</p><p>Go for it, try, try again!</p>"
   },
   {
     "UID": "2275",
@@ -50464,7 +50464,7 @@
     "link": "https://media.sealifeandmore.com/A%20Moonsnail%20last%20comment_20260831_101741_crop.jpg",
     "show": "1",
     "DateAdded": "2026-09-12 21:17:29",
-    "DateModified": "2026-09-14 14:09:30",
+    "DateModified": "2026-09-16 00:50:47",
     "tags": [
       "myvideo",
       "neverita-lewisii"
@@ -50985,11 +50985,11 @@
     "cell": "1e",
     "show": "1",
     "VidRange": "text",
-    "ftext": "<h1>Moon snail adventures <span data-xall=\"open\" class=\"te-xall\">▼▼</span> <span data-xall=\"close\" class=\"te-xall\">▶▶</span></h1><h2>1a Moon snail approaches rocks.</h2><details><summary>They are predators of bivalves, especially clams</summary><p>They alternate physical drilling and acid attack</p><p>Physical drilling with radula</p><p>Acid secretion using ABO (accessory boring organ)<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p><details><summary>Detail:</summary><p>[A] research group at the Pacific Biological Station, British Columbia on drilling of prey by moon snails <em>Neverita&nbsp;lewisii</em>&nbsp;focuses on the fine structure of the accessory boring organ (ABO). &nbsp;First, the location of the ABO in moon snails differs from its location in muricid gastropods such as whelks&nbsp;<em>Nucella&nbsp;</em>spp. &nbsp;In the latter it is positioned on the anterior/ventral part of the foot, while in moon snails it is located on the ventral distal tip of the proboscis. &nbsp;When erect (i.e., tumescent) it is mushroom-shaped and joined to the proboscis by a stalk or peduncle (Fig. 1). &nbsp;All surfaces are covered in tall, columnar epithelia cells fringed with a brush border of microvilli. &nbsp;Tumescence of the ABO is linked to extension of the proboscis, as both organs are connected via a sinus system that can be engorged with hemolymph under pressure. Numerous <em>goblet</em> cells permeate the epithelium of the ABO and are thought by the authors to secrete an acid mucopolysaccharide substance. &nbsp;Other mucus-producing cells form a ring around the central epithelium. &nbsp;The authors suggest that secretion from these cells may create a mucous seal when the ABO is applied to a prey's shell.&nbsp;</p><p>NOTE&nbsp;&nbsp;the authors provide a short but interesting&nbsp;history of investigation into the mode of drilling by gastropods, including muricid whelks and other naticids. The idea of a combined radular/chemical means of penetration dates from 1711 and an observation that a secretion from the “papilla” that “reddens litmus paper” dates from 1891. &nbsp;Even that the ABO and resultant hole diameters are identical has been known from the early part of the 1900s. &nbsp;</p></details></details><h2>1b Moonsnail nipped by flatfish.</h2><details><summary>Are there predators of moon snails?</summary><p>\"There are no studies specifically relating to predators and defenses of west-coast moon snails. &nbsp;<em>Everita&nbsp;lewisii&nbsp;</em>crawls about openly on the sand and, in intertidal locations, is sometimes exposed to air or at least is shallow enough to be visible and&nbsp;accessible to birds. The flesh is plump and seemingly would be tasty to fishes, so if fishes avoid moon snails as prey, the liklihood is that the flesh is toxic or otherwise unpalatable. The shell is strong and protected by a proteinaceous operculum (Figs. 1 -&nbsp;2), but moon snails are rarely observed to be withdrawn completely in their shells. &nbsp;Clearly, research on the subject is needed.\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>2a Moonsnail burrows into sand.</h2><details><summary>Burrowing behavior</summary><p>Adult moon snails <em>Neverita lewisii&nbsp;</em>(Fig. 1)&nbsp;are strict predators and mostly eat bivalves. &nbsp;As many of their prey live at sediment depths of 20cm or more, the snails have to burrow quite deeply to find them. &nbsp;Burrowing by moon snails is enabled by a large foot that is capable of inflating up to four times the shell volume through uptake of seawater. &nbsp;The inflation is quick, allowing fast penetration into and displacement of sand. &nbsp;The moon snail catches hold of its prey and hauls it to the sediment&nbsp;surface to begin drilling.<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>Asnailodyssey.com</h2><details><summary>Cartoon video</summary><p><video src=\"https://www.asnailsodyssey.com/views/images/198/story_video198.mp4\" preload=\"metadata\" controls=\"controls\" playsinline=\"playsinline\" style=\"float: left; width: 700px; margin: 6px 14px 6px 0px; border-radius: 4px;\"></video></p><p></p></details>",
+    "ftext": "<h1>Moon snail adventures <span data-xall=\"open\" class=\"te-xall\">▼▼</span> <span data-xall=\"close\" class=\"te-xall\">▶▶</span></h1><h1>I took 3 videos:</h1><h2>Moon snail approaches rocks</h2><details><summary>They are predators of bivalves, especially clams</summary><p>They alternate physical drilling and acid attack</p><p>Physical drilling with radula</p><p>Acid secretion using ABO (accessory boring organ)<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p><details><summary>Detail:</summary><p>[A] research group at the Pacific Biological Station, British Columbia on drilling of prey by moon snails <em>Neverita&nbsp;lewisii</em>&nbsp;focuses on the fine structure of the accessory boring organ (ABO). &nbsp;First, the location of the ABO in moon snails differs from its location in muricid gastropods such as whelks&nbsp;<em>Nucella&nbsp;</em>spp. &nbsp;In the latter it is positioned on the anterior/ventral part of the foot, while in moon snails it is located on the ventral distal tip of the proboscis. &nbsp;When erect (i.e., tumescent) it is mushroom-shaped and joined to the proboscis by a stalk or peduncle (Fig. 1). &nbsp;All surfaces are covered in tall, columnar epithelia cells fringed with a brush border of microvilli. &nbsp;Tumescence of the ABO is linked to extension of the proboscis, as both organs are connected via a sinus system that can be engorged with hemolymph under pressure. Numerous <em>goblet</em> cells permeate the epithelium of the ABO and are thought by the authors to secrete an acid mucopolysaccharide substance. &nbsp;Other mucus-producing cells form a ring around the central epithelium. &nbsp;The authors suggest that secretion from these cells may create a mucous seal when the ABO is applied to a prey's shell.&nbsp;</p><p>NOTE&nbsp;&nbsp;the authors provide a short but interesting&nbsp;history of investigation into the mode of drilling by gastropods, including muricid whelks and other naticids. The idea of a combined radular/chemical means of penetration dates from 1711 and an observation that a secretion from the “papilla” that “reddens litmus paper” dates from 1891. &nbsp;Even that the ABO and resultant hole diameters are identical has been known from the early part of the 1900s. &nbsp;</p></details></details><h2>Moonsnail eyed than nipped by flatfish.</h2><details><summary>Are there predators of moon snails?</summary><p>\"There are no studies specifically relating to predators and defenses of west-coast moon snails. &nbsp;<em>Everita&nbsp;lewisii&nbsp;</em>crawls about openly on the sand and, in intertidal locations, is sometimes exposed to air or at least is shallow enough to be visible and&nbsp;accessible to birds. The flesh is plump and seemingly would be tasty to fishes, so if fishes avoid moon snails as prey, the liklihood is that the flesh is toxic or otherwise unpalatable. The shell is strong and protected by a proteinaceous operculum (Figs. 1 -&nbsp;2), but moon snails are rarely observed to be withdrawn completely in their shells. &nbsp;Clearly, research on the subject is needed.\"<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>Moonsnail burrows into sand.</h2><details><summary>Burrowing behavior</summary><p>Adult moon snails <em>Neverita lewisii&nbsp;</em>(Fig. 1)&nbsp;are strict predators and mostly eat bivalves. &nbsp;As many of their prey live at sediment depths of 20cm or more, the snails have to burrow quite deeply to find them. &nbsp;Burrowing by moon snails is enabled by a large foot that is capable of inflating up to four times the shell volume through uptake of seawater. &nbsp;The inflation is quick, allowing fast penetration into and displacement of sand. &nbsp;The moon snail catches hold of its prey and hauls it to the sediment&nbsp;surface to begin drilling.<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"te-cite\" href=\"https://www.asnailsodyssey.com\">@@@</a></p></details><h2>Asnailodyssey.com</h2><details><summary>Cartoon video</summary><p><video src=\"https://www.asnailsodyssey.com/views/images/198/story_video198.mp4\" preload=\"metadata\" controls=\"controls\" playsinline=\"playsinline\" style=\"float: left; width: 700px; margin: 6px 14px 6px 0px; border-radius: 4px;\"></video></p><p></p></details><h2>Could the moonsnail be harmed by a bite?</h2><details><summary>Is there \"functional hemophelia\" in some marine animals?</summary><p>Discussion of clotting - AI generated</p><p>Horseshoe crabs are not poor clotters; their blood possesses one of the fastest, most sensitive, and most aggressive coagulation mechanisms in the animal kingdom.</p><p></p><p>The premise that horseshoe crabs bleed uncontrollably or suffer from hemophilia is a common misunderstanding stemming from how humans interact with them. Because horseshoe crab blood clots in seconds upon contact with endotoxins, biomedical labs bleed live crabs to manufacture <strong>Limulus Amebocyte Lysate (LAL)</strong>. The animals that bleed out or become lethargic after harvest do so because technicians harvest up to 30% or more of their total blood volume, not because of defective clotting biology.</p><p></p><h3>Horseshoe Crab Clotting Mechanisms</h3><p>In nature, a horseshoe crab's open circulatory system (hemolymph) is protected by specialized blood cells called <strong>granular amebocytes</strong>.[<a target=\"_blank\" rel=\"noopener\" href=\"https://en.wikipedia.org/wiki/Horseshoe_crab\">en.wikipedia</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.sciencedirect.com/science/article/abs/pii/S1095643306001826\">sciencedirect</a>]</p><p>Bacterial Endotoxin / β-Glucan │ ▼ Factor C │ ▼ Factor B │ ▼ Proclotting Enzyme │ ▼ Clotting Enzyme │ ▼ Coagulogen ──► Insoluble Coagulin Gel Clot</p><p>When an amebocyte detects trace concentrations of lipopolysaccharide (LPS) from Gram-negative bacteria—even parts per trillion—it degranulates immediately. A proteolytic cascade involving <strong>Factor C</strong>, <strong>Factor B</strong>, and a <strong>proclotting enzyme</strong> cleaves <strong>coagulogen</strong> into an insoluble, fibrous gel called <strong>coagulin</strong>. This seals wounds and encapsulates pathogens, trapping invading microbes in a localized gel mass.[<a target=\"_blank\" rel=\"noopener\" href=\"https://bigthink.com/health/horseshoe-crab-blood-clott/\">bigthink</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC6200278/\">pmc.ncbi.nlm.nih</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.sciencedirect.com/science/article/abs/pii/S1095643306001826\">sciencedirect</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.britannica.com/animal/horseshoe-crab\">britannica</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://pubmed.ncbi.nlm.nih.gov/3393570/\">pubmed.ncbi.nlm.nih</a>]</p><h3>Species with Functional \"Hemophilia\"</h3><p>While horseshoe crabs have an overactive clotting response, several other animal lineages have evolved real deficiencies in classical clotting cascades—effectively exhibiting natural, functional \"hemophilia\".[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.science.org/doi/10.1126/science.166.3911.1420\">science</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>]</p><h4>Cetaceans (Whales, Dolphins, and Porpoises)</h4><p>Cetaceans lack <strong>Factor XII (Hageman factor)</strong> and <strong>plasma prekallikrein (KLKB1)</strong> entirely. Both <em>F12</em> and <em>KLKB1</em> mutated into inactive pseudogenes in the stem cetacean lineage.[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]</p><p>If cetacean blood is drawn into a standard glass tube, it exhibits an extraordinarily prolonged clotting time (in vitro hemophilia) because the intrinsic \"contact activation\" pathway cannot trigger.[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.science.org/doi/10.1126/science.166.3911.1420\">science</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.sciencedirect.com/science/article/abs/pii/0010406X6990067X\">sciencedirect</a>]</p><h4>Birds and Reptiles</h4><p>Reptiles and avian species also naturally lack or underutilize the contact phase (Factor XII). Avian blood relies almost entirely on the extrinsic, tissue-factor-driven pathway. Drawing chicken or duck blood into a plain glass tube without tissue thromboplastin will result in slow clotting, closely resembling human intrinsic-pathway bleeding disorders.[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.jthjournal.org/article/S1538-7836(22)12751-0/fulltext\">jthjournal</a>]</p><h4>Sanguivorous Parasites (Transient Acquired Hemophilia)</h4><p>While not an internal defect in the animal's own body, obligate blood-feeders like vampire bats (<em>Desmodus rotundus</em>), leeches (<em>Hirudo medicinalis</em>), and ticks synthesize potent thrombin, Factor Xa, and platelet inhibitors (such as <strong>draculin</strong> and <strong>hirudin</strong>). These creatures induce instantaneous localized hemophilia in their hosts to prevent clotting while feeding.</p><h3>Clotting Characteristics Across Lineages</h3><p>Animal GroupClotting ProfileKey Missing or Altered ComponentPrimary Hemostatic Mechanism<strong>Horseshoe crabs</strong>Hyper-reactive gelation [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.aai.org/About/History/History-Articles-Keep-for-Hierarchy/Blue-Bloods-Bang,-Levin,-and-the-Horseshoe-Crabs\">aai</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.britannica.com/animal/horseshoe-crab\">britannica</a>]None (mammalian factors absent; uses unique cascade) [<a target=\"_blank\" rel=\"noopener\" href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC6200278/\">pmc.ncbi.nlm.nih</a>]Amebocyte degranulation and coagulin mesh [<a target=\"_blank\" rel=\"noopener\" href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC6200278/\">pmc.ncbi.nlm.nih</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.sciencedirect.com/science/article/abs/pii/S1095643306001826\">sciencedirect</a>]<strong>Cetaceans</strong>Prolonged intrinsic clotting [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.science.org/doi/10.1126/science.166.3911.1420\">science</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>]Factor XII (<em>F12</em>) and prekallikrein (<em>KLKB1</em>) pseudogenized [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]Extrinsic (tissue factor) and cellular aggregation [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]<strong>Birds</strong>Contact-phase deficient [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.jthjournal.org/article/S1538-7836(22)12751-0/fulltext\">jthjournal</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>]Factor XII absent or rudimentary [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.jthjournal.org/article/S1538-7836(22)12751-0/fulltext\">jthjournal</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>]Tissue thromboplastin and nucleated thrombocytes<strong>Mammals (baseline)</strong>Dual cascade activationNone (full intrinsic + extrinsic paths) [<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]Platelet plug followed by fibrin mesh deposition</p><h3>Evolutionary Pressures Behind Clotting Losses</h3><p>Why would natural selection favor the loss or suppression of clotting pathways in species like cetaceans?</p><ul><li><p><strong>Prevention of diving-induced thrombosis:</strong> When marine mammals dive to great depths, high pressures, nitrogen microbubbles, and severe peripheral vasoconstriction cause shear stress and endothelial microtrauma. In a terrestrial mammal, microbubbles and shear stress activate Factor XII, causing massive disseminated intravascular coagulation (fatal internal blood clots). By losing Factor XII, cetaceans prevent diving from triggering lethal clotting.[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]</p></li><li><p><strong>Redundancy and tissue factor compensation:</strong> Deep-tissue injuries still release abundant Tissue Factor. Wounds in whales and dolphins trigger the extrinsic coagulation pathway, ensuring that external injuries seal effectively even without a contact activation pathway.[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2020.592383/full\">frontiersin</a>]</p></li><li><p><strong>Loss of contact with terrestrial catalysts:</strong> Factor XII auto-activates when exposed to negatively charged surfaces like soil and rock particles. While advantageous for terrestrial mammals scraping against mineral-rich terrain, this mechanism provides little adaptive benefit in open water and instead poses unwanted thrombotic risks.[<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/lack-of-factor-xii-in-some-marine-mammals/\">thebloodproject</a>][<a target=\"_blank\" rel=\"noopener\" href=\"https://www.thebloodproject.com/contact-system/\">thebloodproject</a>]</p></li></ul></details><p></p><p></p>",
     "DateAdded": "2026-09-13 22:03:01",
-    "DateModified": "2026-09-14 00:06:22",
-    "ftextSize": "4347",
-    "FtextJunk": "3",
+    "DateModified": "2026-09-16 00:50:47",
+    "ftextSize": "14316",
+    "FtextJunk": "1",
     "DictSize": "0"
   },
   {
@@ -51023,7 +51023,8 @@
     "VidTitle": "Weird and Wonderful: This little siphonophore has a big impact on deep-sea food webs",
     "VidAuthor": "@MBARIvideo",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2309",
@@ -51039,7 +51040,8 @@
     "VidTitle": "List of Animals of Order Siphonophorae. elegans reticulata dispar Agalma Bathyphysa Forskalia",
     "VidAuthor": "@dataadvantage1890",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2310",
@@ -51057,7 +51059,8 @@
     "VidTitle": "This Works Better Than Walking After Meals (What Everyone Leaves Out)",
     "VidAuthor": "@LeonidKimMD",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
   },
   {
     "UID": "2311",
@@ -51075,6 +51078,36 @@
     "VidTitle": "Your Body Can Eat Its Own Diseases - Without Fasting",
     "VidAuthor": "@LeonidKimMD",
     "Mode": "L",
-    "ftext": ""
+    "ftext": "",
+    "cell": ""
+  },
+  {
+    "UID": "2312",
+    "link": "https://th-thumbnailer.cdn-si-edu.com/RLW1K6up71TE4ehMPutXndfPCx0=/1000x667/filters:focal(2808x1872:2809x1873)/https://tf-cmsv2-smithsonianmag-media.s3.amazonaws.com/filer_public/37/46/37461432-e24a-442b-bcb7-2b13ab3990d1/horseshoecrabmain.jpg",
+    "show": "1",
+    "DateAdded": "2026-09-16 00:40:34",
+    "DateModified": "2026-09-16 00:40:35",
+    "tags": [],
+    "VidRange": "i",
+    "ftextSize": "0",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "MPix": "0.7",
+    "Mode": "L",
+    "cell": ""
+  },
+  {
+    "UID": "2313",
+    "link": "https://www.smithsonianmag.com/science-nature/horseshoe-crab-blood-has-long-helped-us-make-safe-medicines-now-alternatives-that-spare-the-ancient-creatures-might-be-breaking-through-180987553/",
+    "show": "1",
+    "DateAdded": "2026-09-16 00:42:13",
+    "DateModified": "2026-09-16 00:52:06",
+    "tags": [],
+    "ltype": "w",
+    "ftextSize": "39635",
+    "FtextJunk": "0",
+    "DictSize": "0",
+    "ftext": "",
+    "cell": ""
   }
 ]
