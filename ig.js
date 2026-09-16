@@ -297,6 +297,15 @@
   // when the proxy died (quarantined for the rest of the run — see awaitProxyReturn).
   const deadThisRun = new Set();
   const proxyKillIds = new Set();
+  // (dev0990) Rows skipped for the rest of THIS grind. A download failed (after its
+  // in-item retry) and a LATER row in the same batch then downloaded on the same exit —
+  // so the exit was fine and the post is the problem. Not `dead`: a checked
+  // ⬇ Download sel still tries it (e.g. with cookies), and the next grind gives it one
+  // more go. Without this, CqksYJLsWmJ (a photo IG won't serve cookielessly — "There is
+  // no video in this post") sat at the head of the view and opened 36 batches running
+  // with a ~30s fail + retry, 2026-09-16. Wall-class, so isPermanent() rightly ignored
+  // it, and the next row always succeeded, so the 2-in-a-row stop never fired either.
+  const runSkipIds = new Set();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -496,6 +505,7 @@
       autoDead: autoDead.has(r.id) ? 1 : 0,
       dead: r.dead ? 1 : 0,                       // (dev0688) retired: permanently undownloadable
       proxyKills: r.proxyKills || 0,              // (dev0688) times this row was in flight when the proxy died
+      runSkip: runSkipIds.has(r.id) ? 1 : 0,      // (dev0990) skipped for the rest of this grind
       hasTitle: r.VidTitle ? 1 : 0,
       dur: r.durSecs == null ? 'null' : r.durSecs,
       wh: (r.width || 0) + 'x' + (r.height || 0),
@@ -2275,6 +2285,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let consecFail = 0;                      // (dev0645) run of back-to-back download failures
     let deadMarked = 0;                      // (dev0688) rows retired as permanently dead this batch
     const deadIdsThisBatch = [];             // …and which ones, for THIS batch's report
+    const failPending = [];                  // (dev0990) grind rows that failed, awaiting a later success on this exit
     batchItems = 0;                          // (dev0690) files landed this batch (rotation budget)
     lowResIds.clear(); fallbackIds.clear(); resGainIds.clear();  // (dev0666) per-run download-path tallies
     resGainActive = false;               // (dev0692) re-armed by the first download batch
@@ -2362,6 +2373,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         ok++;
         if (grind) grind.posts++;             // (dev0798) live scoreboard, not once a batch
         consecFail = 0;                       // (dev0645) success breaks the failure streak
+        // (dev0990) This exit just delivered, so every row that failed EARLIER in this
+        // batch failed on its own account → out of the grind for the rest of the run.
+        // A failure with no later success (a wall arriving mid-batch) stays offered.
+        if (failPending.length) failPending.splice(0).forEach(fid => {
+          runSkipIds.add(fid); diag('row-skip-run', { id: fid, provenBy: r.id });
+        });
         if (lastOpInfo === 'Firefox cookies used') cookieUsed++;
         igBatchUpdate(`${label} ${r.id} ✓${lastOpInfo === 'Firefox cookies used' ? ' (🍪)' : ''}\n${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}`);
         if (cookieUsed >= COOKIE_CAP) cookieStopped = true;   // (dev0444) account-safety cap hit
@@ -2401,7 +2418,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // broken the wall stop 3× (dev0442/0470/0501); downloads are cookieless-or-fail
         // (dev0568) so a failure always counts. Enrich keeps the cumulative isWall() test
         // (its auto-enrich driver tells a walled VPN exit from a dead post to grind on).
-        else if (isDl) { if (++consecFail >= DOWNLOAD_WALL_CAP) walledStopped = true; }
+        else if (isDl) {
+          if (rotatingActive) failPending.push(r.id);   // (dev0990) judged by the rows after it
+          if (++consecFail >= DOWNLOAD_WALL_CAP) walledStopped = true;
+        }
         else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
       }
       applyAndRender();
@@ -3695,7 +3715,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // in the filters and reachable by nothing.
   const isReady = r => !!r && !isDownloadDone(r) && r.status !== 'promoted'
     && (r.status === 'enriched' || r.status === 'new' || !!r.needsFullRes) && !enrichFailed.has(r.id)
-    && !r.dead && !proxyKillIds.has(r.id) && !(r.proxyKills >= 2);
+    && !r.dead && !proxyKillIds.has(r.id) && !(r.proxyKills >= 2)
+    && !runSkipIds.has(r.id);            // (dev0990)
   // (dev0688) THE PROXY DIED MID-GRIND → PAUSE, don't abandon.
   // Every death so far cost more than the run: the final persist() never happened, so
   // files that were already on disk kept rows marked un-downloaded (22 had to be
@@ -3744,7 +3765,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // already works rather than a second, thinner copy of it.
   async function batchDownloadRotating(queueOnly) {
     if (busy) return;
-    const isSrc = queueOnly ? (r => r && r.needsFullRes && !r.dead) : isReady;
+    const isSrc = queueOnly ? (r => r && r.needsFullRes && !r.dead && !runSkipIds.has(r.id)) : isReady;   // (dev0990) runSkipIds
     const srcRows = () => (queueOnly ? rows : view);
     const readyIds = () => srcRows().filter(isSrc).map(r => r.id);   // top-of-view first
     let todo = readyIds();
@@ -3784,7 +3805,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // covers every batch it ran, and so a fresh grind forgives rows the last one
     // quarantined for killing the proxy — one strike is per-run, two is permanent.
     let _proxyPauses = 0;
-    deadThisRun.clear(); proxyKillIds.clear(); proxyDown = false;
+    deadThisRun.clear(); proxyKillIds.clear(); runSkipIds.clear(); proxyDown = false;
     // (dev0664) elapsed clock for the grind — every toast reports time since start.
     const t0 = Date.now();
     const elapsed = () => fmtDur((Date.now() - t0) / 1000);
@@ -3973,7 +3994,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     diag('GRIND-END', {
       totalOk, batches, switches, heldSwitches, elapsed: elapsed(), exit, queueOnly: queueOnly ? 1 : 0,
       leftInView: srcRows().filter(isSrc).length,
-      dead: deadThisRun.size, proxyPauses: _proxyPauses, unsaved: dirty ? 1 : 0,
+      dead: deadThisRun.size, runSkipped: runSkipIds.size, proxyPauses: _proxyPauses, unsaved: dirty ? 1 : 0,
       proxy: await diagProxyAlive(),
       msg: (endMsg || '').replace(/\s+/g, ' ').slice(0, 200)
     });
@@ -4000,6 +4021,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (dev0688) Two new facts the old report couldn't state, both of which used to
       // masquerade as "batch downloaded 0 — check the VPN".
       + (deadThisRun.size ? `\n🪦 ${deadThisRun.size} retired as permanently unavailable (gone / audience-restricted) — never offered again  ·  Status ▸ 🪦 retired to see them` : '')
+      // (dev0990) Failed while later posts on the same exit downloaded — see runSkipIds.
+      + (runSkipIds.size ? `\n⏭ ${runSkipIds.size} skipped for the rest of this run — failed while later posts on the same exit downloaded (not retired: ⬇ Download sel still tries them)` : '')
       + (_proxyPauses ? `\n⛔ the proxy died ${_proxyPauses}× — the run paused and resumed; nothing was lost` : '')
       + (dirty ? `\n⚠ ig.json has UNSAVED changes — press 💾 Save` : '')
       // (dev0683) Point at the evidence while the run is still fresh.

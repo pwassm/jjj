@@ -523,7 +523,8 @@
     "label": "Malacostraca",
     "kind": "taxon",
     "parents": [
-      "arthropoda"
+      "arthropoda",
+      "crustacean"
     ],
     "rank": "class",
     "aliases": [],
@@ -8356,5 +8357,75 @@
     "rank": "species",
     "common": "common siphonophore",
     "extinct": false
+  },
+  {
+    "id": "nautichthys-oculofasciatus",
+    "label": "Nautichthys oculofasciatus",
+    "kind": "taxon",
+    "parents": [
+      "nautichthys"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "sailfin sculpin",
+    "extinct": false
+  },
+  {
+    "id": "nautichthyidae",
+    "label": "Nautichthyidae",
+    "kind": "taxon",
+    "parents": [
+      "perciformes"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "nautichthys",
+    "label": "Nautichthys",
+    "kind": "taxon",
+    "parents": [
+      "nautichthyidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
+  },
+  {
+    "id": "oregonia-gracilis",
+    "label": "Oregonia gracilis",
+    "kind": "taxon",
+    "parents": [
+      "oregonia"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "species",
+    "common": "graceful decorator crab",
+    "extinct": false
+  },
+  {
+    "id": "oregoniidae",
+    "label": "Oregoniidae",
+    "kind": "taxon",
+    "parents": [
+      "decapoda"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "family"
+  },
+  {
+    "id": "oregonia",
+    "label": "Oregonia",
+    "kind": "taxon",
+    "parents": [
+      "oregoniidae"
+    ],
+    "aliases": [],
+    "def": "",
+    "rank": "genus"
   }
 ]
