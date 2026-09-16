@@ -321,7 +321,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0986';
+const PROXY_BUILD = 'dev0991';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -4744,6 +4744,27 @@ function igDisk(req, res, origin) {
     human: free === null ? 'unknown' : fmtGB(free) }, origin);
 }
 
+// (dev0991) /ig/file-dates — when each downloaded file landed, for the I screen's
+// Downloaded column on rows downloaded before that date was recorded. Read-only: one
+// stat per path. Answers the CREATION time — the moment the download wrote the file.
+// Not mtime: on a few files that is the server's Last-Modified, months earlier.
+// Paths are localFiles entries ("<author>/<name>", relative to ig_media) and must
+// resolve inside ig_media; anything else, or a file that isn't there, is just absent.
+function igFileDates(req, res, origin) {
+  readJson(req, 16 * 1024 * 1024).then(p => {
+    const files = Array.isArray(p.files) ? p.files : [];
+    const root = path.resolve(IG_MEDIA_DIR) + path.sep;
+    const dates = {};
+    let missing = 0;
+    for (const f of files) {
+      const abs = path.resolve(IG_MEDIA_DIR, String(f));
+      if (!abs.startsWith(root)) { missing++; continue; }
+      try { dates[f] = Math.round(fs.statSync(abs).birthtimeMs); } catch (_) { missing++; }
+    }
+    sendJson(res, 200, { ok: true, dates, missing }, origin);
+  }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
+}
+
 function igAuthors(req, res, origin) {
   try {
     req.resume();                                   // POST with no body — drain it
@@ -7880,7 +7901,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock', 'textclockfrac',
-      'vptrack', 'vppad', 'qfindroot'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify']) }));
+      'vptrack', 'vppad', 'qfindroot'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify', 'igfiledates']) }));
     return;
   }
 
@@ -8000,6 +8021,7 @@ http.createServer((req, res) => {
     if (action === 'known')    { igKnown(req, res, origin);    return; }   // (dev0794) early-stop harvest
     if (action === 'authors')  { igAuthors(req, res, origin);  return; }   // (dev0794) sweep queue
     if (action === 'disk')     { igDisk(req, res, origin);     return; }   // (dev0835) free-space floor
+    if (action === 'file-dates') { igFileDates(req, res, origin); return; }  // (dev0991) I-screen Downloaded column
     // (dev0794) VPN passthrough for the Tampermonkey harvester. /vpn/switch is
     // locked to LOCAL_ORIGINS (the :8080/:8082 app), and the sweep runs on
     // instagram.com — so it reaches the SAME switcher through the /ig/ namespace,

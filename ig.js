@@ -320,6 +320,14 @@
     const t = (d.textContent || '').replace(/\s+/g, ' ').trim();
     return t.length > 1500 ? t.slice(0, 1500) + '…' : t;
   }
+  // (dev0991) Local wall clock, 'YYYY-MM-DD HH:MM:SS' — the same clock the proxy's
+  // igIsoNow() stamps DateAdded with. core.js isoNow() is UTC; don't mix the two.
+  function localStamp(ms) {
+    const d = ms == null ? new Date() : new Date(ms), p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' '
+         + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  let likeSaveT = null;                // (dev0991) L-checkbox save debounce
   const kindOf = r => /\/reel\//i.test(r.url || '') ? 'reel'
                    : /\/p\//i.test(r.url || '') ? 'p'
                    : /\/tv\//i.test(r.url || '') ? 'tv' : '?';
@@ -1175,11 +1183,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   border-radius:8px;padding:8px 22px;cursor:pointer;font:600 13px system-ui}
 #igSticky .ok:hover{background:#27663c}
 #igTable .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#9fb0c2}
-#igTable td.c-act{white-space:nowrap}
-#igTable td.c-act button{background:#1f2733;border:1px solid #34404f;color:#cfe;
-  border-radius:5px;padding:3px 7px;margin-right:3px;cursor:pointer;font:600 11px system-ui}
-#igTable td.c-act button:hover{background:#2b3543}
-#igTable td.c-act button:disabled{opacity:.4;cursor:default}
+/* (dev0991) W (added with w) and L (liked) — two narrow centred columns */
+#igTable th[data-col="_w"],#igTable th[data-col="liked"]{text-align:center;padding-left:0;padding-right:0}
+#igTable td.c-w{text-align:center;padding-left:0;padding-right:0;color:#8fd3ff;font-weight:600}
+#igTable td.c-like{text-align:center;padding-left:0;padding-right:0}
+#igTable td.c-like input{cursor:pointer;accent-color:#e0679a;margin:0}
 /* (dev0498) position:fixed (was absolute, which scrolled WITH the table content so
    the info panel slid out of view for lower rows). Fixed pins it to the viewport;
    its top is set in openDrawer to the table's top edge so it sits under the bar. */
@@ -1409,12 +1417,18 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // (dev0690) How many items the post carries. 0 = not a carousel; n = an n-item one.
     { key: '_car', label: 'Carousel', w: 66, sort: true },
     { key: 'DatePosted', label: 'Posted', w: 96, sort: true },
+    // (dev0991) W = added on its own with `w` (source 'manual'), not by a harvest.
+    { key: '_w', label: 'W', w: 28, sort: true },
+    // (dev0991) L = one you especially like. A checkbox, saved on the row as `liked: 1`.
+    { key: 'liked', label: 'L', w: 28, sort: true },
     { key: 'embed', label: 'Embed', w: 52, sort: true },
     { key: '_cap', label: 'ftext', w: 46, sort: false },
     { key: '_ttxt', label: 'ttxt', w: 46, sort: false },
     { key: 'status', label: 'Status', w: 86, sort: true },
     { key: 'DateAdded', label: 'Harvested', w: 130, sort: true },
-    { key: '_act', label: 'Actions', w: 160, sort: false }
+    // (dev0991) Replaces the ✨⬇➕⋯ Actions column, which went unused — every one of
+    // those is still in the row drawer (click a row). Local wall clock; see localStamp.
+    { key: 'DateDownloaded', label: 'Downloaded', w: 96, sort: true }
   ];
 
   function renderHead() {
@@ -1564,6 +1578,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // Unknown sorts below "not a carousel", which sorts below every real carousel.
       if (sortCol === '_car') { const c = carouselCount(r); return c.n == null ? -1 : (c.n <= 1 ? 0 : c.n); }
       if (sortCol === 'embed') return r.embed === 1 ? 2 : (r.embed === 0 ? 1 : 0);   // ✓ > ✗ > unprobed
+      if (sortCol === '_w') return r.source === 'manual' ? 1 : 0;     // (dev0991)
+      if (sortCol === 'liked') return r.liked ? 1 : 0;                // (dev0991)
       return (r[sortCol] != null ? r[sortCol] : '');
     };
     view.sort((a, b) => {
@@ -1728,6 +1744,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           : (r.metaPartial
               ? '<span class="walled" title="caption-only embed fallback — no date/dims were available; re-download on a healthy VPN to fill it">⚠ partial</span>'
               : '<span class="no">—</span>')}</td>
+        <td class="c-w"${r.source === 'manual' ? ' title="Added on its own with w (➕ Add single), not by a harvest"' : ''}>${r.source === 'manual' ? 'w' : ''}</td>
+        <td class="c-like"><input type="checkbox" class="iglike" title="L — one you especially like" ${r.liked ? 'checked' : ''}></td>
         <td style="text-align:center" title="${esc(_emb.tip)}">${_emb.g}</td>
         <td style="text-align:center;cursor:help"${capTip}>${cap}</td>
         <td style="text-align:center;cursor:help"${ttTip}>${tt}</td>
@@ -1740,12 +1758,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           r.proxyKills ? `<span class="walled" title="This row was in flight when the proxy died ${r.proxyKills}× — at 2 it is dropped from Download+rotate for good."> ⛔${r.proxyKills}</span>` : ''
         }</td>
         <td class="mono">${esc(r.DateAdded || '')}</td>
-        <td class="c-act">
-          <button data-act="enrich" title="yt-dlp → title/caption/ttxt/author/date/res">✨</button>
-          <button data-act="download" title="Download max-res → ig_media/">⬇</button>
-          <button data-act="promote" title="Add to ml.json" ${st === 'promoted' ? 'disabled' : ''}>➕</button>
-          <button data-act="detail" title="Details">⋯</button>
-        </td>
+        <td class="mono" title="${esc(r.DateDownloaded || '')}">${r.DateDownloaded ? esc(r.DateDownloaded.slice(0, 10))
+          : ((r.localFiles || []).length ? '<span class="no" title="Downloaded, date not read yet — filled from the file on the next load (needs the dev0991 proxy)">—</span>' : '')}</td>
       </tr>`;
   }
   const _spacerRow = h => h > 0
@@ -1843,11 +1857,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       updateCount();
       return;
     }
-    const act = e.target.closest('button')?.dataset.act;
-    if (act === 'enrich') { enrichRow(r, true); return; }
-    if (act === 'download') { downloadRow(r, true); return; }
-    if (act === 'promote') { promoteRow(r, true); return; }
-    openDrawer(r);   // ⋯ or plain row click
+    // (dev0991) L — liked or not, saved on the row. Debounced so a run of clicks down
+    // the list is one small delta save rather than one per click.
+    if (e.target.classList.contains('iglike')) {
+      if (e.target.checked) r.liked = 1; else delete r.liked;
+      markDirty(r.id);
+      clearTimeout(likeSaveT);
+      likeSaveT = setTimeout(() => { likeSaveT = null; persist(false); }, 1200);
+      return;
+    }
+    openDrawer(r);   // plain row click
   }
 
   // ── Detail drawer ───────────────────────────────────────────────────────────
@@ -2909,6 +2928,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // downloaded with nothing on disk. Treat it as a failure so status stays put.
       if (!j.files || !j.files.length) throw new Error('download returned no files (nothing landed on disk)');
       r.localFiles = j.files || [];
+      r.DateDownloaded = localStamp();     // (dev0991) Downloaded column
       batchItems += r.localFiles.length;   // (dev0690) spends the rotation budget
       if (grind) grind.files += r.localFiles.length;   // (dev0798) …and the live scoreboard
       // (dev0659) The proxy stamps the real ffprobe'd length into the filename; adopt it so
@@ -4564,6 +4584,60 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     dirtyIds.clear(); dirtyAll = false;  // (dev0697) rows[] is fresh from disk — no marks can be owed
     refreshAuthorOptions();
     applyAndRender();
+    backfillDownloadDates();             // (dev0991) not awaited — the table is usable meanwhile
+  }
+
+  // (dev0991) Downloaded dates for rows that landed before the date was recorded.
+  // The file is the record: its creation time is the moment the download wrote it.
+  // Checked over all 58,068 downloaded rows on 2026-09-16 — it matched the modified
+  // time on all but 6, and on those 6 the modified time was the server's months-older
+  // Last-Modified, so creation time it is. The proxy only stats; nothing is fetched.
+  // Chunked, each chunk saved as its own small delta, so this one-off pass over the
+  // back catalogue never ships the whole store in one request (see persist()). Only
+  // while idle — whatever it doesn't reach is picked up on the next load. A proxy
+  // older than dev0991 answers 404, and the pass waits quietly for a restart.
+  let dlDatesRunning = false;
+  async function backfillDownloadDates() {
+    if (dlDatesRunning || busy) return;
+    const todo = rows.filter(r => r && !r.DateDownloaded && (r.localFiles || []).length);
+    if (!todo.length) return;
+    dlDatesRunning = true;
+    const CHUNK = 5000;
+    let filled = 0, noFile = 0;
+    try {
+      for (let i = 0; i < todo.length; i += CHUNK) {
+        if (busy) break;
+        const part = todo.slice(i, i + CHUNK);
+        const files = [];
+        part.forEach(r => r.localFiles.forEach(f => files.push(f)));
+        const res = await fetch(PROXY + '/ig/file-dates', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files })
+        });
+        if (res.status === 404) { diag('dl-dates-404', { note: 'proxy predates dev0991 — restart it to fill Downloaded dates' }); break; }
+        const j = await res.json();
+        if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+        if (busy) break;                      // a grind started while we were asking
+        let n = 0;
+        for (const r of part) {
+          if (r.DateDownloaded) continue;     // a download landed meanwhile and stamped it
+          let ms = 0;
+          (r.localFiles || []).forEach(f => { const t = j.dates[f]; if (t > ms) ms = t; });
+          if (!ms) { noFile++; continue; }
+          r.DateDownloaded = localStamp(ms);
+          markDirty(r.id); n++;
+        }
+        filled += n;
+        if (n) await persist(false);          // never with nothing marked — that path is a whole-store save
+      }
+    } catch (e) {
+      diag('dl-dates-fail', { err: String((e && e.message) || e).slice(0, 200) });
+    } finally { dlDatesRunning = false; }
+    diag('dl-dates', { todo: todo.length, filled, noFile });
+    if (filled) {
+      applyAndRender();
+      igToast('📅 Downloaded dates filled for ' + filled.toLocaleString() + ' row(s) from the ig_media file dates', 3200);
+    }
   }
 
   // ── Moveable media preview (dev0500) ────────────────────────────────────────
