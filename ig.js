@@ -1249,6 +1249,12 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 #igPvTitle{flex:1;font:12px system-ui;color:#bcd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #igPvClose{background:none;border:0;color:#9aa;font-size:18px;line-height:1;cursor:pointer;padding:0 4px}
 #igPvClose:hover{color:#fff}
+/* (dev0994) The item on show: real pixel size, file size + type, and the zoom it is
+   drawn at on this screen. Hidden when no file is showing. */
+#igPvInfo{flex:0 0 auto;padding:2px 8px;background:#0a1426;border-bottom:1px solid #1a2a4a;
+  font:11px/1.4 ui-monospace,Consolas,monospace;color:#9fb0c2;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;user-select:text}
+#igPvInfo b{color:#dff;font-weight:600}
 /* (dev0834) Fills whatever is left after the title bar, so dragging the grip
    resizes the MEDIA and not just the frame around it. */
 #igPvBody{position:relative;flex:1 1 auto;min-height:0;background:#000;
@@ -4711,6 +4717,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + '<span id="igPvTitle"></span>'
       + '<button id="igPvClose" title="Close (Ctrl+I or Esc)">×</button>'
       + '</div>'
+      + '<div id="igPvInfo"></div>'
       + '<div id="igPvBody"></div>'
       + '<div id="igPvTime"><div class="pvFill"></div><div class="pvLbl"></div></div>';
     pvBox = pvBoxClamp(pvBoxLoad() || PV_DEF_BOX);
@@ -4725,6 +4732,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       pvRO = new ResizeObserver(() => {
         if (!pvBox) return;
         pvBox.w = el.offsetWidth; pvBox.h = el.offsetHeight;
+        pvInfoPaint();                     // (dev0994) the "shown NN%" follows the grip
         clearTimeout(pvSaveT); pvSaveT = setTimeout(pvBoxSave, 250);
       });
       pvRO.observe(el);
@@ -4795,6 +4803,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
     body.innerHTML = '';
     pvTimeSet(null);                       // stills and placeholders carry no clock
+    pvInfoStart(n ? files[pvIdx] : '');
     if (!n) {
       const ph = document.createElement('div');
       ph.className = 'igPvPlace';
@@ -4812,7 +4821,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       v.addEventListener('click', () => { if (v.paused) v.play().catch(() => {}); else v.pause(); });
       // timeupdate fires ~4×/s, which the bar's CSS transition smooths out; the
       // metadata event is what first gives the bar a duration to divide by.
-      v.addEventListener('loadedmetadata', () => pvTimeSet(v));
+      v.addEventListener('loadedmetadata', () => { pvTimeSet(v); pvInfoDims(f, v.videoWidth, v.videoHeight); });
       v.addEventListener('timeupdate', () => pvTimeSet(v));
       body.appendChild(v);
       // Best-effort autoplay with sound; if the browser blocks it, retry muted
@@ -4820,6 +4829,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
     } else if (PV_IMAGE_RE.test(f)) {
       const img = document.createElement('img');
+      img.addEventListener('load', () => pvInfoDims(f, img.naturalWidth, img.naturalHeight));
       img.src = mediaUrl(f);
       img.alt = r.id;
       body.appendChild(img);
@@ -4846,6 +4856,49 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const s2 = Math.max(0, Math.floor(t || 0));
     return Math.floor(s2 / 60) + ':' + pad2(s2 % 60);
   };
+
+  // (dev0994) Info strip for the item on show. Pixels come off the LOADED <img>/<video>
+  // (naturalWidth / videoWidth), never the filename, so it is right even for a name
+  // that is wrong. File size is a HEAD to the static server (Content-Length). "shown"
+  // is how big it is actually drawn, in device pixels — a 4096² still in a 320px
+  // window reads as a few percent. `key` guards against a late answer for an item the
+  // user has already stepped past.
+  let pvInfo = { key: '', w: 0, h: 0, bytes: null, ext: '' };
+  const pvBytes = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB'
+                     : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B';
+  function pvInfoStart(f) {
+    pvInfo = { key: f || '', w: 0, h: 0, bytes: null,
+               ext: ((f || '').match(/\.(\w+)$/) || [, ''])[1].toLowerCase() };
+    pvInfoPaint();
+    if (!f) return;
+    fetch(mediaUrl(f), { method: 'HEAD', cache: 'no-store' }).then(res => {
+      const len = +res.headers.get('content-length');
+      if (pvInfo.key === f && res.ok && len > 0) { pvInfo.bytes = len; pvInfoPaint(); }
+    }).catch(() => {});
+  }
+  function pvInfoDims(f, w, h) {
+    if (pvInfo.key !== f || !(w > 0 && h > 0)) return;
+    pvInfo.w = w; pvInfo.h = h;
+    pvInfoPaint();
+  }
+  function pvInfoPaint() {
+    const el = document.getElementById('igPvInfo'); if (!el) return;
+    if (!pvInfo.key) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = '';
+    const parts = [pvInfo.w ? '<b>' + pvInfo.w + '×' + pvInfo.h + '</b>' : '…'];
+    if (pvInfo.bytes != null) parts.push(pvBytes(pvInfo.bytes));
+    if (pvInfo.ext) parts.push(esc(pvInfo.ext));
+    const body = document.getElementById('igPvBody');
+    let tip = '';
+    if (pvInfo.w && body && body.clientWidth && body.clientHeight) {
+      const dpr = window.devicePixelRatio || 1;
+      const pct = Math.round(Math.min(body.clientWidth / pvInfo.w, body.clientHeight / pvInfo.h) * dpr * 100);
+      parts.push('shown ' + pct + '%');
+      tip = 'Drawn at ' + pct + '% of its real pixels on this screen — enlarge the window to see more detail';
+    }
+    el.innerHTML = parts.join(' · ');
+    el.title = tip;
+  }
 
   // Open the window on a specific row, wherever the caller got it from. The
   // shared half of Ctrl+I and the post-download auto-show.
@@ -4886,6 +4939,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       el.remove();
     }
     pvOpen = false; pvRowId = null; pvIdx = 0;
+    pvInfo.key = '';                       // (dev0994) drop any HEAD still in flight
   }
 
   // Drag by the title bar (pointer events → preview-verifiable, mirrors the rest
