@@ -4796,9 +4796,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
 
     const nav = el.querySelector('#igPvNav');
     nav.innerHTML = n > 1
-      ? '<button data-d="prev" title="Previous">‹</button>'
+      ? '<button data-d="prev" title="Previous (←)">‹</button>'
         + '<span class="ct">' + (pvIdx + 1) + '/' + n + '</span>'
-        + '<button data-d="next" title="Next">›</button>'
+        + '<button data-d="next" title="Next (→)">›</button>'
       : '';
 
     body.innerHTML = '';
@@ -5054,6 +5054,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // checkbox (handy for building a batch selection from the keyboard).
     if (e.key === 'ArrowDown') { e.stopPropagation(); e.preventDefault(); moveFocus(1); return; }
     if (e.key === 'ArrowUp')   { e.stopPropagation(); e.preventDefault(); moveFocus(-1); return; }
+    // (dev0995) ←/→ step through a carousel in the Ctrl+I window. Only when the shown
+    // row HAS more than one item — otherwise the keys fall through untouched (a focused
+    // <video> keeps its native seek).
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && pvOpen
+        && ((rowById(pvRowId) || {}).localFiles || []).length > 1) {
+      e.stopPropagation(); e.preventDefault();
+      igPreviewStep(e.key === 'ArrowRight' ? 1 : -1);
+      return;
+    }
     if (e.key === 'Enter') {
       if (focusId != null) { e.stopPropagation(); e.preventDefault(); const r = rowById(focusId); if (r) openDrawer(r); }
       return;
