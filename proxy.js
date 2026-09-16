@@ -321,7 +321,7 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0991';
+const PROXY_BUILD = 'dev0992';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2492,7 +2492,12 @@ function pickIgFullCover(html, ogImage) {
   // (dev0513) Match the media's numeric STEM (no extension) so we can collect every
   // rendition the page lists for it — JPEG and WebP alike — and prefer a real .jpg.
   const stemM = og.match(/\/(\d+_\d+_\d+_n)\.(?:webp|jpe?g|heic)/i);
-  if (!stemM) return og;
+  // (dev0992) No media stem = not this post's picture. A login-walled page's og:image is
+  // Instagram's LOGO (a 4168x4168 .png), and returning it here downloaded that logo as
+  // the "full-res cover" for 40 rows in July. '' makes the caller try the embed page and
+  // then fail the row (retried next run) instead of recording a false success. Every
+  // real cover in ig.json (54,424 igImage URLs) carries the stem, so nothing is lost.
+  if (!stemM) return '';
   const stem = stemM[1];
   // Flatten the page's JSON escaping so inline URLs become matchable plain URLs. The
   // stem anchor keeps us on THIS post's media — a /p/ page also lists sibling posts.
