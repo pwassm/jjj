@@ -2156,20 +2156,35 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     }
     // Clear the filters that would hide a brand-new staged:false 'new' row, so it's
     // always visible after adding (whether it's new or an already-tracked dup).
-    authorFilter = 'all'; query = '';
-    setStatusFilterSilent('all'); setStagedFilterSilent('all');
-    const sBox = document.getElementById('igSearch'); if (sBox) sBox.value = '';
+    // (dev1002) …but never while a batch runs: a grind re-reads `view` every round, so
+    // widening the filters under it would widen the grind (a scubadiverlife-only run
+    // turning into every author).
+    const grinding = busy || rotatingActive;
+    if (!grinding) {
+      authorFilter = 'all'; query = '';
+      setStatusFilterSilent('all'); setStagedFilterSilent('all');
+      const sBox = document.getElementById('igSearch'); if (sBox) sBox.value = '';
+    }
 
     const existing = rows.find(r => r.id === id);
     if (existing) {
+      // (dev1002) Pasting a post you already have means you like it → tick L.
+      const likedNow = !existing.liked;
+      if (likedNow) { existing.liked = 1; markDirty(existing.id); }
       refreshAuthorOptions(); applyAndRender();
-      focusId = existing.id; sel.clear(); sel.add(existing.id);
-      applyAndRender(); applyFocusHighlight(existing.id);
+      sel.clear(); sel.add(existing.id);
+      const shown = revealRow(existing.id, !grinding);
+      if (likedNow) {   // same debounced save as clicking the L box
+        clearTimeout(likeSaveT);
+        likeSaveT = setTimeout(() => { likeSaveT = null; persist(false); }, 1200);
+      }
       // (dev0834) Already here, but not yet on disk → that is still a download you
       // wanted, so do it rather than report a no-op you would only have to act on.
       if (!isDownloadDone(existing)) { await wAutoDownload(existing); return; }
       igToast('• ' + id + ' is already in ig.json (@' + (existing.author || '?')
-        + ' · ' + (existing.status || 'new') + ') and already downloaded — selected it, not duplicated', 4600);
+        + ' · ' + (existing.status || 'new') + ') and already downloaded — selected it'
+        + (likedNow ? ', ticked L' : '') + ', not duplicated'
+        + (shown ? '' : '\n(hidden by the running batch\'s filters — it\'s selected; look again when the batch ends)'), 4600);
       return;
     }
     const author = _igAuthorFromUrl(url);
@@ -2183,10 +2198,38 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     rows.push(r); knownIds.add(id);
     markDirty(id);
     refreshAuthorOptions(); applyAndRender();
-    focusId = id; sel.clear(); sel.add(id);
-    applyAndRender(); applyFocusHighlight(id);
+    sel.clear(); sel.add(id);
+    revealRow(id, !grinding);   // (dev1002)
     await persist(false);
     await wAutoDownload(r);
+  }
+  // (dev1002) Bring one row on screen, CENTRED, for the 'w' add path. Two ways the old
+  // applyFocusHighlight() call left it off screen: (1) 'w' clears author/search/status/
+  // staged but not kind/embed/re-fetch/res/hide-completed, so a row those hid had no
+  // index to scroll to; (2) scrollIndexIntoView() parks a row that is below the viewport
+  // on its very bottom edge, estimated from the average row height — a few taller rows
+  // in the painted window push it just out of sight. `widen` = allowed to clear the
+  // remaining filters (not while a grind is reading `view`). Returns true if on screen.
+  function revealRow(id, widen) {
+    if (widen && !view.some(r => r.id === id)) {
+      kindFilter = embedFilter = refetchFilter = resFilter = 'all'; hideCompleted = false;
+      syncFilterControls(); applyAndRender();
+    }
+    const i = view.findIndex(r => r.id === id);
+    if (i < 0) return false;
+    focusId = id;
+    const wrap = document.getElementById('igWrap');
+    if (!wrap) { renderWindow(true); return true; }
+    wrap.scrollTop = Math.max(0, i * rowH - (wrap.clientHeight - rowH) / 2);
+    renderWindow(true);
+    // Correct from where the row actually painted, not the estimate.
+    const tr = document.querySelector(`#igTable tr[data-id="${CSS.escape(id)}"]`);
+    if (tr) {
+      const off = (tr.getBoundingClientRect().top - wrap.getBoundingClientRect().top)
+                - (wrap.clientHeight - tr.offsetHeight) / 2;
+      if (Math.abs(off) > 2) { wrap.scrollTop += off; renderWindow(true); }
+    }
+    return true;
   }
   // Silent variants of the status/source filters (no toast) for the 'w' add path.
   function setStatusFilterSilent(val) {
