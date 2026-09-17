@@ -38,13 +38,20 @@ const DEFAULTS = {
   cffiTimeoutMs: 40000,
   track: null,              // Set-like (proxy's ACTIVE_DL) so the VPN kill-switch can SIGKILL
   saveHtmlTo: null,         // dir → dump the fetched HTML (calibration only)
+  // (dev1003) Both optional; the overnight script passes neither and behaves as before.
+  secureContext: null,      // shared tls SecureContext — no per-probe OpenSSL SSL_CTX build/GC-free
+  crumb: null,              // crumb(step) — sync breadcrumb after each native step (proxy crash hunt)
   log: null
 };
 
 let impersonateOk = null;   // null=untried  false=curl_cffi missing (stop spawning)
 
+// (dev1003) `t` = ms from the GET to each step (dns/tcp/tls/hdr/body) and `tls` = the
+// negotiated protocol/key-exchange group — what a normal probe's first ~200ms looks like,
+// for comparison with the three deaths that happened inside that window.
 function fetchNode(url, o) {
   return new Promise(resolve => {
+    const crumb = o.crumb || (() => {});
     const opts = { agent: false, headers: {
       'User-Agent': SHORT_UA,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -52,15 +59,29 @@ function fetchNode(url, o) {
       'Referer': url.replace(/embed\/captioned\/?$/, ''),
       'Connection': 'close'
     } };
-    let h = '';
+    if (o.secureContext) opts.secureContext = o.secureContext;
+    const t0 = Date.now(), t = {};
+    let h = '', tls = '';
+    const done = v => { v.t = t; v.tls = tls; resolve(v); };
+    crumb('get');
     const req = https.get(url, opts, r => {
-      if (r.statusCode !== 200) { r.resume(); resolve({ status: r.statusCode, html: '' }); return; }
+      t.hdr = Date.now() - t0; crumb('hdr ' + r.statusCode);
+      if (r.statusCode !== 200) { r.resume(); done({ status: r.statusCode, html: '' }); return; }
       r.setEncoding('utf8');
       r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
-      r.on('end', () => resolve({ status: 200, html: h }));
+      r.on('end', () => { t.body = Date.now() - t0; crumb('body ' + h.length); done({ status: 200, html: h }); });
     });
-    req.on('error', () => resolve({ status: 0, html: '' }));
-    req.setTimeout(o.nodeTimeoutMs, () => { req.destroy(); resolve({ status: -1, html: '' }); });
+    req.on('socket', s => {
+      s.once('lookup', () => { t.dns = Date.now() - t0; crumb('dns'); });
+      s.once('connect', () => { t.tcp = Date.now() - t0; crumb('tcp'); });
+      s.once('secureConnect', () => {
+        t.tls = Date.now() - t0;
+        try { const k = s.getEphemeralKeyInfo() || {}; tls = (s.getProtocol() || '?') + '/' + (k.name || k.type || '?'); } catch (_) {}
+        crumb('tls ' + tls);
+      });
+    });
+    req.on('error', () => done({ status: 0, html: '' }));
+    req.setTimeout(o.nodeTimeoutMs, () => { req.destroy(); done({ status: -1, html: '' }); });
   });
 }
 
@@ -69,6 +90,7 @@ function fetchImpersonated(url, o) {
     if (impersonateOk === false) { resolve({ status: 0, html: '' }); return; }
     const tmp = path.join(o.scratch, '.probe_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
     let proc;
+    if (o.crumb) o.crumb('cffi spawn');
     try {
       proc = spawn(o.python, [o.impersonatePy, url, tmp,
         url.replace(/embed\/captioned\/?$/, ''),
@@ -89,6 +111,7 @@ function fetchImpersonated(url, o) {
     proc.stdout.on('data', d => { out += d.toString('utf8'); });
     proc.on('error', () => finish(0));
     proc.on('close', () => {
+      if (o.crumb) o.crumb('cffi close');
       const s = out.trim();
       if (/^ERR curl_cffi import/i.test(s)) { impersonateOk = false; if (o.log) o.log('⚠ curl_cffi missing — node-only from here'); }
       else if (/^\d+$/.test(s)) impersonateOk = true;
@@ -134,6 +157,8 @@ async function probeEmbed(id, opts) {
   const o = Object.assign({}, DEFAULTS, opts || {});
   const url = 'https://www.instagram.com/p/' + id + '/embed/captioned/';
   let r = await fetchNode(url, o);
+  const nodeT = r.t, nodeTls = r.tls;
+  if (o.crumb) o.crumb('markers ' + (r.html || '').length);
   let m = markers(r.html), via = 'node';
   let d = verdict(m, r.status);
   if (d.kind === 'wall' && o.cffi) {       // walled/thin → impersonated retry
@@ -145,7 +170,8 @@ async function probeEmbed(id, opts) {
   if (o.saveHtmlTo) {
     try { fs.writeFileSync(path.join(o.saveHtmlTo, 'calib_' + id + '_' + via + '.html'), r.html || ''); } catch (_) {}
   }
-  return { id, status: r.status, via, m, v: d.v, kind: d.kind };
+  if (o.crumb) o.crumb('verdict ' + d.kind);
+  return { id, status: r.status, via, m, v: d.v, kind: d.kind, t: nodeT, tls: nodeTls };
 }
 
 module.exports = { probeEmbed, markers, verdict, SHORT_UA };

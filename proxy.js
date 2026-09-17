@@ -13,6 +13,7 @@
 
 const http  = require('http');
 const https = require('https');
+const tls   = require('tls');     // (dev1003) one shared SecureContext for the IG fetches
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
@@ -47,9 +48,11 @@ function killActiveDownloads() {
 //   • rss climbing run-over-run                    → memory exhaustion; watch the
 //     `/ig/save` lines, each one buffers a ~49MB body + parses + rewrites the file
 //   • a request line with no matching ← line       → it died INSIDE that handler
-//   • "node exited EXITCODE=-1073740791"           → SOLVED, dev0697: the system ran
-//     out of COMMIT, not node out of heap. Read the "system memory" line at the top
-//     of each run; a JS-heap OOM would instead exit 134 and print pages of GC detail.
+//   • "node exited EXITCODE=-1073740791"           → a silent native abort. dev0697
+//     traced one night of them to system COMMIT exhaustion (read the "system memory"
+//     line). The Sept 16-17 deaths had 16GB+ commit free, so that is not the only
+//     cause: the next START prints proxy.crumb, the last native steps that completed
+//     (dev1003). A JS-heap OOM would instead exit 134 and print pages of GC detail.
 //   • uncaughtException right before the gap       → a real bug, with its stack
 //   • "client:" lines                              → what the I screen was doing
 //     (mirrored from ig.js so both stories share one clock)
@@ -65,6 +68,35 @@ function plog(line) {
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 23);
     fs.appendFileSync(LOG_FILE, `${ts}  pid${process.pid}  ${line}\n`);
   } catch (_) {}
+}
+// (dev1003) CRASH CRUMBS. plog can say which REQUEST node died in, never which native
+// step: the Sept 16-17 deaths (silent 0xC0000409, COMMIT free 16GB+) all sat inside
+// /ig/download, three of them within ~0.2s of "embed probe start". So every IG fetch /
+// spawn step rewrites proxy.crumb with the last CRUMB_KEEP steps, synchronously, as it
+// completes — "tls" means the handshake FINISHED. After a death the final crumb is the
+// last step that completed, and node died in the step after it. The next START prints
+// them into proxy.log. One ≤4KB positional write per step to a file held open, so
+// proxy.log itself does not grow; the OS keeps the bytes when the process is killed.
+const CRUMB_FILE = path.join(__dirname, 'proxy.crumb');
+const CRUMB_KEEP = 16, CRUMB_BYTES = 4096;
+let PREV_CRUMBS = '';
+try { PREV_CRUMBS = fs.readFileSync(CRUMB_FILE, 'utf8').replace(/\s+$/, ''); } catch (_) {}   // before 'w' empties it
+let _crumbFd = null;
+try { _crumbFd = fs.openSync(CRUMB_FILE, 'w'); } catch (_) {}
+const _crumbs = [];
+function crumb(step) {
+  if (_crumbFd === null) return;
+  try {
+    _crumbs.push(new Date().toISOString().slice(11, 23) + '  ' + String(step).slice(0, 180));
+    if (_crumbs.length > CRUMB_KEEP) _crumbs.shift();
+    const buf = Buffer.alloc(CRUMB_BYTES, 0x20);            // space-padded: each write covers the last
+    buf.write(_crumbs.join('\n') + '\n', 0, 'utf8');
+    fs.writeSync(_crumbFd, buf, 0, CRUMB_BYTES, 0);
+  } catch (_) {}
+}
+// host + tail of the path — CDN URLs carry long signed queries that say nothing.
+function crumbUrl(u) {
+  try { const x = new URL(u); return x.host + x.pathname.slice(-48); } catch (_) { return String(u).slice(0, 60); }
 }
 function memLine() {
   const m = process.memoryUsage();
@@ -96,6 +128,7 @@ function logCommitHeadroom() {
     + "+'|'+[int]($o.TotalVirtualMemorySize/1024)+'|'+[int]($o.FreeVirtualMemory/1024)+'|'+$pf)";
   let out = '';
   try {
+    crumb('headroom spawn');
     const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps],
       { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     p.stdout.on('data', d => { out += d.toString('utf8'); });
@@ -323,7 +356,7 @@ const PORT = 8081;
 //   ffdown/ folder itself is untouched, nothing reads it now).
 // (dev1001) parseIgMainMeta reads the @handle of an account with no display name
 //   (twitter:title "@handle • …", og:description "N likes, N comments - handle on …").
-const PROXY_BUILD = 'dev1001';
+const PROXY_BUILD = 'dev1003';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -388,6 +421,35 @@ const IG_IMPERSONATE = 'chrome';
 //   • Best-effort: any probe failure still returns the download result unchanged.
 // Set false to go back to script-only stamping.
 const IG_EMBED_PROBE_ON_DOWNLOAD = true;
+
+// (dev1003) ONE shared TLS SecureContext for the cookieless IG fetches. `agent:false` with
+// no secureContext makes Node build a brand-new OpenSSL SSL_CTX for EVERY connection — 4-5
+// per download (page, cover, dims, embed probe) — and free each one later from a GC
+// finalizer (nodejs/node#66002: per-connection contexts live until GC). That churn is
+// exactly where the Sept 16-17 0xC0000409 deaths landed: the embed probe opening its
+// connection moments after the cover/carousel download's socket closed. Sharing one
+// context removes it WITHOUT changing what IG sees: the ClientHello comes from the same
+// defaults, the socket is still fresh per request (dev0461), and Node's client never
+// resumes a TLS session unless handed one, so requests stay unlinked.
+// false = the old per-connection contexts (the A/B switch if deaths continue; the crumbs
+// then say which step they die in).
+const IG_TLS_SHARED = true;
+let IG_TLS_CTX = null;
+if (IG_TLS_SHARED) { try { IG_TLS_CTX = tls.createSecureContext(); } catch (_) {} }
+// https.get for the IG fetch helpers: the shared context plus a crumb per step.
+function igHttpsGet(tag, url, opts, cb) {
+  if (IG_TLS_CTX && !opts.secureContext) opts = Object.assign({}, opts, { secureContext: IG_TLS_CTX });
+  crumb(tag + ' get ' + crumbUrl(url));
+  const req = https.get(url, opts, cb);
+  req.on('socket', s => {
+    s.once('lookup', () => crumb(tag + ' dns'));
+    s.once('connect', () => crumb(tag + ' tcp'));
+    s.once('secureConnect', () => crumb(tag + ' tls'));
+  });
+  req.once('response', r => { crumb(tag + ' hdr ' + r.statusCode); r.once('end', () => crumb(tag + ' body')); });
+  req.once('close', () => crumb(tag + ' close'));
+  return req;
+}
 
 // (dev0289/0304) Origins allowed to call /exec/*. The user's main dev server
 // runs on :8080; Claude Code's preview server (see .claude/launch.json) is on
@@ -2454,7 +2516,7 @@ function fetchIgEmbedMeta(url) {
       'Connection': 'close'
     } };
     let h = '';
-    const req = https.get(embedUrl, opts, r => {
+    const req = igHttpsGet('embedmeta', embedUrl, opts, r => {
       if (r.statusCode !== 200) { r.resume(); resolve(null); return; }
       r.setEncoding('utf8');
       r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
@@ -2699,7 +2761,7 @@ function probeImageDims(fileUrl, referer, hops) {
     } };
     const chunks = []; let got = 0, done = false;
     const finish = () => { if (done) return; done = true; try { resolve(parseImageDims(Buffer.concat(chunks))); } catch (_) { resolve(null); } };
-    const req = https.get(fileUrl, opts, r => {
+    const req = igHttpsGet('dims', fileUrl, opts, r => {
       if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 3) {
         r.resume(); if (!done) { done = true; probeImageDims(new URL(r.headers.location, fileUrl).href, referer, hops + 1).then(resolve); } return;
       }
@@ -2771,6 +2833,7 @@ function igImpersonatedGet(fileUrl, destPath, referer, accept, ua) {
     let u; try { u = new URL(fileUrl); } catch (_) { resolve(false); return; }
     if (u.protocol !== 'https:') { resolve(false); return; }
     let proc;
+    crumb('cffi spawn ' + crumbUrl(fileUrl));
     try { proc = spawn(IG_PYTHON, [IG_IMPERSONATE_PY, fileUrl, destPath, referer || '', accept || '', ua || ''], { windowsHide: true }); }
     catch (_) { resolve(false); return; }
     ACTIVE_DL.add(proc);   // (dev0658) killable by the VPN kill-switch
@@ -2780,6 +2843,7 @@ function igImpersonatedGet(fileUrl, destPath, referer, accept, ua) {
     proc.stdout.on('data', d => { out += d.toString('utf8'); if (out.length > 2000) out = out.slice(-2000); });
     proc.on('error', () => finish(false));
     proc.on('close', code => {
+      crumb('cffi close ' + code);
       const s = out.trim();
       if (/^ERR curl_cffi import/i.test(s)) _igImpersonateOk = false;   // not installed → stop trying
       else if (/^\d/.test(s)) _igImpersonateOk = true;
@@ -2808,7 +2872,7 @@ function igFetchNodeHtml(permalink, maxBytes, ua) {
       'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
     } };
     let h = '';
-    const req = https.get(permalink, opts, r => {
+    const req = igHttpsGet('page', permalink, opts, r => {
       if (r.statusCode !== 200) { r.resume(); resolve(''); return; }
       r.setEncoding('utf8');
       r.on('data', c => { h += c; if (h.length > (maxBytes || 8e6)) req.destroy(); });
@@ -2857,7 +2921,7 @@ function igDownloadImageNode(fileUrl, destPath, referer, hops, accept) {
       'Referer': referer || 'https://www.instagram.com/',
       'Connection': 'close'
     } };
-    const req = https.get(fileUrl, opts, r => {
+    const req = igHttpsGet('media', fileUrl, opts, r => {
       if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && hops < 3) {
         r.resume();
         igDownloadImageNode(new URL(r.headers.location, fileUrl).href, destPath, referer, hops + 1, accept).then(resolve);
@@ -2924,7 +2988,7 @@ function igEmbedImageFallback(url, id, tmpDir) {
       let settled = false, h = '';
       const fail = () => { if (settled) return; settled = true; if (triesLeft > 0) setTimeout(() => getHtml(triesLeft - 1, cb), 1300); else cb(''); };
       const ok = v => { if (settled) return; settled = true; cb(v); };
-      const req = https.get(permalink + 'embed/captioned/', opts, r => {
+      const req = igHttpsGet('embedimg', permalink + 'embed/captioned/', opts, r => {
         if (r.statusCode !== 200) { r.resume(); fail(); return; }
         r.setEncoding('utf8');
         r.on('data', c => { h += c; if (h.length > 4e6) req.destroy(); });
@@ -2997,7 +3061,7 @@ function igMainVideoFallback(url, id, tmpDir) {
       'Accept-Language': 'en-US,en;q=0.9', 'Referer': permalink, 'Connection': 'close'
     } };
     let h = '';
-    const req = https.get(permalink, opts, r => {
+    const req = igHttpsGet('mainvid', permalink, opts, r => {
       if (r.statusCode !== 200) { r.resume(); resolve([]); return; }
       r.setEncoding('utf8');
       r.on('data', c => { h += c; if (h.length > 6e6) req.destroy(); });
@@ -3231,6 +3295,7 @@ function probeMediaDims(file) {
 function _probeMediaDimsUncached(file) {
   try {
     if (/\.(mp4|mov|webm|mkv|m4v)$/i.test(file)) {
+      crumb('ffprobe dims ' + path.basename(file));
       const raw = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
         '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', file],
         { encoding: 'utf8', timeout: 15000 }).trim();
@@ -5513,6 +5578,7 @@ function igDownload(req, res, origin) {
     let pubKept  = null;   // set instead when the download was REFUSED as a downgrade
     // Rename tmp files → ig_media/<stem>[ [i of N]].<ext>; return the basenames.
     function publish() {
+      crumb('publish ' + id);
       const files = tmpFiles(), n = files.length, out = [];
       pubStats = null; pubKept = null;
       // (dev0690) Measure everything ONCE, up front: the same numbers answer three
@@ -5584,6 +5650,7 @@ function igDownload(req, res, origin) {
         let maxDur = 0;
         for (const f of files) {
           if (!/\.(mp4|mov|webm|mkv|m4v)$/i.test(f)) continue;
+          crumb('ffprobe dur ' + f);
           const raw = execFileSync('ffprobe', ['-v', 'quiet', '-show_entries',
             'format=duration', '-of', 'default=nw=1:nk=1', path.join(tmpDir, f)],
             { encoding: 'utf8', timeout: 15000 }).trim();
@@ -5673,11 +5740,19 @@ function igDownload(req, res, origin) {
       // "somewhere inside /ig/download". These two lines make the next one exact:
       // a "probe start" with no "probe done" means it died in the probe (a network
       // fetch + a python spawn); the reverse means it died on the way out.
+      // (dev1003) Three Sept 16-17 deaths came within ~0.2s of "probe start" with no
+      // "probe done". The probe now uses the shared IG TLS context and crumbs each step
+      // (proxy.crumb); the done line carries the step times (ms from the GET) and the
+      // negotiated TLS, so a normal probe's first 200ms can be read next to a dead one's.
       plog(`ig/download ${id} · embed probe start`);
-      probeEmbed(id, { track: ACTIVE_DL, cffiTimeoutMs: 25000 }).then(p => {
+      probeEmbed(id, { track: ACTIVE_DL, cffiTimeoutMs: 25000, secureContext: IG_TLS_CTX,
+                       crumb: step => crumb('probe ' + id + ' ' + step) }).then(p => {
         if (p.v === 0 || p.v === 1) body.embed = p.v;
         body.embedProbe = p.kind;
-        plog(`ig/download ${id} · embed probe done → ${p.v === null ? 'no verdict' : p.v} (${p.kind}, via ${p.via})`);
+        const t = p.t || {};
+        const ms = ['dns', 'tcp', 'tls', 'hdr', 'body'].filter(k => t[k] != null).map(k => k + '=' + t[k]).join(' ');
+        plog(`ig/download ${id} · embed probe done → ${p.v === null ? 'no verdict' : p.v} (${p.kind}, via ${p.via})`
+          + (ms ? ` · ms ${ms}` : '') + (p.tls ? ` · ${p.tls}` : ''));
         console.log('[ig/download] ' + id + ' embed probe → ' + (p.v === null ? 'no verdict' : p.v) + ' (' + p.kind + ', via ' + p.via + ')');
         sendJson(res, 200, body, origin);
       }).catch(e => { plog(`ig/download ${id} · embed probe threw: ${(e && e.message) || e}`); sendJson(res, 200, body, origin); });
@@ -5685,6 +5760,7 @@ function igDownload(req, res, origin) {
     function run(withCookies, onDone) {
       const args = baseArgs.concat(withCookies ? ['--cookies-from-browser', 'firefox', url] : [url]);
       let proc, stderr = '', done = false;
+      crumb('ytdlp spawn ' + id);
       try { proc = spawn('yt-dlp', args, { windowsHide: true }); }
       catch (e) { onDone(false, 'spawn failed: ' + e.message); return; }
       ACTIVE_DL.add(proc);   // (dev0658) killable by the VPN kill-switch
@@ -5696,7 +5772,7 @@ function igDownload(req, res, origin) {
       const killT = setTimeout(() => { try { proc.kill('SIGKILL'); } catch (_) {} finish(false, 'yt-dlp timed out (killed after 90s)'); }, 90000);
       proc.stderr.on('data', d => { stderr += d.toString('utf8'); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
       proc.on('error', e => finish(false, e.message));
-      proc.on('close', code => finish(code === 0, stderr.trim()));
+      proc.on('close', code => { crumb('ytdlp close ' + id + ' ' + code); finish(code === 0, stderr.trim()); });
     }
     // (dev0434) Cookieless FIRST (keeps the account out of it); only fall back to
     // Firefox cookies if the content is login-walled. A nonzero exit that STILL
@@ -7964,7 +8040,7 @@ http.createServer((req, res) => {
     const _t0 = Date.now();
     const _isPoll = (req.method === 'GET' && _lp === '/vpn/status');
     const _clen = +(req.headers['content-length'] || 0);
-    if (!_isPoll) plog(`→ ${req.method} ${_lp}${_clen ? ` body=${(_clen / 1048576).toFixed(1)}MB` : ''}`);
+    if (!_isPoll) { plog(`→ ${req.method} ${_lp}${_clen ? ` body=${(_clen / 1048576).toFixed(1)}MB` : ''}`); crumb(`→ ${req.method} ${_lp}`); }
     let _logged = false;
     const _done = () => {
       if (_logged) return; _logged = true;
@@ -8878,10 +8954,12 @@ http.createServer((req, res) => {
     const WHY = {
       0: 'clean shutdown',
       '-1': 'FORCE-KILLED (TerminateProcess) — a restart script, End task, or an AHK misfire. NOT a crash.',
+      // (dev1003) No longer "means commit": the Sept 16-17 deaths had 16GB+ commit free.
       '-1073740791': 'ABORTED (0xC0000409) — and NOT a JS-heap OOM: that exits 134 after printing pages'
-        + ' of GC detail. A silent 0xC0000409 is Windows __fastfail, i.e. a NATIVE allocation failed and the'
-        + ' process was torn down before it could write a word. On this machine that means the SYSTEM ran out'
-        + ' of COMMIT — see the "system memory" line below.',
+        + ' of GC detail. A silent 0xC0000409 is Windows __fastfail: native code aborted (an allocation'
+        + ' that could not be committed, or heap/stack corruption caught by a check) before it could write'
+        + ' a word. If the "system memory" line below shows COMMIT free under ~3GB it is dev0697 commit'
+        + ' exhaustion; if commit is healthy, the crumbs below name the last native step that completed.',
       '-1073741819': 'ACCESS VIOLATION (0xC0000005) — a genuine native crash in node.',
       '-1073741510': 'Ctrl+C or the console window was closed (0xC000013A).',
       '-1073741571': 'STACK OVERFLOW (0xC00000FD) — runaway recursion in native code.'
@@ -8893,6 +8971,13 @@ http.createServer((req, res) => {
     } else if (code === null && !clean) {
       plog('⚠ PREVIOUS RUN LEFT NO EXIT LINE AT ALL — killed hard with nothing recording it.');
       plog('⚠   Last line was: ' + (tail[tail.length - 1] || '').slice(0, 300));
+    }
+    // (dev1003) What the dead run was doing natively. Skipped for a clean exit, a
+    // deliberate Stop-Process (-1) and Ctrl+C / window closed.
+    const deliberate = code === 0 || code === -1 || code === -1073741510 || (code === null && clean);
+    if (!deliberate && PREV_CRUMBS) {
+      plog('⚠   Last steps it COMPLETED (proxy.crumb, UTC, newest last) — it died in the step after the final one:');
+      PREV_CRUMBS.split('\n').forEach(l => plog('⚠     ' + l.trim()));
     }
   } catch (_) {}
   let heapCap = '?';
