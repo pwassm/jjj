@@ -198,6 +198,15 @@ window.addEventListener('keydown', function(e) {
     return false;
   }
 
+  // (dev0996) Alt+A = flip between the I (Instagram) screen and T, from anywhere.
+  // I open → close it (back to T); otherwise open I the same way bare i does.
+  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+      && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA')) {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof window._hkStagingToggle === 'function') window._hkStagingToggle('i');
+    return false;
+  }
+
   // (dev0352) Modified-key Table actions that must beat the browser defaults,
   // checked BEFORE the bare-modifier bail-out below. Only when the Table screen
   // owns the keyboard — elsewhere the browser default is left intact.

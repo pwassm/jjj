@@ -124,6 +124,10 @@ window.HOTKEYS = [
     desc: 'Toggle the I (Instagram staging) screen — ig.json review/enrich/promote',
     fn(ctx) { /* handled via HK_STAGING in the dispatcher */ } },
 
+  { label: 'Alt+A', group: 'Screens', scope: 'global', dev: true,
+    impl: 'core.js window-capture (dev0996) → _hkStagingToggle(i)',
+    desc: 'Toggle between the I (Instagram) screen and T' },
+
   { key: 's', label: 'Shift+S', group: 'Screens', scope: 'global',
     desc: '(dev0837) Toggle the St (bulk staging) screen — the s.json link catalogue. Moved off bare s, which now means only the slideshow (on the Grid) and nothing at all elsewhere.',
     fn(ctx) { /* handled via window._hkStagingToggle, claimed in core.js */ } },
