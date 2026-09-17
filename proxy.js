@@ -321,7 +321,9 @@ const PORT = 8081;
 //   way Download+rotate does, without adding instagram.com to LOCAL_ORIGINS.
 //   REMOVED: /ig/ffdown (the I screen's 📁 Import ffdown button is gone — the
 //   ffdown/ folder itself is untouched, nothing reads it now).
-const PROXY_BUILD = 'dev0993';
+// (dev1001) parseIgMainMeta reads the @handle of an account with no display name
+//   (twitter:title "@handle • …", og:description "N likes, N comments - handle on …").
+const PROXY_BUILD = 'dev1001';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -2555,7 +2557,13 @@ function parseIgMainMeta(html, id) {
                || /<meta[^>]+property="og:type"[^>]+content="video/i.test(html);
   // @handle: twitter:title "(@handle)" first, else the og:description "handle on …" prefix.
   let owner = ''; const hm = twTitle.match(/\(@([\w.]+)\)/); if (hm) owner = hm[1];
-  if (!owner) { const dm = ogDesc.match(/^([\w.]+)\s+on\b/); if (dm) owner = dm[1]; }
+  // (dev1001) An account with NO display name has no parentheses to match: twitter:title
+  // is "@handle • Instagram photo", og:title "@handle on Instagram", and og:description
+  // leads with a count — "133 likes, 2 comments - handle on December 30, 2025". On a
+  // captionless post that left owner AND caption blank, and the I screen read the empty
+  // reply as a login wall: blackwatercozumel's 413 photos stopped the 2026-09-17 grind.
+  if (!owner) { const am = twTitle.match(/^@([\w.]+)\s/) || ogTitle.match(/^@([\w.]+)\s+on\b/); if (am) owner = am[1]; }
+  if (!owner) { const dm = ogDesc.match(/^([\w.]+)\s+on\b/) || ogDesc.match(/\s-\s([\w.]+)\s+on\s+[A-Z][a-z]+\.? \d/); if (dm) owner = dm[1]; }
   // Date: og:description "… on June 27, 2026: …" → YYYYMMDD (client datePosted reads upload_date).
   let upload_date; const dt = ogDesc.match(/\bon\s+([A-Z][a-z]+\.? \d{1,2},? \d{4})/);
   if (dt) { const d = new Date(dt[1]); if (!isNaN(d)) upload_date = d.toISOString().slice(0, 10).replace(/-/g, ''); }

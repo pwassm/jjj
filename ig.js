@@ -306,6 +306,44 @@
   // with a ~30s fail + retry, 2026-09-16. Wall-class, so isPermanent() rightly ignored
   // it, and the next row always succeeded, so the 2-in-a-row stop never fired either.
   const runSkipIds = new Set();
+  // (dev1001) AUTHOR DEFER — Download+rotate only. When DOWNLOAD_WALL_CAP failures in a
+  // row all belong to ONE author, that is a verdict on the author, not the exit: the
+  // author is noted, its rows sink to the END of the queue, and the batch carries on
+  // with the next author instead of stopping. The 2026-09-17 grind is the case: 1,860
+  // downloads, then blackwatercozumel's head rows failed on 5 exits in a row (while
+  // marin_mushrooms kept downloading on the same exits) and 3,400 rows of OTHER authors
+  // were never reached. Guards, so an exit wall can't pass itself off as a string of
+  // "bad authors":
+  //  • deferProbe — after a deferral, no second author can be deferred until some row
+  //    downloads; a second failing streak before that is the exit's → normal wall stop.
+  //  • one last try — when only deferred authors remain, each gets one batch; a download
+  //    clears it, back-to-back failures again leave its rows for another run.
+  // The note persists (localStorage), so the next run starts that author at the end too.
+  const DEFERRED_AUTHORS_KEY = 'slam-ig-deferred-authors';
+  const deferredAuthors = new Map();   // author → { err, exit, at } for the current grind
+  let deferProbe = '';                 // just deferred; cleared by the next download
+  let deferTryAuthor = '';             // the deferred author a last-try batch is running
+  let lastBatchDeferred = 0;           // authors deferred by the last runBatch
+  function deferNotes() {
+    try { return JSON.parse(localStorage.getItem(DEFERRED_AUTHORS_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function setDeferNote(author, note) {
+    try {
+      const n = deferNotes();
+      if (!note && !n[author]) return;
+      if (note) n[author] = note; else delete n[author];
+      localStorage.setItem(DEFERRED_AUTHORS_KEY, JSON.stringify(n));
+    } catch (e) {}
+  }
+  function deferAuthor(a, err) {
+    const note = { err: (err || '').replace(/\s+/g, ' ').slice(0, 160), exit: curExitName() || '?',
+      at: (typeof isoNow === 'function') ? isoNow() : new Date().toISOString().slice(0, 19).replace('T', ' ') };
+    deferredAuthors.set(a, note); setDeferNote(a, note);
+    const left = rows.reduce((n, r) => n + (r.author === a && isReady(r) ? 1 : 0), 0);
+    diag('AUTHOR-DEFERRED', { author: a, left, exit: note.exit, err: note.err });
+    igToast(`⏭ @${a}: ${DOWNLOAD_WALL_CAP} posts in a row failed — moving its ${left} to the END of the queue and carrying on.\n${note.err}`, 5200);
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
@@ -2192,7 +2230,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const meta = await _ytdlpFetchMeta(r.url);
       const desc = (meta.description || '').trim();
       const handle = (typeof _ytdlpAuthorHandle === 'function') ? _ytdlpAuthorHandle(meta) : '';
-      if (!desc && !handle && !Number.isFinite(meta.duration)) throw new Error('empty metadata (IG may be login-walled)');
+      // (dev1001) …but a reply carrying the post's DATE came from the real post page (the
+      // proxy only reads upload_date out of "handle on <Month D, YYYY>", which a login
+      // shell never has). That is a captionless photo, not a wall — blackwatercozumel's
+      // 413 of them stopped the 2026-09-17 grind as "empty metadata".
+      if (!desc && !handle && !Number.isFinite(meta.duration) && !meta.upload_date) throw new Error('empty metadata (IG may be login-walled)');
       if (!r.ftext && typeof _ytdlpBuildFtext === 'function') r.ftext = _ytdlpBuildFtext(meta, r.url);
       if (!r.ttxt) r.ttxt = buildTtxt(meta, r.url);
       if (!r.VidAuthor && handle) r.VidAuthor = handle;
@@ -2204,7 +2246,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         const t = (meta.title || '').trim();
         // yt-dlp's generic titles: single reel = "Video by <h>", carousel = "Post by
         // <h>" (and "Reel by"). All three → derive a real title from the caption.
-        r.VidTitle = (!t || /^(video|post|reel) by /i.test(t))
+        r.VidTitle = (!t || /^(video|post|reel) by |^instagram (post|photo|reel|video)$/i.test(t))   // (dev1001) no-owner generic
           ? (typeof _smartIgTitle === 'function' ? _smartIgTitle(desc) : desc.slice(0, 70))
           : (typeof _normalizeText === 'function' ? _normalizeText(t).replace(/\s+/g, ' ').trim() : t);
       }
@@ -2316,6 +2358,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     let deadMarked = 0;                      // (dev0688) rows retired as permanently dead this batch
     const deadIdsThisBatch = [];             // …and which ones, for THIS batch's report
     const failPending = [];                  // (dev0990) grind rows that failed, awaiting a later success on this exit
+    const failAuthors = [];                  // (dev1001) authors of the current back-to-back failure streak
+    let deferredHere = 0;                    // (dev1001) authors this batch moved to the end of the queue
     batchItems = 0;                          // (dev0690) files landed this batch (rotation budget)
     lowResIds.clear(); fallbackIds.clear(); resGainIds.clear();  // (dev0666) per-run download-path tallies
     resGainActive = false;               // (dev0692) re-armed by the first download batch
@@ -2369,6 +2413,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
       const r = rowById(id); if (!r) continue;
       if (skipIf && skipIf(r)) continue;             // already done → pass over silently
+      // (dev1001) A deferred author's rows wait at the end of the queue — unless this is
+      // its last-try batch.
+      if (rotatingActive && r.author && deferredAuthors.has(r.author) && r.author !== deferTryAuthor) continue;
       if (done > 0) {
         const g = rnd(gap[0], gap[1]);
         igBatchUpdate(`${label} ${done}/${total} · ✓${ok}${fail ? ` ✗${fail}` : ''}\n${cookieSoFar()}\n${fmtSpeed()}\n⏳ pacing ${(g / 1000).toFixed(1)}s before next…`);
@@ -2403,6 +2450,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         ok++;
         if (grind) grind.posts++;             // (dev0798) live scoreboard, not once a batch
         consecFail = 0;                       // (dev0645) success breaks the failure streak
+        failAuthors.length = 0;
+        // (dev1001) This exit delivers → the author deferred before this row was the
+        // problem, and the next failing streak may defer another.
+        if (deferProbe) { diag('author-defer-confirmed', { author: deferProbe, provenBy: r.id }); deferProbe = ''; }
+        if (r.author) setDeferNote(r.author, null);   // a download clears any old note
         // (dev0990) This exit just delivered, so every row that failed EARLIER in this
         // batch failed on its own account → out of the grind for the rest of the run.
         // A failure with no later success (a wall arriving mid-batch) stays offered.
@@ -2450,7 +2502,16 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         // (its auto-enrich driver tells a walled VPN exit from a dead post to grind on).
         else if (isDl) {
           if (rotatingActive) failPending.push(r.id);   // (dev0990) judged by the rows after it
-          if (++consecFail >= DOWNLOAD_WALL_CAP) walledStopped = true;
+          const a = r.author || '';
+          failAuthors.push(a);
+          if (++consecFail >= DOWNLOAD_WALL_CAP) {
+            // (dev1001) The whole streak is one author → defer the author, keep going.
+            if (rotatingActive && a && !deferProbe && !deferTryAuthor && !deferredAuthors.has(a)
+                && failAuthors.every(x => x === a)) {
+              deferAuthor(a, lastOpError); deferredHere++; deferProbe = a;
+              consecFail = 0; failAuthors.length = 0;
+            } else walledStopped = true;
+          }
         }
         else if (isWall(lastOpError) && ++walled >= WALL_CAP) walledStopped = true;
       }
@@ -2463,6 +2524,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         break;
       }
     }
+    lastBatchDeferred = deferredHere;    // (dev1001) "0 downloaded because an author was set aside"
     lastBatchDead = deadMarked;          // (dev0688) the grind reads this to tell "0 downloaded
                                          // because everything's blocked" from "0 downloaded
                                          // because the batch was all dead posts" (real progress).
@@ -2476,7 +2538,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           : walledStopped ? (isDl ? `WALL-${DOWNLOAD_WALL_CAP}-IN-A-ROW` : 'FIRST-WALL')
           : vpnDropAbort ? 'VPN-DROP' : batchAbort ? 'USER-STOP'
           : done < total ? 'INCOMPLETE' : 'ran-out',
-      consecFail, dead: deadMarked, lastErr: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 200)
+      consecFail, dead: deadMarked, deferred: deferredHere, lastErr: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 200)
     });
     // (dev0688) Save when rows were RETIRED too, not only when some downloaded. A batch
     // that downloads 0 and retires 2 has changed real state; under the old `if (ok)` it
@@ -3798,7 +3860,18 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (busy) return;
     const isSrc = queueOnly ? (r => r && r.needsFullRes && !r.dead && !runSkipIds.has(r.id)) : isReady;   // (dev0990) runSkipIds
     const srcRows = () => (queueOnly ? rows : view);
-    const readyIds = () => srcRows().filter(isSrc).map(r => r.id);   // top-of-view first
+    // (dev1001) top-of-view first — deferred authors' rows after everyone else's, and an
+    // author that failed its last try is out of this run altogether.
+    const givenUpAuthors = new Set();
+    const readyIds = () => {
+      const rs = srcRows().filter(r => isSrc(r) && !givenUpAuthors.has(r.author || ''));
+      if (!deferredAuthors.size) return rs.map(r => r.id);
+      const isDef = r => deferredAuthors.has(r.author || '');
+      return rs.filter(r => !isDef(r)).concat(rs.filter(isDef)).map(r => r.id);
+    };
+    // (dev1001) Authors noted by an earlier run start at the end of the queue.
+    deferredAuthors.clear(); deferProbe = ''; deferTryAuthor = '';
+    for (const [a, n] of Object.entries(deferNotes())) deferredAuthors.set(a, n);
     let todo = readyIds();
     if (!todo.length) {
       igToast(queueOnly
@@ -3824,10 +3897,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + `• ${exitNow}\n`
       + `• Cookieless — your IG login is never used.\n`
       + `• Stops on the first batch that downloads nothing, or when none remain.\n`
+      // (dev1001)
+      + `• An author whose posts fail ${DOWNLOAD_WALL_CAP} in a row moves to the END of the queue and the run carries on; it gets one more try at the end.\n`
+      + (auths.some(a => deferredAuthors.has(a)) ? `• Already at the end from an earlier run: ${auths.filter(a => deferredAuthors.has(a)).map(a => '@' + a).join(', ')}\n` : '')
       + `• Press ⏹ Stop any time.`)) return;
 
     let totalOk = 0, totalItems = 0, batches = 0, switches = 0, endMsg = '';
     let zeroBatches = 0;   // (dev0694) consecutive walled zero-batches — see WALL_ROTATE_CAP
+    const givenUp = [], undeferred = [];   // (dev1001) last-try verdicts, for the report
     // (dev0832) When did the run land on the exit it is using now, and how many switches
     // has the dwell floor spared? See MIN_EXIT_SECS. `exitT0` is re-stamped at every
     // landing, so it measures time ON THIS EXIT, not time since the run began.
@@ -3894,6 +3971,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       exit: (vpnStatus && (vpnStatus.server || vpnStatus.ip)) || 'none',
       filters: { author: authorFilter, status: statusFilter, kind: kindFilter, staged: stagedFilter, embed: embedFilter, refetch: refetchFilter, hideCompleted: hideCompleted ? 1 : 0, q: query || '' },
       sort: sortCol + (sortDir < 0 ? '↓' : '↑'), view: view.length, coverOnly: coverOnly ? 1 : 0,
+      deferred: [...deferredAuthors.keys()],   // (dev1001) noted by an earlier run → at the end
       head: todo.slice(0, 8).map(id => { const r = rowById(id); return r.id + ':' + r.status + ':' + kindOf(r) + ':' + (r.VidTitle ? 'T' : '-'); })
     });
     while (!batchAbort) {
@@ -3905,7 +3983,19 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // comes first. For single-item reels the two coincide (18 rows = 18 files, exactly
       // the old cadence); for carousels it now switches exits every ~18 files instead of
       // after 18 posts, which on a six-item post was well over a hundred downloads.
-      const chunk = todo.slice(0, ROTATE_ROW_CAP);
+      let chunk = todo.slice(0, ROTATE_ROW_CAP);
+      // (dev1001) Deferred rows sort last, so a deferred author at the head means nothing
+      // else is left: give that author its one last try (a batch of its rows only).
+      deferTryAuthor = '';
+      const headAuthor = (rowById(todo[0]) || {}).author || '';
+      if (headAuthor && deferredAuthors.has(headAuthor)) {
+        deferTryAuthor = headAuthor;
+        const inTodo = new Set(todo);   // rowById() scans all rows — one pass over the view instead
+        const aIds = srcRows().filter(r => r.author === headAuthor && inTodo.has(r.id)).map(r => r.id);
+        chunk = aIds.slice(0, ROTATE_ROW_CAP);
+        diag('author-last-try', { author: headAuthor, exit: curExitName() || '?', left: aIds.length });
+        igToast(`⏭ Everything else is done — giving @${headAuthor} one more try on ${curExitName() || 'this exit'}…`, 4200);
+      }
       batches++; lastDlName = '';
       // runBatch owns its own busy/UI/abort + per-item live panel; it resets
       // batchAbort at its start, so we re-check batchAbort AFTER it returns.
@@ -3946,6 +4036,27 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (batchAbort) { endMsg = vpnDropAbort
         ? `🛑 VPN tunnel dropped — stopped. ${totalOk} downloaded, all through a VPN. Nothing ran on your home IP.`
         : `⏹ Stopped by you — ${totalOk} downloaded across ${batches} batch${batches === 1 ? '' : 'es'}.`; break; }
+      // (dev1001) The last-try verdict. A download clears the author (its remaining rows
+      // carry on normally); back-to-back failures again leave its rows for another run —
+      // not the exit's fault, so it neither counts as a walled batch nor rotates.
+      if (deferTryAuthor) {
+        const a = deferTryAuthor; deferTryAuthor = '';
+        if (okThis > 0) {
+          deferredAuthors.delete(a); setDeferNote(a, null); undeferred.push(a);
+          diag('author-undeferred', { author: a, ok: okThis });
+        } else if (!lastBatchDead) {
+          const left = srcRows().reduce((n, r) => n + (r.author === a && isSrc(r) ? 1 : 0), 0);
+          givenUpAuthors.add(a); givenUp.push({ author: a, left });
+          diag('AUTHOR-GIVEN-UP', { author: a, left, exit: curExitName() || '?',
+            err: (lastOpError || '').replace(/\s+/g, ' ').slice(0, 160) });
+          igToast(`⏭ @${a} still fails — leaving its ${left} for another run.`, 4600);
+          await sleep(1500);
+          continue;
+        }
+      }
+      // (dev1001) A batch that set an author aside and downloaded nothing has no verdict on
+      // the exit yet — stay on it; the next author's rows are the test.
+      if (okThis === 0 && lastBatchDeferred && !lastBatchDead) { await sleep(800); continue; }
       // (dev0688) …unless the batch's zero came from RETIRING dead posts. That is real
       // forward progress — the backlog just shrank permanently — so the grind carries on
       // to rows that can actually download, instead of stopping and blaming the VPN.
@@ -3963,6 +4074,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           busy = true; setBatchUi(true);
           igBatchShow('🔀 exit walled — switching Proton VPN, then retrying…');
           const swW = await vpnEnsureUp(`wall-rotate after batch ${batches}`);
+          deferProbe = '';   // (dev1001) a fresh exit judges authors afresh
           if (swW) { switches++; exitT0 = Date.now(); await sleep(1500); continue; }
           endMsg = `⏹ Stopped — batch ${batches} downloaded 0 and no fresh VPN exit would come up (tried a few).\n${totalOk} downloaded, all through a VPN. NOT continuing on your home IP.` + VPN_FIX_HINT;
           break;
@@ -4013,7 +4125,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     rotatingActive = false;
     // (dev0798) Read the scoreboard's closing numbers, THEN retire it — the final report
     // below is the one place that needs them after the run has ended.
-    const leftHere = readyIds().length;
+    const leftHere = srcRows().reduce((n, r) => n + (isSrc(r) ? 1 : 0), 0);   // (dev1001) incl. authors left for another run
     const leftAll = rows.reduce((n, r) => n + (isSrc(r) ? 1 : 0), 0);
     const perPost = totalOk ? ((Date.now() - t0) / 1000) / totalOk : 0;
     grind = null;
@@ -4026,6 +4138,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       totalOk, batches, switches, heldSwitches, elapsed: elapsed(), exit, queueOnly: queueOnly ? 1 : 0,
       leftInView: srcRows().filter(isSrc).length,
       dead: deadThisRun.size, runSkipped: runSkipIds.size, proxyPauses: _proxyPauses, unsaved: dirty ? 1 : 0,
+      deferred: [...deferredAuthors.keys()], givenUp: givenUp.map(g => g.author + ':' + g.left), undeferred,   // (dev1001)
       proxy: await diagProxyAlive(),
       msg: (endMsg || '').replace(/\s+/g, ' ').slice(0, 200)
     });
@@ -4054,6 +4167,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       + (deadThisRun.size ? `\n🪦 ${deadThisRun.size} retired as permanently unavailable (gone / audience-restricted) — never offered again  ·  Status ▸ 🪦 retired to see them` : '')
       // (dev0990) Failed while later posts on the same exit downloaded — see runSkipIds.
       + (runSkipIds.size ? `\n⏭ ${runSkipIds.size} skipped for the rest of this run — failed while later posts on the same exit downloaded (not retired: ⬇ Download sel still tries them)` : '')
+      // (dev1001) Authors set aside — the note that outlives this report is in localStorage.
+      + (givenUp.length ? `\n⏭ Left for another run: ${givenUp.map(g => '@' + g.author + ' (' + g.left.toLocaleString() + ')').join(', ')} — posts failed back-to-back while other authors downloaded, and again on the last try. The next run starts them at the END of the queue.` : '')
+      + (() => { const w = [...deferredAuthors.keys()].filter(a => !givenUpAuthors.has(a) && srcRows().some(r => r.author === a && isSrc(r)));
+                 return w.length ? `\n⏭ Moved to the end of the queue (not reached before the run ended): ${w.map(a => '@' + a).join(', ')}` : ''; })()
+      + (undeferred.length ? `\n↩ ${undeferred.map(a => '@' + a).join(', ')} failed earlier but downloaded on the last try — cleared.` : '')
       + (_proxyPauses ? `\n⛔ the proxy died ${_proxyPauses}× — the run paused and resumed; nothing was lost` : '')
       + (dirty ? `\n⚠ ig.json has UNSAVED changes — press 💾 Save` : '')
       // (dev0683) Point at the evidence while the run is still fresh.
