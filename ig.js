@@ -4549,7 +4549,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const sel2 = document.getElementById('igAuthor');
     if (!sel2) return;
     const counts = {};
-    rows.forEach(r => { const a = r.author || ''; counts[a] = (counts[a] || 0) + 1; });
+    // (dev0997) A row with harvestCut marks a deliberately truncated harvest: the author
+    // shows as "name*" (everything older than that post was deleted on purpose).
+    const cut = new Set();
+    rows.forEach(r => { const a = r.author || ''; counts[a] = (counts[a] || 0) + 1; if (r.harvestCut) cut.add(a); });
     // Keep a valid selection: 'all' / the two class sentinels / a still-present author.
     if (authorFilter !== 'all' && authorFilter !== '__harvested__'
         && authorFilter !== '__unharvested__' && !counts[authorFilter]) authorFilter = 'all';
@@ -4562,7 +4565,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const unharvested = all.filter(a => unh.has(a));
     const nH = harvested.reduce((n, a) => n + counts[a], 0);
     const nU = unharvested.reduce((n, a) => n + counts[a], 0);
-    const opt = a => `<option value="${esc(a)}">${esc(a || '(none)')} (${counts[a]})</option>`;
+    const opt = a => `<option value="${esc(a)}">${esc(a || '(none)')}${cut.has(a) ? '*' : ''} (${counts[a]})</option>`;
     let html = '<option value="all">all authors (' + rows.length + ')</option>';
     // (dev0635) Optgroup labels aren't selectable, so these two options let you pick a
     // whole CLASS and see every row in it (the user's "click Unharvested → show all").
