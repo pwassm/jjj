@@ -3881,7 +3881,6 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // `remain` re-derives from the view each paint, exactly like the loop's readyIds().
     grind = { t0, posts: 0, files: 0, remain: () => readyIds().length };
     rotatingActive = true;             // (dev0658) arm the VPN kill-switch for this grind
-    pvFollow = pvAuto;                 // (dev0996) Ctrl+I toggles the latest-download window from here
     // (dev0683) The grind's opening state: how many rows it believes are grindable,
     // under which filters, and what the first rows in view order are. `readyIds()`
     // re-derives from `view` EVERY round, so if the head of the view is a row that
@@ -4659,8 +4658,6 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   //     browser (identical to clicking its address) — no window.
   //   • While open it follows ↑/↓ row focus; a non-downloaded focused row shows a
   //     placeholder (only the explicit Ctrl+I press ever opens the browser).
-  //   • (dev0996) During Download + rotate VPN, Ctrl+I instead toggles the window on
-  //     the latest download, following each new one (focus no longer steers it).
   const PV_VIDEO_RE = /\.(mp4|webm|mov|m4v|mkv)$/i;
   const PV_IMAGE_RE = /\.(jpe?g|png|gif|webp|bmp|avif|tiff?)$/i;
   // (dev0689) Encode PER SEGMENT: localFiles is now "<author>/<name>", and a whole-string
@@ -4685,12 +4682,6 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // not a preference.
   const PV_AUTO_KEY = 'slam-ig-preview-auto';
   let pvAuto = (() => { try { return localStorage.getItem(PV_AUTO_KEY) !== '0'; } catch (_) { return true; } })();
-  // (dev0996) While Download + rotate VPN runs, Ctrl+I toggles a window on the LATEST
-  // download instead of the focused row, and it follows each new one. pvFollow is that
-  // on/off for the grind — seeded from pvAuto at grind start, so turning it off with
-  // Ctrl+I really stays off rather than popping back on the next file.
-  let pvFollow = false;
-  let pvLatestId = null;     // row id of the most recent download that landed files
   let pvRO = null;           // ResizeObserver watching the grip
 
   function pvBoxLoad() {
@@ -4746,10 +4737,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       });
       pvRO.observe(el);
     } catch (_) {}
-    el.querySelector('#igPvClose').addEventListener('click', () => {
-      if (rotatingActive) pvFollow = false;   // (dev0996) × mid-grind = off, like Ctrl+I
-      igPreviewClose();
-    });
+    el.querySelector('#igPvClose').addEventListener('click', igPreviewClose);
     el.querySelector('#igPvNav').addEventListener('click', e => {
       const d = e.target.closest('button')?.dataset.d;
       if (d === 'prev') igPreviewStep(-1);
@@ -4780,7 +4768,6 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // shows a placeholder rather than auto-opening the browser (that's Ctrl+I only).
   function igPreviewSyncToFocus() {
     if (!pvOpen || focusId == null || focusId === pvRowId) return;
-    if (rotatingActive && pvFollow) return;   // (dev0996) following the latest download, not focus
     if (!rowById(focusId)) return;
     pvRowId = focusId; pvIdx = 0;
     igPreviewFill();
@@ -4804,10 +4791,8 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (pvIdx >= n) pvIdx = 0;
 
     const title = el.querySelector('#igPvTitle');
-    const following = rotatingActive && pvFollow;   // (dev0996)
-    title.textContent = (following ? '⬇ ' : '') + (r.VidTitle || r.id);
-    title.title = (following ? 'Latest download — follows each new one (Ctrl+I to hide)\n' : '')
-      + (r.VidTitle ? r.VidTitle + '  ·  ' : '') + r.id;
+    title.textContent = r.VidTitle || r.id;
+    title.title = (r.VidTitle ? r.VidTitle + '  ·  ' : '') + r.id;
 
     const nav = el.querySelector('#igPvNav');
     nav.innerHTML = n > 1
@@ -4930,47 +4915,17 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   // looking at. A row that somehow landed nothing is skipped — the placeholder
   // would only replace the previous clip with a shrug.
   function igPreviewAutoShow(r) {
-    if (!r || !(r.localFiles || []).length) return;
-    pvLatestId = r.id;                         // (dev0996) remembered even while hidden
-    if (!(rotatingActive ? pvFollow : pvAuto)) return;
+    if (!pvAuto || !r || !(r.localFiles || []).length) return;
     if (!isIgScreenOpen()) return;             // never mount over another screen
     igPreviewOpenRow(r);
   }
 
-  // (dev0996) Ctrl+I during Download + rotate VPN. Open = the latest download, then
-  // each new one as it lands; press again (or Esc / ×) = closed until the next Ctrl+I.
-  // Nothing landed yet → it arms, and the window opens on the first file.
-  function igPreviewLatestToggle() {
-    if (pvOpen) {
-      pvFollow = false; igPreviewClose();
-      igToast('👁 Latest-download window off — Ctrl+I to bring it back', 1800);
-      return;
-    }
-    pvFollow = true;
-    const r = igLatestDownloaded();
-    if (!r) { igToast('👁 Nothing downloaded yet — the window opens on the first file that lands', 2600); return; }
-    igPreviewOpenRow(r);
-  }
-  // The row this session saw land last; after a reload that's unknown, so fall back
-  // to the newest DateDownloaded stamp (local "YYYY-MM-DD HH:MM:SS" — sorts as text).
-  function igLatestDownloaded() {
-    const last = pvLatestId != null ? rowById(pvLatestId) : null;
-    if (last && (last.localFiles || []).length) return last;
-    let best = null;
-    for (const x of rows) {
-      if (!x || !x.DateDownloaded || !(x.localFiles || []).length) continue;
-      if (!best || x.DateDownloaded > best.DateDownloaded) best = x;
-    }
-    return best;
-  }
-
   function igPreviewAutoToggle() {
     pvAuto = !pvAuto;
-    pvFollow = pvAuto;                         // (dev0996) Ctrl+Y mid-grind means the same thing
     try { localStorage.setItem(PV_AUTO_KEY, pvAuto ? '1' : '0'); } catch (_) {}
     igToast(pvAuto
       ? '👁 Auto-preview ON — every completed download opens in the preview window, looping.\nCtrl+Y to turn it off.'
-      : '👁 Auto-preview OFF — downloads run without opening the window.\nCtrl+Y to turn it back on. (Ctrl+I opens the focused row — or the latest download during Download + rotate.)', 3200);
+      : '👁 Auto-preview OFF — downloads run without opening the window.\nCtrl+Y to turn it back on. (Ctrl+I still opens the focused row.)', 3200);
     if (!pvAuto && pvOpen) igPreviewClose();
   }
 
@@ -5069,11 +5024,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (igStickyOpen()) { e.stopPropagation(); e.preventDefault(); igStickyHide(); return; }  // (dev0444) dismiss summary first
       if (modalOpen()) { e.stopPropagation(); e.preventDefault(); closePasteModal(); return; }
       if (typing) { ae.blur(); e.stopPropagation(); e.preventDefault(); return; }  // blur, filter stays
-      if (pvOpen) {                                // (dev0500) close media preview
-        e.stopPropagation(); e.preventDefault();
-        if (rotatingActive) pvFollow = false;      // (dev0996) Esc mid-grind = off, like Ctrl+I
-        igPreviewClose(); return;
-      }
+      if (pvOpen) { e.stopPropagation(); e.preventDefault(); igPreviewClose(); return; }  // (dev0500) close media preview
       if (drawerOpen()) { e.stopPropagation(); e.preventDefault(); closeDrawer(); return; }
       e.stopPropagation(); e.preventDefault();   // swallow — do NOT return to T
       return;
@@ -5093,8 +5044,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'i' || e.key === 'I')) {
       if (typing) return;   // leave Ctrl+I (italic) alone inside the paste textarea
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      if (rotatingActive) igPreviewLatestToggle();   // (dev0996) grind running → latest download
-      else igPreviewToggle();
+      igPreviewToggle();
       return;
     }
     if (typing || e.ctrlKey || e.metaKey || e.altKey || modalOpen()) return;
