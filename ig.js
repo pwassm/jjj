@@ -1529,7 +1529,9 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     view = rows.filter(r => {
       if (authorFilter === '__unharvested__') { if (!unharvestedAuthors.has(r.author || '')) return false; }
       else if (authorFilter === '__harvested__') { if (unharvestedAuthors.has(r.author || '')) return false; }
-      else if (authorFilter !== 'all' && r.author !== authorFilter) return false;
+      // (dev0999) a collab post also counts for every co-author that harvested it
+      else if (authorFilter !== 'all' && r.author !== authorFilter
+        && !(r.alsoAuthors && r.alsoAuthors.includes(authorFilter))) return false;
       if (kindFilter !== 'all' && kindOf(r) !== kindFilter) return false;
       // (dev0688) `__retired__` is a cross-cutting mark, not a status value — it's the
       // only way to SEE the rows the grind has permanently stopped offering (and to
@@ -4553,6 +4555,11 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     // shows as "name*" (everything older than that post was deleted on purpose).
     const cut = new Set();
     rows.forEach(r => { const a = r.author || ''; counts[a] = (counts[a] || 0) + 1; if (r.harvestCut) cut.add(a); });
+    // (dev0999) co-authored rows (alsoAuthors) count toward that author's option too,
+    // shown as "(831+530)" so the own/shared split stays visible. Class totals below
+    // still use `counts` so no row is counted twice there.
+    const alsoCounts = {};
+    rows.forEach(r => (r.alsoAuthors || []).forEach(a => { alsoCounts[a] = (alsoCounts[a] || 0) + 1; }));
     // Keep a valid selection: 'all' / the two class sentinels / a still-present author.
     if (authorFilter !== 'all' && authorFilter !== '__harvested__'
         && authorFilter !== '__unharvested__' && !counts[authorFilter]) authorFilter = 'all';
@@ -4565,7 +4572,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const unharvested = all.filter(a => unh.has(a));
     const nH = harvested.reduce((n, a) => n + counts[a], 0);
     const nU = unharvested.reduce((n, a) => n + counts[a], 0);
-    const opt = a => `<option value="${esc(a)}">${esc(a || '(none)')}${cut.has(a) ? '*' : ''} (${counts[a]})</option>`;
+    const opt = a => `<option value="${esc(a)}">${esc(a || '(none)')}${cut.has(a) ? '*' : ''} (${counts[a]}${alsoCounts[a] ? '+' + alsoCounts[a] : ''})</option>`;
     let html = '<option value="all">all authors (' + rows.length + ')</option>';
     // (dev0635) Optgroup labels aren't selectable, so these two options let you pick a
     // whole CLASS and see every row in it (the user's "click Unharvested → show all").

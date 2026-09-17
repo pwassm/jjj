@@ -4684,26 +4684,40 @@ function igAdd(req, res, origin) {
     // running grind already paid for instead of adding a second 62MB one.
     const store = igStoreLoad().slice();
     const have = new Set(store.map(r => r && r.id).filter(Boolean));
-    let added = 0, dup = 0, bad = 0;
+    // (dev0999) A collab post has ONE shortcode but sits on every co-author's grid, so
+    // the second author's harvest used to count it as "already had" and leave no trace.
+    // Now the dup records that author in the existing row's `alsoAuthors` (row.author,
+    // the first harvester, is never changed; no media is touched or re-downloaded).
+    const byId = new Map(); store.forEach((r, i) => { if (r && r.id) byId.set(r.id, i); });
+    let added = 0, dup = 0, bad = 0, also = 0;
     const now = igIsoNow();
     for (const u of urls) {
       const id = igShortcode(u);
       if (!id) { bad++; continue; }
-      if (have.has(id)) { dup++; continue; }
+      if (have.has(id)) {
+        dup++;
+        const i = byId.get(id);
+        const r = i === undefined ? null : store[i];
+        if (r && author && r.author !== author && !(r.alsoAuthors || []).includes(author)) {
+          store[i] = Object.assign({}, r, { alsoAuthors: (r.alsoAuthors || []).concat(author) });
+          also++;
+        }
+        continue;
+      }
       have.add(id);
       // canonical url: keep the form harvested, but normalize /reels/→/reel/
       const url = String(u).replace(/\/reels\//i, '/reel/').split('?')[0];
       store.push({ id, url, author, status: 'new', DateAdded: now, source });
       added++;
     }
-    if (added) igStoreWriteRows(store);
+    if (added || also) igStoreWriteRows(store);
     // (dev0918) The harvest reached its end, so this author has now been checked —
     // stamped on EVERY completed harvest, especially the ones that found nothing.
     // A run of zeroes is the normal, healthy state of a list of favourite accounts,
     // and it is exactly the case that previously left no trace at all.
     igCheckedStamp(author);
-    console.log('[ig/add] +' + added + ' new, ' + dup + ' dup, ' + bad + ' bad · total ' + store.length + ' · @' + (author || '?'));
-    sendJson(res, 200, { ok: true, added, dup, bad, total: store.length }, origin);
+    console.log('[ig/add] +' + added + ' new, ' + dup + ' dup (' + also + ' newly co-authored), ' + bad + ' bad · total ' + store.length + ' · @' + (author || '?'));
+    sendJson(res, 200, { ok: true, added, dup, also, bad, total: store.length }, origin);
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
@@ -4852,6 +4866,15 @@ function igMeta(req, res, origin) {
 // ig.json.bak is written first so a bad client payload can't silently nuke the
 // store. Guard: refuse a write that drops > 50% of rows (likely a client bug) so a
 // mis-send can't wipe a 700-row harvest — the caller gets a clear 409 to surface.
+// (dev0999) alsoAuthors is written ONLY by /ig/add (proxy side). The I screen may hold
+// a copy of a row from before a harvest co-authored it, so any client save carries the
+// disk row's alsoAuthors over (union) instead of silently dropping them.
+function igMergeAlsoAuthors(incoming, disk) {
+  if (!disk || !Array.isArray(disk.alsoAuthors) || !disk.alsoAuthors.length) return incoming;
+  const cur = Array.isArray(incoming.alsoAuthors) ? incoming.alsoAuthors : [];
+  const add = disk.alsoAuthors.filter(a => !cur.includes(a));
+  return add.length ? Object.assign({}, incoming, { alsoAuthors: cur.concat(add) }) : incoming;
+}
 function igSave(req, res, origin) {
   // (dev0529) DATA-LOSS FIX: the body cap was 16 MB, but ig.json's compact POST body
   // crossed 16 MB as the store grew (10.9k rows w/ enriched ftext). readJson then
@@ -4870,10 +4893,12 @@ function igSave(req, res, origin) {
     _sv.body = Date.now() - _sv.t0;
     const incoming = Array.isArray(payload.rows) ? payload.rows : null;
     if (!incoming) { sendJson(res, 400, { ok: false, error: 'rows[] required' }, origin); return; }
-    const clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
+    let clean = incoming.filter(r => r && typeof r.id === 'string' && r.id);
     const _tRead = Date.now();
     const prev = igStoreLoad();                      // (dev0697) shared parse
     _sv.read = Date.now() - _tRead;
+    { const prevById = new Map(prev.filter(r => r && r.id).map(r => [r.id, r]));
+      clean = clean.map(r => igMergeAlsoAuthors(r, prevById.get(r.id))); }   // (dev0999)
     // (dev0601) DATA-LOSS FIX: this used to blind-overwrite ig.json with the client's
     // whole in-memory array, so a HARVEST landing via /ig/add while the I screen was
     // open was silently wiped by the screen's next persist() — its rows[] predated
@@ -4957,7 +4982,7 @@ function igSaveDelta(req, res, origin) {
     for (const r of clean) {
       const i = at.get(r.id);
       if (i === undefined) { at.set(r.id, rows.length); rows.push(r); appended++; }
-      else { rows[i] = r; patched++; }
+      else { rows[i] = igMergeAlsoAuthors(r, rows[i]); patched++; }   // (dev0999)
     }
     const _tWrite = Date.now();
     igStoreWriteRows(rows);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      3.0
+// @version      3.1
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Keeps your list of favourite Instagram contributors up to date. Adds a small button bar to the bottom-right of any profile page. 🆕 New only — collect just the posts you don't already have (a few seconds; the everyday button). ⬇ All — collect every post on the profile, newest to oldest (slow; for a first-time author). 🔁 Sweep — do "New only" on one author after another, unattended, from a list you tick. ▶ Resume — go back to reading where you left off: paste a post's link and it opens that post with the ◀ ▶ arrows working. Reads only the page your browser has already drawn in your normal logged-in session. Install or update: open http://localhost:8080/ig-harvest.user.js
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '3.0';
+  const VER = '3.1';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -413,13 +413,13 @@
     // button greys immediately instead of a minute from now.
     _authorsCache = { at: 0, map: null };
     setTimeout(() => refreshAuthorStatus(true), 0);
-    const res = { author, found: urls.length, added: j.added || 0, dup: j.dup || 0, stop };
+    const res = { author, found: urls.length, added: j.added || 0, dup: j.dup || 0, also: j.also || 0, stop };
     const why = stop === 'known-run' ? 'stopped at ' + STOP_RUN + ' known in a row'
               : stop === 'abort' ? 'stopped by you'
               : stop === 'cap' ? '⚠ hit the scroll cap — run ⬇ All to be sure'
               : 'reached the bottom';
     setMsg((res.added ? '✓ +' + res.added + ' NEW' : '✓ nothing new') + ' from @' + author +
-           '\n' + res.found + ' seen · ' + res.dup + ' already had · ' + why +
+           '\n' + res.found + ' seen · ' + res.dup + ' already had' + (res.also ? ' (' + res.also + ' newly co-authored)' : '') + ' · ' + why +
            '\nig.json now ' + (j.total || '?') + ' rows');
     if (btn) btn.textContent = btn.id === 'slam-ig-new' ? '🆕 New only' : '⬇ All';
     return res;
