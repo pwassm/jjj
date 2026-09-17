@@ -4997,6 +4997,83 @@ function igSaveDelta(req, res, origin) {
   }).catch(err => sendJson(res, 400, { ok: false, error: err.message }, origin));
 }
 
+// (dev1000) /ig/cut-after — "I didn't want anything past this post": remove every row
+// of the post's author that is OLDER than it, and mark the post harvestCut (the "name*"
+// in the I-screen dropdown and the harvester label). Same steps as the hand cuts of
+// twanathan / max.on.scuba on 2026-09-16.
+//   OLDER is decided by the shortcode's media id, which is time-ordered — not by array
+// order. They agree for a fresh harvest (grid order), but a single added later with
+// `w` sits after the harvest block whatever its age.
+//   { id, dry:true } only counts. The real run first copies the whole store to
+// ig.json.bak-cut-<author>-<stamp> and writes the removed rows alone to
+// ig.json.removed-<author>-<stamp>.json (the small, surgical undo). Rows filed under
+// another author that merely list this one in alsoAuthors are kept; the name is
+// dropped from their alsoAuthors. Files in ig_media/ are never touched.
+const IG_SC_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+function igMediaId(sc) {
+  let n = 0n;
+  for (const c of String(sc || '').slice(0, 11)) {   // longer (private) codes carry extra data after 11
+    const i = IG_SC_ALPHA.indexOf(c);
+    if (i < 0) return null;
+    n = n * 64n + BigInt(i);
+  }
+  return n;
+}
+function igCutAfter(req, res, origin) {
+  if (!LOCAL_ORIGINS.has(origin)) { req.resume(); sendJson(res, 403, { ok: false, error: 'origin not allowed' }, origin); return; }
+  readJson(req, 64 * 1024).then(payload => {
+    const raw = String(payload.id || '').trim();
+    const id = igShortcode(raw) || (/^[A-Za-z0-9_-]{5,}$/.test(raw) ? raw : '');
+    if (!id) { sendJson(res, 400, { ok: false, error: 'no Instagram post id in: ' + raw.slice(0, 120) }, origin); return; }
+    const rows = igStoreLoad();
+    const target = rows.find(r => r && r.id === id);
+    if (!target) { sendJson(res, 404, { ok: false, error: id + ' is not in ig.json' }, origin); return; }
+    const author = String(target.author || '');
+    if (!author) { sendJson(res, 409, { ok: false, error: id + ' has no author — nothing to cut' }, origin); return; }
+    const T = igMediaId(id);
+    if (T === null) { sendJson(res, 400, { ok: false, error: 'unreadable shortcode ' + id }, origin); return; }
+    const older = r => { const m = igMediaId(r.id); return m !== null && m < T; };
+    const gone = new Set(), unreadable = [];
+    let kept = 0, alsoStrip = 0;
+    for (const r of rows) {
+      if (!r || !r.id) continue;
+      if (r.author === author) {
+        if (igMediaId(r.id) === null) unreadable.push(r.id);
+        if (older(r)) gone.add(r.id); else kept++;
+      } else if (Array.isArray(r.alsoAuthors) && r.alsoAuthors.includes(author) && older(r)) alsoStrip++;
+    }
+    const withFiles = rows.filter(r => r && gone.has(r.id) && (r.localFiles || []).length).length;
+    const summary = { author, id, removed: gone.size, kept, alsoStrip, withFiles, unreadable };
+    if (payload.dry) { sendJson(res, 200, Object.assign({ ok: true, dry: true }, summary), origin); return; }
+
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    const safe = author.replace(/[^A-Za-z0-9_.-]/g, '_');
+    const backup = IG_STORE + '.bak-cut-' + safe + '-' + stamp;
+    const removedFile = IG_STORE + '.removed-' + safe + '-' + stamp + '.json';
+    fs.copyFileSync(IG_STORE, backup);
+    fs.writeFileSync(removedFile, JSON.stringify(rows.filter(r => r && gone.has(r.id)), null, 2));
+    const out = [];
+    for (const r0 of rows) {
+      if (!r0) { out.push(r0); continue; }
+      if (r0.author === author) {
+        if (gone.has(r0.id)) continue;
+        const r = Object.assign({}, r0);              // never mutate the cached rows
+        if (r.id === id) r.harvestCut = '1'; else delete r.harvestCut;
+        out.push(r);
+      } else if (Array.isArray(r0.alsoAuthors) && r0.alsoAuthors.includes(author) && older(r0)) {
+        const r = Object.assign({}, r0, { alsoAuthors: r0.alsoAuthors.filter(a => a !== author) });
+        if (!r.alsoAuthors.length) delete r.alsoAuthors;
+        out.push(r);
+      } else out.push(r0);
+    }
+    igStoreWriteRows(out);
+    console.log(`[ig/cut-after] ${author} after ${id}: removed ${gone.size}, kept ${kept}, alsoAuthors stripped ${alsoStrip} → ${path.basename(backup)}`);
+    sendJson(res, 200, Object.assign({ ok: true, total: out.length,
+      backup: path.basename(backup), removedFile: path.basename(removedFile) }, summary), origin);
+  }).catch(err => sendJson(res, 500, { ok: false, error: err.message }, origin));
+}
+
 // (dev0447) /s/save — overwrite s.json with the St-screen's edited array. s.json is
 // the BULK staging store (Flickr jpgs / YT / Vimeo / direct video), parallel to
 // ml.json and deliberately kept out of the curated table until rows are Promoted.
@@ -8051,6 +8128,7 @@ http.createServer((req, res) => {
     if (action === 'add')      { igAdd(req, res, origin);      return; }
     if (action === 'save')     { igSave(req, res, origin);     return; }
     if (action === 'save-delta') { igSaveDelta(req, res, origin); return; }  // (dev0697) per-batch upsert
+    if (action === 'cut-after') { igCutAfter(req, res, origin); return; }   // (dev1000) drop an author's older posts
     if (action === 'known')    { igKnown(req, res, origin);    return; }   // (dev0794) early-stop harvest
     if (action === 'authors')  { igAuthors(req, res, origin);  return; }   // (dev0794) sweep queue
     if (action === 'disk')     { igDisk(req, res, origin);     return; }   // (dev0835) free-space floor

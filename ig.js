@@ -1341,6 +1341,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
+        <button id="igCutAfter" title="(dev1000) Harvested too far back? Paste the URL of the OLDEST post you want to keep: every row of that author older than it is removed, and the author shows as name* (cut short on purpose). A full backup (ig.json.bak-cut-…) and the removed rows (ig.json.removed-…json) are written first. Shows the counts and asks before changing anything. Files in ig_media/ are left alone.">✂ Cut after…</button>
         <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
         <button id="igResetSel" title="Reset selected rows to 'new' (hotkey R) so a fresh Enrich + Download rebuilds them — clears the derived title, W×H, duration, cover and downloaded-file record (caption ftext/ttxt is kept). Use this to re-try after a fix.">↺ Reset sel</button>
         <button id="igReload" title="Reload ig.json from disk">↻ Reload</button>
@@ -1397,6 +1398,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igPromoteSel').addEventListener('click', () => batchPromote());
     $('igCreateGrid').addEventListener('click', () => createGridFromView());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
+    $('igCutAfter').addEventListener('click', () => cutAfter());
     $('igClearSel').addEventListener('click', () => { sel.clear(); lastCheckedId = null; applyAndRender(); igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600); });
     $('igResetSel').addEventListener('click', () => resetSelected());
     $('igReload').addEventListener('click', () => loadData());
@@ -4315,6 +4317,51 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igToast(`🗑 deleted ${ids.length} row(s) from ig.json`, 2600);
   }
 
+  // (dev1000) ✂ Cut after… — drop everything of an author older than one post. The
+  // proxy does the work on the store ON DISK (/ig/cut-after: backup, removed-rows file,
+  // harvestCut mark), so a harvest that landed after this screen loaded is cut too.
+  // This screen then reloads: its rows[] still holds the removed rows, and a later
+  // whole-store save would otherwise write them straight back.
+  async function cutAfter() {
+    if (busy) { igToast('A batch is running — stop it before cutting.', 3000); return; }
+    let clip = '';
+    try { clip = ((await navigator.clipboard.readText()) || '').trim().split(/\s+/)[0]; } catch (_) {}
+    const raw = prompt('✂ Cut after — paste the URL of the OLDEST post to keep.\n'
+      + 'Every older row by the same author is removed.', _igShortcodeFromUrl(clip) ? clip : '');
+    if (!raw || !raw.trim()) return;
+    const call = async dry => {
+      const res = await fetch(PROXY + '/ig/cut-after', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: raw.trim(), dry })
+      });
+      const j = await res.json().catch(() => null);
+      if (j && /unknown ig action/.test(j.error || '')) throw new Error('the proxy predates dev1000 — restart proxy.js');
+      if (!j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + res.status));
+      return j;
+    };
+    let d;
+    try { d = await call(true); }
+    catch (e) { igToast('✗ Cut after: ' + e.message, 5000); return; }
+    if (!d.removed && !d.alsoStrip) {
+      igToast('Nothing of @' + d.author + ' is older than ' + d.id + ' — nothing to cut.', 3600);
+      return;
+    }
+    if (!confirm(`✂ Cut @${d.author} after ${d.id}?\n\n`
+      + `Remove ${d.removed} older row(s); keep ${d.kept} (including this post).\n`
+      + (d.alsoStrip ? `Also untag @${d.author} from ${d.alsoStrip} older collab row(s) filed under other authors.\n` : '')
+      + (d.withFiles ? `${d.withFiles} removed row(s) have downloaded files — those stay in ig_media/.\n` : '')
+      + (d.unreadable.length ? `${d.unreadable.length} row(s) have an unreadable id and are kept.\n` : '')
+      + `\nA full backup and a removed-rows file are written first.`)) return;
+    if (dirty && !(await persist(false))) return;   // unsaved edits go to disk before the cut
+    let j;
+    try { j = await call(false); }
+    catch (e) { igToast('✗ Cut after FAILED — ig.json unchanged: ' + e.message, 6000); return; }
+    authorFilter = j.author;
+    await loadData();
+    igToast(`✂ @${j.author}: removed ${j.removed}, kept ${j.kept} — now shows as ${j.author}*\n`
+      + `backup ${j.backup}\nundo rows ${j.removedFile}`, 6500);
+  }
+
   // (dev0513) Reset a row to "new" so a fresh Enrich + Download rebuilds it with the
   // current code (new filename W×H + species-name title, jpg cover). Clears only the
   // AUTO-derived fields — VidTitle, W×H, duration, the stale cover URL and the
@@ -4359,7 +4406,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   }
 
   function setBatchUi(on) {
-    ['igEnrichSel', 'igDownloadSel', 'igProbeRes', 'igPromoteSel', 'igCreateGrid', 'igDeleteSel', 'igClearSel', 'igResetSel', 'igReload', 'igPaste'].forEach(id => {
+    ['igEnrichSel', 'igDownloadSel', 'igProbeRes', 'igPromoteSel', 'igCreateGrid', 'igDeleteSel', 'igCutAfter', 'igClearSel', 'igResetSel', 'igReload', 'igPaste'].forEach(id => {
       const b = document.getElementById(id); if (b) b.disabled = on;
     });
     // (dev0437) Stop now lives in the centered batch panel (igBatchShow), so the

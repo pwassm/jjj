@@ -61,6 +61,9 @@ ig.json.measure-*
 # (dev0696) igResAudit.js — the per-row "what does IG declare as the original" verdict
 # cache (so --apply costs no fetches) and its receipt. Same trap as the two above.
 ig.json.resaudit-*
+# (dev1000) ✂ Cut after (/ig/cut-after) — the removed rows of each cut, its undo file.
+# (The 2026-09-07 stephanlegallais one predates this rule and stays tracked.)
+ig.json.removed-*
 ig_media/
 
 # (dev0785) T-screen row downloads (right-click a row → "⬇ Download → …"), written by
