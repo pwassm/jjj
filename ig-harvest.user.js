@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SLAM IG Reel Harvester
 // @namespace    sealifeandmore
-// @version      2.9
+// @version      3.0
 // @downloadURL  http://localhost:8080/ig-harvest.user.js
 // @updateURL    http://localhost:8080/ig-harvest.user.js
 // @description  Keeps your list of favourite Instagram contributors up to date. Adds a small button bar to the bottom-right of any profile page. 🆕 New only — collect just the posts you don't already have (a few seconds; the everyday button). ⬇ All — collect every post on the profile, newest to oldest (slow; for a first-time author). 🔁 Sweep — do "New only" on one author after another, unattended, from a list you tick. ▶ Resume — go back to reading where you left off: paste a post's link and it opens that post with the ◀ ▶ arrows working. Reads only the page your browser has already drawn in your normal logged-in session. Install or update: open http://localhost:8080/ig-harvest.user.js
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '2.9';
+  const VER = '3.0';
   const PROXY = 'http://127.0.0.1:8081';
   // First path segment that is NOT one of these = an author profile.
   const RESERVED = new Set(['explore', 'reels', 'reel', 'p', 'tv', 'stories', 'direct',
@@ -222,8 +222,14 @@
       + '\n\nAfter updating in Tampermonkey, reload the page and check this number changed.';
     ver.style.cssText = 'padding:2px 8px;border-radius:6px;background:#111c;color:#cfd3da;' +
       'font:600 10px/1.5 system-ui;box-shadow:0 1px 4px rgba(0,0,0,.35);backdrop-filter:blur(3px)';
+    // (dev0997) The grey ⬇ All was the only "already harvested" signal and it was too
+    // quiet to read. This label says it in words, automatically, on every profile.
+    const st = document.createElement('div');
+    st.id = 'slam-ig-status';
+    st.style.cssText = 'padding:4px 10px;border-radius:6px;font:700 12px/1.4 system-ui;' +
+      'box-shadow:0 1px 4px rgba(0,0,0,.35);display:none';
     row.appendChild(h); row.appendChild(n); row.appendChild(s); row.appendChild(r); row.appendChild(stop);
-    wrap.appendChild(msg); wrap.appendChild(ver); wrap.appendChild(row);
+    wrap.appendChild(msg); wrap.appendChild(st); wrap.appendChild(ver); wrap.appendChild(row);
     wrap.title = 'SLAM IG Harvester v' + VER;
     document.body.appendChild(wrap);
     refreshAuthorStatus(true);
@@ -267,6 +273,22 @@
     h.style.color      = done ? '#9aa0aa' : '#fff';
     h.style.outline    = (!done && singles) ? '2px solid #ffd60a' : '';
     h.style.outlineOffset = '1px';
+    const st = document.getElementById('slam-ig-status');
+    if (st) {
+      const a = '@' + (authorFromPath() || '');
+      st.style.display = authorFromPath() ? 'block' : 'none';
+      if (done) {
+        st.textContent = '✓ HARVESTED' + (hit.cut ? '*' : '') + ' ' + a + ' — ' + done + ' rows, last '
+          + ((hit.last || '').slice(0, 10) || '—') + (hit.cut ? ' (cut short on purpose)' : '');
+        st.style.background = '#1f7a3a'; st.style.color = '#fff';
+      } else if (singles) {
+        st.textContent = '◐ NOT harvested ' + a + ' — only ' + singles + ' single' + (singles === 1 ? '' : 's');
+        st.style.background = '#ffd60a'; st.style.color = '#000';
+      } else {
+        st.textContent = '○ NEW author ' + a + ' — nothing in ig.json';
+        st.style.background = '#111c'; st.style.color = '#cfd3da';
+      }
+    }
     h.title = done
       ? 'Already harvested — ' + done + ' rows in ig.json, last ' +
         ((hit.last || '').slice(0, 10) || '—') + '.\nUse 🆕 New only. Click anyway for a full deep re-check.'

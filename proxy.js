@@ -4788,6 +4788,7 @@ function igAuthors(req, res, origin) {
       if (!e) { e = { author: name, rows: 0, harvested: 0, last: '', newest: '', checked: checked[key] || '' }; by.set(key, e); }
       e.rows++;
       if (r.staged !== false) e.harvested++;
+      if (r.harvestCut) e.cut = 1;                  // (dev0997) deliberately truncated harvest
       const added = String(r.DateAdded || '');
       if (added > e.last) e.last = added;
       const posted = String(r.DatePosted || '');
