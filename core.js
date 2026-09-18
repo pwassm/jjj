@@ -5331,6 +5331,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingWatermarkNew();
     } else if (act === 'addwm') {
       housekeepingAddWatermarked();
+    } else if (act === 'syncr2') {
+      housekeepingSyncR2();
     } else if (act === 'flashsweep') {
       housekeepingSweepFlashCandidates();
     } else if (act === 'samplecard') {
@@ -5495,11 +5497,12 @@ async function housekeepingWatermarkNew() {
     + '\u2022 T watches the folder and offers to add the new rows itself —\n'
     + '  it will NOT open a second tab.\n\n'
     + 'Byline: files loose in originals\\ say "at Monterey Bay Aquarium"; a\n'
-    + '"from <Place>" subfolder says "at <Place>"; any other subfolder gets\n'
-    + 'the byline alone. Every stamp ends with the date \u2014 "EXIF:" from the\n'
-    + 'photo/mp4 metadata, else "Approx:" the file date if over a year old.\n'
-    + 'The folder is part of the public URL, so moving a file afterwards\n'
-    + 'means a new link and a second row.')) return;
+    + '"from <Place>" subfolder says "at <Place>"; a _wm.txt in a folder sets\n'
+    + 'its own text and look; any other subfolder gets the byline alone. Every\n'
+    + 'stamp ends with the date \u2014 "EXIF:" from the photo/mp4 metadata, else\n'
+    + '"Approx:" the file date if over a year old (_wm.txt date=off drops it).\n'
+    + 'The folder is part of the public URL. Rename or move a file afterwards\n'
+    + 'and Housekeeping \u25b8 Sync R2 with Originals moves its link, same row.')) return;
 
   let j = null;
   try {
@@ -5692,6 +5695,241 @@ async function housekeepingAddWatermarked(opts) {
             ? '\n⚠ ' + (missing.length - probed) + ' could not be probed — run Calc Lengths / Fill Mode'
             : '\n   Mode + length/MPix filled from the local files'),
         5000);
+}
+
+// (dev1006) ── Sync R2 with Originals ─────────────────────────────────────────
+// Rename, move or delete a master in M:\wm\originals\ and this makes the rest
+// follow it: the R2 object, the watermarked\ twin, and T. How a rename is told
+// apart from a delete (the original's size + mtime) is in proxy wmSyncPlan.
+//   rename   the row keeps its UID, tags and ftext; only `link` changes, and the
+//            same URL is rewritten wherever else ml.json or c.json carries it
+//   restamp  the same, but the new folder stamps differently, so the next
+//            Watermark & Upload stamps + uploads it under the new name; the
+//            row (already pointing there) is blank until then
+//   retire   a Watermark & Upload ran first and already published the new name;
+//            the old rows are repointed at it. The bare row that run added is
+//            left alone — a duplicate row is insurance here, not clutter.
+//   delete   the rows go to deleted.json and out of T. A reference from some
+//            OTHER row's ftext or from c.json is listed in the confirm, never
+//            edited — that is prose, and only Phil knows what it should say now.
+// Old objects move to _deleted/<date>/ in the bucket and old twins to
+// M:\wm\deleted\<date>\ — nothing is erased.
+let _wmSyncRunning = false;
+let _wmSyncAbort = false;
+
+// Every media-bucket URL in a string. Stops only at whitespace, quotes and
+// markup: `(` and `)` are legal in a key and encodeURIComponent leaves them
+// bare — "(CC BY)" is in a live folder name.
+const _WM_URL_RE = new RegExp(R2_VIDEO_BASE.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + '[^\\s"\'<>]+', 'gi');
+
+// Every URL that resolves to `fromLower` (compared like _wmLinkKey) → the URL
+// of `toKey`, keeping any ?query/#fragment. Returns the new string + a count.
+function _wmRewriteUrls(str, fromLower, toKey) {
+  let n = 0;
+  const s = String(str).replace(_WM_URL_RE, m => {
+    if (_wmLinkKey(m) !== fromLower) return m;
+    n++;
+    return _wmKeyToUrl(toKey) + ((m.match(/[?#].*$/) || [''])[0]);
+  });
+  return { s, n };
+}
+
+// Where else a file's URL appears — any string field but `link`, in ml.json
+// rows and c.json rows. Labels only, for the confirm.
+function _wmOtherRefs(fromLower, cRows) {
+  const hits = [];
+  const scan = (r, label) => {
+    for (const k in r) {
+      if (k === 'link' || typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
+      if ((r[k].match(_WM_URL_RE) || []).some(m => _wmLinkKey(m) === fromLower)) hits.push(label + ' ' + k);
+    }
+  };
+  data.forEach(r => { if (r) scan(r, 'UID ' + r.UID); });
+  (cRows || []).forEach(r => { if (r && !r._salMeta) scan(r, 'c.json "' + (r.gname || '?') + '"'); });
+  return hits;
+}
+
+async function housekeepingSyncR2() {
+  if (_wmSyncRunning) { toast('Sync R2 already running… (Esc to stop)', 2000); return; }
+  // On the C screen `data` IS c.json and save() writes ml.json.
+  if (typeof _cMode !== 'undefined' && _cMode) { toast('⚠ Not on the C screen — go back to T first', 3000); return; }
+  const PROXY = 'http://127.0.0.1:8081';
+  toast('🔄 Sync R2 — comparing originals\\, watermarked\\ and the bucket…', 60000);
+  let plan;
+  try {
+    const r = await fetch(PROXY + '/wm/sync-plan');
+    plan = await r.json();
+  } catch (_) {
+    toast('⚠ Sync R2: proxy not reachable on 8081 — start proxy.js', 4000);
+    return;
+  }
+  if (!plan || !plan.ok) {
+    toast('⚠ Sync R2: ' + ((plan && plan.error) || 'proxy returned no plan')
+          + '\n(needs proxy dev1006+ — RESTART it if you just updated)', 6000);
+    return;
+  }
+  const renames = plan.renames || [], deletes = plan.deletes || [], amb = plan.ambiguous || [];
+  const r2Only = plan.r2Only || [], notInR2 = plan.notInR2 || [];
+  // c.json from the same store the C screen uses, so a rewrite lands in what C shows.
+  let cRows = [];
+  try { if (typeof _cEnsureLoaded === 'function') { await _cEnsureLoaded(); cRows = _cData || []; } } catch (_) {}
+  const rowsFor = key => data.filter(r => r && _wmLinkKey(r.link) === key.toLowerCase());
+
+  const SHOW = 6;
+  const listed = (arr, fmt) => arr.slice(0, SHOW).map(fmt).join('\n')
+    + (arr.length > SHOW ? '\n   …and ' + (arr.length - SHOW) + ' more' : '');
+  // Report-only. Nothing here is ever acted on.
+  const notes = [];
+  if (amb.length) notes.push('LEFT ALONE — more than one file matches (' + amb.length + '):\n'
+    + listed(amb, a => '   ' + a.key + '  →?  ' + a.candidates.join('  |  ')));
+  if (notInR2.length) notes.push('Stamped but NOT in R2 — an upload answered No? (' + notInR2.length + '):\n'
+    + listed(notInR2, k => '   ' + k));
+  if (r2Only.length) notes.push('In R2 with no local original or twin (' + r2Only.length + '):\n'
+    + listed(r2Only, k => '   ' + k));
+  if (plan.r2Error) notes.push('⚠ Could not list the bucket: ' + plan.r2Error);
+
+  if (!renames.length && !deletes.length) {
+    const ok = '✓ R2 is in sync — ' + ((plan.counts && plan.counts.published) || 0)
+             + ' published file(s), nothing renamed or deleted in originals\\';
+    if (notes.length) alert(ok + '\n\n' + notes.join('\n\n')); else toast(ok, 4000);
+    return;
+  }
+  if (deletes.length && !(await _getDir())) {
+    toast('⚠ Sync R2: set the project folder first — deleted rows are archived to deleted.json', 5000);
+    return;
+  }
+
+  const rowCount = k => { const n = rowsFor(k).length; return n ? n + ' row' + (n === 1 ? '' : 's') : 'no row in T'; };
+  const MODE_NOTE = {
+    rename:  '',
+    restamp: '\n      (new folder stamps differently — re-stamped by the next Watermark & Upload)',
+    retire:  '\n      (already uploaded under the new name)'
+  };
+  let msg = plan.suspicious ? '⚠⚠ ' + plan.suspicious + '\n\n' : '';
+  if (renames.length) msg += 'RENAMED / MOVED (' + renames.length + ') — rows keep their UID, tags and ftext:\n'
+    + listed(renames, x => '   ' + x.from + '\n      → ' + x.to + '   [' + rowCount(x.from) + ']' + (MODE_NOTE[x.mode] || ''))
+    + '\n\n';
+  if (deletes.length) msg += 'DELETED (' + deletes.length + ') — their rows go to deleted.json:\n'
+    + listed(deletes, x => {
+        const refs = _wmOtherRefs(x.key.toLowerCase(), cRows);
+        return '   ' + x.key + '   [' + rowCount(x.key) + ']'
+          + (refs.length ? '\n      ⚠ still linked from ' + refs.slice(0, 3).join(', ') + (refs.length > 3 ? ' …' : '') : '');
+      })
+    + '\n\n';
+  msg += 'Old R2 objects move to _deleted/<date>/ in the bucket and old twins to\n'
+       + 'M:\\wm\\deleted\\ — nothing is erased. The old URLs stop working (a browser\n'
+       + 'that already fetched one may show its cached copy for a few hours).\n'
+       + 'Esc stops between files.'
+       + (notes.length ? '\n\n' + notes.join('\n\n') : '');
+  if (plan.suspicious) {
+    if (prompt(msg + '\n\nType SYNC to go ahead anyway') !== 'SYNC') { toast('Sync R2 cancelled', 2000); return; }
+  } else if (!confirm(msg)) return;
+
+  _wmSyncRunning = true;
+  _wmSyncAbort = false;
+  const onEsc = e => {
+    if (e.key === 'Escape') { _wmSyncAbort = true; e.stopPropagation(); e.preventDefault(); }
+  };
+  window.addEventListener('keydown', onEsc, true);
+
+  const now = isoNow();
+  const ops = renames.map(x => Object.assign({ kind: x.mode }, x))
+    .concat(deletes.map(x => ({ kind: 'delete', from: x.key })));
+  const doomed = [], fails = [], warns = [], restamped = [];
+  let nDone = 0, nLinks = 0, nRefs = 0, cChanged = false;
+  try {
+    let i = 0;
+    for (const op of ops) {
+      if (_wmSyncAbort) break;
+      i++;
+      toast('🔄 Sync R2  ' + i + '/' + ops.length + '\n   ' + op.from + '\n   (Esc to stop)', 120000);
+      let j = null;
+      try {
+        const r = await fetch(PROXY + '/wm/sync-op', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op: op.kind === 'rename' ? 'rename' : 'retire', from: op.from, to: op.to || '' })
+        });
+        j = await r.json();
+      } catch (e) {
+        j = { ok: false, error: String((e && e.message) || e) };
+      }
+      if (!j || !j.ok) fails.push(op.from + ' — ' + ((j && j.error) || 'no answer'));
+      // `partial`: R2 changed but the local twin could not move. R2 is what the
+      // public sees, so the rows still follow it.
+      if (!j || !(j.ok || j.partial)) continue;
+      nDone++;
+      (j.warnings || []).forEach(w => warns.push(op.from + ' — ' + w));
+      if (op.kind === 'delete') {
+        rowsFor(op.from).forEach(r => { if (doomed.indexOf(r) < 0) doomed.push(r); });
+        continue;
+      }
+      if (op.kind === 'restamp') restamped.push(op.to);
+      const fromLower = op.from.toLowerCase();
+      const newUrl = _wmKeyToUrl(op.to);
+      rowsFor(op.from).forEach(r => { r.link = newUrl; r.DateModified = now; nLinks++; });
+      data.forEach(r => {
+        if (!r) return;
+        let touched = false;
+        for (const k in r) {
+          if (k === 'link' || typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
+          const x = _wmRewriteUrls(r[k], fromLower, op.to);
+          if (x.n) { r[k] = x.s; nRefs += x.n; touched = true; }
+        }
+        if (touched) r.DateModified = now;
+      });
+      cRows.forEach(r => {
+        if (!r || r._salMeta) return;
+        for (const k in r) {
+          if (typeof r[k] !== 'string' || r[k].indexOf('sealifeandmore') < 0) continue;
+          const was = r[k];
+          const x = _wmRewriteUrls(was, fromLower, op.to);
+          if (!x.n) continue;
+          r[k] = x.s; nRefs += x.n; cChanged = true;
+          // A Lock holds ctxt to its last-saved text (collection.js dev0942). This is
+          // the file the text points at being renamed, not an edit, so the lock's
+          // baseline moves with it — otherwise cSaveToFile would revert it.
+          if (k === 'ctxt' && typeof _cLockedCtxt !== 'undefined' && _cLockedCtxt.get(r) === was) {
+            _cLockedCtxt.set(r, x.s);
+          }
+        }
+      });
+      // The bucket has already moved, so an interrupted run must not lose the
+      // links that follow it.
+      if (nDone % 10 === 0) save();
+    }
+  } finally {
+    window.removeEventListener('keydown', onEsc, true);
+    _wmSyncRunning = false;
+  }
+
+  // Archive first, remove second: if deleted.json cannot be written the rows stay.
+  let nArchived = 0, archiveFailed = false;
+  if (doomed.length) {
+    if (await _saveToDeletedJson(doomed)) {
+      for (let di = data.length - 1; di >= 0; di--) if (doomed.indexOf(data[di]) >= 0) data.splice(di, 1);
+      nArchived = doomed.length;
+      try { checkedRows.clear(); } catch (_) {}
+    } else archiveFailed = true;
+  }
+  if (nDone) { save(); try { buildSort(); } catch (_) {} }
+  if (cChanged && typeof cSaveToFile === 'function') { try { await cSaveToFile(); } catch (_) {} }
+  render();
+
+  const lines = ['✓ Sync R2' + (_wmSyncAbort ? ' (stopped)' : '') + ' — ' + nDone + '/' + ops.length + ' file(s) done'];
+  if (nLinks) lines.push('   ' + nLinks + ' row link(s) moved to the new name');
+  if (nRefs) lines.push('   ' + nRefs + ' other reference(s) rewritten' + (cChanged ? ' (incl. c.json)' : ''));
+  if (nArchived) lines.push('   ' + nArchived + ' row(s) archived to deleted.json and removed');
+  if (archiveFailed) lines.push('⚠ deleted.json could not be written — ' + doomed.length + ' row(s) KEPT; delete them by hand');
+  if (fails.length) lines.push('⚠ ' + fails.length + ' failed:\n   ' + fails.slice(0, 4).join('\n   '));
+  if (warns.length) lines.push('⚠ ' + warns.slice(0, 3).join('\n   '));
+  toast(lines.join('\n'), (fails.length || warns.length || archiveFailed) ? 10000 : 5000);
+
+  if (restamped.length && !_wmSyncAbort && confirm(restamped.length + ' file(s) moved into a folder that stamps differently:\n'
+      + restamped.slice(0, SHOW).map(k => '   ' + k).join('\n')
+      + '\n\nTheir rows already point at the new name, but show nothing until they\n'
+      + 'are stamped and uploaded. Run Watermark & Upload New Media now?')) {
+    housekeepingWatermarkNew();
+  }
 }
 
 // (dev0874) ── Sweep Flash Candidates ─────────────────────────────────────────

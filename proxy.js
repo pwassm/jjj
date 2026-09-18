@@ -356,7 +356,7 @@ const PORT = 8081;
 //   ffdown/ folder itself is untouched, nothing reads it now).
 // (dev1001) parseIgMainMeta reads the @handle of an account with no display name
 //   (twitter:title "@handle • …", og:description "N likes, N comments - handle on …").
-const PROXY_BUILD = 'dev1005';
+const PROXY_BUILD = 'dev1006';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -3736,41 +3736,53 @@ const WM_IMG = /\.(jpg|jpeg|png)$/i;
 
 // Relative key ("chitonspawning/foo.mp4") → absolute path, or null if the key
 // escapes WM_DIR. Keys come from wmList, but wmProbe takes one over the wire.
-function wmResolve(key) {
+function wmResolve(key) { return wmResolveIn(WM_DIR, key); }
+// (dev1006) Same rule for any of the M:\wm trees — Sync R2 takes keys over the
+// wire for originals\ and deleted\ as well.
+function wmResolveIn(dir, key) {
   if (typeof key !== 'string' || !key || !WM_EXT.test(key)) return null;
-  const full = path.resolve(WM_DIR, key.replace(/\//g, path.sep));
-  const root = path.resolve(WM_DIR) + path.sep;
+  const full = path.resolve(dir, key.replace(/\//g, path.sep));
+  const root = path.resolve(dir) + path.sep;
   return full.startsWith(root) ? full : null;
 }
 
 // Names only — no ffprobe. The common case is "nothing new", and that answer
 // should cost nothing; the client probes just the files it decides to add.
-function wmList(res, origin) {
-  if (!fs.existsSync(WM_DIR)) {
-    sendJson(res, 200, { ok: false, dir: WM_DIR, files: [], error: 'folder not found: ' + WM_DIR }, origin);
-    return;
-  }
-  const walk = (dir, rel, out) => {
+// Every media file under `root` as { key, size, mtime }, key = forward-slash
+// path relative to root. Sorted, so two walks of the same tree compare cleanly.
+function wmWalk(root) {
+  const out = [];
+  const walk = (dir, rel) => {
     let ents;
     try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
     for (const ent of ents) {
       const key = rel ? rel + '/' + ent.name : ent.name;
-      if (ent.isDirectory()) { walk(path.join(dir, ent.name), key, out); continue; }
+      if (ent.isDirectory()) { walk(path.join(dir, ent.name), key); continue; }
       if (!WM_EXT.test(ent.name)) continue;
       let st; try { st = fs.statSync(path.join(dir, ent.name)); } catch (_) { continue; }
       out.push({ key, size: st.size, mtime: st.mtimeMs });
     }
   };
-  const files = [];
-  walk(WM_DIR, '', files);
-  files.sort((a, b) => a.key.localeCompare(b.key));
+  walk(root, '');
+  out.sort((a, b) => a.key.localeCompare(b.key));
+  return out;
+}
+
+function wmList(res, origin) {
+  if (!fs.existsSync(WM_DIR)) {
+    sendJson(res, 200, { ok: false, dir: WM_DIR, files: [], error: 'folder not found: ' + WM_DIR }, origin);
+    return;
+  }
+  // (dev1006) T polls this, so it is also where the rename fingerprints stay
+  // current — see Sync R2 below. Best-effort: a failure must not break the list.
+  try { wmManifestRefresh(); } catch (e) { plog('[wm] manifest refresh failed: ' + e.message); }
+  const files = wmWalk(WM_DIR);
   // (dev0976) What the next run WOULD stamp: originals\ files with no
   // watermarked\ twin — the same test watermark_r2.ps1's uploadnew makes, so
   // Watermark & Upload can say how many new files there are before it starts.
   // Case-insensitive, as Windows (and the script's Test-Path) is.
   const have = new Set(files.map(f => f.key.toLowerCase()));
-  const origs = [];
-  walk(WM_ORIG_DIR, '', origs);
+  const origs = wmWalk(WM_ORIG_DIR);
   const pending = origs.map(f => f.key)
     .filter(k => !/_NoWatermark\./i.test(k) && !have.has(k.toLowerCase()))
     .sort((a, b) => a.localeCompare(b));
@@ -3798,6 +3810,8 @@ function wmList(res, origin) {
 // question: T is already open — it is what called this — and a second tab that
 // saves would overwrite whatever is unsaved in the first.
 function wmRun(res, origin) {
+  // (dev1006) Fingerprint what is published BEFORE this run adds to it.
+  try { wmManifestRefresh(); } catch (e) { plog('[wm] manifest refresh failed: ' + e.message); }
   if (!fs.existsSync(WM_UPLOAD_BAT)) {
     sendJson(res, 404, { ok: false, error: 'not found: ' + WM_UPLOAD_BAT }, origin);
     return;
@@ -3836,6 +3850,326 @@ function wmProbe(res, origin, key) {
     w: dims ? dims.w : 0,
     h: dims ? dims.h : 0
   }, origin);
+}
+
+// (dev1006) ── Sync R2 with originals ─────────────────────────────────────────
+// originals\ is the truth about what should be published. Rename, move or
+// delete a master there and, until now, nothing followed it: the watermarked\
+// twin, the R2 object and the ml.json row all kept the old name, and the next
+// Watermark & Upload published the renamed file AGAIN as a second row.
+// Housekeeping ▸ Sync R2 with Originals asks GET /wm/sync-plan what changed,
+// confirms, then applies one file per POST /wm/sync-op so T can update ml.json
+// after each confirmed step (and Esc can stop between them).
+//
+// A RENAME IS RECOGNISED BY THE ORIGINAL'S SIZE + MTIME, which a Windows rename
+// or move keeps. By the time the plan runs the old path is gone, so the
+// fingerprint has to have been taken earlier: .wm_manifest.json records it for
+// every original that has a twin, refreshed on proxy START, every /wm/list,
+// wmRun and the plan itself. A vanished original whose fingerprint turns up
+// under exactly ONE other key is a rename; none = a delete; several = ambiguous,
+// left alone. An original already known under its own name from before the old
+// one vanished is a copy that happens to match, not the new name (`seen` vs
+// `gone`) — so deleting one of two identical files is a delete, not a rename.
+//
+// NOTHING IS ERASED. The old R2 object moves to _deleted/<date>/<key> in the
+// bucket and the old twin to M:\wm\deleted\<date>\<key> — outside
+// watermarked\, which /wm/list would otherwise offer back as new. A rename
+// copies the object to its new key first (server-side, free).
+const WM_MANIFEST  = path.join(WM_ROOT, '.wm_manifest.json');
+const WM_TRASH_DIR = path.join(WM_ROOT, 'deleted');
+const WM_R2_TRASH  = '_deleted';
+const WM_BAT       = path.join(WM_ROOT, 'Watermark R2.bat');
+
+// The two lines of stamp text the .bat hands watermark_r2.ps1.
+function wmBatVars() {
+  let txt = '';
+  try { txt = fs.readFileSync(WM_BAT, 'utf8'); } catch (_) {}
+  const grab = (name, dflt) => {
+    const m = new RegExp('^\\s*set\\s+"' + name + '=([^"]*)"', 'im').exec(txt);
+    return m ? m[1].trim() : dflt;
+  };
+  return { byline: grab('WM_BYLINE', 'by Phil Wasserstein'),
+           text:   grab('WM_TEXT', 'by Phil Wasserstein at Monterey Bay Aquarium') };
+}
+
+// What watermark_r2.ps1 would stamp on the original at `key`, minus the
+// per-file date: ResolveWmText's text plus the look lines ResolveWmStyle reads
+// from the nearest _wm.txt. KEEP IN STEP WITH THOSE TWO. It only has to answer
+// "does moving this file change its stamp?", so any string that differs exactly
+// when the stamp differs is enough.
+function wmStampOf(key, bat) {
+  const parts = key.split('/').slice(0, -1);
+  let text = null, look = null;
+  for (let i = parts.length; i >= 1 && (text === null || look === null); i--) {
+    let lines = null;
+    try {
+      lines = fs.readFileSync(path.join(WM_ORIG_DIR, ...parts.slice(0, i), '_wm.txt'), 'utf8')
+        .replace(/^\uFEFF/, '').split(/\r?\n/);
+    } catch (_) {}
+    if (lines) {
+      if (look === null) look = lines.slice(1).map(s => s.trim()).filter(Boolean).join('; ');
+      if (text === null && lines[0].trim()) text = lines[0].trim();
+    }
+    if (text === null) {
+      const m = /^\s*(?:from|at)\s+(.+?)\s*$/i.exec(parts[i - 1]);
+      if (m) text = bat.byline + ' at ' + m[1];
+    }
+  }
+  if (text === null) text = parts.length ? bat.byline : bat.text;
+  return look ? text + ' [' + look + ']' : text;
+}
+
+function wmManifestLoad() {
+  try {
+    const j = JSON.parse(fs.readFileSync(WM_MANIFEST, 'utf8'));
+    if (j && typeof j === 'object' && !Array.isArray(j)) return j;
+  } catch (_) {}
+  return {};
+}
+function wmManifestSave(man) {
+  const tmp = WM_MANIFEST + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(man, null, 1));
+  fs.renameSync(tmp, WM_MANIFEST);
+}
+
+// Fingerprint every PUBLISHED original (one with a twin) and mark `gone` on the
+// entries whose original has vanished. An entry is dropped once its twin is
+// gone too — Sync has settled it. Returns the two walks so the plan can reuse them.
+function wmManifestRefresh() {
+  const man = wmManifestLoad();
+  const origs = wmWalk(WM_ORIG_DIR), twins = wmWalk(WM_DIR);
+  const twinSet = new Set(twins.map(f => f.key.toLowerCase()));
+  const origSet = new Set(origs.map(f => f.key.toLowerCase()));
+  const keyByLower = new Map(Object.keys(man).map(k => [k.toLowerCase(), k]));
+  const now = Date.now();
+  let bat = null, changed = false;
+  for (const o of origs) {
+    if (!twinSet.has(o.key.toLowerCase())) continue;          // not published yet
+    const mt = Math.floor(o.mtime);
+    const k = keyByLower.get(o.key.toLowerCase());
+    const e = k ? man[k] : null;
+    if (e && k === o.key && e.size === o.size && e.mtime === mt && !e.gone) continue;
+    if (k && k !== o.key) delete man[k];                       // renamed by case only
+    if (!bat) bat = wmBatVars();
+    man[o.key] = {
+      size: o.size, mtime: mt,
+      // First sight is the nearest record of the stamp it was PUBLISHED with, so
+      // a later _wm.txt edit doesn't masquerade as "this move changes the stamp".
+      stamp: e && e.stamp ? e.stamp : wmStampOf(o.key, bat),
+      seen: e && e.seen ? e.seen : now
+    };
+    changed = true;
+  }
+  for (const k of Object.keys(man)) {
+    const lk = k.toLowerCase();
+    if (origSet.has(lk)) continue;
+    if (!twinSet.has(lk)) { delete man[k]; changed = true; continue; }
+    if (!man[k].gone) { man[k].gone = now; changed = true; }
+  }
+  if (changed) wmManifestSave(man);
+  return { man, origs, twins };
+}
+
+// rclone against the bucket, creds from the .bat like the flash-card upload.
+// `argsFor(base)` gets the remote root ("r2:media") and returns the argv.
+function wmR2Exec(argsFor, timeoutMs, cb) {
+  const rc = cardRclone();
+  if (!rc) { cb(new Error('rclone.exe not found — winget install Rclone.Rclone')); return; }
+  const cfg = cardR2Config();
+  if (!cfg.id || !cfg.key || !cfg.acct) { cb(new Error('R2 credentials not found in ' + CARD_CRED_BAT)); return; }
+  execFile(rc, argsFor(cfg.path.replace(/\/+$/, '')),
+    { env: r2RcloneEnv(cfg), timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+    (err, stdout, stderr) => {
+      if (err) {
+        // The last real stderr line says why; skip rclone's "no rclone.conf" notice.
+        const why = String(stderr || '').split(/\r?\n/)
+          .filter(l => l.trim() && !/Config file .* not found/.test(l)).pop();
+        cb(new Error(String(why || err.message || err).trim().slice(0, 300)));
+        return;
+      }
+      cb(null, String(stdout || ''));
+    });
+}
+
+// Does the bucket hold `key`? A missing object is NOT an error to rclone: S3 has
+// no real folders, so `lsjson --stat` answers exit 0 with a phantom directory.
+// cb(err) only when R2 could not be asked at all.
+function wmR2Has(key, cb) {
+  wmR2Exec(base => ['lsjson', '--stat', base + '/' + key], 60000, (err, out) => {
+    if (err) { cb(err); return; }
+    let j = null; try { j = JSON.parse(out); } catch (_) {}
+    cb(null, !!(j && j.IsDir === false && j.Size >= 0));
+  });
+}
+
+// GET /wm/sync-plan → { renames[{from,to,mode,stampFrom,stampTo}], deletes[{key}],
+//   ambiguous[{key,candidates}], suspicious, r2Only[], notInR2[], r2Error, counts }
+// mode: rename  = copy the R2 object to the new name, stamp unchanged
+//       restamp = the new folder stamps differently: retire the old object and
+//                 let the next Watermark & Upload stamp + upload the new name
+//       retire  = the new name is already stamped (a Watermark & Upload ran
+//                 before this sync): only the old object has to go
+function wmSyncPlan(res, origin) {
+  for (const d of [WM_ORIG_DIR, WM_DIR]) {
+    if (!fs.existsSync(d)) { sendJson(res, 200, { ok: false, error: 'folder not found: ' + d }, origin); return; }
+  }
+  let snap;
+  try { snap = wmManifestRefresh(); }
+  catch (e) { sendJson(res, 500, { ok: false, error: 'manifest: ' + e.message }, origin); return; }
+  const { man, origs, twins } = snap;
+  const lower = s => s.toLowerCase();
+  const origByLower = new Map(origs.map(o => [lower(o.key), o]));
+  const twinSet = new Set(twins.map(t => lower(t.key)));
+  const manByLower = new Map(Object.keys(man).map(k => [lower(k), man[k]]));
+  const byPrint = new Map();
+  for (const o of origs) {
+    const p = o.size + '|' + Math.floor(o.mtime);
+    if (!byPrint.has(p)) byPrint.set(p, []);
+    byPrint.get(p).push(o);
+  }
+  const bat = wmBatVars();
+  const claimed = new Set();
+  const renames = [], deletes = [], ambiguous = [];
+  for (const t of twins) {
+    const lk = lower(t.key);
+    if (origByLower.has(lk)) continue;                        // original still there
+    const rec = manByLower.get(lk);
+    const cands = !rec ? [] : (byPrint.get(rec.size + '|' + rec.mtime) || []).filter(o => {
+      const lo = lower(o.key);
+      if (lo === lk || claimed.has(lo)) return false;
+      const own = manByLower.get(lo);
+      return !own || !rec.gone || (own.seen || 0) >= rec.gone;
+    });
+    if (cands.length > 1) { ambiguous.push({ key: t.key, candidates: cands.map(o => o.key) }); continue; }
+    if (!cands.length) { deletes.push({ key: t.key }); continue; }
+    const o = cands[0];
+    claimed.add(lower(o.key));
+    const stampTo = wmStampOf(o.key, bat);
+    const mode = twinSet.has(lower(o.key)) ? 'retire'
+               : (rec.stamp && rec.stamp !== stampTo ? 'restamp' : 'rename');
+    renames.push({ from: t.key, to: o.key, mode, stampFrom: rec.stamp || '', stampTo });
+  }
+  // A changed drive letter or a folder moved away looks exactly like "every
+  // original was deleted". Say so, rather than let one click archive half of T.
+  let suspicious = '';
+  if (twins.length && !origs.length) {
+    suspicious = 'originals\\ holds no media files at all — is the drive/folder right?';
+  } else if (deletes.length > 5 && deletes.length > twins.length * 0.2) {
+    suspicious = deletes.length + ' of ' + twins.length + ' published files have no original.'
+      + ' A moved folder or a changed drive letter looks exactly like this.';
+  }
+  // Report-only: what the bucket holds that nothing local accounts for, and
+  // twins that never reached it (an upload answered No). Never acted on.
+  wmR2Exec(base => ['lsf', base, '-R', '--files-only',
+                    '--exclude', CARD_PREFIX + '/**', '--exclude', WM_R2_TRASH + '/**'], 90000, (err, out) => {
+    let r2Only = [], notInR2 = [], r2Error = '';
+    if (err) r2Error = err.message;
+    else {
+      const keys = out.split(/\r?\n/).map(s => s.trim()).filter(k => k && WM_EXT.test(k));
+      const r2Set = new Set(keys.map(lower));
+      r2Only  = keys.filter(k => !twinSet.has(lower(k)) && !origByLower.has(lower(k)));
+      notInR2 = twins.map(t => t.key).filter(k => !r2Set.has(lower(k)));
+    }
+    sendJson(res, 200, {
+      ok: true, counts: { originals: origs.length, published: twins.length },
+      renames, deletes, ambiguous, suspicious, r2Only, notInR2, r2Error
+    }, origin);
+  });
+}
+
+// POST /wm/sync-op
+//   { op: 'rename', from, to }  copy the R2 object to `to` (server-side — or
+//                               upload the twin if R2 never had it), retire the
+//                               old object, move the twin to its new name
+//   { op: 'retire', from }      old R2 object → _deleted/, twin → deleted\
+//                               (T decides what that means for the rows)
+// → { ok, r2: 'copied'|'uploaded'|'moved'|'absent', url, warnings[] }
+// Re-checks the plan's facts first — the plan can be minutes old by now. A
+// failure BEFORE anything changed returns ok:false and leaves everything as it
+// was; T then leaves the rows alone too.
+function wmSyncOp(req, res, origin) {
+  readJson(req, 64 * 1024).then(p => {
+    const op = String(p && p.op || ''), from = String(p && p.from || ''), to = String(p && p.to || '');
+    const fail = (code, msg) => sendJson(res, code, { ok: false, error: msg }, origin);
+    if (op !== 'rename' && op !== 'retire') { fail(400, 'op must be rename or retire'); return; }
+    const twinFrom = wmResolveIn(WM_DIR, from), origFrom = wmResolveIn(WM_ORIG_DIR, from);
+    if (!twinFrom || !origFrom) { fail(400, 'bad key: ' + from); return; }
+    if (!fs.existsSync(twinFrom)) { fail(409, 'no watermarked twin for ' + from + ' — already synced?'); return; }
+    if (fs.existsSync(origFrom)) { fail(409, 'the original is back at ' + from + ' — nothing to do'); return; }
+    let twinTo = null;
+    if (op === 'rename') {
+      twinTo = wmResolveIn(WM_DIR, to);
+      const origTo = wmResolveIn(WM_ORIG_DIR, to);
+      if (!twinTo || !origTo) { fail(400, 'bad key: ' + to); return; }
+      if (!fs.existsSync(origTo)) { fail(409, 'no original at ' + to + ' any more'); return; }
+      if (fs.existsSync(twinTo)) { fail(409, to + ' already has a watermarked twin'); return; }
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    const trashKey = WM_R2_TRASH + '/' + day + '/' + from;
+    const trashLocal = path.join(WM_TRASH_DIR, day, from.replace(/\//g, path.sep));
+    const warnings = [];
+    let r2 = 'absent';
+
+    const finishLocal = () => {
+      try {
+        if (op === 'rename') {
+          fs.mkdirSync(path.dirname(twinTo), { recursive: true });
+          fs.renameSync(twinFrom, twinTo);
+        } else {
+          fs.mkdirSync(path.dirname(trashLocal), { recursive: true });
+          fs.renameSync(twinFrom, trashLocal);
+        }
+      } catch (e) {
+        // R2 has already changed, so this is NOT a clean failure: say what did happen.
+        plog('[wm sync] ' + op + ' ' + from + ': R2 done (' + r2 + ') but local move failed: ' + e.message);
+        sendJson(res, 500, { ok: false, partial: true, r2,
+          error: 'R2 updated (' + r2 + ') but the twin could not be moved: ' + e.message }, origin);
+        return;
+      }
+      try {
+        const man = wmManifestLoad();
+        const k = Object.keys(man).find(x => x.toLowerCase() === from.toLowerCase());
+        if (k) {
+          // A renamed file keeps the stamp it was published with; it is the same bytes.
+          if (op === 'rename') man[to] = Object.assign({}, man[k], { seen: Date.now(), gone: undefined });
+          delete man[k];
+          wmManifestSave(man);
+        }
+      } catch (e) { warnings.push('manifest not updated: ' + e.message); }
+      plog('[wm sync] ' + op + ' ' + from + (op === 'rename' ? ' → ' + to : '') + ' · R2 ' + r2
+           + (warnings.length ? ' · ' + warnings.join(' · ') : ''));
+      sendJson(res, 200, { ok: true, op, from, to, r2, warnings,
+        url: op === 'rename' ? CARD_URL_BASE + '/' + to.split('/').map(encodeURIComponent).join('/') : '' }, origin);
+    };
+
+    // Old object → _deleted/. For a rename this runs after the new copy exists,
+    // so a failure here only leaves the old URL alive — a warning, not a stop.
+    const retireR2 = (had, fatal, next) => {
+      if (!had) { next(); return; }
+      wmR2Exec(base => ['moveto', base + '/' + from, base + '/' + trashKey, '--s3-no-check-bucket'], 180000, err => {
+        if (err && fatal) { fail(502, 'R2 move to ' + trashKey + ' failed (nothing changed): ' + err.message); return; }
+        if (err) warnings.push('old R2 object still live — move to ' + trashKey + ' failed: ' + err.message);
+        next();
+      });
+    };
+
+    wmR2Has(from, (err, had) => {
+      if (err) { fail(502, 'could not check R2 (nothing changed): ' + err.message); return; }
+      if (op === 'retire') {
+        r2 = had ? 'moved' : 'absent';
+        retireR2(had, true, finishLocal);
+        return;
+      }
+      // rename: the new object first, so there is never a moment with neither.
+      const src = had ? (base => ['copyto', base + '/' + from, base + '/' + to, '--s3-no-check-bucket'])
+                      : (base => ['copyto', twinFrom, base + '/' + to, '--s3-no-check-bucket']);
+      wmR2Exec(src, 300000, err2 => {
+        if (err2) { fail(502, 'R2 ' + (had ? 'copy' : 'upload') + ' to ' + to + ' failed (nothing changed): ' + err2.message); return; }
+        r2 = had ? 'copied' : 'uploaded';
+        retireR2(had, false, finishLocal);
+      });
+    });
+  }).catch(e => sendJson(res, 400, { ok: false, error: e.message }, origin));
 }
 
 // (dev0851) ── Flash-card images → M:\wm\flashimages\ + R2 ─────────────────
@@ -3920,6 +4254,19 @@ function cardRclone() {
   return _cardRclone;
 }
 
+// rclone's remote `r2` defined entirely in env vars, so no rclone.conf ever
+// holds the secret. Shared by the flash-card upload and Sync R2 (dev1006).
+function r2RcloneEnv(cfg) {
+  return Object.assign({}, process.env, {
+    RCLONE_CONFIG_R2_TYPE:              's3',
+    RCLONE_CONFIG_R2_PROVIDER:          'Cloudflare',
+    RCLONE_CONFIG_R2_ACCESS_KEY_ID:     cfg.id,
+    RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: cfg.key,
+    RCLONE_CONFIG_R2_ENDPOINT:          'https://' + cfg.acct + '.r2.cloudflarestorage.com',
+    RCLONE_CONFIG_R2_REGION:            'auto'
+  });
+}
+
 // One object, one upload. `copyto` (not `copy`) so the destination is the exact
 // key rather than a folder — the public URL has to be predictable, because that
 // is the string that ends up in ml.json.
@@ -3931,14 +4278,7 @@ function cardUploadToR2(localPath, key, cb) {
     cb(new Error('R2 credentials not found (env, or "set" lines in ' + CARD_CRED_BAT + ')'));
     return;
   }
-  const env = Object.assign({}, process.env, {
-    RCLONE_CONFIG_R2_TYPE:              's3',
-    RCLONE_CONFIG_R2_PROVIDER:          'Cloudflare',
-    RCLONE_CONFIG_R2_ACCESS_KEY_ID:     cfg.id,
-    RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: cfg.key,
-    RCLONE_CONFIG_R2_ENDPOINT:          'https://' + cfg.acct + '.r2.cloudflarestorage.com',
-    RCLONE_CONFIG_R2_REGION:            'auto'
-  });
+  const env = r2RcloneEnv(cfg);
   const dest = cfg.path.replace(/\/+$/, '') + '/' + CARD_PREFIX + '/' + key;
   execFile(rc, ['copyto', localPath, dest, '--s3-no-check-bucket'],
     { env, timeout: 180000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
@@ -8126,7 +8466,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock', 'textclockfrac',
-      'vptrack', 'vppad', 'qfindroot', 'igclasslabel'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify', 'igfiledates']) }));
+      'vptrack', 'vppad', 'qfindroot', 'igclasslabel'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'wmsync','llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify', 'igfiledates']) }));
     return;
   }
 
@@ -8404,9 +8744,16 @@ http.createServer((req, res) => {
       wmRun(res, origin);
       return;
     }
+    // (dev1006) Sync R2 with originals — sync-op changes the bucket, so POST.
+    if (action === 'sync-op') {
+      if (req.method !== 'POST') { send(res, 405, 'wm: POST required for sync-op', corsForExec(origin)); return; }
+      wmSyncOp(req, res, origin);
+      return;
+    }
     if (req.method !== 'GET') { send(res, 405, 'wm: GET required', corsForExec(origin)); return; }
     if (action === 'list')  { wmList(res, origin); return; }
     if (action === 'probe') { wmProbe(res, origin, u.searchParams.get('key') || ''); return; }
+    if (action === 'sync-plan') { wmSyncPlan(res, origin); return; }
     sendJson(res, 404, { ok: false, error: 'unknown wm action: ' + action }, origin);
     return;
   }
@@ -9017,6 +9364,9 @@ http.createServer((req, res) => {
   plog(`START build=${PROXY_BUILD} node=${process.version} heapCap=${heapCap} cwd=${__dirname} · ${memLine()}`);
   console.log(`  black box:       ${LOG_FILE} (dev0683 — start/requests/60s heartbeat/exit)`);
   logCommitHeadroom();
+  // (dev1006) Fingerprint the published originals now, so a rename made before
+  // T next polls /wm/list is still recognised as one by Sync R2.
+  try { wmManifestRefresh(); } catch (e) { plog('[wm] manifest refresh failed: ' + e.message); }
   setInterval(logCommitHeadroom, 15 * 60000).unref();   // (dev0697) headroom trend across a night
   setInterval(() => {
     plog(`heartbeat uptime=${Math.round(process.uptime())}s reqs+${LOG_REQS} · ${memLine()}`);

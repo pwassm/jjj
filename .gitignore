@@ -341,3 +341,5 @@ igclass.labels.json
 igclass_frames/
 igclass_emb/
 __pycache__/
+OctopusVideos/
+mears/
