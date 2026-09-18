@@ -58,7 +58,7 @@ const LEX = {
 // Words that are as often an idiom, a verb or poetry as an organism ("seal the deal", "sun
 // rays", "rocking-with-wind trees"). They count only when nothing specific was found, or
 // when their own group already has a specific hit.
-const WEAK_SUBJ = new Set(`seal,snail,jelly,jellies,sponge,tree,leaf,leaves,flower,plant,ray,skate,bass,cod,mola,cat,snake,slug,moss,fern,worm,larva,larvae,coral,algae,alga,planta,pez,raya,seta,nudi,glaucus,elysia`.split(','));
+const WEAK_SUBJ = new Set(`spanish dancer,seal,snail,jelly,jellies,sponge,tree,leaf,leaves,flower,plant,ray,skate,bass,cod,mola,cat,snake,slug,moss,fern,worm,larva,larvae,coral,algae,alga,planta,pez,raya,seta,nudi,glaucus,elysia`.split(','));
 // Generic "an animal is here" (weight 1) — keeps a row out of drop, can't say which.
 const ANIMAL_GENERIC = `animal,creature,critter,organism,wildlife,marine life,sea life,sealife,new species,species,fauna,especie,especies`;
 
