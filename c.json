@@ -184,6 +184,20 @@
     "Lock": ""
   },
   {
+    "Kind": "prose",
+    "gname": "Apology_d",
+    "ctxt": "<p>This space is intended for my most recent images and videos.</p><div style=\"text-align: center; margin: 12px 0px;\"><p><img src=\"https://media.sealifeandmore.com/Hummingbird/Hummingbird211_00002-00.02.06.969.jpg\" alt=\"\" style=\"max-width: 100%; width: 700px; display: inline-block; border-radius: 4px;\"></p></div><p></p><p></p>",
+    "cells": 0,
+    "ss": "",
+    "Zoom": "",
+    "DateAdded": "2026-09-18 16:34:20",
+    "DateModified": "2026-09-18 16:36:50",
+    "ctype": "t",
+    "active": "2",
+    "Label": "\"Blog\"",
+    "Lock": ""
+  },
+  {
     "Kind": "grids",
     "gname": "Grids",
     "ctxt": "",
