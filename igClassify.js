@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// igClassify.js — first-pass subject classifier for ig.json rows (CAPTION ONLY).
+// igClassify.js — subject classifier for ig.json rows: caption rules, fused with the
+// frame scores igclip.py leaves in igclass.clip.json (when present) and overridden by
+// the user's corrections in igclass.labels.json (igclass.html ✗ → proxy /ig/class-label).
 //
 //   node igClassify.js --author schmidtocean          (one or more, comma-separated)
 //   node igClassify.js --all                          (every row)
@@ -13,9 +15,10 @@
 // WoRMS FIRST, GBIF only for names WoRMS misses; both cached in igclass.taxa.json.
 //
 // Tags:   media   photo · video · carousel
-//         subject fish · marine-not-fish · bird · other-animal · plant · mushroom · animal (unspecified)
+//         subject fish · seaslug · marine-not-fish · bird · other-animal · plant · algae (not
+//                 a plant) · mushroom · animal (unspecified)
 //         scale   micro (under a microscope) · macromicro (close-up of a small creature)
-//         other   people · lecture · landscape · gear · cartoon
+//         other   people · lecture · landscape · gear · cartoon · text · seafloor (from frames)
 // verdict keep (a subject, nothing strongly against) · mixed (a subject AND a strong
 //         about-a-person/event/art/scene cue) · drop (no subject, unwanted cues) · unknown
 // A diver WITH an animal is the animal; divers alone are people.
