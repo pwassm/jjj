@@ -1943,12 +1943,14 @@ async function _showShareableMenu() {
     _smAltSync();
   };
   // (dev1009) ALTERNATIVE LOOK, after lindaiphotography.com: a script
-  // "Sea / Life / and More" title and a vertical uppercase tab list down the
+  // "Sea Life / and More" title and a vertical uppercase tab list down the
   // left, black body, and on Welcome the UOD rows crossfading full-bleed behind
   // it in place of the page content. Contact sits apart at the list foot (her
-  // "Prints for sale" slot). Not persisted, so every load opens on the original
-  // look. It is a class on the overlay plus one background layer — the tabs,
-  // pages and handlers underneath are the same ones.
+  // "Prints for sale" slot). It is a class on the overlay plus one background
+  // layer — the tabs, pages and handlers underneath are the same ones.
+  // (dev1013) The DEFAULT now: window._smAltOn is on unless it is explicitly
+  // false. Still not persisted, so every load opens on this look and the
+  // switch back to the original lasts until the next reload.
   // (dev1011) Phones too: no title (no room), and the tab list runs down the
   // RIGHT edge instead. Switched by clicking the Welcome build stamp (the
   // "devNNNN" in its top-left corner), by `9` on Welcome, or on a phone by
@@ -1992,7 +1994,7 @@ async function _showShareableMenu() {
     return link;
   };
   function _smAltSync() {
-    const on = !!window._smAltOn;
+    const on = window._smAltOn !== false;
     ov.classList.toggle('sm-alt', on);
     let bg = ov.querySelector('.sm-alt-bg');
     const home = on && window._smCurPage === _pgOf('intro');
@@ -2065,7 +2067,7 @@ async function _showShareableMenu() {
     show();
   }
   window._smAltToggle = () => {
-    window._smAltOn = !window._smAltOn;
+    window._smAltOn = window._smAltOn === false;
     _smAltSync();
     return true;
   };
@@ -2115,7 +2117,7 @@ async function _showShareableMenu() {
     _smHeld = true;
     const box = document.createElement('div');
     box.className = 'sm-alt-opt';
-    box.innerHTML = '<button type="button" data-act="alt">' + (window._smAltOn ? 'OldDesign' : 'NewDesign') + '</button>'
+    box.innerHTML = '<button type="button" data-act="alt">' + (window._smAltOn !== false ? 'OldDesign' : 'NewDesign') + '</button>'
                   + '<button type="button" data-act="x">Cancel</button>';
     box.addEventListener('click', e => {
       const b = e.target.closest('button');
@@ -2156,7 +2158,7 @@ async function _showShareableMenu() {
     e.preventDefault(); e.stopPropagation();
   }, true);
   ov.insertAdjacentHTML('afterbegin',
-    '<div class="sm-alt-brand">Sea<br>Life<br>and More</div>'
+    '<div class="sm-alt-brand">Sea Life<br>and More</div>'
     + '<style>'
     + '.sm-alt-brand,.sm-alt-bg{display:none;}'
     + '#shareableMenu.sm-alt{background:#000 !important;padding-left:240px;}'
@@ -2166,7 +2168,7 @@ async function _showShareableMenu() {
     + '.sm-alt-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:center/cover no-repeat;opacity:0;transition:opacity 1.5s ease;}'
     + '.sm-alt-slide.on{opacity:1;}'
     + '#shareableMenu.sm-alt .sm-tabs-bottom{display:none !important;}'
-    + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:0;top:170px;bottom:24px;width:240px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-left:28px;}'
+    + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:0;top:131px;bottom:24px;width:240px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-left:28px;}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab{flex:none;background:none;border:none;padding:3px 0;text-align:left;text-transform:uppercase;letter-spacing:0.04em;font-size:15px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab.on{color:#f0c419;}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab:hover{color:#f0c419;}'
