@@ -345,6 +345,65 @@
     igToast(`⏭ @${a}: ${DOWNLOAD_WALL_CAP} posts in a row failed — moving its ${left} to the END of the queue and carrying on.\n${note.err}`, 5200);
   }
 
+  // (dev1004) AUTHOR BANS — the store behind "🤖 AI delete". Some accounts post
+  // nothing but AI-generated fakes: the checked post is deleted AND the account is
+  // banned, so it can never be added back by hand. A ban does three things and no
+  // more — the author is listed under "Banned (AI)" in the author dropdown (and held
+  // out of the Harvested/Unharvested groups, so it can't quietly pollute a class
+  // view), any rows of theirs that were NOT deleted stay reachable through that
+  // group, and 'w' / ➕ Add single refuse every post of theirs. Nothing on disk is
+  // touched and a running harvest is not changed.
+  //   localStorage is the live store — instant, always writable, the same place the
+  // deferred-author notes live. ig.bans.json beside ig.json is a MIRROR, written
+  // through the app's file handle, so the list survives a cleared browser profile and
+  // other tools can read it later. localStorage wins whenever the key exists at all;
+  // the mirror only seeds a profile that has never banned anything (the rule c.json
+  // already lives by).
+  const BANNED_AUTHORS_KEY = 'slam-ig-banned-authors';
+  const BANNED_AUTHORS_FILE = 'ig.bans.json';
+  let bannedAuthors = {};              // lowercased handle → { name, at, deleted, why }
+  let bannedN = 0;                     // …its size, so the usual "nobody is banned" is free
+  const banKey = a => String(a == null ? '' : a).trim().replace(/^@+/, '').toLowerCase();
+  // Asked once per ROW by the class filters, so the empty case answers before it
+  // builds a key at all — with no bans this costs one integer test per row.
+  const isBannedAuthor = a => { if (!bannedN) return false; const k = banKey(a); return !!(k && bannedAuthors[k]); };
+  const bannedCount = () => bannedN;
+  function setBans(o) {
+    bannedAuthors = (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+    bannedN = Object.keys(bannedAuthors).length;
+  }
+  function loadBans() {
+    let raw = null;
+    try { raw = localStorage.getItem(BANNED_AUTHORS_KEY); } catch (e) {}
+    if (raw != null) {
+      try { setBans(JSON.parse(raw)); } catch (e) { setBans({}); }
+      return;
+    }
+    setBans({});
+    // Nothing ever banned in this profile → take what the on-disk mirror knows.
+    fetch(BANNED_AUTHORS_FILE + '?t=' + Date.now())
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (!j || typeof j !== 'object' || Array.isArray(j) || !Object.keys(j).length) return;
+        setBans(j);
+        try { localStorage.setItem(BANNED_AUTHORS_KEY, JSON.stringify(j)); } catch (e) {}
+        refreshAuthorOptions(); applyAndRender();
+        igToast('🚫 restored ' + Object.keys(j).length + ' banned author(s) from ' + BANNED_AUTHORS_FILE, 3200);
+      })
+      .catch(() => {});
+  }
+  function saveBans() {
+    setBans(bannedAuthors);            // every ban/unban lands here — re-count from the truth
+    try { localStorage.setItem(BANNED_AUTHORS_KEY, JSON.stringify(bannedAuthors)); } catch (e) {}
+    // Best-effort mirror: no file handle (project folder not picked this session)
+    // costs the backup copy only, never the ban itself — that is already saved above.
+    try {
+      if (typeof writeFileToDisk === 'function') {
+        Promise.resolve(writeFileToDisk(BANNED_AUTHORS_FILE, bannedAuthors)).catch(() => {});
+      }
+    } catch (e) {}
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
   const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g,
     c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -1379,6 +1438,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         <button id="igPromoteSel">➕ Promote sel</button>
         <button id="igCreateGrid" title="Build one 12-cell portrait grid (P12) in c.json from the 12 rows starting at the focused row — or from the top of the list if nothing is focused. The cells hold the IG links themselves, so the rows do NOT need promoting to ml.json first.">🔲 Create 12P grid</button>
         <button id="igDeleteSel" title="Permanently remove the selected rows from ig.json (after confirm)">🗑 Delete sel</button>
+        <button id="igAiDelete" title="(dev1004) For accounts that post AI-generated fakes. Deletes the CHECKED rows from ig.json — exactly like 🗑 Delete sel: permanent, no archive, files already in ig_media/ left on disk — and BANS their author: it moves to the 'Banned (AI)' group in the author dropdown, and w / ➕ Add single refuse every post of theirs from then on. Rows of that author you did NOT check are left alone; the confirm says how many there are. Alt-click = lift a ban.">🤖 AI delete</button>
         <button id="igCutAfter" title="(dev1000) Harvested too far back? Paste the URL of the OLDEST post you want to keep: every row of that author older than it is removed, and the author shows as name* (cut short on purpose). A full backup (ig.json.bak-cut-…) and the removed rows (ig.json.removed-…json) are written first. Shows the counts and asks before changing anything. Files in ig_media/ are left alone.">✂ Cut after…</button>
         <button id="igClearSel" title="Unselect everything, including rows hidden by the current filter (hotkey C)">✕ Clear sel</button>
         <button id="igResetSel" title="Reset selected rows to 'new' (hotkey R) so a fresh Enrich + Download rebuilds them — clears the derived title, W×H, duration, cover and downloaded-file record (caption ftext/ttxt is kept). Use this to re-try after a fix.">↺ Reset sel</button>
@@ -1436,6 +1496,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     $('igPromoteSel').addEventListener('click', () => batchPromote());
     $('igCreateGrid').addEventListener('click', () => createGridFromView());
     $('igDeleteSel').addEventListener('click', () => deleteSelected());
+    $('igAiDelete').addEventListener('click', e => aiDeleteSelected(!!e.altKey));
     $('igCutAfter').addEventListener('click', () => cutAfter());
     $('igClearSel').addEventListener('click', () => { sel.clear(); lastCheckedId = null; applyAndRender(); igToast('Selection cleared (all rows, incl. any hidden by the filter)', 1600); });
     $('igResetSel').addEventListener('click', () => resetSelected());
@@ -1567,8 +1628,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const unharvestedAuthors = (authorFilter === '__unharvested__' || authorFilter === '__harvested__')
       ? unharvestedAuthorSet() : null;
     view = rows.filter(r => {
-      if (authorFilter === '__unharvested__') { if (!unharvestedAuthors.has(r.author || '')) return false; }
-      else if (authorFilter === '__harvested__') { if (unharvestedAuthors.has(r.author || '')) return false; }
+      // (dev1004) …and neither class holds a banned author: their option sits in the
+      // Banned (AI) group, and whatever rows of theirs survived come only from there.
+      if (authorFilter === '__unharvested__') { if (!unharvestedAuthors.has(r.author || '') || isBannedAuthor(r.author)) return false; }
+      else if (authorFilter === '__harvested__') { if (unharvestedAuthors.has(r.author || '') || isBannedAuthor(r.author)) return false; }
       // (dev0999) a collab post also counts for every co-author that harvested it
       else if (authorFilter !== 'all' && r.author !== authorFilter
         && !(r.alsoAuthors && r.alsoAuthors.includes(authorFilter))) return false;
@@ -2154,6 +2217,19 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         + '\n(want a .../p/<id>/ or .../reel/<id>/ link)', 4800);
       return;
     }
+    // (dev1004) A banned author (🤖 AI delete) is refused here — before anything is
+    // added, before any filter moves and before a byte is fetched. Two ways to know
+    // one: the handle is in the URL (the .../<author>/reel/<id>/ form), or the post is
+    // already a row filed under a banned author. A bare /p/<id>/ link names nobody,
+    // and is caught after enrich, below.
+    const dup = rows.find(r => r.id === id);
+    const bannedHit = isBannedAuthor(_igAuthorFromUrl(url)) ? _igAuthorFromUrl(url)
+                    : (dup && isBannedAuthor(dup.author)) ? dup.author : '';
+    if (bannedHit) {
+      igToast('🚫 @' + String(bannedHit).replace(/^@+/, '') + ' is banned (AI) — nothing added.\n'
+        + 'Alt-click 🤖 AI delete to lift the ban.', 4600);
+      return;
+    }
     // Clear the filters that would hide a brand-new staged:false 'new' row, so it's
     // always visible after adding (whether it's new or an already-tracked dup).
     // (dev1002) …but never while a batch runs: a grind re-reads `view` every round, so
@@ -2166,7 +2242,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       const sBox = document.getElementById('igSearch'); if (sBox) sBox.value = '';
     }
 
-    const existing = rows.find(r => r.id === id);
+    const existing = dup;                             // (dev1004) looked up for the ban check above
     if (existing) {
       // (dev1002) Pasting a post you already have means you like it → tick L.
       const likedNow = !existing.liked;
@@ -2201,6 +2277,22 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     sel.clear(); sel.add(id);
     revealRow(id, !grinding);   // (dev1002)
     await persist(false);
+    // (dev1004) A bare /p/<id>/ link carries no handle, so a banned author can only be
+    // recognised once yt-dlp has named one. With any ban in force, enrich FIRST and
+    // drop the row again rather than download the very post the ban exists to keep out.
+    if (!author && bannedCount()) {
+      await enrichRow(r, false);
+      if (isBannedAuthor(r.author || r.VidAuthor)) {
+        const who = String(r.author || r.VidAuthor).replace(/^@+/, '');
+        rows = rows.filter(x => x.id !== id);   // knownIds keeps the id: deliberate, not lost
+        sel.delete(id); if (focusId === id) focusId = null;
+        markDirty();
+        refreshAuthorOptions(); applyAndRender();
+        await persist(false);
+        igToast('🚫 @' + who + ' is banned (AI) — ' + id + ' was removed again, not downloaded.', 4800);
+        return;
+      }
+    }
     await wAutoDownload(r);
   }
   // (dev1002) Bring one row on screen, CENTRED, for the 'w' add path. Two ways the old
@@ -4478,6 +4570,85 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igToast(`🗑 deleted ${ids.length} row(s) from ig.json`, 2600);
   }
 
+  // (dev1004) 🤖 AI delete — delete the checked rows AND ban their author(s). The
+  // deletion is exactly 🗑 Delete sel's (permanent, no archive, ig_media/ untouched);
+  // the ban is the extra, and it is what stops the account coming back in through w.
+  // Rows of a banned author that were NOT checked are left alone — the confirm names
+  // how many, so leaving them is a decision rather than a surprise, and the
+  // Banned (AI) group is where you go back for them.
+  function aiDeleteSelected(unban) {
+    if (unban) { unbanAuthorPrompt(); return; }
+    if (busy) return;
+    const ids = selectedInView();
+    if (!ids.length) { igToast('Nothing checked in this view.\nCheck the AI post(s) first, then 🤖 AI delete.', 3200); return; }
+    const idset = new Set(ids);
+    // The account to ban is the row's own `author` (the page the post is filed under).
+    // VidAuthor is the fallback for a 'w'-added single that never got one.
+    const authors = new Map();          // key → { name, checked, left }
+    ids.forEach(id => {
+      const r = rowById(id); if (!r) return;
+      const name = String(r.author || r.VidAuthor || '').trim().replace(/^@+/, '');
+      const k = banKey(name); if (!k) return;
+      const e = authors.get(k) || { name, checked: 0, left: 0 };
+      e.checked++; authors.set(k, e);
+    });
+    if (!authors.size) { igToast('The checked row(s) name no author, so there is nobody to ban.\nUse 🗑 Delete sel for those.', 4000); return; }
+    rows.forEach(r => {
+      if (idset.has(r.id)) return;
+      const e = authors.get(banKey(r.author));
+      if (e) e.left++;
+    });
+    const list = [...authors.values()].sort((a, b) => b.checked - a.checked);
+    const lines = list.map(a => '  @' + a.name + ' — ' + a.checked + ' checked'
+      + (a.left ? ', ' + a.left + ' OTHER row(s) of theirs stay in ig.json' : '')
+      + (isBannedAuthor(a.name) ? ' (already banned)' : ''));
+    if (!confirm('🤖 AI delete ' + ids.length + ' row(s) and ban ' + list.length + ' author(s)?\n\n'
+      + lines.join('\n') + '\n\n'
+      + 'The rows go from ig.json permanently (no archive). Each author is banned: it moves to '
+      + '"Banned (AI)" in the author dropdown and w refuses to add its posts.\n'
+      + 'Already-downloaded files in ig_media/ are left on disk.')) return;
+    const now = (typeof isoNow === 'function') ? isoNow()
+              : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    list.forEach(a => {
+      const k = banKey(a.name), prev = bannedAuthors[k];
+      bannedAuthors[k] = { name: a.name, why: 'AI', at: (prev && prev.at) || now,
+        deleted: ((prev && prev.deleted) || 0) + a.checked };
+    });
+    saveBans();
+    rows = rows.filter(r => !idset.has(r.id));
+    ids.forEach(id => { sel.delete(id); if (focusId === id) focusId = null; });
+    if (focusId == null && drawerOpen()) closeDrawer();
+    lastCheckedId = null;
+    markDirty();          // rows were REMOVED — only a whole-store save says that
+    persist(false);
+    refreshAuthorOptions();
+    applyAndRender();
+    const left = list.reduce((n, a) => n + a.left, 0);
+    igToast('🤖 deleted ' + ids.length + ' row(s) and banned ' + list.map(a => '@' + a.name).join(', ')
+      + (left ? '\n' + left + ' other row(s) of theirs are still here — author ▸ Banned (AI) lists them' : ''), 5200);
+  }
+
+  // (dev1004) Alt-click 🤖 AI delete — lift a ban. Nothing is un-deleted (those rows
+  // are gone for good); the author simply stops being refused by w and goes back to
+  // its normal group in the dropdown.
+  function unbanAuthorPrompt() {
+    const keys = Object.keys(bannedAuthors).sort();
+    if (!keys.length) { igToast('No authors are banned.\n🤖 AI delete bans the author of the rows it deletes.', 3400); return; }
+    const name = prompt('Banned (AI) — ' + keys.length + ' author(s):\n\n'
+      + keys.map(k => '  @' + (bannedAuthors[k].name || k)).join('\n')
+      + '\n\nType one to LIFT its ban (the deleted rows do not come back):', '');
+    if (name == null) return;
+    const k = banKey(name);
+    if (!k) return;
+    if (!bannedAuthors[k]) { igToast('@' + k + ' is not in the banned list.', 3200); return; }
+    delete bannedAuthors[k];
+    saveBans();
+    if (banKey(authorFilter) === k) authorFilter = 'all';
+    refreshAuthorOptions();
+    applyAndRender();
+    igToast('✓ ban lifted — @' + k + ' can be added with w again', 3400);
+  }
+
   // (dev1000) ✂ Cut after… — drop everything of an author older than one post. The
   // proxy does the work on the store ON DISK (/ig/cut-after: backup, removed-rows file,
   // harvestCut mark), so a harvest that landed after this screen loaded is cut too.
@@ -4769,15 +4940,20 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     const alsoCounts = {};
     rows.forEach(r => (r.alsoAuthors || []).forEach(a => { alsoCounts[a] = (alsoCounts[a] || 0) + 1; }));
     // Keep a valid selection: 'all' / the two class sentinels / a still-present author.
+    // (dev1004) …or a banned author, whose option lives in the Banned (AI) group and
+    // has to stay selectable once 🤖 AI delete has taken the last of their rows away.
     if (authorFilter !== 'all' && authorFilter !== '__harvested__'
-        && authorFilter !== '__unharvested__' && !counts[authorFilter]) authorFilter = 'all';
+        && authorFilter !== '__unharvested__' && !counts[authorFilter]
+        && !isBannedAuthor(authorFilter)) authorFilter = 'all';
     const unh = unharvestedAuthorSet();
     // (dev0655) Alphabetical (case-insensitive) — was count-descending. Both the
     // Harvested and Unharvested groups derive from this list, so both end up A→Z.
     const all = Object.keys(counts).sort((a, b) =>
       (a || '').toLowerCase().localeCompare((b || '').toLowerCase()));
-    const harvested = all.filter(a => !unh.has(a));
-    const unharvested = all.filter(a => unh.has(a));
+    // (dev1004) A banned author is listed ONLY under Banned (AI) — held out of both
+    // class groups and their totals, so a ban can't quietly pollute "Harvested — all".
+    const harvested = all.filter(a => !unh.has(a) && !isBannedAuthor(a));
+    const unharvested = all.filter(a => unh.has(a) && !isBannedAuthor(a));
     const nH = harvested.reduce((n, a) => n + counts[a], 0);
     const nU = unharvested.reduce((n, a) => n + counts[a], 0);
     const opt = a => `<option value="${esc(a)}">${esc(a || '(none)')}${cut.has(a) ? '*' : ''} (${counts[a]}${alsoCounts[a] ? '+' + alsoCounts[a] : ''})</option>`;
@@ -4788,6 +4964,15 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     if (nU) html += `<option value="__unharvested__">▸ Unharvested authors — all (${nU})</option>`;
     if (harvested.length) html += '<optgroup label="Harvested authors (full reels)">' + harvested.map(opt).join('') + '</optgroup>';
     if (unharvested.length) html += '<optgroup label="Unharvested authors (singles)">' + unharvested.map(opt).join('') + '</optgroup>';
+    // (dev1004) 🤖 AI delete's bans. Usually every count here is 0 — which is exactly
+    // why the group exists: a ban has to stay visible after its rows are gone. A
+    // non-zero count is a row of that author you did not check, reachable only here.
+    const bannedNames = Object.keys(bannedAuthors).sort().map(k => {
+      const live = all.find(a => banKey(a) === k);
+      return live != null ? live : (bannedAuthors[k].name || k);
+    });
+    if (bannedNames.length) html += '<optgroup label="Banned (AI)">' + bannedNames.map(a =>
+      '<option value="' + esc(a) + '">🚫 ' + esc(a || '(none)') + ' (' + (counts[a] || 0) + ')</option>').join('') + '</optgroup>';
     sel2.innerHTML = html;
     sel2.value = authorFilter;
   }
@@ -4807,6 +4992,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
     igPreviewClose();   // (dev0500) old previewed row is gone after a reload
     sel.clear(); dirty = false; lastCheckedId = null; focusId = null; enrichFailed.clear();   // (dev0441) fresh retry after reload; (dev0474) clear row focus
     dirtyIds.clear(); dirtyAll = false;  // (dev0697) rows[] is fresh from disk — no marks can be owed
+    loadBans();                          // (dev1004) 🤖 AI delete's banned-author list
     refreshAuthorOptions();
     applyAndRender();
     backfillDownloadDates();             // (dev0991) not awaited — the table is usable meanwhile

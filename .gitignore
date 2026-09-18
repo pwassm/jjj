@@ -64,6 +64,10 @@ ig.json.resaudit-*
 # (dev1000) ✂ Cut after (/ig/cut-after) — the removed rows of each cut, its undo file.
 # (The 2026-09-07 stephanlegallais one predates this rule and stays tracked.)
 ig.json.removed-*
+# (dev1004) 🤖 AI delete's banned-author list — the on-disk mirror of the I screen's
+# localStorage ban store. Local curation beside ig.json, and the repo root is what
+# GitHub Pages serves, so it is never committed.
+ig.bans.json
 ig_media/
 
 # (dev0785) T-screen row downloads (right-click a row → "⬇ Download → …"), written by

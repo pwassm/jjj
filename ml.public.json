@@ -1,7 +1,7 @@
 [
   {
     "_salMeta": true,
-    "_salPushTime": 1789534772655,
+    "_salPushTime": 1789686557131,
     "_salColWidths": {
       "VidRange": 123,
       "linkpage": 62,
@@ -517,7 +517,7 @@
       }
     },
     "_salActiveView": "basic1",
-    "_salSavedAt": 1789534772655
+    "_salSavedAt": 1789686557131
   },
   {
     "UID": "1",
@@ -51253,5 +51253,23 @@
     "Mode": "L",
     "ftext": "",
     "vidLength": "1:01"
+  },
+  {
+    "UID": "2323",
+    "link": "https://youtu.be/ujPW6cjrq1Y",
+    "show": "1",
+    "DateAdded": "2026-09-17 23:08:53",
+    "DateModified": "2026-09-17 23:09:17",
+    "tags": [
+      "2id-skeleton-shrimp"
+    ],
+    "Mute": "0",
+    "ftextSize": "1623",
+    "FtextJunk": "5",
+    "DictSize": "365",
+    "VidTitle": "Skeleton Shrimp With Babies | Anilao | Philippines | Sony FX3 | HLG3 | 4K HDR | 2025",
+    "VidAuthor": "@DiversLens",
+    "Mode": "L",
+    "ftext": ""
   }
 ]
