@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IG Class Review</title>
+<!-- (dev1005) Review page for igClassify.js + igclip.py. Reads igclass.review.json (the last
+     run's rows: verdict, tags, why, timeline frames) and igclass.labels.json (your
+     corrections). Cards show still frames only — hover scrubs the timeline, click opens ONE
+     shared player at that moment (live <video> tiles stalled after ~10: the browser's
+     per-host connection limit). ✗ opens the correction editor; Save posts to the proxy
+     (/ig/class-label → igclass.labels.json), which igClassify.js applies on its next run.
+     Open via http://localhost:8080/igclass.html so the ig_media/ + frame paths resolve. -->
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1c2230;--dim:#667085;--line:#dde1e8;--chip:#eef1f5;--on:#1f6feb;--onInk:#fff;
+  --keep:#1a7f37;--mixed:#b7791f;--drop:#c2410c;--unknown:#6b7280;--human:#7c3aed;--seg:#c9d1dc;--segOn:#1f6feb;--shade:rgba(10,14,20,.72)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151b;--card:#1b2029;--ink:#e6e9ef;--dim:#98a2b3;--line:#2b3240;--chip:#252c38;--on:#4c8dff;--onInk:#fff;
+  --keep:#3fb950;--mixed:#d29922;--drop:#f0883e;--unknown:#8b949e;--human:#a78bfa;--seg:#394253;--segOn:#4c8dff;--shade:rgba(0,0,0,.8)}}
+:root[data-theme="dark"]{--bg:#12151b;--card:#1b2029;--ink:#e6e9ef;--dim:#98a2b3;--line:#2b3240;--chip:#252c38;--on:#4c8dff;--onInk:#fff;
+  --keep:#3fb950;--mixed:#d29922;--drop:#f0883e;--unknown:#8b949e;--human:#a78bfa;--seg:#394253;--segOn:#4c8dff;--shade:rgba(0,0,0,.8)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px}
+h1{font-size:17px;margin:0 8px 0 0;display:inline}
+.meta{color:var(--dim);font-size:12px}
+.row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.chip{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;user-select:none}
+.chip b{font-weight:600;margin-left:4px;color:var(--dim)}
+.chip.on{background:var(--on);border-color:var(--on);color:var(--onInk)} .chip.on b{color:var(--onInk)}
+input[type=search],textarea{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:4px 8px;font:inherit}
+input[type=search]{min-width:180px}
+button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px}
+button.primary{background:var(--on);border-color:var(--on);color:var(--onInk)}
+main{padding:14px 16px 60px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.card.human{outline:2px solid var(--human)}
+.media{position:relative;aspect-ratio:1/1;background:#000;overflow:hidden;cursor:pointer}
+.media img{width:100%;height:100%;object-fit:cover;display:block}
+.media .none{color:#aaa;font-size:12px;display:flex;align-items:center;justify-content:center;height:100%;text-align:center;padding:10px}
+.pill{position:absolute;top:6px;left:6px;color:#fff;font-size:11px;font-weight:600;border-radius:4px;padding:1px 6px}
+.v-keep{background:var(--keep)}.v-mixed{background:var(--mixed)}.v-drop{background:var(--drop)}.v-unknown{background:var(--unknown)}
+.you{position:absolute;top:6px;left:62px;background:var(--human);color:#fff;font-size:11px;font-weight:600;border-radius:4px;padding:1px 6px}
+.x{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:4px;padding:1px 7px;font-size:13px}
+.dur{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;border-radius:4px;padding:0 5px}
+.flab{position:absolute;left:6px;bottom:6px;right:52px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;border-radius:4px;padding:1px 5px;display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.media:hover .flab{display:block}
+.tl{display:flex;gap:1px;height:6px;background:var(--card)}
+.tl i{flex:1;background:var(--seg)} .tl i.on{background:var(--segOn)}
+.tl i.a{box-shadow:inset 0 -2px 0 var(--keep)} .tl i.p{box-shadow:inset 0 -2px 0 var(--drop)}
+.body{padding:8px 10px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.tag{font-size:11px;background:var(--chip);border-radius:4px;padding:0 5px}
+.cap{font-size:12px;color:var(--dim);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.note{font-size:12px;color:var(--human);overflow-wrap:anywhere}
+details{font-size:11px;color:var(--dim)} details div{overflow-wrap:anywhere;margin-top:3px}
+.foot{display:flex;justify-content:space-between;font-size:11px;color:var(--dim)}
+.foot a{color:var(--on)} .id{cursor:copy}
+#more{grid-column:1/-1;height:40px}
+#ver{position:fixed;right:12px;bottom:12px;background:var(--card);border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:3px 10px;font-size:12px;z-index:9}
+.empty{grid-column:1/-1;color:var(--dim);padding:40px;text-align:center}
+.modal{position:fixed;inset:0;background:var(--shade);z-index:20;display:none;align-items:center;justify-content:center;padding:16px}
+.modal.open{display:flex}
+.panel{background:var(--card);color:var(--ink);border-radius:10px;max-width:min(960px,100%);max-height:100%;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+#player video,#player img{max-width:100%;max-height:78vh;display:block;margin:0 auto;background:#000}
+#pstrip{display:flex;gap:3px;overflow-x:auto}
+#pstrip img{height:56px;cursor:pointer;opacity:.75;border-radius:3px} #pstrip img:hover{opacity:1}
+#pstrip span{font-size:10px;color:var(--dim);display:block;text-align:center}
+.edgrp{display:flex;flex-wrap:wrap;gap:6px;align-items:center} .edgrp .lbl{font-size:12px;color:var(--dim);width:78px}
+#editor .panel{width:min(560px,100%)}
+#edNote{width:100%;min-height:60px}
+.err{color:var(--drop);font-size:12px}
+@media (max-width:520px){main{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}.cap{-webkit-line-clamp:3}.edgrp .lbl{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>IG class review</h1><span class="meta" id="meta">loading…</span>
+  <div class="row" id="verdicts"></div>
+  <div class="row" id="tagchips"></div>
+  <div class="row">
+    <input type="search" id="q" placeholder="search caption / why / note…">
+    <span class="meta" id="shown"></span>
+  </div>
+</header>
+<main id="grid"></main>
+
+<div class="modal" id="player"><div class="panel">
+  <div id="pbox"></div>
+  <div id="pstrip"></div>
+  <div class="foot"><span id="pinfo"></span><button id="pclose">Close (Esc)</button></div>
+</div></div>
+
+<div class="modal" id="editor"><div class="panel">
+  <div><b>What should this be?</b> <span class="meta" id="edId"></span></div>
+  <div class="meta" id="edWas"></div>
+  <div id="edTags"></div>
+  <div class="edgrp"><span class="lbl">Verdict</span><span id="edVerdict"></span></div>
+  <textarea id="edNote" placeholder="What's wrong / what is it really? (optional)"></textarea>
+  <div class="err" id="edErr"></div>
+  <div class="foot"><button id="edClear">Remove my label</button>
+    <span><button id="edCancel">Cancel</button> <button class="primary" id="edSave">Save (Ctrl+Enter)</button></span></div>
+</div></div>
+
+<div id="ver">dev1005</div>
+<script>
+(() => {
+  const PROXY = 'http://127.0.0.1:8081';
+  const VERDICTS = ['keep', 'mixed', 'drop', 'unknown'];
+  const MEDIA_TAGS = new Set(['photo', 'video', 'carousel']);
+  const VOCAB = [
+    ['Subject', ['fish', 'seaslug', 'marine-not-fish', 'bird', 'other-animal', 'plant', 'algae', 'mushroom', 'animal']],
+    ['Scale', ['micro', 'macromicro']],
+    ['Not wanted', ['people', 'lecture', 'landscape', 'gear', 'cartoon', 'text', 'seafloor']],
+    ['Other', ['unknown']],
+  ];
+  const SUBJECTS = new Set(VOCAB[0][1].concat(VOCAB[1][1]));
+  const UNWANTED = new Set(VOCAB[2][1]);
+  const ALIVE = new Set(['sea-animal', 'land-animal', 'bird', 'plant', 'mushroom', 'microscope']);
+  const PEOPLEISH = new Set(['person', 'people', 'text', 'cartoon', 'landscape', 'gear']);
+  const $ = id => document.getElementById(id);
+  let rows = [], byId = new Map(), view = [], rendered = 0, verdict = null;
+  const tagOn = new Set();
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const url = p => String(p).split('/').map(encodeURIComponent).join('/');
+  const mediaUrl = f => 'ig_media/' + url(f);
+  const isVid = f => /\.(mp4|webm|mov|mkv|m4v)$/i.test(f || '');
+  const mmss = s => { s = Math.round(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const fileOf = (r, fi) => { const all = r.files || []; return all[fi] || (fi === 0 ? r.file : '') || ''; };
+
+  // ---------- data ----------
+  function applyLabel(r, lab) {
+    if (!r.machine) r.machine = { tags: r.tags, verdict: r.verdict };
+    if (lab) { r.tags = lab.tags; r.verdict = lab.verdict || r.machine.verdict; r.note = lab.note || ''; r.by = 'human'; }
+    else { r.tags = r.machine.tags; r.verdict = r.machine.verdict; r.note = ''; r.by = 'machine'; delete r.machine; }
+  }
+  Promise.all([
+    fetch('igclass.review.json', { cache: 'no-store' }).then(r => r.json()),
+    fetch('igclass.labels.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+  ]).then(([j, labels]) => {
+    rows = j.rows || [];
+    for (const r of rows) {
+      byId.set(r.id, r);
+      // the review file already carries labels from the last classifier run; newer ones overlay
+      if (labels[r.id]) applyLabel(r, labels[r.id]);
+    }
+    const m = j._meta || {};
+    $('meta').textContent = `${(m.authors || []).join(', ')} · ${m.classifier || ''} · ${m.at || ''}`;
+    chips(); filter();
+  }).catch(e => { $('meta').textContent = 'could not load igclass.review.json — run node igClassify.js first (' + e.message + ')'; });
+
+  // ---------- filters ----------
+  function chips() {
+    const vc = {}; rows.forEach(r => vc[r.verdict] = (vc[r.verdict] || 0) + 1);
+    const nh = rows.filter(r => r.by === 'human').length;
+    $('verdicts').innerHTML = [`<span class="chip${verdict ? '' : ' on'}" data-v="">all<b>${rows.length}</b></span>`]
+      .concat(VERDICTS.filter(v => vc[v]).map(v => `<span class="chip${verdict === v ? ' on' : ''}" data-v="${v}">${v}<b>${vc[v]}</b></span>`))
+      .concat(nh ? [`<span class="chip${verdict === 'human' ? ' on' : ''}" data-v="human">✓ labelled<b>${nh}</b></span>`] : []).join('');
+    const base = rows.filter(passVerdict);
+    const tc = {}; base.forEach(r => r.tags.forEach(t => tc[t] = (tc[t] || 0) + 1));
+    $('tagchips').innerHTML = Object.entries(tc).sort((a, b) => b[1] - a[1])
+      .map(([t, n]) => `<span class="chip${tagOn.has(t) ? ' on' : ''}" data-t="${esc(t)}">${esc(t)}<b>${n}</b></span>`).join('');
+  }
+  const passVerdict = r => !verdict || (verdict === 'human' ? r.by === 'human' : r.verdict === verdict);
+  function filter() {
+    const q = $('q').value.trim().toLowerCase();
+    view = rows.filter(r => passVerdict(r) && [...tagOn].every(t => r.tags.includes(t))
+      && (!q || (r.cap + ' ' + (r.note || '') + ' ' + JSON.stringify(r.why)).toLowerCase().includes(q)));
+    $('grid').innerHTML = ''; rendered = 0;
+    $('shown').textContent = `${view.length} shown`;
+    if (!view.length) { $('grid').innerHTML = '<div class="empty">Nothing matches.</div>'; return; }
+    const s = document.createElement('div'); s.id = 'more'; $('grid').appendChild(s);
+    renderMore(); moreIo.observe(s);
+  }
+  const moreIo = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) renderMore(); }, { rootMargin: '800px' });
+  function renderMore() {
+    const s = $('more'); if (!s) return;
+    const frag = document.createDocumentFragment();
+    for (const r of view.slice(rendered, rendered + 60)) frag.appendChild(card(r));
+    rendered = Math.min(view.length, rendered + 60);
+    $('grid').insertBefore(frag, s);
+    if (rendered >= view.length) { moreIo.unobserve(s); s.remove(); }
+  }
+
+  // ---------- cards ----------
+  const frameLabel = f => [f.t != null ? mmss(f.t) : 'photo', f.c && `${f.c} ${Math.round(f.cp * 100)}%`, f.b && `bio: ${f.b} ${Math.round(f.bp * 100)}%`].filter(Boolean).join(' · ');
+  function card(r) {
+    const d = document.createElement('div');
+    d.className = 'card' + (r.by === 'human' ? ' human' : ''); d.dataset.id = r.id;
+    const fr = r.frames || [];
+    const first = fr[0];
+    const still = first ? `<img loading="lazy" src="${esc(url(first.s))}" alt="">`
+      : (r.file && !isVid(r.file) ? `<img loading="lazy" src="${esc(mediaUrl(r.file))}" alt="">` : `<div class="none">no frames yet<br>(python igclip.py)</div>`);
+    const dur = r.dur > 0 ? `<span class="dur">${mmss(r.dur)}${fr.length > 1 ? ' · ' + fr.length + 'f' : ''}</span>` : (fr.length > 1 ? `<span class="dur">${fr.length} items</span>` : '');
+    const tl = fr.length > 1 ? `<div class="tl">${fr.map((f, i) => `<i data-i="${i}" class="${i === 0 ? 'on ' : ''}${ALIVE.has(f.c) ? 'a' : PEOPLEISH.has(f.c) ? 'p' : ''}"></i>`).join('')}</div>` : '';
+    const why = Object.entries(r.why || {}).map(([k, v]) => `<b>${esc(k)}</b>: ${esc([].concat(v).join(', '))}`).join('<br>');
+    const was = r.by === 'human' && r.machine ? `<br><b>machine said</b>: ${esc(r.machine.verdict)} [${esc(r.machine.tags.join(', '))}]` : '';
+    d.innerHTML = `<div class="media" title="hover to scrub · click to play">${still}<span class="pill v-${r.verdict}">${r.verdict}</span>${r.by === 'human' ? '<span class="you">✓ you</span>' : ''}
+        <button class="x" title="correct this">✗</button>${dur}<span class="flab">${first ? esc(frameLabel(first)) : ''}</span></div>${tl}
+      <div class="body"><div class="tags">${r.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+      ${r.note ? `<div class="note">✎ ${esc(r.note)}</div>` : ''}
+      <div class="cap" title="${esc(r.cap)}">${esc(r.cap)}</div>
+      <details><summary>why</summary><div>${why || '—'}${was}</div></details>
+      <div class="foot"><span class="id" title="click to copy">${esc(r.id)}</span><a href="https://www.instagram.com/p/${encodeURIComponent(r.id)}/" target="_blank" rel="noopener">IG ↗</a></div></div>`;
+    return d;
+  }
+  // hover scrub: x position → frame
+  const media = e => e.target.closest && e.target.closest('.media');
+  $('grid').addEventListener('mousemove', e => {
+    const m = media(e); if (!m) return;
+    const r = byId.get(m.closest('.card').dataset.id), fr = r.frames || [];
+    if (fr.length < 2) return;
+    const b = m.getBoundingClientRect();
+    const i = Math.max(0, Math.min(fr.length - 1, Math.floor((e.clientX - b.left) / b.width * fr.length)));
+    if (m.dataset.i == i) return;
+    m.dataset.i = i;
+    const img = m.querySelector('img'); if (img) img.src = url(fr[i].s);
+    m.querySelector('.flab').textContent = frameLabel(fr[i]);
+    const tl = m.nextElementSibling;
+    if (tl && tl.classList.contains('tl')) tl.querySelectorAll('i').forEach((s, k) => s.classList.toggle('on', k === i));
+  });
+  $('grid').addEventListener('click', e => {
+    const c = e.target.closest('.card'); if (!c) return;
+    const r = byId.get(c.dataset.id);
+    if (e.target.closest('.x')) { openEditor(r); return; }
+    if (e.target.closest('.id')) { navigator.clipboard.writeText(r.id).catch(() => {}); return; }
+    const m = e.target.closest('.media');
+    if (m) openPlayer(r, +(m.dataset.i || 0));
+    const seg = e.target.closest('.tl i');
+    if (seg) openPlayer(r, +seg.dataset.i);
+  });
+
+  // ---------- player: ONE <video> for the whole page ----------
+  function openPlayer(r, i) {
+    const fr = r.frames || [];
+    const f = fr[i] || { fi: 0, t: 0 };
+    const name = fileOf(r, f.fi) || r.file;
+    const box = $('pbox');
+    box.innerHTML = '';
+    if (isVid(name) || (f.t != null && r.dur > 0)) {
+      const v = document.createElement('video');
+      v.controls = true; v.autoplay = true; v.playsInline = true;
+      v.src = mediaUrl(name) + '#t=' + Math.max(0, (f.t || 0) - 1);
+      box.appendChild(v);
+    } else if (f.s || name) {
+      const im = document.createElement('img'); im.src = name ? mediaUrl(name) : url(f.s); box.appendChild(im);
+    }
+    $('pstrip').innerHTML = fr.map((x, k) => `<div><img data-k="${k}" src="${esc(url(x.s))}" title="${esc(frameLabel(x))}"><span>${x.t != null ? mmss(x.t) : '·'}</span></div>`).join('');
+    $('pstrip').onclick = e => {
+      const k = e.target.dataset && e.target.dataset.k; if (k == null) return;
+      const x = fr[+k], v = box.querySelector('video');
+      if (v && x.fi === f.fi && x.t != null) { v.currentTime = Math.max(0, x.t - 1); v.play().catch(() => {}); }
+      else openPlayer(r, +k);
+    };
+    $('pinfo').textContent = `${r.id} · ${r.verdict} · ${r.dur > 0 ? mmss(r.dur) : 'photo'}${fr.length ? ' · click a frame to jump' : ''}`;
+    $('player').classList.add('open');
+  }
+  function closePlayer() { $('pbox').innerHTML = ''; $('player').classList.remove('open'); }
+  $('pclose').onclick = closePlayer;
+  $('player').addEventListener('click', e => { if (e.target.id === 'player') closePlayer(); });
+
+  // ---------- editor ----------
+  let edRow = null, edVerdict = null, edTouched = false;
+  function suggestVerdict(tags) {
+    const s = tags.some(t => SUBJECTS.has(t)), u = tags.some(t => UNWANTED.has(t));
+    return s && !u ? 'keep' : s && u ? 'mixed' : u ? 'drop' : 'unknown';
+  }
+  function drawVerdict() {
+    $('edVerdict').innerHTML = VERDICTS.map(v => `<span class="chip${edVerdict === v ? ' on' : ''}" data-v="${v}">${v}</span>`).join(' ');
+  }
+  function openEditor(r) {
+    edRow = r; edTouched = false; $('edErr').textContent = '';
+    const cur = new Set(r.tags);
+    $('edId').textContent = r.id;
+    const m = r.machine || r;
+    $('edWas').textContent = `machine: ${m.verdict} [${m.tags.filter(t => !MEDIA_TAGS.has(t)).join(', ')}]`;
+    $('edTags').innerHTML = VOCAB.map(([g, list]) => `<div class="edgrp"><span class="lbl">${g}</span>${list.map(t =>
+      `<span class="chip${cur.has(t) ? ' on' : ''}" data-t="${t}">${t}</span>`).join(' ')}</div>`).join('');
+    edVerdict = r.verdict; drawVerdict();
+    $('edNote').value = r.note || '';
+    $('edClear').style.visibility = r.by === 'human' ? 'visible' : 'hidden';
+    $('editor').classList.add('open');
+  }
+  const edTags = () => [...$('edTags').querySelectorAll('.chip.on')].map(c => c.dataset.t);
+  $('edTags').addEventListener('click', e => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    c.classList.toggle('on');
+    if (!edTouched) { edVerdict = suggestVerdict(edTags()); drawVerdict(); }
+  });
+  $('edVerdict').addEventListener('click', e => { const c = e.target.closest('.chip'); if (!c) return; edVerdict = c.dataset.v; edTouched = true; drawVerdict(); });
+  function closeEditor() { $('editor').classList.remove('open'); edRow = null; }
+  async function post(body) {
+    const res = await fetch(PROXY + '/ig/class-label', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.ok) throw new Error(j.error || ('HTTP ' + res.status));
+  }
+  function refreshCard(r) {
+    const old = document.querySelector(`.card[data-id="${CSS.escape(r.id)}"]`);
+    if (old) old.replaceWith(card(r));
+    chips();
+  }
+  async function save() {
+    if (!edRow) return;
+    const r = edRow, media = r.tags.filter(t => MEDIA_TAGS.has(t));
+    const m = r.machine || { tags: r.tags, verdict: r.verdict };
+    const label = { tags: media.concat(edTags()), verdict: edVerdict, note: $('edNote').value.trim(), was: { tags: m.tags, verdict: m.verdict } };
+    try { await post({ id: r.id, label }); }
+    catch (e) { $('edErr').textContent = 'Not saved — ' + e.message + ' (is the proxy running dev1005? restart node proxy.js)'; return; }
+    applyLabel(r, label); refreshCard(r); closeEditor();
+  }
+  $('edSave').onclick = save;
+  $('edCancel').onclick = closeEditor;
+  $('edClear').onclick = async () => {
+    const r = edRow; if (!r) return;
+    try { await post({ id: r.id, clear: true }); } catch (e) { $('edErr').textContent = 'Not removed — ' + e.message; return; }
+    applyLabel(r, null); refreshCard(r); closeEditor();
+  };
+  $('editor').addEventListener('click', e => { if (e.target.id === 'editor') closeEditor(); });
+
+  // ---------- keys + filters ----------
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { if ($('editor').classList.contains('open')) closeEditor(); else if ($('player').classList.contains('open')) closePlayer(); }
+    if (e.key === 'Enter' && e.ctrlKey && $('editor').classList.contains('open')) save();
+  });
+  $('verdicts').addEventListener('click', e => { const c = e.target.closest('.chip'); if (!c) return; verdict = c.dataset.v || null; chips(); filter(); });
+  $('tagchips').addEventListener('click', e => { const c = e.target.closest('.chip'); if (!c) return; const t = c.dataset.t; tagOn.has(t) ? tagOn.delete(t) : tagOn.add(t); chips(); filter(); });
+  let qt; $('q').addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(filter, 200); });
+})();
+</script>
+</body>
+</html>

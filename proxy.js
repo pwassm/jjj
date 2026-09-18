@@ -356,7 +356,7 @@ const PORT = 8081;
 //   ffdown/ folder itself is untouched, nothing reads it now).
 // (dev1001) parseIgMainMeta reads the @handle of an account with no display name
 //   (twitter:title "@handle • …", og:description "N likes, N comments - handle on …").
-const PROXY_BUILD = 'dev1003';
+const PROXY_BUILD = 'dev1005';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -5092,6 +5092,37 @@ function igMediaId(sc) {
   }
   return n;
 }
+// (dev1005) /ig/class-label — igclass.html's ✗ corrections: what the tags + verdict of one
+// post SHOULD be, merged into igclass.labels.json (a sidecar; ig.json is never touched).
+// igClassify.js applies them as by:'human' overrides and keeps them as training labels
+// for the image step. {id, clear:true} removes one. Written atomically (tmp + rename).
+const IGCLASS_LABELS = path.join(__dirname, 'igclass.labels.json');
+function igClassLabel(req, res, origin) {
+  if (!LOCAL_ORIGINS.has(origin)) { req.resume(); sendJson(res, 403, { ok: false, error: 'origin not allowed' }, origin); return; }
+  readJson(req, 64 * 1024).then(p => {
+    const id = String(p.id || '').trim();
+    if (!/^[A-Za-z0-9_-]{5,}$/.test(id)) { sendJson(res, 400, { ok: false, error: 'bad post id' }, origin); return; }
+    let store = {};
+    try { store = JSON.parse(fs.readFileSync(IGCLASS_LABELS, 'utf8')) || {}; }
+    catch (e) { if (e.code !== 'ENOENT') { sendJson(res, 500, { ok: false, error: 'igclass.labels.json unreadable: ' + e.message }, origin); return; } }
+    if (p.clear) delete store[id];
+    else {
+      const l = p.label || {}, d = new Date(), z = n => String(n).padStart(2, '0');
+      store[id] = {
+        tags: (Array.isArray(l.tags) ? l.tags : []).map(String).slice(0, 40),
+        verdict: String(l.verdict || ''),
+        note: String(l.note || '').slice(0, 2000),
+        was: l.was && typeof l.was === 'object' ? { tags: (l.was.tags || []).map(String).slice(0, 40), verdict: String(l.was.verdict || '') } : null,
+        at: `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`,
+      };
+    }
+    const tmp = IGCLASS_LABELS + '.tmp-' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(store, null, 1));
+    fs.renameSync(tmp, IGCLASS_LABELS);
+    sendJson(res, 200, { ok: true, id, n: Object.keys(store).length }, origin);
+  }).catch(e => sendJson(res, 400, { ok: false, error: e.message }, origin));
+}
+
 function igCutAfter(req, res, origin) {
   if (!LOCAL_ORIGINS.has(origin)) { req.resume(); sendJson(res, 403, { ok: false, error: 'origin not allowed' }, origin); return; }
   readJson(req, 64 * 1024).then(payload => {
@@ -8095,7 +8126,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock', 'textclockfrac',
-      'vptrack', 'vppad', 'qfindroot'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify', 'igfiledates']) }));
+      'vptrack', 'vppad', 'qfindroot', 'igclasslabel'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify', 'igfiledates']) }));
     return;
   }
 
@@ -8213,6 +8244,7 @@ http.createServer((req, res) => {
     if (action === 'save')     { igSave(req, res, origin);     return; }
     if (action === 'save-delta') { igSaveDelta(req, res, origin); return; }  // (dev0697) per-batch upsert
     if (action === 'cut-after') { igCutAfter(req, res, origin); return; }   // (dev1000) drop an author's older posts
+    if (action === 'class-label') { igClassLabel(req, res, origin); return; }  // (dev1005) igclass.html corrections
     if (action === 'known')    { igKnown(req, res, origin);    return; }   // (dev0794) early-stop harvest
     if (action === 'authors')  { igAuthors(req, res, origin);  return; }   // (dev0794) sweep queue
     if (action === 'disk')     { igDisk(req, res, origin);     return; }   // (dev0835) free-space floor

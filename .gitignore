@@ -326,3 +326,18 @@ ytsummaries/
 # drivetriage tools (drivecheck.py, qformat.bat, ejectusb.bat). Personal drive
 # inventories - never committed. drivetriage/ is on the user PATH.
 mediaindex/
+
+# igClassify.js (caption-first subject classifier) — the igclass.json sidecar (verdict/tags per
+# ig.json id), the last run's review rows for igclass.html, and the WoRMS/GBIF name cache.
+# Local curation beside ig.json; the repo root is what GitHub Pages serves.
+igclass.json
+igclass.review.json
+igclass.taxa.json
+igclass.*.tmp-*
+
+# (dev1005) igclip.py — timeline frames, image embeddings, CLIP/BioCLIP scores, ✗ labels.
+igclass.clip.json
+igclass.labels.json
+igclass_frames/
+igclass_emb/
+__pycache__/
