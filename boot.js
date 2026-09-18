@@ -353,6 +353,10 @@ _markUserModeClass();
   badge.textContent = 'dev' + ver;
   badge.title = 'Dev mode (' + badge.textContent + ') — click to switch to user mode (reloads)';
   badge.addEventListener('click', function() {
+    // (dev1009) Over the public menu the badge toggles the alternative look;
+    // everywhere else it still switches to user mode.
+    const sm = document.getElementById('shareableMenu');
+    if (sm && sm.getClientRects().length && window._smAltToggle && window._smAltToggle()) return;
     try { localStorage.setItem('sal-mode-override', 'user'); } catch(e) {}
     if (typeof toast === 'function') toast('Switching to user mode…', 600);
     setTimeout(() => window.location.reload(), 250);
@@ -1707,7 +1711,7 @@ async function _showShareableMenu() {
   });
   // (dev0930) _T() wraps the label text only — never data-pg, which is a key.
   const _tabBtns = _smTabs.map(t =>
-    '<button class="sm-tab" data-pg="' + t.pg + '">' + t.label + '</button>').join('');
+    '<button class="sm-tab" data-pg="' + t.pg + '" data-kind="' + t.kind + '">' + t.label + '</button>').join('');
 
   // ── TAB BODIES ────────────────────────────────────────────────────────────
   // One per Kind: the parts data cannot supply. Two of them are a single
@@ -1933,7 +1937,76 @@ async function _showShareableMenu() {
     // (dev0739) Let the floating back arrow re-evaluate now rather than on its
     // next 300ms poll — leaving Welcome should light it immediately.
     if (window._salBackArrowSync) window._salBackArrowSync();
+    _smAltSync();
   };
+  // (dev1009) ALTERNATIVE DESKTOP LOOK, after lindaiphotography.com: a script
+  // "Sea / Life / More" title and a vertical uppercase tab list down the left,
+  // black body, and on Welcome the UOD rows crossfading full-bleed behind it,
+  // 5 s each, in place of the page content. Contact sits apart at the list foot
+  // (her "Prints for sale" slot). Dev-only, desktop-only, toggled by clicking the
+  // devNNNN badge while the menu is up; not persisted, so every load opens on
+  // the original look. It is a class on the overlay plus one background layer —
+  // the tabs, pages and handlers underneath are the same ones.
+  function _smAltSync() {
+    const on = !!window._smAltOn && !document.documentElement.classList.contains('is-mobile');
+    ov.classList.toggle('sm-alt', on);
+    let bg = ov.querySelector('.sm-alt-bg');
+    const home = on && window._smCurPage === _pgOf('intro');
+    if (!home) {
+      if (bg) { clearInterval(bg._timer); bg.remove(); }
+      return;
+    }
+    if (bg) return;
+    const pool = _smDayList.filter(e => e.row && (_SM_DAY_VID.test(String(e.row.link || '').split(/[?#]/)[0])
+                                               || _SM_DAY_IMG.test(String(e.row.link || '').split(/[?#]/)[0])));
+    bg = document.createElement('div');
+    bg.className = 'sm-alt-bg';
+    ov.insertBefore(bg, ov.firstChild);
+    if (!pool.length) { try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
+    let i = Math.max(0, _smDayIdx);
+    const show = () => {
+      if (!document.contains(ov)) { clearInterval(bg._timer); return; }
+      const link = String(pool[i % pool.length].row.link);
+      const isVid = _SM_DAY_VID.test(link.split(/[?#]/)[0]);
+      const el = document.createElement(isVid ? 'video' : 'div');
+      el.className = 'sm-alt-slide';
+      if (isVid) { el.src = link; el.muted = true; el.autoplay = true; el.loop = true; el.playsInline = true; }
+      else el.style.backgroundImage = 'url("' + link.replace(/"/g, '%22') + '")';
+      bg.appendChild(el);
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
+      const old = Array.from(bg.children).filter(c => c !== el);
+      setTimeout(() => old.forEach(c => c.remove()), 1600);
+      i++;
+    };
+    show();
+    bg._timer = setInterval(show, 5000);
+  }
+  window._smAltToggle = () => {
+    if (document.documentElement.classList.contains('is-mobile')) return false;
+    window._smAltOn = !window._smAltOn;
+    _smAltSync();
+    return true;
+  };
+  ov.insertAdjacentHTML('afterbegin',
+    '<div class="sm-alt-brand">Sea<br>Life<br>More</div>'
+    + '<style>'
+    + '.sm-alt-brand,.sm-alt-bg{display:none;}'
+    + '#shareableMenu.sm-alt{background:#000 !important;padding-left:240px;}'
+    + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:28px;top:22px;z-index:3;'
+    +   "font-family:'Segoe Script','Brush Script MT','Lucida Handwriting',cursive;font-size:34px;line-height:1.15;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.8);}"
+    + '#shareableMenu.sm-alt .sm-alt-bg{display:block;position:absolute;inset:0;z-index:0;background:#000;pointer-events:none;}'
+    + '.sm-alt-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:center/cover no-repeat;opacity:0;transition:opacity 1.5s ease;}'
+    + '.sm-alt-slide.on{opacity:1;}'
+    + '#shareableMenu.sm-alt .sm-tabs-bottom{display:none !important;}'
+    + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:0;top:170px;bottom:24px;width:240px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-left:28px;}'
+    + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab{flex:none;background:none;border:none;padding:3px 0;text-align:left;text-transform:uppercase;letter-spacing:0.04em;font-size:15px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
+    + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab.on{color:#f0c419;}'
+    + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab:hover{color:#f0c419;}'
+    + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab[data-kind="signin"]{order:99;margin-top:auto;}'
+    + '#shareableMenu.sm-alt #smFwdArrow{display:none !important;}'
+    + '#shareableMenu.sm-alt #smPage' + _pgOf('intro') + '{visibility:hidden;}'
+    + '#shareableMenu.sm-alt > div[style*="flex:1"]{z-index:1;}'
+    + '</style>');
   // (dev0739) The floating back arrow's route home on the menu — it takes the
   // viewer to the Intro (Welcome) page without a reload. Re-exported on every
   // menu build so it always points at the live overlay's pager.
