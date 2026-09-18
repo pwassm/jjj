@@ -1969,6 +1969,28 @@ async function _showShareableMenu() {
     } catch (x) {}
     return 0;
   };
+  // (dev1012) RANDOM ORDER, each item once per round: a shuffled queue of links,
+  // reshuffled only when it runs dry, so every picture and video plays before
+  // any repeats. The queue lives in window._smAltQ for the session and is
+  // mirrored to localStorage, so a reload or a trip to another tab carries on
+  // through the same round rather than dealing a fresh one. A new round never
+  // opens on the item the last one closed on.
+  const _SM_ALT_Q = 'sal-alt-queue';
+  const _smAltNext = links => {
+    let q = window._smAltQ;
+    if (!Array.isArray(q)) { try { q = JSON.parse(localStorage.getItem(_SM_ALT_Q) || '[]'); } catch (x) {} }
+    q = (Array.isArray(q) ? q : []).filter(l => links.includes(l));
+    if (!q.length) {
+      q = links.slice();
+      for (let k = q.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [q[k], q[j]] = [q[j], q[k]]; }
+      if (q.length > 1 && q[0] === window._smAltLast) q.push(q.shift());
+    }
+    const link = q.shift();
+    window._smAltQ = q;
+    window._smAltLast = link;
+    try { localStorage.setItem(_SM_ALT_Q, JSON.stringify(q)); } catch (x) {}
+    return link;
+  };
   function _smAltSync() {
     const on = !!window._smAltOn;
     ov.classList.toggle('sm-alt', on);
@@ -1989,12 +2011,11 @@ async function _showShareableMenu() {
     bg.className = 'sm-alt-bg';
     ov.insertBefore(bg, ov.firstChild);
     if (!pool.length) { try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
-    let i = Math.max(0, _smDayIdx);
+    const links = Array.from(new Set(pool.map(e => String(e.row.link))));
     const next = ms => { clearTimeout(bg._timer); bg._timer = setTimeout(show, ms); };
     const show = () => {
       if (!bg.isConnected) return;
-      const link = String(pool[i % pool.length].row.link);
-      i++;
+      const link = _smAltNext(links);
       const isVid = _SM_DAY_VID.test(link.split(/[?#]/)[0]);
       const el = document.createElement(isVid ? 'video' : 'div');
       el.className = 'sm-alt-slide';
@@ -2160,10 +2181,14 @@ async function _showShareableMenu() {
     // the top bar is display:none there) turns into a column down the RIGHT
     // edge. The overlay is inside #rotateWrap, so "right" is the visual right
     // edge in the rotated frame too.
-    + 'html.is-mobile #shareableMenu.sm-alt{padding-left:0;padding-right:150px;}'
+    // (dev1012) Type 1.5x (13 → 19px), and each tab's tap area runs the full
+    // column width instead of hugging its word — the rows were too small to hit.
+    + 'html.is-mobile #shareableMenu.sm-alt{padding-left:0;padding-right:230px;}'
     + 'html.is-mobile #shareableMenu.sm-alt .sm-alt-brand{display:none;}'
-    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom{display:flex !important;position:absolute;right:0;top:0;bottom:0;width:150px;box-sizing:border-box;z-index:3;flex-direction:column;align-items:flex-end;background:transparent;box-shadow:none;padding:14px 16px 12px 0;}'
-    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab{flex:none;background:none;border:none;padding:5px 0;text-align:right;text-transform:uppercase;letter-spacing:0.04em;font-size:13px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom{display:flex !important;position:absolute;right:0;top:0;bottom:0;width:230px;box-sizing:border-box;z-index:3;flex-direction:column;align-items:stretch;overflow-y:auto;background:transparent;box-shadow:none;padding:8px 16px 8px 0;}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab{flex:none;background:none;border:none;padding:5px 0 5px 12px;line-height:1.25;text-align:right;text-transform:uppercase;letter-spacing:0.02em;font-size:19px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
+    + 'html.is-mobile #shareableMenu.sm-alt #smPage' + _pgOf('intro') + ' .sm-ver{font-size:15px;padding:6px 8px;}'
+    + 'html.is-mobile .sm-alt-opt button{font-size:24px;padding:16px 28px;}'
     + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab.on{color:#f0c419;}'
     + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab[data-kind="signin"]{order:99;margin-top:auto;}'
     // (dev1011) Holding a finger on Welcome means "options" now, so the phone's
