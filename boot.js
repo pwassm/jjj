@@ -1987,6 +1987,31 @@ async function _showShareableMenu() {
     _smAltSync();
     return true;
   };
+  window._smAltIntroPg = _pgOf('intro');
+  // (dev1010) The badge's own click listener never fired over the menu —
+  // something above it (or a menu handler) takes the click. So the toggle is
+  // caught at WINDOW capture, before any layer can, by testing whether the
+  // click lies inside the badge's box. `9` on Welcome toggles too.
+  if (!window._smAltBound) {
+    window._smAltBound = true;
+    const _menuUp = () => { const m = document.getElementById('shareableMenu'); return !!(m && m.getClientRects().length); };
+    window.addEventListener('click', e => {
+      const b = document.getElementById('ver-badge');
+      if (!b || !_menuUp() || !window._smAltToggle) return;
+      const r = b.getBoundingClientRect();
+      if (!r.width || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      window._smAltToggle();
+    }, true);
+    window.addEventListener('keydown', e => {
+      if (e.key !== '9' || e.ctrlKey || e.altKey || e.metaKey || !_menuUp()) return;
+      const t = e.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (window._smCurPage !== window._smAltIntroPg || !window._smAltToggle) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      window._smAltToggle();
+    }, true);
+  }
   ov.insertAdjacentHTML('afterbegin',
     '<div class="sm-alt-brand">Sea<br>Life<br>More</div>'
     + '<style>'
