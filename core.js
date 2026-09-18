@@ -5630,12 +5630,32 @@ async function housekeepingAddWatermarked(opts) {
   }
   const files = Array.isArray(list.files) ? list.files : [];
   if (!files.length) { if (!auto) toast('No media found in ' + list.dir, 3000); return; }
+  const now = isoNow();
+
+  // (dev1008) A folder's _link.txt names the page its media came from (the
+  // proxy reports it per file as `linkpage`), and that is what G's `g` opens.
+  // Filled on rows already in T as well as new ones — but only where linkpage
+  // is empty or the noLinkpageYet sentinel: a source page set by hand wins.
+  const pageByKey = new Map(files.filter(f => f.linkpage).map(f => [f.key.toLowerCase(), f.linkpage]));
+  let linked = 0;
+  if (pageByKey.size) {
+    data.forEach(r => {
+      const k = r && _wmLinkKey(r.link);
+      const lp = k && pageByKey.get(k);
+      if (!lp) return;
+      const cur = String(r.linkpage || '').trim();
+      if (cur && cur !== 'noLinkpageYet') return;
+      r.linkpage = lp; r.DateModified = now; linked++;
+    });
+  }
+  const linkedNote = linked ? '\n🔗 ' + linked + ' row(s) got their source page from _link.txt' : '';
 
   const have = new Set();
   data.forEach(r => { const k = r && _wmLinkKey(r.link); if (k) have.add(k); });
   const missing = files.filter(f => !have.has(f.key.toLowerCase()));
 
   if (!missing.length) {
+    if (linked) { save(); render(); toast(linkedNote.slice(1), 3500); return; }
     if (!auto) toast('✓ All ' + files.length + ' watermarked file(s) are already in T', 3000);
     return;
   }
@@ -5644,7 +5664,6 @@ async function housekeepingAddWatermarked(opts) {
   // vidLength (video) / MPix (photo) measured off the local file; tags empty.
 
   toast('🎬 Adding ' + missing.length + ' file(s)…', 2500);
-  const now = isoNow();
   let probed = 0;
   for (const f of missing) {
     // Best-effort probe: a row with no duration is still a good row, and Calc
@@ -5682,6 +5701,7 @@ async function housekeepingAddWatermarked(opts) {
       }
     }
     if (meta && meta.w && meta.h) row.Mode = orientFromDims(meta.w, meta.h);
+    if (f.linkpage) row.linkpage = f.linkpage;   // (dev1008) from the folder's _link.txt
     data.push(row);
   }
   save(); render();
@@ -5693,7 +5713,8 @@ async function housekeepingAddWatermarked(opts) {
   toast('✓ Added ' + what + ' to T'
         + (probed < missing.length
             ? '\n⚠ ' + (missing.length - probed) + ' could not be probed — run Calc Lengths / Fill Mode'
-            : '\n   Mode + length/MPix filled from the local files'),
+            : '\n   Mode + length/MPix filled from the local files')
+        + linkedNote,
         5000);
 }
 

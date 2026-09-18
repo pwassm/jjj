@@ -356,7 +356,7 @@ const PORT = 8081;
 //   ffdown/ folder itself is untouched, nothing reads it now).
 // (dev1001) parseIgMainMeta reads the @handle of an account with no display name
 //   (twitter:title "@handle • …", og:description "N likes, N comments - handle on …").
-const PROXY_BUILD = 'dev1006';
+const PROXY_BUILD = 'dev1008';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -3768,6 +3768,29 @@ function wmWalk(root) {
   return out;
 }
 
+// (dev1008) A subfolder of originals\ may hold _link.txt: its first line is the
+// URL of the page the media in it came from (e.g. the paper third-party footage
+// was published with). Nearest folder wins, the same walk _wm.txt gets, and
+// like _wm.txt a file loose in originals\ itself never has one.
+// `cache` maps a folder to its answer for the length of one listing.
+function wmLinkPageOf(key, cache) {
+  const parts = key.split('/').slice(0, -1);
+  for (let i = parts.length; i >= 1; i--) {
+    const dir = parts.slice(0, i).join('/');
+    if (!cache.has(dir)) {
+      let url = '';
+      try {
+        const first = fs.readFileSync(path.join(WM_ORIG_DIR, ...parts.slice(0, i), '_link.txt'), 'utf8')
+          .replace(/^﻿/, '').split(/\r?\n/)[0].trim();
+        if (/^https?:\/\/\S+$/i.test(first)) url = first;
+      } catch (_) {}
+      cache.set(dir, url);
+    }
+    if (cache.get(dir)) return cache.get(dir);
+  }
+  return '';
+}
+
 function wmList(res, origin) {
   if (!fs.existsSync(WM_DIR)) {
     sendJson(res, 200, { ok: false, dir: WM_DIR, files: [], error: 'folder not found: ' + WM_DIR }, origin);
@@ -3777,6 +3800,13 @@ function wmList(res, origin) {
   // current — see Sync R2 below. Best-effort: a failure must not break the list.
   try { wmManifestRefresh(); } catch (e) { plog('[wm] manifest refresh failed: ' + e.message); }
   const files = wmWalk(WM_DIR);
+  // (dev1008) The page the media came from, from the nearest _link.txt, so
+  // Add Watermarked Media can fill the row's `linkpage` (what G's `g` opens).
+  const linkCache = new Map();
+  for (const f of files) {
+    const lp = wmLinkPageOf(f.key, linkCache);
+    if (lp) f.linkpage = lp;
+  }
   // (dev0976) What the next run WOULD stamp: originals\ files with no
   // watermarked\ twin — the same test watermark_r2.ps1's uploadnew makes, so
   // Watermark & Upload can say how many new files there are before it starts.
@@ -8466,7 +8496,7 @@ http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/version') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, CORS));
     res.end(JSON.stringify({ build: PROXY_BUILD, features: ['crop', 'trim', 'rotate', 'noaudio', 'kenburns', 'kenwait', 'drawtext', 'vpause', 'metadata', 'exiftool', 'imagecrop', 'imagetext', 'imagemotion', 'imageframe', 'imagerotate', 'textalpha', 'textfont', 'textalphakeep', 'textnoborder', 'textcolor', 'localfile', 'deshake', 'freename', 'xmpsidecar', 'metacarry', 'metaflags', 'color', 'coloravg', 'vpspeed', 'vpcodec', 'vploop', 'vptimes', 'textclock', 'textclockfrac',
-      'vptrack', 'vppad', 'qfindroot', 'igclasslabel'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'wmsync','llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify', 'igfiledates']) }));
+      'vptrack', 'vppad', 'qfindroot', 'igclasslabel'].concat(HAS_JPEGTRAN ? ['jpegtran'] : []).concat(['screenrec', 'screenrec2', 'ytdlp', 'igharvest', 'igstore', 'igsavedelta', 'igknown', 'igauthors', 'igvpn', 'igproberes', 'sstore', 'gallerydl', 'xsearch', 'framegrab', 'flickrresolve', 'vpn', 'fix', 'wmlist', 'cardsave', 'wmrun', 'wmsync', 'wmlinkpage', 'llckeyframes', 'llcallstreams', 'llcsmartcut', 'llcverify', 'igfiledates']) }));
     return;
   }
 
