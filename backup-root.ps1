@@ -155,5 +155,9 @@ foreach ($t in $Targets) {
 if (-not $List) {
     Write-Host ("  -> {0} target(s) written, {1} skipped" -f $copied, $skipped) -ForegroundColor Cyan
     if ($copied -eq 0) { Write-Warning 'NO backup target was reachable - ml.json is gitignored, so it is currently unbacked.' }
+    # (2026-09-18) PC-upkeep sessions live in M:\pcClaude with their own memory;
+    # they make no commits, so ride along on every SLAM backup.
+    $pc = 'M:\pcClaude\backup-pc.ps1'
+    if (Test-Path -LiteralPath $pc) { & $pc }
 }
 exit 0
