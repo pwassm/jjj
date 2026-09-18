@@ -1458,7 +1458,8 @@ window.gridBufferAdapt = function (on) {
 // inconsistent across a grid of mixed-aspect clips). We make the player COVER
 // the cell like an image (object-fit:cover): size the iframe assuming the
 // standard 16:9 so the video edges reach the cell, then let the cell's
-// overflow:hidden clip the excess. <video> elements cover natively.
+// overflow:hidden clip the excess. <video> elements cover natively — but since
+// dev1007 only when framed or in a portrait grid; see _gridVideoCovers.
 //
 // (dev0346) Zoom. On top of that 16:9-cover baseline we ride a CSS
 // transform:scale — the same factor scales <img> and <video> too — so the whole
@@ -1618,7 +1619,9 @@ function _gridMediaGeom(cellEl) {
                ox: Math.round((w - bw) / 2), oy: Math.round((h - bh) / 2) };
     }
     const vid = t.el.querySelector('video');
-    return vid ? _gridCoverGeom(vid, w, h) : null;
+    if (!vid) return null;
+    return _gridVideoCovers(cellEl) ? _gridCoverGeom(vid, w, h)
+         : { kind: 'box', el: vid, w: w, h: h, bw: w, bh: h, ox: 0, oy: 0 };
   }
   if (t.kind === 'img') {
     // A COI'd image cover-fits (see _gridApplyZoomToCell) and so has a crop to
@@ -1628,6 +1631,21 @@ function _gridMediaGeom(cellEl) {
       : { kind: 'box', el: t.el, w: w, h: h, bw: w, bh: h, ox: 0, oy: 0 };
   }
   return { kind: 'box', el: t.el, w: w, h: h, bw: w, bh: h, ox: 0, oy: 0 };
+}
+
+// (dev1007) Does a direct <video> in this cell COVER it (fill, cropping the
+// overflow) or show the WHOLE frame? The same rule a plain image follows:
+// whole frame, unless the cell has been framed (a COI — Alt-click) or the grid
+// is a portrait layout (dev0502: a 9:16 clip should fill its near-9:16 cell).
+// Until dev1007 video always covered, which cut off whatever sat near the edge
+// of a clip whose shape differs from the cell — a 3:2 clip in a ~16:9 cell lost
+// ~8% top and bottom, and with it the credit line burned into the corner of
+// the CC BY octopus footage. Zoom below 1x couldn't bring it back either: it
+// shrinks the already-cropped box (_gridFrameCover). YT/Vimeo iframes are
+// unchanged — their player letterboxes inside a 16:9 box of its own.
+function _gridVideoCovers(cellEl) {
+  if (_gridCOIForCell(cellEl)) return true;
+  return !!_gridPortraitDims(_gridCurrentLayout());
 }
 
 // Base cover box of an <img>/<video> whose element box is the cell.
@@ -2110,13 +2128,19 @@ function _gridApplyCoverFit(host, zOverride) {
   const pan = _gridCellPanForCell(cellEl);   // (dev0364) transient drag-pan, may be null
   host.querySelectorAll('iframe, video').forEach(el => {
     if (el.tagName === 'VIDEO') {
-      // <video> covers the host natively (its box IS the cell), so the framing
-      // rides object-position + transform — the 'cover' geometry.
+      // The <video> box IS the cell. A covering one frames through
+      // object-position + transform (the 'cover' geometry); a whole-frame one
+      // is a plain 'box' that the transform zooms — see _gridVideoCovers.
       el.style.position = 'absolute'; el.style.inset = '0';
       el.style.left = ''; el.style.top = '';
       el.style.width = '100%'; el.style.height = '100%';
-      el.style.objectFit = 'cover';
-      _gridFrameElement(_gridCoverGeom(el, w, h), coi, Z, pan);
+      if (_gridVideoCovers(cellEl)) {
+        el.style.objectFit = 'cover';
+        _gridFrameElement(_gridCoverGeom(el, w, h), coi, Z, pan);
+      } else {
+        el.style.objectFit = 'contain';
+        _gridFrameElement({ kind: 'box', el: el, w: w, h: h, bw: w, bh: h, ox: 0, oy: 0 }, coi, Z, pan);
+      }
       // Natural dimensions arrive with the metadata and the cover box is
       // measured from them; re-fit once they do.
       if (!el._coiMetaWired) {
