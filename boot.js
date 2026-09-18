@@ -1462,9 +1462,12 @@ async function _showShareableMenu() {
     // and its sub-line ("But check out Introduction first") was telling the
     // reader to go and find the page they were already standing on.
     //
-    // (dev0763) Build stamp in the Intro's top-left corner. pointer-events:none
-    // so it can never sit between a thumb and the sign-in strip beneath it.
-    + '.sm-ver{position:absolute;top:3px;left:7px;z-index:2;font:10px/1 monospace;color:rgba(255,255,255,0.45);pointer-events:none;}'
+    // (dev0763) Build stamp in the Intro's top-left corner.
+    // (dev1011) Clickable now: it switches the alternative look (see _smAltSync).
+    // On the public site the #ver-badge is hidden, so this stamp is the "devNNNN"
+    // a viewer actually sees, and it was pointer-events:none, so a click on it
+    // did nothing at all.
+    + '.sm-ver{position:absolute;top:0;left:3px;z-index:2;padding:3px 4px;font:10px/1 monospace;color:rgba(255,255,255,0.45);cursor:pointer;}'
     // (dev0930) LANGUAGE TOGGLE — the mirror of the build stamp, top-RIGHT of
     // the Welcome page. It belongs here rather than in the tab bar or a settings
     // panel because a viewer who needs Spanish needs it on arrival, before they
@@ -1939,21 +1942,44 @@ async function _showShareableMenu() {
     if (window._salBackArrowSync) window._salBackArrowSync();
     _smAltSync();
   };
-  // (dev1009) ALTERNATIVE DESKTOP LOOK, after lindaiphotography.com: a script
-  // "Sea / Life / More" title and a vertical uppercase tab list down the left,
-  // black body, and on Welcome the UOD rows crossfading full-bleed behind it,
-  // 5 s each, in place of the page content. Contact sits apart at the list foot
-  // (her "Prints for sale" slot). Dev-only, desktop-only, toggled by clicking the
-  // devNNNN badge while the menu is up; not persisted, so every load opens on
-  // the original look. It is a class on the overlay plus one background layer —
-  // the tabs, pages and handlers underneath are the same ones.
+  // (dev1009) ALTERNATIVE LOOK, after lindaiphotography.com: a script
+  // "Sea / Life / and More" title and a vertical uppercase tab list down the
+  // left, black body, and on Welcome the UOD rows crossfading full-bleed behind
+  // it in place of the page content. Contact sits apart at the list foot (her
+  // "Prints for sale" slot). Not persisted, so every load opens on the original
+  // look. It is a class on the overlay plus one background layer — the tabs,
+  // pages and handlers underneath are the same ones.
+  // (dev1011) Phones too: no title (no room), and the tab list runs down the
+  // RIGHT edge instead. Switched by clicking the Welcome build stamp (the
+  // "devNNNN" in its top-left corner), by `9` on Welcome, or on a phone by
+  // holding a finger on Welcome, which offers NewDesign / OldDesign.
+  //
+  // Timing: pictures 5 s each. Videos play for UP TO 10 s — a shorter one plays
+  // once through and hands on when it ends; a longer one hands on after 10 s and
+  // remembers where it stopped, so its next turn (this visit or a later one)
+  // picks up there instead of replaying its opening. Positions are kept per link
+  // in this browser's localStorage; lost storage just means starting from 0.
+  const _SM_ALT_IMG_MS = 5000, _SM_ALT_VID_S = 10, _SM_ALT_POS = 'sal-alt-vidpos';
+  const _smAltPos = (link, t) => {
+    try {
+      const m = JSON.parse(localStorage.getItem(_SM_ALT_POS) || '{}') || {};
+      if (t === undefined) return +m[link] || 0;
+      if (t > 0) m[link] = Math.round(t * 10) / 10; else delete m[link];
+      localStorage.setItem(_SM_ALT_POS, JSON.stringify(m));
+    } catch (x) {}
+    return 0;
+  };
   function _smAltSync() {
-    const on = !!window._smAltOn && !document.documentElement.classList.contains('is-mobile');
+    const on = !!window._smAltOn;
     ov.classList.toggle('sm-alt', on);
     let bg = ov.querySelector('.sm-alt-bg');
     const home = on && window._smCurPage === _pgOf('intro');
     if (!home) {
-      if (bg) { clearInterval(bg._timer); bg.remove(); }
+      if (bg) {
+        clearTimeout(bg._timer);
+        bg.querySelectorAll('video').forEach(v => v._save && v._save());
+        bg.remove();
+      }
       return;
     }
     if (bg) return;
@@ -1964,42 +1990,83 @@ async function _showShareableMenu() {
     ov.insertBefore(bg, ov.firstChild);
     if (!pool.length) { try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
     let i = Math.max(0, _smDayIdx);
+    const next = ms => { clearTimeout(bg._timer); bg._timer = setTimeout(show, ms); };
     const show = () => {
-      if (!document.contains(ov)) { clearInterval(bg._timer); return; }
+      if (!bg.isConnected) return;
       const link = String(pool[i % pool.length].row.link);
+      i++;
       const isVid = _SM_DAY_VID.test(link.split(/[?#]/)[0]);
       const el = document.createElement(isVid ? 'video' : 'div');
       el.className = 'sm-alt-slide';
-      if (isVid) { el.src = link; el.muted = true; el.autoplay = true; el.loop = true; el.playsInline = true; }
-      else el.style.backgroundImage = 'url("' + link.replace(/"/g, '%22') + '")';
+      if (isVid) {
+        el.muted = true; el.playsInline = true; el.preload = 'auto';
+        // t0 = where this turn's playback began; `done` once it has handed on
+        // (it keeps playing under the 1.5 s crossfade, but no longer counts or
+        // saves).
+        let t0 = null, done = false, saved = 0;
+        const long = () => el.duration > _SM_ALT_VID_S + 1;
+        el._save = () => { if (!done && t0 !== null && long()) _smAltPos(link, el.currentTime); };
+        const finish = () => {
+          if (done) return;
+          if (long()) _smAltPos(link, (el.ended || el.currentTime >= el.duration - 1) ? 0 : el.currentTime);
+          done = true;
+          next(0);
+        };
+        el.addEventListener('loadedmetadata', () => {
+          const p = long() ? _smAltPos(link) : 0;
+          if (p > 0 && p < el.duration - 1) el.currentTime = p;
+          const pr = el.play();
+          if (pr && pr.catch) pr.catch(() => {});
+        }, { once: true });
+        el.addEventListener('playing', () => { if (t0 === null) t0 = el.currentTime; });
+        el.addEventListener('timeupdate', () => {
+          if (t0 === null || done) return;
+          // Saved as it goes, so leaving Welcome or closing the tab mid-video
+          // loses at most a couple of seconds.
+          if (long() && Math.abs(el.currentTime - saved) >= 2) { saved = el.currentTime; _smAltPos(link, saved); }
+          if (el.currentTime - t0 >= _SM_ALT_VID_S) finish();
+        });
+        el.addEventListener('ended', finish);
+        el.addEventListener('error', () => { if (!done) { done = true; next(1500); } });
+        // Stall guard: a video that never starts still hands on.
+        next(_SM_ALT_VID_S * 1000 + 15000);
+        el.src = link;
+      } else {
+        el.style.backgroundImage = 'url("' + link.replace(/"/g, '%22') + '")';
+        next(_SM_ALT_IMG_MS);
+      }
       bg.appendChild(el);
+      if (isVid && window.salLockDownVideo) window.salLockDownVideo(el);
       requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
       const old = Array.from(bg.children).filter(c => c !== el);
       setTimeout(() => old.forEach(c => c.remove()), 1600);
-      i++;
     };
     show();
-    bg._timer = setInterval(show, 5000);
   }
   window._smAltToggle = () => {
-    if (document.documentElement.classList.contains('is-mobile')) return false;
     window._smAltOn = !window._smAltOn;
     _smAltSync();
     return true;
   };
   window._smAltIntroPg = _pgOf('intro');
-  // (dev1010) The badge's own click listener never fired over the menu —
-  // something above it (or a menu handler) takes the click. So the toggle is
-  // caught at WINDOW capture, before any layer can, by testing whether the
-  // click lies inside the badge's box. `9` on Welcome toggles too.
+  // (dev1010) The toggle is caught at WINDOW capture, before any layer can take
+  // the click. `9` on Welcome toggles too.
+  // (dev1011) …and the click that counts is on the Welcome build stamp
+  // (.sm-ver). The #ver-badge test stays for localhost, where that badge shows,
+  // but on the public site the badge is hidden and the stamp is the "devNNNN"
+  // on screen.
   if (!window._smAltBound) {
     window._smAltBound = true;
     const _menuUp = () => { const m = document.getElementById('shareableMenu'); return !!(m && m.getClientRects().length); };
     window.addEventListener('click', e => {
-      const b = document.getElementById('ver-badge');
-      if (!b || !_menuUp() || !window._smAltToggle) return;
-      const r = b.getBoundingClientRect();
-      if (!r.width || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+      if (!_menuUp() || !window._smAltToggle) return;
+      const onStamp = !!(e.target && e.target.closest && e.target.closest('#shareableMenu .sm-ver'));
+      if (!onStamp) {
+        const b = document.getElementById('ver-badge');
+        if (!b) return;
+        const r = b.getBoundingClientRect();
+        if (!r.width || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+      }
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
       window._smAltToggle();
     }, true);
@@ -2012,8 +2079,63 @@ async function _showShareableMenu() {
       window._smAltToggle();
     }, true);
   }
+  // (dev1011) PHONES: holding a finger on Welcome brings up the design switch.
+  // A phone has no `9` key, and the build stamp is too small to hit reliably.
+  // 600 ms without moving more than a few px; a lift, a scroll or a drag
+  // cancels it. Android raises its own long-press menu as `contextmenu`, which
+  // may beat the timer or cancel the pointer, so that event opens the offer
+  // too. Links and buttons keep their own long-press behaviour.
+  let _smHold = null, _smHoldXY = [0, 0], _smHeld = false, _smTouchAt = 0;
+  const _smHoldStop = () => { clearTimeout(_smHold); _smHold = null; };
+  const _smHoldSkip = t => !!(t && t.closest && t.closest('button,a,input,textarea,select,.sm-alt-opt'));
+  const _smAltOffer = () => {
+    _smHoldStop();
+    if (ov.querySelector('.sm-alt-opt')) return;
+    _smHeld = true;
+    const box = document.createElement('div');
+    box.className = 'sm-alt-opt';
+    box.innerHTML = '<button type="button" data-act="alt">' + (window._smAltOn ? 'OldDesign' : 'NewDesign') + '</button>'
+                  + '<button type="button" data-act="x">Cancel</button>';
+    box.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      e.stopPropagation();
+      box.remove();
+      if (b.dataset.act === 'alt') window._smAltToggle();
+    });
+    ov.appendChild(box);
+  };
+  ov.addEventListener('pointerdown', e => {
+    _smHoldStop();
+    _smHeld = false;
+    const box = ov.querySelector('.sm-alt-opt');
+    if (box && !box.contains(e.target)) box.remove();
+    if (e.pointerType !== 'touch' || window._smCurPage !== _pgOf('intro')) return;
+    _smTouchAt = Date.now();
+    if (_smHoldSkip(e.target)) return;
+    _smHoldXY = [e.clientX, e.clientY];
+    _smHold = setTimeout(_smAltOffer, 600);
+  }, true);
+  ov.addEventListener('pointermove', e => {
+    if (_smHold && Math.hypot(e.clientX - _smHoldXY[0], e.clientY - _smHoldXY[1]) > 12) _smHoldStop();
+  }, true);
+  ov.addEventListener('pointerup', _smHoldStop, true);
+  ov.addEventListener('pointercancel', _smHoldStop, true);
+  ov.addEventListener('contextmenu', e => {
+    if (window._smCurPage !== _pgOf('intro') || Date.now() - _smTouchAt > 3000 || _smHoldSkip(e.target)) return;
+    e.preventDefault();
+    _smAltOffer();
+  }, true);
+  // The finger that held then lifts, and the click that follows must not open
+  // whatever lay under it (the day's picture, a link).
+  ov.addEventListener('click', e => {
+    if (!_smHeld) return;
+    _smHeld = false;
+    if (e.target.closest && e.target.closest('.sm-alt-opt')) return;
+    e.preventDefault(); e.stopPropagation();
+  }, true);
   ov.insertAdjacentHTML('afterbegin',
-    '<div class="sm-alt-brand">Sea<br>Life<br>More</div>'
+    '<div class="sm-alt-brand">Sea<br>Life<br>and More</div>'
     + '<style>'
     + '.sm-alt-brand,.sm-alt-bg{display:none;}'
     + '#shareableMenu.sm-alt{background:#000 !important;padding-left:240px;}'
@@ -2030,7 +2152,26 @@ async function _showShareableMenu() {
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab[data-kind="signin"]{order:99;margin-top:auto;}'
     + '#shareableMenu.sm-alt #smFwdArrow{display:none !important;}'
     + '#shareableMenu.sm-alt #smPage' + _pgOf('intro') + '{visibility:hidden;}'
+    // (dev1011) The build stamp stays visible over the slideshow — it is the
+    // switch back.
+    + '#shareableMenu.sm-alt #smPage' + _pgOf('intro') + ' .sm-ver{visibility:visible;}'
     + '#shareableMenu.sm-alt > div[style*="flex:1"]{z-index:1;}'
+    // (dev1011) PHONES: no title, and the tab list (the phone's bottom bar —
+    // the top bar is display:none there) turns into a column down the RIGHT
+    // edge. The overlay is inside #rotateWrap, so "right" is the visual right
+    // edge in the rotated frame too.
+    + 'html.is-mobile #shareableMenu.sm-alt{padding-left:0;padding-right:150px;}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-alt-brand{display:none;}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom{display:flex !important;position:absolute;right:0;top:0;bottom:0;width:150px;box-sizing:border-box;z-index:3;flex-direction:column;align-items:flex-end;background:transparent;box-shadow:none;padding:14px 16px 12px 0;}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab{flex:none;background:none;border:none;padding:5px 0;text-align:right;text-transform:uppercase;letter-spacing:0.04em;font-size:13px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab.on{color:#f0c419;}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab[data-kind="signin"]{order:99;margin-top:auto;}'
+    // (dev1011) Holding a finger on Welcome means "options" now, so the phone's
+    // own word-select and save-image sheets stay out of the way there.
+    + 'html.is-mobile #shareableMenu #smPage' + _pgOf('intro') + '{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}'
+    + '.sm-alt-opt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;display:flex;gap:10px;padding:14px;border-radius:12px;background:rgba(20,22,26,0.94);box-shadow:0 6px 24px rgba(0,0,0,0.7);}'
+    + '.sm-alt-opt button{padding:12px 20px;border-radius:9px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.10);color:#fff;font-family:inherit;font-size:16px;cursor:pointer;touch-action:manipulation;}'
+    + '.sm-alt-opt button[data-act="alt"]{background:#4aa8ff;border-color:#4aa8ff;color:#06121f;font-weight:600;}'
     + '</style>');
   // (dev0739) The floating back arrow's route home on the menu — it takes the
   // viewer to the Intro (Welcome) page without a reload. Re-exported on every
