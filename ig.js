@@ -2826,6 +2826,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
   const REFETCH_TRIES = 3;
   const isDownloadDone = r => isDownloaded(r) && !r.needsFullRes;
 
+  // (dev1014) The client's own backstop against a proxy that accepts a download and then
+  // never answers — the 2026-09-18 hang, where this `await fetch` sat for 13 hours with
+  // no signal and took the rest of the grind with it. Set LONGER than the proxy's own
+  // IG_DL_MAX_MS (240s) so in the normal case the proxy times out first and we get a real
+  // error message to log; this fires only when the proxy is so wedged it cannot even do
+  // that. Either way the row fails and the batch continues, which is the whole point.
+  const IG_DL_CLIENT_MS = 300000;
+
   async function batchEnrich() {
     const ids = selectedInView();
     if (!ids.length) { igToast('Nothing checked in this view.\nBatches act only on filtered rows that are checked (checkbox; Shift-click for a range).', 3400); return; }
@@ -3042,6 +3050,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       if (!ok && !r.VidTitle) { if (single) igToast('✗ ' + r.id + ': enrich failed, cannot name file', 3200); return false; }
       applyAndRender();
     }
+    // (dev1014) Declared OUTSIDE the try so the catch below can clear it. A timer left
+    // armed on the failure path would abort a LATER row's fetch minutes afterwards —
+    // a bug that would look exactly like the random IG failure it is meant to prevent.
+    let _dlKill = null;
     try {
       if (single) igToast('⏳ Downloading ' + r.id + '…\n' + (coverOnly
         ? '📸 cover only (index 1) — cookieless'
@@ -3049,7 +3061,13 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // (dev0675) Ask the proxy to stamp the official-embed verdict on the way back —
       // but ONLY for a row that has none yet, so a re-download never re-probes IG.
       const _dlT0 = Date.now();
+      // (dev1014) See IG_DL_CLIENT_MS. The signal has to stay armed through res.json()
+      // as well, not just the headers — a proxy that answers headers and then stalls
+      // mid-body would hang here exactly as before. Cleared on both exits below.
+      const _dlAbort = new AbortController();
+      _dlKill = setTimeout(() => _dlAbort.abort(), IG_DL_CLIENT_MS);
       const res = await fetch(PROXY + '/ig/download', {
+        signal: _dlAbort.signal,
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // (dev0689) `author` picks the ig_media subfolder. The proxy falls back to the
         // base directory if it is absent, so a stale cached ig.js degrades to the old
@@ -3071,6 +3089,7 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
           keepMinW: (r.localFiles || []).length && r.dlMinW > 0 ? r.dlMinW : 0 })
       });
       const j = await res.json();
+      clearTimeout(_dlKill);
       // (dev0683) The proxy's own verdict for this row, timed. A download that takes
       // minutes and then fails is a different disease from one that fails in 2s.
       diag('dl-reply', { id: r.id, http: res.status, ms: Date.now() - _dlT0,
@@ -3336,7 +3355,14 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       }
       return true;
     } catch (e) {
-      lastOpError = (e && e.message) || '';
+      clearTimeout(_dlKill);
+      // (dev1014) An abort is OUR timer firing, not an Instagram verdict and not a network
+      // error. Name it as such: the message must not match the network-class test just
+      // below, or a hung proxy would be reported as a dead one and pause the whole grind.
+      lastOpError = (e && e.name === 'AbortError')
+        ? 'download timed out after ' + Math.round(IG_DL_CLIENT_MS / 1000)
+          + 's — the proxy accepted this row and never answered (see proxy.log)'
+        : ((e && e.message) || '');
       // (dev0683) A bare "Failed to fetch" here means the PROXY didn't answer — the
       // run then counts it as an Instagram failure and can stop the whole grind on
       // it. Confirm which world we're in, for the record only; nothing branches.

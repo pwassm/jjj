@@ -120,12 +120,45 @@ function memLine() {
 // shows whether headroom was gone at that moment instead of leaving us to guess.
 // windowsHide so the probe never flashes a console (dev0657: a window that pops
 // up on a timer is not acceptable, and rightly so).
+// (dev1014) THE PROBE CRIED WOLF FOR THREE DAYS. Sept 19-21 every run of this logged
+// "RAM 0.0GB · COMMIT limit 0.0GB free 0.0GB" and then the LOW-HEADROOM alarm below —
+// while the machine actually had 33.5GB of commit free. The cause was not memory at
+// all: `Get-CimInstance Win32_OperatingSystem` had started failing on this box with
+//   Get-CimInstance: Insufficient system resources exist to complete the requested service.
+// (a WMI provider-host quota, unrelated to the proxy). stderr went to 'ignore', so $o
+// was null, `[int]$null` is 0, and the result "0|0|0|0|system-managed" has five fields —
+// it sailed past the `f.length < 5` guard and tripped `< 3072`. A detector that reports
+// an emergency when its own reading failed is worse than no detector: dev0697's real
+// finding (pagefile pinned 1000-5000MB, 1.85GB free) has since been FIXED — the pagefile
+// is system-managed and the limit is 55GB — so every one of those lines was noise sitting
+// on top of a solved problem.
+//   Two changes. (a) A reading of zero is IMPOSSIBLE on a running machine, so treat it as
+// "the probe failed" and say so, once an hour, instead of raising an alarm. (b) Don't just
+// go quiet — fall back to the performance counters, which work here when CIM does not, so
+// the number dev0697 needs is still in the log the next time a night dies.
+let HEADROOM_QUIET_AT = 0;   // last time the probe-unavailable note was logged
 function logCommitHeadroom() {
-  const ps = "$o=Get-CimInstance Win32_OperatingSystem;"
-    + "$p=@(Get-CimInstance Win32_PageFileSetting);$pf='system-managed';"
-    + "if($p.Count -gt 0){$pf='manual '+$p[0].InitialSize+'-'+$p[0].MaximumSize+'MB'};"
-    + "Write-Output ([string][int]($o.TotalVisibleMemorySize/1024)+'|'+[int]($o.FreePhysicalMemory/1024)"
-    + "+'|'+[int]($o.TotalVirtualMemorySize/1024)+'|'+[int]($o.FreeVirtualMemory/1024)+'|'+$pf)";
+  // Backslashes are doubled: '\Memory\Commit Limit' in a JS string would lose them
+  // (\M and \C are not escapes, so JS silently drops the backslash) and the counter
+  // path would never match. Same family of trap as the heredoc/argv one.
+  const ps = "$ErrorActionPreference='SilentlyContinue';"
+    + "$t=0;$fr=0;$lim=0;$cf=0;$pf='unknown';"
+    + "$o=Get-CimInstance Win32_OperatingSystem;"
+    + "if($o){"
+    +   "$t=[int]($o.TotalVisibleMemorySize/1024);$fr=[int]($o.FreePhysicalMemory/1024);"
+    +   "$lim=[int]($o.TotalVirtualMemorySize/1024);$cf=[int]($o.FreeVirtualMemory/1024);"
+    +   "$p=@(Get-CimInstance Win32_PageFileSetting);$pf='system-managed';"
+    +   "if($p.Count -gt 0){$pf='manual '+$p[0].InitialSize+'-'+$p[0].MaximumSize+'MB'}"
+    + "}else{"
+    // CIM is down — the counters still answer. They carry no pagefile mode and no RAM
+    // total, so those stay 'unknown'/0 and node fills the total in from os.totalmem().
+    +   "$c=Get-Counter '\\Memory\\Commit Limit','\\Memory\\Committed Bytes','\\Memory\\Available MBytes';"
+    +   "if($c){$v=$c.CounterSamples;"
+    +     "$lim=[int]($v[0].CookedValue/1MB);"
+    +     "$cf=[int](($v[0].CookedValue-$v[1].CookedValue)/1MB);"
+    +     "$fr=[int]$v[2].CookedValue;$pf='unknown (CIM down)'}"
+    + "}"
+    + "Write-Output ([string]$t+'|'+$fr+'|'+$lim+'|'+$cf+'|'+$pf)";
   let out = '';
   try {
     crumb('headroom spawn');
@@ -135,10 +168,24 @@ function logCommitHeadroom() {
     p.on('error', () => {});
     p.on('close', () => {
       const f = out.trim().split('|');
-      if (f.length < 5) return;
       const gb = mb => (Number(mb) / 1024).toFixed(1);
+      // The commit LIMIT is the one field that can never legitimately read 0. If it does,
+      // both CIM and the counters failed and we know nothing — which is not the same as
+      // knowing the news is bad. Note it at most hourly so a broken probe cannot fill the
+      // log with the very noise this change exists to remove.
+      const limitMB = f.length >= 5 ? Number(f[2]) : 0;
+      if (!(limitMB > 0)) {
+        if (Date.now() - HEADROOM_QUIET_AT > 3600000) {
+          HEADROOM_QUIET_AT = Date.now();
+          plog('system memory: probe UNAVAILABLE (CIM and perf counters both returned nothing)'
+            + ' — no reading, and therefore no verdict. Not a low-memory warning.');
+        }
+        return;
+      }
+      // RAM total from node when the counter path had to be used; it always knows.
+      const totalMB = Number(f[0]) > 0 ? Number(f[0]) : Math.round(os.totalmem() / 1048576);
       const commitFreeMB = Number(f[3]);
-      plog(`system memory: RAM ${gb(f[0])}GB (free ${gb(f[1])}GB) · COMMIT limit ${gb(f[2])}GB`
+      plog(`system memory: RAM ${gb(totalMB)}GB (free ${gb(f[1])}GB) · COMMIT limit ${gb(f[2])}GB`
         + ` free ${gb(f[3])}GB · pagefile ${f[4]}`);
       if (commitFreeMB < 3072) {
         plog(`⚠ COMMIT HEADROOM IS LOW (${gb(f[3])}GB). This — not the VPN and not Instagram —`
@@ -356,7 +403,7 @@ const PORT = 8081;
 //   ffdown/ folder itself is untouched, nothing reads it now).
 // (dev1001) parseIgMainMeta reads the @handle of an account with no display name
 //   (twitter:title "@handle • …", og:description "N likes, N comments - handle on …").
-const PROXY_BUILD = 'dev1008';
+const PROXY_BUILD = 'dev1014';
 
 // (dev0459) PURE COOKIELESS, per user choice: never send `--cookies-from-browser
 // firefox` to Instagram for enrich (streamYtdlpMeta) OR download (/ig/download).
@@ -4553,6 +4600,12 @@ async function qFindRoot(res, origin, sp) {
 }
 
 function sendJson(res, code, obj, origin) {
+  // (dev1014) A response can now be ended by the /ig/download wall-clock guard while the
+  // handler is still running, so the handler's own path may well arrive here afterwards.
+  // Writing headers twice throws ERR_HTTP_HEADERS_SENT — and thrown from inside one of
+  // these promise chains that is an unhandled rejection, i.e. a new way to kill the very
+  // process the guard exists to keep working. A late send is a no-op, not a crash.
+  if (res.headersSent || res.writableEnded) return;
   const h = Object.assign({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
                           corsForExec(origin || ''));
   res.writeHead(code, h);
@@ -4975,6 +5028,15 @@ const IG_STORE = path.join(__dirname, 'ig.json');
 // runs out. 2 GB is that copy several times over plus the largest plausible
 // carousel, so downloads stop while there is still ample room to save.
 const IG_DISK_FLOOR = 2 * 1024 * 1024 * 1024;
+
+// (dev1014) The longest a single /ig/download may run before the proxy answers anyway.
+// A healthy row takes ~4s; the slowest legitimate case is a big carousel walking several
+// items, each with its own 12-25s socket timeout, so 4 minutes is far outside normal and
+// still nowhere near the 13 HOURS the 2026-09-18 hang actually ran for. See the guard in
+// igDownload() for the full story. The client's own cap (ig.js IG_DL_CLIENT_MS) is set
+// LONGER than this on purpose, so this one wins and the row gets a real error message
+// instead of a bare abort.
+const IG_DL_MAX_MS = 240000;
 
 // Free bytes on the volume holding `dir`. statfsSync is Node 18.15+; on anything
 // older, or a path that cannot be stat'd, this answers null and EVERY caller
@@ -5931,6 +5993,36 @@ function coverWebpToJpg(tmpDir) {
 }
 function igDownload(req, res, origin) {
   const dlT0 = Date.now();   // (dev0799) wall clock for the per-exit speed ledger
+  // (dev1014) WALL-CLOCK CAP — the thing that cost a whole weekend. On 2026-09-18 at
+  // 20:58:07 a POST arrived, was accepted, and NEVER ANSWERED; the browser finally went
+  // away 13 hours later ("client closed after 46804755ms"). The five rows before it had
+  // each finished in ~4s. Three facts pin the shape of it: no "embed probe start" line
+  // ever followed (so it died before the media landed, not in the probe), activeDl=0 the
+  // entire time (so NO child process was alive — nothing for the VPN kill-switch to reap),
+  // and the tunnel never rotated. That leaves an await that never settled: the same class
+  // of bug the comments in igCarouselWalk() describe having already been fixed twice, on
+  // two other chains. There is a third path that still does it.
+  //   The damage was out of all proportion to the cause because the grind is SERIAL and
+  // neither end had a cap: every sub-step here has its own socket timeout, but nothing
+  // bounded the COMPOSITION of them, and the client sat in a bare `await fetch` with no
+  // AbortSignal. So one stuck row silently stopped every remaining row for three days.
+  //   This does not fix the hang — it makes the hang survivable. A row that cannot finish
+  // in IG_DL_MAX_MS is answered ok:false and the grind moves to the next one. Deliberately
+  // NOT a network-class error string: the client's dev0688 check treats "failed to fetch"
+  // as a dead proxy and pauses the whole batch, and a timeout is a verdict on ONE row.
+  const _dlGuard = setTimeout(() => {
+    if (res.headersSent || res.writableEnded) return;
+    plog(`⚠ /ig/download TIMED OUT after ${Math.round(IG_DL_MAX_MS / 1000)}s — answering so the`
+      + ` grind can move on instead of waiting for ever. activeDl=${ACTIVE_DL.size}`
+      + ` (0 here means it hung on an unsettled promise, not on a child process).`);
+    crumb('ig/download wall-clock timeout');
+    res._diagNote = 'TIMED OUT';
+    sendJson(res, 200, { ok: false, timedOut: true,
+      error: `proxy gave up after ${Math.round(IG_DL_MAX_MS / 1000)}s — this row hung` }, origin);
+  }, IG_DL_MAX_MS);
+  _dlGuard.unref();   // the HTTP server holds the loop open; this must never be what does
+  // 'close' fires after a normal 'finish' too, so one listener covers every exit.
+  res.on('close', () => clearTimeout(_dlGuard));
   readJson(req, 64 * 1024).then(payload => {
     const url = String(payload.url || '');
     const id = String(payload.id || '').replace(/[^A-Za-z0-9_-]/g, '');
