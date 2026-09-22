@@ -1168,7 +1168,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1017';
+  window.HELP_VERSION_STR = 'dev1020';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture
@@ -1179,7 +1179,27 @@ thead th.rn              { color: #fff !important; }
     // disturb the helpfloat-before-core keydown ordering the note above
     // protects — that constraint is about listener registration order, and
     // lang.js adds none.
-    var files = ['lang.js','helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','taxoninfo.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','vpcolor.js','llc.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','quizcells.js','ig.js','s.js','o.js','x.js','slideshow.js','screenrec.js','cardtypes.js','makecard.js','ytt.js','auth.js','backarrow.js','keyboard.js','boot.js'];
+    var files = ['lang.js','helpfloat.js','DownloadRules.js','tags.js','video.js','core.js','grid.js','taxoninfo.js','fold16.js','xe.js','xe2-bundle.js','xe2.js','loops.js','vp.js','vpcolor.js','llc.js','hotkeys.js','collection.js','movingcells.js','flycells.js','flycells2.js','fallcells.js','turncells.js','quizcells.js','s.js','o.js','x.js','slideshow.js','screenrec.js','cardtypes.js','makecard.js','auth.js','backarrow.js','keyboard.js','boot.js'];
+    // (dev1020) The media-fetching tooling is dev-only and is NOT part of this
+    // repo: d_yt.js (yt-dlp bridge, T-row downloader, YouTube transcript/summary —
+    // the old ytt.js) and d_ig.js (the I staging screen — the old ig.js — plus the
+    // IG saved-page import). The published site needs none of it: everything that
+    // LINKS and SHOWS an IG/YT video lives in video.js, grid.js and core.js.
+    // So they are added only when the page is served locally.
+    //
+    // This repeats boot.js's _salIsLocalHost rather than calling it: boot.js is the
+    // LAST entry above and has not run yet. Keep the two in step if either changes.
+    var h = (window.location.hostname || '').toLowerCase();
+    var local = (h === '' || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0'
+              || /^192\.168\./.test(h) || /^10\./.test(h)
+              || /^172\.(1[6-9]|2\d|3[01])\./.test(h));
+    if (local) {
+      // Spliced into the slot ig.js used to hold — after core.js and hotkeys.js, so
+      // the I screen's window-capture keydown still registers AFTER core.js's
+      // dispatcher, and before the other staging screens.
+      var at = files.indexOf('s.js');
+      files.splice(at < 0 ? files.length : at, 0, 'd_yt.js', 'd_ig.js');
+    }
     files.forEach(function(f) {
       document.write('<script src="' + f + '?v=' + v + '"><\/script>');
     });

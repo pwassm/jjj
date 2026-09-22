@@ -355,11 +355,10 @@ ig.json.vidaudit-*
 # goes to GitHub, these node/python CLI tools were untracked (git rm --cached — they
 # remain on disk) and are ignored from here on. Backup is backup-root.ps1 to the
 # C:/E:/F: _jjjRoot copies, NOT git.
-#   NOT listed, and deliberately still tracked, because the PUBLIC site loads them:
-#     ig.js        — in the index.html script loader, every page
+#   NOT listed, and deliberately still tracked, because the PUBLIC site loads it:
 #     igmeta.json  — fetched by video.js (dev0707 bakes it for the public site)
-#     igclass.html — a page, not a CLI tool
-#     ig-harvest.user.js — the Tampermonkey script ig.js/proxy.js point users at
+#   (dev1020 removed ig.js, igclass.html and ig-harvest.user.js from this list and
+#    untracked them — see the dev1020 block at the end of this file.)
 # NOTE: proxy.js require()s igEmbedProbeCore.js and spawns ig_impersonate_fetch.py.
 # Both still work locally; a fresh clone of the repo will not have them.
 igClassify.js
@@ -377,3 +376,31 @@ igOrphans.js
 igResAudit.js
 ig_impersonate_fetch.py
 igclip.py
+
+# ── (dev1020) The media-fetching tooling is dev-only ──────────────────────
+# The repo IS the public website, so it should carry only what the site needs to
+# LINK and SHOW a video — that is video.js (embed build + igmeta.json), grid.js
+# (frame fit) and core.js (link detection). How the media is actually FETCHED is
+# nobody else's business, so it now lives in two dev-only files that index.html
+# loads on localhost only:
+#     d_yt.js  — yt-dlp metadata bridge, T-row downloader, Pinterest download,
+#                YouTube transcript/summary (the old ytt.js, folded in)
+#     d_ig.js  — the I staging screen (the old ig.js) + the IG saved-page import
+# ig.js and ytt.js themselves are gone from disk: their content IS d_ig.js/d_yt.js.
+# They stay listed here so a stray old copy can never be re-added.
+#
+# Also untracked at dev1020 (kept on disk, never served):
+#     proxy.js           — the local node proxy. The site calls its ENDPOINTS on
+#                          127.0.0.1:8081; nothing ever fetches the file itself.
+#     ig-harvest.user.js — the Tampermonkey harvester. Nothing links to it.
+#     igclass.html       — the IG subject-classifier page, dev-only.
+#
+# Backup for every one of these is backup-root.ps1, NOT git. A fresh clone will
+# not have them — restore from _jjjRoot.
+d_ig.js
+d_yt.js
+ig.js
+ytt.js
+proxy.js
+ig-harvest.user.js
+igclass.html

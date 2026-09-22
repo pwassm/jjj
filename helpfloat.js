@@ -580,23 +580,9 @@ var HP_EXTRA = {
       { k: '↑ / ↓',         d: 'Move the focused row (navigate) — as in T' },
       { k: 'Esc / t',       d: 'Leave — back to the Table' }
     ] },
-  I: { desc: 'ig.json review — enrich / download / promote Instagram rows.',
-    rows: [
-      { k: '↑ / ↓',  d: 'Move the focused row' },
-      { k: 'Enter',  d: 'Open the focused post' },
-      { k: 'Space',  d: 'Select / deselect the focused row' },
-      { k: 'f',      d: 'Focus the filter box  ·  ⇧F clears the text filter' },
-      { k: 'd',      d: 'Download the selected rows' },
-      { k: 'e',      d: 'Enrich the selected rows (cookieless /p OG-tag fetch)' },
-      { k: 'c',      d: 'Clear the selection' },
-      { k: 'r',      d: 'Reset the selected rows to “new” so they can be retried' },
-      { k: 'a',      d: 'Toggle the auto-enrich panel' },
-      { k: 'm',      d: 'Clear, then select the top 18' },
-      { k: 'w',      d: 'Paste an IG URL from the clipboard as a new Unharvested single' },
-      { k: '⇧N ⇧D ⇧E ⇧A', d: 'Status filter: new / downloaded / enriched / all' },
-      { k: 'Ctrl+I', d: 'Toggle the floating preview' },
-      { k: 't',      d: 'Leave — back to the Table (Esc no longer closes this screen)' }
-    ] },
+  // (dev1020) The I screen's help moved to d_ig.js with the screen itself — it
+  // enumerated a workflow that has no business in a public repo. It registers as
+  // window.HP_EXTRA_DEV.I; see the lookup in the builder below.
   St: { desc: 'Bulk staging over s.json — import links, fill metadata, promote the good ones into ml.json.',
     rows: [
       { k: '↑ / ↓',      d: 'Move the focused row' },
@@ -853,7 +839,10 @@ function hpRows(s) {
   });
 
   // 4 — HP_EXTRA for the screens neither table covers.
-  var ex = HP_EXTRA[code];
+  // (dev1020) A dev-only screen whose whole implementation is outside this repo
+  // keeps its help with it, and registers here as window.HP_EXTRA_DEV[code]. The
+  // public build loads no such file, so the lookup simply finds nothing.
+  var ex = HP_EXTRA[code] || (window.HP_EXTRA_DEV && window.HP_EXTRA_DEV[code]);
   if (ex) ex.rows.forEach(function (r) {
     push(r.kind === 'gesture' ? gests : keys, r.k, r.d, r.dev);
   });

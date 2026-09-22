@@ -120,8 +120,11 @@ const HK_STAGING = [
 window.HOTKEYS = [
 
   // ── Registry-dispatched screen keys (fn entries) ───────────────────────────
-  { key: 'i', label: 'I', group: 'Screens', scope: 'global',
-    desc: 'Toggle the I (Instagram staging) screen — ig.json review/enrich/promote',
+  // (dev1020) dev: true was missing, so this was the one staging-screen entry that
+  // could surface in USER-mode help. The flag is display-only (helpfloat filters on
+  // it); the screen itself has always refused to open in user mode.
+  { key: 'i', label: 'I', group: 'Screens', scope: 'global', dev: true,
+    desc: 'Toggle the I (Instagram staging) screen',
     fn(ctx) { /* handled via HK_STAGING in the dispatcher */ } },
 
   { label: 'Alt+A', group: 'Screens', scope: 'global', dev: true,
