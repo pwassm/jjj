@@ -3926,6 +3926,11 @@ function showCtx(x, y, target) {
         const _yChk = [...checkedRows].filter(i => data[i] && yttVideoId(data[i].link));
         if (_yChk.length >= 2) {
           addCI(menu, 'Brief summary — ' + _yChk.length + ' checked rows', () => yttRunBriefRows(_yChk));
+          // (dev1024) Transcript only (captions, else whisper; no AI summary) — seconds a row.
+          if (typeof yttRunTranscriptRows === 'function') {
+            addCI(menu, 'Transcribe only — ' + _yChk.length + ' checked rows', () => yttRunTranscriptRows(_yChk, false));
+            addCI(menu, 'Transcribe → add to ftext — ' + _yChk.length + ' checked rows', () => yttRunTranscriptRows(_yChk, true));
+          }
           if (!yttVideoId(data[di] && data[di].link)) addCS(menu);
         }
       }
@@ -3944,6 +3949,11 @@ function showCtx(x, y, target) {
         } else {
           addCI(menu, 'Transcribe & summarise', () => yttRunRow(di, false));
         }
+        if (typeof yttRunTranscriptRows === 'function') {
+          addCI(menu, _yHave && _yHave.transcript ? 'Read transcript' : 'Transcribe only',
+                () => (_yHave && _yHave.transcript) ? yttShowText(_yUid, 'transcript') : yttRunTranscriptRows([di], false));
+          addCI(menu, 'Transcribe → add to ftext', () => yttRunTranscriptRows([di], true));
+        }
         addCS(menu);
       }
       // (dev0964) The whole "To transcribe" queue, serially. Deliberately NOT gated
@@ -3954,7 +3964,9 @@ function showCtx(x, y, target) {
       if (typeof yttQueueRows === 'function') {
         const _yQ = yttQueueRows().length;
         if (_yQ) {
-          addCI(menu, 'Transcribe all ' + _yQ + ' queued…', () => yttRunQueue());
+          // (dev1024) Relabelled: this is the FULL summary for rows tagged "To transcribe",
+          // not a transcript — "Transcribe all 1 queued" read as the latter.
+          addCI(menu, 'Summarise all ' + _yQ + ' tagged “To transcribe”…', () => yttRunQueue());
           addCS(menu);
         }
       }
@@ -9352,6 +9364,17 @@ function _flickrPhotoId(url) {
   return null;
 }
 
+// (dev1024) An import leaves exactly the rows it ADDED checked, replacing whatever was
+// checked before, so the next step (Brief / Transcribe only / Download ...) can act on
+// the batch straight away. Updated duplicates are not checked, since nothing new arrived.
+// checkedRows holds data indices; data is only ever appended to here (sorting builds
+// sortedIdx and never reorders data), so indexOf is stable.
+function _checkImportedRows(rows) {
+  if (!rows || !rows.length) return;
+  checkedRows.clear();
+  for (const r of rows) { const i = data.indexOf(r); if (i >= 0) checkedRows.add(i); }
+}
+
 async function _importBareLinks(lines) {
   // Normalize (YouTube → youtu.be/<id>) then de-dup within paste.
   // (dev0506) A line pasted in /shorts/ form identifies a portrait Short — record its
@@ -9566,6 +9589,7 @@ async function _importBareLinks(lines) {
   sortCol = 'DateAdded';
   sortDir = 'desc';
   buildSort();
+  _checkImportedRows(newRows);
   render();
 
   // Kick off async metadata fetch for new rows (title/author/Mpix/P/S).
@@ -10331,6 +10355,7 @@ function _importChannelCSV(lines) {
   const now = isoNow();
   let added = 0, updated = 0, skipped = 0;
   const dupRecords = [];
+  const addedRows = [];
 
   for (let li = 1; li < lines.length; li++) {
     const fields = _parseCsvRow(lines[li]);
@@ -10381,6 +10406,7 @@ function _importChannelCSV(lines) {
       if (yid) row.Mute = '0';          // a video row, as _importBareLinks sets it
       if (isShort) row[modeCol] = 'P';
       data.push(row);
+      addedRows.push(row);
       linkIndex.set(link, data.length - 1);
       added++;
     }
@@ -10401,11 +10427,12 @@ function _importChannelCSV(lines) {
     sortDir = 'desc';
     buildSort();
   }
+  _checkImportedRows(addedRows);
   render();
 
   toast(
     '✓ Channel: ' + (author || '(list without @name — author left blank)') + '\n'
-    + '   added ' + added + ' new (BA=1), updated ' + updated + ' existing'
+    + '   added ' + added + ' new (BA=1' + (added ? ', now checked' : '') + '), updated ' + updated + ' existing'
     + (skipped ? ', skipped ' + skipped : '')
     + (dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : ''),
     3500
