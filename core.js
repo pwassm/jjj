@@ -10301,10 +10301,18 @@ function _importChannelCSV(lines) {
   const author = lines[0]; // keep the @ — that's the identifier
 
   // (zip0129) O(1) lookup of existing rows by link.
+  // (dev1022) Plus by YouTube id, as _importBareLinks does, so a row stored as
+  // youtu.be/<id> is found when the CSV carries the /shorts/ or watch form.
   const linkIndex = new Map();
+  const ytIdIndex = new Map();
   data.forEach((r, di) => {
-    if (r && r.link) linkIndex.set(String(r.link).trim(), di);
+    if (r && r.link) {
+      linkIndex.set(String(r.link).trim(), di);
+      const yid = _extractYTVideoId(r.link) || (window.getYouTubeId && window.getYouTubeId(r.link));
+      if (yid) ytIdIndex.set(yid, di);
+    }
   });
+  const modeCol = (typeof getModeCol === 'function') ? getModeCol() : 'Mode';
 
   const now = isoNow();
   let added = 0, updated = 0, skipped = 0;
@@ -10313,10 +10321,18 @@ function _importChannelCSV(lines) {
   for (let li = 1; li < lines.length; li++) {
     const fields = _parseCsvRow(lines[li]);
     if (fields.length < 2) { skipped++; continue; }
-    const link     = (fields[0] || '').trim();
+    const rawLink  = (fields[0] || '').trim();
     const title    = (fields[1] || '').trim();
-    const duration = (fields[2] || '').trim();
-    if (!link) { skipped++; continue; }
+    // yt-dlp's flat listing gives Shorts no duration: the CSV says "NA".
+    const duration = /^NA$/i.test((fields[2] || '').trim()) ? '' : (fields[2] || '').trim();
+    if (!rawLink) { skipped++; continue; }
+    // (dev1022) Same treatment as a bare-links paste (dev0506): a /shorts/ link is a
+    // portrait Short, so capture Mode=P now, before normalising collapses the URL to
+    // youtu.be/<id> and the /shorts/ hint is gone.
+    const isShort = /\/shorts\//i.test(rawLink);
+    const link    = _normalizeLink(rawLink);
+    const yid     = _extractYTVideoId(link) || (window.getYouTubeId && window.getYouTubeId(link));
+    if (!linkIndex.has(link) && yid && ytIdIndex.has(yid)) linkIndex.set(link, ytIdIndex.get(yid));
 
     if (linkIndex.has(link)) {
       // Update existing row
@@ -10332,6 +10348,7 @@ function _importChannelCSV(lines) {
       if (title    && r.VidTitle  !== title)    { r.VidTitle  = title;    touched = true; }
       if (author   && r.VidAuthor !== author)   { r.VidAuthor = author;   touched = true; }
       if (duration && r.vidLength !== duration) { r.vidLength = duration; touched = true; }
+      if (isShort && !r[modeCol])               { r[modeCol]    = 'P';      touched = true; }
       if (touched) { r.DateModified = now; updated++; }
     } else {
       // Add new row — mark as batch-added (BA = '1')
@@ -10347,6 +10364,8 @@ function _importChannelCSV(lines) {
         DateModified: now,
         tags: []
       };
+      if (yid) row.Mute = '0';          // a video row, as _importBareLinks sets it
+      if (isShort) row[modeCol] = 'P';
       data.push(row);
       linkIndex.set(link, data.length - 1);
       added++;
