@@ -50,6 +50,7 @@
 //   node igResAudit.js --apply             conclude the at-max rows
 //   node igResAudit.js --queued-only       only rows already marked needsFullRes
 //   node igResAudit.js --author NAME       one account
+//   node igResAudit.js --ids ABC,DEF       (dev1017) named shortcodes, filter bypassed
 //   node igResAudit.js --limit 50          test run
 //   node igResAudit.js --unmark [--apply]  drop every resBest this script wrote
 //   options: --jobs N (default 4, max 8) · --sleep MS (default 250, per fetch)
@@ -88,6 +89,12 @@ const APPLY = has('--apply');
 const UNMARK = has('--unmark');
 const QUEUED_ONLY = has('--queued-only');
 const AUTHOR = val('--author', '');
+// (dev1017) --ids ABC,DEF — audit named shortcodes, the way igCoverAudit.js already
+// does. Spot-checking specific rows previously meant --author plus a --limit and
+// hoping the ones you cared about came out at the top of the population, which for a
+// 617-row author they do not. Bypasses the eligibility filter deliberately: when you
+// name a row you want its verdict, even if it is already resBest or above target.
+const IDS = val('--ids', '').split(',').map(s => s.trim()).filter(Boolean);
 const LIMIT = Math.max(0, +val('--limit', 0) || 0);
 const JOBS = Math.max(1, Math.min(8, +val('--jobs', 4) || 4));
 const SLEEP = Math.max(0, +val('--sleep', 250) || 0);
@@ -262,11 +269,16 @@ const saveCache = () => {
 
 // The ⚠ below-target population: measured, under target, not already concluded.
 // `--queued-only` narrows to the rows actually marked for re-fetch.
-const eligible = rows.filter(r => r && (r.dlMinW || 0) > 0 && r.dlMinW < RES_TARGET_W
-  && !r.resBest && r.status !== 'promoted' && !r.dead && filesOf(r).length
-  && /\/(p|reel|tv)\//i.test(r.url || '')
-  && (!QUEUED_ONLY || r.needsFullRes)
-  && (!AUTHOR || (r.author || '').toLowerCase() === AUTHOR.toLowerCase()));
+const eligible = IDS.length
+  // (dev1017) Named rows are taken as given — see --ids above. Still requires a
+  // usable URL and files on disk, because there is nothing to compare without them.
+  ? rows.filter(r => r && IDS.includes(r.id) && filesOf(r).length
+      && /\/(p|reel|tv)\//i.test(r.url || ''))
+  : rows.filter(r => r && (r.dlMinW || 0) > 0 && r.dlMinW < RES_TARGET_W
+      && !r.resBest && r.status !== 'promoted' && !r.dead && filesOf(r).length
+      && /\/(p|reel|tv)\//i.test(r.url || '')
+      && (!QUEUED_ONLY || r.needsFullRes)
+      && (!AUTHOR || (r.author || '').toLowerCase() === AUTHOR.toLowerCase()));
 let targets = LIMIT ? eligible.slice(0, LIMIT) : eligible;
 
 const V = { atMax: [], upgradeable: [], partial: [], video: [], walled: [], gone: [], nodecl: [] };
