@@ -3905,7 +3905,9 @@ function showCtx(x, y, target) {
       // load — without it _dlF is false and the item is simply never offered.
       const _dlF = (typeof _tMediaFolderFor === 'function')
                  && _tMediaFolderFor(data[di] && data[di].link);
-      if (_dlF) { addCI(menu, '⬇ Download → ' + _dlF, () => tDownloadRowMedia(di)); addCS(menu); }
+      // (dev1021) Plain click skips a row whose file is already on disk (the proxy
+      // checks by filename); Alt+click forces the download anyway.
+      if (_dlF) { addCI(menu, '⬇ Download → ' + _dlF, ev => tDownloadRowMedia(di, !!(ev && ev.altKey))); addCS(menu); }
       // (dev0851) A MakeCard row (image + <hr> + text) can be exported back to
       // the standalone .html the .ahk used to write, image re-inlined as base64.
       if (typeof makeCardRowIsCard === 'function' && makeCardRowIsCard(data[di])) {
@@ -3970,7 +3972,9 @@ function showCtx(x, y, target) {
   menu.style.left = Math.min(x, window.innerWidth-200-8)+'px';
   menu.style.top  = Math.min(y, window.innerHeight-mh-8)+'px';
 }
-function addCI(menu, label, fn, danger) { const d=document.createElement('div'); d.className='ctx-item'+(danger?' red':''); d.textContent=label; d.addEventListener('click',()=>{closeCtx();fn();}); menu.appendChild(d); }
+// (dev1021) The click event is now forwarded to fn. Every existing handler takes no
+// argument and is unaffected; it lets a handler read modifiers (Alt+click to force).
+function addCI(menu, label, fn, danger) { const d=document.createElement('div'); d.className='ctx-item'+(danger?' red':''); d.textContent=label; d.addEventListener('click',ev=>{closeCtx();fn(ev);}); menu.appendChild(d); }
 function addCS(m) { const s=document.createElement('div'); s.className='ctx-sep'; m.appendChild(s); }
 function closeCtx() { document.getElementById('ctxmenu').classList.remove('open'); }
 document.addEventListener('pointerdown', e => { const m=document.getElementById('ctxmenu'); if(m.classList.contains('open')&&!m.contains(e.target)) closeCtx(); }, true);
