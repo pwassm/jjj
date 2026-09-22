@@ -343,3 +343,37 @@ igclass_emb/
 __pycache__/
 OctopusVideos/
 mears/
+
+# (dev1018) igVidAudit.js — the VIDEO half of the resolution audit, and its verdict
+# cache. Per the 2026-09-21 rule that nothing IG-related goes to GitHub: the tool
+# itself stays local too, not just its data. Backup is backup-root.ps1 (C:/E:/F:
+# _jjjRoot), NOT git — same arrangement as ig.json.
+igVidAudit.js
+ig.json.vidaudit-*
+
+# (dev1019) IG TOOLING STAYS LOCAL. Per the 2026-09-21 rule that nothing IG-related
+# goes to GitHub, these node/python CLI tools were untracked (git rm --cached — they
+# remain on disk) and are ignored from here on. Backup is backup-root.ps1 to the
+# C:/E:/F: _jjjRoot copies, NOT git.
+#   NOT listed, and deliberately still tracked, because the PUBLIC site loads them:
+#     ig.js        — in the index.html script loader, every page
+#     igmeta.json  — fetched by video.js (dev0707 bakes it for the public site)
+#     igclass.html — a page, not a CLI tool
+#     ig-harvest.user.js — the Tampermonkey script ig.js/proxy.js point users at
+# NOTE: proxy.js require()s igEmbedProbeCore.js and spawns ig_impersonate_fetch.py.
+# Both still work locally; a fresh clone of the repo will not have them.
+igClassify.js
+igCloseoutUndo.js
+igCoverAudit.js
+igEmbedProbe.js
+igEmbedProbeCore.js
+igFolderByAuthor.js
+igGrindAudit.js
+igMarkLowRes.js
+igMeasure.js
+igMetaBake.js
+igNameDims.js
+igOrphans.js
+igResAudit.js
+ig_impersonate_fetch.py
+igclip.py
