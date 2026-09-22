@@ -8018,6 +8018,20 @@ async function _wantLinksInner() {
     return _importChannelCSV(lines);
   }
 
+  // (dev1023) Rule 2b: every line is a channel-list TILDE line — url~title~duration~flag,
+  // the .txt twin of the channel CSV (YTChannelList / YT_fetchLinks2). Before this rule
+  // the titles' spaces made Rule 1 refuse them and Rule 3 turned the whole paste into
+  // ONE text row. Rewritten as CSV rows and handed to the channel importer, with no
+  // @handle line, so VidAuthor is left blank.
+  const TILDE_RE = /^(https?:\/\/[^\s~]+)~(.*)~([^~]*)~([^~]*)$/;
+  if (lines.every(l => TILDE_RE.test(l))) {
+    const q = s => '"' + String(s).replace(/"/g, "'") + '"';
+    return _importChannelCSV([''].concat(lines.map(l => {
+      const m = TILDE_RE.exec(l);
+      return [m[1], m[2].trim(), m[3].trim(), m[4].trim()].map(q).join(',');
+    })));
+  }
+
   // Rule 1: every line is a URL (any kind) → bare-links import.
   // The bare-links importer now classifies each line as video/image/web
   // and writes ltype + ftext for web URLs (zip0166).
@@ -10378,7 +10392,7 @@ function _importChannelCSV(lines) {
   }
 
   if (dupRecords.length) {
-    _writeDuplicateLinksReport(dupRecords, 'channel CSV: ' + author); // async, fire-and-forget
+    _writeDuplicateLinksReport(dupRecords, author ? 'channel CSV: ' + author : 'channel list (tilde)'); // async, fire-and-forget
   }
 
   save();
@@ -10390,7 +10404,7 @@ function _importChannelCSV(lines) {
   render();
 
   toast(
-    '✓ Channel: ' + author + '\n'
+    '✓ Channel: ' + (author || '(list without @name — author left blank)') + '\n'
     + '   added ' + added + ' new (BA=1), updated ' + updated + ' existing'
     + (skipped ? ', skipped ' + skipped : '')
     + (dupRecords.length ? '\n   ' + dupRecords.length + ' duplicate(s) → duplicateTries.txt' : ''),
