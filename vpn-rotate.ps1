@@ -220,12 +220,47 @@ if ($i.code -ne 0) {
 Log ("tunnel service installed{0}" -f $(if($i.out){' - '+$i.out}else{''}))
 
 # --- VERIFY the tunnel actually routes (dev0651) --------------------------------
-# 1) the proton_active interface must get its 10.2.x WireGuard address.
+# (dev1016) This check used Get-NetIPAddress, which is CIM-backed — and on 2026-09-21
+# the CIM server on this box started answering "Insufficient system resources exist to
+# complete the requested service" for everything. -ErrorAction SilentlyContinue does not
+# help: a CIM *connection* failure is terminating, so the script-scope trap caught it and
+# logged FATAL. Eight rotations in a row died this way, every one of them AFTER "tunnel
+# service installed" — the tunnel was fine each time and we tore it down anyway, because
+# the only thing that failed was our ability to ASK about it. The same dead CIM server is
+# what made the proxy's headroom probe report 0GB and cry LOW HEADROOM for three days.
+#   .NET's NetworkInformation reads the IP stack directly, with no CIM, no WMI and no
+# service dependency, so this check now works whether or not CIM is healthy. Note the
+# proxy's own vpnTunnelUp() has always been CIM-free (node's os.networkInterfaces), which
+# is why the pill could still read the tunnel correctly while rotation could not.
+function TunnelIPv4Up {
+    param([string]$Alias)
+    try {
+        foreach ($ni in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+            $props = $null
+            try { $props = $ni.GetIPProperties() } catch { continue }
+            if (-not $props) { continue }
+            foreach ($ua in $props.UnicastAddresses) {
+                if ($ua.Address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) { continue }
+                if ($ua.Address.IPAddressToString -notlike '10.2.*') { continue }
+                # Prefer the interface we just installed, but accept ANY 10.2.x the way the
+                # proxy does: WireGuard names the adapter itself and a rename would otherwise
+                # read as "dead server". Check 2 below is the real proof of routing anyway —
+                # this one only establishes that the interface came up at all.
+                if (-not $Alias -or $ni.Name -eq $Alias -or $ni.Description -like "*$Alias*") { return $true }
+                $script:anyWgAddr = $true
+            }
+        }
+    } catch {
+        # Last resort: ipconfig is a native exe and needs nothing but the stack.
+        try { if ((ipconfig 2>$null | Out-String) -match '10\.2\.\d+\.\d+') { return $true } } catch {}
+    }
+    return [bool]$script:anyWgAddr
+}
 $ifUp = $false
 foreach ($t in 1..12) {
     Start-Sleep -Milliseconds 800
-    if (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $TunName -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPAddress -like '10.2.*' }) { $ifUp = $true; break }
+    $script:anyWgAddr = $false
+    if (TunnelIPv4Up $TunName) { $ifUp = $true; break }
 }
 if (-not $ifUp) {
     Log ("FAIL: {0} never brought the tunnel interface up (server dead/full?). Removing it." -f $chosen.Name)
