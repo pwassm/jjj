@@ -201,7 +201,7 @@ window.HOTKEYS = [
     } },
 
   { key: 'e', label: 'E', group: 'Screens', scope: 'global',
-    desc: 'Open the Editor for the focused row — video → Ev, ftext → Xe, image → Ie; ttxt/ctxt/ss/pres column focus edits THAT field',
+    desc: 'Open the Editor for the focused row — video → Ev, ftext → Xe, image → Ie; ttxt/ctxt/ss/pres column focus edits THAT field. (dev1025) Mouse over ftext on a YouTube row that has a transcript on disk → edit the transcript (saves to ytsummaries/)',
     fn(ctx) {
       // E = Editor — Video Editor for video rows, Text/HTML editor for ftext rows
       // (zip0133) Routing is row-content based:
@@ -292,11 +292,23 @@ window.HOTKEYS = [
       if (isText) {
         // Route to the HTML/text editor (handles both rich-text slides and
         // JSON quiz definitions — the editor itself detects which).
-        if (typeof gridOpenTextEditor === 'function') {
-          gridOpenTextEditor(rowToEdit.cell || '', rowToEdit);
-        } else {
-          toast('Text editor not available', 1800);
+        const _openXe = () => {
+          if (typeof gridOpenTextEditor === 'function') {
+            gridOpenTextEditor(rowToEdit.cell || '', rowToEdit);
+          } else {
+            toast('Text editor not available', 1800);
+          }
+        };
+        // (dev1025) Mouse over the ftext cell of a YouTube row: a transcript in
+        // ytsummaries/ wins — it opens in a plain edit box that saves back to disk,
+        // with an "Edit ftext (Xe) instead" button. No transcript (or no proxy, or the
+        // public build without d_yt.js) → Xe exactly as before.
+        if (_overFtextCol && typeof window.yttEditTranscript === 'function'
+            && typeof yttVideoId === 'function' && yttVideoId(rowToEdit.link)) {
+          window.yttEditTranscript(rowToEdit, _openXe).then(opened => { if (!opened) _openXe(); });
+          return;
         }
+        _openXe();
         return;
       }
 

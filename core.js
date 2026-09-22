@@ -3928,8 +3928,7 @@ function showCtx(x, y, target) {
           addCI(menu, 'Brief summary — ' + _yChk.length + ' checked rows', () => yttRunBriefRows(_yChk));
           // (dev1024) Transcript only (captions, else whisper; no AI summary) — seconds a row.
           if (typeof yttRunTranscriptRows === 'function') {
-            addCI(menu, 'Transcribe only — ' + _yChk.length + ' checked rows', () => yttRunTranscriptRows(_yChk, false));
-            addCI(menu, 'Transcribe → add to ftext — ' + _yChk.length + ' checked rows', () => yttRunTranscriptRows(_yChk, true));
+            addCI(menu, 'Transcribe only — ' + _yChk.length + ' checked rows', () => yttRunTranscriptRows(_yChk));
           }
           if (!yttVideoId(data[di] && data[di].link)) addCS(menu);
         }
@@ -3950,9 +3949,10 @@ function showCtx(x, y, target) {
           addCI(menu, 'Transcribe & summarise', () => yttRunRow(di, false));
         }
         if (typeof yttRunTranscriptRows === 'function') {
+          // (dev1025) No "add to ftext": the transcript stays in ytsummaries/, and `e`
+          // with the mouse over this row's ftext cell edits it there.
           addCI(menu, _yHave && _yHave.transcript ? 'Read transcript' : 'Transcribe only',
-                () => (_yHave && _yHave.transcript) ? yttShowText(_yUid, 'transcript') : yttRunTranscriptRows([di], false));
-          addCI(menu, 'Transcribe → add to ftext', () => yttRunTranscriptRows([di], true));
+                () => (_yHave && _yHave.transcript) ? yttShowText(_yUid, 'transcript') : yttRunTranscriptRows([di]));
         }
         addCS(menu);
       }
