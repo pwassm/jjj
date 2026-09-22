@@ -3216,6 +3216,10 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
         if (r.lowResDl) delete r.lowResDl;          // a later full-res download clears the flag
         // (dev0678) viaCover = the main /p/ page's index-1 cover. Since dev0677 that is
         // the FULL-RES original, so it counts as a fallback PATH, not a loss of quality.
+        // (dev1015) — that last clause is NOT reliably true and cost 3,180 rows. On a
+        // walled exit the logged-out /p/ page carries a 640px display_url, so viaCover is
+        // full-res only when the page was served full-res. Nothing here can tell the
+        // difference; the measured-pixel test further down is what decides now.
         if (j.viaMainVideo || j.viaMainCarousel || j.viaGalleryDl || j.viaCover) fallbackIds.add(r.id);
       }
       // (dev0677) The re-fetch queue drains itself: a row marked needsFullRes clears the
@@ -3238,7 +3242,20 @@ img.igcover{max-width:100%;max-height:240px;border-radius:6px;display:block;back
       // but they are visibly unfinished instead of invisibly wrong.
       const _items = Number.isFinite(r.nItems) ? r.nItems : 0;
       const _partial = _items > 1 && r.localFiles.length < _items;
-      if ((j.viaEmbed || _partial) && !coverOnly && !r.resBest) {
+      // (dev1015) …and a THIRD case, which is how @domy_tripodi kept landing 640x640 and
+      // calling it finished. dev0678 reasoned that viaCover is "the main /p/ page's cover,
+      // and since dev0677 that is the FULL-RES original, so it is a fallback PATH, not a
+      // loss of quality" — true only while the page is served at full res. On a walled
+      // exit IG serves the logged-out /p/ page with a 640px display_url, so viaCover comes
+      // back at 640x640 and this test, which asks WHICH PATH SERVED IT, called that clean
+      // and complete. 3,180 rows across the library are sitting at <=640 marked downloaded,
+      // not queued, not resBest — invisibly finished-but-wrong.
+      //   So stop asking which path won and ask what actually landed. belowTarget() is the
+      // same measured-pixel test the ⚠ below-1080 filter already uses, on dlMinW, which was
+      // set from j.media a few lines above. Terminating as before: a re-download that comes
+      // back no better draws the dev0696 'no gain' verdict and sets resBest, and
+      // REFETCH_TRIES bounds anything that keeps coming back provisional.
+      if ((j.viaEmbed || _partial || belowTarget(r)) && !coverOnly && !r.resBest) {
         // Bounded: a post that keeps coming back provisional (an embed-only account, an
         // item IG will not serve) gives up after REFETCH_TRIES rather than reappearing in
         // every grind for good. refetchStuck keeps it findable without pretending it's done.
