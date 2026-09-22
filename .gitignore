@@ -405,3 +405,5 @@ proxy.js
 ig-harvest.user.js
 igclass.html
 backupdir/
+# (dev1026) resBestVia:aspect43 stamping — its undo list (ids + held res). Local, like the other ig.json.* audit trails.
+ig.json.aspect43-*

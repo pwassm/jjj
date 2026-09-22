@@ -8427,5 +8427,13 @@
     "aliases": [],
     "def": "",
     "rank": "genus"
+  },
+  {
+    "id": "goethite",
+    "label": "Goethite",
+    "kind": "topic",
+    "parents": [],
+    "aliases": [],
+    "def": ""
   }
 ]
