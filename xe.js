@@ -2214,9 +2214,15 @@ function teSizeToWidth(size) {
 // row — the wrap this whole change exists to stop. So the gutter moves INSIDE
 // the box (border-box + padding), where it costs no line width. The caption sits
 // in that same content box, so it stays centred under the picture either way.
-function teFloatCss(width, align) {
+// (dev1030) `noGap` drops the gutter entirely, so two 50% clips floated Left sit
+// flush as one strip. Readback: teFloatHasGap() below.
+function teFloatCss(width, align, noGap) {
   const side = align === 'right' ? 'right' : 'left';
   const isPct = /%\s*$/.test(String(width || ''));
+  if (noGap) {
+    return 'float:' + side + ';width:' + width + ';'
+      + (isPct ? 'box-sizing:border-box;' : '') + 'margin:6px 0;';
+  }
   if (isPct) {
     return 'float:' + side + ';width:' + width + ';box-sizing:border-box;'
       + 'padding-' + (side === 'left' ? 'right' : 'left') + ':14px;margin:6px 0;';
@@ -2224,6 +2230,25 @@ function teFloatCss(width, align) {
   return 'float:' + side + ';width:' + width + ';'
     + (side === 'left' ? 'margin:6px 14px 6px 0;' : 'margin:6px 0 6px 14px;');
 }
+window.teFloatCss = teFloatCss;
+// (dev1030) Did teFloatCss put a gutter on this float? Takes a CSSStyleDeclaration
+// (el.style, or a probe span's). The gutter is inside padding for a % width and
+// an outside margin for a px one; either one non-zero = a gap.
+function teFloatHasGap(st) {
+  if (!st) return true;
+  const px = v => parseFloat(v) || 0;
+  return px(st.paddingLeft) + px(st.paddingRight) + px(st.marginLeft) + px(st.marginRight) > 0;
+}
+window.teFloatHasGap = teFloatHasGap;
+// (dev1030) Caption text size. Small is the size every caption has had since
+// dev0634, so an old caption reads back as Small and a re-Replace leaves it be.
+const TE_CAP_SIZES = { small: '0.78em', medium: '1em', large: '1.3em' };
+function teCapSizeOf(fontSize) {
+  const f = String(fontSize || '').trim();
+  for (const k in TE_CAP_SIZES) if (TE_CAP_SIZES[k] === f) return k;
+  return 'small';
+}
+window.teCapSizeOf = teCapSizeOf;
 // Map an existing inline width back to a Size choice for edit-in-place:
 // a named bucket, or the literal percentage so the % option re-selects with
 // the value the media already has.
@@ -2248,6 +2273,9 @@ function teShowImageModal(onInsert, defaults) {
   const dIsPct = /^\d+(\.\d+)?%$/.test(dSize);
   const dPct   = dIsPct ? dSize : '33%';
   const isEdit = !!defaults.src;
+  // (dev1030) No-gap float and caption size — both read back on edit-in-place.
+  const dNoGap   = !!defaults.noGap;
+  const dCapSize = TE_CAP_SIZES[defaults.capSize] ? defaults.capSize : 'small';
   // (dev0716) Video playback flags. Editing an existing <video> pre-fills from
   // its attributes; a fresh insert gets the sane default — visible controls,
   // no autoplay, sound on until the user asks for muted.
@@ -2309,6 +2337,11 @@ function teShowImageModal(onInsert, defaults) {
         <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgAlign" value="left"${dAlign==='left'?' checked':''}>  Left (text wraps right)</label>
         <label style="margin-right:14px;cursor:pointer;"><input type="radio" name="teImgAlign" value="center"${dAlign==='center'?' checked':''}>  Centered</label>
         <label style="cursor:pointer;"><input type="radio" name="teImgAlign" value="right"${dAlign==='right'?' checked':''}>  Right (text wraps left)</label>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333;">
+          <label style="cursor:pointer;"><input type="checkbox" id="teImgNoGap"${dNoGap?' checked':''}>  No gap</label>
+          <span style="color:#666;font-size:11px;margin-left:8px;">Left/Right only — two 50% clips both
+            set Left then sit touching</span>
+        </div>
       </fieldset>
 
       <fieldset id="teImgVidOpts" style="display:none;border:1px solid #383;border-radius:6px;
@@ -2329,6 +2362,12 @@ function teShowImageModal(onInsert, defaults) {
         <button id="teImgCaptionPaste" title="Paste from clipboard"
           style="background:#222;border:1px solid #555;color:#aaa;padding:5px 8px;
                  border-radius:4px;cursor:pointer;flex-shrink:0;">📋</button>
+      </div>
+      <div style="margin:-4px 0 10px 56px;font-size:12px;">
+        <span style="color:#8ef;font-size:11px;margin-right:8px;">Caption size</span>
+        <label style="margin-right:12px;cursor:pointer;"><input type="radio" name="teImgCapSize" value="small"${dCapSize==='small'?' checked':''}>  Small</label>
+        <label style="margin-right:12px;cursor:pointer;"><input type="radio" name="teImgCapSize" value="medium"${dCapSize==='medium'?' checked':''}>  Medium</label>
+        <label style="cursor:pointer;"><input type="radio" name="teImgCapSize" value="large"${dCapSize==='large'?' checked':''}>  Large</label>
       </div>
 
       <div style="text-align:right;">
@@ -2390,7 +2429,7 @@ function teShowImageModal(onInsert, defaults) {
   // markup an <img> gets, so alignment, captions and the Xe edit-in-place path
   // behave identically for both. preload="metadata" keeps a slide with several
   // clips cheap to open — only the first frame + duration are fetched.
-  function buildHtml(url, size, align, caption, kind, vopts) {
+  function buildHtml(url, size, align, caption, kind, vopts, noGap, capSize) {
     // (dev0733) `size` is either a named px bucket or a literal percentage
     // ("30%") from the "% of line" option — see teSizeToWidth.
     const w = teSizeToWidth(size);
@@ -2409,7 +2448,8 @@ function teShowImageModal(onInsert, defaults) {
     const capHtml = capInner
       // (dev0634) no color — caption inherits the slide/section text color
       // (was #aaa gray, which stuck out and infected lines typed near it).
-      ? '<div style="font-size:0.78em;text-align:center;margin-top:3px;">' + capInner + '</div>'
+      ? '<div style="font-size:' + (TE_CAP_SIZES[capSize] || TE_CAP_SIZES.small)
+        + ';text-align:center;margin-top:3px;">' + capInner + '</div>'
       : '';
     // Autoplay only works muted in every current browser, so tie the two.
     const v = Object.assign({ controls: true, autoplay: false, loop: false, muted: false }, vopts || {});
@@ -2426,13 +2466,20 @@ function teShowImageModal(onInsert, defaults) {
       : '<img src="' + url + '" style="' + css + '" alt="">';
 
     if (align === 'left' || align === 'right') {
-      const fl = teFloatCss(w, align);
-      if (cap) return '<div style="' + fl + '">'
-        + tag('width:100%;border-radius:4px;') + capHtml + '</div>';
-      return tag(fl + 'border-radius:4px;');
+      const fl = teFloatCss(w, align, noGap);
+      // (dev1030) No gap = square corners too, so the flush pair reads as one
+      // strip instead of showing a notch where two rounded corners meet.
+      const rad = noGap ? '' : 'border-radius:4px;';
+      if (capInner) return '<div style="' + fl + '">'
+        + tag('width:100%;' + rad) + capHtml + '</div>';
+      return tag(fl + rad);
     }
     // Centered: wrap in figure/div with margin auto for predictable centering.
-    return '<div style="text-align:center;margin:12px 0;">'
+    // (dev1030) clear:both — a centered clip starts BELOW any floats above it.
+    // Without it, two floats a pixel different in height (1080x1920 beside
+    // 1080x1922) left a 1px sliver under the shorter one; a 50% clip fit that
+    // sliver's half-line exactly, and "centered" rendered flush left.
+    return '<div style="clear:both;text-align:center;margin:12px 0;">'
       + tag('max-width:100%;width:' + w + ';display:inline-block;border-radius:4px;')
       + capHtml + '</div>';
   }
@@ -2477,7 +2524,9 @@ function teShowImageModal(onInsert, defaults) {
       loop:     modal.querySelector('#teVidLoop').checked,
       muted:    modal.querySelector('#teVidMuted').checked,
     };
-    const html = buildHtml(r.url, size, align, caption, r.kind, vopts);
+    const noGap   = modal.querySelector('#teImgNoGap').checked;
+    const capSize = (modal.querySelector('input[name="teImgCapSize"]:checked') || {}).value || 'small';
+    const html = buildHtml(r.url, size, align, caption, r.kind, vopts, noGap, capSize);
     close();
     if (typeof onInsert === 'function') onInsert(html);
   }
@@ -2594,6 +2643,7 @@ function teEditImage(img) {
     const stale = document.getElementById('te-img-replace-marker');
     if (stale) stale.remove();
   }, { src: displaySrc, size: size, align: align,
+       noGap: align !== 'center' && !teFloatHasGap(img.style),
        video: isVid ? { controls: img.hasAttribute('controls'),
                         autoplay: img.hasAttribute('autoplay'),
                         loop:     img.hasAttribute('loop'),

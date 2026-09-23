@@ -1106,7 +1106,8 @@
               + (side === 'right' ? 'margin:6px 0 6px 14px;' : 'margin:6px 14px 6px 0;');
           };
       if (align === 'left' || align === 'right') { wrapCss = _fl(w, align); imgCss = 'width:100%;border-radius:4px;'; }
-      else { wrapCss = 'text-align:center;margin:12px 0;'; imgCss = 'max-width:100%;width:' + w + ';display:inline-block;border-radius:4px;'; }
+      // (dev1030) clear:both — same as the modal's centered wrapper (xe.js buildHtml).
+      else { wrapCss = 'clear:both;text-align:center;margin:12px 0;'; imgCss = 'max-width:100%;width:' + w + ';display:inline-block;border-radius:4px;'; }
       try {
         var trw = state.tr;
         trw.setNodeMarkup(wrap.pos, undefined, Object.assign({}, wrap.node.attrs, { style: wrapCss }));
@@ -1139,7 +1140,7 @@
       }
     } else {
       if (st.width) css += 'width:' + st.width + ';';
-      css += 'float:none;display:block;margin:10px auto;';
+      css += 'float:none;clear:both;display:block;margin:10px auto;';   // (dev1030) clear:both
     }
     try {
       editor.view.dispatch(editor.state.tr.setNodeMarkup(sel.from, undefined,
@@ -1475,15 +1476,22 @@
     var align = (ws.float === 'left' || ws.cssFloat === 'left') ? 'left'
               : (ws.float === 'right' || ws.cssFloat === 'right') ? 'right' : 'center';
     var width = ws.width || is.width || '';
-    var caption = '';
+    var caption = '', capFont = '';
     wrapNode.descendants(function (n) {
-      if (n.type.name === 'styledDiv') n.descendants(function (t) { if (t.isText) caption += t.text; });
+      if (n.type.name === 'styledDiv') {
+        n.descendants(function (t) { if (t.isText) caption += t.text; });
+        capFont = _styleProbe(n.attrs.style).fontSize || capFont;   // (dev1030)
+      }
       return n.type.name !== 'styledDiv';
     });
+    // (dev1030) No-gap and caption size read back, so Replace keeps them.
+    var cs = window.teCapSizeOf ? window.teCapSizeOf(capFont) : 'small';
+    var noGap = align !== 'center' && !!window.teFloatHasGap && !window.teFloatHasGap(ws);
     return {
       from: from, to: to,
       defaults: { src: found.attrs.src, size: _sizeBucket(width), align: align,
-                  caption: caption.trim(), video: _mediaDefaults(found) },
+                  caption: caption.trim(), video: _mediaDefaults(found),
+                  noGap: noGap, capSize: cs },
     };
   }
 
@@ -1538,7 +1546,8 @@
       return {
         from: sel.from, to: sel.to,
         defaults: { src: selNode.attrs.src, size: _sizeBucket(st.width), align: al, caption: '',
-                    video: _mediaDefaults(selNode) },
+                    video: _mediaDefaults(selNode),
+                    noGap: al !== 'center' && !!window.teFloatHasGap && !window.teFloatHasGap(st) },
       };
     }
     return null;
