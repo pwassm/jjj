@@ -5254,6 +5254,8 @@ document.querySelectorAll('.hkitem').forEach(el => {
       housekeepingFixIgLtype();
     } else if (act === 'needsource') {
       housekeepingNeedSource();
+    } else if (act === 'selnew') {
+      housekeepingSelectedToNew();
     } else if (act === 'wmnew') {
       housekeepingWatermarkNew();
     } else if (act === 'addwm') {
@@ -5295,6 +5297,47 @@ function housekeepingNeedSource() {
   setRowFilter({ composite: true, _needSource: true, tags: [],
                  text: { linkpage: 'noLinkpageYet' } });
   toast('🔗 ' + n + ' rows need a source page — Housekeeping ▸ Need Source again to clear', 3500);
+}
+
+// (dev1027) Selected to New — the checked T rows go to the TOP of the c.json
+// "New" row's ctxt, newest DateAdded first, each as the same Large (700px),
+// centered markup Xe's 🖼 modal writes for a UID, so Xe edits them in place
+// like any other picture. Rows already in that ctxt (same link) are skipped,
+// and rows whose link isn't a direct image/video file are listed, not added.
+async function housekeepingSelectedToNew() {
+  if (typeof _cMode !== 'undefined' && _cMode) { toast('⚠ Not on the C screen — go back to T first', 3000); return; }
+  if (!checkedRows.size) { toast('Tick the rows to add first (checkbox column)', 2500); return; }
+  try { await _cEnsureLoaded(); } catch (_) {}
+  const target = (_cData || []).find(r => r && !r._salMeta
+    && String(r.gname || '').trim().toLowerCase() === 'new');
+  if (!target) { toast('⚠ No row with gname "New" in c.json', 3000); return; }
+  if (String(target.Lock || '').trim()) { toast('🔒 "New" is locked — clear its Lock column in C first', 3500); return; }
+  const rows = [...checkedRows].map(i => data[i]).filter(Boolean)
+    .sort((a, b) => String(b.DateAdded || '').localeCompare(String(a.DateAdded || '')));
+  const ctxt = String(target.ctxt || '');
+  const w = teSizeToWidth('large');
+  const added = [], dup = [], bad = [];
+  rows.forEach(r => {
+    const url = String(r.link || '').trim();
+    const isVid = teIsVideoUrl(url);
+    if (!url || (!isVid && !teIsImageUrl(url))) { bad.push(r.UID); return; }
+    if (ctxt.includes('src="' + url + '"')) { dup.push(r.UID); return; }
+    const css = 'max-width:100%;width:' + w + ';display:inline-block;border-radius:4px;';
+    const tag = isVid
+      ? '<video src="' + url + '" style="' + css + '" controls playsinline preload="metadata"></video>'
+      : '<img src="' + url + '" style="' + css + '" alt="">';
+    added.push('<div style="text-align:center;margin:12px 0;">' + tag + '</div>');
+  });
+  if (added.length) {
+    target.ctxt = added.join('') + ctxt;
+    target.DateModified = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const ok = await cSaveToFile();
+    if (!ok) { toast('⚠ c.json write failed — kept in this browser only', 4000); return; }
+  }
+  toast((added.length ? '✓ ' + added.length + ' added to the top of "New"' : 'Nothing added')
+    + (dup.length ? '\n' + dup.length + ' already there (UID ' + dup.join(', ') + ')' : '')
+    + (bad.length ? '\n' + bad.length + ' not a direct image/video file (UID ' + bad.join(', ') + ')' : ''),
+    bad.length || dup.length ? 5000 : 3000);
 }
 
 // (zip0151) Clean Mute Column: for each row, if it's NOT a video link,
