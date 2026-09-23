@@ -441,6 +441,13 @@ html.grid-open #ver-badge { bottom:110px; }
    editor stylesheet re-shows it (faded with a banner) for editing. */
 .te-cut { display: none !important; }
 #teEditor .te-cut { display: block !important; }
+/* (dev1031) The 🖼 modal's picture+caption wrapper. Xe wraps both the media and
+   each caption line in a <p>, and every context gives <p> its own margin
+   (8px on the landing page, 1em in a slide) — which is what put a wide band
+   between a picture and its caption. Inside the wrapper the caption's own
+   inline margin-top is the only gap. vp.js _ftStyles repeats this for the
+   sandboxed slide iframe. */
+.te-media p { margin: 0 !important; }
 
 /* (dev0763) ▼▼ / ▶▶ expand-all / collapse-all icons (core.js _salXAllToggle).
    Two triangles overlapped by a negative letter-spacing, with the same amount
@@ -1169,7 +1176,7 @@ thead th.rn              { color: #fff !important; }
        • the ?v= cache-buster on every script tag below
        • the bottom-right ver-badge text (boot.js refreshes it on load) -->
 <script>
-  window.HELP_VERSION_STR = 'dev1030';
+  window.HELP_VERSION_STR = 'dev1031';
   (function() {
     var v = window.HELP_VERSION_STR.replace(/^(dev|user)/, '');
     // (dev0702) helpfloat.js MUST stay first: it registers the window-capture

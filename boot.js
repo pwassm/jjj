@@ -1329,6 +1329,8 @@ async function _showShareableMenu() {
     // instead of shoving its neighbours onto the next line.
     + '.smGreeting div[style*="float"]{max-width:100%;box-sizing:border-box;}'
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
+    // (dev1031) _smWireInlineZoom: hold / pinch to zoom a clip in the prose.
+    + '.smGreeting video{cursor:zoom-in;-webkit-user-select:none;user-select:none;}'
     // (dev0788) The Welcome page's forward arrow. TRANSPARENT, as asked: no
     // circle, no fill, no border — just the glyph, so it lies over the picture
     // instead of punching a hole in it. It carries a drop shadow rather than a
@@ -1903,6 +1905,7 @@ async function _showShareableMenu() {
   // Removes the offer, not the ability: the URL is in the page and the file is
   // public. This is UI tidying, not protection.
   if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
+  _smWireInlineZoom(ov);   // (dev1031) hold / pinch zoom on those same clips
 
   // (dev0384) `.on` is synced across BOTH bars; the last tab the viewer used is
   // remembered in window._smLastTab so a reopen lands back on it.
@@ -3135,6 +3138,197 @@ async function _showShareableMenu() {
       if (nxt) nxt.focus();
     });
   }
+}
+
+// (dev1031) ZOOM ON THE VIDEOS INSIDE A TAB'S PROSE (`.smGreeting video` — the
+// clips an author places with Xe's 🖼 modal). Same gestures as G and V:
+//   desktop  hold LMB = zoom in toward the pointer (Ctrl+hold = out), drag while
+//            zoomed = pan, double-click = back to normal
+//   phone    two-finger pinch = zoom + pan, one finger while zoomed = pan,
+//            a tap on a zoomed clip = back to normal
+// The clip is transformed in place and clip-path'd back to its own box, so the
+// page layout never moves and no wrapper is added to authored HTML. Nothing is
+// saved: a zoom lasts until it is undone or the menu is rebuilt.
+// Delegated on the overlay, which is rebuilt on every open, so each build wires
+// its own copy and no listener outlives its page.
+function _smWireInlineZoom(ov) {
+  const SEL = '.smGreeting video', MAX = 8;
+  const st = new WeakMap();                      // video → { s, tx, ty }
+  const get = v => st.get(v) || { s: 1, tx: 0, ty: 0 };
+  // Physical → visual frame (a portrait phone rotates the whole UI 90°).
+  const xy = p => (window.rotateXY ? window.rotateXY(p) : { x: p.clientX, y: p.clientY });
+  // Visual position of the clip's UNtransformed top-left. Its rect is the
+  // transformed box, whose corner sits at origin + (tx,ty) while scale ≥ 1.
+  const origin = v => {
+    const z = get(v), r = v.getBoundingClientRect();
+    const a = xy({ clientX: r.left, clientY: r.top }), b = xy({ clientX: r.right, clientY: r.bottom });
+    return { x: Math.min(a.x, b.x) - z.tx, y: Math.min(a.y, b.y) - z.ty };
+  };
+  const pad = v => {
+    const cs = getComputedStyle(v), n = k => parseFloat(cs[k]) || 0;
+    return { l: n('paddingLeft'), r: n('paddingRight'), t: n('paddingTop'), b: n('paddingBottom') };
+  };
+  const apply = (v, z) => {
+    const W = v.offsetWidth, H = v.offsetHeight, p = pad(v);
+    if (!(z.s > 1.001)) z = { s: 1, tx: 0, ty: 0 };
+    else {                                        // the picture always covers its box
+      z.tx = Math.min(p.l * (1 - z.s), Math.max((W - p.r) * (1 - z.s), z.tx));
+      z.ty = Math.min(p.t * (1 - z.s), Math.max((H - p.b) * (1 - z.s), z.ty));
+    }
+    st.set(v, z);
+    if (z.s === 1) {
+      v.style.transform = v.style.transformOrigin = v.style.clipPath = v.style.touchAction = '';
+      v.style.cursor = 'zoom-in';
+      return;
+    }
+    const s = z.s;
+    v.style.transformOrigin = '0 0';
+    v.style.transform = 'translate(' + z.tx + 'px,' + z.ty + 'px) scale(' + s + ')';
+    // The visible window = the clip's own content box, expressed in the
+    // element's pre-transform coordinates (clip-path is transformed with it).
+    v.style.clipPath = 'inset(' + ((p.t - z.ty) / s) + 'px ' + (W - (W - p.r - z.tx) / s) + 'px '
+      + (H - (H - p.b - z.ty) / s) + 'px ' + ((p.l - z.tx) / s) + 'px round ' + (4 / s) + 'px)';
+    v.style.touchAction = 'none';                 // one finger pans it, not the page
+    v.style.cursor = 'grab';
+  };
+  // Scale to s2 keeping the picture under visual point q where it is.
+  const zoomAt = (v, q, s2) => {
+    const z = get(v), o = origin(v), k = Math.min(MAX, Math.max(1, s2)) / z.s;
+    const lx = q.x - o.x, ly = q.y - o.y;
+    apply(v, { s: z.s * k, tx: lx - (lx - z.tx) * k, ty: ly - (ly - z.ty) * k });
+  };
+  const reset = v => apply(v, { s: 1, tx: 0, ty: 0 });
+  const clipOf = t => (t && t.closest ? t.closest(SEL) : null);
+  let swallowClick = false;
+
+  // ── DESKTOP: hold to zoom (the V/G ramp: 180 ms settle, accelerating steps)
+  let m = null;
+  const mStop = () => {
+    if (!m) return;
+    clearTimeout(m.delay); clearInterval(m.timer); m.delay = m.timer = null;
+  };
+  ov.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const v = clipOf(e.target);
+    if (!v) return;
+    // A clip with its own control strip keeps it: the bottom 44px is left alone.
+    if (v.hasAttribute('controls')) {
+      const r = v.getBoundingClientRect();
+      if (e.clientY > r.bottom - 44) return;
+    }
+    e.preventDefault();
+    try { v.setPointerCapture(e.pointerId); } catch (_) {}
+    mStop();
+    const p = xy(e);
+    m = { v: v, x: p.x, y: p.y, q: p, moved: false, pan: null, step: 0.015,
+          dir: e.ctrlKey ? -1 : 1, delay: null, timer: null, acted: false };
+    const mm = m;
+    mm.delay = setTimeout(() => {
+      mm.delay = null;
+      mm.timer = setInterval(() => {
+        const s = get(v).s;
+        if ((mm.dir > 0 && s >= MAX) || (mm.dir < 0 && s <= 1)) { mStop(); return; }
+        zoomAt(v, mm.q, s + mm.dir * mm.step);
+        mm.step = Math.min(0.12, mm.step + 0.003);
+        mm.acted = true;
+      }, 50);
+    }, 180);
+  });
+  ov.addEventListener('pointermove', e => {
+    if (!m || e.pointerType !== 'mouse') return;
+    const p = xy(e);
+    m.q = p;
+    if (!m.moved && Math.hypot(p.x - m.x, p.y - m.y) > 8) {
+      m.moved = true;
+      mStop();
+      const z = get(m.v);
+      m.pan = { tx: z.tx, ty: z.ty, x: p.x, y: p.y };
+    }
+    if (m.moved && get(m.v).s > 1) {
+      const z = get(m.v);
+      apply(m.v, { s: z.s, tx: m.pan.tx + (p.x - m.pan.x), ty: m.pan.ty + (p.y - m.pan.y) });
+      m.v.style.cursor = 'grabbing';
+      m.acted = true;
+    }
+  });
+  const mEnd = e => {
+    if (!m || e.pointerType !== 'mouse') return;
+    mStop();
+    if (m.acted) swallowClick = true;             // a zoom/pan is not a play/pause click
+    if (get(m.v).s > 1) m.v.style.cursor = 'grab';
+    m = null;
+  };
+  ov.addEventListener('pointerup', mEnd);
+  ov.addEventListener('pointercancel', mEnd);
+  ov.addEventListener('click', e => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    if (clipOf(e.target)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+  ov.addEventListener('dblclick', e => {
+    const v = clipOf(e.target);
+    if (!v || get(v).s <= 1) return;              // unzoomed: the browser's own dblclick
+    e.preventDefault(); e.stopPropagation();
+    reset(v);
+  }, true);
+
+  // ── PHONE: pinch / pan / tap (touch events, so the page scroll and the
+  // browser's own pinch can be refused only while a clip is being handled).
+  let t = null;
+  const mid = (a, b) => { const p = xy(a), q = xy(b); return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }; };
+  const gap = (a, b) => { const p = xy(a), q = xy(b); return Math.hypot(p.x - q.x, p.y - q.y); };
+  const begin = (v, touches) => {
+    const z = get(v), o = origin(v);
+    if (touches.length >= 2) {
+      const c = mid(touches[0], touches[1]);
+      // The picture point under the fingers' midpoint, in unscaled pixels.
+      t = { v: v, mode: 'pinch', o: o, d0: gap(touches[0], touches[1]) || 1, s0: z.s,
+            cx: (c.x - o.x - z.tx) / z.s, cy: (c.y - o.y - z.ty) / z.s, tap: false };
+    } else {
+      const p = xy(touches[0]);
+      t = { v: v, mode: 'pan', x: p.x, y: p.y, tx: z.tx, ty: z.ty,
+            tap: t ? false : Date.now(), moved: false };
+    }
+  };
+  ov.addEventListener('touchstart', e => {
+    // A second finger may land just off the clip; it still joins that pinch.
+    const v = clipOf(e.target) || (t && e.touches.length >= 2 ? t.v : null);
+    if (!v) return;
+    if (t && t.v !== v) t = null;
+    begin(v, e.touches);
+    if (e.touches.length >= 2 && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  ov.addEventListener('touchmove', e => {
+    if (!t) return;
+    const v = t.v;
+    if (t.mode === 'pinch' && e.touches.length >= 2) {
+      if (e.cancelable) e.preventDefault();
+      const c = mid(e.touches[0], e.touches[1]);
+      const s = Math.min(MAX, Math.max(1, t.s0 * gap(e.touches[0], e.touches[1]) / t.d0));
+      apply(v, { s: s, tx: c.x - t.o.x - t.cx * s, ty: c.y - t.o.y - t.cy * s });
+      return;
+    }
+    if (t.mode === 'pan' && e.touches.length === 1) {
+      const p = xy(e.touches[0]);
+      if (Math.hypot(p.x - t.x, p.y - t.y) > 10) t.moved = true;
+      if (get(v).s <= 1) return;                  // not zoomed: the page scrolls
+      if (e.cancelable) e.preventDefault();
+      apply(v, { s: get(v).s, tx: t.tx + (p.x - t.x), ty: t.ty + (p.y - t.y) });
+    }
+  }, { passive: false });
+  const tEnd = e => {
+    if (!t) return;
+    const v = t.v;
+    if (e.touches.length >= 1) { begin(v, e.touches); return; }   // pinch → one-finger pan
+    const tap = t.mode === 'pan' && t.tap && !t.moved && Date.now() - t.tap < 300;
+    t = null;
+    if (tap && get(v).s > 1) {
+      if (e.cancelable) e.preventDefault();       // no synthetic click after the reset
+      reset(v);
+    }
+  };
+  ov.addEventListener('touchend', tEnd, { passive: false });
+  ov.addEventListener('touchcancel', () => { t = null; });
 }
 
 // (dev0401) Saved-search persistence — a small list in localStorage. It lives
