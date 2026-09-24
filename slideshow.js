@@ -210,7 +210,16 @@ function _slideshowCellSlides(row, frame) {
 }
 
 // Grid source: walk active grid in cell order, collect slides.
-function _slideshowGridSlides() {
+// (dev1039) ONLY THE BLOCK THE SHOW STARTS IN. Filled cells that share an edge
+// form a block; a cell cut off from the start cell's block by empty cells (a
+// note parked in a far corner, a second set on the same grid) is left out of
+// the show. Edges, not corners: two cells touching only at a corner are two
+// blocks. Merged cells (1L, 1P-3P) touch along their whole span. With no start
+// cell (the menu launcher, a ?p= link) the block is the first filled cell's
+// that has something to show. "Filled" = the cell has a row, media or not, so
+// a text cell in the middle of a block still joins its neighbours up. A layout
+// whose cells carry no row/column (the 16F fold) keeps every cell.
+function _slideshowGridSlides(startCell) {
   const gsize = (typeof _gridGsize === 'number' && _gridGsize >= 2 && _gridGsize <= 5)
     ? _gridGsize : 5;
   // (dev0370) Walk the active layout's cell list (square or 17/19) and resolve
@@ -219,13 +228,35 @@ function _slideshowGridSlides() {
   const list = (typeof _gridCellList === 'function')
     ? _gridCellList(gsize, layout)
     : (() => { const a = []; for (let r = 1; r <= gsize; r++) for (let c = 1; c <= gsize; c++) a.push({ cs: r + 'abcde'[c - 1] }); return a; })();
-  const out = [];
-  for (const spec of list) {
-    const cs = spec.cs;
-    const row = (typeof getRowByCellForGrid === 'function')
+  const rowOf = cs => (typeof getRowByCellForGrid === 'function')
       ? getRowByCellForGrid(cs)
       : (typeof getRowByCell === 'function' ? getRowByCell(cs)
         : (typeof data !== 'undefined' ? data.find(d => d.cell === cs) : null));
+  let keep = null;
+  if (list.length && list.every(sp => sp.r && sp.c)) {
+    const filled = list.map(sp => ({ sp: sp, row: rowOf(sp.cs) })).filter(x => x.row);
+    let seed = startCell ? filled.find(x => x.sp.cs === startCell) : null;
+    if (!seed) seed = filled.find(x => _slideshowCellSlides(x.row).length);
+    if (seed) {
+      const over = (a0, a1, b0, b1) => a0 < b1 && b0 < a1;
+      const touch = (a, b) => {
+        const ar = a.r + (a.rs || 1), ac = a.c + (a.cls || 1), br = b.r + (b.rs || 1), bc = b.c + (b.cls || 1);
+        return (over(a.r, ar, b.r, br) && (ac === b.c || bc === a.c))
+            || (over(a.c, ac, b.c, bc) && (ar === b.r || br === a.r));
+      };
+      keep = new Set([seed.sp.cs]);
+      const q = [seed];
+      while (q.length) {
+        const a = q.shift();
+        filled.forEach(b => { if (!keep.has(b.sp.cs) && touch(a.sp, b.sp)) { keep.add(b.sp.cs); q.push(b); } });
+      }
+    }
+  }
+  const out = [];
+  for (const spec of list) {
+    const cs = spec.cs;
+    if (keep && !keep.has(cs)) continue;
+    const row = rowOf(cs);
     // (dev0949) Off the LIVE cell element rather than recomputed from the row:
     // _gridZoomForCell is the one place that resolves the whole precedence
     // (global x c.json UID/zoom x COI zoom, and 1 on mobile), so asking it is
@@ -284,7 +315,7 @@ function slideshowOpen(source) {
 function slideshowOpenGrid(startCell, opts) {
   // (dev0279) Canonical cell-order, all media kinds. The Show filter and the
   // random shuffle are applied inside _slideshowStart.
-  const ordered = _slideshowGridSlides();
+  const ordered = _slideshowGridSlides(startCell || '');
   if (!ordered.length) {
     if (typeof toast === 'function') toast('No image or video cells in the active grid.', 2000);
     return;
@@ -2749,6 +2780,21 @@ function _slideshowResume() {
 
 function _slideshowSyncPauseBtn() {
   const st = _slideshowState;
+  // (dev1039) A quiet ❚❚ in the lower-left while paused, menu or no menu: the
+  // ⏸/▶ button lives in a panel that is usually folded away, so a show paused
+  // by a zoom (which a double-click reset does not undo) just looked stuck.
+  if (st && st.overlay) {
+    let mk = st.overlay.querySelector('#ssPausedMark');
+    if (!mk && st.paused) {
+      mk = document.createElement('div');
+      mk.id = 'ssPausedMark';
+      mk.textContent = '❚❚';
+      mk.style.cssText = 'position:absolute;left:16px;bottom:12px;z-index:30;font-size:20px;letter-spacing:-2px;'
+        + 'color:#fff;opacity:0.8;text-shadow:0 1px 4px rgba(0,0,0,0.9);pointer-events:none;';
+      st.overlay.appendChild(mk);
+    }
+    if (mk) mk.style.display = st.paused ? 'block' : 'none';
+  }
   if (!st || !st.menu) return;
   const btn = st.menu.querySelector('#ssPause');
   if (!btn) return;

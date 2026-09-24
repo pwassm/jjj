@@ -2062,6 +2062,9 @@ async function _showShareableMenu() {
     else _smSub = 0;
     _smShownPg = n;
     _smGrpApply();
+    // (dev1039) The New tab keeps the old look's blue under the new look: its
+    // clips are mostly dark water and vanished into the black.
+    ov.classList.toggle('sm-blue', !!(_gt && _gt.key === 'new'));
     // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
     // Page 1 is the Intro TAB now, so they stay up on every page.
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = 'flex');
@@ -2608,6 +2611,8 @@ async function _showShareableMenu() {
     // the overlay, which is the visual frame inside #rotateWrap. Title 34 → 30px.
     // (dev1035) …plus 18px, so neither sits hard against the page's scrollbar.
     + '#shareableMenu.sm-alt{background:#000 !important;padding-right:18.75%;}'
+    // (dev1039) …except on New (_smShow sets sm-blue): the page body's gradient.
+    + '#shareableMenu.sm-alt.sm-blue{background:linear-gradient(180deg,#17629d 0%,#13527f 55%,#0f4570 100%) !important;}'
     + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:calc(81.25% + 18px);top:22px;z-index:3;'
     // (dev1037) 30 → 26px and bold, never wrapped past its own two lines;
     // _smBrandFit shrinks it further when the column is too narrow for that.
