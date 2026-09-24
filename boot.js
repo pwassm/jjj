@@ -1341,20 +1341,19 @@ async function _showShareableMenu() {
     //   The media's <p> loses its margins and its line strut (the inline
     //   baseline gap under the clip), the caption its margin-top, and its line
     //   box is tightened to 1.15. Below, margins collapse to the largest
-    //   positive plus the most negative, so a -4px on the caption turns the
-    //   wrappers' 12px into 8px — about 10px seen, with the caption's descent.
-    //   te-media (dev1031 on): same, its 4px/1.35 inline, and -9px against 17px.
-    //   Not on floats: a float contains its margins, so a negative one there
-    //   would let the next item ride up over the caption.
+    //   (dev1038) Below: 20px, collapsing with the wrappers' own 12px (older
+    //   markup) or 17px (te-media) — about 22px seen. dev1037's pull-in to
+    //   ~10px read as no gap at all.
+    //   te-media (dev1031 on): same, over its inline 4px / 1.35.
     + (() => {
         const mp = 'p:has(> video[style*="inline-block"]:only-child,> img[style*="inline-block"]:only-child)';
         const cap = mp + ' + div[style*="font-size"]';
         return '.smGreeting ' + mp + '{margin:0;line-height:0;}'
           + '.smGreeting ' + cap + '{margin-top:0 !important;line-height:1.15;}'
           + '.smGreeting ' + cap + ' p{margin:0;}'
-          + '.smGreeting div:not([style*="float"]) > ' + cap + ':last-child{margin-bottom:-4px !important;}'
+          + '.smGreeting ' + cap + ':last-child{margin-bottom:20px !important;}'
           + '.smGreeting .te-media > div[style*="font-size"]{margin-top:0 !important;line-height:1.15 !important;}'
-          + '.smGreeting .te-media:not([style*="float"]) > div[style*="font-size"]:last-child{margin-bottom:-9px !important;}';
+          + '.smGreeting .te-media > div[style*="font-size"]:last-child{margin-bottom:20px !important;}';
       })()
     // (dev0788) The Welcome page's forward arrow. TRANSPARENT, as asked: no
     // circle, no fill, no border — just the glyph, so it lies over the picture
@@ -2202,6 +2201,11 @@ async function _showShareableMenu() {
       el.className = 'sm-alt-slide';
       const s = { el: el, link: link, isVid: isVid, ready: false, from: 0 };
       ctl.nx = s;
+      // (dev1038) Readied IN the page — see-through until its turn — not
+      // detached: Firefox need not download or decode a video that isn't in
+      // the document, and a next slide that never got ready held the one on
+      // show (a picture) up indefinitely.
+      bg.appendChild(el);
       const ready = () => {
         if (s.ready) return;
         if (ctl.cur === s) {                        // (dev1037) shown early, on its first frame
@@ -2226,6 +2230,7 @@ async function _showShareableMenu() {
         }
         if (ctl.nx !== s) return;
         if (isVid) unload(el);
+        el.remove();
         setTimeout(prep, 1500);
       };
       s.guard = setTimeout(fail, _SM_ALT_PREP_MS);
@@ -2261,7 +2266,7 @@ async function _showShareableMenu() {
     };
     const early = s => {
       ctl.nx = null; ctl.cur = s;
-      bg.appendChild(s.el);
+      if (s.el.parentNode !== bg) bg.appendChild(s.el);
       if (window.salLockDownVideo) window.salLockDownVideo(s.el);
       requestAnimationFrame(() => requestAnimationFrame(() => s.el.classList.add('on')));
     };
@@ -2272,7 +2277,7 @@ async function _showShareableMenu() {
       if (!s || !s.ready || ctl.paused || !bg.isConnected) return;
       if (ctl.cur && ctl.cur.save) ctl.cur.save();   // where the outgoing clip got to
       ctl.nx = null; ctl.due = false; ctl.cur = s;
-      bg.appendChild(s.el);
+      if (s.el.parentNode !== bg) bg.appendChild(s.el);   // already there, see-through (dev1038)
       if (s.isVid && window.salLockDownVideo) window.salLockDownVideo(s.el);
       requestAnimationFrame(() => requestAnimationFrame(() => s.el.classList.add('on')));
       const gone = Array.from(bg.querySelectorAll('.sm-alt-slide')).filter(c => c !== s.el);
@@ -3787,6 +3792,31 @@ function _smWireInlineZoom(ov) {
   const reset = v => apply(v, { s: 1, tx: 0, ty: 0 });
   const clipOf = t => (t && t.closest ? t.closest(SEL) : null);
   let swallowClick = false;
+  // (dev1038) A CLIP WITH A TIMELINE SHOWS IT ONLY WHILE THE MOUSE IS OVER ITS
+  // BOTTOM STRIP (desktop). Firefox's own control layer covers the whole clip
+  // whenever `controls` is on: it took the hold (no zoom) and turned a
+  // double-click into fullscreen. With the attribute off everywhere but that
+  // strip, the rest of the clip behaves exactly like one without a timeline —
+  // hold = zoom, click = play/pause, double-click = reset. Never while zoomed,
+  // and never switched mid-drag (a timeline scrub, a pan). Phones keep the
+  // native controls as authored: they have no hover to reveal them with.
+  const fine = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  let ctlShown = null;
+  const ctlHide = () => { if (ctlShown) { ctlShown.controls = false; ctlShown = null; } };
+  if (fine) {
+    ov.querySelectorAll('.smGreeting video[controls]').forEach(v => { v._smCtl = true; v.controls = false; });
+    ov.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse' || e.buttons) return;
+      const v = clipOf(e.target);
+      if (ctlShown && ctlShown !== v) ctlHide();
+      if (!isVid(v) || !v._smCtl) return;
+      const r = v.getBoundingClientRect();
+      const near = get(v).s <= 1 && e.clientY > r.bottom - 44 && e.clientY <= r.bottom;
+      if (near) { if (!v.controls) v.controls = true; ctlShown = v; }
+      else if (v.controls) { v.controls = false; ctlShown = null; }
+    }, true);
+    ov.addEventListener('pointerleave', ctlHide);
+  }
   // (dev1035) Play / pause, as V does it.
   const toggle = v => { if (ov._smClips && isVid(v)) ov._smClips.toggle(v); };
   let hover = null, last = null;                 // Space's clip (see header)
@@ -3834,7 +3864,8 @@ function _smWireInlineZoom(ov) {
     const v = clipOf(e.target);
     if (!v) return;
     // A clip with its own control strip keeps it: the bottom 44px is left alone.
-    if (v.hasAttribute('controls')) {
+    // (dev1038) Only while that strip is actually on (see ctlShown).
+    if (v.controls) {
       const r = v.getBoundingClientRect();
       if (e.clientY > r.bottom - 44) return;
     }
@@ -3893,7 +3924,7 @@ function _smWireInlineZoom(ov) {
       if (v) { e.preventDefault(); e.stopPropagation(); }
       return;
     }
-    if (e.button !== 0 || !isVid(v) || v.hasAttribute('controls')) return;
+    if (e.button !== 0 || !isVid(v) || v.controls) return;
     e.preventDefault();
     last = v;
     toggle(v);
@@ -3902,6 +3933,7 @@ function _smWireInlineZoom(ov) {
   ov.addEventListener('dragstart', e => { if (clipOf(e.target)) e.preventDefault(); }, true);
   ov.addEventListener('dblclick', e => {
     const v = clipOf(e.target);
+    if (v && v._smCtl) e.preventDefault();        // (dev1038) never the browser's fullscreen
     if (!v || get(v).s <= 1) return;              // unzoomed: the browser's own dblclick
     e.preventDefault(); e.stopPropagation();
     reset(v);
@@ -3961,7 +3993,7 @@ function _smWireInlineZoom(ov) {
     // (dev1035) V's taps: one = play/pause, two = back to normal (the first
     // one's play/pause undone, so the double tap leaves playback as it was).
     // A clip with its own controls leaves single taps to them.
-    const own = isVid(v) && !v.hasAttribute('controls'), now = Date.now();
+    const own = isVid(v) && !v.controls, now = Date.now();
     if (lastTap && lastTap.v === v && now - lastTap.at < 350) {
       lastTap = null;
       if (e.cancelable) e.preventDefault();       // no synthetic click after the reset
