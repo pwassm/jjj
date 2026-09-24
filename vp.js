@@ -9057,8 +9057,18 @@ function _vpCropStderrSaysNotFound(lines) {
 // benign warnings above frequently are — so take the last line that means
 // something, and when there is nothing at all, say what the silence itself
 // means rather than showing "exit -1".
+// (dev1034) …and not ffmpeg 7's AFTERMATH either. When a filter fails to
+// configure, the cause comes first ("Invalid too big or non positive size…",
+// "cannot open transform file…") and is followed by a cascade of consequences
+// ending "Nothing was written into output file, because at least one of its
+// streams received no packets" — which is what the toast showed, and which
+// names no cause at all.
+const VP_STDERR_AFTERMATH =
+  /nothing was written into output|output file is empty|task finished with error|terminating (thread|muxer)|could not open encoder before eof|error reinitializing filters|failed to configure (input|output) pad|error while filtering|conversion failed|no filtered frames for output/i;
 function _vpCropFailLine(result) {
   const bad = _vpCropStderrBad(result && result.stderr);
+  const cause = bad.filter(l => !VP_STDERR_AFTERMATH.test(l));
+  if (cause.length) return cause[cause.length - 1];
   if (bad.length) return bad[bad.length - 1];
   if (!result || result.exitCode === -1) {
     return 'the render ended without a result — the proxy stopped answering. ' +
@@ -10249,7 +10259,11 @@ async function _vpGoSave(opts) {
   let descreenReq = null;   // (dev1033) what the proxy measures the grid on, when armed
   if (cropOn) {
     const s = _vpState.crop;
-    const VW = vid.videoWidth, VH = vid.videoHeight;
+    let VW = vid.videoWidth, VH = vid.videoHeight;
+    // (dev1034) …in the pixels ffmpeg will crop, which are not always the ones
+    // the browser reports — see _vpStoredFrameSize.
+    const stored = await _vpStoredFrameSize(absInput, VW, VH);
+    if (stored) { VW = stored.w; VH = stored.h; }
     const even = n => Math.max(2, Math.floor(n / 2) * 2);
     // (dev0778) What renders is the rect CLIPPED to the frame, so every
     // dimension below is the intersection's. Identity for a rect that fits.
@@ -10661,7 +10675,7 @@ async function _vpGoSave(opts) {
         target, totalMs);
       if (detect.exitCode !== 0) {
         restoreUI();
-        const tail = detect.stderr.slice(-1)[0] || ('exit ' + detect.exitCode);
+        const tail = _vpCropFailLine(detect);   // (dev1034) the cause, not the last line
         if (typeof toast === 'function') toast('deshake analysis failed: ' + tail, 4200);
         console.error('[deshake detect failed]', detect);
         return;
@@ -11013,6 +11027,41 @@ async function _vpProbeFps(absPath) {
     }
     return null;
   } catch (_) { return null; }
+}
+
+// (dev1034) The frame size ffmpeg will actually crop. A video with non-square
+// pixels — the tablet screen captures carry SAR 157:158 — is reported by Chrome
+// at its DISPLAY size, one axis stretched: 1920×1080 stored reads 1920×1087
+// (measured: SAR 99:100 reads 1920×1091). ffmpeg crops STORED pixels, so a rect
+// converted with the stretched number and touching the frame edge asked for a
+// crop taller than the frame — "Invalid too big or non positive size", and with
+// deshake armed the analysis pass hit it first, reported only as "Nothing was
+// written into output file". Fractions map onto the stored frame by plain
+// scaling, so swapping the size is the whole fix.
+// ffprobe gives the CODED size, before any rotation flag, so both orientations
+// are tried; the browser keeps one axis exact, which is how the match is made.
+// Returns {w,h} to use instead, or null to keep the browser's numbers.
+async function _vpStoredFrameSize(absPath, VW, VH) {
+  if (!(VW > 0 && VH > 0)) return null;
+  try {
+    const r = await fetch(PROXY_BASE + '/exec/ffprobe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: absPath, streams: true })
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const st = j && j.result && Array.isArray(j.result.streams) && j.result.streams[0];
+    const w = st ? +st.width : 0, h = st ? +st.height : 0;
+    if (!(w > 0 && h > 0)) return null;
+    for (const [cw, ch] of [[w, h], [h, w]]) {
+      if (cw === VW && ch === VH) return null;           // square pixels: nothing to fix
+      if ((cw === VW || ch === VH) && Math.abs((cw / ch) / (VW / VH) - 1) < 0.2) {
+        return { w: cw, h: ch };
+      }
+    }
+  } catch (_) {}
+  return null;
 }
 
 // (dev1033) Ask the proxy to find the screen grid across A→B. Resolves its
