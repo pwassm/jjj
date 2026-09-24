@@ -407,3 +407,5 @@ igclass.html
 backupdir/
 # (dev1026) resBestVia:aspect43 stamping — its undo list (ids + held res). Local, like the other ig.json.* audit trails.
 ig.json.aspect43-*
+# (dev1034) deshake motion files: written by the analysis pass, dead once the render has run (proxy sweeps them after a day).
+.vidstab/
