@@ -2081,6 +2081,21 @@ async function _showShareableMenu() {
     try { localStorage.setItem(_SM_ALT_Q, JSON.stringify(q)); } catch (x) {}
     return link;
   };
+  // (dev1036) BUFFER FIRST, ONE AHEAD. The slide after the one on show is
+  // downloaded while it shows, and comes in only once it is ready; when this
+  // one's time is up and the next is not ready yet, this one simply stays up.
+  // Nothing plays half-arrived, so nothing stops mid-play to buffer.
+  //   picture  ready = loaded
+  //   video    ready = the stretch this turn will play is buffered — from where
+  //            it starts (a long clip resumes) to 10 s on, or to its end. A clip
+  //            the browser has stopped downloading by itself (networkState
+  //            IDLE) with HAVE_ENOUGH_DATA counts as ready too.
+  // A slide still not ready after 30 s is dropped for the one after it.
+  //
+  // Everything the show does lives on bg._ctl: cur (the slide on show), nx (the
+  // one being readied), due (cur's time is up), paused, and pause / resume /
+  // toggle / quit for the zoom and play/pause gestures below.
+  const _SM_ALT_PREP_MS = 30000;
   function _smAltSync() {
     const on = window._smAltOn !== false;
     ov.classList.toggle('sm-alt', on);
@@ -2088,8 +2103,7 @@ async function _showShareableMenu() {
     const home = on && window._smCurPage === _pgOf('intro');
     if (!home) {
       if (bg) {
-        clearTimeout(bg._timer);
-        bg.querySelectorAll('video').forEach(v => v._save && v._save());
+        if (bg._ctl) bg._ctl.quit();
         bg.remove();
       }
       return;
@@ -2099,60 +2113,135 @@ async function _showShareableMenu() {
                                                || _SM_DAY_IMG.test(String(e.row.link || '').split(/[?#]/)[0])));
     bg = document.createElement('div');
     bg.className = 'sm-alt-bg';
+    bg.innerHTML = '<div class="sm-alt-pz" aria-hidden="true">&#10074;&#10074;</div>';
     ov.insertBefore(bg, ov.firstChild);
     if (!pool.length) { try { console.warn('[alt look] no UOD row has direct media; background left black'); } catch (x) {} return; }
     const links = Array.from(new Set(pool.map(e => String(e.row.link))));
-    const next = ms => { clearTimeout(bg._timer); bg._timer = setTimeout(show, ms); };
-    const show = () => {
+    const ctl = bg._ctl = { cur: null, nx: null, due: false, paused: false, left: 0, at: 0, timer: null };
+    const unload = v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (x) {} };
+    // Pictures run on a clock that a pause stops and a resume continues.
+    const runClock = () => {
+      clearTimeout(ctl.timer);
+      if (ctl.paused || !ctl.cur || ctl.cur.isVid || ctl.due) return;
+      ctl.at = Date.now();
+      ctl.timer = setTimeout(() => { ctl.left = 0; timeUp(); }, ctl.left);
+    };
+    const timeUp = () => { ctl.due = true; reveal(); };
+    const prep = () => {
       if (!bg.isConnected) return;
       const link = _smAltNext(links);
       const isVid = _SM_DAY_VID.test(link.split(/[?#]/)[0]);
       const el = document.createElement(isVid ? 'video' : 'div');
       el.className = 'sm-alt-slide';
+      const s = { el: el, link: link, isVid: isVid, ready: false, from: 0 };
+      ctl.nx = s;
+      const ready = () => {
+        if (s.ready || ctl.nx !== s) return;
+        s.ready = true;
+        clearTimeout(s.guard);
+        if (ctl.due || !ctl.cur) reveal();
+      };
+      const fail = () => {
+        if (s.ready || ctl.nx !== s) return;
+        clearTimeout(s.guard);
+        if (isVid) unload(el);
+        setTimeout(prep, 1500);
+      };
+      s.guard = setTimeout(fail, _SM_ALT_PREP_MS);
       if (isVid) {
         el.muted = true; el.playsInline = true; el.preload = 'auto';
-        // t0 = where this turn's playback began; `done` once it has handed on
-        // (it keeps playing under the 1.5 s crossfade, but no longer counts or
-        // saves).
-        let t0 = null, done = false, saved = 0;
-        const long = () => el.duration > _SM_ALT_VID_S + 1;
-        el._save = () => { if (!done && t0 !== null && long()) _smAltPos(link, el.currentTime); };
-        const finish = () => {
-          if (done) return;
-          if (long()) _smAltPos(link, (el.ended || el.currentTime >= el.duration - 1) ? 0 : el.currentTime);
-          done = true;
-          next(0);
-        };
+        s.long = () => el.duration > _SM_ALT_VID_S + 1;
         el.addEventListener('loadedmetadata', () => {
-          const p = long() ? _smAltPos(link) : 0;
-          if (p > 0 && p < el.duration - 1) el.currentTime = p;
-          const pr = el.play();
-          if (pr && pr.catch) pr.catch(() => {});
+          const p = s.long() ? _smAltPos(link) : 0;
+          if (p > 0 && p < el.duration - 1) { el.currentTime = p; s.from = p; }
         }, { once: true });
-        el.addEventListener('playing', () => { if (t0 === null) t0 = el.currentTime; });
-        el.addEventListener('timeupdate', () => {
-          if (t0 === null || done) return;
-          // Saved as it goes, so leaving Welcome or closing the tab mid-video
-          // loses at most a couple of seconds.
-          if (long() && Math.abs(el.currentTime - saved) >= 2) { saved = el.currentTime; _smAltPos(link, saved); }
-          if (el.currentTime - t0 >= _SM_ALT_VID_S) finish();
-        });
-        el.addEventListener('ended', finish);
-        el.addEventListener('error', () => { if (!done) { done = true; next(1500); } });
-        // Stall guard: a video that never starts still hands on.
-        next(_SM_ALT_VID_S * 1000 + 15000);
+        const check = () => {
+          const d = el.duration, b = el.buffered;
+          if (!(d > 0) || !isFinite(d)) return;
+          const z = Math.min(d, s.from + _SM_ALT_VID_S + 1) - 0.3;
+          for (let i = 0; i < b.length; i++) if (b.start(i) <= s.from + 0.3 && b.end(i) >= z) { ready(); return; }
+          if (el.networkState === 1 && el.readyState >= 4) ready();
+        };
+        ['progress', 'suspend', 'canplaythrough', 'loadeddata', 'seeked'].forEach(k => el.addEventListener(k, check));
+        el.addEventListener('error', fail);
         el.src = link;
       } else {
+        const im = new Image();
+        im.onload = ready;
+        im.onerror = fail;
+        im.src = link;
         el.style.backgroundImage = 'url("' + link.replace(/"/g, '%22') + '")';
-        next(_SM_ALT_IMG_MS);
       }
-      bg.appendChild(el);
-      if (isVid && window.salLockDownVideo) window.salLockDownVideo(el);
-      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
-      const old = Array.from(bg.children).filter(c => c !== el);
-      setTimeout(() => old.forEach(c => c.remove()), 1600);
     };
-    show();
+    // Bring the readied slide in over the one on show (1.5 s crossfade), start
+    // its turn, and start readying the one after it.
+    const reveal = () => {
+      const s = ctl.nx;
+      if (!s || !s.ready || ctl.paused || !bg.isConnected) return;
+      if (ctl.cur && ctl.cur.save) ctl.cur.save();   // where the outgoing clip got to
+      ctl.nx = null; ctl.due = false; ctl.cur = s;
+      bg.appendChild(s.el);
+      if (s.isVid && window.salLockDownVideo) window.salLockDownVideo(s.el);
+      requestAnimationFrame(() => requestAnimationFrame(() => s.el.classList.add('on')));
+      const gone = Array.from(bg.querySelectorAll('.sm-alt-slide')).filter(c => c !== s.el);
+      setTimeout(() => gone.forEach(c => { if (c.tagName === 'VIDEO') unload(c); c.remove(); }), 1600);
+      begin(s);
+      prep();
+    };
+    const begin = s => {
+      if (!s.isVid) { ctl.left = _SM_ALT_IMG_MS; runClock(); return; }
+      const el = s.el;
+      // t0 = where this turn's playback began. A clip whose 10 s are up keeps
+      // playing (and saving its place) until the next slide is ready.
+      let t0 = null, saved = 0, done = false;
+      s.save = () => {
+        if (t0 === null || !s.long()) return;
+        _smAltPos(s.link, (el.ended || el.currentTime >= el.duration - 1) ? 0 : el.currentTime);
+      };
+      const finish = () => { if (!done) { done = true; timeUp(); } };
+      el.addEventListener('playing', () => { if (t0 === null) t0 = el.currentTime; });
+      el.addEventListener('timeupdate', () => {
+        if (t0 === null || ctl.cur !== s) return;
+        if (s.long() && Math.abs(el.currentTime - saved) >= 2) { saved = el.currentTime; _smAltPos(s.link, saved); }
+        if (el.currentTime - t0 >= _SM_ALT_VID_S) finish();
+      });
+      el.addEventListener('ended', finish);
+      el.addEventListener('error', finish);
+      const pr = el.play();
+      if (pr && pr.catch) pr.catch(() => {});
+    };
+    // Pause holds the slide on show (a clip stops, a picture's clock stops) and
+    // keeps the next one from coming in; resume carries on from there.
+    ctl.pause = () => {
+      if (ctl.paused) return;
+      ctl.paused = true;
+      bg.classList.add('paused');
+      const s = ctl.cur;
+      if (!s) return;
+      if (s.isVid) s.el.pause();
+      else if (!ctl.due) { clearTimeout(ctl.timer); ctl.left = Math.max(0, ctl.left - (Date.now() - ctl.at)); }
+    };
+    ctl.resume = () => {
+      if (!ctl.paused) return;
+      ctl.paused = false;
+      bg.classList.remove('paused');
+      const s = ctl.cur;
+      if (ctl.due && ctl.nx && ctl.nx.ready) { reveal(); return; }
+      if (!s) return;
+      if (s.isVid) { const pr = s.el.play(); if (pr && pr.catch) pr.catch(() => {}); }
+      else runClock();
+    };
+    ctl.toggle = () => { if (ctl.paused) ctl.resume(); else ctl.pause(); };
+    ctl.quit = () => {
+      clearTimeout(ctl.timer);
+      const n = ctl.nx;
+      ctl.nx = null;
+      if (n) clearTimeout(n.guard);
+      if (ctl.cur && ctl.cur.save) ctl.cur.save();
+      bg.querySelectorAll('video').forEach(unload);
+      if (n && n.isVid) unload(n.el);
+    };
+    prep();
   }
   window._smAltToggle = () => {
     window._smAltOn = window._smAltOn === false;
@@ -2248,6 +2337,168 @@ async function _showShareableMenu() {
     if (e.target.closest && e.target.closest('.sm-alt-opt')) return;
     e.preventDefault(); e.stopPropagation();
   }, true);
+  // (dev1036) ZOOM, PAN AND PLAY/PAUSE ON THE WELCOME SLIDESHOW — V's gestures:
+  //   desktop  hold LMB = zoom in toward the pointer (Ctrl+hold = out), drag
+  //            while zoomed = pan, double-click = back to normal, Space =
+  //            pause / resume
+  //   phone    pinch = zoom + pan, one finger while zoomed = pan, tap = pause /
+  //            resume, double tap = back to normal (the first tap's pause or
+  //            resume undone)
+  // The first push past 1.05× pauses the show — the clip and a picture's clock
+  // both — latched as in V, so panning after a resume doesn't re-pause it. The
+  // next slide comes in at 1×. The layer takes no pointer events itself, so the
+  // gestures are read off the overlay and skip the tabs, title, stamp and popup.
+  const _bgCtl = () => {
+    const b = ov.querySelector('.sm-alt-bg');
+    return b && b._ctl && b._ctl.cur && ov.classList.contains('sm-alt') ? b._ctl : null;
+  };
+  const _bgSkip = t => !!(t && t.closest && t.closest('button,a,input,textarea,select,.sm-tabs,.sm-alt-brand,.sm-ver,.sm-alt-opt'));
+  const _bgXY = p => (window.rotateXY ? window.rotateXY(p) : { x: p.clientX, y: p.clientY });
+  const _bgOrigin = s => {
+    const r = s.el.parentNode.getBoundingClientRect();
+    const a = _bgXY({ clientX: r.left, clientY: r.top }), b = _bgXY({ clientX: r.right, clientY: r.bottom });
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) };
+  };
+  const _bgGet = s => s.z || { s: 1, tx: 0, ty: 0 };
+  const _bgApply = (ctl, s, z) => {
+    const box = s.el.parentNode;
+    if (!box) return;
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!(z.s > 1.001)) z = { s: 1, tx: 0, ty: 0 };
+    else {                                          // the picture always covers the screen
+      z.tx = Math.min(0, Math.max(W * (1 - z.s), z.tx));
+      z.ty = Math.min(0, Math.max(H * (1 - z.s), z.ty));
+    }
+    s.z = z;
+    if (z.s > 1.05) { if (!s.zl) { s.zl = true; ctl.pause(); } } else s.zl = false;
+    s.el.style.transformOrigin = '0 0';
+    s.el.style.transform = z.s === 1 ? '' : 'translate(' + z.tx + 'px,' + z.ty + 'px) scale(' + z.s + ')';
+  };
+  const _bgZoomAt = (ctl, s, q, s2) => {
+    const z = _bgGet(s), o = _bgOrigin(s), k = Math.min(8, Math.max(1, s2)) / z.s;
+    const lx = q.x - o.x, ly = q.y - o.y;
+    _bgApply(ctl, s, { s: z.s * k, tx: lx - (lx - z.tx) * k, ty: ly - (ly - z.ty) * k });
+  };
+  window._smBgSpace = () => {
+    if (!ov.isConnected) return false;
+    const c = _bgCtl();
+    if (!c) return false;
+    c.toggle();
+    return true;
+  };
+  // ── desktop
+  let _bgM = null;
+  const _bgMStop = () => { if (_bgM) { clearTimeout(_bgM.delay); clearInterval(_bgM.timer); _bgM.delay = _bgM.timer = null; } };
+  ov.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || _bgSkip(e.target)) return;
+    const ctl = _bgCtl();
+    if (!ctl) return;
+    e.preventDefault();
+    try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+    _bgMStop();
+    const p = _bgXY(e), s = ctl.cur;
+    const m = _bgM = { ctl: ctl, s: s, x: p.x, y: p.y, q: p, moved: false, pan: null,
+                       step: 0.015, dir: e.ctrlKey ? -1 : 1, delay: null, timer: null };
+    m.delay = setTimeout(() => {
+      m.delay = null;
+      m.timer = setInterval(() => {
+        const sc = _bgGet(s).s;
+        if (ctl.cur !== s || (m.dir > 0 && sc >= 8) || (m.dir < 0 && sc <= 1)) { _bgMStop(); return; }
+        _bgZoomAt(ctl, s, m.q, sc + m.dir * m.step);
+        m.step = Math.min(0.12, m.step + 0.003);
+      }, 50);
+    }, 180);
+  });
+  ov.addEventListener('pointermove', e => {
+    if (!_bgM || e.pointerType !== 'mouse') return;
+    const m = _bgM, p = _bgXY(e);
+    m.q = p;
+    if (!m.moved && Math.hypot(p.x - m.x, p.y - m.y) > 8) {
+      m.moved = true;
+      _bgMStop();
+      const z = _bgGet(m.s);
+      m.pan = { tx: z.tx, ty: z.ty, x: p.x, y: p.y };
+    }
+    if (m.moved && m.ctl.cur === m.s && _bgGet(m.s).s > 1) {
+      const z = _bgGet(m.s);
+      _bgApply(m.ctl, m.s, { s: z.s, tx: m.pan.tx + (p.x - m.pan.x), ty: m.pan.ty + (p.y - m.pan.y) });
+    }
+  });
+  const _bgMEnd = e => { if (e.pointerType === 'mouse' && _bgM) { _bgMStop(); _bgM = null; } };
+  ov.addEventListener('pointerup', _bgMEnd);
+  ov.addEventListener('pointercancel', _bgMEnd);
+  ov.addEventListener('dblclick', e => {
+    if (_bgSkip(e.target)) return;
+    const ctl = _bgCtl();
+    if (!ctl || _bgGet(ctl.cur).s <= 1) return;
+    e.preventDefault();
+    _bgApply(ctl, ctl.cur, { s: 1, tx: 0, ty: 0 });
+  });
+  // ── phone
+  let _bgT = null, _bgTap = null;
+  const _bgMid = (a, b) => { const p = _bgXY(a), q = _bgXY(b); return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }; };
+  const _bgGap = (a, b) => { const p = _bgXY(a), q = _bgXY(b); return Math.hypot(p.x - q.x, p.y - q.y); };
+  const _bgBegin = (ctl, s, touches) => {
+    const z = _bgGet(s), o = _bgOrigin(s);
+    if (touches.length >= 2) {
+      const c = _bgMid(touches[0], touches[1]);
+      _bgT = { ctl: ctl, s: s, mode: 'pinch', o: o, d0: _bgGap(touches[0], touches[1]) || 1, s0: z.s,
+               cx: (c.x - o.x - z.tx) / z.s, cy: (c.y - o.y - z.ty) / z.s, tap: false };
+    } else {
+      const p = _bgXY(touches[0]);
+      _bgT = { ctl: ctl, s: s, mode: 'pan', x: p.x, y: p.y, tx: z.tx, ty: z.ty,
+               tap: _bgT ? false : Date.now(), moved: false };
+    }
+  };
+  ov.addEventListener('touchstart', e => {
+    // A second finger may land on the tab column; it still joins the pinch.
+    const join = _bgT && e.touches.length >= 2;
+    if (!join && _bgSkip(e.target)) return;
+    const ctl = join ? _bgT.ctl : _bgCtl();
+    if (!ctl || !ctl.cur) return;
+    if (e.touches.length >= 2) {
+      _smHoldStop();                                // two fingers are not the design-switch hold
+      if (e.cancelable) e.preventDefault();
+    }
+    _bgBegin(ctl, join ? _bgT.s : ctl.cur, e.touches);
+  }, { passive: false });
+  ov.addEventListener('touchmove', e => {
+    if (!_bgT || _bgT.ctl.cur !== _bgT.s) return;
+    const t = _bgT;
+    if (t.mode === 'pinch' && e.touches.length >= 2) {
+      if (e.cancelable) e.preventDefault();
+      const c = _bgMid(e.touches[0], e.touches[1]);
+      const sc = Math.min(8, Math.max(1, t.s0 * _bgGap(e.touches[0], e.touches[1]) / t.d0));
+      _bgApply(t.ctl, t.s, { s: sc, tx: c.x - t.o.x - t.cx * sc, ty: c.y - t.o.y - t.cy * sc });
+      return;
+    }
+    if (t.mode === 'pan' && e.touches.length === 1) {
+      const p = _bgXY(e.touches[0]);
+      if (Math.hypot(p.x - t.x, p.y - t.y) > 10) t.moved = true;
+      if (_bgGet(t.s).s <= 1) return;
+      if (e.cancelable) e.preventDefault();
+      _bgApply(t.ctl, t.s, { s: _bgGet(t.s).s, tx: t.tx + (p.x - t.x), ty: t.ty + (p.y - t.y) });
+    }
+  }, { passive: false });
+  ov.addEventListener('touchend', e => {
+    if (!_bgT) return;
+    const t = _bgT;
+    if (e.touches.length >= 1) { _bgBegin(t.ctl, t.s, e.touches); return; }   // pinch → one-finger pan
+    _bgT = null;
+    const tap = t.mode === 'pan' && t.tap && !t.moved && Date.now() - t.tap < 300;
+    if (!tap || t.ctl.cur !== t.s) return;
+    if (e.cancelable) e.preventDefault();
+    const now = Date.now();
+    if (_bgTap && _bgTap.s === t.s && now - _bgTap.at < 350) {
+      _bgTap = null;
+      t.ctl.toggle();                               // undo the first tap's
+      if (_bgGet(t.s).s > 1) _bgApply(t.ctl, t.s, { s: 1, tx: 0, ty: 0 });
+      return;
+    }
+    _bgTap = { s: t.s, at: now };
+    t.ctl.toggle();
+  }, { passive: false });
+  ov.addEventListener('touchcancel', () => { _bgT = null; });
   ov.insertAdjacentHTML('afterbegin',
     '<div class="sm-alt-brand">Sea Life<br>and More</div>'
     + '<style>'
@@ -2260,7 +2511,10 @@ async function _showShareableMenu() {
     + '#shareableMenu.sm-alt{background:#000 !important;padding-right:18.75%;}'
     + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:calc(81.25% + 18px);top:22px;z-index:3;'
     +   "font-family:'Segoe Script','Brush Script MT','Lucida Handwriting',cursive;font-size:30px;line-height:1.15;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.8);}"
-    + '#shareableMenu.sm-alt .sm-alt-bg{display:block;position:absolute;inset:0;z-index:0;background:#000;pointer-events:none;}'
+    + '#shareableMenu.sm-alt .sm-alt-bg{display:block;position:absolute;inset:0;z-index:0;background:#000;pointer-events:none;overflow:hidden;}'
+    // (dev1036) A quiet ❚❚ in the lower-left while the show is paused.
+    + '.sm-alt-pz{display:none;position:absolute;left:16px;bottom:14px;z-index:2;font-size:20px;letter-spacing:-2px;color:#fff;opacity:0.8;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
+    + '.sm-alt-bg.paused .sm-alt-pz{display:block;}'
     + '.sm-alt-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:center/cover no-repeat;opacity:0;transition:opacity 1.5s ease;}'
     + '.sm-alt-slide.on{opacity:1;}'
     + '#shareableMenu.sm-alt .sm-tabs-bottom{display:none !important;}'
@@ -3443,7 +3697,9 @@ function _smWireInlineZoom(ov) {
     const typing = t => t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
     window.addEventListener('keydown', e => {
       if (e.key !== ' ' || e.ctrlKey || e.altKey || e.metaKey || typing(e.target)) return;
-      if (!e.repeat) ate = !!(window._smClipSpace && window._smClipSpace());
+      // (dev1036) …else the Welcome slideshow (boot.js _smBgSpace).
+      if (!e.repeat) ate = !!((window._smClipSpace && window._smClipSpace())
+                              || (window._smBgSpace && window._smBgSpace()));
       if (!ate) return;
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
     }, true);
