@@ -1518,6 +1518,10 @@ async function _showShareableMenu() {
     // free and the top bar is what Tab-key focus anchors to. !important because
     // _smShow writes display inline on every .sm-tabs.
     + 'html.is-mobile .sm-tabs-top{display:none !important;}'
+    // (dev1032) A grouped tab's list and its parts (see _smGrpApply). flow-root
+    // keeps each part's floated clips inside its own box.
+    + '.sm-tab.sm-hide{display:none !important;}'
+    + '.sm-grpsec{display:flow-root;}'
     // (dev0551) Sign-in strip on Page 1. Low-key by design — a quiet link when
     // signed out, a status line when signed in. Never blocks browsing.
     // (dev0767) Now a slim right-aligned row tucked under the top tab bar, where
@@ -1669,14 +1673,40 @@ async function _showShareableMenu() {
         if (!spec || spec.off) return;            // feature switch off → no tab
         if (kind !== 'prose') { if (seen[kind]) return; seen[kind] = 1; }
         const sec = _twoSections(_cutBelow(_ctxtOf(row)));
+        const name = String(row.Label || '').trim() || String(row.gname || '').trim() || spec.def;
+        const part = { added: String(row.DateAdded || '').trim(),
+                       top:    _linkify(_balanceHtml(sec.top)),
+                       bottom: _linkify(_balanceHtml(sec.bottom)) };
+        // (dev1032) SAME LABEL = ONE TAB. Prose rows that share a Label ("New")
+        // are one tab in the bar, and each row becomes a part of it, picked from
+        // the bar by its DateAdded — see _smGrpPick. The group sits where its
+        // first row sorts.
+        const key = name.toLowerCase();
+        const prior = kind === 'prose' ? _smTabs.find(t => t.kind === 'prose' && t.key === key) : null;
+        if (prior) { prior.parts.push(part); return; }
         _smTabs.push({
-          kind: kind, spec: spec,
-          label: _smEsc(_T(String(row.Label || '').trim()
-                        || String(row.gname || '').trim() || spec.def)),
-          top:    _linkify(_balanceHtml(sec.top)),
-          bottom: _linkify(_balanceHtml(sec.bottom))
+          kind: kind, spec: spec, key: key, name: name, parts: [part],
+          label: _smEsc(_T(name)),
+          top: part.top, bottom: part.bottom
         });
       });
+    // A group shows its parts newest first. Its own top/bottom are emptied so
+    // the page renders the parts instead (_tabBody) and never twice.
+    // DateAdded is written by isoNow(), i.e. UTC, so the label is converted to
+    // the viewer's own date. Two parts on one date get their times too.
+    _smTabs.forEach(t => {
+      if (!t.parts || t.parts.length < 2) return;
+      t.group = t.parts.slice().sort((a, b) => (b.added || '').localeCompare(a.added || ''));
+      t.top = t.bottom = '';
+      const when = s => { const d = new Date(String(s).replace(' ', 'T') + 'Z'); return isNaN(d) ? null : d; };
+      const day = d => { try { return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (x) { return d.toDateString(); } };
+      t.group.forEach(p => { p.d = when(p.added); p.dlabel = p.d ? day(p.d) : _T(t.name); });
+      const n = {};
+      t.group.forEach(p => { n[p.dlabel] = (n[p.dlabel] || 0) + 1; });
+      t.group.forEach(p => {
+        if (p.d && n[p.dlabel] > 1) p.dlabel += ' ' + p.d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      });
+    });
     // THE FLOOR. A data-driven bar can be emptied by one bad cell, so it is not
     // the only thing standing between the site and a blank front door: with no
     // usable rows at all we fall back to the built-in bar, and a bar that has
@@ -1715,8 +1745,17 @@ async function _showShareableMenu() {
     if (t.kind === 'grids' && !t.top.trim()) t.top = greetIntro;
   });
   // (dev0930) _T() wraps the label text only — never data-pg, which is a key.
+  // (dev1032) A group's own list rides in the same bar, hidden until the group
+  // is entered: "Main" (back to the full bar), then one line per part's date.
+  // Sub-tabs carry data-grp, NOT data-pg, so nothing that looks tabs up by page
+  // number can land on one.
   const _tabBtns = _smTabs.map(t =>
-    '<button class="sm-tab" data-pg="' + t.pg + '" data-kind="' + t.kind + '">' + t.label + '</button>').join('');
+    '<button class="sm-tab" data-pg="' + t.pg + '" data-kind="' + t.kind + '">' + t.label + '</button>'
+    + (t.group
+        ? '<button class="sm-tab sm-subtab sm-hide" type="button" data-grp="' + t.pg + '" data-sub="main">' + _smEsc(_T('Main')) + '</button>'
+          + t.group.map((p, k) =>
+              '<button class="sm-tab sm-subtab sm-hide" type="button" data-grp="' + t.pg + '" data-sec="' + k + '">' + _smEsc(p.dlabel) + '</button>').join('')
+        : '')).join('');
 
   // ── TAB BODIES ────────────────────────────────────────────────────────────
   // One per Kind: the parts data cannot supply. Two of them are a single
@@ -1744,6 +1783,13 @@ async function _showShareableMenu() {
         + '<div id="' + pfx + 'Body"></div>'
       + '</div>';
   const _tabBody = t => {
+    // (dev1032) A group's parts, newest first, each its own float-containing box
+    // so one part's floated clips cannot wrap into the next.
+    if (t.group) return t.group.map((p, k) =>
+        '<div class="sm-grpsec" data-sec="' + k + '">'
+          + (p.top.trim() ? '<div class="smGreeting">' + p.top + '</div>' : '')
+          + (p.bottom.trim() ? '<div class="smGreeting">' + p.bottom + '</div>' : '')
+        + '</div>').join('');
     switch (t.kind) {
       // Filled by _smDayRender after mount, and re-filled in place by the ‹ ›
       // arrows — the box itself never moves.
@@ -1851,7 +1897,7 @@ async function _showShareableMenu() {
       + (t.bottom.trim() ? '<div class="smGreeting">' + t.bottom + '</div>' : '')
       // A prose tab with nothing in it says so rather than rendering a blank
       // page — the state "this tab exists but hasn't been written yet".
-      + (t.kind === 'prose' && !t.top.trim() && !t.bottom.trim()
+      + (t.kind === 'prose' && !t.group && !t.top.trim() && !t.bottom.trim()
           ? '<div class="sm-sub">' + _T('Nothing here yet') + '</div>' : '')
     + '</div>';
 
@@ -1906,6 +1952,10 @@ async function _showShareableMenu() {
   // public. This is UI tidying, not protection.
   if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
   _smWireInlineZoom(ov);   // (dev1031) hold / pinch zoom on those same clips
+  // (dev1032) Every clip on Welcome starts muted, whatever its authored markup
+  // says (today all of them carry `muted`; this keeps the next one honest). Set
+  // once at build, so a viewer who unmutes one with its controls keeps it.
+  ov.querySelectorAll('#smPage' + _pgOf('intro') + ' video').forEach(v => { v.muted = true; });
 
   // (dev0384) `.on` is synced across BOTH bars; the last tab the viewer used is
   // remembered in window._smLastTab so a reopen lands back on it.
@@ -1915,6 +1965,31 @@ async function _showShareableMenu() {
   // one of the three edits every new tab needed. There is one edit now, and it
   // is a row in c.json.
   const _smTabOrder = _smPages.slice();
+  // (dev1032) GROUPED TABS. Arriving at a group's page swaps the bar for the
+  // group's own list and shows every part; a date line narrows the page to that
+  // one row's part; "Main" puts the full bar back and shows every part again,
+  // staying on the page. Leaving the page for any other drops the list.
+  //   _smSub     — page number whose list is in the bar (0 = the full bar)
+  //   _smSecOf   — per group page, the part on show (-1 = all of them)
+  //   _smShownPg — the page on show in THIS build (window._smCurPage outlives it)
+  let _smSub = 0, _smShownPg = 0;
+  const _smSecOf = {};
+  const _smGrpApply = () => {
+    ov.querySelectorAll('.sm-tab').forEach(b => {
+      if (!b.classList.contains('sm-subtab')) { b.classList.toggle('sm-hide', !!_smSub); return; }
+      const g = parseInt(b.dataset.grp, 10);
+      b.classList.toggle('sm-hide', g !== _smSub);
+      b.classList.toggle('on', b.dataset.sec !== undefined && parseInt(b.dataset.sec, 10) === _smSecOf[g]);
+    });
+  };
+  const _smGrpPick = (n, k) => {
+    _smSecOf[n] = k;
+    const pg = ov.querySelector('#smPage' + n);
+    if (!pg) return;
+    pg.querySelectorAll('.sm-grpsec').forEach(s =>
+      s.style.display = (k < 0 || parseInt(s.dataset.sec, 10) === k) ? '' : 'none');
+    pg.scrollTop = 0;
+  };
   const _smShow = n => {
     // (dev0739) A page change means the box our keyboard was typing into is
     // gone — take it with us rather than leaving it floating over the new page.
@@ -1926,6 +2001,13 @@ async function _showShareableMenu() {
     _smPages.forEach(k => { const p = ov.querySelector('#smPage' + k); if (p) p.style.display = (k === n) ? '' : 'none'; });
     ov.querySelectorAll('.sm-tab').forEach(t =>
       t.classList.toggle('on', parseInt(t.dataset.pg, 10) === n));
+    // (dev1032) Entering a group from another page opens its list on every part;
+    // re-showing the page it is already on leaves list and pick as they are.
+    const _gt = _smTabs[n - 1];
+    if (_gt && _gt.group) { if (_smShownPg !== n) { _smSub = n; _smGrpPick(n, -1); } }
+    else _smSub = 0;
+    _smShownPg = n;
+    _smGrpApply();
     // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
     // Page 1 is the Intro TAB now, so they stay up on every page.
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = 'flex');
@@ -1947,7 +2029,7 @@ async function _showShareableMenu() {
   };
   // (dev1009) ALTERNATIVE LOOK, after lindaiphotography.com: a script
   // "Sea Life / and More" title and a vertical uppercase tab list down the
-  // left, black body, and on Welcome the UOD rows crossfading full-bleed behind
+  // left (dev1032: the right), black body, and on Welcome the UOD rows crossfading full-bleed behind
   // it in place of the page content. Contact sits apart at the list foot (her
   // "Prints for sale" slot). It is a class on the overlay plus one background
   // layer — the tabs, pages and handlers underneath are the same ones.
@@ -2164,15 +2246,19 @@ async function _showShareableMenu() {
     '<div class="sm-alt-brand">Sea Life<br>and More</div>'
     + '<style>'
     + '.sm-alt-brand,.sm-alt-bg{display:none;}'
-    + '#shareableMenu.sm-alt{background:#000 !important;padding-left:240px;}'
-    + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:28px;top:22px;z-index:3;'
-    +   "font-family:'Segoe Script','Brush Script MT','Lucida Handwriting',cursive;font-size:34px;line-height:1.15;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.8);}"
+    // (dev1032) Title and tab list moved to the RIGHT: both start 3/16 of the
+    // screen's width in from the right edge, left-justified, and the page
+    // content keeps the other 13/16. Percentages, not vw — they resolve against
+    // the overlay, which is the visual frame inside #rotateWrap. Title 34 → 30px.
+    + '#shareableMenu.sm-alt{background:#000 !important;padding-right:18.75%;}'
+    + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:81.25%;top:22px;z-index:3;'
+    +   "font-family:'Segoe Script','Brush Script MT','Lucida Handwriting',cursive;font-size:30px;line-height:1.15;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.8);}"
     + '#shareableMenu.sm-alt .sm-alt-bg{display:block;position:absolute;inset:0;z-index:0;background:#000;pointer-events:none;}'
     + '.sm-alt-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:center/cover no-repeat;opacity:0;transition:opacity 1.5s ease;}'
     + '.sm-alt-slide.on{opacity:1;}'
     + '#shareableMenu.sm-alt .sm-tabs-bottom{display:none !important;}'
-    + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:0;top:131px;bottom:24px;width:240px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-left:28px;}'
-    + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab{flex:none;background:none;border:none;padding:3px 0;text-align:left;text-transform:uppercase;letter-spacing:0.04em;font-size:15px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
+    + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:81.25%;right:0;top:122px;bottom:24px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-right:12px;}'
+    + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab{flex:none;max-width:100%;background:none;border:none;padding:3px 0;text-align:left;text-transform:uppercase;letter-spacing:0.04em;font-size:15px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab.on{color:#f0c419;}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab:hover{color:#f0c419;}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab[data-kind="signin"]{order:99;margin-top:auto;}'
@@ -2211,9 +2297,11 @@ async function _showShareableMenu() {
   // hop so keyboard cycling stays anchored to the tab row. (dev0739) Falls back
   // to the bottom bar: the top bar is hidden on phones, and focusing a
   // display:none button silently moves focus nowhere.
+  // (dev1032) …by what is actually on screen, since a group's own tab is hidden
+  // while its list is up — its "Main" line takes the focus then.
   const _smFocusTab = n => {
-    const b = ov.querySelector('.sm-tabs-top .sm-tab[data-pg="' + n + '"]')
-           || ov.querySelector('.sm-tabs-bottom .sm-tab[data-pg="' + n + '"]');
+    const b = Array.from(ov.querySelectorAll('.sm-tab[data-pg="' + n + '"],.sm-subtab[data-grp="' + n + '"]'))
+      .find(x => x.getClientRects().length);
     if (b) b.focus();
   };
   // (dev0403) Focus the first SavedSearches "Open" button — Tab then cycles the
@@ -2246,7 +2334,7 @@ async function _showShareableMenu() {
   // Tab click → show that page. Search focuses its box (mouse users type
   // immediately); SavedSearches focuses its first Open button; every other tab
   // keeps focus on the tab for keyboard cycling.
-  ov.querySelectorAll('.sm-tab').forEach(t =>
+  ov.querySelectorAll('.sm-tab:not(.sm-subtab)').forEach(t =>
     t.addEventListener('click', () => {
       const pg = parseInt(t.dataset.pg, 10) || _pgOf('grids') || 1;
       _smShow(pg);
@@ -2255,7 +2343,18 @@ async function _showShareableMenu() {
       if (pg === _pgOf('search')) { const sb = ov.querySelector('#smSearchBox'); if (sb) setTimeout(() => sb.focus(), 30); }
       else if (pg === _pgOf('saved')) { setTimeout(() => { if (!_smFocusFirstSaved()) t.focus(); }, 30); }
       else if (pg === _pgOf('loops')) { setTimeout(() => { if (!_smFocusFirstLoop() && !_smFocusAdd()) t.focus(); }, 30); }
+      // (dev1032) A group's tab always opens its list — also when "Main" had
+      // put the full bar back while staying on the page.
+      else if (_smTabs[pg - 1] && _smTabs[pg - 1].group) { _smSub = pg; _smGrpApply(); _smFocusTab(pg); }
       else t.focus();
+    }));
+  // (dev1032) A group's own lines: "Main" = full bar back, every part showing;
+  // a date = only that row's part.
+  ov.querySelectorAll('.sm-subtab').forEach(b =>
+    b.addEventListener('click', () => {
+      const g = parseInt(b.dataset.grp, 10);
+      if (b.dataset.sub === 'main') { _smSub = 0; _smGrpPick(g, -1); _smGrpApply(); _smFocusTab(g); }
+      else { _smGrpPick(g, parseInt(b.dataset.sec, 10)); _smGrpApply(); b.focus(); }
     }));
   // (dev0788) The Welcome page's → arrow goes wherever the NEXT TAB goes — the
   // order's next entry, not a hard-coded 5, so re-ordering the tab bar re-points
@@ -2361,6 +2460,7 @@ async function _showShareableMenu() {
   const _smDayRender = () => {
     if (!_smDayBox) return;
     _smDayBox.innerHTML = _smDayInnerHtml();
+    _smDayBox.querySelectorAll('video').forEach(v => { v.muted = true; });   // (dev1032)
     // (dev0741) Same long-press lockdown the rest of the overlay gets — this
     // markup is built after the sweep above ran.
     if (window.salLockDownVideosIn) window.salLockDownVideosIn(_smDayBox);
