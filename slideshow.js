@@ -972,6 +972,19 @@ function _slideshowStart(allOrdered, opts) {
       const f = _frontImg();
       if (f) f.style.transition = 'transform 0.25s ease-out';
       _slideshowApplyZoom();
+      // (dev1040) …and a PICTURE's timer starts over: a zoom paused the show,
+      // and the reset is the viewer saying "done looking". (Videos play in V,
+      // whose own reset leaves them paused.) The first click of the pair may
+      // already have resumed; the dwell is re-armed from now either way.
+      const st = _slideshowState;
+      if (st && st.mode !== 'review' && !st._videoActive && st.slides[st.idx] && st.slides[st.idx].kind === 'image') {
+        if (st.paused) _slideshowResume();
+        else {
+          clearTimeout(st.timer);
+          const ms = _ssDwellMs(st);
+          if (ms > 0) st.timer = setTimeout(() => _slideshowAdvance(+1), ms);
+        }
+      }
     });
   })();
 

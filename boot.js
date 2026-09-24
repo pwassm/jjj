@@ -1333,27 +1333,26 @@ async function _showShareableMenu() {
     + '.smGreeting video{cursor:zoom-in;-webkit-user-select:none;user-select:none;}'
     // (dev1037) …and on the pictures (no native drag to fight the hold).
     + '.smGreeting img{cursor:zoom-in;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;}'
-    // (dev1037) A CAPTION HUGS THE PICTURE ABOVE IT (≈3px) and keeps ≈10px from
-    // what follows, instead of sitting midway between the two.
-    //   Older markup (before dev1031's te-media):
-    //     <div centred, margin 12px><p><video inline-block></p>
-    //       <div font-size…><p>caption</p></div></div>
-    //   The media's <p> loses its margins and its line strut (the inline
-    //   baseline gap under the clip), the caption its margin-top, and its line
-    //   box is tightened to 1.15. Below, margins collapse to the largest
-    //   (dev1038) Below: 20px, collapsing with the wrappers' own 12px (older
-    //   markup) or 17px (te-media) — about 22px seen. dev1037's pull-in to
-    //   ~10px read as no gap at all.
-    //   te-media (dev1031 on): same, over its inline 4px / 1.35.
+    // (dev1040) CAPTIONS SIT ON THE PICTURE, over its lower edge, the way G's
+    // annotations do (grid.js .sal-annot): white on a dark fade, never out in the
+    // gap between two pictures. (dev1037-1038 tried spacing them off instead.)
+    // Both caption markups end up as one shape — a positioned box exactly as
+    // wide as its media: _smCaptionsOver builds that for the older markup, and a
+    // te-media wrapper already is one. The caption keeps its authored size and
+    // alignment, and lets the pointer through to the clip beneath it (hold-zoom,
+    // click) — except on a link.
     + (() => {
-        const mp = 'p:has(> video[style*="inline-block"]:only-child,> img[style*="inline-block"]:only-child)';
-        const cap = mp + ' + div[style*="font-size"]';
-        return '.smGreeting ' + mp + '{margin:0;line-height:0;}'
-          + '.smGreeting ' + cap + '{margin-top:0 !important;line-height:1.15;}'
-          + '.smGreeting ' + cap + ' p{margin:0;}'
-          + '.smGreeting ' + cap + ':last-child{margin-bottom:20px !important;}'
-          + '.smGreeting .te-media > div[style*="font-size"]{margin-top:0 !important;line-height:1.15 !important;}'
-          + '.smGreeting .te-media > div[style*="font-size"]:last-child{margin-bottom:20px !important;}';
+        const cap = '.smGreeting .sm-capbox > div[style*="font-size"]';
+        const tcap = '.smGreeting .te-media > div[style*="font-size"]';
+        return '.smGreeting .sm-capbox,.smGreeting .te-media:has(> div[style*="font-size"]){position:relative;}'
+          + '.smGreeting .sm-capbox{margin:0 auto;max-width:100%;}'
+          + '.smGreeting .sm-capbox > video,.smGreeting .sm-capbox > img{display:block;width:100%;}'
+          + cap + ',' + tcap + '{position:absolute;left:0;right:0;bottom:0;z-index:1;margin:0 !important;'
+          +   'padding:1.4em 0.9em 0.55em;line-height:1.3 !important;color:#fff;pointer-events:none;border-radius:0 0 4px 4px;'
+          +   'text-shadow:0 1px 3px #000,0 0 8px rgba(0,0,0,0.85);'
+          +   'background:linear-gradient(to top,rgba(0,0,0,0.72),rgba(0,0,0,0.4) 60%,rgba(0,0,0,0));}'
+          + cap + ' p,' + tcap + ' p{margin:0;}'
+          + cap + ' a,' + tcap + ' a{pointer-events:auto;}';
       })()
     // (dev0788) The Welcome page's forward arrow. TRANSPARENT, as asked: no
     // circle, no fill, no border — just the glyph, so it lies over the picture
@@ -1977,6 +1976,7 @@ async function _showShareableMenu() {
   if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
   // (dev1035) Must run in this same task as the innerHTML above: it takes the
   // clips' src off before the browser starts fetching them.
+  _smCaptionsOver(ov);     // (dev1040) captions onto their picture
   _smWireClipPlay(ov);     // (dev1035) load when on screen, play once fully buffered
   _smWireInlineZoom(ov);   // (dev1031) hold / pinch zoom on those same clips
   // (dev1032) Every clip on Welcome starts muted, whatever its authored markup
@@ -2062,9 +2062,6 @@ async function _showShareableMenu() {
     else _smSub = 0;
     _smShownPg = n;
     _smGrpApply();
-    // (dev1039) The New tab keeps the old look's blue under the new look: its
-    // clips are mostly dark water and vanished into the black.
-    ov.classList.toggle('sm-blue', !!(_gt && _gt.key === 'new'));
     // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
     // Page 1 is the Intro TAB now, so they stay up on every page.
     ov.querySelectorAll('.sm-tabs').forEach(tb => tb.style.display = 'flex');
@@ -2334,6 +2331,14 @@ async function _showShareableMenu() {
       else runClock();
     };
     ctl.toggle = () => { if (ctl.paused) ctl.resume(); else ctl.pause(); };
+    // (dev1040) Zoom reset on a PICTURE starts its 5 s over and lets the show
+    // run on; a clip stays paused (V's rule — its resume is a tap / Space).
+    ctl.restart = () => {
+      const s = ctl.cur;
+      if (!s || s.isVid || !s.begun || ctl.due) return;
+      ctl.left = _SM_ALT_IMG_MS;
+      if (ctl.paused) ctl.resume(); else runClock();
+    };
     ctl.quit = () => {
       clearTimeout(ctl.timer);
       const n = ctl.nx;
@@ -2532,9 +2537,10 @@ async function _showShareableMenu() {
   ov.addEventListener('dblclick', e => {
     if (_bgSkip(e.target)) return;
     const ctl = _bgCtl();
-    if (!ctl || _bgGet(ctl.cur).s <= 1) return;
+    if (!ctl) return;
     e.preventDefault();
-    _bgApply(ctl, ctl.cur, { s: 1, tx: 0, ty: 0 });
+    if (_bgGet(ctl.cur).s > 1) _bgApply(ctl, ctl.cur, { s: 1, tx: 0, ty: 0 });
+    ctl.restart();                                  // (dev1040) a picture runs on, zoomed or not
   });
   // ── phone
   let _bgT = null, _bgTap = null;
@@ -2594,7 +2600,7 @@ async function _showShareableMenu() {
     if (_bgTap && _bgTap.s === t.s && now - _bgTap.at < 350) {
       _bgTap = null;
       t.ctl.toggle();                               // undo the first tap's
-      if (_bgGet(t.s).s > 1) _bgApply(t.ctl, t.s, { s: 1, tx: 0, ty: 0 });
+      if (_bgGet(t.s).s > 1) { _bgApply(t.ctl, t.s, { s: 1, tx: 0, ty: 0 }); t.ctl.restart(); }
       return;
     }
     _bgTap = { s: t.s, at: now };
@@ -2611,8 +2617,6 @@ async function _showShareableMenu() {
     // the overlay, which is the visual frame inside #rotateWrap. Title 34 → 30px.
     // (dev1035) …plus 18px, so neither sits hard against the page's scrollbar.
     + '#shareableMenu.sm-alt{background:#000 !important;padding-right:18.75%;}'
-    // (dev1039) …except on New (_smShow sets sm-blue): the page body's gradient.
-    + '#shareableMenu.sm-alt.sm-blue{background:linear-gradient(180deg,#17629d 0%,#13527f 55%,#0f4570 100%) !important;}'
     + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:calc(81.25% + 18px);top:22px;z-index:3;'
     // (dev1037) 30 → 26px and bold, never wrapped past its own two lines;
     // _smBrandFit shrinks it further when the column is too narrow for that.
@@ -3612,6 +3616,32 @@ async function _showShareableMenu() {
       if (nxt) nxt.focus();
     });
   }
+}
+
+// (dev1040) The older caption markup (before dev1031's te-media) —
+//   <p><video|img style="…width:W;display:inline-block"></p><div style="font-size…">caption</div>
+// — becomes <div class="sm-capbox" style="width:W"><video|img><div caption></div>,
+// a box as wide as the media, so the caption can sit on the picture (see the
+// CSS). The media's own width moves to the box and it fills that. Render only;
+// the authored ftext is never touched. Must run before _smWireClipPlay, in the
+// same task as the innerHTML (moving a clip is harmless before its src comes off).
+function _smCaptionsOver(ov) {
+  ov.querySelectorAll('.smGreeting div[style*="font-size"]').forEach(cap => {
+    const p = cap.previousElementSibling;
+    if (!p || p.tagName !== 'P' || p.children.length !== 1 || p.textContent.trim()) return;
+    const m = p.firstElementChild;
+    if (!/^(VIDEO|IMG)$/.test(m.tagName) || !/inline-block/.test(m.getAttribute('style') || '')) return;
+    const box = document.createElement('div');
+    box.className = 'sm-capbox';
+    box.style.width = m.style.width || '100%';
+    p.parentNode.insertBefore(box, p);
+    box.appendChild(m);
+    box.appendChild(cap);
+    p.remove();
+    m.style.width = '100%';
+    m.style.maxWidth = '';
+    m.style.display = 'block';
+  });
 }
 
 // (dev1035) THE CLIPS IN A TAB'S PROSE (`.smGreeting video`) LOAD ONLY WHEN THEY
