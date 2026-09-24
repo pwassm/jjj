@@ -6291,6 +6291,14 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     '<span id="vp-crop-deshake" title="Steady handheld wobble (V). Costs a small zoom — ' +
       'medium is usually the sweet spot; strong zooms ~2.5x further for little extra." ' +
       'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">〰 shake off</span>' +
+    // (dev1033) De-screen, for video filmed off a monitor or tablet: removes the
+    // screen's pixel grid. Same dial shape as deshake. The proxy measures the
+    // grid across A→B before the render, so the chip needs no numbers.
+    '<span id="vp-crop-descreen" title="De-screen: remove a screen\'s pixel grid from video filmed off a monitor or tablet. ' +
+      'Click to cycle off → light → medium → heavy. Medium removes the grid and keeps all real detail; ' +
+      'heavy also removes the fine 2-pixel subpixel stripes some tablets show, and is softer. ' +
+      'Measured before the render — a clip with no grid is refused rather than blurred." ' +
+      'style="cursor:pointer;user-select:none;padding:2px 6px;background:#234;border-radius:3px;">▦ descreen off</span>' +
     // (dev0869) Speed. A signed multiplier baked into the RENDER, not the
     // player: -20x .. +20x, where a negative value plays the clip backwards at
     // that rate. Video only — a still has no timeline to stretch.
@@ -6385,7 +6393,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     // slideshow's own hold-zoom under it, and that transform is on the very
     // <img> this overlay maps its screen→source arithmetic through.
     ['vp-crop-crf-lbl', 'vp-crop-crf', 'vp-crop-crf-val',
-     'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake', 'vp-crop-expand',
+     'vp-crop-audio', 'vp-crop-slow-lbl', 'vp-crop-deshake', 'vp-crop-descreen', 'vp-crop-expand',
      'vp-crop-speed', 'vp-crop-enc', 'vp-crop-loop', 'vp-crop-jpg',
      'vp-crop-zoom-lbl', 'vp-crop-zoom'].forEach(id => {
       const el = bar.querySelector('#' + id);
@@ -6638,6 +6646,7 @@ function _vpMountCropOverlay(host, vid, row, opts) {
     freeRatio: imageMode,
     audio: false,                     // (dev0719) rendered clip is silent unless asked
     deshake: 'off',                   // (dev0789) off | light | medium | strong
+    descreen: 'off',                  // (dev1033) off | light | medium | heavy
     speed: 1,                         // (dev0869) signed render speed, -20..20 (negative = reverse)
     vcodec: 'h264',                   // (dev0871) h264 | h265
     loop: 'off',                      // (dev0871) off | fwd | boom
@@ -7784,6 +7793,19 @@ function _vpMountCropOverlay(host, vid, row, opts) {
   state.paintDeshake = paintDeshake;   // so the hotkey can repaint the chip
   if (dsChip) dsChip.addEventListener('click', _vpCropCycleDeshake);
 
+  // (dev1033) ── De-screen ──────────────────────────────────────────────────
+  const dscrChip = bar.querySelector('#vp-crop-descreen');
+  function paintDescreen() {
+    if (!dscrChip) return;
+    const on = state.descreen && state.descreen !== 'off';
+    dscrChip.textContent = '▦ descreen ' + (on ? state.descreen : 'off');
+    dscrChip.style.background = on ? '#2a5d9a' : '#234';
+    dscrChip.style.color      = on ? '#fff' : '#dfe6f0';
+  }
+  paintDescreen();
+  state.paintDescreen = paintDescreen;
+  if (dscrChip) dscrChip.addEventListener('click', _vpCropCycleDescreen);
+
   // (dev0869) ── Speed ──────────────────────────────────────────────────────
   const spdSel = bar.querySelector('#vp-crop-speed');
   if (spdSel) {
@@ -8697,6 +8719,24 @@ function _vpCropStepZoom(dir) {
   if (!_vpState || !_vpState.crop) return;
   const s = _vpState.crop;
   if (s.stepZoom) s.stepZoom(dir);
+}
+
+// (dev1033) De-screen strength — see DESCREEN_BANDS in proxy.js for what each
+// step removes and what it costs. A dial for the same reason as deshake: every
+// step up trades a little sharpness for less of the screen.
+const _VP_DESCREEN_STEPS = ['off', 'light', 'medium', 'heavy'];
+function _vpCropCycleDescreen() {
+  if (!_vpState || !_vpState.crop) return;
+  const s = _vpState.crop;
+  if (s.imageMode) return;             // stills go through a different renderer
+  const i = _VP_DESCREEN_STEPS.indexOf(s.descreen || 'off');
+  s.descreen = _VP_DESCREEN_STEPS[(i + 1) % _VP_DESCREEN_STEPS.length];
+  if (s.paintDescreen) s.paintDescreen();
+  if (typeof toast === 'function') {
+    toast(s.descreen === 'off'
+      ? '▦ de-screen off'
+      : '▦ de-screen ' + s.descreen + ' — the grid is measured across A→B before the render', 1800);
+  }
 }
 
 function _vpCropCycleDeshake() {
@@ -10206,6 +10246,7 @@ async function _vpGoSave(opts) {
   // (dev0863) detailParts is what the filename used to spell out — size, shape,
   // tilt, zoom, track, captions, duration. It goes in the sidecar now.
   let outName, payload, kenPayload = null, trackPayload = null, detailParts = [];
+  let descreenReq = null;   // (dev1033) what the proxy measures the grid on, when armed
   if (cropOn) {
     const s = _vpState.crop;
     const VW = vid.videoWidth, VH = vid.videoHeight;
@@ -10268,6 +10309,16 @@ async function _vpGoSave(opts) {
     }
     const p0 = mapPt(ef.x, ef.y);
     cropBox = { w: sw, h: sh, x: p0.x, y: p0.y };
+    // (dev1033) The grid is measured on the SOURCE frame, from the middle of
+    // the rect — crop and tilt don't change a pitch, only where to look.
+    if (s.descreen && s.descreen !== 'off') {
+      descreenReq = {
+        input: absInput, trim: { startSec, endSec },
+        rect: { cx: (Math.max(0, ef.x) + ef.w / 2) * VW, cy: (Math.max(0, ef.y) + ef.h / 2) * VH,
+                w: sw, h: sh },
+        frame: { w: VW, h: VH }
+      };
+    }
     detailParts = [sizeStr, effAspect, 'crop'];
     if (angTok) detailParts.push(angTok);
     // (dev0778) A bled render is no longer 16:9, so the name has to carry the
@@ -10348,6 +10399,7 @@ async function _vpGoSave(opts) {
     if (texts.length)  detailParts.push('tx' + texts.length);
     if (pauses.length) detailParts.push('pz' + pauses.length);
     if (s.deshake && s.deshake !== 'off') detailParts.push('ds-' + s.deshake);  // (dev0789)
+    if (s.descreen && s.descreen !== 'off') detailParts.push('dscr-' + s.descreen);  // (dev1033)
     if (_vpColorToken()) detailParts.push(_vpColorToken());                     // (dev0867)
     // (dev0869) Speed goes in the sidecar detail too — a 4x clip is otherwise
     // indistinguishable from a short one at a glance.
@@ -10561,6 +10613,13 @@ async function _vpGoSave(opts) {
       return;
     }
   }
+  // (dev1033) De-screen: a stale proxy would drop payload.descreen and hand
+  // back the grid untouched at the end of a long encode.
+  const descreenOn = !!(payload.crop && descreenReq);
+  if (descreenOn && !(await _vpProxyHasFeature('descreen'))) {
+    if (typeof toast === 'function') toast('De-screen needs an updated proxy — restart "node proxy.js" and retry', 4400);
+    return;
+  }
   const useBtn = cropOn ? _vpState.crop.el.bar.querySelector('#vp-crop-do') : null;
   const origLabel = useBtn ? useBtn.textContent : null;
   const pill = useBtn ? null : _vpMakeProgressPill(cropOn ? '' : 'Saving ');
@@ -10570,6 +10629,26 @@ async function _vpGoSave(opts) {
     if (pill) pill.dispose();
   }
   try {
+    // (dev1033) Measure the screen grid across A→B first. A clip with no grid
+    // is refused, not rendered: the filter is tuned to the grid it found, and
+    // with nothing found there is nothing to tune it to but a blur.
+    if (descreenOn) {
+      if (useBtn) useBtn.disabled = true;
+      if (target) target.textContent = '▦ measuring…';
+      const strength = _vpState.crop.descreen;
+      const m = await _vpDescreenMeasure(descreenReq);
+      if (!m.ok) {
+        restoreUI();
+        if (typeof toast === 'function') toast('▦ ' + (m.error || 'grid measurement failed'), 5200);
+        console.warn('[descreen measure]', m);
+        return;
+      }
+      payload.descreen = { strength, samples: m.samples };
+      if (typeof toast === 'function') {
+        const px = (m.max - m.min < 0.1) ? m.min.toFixed(1) : (m.min.toFixed(1) + '–' + m.max.toFixed(1));
+        toast('▦ screen grid ' + px + ' px — de-screening ' + strength, 2600);
+      }
+    }
     // (dev0789) Pass 1 of a deshake: measure only, no file written. Its id ties
     // the .trf to the render that follows. Bail on failure rather than let the
     // transform run against a missing/stale motion file.
@@ -10934,6 +11013,23 @@ async function _vpProbeFps(absPath) {
     }
     return null;
   } catch (_) { return null; }
+}
+
+// (dev1033) Ask the proxy to find the screen grid across A→B. Resolves its
+// answer — {ok, samples:[{t,pitch}], min, max} or {ok:false, error} — and
+// never throws, so the caller has one shape to read.
+async function _vpDescreenMeasure(req) {
+  try {
+    const r = await fetch(PROXY_BASE + '/edit/descreen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req)
+    });
+    const j = await r.json().catch(() => null);
+    return j || { ok: false, error: 'grid measurement failed (HTTP ' + r.status + ')' };
+  } catch (e) {
+    return { ok: false, error: 'proxy unreachable — is "node proxy.js" running?' };
+  }
 }
 
 // (dev0289) One request/response cycle to /exec/ffmpeg. Resolves with
