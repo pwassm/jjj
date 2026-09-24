@@ -1951,6 +1951,9 @@ async function _showShareableMenu() {
   // Removes the offer, not the ability: the URL is in the page and the file is
   // public. This is UI tidying, not protection.
   if (window.salLockDownVideosIn) window.salLockDownVideosIn(ov);
+  // (dev1035) Must run in this same task as the innerHTML above: it takes the
+  // clips' src off before the browser starts fetching them.
+  _smWireClipPlay(ov);     // (dev1035) load when on screen, play once fully buffered
   _smWireInlineZoom(ov);   // (dev1031) hold / pinch zoom on those same clips
   // (dev1032) Every clip on Welcome starts muted, whatever its authored markup
   // says (today all of them carry `muted`; this keeps the next one honest). Set
@@ -2154,6 +2157,9 @@ async function _showShareableMenu() {
   window._smAltToggle = () => {
     window._smAltOn = window._smAltOn === false;
     _smAltSync();
+    // (dev1035) Welcome's page turns visible/hidden without moving, which no
+    // intersection change reports — so the clip loader looks again.
+    if (ov._smClips) ov._smClips.rescan();
     return true;
   };
   window._smAltIntroPg = _pgOf('intro');
@@ -2250,14 +2256,15 @@ async function _showShareableMenu() {
     // screen's width in from the right edge, left-justified, and the page
     // content keeps the other 13/16. Percentages, not vw — they resolve against
     // the overlay, which is the visual frame inside #rotateWrap. Title 34 → 30px.
+    // (dev1035) …plus 18px, so neither sits hard against the page's scrollbar.
     + '#shareableMenu.sm-alt{background:#000 !important;padding-right:18.75%;}'
-    + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:81.25%;top:22px;z-index:3;'
+    + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:calc(81.25% + 18px);top:22px;z-index:3;'
     +   "font-family:'Segoe Script','Brush Script MT','Lucida Handwriting',cursive;font-size:30px;line-height:1.15;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.8);}"
     + '#shareableMenu.sm-alt .sm-alt-bg{display:block;position:absolute;inset:0;z-index:0;background:#000;pointer-events:none;}'
     + '.sm-alt-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:center/cover no-repeat;opacity:0;transition:opacity 1.5s ease;}'
     + '.sm-alt-slide.on{opacity:1;}'
     + '#shareableMenu.sm-alt .sm-tabs-bottom{display:none !important;}'
-    + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:81.25%;right:0;top:122px;bottom:24px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-right:12px;}'
+    + '#shareableMenu.sm-alt .sm-tabs-top{position:absolute;left:calc(81.25% + 18px);right:0;top:122px;bottom:24px;z-index:3;flex-direction:column;align-items:flex-start;background:transparent;box-shadow:none;padding-right:12px;}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab{flex:none;max-width:100%;background:none;border:none;padding:3px 0;text-align:left;text-transform:uppercase;letter-spacing:0.04em;font-size:15px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab.on{color:#f0c419;}'
     + '#shareableMenu.sm-alt .sm-tabs-top .sm-tab:hover{color:#f0c419;}'
@@ -3240,12 +3247,123 @@ async function _showShareableMenu() {
   }
 }
 
+// (dev1035) THE CLIPS IN A TAB'S PROSE (`.smGreeting video`) LOAD ONLY WHEN THEY
+// COME ON SCREEN, AND PLAY ONLY ONCE THEY ARE FULLY DOWNLOADED. Every clip used
+// to start fetching — and, being autoplay, playing — the moment the menu was
+// built, on every page, seen or not; and one that started before enough of it
+// had arrived stopped mid-play to buffer. Now:
+//   build       src and autoplay come off each clip in the same task that
+//               created it, so the browser never starts on it
+//   on screen   src goes back with preload=auto; the first frame shows while
+//               the rest comes down
+//   buffered    one range covering 0…duration → it plays (an authored-autoplay
+//               clip, or one the viewer has asked to play meanwhile)
+//   off screen  paused, including when its page is not the one on show; back
+//               on screen it plays again
+// A viewer's own pause — the clip's controls, a zoom, a tap, Space — holds it
+// paused through all of that until they play it again.
+// The browser may stop downloading a paused clip before the end by itself
+// (both Firefox and Chrome read only so far ahead on a long one). Having
+// stopped (networkState IDLE) with HAVE_ENOUGH_DATA counts as ready then, or
+// that clip would never start.
+// Exposes ov._smClips = { toggle, hold, rescan } for the zoom wiring below and
+// for _smAltToggle.
+function _smWireClipPlay(ov) {
+  const clips = Array.from(ov.querySelectorAll('.smGreeting video'));
+  const S = new WeakMap();
+  //   src   the authored src      want  should play when it can
+  //   vis   on screen now         held  the viewer paused it
+  //   ready fully buffered        self  the next `pause` event is our own
+  clips.forEach(v => {
+    const src = v.getAttribute('src');
+    if (!src) return;
+    S.set(v, { src: src, want: v.hasAttribute('autoplay'), vis: false, held: false,
+               ready: false, started: false, self: false });
+    v.removeAttribute('autoplay');
+    v.removeAttribute('src');
+    v.preload = 'none';
+  });
+  const full = v => {
+    const d = v.duration, b = v.buffered;
+    if (!(d > 0) || !isFinite(d)) return false;
+    for (let i = 0; i < b.length; i++) if (b.start(i) <= 0.3 && b.end(i) >= d - 0.3) return true;
+    return false;
+  };
+  const go = v => {
+    const c = S.get(v);
+    if (!c || !c.ready || !c.vis || c.held || !c.want || !v.paused) return;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => {});
+  };
+  const stop = v => { const c = S.get(v); if (c && !v.paused) { c.self = true; v.pause(); } };
+  const check = v => {
+    const c = S.get(v);
+    if (!c || !c.started || c.ready) return;
+    if (full(v) || (v.networkState === 1 && v.readyState >= 4)) { c.ready = true; go(v); }
+  };
+  const start = v => {
+    const c = S.get(v);
+    if (!c || c.started) return;
+    c.started = true;
+    v.preload = 'auto';
+    v.src = c.src;
+  };
+  clips.forEach(v => {
+    const c = S.get(v);
+    if (!c) return;
+    ['progress', 'suspend', 'loadeddata', 'canplaythrough', 'durationchange'].forEach(k => v.addEventListener(k, () => check(v)));
+    // A play the viewer started (the clip's own ▶) before it is ready waits.
+    v.addEventListener('play', () => {
+      c.held = false; c.want = true;
+      if (!c.ready) stop(v);
+    });
+    v.addEventListener('pause', () => {
+      if (c.self) { c.self = false; return; }
+      c.held = true;                               // theirs (or a non-loop clip ended)
+    });
+  });
+  const io = new IntersectionObserver(ens => ens.forEach(en => {
+    const v = en.target, c = S.get(v);
+    if (!c) return;
+    // Welcome's page is visibility:hidden under the new look: in the box, not seen.
+    c.vis = en.isIntersecting && getComputedStyle(v).visibility !== 'hidden';
+    if (c.vis) { start(v); go(v); } else stop(v);
+  }));
+  clips.forEach(v => { if (S.has(v)) io.observe(v); });
+  const hold = v => {
+    const c = S.get(v);
+    if (!c) { if (!v.paused) v.pause(); return; }
+    c.held = true;
+    stop(v);
+  };
+  ov._smClips = {
+    hold: hold,
+    // Playing, or waiting to → hold it; held → play it (once it is buffered).
+    toggle: v => {
+      const c = S.get(v);
+      if (!c) { if (v.paused) { const p = v.play(); if (p && p.catch) p.catch(() => {}); } else v.pause(); return; }
+      if (!v.paused || (c.want && !c.held && !c.ready)) { hold(v); return; }
+      c.held = false; c.want = true;
+      start(v); go(v);
+    },
+    visible: v => { const c = S.get(v); return c ? c.vis : true; },
+    rescan: () => clips.forEach(v => { if (S.has(v)) { io.unobserve(v); io.observe(v); } })
+  };
+}
+
 // (dev1031) ZOOM ON THE VIDEOS INSIDE A TAB'S PROSE (`.smGreeting video` — the
 // clips an author places with Xe's 🖼 modal). Same gestures as G and V:
 //   desktop  hold LMB = zoom in toward the pointer (Ctrl+hold = out), drag while
 //            zoomed = pan, double-click = back to normal
 //   phone    two-finger pinch = zoom + pan, one finger while zoomed = pan,
 //            a tap on a zoomed clip = back to normal
+// (dev1035) …and playback as in V: the first push past 1.05× pauses the clip
+// (latched, so panning a running clip doesn't re-pause it; back at 1× re-arms).
+// It plays again the way V does it — Space on desktop (the clip under the
+// pointer, else the last one handled, if still on screen), a single tap on a
+// phone. The phone's "back to normal" moves to a DOUBLE tap, as V's double tap
+// is its "back"; its first tap's play/pause is undone. A clip with its own
+// controls keeps them for taps on a phone.
 // The clip is transformed in place and clip-path'd back to its own box, so the
 // page layout never moves and no wrapper is added to authored HTML. Nothing is
 // saved: a zoom lasts until it is undone or the menu is rebuilt.
@@ -3276,6 +3394,9 @@ function _smWireInlineZoom(ov) {
       z.ty = Math.min(p.t * (1 - z.s), Math.max((H - p.b) * (1 - z.s), z.ty));
     }
     st.set(v, z);
+    // (dev1035) V's zoom-stops-playback latch (vp.js _vApply).
+    if (z.s > 1.05) { if (!v._smZoomStop) { v._smZoomStop = true; if (ov._smClips) ov._smClips.hold(v); } }
+    else v._smZoomStop = false;
     if (z.s === 1) {
       v.style.transform = v.style.transformOrigin = v.style.clipPath = v.style.touchAction = '';
       v.style.cursor = 'zoom-in';
@@ -3300,6 +3421,39 @@ function _smWireInlineZoom(ov) {
   const reset = v => apply(v, { s: 1, tx: 0, ty: 0 });
   const clipOf = t => (t && t.closest ? t.closest(SEL) : null);
   let swallowClick = false;
+  // (dev1035) Play / pause, as V does it.
+  const toggle = v => { if (ov._smClips) ov._smClips.toggle(v); };
+  let hover = null, last = null;                 // Space's clip (see header)
+  ov.addEventListener('pointerover', e => { if (e.pointerType === 'mouse') hover = clipOf(e.target); });
+  ov.addEventListener('pointerleave', () => { hover = null; });
+  window._smClipSpace = () => {
+    if (!ov.isConnected || !ov.getClientRects().length) return false;
+    const onScreen = v => v && v.isConnected && v.getClientRects().length
+      && (!ov._smClips || ov._smClips.visible(v));
+    const v = onScreen(hover) ? hover : (onScreen(last) ? last : null);
+    if (!v) return false;
+    last = v;
+    toggle(v);
+    return true;
+  };
+  // Bound once: each build re-points window._smClipSpace at its own clips.
+  if (!window._smClipSpaceBound) {
+    window._smClipSpaceBound = true;
+    let ate = false;
+    const typing = t => t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    window.addEventListener('keydown', e => {
+      if (e.key !== ' ' || e.ctrlKey || e.altKey || e.metaKey || typing(e.target)) return;
+      if (!e.repeat) ate = !!(window._smClipSpace && window._smClipSpace());
+      if (!ate) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    }, true);
+    // A focused tab button would otherwise take the keyup as its click.
+    window.addEventListener('keyup', e => {
+      if (e.key !== ' ' || !ate) return;
+      ate = false;
+      e.preventDefault(); e.stopPropagation();
+    }, true);
+  }
 
   // ── DESKTOP: hold to zoom (the V/G ramp: 180 ms settle, accelerating steps)
   let m = null;
@@ -3317,6 +3471,7 @@ function _smWireInlineZoom(ov) {
       if (e.clientY > r.bottom - 44) return;
     }
     e.preventDefault();
+    last = v;                                     // (dev1035) Space's fallback clip
     try { v.setPointerCapture(e.pointerId); } catch (_) {}
     mStop();
     const p = xy(e);
@@ -3422,11 +3577,25 @@ function _smWireInlineZoom(ov) {
     if (e.touches.length >= 1) { begin(v, e.touches); return; }   // pinch → one-finger pan
     const tap = t.mode === 'pan' && t.tap && !t.moved && Date.now() - t.tap < 300;
     t = null;
-    if (tap && get(v).s > 1) {
+    if (!tap) return;
+    // (dev1035) V's taps: one = play/pause, two = back to normal (the first
+    // one's play/pause undone, so the double tap leaves playback as it was).
+    // A clip with its own controls leaves single taps to them.
+    const own = !v.hasAttribute('controls'), now = Date.now();
+    if (lastTap && lastTap.v === v && now - lastTap.at < 350) {
+      lastTap = null;
       if (e.cancelable) e.preventDefault();       // no synthetic click after the reset
-      reset(v);
+      if (own) toggle(v);
+      if (get(v).s > 1) reset(v);
+      return;
+    }
+    lastTap = { v: v, at: now };
+    if (own) {
+      if (e.cancelable) e.preventDefault();
+      toggle(v);
     }
   };
+  let lastTap = null;
   ov.addEventListener('touchend', tEnd, { passive: false });
   ov.addEventListener('touchcancel', () => { t = null; });
 }
