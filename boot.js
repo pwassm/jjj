@@ -1331,6 +1331,31 @@ async function _showShareableMenu() {
     + '.smGreeting img,.smGreeting video{max-width:100%;}'
     // (dev1031) _smWireInlineZoom: hold / pinch to zoom a clip in the prose.
     + '.smGreeting video{cursor:zoom-in;-webkit-user-select:none;user-select:none;}'
+    // (dev1037) …and on the pictures (no native drag to fight the hold).
+    + '.smGreeting img{cursor:zoom-in;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;}'
+    // (dev1037) A CAPTION HUGS THE PICTURE ABOVE IT (≈3px) and keeps ≈10px from
+    // what follows, instead of sitting midway between the two.
+    //   Older markup (before dev1031's te-media):
+    //     <div centred, margin 12px><p><video inline-block></p>
+    //       <div font-size…><p>caption</p></div></div>
+    //   The media's <p> loses its margins and its line strut (the inline
+    //   baseline gap under the clip), the caption its margin-top, and its line
+    //   box is tightened to 1.15. Below, margins collapse to the largest
+    //   positive plus the most negative, so a -4px on the caption turns the
+    //   wrappers' 12px into 8px — about 10px seen, with the caption's descent.
+    //   te-media (dev1031 on): same, its 4px/1.35 inline, and -9px against 17px.
+    //   Not on floats: a float contains its margins, so a negative one there
+    //   would let the next item ride up over the caption.
+    + (() => {
+        const mp = 'p:has(> video[style*="inline-block"]:only-child,> img[style*="inline-block"]:only-child)';
+        const cap = mp + ' + div[style*="font-size"]';
+        return '.smGreeting ' + mp + '{margin:0;line-height:0;}'
+          + '.smGreeting ' + cap + '{margin-top:0 !important;line-height:1.15;}'
+          + '.smGreeting ' + cap + ' p{margin:0;}'
+          + '.smGreeting div:not([style*="float"]) > ' + cap + ':last-child{margin-bottom:-4px !important;}'
+          + '.smGreeting .te-media > div[style*="font-size"]{margin-top:0 !important;line-height:1.15 !important;}'
+          + '.smGreeting .te-media:not([style*="float"]) > div[style*="font-size"]:last-child{margin-bottom:-9px !important;}';
+      })()
     // (dev0788) The Welcome page's forward arrow. TRANSPARENT, as asked: no
     // circle, no fill, no border — just the glyph, so it lies over the picture
     // instead of punching a hole in it. It carries a drop shadow rather than a
@@ -1972,6 +1997,8 @@ async function _showShareableMenu() {
   // group's own list and shows every part; a date line narrows the page to that
   // one row's part; "Main" puts the full bar back and shows every part again,
   // staying on the page. Leaving the page for any other drops the list.
+  // (dev1037) A date line now JUMPS to its part (all parts stay shown), and
+  // "Main" goes to Welcome — see _smGrpPick.
   //   _smSub     — page number whose list is in the bar (0 = the full bar)
   //   _smSecOf   — per group page, the part on show (-1 = all of them)
   //   _smShownPg — the page on show in THIS build (window._smCurPage outlives it)
@@ -1985,13 +2012,38 @@ async function _showShareableMenu() {
       b.classList.toggle('on', b.dataset.sec !== undefined && parseInt(b.dataset.sec, 10) === _smSecOf[g]);
     });
   };
+  // (dev1037) The date lines are BOOKMARKS now, not filters: every part stays on
+  // the page and a date jumps to the top of its part (k < 0 = page top). The
+  // jump is instant, not smooth — a smooth scroll would pass every clip in
+  // between across the screen and start each one downloading. The lit date
+  // follows the scroll (_smGrpSpy) except straight after a jump, so a short
+  // last part that can't reach the top still shows as the one picked.
   const _smGrpPick = (n, k) => {
-    _smSecOf[n] = k;
     const pg = ov.querySelector('#smPage' + n);
     if (!pg) return;
-    pg.querySelectorAll('.sm-grpsec').forEach(s =>
-      s.style.display = (k < 0 || parseInt(s.dataset.sec, 10) === k) ? '' : 'none');
-    pg.scrollTop = 0;
+    const sec = k >= 0 ? pg.querySelector('.sm-grpsec[data-sec="' + k + '"]') : null;
+    pg.scrollTop = sec ? sec.offsetTop : 0;
+    pg._smJumpTop = pg.scrollTop;
+    _smSecOf[n] = sec ? k : 0;
+  };
+  const _smGrpSpy = n => {
+    const pg = ov.querySelector('#smPage' + n);
+    if (!pg || pg._smSpy) return;
+    pg._smSpy = true;
+    let raf = 0;
+    pg.addEventListener('scroll', () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (pg._smJumpTop !== undefined && Math.abs(pg.scrollTop - pg._smJumpTop) < 4) return;
+        pg._smJumpTop = undefined;
+        let k = 0;
+        pg.querySelectorAll('.sm-grpsec').forEach(s => {
+          if (s.offsetTop <= pg.scrollTop + 60) k = parseInt(s.dataset.sec, 10);
+        });
+        if (k !== _smSecOf[n]) { _smSecOf[n] = k; _smGrpApply(); }
+      });
+    }, { passive: true });
   };
   const _smShow = n => {
     // (dev0739) A page change means the box our keyboard was typing into is
@@ -2007,7 +2059,7 @@ async function _showShareableMenu() {
     // (dev1032) Entering a group from another page opens its list on every part;
     // re-showing the page it is already on leaves list and pick as they are.
     const _gt = _smTabs[n - 1];
-    if (_gt && _gt.group) { if (_smShownPg !== n) { _smSub = n; _smGrpPick(n, -1); } }
+    if (_gt && _gt.group) { _smGrpSpy(n); if (_smShownPg !== n) { _smSub = n; _smGrpPick(n, -1); } }
     else _smSub = 0;
     _smShownPg = n;
     _smGrpApply();
@@ -2096,9 +2148,24 @@ async function _showShareableMenu() {
   // one being readied), due (cur's time is up), paused, and pause / resume /
   // toggle / quit for the zoom and play/pause gestures below.
   const _SM_ALT_PREP_MS = 30000;
+  // (dev1037) The title's two lines fit the column: 26px unless "and More"
+  // would run past the screen's right edge, then as much smaller as that needs
+  // (not under 14px). Re-run on resize and once the fonts are in.
+  const _smBrandFit = () => {
+    if (!ov.isConnected) { window.removeEventListener('resize', _smBrandFit); return; }
+    const b = ov.querySelector('.sm-alt-brand');
+    if (!b) return;
+    b.style.fontSize = '';
+    if (!b.offsetWidth) return;                    // hidden (old look, phone)
+    const room = ov.clientWidth - b.offsetLeft - 12;
+    if (b.offsetWidth > room && room > 0) b.style.fontSize = Math.max(14, Math.floor(26 * room / b.offsetWidth)) + 'px';
+  };
+  window.addEventListener('resize', _smBrandFit);
+  try { document.fonts.ready.then(_smBrandFit); } catch (x) {}
   function _smAltSync() {
     const on = window._smAltOn !== false;
     ov.classList.toggle('sm-alt', on);
+    _smBrandFit();
     let bg = ov.querySelector('.sm-alt-bg');
     const home = on && window._smCurPage === _pgOf('intro');
     if (!home) {
@@ -2136,14 +2203,28 @@ async function _showShareableMenu() {
       const s = { el: el, link: link, isVid: isVid, ready: false, from: 0 };
       ctl.nx = s;
       const ready = () => {
-        if (s.ready || ctl.nx !== s) return;
+        if (s.ready) return;
+        if (ctl.cur === s) {                        // (dev1037) shown early, on its first frame
+          s.ready = true;
+          clearTimeout(s.guard);
+          if (!ctl.paused) { begin(s); prep(); }
+          return;
+        }
+        if (ctl.nx !== s) return;
         s.ready = true;
         clearTimeout(s.guard);
         if (ctl.due || !ctl.cur) reveal();
       };
       const fail = () => {
-        if (s.ready || ctl.nx !== s) return;
+        if (s.ready) return;
         clearTimeout(s.guard);
+        if (ctl.cur === s) {                        // shown early: play what came, or move on
+          s.ready = true;
+          if (el.error) { ctl.due = true; prep(); }
+          else if (!ctl.paused) { begin(s); prep(); }
+          return;
+        }
+        if (ctl.nx !== s) return;
         if (isVid) unload(el);
         setTimeout(prep, 1500);
       };
@@ -2163,6 +2244,11 @@ async function _showShareableMenu() {
           if (el.networkState === 1 && el.readyState >= 4) ready();
         };
         ['progress', 'suspend', 'canplaythrough', 'loadeddata', 'seeked'].forEach(k => el.addEventListener(k, check));
+        // (dev1037) THE VERY FIRST SLIDE shows its first frame as soon as there
+        // is one, rather than leaving the tabs over a black screen while it
+        // buffers; it starts moving once ready. Later slides need no such thing:
+        // the one before them is still up.
+        el.addEventListener('loadeddata', () => { if (!ctl.cur && ctl.nx === s && !s.ready) early(s); });
         el.addEventListener('error', fail);
         el.src = link;
       } else {
@@ -2172,6 +2258,12 @@ async function _showShareableMenu() {
         im.src = link;
         el.style.backgroundImage = 'url("' + link.replace(/"/g, '%22') + '")';
       }
+    };
+    const early = s => {
+      ctl.nx = null; ctl.cur = s;
+      bg.appendChild(s.el);
+      if (window.salLockDownVideo) window.salLockDownVideo(s.el);
+      requestAnimationFrame(() => requestAnimationFrame(() => s.el.classList.add('on')));
     };
     // Bring the readied slide in over the one on show (1.5 s crossfade), start
     // its turn, and start readying the one after it.
@@ -2189,6 +2281,7 @@ async function _showShareableMenu() {
       prep();
     };
     const begin = s => {
+      s.begun = true;
       if (!s.isVid) { ctl.left = _SM_ALT_IMG_MS; runClock(); return; }
       const el = s.el;
       // t0 = where this turn's playback began. A clip whose 10 s are up keeps
@@ -2228,6 +2321,7 @@ async function _showShareableMenu() {
       const s = ctl.cur;
       if (ctl.due && ctl.nx && ctl.nx.ready) { reveal(); return; }
       if (!s) return;
+      if (!s.begun) { if (s.ready) { begin(s); prep(); } return; }   // (dev1037) an early first slide
       if (s.isVid) { const pr = s.el.play(); if (pr && pr.catch) pr.catch(() => {}); }
       else runClock();
     };
@@ -2510,7 +2604,9 @@ async function _showShareableMenu() {
     // (dev1035) …plus 18px, so neither sits hard against the page's scrollbar.
     + '#shareableMenu.sm-alt{background:#000 !important;padding-right:18.75%;}'
     + '#shareableMenu.sm-alt .sm-alt-brand{display:block;position:absolute;left:calc(81.25% + 18px);top:22px;z-index:3;'
-    +   "font-family:'Segoe Script','Brush Script MT','Lucida Handwriting',cursive;font-size:30px;line-height:1.15;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.8);}"
+    // (dev1037) 30 → 26px and bold, never wrapped past its own two lines;
+    // _smBrandFit shrinks it further when the column is too narrow for that.
+    +   "font-family:'Segoe Script','Brush Script MT','Lucida Handwriting',cursive;font-size:26px;font-weight:700;white-space:nowrap;width:max-content;line-height:1.15;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.8);}"
     + '#shareableMenu.sm-alt .sm-alt-bg{display:block;position:absolute;inset:0;z-index:0;background:#000;pointer-events:none;overflow:hidden;}'
     // (dev1036) A quiet ❚❚ in the lower-left while the show is paused.
     + '.sm-alt-pz{display:none;position:absolute;left:16px;bottom:14px;z-index:2;font-size:20px;letter-spacing:-2px;color:#fff;opacity:0.8;text-shadow:0 1px 4px rgba(0,0,0,0.9);}'
@@ -2611,10 +2707,12 @@ async function _showShareableMenu() {
     }));
   // (dev1032) A group's own lines: "Main" = full bar back, every part showing;
   // a date = only that row's part.
+  // (dev1037) "Main" goes to Welcome (the full bar comes back with it); a date
+  // jumps to its part (see _smGrpPick).
   ov.querySelectorAll('.sm-subtab').forEach(b =>
     b.addEventListener('click', () => {
       const g = parseInt(b.dataset.grp, 10);
-      if (b.dataset.sub === 'main') { _smSub = 0; _smGrpPick(g, -1); _smGrpApply(); _smFocusTab(g); }
+      if (b.dataset.sub === 'main') { const w = _pgOf('intro') || 1; _smShow(w); _smFocusTab(w); }
       else { _smGrpPick(g, parseInt(b.dataset.sec, 10)); _smGrpApply(); b.focus(); }
     }));
   // (dev0788) The Welcome page's → arrow goes wherever the NEXT TAB goes — the
@@ -2755,14 +2853,19 @@ async function _showShareableMenu() {
   // frame this direction test is written in. Without the mapping a portrait
   // phone reads a right-to-left swipe as vertical and the swipe-back dies —
   // exactly the failure dev0368 hit on the grid.
+  // (dev1037) Search's page BY KIND. It was the literal 3 — Search's number
+  // before dev0940 made page numbers bar positions — so the swipe had moved to
+  // whatever tab sat third (New), where a leftward pan of a zoomed clip threw
+  // the viewer to Grids. A drag that starts on a clip or picture is never a swipe.
   let _smSwX = null, _smSwY = null;
   const _smXY = e => window.rotateXY ? window.rotateXY(e) : { x: e.clientX, y: e.clientY };
   ov.addEventListener('pointerdown', e => {
+    if (e.target && e.target.closest && e.target.closest('.smGreeting video,.smGreeting img')) { _smSwX = _smSwY = null; return; }
     const p = _smXY(e); _smSwX = p.x; _smSwY = p.y;
   }, true);
   ov.addEventListener('pointerup', e => {
     const x0 = _smSwX, y0 = _smSwY; _smSwX = _smSwY = null;
-    if (x0 == null || window._smCurPage !== 3) return;
+    if (x0 == null || window._smCurPage !== _pgOf('search')) return;
     const p = _smXY(e);
     const dx = p.x - x0, dy = p.y - y0;
     if (dx < -60 && Math.abs(dx) > Math.abs(dy)) _smShow(_pgOf('grids') || 1);
@@ -3502,7 +3605,7 @@ async function _showShareableMenu() {
 }
 
 // (dev1035) THE CLIPS IN A TAB'S PROSE (`.smGreeting video`) LOAD ONLY WHEN THEY
-// COME ON SCREEN, AND PLAY ONLY ONCE THEY ARE FULLY DOWNLOADED. Every clip used
+// COME ON SCREEN, AND PLAY ONLY ONCE ENOUGH IS BUFFERED (dev1037: 8 s ahead). Every clip used
 // to start fetching — and, being autoplay, playing — the moment the menu was
 // built, on every page, seen or not; and one that started before enough of it
 // had arrived stopped mid-play to buffer. Now:
@@ -3510,7 +3613,7 @@ async function _showShareableMenu() {
 //               created it, so the browser never starts on it
 //   on screen   src goes back with preload=auto; the first frame shows while
 //               the rest comes down
-//   buffered    one range covering 0…duration → it plays (an authored-autoplay
+//   buffered    8 s ahead buffered (dev1037) → it plays (an authored-autoplay
 //               clip, or one the viewer has asked to play meanwhile)
 //   off screen  paused, including when its page is not the one on show; back
 //               on screen it plays again
@@ -3527,7 +3630,7 @@ function _smWireClipPlay(ov) {
   const S = new WeakMap();
   //   src   the authored src      want  should play when it can
   //   vis   on screen now         held  the viewer paused it
-  //   ready fully buffered        self  the next `pause` event is our own
+  //   ready enough buffered       self  the next `pause` event is our own
   clips.forEach(v => {
     const src = v.getAttribute('src');
     if (!src) return;
@@ -3537,10 +3640,17 @@ function _smWireClipPlay(ov) {
     v.removeAttribute('src');
     v.preload = 'none';
   });
+  // (dev1037) ENOUGH, not all: 8 s buffered ahead of where it will start (or
+  // everything left, when less remains) — the browser keeps downloading while
+  // it plays, so that lead is what keeps it from stalling. Waiting for whole
+  // files held every clip back for its full download and kept a lot of video
+  // in memory at once.
+  const _AHEAD_S = 8;
   const full = v => {
-    const d = v.duration, b = v.buffered;
+    const d = v.duration, t = v.currentTime, b = v.buffered;
     if (!(d > 0) || !isFinite(d)) return false;
-    for (let i = 0; i < b.length; i++) if (b.start(i) <= 0.3 && b.end(i) >= d - 0.3) return true;
+    const need = Math.min(_AHEAD_S, d - t - 0.3);
+    for (let i = 0; i < b.length; i++) if (b.start(i) <= t + 0.3 && b.end(i) >= t + need) return true;
     return false;
   };
   const go = v => {
@@ -3624,7 +3734,9 @@ function _smWireClipPlay(ov) {
 // Delegated on the overlay, which is rebuilt on every open, so each build wires
 // its own copy and no listener outlives its page.
 function _smWireInlineZoom(ov) {
-  const SEL = '.smGreeting video', MAX = 8;
+  // (dev1037) Pictures too; play/pause only ever touches a <video>.
+  const SEL = '.smGreeting video,.smGreeting img', MAX = 8;
+  const isVid = v => !!(v && v.tagName === 'VIDEO');
   const st = new WeakMap();                      // video → { s, tx, ty }
   const get = v => st.get(v) || { s: 1, tx: 0, ty: 0 };
   // Physical → visual frame (a portrait phone rotates the whole UI 90°).
@@ -3649,7 +3761,7 @@ function _smWireInlineZoom(ov) {
     }
     st.set(v, z);
     // (dev1035) V's zoom-stops-playback latch (vp.js _vApply).
-    if (z.s > 1.05) { if (!v._smZoomStop) { v._smZoomStop = true; if (ov._smClips) ov._smClips.hold(v); } }
+    if (z.s > 1.05) { if (!v._smZoomStop) { v._smZoomStop = true; if (ov._smClips && isVid(v)) ov._smClips.hold(v); } }
     else v._smZoomStop = false;
     if (z.s === 1) {
       v.style.transform = v.style.transformOrigin = v.style.clipPath = v.style.touchAction = '';
@@ -3676,13 +3788,13 @@ function _smWireInlineZoom(ov) {
   const clipOf = t => (t && t.closest ? t.closest(SEL) : null);
   let swallowClick = false;
   // (dev1035) Play / pause, as V does it.
-  const toggle = v => { if (ov._smClips) ov._smClips.toggle(v); };
+  const toggle = v => { if (ov._smClips && isVid(v)) ov._smClips.toggle(v); };
   let hover = null, last = null;                 // Space's clip (see header)
   ov.addEventListener('pointerover', e => { if (e.pointerType === 'mouse') hover = clipOf(e.target); });
   ov.addEventListener('pointerleave', () => { hover = null; });
   window._smClipSpace = () => {
     if (!ov.isConnected || !ov.getClientRects().length) return false;
-    const onScreen = v => v && v.isConnected && v.getClientRects().length
+    const onScreen = v => isVid(v) && v.isConnected && v.getClientRects().length
       && (!ov._smClips || ov._smClips.visible(v));
     const v = onScreen(hover) ? hover : (onScreen(last) ? last : null);
     if (!v) return false;
@@ -3744,7 +3856,7 @@ function _smWireInlineZoom(ov) {
         mm.acted = true;
       }, 50);
     }, 180);
-  });
+  }, true);
   ov.addEventListener('pointermove', e => {
     if (!m || e.pointerType !== 'mouse') return;
     const p = xy(e);
@@ -3761,7 +3873,7 @@ function _smWireInlineZoom(ov) {
       m.v.style.cursor = 'grabbing';
       m.acted = true;
     }
-  });
+  }, true);
   const mEnd = e => {
     if (!m || e.pointerType !== 'mouse') return;
     mStop();
@@ -3769,13 +3881,25 @@ function _smWireInlineZoom(ov) {
     if (get(m.v).s > 1) m.v.style.cursor = 'grab';
     m = null;
   };
-  ov.addEventListener('pointerup', mEnd);
-  ov.addEventListener('pointercancel', mEnd);
+  ov.addEventListener('pointerup', mEnd, true);
+  ov.addEventListener('pointercancel', mEnd, true);
+  // (dev1037) A plain click on a clip WITHOUT its own controls plays / pauses it
+  // (one with controls already does that itself). A double-click is two of
+  // these — they cancel out — plus the reset below.
   ov.addEventListener('click', e => {
-    if (!swallowClick) return;
-    swallowClick = false;
-    if (clipOf(e.target)) { e.preventDefault(); e.stopPropagation(); }
+    const v = clipOf(e.target);
+    if (swallowClick) {
+      swallowClick = false;
+      if (v) { e.preventDefault(); e.stopPropagation(); }
+      return;
+    }
+    if (e.button !== 0 || !isVid(v) || v.hasAttribute('controls')) return;
+    e.preventDefault();
+    last = v;
+    toggle(v);
   }, true);
+  // (dev1037) No native drag of a picture out of the page — it would cancel the hold.
+  ov.addEventListener('dragstart', e => { if (clipOf(e.target)) e.preventDefault(); }, true);
   ov.addEventListener('dblclick', e => {
     const v = clipOf(e.target);
     if (!v || get(v).s <= 1) return;              // unzoomed: the browser's own dblclick
@@ -3837,7 +3961,7 @@ function _smWireInlineZoom(ov) {
     // (dev1035) V's taps: one = play/pause, two = back to normal (the first
     // one's play/pause undone, so the double tap leaves playback as it was).
     // A clip with its own controls leaves single taps to them.
-    const own = !v.hasAttribute('controls'), now = Date.now();
+    const own = isVid(v) && !v.hasAttribute('controls'), now = Date.now();
     if (lastTap && lastTap.v === v && now - lastTap.at < 350) {
       lastTap = null;
       if (e.cancelable) e.preventDefault();       // no synthetic click after the reset
