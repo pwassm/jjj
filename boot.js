@@ -1669,6 +1669,11 @@ async function _showShareableMenu() {
     saved:  { def: 'SavedSearches', off: !SM_FEAT_SEARCH },
     loops:  { def: 'Saved Loops' }
   };
+  // (dev1042) WIDE PAGES, by tab Label (lower case). Under the new look such a
+  // page runs the whole width of the window like Welcome, with the title and
+  // tab column over its right side; its pictures and clips go the full width,
+  // and its text stays where it was. See `sm-wide` in the look's CSS.
+  const _SM_WIDE = { 'new': 1 };
   // (dev0941) A TAB'S IDENTITY IS ITS `Kind` CELL, AND NOTHING ELSE. dev0940's
   // _KIND_BY_GNAME shim — which classified a Kind-less row by its name so the
   // site worked before the c.json carrying the column landed — is gone now that
@@ -1912,7 +1917,7 @@ async function _showShareableMenu() {
   // the other pages inherit (.sm-introtop) and the picture is sized to the
   // screen rather than to the prose column.
   const _pageHtml = t =>
-      '<div id="smPage' + t.pg + '" class="sm-pg' + (t.spec.cls || '') + '"'
+      '<div id="smPage' + t.pg + '" class="sm-pg' + (t.spec.cls || '') + (_SM_WIDE[t.key] ? ' sm-wpg' : '') + '"'
         + ' style="position:absolute;inset:0;overflow-y:auto;' + (t.pg === 1 ? '' : 'display:none;') + '">'
       + (t.kind === 'intro' ? _introChrome : '')
       + (t.top.trim()
@@ -2064,6 +2069,7 @@ async function _showShareableMenu() {
     if (_gt && _gt.group) { _smGrpSpy(n); if (_smShownPg !== n) { _smSub = n; _smGrpPick(n, -1); } }
     else _smSub = 0;
     _smShownPg = n;
+    ov.classList.toggle('sm-wide', !!(_gt && _SM_WIDE[_gt.key]));   // (dev1042)
     _smGrpApply();
     // (dev0767) The bars used to be hidden on page 1 (it was a tab-less splash).
     // Page 1 is the Intro TAB now, so they stay up on every page.
@@ -2656,6 +2662,27 @@ async function _showShareableMenu() {
     + 'html.is-mobile .sm-alt-opt button{font-size:24px;padding:16px 28px;}'
     + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab.on{color:#f0c419;}'
     + 'html.is-mobile #shareableMenu.sm-alt .sm-tabs-bottom .sm-tab[data-kind="signin"]{order:99;margin-top:auto;}'
+    // (dev1042) WIDE PAGES (_SM_WIDE — New, for now), the Welcome way: the page
+    // runs under the title and tab column to the window's right edge. The
+    // column's empty space lets clicks and the wheel through to the page.
+    + '#shareableMenu.sm-alt.sm-wide,html.is-mobile #shareableMenu.sm-alt.sm-wide{padding-right:0;}'
+    + '#shareableMenu.sm-alt.sm-wide .sm-alt-brand,#shareableMenu.sm-alt.sm-wide .sm-tabs{pointer-events:none;}'
+    + '#shareableMenu.sm-alt.sm-wide .sm-tab{pointer-events:auto;}'
+    // Its TEXT stays exactly where it was — the prose width, centred in the part
+    // of the window left of the tab column (--sm-txr) — while every block that
+    // holds a picture or clip spans the page. A picture or clip then fills the
+    // width (side-by-side floats keep their share of it), but is never taller
+    // than the window (cqh: the page is the size container — vh is the physical
+    // height inside the rotated wrap on a portrait phone).
+    + '#shareableMenu.sm-alt .sm-wpg{--sm-txr:81.25%;--sm-txw:min(calc(var(--sal-prose-w,760px) - 48px),calc(var(--sm-txr) - 48px));container-type:size;}'
+    + 'html.is-mobile #shareableMenu.sm-alt .sm-wpg{--sm-txr:calc(100% - 230px);}'
+    + '#shareableMenu.sm-alt .sm-wpg .smGreeting{max-width:none;margin:0;padding-left:0;padding-right:0;}'
+    + '#shareableMenu.sm-alt .sm-wpg .smGreeting > :not(:has(video,img)){box-sizing:border-box;width:var(--sm-txw);'
+      + 'margin-left:calc((var(--sm-txr) - var(--sm-txw)) / 2);margin-right:0;}'
+    + '#shareableMenu.sm-alt .sm-wpg .smGreeting .te-media,#shareableMenu.sm-alt .sm-wpg .smGreeting .sm-capbox,'
+      + '#shareableMenu.sm-alt .sm-wpg .smGreeting video:not([style*="float"]),#shareableMenu.sm-alt .sm-wpg .smGreeting img:not([style*="float"])'
+      + '{width:100% !important;max-width:none !important;}'
+    + '#shareableMenu.sm-alt .sm-wpg .smGreeting video,#shareableMenu.sm-alt .sm-wpg .smGreeting img{max-height:100vh;max-height:100cqh;object-fit:contain;}'
     // (dev1011) Holding a finger on Welcome means "options" now, so the phone's
     // own word-select and save-image sheets stay out of the way there.
     + 'html.is-mobile #shareableMenu #smPage' + _pgOf('intro') + '{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}'
@@ -4160,7 +4187,16 @@ function _smWireInlineZoom(ov) {
   };
   ov.addEventListener('touchstart', e => {
     // A second finger may land just off the clip; it still joins that pinch.
-    const v = clipOf(e.target) || (t && e.touches.length >= 2 ? t.v : null);
+    let v = clipOf(e.target) || (t && e.touches.length >= 2 ? t.v : null);
+    // (dev1042) A pinch belongs to the clip BETWEEN the fingers (else the one
+    // the first finger is on), not whichever one the second finger landed on:
+    // with two clips edge to edge (the siphonophores) a pinch on the left one
+    // could open the right one.
+    if (e.touches.length >= 2) {
+      const a = e.touches[0], b = e.touches[1];
+      v = clipOf(document.elementFromPoint((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2))
+          || (t ? t.v : null) || v;
+    }
     if (!v) return;
     if (t && t.v !== v) t = null;
     begin(v, e.touches);
