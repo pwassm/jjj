@@ -5400,9 +5400,10 @@ function housekeepingFixIgLtype() {
 // WmUploadNew.bat, double-click it, come back here and run Add Watermarked
 // Media. Now it is one item, and the third step happens by itself.
 //
-// THE RUN STAYS IN ITS OWN CONSOLE WINDOW and stays interactive — it asks
-// before uploading to R2, and ffmpeg's progress is the only sign a long stamp
-// is still alive. See proxy wmRun for why that is not worth swallowing.
+// THE RUN STAYS IN ITS OWN CONSOLE WINDOW — ffmpeg's progress is the only sign
+// a long stamp is still alive. See proxy wmRun for why that is not worth
+// swallowing. (dev1049) It no longer asks before uploading to R2: uploadnew
+// always uploads, straight after stamping.
 //
 // WHAT IS AUTOMATED IS THE WAITING. watermark_r2.ps1 writes .wm_uploaded.txt
 // only AFTER the upload loop, and the proxy reports its timestamp as
@@ -5463,7 +5464,7 @@ async function housekeepingWatermarkNew() {
   if (!confirm(head
     + '\u2022 A console window opens and runs WmUploadNew.bat. Only files with no\n'
     + '  watermarked\\ twin are stamped, so nothing already published is redone.\n'
-    + '\u2022 Answer y when it asks to upload to R2.\n'
+    + '\u2022 It uploads to R2 straight after stamping \u2014 no question to answer.\n'
     + '\u2022 T watches the folder and offers to add the new rows itself —\n'
     + '  it will NOT open a second tab.\n\n'
     + 'Byline: files loose in originals\\ say "at Monterey Bay Aquarium"; a\n'
@@ -5487,7 +5488,7 @@ async function housekeepingWatermarkNew() {
     return;
   }
 
-  toast('\ud83c\udfac Watermark run started — answer the console window.\n'
+  toast('\ud83c\udfac Watermark run started in its console window.\n'
     + 'T is watching, and will offer to add the files once they are uploaded.', 6500);
   _wmWatch = { before: before.keys, wasUploadedAt: before.uploadedAt,
                deadline: Date.now() + _WM_POLL_MAX, lastN: before.keys.size,
@@ -5543,9 +5544,10 @@ async function _wmWatchPoll(PROXY) {
 // a row for each one that is missing. Idempotent — run it after every upload.
 //
 // CAVEAT worth knowing: the folder is a stand-in for the bucket, not the
-// bucket itself. watermark_r2.ps1 asks before uploading, so a file you stamped
-// and then declined to upload IS in watermarked\ and is NOT in R2 — its row
-// would 404 until you upload it. Answering `y` keeps the two in step.
+// bucket itself. A file stamped but never uploaded (a run closed mid-upload, or
+// a pull-mode upload answered No) IS in watermarked\ and is NOT in R2 — its row
+// would 404 until you upload it. (dev1049: uploadnew no longer asks, so the
+// Housekeeping run itself can't leave one behind that way.)
 const R2_VIDEO_BASE = 'https://media.sealifeandmore.com/';
 
 // Relative key → public URL. Each segment is encoded separately so the slashes
