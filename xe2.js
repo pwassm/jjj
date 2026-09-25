@@ -313,6 +313,20 @@
           parseHTML: function (el) { return !!(el.classList && el.classList.contains('te-media')); },
           renderHTML: function (attrs) { return attrs.media ? { 'class': 'te-media' } : {}; },
         },
+        // (dev1044) The SLOT FRAME (▯▯▯ button): `te-frame` on the row, `te-fslot`
+        // on each cell. Kept for the same reason as te-media: the class is how
+        // the editor knows a row is a frame (slots survive a cut, a pasted clip
+        // fills its slot) and how the New tab sizes it.
+        slots: {
+          default: false,
+          parseHTML: function (el) { return !!(el.classList && el.classList.contains('te-frame')); },
+          renderHTML: function (attrs) { return attrs.slots ? { 'class': 'te-frame' } : {}; },
+        },
+        slot: {
+          default: false,
+          parseHTML: function (el) { return !!(el.classList && el.classList.contains('te-fslot')); },
+          renderHTML: function (attrs) { return attrs.slot ? { 'class': 'te-fslot' } : {}; },
+        },
       };
     },
     parseHTML: function () {
@@ -618,6 +632,7 @@
       editable: opts.editable !== false,
       editorProps: Object.assign({ transformPastedHTML: _transformPastedHTML }, opts.editorProps),
     });
+    _addSlotKeeper(editor);   // (dev1044)
     // Once for the initial render, then after every doc change — ProseMirror
     // re-creates the <video> element whenever the node is touched (inserting,
     // dragging, or re-editing it through the 🖼 modal), and each new one arrives
@@ -1437,6 +1452,10 @@
   // shape legacy ftext is full of — and must NOT be swallowed: under-selecting
   // is a nuisance, but eating a paragraph on Ctrl+X loses work.
   function _isMediaWrapper(node) {
+    // (dev1044) A slot frame or one of its slots is never "the picture": a
+    // click on a clip in a slot selects the clip (or its caption wrapper), so
+    // Ctrl+X takes the clip and leaves the slot.
+    if (node.attrs && (node.attrs.slots || node.attrs.slot)) return false;
     var media = 0, stray = '';
     node.descendants(function (n) {
       if (n.type.name === 'styledDiv') return false;               // caption cell
@@ -1556,6 +1575,10 @@
     for (var d = 1; d <= $from.depth; d++) {
       var wrapNode = $from.node(d);
       if (wrapNode.type.name !== 'styledDiv') continue;
+      // (dev1044) Never the frame or a slot: with the caret in an empty slot,
+      // the frame's first clip would be "found" here and 🖼 would REPLACE the
+      // whole frame with one picture. Skipped, 🖼 inserts into the slot.
+      if (wrapNode.attrs.slots || wrapNode.attrs.slot) continue;
       var ctx = _wrapperEditCtx(wrapNode, $from.before(d), $from.before(d) + wrapNode.nodeSize);
       if (ctx) return _withCaptionHtml(ctx);
     }
@@ -1644,6 +1667,166 @@
     editor.chain().focus().insertContent(
       '<div style="display:flex;gap:12px;justify-content:space-between;align-items:flex-start;margin:12px 0;">' + cells + '</div>'
     ).run();
+  }
+
+  // ── (dev1044) SLOT FRAME ▯▯▯ ────────────────────────────────────────────────
+  // A row of 2-4 EMPTY slots, side by side, for portrait clips (three of them
+  // fill a phone's sideways screen). Fill one by clicking it and pasting a clip
+  // cut elsewhere with Ctrl+X, or by clicking it and using 🖼. Plain styledDivs
+  // with the te-frame / te-fslot class, so no new node type and every render
+  // context draws it as the flex row it is. NOT "te-slot": that name belongs to
+  // dev0770's old Video-of-the-day placeholder, which c.json still holds.
+  var SLOTS_ROW_CSS = 'display:flex;gap:8px;justify-content:center;align-items:flex-start;margin:12px 0;';
+  var SLOT_CELL_CSS = 'flex:1 1 0%;min-width:0;text-align:center;';
+  function _isSlotsRow(n) { return !!(n && n.type && n.type.name === 'styledDiv' && n.attrs.slots); }
+  function _isSlotCell(n) { return !!(n && n.type && n.type.name === 'styledDiv' && n.attrs.slot); }
+  function _emptySlotCell(schema) {
+    return schema.nodes.styledDiv.create({ style: SLOT_CELL_CSS, slot: true }, schema.nodes.paragraph.create());
+  }
+
+  function insertSlotFrame(editor, n) {
+    var cells = '';
+    for (var i = 0; i < n; i++) cells += '<div class="te-fslot" style="' + SLOT_CELL_CSS + '"><p></p></div>';
+    var html = '<div class="te-frame" style="' + SLOTS_ROW_CSS + '">' + cells + '</div><p></p>';
+    // Goes AFTER whatever is selected (a clicked picture is never replaced),
+    // and with the caret already in a frame, BELOW that frame, never inside
+    // one of its slots.
+    var sel = editor.state.selection, $from = sel.$from, at = sel.empty ? sel.from : sel.to;
+    for (var d = $from.depth; d >= 1; d--) {
+      if (_isSlotsRow($from.node(d))) { at = $from.after(d); break; }
+    }
+    editor.chain().focus().insertContentAt(at, html).run();
+    // Caret into the first slot, ready for Ctrl+V. insertContentAt may have
+    // replaced an empty line, so look from just before `at`.
+    var rowPos = null;
+    editor.state.doc.nodesBetween(Math.max(0, at - 2), editor.state.doc.content.size, function (node, pos) {
+      if (rowPos !== null) return false;
+      if (_isSlotsRow(node) && pos >= at - 2) { rowPos = pos; return false; }
+      return true;
+    });
+    if (rowPos !== null) editor.chain().setTextSelection(rowPos + 3).scrollIntoView().run();
+  }
+
+  function showSlotPicker(anchorBtn) {
+    var old = document.getElementById('xe2SlotPicker');
+    if (old) { old.remove(); return; }
+    var r = anchorBtn.getBoundingClientRect();
+    var pop = document.createElement('div');
+    pop.id = 'xe2SlotPicker';
+    pop.style.cssText = 'position:fixed;z-index:36800;background:#0d0d1e;border:1px solid #4af;' +
+      'border-radius:8px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,0.7);' +
+      'left:' + r.left + 'px;top:' + (r.bottom + 4) + 'px;display:flex;flex-direction:column;gap:4px;';
+    [2, 3, 4].forEach(function (n) {
+      var b = document.createElement('button');
+      b.className = 'xe2-btn';
+      b.style.textAlign = 'left';
+      var boxes = '';
+      for (var i = 0; i < n; i++) boxes += '<span style="display:inline-block;width:9px;height:16px;border:1px solid #6af;border-radius:2px;margin-right:2px;vertical-align:middle;"></span>';
+      b.innerHTML = '<span style="display:inline-block;width:52px;">' + boxes + '</span>' + n + ' slots side by side';
+      b.onmousedown = function (ev) { ev.preventDefault(); };
+      b.onclick = function () {
+        pop.remove();
+        if (_api) insertSlotFrame(_api.editor, n);
+      };
+      pop.appendChild(b);
+    });
+    function onDoc(e) {
+      if (!pop.contains(e.target) && e.target !== anchorBtn) {
+        pop.remove();
+        document.removeEventListener('mousedown', onDoc, true);
+      }
+    }
+    document.addEventListener('mousedown', onDoc, true);
+    document.body.appendChild(pop);
+  }
+
+  // What a clip or picture looks like once it sits in a slot: it fills the slot
+  // (width 100%, no float, no px width, no outside margin), and a caption
+  // wrapper is centred rather than floated. Returns the author's own string
+  // when nothing needs changing, so an already-fitted clip is never rewritten.
+  var _SLOT_DROP = ['float', 'width', 'max-width', 'min-width', 'display', 'box-sizing',
+    'margin', 'margin-left', 'margin-right', 'margin-top', 'margin-bottom',
+    'padding', 'padding-left', 'padding-right'];
+  function _slotCss(css, isMedia) {
+    var st = _styleProbe(css || '');
+    var before = st.cssText;
+    _SLOT_DROP.forEach(function (p) { st.removeProperty(p); });
+    if (isMedia) st.setProperty('width', '100%');
+    else st.setProperty('text-align', 'center');
+    return st.cssText === before ? css : st.cssText;
+  }
+
+  // The frame keeps its slots, and a clip in a slot fills it. Runs after every
+  // change to the document (a ProseMirror appendTransaction, so it lands in the
+  // same undo step as the change it answers). It touches te-frame rows only.
+  //   1. A frame that lost a slot gets an empty one back, where it was. Cutting
+  //      a captioned clip out of a slot would otherwise delete the SLOT too
+  //      (ProseMirror removes a block left with nothing in it), and the frame
+  //      would shrink to 2 wide clips. Deleting the whole frame is unaffected.
+  //   2. Every picture/clip inside a slot is fitted to it (_slotCss).
+  function _slotAppend(trs, oldState, newState) {
+    if (!trs.some(function (t) { return t.docChanged; })) return null;
+    var tr = newState.tr, changed = false;
+    function mapPos(p, assoc) { for (var i = 0; i < trs.length; i++) p = trs[i].mapping.map(p, assoc); return p; }
+    var rows = [];
+    oldState.doc.descendants(function (n, pos) {
+      if (_isSlotsRow(n)) { rows.push({ pos: pos, size: n.nodeSize, count: n.childCount }); return false; }
+      return true;
+    });
+    // The slot the old selection sat in: a refilled slot goes back to ITS place.
+    var selCell = null, $f = oldState.selection.$from, $t = oldState.selection.$to;
+    for (var d = $f.depth; d >= 1; d--) {
+      if (_isSlotCell($f.node(d)) && _isSlotsRow($f.node(d - 1))) {
+        if ($t.depth >= d && $t.before(d) === $f.before(d)) selCell = { rowPos: $f.before(d - 1), index: $f.index(d - 1) };
+        break;
+      }
+    }
+    for (var i = rows.length - 1; i >= 0; i--) {      // last first: earlier positions stay valid
+      var r = rows[i];
+      var na = mapPos(r.pos, 1), nb = mapPos(r.pos + r.size, -1);
+      var node = newState.doc.nodeAt(na);
+      if (!_isSlotsRow(node) || node.nodeSize !== nb - na) continue;   // frame gone or moved
+      var missing = r.count - node.childCount;
+      if (missing <= 0) continue;
+      var idx = (selCell && selCell.rowPos === r.pos) ? Math.min(selCell.index, node.childCount) : node.childCount;
+      var p = na + 1;
+      for (var k = 0; k < idx; k++) p += node.child(k).nodeSize;
+      var add = [];
+      for (var m = 0; m < missing; m++) add.push(_emptySlotCell(newState.schema));
+      tr.insert(p, add);
+      changed = true;
+    }
+    tr.doc.descendants(function (n, pos) {
+      if (!_isSlotCell(n)) return true;
+      n.descendants(function (c, cpos) {
+        var abs = pos + 1 + cpos, ns;
+        if (c.type.name === 'styledDiv') {
+          if (!c.attrs.slots && !c.attrs.slot && _isMediaWrapper(c)) {
+            ns = _slotCss(c.attrs.style, false);
+            if (ns !== c.attrs.style) { tr.setNodeMarkup(abs, undefined, Object.assign({}, c.attrs, { style: ns })); changed = true; }
+          }
+          return true;
+        }
+        if (c.type.name === 'image' || c.type.name === 'video') {
+          ns = _slotCss(c.attrs.style, true);
+          if (ns !== c.attrs.style) { tr.setNodeMarkup(abs, undefined, Object.assign({}, c.attrs, { style: ns })); changed = true; }
+          return false;
+        }
+        return true;
+      });
+      return false;
+    });
+    return changed ? tr : null;
+  }
+
+  // XE2Lib doesn't export ProseMirror's Plugin class; every plugin already in
+  // the state is an instance of it, so borrow the constructor from one.
+  function _addSlotKeeper(editor) {
+    try {
+      var P = editor.state.plugins.length && editor.state.plugins[0].constructor;
+      if (!P) return;
+      editor.registerPlugin(new P({ appendTransaction: _slotAppend }));
+    } catch (e) { console.warn('[xe2] slot keeper not installed', e); }
   }
 
   // ── (dev0623) ⊘ HideSection — v1 parity: wrap the selected lines in div.te-cut
@@ -2144,6 +2327,8 @@
       ['&#9552;&#9552;', 'Divider line — separates sections/slides; inside a colored section it splits the section so both halves keep the color', function (e) { insertSectionBreak(e); }],
       ['&#128444;', 'Insert image OR direct video file — a .mp4/.webm URL (e.g. your Cloudflare one) is detected automatically and plays inline. Or EDIT the selected image/video (click/double-click it first to change size, alignment or caption).', function (e) { insertImage(e); }],
       ['&#128444;&#215;3', 'Row of up to 3 images side by side (3 = left / center / right) — click into a cell to add text under an image', function (e) { insertImageRow(e); }],
+      // (dev1044)
+      ['&#9647;&#9647;&#9647;', 'Frame — 2, 3 or 4 EMPTY slots side by side, made for portrait clips (three fill a sideways phone). Cut a clip anywhere (click it, Ctrl+X), click a slot, Ctrl+V: it lands in that slot and fills it. Or click a slot and use 🖼. Cutting a clip back out leaves the slot empty, not gone.', function (e, btn) { showSlotPicker(btn); }],
       ['&#128279;', 'Link selection', function (e) { setLink(e); }],
       // (dev0907) The citation marker. Small and dim on the page, so a fact line
       // can carry one without the prose turning into a bibliography.
@@ -2241,6 +2426,12 @@
       // far from the picture and reads as "did I select the right thing?" — the
       // fill makes the extent of what Ctrl+X will take unmistakable, caption and all.
       '#xe2Editor div.ProseMirror-selectednode{background:rgba(68,170,255,0.13);}',
+      // (dev1044) Slot frame: each slot a dashed box, an empty one says what to
+      // do with it, and a clip in a slot is never taller than most of the window
+      // (a portrait clip at a third of this column would otherwise be ~800px).
+      '#xe2Editor .te-fslot{border:2px dashed #3a6a9a;border-radius:6px;min-height:140px;padding:4px;box-sizing:border-box;position:relative;}',
+      '#xe2Editor .te-fslot:not(:has(img,video,iframe))::before{content:"empty slot \\2014 click here, then Ctrl+V a clip";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:8px;color:#6a8aaa;font-size:12px;pointer-events:none;}',
+      '#xe2Editor .te-fslot img,#xe2Editor .te-fslot video{max-height:60vh;object-fit:contain;}',
       // (dev0763) The expand/collapse-all icons, shown here the way the slide
       // will show them (index.html owns the shared rule) plus a dotted outline,
       // because in the editor they are an object you can select and delete.
@@ -2642,6 +2833,9 @@
     _isMediaWrapper: _isMediaWrapper,
     _mediaUnitPos: _mediaUnitPos,
     _isMediaUnitSelection: _isMediaUnitSelection,
+    // (dev1044) slot frame — for the headless suite
+    _insertSlotFrame: insertSlotFrame,
+    _slotCss: _slotCss,
     version: 'xe2-m10',
   };
   console.log('[xe2] ready (' + window.XE2.version + ') — flag ' + (isEnabled() ? 'ON' : 'off'));

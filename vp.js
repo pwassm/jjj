@@ -2405,6 +2405,7 @@ function gridOpenFullscreen(row, contained) {
             'a{color:#5bf!important;}'
           + '.te-cut{display:none!important;}'
           + '.te-media p{margin:0!important;}'   // (dev1031) see index.html
+          + '.te-frame img,.te-frame video{max-height:85vh;object-fit:contain;}'   // (dev1044) see index.html
           // (dev0763) ▼▼/▶▶ expand-all icons — this iframe has its own document,
           // so the index.html rule doesn't reach it. Clicks are wired from the
           // parent in loadIframe (srcdoc is same-origin).

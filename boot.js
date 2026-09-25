@@ -2689,6 +2689,11 @@ async function _showShareableMenu() {
       + '#shareableMenu.sm-alt .sm-wpg .smGreeting video:not([style*="float"]),#shareableMenu.sm-alt .sm-wpg .smGreeting img:not([style*="float"])'
       + '{width:100% !important;max-width:none !important;}'
     + '#shareableMenu.sm-alt .sm-wpg .smGreeting video,#shareableMenu.sm-alt .sm-wpg .smGreeting img{max-height:100vh;max-height:100cqh;object-fit:contain;}'
+    // (dev1044) Xe's ▯▯▯ slot frame spans only the part of the page LEFT of the
+    // tab column (--sm-txr), not under it like a lone clip, so its last slot is
+    // never behind the tabs. Each clip fills its slot, capped at the page height
+    // by the rule above: three portrait clips fill a sideways phone.
+    + '#shareableMenu.sm-alt .sm-wpg .smGreeting .te-frame{box-sizing:border-box;width:var(--sm-txr);margin-left:0;margin-right:0;}'
     // (dev1011) Holding a finger on Welcome means "options" now, so the phone's
     // own word-select and save-image sheets stay out of the way there.
     + 'html.is-mobile #shareableMenu #smPage' + _pgOf('intro') + '{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}'
