@@ -1336,6 +1336,12 @@ async function _showShareableMenu() {
     // (dev1041) The full-window view a zoom gesture lifts a picture or clip into.
     + '.sm-zfull{position:absolute;inset:0;z-index:2147483000;background:#000;overflow:hidden;'
       + 'touch-action:none;-webkit-user-select:none;user-select:none;}'
+    // (dev1043) …turned back upright on a phone for a portrait picture: the
+    // physical screen's size, counter-rotated inside #rotateWrap's 90° turn
+    // (index.html: its 0,0 origin and rotate(90deg) translateY(-width)), so
+    // this box's own frame is the screen's.
+    + '.sm-zfull.sm-zphys{right:auto;bottom:auto;width:var(--rot-h,100%);height:var(--rot-w,100%);'
+      + 'transform-origin:0 0;transform:translateY(var(--rot-h,0px)) rotate(-90deg);}'
     // (dev1040) CAPTIONS SIT ON THE PICTURE, over its lower edge, the way G's
     // annotations do (grid.js .sal-annot): white on a dark fade, never out in the
     // gap between two pictures. (dev1037-1038 tried spacing them off instead.)
@@ -3818,18 +3824,22 @@ function _smWireInlineZoom(ov) {
   const isVid = v => !!(v && v.tagName === 'VIDEO');
   const st = new WeakMap();                      // video → { s, tx, ty }
   const get = v => st.get(v) || { s: 1, tx: 0, ty: 0 };
+  // (dev1041) The full-window view, while one is up:
+  //   { v, ph (placeholder), layer, saved (style attr), W, H (layer size),
+  //     fx, fy, fw, fh (the fitted picture's box in the layer), busy (landing),
+  //     phys (dev1043: turned upright — see enterFull) }
+  let full = null;
+  const isFull = v => !!(full && full.v === v);
   // Physical → visual frame (a portrait phone rotates the whole UI 90°).
-  const xy = p => (window.rotateXY ? window.rotateXY(p) : { x: p.clientX, y: p.clientY });
+  // (dev1043) …except inside a full view turned upright (sm-zphys), whose own
+  // frame IS the physical one.
+  const xy = p => ((!window.rotateXY || (full && full.phys)) ? { x: p.clientX, y: p.clientY } : window.rotateXY(p));
   const visRect = el => {
     const r = el.getBoundingClientRect();
     const a = xy({ clientX: r.left, clientY: r.top }), b = xy({ clientX: r.right, clientY: r.bottom });
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
   };
-  // (dev1041) The full-window view, while one is up:
-  //   { v, ph (placeholder), layer, saved (style attr), W, H (layer size),
-  //     fx, fy, fw, fh (the fitted picture's box in the layer), busy (landing) }
-  let full = null;
-  const isFull = v => !!(full && full.v === v);
+  const rawRect = el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
   // Visual position of the clip's UNtransformed top-left. Its rect is the
   // transformed box, whose corner sits at origin + (tx,ty) while scale ≥ 1.
   const origin = v => {
@@ -3897,32 +3907,53 @@ function _smWireInlineZoom(ov) {
   // properties, which compose with the zoom's own `transform` — so a pinch or
   // hold that carries on through the landing never fights the animation.
   const ANIM = 220;
-  const canAnim = !!(window.CSS && CSS.supports && CSS.supports('translate', '1px') && CSS.supports('scale', '1'))
+  const canAnim = !!(window.CSS && CSS.supports && CSS.supports('translate', '1px') && CSS.supports('scale', '1')
+                     && CSS.supports('rotate', '1deg'))
     && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const natSize = v => ({ w: v.naturalWidth || v.videoWidth || v.offsetWidth || 1,
+                          h: v.naturalHeight || v.videoHeight || v.offsetHeight || 1 });
   // The whole picture, as large as the window allows, centred.
   const fitRect = (v, W, H) => {
-    const nw = v.naturalWidth || v.videoWidth || v.offsetWidth || 1;
-    const nh = v.naturalHeight || v.videoHeight || v.offsetHeight || 1;
-    const k = Math.min(W / nw, H / nh), fw = nw * k, fh = nh * k;
+    const n = natSize(v), k = Math.min(W / n.w, H / n.h), fw = n.w * k, fh = n.h * k;
     return { fx: (W - fw) / 2, fy: (H - fh) / 2, fw: fw, fh: fh };
   };
   const place = f => {
     const s = f.v.style;
     s.left = f.fx + 'px'; s.top = f.fy + 'px'; s.width = f.fw + 'px'; s.height = f.fh + 'px';
   };
+  // (dev1043) UPRIGHT FOR A PORTRAIT PICTURE ON A PHONE. A phone held upright
+  // shows the whole UI turned 90° (index.html applyRotation), to be read with
+  // the phone on its side — where a portrait picture only gets the short side.
+  // Its full view is turned back upright instead (`sm-zphys`: the layer
+  // counter-rotated inside the turned UI, so its frame is the physical screen),
+  // tabs and all out of sight, filling the screen for the phone turned upright.
+  // A double tap turns it back into its place. A phone whose browser turns
+  // with it gets there too: turn it upright and the refit below switches over.
+  const wantPhys = v => { if (!window._salRotated) return false; const n = natSize(v); return n.h > n.w; };
   // A resize (or a phone turned) refits it, unzoomed.
   const refit = () => {
     const f = full;
     if (!f) return;
-    if (!ov.isConnected) { window.removeEventListener('resize', refit); full = null; return; }
+    if (!ov.isConnected) { unbindFit(); full = null; return; }
+    f.phys = wantPhys(f.v);
+    f.layer.classList.toggle('sm-zphys', f.phys);
     f.W = f.layer.clientWidth || 1; f.H = f.layer.clientHeight || 1;
     Object.assign(f, fitRect(f.v, f.W, f.H));
     place(f);
     apply(f.v, { s: 1, tx: 0, ty: 0 });
   };
+  // iOS reports the old size if read straight after the turn (index.html).
+  const refitSoon = () => setTimeout(refit, 350);
+  const unbindFit = () => { window.removeEventListener('resize', refit); window.removeEventListener('orientationchange', refitSoon); };
+  // Where the in-prose picture sits, as the start (or end) of the move, in the
+  // full view's own frame. Upright, the prose is turned 90° clockwise round it.
+  const spot = (r, L, f, phys) => phys
+    ? { translate: (r.x + r.w - L.x - f.fx) + 'px ' + (r.y - L.y - f.fy) + 'px', rotate: '90deg', scale: (r.h / f.fw) + ' ' + (r.w / f.fh) }
+    : { translate: (r.x - L.x - f.fx) + 'px ' + (r.y - L.y - f.fy) + 'px', rotate: '0deg', scale: (r.w / f.fw) + ' ' + (r.h / f.fh) };
   const enterFull = v => {
     if (full || !v.isConnected) return;
-    const r0 = visRect(v), cs = getComputedStyle(v);
+    const phys = wantPhys(v);
+    const r0 = phys ? rawRect(v) : visRect(v), cs = getComputedStyle(v);
     // Holds the picture's spot in the prose, so nothing below it moves.
     const ph = document.createElement('span');
     ph.className = 'sm-zph';
@@ -3933,10 +3964,10 @@ function _smWireInlineZoom(ov) {
       + 'float:' + cs.cssFloat + ';vertical-align:' + cs.verticalAlign + ';';
     v.parentNode.insertBefore(ph, v);
     const layer = document.createElement('div');
-    layer.className = 'sm-zfull';
+    layer.className = 'sm-zfull' + (phys ? ' sm-zphys' : '');
     ov.appendChild(layer);
     const W = layer.clientWidth || 1, H = layer.clientHeight || 1;
-    const f = Object.assign({ v: v, ph: ph, layer: layer, saved: v.getAttribute('style'), W: W, H: H, busy: false },
+    const f = Object.assign({ v: v, ph: ph, layer: layer, saved: v.getAttribute('style'), W: W, H: H, busy: false, phys: phys },
                             fitRect(v, W, H));
     v.style.cssText = 'position:absolute;margin:0;padding:0;border:0;float:none;max-width:none;max-height:none;'
       + 'border-radius:0;object-fit:contain;transform-origin:0 0;touch-action:none;cursor:zoom-in;';
@@ -3946,17 +3977,16 @@ function _smWireInlineZoom(ov) {
     st.set(v, { s: 1, tx: 0, ty: 0 });
     v._smZoomStop = false;
     window.addEventListener('resize', refit);
+    window.addEventListener('orientationchange', refitSoon);
     // A clip that hadn't reported its size yet was fitted by its box; refit
     // once it does.
     if (isVid(v) && !v.videoWidth) v.addEventListener('loadedmetadata', () => { if (full === f) refit(); }, { once: true });
     if (!canAnim) return;
-    // Grow out of the spot it occupied.
-    const L = visRect(layer);
+    // Grow out of the spot it occupied (upright: turning as it grows).
+    const L = visRect(layer);                     // full is set: its own frame
     f.busy = true;
-    const a = v.animate([
-      { translate: (r0.x - L.x - f.fx) + 'px ' + (r0.y - L.y - f.fy) + 'px', scale: (r0.w / f.fw) + ' ' + (r0.h / f.fh) },
-      { translate: '0px 0px', scale: '1 1' }
-    ], { duration: ANIM, easing: 'ease-out' });
+    const a = v.animate([spot(r0, L, f, phys), { translate: '0px 0px', rotate: '0deg', scale: '1 1' }],
+                        { duration: ANIM + (phys ? 80 : 0), easing: 'ease-out' });
     layer.animate([{ backgroundColor: 'rgba(0,0,0,0)' }, { backgroundColor: 'rgb(0,0,0)' }], { duration: ANIM, easing: 'ease-out' });
     const landed = () => { f.busy = false; };
     a.finished.then(landed, landed);
@@ -3965,7 +3995,7 @@ function _smWireInlineZoom(ov) {
     const f = full;
     if (!f) return;
     full = null;
-    window.removeEventListener('resize', refit);
+    unbindFit();
     const v = f.v, z = get(v);
     st.set(v, { s: 1, tx: 0, ty: 0 });
     v._smZoomStop = false;
@@ -3978,13 +4008,15 @@ function _smWireInlineZoom(ov) {
     };
     // Its page no longer showing (a tab switched underneath): straight home.
     if (!canAnim || !f.ph.isConnected || !f.ph.getClientRects().length) { home(); return; }
-    // Shrink from where it is now, zoomed or not, into its spot.
-    const L = visRect(f.layer), P = visRect(f.ph);
+    // Shrink from where it is now, zoomed or not, into its spot (upright:
+    // turning back as it goes). `full` is already cleared, so an upright view
+    // is measured in raw (physical) terms here.
+    const R = f.phys ? rawRect : visRect, L = R(f.layer), P = R(f.ph);
     v.style.transform = 'none';
     const a = v.animate([
-      { translate: z.tx + 'px ' + z.ty + 'px', scale: z.s + ' ' + z.s },
-      { translate: (P.x - L.x - f.fx) + 'px ' + (P.y - L.y - f.fy) + 'px', scale: (P.w / f.fw) + ' ' + (P.h / f.fh) }
-    ], { duration: ANIM, easing: 'ease-in-out', fill: 'forwards' });
+      { translate: z.tx + 'px ' + z.ty + 'px', rotate: '0deg', scale: z.s + ' ' + z.s },
+      spot(P, L, f, f.phys)
+    ], { duration: ANIM + (f.phys ? 80 : 0), easing: 'ease-in-out', fill: 'forwards' });
     f.layer.animate([{ backgroundColor: 'rgb(0,0,0)' }, { backgroundColor: 'rgba(0,0,0,0)' }],
                     { duration: ANIM, easing: 'ease-in-out', fill: 'forwards' });
     a.finished.then(home, home);
